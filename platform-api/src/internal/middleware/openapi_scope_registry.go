@@ -52,14 +52,17 @@ type openAPIDoc struct {
 	Paths map[string]map[string]openAPIOperation `yaml:"paths"`
 }
 
+// openAPIOperation captures the per-operation security requirements. Each entry in
+// Security is a map from scheme name to scope list; multiple scopes under a single
+// scheme are OR-evaluated (any one scope is sufficient), following the WSO2 convention.
 type openAPIOperation struct {
-	XRequiredScopes []string `yaml:"x-required-scopes"`
+	Security []map[string][]string `yaml:"security"`
 }
 
 // LoadScopeRegistry parses the OpenAPI spec at specPath and returns a ScopeRegistry
-// populated with the x-required-scopes values. The first servers[].url is used to
-// derive the base path prefix that maps spec paths to actual Gin route patterns
-// (e.g. /api/v1 + /projects → /api/v1/projects).
+// populated from the standard security field on each operation. The first servers[].url
+// is used to derive the base path prefix that maps spec paths to actual Gin route
+// patterns (e.g. /api/v1 + /projects → /api/v1/projects).
 func LoadScopeRegistry(specPath string) (*ScopeRegistry, error) {
 	data, err := os.ReadFile(specPath)
 	if err != nil {
@@ -81,15 +84,36 @@ func LoadScopeRegistry(specPath string) (*ScopeRegistry, error) {
 	for oaPath, methods := range doc.Paths {
 		ginPath := basePath + oaParamPattern.ReplaceAllString(oaPath, ":$1")
 		for method, op := range methods {
-			if len(op.XRequiredScopes) == 0 {
+			scopes := collectScopes(op.Security)
+			if len(scopes) == 0 {
 				continue
 			}
 			key := strings.ToUpper(method) + ":" + ginPath
-			registry.scopes[key] = op.XRequiredScopes
+			registry.scopes[key] = scopes
 		}
 	}
 
 	return registry, nil
+}
+
+// collectScopes flattens all scopes from the security requirement objects into a
+// single de-duplicated list. Multiple scopes within one requirement object are
+// treated as OR (WSO2 convention), so we collect them all into one list for the
+// existing OR-check middleware to evaluate.
+func collectScopes(security []map[string][]string) []string {
+	seen := make(map[string]struct{})
+	var result []string
+	for _, requirement := range security {
+		for _, scopes := range requirement {
+			for _, s := range scopes {
+				if _, exists := seen[s]; !exists {
+					seen[s] = struct{}{}
+					result = append(result, s)
+				}
+			}
+		}
+	}
+	return result
 }
 
 // extractBasePath returns the path component of a URL string (e.g. "/api/v1"),

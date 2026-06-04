@@ -20,7 +20,7 @@ info:
     ## Scope-Based Access Control
 
     Authorization is enforced via OAuth2 scopes carried in the JWT. Both read (GET) and write
-    operations require specific scopes listed in `x-required-scopes`.
+    operations require specific scopes declared in the `security` field of each operation.
 
   version: 1.0.0
   contact:
@@ -36,7 +36,7 @@ servers:
     description: Production server
 
 security:
-  - BearerAuth: []
+  - OAuth2Security: []
 
 paths:
   /organizations:
@@ -149,7 +149,10 @@ paths:
         Creates a new project within the organization specified in the JWT token.
         Organization ID is automatically extracted from the token and does not need to be provided.
       operationId: CreateProject
-      x-required-scopes: [ap:project:create, ap:project:manage]
+      security:
+        - OAuth2Security:
+            - ap:project:create
+            - ap:project:manage
       tags:
         - Projects
       requestBody:
@@ -184,7 +187,10 @@ paths:
         Retrieves all projects belonging to the organization specified in the JWT token.
         Organization ID is automatically extracted from the token.
       operationId: ListProjects
-      x-required-scopes: [ap:project:read, ap:project:manage]
+      security:
+        - OAuth2Security:
+            - ap:project:read
+            - ap:project:manage
       tags:
         - Projects
       responses:
@@ -208,7 +214,10 @@ paths:
         Retrieves a specific project by its UUID. Access is validated against the organization 
         in the JWT token to ensure users can only access projects in their organization.
       operationId: GetProject
-      x-required-scopes: [ap:project:read, ap:project:manage]
+      security:
+        - OAuth2Security:
+            - ap:project:read
+            - ap:project:manage
       tags:
         - Projects
       parameters:
@@ -235,7 +244,10 @@ paths:
         Updates an existing project's name. Access is validated against the organization 
         in the JWT token.
       operationId: UpdateProject
-      x-required-scopes: [ap:project:update, ap:project:manage]
+      security:
+        - OAuth2Security:
+            - ap:project:update
+            - ap:project:manage
       tags:
         - Projects
       parameters:
@@ -272,7 +284,10 @@ paths:
         Deletes a specific project by its UUID. Access is validated against the organization 
         in the JWT token.
       operationId: DeleteProject
-      x-required-scopes: [ap:project:delete, ap:project:manage]
+      security:
+        - OAuth2Security:
+            - ap:project:delete
+            - ap:project:manage
       tags:
         - Projects
       parameters:
@@ -297,7 +312,10 @@ paths:
       description: |
         Creates a new application within the organization specified in the JWT token.
       operationId: CreateApplication
-      x-required-scopes: [ap:application:create, ap:application:manage]
+      security:
+        - OAuth2Security:
+            - ap:application:create
+            - ap:application:manage
       tags:
         - Applications
       requestBody:
@@ -332,7 +350,10 @@ paths:
         Retrieves applications belonging to the organization specified in the JWT token.
         Filters by project using the required `projectId` query parameter.
       operationId: ListApplications
-      x-required-scopes: [ap:application:read, ap:application:manage]
+      security:
+        - OAuth2Security:
+            - ap:application:read
+            - ap:application:manage
       tags:
         - Applications
       parameters:
@@ -373,7 +394,10 @@ paths:
         Retrieves a specific application by handle. Access is validated against
         the organization in the JWT token.
       operationId: GetApplication
-      x-required-scopes: [ap:application:read, ap:application:manage]
+      security:
+        - OAuth2Security:
+            - ap:application:read
+            - ap:application:manage
       tags:
         - Applications
       parameters:
@@ -399,7 +423,10 @@ paths:
       description: |
         Updates an existing application by handle.
       operationId: UpdateApplication
-      x-required-scopes: [ap:application:update, ap:application:manage]
+      security:
+        - OAuth2Security:
+            - ap:application:update
+            - ap:application:manage
       tags:
         - Applications
       parameters:
@@ -435,7 +462,10 @@ paths:
       description: |
         Deletes an existing application by handle.
       operationId: DeleteApplication
-      x-required-scopes: [ap:application:delete, ap:application:manage]
+      security:
+        - OAuth2Security:
+            - ap:application:delete
+            - ap:application:manage
       tags:
         - Applications
       parameters:
@@ -460,7 +490,11 @@ paths:
       description: |
         Lists all API keys mapped to the specified application.
       operationId: ListApplicationAPIKeys
-      x-required-scopes: [ap:application:api_key:read, ap:application:api_key:manage, ap:application:manage]
+      security:
+        - OAuth2Security:
+            - ap:application:api_key:read
+            - ap:application:api_key:manage
+            - ap:application:manage
       tags:
         - Applications
         - API Keys
@@ -504,7 +538,11 @@ paths:
       description: |
         Adds API key mappings to the specified application.
       operationId: AddApplicationAPIKeys
-      x-required-scopes: [ap:application:api_key:create, ap:application:api_key:manage, ap:application:manage]
+      security:
+        - OAuth2Security:
+            - ap:application:api_key:create
+            - ap:application:api_key:manage
+            - ap:application:manage
       tags:
         - Applications
         - API Keys
@@ -540,7 +578,11 @@ paths:
       description: |
         Removes a mapped API key from the specified application.
       operationId: RemoveApplicationAPIKey
-      x-required-scopes: [ap:application:api_key:delete, ap:application:api_key:manage, ap:application:manage]
+      security:
+        - OAuth2Security:
+            - ap:application:api_key:delete
+            - ap:application:api_key:manage
+            - ap:application:manage
       tags:
         - Applications
         - API Keys
@@ -568,7 +610,10 @@ paths:
       description: |
         Lists association targets mapped to the specified application.
       operationId: ListApplicationAssociations
-      x-required-scopes: [ap:application:associations:read, ap:application:manage]
+      security:
+        - OAuth2Security:
+            - ap:application:associations:read
+            - ap:application:manage
       tags:
         - Applications
       parameters:
@@ -609,7 +654,11 @@ paths:
       description: |
         Adds association targets to the specified application.
       operationId: AddApplicationAssociations
-      x-required-scopes: [ap:application:associations:create, ap:application:associations:manage, ap:application:manage]
+      security:
+        - OAuth2Security:
+            - ap:application:associations:create
+            - ap:application:associations:manage
+            - ap:application:manage
       tags:
         - Applications
       parameters:
@@ -644,7 +693,11 @@ paths:
       description: |
         Removes an association target from the specified application.
       operationId: RemoveApplicationAssociation
-      x-required-scopes: [ap:application:associations:delete, ap:application:associations:manage, ap:application:manage]
+      security:
+        - OAuth2Security:
+            - ap:application:associations:delete
+            - ap:application:associations:manage
+            - ap:application:manage
       tags:
         - Applications
       parameters:
@@ -670,7 +723,10 @@ paths:
       description: |
         Lists API keys mapped to the specified application for the given associated target.
       operationId: ListApplicationAssociationAPIKeys
-      x-required-scopes: [ap:application:associations:api_key:read, ap:application:manage]
+      security:
+        - OAuth2Security:
+            - ap:application:associations:api_key:read
+            - ap:application:manage
       tags:
         - Applications
         - API Keys
@@ -714,7 +770,10 @@ paths:
       summary: "[Deprecated] Use POST /rest-apis/import-openapi"
       description: Deprecated. Use `POST /rest-apis/import-openapi` instead.
       operationId: ImportOpenAPIDeprecated
-      x-required-scopes: [ap:rest_api:import, ap:rest_api:manage]
+      security:
+        - OAuth2Security:
+            - ap:rest_api:import
+            - ap:rest_api:manage
       tags:
         - REST APIs
         - Imports
@@ -760,7 +819,10 @@ paths:
       summary: "[Deprecated] Use POST /api-projects"
       description: Deprecated. Use `POST /api-projects` instead.
       operationId: ImportAPIProjectDeprecated
-      x-required-scopes: [ap:rest_api:import, ap:rest_api:manage]
+      security:
+        - OAuth2Security:
+            - ap:rest_api:import
+            - ap:rest_api:manage
       tags:
         - REST APIs
         - Imports
@@ -858,7 +920,10 @@ paths:
         A REST API is created from the imported API project and is associated with a specified project within the
         organization in the JWT token.
       operationId: ImportAPIProject
-      x-required-scopes: [ap:rest_api:import, ap:rest_api:manage]
+      security:
+        - OAuth2Security:
+            - ap:rest_api:import
+            - ap:rest_api:manage
       tags:
         - REST APIs
         - Imports
@@ -933,7 +998,10 @@ paths:
         Provide name and version together to check uniqueness (empty result = name/version combination is available).
         Access is validated against the organization in the JWT token.
       operationId: ListRESTAPIs
-      x-required-scopes: [ap:rest_api:read, ap:rest_api:manage]
+      security:
+        - OAuth2Security:
+            - ap:rest_api:read
+            - ap:rest_api:manage
       tags:
         - REST APIs
       parameters:
@@ -961,7 +1029,10 @@ paths:
         Creates a new REST API in the platform. The API is associated with a project, which must 
         belong to the organization specified in the JWT token.
       operationId: CreateRESTAPI
-      x-required-scopes: [ap:rest_api:create, ap:rest_api:manage]
+      security:
+        - OAuth2Security:
+            - ap:rest_api:create
+            - ap:rest_api:manage
       tags:
         - REST APIs
       requestBody:
@@ -999,7 +1070,10 @@ paths:
         A REST API is created from the imported OpenAPI definition and is associated with a specified project within the
         organization in the JWT token.
       operationId: ImportOpenAPI
-      x-required-scopes: [ap:rest_api:import, ap:rest_api:manage]
+      security:
+        - OAuth2Security:
+            - ap:rest_api:import
+            - ap:rest_api:manage
       tags:
         - REST APIs
         - Imports
@@ -1078,7 +1152,10 @@ paths:
         Retrieves a specific API by its UUID. Access is validated against the organization 
         in the JWT token.
       operationId: GetRESTAPI
-      x-required-scopes: [ap:rest_api:read, ap:rest_api:manage]
+      security:
+        - OAuth2Security:
+            - ap:rest_api:read
+            - ap:rest_api:manage
       tags:
         - REST APIs
       parameters:
@@ -1105,7 +1182,10 @@ paths:
         Updates an existing API's details. Access is validated against the organization 
         in the JWT token.
       operationId: UpdateRESTAPI
-      x-required-scopes: [ap:rest_api:update, ap:rest_api:manage]
+      security:
+        - OAuth2Security:
+            - ap:rest_api:update
+            - ap:rest_api:manage
       tags:
         - REST APIs
       parameters:
@@ -1143,7 +1223,10 @@ paths:
         Deletes a specific API by its UUID. Access is validated against the organization 
         in the JWT token.
       operationId: DeleteRESTAPI
-      x-required-scopes: [ap:rest_api:delete, ap:rest_api:manage]
+      security:
+        - OAuth2Security:
+            - ap:rest_api:delete
+            - ap:rest_api:manage
       tags:
         - REST APIs
       parameters:
@@ -1171,7 +1254,13 @@ paths:
         Returns gateway information along with association timestamps and deployment status.
         Access is validated against the organization in the JWT token.
       operationId: GetRESTAPIGateways
-      x-required-scopes: [ap:rest_api:gateway:read, ap:rest_api:gateway:manage, ap:rest_api:manage, ap:gateway:read, ap:gateway:manage]
+      security:
+        - OAuth2Security:
+            - ap:rest_api:gateway:read
+            - ap:rest_api:gateway:manage
+            - ap:rest_api:manage
+            - ap:gateway:read
+            - ap:gateway:manage
       tags:
         - REST APIs
         - Gateways
@@ -1201,7 +1290,11 @@ paths:
         including deployment details. Access is validated against the organization 
         in the JWT token.
       operationId: AddGatewaysToAPI
-      x-required-scopes: [ap:rest_api:gateway:create, ap:rest_api:gateway:manage, ap:rest_api:manage]
+      security:
+        - OAuth2Security:
+            - ap:rest_api:gateway:create
+            - ap:rest_api:gateway:manage
+            - ap:rest_api:manage
       tags:
         - REST APIs
         - Gateways
@@ -1241,7 +1334,11 @@ paths:
         storage and broadcasted to all gateways where the API is deployed. This endpoint
         allows external platforms to inject API keys to hybrid gateways.
       operationId: CreateAPIKey
-      x-required-scopes: [ap:rest_api:api_key:create, ap:rest_api:api_key:manage, ap:rest_api:manage]
+      security:
+        - OAuth2Security:
+            - ap:rest_api:api_key:create
+            - ap:rest_api:api_key:manage
+            - ap:rest_api:manage
       tags:
         - REST APIs
         - API Keys
@@ -1286,7 +1383,11 @@ paths:
         be hashed before storage and broadcasted to all gateways where the API is deployed.
         This endpoint allows external platforms to rotate API keys on hybrid gateways.
       operationId: UpdateAPIKey
-      x-required-scopes: [ap:rest_api:api_key:update, ap:rest_api:api_key:manage, ap:rest_api:manage]
+      security:
+        - OAuth2Security:
+            - ap:rest_api:api_key:update
+            - ap:rest_api:api_key:manage
+            - ap:rest_api:manage
       tags:
         - REST APIs
         - API Keys
@@ -1337,7 +1438,11 @@ paths:
         to all gateways where the API is deployed. This endpoint allows external platforms
         to revoke API keys on hybrid gateways.
       operationId: RevokeAPIKey
-      x-required-scopes: [ap:rest_api:api_key:delete, ap:rest_api:api_key:manage, ap:rest_api:manage]
+      security:
+        - OAuth2Security:
+            - ap:rest_api:api_key:delete
+            - ap:rest_api:api_key:manage
+            - ap:rest_api:manage
       tags:
         - REST APIs
         - API Keys
@@ -1375,7 +1480,10 @@ paths:
       summary: Create subscription plan
       description: Creates an organization-scoped subscription plan.
       operationId: CreateSubscriptionPlan
-      x-required-scopes: [ap:subscription_plan:create, ap:subscription_plan:manage]
+      security:
+        - OAuth2Security:
+            - ap:subscription_plan:create
+            - ap:subscription_plan:manage
       tags:
         - SubscriptionPlans
       requestBody:
@@ -1405,7 +1513,10 @@ paths:
       summary: List subscription plans
       description: Returns subscription plans for the organization.
       operationId: ListSubscriptionPlans
-      x-required-scopes: [ap:subscription_plan:read, ap:subscription_plan:manage]
+      security:
+        - OAuth2Security:
+            - ap:subscription_plan:read
+            - ap:subscription_plan:manage
       tags:
         - SubscriptionPlans
       responses:
@@ -1424,7 +1535,10 @@ paths:
     get:
       summary: Get subscription plan by ID
       operationId: GetSubscriptionPlan
-      x-required-scopes: [ap:subscription_plan:read, ap:subscription_plan:manage]
+      security:
+        - OAuth2Security:
+            - ap:subscription_plan:read
+            - ap:subscription_plan:manage
       tags:
         - SubscriptionPlans
       parameters:
@@ -1450,7 +1564,10 @@ paths:
     put:
       summary: Update subscription plan
       operationId: UpdateSubscriptionPlan
-      x-required-scopes: [ap:subscription_plan:update, ap:subscription_plan:manage]
+      security:
+        - OAuth2Security:
+            - ap:subscription_plan:update
+            - ap:subscription_plan:manage
       tags:
         - SubscriptionPlans
       parameters:
@@ -1488,7 +1605,10 @@ paths:
     delete:
       summary: Delete subscription plan
       operationId: DeleteSubscriptionPlan
-      x-required-scopes: [ap:subscription_plan:delete, ap:subscription_plan:manage]
+      security:
+        - OAuth2Security:
+            - ap:subscription_plan:delete
+            - ap:subscription_plan:manage
       tags:
         - SubscriptionPlans
       parameters:
@@ -1517,7 +1637,10 @@ paths:
         Creates a subscription for the specified API.
         `subscriberId` identifies the unique subscriber for this API, allowing multiple subscribers to create subscriptions for the same API.
       operationId: CreateSubscription
-      x-required-scopes: [ap:subscription:create, ap:subscription:manage]
+      security:
+        - OAuth2Security:
+            - ap:subscription:create
+            - ap:subscription:manage
       tags:
         - Subscriptions
       requestBody:
@@ -1552,7 +1675,10 @@ paths:
         Optional query parameters apiId, subscriberId, applicationId and status filter the list.
         Supports pagination via limit and offset.
       operationId: ListSubscriptions
-      x-required-scopes: [ap:subscription:read, ap:subscription:manage]
+      security:
+        - OAuth2Security:
+            - ap:subscription:read
+            - ap:subscription:manage
       tags:
         - Subscriptions
       parameters:
@@ -1618,7 +1744,10 @@ paths:
         Returns a single subscription by ID (scoped to organization).
         Query parameter `subscriberId` is required and must match the subscription's subscriber for access control.
       operationId: GetSubscription
-      x-required-scopes: [ap:subscription:read, ap:subscription:manage]
+      security:
+        - OAuth2Security:
+            - ap:subscription:read
+            - ap:subscription:manage
       tags:
         - Subscriptions
       parameters:
@@ -1659,7 +1788,10 @@ paths:
         Updates a subscription (e.g. status).
         Query parameter `subscriberId` is required and must match the subscription's subscriber for access control.
       operationId: UpdateSubscription
-      x-required-scopes: [ap:subscription:update, ap:subscription:manage]
+      security:
+        - OAuth2Security:
+            - ap:subscription:update
+            - ap:subscription:manage
       tags:
         - Subscriptions
       parameters:
@@ -1706,7 +1838,10 @@ paths:
         Removes the subscription for the API.
         Query parameter `subscriberId` is required and must match the subscription's subscriber for access control.
       operationId: DeleteSubscription
-      x-required-scopes: [ap:subscription:delete, ap:subscription:manage]
+      security:
+        - OAuth2Security:
+            - ap:subscription:delete
+            - ap:subscription:manage
       tags:
         - Subscriptions
       parameters:
@@ -1744,7 +1879,10 @@ paths:
       summary: "[Deprecated] Use GET /rest-apis?name=&version="
       description: Deprecated. Use `GET /rest-apis?name=&version=` — an empty result means the name/version combination is available.
       operationId: ValidateRESTAPI
-      x-required-scopes: [ap:rest_api:read, ap:rest_api:manage]
+      security:
+        - OAuth2Security:
+            - ap:rest_api:read
+            - ap:rest_api:manage
       tags:
         - REST APIs
       parameters:
@@ -1771,7 +1909,10 @@ paths:
       summary: "[Deprecated] Use POST /rest-apis/{apiId}/publications"
       description: Deprecated. Use `POST /rest-apis/{apiId}/publications` instead.
       operationId: PublishRESTAPIToDevPortalDeprecated
-      x-required-scopes: [ap:rest_api:publication:create, ap:rest_api:manage]
+      security:
+        - OAuth2Security:
+            - ap:rest_api:publication:create
+            - ap:rest_api:manage
       tags:
         - REST APIs
         - DevPortal
@@ -1807,7 +1948,10 @@ paths:
       summary: "[Deprecated] Use DELETE /rest-apis/{apiId}/publications/{devportalId}"
       description: Deprecated. Use `DELETE /rest-apis/{apiId}/publications/{devportalId}` instead.
       operationId: UnpublishRESTAPIFromDevPortalDeprecated
-      x-required-scopes: [ap:rest_api:publication:delete, ap:rest_api:manage]
+      security:
+        - OAuth2Security:
+            - ap:rest_api:publication:delete
+            - ap:rest_api:manage
       tags:
         - REST APIs
         - DevPortal
@@ -1843,7 +1987,10 @@ paths:
       description: |
         Retrieves all DevPortals associated with an API including publication details.
       operationId: GetRESTAPIPublications
-      x-required-scopes: [ap:rest_api:publication:read, ap:rest_api:manage]
+      security:
+        - OAuth2Security:
+            - ap:rest_api:publication:read
+            - ap:rest_api:manage
       tags:
         - REST APIs
         - DevPortal
@@ -1871,7 +2018,10 @@ paths:
       description: |
         Publishes an existing API from platform-api to the configured DevPortal.
       operationId: PublishRESTAPIToDevPortal
-      x-required-scopes: [ap:rest_api:publication:create, ap:rest_api:manage]
+      security:
+        - OAuth2Security:
+            - ap:rest_api:publication:create
+            - ap:rest_api:manage
       tags:
         - REST APIs
         - DevPortal
@@ -1947,7 +2097,10 @@ paths:
       description: |
         Removes an API from the configured DevPortal.
       operationId: UnpublishRESTAPIFromDevPortal
-      x-required-scopes: [ap:rest_api:publication:delete, ap:rest_api:manage]
+      security:
+        - OAuth2Security:
+            - ap:rest_api:publication:delete
+            - ap:rest_api:manage
       tags:
         - REST APIs
         - DevPortal
@@ -2005,7 +2158,11 @@ paths:
         not the UUID. The operation returns a transitional DEPLOYING status. Final success or failure will be reported asynchronously via the deployment's status and statusReason once the gateway acknowledges. 
         Access is validated against the organization in the JWT token.
       operationId: DeployAPI
-      x-required-scopes: [ap:rest_api:deployment:create, ap:rest_api:deployment:manage, ap:rest_api:manage]
+      security:
+        - OAuth2Security:
+            - ap:rest_api:deployment:create
+            - ap:rest_api:deployment:manage
+            - ap:rest_api:manage
       tags:
         - REST API Deployments
         - Deployments
@@ -2051,7 +2208,11 @@ paths:
         not the UUID. Supports filtering by gateway UUID and deployment status. 
         Access is validated against the organization in the JWT token.
       operationId: GetDeployments
-      x-required-scopes: [ap:rest_api:deployment:read, ap:rest_api:deployment:manage, ap:rest_api:manage]
+      security:
+        - OAuth2Security:
+            - ap:rest_api:deployment:read
+            - ap:rest_api:deployment:manage
+            - ap:rest_api:manage
       tags:
         - REST API Deployments
         - Deployments
@@ -2082,7 +2243,11 @@ paths:
         Retrieves metadata for a specific deployment artifact including status, gateway association,
         and timestamps. Access is validated against the organization in the JWT token.
       operationId: GetDeployment
-      x-required-scopes: [ap:rest_api:deployment:read, ap:rest_api:deployment:manage, ap:rest_api:manage]
+      security:
+        - OAuth2Security:
+            - ap:rest_api:deployment:read
+            - ap:rest_api:deployment:manage
+            - ap:rest_api:manage
       tags:
         - REST API Deployments
         - Deployments
@@ -2108,7 +2273,11 @@ paths:
         Deletes a deployment artifact. Deletion is only allowed when the deployment is in UNDEPLOYED status.
         Access is validated against the organization in the JWT token.
       operationId: DeleteDeployment
-      x-required-scopes: [ap:rest_api:deployment:delete, ap:rest_api:deployment:manage, ap:rest_api:manage]
+      security:
+        - OAuth2Security:
+            - ap:rest_api:deployment:delete
+            - ap:rest_api:deployment:manage
+            - ap:rest_api:manage
       tags:
         - REST API Deployments
         - Deployments
@@ -2142,7 +2311,11 @@ paths:
         The gatewayId query parameter is validated against deployment's bound gateway to prevent unintended operations.
         Access is validated against the organization in the JWT token.
       operationId: UndeployDeployment
-      x-required-scopes: [ap:rest_api:deployment:undeploy, ap:rest_api:deployment:manage, ap:rest_api:manage]
+      security:
+        - OAuth2Security:
+            - ap:rest_api:deployment:undeploy
+            - ap:rest_api:deployment:manage
+            - ap:rest_api:manage
       tags:
         - REST API Deployments
         - Deployments
@@ -2191,7 +2364,11 @@ paths:
         The gatewayId query parameter is validated against the deployment's bound gateway to prevent unintended operations.
         Access is validated against the organization in the JWT token.
       operationId: RestoreDeployment
-      x-required-scopes: [ap:rest_api:deployment:restore, ap:rest_api:deployment:manage, ap:rest_api:manage]
+      security:
+        - OAuth2Security:
+            - ap:rest_api:deployment:restore
+            - ap:rest_api:deployment:manage
+            - ap:rest_api:manage
       tags:
         - REST API Deployments
         - Deployments
@@ -2239,7 +2416,11 @@ paths:
       summary: "[Deprecated] Use POST /rest-apis/{apiId}/deployments/{deploymentId}/undeploy"
       description: Deprecated. Pass deploymentId as a path parameter instead of a query parameter.
       operationId: UndeployDeploymentDeprecated
-      x-required-scopes: [ap:rest_api:deployment:undeploy, ap:rest_api:deployment:manage, ap:rest_api:manage]
+      security:
+        - OAuth2Security:
+            - ap:rest_api:deployment:undeploy
+            - ap:rest_api:deployment:manage
+            - ap:rest_api:manage
       tags:
         - REST API Deployments
         - Deployments
@@ -2281,7 +2462,11 @@ paths:
       summary: "[Deprecated] Use POST /rest-apis/{apiId}/deployments/{deploymentId}/restore"
       description: Deprecated. Pass deploymentId as a path parameter instead of a query parameter.
       operationId: RestoreDeploymentDeprecated
-      x-required-scopes: [ap:rest_api:deployment:restore, ap:rest_api:deployment:manage, ap:rest_api:manage]
+      security:
+        - OAuth2Security:
+            - ap:rest_api:deployment:restore
+            - ap:rest_api:deployment:manage
+            - ap:rest_api:manage
       tags:
         - REST API Deployments
         - Deployments
@@ -2324,7 +2509,10 @@ paths:
         Creates a new gateway within the organization specified in the JWT token.
         Organization ID is automatically extracted from the token and does not need to be provided.
       operationId: CreateGateway
-      x-required-scopes: [ap:gateway:create, ap:gateway:manage]
+      security:
+        - OAuth2Security:
+            - ap:gateway:create
+            - ap:gateway:manage
       tags:
         - Gateways
       requestBody:
@@ -2368,7 +2556,10 @@ paths:
         Retrieves a list of all registered gateways for the organization specified in the JWT token.
         Organization ID is automatically extracted from the token.
       operationId: ListGateways
-      x-required-scopes: [ap:gateway:read, ap:gateway:manage]
+      security:
+        - OAuth2Security:
+            - ap:gateway:read
+            - ap:gateway:manage
       tags:
         - Gateways
       responses:
@@ -2392,7 +2583,10 @@ paths:
         Retrieves a specific gateway by its UUID. Access is validated against the organization 
         in the JWT token.
       operationId: GetGateway
-      x-required-scopes: [ap:gateway:read, ap:gateway:manage]
+      security:
+        - OAuth2Security:
+            - ap:gateway:read
+            - ap:gateway:manage
       tags:
         - Gateways
       parameters:
@@ -2419,7 +2613,10 @@ paths:
         Updates an existing gateway's mutable fields (description).
         Access is validated against the organization in the JWT token.
       operationId: UpdateGateway
-      x-required-scopes: [ap:gateway:update, ap:gateway:manage]
+      security:
+        - OAuth2Security:
+            - ap:gateway:update
+            - ap:gateway:manage
       tags:
         - Gateways
       parameters:
@@ -2456,7 +2653,10 @@ paths:
         Deletion is blocked if the gateway has active API deployments or WebSocket connections.
         Access is validated against the organization in the JWT token.
       operationId: DeleteGateway
-      x-required-scopes: [ap:gateway:delete, ap:gateway:manage]
+      security:
+        - OAuth2Security:
+            - ap:gateway:delete
+            - ap:gateway:manage
       tags:
         - Gateways
       parameters:
@@ -2499,7 +2699,11 @@ paths:
         Returns all active tokens for the specified gateway. Token hashes and salts are never exposed.
         Access is validated against the organization in the JWT token.
       operationId: listGatewayTokens
-      x-required-scopes: [ap:gateway:token:read, ap:gateway:token:manage, ap:gateway:manage]
+      security:
+        - OAuth2Security:
+            - ap:gateway:token:read
+            - ap:gateway:token:manage
+            - ap:gateway:manage
       tags:
         - Gateway Tokens
       parameters:
@@ -2525,7 +2729,11 @@ paths:
         Generates a new authentication token for the gateway. The existing token remains active 
         to enable zero-downtime rotation. Access is validated against the organization in the JWT token.
       operationId: rotateGatewayToken
-      x-required-scopes: [ap:gateway:token:create, ap:gateway:token:manage, ap:gateway:manage]
+      security:
+        - OAuth2Security:
+            - ap:gateway:token:create
+            - ap:gateway:token:manage
+            - ap:gateway:manage
       tags:
         - Gateway Tokens
       parameters:
@@ -2559,7 +2767,11 @@ paths:
         Revokes a specific gateway token. Operation is idempotent - revoking an already-revoked 
         token succeeds. Access is validated against the organization in the JWT token.
       operationId: revokeGatewayToken
-      x-required-scopes: [ap:gateway:token:delete, ap:gateway:token:manage, ap:gateway:manage]
+      security:
+        - OAuth2Security:
+            - ap:gateway:token:delete
+            - ap:gateway:token:manage
+            - ap:gateway:manage
       tags:
         - Gateway Tokens
       parameters:
@@ -2599,7 +2811,10 @@ paths:
         Currently, only APIs are supported as artifacts. Future versions will include MCPs and API Products.
         Access is validated against the organization in the JWT token.
       operationId: GetGatewayArtifacts
-      x-required-scopes: [ap:gateway:artifacts:read, ap:gateway:manage]
+      security:
+        - OAuth2Security:
+            - ap:gateway:artifacts:read
+            - ap:gateway:manage
       tags:
         - Gateways
         - Artifacts
@@ -2628,7 +2843,11 @@ paths:
       description: |
         Returns all custom policies synced to the current organization (from the JWT `organization` claim).
       operationId: ListGatewayCustomPolicies
-      x-required-scopes: [ap:gateway:policy:read, ap:gateway:policy:manage, ap:gateway:manage]
+      security:
+        - OAuth2Security:
+            - ap:gateway:policy:read
+            - ap:gateway:policy:manage
+            - ap:gateway:manage
       tags:
         - Gateway Policies
       responses:
@@ -2658,7 +2877,11 @@ paths:
         Policy names are case-insensitive.
         After syncing, the policy can be applied to APIs in the organization.
       operationId: SyncCustomPolicy
-      x-required-scopes: [ap:gateway:policy:create, ap:gateway:policy:manage, ap:gateway:manage]
+      security:
+        - OAuth2Security:
+            - ap:gateway:policy:create
+            - ap:gateway:policy:manage
+            - ap:gateway:manage
       tags:
         - Gateway Policies
       parameters:
@@ -2719,7 +2942,11 @@ paths:
       summary: Get a specific custom policy version
       description: Returns a custom policy by its UUID and version for the current organization.
       operationId: GetGatewayCustomPolicy
-      x-required-scopes: [ap:gateway:policy:read, ap:gateway:policy:manage, ap:gateway:manage]
+      security:
+        - OAuth2Security:
+            - ap:gateway:policy:read
+            - ap:gateway:policy:manage
+            - ap:gateway:manage
       tags:
         - Gateway Policies
       parameters:
@@ -2756,7 +2983,11 @@ paths:
       description: |
         Deletes a custom policy by its UUID and version. The policy must not be in use by any APIs.
       operationId: DeleteGatewayCustomPolicy
-      x-required-scopes: [ap:gateway:policy:delete, ap:gateway:policy:manage, ap:gateway:manage]
+      security:
+        - OAuth2Security:
+            - ap:gateway:policy:delete
+            - ap:gateway:policy:manage
+            - ap:gateway:manage
       tags:
         - Gateway Policies
       parameters:
@@ -2799,7 +3030,11 @@ paths:
       summary: "[Deprecated] Use GET /gateway-custom-policies/{customPolicyUuid}/versions/{version}"
       description: Deprecated. Use the plural `/versions/` path instead.
       operationId: GetGatewayCustomPolicyDeprecated
-      x-required-scopes: [ap:gateway:policy:read, ap:gateway:policy:manage, ap:gateway:manage]
+      security:
+        - OAuth2Security:
+            - ap:gateway:policy:read
+            - ap:gateway:policy:manage
+            - ap:gateway:manage
       tags:
         - Gateway Policies
       parameters:
@@ -2832,7 +3067,11 @@ paths:
       summary: "[Deprecated] Use DELETE /gateway-custom-policies/{customPolicyUuid}/versions/{version}"
       description: Deprecated. Use the plural `/versions/` path instead.
       operationId: DeleteGatewayCustomPolicyDeprecated
-      x-required-scopes: [ap:gateway:policy:delete, ap:gateway:policy:manage, ap:gateway:manage]
+      security:
+        - OAuth2Security:
+            - ap:gateway:policy:delete
+            - ap:gateway:policy:manage
+            - ap:gateway:manage
       tags:
         - Gateway Policies
       parameters:
@@ -2873,7 +3112,10 @@ paths:
         controller when it connects to the platform API, and contains all installed policies. Custom
         policies additionally include their full policy definition schema.
       operationId: GetGatewayManifest
-      x-required-scopes: [ap:gateway:manifest:read, ap:gateway:manage]
+      security:
+        - OAuth2Security:
+            - ap:gateway:manifest:read
+            - ap:gateway:manage
       tags:
         - Gateways
       parameters:
@@ -2898,7 +3140,10 @@ paths:
       summary: "[Deprecated] Use GET /gateways — check isActive field"
       description: Deprecated. Use `GET /gateways` and inspect the `isActive` field on each gateway instead.
       operationId: GetGatewayStatus
-      x-required-scopes: [ap:gateway:status:read, ap:gateway:manage]
+      security:
+        - OAuth2Security:
+            - ap:gateway:status:read
+            - ap:gateway:manage
       tags:
         - Gateways
       parameters:
@@ -2929,7 +3174,9 @@ paths:
         This endpoint is used to verify repository accessibility and display branch options in the API Platform UI
         for API import functionality. Only public repositories are supported.
       operationId: FetchGitRepoBranches
-      x-required-scopes: [ap:git:read]
+      security:
+        - OAuth2Security:
+            - ap:git:read
       tags:
         - Git Operations
       requestBody:
@@ -2997,7 +3244,9 @@ paths:
         This endpoint is used to verify repository accessibility and display its structure in the API Platform UI
         for API import functionality. Only public repositories are supported.
       operationId: FetchGitRepoContent
-      x-required-scopes: [ap:git:read]
+      security:
+        - OAuth2Security:
+            - ap:git:read
       tags:
         - Git Operations
       parameters:
@@ -3054,7 +3303,10 @@ paths:
         Creates a new DevPortal within the organization specified in the JWT token.
         Organization ID is automatically extracted from the token and does not need to be provided.
       operationId: CreateDevPortal
-      x-required-scopes: [ap:devportal:create, ap:devportal:manage]
+      security:
+        - OAuth2Security:
+            - ap:devportal:create
+            - ap:devportal:manage
       tags:
         - DevPortals
       requestBody:
@@ -3092,7 +3344,10 @@ paths:
         Retrieves a list of all registered DevPortals for the organization specified in the JWT token.
         Organization ID is automatically extracted from the token.
       operationId: ListDevPortals
-      x-required-scopes: [ap:devportal:read, ap:devportal:manage]
+      security:
+        - OAuth2Security:
+            - ap:devportal:read
+            - ap:devportal:manage
       tags:
         - DevPortals
       parameters:
@@ -3141,7 +3396,10 @@ paths:
       summary: "[Deprecated] Use GET /devportals?default=true"
       description: Deprecated. Use `GET /devportals?default=true` instead.
       operationId: GetDefaultDevPortal
-      x-required-scopes: [ap:devportal:read, ap:devportal:manage]
+      security:
+        - OAuth2Security:
+            - ap:devportal:read
+            - ap:devportal:manage
       tags:
         - DevPortals
       responses:
@@ -3165,7 +3423,10 @@ paths:
         Retrieves a specific DevPortal by its UUID. Access is validated against the organization 
         in the JWT token.
       operationId: GetDevPortal
-      x-required-scopes: [ap:devportal:read, ap:devportal:manage]
+      security:
+        - OAuth2Security:
+            - ap:devportal:read
+            - ap:devportal:manage
       tags:
         - DevPortals
       parameters:
@@ -3192,7 +3453,10 @@ paths:
         Updates an existing DevPortal's mutable fields.
         Access is validated against the organization in the JWT token.
       operationId: UpdateDevPortal
-      x-required-scopes: [ap:devportal:update, ap:devportal:manage]
+      security:
+        - OAuth2Security:
+            - ap:devportal:update
+            - ap:devportal:manage
       tags:
         - DevPortals
       parameters:
@@ -3235,7 +3499,10 @@ paths:
         Deletion is blocked if the DevPortal has active API publications.
         Access is validated against the organization in the JWT token.
       operationId: DeleteDevPortal
-      x-required-scopes: [ap:devportal:delete, ap:devportal:manage]
+      security:
+        - OAuth2Security:
+            - ap:devportal:delete
+            - ap:devportal:manage
       tags:
         - DevPortals
       parameters:
@@ -3267,7 +3534,10 @@ paths:
         Activates a DevPortal, making it available for API publishing.
         Access is validated against the organization in the JWT token.
       operationId: ActivateDevPortal
-      x-required-scopes: [ap:devportal:update, ap:devportal:manage]
+      security:
+        - OAuth2Security:
+            - ap:devportal:update
+            - ap:devportal:manage
       tags:
         - DevPortals
       parameters:
@@ -3297,7 +3567,10 @@ paths:
         Deactivates a DevPortal, preventing new API publications.
         Access is validated against the organization in the JWT token.
       operationId: DeactivateDevPortal
-      x-required-scopes: [ap:devportal:update, ap:devportal:manage]
+      security:
+        - OAuth2Security:
+            - ap:devportal:update
+            - ap:devportal:manage
       tags:
         - DevPortals
       parameters:
@@ -3327,7 +3600,10 @@ paths:
         Sets a DevPortal as the default for the organization.
         Access is validated against the organization in the JWT token.
       operationId: SetDevPortalAsDefault
-      x-required-scopes: [ap:devportal:update, ap:devportal:manage]
+      security:
+        - OAuth2Security:
+            - ap:devportal:update
+            - ap:devportal:manage
       tags:
         - DevPortals
       parameters:
@@ -3365,7 +3641,10 @@ paths:
         Creates a new LLM provider template within the organization.
         Organization is identified via the JWT token.
       operationId: createLLMProviderTemplate
-      x-required-scopes: [ap:llm_template:create, ap:llm_template:manage]
+      security:
+        - OAuth2Security:
+            - ap:llm_template:create
+            - ap:llm_template:manage
       tags:
         - LLM Provider Templates
       requestBody:
@@ -3397,7 +3676,10 @@ paths:
       description: |
         Retrieve a list of all LLM provider templates for the organization.
       operationId: listLLMProviderTemplates
-      x-required-scopes: [ap:llm_template:read, ap:llm_template:manage]
+      security:
+        - OAuth2Security:
+            - ap:llm_template:read
+            - ap:llm_template:manage
       tags:
         - LLM Provider Templates
       parameters:
@@ -3433,7 +3715,10 @@ paths:
       summary: Get LLM provider template by id
       description: Retrieve the complete configuration for a specific LLM provider template.
       operationId: getLLMProviderTemplate
-      x-required-scopes: [ap:llm_template:read, ap:llm_template:manage]
+      security:
+        - OAuth2Security:
+            - ap:llm_template:read
+            - ap:llm_template:manage
       tags:
         - LLM Provider Templates
       parameters:
@@ -3462,7 +3747,10 @@ paths:
       summary: Update an existing LLM provider template
       description: Update an existing LLM provider template configuration.
       operationId: updateLLMProviderTemplate
-      x-required-scopes: [ap:llm_template:update, ap:llm_template:manage]
+      security:
+        - OAuth2Security:
+            - ap:llm_template:update
+            - ap:llm_template:manage
       tags:
         - LLM Provider Templates
       parameters:
@@ -3501,7 +3789,10 @@ paths:
       summary: Delete an LLM provider template
       description: Remove an LLM provider template.
       operationId: deleteLLMProviderTemplate
-      x-required-scopes: [ap:llm_template:delete, ap:llm_template:manage]
+      security:
+        - OAuth2Security:
+            - ap:llm_template:delete
+            - ap:llm_template:manage
       tags:
         - LLM Provider Templates
       parameters:
@@ -3532,7 +3823,10 @@ paths:
       description: |
         Deploy a new LLM provider configuration.
       operationId: createLLMProvider
-      x-required-scopes: [ap:llm_provider:create, ap:llm_provider:manage]
+      security:
+        - OAuth2Security:
+            - ap:llm_provider:create
+            - ap:llm_provider:manage
       tags:
         - LLM Providers
       requestBody:
@@ -3607,7 +3901,10 @@ paths:
       summary: List all LLM providers
       description: Retrieve a list of all LLM providers.
       operationId: listLLMProviders
-      x-required-scopes: [ap:llm_provider:read, ap:llm_provider:manage]
+      security:
+        - OAuth2Security:
+            - ap:llm_provider:read
+            - ap:llm_provider:manage
       tags:
         - LLM Providers
       parameters:
@@ -3643,7 +3940,10 @@ paths:
       summary: Get LLM provider by identifier
       description: Retrieve the complete configuration for a specific LLM provider.
       operationId: getLLMProvider
-      x-required-scopes: [ap:llm_provider:read, ap:llm_provider:manage]
+      security:
+        - OAuth2Security:
+            - ap:llm_provider:read
+            - ap:llm_provider:manage
       tags:
         - LLM Providers
       parameters:
@@ -3671,7 +3971,10 @@ paths:
       summary: Update an existing LLM provider
       description: Update the configuration of an existing LLM provider.
       operationId: updateLLMProvider
-      x-required-scopes: [ap:llm_provider:update, ap:llm_provider:manage]
+      security:
+        - OAuth2Security:
+            - ap:llm_provider:update
+            - ap:llm_provider:manage
       tags:
         - LLM Providers
       parameters:
@@ -3709,7 +4012,10 @@ paths:
       summary: Delete an LLM provider
       description: Remove an LLM provider.
       operationId: deleteLLMProvider
-      x-required-scopes: [ap:llm_provider:delete, ap:llm_provider:manage]
+      security:
+        - OAuth2Security:
+            - ap:llm_provider:delete
+            - ap:llm_provider:manage
       tags:
         - LLM Providers
       parameters:
@@ -3742,7 +4048,11 @@ paths:
         not the UUID. The operation returns a transitional DEPLOYING status. Final success or failure will be reported asynchronously via the deployment's status and statusReason once the gateway acknowledges.
         Access is validated against the organization in the JWT token.
       operationId: deployLLMProvider
-      x-required-scopes: [ap:llm_provider:deployment:create, ap:llm_provider:deployment:manage, ap:llm_provider:manage]
+      security:
+        - OAuth2Security:
+            - ap:llm_provider:deployment:create
+            - ap:llm_provider:deployment:manage
+            - ap:llm_provider:manage
       tags:
         - LLM Provider Deployments
         - Deployments
@@ -3793,7 +4103,11 @@ paths:
         LLM provider handle (identifier), not the UUID. Supports filtering by gateway UUID and deployment status.
         Access is validated against the organization in the JWT token.
       operationId: getLLMProviderDeployments
-      x-required-scopes: [ap:llm_provider:deployment:read, ap:llm_provider:deployment:manage, ap:llm_provider:manage]
+      security:
+        - OAuth2Security:
+            - ap:llm_provider:deployment:read
+            - ap:llm_provider:deployment:manage
+            - ap:llm_provider:manage
       tags:
         - LLM Provider Deployments
         - Deployments
@@ -3829,7 +4143,11 @@ paths:
         Retrieves metadata for a specific LLM provider deployment artifact including status, gateway association,
         and timestamps. Access is validated against the organization in the JWT token.
       operationId: getLLMProviderDeployment
-      x-required-scopes: [ap:llm_provider:deployment:read, ap:llm_provider:deployment:manage, ap:llm_provider:manage]
+      security:
+        - OAuth2Security:
+            - ap:llm_provider:deployment:read
+            - ap:llm_provider:deployment:manage
+            - ap:llm_provider:manage
       tags:
         - LLM Provider Deployments
         - Deployments
@@ -3860,7 +4178,11 @@ paths:
         Deletes a deployment artifact. Deletion is only allowed when the deployment is in UNDEPLOYED status.
         Access is validated against the organization in the JWT token.
       operationId: deleteLLMProviderDeployment
-      x-required-scopes: [ap:llm_provider:deployment:delete, ap:llm_provider:deployment:manage, ap:llm_provider:manage]
+      security:
+        - OAuth2Security:
+            - ap:llm_provider:deployment:delete
+            - ap:llm_provider:deployment:manage
+            - ap:llm_provider:manage
       tags:
         - LLM Provider Deployments
         - Deployments
@@ -3899,7 +4221,11 @@ paths:
         The gatewayId query parameter is validated against the deployment's bound gateway to prevent unintended operations.
         Access is validated against the organization in the JWT token.
       operationId: undeployLLMProviderDeployment
-      x-required-scopes: [ap:llm_provider:deployment:undeploy, ap:llm_provider:deployment:manage, ap:llm_provider:manage]
+      security:
+        - OAuth2Security:
+            - ap:llm_provider:deployment:undeploy
+            - ap:llm_provider:deployment:manage
+            - ap:llm_provider:manage
       tags:
         - LLM Provider Deployments
         - Deployments
@@ -3953,7 +4279,11 @@ paths:
         The gatewayId query parameter is validated against the deployment's bound gateway to prevent unintended operations.
         Access is validated against the organization in the JWT token.
       operationId: restoreLLMProviderDeployment
-      x-required-scopes: [ap:llm_provider:deployment:restore, ap:llm_provider:deployment:manage, ap:llm_provider:manage]
+      security:
+        - OAuth2Security:
+            - ap:llm_provider:deployment:restore
+            - ap:llm_provider:deployment:manage
+            - ap:llm_provider:manage
       tags:
         - LLM Provider Deployments
         - Deployments
@@ -4006,7 +4336,11 @@ paths:
       summary: "[Deprecated] Use POST /llm-providers/{id}/deployments/{deploymentId}/undeploy"
       description: Deprecated. Pass deploymentId as a path parameter instead of a query parameter.
       operationId: undeployLLMProviderDeploymentDeprecated
-      x-required-scopes: [ap:llm_provider:deployment:undeploy, ap:llm_provider:deployment:manage, ap:llm_provider:manage]
+      security:
+        - OAuth2Security:
+            - ap:llm_provider:deployment:undeploy
+            - ap:llm_provider:deployment:manage
+            - ap:llm_provider:manage
       tags:
         - LLM Provider Deployments
         - Deployments
@@ -4052,7 +4386,11 @@ paths:
       summary: "[Deprecated] Use POST /llm-providers/{id}/deployments/{deploymentId}/restore"
       description: Deprecated. Pass deploymentId as a path parameter instead of a query parameter.
       operationId: restoreLLMProviderDeploymentDeprecated
-      x-required-scopes: [ap:llm_provider:deployment:restore, ap:llm_provider:deployment:manage, ap:llm_provider:manage]
+      security:
+        - OAuth2Security:
+            - ap:llm_provider:deployment:restore
+            - ap:llm_provider:deployment:manage
+            - ap:llm_provider:manage
       tags:
         - LLM Provider Deployments
         - Deployments
@@ -4101,7 +4439,11 @@ paths:
         not the UUID. The operation returns a transitional DEPLOYING status. Final success or failure will be reported asynchronously via the deployment's status and statusReason once the gateway acknowledges.
         Access is validated against the organization in the JWT token.
       operationId: deployLLMProxy
-      x-required-scopes: [ap:llm_proxy:deployment:create, ap:llm_proxy:deployment:manage, ap:llm_proxy:manage]
+      security:
+        - OAuth2Security:
+            - ap:llm_proxy:deployment:create
+            - ap:llm_proxy:deployment:manage
+            - ap:llm_proxy:manage
       tags:
         - LLM Proxy Deployments
         - Deployments
@@ -4152,7 +4494,11 @@ paths:
         LLM proxy handle (identifier), not the UUID. Supports filtering by gateway UUID and deployment status.
         Access is validated against the organization in the JWT token.
       operationId: getLLMProxyDeployments
-      x-required-scopes: [ap:llm_proxy:deployment:read, ap:llm_proxy:deployment:manage, ap:llm_proxy:manage]
+      security:
+        - OAuth2Security:
+            - ap:llm_proxy:deployment:read
+            - ap:llm_proxy:deployment:manage
+            - ap:llm_proxy:manage
       tags:
         - LLM Proxy Deployments
         - Deployments
@@ -4188,7 +4534,11 @@ paths:
         Retrieves metadata for a specific LLM proxy deployment artifact including status, gateway association,
         and timestamps. Access is validated against the organization in the JWT token.
       operationId: getLLMProxyDeployment
-      x-required-scopes: [ap:llm_proxy:deployment:read, ap:llm_proxy:deployment:manage, ap:llm_proxy:manage]
+      security:
+        - OAuth2Security:
+            - ap:llm_proxy:deployment:read
+            - ap:llm_proxy:deployment:manage
+            - ap:llm_proxy:manage
       tags:
         - LLM Proxy Deployments
         - Deployments
@@ -4219,7 +4569,11 @@ paths:
         Deletes a deployment artifact. Deletion is only allowed when the deployment is in UNDEPLOYED status.
         Access is validated against the organization in the JWT token.
       operationId: deleteLLMProxyDeployment
-      x-required-scopes: [ap:llm_proxy:deployment:delete, ap:llm_proxy:deployment:manage, ap:llm_proxy:manage]
+      security:
+        - OAuth2Security:
+            - ap:llm_proxy:deployment:delete
+            - ap:llm_proxy:deployment:manage
+            - ap:llm_proxy:manage
       tags:
         - LLM Proxy Deployments
         - Deployments
@@ -4258,7 +4612,11 @@ paths:
         The gatewayId query parameter is validated against the deployment's bound gateway to prevent unintended operations.
         Access is validated against the organization in the JWT token.
       operationId: undeployLLMProxyDeployment
-      x-required-scopes: [ap:llm_proxy:deployment:undeploy, ap:llm_proxy:deployment:manage, ap:llm_proxy:manage]
+      security:
+        - OAuth2Security:
+            - ap:llm_proxy:deployment:undeploy
+            - ap:llm_proxy:deployment:manage
+            - ap:llm_proxy:manage
       tags:
         - LLM Proxy Deployments
         - Deployments
@@ -4312,7 +4670,11 @@ paths:
         The gatewayId query parameter is validated against the deployment's bound gateway to prevent unintended operations.
         Access is validated against the organization in the JWT token.
       operationId: restoreLLMProxyDeployment
-      x-required-scopes: [ap:llm_proxy:deployment:restore, ap:llm_proxy:deployment:manage, ap:llm_proxy:manage]
+      security:
+        - OAuth2Security:
+            - ap:llm_proxy:deployment:restore
+            - ap:llm_proxy:deployment:manage
+            - ap:llm_proxy:manage
       tags:
         - LLM Proxy Deployments
         - Deployments
@@ -4365,7 +4727,11 @@ paths:
       summary: "[Deprecated] Use POST /llm-proxies/{id}/deployments/{deploymentId}/undeploy"
       description: Deprecated. Pass deploymentId as a path parameter instead of a query parameter.
       operationId: undeployLLMProxyDeploymentDeprecated
-      x-required-scopes: [ap:llm_proxy:deployment:undeploy, ap:llm_proxy:deployment:manage, ap:llm_proxy:manage]
+      security:
+        - OAuth2Security:
+            - ap:llm_proxy:deployment:undeploy
+            - ap:llm_proxy:deployment:manage
+            - ap:llm_proxy:manage
       tags:
         - LLM Proxy Deployments
         - Deployments
@@ -4411,7 +4777,11 @@ paths:
       summary: "[Deprecated] Use POST /llm-proxies/{id}/deployments/{deploymentId}/restore"
       description: Deprecated. Pass deploymentId as a path parameter instead of a query parameter.
       operationId: restoreLLMProxyDeploymentDeprecated
-      x-required-scopes: [ap:llm_proxy:deployment:restore, ap:llm_proxy:deployment:manage, ap:llm_proxy:manage]
+      security:
+        - OAuth2Security:
+            - ap:llm_proxy:deployment:restore
+            - ap:llm_proxy:deployment:manage
+            - ap:llm_proxy:manage
       tags:
         - LLM Proxy Deployments
         - Deployments
@@ -4456,7 +4826,11 @@ paths:
       summary: List LLM proxies by provider
       description: Retrieve a list of LLM proxies that use the specified LLM provider.
       operationId: listLLMProxiesByProvider
-      x-required-scopes: [ap:llm_proxy:deployment:read, ap:llm_proxy:deployment:manage, ap:llm_proxy:manage]
+      security:
+        - OAuth2Security:
+            - ap:llm_proxy:deployment:read
+            - ap:llm_proxy:deployment:manage
+            - ap:llm_proxy:manage
       tags:
         - LLM Providers
       parameters:
@@ -4505,7 +4879,11 @@ paths:
         is broadcasted to all gateways in the organization and can be used to
         authenticate requests to the LLM provider when API key validation is enabled.
       operationId: createLLMProviderAPIKey
-      x-required-scopes: [ap:llm_provider:api_key:create, ap:llm_provider:api_key:manage, ap:llm_provider:manage]
+      security:
+        - OAuth2Security:
+            - ap:llm_provider:api_key:create
+            - ap:llm_provider:api_key:manage
+            - ap:llm_provider:manage
       tags:
         - LLM Providers
         - API Keys
@@ -4553,7 +4931,11 @@ paths:
       summary: List API keys for an LLM provider
       description: Returns all API keys associated with the specified LLM provider. The plain key value is never returned.
       operationId: listLLMProviderAPIKeys
-      x-required-scopes: [ap:llm_provider:api_key:read, ap:llm_provider:api_key:manage, ap:llm_provider:manage]
+      security:
+        - OAuth2Security:
+            - ap:llm_provider:api_key:read
+            - ap:llm_provider:api_key:manage
+            - ap:llm_provider:manage
       tags:
         - LLM Providers
         - API Keys
@@ -4589,7 +4971,11 @@ paths:
       description: |
         Deletes the key from the database and broadcasts a revoke event to the allowed gateways.
       operationId: deleteLLMProviderAPIKey
-      x-required-scopes: [ap:llm_provider:api_key:delete, ap:llm_provider:api_key:manage, ap:llm_provider:manage]
+      security:
+        - OAuth2Security:
+            - ap:llm_provider:api_key:delete
+            - ap:llm_provider:api_key:manage
+            - ap:llm_provider:manage
       tags:
         - LLM Providers
         - API Keys
@@ -4634,7 +5020,10 @@ paths:
       description: |
         Deploy a new LLM proxy configuration.
       operationId: createLLMProxy
-      x-required-scopes: [ap:llm_proxy:create, ap:llm_proxy:manage]
+      security:
+        - OAuth2Security:
+            - ap:llm_proxy:create
+            - ap:llm_proxy:manage
       tags:
         - LLM Proxies
       requestBody:
@@ -4665,7 +5054,10 @@ paths:
       summary: List all LLM proxies
       description: Retrieve a list of all LLM proxies for a project. Requires the projectId query parameter.
       operationId: listLLMProxies
-      x-required-scopes: [ap:llm_proxy:read, ap:llm_proxy:manage]
+      security:
+        - OAuth2Security:
+            - ap:llm_proxy:read
+            - ap:llm_proxy:manage
       tags:
         - LLM Proxies
       parameters:
@@ -4702,7 +5094,10 @@ paths:
       summary: Get LLM proxy by unique identifier
       description: Retrieve the complete configuration for a specific LLM proxy.
       operationId: getLLMProxy
-      x-required-scopes: [ap:llm_proxy:read, ap:llm_proxy:manage]
+      security:
+        - OAuth2Security:
+            - ap:llm_proxy:read
+            - ap:llm_proxy:manage
       tags:
         - LLM Proxies
       parameters:
@@ -4730,7 +5125,10 @@ paths:
       summary: Update an existing LLM proxy
       description: Update the configuration of an existing LLM proxy.
       operationId: updateLLMProxy
-      x-required-scopes: [ap:llm_proxy:update, ap:llm_proxy:manage]
+      security:
+        - OAuth2Security:
+            - ap:llm_proxy:update
+            - ap:llm_proxy:manage
       tags:
         - LLM Proxies
       parameters:
@@ -4768,7 +5166,10 @@ paths:
       summary: Delete an LLM proxy
       description: Remove an LLM proxy.
       operationId: deleteLLMProxy
-      x-required-scopes: [ap:llm_proxy:delete, ap:llm_proxy:manage]
+      security:
+        - OAuth2Security:
+            - ap:llm_proxy:delete
+            - ap:llm_proxy:manage
       tags:
         - LLM Proxies
       parameters:
@@ -4800,7 +5201,11 @@ paths:
         is broadcasted to all gateways in the organization and can be used to
         authenticate requests to the LLM proxy when API key validation is enabled.
       operationId: createLLMProxyAPIKey
-      x-required-scopes: [ap:llm_proxy:api_key:create, ap:llm_proxy:api_key:manage, ap:llm_proxy:manage]
+      security:
+        - OAuth2Security:
+            - ap:llm_proxy:api_key:create
+            - ap:llm_proxy:api_key:manage
+            - ap:llm_proxy:manage
       tags:
         - LLM Proxies
       parameters:
@@ -4847,7 +5252,11 @@ paths:
       summary: List API keys for an LLM proxy
       description: Returns all API keys associated with the specified LLM proxy. The plain key value is never returned.
       operationId: listLLMProxyAPIKeys
-      x-required-scopes: [ap:llm_proxy:api_key:read, ap:llm_proxy:api_key:manage, ap:llm_proxy:manage]
+      security:
+        - OAuth2Security:
+            - ap:llm_proxy:api_key:read
+            - ap:llm_proxy:api_key:manage
+            - ap:llm_proxy:manage
       tags:
         - LLM Proxies
         - API Keys
@@ -4883,7 +5292,11 @@ paths:
       description: |
         Deletes the key from the database and broadcasts a revoke event to the allowed gateways.
       operationId: deleteLLMProxyAPIKey
-      x-required-scopes: [ap:llm_proxy:api_key:delete, ap:llm_proxy:api_key:manage, ap:llm_proxy:manage]
+      security:
+        - OAuth2Security:
+            - ap:llm_proxy:api_key:delete
+            - ap:llm_proxy:api_key:manage
+            - ap:llm_proxy:manage
       tags:
         - LLM Proxies
         - API Keys
@@ -4928,7 +5341,11 @@ paths:
       summary: "[Deprecated] Use GET /api-keys"
       description: Deprecated. Use `GET /api-keys` instead.
       operationId: listUserAPIKeysDeprecated
-      x-required-scopes: [ap:rest_api:api_key:read, ap:rest_api:api_key:manage, ap:rest_api:manage]
+      security:
+        - OAuth2Security:
+            - ap:rest_api:api_key:read
+            - ap:rest_api:api_key:manage
+            - ap:rest_api:manage
       tags:
         - API Keys
       parameters:
@@ -4959,7 +5376,11 @@ paths:
         Optionally filter by one or more artifact types using a comma-separated `type` query parameter.
         The plain key value is never returned.
       operationId: listUserAPIKeys
-      x-required-scopes: [ap:rest_api:api_key:read, ap:rest_api:api_key:manage, ap:rest_api:manage]
+      security:
+        - OAuth2Security:
+            - ap:rest_api:api_key:read
+            - ap:rest_api:api_key:manage
+            - ap:rest_api:manage
       tags:
         - API Keys
       parameters:
@@ -4995,7 +5416,10 @@ paths:
       description: |
         Deploy a new MCP proxy configuration.
       operationId: createMCPProxy
-      x-required-scopes: [ap:mcp_proxy:create, ap:mcp_proxy:manage]
+      security:
+        - OAuth2Security:
+            - ap:mcp_proxy:create
+            - ap:mcp_proxy:manage
       tags:
         - MCP Proxies
       requestBody:
@@ -5026,7 +5450,10 @@ paths:
       summary: List all MCP proxies
       description: Retrieve a list of all MCP proxies for a project. Requires the projectId query parameter.
       operationId: listMCPProxies
-      x-required-scopes: [ap:mcp_proxy:read, ap:mcp_proxy:manage]
+      security:
+        - OAuth2Security:
+            - ap:mcp_proxy:read
+            - ap:mcp_proxy:manage
       tags:
         - MCP Proxies
       parameters:
@@ -5063,7 +5490,10 @@ paths:
       summary: Get MCP proxy by unique identifier
       description: Retrieve the complete configuration for a specific MCP proxy.
       operationId: getMCPProxy
-      x-required-scopes: [ap:mcp_proxy:read, ap:mcp_proxy:manage]
+      security:
+        - OAuth2Security:
+            - ap:mcp_proxy:read
+            - ap:mcp_proxy:manage
       tags:
         - MCP Proxies
       parameters:
@@ -5091,7 +5521,10 @@ paths:
       summary: Update an existing MCP proxy
       description: Update the configuration of an existing MCP proxy.
       operationId: updateMCPProxy
-      x-required-scopes: [ap:mcp_proxy:update, ap:mcp_proxy:manage]
+      security:
+        - OAuth2Security:
+            - ap:mcp_proxy:update
+            - ap:mcp_proxy:manage
       tags:
         - MCP Proxies
       parameters:
@@ -5129,7 +5562,10 @@ paths:
       summary: Delete an MCP proxy
       description: Remove an MCP proxy.
       operationId: deleteMCPProxy
-      x-required-scopes: [ap:mcp_proxy:delete, ap:mcp_proxy:manage]
+      security:
+        - OAuth2Security:
+            - ap:mcp_proxy:delete
+            - ap:mcp_proxy:manage
       tags:
         - MCP Proxies
       parameters:
@@ -5162,7 +5598,11 @@ paths:
         not the UUID. The operation returns a transitional DEPLOYING status. Final success or failure will be reported asynchronously via the deployment's status and statusReason once the gateway acknowledges. 
         Access is validated against the organization in the JWT token.
       operationId: DeployMCPProxy
-      x-required-scopes: [ap:mcp_proxy:deployment:create, ap:mcp_proxy:deployment:manage, ap:mcp_proxy:manage]
+      security:
+        - OAuth2Security:
+            - ap:mcp_proxy:deployment:create
+            - ap:mcp_proxy:deployment:manage
+            - ap:mcp_proxy:manage
       tags:
         - MCP Proxy Deployments
         - Deployments
@@ -5211,7 +5651,11 @@ paths:
         not the UUID. Supports filtering by gateway UUID and deployment status. 
         Access is validated against the organization in the JWT token.
       operationId: GetMCPProxyDeployments
-      x-required-scopes: [ap:mcp_proxy:deployment:read, ap:mcp_proxy:deployment:manage, ap:mcp_proxy:manage]
+      security:
+        - OAuth2Security:
+            - ap:mcp_proxy:deployment:read
+            - ap:mcp_proxy:deployment:manage
+            - ap:mcp_proxy:manage
       tags:
         - MCP Proxy Deployments
         - Deployments
@@ -5247,7 +5691,11 @@ paths:
         Retrieves metadata for a specific deployment artifact including status, gateway association,
         and timestamps. Access is validated against the organization in the JWT token.
       operationId: GetMCPProxyDeployment
-      x-required-scopes: [ap:mcp_proxy:deployment:read, ap:mcp_proxy:deployment:manage, ap:mcp_proxy:manage]
+      security:
+        - OAuth2Security:
+            - ap:mcp_proxy:deployment:read
+            - ap:mcp_proxy:deployment:manage
+            - ap:mcp_proxy:manage
       tags:
         - MCP Proxy Deployments
         - Deployments
@@ -5278,7 +5726,11 @@ paths:
         Deletes a deployment artifact. Deletion is only allowed when the deployment is in UNDEPLOYED status.
         Access is validated against the organization in the JWT token.
       operationId: DeleteMCPProxyDeployment
-      x-required-scopes: [ap:mcp_proxy:deployment:delete, ap:mcp_proxy:deployment:manage, ap:mcp_proxy:manage]
+      security:
+        - OAuth2Security:
+            - ap:mcp_proxy:deployment:delete
+            - ap:mcp_proxy:deployment:manage
+            - ap:mcp_proxy:manage
       tags:
         - MCP Proxy Deployments
         - Deployments
@@ -5315,7 +5767,11 @@ paths:
         The gatewayId query parameter is validated against the deployment's bound gateway to prevent unintended operations.
         Access is validated against the organization in the JWT token.
       operationId: UndeployMCPProxyDeployment
-      x-required-scopes: [ap:mcp_proxy:deployment:undeploy, ap:mcp_proxy:deployment:manage, ap:mcp_proxy:manage]
+      security:
+        - OAuth2Security:
+            - ap:mcp_proxy:deployment:undeploy
+            - ap:mcp_proxy:deployment:manage
+            - ap:mcp_proxy:manage
       tags:
         - MCP Proxy Deployments
         - Deployments
@@ -5367,7 +5823,11 @@ paths:
         The gatewayId query parameter is validated against the deployment's bound gateway to prevent unintended operations.
         Access is validated against the organization in the JWT token.
       operationId: RestoreMCPProxyDeployment
-      x-required-scopes: [ap:mcp_proxy:deployment:restore, ap:mcp_proxy:deployment:manage, ap:mcp_proxy:manage]
+      security:
+        - OAuth2Security:
+            - ap:mcp_proxy:deployment:restore
+            - ap:mcp_proxy:deployment:manage
+            - ap:mcp_proxy:manage
       tags:
         - MCP Proxy Deployments
         - Deployments
@@ -5418,7 +5878,11 @@ paths:
       summary: "[Deprecated] Use POST /mcp-proxies/{id}/deployments/{deploymentId}/undeploy"
       description: Deprecated. Pass deploymentId as a path parameter instead of a query parameter.
       operationId: UndeployMCPProxyDeploymentDeprecated
-      x-required-scopes: [ap:mcp_proxy:deployment:undeploy, ap:mcp_proxy:deployment:manage, ap:mcp_proxy:manage]
+      security:
+        - OAuth2Security:
+            - ap:mcp_proxy:deployment:undeploy
+            - ap:mcp_proxy:deployment:manage
+            - ap:mcp_proxy:manage
       tags:
         - MCP Proxy Deployments
         - Deployments
@@ -5464,7 +5928,11 @@ paths:
       summary: "[Deprecated] Use POST /mcp-proxies/{id}/deployments/{deploymentId}/restore"
       description: Deprecated. Pass deploymentId as a path parameter instead of a query parameter.
       operationId: RestoreMCPProxyDeploymentDeprecated
-      x-required-scopes: [ap:mcp_proxy:deployment:restore, ap:mcp_proxy:deployment:manage, ap:mcp_proxy:manage]
+      security:
+        - OAuth2Security:
+            - ap:mcp_proxy:deployment:restore
+            - ap:mcp_proxy:deployment:manage
+            - ap:mcp_proxy:manage
       tags:
         - MCP Proxy Deployments
         - Deployments
@@ -5540,7 +6008,10 @@ paths:
     post:
       summary: Create a new WebSub API
       operationId: createWebSubAPI
-      x-required-scopes: [ap:websub_api:create, ap:websub_api:manage]
+      security:
+        - OAuth2Security:
+            - ap:websub_api:create
+            - ap:websub_api:manage
       tags:
         - WebSubAPIs
       requestBody:
@@ -5569,7 +6040,10 @@ paths:
     get:
       summary: List WebSub APIs
       operationId: listWebSubAPIs
-      x-required-scopes: [ap:websub_api:read, ap:websub_api:manage]
+      security:
+        - OAuth2Security:
+            - ap:websub_api:read
+            - ap:websub_api:manage
       tags:
         - WebSubAPIs
       parameters:
@@ -5606,7 +6080,10 @@ paths:
     get:
       summary: Get WebSub API by ID
       operationId: getWebSubAPI
-      x-required-scopes: [ap:websub_api:read, ap:websub_api:manage]
+      security:
+        - OAuth2Security:
+            - ap:websub_api:read
+            - ap:websub_api:manage
       tags:
         - WebSubAPIs
       parameters:
@@ -5631,7 +6108,10 @@ paths:
     put:
       summary: Update WebSub API
       operationId: updateWebSubAPI
-      x-required-scopes: [ap:websub_api:update, ap:websub_api:manage]
+      security:
+        - OAuth2Security:
+            - ap:websub_api:update
+            - ap:websub_api:manage
       tags:
         - WebSubAPIs
       parameters:
@@ -5666,7 +6146,10 @@ paths:
     delete:
       summary: Delete WebSub API
       operationId: deleteWebSubAPI
-      x-required-scopes: [ap:websub_api:delete, ap:websub_api:manage]
+      security:
+        - OAuth2Security:
+            - ap:websub_api:delete
+            - ap:websub_api:manage
       tags:
         - WebSubAPIs
       parameters:
@@ -5691,7 +6174,11 @@ paths:
     post:
       summary: Create an API key for WebSub API
       operationId: createWebSubAPIKey
-      x-required-scopes: [ap:websub_api:api_key:create, ap:websub_api:api_key:manage, ap:websub_api:manage]
+      security:
+        - OAuth2Security:
+            - ap:websub_api:api_key:create
+            - ap:websub_api:api_key:manage
+            - ap:websub_api:manage
       tags:
         - WebSubAPIs
       parameters:
@@ -5730,7 +6217,11 @@ paths:
         be hashed before storage and broadcasted to all gateways where the API is deployed.
         This endpoint allows external platforms to rotate API keys on hybrid gateways.
       operationId: updateWebSubAPIKey
-      x-required-scopes: [ap:websub_api:api_key:update, ap:websub_api:api_key:manage, ap:websub_api:manage]
+      security:
+        - OAuth2Security:
+            - ap:websub_api:api_key:update
+            - ap:websub_api:api_key:manage
+            - ap:websub_api:manage
       tags:
         - WebSubAPIs
       parameters:
@@ -5775,7 +6266,11 @@ paths:
     delete:
       summary: Delete an API key for WebSub API
       operationId: deleteWebSubAPIKey
-      x-required-scopes: [ap:websub_api:api_key:delete, ap:websub_api:api_key:manage, ap:websub_api:manage]
+      security:
+        - OAuth2Security:
+            - ap:websub_api:api_key:delete
+            - ap:websub_api:api_key:manage
+            - ap:websub_api:manage
       tags:
         - WebSubAPIs
       parameters:
@@ -5803,7 +6298,10 @@ paths:
     post:
       summary: Publish WebSub API to DevPortal
       operationId: publishWebSubAPIToDevPortal
-      x-required-scopes: [ap:websub_api:publish, ap:websub_api:manage]
+      security:
+        - OAuth2Security:
+            - ap:websub_api:publish
+            - ap:websub_api:manage
       tags:
         - WebSubAPIs
       parameters:
@@ -5836,7 +6334,10 @@ paths:
     post:
       summary: Unpublish WebSub API from DevPortal
       operationId: unpublishWebSubAPIFromDevPortal
-      x-required-scopes: [ap:websub_api:unpublish, ap:websub_api:manage]
+      security:
+        - OAuth2Security:
+            - ap:websub_api:unpublish
+            - ap:websub_api:manage
       tags:
         - WebSubAPIs
       parameters:
@@ -5869,7 +6370,11 @@ paths:
     post:
       summary: Deploy WebSub API to a gateway
       operationId: deployWebSubAPI
-      x-required-scopes: [ap:websub_api:deployment:create, ap:websub_api:deployment:manage, ap:websub_api:manage]
+      security:
+        - OAuth2Security:
+            - ap:websub_api:deployment:create
+            - ap:websub_api:deployment:manage
+            - ap:websub_api:manage
       tags:
         - WebSubAPI Deployments
       parameters:
@@ -5902,7 +6407,11 @@ paths:
     get:
       summary: Get WebSub API deployments
       operationId: getWebSubAPIDeployments
-      x-required-scopes: [ap:websub_api:deployment:read, ap:websub_api:deployment:manage, ap:websub_api:manage]
+      security:
+        - OAuth2Security:
+            - ap:websub_api:deployment:read
+            - ap:websub_api:deployment:manage
+            - ap:websub_api:manage
       tags:
         - WebSubAPI Deployments
       parameters:
@@ -5938,7 +6447,11 @@ paths:
     get:
       summary: Get WebSub API deployment by ID
       operationId: getWebSubAPIDeployment
-      x-required-scopes: [ap:websub_api:deployment:read, ap:websub_api:deployment:manage, ap:websub_api:manage]
+      security:
+        - OAuth2Security:
+            - ap:websub_api:deployment:read
+            - ap:websub_api:deployment:manage
+            - ap:websub_api:manage
       tags:
         - WebSubAPI Deployments
       parameters:
@@ -5968,7 +6481,11 @@ paths:
     delete:
       summary: Delete WebSub API deployment
       operationId: deleteWebSubAPIDeployment
-      x-required-scopes: [ap:websub_api:deployment:delete, ap:websub_api:deployment:manage, ap:websub_api:manage]
+      security:
+        - OAuth2Security:
+            - ap:websub_api:deployment:delete
+            - ap:websub_api:deployment:manage
+            - ap:websub_api:manage
       tags:
         - WebSubAPI Deployments
       parameters:
@@ -5998,7 +6515,11 @@ paths:
     post:
       summary: Undeploy WebSub API from gateway
       operationId: undeployWebSubAPI
-      x-required-scopes: [ap:websub_api:deployment:undeploy, ap:websub_api:deployment:manage, ap:websub_api:manage]
+      security:
+        - OAuth2Security:
+            - ap:websub_api:deployment:undeploy
+            - ap:websub_api:deployment:manage
+            - ap:websub_api:manage
       tags:
         - WebSubAPI Deployments
       parameters:
@@ -6039,7 +6560,11 @@ paths:
     post:
       summary: Restore a previous WebSub API deployment
       operationId: restoreWebSubAPIDeployment
-      x-required-scopes: [ap:websub_api:deployment:restore, ap:websub_api:deployment:manage, ap:websub_api:manage]
+      security:
+        - OAuth2Security:
+            - ap:websub_api:deployment:restore
+            - ap:websub_api:deployment:manage
+            - ap:websub_api:manage
       tags:
         - WebSubAPI Deployments
       parameters:
@@ -6082,7 +6607,11 @@ paths:
       summary: "[Deprecated] Use POST /websub-apis/{apiId}/deployments/{deploymentId}/undeploy"
       description: Deprecated. Pass deploymentId as a path parameter instead of a query parameter.
       operationId: undeployWebSubAPIDeprecated
-      x-required-scopes: [ap:websub_api:deployment:undeploy, ap:websub_api:deployment:manage, ap:websub_api:manage]
+      security:
+        - OAuth2Security:
+            - ap:websub_api:deployment:undeploy
+            - ap:websub_api:deployment:manage
+            - ap:websub_api:manage
       tags:
         - WebSubAPI Deployments
         - Deployments
@@ -6128,7 +6657,11 @@ paths:
       summary: "[Deprecated] Use POST /websub-apis/{apiId}/deployments/{deploymentId}/restore"
       description: Deprecated. Pass deploymentId as a path parameter instead of a query parameter.
       operationId: restoreWebSubAPIDeploymentDeprecated
-      x-required-scopes: [ap:websub_api:deployment:restore, ap:websub_api:deployment:manage, ap:websub_api:manage]
+      security:
+        - OAuth2Security:
+            - ap:websub_api:deployment:restore
+            - ap:websub_api:deployment:manage
+            - ap:websub_api:manage
       tags:
         - WebSubAPI Deployments
         - Deployments
@@ -6172,7 +6705,10 @@ paths:
     post:
       summary: Create a new WebBroker API
       operationId: createWebBrokerAPI
-      x-required-scopes: [ap:webbroker_api:create, ap:webbroker_api:manage]
+      security:
+        - OAuth2Security:
+            - ap:webbroker_api:create
+            - ap:webbroker_api:manage
       tags:
         - WebBrokerAPIs
       requestBody:
@@ -6201,7 +6737,10 @@ paths:
     get:
       summary: List WebBroker APIs
       operationId: listWebBrokerAPIs
-      x-required-scopes: [ap:webbroker_api:read, ap:webbroker_api:manage]
+      security:
+        - OAuth2Security:
+            - ap:webbroker_api:read
+            - ap:webbroker_api:manage
       tags:
         - WebBrokerAPIs
       parameters:
@@ -6238,7 +6777,10 @@ paths:
     get:
       summary: Get WebBroker API by ID
       operationId: getWebBrokerAPI
-      x-required-scopes: [ap:webbroker_api:read, ap:webbroker_api:manage]
+      security:
+        - OAuth2Security:
+            - ap:webbroker_api:read
+            - ap:webbroker_api:manage
       tags:
         - WebBrokerAPIs
       parameters:
@@ -6263,7 +6805,10 @@ paths:
     put:
       summary: Update WebBroker API
       operationId: updateWebBrokerAPI
-      x-required-scopes: [ap:webbroker_api:update, ap:webbroker_api:manage]
+      security:
+        - OAuth2Security:
+            - ap:webbroker_api:update
+            - ap:webbroker_api:manage
       tags:
         - WebBrokerAPIs
       parameters:
@@ -6298,7 +6843,10 @@ paths:
     delete:
       summary: Delete WebBroker API
       operationId: deleteWebBrokerAPI
-      x-required-scopes: [ap:webbroker_api:delete, ap:webbroker_api:manage]
+      security:
+        - OAuth2Security:
+            - ap:webbroker_api:delete
+            - ap:webbroker_api:manage
       tags:
         - WebBrokerAPIs
       parameters:
@@ -6323,7 +6871,11 @@ paths:
     post:
       summary: Create an API key for WebBroker API
       operationId: createWebBrokerAPIKey
-      x-required-scopes: [ap:webbroker_api:api_key:create, ap:webbroker_api:api_key:manage, ap:webbroker_api:manage]
+      security:
+        - OAuth2Security:
+            - ap:webbroker_api:api_key:create
+            - ap:webbroker_api:api_key:manage
+            - ap:webbroker_api:manage
       tags:
         - WebBrokerAPIs
       parameters:
@@ -6362,7 +6914,11 @@ paths:
         be hashed before storage and broadcasted to all gateways where the API is deployed.
         This endpoint allows external platforms to rotate API keys on hybrid gateways.
       operationId: updateWebBrokerAPIKey
-      x-required-scopes: [ap:webbroker_api:api_key:update, ap:webbroker_api:api_key:manage, ap:webbroker_api:manage]
+      security:
+        - OAuth2Security:
+            - ap:webbroker_api:api_key:update
+            - ap:webbroker_api:api_key:manage
+            - ap:webbroker_api:manage
       tags:
         - WebBrokerAPIs
       parameters:
@@ -6407,7 +6963,11 @@ paths:
     delete:
       summary: Delete an API key for WebBroker API
       operationId: deleteWebBrokerAPIKey
-      x-required-scopes: [ap:webbroker_api:api_key:delete, ap:webbroker_api:api_key:manage, ap:webbroker_api:manage]
+      security:
+        - OAuth2Security:
+            - ap:webbroker_api:api_key:delete
+            - ap:webbroker_api:api_key:manage
+            - ap:webbroker_api:manage
       tags:
         - WebBrokerAPIs
       parameters:
@@ -6435,7 +6995,10 @@ paths:
     post:
       summary: Publish WebBroker API to DevPortal
       operationId: publishWebBrokerAPIToDevPortal
-      x-required-scopes: [ap:webbroker_api:publish, ap:webbroker_api:manage]
+      security:
+        - OAuth2Security:
+            - ap:webbroker_api:publish
+            - ap:webbroker_api:manage
       tags:
         - WebBrokerAPIs
       parameters:
@@ -6468,7 +7031,10 @@ paths:
     post:
       summary: Unpublish WebBroker API from DevPortal
       operationId: unpublishWebBrokerAPIFromDevPortal
-      x-required-scopes: [ap:webbroker_api:unpublish, ap:webbroker_api:manage]
+      security:
+        - OAuth2Security:
+            - ap:webbroker_api:unpublish
+            - ap:webbroker_api:manage
       tags:
         - WebBrokerAPIs
       parameters:
@@ -6501,7 +7067,11 @@ paths:
     post:
       summary: Deploy WebBroker API to a gateway
       operationId: deployWebBrokerAPI
-      x-required-scopes: [ap:webbroker_api:deployment:create, ap:webbroker_api:deployment:manage, ap:webbroker_api:manage]
+      security:
+        - OAuth2Security:
+            - ap:webbroker_api:deployment:create
+            - ap:webbroker_api:deployment:manage
+            - ap:webbroker_api:manage
       tags:
         - WebBrokerAPI Deployments
       parameters:
@@ -6534,7 +7104,11 @@ paths:
     get:
       summary: Get WebBroker API deployments
       operationId: getWebBrokerAPIDeployments
-      x-required-scopes: [ap:webbroker_api:deployment:read, ap:webbroker_api:deployment:manage, ap:webbroker_api:manage]
+      security:
+        - OAuth2Security:
+            - ap:webbroker_api:deployment:read
+            - ap:webbroker_api:deployment:manage
+            - ap:webbroker_api:manage
       tags:
         - WebBrokerAPI Deployments
       parameters:
@@ -6570,7 +7144,11 @@ paths:
     get:
       summary: Get WebBroker API deployment by ID
       operationId: getWebBrokerAPIDeployment
-      x-required-scopes: [ap:webbroker_api:deployment:read, ap:webbroker_api:deployment:manage, ap:webbroker_api:manage]
+      security:
+        - OAuth2Security:
+            - ap:webbroker_api:deployment:read
+            - ap:webbroker_api:deployment:manage
+            - ap:webbroker_api:manage
       tags:
         - WebBrokerAPI Deployments
       parameters:
@@ -6600,7 +7178,11 @@ paths:
     delete:
       summary: Delete WebBroker API deployment
       operationId: deleteWebBrokerAPIDeployment
-      x-required-scopes: [ap:webbroker_api:deployment:delete, ap:webbroker_api:deployment:manage, ap:webbroker_api:manage]
+      security:
+        - OAuth2Security:
+            - ap:webbroker_api:deployment:delete
+            - ap:webbroker_api:deployment:manage
+            - ap:webbroker_api:manage
       tags:
         - WebBrokerAPI Deployments
       parameters:
@@ -6630,7 +7212,11 @@ paths:
     post:
       summary: Undeploy WebBroker API from gateway
       operationId: undeployWebBrokerAPI
-      x-required-scopes: [ap:webbroker_api:deployment:undeploy, ap:webbroker_api:deployment:manage, ap:webbroker_api:manage]
+      security:
+        - OAuth2Security:
+            - ap:webbroker_api:deployment:undeploy
+            - ap:webbroker_api:deployment:manage
+            - ap:webbroker_api:manage
       tags:
         - WebBrokerAPI Deployments
       parameters:
@@ -6671,7 +7257,11 @@ paths:
     post:
       summary: Restore a previous WebBroker API deployment
       operationId: restoreWebBrokerAPIDeployment
-      x-required-scopes: [ap:webbroker_api:deployment:restore, ap:webbroker_api:deployment:manage, ap:webbroker_api:manage]
+      security:
+        - OAuth2Security:
+            - ap:webbroker_api:deployment:restore
+            - ap:webbroker_api:deployment:manage
+            - ap:webbroker_api:manage
       tags:
         - WebBrokerAPI Deployments
       parameters:
@@ -6714,7 +7304,11 @@ paths:
       summary: "[Deprecated] Use POST /webbroker-apis/{apiId}/deployments/{deploymentId}/undeploy"
       description: Deprecated. Pass deploymentId as a path parameter instead of a query parameter.
       operationId: undeployWebBrokerAPIDeprecated
-      x-required-scopes: [ap:webbroker_api:deployment:undeploy, ap:webbroker_api:deployment:manage, ap:webbroker_api:manage]
+      security:
+        - OAuth2Security:
+            - ap:webbroker_api:deployment:undeploy
+            - ap:webbroker_api:deployment:manage
+            - ap:webbroker_api:manage
       tags:
         - WebBrokerAPI Deployments
         - Deployments
@@ -6760,7 +7354,11 @@ paths:
       summary: "[Deprecated] Use POST /webbroker-apis/{apiId}/deployments/{deploymentId}/restore"
       description: Deprecated. Pass deploymentId as a path parameter instead of a query parameter.
       operationId: restoreWebBrokerAPIDeploymentDeprecated
-      x-required-scopes: [ap:webbroker_api:deployment:restore, ap:webbroker_api:deployment:manage, ap:webbroker_api:manage]
+      security:
+        - OAuth2Security:
+            - ap:webbroker_api:deployment:restore
+            - ap:webbroker_api:deployment:manage
+            - ap:webbroker_api:manage
       tags:
         - WebBrokerAPI Deployments
         - Deployments
@@ -6802,38 +7400,166 @@ paths:
 
 components:
   securitySchemes:
-    BearerAuth:
-      type: http
-      scheme: bearer
-      bearerFormat: JWT
-      description: |
-        JWT Bearer token validated either against the configured IDP's JWKS endpoint (when IDP
-        integration is enabled) or via local Thunder STS token validation (when IDP integration
-        is disabled). Both modes enforce the same required claims and authorization rules.
-
-        **Required claims:**
-        - `organization` — UUID of the caller's organization (configurable via `IDP_ORGANIZATION_CLAIM_NAME`)
-        - `sub` — user identifier
-
-        **Authorization:**
-        Permissions are enforced in two stages:
-
-        1. **Scope-based (Thunder):** If the token's `scope` claim contains a fine-grained scope
-           such as `ap:gateway:create`, that is accepted directly — no further role
-           lookup is performed. Thunder STS embeds these scopes when issuing tokens. Each
-           resource also has a root manage scope (e.g. `ap:gateway:manage`) that grants
-           access to all write operations for that resource. Both the specific scope and the manage
-           scope are listed in `x-required-scopes` on each operation.
-
-        2. **Role-based:** When fine-grained scopes are absent, platform
-           roles (`admin`, `developer`, `viewer`) are resolved from the token using the claim path
-           configured in `IDP_ROLES_CLAIM_PATH` (e.g. `realm_access.roles` for Keycloak, `roles`
-           for Azure AD). IDP-specific role values are mapped to platform roles via
-           `IDP_ROLE_MAPPINGS`.
-        **Supported algorithms:** RS256, RS384, RS512, ES256, ES384, ES512
-
-        Example: `Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...`
-
+    OAuth2Security:
+      type: oauth2
+      flows:
+        clientCredentials:
+          tokenUrl: https://localhost:9243/oauth2/token
+          scopes:
+            ap:application:api_key:create: Create application
+            ap:application:api_key:delete: Delete application
+            ap:application:api_key:manage: Full access to application
+            ap:application:api_key:read: Read application
+            ap:application:associations:api_key:read: Read application
+            ap:application:associations:create: Create application
+            ap:application:associations:delete: Delete application
+            ap:application:associations:manage: Full access to application
+            ap:application:associations:read: Read application
+            ap:application:create: Create application
+            ap:application:delete: Delete application
+            ap:application:manage: Full access to application
+            ap:application:read: Read application
+            ap:application:update: Update application
+            ap:devportal:create: Create devportal
+            ap:devportal:delete: Delete devportal
+            ap:devportal:manage: Full access to devportal
+            ap:devportal:read: Read devportal
+            ap:devportal:update: Update devportal
+            ap:gateway:artifacts:read: Read gateway
+            ap:gateway:create: Create gateway
+            ap:gateway:delete: Delete gateway
+            ap:gateway:manage: Full access to gateway
+            ap:gateway:manifest:read: Read gateway
+            ap:gateway:policy:create: Create gateway
+            ap:gateway:policy:delete: Delete gateway
+            ap:gateway:policy:manage: Full access to gateway
+            ap:gateway:policy:read: Read gateway
+            ap:gateway:read: Read gateway
+            ap:gateway:status:read: Read gateway
+            ap:gateway:token:create: Create gateway
+            ap:gateway:token:delete: Delete gateway
+            ap:gateway:token:manage: Full access to gateway
+            ap:gateway:token:read: Read gateway
+            ap:gateway:update: Update gateway
+            ap:git:read: Read git
+            ap:llm_provider:api_key:create: Create llm provider
+            ap:llm_provider:api_key:delete: Delete llm provider
+            ap:llm_provider:api_key:manage: Full access to llm provider
+            ap:llm_provider:api_key:read: Read llm provider
+            ap:llm_provider:create: Create llm provider
+            ap:llm_provider:delete: Delete llm provider
+            ap:llm_provider:deployment:create: Create llm provider
+            ap:llm_provider:deployment:delete: Delete llm provider
+            ap:llm_provider:deployment:manage: Full access to llm provider
+            ap:llm_provider:deployment:read: Read llm provider
+            ap:llm_provider:deployment:restore: Restore llm provider
+            ap:llm_provider:deployment:undeploy: Undeploy llm provider
+            ap:llm_provider:manage: Full access to llm provider
+            ap:llm_provider:read: Read llm provider
+            ap:llm_provider:update: Update llm provider
+            ap:llm_proxy:api_key:create: Create llm proxy
+            ap:llm_proxy:api_key:delete: Delete llm proxy
+            ap:llm_proxy:api_key:manage: Full access to llm proxy
+            ap:llm_proxy:api_key:read: Read llm proxy
+            ap:llm_proxy:create: Create llm proxy
+            ap:llm_proxy:delete: Delete llm proxy
+            ap:llm_proxy:deployment:create: Create llm proxy
+            ap:llm_proxy:deployment:delete: Delete llm proxy
+            ap:llm_proxy:deployment:manage: Full access to llm proxy
+            ap:llm_proxy:deployment:read: Read llm proxy
+            ap:llm_proxy:deployment:restore: Restore llm proxy
+            ap:llm_proxy:deployment:undeploy: Undeploy llm proxy
+            ap:llm_proxy:manage: Full access to llm proxy
+            ap:llm_proxy:read: Read llm proxy
+            ap:llm_proxy:update: Update llm proxy
+            ap:llm_template:create: Create llm template
+            ap:llm_template:delete: Delete llm template
+            ap:llm_template:manage: Full access to llm template
+            ap:llm_template:read: Read llm template
+            ap:llm_template:update: Update llm template
+            ap:mcp_proxy:create: Create mcp proxy
+            ap:mcp_proxy:delete: Delete mcp proxy
+            ap:mcp_proxy:deployment:create: Create mcp proxy
+            ap:mcp_proxy:deployment:delete: Delete mcp proxy
+            ap:mcp_proxy:deployment:manage: Full access to mcp proxy
+            ap:mcp_proxy:deployment:read: Read mcp proxy
+            ap:mcp_proxy:deployment:restore: Restore mcp proxy
+            ap:mcp_proxy:deployment:undeploy: Undeploy mcp proxy
+            ap:mcp_proxy:manage: Full access to mcp proxy
+            ap:mcp_proxy:read: Read mcp proxy
+            ap:mcp_proxy:update: Update mcp proxy
+            ap:project:create: Create project
+            ap:project:delete: Delete project
+            ap:project:manage: Full access to project
+            ap:project:read: Read project
+            ap:project:update: Update project
+            ap:rest_api:api_key:create: Create rest api
+            ap:rest_api:api_key:delete: Delete rest api
+            ap:rest_api:api_key:manage: Full access to rest api
+            ap:rest_api:api_key:read: Read rest api
+            ap:rest_api:api_key:update: Update rest api
+            ap:rest_api:create: Create rest api
+            ap:rest_api:delete: Delete rest api
+            ap:rest_api:deployment:create: Create rest api
+            ap:rest_api:deployment:delete: Delete rest api
+            ap:rest_api:deployment:manage: Full access to rest api
+            ap:rest_api:deployment:read: Read rest api
+            ap:rest_api:deployment:restore: Restore rest api
+            ap:rest_api:deployment:undeploy: Undeploy rest api
+            ap:rest_api:gateway:create: Create rest api
+            ap:rest_api:gateway:manage: Full access to rest api
+            ap:rest_api:gateway:read: Read rest api
+            ap:rest_api:import: Import rest api
+            ap:rest_api:manage: Full access to rest api
+            ap:rest_api:publication:create: Create rest api
+            ap:rest_api:publication:delete: Delete rest api
+            ap:rest_api:publication:read: Read rest api
+            ap:rest_api:read: Read rest api
+            ap:rest_api:update: Update rest api
+            ap:subscription:create: Create subscription
+            ap:subscription:delete: Delete subscription
+            ap:subscription:manage: Full access to subscription
+            ap:subscription:read: Read subscription
+            ap:subscription:update: Update subscription
+            ap:subscription_plan:create: Create subscription plan
+            ap:subscription_plan:delete: Delete subscription plan
+            ap:subscription_plan:manage: Full access to subscription plan
+            ap:subscription_plan:read: Read subscription plan
+            ap:subscription_plan:update: Update subscription plan
+            ap:webbroker_api:api_key:create: Create webbroker api
+            ap:webbroker_api:api_key:delete: Delete webbroker api
+            ap:webbroker_api:api_key:manage: Full access to webbroker api
+            ap:webbroker_api:api_key:update: Update webbroker api
+            ap:webbroker_api:create: Create webbroker api
+            ap:webbroker_api:delete: Delete webbroker api
+            ap:webbroker_api:deployment:create: Create webbroker api
+            ap:webbroker_api:deployment:delete: Delete webbroker api
+            ap:webbroker_api:deployment:manage: Full access to webbroker api
+            ap:webbroker_api:deployment:read: Read webbroker api
+            ap:webbroker_api:deployment:restore: Restore webbroker api
+            ap:webbroker_api:deployment:undeploy: Undeploy webbroker api
+            ap:webbroker_api:manage: Full access to webbroker api
+            ap:webbroker_api:publish: Publish webbroker api
+            ap:webbroker_api:read: Read webbroker api
+            ap:webbroker_api:unpublish: Unpublish webbroker api
+            ap:webbroker_api:update: Update webbroker api
+            ap:websub_api:api_key:create: Create websub api
+            ap:websub_api:api_key:delete: Delete websub api
+            ap:websub_api:api_key:manage: Full access to websub api
+            ap:websub_api:api_key:update: Update websub api
+            ap:websub_api:create: Create websub api
+            ap:websub_api:delete: Delete websub api
+            ap:websub_api:deployment:create: Create websub api
+            ap:websub_api:deployment:delete: Delete websub api
+            ap:websub_api:deployment:manage: Full access to websub api
+            ap:websub_api:deployment:read: Read websub api
+            ap:websub_api:deployment:restore: Restore websub api
+            ap:websub_api:deployment:undeploy: Undeploy websub api
+            ap:websub_api:manage: Full access to websub api
+            ap:websub_api:publish: Publish websub api
+            ap:websub_api:read: Read websub api
+            ap:websub_api:unpublish: Unpublish websub api
+            ap:websub_api:update: Update websub api
   schemas:
     APIKeyItem:
       type: object
