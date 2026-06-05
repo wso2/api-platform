@@ -356,7 +356,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	// Build and apply the JWT authenticator.
 	// IDP_ENABLED=false (default): HMAC validation with JWT_SECRET_KEY, or skip entirely when JWT_SKIP_VALIDATION=true.
 	// IDP_ENABLED=true: JWKS-based validation using IDP_JWKS_URL (works with any standards-compliant IDP).
-	authenticator, err := buildAuthenticator(cfg, slogger)
+	authenticator, err := buildAuthenticator(cfg, orgIDPRegistry, slogger)
 	if err != nil {
 		return nil, err
 	}
@@ -428,7 +428,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 
 // buildAuthenticator constructs a JWTAuthenticator from the server configuration.
 // Add new cases here when supporting additional auth mechanisms (e.g. BasicAuth).
-func buildAuthenticator(cfg *config.Server, slogger *slog.Logger) (middleware.Authenticator, error) {
+func buildAuthenticator(cfg *config.Server, orgIDPRegistry middleware.OrgIDPRegistry, slogger *slog.Logger) (middleware.Authenticator, error) {
 	if !cfg.Auth.IDP.Enabled {
 		if cfg.Auth.JWT.SkipValidation {
 			if !cfg.DevMode {
@@ -473,12 +473,12 @@ func buildAuthenticator(cfg *config.Server, slogger *slog.Logger) (middleware.Au
 	claimsMiddleware := middleware.PlatformClaimsMiddleware(middleware.PlatformClaimNames{
 		OrganizationClaim: cfg.Auth.IDP.OrganizationClaimName,
 		UserIDClaim:       cfg.Auth.IDP.UserIDClaimName,
-		UsernameClaim:      cfg.Auth.IDP.UsernameClaimName,
-		EmailClaim:         cfg.Auth.IDP.EmailClaimName,
-		ScopeClaim:         cfg.Auth.IDP.ScopeClaimName,
-		RolesClaimPath:     cfg.Auth.IDP.RolesClaimPath,
-		RoleMappings:       cfg.Auth.IDP.RoleMappings,
-	})
+		UsernameClaim:     cfg.Auth.IDP.UsernameClaimName,
+		EmailClaim:        cfg.Auth.IDP.EmailClaimName,
+		ScopeClaim:        cfg.Auth.IDP.ScopeClaimName,
+		RolesClaimPath:    cfg.Auth.IDP.RolesClaimPath,
+		RoleMappings:      cfg.Auth.IDP.RoleMappings,
+	}, orgIDPRegistry)
 
 	idpLabel := cfg.Auth.IDP.Name
 	if idpLabel == "" {

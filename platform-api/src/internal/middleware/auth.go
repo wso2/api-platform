@@ -177,10 +177,41 @@ func validateLocalJWT(c *gin.Context, tokenString string, config AuthConfig) err
 	return nil
 }
 
+// resolveClaimNames returns effective claim names for a token by overlaying per-org
+// claimMappings (looked up by JWT issuer) on top of the global defaults.
+// Returns globals unchanged when registry is nil or the issuer is unknown.
+func resolveClaimNames(global PlatformClaimNames, registry OrgIDPRegistry, iss string) PlatformClaimNames {
+	if registry == nil || iss == "" {
+		return global
+	}
+	orgCfg, ok := registry.GetByIssuer(iss)
+	if !ok {
+		return global
+	}
+	resolved := global
+	if v := orgCfg.ClaimMappings["organization"]; v != "" {
+		resolved.OrganizationClaim = v
+	}
+	if v := orgCfg.ClaimMappings["user"]; v != "" {
+		resolved.UserIDClaim = v
+	}
+	if v := orgCfg.ClaimMappings["username"]; v != "" {
+		resolved.UsernameClaim = v
+	}
+	if v := orgCfg.ClaimMappings["email"]; v != "" {
+		resolved.EmailClaim = v
+	}
+	if v := orgCfg.ClaimMappings["scope"]; v != "" {
+		resolved.ScopeClaim = v
+	}
+	return resolved
+}
+
 // PlatformClaimsMiddleware extracts platform-specific values from the AuthContext set by
 // common/authenticators.AuthMiddleware (IDP mode) and populates the per-key context entries
 // that handlers rely on.
-func PlatformClaimsMiddleware(claimNames PlatformClaimNames) gin.HandlerFunc {
+// registry may be nil when multi-org IDP mode is disabled.
+func PlatformClaimsMiddleware(claimNames PlatformClaimNames, registry OrgIDPRegistry) gin.HandlerFunc {
 	roleMapping := parseRoleMappings(claimNames.RoleMappings)
 
 	return func(c *gin.Context) {
@@ -205,6 +236,9 @@ func PlatformClaimsMiddleware(claimNames PlatformClaimNames) gin.HandlerFunc {
 			c.Next()
 			return
 		}
+
+		iss := getStringClaim(mapClaims, "iss")
+		claimNames = resolveClaimNames(claimNames, registry, iss)
 
 		org := getStringClaim(mapClaims, claimNames.OrganizationClaim)
 
