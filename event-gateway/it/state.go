@@ -102,6 +102,8 @@ type TestState struct {
 	wsConn *websocket.Conn
 	// wsConnErr holds the error from the last WebSocket connect attempt.
 	wsConnErr error
+	// wsRejectionStatus holds the HTTP status code returned when a WebSocket upgrade was rejected.
+	wsRejectionStatus int
 }
 
 // NewTestState creates and returns an initialised TestState.
@@ -129,6 +131,7 @@ func (s *TestState) Reset() {
 		s.wsConn = nil
 	}
 	s.wsConnErr = nil
+	s.wsRejectionStatus = 0
 }
 
 // SetHeader sets a request header that will be included in subsequent requests.
