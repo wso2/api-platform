@@ -193,8 +193,6 @@ server_header_value = "WSO2 API Platform"
 host = "policy-engine"
 port = 9001
 timeout_ms = 60000
-failure_mode_allow = false
-allow_mode_override = true
 message_timeout_ms = 60000
 
 [router.policy_engine.tls]

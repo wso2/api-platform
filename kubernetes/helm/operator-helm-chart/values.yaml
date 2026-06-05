@@ -306,15 +306,9 @@ gateway:
             # Timeout for gRPC service connection (in milliseconds)
             timeout_ms: 60000
 
-            # Failure mode: false = fail closed (deny requests on error), true = fail open (allow requests on error)
-            failure_mode_allow: false
-
             # Route cache action: DEFAULT, RETAIN, or CLEAR
             # RETAIN: Maintain the route cache across requests (recommended for performance)
             route_cache_action: RETAIN
-
-            # Allow per-route override of ext_proc configuration
-            allow_mode_override: true
 
             # Message timeout for policy engine processing (in milliseconds)
             message_timeout_ms: 60000
