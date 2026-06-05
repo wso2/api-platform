@@ -24,7 +24,6 @@ import { AcrylicOrangeTheme, AcrylicPurpleTheme, ClassicTheme, HighContrastTheme
 import App from './App.tsx';
 import './styles.css';
 import {
-  DISABLE_AUTH,
   OIDC_AUTHORITY,
   OIDC_CLIENT_ID,
   OIDC_REDIRECT_URI,
@@ -32,7 +31,6 @@ import {
   OIDC_SCOPE,
   OIDC_END_SESSION_ENDPOINT,
 } from './config.env';
-import { MockAuthProvider } from './contexts/MockAuthProvider';
 import { OIDCAppAuthProvider } from './contexts/OIDCAppAuthProvider';
 
 const container = document.getElementById('root')!;
@@ -60,33 +58,25 @@ const themeConfig = (
     ]}
     initialTheme="acrylicOrange"
   >
-    {DISABLE_AUTH ? (
-      <MockAuthProvider>
+    <AuthProvider
+      authority={OIDC_AUTHORITY}
+      client_id={OIDC_CLIENT_ID}
+      redirect_uri={OIDC_REDIRECT_URI}
+      post_logout_redirect_uri={OIDC_POST_LOGOUT_REDIRECT_URI}
+      scope={OIDC_SCOPE}
+      extraTokenParams={{ scope: OIDC_SCOPE }}
+      loadUserInfo={true}
+      metadata={OIDC_END_SESSION_ENDPOINT ? { end_session_endpoint: OIDC_END_SESSION_ENDPOINT } : undefined}
+      onSigninCallback={() => {
+        window.history.replaceState({}, document.title, window.location.pathname);
+      }}
+    >
+      <OIDCAppAuthProvider>
         <IntlProvider locale="en" defaultLocale="en">
           <App />
         </IntlProvider>
-      </MockAuthProvider>
-    ) : (
-      <AuthProvider
-        authority={OIDC_AUTHORITY}
-        client_id={OIDC_CLIENT_ID}
-        redirect_uri={OIDC_REDIRECT_URI}
-        post_logout_redirect_uri={OIDC_POST_LOGOUT_REDIRECT_URI}
-        scope={OIDC_SCOPE}
-        extraTokenParams={{ scope: OIDC_SCOPE }}
-        loadUserInfo={true}
-        metadata={OIDC_END_SESSION_ENDPOINT ? { end_session_endpoint: OIDC_END_SESSION_ENDPOINT } : undefined}
-        onSigninCallback={() => {
-          window.history.replaceState({}, document.title, window.location.pathname);
-        }}
-      >
-        <OIDCAppAuthProvider>
-          <IntlProvider locale="en" defaultLocale="en">
-            <App />
-          </IntlProvider>
-        </OIDCAppAuthProvider>
-      </AuthProvider>
-    )}
+      </OIDCAppAuthProvider>
+    </AuthProvider>
   </OxygenUIThemeProvider>
 );
 

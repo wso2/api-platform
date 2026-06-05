@@ -36,16 +36,6 @@ import { getEnvOrDefault } from './utils/getEnvOrDefault';
 // Debug mode
 export const DEBUG = getEnvOrDefault('VITE_DEBUG', false);
 
-// Disable auth — set VITE_DISABLE_AUTH=true to use mock login for local dev
-export const DISABLE_AUTH = (import.meta.env.VITE_DISABLE_AUTH as string | undefined) === 'true';
-
-// Permission resolution mode:
-//   "scope" (default) — use the OAuth2 scope claim in the JWT directly
-//   "role"            — expand the platform_role/role claim to its full scope set
-export const PERMISSION_MODE = (getEnvOrDefault('VITE_PERMISSION_MODE', 'scope') as string) === 'role'
-  ? 'role' as const
-  : 'scope' as const;
-
 // Sentry environment (used for CookiePro and other env-specific features)
 export const SENTRY_ENV = getEnvOrDefault('VITE_SENTRY_ENV', 'DEV');
 
@@ -184,14 +174,6 @@ export const POLICY_HUB_WEB_URL = getEnvOrDefault(
 export const PLATFORM_API_BASE_URL = getEnvOrDefault(
   'VITE_PLATFORM_API_BASE_URL',
   'https://localhost:9243/api/v1'
-);
-
-// Dev-mode org UUID — the organization that mock-auth users belong to.
-// Must match a seeded org in the local platform-api database.
-// Only used when VITE_DISABLE_AUTH=true.
-export const DEV_ORG_ID = getEnvOrDefault(
-  'VITE_DEV_ORG_ID',
-  'db278eb4-9e08-4a6e-a00a-493d0ce4b8a6'
 );
 
 // The JWT claim name that holds the organization UUID.

@@ -22,7 +22,6 @@ import {
   Alert,
   Box,
   Button,
-  Chip,
   CircularProgress,
   ColorSchemeToggle,
   Divider,
@@ -46,8 +45,6 @@ import {
   registerOrganization,
   type RegisterOrganizationRequest,
 } from '../../apis/platformApis';
-import { DISABLE_AUTH } from '../../config.env';
-
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 const REGIONS = [
@@ -333,19 +330,6 @@ export default function OrgRegisterPage() {
             ))}
           </Stack>
 
-          {DISABLE_AUTH && (
-            <Chip
-              label="Local development mode"
-              size="small"
-              sx={{
-                width: 'fit-content',
-                bgcolor: 'rgba(255,255,255,0.15)',
-                color: '#fff',
-                borderColor: 'rgba(255,255,255,0.3)',
-                border: '1px solid',
-              }}
-            />
-          )}
         </Grid>
 
         {/* ── Right panel (form) ──────────────────────────────────────────── */}

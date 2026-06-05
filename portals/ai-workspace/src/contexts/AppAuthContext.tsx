@@ -32,7 +32,7 @@ export interface AppAuthContextType {
   user: AppUser | null;
   accessToken: string | null;
   hasPermission: (scope: string) => boolean;
-  login: (credentials?: { username: string; password: string }) => Promise<void>;
+  login: () => Promise<void>;
   logout: () => Promise<void>;
 }
 

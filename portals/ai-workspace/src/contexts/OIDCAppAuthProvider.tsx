@@ -19,8 +19,8 @@
 import React, { useCallback, useEffect, useMemo } from 'react';
 import { useAuth } from 'react-oidc-context';
 import { AppAuthContext, type AppUser } from './AppAuthContext';
-import { OIDC_USERNAME_CLAIM, OIDC_EMAIL_CLAIM, PERMISSION_MODE } from '../config.env';
-import { expandScopes, ROLE_SCOPES, checkPermission, isPlatformRole } from '../auth/permissions';
+import { OIDC_USERNAME_CLAIM, OIDC_EMAIL_CLAIM } from '../config.env';
+import { checkPermission, isPlatformRole } from '../auth/permissions';
 import type { PlatformRole } from '../auth/permissions';
 import { handleLogout } from '../auth/logout';
 import { setStoredToken } from '../clients/choreoApiClient';
@@ -64,9 +64,7 @@ export function OIDCAppAuthProvider({ children }: { children: React.ReactNode })
     const atClaims = token ? decodeJwtPayload(token) : {};
     const rawScopes = token ? extractScopesFromJwt(token) : [];
     const role = token ? extractRoleFromJwt(token) : null;
-    const scopes = PERMISSION_MODE === 'role' && role
-      ? expandScopes(ROLE_SCOPES[role] ?? [])
-      : expandScopes(rawScopes);
+    const scopes = [...new Set(rawScopes)];
     const claim = (key: string) =>
       (idClaims[key] as string | undefined) || (atClaims[key] as string | undefined) || null;
     return {
