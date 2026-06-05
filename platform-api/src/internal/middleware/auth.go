@@ -37,7 +37,6 @@ type CustomClaims struct {
 	LastName      string   `json:"lastName"`
 	JTI           string   `json:"jti"`
 	Organization  string   `json:"organization"`
-	Organizations []string `json:"organizations,omitempty"`
 	Scope         string   `json:"scope"`
 	Username      string   `json:"username"`
 	jwt.RegisteredClaims
@@ -55,7 +54,6 @@ type AuthConfig struct {
 // PlatformClaimNames holds the JWT claim names used to extract platform-specific values.
 type PlatformClaimNames struct {
 	OrganizationClaim  string // active org UUID for this token (e.g. "organization")
-	OrganizationsClaim string // all org UUIDs the user belongs to (e.g. "organizations")
 	UserIDClaim        string
 	UsernameClaim      string
 	EmailClaim         string
@@ -210,17 +208,6 @@ func PlatformClaimsMiddleware(claimNames PlatformClaimNames) gin.HandlerFunc {
 
 		org := getStringClaim(mapClaims, claimNames.OrganizationClaim)
 
-		// organizations (plural) — full list of org UUIDs the user belongs to.
-		// May be a space-separated string or a JSON array; normalised to []string.
-		var orgs []string
-		if claimNames.OrganizationsClaim != "" {
-			orgs = toStringSlice(mapClaims[claimNames.OrganizationsClaim])
-			if len(orgs) == 0 {
-				// fall back: treat the singular claim as a one-element list
-				orgs = []string{org}
-			}
-		}
-
 		userID := authCtx.UserID
 		if claimNames.UserIDClaim != "" {
 			if v := getStringClaim(mapClaims, claimNames.UserIDClaim); v != "" {
@@ -264,7 +251,6 @@ func PlatformClaimsMiddleware(claimNames PlatformClaimNames) gin.HandlerFunc {
 		c.Set("first_name", firstName)
 		c.Set("last_name", lastName)
 		c.Set("organization", org)
-		c.Set("organizations", orgs)
 		c.Set("scope", scope)
 		c.Set("audience", aud)
 		c.Set("claims", claimsObj)
@@ -393,17 +379,6 @@ func GetOrganizationFromContext(c *gin.Context) (string, bool) {
 	}
 	orgStr, ok := organization.(string)
 	return orgStr, ok
-}
-
-// GetOrganizationsFromContext extracts the full list of org UUIDs from the Gin context.
-// Returns nil when the claim was not present in the token.
-func GetOrganizationsFromContext(c *gin.Context) ([]string, bool) {
-	v, exists := c.Get("organizations")
-	if !exists {
-		return nil, false
-	}
-	orgs, ok := v.([]string)
-	return orgs, ok
 }
 
 // GetUserIDFromContext extracts the user ID from the Gin context.

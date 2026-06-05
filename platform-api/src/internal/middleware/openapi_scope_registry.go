@@ -44,6 +44,14 @@ func (r *ScopeRegistry) Lookup(method, ginPath string) ([]string, bool) {
 	return scopes, ok
 }
 
+// Merge copies all entries from other into r, with other's entries taking precedence
+// on key collisions. Use this to combine registries loaded from multiple spec files.
+func (r *ScopeRegistry) Merge(other *ScopeRegistry) {
+	for k, v := range other.scopes {
+		r.scopes[k] = v
+	}
+}
+
 // openAPIDoc is the minimal subset of an OpenAPI 3.x document we need to parse.
 type openAPIDoc struct {
 	Servers []struct {

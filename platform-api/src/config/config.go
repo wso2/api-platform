@@ -44,6 +44,11 @@ type Server struct {
 	// OpenAPI spec path — used at startup to build the scope registry.
 	OpenAPISpecPath string `envconfig:"OPENAPI_SPEC_PATH" default:"./resources/openapi.yaml"`
 
+	// PortalAPISpecPath is the OpenAPI spec for portal UI-facing endpoints.
+	// Used at startup to build a separate scope registry for portal routes.
+	// Env: PORTAL_API_SPEC_PATH (default: "./resources/portal-api.yaml")
+	PortalAPISpecPath string `envconfig:"PORTAL_API_SPEC_PATH" default:"./resources/portal-api.yaml"`
+
 	// LLM provider template bootstrap (used to seed defaults into the DB)
 	LLMTemplateDefinitionsPath string `envconfig:"LLM_TEMPLATE_DEFINITIONS_PATH" default:"./resources/default-llm-provider-templates"`
 
@@ -89,6 +94,10 @@ type Auth struct {
 	// JWT holds local HMAC JWT configuration.
 	// Env prefix: AUTH_JWT_
 	JWT JWT `envconfig:"JWT"`
+
+	// MultiOrgIDP holds per-org IDP configuration for multi-org deployments.
+	// Env prefix: AUTH_MULTI_ORG_IDP_
+	MultiOrgIDP MultiOrgIDP `envconfig:"MULTI_ORG_IDP"`
 }
 
 // IDP holds configuration for JWKS-based identity providers.
@@ -132,12 +141,6 @@ type IDP struct {
 	// Env: AUTH_IDP_ORGANIZATION_CLAIM_NAME (default: "organization")
 	OrganizationClaimName string `envconfig:"ORGANIZATION_CLAIM_NAME" default:"organization"`
 
-	// OrganizationsClaimName is the JWT claim that holds the full list of org UUIDs
-	// the user belongs to (space-separated string or JSON array). Used by
-	// GET /users/me/organizations as a fast path before falling back to the DB.
-	// Env: AUTH_IDP_ORGANIZATIONS_CLAIM_NAME (default: "organizations")
-	OrganizationsClaimName string `envconfig:"ORGANIZATIONS_CLAIM_NAME" default:"organizations"`
-
 	// UserIDClaimName is the JWT claim used as the canonical user identifier.
 	// Env: AUTH_IDP_USER_ID_CLAIM_NAME (default: "sub")
 	UserIDClaimName string `envconfig:"USER_ID_CLAIM_NAME" default:"sub"`
@@ -173,35 +176,35 @@ type IDP struct {
 	// Env: AUTH_IDP_ROLE_MAPPINGS
 	RoleMappings []string `envconfig:"ROLE_MAPPINGS"`
 
-	// --- SCIM2 claim sync (multi-org) ---
-
-	// SCIM2BaseURL is the base URL for the IDP's SCIM2 API, used to update user
-	// attributes (e.g. the org membership claim) after an org is created.
-	// When empty, SCIM2 claim sync is disabled.
-	// Example: "https://api.asgardeo.io/t/my-org" or "https://localhost:9443"
-	// Env: AUTH_IDP_SCIM2_BASE_URL (default: "")
-	SCIM2BaseURL string `envconfig:"SCIM2_BASE_URL" default:""`
-
-	// OrgClaimSCIM2Schema is the SCIM2 schema URI that contains the org claims.
-	// Must match what is registered in the IDP (Thunder: custom-user extension).
-	// Env: AUTH_IDP_ORG_CLAIM_SCIM2_SCHEMA (default: "urn:scim:schemas:extension:custom:User")
-	OrgClaimSCIM2Schema string `envconfig:"ORG_CLAIM_SCIM2_SCHEMA" default:"urn:scim:schemas:extension:custom:User"`
-
-	// OrgClaimSCIM2Attr is the SCIM2 attribute name for the full org membership list.
-	// Env: AUTH_IDP_ORG_CLAIM_SCIM2_ATTR (default: "organizations")
-	OrgClaimSCIM2Attr string `envconfig:"ORG_CLAIM_SCIM2_ATTR" default:"organizations"`
-
-	// SCIM2InsecureSkipVerify disables TLS certificate verification for SCIM2
-	// requests. Enable only for local development with self-signed certs.
-	// Keep false (default) for cloud IDPs like Asgardeo.
-	// Env: AUTH_IDP_SCIM2_INSECURE_SKIP_VERIFY (default: false)
-	SCIM2InsecureSkipVerify bool `envconfig:"SCIM2_INSECURE_SKIP_VERIFY" default:"false"`
-
 	// ValidationMode selects how authorization is enforced. Pick one:
 	//   "scope" (default) — validate using the JWT scope claim directly.
 	//   "role"            — expand IDP roles to platform roles via RoleMappings.
 	// Env: AUTH_IDP_VALIDATION_MODE (default: "scope")
 	ValidationMode string `envconfig:"VALIDATION_MODE" default:"scope"`
+
+	// ClientID is the OAuth2 client ID for the login UI to initiate the OIDC flow.
+	// Env: AUTH_IDP_CLIENT_ID (default: "")
+	ClientID string `envconfig:"CLIENT_ID" default:""`
+
+	// DiscoveryURL is the OIDC /.well-known/openid-configuration endpoint.
+	// Server derives authorization_endpoint and logout_url from this.
+	// Env: AUTH_IDP_DISCOVERY_URL (default: "")
+	DiscoveryURL string `envconfig:"DISCOVERY_URL" default:""`
+}
+
+// MultiOrgIDP holds per-org IDP configuration for multi-org deployments.
+// When Enabled, each org resolves its IDP from the file at ConfigsPath instead
+// of the global Auth.IDP config.
+// Env prefix: AUTH_MULTI_ORG_IDP_
+type MultiOrgIDP struct {
+	// Enabled activates per-org IDP resolution.
+	// Env: AUTH_MULTI_ORG_IDP_ENABLED (default: false)
+	Enabled bool `envconfig:"ENABLED" default:"false"`
+
+	// ConfigsPath is the path to a YAML file listing per-org IDP configurations.
+	// Required when Enabled=true.
+	// Env: AUTH_MULTI_ORG_IDP_CONFIGS_PATH (default: "")
+	ConfigsPath string `envconfig:"CONFIGS_PATH" default:""`
 }
 
 // Gateway holds gateway-related configuration.
@@ -351,6 +354,9 @@ func GetConfig() *Server {
 		if err == nil {
 			err = validateIDPConfig(&settingInstance.Auth.IDP)
 		}
+		if err == nil {
+			err = validateMultiOrgIDPConfig(&settingInstance.Auth.MultiOrgIDP)
+		}
 	})
 	if err != nil {
 		panic(err)
@@ -402,6 +408,16 @@ func validateIDPConfig(idp *IDP) error {
 	}
 	if idp.ValidationMode == "role" && idp.RolesClaimPath == "" {
 		return fmt.Errorf("IDP_VALIDATION_MODE=role requires IDP_ROLES_CLAIM_PATH to be configured")
+	}
+	return nil
+}
+
+func validateMultiOrgIDPConfig(cfg *MultiOrgIDP) error {
+	if !cfg.Enabled {
+		return nil
+	}
+	if cfg.ConfigsPath == "" {
+		return fmt.Errorf("AUTH_MULTI_ORG_IDP_ENABLED=true requires AUTH_MULTI_ORG_IDP_CONFIGS_PATH to be configured")
 	}
 	return nil
 }

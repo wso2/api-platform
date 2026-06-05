@@ -1,0 +1,134 @@
+openapi: 3.1.1
+info:
+  title: WSO2 API Platform - Portal API
+  description: |
+    API endpoints consumed exclusively by portal UI components connecting to the Platform API.
+
+    These endpoints are designed for browser-based clients and may be called before a user
+    is authenticated. They carry no sensitive internal data and require no bearer token.
+
+  version: 1.0.0
+  contact:
+    name: WSO2 API Platform Team
+  license:
+    name: Apache 2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0.html
+
+servers:
+  - url: https://localhost:9243/portal/api/v1
+    description: Development server (HTTPS)
+  - url: https://api.platform.com/portal/api/v1
+    description: Production server
+
+paths:
+  /organizations/{orgHandle}/auth:
+    get:
+      summary: Get IDP authentication configuration for an organization
+      description: |
+        Returns the IDP configuration the portal login UI needs to initiate an OIDC flow
+        for the given organization handle. Safe to call before the user is authenticated.
+
+        In single-org mode, returns the global IDP configuration for any handle.
+        In multi-org mode, returns the per-org IDP configuration.
+
+        **Error handling**: Returns `400 Bad Request` for unknown handles or when no IDP
+        is configured — `404` is intentionally avoided to prevent org handle enumeration.
+
+        **Caching**: Responses carry `Cache-Control: public, max-age=300`. The data only
+        changes when ops updates the IDP configuration.
+      operationId: GetOrgAuthDiscovery
+      tags:
+        - Auth
+      security: []
+      parameters:
+        - name: orgHandle
+          in: path
+          required: true
+          description: The organization's unique handle (slug), e.g. "acme".
+          schema:
+            type: string
+      responses:
+        '200':
+          description: IDP configuration retrieved successfully
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: "public, max-age=300"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrgAuthConfig'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+components:
+  schemas:
+    OrgAuthConfig:
+      type: object
+      description: IDP configuration required by the portal login UI to initiate an OIDC flow.
+      required:
+        - client_id
+        - authorization_endpoint
+        - pkce_required
+        - response_type
+      properties:
+        idp_type:
+          type: string
+          description: Label identifying the IDP (e.g. "asgardeo", "keycloak"). Informational only.
+          example: asgardeo
+        client_id:
+          type: string
+          description: OAuth2 client ID for the OIDC flow.
+          example: abc123
+        authorization_endpoint:
+          type: string
+          description: URL to redirect the user to for login.
+          example: https://api.asgardeo.io/t/myorg/oauth2/authorize
+        logout_url:
+          type: string
+          description: URL to redirect the user to for logout (end_session_endpoint).
+          example: https://api.asgardeo.io/t/myorg/oidc/logout
+        scopes:
+          type: array
+          items:
+            type: string
+          description: OAuth2 scopes to request during the OIDC flow.
+          example: ["openid", "profile", "email"]
+        pkce_required:
+          type: boolean
+          description: Whether PKCE is required for the OIDC flow.
+          example: true
+        response_type:
+          type: string
+          description: OAuth2 response type for the OIDC flow.
+          example: code
+
+  responses:
+    BadRequest:
+      description: Bad request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    InternalServerError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    Error:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        description:
+          type: string

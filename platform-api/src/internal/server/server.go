@@ -39,7 +39,6 @@ import (
 	"time"
 
 	"platform-api/src/config"
-	"platform-api/src/internal/client/idp"
 	"platform-api/src/internal/database"
 	"platform-api/src/internal/handler"
 	"platform-api/src/internal/repository"
@@ -103,15 +102,6 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	websubAPIRepo := repository.NewWebSubAPIRepo(db)
 	webbrokerAPIRepo := repository.NewWebBrokerAPIRepo(db)
 	apiKeyRepo := repository.NewAPIKeyRepo(db)
-	membershipRepo := repository.NewUserOrgMembershipRepo(db)
-
-	// IDP SCIM2 claim updater — syncs org membership claim after org creation.
-	// Returns nil when IDP_SCIM2_BASE_URL is not set, which disables sync silently.
-	var idpClaimUpdater service.IDPClaimUpdater
-	if scimUpdater := idp.NewClaimUpdater(cfg.Auth.IDP.SCIM2BaseURL, cfg.Auth.IDP.OrgClaimSCIM2Schema, cfg.Auth.IDP.OrgClaimSCIM2Attr, cfg.Auth.IDP.SCIM2InsecureSkipVerify); scimUpdater != nil {
-		idpClaimUpdater = scimUpdater
-		slogger.Info("IDP SCIM2 claim sync enabled", "url", cfg.Auth.IDP.SCIM2BaseURL)
-	}
 
 	// Seed default LLM provider templates into the DB (per organization)
 	cfg.LLMTemplateDefinitionsPath = strings.TrimSpace(cfg.LLMTemplateDefinitionsPath)
@@ -182,8 +172,6 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	// Initialize services
 	orgService := service.NewOrganizationService(
 		orgRepo,
-		membershipRepo,
-		idpClaimUpdater,
 		projectRepo,
 		appRepo,
 		apiRepo,
@@ -333,14 +321,37 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	}
 	slogger.Info("Loaded OpenAPI scope registry", "path", cfg.OpenAPISpecPath)
 
+	// Load and merge the Portal API scope registry for portal UI-facing routes.
+	portalScopeRegistry, err := middleware.LoadScopeRegistry(cfg.PortalAPISpecPath)
+	if err != nil {
+		slogger.Error("Failed to load Portal API scope registry", "path", cfg.PortalAPISpecPath, "error", err)
+		return nil, fmt.Errorf("failed to load Portal API scope registry: %w", err)
+	}
+	scopeRegistry.Merge(portalScopeRegistry)
+	slogger.Info("Loaded Portal API scope registry", "path", cfg.PortalAPISpecPath)
+
 	// Configure scope validation.
 	middleware.SetScopeValidationEnabled(cfg.EnableScopeValidation)
 	if !cfg.EnableScopeValidation {
 		slogger.Warn("scope validation is disabled — all authenticated requests will be allowed regardless of scope")
 	}
 
+	// Build per-org IDP registry when multi-org mode is enabled.
+	var orgIDPRegistry middleware.OrgIDPRegistry
+	if cfg.Auth.MultiOrgIDP.Enabled {
+		orgIDPConfigs, regErr := config.LoadOrgIDPConfigs(cfg.Auth.MultiOrgIDP.ConfigsPath)
+		if regErr != nil {
+			slogger.Error("Failed to load org IDP configs", "path", cfg.Auth.MultiOrgIDP.ConfigsPath, "error", regErr)
+			return nil, fmt.Errorf("failed to load org IDP configs: %w", regErr)
+		}
+		orgIDPRegistry = middleware.NewFileOrgIDPRegistry(orgIDPConfigs)
+		slogger.Info("Multi-org IDP mode enabled", "orgs", len(orgIDPConfigs))
+	}
+	authHandler := handler.NewAuthHandler(cfg.Auth.IDP, cfg.Auth.MultiOrgIDP.Enabled, orgIDPRegistry, slogger)
+
 	// Register public routes before auth middleware so they bypass authentication.
 	orgHandler.RegisterPublicRoutes(router)
+	authHandler.RegisterPublicRoutes(router)
 
 	// Build and apply the JWT authenticator.
 	// IDP_ENABLED=false (default): HMAC validation with JWT_SECRET_KEY, or skip entirely when JWT_SKIP_VALIDATION=true.
@@ -460,9 +471,8 @@ func buildAuthenticator(cfg *config.Server, slogger *slog.Logger) (middleware.Au
 		return nil, fmt.Errorf("failed to initialize IDP auth middleware: %w", err)
 	}
 	claimsMiddleware := middleware.PlatformClaimsMiddleware(middleware.PlatformClaimNames{
-		OrganizationClaim:  cfg.Auth.IDP.OrganizationClaimName,
-		OrganizationsClaim: cfg.Auth.IDP.OrganizationsClaimName,
-		UserIDClaim:        cfg.Auth.IDP.UserIDClaimName,
+		OrganizationClaim: cfg.Auth.IDP.OrganizationClaimName,
+		UserIDClaim:       cfg.Auth.IDP.UserIDClaimName,
 		UsernameClaim:      cfg.Auth.IDP.UsernameClaimName,
 		EmailClaim:         cfg.Auth.IDP.EmailClaimName,
 		ScopeClaim:         cfg.Auth.IDP.ScopeClaimName,

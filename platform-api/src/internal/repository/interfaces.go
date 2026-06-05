@@ -24,16 +24,6 @@ import (
 	"time"
 )
 
-// UserOrgMembershipRepository defines the interface for user-organization membership data access.
-type UserOrgMembershipRepository interface {
-	// CreateMembership adds a user to an organization with the given role (idempotent).
-	CreateMembership(userID, orgUUID, role string) error
-	// GetOrganizationsByUserID returns all organizations the user belongs to.
-	GetOrganizationsByUserID(userID string) ([]*model.Organization, error)
-	// HasMembership checks whether the user has any membership in the given org.
-	HasMembership(userID, orgUUID string) (bool, error)
-}
-
 // OrganizationRepository defines the interface for organization data access
 type OrganizationRepository interface {
 	CreateOrganization(org *model.Organization) error
