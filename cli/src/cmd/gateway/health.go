@@ -25,7 +25,6 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
-	"github.com/wso2/api-platform/cli/internal/config"
 	"github.com/wso2/api-platform/cli/internal/gateway"
 	"github.com/wso2/api-platform/cli/utils"
 )
@@ -42,28 +41,20 @@ var healthCmd = &cobra.Command{
 	Long:    "Returns the health status of the currently active gateway by calling its " + utils.GatewayHealthPath + " endpoint.",
 	Example: HealthCmdExample,
 	Run: func(cmd *cobra.Command, args []string) {
-		if err := runHealthCommand(); err != nil {
+		if err := runHealthCommand(cmd); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
 	},
 }
 
-var healthPlatform string
-
 func init() {
-	utils.AddStringFlag(healthCmd, utils.FlagPlatform, &healthPlatform, "", "Platform name")
+	gateway.AddSelectionFlags(healthCmd)
 }
 
-func runHealthCommand() error {
-	// Create a client for the active gateway
-	cfg, err := config.LoadConfig()
-	if err != nil {
-		return fmt.Errorf("failed to load config: %w", err)
-	}
-	resolvedPlatform := cfg.ResolvePlatform(healthPlatform)
-
-	client, err := gateway.NewClientForActivePlatform(resolvedPlatform)
+func runHealthCommand(cmd *cobra.Command) error {
+	// Create a client for the selected (or active) gateway
+	client, err := gateway.NewClientFromCommand(cmd)
 	if err != nil {
 		return err
 	}

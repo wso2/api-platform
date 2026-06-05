@@ -67,6 +67,17 @@ const (
 	FlagPropertyName           = "name"
 	FlagAppID                  = "app-id"
 	FlagDescription            = "description"
+	FlagGateway                = "gateway"
+	FlagPlanName               = "plan-name"
+	FlagBillingPlan            = "billing-plan"
+	FlagStopOnQuotaReach       = "stop-on-quota-reach"
+	FlagThrottleLimitCount     = "throttle-limit-count"
+	FlagThrottleLimitUnit      = "throttle-limit-unit"
+	FlagExpiryTime             = "expiry-time"
+	FlagSubscriptionPlanID     = "subscription-plan-id"
+	FlagSubscriptionToken      = "subscription-token"
+	FlagBillingCustomerID      = "billing-customer-id"
+	FlagBillingSubscriptionID  = "billing-subscription-id"
 )
 
 var shortFlags = map[string]string{
@@ -99,5 +110,13 @@ func AddBoolFlag(cmd *cobra.Command, flagName string, p *bool, defaultValue bool
 		cmd.Flags().BoolVarP(p, flagName, short, defaultValue, usage)
 	} else {
 		cmd.Flags().BoolVar(p, flagName, defaultValue, usage)
+	}
+}
+
+func AddIntFlag(cmd *cobra.Command, flagName string, p *int, defaultValue int, usage string) {
+	if short, hasShort := shortFlags[flagName]; hasShort {
+		cmd.Flags().IntVarP(p, flagName, short, defaultValue, usage)
+	} else {
+		cmd.Flags().IntVar(p, flagName, defaultValue, usage)
 	}
 }

@@ -44,6 +44,19 @@ const (
 	GatewayMCPProxyByIDPath = "/mcp-proxies/%s"
 	DevPortalHealthPath     = "/health"
 
+	// API Key Endpoints (scoped to a REST API)
+	GatewayAPIKeysPath          = "/rest-apis/%s/api-keys"    // %s = REST API id
+	GatewayAPIKeyByNamePath     = "/rest-apis/%s/api-keys/%s" // %s = REST API id, %s = api key name
+	GatewayAPIKeyRegeneratePath = "/rest-apis/%s/api-keys/%s/regenerate"
+
+	// Subscription Plan Endpoints
+	GatewaySubscriptionPlansPath    = "/subscription-plans"
+	GatewaySubscriptionPlanByIDPath = "/subscription-plans/%s"
+
+	// Subscription Endpoints
+	GatewaySubscriptionsPath    = "/subscriptions"
+	GatewaySubscriptionByIDPath = "/subscriptions/%s"
+
 	// Auth Types
 	AuthTypeNone   = "none"
 	AuthTypeBasic  = "basic"

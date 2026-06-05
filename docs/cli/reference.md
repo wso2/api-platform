@@ -4,6 +4,7 @@
 
 ## Command Guides
 
+- [Gateway CLI Reference](gateway/README.md)
 - [DevPortal CLI Reference](devportal/README.md)
 - [API Project CLI Reference](apiproject/README.md)
 
@@ -21,7 +22,7 @@
 
 > **Note:** Each command supports the `--help` flag for detailed usage information.
 
-## Prerequisites for Gateway Controller Commands
+## Prerequisites for Gateway Commands
 
 - You must first add and/or select a gateway in the CLI using the appropriate gateway-related commands.
 - Credentials for a gateway can come from either the gateway configuration (when you add the gateway) or from environment variables. **Environment variables take precedence** over configuration and will override credentials stored in the config when present.
@@ -150,165 +151,9 @@ ap gateway health --platform eu
 
 ---
 
-### 7. Apply a Resource
+### 7. Gateway Controller Commands
 
-#### CLI Command
-
-```shell
-ap gateway apply --file <path>
-```
-
-#### Sample Command
-
-```shell
-ap gateway apply --file petstore-api.yaml
-```
-
----
-
-### 8. List all APIs
-
-#### CLI Command
-
-```shell
-ap gateway rest-api list
-```
-
-#### Sample Command
-
-```shell
-ap gateway rest-api list
-```
-
----
-
-### 9. Get a specific API by name and version or id
-
-#### CLI Command
-
-```shell
-ap gateway rest-api get --display-name <name> --version <version> --format <json|yaml>
-ap gateway rest-api get --id <id> --format <json|yaml>
-```
-
-#### Sample Command
-
-```shell
-ap gateway rest-api get --display-name "PetStore API" --version v1.0 --format yaml
-ap gateway rest-api get --id sample-1 --format yaml
-```
-
----
-
-### 10. Delete an API 
-
-#### CLI Command
-
-```shell
-ap gateway rest-api delete --id <id> 
-```
-
-#### Sample Command
-
-```shell
-ap gateway rest-api delete --id <id>
-```
-
----
-
-### 11. Build a gateway
-
-#### CLI Command
-
-```shell
-ap gateway image build \
-  [--name <gateway-name>] \
-  [--path <gateway-project-dir>]
-  [--repository <image-repository>] \
-  [--version <gateway-version>] \
-  [--gateway-builder <gateway-builder-image>] \
-  [--gateway-controller-base-image <gateway-controller-base-image>] \
-  [--router-base-image <router-base-image>] \
-  [--push] \
-  [--no-cache] \
-  [--platform <platform>] \
-  [--offline] \
-  [--output-dir <output_dir>]
-```
-
-#### Sample Command
-
-```shell
-ap gateway image build
-```
-
-#### Additional Note for Users
-
-Refer to [this document](customizing-gateway-policies.md) for more information.
-
-### 12. List all MCPs
-
-#### CLI Command
-
-```shell
-ap gateway mcp list
-```
-
-#### Sample Command
-
-```shell
-ap gateway mcp list
-```
-
----
-
-### 13. Retrieves a specific MCP 
-
-#### CLI Command
-
-```shell
-ap gateway mcp get --display-name <name> --version <version> --format <json|yaml>
-ap gateway mcp get --id <id> --format <json|yaml>
-```
-
-#### Sample Command
-
-```shell
-ap gateway mcp get --display-name my-mcp --version 1.0.0 --format json
-ap gateway mcp get --id sample-id --format json
-```
-
----
-
-### 14. Permanently deletes a MCP
-
-#### CLI Command
-
-```shell
-ap gateway mcp delete --id <id> 
-```
-
-#### Sample Command
-
-```shell
-ap gateway mcp delete --id sample-id
-```
-
----
-
-### 15. Generate MCP 
-
-#### CLI Command
-
-```shell
-ap gateway mcp generate --server <server> --output <path>
-```
-
-#### Sample Command
-
-```shell
-ap gateway mcp generate --server http://localhost:3001/mcp --output target
-```
+Commands that operate against a gateway — `apply`, `rest-api` (and `rest-api api-key`), `mcp`, `subscription-plan`, `subscription`, and `image build` — are documented in the **[Gateway CLI Reference](gateway/README.md)**.
 
 ---
 

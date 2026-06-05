@@ -1,0 +1,52 @@
+/*
+ * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+package subscription
+
+import (
+	"github.com/spf13/cobra"
+)
+
+const (
+	SubscriptionCmdLiteral = "subscription"
+	SubscriptionCmdExample = `# List all subscriptions
+ap gateway subscription list
+
+# Create a subscription from a CR file
+ap gateway subscription create --file subscription.yaml`
+)
+
+// SubscriptionCmd represents the gateway subscription command group.
+// It surfaces the Subscription operations of the gateway management API.
+var SubscriptionCmd = &cobra.Command{
+	Use:     SubscriptionCmdLiteral,
+	Short:   "Manage subscriptions on the gateway",
+	Long:    "This command allows you to manage subscriptions between applications and REST APIs on the WSO2 API Platform Gateway.",
+	Example: SubscriptionCmdExample,
+	Run: func(cmd *cobra.Command, args []string) {
+		cmd.Help()
+	},
+}
+
+func init() {
+	SubscriptionCmd.AddCommand(createCmd)
+	SubscriptionCmd.AddCommand(listCmd)
+	SubscriptionCmd.AddCommand(getCmd)
+	SubscriptionCmd.AddCommand(updateCmd)
+	SubscriptionCmd.AddCommand(deleteCmd)
+}
