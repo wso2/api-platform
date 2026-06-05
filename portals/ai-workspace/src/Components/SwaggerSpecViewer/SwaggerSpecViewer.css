@@ -1,0 +1,138 @@
+.swagger-spec-viewer .swagger-ui {
+  font-family: inherit;
+}
+
+.swagger-spec-viewer .swagger-ui .wrapper {
+  padding: 0;
+}
+
+.swagger-spec-viewer .swagger-ui .topbar {
+  display: none;
+}
+
+.swagger-spec-viewer.hide-info-section .swagger-ui .information-container {
+  display: none;
+}
+
+.swagger-spec-viewer.hide-servers .swagger-ui .scheme-container {
+  display: none;
+}
+
+.swagger-spec-viewer.hide-servers
+  .swagger-ui
+  .opblock-section.operation-servers {
+  display: none;
+}
+
+.swagger-spec-viewer.hide-authorize .swagger-ui .auth-wrapper {
+  display: none;
+}
+
+.swagger-spec-viewer .swagger-ui .opblock .authorization__btn {
+  display: none;
+}
+
+.swagger-spec-viewer .swagger-ui .btn.execute.opblock-control__btn {
+  position: relative;
+  color: transparent !important;
+}
+
+.swagger-spec-viewer .swagger-ui .btn.execute.opblock-control__btn::after {
+  content: 'Generate Curl';
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+}
+
+.swagger-spec-viewer.disable-response-section
+  .swagger-ui
+  .opblock-body
+  .responses-wrapper
+  h4:has(+ .responses-table),
+.swagger-spec-viewer.disable-response-section
+  .swagger-ui
+  .opblock-body
+  .responses-wrapper
+  .responses-table,
+.swagger-spec-viewer.disable-response-section
+  .swagger-ui
+  .opblock-body
+  .responses-wrapper
+  .responses-table.live-responses-table {
+  display: none !important;
+}
+
+
+.swagger-spec-viewer.disable-try-out-btn .swagger-ui .opblock .try-out__btn {
+  display: none;
+}
+
+.swagger-spec-viewer.hide-tag-headers .swagger-ui .opblock-tag {
+  display: none;
+}
+
+.swagger-spec-viewer.hide-operation-header .swagger-ui .opblock .opblock-summary {
+  display: none;
+}
+
+:is(
+    html[data-mui-color-scheme='dark'],
+    body[data-mui-color-scheme='dark'],
+    html[data-color-scheme='dark'],
+    body[data-color-scheme='dark'],
+    html[data-theme='dark'],
+    body[data-theme='dark'],
+    html.dark,
+    body.dark
+  )
+  .swagger-spec-viewer
+  .swagger-ui
+  .opblock
+  :is(
+    .opblock-summary-path,
+    .opblock-summary-description,
+    .opblock-description-wrapper,
+    .responses-inner h4,
+    .responses-inner h5,
+    .parameters-col_name,
+    .parameters-col_description,
+    .parameter__name,
+    .parameter__type,
+    .parameter__deprecated,
+    td,
+    th,
+    p,
+    span,
+    label
+  ) {
+  color: #fff !important;
+}
+
+:is(
+    html[data-mui-color-scheme='dark'],
+    body[data-mui-color-scheme='dark'],
+    html[data-color-scheme='dark'],
+    body[data-color-scheme='dark'],
+    html[data-theme='dark'],
+    body[data-theme='dark'],
+    html.dark,
+    body.dark
+  )
+  .swagger-spec-viewer
+  .swagger-ui
+  :is(
+    .opblock-summary-control,
+    .opblock-summary-control .arrow,
+    .opblock-control-arrow,
+    .opblock-control-arrow .arrow,
+    .expand-methods svg,
+    .expand-methods svg path
+  ) {
+  color: #fff !important;
+  fill: #fff !important;
+  stroke: #fff !important;
+  border-color: #fff !important;
+}
