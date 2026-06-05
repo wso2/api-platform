@@ -16,20 +16,16 @@
  * under the License.
  */
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo } from 'react';
 import {
-  Badge,
-  Button,
   ColorSchemeToggle,
   ComplexSelect,
   Divider,
   Header,
   IconButton,
-  Tooltip,
-  Typography,
   Box,
 } from '@wso2/oxygen-ui';
-import { Bell, Building, X } from '@wso2/oxygen-ui-icons-react';
+import { X } from '@wso2/oxygen-ui-icons-react';
 import SearchableComplexSelect from '../../Components/common/SearchableComplexSelect';
 import Logo from '../../Components/Logo';
 import UserMenu from '../../Components/UserMenu';
@@ -39,7 +35,6 @@ import {
   buildProjectPath,
   getProjectSlug,
 } from '../../utils/projectRouting';
-import { FormattedMessage } from 'react-intl';
 import ProjectQuickSelector from './ProjectQuickSelector';
 
 type SelectableOrg = {
@@ -63,11 +58,7 @@ type Props = {
   userName?: string;
   userEmail?: string;
 
-  unreadCount?: number;
-
-  organizationOptions: SelectableOrg[];
   currentOrganization: SelectableOrg | null;
-  setCurrentOrganization?: (org: SelectableOrg | null) => void | Promise<void>;
 
   projectOptions: SelectableProject[];
   currentProject: SelectableProject | null;
@@ -75,9 +66,6 @@ type Props = {
 
   isProjectsLoading: boolean;
   projectsError?: unknown;
-
-  selectedOrgId: string;
-  setSelectedOrgId: (v: string) => void;
 
   selectedProjectId: string;
   setSelectedProjectId: (v: string) => void;
@@ -93,11 +81,8 @@ export default function AppHeader(props: Props) {
     navigate,
     userName,
     userEmail,
-    unreadCount,
 
-    organizationOptions,
     currentOrganization,
-    setCurrentOrganization,
 
     projectOptions,
     currentProject,
@@ -105,16 +90,11 @@ export default function AppHeader(props: Props) {
     isProjectsLoading,
     projectsError,
 
-    selectedOrgId,
-    setSelectedOrgId,
-
     selectedProjectId,
     setSelectedProjectId,
 
     onLogout,
   } = props;
-
-  const [isChangingOrganization, setIsChangingOrganization] = useState(false);
 
   const userForMenu = useMemo(
     () => ({
@@ -124,25 +104,19 @@ export default function AppHeader(props: Props) {
     }),
     [userName, userEmail, role]
   );
+
   const canShowProjectSwitcher = Boolean(currentProject?.id);
-  const isProjectPickerDisabled =
-    isProjectsLoading || !currentOrganization?.id || isChangingOrganization;
+  const isProjectPickerDisabled = isProjectsLoading || !currentOrganization?.id;
+
   const handleProjectSelection = (nextProjectId: string) => {
     setSelectedProjectId(nextProjectId);
-
-    const nextProject =
-      projectOptions.find((p) => p.id === nextProjectId) ?? null;
+    const nextProject = projectOptions.find((p) => p.id === nextProjectId) ?? null;
     setCurrentProject?.(nextProject);
-
     if (nextProject?.id && currentOrganization?.id) {
-      navigate(
-        buildOrgPath(
-          currentOrganization,
-          `/projects/${getProjectSlug(nextProject)}/home`
-        )
-      );
+      navigate(buildOrgPath(currentOrganization, `/projects/${getProjectSlug(nextProject)}/home`));
     }
   };
+
   const clearProjectSelection = () => {
     setSelectedProjectId('');
     setCurrentProject?.(null);
@@ -150,6 +124,7 @@ export default function AppHeader(props: Props) {
       navigate(buildOrgPath(currentOrganization, '/home'));
     }
   };
+
   const homePath = currentProject
     ? buildProjectPath(currentOrganization, currentProject, '/home')
     : buildOrgPath(currentOrganization, '/home');
@@ -168,69 +143,14 @@ export default function AppHeader(props: Props) {
       </Header.Brand>
 
       <Header.Switchers showDivider={false}>
-        {/* ORG SWITCHER */}
-        <SearchableComplexSelect
-          value={selectedOrgId}
-          selectedOption={currentOrganization}
-          options={organizationOptions}
-          openOnFieldClick={!currentProject?.id}
-          onFieldClick={currentProject?.id ? clearProjectSelection : undefined}
-          fieldClickAriaLabel="Go to organization level"
-          dropdownClickAriaLabel="Open organizations list"
-          onChange={async (nextOrgId) => {
-            setSelectedOrgId(nextOrgId);
-
-            const nextOrg =
-              organizationOptions.find((o) => o.id === nextOrgId) ?? null;
-
-            setIsChangingOrganization(true);
-            try {
-              const maybePromise = setCurrentOrganization?.(nextOrg);
-              if (
-                maybePromise &&
-                typeof (maybePromise as any).then === 'function'
-              ) {
-                await maybePromise;
-              }
-              if (nextOrg?.id) {
-                navigate(buildOrgPath(nextOrg, '/home'));
-              }
-            } finally {
-              // Small delay to avoid flicker
-              await new Promise((resolve) => setTimeout(resolve, 120));
-              setIsChangingOrganization(false);
-            }
-          }}
-          sx={{ minWidth: 220 }}
-          renderOptionContent={(org) => (
-            <>
-              <ComplexSelect.MenuItem.Icon>
-                <Building />
-              </ComplexSelect.MenuItem.Icon>
-              <ComplexSelect.MenuItem.Text
-                primary={org.name}
-                secondary={org.description}
-              />
-            </>
-          )}
-          label="Organizations"
-          emptyMessage="No organizations"
-          noResultsMessage="No matching organizations"
-          searchPlaceholder="Search organizations"
-        />
-
         {canShowProjectSwitcher ? (
           <Box sx={{ position: 'relative', minWidth: 220 }}>
             <SearchableComplexSelect
               value={selectedProjectId}
               selectedOption={currentProject}
               options={projectOptions}
-              loading={isProjectsLoading || isChangingOrganization}
-              disabled={
-                isProjectsLoading ||
-                !currentOrganization?.id ||
-                isChangingOrganization
-              }
+              loading={isProjectsLoading}
+              disabled={isProjectsLoading || !currentOrganization?.id}
               onChange={handleProjectSelection}
               renderOptionContent={(project) => (
                 <ComplexSelect.MenuItem.Text primary={project.name} />
@@ -270,7 +190,7 @@ export default function AppHeader(props: Props) {
         ) : (
           <ProjectQuickSelector
             disabled={isProjectPickerDisabled}
-            isProjectsLoading={isProjectsLoading || isChangingOrganization}
+            isProjectsLoading={isProjectsLoading}
             projectsError={projectsError}
             projectOptions={projectOptions}
             onSelectProject={handleProjectSelection}
@@ -281,31 +201,7 @@ export default function AppHeader(props: Props) {
       <Header.Spacer />
 
       <Header.Actions>
-        {/* <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-          <FormattedMessage
-            id="aiWorkspace.pages.appShell.AppHeader.role"
-            defaultMessage={'Role:'}
-          />{' '}
-          {role === 'admin' ? 'Admin' : 'Developer'}
-        </Typography> */}
         <ColorSchemeToggle />
-
-        {/* <Tooltip title="Notifications">
-          <IconButton
-            onClick={shellActions.toggleNotificationPanel}
-            size="small"
-            sx={{ color: 'text.secondary' }}
-          >
-            <Badge
-              badgeContent={unreadCount ?? 0}
-              color="error"
-              max={99}
-              invisible={(unreadCount ?? 0) === 0}
-            >
-              <Bell size={20} />
-            </Badge>
-          </IconButton>
-        </Tooltip> */}
 
         <Divider
           orientation="vertical"
@@ -317,15 +213,6 @@ export default function AppHeader(props: Props) {
           user={userForMenu as any}
           onLogout={onLogout}
         />
-
-        {/* If you want, you can move confirm dialog OUT of header too.
-            For now keeping same behavior by exposing state up is cleaner. */}
-        {/* {confirmDialogOpen && (
-          <Button
-            sx={{ display: 'none' }}
-            onClick={() => setConfirmDialogOpen(false)}
-          />
-        )} */}
       </Header.Actions>
     </Header>
   );

@@ -24,8 +24,6 @@ type SignOutFunction = () => Promise<void>;
 const AUTH_SESSION_KEYS = [
   'platform_auth_token',
   'platform_org_token',
-  'currentOrgHandle',
-  'pending_org_uuid',
   'ai_workspace_return_url',
 ] as const;
 

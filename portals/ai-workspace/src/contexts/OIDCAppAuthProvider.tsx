@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import React, { useCallback, useEffect, useMemo } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import { useAuth } from 'react-oidc-context';
 import { AppAuthContext, type AppUser } from './AppAuthContext';
 import { OIDC_USERNAME_CLAIM, OIDC_EMAIL_CLAIM } from '../config.env';
@@ -50,10 +50,12 @@ function extractRoleFromJwt(token: string): PlatformRole | null {
 export function OIDCAppAuthProvider({ children }: { children: React.ReactNode }) {
   const auth = useAuth();
 
-  useEffect(() => {
-    const token = auth.user?.access_token;
-    if (token) setStoredToken(token);
-  }, [auth.user?.access_token]);
+  // Store synchronously during render so downstream contexts that run in
+  // useEffect (which fires bottom-up, before this component's effects) always
+  // find a valid token in sessionStorage when they first call the platform API.
+  if (auth.user?.access_token) {
+    setStoredToken(auth.user.access_token);
+  }
 
   const user: AppUser | null = useMemo(() => {
     if (!auth.user) return null;

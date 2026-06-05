@@ -46,14 +46,18 @@ export const CHOREO_SYSTEM_ORG = getEnvOrDefault(
   'choreocontrolplane'
 );
 
-// OIDC configuration — works with any OIDC-compliant identity provider
-// Set VITE_OIDC_AUTHORITY to your IdP's issuer URL; endpoints are auto-discovered
-// from {authority}/.well-known/openid-configuration
-export const OIDC_AUTHORITY = getEnvOrDefault(
-  'VITE_OIDC_AUTHORITY',
-  'https://localhost:8090'
+// The org handle this workspace deployment serves. Used to fetch OIDC config
+// from the platform API's unauthenticated discovery endpoint before login.
+export const ORG_HANDLE = getEnvOrDefault('VITE_ORG_HANDLE', '');
+
+// Scopes to request at login. Authority, client_id, and logout URL are fetched
+// dynamically from GET /portal/api/v1/organizations/{handle}/auth at startup.
+export const OIDC_SCOPE = getEnvOrDefault(
+  'VITE_OIDC_SCOPE',
+  'openid profile email api-platform:gateway:manage api-platform:gateway:create api-platform:gateway:read api-platform:gateway:update api-platform:gateway:delete api-platform:gateway:token:manage api-platform:gateway:token:read api-platform:gateway:token:create api-platform:gateway:token:delete api-platform:gateway:policy:manage api-platform:gateway:policy:read api-platform:gateway:policy:create api-platform:gateway:policy:delete api-platform:gateway:artifacts:read api-platform:gateway:manifest:read api-platform:gateway:status:read api-platform:rest_api:manage api-platform:rest_api:create api-platform:rest_api:read api-platform:rest_api:update api-platform:rest_api:delete api-platform:rest_api:publish api-platform:rest_api:import api-platform:rest_api:gateway:manage api-platform:rest_api:gateway:create api-platform:rest_api:gateway:read api-platform:rest_api:deployment:manage api-platform:rest_api:deployment:create api-platform:rest_api:deployment:read api-platform:rest_api:deployment:delete api-platform:rest_api:deployment:undeploy api-platform:rest_api:deployment:restore api-platform:rest_api:api_key:manage api-platform:rest_api:api_key:create api-platform:rest_api:api_key:read api-platform:rest_api:api_key:update api-platform:rest_api:api_key:delete api-platform:project:manage api-platform:project:create api-platform:project:read api-platform:project:update api-platform:project:delete api-platform:application:manage api-platform:application:create api-platform:application:read api-platform:application:update api-platform:application:delete api-platform:application:api_key:manage api-platform:application:api_key:create api-platform:application:api_key:read api-platform:application:api_key:delete api-platform:application:associations:manage api-platform:application:associations:create api-platform:application:associations:read api-platform:application:associations:delete api-platform:application:associations:api_key:read api-platform:devportal:manage api-platform:devportal:create api-platform:devportal:read api-platform:devportal:update api-platform:devportal:delete api-platform:subscription:manage api-platform:subscription:create api-platform:subscription:read api-platform:subscription:update api-platform:subscription:delete api-platform:subscription_plan:manage api-platform:subscription_plan:create api-platform:subscription_plan:read api-platform:subscription_plan:update api-platform:subscription_plan:delete api-platform:llm_template:manage api-platform:llm_template:create api-platform:llm_template:read api-platform:llm_template:update api-platform:llm_template:delete api-platform:llm_provider:manage api-platform:llm_provider:create api-platform:llm_provider:read api-platform:llm_provider:update api-platform:llm_provider:delete api-platform:llm_provider:deployment:manage api-platform:llm_provider:key:manage api-platform:llm_proxy:manage api-platform:llm_proxy:create api-platform:llm_proxy:read api-platform:llm_proxy:update api-platform:llm_proxy:delete api-platform:llm_proxy:deployment:manage api-platform:llm_proxy:key:manage api-platform:mcp_proxy:manage api-platform:mcp_proxy:create api-platform:mcp_proxy:read api-platform:mcp_proxy:update api-platform:mcp_proxy:delete api-platform:mcp_proxy:deployment:manage api-platform:websub_api:manage api-platform:websub_api:create api-platform:websub_api:read api-platform:websub_api:update api-platform:websub_api:delete api-platform:websub_api:deployment:manage api-platform:websub_api:publish api-platform:websub_api:key:manage api-platform:webbroker_api:manage api-platform:webbroker_api:create api-platform:webbroker_api:read api-platform:webbroker_api:update api-platform:webbroker_api:delete api-platform:webbroker_api:deployment:manage api-platform:webbroker_api:publish api-platform:webbroker_api:key:manage api-platform:git:read'
 );
-export const OIDC_CLIENT_ID = getEnvOrDefault('VITE_OIDC_CLIENT_ID', '');
+
+// OIDC redirect URIs — app-specific, not IDP-specific.
 export const OIDC_REDIRECT_URI = getEnvOrDefault(
   'VITE_OIDC_REDIRECT_URI',
   `https://${DOMAIN}/signin`
@@ -62,28 +66,6 @@ export const OIDC_POST_LOGOUT_REDIRECT_URI = getEnvOrDefault(
   'VITE_OIDC_POST_LOGOUT_REDIRECT_URI',
   `https://${DOMAIN}/login`
 );
-export const OIDC_END_SESSION_ENDPOINT = getEnvOrDefault(
-  'VITE_OIDC_END_SESSION_ENDPOINT',
-  ''
-);
-
-export const OIDC_SCOPE = getEnvOrDefault(
-  'VITE_OIDC_SCOPE',
-  'openid profile email api-platform:gateway:manage api-platform:gateway:create api-platform:gateway:read api-platform:gateway:update api-platform:gateway:delete api-platform:gateway:token:manage api-platform:gateway:token:read api-platform:gateway:token:create api-platform:gateway:token:delete api-platform:gateway:policy:manage api-platform:gateway:policy:read api-platform:gateway:policy:create api-platform:gateway:policy:delete api-platform:gateway:artifacts:read api-platform:gateway:manifest:read api-platform:gateway:status:read api-platform:rest_api:manage api-platform:rest_api:create api-platform:rest_api:read api-platform:rest_api:update api-platform:rest_api:delete api-platform:rest_api:publish api-platform:rest_api:import api-platform:rest_api:gateway:manage api-platform:rest_api:gateway:create api-platform:rest_api:gateway:read api-platform:rest_api:deployment:manage api-platform:rest_api:deployment:create api-platform:rest_api:deployment:read api-platform:rest_api:deployment:delete api-platform:rest_api:deployment:undeploy api-platform:rest_api:deployment:restore api-platform:rest_api:api_key:manage api-platform:rest_api:api_key:create api-platform:rest_api:api_key:read api-platform:rest_api:api_key:update api-platform:rest_api:api_key:delete api-platform:project:manage api-platform:project:create api-platform:project:read api-platform:project:update api-platform:project:delete api-platform:application:manage api-platform:application:create api-platform:application:read api-platform:application:update api-platform:application:delete api-platform:application:api_key:manage api-platform:application:api_key:create api-platform:application:api_key:read api-platform:application:api_key:delete api-platform:application:associations:manage api-platform:application:associations:create api-platform:application:associations:read api-platform:application:associations:delete api-platform:application:associations:api_key:read api-platform:devportal:manage api-platform:devportal:create api-platform:devportal:read api-platform:devportal:update api-platform:devportal:delete api-platform:subscription:manage api-platform:subscription:create api-platform:subscription:read api-platform:subscription:update api-platform:subscription:delete api-platform:subscription_plan:manage api-platform:subscription_plan:create api-platform:subscription_plan:read api-platform:subscription_plan:update api-platform:subscription_plan:delete api-platform:llm_template:manage api-platform:llm_template:create api-platform:llm_template:read api-platform:llm_template:update api-platform:llm_template:delete api-platform:llm_provider:manage api-platform:llm_provider:create api-platform:llm_provider:read api-platform:llm_provider:update api-platform:llm_provider:delete api-platform:llm_provider:deployment:manage api-platform:llm_provider:key:manage api-platform:llm_proxy:manage api-platform:llm_proxy:create api-platform:llm_proxy:read api-platform:llm_proxy:update api-platform:llm_proxy:delete api-platform:llm_proxy:deployment:manage api-platform:llm_proxy:key:manage api-platform:mcp_proxy:manage api-platform:mcp_proxy:create api-platform:mcp_proxy:read api-platform:mcp_proxy:update api-platform:mcp_proxy:delete api-platform:mcp_proxy:deployment:manage api-platform:websub_api:manage api-platform:websub_api:create api-platform:websub_api:read api-platform:websub_api:update api-platform:websub_api:delete api-platform:websub_api:deployment:manage api-platform:websub_api:publish api-platform:websub_api:key:manage api-platform:webbroker_api:manage api-platform:webbroker_api:create api-platform:webbroker_api:read api-platform:webbroker_api:update api-platform:webbroker_api:delete api-platform:webbroker_api:deployment:manage api-platform:webbroker_api:publish api-platform:webbroker_api:key:manage api-platform:git:read'
-);
-
-// The query param name used to pass a federated IDP hint to the authorization server.
-// Thunder/Asgardeo use "fidp"; Keycloak uses "kc_idp_hint"; Auth0 uses "connection".
-export const OIDC_IDP_HINT_PARAM = getEnvOrDefault(
-  'VITE_OIDC_IDP_HINT_PARAM',
-  'fidp'
-);
-
-// Social / federated IDP identifiers passed as the hint value
-export const SOCIAL_IDP_GOOGLE = getEnvOrDefault('VITE_SOCIAL_IDP_GOOGLE', 'google');
-export const SOCIAL_IDP_GITHUB = getEnvOrDefault('VITE_SOCIAL_IDP_GITHUB', 'github');
-export const SOCIAL_IDP_MICROSOFT = getEnvOrDefault('VITE_SOCIAL_IDP_MICROSOFT', 'microsoft');
-export const SOCIAL_IDP_ENTERPRISE = getEnvOrDefault('VITE_SOCIAL_IDP_ENTERPRISE', 'EnterpriseIDP');
 
 // API Base URLs
 export const DEV_PORTAL_BASE_URL = getEnvOrDefault(
@@ -175,15 +157,6 @@ export const PLATFORM_API_BASE_URL = getEnvOrDefault(
   'VITE_PLATFORM_API_BASE_URL',
   'https://localhost:9243/api/v1'
 );
-
-// The JWT claim name that holds the organization UUID.
-// Configure this alongside your IDP to match whatever claim your IDP puts the org UUID in.
-export const OIDC_ORG_CLAIM = getEnvOrDefault('VITE_OIDC_ORG_CLAIM', 'organization');
-
-// JWT claim names for pre-filling org registration. When present in the token,
-// the org name and handle fields are set automatically and made read-only.
-export const OIDC_ORG_NAME_CLAIM = getEnvOrDefault('VITE_OIDC_ORG_NAME_CLAIM', 'org_name');
-export const OIDC_ORG_HANDLE_CLAIM = getEnvOrDefault('VITE_OIDC_ORG_HANDLE_CLAIM', 'org_handle');
 
 // JWT claim names for user display — configure to match your IDP's token structure.
 // Common alternatives: 'name', 'preferred_username' (Keycloak), 'upn' (Azure AD)

@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'react-intl';
 import { AuthProvider } from 'react-oidc-context';
@@ -24,64 +24,90 @@ import { AcrylicOrangeTheme, AcrylicPurpleTheme, ClassicTheme, HighContrastTheme
 import App from './App.tsx';
 import './styles.css';
 import {
-  OIDC_AUTHORITY,
-  OIDC_CLIENT_ID,
+  ORG_HANDLE,
+  OIDC_SCOPE,
   OIDC_REDIRECT_URI,
   OIDC_POST_LOGOUT_REDIRECT_URI,
-  OIDC_SCOPE,
-  OIDC_END_SESSION_ENDPOINT,
 } from './config.env';
 import { OIDCAppAuthProvider } from './contexts/OIDCAppAuthProvider';
+import { fetchOrgAuthConfig, type OrgAuthConfig } from './apis/authApi';
 
-const container = document.getElementById('root')!;
-const root = createRoot(container);
+function OIDCBootstrap({ children }: { children: React.ReactNode }) {
+  const [authConfig, setAuthConfig] = useState<OrgAuthConfig | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-const themeConfig = (
-  <OxygenUIThemeProvider
-    themes={[
-      {
-        key: 'acrylicOrange',
-        label: 'Acrylic Orange Theme',
-        theme: AcrylicOrangeTheme,
-      },
-      {
-        key: 'acrylicPurple',
-        label: 'Acrylic Purple Theme',
-        theme: AcrylicPurpleTheme,
-      },
-      {
-        key: 'highContrast',
-        label: 'High Contrast Theme',
-        theme: HighContrastTheme,
-      },
-      { key: 'classic', label: 'Classic Theme', theme: ClassicTheme },
-    ]}
-    initialTheme="acrylicOrange"
-  >
+  useEffect(() => {
+    fetchOrgAuthConfig(ORG_HANDLE)
+      .then(setAuthConfig)
+      .catch((err: unknown) =>
+        setError(err instanceof Error ? err.message : 'Failed to load auth configuration')
+      );
+  }, []);
+
+  if (error) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh' }}>
+        <p style={{ color: 'red' }}>Authentication configuration error: {error}</p>
+      </div>
+    );
+  }
+
+  if (!authConfig) {
+    return null;
+  }
+
+  return (
     <AuthProvider
-      authority={OIDC_AUTHORITY}
-      client_id={OIDC_CLIENT_ID}
+      authority={authConfig.issuer}
+      client_id={authConfig.client_id}
       redirect_uri={OIDC_REDIRECT_URI}
       post_logout_redirect_uri={OIDC_POST_LOGOUT_REDIRECT_URI}
       scope={OIDC_SCOPE}
       extraTokenParams={{ scope: OIDC_SCOPE }}
       loadUserInfo={true}
-      metadata={OIDC_END_SESSION_ENDPOINT ? { end_session_endpoint: OIDC_END_SESSION_ENDPOINT } : undefined}
+      metadata={authConfig.logout_url ? { end_session_endpoint: authConfig.logout_url } : undefined}
       onSigninCallback={() => {
         window.history.replaceState({}, document.title, window.location.pathname);
       }}
     >
       <OIDCAppAuthProvider>
         <IntlProvider locale="en" defaultLocale="en">
-          <App />
+          {children}
         </IntlProvider>
       </OIDCAppAuthProvider>
     </AuthProvider>
-  </OxygenUIThemeProvider>
-);
+  );
+}
+
+const container = document.getElementById('root')!;
+const root = createRoot(container);
 
 root.render(
   <React.StrictMode>
-    {themeConfig}
+    <OxygenUIThemeProvider
+      themes={[
+        {
+          key: 'acrylicOrange',
+          label: 'Acrylic Orange Theme',
+          theme: AcrylicOrangeTheme,
+        },
+        {
+          key: 'acrylicPurple',
+          label: 'Acrylic Purple Theme',
+          theme: AcrylicPurpleTheme,
+        },
+        {
+          key: 'highContrast',
+          label: 'High Contrast Theme',
+          theme: HighContrastTheme,
+        },
+        { key: 'classic', label: 'Classic Theme', theme: ClassicTheme },
+      ]}
+      initialTheme="acrylicOrange"
+    >
+      <OIDCBootstrap>
+        <App />
+      </OIDCBootstrap>
+    </OxygenUIThemeProvider>
   </React.StrictMode>
 );

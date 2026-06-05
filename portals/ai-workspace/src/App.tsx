@@ -73,19 +73,9 @@ import EditExternalServer from './pages/appShell/appShellPages/externalServers/E
 import { MCPServerValidationProvider } from './contexts/MCP';
 import { LLMProvidersProvider } from './contexts/llmProvider';
 import { ChoreoUserProvider, useChoreoUser } from './contexts/ChoreoUserContext';
-import { setStoredToken } from './clients/choreoApiClient';
-import { OIDC_ORG_CLAIM, OIDC_ORG_NAME_CLAIM, OIDC_ORG_HANDLE_CLAIM } from './config.env';
 import { useAppAuth } from './contexts/AppAuthContext';
+import { ORG_HANDLE } from './config.env';
 import React from 'react';
-
-function extractClaimFromJwt(token: string, claim: string): string | null {
-  try {
-    const payload = JSON.parse(atob(token.split('.')[1]));
-    return typeof payload[claim] === 'string' ? payload[claim] : null;
-  } catch {
-    return null;
-  }
-}
 
 /**
  * Only allow same-origin relative paths as return URLs to prevent open redirects.
@@ -146,59 +136,17 @@ function SigninCallbackRoute() {
   return null;
 }
 
-// Runs once after sign-in to fetch the access token and load organizations.
+// Runs once after sign-in to navigate to the org workspace.
+// Org data is loaded by AppShellContext; register-org redirect is handled there too.
 function PostSignInInit({ children }: { children: React.ReactNode }) {
-  const { accessToken } = useAppAuth();
-  const { getOrganizations, setOrganizations, setIsTokenExchanged, isTokenExchanged } = useChoreoUser();
+  const { isTokenExchanged, setIsTokenExchanged } = useChoreoUser();
   const navigate = useNavigate();
 
   React.useEffect(() => {
     if (isTokenExchanged) return;
-
-    const init = async () => {
-      try {
-        const token = accessToken;
-        if (token) {
-          setStoredToken(token);
-          const orgUuid = extractClaimFromJwt(token, OIDC_ORG_CLAIM);
-          if (orgUuid) {
-            sessionStorage.setItem('pending_org_uuid', orgUuid);
-          }
-          const orgName = extractClaimFromJwt(token, OIDC_ORG_NAME_CLAIM);
-          if (orgName) {
-            sessionStorage.setItem('pending_org_name', orgName);
-          } else {
-            sessionStorage.removeItem('pending_org_name');
-          }
-          const orgHandle = extractClaimFromJwt(token, OIDC_ORG_HANDLE_CLAIM);
-          if (orgHandle) {
-            sessionStorage.setItem('pending_org_handle', orgHandle);
-          } else {
-            sessionStorage.removeItem('pending_org_handle');
-          }
-        }
-        const orgs = await getOrganizations();
-        setOrganizations(orgs);
-        setIsTokenExchanged(true);
-
-        const orgUuid = sessionStorage.getItem('pending_org_uuid');
-        const matchedOrg = orgUuid
-          ? orgs.find((o) => o.id === orgUuid || o.uuid === orgUuid)
-          : orgs[0];
-
-        if (matchedOrg) {
-          navigate(`/organizations/${matchedOrg.handle}/home`, { replace: true });
-        } else {
-          navigate('/register-org', { replace: true });
-        }
-      } catch (err) {
-        console.error('Post sign-in init failed:', err);
-        navigate('/login', { replace: true });
-      }
-    };
-
-    init();
-  }, [isTokenExchanged]);
+    setIsTokenExchanged(true);
+    navigate(`/organizations/${ORG_HANDLE}/home`, { replace: true });
+  }, [isTokenExchanged, navigate]);
 
   return <>{children}</>;
 }
