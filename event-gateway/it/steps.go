@@ -462,7 +462,8 @@ func RegisterWebBrokerSteps(ctx *godog.ScenarioContext, state *TestState) {
 				header.Set(k, v)
 			}
 			conn, resp, err := websocket.DefaultDialer.Dial(wsURL, header)
-			if resp != nil && resp.Body != nil {
+			if resp != nil {
+				state.wsRejectionStatus = resp.StatusCode
 				_ = resp.Body.Close()
 			}
 			state.wsConn = conn
@@ -507,12 +508,15 @@ func RegisterWebBrokerSteps(ctx *godog.ScenarioContext, state *TestState) {
 		return nil
 	})
 
-	ctx.Step(`^the WebSocket connection should be rejected$`, func() error {
+	ctx.Step(`^the WebSocket connection should be rejected with HTTP status (\d+)$`, func(code int) error {
 		if state.wsConn != nil {
 			return fmt.Errorf("expected WebSocket connection to be rejected, but it succeeded")
 		}
 		if state.wsConnErr == nil {
 			return fmt.Errorf("expected WebSocket connection to fail, but no error was recorded")
+		}
+		if state.wsRejectionStatus != code {
+			return fmt.Errorf("expected rejection HTTP status %d, got %d", code, state.wsRejectionStatus)
 		}
 		return nil
 	})

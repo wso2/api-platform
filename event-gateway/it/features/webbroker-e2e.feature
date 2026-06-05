@@ -77,7 +77,7 @@ Feature: WebBroker End-to-End Flow
     And the WebBroker API at "/stock-trading-conn/v1.0" is reachable within 30 seconds
 
     When I connect to WebBroker API "/stock-trading-conn/v1.0" on channel "ghost"
-    Then the WebSocket connection should be rejected
+    Then the WebSocket connection should be rejected with HTTP status 404
 
     # Cleanup
     Given I authenticate using basic auth as "admin"
@@ -303,7 +303,7 @@ Feature: WebBroker End-to-End Flow
     # Connect without any Authorization header.
     Given I clear all authentication headers
     When I connect to WebBroker API "/stock-trading-auth-rej/v1.0" on channel "echo"
-    Then the WebSocket connection should be rejected
+    Then the WebSocket connection should be rejected with HTTP status 401
 
     # Cleanup
     Given I authenticate using basic auth as "admin"
