@@ -54,8 +54,10 @@ func NewAuthHandler(globalIDP config.IDP, multiOrgEnabled bool, registry middlew
 // OrgAuthConfigResponse is the JSON shape returned by GET /portal/api/v1/organizations/{orgHandle}/auth.
 type OrgAuthConfigResponse struct {
 	IDPType               string   `json:"idp_type,omitempty"`
+	Issuer                string   `json:"issuer"`
 	ClientID              string   `json:"client_id"`
 	AuthorizationEndpoint string   `json:"authorization_endpoint"`
+	TokenEndpoint         string   `json:"token_endpoint"`
 	LogoutURL             string   `json:"logout_url,omitempty"`
 	Scopes                []string `json:"scopes,omitempty"`
 	PKCERequired          bool     `json:"pkce_required"`
@@ -64,11 +66,13 @@ type OrgAuthConfigResponse struct {
 
 // oidcDiscoveryDoc holds the subset of fields we read from /.well-known/openid-configuration.
 type oidcDiscoveryDoc struct {
-	AuthorizationEndpoint        string   `json:"authorization_endpoint"`
-	EndSessionEndpoint           string   `json:"end_session_endpoint"`
-	ResponseTypesSupported       []string `json:"response_types_supported"`
+	Issuer                        string   `json:"issuer"`
+	AuthorizationEndpoint         string   `json:"authorization_endpoint"`
+	TokenEndpoint                 string   `json:"token_endpoint"`
+	EndSessionEndpoint            string   `json:"end_session_endpoint"`
+	ResponseTypesSupported        []string `json:"response_types_supported"`
 	CodeChallengeMethodsSupported []string `json:"code_challenge_methods_supported"`
-	ScopesSupported              []string `json:"scopes_supported"`
+	ScopesSupported               []string `json:"scopes_supported"`
 }
 
 // GetOrgAuthDiscovery handles GET /portal/api/v1/organizations/:orgHandle/auth.
@@ -113,8 +117,10 @@ func (h *AuthHandler) GetOrgAuthDiscovery(c *gin.Context) {
 	c.Header("Cache-Control", "public, max-age=300")
 	c.JSON(http.StatusOK, OrgAuthConfigResponse{
 		IDPType:               idpType,
+		Issuer:                discovery.Issuer,
 		ClientID:              clientID,
 		AuthorizationEndpoint: discovery.AuthorizationEndpoint,
+		TokenEndpoint:         discovery.TokenEndpoint,
 		LogoutURL:             discovery.EndSessionEndpoint,
 		Scopes:                filterUIScopes(discovery.ScopesSupported),
 		PKCERequired:          len(discovery.CodeChallengeMethodsSupported) > 0,
