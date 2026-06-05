@@ -24,8 +24,10 @@ import {
   Header,
   IconButton,
   Box,
+  Stack,
+  Typography,
 } from '@wso2/oxygen-ui';
-import { X } from '@wso2/oxygen-ui-icons-react';
+import { Building2, ChevronRight, X } from '@wso2/oxygen-ui-icons-react';
 import SearchableComplexSelect from '../../Components/common/SearchableComplexSelect';
 import Logo from '../../Components/Logo';
 import UserMenu from '../../Components/UserMenu';
@@ -143,59 +145,77 @@ export default function AppHeader(props: Props) {
       </Header.Brand>
 
       <Header.Switchers showDivider={false}>
-        {canShowProjectSwitcher ? (
-          <Box sx={{ position: 'relative', minWidth: 220 }}>
-            <SearchableComplexSelect
-              value={selectedProjectId}
-              selectedOption={currentProject}
-              options={projectOptions}
-              loading={isProjectsLoading}
-              disabled={isProjectsLoading || !currentOrganization?.id}
-              onChange={handleProjectSelection}
-              renderOptionContent={(project) => (
-                <ComplexSelect.MenuItem.Text primary={project.name} />
-              )}
-              label="Projects"
-              emptyMessage="No projects available"
-              error={projectsError}
-              errorMessage="Failed to load projects"
-              noResultsMessage="No matching projects"
-              searchPlaceholder="Search projects"
-              sx={{ minWidth: 220 }}
+        <Stack direction="row" alignItems="center" spacing={0.5}>
+          {currentOrganization && (
+            <>
+              <Stack direction="row" alignItems="center" spacing={0.75} sx={{ flexShrink: 0 }}>
+                <Building2 size={14} />
+                <Typography
+                  variant="body2"
+                  fontWeight={600}
+                  sx={{ color: 'text.primary', lineHeight: 1 }}
+                >
+                  {currentOrganization.name}
+                </Typography>
+              </Stack>
+              <ChevronRight size={14} style={{ opacity: 0.4, flexShrink: 0 }} />
+            </>
+          )}
+
+          {canShowProjectSwitcher ? (
+            <Box sx={{ position: 'relative', minWidth: 220 }}>
+              <SearchableComplexSelect
+                value={selectedProjectId}
+                selectedOption={currentProject}
+                options={projectOptions}
+                loading={isProjectsLoading}
+                disabled={isProjectsLoading || !currentOrganization?.id}
+                onChange={handleProjectSelection}
+                renderOptionContent={(project) => (
+                  <ComplexSelect.MenuItem.Text primary={project.name} />
+                )}
+                label="Projects"
+                emptyMessage="No projects available"
+                error={projectsError}
+                errorMessage="Failed to load projects"
+                noResultsMessage="No matching projects"
+                searchPlaceholder="Search projects"
+                sx={{ minWidth: 220 }}
+              />
+              <IconButton
+                size="small"
+                aria-label="Go to organization level"
+                onMouseDown={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                }}
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  clearProjectSelection();
+                }}
+                sx={{
+                  position: 'absolute',
+                  top: 6,
+                  right: 2,
+                  zIndex: 1,
+                  width: 20,
+                  height: 10,
+                }}
+              >
+                <X size={14} />
+              </IconButton>
+            </Box>
+          ) : (
+            <ProjectQuickSelector
+              disabled={isProjectPickerDisabled}
+              isProjectsLoading={isProjectsLoading}
+              projectsError={projectsError}
+              projectOptions={projectOptions}
+              onSelectProject={handleProjectSelection}
             />
-            <IconButton
-              size="small"
-              aria-label="Go to organization level"
-              onMouseDown={(event) => {
-                event.preventDefault();
-                event.stopPropagation();
-              }}
-              onClick={(event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                clearProjectSelection();
-              }}
-              sx={{
-                position: 'absolute',
-                top: 6,
-                right: 2,
-                zIndex: 1,
-                width: 20,
-                height: 10,
-              }}
-            >
-              <X size={14} />
-            </IconButton>
-          </Box>
-        ) : (
-          <ProjectQuickSelector
-            disabled={isProjectPickerDisabled}
-            isProjectsLoading={isProjectsLoading}
-            projectsError={projectsError}
-            projectOptions={projectOptions}
-            onSelectProject={handleProjectSelection}
-          />
-        )}
+          )}
+        </Stack>
       </Header.Switchers>
 
       <Header.Spacer />

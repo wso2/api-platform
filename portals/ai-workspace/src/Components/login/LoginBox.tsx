@@ -17,13 +17,19 @@
  */
 
 import { useState, type JSX } from 'react';
-import { Alert, Box, Button, Typography } from '@wso2/oxygen-ui';
-import { Lock } from '@wso2/oxygen-ui-icons-react';
+import { useNavigate } from 'react-router-dom';
+import { Alert, Box, Button, Link, Typography } from '@wso2/oxygen-ui';
+import { Building2, Lock } from '@wso2/oxygen-ui-icons-react';
 import { useAppAuth } from '../../contexts/AppAuthContext';
+
+const ORG_HANDLE_STORAGE_KEY = 'ai_workspace_org_handle';
 
 export default function LoginBox(): JSX.Element {
   const { login } = useAppAuth();
+  const navigate = useNavigate();
   const [signInError, setSignInError] = useState('');
+
+  const orgHandle = localStorage.getItem(ORG_HANDLE_STORAGE_KEY) ?? '';
 
   const handleSignIn = async () => {
     setSignInError('');
@@ -38,13 +44,49 @@ export default function LoginBox(): JSX.Element {
 
   return (
     <Box>
-      <Box sx={{ mb: 10 }}>
+      <Box sx={{ mb: 8 }}>
         <Typography variant="h3" gutterBottom>
           Sign in to AI Workspace
         </Typography>
-        <Typography color="text.secondary">
+        <Typography color="text.secondary" sx={{ mb: 3 }}>
           Sign in with your username and password to continue
         </Typography>
+
+        {orgHandle && (
+          <Box
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              px: 2,
+              py: 1.5,
+              borderRadius: 2,
+              border: '1px solid',
+              borderColor: 'divider',
+              bgcolor: 'action.hover',
+            }}
+          >
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
+              <Building2 size={16} />
+              <Box>
+                <Typography variant="caption" color="text.secondary" display="block" lineHeight={1.2}>
+                  Signing into
+                </Typography>
+                <Typography variant="body2" fontWeight={600}>
+                  {orgHandle}
+                </Typography>
+              </Box>
+            </Box>
+            <Link
+              component="button"
+              variant="body2"
+              onClick={() => navigate('/getting-started')}
+              sx={{ cursor: 'pointer', whiteSpace: 'nowrap' }}
+            >
+              Switch org
+            </Link>
+          </Box>
+        )}
       </Box>
 
       {signInError && (

@@ -17,13 +17,13 @@
  */
 
 import {
-  BrowserRouter,
   Routes,
   Route,
   Navigate,
   useLocation,
   useNavigate,
 } from 'react-router-dom';
+import { useAuth } from 'react-oidc-context';
 import Login from './pages/login/login';
 import AppShellMain from './pages/appShell/appShellMain';
 import { AppShellProvider } from './contexts/AppShellContext';
@@ -62,6 +62,7 @@ import EditServiceProvider from './pages/appShell/appShellPages/serviceProvider/
 
 import GatewaysLayout from './pages/appShell/appShellPages/gateways/GatewaysLayout.tsx';
 import OrgRegisterPage from './pages/register/OrgRegisterPage';
+import OrgSelectPage from './pages/select/OrgSelectPage';
 import Insights from './pages/appShell/appShellPages/insights/Main';
 import QuickStart from './pages/appShell/appShellPages/quickStart/Main';
 import Settings from './pages/appShell/appShellPages/settings/Main';
@@ -75,6 +76,14 @@ import { LLMProvidersProvider } from './contexts/llmProvider';
 import { ChoreoUserProvider, useChoreoUser } from './contexts/ChoreoUserContext';
 import { useAppAuth } from './contexts/AppAuthContext';
 import { ORG_HANDLE } from './config.env';
+import { Box, CircularProgress } from '@wso2/oxygen-ui';
+
+/** Must match the key used in main.tsx's OIDCBootstrap. */
+const ORG_HANDLE_STORAGE_KEY = 'ai_workspace_org_handle';
+
+function resolveOrgHandle(): string {
+  return ORG_HANDLE || localStorage.getItem(ORG_HANDLE_STORAGE_KEY) || '';
+}
 import React from 'react';
 
 /**
@@ -106,47 +115,64 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 
   if (!isAuthenticated) {
     const returnUrl = sanitizeReturnUrl(location.pathname + location.search);
-    if (returnUrl !== '/' && returnUrl !== '/login' && returnUrl !== '/signin') {
+    const skip = ['/', '/login', '/signin', '/getting-started'];
+    if (!skip.includes(returnUrl)) {
       sessionStorage.setItem('ai_workspace_return_url', returnUrl);
     }
-    return <Navigate to="/login" replace />;
+    return <Navigate to="/getting-started" replace />;
   }
 
   return <>{children}</>;
 }
 
-// AuthProvider processes the ?code param automatically. We wait for the exchange
-// to settle, then navigate forward on success or back to login on failure.
+// Super admin can only access /register-org. Redirect everything else there.
+function SuperAdminRoute({ children }: { children: React.ReactNode }) {
+  const { isSuperAdmin } = useAppAuth();
+  const location = useLocation();
+
+  if (isSuperAdmin && location.pathname !== '/register-org') {
+    return <Navigate to="/register-org" replace />;
+  }
+
+  return <>{children}</>;
+}
+
+// Shows a spinner while react-oidc-context automatically processes the ?code= param.
+// Navigation to the org home is handled by onSigninCallback in OIDCWrapper (main.tsx).
+// If the callback fails, auth.error is set and we redirect to /getting-started.
 function SigninCallbackRoute() {
-  const { isAuthenticated, isLoading } = useAppAuth();
+  const auth = useAuth();
   const navigate = useNavigate();
 
   React.useEffect(() => {
-    if (isLoading) return;
-    if (isAuthenticated) {
-      const returnUrl = sanitizeReturnUrl(sessionStorage.getItem('ai_workspace_return_url') || '/');
-      sessionStorage.removeItem('ai_workspace_return_url');
-      navigate(returnUrl, { replace: true });
-    } else {
-      // Token exchange failed or user is not authenticated — go back to login.
-      navigate('/login', { replace: true });
+    if (auth.error) {
+      navigate('/getting-started', { replace: true });
     }
-  }, [isAuthenticated, isLoading, navigate]);
+  }, [auth.error, navigate]);
 
-  return null;
+  return (
+    <Box sx={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <CircularProgress />
+    </Box>
+  );
 }
 
-// Runs once after sign-in to navigate to the org workspace.
-// Org data is loaded by AppShellContext; register-org redirect is handled there too.
+// Redirects to the org home when an authenticated user lands on a non-org path
+// (e.g. navigating directly to '/').
 function PostSignInInit({ children }: { children: React.ReactNode }) {
   const { isTokenExchanged, setIsTokenExchanged } = useChoreoUser();
   const navigate = useNavigate();
+  const location = useLocation();
 
   React.useEffect(() => {
     if (isTokenExchanged) return;
     setIsTokenExchanged(true);
-    navigate(`/organizations/${ORG_HANDLE}/home`, { replace: true });
-  }, [isTokenExchanged, navigate]);
+    // Only redirect if we're at a root-level path with no org context yet.
+    if (!location.pathname.startsWith('/organizations')) {
+      const handle = resolveOrgHandle();
+      if (handle) navigate(`/organizations/${handle}/home`, { replace: true });
+    }
+  }, [isTokenExchanged, navigate, location.pathname]);
 
   return <>{children}</>;
 }
@@ -187,13 +213,16 @@ function WithPageBoundary({ children }: { children: React.ReactNode }) {
 
 export default function App() {
   return (
-    <BrowserRouter>
-      <ChoreoUserProvider>
+    <ChoreoUserProvider>
       <Routes>
-        {/* OAuth callback — Thunder redirects here, Callback forwards code back to origin */}
+        {/* OAuth callback */}
         <Route path="/signin" element={<SigninCallbackRoute />} />
 
-        {/* Login page — public, but redirect away when already authenticated */}
+        {/* Getting started — handled by AppRoot before App renders, but
+            catch it here in case somehow reached inside App */}
+        <Route path="/getting-started" element={<Navigate to="/" replace />} />
+
+        {/* Login page — kept for backward compatibility */}
         <Route path="/login" element={<PublicOnlyRoute><Login /></PublicOnlyRoute>} />
 
         {/* Organization registration — requires auth, shown only when no org exists */}
@@ -203,12 +232,21 @@ export default function App() {
           </ProtectedRoute>
         } />
 
+        {/* Organization selection — requires auth, lets user navigate to any org by handle */}
+        <Route path="/select-org" element={
+          <ProtectedRoute>
+            <OrgSelectPage />
+          </ProtectedRoute>
+        } />
+
         {/* Protected Routes */}
         <Route
           path="/"
           element={
             <ProtectedRoute>
-              <ProtectedAppShell />
+              <SuperAdminRoute>
+                <ProtectedAppShell />
+              </SuperAdminRoute>
             </ProtectedRoute>
           }
         >
@@ -671,7 +709,6 @@ export default function App() {
 
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
-      </ChoreoUserProvider>
-    </BrowserRouter>
+    </ChoreoUserProvider>
   );
 }

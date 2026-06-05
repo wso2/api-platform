@@ -30,7 +30,6 @@ import {
   DialogContent,
   DialogContentText,
   DialogTitle,
-  Form,
   FormControlLabel,
   Grid,
   IconButton,
@@ -544,7 +543,7 @@ export default function ServiceProviders() {
 
               return (
                 <Grid key={providerId} size={{ xs: 12, md: 4, lg: 3 }}>
-                  <Form.CardButton
+                  <Card
                     data-cyid={`provider-card-${providerId}`}
                     sx={{
                       height: '100%',
@@ -552,7 +551,14 @@ export default function ServiceProviders() {
                       cursor: 'pointer',
                       transition: 'box-shadow 0.2s ease',
                       '&.MuiCard-root:hover': { boxShadow: 3 },
+                      '&:focus-visible': {
+                        outline: '2px solid',
+                        outlineColor: 'primary.main',
+                        outlineOffset: '2px',
+                      },
                     }}
+                    tabIndex={0}
+                    role="button"
                     onClick={() =>
                       navigate(
                         isProjectLevel
@@ -567,6 +573,23 @@ export default function ServiceProviders() {
                             )
                       )
                     }
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        navigate(
+                          isProjectLevel
+                            ? buildProjectPath(
+                                currentOrganization,
+                                currentProject,
+                                `/service-provider/${providerId}`
+                              )
+                            : buildOrgPath(
+                                currentOrganization,
+                                `/service-provider/${providerId}`
+                              )
+                        );
+                      }
+                    }}
                   >
                     <Box
                       sx={{
@@ -744,7 +767,7 @@ export default function ServiceProviders() {
                         </Stack>
                       </Box>
                     </Box>
-                  </Form.CardButton>
+                  </Card>
                 </Grid>
               );
             })}

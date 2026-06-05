@@ -22,6 +22,7 @@ import {
   Avatar,
   Box,
   Button,
+  Card,
   Dialog,
   DialogActions,
   DialogContent,
@@ -236,7 +237,7 @@ function ProjectListViewInner() {
             ) : (
               pagedProjects.map((project) => (
                 <Box key={project.id}>
-                  <Form.CardButton
+                  <Card
                     sx={{
                       height: '100%',
                       width: '100%',
@@ -247,12 +248,28 @@ function ProjectListViewInner() {
                         boxShadow: 4,
                         transform: 'translateY(-2px)',
                       },
+                      '&:focus-visible': {
+                        outline: '2px solid',
+                        outlineColor: 'primary.main',
+                        outlineOffset: '2px',
+                      },
                     }}
+                    tabIndex={0}
+                    role="button"
                     onClick={() => {
                       setCurrentProject(project);
                       navigate(
                         buildProjectPath(currentOrganization, project, '/home')
                       );
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        setCurrentProject(project);
+                        navigate(
+                          buildProjectPath(currentOrganization, project, '/home')
+                        );
+                      }
                     }}
                   >
                     <Form.CardContent
@@ -346,7 +363,7 @@ function ProjectListViewInner() {
                         </Stack>
                       </Stack>
                     </Form.CardContent>
-                  </Form.CardButton>
+                  </Card>
                 </Box>
               ))
             )}

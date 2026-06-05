@@ -18,11 +18,19 @@
 
 import { PLATFORM_API_BASE_URL } from '../config.env';
 
+export class IDPNotConfiguredError extends Error {
+  constructor(message = 'IDP not configured for this organization') {
+    super(message);
+    this.name = 'IDPNotConfiguredError';
+  }
+}
+
 export interface OrgAuthConfig {
   idp_type?: string;
   issuer: string;
   client_id: string;
   authorization_endpoint: string;
+  token_endpoint: string;
   logout_url?: string;
   scopes?: string[];
   pkce_required: boolean;
@@ -39,6 +47,9 @@ export async function fetchOrgAuthConfig(orgHandle: string): Promise<OrgAuthConf
   );
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
+    if (res.status === 400) {
+      throw new IDPNotConfiguredError((body as any)?.message);
+    }
     throw new Error(
       (body as any)?.message ?? `Failed to fetch auth config: HTTP ${res.status}`
     );
