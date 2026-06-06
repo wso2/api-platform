@@ -305,20 +305,20 @@ RBAC enforces per-route permission checks on all authenticated requests. Three b
 | `developer` | CRUD and deploy on APIs, projects, applications, and AI/integration resources; no gateway admin or subscription plan management |
 | `viewer` | Read-only access to all resources |
 
-#### Enabling and disabling RBAC
+#### Enabling and disabling scope validation
 
 | Variable | Default | Description |
 |---|---|---|
-| `RBAC_ENABLED` | `true` | Set to `false` to disable all permission checks (all authenticated requests are allowed) |
+| `ENABLE_SCOPE_VALIDATION` | `true` | Set to `false` to disable all permission checks (all authenticated requests are allowed) |
 
-**Disable RBAC** (e.g. for initial deployment or local development without roles configured):
+**Disable scope validation** (e.g. for initial deployment or local development without roles configured):
 ```bash
-export RBAC_ENABLED=false
+export ENABLE_SCOPE_VALIDATION=false
 ```
 
-**Enable RBAC** (default — no action needed):
+**Enable scope validation** (default — no action needed):
 ```bash
-export RBAC_ENABLED=true
+export ENABLE_SCOPE_VALIDATION=true
 ```
 
 > **Note:** In simple JWT mode and Thunder IDP mode, role resolution uses the `scope` claim from the JWT directly. In external IDP mode, roles are resolved from `EXTERNAL_IDP_ROLES_CLAIM_PATH` and mapped to platform roles via `EXTERNAL_IDP_ROLE_MAPPINGS`.
