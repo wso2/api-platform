@@ -44,6 +44,8 @@ policies:
     gomodule: github.com/wso2/gateway-controllers/policies/mcp-auth@v1
   - name: mcp-authz
     gomodule: github.com/wso2/gateway-controllers/policies/mcp-authz@v1
+  - name: mcp-ratelimit
+    gomodule: github.com/wso2/gateway-controllers/policies/mcp-ratelimit@v1
   - name: mcp-rewrite
     gomodule: github.com/wso2/gateway-controllers/policies/mcp-rewrite@v1
   - name: model-round-robin
