@@ -439,6 +439,140 @@ Feature: Test how MCP Proxies behave when various policies are applied.
         When I delete the MCP proxy "mcp-rewrite-test"
         Then the response should be successful
 
+    Scenario: Deploy an MCP Proxy with mcp-ratelimit policy and verify a specific tool is rate limited
+        Given I authenticate using basic auth as "admin"
+        When I deploy this MCP configuration:
+            """
+            apiVersion: gateway.api-platform.wso2.com/v1alpha1
+            kind: Mcp
+            metadata:
+              name: mcp-ratelimit-tool-test
+            spec:
+              displayName: MCP Rate Limit Tool Test
+              version: v1.0
+              context: /mcpratelimittool
+              specVersion: "2025-06-18"
+              upstream:
+                url: http://mcp-server-backend:3001
+              policies:
+                - name: mcp-ratelimit
+                  version: v1
+                  params:
+                    tools:
+                      - name: add
+                        limits:
+                          - limit: 2
+                            duration: "1m"
+            """
+
+        Then the response should be successful
+        And the response should be valid JSON
+        And the JSON response field "status" should be "success"
+        And I wait for 2 seconds
+
+        When I use the MCP Client to send an initialize request to "http://127.0.0.1:8080/mcpratelimittool/mcp"
+        Then the response should be successful
+
+        # First two "add" calls are within the limit and carry rate-limit headers
+        When I use the MCP Client to send "add" tools/call request to "http://127.0.0.1:8080/mcpratelimittool/mcp"
+        Then the response should be successful
+        And the JSON response field "result.content[0].text" should contain "The sum of 40 and 60 is 100."
+        And the response header "X-RateLimit-Limit" should be "2"
+        And the response header "X-RateLimit-Remaining" should be "1"
+        And the response header "RateLimit-Policy" should exist
+        And the response header "Retry-After" should not exist
+
+        When I use the MCP Client to send "add" tools/call request to "http://127.0.0.1:8080/mcpratelimittool/mcp"
+        Then the response should be successful
+        And the JSON response field "result.content[0].text" should contain "The sum of 40 and 60 is 100."
+
+        # Third "add" call exceeds the limit and is throttled
+        When I use the MCP Client to send "add" tools/call request to "http://127.0.0.1:8080/mcpratelimittool/mcp"
+        Then the response status code should be 429
+        And the response should be valid JSON
+        And the JSON response field "error.code" should be "-32000"
+        And the response header "X-RateLimit-Limit" should be "2"
+        And the response header "X-RateLimit-Remaining" should be "0"
+        And the response header "Retry-After" should exist
+
+        # A different tool ("echo") has its own counter and is not affected
+        When I use the MCP Client to send "echo" tools/call request to "http://127.0.0.1:8080/mcpratelimittool/mcp"
+        Then the response should be successful
+        And the JSON response field "result.content[0].text" should contain "Hello, World!"
+
+        # Cleanup
+        And I clear all headers
+        Given I authenticate using basic auth as "admin"
+        When I delete the MCP proxy "mcp-ratelimit-tool-test"
+        Then the response should be successful
+
+    Scenario: Deploy an MCP Proxy with mcp-ratelimit policy and verify a JSON-RPC method (tools/list) is rate limited
+        Given I authenticate using basic auth as "admin"
+        When I deploy this MCP configuration:
+            """
+            apiVersion: gateway.api-platform.wso2.com/v1alpha1
+            kind: Mcp
+            metadata:
+              name: mcp-ratelimit-method-test
+            spec:
+              displayName: MCP Rate Limit Method Test
+              version: v1.0
+              context: /mcpratelimitmethod
+              specVersion: "2025-06-18"
+              upstream:
+                url: http://mcp-server-backend:3001
+              policies:
+                - name: mcp-ratelimit
+                  version: v1
+                  params:
+                    methods:
+                      - name: tools/list
+                        limits:
+                          - limit: 2
+                            duration: "1m"
+            """
+
+        Then the response should be successful
+        And the response should be valid JSON
+        And the JSON response field "status" should be "success"
+        And I wait for 2 seconds
+
+        When I use the MCP Client to send an initialize request to "http://127.0.0.1:8080/mcpratelimitmethod/mcp"
+        Then the response should be successful
+
+        # First two tools/list calls are within the limit and carry rate-limit headers
+        When I use the MCP Client to send a tools/list request to "http://127.0.0.1:8080/mcpratelimitmethod/mcp"
+        Then the response should be successful
+        And the JSON response should have field "result"
+        And the response header "X-RateLimit-Limit" should be "2"
+        And the response header "X-RateLimit-Remaining" should be "1"
+        And the response header "RateLimit-Policy" should exist
+        And the response header "Retry-After" should not exist
+
+        When I use the MCP Client to send a tools/list request to "http://127.0.0.1:8080/mcpratelimitmethod/mcp"
+        Then the response should be successful
+        And the JSON response should have field "result"
+
+        # Third tools/list call exceeds the limit and is throttled
+        When I use the MCP Client to send a tools/list request to "http://127.0.0.1:8080/mcpratelimitmethod/mcp"
+        Then the response status code should be 429
+        And the response should be valid JSON
+        And the JSON response field "error.code" should be "-32000"
+        And the response header "X-RateLimit-Limit" should be "2"
+        And the response header "X-RateLimit-Remaining" should be "0"
+        And the response header "Retry-After" should exist
+
+        # A different method (tools/call) is not affected by the tools/list limit
+        When I use the MCP Client to send "add" tools/call request to "http://127.0.0.1:8080/mcpratelimitmethod/mcp"
+        Then the response should be successful
+        And the JSON response field "result.content[0].text" should contain "The sum of 40 and 60 is 100."
+
+        # Cleanup
+        And I clear all headers
+        Given I authenticate using basic auth as "admin"
+        When I delete the MCP proxy "mcp-ratelimit-method-test"
+        Then the response should be successful
+
     Scenario: Deploy an MCP Proxy with cors policy and verify preflight and simple request behaviour
         Given I authenticate using basic auth as "admin"
         When I deploy this MCP configuration:
