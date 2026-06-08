@@ -1217,6 +1217,187 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+  /websub-apis/{id}/secrets:
+    post:
+      summary: Generate a new HMAC secret for a WebSub API
+      description: |
+        Generates a cryptographically secure HMAC shared secret (format: `whsec_` + 64 hex chars)
+        for the given WebSub API. The plaintext value is returned **once** in the response and
+        never stored in plaintext. Use the secret as the `secret` parameter value in the
+        `websub-hmac-auth` policy to validate incoming webhook event signatures.
+      operationId: createWebSubAPISecret
+      x-basicauth-roles: [admin, developer]
+      tags:
+        - WebSub API Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique public identifier of the WebSub API
+          schema:
+            type: string
+          example: weather-websub-api
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WebhookSecretCreationRequest"
+          application/yaml:
+            schema:
+              $ref: "#/components/schemas/WebhookSecretCreationRequest"
+      responses:
+        '201':
+          description: Secret generated successfully. The `secret` field will not appear in any future list or get response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookSecretCreationResponse"
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: WebSub API not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: A secret with the same name already exists for this API
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    get:
+      summary: List HMAC secrets for a WebSub API
+      description: Returns metadata for all active HMAC secrets. Plaintext values are never included.
+      operationId: listWebSubAPISecrets
+      x-basicauth-roles: [admin, developer]
+      tags:
+        - WebSub API Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique public identifier of the WebSub API
+          schema:
+            type: string
+          example: weather-websub-api
+      responses:
+        '200':
+          description: List of secrets (no plaintext)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookSecretListResponse"
+        '404':
+          description: WebSub API not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /websub-apis/{id}/secrets/{secretName}/regenerate:
+    post:
+      summary: Regenerate (rotate) a WebSub API HMAC secret
+      description: |
+        Replaces the secret value with a newly generated one. The old secret stops
+        validating signatures immediately. The new plaintext is returned once and
+        never stored unencrypted.
+      operationId: regenerateWebSubAPISecret
+      x-basicauth-roles: [admin, developer]
+      tags:
+        - WebSub API Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique public identifier of the WebSub API
+          schema:
+            type: string
+          example: weather-websub-api
+        - name: secretName
+          in: path
+          required: true
+          description: Name of the secret to regenerate
+          schema:
+            type: string
+          example: github-webhook
+      responses:
+        '200':
+          description: Secret rotated successfully. The new `secret` value will not appear again.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookSecretCreationResponse"
+        '404':
+          description: WebSub API or secret not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /websub-apis/{id}/secrets/{secretName}:
+    delete:
+      summary: Delete a WebSub API HMAC secret
+      description: Permanently removes the secret. Existing webhook deliveries that used this secret will immediately fail signature validation.
+      operationId: deleteWebSubAPISecret
+      x-basicauth-roles: [admin, developer]
+      tags:
+        - WebSub API Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique public identifier of the WebSub API
+          schema:
+            type: string
+          example: weather-websub-api
+        - name: secretName
+          in: path
+          required: true
+          description: Name of the secret to delete
+          schema:
+            type: string
+          example: github-webhook
+      responses:
+        '204':
+          description: Secret deleted successfully
+        '404':
+          description: WebSub API or secret not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
   /websub-apis/{id}:
     get:
       summary: Get WebSubAPI by id
@@ -6092,6 +6273,80 @@ components:
         status:
           type: string
           example: success
+
+    WebhookSecretCreationRequest:
+      type: object
+      required:
+        - displayName
+      properties:
+        displayName:
+          type: string
+          description: Human-readable label for this secret (used to derive the immutable name slug).
+          minLength: 1
+          maxLength: 100
+          example: GitHub Webhook
+
+    WebhookSecretInfo:
+      type: object
+      description: Metadata for an HMAC secret. The plaintext value is never included.
+      properties:
+        name:
+          type: string
+          description: URL-safe slug (immutable, used as path parameter for regenerate/delete).
+          example: github-webhook
+        displayName:
+          type: string
+          description: Human-readable label.
+          example: GitHub Webhook
+        status:
+          type: string
+          enum: [active, revoked]
+          example: active
+        createdAt:
+          type: string
+          format: date-time
+          example: "2026-06-01T10:00:00Z"
+        updatedAt:
+          type: string
+          format: date-time
+          example: "2026-06-01T10:00:00Z"
+
+    WebhookSecretCreationResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: success
+        message:
+          type: string
+          example: Webhook secret generated successfully
+        secret:
+          type: string
+          description: |
+            The generated plaintext secret value (whsec_ prefix + 64 hex chars).
+            Returned exactly once — store it immediately as it will not be retrievable again.
+          example: "whsec_1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b"
+        webhookSecret:
+          $ref: '#/components/schemas/WebhookSecretInfo'
+      required:
+        - status
+        - message
+        - secret
+
+    WebhookSecretListResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: success
+        totalCount:
+          type: integer
+          description: Total number of active secrets for this API
+          example: 2
+        secrets:
+          type: array
+          items:
+            $ref: '#/components/schemas/WebhookSecretInfo'
 
     SecretListResponse:
       type: object

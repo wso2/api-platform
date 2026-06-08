@@ -44,6 +44,8 @@ const (
 	EventTypeLLMTemplate EventType = "LLM_TEMPLATE"
 	// EventTypeMCPProxy represents an MCP proxy change event
 	EventTypeMCPProxy EventType = "MCP_PROXY"
+	// EventTypeWebhookSecret represents a webhook HMAC secret lifecycle event
+	EventTypeWebhookSecret EventType = "WEBHOOK_SECRET"
 
 	// EmptyEventData is the canonical JSON payload for events that do not
 	// require additional data beyond the top-level event fields.

@@ -25,12 +25,15 @@ import (
 	"strings"
 
 	"github.com/wso2/api-platform/common/eventhub"
+	"github.com/wso2/api-platform/common/webhooksecret"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/encryption"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/lazyresourcexds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/templateengine/funcs"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/webhooksecretxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
 )
 
@@ -61,7 +64,10 @@ type EventListener struct {
 	logger              *slog.Logger
 	systemConfig        *config.Config
 	policyDefinitions   map[string]models.PolicyDefinition
-	secretResolver      funcs.SecretResolver
+	secretResolver              funcs.SecretResolver
+	webhookSecretStore          *webhooksecret.WebhookSecretStore
+	webhookSecretSnapshotManager *webhooksecretxds.SnapshotManager
+	providerManager             *encryption.ProviderManager
 
 	eventCh <-chan eventhub.Event
 	ctx     context.Context
@@ -83,6 +89,9 @@ func NewEventListener(
 	systemConfig *config.Config,
 	policyDefinitions map[string]models.PolicyDefinition,
 	secretResolver funcs.SecretResolver,
+	webhookSecretStore *webhooksecret.WebhookSecretStore,
+	webhookSecretSnapshotManager *webhooksecretxds.SnapshotManager,
+	providerManager *encryption.ProviderManager,
 ) *EventListener {
 	if eventHub == nil {
 		panic("event listener requires non-nil EventHub")
@@ -115,7 +124,10 @@ func NewEventListener(
 		logger:              logger,
 		systemConfig:        systemConfig,
 		policyDefinitions:   policyDefinitions,
-		secretResolver:      secretResolver,
+		secretResolver:               secretResolver,
+		webhookSecretStore:           webhookSecretStore,
+		webhookSecretSnapshotManager: webhookSecretSnapshotManager,
+		providerManager:              providerManager,
 		ctx:                 ctx,
 		cancel:              cancel,
 	}
@@ -218,6 +230,8 @@ func (l *EventListener) handleEvent(event eventhub.Event) {
 		l.processLLMTemplateEvent(event)
 	case eventhub.EventTypeMCPProxy:
 		l.processMCPProxyEvent(event)
+	case eventhub.EventTypeWebhookSecret:
+		l.processWebhookSecretEvent(event)
 	default:
 		l.logger.Warn("Unknown event type received",
 			slog.String("event_type", string(event.EventType)),
