@@ -65,7 +65,7 @@ const getOrgContent = async (req, res) => {
             return res.status(400).json(util.getErrors(errors));
         }
         if (req.query.fileType && req.query.fileName) {
-            const asset = await adminService.getOrgContent(req.params.orgId, req.params.name, req.query.fileType, req.query.fileName, req.query.filePath);
+            const asset = await adminService.getOrgContent(req.params.orgId, req.params.viewName, req.query.fileType, req.query.fileName, req.query.filePath);
             if (asset) {
                 const contentType = asset ? retrieveContentType(asset.FILE_NAME, asset.FILE_TYPE) : "";
                 res.set(constants.MIME_TYPES.CONYEMT_TYPE, contentType);
@@ -74,7 +74,7 @@ const getOrgContent = async (req, res) => {
                 return res.status(404).send('Not Found');
             }
         } else if (req.params.fileType) {
-            const assets = await adminService.getOrgContent(req.params.orgId, req.params.name, req.params.fileType);
+            const assets = await adminService.getOrgContent(req.params.orgId, req.params.viewName, req.params.fileType);
             const results = [];
             for (const asset of assets) {
                 const resp = {
@@ -93,7 +93,7 @@ const getOrgContent = async (req, res) => {
             error: error.message,
             stack: error.stack,
             orgId: req.params.orgId,
-            viewName: req.params.name
+            viewName: req.params.viewName
         });
         res.status(404).send(error.message);
     }

@@ -114,6 +114,17 @@ app.use(auditMiddleware({
 app.use(passport.initialize());
 app.use(passport.session());
 
+// Expose the per-session CSRF token as a browser-readable cookie (double-submit
+// pattern). Mutating fetches echo it back as X-CSRF-Token; the value matches
+// what requireCsrfForMutatingApi expects (getSessionCsrfToken).
+const { getSessionCsrfToken } = require('./middlewares/csrfProtection');
+app.use((req, res, next) => {
+    if (req.session) {
+        res.cookie('XSRF-TOKEN', getSessionCsrfToken(req), { sameSite: 'lax', path: '/' });
+    }
+    next();
+});
+
 
 configurePassport(SERVER_ID);
 

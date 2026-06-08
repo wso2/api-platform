@@ -36,7 +36,7 @@ async function executeDeleteSubscription() {
     try {
         const response = await fetch(
             devportalApi.org(pendingDeleteOrgID, `/subscriptions/${encodeURIComponent(pendingDeleteSubID)}`),
-            { method: 'DELETE', headers: { 'Content-Type': 'application/json' } }
+            { method: 'DELETE', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() } }
         );
 
         if (response.ok) {
@@ -78,7 +78,7 @@ async function toggleSubscriptionStatus(orgID, subscriptionId, newStatus) {
             devportalApi.org(orgID, `/subscriptions/${encodeURIComponent(subscriptionId)}`),
             {
                 method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() },
                 body: JSON.stringify({ status: newStatus }),
             }
         );
@@ -128,7 +128,7 @@ async function toggleListTokenVisibility(subscriptionId) {
         try {
             const response = await fetch(
                 devportalApi.org(orgID, `/subscriptions/${encodeURIComponent(subscriptionId)}`),
-                { headers: { 'Content-Type': 'application/json' } }
+                { headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() } }
             );
             if (!response.ok) return;
             const data = await response.json();

@@ -14,6 +14,12 @@
         root: function (path) {
             return path || '/';
         },
+        // Per-session CSRF token from the XSRF-TOKEN cookie, to send as
+        // X-CSRF-Token on mutating requests (see csrfProtection middleware).
+        csrfToken: function () {
+            var m = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]+)/);
+            return m ? decodeURIComponent(m[1]) : '';
+        },
     };
 })();
 

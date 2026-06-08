@@ -64,11 +64,11 @@ router.delete(`${ORG}/key-managers/:kmId`, enforceSecuirty(constants.SCOPES.ADMI
 router.get(`${ORG}/key-managers/discover`, enforceSecuirty(constants.SCOPES.DEVELOPER), keyManagerService.getAvailableKeyManagers);
 
 const upload = multer({ dest: os.tmpdir() });
-router.post(`${ORG}/views/:name/layout`, enforceSecuirty(constants.SCOPES.ADMIN), upload.single('file'), adminService.createOrgContent);
-router.put(`${ORG}/views/:name/layout`, enforceSecuirty(constants.SCOPES.ADMIN), upload.single('file'), adminService.updateOrgContent);
-router.get(`${ORG}/views/:name/layout`, devportalService.getOrgContent);
-router.get(`${ORG}/views/:name/layout/:fileType`, devportalService.getOrgContent);
-router.delete(`${ORG}/views/:name/layout`, enforceSecuirty(constants.SCOPES.ADMIN), adminService.deleteOrgContent);
+router.post(`${ORG}/views/:viewName/layout`, enforceSecuirty(constants.SCOPES.ADMIN), upload.single('file'), adminService.createOrgContent);
+router.put(`${ORG}/views/:viewName/layout`, enforceSecuirty(constants.SCOPES.ADMIN), upload.single('file'), adminService.updateOrgContent);
+router.get(`${ORG}/views/:viewName/layout`, devportalService.getOrgContent);
+router.get(`${ORG}/views/:viewName/layout/:fileType`, devportalService.getOrgContent);
+router.delete(`${ORG}/views/:viewName/layout`, enforceSecuirty(constants.SCOPES.ADMIN), adminService.deleteOrgContent);
 
 router.post(`${ORG}/provider`, enforceSecuirty(constants.SCOPES.ADMIN), adminService.createProvider);
 router.put(`${ORG}/provider`, enforceSecuirty(constants.SCOPES.ADMIN), adminService.updateProvider);
@@ -100,9 +100,10 @@ router.put(
 router.delete(`${ORG}/apis/:apiId`, enforceSecuirty(constants.SCOPES.DEVELOPER), apiMetadataService.deleteAPIMetadata);
 
 router.post(`${ORG}/subscription-policies`, enforceSecuirty(constants.SCOPES.DEVELOPER), multipartHandler.fields([{ name: 'subscriptionPolicy', maxCount: 1 }]), apiMetadataService.addSubscriptionPolicies);
-router.get(`${ORG}/subscription-policies/:policyID`, enforceSecuirty(constants.SCOPES.DEVELOPER), apiMetadataService.getSubscriptionPolicy);
+router.get(`${ORG}/subscription-policies`, enforceSecuirty(constants.SCOPES.DEVELOPER), apiMetadataService.listSubscriptionPolicies);
+router.get(`${ORG}/subscription-policies/:policyId`, enforceSecuirty(constants.SCOPES.DEVELOPER), apiMetadataService.getSubscriptionPolicy);
 router.put(`${ORG}/subscription-policies`, enforceSecuirty(constants.SCOPES.DEVELOPER), multipartHandler.fields([{ name: 'subscriptionPolicy', maxCount: 1 }]), apiMetadataService.putSubscriptionPolicies);
-router.delete(`${ORG}/subscription-policies/:policyName`, enforceSecuirty(constants.SCOPES.DEVELOPER), apiMetadataService.deleteSubscriptionPolicy);
+router.delete(`${ORG}/subscription-policies/:policyId`, enforceSecuirty(constants.SCOPES.DEVELOPER), apiMetadataService.deleteSubscriptionPolicy);
 
 const apiZip = multer({ dest: '/tmp' });
 // New /content routes (ZIP structure: web/ + docs/)
@@ -151,11 +152,11 @@ router.post(`${ORG}/subscriptions`,
     enforceSecuirty(constants.SCOPES.DEVELOPER), subscriptionService.createSubscription);
 router.get(`${ORG}/subscriptions`,
     enforceSecuirty(constants.SCOPES.DEVELOPER), subscriptionService.listSubscriptions);
-router.get(`${ORG}/subscriptions/:subscriptionId`,
+router.get(`${ORG}/subscriptions/:subId`,
     enforceSecuirty(constants.SCOPES.DEVELOPER), subscriptionService.getSubscription);
-router.put(`${ORG}/subscriptions/:subscriptionId`,
+router.put(`${ORG}/subscriptions/:subId`,
     enforceSecuirty(constants.SCOPES.DEVELOPER), subscriptionService.updateSubscription);
-router.delete(`${ORG}/subscriptions/:subscriptionId`,
+router.delete(`${ORG}/subscriptions/:subId`,
     enforceSecuirty(constants.SCOPES.DEVELOPER), subscriptionService.deleteSubscription);
 
 // API keys — devportal is source of truth; gateway notified via webhook event
@@ -170,10 +171,10 @@ router.post(`${ORG}/api-keys/:apiKeyId/revoke`,
 
 
 router.post(`${ORG}/views`, enforceSecuirty(constants.SCOPES.ADMIN), apiMetadataService.addView);
-router.put(`${ORG}/views/:name`, enforceSecuirty(constants.SCOPES.ADMIN), apiMetadataService.updateView);
-router.get(`${ORG}/views/:name`, enforceSecuirty(constants.SCOPES.ADMIN), apiMetadataService.getView);
+router.put(`${ORG}/views/:viewName`, enforceSecuirty(constants.SCOPES.ADMIN), apiMetadataService.updateView);
+router.get(`${ORG}/views/:viewName`, enforceSecuirty(constants.SCOPES.ADMIN), apiMetadataService.getView);
 router.get(`${ORG}/views`, enforceSecuirty(constants.SCOPES.ADMIN), apiMetadataService.getAllViews);
-router.delete(`${ORG}/views/:name`, enforceSecuirty(constants.SCOPES.ADMIN), apiMetadataService.deleteView);
+router.delete(`${ORG}/views/:viewName`, enforceSecuirty(constants.SCOPES.ADMIN), apiMetadataService.deleteView);
 
 router.post('/applications', enforceSecuirty(constants.SCOPES.DEVELOPER),
     multipartHandler.fields([{name: 'application', maxCount: 1}]),

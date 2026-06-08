@@ -161,7 +161,7 @@ const listSubscriptions = async (req, res) => {
 
 const getSubscription = async (req, res) => {
     const orgID = req.params.orgId;
-    const subscriptionId = req.params.subscriptionId;
+    const subscriptionId = req.params.subId;
 
     try {
         const sub = await subDao.getSubscription(orgID, subscriptionId);
@@ -181,7 +181,7 @@ const getSubscription = async (req, res) => {
 
 const updateSubscription = async (req, res) => {
     const orgID = req.params.orgId;
-    const subscriptionId = req.params.subscriptionId;
+    const subscriptionId = req.params.subId;
     const { status } = req.body;
 
     if (!status || !['ACTIVE', 'INACTIVE'].includes(status)) {
@@ -212,7 +212,7 @@ const updateSubscription = async (req, res) => {
 
 const deleteSubscription = async (req, res) => {
     const orgID = req.params.orgId;
-    const subscriptionId = req.params.subscriptionId;
+    const subscriptionId = req.params.subId;
 
     try {
         const existing = await subDao.getSubscription(orgID, subscriptionId);

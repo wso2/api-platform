@@ -544,7 +544,7 @@ const deleteIdentityProvider = async (req, res) => {
 
 const createOrgContent = async (req, res) => {
     const orgId = req.params.orgId;
-    const viewName = req.params.name;
+    const viewName = req.params.viewName;
     const zipFile = req.files?.file?.[0] ?? req.file;
     logger.info('Initiate create organization content...', {
         orgId,
@@ -619,7 +619,7 @@ const createContent = async (filePath, fileName, fileContent, fileType, orgId, v
 
 const updateOrgContent = async (req, res) => {
     const orgId = req.params.orgId;
-    const viewName = req.params.name;
+    const viewName = req.params.viewName;
     const zipFile = req.files?.file?.[0] ?? req.file;
     logger.info('Initiate update organization content...', {
         orgId,
@@ -705,20 +705,20 @@ const deleteOrgContent = async (req, res) => {
     const orgId = req.params.orgId;
     logger.info('Initiate delete organization content...', {
         orgId,
-        viewName: req.params.name
+        viewName: req.params.viewName
     });
     try {
         const fileName = req.query.fileName;
         let deletedRowsCount;
         if (!req.query.fileName) {
-            deletedRowsCount = await adminDao.deleteAllOrgContent(orgId, req.params.name);
+            deletedRowsCount = await adminDao.deleteAllOrgContent(orgId, req.params.viewName);
         } else {
-            deletedRowsCount = await adminDao.deleteOrgContent(orgId, req.params.name, fileName);
+            deletedRowsCount = await adminDao.deleteOrgContent(orgId, req.params.viewName, fileName);
         }
         if (deletedRowsCount > 0) {
             logger.info('Organization content deletion successful', {
                 orgId,
-                viewName: req.params.name
+                viewName: req.params.viewName
             });
             res.status(204).send();
         } else {
@@ -738,14 +738,14 @@ const deleteAllOrgContent = async (req, res) => {
     const orgId = req.params.orgId;
     logger.info('Initiate delete all organization content...', {
         orgId,
-        viewName: req.params.name
+        viewName: req.params.viewName
     });
     try {
-        const deletedRowsCount = await adminDao.deleteAllOrgContent(orgId, req.params.name, fileName);
+        const deletedRowsCount = await adminDao.deleteAllOrgContent(orgId, req.params.viewName, fileName);
         if (deletedRowsCount > 0) {
             logger.info('All organization content deletion successful', {
                 orgId,
-                viewName: req.params.name
+                viewName: req.params.viewName
             });
             res.status(204).send();
         } else {
@@ -756,7 +756,7 @@ const deleteAllOrgContent = async (req, res) => {
             error: error.message,
             stack: error.stack,
             orgId,
-            viewName: req.params.name
+            viewName: req.params.viewName
         });
         util.handleError(res, error);
     }

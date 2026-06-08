@@ -1250,12 +1250,12 @@ const updateSubscriptionPolicies = async (req, res) => {
 };
 
 const deleteSubscriptionPolicy = async (req, res) => {
-    const { orgId, policyName } = req.params;
+    const { orgId, policyId } = req.params;
     logger.info('Deleting subscription policy...', {
         orgId,
-        policyName
+        policyId
     });
-    if (!orgId || !policyName) {
+    if (!orgId || !policyId) {
         throw new Sequelize.ValidationError(
             "Missing or Invalid fields in the request payload"
         );
@@ -1264,7 +1264,7 @@ const deleteSubscriptionPolicy = async (req, res) => {
         await sequelize.transaction({
             timeout: 60000,
         }, async (t) => {
-            const deleteCount = await apiDao.deleteSubscriptionPolicy(orgId, policyName, t);
+            const deleteCount = await apiDao.deleteSubscriptionPolicyById(orgId, policyId, t);
             if (deleteCount === 0) {
                 throw new CustomError(404, constants.ERROR_CODE[404], constants.ERROR_MESSAGE.SUBSCRIPTION_POLICY_NOT_FOUND);
             } else {
@@ -1276,7 +1276,7 @@ const deleteSubscriptionPolicy = async (req, res) => {
             error: error.message,
             stack: error.stack,
             orgId,
-            policyName
+            policyId
         });
         util.handleError(res, error);
     }
@@ -1284,16 +1284,16 @@ const deleteSubscriptionPolicy = async (req, res) => {
 
 const getSubscriptionPolicy = async (req, res) => {
 
-    const { orgId, policyID } = req.params;
+    const { orgId, policyId } = req.params;
 
-    if (!orgId || !policyID) {
+    if (!orgId || !policyId) {
         throw new Sequelize.ValidationError(
             "Missing or Invalid fields in the request payload"
         );
     }
 
     try {
-        const subscriptionPolicyResponse = await apiDao.getSubscriptionPolicy(policyID, orgId);
+        const subscriptionPolicyResponse = await apiDao.getSubscriptionPolicy(policyId, orgId);
         if (subscriptionPolicyResponse) {
             res.status(200).send(new subscriptionPolicyDTO(subscriptionPolicyResponse));
         } else {
@@ -1301,6 +1301,39 @@ const getSubscriptionPolicy = async (req, res) => {
         }
     } catch (error) {
         logger.error('subscription policy not found failed', {
+            error: error.message,
+            stack: error.stack,
+            orgId
+        });
+        util.handleError(res, error);
+    }
+};
+
+// Lists subscription policies for an org. With ?name=<exact>, returns an array
+// containing the single matching policy (or empty array) — name is unique per
+// org. Without it, returns all policies for the org.
+const listSubscriptionPolicies = async (req, res) => {
+
+    const { orgId } = req.params;
+    const { name } = req.query;
+
+    if (!orgId) {
+        throw new Sequelize.ValidationError(
+            "Missing or Invalid fields in the request payload"
+        );
+    }
+
+    try {
+        let policies;
+        if (name) {
+            const policy = await apiDao.getSubscriptionPolicyByName(orgId, name);
+            policies = policy ? [policy] : [];
+        } else {
+            policies = await apiDao.getAllSubscriptionPolicies(orgId);
+        }
+        res.status(200).send(policies.map((policy) => new subscriptionPolicyDTO(policy)));
+    } catch (error) {
+        logger.error('subscription policy list failed', {
             error: error.message,
             stack: error.stack,
             orgId
@@ -1448,7 +1481,7 @@ const updateView = async (req, res) => {
     const orgId = req.params.orgId;
     const removedLabels = req.body.removedLabels ? req.body.removedLabels : [];
     const addedLabels = req.body.addedLabels ? req.body.addedLabels : [];
-    const viewName = req.params.name;
+    const viewName = req.params.viewName;
     if (!orgId || !viewName) {
         throw new Sequelize.ValidationError(
             "Missing or Invalid fields in the request payload"
@@ -1486,7 +1519,7 @@ const updateView = async (req, res) => {
 const deleteView = async (req, res) => {
 
     const orgId = req.params.orgId;
-    const name = req.params.name;
+    const name = req.params.viewName;
     if (!orgId || !name) {
         throw new Sequelize.ValidationError(
             "Missing or Invalid fields in the request payload"
@@ -1512,7 +1545,7 @@ const deleteView = async (req, res) => {
 const getView = async (req, res) => {
 
     const orgId = req.params.orgId;
-    const name = req.params.name;
+    const name = req.params.viewName;
     if (!orgId || !name) {
         throw new Sequelize.ValidationError(
             "Missing or Invalid fields in the request payload"
@@ -1972,6 +2005,7 @@ module.exports = {
     putSubscriptionPolicies,
     deleteSubscriptionPolicy,
     getSubscriptionPolicy,
+    listSubscriptionPolicies,
     createLabels,
     deleteLabels,
     retrieveLabels,
