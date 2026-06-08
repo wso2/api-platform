@@ -65,12 +65,6 @@ const createSubscription = async (req, res) => {
     const orgID = req.params.orgId;
     const { apiId, subscriptionPlanName } = req.body;
 
-    if (!apiId) {
-        return res.status(400).json({
-            code: '400', message: 'Bad Request', description: 'apiId is required',
-        });
-    }
-
     try {
         const apiMetadataResponse = await apiDao.getAPIMetadata(orgID, apiId);
         if (!apiMetadataResponse || apiMetadataResponse.length === 0) {
@@ -183,13 +177,6 @@ const updateSubscription = async (req, res) => {
     const orgID = req.params.orgId;
     const subscriptionId = req.params.subId;
     const { status } = req.body;
-
-    if (!status || !['ACTIVE', 'INACTIVE'].includes(status)) {
-        return res.status(400).json({
-            code: '400', message: 'Bad Request',
-            description: "status must be 'ACTIVE' or 'INACTIVE'",
-        });
-    }
 
     try {
         const updated = await subDao.updateSubscriptionStatus(

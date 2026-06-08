@@ -21,7 +21,6 @@ const adminDao = require('../dao/admin');
 const util = require('../utils/util');
 const logger = require('../config/logger');
 const constants = require('../utils/constants');
-const { validationResult } = require('express-validator');
 const { retrieveContentType } = require('../utils/util');
 
 const getOrganization = async (req, res) => {
@@ -56,14 +55,6 @@ const getOrganizationDetails = async (orgId) => {
 
 const getOrgContent = async (req, res) => {
     try {
-        const rules = util.validateRequestParameters();
-        for (let validation of rules) {
-            await validation.run(req);
-        }
-        const errors = validationResult(req);
-        if (!errors.isEmpty()) {
-            return res.status(400).json(util.getErrors(errors));
-        }
         if (req.query.fileType && req.query.fileName) {
             const asset = await adminService.getOrgContent(req.params.orgId, req.params.viewName, req.query.fileType, req.query.fileName, req.query.filePath);
             if (asset) {
