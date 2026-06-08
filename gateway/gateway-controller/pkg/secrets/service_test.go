@@ -269,8 +269,21 @@ func (m *minimalStorage) UpdateCPSyncStatus(uuid, cpArtifactID string, status mo
 func (m *minimalStorage) GetConfigByCPArtifactID(cpArtifactID string) (*models.StoredConfig, error) {
 	return nil, storage.ErrNotFound
 }
-func (m *minimalStorage) GetDB() *sql.DB { return nil }
-func (m *minimalStorage) Close() error   { return nil }
+func (m *minimalStorage) SaveWebhookSecret(secret *models.WebhookSecret) error { return nil }
+func (m *minimalStorage) GetWebhookSecretsByArtifact(artifactUUID string) ([]*models.WebhookSecret, error) {
+	return nil, nil
+}
+func (m *minimalStorage) GetWebhookSecretByArtifactAndName(artifactUUID, name string) (*models.WebhookSecret, error) {
+	return nil, storage.ErrNotFound
+}
+func (m *minimalStorage) GetWebhookSecretByUUID(uuid string) (*models.WebhookSecret, error) {
+	return nil, storage.ErrNotFound
+}
+func (m *minimalStorage) UpdateWebhookSecret(secret *models.WebhookSecret) error { return nil }
+func (m *minimalStorage) DeleteWebhookSecret(artifactUUID, name string) error    { return nil }
+func (m *minimalStorage) GetAllWebhookSecrets() ([]*models.WebhookSecret, error) { return nil, nil }
+func (m *minimalStorage) GetDB() *sql.DB                                         { return nil }
+func (m *minimalStorage) Close() error                                           { return nil }
 
 func newMinimalStorage() *minimalStorage {
 	return &minimalStorage{MockStorage: NewMockStorage()}

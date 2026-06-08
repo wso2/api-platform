@@ -269,3 +269,17 @@ func (m *testMockDB) GetPendingBottomUpAPIs() ([]*models.StoredConfig, error) {
 	}
 	return pending, nil
 }
+
+func (m *testMockDB) SaveWebhookSecret(secret *models.WebhookSecret) error { return nil }
+func (m *testMockDB) GetWebhookSecretsByArtifact(artifactUUID string) ([]*models.WebhookSecret, error) {
+	return nil, nil
+}
+func (m *testMockDB) GetWebhookSecretByArtifactAndName(artifactUUID, name string) (*models.WebhookSecret, error) {
+	return nil, storage.ErrNotFound
+}
+func (m *testMockDB) GetWebhookSecretByUUID(uuid string) (*models.WebhookSecret, error) {
+	return nil, storage.ErrNotFound
+}
+func (m *testMockDB) UpdateWebhookSecret(secret *models.WebhookSecret) error { return nil }
+func (m *testMockDB) DeleteWebhookSecret(artifactUUID, name string) error    { return nil }
+func (m *testMockDB) GetAllWebhookSecrets() ([]*models.WebhookSecret, error) { return nil, nil }

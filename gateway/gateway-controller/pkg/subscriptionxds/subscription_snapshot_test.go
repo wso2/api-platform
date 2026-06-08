@@ -162,6 +162,19 @@ func (m *MockStorage) DeleteSecret(handle string) error                         
 func (m *MockStorage) SecretExists(handle string) (bool, error)                   { return false, nil }
 func (m *MockStorage) GetDB() *sql.DB                                             { return nil }
 func (m *MockStorage) Close() error                                               { return nil }
+func (m *MockStorage) SaveWebhookSecret(secret *models.WebhookSecret) error       { return nil }
+func (m *MockStorage) GetWebhookSecretsByArtifact(artifactUUID string) ([]*models.WebhookSecret, error) {
+	return nil, nil
+}
+func (m *MockStorage) GetWebhookSecretByArtifactAndName(artifactUUID, name string) (*models.WebhookSecret, error) {
+	return nil, nil
+}
+func (m *MockStorage) GetWebhookSecretByUUID(uuid string) (*models.WebhookSecret, error) {
+	return nil, nil
+}
+func (m *MockStorage) UpdateWebhookSecret(secret *models.WebhookSecret) error { return nil }
+func (m *MockStorage) DeleteWebhookSecret(artifactUUID, name string) error    { return nil }
+func (m *MockStorage) GetAllWebhookSecrets() ([]*models.WebhookSecret, error) { return nil, nil }
 
 func TestNewSnapshotManager(t *testing.T) {
 	t.Run("creates snapshot manager with nil logger", func(t *testing.T) {

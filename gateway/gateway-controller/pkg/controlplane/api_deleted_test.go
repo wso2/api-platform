@@ -36,6 +36,7 @@ import (
 type mockStorageForDeletion struct {
 	configs                      map[string]*models.StoredConfig
 	secrets                      map[string]*models.Secret
+	webhookSecrets               map[string]*models.WebhookSecret
 	subscriptions                map[string]*models.Subscription
 	apiKeysByUUID                map[string]*models.APIKey
 	replacedMappings             []*models.ApplicationAPIKeyMapping
@@ -85,9 +86,10 @@ func (m *recordingControlPlaneXDSManager) RefreshSnapshot() error {
 
 func newMockStorageForDeletion() *mockStorageForDeletion {
 	return &mockStorageForDeletion{
-		configs:       make(map[string]*models.StoredConfig),
-		secrets:       make(map[string]*models.Secret),
-		subscriptions: make(map[string]*models.Subscription),
+		configs:        make(map[string]*models.StoredConfig),
+		secrets:        make(map[string]*models.Secret),
+		webhookSecrets: make(map[string]*models.WebhookSecret),
+		subscriptions:  make(map[string]*models.Subscription),
 		apiKeysByUUID: make(map[string]*models.APIKey),
 	}
 }
@@ -527,6 +529,64 @@ func (m *mockStorageForDeletion) SecretExists(handle string) (bool, error) {
 	}
 	_, ok := m.secrets[handle]
 	return ok, nil
+}
+
+func (m *mockStorageForDeletion) SaveWebhookSecret(secret *models.WebhookSecret) error {
+	m.webhookSecrets[secret.UUID] = secret
+	return nil
+}
+
+func (m *mockStorageForDeletion) GetWebhookSecretsByArtifact(artifactUUID string) ([]*models.WebhookSecret, error) {
+	var result []*models.WebhookSecret
+	for _, s := range m.webhookSecrets {
+		if s.ArtifactUUID == artifactUUID {
+			result = append(result, s)
+		}
+	}
+	return result, nil
+}
+
+func (m *mockStorageForDeletion) GetWebhookSecretByArtifactAndName(artifactUUID, name string) (*models.WebhookSecret, error) {
+	for _, s := range m.webhookSecrets {
+		if s.ArtifactUUID == artifactUUID && s.Name == name {
+			return s, nil
+		}
+	}
+	return nil, storage.ErrNotFound
+}
+
+func (m *mockStorageForDeletion) GetWebhookSecretByUUID(uuid string) (*models.WebhookSecret, error) {
+	s, ok := m.webhookSecrets[uuid]
+	if !ok {
+		return nil, storage.ErrNotFound
+	}
+	return s, nil
+}
+
+func (m *mockStorageForDeletion) UpdateWebhookSecret(secret *models.WebhookSecret) error {
+	if _, ok := m.webhookSecrets[secret.UUID]; !ok {
+		return storage.ErrNotFound
+	}
+	m.webhookSecrets[secret.UUID] = secret
+	return nil
+}
+
+func (m *mockStorageForDeletion) DeleteWebhookSecret(artifactUUID, name string) error {
+	for uuid, s := range m.webhookSecrets {
+		if s.ArtifactUUID == artifactUUID && s.Name == name {
+			delete(m.webhookSecrets, uuid)
+			return nil
+		}
+	}
+	return storage.ErrNotFound
+}
+
+func (m *mockStorageForDeletion) GetAllWebhookSecrets() ([]*models.WebhookSecret, error) {
+	result := make([]*models.WebhookSecret, 0, len(m.webhookSecrets))
+	for _, s := range m.webhookSecrets {
+		result = append(result, s)
+	}
+	return result, nil
 }
 
 func (m *mockStorageForDeletion) GetDB() *sql.DB {

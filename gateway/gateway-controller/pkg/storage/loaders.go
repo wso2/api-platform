@@ -21,6 +21,8 @@ package storage
 import (
 	"fmt"
 
+	"github.com/wso2/api-platform/common/webhooksecret"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/encryption"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 )
 
@@ -92,4 +94,31 @@ func storeAPIKeySafely(apiKeyStore apiKeyStoreWriter, apiKey *models.APIKey) (er
 	}()
 
 	return apiKeyStore.Store(apiKey)
+}
+
+// LoadWebhookSecretsFromDatabase loads all active webhook secrets from the database,
+// decrypts each one, and stores the plaintext in the in-memory store.
+// Called on startup before the EventListener starts so the store is ready before
+// any request arrives.
+func LoadWebhookSecretsFromDatabase(st Storage, pm *encryption.ProviderManager, store *webhooksecret.WebhookSecretStore) error {
+	secrets, err := st.GetAllWebhookSecrets()
+	if err != nil {
+		return fmt.Errorf("failed to load webhook secrets from database: %w", err)
+	}
+
+	for _, ws := range secrets {
+		payload, err := encryption.UnmarshalPayload(string(ws.Ciphertext))
+		if err != nil {
+			return fmt.Errorf("failed to unmarshal ciphertext for webhook secret %s: %w", ws.UUID, err)
+		}
+		plaintext, err := pm.Decrypt(payload)
+		if err != nil {
+			return fmt.Errorf("failed to decrypt webhook secret %s: %w", ws.UUID, err)
+		}
+		if err := store.Store(ws.ArtifactUUID, ws.Name, string(plaintext)); err != nil {
+			return fmt.Errorf("failed to load webhook secret %s into memory store: %w", ws.UUID, err)
+		}
+	}
+
+	return nil
 }

@@ -503,3 +503,209 @@ func (s *APIServer) RegenerateWebSubAPIKey(c *gin.Context, id string, apiKeyName
 
 	c.JSON(http.StatusOK, result.Response)
 }
+
+// ============================================================
+// Webhook Secret handlers
+// ============================================================
+
+// CreateWebSubAPISecret implements ServerInterface.CreateWebSubAPISecret
+// (POST /websub-apis/{id}/secrets)
+func (s *APIServer) CreateWebSubAPISecret(c *gin.Context, handle string) {
+	log := middleware.GetLogger(c, s.logger)
+	correlationID := middleware.GetCorrelationID(c)
+
+	cfg, err := s.db.GetConfigByKindAndHandle(models.KindWebSubApi, handle)
+	if err != nil {
+		if storage.IsNotFoundError(err) {
+			c.JSON(http.StatusNotFound, api.ErrorResponse{Status: "error", Message: fmt.Sprintf("WebSub API '%s' not found", handle)})
+			return
+		}
+		if storage.IsDatabaseUnavailableError(err) {
+			c.JSON(http.StatusServiceUnavailable, api.ErrorResponse{Status: "error", Message: "Storage unavailable"})
+			return
+		}
+		log.Error("Failed to look up WebSub API", slog.String("handle", handle), slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Internal error looking up WebSub API"})
+		return
+	}
+	if cfg == nil {
+		c.JSON(http.StatusNotFound, api.ErrorResponse{Status: "error", Message: fmt.Sprintf("WebSub API '%s' not found", handle)})
+		return
+	}
+
+	var request api.WebhookSecretCreationRequest
+	if err := s.bindRequestBody(c, &request); err != nil {
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: fmt.Sprintf("Invalid request body: %s", err.Error())})
+		return
+	}
+
+	ws, plaintext, err := s.webhookSecretService.Generate(cfg.UUID, request.DisplayName, correlationID)
+	if err != nil {
+		if storage.IsConflictError(err) {
+			c.JSON(http.StatusConflict, api.ErrorResponse{Status: "error", Message: err.Error()})
+			return
+		}
+		if storage.IsNotFoundError(err) {
+			c.JSON(http.StatusNotFound, api.ErrorResponse{Status: "error", Message: err.Error()})
+			return
+		}
+		log.Error("Failed to generate webhook secret", slog.String("handle", handle), slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to generate webhook secret"})
+		return
+	}
+
+	secretStatus := api.WebhookSecretInfoStatus(ws.Status)
+	c.JSON(http.StatusCreated, api.WebhookSecretCreationResponse{
+		Status:  "success",
+		Message: "Webhook secret generated successfully",
+		Secret:  plaintext,
+		WebhookSecret: &api.WebhookSecretInfo{
+			Name:        &ws.Name,
+			DisplayName: &ws.DisplayName,
+			Status:      &secretStatus,
+			CreatedAt:   &ws.CreatedAt,
+			UpdatedAt:   &ws.UpdatedAt,
+		},
+	})
+}
+
+// ListWebSubAPISecrets implements ServerInterface.ListWebSubAPISecrets
+// (GET /websub-apis/{id}/secrets)
+func (s *APIServer) ListWebSubAPISecrets(c *gin.Context, handle string) {
+	log := middleware.GetLogger(c, s.logger)
+
+	cfg, err := s.db.GetConfigByKindAndHandle(models.KindWebSubApi, handle)
+	if err != nil {
+		if storage.IsNotFoundError(err) {
+			c.JSON(http.StatusNotFound, api.ErrorResponse{Status: "error", Message: fmt.Sprintf("WebSub API '%s' not found", handle)})
+			return
+		}
+		if storage.IsDatabaseUnavailableError(err) {
+			c.JSON(http.StatusServiceUnavailable, api.ErrorResponse{Status: "error", Message: "Storage unavailable"})
+			return
+		}
+		log.Error("Failed to look up WebSub API", slog.String("handle", handle), slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Internal error looking up WebSub API"})
+		return
+	}
+	if cfg == nil {
+		c.JSON(http.StatusNotFound, api.ErrorResponse{Status: "error", Message: fmt.Sprintf("WebSub API '%s' not found", handle)})
+		return
+	}
+
+	wsList, err := s.webhookSecretService.List(cfg.UUID)
+	if err != nil {
+		log.Error("Failed to list webhook secrets", slog.String("handle", handle), slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to list webhook secrets"})
+		return
+	}
+
+	items := make([]api.WebhookSecretInfo, 0, len(wsList))
+	for _, ws := range wsList {
+		secretStatus := api.WebhookSecretInfoStatus(ws.Status)
+		items = append(items, api.WebhookSecretInfo{
+			Name:        &ws.Name,
+			DisplayName: &ws.DisplayName,
+			Status:      &secretStatus,
+			CreatedAt:   &ws.CreatedAt,
+			UpdatedAt:   &ws.UpdatedAt,
+		})
+	}
+
+	total := len(items)
+	status := "success"
+	c.JSON(http.StatusOK, api.WebhookSecretListResponse{
+		Status:     &status,
+		TotalCount: &total,
+		Secrets:    &items,
+	})
+}
+
+// RegenerateWebSubAPISecret implements ServerInterface.RegenerateWebSubAPISecret
+// (POST /websub-apis/{id}/secrets/{secretName}/regenerate)
+func (s *APIServer) RegenerateWebSubAPISecret(c *gin.Context, handle string, secretName string) {
+	log := middleware.GetLogger(c, s.logger)
+	correlationID := middleware.GetCorrelationID(c)
+
+	cfg, err := s.db.GetConfigByKindAndHandle(models.KindWebSubApi, handle)
+	if err != nil {
+		if storage.IsNotFoundError(err) {
+			c.JSON(http.StatusNotFound, api.ErrorResponse{Status: "error", Message: fmt.Sprintf("WebSub API '%s' not found", handle)})
+			return
+		}
+		if storage.IsDatabaseUnavailableError(err) {
+			c.JSON(http.StatusServiceUnavailable, api.ErrorResponse{Status: "error", Message: "Storage unavailable"})
+			return
+		}
+		log.Error("Failed to look up WebSub API", slog.String("handle", handle), slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Internal error looking up WebSub API"})
+		return
+	}
+	if cfg == nil {
+		c.JSON(http.StatusNotFound, api.ErrorResponse{Status: "error", Message: fmt.Sprintf("WebSub API '%s' not found", handle)})
+		return
+	}
+
+	ws, plaintext, err := s.webhookSecretService.Regenerate(cfg.UUID, secretName, correlationID)
+	if err != nil {
+		if storage.IsNotFoundError(err) {
+			c.JSON(http.StatusNotFound, api.ErrorResponse{Status: "error", Message: fmt.Sprintf("Webhook secret '%s' not found", secretName)})
+			return
+		}
+		log.Error("Failed to regenerate webhook secret", slog.String("handle", handle), slog.String("secret", secretName), slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to regenerate webhook secret"})
+		return
+	}
+
+	secretStatus := api.WebhookSecretInfoStatus(ws.Status)
+	c.JSON(http.StatusOK, api.WebhookSecretCreationResponse{
+		Status:  "success",
+		Message: "Webhook secret regenerated successfully",
+		Secret:  plaintext,
+		WebhookSecret: &api.WebhookSecretInfo{
+			Name:        &ws.Name,
+			DisplayName: &ws.DisplayName,
+			Status:      &secretStatus,
+			CreatedAt:   &ws.CreatedAt,
+			UpdatedAt:   &ws.UpdatedAt,
+		},
+	})
+}
+
+// DeleteWebSubAPISecret implements ServerInterface.DeleteWebSubAPISecret
+// (DELETE /websub-apis/{id}/secrets/{secretName})
+func (s *APIServer) DeleteWebSubAPISecret(c *gin.Context, handle string, secretName string) {
+	log := middleware.GetLogger(c, s.logger)
+	correlationID := middleware.GetCorrelationID(c)
+
+	cfg, err := s.db.GetConfigByKindAndHandle(models.KindWebSubApi, handle)
+	if err != nil {
+		if storage.IsNotFoundError(err) {
+			c.JSON(http.StatusNotFound, api.ErrorResponse{Status: "error", Message: fmt.Sprintf("WebSub API '%s' not found", handle)})
+			return
+		}
+		if storage.IsDatabaseUnavailableError(err) {
+			c.JSON(http.StatusServiceUnavailable, api.ErrorResponse{Status: "error", Message: "Storage unavailable"})
+			return
+		}
+		log.Error("Failed to look up WebSub API", slog.String("handle", handle), slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Internal error looking up WebSub API"})
+		return
+	}
+	if cfg == nil {
+		c.JSON(http.StatusNotFound, api.ErrorResponse{Status: "error", Message: fmt.Sprintf("WebSub API '%s' not found", handle)})
+		return
+	}
+
+	if err := s.webhookSecretService.Delete(cfg.UUID, secretName, correlationID); err != nil {
+		if storage.IsNotFoundError(err) {
+			c.JSON(http.StatusNotFound, api.ErrorResponse{Status: "error", Message: fmt.Sprintf("Webhook secret '%s' not found", secretName)})
+			return
+		}
+		log.Error("Failed to delete webhook secret", slog.String("handle", handle), slog.String("secret", secretName), slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to delete webhook secret"})
+		return
+	}
+
+	c.Status(http.StatusNoContent)
+}
