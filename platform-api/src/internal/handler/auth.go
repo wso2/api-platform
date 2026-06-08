@@ -34,21 +34,20 @@ import (
 
 // AuthHandler serves public auth discovery endpoints for the login UI.
 type AuthHandler struct {
-	idp     config.IDP
+	portal  config.PortalAuth
 	slogger *slog.Logger
 }
 
 // NewAuthHandler creates an AuthHandler.
-func NewAuthHandler(idp config.IDP, slogger *slog.Logger) *AuthHandler {
+func NewAuthHandler(portal config.PortalAuth, slogger *slog.Logger) *AuthHandler {
 	return &AuthHandler{
-		idp:     idp,
+		portal:  portal,
 		slogger: slogger,
 	}
 }
 
 // OrgAuthConfigResponse is the JSON shape returned by GET /portal/api/v1/organizations/{orgHandle}/auth.
 type OrgAuthConfigResponse struct {
-	IDPType               string   `json:"idp_type,omitempty"`
 	Issuer                string   `json:"issuer"`
 	ClientID              string   `json:"client_id"`
 	AuthorizationEndpoint string   `json:"authorization_endpoint"`
@@ -74,14 +73,14 @@ type oidcDiscoveryDoc struct {
 // Returns the IDP configuration the login UI needs to initiate an OIDC flow.
 // This endpoint is public (no auth required) and cacheable for 5 minutes.
 func (h *AuthHandler) GetOrgAuthDiscovery(c *gin.Context) {
-	if h.idp.DiscoveryURL == "" {
+	if h.portal.DiscoveryURL == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "IDP not configured for this organization"))
 		return
 	}
 
-	discovery, err := fetchOIDCDiscovery(c.Request.Context(), h.idp.DiscoveryURL)
+	discovery, err := fetchOIDCDiscovery(c.Request.Context(), h.portal.DiscoveryURL)
 	if err != nil {
-		h.slogger.Error("Failed to fetch OIDC discovery document", "url", h.idp.DiscoveryURL, "error", err)
+		h.slogger.Error("Failed to fetch OIDC discovery document", "url", h.portal.DiscoveryURL, "error", err)
 		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
 			fmt.Sprintf("Failed to fetch IDP configuration: %v", err)))
 		return
@@ -89,9 +88,8 @@ func (h *AuthHandler) GetOrgAuthDiscovery(c *gin.Context) {
 
 	c.Header("Cache-Control", "public, max-age=300")
 	c.JSON(http.StatusOK, OrgAuthConfigResponse{
-		IDPType:               h.idp.Name,
 		Issuer:                discovery.Issuer,
-		ClientID:              h.idp.ClientID,
+		ClientID:              h.portal.ClientID,
 		AuthorizationEndpoint: discovery.AuthorizationEndpoint,
 		TokenEndpoint:         discovery.TokenEndpoint,
 		LogoutURL:             discovery.EndSessionEndpoint,

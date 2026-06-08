@@ -336,7 +336,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 		slogger.Warn("scope validation is disabled — all authenticated requests will be allowed regardless of scope")
 	}
 
-	authHandler := handler.NewAuthHandler(cfg.Auth.IDP, slogger)
+	authHandler := handler.NewAuthHandler(cfg.Auth.Portal, slogger)
 
 	// Register public routes before auth middleware so they bypass authentication.
 	orgHandler.RegisterPublicRoutes(router)
@@ -421,7 +421,7 @@ func buildAuthenticator(cfg *config.Server, slogger *slog.Logger) (middleware.Au
 	if !cfg.Auth.IDP.Enabled {
 		if cfg.Auth.JWT.SkipValidation {
 			if !cfg.DevMode {
-				slogger.Warn("⚠️  WARNING: JWT signature validation is DISABLED (AUTH_JWT_SKIP_VALIDATION=true) but DEV_MODE=false. " +
+				slogger.Warn("WARNING: JWT signature validation is DISABLED (AUTH_JWT_SKIP_VALIDATION=true) but DEV_MODE=false. " +
 					"Tokens are NOT verified — any bearer value will be accepted. " +
 					"Set DEV_MODE=true to suppress this warning, or set AUTH_JWT_SKIP_VALIDATION=false for production.")
 			} else {
