@@ -336,18 +336,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 		slogger.Warn("scope validation is disabled — all authenticated requests will be allowed regardless of scope")
 	}
 
-	// Build per-org IDP registry when multi-org mode is enabled.
-	var orgIDPRegistry middleware.OrgIDPRegistry
-	if cfg.Auth.MultiOrgIDP.Enabled {
-		orgIDPConfigs, regErr := config.LoadOrgIDPConfigs(cfg.Auth.MultiOrgIDP.ConfigsPath)
-		if regErr != nil {
-			slogger.Error("Failed to load org IDP configs", "path", cfg.Auth.MultiOrgIDP.ConfigsPath, "error", regErr)
-			return nil, fmt.Errorf("failed to load org IDP configs: %w", regErr)
-		}
-		orgIDPRegistry = middleware.NewFileOrgIDPRegistry(orgIDPConfigs)
-		slogger.Info("Multi-org IDP mode enabled", "orgs", len(orgIDPConfigs))
-	}
-	authHandler := handler.NewAuthHandler(cfg.Auth.IDP, cfg.Auth.MultiOrgIDP.Enabled, orgIDPRegistry, slogger)
+	authHandler := handler.NewAuthHandler(cfg.Auth.IDP, slogger)
 
 	// Register public routes before auth middleware so they bypass authentication.
 	orgHandler.RegisterPublicRoutes(router)
@@ -356,7 +345,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	// Build and apply the JWT authenticator.
 	// IDP_ENABLED=false (default): HMAC validation with JWT_SECRET_KEY, or skip entirely when JWT_SKIP_VALIDATION=true.
 	// IDP_ENABLED=true: JWKS-based validation using IDP_JWKS_URL (works with any standards-compliant IDP).
-	authenticator, err := buildAuthenticator(cfg, orgIDPRegistry, slogger)
+	authenticator, err := buildAuthenticator(cfg, slogger)
 	if err != nil {
 		return nil, err
 	}
@@ -428,7 +417,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 
 // buildAuthenticator constructs a JWTAuthenticator from the server configuration.
 // Add new cases here when supporting additional auth mechanisms (e.g. BasicAuth).
-func buildAuthenticator(cfg *config.Server, orgIDPRegistry middleware.OrgIDPRegistry, slogger *slog.Logger) (middleware.Authenticator, error) {
+func buildAuthenticator(cfg *config.Server, slogger *slog.Logger) (middleware.Authenticator, error) {
 	if !cfg.Auth.IDP.Enabled {
 		if cfg.Auth.JWT.SkipValidation {
 			if !cfg.DevMode {
@@ -478,7 +467,7 @@ func buildAuthenticator(cfg *config.Server, orgIDPRegistry middleware.OrgIDPRegi
 		ScopeClaim:        cfg.Auth.IDP.ScopeClaimName,
 		RolesClaimPath:    cfg.Auth.IDP.RolesClaimPath,
 		RoleMappings:      cfg.Auth.IDP.RoleMappings,
-	}, orgIDPRegistry)
+	})
 
 	idpLabel := cfg.Auth.IDP.Name
 	if idpLabel == "" {

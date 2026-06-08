@@ -94,10 +94,6 @@ type Auth struct {
 	// JWT holds local HMAC JWT configuration.
 	// Env prefix: AUTH_JWT_
 	JWT JWT `envconfig:"JWT"`
-
-	// MultiOrgIDP holds per-org IDP configuration for multi-org deployments.
-	// Env prefix: AUTH_MULTI_ORG_IDP_
-	MultiOrgIDP MultiOrgIDP `envconfig:"MULTI_ORG_IDP"`
 }
 
 // IDP holds configuration for JWKS-based identity providers.
@@ -190,21 +186,6 @@ type IDP struct {
 	// Server derives authorization_endpoint and logout_url from this.
 	// Env: AUTH_IDP_DISCOVERY_URL (default: "")
 	DiscoveryURL string `envconfig:"DISCOVERY_URL" default:""`
-}
-
-// MultiOrgIDP holds per-org IDP configuration for multi-org deployments.
-// When Enabled, each org resolves its IDP from the file at ConfigsPath instead
-// of the global Auth.IDP config.
-// Env prefix: AUTH_MULTI_ORG_IDP_
-type MultiOrgIDP struct {
-	// Enabled activates per-org IDP resolution.
-	// Env: AUTH_MULTI_ORG_IDP_ENABLED (default: false)
-	Enabled bool `envconfig:"ENABLED" default:"false"`
-
-	// ConfigsPath is the path to a YAML file listing per-org IDP configurations.
-	// Required when Enabled=true.
-	// Env: AUTH_MULTI_ORG_IDP_CONFIGS_PATH (default: "")
-	ConfigsPath string `envconfig:"CONFIGS_PATH" default:""`
 }
 
 // Gateway holds gateway-related configuration.
@@ -354,9 +335,6 @@ func GetConfig() *Server {
 		if err == nil {
 			err = validateIDPConfig(&settingInstance.Auth.IDP)
 		}
-		if err == nil {
-			err = validateMultiOrgIDPConfig(&settingInstance.Auth.MultiOrgIDP)
-		}
 	})
 	if err != nil {
 		panic(err)
@@ -408,16 +386,6 @@ func validateIDPConfig(idp *IDP) error {
 	}
 	if idp.ValidationMode == "role" && idp.RolesClaimPath == "" {
 		return fmt.Errorf("IDP_VALIDATION_MODE=role requires IDP_ROLES_CLAIM_PATH to be configured")
-	}
-	return nil
-}
-
-func validateMultiOrgIDPConfig(cfg *MultiOrgIDP) error {
-	if !cfg.Enabled {
-		return nil
-	}
-	if cfg.ConfigsPath == "" {
-		return fmt.Errorf("AUTH_MULTI_ORG_IDP_ENABLED=true requires AUTH_MULTI_ORG_IDP_CONFIGS_PATH to be configured")
 	}
 	return nil
 }
