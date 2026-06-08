@@ -347,7 +347,8 @@ async function addLabels(orgID, orgLabels) {
 
     if (removedLabels.length > 0) {
         const sanitizeDelete = removedLabels.map(label => sanitizeInput(label));
-        const labelName = sanitizeDelete.join(",");
+        // Encode each name individually so spaces/reserved characters within a label
+        const labelName = sanitizeDelete.map(label => encodeURIComponent(label)).join(",");
         const response = await fetch(devportalApi.org(orgID, `/labels?names=${labelName}`), {
             method: "DELETE",
             headers: {
