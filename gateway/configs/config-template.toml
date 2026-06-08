@@ -262,7 +262,12 @@ host = "localhost"
 # =============================================================================
 [analytics]
 enabled = false
+# Deprecated: allow_payloads is preserved for backward compatibility. When true
+# and when send_request_body/send_response_body are not explicitly set, both
+# request and response bodies will be captured.
 allow_payloads = false
+send_request_body = false
+send_response_body = false
 enabled_publishers = ["moesif"]
 
 [analytics.publishers.moesif]

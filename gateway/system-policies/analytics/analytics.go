@@ -207,11 +207,11 @@ func (a *AnalyticsPolicy) OnResponseHeaders(_ context.Context, respCtx *policy.R
 // OnRequestBody performs Analytics collection process during the request phase (buffered).
 func (a *AnalyticsPolicy) OnRequestBody(_ context.Context, ctx *policy.RequestContext, params map[string]interface{}) policy.RequestAction {
 	slog.Debug("Analytics system policy: OnRequestBody called")
-	allowPayloads := getAllowPayloadsFlag(params)
+	sendReqBody, _ := getPayloadFlags(params)
 	analyticsMetadata := make(map[string]any)
 
-	// When allow_payloads is enabled, capture the raw request body into analytics metadata.
-	if allowPayloads && ctx != nil && ctx.Body != nil && len(ctx.Body.Content) > 0 {
+	// When request payload capture is enabled, capture the raw request body into analytics metadata.
+	if sendReqBody && ctx != nil && ctx.Body != nil && len(ctx.Body.Content) > 0 {
 		slog.Debug("Capturing request payload for analytics")
 		analyticsMetadata["request_payload"] = string(ctx.Body.Content)
 	}
@@ -288,7 +288,7 @@ func (a *AnalyticsPolicy) OnRequestBody(_ context.Context, ctx *policy.RequestCo
 // Called when the chain is in buffered mode (e.g. another policy does not support streaming).
 func (a *AnalyticsPolicy) OnResponseBody(_ context.Context, ctx *policy.ResponseContext, params map[string]interface{}) policy.ResponseAction {
 	slog.Debug("Analytics system policy: OnResponseBody called")
-	allowPayloads := getAllowPayloadsFlag(params)
+	_, sendRespBody := getPayloadFlags(params)
 
 	analyticsMetadata := make(map[string]any)
 
@@ -380,7 +380,7 @@ func (a *AnalyticsPolicy) OnResponseBody(_ context.Context, ctx *policy.Response
 		slog.Error("Invalid API kind")
 	}
 
-	if allowPayloads {
+	if sendRespBody {
 		if ctx != nil && ctx.ResponseBody != nil && len(ctx.ResponseBody.Content) > 0 {
 			slog.Debug("Capturing response payload for analytics")
 			analyticsMetadata["response_payload"] = string(ctx.ResponseBody.Content)
@@ -478,7 +478,8 @@ func (a *AnalyticsPolicy) OnResponseBodyChunk(_ context.Context, ctx *policy.Res
 		slog.Debug("Analytics streaming: unhandled API kind", "kind", apiKind)
 	}
 
-	if getAllowPayloadsFlag(params) && len(accumulated) > 0 {
+	_, sendRespBody := getPayloadFlags(params)
+	if sendRespBody && len(accumulated) > 0 {
 		analyticsMetadata["response_payload"] = string(accumulated)
 	}
 
@@ -873,24 +874,52 @@ func convertToInt64(value interface{}) (int64, error) {
 	}
 }
 
-// getAllowPayloadsFlag safely extracts the allow_payloads boolean from policy parameters.
-func getAllowPayloadsFlag(params map[string]interface{}) bool {
+// getPayloadFlags derives per-direction payload capture flags from policy parameters.
+// New parameters send_request_body and send_response_body take precedence. When neither
+// is provided, the deprecated allow_payloads flag is used as a fallback, mapping to
+// both directions for backward compatibility.
+func getPayloadFlags(params map[string]interface{}) (sendRequestBody, sendResponseBody bool) {
 	if params == nil {
-		return false
+		return false, false
 	}
-	raw, ok := params["allow_payloads"]
-	if !ok {
-		return false
+
+	parseBoolLike := func(v interface{}) bool {
+		switch val := v.(type) {
+		case bool:
+			return val
+		case string:
+			lower := strings.ToLower(strings.TrimSpace(val))
+			return lower == "true" || lower == "1" || lower == "yes"
+		default:
+			return false
+		}
 	}
-	switch v := raw.(type) {
-	case bool:
-		return v
-	case string:
-		lower := strings.ToLower(strings.TrimSpace(v))
-		return lower == "true" || lower == "1" || lower == "yes"
-	default:
-		return false
+
+	hasReq, hasResp := false, false
+
+	if raw, ok := params["send_request_body"]; ok {
+		sendRequestBody = parseBoolLike(raw)
+		hasReq = true
 	}
+	if raw, ok := params["send_response_body"]; ok {
+		sendResponseBody = parseBoolLike(raw)
+		hasResp = true
+	}
+
+	// If either of the new flags has been explicitly configured, do not consult
+	// the deprecated allow_payloads flag.
+	if hasReq || hasResp {
+		return sendRequestBody, sendResponseBody
+	}
+
+	// Backward compatibility: fall back to allow_payloads when new flags are absent.
+	if raw, ok := params["allow_payloads"]; ok {
+		if parseBoolLike(raw) {
+			return true, true
+		}
+	}
+
+	return false, false
 }
 
 // Helper to extract string values via JSONPath

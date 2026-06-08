@@ -20,6 +20,7 @@ package config
 
 import (
 	"fmt"
+	"log/slog"
 	"net/url"
 	"strings"
 	"time"
@@ -63,7 +64,10 @@ type AnalyticsConfig struct {
 	GRPCEventServerCfg GRPCEventServerConfig     `koanf:"grpc_event_server"`
 	// AllowPayloads controls whether request and response bodies are captured
 	// into analytics metadata and forwarded to analytics publishers.
-	AllowPayloads bool `koanf:"allow_payloads"`
+	// Deprecated: use SendRequestBody and SendResponseBody instead.
+	AllowPayloads   bool `koanf:"allow_payloads"`
+	SendRequestBody bool `koanf:"send_request_body"`
+	SendResponseBody bool `koanf:"send_response_body"`
 }
 
 // SubscriptionsConfig holds configuration for application-level subscriptions.
@@ -767,7 +771,9 @@ func defaultConfig() *Config {
 				MaxMessageSize:      1000000000,
 				MaxHeaderLimit:      8192,
 			},
-			AllowPayloads: false,
+			AllowPayloads:    false,
+			SendRequestBody:  false,
+			SendResponseBody: false,
 		},
 		TracingConfig: TracingConfig{
 			Enabled:        false,
@@ -1439,6 +1445,15 @@ func validateDomains(field string, domains []string) error {
 func (c *Config) validateAnalyticsConfig() error {
 	// Validate analytics configuration
 	if c.Analytics.Enabled {
+		// Migration path for deprecated analytics.allow_payloads.
+		if c.Analytics.AllowPayloads {
+			slog.Warn("analytics.allow_payloads is deprecated; use analytics.send_request_body and analytics.send_response_body instead")
+			if !c.Analytics.SendRequestBody && !c.Analytics.SendResponseBody {
+				c.Analytics.SendRequestBody = true
+				c.Analytics.SendResponseBody = true
+			}
+		}
+
 		// Validate gRPC event server configuration
 		grpcEventServerCfg := c.Analytics.GRPCEventServerCfg
 

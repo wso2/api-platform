@@ -20,6 +20,7 @@ package config
 
 import (
 	"fmt"
+	"log/slog"
 	"math"
 	"net/url"
 	"strings"
@@ -54,7 +55,10 @@ type AnalyticsConfig struct {
 	AccessLogsServiceCfg AccessLogsServiceConfig   `koanf:"access_logs_service"`
 	// AllowPayloads controls whether request and response bodies are captured
 	// into analytics metadata and forwarded to analytics publishers.
-	AllowPayloads bool `koanf:"allow_payloads"`
+	// Deprecated: use SendRequestBody and SendResponseBody instead.
+	AllowPayloads   bool `koanf:"allow_payloads"`
+	SendRequestBody bool `koanf:"send_request_body"`
+	SendResponseBody bool `koanf:"send_response_body"`
 }
 
 // AnalyticsPublishersConfig holds configuration for all analytics publishers
@@ -371,7 +375,9 @@ func defaultConfig() *Config {
 				ExtProcMaxMessageSize: 1000000000,
 				ExtProcMaxHeaderLimit: 8192,
 			},
-			AllowPayloads: false,
+			AllowPayloads:    false,
+			SendRequestBody:  false,
+			SendResponseBody: false,
 		},
 		TracingConfig: TracingConfig{
 			Enabled:            false,
@@ -530,6 +536,15 @@ func (c *Config) validateXDSConfig() error {
 func (c *Config) validateAnalyticsConfig() error {
 	// Validate analytics configuration
 	if c.Analytics.Enabled {
+		// Migration path for deprecated analytics.allow_payloads.
+		if c.Analytics.AllowPayloads {
+			slog.Warn("analytics.allow_payloads is deprecated; use analytics.send_request_body and analytics.send_response_body instead")
+			if !c.Analytics.SendRequestBody && !c.Analytics.SendResponseBody {
+				c.Analytics.SendRequestBody = true
+				c.Analytics.SendResponseBody = true
+			}
+		}
+
 		// Validate ALS server config (policy-engine side)
 		als := c.Analytics.AccessLogsServiceCfg
 
