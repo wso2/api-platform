@@ -131,7 +131,8 @@ Fired when a developer generates a new API key for an API.
       "ref_id": "cp-api-uuid"
     },
     "subscription": {
-      "ref_id": "sub-token",
+      "ref_id": "sub-uuid",
+      "plan_ref_id": "policy-uuid",
       "plan_name": "Gold"
     },
     "encrypted_key": {
@@ -165,7 +166,8 @@ Fired when a developer rotates an existing key. The `key_id` is unchanged; the o
       "ref_id": "cp-api-uuid"
     },
     "subscription": {
-      "ref_id": "sub-token",
+      "ref_id": "sub-uuid",
+      "plan_ref_id": "policy-uuid",
       "plan_name": "Gold"
     },
     "encrypted_key": { "wrappedKey": "...", "iv": "...", "tag": "...", "ciphertext": "..." }
@@ -187,12 +189,18 @@ Fired when a developer revokes a key. The gateway should reject any request pres
       "name": "Order API",
       "version": "v1.0",
       "ref_id": "cp-api-uuid"
+    },
+    "subscription": {
+      "ref_id": "sub-uuid",
+      "plan_ref_id": "policy-uuid",
+      "plan_name": "Gold"
     }
   }
 }
 ```
 
-No `encrypted_key` is included — the gateway only needs the `key_id` to revoke access.
+- `subscription` is present only when the key was bound to a subscription
+- No `encrypted_key` is included — the gateway only needs the `key_id` to revoke access.
 
 ### `subscription.created`
 
@@ -202,10 +210,10 @@ Fired when a developer subscribes to an API. The subscription token is delivered
 {
   "event_type": "subscription.created",
   "data": {
-    "subscription": {
-      "plan_name": "Gold",
-      "plan_ref_id": "policy-uuid",
-      "status": "ACTIVE"
+    "subscription_id": "sub-uuid",
+    "subscription_plan": {
+      "ref_id": "policy-uuid",
+      "name": "Gold"
     },
     "api": {
       "name": "Order API",
@@ -257,9 +265,10 @@ Fired when a developer unsubscribes. The gateway should revoke access for the co
 {
   "event_type": "subscription.deleted",
   "data": {
-    "subscription": {
-      "plan_name": "Gold",
-      "plan_ref_id": "policy-uuid"
+    "subscription_id": "sub-uuid",
+    "subscription_plan": {
+      "ref_id": "policy-uuid",
+      "name": "Gold"
     },
     "api": {
       "name": "Order API",
@@ -270,7 +279,7 @@ Fired when a developer unsubscribes. The gateway should revoke access for the co
 }
 ```
 
-The gateway identifies the affected subscription via the `aggregateId` in the event. No token is included.
+The gateway identifies the affected subscription via `subscription_id`. No token is included.
 
 ---
 

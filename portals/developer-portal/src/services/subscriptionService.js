@@ -34,10 +34,10 @@ async function safePublish(eventType, payload, opts) {
 
 function buildWebhookPayload(sub, apiMetadata, policy) {
     return {
-        subscription: {
-            plan_ref_id: policy ? (policy.REF_ID || null) : null,
-            plan_name: policy ? (policy.DISPLAY_NAME || policy.POLICY_NAME || null) : null,
-            status: sub.STATUS,
+        subscription_id: sub.SUB_ID,
+        subscription_plan: {
+            ref_id: policy ? (policy.REF_ID || null) : null,
+            name: policy ? (policy.POLICY_NAME || policy.DISPLAY_NAME || null) : null,
         },
         api: {
             name: apiMetadata ? apiMetadata.API_NAME : null,
