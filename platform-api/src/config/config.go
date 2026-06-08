@@ -196,6 +196,11 @@ type PortalAuth struct {
 	// The portal uses this to derive authorization_endpoint, token_endpoint, and logout_url.
 	// Env: AUTH_PORTAL_DISCOVERY_URL (default: "")
 	DiscoveryURL string `envconfig:"DISCOVERY_URL" default:""`
+
+	// Scopes is the list of OAuth2 scopes the portal will request from the IDP at login.
+	// Must match the scopes registered for the portal client in the IDP.
+	// Env: AUTH_PORTAL_SCOPES (default: "openid,profile,email")
+	Scopes []string `envconfig:"SCOPES" default:"openid,profile,email"`
 }
 
 // Gateway holds gateway-related configuration.
