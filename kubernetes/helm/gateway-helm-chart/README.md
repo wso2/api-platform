@@ -42,8 +42,7 @@ helm install ap-gateway .
 Install with custom control plane configuration:
 ```bash
 helm install ap-gateway . \
-  --set gateway.controller.controlPlane.host="host.docker.internal" \
-  --set gateway.controller.controlPlane.port=8443 \
+  --set gateway.controller.controlPlane.host="host.docker.internal:8443" \
   --set gateway.controller.controlPlane.token.value="your-token-here"
 ```
 
@@ -52,8 +51,7 @@ Install in a specific namespace:
 kubectl create namespace api-gateway
 helm install ap-gateway . \
   --namespace api-gateway \
-  --set gateway.controller.controlPlane.host="platform.example.com" \
-  --set gateway.controller.controlPlane.port=8443
+  --set gateway.controller.controlPlane.host="platform.example.com"
 ```
 
 Install with custom values file:

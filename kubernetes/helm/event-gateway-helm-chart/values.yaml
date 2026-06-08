@@ -184,8 +184,10 @@ eventGateway:
         metrics: 9091
 
     controlPlane:
-      host: ""  # Required for non-development installs; set to your control plane hostname/IP
-      port: 8443
+      # Control plane endpoint. Used directly as the HTTPS/WSS authority, so include a
+      # non-default port here (e.g. "host.docker.internal:8443"); 443 is assumed if omitted.
+      # Required for non-development installs; set to your control plane hostname/IP.
+      host: ""
       token:
         value: ""
         secretName: ""

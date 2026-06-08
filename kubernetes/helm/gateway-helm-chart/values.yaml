@@ -405,8 +405,9 @@ gateway:
       expose:
         admin: false
     controlPlane:
-      host: host.docker.internal
-      port: 8443
+      # Control plane endpoint. Used directly as the HTTPS/WSS authority, so include
+      # a non-default port here (e.g. "host.docker.internal:8443"); 443 is assumed if omitted.
+      host: host.docker.internal:8443
       token:
         value: ""
         secretName: ""
