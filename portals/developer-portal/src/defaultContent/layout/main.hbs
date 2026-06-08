@@ -12,6 +12,11 @@
     <link rel="stylesheet" href="/styles/main.css">
     <link rel="stylesheet" href="/technical-styles/layout.css" />
     <script src='https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js'></script>
+    <script>
+      // Devportal API base segment + version, sourced from server constants.
+      // Browser scripts build invocation URLs via window.devportalApi (common.js).
+      window.__DEVPORTAL_API__ = { base: "{{devportalApiConfig.base}}", version: "{{devportalApiConfig.version}}" };
+    </script>
     <script src='/technical-scripts/search.js' defer></script>
     <script src='/technical-scripts/filter.js' defer></script>
     <script src='/technical-scripts/common.js' defer></script>

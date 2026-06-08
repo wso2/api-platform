@@ -1,3 +1,22 @@
+// Devportal API URL builder — single place that knows the org-scoped prefix
+// `/o/{orgId}/{base}/{version}`. The base segment and version are injected by
+// the server (window.__DEVPORTAL_API__, set in the layout); the fallback keeps
+// pages working if the global is ever missing. Defined synchronously (outside
+// DOMContentLoaded) so it is available before any page script's handlers run.
+(function () {
+    var cfg = window.__DEVPORTAL_API__ || { base: 'devportal', version: 'v1' };
+    window.devportalApi = {
+        // Org-scoped resource: org('abc', '/subscriptions') => '/o/abc/devportal/v1/subscriptions'
+        org: function (orgId, path) {
+            return '/o/' + encodeURIComponent(orgId) + '/' + cfg.base + '/' + cfg.version + (path || '');
+        },
+        // Root resource: root('/applications') => '/applications'
+        root: function (path) {
+            return path || '/';
+        },
+    };
+})();
+
 document.addEventListener("DOMContentLoaded", function () {
     const sidebar = document.getElementById('sidebar');
     const collapseBtn = document.getElementById('collapseBtn');
@@ -459,7 +478,7 @@ document.addEventListener("DOMContentLoaded", function () {
             // Function to create application directly via API
             async function createApplicationDirectly(name, description = '') {
                 try {
-                    const response = await fetch('/devportal/applications', {
+                    const response = await fetch(devportalApi.root('/applications'), {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
@@ -754,7 +773,7 @@ document.addEventListener("DOMContentLoaded", function () {
             // Function to create application directly via API
             async function createApplicationDirectly(name, description = '') {
                 try {
-                    const response = await fetch('/devportal/applications', {
+                    const response = await fetch(devportalApi.root('/applications'), {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',

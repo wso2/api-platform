@@ -132,11 +132,14 @@ app.use((req, res, next) => {
 
 //backend routes
 if (config.advanced?.openApiValidator?.enabled) {
-    logger.info('Mounting spec-driven /devportal router (advanced.useOpenApiValidator=true)');
+    logger.info('Mounting spec-driven devportal router (advanced.useOpenApiValidator=true)');
     const devportalApiRouter = require('./openapi/devportalApiRouter');
-    app.use(constants.ROUTE.DEV_PORTAL, devportalApiRouter);
+    // Mounted at root: spec paths are root-relative (/o/{orgId}/devportal/v1/...,
+    // /applications, /login, ...). Registered before the page route tree so
+    // unmatched requests fall through to it.
+    app.use(constants.ROUTE.DEFAULT, devportalApiRouter);
 } else {
-    app.use(constants.ROUTE.DEV_PORTAL, devportalRoute);
+    app.use(constants.ROUTE.DEFAULT, devportalRoute);
 }
 
 // MCP Server Registry (OpenAPI v0.1)

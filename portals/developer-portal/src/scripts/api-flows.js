@@ -883,7 +883,7 @@ async function openInVSCode() {
     if (btn) btn.innerHTML = '<span class="af-sd-checking-spinner"></span> Opening…';
 
     try {
-        const res = await fetch('/devportal/temp-arazzo-file', {
+        const res = await fetch(devportalApi.root('/temp-arazzo-file'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
             body: JSON.stringify({ content, filename }),
@@ -1398,8 +1398,8 @@ async function saveApiFlow(orgID, viewName, status) {
     const payload = { name, handle, description, agentPrompt, status, visibility, agentVisibility, contentType, apiFlowDefinition, markdownContent };
     const isEdit = !!apiFlowId;
     const url = isEdit
-        ? `/devportal/organizations/${orgID}/views/${viewName}/api-flows/${apiFlowId}`
-        : `/devportal/organizations/${orgID}/views/${viewName}/api-flows`;
+        ? devportalApi.org(orgID, `/views/${viewName}/api-flows/${apiFlowId}`)
+        : devportalApi.org(orgID, `/views/${viewName}/api-flows`);
     const method = isEdit ? 'PUT' : 'POST';
 
     const groupBtns = document.querySelectorAll('#saveApiFlowGroup button');
@@ -1463,7 +1463,7 @@ async function deleteApiFlow(orgID, viewName, apiFlowId) {
     };
 
     try {
-        const response = await fetch(`/devportal/organizations/${orgID}/views/${viewName}/api-flows/${apiFlowId}`, {
+        const response = await fetch(devportalApi.org(orgID, `/views/${viewName}/api-flows/${apiFlowId}`), {
             method: 'DELETE',
             headers: { 'X-CSRF-Token': csrfToken },
             credentials: 'same-origin'

@@ -149,7 +149,7 @@ async function createIDP(orgID) {
         data[key] = sanitizeInput(value);
     });
     data['scope'] = 'openid';
-    const response = await fetch(`/devportal/organizations/${orgID}/identityProvider`, {
+    const response = await fetch(devportalApi.org(orgID, '/identity-providers'), {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -176,7 +176,7 @@ async function editIDP(orgID, formID) {
         data[key] = sanitizeInput(value);
     });
     data['scope'] = 'openid';
-    const response = await fetch(`/devportal/organizations/${orgID}/identityProvider`, {
+    const response = await fetch(devportalApi.org(orgID, '/identity-providers'), {
         method: 'PUT',
         headers: {
             'Content-Type': 'application/json',
@@ -192,7 +192,7 @@ async function editIDP(orgID, formID) {
 
 async function deleteIDP(orgID) {
 
-    const response = await fetch(`/devportal/organizations/${orgID}/identityProvider`, {
+    const response = await fetch(devportalApi.org(orgID, '/identity-providers'), {
         method: 'DELETE',
     });
     if (response.ok) {
@@ -233,7 +233,7 @@ async function uploadContent(orgID) {
     formData.append('file', zipFile.files[0]);
 
     const view = document.getElementById('uploadViewContent').value;
-    const response = await fetch(`/devportal/organizations/${orgID}/views/${view}/layout`, {
+    const response = await fetch(devportalApi.org(orgID, `/views/${view}/layout`), {
         method: 'PUT',
         body: formData,
         credentials: 'same-origin'
@@ -310,7 +310,7 @@ async function editView(existingLabels, labelsContainerID, displayNameID, nameID
         addedLabels: sanitizAddedLabels,
         removedLabels: sanitizeRemovedLabels
     }
-    const response = await fetch(`/devportal/organizations/${orgID}/views/${name}`, {
+    const response = await fetch(devportalApi.org(orgID, `/views/${name}`), {
         method: 'PUT',
         headers: {
             'Content-Type': 'application/json',
@@ -326,7 +326,7 @@ async function editView(existingLabels, labelsContainerID, displayNameID, nameID
 
 async function deleteView(orgID, viewName) {
     
-    const response = await fetch(`/devportal/organizations/${orgID}/views/${viewName}`, {
+    const response = await fetch(devportalApi.org(orgID, `/views/${viewName}`), {
         method: 'DELETE',
     });
     if (response.ok) {
@@ -348,7 +348,7 @@ async function addLabels(orgID, orgLabels) {
     if (removedLabels.length > 0) {
         const sanitizeDelete = removedLabels.map(label => sanitizeInput(label));
         const labelName = sanitizeDelete.join(",");
-        const response = await fetch(`/devportal/organizations/${orgID}/labels?names=${labelName}`, {
+        const response = await fetch(devportalApi.org(orgID, `/labels?names=${labelName}`), {
             method: "DELETE",
             headers: {
                 'Content-Type': 'application/json',
@@ -369,7 +369,7 @@ async function addLabels(orgID, orgLabels) {
         });
     });
  
-    const response = await fetch(`/devportal/organizations/${orgID}/labels`, {
+    const response = await fetch(devportalApi.org(orgID, '/labels'), {
         method: "PUT",
         headers: {
             'Content-Type': 'application/json',

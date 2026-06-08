@@ -36,41 +36,47 @@ const apiKeyController = require('../controllers/apiKeyController');
 const apiFlowService = require('../services/apiFlowService');
 const webhookAdminController = require('../controllers/webhookAdminController');
 
+// Org-scoped route prefix `/o/:orgId/devportal/v1` — base segment + version
+// come from constants.DEVPORTAL_API (single source of truth). Routes that the
+// spec keeps at root (/organizations, /applications, /apis, /login,
+// /temp-arazzo-file) intentionally do NOT use this prefix.
+const ORG = constants.DEVPORTAL_API.ORG_PREFIX;
+
 router.post('/organizations', enforceSecuirty(constants.SCOPES.ADMIN), multipartHandler.fields([{ name: 'organization', maxCount: 1 }]), adminService.createOrganization);
 router.get('/organizations', enforceSecuirty(constants.SCOPES.ADMIN), adminService.getOrganizations);
 router.put('/organizations/:orgId', enforceSecuirty(constants.SCOPES.ADMIN), multipartHandler.fields([{ name: 'organization', maxCount: 1 }]), adminService.updateOrganization);
-router.get('/organizations/:orgId', enforceSecuirty(constants.SCOPES.ADMIN), devportalService.getOrganization); // S2S Applied 
+router.get('/organizations/:orgId', enforceSecuirty(constants.SCOPES.ADMIN), devportalService.getOrganization); // S2S Applied
 router.delete('/organizations/:orgId', enforceSecuirty(constants.SCOPES.ADMIN), adminService.deleteOrganization);
 
-router.post('/organizations/:orgId/identityProvider', enforceSecuirty(constants.SCOPES.ADMIN), multipartHandler.fields([{ name: 'identityProvider', maxCount: 1 }]), adminService.createIdentityProvider);
-router.put('/organizations/:orgId/identityProvider', enforceSecuirty(constants.SCOPES.ADMIN), multipartHandler.fields([{ name: 'identityProvider', maxCount: 1 }]), adminService.updateIdentityProvider);
-router.get('/organizations/:orgId/identityProvider', enforceSecuirty(constants.SCOPES.ADMIN), adminService.getIdentityProvider);
-router.delete('/organizations/:orgId/identityProvider', enforceSecuirty(constants.SCOPES.ADMIN), adminService.deleteIdentityProvider);
+router.post(`${ORG}/identity-providers`, enforceSecuirty(constants.SCOPES.ADMIN), multipartHandler.fields([{ name: 'identityProvider', maxCount: 1 }]), adminService.createIdentityProvider);
+router.put(`${ORG}/identity-providers`, enforceSecuirty(constants.SCOPES.ADMIN), multipartHandler.fields([{ name: 'identityProvider', maxCount: 1 }]), adminService.updateIdentityProvider);
+router.get(`${ORG}/identity-providers`, enforceSecuirty(constants.SCOPES.ADMIN), adminService.getIdentityProvider);
+router.delete(`${ORG}/identity-providers`, enforceSecuirty(constants.SCOPES.ADMIN), adminService.deleteIdentityProvider);
 
 // Key Manager routes (admin — JSON body OR YAML file upload on POST/PUT)
 const keyManagerService = require('../services/keyManagerService');
-router.post('/organizations/:orgId/key-managers', enforceSecuirty(constants.SCOPES.ADMIN), multipartHandler.fields([{name: 'keymanager', maxCount: 1}]), keyManagerService.createKeyManager);
-router.get('/organizations/:orgId/key-managers', enforceSecuirty(constants.SCOPES.ADMIN), keyManagerService.getKeyManagers);
-router.get('/organizations/:orgId/key-managers/:kmId', enforceSecuirty(constants.SCOPES.ADMIN), keyManagerService.getKeyManager);
-router.put('/organizations/:orgId/key-managers/:kmId', enforceSecuirty(constants.SCOPES.ADMIN), multipartHandler.fields([{name: 'keymanager', maxCount: 1}]), keyManagerService.updateKeyManager);
-router.delete('/organizations/:orgId/key-managers/:kmId', enforceSecuirty(constants.SCOPES.ADMIN), keyManagerService.deleteKeyManager);
+router.post(`${ORG}/key-managers`, enforceSecuirty(constants.SCOPES.ADMIN), multipartHandler.fields([{name: 'keymanager', maxCount: 1}]), keyManagerService.createKeyManager);
+router.get(`${ORG}/key-managers`, enforceSecuirty(constants.SCOPES.ADMIN), keyManagerService.getKeyManagers);
+router.get(`${ORG}/key-managers/:kmId`, enforceSecuirty(constants.SCOPES.ADMIN), keyManagerService.getKeyManager);
+router.put(`${ORG}/key-managers/:kmId`, enforceSecuirty(constants.SCOPES.ADMIN), multipartHandler.fields([{name: 'keymanager', maxCount: 1}]), keyManagerService.updateKeyManager);
+router.delete(`${ORG}/key-managers/:kmId`, enforceSecuirty(constants.SCOPES.ADMIN), keyManagerService.deleteKeyManager);
 // Key Manager routes (developer-facing)
-router.get('/organizations/:orgId/key-managers/discover', enforceSecuirty(constants.SCOPES.DEVELOPER), keyManagerService.getAvailableKeyManagers);
+router.get(`${ORG}/key-managers/discover`, enforceSecuirty(constants.SCOPES.DEVELOPER), keyManagerService.getAvailableKeyManagers);
 
 const upload = multer({ dest: os.tmpdir() });
-router.post('/organizations/:orgId/views/:name/layout', enforceSecuirty(constants.SCOPES.ADMIN), upload.single('file'), adminService.createOrgContent);
-router.put('/organizations/:orgId/views/:name/layout', enforceSecuirty(constants.SCOPES.ADMIN), upload.single('file'), adminService.updateOrgContent);
-router.get('/organizations/:orgId/views/:name/layout', devportalService.getOrgContent);
-router.get('/organizations/:orgId/views/:name/layout/:fileType', devportalService.getOrgContent);
-router.delete('/organizations/:orgId/views/:name/layout', enforceSecuirty(constants.SCOPES.ADMIN), adminService.deleteOrgContent);
+router.post(`${ORG}/views/:name/layout`, enforceSecuirty(constants.SCOPES.ADMIN), upload.single('file'), adminService.createOrgContent);
+router.put(`${ORG}/views/:name/layout`, enforceSecuirty(constants.SCOPES.ADMIN), upload.single('file'), adminService.updateOrgContent);
+router.get(`${ORG}/views/:name/layout`, devportalService.getOrgContent);
+router.get(`${ORG}/views/:name/layout/:fileType`, devportalService.getOrgContent);
+router.delete(`${ORG}/views/:name/layout`, enforceSecuirty(constants.SCOPES.ADMIN), adminService.deleteOrgContent);
 
-router.post('/organizations/:orgId/provider', enforceSecuirty(constants.SCOPES.ADMIN), adminService.createProvider);
-router.put('/organizations/:orgId/provider', enforceSecuirty(constants.SCOPES.ADMIN), adminService.updateProvider);
-router.get('/organizations/:orgId/provider', enforceSecuirty(constants.SCOPES.ADMIN), adminService.getProviders);
-router.delete('/organizations/:orgId/provider', enforceSecuirty(constants.SCOPES.ADMIN), adminService.deleteProvider);
+router.post(`${ORG}/provider`, enforceSecuirty(constants.SCOPES.ADMIN), adminService.createProvider);
+router.put(`${ORG}/provider`, enforceSecuirty(constants.SCOPES.ADMIN), adminService.updateProvider);
+router.get(`${ORG}/provider`, enforceSecuirty(constants.SCOPES.ADMIN), adminService.getProviders);
+router.delete(`${ORG}/provider`, enforceSecuirty(constants.SCOPES.ADMIN), adminService.deleteProvider);
 
 router.post(
-    '/organizations/:orgId/apis',
+    `${ORG}/apis`,
     enforceSecuirty(constants.SCOPES.DEVELOPER),
     multipartHandler.fields([
         {name: 'api', maxCount: 1},
@@ -79,10 +85,10 @@ router.post(
         {name: 'schemaDefinition', maxCount: 1},
     ]),
     apiMetadataService.createAPIMetadata);
-router.get('/organizations/:orgId/apis/:apiId', enforceSecuirty(constants.SCOPES.DEVELOPER), apiMetadataService.getAPIMetadata);
-router.get('/organizations/:orgId/apis', enforceSecuirty(constants.SCOPES.DEVELOPER), apiMetadataService.getAllAPIMetadata);
+router.get(`${ORG}/apis/:apiId`, enforceSecuirty(constants.SCOPES.DEVELOPER), apiMetadataService.getAPIMetadata);
+router.get(`${ORG}/apis`, enforceSecuirty(constants.SCOPES.DEVELOPER), apiMetadataService.getAllAPIMetadata);
 router.put(
-    '/organizations/:orgId/apis/:apiId',
+    `${ORG}/apis/:apiId`,
     enforceSecuirty(constants.SCOPES.DEVELOPER),
     multipartHandler.fields([
         {name: 'api', maxCount: 1},
@@ -91,24 +97,24 @@ router.put(
         {name: 'schemaDefinition', maxCount: 1},
     ]),
     apiMetadataService.updateAPIMetadata);
-router.delete('/organizations/:orgId/apis/:apiId', enforceSecuirty(constants.SCOPES.DEVELOPER), apiMetadataService.deleteAPIMetadata);
+router.delete(`${ORG}/apis/:apiId`, enforceSecuirty(constants.SCOPES.DEVELOPER), apiMetadataService.deleteAPIMetadata);
 
-router.post('/organizations/:orgId/subscription-policies', enforceSecuirty(constants.SCOPES.DEVELOPER), multipartHandler.fields([{ name: 'subscriptionPolicy', maxCount: 1 }]), apiMetadataService.addSubscriptionPolicies);
-router.get('/organizations/:orgId/subscription-policies/:policyID', enforceSecuirty(constants.SCOPES.DEVELOPER), apiMetadataService.getSubscriptionPolicy);
-router.put('/organizations/:orgId/subscription-policies', enforceSecuirty(constants.SCOPES.DEVELOPER), multipartHandler.fields([{ name: 'subscriptionPolicy', maxCount: 1 }]), apiMetadataService.putSubscriptionPolicies);
-router.delete('/organizations/:orgId/subscription-policies/:policyName', enforceSecuirty(constants.SCOPES.DEVELOPER), apiMetadataService.deleteSubscriptionPolicy);
+router.post(`${ORG}/subscription-policies`, enforceSecuirty(constants.SCOPES.DEVELOPER), multipartHandler.fields([{ name: 'subscriptionPolicy', maxCount: 1 }]), apiMetadataService.addSubscriptionPolicies);
+router.get(`${ORG}/subscription-policies/:policyID`, enforceSecuirty(constants.SCOPES.DEVELOPER), apiMetadataService.getSubscriptionPolicy);
+router.put(`${ORG}/subscription-policies`, enforceSecuirty(constants.SCOPES.DEVELOPER), multipartHandler.fields([{ name: 'subscriptionPolicy', maxCount: 1 }]), apiMetadataService.putSubscriptionPolicies);
+router.delete(`${ORG}/subscription-policies/:policyName`, enforceSecuirty(constants.SCOPES.DEVELOPER), apiMetadataService.deleteSubscriptionPolicy);
 
 const apiZip = multer({ dest: '/tmp' });
 // New /content routes (ZIP structure: web/ + docs/)
-router.post('/organizations/:orgId/apis/:apiId/content', enforceSecuirty(constants.SCOPES.DEVELOPER), apiZip.single('apiContent'), apiMetadataService.createAPIContent);
-router.put('/organizations/:orgId/apis/:apiId/content', enforceSecuirty(constants.SCOPES.DEVELOPER), apiZip.single('apiContent'), apiMetadataService.updateAPIContent);
-router.get('/organizations/:orgId/apis/:apiId/content', apiMetadataService.getAPIFile);
-router.delete('/organizations/:orgId/apis/:apiId/content', enforceSecuirty(constants.SCOPES.DEVELOPER), apiMetadataService.deleteAPIFile);
+router.post(`${ORG}/apis/:apiId/content`, enforceSecuirty(constants.SCOPES.DEVELOPER), apiZip.single('apiContent'), apiMetadataService.createAPIContent);
+router.put(`${ORG}/apis/:apiId/content`, enforceSecuirty(constants.SCOPES.DEVELOPER), apiZip.single('apiContent'), apiMetadataService.updateAPIContent);
+router.get(`${ORG}/apis/:apiId/content`, apiMetadataService.getAPIFile);
+router.delete(`${ORG}/apis/:apiId/content`, enforceSecuirty(constants.SCOPES.DEVELOPER), apiMetadataService.deleteAPIFile);
 // Legacy /template routes (ZIP structure: {name}/content/ + images/ + documents/)
-router.post('/organizations/:orgId/apis/:apiId/template', enforceSecuirty(constants.SCOPES.DEVELOPER), apiZip.single('apiContent'), apiMetadataService.createAPITemplate);
-router.put('/organizations/:orgId/apis/:apiId/template', enforceSecuirty(constants.SCOPES.DEVELOPER), apiZip.single('apiContent'), apiMetadataService.updateAPITemplate);
-router.get('/organizations/:orgId/apis/:apiId/template', apiMetadataService.getAPIFile);
-router.delete('/organizations/:orgId/apis/:apiId/template', enforceSecuirty(constants.SCOPES.DEVELOPER), apiMetadataService.deleteAPIFile);
+router.post(`${ORG}/apis/:apiId/template`, enforceSecuirty(constants.SCOPES.DEVELOPER), apiZip.single('apiContent'), apiMetadataService.createAPITemplate);
+router.put(`${ORG}/apis/:apiId/template`, enforceSecuirty(constants.SCOPES.DEVELOPER), apiZip.single('apiContent'), apiMetadataService.updateAPITemplate);
+router.get(`${ORG}/apis/:apiId/template`, apiMetadataService.getAPIFile);
+router.delete(`${ORG}/apis/:apiId/template`, enforceSecuirty(constants.SCOPES.DEVELOPER), apiMetadataService.deleteAPIFile);
 
 // S2S Applied APIS
 router.post(
@@ -134,40 +140,40 @@ router.put(
     apiMetadataService.updateAPIMetadata); // s2s applied
 router.delete('/apis/:apiId', enforceSecuirty(constants.SCOPES.DEVELOPER), apiMetadataService.deleteAPIMetadata); // s2s applied
 
-router.post('/organizations/:orgId/labels', enforceSecuirty(constants.SCOPES.ADMIN), apiMetadataService.createLabels);
-router.put('/organizations/:orgId/labels', enforceSecuirty(constants.SCOPES.ADMIN), apiMetadataService.updateLabel);
-router.get('/organizations/:orgId/labels', enforceSecuirty(constants.SCOPES.ADMIN), apiMetadataService.retrieveLabels);
-router.delete('/organizations/:orgId/labels', enforceSecuirty(constants.SCOPES.ADMIN), apiMetadataService.deleteLabels);
+router.post(`${ORG}/labels`, enforceSecuirty(constants.SCOPES.ADMIN), apiMetadataService.createLabels);
+router.put(`${ORG}/labels`, enforceSecuirty(constants.SCOPES.ADMIN), apiMetadataService.updateLabel);
+router.get(`${ORG}/labels`, enforceSecuirty(constants.SCOPES.ADMIN), apiMetadataService.retrieveLabels);
+router.delete(`${ORG}/labels`, enforceSecuirty(constants.SCOPES.ADMIN), apiMetadataService.deleteLabels);
 
 
 // Platform Gateway Subscriptions
-router.post('/organizations/:orgId/subscriptions',
+router.post(`${ORG}/subscriptions`,
     enforceSecuirty(constants.SCOPES.DEVELOPER), subscriptionService.createSubscription);
-router.get('/organizations/:orgId/subscriptions',
+router.get(`${ORG}/subscriptions`,
     enforceSecuirty(constants.SCOPES.DEVELOPER), subscriptionService.listSubscriptions);
-router.get('/organizations/:orgId/subscriptions/:subscriptionId',
+router.get(`${ORG}/subscriptions/:subscriptionId`,
     enforceSecuirty(constants.SCOPES.DEVELOPER), subscriptionService.getSubscription);
-router.put('/organizations/:orgId/subscriptions/:subscriptionId',
+router.put(`${ORG}/subscriptions/:subscriptionId`,
     enforceSecuirty(constants.SCOPES.DEVELOPER), subscriptionService.updateSubscription);
-router.delete('/organizations/:orgId/subscriptions/:subscriptionId',
+router.delete(`${ORG}/subscriptions/:subscriptionId`,
     enforceSecuirty(constants.SCOPES.DEVELOPER), subscriptionService.deleteSubscription);
 
 // API keys — devportal is source of truth; gateway notified via webhook event
-router.post('/organizations/:orgId/api-keys/generate',
+router.post(`${ORG}/api-keys/generate`,
     enforceSecuirty(constants.SCOPES.DEVELOPER), requireCsrfForMutatingApi, apiKeyController.generateApiKey);
-router.get('/organizations/:orgId/api-keys',
+router.get(`${ORG}/api-keys`,
     enforceSecuirty(constants.SCOPES.DEVELOPER), apiKeyController.listApiKeys);
-router.post('/organizations/:orgId/api-keys/:apiKeyId/regenerate',
+router.post(`${ORG}/api-keys/:apiKeyId/regenerate`,
     enforceSecuirty(constants.SCOPES.DEVELOPER), requireCsrfForMutatingApi, apiKeyController.regenerateApiKey);
-router.post('/organizations/:orgId/api-keys/:apiKeyId/revoke',
+router.post(`${ORG}/api-keys/:apiKeyId/revoke`,
     enforceSecuirty(constants.SCOPES.DEVELOPER), requireCsrfForMutatingApi, apiKeyController.revokeApiKey);
 
 
-router.post('/organizations/:orgId/views', enforceSecuirty(constants.SCOPES.ADMIN), apiMetadataService.addView);
-router.put('/organizations/:orgId/views/:name', enforceSecuirty(constants.SCOPES.ADMIN), apiMetadataService.updateView);
-router.get('/organizations/:orgId/views/:name', enforceSecuirty(constants.SCOPES.ADMIN), apiMetadataService.getView);
-router.get('/organizations/:orgId/views', enforceSecuirty(constants.SCOPES.ADMIN), apiMetadataService.getAllViews);
-router.delete('/organizations/:orgId/views/:name', enforceSecuirty(constants.SCOPES.ADMIN), apiMetadataService.deleteView);
+router.post(`${ORG}/views`, enforceSecuirty(constants.SCOPES.ADMIN), apiMetadataService.addView);
+router.put(`${ORG}/views/:name`, enforceSecuirty(constants.SCOPES.ADMIN), apiMetadataService.updateView);
+router.get(`${ORG}/views/:name`, enforceSecuirty(constants.SCOPES.ADMIN), apiMetadataService.getView);
+router.get(`${ORG}/views`, enforceSecuirty(constants.SCOPES.ADMIN), apiMetadataService.getAllViews);
+router.delete(`${ORG}/views/:name`, enforceSecuirty(constants.SCOPES.ADMIN), apiMetadataService.deleteView);
 
 router.post('/applications', enforceSecuirty(constants.SCOPES.DEVELOPER),
     multipartHandler.fields([{name: 'application', maxCount: 1}]),
@@ -185,12 +191,12 @@ router.post('/applications/:applicationId/oauth-keys/:keyMappingId/clean-up', en
 
 
 // API Flows (admin)
-router.post('/organizations/:orgId/views/:viewName/api-flows', enforceSecuirty(constants.SCOPES.ADMIN), requireCsrfForMutatingApi, apiFlowService.createAPIFlow);
-router.get('/organizations/:orgId/views/:viewName/api-flows', enforceSecuirty(constants.SCOPES.ADMIN), apiFlowService.getAllAPIFlows);
-router.get('/organizations/:orgId/views/:viewName/api-flows/:apiFlowId', enforceSecuirty(constants.SCOPES.ADMIN), apiFlowService.getAPIFlow);
-router.put('/organizations/:orgId/views/:viewName/api-flows/:apiFlowId', enforceSecuirty(constants.SCOPES.ADMIN), requireCsrfForMutatingApi, apiFlowService.updateAPIFlow);
-router.delete('/organizations/:orgId/views/:viewName/api-flows/:apiFlowId', enforceSecuirty(constants.SCOPES.ADMIN), requireCsrfForMutatingApi, apiFlowService.deleteAPIFlow);
-router.post('/organizations/:orgId/views/:viewName/api-flows/generate-prompt', enforceSecuirty(constants.SCOPES.ADMIN), requireCsrfForMutatingApi, apiFlowService.generatePrompt);
+router.post(`${ORG}/views/:viewName/api-flows`, enforceSecuirty(constants.SCOPES.ADMIN), requireCsrfForMutatingApi, apiFlowService.createAPIFlow);
+router.get(`${ORG}/views/:viewName/api-flows`, enforceSecuirty(constants.SCOPES.ADMIN), apiFlowService.getAllAPIFlows);
+router.get(`${ORG}/views/:viewName/api-flows/:apiFlowId`, enforceSecuirty(constants.SCOPES.ADMIN), apiFlowService.getAPIFlow);
+router.put(`${ORG}/views/:viewName/api-flows/:apiFlowId`, enforceSecuirty(constants.SCOPES.ADMIN), requireCsrfForMutatingApi, apiFlowService.updateAPIFlow);
+router.delete(`${ORG}/views/:viewName/api-flows/:apiFlowId`, enforceSecuirty(constants.SCOPES.ADMIN), requireCsrfForMutatingApi, apiFlowService.deleteAPIFlow);
+router.post(`${ORG}/views/:viewName/api-flows/generate-prompt`, enforceSecuirty(constants.SCOPES.ADMIN), requireCsrfForMutatingApi, apiFlowService.generatePrompt);
 
 // Writes Arazzo YAML to a unique temp file so the "Open in VS Code" button can launch it via vscode://file/<path>
 router.post('/temp-arazzo-file', enforceSecuirty(constants.SCOPES.ADMIN), requireCsrfForMutatingApi, async (req, res, next) => {
@@ -216,12 +222,12 @@ router.post('/login', devportalController.login);
 
 // Import Application with API Subscriptions
 if (config.features?.importApplication?.enabled) {
-    router.post('/organizations/:orgId/applications/import', enforceSecuirty(constants.SCOPES.ADMIN),multipartHandler.single('file'), devportalController.importApplications);
+    router.post(`${ORG}/applications/import`, enforceSecuirty(constants.SCOPES.ADMIN),multipartHandler.single('file'), devportalController.importApplications);
 }
 
 // Webhook event admin (admin-only)
-router.get('/organizations/:orgId/events', enforceSecuirty(constants.SCOPES.ADMIN), webhookAdminController.listEvents);
-router.get('/organizations/:orgId/events/:eventId', enforceSecuirty(constants.SCOPES.ADMIN), webhookAdminController.getEvent);
-router.post('/organizations/:orgId/deliveries/:deliveryId/retry', enforceSecuirty(constants.SCOPES.ADMIN), requireCsrfForMutatingApi, webhookAdminController.retryDelivery);
+router.get(`${ORG}/webhook-events`, enforceSecuirty(constants.SCOPES.ADMIN), webhookAdminController.listEvents);
+router.get(`${ORG}/webhook-events/:eventId`, enforceSecuirty(constants.SCOPES.ADMIN), webhookAdminController.getEvent);
+router.post(`${ORG}/webhook-deliveries/:deliveryId/retry`, enforceSecuirty(constants.SCOPES.ADMIN), requireCsrfForMutatingApi, webhookAdminController.retryDelivery);
 
 module.exports = router;

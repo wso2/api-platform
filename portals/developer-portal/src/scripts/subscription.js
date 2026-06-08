@@ -20,7 +20,7 @@ async function subscribe(orgID, apiId, planName) {
     try {
         const body = { apiId, subscriptionPlanName: planName };
 
-        const response = await fetch(`/devportal/organizations/${encodeURIComponent(orgID)}/subscriptions`, {
+        const response = await fetch(devportalApi.org(orgID, '/subscriptions'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(body),
@@ -105,7 +105,7 @@ async function handlePlanSubscription(btnElement) {
 
 async function toggleSubscriptionStatus(orgID, subscriptionId, newStatus) {
     try {
-        const response = await fetch(`/devportal/organizations/${encodeURIComponent(orgID)}/subscriptions/${encodeURIComponent(subscriptionId)}`, {
+        const response = await fetch(devportalApi.org(orgID, `/subscriptions/${encodeURIComponent(subscriptionId)}`), {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ status: newStatus }),
@@ -134,7 +134,7 @@ function confirmDeleteSubscription(orgID, subscriptionId) {
 
 async function executeDeleteSubscription(orgID, subscriptionId) {
     try {
-        const response = await fetch(`/devportal/organizations/${encodeURIComponent(orgID)}/subscriptions/${encodeURIComponent(subscriptionId)}`, {
+        const response = await fetch(devportalApi.org(orgID, `/subscriptions/${encodeURIComponent(subscriptionId)}`), {
             method: 'DELETE',
             headers: { 'Content-Type': 'application/json' },
         });
@@ -161,7 +161,7 @@ async function runPendingPlanSwitch(orgID, apiId, planName, displayName, subscri
     }
 
     try {
-        const deleteResponse = await fetch(`/devportal/organizations/${encodeURIComponent(orgID)}/subscriptions/${encodeURIComponent(subscriptionId)}`, {
+        const deleteResponse = await fetch(devportalApi.org(orgID, `/subscriptions/${encodeURIComponent(subscriptionId)}`), {
             method: 'DELETE',
             headers: { 'Content-Type': 'application/json' },
         });
@@ -202,7 +202,7 @@ async function refreshLandingPageSubscriptions() {
     if (!apiId) { window.location.reload(); return; }
 
     try {
-        var resp = await fetch('/devportal/organizations/' + encodeURIComponent(orgID) + '/subscriptions?apiId=' + encodeURIComponent(apiId), { headers: { 'Content-Type': 'application/json' } });
+        var resp = await fetch(devportalApi.org(orgID, '/subscriptions?apiId=' + encodeURIComponent(apiId)), { headers: { 'Content-Type': 'application/json' } });
         if (!resp.ok) { window.location.reload(); return; }
         var data = await resp.json();
         var existing = data.list || data || [];
@@ -402,7 +402,7 @@ async function fetchTokenIfNeeded(subscriptionId) {
     const orgID = window.__subscriptionOrgID;
     if (!orgID) return null;
     try {
-        const resp = await fetch(`/devportal/organizations/${encodeURIComponent(orgID)}/subscriptions/${encodeURIComponent(subscriptionId)}`, { headers: { 'Content-Type': 'application/json' } });
+        const resp = await fetch(devportalApi.org(orgID, `/subscriptions/${encodeURIComponent(subscriptionId)}`), { headers: { 'Content-Type': 'application/json' } });
         if (!resp.ok) return null;
         const data = await resp.json();
         const token = data.subscriptionToken;

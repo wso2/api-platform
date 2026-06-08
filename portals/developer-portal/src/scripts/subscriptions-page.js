@@ -35,7 +35,7 @@ function prepareDeleteSubscription(orgID, subID) {
 async function executeDeleteSubscription() {
     try {
         const response = await fetch(
-            `/devportal/organizations/${encodeURIComponent(pendingDeleteOrgID)}/subscriptions/${encodeURIComponent(pendingDeleteSubID)}`,
+            devportalApi.org(pendingDeleteOrgID, `/subscriptions/${encodeURIComponent(pendingDeleteSubID)}`),
             { method: 'DELETE', headers: { 'Content-Type': 'application/json' } }
         );
 
@@ -75,7 +75,7 @@ async function executeDeleteSubscription() {
 async function toggleSubscriptionStatus(orgID, subscriptionId, newStatus) {
     try {
         const response = await fetch(
-            `/devportal/organizations/${encodeURIComponent(orgID)}/subscriptions/${encodeURIComponent(subscriptionId)}`,
+            devportalApi.org(orgID, `/subscriptions/${encodeURIComponent(subscriptionId)}`),
             {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
@@ -127,7 +127,7 @@ async function toggleListTokenVisibility(subscriptionId) {
         if (!orgID) return;
         try {
             const response = await fetch(
-                `/devportal/organizations/${encodeURIComponent(orgID)}/subscriptions/${encodeURIComponent(subscriptionId)}`,
+                devportalApi.org(orgID, `/subscriptions/${encodeURIComponent(subscriptionId)}`),
                 { headers: { 'Content-Type': 'application/json' } }
             );
             if (!response.ok) return;
