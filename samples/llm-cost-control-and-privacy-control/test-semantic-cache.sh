@@ -66,11 +66,9 @@ HDR2=$(mktemp)
 T2_START=$(ms); R2=$(chat_req "${CACHE_MSG}" "${HDR2}"); T2_END=$(ms)
 T2=$((T2_END - T2_START))
 CACHE_HDR2=$(grep -i "x-cache\|cache-status\|x-semantic" "${HDR2}" | tr -d '\r' || true)
-ALL_X_HDRS=$(grep -i "^x-" "${HDR2}" | tr -d '\r' || true)
 rm -f "${HDR2}"
 info "  time: ${T2}ms"
 [[ -n "${CACHE_HDR2}" ]] && info "  cache header: ${CACHE_HDR2}"
-[[ -n "${ALL_X_HDRS}" ]]  && info "  all x-headers: ${ALL_X_HDRS}"
 
 echo ""
 echo "══════════════════════════════════════════════════"

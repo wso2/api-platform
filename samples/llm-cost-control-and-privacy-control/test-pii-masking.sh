@@ -83,6 +83,8 @@ if echo "${RESP}" | jq -e '.error' >/dev/null 2>&1; then
   exit 1
 fi
 
+info "Prompt sent: ${PII_MSG}"
+
 CONTENT=$(echo "${RESP}" | jq -r '.choices[0].message.content // ""')
 info "AI response: ${CONTENT}"
 echo ""
