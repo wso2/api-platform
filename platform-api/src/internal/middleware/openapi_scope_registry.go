@@ -52,6 +52,7 @@ func (r *ScopeRegistry) Merge(other *ScopeRegistry) {
 	}
 }
 
+
 // openAPIDoc is the minimal subset of an OpenAPI 3.x document we need to parse.
 type openAPIDoc struct {
 	Servers []struct {

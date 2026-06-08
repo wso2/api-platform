@@ -93,7 +93,7 @@ func (h *AuthHandler) GetOrgAuthDiscovery(c *gin.Context) {
 		AuthorizationEndpoint: discovery.AuthorizationEndpoint,
 		TokenEndpoint:         discovery.TokenEndpoint,
 		LogoutURL:             discovery.EndSessionEndpoint,
-		Scopes:                filterUIScopes(discovery.ScopesSupported),
+		Scopes:                intersectScopes(h.portal.Scopes, discovery.ScopesSupported),
 		PKCERequired:          len(discovery.CodeChallengeMethodsSupported) > 0,
 		ResponseType:          preferredResponseType(discovery.ResponseTypesSupported),
 	})
@@ -104,18 +104,25 @@ func (h *AuthHandler) RegisterPublicRoutes(r *gin.Engine) {
 	r.GET("/portal/api/v1/organizations/:orgHandle/auth", h.GetOrgAuthDiscovery)
 }
 
-// filterUIScopes returns the intersection of supported scopes and the standard OIDC
-// scopes the portal UI needs. Falls back to the standard set if the IDP returns none.
-func filterUIScopes(supported []string) []string {
-	want := map[string]bool{"openid": true, "profile": true, "email": true}
-	var result []string
-	for _, s := range supported {
-		if want[s] {
+// intersectScopes returns the configured portal scopes filtered to those the IDP
+// advertises as supported. If the IDP returns an empty scopes_supported list (some
+// IDPs omit it), all configured scopes are returned as-is.
+func intersectScopes(configured []string, idpSupported []string) []string {
+	if len(idpSupported) == 0 {
+		return configured
+	}
+	supported := make(map[string]bool, len(idpSupported))
+	for _, s := range idpSupported {
+		supported[s] = true
+	}
+	result := make([]string, 0, len(configured))
+	for _, s := range configured {
+		if supported[s] {
 			result = append(result, s)
 		}
 	}
 	if len(result) == 0 {
-		return []string{"openid", "profile", "email"}
+		return configured
 	}
 	return result
 }
