@@ -30,7 +30,7 @@ Envoy itself is **never** the debug target — we always run it in Docker. We us
 - "Step through controller code when I POST to /rest-apis"
 - "Find and fix a bug in gateway-controller / policy-engine"
 - A specific request returns the wrong response and source-level inspection is
-  needed (when [[gateway-it-tests]] step 3 — logs / config dumps — wasn't enough)
+  needed (when [[gateway-integration-tests]] step 3 — logs / config dumps — wasn't enough)
 - An IT test reproducer exists but you need to step through the gateway side,
   not the test side
 
@@ -124,7 +124,7 @@ cd "$REPO_ROOT/gateway" && docker compose down
 > | Mode | Compose file (`<COMPOSE>`) | Run `docker compose` from (`<COMPOSE_CWD>`) | Use when |
 > |---|---|---|---|
 > | **Standalone** *(default)* | `<REPO_ROOT>/gateway/docker-compose.yaml` | `<REPO_ROOT>/gateway` (default filename, no `-f` needed) | Investigating from scratch; no IT scenario in play |
-> | **IT handoff** | `<REPO_ROOT>/gateway/it/docker-compose.test.yaml` | `<REPO_ROOT>/gateway/it` (use `-f docker-compose.test.yaml` — non-default filename) | Reproducing a failing integration test (handoff from [[gateway-it-tests]]) — keeps the IT mocks (`mock-jwks`, `mock-platform-api`, …) that the scenario depends on |
+> | **IT handoff** | `<REPO_ROOT>/gateway/it/docker-compose.test.yaml` | `<REPO_ROOT>/gateway/it` (use `-f docker-compose.test.yaml` — non-default filename) | Reproducing a failing integration test (handoff from [[gateway-integration-tests]]) — keeps the IT mocks (`mock-jwks`, `mock-platform-api`, …) that the scenario depends on |
 
 > **Pick a path before doing any 2x substep.** Two flows in the gateway
 > need different setups; choose based on what the bug actually involves.
@@ -636,7 +636,7 @@ make build-coverage                                # rebuild containerised image
 cd it && IT_FEATURE_PATHS=features/<area>.feature make test
 ```
 
-See [[gateway-it-tests]] for the full IT workflow.
+See [[gateway-integration-tests]] for the full IT workflow.
 
 ## Step 8: Clean up — always run when finished
 
