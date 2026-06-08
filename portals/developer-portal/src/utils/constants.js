@@ -148,7 +148,6 @@ module.exports = {
         BASIC: 'BASIC'
     },
     ROUTE: {
-        DEV_PORTAL: '/devportal',
         STYLES: '/styles',
         TECHNICAL_STYLES: '/technical-styles',
         TECHNICAL_SCRIPTS: '/technical-scripts',

@@ -76,7 +76,6 @@ const CONFIG_DEFAULTS = {
             enabled: false,
         },
         openApiValidator: {
-            enabled: false,
             validateResponses: 'off',
         },
     },

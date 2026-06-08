@@ -93,8 +93,7 @@ function notImplementedHandler(operationId, tag) {
             code: 501,
             message: 'Not Implemented',
             description:
-                `Operation '${operationId}' (tag '${tag}') has no handler in src/openapi/handlers. ` +
-                `Set advanced.useOpenApiValidator=false to use the legacy /devportal route while migration is in progress.`,
+                `Operation '${operationId}' (tag '${tag}') has no handler in src/openapi/handlers.`,
         });
     };
 }

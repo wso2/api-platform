@@ -419,7 +419,7 @@ const loadAPIContent = async (req, res) => {
                 subscriptionPlans: subscriptionPlans,
                 subscriptions: subscriptions,
                 baseUrl: '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName,
-                schemaUrl: `${req.protocol}://${req.get('host')}${constants.DEVPORTAL_API.orgPath(orgID)}/${constants.ROUTE.API_FILE_PATH}${apiID}${constants.API_TEMPLATE_FILE_NAME}${schemaFileName}`,
+                schemaUrl: `${req.protocol}://${req.get('host')}${constants.DEVPORTAL_API.orgPath(orgID)}${constants.ROUTE.API_FILE_PATH}${apiID}${constants.API_TEMPLATE_FILE_NAME}${schemaFileName}`,
                 loadDefault: loadDefault,
                 resources: apiDetails,
                 orgID: orgID,

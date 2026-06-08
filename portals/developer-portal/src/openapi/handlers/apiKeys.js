@@ -20,7 +20,7 @@
 /*
  * Tag: API Keys
  *
- * Mutating ops are CSRF-protected (matches legacy devportalRoute.js).
+ * Mutating ops are CSRF-protected.
  */
 const apiKeyController = require('../../controllers/apiKeyController');
 const { requireCsrfForMutatingApi } = require('../../middlewares/csrfProtection');

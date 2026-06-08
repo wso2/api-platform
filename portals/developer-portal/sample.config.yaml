@@ -59,11 +59,9 @@ advanced:
     keyValue: ""              # Secret key value — set via DP_ADVANCED_APIKEY_KEYVALUE in production
   tokenExchanger:
     enabled: false
-  # Mount the OpenAPI-spec-driven /devportal router (request validation + fine-grained
-  # OAuth2 scope enforcement, dispatching by operationId to src/openapi/handlers).
-  # When false, the legacy src/routes/devportalRoute.js is mounted instead.
+  # OpenAPI-spec-driven /devportal router: request validation + fine-grained OAuth2
+  # scope enforcement, dispatching by operationId to src/openapi/handlers.
   openApiValidator:
-    enabled: true          # Set to false to disable the OpenAPI validator and use legacy routing
     # Response validation strategy. Off by default in production.
     #   off      — disabled
     #   strict     — strict; responses that don't match the spec become 500s

@@ -25,7 +25,6 @@ const path = require('path');
 const logger = require('./config/logger');
 const { auditMiddleware } = require('./middlewares/auditLogger');
 const authRoute = require('./routes/authRoute');
-const devportalRoute = require('./routes/devportalRoute');
 const orgContent = require('./routes/orgContentRoute');
 const apiContent = require('./routes/apiContentRoute');
 const applicationContent = require('./routes/applicationsContentRoute');
@@ -142,16 +141,13 @@ app.use((req, res, next) => {
 });
 
 //backend routes
-if (config.advanced?.openApiValidator?.enabled) {
-    logger.info('Mounting spec-driven devportal router (advanced.useOpenApiValidator=true)');
-    const devportalApiRouter = require('./openapi/devportalApiRouter');
-    // Mounted at root: spec paths are root-relative (/o/{orgId}/devportal/v1/...,
-    // /applications, /login, ...). Registered before the page route tree so
-    // unmatched requests fall through to it.
-    app.use(constants.ROUTE.DEFAULT, devportalApiRouter);
-} else {
-    app.use(constants.ROUTE.DEFAULT, devportalRoute);
-}
+// Spec-driven devportal router (express-openapi-validator): request validation +
+// fine-grained OAuth2 scope enforcement, dispatching by operationId to
+// src/openapi/handlers. Mounted at root since spec paths are root-relative
+// (/o/{orgId}/devportal/v1/..., /applications, /login, ...). Registered before the
+// page route tree so unmatched requests fall through to it.
+const devportalApiRouter = require('./openapi/devportalApiRouter');
+app.use(constants.ROUTE.DEFAULT, devportalApiRouter);
 
 // MCP Server Registry (OpenAPI v0.1)
 app.use('/registry/:orgHandle', mcpRegistryRoute);
