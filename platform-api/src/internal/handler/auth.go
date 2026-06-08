@@ -19,6 +19,7 @@ package handler
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -26,7 +27,6 @@ import (
 	"time"
 
 	"platform-api/src/config"
-	"platform-api/src/internal/middleware"
 	"platform-api/src/internal/utils"
 
 	"github.com/gin-gonic/gin"
@@ -34,20 +34,15 @@ import (
 
 // AuthHandler serves public auth discovery endpoints for the login UI.
 type AuthHandler struct {
-	globalIDP       config.IDP
-	multiOrgEnabled bool
-	registry        middleware.OrgIDPRegistry // nil when multiOrgEnabled=false
-	slogger         *slog.Logger
+	idp     config.IDP
+	slogger *slog.Logger
 }
 
 // NewAuthHandler creates an AuthHandler.
-// registry may be nil when multiOrgEnabled is false.
-func NewAuthHandler(globalIDP config.IDP, multiOrgEnabled bool, registry middleware.OrgIDPRegistry, slogger *slog.Logger) *AuthHandler {
+func NewAuthHandler(idp config.IDP, slogger *slog.Logger) *AuthHandler {
 	return &AuthHandler{
-		globalIDP:       globalIDP,
-		multiOrgEnabled: multiOrgEnabled,
-		registry:        registry,
-		slogger:         slogger,
+		idp:     idp,
+		slogger: slogger,
 	}
 }
 
@@ -79,36 +74,14 @@ type oidcDiscoveryDoc struct {
 // Returns the IDP configuration the login UI needs to initiate an OIDC flow.
 // This endpoint is public (no auth required) and cacheable for 5 minutes.
 func (h *AuthHandler) GetOrgAuthDiscovery(c *gin.Context) {
-	orgHandle := c.Param("orgHandle")
-
-	var idpType, clientID, discoveryURL string
-
-	if h.multiOrgEnabled {
-		if h.registry == nil {
-			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "IDP not configured for this organization"))
-			return
-		}
-		orgCfg, ok := h.registry.GetByOrgHandle(orgHandle)
-		if !ok {
-			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "IDP not configured for this organization"))
-			return
-		}
-		idpType = orgCfg.IDPType
-		clientID = orgCfg.ClientID
-		discoveryURL = orgCfg.DiscoveryURL
-	} else {
-		if h.globalIDP.DiscoveryURL == "" {
-			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "IDP not configured for this organization"))
-			return
-		}
-		idpType = h.globalIDP.Name
-		clientID = h.globalIDP.ClientID
-		discoveryURL = h.globalIDP.DiscoveryURL
+	if h.idp.DiscoveryURL == "" {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "IDP not configured for this organization"))
+		return
 	}
 
-	discovery, err := fetchOIDCDiscovery(c.Request.Context(), discoveryURL)
+	discovery, err := fetchOIDCDiscovery(c.Request.Context(), h.idp.DiscoveryURL)
 	if err != nil {
-		h.slogger.Error("Failed to fetch OIDC discovery document", "url", discoveryURL, "error", err)
+		h.slogger.Error("Failed to fetch OIDC discovery document", "url", h.idp.DiscoveryURL, "error", err)
 		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
 			fmt.Sprintf("Failed to fetch IDP configuration: %v", err)))
 		return
@@ -116,9 +89,9 @@ func (h *AuthHandler) GetOrgAuthDiscovery(c *gin.Context) {
 
 	c.Header("Cache-Control", "public, max-age=300")
 	c.JSON(http.StatusOK, OrgAuthConfigResponse{
-		IDPType:               idpType,
+		IDPType:               h.idp.Name,
 		Issuer:                discovery.Issuer,
-		ClientID:              clientID,
+		ClientID:              h.idp.ClientID,
 		AuthorizationEndpoint: discovery.AuthorizationEndpoint,
 		TokenEndpoint:         discovery.TokenEndpoint,
 		LogoutURL:             discovery.EndSessionEndpoint,
@@ -164,6 +137,7 @@ func preferredResponseType(supported []string) string {
 }
 
 // fetchOIDCDiscovery retrieves and parses the OIDC discovery document at discoveryURL.
+// TLS verification is skipped to support local IDPs with self-signed certificates.
 func fetchOIDCDiscovery(ctx context.Context, discoveryURL string) (*oidcDiscoveryDoc, error) {
 	reqCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
@@ -173,7 +147,12 @@ func fetchOIDCDiscovery(ctx context.Context, discoveryURL string) (*oidcDiscover
 		return nil, fmt.Errorf("building request: %w", err)
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	client := &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec
+		},
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("fetching discovery document: %w", err)
 	}
