@@ -84,9 +84,7 @@ func runHealthCommand() error {
 
 	var healthData map[string]interface{}
 	if err := json.Unmarshal(body, &healthData); err != nil {
-		fmt.Println("DevPortal Status: unknown")
-		fmt.Printf("Response: %s\n", string(body))
-		return nil
+		return fmt.Errorf("failed to parse health response: %w\nResponse: %s", err, string(body))
 	}
 
 	status := "unknown"

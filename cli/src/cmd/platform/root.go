@@ -23,10 +23,10 @@ import "github.com/spf13/cobra"
 const (
 	PlatformCmdLiteral = "platform"
 	PlatformCmdExample = `# Add a platform
-ap platform add --name dev
+ap platform add --display-name dev
 
 # Switch the current platform
-ap platform use --name dev
+ap platform use --display-name dev
 
 # Show the current platform
 ap platform current

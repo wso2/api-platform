@@ -182,6 +182,28 @@ func TestRunEditCommand_SendsJSONPayload(t *testing.T) {
 	}
 }
 
+func TestRunEditCommand_NonSuccessStatusFails(t *testing.T) {
+	testutil.WithTempHome(t)
+
+	server := testutil.NewDevPortalServer(t, func(w http.ResponseWriter, req *http.Request) {
+		http.Error(w, `{"error":"not found"}`, http.StatusNotFound)
+	})
+
+	writeOrgConfig(t, server.URL)
+
+	workDir := t.TempDir()
+	editOrgID = "org-1"
+	editFilePath = testutil.WriteJSONFixture(t, workDir, "organization.json", []byte(`{"orgName":"Updated"}`))
+	editName = ""
+	editPlatform = ""
+	editInsecure = false
+
+	err := runEditCommand()
+	if err == nil {
+		t.Fatalf("expected error for non-2xx status, got nil")
+	}
+}
+
 func TestRunDeleteCommand_SendsDelete(t *testing.T) {
 	testutil.WithTempHome(t)
 
@@ -268,4 +290,41 @@ func writeOrgConfig(t *testing.T, serverURL string) {
 			},
 		},
 	})
+}
+
+func TestExtractOrganizationListRows_NonEmptyUnsupportedObjectFails(t *testing.T) {
+	_, err := extractOrganizationListRows([]byte(`{"error":"boom"}`))
+	if err == nil || !strings.Contains(err.Error(), "unsupported response shape") {
+		t.Fatalf("expected unsupported response shape error, got %v", err)
+	}
+}
+
+func TestExtractOrganizationListRows_EmptyShapesReturnNoRows(t *testing.T) {
+	for _, body := range []string{`[]`, `{}`, `{"organizations":[]}`, `{"items":[]}`, `{"data":[]}`} {
+		rows, err := extractOrganizationListRows([]byte(body))
+		if err != nil {
+			t.Fatalf("unexpected error for %q: %v", body, err)
+		}
+		if len(rows) != 0 {
+			t.Fatalf("expected no rows for %q, got %d", body, len(rows))
+		}
+	}
+}
+
+func TestExtractOrganizationListRows_ParsesSupportedShapes(t *testing.T) {
+	cases := []string{
+		`[{"orgId":"org-1"}]`,
+		`{"organizations":[{"orgId":"org-1"}]}`,
+		`{"items":[{"orgId":"org-1"}]}`,
+		`{"data":[{"orgId":"org-1"}]}`,
+	}
+	for _, body := range cases {
+		rows, err := extractOrganizationListRows([]byte(body))
+		if err != nil {
+			t.Fatalf("unexpected error for %q: %v", body, err)
+		}
+		if len(rows) != 1 || rows[0].OrgID != "org-1" {
+			t.Fatalf("expected one org-1 row for %q, got %+v", body, rows)
+		}
+	}
 }

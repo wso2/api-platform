@@ -22,6 +22,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 
@@ -74,6 +75,11 @@ func init() {
 }
 
 func runCreateCommand() error {
+	orgID := strings.TrimSpace(createOrgID)
+	if orgID == "" {
+		return fmt.Errorf("organization ID is required")
+	}
+
 	payload, err := buildCreatePayload()
 	if err != nil {
 		return err
@@ -90,7 +96,7 @@ func runCreateCommand() error {
 	}
 
 	client := internaldevportal.NewClientWithOptions(devPortal, createInsecure)
-	resp, err := client.PostJSON(fmt.Sprintf("/devportal/organizations/%s/subscriptions", createOrgID), payload)
+	resp, err := client.PostJSON(fmt.Sprintf("/devportal/organizations/%s/subscriptions", url.PathEscape(orgID)), payload)
 	if err != nil {
 		return internaldevportal.WrapRequestError("create platform subscription", err, createInsecure)
 	}

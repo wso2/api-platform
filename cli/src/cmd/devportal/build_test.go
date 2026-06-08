@@ -7,6 +7,121 @@ import (
 	"testing"
 )
 
+func TestEnsureUniqueDevPortalZipNames_DetectsCollision(t *testing.T) {
+	configs := []devPortalProjectConfig{
+		{Name: "My Portal"},
+		{Name: "my_portal"},
+	}
+
+	err := ensureUniqueDevPortalZipNames(configs)
+	if err == nil {
+		t.Fatalf("expected collision error, got nil")
+	}
+	if !strings.Contains(err.Error(), "devportal_my-portal.zip") {
+		t.Fatalf("expected error to name the conflicting archive, got %v", err)
+	}
+}
+
+func TestEnsureUniqueDevPortalZipNames_AllowsDistinctNames(t *testing.T) {
+	configs := []devPortalProjectConfig{
+		{Name: ""},
+		{Name: "eu"},
+		{Name: "us"},
+	}
+
+	if err := ensureUniqueDevPortalZipNames(configs); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestEnsureWithinProjectRoot_RejectsEscapingPath(t *testing.T) {
+	projectRoot := t.TempDir()
+	escaping := filepath.Join(projectRoot, "..", "outside")
+
+	err := ensureWithinProjectRoot(projectRoot, escaping, "default", "portalRoot")
+	if err == nil {
+		t.Fatalf("expected error for escaping path, got nil")
+	}
+	if !strings.Contains(err.Error(), "resolves outside the project root") {
+		t.Fatalf("unexpected error message: %v", err)
+	}
+}
+
+func TestEnsureWithinProjectRoot_AllowsContainedPaths(t *testing.T) {
+	projectRoot := t.TempDir()
+
+	cases := []string{
+		projectRoot,                                         // the root itself
+		filepath.Join(projectRoot, "devportal"),             // nested dir
+		filepath.Join(projectRoot, "devportal", "api.yaml"), // nested file
+	}
+	for _, path := range cases {
+		if err := ensureWithinProjectRoot(projectRoot, path, "default", "portalRoot"); err != nil {
+			t.Fatalf("unexpected error for contained path %q: %v", path, err)
+		}
+	}
+}
+
+func TestEnsureWithinProjectRoot_RejectsSymlinkEscape(t *testing.T) {
+	projectRoot := t.TempDir()
+	outside := t.TempDir()
+
+	// A symlink inside the project that points outside it must be rejected even
+	// though its lexical path is under the root.
+	link := filepath.Join(projectRoot, "escape")
+	if err := os.Symlink(outside, link); err != nil {
+		t.Skipf("symlinks unsupported on this platform: %v", err)
+	}
+
+	err := ensureWithinProjectRoot(projectRoot, filepath.Join(link, "secret.yaml"), "default", "apiMetadata")
+	if err == nil || !strings.Contains(err.Error(), "resolves outside the project root") {
+		t.Fatalf("expected symlink escape to be rejected, got %v", err)
+	}
+}
+
+func TestValidateDevPortalConfig_RejectsEscapingPortalRoot(t *testing.T) {
+	projectRoot := t.TempDir()
+	portalConfig := &devPortalProjectConfig{Name: "default", PortalRoot: "../../etc"}
+
+	err := validateDevPortalConfig(projectRoot, portalConfig)
+	if err == nil {
+		t.Fatalf("expected error for escaping portalRoot, got nil")
+	}
+	if !strings.Contains(err.Error(), "resolves outside the project root") {
+		t.Fatalf("unexpected error message: %v", err)
+	}
+}
+
+func TestBuildDefaultDevPortalManifest_RejectsEscapingSourcePath(t *testing.T) {
+	projectRoot := t.TempDir()
+	projectConfig := &apiProjectConfig{
+		FilePaths: apiProjectFilePaths{
+			APIMetadata:        "../../../etc/passwd",
+			DeploymentArtifact: "./gateway.yaml",
+		},
+	}
+
+	_, err := buildDefaultDevPortalManifest(projectRoot, projectConfig)
+	if err == nil || !strings.Contains(err.Error(), "resolves outside the project root") {
+		t.Fatalf("expected containment error, got %v", err)
+	}
+}
+
+func TestCreateDefaultDevPortalConfig_RejectsEscapingSourcePath(t *testing.T) {
+	projectRoot := t.TempDir()
+	projectConfig := &apiProjectConfig{
+		FilePaths: apiProjectFilePaths{
+			APIDefinition: "../../outside/definition.yaml",
+			Docs:          "./docs",
+		},
+	}
+
+	_, err := projectConfig.createDefaultDevPortalConfig(projectRoot)
+	if err == nil || !strings.Contains(err.Error(), "resolves outside the project root") {
+		t.Fatalf("expected containment error, got %v", err)
+	}
+}
+
 func TestRunBuildCommand_RequiresAPIProjectDirectory(t *testing.T) {
 	workDir := t.TempDir()
 	buildProjectDir = workDir
@@ -202,10 +317,10 @@ func createAPIProjectFixture(t *testing.T) string {
 
 	files := map[string]string{
 		filepath.Join(projectRoot, ".api-platform", "config.yaml"): "version: 1.0.0\nfilePaths:\n  deploymentArtifact: ./gateway.yaml\n  apiMetadata: ./api.yaml\n  apiDefinition: ./definition.yaml\n  docs: ./docs\n  tests: ./tests\n",
-		filepath.Join(projectRoot, "api.yaml"):                    "apiVersion: management.api-platform.wso2.com/v1\nkind: Api\nmetadata:\n  name: foo-1.0.0\n",
-		filepath.Join(projectRoot, "gateway.yaml"):                "apiVersion: gateway.api-platform.wso2.com/v1\nkind: RestApi\nspec:\n  displayName: Petstore API\n  version: 1.0.0\n  subscriptionPlans:\n    - gold\n    - silver\n",
-		filepath.Join(projectRoot, "definition.yaml"):             "openapi: 3.0.0\ninfo:\n  title: Petstore API\n",
-		filepath.Join(projectRoot, "docs", "README.md"):           "# Docs\n",
+		filepath.Join(projectRoot, "api.yaml"):                     "apiVersion: management.api-platform.wso2.com/v1\nkind: Api\nmetadata:\n  name: foo-1.0.0\n",
+		filepath.Join(projectRoot, "gateway.yaml"):                 "apiVersion: gateway.api-platform.wso2.com/v1\nkind: RestApi\nspec:\n  displayName: Petstore API\n  version: 1.0.0\n  subscriptionPlans:\n    - gold\n    - silver\n",
+		filepath.Join(projectRoot, "definition.yaml"):              "openapi: 3.0.0\ninfo:\n  title: Petstore API\n",
+		filepath.Join(projectRoot, "docs", "README.md"):            "# Docs\n",
 	}
 
 	for path, content := range files {
@@ -216,4 +331,3 @@ func createAPIProjectFixture(t *testing.T) string {
 
 	return projectRoot
 }
-

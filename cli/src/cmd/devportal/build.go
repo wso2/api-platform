@@ -249,12 +249,18 @@ func (c *apiProjectConfig) createDefaultDevPortalConfig(projectRoot string) (*de
 	}
 
 	definitionSource := resolveProjectPath(projectRoot, c.FilePaths.APIDefinition)
+	if err := ensureWithinProjectRoot(projectRoot, definitionSource, portalConfig.Name, "apiDefinition"); err != nil {
+		return nil, err
+	}
 	definitionTarget := filepath.Join(portalRoot, "definition.yaml")
 	if err := copyFile(definitionSource, definitionTarget); err != nil {
 		return nil, err
 	}
 
 	docsSource := resolveProjectPath(projectRoot, c.FilePaths.Docs)
+	if err := ensureWithinProjectRoot(projectRoot, docsSource, portalConfig.Name, "docs"); err != nil {
+		return nil, err
+	}
 	docsTarget := filepath.Join(portalRoot, "docs")
 	if err := copyDirectory(docsSource, docsTarget); err != nil {
 		return nil, err
@@ -285,7 +291,13 @@ func (c *apiProjectConfig) createDefaultDevPortalConfig(projectRoot string) (*de
 
 func buildDefaultDevPortalManifest(projectRoot string, projectConfig *apiProjectConfig) (*devPortalManifest, error) {
 	apiMetadataPath := resolveProjectPath(projectRoot, projectConfig.FilePaths.APIMetadata)
+	if err := ensureWithinProjectRoot(projectRoot, apiMetadataPath, "default", "apiMetadata"); err != nil {
+		return nil, err
+	}
 	gatewayPath := resolveProjectPath(projectRoot, projectConfig.FilePaths.DeploymentArtifact)
+	if err := ensureWithinProjectRoot(projectRoot, gatewayPath, "default", "deploymentArtifact"); err != nil {
+		return nil, err
+	}
 
 	apiMetadataData, err := os.ReadFile(apiMetadataPath)
 	if err != nil {
@@ -402,6 +414,10 @@ func normalizeDevPortalProjectConfig(config *devPortalProjectConfig) {
 }
 
 func buildDevPortalArchives(projectRoot, buildDir string, portalConfigs []devPortalProjectConfig) ([]string, error) {
+	if err := ensureUniqueDevPortalZipNames(portalConfigs); err != nil {
+		return nil, err
+	}
+
 	zipPaths := make([]string, 0, len(portalConfigs))
 
 	for i := range portalConfigs {
@@ -433,6 +449,9 @@ func buildDevPortalArchives(projectRoot, buildDir string, portalConfigs []devPor
 
 func validateDevPortalConfig(projectRoot string, portalConfig *devPortalProjectConfig) error {
 	portalRoot := resolveProjectPath(projectRoot, portalConfig.PortalRoot)
+	if err := ensureWithinProjectRoot(projectRoot, portalRoot, portalConfig.Name, "portalRoot"); err != nil {
+		return err
+	}
 	if err := ensurePathExists(portalRoot, true, portalConfig.Name, "portalRoot"); err != nil {
 		return err
 	}
@@ -449,12 +468,72 @@ func validateDevPortalConfig(projectRoot string, portalConfig *devPortalProjectC
 	}
 
 	for _, requiredPath := range requiredPaths {
+		if err := ensureWithinProjectRoot(projectRoot, requiredPath.path, portalConfig.Name, requiredPath.label); err != nil {
+			return err
+		}
 		if err := ensurePathExists(requiredPath.path, requiredPath.isDir, portalConfig.Name, requiredPath.label); err != nil {
 			return err
 		}
 	}
 
 	return nil
+}
+
+// ensureWithinProjectRoot rejects resolved paths that escape the project root
+// (e.g. via ".." segments or symlinks in a config value), keeping build inputs
+// bounded to the project directory before anything is copied into the archive.
+func ensureWithinProjectRoot(projectRoot, path, portalName, fieldName string) error {
+	canonicalRoot, err := canonicalizePath(projectRoot)
+	if err != nil {
+		return fmt.Errorf("failed to resolve project root for devportal config %q: %w", portalName, err)
+	}
+	canonicalTarget, err := canonicalizePath(path)
+	if err != nil {
+		return fmt.Errorf("failed to resolve %s for devportal config %q: %w", fieldName, portalName, err)
+	}
+
+	rel, err := filepath.Rel(canonicalRoot, canonicalTarget)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
+		return fmt.Errorf("devportal config %q is invalid: %s path resolves outside the project root: %s", portalName, fieldName, path)
+	}
+
+	return nil
+}
+
+// canonicalizePath returns an absolute, symlink-resolved form of path so that
+// containment checks are reliable across differing path forms. When the path
+// does not yet exist (it may be validated before creation), it resolves
+// symlinks on the nearest existing ancestor and re-appends the remaining
+// segments rather than failing.
+func canonicalizePath(path string) (string, error) {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return "", err
+	}
+
+	remainder := ""
+	current := abs
+	for {
+		resolved, err := filepath.EvalSymlinks(current)
+		if err == nil {
+			if remainder == "" {
+				return resolved, nil
+			}
+			return filepath.Join(resolved, remainder), nil
+		}
+		if !os.IsNotExist(err) {
+			return "", err
+		}
+
+		parent := filepath.Dir(current)
+		if parent == current {
+			// Reached the filesystem root without an existing ancestor; fall
+			// back to the lexically cleaned absolute path.
+			return abs, nil
+		}
+		remainder = filepath.Join(filepath.Base(current), remainder)
+		current = parent
+	}
 }
 
 func ensurePathExists(path string, wantDir bool, portalName, fieldName string) error {
@@ -561,6 +640,27 @@ func archiveRelativePath(pathValue string) string {
 	}
 
 	return cleanPath
+}
+
+// ensureUniqueDevPortalZipNames fails fast when two devportal configs sanitize
+// to the same archive filename, which would otherwise silently overwrite an
+// earlier artifact during the build loop.
+func ensureUniqueDevPortalZipNames(portalConfigs []devPortalProjectConfig) error {
+	seen := make(map[string]string, len(portalConfigs))
+	for i := range portalConfigs {
+		displayName := strings.TrimSpace(portalConfigs[i].Name)
+		if displayName == "" {
+			displayName = "default"
+		}
+
+		zipName := buildDevPortalZipFileName(portalConfigs[i].Name)
+		if existing, ok := seen[zipName]; ok {
+			return fmt.Errorf("devportal configs %q and %q both map to archive %q; rename one of them to avoid overwriting the artifact", existing, displayName, zipName)
+		}
+		seen[zipName] = displayName
+	}
+
+	return nil
 }
 
 func buildDevPortalZipFileName(portalName string) string {

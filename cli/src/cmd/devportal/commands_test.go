@@ -369,6 +369,24 @@ func TestRunHealthCommand_UnauthorizedShowsCredentialGuidance(t *testing.T) {
 	}
 }
 
+func TestRunHealthCommand_MalformedPayloadFails(t *testing.T) {
+	testutil.WithTempHome(t)
+
+	server := testutil.NewDevPortalServer(t, func(w http.ResponseWriter, req *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("not-json"))
+	})
+
+	writeDevPortalConfig(t, baseDevPortalConfig(server.URL))
+
+	healthPlatform = ""
+	err := runHealthCommand()
+	if err == nil || !strings.Contains(err.Error(), "failed to parse health response") {
+		t.Fatalf("expected parse failure error, got %v", err)
+	}
+}
+
 func baseDevPortalConfig(url string) *config.Config {
 	return &config.Config{
 		CurrentPlatform: "default",

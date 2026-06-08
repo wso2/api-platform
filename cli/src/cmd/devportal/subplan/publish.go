@@ -143,6 +143,9 @@ func runPublishCommand() error {
 	if err != nil {
 		return internaldevportal.WrapRequestError("publish subscription plan", err, publishInsecure)
 	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return utils.FormatHTTPError("publish subscription plan", resp, "DevPortal")
+	}
 
 	fmt.Printf("Subscription plan(s) published to devportal %s (platform: %s)\n", devPortal.Name, resolvedPlatform)
 	return internaldevportal.PrintJSONResponse(resp)

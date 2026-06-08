@@ -97,6 +97,9 @@ func runEditCommand() error {
 	if err != nil {
 		return internaldevportal.WrapRequestError("update organization", err, editInsecure)
 	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return utils.FormatHTTPError("update organization", resp, "DevPortal")
+	}
 
 	fmt.Printf("Organization updated using devportal %s (platform: %s)\n", devPortal.Name, resolvedPlatform)
 	return internaldevportal.PrintJSONResponse(resp)

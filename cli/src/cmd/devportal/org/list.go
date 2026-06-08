@@ -148,7 +148,27 @@ func extractOrganizationListRows(body []byte) ([]organizationListRow, error) {
 		return wrapped.Items, nil
 	case len(wrapped.Data) > 0:
 		return wrapped.Data, nil
-	default:
-		return []organizationListRow{}, nil
 	}
+
+	// No supported list field carried entries. Distinguish a recognized-but-empty
+	// response (e.g. `{}` or `{"organizations": []}`) from a non-empty object whose
+	// shape we don't understand: the latter should surface as a parse error
+	// rather than be silently reported as "No organizations found.".
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(body, &raw); err != nil {
+		return nil, err
+	}
+
+	recognized := false
+	for _, key := range []string{"organizations", "items", "data"} {
+		if _, ok := raw[key]; ok {
+			recognized = true
+			break
+		}
+	}
+	if len(raw) > 0 && !recognized {
+		return nil, fmt.Errorf("unsupported response shape: %s", string(body))
+	}
+
+	return []organizationListRow{}, nil
 }

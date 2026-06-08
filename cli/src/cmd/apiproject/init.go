@@ -16,7 +16,7 @@ const (
 	InitCmdExample = `# Initialize a new API project
 ap apiproject init --display-name foo-api --type rest --version 1.0 --context /foo
 
-# Add a API project fully interactivelycobra
+# Add a API project fully interactively cobra
 ap apiproject init`
 )
 
@@ -57,7 +57,7 @@ func runInitCommand() error {
 			}
 		}
 		if strings.TrimSpace(apiType) == "" {
-			apiType, err = utils.PromptInput("Enter API type (e.g., rest, soap): ")
+			apiType, err = utils.PromptInput("Enter API type (e.g., rest): ")
 			if err != nil {
 				return fmt.Errorf("Failed to read API type: %w", err)
 			}
@@ -94,7 +94,7 @@ func runInitCommand() error {
 		return fmt.Errorf("API context is required")
 	}
 
-	if apiType != utils.APITypeREST && apiType != utils.APITypeSOAP {
+	if apiType != utils.APITypeREST {
 		return fmt.Errorf("unsupported API type: %s", apiType)
 	}
 
@@ -259,6 +259,8 @@ spec:
       method: PUT
     - path: /*
       method: DELETE
+	- path: /*
+	  method: OPTIONS
 `, resourceName, displayName, version, context)
 }
 

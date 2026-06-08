@@ -31,7 +31,7 @@ import (
 const (
 	UseCmdLiteral = "use"
 	UseCmdExample = `# Set the current platform
-ap platform use --name dev`
+ap platform use --display-name dev`
 )
 
 var platformName string
@@ -50,7 +50,8 @@ var useCmd = &cobra.Command{
 }
 
 func init() {
-	utils.AddStringFlag(useCmd, utils.FlagPlatform, &platformName, "", "Name of the platform to use (required)")
+	utils.AddStringFlag(useCmd, utils.FlagName, &platformName, "", "Name of the platform to use (required)")
+	_ = useCmd.MarkFlagRequired(utils.FlagName)
 }
 
 func runUseCommand() error {
