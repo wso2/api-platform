@@ -31,7 +31,7 @@ Envoy itself is **never** the debug target — we always run it in Docker. We us
 - "Find and fix a bug in gateway-controller / policy-engine"
 - A specific request returns the wrong response and source-level inspection is
   needed (when [[gateway-integration-tests]] step 3 — logs / config dumps — wasn't enough)
-- An IT test reproducer exists but you need to step through the gateway side,
+- An Integration Test (IT) reproducer exists but you need to step through the gateway side,
   not the test side
 
 ## Workflow
@@ -626,7 +626,7 @@ require restarting the debugged process. Loop:
    either matches or it doesn't.
 5. If wrong again → reattach, refine breakpoints, iterate.
 
-For a finalised fix, also run the matching IT test feature so the regression is
+For a finalised fix, also run the matching Integration Test feature so the regression is
 covered (Step 8 cleanup must run first — the IT stack uses the same ports):
 
 ```bash
