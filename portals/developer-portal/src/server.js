@@ -46,7 +46,7 @@ function logStartupInfo() {
     if (config.designMode?.enabled) {
         logger.info('Design Mode enabled — no DB or IDP required');
         logger.info(`  Layout templates: ${config.designMode.pathToLayout}`);
-        logger.info(`  Sample APIs:      ${config.designMode.samplesPath}`);
+        logger.info(`  Sample APIs:      ${config.designMode.apiSamplesPath}`);
     }
 
     const visitUrl = config.baseUrl + (config.designMode?.enabled ? "/views/default" : "/<organization>/views/default");

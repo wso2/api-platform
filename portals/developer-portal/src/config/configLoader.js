@@ -99,7 +99,8 @@ const CONFIG_DEFAULTS = {
     authenticatedPages: [],
     designMode: {
         enabled: false,
-        samplesPath: './samples/apis/',
+        apiSamplesPath: './samples/apis/',
+        mcpSamplesPath: './samples/mcps/',
         subscriptionPlansPath: './samples/subscriptionPlans.yaml',
         applicationsPath: './samples/applications.yaml',
         pathToLayout: './src/defaultContent/',

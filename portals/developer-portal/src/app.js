@@ -162,10 +162,10 @@ if (config.designMode?.enabled) {
     app.use(constants.ROUTE.STYLES, express.static(path.join(process.cwd(), './src/defaultContent/styles')));
     app.use(constants.ROUTE.IMAGES, express.static(path.resolve(process.cwd(), layoutPath, 'images')));
     app.use(constants.ROUTE.IMAGES, express.static(path.join(process.cwd(), './src/defaultContent/images')));
-    app.use(constants.ROUTE.MOCK, express.static(path.join(process.cwd(), config.designMode.samplesPath)));
+    app.use(constants.ROUTE.MOCK, express.static(path.join(process.cwd(), config.designMode.apiSamplesPath)));
     // Serve API definition files by resolving the handle to the actual directory
     app.get('/mock/:apiHandle/definition.yml', (req, res) => {
-        const content = sampleApiLoader.getDefinition(req.params.apiHandle, config.designMode.samplesPath);
+        const content = sampleApiLoader.getDefinition(req.params.apiHandle, config.designMode.apiSamplesPath);
         if (!content) return res.status(404).send('Not found');
         res.type('text/yaml').send(content);
     });

@@ -48,7 +48,9 @@ const loadAPIs = async (req, res) => {
     let allApplications = [];
     if (config.designMode?.enabled) {
         const layoutPath = config.designMode.pathToLayout;
-        const metaDataList = await loadAPIMetaDataList();
+        const isMcpListing = req.originalUrl.includes('/mcps');
+        const listingSamplesPath = isMcpListing ? config.designMode.mcpSamplesPath : config.designMode.apiSamplesPath;
+        const metaDataList = await loadAPIMetaDataList(listingSamplesPath);
         for (const metaData of metaDataList) {
             metaData.subscriptionPolicyDetails = metaData.subscriptionPolicies;
         }
@@ -57,7 +59,7 @@ const loadAPIs = async (req, res) => {
             baseUrl: config.baseUrl + constants.ROUTE.VIEWS_PATH + viewName,
             devMode: true,
         }
-        const listingPage = req.originalUrl.includes('/mcps') ? 'pages/mcp' : 'pages/apis';
+        const listingPage = isMcpListing ? 'pages/mcp' : 'pages/apis';
         html = renderTemplate(layoutPath + listingPage + '/page.hbs', layoutPath + 'layout/main.hbs', templateContent, false);
     } else {
         const orgDetails = await adminDao.getOrganization(orgName);
@@ -186,8 +188,9 @@ const loadAPIContent = async (req, res) => {
 
     if (config.designMode?.enabled) {
         const layoutPath = config.designMode.pathToLayout;
+        const samplesPath = resolveSamplesPath(apiHandle);
         const metaData = loadAPIMetaDataFromFile(apiHandle);
-        const hbsContentPath = path.join(process.cwd(), config.designMode.samplesPath, apiHandle, constants.ARTIFACT_DIR.WEB, constants.FILE_NAME.API_HBS_CONTENT_FILE_NAME);
+        const hbsContentPath = path.join(process.cwd(), samplesPath, apiHandle, constants.ARTIFACT_DIR.WEB, constants.FILE_NAME.API_HBS_CONTENT_FILE_NAME);
 
         const apiType = metaData.apiInfo?.apiType;
         const isMCP = apiType === constants.API_TYPE.MCP;
@@ -201,12 +204,12 @@ const loadAPIContent = async (req, res) => {
             loadDefault = true;
             if (isMCP) {
                 // MCP: load schema definition (tools/resources/prompts) + server URL
-                schemaDefinition = sampleApiLoader.getMcpSchema(apiHandle, config.designMode.samplesPath) || '';
+                schemaDefinition = sampleApiLoader.getMcpSchema(apiHandle, samplesPath) || '';
                 const mcpUrl = metaData.endPoints?.productionURL || metaData.endPoints?.sandboxURL || '';
                 apiDetails = { serverDetails: mcpUrl ? { productionURL: mcpUrl, sandboxURL: metaData.endPoints?.sandboxURL || '' } : '' };
             } else {
                 // REST/SOAP/WS: parse OpenAPI definition for default endpoint view
-                const definitionContent = sampleApiLoader.getDefinition(apiHandle, config.designMode.samplesPath);
+                const definitionContent = sampleApiLoader.getDefinition(apiHandle, samplesPath);
                 if (definitionContent && apiType !== constants.API_TYPE.GRAPHQL && apiType !== constants.API_TYPE.WS && apiType !== constants.API_TYPE.WEBSUB) {
                     apiDetails = await parseSwagger(parseApiDefinitionContent(definitionContent));
                     apiDetails.serverDetails = (metaData.endPoints.productionURL || metaData.endPoints.sandboxURL)
@@ -475,7 +478,7 @@ const getAPIDefinition = async (orgName, viewName, apiHandle) => {
         metaData = loadAPIMetaDataFromFile(apiHandle);
         templateContent.apiType = metaData.apiInfo.apiType;
         templateContent.metaData = metaData;
-        const definitionContent = sampleApiLoader.getDefinition(apiHandle, config.designMode.samplesPath);
+        const definitionContent = sampleApiLoader.getDefinition(apiHandle, resolveSamplesPath(apiHandle));
         if (definitionContent) {
             templateContent.swagger = definitionContent;
         }
@@ -626,7 +629,7 @@ const loadDocument = async (req, res) => {
             templateContent.isAPIDefinition = true;
         }
         if (!isSpecPage && docType !== undefined && docName !== undefined) {
-            const raw = sampleApiLoader.getDocMarkdown(apiHandle, docName, config.designMode.samplesPath) || '';
+            const raw = sampleApiLoader.getDocMarkdown(apiHandle, docName, resolveSamplesPath(apiHandle)) || '';
             templateContent.apiMD = raw ? require('marked').parse(raw) : '';
         }
         templateContent.baseUrl = config.baseUrl + constants.ROUTE.VIEWS_PATH + viewName;
@@ -829,9 +832,9 @@ const loadDocument = async (req, res) => {
     }
 }
 
-async function loadAPIMetaDataList() {
+async function loadAPIMetaDataList(samplesPath = config.designMode.apiSamplesPath) {
 
-    const apis = sampleApiLoader.loadAll(config.designMode.samplesPath);
+    const apis = sampleApiLoader.loadAll(samplesPath);
     apis.forEach(element => {
         const randomNumber = Math.floor(Math.random() * 3) + 3;
         element.apiInfo.ratings = generateArray(randomNumber);
@@ -883,8 +886,22 @@ async function loadAPIMetaData(req, orgID, apiID, viewName) {
 }
 
 function loadAPIMetaDataFromFile(apiName) {
+    // Try the API samples path first, then the MCP samples path
+    try {
+        return sampleApiLoader.loadOne(apiName, config.designMode.apiSamplesPath);
+    } catch (_) {
+        return sampleApiLoader.loadOne(apiName, config.designMode.mcpSamplesPath);
+    }
+}
 
-    return sampleApiLoader.loadOne(apiName, config.designMode.samplesPath);
+function resolveSamplesPath(apiHandle) {
+    // Returns the samples directory that contains the given handle
+    try {
+        sampleApiLoader.loadOne(apiHandle, config.designMode.apiSamplesPath);
+        return config.designMode.apiSamplesPath;
+    } catch (_) {
+        return config.designMode.mcpSamplesPath;
+    }
 }
 
 async function getApiDefinitionFileContent(orgID, apiID) {

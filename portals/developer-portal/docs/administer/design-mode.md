@@ -1,6 +1,6 @@
 # Design Mode
 
-Design mode lets you develop and preview API page layouts and org-level themes without a running PostgreSQL database or an identity provider. The portal starts with sample API definitions loaded from disk and serves all pages anonymously — login, subscriptions, applications, and API keys are all disabled.
+Design mode lets you develop and preview API page layouts and org-level themes without a running PostgreSQL database or an identity provider. The portal starts with sample data loaded from disk and serves all pages anonymously — login, API key generation, and subscription management are disabled.
 
 ## When to Use Design Mode
 
@@ -17,8 +17,11 @@ In `configs/config.yaml`, add or update the `designMode` section:
 ```yaml
 designMode:
   enabled: true
-  samplesPath: "./samples/apis/"          # directory of sample API definitions
-  pathToLayout: "./src/defaultContent/"   # Handlebars templates and static assets
+  apiSamplesPath: "./samples/apis/"          # directory of sample API definitions
+  mcpSamplesPath: "./samples/mcps/"          # directory of sample MCP server definitions
+  subscriptionPlansPath: "./samples/subscriptionPlans.yaml"
+  applicationsPath: "./samples/applications.yaml"
+  pathToLayout: "./src/defaultContent/"      # Handlebars templates and static assets
 ```
 
 Then start the portal normally:
@@ -36,16 +39,20 @@ Visit **http://localhost:3000/views/default**.
 | Option | Default | Description |
 |--------|---------|-------------|
 | `enabled` | `false` | Set to `true` to activate design mode |
-| `samplesPath` | `./samples/apis/` | Directory of sample API definitions (see [Sample APIs](#sample-apis)) |
+| `apiSamplesPath` | `./samples/apis/` | Directory of sample REST/GraphQL/SOAP/WS API definitions |
+| `mcpSamplesPath` | `./samples/mcps/` | Directory of sample MCP server definitions |
 | `subscriptionPlansPath` | `./samples/subscriptionPlans.yaml` | YAML file with org-level subscription plan details |
+| `applicationsPath` | `./samples/applications.yaml` | YAML file with sample applications shown on the Applications page |
 | `pathToLayout` | `./src/defaultContent/` | Layout directory used to render pages (see [Customising the Theme](#customising-the-theme)) |
 
 All options can also be set via environment variables:
 
 ```
 DP_DESIGNMODE_ENABLED=true
-DP_DESIGNMODE_SAMPLESPATH=./my-samples/
+DP_DESIGNMODE_APISAMPLESPATH=./my-samples/apis/
+DP_DESIGNMODE_MCPSAMPLESPATH=./my-samples/mcps/
 DP_DESIGNMODE_SUBSCRIPTIONPLANSPATH=./my-samples/plans.yaml
+DP_DESIGNMODE_APPLICATIONSPATH=./my-samples/applications.yaml
 DP_DESIGNMODE_PATHTOLAYOUT=./my-layout/
 ```
 
@@ -103,7 +110,7 @@ cp -r samples/layouts/green-theme/ my-theme/
 
 ### Per-API custom layout
 
-To customise the layout of a specific API's overview page, add an `api-content.hbs` file inside that API's `web/` directory under `samplesPath`:
+To customise the layout of a specific API's overview page, add an `api-content.hbs` file inside that API's `web/` directory under `apiSamplesPath`:
 
 ```
 samples/apis/my-api-v1.0/
@@ -118,24 +125,27 @@ samples/apis/my-api-v1.0/
 
 When the theme is ready, zip the `pathToLayout` directory and upload it via **Admin Settings → Views → Upload View Content**. The ZIP structure is identical to what design mode uses, so no conversion is needed.
 
-## Sample APIs
+## Sample APIs and MCP Servers
 
-Each subdirectory under `samplesPath` represents one API. The directory name becomes the API handle (used in the URL).
+APIs and MCP servers live in separate directories. The directory name becomes the handle used in the URL.
 
 ```
-samples/apis/
-├── ping-api-v1.0/
-│   ├── api.yaml          # API metadata (display name, type, tags, endpoints, …)
-│   ├── definition.yml    # OpenAPI 3.0 specification
-│   └── docs/
-│       └── overview.md   # Markdown shown in the docs section
-├── booking-api-v1.0/
+samples/
+├── apis/                          # REST, GraphQL, SOAP, WS APIs  →  /views/default/apis
+│   ├── ping-api-v1.0/
+│   │   ├── api.yaml
+│   │   ├── definition.yml
+│   │   └── docs/
 │   └── …
-└── catalog-api-v1.0/
+└── mcps/                          # MCP servers  →  /views/default/mcps
+    ├── travel-assistant-mcp-v1/
+    │   ├── api.yaml
+    │   ├── schemaDefinition.yaml
+    │   └── docs/
     └── …
 ```
 
-### `api.yaml` Format
+### `api.yaml` Format (REST API)
 
 ```yaml
 apiVersion: devportal.api-platform.wso2.com/v1
@@ -164,11 +174,72 @@ spec:
     productionUrl: https://api.example.com/my-api
 ```
 
-See the [built-in samples](../../samples/apis/) for complete examples including subscription plans and business information.
+### `api.yaml` Format (MCP Server)
+
+```yaml
+apiVersion: devportal.api-platform.wso2.com/v1
+kind: MCP
+
+metadata:
+  name: my-mcp-v1.0
+
+spec:
+  type: MCP
+  displayName: My MCP Server
+  version: 1.0.0
+  description: MCP server exposing tools for AI agents.
+  provider: WSO2
+  status: PUBLISHED
+
+  tags:
+    - mcp
+
+  subscriptionPolicies:
+    - Gold
+
+  endpoints:
+    productionUrl: https://mcp.example.com
+```
+
+The `schemaDefinition.yaml` alongside `api.yaml` defines the tools, resources, and prompts exposed by the server:
+
+```yaml
+- type: TOOL
+  name: search_flights
+  description: Search for available flights between two cities.
+  inputSchema:
+    type: object
+    properties:
+      origin: { type: string }
+      destination: { type: string }
+```
+
+See the [built-in samples](../../samples/apis/) for complete examples.
 
 ### Live Reload
 
 The portal re-reads API definitions from disk on every page request. Edit `api.yaml` or any doc file, then reload the browser — no server restart needed.
+
+## Sample Applications
+
+The Applications page is available in design mode and shows entries from `applicationsPath`. The format follows the same Kubernetes-style manifest used across all sample files:
+
+```yaml
+apiVersion: devportal.api-platform.wso2.com/v1
+kind: ApplicationList
+items:
+
+  - metadata:
+      name: my-app
+
+    spec:
+      displayName: My App
+      description: A short description shown on the application card.
+```
+
+`metadata.name` becomes the application ID. Creating new applications, viewing individual application details, and managing keys are not available in design mode.
+
+See `samples/applications.yaml` for a ready-made example.
 
 ## What Is Disabled in Design Mode
 
@@ -176,7 +247,8 @@ The portal re-reads API definitions from disk on every page request. Edit `api.y
 |---------|--------|
 | Login / IDP authentication | Disabled — all pages are served anonymously |
 | API subscriptions | Disabled |
-| Applications | Disabled |
+| Creating / deleting applications | Disabled — Applications page is read-only |
+| Individual application details | Disabled |
 | API key generation | Disabled |
 | Database | Not required — no connection is attempted |
 | TLS / HTTPS | Not used — server always starts on plain HTTP |
