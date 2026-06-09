@@ -101,6 +101,7 @@ const CONFIG_DEFAULTS = {
         enabled: false,
         samplesPath: './samples/apis/',
         subscriptionPlansPath: './samples/subscriptionPlans.yaml',
+        applicationsPath: './samples/applications.yaml',
         pathToLayout: './src/defaultContent/',
     },
 };

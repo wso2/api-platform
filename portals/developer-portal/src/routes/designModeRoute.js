@@ -19,6 +19,7 @@ const express = require('express');
 const router = express.Router();
 const orgController = require('../controllers/orgContentController');
 const apiController = require('../controllers/apiContentController');
+const applicationController = require('../controllers/applicationsContentController');
 const contentController = require('../controllers/customContentController');
 const registerPartials = require('../middlewares/registerPartials');
 
@@ -35,6 +36,8 @@ router.get('/views/:viewName/mcp/:apiHandle/docs/specification', registerPartial
 
 router.get('/views/:viewName/api/:apiHandle/docs/:docType/:docName', registerPartials, apiController.loadDocument);
 router.get('/views/:viewName/mcp/:apiHandle/docs/:docType/:docName', registerPartials, apiController.loadDocument);
+
+router.get('/views/:viewName/applications', registerPartials, applicationController.loadApplications);
 
 // eslint-disable-next-line no-useless-escape
 // Exclude specific paths (login, applications, configure intentionally disabled in design mode)

@@ -27,6 +27,7 @@ const adminDao = require('../dao/admin');
 const util = require('../utils/util');
 const controlPlaneUrl = config.controlPlane.url;
 const { ApplicationDTO } = require('../dto/application');
+const sampleApiLoader = require('../utils/sampleApiLoader');
 const kmDao = require('../dao/keyManager');
 const adminService = require('../services/adminService');
 
@@ -257,6 +258,17 @@ const loadApplicationData = async (req, orgName, applicationId, viewName) => {
 const loadApplications = async (req, res) => {
 
     const viewName = req.params.viewName;
+
+    if (config.designMode?.enabled) {
+        const templateContent = {
+            applicationsMetadata: sampleApiLoader.loadApplications(),
+            baseUrl: config.baseUrl + constants.ROUTE.VIEWS_PATH + viewName,
+            devMode: true,
+        };
+        const html = renderTemplate('../pages/applications/page.hbs', config.designMode.pathToLayout + 'layout/main.hbs', templateContent, true);
+        return res.send(html);
+    }
+
     const orgName = req.params.orgName;
     const orgDetails = await adminDao.getOrganization(orgName);
     const devportalMode = orgDetails.ORG_CONFIG?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
@@ -265,16 +277,7 @@ const loadApplications = async (req, res) => {
         const orgName = req.params.orgName;
         const orgID = await orgIDValue(orgName);
         const applications = await adminDao.getApplications(orgID, req.user.sub)
-        const metaData = await Promise.all(
-            applications.map(async (application) => {
-                const subApis = await adminDao.getSubscriptions(orgID, application.APP_ID, '');
-                const activeCount = subApis.length;
-                return {
-                    ...new ApplicationDTO(application),
-                    subscriptionCount: activeCount
-                };
-            })
-        );
+        const metaData = applications.map(application => new ApplicationDTO(application));
         let profile = null;
         if (req.user) {
             profile = {

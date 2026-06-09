@@ -250,4 +250,18 @@ function listDocs(apiHandle, samplesDir = './samples/apis/') {
     return fs.readdirSync(docsDir).filter(f => fs.statSync(path.join(docsDir, f)).isFile());
 }
 
-module.exports = { loadAll, loadOne, getDefinition, getMcpSchema, getDocMarkdown, listDocs };
+function loadApplications() {
+    const appsPath = path.isAbsolute(config.designMode.applicationsPath)
+        ? config.designMode.applicationsPath
+        : path.join(process.cwd(), config.designMode.applicationsPath);
+    if (!fs.existsSync(appsPath)) return [];
+    const doc = yaml.load(fs.readFileSync(appsPath, 'utf-8')) || {};
+    const items = doc.items || [];
+    return items.map(item => ({
+        id: item.metadata?.name,
+        name: item.spec?.displayName || item.metadata?.name,
+        description: item.spec?.description || '',
+    }));
+}
+
+module.exports = { loadAll, loadOne, getDefinition, getMcpSchema, getDocMarkdown, listDocs, loadApplications };
