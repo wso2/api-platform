@@ -287,24 +287,13 @@ func resolvePlatformRoles(claims jwt.MapClaims, claimPath string, mapping map[st
 }
 
 // extractClaimByPath navigates a dot-notation path through jwt.MapClaims and returns the
-// leaf value as a string slice. Supports both flat claims and nested paths (e.g. "realm_access.roles").
+// leaf value as a string slice. Supports flat claims ("roles") and arbitrarily nested
+// paths ("realm_access.roles", "a.b.c").
 func extractClaimByPath(claims jwt.MapClaims, path string) []string {
-	parts := strings.SplitN(path, ".", 2)
-	val, ok := claims[parts[0]]
-	if !ok {
-		return nil
-	}
-	if len(parts) == 1 {
-		return toStringSlice(val)
-	}
-	nested, ok := val.(map[string]interface{})
-	if !ok {
-		return nil
-	}
-	return extractNestedByPath(nested, parts[1])
+	return extractByPath(map[string]interface{}(claims), path)
 }
 
-func extractNestedByPath(obj map[string]interface{}, path string) []string {
+func extractByPath(obj map[string]interface{}, path string) []string {
 	parts := strings.SplitN(path, ".", 2)
 	val, ok := obj[parts[0]]
 	if !ok {
@@ -317,7 +306,7 @@ func extractNestedByPath(obj map[string]interface{}, path string) []string {
 	if !ok {
 		return nil
 	}
-	return extractNestedByPath(nested, parts[1])
+	return extractByPath(nested, parts[1])
 }
 
 func toStringSlice(val interface{}) []string {

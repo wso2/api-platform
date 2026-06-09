@@ -29,15 +29,9 @@ import (
 const (
 	// ValidationModeScope validates using the JWT scope claim directly.
 	ValidationModeScope = "scope"
+	// ValidationModeRole validates by expanding IDP roles into platform roles.
+	ValidationModeRole = "role"
 )
-
-var scopeValidationEnabled = true
-
-// SetScopeValidationEnabled controls whether scope checks are enforced globally.
-// When false, all authenticated requests are allowed regardless of scope.
-func SetScopeValidationEnabled(enabled bool) {
-	scopeValidationEnabled = enabled
-}
 
 // InitScopeAuthz is retained for compatibility.
 func InitScopeAuthz() {}
@@ -47,16 +41,18 @@ func InitClaimsAuthz() {}
 
 // ScopeEnforcerConfig holds options for the ScopeEnforcer middleware.
 type ScopeEnforcerConfig struct {
-	// ValidationMode is reserved for future use. Currently only ValidationModeScope is supported.
+	// ValidationMode selects how authorization is enforced: "scope" (default) or "role".
 	ValidationMode string
+	// Enabled controls whether scope checks are enforced. When false, all authenticated
+	// requests are allowed regardless of scope.
+	Enabled bool
 }
 
 // ScopeEnforcer returns a Gin middleware that reads the required scopes for each
 // request from the OpenAPI ScopeRegistry and enforces them.
 //
-// The validation path is determined entirely by cfg.ValidationMode — there is no
-// fallback between the two modes. Routes not present in the registry are passed
-// through without a scope check, relying on authentication alone.
+// The validation path is determined by cfg.ValidationMode. Routes not present in
+// the registry are passed through without a scope check, relying on authentication alone.
 func ScopeEnforcer(registry *ScopeRegistry, cfg ScopeEnforcerConfig) gin.HandlerFunc {
 	mode := cfg.ValidationMode
 	if mode == "" {
@@ -64,7 +60,7 @@ func ScopeEnforcer(registry *ScopeRegistry, cfg ScopeEnforcerConfig) gin.Handler
 	}
 
 	return func(c *gin.Context) {
-		if !scopeValidationEnabled {
+		if !cfg.Enabled {
 			c.Next()
 			return
 		}
@@ -98,8 +94,16 @@ func ScopeEnforcer(registry *ScopeRegistry, cfg ScopeEnforcerConfig) gin.Handler
 	}
 }
 
-// resolveEffectiveScopes returns the scopes from the JWT scope claim.
-func resolveEffectiveScopes(c *gin.Context, _ string) []string {
+// resolveEffectiveScopes returns the effective scopes for the request.
+// In scope mode it reads the JWT scope claim directly.
+// In role mode it returns the platform_roles resolved by PlatformClaimsMiddleware,
+// allowing role names to be matched against the scope registry entries.
+func resolveEffectiveScopes(c *gin.Context, mode string) []string {
+	if mode == ValidationModeRole {
+		raw, _ := c.Get("platform_roles")
+		roles, _ := raw.([]string)
+		return roles
+	}
 	raw, _ := c.Get("scope")
 	scopeStr, _ := raw.(string)
 	return strings.Fields(scopeStr)

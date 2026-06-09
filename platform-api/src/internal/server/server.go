@@ -323,8 +323,6 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 
 
 
-	// Configure scope validation.
-	middleware.SetScopeValidationEnabled(cfg.EnableScopeValidation)
 	if !cfg.EnableScopeValidation {
 		slogger.Warn("scope validation is disabled — all authenticated requests will be allowed regardless of scope")
 	}
@@ -347,6 +345,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	// values are already in the context when scope checks run.
 	router.Use(middleware.ScopeEnforcer(scopeRegistry, middleware.ScopeEnforcerConfig{
 		ValidationMode: cfg.Auth.IDP.ValidationMode,
+		Enabled:        cfg.EnableScopeValidation,
 	}))
 
 	// Register routes

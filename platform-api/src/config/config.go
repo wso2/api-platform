@@ -248,8 +248,8 @@ type JWT struct {
 	// SkipValidation disables JWT signature verification.
 	// Only applies when AUTH_IDP_ENABLED=false (JWT mode). Use only for local development.
 	// When DEV_MODE=false this combination logs a prominent warning at startup.
-	// Env: AUTH_JWT_SKIP_VALIDATION (default: true)
-	SkipValidation bool `envconfig:"SKIP_VALIDATION" default:"true"`
+	// Env: AUTH_JWT_SKIP_VALIDATION (default: false)
+	SkipValidation bool `envconfig:"SKIP_VALIDATION" default:"false"`
 }
 
 // WebSocket holds WebSocket-specific configuration
@@ -393,19 +393,19 @@ func validateIDPConfig(idp *IDP) error {
 		return nil
 	}
 	if idp.JWKSUrl == "" {
-		return fmt.Errorf("IDP_ENABLED=true requires IDP_JWKS_URL to be configured")
+		return fmt.Errorf("AUTH_IDP_ENABLED=true requires AUTH_IDP_JWKS_URL to be configured")
 	}
 	if len(idp.Issuer) == 0 {
-		return fmt.Errorf("IDP_ENABLED=true requires IDP_ISSUER to be configured")
+		return fmt.Errorf("AUTH_IDP_ENABLED=true requires AUTH_IDP_ISSUER to be configured")
 	}
 	switch idp.ValidationMode {
 	case "scope", "role":
 		// valid
 	default:
-		return fmt.Errorf("IDP_VALIDATION_MODE must be \"scope\" or \"role\" (got %q)", idp.ValidationMode)
+		return fmt.Errorf("AUTH_IDP_VALIDATION_MODE must be \"scope\" or \"role\" (got %q)", idp.ValidationMode)
 	}
 	if idp.ValidationMode == "role" && idp.RolesClaimPath == "" {
-		return fmt.Errorf("IDP_VALIDATION_MODE=role requires IDP_ROLES_CLAIM_PATH to be configured")
+		return fmt.Errorf("AUTH_IDP_VALIDATION_MODE=role requires AUTH_IDP_ROLES_CLAIM_PATH to be configured")
 	}
 	return nil
 }

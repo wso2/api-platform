@@ -44,8 +44,6 @@ func (r *ScopeRegistry) Lookup(method, ginPath string) ([]string, bool) {
 	return scopes, ok
 }
 
-
-
 // openAPIDoc is the minimal subset of an OpenAPI 3.x document we need to parse.
 type openAPIDoc struct {
 	Servers []struct {

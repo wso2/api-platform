@@ -26,6 +26,7 @@ import (
 // When the new name is unset but the old name has a value, the old value is
 // injected under the new name before envconfig.Process runs.
 var legacyEnvAliases = [][2]string{
+	// JWT (local HMAC mode) — renamed under AUTH_JWT_* namespace
 	{"JWT_SECRET_KEY", "AUTH_JWT_SECRET_KEY"},
 	{"JWT_ISSUER", "AUTH_JWT_ISSUER"},
 	{"JWT_SKIP_VALIDATION", "AUTH_JWT_SKIP_VALIDATION"},
