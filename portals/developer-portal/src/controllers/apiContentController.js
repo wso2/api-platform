@@ -188,13 +188,31 @@ const loadAPIContent = async (req, res) => {
         const metaData = loadAPIMetaDataFromFile(apiHandle);
         const hbsContentPath = path.join(process.cwd(), config.designMode.samplesPath, apiHandle, constants.ARTIFACT_DIR.WEB, constants.FILE_NAME.API_HBS_CONTENT_FILE_NAME);
 
+        let loadDefault = false;
+        let apiDetails = '';
+
         if (fs.existsSync(hbsContentPath)) {
             hbs.handlebars.registerPartial('api-content', fs.readFileSync(hbsContentPath, constants.CHARSET_UTF8));
+        } else {
+            // No custom api-content.hbs — use the default API detail view (same as production)
+            const definitionContent = sampleApiLoader.getDefinition(apiHandle, config.designMode.samplesPath);
+            if (definitionContent) {
+                const apiType = metaData.apiInfo?.apiType;
+                loadDefault = true;
+                if (apiType !== constants.API_TYPE.GRAPHQL && apiType !== constants.API_TYPE.WS && apiType !== constants.API_TYPE.WEBSUB && apiType !== constants.API_TYPE.MCP) {
+                    apiDetails = await parseSwagger(parseApiDefinitionContent(definitionContent));
+                    apiDetails.serverDetails = (metaData.endPoints.productionURL || metaData.endPoints.sandboxURL)
+                        ? metaData.endPoints : '';
+                }
+            }
         }
+
         const templateContent = {
             devMode: true,
             providerUrl: '#subscriptionPlans',
             apiContent: '',
+            loadDefault,
+            resources: apiDetails,
             apiMetadata: metaData,
             subscriptionPlans: metaData.subscriptionPolicies,
             baseUrl: config.baseUrl + constants.ROUTE.VIEWS_PATH + viewName,
@@ -895,15 +913,18 @@ async function parseSwagger(api) {
         const apiDescription = api.info?.description || "No description available";
         //const servers = api.servers || [];
 
-        // Extract endpoints
+        // Extract endpoints — only recognised HTTP verbs (skip path-level keys like 'parameters', 'summary', 'description', 'servers')
+        const HTTP_METHODS = new Set(['get', 'post', 'put', 'delete', 'patch']);
         const endpoints = Object.entries(api.paths || {}).map(([path, methods]) => ({
             path,
-            methods: Object.keys(methods).map(method => ({
-                method: method.toUpperCase(),
-                summary: methods[method]?.summary || "No summary",
-                description: methods[method]?.description || "No description",
-            })),
-        }));
+            methods: Object.keys(methods)
+                .filter(method => HTTP_METHODS.has(method.toLowerCase()))
+                .map(method => ({
+                    method: method.toUpperCase(),
+                    summary: methods[method]?.summary || "No summary",
+                    description: methods[method]?.description || "No description",
+                })),
+        })).filter(entry => entry.methods.length > 0);
         return { title, description: apiDescription, endpoints };
     } catch (error) {
         logger.error('Error parsing OpenAPI', { 

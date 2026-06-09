@@ -22,11 +22,25 @@ const fs = require('fs');
 const path = require('path');
 const yaml = require('js-yaml');
 const constants = require('./constants');
+const { config } = require('../config/configLoader');
 
 function resolveDir(samplesDir) {
     return path.isAbsolute(samplesDir)
         ? samplesDir
         : path.join(process.cwd(), samplesDir);
+}
+
+/**
+ * Load subscription plan details from subscriptionPlans.yaml in samplesDir.
+ * Returns a map of policyName → plan object. Missing file → empty map.
+ */
+function loadSubscriptionPlans() {
+    const plansPath = path.isAbsolute(config.designMode.subscriptionPlansPath)
+        ? config.designMode.subscriptionPlansPath
+        : path.join(process.cwd(), config.designMode.subscriptionPlansPath);
+    if (!fs.existsSync(plansPath)) return {};
+    const plans = yaml.load(fs.readFileSync(plansPath, 'utf-8')) || [];
+    return Object.fromEntries(plans.map(p => [p.policyName, p]));
 }
 
 function parseApiYaml(apiHandle, samplesDir) {
@@ -35,12 +49,17 @@ function parseApiYaml(apiHandle, samplesDir) {
     const doc = yaml.load(fs.readFileSync(apiYamlPath, 'utf-8'));
     const { metadata = {}, spec = {} } = doc;
     const name = metadata.name || apiHandle;
-    const policies = (spec.subscriptionPolicies || []).map(p => ({
-        policyName: p,
-        displayName: p,
-        description: '',
-        requestCount: 1000,
-    }));
+
+    const plansMap = loadSubscriptionPlans();
+    const policies = (spec.subscriptionPolicies || []).map(p => {
+        const plan = plansMap[p];
+        return {
+            policyName: p,
+            displayName: plan?.displayName ?? p,
+            description: plan?.description ?? '',
+            requestCount: plan?.requestCount ?? 1000,
+        };
+    });
     // Collect images from web/ and expose them as /mock/{handle}/web/{filename} URLs
     const webDir = path.join(resolveDir(samplesDir), apiHandle, constants.ARTIFACT_DIR.WEB);
     const imageExtensions = new Set(['.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp']);
