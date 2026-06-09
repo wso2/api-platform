@@ -90,10 +90,6 @@ type Auth struct {
 	// Env prefix: AUTH_JWT_
 	JWT JWT `envconfig:"JWT"`
 
-	// Portal holds portal UI-specific auth configuration (OAuth2 client details for
-	// the login flow). Separate from IDP which is for backend token validation.
-	// Env prefix: AUTH_PORTAL_
-	Portal PortalAuth `envconfig:"PORTAL"`
 }
 
 // IDP holds configuration for JWKS-based identity providers.
@@ -187,25 +183,6 @@ type IDP struct {
 	//   "role"            — expand IDP roles to platform roles via RoleMappings.
 	// Env: AUTH_IDP_VALIDATION_MODE (default: "scope")
 	ValidationMode string `envconfig:"VALIDATION_MODE" default:"scope"`
-}
-
-// PortalAuth holds OAuth2 client configuration used by the portal UI to initiate
-// the OIDC login flow. These are not used for backend token validation.
-// Env prefix: AUTH_PORTAL_
-type PortalAuth struct {
-	// ClientID is the OAuth2 client ID registered with the IDP for the portal UI.
-	// Env: AUTH_PORTAL_CLIENT_ID (default: "")
-	ClientID string `envconfig:"CLIENT_ID" default:""`
-
-	// DiscoveryURL is the OIDC /.well-known/openid-configuration endpoint.
-	// The portal uses this to derive authorization_endpoint, token_endpoint, and logout_url.
-	// Env: AUTH_PORTAL_DISCOVERY_URL (default: "")
-	DiscoveryURL string `envconfig:"DISCOVERY_URL" default:""`
-
-	// Scopes is the list of OAuth2 scopes the portal will request from the IDP at login.
-	// Must match the scopes registered for the portal client in the IDP.
-	// Env: AUTH_PORTAL_SCOPES (default: "openid,profile,email")
-	Scopes []string `envconfig:"SCOPES" default:"openid,profile,email"`
 }
 
 // Gateway holds gateway-related configuration.

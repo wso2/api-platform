@@ -6,14 +6,7 @@ Backend service that powers the API Platform portals, gateways, and automation f
 
 ### Prerequisites
 
-**Setup OAuth2 Authentication (STS)**
-
-Before using the Platform API, set up the Security Token Service (STS) for authentication:
-
-1. Follow the instructions in [sts/README.md](../sts/README.md) to start the STS service
-2. Run the sample OAuth application and log in
-3. Copy the access token displayed after successful login
-4. Use this token in the `Authorization: Bearer <token>` header for all Platform API requests
+Before using the Platform API, obtain a bearer token for authentication. In local JWT mode (default) you can generate a token using the configured `AUTH_JWT_SECRET_KEY`. In IDP mode, obtain a token from your identity provider.
 
 ### Build and Run
 
@@ -34,7 +27,7 @@ go run ./cmd/main.go
 ```bash
 curl -k -X POST https://localhost:9243/api/v1/organizations \
   -H 'Content-Type: application/json' \
-  -H 'Authorization: Bearer <your-oauth2-token>' \
+  -H 'Authorization: Bearer <your-token>' \
   -d '{"id":"<org-uuid>","handle":"acme","name":"ACME Corporation","region":"us-east-1"}'
 ```
 
@@ -43,7 +36,7 @@ curl -k -X POST https://localhost:9243/api/v1/organizations \
 ```bash
 curl -k -X POST https://localhost:9243/api/v1/projects \
   -H 'Content-Type: application/json' \
-  -H 'Authorization: Bearer <your-oauth2-token>' \
+  -H 'Authorization: Bearer <your-token>' \
   -d '{
     "name": "Production APIs"
   }'
@@ -55,7 +48,7 @@ curl -k -X POST https://localhost:9243/api/v1/projects \
 curl -k -X POST https://localhost:9243/api/v1/gateways \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
-  -H 'Authorization: Bearer <your-oauth2-token>' \
+  -H 'Authorization: Bearer <your-token>' \
   -d '{
     "name": "prod-gateway-01",
     "displayName": "Production Gateway 01",
@@ -80,7 +73,7 @@ Response includes the gateway UUID:
 ```bash
 curl -k -X POST https://localhost:9243/api/v1/gateways/<gateway-uuid>/tokens \
   -H 'Accept: application/json' \
-  -H 'Authorization: Bearer <your-oauth2-token>'
+  -H 'Authorization: Bearer <your-token>'
 ```
 
 Response includes the gateway authentication token:
@@ -95,19 +88,8 @@ Response includes the gateway authentication token:
 
 **List Gateway Tokens:**
 ```bash
-curl -k -s https://localhost:9243/api/v1/gateways/<gateway-uuid>/tokens \
-  -H 'Authorization: Bearer <your-oauth2-token>'
-```
-
-Response:
-```json
-[
-  {
-    "id": "7ed55286-66a4-43ae-9271-bd1ead475a55",
-    "status": "active",
-    "createdAt": "2025-10-21T15:12:57.60936197+05:30"
-  }
-]
+curl -k https://localhost:9243/api/v1/gateways/<gateway-uuid>/tokens \
+  -H 'Authorization: Bearer <your-token>'
 ```
 
 **5. Connect Gateway to Platform (WebSocket)**
@@ -136,7 +118,7 @@ Keep this connection open to receive real-time deployment events.
 ```bash
 curl -k -X POST 'https://localhost:9243/api/v1/rest-apis' \
   -H 'Content-Type: application/json' \
-  -H 'Authorization: Bearer <your-oauth2-token>' \
+  -H 'Authorization: Bearer <your-token>' \
   -d '{
       "id": "weather-api",
       "name": "Weather API",
@@ -159,7 +141,7 @@ curl -k -X POST 'https://localhost:9243/api/v1/rest-apis' \
 curl -k -X POST 'https://localhost:9243/api/v1/rest-apis/weather-api/deployments' \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
-  -H 'Authorization: Bearer <your-oauth2-token>' \
+  -H 'Authorization: Bearer <your-token>' \
   -d '{
     "name": "weather-v1-prod",
     "base": "current",
@@ -195,148 +177,123 @@ The connected gateway will receive a deployment event via WebSocket:
 
 ## Configuration
 
-All configuration is supplied via environment variables. The sections below cover authentication, RBAC, and other key settings.
+All configuration is supplied via environment variables.
 
-### Authentication Modes
+### Authentication
 
-Authentication mode is controlled by `IDP_ENABLED` and `IDP_TYPE`:
+Two authentication modes are supported. Exactly one should be active at a time.
 
 ```
-IDP_ENABLED=false (default)  →  Simple JWT (parse token, check org claim)
-IDP_ENABLED=true
-  IDP_TYPE=thunder            →  Thunder JWKS validation
-  IDP_TYPE=external           →  External IDP JWKS validation (Asgardeo, Keycloak, …)
+AUTH_IDP_ENABLED=false (default)  →  Local JWT mode  (HMAC signature verification)
+AUTH_IDP_ENABLED=true             →  IDP mode        (JWKS-based verification)
 ```
 
-#### Simple JWT — default
+---
 
-`IDP_ENABLED` is `false` by default. The token is parsed and the organization claim is checked, but no JWKS endpoint is contacted. Signature verification is controlled by `JWT_SKIP_VALIDATION`.
+#### Local JWT Mode (default)
+
+The server validates HMAC-signed tokens using `AUTH_JWT_SECRET_KEY`. Set `AUTH_JWT_SKIP_VALIDATION=true` only in local development environments where you do not have a token issuer available — all bearer values will be accepted without any signature check.
 
 | Variable | Default | Description |
 |---|---|---|
-| `IDP_ENABLED` | `false` | Keep `false` (or omit) to use this mode |
-| `JWT_SKIP_VALIDATION` | `true` | Skip signature verification. Set to `false` to verify HMAC signatures using `JWT_SECRET_KEY` |
-| `JWT_SECRET_KEY` | `your-secret-key-change-in-production` | HMAC key used when `JWT_SKIP_VALIDATION=false` |
-| `THUNDER_ORGANIZATION_CLAIM_NAME` | `organization` | JWT claim that must be present and non-empty |
+| `AUTH_JWT_SECRET_KEY` | `your-secret-key-change-in-production` | HMAC signing key for token verification |
+| `AUTH_JWT_ISSUER` | `platform-api` | Expected `iss` claim value |
+| `AUTH_JWT_SKIP_VALIDATION` | `false` | Skip signature verification — **development only** |
+| `DEV_MODE` | `false` | Suppresses the startup warning when `AUTH_JWT_SKIP_VALIDATION=true` |
 
-No changes needed for local development — the defaults work out of the box:
+Local development with no token issuer:
 ```bash
+export AUTH_JWT_SKIP_VALIDATION=true
+export DEV_MODE=true
 go run ./cmd/main.go
 ```
 
----
-
-#### IDP_TYPE=thunder
-
-Tokens are validated against Thunder's JWKS endpoint. Requires `IDP_ENABLED=true` and `IDP_TYPE=thunder`.
-
-| Variable | Default | Description |
-|---|---|---|
-| `IDP_ENABLED` | `false` | Set to `true` |
-| `IDP_TYPE` | _(empty)_ | Set to `thunder` |
-| `THUNDER_JWKS_URL` | _(required)_ | Thunder's JWKS endpoint (e.g. `https://thunder.example.com/oauth2/jwks`) |
-| `THUNDER_ISSUER` | `thunder` | Expected `iss` claim value in incoming JWTs |
-| `THUNDER_BASE_URL` | `http://localhost:8090` | Root URL of the Thunder service |
-| `THUNDER_CLIENT_ID` | _(empty)_ | OAuth2 client ID for system-level token requests (client_credentials grant) |
-| `THUNDER_CLIENT_SECRET` | _(empty)_ | OAuth2 client secret paired with `THUNDER_CLIENT_ID` |
-| `THUNDER_ORGANIZATION_CLAIM_NAME` | `organization` | JWT claim that holds the organization/tenant ID |
-
+Production with HMAC verification:
 ```bash
-export IDP_ENABLED=true
-export IDP_TYPE=thunder
-export THUNDER_JWKS_URL=https://thunder.example.com/oauth2/jwks
-export THUNDER_ISSUER=https://thunder.example.com/oauth2/token
-export THUNDER_CLIENT_ID=platform-api-client
-export THUNDER_CLIENT_SECRET=<secret>
+export AUTH_JWT_SECRET_KEY=<strong-random-key>
+export AUTH_JWT_ISSUER=https://your-token-issuer
+go run ./cmd/main.go
 ```
 
+**Legacy variable names** (still accepted, deprecated):
+
+| Old name | New name |
+|---|---|
+| `JWT_SECRET_KEY` | `AUTH_JWT_SECRET_KEY` |
+| `JWT_ISSUER` | `AUTH_JWT_ISSUER` |
+| `JWT_SKIP_VALIDATION` | `AUTH_JWT_SKIP_VALIDATION` |
+| `JWT_SKIP_PATHS` | `AUTH_SKIP_PATHS` |
+
 ---
 
-#### IDP_TYPE=external
+#### IDP Mode
 
-Tokens are validated against a third-party IDP's JWKS endpoint. Requires `IDP_ENABLED=true` and `IDP_TYPE=external`.
+Tokens are validated against any standards-compliant identity provider (Thunder, Asgardeo, Keycloak, Azure AD, Okta, etc.) using its JWKS endpoint. Set `AUTH_IDP_ENABLED=true` and supply at minimum `AUTH_IDP_JWKS_URL` and `AUTH_IDP_ISSUER`.
 
 | Variable | Default | Description |
 |---|---|---|
-| `IDP_ENABLED` | `false` | Set to `true` |
-| `IDP_TYPE` | _(empty)_ | Set to `external` |
-| `EXTERNAL_IDP_JWKS_URL` | _(required)_ | IDP's JWKS endpoint for public key retrieval |
-| `EXTERNAL_IDP_ISSUER` | _(required)_ | Comma-separated list of accepted JWT issuers |
-| `EXTERNAL_IDP_AUDIENCE` | _(empty)_ | Comma-separated accepted audiences. Entries ending with `*` are treated as prefixes |
-| `EXTERNAL_IDP_ORGANIZATION_CLAIM_NAME` | `organization` | JWT claim holding the org/tenant ID |
-| `EXTERNAL_IDP_USER_ID_CLAIM_NAME` | `sub` | JWT claim used as the user identifier |
-| `EXTERNAL_IDP_USERNAME_CLAIM_NAME` | `username` | JWT claim for the username |
-| `EXTERNAL_IDP_EMAIL_CLAIM_NAME` | `email` | JWT claim for the user's email |
-| `EXTERNAL_IDP_SCOPE_CLAIM_NAME` | `scope` | JWT claim for granted scopes |
-| `EXTERNAL_IDP_ROLES_CLAIM_PATH` | `roles` | Dot-notation path to the roles claim (e.g. `realm_access.roles` for Keycloak) |
-| `EXTERNAL_IDP_ROLE_MAPPINGS` | _(empty)_ | Comma-separated `idp-value=platform-role` pairs (see RBAC section below) |
+| `AUTH_IDP_ENABLED` | `false` | Set to `true` to activate IDP mode |
+| `AUTH_IDP_NAME` | _(empty)_ | Optional label shown in startup logs (e.g. `thunder`, `asgardeo`) |
+| `AUTH_IDP_JWKS_URL` | _(required)_ | IDP's JWKS endpoint for public key retrieval |
+| `AUTH_IDP_ISSUER` | _(required)_ | Accepted JWT issuer |
+| `AUTH_IDP_AUDIENCE` | _(empty)_ | Accepted JWT audiences (comma-separated). Entries ending with `*` are treated as prefix matches |
+| `AUTH_IDP_ORGANIZATION_CLAIM_NAME` | `organization` | JWT claim holding the org UUID for the active session |
+| `AUTH_IDP_ORG_NAME_CLAIM_NAME` | `org_name` | JWT claim for the org display name |
+| `AUTH_IDP_ORG_HANDLE_CLAIM_NAME` | `org_handle` | JWT claim for the org URL-safe handle |
+| `AUTH_IDP_USER_ID_CLAIM_NAME` | `sub` | JWT claim used as the canonical user identifier |
+| `AUTH_IDP_USERNAME_CLAIM_NAME` | `username` | JWT claim for the human-readable username |
+| `AUTH_IDP_EMAIL_CLAIM_NAME` | `email` | JWT claim for the user's email address |
+| `AUTH_IDP_SCOPE_CLAIM_NAME` | `scope` | JWT claim carrying granted OAuth2 scopes |
+| `AUTH_IDP_VALIDATION_MODE` | `scope` | Authorization mode: `scope` (validate scope claim directly) or `role` (expand IDP roles to platform roles) |
+| `AUTH_IDP_ROLES_CLAIM_PATH` | _(empty)_ | Dot-notation path to the roles claim (e.g. `realm_access.roles`). Required when `AUTH_IDP_VALIDATION_MODE=role` |
+| `AUTH_IDP_ROLE_MAPPINGS` | _(empty)_ | Comma-separated `idp-role=platform-role` pairs (e.g. `PLATFORM_ADMIN=admin,PLATFORM_DEV=developer`). When empty, IDP role values are used as-is |
 
 **Example — Asgardeo:**
 ```bash
-export IDP_ENABLED=true
-export IDP_TYPE=external
-export EXTERNAL_IDP_JWKS_URL=https://api.asgardeo.io/t/<org>/oauth2/jwks
-export EXTERNAL_IDP_ISSUER=https://api.asgardeo.io/t/<org>/oauth2/token
-export EXTERNAL_IDP_AUDIENCE=<client-id>
-export EXTERNAL_IDP_ORGANIZATION_CLAIM_NAME=organizationId
-export EXTERNAL_IDP_ROLES_CLAIM_PATH=roles
-export EXTERNAL_IDP_ROLE_MAPPINGS=platform-admin=admin,platform-dev=developer,platform-viewer=viewer
+export AUTH_IDP_ENABLED=true
+export AUTH_IDP_NAME=asgardeo
+export AUTH_IDP_JWKS_URL=https://api.asgardeo.io/t/<org>/oauth2/jwks
+export AUTH_IDP_ISSUER=https://api.asgardeo.io/t/<org>/oauth2/token
+export AUTH_IDP_AUDIENCE=<client-id>
+export AUTH_IDP_ORGANIZATION_CLAIM_NAME=organizationId
+export AUTH_IDP_VALIDATION_MODE=scope
+export AUTH_IDP_ROLES_CLAIM_PATH=scope
 ```
 
-**Example — Keycloak:**
+---
+
+#### Skip Paths
+
+Path prefixes listed here bypass authentication entirely. Used for internal gateway traffic and health checks.
+
+| Variable | Default |
+|---|---|
+| `AUTH_SKIP_PATHS` | `/health,/metrics,/api/internal/v1/ws/gateways/connect,...` |
+
+To extend the default list:
 ```bash
-export IDP_ENABLED=true
-export IDP_TYPE=external
-export EXTERNAL_IDP_JWKS_URL=https://keycloak.example.com/realms/<realm>/protocol/openid-connect/certs
-export EXTERNAL_IDP_ISSUER=https://keycloak.example.com/realms/<realm>
-export EXTERNAL_IDP_ROLES_CLAIM_PATH=realm_access.roles
-export EXTERNAL_IDP_ROLE_MAPPINGS=platform-admin=admin,platform-developer=developer
+export AUTH_SKIP_PATHS="/health,/metrics,/api/internal/v1/ws/gateways/connect,/my-custom-path"
 ```
 
 ---
 
 ### Role-Based Access Control (RBAC)
 
-RBAC enforces per-route permission checks on all authenticated requests. Three built-in roles exist:
+Per-route scope checks are enforced when `ENABLE_SCOPE_VALIDATION=true`. Three built-in platform roles exist:
 
 | Role | Access level |
 |---|---|
 | `admin` | Full access to all resources and operations |
-| `developer` | CRUD and deploy on APIs, projects, applications, and AI/integration resources; no gateway admin or subscription plan management |
+| `developer` | CRUD and deploy on APIs, projects, applications, and AI/integration resources |
 | `viewer` | Read-only access to all resources |
-
-#### Enabling and disabling scope validation
 
 | Variable | Default | Description |
 |---|---|---|
-| `ENABLE_SCOPE_VALIDATION` | `true` | Set to `false` to disable all permission checks (all authenticated requests are allowed) |
+| `ENABLE_SCOPE_VALIDATION` | `false` | Set to `true` to enforce per-route scope/role checks |
 
-**Disable scope validation** (e.g. for initial deployment or local development without roles configured):
-```bash
-export ENABLE_SCOPE_VALIDATION=false
-```
-
-**Enable scope validation** (default — no action needed):
-```bash
-export ENABLE_SCOPE_VALIDATION=true
-```
-
-> **Note:** In simple JWT mode and Thunder IDP mode, role resolution uses the `scope` claim from the JWT directly. In external IDP mode, roles are resolved from `EXTERNAL_IDP_ROLES_CLAIM_PATH` and mapped to platform roles via `EXTERNAL_IDP_ROLE_MAPPINGS`.
-
----
-
-### JWT Skip Paths
-
-Paths listed here bypass JWT authentication entirely (used for internal/gateway traffic):
-
-| Variable | Default |
-|---|---|
-| `JWT_SKIP_PATHS` | `/health,/metrics,/api/internal/v1/ws/gateways/connect,...` |
-
-To add extra paths:
-```bash
-export JWT_SKIP_PATHS="/health,/metrics,/api/internal/v1/ws/gateways/connect,/my-custom-path"
-```
+In **local JWT mode**, scopes are read directly from the `scope` claim in the token.  
+In **IDP mode with `AUTH_IDP_VALIDATION_MODE=scope`**, scopes are read from the claim named by `AUTH_IDP_SCOPE_CLAIM_NAME`.  
+In **IDP mode with `AUTH_IDP_VALIDATION_MODE=role`**, IDP roles are resolved from `AUTH_IDP_ROLES_CLAIM_PATH`, mapped via `AUTH_IDP_ROLE_MAPPINGS`, and matched against the required roles for each route.
 
 ---
 
@@ -353,7 +310,7 @@ export JWT_SKIP_PATHS="/health,/metrics,/api/internal/v1/ws/gateways/connect,/my
 | `DATABASE_PASSWORD` | _(empty)_ | Postgres password |
 | `DATABASE_SSL_MODE` | `disable` | Postgres SSL mode (`disable`, `require`, `verify-full`) |
 | `DATABASE_EXECUTE_SCHEMA_DDL` | `true` | Set to `false` when the DB user lacks DDL privileges |
-| `DATABASE_SUBSCRIPTION_TOKEN_ENCRYPTION_KEY` | _(empty)_ | 32-byte key (64 hex or 44 base64 chars) for AES-256-GCM token encryption. Falls back to `JWT_SECRET_KEY` when empty |
+| `DATABASE_SUBSCRIPTION_TOKEN_ENCRYPTION_KEY` | _(empty)_ | 32-byte key (64 hex or 44 base64 chars) for AES-256-GCM token encryption. |
 
 ---
 
