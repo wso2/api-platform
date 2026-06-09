@@ -22,6 +22,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"net/url"
 	"os"
 	"strings"
@@ -90,6 +91,11 @@ func runUpdateCommand(cmd *cobra.Command) error {
 	resp, err := client.Put(endpoint, bytes.NewReader(data))
 	if err != nil {
 		return fmt.Errorf("failed to update subscription: %w", err)
+	}
+
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		resp.Body.Close()
+		return fmt.Errorf("failed to update subscription: received status code %d", resp.StatusCode)
 	}
 
 	fmt.Println("Subscription updated successfully.")

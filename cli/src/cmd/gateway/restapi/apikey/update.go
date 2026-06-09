@@ -22,6 +22,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"net/url"
 	"os"
 	"strings"
@@ -92,6 +93,11 @@ func runUpdateCommand(cmd *cobra.Command) error {
 	resp, err := client.Put(endpoint, bytes.NewReader(data))
 	if err != nil {
 		return fmt.Errorf("failed to update API key: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return fmt.Errorf("failed to update API key: received status code %d", resp.StatusCode)
 	}
 
 	fmt.Println("API key updated successfully.")

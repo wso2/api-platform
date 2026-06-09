@@ -121,6 +121,10 @@ func runListCommand(cmd *cobra.Command) error {
 		return nil
 	}
 
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return fmt.Errorf("failed to list subscriptions: received status code %d: %s", resp.StatusCode, string(body))
+	}
+
 	var listResp SubscriptionListResponse
 	if err := json.Unmarshal(body, &listResp); err != nil {
 		return fmt.Errorf("failed to parse response: %w", err)

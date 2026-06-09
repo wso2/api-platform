@@ -81,6 +81,11 @@ func runRegenerateCommand(cmd *cobra.Command) error {
 		return fmt.Errorf("failed to regenerate API key: %w", err)
 	}
 
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return gateway.PrintJSONResponse(resp)
+	}
 	fmt.Println("API key regenerated successfully.")
 	return gateway.PrintJSONResponse(resp)
 }

@@ -19,7 +19,9 @@
 package subscriptionplan
 
 import (
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/url"
 	"os"
 	"strings"
@@ -70,7 +72,27 @@ func runDeleteCommand(cmd *cobra.Command) error {
 	if err != nil {
 		return fmt.Errorf("failed to delete subscription plan: %w", err)
 	}
-	resp.Body.Close()
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("failed to read response: %w", err)
+	}
+
+	if resp.StatusCode == 404 {
+		return fmt.Errorf("subscription plan with ID '%s' not found", deletePlanID)
+	}
+
+	if resp.StatusCode != 200 && resp.StatusCode != 204 {
+		// Try to parse error message from response
+		var errorResp map[string]interface{}
+		if json.Unmarshal(body, &errorResp) == nil {
+			if msg, ok := errorResp["message"].(string); ok {
+				return fmt.Errorf("failed to delete subscription plan (status %d): %s", resp.StatusCode, msg)
+			}
+		}
+		return fmt.Errorf("failed to delete subscription plan (status %d): %s", resp.StatusCode, string(body))
+	}
 
 	fmt.Println("Subscription plan deleted successfully.")
 	return nil

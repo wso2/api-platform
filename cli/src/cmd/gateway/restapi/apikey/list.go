@@ -103,6 +103,9 @@ func runListCommand(cmd *cobra.Command) error {
 	if resp.StatusCode == http.StatusNotFound {
 		return fmt.Errorf("REST API with ID '%s' not found", listAPIID)
 	}
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("failed to list API keys (status %d): %s", resp.StatusCode, string(body))
+	}
 
 	var listResp APIKeyListResponse
 	if err := json.Unmarshal(body, &listResp); err != nil {

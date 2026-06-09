@@ -20,6 +20,7 @@ package subscription
 
 import (
 	"fmt"
+	"net/http"
 	"net/url"
 	"os"
 	"strings"
@@ -71,6 +72,10 @@ func runDeleteCommand(cmd *cobra.Command) error {
 		return fmt.Errorf("failed to delete subscription: %w", err)
 	}
 	resp.Body.Close()
+
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return fmt.Errorf("failed to delete subscription: received status code %d", resp.StatusCode)
+	}
 
 	fmt.Println("Subscription deleted successfully.")
 	return nil

@@ -96,7 +96,7 @@ func runGetCommand(cmd *cobra.Command) error {
 		return fmt.Errorf("invalid format: %s (must be 'json' or 'yaml')", getAPIFormat)
 	}
 
-	// Create a client for the active gateway
+	// Create a client for the selected (or active) gateway
 	client, err := gateway.NewClientFromCommand(cmd)
 	if err != nil {
 		return err

@@ -81,6 +81,10 @@ func runRevokeCommand(cmd *cobra.Command) error {
 	}
 	resp.Body.Close()
 
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("failed to revoke API key: recieved status code %d", resp.StatusCode)
+	}
+
 	fmt.Println("API key revoked successfully.")
 	return nil
 }

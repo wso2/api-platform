@@ -102,6 +102,10 @@ func runListCommand(cmd *cobra.Command) error {
 		return nil
 	}
 
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return fmt.Errorf("failed to list subscription plans: received status code %d: %s", resp.StatusCode, string(body))
+	}
+
 	headers := []string{"ID", "PLAN_NAME", "BILLING_PLAN", "THROTTLE_LIMIT", "STATUS", "CREATED_AT"}
 	rows := make([][]string, 0, len(listResp.SubscriptionPlans))
 	for _, p := range listResp.SubscriptionPlans {
