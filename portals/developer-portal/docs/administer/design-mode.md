@@ -1,13 +1,13 @@
 # Design Mode
 
-Design mode lets you develop and preview API page layouts without a running PostgreSQL database or an identity provider. The portal starts with sample API definitions loaded from disk and serves all pages anonymously — login, subscriptions, applications, and API keys are all disabled.
+Design mode lets you develop and preview API page layouts and org-level themes without a running PostgreSQL database or an identity provider. The portal starts with sample API definitions loaded from disk and serves all pages anonymously — login, subscriptions, applications, and API keys are all disabled.
 
 ## When to Use Design Mode
 
 Use design mode when you want to:
 
-- Build or customise Handlebars templates for API overview pages
-- Iterate on layout, CSS, and partials with a fast edit-and-reload workflow
+- Build or customise the portal layout, CSS, header, and footer
+- Iterate on Handlebars templates for API overview pages
 - Work on a new API page design without needing a full portal stack running
 
 ## Enable Design Mode
@@ -36,16 +36,87 @@ Visit **http://localhost:3000/views/default**.
 | Option | Default | Description |
 |--------|---------|-------------|
 | `enabled` | `false` | Set to `true` to activate design mode |
-| `samplesPath` | `./samples/apis/` | Path to the directory of sample API definitions (see [Sample APIs](#sample-apis)) |
-| `pathToLayout` | `./src/defaultContent/` | Path to the Handlebars template directory used to render pages |
+| `samplesPath` | `./samples/apis/` | Directory of sample API definitions (see [Sample APIs](#sample-apis)) |
+| `subscriptionPlansPath` | `./samples/subscriptionPlans.yaml` | YAML file with org-level subscription plan details |
+| `pathToLayout` | `./src/defaultContent/` | Layout directory used to render pages (see [Customising the Theme](#customising-the-theme)) |
 
-All three options can also be set via environment variables:
+All options can also be set via environment variables:
 
 ```
 DP_DESIGNMODE_ENABLED=true
 DP_DESIGNMODE_SAMPLESPATH=./my-samples/
+DP_DESIGNMODE_SUBSCRIPTIONPLANSPATH=./my-samples/plans.yaml
 DP_DESIGNMODE_PATHTOLAYOUT=./my-layout/
 ```
+
+## Customising the Theme
+
+`pathToLayout` is your working theme directory. It mirrors the structure used by the production theme ZIP upload, so a theme built here can be deployed to production without any conversion.
+
+### What can be customised
+
+| Asset | Path in `pathToLayout` | Effect |
+|-------|------------------------|--------|
+| Page shell | `layout/main.hbs` | Controls the outer HTML, `<head>`, nav frame |
+| Header | `partials/header.hbs` | Top navigation bar |
+| Footer | `partials/footer.hbs` | Footer content |
+| Home page content | `partials/home.hbs` | Home page body section |
+| API landing body | `partials/api-content.hbs` | Default body for API overview pages |
+| API listing extras | `partials/apis-md.hbs` | Markdown injected above the API list |
+| API landing extras | `partials/api-landing-md.hbs` | Markdown injected on API overview pages |
+| Stylesheet | `styles/main.css` | Portal-wide CSS (can `@import` other CSS files) |
+| Images | `images/` | Custom logo and other images |
+
+You only need to include the files you want to override — everything else falls back to the defaults in `src/defaultContent/` automatically.
+
+### Getting started
+
+Copy only the files you want to change from `src/defaultContent/`:
+
+```bash
+mkdir -p my-theme/partials my-theme/styles my-theme/images
+cp src/defaultContent/partials/header.hbs my-theme/partials/
+cp src/defaultContent/styles/main.css my-theme/styles/
+```
+
+Then point `pathToLayout` at your directory:
+
+```yaml
+designMode:
+  enabled: true
+  pathToLayout: "./my-theme/"
+```
+
+Reload the browser after editing any file — changes appear immediately without a server restart.
+
+> **Note on `main.css`:** This file must be copied in full, not replaced with just `:root` overrides. It contains both the CSS variables and the actual rule definitions (buttons, layout, containers). The other CSS files (`home.css`, `header.css`, etc.) referenced in its `@import` statements are served from the defaults automatically and do not need to be copied.
+
+### Colour-only theme example
+
+`samples/layouts/green-theme/` shows the minimal change needed: a full copy of `main.css` with only the `:root` colour palette swapped. Use it as a starting point:
+
+```bash
+cp -r samples/layouts/green-theme/ my-theme/
+```
+
+> **Note:** JavaScript files cannot be added as theme assets. Portal behaviour is controlled by the portal's own scripts in `src/scripts/`. Only CSS, Handlebars templates, and images are customisable.
+
+### Per-API custom layout
+
+To customise the layout of a specific API's overview page, add an `api-content.hbs` file inside that API's `web/` directory under `samplesPath`:
+
+```
+samples/apis/my-api-v1.0/
+├── api.yaml
+├── definition.yml
+├── docs/
+└── web/
+    └── api-content.hbs   ← custom HBS for this API's overview body
+```
+
+### Deploying to production
+
+When the theme is ready, zip the `pathToLayout` directory and upload it via **Admin Settings → Views → Upload View Content**. The ZIP structure is identical to what design mode uses, so no conversion is needed.
 
 ## Sample APIs
 
@@ -57,7 +128,7 @@ samples/apis/
 │   ├── api.yaml          # API metadata (display name, type, tags, endpoints, …)
 │   ├── definition.yml    # OpenAPI 3.0 specification
 │   └── docs/
-│       └── overview.md   # Markdown content shown on the API landing page
+│       └── overview.md   # Markdown shown in the docs section
 ├── booking-api-v1.0/
 │   └── …
 └── catalog-api-v1.0/
@@ -93,52 +164,20 @@ spec:
     productionUrl: https://api.example.com/my-api
 ```
 
-See the [built-in samples](../../../../samples/apis/) for complete examples including subscription plans and business information.
+See the [built-in samples](../../samples/apis/) for complete examples including subscription plans and business information.
 
 ### Live Reload
 
-The portal re-reads API definitions from disk on every page request. Edit `api.yaml` or `overview.md`, then reload the browser — no server restart needed.
-
-## Customising Templates
-
-Point `pathToLayout` at a directory that mirrors the structure of `src/defaultContent/`:
-
-```
-my-layout/
-├── layout/
-│   └── main.hbs          # outer page shell (header, sidebar, footer)
-├── pages/
-│   ├── home/
-│   │   └── page.hbs
-│   ├── apis/
-│   │   └── page.hbs
-│   ├── api-landing/
-│   │   └── page.hbs
-│   └── docs/
-│       └── page.hbs
-├── partials/
-│   ├── header.hbs
-│   └── sidebar.hbs
-├── styles/
-└── images/
-```
-
-Start by copying `src/defaultContent/` to your working directory:
-
-```bash
-cp -r src/defaultContent/ my-layout/
-```
-
-Then set `pathToLayout: "./my-layout/"` in `configs/config.yaml`.
+The portal re-reads API definitions from disk on every page request. Edit `api.yaml` or any doc file, then reload the browser — no server restart needed.
 
 ## What Is Disabled in Design Mode
 
 | Feature | Status |
 |---------|--------|
 | Login / IDP authentication | Disabled — all pages are served anonymously |
-| API subscriptions | Disabled — subscribe buttons are hidden |
-| Applications | Disabled — the Applications page is not registered |
-| API key generation | Disabled — API Keys nav item is hidden |
+| API subscriptions | Disabled |
+| Applications | Disabled |
+| API key generation | Disabled |
 | Database | Not required — no connection is attempted |
 | TLS / HTTPS | Not used — server always starts on plain HTTP |
 

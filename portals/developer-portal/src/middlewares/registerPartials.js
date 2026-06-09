@@ -42,7 +42,15 @@ const registerPartials = async (req, res, next) => {
   }
   registerInternalPartials(req);
   if (config.designMode?.enabled) {
-    await registerAllPartialsFromFile(config.baseUrl + constants.ROUTE.VIEWS_PATH + req.params.viewName, req, config.designMode.pathToLayout);
+    const baseUrl = config.baseUrl + constants.ROUTE.VIEWS_PATH + req.params.viewName;
+    // Always load the full set of defaults first so no partial is missing
+    await registerAllPartialsFromFile(baseUrl, req, './src/defaultContent');
+    // Then override with the designer's custom files (skip if pathToLayout is already src/defaultContent)
+    const layoutPath = path.resolve(config.designMode.pathToLayout);
+    const defaultPath = path.resolve('./src/defaultContent');
+    if (layoutPath !== defaultPath) {
+      await registerAllPartialsFromFile(baseUrl, req, config.designMode.pathToLayout);
+    }
   } else {
     let matchURL = req.originalUrl;
     if (req.session.returnTo) {
@@ -126,25 +134,29 @@ const registerInternalPartials = async (req) => {
 
 const registerAllPartialsFromFile = async (baseURL, req, filePrefix) => {
 
+  // Use path.resolve so both relative ("./my-theme/") and absolute ("/abs/path/")
+  // values of filePrefix work correctly.
+  const base = (...parts) => path.resolve(process.cwd(), filePrefix, ...parts);
+
   const filePath = req.originalUrl.split(baseURL).pop();
 
-  await registerPartialsFromFile(baseURL, path.join(process.cwd(), filePrefix, "partials"), req);
-  await registerPartialsFromFile(baseURL, path.join(process.cwd(), filePrefix, "pages", "home", "partials"), req);
-  await registerPartialsFromFile(baseURL, path.join(process.cwd(), filePrefix, "pages", "api-landing", "partials"), req);
-  await registerPartialsFromFile(baseURL, path.join(process.cwd(), filePrefix, "pages", "apis", "partials"), req);
-  await registerPartialsFromFile(baseURL, path.join(process.cwd(), filePrefix, "pages", "docs", "partials"), req);
-  await registerPartialsFromFile(baseURL, path.join(process.cwd(), filePrefix, "pages", "mcp", "partials"), req);
-  await registerPartialsFromFile(baseURL, path.join(process.cwd(), filePrefix, "pages", "mcp-landing", "partials"), req);
-  await registerPartialsFromFile(baseURL, path.join(process.cwd(), filePrefix, "pages", "subscriptions", "partials"), req);
-  if (fs.existsSync(path.join(process.cwd(), filePrefix, "pages", "api-subscriptions", "partials"))) {
-    await registerPartialsFromFile(baseURL, path.join(process.cwd(), filePrefix, "pages", "api-subscriptions", "partials"), req);
+  await registerPartialsFromFile(baseURL, base("partials"), req);
+  await registerPartialsFromFile(baseURL, base("pages", "home", "partials"), req);
+  await registerPartialsFromFile(baseURL, base("pages", "api-landing", "partials"), req);
+  await registerPartialsFromFile(baseURL, base("pages", "apis", "partials"), req);
+  await registerPartialsFromFile(baseURL, base("pages", "docs", "partials"), req);
+  await registerPartialsFromFile(baseURL, base("pages", "mcp", "partials"), req);
+  await registerPartialsFromFile(baseURL, base("pages", "mcp-landing", "partials"), req);
+  await registerPartialsFromFile(baseURL, base("pages", "subscriptions", "partials"), req);
+  if (fs.existsSync(base("pages", "api-subscriptions", "partials"))) {
+    await registerPartialsFromFile(baseURL, base("pages", "api-subscriptions", "partials"), req);
   }
-  if (fs.existsSync(path.join(process.cwd(), filePrefix, "pages", "api-keys", "partials"))) {
-    await registerPartialsFromFile(baseURL, path.join(process.cwd(), filePrefix, "pages", "api-keys", "partials"), req);
+  if (fs.existsSync(base("pages", "api-keys", "partials"))) {
+    await registerPartialsFromFile(baseURL, base("pages", "api-keys", "partials"), req);
   }
 
-  if (fs.existsSync(path.join(process.cwd(), filePrefix + "pages", filePath, "partials"))) {
-    await registerPartialsFromFile(baseURL, path.join(process.cwd(), filePrefix + "pages", filePath, "partials"), req);
+  if (fs.existsSync(path.resolve(process.cwd(), filePrefix + "pages", filePath, "partials"))) {
+    await registerPartialsFromFile(baseURL, path.resolve(process.cwd(), filePrefix + "pages", filePath, "partials"), req);
   }
 }
 

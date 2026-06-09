@@ -49,17 +49,36 @@ async function loadMarkdown(filename, dirName) {
 };
 
 
+/**
+ * In design mode, if a template/layout file doesn't exist at the given path
+ * (which may be under a custom pathToLayout), fall back to the same relative
+ * path under src/defaultContent/.
+ */
+function resolveDesignFallback(filePath) {
+    if (!config.designMode?.enabled) return filePath;
+    // Resolve relative to cwd so both relative and absolute pathToLayout values work
+    const abs = path.resolve(process.cwd(), filePath);
+    if (fs.existsSync(abs)) return abs;
+    const designRoot = path.resolve(process.cwd(), config.designMode.pathToLayout);
+    if (abs.startsWith(designRoot)) {
+        // Strip the leading path separator so the relative part doesn't look absolute
+        const relative = abs.slice(designRoot.length).replace(/^[/\\]/, '');
+        return path.resolve(process.cwd(), './src/defaultContent', relative);
+    }
+    return abs;
+}
+
 function renderTemplate(templatePath, layoutPath, templateContent, isTechnical) {
 
     let completeTemplatePath;
     if (isTechnical) {
         completeTemplatePath = path.join(require.main.filename, templatePath);
     } else {
-        completeTemplatePath = path.join(process.cwd(), templatePath);
+        completeTemplatePath = resolveDesignFallback(templatePath);
     }
 
     const templateResponse = fs.readFileSync(completeTemplatePath, constants.CHARSET_UTF8);
-    const completeLayoutPath = path.join(process.cwd(), layoutPath);
+    const completeLayoutPath = resolveDesignFallback(layoutPath);
     const layoutResponse = fs.readFileSync(completeLayoutPath, constants.CHARSET_UTF8)
 
     const template = Handlebars.compile(templateResponse.toString());

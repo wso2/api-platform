@@ -157,8 +157,11 @@ app.use('/:orgHandle/registry', mcpRegistryRoute);
 if (config.designMode?.enabled) {
     const sampleApiLoader = require('./utils/sampleApiLoader');
     const layoutPath = config.designMode.pathToLayout;
-    app.use(constants.ROUTE.STYLES, express.static(path.join(process.cwd(), layoutPath + 'styles')));
-    app.use(constants.ROUTE.IMAGES, express.static(path.join(process.cwd(), layoutPath + 'images')));
+    // Serve styles/images from pathToLayout first, fall back to src/defaultContent/
+    app.use(constants.ROUTE.STYLES, express.static(path.resolve(process.cwd(), layoutPath, 'styles')));
+    app.use(constants.ROUTE.STYLES, express.static(path.join(process.cwd(), './src/defaultContent/styles')));
+    app.use(constants.ROUTE.IMAGES, express.static(path.resolve(process.cwd(), layoutPath, 'images')));
+    app.use(constants.ROUTE.IMAGES, express.static(path.join(process.cwd(), './src/defaultContent/images')));
     app.use(constants.ROUTE.MOCK, express.static(path.join(process.cwd(), config.designMode.samplesPath)));
     // Serve API definition files by resolving the handle to the actual directory
     app.get('/mock/:apiHandle/definition.yml', (req, res) => {

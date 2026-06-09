@@ -100,6 +100,7 @@ const CONFIG_DEFAULTS = {
     designMode: {
         enabled: false,
         samplesPath: './samples/apis/',
+        subscriptionPlansPath: './samples/subscriptionPlans.yaml',
         pathToLayout: './src/defaultContent/',
     },
 };
