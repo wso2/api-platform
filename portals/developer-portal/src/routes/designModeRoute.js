@@ -20,11 +20,7 @@ const router = express.Router();
 const orgController = require('../controllers/orgContentController');
 const apiController = require('../controllers/apiContentController');
 const contentController = require('../controllers/customContentController');
-const applicationController = require('../controllers/applicationsContentController');
 const registerPartials = require('../middlewares/registerPartials');
-const authController = require('../controllers/authController');
-const settingsController = require('../controllers//settingsController');
-
 
 router.get('/views/:viewName', registerPartials, orgController.loadOrganizationContent);
 
@@ -34,27 +30,14 @@ router.get('/views/:viewName/api/:apiHandle', registerPartials, apiController.lo
 
 router.get('/views/:viewName/api/:apiHandle/docs/specification', registerPartials, apiController.loadDocument);
 
-//router.get('/views/:viewName/api/:apiHandle/docs', registerPartials, apiController.loadDocsPage);
-
 router.get('/views/:viewName/api/:apiHandle/docs/:docType/:docName', registerPartials, apiController.loadDocument);
 
-
-router.get('/views/:viewName/applications', registerPartials, applicationController.loadApplications);
-router.get('/views/:viewName/applications/:applicationId', registerPartials, applicationController.loadApplication);
-
-router.get('/configure', registerPartials, settingsController.loadOrgSettingsPage);
-
-router.get('/login', registerPartials, authController.login);
-router.get('/callback', registerPartials, authController.handleCallback);
-router.get('/logout', registerPartials, authController.handleLogOut);
-router.get('/signup', registerPartials, authController.handleSignUp);
-
 // eslint-disable-next-line no-useless-escape
-// Exclude specific paths
+// Exclude specific paths (login, applications, configure intentionally disabled in design mode)
 router.get(['/favicon.ico', '/images/*', '/styles/*', '/login*', '/devportal/*', '/views/*'], (req, res) => {
     res.status(404).send('Not found');
 });
-  
+
 router.get('/:path/*', registerPartials, contentController.loadCustomContent);
 
 module.exports = router;

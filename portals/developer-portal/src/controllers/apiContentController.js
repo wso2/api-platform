@@ -30,6 +30,7 @@ const apiDao = require('../dao/apiMetadata');
 const subDao = require('../dao/subscription');
 const apiMetadataService = require('../services/apiMetadataService');
 const { apiUsesApiKeySecurity, findSubscriptionTokenHeader } = require('../utils/apiDefinitionUtil');
+const sampleApiLoader = require('../utils/sampleApiLoader');
 const adminService = require('../services/adminService');
 const apiFlowService = require('../services/apiFlowService');
 const { ApplicationDTO } = require('../dto/application');
@@ -38,32 +39,25 @@ const yaml = require('js-yaml');
 const { log } = require('console');
 const controlPlaneUrl = config.controlPlane.url;
 
-const filePrefix = config.pathToContent;
 const generateArray = (length) => Array.from({ length });
-const baseURLDev = config.baseUrl + constants.ROUTE.VIEWS_PATH;
 
 const loadAPIs = async (req, res) => {
 
     const { orgName, viewName } = req.params;
     let html;
     let allApplications = [];
-    if (config.mode === constants.DEV_MODE) {
+    if (config.designMode?.enabled) {
+        const layoutPath = config.designMode.pathToLayout;
         const metaDataList = await loadAPIMetaDataList();
         for (const metaData of metaDataList) {
-            let subscriptionPlans = [];
-            subscriptionPlans.push({
-                displayName: "Sample",
-                policyName: "Sample",
-                description: "Sample",
-                requestCount: "1000",
-            });
-            metaData.subscriptionPolicyDetails = subscriptionPlans;
+            metaData.subscriptionPolicyDetails = metaData.subscriptionPolicies;
         }
         const templateContent = {
             apiMetadata: metaDataList,
-            baseUrl: baseURLDev + viewName
+            baseUrl: config.baseUrl + constants.ROUTE.VIEWS_PATH + viewName,
+            devMode: true,
         }
-        html = renderTemplate(filePrefix + 'pages/apis/page.hbs', filePrefix + 'layout/main.hbs', templateContent, false);
+        html = renderTemplate(layoutPath + 'pages/apis/page.hbs', layoutPath + 'layout/main.hbs', templateContent, false);
     } else {
         const orgDetails = await adminDao.getOrganization(orgName);
         const devportalMode = orgDetails.ORG_CONFIG?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
@@ -189,39 +183,25 @@ const loadAPIContent = async (req, res) => {
     const hbs = exphbs.create({});
     let { orgName, apiHandle, viewName } = req.params;
 
-    if (config.mode === constants.DEV_MODE) {
+    if (config.designMode?.enabled) {
+        const layoutPath = config.designMode.pathToLayout;
         const metaData = loadAPIMetaDataFromFile(apiHandle);
-        const filePath = path.join(process.cwd(), filePrefix + '../mock', apiHandle + "/" + constants.FILE_NAME.API_HBS_CONTENT_FILE_NAME);
+        const hbsContentPath = path.join(process.cwd(), config.designMode.samplesPath, apiHandle, constants.ARTIFACT_DIR.WEB, constants.FILE_NAME.API_HBS_CONTENT_FILE_NAME);
 
-        if (fs.existsSync(filePath)) {
-            hbs.handlebars.registerPartial('api-content', fs.readFileSync(filePath, constants.CHARSET_UTF8));
+        if (fs.existsSync(hbsContentPath)) {
+            hbs.handlebars.registerPartial('api-content', fs.readFileSync(hbsContentPath, constants.CHARSET_UTF8));
         }
-        let subscriptionPlans = [];
-        metaData.subscriptionPolicies.forEach(policy => {
-            const subscriptionPlan = {
-                name: policy.policyName,
-                description: "Sample description",
-                tierPlan: "Sample tier"
-            };
-            subscriptionPlans.push(subscriptionPlan);
-        });
-
-        let schemaFileName = constants.FILE_NAME.API_DEFINITION_XML;
-        if (metaData.apiInfo?.apiType === constants.API_TYPE.GRAPHQL) {
-            schemaFileName = constants.FILE_NAME.API_DEFINITION_GRAPHQL;
-        }
-
         const templateContent = {
             devMode: true,
             providerUrl: '#subscriptionPlans',
-            apiContent: await loadMarkdown(constants.FILE_NAME.API_MD_CONTENT_FILE_NAME, filePrefix + '../mock/' + req.params.apiName),
+            apiContent: '',
             apiMetadata: metaData,
-            subscriptionPlans: subscriptionPlans,
-            baseUrl: baseURLDev + viewName,
-            schemaUrl: `${orgName}/mock/${apiHandle}/${schemaFileName}`,
+            subscriptionPlans: metaData.subscriptionPolicies,
+            baseUrl: config.baseUrl + constants.ROUTE.VIEWS_PATH + viewName,
+            schemaUrl: `/mock/${apiHandle}/definition.yml`,
             showApiKeysNav: apiUsesApiKeySecurity(metaData),
         }
-        html = renderTemplate(filePrefix + 'pages/api-landing/page.hbs', filePrefix + 'layout/main.hbs', templateContent, false);
+        html = renderTemplate(layoutPath + 'pages/api-landing/page.hbs', layoutPath + 'layout/main.hbs', templateContent, false);
         res.send(html);
     } else {
         const orgDetails = await adminDao.getOrganization(orgName);
@@ -463,14 +443,14 @@ const loadAPIContent = async (req, res) => {
 const getAPIDefinition = async (orgName, viewName, apiHandle) => {
 
     let metaData, templateContent = {};
-    if (config.mode === constants.DEV_MODE) {
+    if (config.designMode?.enabled) {
         metaData = loadAPIMetaDataFromFile(apiHandle);
-        let apiDefinition = path.join(process.cwd(), filePrefix + '../mock', apiHandle + '/apiDefinition.json');
-        if (fs.existsSync(apiDefinition)) {
-            apiDefinition = await fs.readFileSync(apiDefinition, constants.CHARSET_UTF8);
-        }
         templateContent.apiType = metaData.apiInfo.apiType;
-        templateContent.swagger = JSON.parse(apiDefinition);
+        templateContent.metaData = metaData;
+        const definitionContent = sampleApiLoader.getDefinition(apiHandle, config.designMode.samplesPath);
+        if (definitionContent) {
+            templateContent.swagger = definitionContent;
+        }
     } else {
         const orgID = await adminDao.getOrgId(orgName);
         const apiID = await apiDao.getAPIId(orgID, apiHandle);
@@ -512,24 +492,22 @@ const loadDocsPage = async (req, res) => {
 
     const { orgName, apiHandle, viewName, docType } = req.params;
     let html = "";
-    if (config.mode === constants.DEV_MODE) {
+    if (config.designMode?.enabled) {
+        const layoutPath = config.designMode.pathToLayout;
         const apiMetadata = await loadAPIMetaDataFromFile(apiHandle);
         const docNames = apiMetadata.docTypes;
-        const orgDetails = await adminDao.getOrganization(orgName);
-        const devportalMode = orgDetails.ORG_CONFIG?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
         const metaForNav = {
             apiInfo: { gatewayType: apiMetadata.apiInfo?.gatewayType },
             apiReferenceID: apiMetadata.apiReferenceID,
         };
         const templateContent = {
-            apiMD: await loadMarkdown("api-doc.md", filePrefix + '../mock/' + apiHandle + "/" + docType),
-            baseUrl: constants.BASE_URL + config.port + "/views/" + viewName + "/api/" + apiHandle,
+            apiMD: '',
+            baseUrl: config.baseUrl + constants.ROUTE.VIEWS_PATH + viewName + '/api/' + apiHandle,
             docTypes: docNames,
-            devportalMode: devportalMode,
             apiType: apiMetadata.apiInfo?.apiType,
             showApiKeysNav: apiUsesApiKeySecurity(metaForNav),
         }
-        html = renderTemplate(filePrefix + 'pages/docs/page.hbs', filePrefix + 'layout/main.hbs', templateContent, false);
+        html = renderTemplate(layoutPath + 'pages/docs/page.hbs', layoutPath + 'layout/main.hbs', templateContent, false);
     } else {
         const orgDetails = await adminDao.getOrganization(orgName);
         const devportalMode = orgDetails.ORG_CONFIG?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
@@ -602,6 +580,37 @@ const loadDocsPage = async (req, res) => {
 
 const loadDocument = async (req, res) => {
     const { orgName, apiHandle, viewName, docType, docName } = req.params;
+
+    if (config.designMode?.enabled) {
+        const layoutPath = config.designMode.pathToLayout;
+        const metaData = loadAPIMetaDataFromFile(apiHandle);
+        const isSpecPage = req.originalUrl.includes(constants.FILE_NAME.API_SPECIFICATION_PATH);
+        const definitionResponse = await getAPIDefinition(orgName, viewName, apiHandle);
+        let templateContent = {
+            isAPIDefinition: false,
+            isWebSocketTryout: false,
+            isGraphQLTryout: false,
+        };
+        templateContent.apiType = definitionResponse.apiType;
+        if (isSpecPage && definitionResponse.swagger) {
+            // spec viewer expects a JSON string — parse YAML then re-stringify
+            templateContent.swagger = JSON.stringify(parseApiDefinitionContent(definitionResponse.swagger));
+            templateContent.isAPIDefinition = true;
+        }
+        if (!isSpecPage && docType !== undefined && docName !== undefined) {
+            const raw = sampleApiLoader.getDocMarkdown(apiHandle, docName, config.designMode.samplesPath) || '';
+            templateContent.apiMD = raw ? require('marked').parse(raw) : '';
+        }
+        templateContent.baseUrl = config.baseUrl + constants.ROUTE.VIEWS_PATH + viewName;
+        templateContent.baseDocUrl = config.baseUrl + constants.ROUTE.VIEWS_PATH + viewName + '/api/' + apiHandle;
+        templateContent.docTypes = metaData.docTypes;
+        const metaForNav = { apiInfo: { gatewayType: metaData.apiInfo?.gatewayType }, apiReferenceID: metaData.apiReferenceID };
+        templateContent.showApiKeysNav = apiUsesApiKeySecurity(metaForNav);
+        const html = renderTemplate(layoutPath + 'pages/docs/page.hbs', layoutPath + 'layout/main.hbs', templateContent, false);
+        res.send(html);
+        return;
+    }
+
     const orgDetails = await adminDao.getOrganization(orgName);
     const devportalMode = orgDetails.ORG_CONFIG?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
     let baseDocUrl = '/' + orgName + '/views/' + viewName + "/api/" + apiHandle
@@ -725,77 +734,53 @@ const loadDocument = async (req, res) => {
             }
             templateContent.isAPIDefinition = true;
         }
-        if (config.mode === constants.DEV_MODE) {
-            const apiMetadata = await loadAPIMetaDataFromFile(apiHandle);
-            const docNames = apiMetadata.docTypes;
-            let apiMD = "";
-            if (docType !== undefined && docName !== undefined) {
-                const filePath = path.join(process.cwd(), filePrefix + '../mock', apiHandle + "/" + docType + "/" + docName);
-                if (fs.existsSync(filePath) && (filePath.endsWith('.hbs') || filePath.endsWith('.html'))) {
-                    hbs.handlebars.registerPartial(constants.FILE_NAME.API_DOC_PARTIAL_NAME, fs.readFileSync(filePath, constants.CHARSET_UTF8));
-                }
-                apiMD = await loadMarkdown(docName, filePrefix + '../mock/' + apiHandle + "/" + docType);
+        try {
+            const orgID = await adminDao.getOrgId(orgName);
+            const apiID = await apiDao.getAPIId(orgID, apiHandle);
+            const viewName = req.params.viewName;
+            let docNames = await apiMetadataService.getAPIDocTypes(orgID, apiID);
+            const apiMetadata = await apiDao.getAPIMetadata(orgID, apiID);
+            let apiType = apiMetadata[0].dataValues.API_TYPE;
+            const referenceID = apiMetadata[0].dataValues.REFERENCE_ID;
+            // All MCPs (registry and CP) need a Specification entry in the sidebar
+            if (apiType === constants.API_TYPE.MCP && !docNames.some(d => d.type === constants.DOC_TYPES.DOCS.API_DEFINITION)) {
+                docNames = [{ type: constants.DOC_TYPES.DOCS.API_DEFINITION }, ...docNames];
             }
-            templateContent.baseUrl = constants.BASE_URL + config.port + "/views/" + viewName + "/api/" + apiHandle;
+            templateContent.baseUrl = '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName;
+            templateContent.baseDocUrl = baseDocUrl;
             templateContent.docTypes = docNames;
-            templateContent.apiMD = apiMD;
-            templateContent.apiType = apiMetadata.apiInfo?.apiType;
+            let profile = null;
+            if (req.user) {
+                profile = {
+                    imageURL: req.user.imageURL,
+                    firstName: req.user.firstName,
+                    lastName: req.user.lastName,
+                    email: req.user.email,
+                }
+            }
+            templateContent.profile = req.isAuthenticated() ? profile : null;
+            templateContent.apiType = apiType;
+            templateContent.devportalMode = devportalMode;
+            const row = apiMetadata[0].dataValues;
             const metaForNav = {
-                apiInfo: { gatewayType: apiMetadata.apiInfo?.gatewayType },
-                apiReferenceID: apiMetadata.apiReferenceID,
+                apiInfo: { gatewayType: row.GATEWAY_TYPE },
+                apiReferenceID: row.REFERENCE_ID,
             };
             templateContent.showApiKeysNav = apiUsesApiKeySecurity(metaForNav);
-            html = renderTemplate(filePrefix + 'pages/docs/page.hbs', filePrefix + 'layout/main.hbs', templateContent, false);
-        } else {
-
-            try {
-                const orgID = await adminDao.getOrgId(orgName);
-                const apiID = await apiDao.getAPIId(orgID, apiHandle);
-                const viewName = req.params.viewName;
-                let docNames = await apiMetadataService.getAPIDocTypes(orgID, apiID);
-                const apiMetadata = await apiDao.getAPIMetadata(orgID, apiID);
-                let apiType = apiMetadata[0].dataValues.API_TYPE;
-                const referenceID = apiMetadata[0].dataValues.REFERENCE_ID;
-                // All MCPs (registry and CP) need a Specification entry in the sidebar
-                if (apiType === constants.API_TYPE.MCP && !docNames.some(d => d.type === constants.DOC_TYPES.DOCS.API_DEFINITION)) {
-                    docNames = [{ type: constants.DOC_TYPES.DOCS.API_DEFINITION }, ...docNames];
-                }
-                templateContent.baseUrl = '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName;
-                templateContent.baseDocUrl = baseDocUrl;                
-                templateContent.docTypes = docNames;
-                let profile = null;
-                if (req.user) {
-                    profile = {
-                        imageURL: req.user.imageURL,
-                        firstName: req.user.firstName,
-                        lastName: req.user.lastName,
-                        email: req.user.email,
-                    }
-                }
-                templateContent.profile = req.isAuthenticated() ? profile : null;
-                templateContent.apiType = apiType;
-                templateContent.devportalMode = devportalMode;
-                const row = apiMetadata[0].dataValues;
-                const metaForNav = {
-                    apiInfo: { gatewayType: row.GATEWAY_TYPE },
-                    apiReferenceID: row.REFERENCE_ID,
-                };
-                templateContent.showApiKeysNav = apiUsesApiKeySecurity(metaForNav);
-                html = await renderTemplateFromAPI(templateContent, orgID, orgName, "pages/docs", viewName);
-            } catch (error) {
-                const templateContent = {
-                    devportalMode: devportalMode,
-                    baseUrl: '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName,
-                    baseDocUrl: baseDocUrl,
-                    errorMessage: constants.ERROR_MESSAGE.COMMON_ERROR_MESSAGE,
-                    profile: req.isAuthenticated() ? req.user : null,
-                }
-                logger.error('Failed to load api content', {
-                    error: error.message,
-                    stack: error.stack
-                });
-                html = renderTemplate('../pages/error-page/page.hbs', "./src/defaultContent/" + 'layout/main.hbs', templateContent, true);
+            html = await renderTemplateFromAPI(templateContent, orgID, orgName, "pages/docs", viewName);
+        } catch (error) {
+            const templateContent = {
+                devportalMode: devportalMode,
+                baseUrl: '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName,
+                baseDocUrl: baseDocUrl,
+                errorMessage: constants.ERROR_MESSAGE.COMMON_ERROR_MESSAGE,
+                profile: req.isAuthenticated() ? req.user : null,
             }
+            logger.error('Failed to load api content', {
+                error: error.message,
+                stack: error.stack
+            });
+            html = renderTemplate('../pages/error-page/page.hbs', "./src/defaultContent/" + 'layout/main.hbs', templateContent, true);
         }
         res.send(html);
     } catch (error) {
@@ -818,14 +803,13 @@ const loadDocument = async (req, res) => {
 
 async function loadAPIMetaDataList() {
 
-    const mockAPIMetaDataPath = path.join(process.cwd(), filePrefix + '../mock', 'apiMetadata.json');
-    let mockAPIMetaData = JSON.parse(fs.readFileSync(mockAPIMetaDataPath, 'utf-8'));
-    mockAPIMetaData.forEach(element => {
+    const apis = sampleApiLoader.loadAll(config.designMode.samplesPath);
+    apis.forEach(element => {
         const randomNumber = Math.floor(Math.random() * 3) + 3;
         element.apiInfo.ratings = generateArray(randomNumber);
         element.apiInfo.ratingsNoFill = generateArray(5 - randomNumber);
     });
-    return mockAPIMetaData;
+    return apis;
 }
 
 async function loadAPIMetaDataListFromAPI(req, orgID, orgName, searchTerm, tags, viewName) {
@@ -872,8 +856,7 @@ async function loadAPIMetaData(req, orgID, apiID, viewName) {
 
 function loadAPIMetaDataFromFile(apiName) {
 
-    const mockAPIDataPath = path.join(process.cwd(), filePrefix + '../mock', apiName + '/apiMetadata.json');
-    return JSON.parse(fs.readFileSync(mockAPIDataPath, constants.CHARSET_UTF8));
+    return sampleApiLoader.loadOne(apiName, config.designMode.samplesPath);
 }
 
 async function getApiDefinitionFileContent(orgID, apiID) {

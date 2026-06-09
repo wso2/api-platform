@@ -33,7 +33,6 @@ module.exports = {
         ORG_PREFIX: DEVPORTAL_ORG_PREFIX,
         orgPath: devportalOrgPath,
     },
-    DEV_MODE: 'development',
     IMAGE: 'image',
     STYLE: 'style',
     TEXT: 'text',
@@ -199,6 +198,10 @@ module.exports = {
         API_DEFINITION_GRAPHQL: 'apiDefinition.graphql',
         API_DEFINITION_XML: 'apiDefinition.xml',
         LLMS_CONFIG: 'llms-config.json',
+    },
+    ARTIFACT_DIR: {
+        WEB: 'web',
+        DOCS: 'docs',
     },
     DEFAULT_SUBSCRIPTION_PLANS: [
         {

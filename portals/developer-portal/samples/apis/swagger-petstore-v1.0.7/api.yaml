@@ -1,0 +1,35 @@
+apiVersion: devportal.wso2.com/v1
+kind: RestApi # (RestApi | WS | GraphQL | SOAP | WebSubApi)
+
+metadata:
+  name: swagger-petstore-v1.0.7  # Used as the API handle internally
+
+spec:
+  type: REST # (REST | WS | GRAPHQL | SOAP | WEBSUB)
+  displayName: Swagger Petstore
+  version: 1.0.7
+  description: This is a sample server Petstore server.
+  provider: WSO2
+  status: PUBLISHED
+  # referenceID: <uuid-from-cp>
+
+  tags:
+    - petstore
+
+  labels:
+    - default
+
+  subscriptionPolicies: []
+
+  visibility: PUBLIC
+  visibleGroups: []
+
+  businessInformation:
+    businessOwner: API Team
+    businessOwnerEmail: apiteam@swagger.io
+    technicalOwner: API Team
+    technicalOwnerEmail: apiteam@swagger.io
+
+  endpoints:
+    sandboxUrl: https://petstore.swagger.io/v2
+    productionUrl: https://petstore.swagger.io/v2

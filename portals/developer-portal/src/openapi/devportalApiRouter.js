@@ -148,7 +148,7 @@ function operationResolver(handlersPath, route, apiDoc) {
  *     - false        → off (default in production)
  *     - true         → strict — validator throws 500 on response drift
  *     - 'log-only'   → log drift via logger.warn but pass the response through
- *     - (unset)      → on iff config.mode === 'development'
+ *     - (unset)      → on iff designMode.enabled is true
  *
  * Use 'log-only' to surface drift in staging/QA without breaking clients.
  */
@@ -168,7 +168,7 @@ function resolveValidateResponsesOpt() {
             },
         };
     }
-    return config.mode === constants.DEV_MODE;
+    return config.designMode?.enabled ?? false;
 }
 
 function build() {

@@ -28,7 +28,6 @@ const apiMetadataService = require('../services/apiMetadataService');
 const util = require('../utils/util');
 const { validationResult } = require('express-validator');
 const logger = require('../config/logger');
-const filePrefix = config.pathToContent;
 const hbs = exphbs.create({});
 
 const registerPartials = async (req, res, next) => {
@@ -42,8 +41,8 @@ const registerPartials = async (req, res, next) => {
     return res.status(400).json(util.getErrors(errors));
   }
   registerInternalPartials(req);
-  if (config.mode === constants.DEV_MODE) {
-    registerAllPartialsFromFile(config.baseUrl + constants.ROUTE.VIEWS_PATH + req.params.viewName, req, filePrefix);
+  if (config.designMode?.enabled) {
+    await registerAllPartialsFromFile(config.baseUrl + constants.ROUTE.VIEWS_PATH + req.params.viewName, req, config.designMode.pathToLayout);
   } else {
     let matchURL = req.originalUrl;
     if (req.session.returnTo) {
@@ -240,13 +239,14 @@ async function registerDocsPageContent(req, orgID, partialObject) {
 }
 
 async function registerPartialsFromFile(baseURL, dir, req) {
+  if (!dir || !fs.existsSync(dir)) return;
   const filenames = fs.readdirSync(dir);
 
   for (const filename of filenames) {
     if (filename.endsWith(".hbs")) {
       let name = filename.split(".hbs")[0];
       const template = fs.readFileSync(path.join(dir, filename), constants.CHARSET_UTF8);
-      if (constants.CUSTOMIZABLE_FILES.includes(name)) {
+      if (constants.CUSTOMIZABLE_FILES.includes(name) && req.params.orgName) {
         const orgID = await adminDao.getOrgId(req.params.orgName);
         const content = await adminDao.getOrgContent({ orgId: orgID, fileType: 'partial', viewName: req.params.viewName, fileName: name + '.hbs' });
         if (!(content)) {

@@ -21,7 +21,6 @@ const fs = require('fs');
 const path = require('path');
 const logger = require('./config/logger');
 const { config } = require('./config/configLoader');
-const constants = require('./utils/constants');
 const webhookDispatcher = require('./services/webhooks/dispatcher');
 const webhookDeliveryWorker = require('./services/webhooks/deliveryWorker');
 const app = require('./app');
@@ -29,6 +28,7 @@ const app = require('./app');
 const PORT = process.env.PORT || config.defaultPort;
 
 function startBackgroundServices() {
+    if (config.designMode?.enabled) return;
     try {
         webhookDispatcher.start();
         webhookDeliveryWorker.start();
@@ -43,14 +43,13 @@ function startBackgroundServices() {
 
 function logStartupInfo() {
     logger.info(`Developer Portal V2 is running on port ${PORT}`);
-    logger.info(`Mode: ${config.mode}`);
-
-    if (config.mode === constants.DEV_MODE) {
-        logger.info('⚠️  Since you are in DEV mode, ensure default content is available at configured pathToContent ' +
-            'and mock folder must exist in root directory');
+    if (config.designMode?.enabled) {
+        logger.info('Design Mode enabled — no DB or IDP required');
+        logger.info(`  Layout templates: ${config.designMode.pathToLayout}`);
+        logger.info(`  Sample APIs:      ${config.designMode.samplesPath}`);
     }
 
-    const visitUrl = config.baseUrl + (config.mode === constants.DEV_MODE ? "/views/default" : "/<organization>/views/default");
+    const visitUrl = config.baseUrl + (config.designMode?.enabled ? "/views/default" : "/<organization>/views/default");
     logger.info(`Visit ${visitUrl}`);
 }
 
@@ -59,7 +58,7 @@ function onListening() {
     startBackgroundServices();
 }
 
-if (config.advanced.http) {
+if (config.advanced.http || config.designMode?.enabled) {
     http.createServer(app).listen(PORT, '0.0.0.0', onListening);
 } else {
     try {

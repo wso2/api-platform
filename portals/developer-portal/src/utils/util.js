@@ -66,7 +66,7 @@ function renderTemplate(templatePath, layoutPath, templateContent, isTechnical) 
     const layout = Handlebars.compile(layoutResponse.toString());
 
     const showApiWorkflowsNav = config.features?.apiWorkflows?.enabled === true;
-    const enrichedContent = { ...templateContent, showApiWorkflowsNav };
+    const enrichedContent = { devportalMode: constants.DEVPORTAL_MODE.DEFAULT, ...templateContent, showApiWorkflowsNav };
     return layout({
         body: template(enrichedContent),
         portalConfigs: config.portalConfigs,
@@ -121,7 +121,7 @@ async function renderTemplateFromAPI(templateContent, orgID, orgName, filePath, 
     const layout = Handlebars.compile(layoutResponse.toString());
 
     const showApiWorkflowsNav = config.features?.apiWorkflows?.enabled === true;
-    const enrichedContent = { ...templateContent, showApiWorkflowsNav };
+    const enrichedContent = { devportalMode: constants.DEVPORTAL_MODE.DEFAULT, ...templateContent, showApiWorkflowsNav };
     return layout({
         body: template(enrichedContent),
         portalConfigs: config.portalConfigs,
@@ -187,7 +187,7 @@ async function renderGivenTemplate(templatePage, layoutPage, templateContent) {
     const template = Handlebars.compile(templatePage.toString());
     const layout = Handlebars.compile(layoutPage.toString());
     const showApiWorkflowsNav = config.features?.apiWorkflows?.enabled === true;
-    const enrichedContent = { ...templateContent, showApiWorkflowsNav };
+    const enrichedContent = { devportalMode: constants.DEVPORTAL_MODE.DEFAULT, ...templateContent, showApiWorkflowsNav };
     return layout({
         body: template(enrichedContent),
         portalConfigs: config.portalConfigs,

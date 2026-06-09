@@ -25,12 +25,10 @@ const path = require('path');
 const fs = require('fs');
 const adminDao = require('../dao/admin');
 const util = require('../utils/util');
-const filePrefix = config.pathToContent;
 const controlPlaneUrl = config.controlPlane.url;
 const { ApplicationDTO } = require('../dto/application');
 const kmDao = require('../dao/keyManager');
 const adminService = require('../services/adminService');
-const baseURLDev = config.baseUrl + constants.ROUTE.VIEWS_PATH;
 
 const orgIDValue = async (orgName) => {
     const organization = await adminDao.getOrganization(orgName);
@@ -264,52 +262,43 @@ const loadApplications = async (req, res) => {
     const devportalMode = orgDetails.ORG_CONFIG?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
     let html, metaData, templateContent;
     try {
-        if (config.mode === constants.DEV_MODE) {
-            metaData = await getMockApplications();
-            templateContent = {
-                applicationsMetadata: metaData,
-                baseUrl: baseURLDev + viewName
+        const orgName = req.params.orgName;
+        const orgID = await orgIDValue(orgName);
+        const applications = await adminDao.getApplications(orgID, req.user.sub)
+        const metaData = await Promise.all(
+            applications.map(async (application) => {
+                const subApis = await adminDao.getSubscriptions(orgID, application.APP_ID, '');
+                const activeCount = subApis.length;
+                return {
+                    ...new ApplicationDTO(application),
+                    subscriptionCount: activeCount
+                };
+            })
+        );
+        let profile = null;
+        if (req.user) {
+            profile = {
+                imageURL: req.user.imageURL,
+                firstName: req.user.firstName,
+                lastName: req.user.lastName,
+                email: req.user.email,
+                isAdmin: req.user.isAdmin,
             }
-            html = renderTemplate('../pages/applications/page.hbs', filePrefix + 'layout/main.hbs', templateContent, true);
-        } else {
-            const orgName = req.params.orgName;
-            const orgID = await orgIDValue(orgName);
-            const applications = await adminDao.getApplications(orgID, req.user.sub)
-            const metaData = await Promise.all(
-                applications.map(async (application) => {
-                    const subApis = await adminDao.getSubscriptions(orgID, application.APP_ID, '');
-                    const activeCount = subApis.length;
-                    return {
-                        ...new ApplicationDTO(application),
-                        subscriptionCount: activeCount
-                    };
-                })
-            );
-            let profile = null;
-            if (req.user) {
-                profile = {
-                    imageURL: req.user.imageURL,
-                    firstName: req.user.firstName,
-                    lastName: req.user.lastName,
-                    email: req.user.email,
-                    isAdmin: req.user.isAdmin,
-                }
-            }
+        }
 
-            templateContent = {
-                applicationsMetadata: metaData,
-                baseUrl: '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName,
-                profile: req.isAuthenticated() ? profile : null,
-                devportalMode: devportalMode,
-                isReadOnlyMode: config.readOnlyMode,
-            }
-            const templateResponse = await templateResponseValue('applications');
-            const layoutResponse = await loadLayoutFromAPI(orgID, viewName);
-            if (layoutResponse === "") {
-                html = renderTemplate('../pages/applications/page.hbs', "./src/defaultContent/" + 'layout/main.hbs', templateContent, true);
-            } else {
-                html = await renderGivenTemplate(templateResponse, layoutResponse, templateContent);
-            }
+        templateContent = {
+            applicationsMetadata: metaData,
+            baseUrl: '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName,
+            profile: req.isAuthenticated() ? profile : null,
+            devportalMode: devportalMode,
+            isReadOnlyMode: config.readOnlyMode,
+        }
+        const templateResponse = await templateResponseValue('applications');
+        const layoutResponse = await loadLayoutFromAPI(orgID, viewName);
+        if (layoutResponse === "") {
+            html = renderTemplate('../pages/applications/page.hbs', "./src/defaultContent/" + 'layout/main.hbs', templateContent, true);
+        } else {
+            html = await renderGivenTemplate(templateResponse, layoutResponse, templateContent);
         }
     } catch (error) {
         const templateContent = {
@@ -327,12 +316,6 @@ const loadApplications = async (req, res) => {
     res.send(html);
 }
 
-async function getMockApplications() {
-    const mockApplicationsMetaDataPath = path.join(process.cwd(), filePrefix + '../mock/Applications', 'applications.json');
-    const mockApplicationsMetaData = JSON.parse(fs.readFileSync(mockApplicationsMetaDataPath, 'utf-8'));
-    return mockApplicationsMetaData.list;
-}
-
 // ***** Load Application *****
 
 const loadApplication = async (req, res) => {
@@ -344,50 +327,39 @@ const loadApplication = async (req, res) => {
     req.cpOrgID = orgDetails.ORGANIZATION_IDENTIFIER;
     try {
         const applicationId = req.params.applicationId;
-        if (config.mode === constants.DEV_MODE) {
-            metaData = await getMockApplication();
-            kMmetaData = await getMockKeyManagers();
-            templateContent = {
-                applicationMetadata: metaData,
-                keyManagersMetadata: kMmetaData,
-                baseUrl: baseURLDev + viewName
-            }
-            html = renderTemplate('../pages/application/page.hbs', filePrefix + 'layout/main.hbs', templateContent, true);
-        } else {
-            const data = await loadApplicationData(req, orgName, applicationId, viewName);
-            metaData = data.applicationList;
-            kMmetaData = data.keyManagersMetadata;
+        const data = await loadApplicationData(req, orgName, applicationId, viewName);
+        metaData = data.applicationList;
+        kMmetaData = data.keyManagersMetadata;
 
-            templateContent = {
-                orgID: data.orgID,
-                applicationMetadata: metaData,
-                keyManagersMetadata: kMmetaData,
-                baseUrl: '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName,
-                productionKeys: data.productionKeys,
-                sandboxKeys: data.sandboxKeys,
-                applicationKeys: [
-                    {
-                        keys: data.productionKeys,
-                        keyType: constants.KEY_TYPE.PRODUCTION
-                    },
-                    {
-                        keys: data.sandboxKeys,
-                        keyType: constants.KEY_TYPE.SANDBOX
-                    }
-                ],
-                isProduction: true,
-                subscriptionScopes: data.subscriptionScopes,
-                profile: req.isAuthenticated() ? data.profile : null,
-                devportalMode: devportalMode,
-                isReadOnlyMode: config.readOnlyMode
-            }
-            const templateResponse = await templateResponseValue('application');
-            const layoutResponse = await loadLayoutFromAPI(data.orgID, viewName);
-            if (layoutResponse === "") {
-                html = renderTemplate('../pages/application/page.hbs', "./src/defaultContent/" + 'layout/main.hbs', templateContent, true);
-            } else {
-                html = await renderGivenTemplate(templateResponse, layoutResponse, templateContent);
-            }
+        templateContent = {
+            orgID: data.orgID,
+            applicationMetadata: metaData,
+            keyManagersMetadata: kMmetaData,
+            baseUrl: '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName,
+            productionKeys: data.productionKeys,
+            sandboxKeys: data.sandboxKeys,
+            applicationKeys: [
+                {
+                    keys: data.productionKeys,
+                    keyType: constants.KEY_TYPE.PRODUCTION
+                },
+                {
+                    keys: data.sandboxKeys,
+                    keyType: constants.KEY_TYPE.SANDBOX
+                }
+            ],
+            isProduction: true,
+            subscriptionScopes: data.subscriptionScopes,
+            profile: req.isAuthenticated() ? data.profile : null,
+            devportalMode: devportalMode,
+            isReadOnlyMode: config.readOnlyMode
+        }
+        const templateResponse = await templateResponseValue('application');
+        const layoutResponse = await loadLayoutFromAPI(data.orgID, viewName);
+        if (layoutResponse === "") {
+            html = renderTemplate('../pages/application/page.hbs', "./src/defaultContent/" + 'layout/main.hbs', templateContent, true);
+        } else {
+            html = await renderGivenTemplate(templateResponse, layoutResponse, templateContent);
         }
     } catch (error) {
         logger.error("Error occurred while loading application", {
@@ -420,54 +392,38 @@ const loadApplicationKeys = async (req, res) => {
     const devportalMode = orgDetails.ORG_CONFIG?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
     try {
         const applicationId = req.params.applicationId;
-        if (config.mode === constants.DEV_MODE) {
-            metaData = await getMockApplication();
-            kMmetaData = await getMockKeyManagers();
-            templateContent = {
-                applicationMetadata: metaData,
-                keyManagersMetadata: kMmetaData,
-                baseUrl: baseURLDev + viewName,
-                productionKeys: [],
-                sandboxKeys: [],
-                orgID: null,
-                subscriptionScopes: [],
-                isReadOnlyMode: config.readOnlyMode
-            }
-            html = renderTemplate('../pages/manage-keys/page.hbs', filePrefix + 'layout/main.hbs', templateContent, true);
-        } else {
-            const data = await loadApplicationData(req, orgName, applicationId, viewName);
-            metaData = data.applicationList;
-            kMmetaData = data.keyManagersMetadata;
+        const data = await loadApplicationData(req, orgName, applicationId, viewName);
+        metaData = data.applicationList;
+        kMmetaData = data.keyManagersMetadata;
 
-            templateContent = {
-                orgID: data.orgID,
-                applicationMetadata: metaData,
-                keyManagersMetadata: kMmetaData,
-                baseUrl: '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName,
-                productionKeys: data.productionKeys,
-                sandboxKeys: data.sandboxKeys,
-                applicationKeys: [
-                    {
-                        keys: data.productionKeys,
-                        keyType: constants.KEY_TYPE.PRODUCTION
-                    },
-                    {
-                        keys: data.sandboxKeys,
-                        keyType: constants.KEY_TYPE.SANDBOX
-                    }
-                ],
-                subscriptionScopes: data.subscriptionScopes,
-                profile: req.isAuthenticated() ? data.profile : null,
-                devportalMode: devportalMode,
-                isReadOnlyMode: config.readOnlyMode
-            }
-            const templateResponse = await templateResponseValue('manage-keys');
-            const layoutResponse = await loadLayoutFromAPI(data.orgID, viewName);
-            if (layoutResponse === "") {
-                html = renderTemplate('../pages/manage-keys/page.hbs', "./src/defaultContent/" + 'layout/main.hbs', templateContent, true);
-            } else {
-                html = await renderGivenTemplate(templateResponse, layoutResponse, templateContent);
-            }
+        templateContent = {
+            orgID: data.orgID,
+            applicationMetadata: metaData,
+            keyManagersMetadata: kMmetaData,
+            baseUrl: '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName,
+            productionKeys: data.productionKeys,
+            sandboxKeys: data.sandboxKeys,
+            applicationKeys: [
+                {
+                    keys: data.productionKeys,
+                    keyType: constants.KEY_TYPE.PRODUCTION
+                },
+                {
+                    keys: data.sandboxKeys,
+                    keyType: constants.KEY_TYPE.SANDBOX
+                }
+            ],
+            subscriptionScopes: data.subscriptionScopes,
+            profile: req.isAuthenticated() ? data.profile : null,
+            devportalMode: devportalMode,
+            isReadOnlyMode: config.readOnlyMode
+        }
+        const templateResponse = await templateResponseValue('manage-keys');
+        const layoutResponse = await loadLayoutFromAPI(data.orgID, viewName);
+        if (layoutResponse === "") {
+            html = renderTemplate('../pages/manage-keys/page.hbs', "./src/defaultContent/" + 'layout/main.hbs', templateContent, true);
+        } else {
+            html = await renderGivenTemplate(templateResponse, layoutResponse, templateContent);
         }
     } catch (error) {
         logger.error("Error occurred while loading application keys", {
@@ -510,17 +466,6 @@ async function getApplicationKeys(applicationList, req) {
     }
 }
 
-async function getMockApplication() {
-    const mockApplicationMetaDataPath = path.join(process.cwd(), filePrefix + '../mock/Applications/DefaultApplication', 'DefaultApplication.json');
-    const mockApplicationMetaData = JSON.parse(fs.readFileSync(mockApplicationMetaDataPath, 'utf-8'));
-    return mockApplicationMetaData;
-}
-
-async function getMockKeyManagers() {
-    const mockKeyManagersMetaDataPath = path.join(process.cwd(), filePrefix + '../mock/Applications/DefaultApplication', 'AllKeyManagers.json');
-    const mockKeyManagersMetaData = JSON.parse(fs.readFileSync(mockKeyManagersMetaDataPath, 'utf-8'));
-    return mockKeyManagersMetaData.list;
-}
 
 async function getAPIMApplication(req, applicationId) {
     const responseData = await invokeApiRequest(req, 'GET', controlPlaneUrl + '/applications/' + applicationId, null, null);

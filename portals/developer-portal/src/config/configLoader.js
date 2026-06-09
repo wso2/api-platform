@@ -97,6 +97,11 @@ const CONFIG_DEFAULTS = {
     },
     authorizedPages: [],
     authenticatedPages: [],
+    designMode: {
+        enabled: false,
+        samplesPath: './samples/apis/',
+        pathToLayout: './src/defaultContent/',
+    },
 };
 
 /**

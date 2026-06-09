@@ -46,7 +46,6 @@ const { configurePassport } = require('./middlewares/passport');
 const app = express();
 // const secret = crypto.randomBytes(64).toString('hex');
 const sessionSecret = 'my-secret';
-const filePrefix = config.pathToContent;
 
 const SERVER_ID = uuidv4();
 
@@ -61,17 +60,19 @@ app.set('view engine', 'hbs');
 registerHelpers();
 
 app.use(session({
-    store: new pgSession({
-        pool: pool,
-        tableName: 'session',
-        pruneSessionInterval: 3600,
-        debug: (message) => logger.debug('Session store debug', { message }),
-    }),
+    store: config.designMode?.enabled
+        ? new session.MemoryStore()
+        : new pgSession({
+            pool: pool,
+            tableName: 'session',
+            pruneSessionInterval: 3600,
+            debug: (message) => logger.debug('Session store debug', { message }),
+        }),
     secret: sessionSecret,
     resave: false,
     saveUninitialized: true,
     cookie: {
-        secure: !config.advanced.http,
+        secure: !config.advanced.http && !config.designMode?.enabled,
         maxAge: 60 * 60 * 1000,
     },
 }));
@@ -153,10 +154,18 @@ app.use(constants.ROUTE.DEFAULT, devportalApiRouter);
 app.use('/registry/:orgHandle', mcpRegistryRoute);
 app.use('/:orgHandle/registry', mcpRegistryRoute);
 
-if (config.mode === constants.DEV_MODE) {
-    app.use(constants.ROUTE.STYLES, express.static(path.join(process.cwd(), filePrefix + 'styles')));
-    app.use(constants.ROUTE.IMAGES, express.static(path.join(process.cwd(), filePrefix + 'images')));
-    app.use(constants.ROUTE.MOCK, express.static(path.join(process.cwd(), filePrefix + 'mock')));
+if (config.designMode?.enabled) {
+    const sampleApiLoader = require('./utils/sampleApiLoader');
+    const layoutPath = config.designMode.pathToLayout;
+    app.use(constants.ROUTE.STYLES, express.static(path.join(process.cwd(), layoutPath + 'styles')));
+    app.use(constants.ROUTE.IMAGES, express.static(path.join(process.cwd(), layoutPath + 'images')));
+    app.use(constants.ROUTE.MOCK, express.static(path.join(process.cwd(), config.designMode.samplesPath)));
+    // Serve API definition files by resolving the handle to the actual directory
+    app.get('/mock/:apiHandle/definition.yml', (req, res) => {
+        const content = sampleApiLoader.getDefinition(req.params.apiHandle, config.designMode.samplesPath);
+        if (!content) return res.status(404).send('Not found');
+        res.type('text/yaml').send(content);
+    });
     app.use(constants.ROUTE.DEFAULT, designRoute);
 } else {
     app.use(constants.ROUTE.STYLES, express.static(path.join(process.cwd(), './src/defaultContent/' + 'styles')));
