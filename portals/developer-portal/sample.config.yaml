@@ -161,15 +161,6 @@ authorizedPages:
   - "**/myapis/**"
   - "**/myapis?**"
 
-# ─── Control Plane ─────────────────────────────────────────────────────────────
-
-controlPlane:
-  enabled: false          # Set to true to connect to a WSO2 API Manager control plane
-  url: "https://localhost:9443/api/am/devportal/v2"
-  graphqlURL: "https://localhost:9443/graphql"
-  disableCertValidation: true
-  pathToCertificate: "./resources/security/client-truststore.pem"
-
 # ─── Provider URLs ─────────────────────────────────────────────────────────────
 
 providerURL:

@@ -23,9 +23,7 @@
 const devportalController = require('../../controllers/devportalController');
 
 module.exports = {
-    importApplications: devportalController.importApplications,
     saveApplication: devportalController.saveApplication,
     updateApplication: devportalController.updateApplication,
     deleteApplication: devportalController.deleteApplication,
-    resetThrottlingPolicy: devportalController.resetThrottlingPolicy,
 };

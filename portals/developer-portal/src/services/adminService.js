@@ -29,9 +29,7 @@ const sequelize = require("../db/sequelize");
 const { ApplicationDTO, SubscriptionDTO } = require('../dto/application');
 const APIDTO = require('../dto/apiDTO');
 const { config } = require('../config/configLoader');
-const controlPlaneUrl = config.controlPlane.url;
-const controlPlaneGwUrl = config.controlPlane.gwUrl;
-const { invokeApiRequest } = require('../utils/util');
+const WSO2_DEFAULT_URL = 'https://localhost:9443';
 const yaml = require('js-yaml');
 const { Sequelize } = require("sequelize");
 const { trackGenerateCredentials, trackSubscribeApi, trackUnsubscribeApi } = require('../utils/telemetry');
@@ -209,7 +207,7 @@ const createOrganization = async (req, res) => {
             }
             logger.info('Views created successfully', { orgId });
             //create default provider
-            await adminDao.createProvider(organization.ORG_ID, { name: 'WSO2', providerURL: config.controlPlane.url }, t);
+            await adminDao.createProvider(organization.ORG_ID, { name: 'WSO2', providerURL: WSO2_DEFAULT_URL }, t);
             logger.info('Default provider created successfully', {
                 orgId
             });
@@ -861,229 +859,6 @@ function checkAdditionalValues(additionalValues) {
 
 }
 
-const createCPApplicationOnBehalfOfUser = async (cpApplicationName, owner, cpOrgId, patToken) => {
-    logger.info('Creating control plane application', {
-        cpApplicationName
-    });
-    let headers = {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${patToken}`
-    }
-
-    try {
-        //create control plane application
-        url = `${controlPlaneGwUrl}/applications?preserveOwner=true`;
-        const cpAppCreationResponse = await util.apiRequest('POST', url, headers, {
-            name: cpApplicationName,
-            throttlingPolicy: 'Unlimited',
-            tokenType: 'JWT',
-            owner: owner,
-            groups: [],
-            attributes: {},
-            subscriptionScopes: []
-        }, cpOrgId);
-        return cpAppCreationResponse.data;
-    } catch (error) {
-        //application already exists
-        logger.error('Application Creation Failed in CP', {
-            error: error.message,
-            stack: error.stack,
-            cpApplicationName
-        });
-        if (error.statusCode && error.statusCode === 409) {
-            try {
-                logger.info('Application already exists in control plane, retrieving existing application', {
-                    orgId: cpOrgId,
-                    cpApplicationName
-                });
-                const cpAppResponse = await util.apiRequest('GET', `${controlPlaneGwUrl}/applications?query=${cpApplicationName}`, headers, {}, cpOrgId);
-                return cpAppResponse.data.list[0];
-            } catch (error) {
-                logger.error('Error occurred while fetching application', {
-                    error: error.message,
-                    cpApplicationName
-                });
-                throw error;
-            }
-        } else {
-            throw error;
-        }
-    }
-}
-
-const createCPSubscriptionOnBehalfOfUser = async (apiId, cpAppID, policyName, cpOrgId, patToken) => {
-    logger.info('Creating control plane subscription', {
-        apiId,
-        cpAppID,
-        policyName
-    });
-    const headers = {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${patToken}`
-    }
-
-    try {
-        const requestBody = {
-            apiId: apiId,
-            applicationId: cpAppID,
-            throttlingPolicy: policyName
-        };
-        let url = `${controlPlaneGwUrl}/subscriptions`;
-        const cpSubscribeResponse = await util.apiRequest('POST', url, headers, requestBody, cpOrgId);
-        return cpSubscribeResponse.data;
-    } catch (error) {
-        if (error.statusCode && error.statusCode === 409) {
-            const response = await util.apiRequest('GET', `${controlPlaneGwUrl}/subscriptions?apiId=${apiId}&applicationId=${cpAppID}`, headers, null, cpOrgId);
-            return response.data.list[0];
-        }
-        logger.error('key mapping create error failed', {
-            error: error.message,
-            stack: error.stack,
-            apiId,
-            cpAppID
-        });
-        throw error;
-    }
-}
-
-const createAppKeyMappingOnBehalfOfUser = async (cpAppID, keymanager, clientId, keyType, cpOrgId, patToken) => {
-    logger.debug('Creating control plane application key mapping', {
-        cpAppID,
-        keymanager,
-        clientId,
-        keyType
-    });
-    let headers = {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${patToken}`
-    }
-    try {
-        const requestBody = {
-            "consumerKey": clientId,
-            "keyType": keyType,
-            "keyManager": keymanager
-        };
-        let url = `${controlPlaneGwUrl}/applications/${cpAppID}/map-keys`;
-        const cpSubscribeResponse = await util.apiRequest('POST', url, headers, requestBody, cpOrgId);
-        return cpSubscribeResponse.data;
-    } catch (error) {
-        if (error.statusCode && error.statusCode === 409) {
-            const response = await util.apiRequest('GET', `${controlPlaneGwUrl}/applications/${cpAppID}/oauth-keys`, headers, null, cpOrgId);
-
-            // Validate response structure
-            if (!response.data || !Array.isArray(response.data.list)) {
-                throw new CustomError(500, "Internal Server Error", "Invalid response structure from control plane");
-            }
-
-            // Validate each key mapping has required fields
-            let selectedKeyMapping = null;
-            for (const keyMapping of response.data.list) {
-                if (keyMapping.keyManager === keymanager && keyMapping.keyType === keyType && keyMapping.consumerKey === clientId) {
-                    selectedKeyMapping = keyMapping;
-                    break;
-                }
-            }
-            if (!selectedKeyMapping) {
-                throw new CustomError(500, "Internal Server Error", "Key Mapping creation failed");
-            }
-            return selectedKeyMapping;
-        }
-        logger.error('key mapping create error failed', {
-            error: error.message,
-            stack: error.stack,
-            cpAppID
-        });
-        throw error;
-    }
-}
-
-const getAPIMKeyManagersBehalfOfUser = async (cpOrgId, patToken) => {
-
-    let headers = {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${patToken}`
-    }
-    let url = `${controlPlaneGwUrl}/key-managers?devPortalAppEnv=prod`;
-    const keymanagersResponse = await util.apiRequest('GET', url, headers, null, cpOrgId);
-
-    return keymanagersResponse.data.list;
-}
-
-const createCPApplication = async (req, cpApplicationName) => {
-    logger.info('Creating control plane application', {
-        cpApplicationName
-    });
-    try {
-        //create control plane application
-        const cpAppCreationResponse = await invokeApiRequest(req, 'POST', `${controlPlaneUrl}/applications`, {
-            'Content-Type': 'application/json'
-        }, {
-            name: cpApplicationName,
-            throttlingPolicy: 'Unlimited',
-            tokenType: 'JWT',
-            groups: [],
-            attributes: {},
-            subscriptionScopes: []
-        });
-        return cpAppCreationResponse;
-    } catch (error) {
-        //application already exists
-        logger.error('key mapping create error failed', {
-            error: error.message,
-            stack: error.stack,
-            cpApplicationName
-        });
-        if (error.statusCode && error.statusCode === 409) {
-            try {
-                logger.info('Application already exists in control plane, retrieving existing application', {
-                    orgId: req.params?.orgId,
-                    cpApplicationName
-                });
-                const cpAppResponse = await invokeApiRequest(req, 'GET', `${controlPlaneUrl}/applications?query=${cpApplicationName}`, {}, {});
-                return cpAppResponse.list[0];
-            } catch (error) {
-                logger.error('Error occurred while fetching application', {
-                    error: error.message,
-                    cpApplicationName
-                });
-                throw error;
-            }
-        } else {
-            throw error;
-        }
-    }
-}
-
-const createCPSubscription = async (req, apiId, cpAppID, policyDetails) => {
-    logger.info('Creating control plane subscription', {
-        apiId,
-        cpAppID,
-        policyDetails: policyDetails.dataValues ? policyDetails.dataValues.POLICY_NAME : policyDetails,
-    });
-    try {
-        const requestBody = {
-            apiId: apiId,
-            applicationId: cpAppID,
-            throttlingPolicy: policyDetails.dataValues ? policyDetails.dataValues.POLICY_NAME : policyDetails
-        };
-
-        const cpSubscribeResponse = await invokeApiRequest(req, 'POST', `${controlPlaneUrl}/subscriptions`, {}, requestBody);
-        return cpSubscribeResponse;
-    } catch (error) {
-        if (error.statusCode && error.statusCode === 409) {
-            const response = await invokeApiRequest(req, 'GET', `${controlPlaneUrl}/subscriptions?apiId=${apiId}&applicationId=${cpAppID}`, {});
-            return response.list[0];
-        }
-        logger.error('key mapping create error failed', {
-            error: error.message,
-            stack: error.stack,
-            apiId,
-            cpAppID
-        });
-        throw error;
-    }
-}
-
 const getApplicationKeyMap = async (orgId, appId, userId) => {
 
     const appIDResponse = await adminDao.getApplication(orgId, appId, userId);
@@ -1099,35 +874,6 @@ const getApplicationKeyMap = async (orgId, appId, userId) => {
         return new ApplicationDTO(application.dataValues);
     }
 
-}
-
-function parseApplicationDataFromRequest(req) {
-    const file = req.files?.application?.[0];
-    if (file?.buffer) {
-        let parsed;
-        try {
-            parsed = yaml.load(file.buffer.toString('utf8'));
-        } catch (e) {
-            throw new CustomError(400, "Bad Request", `Invalid application YAML: ${e.message}`);
-        }
-        if (!parsed || typeof parsed !== 'object') {
-            throw new CustomError(400, "Bad Request", "Invalid application YAML: expected an object");
-        }
-        const spec = parsed.spec || {};
-        const name = spec.displayName || parsed.metadata?.name;
-        if (!name) {
-            throw new CustomError(400, "Bad Request", "Missing application name");
-        }
-        if (!spec.description) {
-            throw new CustomError(400, "Bad Request", "Missing required application field: description");
-        }
-        return {
-            name,
-            description: spec.description,
-            type: "WEB"
-        };
-    }
-    return req.body;
 }
 
 module.exports = {
@@ -1152,12 +898,6 @@ module.exports = {
     deleteProvider,
     getProvidetByName,
     getApplicationKeyMap,
-    checkAdditionalValues,
-    createCPApplication,
-    createCPSubscription,
-    createCPApplicationOnBehalfOfUser,
-    createCPSubscriptionOnBehalfOfUser,
-    createAppKeyMappingOnBehalfOfUser,
-    getAPIMKeyManagersBehalfOfUser
+    checkAdditionalValues
 };
 
