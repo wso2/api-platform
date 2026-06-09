@@ -99,6 +99,32 @@ paths:
           $ref: '#/components/responses/InternalServerError'
 
   /organizations/{organizationId}:
+    get:
+      summary: Get organization by UUID
+      description: |
+        Returns the organization with the specified UUID.
+      operationId: GetOrganizationByUUID
+      security:
+        - OAuth2Security:
+            - ap:organization:read
+            - ap:organization:manage
+      tags:
+        - Organizations
+      parameters:
+        - $ref: '#/components/parameters/organizationId'
+      responses:
+        '200':
+          description: Organization retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Organization'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
     head:
       summary: Check if organization exists
       description: |

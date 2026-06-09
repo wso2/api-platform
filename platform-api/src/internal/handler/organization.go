@@ -130,6 +130,26 @@ func (h *OrganizationHandler) HeadOrganizationByUuid(c *gin.Context) {
 	c.Status(http.StatusOK)
 }
 
+// GetOrganizationByUUID handles GET /api/v1/organizations/{organizationId}
+func (h *OrganizationHandler) GetOrganizationByUUID(c *gin.Context) {
+	orgID := c.Param("organizationId")
+
+	org, err := h.orgService.GetOrganizationByUUID(orgID)
+	if err != nil {
+		if errors.Is(err, constants.ErrOrganizationNotFound) {
+			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
+				"Organization not found"))
+			return
+		}
+		h.slogger.Error("Failed to get organization by UUID", "organizationId", orgID, "error", err)
+		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+			"Failed to get organization"))
+		return
+	}
+
+	c.JSON(http.StatusOK, org)
+}
+
 // GetOrganization handles GET /api/v1/organizations
 func (h *OrganizationHandler) GetOrganization(c *gin.Context) {
 	orgID, exists := middleware.GetOrganizationFromContext(c)
@@ -208,6 +228,7 @@ func (h *OrganizationHandler) RegisterRoutes(r *gin.Engine) {
 	{
 		orgGroup.GET("", h.GetOrganization)
 		orgGroup.HEAD("/:organizationId", h.HeadOrganizationByUuid)
+		orgGroup.GET("/:organizationId", h.GetOrganizationByUUID)
 		orgGroup.GET("/:organizationId/subscription", h.GetOrganizationSubscription)
 	}
 }
