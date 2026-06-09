@@ -4,7 +4,7 @@ enabled = true
 # Deprecated: allow_payloads is preserved for backward compatibility. When true
 # and when send_request_body/send_response_body are not explicitly set, both
 # request and response bodies will be included in analytics events.
-# allow_payloads = false
+# allow_payloads = true
 send_request_body = false
 send_response_body = false
 enabled_publishers = ["moesif"]

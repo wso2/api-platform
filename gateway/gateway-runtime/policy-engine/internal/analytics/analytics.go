@@ -435,18 +435,13 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 	}
 
 	// Optionally attach request and response payloads when enabled via configuration.
-	sendReq := c.cfg.Analytics.SendRequestBody
-	sendResp := c.cfg.Analytics.SendResponseBody
-	if c.cfg.Analytics.AllowPayloads && !sendReq && !sendResp {
-		sendReq, sendResp = true, true
-	}
-	if sendReq {
+	if c.cfg.Analytics.SendRequestBody {
 		if requestPayload, ok := keyValuePairsFromMetadata["request_payload"]; ok && requestPayload != "" {
 			event.Properties["request_payload"] = requestPayload
 			slog.Debug("Analytics request payload captured", "size_bytes", len(requestPayload))
 		}
 	}
-	if sendResp {
+	if c.cfg.Analytics.SendResponseBody {
 		if responsePayload, ok := keyValuePairsFromMetadata["response_payload"]; ok && responsePayload != "" {
 			event.Properties["response_payload"] = responsePayload
 			slog.Debug("Analytics response payload captured", "size_bytes", len(responsePayload))

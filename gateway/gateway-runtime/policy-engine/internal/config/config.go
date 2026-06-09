@@ -56,8 +56,12 @@ type AnalyticsConfig struct {
 	// AllowPayloads controls whether request and response bodies are captured
 	// into analytics metadata and forwarded to analytics publishers.
 	// Deprecated: use SendRequestBody and SendResponseBody instead.
-	AllowPayloads   bool `koanf:"allow_payloads"`
-	SendRequestBody bool `koanf:"send_request_body"`
+	// When true, validateAnalyticsConfig maps both SendRequestBody and SendResponseBody
+	// to true if both are false. Because bools cannot represent "unset", this also
+	// applies when both new flags are explicitly false; remove allow_payloads when
+	// migrating and set the directional flags directly.
+	AllowPayloads    bool `koanf:"allow_payloads"`
+	SendRequestBody  bool `koanf:"send_request_body"`
 	SendResponseBody bool `koanf:"send_response_body"`
 }
 
@@ -537,6 +541,8 @@ func (c *Config) validateAnalyticsConfig() error {
 	// Validate analytics configuration
 	if c.Analytics.Enabled {
 		// Migration path for deprecated analytics.allow_payloads.
+		// Runs when both directional flags are false, which is indistinguishable
+		// from "not set" because bool fields cannot represent unset vs explicit false.
 		if c.Analytics.AllowPayloads {
 			slog.Warn("analytics.allow_payloads is deprecated; use analytics.send_request_body and analytics.send_response_body instead")
 			if !c.Analytics.SendRequestBody && !c.Analytics.SendResponseBody {
