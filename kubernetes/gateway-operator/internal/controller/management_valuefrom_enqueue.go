@@ -240,4 +240,3 @@ func llmProxyReferencesValueFromKind(cr *apiv1.LlmProxy, kind, targetNS, targetN
 	}
 	return false
 }
-

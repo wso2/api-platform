@@ -139,4 +139,3 @@ func resolveRawExtensionValueFrom(ctx context.Context, c client.Client, defaultN
 	raw.Raw = out
 	return nil
 }
-

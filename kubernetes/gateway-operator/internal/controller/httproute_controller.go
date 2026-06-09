@@ -163,15 +163,39 @@ func (r *HTTPRouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{Requeue: true}, nil
 	}
 
+	attached, attachReason, attachMessage := evaluateHTTPRouteAttachment(ctx, r.Client, parentGW, route, parentRef)
+	if !attached {
+		log.Info("HTTPRoute does not attach to parent Gateway listener",
+			zap.String("reason", string(attachReason)),
+			zap.String("message", attachMessage))
+		_ = r.patchHTTPRouteParentCondition(ctx, route, parentRef, metav1.Condition{
+			Type:               string(gatewayv1.RouteConditionAccepted),
+			Status:             metav1.ConditionFalse,
+			Reason:             string(attachReason),
+			Message:            attachMessage,
+			ObservedGeneration: route.Generation,
+			LastTransitionTime: metav1.Now(),
+		})
+		if err := r.cleanupPreviousGatewayDeployment(ctx, route, nil, log); err != nil {
+			return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
+		}
+		return ctrl.Result{}, nil
+	}
+
+	if err := r.patchHTTPRouteParentCondition(ctx, route, parentRef, metav1.Condition{
+		Type:               string(gatewayv1.RouteConditionAccepted),
+		Status:             metav1.ConditionTrue,
+		Reason:             string(gatewayv1.RouteReasonAccepted),
+		Message:            "Route attaches to parent Gateway listener",
+		ObservedGeneration: route.Generation,
+		LastTransitionTime: metav1.Now(),
+	}); err != nil {
+		return ctrl.Result{}, err
+	}
+
 	gwInfo, regOK := registry.GetGatewayRegistry().Get(parentKey.Namespace, parentKey.Name)
 	if !regOK {
-		log.Info("parent Gateway not registered yet; waiting")
-		_ = r.patchHTTPRouteParentCondition(ctx, route, parentRef, metav1.Condition{
-			Type:    string(gatewayv1.RouteConditionAccepted),
-			Status:  metav1.ConditionFalse,
-			Reason:  "GatewayPending",
-			Message: "Platform gateway controller endpoint not registered",
-		})
+		log.Info("parent Gateway not registered yet; waiting for deploy")
 		return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
 	}
 
@@ -185,10 +209,12 @@ func (r *HTTPRouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			reason = "Retrying"
 		}
 		_ = r.patchHTTPRouteParentCondition(ctx, route, parentRef, metav1.Condition{
-			Type:    string(gatewayv1.RouteConditionResolvedRefs),
-			Status:  metav1.ConditionFalse,
-			Reason:  reason,
-			Message: err.Error(),
+			Type:               string(gatewayv1.RouteConditionResolvedRefs),
+			Status:             metav1.ConditionFalse,
+			Reason:             reason,
+			Message:            err.Error(),
+			ObservedGeneration: route.Generation,
+			LastTransitionTime: metav1.Now(),
 		})
 		if requeueAfter > 0 {
 			return ctrl.Result{RequeueAfter: requeueAfter}, nil

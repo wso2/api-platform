@@ -79,6 +79,7 @@ func NewK8sGatewayReconciler(cl client.Client, scheme *runtime.Scheme, cfg *conf
 //+kubebuilder:rbac:groups=gateway.networking.k8s.io,resources=gateways/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=gateway.networking.k8s.io,resources=gateways/finalizers,verbs=update
 //+kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch
+//+kubebuilder:rbac:groups="",resources=namespaces,verbs=get;list;watch
 
 func (r *K8sGatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	gw := &gatewayv1.Gateway{}
@@ -122,7 +123,7 @@ func (r *K8sGatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 
 	if err := r.syncGateway(ctx, gw, log); err != nil {
 		log.Error("sync gateway", zap.Error(err))
-		_ = r.patchGatewayStatus(ctx, gw, metav1.Condition{
+		_ = r.patchGatewayStatus(ctx, gw, nil, nil, metav1.Condition{
 			Type:               string(gatewayv1.GatewayConditionProgrammed),
 			Status:             metav1.ConditionFalse,
 			Reason:             string(gatewayv1.GatewayReasonPending),
@@ -225,6 +226,91 @@ func (r *K8sGatewayReconciler) syncGateway(ctx context.Context, gw *gatewayv1.Ga
 	ns := gw.Namespace
 	if ns == "" {
 		ns = "default"
+	}
+
+	// Validate parametersRef first - reject Gateway if invalid
+	paramsValid, paramsReason, err := validateParametersRef(ctx, r.Client, gw)
+	if err != nil {
+		return fmt.Errorf("validate parametersRef: %w", err)
+	}
+	if !paramsValid {
+		log.Info("Gateway has invalid parametersRef; setting Accepted=False",
+			zap.String("reason", paramsReason))
+		return r.patchGatewayStatus(ctx, gw, nil, nil,
+			metav1.Condition{
+				Type:               string(gatewayv1.GatewayConditionAccepted),
+				Status:             metav1.ConditionFalse,
+				Reason:             paramsReason,
+				Message:            "Gateway infrastructure parametersRef is invalid or does not exist",
+				ObservedGeneration: gw.Generation,
+				LastTransitionTime: metav1.Now(),
+			},
+			metav1.Condition{
+				Type:               string(gatewayv1.GatewayConditionProgrammed),
+				Status:             metav1.ConditionFalse,
+				Reason:             string(gatewayv1.GatewayReasonInvalid),
+				Message:            "Gateway has invalid parametersRef",
+				ObservedGeneration: gw.Generation,
+				LastTransitionTime: metav1.Now(),
+			},
+		)
+	}
+
+	// Evaluate listener protocols - reject gateway if no listeners are supported
+	listenerStatuses, hasAnyAccepted, err := evaluateListeners(ctx, r.Client, gw)
+	if err != nil {
+		return fmt.Errorf("evaluate listeners: %w", err)
+	}
+
+	if !hasAnyAccepted {
+		// No supported listeners at all - Gateway must not be Accepted or Programmed
+		log.Info("Gateway has no accepted listeners; setting Accepted=False and Programmed=False",
+			zap.String("reason", string(gatewayv1.GatewayReasonListenersNotValid)))
+		return r.patchGatewayStatus(ctx, gw, listenerStatuses, nil,
+			metav1.Condition{
+				Type:               string(gatewayv1.GatewayConditionAccepted),
+				Status:             metav1.ConditionFalse,
+				Reason:             string(gatewayv1.GatewayReasonListenersNotValid),
+				Message:            "No listeners with supported protocols (HTTP, HTTPS)",
+				ObservedGeneration: gw.Generation,
+				LastTransitionTime: metav1.Now(),
+			},
+			metav1.Condition{
+				Type:               string(gatewayv1.GatewayConditionProgrammed),
+				Status:             metav1.ConditionFalse,
+				Reason:             string(gatewayv1.GatewayReasonInvalid),
+				Message:            "Gateway has no accepted listeners",
+				ObservedGeneration: gw.Generation,
+				LastTransitionTime: metav1.Now(),
+			},
+		)
+	}
+
+	// Patch Accepted status early (before Helm) to satisfy observedGeneration requirements
+	// This ensures conformance tests see the status update quickly
+	acceptedReason := gatewayv1.GatewayReasonAccepted
+	acceptedMessage := "Gateway accepted"
+	if !hasAllListenersAccepted(listenerStatuses) {
+		acceptedReason = gatewayv1.GatewayReasonListenersNotValid
+		acceptedMessage = "Gateway accepted but some listeners are invalid"
+	}
+
+	if err := r.patchGatewayStatus(ctx, gw, listenerStatuses, nil,
+		metav1.Condition{
+			Type:               string(gatewayv1.GatewayConditionAccepted),
+			Status:             metav1.ConditionTrue,
+			Reason:             string(acceptedReason),
+			Message:            acceptedMessage,
+			ObservedGeneration: gw.Generation,
+			LastTransitionTime: metav1.Now(),
+		},
+	); err != nil {
+		return fmt.Errorf("patch early Accepted status: %w", err)
+	}
+
+	// Refresh Gateway object after status patch
+	if err := r.Get(ctx, client.ObjectKeyFromObject(gw), gw); err != nil {
+		return err
 	}
 
 	apiSel, err := parseK8sGatewayAPISelector(gw)
@@ -355,7 +441,7 @@ func (r *K8sGatewayReconciler) syncGateway(ctx context.Context, gw *gatewayv1.Ga
 		return err
 	}
 	if !ready {
-		_ = r.patchGatewayStatus(ctx, gw, metav1.Condition{
+		_ = r.patchGatewayStatus(ctx, gw, nil, nil, metav1.Condition{
 			Type:               string(gatewayv1.GatewayConditionProgrammed),
 			Status:             metav1.ConditionFalse,
 			Reason:             string(gatewayv1.GatewayReasonPending),
@@ -370,15 +456,31 @@ func (r *K8sGatewayReconciler) syncGateway(ctx context.Context, gw *gatewayv1.Ga
 		return fmt.Errorf("register: %w", err)
 	}
 
-	return r.patchGatewayStatus(ctx, gw,
-		metav1.Condition{
-			Type:               string(gatewayv1.GatewayConditionAccepted),
-			Status:             metav1.ConditionTrue,
-			Reason:             string(gatewayv1.GatewayReasonAccepted),
-			Message:            "Gateway accepted",
+	// Refresh listener statuses (including AttachedRoutes) before final Programmed patch.
+	listenerStatuses, _, err = evaluateListeners(ctx, r.Client, gw)
+	if err != nil {
+		return fmt.Errorf("refresh listener statuses: %w", err)
+	}
+
+	runtimeSvc, err := discoverGatewayRuntimeService(ctx, r.Client, gw.Name, ns)
+	if err != nil {
+		return fmt.Errorf("discover gateway runtime service: %w", err)
+	}
+	addrs := resolveGatewayAddressesFromService(runtimeSvc)
+	if runtimeSvc.Spec.Type == corev1.ServiceTypeLoadBalancer && len(addrs) == 0 {
+		pendingMsg := "Waiting for LoadBalancer address to be assigned to gateway runtime Service"
+		_ = r.patchGatewayStatus(ctx, gw, listenerStatuses, nil, metav1.Condition{
+			Type:               string(gatewayv1.GatewayConditionProgrammed),
+			Status:             metav1.ConditionFalse,
+			Reason:             string(gatewayv1.GatewayReasonPending),
+			Message:            pendingMsg,
 			ObservedGeneration: gw.Generation,
 			LastTransitionTime: metav1.Now(),
-		},
+		})
+		return fmt.Errorf("pending: %s", pendingMsg)
+	}
+
+	return r.patchGatewayStatus(ctx, gw, listenerStatuses, &addrs,
 		metav1.Condition{
 			Type:               string(gatewayv1.GatewayConditionProgrammed),
 			Status:             metav1.ConditionTrue,
@@ -390,7 +492,7 @@ func (r *K8sGatewayReconciler) syncGateway(ctx context.Context, gw *gatewayv1.Ga
 	)
 }
 
-func (r *K8sGatewayReconciler) patchGatewayStatus(ctx context.Context, gw *gatewayv1.Gateway, conds ...metav1.Condition) error {
+func (r *K8sGatewayReconciler) patchGatewayStatus(ctx context.Context, gw *gatewayv1.Gateway, listenerStatuses []gatewayv1.ListenerStatus, addresses *[]gatewayv1.GatewayStatusAddress, conds ...metav1.Condition) error {
 	latest := &gatewayv1.Gateway{}
 	if err := r.Get(ctx, client.ObjectKeyFromObject(gw), latest); err != nil {
 		return err
@@ -398,6 +500,12 @@ func (r *K8sGatewayReconciler) patchGatewayStatus(ctx context.Context, gw *gatew
 	base := latest.DeepCopy()
 	for _, cond := range conds {
 		meta.SetStatusCondition(&latest.Status.Conditions, cond)
+	}
+	if listenerStatuses != nil {
+		latest.Status.Listeners = listenerStatuses
+	}
+	if addresses != nil {
+		latest.Status.Addresses = *addresses
 	}
 	return r.Status().Patch(ctx, latest, client.MergeFrom(base))
 }
@@ -450,6 +558,87 @@ func (r *K8sGatewayReconciler) enqueueK8sGatewaysForHelmValuesConfigMap(ctx cont
 	return requests
 }
 
+// enqueueK8sGatewaysForHTTPRoute enqueues parent Gateways when an HTTPRoute changes so
+// listener AttachedRoutes counts stay in sync with route attachment status.
+func (r *K8sGatewayReconciler) enqueueK8sGatewaysForHTTPRoute(ctx context.Context, obj client.Object) []reconcile.Request {
+	route, ok := obj.(*gatewayv1.HTTPRoute)
+	if !ok {
+		return nil
+	}
+
+	targets := parentGatewayRefs(route)
+	if len(targets) == 0 {
+		return nil
+	}
+
+	logger := log.FromContext(ctx)
+	seen := make(map[types.NamespacedName]struct{}, len(targets))
+	var requests []reconcile.Request
+	for _, target := range targets {
+		if _, dup := seen[target.key]; dup {
+			continue
+		}
+		gw := &gatewayv1.Gateway{}
+		if err := r.Get(ctx, target.key, gw); err != nil {
+			if apierrors.IsNotFound(err) {
+				continue
+			}
+			logger.Error(err, "failed to get parent Gateway for HTTPRoute event",
+				"httproute", route.Name,
+				"httprouteNamespace", route.Namespace,
+				"gateway", target.key.Name,
+				"gatewayNamespace", target.key.Namespace)
+			continue
+		}
+		if !r.Config.ManagedGatewayClass(string(gw.Spec.GatewayClassName)) {
+			continue
+		}
+		seen[target.key] = struct{}{}
+		requests = append(requests, reconcile.Request{NamespacedName: target.key})
+	}
+	return requests
+}
+
+// enqueueK8sGatewaysForRuntimeService enqueues Gateways when a gateway-runtime Service
+// changes (e.g. LoadBalancer ingress assigned).
+func (r *K8sGatewayReconciler) enqueueK8sGatewaysForRuntimeService(ctx context.Context, obj client.Object) []reconcile.Request {
+	svc, ok := obj.(*corev1.Service)
+	if !ok || svc.Labels == nil {
+		return nil
+	}
+	if svc.Labels["app.kubernetes.io/component"] != "gateway-runtime" {
+		return nil
+	}
+	releaseName := svc.Labels["app.kubernetes.io/instance"]
+	if releaseName == "" {
+		return nil
+	}
+
+	logger := log.FromContext(ctx)
+	gwList := &gatewayv1.GatewayList{}
+	if err := r.List(ctx, gwList, client.InNamespace(svc.Namespace)); err != nil {
+		logger.Error(err, "failed to list Gateways for gateway-runtime Service event",
+			"service", svc.Name,
+			"namespace", svc.Namespace)
+		return nil
+	}
+
+	var requests []reconcile.Request
+	for i := range gwList.Items {
+		gw := &gwList.Items[i]
+		if !r.Config.ManagedGatewayClass(string(gw.Spec.GatewayClassName)) {
+			continue
+		}
+		if helm.GetReleaseName(gw.Name) != releaseName {
+			continue
+		}
+		requests = append(requests, reconcile.Request{
+			NamespacedName: types.NamespacedName{Namespace: gw.Namespace, Name: gw.Name},
+		})
+	}
+	return requests
+}
+
 // SetupWithManager registers the Kubernetes Gateway controller.
 func (r *K8sGatewayReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	opts := contctrl.Options{MaxConcurrentReconciles: r.Config.Reconciliation.MaxConcurrentReconciles}
@@ -470,6 +659,18 @@ func (r *K8sGatewayReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			&corev1.ConfigMap{},
 			handler.EnqueueRequestsFromMapFunc(r.enqueueK8sGatewaysForHelmValuesConfigMap),
 			builder.WithPredicates(configMapPred),
+		).
+		Watches(
+			&gatewayv1.HTTPRoute{},
+			handler.EnqueueRequestsFromMapFunc(r.enqueueK8sGatewaysForHTTPRoute),
+		).
+		Watches(
+			&corev1.Service{},
+			handler.EnqueueRequestsFromMapFunc(r.enqueueK8sGatewaysForRuntimeService),
+			builder.WithPredicates(predicate.NewPredicateFuncs(func(obj client.Object) bool {
+				svc, ok := obj.(*corev1.Service)
+				return ok && svc.Labels != nil && svc.Labels["app.kubernetes.io/component"] == "gateway-runtime"
+			})),
 		).
 		Complete(r)
 }

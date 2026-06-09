@@ -74,6 +74,25 @@ func discoverControllerService(ctx context.Context, c client.Client, gatewayName
 	return svc, restPort, nil
 }
 
+// discoverGatewayRuntimeService finds the gateway-runtime Service for a Helm release.
+func discoverGatewayRuntimeService(ctx context.Context, c client.Client, gatewayName, namespace string) (*corev1.Service, error) {
+	releaseName := helm.GetReleaseName(gatewayName)
+	serviceList := &corev1.ServiceList{}
+	if err := c.List(ctx, serviceList,
+		client.InNamespace(namespace),
+		client.MatchingLabels{
+			"app.kubernetes.io/instance":  releaseName,
+			"app.kubernetes.io/component": "gateway-runtime",
+		},
+	); err != nil {
+		return nil, fmt.Errorf("failed to list gateway runtime services: %w", err)
+	}
+	if len(serviceList.Items) == 0 {
+		return nil, fmt.Errorf("no gateway runtime service found for release %s in namespace %s", releaseName, namespace)
+	}
+	return &serviceList.Items[0], nil
+}
+
 // registerGatewayInRegistry discovers the controller service and registers the gateway.
 func registerGatewayInRegistry(ctx context.Context, c client.Client, name, namespace string, apiSelector *apiv1.APISelector, controlPlaneHost string, helmValuesCM string, fromK8sGW bool) error {
 	svc, restPort, err := discoverControllerService(ctx, c, name, namespace)

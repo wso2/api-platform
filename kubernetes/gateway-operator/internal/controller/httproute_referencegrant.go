@@ -83,3 +83,56 @@ func referenceGrantAllowsHTTPRouteToService(spec *gatewayv1beta1.ReferenceGrantS
 	}
 	return false
 }
+
+// crossNamespaceSecretReferenceGrantPermitted checks whether a Gateway may reference a Secret
+// in another namespace per Gateway API ReferenceGrant rules. Grants must exist in the Secret namespace.
+func crossNamespaceSecretReferenceGrantPermitted(ctx context.Context, c client.Client, gwNS, secretNS, secretName string) bool {
+	if secretNS == gwNS {
+		return true
+	}
+	var list gatewayv1beta1.ReferenceGrantList
+	if err := c.List(ctx, &list, client.InNamespace(secretNS)); err != nil {
+		return false
+	}
+	for i := range list.Items {
+		if referenceGrantAllowsGatewayToSecret(&list.Items[i].Spec, gwNS, secretName) {
+			return true
+		}
+	}
+	return false
+}
+
+func referenceGrantAllowsGatewayToSecret(spec *gatewayv1beta1.ReferenceGrantSpec, gwNS, secretName string) bool {
+	if spec == nil {
+		return false
+	}
+	fromOK := false
+	for _, f := range spec.From {
+		if string(f.Namespace) != gwNS {
+			continue
+		}
+		if string(f.Kind) != "Gateway" {
+			continue
+		}
+		if string(f.Group) != gatewayv1.GroupName {
+			continue
+		}
+		fromOK = true
+		break
+	}
+	if !fromOK {
+		return false
+	}
+	for _, t := range spec.To {
+		if string(t.Kind) != "Secret" {
+			continue
+		}
+		if string(t.Group) != "" {
+			continue
+		}
+		if t.Name == nil || string(*t.Name) == secretName {
+			return true
+		}
+	}
+	return false
+}
