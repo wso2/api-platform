@@ -27,7 +27,6 @@ data:
       controller:
         controlPlane:
           host: host.docker.internal:9444
-          port: 443
           token:
             value: "xxx"
 

@@ -88,8 +88,6 @@ spec:
           env:
             - name: APIP_GW_CONTROLPLANE_HOST
               value: {{ $controller.controlPlane.host | quote }}
-            - name: APIP_GW_CONTROLPLANE_PORT
-              value: {{ printf "%d" (int $controller.controlPlane.port) | quote }}
             - name: APIP_GW_GATEWAY_REGISTRATION_TOKEN
               {{- if $controller.controlPlane.token.secretName }}
               valueFrom:

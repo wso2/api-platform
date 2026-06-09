@@ -69,8 +69,7 @@ helm install ap-gateway oci://ghcr.io/wso2/api-platform/helm-charts/gateway \
 
 ```bash
 helm install ap-gateway oci://ghcr.io/wso2/api-platform/helm-charts/gateway \
-  --set gateway.controller.controlPlane.host="platform.example.com" \
-  --set gateway.controller.controlPlane.port=8443 \
+  --set gateway.controller.controlPlane.host="platform.example.com:8443" \
   --set gateway.controller.controlPlane.token.value="your-token-here" \
   --set gateway.developmentMode=true
 ```
