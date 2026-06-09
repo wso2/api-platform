@@ -89,8 +89,6 @@ func LocalJWTAuthMiddleware(config AuthConfig) gin.HandlerFunc {
 			return
 		}
 
-		fmt.Printf("[DEBUG] LocalJWTAuth token: %s\n", tokenString)
-
 		if err := validateLocalJWT(c, tokenString, config); err != nil {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 			c.Abort()
@@ -144,7 +142,6 @@ func validateLocalJWT(c *gin.Context, tokenString string, config AuthConfig) err
 	if orgClaimName == "" {
 		orgClaimName = "organization"
 	}
-	fmt.Println("orgClaimName", orgClaimName)
 	org := getStringClaim(mapClaims, orgClaimName)
 	if org == "" {
 		return fmt.Errorf("token missing required '%s' claim", orgClaimName)
