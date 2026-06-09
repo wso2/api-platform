@@ -188,6 +188,38 @@ function getDefinition(apiHandle, samplesDir = './samples/apis/') {
     return fs.readFileSync(defPath, 'utf-8');
 }
 
+/**
+ * Load and parse the MCP schema definition file (schemaDefinition.yaml or .json).
+ * Returns { tools, resources, prompts } or null if not found.
+ */
+function getMcpSchema(apiHandle, samplesDir = './samples/apis/') {
+    const apiDir = getApiDir(apiHandle, samplesDir);
+    if (!apiDir) return null;
+    const candidates = [
+        path.join(apiDir, constants.FILE_NAME.SCHEMA_DEFINITION_YAML_FILE_NAME),
+        path.join(apiDir, constants.FILE_NAME.SCHEMA_DEFINITION_FILE_NAME),
+    ];
+    let raw = null;
+    let fileName = null;
+    for (const candidate of candidates) {
+        if (fs.existsSync(candidate)) {
+            raw = fs.readFileSync(candidate, 'utf-8');
+            fileName = path.basename(candidate).toLowerCase();
+            break;
+        }
+    }
+    if (!raw) return null;
+    const parsed = (fileName.endsWith('.yaml') || fileName.endsWith('.yml'))
+        ? yaml.load(raw)
+        : JSON.parse(raw);
+    if (!Array.isArray(parsed)) return parsed;
+    return {
+        tools:     parsed.filter(item => item.type === 'TOOL'),
+        resources: parsed.filter(item => item.type === 'RESOURCE'),
+        prompts:   parsed.filter(item => item.type === 'PROMPT'),
+    };
+}
+
 function getDocMarkdown(apiHandle, docName, samplesDir = './samples/apis/') {
     const apiDir = getApiDir(apiHandle, samplesDir);
     if (!apiDir) return null;
@@ -218,4 +250,4 @@ function listDocs(apiHandle, samplesDir = './samples/apis/') {
     return fs.readdirSync(docsDir).filter(f => fs.statSync(path.join(docsDir, f)).isFile());
 }
 
-module.exports = { loadAll, loadOne, getDefinition, getDocMarkdown, listDocs };
+module.exports = { loadAll, loadOne, getDefinition, getMcpSchema, getDocMarkdown, listDocs };

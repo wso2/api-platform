@@ -25,12 +25,16 @@ const registerPartials = require('../middlewares/registerPartials');
 router.get('/views/:viewName', registerPartials, orgController.loadOrganizationContent);
 
 router.get('/views/:viewName/apis', registerPartials, apiController.loadAPIs);
+router.get('/views/:viewName/mcps', registerPartials, apiController.loadAPIs);
 
 router.get('/views/:viewName/api/:apiHandle', registerPartials, apiController.loadAPIContent);
+router.get('/views/:viewName/mcp/:apiHandle', registerPartials, apiController.loadAPIContent);
 
 router.get('/views/:viewName/api/:apiHandle/docs/specification', registerPartials, apiController.loadDocument);
+router.get('/views/:viewName/mcp/:apiHandle/docs/specification', registerPartials, apiController.loadDocument);
 
 router.get('/views/:viewName/api/:apiHandle/docs/:docType/:docName', registerPartials, apiController.loadDocument);
+router.get('/views/:viewName/mcp/:apiHandle/docs/:docType/:docName', registerPartials, apiController.loadDocument);
 
 // eslint-disable-next-line no-useless-escape
 // Exclude specific paths (login, applications, configure intentionally disabled in design mode)

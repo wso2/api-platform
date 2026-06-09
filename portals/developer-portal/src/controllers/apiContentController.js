@@ -57,7 +57,8 @@ const loadAPIs = async (req, res) => {
             baseUrl: config.baseUrl + constants.ROUTE.VIEWS_PATH + viewName,
             devMode: true,
         }
-        html = renderTemplate(layoutPath + 'pages/apis/page.hbs', layoutPath + 'layout/main.hbs', templateContent, false);
+        const listingPage = req.originalUrl.includes('/mcps') ? 'pages/mcp' : 'pages/apis';
+        html = renderTemplate(layoutPath + listingPage + '/page.hbs', layoutPath + 'layout/main.hbs', templateContent, false);
     } else {
         const orgDetails = await adminDao.getOrganization(orgName);
         const devportalMode = orgDetails.ORG_CONFIG?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
@@ -188,18 +189,25 @@ const loadAPIContent = async (req, res) => {
         const metaData = loadAPIMetaDataFromFile(apiHandle);
         const hbsContentPath = path.join(process.cwd(), config.designMode.samplesPath, apiHandle, constants.ARTIFACT_DIR.WEB, constants.FILE_NAME.API_HBS_CONTENT_FILE_NAME);
 
+        const apiType = metaData.apiInfo?.apiType;
+        const isMCP = apiType === constants.API_TYPE.MCP;
         let loadDefault = false;
         let apiDetails = '';
+        let schemaDefinition = '';
 
         if (fs.existsSync(hbsContentPath)) {
             hbs.handlebars.registerPartial('api-content', fs.readFileSync(hbsContentPath, constants.CHARSET_UTF8));
         } else {
-            // No custom api-content.hbs — use the default API detail view (same as production)
-            const definitionContent = sampleApiLoader.getDefinition(apiHandle, config.designMode.samplesPath);
-            if (definitionContent) {
-                const apiType = metaData.apiInfo?.apiType;
-                loadDefault = true;
-                if (apiType !== constants.API_TYPE.GRAPHQL && apiType !== constants.API_TYPE.WS && apiType !== constants.API_TYPE.WEBSUB && apiType !== constants.API_TYPE.MCP) {
+            loadDefault = true;
+            if (isMCP) {
+                // MCP: load schema definition (tools/resources/prompts) + server URL
+                schemaDefinition = sampleApiLoader.getMcpSchema(apiHandle, config.designMode.samplesPath) || '';
+                const mcpUrl = metaData.endPoints?.productionURL || metaData.endPoints?.sandboxURL || '';
+                apiDetails = { serverDetails: mcpUrl ? { productionURL: mcpUrl, sandboxURL: metaData.endPoints?.sandboxURL || '' } : '' };
+            } else {
+                // REST/SOAP/WS: parse OpenAPI definition for default endpoint view
+                const definitionContent = sampleApiLoader.getDefinition(apiHandle, config.designMode.samplesPath);
+                if (definitionContent && apiType !== constants.API_TYPE.GRAPHQL && apiType !== constants.API_TYPE.WS && apiType !== constants.API_TYPE.WEBSUB) {
                     apiDetails = await parseSwagger(parseApiDefinitionContent(definitionContent));
                     apiDetails.serverDetails = (metaData.endPoints.productionURL || metaData.endPoints.sandboxURL)
                         ? metaData.endPoints : '';
@@ -213,13 +221,15 @@ const loadAPIContent = async (req, res) => {
             apiContent: '',
             loadDefault,
             resources: apiDetails,
+            schemaDefinition,
             apiMetadata: metaData,
             subscriptionPlans: metaData.subscriptionPolicies,
             baseUrl: config.baseUrl + constants.ROUTE.VIEWS_PATH + viewName,
             schemaUrl: `/mock/${apiHandle}/definition.yml`,
             showApiKeysNav: apiUsesApiKeySecurity(metaData),
         }
-        html = renderTemplate(layoutPath + 'pages/api-landing/page.hbs', layoutPath + 'layout/main.hbs', templateContent, false);
+        const landingPage = isMCP ? 'pages/mcp-landing' : 'pages/api-landing';
+        html = renderTemplate(layoutPath + landingPage + '/page.hbs', layoutPath + 'layout/main.hbs', templateContent, false);
         res.send(html);
     } else {
         const orgDetails = await adminDao.getOrganization(orgName);
