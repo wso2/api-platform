@@ -54,6 +54,8 @@ type AuthConfig struct {
 // PlatformClaimNames holds the JWT claim names used to extract platform-specific values.
 type PlatformClaimNames struct {
 	OrganizationClaim  string // active org UUID for this token (e.g. "organization")
+	OrgNameClaim       string // org display name (e.g. "org_name")
+	OrgHandleClaim     string // org URL-safe handle (e.g. "org_handle")
 	UserIDClaim        string
 	UsernameClaim      string
 	EmailClaim         string
@@ -206,7 +208,9 @@ func PlatformClaimsMiddleware(claimNames PlatformClaimNames) gin.HandlerFunc {
 			return
 		}
 
-		org := getStringClaim(mapClaims, claimNames.OrganizationClaim)
+		org       := getStringClaim(mapClaims, claimNames.OrganizationClaim)
+		orgName   := getStringClaim(mapClaims, claimNames.OrgNameClaim)
+		orgHandle := getStringClaim(mapClaims, claimNames.OrgHandleClaim)
 
 		userID := authCtx.UserID
 		if claimNames.UserIDClaim != "" {
@@ -251,6 +255,8 @@ func PlatformClaimsMiddleware(claimNames PlatformClaimNames) gin.HandlerFunc {
 		c.Set("first_name", firstName)
 		c.Set("last_name", lastName)
 		c.Set("organization", org)
+		c.Set("org_name", orgName)
+		c.Set("org_handle", orgHandle)
 		c.Set("scope", scope)
 		c.Set("audience", aud)
 		c.Set("claims", claimsObj)
@@ -379,6 +385,26 @@ func GetOrganizationFromContext(c *gin.Context) (string, bool) {
 	}
 	orgStr, ok := organization.(string)
 	return orgStr, ok
+}
+
+// GetOrgNameFromContext extracts the organization display name from the Gin context.
+func GetOrgNameFromContext(c *gin.Context) (string, bool) {
+	v, exists := c.Get("org_name")
+	if !exists {
+		return "", false
+	}
+	s, ok := v.(string)
+	return s, ok
+}
+
+// GetOrgHandleFromContext extracts the organization handle from the Gin context.
+func GetOrgHandleFromContext(c *gin.Context) (string, bool) {
+	v, exists := c.Get("org_handle")
+	if !exists {
+		return "", false
+	}
+	s, ok := v.(string)
+	return s, ok
 }
 
 // GetUserIDFromContext extracts the user ID from the Gin context.

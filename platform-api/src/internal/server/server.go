@@ -321,14 +321,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	}
 	slogger.Info("Loaded OpenAPI scope registry", "path", cfg.OpenAPISpecPath)
 
-	// Load and merge the Portal API scope registry for portal UI-facing routes.
-	portalScopeRegistry, err := middleware.LoadScopeRegistry(cfg.PortalAPISpecPath)
-	if err != nil {
-		slogger.Error("Failed to load Portal API scope registry", "path", cfg.PortalAPISpecPath, "error", err)
-		return nil, fmt.Errorf("failed to load Portal API scope registry: %w", err)
-	}
-	scopeRegistry.Merge(portalScopeRegistry)
-	slogger.Info("Loaded Portal API scope registry", "path", cfg.PortalAPISpecPath)
+
 
 	// Configure scope validation.
 	middleware.SetScopeValidationEnabled(cfg.EnableScopeValidation)
@@ -336,11 +329,8 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 		slogger.Warn("scope validation is disabled — all authenticated requests will be allowed regardless of scope")
 	}
 
-	authHandler := handler.NewAuthHandler(cfg.Auth.Portal, slogger)
-
 	// Register public routes before auth middleware so they bypass authentication.
 	orgHandler.RegisterPublicRoutes(router)
-	authHandler.RegisterPublicRoutes(router)
 
 	// Build and apply the JWT authenticator.
 	// IDP_ENABLED=false (default): HMAC validation with JWT_SECRET_KEY, or skip entirely when JWT_SKIP_VALIDATION=true.
@@ -349,13 +339,6 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	if err != nil {
 		return nil, err
 	}
-	router.Use(func(c *gin.Context) {
-		if h := c.GetHeader("Authorization"); h != "" {
-			token := strings.TrimPrefix(h, "Bearer ")
-			fmt.Printf("[DEBUG] raw token: %s\n", token)
-		}
-		c.Next()
-	})
 	for _, mw := range authenticator.Middleware() {
 		router.Use(mw)
 	}
@@ -461,6 +444,8 @@ func buildAuthenticator(cfg *config.Server, slogger *slog.Logger) (middleware.Au
 	}
 	claimsMiddleware := middleware.PlatformClaimsMiddleware(middleware.PlatformClaimNames{
 		OrganizationClaim: cfg.Auth.IDP.OrganizationClaimName,
+		OrgNameClaim:      cfg.Auth.IDP.OrgNameClaimName,
+		OrgHandleClaim:    cfg.Auth.IDP.OrgHandleClaimName,
 		UserIDClaim:       cfg.Auth.IDP.UserIDClaimName,
 		UsernameClaim:     cfg.Auth.IDP.UsernameClaimName,
 		EmailClaim:        cfg.Auth.IDP.EmailClaimName,

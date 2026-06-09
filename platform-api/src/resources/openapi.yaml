@@ -2605,9 +2605,8 @@ paths:
       operationId: ListGatewayCustomPolicies
       security:
         - OAuth2Security:
-            - ap:gateway:policy:read
-            - ap:gateway:policy:manage
-            - ap:gateway:manage
+            - ap:gateway_custom_policy:read
+            - ap:gateway_custom_policy:manage
       tags:
         - Gateway Policies
       responses:
@@ -2639,9 +2638,8 @@ paths:
       operationId: SyncCustomPolicy
       security:
         - OAuth2Security:
-            - ap:gateway:policy:create
-            - ap:gateway:policy:manage
-            - ap:gateway:manage
+            - ap:gateway_custom_policy:create
+            - ap:gateway_custom_policy:manage
       tags:
         - Gateway Policies
       parameters:
@@ -2704,9 +2702,8 @@ paths:
       operationId: GetGatewayCustomPolicy
       security:
         - OAuth2Security:
-            - ap:gateway:policy:read
-            - ap:gateway:policy:manage
-            - ap:gateway:manage
+            - ap:gateway_custom_policy:read
+            - ap:gateway_custom_policy:manage
       tags:
         - Gateway Policies
       parameters:
@@ -2745,9 +2742,8 @@ paths:
       operationId: DeleteGatewayCustomPolicy
       security:
         - OAuth2Security:
-            - ap:gateway:policy:delete
-            - ap:gateway:policy:manage
-            - ap:gateway:manage
+            - ap:gateway_custom_policy:delete
+            - ap:gateway_custom_policy:manage
       tags:
         - Gateway Policies
       parameters:
@@ -2792,9 +2788,8 @@ paths:
       operationId: GetGatewayCustomPolicyDeprecated
       security:
         - OAuth2Security:
-            - ap:gateway:policy:read
-            - ap:gateway:policy:manage
-            - ap:gateway:manage
+            - ap:gateway_custom_policy:read
+            - ap:gateway_custom_policy:manage
       tags:
         - Gateway Policies
       parameters:
@@ -2829,9 +2824,8 @@ paths:
       operationId: DeleteGatewayCustomPolicyDeprecated
       security:
         - OAuth2Security:
-            - ap:gateway:policy:delete
-            - ap:gateway:policy:manage
-            - ap:gateway:manage
+            - ap:gateway_custom_policy:delete
+            - ap:gateway_custom_policy:manage
       tags:
         - Gateway Policies
       parameters:
@@ -7240,12 +7234,11 @@ components:
             ap:gateway:delete: Delete gateway
             ap:gateway:manage: Full access to gateway
             ap:gateway:manifest:read: Read gateway
-            ap:gateway:policy:create: Create gateway
-            ap:gateway:policy:delete: Delete gateway
-            ap:gateway:policy:manage: Full access to gateway
-            ap:gateway:policy:read: Read gateway
             ap:gateway:read: Read gateway
-            ap:gateway:status:read: Read gateway
+            ap:gateway_custom_policy:create: Create gateway
+            ap:gateway_custom_policy:delete: Delete gateway
+            ap:gateway_custom_policy:manage: Full access to gateway
+            ap:gateway_custom_policy:read: Read gateway
             ap:gateway:token:create: Create gateway
             ap:gateway:token:delete: Delete gateway
             ap:gateway:token:manage: Full access to gateway

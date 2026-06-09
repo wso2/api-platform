@@ -44,11 +44,6 @@ type Server struct {
 	// OpenAPI spec path — used at startup to build the scope registry.
 	OpenAPISpecPath string `envconfig:"OPENAPI_SPEC_PATH" default:"./resources/openapi.yaml"`
 
-	// PortalAPISpecPath is the OpenAPI spec for portal UI-facing endpoints.
-	// Used at startup to build a separate scope registry for portal routes.
-	// Env: PORTAL_API_SPEC_PATH (default: "./resources/portal-api.yaml")
-	PortalAPISpecPath string `envconfig:"PORTAL_API_SPEC_PATH" default:"./resources/portal-api.yaml"`
-
 	// LLM provider template bootstrap (used to seed defaults into the DB)
 	LLMTemplateDefinitionsPath string `envconfig:"LLM_TEMPLATE_DEFINITIONS_PATH" default:"./resources/default-llm-provider-templates"`
 
@@ -141,6 +136,16 @@ type IDP struct {
 	// Every protected request must carry this claim; requests without it are rejected.
 	// Env: AUTH_IDP_ORGANIZATION_CLAIM_NAME (default: "organization")
 	OrganizationClaimName string `envconfig:"ORGANIZATION_CLAIM_NAME" default:"organization"`
+
+	// OrgNameClaimName is the JWT claim that holds the display name of the user's organization.
+	// Used to propagate org context and support auto-registration on first login.
+	// Env: AUTH_IDP_ORG_NAME_CLAIM_NAME (default: "org_name")
+	OrgNameClaimName string `envconfig:"ORG_NAME_CLAIM_NAME" default:"org_name"`
+
+	// OrgHandleClaimName is the JWT claim that holds the URL-safe handle of the user's organization.
+	// Used alongside OrgNameClaimName for auto-registration on first login.
+	// Env: AUTH_IDP_ORG_HANDLE_CLAIM_NAME (default: "org_handle")
+	OrgHandleClaimName string `envconfig:"ORG_HANDLE_CLAIM_NAME" default:"org_handle"`
 
 	// UserIDClaimName is the JWT claim used as the canonical user identifier.
 	// Env: AUTH_IDP_USER_ID_CLAIM_NAME (default: "sub")
