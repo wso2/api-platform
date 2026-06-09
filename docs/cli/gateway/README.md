@@ -76,6 +76,7 @@ Notes:
 
 - Supported kinds: `RestApi` and `Mcp`.
 - JSON input is converted to YAML before being sent.
+- Ready-to-use sample CRs live in [`gateway/examples`](../../../gateway/examples): [`sample-echo-api.yaml`](../../../gateway/examples/sample-echo-api.yaml) and [`petstore-api.yaml`](../../../gateway/examples/petstore-api.yaml) (`RestApi`), and [`mcp-proxy.yaml`](../../../gateway/examples/mcp-proxy.yaml) (`Mcp`).
 
 ## REST API Commands
 
@@ -175,6 +176,7 @@ Notes:
 - `metadata.name` becomes the API key name.
 - `spec.parentRef.kind` must be `RestApi` (or omitted) for this command.
 - All other `spec` fields (e.g. `apiKey`, `expiresIn`, `expiresAt`) are forwarded as the request body.
+- Sample CR: [`gateway/examples/api-key.yaml`](../../../gateway/examples/api-key.yaml).
 
 ### `ap gateway rest-api api-key list`
 
@@ -341,6 +343,7 @@ Notes:
 - `spec.planName` is required.
 - `spec.throttleLimitUnit` accepts `Min`, `Hour`, `Day`, or `Month`.
 - The `spec` fields are forwarded as the request body; `metadata.name` is the local CR handle.
+- Sample CR: [`gateway/examples/subscription-plan.yaml`](../../../gateway/examples/subscription-plan.yaml).
 
 ### `ap gateway subscription-plan list`
 
@@ -438,6 +441,7 @@ Notes:
 
 - `spec.apiId` is required.
 - `spec.subscriptionToken` must be a plain string. Secret references (`valueFrom`) are an operator-only feature and are not resolved by the CLI.
+- Sample CR: [`gateway/examples/subscription.yaml`](../../../gateway/examples/subscription.yaml).
 
 ### `ap gateway subscription list`
 
