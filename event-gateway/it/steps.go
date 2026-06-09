@@ -77,6 +77,13 @@ func RegisterCommonSteps(ctx *godog.ScenarioContext, state *TestState) {
 		return nil
 	})
 
+	ctx.Step(`^the response body should not contain "([^"]*)"$`, func(unexpected string) error {
+		if strings.Contains(string(state.lastBody), unexpected) {
+			return fmt.Errorf("response body should not contain %q but does\nbody: %s", unexpected, state.lastBody)
+		}
+		return nil
+	})
+
 	ctx.Step(`^the JSON response field "([^"]*)" should be "([^"]*)"$`, func(field, expected string) error {
 		var v map[string]any
 		if err := json.Unmarshal(state.lastBody, &v); err != nil {
