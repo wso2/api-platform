@@ -99,8 +99,9 @@ async function resolveSubscription(orgId, subscriptionId) {
     if (!sub) return null;
     const policy = sub.DP_SUBSCRIPTION_POLICY;
     return {
-        ref_id: sub.SUB_TOKEN,
-        plan_name: policy ? (policy.DISPLAY_NAME || policy.POLICY_NAME || null) : null
+        ref_id: sub.SUB_ID,
+        plan_ref_id: policy ? (policy.REF_ID || null) : null,
+        plan_name: policy ? (policy.POLICY_NAME || policy.DISPLAY_NAME || null) : null
     };
 }
 
@@ -176,7 +177,7 @@ async function regenerate({ orgId, keyId, actor }) {
                 {
                     key_id: keyId,
                     name: existing.NAME,
-                    expires_at: existing.EXPIRES_AT,
+                    expires_at: existing.EXPIRES_AT ? new Date(existing.EXPIRES_AT).toISOString() : null,
                     api: { name: apiInfo ? apiInfo.apiName : null, version: apiInfo ? apiInfo.apiVersion : null, ref_id: apiInfo ? apiInfo.apiRefId : '' },
                     ...(subscription && { subscription })
                 },
@@ -204,6 +205,7 @@ async function revoke({ orgId, keyId, actor }) {
 
     const revokeApiInfo = await resolveApiDirect(orgId, existing.API_ID);
     const gatewayType = revokeApiInfo ? revokeApiInfo.gatewayType : null;
+    const subscription = await resolveSubscription(orgId, existing.SUBSCRIPTION_ID);
 
     await sequelize.transaction(async (t) => {
         const revoked = await apiKeyDao.revokeKey(orgId, keyId, t);
@@ -213,7 +215,8 @@ async function revoke({ orgId, keyId, actor }) {
             {
                 key_id: keyId,
                 name: existing.NAME,
-                api: { name: revokeApiInfo ? revokeApiInfo.apiName : null, version: revokeApiInfo ? revokeApiInfo.apiVersion : null, ref_id: revokeApiInfo ? revokeApiInfo.apiRefId : '' }
+                api: { name: revokeApiInfo ? revokeApiInfo.apiName : null, version: revokeApiInfo ? revokeApiInfo.apiVersion : null, ref_id: revokeApiInfo ? revokeApiInfo.apiRefId : '' },
+                ...(subscription && { subscription })
             },
             { transaction: t, orgId, gatewayType,
               aggregateType: 'apikey', aggregateId: keyId }
