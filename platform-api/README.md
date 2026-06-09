@@ -279,13 +279,15 @@ export AUTH_SKIP_PATHS="/health,/metrics,/api/internal/v1/ws/gateways/connect,/m
 
 ### Role-Based Access Control (RBAC)
 
-Per-route scope checks are enforced when `ENABLE_SCOPE_VALIDATION=true`. Three built-in platform roles exist:
+Per-route scope checks are enforced when `ENABLE_SCOPE_VALIDATION=true`. Five built-in platform roles exist:
 
-| Role | Access level |
-|---|---|
-| `admin` | Full access to all resources and operations |
-| `developer` | CRUD and deploy on APIs, projects, applications, and AI/integration resources |
-| `viewer` | Read-only access to all resources |
+| Role | Persona | Access level |
+|---|---|---|
+| `admin` | Platform administrator | Full access to all resources and operations |
+| `developer` | API designer | Full API lifecycle; cannot manage gateways or subscription plans |
+| `publisher` | DevPortal manager | Read APIs and publish/unpublish to DevPortals; cannot create or deploy |
+| `operator` | CI/CD service account | Deploy and undeploy operations only; cannot create resources or manage credentials |
+| `viewer` | Auditor | Read-only access to all resources |
 
 | Variable | Default | Description |
 |---|---|---|

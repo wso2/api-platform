@@ -5035,50 +5035,13 @@ paths:
 
   /me/api-keys:
     get:
-      deprecated: true
-      summary: "[Deprecated] Use GET /api-keys"
-      description: Deprecated. Use `GET /api-keys` instead.
-      operationId: listUserAPIKeysDeprecated
-      security:
-        - OAuth2Security:
-            - ap:rest_api:api_key:read
-            - ap:rest_api:api_key:manage
-            - ap:rest_api:manage
-      tags:
-        - API Keys
-      parameters:
-        - name: type
-          in: query
-          required: false
-          description: Comma-separated list of artifact types to filter by.
-          schema:
-            type: array
-            items:
-              type: string
-              enum: [RestApi, LlmProvider, LlmProxy]
-          style: form
-          explode: false
-      responses:
-        '200':
-          $ref: '#/components/responses/OK'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
-  /api-keys:
-    get:
       summary: List API keys for the current user
       description: |
         Returns API keys created by the caller within the organization.
         Optionally filter by one or more artifact types using a comma-separated `type` query parameter.
         The plain key value is never returned.
       operationId: listUserAPIKeys
-      security:
-        - OAuth2Security:
-            - ap:rest_api:api_key:read
-            - ap:rest_api:api_key:manage
-            - ap:rest_api:manage
+      security: []
       tags:
         - API Keys
       parameters:
