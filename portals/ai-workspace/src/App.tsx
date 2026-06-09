@@ -185,7 +185,6 @@ type OrgInitState = 'checking' | 'provisioning' | 'done' | 'error';
 function PostSignInInit({ children }: { children: React.ReactNode }) {
   const { user } = useAppAuth();
   const navigate = useNavigate();
-  const location = useLocation();
   const initiated = useRef(false);
   const [orgState, setOrgState] = useState<OrgInitState>('checking');
   const [orgError, setOrgError] = useState<string | null>(null);
@@ -194,12 +193,6 @@ function PostSignInInit({ children }: { children: React.ReactNode }) {
     if (initiated.current) return;
     if (!user) return;
     initiated.current = true;
-
-    // Already inside an org route — nothing to do.
-    if (location.pathname.startsWith('/organizations')) {
-      setOrgState('done');
-      return;
-    }
 
     const org = user.org;
     if (!org?.id || !org?.handle) {
@@ -226,7 +219,7 @@ function PostSignInInit({ children }: { children: React.ReactNode }) {
         setOrgError(err instanceof Error ? err.message : 'Failed to set up workspace');
         setOrgState('error');
       });
-  }, [user, navigate, location.pathname]);
+  }, [user, navigate]);
 
   if (orgState === 'checking' || orgState === 'provisioning') {
     return (
