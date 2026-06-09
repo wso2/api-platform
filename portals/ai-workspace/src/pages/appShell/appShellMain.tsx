@@ -17,7 +17,7 @@
  */
 
 import type { JSX } from 'react';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 // import { useAuthContext } from '@asgardeo/auth-react'; // [standalone]
 import {
@@ -82,8 +82,7 @@ export default function AppLayout(): JSX.Element {
     error,
   } = useWorkspaceAppShell();
 
-  // [standalone] logout clears the stored token and reloads
-  const onLogout = () => { logout(); };
+  const onLogout = useCallback(() => { void logout(); }, [logout]);
 
   const { state: shellState, actions: shellActions } = useOxygenAppShell({
     initialCollapsed: false,

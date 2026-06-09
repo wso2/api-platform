@@ -24,13 +24,17 @@ import {
   useNavigate,
 } from 'react-router-dom';
 import { useAuth } from 'react-oidc-context';
-import Login from './pages/login/login';
+import AutoLoginPage from './pages/login/AutoLoginPage';
+import AdminLoginPage from './pages/admin/AdminLoginPage';
 import AppShellMain from './pages/appShell/appShellMain';
 import { AppShellProvider } from './contexts/AppShellContext';
 import { RoleProvider } from './contexts/RoleContext';
 import PageErrorBoundary from './Components/common/PageErrorBoundary';
 import { AIWorkspaceSnackbarProvider } from './contexts/AIWorkspaceSnackbarContext';
 import { MoesifProvider } from './contexts/MoesifContext';
+import OrgProvisioningPage from './pages/register/OrgProvisioningPage';
+import { checkOrganizationExists, registerOrganization } from './apis/platformApis';
+import { DEFAULT_ORG_REGION } from './config.env';
 
 // App Shell Pages
 import Overview from './pages/appShell/appShellPages/overview/Overview';
@@ -62,7 +66,6 @@ import EditServiceProvider from './pages/appShell/appShellPages/serviceProvider/
 
 import GatewaysLayout from './pages/appShell/appShellPages/gateways/GatewaysLayout.tsx';
 import OrgRegisterPage from './pages/register/OrgRegisterPage';
-import OrgSelectPage from './pages/select/OrgSelectPage';
 import Insights from './pages/appShell/appShellPages/insights/Main';
 import QuickStart from './pages/appShell/appShellPages/quickStart/Main';
 import Settings from './pages/appShell/appShellPages/settings/Main';
@@ -73,18 +76,10 @@ import ExternalServersDeploy from './pages/appShell/appShellPages/externalServer
 import EditExternalServer from './pages/appShell/appShellPages/externalServers/EditExternalServer';
 import { MCPServerValidationProvider } from './contexts/MCP';
 import { LLMProvidersProvider } from './contexts/llmProvider';
-import { ChoreoUserProvider, useChoreoUser } from './contexts/ChoreoUserContext';
+import React, { useRef, useState } from 'react';
+import { ChoreoUserProvider } from './contexts/ChoreoUserContext';
 import { useAppAuth } from './contexts/AppAuthContext';
-import { ORG_HANDLE } from './config.env';
 import { Box, CircularProgress } from '@wso2/oxygen-ui';
-
-/** Must match the key used in main.tsx's OIDCBootstrap. */
-const ORG_HANDLE_STORAGE_KEY = 'ai_workspace_org_handle';
-
-function resolveOrgHandle(): string {
-  return ORG_HANDLE || localStorage.getItem(ORG_HANDLE_STORAGE_KEY) || '';
-}
-import React from 'react';
 
 /**
  * Only allow same-origin relative paths as return URLs to prevent open redirects.
@@ -115,11 +110,11 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 
   if (!isAuthenticated) {
     const returnUrl = sanitizeReturnUrl(location.pathname + location.search);
-    const skip = ['/', '/login', '/signin', '/getting-started'];
+    const skip = ['/', '/login', '/signin', '/admin'];
     if (!skip.includes(returnUrl)) {
       sessionStorage.setItem('ai_workspace_return_url', returnUrl);
     }
-    return <Navigate to="/getting-started" replace />;
+    return <Navigate to="/login" replace />;
   }
 
   return <>{children}</>;
@@ -137,18 +132,44 @@ function SuperAdminRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-// Shows a spinner while react-oidc-context automatically processes the ?code= param.
-// Navigation to the org home is handled by onSigninCallback in OIDCWrapper (main.tsx).
-// If the callback fails, auth.error is set and we redirect to /getting-started.
+// Processes the OIDC ?code= callback. Shows a spinner while react-oidc-context
+// exchanges the code; on success onSigninCallback in main.tsx navigates to the app.
+// On error, shows the reason and lets the user retry.
 function SigninCallbackRoute() {
   const auth = useAuth();
   const navigate = useNavigate();
 
-  React.useEffect(() => {
-    if (auth.error) {
-      navigate('/getting-started', { replace: true });
-    }
-  }, [auth.error, navigate]);
+  const handleRetry = React.useCallback(() => {
+    navigate('/login', { replace: true });
+  }, [navigate]);
+
+  if (auth.error) {
+    return (
+      <Box sx={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', p: 3 }}>
+        <Box sx={{ maxWidth: 440, width: '100%', textAlign: 'center' }}>
+          <CircularProgress size={28} sx={{ mb: 3, color: 'error.main' }} />
+          <Box sx={{ mb: 1, fontSize: '1.125rem', fontWeight: 700 }}>
+            Sign-in failed
+          </Box>
+          <Box sx={{ mb: 3, color: 'text.secondary', fontSize: '0.875rem' }}>
+            {auth.error.message || 'An unexpected error occurred during authentication.'}
+          </Box>
+          <Box
+            component="button"
+            onClick={handleRetry}
+            sx={{
+              px: 3, py: 1, borderRadius: 1, border: 'none',
+              bgcolor: 'primary.main', color: 'primary.contrastText',
+              fontSize: '0.875rem', fontWeight: 600, cursor: 'pointer',
+              '&:hover': { bgcolor: 'primary.dark' },
+            }}
+          >
+            Back to Sign In
+          </Box>
+        </Box>
+      </Box>
+    );
+  }
 
   return (
     <Box sx={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -157,22 +178,74 @@ function SigninCallbackRoute() {
   );
 }
 
-// Redirects to the org home when an authenticated user lands on a non-org path
-// (e.g. navigating directly to '/').
+type OrgInitState = 'checking' | 'provisioning' | 'done' | 'error';
+
+// After sign-in: checks whether the user's org (from token claims) is registered,
+// auto-registers it if not, then navigates to the org home page.
 function PostSignInInit({ children }: { children: React.ReactNode }) {
-  const { isTokenExchanged, setIsTokenExchanged } = useChoreoUser();
+  const { user } = useAppAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const initiated = useRef(false);
+  const [orgState, setOrgState] = useState<OrgInitState>('checking');
+  const [orgError, setOrgError] = useState<string | null>(null);
 
   React.useEffect(() => {
-    if (isTokenExchanged) return;
-    setIsTokenExchanged(true);
-    // Only redirect if we're at a root-level path with no org context yet.
-    if (!location.pathname.startsWith('/organizations')) {
-      const handle = resolveOrgHandle();
-      if (handle) navigate(`/organizations/${handle}/home`, { replace: true });
+    if (initiated.current) return;
+    if (!user) return;
+    initiated.current = true;
+
+    // Already inside an org route — nothing to do.
+    if (location.pathname.startsWith('/organizations')) {
+      setOrgState('done');
+      return;
     }
-  }, [isTokenExchanged, navigate, location.pathname]);
+
+    const org = user.org;
+    if (!org?.id || !org?.handle) {
+      // No org claims in token — render the app and let AppShellContext handle it.
+      setOrgState('done');
+      return;
+    }
+
+    checkOrganizationExists(org.id)
+      .then(async (exists) => {
+        if (!exists) {
+          setOrgState('provisioning');
+          await registerOrganization({
+            id: org.id,
+            name: org.name || org.handle,
+            handle: org.handle,
+            region: DEFAULT_ORG_REGION,
+          });
+        }
+        navigate(`/organizations/${org.handle}/home`, { replace: true });
+        setOrgState('done');
+      })
+      .catch((err: unknown) => {
+        setOrgError(err instanceof Error ? err.message : 'Failed to set up workspace');
+        setOrgState('error');
+      });
+  }, [user, navigate, location.pathname]);
+
+  if (orgState === 'checking' || orgState === 'provisioning') {
+    return (
+      <OrgProvisioningPage
+        orgName={user?.org?.name ?? undefined}
+        isProvisioning={orgState === 'provisioning'}
+      />
+    );
+  }
+
+  if (orgState === 'error') {
+    return (
+      <OrgProvisioningPage
+        orgName={user?.org?.name ?? undefined}
+        error={orgError}
+        onRetry={() => { initiated.current = false; setOrgState('checking'); }}
+      />
+    );
+  }
 
   return <>{children}</>;
 }
@@ -215,27 +288,19 @@ export default function App() {
   return (
     <ChoreoUserProvider>
       <Routes>
-        {/* OAuth callback */}
+        {/* OAuth callback — react-oidc-context processes the ?code= param here */}
         <Route path="/signin" element={<SigninCallbackRoute />} />
 
-        {/* Getting started — handled by AppRoot before App renders, but
-            catch it here in case somehow reached inside App */}
-        <Route path="/getting-started" element={<Navigate to="/" replace />} />
+        {/* Login — shows full-page loader and auto-redirects to the IDP */}
+        <Route path="/login" element={<PublicOnlyRoute><AutoLoginPage /></PublicOnlyRoute>} />
 
-        {/* Login page — kept for backward compatibility */}
-        <Route path="/login" element={<PublicOnlyRoute><Login /></PublicOnlyRoute>} />
+        {/* Admin login — super admin credential form (dev/ops only) */}
+        <Route path="/admin" element={<PublicOnlyRoute><AdminLoginPage /></PublicOnlyRoute>} />
 
-        {/* Organization registration — requires auth, shown only when no org exists */}
+        {/* Organization registration — requires auth, accessible to super admin */}
         <Route path="/register-org" element={
           <ProtectedRoute>
             <OrgRegisterPage />
-          </ProtectedRoute>
-        } />
-
-        {/* Organization selection — requires auth, lets user navigate to any org by handle */}
-        <Route path="/select-org" element={
-          <ProtectedRoute>
-            <OrgSelectPage />
           </ProtectedRoute>
         } />
 

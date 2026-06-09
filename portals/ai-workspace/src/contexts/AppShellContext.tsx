@@ -116,16 +116,12 @@ export const AppShellProvider: React.FC<AppShellProviderProps> = ({
   // ── Initialization ───────────────────────────────────────────────────────────
 
   const initialize = useCallback(async () => {
-    let keepLoading = false;
     try {
       const orgs = await getOrganizations();
 
       if (orgs.length === 0) {
-        logger.warn('No organization found. Please register at /register-org');
-        if (!window.location.pathname.startsWith('/register-org')) {
-          keepLoading = true;
-          window.location.href = '/register-org';
-        }
+        logger.warn('No organization found in platform API response');
+        setError('Organization not found. Please contact your administrator.');
         return;
       }
 
@@ -138,7 +134,7 @@ export const AppShellProvider: React.FC<AppShellProviderProps> = ({
       logger.error('Initialization failed:', err);
       setError(`Failed to initialize: ${err?.message ?? 'Unknown error'}`);
     } finally {
-      if (!keepLoading) setIsLoading(false);
+      setIsLoading(false);
     }
   }, [getOrganizations, fetchProjectsForOrg, setIsTokenExchanged]);
 

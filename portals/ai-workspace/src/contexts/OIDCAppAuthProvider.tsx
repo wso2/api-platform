@@ -18,11 +18,17 @@
 
 import React, { useCallback, useMemo } from 'react';
 import { useAuth } from 'react-oidc-context';
-import { AppAuthContext, type AppUser } from './AppAuthContext';
-import { OIDC_USERNAME_CLAIM, OIDC_EMAIL_CLAIM } from '../config.env';
+import { AppAuthContext, type AppUser, type AppOrg } from './AppAuthContext';
+import {
+  OIDC_USERNAME_CLAIM,
+  OIDC_EMAIL_CLAIM,
+  OIDC_ORG_ID_CLAIM,
+  OIDC_ORG_NAME_CLAIM,
+  OIDC_ORG_HANDLE_CLAIM,
+} from '../config.env';
 import { checkPermission, isPlatformRole } from '../auth/permissions';
 import type { PlatformRole } from '../auth/permissions';
-import { handleLogout } from '../auth/logout';
+import { clearAuthData } from '../auth/logout';
 import { setStoredToken } from '../clients/choreoApiClient';
 
 function decodeJwtPayload(token: string): Record<string, unknown> {
@@ -35,9 +41,10 @@ function decodeJwtPayload(token: string): Record<string, unknown> {
 
 function extractScopesFromJwt(token: string): string[] {
   const payload = decodeJwtPayload(token);
-  const scope = payload.scope;
-  if (typeof scope === 'string') return scope.split(' ').filter(Boolean);
-  if (Array.isArray(scope)) return scope as string[];
+  // Check 'scope' (standard) and 'scp' (Asgardeo / Azure AD variant) claims.
+  const raw = payload.scope ?? payload.scp;
+  if (typeof raw === 'string') return raw.split(' ').filter(Boolean);
+  if (Array.isArray(raw)) return (raw as unknown[]).filter((s): s is string => typeof s === 'string');
   return [];
 }
 
@@ -69,11 +76,20 @@ export function OIDCAppAuthProvider({ children }: { children: React.ReactNode })
     const scopes = [...new Set(rawScopes)];
     const claim = (key: string) =>
       (idClaims[key] as string | undefined) || (atClaims[key] as string | undefined) || null;
+
+    const orgId     = (atClaims[OIDC_ORG_ID_CLAIM]     as string | undefined) || null;
+    const orgName   = (atClaims[OIDC_ORG_NAME_CLAIM]   as string | undefined) || null;
+    const orgHandle = (atClaims[OIDC_ORG_HANDLE_CLAIM] as string | undefined) || null;
+    const org: AppOrg | null = (orgId || orgHandle)
+      ? { id: orgId ?? '', name: orgName ?? orgHandle ?? '', handle: orgHandle ?? '' }
+      : null;
+
     return {
       name: claim(OIDC_USERNAME_CLAIM),
       email: claim(OIDC_EMAIL_CLAIM),
       role,
       scopes,
+      org,
     };
   }, [auth.user]);
 
@@ -82,7 +98,20 @@ export function OIDCAppAuthProvider({ children }: { children: React.ReactNode })
   }, [auth]);
 
   const logout = useCallback(async () => {
-    await handleLogout(() => auth.signoutRedirect());
+    clearAuthData();
+    // Always clear OIDC state locally first so the user is logged out of the
+    // app regardless of what the IDP does next.
+    const idToken = auth.user?.id_token;
+    await auth.removeUser();
+    try {
+      // Pass id_token_hint so IDPs that require it (e.g. Thunder, Asgardeo)
+      // don't show their own "Something Went Wrong" error page.
+      await auth.signoutRedirect({ id_token_hint: idToken });
+    } catch {
+      // IDP has no end_session_endpoint or the call failed — user is already
+      // logged out locally, just send them to the sign-in page.
+      window.location.href = '/login';
+    }
   }, [auth]);
 
   const hasPermission = useCallback(

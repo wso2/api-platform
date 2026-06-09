@@ -46,15 +46,60 @@ export const CHOREO_SYSTEM_ORG = getEnvOrDefault(
   'choreocontrolplane'
 );
 
-// The org handle this workspace deployment serves. Used to fetch OIDC config
-// from the platform API's unauthenticated discovery endpoint before login.
-export const ORG_HANDLE = getEnvOrDefault('VITE_ORG_HANDLE', '');
+// Static OIDC configuration — set these to match the root-org OIDC app in your IDP.
+// Authority is the issuer URL; the OIDC client will auto-discover endpoints from {authority}/.well-known/openid-configuration.
+export const OIDC_AUTHORITY  = getEnvOrDefault('VITE_OIDC_AUTHORITY', '');
+export const OIDC_CLIENT_ID  = getEnvOrDefault('VITE_OIDC_CLIENT_ID', '');
 
-// Scopes to request at login. Authority, client_id, and logout URL are fetched
-// dynamically from GET /portal/api/v1/organizations/{handle}/auth at startup.
+// JWT claim name mappings — configure to match your IDP's token structure.
+// These must match AUTH_IDP_ORGANIZATION_CLAIM_NAME / AUTH_IDP_ORG_NAME_CLAIM_NAME /
+// AUTH_IDP_ORG_HANDLE_CLAIM_NAME on the Platform API side.
+export const OIDC_ORG_ID_CLAIM     = getEnvOrDefault('VITE_OIDC_ORG_ID_CLAIM',     'organization');
+export const OIDC_ORG_NAME_CLAIM   = getEnvOrDefault('VITE_OIDC_ORG_NAME_CLAIM',   'org_name');
+export const OIDC_ORG_HANDLE_CLAIM = getEnvOrDefault('VITE_OIDC_ORG_HANDLE_CLAIM', 'org_handle');
+
+// Default region used when auto-registering an organization on first login.
+export const DEFAULT_ORG_REGION = getEnvOrDefault('VITE_DEFAULT_ORG_REGION', 'us');
+
+// Scopes to request at login — derived from openapi.yaml x-required-scopes (ap: prefix).
 export const OIDC_SCOPE = getEnvOrDefault(
   'VITE_OIDC_SCOPE',
-  'openid profile email api-platform:gateway:manage api-platform:gateway:create api-platform:gateway:read api-platform:gateway:update api-platform:gateway:delete api-platform:gateway:token:manage api-platform:gateway:token:read api-platform:gateway:token:create api-platform:gateway:token:delete api-platform:gateway:policy:manage api-platform:gateway:policy:read api-platform:gateway:policy:create api-platform:gateway:policy:delete api-platform:gateway:artifacts:read api-platform:gateway:manifest:read api-platform:gateway:status:read api-platform:rest_api:manage api-platform:rest_api:create api-platform:rest_api:read api-platform:rest_api:update api-platform:rest_api:delete api-platform:rest_api:publish api-platform:rest_api:import api-platform:rest_api:gateway:manage api-platform:rest_api:gateway:create api-platform:rest_api:gateway:read api-platform:rest_api:deployment:manage api-platform:rest_api:deployment:create api-platform:rest_api:deployment:read api-platform:rest_api:deployment:delete api-platform:rest_api:deployment:undeploy api-platform:rest_api:deployment:restore api-platform:rest_api:api_key:manage api-platform:rest_api:api_key:create api-platform:rest_api:api_key:read api-platform:rest_api:api_key:update api-platform:rest_api:api_key:delete api-platform:project:manage api-platform:project:create api-platform:project:read api-platform:project:update api-platform:project:delete api-platform:application:manage api-platform:application:create api-platform:application:read api-platform:application:update api-platform:application:delete api-platform:application:api_key:manage api-platform:application:api_key:create api-platform:application:api_key:read api-platform:application:api_key:delete api-platform:application:associations:manage api-platform:application:associations:create api-platform:application:associations:read api-platform:application:associations:delete api-platform:application:associations:api_key:read api-platform:devportal:manage api-platform:devportal:create api-platform:devportal:read api-platform:devportal:update api-platform:devportal:delete api-platform:subscription:manage api-platform:subscription:create api-platform:subscription:read api-platform:subscription:update api-platform:subscription:delete api-platform:subscription_plan:manage api-platform:subscription_plan:create api-platform:subscription_plan:read api-platform:subscription_plan:update api-platform:subscription_plan:delete api-platform:llm_template:manage api-platform:llm_template:create api-platform:llm_template:read api-platform:llm_template:update api-platform:llm_template:delete api-platform:llm_provider:manage api-platform:llm_provider:create api-platform:llm_provider:read api-platform:llm_provider:update api-platform:llm_provider:delete api-platform:llm_provider:deployment:manage api-platform:llm_provider:key:manage api-platform:llm_proxy:manage api-platform:llm_proxy:create api-platform:llm_proxy:read api-platform:llm_proxy:update api-platform:llm_proxy:delete api-platform:llm_proxy:deployment:manage api-platform:llm_proxy:key:manage api-platform:mcp_proxy:manage api-platform:mcp_proxy:create api-platform:mcp_proxy:read api-platform:mcp_proxy:update api-platform:mcp_proxy:delete api-platform:mcp_proxy:deployment:manage api-platform:websub_api:manage api-platform:websub_api:create api-platform:websub_api:read api-platform:websub_api:update api-platform:websub_api:delete api-platform:websub_api:deployment:manage api-platform:websub_api:publish api-platform:websub_api:key:manage api-platform:webbroker_api:manage api-platform:webbroker_api:create api-platform:webbroker_api:read api-platform:webbroker_api:update api-platform:webbroker_api:delete api-platform:webbroker_api:deployment:manage api-platform:webbroker_api:publish api-platform:webbroker_api:key:manage api-platform:git:read'
+  'openid profile email' +
+  ' ap:organization:read ap:organization:manage ap:organization:subscription:read' +
+  ' ap:project:read ap:project:create ap:project:update ap:project:delete ap:project:manage' +
+  ' ap:application:read ap:application:create ap:application:update ap:application:delete ap:application:manage' +
+  ' ap:application:api_key:read ap:application:api_key:create ap:application:api_key:delete ap:application:api_key:manage' +
+  ' ap:application:associations:read ap:application:associations:create ap:application:associations:delete ap:application:associations:manage ap:application:associations:api_key:read' +
+  ' ap:gateway:read ap:gateway:create ap:gateway:update ap:gateway:delete ap:gateway:manage' +
+  ' ap:gateway:token:read ap:gateway:token:create ap:gateway:token:delete ap:gateway:token:manage' +
+  ' ap:gateway:policy:read ap:gateway:policy:create ap:gateway:policy:delete ap:gateway:policy:manage' +
+  ' ap:gateway:artifacts:read ap:gateway:manifest:read' +
+  ' ap:rest_api:read ap:rest_api:create ap:rest_api:update ap:rest_api:delete ap:rest_api:manage ap:rest_api:import' +
+  ' ap:rest_api:gateway:read ap:rest_api:gateway:create ap:rest_api:gateway:manage' +
+  ' ap:rest_api:deployment:read ap:rest_api:deployment:create ap:rest_api:deployment:delete ap:rest_api:deployment:manage ap:rest_api:deployment:undeploy ap:rest_api:deployment:restore' +
+  ' ap:rest_api:api_key:read ap:rest_api:api_key:create ap:rest_api:api_key:update ap:rest_api:api_key:delete ap:rest_api:api_key:manage' +
+  ' ap:rest_api:publication:read ap:rest_api:publication:create ap:rest_api:publication:delete' +
+  ' ap:devportal:read ap:devportal:create ap:devportal:update ap:devportal:delete ap:devportal:manage' +
+  ' ap:subscription:read ap:subscription:create ap:subscription:update ap:subscription:delete ap:subscription:manage' +
+  ' ap:subscription_plan:read ap:subscription_plan:create ap:subscription_plan:update ap:subscription_plan:delete ap:subscription_plan:manage' +
+  ' ap:llm_template:read ap:llm_template:create ap:llm_template:update ap:llm_template:delete ap:llm_template:manage' +
+  ' ap:llm_provider:read ap:llm_provider:create ap:llm_provider:update ap:llm_provider:delete ap:llm_provider:manage' +
+  ' ap:llm_provider:api_key:read ap:llm_provider:api_key:create ap:llm_provider:api_key:delete ap:llm_provider:api_key:manage' +
+  ' ap:llm_provider:deployment:read ap:llm_provider:deployment:create ap:llm_provider:deployment:delete ap:llm_provider:deployment:manage ap:llm_provider:deployment:undeploy ap:llm_provider:deployment:restore' +
+  ' ap:llm_proxy:read ap:llm_proxy:create ap:llm_proxy:update ap:llm_proxy:delete ap:llm_proxy:manage' +
+  ' ap:llm_proxy:api_key:read ap:llm_proxy:api_key:create ap:llm_proxy:api_key:delete ap:llm_proxy:api_key:manage' +
+  ' ap:llm_proxy:deployment:read ap:llm_proxy:deployment:create ap:llm_proxy:deployment:delete ap:llm_proxy:deployment:manage ap:llm_proxy:deployment:undeploy ap:llm_proxy:deployment:restore' +
+  ' ap:mcp_proxy:read ap:mcp_proxy:create ap:mcp_proxy:update ap:mcp_proxy:delete ap:mcp_proxy:manage' +
+  ' ap:mcp_proxy:deployment:read ap:mcp_proxy:deployment:create ap:mcp_proxy:deployment:delete ap:mcp_proxy:deployment:manage ap:mcp_proxy:deployment:undeploy ap:mcp_proxy:deployment:restore' +
+  ' ap:websub_api:read ap:websub_api:create ap:websub_api:update ap:websub_api:delete ap:websub_api:manage' +
+  ' ap:websub_api:api_key:read ap:websub_api:api_key:create ap:websub_api:api_key:delete ap:websub_api:api_key:manage ap:websub_api:api_key:update' +
+  ' ap:websub_api:deployment:read ap:websub_api:deployment:create ap:websub_api:deployment:delete ap:websub_api:deployment:manage ap:websub_api:deployment:undeploy ap:websub_api:deployment:restore' +
+  ' ap:websub_api:publication:read ap:websub_api:publication:create ap:websub_api:publication:delete' +
+  ' ap:webbroker_api:read ap:webbroker_api:create ap:webbroker_api:update ap:webbroker_api:delete ap:webbroker_api:manage' +
+  ' ap:webbroker_api:api_key:read ap:webbroker_api:api_key:create ap:webbroker_api:api_key:delete ap:webbroker_api:api_key:manage ap:webbroker_api:api_key:update' +
+  ' ap:webbroker_api:deployment:read ap:webbroker_api:deployment:create ap:webbroker_api:deployment:delete ap:webbroker_api:deployment:manage ap:webbroker_api:deployment:undeploy ap:webbroker_api:deployment:restore' +
+  ' ap:webbroker_api:publication:read ap:webbroker_api:publication:create ap:webbroker_api:publication:delete' +
+  ' ap:git:read'
 );
 
 // OIDC redirect URIs — app-specific, not IDP-specific.

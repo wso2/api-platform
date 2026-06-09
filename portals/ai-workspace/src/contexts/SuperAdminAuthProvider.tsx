@@ -52,6 +52,7 @@ export function SuperAdminAuthProvider({ children, onLogout }: Props) {
         email: '',
         role: 'admin' as const,
         scopes: [],
+        org: null,
       },
       accessToken: null,
       hasPermission: () => true,

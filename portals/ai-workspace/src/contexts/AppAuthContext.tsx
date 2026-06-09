@@ -19,11 +19,18 @@
 import { createContext, useContext } from 'react';
 import type { PlatformRole } from '../auth/permissions';
 
+export interface AppOrg {
+  id: string;
+  name: string;
+  handle: string;
+}
+
 export interface AppUser {
   name: string | null;
   email: string | null;
   role: PlatformRole | null;
   scopes: string[];
+  org: AppOrg | null;
 }
 
 export interface AppAuthContextType {
