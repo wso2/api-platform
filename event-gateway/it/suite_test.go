@@ -61,6 +61,7 @@ func getFeaturePaths() []string {
 		"features/websub-e2e.feature",
 		"features/webbroker-api-management.feature",
 		"features/webbroker-e2e.feature",
+		"features/websub-webhook-secrets.feature",
 	}
 
 	raw := strings.TrimSpace(os.Getenv("IT_FEATURE_PATHS"))
@@ -132,10 +133,13 @@ func InitializeTestSuite(ctx *godog.TestSuiteContext) {
 
 // InitializeScenario registers step definitions and resets state before each scenario.
 func InitializeScenario(ctx *godog.ScenarioContext) {
+	whSecretSteps := &WebhookSecretSteps{}
+
 	ctx.Before(func(gctx context.Context, sc *godog.Scenario) (context.Context, error) {
 		if testState != nil {
 			testState.Reset()
 		}
+		whSecretSteps.Reset()
 		return gctx, nil
 	})
 
@@ -143,4 +147,5 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	RegisterWebSubSteps(ctx, testState)
 	RegisterWebBrokerSteps(ctx, testState)
 	RegisterCommonSteps(ctx, testState)
+	RegisterWebhookSecretSteps(ctx, testState, whSecretSteps)
 }
