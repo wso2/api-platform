@@ -124,9 +124,13 @@ func TestWebhookSecretStateHandlerHandleResources_NilResourceSkipped(t *testing.
 	}
 }
 
-// mustBuildWebhookSecretStateAny encodes secrets as a single Any whose Value is the
-// marshaled structpb.Struct, matching the serialization produced by
-// webhooksecretxds.SnapshotManager.RefreshSnapshot().
+// mustBuildWebhookSecretStateAny encodes secrets in the double-wrapped wire format
+// that the xDS server produces:
+//
+//	outer Any.Value = proto.Marshal(inner Any)
+//	inner Any.Value = proto.Marshal(structpb.Struct)
+//
+// This matches what the event-gateway handler receives from the LinearCache.
 func mustBuildWebhookSecretStateAny(t *testing.T, secrets map[string]map[string]string) *anypb.Any {
 	t.Helper()
 
@@ -146,8 +150,17 @@ func mustBuildWebhookSecretStateAny(t *testing.T, secrets map[string]map[string]
 		t.Fatalf("failed to marshal Struct: %v", err)
 	}
 
-	return &anypb.Any{
+	innerAny := &anypb.Any{
 		TypeUrl: WebhookSecretStateTypeURL,
 		Value:   structBytes,
+	}
+	innerAnyBytes, err := proto.Marshal(innerAny)
+	if err != nil {
+		t.Fatalf("failed to marshal inner Any: %v", err)
+	}
+
+	return &anypb.Any{
+		TypeUrl: WebhookSecretStateTypeURL,
+		Value:   innerAnyBytes,
 	}
 }
