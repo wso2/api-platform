@@ -27,6 +27,7 @@ import (
 	discoveryv3 "github.com/envoyproxy/go-control-plane/envoy/service/discovery/v3"
 	commonwebhooksecret "github.com/wso2/api-platform/common/webhooksecret"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/structpb"
 )
 
@@ -42,7 +43,8 @@ func NewWebhookSecretStateHandler(store *commonwebhooksecret.WebhookSecretStore)
 }
 
 // HandleResources processes a WebhookSecretState xDS update and atomically replaces the store.
-// The resource is encoded as: outer Any → structpb.Struct → JSON map.
+// The resource is encoded as: outer Any → inner Any → structpb.Struct → JSON map.
+// The xDS server double-wraps the resource, so two proto.Unmarshal steps are required.
 func (h *WebhookSecretStateHandler) HandleResources(ctx context.Context, resources []*discoveryv3.Resource, version string) error {
 	combined := make(map[string]map[string]string)
 
@@ -51,8 +53,13 @@ func (h *WebhookSecretStateHandler) HandleResources(ctx context.Context, resourc
 			continue
 		}
 
+		innerAny := &anypb.Any{}
+		if err := proto.Unmarshal(res.Resource.Value, innerAny); err != nil {
+			return fmt.Errorf("webhooksecret handler: failed to unmarshal inner Any: %w", err)
+		}
+
 		s := &structpb.Struct{}
-		if err := proto.Unmarshal(res.Resource.Value, s); err != nil {
+		if err := proto.Unmarshal(innerAny.Value, s); err != nil {
 			return fmt.Errorf("webhooksecret handler: failed to unmarshal Struct: %w", err)
 		}
 
