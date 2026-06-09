@@ -152,6 +152,14 @@ func (h *WebSubAPIDeploymentHandler) RestoreDeployment(c *gin.Context) {
 		deploymentId = c.Query("deploymentId")
 	}
 	gatewayId := c.Query("gatewayId")
+	if deploymentId == "" {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "deploymentId is required"))
+		return
+	}
+	if gatewayId == "" {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "gatewayId is required"))
+		return
+	}
 
 	deployment, err := h.websubAPIDeploymentService.RestoreWebSubAPIDeploymentByHandle(apiId, deploymentId, gatewayId, orgId)
 	if err != nil {

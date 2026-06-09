@@ -169,7 +169,7 @@ func (s *OrganizationService) GetOrganizationSubscription(orgID string) (*api.Or
 }
 
 func (s *OrganizationService) RegisterOrganization(id string, handle string, name string, region string) (*api.Organization, error) {
-	// Auto-generate handle from name if not provided
+	// Auto-generate handle from name if not provided; otherwise validate the explicit handle.
 	if handle == "" {
 		generated, genErr := utils.GenerateHandle(name, func(h string) bool {
 			existing, _ := s.orgRepo.GetOrganizationByIdOrHandle("", h)
@@ -179,6 +179,10 @@ func (s *OrganizationService) RegisterOrganization(id string, handle string, nam
 			return nil, fmt.Errorf("failed to generate organization handle: %w", genErr)
 		}
 		handle = generated
+	} else {
+		if err := utils.ValidateHandle(handle); err != nil {
+			return nil, err
+		}
 	}
 
 	// Check if id or handle already exists
