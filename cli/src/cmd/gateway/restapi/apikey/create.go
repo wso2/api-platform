@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -22,6 +22,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"net/url"
 	"os"
 	"strings"
@@ -120,6 +121,9 @@ func runCreateCommand(cmd *cobra.Command) error {
 	resp, err := client.Post(endpoint, bytes.NewReader(data))
 	if err != nil {
 		return fmt.Errorf("failed to create API key: %w", err)
+	}
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return fmt.Errorf("failed to create API key: received status code %d", resp.StatusCode)
 	}
 
 	fmt.Printf("API key %q generated successfully.\n", cr.Metadata.Name)

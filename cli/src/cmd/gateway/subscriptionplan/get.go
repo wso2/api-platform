@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -75,6 +75,11 @@ func runGetCommand(cmd *cobra.Command) error {
 	if resp.StatusCode == http.StatusNotFound {
 		resp.Body.Close()
 		return fmt.Errorf("subscription plan with ID '%s' not found", getPlanID)
+	}
+
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		resp.Body.Close()
+		return fmt.Errorf("failed to get subscription plan: received status code %d", resp.StatusCode)
 	}
 
 	return gateway.PrintJSONResponse(resp)
