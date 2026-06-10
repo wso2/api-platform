@@ -64,6 +64,8 @@ function onListening() {
     );
 }
 
+let server;
+
 async function startServer() {
     if (config.db.dialect === 'sqlite') {
         await sequelize.sync();
@@ -71,7 +73,7 @@ async function startServer() {
     }
 
     if (config.advanced.http) {
-        http.createServer(app).listen(PORT, '0.0.0.0', onListening);
+        server = http.createServer(app).listen(PORT, '0.0.0.0', onListening);
     } else {
     try {
         const certPath = path.resolve(config.serverCerts.pathToCert);
@@ -81,7 +83,7 @@ async function startServer() {
         const serverKey = fs.readFileSync(keyPath);
         const caCert = fs.readFileSync(path.resolve(config.serverCerts.pathToCA));
 
-        https.createServer({
+        server = https.createServer({
             key: serverKey,
             cert: serverCert,
             ca: caCert,
@@ -127,9 +129,19 @@ const gracefulShutdown = (signal) => {
         message: `Received ${signal}. Gracefully shutting down...`
     });
 
-    logger.info('Application shutdown complete');
-    process.exit(0);
+    const done = () => {
+        logger.info('Application shutdown complete');
+        process.exit(0);
+    };
+
+    if (server) {
+        server.close(done);
+    } else {
+        done();
+    }
 };
 
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+// nodemon sends SIGUSR2 to restart; process.once so the next spawned process can re-register
+process.once('SIGUSR2', () => gracefulShutdown('SIGUSR2'));
