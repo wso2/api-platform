@@ -278,7 +278,7 @@ func (h *HealthSteps) waitForPolicySnapshotSync() error {
 	// Probe the controller that actually feeds xDS to gateway-runtime, whose
 	// policy-chain version the policy engine echoes. In the two-controller
 	// Postgres topology the suite sets PolicySnapshotControllerAdminURL to
-	// gateway-controller-runtime (port 9093); otherwise (single-controller
+	// gateway-controller-xds (port 9093); otherwise (single-controller
 	// topologies, unit tests) we fall back to the management controller.
 	adminBase := h.state.Config.PolicySnapshotControllerAdminURL
 	if adminBase == "" {

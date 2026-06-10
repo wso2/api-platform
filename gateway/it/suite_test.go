@@ -214,9 +214,9 @@ func InitializeTestSuite(ctx *godog.TestSuiteContext) {
 		testState = NewTestState()
 
 		// In the two-controller Postgres topology, gateway-runtime is fed xDS by
-		// gateway-controller-runtime, so the policy-snapshot version probe must
+		// gateway-controller-xds, so the policy-snapshot version probe must
 		// target that controller's admin API (host port 9093) rather than the
-		// management controller. The Makefile sets IT_GATEWAY_CONTROLLER_RUNTIME
+		// management controller. The Makefile sets IT_GATEWAY_CONTROLLER_HA
 		// for that topology; otherwise this is empty and waitForPolicySnapshotSync
 		// falls back to the management controller (single-controller, unit tests).
 		if url := policySnapshotControllerAdminURL(); url != "" {

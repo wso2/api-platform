@@ -39,7 +39,7 @@ type Config struct {
 	// PolicySnapshotControllerAdminURL is the admin base URL probed for the
 	// policy-chain xDS-sync version. It targets the controller that feeds xDS to
 	// gateway-runtime, which in the two-controller Postgres topology is
-	// gateway-controller-runtime rather than the management controller. When
+	// gateway-controller-xds rather than the management controller. When
 	// empty, waitForPolicySnapshotSync falls back to GatewayControllerAdminURL
 	// (single-controller topologies and unit tests).
 	PolicySnapshotControllerAdminURL string
