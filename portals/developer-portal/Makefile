@@ -67,7 +67,8 @@ help: ## Show this help message
 	@echo '  make clean                       - Clean all build artifacts'
 	@echo ''
 	@echo 'Integration Tests:'
-	@echo '  make it                          - Run Cypress integration tests (headless, in Docker)'
+	@echo '  make it                          - Run Cypress integration tests against SQLite (headless, in Docker)'
+	@echo '  make it-postgres                 - Run Cypress integration tests against PostgreSQL (headless, in Docker)'
 	@echo '  make it-open                     - Open Cypress interactive UI (needs devportal running locally)'
 
 # Build Targets
@@ -185,9 +186,12 @@ generate-apidocs: ## Generate REST API docs from devportal OpenAPI spec
 
 # Integration Test Targets
 
-.PHONY: it it-open
-it: ## Run Cypress integration tests headlessly inside Docker Compose
+.PHONY: it it-postgres it-open
+it: ## Run Cypress integration tests against SQLite (headless, in Docker)
 	$(MAKE) -C it test DOCKER_REGISTRY=$(DOCKER_REGISTRY)
+
+it-postgres: ## Run Cypress integration tests against PostgreSQL (headless, in Docker)
+	$(MAKE) -C it test-postgres DOCKER_REGISTRY=$(DOCKER_REGISTRY)
 
 it-open: ## Open Cypress interactive UI against a locally running devportal
 	$(MAKE) -C it open DOCKER_REGISTRY=$(DOCKER_REGISTRY)

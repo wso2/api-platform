@@ -16,22 +16,44 @@
 # under the License.
 # --------------------------------------------------------------------
 
-# Integration test Docker Compose for the Developer Portal.
+# Integration test Docker Compose — PostgreSQL variant.
 #
 # Usage (via Makefile):
-#   make test      — run Cypress headlessly (CI)
-#   make open      — open Cypress interactive UI against a locally running devportal
+#   make test-postgres      — run Cypress headlessly against PostgreSQL (CI)
 #
 # The devportal service uses the pre-built image tagged :test (set by make ensure-test-tag).
 
 services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: devportal
+      POSTGRES_PASSWORD: devportal
+      POSTGRES_DB: devportal
+    volumes:
+      - ../database:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U devportal -d devportal"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    networks:
+      - it-devportal-network
+
   devportal:
     image: ${DOCKER_REGISTRY:-ghcr.io/wso2/api-platform}/developer-portal:test
+    depends_on:
+      postgres:
+        condition: service_healthy
     environment:
-      # SQLite — no external database required.
-      DP_DB_DIALECT: sqlite
-      DP_DB_STORAGE: /tmp/devportal-it.db
-      # Seed the default org on startup.
+      DP_DB_HOST: postgres
+      DP_DB_PORT: 5432
+      DP_DB_DIALECT: postgres
+      DP_DB_USERNAME: devportal
+      DP_DB_PASSWORD: devportal
+      DP_DB_DATABASE: devportal
+      DP_SECRETS_DBSECRET: devportal
       DP_DEFAULTORGNAME: "default"
       # Use plain HTTP inside the test network so Cypress doesn't need to trust a cert.
       DP_ADVANCED_HTTP: "true"

@@ -59,17 +59,20 @@ const createOrganization = async (orgData, t) => {
     }
 };
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 const getOrganization = async (param) => {
     try {
+        const conditions = [
+            { ORG_NAME: param },
+            { ORG_HANDLE: typeof param === 'string' ? param.toLowerCase() : param },
+            { ORGANIZATION_IDENTIFIER: param },
+        ];
+        if (typeof param === 'string' && UUID_RE.test(param)) {
+            conditions.push({ ORG_ID: param });
+        }
         const organization = await Organization.findOne({
-            where: {
-                [Sequelize.Op.or]: [
-                    { ORG_NAME: param },
-                    { ORG_HANDLE: typeof param === 'string' ? param.toLowerCase() : param },
-                    { ORG_ID: param },
-                    { ORGANIZATION_IDENTIFIER: param }
-                ]
-            }
+            where: { [Sequelize.Op.or]: conditions }
         });
         if (!organization) {
             throw new Sequelize.EmptyResultError('Organization not found');

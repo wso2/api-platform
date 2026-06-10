@@ -48,13 +48,12 @@ describe('Developer Portal — Smoke', () => {
     });
 
     it('serves (or correctly 404s) the main CSS asset for the default view', () => {
-        cy.fixture('org').then(({ orgId }) => {
-            cy.request({
-                url: `/devportal/organizations/${orgId}/views/default/layout?fileType=style&fileName=main.css`,
-                failOnStatusCode: false,
-            }).then((resp) => {
-                expect(resp.status).to.be.oneOf([200, 304, 404]);
-            });
+        const orgId = Cypress.env('ORG_ID');
+        cy.request({
+            url: `/devportal/organizations/${orgId}/views/default/layout?fileType=style&fileName=main.css`,
+            failOnStatusCode: false,
+        }).then((resp) => {
+            expect(resp.status).to.be.oneOf([200, 304, 404]);
         });
     });
 });

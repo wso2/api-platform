@@ -138,10 +138,23 @@ const lines = [
     `-- Re-generate with: make generate-ddl  (or: node scripts/generate-ddl.js ${dialect})`,
 ];
 if (dialect === 'postgres') {
-    lines.push('-- Note: PostgreSQL ENUM types (enum_*) are created automatically by Sequelize');
-    lines.push('--       on first sync(). For manual init, add CREATE TYPE statements above.');
+    lines.push('-- PostgreSQL ENUM types (enum_*) are declared below before the tables that reference them.');
 }
 lines.push('');
+
+// Collect all PostgreSQL ENUM types from model attributes.
+// Sequelize names them: enum_<tableName>_<columnName>
+const pgEnums = []; // [{ typeName, values }]
+if (dialect === 'postgres') {
+    for (const model of ordered) {
+        for (const [colName, attr] of Object.entries(model.rawAttributes)) {
+            if (attr.type && attr.type.key === 'ENUM' && Array.isArray(attr.type.values)) {
+                const typeName = `enum_${model.tableName}_${colName}`;
+                pgEnums.push({ typeName, values: attr.type.values });
+            }
+        }
+    }
+}
 
 // DROP statements in reverse create order
 [...ordered].reverse().forEach(model => {
@@ -156,6 +169,20 @@ lines.push('');
         lines.push(`DROP TABLE IF EXISTS \`${model.tableName}\`;`);
     }
 });
+
+// DROP + CREATE ENUM types for PostgreSQL (after tables are dropped, before tables are created)
+if (pgEnums.length > 0) {
+    lines.push('');
+    pgEnums.forEach(({ typeName }) => {
+        lines.push(`DROP TYPE IF EXISTS "public"."${typeName}";`);
+    });
+    lines.push('');
+    pgEnums.forEach(({ typeName, values }) => {
+        const quoted = values.map(v => `'${v}'`).join(', ');
+        lines.push(`CREATE TYPE "public"."${typeName}" AS ENUM (${quoted});`);
+    });
+}
+
 lines.push('');
 
 // CREATE TABLE + explicit indexes

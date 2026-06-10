@@ -137,7 +137,7 @@ const SubscriptionMapping = sequelize.define('DP_API_SUBSCRIPTION', {
         },
     },
     POLICY_ID: {
-        type: DataTypes.STRING,
+        type: DataTypes.UUID,
         allowNull: true,
         references: {
             model: SubscriptionPolicy,
