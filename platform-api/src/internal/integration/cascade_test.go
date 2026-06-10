@@ -1,5 +1,3 @@
-//go:build integration
-
 /*
  *  Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
  *
@@ -17,6 +15,8 @@
  *  specific language governing permissions and limitations
  *  under the License.
  */
+
+//go:build integration
 
 package integration
 
@@ -49,20 +49,20 @@ func seedOrgGraph(t *testing.T, it *itDB) graph {
 		planLimit: id(),
 	}
 
-	it.exec(t, `INSERT INTO organizations (uuid, handle, display_name, region) VALUES (?, ?, ?, ?)`,
+	it.exec(t, `INSERT INTO organizations (uuid, handle, name, region) VALUES (?, ?, ?, ?)`,
 		g.org, "h-"+g.org[:8], "it org", "us")
-	it.exec(t, `INSERT INTO projects (uuid, handle, display_name, organization_uuid) VALUES (?, ?, ?, ?)`,
+	it.exec(t, `INSERT INTO projects (uuid, handle, name, organization_uuid) VALUES (?, ?, ?, ?)`,
 		g.project, "proj", "proj", g.org)
-	it.exec(t, `INSERT INTO applications (uuid, handle, project_uuid, organization_uuid, display_name, type) VALUES (?, ?, ?, ?, ?, ?)`,
+	it.exec(t, `INSERT INTO applications (uuid, handle, project_uuid, organization_uuid, name, type) VALUES (?, ?, ?, ?, ?, ?)`,
 		g.app, "app-"+g.app[:8], g.project, g.org, "app", "standard")
 
 	// REST API: an artifact + its rest_apis row (shared uuid).
 	it.exec(t, `INSERT INTO artifacts (uuid, type, organization_uuid) VALUES (?, ?, ?)`,
 		g.apiArtifact, "rest_api", g.org)
-	it.exec(t, `INSERT INTO rest_apis (uuid, organization_uuid, handle, display_name, version, project_uuid, lifecycle_status, configuration) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+	it.exec(t, `INSERT INTO rest_apis (uuid, organization_uuid, handle, name, version, project_uuid, lifecycle_status, configuration) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 		g.apiArtifact, g.org, "api-"+g.apiArtifact[:8], "api", "v1.0", g.project, "CREATED", []byte("{}"))
 
-	it.exec(t, `INSERT INTO subscription_plans (uuid, handle, display_name, organization_uuid) VALUES (?, ?, ?, ?)`,
+	it.exec(t, `INSERT INTO subscription_plans (uuid, handle, name, organization_uuid) VALUES (?, ?, ?, ?)`,
 		g.plan, "plan-"+g.plan[:8], "Plan "+g.plan[:8], g.org)
 	it.exec(t, `INSERT INTO subscription_plan_limits (uuid, subscription_plan_uuid, limit_type, limit_count, time_unit) VALUES (?, ?, ?, ?, ?)`,
 		g.planLimit, g.plan, "REQUEST_COUNT", 100, "MINUTE")
@@ -71,17 +71,19 @@ func seedOrgGraph(t *testing.T, it *itDB) graph {
 		g.sub, g.apiArtifact, "subscriber", "tok-"+g.sub[:8], "hash-"+g.sub[:8], g.plan, g.org)
 
 	// Gateway + a deployment + its current status.
-	it.exec(t, `INSERT INTO gateways (uuid, organization_uuid, handle, display_name, vhost, properties) VALUES (?, ?, ?, ?, ?, ?)`,
-		g.gateway, g.org, "gw-"+g.gateway[:8], "gw", "localhost", []byte("{}"))
+	it.exec(t, `INSERT INTO gateways (uuid, organization_uuid, handle, name, properties) VALUES (?, ?, ?, ?, ?)`,
+		g.gateway, g.org, "gw-"+g.gateway[:8], "gw", []byte("{}"))
+	it.exec(t, `INSERT INTO gateway_endpoints (gateway_uuid, host, protocol, port, context) VALUES (?, ?, ?, ?, ?)`,
+		g.gateway, "localhost", "https", 443, "")
 	it.exec(t, `INSERT INTO artifacts (uuid, type, organization_uuid) VALUES (?, ?, ?)`,
 		g.depArtifact, "rest_api", g.org)
-	it.exec(t, `INSERT INTO deployments (uuid, display_name, artifact_uuid, organization_uuid, gateway_uuid, content) VALUES (?, ?, ?, ?, ?, ?)`,
+	it.exec(t, `INSERT INTO deployments (uuid, name, artifact_uuid, organization_uuid, gateway_uuid, content) VALUES (?, ?, ?, ?, ?, ?)`,
 		g.deploy, "d", g.depArtifact, g.org, g.gateway, []byte("x"))
 	it.exec(t, `INSERT INTO deployment_status (artifact_uuid, organization_uuid, gateway_uuid, deployment_uuid) VALUES (?, ?, ?, ?)`,
 		g.depArtifact, g.org, g.gateway, g.deploy)
 
 	// An API key on the deployment artifact + its application mapping.
-	it.exec(t, `INSERT INTO api_keys (uuid, artifact_uuid, display_name, masked_api_key, api_key_hashes) VALUES (?, ?, ?, ?, ?)`,
+	it.exec(t, `INSERT INTO api_keys (uuid, artifact_uuid, name, masked_api_key, api_key_hashes) VALUES (?, ?, ?, ?, ?)`,
 		g.apiKey, g.depArtifact, "key", "ab12", []byte("{}"))
 	it.exec(t, `INSERT INTO application_api_key_mappings (application_uuid, api_key_id) VALUES (?, ?)`, g.app, g.apiKey)
 	it.exec(t, `INSERT INTO application_artifact_mappings (application_uuid, artifact_uuid) VALUES (?, ?)`, g.app, g.depArtifact)
@@ -164,6 +166,51 @@ func TestCascade_DeleteProjectRemovesApplications(t *testing.T) {
 	it.exec(t, `DELETE FROM projects WHERE uuid = ?`, g.project)
 	if got := it.count(t, "applications", "uuid", g.app); got != 0 {
 		t.Fatalf("[%s] application not removed after project delete: %d remain", it.driver, got)
+	}
+}
+
+// TestCascade_DeleteWebSubAPIRemovesHmacSecrets verifies that deleting the
+// artifacts row that backs a WebSub API cascade-removes both the websub_apis row
+// and all associated websub_api_hmac_secrets rows (two independent CASCADE edges
+// from artifacts). This catches regressions if either FK is changed to NO ACTION.
+func TestCascade_DeleteWebSubAPIRemovesHmacSecrets(t *testing.T) {
+	it := openITDB(t)
+	defer it.db.Close()
+
+	orgUUID := id()
+	projectUUID := id()
+	artifactUUID := id()
+
+	it.exec(t, `INSERT INTO organizations (uuid, handle, name, region) VALUES (?, ?, ?, ?)`,
+		orgUUID, "wsc-"+orgUUID[:8], "cascade org", "us")
+	it.exec(t, `INSERT INTO projects (uuid, handle, name, organization_uuid) VALUES (?, ?, ?, ?)`,
+		projectUUID, "cascade-proj", "cascade-proj", orgUUID)
+	it.exec(t, `INSERT INTO artifacts (uuid, type, organization_uuid) VALUES (?, ?, ?)`,
+		artifactUUID, "WebSubApi", orgUUID)
+	it.exec(t, `INSERT INTO websub_apis (uuid, organization_uuid, handle, name, version, project_uuid, lifecycle_status, configuration) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		artifactUUID, orgUUID, "ws-api-"+artifactUUID[:8], "ws-api", "v1.0", projectUUID, "CREATED", []byte("{}"))
+
+	secret1 := id()
+	secret2 := id()
+	it.exec(t, `INSERT INTO websub_api_hmac_secrets (uuid, artifact_uuid, handle, encrypted_secret, status) VALUES (?, ?, ?, ?, ?)`,
+		secret1, artifactUUID, "github-secret", []byte("enc1"), "active")
+	it.exec(t, `INSERT INTO websub_api_hmac_secrets (uuid, artifact_uuid, handle, encrypted_secret, status) VALUES (?, ?, ?, ?, ?)`,
+		secret2, artifactUUID, "gitlab-secret", []byte("enc2"), "active")
+
+	if got := it.count(t, "websub_api_hmac_secrets", "artifact_uuid", artifactUUID); got != 2 {
+		t.Fatalf("precondition: want 2 hmac secrets, got %d", got)
+	}
+	if got := it.count(t, "websub_apis", "uuid", artifactUUID); got != 1 {
+		t.Fatalf("precondition: want 1 websub_api row, got %d", got)
+	}
+
+	it.exec(t, `DELETE FROM artifacts WHERE uuid = ?`, artifactUUID)
+
+	if got := it.count(t, "websub_api_hmac_secrets", "artifact_uuid", artifactUUID); got != 0 {
+		t.Fatalf("[%s] hmac secrets not cascade-deleted after artifact delete: %d remain", it.driver, got)
+	}
+	if got := it.count(t, "websub_apis", "uuid", artifactUUID); got != 0 {
+		t.Fatalf("[%s] websub_api not cascade-deleted after artifact delete: %d remain", it.driver, got)
 	}
 }
 

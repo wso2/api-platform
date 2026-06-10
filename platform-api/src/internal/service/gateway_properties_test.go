@@ -21,7 +21,6 @@ import (
 	"reflect"
 	"testing"
 
-	api "platform-api/src/api"
 	"platform-api/src/internal/constants"
 	"platform-api/src/internal/model"
 	"platform-api/src/internal/repository"
@@ -99,18 +98,17 @@ func TestRegisterGatewayProperties(t *testing.T) {
 		auditRepo:   &noopAuditRepo{},
 	}
 
-	gatewayID := "prod-gateway-01"
 	response, err := service.RegisterGateway(
 		orgID,
-		&gatewayID,
+		"prod-gateway-01",
 		"Production Gateway",
 		"Gateway for prod traffic",
-		"api.example.com",
 		true,
 		constants.GatewayFunctionalityTypeRegular,
 		"1.0",
 		"test-user",
 		properties,
+		[]model.GatewayEndpoint{{Host: "api.example.com", Protocol: "https", Port: 8443}},
 	)
 	if err != nil {
 		t.Fatalf("RegisterGateway() error = %v", err)
@@ -140,7 +138,7 @@ func TestUpdateGatewayProperties(t *testing.T) {
 	baseGateway := &model.Gateway{
 		ID:             gatewayID,
 		OrganizationID: orgID,
-		Handle:         "old-gateway",
+		Handle:    "old-gateway",
 		Description:    "Old description",
 		Properties: map[string]interface{}{
 			"region": "us-east",
@@ -150,20 +148,16 @@ func TestUpdateGatewayProperties(t *testing.T) {
 
 	t.Run("keeps properties when nil", func(t *testing.T) {
 		mockGatewayRepo := &mockGatewayRepository{
-			getByNameResult: baseGateway,
+			getByUUIDResult: baseGateway,
 		}
 
 		service := &GatewayService{
 			gatewayRepo: mockGatewayRepo,
-			orgRepo:     &mockOrganizationRepository{org: &model.Organization{ID: orgID, Handle: "test-org"}},
 			auditRepo:   &noopAuditRepo{},
 		}
 
 		newDescription := "New description"
-		response, err := service.UpdateGateway(gatewayID, orgID, "test-user", &api.GatewayResponse{
-			DisplayName: baseGateway.Name,
-			Description: &newDescription,
-		})
+		response, err := service.UpdateGateway(gatewayID, orgID, "test-user", &newDescription, nil, nil, nil, nil)
 		if err != nil {
 			t.Fatalf("UpdateGateway() error = %v", err)
 		}
@@ -189,12 +183,11 @@ func TestUpdateGatewayProperties(t *testing.T) {
 		}
 
 		mockGatewayRepo := &mockGatewayRepository{
-			getByNameResult: &freshGateway,
+			getByUUIDResult: &freshGateway,
 		}
 
 		service := &GatewayService{
 			gatewayRepo: mockGatewayRepo,
-			orgRepo:     &mockOrganizationRepository{org: &model.Organization{ID: orgID, Handle: "test-org"}},
 			auditRepo:   &noopAuditRepo{},
 		}
 
@@ -203,10 +196,7 @@ func TestUpdateGatewayProperties(t *testing.T) {
 			"tier":   "premium",
 		}
 
-		response, err := service.UpdateGateway(gatewayID, orgID, "test-user", &api.GatewayResponse{
-			DisplayName: freshGateway.Name,
-			Properties:  &newProperties,
-		})
+		response, err := service.UpdateGateway(gatewayID, orgID, "test-user", nil, nil, nil, &newProperties, nil)
 		if err != nil {
 			t.Fatalf("UpdateGateway() error = %v", err)
 		}

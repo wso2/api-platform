@@ -887,7 +887,6 @@ func apiGatewayDetailsToAPI(gwd *model.APIGatewayWithDetails, orgHandle string) 
 		OrganizationId:    utils.StringPtrIfNotEmpty(orgHandle),
 		Properties:        utils.MapPtrIfNotEmpty(gwd.Properties),
 		UpdatedAt:         utils.TimePtrIfNotZero(gwd.UpdatedAt),
-		Vhost:             utils.StringPtrIfNotEmpty(gwd.Vhost),
 	}
 
 	// Add deployment details if deployed

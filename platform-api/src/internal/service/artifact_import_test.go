@@ -99,20 +99,24 @@ func setupImportTest(t *testing.T) *importTestDeps {
 	}
 
 	// Seed org, project, gateway.
-	if _, err := db.Exec(`INSERT INTO organizations (uuid, handle, display_name, region, created_at, updated_at)
+	if _, err := db.Exec(`INSERT INTO organizations (uuid, handle, name, region, created_at, updated_at)
 		VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))`,
 		importTestOrgID, "h-"+importTestOrgID, "Import Org", "default"); err != nil {
 		t.Fatalf("seed org: %v", err)
 	}
-	if _, err := db.Exec(`INSERT INTO projects (uuid, handle, display_name, organization_uuid, description, created_at, updated_at)
+	if _, err := db.Exec(`INSERT INTO projects (uuid, handle, name, organization_uuid, description, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
 		importTestProjectID, "default", "default", importTestOrgID, ""); err != nil {
 		t.Fatalf("seed project: %v", err)
 	}
-	if _, err := db.Exec(`INSERT INTO gateways (uuid, organization_uuid, handle, display_name, description, vhost, properties, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
-		importTestGatewayID, importTestOrgID, "gw1", "Gateway 1", "", "gw.example.com", "{}"); err != nil {
+	if _, err := db.Exec(`INSERT INTO gateways (uuid, organization_uuid, handle, name, description, properties, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
+		importTestGatewayID, importTestOrgID, "gw1", "Gateway 1", "", "{}"); err != nil {
 		t.Fatalf("seed gateway: %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO gateway_endpoints (gateway_uuid, host, protocol, port, context) VALUES (?, ?, ?, ?, ?)`,
+		importTestGatewayID, "gw.example.com", "https", 443, ""); err != nil {
+		t.Fatalf("seed gateway endpoint: %v", err)
 	}
 
 	apiRepo := repository.NewAPIRepo(db)
@@ -120,9 +124,8 @@ func setupImportTest(t *testing.T) *importTestDeps {
 	templateRepo := repository.NewLLMProviderTemplateRepo(db)
 	proxyRepo := repository.NewLLMProxyRepo(db)
 	mcpProxyRepo := repository.NewMCPProxyRepo(db)
-	reg := repository.NewArtifactTableRegistry()
-	artifactRepo := repository.NewArtifactRepo(db, reg)
-	deploymentRepo := repository.NewDeploymentRepo(db, reg)
+	artifactRepo := repository.NewArtifactRepo(db)
+	deploymentRepo := repository.NewDeploymentRepo(db)
 	gatewayRepo := repository.NewGatewayRepo(db)
 	projectRepo := repository.NewProjectRepo(db)
 

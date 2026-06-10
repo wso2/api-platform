@@ -90,7 +90,7 @@ func createTestAPI(t *testing.T, db *database.DB, apiUUID, orgUUID string) {
 
 	// Create organization directly
 	orgQuery := `
-		INSERT INTO organizations (uuid, handle, display_name, region, created_at, updated_at)
+		INSERT INTO organizations (uuid, handle, name, region, created_at, updated_at)
 		VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))
 	`
 	_, err := db.Exec(orgQuery, orgUUID, "test-org-"+orgUUID, "Test Org", "default")
@@ -100,7 +100,7 @@ func createTestAPI(t *testing.T, db *database.DB, apiUUID, orgUUID string) {
 
 	// Create project directly
 	projectQuery := `
-		INSERT INTO projects (uuid, handle, display_name, organization_uuid, created_at, updated_at)
+		INSERT INTO projects (uuid, handle, name, organization_uuid, created_at, updated_at)
 		VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))
 	`
 	_, err = db.Exec(projectQuery, "project-001", "test-project-001", "Test Project", orgUUID)
@@ -120,7 +120,7 @@ func createTestAPI(t *testing.T, db *database.DB, apiUUID, orgUUID string) {
 
 	// Create API directly
 	apiQuery := `
-		INSERT INTO rest_apis (uuid, organization_uuid, handle, display_name, version, description, created_by, project_uuid, lifecycle_status, configuration, created_at, updated_at)
+		INSERT INTO rest_apis (uuid, organization_uuid, handle, name, version, description, created_by, project_uuid, lifecycle_status, configuration, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
 	`
 	_, err = db.Exec(apiQuery, apiUUID, orgUUID, "test-api", "Test API", "1.0.0", "Test API Description", "test-user", "project-001", "CREATED", "{}")
@@ -135,14 +135,19 @@ func createTestGateway(t *testing.T, db *database.DB, gatewayUUID, orgUUID strin
 
 	// Create gateway directly (organization should already exist from createTestAPI)
 	query := `
-		INSERT INTO gateways (uuid, organization_uuid, handle, display_name, description, properties, vhost,
+		INSERT INTO gateways (uuid, organization_uuid, handle, name, description, properties,
 			is_critical, gateway_functionality_type, is_active, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
 	`
 	_, err := db.Exec(query, gatewayUUID, orgUUID, "test-gateway-"+gatewayUUID, "Test Gateway",
-		"", "{}", "api.example.com", false, "regular", false)
+		"", "{}", false, "regular", false)
 	if err != nil {
 		t.Fatalf("Failed to create test gateway: %v", err)
+	}
+	_, err = db.Exec(`INSERT INTO gateway_endpoints (gateway_uuid, host, protocol, port, context) VALUES (?, ?, ?, ?, ?)`,
+		gatewayUUID, "api.example.com", "https", 443, "")
+	if err != nil {
+		t.Fatalf("Failed to create test gateway endpoint: %v", err)
 	}
 }
 
@@ -151,7 +156,7 @@ func insertDeployment(t *testing.T, db *database.DB, deploymentID, name, apiUUID
 	t.Helper()
 
 	query := `
-		INSERT INTO deployments (uuid, display_name, artifact_uuid, organization_uuid, gateway_uuid, content, metadata, created_at)
+		INSERT INTO deployments (uuid, name, artifact_uuid, organization_uuid, gateway_uuid, content, metadata, created_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 	`
 	metadata := "{}"
@@ -184,7 +189,7 @@ func TestGetDeploymentsWithState_SoftLimit(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
 
-	repo := NewDeploymentRepo(db, NewArtifactTableRegistry())
+	repo := NewDeploymentRepo(db)
 
 	// Setup test data
 	apiUUID := "api-001"
@@ -307,7 +312,7 @@ func TestGetDeploymentsWithState_PrioritizationLogic(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
 
-	repo := NewDeploymentRepo(db, NewArtifactTableRegistry())
+	repo := NewDeploymentRepo(db)
 
 	apiUUID := "api-002"
 	orgUUID := "org-002"
@@ -394,7 +399,7 @@ func TestGetDeploymentsWithState_MultipleGateways(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
 
-	repo := NewDeploymentRepo(db, NewArtifactTableRegistry())
+	repo := NewDeploymentRepo(db)
 
 	apiUUID := "api-003"
 	orgUUID := "org-003"
@@ -535,7 +540,7 @@ func createTestAPIWithOrigin(t *testing.T, db *database.DB, apiUUID, handle, org
 	}
 
 	apiQuery := `
-		INSERT INTO rest_apis (uuid, organization_uuid, handle, display_name, version, description, created_by, project_uuid, lifecycle_status, configuration, origin, created_at, updated_at)
+		INSERT INTO rest_apis (uuid, organization_uuid, handle, name, version, description, created_by, project_uuid, lifecycle_status, configuration, origin, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
 	`
 	if _, err := db.Exec(apiQuery, apiUUID, orgUUID, handle, handle, "1.0.0", "desc", "test-user", "project-001", "CREATED", "{}", origin); err != nil {
@@ -551,7 +556,7 @@ func TestGetControlPlaneDeploymentsByGateway_ExcludesGatewayOrigin(t *testing.T)
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
 
-	repo := NewDeploymentRepo(db, NewArtifactTableRegistry())
+	repo := NewDeploymentRepo(db)
 
 	orgUUID := "org-001"
 	gatewayUUID := "gateway-001"

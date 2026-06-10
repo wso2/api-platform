@@ -24,6 +24,7 @@ import (
 	"net/http"
 	"platform-api/src/api"
 	"platform-api/src/internal/constants"
+	"platform-api/src/internal/model"
 	"regexp"
 	"strings"
 
@@ -105,9 +106,23 @@ func (h *GatewayHandler) CreateGateway(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	endpoints := make([]model.GatewayEndpoint, 0, len(req.Endpoints))
+	for _, ep := range req.Endpoints {
+		var ctx string
+		if ep.Context != nil {
+			ctx = *ep.Context
+		}
+		endpoints = append(endpoints, model.GatewayEndpoint{
+			Host:     ep.Host,
+			Protocol: string(ep.Protocol),
+			Port:     ep.Port,
+			Context:  ctx,
+		})
+	}
+
 	createdBy, _ := middleware.GetUserIDFromRequest(r)
-	gateway, err := h.gatewayService.RegisterGateway(orgId, req.Id, req.DisplayName, description, req.Vhost,
-		isCritical, functionalityType, version, createdBy, properties)
+	gateway, err := h.gatewayService.RegisterGateway(orgId, req.Name, req.DisplayName, description,
+		isCritical, functionalityType, version, createdBy, properties, endpoints)
 	if err != nil {
 		errMsg := err.Error()
 
@@ -247,6 +262,7 @@ func (h *GatewayHandler) UpdateGateway(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Extract UUID path parameter
 	gatewayId := r.PathValue("gatewayId")
 	if gatewayId == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
@@ -254,26 +270,32 @@ func (h *GatewayHandler) UpdateGateway(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req api.GatewayResponse
+	var req api.UpdateGatewayRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))
 		return
 	}
 
-	if req.Id != nil && *req.Id != gatewayId {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"Gateway id is immutable and cannot be changed"))
-		return
-	}
-
-	if req.DisplayName == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"displayName is required"))
-		return
+	var endpoints *[]model.GatewayEndpoint
+	if req.Endpoints != nil {
+		eps := make([]model.GatewayEndpoint, 0, len(*req.Endpoints))
+		for _, ep := range *req.Endpoints {
+			var ctx string
+			if ep.Context != nil {
+				ctx = *ep.Context
+			}
+			eps = append(eps, model.GatewayEndpoint{
+				Host:     ep.Host,
+				Protocol: string(ep.Protocol),
+				Port:     ep.Port,
+				Context:  ctx,
+			})
+		}
+		endpoints = &eps
 	}
 
 	updatedBy, _ := middleware.GetUserIDFromRequest(r)
-	response, err := h.gatewayService.UpdateGateway(gatewayId, orgId, updatedBy, &req)
+	response, err := h.gatewayService.UpdateGateway(gatewayId, orgId, updatedBy, req.Description, req.DisplayName, req.IsCritical, req.Properties, endpoints)
 	if err != nil {
 		if errors.Is(err, constants.ErrGatewayNotFound) {
 			h.slogger.Error("Gateway not found during update", "error", err)
@@ -607,7 +629,7 @@ func (h *GatewayHandler) GetCustomPolicy(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	policyUUID := r.PathValue("gatewayCustomPolicyId")
+	policyUUID := r.PathValue("customPolicyUuid")
 	version := r.PathValue("version")
 	if policyUUID == "" || version == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
@@ -643,7 +665,7 @@ func (h *GatewayHandler) DeleteCustomPolicy(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	policyUUID := r.PathValue("gatewayCustomPolicyId")
+	policyUUID := r.PathValue("customPolicyUuid")
 	version := r.PathValue("version")
 	if policyUUID == "" || version == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
@@ -711,6 +733,6 @@ func (h *GatewayHandler) RegisterRoutes(mux *http.ServeMux) {
 
 	mux.HandleFunc("GET "+constants.APIBasePath+"/gateway-custom-policies", h.ListCustomPolicies)
 	mux.HandleFunc("POST "+constants.APIBasePath+"/gateway-custom-policies/sync", h.SyncCustomPolicy)
-	mux.HandleFunc("GET "+constants.APIBasePath+"/gateway-custom-policies/{gatewayCustomPolicyId}/versions/{version}", h.GetCustomPolicy)
-	mux.HandleFunc("DELETE "+constants.APIBasePath+"/gateway-custom-policies/{gatewayCustomPolicyId}/versions/{version}", h.DeleteCustomPolicy)
+	mux.HandleFunc("GET "+constants.APIBasePath+"/gateway-custom-policies/{customPolicyUuid}/versions/{version}", h.GetCustomPolicy)
+	mux.HandleFunc("DELETE "+constants.APIBasePath+"/gateway-custom-policies/{customPolicyUuid}/versions/{version}", h.DeleteCustomPolicy)
 }

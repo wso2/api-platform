@@ -177,7 +177,6 @@ CREATE TABLE IF NOT EXISTS gateways (
     display_name VARCHAR(255) NOT NULL,
     description VARCHAR(1023),
     version VARCHAR(30) NOT NULL DEFAULT '1.0',
-    vhost VARCHAR(255) NOT NULL,
     gateway_functionality_type VARCHAR(20) NOT NULL DEFAULT 'regular',
     properties BLOB NOT NULL,
     manifest BLOB,
@@ -190,6 +189,17 @@ CREATE TABLE IF NOT EXISTS gateways (
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
     UNIQUE(organization_uuid, handle)
+);
+
+-- Gateway Endpoints table (links endpoints to gateways)
+CREATE TABLE IF NOT EXISTS gateway_endpoints (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    gateway_uuid VARCHAR(40) NOT NULL,
+    host VARCHAR(255) NOT NULL,
+    protocol VARCHAR(10) NOT NULL,
+    port INT NOT NULL,
+    context VARCHAR(255) NOT NULL DEFAULT '',
+    FOREIGN KEY (gateway_uuid) REFERENCES gateways(uuid) ON DELETE CASCADE
 );
 
 -- Artifact Gateway Mapping table (links artifacts to gateways)
@@ -438,6 +448,7 @@ CREATE INDEX IF NOT EXISTS idx_subscriptions_token ON subscriptions(subscription
 CREATE INDEX IF NOT EXISTS idx_subscriptions_org_subscriber ON subscriptions(organization_uuid, subscriber_id);
 CREATE UNIQUE INDEX IF NOT EXISTS uq_subscriptions_org_artifact_app ON subscriptions(organization_uuid, artifact_uuid, application_id);
 CREATE INDEX IF NOT EXISTS idx_gateways_org ON gateways(organization_uuid);
+CREATE INDEX IF NOT EXISTS idx_gateway_endpoints_gateway_uuid ON gateway_endpoints(gateway_uuid);
 CREATE INDEX IF NOT EXISTS idx_gateway_tokens_status ON gateway_tokens(gateway_uuid, status);
 CREATE INDEX IF NOT EXISTS idx_gateway_tokens_hash ON gateway_tokens(token_hash);
 CREATE INDEX IF NOT EXISTS idx_artifact_deployments_created_at ON deployments(artifact_uuid, gateway_uuid, created_at);
