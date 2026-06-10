@@ -2163,3 +2163,109 @@ func TestTranslator_CreateDynamicFwdListenerForWebSubHub(t *testing.T) {
 		assert.Equal(t, core.SocketAddress_TCP, listener.GetAddress().GetSocketAddress().GetProtocol())
 	})
 }
+
+func TestTranslateAPIConfig_SameVhostRejected(t *testing.T) {
+	translator := createTestTranslator()
+
+	sameVhost := "collide.local"
+	apiData := api.APIConfigData{
+		DisplayName: "Same-Vhost-API",
+		Context:     "/same-vhost",
+		Version:     "v1.0",
+		Vhosts: &struct {
+			Main    string  `json:"main" yaml:"main"`
+			Sandbox *string `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+		}{Main: sameVhost, Sandbox: &sameVhost},
+		Upstream: struct {
+			Main    api.Upstream  `json:"main" yaml:"main"`
+			Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+		}{
+			Main:    api.Upstream{Url: strPtr("http://main-be:8080")},
+			Sandbox: &api.Upstream{Url: strPtr("http://sb-be:8080")},
+		},
+		Operations: []api.Operation{{Method: "GET", Path: "/endpoint"}},
+	}
+	cfg := &models.StoredConfig{
+		UUID: "same-vhost-api",
+		Kind: string(api.RestAPIKindRestApi),
+		Configuration: api.RestAPI{
+			Kind:     api.RestAPIKindRestApi,
+			Metadata: api.Metadata{Name: "same-vhost-api"},
+			Spec:     apiData,
+		},
+	}
+
+	_, _, err := translator.translateAPIConfig(cfg, []*models.StoredConfig{cfg})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "same vhost")
+}
+
+func TestTranslateAPIConfig_CaseOnlyVhostCollisionRejected(t *testing.T) {
+	translator := createTestTranslator()
+
+	mainVhost := "Collide.local"
+	sandboxVhost := "collide.local"
+	apiData := api.APIConfigData{
+		DisplayName: "Case-Vhost-API",
+		Context:     "/case-vhost",
+		Version:     "v1.0",
+		Vhosts: &struct {
+			Main    string  `json:"main" yaml:"main"`
+			Sandbox *string `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+		}{Main: mainVhost, Sandbox: &sandboxVhost},
+		Upstream: struct {
+			Main    api.Upstream  `json:"main" yaml:"main"`
+			Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+		}{
+			Main:    api.Upstream{Url: strPtr("http://main-be:8080")},
+			Sandbox: &api.Upstream{Url: strPtr("http://sb-be:8080")},
+		},
+		Operations: []api.Operation{{Method: "GET", Path: "/endpoint"}},
+	}
+	cfg := &models.StoredConfig{
+		UUID: "case-vhost-api",
+		Kind: string(api.RestAPIKindRestApi),
+		Configuration: api.RestAPI{
+			Kind:     api.RestAPIKindRestApi,
+			Metadata: api.Metadata{Name: "case-vhost-api"},
+			Spec:     apiData,
+		},
+	}
+
+	_, _, err := translator.translateAPIConfig(cfg, []*models.StoredConfig{cfg})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "same vhost")
+}
+
+func TestTranslateAPIConfig_DefaultVhostCollisionRejected(t *testing.T) {
+	translator := createTestTranslator()
+	translator.config.Router.VHosts.Main.Default = "collide.local"
+	translator.config.Router.VHosts.Sandbox.Default = "collide.local"
+
+	apiData := api.APIConfigData{
+		DisplayName: "Default-Vhost-API",
+		Context:     "/default-vhost",
+		Version:     "v1.0",
+		Upstream: struct {
+			Main    api.Upstream  `json:"main" yaml:"main"`
+			Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+		}{
+			Main:    api.Upstream{Url: strPtr("http://main-be:8080")},
+			Sandbox: &api.Upstream{Url: strPtr("http://sb-be:8080")},
+		},
+		Operations: []api.Operation{{Method: "GET", Path: "/endpoint"}},
+	}
+	cfg := &models.StoredConfig{
+		UUID: "default-vhost-api",
+		Kind: string(api.RestAPIKindRestApi),
+		Configuration: api.RestAPI{
+			Kind:     api.RestAPIKindRestApi,
+			Metadata: api.Metadata{Name: "default-vhost-api"},
+			Spec:     apiData,
+		},
+	}
+
+	_, _, err := translator.translateAPIConfig(cfg, []*models.StoredConfig{cfg})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "same vhost")
+}

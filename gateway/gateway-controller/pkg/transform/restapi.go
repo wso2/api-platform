@@ -147,7 +147,7 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 	// Guard: sandbox and main vhosts must differ, otherwise sandbox routes would
 	// overwrite main routes (same route key) and the sandbox patch would leave only
 	// a sandbox-cluster route with no main-cluster route at all.
-	if hasSandbox && effectiveMainVHost == effectiveSandboxVHost {
+	if hasSandbox && strings.EqualFold(strings.TrimSpace(effectiveMainVHost), strings.TrimSpace(effectiveSandboxVHost)) {
 		return nil, fmt.Errorf("sandbox upstream is configured but resolves to the same vhost %q as the main upstream; configure distinct vhosts to avoid route conflicts", effectiveMainVHost)
 	}
 

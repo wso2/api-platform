@@ -508,6 +508,54 @@ func TestAPIValidator_ValidateAllHTTPMethods(t *testing.T) {
 	}
 }
 
+func TestAPIValidator_ValidateVhosts(t *testing.T) {
+	v := NewAPIValidator()
+
+	tests := []struct {
+		name                string
+		mainVhost           string
+		sandboxVhost        *string
+		withSandboxUpstream bool
+		wantError           bool
+	}{
+		{name: "Identical vhosts with sandbox upstream", mainVhost: "api.local", sandboxVhost: stringPtr("api.local"), withSandboxUpstream: true, wantError: true},
+		{name: "Case-insensitively identical vhosts rejected", mainVhost: "API.local", sandboxVhost: stringPtr("api.local"), withSandboxUpstream: true, wantError: true},
+		{name: "Identical vhosts without sandbox upstream", mainVhost: "api.local", sandboxVhost: stringPtr("api.local"), withSandboxUpstream: false, wantError: false},
+		{name: "Distinct vhosts with sandbox upstream", mainVhost: "api.local", sandboxVhost: stringPtr("sb.local"), withSandboxUpstream: true, wantError: false},
+		{name: "No vhosts with sandbox upstream", withSandboxUpstream: true, wantError: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			config := createValidRestAPIConfig()
+			if tt.withSandboxUpstream {
+				config.Spec.Upstream.Sandbox = &api.Upstream{Url: stringPtr("http://sb-backend:8080")}
+			}
+			if tt.mainVhost != "" || tt.sandboxVhost != nil {
+				config.Spec.Vhosts = &struct {
+					Main    string  `json:"main" yaml:"main"`
+					Sandbox *string `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+				}{Main: tt.mainVhost, Sandbox: tt.sandboxVhost}
+			}
+
+			errors := v.Validate(config)
+			hasVhostError := false
+			for _, e := range errors {
+				if e.Field == "spec.vhosts" {
+					hasVhostError = true
+					break
+				}
+			}
+			if tt.wantError && !hasVhostError {
+				t.Errorf("expected vhosts error, got: %v", errors)
+			}
+			if !tt.wantError && hasVhostError {
+				t.Error("unexpected vhosts error")
+			}
+		})
+	}
+}
+
 func TestAPIValidator_ValidateWebSubAPI(t *testing.T) {
 	v := NewAPIValidator()
 

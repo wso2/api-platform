@@ -1038,6 +1038,53 @@ func TestResolveVhostSentinels_NilVhostsNoSandboxDefault(t *testing.T) {
 	assert.Nil(t, resolved.Vhosts.Sandbox, "sandbox should remain nil when no sandbox default configured")
 }
 
+func TestResolveVhostSentinels_PartialVhostsFilled(t *testing.T) {
+	routerCfg := &config.RouterConfig{
+		VHosts: config.VHostsConfig{
+			Main:    config.VHostEntry{Default: "*.wso2.com"},
+			Sandbox: config.VHostEntry{Default: "*-sandbox.wso2.com"},
+		},
+	}
+
+	blank := "   "
+	tests := []struct {
+		name        string
+		main        string
+		sandbox     *string
+		wantMain    string
+		wantSandbox string
+	}{
+		{name: "omitted sandbox filled", main: "custom.example.com", sandbox: nil, wantMain: "custom.example.com", wantSandbox: "*-sandbox.wso2.com"},
+		{name: "blank sandbox filled", main: "custom.example.com", sandbox: &blank, wantMain: "custom.example.com", wantSandbox: "*-sandbox.wso2.com"},
+		{name: "blank main filled", main: "", sandbox: stringPtr("custom-sb.example.com"), wantMain: "*.wso2.com", wantSandbox: "custom-sb.example.com"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var cfg any = api.RestAPI{
+				Kind: api.RestAPIKindRestApi,
+				Spec: api.APIConfigData{
+					Vhosts: &struct {
+						Main    string  `json:"main" yaml:"main"`
+						Sandbox *string `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+					}{
+						Main:    tt.main,
+						Sandbox: tt.sandbox,
+					},
+				},
+			}
+
+			require.NoError(t, resolveVhostSentinels(&cfg, routerCfg))
+
+			resolved := cfg.(api.RestAPI).Spec
+			require.NotNil(t, resolved.Vhosts)
+			assert.Equal(t, tt.wantMain, resolved.Vhosts.Main)
+			require.NotNil(t, resolved.Vhosts.Sandbox)
+			assert.Equal(t, tt.wantSandbox, *resolved.Vhosts.Sandbox)
+		})
+	}
+}
+
 func TestResolveVhostSentinels_WebSubApi_NilVhostsPopulatesDefaults(t *testing.T) {
 	routerCfg := &config.RouterConfig{
 		VHosts: config.VHostsConfig{

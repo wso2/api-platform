@@ -688,7 +688,20 @@ func resolveVhostSentinels(cfg *any, routerCfg *config.RouterConfig) error {
 				c.Spec.Vhosts.Sandbox = nil
 			}
 		}
+		// Blank or omitted fields fall back to router defaults at translation time;
+		// freeze them here too so validation sees the effective values.
+		if strings.TrimSpace(c.Spec.Vhosts.Main) == "" {
+			c.Spec.Vhosts.Main = routerCfg.VHosts.Main.Default
+		}
+		if c.Spec.Vhosts.Sandbox == nil || strings.TrimSpace(*c.Spec.Vhosts.Sandbox) == "" {
+			if sandboxDefault := routerCfg.VHosts.Sandbox.Default; sandboxDefault != "" {
+				c.Spec.Vhosts.Sandbox = &sandboxDefault
+			} else {
+				c.Spec.Vhosts.Sandbox = nil
+			}
+		}
 		*cfg = c
+	// Async kinds below keep sentinel/whole-nil resolution only; they have no sandbox vhost routing.
 	case api.WebSubAPI:
 		if c.Spec.Vhosts == nil {
 			main := routerCfg.VHosts.Main.Default
@@ -745,6 +758,11 @@ func resolveVhostSentinels(cfg *any, routerCfg *config.RouterConfig) error {
 		*cfg = c
 	}
 	return nil
+}
+
+// ResolveVhostSentinels exposes vhost resolution to write paths outside this package.
+func ResolveVhostSentinels(cfg *any, routerCfg *config.RouterConfig) error {
+	return resolveVhostSentinels(cfg, routerCfg)
 }
 
 // annotationValue safely reads a single annotation key from a pointer-to-map.
