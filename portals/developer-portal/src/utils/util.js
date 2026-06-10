@@ -70,6 +70,10 @@ function renderTemplate(templatePath, layoutPath, templateContent, isTechnical) 
     return layout({
         body: template(enrichedContent),
         portalConfigs: config.portalConfigs,
+        devportalApiConfig: {
+            base: constants.DEVPORTAL_API.BASE_SEGMENT,
+            version: constants.DEVPORTAL_API.VERSION,
+        },
         profile: templateContent.profile,
         showApiWorkflowsNav,
     });
@@ -110,7 +114,7 @@ async function renderTemplateFromAPI(templateContent, orgID, orgName, filePath, 
     layoutResponse = fs.readFileSync(completeLayoutPath, constants.CHARSET_UTF8);
     const styleContent = await adminDao.getOrgContent({ orgId: orgID, fileType: 'style', viewName: viewName, fileName: 'main.css' });
     if (styleContent) {
-        layoutResponse = layoutResponse.replace(/\/styles\//g, `${constants.ROUTE.DEVPORTAL_ASSETS_BASE_PATH}${orgID}/views/${viewName}/layout?fileType=style&fileName=`);
+        layoutResponse = layoutResponse.replace(/\/styles\//g, `${constants.DEVPORTAL_API.orgPath(orgID)}/views/${viewName}/layout?fileType=style&fileName=`);
     }
 
     const template = Handlebars.compile(templateResponse.toString());
@@ -121,6 +125,10 @@ async function renderTemplateFromAPI(templateContent, orgID, orgName, filePath, 
     return layout({
         body: template(enrichedContent),
         portalConfigs: config.portalConfigs,
+        devportalApiConfig: {
+            base: constants.DEVPORTAL_API.BASE_SEGMENT,
+            version: constants.DEVPORTAL_API.VERSION,
+        },
         profile: templateContent.profile,
         showApiWorkflowsNav,
     });
@@ -183,6 +191,10 @@ async function renderGivenTemplate(templatePage, layoutPage, templateContent) {
     return layout({
         body: template(enrichedContent),
         portalConfigs: config.portalConfigs,
+        devportalApiConfig: {
+            base: constants.DEVPORTAL_API.BASE_SEGMENT,
+            version: constants.DEVPORTAL_API.VERSION,
+        },
         profile: templateContent.profile,
         showApiWorkflowsNav,
     });
@@ -766,23 +778,23 @@ async function readFilesInDirectory(directory, orgId, protocol, host, viewName, 
                 if (file.name.endsWith(".css")) {
                     fileType = "style"
                     if (file.name === "main.css") {
-                        strContent = strContent.replace(/@import\s*['"]\/styles\/api-content\.css['"];/g, `@import url("${constants.ROUTE.DEVPORTAL_ASSETS_BASE_PATH}${orgId}/views/${viewName}/layout?fileType=style&fileName=api-content.css");`);
-                        strContent = strContent.replace(/@import\s*['"]\/styles\/home\.css['"];/g, `@import url("${constants.ROUTE.DEVPORTAL_ASSETS_BASE_PATH}${orgId}/views/${viewName}/layout?fileType=style&fileName=home.css");`);
-                        strContent = strContent.replace(/@import\s*['"]\/styles\/main\.css['"];/g, `@import url("${constants.ROUTE.DEVPORTAL_ASSETS_BASE_PATH}${orgId}/views/${viewName}/layout?fileType=style&fileName=main.css");`);
+                        strContent = strContent.replace(/@import\s*['"]\/styles\/api-content\.css['"];/g, `@import url("${constants.DEVPORTAL_API.orgPath(orgId)}/views/${viewName}/layout?fileType=style&fileName=api-content.css");`);
+                        strContent = strContent.replace(/@import\s*['"]\/styles\/home\.css['"];/g, `@import url("${constants.DEVPORTAL_API.orgPath(orgId)}/views/${viewName}/layout?fileType=style&fileName=home.css");`);
+                        strContent = strContent.replace(/@import\s*['"]\/styles\/main\.css['"];/g, `@import url("${constants.DEVPORTAL_API.orgPath(orgId)}/views/${viewName}/layout?fileType=style&fileName=main.css");`);
                     }
-                    strContent = strContent.replace(/"\/images\/(devportalLogo\.[^"]+)/g, `"${constants.ROUTE.DEVPORTAL_ASSETS_BASE_PATH}${orgId}/views/${viewName}/layout?fileType=image&fileName=$1`);
-                    strContent = strContent.replace(/'\/images\/(devportalLogo\.[^']+)/g, `"${constants.ROUTE.DEVPORTAL_ASSETS_BASE_PATH}${orgId}/views/${viewName}/layout?fileType=image&fileName=$1`);
+                    strContent = strContent.replace(/"\/images\/(devportalLogo\.[^"]+)/g, `"${constants.DEVPORTAL_API.orgPath(orgId)}/views/${viewName}/layout?fileType=image&fileName=$1`);
+                    strContent = strContent.replace(/'\/images\/(devportalLogo\.[^']+)/g, `'${constants.DEVPORTAL_API.orgPath(orgId)}/views/${viewName}/layout?fileType=image&fileName=$1`);
                     content = Buffer.from(strContent, constants.CHARSET_UTF8);
                 } else if (file.name.endsWith(".hbs") && dir.endsWith("layout")) {
                     fileType = "layout"
                     if (file.name === "main.hbs") {
-                        strContent = strContent.replace(/\/styles\//g, `${constants.ROUTE.DEVPORTAL_ASSETS_BASE_PATH}${orgId}/views/${viewName}/layout?fileType=style&fileName=`);
+                        strContent = strContent.replace(/\/styles\//g, `${constants.DEVPORTAL_API.orgPath(orgId)}/views/${viewName}/layout?fileType=style&fileName=`);
                         content = Buffer.from(strContent, constants.CHARSET_UTF8);
                     }
                     validateScripts(strContent);
                 } else if (file.name.endsWith(".hbs") && dir.endsWith("partials")) {
-                    strContent = strContent.replace(/"\/images\/([^"]+)/g, `"${constants.ROUTE.DEVPORTAL_ASSETS_BASE_PATH}${orgId}/views/${viewName}/layout?fileType=image&fileName=$1`);
-                    strContent = strContent.replace(/'\/images\/([^']+)/g, `'${constants.ROUTE.DEVPORTAL_ASSETS_BASE_PATH}${orgId}/views/${viewName}/layout?fileType=image&fileName=$1`);
+                    strContent = strContent.replace(/"\/images\/([^"]+)/g, `"${constants.DEVPORTAL_API.orgPath(orgId)}/views/${viewName}/layout?fileType=image&fileName=$1`);
+                    strContent = strContent.replace(/'\/images\/([^']+)/g, `'${constants.DEVPORTAL_API.orgPath(orgId)}/views/${viewName}/layout?fileType=image&fileName=$1`);
                     content = Buffer.from(strContent, constants.CHARSET_UTF8);
                     validateScripts(strContent);
                     fileType = "partial"
@@ -916,7 +928,7 @@ function appendAPIImageURL(subList, req, orgID) {
         const images = element.apiInfo.apiImageMetadata;
         let apiImageUrl = '';
         for (const key in images) {
-            apiImageUrl = `${constants.ROUTE.DEVPORTAL_ASSETS_BASE_PATH}${orgID}${constants.ROUTE.API_FILE_PATH}${element.apiID}${constants.API_TEMPLATE_FILE_NAME}`;
+            apiImageUrl = `${constants.DEVPORTAL_API.orgPath(orgID)}${constants.ROUTE.API_FILE_PATH}${element.apiID}${constants.API_TEMPLATE_FILE_NAME}`;
             const modifiedApiImageURL = apiImageUrl + images[key];
             element.apiInfo.apiImageMetadata[key] = modifiedApiImageURL;
         }

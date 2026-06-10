@@ -23,6 +23,7 @@
 const apiMetadataService = require('../../services/apiMetadataService');
 
 module.exports = {
+    listSubscriptionPolicies: apiMetadataService.listSubscriptionPolicies,
     addSubscriptionPolicies: apiMetadataService.addSubscriptionPolicies,
     putSubscriptionPolicies: apiMetadataService.putSubscriptionPolicies,
     getSubscriptionPolicy: apiMetadataService.getSubscriptionPolicy,

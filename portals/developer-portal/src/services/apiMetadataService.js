@@ -27,7 +27,6 @@ const path = require("path");
 const fs = require("fs").promises;
 const fsDir = require("fs");
 const yaml = require('js-yaml');
-const { validationResult } = require('express-validator');
 const APIDTO = require("../dto/apiDTO");
 const ViewDTO = require("../dto/views");
 const APIDocDTO = require("../dto/apiDoc");
@@ -243,11 +242,6 @@ async function allowAPIStatusChange(apiStatus, orgId, apiId) {
 const getAPIMetadata = async (req, res) => {
 
     const { orgId, apiId } = req.params;
-    if (!orgId || !apiId) {
-        throw new Sequelize.ValidationError(
-            "Missing or Invalid fields in the request payload"
-        );
-    }
     try {
         const retrievedAPI = await getMetadataFromDB(orgId, apiId);
         if (retrievedAPI !== "") {
@@ -291,21 +285,8 @@ const getAllAPIMetadata = async (req, res) => {
         const view = req.query.view;
         let groupList = [];
 
-        const allowedQueryParams = ['query', 'apiName', 'version', 'tags', 'groups', 'view'];
-        const invalidParams = Object.keys(req.query).filter(param => !allowedQueryParams.includes(param));
-
-        if (invalidParams.length > 0) {
-            const parameterMessage = invalidParams.length === 1
-                ? `Invalid query parameter: ${invalidParams.join(', ')}`
-                : `Invalid query parameters: ${invalidParams.join(', ')}`;
-            throw new Sequelize.ValidationError(parameterMessage);
-        }
-
         if (req.query.groups) {
             groupList.push(req.query.groups.split(" "));
-        }
-        if (!orgID) {
-            throw new Sequelize.ValidationError("Missing or Invalid fields in the request payload");
         }
         const retrievedAPIs = await getMetadataListFromDB(orgID, groupList, searchTerm, tags, apiName, apiVersion, view);
         res.status(200).send(retrievedAPIs);
@@ -556,11 +537,6 @@ const updateAPIMetadata = async (req, res) => {
 
 const deleteAPIMetadata = async (req, res) => {
     const { orgId, apiId } = req.params;
-    if (!orgId || !apiId) {
-        throw new Sequelize.ValidationError(
-            "Missing or Invalid fields in the request payload"
-        );
-    }
     await sequelize.transaction({
         timeout: 60000,
     }, async (t) => {
@@ -596,9 +572,6 @@ const createAPITemplate = async (req, res) => {
     });
     try {
         const { orgId, apiId } = req.params;
-        if (!orgId) {
-            throw new CustomError(400, "Bad Request", "Missing required parameter: 'orgId'");
-        }
         const zipFilePath = req.file.path;
         const extractPath = path.join("/tmp", orgId + "/" + apiId);
         await fs.mkdir(extractPath, { recursive: true });
@@ -705,9 +678,6 @@ const createAPIContent = async (req, res) => {
     });
     try {
         const { orgId, apiId } = req.params;
-        if (!orgId) {
-            throw new CustomError(400, "Bad Request", "Missing required parameter: 'orgId'");
-        }
         let apiContent = await extractApiContentFromUploadedZip(uploadedFile, orgId, apiId, 'classic');
         let docMetadata = "";
         if (req.body.docMetadata) {
@@ -765,9 +735,6 @@ const updateAPITemplate = async (req, res) => {
         let imageMetadata;
         if (req.body.imageMetadata) {
             imageMetadata = JSON.parse(req.body.imageMetadata);
-        }
-        if (!orgId) {
-            throw new CustomError(400, "Bad Request", "Missing required parameter: 'orgId'");
         }
         const zipFilePath = req.file.path;
         const extractPath = path.join("/tmp", orgId + "/" + apiId);
@@ -868,9 +835,6 @@ const updateAPIContent = async (req, res) => {
         if (req.body.imageMetadata) {
             imageMetadata = JSON.parse(req.body.imageMetadata);
         }
-        if (!orgId) {
-            throw new CustomError(400, "Bad Request", "Missing required parameter: 'orgId'");
-        }
         let apiContent = await extractApiContentFromUploadedZip(uploadedFile, orgId, apiId, 'classic');
 
         if (req.body.docMetadata) {
@@ -910,20 +874,9 @@ const updateAPIContent = async (req, res) => {
 
 const getAPIFile = async (req, res) => {
 
-    const rules = util.validateRequestParameters();
-    for (let validation of rules) {
-        await validation.run(req);
-    }
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-        return res.status(400).json(util.getErrors(errors));
-    }
     const { orgId, apiId } = req.params;
     const apiFileName = req.query.fileName;
     const type = req.query.type;
-    if (!orgId || !apiId || !apiFileName || !type) {
-        throw new Sequelize.ValidationError("Missing or Invalid fields in the request payload");
-    }
     let apiFileResponse = "";
     let apiFile;
     let contentType = "";
@@ -991,11 +944,6 @@ const deleteAPIFile = async (req, res) => {
     const { orgId, apiId } = req.params;
     const apiFileName = req.query.fileName;
     const fileType = req.query.type;
-    if (!orgId || !apiId) {
-        throw new Sequelize.ValidationError(
-            "Missing or Invalid fields in the request payload"
-        );
-    }
     try {
         let apiFileResponse;
         if (apiFileName) {
@@ -1058,10 +1006,6 @@ const createSubscriptionPolicy = async (req, res) => {
         orgId
     });
 
-    if (!orgId) {
-        return res.status(400).json({ message: "Organization ID is missing" });
-    }
-
     if (!subscriptionPolicy || typeof subscriptionPolicy !== "object") {
         return res.status(400).json({ message: "Request body is missing or invalid" });
     }
@@ -1106,10 +1050,6 @@ const createSubscriptionPolicies = async (req, res) => {
         } else {
             const { orgId } = req.params;
             const subscriptionPolicies = req.body;
-
-            if (!orgId) {
-                return res.status(400).json({ message: "Organization ID is missing" });
-            }
 
             if (!Array.isArray(subscriptionPolicies) || subscriptionPolicies.length === 0) {
                 return res.status(400).json({ message: "Missing or invalid fields in the request payload" });
@@ -1160,10 +1100,6 @@ const updateSubscriptionPolicy = async (req, res) => {
     });
     const subscriptionPolicy = req.body;
 
-    if (!orgId) {
-        return res.status(400).json({ message: "Organization ID is missing" });
-    }
-
     if (!subscriptionPolicy || typeof subscriptionPolicy !== "object") {
         return res.status(400).json({ message: "Request body is missing or invalid" });
     }
@@ -1206,10 +1142,6 @@ const updateSubscriptionPolicies = async (req, res) => {
             const { orgId } = req.params;
             const subscriptionPolicies = req.body;
 
-            if (!orgId) {
-                return res.status(400).json({ message: "Organization ID is missing" });
-            }
-
             if (!Array.isArray(subscriptionPolicies) || subscriptionPolicies.length === 0) {
                 return res.status(400).json({ message: "Missing or invalid fields in the request payload" });
             }
@@ -1250,21 +1182,16 @@ const updateSubscriptionPolicies = async (req, res) => {
 };
 
 const deleteSubscriptionPolicy = async (req, res) => {
-    const { orgId, policyName } = req.params;
+    const { orgId, policyId } = req.params;
     logger.info('Deleting subscription policy...', {
         orgId,
-        policyName
+        policyId
     });
-    if (!orgId || !policyName) {
-        throw new Sequelize.ValidationError(
-            "Missing or Invalid fields in the request payload"
-        );
-    }
     try {
         await sequelize.transaction({
             timeout: 60000,
         }, async (t) => {
-            const deleteCount = await apiDao.deleteSubscriptionPolicy(orgId, policyName, t);
+            const deleteCount = await apiDao.deleteSubscriptionPolicyById(orgId, policyId, t);
             if (deleteCount === 0) {
                 throw new CustomError(404, constants.ERROR_CODE[404], constants.ERROR_MESSAGE.SUBSCRIPTION_POLICY_NOT_FOUND);
             } else {
@@ -1276,7 +1203,7 @@ const deleteSubscriptionPolicy = async (req, res) => {
             error: error.message,
             stack: error.stack,
             orgId,
-            policyName
+            policyId
         });
         util.handleError(res, error);
     }
@@ -1284,16 +1211,10 @@ const deleteSubscriptionPolicy = async (req, res) => {
 
 const getSubscriptionPolicy = async (req, res) => {
 
-    const { orgId, policyID } = req.params;
-
-    if (!orgId || !policyID) {
-        throw new Sequelize.ValidationError(
-            "Missing or Invalid fields in the request payload"
-        );
-    }
+    const { orgId, policyId } = req.params;
 
     try {
-        const subscriptionPolicyResponse = await apiDao.getSubscriptionPolicy(policyID, orgId);
+        const subscriptionPolicyResponse = await apiDao.getSubscriptionPolicy(policyId, orgId);
         if (subscriptionPolicyResponse) {
             res.status(200).send(new subscriptionPolicyDTO(subscriptionPolicyResponse));
         } else {
@@ -1309,16 +1230,38 @@ const getSubscriptionPolicy = async (req, res) => {
     }
 };
 
+// Lists subscription policies for an org. With ?name=<exact>, returns an array
+// containing the single matching policy (or empty array) — name is unique per
+// org. Without it, returns all policies for the org.
+const listSubscriptionPolicies = async (req, res) => {
+
+    const { orgId } = req.params;
+    const { name } = req.query;
+
+    try {
+        let policies;
+        if (name) {
+            const policy = await apiDao.getSubscriptionPolicyByName(orgId, name);
+            policies = policy ? [policy] : [];
+        } else {
+            policies = await apiDao.getAllSubscriptionPolicies(orgId);
+        }
+        res.status(200).send(policies.map((policy) => new subscriptionPolicyDTO(policy)));
+    } catch (error) {
+        logger.error('subscription policy list failed', {
+            error: error.message,
+            stack: error.stack,
+            orgId
+        });
+        util.handleError(res, error);
+    }
+};
+
 const createLabels = async (req, res) => {
 
     const orgId = req.params.orgId;
     const labels = req.body;
     try {
-        if (!orgId || !labels) {
-            throw new Sequelize.ValidationError(
-                "Missing or Invalid fields in the request payload"
-            );
-        }
         await apiDao.createLabels(orgId, labels);
         res.status(201).send(labels);
     } catch (error) {
@@ -1336,11 +1279,6 @@ const updateLabel = async (req, res) => {
     const orgId = req.params.orgId;
     const labels = req.body;
     try {
-        if (!orgId || !labels) {
-            throw new Sequelize.ValidationError(
-                "Missing or Invalid fields in the request payload"
-            );
-        }
         for (const label of labels) {
             await apiDao.updateLabel(orgId, label);
         };
@@ -1359,11 +1297,6 @@ const deleteLabels = async (req, res) => {
 
     const orgId = req.params.orgId;
     const labelNames = req.query.names;
-    if (!orgId || !labelNames) {
-        throw new Sequelize.ValidationError(
-            "Missing or Invalid fields in the request payload"
-        );
-    }
     const labelList = labelNames.split(",");
     try {
         await apiDao.deleteLabel(orgId, labelList);
@@ -1381,11 +1314,6 @@ const deleteLabels = async (req, res) => {
 const retrieveLabels = async (req, res) => {
 
     const orgId = req.params.orgId;
-    if (!orgId) {
-        throw new Sequelize.ValidationError(
-            "Missing or Invalid fields in the request payload"
-        );
-    }
     try {
         const labels = await getOrgLabels(orgId);
         res.status(200).send(labels);
@@ -1418,12 +1346,6 @@ const addView = async (req, res) => {
 
     const orgId = req.params.orgId;
     const labels = req.body.labels;
-    const viewName = req.body.name;
-    if (!orgId || !viewName || !labels) {
-        throw new Sequelize.ValidationError(
-            "Missing or Invalid fields in the request payload"
-        );
-    }
     await sequelize.transaction({
         timeout: 60000,
     }, async (t) => {
@@ -1448,12 +1370,7 @@ const updateView = async (req, res) => {
     const orgId = req.params.orgId;
     const removedLabels = req.body.removedLabels ? req.body.removedLabels : [];
     const addedLabels = req.body.addedLabels ? req.body.addedLabels : [];
-    const viewName = req.params.name;
-    if (!orgId || !viewName) {
-        throw new Sequelize.ValidationError(
-            "Missing or Invalid fields in the request payload"
-        );
-    }
+    const viewName = req.params.viewName;
     try {
         await sequelize.transaction({
             timeout: 60000,
@@ -1486,12 +1403,7 @@ const updateView = async (req, res) => {
 const deleteView = async (req, res) => {
 
     const orgId = req.params.orgId;
-    const name = req.params.name;
-    if (!orgId || !name) {
-        throw new Sequelize.ValidationError(
-            "Missing or Invalid fields in the request payload"
-        );
-    }
+    const name = req.params.viewName;
     try {
         const viewDelete = await apiDao.deleteView(orgId, name);
         if (viewDelete === 0) {
@@ -1512,12 +1424,7 @@ const deleteView = async (req, res) => {
 const getView = async (req, res) => {
 
     const orgId = req.params.orgId;
-    const name = req.params.name;
-    if (!orgId || !name) {
-        throw new Sequelize.ValidationError(
-            "Missing or Invalid fields in the request payload"
-        );
-    }
+    const name = req.params.viewName;
     try {
         const view = await getViewInfo(orgId, name);
         if (view) {
@@ -1548,11 +1455,6 @@ const getViewInfo = async (orgId, name) => {
 const getAllViews = async (req, res) => {
 
     const orgId = req.params.orgId;
-    if (!orgId) {
-        throw new Sequelize.ValidationError(
-            "Missing or Invalid fields in the request payload"
-        );
-    }
     try {
         const views = await getViewsFromDB(orgId);
         if (views.length > 0) {
@@ -1972,6 +1874,7 @@ module.exports = {
     putSubscriptionPolicies,
     deleteSubscriptionPolicy,
     getSubscriptionPolicy,
+    listSubscriptionPolicies,
     createLabels,
     deleteLabels,
     retrieveLabels,

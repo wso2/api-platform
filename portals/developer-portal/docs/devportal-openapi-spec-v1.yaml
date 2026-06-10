@@ -24,12 +24,14 @@ info:
     Fine-grained Developer Portal API for managing organizations, identity providers, providers,
     API metadata and content, applications, subscriptions, application credentials, and API flows.
 
-    All paths are served under the `/devportal` base path. Operations declare the least-privilege
-    OAuth2 scopes required for each resource action.
+    Organization-scoped resources are served under `/o/{orgId}/devportal/v1`. Operations declare
+    the least-privilege OAuth2 scopes required for each resource action.
 servers:
-  - url: http://localhost:3000/devportal
+  - url: https://devportal.api-platform.io
+    description: Production
+  - url: http://localhost:3000
     description: Local development server
-  - url: https://localhost:{port}/devportal
+  - url: https://localhost:{port}
     description: Local HTTPS server
     variables:
       port:
@@ -46,7 +48,6 @@ tags:
   - name: Applications
   - name: Subscriptions
   - name: API Keys
-  - name: App Key Mapping
   - name: Views
   - name: Application Keys
   - name: API Flows
@@ -167,7 +168,7 @@ paths:
         - OAuth2Security:
             - dp:org_delete
             - dp:org_manage
-  /organizations/{orgId}/identityProvider:
+  /o/{orgId}/devportal/v1/identity-providers:
     parameters:
       - $ref: "#/components/parameters/OrgId"
     post:
@@ -252,10 +253,10 @@ paths:
         - OAuth2Security:
             - dp:idp_delete
             - dp:idp_manage
-  /organizations/{orgId}/views/{name}/layout:
+  /o/{orgId}/devportal/v1/views/{viewName}/layout:
     parameters:
       - $ref: "#/components/parameters/OrgId"
-      - $ref: "#/components/parameters/Name"
+      - $ref: "#/components/parameters/ViewName"
     post:
       tags:
         - Organization Content
@@ -352,10 +353,10 @@ paths:
             - dp:org_content_delete
             - dp:org_content_manage
             - dp:org_manage
-  /organizations/{orgId}/views/{name}/layout/{fileType}:
+  /o/{orgId}/devportal/v1/views/{viewName}/layout/{fileType}:
     parameters:
       - $ref: "#/components/parameters/OrgId"
-      - $ref: "#/components/parameters/Name"
+      - $ref: "#/components/parameters/ViewName"
       - $ref: "#/components/parameters/FileType"
     get:
       tags:
@@ -371,7 +372,7 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "404":
           $ref: "#/components/responses/TextMessageResponse"
-  /organizations/{orgId}/provider:
+  /o/{orgId}/devportal/v1/provider:
     parameters:
       - $ref: "#/components/parameters/OrgId"
     post:
@@ -466,7 +467,7 @@ paths:
         - OAuth2Security:
             - dp:provider_delete
             - dp:provider_manage
-  /organizations/{orgId}/apis:
+  /o/{orgId}/devportal/v1/apis:
     parameters:
       - $ref: "#/components/parameters/OrgId"
     post:
@@ -478,7 +479,7 @@ paths:
         file, or an `apiMetadata` JSON string. An API definition file is required unless supplied by the
         artifact ZIP. The service also stores labels, subscription policy mappings, image metadata, and
         schema definitions for MCP or GraphQL APIs when provided.
-      operationId: createAPIMetadata
+      operationId: createApiMetadata
       requestBody:
         $ref: "#/components/requestBodies/ApiMetadataMultipartBody"
       responses:
@@ -504,7 +505,7 @@ paths:
         Lists API metadata for an organization. The service supports exact filters by API name, version,
         and tags, free-text search with `query`, group filtering, and view filtering. Unknown query
         parameters are rejected.
-      operationId: getAllAPIMetadataForOrganization
+      operationId: getAllApiMetadataForOrganization
       parameters:
         - $ref: "#/components/parameters/ApiSearchQuery"
         - $ref: "#/components/parameters/ApiNameQuery"
@@ -523,7 +524,7 @@ paths:
         - OAuth2Security:
             - dp:api_read
             - dp:api_manage
-  /organizations/{orgId}/apis/{apiId}:
+  /o/{orgId}/devportal/v1/apis/{apiId}:
     parameters:
       - $ref: "#/components/parameters/OrgId"
       - $ref: "#/components/parameters/ApiId"
@@ -532,7 +533,7 @@ paths:
         - APIs
       summary: Get API metadata
       description: Retrieves a single API metadata record by Developer Portal API ID.
-      operationId: getAPIMetadata
+      operationId: getApiMetadata
       responses:
         "200":
           $ref: "#/components/responses/ApiMetadataResponse"
@@ -554,7 +555,7 @@ paths:
         Updates Developer Portal API metadata and its stored definition. The update flow can also adjust
         label mappings, subscription policy mappings, schema definitions, and image metadata. Status
         changes to unpublished are rejected when active subscriptions exist.
-      operationId: updateAPIMetadata
+      operationId: updateApiMetadata
       requestBody:
         $ref: "#/components/requestBodies/ApiMetadataMultipartBody"
       responses:
@@ -577,7 +578,7 @@ paths:
         - APIs
       summary: Delete API metadata
       description: Deletes API metadata when the API has no active subscriptions.
-      operationId: deleteAPIMetadata
+      operationId: deleteApiMetadata
       responses:
         "200":
           $ref: "#/components/responses/TextMessageResponse"
@@ -593,9 +594,35 @@ paths:
         - OAuth2Security:
             - dp:api_delete
             - dp:api_manage
-  /organizations/{orgId}/subscription-policies:
+  /o/{orgId}/devportal/v1/subscription-policies:
     parameters:
       - $ref: "#/components/parameters/OrgId"
+    get:
+      tags:
+        - Subscription Policies
+      summary: List subscription policies
+      description: >-
+        Lists subscription policies for an organization. When `name` is supplied, only the matching
+        policy (if any) is returned. Policy names are unique within an organization.
+      operationId: listSubscriptionPolicies
+      parameters:
+        - in: query
+          name: name
+          required: false
+          schema:
+            type: string
+          description: Filter by exact policy name. Returns an array of zero or one items.
+      responses:
+        "200":
+          $ref: "#/components/responses/SubscriptionPolicyListResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      security:
+        - OAuth2Security:
+            - dp:sub_policy_read
+            - dp:sub_policy_manage
     post:
       tags:
         - Subscription Policies
@@ -651,16 +678,16 @@ paths:
         - OAuth2Security:
             - dp:sub_policy_write
             - dp:sub_policy_manage
-  /organizations/{orgId}/subscription-policies/{policyIdOrName}:
+  /o/{orgId}/devportal/v1/subscription-policies/{policyId}:
     parameters:
       - $ref: "#/components/parameters/OrgId"
-      - $ref: "#/components/parameters/PolicyIdOrName"
+      - $ref: "#/components/parameters/PolicyId"
     get:
       tags:
         - Subscription Policies
       summary: Get a subscription policy
       operationId: getSubscriptionPolicy
-      description: Uses the route value as `policyID`.
+      description: Retrieves a single subscription policy by `policyId`.
       responses:
         "200":
           $ref: "#/components/responses/SubscriptionPolicyResponse"
@@ -679,7 +706,7 @@ paths:
         - Subscription Policies
       summary: Delete a subscription policy
       operationId: deleteSubscriptionPolicy
-      description: Uses the route value as `policyName`.
+      description: Deletes a subscription policy by `policyId`.
       responses:
         "204":
           description: Subscription policy deleted successfully.
@@ -693,7 +720,7 @@ paths:
         - OAuth2Security:
             - dp:sub_policy_delete
             - dp:sub_policy_manage
-  /organizations/{orgId}/apis/{apiId}/content:
+  /o/{orgId}/devportal/v1/apis/{apiId}/content:
     parameters:
       - $ref: "#/components/parameters/OrgId"
       - $ref: "#/components/parameters/ApiId"
@@ -710,7 +737,7 @@ paths:
 
         Use `docMetadata` to add external document links that are stored alongside uploaded documents.
         Use `imageMetadata` to map uploaded images to API image roles such as the API icon.
-      operationId: createAPIContent
+      operationId: createApiContent
       requestBody:
         $ref: "#/components/requestBodies/ApiContentZipMultipartBody"
       responses:
@@ -733,10 +760,10 @@ paths:
       description: |
         Replaces or adds static content files for an existing API.
 
-        The upload format is the same as `POST /organizations/{orgId}/apis/{apiId}/content`.
+        The upload format is the same as `POST /o/{orgId}/devportal/v1/apis/{apiId}/content`.
         Existing files with the same stored `type` and `fileName` are updated; new files are created.
         Image metadata is updated only when image metadata can be resolved from the upload or request body.
-      operationId: updateAPIContent
+      operationId: replaceApiContent
       requestBody:
         $ref: "#/components/requestBodies/ApiContentZipMultipartBody"
       responses:
@@ -762,7 +789,7 @@ paths:
         The `type` query parameter selects the stored content category and `fileName` selects the file
         within that category. Text files and external document links are returned as text. Image files are
         returned as binary content with a media type derived from the file extension.
-      operationId: getAPIContentFile
+      operationId: getApiContentFile
       security:
         - OAuth2Security:
             - dp:api_content_read
@@ -788,7 +815,7 @@ paths:
 
         Send both `type` and `fileName` to delete one file. Send only `type` to delete all stored content
         files matching that content category for the API.
-      operationId: deleteAPIContentFile
+      operationId: deleteApiContentFile
       parameters:
         - $ref: "#/components/parameters/ApiContentTypeQuery"
         - $ref: "#/components/parameters/FileNameQuery"
@@ -805,7 +832,7 @@ paths:
         - OAuth2Security:
             - dp:api_content_delete
             - dp:api_content_manage
-  /organizations/{orgId}/labels:
+  /o/{orgId}/devportal/v1/labels:
     parameters:
       - $ref: "#/components/parameters/OrgId"
     post:
@@ -888,7 +915,7 @@ paths:
         - OAuth2Security:
             - dp:label_delete
             - dp:label_manage
-  /organizations/{orgId}/applications/import:
+  /o/{orgId}/devportal/v1/applications/import:
     parameters:
       - $ref: "#/components/parameters/OrgId"
     post:
@@ -1015,7 +1042,7 @@ paths:
         - OAuth2Security:
             - dp:app_write
             - dp:app_manage
-  /organizations/{orgId}/subscriptions:
+  /o/{orgId}/devportal/v1/subscriptions:
     parameters:
       - $ref: "#/components/parameters/OrgId"
     post:
@@ -1065,10 +1092,10 @@ paths:
         - OAuth2Security:
             - dp:subscription_read
             - dp:subscription_manage
-  /organizations/{orgId}/subscriptions/{subscriptionId}:
+  /o/{orgId}/devportal/v1/subscriptions/{subId}:
     parameters:
       - $ref: "#/components/parameters/OrgId"
-      - $ref: "#/components/parameters/SubscriptionId"
+      - $ref: "#/components/parameters/SubId"
     get:
       tags:
         - Subscriptions
@@ -1124,7 +1151,7 @@ paths:
         - OAuth2Security:
             - dp:subscription_delete
             - dp:subscription_manage
-  /organizations/{orgId}/api-keys/generate:
+  /o/{orgId}/devportal/v1/api-keys/generate:
     parameters:
       - $ref: "#/components/parameters/OrgId"
     post:
@@ -1155,7 +1182,7 @@ paths:
         - OAuth2Security:
             - dp:api_key_write
             - dp:api_key_manage
-  /organizations/{orgId}/api-keys:
+  /o/{orgId}/devportal/v1/api-keys:
     parameters:
       - $ref: "#/components/parameters/OrgId"
     get:
@@ -1181,7 +1208,7 @@ paths:
         - OAuth2Security:
             - dp:api_key_read
             - dp:api_key_manage
-  /organizations/{orgId}/api-keys/{apiKeyId}/regenerate:
+  /o/{orgId}/devportal/v1/api-keys/{apiKeyId}/regenerate:
     parameters:
       - $ref: "#/components/parameters/OrgId"
       - $ref: "#/components/parameters/ApiKeyId"
@@ -1209,7 +1236,7 @@ paths:
         - OAuth2Security:
             - dp:api_key_write
             - dp:api_key_manage
-  /organizations/{orgId}/api-keys/{apiKeyId}/revoke:
+  /o/{orgId}/devportal/v1/api-keys/{apiKeyId}/revoke:
     parameters:
       - $ref: "#/components/parameters/OrgId"
       - $ref: "#/components/parameters/ApiKeyId"
@@ -1236,7 +1263,7 @@ paths:
         - OAuth2Security:
             - dp:api_key_revoke
             - dp:api_key_manage
-  /organizations/{orgId}/views:
+  /o/{orgId}/devportal/v1/views:
     parameters:
       - $ref: "#/components/parameters/OrgId"
     post:
@@ -1279,10 +1306,10 @@ paths:
         - OAuth2Security:
             - dp:view_read
             - dp:view_manage
-  /organizations/{orgId}/views/{name}:
+  /o/{orgId}/devportal/v1/views/{viewName}:
     parameters:
       - $ref: "#/components/parameters/OrgId"
-      - $ref: "#/components/parameters/Name"
+      - $ref: "#/components/parameters/ViewName"
     put:
       tags:
         - Views
@@ -1472,14 +1499,14 @@ paths:
         - OAuth2Security:
             - dp:app_key_write
             - dp:app_key_manage
-  /organizations/{orgId}/views/{viewName}/api-flows:
+  /o/{orgId}/devportal/v1/views/{viewName}/api-flows:
     parameters:
       - $ref: "#/components/parameters/OrgId"
       - $ref: "#/components/parameters/ViewName"
     post:
       tags:
         - API Flows
-      operationId: createAPIFlow
+      operationId: createApiFlow
       summary: Create an API flow
       description: >-
         Creates an API flow in the selected view. If `handle` is omitted, the service generates one from
@@ -1502,7 +1529,7 @@ paths:
     get:
       tags:
         - API Flows
-      operationId: getAllAPIFlows
+      operationId: getAllApiFlows
       summary: List API flows
       description: Lists all API flows for the selected organization view.
       responses:
@@ -1514,7 +1541,7 @@ paths:
         - OAuth2Security:
             - dp:api_flow_read
             - dp:api_flow_manage
-  /organizations/{orgId}/views/{viewName}/api-flows/{apiFlowId}:
+  /o/{orgId}/devportal/v1/views/{viewName}/api-flows/{apiFlowId}:
     parameters:
       - $ref: "#/components/parameters/OrgId"
       - $ref: "#/components/parameters/ViewName"
@@ -1522,7 +1549,7 @@ paths:
     get:
       tags:
         - API Flows
-      operationId: getAPIFlow
+      operationId: getApiFlow
       summary: Get an API flow
       description: Retrieves a single API flow by ID from the selected view.
       responses:
@@ -1539,7 +1566,7 @@ paths:
     put:
       tags:
         - API Flows
-      operationId: updateAPIFlow
+      operationId: updateApiFlow
       summary: Update an API flow
       description: Updates API flow metadata and content for the selected view. Duplicate handles return a conflict.
       requestBody:
@@ -1562,7 +1589,7 @@ paths:
     delete:
       tags:
         - API Flows
-      operationId: deleteAPIFlow
+      operationId: deleteApiFlow
       summary: Delete an API flow
       description: Deletes an API flow from the selected view.
       responses:
@@ -1576,7 +1603,7 @@ paths:
         - OAuth2Security:
             - dp:api_flow_delete
             - dp:api_flow_manage
-  /organizations/{orgId}/views/{viewName}/api-flows/generate-prompt:
+  /o/{orgId}/devportal/v1/views/{viewName}/api-flows/generate-prompt:
     parameters:
       - $ref: "#/components/parameters/OrgId"
       - $ref: "#/components/parameters/ViewName"
@@ -1621,7 +1648,7 @@ paths:
         - OAuth2Security:
             - dp:utility_write
             - dp:utility_manage
-  /organizations/{orgId}/key-managers:
+  /o/{orgId}/devportal/v1/key-managers:
     parameters:
       - $ref: "#/components/parameters/OrgId"
     post:
@@ -1663,7 +1690,7 @@ paths:
         - OAuth2Security:
             - dp:km_read
             - dp:km_manage
-  /organizations/{orgId}/key-managers/discover:
+  /o/{orgId}/devportal/v1/key-managers/discover:
     parameters:
       - $ref: "#/components/parameters/OrgId"
     get:
@@ -1683,7 +1710,7 @@ paths:
       security:
         - OAuth2Security:
             - dp:km_read
-  /organizations/{orgId}/key-managers/{kmId}:
+  /o/{orgId}/devportal/v1/key-managers/{kmId}:
     parameters:
       - $ref: "#/components/parameters/OrgId"
       - $ref: "#/components/parameters/KmId"
@@ -1758,7 +1785,7 @@ paths:
       responses:
         default:
           $ref: "#/components/responses/DefaultResponse"
-  /organizations/{orgId}/events:
+  /o/{orgId}/devportal/v1/webhook-events:
     parameters:
       - $ref: "#/components/parameters/OrgId"
     get:
@@ -1802,7 +1829,7 @@ paths:
       security:
         - OAuth2Security:
             - dp:event_read
-  /organizations/{orgId}/events/{eventId}:
+  /o/{orgId}/devportal/v1/webhook-events/{eventId}:
     parameters:
       - $ref: "#/components/parameters/OrgId"
       - $ref: "#/components/parameters/EventId"
@@ -1826,7 +1853,7 @@ paths:
       security:
         - OAuth2Security:
             - dp:event_read
-  /organizations/{orgId}/deliveries/{deliveryId}/retry:
+  /o/{orgId}/devportal/v1/webhook-deliveries/{deliveryId}/retry:
     parameters:
       - $ref: "#/components/parameters/OrgId"
       - $ref: "#/components/parameters/DeliveryId"
@@ -1951,12 +1978,6 @@ components:
       required: true
       schema:
         type: string
-    Name:
-      name: name
-      in: path
-      required: true
-      schema:
-        type: string
     FileType:
       name: fileType
       in: path
@@ -1970,8 +1991,8 @@ components:
       schema:
         type: string
         example: api-7f4c2a6b
-    PolicyIdOrName:
-      name: policyIdOrName
+    PolicyId:
+      name: policyId
       in: path
       required: true
       schema:
@@ -1983,12 +2004,6 @@ components:
       schema:
         type: string
         example: app-12345
-    SubscriptionId:
-      name: subscriptionId
-      in: path
-      required: true
-      schema:
-        type: string
     SubId:
       name: subId
       in: path
@@ -3239,6 +3254,14 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/SubscriptionPolicyResponse"
+    SubscriptionPolicyListResponse:
+      description: List of subscription policy DTOs. Empty array when no policies match.
+      content:
+        application/json:
+          schema:
+            type: array
+            items:
+              $ref: "#/components/schemas/SubscriptionPolicyResponse"
     SubscriptionPolicyMutationResponse:
       description: Subscription policy create/update response for single or bulk operations.
       content:
