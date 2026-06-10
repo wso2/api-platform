@@ -24,6 +24,8 @@ const { config } = require('./config/configLoader');
 const constants = require('./utils/constants');
 const webhookDispatcher = require('./services/webhooks/dispatcher');
 const webhookDeliveryWorker = require('./services/webhooks/deliveryWorker');
+const sequelize = require('./db/sequelize');
+const { seedDefaultOrg } = require('./services/seeder');
 const app = require('./app');
 
 const PORT = process.env.PORT || config.defaultPort;
@@ -57,11 +59,20 @@ function logStartupInfo() {
 function onListening() {
     logStartupInfo();
     startBackgroundServices();
+    seedDefaultOrg().catch(err =>
+        logger.error('Unexpected error during default org seeding', { error: err.message })
+    );
 }
 
-if (config.advanced.http) {
-    http.createServer(app).listen(PORT, '0.0.0.0', onListening);
-} else {
+async function startServer() {
+    if (config.db.dialect === 'sqlite') {
+        await sequelize.sync();
+        logger.info('SQLite schema synced');
+    }
+
+    if (config.advanced.http) {
+        http.createServer(app).listen(PORT, '0.0.0.0', onListening);
+    } else {
     try {
         const certPath = path.resolve(config.serverCerts.pathToCert);
         const keyPath = path.resolve(config.serverCerts.pathToPK);
@@ -86,7 +97,10 @@ if (config.advanced.http) {
         });
         process.exit(1);
     }
+    }
 }
+
+startServer();
 
 // Handle Uncaught Exceptions
 process.on('uncaughtException', (err) => {

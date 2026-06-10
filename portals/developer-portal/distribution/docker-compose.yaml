@@ -22,7 +22,7 @@
 #
 # Quick start:
 #   docker compose up
-#   Then open https://localhost:3000/ACME/views/default  (accept the self-signed cert warning)
+#   Then open https://localhost:3000/default/views/default  (accept the self-signed cert warning)
 #   Login: admin / admin  (or developer / developer)
 #
 # Configuration:
@@ -30,6 +30,13 @@
 #   Every config value can also be overridden via a DP_* env var.
 #   Create a .env file next to this file for persistent overrides.
 #   See configs/config.yaml for the full list of available settings.
+#
+# Database:
+#   SQLite is used by default — no external database required.
+#   To switch to PostgreSQL:
+#     1. Uncomment the `postgres` service below.
+#     2. Replace the DP_DB_* SQLite block in the `devportal` service with
+#        the PostgreSQL block that is commented out beneath it.
 #
 # TLS:
 #   A self-signed certificate is generated automatically on first start and stored
@@ -40,46 +47,58 @@
 #   and ensure it contains server.crt and server.key.
 
 services:
-  postgres:
-    image: postgres:16
-    environment:
-      POSTGRES_USER: devportal
-      POSTGRES_PASSWORD: devportal
-      POSTGRES_DB: devportal
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-      # SQL files in this directory run automatically on first DB start
-      - ./database:/docker-entrypoint-initdb.d:ro
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U devportal -d devportal"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 15s
-    networks:
-      - devportal-network
+  # ── PostgreSQL (optional) ────────────────────────────────────────────────────
+  # Uncomment this service and replace the DP_DB_* block in `devportal` below
+  # with the PostgreSQL block to switch from SQLite to PostgreSQL.
+  #
+  # postgres:
+  #   image: postgres:16
+  #   environment:
+  #     POSTGRES_USER: devportal
+  #     POSTGRES_PASSWORD: devportal
+  #     POSTGRES_DB: devportal
+  #   volumes:
+  #     - postgres_data:/var/lib/postgresql/data
+  #     - ./database:/docker-entrypoint-initdb.d:ro
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "pg_isready -U devportal -d devportal"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 10
+  #     start_period: 15s
+  #   networks:
+  #     - devportal-network
 
   devportal:
     image: ghcr.io/wso2/api-platform/developer-portal:0.1.0-SNAPSHOT
     ports:
       - "3000:3000"   # Developer Portal UI (HTTPS)
-    depends_on:
-      postgres:
-        condition: service_healthy
+    # depends_on:           # Uncomment when using PostgreSQL
+    #   postgres:
+    #     condition: service_healthy
     volumes:
       # Mount config from the configs/ directory.
       - ./configs/config.yaml:/app/configs/config.yaml:ro
+      # Persist the SQLite database file across container restarts.
+      - sqlite_data:/app/data
       # Persist the auto-generated TLS certificate across container restarts.
       # To use your own cert, replace with: - ./my-certs:/app/certs:ro
       - certs_data:/app/certs
     environment:
-      # Database — point to the postgres service above
-      DP_DB_HOST: postgres
-      DP_DB_PORT: 5432
-      DP_DB_DIALECT: postgres
-      DP_DB_USERNAME: devportal
-      DP_DB_PASSWORD: devportal
-      DP_DB_DATABASE: devportal
+      # ── Database: SQLite (default) ───────────────────────────────────────────
+      DP_DB_DIALECT: sqlite
+      DP_DB_STORAGE: /app/data/devportal.db
+
+      # ── Database: PostgreSQL (optional) ─────────────────────────────────────
+      # Remove the SQLite block above and uncomment this block to use PostgreSQL.
+      # Also uncomment the `postgres` service and `depends_on` above.
+      #
+      # DP_DB_DIALECT: postgres
+      # DP_DB_HOST: postgres
+      # DP_DB_PORT: 5432
+      # DP_DB_USERNAME: devportal
+      # DP_DB_PASSWORD: devportal
+      # DP_DB_DATABASE: devportal
 
       # HTTPS — a self-signed cert is generated automatically on first start.
       # To switch back to plain HTTP, set DP_ADVANCED_HTTP=true and DP_BASEURL=http://localhost:3000.
@@ -101,10 +120,12 @@ services:
       - devportal-network
 
 volumes:
-  postgres_data:
+  sqlite_data:
     driver: local
   certs_data:
     driver: local
+  # postgres_data:      # Uncomment when using PostgreSQL
+  #   driver: local
 
 networks:
   devportal-network:

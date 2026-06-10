@@ -31,7 +31,7 @@ const sequelize = require('../db/sequelize');
 const createOrganization = async (orgData, t) => {
     let devPortalID = "";
     if (orgData.orgHandle) {
-        devPortalID = orgData.orgHandle
+        devPortalID = orgData.orgHandle.toLowerCase();
     }
     const createOrgData = {
         ORG_NAME: orgData.orgName,
@@ -65,7 +65,7 @@ const getOrganization = async (param) => {
             where: {
                 [Sequelize.Op.or]: [
                     { ORG_NAME: param },
-                    { ORG_HANDLE: param },
+                    { ORG_HANDLE: typeof param === 'string' ? param.toLowerCase() : param },
                     { ORG_ID: param },
                     { ORGANIZATION_IDENTIFIER: param }
                 ]
@@ -89,7 +89,7 @@ const getOrgId = async (orgName) => {
             where: {
                 [Sequelize.Op.or]: [
                     { ORG_NAME: orgName },
-                    { ORG_HANDLE: orgName },
+                    { ORG_HANDLE: typeof orgName === 'string' ? orgName.toLowerCase() : orgName },
                     { ORGANIZATION_IDENTIFIER: orgName }
                 ]
             }
@@ -124,7 +124,7 @@ const getOrganizations = async () => {
 const updateOrganization = async (orgData, t) => {
     let devPortalID = "";
     if (orgData.orgHandle) {
-        devPortalID = orgData.orgHandle
+        devPortalID = orgData.orgHandle.toLowerCase();
     }
     try {
         const [updatedRowsCount, updatedOrg] = await Organization.update(

@@ -21,12 +21,12 @@ const sequelize = require('../db/sequelize')
 const APIImageMetadata = sequelize.define('DP_API_IMAGEDATA', {
     API_ID: {
         type: DataTypes.UUID,
-        defaultValue: Sequelize.UUIDV4,
         primaryKey: true
     },
     IMAGE_TAG: {
         type: DataTypes.STRING,
-        allowNull: false
+        allowNull: false,
+        primaryKey: true
     },
     IMAGE_NAME: {
         type: DataTypes.STRING,

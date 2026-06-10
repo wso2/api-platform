@@ -29,7 +29,7 @@ describe('Developer Portal — Smoke', () => {
         });
     });
 
-    it('ACME default view loads and shows a page', () => {
+    it('Default org view loads and shows a page', () => {
         cy.visitPortal();
         cy.get('body').should('be.visible');
         // Should not show a 404/500 error page.

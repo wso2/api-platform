@@ -47,7 +47,7 @@ module.exports = defineConfig({
     },
     env: {
         // Org/view used throughout tests — matches seed data in 02_seed_default.sql
-        ORG_HANDLE: 'ACME',
+        ORG_HANDLE: 'default',
         VIEW_NAME: 'default',
         ORG_ID: '1ba42a09-45c0-40f8-a1bf-e4aa7cde1575',
         ADMIN_USER: 'admin',

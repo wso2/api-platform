@@ -28,6 +28,13 @@ const { Op } = require('sequelize');
 const constants = require('../utils/constants');
 const { CustomError } = require('../utils/errors/customErrors');
 const logger = require('../config/logger');
+const fs = require('fs');
+const path = require('path');
+
+const SEARCH_APIS_POSTGRES_SQL = fs.readFileSync(
+    path.join(__dirname, '../../database/queries/search-apis.postgres.sql'),
+    'utf8'
+);
 
 const createAPIMetadata = async (orgID, apiMetadata, t) => {
 
@@ -863,13 +870,14 @@ const getAPIDocByName = async (type, name, orgID, apiID, t) => {
 }
 
 const getAPIDocTypes = async (orgID, apiID) => {
+    const isPostgres = APIContent.sequelize.getDialect() === 'postgres';
+    const fileNamesExpr = isPostgres
+        ? [Sequelize.fn("ARRAY_AGG", Sequelize.col("DP_API_CONTENT.FILE_NAME")), "FILE_NAMES"]
+        : [Sequelize.fn("GROUP_CONCAT", Sequelize.col("DP_API_CONTENT.FILE_NAME"), "|||"), "FILE_NAMES"];
 
     try {
-        const apiFileResponse = await APIContent.findAll({
-            attributes: [
-                "TYPE",
-                [Sequelize.fn("ARRAY_AGG", Sequelize.col("DP_API_CONTENT.FILE_NAME")), "FILE_NAMES"]
-            ],
+        const rows = await APIContent.findAll({
+            attributes: ["TYPE", fileNamesExpr],
             where: {
                 API_ID: apiID,
                 TYPE: {
@@ -892,7 +900,14 @@ const getAPIDocTypes = async (orgID, apiID) => {
             ]
         });
 
-        return apiFileResponse;
+        if (!isPostgres) {
+            for (const row of rows) {
+                const raw = row.dataValues.FILE_NAMES;
+                row.dataValues.FILE_NAMES = raw ? raw.split("|||") : [];
+            }
+        }
+
+        return rows;
     } catch (error) {
         if (error instanceof Sequelize.UniqueConstraintError) {
             throw error;
@@ -902,34 +917,44 @@ const getAPIDocTypes = async (orgID, apiID) => {
 }
 
 const getAPIDocs = async (orgID, apiID) => {
-    try {
-        const apiFileResponse = await APIContent.findAll({
-            attributes: [
-                "TYPE",
-                [Sequelize.fn("ARRAY_AGG", Sequelize.col("DP_API_CONTENT.FILE_NAME")), "FILE_NAMES"],
-                [Sequelize.fn("ARRAY_AGG", Sequelize.col("DP_API_CONTENT.API_FILE")), "API_FILES"]
-            ],
-            where: {
-                API_ID: apiID,
-                [Op.or]: [
-                    { TYPE: { [Op.like]: "DOC_%" } },
-                    { FILE_NAME: { [Op.like]: "LINK_%" } }
-                ]
-            },
-            group: ["DP_API_CONTENT.TYPE"],
-            include: [
-                {
-                    model: APIMetadata,
-                    required: true,
-                    attributes: [],
-                    where: {
-                        ORG_ID: orgID
-                    }
-                }
-            ]
-        });
+    const isPostgres = APIContent.sequelize.getDialect() === 'postgres';
+    const include = [{
+        model: APIMetadata,
+        required: true,
+        attributes: [],
+        where: { ORG_ID: orgID }
+    }];
+    const where = {
+        API_ID: apiID,
+        [Op.or]: [
+            { TYPE: { [Op.like]: "DOC_%" } },
+            { FILE_NAME: { [Op.like]: "LINK_%" } }
+        ]
+    };
 
-        return apiFileResponse;
+    try {
+        if (isPostgres) {
+            return await APIContent.findAll({
+                attributes: [
+                    "TYPE",
+                    [Sequelize.fn("ARRAY_AGG", Sequelize.col("DP_API_CONTENT.FILE_NAME")), "FILE_NAMES"],
+                    [Sequelize.fn("ARRAY_AGG", Sequelize.col("DP_API_CONTENT.API_FILE")), "API_FILES"]
+                ],
+                where,
+                group: ["DP_API_CONTENT.TYPE"],
+                include
+            });
+        }
+
+        const rows = await APIContent.findAll({ attributes: ["TYPE", "FILE_NAME", "API_FILE"], where, include });
+        const typeMap = new Map();
+        for (const row of rows) {
+            const { TYPE, FILE_NAME, API_FILE } = row.dataValues;
+            if (!typeMap.has(TYPE)) typeMap.set(TYPE, { TYPE, FILE_NAMES: [], API_FILES: [] });
+            typeMap.get(TYPE).FILE_NAMES.push(FILE_NAME);
+            typeMap.get(TYPE).API_FILES.push(API_FILE);
+        }
+        return Array.from(typeMap.values()).map(g => ({ dataValues: g }));
     } catch (error) {
         if (error instanceof Sequelize.UniqueConstraintError) {
             throw error;
@@ -940,34 +965,41 @@ const getAPIDocs = async (orgID, apiID) => {
 
 
 const getAPIDocLinks = async (orgID, apiID) => {
+    const isPostgres = APIContent.sequelize.getDialect() === 'postgres';
+    const include = [{
+        model: APIMetadata,
+        required: true,
+        attributes: [],
+        where: { ORG_ID: orgID }
+    }];
+    const where = {
+        API_ID: apiID,
+        FILE_NAME: { [Op.like]: "LINK_%" }
+    };
 
     try {
-        const apiFileResponse = await APIContent.findAll({
-            attributes: [
-                "TYPE",
-                [Sequelize.fn("ARRAY_AGG", Sequelize.col("DP_API_CONTENT.FILE_NAME")), "FILE_NAMES"],
-                [Sequelize.fn("ARRAY_AGG", Sequelize.col("DP_API_CONTENT.API_FILE")), "API_FILES"]
-            ],
-            where: {
-                API_ID: apiID,
-                FILE_NAME: {
-                    [Op.like]: "LINK_%"
-                },
-            },
-            group: ["DP_API_CONTENT.TYPE"],
-            include: [
-                {
-                    model: APIMetadata,
-                    required: true,
-                    attributes: [],
-                    where: {
-                        ORG_ID: orgID
-                    }
-                }
-            ]
-        });
+        if (isPostgres) {
+            return await APIContent.findAll({
+                attributes: [
+                    "TYPE",
+                    [Sequelize.fn("ARRAY_AGG", Sequelize.col("DP_API_CONTENT.FILE_NAME")), "FILE_NAMES"],
+                    [Sequelize.fn("ARRAY_AGG", Sequelize.col("DP_API_CONTENT.API_FILE")), "API_FILES"]
+                ],
+                where,
+                group: ["DP_API_CONTENT.TYPE"],
+                include
+            });
+        }
 
-        return apiFileResponse;
+        const rows = await APIContent.findAll({ attributes: ["TYPE", "FILE_NAME", "API_FILE"], where, include });
+        const typeMap = new Map();
+        for (const row of rows) {
+            const { TYPE, FILE_NAME, API_FILE } = row.dataValues;
+            if (!typeMap.has(TYPE)) typeMap.set(TYPE, { TYPE, FILE_NAMES: [], API_FILES: [] });
+            typeMap.get(TYPE).FILE_NAMES.push(FILE_NAME);
+            typeMap.get(TYPE).API_FILES.push(API_FILE);
+        }
+        return Array.from(typeMap.values()).map(g => ({ dataValues: g }));
     } catch (error) {
         if (error instanceof Sequelize.UniqueConstraintError) {
             throw error;
@@ -1274,77 +1306,39 @@ const getAllAPIMetadataFromAllViews = async (orgID, groups, t) => {
     return apiList;
 };
 
-const searchAPIMetadata = async (orgID, groups, searchTerm, t) => {
-    try {
-        const query = `
-        SELECT 
-            metadata.*,
-            COALESCE(
-                JSON_AGG("DP_API_IMAGEDATA") FILTER (WHERE "DP_API_IMAGEDATA"."API_ID" IS NOT NULL), 
-                '[]'
-            ) AS "DP_API_IMAGEDATA",
-             COALESCE(
-                JSON_AGG("DP_API_SUBSCRIPTION_POLICY") FILTER (WHERE "DP_API_SUBSCRIPTION_POLICY"."API_ID" IS NOT NULL), 
-                '[]'
-            ) AS "DP_API_SUBSCRIPTION_POLICY",
-            COALESCE(
-                ARRAY_AGG(DISTINCT "DP_LABELS"."NAME") FILTER (WHERE "DP_LABELS"."NAME" IS NOT NULL), 
-                '{}'
-            ) AS "DP_LABELs",
-            ts_rank(
-                to_tsvector('english', metadata."METADATA_SEARCH"::text),
-                plainto_tsquery('english', COALESCE(:searchTerm, ''))
-            ) AS "rank_metadata",
-            STRING_AGG(
-		        DISTINCT CASE 
-		            WHEN content."API_FILE" IS NOT NULL 
-		            AND to_tsvector('english', convert_from(content."API_FILE", 'UTF8')) @@ plainto_tsquery('english', :searchTerm)
-		            THEN content."TYPE"
-		            ELSE 'METADATA'
-		        END, ', '
-		    ) AS "DATA_SOURCE" 
-        FROM 
-            "DP_API_METADATA" metadata
-        LEFT JOIN  
-            "DP_API_CONTENT" content 
-            ON metadata."API_ID" = content."API_ID"
-            AND (
-                content."FILE_NAME" LIKE '%.hbs' 
-                OR content."FILE_NAME" LIKE '%.md%' 
-                OR content."FILE_NAME" LIKE '%.json%'
-                OR content."FILE_NAME" LIKE '%.xml%'
-                OR content."FILE_NAME" LIKE '%.graphql%'
-            ) 
-        LEFT OUTER JOIN 
-            "DP_API_IMAGEDATA" 
-            ON metadata."API_ID" = "DP_API_IMAGEDATA"."API_ID"
-        LEFT OUTER JOIN 
-            "DP_API_SUBSCRIPTION_POLICY" 
-            ON metadata."API_ID" = "DP_API_SUBSCRIPTION_POLICY"."API_ID"
-        LEFT OUTER JOIN 
-            "DP_API_LABELS"  
-            ON metadata."API_ID" = "DP_API_LABELS"."API_ID"
-        LEFT OUTER JOIN 
-            "DP_LABELS" 
-            ON "DP_API_LABELS"."LABEL_ID" = "DP_LABELS"."LABEL_ID"
-        WHERE 
-            (
-                to_tsvector('english', metadata."METADATA_SEARCH"::text) @@ plainto_tsquery('english', COALESCE(:searchTerm, ''))
-                OR (
-                    content."API_FILE" IS NOT NULL AND
-                    to_tsvector('english', convert_from(content."API_FILE", 'UTF8')) @@ plainto_tsquery('english', :searchTerm)
-                )
-            )
-            AND metadata."ORG_ID" = :orgID
-        GROUP BY 
-            metadata."API_ID"
-        ORDER BY
-            rank_metadata DESC;
-        `;
-        const formattedGroups = `{${groups.map((g) => `"${g}"`).join(',')}}`;
+const searchAPIMetadataFallback = async (orgID, searchTerm, t) => {
+    const pattern = `%${searchTerm}%`;
+    return APIMetadata.findAll({
+        where: {
+            ORG_ID: orgID,
+            STATUS: constants.API_STATUS.PUBLISHED,
+            [Op.or]: [
+                Sequelize.where(
+                    Sequelize.cast(Sequelize.col('DP_API_METADATA.METADATA_SEARCH'), 'TEXT'),
+                    { [Op.like]: pattern }
+                ),
+                Sequelize.where(
+                    Sequelize.col('DP_API_METADATA.TAGS'),
+                    { [Op.like]: pattern }
+                ),
+            ],
+        },
+        include: [
+            { model: APIImageMetadata, required: false },
+            { model: SubscriptionPolicy, through: { attributes: [] }, required: false },
+            { model: Labels, attributes: ['NAME'], required: false, through: { attributes: [] } },
+        ],
+        transaction: t,
+    });
+};
 
-        const results = await APIMetadata.sequelize.query(query, {
-            replacements: { searchTerm, orgID, groups: formattedGroups },
+const searchAPIMetadata = async (orgID, groups, searchTerm, t) => {
+    if (APIMetadata.sequelize.getDialect() !== 'postgres') {
+        return searchAPIMetadataFallback(orgID, searchTerm, t);
+    }
+    try {
+        const results = await APIMetadata.sequelize.query(SEARCH_APIS_POSTGRES_SQL, {
+            replacements: { searchTerm, orgID },
             type: Sequelize.QueryTypes.SELECT,
         });
         return results;

@@ -50,7 +50,13 @@ const ViewLabels = sequelize.define('DP_VIEW_LABELS', {
     timestamps: false,
     tableName: 'DP_VIEW_LABELS',
     returning: true,
-    unique: false
+    indexes: [
+        {
+            name: 'UQ_VIEW_LABELS_LABEL_VIEW_ORG',
+            unique: true,
+            fields: ['LABEL_ID', 'VIEW_ID', 'ORG_ID']
+        }
+    ]
 });
 
 ViewLabels.belongsTo(Organization, {

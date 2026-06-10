@@ -91,11 +91,11 @@ const APIMetadata = sequelize.define('DP_API_METADATA', {
   },
   PRODUCTION_URL: {
     type: DataTypes.STRING,
-    allowNull: false
+    allowNull: true
   },
   PROVIDER: {
     type: DataTypes.STRING,
-    allowNull: false
+    allowNull: true
   },
   METADATA_SEARCH: {
     type: DataTypes.JSON,
@@ -156,7 +156,13 @@ const APILabels = sequelize.define('DP_API_LABELS', {
   timestamps: false,
   tableName: 'DP_API_LABELS',
   returning: true,
-  unique: false
+  indexes: [
+      {
+          name: 'UQ_API_LABELS_LABEL_API_ORG',
+          unique: true,
+          fields: ['LABEL_ID', 'API_ID', 'ORG_ID']
+      }
+  ]
 });
 
 APILabels.belongsTo(Organization, {

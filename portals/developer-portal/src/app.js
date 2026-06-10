@@ -20,7 +20,6 @@ const express = require('express');
 const { engine } = require('express-handlebars');
 const passport = require('passport');
 const session = require('express-session');
-const pgSession = require('connect-pg-simple')(session);
 const path = require('path');
 const logger = require('./config/logger');
 const { auditMiddleware } = require('./middlewares/auditLogger');
@@ -40,7 +39,7 @@ const settingsRoute = require('./routes/configureRoute');
 const apiFlowsRoute = require('./routes/apiFlowsRoute');
 const { v4: uuidv4 } = require('uuid');
 const util = require('./utils/util');
-const pool = require('./db/pool');
+const sessionStore = require('./db/sessionStore');
 const { registerHelpers } = require('./helpers/handlebarsHelpers');
 const { configurePassport } = require('./middlewares/passport');
 
@@ -62,12 +61,7 @@ app.set('view engine', 'hbs');
 registerHelpers();
 
 app.use(session({
-    store: new pgSession({
-        pool: pool,
-        tableName: 'session',
-        pruneSessionInterval: 3600,
-        debug: (message) => logger.debug('Session store debug', { message }),
-    }),
+    store: sessionStore,
     secret: sessionSecret,
     resave: false,
     saveUninitialized: true,
