@@ -18,7 +18,6 @@
 'use strict';
 
 const { Sequelize } = require('sequelize');
-const sequelize = require('../db/sequelize');
 const adminDao = require('../dao/admin');
 const apiDao = require('../dao/apiMetadata');
 const { config } = require('../config/configLoader');
@@ -26,66 +25,118 @@ const constants = require('../utils/constants');
 const logger = require('../config/logger');
 
 /**
- * Seeds the default organization on startup when config.defaultOrgName is set.
- * Idempotent — a UniqueConstraintError (org already exists) is silently skipped.
- * Mirrors the transaction logic in adminService.createOrganization.
+ * Seeds the default organization and its dependent resources on startup.
+ * Each resource is checked/created individually so an existing org with
+ * missing defaults is repaired without skipping the rest of the seed.
  */
 async function seedDefaultOrg() {
     const orgName = config.defaultOrgName;
     if (!orgName) return;
 
+    const payload = {
+        orgName,
+        orgHandle: orgName,
+        roleClaimName: config.roleClaim,
+        groupsClaimName: config.groupsClaim,
+        organizationClaimName: config.orgIDClaim,
+        organizationIdentifier: orgName,
+        adminRole: config.adminRole,
+        subscriberRole: config.subscriberRole,
+        superAdminRole: config.superAdminRole,
+        orgConfig: { devportalMode: constants.DEVPORTAL_MODE.DEFAULT },
+    };
+
+    let orgId;
     try {
-        await sequelize.transaction(async (t) => {
-            const payload = {
-                orgName,
-                orgHandle: orgName,
-                roleClaimName: config.roleClaim,
-                groupsClaimName: config.groupsClaim,
-                organizationClaimName: config.orgIDClaim,
-                organizationIdentifier: orgName,
-                adminRole: config.adminRole,
-                subscriberRole: config.subscriberRole,
-                superAdminRole: config.superAdminRole,
-                orgConfig: { devportalMode: constants.DEVPORTAL_MODE.DEFAULT },
-            };
-
-            const organization = await adminDao.createOrganization(payload, t);
-            const orgId = organization.ORG_ID;
-
-            const createdLabels = await apiDao.createLabels(
-                orgId, [{ name: 'default', displayName: 'default' }], t
-            );
-            const labelId = createdLabels[0].dataValues.LABEL_ID;
-
-            const viewResponse = await apiDao.addView(
-                orgId, { name: 'default', displayName: 'default' }, t
-            );
-            const viewId = viewResponse.dataValues.VIEW_ID;
-
-            await apiDao.addLabel(orgId, labelId, viewId, t);
-            await adminDao.createProvider(
-                orgId, { name: 'WSO2', providerURL: config.controlPlane.url }, t
-            );
-
-            if (config.generateDefaultSubPolicies) {
-                await apiDao.bulkCreateSubscriptionPolicies(
-                    orgId, constants.DEFAULT_SUBSCRIPTION_PLANS, t
-                );
-            }
-        });
-
-        logger.info(`Default organization '${orgName}' seeded successfully`);
+        const organization = await adminDao.createOrganization(payload);
+        orgId = organization.ORG_ID;
     } catch (error) {
         if (error instanceof Sequelize.UniqueConstraintError) {
-            logger.info(`Default organization '${orgName}' already exists, skipping seed`);
+            try {
+                const existing = await adminDao.getOrganization(orgName);
+                orgId = existing.ORG_ID;
+            } catch (lookupError) {
+                logger.error('Failed to look up existing default organization', {
+                    error: lookupError.message,
+                    operation: 'seedDefaultOrg',
+                });
+                return;
+            }
+        } else {
+            logger.error('Failed to seed default organization', {
+                error: error.message,
+                stack: error.stack,
+                operation: 'seedDefaultOrg',
+            });
             return;
         }
-        logger.error('Failed to seed default organization', {
-            error: error.message,
-            stack: error.stack,
-            operation: 'seedDefaultOrg'
-        });
     }
+
+    let labelId;
+    try {
+        const label = await apiDao.updateLabel(orgId, { name: 'default', displayName: 'default' });
+        labelId = label.dataValues.LABEL_ID;
+    } catch (error) {
+        logger.error('Failed to seed default label', {
+            error: error.message,
+            operation: 'seedDefaultOrg',
+        });
+        return;
+    }
+
+    let viewId;
+    try {
+        const view = await apiDao.updateView(orgId, 'default', 'default');
+        viewId = view.dataValues.VIEW_ID;
+    } catch (error) {
+        logger.error('Failed to seed default view', {
+            error: error.message,
+            operation: 'seedDefaultOrg',
+        });
+        return;
+    }
+
+    try {
+        await apiDao.addLabel(orgId, labelId, viewId);
+    } catch (error) {
+        if (!(error instanceof Sequelize.UniqueConstraintError)) {
+            logger.error('Failed to seed label-view link', {
+                error: error.message,
+                operation: 'seedDefaultOrg',
+            });
+            return;
+        }
+    }
+
+    try {
+        await adminDao.createProvider(orgId, { name: 'WSO2', providerURL: config.controlPlane.url });
+    } catch (error) {
+        if (!(error instanceof Sequelize.UniqueConstraintError)) {
+            logger.error('Failed to seed provider', {
+                error: error.message,
+                operation: 'seedDefaultOrg',
+            });
+            return;
+        }
+    }
+
+    if (config.generateDefaultSubPolicies) {
+        for (const plan of constants.DEFAULT_SUBSCRIPTION_PLANS) {
+            try {
+                await apiDao.bulkCreateSubscriptionPolicies(orgId, [plan]);
+            } catch (error) {
+                if (!(error instanceof Sequelize.UniqueConstraintError)) {
+                    logger.error('Failed to seed subscription policy', {
+                        error: error.message,
+                        operation: 'seedDefaultOrg',
+                        plan: plan.name,
+                    });
+                }
+            }
+        }
+    }
+
+    logger.info(`Default organization '${orgName}' seeded successfully`);
 }
 
 module.exports = { seedDefaultOrg };
