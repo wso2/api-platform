@@ -575,10 +575,11 @@ func (v *APIValidator) validateOperations(operations []api.Operation) []Validati
 				Field:   fmt.Sprintf("spec.operations[%d].method", i),
 				Message: "HTTP method is required",
 			})
-		} else if !validMethods[strings.ToUpper(string(op.Method))] {
+		} else if !validMethods[string(op.Method)] {
+			// Case-sensitive on purpose: Envoy matches :method exactly, so only uppercase methods route.
 			errors = append(errors, ValidationError{
 				Field:   fmt.Sprintf("spec.operations[%d].method", i),
-				Message: fmt.Sprintf("Invalid HTTP method '%s' (must be GET, POST, PUT, DELETE, PATCH, HEAD, or OPTIONS)", op.Method),
+				Message: fmt.Sprintf("Invalid HTTP method '%s' (must be GET, POST, PUT, DELETE, PATCH, HEAD, or OPTIONS; methods are case-sensitive)", op.Method),
 			})
 		}
 
