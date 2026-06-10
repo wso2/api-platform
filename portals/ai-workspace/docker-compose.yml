@@ -1,0 +1,112 @@
+version: "3.9"
+
+# Brings up AI Workspace (UI) + Platform API (backend) as a pair.
+#
+# Prerequisites — build images locally first:
+#   cd platform-api            && make build
+#   cd portals/ai-workspace    && make build
+#
+# Usage:
+#   docker compose up
+#
+# Configuration:
+#   Copy .env.compose.example to .env.compose and fill in values, then:
+#   docker compose --env-file .env.compose up
+#
+# Ports:
+#   AI Workspace  →  http://localhost:8080
+#   Platform API  →  https://localhost:9243  (self-signed TLS)
+#
+# The UI proxies all /api-proxy/* requests to the platform-api container
+# via nginx, so the browser never needs direct access to port 9243.
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # Platform API  (Go HTTPS backend)
+  # ---------------------------------------------------------------------------
+  platform-api:
+    image: ghcr.io/wso2/api-platform/platform-api:${PLATFORM_API_VERSION:-latest}
+    container_name: platform-api
+    restart: unless-stopped
+
+    environment:
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      PORT: "9243"
+      DEV_MODE: ${DEV_MODE:-true}
+
+      # SQLite (default). Switch to PostgreSQL by overriding DATABASE_DRIVER and
+      # the DATABASE_HOST / DATABASE_NAME / DATABASE_USER / DATABASE_PASSWORD vars.
+      DATABASE_DRIVER: ${DATABASE_DRIVER:-sqlite3}
+      DATABASE_DB_PATH: /app/data/api_platform.db
+
+      # JWT auth (local HMAC) — change the secret in production
+      AUTH_JWT_ENABLED: "true"
+      AUTH_JWT_SECRET_KEY: ${AUTH_JWT_SECRET_KEY:-change-me-in-production}
+      AUTH_JWT_ISSUER: ${AUTH_JWT_ISSUER:-platform-api}
+
+      # IDP auth (JWKS-based) — set AUTH_IDP_ENABLED=true and fill the rest
+      AUTH_IDP_ENABLED: ${AUTH_IDP_ENABLED:-false}
+      AUTH_IDP_NAME: ${AUTH_IDP_NAME:-}
+      AUTH_IDP_JWKS_URL: ${AUTH_IDP_JWKS_URL:-}
+      AUTH_IDP_ISSUER: ${AUTH_IDP_ISSUER:-}
+      AUTH_IDP_AUDIENCE: ${AUTH_IDP_AUDIENCE:-}
+
+      # Disable DevPortal integration by default (avoids startup errors without a portal)
+      DEFAULT_DEVPORTAL_ENABLED: ${DEFAULT_DEVPORTAL_ENABLED:-false}
+
+    ports:
+      - "${PLATFORM_API_PORT:-9243}:9243"
+
+    volumes:
+      - platform-api-data:/app/data
+
+    healthcheck:
+      test: ["CMD", "curl", "-fk", "https://localhost:9243/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+
+  # ---------------------------------------------------------------------------
+  # AI Workspace  (React SPA served by nginx)
+  # ---------------------------------------------------------------------------
+  ai-workspace:
+    image: ghcr.io/wso2/api-platform/ai-workspace:${AI_WORKSPACE_VERSION:-latest}
+    container_name: ai-workspace
+    restart: unless-stopped
+    depends_on:
+      platform-api:
+        condition: service_healthy
+
+    environment:
+      # Platform API URL — relative path so the browser calls nginx which
+      # reverse-proxies to the platform-api container on the Docker network.
+      VITE_PLATFORM_API_BASE_URL: /api-proxy/api/v1
+
+      # Authentication — configure to match your IDP
+      VITE_OIDC_AUTHORITY: ${VITE_OIDC_AUTHORITY:-}
+      VITE_OIDC_CLIENT_ID: ${VITE_OIDC_CLIENT_ID:-}
+      VITE_DOMAIN: ${VITE_DOMAIN:-localhost:8080}
+
+      # Super admin credentials (bcrypt hash of password)
+      VITE_SUPER_ADMIN_USERNAME: ${VITE_SUPER_ADMIN_USERNAME:-admin}
+      VITE_SUPER_ADMIN_PASSWORD_HASH: ${VITE_SUPER_ADMIN_PASSWORD_HASH:-}
+
+      # Optional overrides — defaults in config.env.ts are used when unset
+      VITE_SENTRY_ENV: ${VITE_SENTRY_ENV:-DEV}
+      VITE_DEFAULT_ORG_REGION: ${VITE_DEFAULT_ORG_REGION:-us}
+
+    ports:
+      - "${AI_WORKSPACE_PORT:-8080}:8080"
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+
+volumes:
+  platform-api-data:
+    driver: local

@@ -7,16 +7,6 @@ The frontend implementation will cover the following key areas:
 * **User Experience (UX)**
 ---
 
-## Product Context
-
-The **AI Workspace** is a standalone web application designed to address AI-specific use cases.
-
-In its initial phase, it is targeted to work with the **Bijira Cloud solution**, integrating with **Bijira's Asgardeo SP** as the service provider for authentication and identity management.
-
-This application is intentionally scoped **only for AI-related workflows** and does **not** include functionality related to general API management or broader platform features.
-
----
-
 ## Technology Stack
 
 The frontend will be built using the following technologies:
@@ -25,54 +15,6 @@ The frontend will be built using the following technologies:
 * **Vite**
 * **TypeScript**
 * **Oxygen UI (new version)**
-
-## Guide
-
-This repository uses Rush (monorepo) and the `rushx` helper to run per-project npm scripts. The AI Workspace project is declared in the monorepo in a subspace as below:
-```json
-{
-  "packageName": "@wso2-enterprise/ai-workspace",
-  "projectFolder": "workspaces/apps/ai-workspace",
-  "subspaceName": "ai-workspace"
-}
-```
-
----
-
-### 1) Update dependencies for the AI Workspace (subspace/project)
-
-- From the repository root:
-```bash
-cd workspaces/apps/ai-workspace
-rush update --only @wso2-enterprise/ai-workspace
-```
----
-
-### 2) Install a new dependecy
-
-- From the repository root:
-```bash
-cd workspaces/apps/ai-workspace
-rush add -p <dependency>@<version>
-rush update --only @wso2-enterprise/ai-workspace
-```
-
-Note: workspaces/apps/ai-workspace/package.json & common/config/subspaces/ai-workspace/pnpm-lock.yaml should be changed
-
-### 3) Start the AI Workspace Dev Server with `rushx`
-
-- From the repository root:
-```bash
-cd workspaces/apps/ai-workspace
-rushx start
-```
-
-### PNPM Guide (To Fix Local Issues and Try)
-
-```bash
-rm -rf common/temp/ai-workspace/node_modules/.vite workspaces/apps/ai-workspace/node_modules/.vite && \
-cd workspaces/apps/ai-workspace && pnpm install && pnpm run dev
-```
 ---
 
 ## Project file tree 📁
@@ -216,21 +158,14 @@ const { isAuthenticated, isLoading, user, accessToken, hasPermission, login, log
 | `login(credentials?)` | `async () => void` | Redirects to IdP (OIDC) or logs in locally (mock) |
 | `logout()` | `async () => void` | Clears session and redirects to `/login` |
 
-### Key Source Files
+## Local dev workflow
 
 ```
-src/
-├── auth/
-│   ├── permissions.ts         — PlatformRole, SCOPES, ROLE_SCOPES, checkPermission
-│   ├── mockUsers.config.ts    — Mock user list for local dev
-│   └── logout.ts              — handleLogout, clearAuthData (clears known sessionStorage keys)
-└── contexts/
-    ├── AppAuthContext.tsx      — Shared context definition and useAppAuth() hook
-    ├── OIDCAppAuthProvider.tsx — OIDC auth provider (react-oidc-context)
-    └── MockAuthProvider.tsx   — Mock auth provider (local credentials)
+  cd platform-api         && make build   # builds ghcr.io/.../platform-api:latest
+  cd portals/ai-workspace && make build   # builds ghcr.io/.../ai-workspace:latest
+  cd portals/ai-workspace && docker compose up
 ```
 
----
 
 ## Other Documentations
 [Mock Backend Documentation](workspaces/apps/ai-workspace/mock-service/README.md)
