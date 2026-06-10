@@ -28,6 +28,7 @@ import (
 	"strings"
 
 	"platform-api/src/internal/middleware"
+	"platform-api/src/internal/model"
 	"platform-api/src/internal/service"
 	"platform-api/src/internal/utils"
 
@@ -105,8 +106,20 @@ func (h *GatewayHandler) CreateGateway(c *gin.Context) {
 		return
 	}
 
+	var endpoints []model.GatewayEndpoint
+	if req.Endpoints != nil {
+		endpoints = make([]model.GatewayEndpoint, 0, len(*req.Endpoints))
+		for _, ep := range *req.Endpoints {
+			endpoints = append(endpoints, model.GatewayEndpoint{
+				Host:     ep.Host,
+				Protocol: string(ep.Protocol),
+				Port:     int(ep.Port),
+			})
+		}
+	}
+
 	gateway, err := h.gatewayService.RegisterGateway(orgId, req.Name, req.DisplayName, description, req.Vhost,
-		isCritical, functionalityType, version, properties)
+		isCritical, functionalityType, version, properties, endpoints)
 	if err != nil {
 		errMsg := err.Error()
 
@@ -262,7 +275,20 @@ func (h *GatewayHandler) UpdateGateway(c *gin.Context) {
 		return
 	}
 
-	response, err := h.gatewayService.UpdateGateway(gatewayId, orgId, req.Description, req.DisplayName, req.IsCritical, req.Properties)
+	var endpoints *[]model.GatewayEndpoint
+	if req.Endpoints != nil {
+		eps := make([]model.GatewayEndpoint, 0, len(*req.Endpoints))
+		for _, ep := range *req.Endpoints {
+			eps = append(eps, model.GatewayEndpoint{
+				Host:     ep.Host,
+				Protocol: string(ep.Protocol),
+				Port:     int(ep.Port),
+			})
+		}
+		endpoints = &eps
+	}
+
+	response, err := h.gatewayService.UpdateGateway(gatewayId, orgId, req.Description, req.DisplayName, req.IsCritical, req.Properties, endpoints)
 	if err != nil {
 		if errors.Is(err, constants.ErrGatewayNotFound) {
 			h.slogger.Error("Gateway not found during update", "error", err)

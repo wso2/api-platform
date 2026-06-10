@@ -56,29 +56,36 @@ func (r *GatewayRepo) Create(gateway *model.Gateway) error {
 		propertiesJSON = "{}"
 	}
 
+	// Serialize endpoints to JSON
+	endpointsJSON, err := json.Marshal(gateway.Endpoints)
+	if err != nil {
+		return fmt.Errorf("failed to marshal endpoints: %w", err)
+	}
+
 	query := `
-		INSERT INTO gateways (uuid, organization_uuid, name, display_name, description, properties, vhost, is_critical,
+		INSERT INTO gateways (uuid, organization_uuid, name, display_name, description, properties, vhost, endpoints, is_critical,
 		                      gateway_functionality_type, version, is_active, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
-	_, err := r.db.Exec(r.db.Rebind(query), gateway.ID, gateway.OrganizationID, gateway.Name, gateway.DisplayName,
-		gateway.Description, propertiesJSON, gateway.Vhost, gateway.IsCritical, gateway.FunctionalityType, gateway.Version,
-		gateway.IsActive, gateway.CreatedAt, gateway.UpdatedAt)
+	_, err = r.db.Exec(r.db.Rebind(query), gateway.ID, gateway.OrganizationID, gateway.Name, gateway.DisplayName,
+		gateway.Description, propertiesJSON, gateway.Vhost, string(endpointsJSON), gateway.IsCritical, gateway.FunctionalityType,
+		gateway.Version, gateway.IsActive, gateway.CreatedAt, gateway.UpdatedAt)
 	return err
 }
 
 // GetByUUID retrieves a gateway by ID
 func (r *GatewayRepo) GetByUUID(gatewayId string) (*model.Gateway, error) {
 	gateway := &model.Gateway{}
-	var propertiesJSON string
+	var propertiesJSON, endpointsJSON string
 	query := `
-		SELECT uuid, organization_uuid, name, display_name, description, properties, vhost, is_critical, gateway_functionality_type, version, is_active,
-		       created_at, updated_at
+		SELECT uuid, organization_uuid, name, display_name, description, properties, vhost, endpoints, is_critical,
+		       gateway_functionality_type, version, is_active, created_at, updated_at
 		FROM gateways
 		WHERE uuid = ?
 	`
 	err := r.db.QueryRow(r.db.Rebind(query), gatewayId).Scan(
-		&gateway.ID, &gateway.OrganizationID, &gateway.Name, &gateway.DisplayName, &gateway.Description, &propertiesJSON, &gateway.Vhost,
+		&gateway.ID, &gateway.OrganizationID, &gateway.Name, &gateway.DisplayName, &gateway.Description,
+		&propertiesJSON, &gateway.Vhost, &endpointsJSON,
 		&gateway.IsCritical, &gateway.FunctionalityType, &gateway.Version, &gateway.IsActive, &gateway.CreatedAt, &gateway.UpdatedAt)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -94,14 +101,21 @@ func (r *GatewayRepo) GetByUUID(gatewayId string) (*model.Gateway, error) {
 		}
 	}
 
+	// Deserialize endpoints from JSON
+	if endpointsJSON != "" && endpointsJSON != "[]" {
+		if err := json.Unmarshal([]byte(endpointsJSON), &gateway.Endpoints); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal endpoints: %w", err)
+		}
+	}
+
 	return gateway, nil
 }
 
 // GetByOrganizationID retrieves all gateways for an organization
 func (r *GatewayRepo) GetByOrganizationID(orgID string) ([]*model.Gateway, error) {
 	query := `
-		SELECT uuid, organization_uuid, name, display_name, description, properties, vhost, is_critical, gateway_functionality_type, version, is_active,
-		       created_at, updated_at
+		SELECT uuid, organization_uuid, name, display_name, description, properties, vhost, endpoints, is_critical,
+		       gateway_functionality_type, version, is_active, created_at, updated_at
 		FROM gateways
 		WHERE organization_uuid = ?
 		ORDER BY created_at DESC
@@ -115,9 +129,10 @@ func (r *GatewayRepo) GetByOrganizationID(orgID string) ([]*model.Gateway, error
 	var gateways []*model.Gateway
 	for rows.Next() {
 		gateway := &model.Gateway{}
-		var propertiesJSON string
+		var propertiesJSON, endpointsJSON string
 		err := rows.Scan(
-			&gateway.ID, &gateway.OrganizationID, &gateway.Name, &gateway.DisplayName, &gateway.Description, &propertiesJSON, &gateway.Vhost,
+			&gateway.ID, &gateway.OrganizationID, &gateway.Name, &gateway.DisplayName, &gateway.Description,
+			&propertiesJSON, &gateway.Vhost, &endpointsJSON,
 			&gateway.IsCritical, &gateway.FunctionalityType, &gateway.Version, &gateway.IsActive, &gateway.CreatedAt, &gateway.UpdatedAt)
 		if err != nil {
 			return nil, err
@@ -130,6 +145,13 @@ func (r *GatewayRepo) GetByOrganizationID(orgID string) ([]*model.Gateway, error
 			}
 		}
 
+		// Deserialize endpoints from JSON
+		if endpointsJSON != "" && endpointsJSON != "[]" {
+			if err := json.Unmarshal([]byte(endpointsJSON), &gateway.Endpoints); err != nil {
+				return nil, fmt.Errorf("failed to unmarshal endpoints: %w", err)
+			}
+		}
+
 		gateways = append(gateways, gateway)
 	}
 	return gateways, nil
@@ -138,15 +160,16 @@ func (r *GatewayRepo) GetByOrganizationID(orgID string) ([]*model.Gateway, error
 // GetByNameAndOrgID checks if a gateway with the given name exists within an organization
 func (r *GatewayRepo) GetByNameAndOrgID(name, orgID string) (*model.Gateway, error) {
 	gateway := &model.Gateway{}
-	var propertiesJSON string
+	var propertiesJSON, endpointsJSON string
 	query := `
-		SELECT uuid, organization_uuid, name, display_name, description, properties, vhost, is_critical, gateway_functionality_type, version, is_active,
-		       created_at, updated_at
+		SELECT uuid, organization_uuid, name, display_name, description, properties, vhost, endpoints, is_critical,
+		       gateway_functionality_type, version, is_active, created_at, updated_at
 		FROM gateways
 		WHERE name = ? AND organization_uuid = ?
 	`
 	err := r.db.QueryRow(r.db.Rebind(query), name, orgID).Scan(
-		&gateway.ID, &gateway.OrganizationID, &gateway.Name, &gateway.DisplayName, &gateway.Description, &propertiesJSON, &gateway.Vhost,
+		&gateway.ID, &gateway.OrganizationID, &gateway.Name, &gateway.DisplayName, &gateway.Description,
+		&propertiesJSON, &gateway.Vhost, &endpointsJSON,
 		&gateway.IsCritical, &gateway.FunctionalityType, &gateway.Version, &gateway.IsActive, &gateway.CreatedAt, &gateway.UpdatedAt)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -162,14 +185,21 @@ func (r *GatewayRepo) GetByNameAndOrgID(name, orgID string) (*model.Gateway, err
 		}
 	}
 
+	// Deserialize endpoints from JSON
+	if endpointsJSON != "" && endpointsJSON != "[]" {
+		if err := json.Unmarshal([]byte(endpointsJSON), &gateway.Endpoints); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal endpoints: %w", err)
+		}
+	}
+
 	return gateway, nil
 }
 
 // List retrieves all gateways
 func (r *GatewayRepo) List() ([]*model.Gateway, error) {
 	query := `
-		SELECT uuid, organization_uuid, name, display_name, description, properties, vhost, is_critical, gateway_functionality_type, version, is_active,
-		       created_at, updated_at
+		SELECT uuid, organization_uuid, name, display_name, description, properties, vhost, endpoints, is_critical,
+		       gateway_functionality_type, version, is_active, created_at, updated_at
 		FROM gateways
 		ORDER BY created_at DESC
 	`
@@ -182,9 +212,10 @@ func (r *GatewayRepo) List() ([]*model.Gateway, error) {
 	var gateways []*model.Gateway
 	for rows.Next() {
 		gateway := &model.Gateway{}
-		var propertiesJSON string
+		var propertiesJSON, endpointsJSON string
 		err := rows.Scan(
-			&gateway.ID, &gateway.OrganizationID, &gateway.Name, &gateway.DisplayName, &gateway.Description, &propertiesJSON, &gateway.Vhost,
+			&gateway.ID, &gateway.OrganizationID, &gateway.Name, &gateway.DisplayName, &gateway.Description,
+			&propertiesJSON, &gateway.Vhost, &endpointsJSON,
 			&gateway.IsCritical, &gateway.FunctionalityType, &gateway.Version, &gateway.IsActive, &gateway.CreatedAt, &gateway.UpdatedAt)
 		if err != nil {
 			return nil, err
@@ -194,6 +225,13 @@ func (r *GatewayRepo) List() ([]*model.Gateway, error) {
 		if propertiesJSON != "" && propertiesJSON != "{}" {
 			if err := json.Unmarshal([]byte(propertiesJSON), &gateway.Properties); err != nil {
 				return nil, fmt.Errorf("failed to unmarshal properties: %w", err)
+			}
+		}
+
+		// Deserialize endpoints from JSON
+		if endpointsJSON != "" && endpointsJSON != "[]" {
+			if err := json.Unmarshal([]byte(endpointsJSON), &gateway.Endpoints); err != nil {
+				return nil, fmt.Errorf("failed to unmarshal endpoints: %w", err)
 			}
 		}
 
@@ -254,12 +292,19 @@ func (r *GatewayRepo) UpdateGateway(gateway *model.Gateway) error {
 		propertiesJSON = "{}"
 	}
 
+	// Serialize endpoints to JSON
+	endpointsJSON, err := json.Marshal(gateway.Endpoints)
+	if err != nil {
+		return fmt.Errorf("failed to marshal endpoints: %w", err)
+	}
+
 	query := `
 		UPDATE gateways
-		SET display_name = ?, description = ?, is_critical = ?, properties = ?, updated_at = ?
+		SET display_name = ?, description = ?, is_critical = ?, properties = ?, endpoints = ?, updated_at = ?
 		WHERE uuid = ?
 	`
-	_, err := r.db.Exec(r.db.Rebind(query), gateway.DisplayName, gateway.Description, gateway.IsCritical, propertiesJSON, gateway.UpdatedAt, gateway.ID)
+	_, err = r.db.Exec(r.db.Rebind(query), gateway.DisplayName, gateway.Description, gateway.IsCritical, propertiesJSON,
+		string(endpointsJSON), gateway.UpdatedAt, gateway.ID)
 	return err
 }
 

@@ -135,6 +135,12 @@ const (
 	GatewayArtifactTypeRESTAPI    GatewayArtifactType = "REST_API"
 )
 
+// Defines values for GatewayEndpointProtocol.
+const (
+	GatewayEndpointProtocolHttps GatewayEndpointProtocol = "https"
+	GatewayEndpointProtocolWss   GatewayEndpointProtocol = "wss"
+)
+
 // Defines values for GatewayResponseFunctionalityType.
 const (
 	GatewayResponseFunctionalityTypeAi      GatewayResponseFunctionalityType = "ai"
@@ -453,8 +459,8 @@ const (
 
 // Defines values for WebSubAPITransport.
 const (
-	WebSubAPITransportHttp  WebSubAPITransport = "http"
-	WebSubAPITransportHttps WebSubAPITransport = "https"
+	Http  WebSubAPITransport = "http"
+	Https WebSubAPITransport = "https"
 )
 
 // Defines values for WebSubAPIListItemLifeCycleStatus.
@@ -856,6 +862,9 @@ type CreateGatewayRequest struct {
 
 	// DisplayName Human-readable gateway name
 	DisplayName string `binding:"required" json:"displayName" yaml:"displayName"`
+
+	// Endpoints List of endpoints (host/protocol/port combinations) exposed by this gateway
+	Endpoints *[]GatewayEndpoint `json:"endpoints,omitempty" yaml:"endpoints,omitempty"`
 
 	// FunctionalityType Type of gateway functionality
 	FunctionalityType CreateGatewayRequestFunctionalityType `binding:"required" json:"functionalityType" yaml:"functionalityType"`
@@ -1295,6 +1304,21 @@ type GatewayArtifactListResponse struct {
 	Pagination Pagination        `json:"pagination" yaml:"pagination"`
 }
 
+// GatewayEndpoint defines model for GatewayEndpoint.
+type GatewayEndpoint struct {
+	// Host Hostname for this endpoint
+	Host string `binding:"required" json:"host" yaml:"host"`
+
+	// Port Port number for this endpoint
+	Port int32 `binding:"required" json:"port" yaml:"port"`
+
+	// Protocol Protocol for this endpoint
+	Protocol GatewayEndpointProtocol `binding:"required" json:"protocol" yaml:"protocol"`
+}
+
+// GatewayEndpointProtocol Protocol for this endpoint
+type GatewayEndpointProtocol string
+
 // GatewayListResponse defines model for GatewayListResponse.
 type GatewayListResponse struct {
 	// Count Number of items in current response
@@ -1333,6 +1357,9 @@ type GatewayResponse struct {
 
 	// DisplayName Human-readable gateway name
 	DisplayName *string `json:"displayName,omitempty" yaml:"displayName,omitempty"`
+
+	// Endpoints List of endpoints (host/protocol/port combinations) exposed by this gateway
+	Endpoints *[]GatewayEndpoint `json:"endpoints,omitempty" yaml:"endpoints,omitempty"`
 
 	// FunctionalityType Type of gateway functionality
 	FunctionalityType *GatewayResponseFunctionalityType `json:"functionalityType,omitempty" yaml:"functionalityType,omitempty"`
@@ -2475,6 +2502,9 @@ type RESTAPIGatewayResponse struct {
 	// DisplayName Human-readable gateway name
 	DisplayName *string `json:"displayName,omitempty" yaml:"displayName,omitempty"`
 
+	// Endpoints List of endpoints (host/protocol/port combinations) exposed by this gateway
+	Endpoints *[]GatewayEndpoint `json:"endpoints,omitempty" yaml:"endpoints,omitempty"`
+
 	// FunctionalityType Type of gateway functionality
 	FunctionalityType *RESTAPIGatewayResponseFunctionalityType `json:"functionalityType,omitempty" yaml:"functionalityType,omitempty"`
 
@@ -2912,6 +2942,9 @@ type UpdateGatewayRequest struct {
 
 	// DisplayName Human-readable gateway name
 	DisplayName *string `json:"displayName,omitempty" yaml:"displayName,omitempty"`
+
+	// Endpoints Updated list of endpoints (host/protocol/port combinations) exposed by this gateway
+	Endpoints *[]GatewayEndpoint `json:"endpoints,omitempty" yaml:"endpoints,omitempty"`
 
 	// IsCritical Whether the gateway is critical for production
 	IsCritical *bool `json:"isCritical,omitempty" yaml:"isCritical,omitempty"`

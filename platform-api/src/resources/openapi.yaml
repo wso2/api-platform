@@ -6600,6 +6600,34 @@ components:
           description: Timestamp when the API was deployed
           example: "2025-10-15T11:00:00Z"
 
+    GatewayEndpoint:
+      type: object
+      required:
+        - host
+        - protocol
+        - port
+      properties:
+        host:
+          type: string
+          description: Hostname for this endpoint
+          maxLength: 255
+          minLength: 1
+          # hostname regex as per RFC 1123 (http://tools.ietf.org/html/rfc1123)
+          pattern: '^(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\-]*[A-Za-z0-9])$'
+          example: gateway.example.com
+        protocol:
+          type: string
+          enum: [https, wss]
+          description: Protocol for this endpoint
+          example: https
+        port:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 65535
+          description: Port number for this endpoint
+          example: 443
+
     CreateGatewayRequest:
       description: |
         Request body for creating a gateway. Organization ID is automatically extracted 
@@ -6636,6 +6664,16 @@ components:
           # hostname regex as per RFC 1123 (http://tools.ietf.org/html/rfc1123) and appended *
           pattern: '^(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\-]*[A-Za-z0-9])$'
           example: mg.wso2.com
+        endpoints:
+          type: array
+          description: List of endpoints (host/protocol/port combinations) exposed by this gateway
+          minItems: 1
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/GatewayEndpoint'
+          example:
+            - { host: api.example.com, protocol: https, port: 8443 }
+            - { host: events.example.com, protocol: wss, port: 8444 }
         isCritical:
           type: boolean
           description: Whether the gateway is critical for production
@@ -6779,6 +6817,15 @@ components:
           type: string
           description: Virtual host (domain name) for the gateway
           example: mg.wso2.com
+        endpoints:
+          type: array
+          description: List of endpoints (host/protocol/port combinations) exposed by this gateway
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/GatewayEndpoint'
+          example:
+            - { host: api.example.com, protocol: https, port: 8443 }
+            - { host: events.example.com, protocol: wss, port: 8444 }
         isCritical:
           type: boolean
           description: Whether the gateway is critical for production
@@ -6820,6 +6867,16 @@ components:
           type: string
           description: Description of the gateway
           example: "Updated gateway description"
+        endpoints:
+          type: array
+          description: Updated list of endpoints (host/protocol/port combinations) exposed by this gateway
+          minItems: 1
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/GatewayEndpoint'
+          example:
+            - { host: api.example.com, protocol: https, port: 8443 }
+            - { host: events.example.com, protocol: wss, port: 8444 }
         isCritical:
           type: boolean
           description: Whether the gateway is critical for production

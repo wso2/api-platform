@@ -150,6 +150,7 @@ CREATE TABLE IF NOT EXISTS gateways (
     description VARCHAR(1023),
     properties JSONB NOT NULL DEFAULT '{}'::jsonb,
     vhost VARCHAR(255) NOT NULL,
+    endpoints JSONB NOT NULL DEFAULT '[]'::jsonb,
     is_critical BOOLEAN DEFAULT FALSE,
     gateway_functionality_type VARCHAR(20) DEFAULT 'regular' NOT NULL,
     is_active BOOLEAN DEFAULT FALSE,

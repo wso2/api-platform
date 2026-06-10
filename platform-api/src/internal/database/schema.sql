@@ -146,6 +146,7 @@ CREATE TABLE IF NOT EXISTS gateways (
     description VARCHAR(1023),
     properties TEXT NOT NULL DEFAULT '{}',
     vhost VARCHAR(255) NOT NULL,
+    endpoints TEXT NOT NULL DEFAULT '[]',
     is_critical BOOLEAN DEFAULT FALSE,
     gateway_functionality_type VARCHAR(20) DEFAULT 'regular' NOT NULL,
     is_active BOOLEAN DEFAULT FALSE,

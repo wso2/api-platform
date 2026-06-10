@@ -487,7 +487,7 @@ const defaultGatewayVersion = "1.0"
 
 // RegisterGateway registers a new gateway with organization validation
 func (s *GatewayService) RegisterGateway(orgID, name, displayName, description, vhost string, isCritical bool,
-	functionalityType, version string, properties map[string]interface{}) (*api.GatewayResponse, error) {
+	functionalityType, version string, properties map[string]interface{}, endpoints []model.GatewayEndpoint) (*api.GatewayResponse, error) {
 	// 1. Validate inputs
 	if err := s.validateGatewayInput(orgID, name, displayName, vhost, functionalityType); err != nil {
 		return nil, err
@@ -541,6 +541,7 @@ func (s *GatewayService) RegisterGateway(orgID, name, displayName, description, 
 		Description:       description,
 		Properties:        properties,
 		Vhost:             vhost,
+		Endpoints:         endpoints,
 		IsCritical:        isCritical,
 		FunctionalityType: functionalityType,
 		Version:           version,
@@ -618,7 +619,7 @@ func (s *GatewayService) GetGateway(gatewayId, orgId string) (*api.GatewayRespon
 
 // UpdateGateway updates gateway details
 func (s *GatewayService) UpdateGateway(gatewayId, orgId string, description, displayName *string,
-	isCritical *bool, properties *map[string]interface{}) (*api.GatewayResponse, error) {
+	isCritical *bool, properties *map[string]interface{}, endpoints *[]model.GatewayEndpoint) (*api.GatewayResponse, error) {
 	// Get existing gateway
 	gateway, err := s.gatewayRepo.GetByUUID(gatewayId)
 	if err != nil {
@@ -642,6 +643,9 @@ func (s *GatewayService) UpdateGateway(gatewayId, orgId string, description, dis
 	}
 	if properties != nil {
 		gateway.Properties = *properties
+	}
+	if endpoints != nil {
+		gateway.Endpoints = *endpoints
 	}
 	gateway.UpdatedAt = time.Now()
 
@@ -1052,6 +1056,16 @@ func gatewayModelToAPI(gateway *model.Gateway) *api.GatewayResponse {
 	}
 	functionalityType := api.GatewayResponseFunctionalityType(gateway.FunctionalityType)
 
+	// Convert model endpoints to API endpoints
+	apiEndpoints := make([]api.GatewayEndpoint, 0, len(gateway.Endpoints))
+	for _, ep := range gateway.Endpoints {
+		apiEndpoints = append(apiEndpoints, api.GatewayEndpoint{
+			Host:     ep.Host,
+			Protocol: api.GatewayEndpointProtocol(ep.Protocol),
+			Port:     int32(ep.Port),
+		})
+	}
+
 	return &api.GatewayResponse{
 		Id:                &gatewayID,
 		OrganizationId:    &orgID,
@@ -1060,6 +1074,7 @@ func gatewayModelToAPI(gateway *model.Gateway) *api.GatewayResponse {
 		Description:       utils.StringPtrIfNotEmpty(gateway.Description),
 		Properties:        utils.MapPtrIfNotEmpty(gateway.Properties),
 		Vhost:             &gateway.Vhost,
+		Endpoints:         &apiEndpoints,
 		IsCritical:        &gateway.IsCritical,
 		FunctionalityType: &functionalityType,
 		Version:           &gateway.Version,
