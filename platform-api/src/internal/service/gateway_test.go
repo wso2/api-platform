@@ -31,7 +31,6 @@ func TestValidateGatewayInput(t *testing.T) {
 		orgID             string
 		gatewayName       string
 		displayName       string
-		vhost             string
 		functionalityType string
 		wantErr           bool
 		errContains       string
@@ -41,7 +40,6 @@ func TestValidateGatewayInput(t *testing.T) {
 			orgID:             "123e4567-e89b-12d3-a456-426614174000",
 			gatewayName:       "prod-gateway-01",
 			displayName:       "Production Gateway 01",
-			vhost:             "api.example.com",
 			functionalityType: constants.GatewayFunctionalityTypeRegular,
 			wantErr:           false,
 		},
@@ -50,7 +48,6 @@ func TestValidateGatewayInput(t *testing.T) {
 			orgID:             "",
 			gatewayName:       "prod-gateway-01",
 			displayName:       "Production Gateway 01",
-			vhost:             "api.example.com",
 			functionalityType: constants.GatewayFunctionalityTypeRegular,
 			wantErr:           true,
 			errContains:       "organization ID is required",
@@ -60,7 +57,6 @@ func TestValidateGatewayInput(t *testing.T) {
 			orgID:             "not-a-uuid",
 			gatewayName:       "prod-gateway-01",
 			displayName:       "Production Gateway 01",
-			vhost:             "api.example.com",
 			functionalityType: constants.GatewayFunctionalityTypeRegular,
 			wantErr:           true,
 			errContains:       "invalid organization ID format",
@@ -70,7 +66,6 @@ func TestValidateGatewayInput(t *testing.T) {
 			orgID:             "123e4567-e89b-12d3-a456-426614174000",
 			gatewayName:       "",
 			displayName:       "Production Gateway 01",
-			vhost:             "api.example.com",
 			functionalityType: constants.GatewayFunctionalityTypeRegular,
 			wantErr:           true,
 			errContains:       "gateway name is required",
@@ -80,7 +75,6 @@ func TestValidateGatewayInput(t *testing.T) {
 			orgID:             "123e4567-e89b-12d3-a456-426614174000",
 			gatewayName:       "ab",
 			displayName:       "Production Gateway 01",
-			vhost:             "api.example.com",
 			functionalityType: constants.GatewayFunctionalityTypeRegular,
 			wantErr:           true,
 			errContains:       "at least 3 characters",
@@ -90,7 +84,6 @@ func TestValidateGatewayInput(t *testing.T) {
 			orgID:             "123e4567-e89b-12d3-a456-426614174000",
 			gatewayName:       "this-is-a-very-long-gateway-name-that-exceeds-the-maximum-length-of-64-characters",
 			displayName:       "Production Gateway 01",
-			vhost:             "api.example.com",
 			functionalityType: constants.GatewayFunctionalityTypeRegular,
 			wantErr:           true,
 			errContains:       "must not exceed 64 characters",
@@ -100,7 +93,6 @@ func TestValidateGatewayInput(t *testing.T) {
 			orgID:             "123e4567-e89b-12d3-a456-426614174000",
 			gatewayName:       "Prod-Gateway-01",
 			displayName:       "Production Gateway 01",
-			vhost:             "api.example.com",
 			functionalityType: constants.GatewayFunctionalityTypeRegular,
 			wantErr:           true,
 			errContains:       "lowercase letters, numbers, and hyphens",
@@ -110,7 +102,6 @@ func TestValidateGatewayInput(t *testing.T) {
 			orgID:             "123e4567-e89b-12d3-a456-426614174000",
 			gatewayName:       "prod_gateway_01",
 			displayName:       "Production Gateway 01",
-			vhost:             "api.example.com",
 			functionalityType: constants.GatewayFunctionalityTypeRegular,
 			wantErr:           true,
 			errContains:       "lowercase letters, numbers, and hyphens",
@@ -120,7 +111,6 @@ func TestValidateGatewayInput(t *testing.T) {
 			orgID:             "123e4567-e89b-12d3-a456-426614174000",
 			gatewayName:       "-prod-gateway-01",
 			displayName:       "Production Gateway 01",
-			vhost:             "api.example.com",
 			functionalityType: constants.GatewayFunctionalityTypeRegular,
 			wantErr:           true,
 			errContains:       "cannot start or end with a hyphen",
@@ -130,7 +120,6 @@ func TestValidateGatewayInput(t *testing.T) {
 			orgID:             "123e4567-e89b-12d3-a456-426614174000",
 			gatewayName:       "prod-gateway-01-",
 			displayName:       "Production Gateway 01",
-			vhost:             "api.example.com",
 			functionalityType: constants.GatewayFunctionalityTypeRegular,
 			wantErr:           true,
 			errContains:       "cannot start or end with a hyphen",
@@ -140,7 +129,6 @@ func TestValidateGatewayInput(t *testing.T) {
 			orgID:             "123e4567-e89b-12d3-a456-426614174000",
 			gatewayName:       "prod-gateway-01",
 			displayName:       "",
-			vhost:             "api.example.com",
 			functionalityType: constants.GatewayFunctionalityTypeRegular,
 			wantErr:           true,
 			errContains:       "display name is required",
@@ -150,27 +138,15 @@ func TestValidateGatewayInput(t *testing.T) {
 			orgID:             "123e4567-e89b-12d3-a456-426614174000",
 			gatewayName:       "prod-gateway-01",
 			displayName:       "This is a very long display name that exceeds the maximum allowed length of 128 characters which should trigger a validation error in the system",
-			vhost:             "api.example.com",
 			functionalityType: constants.GatewayFunctionalityTypeRegular,
 			wantErr:           true,
 			errContains:       "must not exceed 128 characters",
-		},
-		{
-			name:              "empty vhost",
-			orgID:             "123e4567-e89b-12d3-a456-426614174000",
-			gatewayName:       "prod-gateway-01",
-			displayName:       "Production Gateway 01",
-			vhost:             "",
-			functionalityType: constants.GatewayFunctionalityTypeRegular,
-			wantErr:           true,
-			errContains:       "vhost is required",
 		},
 		{
 			name:              "display name with spaces (valid)",
 			orgID:             "123e4567-e89b-12d3-a456-426614174000",
 			gatewayName:       "prod-gateway-01",
 			displayName:       "Production Gateway 01 - Main",
-			vhost:             "api.example.com",
 			functionalityType: constants.GatewayFunctionalityTypeRegular,
 			wantErr:           false,
 		},
@@ -179,7 +155,6 @@ func TestValidateGatewayInput(t *testing.T) {
 			orgID:             "123e4567-e89b-12d3-a456-426614174000",
 			gatewayName:       "prod-gateway-01",
 			displayName:       "Production Gateway 01",
-			vhost:             "api.example.com",
 			functionalityType: "",
 			wantErr:           true,
 			errContains:       "functionality type is required",
@@ -189,7 +164,6 @@ func TestValidateGatewayInput(t *testing.T) {
 			orgID:             "123e4567-e89b-12d3-a456-426614174000",
 			gatewayName:       "prod-gateway-01",
 			displayName:       "Production Gateway 01",
-			vhost:             "api.example.com",
 			functionalityType: "   ",
 			wantErr:           true,
 			errContains:       "functionality type is required",
@@ -199,7 +173,6 @@ func TestValidateGatewayInput(t *testing.T) {
 			orgID:             "123e4567-e89b-12d3-a456-426614174000",
 			gatewayName:       "prod-gateway-01",
 			displayName:       "Production Gateway 01",
-			vhost:             "api.example.com",
 			functionalityType: "invalid-type",
 			wantErr:           true,
 			errContains:       "gateway type must be one of: regular, ai, event",
@@ -209,7 +182,6 @@ func TestValidateGatewayInput(t *testing.T) {
 			orgID:             "123e4567-e89b-12d3-a456-426614174000",
 			gatewayName:       "ai-gateway-01",
 			displayName:       "AI Gateway 01",
-			vhost:             "ai.example.com",
 			functionalityType: "ai",
 			wantErr:           false,
 		},
@@ -218,7 +190,6 @@ func TestValidateGatewayInput(t *testing.T) {
 			orgID:             "123e4567-e89b-12d3-a456-426614174000",
 			gatewayName:       "event-gateway-01",
 			displayName:       "Event Gateway 01",
-			vhost:             "events.example.com",
 			functionalityType: "event",
 			wantErr:           false,
 		},
@@ -226,7 +197,7 @@ func TestValidateGatewayInput(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := service.validateGatewayInput(tt.orgID, tt.gatewayName, tt.displayName, tt.vhost, tt.functionalityType)
+			err := service.validateGatewayInput(tt.orgID, tt.gatewayName, tt.displayName, tt.functionalityType)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("validateGatewayInput() error = %v, wantErr %v", err, tt.wantErr)
 				return

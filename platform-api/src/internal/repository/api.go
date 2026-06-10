@@ -572,7 +572,6 @@ func (r *APIRepo) GetAPIGatewaysWithDetails(apiUUID, orgUUID string) ([]*model.A
 			g.handle,
 			g.description,
 			g.properties,
-			g.vhost,
 			g.is_critical,
 			g.gateway_functionality_type as functionality_type,
 			g.is_active,
@@ -611,7 +610,6 @@ func (r *APIRepo) GetAPIGatewaysWithDetails(apiUUID, orgUUID string) ([]*model.A
 			&gateway.Handle,
 			&gateway.Description,
 			&propertiesBytes,
-			&gateway.Vhost,
 			&isCritical,
 			&gateway.FunctionalityType,
 			&isActive,
@@ -640,6 +638,11 @@ func (r *APIRepo) GetAPIGatewaysWithDetails(apiUUID, orgUUID string) ([]*model.A
 		if deployedAt.Valid {
 			gateway.DeployedAt = &deployedAt.Time
 		}
+		endpoints, err := loadEndpointsFromDB(r.db, gateway.ID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load endpoints for gateway %s: %w", gateway.ID, err)
+		}
+		gateway.Endpoints = endpoints
 		gateways = append(gateways, gateway)
 	}
 

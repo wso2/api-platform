@@ -7531,8 +7531,8 @@ components:
       required:
         - name
         - displayName
-        - vhost
         - functionalityType
+        - endpoints
       properties:
         name:
           type: string
@@ -7551,14 +7551,21 @@ components:
           type: string
           description: Description of the gateway
           example: "Production gateway for handling API traffic"
-        vhost:
-          type: string
-          description: Virtual host (domain name) for the gateway
-          maxLength: 255
-          minLength: 1
-          # hostname regex as per RFC 1123 (http://tools.ietf.org/html/rfc1123) and appended *
-          pattern: '^(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\-]*[A-Za-z0-9])$'
-          example: mg.wso2.com
+        endpoints:
+          type: array
+          description: Network endpoints exposed by this gateway
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/GatewayEndpoint'
+          example:
+            - host: api.example.com
+              protocol: https
+              port: 8443
+              context: /api/v1
+            - host: events.example.com
+              protocol: wss
+              port: 8444
+              context: ''
         isCritical:
           type: boolean
           description: Whether the gateway is critical for production
@@ -7698,10 +7705,21 @@ components:
           additionalProperties: true
           description: Custom key-value properties for the gateway
           example: {"region": "us-west", "tier": "premium"}
-        vhost:
-          type: string
-          description: Virtual host (domain name) for the gateway
-          example: mg.wso2.com
+        endpoints:
+          type: array
+          description: Network endpoints exposed by this gateway
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/GatewayEndpoint'
+          example:
+            - host: api.example.com
+              protocol: https
+              port: 8443
+              context: /api/v1
+            - host: events.example.com
+              protocol: wss
+              port: 8444
+              context: ''
         isCritical:
           type: boolean
           description: Whether the gateway is critical for production
@@ -7752,6 +7770,46 @@ components:
           additionalProperties: true
           description: Custom key-value properties for the gateway
           example: {"region": "us-west", "tier": "premium"}
+        endpoints:
+          type: array
+          description: Network endpoints exposed by this gateway
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/GatewayEndpoint'
+          example:
+            - host: api.example.com
+              protocol: https
+              port: 8443
+              context: /api/v1
+
+    GatewayEndpoint:
+      type: object
+      required:
+        - host
+        - protocol
+        - port
+      properties:
+        host:
+          type: string
+          description: Hostname of the endpoint
+          maxLength: 255
+          pattern: '^(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\-]*[A-Za-z0-9])$'
+          example: api.example.com
+        protocol:
+          type: string
+          enum: [http, https, ws, wss]
+          description: Protocol used by the endpoint
+          example: https
+        port:
+          type: integer
+          minimum: 1
+          maximum: 65535
+          description: Port number
+          example: 8443
+        context:
+          type: string
+          description: Context path for the endpoint
+          example: /api/v1
 
     Pagination:
       type: object

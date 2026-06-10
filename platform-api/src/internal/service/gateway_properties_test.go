@@ -103,12 +103,12 @@ func TestRegisterGatewayProperties(t *testing.T) {
 		"prod-gateway-01",
 		"Production Gateway",
 		"Gateway for prod traffic",
-		"api.example.com",
 		true,
 		constants.GatewayFunctionalityTypeRegular,
 		"1.0",
 		"test-user",
 		properties,
+		[]model.GatewayEndpoint{{Host: "api.example.com", Protocol: "https", Port: 8443}},
 	)
 	if err != nil {
 		t.Fatalf("RegisterGateway() error = %v", err)
@@ -157,7 +157,7 @@ func TestUpdateGatewayProperties(t *testing.T) {
 		}
 
 		newDescription := "New description"
-		response, err := service.UpdateGateway(gatewayID, orgID, "test-user", &newDescription, nil, nil, nil)
+		response, err := service.UpdateGateway(gatewayID, orgID, "test-user", &newDescription, nil, nil, nil, nil)
 		if err != nil {
 			t.Fatalf("UpdateGateway() error = %v", err)
 		}
@@ -196,7 +196,7 @@ func TestUpdateGatewayProperties(t *testing.T) {
 			"tier":   "premium",
 		}
 
-		response, err := service.UpdateGateway(gatewayID, orgID, "test-user", nil, nil, nil, &newProperties)
+		response, err := service.UpdateGateway(gatewayID, orgID, "test-user", nil, nil, nil, &newProperties, nil)
 		if err != nil {
 			t.Fatalf("UpdateGateway() error = %v", err)
 		}

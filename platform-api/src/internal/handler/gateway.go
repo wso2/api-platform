@@ -24,6 +24,7 @@ import (
 	"net/http"
 	"platform-api/src/api"
 	"platform-api/src/internal/constants"
+	"platform-api/src/internal/model"
 	"regexp"
 	"strings"
 
@@ -105,9 +106,23 @@ func (h *GatewayHandler) CreateGateway(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	endpoints := make([]model.GatewayEndpoint, 0, len(req.Endpoints))
+	for _, ep := range req.Endpoints {
+		var ctx string
+		if ep.Context != nil {
+			ctx = *ep.Context
+		}
+		endpoints = append(endpoints, model.GatewayEndpoint{
+			Host:     ep.Host,
+			Protocol: string(ep.Protocol),
+			Port:     ep.Port,
+			Context:  ctx,
+		})
+	}
+
 	createdBy, _ := middleware.GetUserIDFromRequest(r)
-	gateway, err := h.gatewayService.RegisterGateway(orgId, req.Name, req.DisplayName, description, req.Vhost,
-		isCritical, functionalityType, version, createdBy, properties)
+	gateway, err := h.gatewayService.RegisterGateway(orgId, req.Name, req.DisplayName, description,
+		isCritical, functionalityType, version, createdBy, properties, endpoints)
 	if err != nil {
 		errMsg := err.Error()
 
@@ -261,8 +276,26 @@ func (h *GatewayHandler) UpdateGateway(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var endpoints *[]model.GatewayEndpoint
+	if req.Endpoints != nil {
+		eps := make([]model.GatewayEndpoint, 0, len(*req.Endpoints))
+		for _, ep := range *req.Endpoints {
+			var ctx string
+			if ep.Context != nil {
+				ctx = *ep.Context
+			}
+			eps = append(eps, model.GatewayEndpoint{
+				Host:     ep.Host,
+				Protocol: string(ep.Protocol),
+				Port:     ep.Port,
+				Context:  ctx,
+			})
+		}
+		endpoints = &eps
+	}
+
 	updatedBy, _ := middleware.GetUserIDFromRequest(r)
-	response, err := h.gatewayService.UpdateGateway(gatewayId, orgId, updatedBy, req.Description, req.DisplayName, req.IsCritical, req.Properties)
+	response, err := h.gatewayService.UpdateGateway(gatewayId, orgId, updatedBy, req.Description, req.DisplayName, req.IsCritical, req.Properties, endpoints)
 	if err != nil {
 		if errors.Is(err, constants.ErrGatewayNotFound) {
 			h.slogger.Error("Gateway not found during update", "error", err)

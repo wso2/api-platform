@@ -39,6 +39,42 @@ func NewGatewayRepo(db *database.DB) GatewayRepository {
 	return &GatewayRepo{db: db}
 }
 
+// loadEndpointsFromDB fetches all endpoints for the given gateway UUID from the
+// gateway_endpoints table, ordered by insertion id.
+func loadEndpointsFromDB(db *database.DB, gatewayUUID string) ([]model.GatewayEndpoint, error) {
+	query := `SELECT host, protocol, port, context FROM gateway_endpoints WHERE gateway_uuid = ? ORDER BY id`
+	rows, err := db.Query(db.Rebind(query), gatewayUUID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var endpoints []model.GatewayEndpoint
+	for rows.Next() {
+		var ep model.GatewayEndpoint
+		if err := rows.Scan(&ep.Host, &ep.Protocol, &ep.Port, &ep.Context); err != nil {
+			return nil, err
+		}
+		endpoints = append(endpoints, ep)
+	}
+	if endpoints == nil {
+		endpoints = []model.GatewayEndpoint{}
+	}
+	return endpoints, rows.Err()
+}
+
+// insertEndpointsInTx inserts all gateway endpoints within an existing transaction.
+func insertEndpointsInTx(db *database.DB, tx interface {
+	Exec(query string, args ...any) (sql.Result, error)
+}, gatewayUUID string, endpoints []model.GatewayEndpoint) error {
+	epQuery := `INSERT INTO gateway_endpoints (gateway_uuid, host, protocol, port, context) VALUES (?, ?, ?, ?, ?)`
+	for _, ep := range endpoints {
+		if _, err := tx.Exec(db.Rebind(epQuery), gatewayUUID, ep.Host, ep.Protocol, ep.Port, ep.Context); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // Create inserts a new gateway
 func (r *GatewayRepo) Create(gateway *model.Gateway) error {
 	gateway.CreatedAt = time.Now()
@@ -67,18 +103,32 @@ func (r *GatewayRepo) Create(gateway *model.Gateway) error {
 		isActiveInt = 1
 	}
 
+	tx, err := r.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
 	query := `
-		INSERT INTO gateways (uuid, organization_uuid, handle, name, description, properties, vhost, is_critical,
+		INSERT INTO gateways (uuid, organization_uuid, handle, name, description, properties, is_critical,
 		                      gateway_functionality_type, version, is_active, created_by, updated_by, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
-	_, err := r.db.Exec(r.db.Rebind(query), gateway.ID, gateway.OrganizationID, gateway.Handle, gateway.Name,
-		gateway.Description, propertiesBytes, gateway.Vhost, isCriticalInt, gateway.FunctionalityType, gateway.Version,
-		isActiveInt, gateway.CreatedBy, gateway.UpdatedBy, gateway.CreatedAt, gateway.UpdatedAt)
-	return err
+	if _, err = tx.Exec(r.db.Rebind(query), gateway.ID, gateway.OrganizationID, gateway.Handle, gateway.Name,
+		gateway.Description, propertiesBytes, isCriticalInt, gateway.FunctionalityType, gateway.Version,
+		isActiveInt, gateway.CreatedBy, gateway.UpdatedBy, gateway.CreatedAt, gateway.UpdatedAt); err != nil {
+		return err
+	}
+
+	if err = insertEndpointsInTx(r.db, tx, gateway.ID, gateway.Endpoints); err != nil {
+		return err
+	}
+
+	return tx.Commit()
 }
 
 // scanGateway scans a single gateway row and handles SMALLINT bool columns and JSON properties.
+// Endpoints are NOT scanned here; callers must call loadEndpointsFromDB separately.
 func (r *GatewayRepo) scanGateway(row interface {
 	Scan(...any) error
 }) (*model.Gateway, error) {
@@ -87,7 +137,7 @@ func (r *GatewayRepo) scanGateway(row interface {
 	var isCritical, isActive int
 	var createdBy, updatedBy sql.NullString
 	if err := row.Scan(
-		&gateway.ID, &gateway.OrganizationID, &gateway.Handle, &gateway.Name, &gateway.Description, &propertiesBytes, &gateway.Vhost,
+		&gateway.ID, &gateway.OrganizationID, &gateway.Handle, &gateway.Name, &gateway.Description, &propertiesBytes,
 		&isCritical, &gateway.FunctionalityType, &gateway.Version, &isActive, &createdBy, &updatedBy, &gateway.CreatedAt, &gateway.UpdatedAt,
 	); err != nil {
 		return nil, err
@@ -107,7 +157,7 @@ func (r *GatewayRepo) scanGateway(row interface {
 // GetByUUID retrieves a gateway by ID
 func (r *GatewayRepo) GetByUUID(gatewayId string) (*model.Gateway, error) {
 	query := `
-		SELECT uuid, organization_uuid, handle, name, description, properties, vhost, is_critical, gateway_functionality_type, version, is_active,
+		SELECT uuid, organization_uuid, handle, name, description, properties, is_critical, gateway_functionality_type, version, is_active,
 		       created_by, updated_by, created_at, updated_at
 		FROM gateways
 		WHERE uuid = ?
@@ -119,13 +169,17 @@ func (r *GatewayRepo) GetByUUID(gatewayId string) (*model.Gateway, error) {
 		}
 		return nil, err
 	}
+	gateway.Endpoints, err = loadEndpointsFromDB(r.db, gateway.ID)
+	if err != nil {
+		return nil, err
+	}
 	return gateway, nil
 }
 
 // GetByOrganizationID retrieves all gateways for an organization
 func (r *GatewayRepo) GetByOrganizationID(orgID string) ([]*model.Gateway, error) {
 	query := `
-		SELECT uuid, organization_uuid, handle, name, description, properties, vhost, is_critical, gateway_functionality_type, version, is_active,
+		SELECT uuid, organization_uuid, handle, name, description, properties, is_critical, gateway_functionality_type, version, is_active,
 		       created_by, updated_by, created_at, updated_at
 		FROM gateways
 		WHERE organization_uuid = ?
@@ -143,6 +197,10 @@ func (r *GatewayRepo) GetByOrganizationID(orgID string) ([]*model.Gateway, error
 		if err != nil {
 			return nil, err
 		}
+		gateway.Endpoints, err = loadEndpointsFromDB(r.db, gateway.ID)
+		if err != nil {
+			return nil, err
+		}
 		gateways = append(gateways, gateway)
 	}
 	return gateways, rows.Err()
@@ -151,7 +209,7 @@ func (r *GatewayRepo) GetByOrganizationID(orgID string) ([]*model.Gateway, error
 // GetByHandleAndOrgID checks if a gateway with the given handle exists within an organization
 func (r *GatewayRepo) GetByHandleAndOrgID(handle, orgID string) (*model.Gateway, error) {
 	query := `
-		SELECT uuid, organization_uuid, handle, name, description, properties, vhost, is_critical, gateway_functionality_type, version, is_active,
+		SELECT uuid, organization_uuid, handle, name, description, properties, is_critical, gateway_functionality_type, version, is_active,
 		       created_by, updated_by, created_at, updated_at
 		FROM gateways
 		WHERE handle = ? AND organization_uuid = ?
@@ -163,13 +221,17 @@ func (r *GatewayRepo) GetByHandleAndOrgID(handle, orgID string) (*model.Gateway,
 		}
 		return nil, err
 	}
+	gateway.Endpoints, err = loadEndpointsFromDB(r.db, gateway.ID)
+	if err != nil {
+		return nil, err
+	}
 	return gateway, nil
 }
 
 // List retrieves all gateways
 func (r *GatewayRepo) List() ([]*model.Gateway, error) {
 	query := `
-		SELECT uuid, organization_uuid, handle, name, description, properties, vhost, is_critical, gateway_functionality_type, version, is_active,
+		SELECT uuid, organization_uuid, handle, name, description, properties, is_critical, gateway_functionality_type, version, is_active,
 		       created_by, updated_by, created_at, updated_at
 		FROM gateways
 		ORDER BY created_at DESC
@@ -183,6 +245,10 @@ func (r *GatewayRepo) List() ([]*model.Gateway, error) {
 	var gateways []*model.Gateway
 	for rows.Next() {
 		gateway, err := r.scanGateway(rows)
+		if err != nil {
+			return nil, err
+		}
+		gateway.Endpoints, err = loadEndpointsFromDB(r.db, gateway.ID)
 		if err != nil {
 			return nil, err
 		}
@@ -227,7 +293,7 @@ func (r *GatewayRepo) Delete(gatewayID, organizationID string) error {
 	return tx.Commit()
 }
 
-// UpdateGateway updates gateway details
+// UpdateGateway updates gateway details and replaces all endpoints atomically.
 func (r *GatewayRepo) UpdateGateway(gateway *model.Gateway) error {
 	var propertiesBytes []byte
 	if gateway.Properties != nil {
@@ -245,13 +311,31 @@ func (r *GatewayRepo) UpdateGateway(gateway *model.Gateway) error {
 		isCriticalInt = 1
 	}
 
+	tx, err := r.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
 	query := `
 		UPDATE gateways
 		SET name = ?, description = ?, is_critical = ?, properties = ?, updated_by = ?, updated_at = ?
 		WHERE uuid = ?
 	`
-	_, err := r.db.Exec(r.db.Rebind(query), gateway.Name, gateway.Description, isCriticalInt, propertiesBytes, gateway.UpdatedBy, gateway.UpdatedAt, gateway.ID)
-	return err
+	if _, err = tx.Exec(r.db.Rebind(query), gateway.Name, gateway.Description, isCriticalInt, propertiesBytes, gateway.UpdatedBy, gateway.UpdatedAt, gateway.ID); err != nil {
+		return err
+	}
+
+	deleteQuery := `DELETE FROM gateway_endpoints WHERE gateway_uuid = ?`
+	if _, err = tx.Exec(r.db.Rebind(deleteQuery), gateway.ID); err != nil {
+		return err
+	}
+
+	if err = insertEndpointsInTx(r.db, tx, gateway.ID, gateway.Endpoints); err != nil {
+		return err
+	}
+
+	return tx.Commit()
 }
 
 // UpdateActiveStatus updates the is_active status of a gateway

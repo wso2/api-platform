@@ -71,8 +71,10 @@ func seedOrgGraph(t *testing.T, it *itDB) graph {
 		g.sub, g.apiArtifact, "subscriber", "tok-"+g.sub[:8], "hash-"+g.sub[:8], g.plan, g.org)
 
 	// Gateway + a deployment + its current status.
-	it.exec(t, `INSERT INTO gateways (uuid, organization_uuid, handle, name, vhost, properties) VALUES (?, ?, ?, ?, ?, ?)`,
-		g.gateway, g.org, "gw-"+g.gateway[:8], "gw", "localhost", []byte("{}"))
+	it.exec(t, `INSERT INTO gateways (uuid, organization_uuid, handle, name, properties) VALUES (?, ?, ?, ?, ?)`,
+		g.gateway, g.org, "gw-"+g.gateway[:8], "gw", []byte("{}"))
+	it.exec(t, `INSERT INTO gateway_endpoints (gateway_uuid, host, protocol, port, context) VALUES (?, ?, ?, ?, ?)`,
+		g.gateway, "localhost", "https", 443, "")
 	it.exec(t, `INSERT INTO artifacts (uuid, type, organization_uuid) VALUES (?, ?, ?)`,
 		g.depArtifact, "rest_api", g.org)
 	it.exec(t, `INSERT INTO deployments (uuid, name, artifact_uuid, organization_uuid, gateway_uuid, content) VALUES (?, ?, ?, ?, ?, ?)`,

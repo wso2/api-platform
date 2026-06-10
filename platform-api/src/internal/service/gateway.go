@@ -517,11 +517,14 @@ func (s *GatewayService) DeleteCustomPolicyByUUID(orgID, policyUUID, version str
 const defaultGatewayVersion = "1.0"
 
 // RegisterGateway registers a new gateway with organization validation
-func (s *GatewayService) RegisterGateway(orgID, name, displayName, description, vhost string, isCritical bool,
-	functionalityType, version, createdBy string, properties map[string]interface{}) (*api.GatewayResponse, error) {
+func (s *GatewayService) RegisterGateway(orgID, name, displayName, description string, isCritical bool,
+	functionalityType, version, createdBy string, properties map[string]interface{}, endpoints []model.GatewayEndpoint) (*api.GatewayResponse, error) {
 	// 1. Validate inputs
-	if err := s.validateGatewayInput(orgID, name, displayName, vhost, functionalityType); err != nil {
+	if err := s.validateGatewayInput(orgID, name, displayName, functionalityType); err != nil {
 		return nil, err
+	}
+	if len(endpoints) == 0 {
+		return nil, errors.New("at least one endpoint is required")
 	}
 
 	version = strings.TrimSpace(version)
@@ -571,7 +574,7 @@ func (s *GatewayService) RegisterGateway(orgID, name, displayName, description, 
 		Name:              displayName,
 		Description:       description,
 		Properties:        properties,
-		Vhost:             vhost,
+		Endpoints:         endpoints,
 		IsCritical:        isCritical,
 		FunctionalityType: functionalityType,
 		Version:           version,
@@ -655,7 +658,7 @@ func (s *GatewayService) GetGateway(gatewayId, orgId string) (*api.GatewayRespon
 
 // UpdateGateway updates gateway details
 func (s *GatewayService) UpdateGateway(gatewayId, orgId, updatedBy string, description, displayName *string,
-	isCritical *bool, properties *map[string]interface{}) (*api.GatewayResponse, error) {
+	isCritical *bool, properties *map[string]interface{}, endpoints *[]model.GatewayEndpoint) (*api.GatewayResponse, error) {
 	// Get existing gateway
 	gateway, err := s.gatewayRepo.GetByUUID(gatewayId)
 	if err != nil {
@@ -679,6 +682,12 @@ func (s *GatewayService) UpdateGateway(gatewayId, orgId, updatedBy string, descr
 	}
 	if properties != nil {
 		gateway.Properties = *properties
+	}
+	if endpoints != nil {
+		if len(*endpoints) == 0 {
+			return nil, errors.New("at least one endpoint is required")
+		}
+		gateway.Endpoints = *endpoints
 	}
 	gateway.UpdatedBy = updatedBy
 	gateway.UpdatedAt = time.Now()
@@ -1000,7 +1009,7 @@ func (s *GatewayService) GetGatewayArtifacts(gatewayID, orgID, artifactType stri
 }
 
 // validateGatewayInput validates gateway registration inputs
-func (s *GatewayService) validateGatewayInput(orgID, name, displayName, vhost, functionalityType string) error {
+func (s *GatewayService) validateGatewayInput(orgID, name, displayName, functionalityType string) error {
 	// Organization ID validation
 	if strings.TrimSpace(orgID) == "" {
 		return errors.New("organization ID is required")
@@ -1039,12 +1048,6 @@ func (s *GatewayService) validateGatewayInput(orgID, name, displayName, vhost, f
 	}
 	if len(displayName) > 128 {
 		return errors.New("display name must not exceed 128 characters")
-	}
-
-	// VHost validation
-	vhost = strings.TrimSpace(vhost)
-	if vhost == "" {
-		return errors.New("vhost is required")
 	}
 
 	// Gateway type validation
@@ -1099,6 +1102,17 @@ func gatewayModelToAPI(gateway *model.Gateway) *api.GatewayResponse {
 	}
 	functionalityType := api.GatewayResponseFunctionalityType(gateway.FunctionalityType)
 
+	endpoints := make([]api.GatewayEndpoint, 0, len(gateway.Endpoints))
+	for _, ep := range gateway.Endpoints {
+		epContext := ep.Context
+		endpoints = append(endpoints, api.GatewayEndpoint{
+			Host:     ep.Host,
+			Protocol: api.GatewayEndpointProtocol(ep.Protocol),
+			Port:     ep.Port,
+			Context:  &epContext,
+		})
+	}
+
 	return &api.GatewayResponse{
 		Id:                &gatewayID,
 		OrganizationId:    &orgID,
@@ -1106,7 +1120,7 @@ func gatewayModelToAPI(gateway *model.Gateway) *api.GatewayResponse {
 		DisplayName:       &gateway.Handle,
 		Description:       utils.StringPtrIfNotEmpty(gateway.Description),
 		Properties:        utils.MapPtrIfNotEmpty(gateway.Properties),
-		Vhost:             &gateway.Vhost,
+		Endpoints:         &endpoints,
 		IsCritical:        &gateway.IsCritical,
 		FunctionalityType: &functionalityType,
 		Version:           &gateway.Version,

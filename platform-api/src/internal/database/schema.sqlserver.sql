@@ -197,7 +197,6 @@ CREATE TABLE dbo.gateways (
     name VARCHAR(255) NOT NULL,
     description VARCHAR(1023),
     version VARCHAR(30) NOT NULL DEFAULT '1.0',
-    vhost VARCHAR(255) NOT NULL,
     gateway_functionality_type VARCHAR(20) DEFAULT 'regular' NOT NULL,
     properties VARBINARY(MAX) NOT NULL,
     manifest VARBINARY(MAX),
@@ -211,6 +210,20 @@ CREATE TABLE dbo.gateways (
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
     UNIQUE(organization_uuid, handle)
 );
+
+-- Gateway Endpoints table (links endpoints to gateways)
+IF OBJECT_ID(N'dbo.gateway_endpoints', N'U') IS NULL
+CREATE TABLE dbo.gateway_endpoints (
+    id INT IDENTITY(1,1) PRIMARY KEY,
+    gateway_uuid VARCHAR(40) NOT NULL,
+    host VARCHAR(255) NOT NULL,
+    protocol VARCHAR(10) NOT NULL,
+    port INT NOT NULL,
+    context VARCHAR(255) NOT NULL DEFAULT '',
+    FOREIGN KEY (gateway_uuid) REFERENCES gateways(uuid) ON DELETE CASCADE
+);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_gateway_endpoints_gateway_uuid' AND object_id = OBJECT_ID(N'dbo.gateway_endpoints'))
+CREATE INDEX idx_gateway_endpoints_gateway_uuid ON dbo.gateway_endpoints(gateway_uuid);
 
 -- Artifact Gateway Mapping table (links artifacts to gateways)
 IF OBJECT_ID(N'dbo.artifact_gateway_mappings', N'U') IS NULL
