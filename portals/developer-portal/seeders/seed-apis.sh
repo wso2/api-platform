@@ -62,7 +62,7 @@ seed_api() {
     api_name=$(basename "$api_dir")
 
     local api_yaml="$api_dir/api.yaml"
-    local definition="$api_dir/definition.yml"
+    local definition="$api_dir/openapi.yaml"
 
     if [ ! -f "$api_yaml" ]; then
         echo "  skipping $api_name: no api.yaml found"

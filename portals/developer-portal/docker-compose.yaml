@@ -24,7 +24,7 @@
 #
 # Quick start:
 #   docker compose up
-#   Then open https://localhost:3000/Default/views/default  (accept the self-signed cert warning)
+#   Then open https://localhost:3000/default/views/default  (accept the self-signed cert warning)
 #   Login: admin / admin  (or developer / developer)
 #
 # TLS:
