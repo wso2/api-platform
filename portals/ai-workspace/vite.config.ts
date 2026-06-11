@@ -14,9 +14,29 @@ const aiTemp = path.resolve(rushTemp, 'ai-workspace')
 const aiNodeModules = path.resolve(aiTemp, 'node_modules')
 const aiPnpm = path.resolve(aiNodeModules, '.pnpm')
 
+const readyLogPlugin: PluginOption = {
+  name: 'ready-log',
+  configureServer(server) {
+    server.httpServer?.once('listening', () => {
+      console.log(
+        '\n\n' +
+        '========================================================================\n' +
+        '\n' +
+        '\n' +
+        '                      AI Workspace Started\n' +
+        '\n' +
+        '\n' +
+        '========================================================================\n' +
+        '\n'
+      )
+    })
+  },
+}
+
 const plugins: PluginOption[] = [
   react() as unknown as PluginOption,
   basicSsl() as unknown as PluginOption,
+  readyLogPlugin,
 ]
 
 export default defineConfig({
