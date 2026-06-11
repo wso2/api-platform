@@ -4,13 +4,13 @@
 
 <a id="opIdcreateKeyManager"></a>
 
-`POST /organizations/{orgId}/key-managers`
+`POST /o/{orgId}/devportal/v1/key-managers`
 
 > Code samples
 
 ```shell
 
-curl -X POST http://localhost:3000/devportal/organizations/{orgId}/key-managers \
+curl -X POST https://devportal.api-platform.io/o/{orgId}/devportal/v1/key-managers \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -182,13 +182,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdgetKeyManagers"></a>
 
-`GET /organizations/{orgId}/key-managers`
+`GET /o/{orgId}/devportal/v1/key-managers`
 
 > Code samples
 
 ```shell
 
-curl -X GET http://localhost:3000/devportal/organizations/{orgId}/key-managers \
+curl -X GET https://devportal.api-platform.io/o/{orgId}/devportal/v1/key-managers \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -294,13 +294,13 @@ Status Code **200**
 
 <a id="opIdgetAvailableKeyManagers"></a>
 
-`GET /organizations/{orgId}/key-managers/discover`
+`GET /o/{orgId}/devportal/v1/key-managers/discover`
 
 > Code samples
 
 ```shell
 
-curl -X GET http://localhost:3000/devportal/organizations/{orgId}/key-managers/discover \
+curl -X GET https://devportal.api-platform.io/o/{orgId}/devportal/v1/key-managers/discover \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -389,13 +389,13 @@ Status Code **200**
 
 <a id="opIdgetKeyManager"></a>
 
-`GET /organizations/{orgId}/key-managers/{kmId}`
+`GET /o/{orgId}/devportal/v1/key-managers/{kmId}`
 
 > Code samples
 
 ```shell
 
-curl -X GET http://localhost:3000/devportal/organizations/{orgId}/key-managers/{kmId} \
+curl -X GET https://devportal.api-platform.io/o/{orgId}/devportal/v1/key-managers/{kmId} \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -482,13 +482,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdupdateKeyManager"></a>
 
-`PUT /organizations/{orgId}/key-managers/{kmId}`
+`PUT /o/{orgId}/devportal/v1/key-managers/{kmId}`
 
 > Code samples
 
 ```shell
 
-curl -X PUT http://localhost:3000/devportal/organizations/{orgId}/key-managers/{kmId} \
+curl -X PUT https://devportal.api-platform.io/o/{orgId}/devportal/v1/key-managers/{kmId} \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -672,13 +672,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIddeleteKeyManager"></a>
 
-`DELETE /organizations/{orgId}/key-managers/{kmId}`
+`DELETE /o/{orgId}/devportal/v1/key-managers/{kmId}`
 
 > Code samples
 
 ```shell
 
-curl -X DELETE http://localhost:3000/devportal/organizations/{orgId}/key-managers/{kmId} \
+curl -X DELETE https://devportal.api-platform.io/o/{orgId}/devportal/v1/key-managers/{kmId} \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'

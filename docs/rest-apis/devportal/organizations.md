@@ -10,7 +10,7 @@
 
 ```shell
 
-curl -X POST http://localhost:3000/devportal/organizations \
+curl -X POST https://devportal.api-platform.io/organizations \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -182,7 +182,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```shell
 
-curl -X GET http://localhost:3000/devportal/organizations \
+curl -X GET https://devportal.api-platform.io/organizations \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -272,7 +272,7 @@ Status Code **200**
 
 ```shell
 
-curl -X PUT http://localhost:3000/devportal/organizations/{orgId} \
+curl -X PUT https://devportal.api-platform.io/organizations/{orgId} \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -436,7 +436,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```shell
 
-curl -X GET http://localhost:3000/devportal/organizations/{orgId} \
+curl -X GET https://devportal.api-platform.io/organizations/{orgId} \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -520,7 +520,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```shell
 
-curl -X DELETE http://localhost:3000/devportal/organizations/{orgId} \
+curl -X DELETE https://devportal.api-platform.io/organizations/{orgId} \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'

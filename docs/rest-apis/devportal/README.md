@@ -4,12 +4,13 @@
 Fine-grained Developer Portal API for managing organizations, identity providers, providers,
 API metadata and content, applications, subscriptions, application credentials, and API flows.
 
-All paths are served under the `/devportal` base path. Operations declare the least-privilege
-OAuth2 scopes required for each resource action.
+Organization-scoped resources are served under `/o/{orgId}/devportal/v1`. Operations declare
+the least-privilege OAuth2 scopes required for each resource action.
 
 Base URLs:
-* <a href="http://localhost:3000/devportal">http://localhost:3000/devportal</a>
-* <a href="https://localhost:{port}/devportal">https://localhost:{port}/devportal</a>
+* <a href="https://devportal.api-platform.io">https://devportal.api-platform.io</a>
+* <a href="http://localhost:3000">http://localhost:3000</a>
+* <a href="https://localhost:{port}">https://localhost:{port}</a>
     * **port** -  Default: 9443
 
 ## Table of Contents
@@ -63,6 +64,7 @@ Base URLs:
 
 ### [Subscription Policies](subscription-policies.md)
 
+- [List subscription policies](subscription-policies.md#list-subscription-policies)
 - [Create subscription policies](subscription-policies.md#create-subscription-policies)
 - [Upsert subscription policies](subscription-policies.md#upsert-subscription-policies)
 - [Get a subscription policy](subscription-policies.md#get-a-subscription-policy)
@@ -77,11 +79,9 @@ Base URLs:
 
 ### [Applications](applications.md)
 
-- [Import an application](applications.md#import-an-application)
 - [Create an application for the authenticated user's organization](applications.md#create-an-application-for-the-authenticated-users-organization)
 - [Update an application for the authenticated user](applications.md#update-an-application-for-the-authenticated-user)
 - [Delete an application for the authenticated user](applications.md#delete-an-application-for-the-authenticated-user)
-- [Reset application throttle policy](applications.md#reset-application-throttle-policy)
 
 ### [Subscriptions](subscriptions.md)
 

@@ -10,7 +10,7 @@
 
 ```shell
 
-curl -X POST http://localhost:3000/devportal/temp-arazzo-file \
+curl -X POST https://devportal.api-platform.io/temp-arazzo-file \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
