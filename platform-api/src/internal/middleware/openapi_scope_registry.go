@@ -44,6 +44,18 @@ func (r *ScopeRegistry) Lookup(method, ginPath string) ([]string, bool) {
 	return scopes, ok
 }
 
+// AllScopes returns the set of every scope name declared across all operations.
+// Used at startup to validate that roles.yaml only references known scopes.
+func (r *ScopeRegistry) AllScopes() map[string]struct{} {
+	known := make(map[string]struct{})
+	for _, scopes := range r.scopes {
+		for _, s := range scopes {
+			known[s] = struct{}{}
+		}
+	}
+	return known
+}
+
 // openAPIDoc is the minimal subset of an OpenAPI 3.x document we need to parse.
 type openAPIDoc struct {
 	Servers []struct {

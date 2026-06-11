@@ -53,15 +53,18 @@ type AuthConfig struct {
 
 // PlatformClaimNames holds the JWT claim names used to extract platform-specific values.
 type PlatformClaimNames struct {
-	OrganizationClaim  string // active org UUID for this token (e.g. "organization")
-	OrgNameClaim       string // org display name (e.g. "org_name")
-	OrgHandleClaim     string // org URL-safe handle (e.g. "org_handle")
-	UserIDClaim        string
-	UsernameClaim      string
-	EmailClaim         string
-	ScopeClaim         string
-	RolesClaimPath     string
-	RoleMappings       []string // "idp-value=platform-role" pairs
+	OrganizationClaim string // active org UUID for this token (e.g. "organization")
+	OrgNameClaim      string // org display name (e.g. "org_name")
+	OrgHandleClaim    string // org URL-safe handle (e.g. "org_handle")
+	UserIDClaim       string
+	UsernameClaim     string
+	EmailClaim        string
+	ScopeClaim        string
+	RolesClaimPath    string
+	// RoleScopeMap maps each IDP role name to the platform scopes it grants.
+	// When a token carries multiple roles the effective scopes are the union.
+	// Nil means passthrough: IDP role names are used directly as scope values.
+	RoleScopeMap map[string][]string
 }
 
 // LocalJWTAuthMiddleware returns a Gin middleware for locally-issued JWT validation.
@@ -180,8 +183,6 @@ func validateLocalJWT(c *gin.Context, tokenString string, config AuthConfig) err
 // common/authenticators.AuthMiddleware (IDP mode) and populates the per-key context entries
 // that handlers rely on.
 func PlatformClaimsMiddleware(claimNames PlatformClaimNames) gin.HandlerFunc {
-	roleMapping := parseRoleMappings(claimNames.RoleMappings)
-
 	return func(c *gin.Context) {
 		authCtxVal, exists := c.Get(commonconstants.AuthContextKey)
 		if !exists {
@@ -235,7 +236,7 @@ func PlatformClaimsMiddleware(claimNames PlatformClaimNames) gin.HandlerFunc {
 			},
 		}
 
-		platformRoles := resolvePlatformRoles(mapClaims, claimNames.RolesClaimPath, roleMapping)
+		platformRoles := resolvePlatformRoles(mapClaims, claimNames.RolesClaimPath, claimNames.RoleScopeMap)
 
 		c.Set("user_id", userID)
 		c.Set("username", username)
@@ -263,27 +264,29 @@ func PlatformClaimsMiddleware(claimNames PlatformClaimNames) gin.HandlerFunc {
 	}
 }
 
-// resolvePlatformRoles extracts role values from the token at claimPath and maps them
-// to platform roles using the provided mapping. Raw IDP values are used when mapping is empty.
-func resolvePlatformRoles(claims jwt.MapClaims, claimPath string, mapping map[string]string) []string {
+// resolvePlatformRoles extracts IDP role names from the token at claimPath and
+// expands them to platform scopes using roleScopeMap. When a token carries multiple
+// IDP roles the result is the union of their scope lists (deduped, order preserved).
+// When roleScopeMap is nil the raw IDP role names are returned unchanged (passthrough).
+func resolvePlatformRoles(claims jwt.MapClaims, claimPath string, roleScopeMap map[string][]string) []string {
 	if claimPath == "" {
 		return nil
 	}
 	idpRoles := extractClaimByPath(claims, claimPath)
-	if len(mapping) == 0 {
+	if roleScopeMap == nil {
 		return idpRoles
 	}
-	var platformRoles []string
 	seen := make(map[string]struct{})
+	var effectiveScopes []string
 	for _, idpRole := range idpRoles {
-		if platformRole, ok := mapping[idpRole]; ok {
-			if _, dup := seen[platformRole]; !dup {
-				platformRoles = append(platformRoles, platformRole)
-				seen[platformRole] = struct{}{}
+		for _, scope := range roleScopeMap[idpRole] {
+			if _, dup := seen[scope]; !dup {
+				effectiveScopes = append(effectiveScopes, scope)
+				seen[scope] = struct{}{}
 			}
 		}
 	}
-	return platformRoles
+	return effectiveScopes
 }
 
 // extractClaimByPath navigates a dot-notation path through jwt.MapClaims and returns the
@@ -323,18 +326,6 @@ func toStringSlice(val interface{}) []string {
 		return result
 	}
 	return nil
-}
-
-// parseRoleMappings converts "idp-value=platform-role" pairs into a lookup map.
-func parseRoleMappings(mappings []string) map[string]string {
-	m := make(map[string]string, len(mappings))
-	for _, entry := range mappings {
-		parts := strings.SplitN(entry, "=", 2)
-		if len(parts) == 2 {
-			m[strings.TrimSpace(parts[0])] = strings.TrimSpace(parts[1])
-		}
-	}
-	return m
 }
 
 // getStringClaim safely extracts a string value from jwt.MapClaims.
