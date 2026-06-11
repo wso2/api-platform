@@ -73,18 +73,24 @@ const loadApplicationData = async (req, orgName, applicationId, viewName) => {
             const keyList = [];
             for (const mapping of localMappings) {
                 if (mapping.AS_CLIENT_ID && mapping.KM_ID) {
-                    const km = await kmDao.getKeyManager(mapping.KM_ID);
-                    const storedProps = mapping.ADDITIONAL_PROPERTIES || {};
-                    keyList.push({
-                        keyManager: km.NAME,
-                        consumerKey: mapping.AS_CLIENT_ID,
-                        consumerSecret: '',
-                        keyMappingId: mapping.MAPPING_ID,
-                        keyType: mapping.KEY_TYPE || constants.KEY_TYPE.PRODUCTION,
-                        supportedGrantTypes: storedProps.grant_types || km.SUPPORTED_GRANT_TYPES || ['client_credentials'],
-                        additionalProperties: storedProps,
-                        callbackUrl: storedProps.redirect_uris?.[0] || '',
-                    });
+                    try {
+                        const km = await kmDao.getKeyManager(mapping.KM_ID);
+                        const storedProps = mapping.ADDITIONAL_PROPERTIES || {};
+                        keyList.push({
+                            keyManager: km.NAME,
+                            consumerKey: mapping.AS_CLIENT_ID,
+                            consumerSecret: '',
+                            keyMappingId: mapping.MAPPING_ID,
+                            keyType: mapping.KEY_TYPE || constants.KEY_TYPE.PRODUCTION,
+                            supportedGrantTypes: storedProps.grant_types || km.SUPPORTED_GRANT_TYPES || ['client_credentials'],
+                            additionalProperties: storedProps,
+                            callbackUrl: storedProps.redirect_uris?.[0] || '',
+                        });
+                    } catch (mappingErr) {
+                        logger.warn('Skipping key mapping due to error', {
+                            mappingId: mapping.MAPPING_ID, error: mappingErr.message
+                        });
+                    }
                 }
             }
             if (keyList.length) {

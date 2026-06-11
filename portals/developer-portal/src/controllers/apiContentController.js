@@ -1143,7 +1143,7 @@ const loadAPIContentMd = async (req, res) => {
         // Enrich spec with live server URLs
         if (apiDefinition && apiType !== constants.API_TYPE.GRAPHQL && apiType !== constants.API_TYPE.MCP && apiType !== 'SOAP') {
             try {
-                const parsed = JSON.parse(apiDefinition);
+                const parsed = parseApiDefinitionContent(apiDefinition);
                 const isAsyncAPI = apiType === constants.API_TYPE.WS || apiType === constants.API_TYPE.WEBSUB;
                 const enriched = isAsyncAPI
                     ? replaceEndpointParamsAsyncAPI(parsed, metaData.endPoints?.productionURL || '', metaData.endPoints?.sandboxURL || '')
