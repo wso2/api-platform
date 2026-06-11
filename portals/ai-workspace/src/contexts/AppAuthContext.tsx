@@ -36,7 +36,6 @@ export interface AppUser {
 export interface AppAuthContextType {
   isAuthenticated: boolean;
   isLoading: boolean;
-  isSuperAdmin: boolean;
   user: AppUser | null;
   accessToken: string | null;
   hasPermission: (scope: string) => boolean;
@@ -47,7 +46,6 @@ export interface AppAuthContextType {
 export const AppAuthContext = createContext<AppAuthContextType>({
   isAuthenticated: false,
   isLoading: true,
-  isSuperAdmin: false,
   user: null,
   accessToken: null,
   hasPermission: () => false,

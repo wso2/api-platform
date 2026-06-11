@@ -81,3 +81,28 @@ version-get-release: ## Get release version (strips SNAPSHOT suffix)
 		exit 1; \
 	fi; \
 	echo "$$VERSION"
+
+# Distribution Targets
+DIST_VERSION  := $(shell echo "$(VERSION)" | sed 's/-SNAPSHOT//')
+DIST_NAME     := wso2apip-ai-workspace-$(DIST_VERSION)
+DIST_DIR      := target/$(DIST_NAME)
+DIST_ZIP      := target/$(DIST_NAME).zip
+PLATFORM_API_VERSION ?= $(shell cat ../../../platform-api/VERSION 2>/dev/null | sed 's/-SNAPSHOT//' || echo "0.0.0")
+
+.PHONY: dist clean-dist
+dist: clean-dist ## Build standalone AI Workspace + Platform API distribution zip
+	@echo "Building distribution $(DIST_NAME)..."
+	@mkdir -p $(DIST_DIR)/configs $(DIST_DIR)/resources/certificates
+	@cp -R configs/. $(DIST_DIR)/configs/
+	@cp distribution/docker-compose.yaml $(DIST_DIR)/docker-compose.yaml
+	@sed -i.bak \
+	    -e 's|/ai-workspace:[^[:space:]]*|/ai-workspace:$(DIST_VERSION)|g' \
+	    -e 's|/platform-api:[^[:space:]]*|/platform-api:$(PLATFORM_API_VERSION)|g' \
+	    $(DIST_DIR)/docker-compose.yaml
+	@rm -f $(DIST_DIR)/docker-compose.yaml.bak
+	@cd target && zip -rq $(DIST_NAME).zip $(DIST_NAME)
+	@echo "✓ Built $(DIST_ZIP)"
+
+.PHONY: clean-dist
+clean-dist: ## Remove distribution staging dir and zip
+	@rm -rf target/wso2apip-ai-workspace-*

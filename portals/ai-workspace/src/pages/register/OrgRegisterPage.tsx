@@ -41,7 +41,6 @@ import { Building2, CheckCircle2, RefreshCw } from 'lucide-react';
 import Logo from '../../Components/Logo';
 import UserMenu from '../../Components/UserMenu';
 import { useAppAuth } from '../../contexts/AppAuthContext';
-import { CheckCircle2 as SuccessIcon } from 'lucide-react';
 import {
   registerOrganization,
   type RegisterOrganizationRequest,
@@ -130,7 +129,7 @@ function RedirectingToWorkspace({ orgName }: { orgName: string }) {
 
 export default function OrgRegisterPage() {
   const navigate = useNavigate();
-  const { user, logout, isSuperAdmin } = useAppAuth();
+  const { user, logout } = useAppAuth();
 
   const userForMenu = {
     name: user?.name || user?.email || 'User',
@@ -153,12 +152,12 @@ export default function OrgRegisterPage() {
   // ── Auto-redirect after success (not for super admin — they stay to register more) ──
 
   useEffect(() => {
-    if (!registeredOrgName || !registeredOrgHandle || isSuperAdmin) return;
+    if (!registeredOrgName || !registeredOrgHandle) return;
     const timer = setTimeout(() => {
       navigate(`/organizations/${registeredOrgHandle}/home`, { replace: true });
     }, REDIRECT_DELAY_MS);
     return () => clearTimeout(timer);
-  }, [registeredOrgName, registeredOrgHandle, navigate, isSuperAdmin]);
+  }, [registeredOrgName, registeredOrgHandle, navigate]);
 
   // ── Validation ─────────────────────────────────────────────────────────────
 
@@ -363,39 +362,7 @@ export default function OrgRegisterPage() {
 
                 {/* ── Success state ── */}
                 {registeredOrgName ? (
-                  isSuperAdmin ? (
-                    <Stack spacing={3} alignItems="center" sx={{ py: 4 }}>
-                      <Box
-                        sx={{
-                          width: 64, height: 64, borderRadius: '50%',
-                          bgcolor: 'success.light',
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          color: 'success.contrastText',
-                        }}
-                      >
-                        <CheckCircle2 size={32} />
-                      </Box>
-                      <Stack spacing={0.5} alignItems="center">
-                        <Typography variant="h5" fontWeight="bold">Organization Registered!</Typography>
-                        <Typography variant="body2" color="text.secondary" textAlign="center">
-                          <strong>{registeredOrgName}</strong> ({registeredOrgHandle}) has been created successfully.
-                        </Typography>
-                      </Stack>
-                      <Button
-                        variant="contained"
-                        fullWidth
-                        onClick={() => {
-                          setRegisteredOrgName(null);
-                          setRegisteredOrgHandle(null);
-                          setForm({ id: generateUUID(), name: '', handle: '', region: 'us' });
-                        }}
-                      >
-                        Register Another Organization
-                      </Button>
-                    </Stack>
-                  ) : (
-                    <RedirectingToWorkspace orgName={registeredOrgName} />
-                  )
+                  <RedirectingToWorkspace orgName={registeredOrgName} />
                 ) : (
 
                   /* ── Registration form ── */

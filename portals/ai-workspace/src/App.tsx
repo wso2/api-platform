@@ -25,7 +25,6 @@ import {
 } from 'react-router-dom';
 import { useAuth } from 'react-oidc-context';
 import AutoLoginPage from './pages/login/AutoLoginPage';
-import AdminLoginPage from './pages/admin/AdminLoginPage';
 import AppShellMain from './pages/appShell/appShellMain';
 import { AppShellProvider } from './contexts/AppShellContext';
 import { RoleProvider } from './contexts/RoleContext';
@@ -115,18 +114,6 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
       sessionStorage.setItem('ai_workspace_return_url', returnUrl);
     }
     return <Navigate to="/login" replace />;
-  }
-
-  return <>{children}</>;
-}
-
-// Super admin can only access /register-org. Redirect everything else there.
-function SuperAdminRoute({ children }: { children: React.ReactNode }) {
-  const { isSuperAdmin } = useAppAuth();
-  const location = useLocation();
-
-  if (isSuperAdmin && location.pathname !== '/register-org') {
-    return <Navigate to="/register-org" replace />;
   }
 
   return <>{children}</>;
@@ -287,10 +274,7 @@ export default function App() {
         {/* Login — shows full-page loader and auto-redirects to the IDP */}
         <Route path="/login" element={<PublicOnlyRoute><AutoLoginPage /></PublicOnlyRoute>} />
 
-        {/* Admin login — super admin credential form (dev/ops only) */}
-        <Route path="/admin" element={<PublicOnlyRoute><AdminLoginPage /></PublicOnlyRoute>} />
-
-        {/* Organization registration — requires auth, accessible to super admin */}
+        {/* Organization registration — requires auth */}
         <Route path="/register-org" element={
           <ProtectedRoute>
             <OrgRegisterPage />
@@ -302,9 +286,7 @@ export default function App() {
           path="/"
           element={
             <ProtectedRoute>
-              <SuperAdminRoute>
-                <ProtectedAppShell />
-              </SuperAdminRoute>
+              <ProtectedAppShell />
             </ProtectedRoute>
           }
         >

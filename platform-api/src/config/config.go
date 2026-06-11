@@ -20,378 +20,199 @@ package config
 import (
 	"encoding/json"
 	"fmt"
+	"reflect"
+	"strings"
 	"sync"
 
-	"github.com/kelseyhightower/envconfig"
+	"github.com/go-viper/mapstructure/v2"
+	toml "github.com/knadh/koanf/parsers/toml/v2"
+	kenv "github.com/knadh/koanf/providers/env"
+	"github.com/knadh/koanf/providers/file"
+	"github.com/knadh/koanf/v2"
 )
 
 // BasicAuthUser represents a built-in user for basic-auth mode.
 type BasicAuthUser struct {
-	Username     string `json:"username"`
-	PasswordHash string `json:"password_hash"`
-	Scopes       string `json:"scopes"`
+	Username     string `json:"username"     koanf:"username"`
+	PasswordHash string `json:"password_hash" koanf:"password_hash"`
+	Scopes       string `json:"scopes"       koanf:"scopes"`
 }
 
-// BasicAuthUsers is a JSON-decodable slice of BasicAuthUser.
+// BasicAuthUsers is a slice of BasicAuthUser that can be decoded from a JSON string (env var)
+// or from a TOML array of tables ([[auth.basic_auth.users]]).
 type BasicAuthUsers []BasicAuthUser
-
-func (u *BasicAuthUsers) Decode(value string) error {
-	return json.Unmarshal([]byte(value), u)
-}
 
 // BasicAuthOrg holds the single organization used in basic-auth mode.
 type BasicAuthOrg struct {
 	// ID is the org UUID. Auto-generated at startup if empty.
-	// Env: AUTH_BASIC_AUTH_ORGANIZATION_ID
-	ID string `envconfig:"ID" default:""`
+	ID string `koanf:"id"`
 
 	// Name is the display name of the organization.
-	// Required when AUTH_BASIC_AUTH_ENABLED=true.
-	// Env: AUTH_BASIC_AUTH_ORGANIZATION_NAME
-	Name string `envconfig:"NAME" default:""`
+	Name string `koanf:"name"`
 
 	// Handle is the URL-safe slug for the organization.
-	// Required when AUTH_BASIC_AUTH_ENABLED=true.
-	// Env: AUTH_BASIC_AUTH_ORGANIZATION_HANDLE
-	Handle string `envconfig:"HANDLE" default:""`
+	Handle string `koanf:"handle"`
 
 	// Region is the deployment region for the organization.
-	// Env: AUTH_BASIC_AUTH_ORGANIZATION_REGION (default: "us")
-	Region string `envconfig:"REGION" default:"us"`
+	Region string `koanf:"region"`
 }
 
 // BasicAuth holds configuration for local username/password authentication.
-// When enabled, IDP-based auth is not used and a single organization is defined here.
-// Env prefix: AUTH_BASIC_AUTH_
 type BasicAuth struct {
-	// Enabled activates basic-auth login mode.
-	// Env: AUTH_BASIC_AUTH_ENABLED (default: false)
-	Enabled bool `envconfig:"ENABLED" default:"false"`
-
-	// Organization is the single org all basic-auth users belong to.
-	// Env prefix: AUTH_BASIC_AUTH_ORGANIZATION_
-	Organization BasicAuthOrg `envconfig:"ORGANIZATION"`
-
-	// Users is the JSON-encoded list of built-in users.
-	// Env: AUTH_BASIC_AUTH_USERS
-	// Format: [{"username":"alice","password_hash":"$2a$10$...","scopes":"ap:gateway:read"}]
-	Users BasicAuthUsers `envconfig:"USERS"`
+	Enabled      bool          `koanf:"enabled"`
+	Organization BasicAuthOrg  `koanf:"organization"`
+	Users        BasicAuthUsers `koanf:"users"`
 }
 
 // Server holds the configuration parameters for the application.
 type Server struct {
-	LogLevel string `envconfig:"LOG_LEVEL" default:"DEBUG"`
+	LogLevel string `koanf:"log_level"`
+	DevMode  bool   `koanf:"dev_mode"`
+	Port     string `koanf:"port"`
 
-	// DevMode disables safety guardrails intended for production (e.g. allows
-	// JWT signature validation to be skipped without a loud warning).
-	// Set to true only in local development environments.
-	// Env: DEV_MODE (default: false)
-	DevMode bool `envconfig:"DEV_MODE" default:"false"`
+	DBSchemaPath               string `koanf:"db_schema_path"`
+	OpenAPISpecPath            string `koanf:"openapi_spec_path"`
+	LLMTemplateDefinitionsPath string `koanf:"llm_template_definitions_path"`
 
-	// Server configurations
-	Port string `envconfig:"PORT" default:"9243"`
+	Database         Database         `koanf:"database"`
+	Auth             Auth             `koanf:"auth"`
+	WebSocket        WebSocket        `koanf:"websocket"`
+	DefaultDevPortal DefaultDevPortal `koanf:"default_devportal"`
+	Deployments      Deployments      `koanf:"deployments"`
+	TLS              TLS              `koanf:"tls"`
+	APIKey           APIKey           `koanf:"api_key"`
+	Gateway          Gateway          `koanf:"gateway"`
 
-	// Database configurations
-	Database     Database `envconfig:"DATABASE"`
-	DBSchemaPath string   `envconfig:"DB_SCHEMA_PATH" default:"./internal/database/schema.sql"`
-
-	// OpenAPI spec path — used at startup to build the scope registry.
-	OpenAPISpecPath string `envconfig:"OPENAPI_SPEC_PATH" default:"./resources/openapi.yaml"`
-
-	// LLM provider template bootstrap (used to seed defaults into the DB)
-	LLMTemplateDefinitionsPath string `envconfig:"LLM_TEMPLATE_DEFINITIONS_PATH" default:"./resources/default-llm-provider-templates"`
-
-	// Auth groups all authentication configuration.
-	// Two modes are supported: JWT (local HMAC) and IDP (JWKS-based).
-	Auth Auth `envconfig:"AUTH"`
-
-	// WebSocket configurations
-	WebSocket WebSocket `envconfig:"WEBSOCKET"`
-
-	// Default DevPortal configurations
-	DefaultDevPortal DefaultDevPortal `envconfig:"DEFAULT_DEVPORTAL"`
-
-	// Deployment configurations
-	Deployments Deployments `envconfig:"DEPLOYMENTS"`
-
-	// TLS configurations
-	TLS TLS `envconfig:"TLS"`
-
-	// API key configurations
-	APIKey APIKey `envconfig:"API_KEY"`
-
-	// Gateway configurations
-	Gateway Gateway `envconfig:"GATEWAY"`
-
-	// EnableScopeValidation controls whether scope checks are enforced on protected routes.
-	EnableScopeValidation bool `envconfig:"ENABLE_SCOPE_VALIDATION" default:"true"`
+	EnableScopeValidation bool `koanf:"enable_scope_validation"`
 }
 
 // Auth groups all authentication-related configuration.
-// Exactly one of JWT or IDP should be the active primary mode.
-// SkipPaths applies to both modes.
 type Auth struct {
-	// SkipPaths is the list of path prefixes that bypass authentication entirely.
-	// Applies to both JWT and IDP modes.
-	// Env: AUTH_SKIP_PATHS
-	SkipPaths []string `envconfig:"SKIP_PATHS" default:"/health,/metrics,/api/internal/v1/ws/gateways/connect,/api/internal/v1/apis,/api/internal/v1/llm-providers,/api/internal/v1/llm-proxies,/api/internal/v1/subscription-plans,/api/internal/v1/mcp-proxies,/api/internal/v1/gateways,/api/internal/v1/deployments,/api/internal/v1/artifacts,/api/internal/v1/websub-apis,/api/internal/v1/webbroker-apis"`
-
-	// IDP holds JWKS-based identity provider configuration.
-	// Env prefix: AUTH_IDP_
-	IDP IDP `envconfig:"IDP"`
-
-	// JWT holds local HMAC JWT configuration.
-	// Env prefix: AUTH_JWT_
-	JWT JWT `envconfig:"JWT"`
-
-	// BasicAuth holds local username/password authentication configuration.
-	// Env prefix: AUTH_BASIC_AUTH_
-	BasicAuth BasicAuth `envconfig:"BASIC_AUTH"`
+	SkipPaths []string  `koanf:"skip_paths"`
+	IDP       IDP       `koanf:"idp"`
+	JWT       JWT       `koanf:"jwt"`
+	BasicAuth BasicAuth `koanf:"basic_auth"`
 }
 
 // IDP holds configuration for JWKS-based identity providers.
-// The same fields apply regardless of which IDP is in use (Thunder, Keycloak,
-// Asgardeo, Azure AD, Okta, etc.).
-// Env prefix: AUTH_IDP_
 type IDP struct {
-	// Enabled controls whether JWKS-based JWT validation is active.
-	// When false (default), the server falls back to local HMAC JWT validation.
-	// Env: AUTH_IDP_ENABLED (default: false)
-	Enabled bool `envconfig:"ENABLED" default:"false"`
+	Enabled bool   `koanf:"enabled"`
+	Name    string `koanf:"name"`
+	JWKSUrl string `koanf:"jwks_url"`
+	Issuer  []string `koanf:"issuer"`
+	Audience []string `koanf:"audience"`
 
-	// Name is an optional label identifying which IDP is configured (e.g. "thunder",
-	// "keycloak", "asgardeo"). Does not affect runtime behaviour — used only in
-	// startup log messages to make the active IDP visible.
-	// Env: AUTH_IDP_NAME (default: "")
-	Name string `envconfig:"NAME" default:""`
-
-	// JWKSUrl is the IDP's JWKS endpoint for fetching public signing keys.
-	// Required when AUTH_IDP_ENABLED=true.
-	// Env: AUTH_IDP_JWKS_URL
-	JWKSUrl string `envconfig:"JWKS_URL" default:""`
-
-	// Issuer is the list of accepted JWT issuers (comma-separated).
-	// Required when AUTH_IDP_ENABLED=true.
-	// Example: "https://accounts.example.com,https://sso.example.com"
-	// Env: AUTH_IDP_ISSUER
-	Issuer []string `envconfig:"ISSUER"`
-
-	// Audience is the list of accepted JWT audiences (comma-separated).
-	// Optional. Entries ending with "*" are treated as prefix matches.
-	// Env: AUTH_IDP_AUDIENCE
-	Audience []string `envconfig:"AUDIENCE"`
-
-	// --- Claim name mappings ---
-	// Set these when your IDP uses non-standard claim names.
-
-	// OrganizationClaimName is the JWT claim that holds the currently selected org UUID.
-	// Set per-token by the IDP based on which org the user logged into.
-	// Every protected request must carry this claim; requests without it are rejected.
-	// Env: AUTH_IDP_ORGANIZATION_CLAIM_NAME (default: "organization")
-	OrganizationClaimName string `envconfig:"ORGANIZATION_CLAIM_NAME" default:"organization"`
-
-	// OrgNameClaimName is the JWT claim that holds the display name of the user's organization.
-	// Used to propagate org context and support auto-registration on first login.
-	// Env: AUTH_IDP_ORG_NAME_CLAIM_NAME (default: "org_name")
-	OrgNameClaimName string `envconfig:"ORG_NAME_CLAIM_NAME" default:"org_name"`
-
-	// OrgHandleClaimName is the JWT claim that holds the URL-safe handle of the user's organization.
-	// Used alongside OrgNameClaimName for auto-registration on first login.
-	// Env: AUTH_IDP_ORG_HANDLE_CLAIM_NAME (default: "org_handle")
-	OrgHandleClaimName string `envconfig:"ORG_HANDLE_CLAIM_NAME" default:"org_handle"`
-
-	// UserIDClaimName is the JWT claim used as the canonical user identifier.
-	// Env: AUTH_IDP_USER_ID_CLAIM_NAME (default: "sub")
-	UserIDClaimName string `envconfig:"USER_ID_CLAIM_NAME" default:"sub"`
-
-	// UsernameClaimName is the JWT claim for the human-readable username.
-	// Env: AUTH_IDP_USERNAME_CLAIM_NAME (default: "username")
-	UsernameClaimName string `envconfig:"USERNAME_CLAIM_NAME" default:"username"`
-
-	// EmailClaimName is the JWT claim for the user's email address.
-	// Env: AUTH_IDP_EMAIL_CLAIM_NAME (default: "email")
-	EmailClaimName string `envconfig:"EMAIL_CLAIM_NAME" default:"email"`
-
-	// ScopeClaimName is the JWT claim that carries the granted OAuth2 scopes.
-	// When this claim is present in the token, scope-based validation is used directly.
-	// When absent, role-based expansion applies (see RolesClaimPath).
-	// Env: AUTH_IDP_SCOPE_CLAIM_NAME (default: "scope")
-	ScopeClaimName string `envconfig:"SCOPE_CLAIM_NAME" default:"scope"`
-
-	// --- Role-based access (for IDPs that issue roles instead of scopes) ---
-
-	// RolesClaimPath is the dot-notation path to the claim containing the user's roles.
-	// Supports both flat claims ("roles") and nested claims ("realm_access.roles").
-	// The claim value can be a string array or a space-separated string.
-	// When empty, role-based expansion is disabled and only scope-based validation applies.
-	// Env: AUTH_IDP_ROLES_CLAIM_PATH (default: "")
-	RolesClaimPath string `envconfig:"ROLES_CLAIM_PATH" default:""`
-
-	// RoleMappings maps IDP role values to platform roles (admin, developer, viewer).
-	// Format: comma-separated "idp-role=platform-role" pairs.
-	// Example: "PLATFORM_ADMIN=admin,PLATFORM_DEV=developer,PLATFORM_VIEWER=viewer"
-	// When empty, IDP role values are used as platform role names directly.
-	// Only relevant when AUTH_IDP_VALIDATION_MODE=role.
-	// Env: AUTH_IDP_ROLE_MAPPINGS
-	RoleMappings []string `envconfig:"ROLE_MAPPINGS"`
-
-	// ValidationMode selects how authorization is enforced. Pick one:
-	//   "scope" (default) — validate using the JWT scope claim directly.
-	//   "role"            — expand IDP roles to platform roles via RoleMappings.
-	// Env: AUTH_IDP_VALIDATION_MODE (default: "scope")
-	ValidationMode string `envconfig:"VALIDATION_MODE" default:"scope"`
+	OrganizationClaimName string `koanf:"organization_claim_name"`
+	OrgNameClaimName      string `koanf:"org_name_claim_name"`
+	OrgHandleClaimName    string `koanf:"org_handle_claim_name"`
+	UserIDClaimName       string `koanf:"user_id_claim_name"`
+	UsernameClaimName     string `koanf:"username_claim_name"`
+	EmailClaimName        string `koanf:"email_claim_name"`
+	ScopeClaimName        string `koanf:"scope_claim_name"`
+	RolesClaimPath        string `koanf:"roles_claim_path"`
+	RoleMappings          []string `koanf:"role_mappings"`
+	ValidationMode        string `koanf:"validation_mode"`
 }
 
 // Gateway holds gateway-related configuration.
 type Gateway struct {
-	// EnableVersionVerification controls whether the platform API rejects gateway
-	// connections whose reported version does not match the registered version.
-	// When false (default), a mismatch is logged and the connection is allowed to proceed.
-	// Env: GATEWAY_ENABLE_VERSION_VERIFICATION (default: false)
-	EnableVersionVerification bool `envconfig:"ENABLE_VERSION_VERIFICATION" default:"false"`
-
-	// EnableFunctionalityTypeVerification controls whether the platform API rejects
-	// gateway connections whose reported functionality type is incompatible with the
-	// registered type. When false (default), a mismatch is logged and the connection
-	// is allowed to proceed.
-	// Env: GATEWAY_ENABLE_FUNCTIONALITY_TYPE_VERIFICATION (default: false)
-	EnableFunctionalityTypeVerification bool `envconfig:"ENABLE_FUNCTIONALITY_TYPE_VERIFICATION" default:"false"`
+	EnableVersionVerification           bool `koanf:"enable_version_verification"`
+	EnableFunctionalityTypeVerification bool `koanf:"enable_functionality_type_verification"`
 }
 
-// TLS holds TLS certificate configuration
+// TLS holds TLS certificate configuration.
 type TLS struct {
-	CertDir string `envconfig:"CERT_DIR" default:"./data/certs"`
+	CertDir string `koanf:"cert_dir"`
 }
 
-// JWT holds configuration for local HMAC JWT authentication (the non-IDP mode).
-// Env prefix: AUTH_JWT_
+// JWT holds configuration for local HMAC JWT authentication.
 type JWT struct {
-	// Enabled activates local HMAC JWT as the primary authentication mode.
-	// Set to false when AUTH_IDP_ENABLED=true and you want IDP-only auth.
-	// Env: AUTH_JWT_ENABLED (default: true)
-	Enabled bool `envconfig:"ENABLED" default:"true"`
-
-	// SecretKey is the HMAC signing key used to verify token signatures in JWT mode.
-	// Env: AUTH_JWT_SECRET_KEY (default: "your-secret-key-change-in-production")
-	SecretKey string `envconfig:"SECRET_KEY" default:"your-secret-key-change-in-production"`
-
-	// Issuer is the expected JWT issuer value for HMAC-signed tokens.
-	// Env: AUTH_JWT_ISSUER (default: "platform-api")
-	Issuer string `envconfig:"ISSUER" default:"platform-api"`
-
-	// SkipValidation disables JWT signature verification.
-	// Only applies when AUTH_IDP_ENABLED=false (JWT mode). Use only for local development.
-	// When DEV_MODE=false this combination logs a prominent warning at startup.
-	// Env: AUTH_JWT_SKIP_VALIDATION (default: false)
-	SkipValidation bool `envconfig:"SKIP_VALIDATION" default:"false"`
+	Enabled        bool   `koanf:"enabled"`
+	SecretKey      string `koanf:"secret_key"`
+	Issuer         string `koanf:"issuer"`
+	SkipValidation bool   `koanf:"skip_validation"`
 }
 
-// WebSocket holds WebSocket-specific configuration
+// WebSocket holds WebSocket-specific configuration.
 type WebSocket struct {
-	MaxConnections       int  `envconfig:"WS_MAX_CONNECTIONS" default:"1000"`
-	ConnectionTimeout    int  `envconfig:"WS_CONNECTION_TIMEOUT" default:"30"` // seconds
-	RateLimitPerMin      int  `envconfig:"WS_RATE_LIMIT_PER_MINUTE" default:"1000"`
-	MaxConnectionsPerOrg int  `envconfig:"WS_MAX_CONNECTIONS_PER_ORG" default:"3"`
-	MetricsLogEnabled    bool `envconfig:"WS_METRICS_LOG_ENABLED" default:"true"`
-	MetricsLogInterval   int  `envconfig:"WS_METRICS_LOG_INTERVAL" default:"10"` // seconds
+	MaxConnections       int  `koanf:"max_connections"`
+	ConnectionTimeout    int  `koanf:"connection_timeout"`
+	RateLimitPerMin      int  `koanf:"rate_limit_per_min"`
+	MaxConnectionsPerOrg int  `koanf:"max_connections_per_org"`
+	MetricsLogEnabled    bool `koanf:"metrics_log_enabled"`
+	MetricsLogInterval   int  `koanf:"metrics_log_interval"`
 }
 
-// Database holds database-specific configuration
+// Database holds database-specific configuration.
 type Database struct {
-	Driver string `envconfig:"DRIVER" default:"sqlite3"`
-	// DBPath is the file path for SQLite databases.
-	// Use DATABASE_DB_PATH to override; keeping it distinct from the OS PATH variable.
-	Path            string `envconfig:"DB_PATH" default:"./data/api_platform.db"`
-	Host            string `envconfig:"HOST" default:"localhost"`
-	Port            int    `envconfig:"PORT" default:"5432"`
-	Name            string `envconfig:"NAME" default:"platform_api"`
-	User            string `envconfig:"USER" default:""`
-	Password        string `envconfig:"PASSWORD" default:""`
-	SSLMode         string `envconfig:"SSL_MODE" default:"disable"`
-	MaxOpenConns    int    `envconfig:"MAX_OPEN_CONNS" default:"25"`
-	MaxIdleConns    int    `envconfig:"MAX_IDLE_CONNS" default:"10"`
-	ConnMaxLifetime int    `envconfig:"CONN_MAX_LIFETIME" default:"300"` // seconds
+	Driver string `koanf:"driver"`
+	// Path is the file path for SQLite databases.
+	Path            string `koanf:"path"`
+	Host            string `koanf:"host"`
+	Port            int    `koanf:"port"`
+	Name            string `koanf:"name"`
+	User            string `koanf:"user"`
+	Password        string `koanf:"password"`
+	SSLMode         string `koanf:"ssl_mode"`
+	MaxOpenConns    int    `koanf:"max_open_conns"`
+	MaxIdleConns    int    `koanf:"max_idle_conns"`
+	ConnMaxLifetime int    `koanf:"conn_max_lifetime"`
 
-	// ExecuteSchemaDDL controls whether to run the schema DDL (CREATE TABLE, etc.) on startup.
-	// Set to false when the DB user lacks DDL privileges (e.g. deployed Postgres with restricted role).
-	// Env: DATABASE_EXECUTE_SCHEMA_DDL (default: true)
-	ExecuteSchemaDDL bool `envconfig:"EXECUTE_SCHEMA_DDL" default:"true"`
-
-	// SubscriptionTokenEncryptionKey is the 32-byte key for AES-256-GCM encryption of subscription tokens.
-	// Provide as 64 hex chars or 44 base64 chars. Required for storing tokens in encrypted form (retrievable on GET).
-	// Env: DATABASE_SUBSCRIPTION_TOKEN_ENCRYPTION_KEY. If empty, falls back to JWT_SECRET_KEY.
-	SubscriptionTokenEncryptionKey string `envconfig:"SUBSCRIPTION_TOKEN_ENCRYPTION_KEY" default:""`
+	ExecuteSchemaDDL               bool   `koanf:"execute_schema_ddl"`
+	SubscriptionTokenEncryptionKey string `koanf:"subscription_token_encryption_key"`
 }
 
-// DefaultDevPortal holds default DevPortal configuration for new organizations
+// DefaultDevPortal holds default DevPortal configuration for new organizations.
 type DefaultDevPortal struct {
-	Enabled       bool   `envconfig:"ENABLED" default:"true"`
-	Name          string `envconfig:"NAME" default:"Default DevPortal"`
-	Identifier    string `envconfig:"IDENTIFIER" default:"default"`
-	APIUrl        string `envconfig:"API_URL" default:"http://localhost:3001"`
-	Hostname      string `envconfig:"HOSTNAME" default:"devportal.local"`
-	APIKey        string `envconfig:"API_KEY" default:"default-api-key"`
-	HeaderKeyName string `envconfig:"HEADER_KEY_NAME" default:"x-wso2-api-key"`
-	Timeout       int    `envconfig:"TIMEOUT" default:"10"` // seconds
+	Enabled       bool   `koanf:"enabled"`
+	Name          string `koanf:"name"`
+	Identifier    string `koanf:"identifier"`
+	APIUrl        string `koanf:"api_url"`
+	Hostname      string `koanf:"hostname"`
+	APIKey        string `koanf:"api_key"`
+	HeaderKeyName string `koanf:"header_key_name"`
+	Timeout       int    `koanf:"timeout"`
 
-	// Role mapping configuration for DevPortal integrations
-	RoleClaimName         string `envconfig:"ROLE_CLAIM_NAME" default:"roles"`
-	GroupsClaimName       string `envconfig:"GROUPS_CLAIM_NAME" default:"groups"`
-	OrganizationClaimName string `envconfig:"ORGANIZATION_CLAIM_NAME" default:"organizationID"`
-	AdminRole             string `envconfig:"ADMIN_ROLE" default:"admin"`
-	SubscriberRole        string `envconfig:"SUBSCRIBER_ROLE" default:"Internal/subscriber"`
-	SuperAdminRole        string `envconfig:"SUPER_ADMIN_ROLE" default:"superAdmin"`
+	RoleClaimName         string `koanf:"role_claim_name"`
+	GroupsClaimName       string `koanf:"groups_claim_name"`
+	OrganizationClaimName string `koanf:"organization_claim_name"`
+	AdminRole             string `koanf:"admin_role"`
+	SubscriberRole        string `koanf:"subscriber_role"`
+	SuperAdminRole        string `koanf:"super_admin_role"`
 }
 
-// Deployments holds deployment-specific configuration
+// Deployments holds deployment-specific configuration.
 type Deployments struct {
-	MaxPerAPIGateway int `envconfig:"MAX_PER_API_GATEWAY" default:"20"`
-
-	// TransitionalStatusEnabled controls whether deploy/undeploy sets DEPLOYING/UNDEPLOYING
-	// before waiting for a gateway ack. When false (default), status is set immediately to
-	// DEPLOYED/UNDEPLOYED without waiting for acknowledgement.
-	TransitionalStatusEnabled bool `envconfig:"TRANSITIONAL_STATUS_ENABLED" default:"false"`
-
-	// Timeout job settings for transitional deployment statuses (DEPLOYING/UNDEPLOYING).
-	// Only relevant when TransitionalStatusEnabled is true.
-	TimeoutEnabled  bool `envconfig:"TIMEOUT_ENABLED" default:"true"`
-	TimeoutInterval int  `envconfig:"TIMEOUT_INTERVAL" default:"20"` // seconds between checks
-	TimeoutDuration int  `envconfig:"TIMEOUT_DURATION" default:"60"` // seconds before a status is considered stale
+	MaxPerAPIGateway          int  `koanf:"max_per_api_gateway"`
+	TransitionalStatusEnabled bool `koanf:"transitional_status_enabled"`
+	TimeoutEnabled            bool `koanf:"timeout_enabled"`
+	TimeoutInterval           int  `koanf:"timeout_interval"`
+	TimeoutDuration           int  `koanf:"timeout_duration"`
 }
 
-// APIKey holds API key-specific configuration
+// APIKey holds API key-specific configuration.
 type APIKey struct {
-	// HashingAlgorithms is the list of algorithms used to hash API keys before storage and broadcast.
-	// Multiple algorithms can be specified as a comma-separated value (e.g. "sha256,sha512").
-	// Currently only "sha256" is supported. Defaults to "sha256".
-	HashingAlgorithms []string `envconfig:"HASHING_ALGORITHMS" default:"sha256"`
+	HashingAlgorithms []string `koanf:"hashing_algorithms"`
 }
 
-// package-level variable and mutex for thread safety
+// package-level singleton.
 var (
+	configFilePath  string
 	processOnce     sync.Once
 	settingInstance *Server
 )
 
-// GetConfig initializes and returns a singleton instance of the Settings struct.
+// SetConfigPath configures the path to a config.toml file.
+// Must be called before the first GetConfig() if a config file is used.
+func SetConfigPath(path string) {
+	configFilePath = path
+}
+
+// GetConfig returns the singleton config instance, loading it on first call.
 func GetConfig() *Server {
 	var err error
 	processOnce.Do(func() {
-		applyLegacyEnvAliases()
-		settingInstance = &Server{}
-		err = envconfig.Process("", settingInstance)
-		if err == nil {
-			err = validateDefaultDevPortalConfig(&settingInstance.DefaultDevPortal)
-		}
-		if err == nil {
-			err = validateDeploymentsConfig(&settingInstance.Deployments)
-		}
-		if err == nil {
-			err = validateIDPConfig(&settingInstance.Auth.IDP)
-		}
-		if err == nil {
-			err = validateBasicAuthConfig(&settingInstance.Auth.BasicAuth)
-		}
+		settingInstance, err = LoadConfig(configFilePath)
 	})
 	if err != nil {
 		panic(err)
@@ -399,81 +220,369 @@ func GetConfig() *Server {
 	return settingInstance
 }
 
+// LoadConfig loads configuration with priority: env vars > config file > defaults.
+// configPath may be empty — when omitted only env vars and defaults are used.
+func LoadConfig(configPath string) (*Server, error) {
+	applyLegacyEnvAliases()
+
+	cfg := defaultConfig()
+	k := koanf.New(".")
+
+	if configPath != "" {
+		if err := k.Load(file.Provider(configPath), toml.Parser()); err != nil {
+			return nil, fmt.Errorf("failed to load config file %q: %w", configPath, err)
+		}
+	}
+
+	// Load environment variables. The callback maps known env var names to koanf
+	// dot-notation keys; unknown vars or empty values return "" and are skipped.
+	// Empty values are skipped so that ${VAR:-} placeholders in docker-compose
+	// do not override non-empty values already loaded from the config file.
+	if err := k.Load(kenv.ProviderWithValue("", ".", func(s, v string) (string, interface{}) {
+		if v == "" {
+			return "", nil
+		}
+		return envToKoanfKey(strings.ToLower(s)), v
+	}), nil); err != nil {
+		return nil, fmt.Errorf("failed to load environment variables: %w", err)
+	}
+
+	if err := k.UnmarshalWithConf("", cfg, koanf.UnmarshalConf{
+		DecoderConfig: &mapstructure.DecoderConfig{
+			TagName:          "koanf",
+			WeaklyTypedInput: true,
+			Result:           cfg,
+			DecodeHook: mapstructure.ComposeDecodeHookFunc(
+				mapstructure.StringToSliceHookFunc(","),
+				mapstructure.StringToTimeDurationHookFunc(),
+				basicAuthUsersDecodeHook(),
+			),
+		},
+	}); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
+	}
+
+	if err := validateDefaultDevPortalConfig(&cfg.DefaultDevPortal); err != nil {
+		return nil, err
+	}
+	if err := validateDeploymentsConfig(&cfg.Deployments); err != nil {
+		return nil, err
+	}
+	if err := validateIDPConfig(&cfg.Auth.IDP); err != nil {
+		return nil, err
+	}
+	if err := validateBasicAuthConfig(&cfg.Auth.BasicAuth); err != nil {
+		return nil, err
+	}
+
+	return cfg, nil
+}
+
+// defaultConfig returns a Server with all default values.
+func defaultConfig() *Server {
+	return &Server{
+		LogLevel:                   "DEBUG",
+		DevMode:                    false,
+		Port:                       "9243",
+		DBSchemaPath:               "./internal/database/schema.sql",
+		OpenAPISpecPath:            "./resources/openapi.yaml",
+		LLMTemplateDefinitionsPath: "./resources/default-llm-provider-templates",
+		EnableScopeValidation:      true,
+		Database: Database{
+			Driver:           "sqlite3",
+			Path:             "./data/api_platform.db",
+			Host:             "localhost",
+			Port:             5432,
+			Name:             "platform_api",
+			SSLMode:          "disable",
+			MaxOpenConns:     25,
+			MaxIdleConns:     10,
+			ConnMaxLifetime:  300,
+			ExecuteSchemaDDL: true,
+		},
+		Auth: Auth{
+			SkipPaths: []string{
+				"/health",
+				"/metrics",
+				"/api/internal/v1/ws/gateways/connect",
+				"/api/internal/v1/apis",
+				"/api/internal/v1/llm-providers",
+				"/api/internal/v1/llm-proxies",
+				"/api/internal/v1/subscription-plans",
+				"/api/internal/v1/mcp-proxies",
+				"/api/internal/v1/gateways",
+				"/api/internal/v1/deployments",
+				"/api/internal/v1/artifacts",
+				"/api/internal/v1/websub-apis",
+				"/api/internal/v1/webbroker-apis",
+			},
+			JWT: JWT{
+				Enabled:   true,
+				SecretKey: "your-secret-key-change-in-production",
+				Issuer:    "platform-api",
+			},
+			IDP: IDP{
+				OrganizationClaimName: "organization",
+				OrgNameClaimName:      "org_name",
+				OrgHandleClaimName:    "org_handle",
+				UserIDClaimName:       "sub",
+				UsernameClaimName:     "username",
+				EmailClaimName:        "email",
+				ScopeClaimName:        "scope",
+				ValidationMode:        "scope",
+			},
+			BasicAuth: BasicAuth{
+				Organization: BasicAuthOrg{Region: "us"},
+			},
+		},
+		WebSocket: WebSocket{
+			MaxConnections:       1000,
+			ConnectionTimeout:    30,
+			RateLimitPerMin:      1000,
+			MaxConnectionsPerOrg: 3,
+			MetricsLogEnabled:    true,
+			MetricsLogInterval:   10,
+		},
+		DefaultDevPortal: DefaultDevPortal{
+			Enabled:               true,
+			Name:                  "Default DevPortal",
+			Identifier:            "default",
+			APIUrl:                "http://localhost:3001",
+			Hostname:              "devportal.local",
+			APIKey:                "default-api-key",
+			HeaderKeyName:         "x-wso2-api-key",
+			Timeout:               10,
+			RoleClaimName:         "roles",
+			GroupsClaimName:       "groups",
+			OrganizationClaimName: "organizationID",
+			AdminRole:             "admin",
+			SubscriberRole:        "Internal/subscriber",
+			SuperAdminRole:        "superAdmin",
+		},
+		Deployments: Deployments{
+			MaxPerAPIGateway: 20,
+			TimeoutEnabled:   true,
+			TimeoutInterval:  20,
+			TimeoutDuration:  60,
+		},
+		TLS: TLS{
+			CertDir: "./data/certs",
+		},
+		APIKey: APIKey{
+			HashingAlgorithms: []string{"sha256"},
+		},
+	}
+}
+
+// envToKoanfKey maps a lowercased environment variable name to its koanf dot-notation key.
+// Returns "" for unknown variables, which causes koanf to skip them.
+// Supports both the current env var names (e.g. DATABASE_DB_PATH) and the legacy
+// WEBSOCKET_WS_* naming from the old envconfig setup.
+func envToKoanfKey(s string) string {
+	switch s {
+	// Server-level
+	case "log_level":                     return "log_level"
+	case "dev_mode":                      return "dev_mode"
+	case "port":                          return "port"
+	case "db_schema_path":                return "db_schema_path"
+	case "openapi_spec_path":             return "openapi_spec_path"
+	case "llm_template_definitions_path": return "llm_template_definitions_path"
+	case "enable_scope_validation":       return "enable_scope_validation"
+
+	// Database
+	case "database_driver":              return "database.driver"
+	case "database_db_path":             return "database.path"
+	case "database_host":                return "database.host"
+	case "database_port":                return "database.port"
+	case "database_name":                return "database.name"
+	case "database_user":                return "database.user"
+	case "database_password":            return "database.password"
+	case "database_ssl_mode":            return "database.ssl_mode"
+	case "database_max_open_conns":      return "database.max_open_conns"
+	case "database_max_idle_conns":      return "database.max_idle_conns"
+	case "database_conn_max_lifetime":   return "database.conn_max_lifetime"
+	case "database_execute_schema_ddl":  return "database.execute_schema_ddl"
+	case "database_subscription_token_encryption_key": return "database.subscription_token_encryption_key"
+
+	// Auth
+	case "auth_skip_paths": return "auth.skip_paths"
+
+	// Auth JWT
+	case "auth_jwt_enabled":         return "auth.jwt.enabled"
+	case "auth_jwt_secret_key":      return "auth.jwt.secret_key"
+	case "auth_jwt_issuer":          return "auth.jwt.issuer"
+	case "auth_jwt_skip_validation": return "auth.jwt.skip_validation"
+
+	// Auth IDP
+	case "auth_idp_enabled":                  return "auth.idp.enabled"
+	case "auth_idp_name":                     return "auth.idp.name"
+	case "auth_idp_jwks_url":                 return "auth.idp.jwks_url"
+	case "auth_idp_issuer":                   return "auth.idp.issuer"
+	case "auth_idp_audience":                 return "auth.idp.audience"
+	case "auth_idp_organization_claim_name":  return "auth.idp.organization_claim_name"
+	case "auth_idp_org_name_claim_name":      return "auth.idp.org_name_claim_name"
+	case "auth_idp_org_handle_claim_name":    return "auth.idp.org_handle_claim_name"
+	case "auth_idp_user_id_claim_name":       return "auth.idp.user_id_claim_name"
+	case "auth_idp_username_claim_name":      return "auth.idp.username_claim_name"
+	case "auth_idp_email_claim_name":         return "auth.idp.email_claim_name"
+	case "auth_idp_scope_claim_name":         return "auth.idp.scope_claim_name"
+	case "auth_idp_roles_claim_path":         return "auth.idp.roles_claim_path"
+	case "auth_idp_role_mappings":            return "auth.idp.role_mappings"
+	case "auth_idp_validation_mode":          return "auth.idp.validation_mode"
+
+	// Auth BasicAuth
+	case "auth_basic_auth_enabled":              return "auth.basic_auth.enabled"
+	case "auth_basic_auth_organization_id":      return "auth.basic_auth.organization.id"
+	case "auth_basic_auth_organization_name":    return "auth.basic_auth.organization.name"
+	case "auth_basic_auth_organization_handle":  return "auth.basic_auth.organization.handle"
+	case "auth_basic_auth_organization_region":  return "auth.basic_auth.organization.region"
+	case "auth_basic_auth_users":                return "auth.basic_auth.users"
+
+	// WebSocket — accept both legacy WEBSOCKET_WS_* and clean WEBSOCKET_*
+	case "websocket_ws_max_connections", "websocket_max_connections":
+		return "websocket.max_connections"
+	case "websocket_ws_connection_timeout", "websocket_connection_timeout":
+		return "websocket.connection_timeout"
+	case "websocket_ws_rate_limit_per_minute", "websocket_rate_limit_per_min":
+		return "websocket.rate_limit_per_min"
+	case "websocket_ws_max_connections_per_org", "websocket_max_connections_per_org":
+		return "websocket.max_connections_per_org"
+	case "websocket_ws_metrics_log_enabled", "websocket_metrics_log_enabled":
+		return "websocket.metrics_log_enabled"
+	case "websocket_ws_metrics_log_interval", "websocket_metrics_log_interval":
+		return "websocket.metrics_log_interval"
+
+	// Default DevPortal
+	case "default_devportal_enabled":                  return "default_devportal.enabled"
+	case "default_devportal_name":                     return "default_devportal.name"
+	case "default_devportal_identifier":               return "default_devportal.identifier"
+	case "default_devportal_api_url":                  return "default_devportal.api_url"
+	case "default_devportal_hostname":                 return "default_devportal.hostname"
+	case "default_devportal_api_key":                  return "default_devportal.api_key"
+	case "default_devportal_header_key_name":          return "default_devportal.header_key_name"
+	case "default_devportal_timeout":                  return "default_devportal.timeout"
+	case "default_devportal_role_claim_name":          return "default_devportal.role_claim_name"
+	case "default_devportal_groups_claim_name":        return "default_devportal.groups_claim_name"
+	case "default_devportal_organization_claim_name":  return "default_devportal.organization_claim_name"
+	case "default_devportal_admin_role":               return "default_devportal.admin_role"
+	case "default_devportal_subscriber_role":          return "default_devportal.subscriber_role"
+	case "default_devportal_super_admin_role":         return "default_devportal.super_admin_role"
+
+	// Deployments
+	case "deployments_max_per_api_gateway":          return "deployments.max_per_api_gateway"
+	case "deployments_transitional_status_enabled":  return "deployments.transitional_status_enabled"
+	case "deployments_timeout_enabled":              return "deployments.timeout_enabled"
+	case "deployments_timeout_interval":             return "deployments.timeout_interval"
+	case "deployments_timeout_duration":             return "deployments.timeout_duration"
+
+	// TLS
+	case "tls_cert_dir": return "tls.cert_dir"
+
+	// API Key
+	case "api_key_hashing_algorithms": return "api_key.hashing_algorithms"
+
+	// Gateway
+	case "gateway_enable_version_verification":            return "gateway.enable_version_verification"
+	case "gateway_enable_functionality_type_verification": return "gateway.enable_functionality_type_verification"
+
+	default:
+		return ""
+	}
+}
+
+// basicAuthUsersDecodeHook handles decoding AUTH_BASIC_AUTH_USERS from a JSON string
+// (env var format) in addition to the native TOML array-of-tables format.
+func basicAuthUsersDecodeHook() mapstructure.DecodeHookFuncType {
+	return func(f reflect.Type, t reflect.Type, data interface{}) (interface{}, error) {
+		if t != reflect.TypeOf(BasicAuthUsers{}) {
+			return data, nil
+		}
+		s, ok := data.(string)
+		if !ok {
+			return data, nil
+		}
+		if s == "" {
+			return BasicAuthUsers{}, nil
+		}
+		var users BasicAuthUsers
+		if err := json.Unmarshal([]byte(s), &users); err != nil {
+			return nil, fmt.Errorf("failed to parse AUTH_BASIC_AUTH_USERS as JSON: %w", err)
+		}
+		return users, nil
+	}
+}
+
 func validateDefaultDevPortalConfig(cfg *DefaultDevPortal) error {
 	if !cfg.Enabled {
 		return nil
 	}
 	if cfg.Name == "" {
-		return fmt.Errorf("default DevPortal is enabled but DEFAULT_DEVPORTAL_NAME is not configured")
+		return fmt.Errorf("default DevPortal is enabled but name is not configured")
 	}
 	if cfg.Identifier == "" {
-		return fmt.Errorf("default DevPortal is enabled but DEFAULT_DEVPORTAL_IDENTIFIER is not configured")
+		return fmt.Errorf("default DevPortal is enabled but identifier is not configured")
 	}
 	if cfg.APIUrl == "" {
-		return fmt.Errorf("default DevPortal is enabled but DEFAULT_DEVPORTAL_API_URL is not configured")
+		return fmt.Errorf("default DevPortal is enabled but api_url is not configured")
 	}
 	if cfg.Hostname == "" {
-		return fmt.Errorf("default DevPortal is enabled but DEFAULT_DEVPORTAL_HOSTNAME is not configured")
+		return fmt.Errorf("default DevPortal is enabled but hostname is not configured")
 	}
 	if cfg.APIKey == "" {
-		return fmt.Errorf("default DevPortal is enabled but DEFAULT_DEVPORTAL_API_KEY is not configured")
+		return fmt.Errorf("default DevPortal is enabled but api_key is not configured")
 	}
 	if cfg.HeaderKeyName == "" {
-		return fmt.Errorf("default DevPortal header key name is not configured")
+		return fmt.Errorf("default DevPortal header_key_name is not configured")
 	}
 	return nil
 }
 
-// validateIDPConfig validates IDP configuration when enabled.
 func validateIDPConfig(idp *IDP) error {
 	if !idp.Enabled {
 		return nil
 	}
 	if idp.JWKSUrl == "" {
-		return fmt.Errorf("AUTH_IDP_ENABLED=true requires AUTH_IDP_JWKS_URL to be configured")
+		return fmt.Errorf("auth.idp.enabled=true requires auth.idp.jwks_url to be configured")
 	}
 	if len(idp.Issuer) == 0 {
-		return fmt.Errorf("AUTH_IDP_ENABLED=true requires AUTH_IDP_ISSUER to be configured")
+		return fmt.Errorf("auth.idp.enabled=true requires auth.idp.issuer to be configured")
 	}
 	switch idp.ValidationMode {
 	case "scope", "role":
-		// valid
 	default:
-		return fmt.Errorf("AUTH_IDP_VALIDATION_MODE must be \"scope\" or \"role\" (got %q)", idp.ValidationMode)
+		return fmt.Errorf("auth.idp.validation_mode must be \"scope\" or \"role\" (got %q)", idp.ValidationMode)
 	}
 	if idp.ValidationMode == "role" && idp.RolesClaimPath == "" {
-		return fmt.Errorf("AUTH_IDP_VALIDATION_MODE=role requires AUTH_IDP_ROLES_CLAIM_PATH to be configured")
+		return fmt.Errorf("auth.idp.validation_mode=role requires auth.idp.roles_claim_path to be configured")
 	}
 	return nil
 }
 
-// validateBasicAuthConfig validates basic-auth configuration when enabled.
 func validateBasicAuthConfig(cfg *BasicAuth) error {
 	if !cfg.Enabled {
 		return nil
 	}
 	if cfg.Organization.Name == "" {
-		return fmt.Errorf("AUTH_BASIC_AUTH_ENABLED=true requires AUTH_BASIC_AUTH_ORGANIZATION_NAME to be configured")
+		return fmt.Errorf("auth.basic_auth.enabled=true requires auth.basic_auth.organization.name to be configured")
 	}
 	if cfg.Organization.Handle == "" {
-		return fmt.Errorf("AUTH_BASIC_AUTH_ENABLED=true requires AUTH_BASIC_AUTH_ORGANIZATION_HANDLE to be configured")
+		return fmt.Errorf("auth.basic_auth.enabled=true requires auth.basic_auth.organization.handle to be configured")
 	}
 	if len(cfg.Users) == 0 {
-		return fmt.Errorf("AUTH_BASIC_AUTH_ENABLED=true requires at least one user in AUTH_BASIC_AUTH_USERS")
+		return fmt.Errorf("auth.basic_auth.enabled=true requires at least one user in auth.basic_auth.users")
 	}
 	return nil
 }
 
-// validateDeploymentsConfig validates deployment timeout configuration.
 func validateDeploymentsConfig(cfg *Deployments) error {
 	if !cfg.TimeoutEnabled {
 		return nil
 	}
 	if cfg.TimeoutInterval <= 0 {
-		return fmt.Errorf("DEPLOYMENTS_TIMEOUT_INTERVAL must be a positive integer (got %d)", cfg.TimeoutInterval)
+		return fmt.Errorf("deployments.timeout_interval must be a positive integer (got %d)", cfg.TimeoutInterval)
 	}
 	if cfg.TimeoutDuration <= 0 {
-		return fmt.Errorf("DEPLOYMENTS_TIMEOUT_DURATION must be a positive integer (got %d)", cfg.TimeoutDuration)
+		return fmt.Errorf("deployments.timeout_duration must be a positive integer (got %d)", cfg.TimeoutDuration)
 	}
 	return nil
 }
