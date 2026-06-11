@@ -123,7 +123,41 @@ samples/apis/my-api-v1.0/
 
 ### Deploying to production
 
-When the theme is ready, zip the `pathToLayout` directory and upload it via **Admin Settings → Views → Upload View Content**. The ZIP structure is identical to what design mode uses, so no conversion is needed.
+When the theme is ready, zip the `pathToLayout` directory and upload it to the portal. The ZIP structure is identical to what design mode uses, so no conversion is needed.
+
+**Build the ZIP:**
+
+```bash
+# from inside your pathToLayout directory
+zip -r my-theme.zip layout/ partials/ styles/ images/
+```
+
+**Option 1 — Admin UI:** Go to **Admin Settings → Developer Portal → Org Level → Upload View Content**, select the ZIP, and click **Publish To Developer Portal**.
+
+**Option 2 — curl:** Replace `{orgId}` with your organization ID and `{viewName}` with the view name (e.g. `default`).
+
+Initial upload:
+
+```bash
+curl -X POST "http://localhost:3000/organizations/{orgId}/views/{viewName}/layout" \
+  -u admin:admin \
+  -F "zipFile=@my-theme.zip"
+```
+
+Update an existing layout:
+
+```bash
+curl -X PUT "http://localhost:3000/organizations/{orgId}/views/{viewName}/layout" \
+  -u admin:admin \
+  -F "zipFile=@my-theme.zip"
+```
+
+Revert to the default layout:
+
+```bash
+curl -X DELETE "http://localhost:3000/organizations/{orgId}/views/{viewName}/layout/template" \
+  -u admin:admin
+```
 
 ## Sample APIs and MCP Servers
 
