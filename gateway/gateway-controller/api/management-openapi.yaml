@@ -4183,6 +4183,12 @@ components:
               description: Custom virtual host/domain for sandbox traffic
               pattern: '^[a-zA-Z0-9\.\-]+$'
               example: sandbox-api.example.com
+        vhostList:
+          type: array
+          description: Additional virtual hosts when routing to multiple listener hostnames (e.g. Gateway API HTTPRoute attachment)
+          items:
+            type: string
+            example: "*.bar.com"
         subscriptionPlans:
           type: array
           description: List of subscription plan names available for this API
@@ -4330,6 +4336,18 @@ components:
           description: Route path with optional {param} placeholders
           pattern: '^\/.*$'
           example: /books/{id}
+        pathMatchType:
+          type: string
+          description: Path matching semantics for the operation route
+          enum: [Exact, PathPrefix]
+          example: Exact
+        matchHeaders:
+          type: array
+          description: Header matchers ANDed with the path match for Envoy route selection
+          items:
+            $ref: "#/components/schemas/OperationHeaderMatch"
+        directResponse:
+          $ref: "#/components/schemas/OperationDirectResponse"
         policies:
           type: array
           description: List of policies applied only to this operation (overrides or adds to API-level policies)
@@ -4337,6 +4355,54 @@ components:
             $ref: "#/components/schemas/Policy"
         resilience:
           $ref: "#/components/schemas/Resilience"
+
+    OperationHeaderMatch:
+      type: object
+      required:
+        - name
+        - value
+      properties:
+        name:
+          type: string
+          description: Header name (case-insensitive)
+          example: version
+        value:
+          type: string
+          description: Header value to match
+          example: one
+        type:
+          type: string
+          description: Header match type
+          enum: [Exact, RegularExpression]
+          default: Exact
+
+    OperationDirectResponse:
+      type: object
+      required:
+        - statusCode
+      properties:
+        statusCode:
+          type: integer
+          description: HTTP status code returned directly without contacting an upstream
+          example: 302
+        headers:
+          type: array
+          description: Optional response headers (e.g. Location for redirects)
+          items:
+            $ref: "#/components/schemas/OperationResponseHeader"
+
+    OperationResponseHeader:
+      type: object
+      required:
+        - name
+        - value
+      properties:
+        name:
+          type: string
+          example: Location
+        value:
+          type: string
+          example: http://example.org
 
     Policy:
       type: object

@@ -71,6 +71,9 @@ func evaluateHTTPRouteAttachment(
 	}
 
 	if !matchedListener {
+		if normalizeParentRefSectionName(parentRef) != "" || normalizeParentRefPort(parentRef) != 0 {
+			return false, gatewayv1.RouteReasonNoMatchingParent, "No matching parent"
+		}
 		return false, gatewayv1.RouteReasonNotAllowedByListeners, "No matching listener on parent Gateway"
 	}
 	if hostnameChecked && !hostnameMatch {

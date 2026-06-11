@@ -83,6 +83,9 @@ func computeAttachedHTTPRoutesByListener(ctx context.Context, cl client.Client, 
 				if !parentRefAttachesToListener(parentRef, lctx.listener) {
 					continue
 				}
+				if !hostnamesIntersect(lctx.listener.Hostname, route.Spec.Hostnames) {
+					continue
+				}
 				attachedListeners[lctx.listener.Name] = struct{}{}
 			}
 		}

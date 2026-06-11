@@ -96,6 +96,15 @@ type APIConfigData struct {
 	// Vhosts Custom virtual hosts/domains for the API
 	// +optional
 	Vhosts *VhostConfig `json:"vhosts,omitempty"`
+
+	// VhostList Additional virtual hosts when an HTTPRoute attaches to multiple listeners with distinct hostnames.
+	// When non-empty, routes are created for each entry (in addition to Vhosts.Main when set).
+	// +optional
+	VhostList []string `json:"vhostList,omitempty"`
+
+	// UpstreamDefinitions Reusable upstream targets for dynamic routing and weighted load balancing.
+	// +optional
+	UpstreamDefinitions []UpstreamDefinition `json:"upstreamDefinitions,omitempty"`
 }
 
 // UpstreamConfig defines the upstream backend configuration for the API
@@ -135,6 +144,60 @@ type Operation struct {
 	// Policies List of policies applied only to this operation (overrides or adds to API-level policies)
 	// +optional
 	Policies []Policy `json:"policies,omitempty"`
+
+	// PathMatchType How the path is matched (Exact or PathPrefix). Defaults to Exact when omitted.
+	// +optional
+	// +kubebuilder:validation:Enum=Exact;PathPrefix
+	PathMatchType OperationPathMatchType `json:"pathMatchType,omitempty"`
+
+	// MatchHeaders ANDed header matchers applied before routing to this operation.
+	// +optional
+	MatchHeaders []OperationHeaderMatch `json:"matchHeaders,omitempty"`
+
+	// DirectResponse When set, the gateway responds directly without calling an upstream.
+	// +optional
+	DirectResponse *OperationDirectResponse `json:"directResponse,omitempty"`
+}
+
+// OperationPathMatchType controls path matching semantics.
+type OperationPathMatchType string
+
+const (
+	OperationPathMatchExact      OperationPathMatchType = "Exact"
+	OperationPathMatchPathPrefix OperationPathMatchType = "PathPrefix"
+)
+
+// OperationHeaderMatch mirrors Gateway API HTTPHeaderMatch for Envoy route selection.
+type OperationHeaderMatch struct {
+	// Name Header name (case-insensitive)
+	// +kubebuilder:validation:Required
+	Name string `json:"name"`
+
+	// Value Header value to match
+	// +kubebuilder:validation:Required
+	Value string `json:"value"`
+
+	// Type Match type (Exact or RegularExpression)
+	// +optional
+	// +kubebuilder:validation:Enum=Exact;RegularExpression
+	Type string `json:"type,omitempty"`
+}
+
+// OperationDirectResponse configures an immediate HTTP response for a route.
+type OperationDirectResponse struct {
+	// StatusCode HTTP status code
+	// +kubebuilder:validation:Required
+	StatusCode int `json:"statusCode"`
+
+	// Headers Optional response headers (e.g. Location for redirects)
+	// +optional
+	Headers []OperationResponseHeader `json:"headers,omitempty"`
+}
+
+// OperationResponseHeader is a single response header on a direct response.
+type OperationResponseHeader struct {
+	Name  string `json:"name"`
+	Value string `json:"value"`
 
 	// Resilience Operation-level backend/route timeout configuration (overrides API-level)
 	// +optional
@@ -254,6 +317,50 @@ type UpstreamTarget struct {
 	// Url Backend URL (host and port only; path comes from the definition's basePath).
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:Pattern=`^https?://[a-zA-Z0-9\-._~:/?#\[\]@!$&'()*+,;=%]+$`
+	Url string `json:"url,omitempty"`
+
+	// Ref Reference to a named entry in upstreamDefinitions
+	// +optional
+	Ref *string `json:"ref,omitempty"`
+
+	// HostRewrite controls how the Host header is handled when routing to the upstream.
+	// "auto" lets Envoy rewrite the Host header to the upstream cluster host; "manual"
+	// disables automatic rewriting so the incoming Host header is preserved. When unset,
+	// the gateway-controller defaults to "auto".
+	// +optional
+	// +kubebuilder:validation:Enum=auto;manual
+	HostRewrite *UpstreamHostRewrite `json:"hostRewrite,omitempty"`
+}
+
+// UpstreamHostRewrite controls Host header handling toward the upstream.
+type UpstreamHostRewrite string
+
+const (
+	// UpstreamHostRewriteAuto lets Envoy rewrite the Host header to the upstream cluster host.
+	UpstreamHostRewriteAuto UpstreamHostRewrite = "auto"
+	// UpstreamHostRewriteManual disables automatic rewriting; the incoming Host header is preserved.
+	UpstreamHostRewriteManual UpstreamHostRewrite = "manual"
+)
+
+// UpstreamDefinition groups one or more weighted upstream targets.
+type UpstreamDefinition struct {
+	// Name Unique identifier referenced by upstream.ref or dynamic-endpoint policy
+	// +kubebuilder:validation:Required
+	Name string `json:"name"`
+
+	// BasePath Optional path prefix prepended on the upstream
+	// +optional
+	BasePath *string `json:"basePath,omitempty"`
+
+	// Upstreams Backend targets with optional weights
+	// +kubebuilder:validation:MinItems=1
+	Upstreams []WeightedUpstream `json:"upstreams"`
+}
+
+// WeightedUpstream is a single target within an upstream definition.
+type WeightedUpstream struct {
+	// Url Backend URL (host and port; no path)
+	// +kubebuilder:validation:Required
 	Url string `json:"url"`
 
 	// Weight Relative weight for load balancing across multiple upstream targets. Reserved for

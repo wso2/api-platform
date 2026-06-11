@@ -136,6 +136,24 @@ func TestEvaluateHTTPRouteAttachment(t *testing.T) {
 		}
 	})
 
+	t.Run("parentRef with unknown sectionName returns NoMatchingParent", func(t *testing.T) {
+		section := gatewayv1.SectionName("missing-listener")
+		badRef := gatewayv1.ParentReference{
+			Name:        gatewayv1.ObjectName("gw"),
+			SectionName: &section,
+		}
+		route := &gatewayv1.HTTPRoute{
+			ObjectMeta: metav1.ObjectMeta{Name: "route-bad-section", Namespace: "infra"},
+			Spec: gatewayv1.HTTPRouteSpec{
+				CommonRouteSpec: gatewayv1.CommonRouteSpec{ParentRefs: []gatewayv1.ParentReference{badRef}},
+			},
+		}
+		attached, reason, _ := evaluateHTTPRouteAttachment(context.Background(), cl, gw, route, badRef)
+		if attached || reason != gatewayv1.RouteReasonNoMatchingParent {
+			t.Fatalf("attached=%v reason=%q, want attached=false reason=NoMatchingParent", attached, reason)
+		}
+	})
+
 	t.Run("route with mismatched hostname rejected", func(t *testing.T) {
 		route := &gatewayv1.HTTPRoute{
 			ObjectMeta: metav1.ObjectMeta{Name: "route-na", Namespace: "infra"},

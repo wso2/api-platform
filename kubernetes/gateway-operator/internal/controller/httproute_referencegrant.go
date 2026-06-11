@@ -41,7 +41,8 @@ func ensureCrossNamespaceServiceReferenceGrant(ctx context.Context, c client.Cli
 			return nil
 		}
 	}
-	return newTransientHTTPRouteConfigError(
+	return newBackendRefError(
+		gatewayv1.RouteReasonRefNotPermitted,
 		"cross-namespace backend Service %s/%s: no ReferenceGrant in namespace %q allowing HTTPRoute from namespace %q to core/Service %q",
 		serviceNS, serviceName, serviceNS, routeNS, serviceName,
 	)

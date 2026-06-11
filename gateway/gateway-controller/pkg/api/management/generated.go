@@ -245,6 +245,18 @@ const (
 	OperationPolicyPathMethodsPUT      OperationPolicyPathMethods = "PUT"
 )
 
+// Defines values for OperationPathMatchType.
+const (
+	OperationPathMatchTypeExact      OperationPathMatchType = "Exact"
+	OperationPathMatchTypePathPrefix OperationPathMatchType = "PathPrefix"
+)
+
+// Defines values for OperationHeaderMatchType.
+const (
+	OperationHeaderMatchTypeExact             OperationHeaderMatchType = "Exact"
+	OperationHeaderMatchTypeRegularExpression OperationHeaderMatchType = "RegularExpression"
+)
+
 // Defines values for ResourceStatusState.
 const (
 	ResourceStatusStateDeployed   ResourceStatusState = "deployed"
@@ -524,6 +536,9 @@ type APIConfigData struct {
 
 	// Version Semantic version of the API
 	Version string `json:"version" yaml:"version"`
+
+	// VhostList Additional virtual hosts when routing to multiple listener hostnames (e.g. Gateway API HTTPRoute attachment)
+	VhostList *[]string `json:"vhostList,omitempty" yaml:"vhostList,omitempty"`
 
 	// Vhosts Custom virtual hosts/domains for the API
 	Vhosts *struct {
@@ -1238,11 +1253,19 @@ type Metadata struct {
 
 // Operation defines model for Operation.
 type Operation struct {
+	DirectResponse *OperationDirectResponse `json:"directResponse,omitempty" yaml:"directResponse,omitempty"`
+
+	// MatchHeaders Header matchers ANDed with the path match for Envoy route selection
+	MatchHeaders *[]OperationHeaderMatch `json:"matchHeaders,omitempty" yaml:"matchHeaders,omitempty"`
+
 	// Method HTTP method
 	Method OperationMethod `json:"method" yaml:"method"`
 
 	// Path Route path with optional {param} placeholders
 	Path string `json:"path" yaml:"path"`
+
+	// PathMatchType Path matching semantics for the operation route
+	PathMatchType *OperationPathMatchType `json:"pathMatchType,omitempty" yaml:"pathMatchType,omitempty"`
 
 	// Policies List of policies applied only to this operation (overrides or adds to API-level policies)
 	Policies *[]Policy `json:"policies,omitempty" yaml:"policies,omitempty"`
@@ -1274,6 +1297,39 @@ type OperationPolicyPath struct {
 
 // OperationPolicyPathMethods HTTP method: GET, POST, PUT, DELETE, PATCH, OPTIONS, HEAD, or * for all
 type OperationPolicyPathMethods string
+
+// OperationPathMatchType Path matching semantics for the operation route
+type OperationPathMatchType string
+
+// OperationDirectResponse defines model for OperationDirectResponse.
+type OperationDirectResponse struct {
+	// Headers Optional response headers (e.g. Location for redirects)
+	Headers *[]OperationResponseHeader `json:"headers,omitempty" yaml:"headers,omitempty"`
+
+	// StatusCode HTTP status code returned directly without contacting an upstream
+	StatusCode int `json:"statusCode" yaml:"statusCode"`
+}
+
+// OperationHeaderMatch defines model for OperationHeaderMatch.
+type OperationHeaderMatch struct {
+	// Name Header name (case-insensitive)
+	Name string `json:"name" yaml:"name"`
+
+	// Type Header match type
+	Type *OperationHeaderMatchType `json:"type,omitempty" yaml:"type,omitempty"`
+
+	// Value Header value to match
+	Value string `json:"value" yaml:"value"`
+}
+
+// OperationHeaderMatchType Header match type
+type OperationHeaderMatchType string
+
+// OperationResponseHeader defines model for OperationResponseHeader.
+type OperationResponseHeader struct {
+	Name  string `json:"name" yaml:"name"`
+	Value string `json:"value" yaml:"value"`
+}
 
 // Policy defines model for Policy.
 type Policy struct {

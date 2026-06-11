@@ -19,6 +19,8 @@
 package xds
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -27,6 +29,7 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -152,8 +155,46 @@ func convertServerHeaderTransformation(transformation string) hcm.HttpConnection
 // This format is used by both Envoy routes and the policy engine for route matching
 // It builds the full path by combining context, version, and path using ConstructFullPath
 func GenerateRouteName(method, context, apiVersion, path, vhost string) string {
+	return GenerateRouteNameWithDiscriminator(method, context, apiVersion, path, vhost, "")
+}
+
+// GenerateRouteNameWithDiscriminator builds a route key like GenerateRouteName but appends an
+// optional discriminator segment so that routes which share method, path and vhost but differ by
+// header matches (e.g. multiple Gateway-API HTTPRoute rules on the same path) do not collide in the
+// RuntimeDeployConfig route map. When discriminator is empty the result is byte-identical to
+// GenerateRouteName, so routes without header matches keep their historical key.
+//
+// The vhost stays at index 2 when splitting on "|"; the discriminator is the (optional) 4th segment.
+func GenerateRouteNameWithDiscriminator(method, context, apiVersion, path, vhost, discriminator string) string {
 	fullPath := ConstructFullPath(context, apiVersion, path)
-	return fmt.Sprintf("%s|%s|%s", method, fullPath, vhost)
+	if discriminator == "" {
+		return fmt.Sprintf("%s|%s|%s", method, fullPath, vhost)
+	}
+	return fmt.Sprintf("%s|%s|%s|%s", method, fullPath, vhost, discriminator)
+}
+
+// HeaderMatchDiscriminator returns a short, stable discriminator for a set of route header matchers,
+// or "" when there are no header matchers. It is used to keep route keys unique across routes that
+// share method/path/vhost but match on different headers. The output is deterministic across
+// reconciles: header names are lowercased (mirroring Envoy's case-insensitive header matching) and
+// the matchers are canonically sorted by (name, type, value) before hashing, so input order does not
+// affect the result.
+func HeaderMatchDiscriminator(headers []models.RouteHeaderMatch) string {
+	if len(headers) == 0 {
+		return ""
+	}
+	canonical := make([]string, 0, len(headers))
+	for _, h := range headers {
+		// type defaults to Exact to align with how routes are rendered when unset.
+		t := h.Type
+		if t == "" {
+			t = "Exact"
+		}
+		canonical = append(canonical, strings.ToLower(strings.TrimSpace(h.Name))+"\x1f"+t+"\x1f"+h.Value)
+	}
+	sort.Strings(canonical)
+	sum := sha256.Sum256([]byte(strings.Join(canonical, "\x1e")))
+	return hex.EncodeToString(sum[:8])
 }
 
 // ConstructFullPath builds the full path by replacing $version placeholder in context and appending path
@@ -201,24 +242,42 @@ func (t *Translator) translateRuntimeConfig(rdc *models.RuntimeDeployConfig) ([]
 		if len(uc.Endpoints) == 0 {
 			continue
 		}
-		ep := uc.Endpoints[0]
-		parsedURL := &url.URL{
-			Scheme: "http",
-			Host:   net.JoinHostPort(ep.Host, strconv.Itoa(ep.Port)),
-			Path:   uc.BasePath,
-		}
-		if uc.TLS != nil && uc.TLS.Enabled {
-			parsedURL.Scheme = "https"
-		}
 		var connectTimeout *time.Duration
-		// Use global default; per-cluster timeout comes from the route's Timeout field
-		c := t.createCluster(clusterName, parsedURL, nil, connectTimeout)
+		if len(uc.Endpoints) == 1 {
+			ep := uc.Endpoints[0]
+			parsedURL := &url.URL{
+				Scheme: "http",
+				Host:   net.JoinHostPort(ep.Host, strconv.Itoa(ep.Port)),
+				Path:   uc.BasePath,
+			}
+			if uc.TLS != nil && uc.TLS.Enabled {
+				parsedURL.Scheme = "https"
+			}
+			c := t.createCluster(clusterName, parsedURL, nil, connectTimeout)
+			clusters = append(clusters, c)
+			continue
+		}
+		c := t.createWeightedCluster(clusterName, uc.Endpoints, uc.TLS, connectTimeout)
 		clusters = append(clusters, c)
 	}
 
-	// Build routes from Routes map
-	for routeKey, rdcRoute := range rdc.Routes {
-		r := t.createRouteFromRDC(routeKey, rdcRoute, rdc)
+	// Build routes from Routes map. Iterate in a deterministic order — ascending
+	// Route.Order (the source operation/rule index), then route key — so the stable
+	// route sorter later resolves equal-precedence ties by Gateway-API rule order
+	// instead of relying on non-deterministic map iteration.
+	routeKeys := make([]string, 0, len(rdc.Routes))
+	for routeKey := range rdc.Routes {
+		routeKeys = append(routeKeys, routeKey)
+	}
+	sort.SliceStable(routeKeys, func(i, j int) bool {
+		oi, oj := rdc.Routes[routeKeys[i]].Order, rdc.Routes[routeKeys[j]].Order
+		if oi != oj {
+			return oi < oj
+		}
+		return routeKeys[i] < routeKeys[j]
+	})
+	for _, routeKey := range routeKeys {
+		r := t.createRouteFromRDC(routeKey, rdc.Routes[routeKey], rdc)
 		routes = append(routes, r)
 	}
 
@@ -241,10 +300,15 @@ func (t *Translator) createRouteFromRDC(routeKey string, rdcRoute *models.Route,
 	method := rdcRoute.Method
 	operationPath := rdcRoute.OperationPath
 
+	if rdcRoute.DirectResponse != nil {
+		return t.createDirectResponseRoute(routeKey, method, fullPath, operationPath, rdcRoute)
+	}
+
 	// Determine path type
 	isWildcardPath := strings.HasSuffix(operationPath, "/*")
 	hasParams := strings.Contains(operationPath, "{")
 	isRootPath := operationPath == "/"
+	isExactPath := strings.EqualFold(rdcRoute.PathMatchType, "Exact")
 
 	// For MCP proxies the "/mcp" path is only the gateway-facing endpoint marker; it must
 	// NOT be appended to the backend. The upstream is expected to be the full MCP endpoint
@@ -322,22 +386,53 @@ func (t *Translator) createRouteFromRDC(routeKey string, rdcRoute *models.Route,
 		r.RequestHeadersToRemove = append(r.RequestHeadersToRemove, constants.TargetUpstreamHeader)
 	}
 
-	r.Match = &route.RouteMatch{
-		Headers: []*route.HeaderMatcher{{
-			Name: ":method",
-			HeaderMatchSpecifier: &route.HeaderMatcher_StringMatch{
-				StringMatch: &matcher.StringMatcher{
-					MatchPattern: &matcher.StringMatcher_Exact{
-						Exact: method,
-					},
+	headerMatchers := []*route.HeaderMatcher{{
+		Name: ":method",
+		HeaderMatchSpecifier: &route.HeaderMatcher_StringMatch{
+			StringMatch: &matcher.StringMatcher{
+				MatchPattern: &matcher.StringMatcher_Exact{
+					Exact: method,
 				},
 			},
-		}},
+		},
+	}}
+	for _, hm := range rdcRoute.MatchHeaders {
+		name := strings.ToLower(strings.TrimSpace(hm.Name))
+		matchType := strings.TrimSpace(hm.Type)
+		if matchType == "RegularExpression" {
+			headerMatchers = append(headerMatchers, &route.HeaderMatcher{
+				Name: name,
+				HeaderMatchSpecifier: &route.HeaderMatcher_SafeRegexMatch{
+					SafeRegexMatch: &matcher.RegexMatcher{Regex: hm.Value},
+				},
+			})
+		} else {
+			headerMatchers = append(headerMatchers, &route.HeaderMatcher{
+				Name: name,
+				HeaderMatchSpecifier: &route.HeaderMatcher_StringMatch{
+					StringMatch: &matcher.StringMatcher{
+						MatchPattern: &matcher.StringMatcher_Exact{
+							Exact: hm.Value,
+						},
+					},
+				},
+			})
+		}
 	}
+	r.Match.Headers = headerMatchers
 
 	// Set path specifier
 	if isWildcardPath || hasParams || isRootPath {
 		r.Match.PathSpecifier = pathSpecifier
+	} else if isExactPath {
+		// Use Envoy's native exact path matcher (not safe_regex) so that
+		// SortRoutesByPriority ranks Exact above Regex/Prefix. Rendering exact
+		// paths as safe_regex made every route look like a Regex to the sorter,
+		// which then fell back to regex-string length and let a longer prefix
+		// regex (e.g. ^/match(?:/.*)?$) outrank a shorter exact (^/match/exact$).
+		r.Match.PathSpecifier = &route.RouteMatch_Path{
+			Path: fullPath,
+		}
 	} else {
 		// Accept both /path and /path/ but preserve the trailing slash in the rewrite.
 		r.Match.PathSpecifier = &route.RouteMatch_SafeRegex{
@@ -411,6 +506,237 @@ func (t *Translator) createRouteFromRDC(routeKey string, rdcRoute *models.Route,
 	}
 
 	return r
+}
+
+func (t *Translator) createDirectResponseRoute(routeKey, method, fullPath, operationPath string, rdcRoute *models.Route) *route.Route {
+	dr := rdcRoute.DirectResponse
+	status := uint32(dr.StatusCode)
+	if status == 0 {
+		status = 500
+	}
+
+	// A 3xx direct response carrying a Location header is a redirect (e.g. the Gateway-API
+	// RequestRedirect filter). Render it as Envoy's native RedirectAction rather than a
+	// direct_response + manual Location header: Envoy then emits a single, correct Location
+	// (preserving the original request path) and applies the right response code. Building it
+	// as a direct_response leaves Envoy to synthesize its own Location for the 3xx, to which
+	// the manual header is appended (default append semantics), producing a comma-joined,
+	// invalid Location value.
+	if redirect := buildRedirectAction(status, dr.Headers); redirect != nil {
+		r := &route.Route{
+			Name:   routeKey,
+			Match:  &route.RouteMatch{},
+			Action: &route.Route_Redirect{Redirect: redirect},
+		}
+		setDirectResponseMatch(r, method, fullPath, operationPath, rdcRoute)
+		return r
+	}
+
+	action := &route.Route_DirectResponse{
+		DirectResponse: &route.DirectResponseAction{Status: status},
+	}
+	r := &route.Route{
+		Name:   routeKey,
+		Match:  &route.RouteMatch{},
+		Action: action,
+	}
+	setDirectResponseMatch(r, method, fullPath, operationPath, rdcRoute)
+
+	if len(dr.Headers) > 0 {
+		r.ResponseHeadersToAdd = make([]*core.HeaderValueOption, 0, len(dr.Headers))
+		for _, hdr := range dr.Headers {
+			r.ResponseHeadersToAdd = append(r.ResponseHeadersToAdd, &core.HeaderValueOption{
+				Header: &core.HeaderValue{Key: hdr.Name, Value: hdr.Value},
+			})
+		}
+	}
+	return r
+}
+
+// setDirectResponseMatch populates r.Match for a direct-response/redirect route: the :method
+// matcher, any header matchers, and the path specifier (mirroring createRouteFromRDC's path
+// handling, including the native exact matcher so the route sorter ranks Exact above Regex/Prefix).
+func setDirectResponseMatch(r *route.Route, method, fullPath, operationPath string, rdcRoute *models.Route) {
+	r.Match.Headers = []*route.HeaderMatcher{{
+		Name: ":method",
+		HeaderMatchSpecifier: &route.HeaderMatcher_StringMatch{
+			StringMatch: &matcher.StringMatcher{
+				MatchPattern: &matcher.StringMatcher_Exact{Exact: method},
+			},
+		},
+	}}
+	for _, hm := range rdcRoute.MatchHeaders {
+		name := strings.ToLower(strings.TrimSpace(hm.Name))
+		r.Match.Headers = append(r.Match.Headers, &route.HeaderMatcher{
+			Name: name,
+			HeaderMatchSpecifier: &route.HeaderMatcher_StringMatch{
+				StringMatch: &matcher.StringMatcher{
+					MatchPattern: &matcher.StringMatcher_Exact{Exact: hm.Value},
+				},
+			},
+		})
+	}
+
+	isWildcardPath := strings.HasSuffix(operationPath, "/*")
+	isRootPath := operationPath == "/" || operationPath == "/*"
+	isExactPath := strings.EqualFold(rdcRoute.PathMatchType, "Exact")
+
+	switch {
+	case isWildcardPath:
+		prefixPath := strings.TrimSuffix(fullPath, "/*")
+		r.Match.PathSpecifier = &route.RouteMatch_SafeRegex{
+			SafeRegex: &matcher.RegexMatcher{
+				Regex: "^" + regexp.QuoteMeta(prefixPath) + "(?:/.*)?$",
+			},
+		}
+	case isRootPath:
+		trimmedPath := strings.TrimSuffix(fullPath, "/")
+		r.Match.PathSpecifier = &route.RouteMatch_SafeRegex{
+			SafeRegex: &matcher.RegexMatcher{
+				Regex: "^" + regexp.QuoteMeta(trimmedPath) + "/?$",
+			},
+		}
+	case isExactPath:
+		// Native exact matcher so the route sorter ranks it above Regex/Prefix.
+		r.Match.PathSpecifier = &route.RouteMatch_Path{
+			Path: fullPath,
+		}
+	default:
+		r.Match.PathSpecifier = &route.RouteMatch_SafeRegex{
+			SafeRegex: &matcher.RegexMatcher{
+				Regex: "^" + regexp.QuoteMeta(fullPath) + "/?$",
+			},
+		}
+	}
+}
+
+// buildRedirectAction returns an Envoy RedirectAction for a 3xx status that carries a Location
+// header, or nil when the response is not a representable redirect (non-3xx, no Location, or a
+// 3xx code Envoy's RedirectAction cannot express). The Location value is the scheme://host[:port]
+// (and optional path) the operator derived from the Gateway-API RequestRedirect filter; any field
+// it omits is left unset so Envoy preserves the original request value (notably the path).
+func buildRedirectAction(status uint32, headers []models.RouteResponseHeader) *route.RedirectAction {
+	if status < 300 || status >= 400 {
+		return nil
+	}
+	var location string
+	for _, h := range headers {
+		if strings.EqualFold(h.Name, "Location") {
+			location = strings.TrimSpace(h.Value)
+			break
+		}
+	}
+	if location == "" {
+		return nil
+	}
+
+	code, ok := redirectResponseCode(status)
+	if !ok {
+		return nil // unsupported 3xx code; fall back to direct_response
+	}
+
+	u, err := url.Parse(location)
+	if err != nil || u.Host == "" {
+		return nil
+	}
+
+	redirect := &route.RedirectAction{ResponseCode: code}
+	redirect.HostRedirect = u.Hostname()
+	if u.Scheme != "" {
+		redirect.SchemeRewriteSpecifier = &route.RedirectAction_SchemeRedirect{SchemeRedirect: u.Scheme}
+	}
+	if p := u.Port(); p != "" {
+		if pn, perr := strconv.Atoi(p); perr == nil && pn > 0 {
+			redirect.PortRedirect = uint32(pn)
+		}
+	}
+	// Only override the path when the filter specified one; otherwise Envoy preserves the
+	// original request path (Gateway-API default for a hostname-only redirect).
+	if u.Path != "" && u.Path != "/" {
+		redirect.PathRewriteSpecifier = &route.RedirectAction_PathRedirect{PathRedirect: u.Path}
+	}
+	return redirect
+}
+
+// redirectResponseCode maps an HTTP status to Envoy's RedirectAction response-code enum.
+// Gateway-API RequestRedirect only permits 301 and 302; the others are included for
+// completeness. ok is false for codes RedirectAction cannot represent.
+func redirectResponseCode(status uint32) (route.RedirectAction_RedirectResponseCode, bool) {
+	switch status {
+	case 301:
+		return route.RedirectAction_MOVED_PERMANENTLY, true
+	case 302:
+		return route.RedirectAction_FOUND, true
+	case 303:
+		return route.RedirectAction_SEE_OTHER, true
+	case 307:
+		return route.RedirectAction_TEMPORARY_REDIRECT, true
+	case 308:
+		return route.RedirectAction_PERMANENT_REDIRECT, true
+	default:
+		return 0, false
+	}
+}
+
+func (t *Translator) createWeightedCluster(
+	name string,
+	endpoints []models.Endpoint,
+	tls *models.UpstreamTLS,
+	connectTimeout *time.Duration,
+) *cluster.Cluster {
+	lbEndpoints := make([]*endpoint.LbEndpoint, 0, len(endpoints))
+	for _, ep := range endpoints {
+		scheme := "http"
+		if tls != nil && tls.Enabled {
+			scheme = "https"
+		}
+		hostPort := net.JoinHostPort(ep.Host, strconv.Itoa(ep.Port))
+		lb := &endpoint.LbEndpoint{
+			HostIdentifier: &endpoint.LbEndpoint_Endpoint{
+				Endpoint: &endpoint.Endpoint{
+					Address: &core.Address{
+						Address: &core.Address_SocketAddress{
+							SocketAddress: &core.SocketAddress{
+								Protocol:      core.SocketAddress_TCP,
+								Address:       ep.Host,
+								PortSpecifier: &core.SocketAddress_PortValue{PortValue: uint32(ep.Port)},
+							},
+						},
+					},
+				},
+			},
+		}
+		if ep.Weight != nil && *ep.Weight > 0 {
+			lb.LoadBalancingWeight = &wrapperspb.UInt32Value{Value: uint32(*ep.Weight)}
+		}
+		_ = scheme
+		_ = hostPort
+		lbEndpoints = append(lbEndpoints, lb)
+	}
+
+	var effectiveConnectTimeout time.Duration
+	if connectTimeout != nil {
+		effectiveConnectTimeout = *connectTimeout
+	} else {
+		effectiveConnectTimeout = time.Duration(t.routerConfig.Upstream.Timeouts.ConnectTimeoutMs) * time.Millisecond
+		if effectiveConnectTimeout == 0 {
+			effectiveConnectTimeout = 5 * time.Second
+		}
+	}
+
+	return &cluster.Cluster{
+		Name:                 name,
+		ConnectTimeout:       durationpb.New(effectiveConnectTimeout),
+		ClusterDiscoveryType: &cluster.Cluster_Type{Type: cluster.Cluster_STRICT_DNS},
+		DnsLookupFamily:      cluster.Cluster_V4_PREFERRED,
+		LbPolicy:             cluster.Cluster_ROUND_ROBIN,
+		LoadAssignment: &endpoint.ClusterLoadAssignment{
+			ClusterName: name,
+			Endpoints: []*endpoint.LocalityLbEndpoints{{
+				LbEndpoints: lbEndpoints,
+			}},
+		},
+	}
 }
 
 // TranslateConfigs translates all API configurations to Envoy resources
@@ -502,9 +828,11 @@ func (t *Translator) TranslateConfigs(
 	}
 
 	for _, r := range allRoutes {
-		// Extract vhost from route name: "METHOD|PATH|VHOST"
+		// Extract vhost from route name: "METHOD|PATH|VHOST" with an optional
+		// "|DISCRIMINATOR" 4th segment for header-matched routes. The vhost is always
+		// at index 2; hostnames and paths never contain "|".
 		parts := strings.Split(r.Name, "|")
-		if len(parts) != 3 {
+		if len(parts) < 3 {
 			// Routes without proper naming (e.g., catch-all 404) should be added to all vhosts later
 			continue // or handle error
 		}

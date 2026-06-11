@@ -34,6 +34,7 @@ import (
 	route "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
 	hcm "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/http_connection_manager/v3"
 	tlsv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/transport_sockets/tls/v3"
+	matcher "github.com/envoyproxy/go-control-plane/envoy/type/matcher/v3"
 	resource "github.com/envoyproxy/go-control-plane/pkg/resource/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -943,6 +944,65 @@ func TestTranslator_MCPAppendResourcePathToBackend(t *testing.T) {
 			assert.Equal(t, tt.wantUpstream, applyEnvoyRewrite(t, r, tt.request))
 		})
 	}
+}
+
+// TestTranslator_ExactPathUsesNativeMatcher guards the fix for HTTPRoutePathMatchOrder:
+// an Exact path match must be emitted as Envoy's native exact matcher (RouteMatch_Path),
+// NOT as a safe_regex. Rendering it as a regex made SortRoutesByPriority treat every route
+// as a Regex, so it fell back to regex-string length and let a longer prefix regex
+// (^/match(?:/.*)?$) outrank a shorter exact (^/match/exact$).
+func TestTranslator_ExactPathUsesNativeMatcher(t *testing.T) {
+	logger := createTestLogger()
+	translator := NewTranslator(logger, testRouterConfig(), nil, testConfig())
+
+	rdc := &models.RuntimeDeployConfig{
+		UpstreamClusters: map[string]*models.UpstreamCluster{
+			"main": {BasePath: "", Endpoints: []models.Endpoint{{Host: "echo", Port: 80}}},
+		},
+	}
+	rdcRoute := &models.Route{
+		Method:        "GET",
+		Path:          "/match/exact",
+		OperationPath: "/match/exact",
+		PathMatchType: "Exact",
+		Upstream:      models.RouteUpstream{ClusterKey: "main"},
+	}
+	r := translator.createRouteFromRDC("GET|/match/exact|", rdcRoute, rdc)
+	require.NotNil(t, r)
+	pathSpec, ok := r.GetMatch().GetPathSpecifier().(*route.RouteMatch_Path)
+	require.True(t, ok, "exact path should use RouteMatch_Path, got %T", r.GetMatch().GetPathSpecifier())
+	assert.Equal(t, "/match/exact", pathSpec.Path)
+	assert.Equal(t, pathMatchTypeExact, getPathMatchType(r.GetMatch()),
+		"exact route must rank as Exact for SortRoutesByPriority")
+}
+
+// TestSortRoutesByPriority_ExactBeatsLongerPrefixRegex reproduces the HTTPRoutePathMatchOrder
+// conformance shape: an exact /match must outrank the /match/ prefix even though the prefix's
+// regex string is longer. Before the fix the exact route was a safe_regex and lost on length.
+func TestSortRoutesByPriority_ExactBeatsLongerPrefixRegex(t *testing.T) {
+	exactMatch := &route.Route{
+		Name:  "exact-match",
+		Match: &route.RouteMatch{PathSpecifier: &route.RouteMatch_Path{Path: "/match"}},
+	}
+	exactMatchExact := &route.Route{
+		Name:  "exact-match-exact",
+		Match: &route.RouteMatch{PathSpecifier: &route.RouteMatch_Path{Path: "/match/exact"}},
+	}
+	prefixMatch := &route.Route{
+		Name: "prefix-match",
+		Match: &route.RouteMatch{
+			PathSpecifier: &route.RouteMatch_SafeRegex{
+				SafeRegex: &matcher.RegexMatcher{Regex: "^/match(?:/.*)?$"},
+			},
+		},
+	}
+
+	sorted := SortRoutesByPriority([]*route.Route{prefixMatch, exactMatch, exactMatchExact})
+
+	// Both exacts must precede the prefix regex.
+	assert.Equal(t, "exact-match-exact", sorted[0].Name)
+	assert.Equal(t, "exact-match", sorted[1].Name)
+	assert.Equal(t, "prefix-match", sorted[2].Name)
 }
 
 func TestTranslator_SanitizeClusterName(t *testing.T) {
@@ -2623,6 +2683,41 @@ func TestTranslator_CreateDynamicFwdListenerForWebSubHub(t *testing.T) {
 		assert.Equal(t, "0.0.0.0", listener.GetAddress().GetSocketAddress().GetAddress())
 		assert.Equal(t, core.SocketAddress_TCP, listener.GetAddress().GetSocketAddress().GetProtocol())
 	})
+}
+
+// TestBuildRedirectAction guards HTTPRouteRedirectHostAndStatus: a 3xx direct response with a
+// Location header becomes an Envoy RedirectAction (single, path-preserving Location) instead of
+// a direct_response + manual Location header (which Envoy comma-joins with its own auto Location).
+func TestBuildRedirectAction(t *testing.T) {
+	loc := func(v string) []models.RouteResponseHeader {
+		return []models.RouteResponseHeader{{Name: "Location", Value: v}}
+	}
+
+	// 302 hostname redirect: host set, scheme set, path preserved (unset), code FOUND.
+	ra := buildRedirectAction(302, loc("http://example.org"))
+	require.NotNil(t, ra)
+	assert.Equal(t, "example.org", ra.GetHostRedirect())
+	assert.Equal(t, "http", ra.GetSchemeRedirect())
+	assert.Equal(t, route.RedirectAction_FOUND, ra.GetResponseCode())
+	assert.Nil(t, ra.GetPathRewriteSpecifier(), "hostname-only redirect must preserve the original path")
+
+	// 301 maps to MOVED_PERMANENTLY.
+	ra = buildRedirectAction(301, loc("http://example.org"))
+	require.NotNil(t, ra)
+	assert.Equal(t, route.RedirectAction_MOVED_PERMANENTLY, ra.GetResponseCode())
+
+	// Location with an explicit port and path.
+	ra = buildRedirectAction(302, loc("https://example.org:8443/foo"))
+	require.NotNil(t, ra)
+	assert.Equal(t, "example.org", ra.GetHostRedirect())
+	assert.Equal(t, "https", ra.GetSchemeRedirect())
+	assert.Equal(t, uint32(8443), ra.GetPortRedirect())
+	assert.Equal(t, "/foo", ra.GetPathRedirect())
+
+	// Not a redirect: non-3xx status returns nil (stays a direct_response).
+	assert.Nil(t, buildRedirectAction(404, loc("http://example.org")))
+	// 3xx without a Location header is not a representable redirect.
+	assert.Nil(t, buildRedirectAction(302, nil))
 }
 
 // parseDurationAllowZero must accept exactly what the CRD admission controller accepts

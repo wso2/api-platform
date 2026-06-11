@@ -19,6 +19,7 @@ package controller
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -27,10 +28,16 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 	gatewayv1beta1 "sigs.k8s.io/gateway-api/apis/v1beta1"
 )
+
+func buildAPIConfigFromHTTPRouteForTest(ctx context.Context, cl client.Client, route *gatewayv1.HTTPRoute, clusterDomain string) (*apiv1.APIConfigData, error) {
+	resolution := resolveHTTPRouteBackendRefs(ctx, cl, route, clusterDomain)
+	return BuildAPIConfigFromHTTPRoute(ctx, cl, nil, route, parentGatewayRefs(route), resolution, clusterDomain, nil)
+}
 
 func TestBuildAPIConfigFromHTTPRoute(t *testing.T) {
 	scheme := runtime.NewScheme()
@@ -81,7 +88,7 @@ func TestBuildAPIConfigFromHTTPRoute(t *testing.T) {
 		},
 	}
 
-	spec, err := BuildAPIConfigFromHTTPRoute(context.Background(), cl, route, "cluster.local", nil)
+	spec, err := buildAPIConfigFromHTTPRouteForTest(context.Background(), cl, route, "cluster.local")
 	require.NoError(t, err)
 	require.Equal(t, "/api", spec.Context)
 	require.Equal(t, "my-route", spec.DisplayName)
@@ -201,7 +208,7 @@ func TestBuildAPIConfigFromHTTPRoute_ContextAnnotationTrimAndNormalize(t *testin
 			},
 		}
 
-		spec, err := BuildAPIConfigFromHTTPRoute(context.Background(), cl, route, "cluster.local", nil)
+		spec, err := buildAPIConfigFromHTTPRouteForTest(context.Background(), cl, route, "cluster.local")
 		require.NoError(t, err)
 		require.Equal(t, "/", spec.Context)
 	})
@@ -233,7 +240,7 @@ func TestBuildAPIConfigFromHTTPRoute_ContextAnnotationTrimAndNormalize(t *testin
 			},
 		}
 
-		spec, err := BuildAPIConfigFromHTTPRoute(context.Background(), cl, route, "cluster.local", nil)
+		spec, err := buildAPIConfigFromHTTPRouteForTest(context.Background(), cl, route, "cluster.local")
 		require.NoError(t, err)
 		require.Equal(t, "/api", spec.Context)
 	})
@@ -296,7 +303,7 @@ func TestBuildAPIConfigFromHTTPRoute_APIPolicyTargetRef(t *testing.T) {
 
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(svc, route, apiPol).Build()
 
-	spec, err := BuildAPIConfigFromHTTPRoute(context.Background(), cl, route, "cluster.local", nil)
+	spec, err := buildAPIConfigFromHTTPRouteForTest(context.Background(), cl, route, "cluster.local")
 	require.NoError(t, err)
 	require.Len(t, spec.Policies, 1)
 	require.Equal(t, "rate-limit", spec.Policies[0].Name)
@@ -364,7 +371,7 @@ func TestBuildAPIConfigFromHTTPRoute_APIPolicyRuleExtensionRef(t *testing.T) {
 
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(svc, route, rulePol).Build()
 
-	spec, err := BuildAPIConfigFromHTTPRoute(context.Background(), cl, route, "cluster.local", nil)
+	spec, err := buildAPIConfigFromHTTPRouteForTest(context.Background(), cl, route, "cluster.local")
 	require.NoError(t, err)
 	require.Len(t, spec.Operations, 1)
 	require.Equal(t, apiv1.OperationMethodPOST, spec.Operations[0].Method)
@@ -406,7 +413,7 @@ func TestBuildAPIConfigFromHTTPRoute_MatchMethodOptionalAndEmptyMatchesRejected(
 				},
 			},
 		}
-		_, err := BuildAPIConfigFromHTTPRoute(context.Background(), cl, route, "cluster.local", nil)
+		_, err := buildAPIConfigFromHTTPRouteForTest(context.Background(), cl, route, "cluster.local")
 		require.Error(t, err)
 		require.True(t, IsInvalidHTTPRouteConfigError(err))
 		require.Contains(t, err.Error(), "rule[0]")
@@ -432,7 +439,7 @@ func TestBuildAPIConfigFromHTTPRoute_MatchMethodOptionalAndEmptyMatchesRejected(
 				},
 			},
 		}
-		spec, err := BuildAPIConfigFromHTTPRoute(context.Background(), cl, route, "cluster.local", nil)
+		spec, err := buildAPIConfigFromHTTPRouteForTest(context.Background(), cl, route, "cluster.local")
 		require.NoError(t, err)
 		require.Len(t, spec.Operations, len(allRESTAPIOperationMethods()))
 		want := allRESTAPIOperationMethods()
@@ -498,7 +505,7 @@ func TestBuildAPIConfigFromHTTPRoute_InvalidPolicy(t *testing.T) {
 	}
 	cl2 := fake.NewClientBuilder().WithScheme(scheme).WithObjects(svc, route, apiPol).Build()
 
-	_, err := BuildAPIConfigFromHTTPRoute(context.Background(), cl2, route, "cluster.local", nil)
+	_, err := buildAPIConfigFromHTTPRouteForTest(context.Background(), cl2, route, "cluster.local")
 	require.Error(t, err)
 	require.True(t, IsInvalidHTTPRouteConfigError(err))
 }
@@ -540,9 +547,10 @@ func TestBuildAPIConfigFromHTTPRoute_CrossNamespaceReferenceGrant(t *testing.T) 
 
 	t.Run("rejects without ReferenceGrant", func(t *testing.T) {
 		cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(svc, route).Build()
-		_, err := BuildAPIConfigFromHTTPRoute(context.Background(), cl, route, "cluster.local", nil)
-		require.Error(t, err)
-		require.True(t, IsTransientHTTPRouteConfigError(err), err.Error())
+		spec, err := buildAPIConfigFromHTTPRouteForTest(context.Background(), cl, route, "cluster.local")
+		require.NoError(t, err)
+		require.NotNil(t, spec.Operations[0].DirectResponse)
+		require.Equal(t, 500, spec.Operations[0].DirectResponse.StatusCode)
 	})
 
 	t.Run("allows with matching ReferenceGrant", func(t *testing.T) {
@@ -561,7 +569,7 @@ func TestBuildAPIConfigFromHTTPRoute_CrossNamespaceReferenceGrant(t *testing.T) 
 			},
 		}
 		cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(svc, route, grant).Build()
-		spec, err := BuildAPIConfigFromHTTPRoute(context.Background(), cl, route, "cluster.local", nil)
+		spec, err := buildAPIConfigFromHTTPRouteForTest(context.Background(), cl, route, "cluster.local")
 		require.NoError(t, err)
 		require.Equal(t, strPtr("http://backend.data.svc.cluster.local:8080"), spec.Upstream.Main.Url)
 	})
@@ -584,9 +592,10 @@ func TestBuildAPIConfigFromHTTPRoute_CrossNamespaceReferenceGrant(t *testing.T) 
 			},
 		}
 		cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(svc, route, grant).Build()
-		_, err := BuildAPIConfigFromHTTPRoute(context.Background(), cl, route, "cluster.local", nil)
-		require.Error(t, err)
-		require.True(t, IsTransientHTTPRouteConfigError(err), err.Error())
+		spec, err := buildAPIConfigFromHTTPRouteForTest(context.Background(), cl, route, "cluster.local")
+		require.NoError(t, err)
+		require.NotNil(t, spec.Operations[0].DirectResponse)
+		require.Equal(t, 500, spec.Operations[0].DirectResponse.StatusCode)
 	})
 
 	t.Run("rejects ReferenceGrant with empty From.group for HTTPRoute", func(t *testing.T) {
@@ -605,9 +614,10 @@ func TestBuildAPIConfigFromHTTPRoute_CrossNamespaceReferenceGrant(t *testing.T) 
 			},
 		}
 		cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(svc, route, grant).Build()
-		_, err := BuildAPIConfigFromHTTPRoute(context.Background(), cl, route, "cluster.local", nil)
-		require.Error(t, err)
-		require.True(t, IsTransientHTTPRouteConfigError(err), err.Error())
+		spec, err := buildAPIConfigFromHTTPRouteForTest(context.Background(), cl, route, "cluster.local")
+		require.NoError(t, err)
+		require.NotNil(t, spec.Operations[0].DirectResponse)
+		require.Equal(t, 500, spec.Operations[0].DirectResponse.StatusCode)
 	})
 }
 
@@ -688,7 +698,7 @@ func TestParsePolicyList_RejectsInvalidPolicyVersionFormat(t *testing.T) {
 	require.Equal(t, "v1", spec[0].Version)
 }
 
-func TestBuildAPIConfigFromHTTPRoute_BackendRefsMustResolveToSingleService(t *testing.T) {
+func TestBuildAPIConfigFromHTTPRoute_WeightedBackendsInSingleRule(t *testing.T) {
 	scheme := runtime.NewScheme()
 	utilruntime.Must(corev1.AddToScheme(scheme))
 	utilruntime.Must(gatewayv1.AddToScheme(scheme))
@@ -732,10 +742,93 @@ func TestBuildAPIConfigFromHTTPRoute_BackendRefsMustResolveToSingleService(t *te
 		},
 	}
 
-	_, err := BuildAPIConfigFromHTTPRoute(context.Background(), cl, route, "cluster.local", nil)
-	require.Error(t, err)
-	require.True(t, IsInvalidHTTPRouteConfigError(err))
-	require.Contains(t, err.Error(), "single Service backend")
+	spec, err := buildAPIConfigFromHTTPRouteForTest(context.Background(), cl, route, "cluster.local")
+	require.NoError(t, err)
+	require.Len(t, spec.UpstreamDefinitions, 1)
+	require.Equal(t, "rule-0-weighted", spec.UpstreamDefinitions[0].Name)
+	require.Len(t, spec.UpstreamDefinitions[0].Upstreams, 2)
+
+	// The operation's dynamic-endpoint policy must target the weighted definition
+	// ("rule-0-weighted"), NOT a per-service name. Otherwise cluster_header routing
+	// points x-target-upstream at a cluster that is never created -> 503 (HTTPRouteWeight).
+	require.Len(t, spec.Operations, 1)
+	var deTarget string
+	for _, p := range spec.Operations[0].Policies {
+		if p.Name == "dynamic-endpoint" {
+			require.NotNil(t, p.Params)
+			var params map[string]interface{}
+			require.NoError(t, json.Unmarshal(p.Params.Raw, &params))
+			deTarget, _ = params["targetUpstream"].(string)
+		}
+	}
+	require.Equal(t, "rule-0-weighted", deTarget,
+		"weighted rule's dynamic-endpoint policy must target the weighted upstream definition")
+}
+
+// TestBuildAPIConfigFromHTTPRoute_WeightedBackendsExcludesZeroWeight guards the fix for
+// HTTPRouteWeight: a weight-0 backend must be omitted from the weighted definition so it
+// receives NO traffic (Envoy's minimum load_balancing_weight is 1, so leaving it in would
+// still route ~1/(sum) of requests there and the conformance check counts distinct backends).
+func TestBuildAPIConfigFromHTTPRoute_WeightedBackendsExcludesZeroWeight(t *testing.T) {
+	scheme := runtime.NewScheme()
+	utilruntime.Must(corev1.AddToScheme(scheme))
+	utilruntime.Must(gatewayv1.AddToScheme(scheme))
+	utilruntime.Must(gatewayv1beta1.AddToScheme(scheme))
+	utilruntime.Must(apiv1.AddToScheme(scheme))
+
+	mkSvc := func(name string) *corev1.Service {
+		return &corev1.Service{
+			ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "default"},
+			Spec:       corev1.ServiceSpec{Ports: []corev1.ServicePort{{Port: 8080}}},
+		}
+	}
+	cl := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(mkSvc("backend-a"), mkSvc("backend-b"), mkSvc("backend-c")).Build()
+
+	pathMatch := gatewayv1.PathMatchPathPrefix
+	pathVal := "/"
+	method := gatewayv1.HTTPMethodGet
+	w70 := int32(70)
+	w30 := int32(30)
+	w0 := int32(0)
+
+	mkRef := func(name string, w *int32) gatewayv1.HTTPBackendRef {
+		return gatewayv1.HTTPBackendRef{BackendRef: gatewayv1.BackendRef{
+			BackendObjectReference: gatewayv1.BackendObjectReference{
+				Name: gatewayv1.ObjectName(name), Port: ptrPort(8080),
+			},
+			Weight: w,
+		}}
+	}
+
+	route := &gatewayv1.HTTPRoute{
+		ObjectMeta: metav1.ObjectMeta{Name: "r", Namespace: "default"},
+		Spec: gatewayv1.HTTPRouteSpec{
+			Rules: []gatewayv1.HTTPRouteRule{{
+				Matches: []gatewayv1.HTTPRouteMatch{
+					{Path: &gatewayv1.HTTPPathMatch{Type: &pathMatch, Value: &pathVal}, Method: &method},
+				},
+				BackendRefs: []gatewayv1.HTTPBackendRef{
+					mkRef("backend-a", &w70),
+					mkRef("backend-b", &w30),
+					mkRef("backend-c", &w0),
+				},
+			}},
+		},
+	}
+
+	spec, err := buildAPIConfigFromHTTPRouteForTest(context.Background(), cl, route, "cluster.local")
+	require.NoError(t, err)
+	require.Len(t, spec.UpstreamDefinitions, 1)
+	require.Equal(t, "rule-0-weighted", spec.UpstreamDefinitions[0].Name)
+	// backend-c (weight 0) must be excluded; only the two positive-weight backends remain.
+	require.Len(t, spec.UpstreamDefinitions[0].Upstreams, 2,
+		"weight-0 backend must be excluded from the weighted upstream definition")
+	for _, up := range spec.UpstreamDefinitions[0].Upstreams {
+		require.NotContains(t, up.Url, "backend-c", "weight-0 backend must not appear as an endpoint")
+		require.NotNil(t, up.Weight)
+		require.Greater(t, *up.Weight, 0)
+	}
 }
 
 func TestBuildAPIConfigFromHTTPRoute_ServiceBackendRejectsNonCoreGroup(t *testing.T) {
@@ -774,10 +867,10 @@ func TestBuildAPIConfigFromHTTPRoute_ServiceBackendRejectsNonCoreGroup(t *testin
 		},
 	}
 
-	_, err := BuildAPIConfigFromHTTPRoute(context.Background(), cl, route, "cluster.local", nil)
-	require.Error(t, err)
-	require.True(t, IsTransientHTTPRouteConfigError(err), err.Error())
-	require.Contains(t, err.Error(), "unsupported backendRef")
+	spec, err := buildAPIConfigFromHTTPRouteForTest(context.Background(), cl, route, "cluster.local")
+	require.NoError(t, err)
+	require.NotNil(t, spec.Operations[0].DirectResponse)
+	require.Equal(t, 500, spec.Operations[0].DirectResponse.StatusCode)
 }
 
 func TestBuildAPIConfigFromHTTPRoute_CustomClusterDomain(t *testing.T) {
@@ -816,11 +909,11 @@ func TestBuildAPIConfigFromHTTPRoute_CustomClusterDomain(t *testing.T) {
 		},
 	}
 
-	spec, err := BuildAPIConfigFromHTTPRoute(context.Background(), cl, route, "example.k8s.local", nil)
+	spec, err := buildAPIConfigFromHTTPRouteForTest(context.Background(), cl, route, "example.k8s.local")
 	require.NoError(t, err)
 	require.Equal(t, strPtr("http://backend.default.svc.example.k8s.local:8080"), spec.Upstream.Main.Url)
 
-	spec2, err := BuildAPIConfigFromHTTPRoute(context.Background(), cl, route, ".cluster.local.", nil)
+	spec2, err := buildAPIConfigFromHTTPRouteForTest(context.Background(), cl, route, ".cluster.local.")
 	require.NoError(t, err)
 	require.Equal(t, strPtr("http://backend.default.svc.cluster.local:8080"), spec2.Upstream.Main.Url)
 }

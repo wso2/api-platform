@@ -23,9 +23,7 @@ import (
 	"fmt"
 	"strings"
 
-	"go.uber.org/zap"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 
@@ -282,62 +280,12 @@ func BuildAPIConfigFromHTTPRoute(ctx context.Context, c client.Client, route *ga
 }
 
 func firstBackendURL(ctx context.Context, c client.Client, route *gatewayv1.HTTPRoute, clusterDomain string) (string, error) {
-	dnsBase := effectiveClusterDNSBase(clusterDomain)
-	ns := route.Namespace
-	var (
-		baselineSet   bool
-		baselineSvcNS string
-		baselineSvc   string
-		baselinePort  int32
-	)
-	for _, rule := range route.Spec.Rules {
-		for _, b := range rule.BackendRefs {
-			if b.Kind != nil && string(*b.Kind) != "" && string(*b.Kind) != "Service" {
-				continue
-			}
-			if b.Group != nil && string(*b.Group) != "" {
-				return "", newTransientHTTPRouteConfigError(
-					"unsupported backendRef: core Service backends require group to be omitted or empty (got group %q)",
-					string(*b.Group),
-				)
-			}
-			svcNS := ns
-			if b.Namespace != nil && *b.Namespace != "" {
-				svcNS = string(*b.Namespace)
-			}
-			svcName := string(b.Name)
-			if svcName == "" {
-				continue
-			}
-			if err := ensureCrossNamespaceServiceReferenceGrant(ctx, c, ns, svcNS, svcName); err != nil {
-				return "", err
-			}
-			svc := &corev1.Service{}
-			key := types.NamespacedName{Namespace: svcNS, Name: svcName}
-			if err := c.Get(ctx, key, svc); err != nil {
-				return "", newTransientHTTPRouteConfigError("get backend Service %s: %w", key.String(), err)
-			}
-			portNum, err := resolveServicePort(svc, b.Port)
-			if err != nil {
-				return "", err
-			}
-			if !baselineSet {
-				baselineSet = true
-				baselineSvcNS = svcNS
-				baselineSvc = svcName
-				baselinePort = portNum
-				continue
-			}
-			if svcNS != baselineSvcNS || svcName != baselineSvc || portNum != baselinePort {
-				return "", newInvalidHTTPRouteConfigError(
-					"HTTPRoute backendRefs must resolve to a single Service backend (first %s/%s:%d, found %s/%s:%d)",
-					baselineSvcNS, baselineSvc, baselinePort, svcNS, svcName, portNum,
-				)
-			}
-		}
+	res := resolveHTTPRouteBackendRefs(ctx, c, route, clusterDomain)
+	if res.PlaceholderURL != "" {
+		return res.PlaceholderURL, nil
 	}
-	if baselineSet {
-		return fmt.Sprintf("http://%s.%s.svc.%s:%d", baselineSvc, baselineSvcNS, dnsBase, baselinePort), nil
+	if !res.AllResolved && res.FirstFailureMessage != "" {
+		return "", newBackendRefError(res.FirstFailureReason, "%s", res.FirstFailureMessage)
 	}
 	return "", newInvalidHTTPRouteConfigError("no Service backendRef found on HTTPRoute")
 }

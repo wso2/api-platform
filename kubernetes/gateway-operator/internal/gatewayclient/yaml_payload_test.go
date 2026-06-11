@@ -6,7 +6,44 @@ import (
 	"github.com/stretchr/testify/require"
 	apiv1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1alpha1"
 	yamlv3 "gopkg.in/yaml.v3"
+	"k8s.io/apimachinery/pkg/runtime"
 )
+
+// TestBuildRestAPIYAML_Deterministic guards the assumption behind the HTTPRoute reconciler's
+// "skip redeploy when config unchanged" hash guard: building the same spec repeatedly must yield
+// byte-identical output, including map-typed policy params. If this ever regresses (e.g. a Go map
+// leaks non-deterministic ordering into the payload), the operator would re-deploy on every
+// reconcile and the gateway-controller would churn xDS.
+func TestBuildRestAPIYAML_Deterministic(t *testing.T) {
+	rawParams := runtime.RawExtension{Raw: []byte(`{"targetUpstream":"ns-svc-8080","attachedTo":"route","extra":{"b":2,"a":1}}`)}
+	spec := apiv1.APIConfigData{
+		Context:     "/",
+		DisplayName: "header-matching",
+		Version:     "v1.0",
+		Operations: []apiv1.Operation{
+			{
+				Method:       apiv1.OperationMethodGET,
+				Path:         "/*",
+				MatchHeaders: []apiv1.OperationHeaderMatch{{Name: "version", Value: "two", Type: "Exact"}},
+				Policies:     []apiv1.Policy{{Name: "dynamic-endpoint", Version: "v1", Params: &rawParams}},
+			},
+		},
+		UpstreamDefinitions: []apiv1.UpstreamDefinition{
+			{Name: "ns-infra-backend-v1-8080", Upstreams: []apiv1.WeightedUpstream{{Url: "http://v1:8080"}}},
+			{Name: "ns-infra-backend-v2-8080", Upstreams: []apiv1.WeightedUpstream{{Url: "http://v2:8080"}}},
+		},
+		Upstream: apiv1.UpstreamConfig{Main: apiv1.Upstream{Url: "http://v1:8080"}},
+	}
+	md := RestAPIPayloadMetadata{Name: "api-handle"}
+
+	first, err := BuildRestAPIYAML(apiv1.GroupVersion.String(), "RestApi", md, spec)
+	require.NoError(t, err)
+	for i := 0; i < 20; i++ {
+		again, err := BuildRestAPIYAML(apiv1.GroupVersion.String(), "RestApi", md, spec)
+		require.NoError(t, err)
+		require.Equal(t, string(first), string(again), "payload must be byte-stable across builds (iteration %d)", i)
+	}
+}
 
 func TestBuildRestAPIYAML_IncludesMetadataAnnotationsAndLabels(t *testing.T) {
 	spec := apiv1.APIConfigData{

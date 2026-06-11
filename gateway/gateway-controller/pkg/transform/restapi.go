@@ -130,7 +130,12 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 	useClusterHeader := apiData.UpstreamDefinitions != nil && len(*apiData.UpstreamDefinitions) > 0
 	defaultCluster := ""
 	if useClusterHeader {
-		defaultCluster = mainUpstream.EnvoyClusterName
+		// The default cluster must be the name Envoy actually knows the cluster by.
+		// translateRuntimeConfig names clusters by their rdc.UpstreamClusters map key
+		// (ClusterKey, e.g. "upstream_main_<host>_<port>"), NOT the sanitized
+		// "cluster_<scheme>_<host>" form (EnvoyClusterName), so the cluster-header
+		// fallback must reference ClusterKey or it points at a non-existent cluster.
+		defaultCluster = mainUpstream.ClusterKey
 	}
 
 	// Determine auto host rewrite for main upstream
@@ -152,6 +157,15 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 		return nil, fmt.Errorf("sandbox upstream is configured but resolves to the same vhost %q as the main upstream; configure distinct vhosts to avoid route conflicts", effectiveMainVHost)
 	}
 
+	mainVhosts := []string{effectiveMainVHost}
+	if apiData.VhostList != nil {
+		for _, vh := range *apiData.VhostList {
+			if strings.TrimSpace(vh) != "" {
+				mainVhosts = append(mainVhosts, strings.TrimSpace(vh))
+			}
+		}
+	}
+
 	// Resolve API-level resilience timeouts once; operation-level values override these.
 	apiTimeout, apiIdleTimeout, err := xds.ResolveResilience(apiData.Resilience)
 	if err != nil {
@@ -159,7 +173,7 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 	}
 
 	// Build routes and policy chains for each operation
-	for _, op := range apiData.Operations {
+	for i, op := range apiData.Operations {
 		// Operation-level resilience overrides API-level (per field); nil leaves the
 		// global route timeout default in effect.
 		opTimeout, opIdleTimeout, err := xds.ResolveResilience(op.Resilience)
@@ -168,21 +182,29 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 		}
 		routeTimeout := buildRouteTimeout(opTimeout, apiTimeout, opIdleTimeout, apiIdleTimeout)
 
-		vhosts := []string{effectiveMainVHost}
+		vhosts := append([]string{}, mainVhosts...)
 		if hasSandbox {
 			vhosts = append(vhosts, effectiveSandboxVHost)
 		}
 
-		for _, vhost := range vhosts {
-			routeKey := xds.GenerateRouteName(string(op.Method), apiData.Context, apiData.Version, op.Path, vhost)
+		// Header matchers and their discriminator are vhost-independent, so derive them
+		// once per operation. The discriminator keeps the route key unique across
+		// operations that share method/path/vhost but match on different headers
+		// (e.g. multiple Gateway-API HTTPRoute rules on the same path).
+		headerMatches := routeHeaderMatches(op)
+		discriminator := xds.HeaderMatchDiscriminator(headerMatches)
 
-			// Build route
-			rdc.Routes[routeKey] = &models.Route{
+		for _, vhost := range vhosts {
+			routeKey := xds.GenerateRouteNameWithDiscriminator(string(op.Method), apiData.Context, apiData.Version, op.Path, vhost, discriminator)
+
+			rdcRoute := &models.Route{
 				Method:          string(op.Method),
 				Path:            xds.ConstructFullPath(apiData.Context, apiData.Version, op.Path),
 				OperationPath:   op.Path,
 				Vhost:           vhost,
 				AutoHostRewrite: mainAutoHostRewrite,
+				MatchHeaders:    headerMatches,
+				Order:           i,
 				Timeout:         routeTimeout,
 				Upstream: models.RouteUpstream{
 					ClusterKey:       mainUpstream.ClusterKey,
@@ -190,6 +212,22 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 					DefaultCluster:   defaultCluster,
 				},
 			}
+			if op.PathMatchType != nil {
+				rdcRoute.PathMatchType = string(*op.PathMatchType)
+			}
+			if op.DirectResponse != nil {
+				dr := &models.RouteDirectResponse{StatusCode: op.DirectResponse.StatusCode}
+				if op.DirectResponse.Headers != nil {
+					for _, hdr := range *op.DirectResponse.Headers {
+						dr.Headers = append(dr.Headers, models.RouteResponseHeader{
+							Name:  hdr.Name,
+							Value: hdr.Value,
+						})
+					}
+				}
+				rdcRoute.DirectResponse = dr
+			}
+			rdc.Routes[routeKey] = rdcRoute
 
 			// Build policy chain: API-level + operation-level + system policies
 			chain := t.buildPolicyChain(apiPolicies, apiData.Policies, op.Policies)
@@ -205,25 +243,32 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 				continue
 			}
 			defClusterKey := "upstream_" + cfg.Kind + "_" + cfg.UUID + "_" + SanitizeUpstreamDefinitionName(def.Name)
-			parsedURL, err := url.Parse(def.Upstreams[0].Url)
-			if err != nil {
-				return nil, fmt.Errorf("invalid URL in upstream definition '%s': %w", def.Name, err)
-			}
-			port := ResolvePort(parsedURL)
-			// Base path comes solely from the explicit basePath field; upstreamDefinitions
-			// URLs are host[:port] only (a path in the URL is rejected during validation).
 			basePath := "/"
 			if def.BasePath != nil && *def.BasePath != "" {
 				basePath = *def.BasePath
 			}
+			endpoints := make([]models.Endpoint, 0, len(def.Upstreams))
+			tlsEnabled := false
+			for _, up := range def.Upstreams {
+				parsedURL, err := url.Parse(up.Url)
+				if err != nil {
+					return nil, fmt.Errorf("invalid URL in upstream definition '%s': %w", def.Name, err)
+				}
+				port := ResolvePort(parsedURL)
+				ep := models.Endpoint{Host: parsedURL.Hostname(), Port: port}
+				if up.Weight != nil {
+					ep.Weight = up.Weight
+				}
+				endpoints = append(endpoints, ep)
+				if parsedURL.Scheme == "https" {
+					tlsEnabled = true
+				}
+			}
 			rdc.UpstreamClusters[defClusterKey] = &models.UpstreamCluster{
-				Name:     def.Name,
-				BasePath: basePath,
-				Endpoints: []models.Endpoint{{
-					Host: parsedURL.Hostname(),
-					Port: port,
-				}},
-				TLS: &models.UpstreamTLS{Enabled: parsedURL.Scheme == "https"},
+				Name:      def.Name,
+				BasePath:  basePath,
+				Endpoints: endpoints,
+				TLS:       &models.UpstreamTLS{Enabled: tlsEnabled},
 			}
 		}
 	}
@@ -240,16 +285,21 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 			sbAutoHostRewrite = false
 		}
 
-		// Update sandbox vhost routes to point to sandbox cluster
+		// Update sandbox vhost routes to point to sandbox cluster. The route key must be
+		// derived with the same header-match discriminator used when the routes were built
+		// above, otherwise header-matched routes would not be found and re-pointed.
 		for _, op := range apiData.Operations {
-			routeKey := xds.GenerateRouteName(string(op.Method), apiData.Context, apiData.Version, op.Path, effectiveSandboxVHost)
+			discriminator := xds.HeaderMatchDiscriminator(routeHeaderMatches(op))
+			routeKey := xds.GenerateRouteNameWithDiscriminator(string(op.Method), apiData.Context, apiData.Version, op.Path, effectiveSandboxVHost, discriminator)
 			if r, exists := rdc.Routes[routeKey]; exists {
 				r.Upstream.ClusterKey = sbUpstream.ClusterKey
 				// Mirror main on sandbox routes: cluster_header lets a dynamic-endpoint policy
 				// divert sandbox traffic, defaulting to the sandbox cluster when none does.
 				r.Upstream.UseClusterHeader = useClusterHeader
 				if useClusterHeader {
-					r.Upstream.DefaultCluster = sbUpstream.EnvoyClusterName
+					// Use ClusterKey (the name Envoy knows the cluster by), not
+					// EnvoyClusterName — see the main-cluster default above.
+					r.Upstream.DefaultCluster = sbUpstream.ClusterKey
 				} else {
 					r.Upstream.DefaultCluster = ""
 				}
@@ -259,6 +309,28 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 	}
 
 	return rdc, nil
+}
+
+// routeHeaderMatches converts an operation's Gateway-API-style header matchers into the model form
+// used for both the Envoy route match and the route-key discriminator. Returning a single canonical
+// slice keeps the main route build and the sandbox patch loop in agreement on the route key.
+func routeHeaderMatches(op api.Operation) []models.RouteHeaderMatch {
+	if op.MatchHeaders == nil {
+		return nil
+	}
+	matches := make([]models.RouteHeaderMatch, 0, len(*op.MatchHeaders))
+	for _, h := range *op.MatchHeaders {
+		headerType := "Exact"
+		if h.Type != nil {
+			headerType = string(*h.Type)
+		}
+		matches = append(matches, models.RouteHeaderMatch{
+			Name:  h.Name,
+			Value: h.Value,
+			Type:  headerType,
+		})
+	}
+	return matches
 }
 
 // collectAPIPolicies validates and collects API-level policies into SDK format.
