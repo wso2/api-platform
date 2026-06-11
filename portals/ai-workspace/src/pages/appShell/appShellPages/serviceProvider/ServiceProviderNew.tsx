@@ -35,7 +35,8 @@ import {
 } from '../../../../contexts/llmProvider';
 import { useGuardrails } from '../../../../contexts/GuardrailsContext';
 import { ChevronLeft } from '@wso2/oxygen-ui-icons-react';
-import { useRole } from '../../../../contexts/RoleContext';
+import { useAppAuth } from '../../../../contexts/AppAuthContext';
+import { SCOPES } from '../../../../auth/permissions';
 import { useAppShell } from '../../../../contexts/AppShellContext';
 import {
   buildOrgPath,
@@ -127,7 +128,7 @@ function TemplateBasedFormFieldsContainer({
 
 export default function ServiceProviderNew() {
   const navigate = useNavigate();
-  const { role } = useRole();
+  const { hasPermission } = useAppAuth();
   const { createProvider } = useLLMProviders();
   const showSnackbar = useAIWorkspaceSnackbar();
   const {
@@ -174,15 +175,15 @@ export default function ServiceProviderNew() {
   const { guardrails: availableGuardrails = [] } = useGuardrails();
 
   useEffect(() => {
-    if (isProjectLevel && role === 'admin') {
+    if (isProjectLevel && hasPermission(SCOPES.LLM_PROVIDER_MANAGE)) {
       setCurrentProject(null);
       navigate(buildOrgPath(currentOrganization, '/service-provider/new'), {
         replace: true,
       });
     }
-  }, [isProjectLevel, role, currentOrganization, navigate, setCurrentProject]);
+  }, [isProjectLevel, hasPermission, currentOrganization, navigate, setCurrentProject]);
 
-  if (role === 'developer') {
+  if (!hasPermission(SCOPES.LLM_PROVIDER_CREATE)) {
     return (
       <PageContent fullWidth>
         <Stack spacing={1}>

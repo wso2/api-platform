@@ -16,24 +16,25 @@
  * under the License.
  */
 
-// import { useAuthContext } from '@asgardeo/auth-react'; // [standalone] Asgardeo auth disabled
 import {
-  BrowserRouter,
   Routes,
   Route,
   Navigate,
   useLocation,
+  useNavigate,
 } from 'react-router-dom';
-// import SigninCallback from './pages/login/signinCallback'; // [standalone]
-// import Login from './pages/login/login'; // [standalone]
+import { useAuth } from 'react-oidc-context';
+import AutoLoginPage from './pages/login/AutoLoginPage';
+import AdminLoginPage from './pages/admin/AdminLoginPage';
 import AppShellMain from './pages/appShell/appShellMain';
-// import { storeUserInfo } from './auth/login'; // [standalone]
 import { AppShellProvider } from './contexts/AppShellContext';
 import { RoleProvider } from './contexts/RoleContext';
-// import { useSignInSilent } from './auth/useSignInSilent'; // [standalone]
 import PageErrorBoundary from './Components/common/PageErrorBoundary';
 import { AIWorkspaceSnackbarProvider } from './contexts/AIWorkspaceSnackbarContext';
 import { MoesifProvider } from './contexts/MoesifContext';
+import OrgProvisioningPage from './pages/register/OrgProvisioningPage';
+import { checkOrganizationExists, registerOrganization } from './apis/platformApis';
+import { DEFAULT_ORG_REGION } from './config.env';
 
 // App Shell Pages
 import Overview from './pages/appShell/appShellPages/overview/Overview';
@@ -75,27 +76,190 @@ import ExternalServersDeploy from './pages/appShell/appShellPages/externalServer
 import EditExternalServer from './pages/appShell/appShellPages/externalServers/EditExternalServer';
 import { MCPServerValidationProvider } from './contexts/MCP';
 import { LLMProvidersProvider } from './contexts/llmProvider';
+import React, { useRef, useState } from 'react';
 import { ChoreoUserProvider } from './contexts/ChoreoUserContext';
-import React from 'react';
+import { useAppAuth } from './contexts/AppAuthContext';
+import { Box, CircularProgress } from '@wso2/oxygen-ui';
 
-// [standalone] ProtectedRoute — Asgardeo auth removed.
-// Always renders children; no redirect to /login.
-function ProtectedRoute({ children }: { children: React.ReactNode }) {
+/**
+ * Only allow same-origin relative paths as return URLs to prevent open redirects.
+ * Rejects protocol-relative URLs (//evil.com) and absolute URLs.
+ */
+function sanitizeReturnUrl(url: string): string {
+  if (typeof url !== 'string') return '/';
+  if (!url.startsWith('/') || url.startsWith('//')) return '/';
+  // Strip any embedded newlines that could be used for header injection
+  const clean = url.replace(/[\r\n]/g, '');
+  return clean || '/';
+}
+
+function PublicOnlyRoute({ children }: { children: React.ReactNode }) {
+  const { isAuthenticated, isLoading } = useAppAuth();
+  if (isLoading) return null;
+  if (isAuthenticated) return <Navigate to="/" replace />;
   return <>{children}</>;
 }
 
-// [standalone] No Asgardeo state — userName/userEmail passed as empty.
-function ProtectedAppShell() {
+function ProtectedRoute({ children }: { children: React.ReactNode }) {
+  const { isAuthenticated, isLoading } = useAppAuth();
+  const location = useLocation();
+
+  if (isLoading) {
+    return null;
+  }
+
+  if (!isAuthenticated) {
+    const returnUrl = sanitizeReturnUrl(location.pathname + location.search);
+    const skip = ['/', '/login', '/signin', '/admin'];
+    if (!skip.includes(returnUrl)) {
+      sessionStorage.setItem('ai_workspace_return_url', returnUrl);
+    }
+    return <Navigate to="/login" replace />;
+  }
+
+  return <>{children}</>;
+}
+
+// Super admin can only access /register-org. Redirect everything else there.
+function SuperAdminRoute({ children }: { children: React.ReactNode }) {
+  const { isSuperAdmin } = useAppAuth();
+  const location = useLocation();
+
+  if (isSuperAdmin && location.pathname !== '/register-org') {
+    return <Navigate to="/register-org" replace />;
+  }
+
+  return <>{children}</>;
+}
+
+// Processes the OIDC ?code= callback. Shows a spinner while react-oidc-context
+// exchanges the code; on success onSigninCallback in main.tsx navigates to the app.
+// On error, shows the reason and lets the user retry.
+function SigninCallbackRoute() {
+  const auth = useAuth();
+  const navigate = useNavigate();
+
+  const handleRetry = React.useCallback(() => {
+    navigate('/login', { replace: true });
+  }, [navigate]);
+
+  if (auth.error) {
+    return (
+      <Box sx={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', p: 3 }}>
+        <Box sx={{ maxWidth: 440, width: '100%', textAlign: 'center' }}>
+          <CircularProgress size={28} sx={{ mb: 3, color: 'error.main' }} />
+          <Box sx={{ mb: 1, fontSize: '1.125rem', fontWeight: 700 }}>
+            Sign-in failed
+          </Box>
+          <Box sx={{ mb: 3, color: 'text.secondary', fontSize: '0.875rem' }}>
+            {auth.error.message || 'An unexpected error occurred during authentication.'}
+          </Box>
+          <Box
+            component="button"
+            onClick={handleRetry}
+            sx={{
+              px: 3, py: 1, borderRadius: 1, border: 'none',
+              bgcolor: 'primary.main', color: 'primary.contrastText',
+              fontSize: '0.875rem', fontWeight: 600, cursor: 'pointer',
+              '&:hover': { bgcolor: 'primary.dark' },
+            }}
+          >
+            Back to Sign In
+          </Box>
+        </Box>
+      </Box>
+    );
+  }
+
   return (
-    <RoleProvider>
-      <AIWorkspaceSnackbarProvider>
-        <AppShellProvider>
-          <MoesifProvider>
-            <AppShellMain />
-          </MoesifProvider>
-        </AppShellProvider>
-      </AIWorkspaceSnackbarProvider>
-    </RoleProvider>
+    <Box sx={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <CircularProgress />
+    </Box>
+  );
+}
+
+type OrgInitState = 'checking' | 'provisioning' | 'done' | 'error';
+
+// After sign-in: checks whether the user's org (from token claims) is registered,
+// auto-registers it if not, then navigates to the org home page.
+function PostSignInInit({ children }: { children: React.ReactNode }) {
+  const { user } = useAppAuth();
+  const navigate = useNavigate();
+  const initiated = useRef(false);
+  const [orgState, setOrgState] = useState<OrgInitState>('checking');
+  const [orgError, setOrgError] = useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (initiated.current) return;
+    if (!user) return;
+    initiated.current = true;
+
+    const org = user.org;
+    if (!org?.id || !org?.handle) {
+      // No org claims in token — render the app and let AppShellContext handle it.
+      setOrgState('done');
+      return;
+    }
+
+    checkOrganizationExists(org.id)
+      .then(async (exists) => {
+        if (!exists) {
+          setOrgState('provisioning');
+          await registerOrganization({
+            id: org.id,
+            name: org.name || org.handle,
+            handle: org.handle,
+            region: DEFAULT_ORG_REGION,
+          });
+        }
+        navigate(`/organizations/${org.handle}/home`, { replace: true });
+        setOrgState('done');
+      })
+      .catch((err: unknown) => {
+        setOrgError(err instanceof Error ? err.message : 'Failed to set up workspace');
+        setOrgState('error');
+      });
+  }, [user, navigate]);
+
+  if (orgState === 'checking' || orgState === 'provisioning') {
+    return (
+      <OrgProvisioningPage
+        orgName={user?.org?.name ?? undefined}
+        isProvisioning={orgState === 'provisioning'}
+      />
+    );
+  }
+
+  if (orgState === 'error') {
+    return (
+      <OrgProvisioningPage
+        orgName={user?.org?.name ?? undefined}
+        error={orgError}
+        onRetry={() => { initiated.current = false; setOrgState('checking'); }}
+      />
+    );
+  }
+
+  return <>{children}</>;
+}
+
+function ProtectedAppShell() {
+  const { user } = useAppAuth();
+  const userName = user?.name ?? undefined;
+  const userEmail = user?.email ?? undefined;
+
+  return (
+    <PostSignInInit>
+      <RoleProvider>
+        <AIWorkspaceSnackbarProvider>
+          <AppShellProvider userName={userName} userEmail={userEmail}>
+            <MoesifProvider>
+              <AppShellMain />
+            </MoesifProvider>
+          </AppShellProvider>
+        </AIWorkspaceSnackbarProvider>
+      </RoleProvider>
+    </PostSignInInit>
   );
 }
 
@@ -113,24 +277,34 @@ function WithPageBoundary({ children }: { children: React.ReactNode }) {
   return <RoutePageBoundary>{children}</RoutePageBoundary>;
 }
 
-// [standalone] No Asgardeo — App component simplified
 export default function App() {
   return (
-    <BrowserRouter>
-      <ChoreoUserProvider>
+    <ChoreoUserProvider>
       <Routes>
-        {/* [standalone] Asgardeo OAuth callback removed */}
-        {/* [standalone] Login page removed — auth not required */}
+        {/* OAuth callback — react-oidc-context processes the ?code= param here */}
+        <Route path="/signin" element={<SigninCallbackRoute />} />
 
-        {/* Public: Organization registration — no auth required */}
-        <Route path="/register-org" element={<OrgRegisterPage />} />
+        {/* Login — shows full-page loader and auto-redirects to the IDP */}
+        <Route path="/login" element={<PublicOnlyRoute><AutoLoginPage /></PublicOnlyRoute>} />
+
+        {/* Admin login — super admin credential form (dev/ops only) */}
+        <Route path="/admin" element={<PublicOnlyRoute><AdminLoginPage /></PublicOnlyRoute>} />
+
+        {/* Organization registration — requires auth, accessible to super admin */}
+        <Route path="/register-org" element={
+          <ProtectedRoute>
+            <OrgRegisterPage />
+          </ProtectedRoute>
+        } />
 
         {/* Protected Routes */}
         <Route
           path="/"
           element={
             <ProtectedRoute>
-              <ProtectedAppShell />
+              <SuperAdminRoute>
+                <ProtectedAppShell />
+              </SuperAdminRoute>
             </ProtectedRoute>
           }
         >
@@ -593,7 +767,6 @@ export default function App() {
 
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
-      </ChoreoUserProvider>
-    </BrowserRouter>
+    </ChoreoUserProvider>
   );
 }

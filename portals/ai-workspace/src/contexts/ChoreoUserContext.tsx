@@ -41,8 +41,6 @@ import { getOrgToken } from '../clients/choreoApiClient';
 export interface ChoreoUserContextType {
   isTokenExchanged: boolean;
   setIsTokenExchanged: React.Dispatch<React.SetStateAction<boolean>>;
-  organizations: Organization[];
-  setOrganizations: React.Dispatch<React.SetStateAction<Organization[]>>;
   isOrgAdmin: boolean;
   setIsOrgAdmin: React.Dispatch<React.SetStateAction<boolean>>;
   /** Always false — no Asgardeo sign-in hook available */
@@ -111,8 +109,7 @@ export const ChoreoUserProvider: React.FC<{ children: ReactNode }> = ({
   children,
 }) => {
   const [isTokenExchanged, setIsTokenExchanged] = useState(false);
-  const [organizations, setOrganizations] = useState<Organization[]>([]);
-  const [isOrgAdmin, setIsOrgAdmin] = useState(true); // admin by default in local dev
+  const [isOrgAdmin, setIsOrgAdmin] = useState(true);
 
   // No token exchange needed — always return admin:true
   const exchangeOrgToken = useCallback(async (_orgHandle: string): Promise<boolean> => {
@@ -141,12 +138,10 @@ export const ChoreoUserProvider: React.FC<{ children: ReactNode }> = ({
       value={{
         isTokenExchanged,
         setIsTokenExchanged,
-        organizations,
-        setOrganizations,
         isOrgAdmin,
         setIsOrgAdmin,
-        shouldValidateUser: false,  // No Asgardeo sign-in hook
-        fidp: '',                   // No IDP in standalone mode
+        shouldValidateUser: false,
+        fidp: '',
         exchangeOrgToken,
         validateUser,
         getOrganizations,

@@ -53,6 +53,9 @@ func (h *MCPProxyDeploymentHandler) RegisterRoutes(r *gin.Engine) {
 	proxyGroup := r.Group("/api/v1/mcp-proxies/:id")
 	{
 		proxyGroup.POST("/deployments", h.DeployMCPProxy)
+		proxyGroup.POST("/deployments/:deploymentId/undeploy", h.UndeployMCPProxyDeployment)
+		proxyGroup.POST("/deployments/:deploymentId/restore", h.RestoreMCPProxyDeployment)
+		// Deprecated paths — kept for backward compatibility.
 		proxyGroup.POST("/deployments/undeploy", h.UndeployMCPProxyDeployment)
 		proxyGroup.POST("/deployments/restore", h.RestoreMCPProxyDeployment)
 		proxyGroup.GET("/deployments", h.GetMCPProxyDeployments)
@@ -141,7 +144,7 @@ func (h *MCPProxyDeploymentHandler) DeployMCPProxy(c *gin.Context) {
 	c.JSON(http.StatusCreated, deployment)
 }
 
-// UndeployMCPProxyDeployment handles POST /api/v1/mcp-proxies/:id/deployments/undeploy
+// UndeployMCPProxyDeployment handles POST /api/v1/mcp-proxies/:id/deployments/:deploymentId/undeploy
 func (h *MCPProxyDeploymentHandler) UndeployMCPProxyDeployment(c *gin.Context) {
 	orgId, ok := middleware.GetOrganizationFromContext(c)
 	if !ok {
@@ -151,14 +154,11 @@ func (h *MCPProxyDeploymentHandler) UndeployMCPProxyDeployment(c *gin.Context) {
 	}
 
 	proxyId := c.Param("id")
-	var params api.UndeployMCPProxyDeploymentParams
-	if err := c.ShouldBindQuery(&params); err != nil {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))
-		return
+	deploymentId := c.Param("deploymentId")
+	if deploymentId == "" {
+		deploymentId = c.Query("deploymentId")
 	}
-
-	deploymentId := params.DeploymentId
-	gatewayId := params.GatewayId
+	gatewayId := c.Query("gatewayId")
 	if deploymentId == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"deploymentId is required"))
@@ -209,7 +209,7 @@ func (h *MCPProxyDeploymentHandler) UndeployMCPProxyDeployment(c *gin.Context) {
 	c.JSON(http.StatusOK, deployment)
 }
 
-// RestoreMCPProxyDeployment handles POST /api/v1/mcp-proxies/:id/deployments/restore
+// RestoreMCPProxyDeployment handles POST /api/v1/mcp-proxies/:id/deployments/:deploymentId/restore
 func (h *MCPProxyDeploymentHandler) RestoreMCPProxyDeployment(c *gin.Context) {
 	orgId, ok := middleware.GetOrganizationFromContext(c)
 	if !ok {
@@ -219,14 +219,11 @@ func (h *MCPProxyDeploymentHandler) RestoreMCPProxyDeployment(c *gin.Context) {
 	}
 
 	proxyId := c.Param("id")
-	var params api.RestoreMCPProxyDeploymentParams
-	if err := c.ShouldBindQuery(&params); err != nil {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))
-		return
+	deploymentId := c.Param("deploymentId")
+	if deploymentId == "" {
+		deploymentId = c.Query("deploymentId")
 	}
-
-	deploymentId := params.DeploymentId
-	gatewayId := params.GatewayId
+	gatewayId := c.Query("gatewayId")
 
 	if deploymentId == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",

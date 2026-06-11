@@ -21,6 +21,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+
 	"platform-api/src/api"
 	"platform-api/src/internal/constants"
 	"platform-api/src/internal/middleware"
@@ -53,19 +54,9 @@ func (h *OrganizationHandler) RegisterOrganization(c *gin.Context) {
 	}
 
 	// Validate required fields
-	if req.Handle == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"Handle is required"))
-		return
-	}
 	if req.Name == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"Name is required"))
-		return
-	}
-	if req.Id == nil || *req.Id == (openapi_types.UUID{}) {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"Organization ID is required"))
 		return
 	}
 	if req.Region == "" {
@@ -74,8 +65,18 @@ func (h *OrganizationHandler) RegisterOrganization(c *gin.Context) {
 		return
 	}
 
-	// Extract the ID string from the UUID
-	id := utils.OpenAPIUUIDToString(*req.Id)
+	// Auto-generate ID if not provided
+	var id string
+	if req.Id != nil && *req.Id != (openapi_types.UUID{}) {
+		id = utils.OpenAPIUUIDToString(*req.Id)
+	} else {
+		generated, genErr := utils.GenerateUUID()
+		if genErr != nil {
+			c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to generate organization ID"))
+			return
+		}
+		id = generated
+	}
 
 	org, err := h.orgService.RegisterOrganization(id, req.Handle, req.Name, req.Region)
 	if err != nil {
@@ -87,11 +88,6 @@ func (h *OrganizationHandler) RegisterOrganization(c *gin.Context) {
 		if errors.Is(err, constants.ErrOrganizationExists) {
 			c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict",
 				"Organization with the given ID already exists"))
-			return
-		}
-		if errors.Is(err, constants.ErrInvalidHandle) {
-			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-				"Organization handle must be URL friendly"))
 			return
 		}
 		h.slogger.Error("Failed to create organization", "error", err)
@@ -132,6 +128,26 @@ func (h *OrganizationHandler) HeadOrganizationByUuid(c *gin.Context) {
 	}
 
 	c.Status(http.StatusOK)
+}
+
+// GetOrganizationByUUID handles GET /api/v1/organizations/{organizationId}
+func (h *OrganizationHandler) GetOrganizationByUUID(c *gin.Context) {
+	orgID := c.Param("organizationId")
+
+	org, err := h.orgService.GetOrganizationByUUID(orgID)
+	if err != nil {
+		if errors.Is(err, constants.ErrOrganizationNotFound) {
+			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
+				"Organization not found"))
+			return
+		}
+		h.slogger.Error("Failed to get organization by UUID", "organizationId", orgID, "error", err)
+		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+			"Failed to get organization"))
+		return
+	}
+
+	c.JSON(http.StatusOK, org)
 }
 
 // GetOrganization handles GET /api/v1/organizations
@@ -201,12 +217,18 @@ func (h *OrganizationHandler) GetOrganizationSubscription(c *gin.Context) {
 	c.JSON(http.StatusOK, subscription)
 }
 
+// RegisterPublicRoutes registers routes that do not require authentication.
+// Must be called before auth middleware is applied to the engine.
+func (h *OrganizationHandler) RegisterPublicRoutes(r *gin.Engine) {
+	r.POST("/api/v1/organizations", h.RegisterOrganization)
+}
+
 func (h *OrganizationHandler) RegisterRoutes(r *gin.Engine) {
 	orgGroup := r.Group("/api/v1/organizations")
 	{
-		orgGroup.POST("", h.RegisterOrganization)
 		orgGroup.GET("", h.GetOrganization)
 		orgGroup.HEAD("/:organizationId", h.HeadOrganizationByUuid)
+		orgGroup.GET("/:organizationId", h.GetOrganizationByUUID)
 		orgGroup.GET("/:organizationId/subscription", h.GetOrganizationSubscription)
 	}
 }

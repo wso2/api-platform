@@ -53,10 +53,10 @@ func getSubscriptionTokenEncryptionKey() ([]byte, error) {
 	cfg := config.GetConfig()
 	keyStr := cfg.Database.SubscriptionTokenEncryptionKey
 	if keyStr == "" {
-		keyStr = cfg.JWT.SecretKey
+		keyStr = cfg.Auth.JWT.SecretKey
 	}
 	if keyStr == "" {
-		return nil, fmt.Errorf("subscription token encryption requires DATABASE_SUBSCRIPTION_TOKEN_ENCRYPTION_KEY or JWT_SECRET_KEY")
+		return nil, fmt.Errorf("subscription token encryption requires DATABASE_SUBSCRIPTION_TOKEN_ENCRYPTION_KEY or AUTH_JWT_SECRET_KEY")
 	}
 	return utils.DeriveEncryptionKey(keyStr)
 }

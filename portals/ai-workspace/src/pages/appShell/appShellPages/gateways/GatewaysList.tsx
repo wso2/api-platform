@@ -55,7 +55,8 @@ import { formatRelativeTime } from '../../../../contexts/llmProvider';
 import { FormattedMessage, useIntl } from 'react-intl';
 import NoGW from '../../../../assets/images/NoGW.svg';
 import { useEnvironments } from '../../../../hooks/useEnvironments';
-import { useRole } from '../../../../contexts/RoleContext';
+import { useAppAuth } from '../../../../contexts/AppAuthContext';
+import { SCOPES } from '../../../../auth/permissions';
 
 const MAX_GATEWAYS_PER_ORG = 3;
 
@@ -68,8 +69,8 @@ export default function GatewaysList() {
   const navigate = useNavigate();
   const intl = useIntl();
   const { currentOrganization } = useAppShell();
-  const { role } = useRole();
-  const isAdmin = role === 'admin';
+  const { hasPermission } = useAppAuth();
+  const isAdmin = hasPermission(SCOPES.GATEWAY_CREATE);
   const [searchQuery, setSearchQuery] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<{
     id: string;

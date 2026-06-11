@@ -31,6 +31,8 @@ import {
 } from '@wso2/oxygen-ui-icons-react';
 import McpMenuIcon from '../../assets/icons/McpMenuIcon';
 import { useAppShell } from '../../contexts/AppShellContext';
+import { useAppAuth } from '../../contexts/AppAuthContext';
+import { SCOPES } from '../../auth/permissions';
 import { buildOrgPath, buildProjectPath } from '../../utils/projectRouting';
 import QuickStartIntroPopup, {
   QS_INTRO_STORAGE_KEY,
@@ -54,6 +56,7 @@ export default function AppSidebar({
   projectCount,
 }: Props) {
   const { currentProject, currentOrganization } = useAppShell();
+  const { hasPermission, isAuthenticated } = useAppAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const quickStartRef = useRef<HTMLDivElement>(null);
@@ -202,73 +205,91 @@ export default function AppSidebar({
             showIntro ? { opacity: 0.25, pointerEvents: 'none' } : undefined
           }
         >
-          <Sidebar.Category>
-            <Sidebar.CategoryLabel>
-              <span style={{ fontSize: '0.8rem' }}>LLM</span>
-            </Sidebar.CategoryLabel>
-            <NavLink to={serviceProviderPath} style={navLinkStyle} data-cyid="nav-service-provider">
-              <Sidebar.Item id="service-provider">
-                <Sidebar.ItemIcon>
-                  <Handshake size={20} />
-                </Sidebar.ItemIcon>
-                <Sidebar.ItemLabel>LLM Providers</Sidebar.ItemLabel>
-              </Sidebar.Item>
-            </NavLink>
-            <NavLink to={proxiesPath} style={navLinkStyle}>
-              <Sidebar.Item id="proxies">
-                <Sidebar.ItemIcon>
-                  <Workflow size={20} />
-                </Sidebar.ItemIcon>
-                <Sidebar.ItemLabel>App LLM Proxies</Sidebar.ItemLabel>
-              </Sidebar.Item>
-            </NavLink>
-          </Sidebar.Category>
+          {(hasPermission(SCOPES.LLM_PROVIDER_READ) || hasPermission(SCOPES.LLM_PROXY_READ)) && (
+            <>
+              <Sidebar.Category>
+                <Sidebar.CategoryLabel>
+                  <span style={{ fontSize: '0.8rem' }}>LLM</span>
+                </Sidebar.CategoryLabel>
+                {hasPermission(SCOPES.LLM_PROVIDER_READ) && (
+                  <NavLink to={serviceProviderPath} style={navLinkStyle} data-cyid="nav-service-provider">
+                    <Sidebar.Item id="service-provider">
+                      <Sidebar.ItemIcon>
+                        <Handshake size={20} />
+                      </Sidebar.ItemIcon>
+                      <Sidebar.ItemLabel>LLM Providers</Sidebar.ItemLabel>
+                    </Sidebar.Item>
+                  </NavLink>
+                )}
+                {hasPermission(SCOPES.LLM_PROXY_READ) && (
+                  <NavLink to={proxiesPath} style={navLinkStyle}>
+                    <Sidebar.Item id="proxies">
+                      <Sidebar.ItemIcon>
+                        <Workflow size={20} />
+                      </Sidebar.ItemIcon>
+                      <Sidebar.ItemLabel>App LLM Proxies</Sidebar.ItemLabel>
+                    </Sidebar.Item>
+                  </NavLink>
+                )}
+              </Sidebar.Category>
+              <Box sx={{ borderTop: '1px solid', borderColor: 'divider', mx: 1.5, my: 0.5 }} />
+            </>
+          )}
 
-          <Box sx={{ borderTop: '1px solid', borderColor: 'divider', mx: 1.5, my: 0.5 }} />
-          <Sidebar.Category>
-            <Sidebar.CategoryLabel>
-              <Box
-                sx={{ display: 'inline-flex', alignItems: 'center', gap: 1 }}
-              >
-                <span style={{ fontSize: '0.8rem' }}>MCP</span>
-              </Box>
-            </Sidebar.CategoryLabel>
-            <NavLink to={externalServersPath} style={navLinkStyle}>
-              <Sidebar.Item id="external-servers">
-                <Sidebar.ItemIcon>
-                  <McpMenuIcon size={20} aria-hidden />
-                </Sidebar.ItemIcon>
-                <Sidebar.ItemLabel>MCP Proxies</Sidebar.ItemLabel>
-              </Sidebar.Item>
-            </NavLink>
-          </Sidebar.Category>
+          {hasPermission(SCOPES.MCP_PROXY_READ) && (
+            <>
+              <Sidebar.Category>
+                <Sidebar.CategoryLabel>
+                  <Box
+                    sx={{ display: 'inline-flex', alignItems: 'center', gap: 1 }}
+                  >
+                    <span style={{ fontSize: '0.8rem' }}>MCP</span>
+                  </Box>
+                </Sidebar.CategoryLabel>
+                <NavLink to={externalServersPath} style={navLinkStyle}>
+                  <Sidebar.Item id="external-servers">
+                    <Sidebar.ItemIcon>
+                      <McpMenuIcon size={20} aria-hidden />
+                    </Sidebar.ItemIcon>
+                    <Sidebar.ItemLabel>MCP Proxies</Sidebar.ItemLabel>
+                  </Sidebar.Item>
+                </NavLink>
+              </Sidebar.Category>
+              <Box sx={{ borderTop: '1px solid', borderColor: 'divider', mx: 1.5, my: 0.5 }} />
+            </>
+          )}
 
-          <Box sx={{ borderTop: '1px solid', borderColor: 'divider', mx: 1.5, my: 0.5 }} />
           <Sidebar.Category>
-            <NavLink to={applicationsPath} style={navLinkStyle}>
-              <Sidebar.Item id="applications">
-                <Sidebar.ItemIcon>
-                  <Dock size={20} />
-                </Sidebar.ItemIcon>
-                <Sidebar.ItemLabel>GenAI Applications</Sidebar.ItemLabel>
-              </Sidebar.Item>
-            </NavLink>
-            <NavLink to={gatewaysPath} style={navLinkStyle}>
-              <Sidebar.Item id="gateways">
-                <Sidebar.ItemIcon>
-                  <Network size={20} />
-                </Sidebar.ItemIcon>
-                <Sidebar.ItemLabel>AI Gateways</Sidebar.ItemLabel>
-              </Sidebar.Item>
-            </NavLink>
-            <NavLink to={insightsPath} style={navLinkStyle}>
-              <Sidebar.Item id="insights">
-                <Sidebar.ItemIcon>
-                  <BarChart3 size={20} />
-                </Sidebar.ItemIcon>
-                <Sidebar.ItemLabel>Insights</Sidebar.ItemLabel>
-              </Sidebar.Item>
-            </NavLink>
+            {hasPermission(SCOPES.APPLICATION_READ) && (
+              <NavLink to={applicationsPath} style={navLinkStyle}>
+                <Sidebar.Item id="applications">
+                  <Sidebar.ItemIcon>
+                    <Dock size={20} />
+                  </Sidebar.ItemIcon>
+                  <Sidebar.ItemLabel>GenAI Applications</Sidebar.ItemLabel>
+                </Sidebar.Item>
+              </NavLink>
+            )}
+            {hasPermission(SCOPES.GATEWAY_READ) && (
+              <NavLink to={gatewaysPath} style={navLinkStyle}>
+                <Sidebar.Item id="gateways">
+                  <Sidebar.ItemIcon>
+                    <Network size={20} />
+                  </Sidebar.ItemIcon>
+                  <Sidebar.ItemLabel>AI Gateways</Sidebar.ItemLabel>
+                </Sidebar.Item>
+              </NavLink>
+            )}
+            {isAuthenticated && (
+              <NavLink to={insightsPath} style={navLinkStyle}>
+                <Sidebar.Item id="insights">
+                  <Sidebar.ItemIcon>
+                    <BarChart3 size={20} />
+                  </Sidebar.ItemIcon>
+                  <Sidebar.ItemLabel>Insights</Sidebar.ItemLabel>
+                </Sidebar.Item>
+              </NavLink>
+            )}
           </Sidebar.Category>
         </Box>
       </Sidebar.Nav>

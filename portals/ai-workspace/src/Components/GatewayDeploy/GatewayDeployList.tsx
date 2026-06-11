@@ -16,7 +16,8 @@ import { Alert, Box, Button, TextField, Typography } from '@wso2/oxygen-ui';
 import { useNavigate } from 'react-router-dom';
 import type { Gateway } from '../../apis/gateway/types';
 import { useGatewayDeploy } from '../../contexts/GatewayDeployContext';
-import { useRole } from '../../contexts/RoleContext';
+import { useAppAuth } from '../../contexts/AppAuthContext';
+import { SCOPES } from '../../auth/permissions';
 import { useAppShell } from '../../contexts/AppShellContext';
 import { buildOrgPath } from '../../utils/projectRouting';
 import GatewayDeployCard from './GatewayDeployCard';
@@ -40,7 +41,7 @@ export default function GatewayDeployList({
   onConfigureAndDeploy,
 }: GatewayDeployListProps) {
   const { gateways } = useGatewayDeploy();
-  const { role } = useRole();
+  const { hasPermission } = useAppAuth();
   const { currentOrganization } = useAppShell();
   const navigate = useNavigate();
 
@@ -97,7 +98,7 @@ export default function GatewayDeployList({
   );
 
   if (aiGateways.length === 0) {
-    if (role === 'developer') {
+    if (!hasPermission(SCOPES.GATEWAY_MANAGE)) {
       return (
         <Alert severity="warning" sx={{ mt: 2 }}>
           An AI Gateway is required to deploy. Please contact your administrator

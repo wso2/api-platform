@@ -18,16 +18,75 @@
 package config
 
 import (
+	"encoding/json"
 	"fmt"
 	"sync"
 
 	"github.com/kelseyhightower/envconfig"
 )
 
+// BasicAuthUser represents a built-in user for basic-auth mode.
+type BasicAuthUser struct {
+	Username     string `json:"username"`
+	PasswordHash string `json:"password_hash"`
+	Scopes       string `json:"scopes"`
+}
+
+// BasicAuthUsers is a JSON-decodable slice of BasicAuthUser.
+type BasicAuthUsers []BasicAuthUser
+
+func (u *BasicAuthUsers) Decode(value string) error {
+	return json.Unmarshal([]byte(value), u)
+}
+
+// BasicAuthOrg holds the single organization used in basic-auth mode.
+type BasicAuthOrg struct {
+	// ID is the org UUID. Auto-generated at startup if empty.
+	// Env: AUTH_BASIC_AUTH_ORGANIZATION_ID
+	ID string `envconfig:"ID" default:""`
+
+	// Name is the display name of the organization.
+	// Required when AUTH_BASIC_AUTH_ENABLED=true.
+	// Env: AUTH_BASIC_AUTH_ORGANIZATION_NAME
+	Name string `envconfig:"NAME" default:""`
+
+	// Handle is the URL-safe slug for the organization.
+	// Required when AUTH_BASIC_AUTH_ENABLED=true.
+	// Env: AUTH_BASIC_AUTH_ORGANIZATION_HANDLE
+	Handle string `envconfig:"HANDLE" default:""`
+
+	// Region is the deployment region for the organization.
+	// Env: AUTH_BASIC_AUTH_ORGANIZATION_REGION (default: "us")
+	Region string `envconfig:"REGION" default:"us"`
+}
+
+// BasicAuth holds configuration for local username/password authentication.
+// When enabled, IDP-based auth is not used and a single organization is defined here.
+// Env prefix: AUTH_BASIC_AUTH_
+type BasicAuth struct {
+	// Enabled activates basic-auth login mode.
+	// Env: AUTH_BASIC_AUTH_ENABLED (default: false)
+	Enabled bool `envconfig:"ENABLED" default:"false"`
+
+	// Organization is the single org all basic-auth users belong to.
+	// Env prefix: AUTH_BASIC_AUTH_ORGANIZATION_
+	Organization BasicAuthOrg `envconfig:"ORGANIZATION"`
+
+	// Users is the JSON-encoded list of built-in users.
+	// Env: AUTH_BASIC_AUTH_USERS
+	// Format: [{"username":"alice","password_hash":"$2a$10$...","scopes":"ap:gateway:read"}]
+	Users BasicAuthUsers `envconfig:"USERS"`
+}
+
 // Server holds the configuration parameters for the application.
 type Server struct {
 	LogLevel string `envconfig:"LOG_LEVEL" default:"DEBUG"`
-	//Logger   logging.Logger
+
+	// DevMode disables safety guardrails intended for production (e.g. allows
+	// JWT signature validation to be skipped without a loud warning).
+	// Set to true only in local development environments.
+	// Env: DEV_MODE (default: false)
+	DevMode bool `envconfig:"DEV_MODE" default:"false"`
 
 	// Server configurations
 	Port string `envconfig:"PORT" default:"9243"`
@@ -36,11 +95,15 @@ type Server struct {
 	Database     Database `envconfig:"DATABASE"`
 	DBSchemaPath string   `envconfig:"DB_SCHEMA_PATH" default:"./internal/database/schema.sql"`
 
+	// OpenAPI spec path — used at startup to build the scope registry.
+	OpenAPISpecPath string `envconfig:"OPENAPI_SPEC_PATH" default:"./resources/openapi.yaml"`
+
 	// LLM provider template bootstrap (used to seed defaults into the DB)
 	LLMTemplateDefinitionsPath string `envconfig:"LLM_TEMPLATE_DEFINITIONS_PATH" default:"./resources/default-llm-provider-templates"`
 
-	// JWT Authentication configurations
-	JWT JWT `envconfig:"JWT"`
+	// Auth groups all authentication configuration.
+	// Two modes are supported: JWT (local HMAC) and IDP (JWKS-based).
+	Auth Auth `envconfig:"AUTH"`
 
 	// WebSocket configurations
 	WebSocket WebSocket `envconfig:"WEBSOCKET"`
@@ -50,6 +113,7 @@ type Server struct {
 
 	// Deployment configurations
 	Deployments Deployments `envconfig:"DEPLOYMENTS"`
+
 	// TLS configurations
 	TLS TLS `envconfig:"TLS"`
 
@@ -58,6 +122,124 @@ type Server struct {
 
 	// Gateway configurations
 	Gateway Gateway `envconfig:"GATEWAY"`
+
+	// EnableScopeValidation controls whether scope checks are enforced on protected routes.
+	EnableScopeValidation bool `envconfig:"ENABLE_SCOPE_VALIDATION" default:"true"`
+}
+
+// Auth groups all authentication-related configuration.
+// Exactly one of JWT or IDP should be the active primary mode.
+// SkipPaths applies to both modes.
+type Auth struct {
+	// SkipPaths is the list of path prefixes that bypass authentication entirely.
+	// Applies to both JWT and IDP modes.
+	// Env: AUTH_SKIP_PATHS
+	SkipPaths []string `envconfig:"SKIP_PATHS" default:"/health,/metrics,/api/internal/v1/ws/gateways/connect,/api/internal/v1/apis,/api/internal/v1/llm-providers,/api/internal/v1/llm-proxies,/api/internal/v1/subscription-plans,/api/internal/v1/mcp-proxies,/api/internal/v1/gateways,/api/internal/v1/deployments,/api/internal/v1/artifacts,/api/internal/v1/websub-apis,/api/internal/v1/webbroker-apis"`
+
+	// IDP holds JWKS-based identity provider configuration.
+	// Env prefix: AUTH_IDP_
+	IDP IDP `envconfig:"IDP"`
+
+	// JWT holds local HMAC JWT configuration.
+	// Env prefix: AUTH_JWT_
+	JWT JWT `envconfig:"JWT"`
+
+	// BasicAuth holds local username/password authentication configuration.
+	// Env prefix: AUTH_BASIC_AUTH_
+	BasicAuth BasicAuth `envconfig:"BASIC_AUTH"`
+}
+
+// IDP holds configuration for JWKS-based identity providers.
+// The same fields apply regardless of which IDP is in use (Thunder, Keycloak,
+// Asgardeo, Azure AD, Okta, etc.).
+// Env prefix: AUTH_IDP_
+type IDP struct {
+	// Enabled controls whether JWKS-based JWT validation is active.
+	// When false (default), the server falls back to local HMAC JWT validation.
+	// Env: AUTH_IDP_ENABLED (default: false)
+	Enabled bool `envconfig:"ENABLED" default:"false"`
+
+	// Name is an optional label identifying which IDP is configured (e.g. "thunder",
+	// "keycloak", "asgardeo"). Does not affect runtime behaviour — used only in
+	// startup log messages to make the active IDP visible.
+	// Env: AUTH_IDP_NAME (default: "")
+	Name string `envconfig:"NAME" default:""`
+
+	// JWKSUrl is the IDP's JWKS endpoint for fetching public signing keys.
+	// Required when AUTH_IDP_ENABLED=true.
+	// Env: AUTH_IDP_JWKS_URL
+	JWKSUrl string `envconfig:"JWKS_URL" default:""`
+
+	// Issuer is the list of accepted JWT issuers (comma-separated).
+	// Required when AUTH_IDP_ENABLED=true.
+	// Example: "https://accounts.example.com,https://sso.example.com"
+	// Env: AUTH_IDP_ISSUER
+	Issuer []string `envconfig:"ISSUER"`
+
+	// Audience is the list of accepted JWT audiences (comma-separated).
+	// Optional. Entries ending with "*" are treated as prefix matches.
+	// Env: AUTH_IDP_AUDIENCE
+	Audience []string `envconfig:"AUDIENCE"`
+
+	// --- Claim name mappings ---
+	// Set these when your IDP uses non-standard claim names.
+
+	// OrganizationClaimName is the JWT claim that holds the currently selected org UUID.
+	// Set per-token by the IDP based on which org the user logged into.
+	// Every protected request must carry this claim; requests without it are rejected.
+	// Env: AUTH_IDP_ORGANIZATION_CLAIM_NAME (default: "organization")
+	OrganizationClaimName string `envconfig:"ORGANIZATION_CLAIM_NAME" default:"organization"`
+
+	// OrgNameClaimName is the JWT claim that holds the display name of the user's organization.
+	// Used to propagate org context and support auto-registration on first login.
+	// Env: AUTH_IDP_ORG_NAME_CLAIM_NAME (default: "org_name")
+	OrgNameClaimName string `envconfig:"ORG_NAME_CLAIM_NAME" default:"org_name"`
+
+	// OrgHandleClaimName is the JWT claim that holds the URL-safe handle of the user's organization.
+	// Used alongside OrgNameClaimName for auto-registration on first login.
+	// Env: AUTH_IDP_ORG_HANDLE_CLAIM_NAME (default: "org_handle")
+	OrgHandleClaimName string `envconfig:"ORG_HANDLE_CLAIM_NAME" default:"org_handle"`
+
+	// UserIDClaimName is the JWT claim used as the canonical user identifier.
+	// Env: AUTH_IDP_USER_ID_CLAIM_NAME (default: "sub")
+	UserIDClaimName string `envconfig:"USER_ID_CLAIM_NAME" default:"sub"`
+
+	// UsernameClaimName is the JWT claim for the human-readable username.
+	// Env: AUTH_IDP_USERNAME_CLAIM_NAME (default: "username")
+	UsernameClaimName string `envconfig:"USERNAME_CLAIM_NAME" default:"username"`
+
+	// EmailClaimName is the JWT claim for the user's email address.
+	// Env: AUTH_IDP_EMAIL_CLAIM_NAME (default: "email")
+	EmailClaimName string `envconfig:"EMAIL_CLAIM_NAME" default:"email"`
+
+	// ScopeClaimName is the JWT claim that carries the granted OAuth2 scopes.
+	// When this claim is present in the token, scope-based validation is used directly.
+	// When absent, role-based expansion applies (see RolesClaimPath).
+	// Env: AUTH_IDP_SCOPE_CLAIM_NAME (default: "scope")
+	ScopeClaimName string `envconfig:"SCOPE_CLAIM_NAME" default:"scope"`
+
+	// --- Role-based access (for IDPs that issue roles instead of scopes) ---
+
+	// RolesClaimPath is the dot-notation path to the claim containing the user's roles.
+	// Supports both flat claims ("roles") and nested claims ("realm_access.roles").
+	// The claim value can be a string array or a space-separated string.
+	// When empty, role-based expansion is disabled and only scope-based validation applies.
+	// Env: AUTH_IDP_ROLES_CLAIM_PATH (default: "")
+	RolesClaimPath string `envconfig:"ROLES_CLAIM_PATH" default:""`
+
+	// RoleMappings maps IDP role values to platform roles (admin, developer, viewer).
+	// Format: comma-separated "idp-role=platform-role" pairs.
+	// Example: "PLATFORM_ADMIN=admin,PLATFORM_DEV=developer,PLATFORM_VIEWER=viewer"
+	// When empty, IDP role values are used as platform role names directly.
+	// Only relevant when AUTH_IDP_VALIDATION_MODE=role.
+	// Env: AUTH_IDP_ROLE_MAPPINGS
+	RoleMappings []string `envconfig:"ROLE_MAPPINGS"`
+
+	// ValidationMode selects how authorization is enforced. Pick one:
+	//   "scope" (default) — validate using the JWT scope claim directly.
+	//   "role"            — expand IDP roles to platform roles via RoleMappings.
+	// Env: AUTH_IDP_VALIDATION_MODE (default: "scope")
+	ValidationMode string `envconfig:"VALIDATION_MODE" default:"scope"`
 }
 
 // Gateway holds gateway-related configuration.
@@ -81,12 +263,27 @@ type TLS struct {
 	CertDir string `envconfig:"CERT_DIR" default:"./data/certs"`
 }
 
-// JWT holds JWT-specific configuration
+// JWT holds configuration for local HMAC JWT authentication (the non-IDP mode).
+// Env prefix: AUTH_JWT_
 type JWT struct {
-	SecretKey      string   `envconfig:"SECRET_KEY" default:"your-secret-key-change-in-production"`
-	Issuer         string   `envconfig:"ISSUER" default:"thunder"`
-	SkipPaths      []string `envconfig:"SKIP_PATHS" default:"/health,/metrics,/api/internal/v1/ws/gateways/connect,/api/internal/v1/apis,/api/internal/v1/llm-providers,/api/internal/v1/llm-proxies,/api/internal/v1/subscription-plans,/api/internal/v1/mcp-proxies,/api/internal/v1/gateways,/api/internal/v1/deployments,/api/internal/v1/artifacts,/api/internal/v1/websub-apis,/api/internal/v1/webbroker-apis"`
-	SkipValidation bool     `envconfig:"SKIP_VALIDATION" default:"true"` // Skip signature validation for development
+	// Enabled activates local HMAC JWT as the primary authentication mode.
+	// Set to false when AUTH_IDP_ENABLED=true and you want IDP-only auth.
+	// Env: AUTH_JWT_ENABLED (default: true)
+	Enabled bool `envconfig:"ENABLED" default:"true"`
+
+	// SecretKey is the HMAC signing key used to verify token signatures in JWT mode.
+	// Env: AUTH_JWT_SECRET_KEY (default: "your-secret-key-change-in-production")
+	SecretKey string `envconfig:"SECRET_KEY" default:"your-secret-key-change-in-production"`
+
+	// Issuer is the expected JWT issuer value for HMAC-signed tokens.
+	// Env: AUTH_JWT_ISSUER (default: "platform-api")
+	Issuer string `envconfig:"ISSUER" default:"platform-api"`
+
+	// SkipValidation disables JWT signature verification.
+	// Only applies when AUTH_IDP_ENABLED=false (JWT mode). Use only for local development.
+	// When DEV_MODE=false this combination logs a prominent warning at startup.
+	// Env: AUTH_JWT_SKIP_VALIDATION (default: false)
+	SkipValidation bool `envconfig:"SKIP_VALIDATION" default:"false"`
 }
 
 // WebSocket holds WebSocket-specific configuration
@@ -177,24 +374,23 @@ var (
 )
 
 // GetConfig initializes and returns a singleton instance of the Settings struct.
-// It uses sync.Once to ensure that the initialization logic is executed only once,
-// making it safe for concurrent use. If there is an error during the initialization,
-// the function will panic.
-//
-// Returns:
-//
-//	*Settings - A pointer to the singleton instance of the Settings struct. from environment variables.
 func GetConfig() *Server {
 	var err error
 	processOnce.Do(func() {
+		applyLegacyEnvAliases()
 		settingInstance = &Server{}
 		err = envconfig.Process("", settingInstance)
 		if err == nil {
-			// Validate default devportal configuration
 			err = validateDefaultDevPortalConfig(&settingInstance.DefaultDevPortal)
 		}
 		if err == nil {
 			err = validateDeploymentsConfig(&settingInstance.Deployments)
+		}
+		if err == nil {
+			err = validateIDPConfig(&settingInstance.Auth.IDP)
+		}
+		if err == nil {
+			err = validateBasicAuthConfig(&settingInstance.Auth.BasicAuth)
 		}
 	})
 	if err != nil {
@@ -203,53 +399,72 @@ func GetConfig() *Server {
 	return settingInstance
 }
 
-// validateDefaultDevPortalConfig validates default DevPortal configuration
-//
-// When default DevPortal is enabled, this function ensures that required
-// fields are provided.
-//
-// Parameters:
-//   - cfg: default DevPortal configuration to validate
-//
-// Returns:
-//   - error: Validation error if configuration is invalid, nil otherwise
 func validateDefaultDevPortalConfig(cfg *DefaultDevPortal) error {
-	// If default DevPortal is not enabled, no validation needed
 	if !cfg.Enabled {
 		return nil
 	}
-
-	// When enabled, required fields must be provided
 	if cfg.Name == "" {
 		return fmt.Errorf("default DevPortal is enabled but DEFAULT_DEVPORTAL_NAME is not configured")
 	}
-
 	if cfg.Identifier == "" {
 		return fmt.Errorf("default DevPortal is enabled but DEFAULT_DEVPORTAL_IDENTIFIER is not configured")
 	}
-
 	if cfg.APIUrl == "" {
 		return fmt.Errorf("default DevPortal is enabled but DEFAULT_DEVPORTAL_API_URL is not configured")
 	}
-
 	if cfg.Hostname == "" {
 		return fmt.Errorf("default DevPortal is enabled but DEFAULT_DEVPORTAL_HOSTNAME is not configured")
 	}
-
 	if cfg.APIKey == "" {
 		return fmt.Errorf("default DevPortal is enabled but DEFAULT_DEVPORTAL_API_KEY is not configured")
 	}
-
-	// Header key name is always required since we use header mode
 	if cfg.HeaderKeyName == "" {
 		return fmt.Errorf("default DevPortal header key name is not configured")
 	}
+	return nil
+}
 
+// validateIDPConfig validates IDP configuration when enabled.
+func validateIDPConfig(idp *IDP) error {
+	if !idp.Enabled {
+		return nil
+	}
+	if idp.JWKSUrl == "" {
+		return fmt.Errorf("AUTH_IDP_ENABLED=true requires AUTH_IDP_JWKS_URL to be configured")
+	}
+	if len(idp.Issuer) == 0 {
+		return fmt.Errorf("AUTH_IDP_ENABLED=true requires AUTH_IDP_ISSUER to be configured")
+	}
+	switch idp.ValidationMode {
+	case "scope", "role":
+		// valid
+	default:
+		return fmt.Errorf("AUTH_IDP_VALIDATION_MODE must be \"scope\" or \"role\" (got %q)", idp.ValidationMode)
+	}
+	if idp.ValidationMode == "role" && idp.RolesClaimPath == "" {
+		return fmt.Errorf("AUTH_IDP_VALIDATION_MODE=role requires AUTH_IDP_ROLES_CLAIM_PATH to be configured")
+	}
+	return nil
+}
+
+// validateBasicAuthConfig validates basic-auth configuration when enabled.
+func validateBasicAuthConfig(cfg *BasicAuth) error {
+	if !cfg.Enabled {
+		return nil
+	}
+	if cfg.Organization.Name == "" {
+		return fmt.Errorf("AUTH_BASIC_AUTH_ENABLED=true requires AUTH_BASIC_AUTH_ORGANIZATION_NAME to be configured")
+	}
+	if cfg.Organization.Handle == "" {
+		return fmt.Errorf("AUTH_BASIC_AUTH_ENABLED=true requires AUTH_BASIC_AUTH_ORGANIZATION_HANDLE to be configured")
+	}
+	if len(cfg.Users) == 0 {
+		return fmt.Errorf("AUTH_BASIC_AUTH_ENABLED=true requires at least one user in AUTH_BASIC_AUTH_USERS")
+	}
 	return nil
 }
 
 // validateDeploymentsConfig validates deployment timeout configuration.
-// When timeout is enabled, interval and duration must be positive.
 func validateDeploymentsConfig(cfg *Deployments) error {
 	if !cfg.TimeoutEnabled {
 		return nil

@@ -17,28 +17,23 @@
  */
 
 import { useMemo } from 'react';
-import { useRole } from '../contexts/RoleContext';
-import type { UserRole } from '../contexts/RoleContext';
+import { useAppAuth } from '../contexts/AppAuthContext';
+import { SCOPES } from '../auth/permissions';
 import { API_BASE_URLS } from '../config.env';
 
 /**
- * Returns the APIM base URL based on the user's role.
- * - admin  → API_BASE_URLS.adminApi
- * - developer → API_BASE_URLS.publisherApi
+ * Returns the APIM base URL based on the user's permissions.
+ * - has LLM_PROVIDER_MANAGE → API_BASE_URLS.adminApi
+ * - otherwise              → API_BASE_URLS.publisherApi
  *
  * Use this in React components / contexts that need to call
  * llmProviderApis or providerTemplateApis so the correct
  * endpoint is chosen automatically.
  */
 export function useApimBaseUrl(): string {
-  const { role } = useRole();
-  return useMemo(() => getApimBaseUrl(role), [role]);
-}
-
-/**
- * Pure utility (non-hook) that maps a UserRole to the correct APIM base URL.
- * Useful outside of React components when the role is already known.
- */
-export function getApimBaseUrl(role: UserRole): string {
-  return role === 'admin' ? API_BASE_URLS.adminApi : API_BASE_URLS.publisherApi;
+  const { hasPermission } = useAppAuth();
+  return useMemo(
+    () => (hasPermission(SCOPES.LLM_PROVIDER_MANAGE) ? API_BASE_URLS.adminApi : API_BASE_URLS.publisherApi),
+    [hasPermission]
+  );
 }

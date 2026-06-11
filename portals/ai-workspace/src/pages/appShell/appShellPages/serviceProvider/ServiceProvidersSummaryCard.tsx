@@ -47,7 +47,8 @@ import {
   getProviderTemplateDisplayName,
   truncateProviderDisplayName,
 } from '../../../../utils/providerTemplateDisplay';
-import { useRole } from '../../../../contexts/RoleContext';
+import { useAppAuth } from '../../../../contexts/AppAuthContext';
+import { SCOPES } from '../../../../auth/permissions';
 import ErrorAlert from '../../../../Components/common/ErrorAlert';
 
 function getInitials(name: string): string {
@@ -98,15 +99,15 @@ export default function ServiceProvidersSummaryCard({
   emptyMessage = 'No Available LLM Providers',
   showSeeMore = true,
 }: ServiceProvidersSummaryCardProps) {
-  const { role } = useRole();
+  const { hasPermission } = useAppAuth();
   const displayCount = totalCount ?? providers.length;
   const visibleProviders = providers.slice(0, maxItems);
   const canClick = Boolean(onProviderClick);
   const hasProviders = visibleProviders.length > 0;
   const isEmptyState = !isLoading && !error && !hasProviders;
-  const canCreateProvider = role === 'admin' && Boolean(onCreateProvider);
+  const canCreateProvider = hasPermission(SCOPES.LLM_PROVIDER_CREATE) && Boolean(onCreateProvider);
   const shouldShowCreateProviderButton =
-    Boolean(onCreateProvider) || role === 'developer';
+    Boolean(onCreateProvider) || !hasPermission(SCOPES.LLM_PROVIDER_CREATE);
 
   const templateLogoMap: Record<string, string> = {
     openai: OpenAILogo,
@@ -155,7 +156,7 @@ export default function ServiceProvidersSummaryCard({
           action={
             hasProviders ? (
               <Stack direction="row" spacing={1} alignItems="center">
-                {role === 'admin' && onAddProvider ? (
+                {hasPermission(SCOPES.LLM_PROVIDER_CREATE) && onAddProvider ? (
                   <Button size="small" onClick={onAddProvider} variant="text">
                     + Add New
                   </Button>

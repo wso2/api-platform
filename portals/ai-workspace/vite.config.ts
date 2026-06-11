@@ -36,5 +36,13 @@ export default defineConfig({
         aiPnpm
       ]
     },
+    proxy: {
+      '/api-proxy': {
+        target: 'https://localhost:9243',
+        changeOrigin: true,
+        secure: false,          // accept self-signed cert on the platform API
+        rewrite: (p) => p.replace(/^\/api-proxy/, ''),
+      },
+    },
   }
 })

@@ -40,7 +40,8 @@ import { HelpCircle, PenLine, Upload } from '@wso2/oxygen-ui-icons-react';
 import YAML from 'yaml';
 import * as providerTemplateApis from '../../../../apis/providerTemplateApis';
 import { useAppShell } from '../../../../contexts/AppShellContext';
-import { useRole } from '../../../../contexts/RoleContext';
+import { useAppAuth } from '../../../../contexts/AppAuthContext';
+import { SCOPES } from '../../../../auth/permissions';
 import { useLLMProvider } from '../../../../contexts/llmProvider';
 import { PLATFORM_API_BASE_URL } from '../../../../config.env';
 import useAIWorkspaceSnackbar from '../../../../hooks/aiWorkspaceSnackbar';
@@ -196,10 +197,10 @@ export default function ServiceProviderResourcesTab() {
     []
   );
   const [openapiText, setOpenapiText] = useState('');
-  const { role } = useRole();
+  const { hasPermission } = useAppAuth();
   const { currentProject, currentOrganization } = useAppShell();
   const isProjectLevel = Boolean(currentProject?.id);
-  const isAdminOrgLevel = role === 'admin' && !isProjectLevel;
+  const isAdminOrgLevel = hasPermission(SCOPES.LLM_PROVIDER_MANAGE) && !isProjectLevel;
   const showSnackbar = useAIWorkspaceSnackbar();
 
   useEffect(() => {

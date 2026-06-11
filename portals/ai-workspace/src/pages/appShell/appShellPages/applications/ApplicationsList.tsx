@@ -29,7 +29,6 @@ import {
   DialogContent,
   DialogContentText,
   DialogTitle,
-  Form,
   FormControl,
   FormLabel,
   Grid,
@@ -464,15 +463,28 @@ export default function ApplicationsList() {
 
                 return (
                   <Grid key={app.id} size={{ xs: 12, md: 4, lg: 3 }}>
-                    <Form.CardButton
+                    <Card
                       sx={{
                         height: '100%',
                         width: '100%',
                         cursor: 'pointer',
                         transition: 'box-shadow 0.2s ease',
                         '&.MuiCard-root:hover': { boxShadow: 3 },
+                        '&:focus-visible': {
+                          outline: '2px solid',
+                          outlineColor: 'primary.main',
+                          outlineOffset: '2px',
+                        },
                       }}
+                      tabIndex={0}
+                      role="button"
                       onClick={() => handleApplicationClick(app)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          handleApplicationClick(app);
+                        }
+                      }}
                     >
                       <Box
                         sx={{
@@ -553,7 +565,7 @@ export default function ApplicationsList() {
                           </IconButton>
                         </Box>
                       </Box>
-                    </Form.CardButton>
+                    </Card>
                   </Grid>
                 );
               })

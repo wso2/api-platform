@@ -17,7 +17,7 @@
  */
 
 import type { JSX } from 'react';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 // import { useAuthContext } from '@asgardeo/auth-react'; // [standalone]
 import {
@@ -33,6 +33,7 @@ import {
 
 // import { handleLogout } from '../../auth/logout'; // [standalone]
 import { useAppShell as useWorkspaceAppShell } from '../../contexts/AppShellContext';
+import { useAppAuth } from '../../contexts/AppAuthContext';
 
 import AppHeader from './AppHeader';
 import AppSidebar from './AppSidebar';
@@ -63,15 +64,14 @@ type SelectableProject = {
 export default function AppLayout(): JSX.Element {
   const navigate = useNavigate();
   const location = useLocation();
+  const { logout } = useAppAuth();
   // [standalone] const { signOut } = useAuthContext();
 
   const {
     userName,
     userEmail,
 
-    organizations,
     currentOrganization,
-    setCurrentOrganization,
 
     projectsForCurrentOrganization,
     currentProject,
@@ -82,11 +82,7 @@ export default function AppLayout(): JSX.Element {
     error,
   } = useWorkspaceAppShell();
 
-  // [standalone] logout clears the stored token and reloads
-  const onLogout = () => {
-    sessionStorage.clear();
-    window.location.href = '/register-org';
-  };
+  const onLogout = useCallback(() => { void logout(); }, [logout]);
 
   const { state: shellState, actions: shellActions } = useOxygenAppShell({
     initialCollapsed: false,
@@ -103,24 +99,6 @@ export default function AppLayout(): JSX.Element {
 
   const [tabIndex, setTabIndex] = useState(0);
 
-  const organizationOptions: SelectableOrg[] = useMemo(() => {
-    if (Array.isArray(organizations) && organizations.length > 0)
-      return organizations.map((org) => ({
-        id: String(org.id),
-        name: org.name,
-        handle: org.handle,
-      }));
-    if (currentOrganization?.id)
-      return [
-        {
-          id: String(currentOrganization.id),
-          name: currentOrganization.name,
-          handle: currentOrganization.handle,
-        },
-      ];
-    return [];
-  }, [organizations, currentOrganization]);
-
   const projectOptions: SelectableProject[] = useMemo(() => {
     return Array.isArray(projectsForCurrentOrganization)
       ? projectsForCurrentOrganization.map((project) => ({
@@ -132,18 +110,9 @@ export default function AppLayout(): JSX.Element {
       : [];
   }, [projectsForCurrentOrganization]);
 
-  const [selectedOrgId, setSelectedOrgId] = useState<string>(
-    currentOrganization?.id ? String(currentOrganization.id) : ''
-  );
   const [selectedProjectId, setSelectedProjectId] = useState<string>(
     currentProject?.id ?? ''
   );
-
-  useEffect(() => {
-    setSelectedOrgId(
-      currentOrganization?.id ? String(currentOrganization.id) : ''
-    );
-  }, [currentOrganization?.id]);
 
   useEffect(() => {
     setSelectedProjectId(currentProject?.id ?? '');
@@ -368,7 +337,6 @@ export default function AppLayout(): JSX.Element {
           userName={userName ?? undefined}
           userEmail={userEmail ?? undefined}
           unreadCount={unreadCount}
-          organizationOptions={organizationOptions}
           currentOrganization={
             currentOrganization
               ? {
@@ -378,15 +346,6 @@ export default function AppLayout(): JSX.Element {
                 }
               : null
           }
-          setCurrentOrganization={async (org) => {
-            if (!org) return;
-            const matchedOrg = organizations.find(
-              (o) => String(o.id) === org.id
-            );
-            if (matchedOrg) {
-              await setCurrentOrganization(matchedOrg);
-            }
-          }}
           projectOptions={projectOptions}
           currentProject={currentProject}
           setCurrentProject={(p) => {
@@ -402,8 +361,6 @@ export default function AppLayout(): JSX.Element {
             }
           }}
           isProjectsLoading={isProjectsLoading}
-          selectedOrgId={selectedOrgId}
-          setSelectedOrgId={setSelectedOrgId}
           selectedProjectId={selectedProjectId}
           setSelectedProjectId={setSelectedProjectId}
           onLogout={onLogout}

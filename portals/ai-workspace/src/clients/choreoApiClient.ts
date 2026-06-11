@@ -23,7 +23,7 @@
 // All calls go to PLATFORM_API_BASE_URL (default: https://localhost:9243/api/v1).
 //
 // Token storage:
-//   sessionStorage.setItem('platform_auth_token', '<your-token>')
+//   localStorage.setItem('platform_auth_token', '<your-token>')
 // Run the STS service (sts/README.md) to obtain a token.
 // ============================================================================
 
@@ -36,40 +36,32 @@ export type { HttpMethod, ApiRequestConfig, GQLResponse };
 const TOKEN_KEY     = 'platform_auth_token';
 const ORG_TOKEN_KEY = 'platform_org_token';
 
-// TODO: [REMOVE BEFORE PRODUCTION] Hardcoded dev token — swap for real auth flow.
-// Used for ALL platform API calls (GET /organizations, GET /projects, proxies, gateways, …).
-// JWT `organization` claim: 770331ed-90ea-477a-b08f-a30f0a03853f
-const DEV_GET_ORG_TOKEN =
-  'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9' +
-  '.eyJpc3MiOiJPbmxpbmUgSldUIEJ1aWxkZXIiLCJpYXQiOjE3Njk0OTExNDUsImV4cCI6MTgwMTAyNzE0NSwiYXVkIjoid3d3LmV4YW1wbGUuY29tIiwic3ViIjoiamJvY2tldEBleGFtcGxlLmNvbSIsIm9yZ2FuaXphdGlvbiI6Ijc3MDMzMWVkLTkwZWEtNDc3YS1iMDhmLWEzMGYwYTAzODUzZiJ9' +
-  '.ylWxQypB6N0-6sFAG6axtfaqT-mZKum_0q_CjYDAHHw';
-
 /**
  * Token for all org-scoped workspace API calls (projects, proxies, gateways, …).
- * Falls back to DEV_GET_ORG_TOKEN so every call carries the correct `organization`
- * JWT claim that the platform API uses to scope results.
- * Priority: sessionStorage('platform_auth_token') → DEV_GET_ORG_TOKEN.
- * TODO: [REMOVE BEFORE PRODUCTION] Remove DEV_GET_ORG_TOKEN fallback.
+ * Returns an empty string when no token is available — unauthenticated requests
+ * will be rejected by the platform API with HTTP 401.
+ * Priority: localStorage('platform_auth_token') → ''.
  */
 export const getStoredToken = (): string =>
-  sessionStorage.getItem(TOKEN_KEY) ?? DEV_GET_ORG_TOKEN;
+  localStorage.getItem(TOKEN_KEY) ?? '';
 
 /**
  * Token specifically for GET /organizations — must have the registered org UUID
  * in the JWT `organization` claim so the platform API resolves the right org.
- * Priority: sessionStorage('platform_org_token') → DEV_GET_ORG_TOKEN.
- * TODO: [REMOVE BEFORE PRODUCTION] Remove DEV_GET_ORG_TOKEN fallback.
+ * Priority: localStorage('platform_org_token') → localStorage('platform_auth_token') → ''.
  */
 export const getOrgToken = (): string =>
-  sessionStorage.getItem(ORG_TOKEN_KEY) ?? DEV_GET_ORG_TOKEN;
+  localStorage.getItem(ORG_TOKEN_KEY) ??
+  localStorage.getItem(TOKEN_KEY) ??
+  '';
 
 /** Persist a bearer token for subsequent requests (overrides the dev fallback). */
 export const setStoredToken = (token: string) =>
-  sessionStorage.setItem(TOKEN_KEY, token);
+  localStorage.setItem(TOKEN_KEY, token);
 
 /** Clear the stored bearer token (falls back to DEV_FALLBACK_TOKEN until removed). */
 export const clearStoredToken = () =>
-  sessionStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem(TOKEN_KEY);
 
 // ---------------------------------------------------------------------------
 // No-op shim so existing call-sites that call setHttpRequestFn(httpRequest)

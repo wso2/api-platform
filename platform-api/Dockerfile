@@ -28,30 +28,29 @@ ARG GIT_COMMIT=unknown
 
 WORKDIR /build
 
-# Install build dependencies for SQLite (CGO requirement)
-# Install cross-compilation toolchains based on target architecture
+# CGO is required for mattn/go-sqlite3; install cross-compile toolchains.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     libc6-dev \
     libsqlite3-dev \
     && if [ "$TARGETARCH" = "amd64" ]; then \
-        apt-get install -y --no-install-recommends gcc-x86-64-linux-gnu libc6-dev-amd64-cross; \
-    elif [ "$TARGETARCH" = "arm64" ]; then \
-        apt-get install -y --no-install-recommends gcc-aarch64-linux-gnu libc6-dev-arm64-cross; \
-    fi \
+           apt-get install -y --no-install-recommends gcc-x86-64-linux-gnu libc6-dev-amd64-cross; \
+       elif [ "$TARGETARCH" = "arm64" ]; then \
+           apt-get install -y --no-install-recommends gcc-aarch64-linux-gnu libc6-dev-arm64-cross; \
+       fi \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy go mod files for dependencies (needed for go.mod replace directive)
-COPY --from=common go.mod go.sum /common/
+# Copy the shared common module.
+# go.mod contains: replace github.com/wso2/api-platform/common => ../../common
+# From WORKDIR /build, ../../common resolves to /common — copy it there.
+COPY common/ /common/
 
-COPY src/go.mod src/go.sum ./
+# Fetch dependencies before copying full source for better layer caching.
+COPY platform-api/src/go.mod platform-api/src/go.sum ./
 RUN go mod download
 
-COPY --from=common . /common
-COPY src/ ./
+COPY platform-api/src/ ./
 
-# Build the binary with CGO enabled (required for mattn/go-sqlite3)
-# Set CC for cross-compilation based on target architecture
 RUN if [ "$TARGETARCH" = "amd64" ]; then \
         export CC=x86_64-linux-gnu-gcc; \
     elif [ "$TARGETARCH" = "arm64" ]; then \
@@ -63,23 +62,22 @@ RUN if [ "$TARGETARCH" = "amd64" ]; then \
     GOOS=linux \
     GOARCH=${TARGETARCH} \
     go build -a \
-    -ldflags "-X main.Version=${VERSION} \
-              -X main.GitCommit=${GIT_COMMIT} \
-              -X main.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-    -o platform-api ./cmd/main.go
+        -ldflags "-X main.Version=${VERSION} -X main.GitCommit=${GIT_COMMIT}" \
+        -o platform-api ./cmd/main.go
 
-# Stage 2: Create minimal runtime image
-# Using Ubuntu 24.04 for glibc compatibility with builder stage
+###########################
+# Runtime Stage           #
+###########################
 FROM ubuntu:24.04
 
+ARG PORT
 ARG USERNAME=wso2
 ARG USER_UID=10001
 ARG USER_GID=$USER_UID
 
-# Install runtime dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates \
-    wget \
+        ca-certificates \
+        curl \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -88,23 +86,26 @@ RUN groupadd -g $USER_UID appgroup && \
     useradd -u $USER_UID -g appgroup -s /bin/bash -m $USERNAME
 
 COPY --from=builder /build/platform-api .
-RUN mkdir -p /app/data && \
-    chown -R wso2:appgroup /app
-COPY src/internal/database/schema.sql ./schema.sql
-COPY src/internal/database/schema.postgres.sql ./schema.postgres.sql
-COPY src/internal/database/schema.sqlite.sql ./schema.sqlite.sql
-COPY src/resources/default-llm-provider-templates ./default-llm-provider-templates
 
-ARG PORT
+# Schema files and LLM provider templates
+COPY platform-api/src/internal/database/schema.sql            ./schema.sql
+COPY platform-api/src/internal/database/schema.postgres.sql   ./schema.postgres.sql
+COPY platform-api/src/internal/database/schema.sqlite.sql     ./schema.sqlite.sql
+COPY platform-api/src/resources/default-llm-provider-templates ./default-llm-provider-templates
+
+RUN mkdir -p /app/data /app/data/certs && \
+    chown -R wso2:appgroup /app
+
 EXPOSE ${PORT}
 
-ENV DRIVER=sqlite3
 ENV LOG_LEVEL=INFO
+ENV PORT=${PORT}
+# SQLite defaults — override DATABASE_DRIVER / DATABASE_* for PostgreSQL
+ENV DATABASE_DRIVER=sqlite3
+ENV DATABASE_DB_PATH=/app/data/api_platform.db
 ENV DB_SCHEMA_PATH=./schema.sql
 ENV LLM_TEMPLATE_DEFINITIONS_PATH=./default-llm-provider-templates
-# For SQLite: configured via DATABASE_DB_PATH to avoid clashing with OS PATH
-ENV DATABASE_DB_PATH=/app/data/api_platform.db
-ENV PORT=${PORT}
+ENV TLS_CERT_DIR=/app/data/certs
 
 USER $USERNAME
 

@@ -1,152 +1,219 @@
-# AI WORKSPACE: PRODUCTION DOCUMENTATION
+# AI Workspace: Production Setup
 
-## US DEV
+This guide covers setting up Asgardeo as the identity provider and configuring both Platform API and AI Workspace for production use.
 
-### CHOREO COMPONENT LINK
-https://console.choreo.dev/organizations/apimsaas/projects/godzilla/components/ai-workspace/overview
+---
 
-### ASGARDEO INFO
-SP APP NAME: Bijira
-SP APP LOCATION: DEV-US-CENT
+## Quick Start: Basic Auth Mode (No IDP Required)
 
-### ENV CONFIGURATIONS IN CHOREO DEVOPS
-name: vite-envs
-```js
-VITE_DOMAIN = 'ai.preview-dv.bijira.dev'
+Basic auth mode lets you run the full stack locally without any external identity provider. The Platform API issues HMAC-signed JWTs directly after validating credentials against a built-in user list.
 
-VITE_ASGARDEO_SDK_RESOURCE_URLS = 'https://sts.preview-dv.choreo.dev|https://km.preview-dv.choreo.dev|https://apim.preview-dv.choreo.dev|https://id.dv.choreo.dev|https://consolev2.preview-dv.choreo.dev|https://app.preview-dv.choreo.dev|https://choreocontrolplane.preview-dv.choreo.dev|https://api.dev-central.ballerina.io|https://subscriptions.dv.wso2.com|https://apis.preview-dv.choreo.dev/projects/1.0.0/graphql|https://apis.preview-dv.choreo.dev/moesif-key/0.1.0|https://apis.preview-dv.choreo.dev/org-mgt/1.0.0/orgs|https://apis.preview-dv.choreo.dev/org-mgt/1.0.0|https://apis.preview-dv.choreo.dev/devwfmgt/v1.0|https://apis.preview-dv.choreo.dev/component-mgt/1.0.0|https://apis.preview-dv.choreo.dev/user-mgt/1.0.0|https://apis.preview-dv.choreo.dev/orgs/1.0.0|https://apis.preview-dv.choreo.dev/config-mgt/1.0.0/orgs|https://apis.preview-dv.choreo.dev/alert-configuration-service|https://apis.preview-dv.choreo.dev/devops/1.0.0|https://apis.preview-dv.choreo.dev/cio-query-api/1.0.0/query|https://apis.preview-dv.choreo.dev/cio-incident-configurator/1.0.0|https://apis.preview-dv.choreo.dev/crypto-key-service/0.1.0|https://apis.preview-dv.choreo.dev/custom-domain/1.0.0/orgs|https://apis.preview-dv.choreo.dev/onprem-key-mgt/1.0.0/orgs|https://apis.preview-dv.choreo.dev/audit-logging/1.0.0/orgs|https://apis.preview-dv.choreo.dev/component-utils/1.0.0|https://apis.preview-dv.choreo.dev/marketplace/0.1.0|https://apis.preview-dv.choreo.dev/user-store-mgt/v1.0|https://choreo-shared-choreo-samples-cdne.azureedge.net|https://apis.preview-dv.choreo.dev/platform-services/v1.0|https://apis.preview-dv.choreo.dev/code-challenge-eval/v1|https://apis.preview-dv.choreo.dev/authz-mgt/v1.0|https://apis.preview-dv.choreo.dev/config-svc/v1.0|https://apis.preview-dv.choreo.dev/config-mapping-svc/v1|https://apis.preview-dv.choreo.dev/connections/v1|https://apis.preview-dv.choreo.dev/component-creation|https://apis.preview-dv.choreo.dev/apim-appdev/v1.0|https://apis.preview-dv.choreo.dev/url-mgt/v1.0|https://apis.preview-dv.choreo.dev/declarative-api/v1.0|https://apis.preview-dv.choreo.dev/code-challenge/v1.0|https://apis.preview-dv.choreo.dev/governance/v1.0|https://apis.preview-dv.choreo.dev/choreo-appdev-sts-management-service/v1.0|https://apis.preview-dv.choreo.dev/api-key-service/v1.0|https://apis.preview-dv.choreo.dev/contract-service/1.0.0|https://apis.preview-dv.choreo.dev/oas-provider-service/1.0.0|https://apis.preview-dv.choreo.dev/architect-agent-api-design/v1.0|https://apis.preview-dv.choreo.dev/federation/v1|https://db720294-98fd-40f4-85a1-cc6a3b65bc9a-dev.e1-us-east-azure.choreoapis.dev/godzilla/ai-service-mock/v1.0'
+### Step 1 — Hash your password
 
-VITE_API_PLATFORM_API = 'https://db720294-98fd-40f4-85a1-cc6a3b65bc9a-dev.e1-us-east-azure.choreoapis.dev/godzilla/ai-service-mock/v1.0'
+Use any bcrypt tool at cost factor 10 or higher:
+
+```bash
+# Python (most systems)
+python3 -c "import bcrypt; print(bcrypt.hashpw(b'yourpassword', bcrypt.gensalt(10)).decode())"
+
+# htpasswd (Apache utils)
+htpasswd -bnBC 10 "" yourpassword | tr -d ':\n'
 ```
 
-## US STAGE
+> The output looks like `$2a$10$...` — this is the value for `password_hash` below.
 
-### CHOREO COMPONENT LINK
-https://console.choreo.dev/organizations/apimsaas/projects/godzilla/components/ai-workspace/overview
+### Step 2 — Configure the Platform API
 
-### ASGARDEO INFO
-SP APP NAME: Bijira
-SP APP LOCATION: STAGE-US-CENT
+Set these environment variables before starting the Platform API:
 
-### ENV CONFIGURATIONS IN CHOREO DEVOPS
-name: vite-envs
-```js
-VITE_DOMAIN = 'ai.preview-st.bijira.dev'
-VITE_CHOREO_SYSTEM_ORG = 'choreosystem'
+```bash
+# Enable basic-auth mode (disables IDP)
+export AUTH_BASIC_AUTH_ENABLED=true
 
-VITE_ASGARDEO_ORG_DOT = 'stage.'
-VITE_ASGARDEO_CLIENT_ID = 't0ExJyAuiRUcRyRH6bwQk_GIOMMa'
+# Organization seeded on first startup — pick any name and URL-safe handle
+export AUTH_BASIC_AUTH_ORGANIZATION_NAME="My Org"
+export AUTH_BASIC_AUTH_ORGANIZATION_HANDLE="my-org"
+export AUTH_BASIC_AUTH_ORGANIZATION_REGION="us"
 
-VITE_ASGARDEO_SDK_RESOURCE_URLS = 'https://sts.st.choreo.dev|https://km.st.choreo.dev|https://apim.st.choreo.dev|https://id.st.choreo.dev|https://app.st.choreo.dev|https://appv2.st.choreo.dev|https://choreocontrolplane.st.choreo.dev|https://api.staging-central.ballerina.io|https://subscriptions.st.wso2.com|https://apis.st.choreo.dev/projects/1.0.0/graphql|https://apis.st.choreo.dev/org-mgt/1.0.0/orgs|https://apis.st.choreo.dev/org-mgt/1.0.0|https://apis.st.choreo.dev/moesifkey/0.1.0|https://apis.st.choreo.dev/component-mgt/1.0.0|https://apis.st.choreo.dev/user-mgt/1.0.0|https://apis.st.choreo.dev/orgs/1.0.0|https://apis.st.choreo.dev/config-mgt/1.0.0/orgs|https://apis.st.choreo.dev/alert-configuration-service|https://apis.st.choreo.dev/devops/1.0.0|https://apis.st.choreo.dev/cio-query-api/1.0.0/query|https://apis.st.choreo.dev/cio-incident-configurator/1.0.0|https://apis.st.choreo.dev/crypto-key-service/0.1.0|https://apis.st.choreo.dev/custom-domain/1.0.0/orgs|https://apis.st.choreo.dev/onprem-key-mgt/1.0.0/orgs|https://apis.st.choreo.dev/audit-logging/v1.0|https://apis.st.choreo.dev/audit-logging/1.0.0/orgs|https://apis.st.choreo.dev/component-utils/1.0.0|https://apis.st.choreo.dev/marketplace/0.1.0|https://choreo-shared-choreo-samples-cdne.azureedge.net|https://apis.st.choreo.dev/config-svc/v1.0|https://apis.st.choreo.dev/config-mapping-svc/v1|https://apis.st.choreo.dev/platform-services/v1.0|https://apis.st.choreo.dev/user-mgt/1.0.0|https://apis.st.choreo.dev/authz-mgt/v1.0|https://apis.st.choreo.dev/apim-appdev/v1.0|https://apis.st.choreo.dev/user-store-mgt/v1.0|https://apis.st.choreo.dev/code-challenge-eval/v1|https://apis.st.choreo.dev/connections/v1|https://apis.st.choreo.dev/component-creation|https://apis.st.choreo.dev/url-mgt/v1.0|https://apis.st.choreo.dev/workflow-mgt/v1.0|https://apis.st.choreo.dev/declarative-api/v1.0|https://apis.st.choreo.dev/governance/v1.0|https://apis.st.choreo.dev/choreo-appdev-sts-management-service/v1.0|https://apis.st.choreo.dev/api-key-service/v1.0|https://apis.st.choreo.dev/copilotfeedbackcollector/v1.0|https://preview-st.devant.dev|https://apis.st.choreo.dev/oas-provider-service/1.0.0|https://apis.st.choreo.dev/contract-service/1.0.0|https://apis.st.choreo.dev/architect-agent-api-design/v1.0|https://apis.st.choreo.dev/federation/v1'
+# Built-in users — JSON array, scopes are space-separated
+# Replace <bcrypt-hash> with the hash from Step 1
+# Replace scopes with scopes you wish to assign for the user
+export AUTH_BASIC_AUTH_USERS='[{"username":"admin","password_hash":"<bcrypt-hash>","scopes":"ap:organization:read ap:organization:manage ap:organization:subscription:read ap:project:read ap:project:create ap:project:update ap:project:delete ap:project:manage ap:application:read ap:application:create ap:application:update ap:application:delete ap:application:manage ap:application:api_key:read ap:application:api_key:create ap:application:api_key:delete ap:application:api_key:manage ap:application:associations:read ap:application:associations:create ap:application:associations:delete ap:application:associations:manage ap:application:associations:api_key:read ap:gateway:read ap:gateway:create ap:gateway:update ap:gateway:delete ap:gateway:manage ap:gateway:token:read ap:gateway:token:create ap:gateway:token:delete ap:gateway:token:manage ap:gateway:policy:read ap:gateway:policy:create ap:gateway:policy:delete ap:gateway:policy:manage ap:gateway:artifacts:read ap:gateway:manifest:read ap:rest_api:read ap:rest_api:create ap:rest_api:update ap:rest_api:delete ap:rest_api:manage ap:rest_api:import ap:rest_api:gateway:read ap:rest_api:gateway:create ap:rest_api:gateway:manage ap:rest_api:deployment:read ap:rest_api:deployment:create ap:rest_api:deployment:delete ap:rest_api:deployment:manage ap:rest_api:deployment:undeploy ap:rest_api:deployment:restore ap:rest_api:api_key:read ap:rest_api:api_key:create ap:rest_api:api_key:update ap:rest_api:api_key:delete ap:rest_api:api_key:manage ap:rest_api:publication:read ap:rest_api:publication:create ap:rest_api:publication:delete ap:devportal:read ap:devportal:create ap:devportal:update ap:devportal:delete ap:devportal:manage ap:subscription:read ap:subscription:create ap:subscription:update ap:subscription:delete ap:subscription:manage ap:subscription_plan:read ap:subscription_plan:create ap:subscription_plan:update ap:subscription_plan:delete ap:subscription_plan:manage ap:llm_template:read ap:llm_template:create ap:llm_template:update ap:llm_template:delete ap:llm_template:manage ap:llm_provider:read ap:llm_provider:create ap:llm_provider:update ap:llm_provider:delete ap:llm_provider:manage ap:llm_provider:api_key:read ap:llm_provider:api_key:create ap:llm_provider:api_key:delete ap:llm_provider:api_key:manage ap:llm_provider:deployment:read ap:llm_provider:deployment:create ap:llm_provider:deployment:delete ap:llm_provider:deployment:manage ap:llm_provider:deployment:undeploy ap:llm_provider:deployment:restore ap:llm_proxy:read ap:llm_proxy:create ap:llm_proxy:update ap:llm_proxy:delete ap:llm_proxy:manage ap:llm_proxy:api_key:read ap:llm_proxy:api_key:create ap:llm_proxy:api_key:delete ap:llm_proxy:api_key:manage ap:llm_proxy:deployment:read ap:llm_proxy:deployment:create ap:llm_proxy:deployment:delete ap:llm_proxy:deployment:manage ap:llm_proxy:deployment:undeploy ap:llm_proxy:deployment:restore ap:mcp_proxy:read ap:mcp_proxy:create ap:mcp_proxy:update ap:mcp_proxy:delete ap:mcp_proxy:manage ap:mcp_proxy:deployment:read ap:mcp_proxy:deployment:create ap:mcp_proxy:deployment:delete ap:mcp_proxy:deployment:manage ap:mcp_proxy:deployment:undeploy ap:mcp_proxy:deployment:restore ap:websub_api:read ap:websub_api:create ap:websub_api:update ap:websub_api:delete ap:websub_api:manage ap:websub_api:api_key:read ap:websub_api:api_key:create ap:websub_api:api_key:delete ap:websub_api:api_key:manage ap:websub_api:api_key:update ap:websub_api:deployment:read ap:websub_api:deployment:create ap:websub_api:deployment:delete ap:websub_api:deployment:manage ap:websub_api:deployment:undeploy ap:websub_api:deployment:restore ap:websub_api:publication:read ap:websub_api:publication:create ap:websub_api:publication:delete ap:webbroker_api:read ap:webbroker_api:create ap:webbroker_api:update ap:webbroker_api:delete ap:webbroker_api:manage ap:webbroker_api:api_key:read ap:webbroker_api:api_key:create ap:webbroker_api:api_key:delete ap:webbroker_api:api_key:manage ap:webbroker_api:api_key:update ap:webbroker_api:deployment:read ap:webbroker_api:deployment:create ap:webbroker_api:deployment:delete ap:webbroker_api:deployment:manage ap:webbroker_api:deployment:undeploy ap:webbroker_api:deployment:restore ap:webbroker_api:publication:read ap:webbroker_api:publication:create ap:webbroker_api:publication:delete ap:git:read"}]'
 
-VITE_STS_CLIENT_ID = 'flP3bs_WRhNhLbfkhJjjkG7FWTka'
-VITE_STS_TOKEN_ENDPOINT = 'https://sts.st.choreo.dev:443/oauth2/token'
-VITE_STS_SCOPE = 'apim:api_create apim:api_manage apim:subscription_manage apim:tier_manage apim:admin apim:publisher_settings environments:view_prod environments:view_dev choreo:user_manage choreo:deployment_manage choreo:dev_env_manage choreo:prod_env_manage choreo:non_prod_env_manage choreo:component_manage choreo:project_manage choreo:project_view apim:api_publish apim:document_manage apim:api_settings apim:subscription_view apim:dcr:app_manage apim:environment_manage choreo:log_view_non_prod choreo:log_view_prod apim:subscribe urn:choreosystem:usermanagement:role_mapping_manage urn:choreosystem:usermanagement:role_mapping_view urn:choreosystem:usermanagement:role_mapping_create urn:choreosystem:usermanagement:role_mapping_update urn:choreosystem:usermanagement:role_mapping_delete urn:choreosystem:configmanagement:global_config_view urn:choreosystem:configmanagement:global_config_create urn:choreosystem:configmanagement:global_config_update urn:choreosystem:configmanagement:global_config_delete urn:choreosystem:configmanagement:global_config_manage urn:choreosystem:configmanagement:config_view urn:choreosystem:configmanagement:config_create urn:choreosystem:configmanagement:config_delete urn:choreosystem:configmanagement:config_manage urn:choreosystem:customdomainapi:custom_domain_view urn:choreosystem:customdomainapi:custom_domain_create urn:choreosystem:customdomainapi:custom_domain_update urn:choreosystem:customdomainapi:custom_domain_delete urn:choreosystem:customdomainapi:custom_domain_manage urn:choreosystem:usermanagement:role_view urn:choreosystem:usermanagement:role_create urn:choreosystem:usermanagement:role_update urn:choreosystem:usermanagement:role_delete urn:choreosystem:usermanagement:role_manage urn:choreosystem:usermanagement:role_manage urn:choreosystem:onpremkeymanagement:on_prem_key_view urn:choreosystem:onpremkeymanagement:on_prem_key_create urn:choreosystem:onpremkeymanagement:on_prem_key_delete urn:choreosystem:onpremkeymanagement:on_prem_key_update urn:choreosystem:onpremkeymanagement:on_prem_key_manage urn:choreosystem:organizationmanagement:theme_view urn:choreosystem:organizationmanagement:theme_create urn:choreosystem:organizationmanagement:theme_delete urn:choreosystem:organizationmanagement:theme_deploy urn:choreosystem:organizationmanagement:theme_manage urn:choreosystem:organizationmanagement:enterprise_login_config_view urn:choreosystem:organizationmanagement:enterprise_login_config_manage urn:choreosystem:organizationmanagement:self_signup_config_view urn:choreosystem:organizationmanagement:self_signup_config_update urn:choreosystem:organizationmanagement:self_signup_manage urn:choreosystem:organizationmanagement:self_signup_approval_view urn:choreosystem:organizationmanagement:self_signup_approval_update urn:choreosystem:usermanagement:user_manage urn:choreosystem:usermanagement:user_view urn:choreosystem:usermanagement:user_delete urn:choreosystem:usermanagement:user_update urn:choreosystem:usermanagement:permission_view urn:choreosystem:usermanagement:invitation_manage urn:choreosystem:usermanagement:invitation_view urn:choreosystem:usermanagement:invitation_send urn:choreosystem:usermanagement:invitation_delete urn:choreosystem:componentsmanagement:component_trigger urn:choreosystem:componentsmanagement:component_create urn:choreosystem:componentsmanagement:component_config_view urn:choreosystem:componentsmanagement:component_logs_view urn:choreosystem:componentsmanagement:component_init_view urn:choreosystem:componentsmanagement:component_file_view urn:choreosystem:componentsmanagement:component_manage urn:choreosystem:choreodevopsportalapi:deployment_manage urn:choreosystem:choreodevopsportalapi:component_manage apim:api_view apim:tier_view apim:api_generate_key urn:choreosystem:choreodevopsportalapi:deployment_view urn:choreosystem:choreoauditloggingapi:audit_logs_view urn:choreosystem:choreoauditloggingapi:audit_logs_manage urn:choreosystem:componentutils:component_manage urn:choreosystem:componentutils:component_file_view urn:choreosystem:componentutils:component_trigger urn:choreosystem:componentutils:component_logs_view urn:choreosystem:organizationapi:org_manage choreo:domain_manage choreo:domain_view choreo:url_mapping_manage choreo:url_mapping_approve choreo:url_mapping_view choreo:insights_org_view choreo:workflow_component_promotion_approve choreo:workflow_subscription_approve choreo:workflow_url_mapping_approve choreo:workflow_request choreo:platform_engineer choreo:env_manage choreo:log_view'
+# JWT signing key — the Platform API signs tokens with this; keep it secret
+export AUTH_JWT_SECRET_KEY="change-me-to-a-random-secret"
+export AUTH_JWT_ISSUER="platform-api"
 
-VITE_API_PROJECT_API = 'https://apis.st.choreo.dev/projects/1.0.0/graphql'
-VITE_API_ORG_MANAGEMENT = 'https://apis.st.choreo.dev/org-mgt/1.0.0'
-VITE_API_ORGANIZATION_API = 'https://apis.st.dev/orgs/1.0.0'
-VITE_API_COMPONENT_MANAGEMENT = 'https://apis.st.choreo.dev/component-mgt/1.0.0'
-VITE_API_USER_MANAGEMENT = 'https://apis.st.choreo.dev/user-mgt/1.0.0'
-VITE_API_DEVOPS = 'https://apis.st.choreo.dev/devops/1.0.0'
-VITE_API_PLATFORM_API = 'https://db720294-98fd-40f4-85a1-cc6a3b65bc9a-dev.e1-us-east-azure.choreoapis.dev/godzilla/ai-service-mock/v1.0'
+# Enforce scope checks on all protected routes
+export ENABLE_SCOPE_VALIDATION=true
+
+# Suppress the "JWT validation disabled" warning in local dev
+export DEV_MODE=true
 ```
 
-## US - PRODUCTION
+> **Multiple users:** add more objects to the JSON array, each with their own `username`, `password_hash`, and `scopes`.
 
-### CHOREO COMPONENT LINK
-https://console.choreo.dev/organizations/apimsaas/projects/godzilla/components/ai-workspace/overview
+### Step 3 — Configure the AI Workspace
 
-### ASGARDEO INFO
-SP APP NAME: Bijira
-SP APP LOCATION: PROD-US-CENT
+Create or edit `.env.local` in `portals/ai-workspace/`:
 
-### ENV CONFIGURATIONS IN CHOREO DEVOPS
-name: vite-envs
-```js
-VITE_DOMAIN = 'ai.bijira.dev'
-VITE_CHOREO_SYSTEM_ORG = 'choreosystem'
+```bash
+# Switch the frontend to basic-auth login mode
+VITE_AUTH_MODE=basic
 
-VITE_ASGARDEO_ORG_DOT = ''
-VITE_ASGARDEO_CLIENT_ID = 'oBnbNu4NfxcFLUMjfvOeRiCSGWga'
-
-VITE_ASGARDEO_SDK_RESOURCE_URLS = 'https://sts.choreo.dev|https://api.asgardeo.io|https://sts.preview.choreo.dev|https://apim.preview.choreo.dev|https://id.choreo.dev|https://console.preview.choreo.dev|https://console.choreo.dev|https://app.preview.choreo.dev|https://app.choreo.dev|https://choreocontrolplane.choreo.dev|https://choreocontrolplane.preview.choreo.dev|https://api.central.ballerina.io|https://subscriptions.wso2.com|https://apis.choreo.dev/projects/1.0.0/graphql|https://apis.choreo.dev/org-mgt/1.0.0/orgs|https://apis.choreo.dev/org-mgt/1.0.0|https://apis.choreo.dev/moesif-key/0.1.0|https://apis.choreo.dev/component-mgt/1.0.0|https://apis.choreo.dev/user-mgt/1.0.0|https://apis.choreo.dev/orgs/1.0.0|https://apis.choreo.dev/config-mgt/1.0.0/orgs|https://apis.choreo.dev/alert-configuration-service|https://apis.choreo.dev/devops/1.0.0|https://apis.choreo.dev/cio-query-api/1.0.0/query|https://apis.choreo.dev/cio-incident-configurator/1.0.0|https://apis.choreo.dev/crypto-key-service/0.1.0|https://apis.choreo.dev/custom-domain/1.0.0/orgs|https://apis.choreo.dev/onprem-key-mgt/1.0.0/orgs|https://apis.choreo.dev/audit-logging/v1.0|https://apis.choreo.dev/audit-logging/1.0.0/orgs|https://apis.choreo.dev/component-utils/1.0.0|https://apis.choreo.dev/marketplace/0.1.0|https://choreo-shared-choreo-samples-cdne.azureedge.net|https://apis.choreo.dev/config-svc/v1.0/configs/groups|https://apis.choreo.dev/config-mapping-svc/v1|https://apis.choreo.dev/platform-services/v1.0|https://apis.choreo.dev/connections/v1.0|https://apis.choreo.dev/authz-mgt/v1.0|https://apis.choreo.dev/apim-appdev/v1.0|https://apis.choreo.dev/user-store-mgt/v1.0|https://apis.choreo.dev/code-challenge-eval/v1|https://apis.choreo.dev/component-creation|https://apis.choreo.dev/url-mgt/v1.0|https://apis.choreo.dev/workflow-mgt/v1.0|https://apis.choreo.dev/declarative-api/v1.0|https://apis.choreo.dev/governance/v1.0|https://apis.choreo.dev/api-key-service/v1.0|https://apis.choreo.dev/choreo-appdev-sts-management-service/v1.0|https://apis.choreo.dev/copilotfeedbackcollector/v1.0|https://apis.choreo.dev/contract-service/1.0.0|https://apis.choreo.dev/oas-provider-service/1.0.0|https://apis.choreo.dev/architect-agent-api-design/v1.0|https://apis.choreo.dev/federation/v1'
-
-VITE_STS_CLIENT_ID = 'F8ytfAHD7bO3bpUdi2wlWEDqslwa'
-VITE_STS_TOKEN_ENDPOINT = 'https://sts.choreo.dev:443/oauth2/token'
-VITE_STS_SCOPE = 'apim:api_create apim:api_manage apim:subscription_manage apim:tier_manage apim:admin apim:publisher_settings environments:view_prod environments:view_dev choreo:user_manage choreo:deployment_manage choreo:dev_env_manage choreo:prod_env_manage choreo:non_prod_env_manage choreo:component_manage choreo:project_manage choreo:project_view apim:api_publish apim:document_manage apim:api_settings apim:subscription_view apim:dcr:app_manage apim:environment_manage choreo:log_view_non_prod choreo:log_view_prod apim:subscribe urn:choreosystem:usermanagement:role_mapping_manage urn:choreosystem:usermanagement:role_mapping_view urn:choreosystem:usermanagement:role_mapping_create urn:choreosystem:usermanagement:role_mapping_update urn:choreosystem:usermanagement:role_mapping_delete urn:choreosystem:configmanagement:global_config_view urn:choreosystem:configmanagement:global_config_create urn:choreosystem:configmanagement:global_config_update urn:choreosystem:configmanagement:global_config_delete urn:choreosystem:configmanagement:global_config_manage urn:choreosystem:configmanagement:config_view urn:choreosystem:configmanagement:config_create urn:choreosystem:configmanagement:config_delete urn:choreosystem:configmanagement:config_manage urn:choreosystem:customdomainapi:custom_domain_view urn:choreosystem:customdomainapi:custom_domain_create urn:choreosystem:customdomainapi:custom_domain_update urn:choreosystem:customdomainapi:custom_domain_delete urn:choreosystem:customdomainapi:custom_domain_manage urn:choreosystem:usermanagement:role_view urn:choreosystem:usermanagement:role_create urn:choreosystem:usermanagement:role_update urn:choreosystem:usermanagement:role_delete urn:choreosystem:usermanagement:role_manage urn:choreosystem:usermanagement:role_manage urn:choreosystem:onpremkeymanagement:on_prem_key_view urn:choreosystem:onpremkeymanagement:on_prem_key_create urn:choreosystem:onpremkeymanagement:on_prem_key_delete urn:choreosystem:onpremkeymanagement:on_prem_key_update urn:choreosystem:onpremkeymanagement:on_prem_key_manage urn:choreosystem:organizationmanagement:theme_view urn:choreosystem:organizationmanagement:theme_create urn:choreosystem:organizationmanagement:theme_delete urn:choreosystem:organizationmanagement:theme_deploy urn:choreosystem:organizationmanagement:theme_manage urn:choreosystem:organizationmanagement:enterprise_login_config_view urn:choreosystem:organizationmanagement:enterprise_login_config_manage urn:choreosystem:organizationmanagement:self_signup_config_view urn:choreosystem:organizationmanagement:self_signup_config_update urn:choreosystem:organizationmanagement:self_signup_manage urn:choreosystem:organizationmanagement:self_signup_approval_view urn:choreosystem:organizationmanagement:self_signup_approval_update urn:choreosystem:usermanagement:user_manage urn:choreosystem:usermanagement:user_view urn:choreosystem:usermanagement:user_delete urn:choreosystem:usermanagement:user_update urn:choreosystem:usermanagement:permission_view urn:choreosystem:usermanagement:invitation_manage urn:choreosystem:usermanagement:invitation_view urn:choreosystem:usermanagement:invitation_send urn:choreosystem:usermanagement:invitation_delete urn:choreosystem:componentsmanagement:component_trigger urn:choreosystem:componentsmanagement:component_create urn:choreosystem:componentsmanagement:component_config_view urn:choreosystem:componentsmanagement:component_logs_view urn:choreosystem:componentsmanagement:component_init_view urn:choreosystem:componentsmanagement:component_file_view urn:choreosystem:componentsmanagement:component_manage urn:choreosystem:choreodevopsportalapi:deployment_manage urn:choreosystem:choreodevopsportalapi:component_manage apim:api_view apim:tier_view apim:api_generate_key urn:choreosystem:choreodevopsportalapi:deployment_view urn:choreosystem:choreoauditloggingapi:audit_logs_view urn:choreosystem:choreoauditloggingapi:audit_logs_manage urn:choreosystem:componentutils:component_manage urn:choreosystem:componentutils:component_file_view urn:choreosystem:componentutils:component_trigger urn:choreosystem:componentutils:component_logs_view urn:choreosystem:organizationapi:org_manage choreo:domain_manage choreo:domain_view choreo:url_mapping_manage choreo:url_mapping_approve choreo:url_mapping_view choreo:insights_org_view choreo:workflow_component_promotion_approve choreo:workflow_subscription_approve choreo:workflow_url_mapping_approve choreo:workflow_request choreo:platform_engineer choreo:env_manage choreo:log_view'
-
-VITE_API_PROJECT_API = 'https://apis.choreo.dev/projects/1.0.0/graphql'
-VITE_API_ORG_MANAGEMENT = 'https://apis.choreo.dev/org-mgt/1.0.0'
-VITE_API_ORGANIZATION_API = 'https://apis.choreo.dev/orgs/1.0.0'
-VITE_API_COMPONENT_MANAGEMENT = 'https://apis.choreo.dev/component-mgt/1.0.0'
-VITE_API_USER_MANAGEMENT = 'https://apis.choreo.dev/user-mgt/1.0.0'
-VITE_API_DEVOPS = 'https://apis.choreo.dev/devops/1.0.0'
-VITE_API_PLATFORM_API = 'https://db720294-98fd-40f4-85a1-cc6a3b65bc9a-dev.e1-us-east-azure.choreoapis.dev/godzilla/ai-service-mock/v1.0'
+# Platform API URLs — defaults work when the API runs on localhost:9243
+VITE_PLATFORM_API_BASE_URL=https://localhost:9243/api/v1
+VITE_PORTAL_API_BASE_URL=https://localhost:9243/api/portal/v1
 ```
 
-## EU - DEV
+### Step 4 — Trust the self-signed certificate
 
-### CHOREO COMPONENT LINK
-TBU
+The Platform API generates a self-signed TLS certificate on first start. Browsers block `fetch()` to untrusted origins, which shows as "Failed to fetch" on the login page.
 
-### ASGARDEO INFO
-SP APP NAME: Bijira EU
-SP APP LOCATION: DEV-US-CENT
+Fix: open `https://localhost:9243/health` in your browser, click **Advanced → Proceed to localhost**, then return to the workspace. You only need to do this once per browser profile.
 
-### ENV CONFIGURATIONS IN CHOREO DEVOPS
-name: vite-envs
-```js
-VITE_DOMAIN = 'ai.dv.eu.bijira.dev'
-VITE_CHOREO_SYSTEM_ORG = 'choreosystem'
+### Step 5 — Start both services
 
-VITE_ASGARDEO_CLIENT_ID = 'Rtz46FnGYM9cPmnOGmfWzQE2fOwa'
+```bash
+# Terminal 1 — Platform API
+cd platform-api
+go run ./src/cmd/main.go        # or: make run
 
-VITE_ASGARDEO_SDK_RESOURCE_URLS = 'https://sts.dv.eu.choreo.dev|https://km.dv.eu.choreo.dev|https://apim.dv.eu.choreo.dev|https://id.dv.choreo.dev|https://consolev2.dv.eu.choreo.dev|https://app.dv.eu.choreo.dev|https://choreocontrolplane.dv.eu.choreo.dev|https://api.dev-central.ballerina.io|https://subscriptions.dv.eu.choreo.dev|https://apis.dv.eu.choreo.dev/projects/1.0.0/graphql|https://apis.dv.eu.choreo.dev/moesif-key/0.1.0|https://apis.dv.eu.choreo.dev/org-mgt/1.0.0/orgs|https://apis.dv.eu.choreo.dev/org-mgt/1.0.0|https://apis.dv.eu.choreo.dev/devwfmgt/v1.0|https://apis.dv.eu.choreo.dev/component-mgt/1.0.0|https://apis.dv.eu.choreo.dev/user-mgt/1.0.0|https://apis.dv.eu.choreo.dev/orgs/1.0.0|https://apis.dv.eu.choreo.dev/config-mgt/1.0.0/orgs|https://apis.dv.eu.choreo.dev/alert-configuration-service|https://apis.dv.eu.choreo.dev/devops/1.0.0|https://apis.dv.eu.choreo.dev/cio-query-api/1.0.0/query|https://apis.dv.eu.choreo.dev/cio-incident-configurator/1.0.0|https://apis.dv.eu.choreo.dev/crypto-key-service/0.1.0|https://apis.dv.eu.choreo.dev/custom-domain/1.0.0/orgs|https://apis.dv.eu.choreo.dev/onprem-key-mgt/1.0.0/orgs|https://apis.dv.eu.choreo.dev/audit-logging/1.0.0/orgs|https://apis.dv.eu.choreo.dev/component-utils/1.0.0|https://apis.dv.eu.choreo.dev/marketplace/0.1.0|https://apis.dv.eu.choreo.dev/user-store-mgt/v1.0|https://choreo-shared-choreo-samples-cdne.azureedge.net|https://apis.dv.eu.choreo.dev/platform-services/v1.0|https://apis.dv.eu.choreo.dev/code-challenge-eval/v1|https://apis.dv.eu.choreo.dev/authz-mgt/v1.0|https://apis.dv.eu.choreo.dev/config-svc/v1.0|https://apis.dv.eu.choreo.dev/config-mapping-svc/v1|https://apis.dv.eu.choreo.dev/connections/v1|https://apis.dv.eu.choreo.dev/component-creation|https://apis.dv.eu.choreo.dev/apim-appdev/v1.0|https://apis.dv.eu.choreo.dev/url-mgt/v1.0|https://apis.dv.eu.choreo.dev/declarative-api/v1.0|https://apis.dv.eu.choreo.dev/code-challenge/v1.0|https://apis.dv.eu.choreo.dev/governance/v1.0|https://apis.dv.eu.choreo.dev/choreo-appdev-sts-management-service/v1.0|https://apis.dv.eu.choreo.dev/api-key-service/v1.0|https://apis.dv.eu.choreo.dev/contract-service/1.0.0|https://apis.dv.eu.choreo.dev/oas-provider-service/1.0.0|https://apis.dv.eu.choreo.dev/architect-agent-api-design/v1.0|https://apis.dv.eu.choreo.dev/federation/v1.0'
-
-VITE_STS_CLIENT_ID = '_PHnUrkkKV5Sfvq5Yaxfmz8uvoYa'
-VITE_STS_TOKEN_ENDPOINT = 'https://sts.dv.eu.choreo.dev:443/oauth2/token'
-VITE_STS_SCOPE = 'apim:api_create apim:api_manage apim:subscription_manage apim:tier_manage apim:admin apim:publisher_settings environments:view_prod environments:view_dev choreo:user_manage choreo:deployment_manage choreo:dev_env_manage choreo:prod_env_manage choreo:non_prod_env_manage choreo:component_manage choreo:project_manage choreo:project_view apim:api_publish apim:document_manage apim:api_settings apim:subscription_view apim:dcr:app_manage apim:environment_manage choreo:log_view_non_prod choreo:log_view_prod apim:subscribe urn:choreosystem:usermanagement:role_mapping_manage urn:choreosystem:usermanagement:role_mapping_view urn:choreosystem:usermanagement:role_mapping_create urn:choreosystem:usermanagement:role_mapping_update urn:choreosystem:usermanagement:role_mapping_delete urn:choreosystem:configmanagement:global_config_view urn:choreosystem:configmanagement:global_config_create urn:choreosystem:configmanagement:global_config_update urn:choreosystem:configmanagement:global_config_delete urn:choreosystem:configmanagement:global_config_manage urn:choreosystem:configmanagement:config_view urn:choreosystem:configmanagement:config_create urn:choreosystem:configmanagement:config_delete urn:choreosystem:configmanagement:config_manage urn:choreosystem:customdomainapi:custom_domain_view urn:choreosystem:customdomainapi:custom_domain_create urn:choreosystem:customdomainapi:custom_domain_update urn:choreosystem:customdomainapi:custom_domain_delete urn:choreosystem:customdomainapi:custom_domain_manage urn:choreosystem:usermanagement:role_view urn:choreosystem:usermanagement:role_create urn:choreosystem:usermanagement:role_update urn:choreosystem:usermanagement:role_delete urn:choreosystem:usermanagement:role_manage urn:choreosystem:usermanagement:role_manage urn:choreosystem:onpremkeymanagement:on_prem_key_view urn:choreosystem:onpremkeymanagement:on_prem_key_create urn:choreosystem:onpremkeymanagement:on_prem_key_delete urn:choreosystem:onpremkeymanagement:on_prem_key_update urn:choreosystem:onpremkeymanagement:on_prem_key_manage urn:choreosystem:organizationmanagement:theme_view urn:choreosystem:organizationmanagement:theme_create urn:choreosystem:organizationmanagement:theme_delete urn:choreosystem:organizationmanagement:theme_deploy urn:choreosystem:organizationmanagement:theme_manage urn:choreosystem:organizationmanagement:enterprise_login_config_view urn:choreosystem:organizationmanagement:enterprise_login_config_manage urn:choreosystem:organizationmanagement:self_signup_config_view urn:choreosystem:organizationmanagement:self_signup_config_update urn:choreosystem:organizationmanagement:self_signup_manage urn:choreosystem:organizationmanagement:self_signup_approval_view urn:choreosystem:organizationmanagement:self_signup_approval_update urn:choreosystem:usermanagement:user_manage urn:choreosystem:usermanagement:user_view urn:choreosystem:usermanagement:user_delete urn:choreosystem:usermanagement:user_update urn:choreosystem:usermanagement:permission_view urn:choreosystem:usermanagement:invitation_manage urn:choreosystem:usermanagement:invitation_view urn:choreosystem:usermanagement:invitation_send urn:choreosystem:usermanagement:invitation_delete urn:choreosystem:componentsmanagement:component_trigger urn:choreosystem:componentsmanagement:component_create urn:choreosystem:componentsmanagement:component_config_view urn:choreosystem:componentsmanagement:component_logs_view urn:choreosystem:componentsmanagement:component_init_view urn:choreosystem:componentsmanagement:component_file_view urn:choreosystem:componentsmanagement:component_manage urn:choreosystem:choreodevopsportalapi:deployment_manage urn:choreosystem:choreodevopsportalapi:component_manage apim:api_view apim:tier_view apim:api_generate_key urn:choreosystem:choreodevopsportalapi:deployment_view urn:choreosystem:choreoauditloggingapi:audit_logs_view urn:choreosystem:choreoauditloggingapi:audit_logs_manage urn:choreosystem:componentutils:component_manage urn:choreosystem:componentutils:component_file_view urn:choreosystem:componentutils:component_trigger urn:choreosystem:componentutils:component_logs_view urn:choreosystem:organizationapi:org_manage choreo:domain_manage choreo:domain_view choreo:url_mapping_manage choreo:url_mapping_approve choreo:url_mapping_view choreo:insights_org_view choreo:workflow_component_promotion_approve choreo:workflow_subscription_approve choreo:workflow_url_mapping_approve choreo:workflow_request choreo:platform_engineer'
-
-VITE_API_PROJECT_API = 'https://apis.dv.eu.choreo.dev/projects/1.0.0/graphql'
-VITE_API_ORG_MANAGEMENT = 'https://apis.dv.eu.choreo.dev/org-mgt/1.0.0'
-VITE_API_ORGANIZATION_API = 'https://apis.dv.eu.choreo.dev/orgs/1.0.0'
-VITE_API_COMPONENT_MANAGEMENT = 'https://apis.dv.eu.choreo.dev/component-mgt/1.0.0'
-VITE_API_USER_MANAGEMENT = 'https://apis.dv.eu.choreo.dev/user-mgt/1.0.0'
-VITE_API_DEVOPS = 'https://apis.dv.eu.choreo.dev/devops/1.0.0'
-VITE_API_PLATFORM_API = 'https://db720294-98fd-40f4-85a1-cc6a3b65bc9a-dev.e1-us-east-azure.choreoapis.dev/godzilla/ai-service-mock/v1.0'
+# Terminal 2 — AI Workspace
+cd portals/ai-workspace
+pnpm dev                        # or: npm run dev
 ```
 
-### EU - PRODUCTION
+Navigate to `https://localhost:3009` (or whichever port Vite prints) and sign in with the username and password you configured in Step 1.
 
-### CHOREO COMPONENT LINK
-TBU
+---
 
-### ASGARDEO INFO
-SP APP NAME: Bijira
-SP APP LOCATION: PROD-EU-CENT
+## 1. Configure Asgardeo IDP
 
-### ENV CONFIGURATIONS IN CHOREO DEVOPS
-name: vite-envs
-```js
-VITE_DOMAIN = 'ai.eu.bijira.dev'
-VITE_CHOREO_SYSTEM_ORG = 'choreosystem'
+### 1.1 Root Organization
 
-VITE_ASGARDEO_ORG_DOT = ''
-VITE_ASGARDEO_URI = 'eu.asgardeo.io'
-VITE_ASGARDEO_CLIENT_ID = 'BBNn_LAbmOnDCYBGi3ucJfOMuVga'
+1. Log in to [https://console.asgardeo.io](https://console.asgardeo.io).
+2. Create your root organization (e.g. `default`).
+3. If multi-tenancy is needed, create sub-organizations at:
+   `https://console.asgardeo.io/t/<root-org>/app/organizations`
 
-VITE_ASGARDEO_SDK_RESOURCE_URLS = 'https://sts.eu.choreo.dev|https://api.eu.asgardeo.io|https://sts.preview.eu.choreo.dev|https://apim.preview.eu.choreo.dev|https://id.eu.choreo.dev|https://console.preview.eu.choreo.dev|https://console.eu.choreo.dev|https://app.preview.eu.choreo.dev|https://app.eu.choreo.dev|https://choreocontrolplane.eu.choreo.dev|https://choreocontrolplane.preview.eu.choreo.dev|https://api.central.ballerina.io|https://subscriptions.eu.wso2.com|https://apis.eu.choreo.dev/projects/1.0.0/graphql|https://apis.eu.choreo.dev/org-mgt/1.0.0/orgs|https://apis.eu.choreo.dev/org-mgt/1.0.0|https://apis.eu.choreo.dev/moesif-key/0.1.0|https://apis.eu.choreo.dev/component-mgt/1.0.0|https://apis.eu.choreo.dev/user-mgt/1.0.0|https://apis.eu.choreo.dev/orgs/1.0.0|https://apis.eu.choreo.dev/config-mgt/1.0.0/orgs|https://apis.eu.choreo.dev/alert-configuration-service|https://apis.eu.choreo.dev/devops/1.0.0|https://apis.eu.choreo.dev/cio-query-api/1.0.0/query|https://apis.eu.choreo.dev/cio-incident-configurator/1.0.0|https://apis.eu.choreo.dev/crypto-key-service/0.1.0|https://apis.eu.choreo.dev/custom-domain/1.0.0/orgs|https://apis.eu.choreo.dev/onprem-key-mgt/1.0.0/orgs|https://apis.eu.choreo.dev/audit-logging/v1.0|https://apis.eu.choreo.dev/audit-logging/1.0.0/orgs|https://apis.eu.choreo.dev/component-utils/1.0.0|https://apis.eu.choreo.dev/marketplace/0.1.0|https://choreo-shared-choreo-samples-cdne.azureedge.net|https://apis.eu.choreo.dev/config-svc/v1.0/configs/groups|https://apis.eu.choreo.dev/config-mapping-svc/v1|https://apis.eu.choreo.dev/platform-services/v1.0|https://apis.eu.choreo.dev/connections/v1.0|https://apis.eu.choreo.dev/authz-mgt/v1.0|https://apis.eu.choreo.dev/apim-appdev/v1.0|https://apis.eu.choreo.dev/user-store-mgt/v1.0|https://apis.eu.choreo.dev/code-challenge-eval/v1|https://apis.eu.choreo.dev/component-creation|https://apis.eu.choreo.dev/url-mgt/v1.0|https://apis.eu.choreo.dev/workflow-mgt/v1.0|https://apis.eu.choreo.dev/declarative-api/v1.0|https://apis.eu.choreo.dev/governance/v1.0|https://apis.eu.choreo.dev/api-key-service/v1.0|https://apis.eu.choreo.dev/choreo-appdev-sts-management-service/v1.0|https://apis.eu.choreo.dev/copilotfeedbackcollector/v1.0|https://apis.eu.choreo.dev/contract-service/1.0.0|https://apis.eu.choreo.dev/oas-provider-service/1.0.0|https://apis.eu.choreo.dev/architect-agent-api-design/v1.0|https://apis.eu.choreo.dev/federation/v1'
+### 1.2 AI Workspace Application (Single-Page Application)
 
-VITE_STS_CLIENT_ID = 'godzillafb27193ab6e0bb48f'
-VITE_STS_TOKEN_ENDPOINT = 'https://sts.eu.choreo.dev:443/oauth2/token'
-VITE_STS_SCOPE = 'apim:api_create apim:api_manage apim:subscription_manage apim:tier_manage apim:admin apim:publisher_settings environments:view_prod environments:view_dev choreo:user_manage choreo:deployment_manage choreo:dev_env_manage choreo:prod_env_manage choreo:non_prod_env_manage choreo:component_manage choreo:project_manage choreo:project_view apim:api_publish apim:document_manage apim:api_settings apim:subscription_view apim:dcr:app_manage apim:environment_manage choreo:log_view_non_prod choreo:log_view_prod apim:subscribe urn:choreosystem:usermanagement:role_mapping_manage urn:choreosystem:usermanagement:role_mapping_view urn:choreosystem:usermanagement:role_mapping_create urn:choreosystem:usermanagement:role_mapping_update urn:choreosystem:usermanagement:role_mapping_delete urn:choreosystem:configmanagement:global_config_view urn:choreosystem:configmanagement:global_config_create urn:choreosystem:configmanagement:global_config_update urn:choreosystem:configmanagement:global_config_delete urn:choreosystem:configmanagement:global_config_manage urn:choreosystem:configmanagement:config_view urn:choreosystem:configmanagement:config_create urn:choreosystem:configmanagement:config_delete urn:choreosystem:configmanagement:config_manage urn:choreosystem:customdomainapi:custom_domain_view urn:choreosystem:customdomainapi:custom_domain_create urn:choreosystem:customdomainapi:custom_domain_update urn:choreosystem:customdomainapi:custom_domain_delete urn:choreosystem:customdomainapi:custom_domain_manage urn:choreosystem:usermanagement:role_view urn:choreosystem:usermanagement:role_create urn:choreosystem:usermanagement:role_update urn:choreosystem:usermanagement:role_delete urn:choreosystem:usermanagement:role_manage urn:choreosystem:usermanagement:role_manage urn:choreosystem:onpremkeymanagement:on_prem_key_view urn:choreosystem:onpremkeymanagement:on_prem_key_create urn:choreosystem:onpremkeymanagement:on_prem_key_delete urn:choreosystem:onpremkeymanagement:on_prem_key_update urn:choreosystem:onpremkeymanagement:on_prem_key_manage urn:choreosystem:organizationmanagement:theme_view urn:choreosystem:organizationmanagement:theme_create urn:choreosystem:organizationmanagement:theme_delete urn:choreosystem:organizationmanagement:theme_deploy urn:choreosystem:organizationmanagement:theme_manage urn:choreosystem:organizationmanagement:enterprise_login_config_view urn:choreosystem:organizationmanagement:enterprise_login_config_manage urn:choreosystem:organizationmanagement:self_signup_config_view urn:choreosystem:organizationmanagement:self_signup_config_update urn:choreosystem:organizationmanagement:self_signup_manage urn:choreosystem:organizationmanagement:self_signup_approval_view urn:choreosystem:organizationmanagement:self_signup_approval_update urn:choreosystem:usermanagement:user_manage urn:choreosystem:usermanagement:user_view urn:choreosystem:usermanagement:user_delete urn:choreosystem:usermanagement:user_update urn:choreosystem:usermanagement:permission_view urn:choreosystem:usermanagement:invitation_manage urn:choreosystem:usermanagement:invitation_view urn:choreosystem:usermanagement:invitation_send urn:choreosystem:usermanagement:invitation_delete urn:choreosystem:componentsmanagement:component_trigger urn:choreosystem:componentsmanagement:component_create urn:choreosystem:componentsmanagement:component_config_view urn:choreosystem:componentsmanagement:component_logs_view urn:choreosystem:componentsmanagement:component_init_view urn:choreosystem:componentsmanagement:component_file_view urn:choreosystem:componentsmanagement:component_manage urn:choreosystem:choreodevopsportalapi:deployment_manage urn:choreosystem:choreodevopsportalapi:component_manage apim:api_view apim:tier_view apim:api_generate_key urn:choreosystem:choreodevopsportalapi:deployment_view urn:choreosystem:choreoauditloggingapi:audit_logs_view urn:choreosystem:choreoauditloggingapi:audit_logs_manage urn:choreosystem:componentutils:component_manage urn:choreosystem:componentutils:component_file_view urn:choreosystem:componentutils:component_trigger urn:choreosystem:componentutils:component_logs_view urn:choreosystem:organizationapi:org_manage choreo:domain_manage choreo:domain_view choreo:url_mapping_manage choreo:url_mapping_approve choreo:url_mapping_view choreo:insights_org_view choreo:workflow_component_promotion_approve choreo:workflow_subscription_approve choreo:workflow_url_mapping_approve choreo:workflow_request choreo:platform_engineer'
+1. Create a **Single-Page Application** named `AI Workspace` in root organization.
+2. Add authorized redirect URLs (e.g. `https://<your-domain>/signin`).
+3. Enable **Share with all organizations**.
+4. In the **Protocol** tab, set **Access Token Type** to `JWT`.
+5. In the **Login Flow** tab, remove Username/Password and set **SSO Authentication**.
+6. In the **User Attributes** tab, add the following attributes to the token:
+   - `username`
+   - `given_name`
+   - `family_name`
+   - `roles`
+   - `email`
+   - `scope` (see section 1.3)
 
-VITE_API_PROJECT_API = 'https://apis.eu.choreo.dev/projects/1.0.0/graphql'
-VITE_API_ORG_MANAGEMENT = 'https://apis.eu.choreo.dev/org-mgt/1.0.0'
-VITE_API_ORGANIZATION_API = 'https://apis.eu.choreo.dev/orgs/1.0.0'
-VITE_API_COMPONENT_MANAGEMENT = 'https://apis.eu.choreo.dev/component-mgt/1.0.0'
-VITE_API_USER_MANAGEMENT = 'https://apis.eu.choreo.dev/user-mgt/1.0.0'
-VITE_API_DEVOPS = 'https://apis.eu.choreo.dev/devops/1.0.0'
-VITE_API_PLATFORM_API = 'https://db720294-98fd-40f4-85a1-cc6a3b65bc9a-dev.e1-us-east-azure.choreoapis.dev/godzilla/ai-service-mock/v1.0'
+### 1.3 Custom User Attributes
+
+Create the following custom user attributes at:
+`https://console.asgardeo.io/t/<root-org>/app/attributes`
+
+| Attribute Name | Purpose                            |
+|----------------|------------------------------------|
+| `scope`        | OAuth2 scopes granted to the user  |
+
+Then add OIDC scope mappings at:
+`https://console.asgardeo.io/t/<root-org>/app/oidc-scopes`
+
+### 1.4 System Application (for Scope Registration)
+
+1. Create a new **OIDC Application** and label it as the system application.
+2. Add the following API resources to the system application:
+   - **API Resource Management API**
+   - **Application Management API**
+3. Run the scope registration script to create the Platform API resource and all `ap:*` scopes in Asgardeo:
+
+   ```bash
+   ASGARDEO_TENANT=<your-tenant> \
+   ASGARDEO_CLIENT_ID=<system-app-client-id> \
+   ASGARDEO_CLIENT_SECRET=<system-app-client-secret> \
+   ASGARDEO_RESOURCE_IDENTIFIER=https://<platform-api-host> \
+   ./scripts/register_asgardeo_scopes.sh
+   ```
+
+   The script defaults (`ASGARDEO_RESOURCE_IDENTIFIER=https://localhost:9243`) work for local development.
+
+### 1.5 Link Scopes to the AI Workspace Application
+
+1. In the AI Workspace application, add the API resource created in step 1.4.
+2. Create an application role (e.g. `ap_admin`) and assign the `ap:*` scopes to it.
+
+### 1.6 Sub-Organization Users
+
+In each sub-organization:
+
+1. Register users.
+2. Assign the shared `ap_admin` role to users.
+
+---
+
+## 2. Platform API Environment Variables
+
+> **Note:** Asgardeo uses `org_id` as the JWT claim for the organization UUID. The Platform API defaults to `organization`, so the mapping overrides below are required.
+
+```bash
+# Enable JWKS-based IDP authentication (disables local JWT mode)
+export AUTH_IDP_ENABLED=true
+export AUTH_IDP_NAME="asgardeo"
+
+# Replace <your-tenant> with your Asgardeo root organization name
+export AUTH_IDP_JWKS_URL="https://api.asgardeo.io/t/<your-tenant>/oauth2/jwks"
+export AUTH_IDP_ISSUER="https://api.asgardeo.io/t/<your-tenant>/oauth2/token"
+
+# Client ID of the AI Workspace application (from Asgardeo Protocol tab)
+export AUTH_IDP_AUDIENCE="<ai-workspace-client-id>"
+
+# Asgardeo-specific claim name overrides
+export AUTH_IDP_ORGANIZATION_CLAIM_NAME="org_id"
+export AUTH_IDP_ORG_NAME_CLAIM_NAME="org_name"
+export AUTH_IDP_ORG_HANDLE_CLAIM_NAME="org_handle"
+
+export ENABLE_SCOPE_VALIDATION=true
 ```
+
+Optional overrides (defaults shown):
+
+```bash
+export AUTH_IDP_VALIDATION_MODE="scope"        # or "role" for role-based auth
+export AUTH_IDP_USER_ID_CLAIM_NAME="sub"
+export AUTH_IDP_USERNAME_CLAIM_NAME="username"
+export AUTH_IDP_EMAIL_CLAIM_NAME="email"
+export AUTH_IDP_SCOPE_CLAIM_NAME="scope"
+```
+
+---
+
+## 3. AI Workspace Environment Variables
+
+> These can be set as environment variables or in a `.env.local` file at the project root.
+
+```bash
+# OIDC authority (issuer URL — OIDC discovery runs from {authority}/.well-known/openid-configuration)
+export VITE_OIDC_AUTHORITY="https://api.asgardeo.io/t/<your-tenant>/oauth2/token"
+
+# Client ID of the AI Workspace SPA (from Asgardeo Protocol tab)
+export VITE_OIDC_CLIENT_ID="<ai-workspace-client-id>"
+
+# Redirect URIs — must match the authorized URLs set in Asgardeo
+export VITE_OIDC_REDIRECT_URI="https://<your-domain>/signin"
+export VITE_OIDC_POST_LOGOUT_REDIRECT_URI="https://<your-domain>/login"
+
+# Platform API base URL
+export VITE_PLATFORM_API_BASE_URL="https://<platform-api-host>/api/v1"
+
+# JWT claim name overrides — must match AUTH_IDP_*_CLAIM_NAME values in Platform API
+export VITE_OIDC_ORG_ID_CLAIM="org_id"
+export VITE_OIDC_ORG_NAME_CLAIM="org_name"
+export VITE_OIDC_ORG_HANDLE_CLAIM="org_handle"
+```
+
+For local development (`VITE_PLATFORM_API_BASE_URL` default: `https://localhost:9243/api/v1`).

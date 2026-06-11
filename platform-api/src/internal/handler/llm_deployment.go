@@ -138,7 +138,7 @@ func (h *LLMProviderDeploymentHandler) DeployLLMProvider(c *gin.Context) {
 	c.JSON(http.StatusCreated, deployment)
 }
 
-// UndeployLLMProviderDeployment handles POST /api/v1/llm-providers/:id/deployments/undeploy
+// UndeployLLMProviderDeployment handles POST /api/v1/llm-providers/:id/deployments/:deploymentId/undeploy
 func (h *LLMProviderDeploymentHandler) UndeployLLMProviderDeployment(c *gin.Context) {
 	orgId, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {
@@ -148,14 +148,11 @@ func (h *LLMProviderDeploymentHandler) UndeployLLMProviderDeployment(c *gin.Cont
 	}
 
 	providerId := c.Param("id")
-	var params api.UndeployLLMProviderDeploymentParams
-	if err := c.ShouldBindQuery(&params); err != nil {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))
-		return
+	deploymentId := c.Param("deploymentId")
+	if deploymentId == "" {
+		deploymentId = c.Query("deploymentId")
 	}
-
-	deploymentId := params.DeploymentId
-	gatewayId := params.GatewayId
+	gatewayId := c.Query("gatewayId")
 
 	if providerId == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
@@ -195,7 +192,7 @@ func (h *LLMProviderDeploymentHandler) UndeployLLMProviderDeployment(c *gin.Cont
 	c.JSON(http.StatusOK, deployment)
 }
 
-// RestoreLLMProviderDeployment handles POST /api/v1/llm-providers/:id/deployments/restore
+// RestoreLLMProviderDeployment handles POST /api/v1/llm-providers/:id/deployments/:deploymentId/restore
 func (h *LLMProviderDeploymentHandler) RestoreLLMProviderDeployment(c *gin.Context) {
 	orgId, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {
@@ -205,14 +202,11 @@ func (h *LLMProviderDeploymentHandler) RestoreLLMProviderDeployment(c *gin.Conte
 	}
 
 	providerId := c.Param("id")
-	var params api.RestoreLLMProviderDeploymentParams
-	if err := c.ShouldBindQuery(&params); err != nil {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))
-		return
+	deploymentId := c.Param("deploymentId")
+	if deploymentId == "" {
+		deploymentId = c.Query("deploymentId")
 	}
-
-	deploymentId := params.DeploymentId
-	gatewayId := params.GatewayId
+	gatewayId := c.Query("gatewayId")
 
 	if providerId == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
@@ -404,6 +398,9 @@ func (h *LLMProviderDeploymentHandler) RegisterRoutes(r *gin.Engine) {
 	providerGroup := r.Group("/api/v1/llm-providers/:id")
 	{
 		providerGroup.POST("/deployments", h.DeployLLMProvider)
+		providerGroup.POST("/deployments/:deploymentId/undeploy", h.UndeployLLMProviderDeployment)
+		providerGroup.POST("/deployments/:deploymentId/restore", h.RestoreLLMProviderDeployment)
+		// Deprecated paths — kept for backward compatibility.
 		providerGroup.POST("/deployments/undeploy", h.UndeployLLMProviderDeployment)
 		providerGroup.POST("/deployments/restore", h.RestoreLLMProviderDeployment)
 		providerGroup.GET("/deployments", h.GetLLMProviderDeployments)
@@ -492,7 +489,7 @@ func (h *LLMProxyDeploymentHandler) DeployLLMProxy(c *gin.Context) {
 	c.JSON(http.StatusCreated, deployment)
 }
 
-// UndeployLLMProxyDeployment handles POST /api/v1/llm-proxies/:id/deployments/undeploy
+// UndeployLLMProxyDeployment handles POST /api/v1/llm-proxies/:id/deployments/:deploymentId/undeploy
 func (h *LLMProxyDeploymentHandler) UndeployLLMProxyDeployment(c *gin.Context) {
 	orgId, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {
@@ -502,14 +499,11 @@ func (h *LLMProxyDeploymentHandler) UndeployLLMProxyDeployment(c *gin.Context) {
 	}
 
 	proxyId := c.Param("id")
-	var params api.UndeployLLMProxyDeploymentParams
-	if err := c.ShouldBindQuery(&params); err != nil {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))
-		return
+	deploymentId := c.Param("deploymentId")
+	if deploymentId == "" {
+		deploymentId = c.Query("deploymentId")
 	}
-
-	deploymentId := params.DeploymentId
-	gatewayId := params.GatewayId
+	gatewayId := c.Query("gatewayId")
 
 	if proxyId == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
@@ -549,7 +543,7 @@ func (h *LLMProxyDeploymentHandler) UndeployLLMProxyDeployment(c *gin.Context) {
 	c.JSON(http.StatusOK, deployment)
 }
 
-// RestoreLLMProxyDeployment handles POST /api/v1/llm-proxies/:id/deployments/restore
+// RestoreLLMProxyDeployment handles POST /api/v1/llm-proxies/:id/deployments/:deploymentId/restore
 func (h *LLMProxyDeploymentHandler) RestoreLLMProxyDeployment(c *gin.Context) {
 	orgId, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {
@@ -559,14 +553,11 @@ func (h *LLMProxyDeploymentHandler) RestoreLLMProxyDeployment(c *gin.Context) {
 	}
 
 	proxyId := c.Param("id")
-	var params api.RestoreLLMProxyDeploymentParams
-	if err := c.ShouldBindQuery(&params); err != nil {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))
-		return
+	deploymentId := c.Param("deploymentId")
+	if deploymentId == "" {
+		deploymentId = c.Query("deploymentId")
 	}
-
-	deploymentId := params.DeploymentId
-	gatewayId := params.GatewayId
+	gatewayId := c.Query("gatewayId")
 
 	if proxyId == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
@@ -758,6 +749,9 @@ func (h *LLMProxyDeploymentHandler) RegisterRoutes(r *gin.Engine) {
 	proxyGroup := r.Group("/api/v1/llm-proxies/:id")
 	{
 		proxyGroup.POST("/deployments", h.DeployLLMProxy)
+		proxyGroup.POST("/deployments/:deploymentId/undeploy", h.UndeployLLMProxyDeployment)
+		proxyGroup.POST("/deployments/:deploymentId/restore", h.RestoreLLMProxyDeployment)
+		// Deprecated paths — kept for backward compatibility.
 		proxyGroup.POST("/deployments/undeploy", h.UndeployLLMProxyDeployment)
 		proxyGroup.POST("/deployments/restore", h.RestoreLLMProxyDeployment)
 		proxyGroup.GET("/deployments", h.GetLLMProxyDeployments)

@@ -38,7 +38,8 @@ import {
   LLMProvidersProvider,
   useLLMProviders,
 } from '../../../../contexts/llmProvider';
-import { useRole } from '../../../../contexts/RoleContext';
+import { useAppAuth } from '../../../../contexts/AppAuthContext';
+import { SCOPES } from '../../../../auth/permissions';
 import AILoader from '../../../../Components/AILoader';
 import ServiceProvidersSummaryCard, {
   ServiceProviderSummaryItem,
@@ -63,7 +64,7 @@ function truncateWords(text: string, maxWords: number): string {
 export default function ProjectsList({ disableRedirect }: ProjectsListProps) {
   const navigate = useNavigate();
   const location = useLocation();
-  const { role } = useRole();
+  const { hasPermission } = useAppAuth();
   const {
     projectsForCurrentOrganization,
     isProjectsLoading,
@@ -76,7 +77,7 @@ export default function ProjectsList({ disableRedirect }: ProjectsListProps) {
   const welcomeName =
     userName?.trim() || userEmail?.trim() || currentOrganization?.name || 'there';
   const renderServiceProvidersCard = () => {
-    const canAddProvider = role === 'admin';
+    const canAddProvider = hasPermission(SCOPES.LLM_PROVIDER_CREATE);
     const handleAddProvider = canAddProvider
       ? () => {
           const path = buildOrgPath(

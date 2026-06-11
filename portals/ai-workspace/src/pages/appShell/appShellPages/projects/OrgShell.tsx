@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import React, { useEffect, useMemo, useRef } from 'react';
+import React from 'react';
 import { Outlet, useNavigate, useParams } from 'react-router-dom';
 import { PageContent, Stack, Typography } from '@wso2/oxygen-ui';
 import { useAppShell } from '../../../../contexts/AppShellContext';
@@ -27,46 +27,9 @@ import { FormattedMessage } from 'react-intl';
 export default function OrgShell() {
   const navigate = useNavigate();
   const { orgSlug } = useParams<{ orgSlug: string }>();
-  const {
-    organizations,
-    currentOrganization,
-    setCurrentOrganization,
-    isLoading,
-  } = useAppShell();
-  const hasSyncedRef = useRef(false);
+  const { currentOrganization, isLoading } = useAppShell();
 
-  const matchedOrg = useMemo(() => {
-    if (!orgSlug) return null;
-    return organizations.find((org) => getOrgSlug(org) === orgSlug) ?? null;
-  }, [organizations, orgSlug]);
-
-  // Only sync once when we have a matched org and it's different from current
-  useEffect(() => {
-    if (!matchedOrg || isLoading) {
-      hasSyncedRef.current = false;
-      return;
-    }
-
-    // If org already matches, no need to sync
-    if (currentOrganization?.id === matchedOrg.id) {
-      hasSyncedRef.current = true;
-      return;
-    }
-
-    // Only sync once per URL change
-    if (hasSyncedRef.current) return;
-
-    hasSyncedRef.current = true;
-    setCurrentOrganization(matchedOrg);
-  }, [
-    matchedOrg?.id,
-    currentOrganization?.id,
-    isLoading,
-    setCurrentOrganization,
-  ]);
-
-  // Show loading while initial load or while org is being synced
-  if (isLoading || (matchedOrg && currentOrganization?.id !== matchedOrg.id)) {
+  if (isLoading) {
     return (
       <PageContent fullWidth>
         <Stack spacing={2} alignItems="center" sx={{ py: 6 }}>
@@ -82,9 +45,10 @@ export default function OrgShell() {
     );
   }
 
-  if (!matchedOrg) {
-    const fallbackOrg = organizations[0] ?? currentOrganization ?? null;
-    const fallbackPath = buildOrgPath(fallbackOrg, '/home');
+  const isMatch = currentOrganization != null && getOrgSlug(currentOrganization) === orgSlug;
+
+  if (!isMatch) {
+    const fallbackPath = buildOrgPath(currentOrganization, '/home');
     return (
       <PageContent fullWidth>
         <Stack spacing={1.5} alignItems="flex-start">
@@ -97,9 +61,7 @@ export default function OrgShell() {
           <Typography variant="body2" color="text.secondary">
             <FormattedMessage
               id="aiWorkspace.pages.appShell.appShellPages.projects.OrgShell.the.selected.organization.is.unavailable.please.choose.another"
-              defaultMessage={
-                'The selected organization is unavailable. Please choose another.'
-              }
+              defaultMessage={'The selected organization is unavailable.'}
             />
           </Typography>
           {fallbackPath ? (

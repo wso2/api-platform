@@ -16,14 +16,6 @@
  * under the License.
  */
 
-// ============================================================================
-// AppShellContext — Platform API (standalone) version
-// ----------------------------------------------------------------------------
-// Asgardeo authentication has been removed.
-// Organization and project data are loaded directly from the Platform API.
-// No token exchange — the stored bearer token is used for all authorized calls.
-// ============================================================================
-
 import React, {
   createContext,
   useContext,
@@ -36,7 +28,6 @@ import React, {
 import { logger } from '../utils/logger';
 import { getProjects } from '../apis/projectApis';
 import type { Organization, ProjectBase } from '../utils/types';
-import { useRole } from './RoleContext';
 import { useChoreoUser } from './ChoreoUserContext';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -45,14 +36,12 @@ export interface AppShellContextType {
   userName: string | null;
   userEmail: string | null;
   currentOrganization: Organization | null;
-  organizations: Organization[];
   currentProject: ProjectBase | null;
   projectsForCurrentOrganization: ProjectBase[];
   isProjectsLoading: boolean;
   isTokenExchanged: boolean;
   isLoading: boolean;
   error: string | null;
-  setCurrentOrganization: (org: Organization) => Promise<void>;
   setCurrentProject: (project: ProjectBase | null) => void;
   refetchProjects: () => Promise<void>;
 }
@@ -61,24 +50,17 @@ const defaultContextValue: AppShellContextType = {
   userName: null,
   userEmail: null,
   currentOrganization: null,
-  organizations: [],
   currentProject: null,
   projectsForCurrentOrganization: [],
   isProjectsLoading: false,
   isTokenExchanged: true,
   isLoading: true,
   error: null,
-  setCurrentOrganization: async () => {},
   setCurrentProject: () => {},
   refetchProjects: async () => {},
 };
 
 const AppShellContext = createContext<AppShellContextType>(defaultContextValue);
-
-const getOrgHandleFromUrl = (): string | null => {
-  const match = window.location.pathname.match(/^\/organizations\/([^/]+)/);
-  return match ? match[1] : null;
-};
 
 interface AppShellProviderProps {
   children: ReactNode;
@@ -91,18 +73,14 @@ export const AppShellProvider: React.FC<AppShellProviderProps> = ({
   userName: initialUserName,
   userEmail: initialUserEmail,
 }) => {
-  const { setRole } = useRole();
-  const { setIsTokenExchanged, getOrganizations, setOrganizations } = useChoreoUser();
+  const { setIsTokenExchanged, getOrganizations } = useChoreoUser();
 
   const isInitializedRef = useRef(false);
-  const isOrgChangeInProgressRef = useRef(false);
 
-  // In standalone mode there is no Asgardeo session — use props or empty strings
   const userName: string | null = initialUserName || null;
   const userEmail: string | null = initialUserEmail || null;
 
   const [currentOrganization, setCurrentOrganizationState] = useState<Organization | null>(null);
-  const [organizations, setOrganizationsState] = useState<Organization[]>([]);
   const [projectsForCurrentOrganization, setProjectsForCurrentOrganization] = useState<ProjectBase[]>([]);
   const [currentProject, setCurrentProjectState] = useState<ProjectBase | null>(null);
   const [isProjectsLoading, setIsProjectsLoading] = useState(false);
@@ -114,47 +92,18 @@ export const AppShellProvider: React.FC<AppShellProviderProps> = ({
   const fetchProjectsForOrg = useCallback(async (): Promise<ProjectBase[]> => {
     setIsProjectsLoading(true);
     try {
-      // Platform API: GET /projects is org-scoped via JWT — no org ID needed
       const projectList = await getProjects();
       setProjectsForCurrentOrganization(projectList);
       setCurrentProjectState(null);
       return projectList;
     } catch (err) {
       logger.error('Failed to fetch projects:', err);
-      // Non-fatal — workspace can still load without projects
       setProjectsForCurrentOrganization([]);
       return [];
     } finally {
       setIsProjectsLoading(false);
     }
   }, []);
-
-  // ── Organization switch ──────────────────────────────────────────────────────
-
-  const setCurrentOrganization = useCallback(
-    async (org: Organization) => {
-      if (isOrgChangeInProgressRef.current) return;
-      if (currentOrganization?.id === org.id) return;
-
-      isOrgChangeInProgressRef.current = true;
-      setCurrentOrganizationState(org);
-      setCurrentProjectState(null);
-      setError(null);
-
-      try {
-        sessionStorage.setItem('currentOrgHandle', org.handle);
-        setRole('admin'); // Always admin in local dev
-        setIsTokenExchanged(true);
-        await fetchProjectsForOrg();
-      } catch (err) {
-        logger.error('Failed to switch organization:', err);
-        setError('Failed to switch organization');
-      } finally {
-        isOrgChangeInProgressRef.current = false;
-      }
-    },
-    [currentOrganization, fetchProjectsForOrg, setRole, setIsTokenExchanged],
-  );
 
   const setCurrentProject = useCallback((project: ProjectBase | null) => {
     setCurrentProjectState(project);
@@ -165,42 +114,19 @@ export const AppShellProvider: React.FC<AppShellProviderProps> = ({
   }, [fetchProjectsForOrg]);
 
   // ── Initialization ───────────────────────────────────────────────────────────
-  // Runs once on mount — no Asgardeo auth required.
 
   const initialize = useCallback(async () => {
-    // When we hard-redirect to /register-org keep the spinner up (page is leaving)
-    let keepLoading = false;
     try {
-      const storedOrgHandle = sessionStorage.getItem('currentOrgHandle');
-      const urlOrgHandle = getOrgHandleFromUrl();
-
       const orgs = await getOrganizations();
-      setOrganizations(orgs);
-      setOrganizationsState(orgs);
 
       if (orgs.length === 0) {
-        // No org yet — redirect the user to register one
-        logger.warn('No organization found. Please register at /register-org');
-        if (!window.location.pathname.startsWith('/register-org')) {
-          keepLoading = true; // don't flash blank workspace while page redirects
-          window.location.href = '/register-org';
-        }
+        logger.warn('No organization found in platform API response');
+        setError('Organization not found. Please contact your administrator.');
         return;
       }
 
-      // Determine which org to display
-      let targetOrg = orgs[0];
-      if (urlOrgHandle) {
-        const found = orgs.find((o) => o.handle === urlOrgHandle);
-        if (found) targetOrg = found;
-      } else if (storedOrgHandle) {
-        const found = orgs.find((o) => o.handle === storedOrgHandle);
-        if (found) targetOrg = found;
-      }
-
-      setCurrentOrganizationState(targetOrg);
-      sessionStorage.setItem('currentOrgHandle', targetOrg.handle);
-      setRole('admin');
+      const org = orgs[0];
+      setCurrentOrganizationState(org);
       setIsTokenExchanged(true);
 
       await fetchProjectsForOrg();
@@ -208,11 +134,9 @@ export const AppShellProvider: React.FC<AppShellProviderProps> = ({
       logger.error('Initialization failed:', err);
       setError(`Failed to initialize: ${err?.message ?? 'Unknown error'}`);
     } finally {
-      // keepLoading stays true when we triggered a hard redirect to /register-org
-      // so the loading spinner remains visible while the page navigates away.
-      if (!keepLoading) setIsLoading(false);
+      setIsLoading(false);
     }
-  }, [getOrganizations, setOrganizations, fetchProjectsForOrg, setRole, setIsTokenExchanged]);
+  }, [getOrganizations, fetchProjectsForOrg, setIsTokenExchanged]);
 
   useEffect(() => {
     if (isInitializedRef.current) return;
@@ -226,14 +150,12 @@ export const AppShellProvider: React.FC<AppShellProviderProps> = ({
     userName,
     userEmail,
     currentOrganization,
-    organizations,
     currentProject,
     projectsForCurrentOrganization,
     isProjectsLoading,
     isTokenExchanged: true,
     isLoading,
     error,
-    setCurrentOrganization,
     setCurrentProject,
     refetchProjects,
   };

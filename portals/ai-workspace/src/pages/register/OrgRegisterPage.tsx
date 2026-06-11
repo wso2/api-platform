@@ -22,7 +22,6 @@ import {
   Alert,
   Box,
   Button,
-  Chip,
   CircularProgress,
   ColorSchemeToggle,
   Divider,
@@ -40,11 +39,13 @@ import {
 } from '@wso2/oxygen-ui';
 import { Building2, CheckCircle2, RefreshCw } from 'lucide-react';
 import Logo from '../../Components/Logo';
+import UserMenu from '../../Components/UserMenu';
+import { useAppAuth } from '../../contexts/AppAuthContext';
+import { CheckCircle2 as SuccessIcon } from 'lucide-react';
 import {
   registerOrganization,
   type RegisterOrganizationRequest,
 } from '../../apis/platformApis';
-
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 const REGIONS = [
@@ -58,6 +59,7 @@ const REGIONS = [
 ] as const;
 
 const HANDLE_PATTERN = /^[a-z0-9-]+$/;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** ms to show the success banner before navigating to the workspace */
 const REDIRECT_DELAY_MS = 1500;
 
@@ -83,6 +85,7 @@ interface FormErrors {
   name?: string;
   handle?: string;
   region?: string;
+  id?: string;
 }
 
 // ─── Redirecting banner ───────────────────────────────────────────────────────
@@ -127,6 +130,13 @@ function RedirectingToWorkspace({ orgName }: { orgName: string }) {
 
 export default function OrgRegisterPage() {
   const navigate = useNavigate();
+  const { user, logout, isSuperAdmin } = useAppAuth();
+
+  const userForMenu = {
+    name: user?.name || user?.email || 'User',
+    email: user?.email || '',
+    role: user?.role ?? undefined,
+  };
 
   const [form, setForm] = useState<FormState>({
     id: generateUUID(),
@@ -137,18 +147,18 @@ export default function OrgRegisterPage() {
   const [errors, setErrors]           = useState<FormErrors>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [apiError, setApiError]         = useState<string | null>(null);
-  /** name of the org we just created — triggers the redirect banner */
   const [registeredOrgName, setRegisteredOrgName] = useState<string | null>(null);
+  const [registeredOrgHandle, setRegisteredOrgHandle] = useState<string | null>(null);
 
-  // ── Auto-redirect after success ───────────────────────────────────────────
+  // ── Auto-redirect after success (not for super admin — they stay to register more) ──
 
   useEffect(() => {
-    if (!registeredOrgName) return;
+    if (!registeredOrgName || !registeredOrgHandle || isSuperAdmin) return;
     const timer = setTimeout(() => {
-      navigate('/');
+      navigate(`/organizations/${registeredOrgHandle}/home`, { replace: true });
     }, REDIRECT_DELAY_MS);
     return () => clearTimeout(timer);
-  }, [registeredOrgName, navigate]);
+  }, [registeredOrgName, registeredOrgHandle, navigate, isSuperAdmin]);
 
   // ── Validation ─────────────────────────────────────────────────────────────
 
@@ -169,6 +179,11 @@ export default function OrgRegisterPage() {
     if (!f.region) {
       e.region = 'Please select a region.';
     }
+    if (!f.id.trim()) {
+      e.id = 'Organization ID is required.';
+    } else if (!UUID_PATTERN.test(f.id.trim())) {
+      e.id = 'Must be a valid UUID (e.g. 550e8400-e29b-41d4-a716-446655440000).';
+    }
     return e;
   };
 
@@ -176,7 +191,11 @@ export default function OrgRegisterPage() {
 
   const handleNameChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const name = e.target.value;
-    setForm((prev) => ({ ...prev, name, handle: toHandle(name) }));
+    setForm((prev) => ({
+      ...prev,
+      name,
+      handle: toHandle(name),
+    }));
     setErrors((prev) => ({ ...prev, name: undefined, handle: undefined }));
     setApiError(null);
   }, []);
@@ -193,8 +212,15 @@ export default function OrgRegisterPage() {
     setApiError(null);
   }, []);
 
+  const handleIdChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setForm((prev) => ({ ...prev, id: e.target.value }));
+    setErrors((prev) => ({ ...prev, id: undefined }));
+    setApiError(null);
+  }, []);
+
   const regenerateId = useCallback(() => {
     setForm((prev) => ({ ...prev, id: generateUUID() }));
+    setErrors((prev) => ({ ...prev, id: undefined }));
   }, []);
 
   const handleSubmit = useCallback(async (e: React.FormEvent) => {
@@ -218,11 +244,8 @@ export default function OrgRegisterPage() {
 
       const org = await registerOrganization(payload);
 
-      // Store the org handle so AppShellContext selects it on first load
-      sessionStorage.setItem('currentOrgHandle', org.handle);
-
-      // Trigger the redirect banner — useEffect above fires navigate('/')
       setRegisteredOrgName(org.name);
+      setRegisteredOrgHandle(org.handle);
     } catch (err: any) {
       setApiError(err?.message ?? 'An unexpected error occurred.');
     } finally {
@@ -312,17 +335,6 @@ export default function OrgRegisterPage() {
             ))}
           </Stack>
 
-          <Chip
-            label="Local development mode"
-            size="small"
-            sx={{
-              width: 'fit-content',
-              bgcolor: 'rgba(255,255,255,0.15)',
-              color: '#fff',
-              borderColor: 'rgba(255,255,255,0.3)',
-              border: '1px solid',
-            }}
-          />
         </Grid>
 
         {/* ── Right panel (form) ──────────────────────────────────────────── */}
@@ -339,8 +351,9 @@ export default function OrgRegisterPage() {
               <Box sx={{ display: { md: 'none' } }}>
                 <Logo height={40} />
               </Box>
-              <Box sx={{ ml: 'auto' }}>
+              <Box sx={{ ml: 'auto', display: 'flex', alignItems: 'center', gap: 1 }}>
                 <ColorSchemeToggle />
+                <UserMenu user={userForMenu} onLogout={logout} />
               </Box>
             </Box>
 
@@ -348,9 +361,41 @@ export default function OrgRegisterPage() {
             <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <Box sx={{ width: '100%', maxWidth: 420 }}>
 
-                {/* ── Redirect banner — shown after success ── */}
+                {/* ── Success state ── */}
                 {registeredOrgName ? (
-                  <RedirectingToWorkspace orgName={registeredOrgName} />
+                  isSuperAdmin ? (
+                    <Stack spacing={3} alignItems="center" sx={{ py: 4 }}>
+                      <Box
+                        sx={{
+                          width: 64, height: 64, borderRadius: '50%',
+                          bgcolor: 'success.light',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          color: 'success.contrastText',
+                        }}
+                      >
+                        <CheckCircle2 size={32} />
+                      </Box>
+                      <Stack spacing={0.5} alignItems="center">
+                        <Typography variant="h5" fontWeight="bold">Organization Registered!</Typography>
+                        <Typography variant="body2" color="text.secondary" textAlign="center">
+                          <strong>{registeredOrgName}</strong> ({registeredOrgHandle}) has been created successfully.
+                        </Typography>
+                      </Stack>
+                      <Button
+                        variant="contained"
+                        fullWidth
+                        onClick={() => {
+                          setRegisteredOrgName(null);
+                          setRegisteredOrgHandle(null);
+                          setForm({ id: generateUUID(), name: '', handle: '', region: 'us' });
+                        }}
+                      >
+                        Register Another Organization
+                      </Button>
+                    </Stack>
+                  ) : (
+                    <RedirectingToWorkspace orgName={registeredOrgName} />
+                  )
                 ) : (
 
                   /* ── Registration form ── */
@@ -408,8 +453,11 @@ export default function OrgRegisterPage() {
                             error={!!errors.handle}
                             fullWidth
                             disabled={isSubmitting}
-                            inputProps={{ pattern: '[a-z0-9-]+' }}
+                            inputProps={{ pattern: '[a-z0-9][-a-z0-9]*' }}
                           />
+                          <FormHelperText error={!!errors.handle}>
+                            {errors.handle}
+                          </FormHelperText>
                         </FormControl>
 
                         {/* Region */}
@@ -431,32 +479,23 @@ export default function OrgRegisterPage() {
                           )}
                         </FormControl>
 
-                        {/* UUID (read-only with refresh) */}
-                        <FormControl fullWidth disabled={isSubmitting}>
+                        {/* UUID */}
+                        <FormControl fullWidth required disabled={isSubmitting}>
                           <FormLabel sx={{ mb: 0.5, fontWeight: 500 }}>
                             Organization ID (UUID)
                           </FormLabel>
-                          <Paper
-                            variant="outlined"
-                            sx={{ display: 'flex', alignItems: 'center', px: 1.5, py: 1, gap: 1, borderRadius: 1 }}
-                          >
-                            <Typography
-                              variant="body2"
-                              sx={{ flex: 1, fontFamily: 'monospace', fontSize: '0.75rem', color: 'text.secondary', wordBreak: 'break-all' }}
-                            >
-                              {form.id}
-                            </Typography>
-                            <Tooltip title="Regenerate UUID">
-                              <Box
-                                component="span"
-                                sx={{ cursor: 'pointer', color: 'text.secondary', display: 'flex', flexShrink: 0, '&:hover': { color: 'primary.main' } }}
-                                onClick={regenerateId}
-                              >
-                                <RefreshCw size={14} />
-                              </Box>
-                            </Tooltip>
-                          </Paper>
-                          <FormHelperText>Auto-generated — click ↻ to regenerate</FormHelperText>
+                          <TextField
+                            placeholder="e.g. 550e8400-e29b-41d4-a716-446655440000"
+                            value={form.id}
+                            onChange={handleIdChange}
+                            error={!!errors.id}
+                            fullWidth
+                            disabled={isSubmitting}
+                            inputProps={{ style: { fontFamily: 'monospace', fontSize: '0.85rem' } }}
+                          />
+                          <FormHelperText error={!!errors.id}>
+                            {errors.id ?? 'Auto-generated — edit or click ↻ to regenerate'}
+                          </FormHelperText>
                         </FormControl>
 
                         {/* Submit */}

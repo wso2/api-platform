@@ -79,7 +79,7 @@ import {
   registerMoesifOrganization,
   getMoesifKey,
 } from '../../../../apis/moesifApis';
-import { useAuthContext } from '@asgardeo/auth-react';
+import { useAppAuth } from '../../../../contexts/AppAuthContext';
 import {
   getRegistrationToken,
   clearRegistrationToken,
@@ -295,7 +295,7 @@ export default function ViewGateway() {
   const { gatewayName } = useParams<{ gatewayName: string }>();
   const { currentOrganization } = useAppShell();
   const showSnackbar = useAIWorkspaceSnackbar();
-  const { getBasicUserInfo } = useAuthContext();
+  const { user } = useAppAuth();
   const { environments: orgEnvironments } = useEnvironments();
 
   const getEnvironmentName = (envId: string): string => {
@@ -451,12 +451,7 @@ export default function ViewGateway() {
     let cancelled = false;
     (async () => {
       try {
-        const basicUser = await getBasicUserInfo();
-        const userName =
-          (basicUser as { displayName?: string; username?: string })
-            ?.displayName ||
-          (basicUser as { username?: string })?.username ||
-          'User';
+        const userName = user?.name || user?.email || 'User';
         const registerResponse = await registerMoesifOrganization(
           userName,
           moesifApps
@@ -481,7 +476,7 @@ export default function ViewGateway() {
     gateway?.properties?.environment,
     orgEnvironments,
     moesifApps,
-    getBasicUserInfo,
+    user,
   ]);
 
   const handleCopy = (text: string, label: string) => {

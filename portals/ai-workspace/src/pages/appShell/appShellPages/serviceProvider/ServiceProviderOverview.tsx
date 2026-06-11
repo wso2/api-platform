@@ -88,7 +88,8 @@ import {
   truncateProviderDisplayName,
 } from '../../../../utils/providerTemplateDisplay';
 import { filterOpenApiSpecByAccessControl } from '../../../../utils/openApiAccessControl';
-import { useRole } from '../../../../contexts/RoleContext';
+import { useAppAuth } from '../../../../contexts/AppAuthContext';
+import { SCOPES } from '../../../../auth/permissions';
 import useAIWorkspaceSnackbar from '../../../../hooks/aiWorkspaceSnackbar';
 import {
   AIEntityProvider,
@@ -235,7 +236,7 @@ function ServiceProviderOverviewContent() {
   } = useLLMProvider();
   const navigate = useNavigate();
   const location = useLocation();
-  const { role } = useRole();
+  const { hasPermission } = useAppAuth();
   const {
     currentProject,
     currentOrganization,
@@ -747,7 +748,7 @@ function ServiceProviderOverviewContent() {
     );
   }
 
-  const isAdminOrgLevel = role === 'admin' && !isProjectLevel;
+  const isAdminOrgLevel = hasPermission(SCOPES.LLM_PROVIDER_MANAGE) && !isProjectLevel;
   const { resources, rateLimiting, models } = serviceProviderOverviewMock;
   const tokenLimit = rateLimiting.backend.criteria.find(
     (item) => item.label === 'Token Count'

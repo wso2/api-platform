@@ -16,7 +16,6 @@
  * under the License.
  */
 
-import { AsgardeoSPAClient } from '@asgardeo/auth-react';
 // @ts-expect-error: moesif-browser-js does not have types
 import moesif from 'moesif-browser-js';
 import { MOESIF_APP_API_KEY } from '../config.env';
@@ -26,6 +25,13 @@ import logger from './logger';
 const moesifAppKey = MOESIF_APP_API_KEY;
 
 let mo: ReturnType<typeof moesif.init> | null = null;
+
+// Module-level user cache — populated after OIDC login via setCurrentUser()
+let currentUser: { sub?: string; email?: string } | null = null;
+
+export function setCurrentUser(user: { sub?: string; email?: string } | null) {
+  currentUser = user;
+}
 
 /**
  * Initialize and get Moesif client
@@ -102,23 +108,15 @@ export const trackEvent = async (name: string, customProperties?: {}) => {
 
   let userId: string | undefined;
 
-  // Add user info
-  const auth = AsgardeoSPAClient.getInstance();
-  if (auth) {
-    try {
-      const basicUserInfo = await auth.getBasicUserInfo();
-      if (basicUserInfo?.sub) {
-        userId = basicUserInfo.sub;
-        properties.idpId = basicUserInfo.sub;
-      }
-      if (basicUserInfo?.email) {
-        properties.email = basicUserInfo.email;
-        properties.isWSO2User = String(
-          basicUserInfo.email.endsWith('@wso2.com')
-        );
-      }
-    } catch (error) {
-      logger.error('Failed to get auth details for moesif event', error);
+  // Enrich with user info stored after login (set via setCurrentUser)
+  if (currentUser) {
+    if (currentUser.sub) {
+      userId = currentUser.sub;
+      properties.idpId = currentUser.sub;
+    }
+    if (currentUser.email) {
+      properties.email = currentUser.email;
+      properties.isWSO2User = String(currentUser.email.endsWith('@wso2.com'));
     }
   }
 

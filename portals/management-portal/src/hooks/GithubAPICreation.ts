@@ -152,13 +152,13 @@ export const useGithubAPICreation = () => {
     []
   );
 
-  /** POST: /api/v1/import/api-project */
+  /** POST: /api/v1/api-projects/import */
   const importApiProject = useCallback(
     async (
       payload: ImportApiProjectRequest,
       opts?: { signal?: AbortSignal }
     ): Promise<ApiSummary> => {
-      const res = await authedFetch(`/api/v1/import/api-project`, {
+      const res = await authedFetch(`/api/v1/api-projects/import`, {
         method: "POST",
         body: JSON.stringify(payload),
         signal: opts?.signal,

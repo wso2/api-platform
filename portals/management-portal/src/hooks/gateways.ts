@@ -230,7 +230,7 @@ export const useGatewaysApi = () => {
   const fetchGatewayStatuses = useCallback(
     async (gatewayId?: string): Promise<GatewayStatus[]> => {
       const { token, baseUrl } = getApiConfig();
-      const url = new URL(`${baseUrl}/api/v1/status/gateways`);
+      const url = new URL(`${baseUrl}/api/v1/gateways`);
       if (gatewayId) url.searchParams.set("gatewayId", gatewayId);
 
       const response = await fetch(url.toString(), {

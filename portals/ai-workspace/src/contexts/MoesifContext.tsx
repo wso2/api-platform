@@ -25,7 +25,8 @@ import React, {
   useRef,
   useState,
 } from 'react';
-import { useAuthContext } from '@asgardeo/auth-react';
+import { get } from '../clients/choreoApiClient';
+import { useAppAuth } from './AppAuthContext';
 import { API_BASE_URLS } from '../config.env';
 import type { MoesifTokenResponse } from '../utils/types';
 import { logger } from '../utils/logger';
@@ -64,7 +65,7 @@ export function MoesifProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   const lastFetchedOrgIdRef = useRef<string | null>(null);
-  const { httpRequest, getBasicUserInfo } = useAuthContext();
+  const { user } = useAppAuth();
   const { isTokenExchanged, currentOrganization } = useAppShell();
   const { environments } = useEnvironments();
 
@@ -74,15 +75,7 @@ export function MoesifProvider({ children }: { children: React.ReactNode }) {
         logger.info('Fetching Moesif token...');
         setIsLoading(true);
         setError(null);
-        const response = await httpRequest({
-          url: `${API_BASE_URLS.moesifAPI}/id_token`,
-          method: 'GET',
-          headers: {
-            Accept: 'application/json',
-            'Content-Type': 'application/json',
-          },
-        });
-        const data = response?.data as MoesifTokenResponse;
+        const data = await get<MoesifTokenResponse>(`${API_BASE_URLS.moesifAPI}/id_token`);
         setMoesifToken(data);
         return data;
       } catch (err) {
@@ -96,7 +89,7 @@ export function MoesifProvider({ children }: { children: React.ReactNode }) {
       } finally {
         setIsLoading(false);
       }
-    }, [httpRequest]);
+    }, []);
 
   const clearMoesifToken = useCallback(() => {
     setMoesifToken(null);
@@ -128,12 +121,7 @@ export function MoesifProvider({ children }: { children: React.ReactNode }) {
 
     (async () => {
       try {
-        const basicUser = await getBasicUserInfo();
-        const userName =
-          (basicUser as { displayName?: string; username?: string })
-            ?.displayName ||
-          (basicUser as { username?: string })?.username ||
-          'User';
+        const userName = user?.name || user?.email || 'User';
         const moesifApps = environments
           .filter((env) => env.id && env.name)
           .map((env) => ({ name: env.name }));
@@ -157,7 +145,7 @@ export function MoesifProvider({ children }: { children: React.ReactNode }) {
     environments,
     fetchMoesifToken,
     clearMoesifToken,
-    getBasicUserInfo,
+    user,
   ]);
 
   const value = useMemo(
