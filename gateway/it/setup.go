@@ -51,6 +51,12 @@ const (
 	// GatewayControllerAdminPort is the controller admin HTTP port
 	GatewayControllerAdminPort = "9092"
 
+	// GatewayControllerRuntimeAdminPort is the host port mapped to the
+	// runtime-facing controller's admin HTTP port (container 9092) in the
+	// two-controller Postgres topology (docker-compose.test.postgres.yaml).
+	// It is queried only for the policy-snapshot xDS-sync probe.
+	GatewayControllerRuntimeAdminPort = "9093"
+
 	// RouterPort is the HTTP traffic port for the router
 	RouterPort = "8080"
 
@@ -425,6 +431,7 @@ func CheckPortsAvailable() error {
 	ports := []string{
 		GatewayControllerPort, // 9090
 		GatewayControllerAdminPort,
+		GatewayControllerRuntimeAdminPort, // 9093
 		RouterPort,     // 8080
 		"8443",         // HTTPS
 		EnvoyAdminPort, // 9901
