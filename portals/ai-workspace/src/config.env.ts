@@ -38,12 +38,7 @@ export const DEBUG = getEnvOrDefault('VITE_DEBUG', false);
 
 // Domain and environment settings
 export const DOMAIN = getEnvOrDefault('VITE_DOMAIN', 'localhost:3009');
-export const CHOREO_SYSTEM_ORG = getEnvOrDefault(
-  'VITE_CHOREO_SYSTEM_ORG',
-  'choreocontrolplane'
-);
-
-// Static OIDC configuration — set these to match the root-org OIDC app in your IDP.
+//Static OIDC configuration — set these to match the root-org OIDC app in your IDP.
 // Authority is the issuer URL; the OIDC client will auto-discover endpoints from {authority}/.well-known/openid-configuration.
 export const OIDC_AUTHORITY  = getEnvOrDefault('VITE_OIDC_AUTHORITY', '');
 export const OIDC_CLIENT_ID  = getEnvOrDefault('VITE_OIDC_CLIENT_ID', '');
@@ -112,49 +107,13 @@ export const OIDC_POST_LOGOUT_REDIRECT_URI = getEnvOrDefault(
 // API Base URLs
 export const DEV_PORTAL_BASE_URL = getEnvOrDefault(
   'VITE_DEV_PORTAL_BASE_URL',
-  'https://devportal.preview-dv.bijira.dev'
+  ''
 );
 
 export const API_BASE_URLS = {
-  projectApi: getEnvOrDefault(
-    'VITE_API_PROJECT_API',
-    'https://apis.preview-dv.choreo.dev/projects/1.0.0/graphql'
-  ),
-  orgManagement: getEnvOrDefault(
-    'VITE_API_ORG_MANAGEMENT',
-    'https://apis.preview-dv.choreo.dev/org-mgt/1.0.0'
-  ),
-  organizationApi: getEnvOrDefault(
-    'VITE_API_ORGANIZATION_API',
-    'https://apis.preview-dv.choreo.dev/orgs/1.0.0'
-  ),
-  componentManagement: getEnvOrDefault(
-    'VITE_API_COMPONENT_MANAGEMENT',
-    'https://apis.preview-dv.choreo.dev/component-mgt/1.0.0'
-  ),
-  userManagement: getEnvOrDefault(
-    'VITE_API_USER_MANAGEMENT',
-    'https://apis.preview-dv.choreo.dev/user-mgt/1.0.0'
-  ),
-  devOps: getEnvOrDefault(
-    'VITE_API_DEVOPS',
-    'https://apis.preview-dv.choreo.dev/devops/1.0.0'
-  ),
-  adminApi: getEnvOrDefault(
-    'VITE_API_ADMIN_API',
-    'https://sts.preview-dv.choreo.dev/api/am/admin/v2'
-  ),
-  publisherApi: getEnvOrDefault(
-    'VITE_API_PUBLISHER_API',
-    'https://sts.preview-dv.choreo.dev/api/am/publisher/v2'
-  ),
   policyHubApi: getEnvOrDefault(
     'VITE_API_POLICY_HUB',
     'https://db720294-98fd-40f4-85a1-cc6a3b65bc9a-dev.e1-us-east-azure.choreoapis.dev/api-platform/policy-hub-api/policy-hub-public/v1.0'
-  ),
-  moesifAPI: getEnvOrDefault(
-    'VITE_API_MOESIF_API',
-    'https://apis.preview-dv.choreo.dev/moesif-key/0.1.0'
   ),
 } as const;
 
@@ -170,22 +129,10 @@ export const MOESIF_APP_API_KEY = getEnvOrDefault(
   'eyJhcHAiOiI5Mjo1NjYiLCJ2ZXIiOiIyLjEiLCJvcmciOiI2Mjg6NDE3IiwicHViIjp0cnVlLCJpYXQiOjE3Njk5MDQwMDB9.gxcZJ7eybasZ5JY_JJj2ARuTiWZNnYIeAtL8oQbhfxk'
 );
 
-// ToS Service name for user validation
-export const TOS_SERVICE_NAME = getEnvOrDefault(
-  'VITE_TOS_SERVICE_NAME',
-  'bijira'
-);
-
 // Platform Gateway Version
 export const PLATFORM_GATEWAY_VERSION = getEnvOrDefault(
   'VITE_PLATFORM_GATEWAY_VERSION',
   'v1.0.0'
-);
-
-// Platform Control Plane URL for gateway configuration
-export const PLATFORM_CONTROL_PLANE_URL = getEnvOrDefault(
-  'VITE_PLATFORM_CONTROL_PLANE_URL',
-  'https://connect.preview-dv.bijira.dev'
 );
 
 // Policy Hub web URL
@@ -198,6 +145,13 @@ export const POLICY_HUB_WEB_URL = getEnvOrDefault(
 export const PLATFORM_API_BASE_URL = getEnvOrDefault(
   'VITE_PLATFORM_API_BASE_URL',
   'https://localhost:9243/api/v1'
+);
+
+// Control-plane host shown in gateway setup instructions (host:port).
+// Distinct from PLATFORM_API_BASE_URL which may be a relative nginx proxy path.
+export const CONTROLPLANE_HOST = getEnvOrDefault(
+  'VITE_CONTROLPLANE_HOST',
+  'host.docker.internal:9243'
 );
 
 export const PORTAL_API_BASE_URL = getEnvOrDefault(

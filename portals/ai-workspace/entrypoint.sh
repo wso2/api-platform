@@ -55,12 +55,11 @@ if [ -f "$CONFIG_FILE" ]; then
     case "$key" in
       auth_mode)                  vite_key="VITE_AUTH_MODE" ;;
       domain)                     vite_key="VITE_DOMAIN" ;;
-      super_admin_username)       vite_key="VITE_SUPER_ADMIN_USERNAME" ;;
-      super_admin_password_hash)  vite_key="VITE_SUPER_ADMIN_PASSWORD_HASH" ;;
-      oidc_authority)             vite_key="VITE_OIDC_AUTHORITY" ;;
+oidc_authority)             vite_key="VITE_OIDC_AUTHORITY" ;;
       oidc_client_id)             vite_key="VITE_OIDC_CLIENT_ID" ;;
       default_org_region)         vite_key="VITE_DEFAULT_ORG_REGION" ;;
-      sentry_env)                 vite_key="VITE_SENTRY_ENV" ;;
+      platform_api_base_url)      vite_key="VITE_PLATFORM_API_BASE_URL" ;;
+      controlplane_host)          vite_key="VITE_CONTROLPLANE_HOST" ;;
       *)                          continue ;;
     esac
 

@@ -30,7 +30,6 @@ import { AppShellProvider } from './contexts/AppShellContext';
 import { RoleProvider } from './contexts/RoleContext';
 import PageErrorBoundary from './Components/common/PageErrorBoundary';
 import { AIWorkspaceSnackbarProvider } from './contexts/AIWorkspaceSnackbarContext';
-import { MoesifProvider } from './contexts/MoesifContext';
 import OrgProvisioningPage from './pages/register/OrgProvisioningPage';
 import { checkOrganizationExists, registerOrganization } from './apis/platformApis';
 import { DEFAULT_ORG_REGION } from './config.env';
@@ -240,9 +239,7 @@ function ProtectedAppShell() {
       <RoleProvider>
         <AIWorkspaceSnackbarProvider>
           <AppShellProvider userName={userName} userEmail={userEmail}>
-            <MoesifProvider>
-              <AppShellMain />
-            </MoesifProvider>
+            <AppShellMain />
           </AppShellProvider>
         </AIWorkspaceSnackbarProvider>
       </RoleProvider>

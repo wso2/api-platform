@@ -16,63 +16,15 @@
  * under the License.
  */
 
-import { useState, useEffect } from 'react';
-import { getEnvTemplates } from '../apis/environmentApis';
-import { useAppShell } from '../contexts/AppShellContext';
-
 export interface EnvironmentOption {
   id: string;
   name: string;
 }
 
-/**
- * Hook to fetch and manage organization environment templates
- */
 export function useEnvironments() {
-  const { currentOrganization } = useAppShell();
-  // Use the integer id, not uuid
-  const orgId = currentOrganization?.id;
-
-  const [environments, setEnvironments] = useState<EnvironmentOption[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<Error | null>(null);
-
-  useEffect(() => {
-    if (!orgId) {
-      setEnvironments([]);
-      return;
-    }
-
-    const fetchEnvironments = async () => {
-      setIsLoading(true);
-      setError(null);
-      try {
-        const orgEnvironments = await getEnvTemplates(orgId);
-        if (!orgEnvironments || orgEnvironments.length === 0) {
-          setEnvironments([]);
-        } else {
-          const mappedEnvironments = orgEnvironments
-            .filter((env) => env.id && env.env_name)
-            .map((env) => ({ id: env.id, name: env.env_name }))
-            .sort((a, b) => a.name.localeCompare(b.name));
-          setEnvironments(mappedEnvironments);
-        }
-      } catch (err) {
-        setError(
-          err instanceof Error ? err : new Error('Failed to fetch environments')
-        );
-        setEnvironments([]);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchEnvironments();
-  }, [orgId]);
-
   return {
-    environments,
-    isLoading,
-    error,
+    environments: [] as EnvironmentOption[],
+    isLoading: false,
+    error: null,
   };
 }

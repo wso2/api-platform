@@ -75,7 +75,7 @@ region = "us"
 [[auth.basic_auth.users]]
 username      = "admin"
 password_hash = "$2a$12$44E0X.EDG6J38jSj4XbEHOvUPukF.eVb4QBpt/59jA/u.ALe7p9Ba"
-scopes        = "ap:organization:read ap:organization:manage ap:gateway:read ap:gateway:create ap:gateway:update ap:gateway:delete ap:gateway:manage ap:gateway:token:read ap:gateway:token:create ap:gateway:token:delete ap:gateway:token:manage ap:gateway:policy:read ap:gateway:policy:create ap:gateway:policy:delete ap:gateway:policy:manage ap:gateway:artifacts:read ap:gateway:manifest:read ap:rest_api:read ap:rest_api:create ap:rest_api:update ap:rest_api:delete ap:rest_api:manage ap:rest_api:import ap:rest_api:deployment:read ap:rest_api:deployment:create ap:rest_api:deployment:delete ap:rest_api:deployment:manage ap:rest_api:api_key:read ap:rest_api:api_key:create ap:rest_api:api_key:delete ap:rest_api:api_key:manage ap:llm_provider:read ap:llm_provider:create ap:llm_provider:update ap:llm_provider:delete ap:llm_provider:manage ap:llm_provider:api_key:read ap:llm_provider:api_key:create ap:llm_provider:api_key:delete ap:llm_provider:api_key:manage ap:llm_provider:deployment:read ap:llm_provider:deployment:create ap:llm_provider:deployment:delete ap:llm_provider:deployment:manage ap:llm_proxy:read ap:llm_proxy:create ap:llm_proxy:update ap:llm_proxy:delete ap:llm_proxy:manage ap:llm_proxy:deployment:read ap:llm_proxy:deployment:create ap:llm_proxy:deployment:delete ap:llm_proxy:deployment:manage ap:mcp_proxy:read ap:mcp_proxy:create ap:mcp_proxy:update ap:mcp_proxy:delete ap:mcp_proxy:manage ap:mcp_proxy:deployment:read ap:mcp_proxy:deployment:create ap:mcp_proxy:deployment:delete ap:mcp_proxy:deployment:manage ap:application:read ap:application:create ap:application:update ap:application:delete ap:application:manage ap:subscription:read ap:subscription:create ap:subscription:update ap:subscription:delete ap:subscription:manage ap:subscription_plan:read ap:subscription_plan:create ap:subscription_plan:update ap:subscription_plan:delete ap:subscription_plan:manage"
+scopes        = "ap:organization:read ap:organization:manage ap:gateway:read ap:gateway:create ap:gateway:update ap:gateway:delete ap:gateway:manage ap:gateway:token:read ap:gateway:token:create ap:gateway:token:delete ap:gateway:token:manage ap:gateway:policy:read ap:gateway:policy:create ap:gateway:policy:delete ap:gateway:policy:manage ap:gateway:artifacts:read ap:gateway:manifest:read ap:rest_api:read ap:rest_api:create ap:rest_api:update ap:rest_api:delete ap:rest_api:manage ap:rest_api:import ap:rest_api:deployment:read ap:rest_api:deployment:create ap:rest_api:deployment:delete ap:rest_api:deployment:manage ap:rest_api:api_key:read ap:rest_api:api_key:create ap:rest_api:api_key:delete ap:rest_api:api_key:manage ap:llm_provider:read ap:llm_provider:create ap:llm_provider:update ap:llm_provider:delete ap:llm_provider:manage ap:llm_provider:api_key:read ap:llm_provider:api_key:create ap:llm_provider:api_key:delete ap:llm_provider:api_key:manage ap:llm_provider:deployment:read ap:llm_provider:deployment:create ap:llm_provider:deployment:delete ap:llm_provider:deployment:manage ap:llm_proxy:read ap:llm_proxy:create ap:llm_proxy:update ap:llm_proxy:delete ap:llm_proxy:manage ap:llm_proxy:deployment:read ap:llm_proxy:deployment:create ap:llm_proxy:deployment:delete ap:llm_proxy:deployment:manage ap:mcp_proxy:read ap:mcp_proxy:create ap:mcp_proxy:update ap:mcp_proxy:delete ap:mcp_proxy:manage ap:mcp_proxy:deployment:read ap:mcp_proxy:deployment:create ap:mcp_proxy:deployment:delete ap:mcp_proxy:deployment:manage ap:application:read ap:application:create ap:application:update ap:application:delete ap:application:manage ap:subscription:read ap:subscription:create ap:subscription:update ap:subscription:delete ap:subscription:manage ap:subscription_plan:read ap:subscription_plan:create ap:subscription_plan:update ap:subscription_plan:delete ap:subscription_plan:manage ap:project:manage ap:llm_template:manage"
 
 # ---------------------------------------------------------------------------
 # TLS — Platform API
@@ -99,15 +99,21 @@ domain = "localhost:8080"
 # Authentication mode for the UI: "basic" (local) or "oidc" (external IDP).
 auth_mode = "basic"
 
-# Super-admin credentials for the UI login (basic auth mode only).
-super_admin_username      = "admin"
-super_admin_password_hash = "$2a$12$44E0X.EDG6J38jSj4XbEHOvUPukF.eVb4QBpt/59jA/u.ALe7p9Ba"
-
 # --- OIDC mode (auth_mode = "oidc") ---
 # OIDC issuer URL (auto-discovers endpoints from /.well-known/openid-configuration).
 oidc_authority = ""
 # OIDC client ID registered in your IDP.
 oidc_client_id = ""
+
+# Platform API base URL — used by the UI to make API calls (may be a relative
+# path when nginx proxying is in use, e.g. /api-proxy/api/v1).
+# Defaults to https://localhost:9243/api/v1 if unset.
+platform_api_base_url = "https://localhost:9243/api/v1"
+
+# Control-plane host — the host:port that deployed gateways use to reach
+# the Platform API. Shown in gateway setup instructions (keys.env, helm values).
+# This must be the externally reachable address, not a relative/proxy path.
+controlplane_host = "localhost:9243"
 
 # Optional
 default_org_region = "us"

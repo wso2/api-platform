@@ -64,7 +64,8 @@ import { useAIWorkspaceSnackbar } from '../../../../hooks/aiWorkspaceSnackbar';
 import { useEnvironments } from '../../../../hooks/useEnvironments';
 import {
   PLATFORM_GATEWAY_VERSION,
-  PLATFORM_CONTROL_PLANE_URL,
+  PLATFORM_API_BASE_URL,
+  CONTROLPLANE_HOST,
 } from '../../../../config.env';
 import {
   getGateways,
@@ -75,11 +76,6 @@ import {
   rotateGatewayToken,
 } from '../../../../apis/gateway/gatewayApi';
 import type { GatewayConfigs } from '../../../../apis/gateway/gatewayApi';
-import {
-  registerMoesifOrganization,
-  getMoesifKey,
-} from '../../../../apis/moesifApis';
-import { useAppAuth } from '../../../../contexts/AppAuthContext';
 import {
   getRegistrationToken,
   clearRegistrationToken,
@@ -106,9 +102,8 @@ const GATEWAY_ZIP_NAME = `wso2apip-ai-gateway-${GATEWAY_VERSION_HELM}`;
 const GATEWAY_FOLDER_NAME = `wso2apip-ai-gateway-${GATEWAY_BASE_VERSION}`;
 const GATEWAY_ENV_FILE = `${GATEWAY_FOLDER_NAME}/configs/keys.env`;
 
-// Get platform API base URL from config
 const getPlatformApiBaseUrl = (): string => {
-  return PLATFORM_CONTROL_PLANE_URL;
+  return PLATFORM_API_BASE_URL;
 };
 
 const getDisplayUrl = (vhost: string): string => {
@@ -132,7 +127,7 @@ unzip ${GATEWAY_ZIP_NAME}.zip`;
 const getSetupGatewayCopyCommand = () => getSetupGatewayDisplayCommand();
 
 const getConfigureGatewayDisplayCommand = (moesifKey: string | null) => {
-  const controlPlaneHost = new URL(getPlatformApiBaseUrl()).hostname;
+  const controlPlaneHost = CONTROLPLANE_HOST;
   const moesifLine = moesifKey ? `MOESIF_KEY=<your-moesif-key>\n` : '';
   return `cat > ${GATEWAY_ENV_FILE} << 'ENVFILE'
 ${moesifLine}GATEWAY_CONTROLPLANE_HOST=${controlPlaneHost}
@@ -144,7 +139,7 @@ const getConfigureGatewayCopyCommand = (
   registrationToken: string | null,
   moesifKey: string | null
 ) => {
-  const controlPlaneHost = new URL(getPlatformApiBaseUrl()).hostname;
+  const controlPlaneHost = CONTROLPLANE_HOST;
   const tokenValue = registrationToken || '<your-gateway-token>';
   const moesifLine = moesifKey ? `MOESIF_KEY=${moesifKey}\n` : '';
   return `cat > ${GATEWAY_ENV_FILE} << 'ENVFILE'
@@ -161,7 +156,7 @@ const getStartGatewayDisplayCommand = () =>
 const getStartGatewayCopyCommand = () => getStartGatewayDisplayCommand();
 
 const getK8sCustomHelmDisplayCommand = (moesifKey: string | null) => {
-  const controlPlaneHost = new URL(getPlatformApiBaseUrl()).hostname;
+  const controlPlaneHost = CONTROLPLANE_HOST;
   const lines = [
     `helm install gateway oci://ghcr.io/wso2/api-platform/helm-charts/gateway --version ${GATEWAY_VERSION_HELM} \\`,
     `  --set gateway.controller.controlPlane.host="${controlPlaneHost}" \\`,
@@ -188,7 +183,7 @@ const getK8sCustomHelmCopyCommand = (
   moesifKey: string | null
 ) => {
   const tokenValue = registrationToken || 'your-gateway-token';
-  const controlPlaneHost = new URL(getPlatformApiBaseUrl()).hostname;
+  const controlPlaneHost = CONTROLPLANE_HOST;
   const lines = [
     `helm install gateway oci://ghcr.io/wso2/api-platform/helm-charts/gateway --version ${GATEWAY_VERSION_HELM} \\`,
     `  --set gateway.controller.controlPlane.host="${controlPlaneHost}" \\`,
@@ -295,7 +290,6 @@ export default function ViewGateway() {
   const { gatewayName } = useParams<{ gatewayName: string }>();
   const { currentOrganization } = useAppShell();
   const showSnackbar = useAIWorkspaceSnackbar();
-  const { user } = useAppAuth();
   const { environments: orgEnvironments } = useEnvironments();
 
   const getEnvironmentName = (envId: string): string => {
@@ -304,22 +298,12 @@ export default function ViewGateway() {
     return match ? match.name : envId;
   };
 
-  // Build org environments list for Moesif (same as AddGateway environment dropdown)
-  const moesifApps = useMemo(() => {
-    if (!orgEnvironments?.length) return [];
-    return orgEnvironments
-      .filter((env) => env.id && env.name)
-      .map((env) => ({ name: env.name }))
-      .sort((a, b) => a.name.localeCompare(b.name));
-  }, [orgEnvironments]);
-
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [gateway, setGateway] = useState<any>(null);
   const [showToken, setShowToken] = useState(false);
   const [showDrawerRegistrationToken, setShowDrawerRegistrationToken] =
     useState(false);
-  const [showDrawerMoesifKey, setShowDrawerMoesifKey] = useState(false);
   const [tabIndex, setTabIndex] = useState(0);
   const [isRegenerateDialogOpen, setIsRegenerateDialogOpen] = useState(false);
   const [isRegeneratingToken, setIsRegeneratingToken] = useState(false);
@@ -327,7 +311,6 @@ export default function ViewGateway() {
   const [activeColorScheme, setActiveColorScheme] = useState<ColorScheme>(() =>
     getActiveColorScheme()
   );
-  const [moesifKey, setMoesifKey] = useState<string | null>(null);
   const [showSetupBanner, setShowSetupBanner] = useState(true);
   const [isConfigsDrawerOpen, setIsConfigsDrawerOpen] = useState(false);
   const [isConfigsLoading, setIsConfigsLoading] = useState(false);
@@ -437,57 +420,13 @@ export default function ViewGateway() {
     prevIsActiveRef.current = gateway?.isActive;
   }, [gateway?.isActive, showSnackbar]);
 
-  // Register Moesif org then fetch Moesif key for this gateway's associated environment
-  useEffect(() => {
-    if (
-      !gateway?.id ||
-      !gateway?.properties?.environment ||
-      !orgEnvironments?.length
-    ) {
-      setMoesifKey(null);
-      return;
-    }
-    const envName = getEnvironmentName(gateway.properties.environment);
-    let cancelled = false;
-    (async () => {
-      try {
-        const userName = user?.name || user?.email || 'User';
-        const registerResponse = await registerMoesifOrganization(
-          userName,
-          moesifApps
-        );
-        if (cancelled) return;
-        const appsEmpty = !registerResponse?.apps?.length;
-        if (appsEmpty) {
-          setMoesifKey(null);
-          return;
-        }
-        const key = await getMoesifKey(envName);
-        if (!cancelled) setMoesifKey(key);
-      } catch {
-        if (!cancelled) setMoesifKey(null);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    gateway?.id,
-    gateway?.properties?.environment,
-    orgEnvironments,
-    moesifApps,
-    user,
-  ]);
-
   const handleCopy = (text: string, label: string) => {
     navigator.clipboard.writeText(text);
     showSnackbar(`${label} copied to clipboard`, 'success');
   };
 
   const handleDownloadKeysEnvFile = () => {
-    const controlPlaneHost = new URL(getPlatformApiBaseUrl()).hostname;
-    const envContent = `MOESIF_KEY=${gatewayMoesifKey}
-GATEWAY_CONTROLPLANE_HOST=${controlPlaneHost}
+    const envContent = `GATEWAY_CONTROLPLANE_HOST=${CONTROLPLANE_HOST}
 GATEWAY_REGISTRATION_TOKEN=${registrationToken || ''}`;
     const blob = new Blob([`${envContent}\n`], {
       type: 'text/plain;charset=utf-8',
@@ -667,15 +606,6 @@ GATEWAY_REGISTRATION_TOKEN=${registrationToken || ''}`;
       ]),
     }))
     .filter((configEntry) => configEntry.issuerUrl || configEntry.jwksUrl);
-  const gatewayMoesifKey =
-    moesifKey ||
-    gatewayConfigItemsWithKeyManagers.reduce<string>((found, configEntry) => {
-      if (found) return found;
-      const candidate = configEntry.moesifKey || configEntry.moesif_key;
-      return typeof candidate === 'string' && candidate.trim() ? candidate : '';
-    }, '') ||
-    '';
-
   return (
     <PageContent fullWidth>
       <Box
@@ -1016,14 +946,14 @@ GATEWAY_REGISTRATION_TOKEN=${registrationToken || ''}`;
                       multiline
                       minRows={4}
                       sx={getCommandTextFieldSx(activeColorScheme)}
-                      value={getConfigureGatewayDisplayCommand(moesifKey)}
+                      value={getConfigureGatewayDisplayCommand(null)}
                       onCopy={(e) => {
                         e.preventDefault();
                         e.clipboardData.setData(
                           'text/plain',
                           getConfigureGatewayCopyCommand(
                             registrationToken,
-                            moesifKey
+                            null
                           )
                         );
                       }}
@@ -1037,7 +967,7 @@ GATEWAY_REGISTRATION_TOKEN=${registrationToken || ''}`;
                                 handleCopy(
                                   getConfigureGatewayCopyCommand(
                                     registrationToken,
-                                    moesifKey
+                                    null
                                   ),
                                   'Configure command'
                                 )
@@ -1304,14 +1234,14 @@ GATEWAY_REGISTRATION_TOKEN=${registrationToken || ''}`;
                       multiline
                       minRows={4}
                       sx={getCommandTextFieldSx(activeColorScheme)}
-                      value={getConfigureGatewayDisplayCommand(moesifKey)}
+                      value={getConfigureGatewayDisplayCommand(null)}
                       onCopy={(e) => {
                         e.preventDefault();
                         e.clipboardData.setData(
                           'text/plain',
                           getConfigureGatewayCopyCommand(
                             registrationToken,
-                            moesifKey
+                            null
                           )
                         );
                       }}
@@ -1325,7 +1255,7 @@ GATEWAY_REGISTRATION_TOKEN=${registrationToken || ''}`;
                                 handleCopy(
                                   getConfigureGatewayCopyCommand(
                                     registrationToken,
-                                    moesifKey
+                                    null
                                   ),
                                   'Configure command'
                                 )
@@ -1523,14 +1453,14 @@ GATEWAY_REGISTRATION_TOKEN=${registrationToken || ''}`;
                       multiline
                       minRows={4}
                       sx={getCommandTextFieldSx(activeColorScheme)}
-                      value={getConfigureGatewayDisplayCommand(moesifKey)}
+                      value={getConfigureGatewayDisplayCommand(null)}
                       onCopy={(e) => {
                         e.preventDefault();
                         e.clipboardData.setData(
                           'text/plain',
                           getConfigureGatewayCopyCommand(
                             registrationToken,
-                            moesifKey
+                            null
                           )
                         );
                       }}
@@ -1544,7 +1474,7 @@ GATEWAY_REGISTRATION_TOKEN=${registrationToken || ''}`;
                                 handleCopy(
                                   getConfigureGatewayCopyCommand(
                                     registrationToken,
-                                    moesifKey
+                                    null
                                   ),
                                   'Configure command'
                                 )
@@ -1743,7 +1673,7 @@ GATEWAY_REGISTRATION_TOKEN=${registrationToken || ''}`;
                   sx={getCommandTextFieldSx(activeColorScheme)}
                   multiline
                   minRows={4}
-                  value={getK8sCustomHelmDisplayCommand(moesifKey)}
+                  value={getK8sCustomHelmDisplayCommand(null)}
                   slotProps={{
                     input: {
                       readOnly: true,
@@ -1754,7 +1684,7 @@ GATEWAY_REGISTRATION_TOKEN=${registrationToken || ''}`;
                             handleCopy(
                               getK8sCustomHelmCopyCommand(
                                 registrationToken,
-                                moesifKey
+                                null
                               ),
                               'Helm install command'
                             )
@@ -1890,42 +1820,6 @@ GATEWAY_REGISTRATION_TOKEN=${registrationToken || ''}`;
                   </IconButton>
                 </Box>
               )}
-
-              <Box sx={{ display: 'flex', alignItems: 'flex-end', gap: 1 }}>
-                <FormControl fullWidth>
-                  <FormLabel>Moesif Key</FormLabel>
-                  <TextField
-                    fullWidth
-                    type={showDrawerMoesifKey ? 'text' : 'password'}
-                    value={gatewayMoesifKey}
-                    placeholder="Not available"
-                    slotProps={{
-                      input: {
-                        readOnly: true,
-                        endAdornment: (
-                          <IconButton
-                            size="small"
-                            onClick={() =>
-                              setShowDrawerMoesifKey((prev) => !prev)
-                            }
-                            disabled={!gatewayMoesifKey}
-                          >
-                            {showDrawerMoesifKey ? <EyeOff /> : <Eye />}
-                          </IconButton>
-                        ),
-                      },
-                    }}
-                  />
-                </FormControl>
-                <IconButton
-                  size="small"
-                  onClick={() => handleCopy(gatewayMoesifKey, 'Moesif key')}
-                  disabled={!gatewayMoesifKey}
-                  sx={{ mb: 0.5 }}
-                >
-                  <Copy size={16} />
-                </IconButton>
-              </Box>
 
               <Divider />
 
