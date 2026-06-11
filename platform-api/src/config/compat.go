@@ -24,7 +24,7 @@ import (
 
 // legacyEnvAliases maps deprecated env var names to their current equivalents.
 // When the new name is unset but the old name has a value, the old value is
-// injected under the new name before envconfig.Process runs.
+// injected under the new name before config loading runs.
 var legacyEnvAliases = [][2]string{
 	// JWT (local HMAC mode) — renamed under AUTH_JWT_* namespace
 	{"JWT_SECRET_KEY", "AUTH_JWT_SECRET_KEY"},

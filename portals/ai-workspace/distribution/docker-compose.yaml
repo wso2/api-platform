@@ -1,0 +1,83 @@
+# --------------------------------------------------------------------
+# Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+#
+# WSO2 LLC. licenses this file to you under the Apache License,
+# Version 2.0 (the "License"); you may not use this file except
+# in compliance with the License. You may obtain a copy of the
+# License at http://www.apache.org/licenses/LICENSE-2.0
+# --------------------------------------------------------------------
+#
+# AI Workspace + Platform API — standalone release compose file.
+#
+# Configuration:
+#   Edit configs/config.toml for non-sensitive settings.
+#   Set the environment variables below for secrets — either export them
+#   in your shell, or create a .env file next to this file:
+#
+#     AUTH_JWT_SECRET_KEY=<long-random-string>
+#
+# Usage:
+#   docker compose up -d
+#
+# Ports:
+#   AI Workspace  →  http://localhost:8080
+#   Platform API  →  https://localhost:9243  (self-signed TLS)
+# --------------------------------------------------------------------
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # Platform API  (Go HTTPS backend)
+  # ---------------------------------------------------------------------------
+  platform-api:
+    image: ghcr.io/wso2/api-platform/platform-api:0.10.0-SNAPSHOT
+    container_name: platform-api
+    restart: unless-stopped
+    command: ["-config", "/etc/platform-api/config.toml"]
+    environment:
+      # Secrets — set these in your shell or in a .env file next to this file.
+      - AUTH_JWT_SECRET_KEY=${AUTH_JWT_SECRET_KEY:-}
+      - DATABASE_PASSWORD=${DATABASE_PASSWORD:-}
+      - DATABASE_SUBSCRIPTION_TOKEN_ENCRYPTION_KEY=${DATABASE_SUBSCRIPTION_TOKEN_ENCRYPTION_KEY:-}
+    volumes:
+      - ./configs/config.toml:/etc/platform-api/config.toml:ro
+      - platform-api-data:/app/data
+    ports:
+      - "9243:9243"
+    healthcheck:
+      test: ["CMD", "curl", "-fk", "https://localhost:9243/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+
+  # ---------------------------------------------------------------------------
+  # AI Workspace  (React SPA served by nginx)
+  # ---------------------------------------------------------------------------
+  ai-workspace:
+    image: ghcr.io/wso2/api-platform/ai-workspace:0.0.0-SNAPSHOT
+    container_name: ai-workspace
+    restart: unless-stopped
+    depends_on:
+      platform-api:
+        condition: service_healthy
+    environment:
+      # Route all Platform API calls through nginx (/api-proxy/ → platform-api:9243/).
+      # Relative paths avoid direct browser-to-platform-api connections and
+      # sidestep self-signed TLS certificate issues.
+      - VITE_PLATFORM_API_BASE_URL=/api-proxy/api/v1
+      - VITE_PORTAL_API_BASE_URL=/api-proxy/api/portal/v1
+    volumes:
+      - ./configs/config.toml:/etc/ai-workspace/config.toml:ro
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+
+volumes:
+  platform-api-data:
+    driver: local

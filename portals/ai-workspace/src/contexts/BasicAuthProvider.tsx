@@ -139,7 +139,6 @@ export function BasicAuthProvider({ children, onLogout }: Props) {
     () => ({
       isAuthenticated: token !== null && user !== null,
       isLoading: loading,
-      isSuperAdmin: false,
       user,
       accessToken: token,
       hasPermission,

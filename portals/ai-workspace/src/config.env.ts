@@ -213,12 +213,6 @@ export const PORTAL_API_BASE_URL = getEnvOrDefault(
 export const OIDC_USERNAME_CLAIM = getEnvOrDefault('VITE_OIDC_USERNAME_CLAIM', 'given_name');
 export const OIDC_EMAIL_CLAIM = getEnvOrDefault('VITE_OIDC_EMAIL_CLAIM', 'email');
 
-// Super admin credentials — stored as username + bcrypt password hash.
-// Generate a hash with: node -e "const b=require('bcryptjs');b.hash('yourpassword',12).then(console.log)"
-// Set VITE_SUPER_ADMIN_PASSWORD_HASH to a non-empty value to enable super admin login.
-export const SUPER_ADMIN_USERNAME = getEnvOrDefault('VITE_SUPER_ADMIN_USERNAME', 'admin');
-export const SUPER_ADMIN_PASSWORD_HASH = getEnvOrDefault('VITE_SUPER_ADMIN_PASSWORD_HASH', '');
-
 // Auth mode: 'oidc' (default) uses react-oidc-context; 'basic' posts credentials to /api/portal/v1/auth/login.
 export const AUTH_MODE = getEnvOrDefault('VITE_AUTH_MODE', 'oidc') as 'oidc' | 'basic';
 

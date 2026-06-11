@@ -123,7 +123,6 @@ export function OIDCAppAuthProvider({ children }: { children: React.ReactNode })
     () => ({
       isAuthenticated: auth.isAuthenticated,
       isLoading: auth.isLoading,
-      isSuperAdmin: false,
       user,
       accessToken: auth.user?.access_token ?? null,
       hasPermission,

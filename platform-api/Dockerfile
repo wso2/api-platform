@@ -40,16 +40,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
        fi \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy the shared common module.
-# go.mod contains: replace github.com/wso2/api-platform/common => ../../common
-# From WORKDIR /build, ../../common resolves to /common — copy it there.
-COPY common/ /common/
+# Copy go mod files for dependencies (needed for go.mod replace directive)
+COPY --from=common go.mod go.sum /common/
 
 # Fetch dependencies before copying full source for better layer caching.
-COPY platform-api/src/go.mod platform-api/src/go.sum ./
+COPY src/go.mod src/go.sum ./
 RUN go mod download
 
-COPY platform-api/src/ ./
+COPY --from=common . /common
+COPY src/ ./
 
 RUN if [ "$TARGETARCH" = "amd64" ]; then \
         export CC=x86_64-linux-gnu-gcc; \
@@ -88,10 +87,11 @@ RUN groupadd -g $USER_UID appgroup && \
 COPY --from=builder /build/platform-api .
 
 # Schema files and LLM provider templates
-COPY platform-api/src/internal/database/schema.sql            ./schema.sql
-COPY platform-api/src/internal/database/schema.postgres.sql   ./schema.postgres.sql
-COPY platform-api/src/internal/database/schema.sqlite.sql     ./schema.sqlite.sql
-COPY platform-api/src/resources/default-llm-provider-templates ./default-llm-provider-templates
+COPY src/internal/database/schema.sql            ./schema.sql
+COPY src/internal/database/schema.postgres.sql   ./schema.postgres.sql
+COPY src/internal/database/schema.sqlite.sql     ./schema.sqlite.sql
+COPY src/resources/default-llm-provider-templates ./default-llm-provider-templates
+COPY src/resources/openapi.yaml                  ./resources/openapi.yaml
 
 RUN mkdir -p /app/data /app/data/certs && \
     chown -R wso2:appgroup /app
@@ -109,4 +109,4 @@ ENV TLS_CERT_DIR=/app/data/certs
 
 USER $USERNAME
 
-CMD ["./platform-api"]
+ENTRYPOINT ["./platform-api"]
