@@ -163,9 +163,93 @@ const { isAuthenticated, isLoading, user, accessToken, hasPermission, login, log
 ```
   cd platform-api         && make build   # builds ghcr.io/.../platform-api:latest
   cd portals/ai-workspace && make build   # builds ghcr.io/.../ai-workspace:latest
-  cd portals/ai-workspace && docker compose up
+  docker-compose -f distribution/docker-compose.yaml --project-directory . up
 ```
 
+
+## Docker Distribution
+
+The `distribution/` folder contains the standalone compose release of AI Workspace. It brings up two containers — the React SPA served by nginx, and the Platform API Go backend — with no other dependencies.
+
+```
+distribution/
+├── docker-compose.yaml   # Orchestrates ai-workspace + platform-api
+└── configs/
+    └── config.toml       # Non-sensitive runtime settings (mounted into both containers)
+```
+
+### Port allocation
+
+| Service | Port | Protocol |
+|---|---|---|
+| AI Workspace (nginx) | `5380` | HTTPS |
+| Platform API | `9243` | HTTPS |
+
+Port **5380** was chosen for AI Workspace to avoid collision with the API Gateway, which occupies **8080**. All other commonly used ports in this repo (8081, 8090, 9001–9092, 18000–18001) were surveyed and excluded.
+
+### HTTPS
+
+Both containers are served over HTTPS. Both fall back to a self-signed certificate when no cert is explicitly provided — browsers will show a trust warning in that case.
+
+#### Providing your own certificate (removes the browser warning)
+
+Both services support mounting a CA-signed (or locally trusted) certificate via Docker volume. Uncomment the relevant lines in `docker-compose.yaml` under each service, then place your files in a `certs/` directory next to the compose file:
+
+```
+distribution/
+├── docker-compose.yaml
+├── configs/
+│   └── config.toml
+└── certs/                        ← create this directory
+    ├── ai-workspace.crt          ← PEM certificate or full chain
+    ├── ai-workspace.key          ← PEM private key
+    ├── platform-api.crt          ← PEM certificate or full chain
+    └── platform-api.key          ← PEM private key
+```
+
+**AI Workspace** reads from `/etc/ai-workspace/tls/tls.crt` and `/etc/ai-workspace/tls/tls.key` (the mount targets in `docker-compose.yaml`). If both files are present at container startup, `entrypoint.sh` copies them into place; otherwise it generates a self-signed cert.
+
+**Platform API** reads from its `TLS_CERT_DIR` (default `/app/data/certs`, configured via `[tls] cert_dir` in `config.toml`). If `cert.pem` and `key.pem` exist in that directory at startup, it uses them; otherwise it generates and saves a self-signed cert there. The mount targets in `docker-compose.yaml` write directly into the cert dir under the expected file names.
+
+#### Self-signed fallback
+
+When no cert is mounted, both containers auto-generate a self-signed certificate at startup. The self-signed cert is valid for 3650 days so it won't expire between rebuilds. To suppress the browser warning without providing a CA cert, add the cert to your system trust store:
+
+```sh
+# AI Workspace — extract the cert from the running container
+docker cp ai-workspace:/tmp/nginx/tls.crt ./ai-workspace.crt
+
+# Platform API — cert is persisted in the data volume
+docker cp platform-api:/app/data/certs/cert.pem ./platform-api.crt
+```
+
+Then add both `.crt` files to your OS trust store (Keychain on macOS, Certificate Manager on Windows, `/usr/local/share/ca-certificates/` on Linux).
+
+### nginx (`nginx.docker.conf`)
+
+nginx is the sole process in the AI Workspace container. Key decisions:
+
+- **All writable paths under `/tmp/`** — pid, cache, logs, and temp files all use `/tmp/` subtrees so the non-root user can write them. The Dockerfile symlinks `/var/cache/nginx`, `/var/log/nginx`, and `/var/run/nginx` to `/tmp/nginx/*` equivalents.
+- **SPA fallback** — `try_files $uri $uri/ /index.html` on the root location sends all unmatched paths to the React app for client-side routing.
+- **`index.html` served with `no-store`** — prevents the browser from caching the entry HTML, ensuring it always fetches the latest `runtime-config.js` on reload.
+- **`/runtime-config.js` aliased from `/tmp/`** — `entrypoint.sh` writes runtime `VITE_*` env vars to `/tmp/runtime-config.js` at startup; nginx aliases this path to serve it. This allows runtime configuration without rebuilding the image.
+- **TLS cipher suite** — matches the gateway's explicit ECDHE+AES-GCM/ChaCha20 list (Mozilla Intermediate). `ssl_prefer_server_ciphers on` ensures TLS 1.2 clients use the server's preferred cipher rather than a weaker client choice. Session cache (`shared:SSL:10m`) improves performance; `ssl_session_tickets off` preserves forward secrecy by preventing ticket-key reuse. HSTS (`max-age=31536000; includeSubDomains`) tells browsers to enforce HTTPS permanently once visited.
+- **WebSocket upgrade headers** — the `map $http_upgrade $connection_upgrade` block and `Upgrade`/`Connection` headers on the proxy location support WebSocket pass-through for streaming API responses.
+- **Reverse proxy to Platform API** — `/api-proxy/` is stripped and forwarded to `https://platform-api:9243/`. Read/send timeouts are set to 3600s to accommodate long-running streaming requests.
+- **Security headers on `index.html`** — `X-Frame-Options`, `Content-Security-Policy`, `X-Content-Type-Options`, `X-XSS-Protection`, and `X-Permitted-Cross-Domain-Policies` are set for the entry HTML only (not static assets, which don't need them).
+- **gzip** — enabled for text, CSS, SVG, JS, JSON, fonts, and zip.
+
+### `entrypoint.sh` startup sequence
+
+1. Create `/tmp/nginx/` subdirectories and re-establish symlinks for nginx's writable paths.
+2. Read `[ai_workspace]` section from the mounted `config.toml` and export matched keys as `VITE_*` env vars (env vars already set take priority).
+3. Write all current `VITE_*` env vars into `/tmp/runtime-config.js` so the SPA can read runtime config without a rebuild.
+4. If a user cert is mounted at `/etc/ai-workspace/tls/`, copy it into `/tmp/nginx/`; otherwise generate a self-signed cert there.
+5. Start nginx in the foreground (`daemon off`).
+
+### Non-root container user
+
+The container runs as UID/GID **10001** (`aiworkspace`). This satisfies the `CKV_CHOREO_1` Checkov policy. All files the process needs to write at runtime are under `/tmp/`, which is world-writable. Static app files under `/app/` are owned by this user at build time via `COPY --chown`.
 
 ## Other Documentations
 [Mock Backend Documentation](workspaces/apps/ai-workspace/mock-service/README.md)
