@@ -285,6 +285,15 @@ type MCPProxyRepository interface {
 	Exists(handle, orgUUID string) (bool, error)
 }
 
+// WebSubAPIHmacSecretRepository defines the interface for WebSub API HMAC secret persistence
+type WebSubAPIHmacSecretRepository interface {
+	Create(secret *model.WebSubAPIHmacSecret) error
+	GetByArtifactAndName(artifactUUID, name string) (*model.WebSubAPIHmacSecret, error)
+	ListByArtifact(artifactUUID string) ([]*model.WebSubAPIHmacSecret, error)
+	Update(secret *model.WebSubAPIHmacSecret) error
+	Delete(artifactUUID, name string) error
+}
+
 // WebSubAPIRepository defines the interface for WebSub API persistence
 type WebSubAPIRepository interface {
 	Create(api *model.WebSubAPI) error

@@ -778,6 +778,51 @@ paths:
                     message: "Internal Server Error"
                     description: "Failed to create WebSub API package"
 
+  /websub-apis/{apiId}/secrets:
+    get:
+      summary: Get HMAC secrets for a WebSub API
+      description: |
+        Returns all active HMAC secrets (with plaintext values) for the specified WebSub API.
+        This endpoint is exclusively for gateway-controller to load secrets into the envoy secret store.
+        The plaintext values are decrypted server-side and must only be used internally by the gateway.
+      operationId: getWebSubAPIHmacSecrets
+      tags:
+        - Gateway Internal APIs
+      parameters:
+        - name: apiId
+          in: path
+          required: true
+          description: The unique identifier (UUID) of the WebSub API
+          schema:
+            type: string
+            format: uuid
+            example: "550e8400-e29b-41d4-a716-446655440000"
+      responses:
+        '200':
+          description: Successfully retrieved HMAC secrets
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GatewayHmacSecretsResponse'
+        '401':
+          description: Unauthorized - Invalid or missing API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: WebSub API not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
   # ==========================================
   # Gateway Deployment Sync Endpoints
   # ==========================================
@@ -1756,6 +1801,39 @@ components:
           nullable: true
           description: Issuer of the API key, if applicable
           example: "api-platform-devportal"
+
+    GatewayHmacSecretInfo:
+      type: object
+      description: A single HMAC secret entry returned to the gateway-controller. Contains the plaintext value.
+      required:
+        - name
+        - secret
+      properties:
+        name:
+          type: string
+          description: URL-safe slug identifying the secret.
+          example: github-webhook
+        secret:
+          type: string
+          description: Plaintext HMAC secret value for use in signature verification.
+          example: whsec_a3f2c1e4b5d6789012345678901234567890abcdef1234567890abcdef12345678
+
+    GatewayHmacSecretsResponse:
+      type: object
+      description: Response for GET /websub-apis/{apiId}/secrets
+      required:
+        - artifactId
+        - secrets
+      properties:
+        artifactId:
+          type: string
+          format: uuid
+          description: UUID of the WebSub API artifact.
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        secrets:
+          type: array
+          items:
+            $ref: '#/components/schemas/GatewayHmacSecretInfo'
 
     ErrorResponse:
       type: object
