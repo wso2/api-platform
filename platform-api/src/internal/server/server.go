@@ -41,6 +41,7 @@ import (
 	"platform-api/src/config"
 	"platform-api/src/internal/database"
 	"platform-api/src/internal/handler"
+	"platform-api/src/internal/model"
 	"platform-api/src/internal/repository"
 	"platform-api/src/internal/service"
 	"platform-api/src/internal/utils"
@@ -102,6 +103,13 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	websubAPIRepo := repository.NewWebSubAPIRepo(db)
 	webbrokerAPIRepo := repository.NewWebBrokerAPIRepo(db)
 	apiKeyRepo := repository.NewAPIKeyRepo(db)
+
+	// Seed the basic-auth organization on startup if basic-auth mode is enabled.
+	if cfg.Auth.BasicAuth.Enabled {
+		if err := seedBasicAuthOrg(cfg, orgRepo, slogger); err != nil {
+			return nil, fmt.Errorf("failed to seed basic-auth organization: %w", err)
+		}
+	}
 
 	// Seed default LLM provider templates into the DB (per organization)
 	cfg.LLMTemplateDefinitionsPath = strings.TrimSpace(cfg.LLMTemplateDefinitionsPath)
@@ -329,16 +337,25 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 
 	// Register public routes before auth middleware so they bypass authentication.
 	orgHandler.RegisterPublicRoutes(router)
+	handler.NewAuthLoginHandler(cfg).RegisterPublicRoutes(router)
 
-	// Build and apply the JWT authenticator.
-	// IDP_ENABLED=false (default): HMAC validation with JWT_SECRET_KEY, or skip entirely when JWT_SKIP_VALIDATION=true.
-	// IDP_ENABLED=true: JWKS-based validation using IDP_JWKS_URL (works with any standards-compliant IDP).
-	authenticator, err := buildAuthenticator(cfg, slogger)
-	if err != nil {
-		return nil, err
-	}
-	for _, mw := range authenticator.Middleware() {
-		router.Use(mw)
+	// Build and apply the authenticator middleware.
+	if cfg.Auth.BasicAuth.Enabled {
+		slogger.Info("Auth mode: basic-auth (HMAC-signed JWT)")
+		router.Use(middleware.LocalJWTAuthMiddleware(middleware.AuthConfig{
+			SecretKey:      cfg.Auth.JWT.SecretKey,
+			TokenIssuer:    cfg.Auth.JWT.Issuer,
+			SkipPaths:      cfg.Auth.SkipPaths,
+			SkipValidation: false,
+		}))
+	} else {
+		authenticator, err := buildAuthenticator(cfg, slogger)
+		if err != nil {
+			return nil, err
+		}
+		for _, mw := range authenticator.Middleware() {
+			router.Use(mw)
+		}
 	}
 
 	// Apply the OpenAPI-driven scope enforcer after authentication so identity
@@ -397,8 +414,8 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	}, nil
 }
 
-// buildAuthenticator constructs a JWTAuthenticator from the server configuration.
-// Add new cases here when supporting additional auth mechanisms (e.g. BasicAuth).
+// buildAuthenticator constructs an Authenticator from the server configuration.
+// Only called when BasicAuth is disabled.
 func buildAuthenticator(cfg *config.Server, slogger *slog.Logger) (middleware.Authenticator, error) {
 	if !cfg.Auth.IDP.Enabled {
 		if cfg.Auth.JWT.SkipValidation {
@@ -621,4 +638,47 @@ func (s *Server) Start(port string, certDir string) error {
 // GetRouter returns the gin router for testing purposes
 func (s *Server) GetRouter() *gin.Engine {
 	return s.router
+}
+
+// seedBasicAuthOrg ensures the basic-auth organization exists in the DB.
+// If AUTH_BASIC_AUTH_ORGANIZATION_ID is empty, a UUID is generated and written
+// back into cfg so the login handler issues tokens with the correct org ID.
+func seedBasicAuthOrg(cfg *config.Server, orgRepo repository.OrganizationRepository, slogger *slog.Logger) error {
+	ba := &cfg.Auth.BasicAuth
+
+	// Auto-generate the org ID if not configured.
+	if ba.Organization.ID == "" {
+		id, err := utils.GenerateUUID()
+		if err != nil {
+			return fmt.Errorf("failed to generate basic-auth org ID: %w", err)
+		}
+		ba.Organization.ID = id
+	}
+
+	existing, err := orgRepo.GetOrganizationByIdOrHandle(ba.Organization.ID, ba.Organization.Handle)
+	if err != nil {
+		return fmt.Errorf("failed to check basic-auth organization: %w", err)
+	}
+	if existing != nil {
+		// Already registered — make sure cfg carries the persisted ID (handles the
+		// auto-generate-then-restart case where the ID was written to env).
+		ba.Organization.ID = existing.ID
+		slogger.Info("Basic-auth organization already exists", "id", existing.ID, "handle", existing.Handle)
+		return nil
+	}
+
+	now := time.Now()
+	org := &model.Organization{
+		ID:        ba.Organization.ID,
+		Name:      ba.Organization.Name,
+		Handle:    ba.Organization.Handle,
+		Region:    ba.Organization.Region,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+	if err := orgRepo.CreateOrganization(org); err != nil {
+		return fmt.Errorf("failed to create basic-auth organization: %w", err)
+	}
+	slogger.Info("Seeded basic-auth organization", "id", org.ID, "handle", org.Handle)
+	return nil
 }

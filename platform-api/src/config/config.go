@@ -18,11 +18,65 @@
 package config
 
 import (
+	"encoding/json"
 	"fmt"
 	"sync"
 
 	"github.com/kelseyhightower/envconfig"
 )
+
+// BasicAuthUser represents a built-in user for basic-auth mode.
+type BasicAuthUser struct {
+	Username     string `json:"username"`
+	PasswordHash string `json:"password_hash"`
+	Scopes       string `json:"scopes"`
+}
+
+// BasicAuthUsers is a JSON-decodable slice of BasicAuthUser.
+type BasicAuthUsers []BasicAuthUser
+
+func (u *BasicAuthUsers) Decode(value string) error {
+	return json.Unmarshal([]byte(value), u)
+}
+
+// BasicAuthOrg holds the single organization used in basic-auth mode.
+type BasicAuthOrg struct {
+	// ID is the org UUID. Auto-generated at startup if empty.
+	// Env: AUTH_BASIC_AUTH_ORGANIZATION_ID
+	ID string `envconfig:"ID" default:""`
+
+	// Name is the display name of the organization.
+	// Required when AUTH_BASIC_AUTH_ENABLED=true.
+	// Env: AUTH_BASIC_AUTH_ORGANIZATION_NAME
+	Name string `envconfig:"NAME" default:""`
+
+	// Handle is the URL-safe slug for the organization.
+	// Required when AUTH_BASIC_AUTH_ENABLED=true.
+	// Env: AUTH_BASIC_AUTH_ORGANIZATION_HANDLE
+	Handle string `envconfig:"HANDLE" default:""`
+
+	// Region is the deployment region for the organization.
+	// Env: AUTH_BASIC_AUTH_ORGANIZATION_REGION (default: "us")
+	Region string `envconfig:"REGION" default:"us"`
+}
+
+// BasicAuth holds configuration for local username/password authentication.
+// When enabled, IDP-based auth is not used and a single organization is defined here.
+// Env prefix: AUTH_BASIC_AUTH_
+type BasicAuth struct {
+	// Enabled activates basic-auth login mode.
+	// Env: AUTH_BASIC_AUTH_ENABLED (default: false)
+	Enabled bool `envconfig:"ENABLED" default:"false"`
+
+	// Organization is the single org all basic-auth users belong to.
+	// Env prefix: AUTH_BASIC_AUTH_ORGANIZATION_
+	Organization BasicAuthOrg `envconfig:"ORGANIZATION"`
+
+	// Users is the JSON-encoded list of built-in users.
+	// Env: AUTH_BASIC_AUTH_USERS
+	// Format: [{"username":"alice","password_hash":"$2a$10$...","scopes":"ap:gateway:read"}]
+	Users BasicAuthUsers `envconfig:"USERS"`
+}
 
 // Server holds the configuration parameters for the application.
 type Server struct {
@@ -70,7 +124,7 @@ type Server struct {
 	Gateway Gateway `envconfig:"GATEWAY"`
 
 	// EnableScopeValidation controls whether scope checks are enforced on protected routes.
-	EnableScopeValidation bool `envconfig:"ENABLE_SCOPE_VALIDATION" default:"false"`
+	EnableScopeValidation bool `envconfig:"ENABLE_SCOPE_VALIDATION" default:"true"`
 }
 
 // Auth groups all authentication-related configuration.
@@ -90,6 +144,9 @@ type Auth struct {
 	// Env prefix: AUTH_JWT_
 	JWT JWT `envconfig:"JWT"`
 
+	// BasicAuth holds local username/password authentication configuration.
+	// Env prefix: AUTH_BASIC_AUTH_
+	BasicAuth BasicAuth `envconfig:"BASIC_AUTH"`
 }
 
 // IDP holds configuration for JWKS-based identity providers.
@@ -332,6 +389,9 @@ func GetConfig() *Server {
 		if err == nil {
 			err = validateIDPConfig(&settingInstance.Auth.IDP)
 		}
+		if err == nil {
+			err = validateBasicAuthConfig(&settingInstance.Auth.BasicAuth)
+		}
 	})
 	if err != nil {
 		panic(err)
@@ -383,6 +443,23 @@ func validateIDPConfig(idp *IDP) error {
 	}
 	if idp.ValidationMode == "role" && idp.RolesClaimPath == "" {
 		return fmt.Errorf("AUTH_IDP_VALIDATION_MODE=role requires AUTH_IDP_ROLES_CLAIM_PATH to be configured")
+	}
+	return nil
+}
+
+// validateBasicAuthConfig validates basic-auth configuration when enabled.
+func validateBasicAuthConfig(cfg *BasicAuth) error {
+	if !cfg.Enabled {
+		return nil
+	}
+	if cfg.Organization.Name == "" {
+		return fmt.Errorf("AUTH_BASIC_AUTH_ENABLED=true requires AUTH_BASIC_AUTH_ORGANIZATION_NAME to be configured")
+	}
+	if cfg.Organization.Handle == "" {
+		return fmt.Errorf("AUTH_BASIC_AUTH_ENABLED=true requires AUTH_BASIC_AUTH_ORGANIZATION_HANDLE to be configured")
+	}
+	if len(cfg.Users) == 0 {
+		return fmt.Errorf("AUTH_BASIC_AUTH_ENABLED=true requires at least one user in AUTH_BASIC_AUTH_USERS")
 	}
 	return nil
 }

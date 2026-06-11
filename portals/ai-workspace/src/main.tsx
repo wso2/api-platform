@@ -37,8 +37,11 @@ import {
   OIDC_REDIRECT_URI,
   OIDC_POST_LOGOUT_REDIRECT_URI,
 } from './config.env';
+import { AUTH_MODE } from './config.env';
 import { OIDCAppAuthProvider } from './contexts/OIDCAppAuthProvider';
 import { SuperAdminAuthProvider, isSuperAdminSession, clearSuperAdminSession } from './contexts/SuperAdminAuthProvider';
+import { BasicAuthProvider, isBasicAuthSession, clearBasicAuthSession } from './contexts/BasicAuthProvider';
+import BasicAuthLoginPage from './pages/login/BasicAuthLoginPage';
 import { setStoredToken } from './clients/choreoApiClient';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -89,10 +92,16 @@ function OIDCWrapper({ children }: { children: React.ReactNode }) {
 
 function AppRoot() {
   const [superAdminActive, setSuperAdminActive] = useState<boolean>(isSuperAdminSession);
+  const [basicAuthActive, setBasicAuthActive] = useState<boolean>(isBasicAuthSession);
 
   const handleSuperAdminLogout = useCallback(() => {
     setSuperAdminActive(false);
     clearSuperAdminSession();
+  }, []);
+
+  const handleBasicAuthLogout = useCallback(() => {
+    setBasicAuthActive(false);
+    clearBasicAuthSession();
   }, []);
 
   // ── Super admin path — no OIDC needed ─────────────────────────────────────
@@ -103,6 +112,22 @@ function AppRoot() {
           <App />
         </IntlProvider>
       </SuperAdminAuthProvider>
+    );
+  }
+
+  // ── Basic auth path ────────────────────────────────────────────────────────
+  if (AUTH_MODE === 'basic') {
+    if (basicAuthActive) {
+      return (
+        <BasicAuthProvider onLogout={handleBasicAuthLogout}>
+          <IntlProvider locale="en" defaultLocale="en">
+            <App />
+          </IntlProvider>
+        </BasicAuthProvider>
+      );
+    }
+    return (
+      <BasicAuthLoginPage onSuccess={() => setBasicAuthActive(true)} />
     );
   }
 
