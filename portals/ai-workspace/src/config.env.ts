@@ -36,9 +36,6 @@ import { getEnvOrDefault } from './utils/getEnvOrDefault';
 // Debug mode
 export const DEBUG = getEnvOrDefault('VITE_DEBUG', false);
 
-// Sentry environment (used for CookiePro and other env-specific features)
-export const SENTRY_ENV = getEnvOrDefault('VITE_SENTRY_ENV', 'DEV');
-
 // Domain and environment settings
 export const DOMAIN = getEnvOrDefault('VITE_DOMAIN', 'localhost:3009');
 export const CHOREO_SYSTEM_ORG = getEnvOrDefault(
