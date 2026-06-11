@@ -79,14 +79,6 @@ const CONFIG_DEFAULTS = {
             validateResponses: 'off',
         },
     },
-    controlPlane: {
-        enabled: false,
-        url: '',
-        graphqlURL: '',
-        gwUrl: '',
-        disableCertValidation: true,
-        pathToCertificate: '',
-    },
     logging: {
         consoleOnly: true,
     },

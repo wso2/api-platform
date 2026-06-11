@@ -10,7 +10,7 @@
 
 ```shell
 
-curl -X POST http://localhost:3000/devportal/applications/{applicationId}/generate-keys \
+curl -X POST https://devportal.api-platform.io/applications/{applicationId}/generate-keys \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -132,7 +132,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Application OAuth key response returned by the control plane.|[ApplicationOAuthKeyResponse](schemas.md#schemaapplicationoauthkeyresponse)|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Application OAuth key response.|[ApplicationOAuthKeyResponse](schemas.md#schemaapplicationoauthkeyresponse)|
 |400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.|Inline|
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Duplicate organization data conflicts with an existing record.|[ErrorResponse](schemas.md#schemaerrorresponse)|
@@ -150,7 +150,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```shell
 
-curl -X POST http://localhost:3000/devportal/applications/{applicationId}/oauth-keys/{keyMappingId}/generate-token \
+curl -X POST https://devportal.api-platform.io/applications/{applicationId}/oauth-keys/{keyMappingId}/generate-token \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -159,7 +159,7 @@ curl -X POST http://localhost:3000/devportal/applications/{applicationId}/oauth-
 
 ```
 
-Generates an access token for an existing application OAuth key mapping. In control-plane mode the request is proxied to the control plane. In decoupled mode the portal calls the Authorization Server token endpoint directly using the client credentials supplied in `consumerSecret`.
+Generates an access token for an existing application OAuth key mapping. The portal calls the Authorization Server token endpoint directly using the client credentials supplied in `consumerSecret`.
 
 > Payload
 
@@ -184,7 +184,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|body|body|[OAuthGenerateTokenRequest](schemas.md#schemaoauthgeneratetokenrequest)|false|Passed through to the configured control-plane OAuth token generation endpoint.|
+|body|body|[OAuthGenerateTokenRequest](schemas.md#schemaoauthgeneratetokenrequest)|false|OAuth token generation payload. The portal calls the Authorization Server token endpoint directly.|
 |applicationId|path|string|true|none|
 |keyMappingId|path|string|true|none|
 
@@ -251,7 +251,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|OAuth access token response returned by the control plane.|[OAuthTokenResponse](schemas.md#schemaoauthtokenresponse)|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|OAuth access token response.|[OAuthTokenResponse](schemas.md#schemaoauthtokenresponse)|
 |400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.|Inline|
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
@@ -268,14 +268,14 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```shell
 
-curl -X DELETE http://localhost:3000/devportal/applications/{applicationId}/oauth-keys/{keyMappingId} \
+curl -X DELETE https://devportal.api-platform.io/applications/{applicationId}/oauth-keys/{keyMappingId} \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
 
 ```
 
-Revokes an application OAuth key mapping in the control plane.
+Revokes an application OAuth key mapping and removes the registered OAuth client from the key manager.
 
 ### Authentication
 
@@ -325,7 +325,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Message or control-plane response payload.|Inline|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Message or generic response payload.|Inline|
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
@@ -341,7 +341,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```shell
 
-curl -X PUT http://localhost:3000/devportal/applications/{applicationId}/oauth-keys/{keyMappingId} \
+curl -X PUT https://devportal.api-platform.io/applications/{applicationId}/oauth-keys/{keyMappingId} \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -350,7 +350,7 @@ curl -X PUT http://localhost:3000/devportal/applications/{applicationId}/oauth-k
 
 ```
 
-Updates an application OAuth key mapping in the control plane.
+Updates an application OAuth key mapping via the configured key manager.
 
 > Payload
 
@@ -376,7 +376,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|body|body|[OAuthKeyUpdateRequest](schemas.md#schemaoauthkeyupdaterequest)|false|Passed through to the configured control-plane OAuth key update endpoint.|
+|body|body|[OAuthKeyUpdateRequest](schemas.md#schemaoauthkeyupdaterequest)|false|OAuth key update payload forwarded to the configured key manager.|
 |applicationId|path|string|true|none|
 |keyMappingId|path|string|true|none|
 
@@ -449,7 +449,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Application OAuth key response returned by the control plane.|[ApplicationOAuthKeyResponse](schemas.md#schemaapplicationoauthkeyresponse)|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Application OAuth key response.|[ApplicationOAuthKeyResponse](schemas.md#schemaapplicationoauthkeyresponse)|
 |400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.|Inline|
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
@@ -466,7 +466,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```shell
 
-curl -X POST http://localhost:3000/devportal/applications/{applicationId}/oauth-keys/{keyMappingId}/clean-up \
+curl -X POST https://devportal.api-platform.io/applications/{applicationId}/oauth-keys/{keyMappingId}/clean-up \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -475,7 +475,7 @@ curl -X POST http://localhost:3000/devportal/applications/{applicationId}/oauth-
 
 ```
 
-Proxies an OAuth key cleanup request to the control plane for a specific application key mapping. This is used to remove pending or partially-created OAuth key artifacts.
+Removes an OAuth key mapping and its associated OAuth client from the key manager. Used to clean up partially-created key artifacts.
 
 > Payload
 
@@ -497,7 +497,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|body|body|[OAuthKeyCleanUpRequest](schemas.md#schemaoauthkeycleanuprequest)|false|Passed through to the configured control-plane OAuth cleanup endpoint.|
+|body|body|[OAuthKeyCleanUpRequest](schemas.md#schemaoauthkeycleanuprequest)|false|OAuth cleanup payload forwarded to the configured key manager.|
 |applicationId|path|string|true|none|
 |keyMappingId|path|string|true|none|
 
@@ -561,7 +561,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Message or control-plane response payload.|Inline|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Message or generic response payload.|Inline|
 |400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.|Inline|
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|

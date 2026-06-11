@@ -36,9 +36,6 @@ const apiFlowService = require('../services/apiFlowService');
 const { ApplicationDTO } = require('../dto/application');
 const { buildSchema, getIntrospectionQuery, graphql: executeGraphQL } = require('graphql');
 const yaml = require('js-yaml');
-const { log } = require('console');
-const controlPlaneUrl = config.controlPlane.url;
-
 const generateArray = (length) => Array.from({ length });
 
 const loadAPIs = async (req, res) => {
@@ -65,8 +62,6 @@ const loadAPIs = async (req, res) => {
         const orgDetails = await adminDao.getOrganization(orgName);
         const devportalMode = orgDetails.ORG_CONFIG?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
         try {
-            const cpOrgID = orgDetails.ORGANIZATION_IDENTIFIER;
-            req.cpOrgID = cpOrgID;
             const orgID = orgDetails.ORG_ID;
             const searchTerm = req.query.query;
             const tags = req.query.tags;
@@ -241,8 +236,6 @@ const loadAPIContent = async (req, res) => {
         const devportalMode = orgDetails.ORG_CONFIG?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
         try {
             const orgDetails = await adminDao.getOrganization(orgName);
-            const cpOrgID = orgDetails.ORGANIZATION_IDENTIFIER;
-            req.cpOrgID = cpOrgID;
             const orgID = orgDetails.ORG_ID;
             const apiID = await apiDao.getAPIId(orgID, apiHandle);
             const metaData = await loadAPIMetaData(req, orgID, apiID);
@@ -570,7 +563,6 @@ const loadDocsPage = async (req, res) => {
             const apiMetadata = await apiDao.getAPIMetadata(orgID, apiID);
             let apiType = apiMetadata[0].dataValues.API_TYPE;
             const gatewayType = apiMetadata[0].dataValues.GATEWAY_TYPE;
-            req.cpOrgID = orgDetails.ORGANIZATION_IDENTIFIER;
             const metaForNav = {
                 apiInfo: { gatewayType },
                 apiReferenceID: apiMetadata[0].dataValues.REFERENCE_ID,
@@ -662,8 +654,6 @@ const loadDocument = async (req, res) => {
             "isWebSocketTryout": false,
             "isGraphQLTryout": false
         };
-        const cpOrgID = orgDetails.ORGANIZATION_IDENTIFIER;
-        req.cpOrgID = cpOrgID;
         const definitionResponse = await getAPIDefinition(orgName, viewName, apiHandle);
         templateContent.apiType = definitionResponse.apiType;
         
@@ -742,23 +732,8 @@ const loadDocument = async (req, res) => {
                 if (templateContent.isGraphQLTryout && definitionResponse.graphql) {
                     const schemaAsIntrospectionJSON = await convertSDLToIntrospection(definitionResponse.graphql);
                     templateContent.graphqlSchemaAsIntrospectionJSON = schemaAsIntrospectionJSON ? JSON.stringify(schemaAsIntrospectionJSON) : null;
-                    if (config.controlPlane?.enabled !== false && apiMetadata?.apiReferenceID) {
-                        try {
-                            const cpApiDetail = await util.invokeApiRequest(req, 'GET', controlPlaneUrl + `/apis/${apiMetadata.apiReferenceID}`, null, null);
-                            templateContent.graphqlSecurityScheme = JSON.stringify(cpApiDetail.securityScheme || []);
-                            templateContent.graphqlApiKeyHeader = cpApiDetail.apiKeyHeader || 'apikey';
-                        } catch (error) {
-                            logger.warn("Error fetching GraphQL API security details from control plane", {
-                                orgName: orgName,
-                                error: error.message
-                            });
-                            templateContent.graphqlSecurityScheme = '[]';
-                            templateContent.graphqlApiKeyHeader = 'apikey';
-                        }
-                    } else {
-                        templateContent.graphqlSecurityScheme = '[]';
-                        templateContent.graphqlApiKeyHeader = config.advanced?.apiKey?.keyType || 'apikey';
-                    }
+                    templateContent.graphqlSecurityScheme = '[]';
+                    templateContent.graphqlApiKeyHeader = config.advanced?.apiKey?.keyType || 'apikey';
                 } else {
                     templateContent.graphql = definitionResponse.graphql ? JSON.stringify(definitionResponse.graphql) : '""';
                     templateContent.apiMetadataJSON = JSON.stringify(apiMetadata || {});
@@ -1063,156 +1038,6 @@ function replaceEndpointParams(apiDefinition, prodEndpoint, sandboxEndpoint) {
 }
 
 
-function correctOpenAPISpec(spec, endpoints, cpApiDetail, tokenEndpoint) {
-    spec = replaceEndpointParams(spec, endpoints?.productionURL || '', endpoints?.sandboxURL || '');
-
-    if (!cpApiDetail) return spec;
-
-    // x-wso2-disable-security: true means the API requires no authentication.
-    // Per OpenAPI spec: root security:[] disables auth by default; we also clear any
-    // per-operation overrides and remove unused securitySchemes.
-    if (spec['x-wso2-disable-security'] === true) {
-        spec.security = [];
-        if (spec.components) spec.components.securitySchemes = {};
-        for (const pathItem of Object.values(spec.paths || {})) {
-            for (const method of ['get', 'post', 'put', 'delete', 'patch', 'head', 'options', 'trace']) {
-                if (pathItem[method]) pathItem[method].security = [];
-            }
-        }
-        return spec;
-    }
-
-    const securityScheme = cpApiDetail.securityScheme || [];
-    const usesOAuth2 = securityScheme.includes('oauth2');
-    const usesApiKey = securityScheme.includes('api_key');
-
-    if (!spec.components) spec.components = {};
-    if (!spec.components.securitySchemes) spec.components.securitySchemes = {};
-
-    // Remove old oauth2 schemes only when we can replace them (tokenEndpoint available)
-    // or when the API doesn't use oauth2. If the API uses oauth2 but the token endpoint
-    // is unavailable, preserve existing schemes rather than stripping them.
-    if (!usesOAuth2 || tokenEndpoint) {
-        for (const name of Object.keys(spec.components.securitySchemes)) {
-            if (spec.components.securitySchemes[name].type === 'oauth2') {
-                delete spec.components.securitySchemes[name];
-            }
-        }
-    }
-
-    if (usesOAuth2 && tokenEndpoint) {
-        spec.components.securitySchemes.OAuth2Security = {
-            type: 'oauth2',
-            description: `OAuth2 secured. Obtain an access token from ${tokenEndpoint} using client_id and client_secret (grant_type=client_credentials). Then call the API with header: Authorization: Bearer <access_token>`,
-            flows: {
-                clientCredentials: {
-                    tokenUrl: tokenEndpoint,
-                    scopes: {}
-                }
-            }
-        };
-        spec.components.securitySchemes.OAuth2SecurityBearer = {
-            type: 'http',
-            scheme: 'bearer',
-            bearerFormat: 'JWT',
-            description: `Pass the OAuth2 access token obtained from ${tokenEndpoint} as a Bearer token. Header: Authorization: Bearer <access_token>`
-        };
-    }
-
-    if (usesApiKey) {
-        spec.components.securitySchemes.ApiKeyAuth = {
-            type: 'apiKey',
-            name: cpApiDetail.apiKeyHeader || 'apikey',
-            in: 'header'
-        };
-    }
-
-    return spec;
-}
-
-
-function correctAsyncAPISpec(spec, endpoints, cpApiDetail, tokenEndpoint) {
-    spec = replaceEndpointParamsAsyncAPI(spec, endpoints?.productionURL || '', endpoints?.sandboxURL || '');
-
-    if (!spec?.asyncapi?.startsWith('2.')) return spec;
-    if (!cpApiDetail) return spec;
-
-    // x-wso2-disable-security: true means the API requires no authentication.
-    // Per AsyncAPI 2.x spec: security on servers controls auth; security:[] means no auth required.
-    if (spec['x-wso2-disable-security'] === true) {
-        if (spec.components) spec.components.securitySchemes = {};
-        for (const server of Object.values(spec.servers || {})) {
-            server.security = [];
-        }
-        return spec;
-    }
-
-    const securityScheme = cpApiDetail.securityScheme || [];
-    const usesOAuth2 = securityScheme.includes('oauth2');
-    const usesApiKey = securityScheme.includes('api_key');
-
-    if (!spec.components) spec.components = {};
-    if (!spec.components.securitySchemes) spec.components.securitySchemes = {};
-
-    // Remove old oauth2 schemes only when we can replace them (tokenEndpoint available)
-    // or when the API doesn't use oauth2. If the API uses oauth2 but the token endpoint
-    // is unavailable, preserve existing schemes rather than stripping them.
-    if (!usesOAuth2 || tokenEndpoint) {
-        for (const name of Object.keys(spec.components.securitySchemes)) {
-            if (spec.components.securitySchemes[name].type === 'oauth2') {
-                delete spec.components.securitySchemes[name];
-            }
-        }
-    }
-
-    if (usesOAuth2 && tokenEndpoint) {
-        // AsyncAPI 2.x oauth2 flows require the scopes field
-        spec.components.securitySchemes.OAuth2Security = {
-            type: 'oauth2',
-            description: `OAuth2 secured. Obtain an access token from ${tokenEndpoint} using client_id and client_secret (grant_type=client_credentials). Then call the API with header: Authorization: Bearer <access_token>`,
-            flows: {
-                clientCredentials: {
-                    tokenUrl: tokenEndpoint,
-                    scopes: {}
-                }
-            }
-        };
-        // AsyncAPI 2.x http type with bearer scheme for tools that prefer a bearer header
-        spec.components.securitySchemes.OAuth2SecurityBearer = {
-            type: 'http',
-            scheme: 'bearer',
-            bearerFormat: 'JWT',
-            description: `Pass the OAuth2 access token obtained from ${tokenEndpoint} as a Bearer token. Header: Authorization: Bearer <access_token>`
-        };
-    }
-
-    // AsyncAPI 2.x uses httpApiKey (not apiKey) for HTTP header-based keys
-    if (usesApiKey) {
-        spec.components.securitySchemes.ApiKeyAuth = {
-            type: 'httpApiKey',
-            name: cpApiDetail.apiKeyHeader || 'apikey',
-            in: 'header'
-        };
-    }
-
-    // Sync server-level security declarations with the active schemes
-    if (spec.servers) {
-        const activeSchemes = Object.keys(spec.components.securitySchemes);
-        const securityReqs = activeSchemes.length > 0
-            ? activeSchemes.map(name => ({ [name]: [] }))
-            : [];
-        for (const server of Object.values(spec.servers)) {
-            if (securityReqs.length > 0) {
-                server.security = securityReqs;
-            } else {
-                delete server.security;
-            }
-        }
-    }
-
-    return spec;
-}
-
 function replaceEndpointParamsAsyncAPI(apiDefinition, prodEndpoint, sandboxEndpoint) {
     if (apiDefinition?.asyncapi && apiDefinition.asyncapi.startsWith('2.')) {
         if (prodEndpoint.trim().length !== 0) {
@@ -1271,30 +1096,10 @@ const loadAPIContentMd = async (req, res) => {
 
         const subscriptionPlans = await util.appendSubscriptionPlanDetails(orgID, metaData.subscriptionPolicies);
 
-        // Determine auth type from control plane (unauthenticated call)
-        req.cpOrgID = orgDetails.ORGANIZATION_IDENTIFIER;
         const isMCPFromRegistry = metaData.apiInfo?.apiType === constants.API_TYPE.MCP && !metaData.apiReferenceID;
         let showOAuth2 = true;
         let showApiKey = false;
         let noAuth = false;
-        let cpApiDetail = null;
-        if (config.controlPlane?.enabled !== false && metaData.apiReferenceID) {
-            try {
-                cpApiDetail = await util.invokeApiRequest(req, 'GET', `${controlPlaneUrl}/apis/${metaData.apiReferenceID}`, {}, null, true);
-                const securityScheme = cpApiDetail?.securityScheme || [];
-                if (securityScheme.length === 0) {
-                    showOAuth2 = false;
-                    showApiKey = false;
-                    noAuth = true;
-                } else {
-                    showOAuth2 = securityScheme.includes('oauth2');
-                    showApiKey = securityScheme.includes('api_key');
-                    noAuth = false;
-                }
-            } catch (authErr) {
-                logger.warn('Could not fetch security scheme from control plane, defaulting to OAuth2', { orgID, apiID, error: authErr.message });
-            }
-        }
 
         // Load API definition
         let apiDefinition = null;
@@ -1334,39 +1139,15 @@ const loadAPIContentMd = async (req, res) => {
         }
 
         let tokenEndpoint = null;
-        if (config.controlPlane?.enabled !== false) {
-            try {
-                const kmResponse = await util.invokeApiRequest(req, 'GET', controlPlaneUrl + '/key-managers?devPortalAppEnv=prod', null, null);
-                let kmList = (kmResponse?.list || []).filter(km => km.enabled);
-                if (kmList.length > 1) {
-                    const filtered = kmList.filter(km =>
-                        km.name.includes("_internal_key_manager_") ||
-                        (!kmList.some(k => k.name.includes("_internal_key_manager_")) && km.name.includes("Resident Key Manager")) ||
-                        (!kmList.some(k => k.name.includes("_internal_key_manager_") || k.name.includes("Resident Key Manager")) && km.name.includes("_appdev_sts_key_manager_") && km.name.endsWith("_prod"))
-                    );
-                    if (filtered.length > 0) kmList = filtered;
-                }
-                if (kmList.length > 0) {
-                    const km = kmList[0];
-                    if (km.name === 'Resident Key Manager') {
-                        tokenEndpoint = 'https://sts.choreo.dev/oauth2/token';
-                    } else if (km.tokenEndpoint) {
-                        tokenEndpoint = km.tokenEndpoint;
-                    }
-                }
-            } catch (kmErr) {
-                logger.warn('Failed to fetch key managers from control plane for markdown', { orgID, apiID, error: kmErr.message });
-            }
-        }
 
-        // Enrich spec with live server URLs and correct security schemes
+        // Enrich spec with live server URLs
         if (apiDefinition && apiType !== constants.API_TYPE.GRAPHQL && apiType !== constants.API_TYPE.MCP && apiType !== 'SOAP') {
             try {
-                const parsed = JSON.parse(apiDefinition);
+                const parsed = parseApiDefinitionContent(apiDefinition);
                 const isAsyncAPI = apiType === constants.API_TYPE.WS || apiType === constants.API_TYPE.WEBSUB;
                 const enriched = isAsyncAPI
-                    ? correctAsyncAPISpec(parsed, metaData.endPoints, cpApiDetail, tokenEndpoint)
-                    : correctOpenAPISpec(parsed, metaData.endPoints, cpApiDetail, tokenEndpoint);
+                    ? replaceEndpointParamsAsyncAPI(parsed, metaData.endPoints?.productionURL || '', metaData.endPoints?.sandboxURL || '')
+                    : replaceEndpointParams(parsed, metaData.endPoints?.productionURL || '', metaData.endPoints?.sandboxURL || '');
                 apiDefinition = JSON.stringify(enriched, null, 2);
             } catch (enrichErr) {
                 logger.warn('Could not enrich API spec for markdown', { orgID, apiID, error: enrichErr.message });
@@ -1624,7 +1405,6 @@ const loadAPIDefinitionRaw = async (req, res) => {
     try {
         const orgDetails = await adminDao.getOrganization(orgName);
         const orgID = orgDetails.ORG_ID;
-        req.cpOrgID = orgDetails.ORGANIZATION_IDENTIFIER;
 
         if (await isAiDisabledForPortal(orgID, viewName)) {
             return res.status(404).json({ message: 'Not Found' });
@@ -1670,45 +1450,6 @@ const loadAPIDefinitionRaw = async (req, res) => {
             spec = replaceEndpointParamsAsyncAPI(spec, prodUrl, sandboxUrl);
         } else if (apiType !== constants.API_TYPE.MCP) {
             spec = replaceEndpointParams(spec, prodUrl, sandboxUrl);
-        }
-
-        if (config.controlPlane?.enabled !== false && (isRestAPI || isAsyncAPI)) {
-            let tokenEndpoint = null;
-            let cpApiDetail = null;
-
-            if (config.controlPlane?.enabled !== false) {
-                try {
-                    const kmResponse = await util.invokeApiRequest(req, 'GET', controlPlaneUrl + '/key-managers?devPortalAppEnv=prod', null, null);
-                    let kmList = (kmResponse?.list || []).filter(km => km.enabled);
-                    if (kmList.length > 1) {
-                        const filtered = kmList.filter(km =>
-                            km.name.includes("_internal_key_manager_") ||
-                            (!kmList.some(k => k.name.includes("_internal_key_manager_")) && km.name.includes("Resident Key Manager")) ||
-                            (!kmList.some(k => k.name.includes("_internal_key_manager_") || k.name.includes("Resident Key Manager")) && km.name.includes("_appdev_sts_key_manager_") && km.name.endsWith("_prod"))
-                        );
-                        if (filtered.length > 0) kmList = filtered;
-                    }
-                    if (kmList.length > 0) {
-                        const km = kmList[0];
-                        tokenEndpoint = km.name === 'Resident Key Manager' ? 'https://sts.choreo.dev/oauth2/token' : (km.tokenEndpoint || null);
-                    }
-                } catch (kmErr) {
-                    logger.warn('Failed to fetch key managers for raw spec', { orgName, apiHandle, error: kmErr.message });
-                }
-
-                const referenceId = definitionResponse.metaData?.apiReferenceID;
-                if (referenceId) {
-                    try {
-                        cpApiDetail = await util.invokeApiRequest(req, 'GET', controlPlaneUrl + `/apis/${referenceId}`, null, null);
-                    } catch (cpErr) {
-                        logger.warn('Failed to fetch API security from control plane for raw spec', { orgName, apiHandle, error: cpErr.message });
-                    }
-                }
-            }
-
-            spec = isAsyncAPI
-                ? correctAsyncAPISpec(spec, endpoints, cpApiDetail, tokenEndpoint)
-                : correctOpenAPISpec(spec, endpoints, cpApiDetail, tokenEndpoint);
         }
 
         res.status(200).json(spec);

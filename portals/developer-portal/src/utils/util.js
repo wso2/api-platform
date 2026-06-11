@@ -467,189 +467,6 @@ async function readDocFiles(directory, baseDir = '', topLevelOnly = false) {
 }
 
 
-const invokeGraphQLRequest = async (req, url, query, variables, headers) => {
-    logger.info(`Invoking GraphQL API: ${url}`, {
-        userId: req.user?.id || req.user?.username || 'anonymous',
-        method: 'GraphQL',
-        endpoint: url
-    });
-
-    headers = {
-        ...headers,
-        'Content-Type': 'application/json',
-        Authorization: req.user?.exchangeToken
-            ? `Bearer ${req.user.exchangeToken}`
-            : req.user
-                ? `Bearer ${req.user.accessToken}`
-                : req.headers.authorization
-    };
-
-    let httpsAgent;
-
-    if (config.controlPlane.disableCertValidation) {
-        httpsAgent = new https.Agent({
-            rejectUnauthorized: false,
-        });
-    } else {
-        const certPath = path.join(process.cwd(), config.controlPlane.pathToCertificate);
-        httpsAgent = new https.Agent({
-            ca: fs.readFileSync(certPath),
-            rejectUnauthorized: false,
-        });
-    }
-
-    let graphqlPayload = {
-        query,
-        variables
-    };
-
-    try {
-        if (config.advanced.tokenExchanger?.enabled) {
-            const decodedToken = jwt.decode(req.user.exchangeToken);
-            const orgId = decodedToken.organization.uuid;
-            url = url.includes("?") ? `${url}&organizationId=${orgId}` : `${url}?organizationId=${orgId}`;
-        }
-
-        const response = await axios.post(url, graphqlPayload, {
-            headers,
-            httpsAgent
-        });
-
-        return response.data;
-    } catch (error) {
-        if (error.response?.status === 401 && req.user?.exchangeToken) {
-            try {
-                const newExchangedToken = await tokenExchanger(req.user.accessToken, req.user.returnTo.split("/")[1]);
-                req.user.exchangeToken = newExchangedToken;
-                headers.Authorization = `Bearer ${newExchangedToken}`;
-
-                const retryResponse = await axios.post(url, graphqlPayload, {
-                    headers,
-                    httpsAgent
-                });
-
-                return retryResponse.data;
-            } catch (retryError) {
-                let retryMessage = retryError.response?.data?.description || retryError.message;
-                logger.error('GraphQL request retry failed', {
-                    url: url,
-                    error: retryMessage,
-                    statusCode: retryError.response?.status,
-                    userId: req.user?.id || req.user?.username || 'anonymous'
-                });
-                throw new CustomError(retryError.response?.status || 500, "Request retry failed", retryMessage);
-            }
-        } else {
-            logger.error('GraphQL request error', {
-                url: url,
-                error: error.message,
-                statusCode: error.response?.status,
-                responseData: error.response?.data,
-                userId: req.user?.id || req.user?.username || 'anonymous'
-            });
-            let message = error.response?.data?.description || error.message;
-            throw new CustomError(error.response?.status || 500, 'GraphQL request failed', message);
-        }
-    }
-};
-
-const apiRequest = async (method, url, headers, body, organizationId) => {
-    let httpsAgent;
-    url = url.includes("?") ? `${url}&organizationId=${organizationId}` : `${url}?organizationId=${organizationId}`;
-
-    if (config.controlPlane.disableCertValidation) {
-        httpsAgent = new https.Agent({
-            rejectUnauthorized: false,
-        });
-    } else {
-        const certPath = path.join(process.cwd(), config.controlPlane.pathToCertificate);
-        httpsAgent = new https.Agent({
-            ca: fs.readFileSync(certPath),
-            rejectUnauthorized: false,
-        });
-    }
-    const response = await axios({
-        method,
-        url,
-        headers,
-        data: body,
-        httpsAgent
-    });
-    return response;
-};
-
-const invokeApiRequest = async (req, method, url, headers, body, publicMode = false) => {
-
-    logger.info(`Invoking API: ${url}`, {
-        method: method,
-        userId: req.user?.id || req.user?.username || 'anonymous',
-        endpoint: url
-    });
-    if (!publicMode) {
-        headers = headers || {};
-        headers.Authorization = req.user?.exchangeToken ? `Bearer ${req.user.exchangeToken}` : req.user ? `Bearer ${req.user.accessToken}` : req.headers.authorization;
-    }
-    let orgId = "";
-    try {
-        if (config.advanced.tokenExchanger?.enabled) {
-            if (req.cpOrgID) {
-                orgId = req.cpOrgID;
-            } else {
-                const decodedToken = jwt.decode(req.user.exchangeToken);
-                orgId = decodedToken?.organization.uuid;
-            }
-        } else if (req.cpOrgID) {
-            orgId = req.cpOrgID;
-        }
-        const response = await apiRequest(method, url, headers, body, orgId);
-        return response.data;
-    } catch (error) {
-        logger.error('Error while invoking API', {
-            url: url,
-            method: method,
-            error: error.message,
-            statusCode: error.response?.status,
-            responseData: error.response?.data,
-            userId: req.user?.id || req.user?.username || 'anonymous'
-        });
-        if (error.response?.status === 401) {
-            try {
-                const newExchangedToken = await tokenExchanger(req.user.accessToken, req.originalUrl.split("/")[1]);
-                req.user.exchangeToken = newExchangedToken;
-                headers.Authorization = `Bearer ${newExchangedToken}`;
-                const response = await apiRequest(method, url, headers, body, orgId);
-                return response.data;
-            } catch (retryError) {
-                let retryMessage;
-                if (retryError.response) {
-                    retryMessage = retryError.response.data.description;
-                }
-                logger.error('API request retry failed', {
-                    url: url,
-                    method: method,
-                    error: retryMessage,
-                    userId: req.user?.id || req.user?.username || 'anonymous'
-                });
-                throw new CustomError(error.response.status, "Access denied", error.message || error.response?.data?.description || constants.ERROR_MESSAGE.UNAUTHENTICATED);
-            }
-        } else {
-            let message = error.message;
-            if (error.response) {
-                message = error.response.data.description;
-            }
-            logger.error('API request failed', {
-                url: url,
-                method: method,
-                error: message,
-                statusCode: error.status,
-                userId: req.user?.id || req.user?.username || 'anonymous'
-            });
-            throw new CustomError(error.status, 'Request failed', message);
-        }
-    }
-};
-
-
 const validateIDP = () => {
 
     const validations = [
@@ -1131,7 +948,7 @@ function filterAllowedAPIs(searchResults, allowedAPIs) {
         if (constants.FEDERATED_GATEWAY_VENDORS.includes(gatewayVendor)) {
             return true;
         }
-        // MCP servers published via the registry have no referenceID – skip control plane check
+        // MCP servers published via the registry have no referenceID
         if (api?.apiInfo?.apiType === constants.API_TYPE.MCP && !api.apiReferenceID) {
             return true;
         }
@@ -1187,9 +1004,6 @@ module.exports = {
     getAPIImages,
     getAPIDocLinks,
     isTextFile,
-    invokeApiRequest,
-    apiRequest,
-    invokeGraphQLRequest,
     validateIDP,
     validateOrganization,
     getErrors,

@@ -35,8 +35,6 @@ const loadSubscriptions = async (req, res) => {
     try {
         const orgDetails = await adminDao.getOrganization(orgName);
         const orgID = orgDetails.ORG_ID;
-        const cpOrgID = orgDetails.ORGANIZATION_IDENTIFIER;
-        req.cpOrgID = cpOrgID;
 
         if (!req.user) {
             return res.redirect(`/${orgName}${constants.ROUTE.VIEWS_PATH}${viewName}/login`);
@@ -109,8 +107,6 @@ const loadAPISubscriptions = async (req, res) => {
     try {
         const orgDetails = await adminDao.getOrganization(orgName);
         const orgID = orgDetails.ORG_ID;
-        const cpOrgID = orgDetails.ORGANIZATION_IDENTIFIER;
-        req.cpOrgID = cpOrgID;
 
         if (!req.user) {
             return res.redirect(`/${orgName}${constants.ROUTE.VIEWS_PATH}${viewName}/login`);

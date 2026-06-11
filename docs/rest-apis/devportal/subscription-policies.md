@@ -1,16 +1,141 @@
 <h1 id="wso2-api-developer-portal-core-devportal-routes-subscription-policies">Subscription Policies</h1>
 
-## Create subscription policies
+## List subscription policies
 
-<a id="opIdaddSubscriptionPolicies"></a>
+<a id="opIdlistSubscriptionPolicies"></a>
 
-`POST /organizations/{orgId}/subscription-policies`
+`GET /o/{orgId}/devportal/v1/subscription-policies`
 
 > Code samples
 
 ```shell
 
-curl -X POST http://localhost:3000/devportal/organizations/{orgId}/subscription-policies \
+curl -X GET https://devportal.api-platform.io/o/{orgId}/devportal/v1/subscription-policies \
+  -u {username}:{password} \
+  -H 'Accept: application/json' \
+  -H 'Authorization: Bearer {access-token}'
+
+```
+
+Lists subscription policies for an organization. When `name` is supplied, only the matching policy (if any) is returned. Policy names are unique within an organization.
+
+### Authentication
+
+<aside class="warning">
+This operation requires <strong>Basic Auth</strong> authentication.
+
+</aside>
+
+<h3 id="list-subscription-policies-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|name|query|string|false|Filter by exact policy name. Returns an array of zero or one items.|
+|orgId|path|string|true|none|
+
+> Example responses
+
+> 200 Response
+
+```json
+[
+  {
+    "policyID": "string",
+    "policyName": "string",
+    "displayName": "string",
+    "description": "string",
+    "requestCount": 0,
+    "orgID": "string"
+  }
+]
+```
+
+> Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.
+
+```json
+[
+  {
+    "code": "400",
+    "message": "input validation failed",
+    "description": "Invalid value"
+  }
+]
+```
+
+```json
+{
+  "code": "400",
+  "message": "Bad Request",
+  "description": "Missing required parameter: 'orgId'"
+}
+```
+
+```json
+{
+  "message": "Missing or invalid fields in the request payload"
+}
+```
+
+> 500 Response
+
+```json
+{
+  "code": "500",
+  "message": "Internal Server Error",
+  "description": "Internal Server Error"
+}
+```
+
+<h3 id="list-subscription-policies-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|List of subscription policy DTOs. Empty array when no policies match.|Inline|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.|Inline|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
+
+<h3 id="list-subscription-policies-responseschema">Response Schema</h3>
+
+Status Code **200**
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|[[SubscriptionPolicyResponse](schemas.md#schemasubscriptionpolicyresponse)]|false|none|none|
+|» policyID|string|false|none|none|
+|» policyName|string|false|none|none|
+|» displayName|string|false|none|none|
+|» description|string|false|none|none|
+|» requestCount|any|false|none|none|
+
+*oneOf*
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|»» *anonymous*|integer|false|none|none|
+
+*xor*
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|»» *anonymous*|string|false|none|none|
+
+*continued*
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|» orgID|string|false|none|none|
+
+## Create subscription policies
+
+<a id="opIdaddSubscriptionPolicies"></a>
+
+`POST /o/{orgId}/devportal/v1/subscription-policies`
+
+> Code samples
+
+```shell
+
+curl -X POST https://devportal.api-platform.io/o/{orgId}/devportal/v1/subscription-policies \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -134,13 +259,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdputSubscriptionPolicies"></a>
 
-`PUT /organizations/{orgId}/subscription-policies`
+`PUT /o/{orgId}/devportal/v1/subscription-policies`
 
 > Code samples
 
 ```shell
 
-curl -X PUT http://localhost:3000/devportal/organizations/{orgId}/subscription-policies \
+curl -X PUT https://devportal.api-platform.io/o/{orgId}/devportal/v1/subscription-policies \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -280,20 +405,20 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdgetSubscriptionPolicy"></a>
 
-`GET /organizations/{orgId}/subscription-policies/{policyIdOrName}`
+`GET /o/{orgId}/devportal/v1/subscription-policies/{policyId}`
 
 > Code samples
 
 ```shell
 
-curl -X GET http://localhost:3000/devportal/organizations/{orgId}/subscription-policies/{policyIdOrName} \
+curl -X GET https://devportal.api-platform.io/o/{orgId}/devportal/v1/subscription-policies/{policyId} \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
 
 ```
 
-Uses the route value as `policyID`.
+Retrieves a single subscription policy by `policyId`.
 
 ### Authentication
 
@@ -307,7 +432,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |orgId|path|string|true|none|
-|policyIdOrName|path|string|true|none|
+|policyId|path|string|true|none|
 
 > Example responses
 
@@ -385,20 +510,20 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIddeleteSubscriptionPolicy"></a>
 
-`DELETE /organizations/{orgId}/subscription-policies/{policyIdOrName}`
+`DELETE /o/{orgId}/devportal/v1/subscription-policies/{policyId}`
 
 > Code samples
 
 ```shell
 
-curl -X DELETE http://localhost:3000/devportal/organizations/{orgId}/subscription-policies/{policyIdOrName} \
+curl -X DELETE https://devportal.api-platform.io/o/{orgId}/devportal/v1/subscription-policies/{policyId} \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
 
 ```
 
-Uses the route value as `policyName`.
+Deletes a subscription policy by `policyId`.
 
 ### Authentication
 
@@ -412,7 +537,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |orgId|path|string|true|none|
-|policyIdOrName|path|string|true|none|
+|policyId|path|string|true|none|
 
 > Example responses
 

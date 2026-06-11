@@ -2,15 +2,15 @@
 
 ## Upload API content
 
-<a id="opIdcreateAPIContent"></a>
+<a id="opIdcreateApiContent"></a>
 
-`POST /organizations/{orgId}/apis/{apiId}/content`
+`POST /o/{orgId}/devportal/v1/apis/{apiId}/content`
 
 > Code samples
 
 ```shell
 
-curl -X POST http://localhost:3000/devportal/organizations/{orgId}/apis/{apiId}/content \
+curl -X POST https://devportal.api-platform.io/o/{orgId}/devportal/v1/apis/{apiId}/content \
   -u {username}:{password} \
   -H 'Content-Type: multipart/form-data' \
   -H 'Accept: application/json' \
@@ -136,15 +136,15 @@ At least one of `web/` or `docs/` must exist at the ZIP root.
 
 ## Replace API content
 
-<a id="opIdupdateAPIContent"></a>
+<a id="opIdreplaceApiContent"></a>
 
-`PUT /organizations/{orgId}/apis/{apiId}/content`
+`PUT /o/{orgId}/devportal/v1/apis/{apiId}/content`
 
 > Code samples
 
 ```shell
 
-curl -X PUT http://localhost:3000/devportal/organizations/{orgId}/apis/{apiId}/content \
+curl -X PUT https://devportal.api-platform.io/o/{orgId}/devportal/v1/apis/{apiId}/content \
   -u {username}:{password} \
   -H 'Content-Type: multipart/form-data' \
   -H 'Accept: application/json' \
@@ -155,7 +155,7 @@ curl -X PUT http://localhost:3000/devportal/organizations/{orgId}/apis/{apiId}/c
 
 Replaces or adds static content files for an existing API.
 
-The upload format is the same as `POST /organizations/{orgId}/apis/{apiId}/content`.
+The upload format is the same as `POST /o/{orgId}/devportal/v1/apis/{apiId}/content`.
 Existing files with the same stored `type` and `fileName` are updated; new files are created.
 Image metadata is updated only when image metadata can be resolved from the upload or request body.
 
@@ -267,15 +267,15 @@ At least one of `web/` or `docs/` must exist at the ZIP root.
 
 ## Get an API content file
 
-<a id="opIdgetAPIContentFile"></a>
+<a id="opIdgetApiContentFile"></a>
 
-`GET /organizations/{orgId}/apis/{apiId}/content`
+`GET /o/{orgId}/devportal/v1/apis/{apiId}/content`
 
 > Code samples
 
 ```shell
 
-curl -X GET http://localhost:3000/devportal/organizations/{orgId}/apis/{apiId}/content?type=document&fileName=getting-started.md \
+curl -X GET https://devportal.api-platform.io/o/{orgId}/devportal/v1/apis/{apiId}/content?type=document&fileName=getting-started.md \
   -u {username}:{password} \
   -H 'Accept: text/css' \
   -H 'Authorization: Bearer {access-token}'
@@ -377,15 +377,15 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ## Delete API content files
 
-<a id="opIddeleteAPIContentFile"></a>
+<a id="opIddeleteApiContentFile"></a>
 
-`DELETE /organizations/{orgId}/apis/{apiId}/content`
+`DELETE /o/{orgId}/devportal/v1/apis/{apiId}/content`
 
 > Code samples
 
 ```shell
 
-curl -X DELETE http://localhost:3000/devportal/organizations/{orgId}/apis/{apiId}/content?type=document \
+curl -X DELETE https://devportal.api-platform.io/o/{orgId}/devportal/v1/apis/{apiId}/content?type=document \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'

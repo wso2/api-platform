@@ -915,33 +915,6 @@ paths:
         - OAuth2Security:
             - dp:label_delete
             - dp:label_manage
-  /o/{orgId}/devportal/v1/applications/import:
-    parameters:
-      - $ref: "#/components/parameters/OrgId"
-    post:
-      tags:
-        - Applications
-      operationId: importApplications
-      summary: Import an application
-      description: >-
-        Imports an application from an application YAML file. This route is registered only when
-        `config.features.importApplication.enabled` is true. When `withKeys` is true, `keyManager` is
-        required and matching keys from the YAML are imported.
-      parameters:
-        - $ref: "#/components/parameters/PatToken"
-      requestBody:
-        $ref: "#/components/requestBodies/ImportApplicationMultipartBody"
-      responses:
-        "200":
-          $ref: "#/components/responses/ApplicationImportResponse"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "500":
-          $ref: "#/components/responses/InternalServerError"
-      security:
-        - OAuth2Security:
-            - dp:app_import
-            - dp:app_manage
   /applications:
     post:
       tags:
@@ -1016,32 +989,6 @@ paths:
         - OAuth2Security:
             - dp:app_delete
             - dp:app_manage
-  /applications/{applicationId}/reset-throttle-policy:
-    parameters:
-      - $ref: "#/components/parameters/ApplicationId"
-    post:
-      tags:
-        - Applications
-      summary: Reset application throttle policy
-      description: >-
-        Resets throttling policy state for a control-plane application. The request is proxied to the
-        control plane using the supplied user name.
-      operationId: resetThrottlingPolicy
-      requestBody:
-        $ref: "#/components/requestBodies/ResetThrottlePolicyBody"
-      responses:
-        "200":
-          $ref: "#/components/responses/MessageResponse"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "500":
-          $ref: "#/components/responses/InternalServerError"
-      security:
-        - OAuth2Security:
-            - dp:app_write
-            - dp:app_manage
   /o/{orgId}/devportal/v1/subscriptions:
     parameters:
       - $ref: "#/components/parameters/OrgId"
@@ -1051,9 +998,8 @@ paths:
       operationId: createSubscription
       summary: Create a subscription
       description: >-
-        Creates a token-based subscription for an API. The Developer Portal API ID is
-        resolved to the control-plane API reference before the subscription is created. The API must exist,
-        have token-based subscriptions enabled, and contain a control-plane reference ID.
+        Creates a token-based subscription for an API. The API must exist in the Developer Portal
+        and have token-based subscriptions enabled.
       requestBody:
         $ref: "#/components/requestBodies/SubscriptionCreateBody"
       responses:
@@ -1075,8 +1021,8 @@ paths:
       operationId: listSubscriptions
       summary: List subscriptions
       description: >-
-        Lists subscriptions from the control plane. When `apiId` is provided, the
-        Developer Portal API ID is validated locally and translated to the control-plane API reference.
+        Lists subscriptions stored in the Developer Portal. When `apiId` is provided,
+        results are filtered by the Developer Portal API ID.
       parameters:
         - $ref: "#/components/parameters/ApiIdQueryOptional"
       responses:
@@ -1101,7 +1047,7 @@ paths:
         - Subscriptions
       operationId: getSubscription
       summary: Get a subscription
-      description: Retrieves a single subscription from the control plane by subscription ID.
+      description: Retrieves a single subscription by subscription ID.
       responses:
         "200":
           $ref: "#/components/responses/SubscriptionResponse"
@@ -1118,7 +1064,7 @@ paths:
         - Subscriptions
       operationId: updateSubscription
       summary: Update a subscription
-      description: Updates the subscription status in the control plane. The service accepts only `ACTIVE` or `INACTIVE`.
+      description: Updates the subscription status. Accepts only `ACTIVE` or `INACTIVE`.
       requestBody:
         $ref: "#/components/requestBodies/SubscriptionUpdateBody"
       responses:
@@ -1139,7 +1085,7 @@ paths:
         - Subscriptions
       operationId: deleteSubscription
       summary: Delete a subscription
-      description: Deletes the subscription in the control plane and returns a success message from the Developer Portal.
+      description: Deletes the subscription and returns a success message.
       responses:
         "200":
           $ref: "#/components/responses/MessageResponse"
@@ -1190,9 +1136,7 @@ paths:
         - API Keys
       operationId: listApiKeys
       summary: List API keys
-      description: >-
-        Lists API keys for an API. The `apiId` query parameter is required and is resolved
-        from the Developer Portal API ID to the control-plane API reference.
+      description: Lists API keys for an API. The `apiId` query parameter is required.
       parameters:
         - $ref: "#/components/parameters/ApiIdQueryRequired"
       responses:
@@ -1412,9 +1356,8 @@ paths:
       operationId: generateOAuthKeys
       summary: Generate an OAuth access token
       description: >-
-        Generates an access token for an existing application OAuth key mapping. In control-plane mode the
-        request is proxied to the control plane. In decoupled mode the portal calls the Authorization
-        Server token endpoint directly using the client credentials supplied in `consumerSecret`.
+        Generates an access token for an existing application OAuth key mapping. The portal calls the
+        Authorization Server token endpoint directly using the client credentials supplied in `consumerSecret`.
       requestBody:
         $ref: "#/components/requestBodies/OAuthGenerateTokenBody"
       responses:
@@ -1439,7 +1382,7 @@ paths:
         - Application Keys
       operationId: revokeOAuthKeys
       summary: Revoke OAuth keys
-      description: Revokes an application OAuth key mapping in the control plane.
+      description: Revokes an application OAuth key mapping and removes the registered OAuth client from the key manager.
       responses:
         "200":
           $ref: "#/components/responses/MessageOrGenericResponse"
@@ -1456,7 +1399,7 @@ paths:
         - Application Keys
       operationId: updateOAuthKeys
       summary: Update OAuth keys
-      description: Updates an application OAuth key mapping in the control plane.
+      description: Updates an application OAuth key mapping via the configured key manager.
       requestBody:
         $ref: "#/components/requestBodies/OAuthKeyUpdateBody"
       responses:
@@ -1482,8 +1425,8 @@ paths:
       operationId: cleanUpOAuthKeys
       summary: Clean up OAuth key artifacts
       description: >-
-        Proxies an OAuth key cleanup request to the control plane for a specific application key mapping.
-        This is used to remove pending or partially-created OAuth key artifacts.
+        Removes an OAuth key mapping and its associated OAuth client from the key manager.
+        Used to clean up partially-created key artifacts.
       requestBody:
         $ref: "#/components/requestBodies/OAuthKeyCleanUpBody"
       responses:
@@ -1932,7 +1875,6 @@ components:
             dp:app_read: Read applications.
             dp:app_write: Create or update applications.
             dp:app_delete: Delete applications.
-            dp:app_import: Import applications.
             dp:app_manage: Manage applications.
             dp:subscription_read: Read subscriptions.
             dp:subscription_write: Create or update subscriptions.
@@ -2219,7 +2161,7 @@ components:
       schema:
         type: string
         example: api-7f4c2a6b
-      description: Developer Portal API ID used to resolve the control-plane API reference.
+      description: Developer Portal API ID.
     ApiIdQueryOptional:
       name: apiId
       in: query
@@ -2227,14 +2169,7 @@ components:
       schema:
         type: string
         example: api-7f4c2a6b
-      description: Optional Developer Portal API ID used to filter by the resolved control-plane API reference.
-    PatToken:
-      name: pat-token
-      in: header
-      required: true
-      schema:
-        type: string
-      description: Personal access token used by the application import flow.
+      description: Optional Developer Portal API ID used to filter results.
     LabelNamesQuery:
       name: names
       in: query
@@ -2429,9 +2364,7 @@ components:
               displayName: Internal APIs
     SubscriptionCreateBody:
       required: true
-      description: >-
-        Subscription creation payload. `apiId` is the Developer Portal API ID; the service resolves it to
-        the control-plane API reference before forwarding the request.
+      description: Subscription creation payload. `apiId` is the Developer Portal API ID.
       content:
         application/json:
           schema:
@@ -2442,7 +2375,7 @@ components:
               value:
                 apiId: api-7f4c2a6b
             selectedPlanAndApplication:
-              summary: Subscribe using a specific plan and control-plane application
+              summary: Subscribe using a specific plan and application
               value:
                 apiId: api-7f4c2a6b
                 subscriptionPlanName: Gold
@@ -2546,9 +2479,8 @@ components:
     ApiKeyGenerateBody:
       required: true
       description: >-
-        API key generation payload. `apiId` is the control-plane API reference ID, while `devportalAppId`
-        is the Developer Portal application ID. `projectID` is used to resolve the production environment
-        template before the request is sent to the control plane.
+        API key generation payload. `apiId` is the Developer Portal API reference ID, while `devportalAppId`
+        is the Developer Portal application ID. `projectID` is used to resolve the production environment template.
       content:
         application/json:
           schema:
@@ -2575,7 +2507,7 @@ components:
                 subscriptionPlan: Gold
     ApplicationKeysGenerateBody:
       required: false
-      description: OAuth key generation payload passed through to the configured control-plane application key endpoint.
+      description: OAuth key generation payload for creating an OAuth application via the configured key manager.
       content:
         application/json:
           schema:
@@ -2591,7 +2523,7 @@ components:
               application_access_token_expiry_time: 3600
     OAuthGenerateTokenBody:
       required: false
-      description: Passed through to the configured control-plane OAuth token generation endpoint.
+      description: OAuth token generation payload. The portal calls the Authorization Server token endpoint directly.
       content:
         application/json:
           schema:
@@ -2602,7 +2534,7 @@ components:
             validityPeriod: 3600
     OAuthKeyUpdateBody:
       required: false
-      description: Passed through to the configured control-plane OAuth key update endpoint.
+      description: OAuth key update payload forwarded to the configured key manager.
       content:
         application/json:
           schema:
@@ -2616,7 +2548,7 @@ components:
               application_access_token_expiry_time: 7200
     OAuthKeyCleanUpBody:
       required: false
-      description: Passed through to the configured control-plane OAuth cleanup endpoint.
+      description: OAuth cleanup payload forwarded to the configured key manager.
       content:
         application/json:
           schema:
@@ -2862,50 +2794,6 @@ components:
               summary: Application YAML upload
               value:
                 application: application.yaml
-    ResetThrottlePolicyBody:
-      required: true
-      description: User throttle policy reset payload.
-      content:
-        application/json:
-          schema:
-            $ref: "#/components/schemas/ResetThrottlePolicyRequest"
-          example:
-            userName: alice@example.com
-    ImportApplicationMultipartBody:
-      required: true
-      description: >-
-        Application import payload. The uploaded YAML describes the application, subscriptions, and
-        optionally application keys. Set `withKeys` to true only when importing keys for a specific
-        `keyManager`.
-      content:
-        multipart/form-data:
-          schema:
-            type: object
-            required:
-              - file
-            properties:
-              file:
-                type: string
-                format: binary
-                description: Imported application YAML file.
-              withKeys:
-                type: boolean
-                description: Whether to import application keys from the YAML.
-              keyManager:
-                type: string
-                description: Required when `withKeys` is true.
-          examples:
-            importWithoutKeys:
-              summary: Import application only
-              value:
-                file: application.yaml
-                withKeys: false
-            importWithKeys:
-              summary: Import application and keys
-              value:
-                file: application.yaml
-                withKeys: true
-                keyManager: Resident Key Manager
   responses:
     DefaultResponse:
       description: Operation response. The exact schema is produced by the route handler.
@@ -3324,26 +3212,8 @@ components:
                 - appRefID: cp-app-98765
                   token: OAUTH
                   shared: true
-    ApplicationImportResponse:
-      description: Application import result.
-      content:
-        application/json:
-          schema:
-            $ref: "#/components/schemas/ApplicationImportResponse"
-          examples:
-            success:
-              summary: Import completed
-              value:
-                status: Success
-            incomplete:
-              summary: Import completed with subscription failures
-              value:
-                status: Incomplete
-                failedSubscriptions:
-                  - apiName: Weather API
-                    reason: Subscription policy not found
     SubscriptionResponse:
-      description: Subscription DTO returned by the control plane.
+      description: Subscription DTO.
       content:
         application/json:
           schema:
@@ -3357,7 +3227,7 @@ components:
             status: ACTIVE
             createdTime: "2026-05-07T08:30:00Z"
     SubscriptionListResponse:
-      description: List of subscription DTOs returned by the control plane.
+      description: List of subscription DTOs.
       content:
         application/json:
           schema:
@@ -3405,9 +3275,7 @@ components:
             items:
               $ref: "#/components/schemas/ApiKeyMetadataResponse"
     AppKeyMappingCreateResponse:
-      description: >-
-        Control-plane key generation or key mapping response, enriched with the control-plane application
-        reference and subscription scope keys.
+      description: Key generation or key mapping response, enriched with the application reference and subscription scope keys.
       content:
         application/json:
           schema:
@@ -3426,7 +3294,7 @@ components:
               - weather.read
               - weather.write
     AppKeyMappingListResponse:
-      description: Application row with stored control-plane key mapping entries.
+      description: Application row with stored key mapping entries.
       content:
         application/json:
           schema:
@@ -3470,7 +3338,7 @@ components:
             items:
               $ref: "#/components/schemas/KeyManagerPublicResponseSchema"
     ApplicationApiKeyGenerateResponse:
-      description: API key generation or regeneration response returned by the control plane.
+      description: API key generation or regeneration response.
       content:
         application/json:
           schema:
@@ -3484,7 +3352,7 @@ components:
             apiKey: generated-api-key-value
             appRefId: cp-app-98765
     ApplicationKeyResponse:
-      description: Application OAuth key response returned by the control plane.
+      description: Application OAuth key response.
       content:
         application/json:
           schema:
@@ -3500,7 +3368,7 @@ components:
               - refresh_token
             callbackUrl: https://app.example.com/callback
     OAuthTokenResponse:
-      description: OAuth access token response returned by the control plane.
+      description: OAuth access token response.
       content:
         application/json:
           schema:
@@ -3511,7 +3379,7 @@ components:
             expires_in: 3600
             scope: weather.read
     MessageOrGenericResponse:
-      description: Message or control-plane response payload.
+      description: Message or generic response payload.
       content:
         application/json:
           schema:
@@ -4047,22 +3915,6 @@ components:
           type: boolean
           example: true
       additionalProperties: false
-    ApplicationImportResponse:
-      type: object
-      required:
-        - status
-      properties:
-        status:
-          type: string
-          enum:
-            - Success
-            - Incomplete
-        failedSubscriptions:
-          type: array
-          items:
-            type: object
-            additionalProperties: true
-      additionalProperties: false
     ViewResponse:
       type: object
       required:
@@ -4287,16 +4139,6 @@ components:
           type: string
           default: WEB
           example: WEB
-    ResetThrottlePolicyRequest:
-      type: object
-      required:
-        - userName
-      properties:
-        userName:
-          type: string
-          description: User name whose application throttle policy should be reset in the control plane.
-          example: alice@example.com
-      additionalProperties: false
     SubscriptionCreateRequest:
       type: object
       required:
@@ -4308,11 +4150,11 @@ components:
           example: api-7f4c2a6b
         subscriptionPlanName:
           type: string
-          description: Optional subscription plan name to use in the control plane.
+          description: Optional subscription plan name.
           example: Gold
         applicationId:
           type: string
-          description: Optional control-plane application ID.
+          description: Optional application ID.
           example: cp-app-98765
       additionalProperties: false
     SubscriptionUpdateRequest:
@@ -4329,18 +4171,18 @@ components:
       additionalProperties: false
     SubscriptionResponse:
       type: object
-      description: Subscription payload returned by the control plane.
+      description: Subscription payload.
       properties:
         subscriptionId:
           type: string
           example: sub-12345
         id:
           type: string
-          description: Alternative subscription identifier used by some control-plane responses.
+          description: Alternative subscription identifier.
           example: sub-12345
         apiId:
           type: string
-          description: Control-plane API reference ID.
+          description: API reference ID.
           example: cp-api-12345
         apiName:
           type: string
@@ -4465,7 +4307,7 @@ components:
           example: policy-gold
         policyName:
           type: string
-          description: Subscription policy name used as throttling policy in the control plane.
+          description: Subscription policy name used as the throttling policy.
           example: Gold
       additionalProperties: false
     KeyManagerRequest:
@@ -4945,11 +4787,11 @@ components:
       properties:
         apiId:
           type: string
-          description: Control-plane API reference ID.
+          description: API reference ID.
           example: cp-api-12345
         applicationId:
           type: string
-          description: Existing control-plane application ID, if one already exists.
+          description: Existing application ID, if one already exists.
           example: cp-app-98765
         devportalAppId:
           type: string
@@ -4973,11 +4815,11 @@ components:
           oneOf:
             - type: string
             - $ref: "#/components/schemas/GenericObject"
-          description: Subscription plan or policy details forwarded when a control-plane subscription must be created.
+          description: Subscription plan or policy details for the subscription.
       additionalProperties: true
     ApplicationKeysGenerateRequest:
       type: object
-      description: OAuth key generation payload accepted by the control-plane application key endpoint.
+      description: OAuth key generation payload accepted by the key manager endpoint.
       properties:
         keyType:
           type: string
@@ -5006,15 +4848,14 @@ components:
     OAuthGenerateTokenRequest:
       type: object
       description: >-
-        OAuth access token generation payload. In decoupled mode `consumerSecret` is required —
-        the portal uses it to call the AS token endpoint directly. In control-plane mode the body
-        is proxied as-is.
+        OAuth access token generation payload. `consumerSecret` is required — the portal uses it
+        to call the Authorization Server token endpoint directly.
       properties:
         consumerSecret:
           type: string
           description: >-
-            Client secret for the OAuth application. Required in decoupled (non-control-plane) mode.
-            Not stored by the portal — the caller must supply it on each token generation request.
+            Client secret for the OAuth application. Not stored by the portal — the caller must
+            supply it on each token generation request.
           example: my-consumer-secret
         scopes:
           type: array
@@ -5028,7 +4869,7 @@ components:
       additionalProperties: true
     OAuthKeyUpdateRequest:
       type: object
-      description: OAuth key update payload accepted by the control plane.
+      description: OAuth key update payload.
       properties:
         supportedGrantTypes:
           type: array
@@ -5047,7 +4888,7 @@ components:
       additionalProperties: true
     OAuthKeyCleanUpRequest:
       type: object
-      description: OAuth cleanup payload accepted by the control plane.
+      description: OAuth cleanup payload.
       properties:
         keyType:
           type: string
@@ -5061,7 +4902,7 @@ components:
       additionalProperties: true
     ApplicationApiKeyResponse:
       type: object
-      description: API key payload returned by the control plane. The Developer Portal adds `appRefId` for generation responses.
+      description: API key payload. The Developer Portal adds `appRefId` for generation responses.
       properties:
         id:
           type: string
@@ -5090,7 +4931,7 @@ components:
           example: generated-api-key-value
         token:
           type: string
-          description: Alternative generated key field used by some control-plane responses.
+          description: Alternative generated key field.
           example: generated-api-key-value
         appRefId:
           type: string
@@ -5099,7 +4940,7 @@ components:
       additionalProperties: true
     ApplicationOAuthKeyResponse:
       type: object
-      description: OAuth key payload returned by the control plane.
+      description: OAuth key payload.
       properties:
         keyMappingId:
           type: string

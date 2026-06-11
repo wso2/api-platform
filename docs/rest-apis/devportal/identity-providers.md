@@ -4,13 +4,13 @@
 
 <a id="opIdcreateIdentityProvider"></a>
 
-`POST /organizations/{orgId}/identityProvider`
+`POST /o/{orgId}/devportal/v1/identity-providers`
 
 > Code samples
 
 ```shell
 
-curl -X POST http://localhost:3000/devportal/organizations/{orgId}/identityProvider \
+curl -X POST https://devportal.api-platform.io/o/{orgId}/devportal/v1/identity-providers \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -155,13 +155,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdupdateIdentityProvider"></a>
 
-`PUT /organizations/{orgId}/identityProvider`
+`PUT /o/{orgId}/devportal/v1/identity-providers`
 
 > Code samples
 
 ```shell
 
-curl -X PUT http://localhost:3000/devportal/organizations/{orgId}/identityProvider \
+curl -X PUT https://devportal.api-platform.io/o/{orgId}/devportal/v1/identity-providers \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -317,13 +317,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdgetIdentityProvider"></a>
 
-`GET /organizations/{orgId}/identityProvider`
+`GET /o/{orgId}/devportal/v1/identity-providers`
 
 > Code samples
 
 ```shell
 
-curl -X GET http://localhost:3000/devportal/organizations/{orgId}/identityProvider \
+curl -X GET https://devportal.api-platform.io/o/{orgId}/devportal/v1/identity-providers \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -418,13 +418,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIddeleteIdentityProvider"></a>
 
-`DELETE /organizations/{orgId}/identityProvider`
+`DELETE /o/{orgId}/devportal/v1/identity-providers`
 
 > Code samples
 
 ```shell
 
-curl -X DELETE http://localhost:3000/devportal/organizations/{orgId}/identityProvider \
+curl -X DELETE https://devportal.api-platform.io/o/{orgId}/devportal/v1/identity-providers \
   -u {username}:{password} \
   -H 'Accept: text/plain' \
   -H 'Authorization: Bearer {access-token}'

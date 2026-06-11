@@ -4,13 +4,13 @@
 
 <a id="opIdgenerateApiKey"></a>
 
-`POST /organizations/{orgId}/api-keys/generate`
+`POST /o/{orgId}/devportal/v1/api-keys/generate`
 
 > Code samples
 
 ```shell
 
-curl -X POST http://localhost:3000/devportal/organizations/{orgId}/api-keys/generate \
+curl -X POST https://devportal.api-platform.io/o/{orgId}/devportal/v1/api-keys/generate \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -132,20 +132,20 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdlistApiKeys"></a>
 
-`GET /organizations/{orgId}/api-keys`
+`GET /o/{orgId}/devportal/v1/api-keys`
 
 > Code samples
 
 ```shell
 
-curl -X GET http://localhost:3000/devportal/organizations/{orgId}/api-keys?apiId=api-7f4c2a6b \
+curl -X GET https://devportal.api-platform.io/o/{orgId}/devportal/v1/api-keys?apiId=api-7f4c2a6b \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
 
 ```
 
-Lists API keys for an API. The `apiId` query parameter is required and is resolved from the Developer Portal API ID to the control-plane API reference.
+Lists API keys for an API. The `apiId` query parameter is required.
 
 ### Authentication
 
@@ -158,7 +158,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|apiId|query|string|true|Developer Portal API ID used to resolve the control-plane API reference.|
+|apiId|query|string|true|Developer Portal API ID.|
 |orgId|path|string|true|none|
 
 > Example responses
@@ -260,13 +260,13 @@ Status Code **200**
 
 <a id="opIdregenerateApiKey"></a>
 
-`POST /organizations/{orgId}/api-keys/{apiKeyId}/regenerate`
+`POST /o/{orgId}/devportal/v1/api-keys/{apiKeyId}/regenerate`
 
 > Code samples
 
 ```shell
 
-curl -X POST http://localhost:3000/devportal/organizations/{orgId}/api-keys/{apiKeyId}/regenerate \
+curl -X POST https://devportal.api-platform.io/o/{orgId}/devportal/v1/api-keys/{apiKeyId}/regenerate \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -376,13 +376,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdrevokeApiKey"></a>
 
-`POST /organizations/{orgId}/api-keys/{apiKeyId}/revoke`
+`POST /o/{orgId}/devportal/v1/api-keys/{apiKeyId}/revoke`
 
 > Code samples
 
 ```shell
 
-curl -X POST http://localhost:3000/devportal/organizations/{orgId}/api-keys/{apiKeyId}/revoke \
+curl -X POST https://devportal.api-platform.io/o/{orgId}/devportal/v1/api-keys/{apiKeyId}/revoke \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'

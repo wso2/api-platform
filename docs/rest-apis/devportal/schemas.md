@@ -841,37 +841,6 @@ continued
 |token|string|false|none|none|
 |shared|boolean|false|none|none|
 
-<h2 id="tocS_ApplicationImportResponse">ApplicationImportResponse</h2>
-
-<a id="schemaapplicationimportresponse"></a>
-<a id="schema_ApplicationImportResponse"></a>
-<a id="tocSapplicationimportresponse"></a>
-<a id="tocsapplicationimportresponse"></a>
-
-```json
-{
-  "status": "Success",
-  "failedSubscriptions": [
-    {}
-  ]
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|status|string|true|none|none|
-|failedSubscriptions|[object]|false|none|none|
-
-#### Enumerated Values
-
-|Property|Value|
-|---|---|
-|status|Success|
-|status|Incomplete|
-
 <h2 id="tocS_ViewResponse">ViewResponse</h2>
 
 <a id="schemaviewresponse"></a>
@@ -1167,26 +1136,6 @@ xor
 |description|string|true|none|none|
 |type|string|false|none|none|
 
-<h2 id="tocS_ResetThrottlePolicyRequest">ResetThrottlePolicyRequest</h2>
-
-<a id="schemaresetthrottlepolicyrequest"></a>
-<a id="schema_ResetThrottlePolicyRequest"></a>
-<a id="tocSresetthrottlepolicyrequest"></a>
-<a id="tocsresetthrottlepolicyrequest"></a>
-
-```json
-{
-  "userName": "alice@example.com"
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|userName|string|true|none|User name whose application throttle policy should be reset in the control plane.|
-
 <h2 id="tocS_SubscriptionCreateRequest">SubscriptionCreateRequest</h2>
 
 <a id="schemasubscriptioncreaterequest"></a>
@@ -1208,8 +1157,8 @@ xor
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |apiId|string|true|none|Developer Portal API ID.|
-|subscriptionPlanName|string|false|none|Optional subscription plan name to use in the control plane.|
-|applicationId|string|false|none|Optional control-plane application ID.|
+|subscriptionPlanName|string|false|none|Optional subscription plan name.|
+|applicationId|string|false|none|Optional application ID.|
 
 <h2 id="tocS_SubscriptionUpdateRequest">SubscriptionUpdateRequest</h2>
 
@@ -1261,15 +1210,15 @@ xor
 
 ```
 
-Subscription payload returned by the control plane.
+Subscription payload.
 
 ### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |subscriptionId|string|false|none|none|
-|id|string|false|none|Alternative subscription identifier used by some control-plane responses.|
-|apiId|string|false|none|Control-plane API reference ID.|
+|id|string|false|none|Alternative subscription identifier.|
+|apiId|string|false|none|API reference ID.|
 |apiName|string|false|none|none|
 |applicationId|string|false|none|none|
 |applicationName|string|false|none|none|
@@ -1429,7 +1378,7 @@ and
 |apiId|string|true|none|Developer Portal API ID.|
 |apiReferenceID|string|false|none|Control-plane API reference ID, used when a CP subscription is created or updated.|
 |policyId|string|true|none|Developer Portal subscription policy ID.|
-|policyName|string|false|none|Subscription policy name used as throttling policy in the control plane.|
+|policyName|string|false|none|Subscription policy name used as the throttling policy.|
 
 <h2 id="tocS_KeyManagerRequest">KeyManagerRequest</h2>
 
@@ -1929,13 +1878,13 @@ Application row with included key mapping rows as returned by Sequelize.
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|apiId|string|true|none|Control-plane API reference ID.|
-|applicationId|string|false|none|Existing control-plane application ID, if one already exists.|
+|apiId|string|true|none|API reference ID.|
+|applicationId|string|false|none|Existing application ID, if one already exists.|
 |devportalAppId|string|true|none|Developer Portal application ID.|
 |projectID|string|true|none|Project ID used to resolve environment templates.|
 |keyType|string|true|none|none|
 |name|string|false|none|Optional API key name. When omitted, the service generates a name from API handle, application reference, and key type.|
-|subscriptionPlan|any|false|none|Subscription plan or policy details forwarded when a control-plane subscription must be created.|
+|subscriptionPlan|any|false|none|Subscription plan or policy details for the subscription.|
 
 oneOf
 
@@ -1977,7 +1926,7 @@ xor
 
 ```
 
-OAuth key generation payload accepted by the control-plane application key endpoint.
+OAuth key generation payload accepted by the key manager endpoint.
 
 ### Properties
 
@@ -2014,13 +1963,13 @@ OAuth key generation payload accepted by the control-plane application key endpo
 
 ```
 
-OAuth access token generation payload. In decoupled mode `consumerSecret` is required — the portal uses it to call the AS token endpoint directly. In control-plane mode the body is proxied as-is.
+OAuth access token generation payload. `consumerSecret` is required — the portal uses it to call the Authorization Server token endpoint directly.
 
 ### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|consumerSecret|string|false|none|Client secret for the OAuth application. Required in decoupled (non-control-plane) mode. Not stored by the portal — the caller must supply it on each token generation request.|
+|consumerSecret|string|false|none|Client secret for the OAuth application. Not stored by the portal — the caller must supply it on each token generation request.|
 |scopes|[string]|false|none|none|
 |validityPeriod|integer|false|none|none|
 
@@ -2043,7 +1992,7 @@ OAuth access token generation payload. In decoupled mode `consumerSecret` is req
 
 ```
 
-OAuth key update payload accepted by the control plane.
+OAuth key update payload.
 
 ### Properties
 
@@ -2068,7 +2017,7 @@ OAuth key update payload accepted by the control plane.
 
 ```
 
-OAuth cleanup payload accepted by the control plane.
+OAuth cleanup payload.
 
 ### Properties
 
@@ -2106,7 +2055,7 @@ OAuth cleanup payload accepted by the control plane.
 
 ```
 
-API key payload returned by the control plane. The Developer Portal adds `appRefId` for generation responses.
+API key payload. The Developer Portal adds `appRefId` for generation responses.
 
 ### Properties
 
@@ -2119,7 +2068,7 @@ API key payload returned by the control plane. The Developer Portal adds `appRef
 |apiId|string|false|none|none|
 |applicationId|string|false|none|none|
 |apiKey|string|false|none|Generated API key secret.|
-|token|string|false|none|Alternative generated key field used by some control-plane responses.|
+|token|string|false|none|Alternative generated key field.|
 |appRefId|string|false|none|Control-plane application reference ID added by Developer Portal generation flow.|
 
 #### Enumerated Values
@@ -2152,7 +2101,7 @@ API key payload returned by the control plane. The Developer Portal adds `appRef
 
 ```
 
-OAuth key payload returned by the control plane.
+OAuth key payload.
 
 ### Properties
 
