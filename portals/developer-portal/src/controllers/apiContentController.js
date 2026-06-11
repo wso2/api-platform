@@ -480,9 +480,14 @@ const getAPIDefinition = async (orgName, viewName, apiHandle) => {
         metaData = loadAPIMetaDataFromFile(apiHandle);
         templateContent.apiType = metaData.apiInfo.apiType;
         templateContent.metaData = metaData;
-        const definitionContent = sampleApiLoader.getDefinition(apiHandle, resolveSamplesPath(apiHandle));
-        if (definitionContent) {
-            templateContent.swagger = definitionContent;
+        if (metaData.apiInfo.apiType === constants.API_TYPE.MCP) {
+            const productionURL = metaData.endPoints?.productionURL || '';
+            templateContent.swagger = JSON.stringify({ servers: [{ url: productionURL }] });
+        } else {
+            const definitionContent = sampleApiLoader.getDefinition(apiHandle, resolveSamplesPath(apiHandle));
+            if (definitionContent) {
+                templateContent.swagger = definitionContent;
+            }
         }
     } else {
         const orgID = await adminDao.getOrgId(orgName);
