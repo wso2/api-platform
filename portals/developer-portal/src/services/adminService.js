@@ -29,7 +29,6 @@ const sequelize = require("../db/sequelize");
 const { ApplicationDTO, SubscriptionDTO } = require('../dto/application');
 const APIDTO = require('../dto/apiDTO');
 const { config } = require('../config/configLoader');
-const WSO2_DEFAULT_URL = 'https://localhost:9443';
 const yaml = require('js-yaml');
 const { Sequelize } = require("sequelize");
 const { trackGenerateCredentials, trackSubscribeApi, trackUnsubscribeApi } = require('../utils/telemetry');
@@ -207,7 +206,7 @@ const createOrganization = async (req, res) => {
             }
             logger.info('Views created successfully', { orgId });
             //create default provider
-            await adminDao.createProvider(organization.ORG_ID, { name: 'WSO2', providerURL: WSO2_DEFAULT_URL }, t);
+            await adminDao.createProvider(organization.ORG_ID, { name: 'WSO2', providerURL: constants.WSO2_DEFAULT_URL }, t);
             logger.info('Default provider created successfully', {
                 orgId
             });
