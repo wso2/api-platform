@@ -36,14 +36,18 @@ import (
 type GatewayInternalAPIHandler struct {
 	gatewayService         *service.GatewayService
 	gatewayInternalService *service.GatewayInternalAPIService
+	hmacSecretService      *service.WebSubAPIHmacSecretService
 	slogger                *slog.Logger
 }
 
 func NewGatewayInternalAPIHandler(gatewayService *service.GatewayService,
-	gatewayInternalService *service.GatewayInternalAPIService, slogger *slog.Logger) *GatewayInternalAPIHandler {
+	gatewayInternalService *service.GatewayInternalAPIService,
+	hmacSecretService *service.WebSubAPIHmacSecretService,
+	slogger *slog.Logger) *GatewayInternalAPIHandler {
 	return &GatewayInternalAPIHandler{
 		gatewayService:         gatewayService,
 		gatewayInternalService: gatewayInternalService,
+		hmacSecretService:      hmacSecretService,
 		slogger:                slogger,
 	}
 }
@@ -805,6 +809,47 @@ func (h *GatewayInternalAPIHandler) CheckArtifactsExist(c *gin.Context) {
 	})
 }
 
+// GetWebSubAPIHmacSecrets handles GET /api/internal/v1/websub-apis/:apiId/hmac-secrets
+// Returns decrypted plaintext HMAC secrets for the gateway-controller to load into its webhook secret store.
+func (h *GatewayInternalAPIHandler) GetWebSubAPIHmacSecrets(c *gin.Context) {
+	_, _, ok := h.authenticateRequest(c)
+	if !ok {
+		return
+	}
+
+	apiID := c.Param("apiId")
+	if apiID == "" {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "API ID is required"))
+		return
+	}
+
+	if h.hmacSecretService == nil {
+		h.slogger.Warn("HMAC secret service not configured", "apiID", apiID)
+		c.JSON(http.StatusServiceUnavailable, utils.NewErrorResponse(503, "Service Unavailable", "HMAC secret management is not configured on this server"))
+		return
+	}
+
+	secrets, err := h.hmacSecretService.ListByArtifactUUID(apiID)
+	if err != nil {
+		h.slogger.Error("Failed to list HMAC secrets for WebSub API", "apiID", apiID, "error", err)
+		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to get HMAC secrets"))
+		return
+	}
+
+	items := make([]dto.GatewayHmacSecretInfo, 0, len(secrets))
+	for _, s := range secrets {
+		plaintext, err := h.hmacSecretService.DecryptSecret(s)
+		if err != nil {
+			h.slogger.Error("Failed to decrypt HMAC secret", "apiID", apiID, "secretName", s.Name, "error", err)
+			c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to decrypt HMAC secret"))
+			return
+		}
+		items = append(items, dto.GatewayHmacSecretInfo{Name: s.Name, Secret: plaintext})
+	}
+
+	c.JSON(http.StatusOK, dto.GatewayHmacSecretsResponse{ArtifactID: apiID, Secrets: items})
+}
+
 func (h *GatewayInternalAPIHandler) RegisterRoutes(r *gin.Engine) {
 	orgGroup := r.Group("/api/internal/v1/apis")
 	{
@@ -846,6 +891,7 @@ func (h *GatewayInternalAPIHandler) RegisterRoutes(r *gin.Engine) {
 	{
 		websubAPIGroup.GET("/api-keys", h.GetWebSubAPIAPIKeys)
 		websubAPIGroup.GET("/:apiId", h.GetWebSubAPI)
+		websubAPIGroup.GET("/:apiId/hmac-secrets", h.GetWebSubAPIHmacSecrets)
 	}
 
 	webbrokerAPIGroup := r.Group("/api/internal/v1/webbroker-apis")

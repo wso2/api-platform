@@ -118,6 +118,19 @@ type GatewaySubscriptionPlanInfo struct {
 	Etag               string                 `json:"etag"` // Deterministic UUIDv7 derived from id + updatedAt
 }
 
+// GatewayHmacSecretInfo represents a single HMAC secret returned to the gateway-controller.
+// The Secret field contains the plaintext value — this is only exposed on the internal endpoint.
+type GatewayHmacSecretInfo struct {
+	Name   string `json:"name"`
+	Secret string `json:"secret"`
+}
+
+// GatewayHmacSecretsResponse is the response for GET /api/internal/v1/websub-apis/:apiId/hmac-secrets.
+type GatewayHmacSecretsResponse struct {
+	ArtifactID string                  `json:"artifactId"`
+	Secrets    []GatewayHmacSecretInfo `json:"secrets"`
+}
+
 // GatewaySubscriptionInfo represents a subscription in internal gateway responses.
 type GatewaySubscriptionInfo struct {
 	ID                string    `json:"id"`

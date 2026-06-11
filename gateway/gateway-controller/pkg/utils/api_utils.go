@@ -1036,6 +1036,70 @@ func MapToStruct(data map[string]interface{}, out interface{}) error {
 	return nil
 }
 
+// platformHmacSecretInfo is the per-secret DTO returned by the internal HMAC endpoint.
+type platformHmacSecretInfo struct {
+	Name   string `json:"name"`
+	Secret string `json:"secret"`
+}
+
+// platformHmacSecretsResponse is the response body from GET /websub-apis/:id/hmac-secrets.
+type platformHmacSecretsResponse struct {
+	ArtifactID string                   `json:"artifactId"`
+	Secrets    []platformHmacSecretInfo `json:"secrets"`
+}
+
+// HmacSecretInfo is the public view of a platform-managed HMAC secret.
+type HmacSecretInfo struct {
+	Name      string
+	Plaintext string
+}
+
+// FetchWebSubAPIHmacSecrets fetches the plaintext HMAC secrets for a WebSub API artifact
+// from the platform-API internal endpoint.
+func (s *APIUtilsService) FetchWebSubAPIHmacSecrets(artifactID string) ([]HmacSecretInfo, error) {
+	secretsURL := s.getBaseURL() + "/websub-apis/" + artifactID + "/hmac-secrets"
+
+	s.logger.Debug("Fetching WebSub API HMAC secrets",
+		slog.String("artifact_id", artifactID),
+		slog.String("url", secretsURL),
+	)
+
+	req, err := http.NewRequest("GET", secretsURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create HMAC secrets request: %w", err)
+	}
+	req.Header.Add("api-key", s.config.Token)
+	req.Header.Add("Accept", "application/json")
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch HMAC secrets: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("HMAC secrets request failed with status %d: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	var response platformHmacSecretsResponse
+	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+		return nil, fmt.Errorf("failed to decode HMAC secrets response: %w", err)
+	}
+
+	secrets := make([]HmacSecretInfo, 0, len(response.Secrets))
+	for _, s := range response.Secrets {
+		secrets = append(secrets, HmacSecretInfo{Name: s.Name, Plaintext: s.Secret})
+	}
+
+	s.logger.Debug("Successfully fetched WebSub API HMAC secrets",
+		slog.String("artifact_id", artifactID),
+		slog.Int("count", len(secrets)),
+	)
+
+	return secrets, nil
+}
+
 // CheckArtifactsExist checks which artifact UUIDs still exist on the platform.
 // Returns the subset of provided UUIDs that exist. Used during sync to avoid
 // deleting artifacts that still exist but have no active deployment.

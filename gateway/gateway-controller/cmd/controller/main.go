@@ -501,6 +501,8 @@ func main() {
 		subscriptionSnapshotManager,
 		eventHubInstance,
 		secretsService,
+		webhookSecretStore,
+		webhookSecretSnapshotManager,
 	)
 	if err := cpClient.Start(); err != nil {
 		log.Error("Failed to start control plane client", slog.Any("error", err))
