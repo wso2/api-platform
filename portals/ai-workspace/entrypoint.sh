@@ -55,12 +55,11 @@ if [ -f "$CONFIG_FILE" ]; then
     case "$key" in
       auth_mode)                  vite_key="VITE_AUTH_MODE" ;;
       domain)                     vite_key="VITE_DOMAIN" ;;
-      super_admin_username)       vite_key="VITE_SUPER_ADMIN_USERNAME" ;;
-      super_admin_password_hash)  vite_key="VITE_SUPER_ADMIN_PASSWORD_HASH" ;;
-      oidc_authority)             vite_key="VITE_OIDC_AUTHORITY" ;;
+oidc_authority)             vite_key="VITE_OIDC_AUTHORITY" ;;
       oidc_client_id)             vite_key="VITE_OIDC_CLIENT_ID" ;;
       default_org_region)         vite_key="VITE_DEFAULT_ORG_REGION" ;;
-      sentry_env)                 vite_key="VITE_SENTRY_ENV" ;;
+      platform_api_base_url)      vite_key="VITE_PLATFORM_API_BASE_URL" ;;
+      controlplane_host)          vite_key="VITE_CONTROLPLANE_HOST" ;;
       *)                          continue ;;
     esac
 
@@ -103,6 +102,17 @@ chmod 644 /tmp/runtime-config.js
 
 var_count=$(env | grep -c '^VITE_' || echo "0")
 echo "Runtime configuration generated with $var_count VITE_* variables at /tmp/runtime-config.js"
+
+# ---------------------------------------------------------------------------
+# TLS — generate a self-signed certificate so nginx can serve HTTPS
+# ---------------------------------------------------------------------------
+echo "Generating self-signed TLS certificate..."
+openssl req -x509 -nodes -newkey rsa:2048 -days 3650 \
+  -keyout /tmp/nginx/tls.key \
+  -out    /tmp/nginx/tls.crt \
+  -subj   "/CN=localhost" 2>/dev/null
+chmod 600 /tmp/nginx/tls.key
+echo "TLS certificate generated at /tmp/nginx/tls.crt"
 
 # Start nginx in foreground
 echo "Starting nginx..."

@@ -26,7 +26,7 @@ ARG USER_GID=$USER_UID
 RUN addgroup -g $USER_GID $USERNAME && \
     adduser -D -u $USER_UID -G $USERNAME $USERNAME && \
     apk upgrade --no-cache && \
-    apk add --no-cache curl && \
+    apk add --no-cache curl openssl && \
     mkdir -p /tmp/nginx/cache /tmp/nginx/logs /tmp/nginx/run && \
     ln -sf /tmp/nginx/cache /var/cache/nginx && \
     ln -sf /tmp/nginx/logs /var/log/nginx && \
@@ -46,10 +46,10 @@ RUN chown -R $USER_UID:$USER_GID /app && \
 
 USER $USER_UID
 
-EXPOSE 8080
+EXPOSE 5380
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD curl -f http://localhost:8080/ || exit 1
+  CMD curl -fk https://localhost:5380/ || exit 1
 
 STOPSIGNAL SIGQUIT
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]

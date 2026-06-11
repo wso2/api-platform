@@ -124,7 +124,6 @@ export default function AddGateway() {
     if (description.length > MAX_DESCRIPTION_LENGTH) return false;
     const normalizedVhost = normalizeVhost(vhost || '');
     if (!normalizedVhost || normalizedVhost.length === 0) return false;
-    if (!environment) return false;
     return true;
   };
 
@@ -243,8 +242,8 @@ export default function AddGateway() {
             </Grid>
 
             <Grid size={{ xs: 12 }}>
-              <FormControl fullWidth required>
-                <FormLabel required>Associated Environment</FormLabel>
+              <FormControl fullWidth>
+                <FormLabel>Associated Environment (Optional)</FormLabel>
                 <Select
                   value={environment}
                   onChange={(e) => setEnvironment(e.target.value)}

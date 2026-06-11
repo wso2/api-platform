@@ -148,16 +148,40 @@ export default function AppHeader(props: Props) {
         <Stack direction="row" alignItems="center" spacing={0.5}>
           {currentOrganization && (
             <>
-              <Stack direction="row" alignItems="center" spacing={0.75} sx={{ flexShrink: 0 }}>
-                <Building2 size={14} />
+              <Box
+                sx={{
+                  display: 'inline-flex',
+                  flexDirection: 'column',
+                  justifyContent: 'center',
+                  px: 1.25,
+                  py: 0.5,
+                  minWidth: 100,
+                  height: 40,
+                  border: '1px solid',
+                  borderColor: 'divider',
+                  borderRadius: 1,
+                  flexShrink: 0,
+                  cursor: 'default',
+                  userSelect: 'none',
+                }}
+              >
                 <Typography
-                  variant="body2"
-                  fontWeight={600}
-                  sx={{ color: 'text.primary', lineHeight: 1 }}
+                  variant="caption"
+                  sx={{ color: 'text.secondary', lineHeight: 1, mb: 0.25, fontSize: '0.65rem' }}
                 >
-                  {currentOrganization.name}
+                  Organizations
                 </Typography>
-              </Stack>
+                <Stack direction="row" alignItems="center" spacing={0.5}>
+                  <Building2 size={13} />
+                  <Typography
+                    variant="body2"
+                    fontWeight={500}
+                    sx={{ color: 'text.primary', lineHeight: 1, fontSize: '0.8rem' }}
+                  >
+                    {currentOrganization.name}
+                  </Typography>
+                </Stack>
+              </Box>
               <ChevronRight size={14} style={{ opacity: 0.4, flexShrink: 0 }} />
             </>
           )}

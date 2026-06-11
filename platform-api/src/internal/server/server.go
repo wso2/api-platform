@@ -619,6 +619,16 @@ func (s *Server) Start(port string, certDir string) error {
 		errCh <- httpServer.ListenAndServeTLS("", "")
 	}()
 
+	fmt.Print("\n\n" +
+		"========================================================================\n" +
+		"\n" +
+		"\n" +
+		"                      Platform API Started\n" +
+		"\n" +
+		"\n" +
+		"========================================================================\n" +
+		"\n\n")
+
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	defer signal.Stop(quit)
