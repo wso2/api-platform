@@ -623,8 +623,26 @@ const loadDocument = async (req, res) => {
         };
         templateContent.apiType = definitionResponse.apiType;
         if (isSpecPage && definitionResponse.swagger) {
-            // spec viewer expects a JSON string — parse YAML then re-stringify
-            templateContent.swagger = JSON.stringify(parseApiDefinitionContent(definitionResponse.swagger));
+            const specType = definitionResponse.apiType;
+            const tryoutEnabled = !!req.query.tryout;
+            if (specType === constants.API_TYPE.WS || specType === constants.API_TYPE.WEBSUB) {
+                templateContent.asyncapi = JSON.stringify(parseApiDefinitionContent(definitionResponse.swagger));
+                templateContent.isWebSocketTryout = tryoutEnabled;
+            } else if (specType === constants.API_TYPE.GRAPHQL) {
+                templateContent.isGraphQLTryout = tryoutEnabled;
+                if (tryoutEnabled) {
+                    const schemaAsIntrospectionJSON = await convertSDLToIntrospection(definitionResponse.swagger);
+                    templateContent.graphqlSchemaAsIntrospectionJSON = schemaAsIntrospectionJSON ? JSON.stringify(schemaAsIntrospectionJSON) : null;
+                    templateContent.graphqlSecurityScheme = '[]';
+                    templateContent.graphqlApiKeyHeader = config.advanced?.apiKey?.keyType || 'apikey';
+                    templateContent.apiMetadata = metaData;
+                } else {
+                    templateContent.graphql = JSON.stringify(definitionResponse.swagger);
+                    templateContent.apiMetadataJSON = JSON.stringify(metaData || {});
+                }
+            } else if (specType !== constants.API_TYPE.SOAP) {
+                templateContent.swagger = JSON.stringify(parseApiDefinitionContent(definitionResponse.swagger));
+            }
             templateContent.isAPIDefinition = true;
         }
         if (!isSpecPage && docType !== undefined && docName !== undefined) {
