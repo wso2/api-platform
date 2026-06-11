@@ -20,7 +20,7 @@
 #   docker compose up -d
 #
 # Ports:
-#   AI Workspace  →  http://localhost:8080
+#   AI Workspace  →  https://localhost:5380
 #   Platform API  →  https://localhost:9243  (self-signed TLS)
 # --------------------------------------------------------------------
 
@@ -70,9 +70,9 @@ services:
     volumes:
       - ./configs/config.toml:/etc/ai-workspace/config.toml:ro
     ports:
-      - "8080:8080"
+      - "5380:5380"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/"]
+      test: ["CMD", "curl", "-fk", "https://localhost:5380/"]
       interval: 30s
       timeout: 5s
       start_period: 10s

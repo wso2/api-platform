@@ -104,6 +104,17 @@ chmod 644 /tmp/runtime-config.js
 var_count=$(env | grep -c '^VITE_' || echo "0")
 echo "Runtime configuration generated with $var_count VITE_* variables at /tmp/runtime-config.js"
 
+# ---------------------------------------------------------------------------
+# TLS — generate a self-signed certificate so nginx can serve HTTPS
+# ---------------------------------------------------------------------------
+echo "Generating self-signed TLS certificate..."
+openssl req -x509 -nodes -newkey rsa:2048 -days 3650 \
+  -keyout /tmp/nginx/tls.key \
+  -out    /tmp/nginx/tls.crt \
+  -subj   "/CN=localhost" 2>/dev/null
+chmod 600 /tmp/nginx/tls.key
+echo "TLS certificate generated at /tmp/nginx/tls.crt"
+
 # Start nginx in foreground
 echo "Starting nginx..."
 exec nginx -g "daemon off;"
