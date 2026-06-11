@@ -1,0 +1,83 @@
+# Role-to-scope mapping for IDP role mode (auth.idp.validation_mode: role).
+#
+# Each entry maps an IDP role name (as it appears in the token claim configured
+# by auth.idp.roles_claim_path) to the list of platform scopes that role grants.
+# When a token carries multiple roles, the effective scopes are the union of all
+# role entries — most-permissive wins.
+#
+# Supported IDPs:
+#   Asgardeo  — set roles_claim_path: roles
+#   Keycloak  — set roles_claim_path: realm_access.roles  (or resource_access.<client>.roles)
+#   Microsoft Entra ID — set roles_claim_path: roles
+#
+# All scope names must be declared in the OpenAPI spec; unrecognized scopes are
+# rejected at server startup so configuration mistakes surface immediately.
+#
+# This file requires a server restart to take effect.
+
+roles:
+  - name: platform-admin
+    scopes:
+      - ap:project:create
+      - ap:project:read
+      - ap:project:update
+      - ap:project:delete
+      - ap:project:manage
+      - ap:gateway:create
+      - ap:gateway:read
+      - ap:gateway:update
+      - ap:gateway:delete
+      - ap:gateway:manage
+      - ap:rest_api:create
+      - ap:rest_api:read
+      - ap:rest_api:update
+      - ap:rest_api:delete
+      - ap:rest_api:manage
+      - ap:rest_api:deployment:create
+      - ap:rest_api:deployment:read
+      - ap:rest_api:deployment:manage
+      - ap:rest_api:deployment:undeploy
+      - ap:devportal:create
+      - ap:devportal:read
+      - ap:devportal:update
+      - ap:devportal:delete
+      - ap:devportal:manage
+      - ap:application:create
+      - ap:application:read
+      - ap:application:update
+      - ap:application:delete
+      - ap:application:manage
+      - ap:subscription_plan:create
+      - ap:subscription_plan:read
+      - ap:subscription_plan:update
+      - ap:subscription_plan:delete
+      - ap:subscription_plan:manage
+
+  - name: platform-developer
+    scopes:
+      - ap:project:read
+      - ap:project:create
+      - ap:rest_api:create
+      - ap:rest_api:read
+      - ap:rest_api:update
+      - ap:rest_api:manage
+      - ap:rest_api:deployment:create
+      - ap:rest_api:deployment:read
+      - ap:rest_api:deployment:manage
+      - ap:rest_api:deployment:undeploy
+      - ap:gateway:read
+      - ap:devportal:read
+      - ap:application:create
+      - ap:application:read
+      - ap:application:update
+      - ap:application:manage
+      - ap:subscription_plan:read
+
+  - name: platform-viewer
+    scopes:
+      - ap:project:read
+      - ap:rest_api:read
+      - ap:gateway:read
+      - ap:devportal:read
+      - ap:application:read
+      - ap:subscription_plan:read

@@ -109,9 +109,9 @@ type IDP struct {
 	UsernameClaimName     string `koanf:"username_claim_name"`
 	EmailClaimName        string `koanf:"email_claim_name"`
 	ScopeClaimName        string `koanf:"scope_claim_name"`
-	RolesClaimPath        string `koanf:"roles_claim_path"`
-	RoleMappings          []string `koanf:"role_mappings"`
-	ValidationMode        string `koanf:"validation_mode"`
+	RolesClaimPath   string `koanf:"roles_claim_path"`
+	RoleMappingsFile string `koanf:"role_mappings_file"`
+	ValidationMode   string `koanf:"validation_mode"`
 }
 
 // Gateway holds gateway-related configuration.
@@ -427,7 +427,7 @@ func envToKoanfKey(s string) string {
 	case "auth_idp_email_claim_name":         return "auth.idp.email_claim_name"
 	case "auth_idp_scope_claim_name":         return "auth.idp.scope_claim_name"
 	case "auth_idp_roles_claim_path":         return "auth.idp.roles_claim_path"
-	case "auth_idp_role_mappings":            return "auth.idp.role_mappings"
+	case "auth_idp_role_mappings_file":       return "auth.idp.role_mappings_file"
 	case "auth_idp_validation_mode":          return "auth.idp.validation_mode"
 
 	// Auth BasicAuth

@@ -329,7 +329,11 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	}
 	slogger.Info("Loaded OpenAPI scope registry", "path", cfg.OpenAPISpecPath)
 
-
+	// Load and validate the role-to-scope map when roles.yaml is configured.
+	roleScopeMap, err := loadRoleScopeMap(cfg, scopeRegistry, slogger)
+	if err != nil {
+		return nil, err
+	}
 
 	if !cfg.EnableScopeValidation {
 		slogger.Warn("scope validation is disabled — all authenticated requests will be allowed regardless of scope")
@@ -349,7 +353,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 			SkipValidation: false,
 		}))
 	} else {
-		authenticator, err := buildAuthenticator(cfg, slogger)
+		authenticator, err := buildAuthenticator(cfg, slogger, roleScopeMap)
 		if err != nil {
 			return nil, err
 		}
@@ -416,7 +420,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 
 // buildAuthenticator constructs an Authenticator from the server configuration.
 // Only called when BasicAuth is disabled.
-func buildAuthenticator(cfg *config.Server, slogger *slog.Logger) (middleware.Authenticator, error) {
+func buildAuthenticator(cfg *config.Server, slogger *slog.Logger, roleScopeMap map[string][]string) (middleware.Authenticator, error) {
 	if !cfg.Auth.IDP.Enabled {
 		if cfg.Auth.JWT.SkipValidation {
 			if !cfg.DevMode {
@@ -467,7 +471,7 @@ func buildAuthenticator(cfg *config.Server, slogger *slog.Logger) (middleware.Au
 		EmailClaim:        cfg.Auth.IDP.EmailClaimName,
 		ScopeClaim:        cfg.Auth.IDP.ScopeClaimName,
 		RolesClaimPath:    cfg.Auth.IDP.RolesClaimPath,
-		RoleMappings:      cfg.Auth.IDP.RoleMappings,
+		RoleScopeMap:      roleScopeMap,
 	})
 
 	idpLabel := cfg.Auth.IDP.Name
@@ -483,6 +487,25 @@ func buildAuthenticator(cfg *config.Server, slogger *slog.Logger) (middleware.Au
 		authMiddleware,
 		claimsMiddleware,
 	), nil
+}
+
+// loadRoleScopeMap loads the role-to-scope mapping for IDP role mode.
+// Returns nil when role mode is not active or no mapping file is configured,
+// which causes IDP role names to be used as-is as scope values (passthrough).
+func loadRoleScopeMap(cfg *config.Server, registry *middleware.ScopeRegistry, slogger *slog.Logger) (map[string][]string, error) {
+	if !cfg.Auth.IDP.Enabled || cfg.Auth.IDP.ValidationMode != "role" || cfg.Auth.IDP.RoleMappingsFile == "" {
+		return nil, nil
+	}
+
+	m, err := middleware.LoadRoleScopeMap(cfg.Auth.IDP.RoleMappingsFile)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load role mappings file: %w", err)
+	}
+	if err := middleware.ValidateRoleScopeMap(m, registry); err != nil {
+		return nil, fmt.Errorf("invalid roles.yaml: %w", err)
+	}
+	slogger.Info("Loaded role-to-scope mapping", "path", cfg.Auth.IDP.RoleMappingsFile, "roles", len(m))
+	return m, nil
 }
 
 // generateSelfSignedCert creates a self-signed certificate for development and saves it to disk
