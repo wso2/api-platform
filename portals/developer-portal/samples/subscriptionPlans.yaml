@@ -1,0 +1,18 @@
+# Subscription plan definitions for design mode.
+# APIs reference plans by policyName in their api.yaml subscriptionPolicies list.
+# These details are shown on API cards and the subscription plans section.
+
+- policyName: Gold
+  displayName: Gold
+  description: High-volume access with priority support.
+  requestCount: 10000
+
+- policyName: Silver
+  displayName: Silver
+  description: Standard access for most production workloads.
+  requestCount: 5000
+
+- policyName: Bronze
+  displayName: Bronze
+  description: Entry-level access, suitable for development and testing.
+  requestCount: 1000

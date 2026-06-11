@@ -1556,8 +1556,8 @@ async function extractApiContentFromUploadedZip(zipFile, orgId, apiId, mode = 'c
 
         const rootPath = await resolveZipRootPath(extractPath);
 
-        const webPath = path.join(rootPath, 'web');
-        const docsPath = path.join(rootPath, 'docs');
+        const webPath = path.join(rootPath, constants.ARTIFACT_DIR.WEB);
+        const docsPath = path.join(rootPath, constants.ARTIFACT_DIR.DOCS);
         const hasWebDir = fsDir.existsSync(webPath);
         const hasDocsDir = fsDir.existsSync(docsPath);
 

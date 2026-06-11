@@ -25,8 +25,6 @@ const adminDao = require('../dao/admin');
 const constants = require('../utils/constants');
 const logger = require('../config/logger');
 
-const filePrefix = config.pathToContent;
-const baseURLDev = config.baseUrl + constants.ROUTE.VIEWS_PATH;
 
 const loadCustomContent = async (req, res) => {
 
@@ -46,18 +44,23 @@ const loadCustomContent = async (req, res) => {
         res.status(404).send('Not found');
         return;
     }
-    if (config.mode === constants.DEV_MODE) {
-        let templateContent = {};
-        templateContent[constants.BASE_URL_NAME] = baseURLDev + viewName;
-        //read all markdown content
-        if (fs.existsSync(path.join(process.cwd(), filePrefix + 'pages', filePath, 'content'))) {
-            const markdDownFiles = fs.readdirSync(path.join(process.cwd(), filePrefix + 'pages/' + filePath + '/content'));
-            markdDownFiles.forEach((filename) => {
-                const tempKey = filename.split('.md')[0];
-                templateContent[tempKey] = loadMarkdown(filename, filePrefix + 'pages/' + filePath + '/content')
-            });
+    if (config.designMode?.enabled) {
+        if (!filePath) {
+            res.status(404).send('Not found');
+            return;
         }
-        html = renderTemplate(filePrefix + 'pages/' + filePath + '/page.hbs', filePrefix + 'layout/main.hbs', templateContent, false)
+        const layoutPath = config.designMode.pathToLayout;
+        let templateContent = {};
+        templateContent[constants.BASE_URL_NAME] = config.baseUrl + constants.ROUTE.VIEWS_PATH + viewName;
+        //read all markdown content
+        if (fs.existsSync(path.join(process.cwd(), layoutPath + 'pages', filePath, 'content'))) {
+            const markdDownFiles = fs.readdirSync(path.join(process.cwd(), layoutPath + 'pages/' + filePath + '/content'));
+            for (const filename of markdDownFiles) {
+                const tempKey = filename.split('.md')[0];
+                templateContent[tempKey] = await loadMarkdown(filename, layoutPath + 'pages/' + filePath + '/content');
+            }
+        }
+        html = renderTemplate(layoutPath + 'pages/' + filePath + '/page.hbs', layoutPath + 'layout/main.hbs', templateContent, false)
 
     } else {
         let content = {};
