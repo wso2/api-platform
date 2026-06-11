@@ -17,6 +17,7 @@
  */
 
 import { clearStoredToken } from '../clients/choreoApiClient';
+import { clearBasicAuthSession } from '../contexts/BasicAuthProvider';
 import { logger } from '../utils/logger';
 
 type SignOutFunction = () => Promise<void>;
@@ -46,5 +47,6 @@ export const handleLogout = async (signoutRedirect: SignOutFunction): Promise<vo
  */
 export const clearAuthData = (): void => {
   clearStoredToken();
+  clearBasicAuthSession();
   AUTH_SESSION_KEYS.forEach((key) => sessionStorage.removeItem(key));
 };
