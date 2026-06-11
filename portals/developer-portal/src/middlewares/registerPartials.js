@@ -155,8 +155,8 @@ const registerAllPartialsFromFile = async (baseURL, req, filePrefix) => {
     await registerPartialsFromFile(baseURL, base("pages", "api-keys", "partials"), req);
   }
 
-  if (fs.existsSync(path.resolve(process.cwd(), filePrefix + "pages", filePath, "partials"))) {
-    await registerPartialsFromFile(baseURL, path.resolve(process.cwd(), filePrefix + "pages", filePath, "partials"), req);
+  if (fs.existsSync(base("pages", filePath, "partials"))) {
+    await registerPartialsFromFile(baseURL, base("pages", filePath, "partials"), req);
   }
 }
 

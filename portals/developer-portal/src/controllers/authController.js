@@ -166,6 +166,7 @@ const handleSignUp = async (req, res) => {
         res.redirect(authJsonContent.signUpURL);
     } else {
         const returnTo = req.session.returnTo || `/${req.params.orgName}`;
+        delete req.session.returnTo;
         res.redirect(returnTo);
     }
 };

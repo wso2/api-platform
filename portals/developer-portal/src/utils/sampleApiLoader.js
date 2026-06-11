@@ -39,14 +39,25 @@ function loadSubscriptionPlans() {
         ? config.designMode.subscriptionPlansPath
         : path.join(process.cwd(), config.designMode.subscriptionPlansPath);
     if (!fs.existsSync(plansPath)) return {};
-    const plans = yaml.load(fs.readFileSync(plansPath, 'utf-8')) || [];
-    return Object.fromEntries(plans.map(p => [p.policyName, p]));
+    try {
+        const plans = yaml.load(fs.readFileSync(plansPath, 'utf-8'));
+        if (!Array.isArray(plans)) return {};
+        return Object.fromEntries(plans.map(p => [p.policyName, p]));
+    } catch (_) {
+        return {};
+    }
 }
 
 function parseApiYaml(apiHandle, samplesDir) {
     const apiYamlPath = path.join(resolveDir(samplesDir), apiHandle, 'api.yaml');
     if (!fs.existsSync(apiYamlPath)) return null;
-    const doc = yaml.load(fs.readFileSync(apiYamlPath, 'utf-8'));
+    let doc;
+    try {
+        doc = yaml.load(fs.readFileSync(apiYamlPath, 'utf-8'));
+        if (!doc || typeof doc !== 'object') return null;
+    } catch (_) {
+        return null;
+    }
     const { metadata = {}, spec = {} } = doc;
     const name = metadata.name || apiHandle;
 
@@ -69,7 +80,7 @@ function parseApiYaml(apiHandle, samplesDir) {
             .filter(f => imageExtensions.has(path.extname(f).toLowerCase()))
             .forEach(f => {
                 const key = path.basename(f, path.extname(f)); // e.g. "api-icon"
-                apiImageMetadata[key] = `/mock/${name}/${constants.ARTIFACT_DIR.WEB}/${f}`;
+                apiImageMetadata[key] = `/mock/${apiHandle}/${constants.ARTIFACT_DIR.WEB}/${f}`;
             });
     }
 
@@ -209,9 +220,14 @@ function getMcpSchema(apiHandle, samplesDir = './samples/apis/') {
         }
     }
     if (!raw) return null;
-    const parsed = (fileName.endsWith('.yaml') || fileName.endsWith('.yml'))
-        ? yaml.load(raw)
-        : JSON.parse(raw);
+    let parsed;
+    try {
+        parsed = (fileName.endsWith('.yaml') || fileName.endsWith('.yml'))
+            ? yaml.load(raw)
+            : JSON.parse(raw);
+    } catch (_) {
+        return null;
+    }
     if (!Array.isArray(parsed)) return parsed;
     return {
         tools:     parsed.filter(item => item.type === 'TOOL'),
@@ -220,17 +236,21 @@ function getMcpSchema(apiHandle, samplesDir = './samples/apis/') {
     };
 }
 
-function getDocMarkdown(apiHandle, docName, samplesDir = './samples/apis/') {
+function getDocMarkdown(apiHandle, docName, samplesDir = './samples/apis/', docType = '') {
     const apiDir = getApiDir(apiHandle, samplesDir);
     if (!apiDir) return null;
     // Try the name as-is then with .md appended (nav strips the extension from URLs).
-    // Also search one level of subdirectories in case the file lives under docs/{subDir}/.
     const candidates = [docName, docName + '.md'];
     const docsDir = path.join(apiDir, constants.ARTIFACT_DIR.DOCS);
-    const searchDirs = [docsDir];
+    // When docType is provided, prefer docs/{docType}/ before falling back to the rest.
+    const searchDirs = [];
+    if (docType && fs.existsSync(path.join(docsDir, docType))) {
+        searchDirs.push(path.join(docsDir, docType));
+    }
+    searchDirs.push(docsDir);
     if (fs.existsSync(docsDir)) {
         fs.readdirSync(docsDir)
-            .filter(f => fs.statSync(path.join(docsDir, f)).isDirectory())
+            .filter(f => fs.statSync(path.join(docsDir, f)).isDirectory() && f !== docType)
             .forEach(sub => searchDirs.push(path.join(docsDir, sub)));
     }
     for (const dir of searchDirs) {
@@ -255,13 +275,17 @@ function loadApplications() {
         ? config.designMode.applicationsPath
         : path.join(process.cwd(), config.designMode.applicationsPath);
     if (!fs.existsSync(appsPath)) return [];
-    const doc = yaml.load(fs.readFileSync(appsPath, 'utf-8')) || {};
-    const items = doc.items || [];
-    return items.map(item => ({
-        id: item.metadata?.name,
-        name: item.spec?.displayName || item.metadata?.name,
-        description: item.spec?.description || '',
-    }));
+    try {
+        const doc = yaml.load(fs.readFileSync(appsPath, 'utf-8')) || {};
+        const items = Array.isArray(doc.items) ? doc.items : [];
+        return items.map(item => ({
+            id: item.metadata?.name,
+            name: item.spec?.displayName || item.metadata?.name,
+            description: item.spec?.description || '',
+        }));
+    } catch (_) {
+        return [];
+    }
 }
 
-module.exports = { loadAll, loadOne, getDefinition, getMcpSchema, getDocMarkdown, listDocs, loadApplications };
+module.exports = { loadAll, loadOne, getDefinition, getMcpSchema, getDocMarkdown, listDocs, loadApplications, getApiDir };

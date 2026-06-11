@@ -190,7 +190,9 @@ const loadAPIContent = async (req, res) => {
         const layoutPath = config.designMode.pathToLayout;
         const samplesPath = resolveSamplesPath(apiHandle);
         const metaData = loadAPIMetaDataFromFile(apiHandle);
-        const hbsContentPath = path.join(process.cwd(), samplesPath, apiHandle, constants.ARTIFACT_DIR.WEB, constants.FILE_NAME.API_HBS_CONTENT_FILE_NAME);
+        const apiDir = sampleApiLoader.getApiDir(apiHandle, samplesPath);
+        const dirName = apiDir ? path.basename(apiDir) : apiHandle;
+        const hbsContentPath = path.join(process.cwd(), samplesPath, dirName, constants.ARTIFACT_DIR.WEB, constants.FILE_NAME.API_HBS_CONTENT_FILE_NAME);
 
         const apiType = metaData.apiInfo?.apiType;
         const isMCP = apiType === constants.API_TYPE.MCP;
@@ -629,7 +631,7 @@ const loadDocument = async (req, res) => {
             templateContent.isAPIDefinition = true;
         }
         if (!isSpecPage && docType !== undefined && docName !== undefined) {
-            const raw = sampleApiLoader.getDocMarkdown(apiHandle, docName, resolveSamplesPath(apiHandle)) || '';
+            const raw = sampleApiLoader.getDocMarkdown(apiHandle, docName, resolveSamplesPath(apiHandle), docType) || '';
             templateContent.apiMD = raw ? require('marked').parse(raw) : '';
         }
         templateContent.baseUrl = config.baseUrl + constants.ROUTE.VIEWS_PATH + viewName;

@@ -55,10 +55,10 @@ const loadCustomContent = async (req, res) => {
         //read all markdown content
         if (fs.existsSync(path.join(process.cwd(), layoutPath + 'pages', filePath, 'content'))) {
             const markdDownFiles = fs.readdirSync(path.join(process.cwd(), layoutPath + 'pages/' + filePath + '/content'));
-            markdDownFiles.forEach((filename) => {
+            for (const filename of markdDownFiles) {
                 const tempKey = filename.split('.md')[0];
-                templateContent[tempKey] = loadMarkdown(filename, layoutPath + 'pages/' + filePath + '/content')
-            });
+                templateContent[tempKey] = await loadMarkdown(filename, layoutPath + 'pages/' + filePath + '/content');
+            }
         }
         html = renderTemplate(layoutPath + 'pages/' + filePath + '/page.hbs', layoutPath + 'layout/main.hbs', templateContent, false)
 

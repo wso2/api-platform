@@ -31,6 +31,9 @@ router.get('/views/:viewName/mcps', registerPartials, apiController.loadAPIs);
 router.get('/views/:viewName/api/:apiHandle', registerPartials, apiController.loadAPIContent);
 router.get('/views/:viewName/mcp/:apiHandle', registerPartials, apiController.loadAPIContent);
 
+router.get('/views/:viewName/api/:apiHandle/docs', registerPartials, apiController.loadDocsPage);
+router.get('/views/:viewName/mcp/:apiHandle/docs', registerPartials, apiController.loadDocsPage);
+
 router.get('/views/:viewName/api/:apiHandle/docs/specification', registerPartials, apiController.loadDocument);
 router.get('/views/:viewName/mcp/:apiHandle/docs/specification', registerPartials, apiController.loadDocument);
 
