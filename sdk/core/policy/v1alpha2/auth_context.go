@@ -38,6 +38,9 @@ type AuthContext struct {
 	// fields above (e.g., custom JWT claims).
 	Properties map[string]string
 
+	// TokenId holds the unique identifier of a token (e.g. for a jwt it can be jti)
+	TokenId string
+
 	// Previous points to the AuthContext set by an earlier auth policy in a
 	// multi-layer auth chain. Nil if this is the only auth layer.
 	Previous *AuthContext
