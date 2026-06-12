@@ -303,6 +303,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	timeoutService := service.NewDeploymentTimeoutService(deploymentRepo, timeoutConfig, slogger)
 
 	slogger.Info("Initialized all services and handlers successfully")
+	slogger.Info("Platform API configuration", slog.Bool("demoMode", cfg.DemoMode))
 
 	if strings.ToLower(cfg.LogLevel) == "debug" {
 		gin.SetMode(gin.DebugMode)
@@ -678,30 +679,28 @@ func (s *Server) GetRouter() *gin.Engine {
 }
 
 // seedBasicAuthOrg ensures the file-based auth organization exists in the DB.
-// If AUTH_BASIC_AUTH_ORGANIZATION_ID is empty, a UUID is generated and written
-// back into cfg so the login handler issues tokens with the correct org ID.
+// It fetches by the configured handle first; only creates the org when no
+// matching org is found. The org ID in cfg is updated to the persisted value
+// so the login handler issues tokens with the correct org ID.
 func seedBasicAuthOrg(cfg *config.Server, orgRepo repository.OrganizationRepository, slogger *slog.Logger) error {
 	ba := &cfg.Auth.FileBased
 
-	// Auto-generate the org ID if not configured.
+	existing, err := orgRepo.GetOrganizationByHandle(ba.Organization.Handle)
+	if err != nil {
+		return fmt.Errorf("failed to check basic-auth organization: %w", err)
+	}
+	if existing != nil {
+		ba.Organization.ID = existing.ID
+		slogger.Info("Basic-auth organization already exists", "id", existing.ID, "handle", existing.Handle)
+		return nil
+	}
+
 	if ba.Organization.ID == "" {
 		id, err := utils.GenerateUUID()
 		if err != nil {
 			return fmt.Errorf("failed to generate basic-auth org ID: %w", err)
 		}
 		ba.Organization.ID = id
-	}
-
-	existing, err := orgRepo.GetOrganizationByIdOrHandle(ba.Organization.ID, ba.Organization.Handle)
-	if err != nil {
-		return fmt.Errorf("failed to check basic-auth organization: %w", err)
-	}
-	if existing != nil {
-		// Already registered — make sure cfg carries the persisted ID (handles the
-		// auto-generate-then-restart case where the ID was written to env).
-		ba.Organization.ID = existing.ID
-		slogger.Info("Basic-auth organization already exists", "id", existing.ID, "handle", existing.Handle)
-		return nil
 	}
 
 	now := time.Now()
