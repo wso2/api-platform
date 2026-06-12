@@ -191,6 +191,7 @@ const loadAPISubscriptions = async (req, res) => {
             apiHandle: apiHandle,
             isReadOnlyMode: config.readOnlyMode,
             showApiKeysNav: apiUsesApiKeySecurity(metaData, apiDefinitionForNav),
+            showSubscriptionsNav: (metaData?.subscriptionPolicies || []).length > 0,
         };
 
         html = await renderTemplateFromAPI(templateContent, orgID, orgName, 'pages/api-subscriptions', viewName);

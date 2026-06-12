@@ -26,6 +26,7 @@
           />
           <span class="nav-text">Documentation</span>
         </a>
+        {{#if showSubscriptionsNav}}
         <a href="#" class="nav-link submenu-link fw-light" id="api-subscriptions">
           <img
             src="/images/subscriptions-icon.svg"
@@ -33,6 +34,7 @@
           />
           <span class="nav-text">Subscriptions</span>
         </a>
+        {{/if}}
         {{#if showApiKeysNav}}
         <a href="#" class="nav-link submenu-link fw-light" id="api-keys-nav">
           <img

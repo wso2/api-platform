@@ -227,6 +227,7 @@ const loadAPIContent = async (req, res) => {
             baseUrl: config.baseUrl + constants.ROUTE.VIEWS_PATH + viewName,
             schemaUrl: `/mock/${apiHandle}/definition.yml`,
             showApiKeysNav: apiUsesApiKeySecurity(metaData),
+            showSubscriptionsNav: (metaData.subscriptionPolicies || []).length > 0,
         }
         const landingPage = isMCP ? 'pages/mcp-landing' : 'pages/api-landing';
         html = renderTemplate(layoutPath + landingPage + '/page.hbs', layoutPath + 'layout/main.hbs', templateContent, false);
@@ -437,6 +438,7 @@ const loadAPIContent = async (req, res) => {
                 isFederatedAPI: isFederatedAPI,
             };
             templateContent.showApiKeysNav = apiUsesApiKeySecurity(metaData, apiDefinitionForNav);
+            templateContent.showSubscriptionsNav = (metaData?.subscriptionPolicies || []).length > 0;
             templateContent.hasSubscriptionToken = !!findSubscriptionTokenHeader(apiDefinitionForNav);
             if (metaData.apiInfo.apiType == "MCP") {
                 html = await renderTemplateFromAPI(templateContent, orgID, orgName, "pages/mcp-landing", viewName);
