@@ -1552,6 +1552,7 @@ type AuthContext struct {
 	CredentialId  string                 `protobuf:"bytes,8,opt,name=credential_id,json=credentialId,proto3" json:"credential_id,omitempty"`
 	Properties    map[string]string      `protobuf:"bytes,9,rep,name=properties,proto3" json:"properties,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	Previous      *AuthContext           `protobuf:"bytes,10,opt,name=previous,proto3" json:"previous,omitempty"`
+	TokenId       string                 `protobuf:"bytes,11,opt,name=token_id,json=tokenId,proto3" json:"token_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1654,6 +1655,13 @@ func (x *AuthContext) GetPrevious() *AuthContext {
 		return x.Previous
 	}
 	return nil
+}
+
+func (x *AuthContext) GetTokenId() string {
+	if x != nil {
+		return x.TokenId
+	}
+	return ""
 }
 
 type RequestHeaderContext struct {
@@ -4184,7 +4192,7 @@ const file_proto_python_executor_proto_rawDesc = "" +
 	"StreamBody\x12\x14\n" +
 	"\x05chunk\x18\x01 \x01(\fR\x05chunk\x12\"\n" +
 	"\rend_of_stream\x18\x02 \x01(\bR\vendOfStream\x12\x14\n" +
-	"\x05index\x18\x03 \x01(\x04R\x05index\"\xce\x04\n" +
+	"\x05index\x18\x03 \x01(\x04R\x05index\"\xe9\x04\n" +
 	"\vAuthContext\x12$\n" +
 	"\rauthenticated\x18\x01 \x01(\bR\rauthenticated\x12\x1e\n" +
 	"\n" +
@@ -4200,7 +4208,8 @@ const file_proto_python_executor_proto_rawDesc = "" +
 	"properties\x18\t \x03(\v29.wso2.gateway.python.v1alpha2.AuthContext.PropertiesEntryR\n" +
 	"properties\x12E\n" +
 	"\bprevious\x18\n" +
-	" \x01(\v2).wso2.gateway.python.v1alpha2.AuthContextR\bprevious\x1a9\n" +
+	" \x01(\v2).wso2.gateway.python.v1alpha2.AuthContextR\bprevious\x12\x19\n" +
+	"\btoken_id\x18\v \x01(\tR\atokenId\x1a9\n" +
 	"\vScopesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\bR\x05value:\x028\x01\x1a=\n" +

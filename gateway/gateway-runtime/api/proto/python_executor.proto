@@ -203,6 +203,7 @@ message AuthContext {
   string credential_id = 8;
   map<string, string> properties = 9;
   AuthContext previous = 10;
+  string token_id = 11;
 }
 
 message RequestHeaderContext {
