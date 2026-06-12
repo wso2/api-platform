@@ -72,7 +72,7 @@ services:
   # AI Workspace  (React SPA served by nginx)
   # ---------------------------------------------------------------------------
   ai-workspace:
-    image: ghcr.io/thivindu/api-platform/ai-workspace:0.4.0-SNAPSHOT
+    image: ghcr.io/wso2/api-platform/ai-workspace:0.2.0-SNAPSHOT
     container_name: ai-workspace
     restart: unless-stopped
     depends_on:
