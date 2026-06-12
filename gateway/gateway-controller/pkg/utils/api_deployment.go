@@ -747,6 +747,11 @@ func resolveVhostSentinels(cfg *any, routerCfg *config.RouterConfig) error {
 	return nil
 }
 
+// ResolveVhostSentinels exposes vhost sentinel resolution to write paths outside this package.
+func ResolveVhostSentinels(cfg *any, routerCfg *config.RouterConfig) error {
+	return resolveVhostSentinels(cfg, routerCfg)
+}
+
 // annotationValue safely reads a single annotation key from a pointer-to-map.
 func annotationValue(annotations *map[string]string, key string) string {
 	if annotations == nil {

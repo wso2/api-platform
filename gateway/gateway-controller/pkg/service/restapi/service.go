@@ -305,6 +305,13 @@ func (s *RestAPIService) Update(params UpdateParams) (*UpdateResult, error) {
 	existing.Configuration = apiConfig
 	existing.SourceConfiguration = apiConfig
 
+	// Resolve gateway-default vhost sentinels before render and validation, mirroring the
+	// create path, so the stored vhost is a concrete host rather than the raw sentinel.
+	if err := utils.ResolveVhostSentinels(&existing.Configuration, s.routerConfig); err != nil {
+		return nil, fmt.Errorf("failed to resolve vhost sentinels: %w", err)
+	}
+	existing.SourceConfiguration = existing.Configuration
+
 	// Render template expressions before validation so the validator sees resolved values
 	// (e.g. {{ env "BACKEND_URL" }} → actual URL).
 	if err := templateengine.RenderSpec(existing, s.secretResolver, log); err != nil {

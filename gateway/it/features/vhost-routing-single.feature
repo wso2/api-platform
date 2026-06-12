@@ -175,3 +175,79 @@ Feature: Gateway vhost routing with single-domain defaults
     Given I authenticate using basic auth as "admin"
     When I delete the API "vhost-single-sentinel-v1.0"
     Then the response should be successful
+
+  Scenario: Sentinel vhost stays resolved after an update
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: RestApi
+      metadata:
+        name: vhost-single-sentinel-update-v1.0
+      spec:
+        displayName: VHost-Single-Sentinel-Update
+        version: v1.0
+        context: /vhost-single-sentinel-update/$version
+        vhosts:
+          main: _gateway_default_
+          sandbox: _gateway_default_
+        upstream:
+          main:
+            url: http://sample-backend:9080
+          sandbox:
+            url: http://sample-backend:9080/sandbox
+        operations:
+          - method: GET
+            path: /whoami
+      """
+    Then the response should be successful
+    And I wait for the endpoint "http://localhost:8080/vhost-single-sentinel-update/v1.0/whoami" to be ready with host "api.wso2.com"
+
+    # Re-send the full spec with the sentinel (as the platform does on every update) and add a
+    # new operation. The new route only exists once the update applies, and it must land on the
+    # RESOLVED host. Before the fix the update stored the raw marker, so the new route would not be
+    # reachable on the resolved host (the unresolved sentinel is used literally or rejected) and the
+    # wait below would time out.
+    When I update the API "vhost-single-sentinel-update-v1.0" with this configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: RestApi
+      metadata:
+        name: vhost-single-sentinel-update-v1.0
+      spec:
+        displayName: VHost-Single-Sentinel-Update
+        version: v1.0
+        context: /vhost-single-sentinel-update/$version
+        vhosts:
+          main: _gateway_default_
+          sandbox: _gateway_default_
+        upstream:
+          main:
+            url: http://sample-backend:9080
+          sandbox:
+            url: http://sample-backend:9080/sandbox
+        operations:
+          - method: GET
+            path: /whoami
+          - method: GET
+            path: /after-update
+      """
+    Then the response should be successful
+    And I wait for the endpoint "http://localhost:8080/vhost-single-sentinel-update/v1.0/after-update" to be ready with host "api.wso2.com"
+
+    # The original route still serves on the resolved host
+    When I clear all headers
+    And I set request host to "api.wso2.com"
+    And I send a GET request to "http://localhost:8080/vhost-single-sentinel-update/v1.0/whoami"
+    Then the response should be successful
+    And the response should be valid JSON
+    And the JSON response field "path" should be "/whoami"
+
+    # The sentinel string itself must NOT be a usable host after the update
+    When I clear all headers
+    And I set request host to "_gateway_default_"
+    And I send a GET request to "http://localhost:8080/vhost-single-sentinel-update/v1.0/after-update"
+    Then the response status code should be 404
+
+    Given I authenticate using basic auth as "admin"
+    When I delete the API "vhost-single-sentinel-update-v1.0"
+    Then the response should be successful

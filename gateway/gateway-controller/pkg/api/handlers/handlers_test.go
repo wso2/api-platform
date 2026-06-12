@@ -3820,6 +3820,137 @@ func TestUpdateRestAPISyncsDisplayNameAndVersion(t *testing.T) {
 	assert.Len(t, mockHub.publishedEvents, 1)
 }
 
+func TestUpdateRestAPIResolvesVhostSentinels(t *testing.T) {
+	server := createTestAPIServer()
+	mockDB := server.db.(*MockStorage)
+	mockHub := &mockEventHub{}
+	attachTestEventHub(server, mockHub, "test-gateway")
+
+	existing := createTestStoredConfig("0000-test-id-0000-000000000000", "test-display-name", "v1.0.0", "/test")
+	existing.Handle = "test-handle"
+	require.NoError(t, mockDB.SaveConfig(existing))
+
+	// Construct request body with sentinel vhosts
+	sandboxSentinel := "_gateway_default_"
+	apiConfig := api.RestAPI{
+		ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		Kind:       api.RestAPIKindRestApi,
+		Metadata: api.Metadata{
+			Name: "test-handle",
+		},
+		Spec: api.APIConfigData{
+			DisplayName: "test-display-name",
+			Version:     "v1.0.0",
+			Context:     "/test",
+			Vhosts: &struct {
+				Main    string  `json:"main" yaml:"main"`
+				Sandbox *string `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+			}{
+				Main:    "_gateway_default_",
+				Sandbox: &sandboxSentinel,
+			},
+			Upstream: struct {
+				Main    api.Upstream  `json:"main" yaml:"main"`
+				Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+			}{
+				Main: api.Upstream{
+					Url: stringPtr("http://backend.example.com"),
+				},
+			},
+			Operations: []api.Operation{
+				{
+					Method: "GET",
+					Path:   "/resource",
+				},
+			},
+		},
+	}
+
+	body, err := json.Marshal(apiConfig)
+	require.NoError(t, err)
+
+	c, w := createTestContextWithHeader("PUT", "/rest-apis/test-handle", body, map[string]string{
+		"Content-Type": "application/json",
+	})
+
+	server.UpdateRestAPI(c, "test-handle")
+
+	require.Equal(t, http.StatusOK, w.Code)
+
+	stored, err := mockDB.GetConfig(existing.UUID)
+	require.NoError(t, err)
+
+	storedRest, ok := stored.SourceConfiguration.(api.RestAPI)
+	require.True(t, ok)
+	require.NotNil(t, storedRest.Spec.Vhosts)
+	assert.Equal(t, "localhost", storedRest.Spec.Vhosts.Main)
+	require.NotNil(t, storedRest.Spec.Vhosts.Sandbox)
+	assert.Equal(t, "sandbox-localhost", *storedRest.Spec.Vhosts.Sandbox)
+}
+
+// TestUpdateRestAPIPopulatesOmittedVhosts covers the omitted-vhosts case, where the resolver
+// allocates a fresh Vhosts pointer. This specifically guards the SourceConfiguration re-sync on
+// the update path: the explicit-vhost test above would still pass without it (the resolver
+// mutates a shared pointer), but here the resolved value only reaches the stored row via that
+// re-sync.
+func TestUpdateRestAPIPopulatesOmittedVhosts(t *testing.T) {
+	server := createTestAPIServer()
+	mockDB := server.db.(*MockStorage)
+	mockHub := &mockEventHub{}
+	attachTestEventHub(server, mockHub, "test-gateway")
+
+	existing := createTestStoredConfig("0000-test-id-0000-000000000000", "test-display-name", "v1.0.0", "/test")
+	existing.Handle = "test-handle"
+	require.NoError(t, mockDB.SaveConfig(existing))
+
+	// Vhosts omitted entirely (nil) in the request body.
+	apiConfig := api.RestAPI{
+		ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		Kind:       api.RestAPIKindRestApi,
+		Metadata:   api.Metadata{Name: "test-handle"},
+		Spec: api.APIConfigData{
+			DisplayName: "test-display-name",
+			Version:     "v1.0.0",
+			Context:     "/test",
+			Upstream: struct {
+				Main    api.Upstream  `json:"main" yaml:"main"`
+				Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+			}{
+				Main: api.Upstream{
+					Url: stringPtr("http://backend.example.com"),
+				},
+			},
+			Operations: []api.Operation{
+				{
+					Method: "GET",
+					Path:   "/resource",
+				},
+			},
+		},
+	}
+
+	body, err := json.Marshal(apiConfig)
+	require.NoError(t, err)
+
+	c, w := createTestContextWithHeader("PUT", "/rest-apis/test-handle", body, map[string]string{
+		"Content-Type": "application/json",
+	})
+
+	server.UpdateRestAPI(c, "test-handle")
+
+	require.Equal(t, http.StatusOK, w.Code)
+
+	stored, err := mockDB.GetConfig(existing.UUID)
+	require.NoError(t, err)
+
+	storedRest, ok := stored.SourceConfiguration.(api.RestAPI)
+	require.True(t, ok)
+	require.NotNil(t, storedRest.Spec.Vhosts, "omitted vhosts must be populated with defaults and persisted")
+	assert.Equal(t, "localhost", storedRest.Spec.Vhosts.Main)
+	require.NotNil(t, storedRest.Spec.Vhosts.Sandbox)
+	assert.Equal(t, "sandbox-localhost", *storedRest.Spec.Vhosts.Sandbox)
+}
+
 // TestGetMCPProxyByIdDBUnavailable tests GetMCPProxyById with DB unavailable
 // Note: This test requires full deployment service setup
 func TestGetMCPProxyByIdDBUnavailable(t *testing.T) {
