@@ -124,7 +124,7 @@ func main() {
 	}
 
 	if strings.EqualFold(strings.TrimSpace(cfg.Router.VHosts.Main.Default), strings.TrimSpace(cfg.Router.VHosts.Sandbox.Default)) {
-		log.Warn("router.vhosts.main.default and router.vhosts.sandbox.default are identical: sandbox routes would collide with main routes, so REST API deployments will be rejected until the defaults differ")
+		log.Warn("router.vhosts.main.default and router.vhosts.sandbox.default are identical: sandbox routes would collide with main routes, so any REST API deployed without explicit distinct vhosts will be rejected until the defaults differ")
 	}
 
 	// In immutable mode, delete any stale SQLite files before opening the DB to
