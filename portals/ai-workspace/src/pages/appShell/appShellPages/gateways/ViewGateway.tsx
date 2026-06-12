@@ -16,8 +16,8 @@
  * under the License.
  */
 
-import { useState, useEffect, useMemo, useRef } from 'react';
-import { useNavigate, useParams, Link as RouterLink } from 'react-router-dom';
+import { useState, useEffect, useMemo, useRef } from "react";
+import { useNavigate, useParams, Link as RouterLink } from "react-router-dom";
 import {
   Box,
   Button,
@@ -44,7 +44,7 @@ import {
   FormLabel,
   Grid,
   Tooltip,
-} from '@wso2/oxygen-ui';
+} from "@wso2/oxygen-ui";
 import {
   Copy,
   Download,
@@ -55,17 +55,17 @@ import {
   Edit,
   Computer,
   X,
-} from '@wso2/oxygen-ui-icons-react';
-import DockerIcon from '../../../../assets/icons/docker.svg';
-import HelmIcon from '../../../../assets/icons/helm.svg';
-import { useAppShell } from '../../../../contexts/AppShellContext';
-import { buildOrgPath } from '../../../../utils/projectRouting';
-import { useAIWorkspaceSnackbar } from '../../../../hooks/aiWorkspaceSnackbar';
+} from "@wso2/oxygen-ui-icons-react";
+import DockerIcon from "../../../../assets/icons/docker.svg";
+import HelmIcon from "../../../../assets/icons/helm.svg";
+import { useAppShell } from "../../../../contexts/AppShellContext";
+import { buildOrgPath } from "../../../../utils/projectRouting";
+import { useAIWorkspaceSnackbar } from "../../../../hooks/aiWorkspaceSnackbar";
 import {
   PLATFORM_GATEWAY_VERSION,
   PLATFORM_API_BASE_URL,
   CONTROLPLANE_HOST,
-} from '../../../../config.env';
+} from "../../../../config.env";
 import {
   getGateways,
   getGatewayById,
@@ -73,30 +73,30 @@ import {
   listGatewayTokens,
   revokeGatewayToken,
   rotateGatewayToken,
-} from '../../../../apis/gateway/gatewayApi';
-import type { GatewayConfigs } from '../../../../apis/gateway/gatewayApi';
+} from "../../../../apis/gateway/gatewayApi";
+import type { GatewayConfigs } from "../../../../apis/gateway/gatewayApi";
 import {
   getRegistrationToken,
   clearRegistrationToken,
   setRegistrationToken,
-} from './registrationTokenStore';
-import { formatRelativeTime } from '../../../../contexts/llmProvider';
+} from "./registrationTokenStore";
+import { formatRelativeTime } from "../../../../contexts/llmProvider";
 import {
   getActiveColorScheme,
   subscribeToColorSchemeChanges,
   getCommandTextFieldSx,
-} from '../../../../utils/colorScheme';
-import type { ColorScheme } from '../../../../utils/colorScheme';
-import AIGatewayStepBanner from '../quickStart/AIGatewayStepBanner';
-import ErrorAlert from '../../../../Components/common/ErrorAlert';
+} from "../../../../utils/colorScheme";
+import type { ColorScheme } from "../../../../utils/colorScheme";
+import AIGatewayStepBanner from "../quickStart/AIGatewayStepBanner";
+import ErrorAlert from "../../../../Components/common/ErrorAlert";
 
 // Constants for gateway setup
 const GATEWAY_VERSION = PLATFORM_GATEWAY_VERSION;
-const GATEWAY_VERSION_HELM = GATEWAY_VERSION.startsWith('v')
+const GATEWAY_VERSION_HELM = GATEWAY_VERSION.startsWith("v")
   ? GATEWAY_VERSION.slice(1)
   : GATEWAY_VERSION;
 
-const GATEWAY_BASE_VERSION = GATEWAY_VERSION_HELM.replace(/-.*$/, '');
+const GATEWAY_BASE_VERSION = GATEWAY_VERSION_HELM.replace(/-.*$/, "");
 const GATEWAY_ZIP_NAME = `wso2apip-ai-gateway-${GATEWAY_VERSION_HELM}`;
 const GATEWAY_FOLDER_NAME = `wso2apip-ai-gateway-${GATEWAY_BASE_VERSION}`;
 const GATEWAY_ENV_FILE = `${GATEWAY_FOLDER_NAME}/configs/keys.env`;
@@ -106,15 +106,15 @@ const getPlatformApiBaseUrl = (): string => {
 };
 
 const getDisplayUrl = (vhost: string): string => {
-  if (!vhost || !vhost.trim()) return '';
+  if (!vhost || !vhost.trim()) return "";
   const v = vhost.trim();
-  if (v.startsWith('http://') || v.startsWith('https://')) return v;
+  if (v.startsWith("http://") || v.startsWith("https://")) return v;
   return `https://${v}`;
 };
 
 function getInitials(name: string): string {
   const words = name.trim().split(/\s+/);
-  if (words.length === 0) return '';
+  if (words.length === 0) return "";
   if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
   return `${words[0][0]}${words[1][0]}`.toUpperCase();
 }
@@ -127,7 +127,7 @@ const getSetupGatewayCopyCommand = () => getSetupGatewayDisplayCommand();
 
 const getConfigureGatewayDisplayCommand = (moesifKey: string | null) => {
   const controlPlaneHost = CONTROLPLANE_HOST;
-  const moesifLine = moesifKey ? `MOESIF_KEY=<your-moesif-key>\n` : '';
+  const moesifLine = moesifKey ? `MOESIF_KEY=<your-moesif-key>\n` : "";
   return `cat > ${GATEWAY_ENV_FILE} << 'ENVFILE'
 ${moesifLine}GATEWAY_CONTROLPLANE_HOST=${controlPlaneHost}
 GATEWAY_REGISTRATION_TOKEN=<your-gateway-token>
@@ -136,23 +136,14 @@ ENVFILE`;
 
 const getConfigureGatewayCopyCommand = (
   registrationToken: string | null,
-  moesifKey: string | null
+  moesifKey: string | null,
 ) => {
   const controlPlaneHost = CONTROLPLANE_HOST;
-  const tokenValue = registrationToken || '<your-gateway-token>';
-  const moesifLine = moesifKey ? `MOESIF_KEY=${moesifKey}\n` : '';
+  const tokenValue = registrationToken || "<your-gateway-token>";
+  const moesifLine = moesifKey ? `MOESIF_KEY=${moesifKey}\n` : "";
   return `cat > ${GATEWAY_ENV_FILE} << 'ENVFILE'
 ${moesifLine}GATEWAY_CONTROLPLANE_HOST=${controlPlaneHost}
 GATEWAY_REGISTRATION_TOKEN=${tokenValue}
-ENVFILE`;
-};
-
-const getConfigureGatewayWithMoesifGuideCommand = () => {
-  const controlPlaneHost = CONTROLPLANE_HOST;
-  return `cat > ${GATEWAY_ENV_FILE} << 'ENVFILE'
-GATEWAY_CONTROLPLANE_HOST=${controlPlaneHost}
-GATEWAY_REGISTRATION_TOKEN=<your-gateway-token>
-MOESIF_KEY=<your-moesif-key>
 ENVFILE`;
 };
 
@@ -168,49 +159,49 @@ const getK8sCustomHelmDisplayCommand = (moesifKey: string | null) => {
   const lines = [
     `helm install gateway oci://ghcr.io/wso2/api-platform/helm-charts/gateway --version ${GATEWAY_VERSION_HELM} \\`,
     `  --set gateway.controller.controlPlane.host="${controlPlaneHost}" \\`,
-    '  --set gateway.controller.controlPlane.port=443 \\',
+    "  --set gateway.controller.controlPlane.port=443 \\",
     '  --set gateway.controller.controlPlane.token.value="your-gateway-token"',
   ];
 
   if (moesifKey) {
-    lines[lines.length - 1] += ' \\';
+    lines[lines.length - 1] += " \\";
     lines.push(
-      '  --set gateway.config.analytics.publishers.moesif.application_id=<your-moesif-key>'
+      "  --set gateway.config.analytics.publishers.moesif.application_id=<your-moesif-key>",
     );
-    lines[lines.length - 1] += ' \\';
+    lines[lines.length - 1] += " \\";
   } else {
-    lines[lines.length - 1] += ' \\';
+    lines[lines.length - 1] += " \\";
   }
 
-  lines.push('  --set gateway.config.analytics.enabled=true');
-  return lines.join('\n');
+  lines.push("  --set gateway.config.analytics.enabled=true");
+  return lines.join("\n");
 };
 
 const getK8sCustomHelmCopyCommand = (
   registrationToken: string | null,
-  moesifKey: string | null
+  moesifKey: string | null,
 ) => {
-  const tokenValue = registrationToken || 'your-gateway-token';
+  const tokenValue = registrationToken || "your-gateway-token";
   const controlPlaneHost = CONTROLPLANE_HOST;
   const lines = [
     `helm install gateway oci://ghcr.io/wso2/api-platform/helm-charts/gateway --version ${GATEWAY_VERSION_HELM} \\`,
     `  --set gateway.controller.controlPlane.host="${controlPlaneHost}" \\`,
-    '  --set gateway.controller.controlPlane.port=443 \\',
+    "  --set gateway.controller.controlPlane.port=443 \\",
     `  --set gateway.controller.controlPlane.token.value="${tokenValue}"`,
   ];
 
   if (moesifKey) {
-    lines[lines.length - 1] += ' \\';
+    lines[lines.length - 1] += " \\";
     lines.push(
-      `  --set gateway.config.analytics.publishers.moesif.application_id="${moesifKey}"`
+      `  --set gateway.config.analytics.publishers.moesif.application_id="${moesifKey}"`,
     );
-    lines[lines.length - 1] += ' \\';
+    lines[lines.length - 1] += " \\";
   } else {
-    lines[lines.length - 1] += ' \\';
+    lines[lines.length - 1] += " \\";
   }
 
-  lines.push('  --set gateway.config.analytics.enabled=true');
-  return lines.join('\n');
+  lines.push("  --set gateway.config.analytics.enabled=true");
+  return lines.join("\n");
 };
 
 type TabPanelProps = {
@@ -228,10 +219,10 @@ type GatewayConfigEnvelope = {
 };
 
 const GATEWAY_CONFIG_COLLECTION_KEYS: Array<keyof GatewayConfigEnvelope> = [
-  'list',
-  'configs',
-  'data',
-  'items',
+  "list",
+  "configs",
+  "data",
+  "items",
 ];
 
 function TabPanel({ value, index, children }: TabPanelProps) {
@@ -243,7 +234,7 @@ function TabPanel({ value, index, children }: TabPanelProps) {
 }
 
 function normalizeGatewayConfigList(
-  configs: GatewayConfigs | null
+  configs: GatewayConfigs | null,
 ): GatewayConfigEntry[] {
   if (!configs) {
     return [];
@@ -255,7 +246,7 @@ function normalizeGatewayConfigList(
 
   const wrappedConfigs = configs as GatewayConfigEnvelope;
   const nestedConfigList = GATEWAY_CONFIG_COLLECTION_KEYS.map(
-    (key) => wrappedConfigs[key]
+    (key) => wrappedConfigs[key],
   ).find(Array.isArray);
 
   if (nestedConfigList) {
@@ -266,7 +257,7 @@ function normalizeGatewayConfigList(
 }
 
 function withKeyManagerEntries(
-  configs: GatewayConfigEntry[]
+  configs: GatewayConfigEntry[],
 ): GatewayConfigEntry[] {
   return [
     ...configs,
@@ -280,18 +271,18 @@ function withKeyManagerEntries(
 
 function getConfigStringValue(
   configEntry: GatewayConfigEntry,
-  keys: string[]
+  keys: string[],
 ): string {
   for (const key of keys) {
     const value = configEntry[key];
-    if (typeof value === 'string' && value.trim()) {
+    if (typeof value === "string" && value.trim()) {
       return value.trim();
     }
   }
-  return '';
+  return "";
 }
 
-const tabs = ['Quick Start', 'Virtual Machine', 'Docker', 'Kubernetes'];
+const tabs = ["Quick Start", "Virtual Machine", "Docker", "Kubernetes"];
 
 export default function ViewGateway() {
   const navigate = useNavigate();
@@ -310,16 +301,16 @@ export default function ViewGateway() {
   const [isRegeneratingToken, setIsRegeneratingToken] = useState(false);
   const [hasJustRegeneratedToken, setHasJustRegeneratedToken] = useState(false);
   const [activeColorScheme, setActiveColorScheme] = useState<ColorScheme>(() =>
-    getActiveColorScheme()
+    getActiveColorScheme(),
   );
   const [showSetupBanner, setShowSetupBanner] = useState(true);
   const [isConfigsDrawerOpen, setIsConfigsDrawerOpen] = useState(false);
   const [isConfigsLoading, setIsConfigsLoading] = useState(false);
   const [gatewayConfigs, setGatewayConfigs] = useState<GatewayConfigs | null>(
-    null
+    null,
   );
   const [gatewayConfigsError, setGatewayConfigsError] = useState<string | null>(
-    null
+    null,
   );
 
   // Get one-time registration token from memory (only available after gateway creation)
@@ -350,17 +341,17 @@ export default function ViewGateway() {
       try {
         const response = await getGateways(currentOrganization.uuid);
         const foundGateway = response.data?.list?.find(
-          (gw) => gw.name === gatewayName
+          (gw) => gw.name === gatewayName,
         );
 
         if (foundGateway) {
           setGateway(foundGateway);
         } else {
-          setError('Gateway not found');
+          setError("Gateway not found");
         }
       } catch (err: any) {
-        console.error('Failed to load gateway:', err);
-        setError(err?.message || 'Failed to load gateway');
+        console.error("Failed to load gateway:", err);
+        setError(err?.message || "Failed to load gateway");
       } finally {
         setLoading(false);
       }
@@ -393,13 +384,13 @@ export default function ViewGateway() {
       try {
         const response = await getGatewayById(
           gatewayId,
-          currentOrganization.uuid
+          currentOrganization.uuid,
         );
         if (response.data) {
           setGateway(response.data);
         }
       } catch (err) {
-        console.error('Polling failed:', err);
+        console.error("Polling failed:", err);
       }
     }, desiredInterval);
 
@@ -417,7 +408,7 @@ export default function ViewGateway() {
 
   useEffect(() => {
     if (prevIsActiveRef.current === false && gateway?.isActive) {
-      showSnackbar('Your gateway is connected successfully.', 'success');
+      showSnackbar("Your gateway is connected successfully.", "success");
     }
     prevIsActiveRef.current = gateway?.isActive;
   }, [gateway?.isActive, showSnackbar]);
@@ -447,24 +438,24 @@ export default function ViewGateway() {
 
   const handleCopy = (text: string, label: string) => {
     navigator.clipboard.writeText(text);
-    showSnackbar(`${label} copied to clipboard`, 'success');
+    showSnackbar(`${label} copied to clipboard`, "success");
   };
 
   const handleDownloadKeysEnvFile = () => {
     const envContent = `GATEWAY_CONTROLPLANE_HOST=${CONTROLPLANE_HOST}
-GATEWAY_REGISTRATION_TOKEN=${registrationToken || ''}`;
+GATEWAY_REGISTRATION_TOKEN=${registrationToken || ""}`;
     const blob = new Blob([`${envContent}\n`], {
-      type: 'text/plain;charset=utf-8',
+      type: "text/plain;charset=utf-8",
     });
     const objectUrl = URL.createObjectURL(blob);
-    const link = document.createElement('a');
+    const link = document.createElement("a");
     link.href = objectUrl;
-    link.download = 'keys.env';
+    link.download = "keys.env";
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(objectUrl);
-    showSnackbar('keys.env file downloaded', 'success');
+    showSnackbar("keys.env file downloaded", "success");
   };
 
   const handleOpenGatewayConfigsDrawer = async () => {
@@ -479,14 +470,14 @@ GATEWAY_REGISTRATION_TOKEN=${registrationToken || ''}`;
     try {
       const response = await getGatewayConfigs(
         gateway.id,
-        currentOrganization.uuid
+        currentOrganization.uuid,
       );
       setGatewayConfigs(response.data || {});
     } catch (err: any) {
-      console.error('Failed to load gateway configs:', err);
+      console.error("Failed to load gateway configs:", err);
       setGatewayConfigs(null);
       setGatewayConfigsError(
-        err?.message || 'Failed to load gateway configurations'
+        err?.message || "Failed to load gateway configurations",
       );
     } finally {
       setIsConfigsLoading(false);
@@ -494,13 +485,13 @@ GATEWAY_REGISTRATION_TOKEN=${registrationToken || ''}`;
   };
 
   const handleBack = () => {
-    const listPath = buildOrgPath(currentOrganization, '/gateways');
+    const listPath = buildOrgPath(currentOrganization, "/gateways");
     navigate(listPath);
   };
 
   const regenerateGatewayToken = async (): Promise<string> => {
     if (!gateway?.id || !currentOrganization?.uuid) {
-      throw new Error('Gateway ID or Organization ID is not available');
+      throw new Error("Gateway ID or Organization ID is not available");
     }
 
     const gatewayId = gateway.id;
@@ -515,8 +506,8 @@ GATEWAY_REGISTRATION_TOKEN=${registrationToken || ''}`;
         revokeGatewayToken(gatewayId, token.id, organizationId).catch(() => {
           // Swallow individual revoke errors
           return;
-        })
-      )
+        }),
+      ),
     );
 
     // 3) Rotate to get a new token
@@ -535,10 +526,10 @@ GATEWAY_REGISTRATION_TOKEN=${registrationToken || ''}`;
       setRegistrationTokenState(newToken);
       setRegistrationToken(newToken);
       setHasJustRegeneratedToken(true);
-      showSnackbar('Successfully generated new registration token', 'success');
+      showSnackbar("Successfully generated new registration token", "success");
     } catch (err: any) {
-      console.error('Failed to regenerate token:', err);
-      showSnackbar(err?.message || 'Failed to regenerate token', 'error');
+      console.error("Failed to regenerate token:", err);
+      showSnackbar(err?.message || "Failed to regenerate token", "error");
     } finally {
       setIsRegeneratingToken(false);
       setIsRegenerateDialogOpen(false);
@@ -550,9 +541,9 @@ GATEWAY_REGISTRATION_TOKEN=${registrationToken || ''}`;
       <PageContent fullWidth>
         <Box
           sx={{
-            display: 'flex',
-            justifyContent: 'center',
-            alignItems: 'center',
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
             minHeight: 300,
           }}
         >
@@ -572,7 +563,7 @@ GATEWAY_REGISTRATION_TOKEN=${registrationToken || ''}`;
           <Typography>{error}</Typography>
           <Button
             component={RouterLink}
-            to={buildOrgPath(currentOrganization, '/gateways')}
+            to={buildOrgPath(currentOrganization, "/gateways")}
           >
             Back to list
           </Button>
@@ -588,7 +579,7 @@ GATEWAY_REGISTRATION_TOKEN=${registrationToken || ''}`;
           <Typography variant="h6">Gateway not found</Typography>
           <Button
             component={RouterLink}
-            to={buildOrgPath(currentOrganization, '/gateways')}
+            to={buildOrgPath(currentOrganization, "/gateways")}
           >
             Back to list
           </Button>
@@ -598,13 +589,13 @@ GATEWAY_REGISTRATION_TOKEN=${registrationToken || ''}`;
   }
 
   const gatewayType =
-    gateway?.functionalityType === 'ai'
-      ? 'AI Gateway'
-      : gateway?.functionalityType === 'event'
-      ? 'Event Gateway'
-      : 'API Gateway';
+    gateway?.functionalityType === "ai"
+      ? "AI Gateway"
+      : gateway?.functionalityType === "event"
+        ? "Event Gateway"
+        : "API Gateway";
 
-  const descriptionText = gateway?.description?.trim() || 'No description';
+  const descriptionText = gateway?.description?.trim() || "No description";
   const truncatedDescription =
     descriptionText.length > 200
       ? `${descriptionText.slice(0, 200).trim()}…`
@@ -612,22 +603,22 @@ GATEWAY_REGISTRATION_TOKEN=${registrationToken || ''}`;
 
   const lastUpdated = gateway?.createdAt ?? gateway?.lastUpdated;
   const gatewayConfigItemsWithKeyManagers = withKeyManagerEntries(
-    normalizeGatewayConfigList(gatewayConfigs)
+    normalizeGatewayConfigList(gatewayConfigs),
   );
   const keyManagerConfigs = gatewayConfigItemsWithKeyManagers
     .map((configEntry, index) => ({
       name:
-        getConfigStringValue(configEntry, ['name']) ||
+        getConfigStringValue(configEntry, ["name"]) ||
         `Key Manager ${index + 1}`,
       issuerUrl: getConfigStringValue(configEntry, [
-        'issuerUrl',
-        'issuer_url',
-        'issuerURL',
+        "issuerUrl",
+        "issuer_url",
+        "issuerURL",
       ]),
       jwksUrl: getConfigStringValue(configEntry, [
-        'jwksUrl',
-        'jwks_url',
-        'jwksURL',
+        "jwksUrl",
+        "jwks_url",
+        "jwksURL",
       ]),
     }))
     .filter((configEntry) => configEntry.issuerUrl || configEntry.jwksUrl);
@@ -635,15 +626,15 @@ GATEWAY_REGISTRATION_TOKEN=${registrationToken || ''}`;
     <PageContent fullWidth>
       <Box
         sx={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
           mb: 2,
         }}
       >
         <Button
           component={RouterLink}
-          to={buildOrgPath(currentOrganization, '/gateways')}
+          to={buildOrgPath(currentOrganization, "/gateways")}
           size="small"
           startIcon={<ChevronLeft size={24} />}
         >
@@ -665,26 +656,26 @@ GATEWAY_REGISTRATION_TOKEN=${registrationToken || ''}`;
       <Card sx={{ mb: 2 }}>
         <Box
           sx={{
-            display: 'flex',
-            alignItems: 'flex-start',
-            justifyContent: 'space-between',
-            flexWrap: 'wrap',
+            display: "flex",
+            alignItems: "flex-start",
+            justifyContent: "space-between",
+            flexWrap: "wrap",
             gap: 2,
             p: 2,
           }}
         >
-          <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2 }}>
+          <Box sx={{ display: "flex", alignItems: "flex-start", gap: 2 }}>
             <Avatar
               sx={{
                 width: 72,
                 height: 72,
                 fontWeight: 600,
                 fontSize: 28,
-                bgcolor: 'primary.light',
-                color: 'primary.contrastText',
+                bgcolor: "primary.light",
+                color: "primary.contrastText",
               }}
             >
-              {getInitials(gateway?.displayName || gateway?.name || 'GW')}
+              {getInitials(gateway?.displayName || gateway?.name || "GW")}
             </Avatar>
             <Stack spacing={0.75} sx={{ minWidth: 0 }}>
               <Stack
@@ -697,16 +688,16 @@ GATEWAY_REGISTRATION_TOKEN=${registrationToken || ''}`;
                   {gateway?.displayName || gateway?.name}
                 </Typography>
                 <Chip
-                  label={gateway?.isActive ? 'Active' : 'Inactive'}
+                  label={gateway?.isActive ? "Active" : "Inactive"}
                   size="small"
-                  color={gateway?.isActive ? 'success' : 'default'}
+                  color={gateway?.isActive ? "success" : "default"}
                 />
                 <Tooltip title="Edit Gateway">
                   <IconButton
                     component={RouterLink}
                     to={buildOrgPath(
                       currentOrganization,
-                      `/gateways/edit/${gatewayName}`
+                      `/gateways/edit/${gatewayName}`,
                     )}
                     size="small"
                   >
@@ -726,7 +717,7 @@ GATEWAY_REGISTRATION_TOKEN=${registrationToken || ''}`;
                 </Typography>
                 <Clock size={14} />
                 <Typography variant="caption" color="text.secondary">
-                  {lastUpdated ? formatRelativeTime(lastUpdated) : '—'}
+                  {lastUpdated ? formatRelativeTime(lastUpdated) : "—"}
                 </Typography>
               </Stack>
             </Stack>
@@ -739,9 +730,9 @@ GATEWAY_REGISTRATION_TOKEN=${registrationToken || ''}`;
         <CardContent sx={{ p: 3 }}>
           <Box
             sx={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
               gap: 2,
               mb: 3,
             }}
@@ -767,7 +758,7 @@ GATEWAY_REGISTRATION_TOKEN=${registrationToken || ''}`;
               <FormControl fullWidth>
                 <FormLabel>URL</FormLabel>
                 <TextField
-                  value={getDisplayUrl(gateway.vhost || '')}
+                  value={getDisplayUrl(gateway.vhost || "")}
                   fullWidth
                   slotProps={{ input: { readOnly: true } }}
                 />
@@ -823,7 +814,7 @@ GATEWAY_REGISTRATION_TOKEN=${registrationToken || ''}`;
             </Alert>
           )} */}
 
-          <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}>
+          <Box sx={{ borderBottom: 1, borderColor: "divider", mb: 2 }}>
             <Tabs
               value={tabIndex}
               onChange={(_, newValue) => setTabIndex(newValue)}
@@ -918,7 +909,7 @@ GATEWAY_REGISTRATION_TOKEN=${registrationToken || ''}`;
                           onClick={() =>
                             handleCopy(
                               getSetupGatewayCopyCommand(),
-                              'Download command'
+                              "Download command",
                             )
                           }
                         >
@@ -961,11 +952,11 @@ GATEWAY_REGISTRATION_TOKEN=${registrationToken || ''}`;
                       onCopy={(e) => {
                         e.preventDefault();
                         e.clipboardData.setData(
-                          'text/plain',
+                          "text/plain",
                           getConfigureGatewayCopyCommand(
                             registrationToken,
-                            null
-                          )
+                            null,
+                          ),
                         );
                       }}
                       slotProps={{
@@ -978,9 +969,9 @@ GATEWAY_REGISTRATION_TOKEN=${registrationToken || ''}`;
                                 handleCopy(
                                   getConfigureGatewayCopyCommand(
                                     registrationToken,
-                                    null
+                                    null,
                                   ),
-                                  'Configure command'
+                                  "Configure command",
                                 )
                               }
                             >
@@ -990,40 +981,12 @@ GATEWAY_REGISTRATION_TOKEN=${registrationToken || ''}`;
                         },
                       }}
                     />
-                    <Card
-                      variant="outlined"
-                      sx={{
-                        mt: 2,
-                        p: 2,
-                        borderColor: 'info.main',
-                        bgcolor: 'background.default',
-                      }}
-                    >
-                      <Typography
-                        variant="body2"
-                        color="info.main"
-                        sx={{ mb: 1.5, fontWeight: 500 }}
-                      >
-                        To enable Moesif analytics, manually add the{' '}
-                        <code>MOESIF_KEY</code> to the file. Example:
-                      </Typography>
-                      <Box
-                        component="pre"
-                        sx={{
-                          m: 0,
-                          p: 1.5,
-                          borderRadius: 1,
-                          bgcolor: 'action.hover',
-                          fontFamily: 'monospace',
-                          fontSize: '0.8rem',
-                          overflow: 'auto',
-                          whiteSpace: 'pre-wrap',
-                          wordBreak: 'break-all',
-                        }}
-                      >
-                        {getConfigureGatewayWithMoesifGuideCommand()}
-                      </Box>
-                    </Card>
+                    <Alert severity="info" sx={{ mt: 2 }}>
+                      To gain gateway analytics, you can integrate with Moesif
+                      by adding your Moesif application token with the key{" "}
+                      <code>MOESIF_KEY</code> to your{" "}
+                      <code>configs/keys.env</code>.
+                    </Alert>
                   </>
                 ) : (
                   <>
@@ -1074,7 +1037,7 @@ GATEWAY_REGISTRATION_TOKEN=${registrationToken || ''}`;
                           onClick={() =>
                             handleCopy(
                               getStep3NavigateCommand(),
-                              'Navigate command'
+                              "Navigate command",
                             )
                           }
                         >
@@ -1105,7 +1068,7 @@ GATEWAY_REGISTRATION_TOKEN=${registrationToken || ''}`;
                           onClick={() =>
                             handleCopy(
                               getStartGatewayCopyCommand(),
-                              'Start command'
+                              "Start command",
                             )
                           }
                         >
@@ -1201,8 +1164,8 @@ GATEWAY_REGISTRATION_TOKEN=${registrationToken || ''}`;
                           size="small"
                           onClick={() =>
                             handleCopy(
-                              'docker --version\ndocker compose version',
-                              'Prerequisites command'
+                              "docker --version\ndocker compose version",
+                              "Prerequisites command",
                             )
                           }
                         >
@@ -1240,7 +1203,7 @@ GATEWAY_REGISTRATION_TOKEN=${registrationToken || ''}`;
                           onClick={() =>
                             handleCopy(
                               getSetupGatewayCopyCommand(),
-                              'Download command'
+                              "Download command",
                             )
                           }
                         >
@@ -1283,11 +1246,11 @@ GATEWAY_REGISTRATION_TOKEN=${registrationToken || ''}`;
                       onCopy={(e) => {
                         e.preventDefault();
                         e.clipboardData.setData(
-                          'text/plain',
+                          "text/plain",
                           getConfigureGatewayCopyCommand(
                             registrationToken,
-                            null
-                          )
+                            null,
+                          ),
                         );
                       }}
                       slotProps={{
@@ -1300,9 +1263,9 @@ GATEWAY_REGISTRATION_TOKEN=${registrationToken || ''}`;
                                 handleCopy(
                                   getConfigureGatewayCopyCommand(
                                     registrationToken,
-                                    null
+                                    null,
                                   ),
-                                  'Configure command'
+                                  "Configure command",
                                 )
                               }
                             >
@@ -1312,40 +1275,12 @@ GATEWAY_REGISTRATION_TOKEN=${registrationToken || ''}`;
                         },
                       }}
                     />
-                    <Card
-                      variant="outlined"
-                      sx={{
-                        mt: 2,
-                        p: 2,
-                        borderColor: 'info.main',
-                        bgcolor: 'background.default',
-                      }}
-                    >
-                      <Typography
-                        variant="body2"
-                        color="info.main"
-                        sx={{ mb: 1.5, fontWeight: 500 }}
-                      >
-                        To enable Moesif analytics, manually add the{' '}
-                        <code>MOESIF_KEY</code> to the file. Example:
-                      </Typography>
-                      <Box
-                        component="pre"
-                        sx={{
-                          m: 0,
-                          p: 1.5,
-                          borderRadius: 1,
-                          bgcolor: 'action.hover',
-                          fontFamily: 'monospace',
-                          fontSize: '0.8rem',
-                          overflow: 'auto',
-                          whiteSpace: 'pre-wrap',
-                          wordBreak: 'break-all',
-                        }}
-                      >
-                        {getConfigureGatewayWithMoesifGuideCommand()}
-                      </Box>
-                    </Card>
+                    <Alert severity="info" sx={{ mt: 2 }}>
+                      To gain gateway analytics, you can integrate with Moesif
+                      by adding your Moesif application token with the key{" "}
+                      <code>MOESIF_KEY</code> to your{" "}
+                      <code>configs/keys.env</code>.
+                    </Alert>
                   </>
                 ) : (
                   <>
@@ -1396,7 +1331,7 @@ GATEWAY_REGISTRATION_TOKEN=${registrationToken || ''}`;
                           onClick={() =>
                             handleCopy(
                               getStep3NavigateCommand(),
-                              'Navigate command'
+                              "Navigate command",
                             )
                           }
                         >
@@ -1427,7 +1362,7 @@ GATEWAY_REGISTRATION_TOKEN=${registrationToken || ''}`;
                           onClick={() =>
                             handleCopy(
                               getStartGatewayCopyCommand(),
-                              'Start command'
+                              "Start command",
                             )
                           }
                         >
@@ -1493,7 +1428,7 @@ GATEWAY_REGISTRATION_TOKEN=${registrationToken || ''}`;
                           onClick={() =>
                             handleCopy(
                               getSetupGatewayCopyCommand(),
-                              'Download command'
+                              "Download command",
                             )
                           }
                         >
@@ -1536,11 +1471,11 @@ GATEWAY_REGISTRATION_TOKEN=${registrationToken || ''}`;
                       onCopy={(e) => {
                         e.preventDefault();
                         e.clipboardData.setData(
-                          'text/plain',
+                          "text/plain",
                           getConfigureGatewayCopyCommand(
                             registrationToken,
-                            null
-                          )
+                            null,
+                          ),
                         );
                       }}
                       slotProps={{
@@ -1553,9 +1488,9 @@ GATEWAY_REGISTRATION_TOKEN=${registrationToken || ''}`;
                                 handleCopy(
                                   getConfigureGatewayCopyCommand(
                                     registrationToken,
-                                    null
+                                    null,
                                   ),
-                                  'Configure command'
+                                  "Configure command",
                                 )
                               }
                             >
@@ -1565,40 +1500,12 @@ GATEWAY_REGISTRATION_TOKEN=${registrationToken || ''}`;
                         },
                       }}
                     />
-                    <Card
-                      variant="outlined"
-                      sx={{
-                        mt: 2,
-                        p: 2,
-                        borderColor: 'info.main',
-                        bgcolor: 'background.default',
-                      }}
-                    >
-                      <Typography
-                        variant="body2"
-                        color="info.main"
-                        sx={{ mb: 1.5, fontWeight: 500 }}
-                      >
-                        To enable Moesif analytics, manually add the{' '}
-                        <code>MOESIF_KEY</code> to the file. Example:
-                      </Typography>
-                      <Box
-                        component="pre"
-                        sx={{
-                          m: 0,
-                          p: 1.5,
-                          borderRadius: 1,
-                          bgcolor: 'action.hover',
-                          fontFamily: 'monospace',
-                          fontSize: '0.8rem',
-                          overflow: 'auto',
-                          whiteSpace: 'pre-wrap',
-                          wordBreak: 'break-all',
-                        }}
-                      >
-                        {getConfigureGatewayWithMoesifGuideCommand()}
-                      </Box>
-                    </Card>
+                    <Alert severity="info" sx={{ mt: 2 }}>
+                      To gain gateway analytics, you can integrate with Moesif
+                      by adding your Moesif application token with the key{" "}
+                      <code>MOESIF_KEY</code> to your{" "}
+                      <code>configs/keys.env</code>.
+                    </Alert>
                   </>
                 ) : (
                   <>
@@ -1649,7 +1556,7 @@ GATEWAY_REGISTRATION_TOKEN=${registrationToken || ''}`;
                           onClick={() =>
                             handleCopy(
                               getStep3NavigateCommand(),
-                              'Navigate command'
+                              "Navigate command",
                             )
                           }
                         >
@@ -1680,7 +1587,7 @@ GATEWAY_REGISTRATION_TOKEN=${registrationToken || ''}`;
                           onClick={() =>
                             handleCopy(
                               getStartGatewayCopyCommand(),
-                              'Start command'
+                              "Start command",
                             )
                           }
                         >
@@ -1797,9 +1704,9 @@ GATEWAY_REGISTRATION_TOKEN=${registrationToken || ''}`;
                             handleCopy(
                               getK8sCustomHelmCopyCommand(
                                 registrationToken,
-                                null
+                                null,
                               ),
-                              'Helm install command'
+                              "Helm install command",
                             )
                           }
                         >
@@ -1822,23 +1729,23 @@ GATEWAY_REGISTRATION_TOKEN=${registrationToken || ''}`;
       >
         <Box
           sx={{
-            width: { xs: '100vw', sm: 560 },
-            maxWidth: '100vw',
+            width: { xs: "100vw", sm: 560 },
+            maxWidth: "100vw",
             p: 2,
           }}
         >
           <Box
             sx={{
-              display: 'flex',
-              alignItems: 'flex-start',
-              justifyContent: 'space-between',
+              display: "flex",
+              alignItems: "flex-start",
+              justifyContent: "space-between",
               gap: 1,
             }}
           >
             <Stack spacing={0.5}>
               <Typography variant="body1">
-                {(gateway?.displayName || gateway?.name || 'Gateway') +
-                  ' Configurations'}
+                {(gateway?.displayName || gateway?.name || "Gateway") +
+                  " Configurations"}
               </Typography>
             </Stack>
             <IconButton
@@ -1854,7 +1761,7 @@ GATEWAY_REGISTRATION_TOKEN=${registrationToken || ''}`;
 
           {isConfigsLoading ? (
             <Box
-              sx={{ display: 'flex', alignItems: 'center', gap: 1.5, py: 1 }}
+              sx={{ display: "flex", alignItems: "center", gap: 1.5, py: 1 }}
             >
               <CircularProgress size={20} />
               <Typography variant="body2" color="text.secondary">
@@ -1875,7 +1782,7 @@ GATEWAY_REGISTRATION_TOKEN=${registrationToken || ''}`;
                 disableHoverListener={Boolean(registrationToken)}
               >
                 <span
-                  style={{ display: 'inline-flex', alignSelf: 'flex-start' }}
+                  style={{ display: "inline-flex", alignSelf: "flex-start" }}
                 >
                   <Button
                     variant="outlined"
@@ -1890,12 +1797,12 @@ GATEWAY_REGISTRATION_TOKEN=${registrationToken || ''}`;
               </Tooltip>
 
               {registrationToken && (
-                <Box sx={{ display: 'flex', alignItems: 'flex-end', gap: 1 }}>
+                <Box sx={{ display: "flex", alignItems: "flex-end", gap: 1 }}>
                   <FormControl fullWidth>
                     <FormLabel>Gateway Registration Token</FormLabel>
                     <TextField
                       fullWidth
-                      type={showDrawerRegistrationToken ? 'text' : 'password'}
+                      type={showDrawerRegistrationToken ? "text" : "password"}
                       value={registrationToken}
                       placeholder="Not available"
                       slotProps={{
@@ -1924,7 +1831,7 @@ GATEWAY_REGISTRATION_TOKEN=${registrationToken || ''}`;
                     onClick={() =>
                       handleCopy(
                         registrationToken,
-                        'Gateway registration token'
+                        "Gateway registration token",
                       )
                     }
                     sx={{ mb: 0.5 }}
@@ -1936,7 +1843,7 @@ GATEWAY_REGISTRATION_TOKEN=${registrationToken || ''}`;
 
               <Divider />
 
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
                 <Typography variant="body2">
                   Key Manager Configurations
                 </Typography>
@@ -1945,15 +1852,15 @@ GATEWAY_REGISTRATION_TOKEN=${registrationToken || ''}`;
                     sx={{
                       width: 20,
                       height: 20,
-                      border: '1px solid',
-                      borderColor: 'divider',
-                      borderRadius: '50%',
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
+                      border: "1px solid",
+                      borderColor: "divider",
+                      borderRadius: "50%",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
                       fontSize: 12,
-                      color: 'text.secondary',
-                      cursor: 'default',
+                      color: "text.secondary",
+                      cursor: "default",
                     }}
                   >
                     i
@@ -1989,7 +1896,7 @@ GATEWAY_REGISTRATION_TOKEN=${registrationToken || ''}`;
                                     onClick={() =>
                                       handleCopy(
                                         keyManagerConfig.issuerUrl,
-                                        'Issuer URL'
+                                        "Issuer URL",
                                       )
                                     }
                                     disabled={!keyManagerConfig.issuerUrl}
@@ -2017,7 +1924,7 @@ GATEWAY_REGISTRATION_TOKEN=${registrationToken || ''}`;
                                     onClick={() =>
                                       handleCopy(
                                         keyManagerConfig.jwksUrl,
-                                        'JWKS URL'
+                                        "JWKS URL",
                                       )
                                     }
                                     disabled={!keyManagerConfig.jwksUrl}
@@ -2072,7 +1979,7 @@ GATEWAY_REGISTRATION_TOKEN=${registrationToken || ''}`;
             {isRegeneratingToken ? (
               <CircularProgress size={20} />
             ) : (
-              'Reconfigure'
+              "Reconfigure"
             )}
           </Button>
         </DialogActions>
