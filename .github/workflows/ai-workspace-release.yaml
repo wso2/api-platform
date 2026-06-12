@@ -10,6 +10,9 @@ env:
 jobs:
   release:
     runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      packages: write
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -71,6 +74,34 @@ jobs:
           fi
           git tag -a ai-workspace/v${{ steps.version.outputs.version }} -m "AI Workspace ${{ steps.version.outputs.version }}"
           git push origin ai-workspace/v${{ steps.version.outputs.version }}
+
+      - name: Build distribution zip
+        run: make -C portals/ai-workspace dist
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ai-workspace/v${{ steps.version.outputs.version }}
+          name: AI Workspace ${{ steps.version.outputs.version }}
+          body: |
+            ## AI Workspace Release ${{ steps.version.outputs.version }}
+
+            ### Docker Image
+            ```bash
+            docker pull ${{ env.DOCKER_REGISTRY }}/ai-workspace:${{ steps.version.outputs.version }}
+            ```
+
+            ### Supported Platforms
+            - `linux/amd64`
+            - `linux/arm64`
+
+            ### Distribution
+            The attached `wso2apip-ai-workspace-${{ steps.version.outputs.version }}.zip` contains the
+            standalone AI Workspace + Platform API distribution (docker-compose and configs).
+          files: portals/ai-workspace/target/wso2apip-ai-workspace-${{ steps.version.outputs.version }}.zip
+          draft: true
+          prerelease: ${{ contains(steps.version.outputs.version, '-') }}
+          token: ${{ secrets.API_PLATFORM_BOT_TOKEN }}
 
       - name: Bump to next dev version
         run: make -C portals/ai-workspace version-bump-next-dev
