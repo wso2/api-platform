@@ -4,13 +4,13 @@
 
 <a id="opIdcreateProvider"></a>
 
-`POST /organizations/{orgId}/provider`
+`POST /o/{orgId}/devportal/v1/provider`
 
 > Code samples
 
 ```shell
 
-curl -X POST http://localhost:3000/devportal/organizations/{orgId}/provider \
+curl -X POST https://devportal.api-platform.io/o/{orgId}/devportal/v1/provider \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -117,13 +117,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdupdateProvider"></a>
 
-`PUT /organizations/{orgId}/provider`
+`PUT /o/{orgId}/devportal/v1/provider`
 
 > Code samples
 
 ```shell
 
-curl -X PUT http://localhost:3000/devportal/organizations/{orgId}/provider \
+curl -X PUT https://devportal.api-platform.io/o/{orgId}/devportal/v1/provider \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -241,13 +241,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdgetProviders"></a>
 
-`GET /organizations/{orgId}/provider`
+`GET /o/{orgId}/devportal/v1/provider`
 
 > Code samples
 
 ```shell
 
-curl -X GET http://localhost:3000/devportal/organizations/{orgId}/provider \
+curl -X GET https://devportal.api-platform.io/o/{orgId}/devportal/v1/provider \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -315,13 +315,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIddeleteProvider"></a>
 
-`DELETE /organizations/{orgId}/provider`
+`DELETE /o/{orgId}/devportal/v1/provider`
 
 > Code samples
 
 ```shell
 
-curl -X DELETE http://localhost:3000/devportal/organizations/{orgId}/provider?name=string \
+curl -X DELETE https://devportal.api-platform.io/o/{orgId}/devportal/v1/provider?name=string \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'

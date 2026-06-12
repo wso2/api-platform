@@ -152,7 +152,7 @@ applicationForm.addEventListener('submit', async (e) => {
     showCreateButtonLoading(saveButton);
 
     try {
-        const response = await fetch('/devportal/applications', {
+        const response = await fetch(devportalApi.root('/applications'), {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',

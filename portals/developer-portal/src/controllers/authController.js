@@ -20,8 +20,6 @@ const passport = require('passport');
 const logger = require('../config/logger');
 const { logUserAction } = require('../middlewares/auditLogger');
 const { config } = require('../config/configLoader');
-const fs = require('fs');
-const path = require('path');
 const constants = require('../utils/constants');
 const util = require('../utils/util');
 const adminDao = require('../dao/admin');
@@ -31,7 +29,6 @@ const { validationResult } = require('express-validator');
 const { renderGivenTemplate } = require('../utils/util');
 const { trackLoginTrigger, trackLogoutTrigger } = require('../utils/telemetry');
 
-const filePrefix = config.pathToContent;
 
 const fetchAuthJsonContent = async (req, orgName) => {
 
@@ -40,10 +37,6 @@ const fetchAuthJsonContent = async (req, orgName) => {
         if (constants.ROUTE.DEVPORTAL_ROOT.some(pattern => minimatch.minimatch(req.session.returnTo, pattern))) {
             return config.identityProvider;
         }
-    }
-    if (config.mode === constants.DEV_MODE) {
-        const authJsonPath = path.join(process.cwd(), filePrefix + '../mock', 'auth.json');
-        return JSON.parse(fs.readFileSync(authJsonPath, constants.CHARSET_UTF8));
     }
     //if no idp per org, use super IDP
     try {
@@ -146,12 +139,7 @@ const handleCallback = async (req, res, next) => {
                     return next(err);
                 }
                 res.set('Cache-Control', 'no-store');
-                if (config.mode === constants.DEV_MODE) {
-                    const returnTo = req.user.returnTo || config.baseUrl;
-                    delete req.session.returnTo;
-                    res.redirect(returnTo);
-                } else {
-                    let returnTo = req.user.returnTo;
+                let returnTo = req.user.returnTo;
                     if (!config.advanced.disableOrgCallback && returnTo == null) {
                         returnTo = `/${req.params.orgName}`;
                     }
@@ -160,7 +148,6 @@ const handleCallback = async (req, res, next) => {
                     req.session.save(() => {
                         res.redirect(returnTo);
                     })
-                }
             });
         })(req, res, next);
 };
@@ -178,14 +165,9 @@ const handleSignUp = async (req, res) => {
     if (authJsonContent.signUpURL) {
         res.redirect(authJsonContent.signUpURL);
     } else {
-        if (config.mode === constants.DEV_MODE) {
-            const returnTo = req.session.returnTo || config.baseUrl;
-            delete req.session.returnTo;
-            res.redirect(returnTo);
-        } else {
-            const returnTo = req.session.returnTo || `/${req.params.orgName}`;
-            res.redirect(returnTo);
-        }
+        const returnTo = req.session.returnTo || `/${req.params.orgName}`;
+        delete req.session.returnTo;
+        res.redirect(returnTo);
     }
 };
 

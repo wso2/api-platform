@@ -127,9 +127,7 @@ data:
     host = {{ $router.policy_engine.host | default "" | quote }}
     port = {{ $router.policy_engine.port | default 9001 }}
     timeout_ms = {{ $router.policy_engine.timeout_ms }}
-    failure_mode_allow = {{ $router.policy_engine.failure_mode_allow }}
     route_cache_action = {{ $router.policy_engine.route_cache_action | quote }}
-    allow_mode_override = {{ $router.policy_engine.allow_mode_override }}
     message_timeout_ms = {{ $router.policy_engine.message_timeout_ms }}
 
     {{- if $router.policy_engine.tls }}

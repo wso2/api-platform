@@ -113,6 +113,8 @@ pricing_file = "/home/wso2/conf/llm-pricing/model_prices.json"
 [analytics]
 enabled = true
 allow_payloads = false
+send_request_body = false
+send_response_body = false
 enabled_publishers = ["moesif"]
 
 [analytics.publishers.moesif]

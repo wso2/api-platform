@@ -1097,6 +1097,75 @@ func TestValidate_AnalyticsConfig(t *testing.T) {
 	}
 }
 
+func TestValidate_AnalyticsPayloadMigration(t *testing.T) {
+	setValidAnalyticsALS := func(cfg *Config) {
+		cfg.Analytics.Enabled = true
+		cfg.Analytics.AccessLogsServiceCfg = AccessLogsServiceConfig{
+			Mode:                  "uds",
+			ShutdownTimeout:       600 * time.Second,
+			ExtProcMaxMessageSize: 1000000,
+			ExtProcMaxHeaderLimit: 8192,
+		}
+	}
+
+	tests := []struct {
+		name             string
+		allowPayloads    bool
+		sendRequestBody  bool
+		sendResponseBody bool
+		wantSendReq      bool
+		wantSendResp     bool
+	}{
+		{
+			name:             "legacy allow_payloads enables both when new flags false",
+			allowPayloads:    true,
+			sendRequestBody:  false,
+			sendResponseBody: false,
+			wantSendReq:      true,
+			wantSendResp:     true,
+		},
+		{
+			name:             "new flags win when at least one is true",
+			allowPayloads:    true,
+			sendRequestBody:  true,
+			sendResponseBody: false,
+			wantSendReq:      true,
+			wantSendResp:     false,
+		},
+		{
+			name:             "no migration when allow_payloads false",
+			allowPayloads:    false,
+			sendRequestBody:  false,
+			sendResponseBody: false,
+			wantSendReq:      false,
+			wantSendResp:     false,
+		},
+		{
+			name:             "new flags only without legacy",
+			allowPayloads:    false,
+			sendRequestBody:  true,
+			sendResponseBody: false,
+			wantSendReq:      true,
+			wantSendResp:     false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := validConfig()
+			setValidAnalyticsALS(cfg)
+			cfg.Analytics.AllowPayloads = tt.allowPayloads
+			cfg.Analytics.SendRequestBody = tt.sendRequestBody
+			cfg.Analytics.SendResponseBody = tt.sendResponseBody
+
+			err := cfg.Validate()
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantSendReq, cfg.Analytics.SendRequestBody)
+			assert.Equal(t, tt.wantSendResp, cfg.Analytics.SendResponseBody)
+		})
+	}
+}
+
 // TestValidate_AnalyticsPublishers tests analytics publisher validation
 func TestValidate_AnalyticsPublishers(t *testing.T) {
 	tests := []struct {

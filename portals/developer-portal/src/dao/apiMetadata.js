@@ -587,6 +587,26 @@ const deleteSubscriptionPolicy = async (orgID, policyName, t) => {
 }
 
 
+const deleteSubscriptionPolicyById = async (orgID, policyID, t) => {
+
+    try {
+        const subscriptionPolicyResponse = await SubscriptionPolicy.destroy({
+            where: {
+                POLICY_ID: policyID,
+                ORG_ID: orgID
+            },
+            transaction: t
+        });
+        return subscriptionPolicyResponse;
+    } catch (error) {
+        if (error instanceof Sequelize.ValidationError) {
+            throw error;
+        }
+        throw new Sequelize.DatabaseError(error);
+    }
+}
+
+
 const getSubscriptionPolicyByName = async (orgID, policyName, t) => {
 
     try {
@@ -1826,6 +1846,7 @@ module.exports = {
     createSubscriptionPolicy,
     bulkCreateSubscriptionPolicies,
     getSubscriptionPolicyByName,
+    deleteSubscriptionPolicyById,
     getSubscriptionPolicy,
     getSubscriptionPolicies,
     deleteSubscriptionPolicy,

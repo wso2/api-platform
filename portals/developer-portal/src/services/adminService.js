@@ -25,14 +25,10 @@ const path = require('path');
 const logger = require('../config/logger');
 const IdentityProviderDTO = require("../dto/identityProvider");
 const constants = require('../utils/constants');
-const { validationResult } = require('express-validator');
 const sequelize = require("../db/sequelize");
 const { ApplicationDTO, SubscriptionDTO } = require('../dto/application');
 const APIDTO = require('../dto/apiDTO');
 const { config } = require('../config/configLoader');
-const controlPlaneUrl = config.controlPlane.url;
-const controlPlaneGwUrl = config.controlPlane.gwUrl;
-const { invokeApiRequest } = require('../utils/util');
 const yaml = require('js-yaml');
 const { Sequelize } = require("sequelize");
 const { trackGenerateCredentials, trackSubscribeApi, trackUnsubscribeApi } = require('../utils/telemetry');
@@ -91,7 +87,20 @@ function parseOrganizationFromYamlFile(fileBuffer) {
             throw new Sequelize.ValidationError("Invalid organization YAML: 'spec.identityProvider' must be an object");
         }
     }
-    return mapYamlToOrganization(parsed);
+    const organization = mapYamlToOrganization(parsed);
+    // Required-field validation for the YAML upload path. The OpenAPI validator only
+    // checks that the multipart file field is present; it cannot inspect the file's
+    // contents, so the required fields from OrganizationCreate/UpdateRequest are
+    // enforced here. Keep this list in sync with those spec schemas.
+    const requiredFields = ['orgName', 'orgHandle', 'roleClaimName', 'groupsClaimName',
+        'organizationClaimName', 'organizationIdentifier', 'adminRole', 'subscriberRole', 'superAdminRole'];
+    const missingFields = requiredFields.filter((field) => !organization[field]);
+    if (missingFields.length > 0) {
+        throw new Sequelize.ValidationError(
+            `Invalid organization YAML: missing required field(s): ${missingFields.join(', ')}`
+        );
+    }
+    return organization;
 }
 
 function mapYamlToIdentityProvider(parsed) {
@@ -128,7 +137,17 @@ function parseIdentityProviderFromYamlFile(fileBuffer) {
             `Unknown YAML kind '${parsed.kind}'. Expected 'IdentityProvider'`
         );
     }
-    return mapYamlToIdentityProvider(parsed);
+    const identityProvider = mapYamlToIdentityProvider(parsed);
+    // Required-field validation for the YAML upload path.
+    const requiredFields = ['issuer', 'name', 'authorizationURL', 'tokenURL', 'clientId',
+        'callbackURL', 'logoutURL', 'logoutRedirectURI'];
+    const missingFields = requiredFields.filter((field) => !identityProvider[field]);
+    if (missingFields.length > 0) {
+        throw new Sequelize.ValidationError(
+            `Invalid identity provider YAML: missing required field(s): ${missingFields.join(', ')}`
+        );
+    }
+    return identityProvider;
 }
 
 const createOrganization = async (req, res) => {
@@ -140,21 +159,6 @@ const createOrganization = async (req, res) => {
         }
     }
     logger.info('Initiate organization creation...', req.body);
-
-    const rules = util.validateOrganization();
-    for (let validation of rules) {
-        await validation.run(req);
-    }
-
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-        const errObj = util.getErrors(errors);
-        logger.error('Organization creation request validation failed', {
-            errors: errObj
-        });
-        return res.status(400).json(errObj);
-    }
-    logger.info('Organization creation request validation successful');
 
     const payload = req.body;
     payload.orgConfig = {
@@ -202,7 +206,7 @@ const createOrganization = async (req, res) => {
             }
             logger.info('Views created successfully', { orgId });
             //create default provider
-            await adminDao.createProvider(organization.ORG_ID, { name: 'WSO2', providerURL: config.controlPlane.url }, t);
+            await adminDao.createProvider(organization.ORG_ID, { name: 'WSO2', providerURL: constants.WSO2_DEFAULT_URL }, t);
             logger.info('Default provider created successfully', {
                 orgId
             });
@@ -300,18 +304,6 @@ const updateOrganization = async (req, res) => {
         ...req.body
     });
     try {
-        if (!orgId) {
-            logger.warn('Missing required parameter: orgId');
-            throw new CustomError(400, "Bad Request", "Missing required parameter: 'orgId'");
-        }
-        const rules = util.validateOrganization();
-        for (let validation of rules) {
-            await validation.run(req);
-        }
-        const errors = validationResult(req);
-        if (!errors.isEmpty()) {
-            return res.status(400).json(util.getErrors(errors));
-        }
         const payload = req.body;
         payload.orgId = orgId;
 
@@ -383,9 +375,6 @@ const deleteOrganization = async (req, res) => {
         orgId
     });
     try {
-        if (!orgId) {
-            throw new CustomError(400, "Bad Request", "Missing required parameter: 'orgId'");
-        }
         const deletedRowsCount = await adminDao.deleteOrganization(orgId);
         if (deletedRowsCount > 0) {
             logger.info('Organization deletion successful', {
@@ -420,17 +409,6 @@ const createIdentityProvider = async (req, res) => {
     });
     try {
         const idpData = req.body;
-        if (!orgId) {
-            throw new CustomError(400, "Bad Request", "Missing required parameter: 'orgId'");
-        }
-        const rules = util.validateIDP();
-        for (let validation of rules) {
-            await validation.run(req);
-        }
-        const errors = validationResult(req);
-        if (!errors.isEmpty()) {
-            return res.status(400).json(util.getErrors(errors));
-        }
         const idpResponse = await adminDao.createIdentityProvider(orgId, idpData);
         logger.info('Identity provider created successfully', {
             orgId
@@ -461,17 +439,6 @@ const updateIdentityProvider = async (req, res) => {
         ...idpData
     });
     try {
-        if (!orgId) {
-            throw new CustomError(400, "Bad Request", "Missing required parameter: 'orgId'");
-        }
-        const rules = util.validateIDP();
-        for (let validation of rules) {
-            await validation.run(req);
-        }
-        const errors = validationResult(req);
-        if (!errors.isEmpty()) {
-            return res.status(400).json(util.getErrors(errors));
-        }
         const [updatedRows, updatedIDP] = await adminDao.updateIdentityProvider(orgId, idpData);
         if (!updatedRows) {
             throw new Sequelize.EmptyResultError("No record found to update");
@@ -493,9 +460,6 @@ const updateIdentityProvider = async (req, res) => {
 const getIdentityProvider = async (req, res) => {
 
     const orgID = req.params.orgId;
-    if (!orgID) {
-        throw new CustomError(400, "Bad Request", "Missing required parameter: 'orgId'");
-    }
     try {
         const retrievedIDP = await adminDao.getIdentityProvider(orgID);
         // Create response object
@@ -519,9 +483,6 @@ const deleteIdentityProvider = async (req, res) => {
     logger.info('Initiate delete identity provider...', {
         orgId: orgId
     });
-    if (!orgId) {
-        throw new CustomError(400, "Bad Request", "Missing required parameter: 'orgId'");
-    }
     try {
         const idpDeleteResponse = await adminDao.deleteIdentityProvider(orgId);
         if (idpDeleteResponse === 0) {
@@ -544,7 +505,7 @@ const deleteIdentityProvider = async (req, res) => {
 
 const createOrgContent = async (req, res) => {
     const orgId = req.params.orgId;
-    const viewName = req.params.name;
+    const viewName = req.params.viewName;
     const zipFile = req.files?.file?.[0] ?? req.file;
     logger.info('Initiate create organization content...', {
         orgId,
@@ -555,9 +516,6 @@ const createOrgContent = async (req, res) => {
     let tempZipPath;
 
     try {
-        if (!orgId) {
-            throw new CustomError(400, "Bad Request", "Missing required parameter: 'orgId'");
-        }
         if (!zipFile) {
             throw new CustomError(400, "Bad Request", "Missing required zip file");
         }
@@ -619,7 +577,7 @@ const createContent = async (filePath, fileName, fileContent, fileType, orgId, v
 
 const updateOrgContent = async (req, res) => {
     const orgId = req.params.orgId;
-    const viewName = req.params.name;
+    const viewName = req.params.viewName;
     const zipFile = req.files?.file?.[0] ?? req.file;
     logger.info('Initiate update organization content...', {
         orgId,
@@ -628,9 +586,6 @@ const updateOrgContent = async (req, res) => {
     const extractPath = path.join(process.cwd(), '..', '.tmp', orgId);
     let tempZipPath;
     try {
-        if (!orgId) {
-            throw new CustomError(400, "Bad Request", "Missing required parameter: 'orgId'");
-        }
         if (!zipFile) {
             throw new CustomError(400, "Bad Request", "Missing required zip file");
         }
@@ -705,20 +660,20 @@ const deleteOrgContent = async (req, res) => {
     const orgId = req.params.orgId;
     logger.info('Initiate delete organization content...', {
         orgId,
-        viewName: req.params.name
+        viewName: req.params.viewName
     });
     try {
         const fileName = req.query.fileName;
         let deletedRowsCount;
         if (!req.query.fileName) {
-            deletedRowsCount = await adminDao.deleteAllOrgContent(orgId, req.params.name);
+            deletedRowsCount = await adminDao.deleteAllOrgContent(orgId, req.params.viewName);
         } else {
-            deletedRowsCount = await adminDao.deleteOrgContent(orgId, req.params.name, fileName);
+            deletedRowsCount = await adminDao.deleteOrgContent(orgId, req.params.viewName, fileName);
         }
         if (deletedRowsCount > 0) {
             logger.info('Organization content deletion successful', {
                 orgId,
-                viewName: req.params.name
+                viewName: req.params.viewName
             });
             res.status(204).send();
         } else {
@@ -738,14 +693,14 @@ const deleteAllOrgContent = async (req, res) => {
     const orgId = req.params.orgId;
     logger.info('Initiate delete all organization content...', {
         orgId,
-        viewName: req.params.name
+        viewName: req.params.viewName
     });
     try {
-        const deletedRowsCount = await adminDao.deleteAllOrgContent(orgId, req.params.name, fileName);
+        const deletedRowsCount = await adminDao.deleteAllOrgContent(orgId, req.params.viewName, fileName);
         if (deletedRowsCount > 0) {
             logger.info('All organization content deletion successful', {
                 orgId,
-                viewName: req.params.name
+                viewName: req.params.viewName
             });
             res.status(204).send();
         } else {
@@ -756,7 +711,7 @@ const deleteAllOrgContent = async (req, res) => {
             error: error.message,
             stack: error.stack,
             orgId,
-            viewName: req.params.name
+            viewName: req.params.viewName
         });
         util.handleError(res, error);
     }
@@ -765,19 +720,6 @@ const deleteAllOrgContent = async (req, res) => {
 const createProvider = async (req, res) => {
     const orgID = req.params.orgId;
     const payload = req.body;
-    const rules = util.validateProvider();
-
-    for (let validation of rules) {
-        await validation.run(req);
-    }
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-        return res.status(400).json(util.getErrors(errors));
-    }
-    const extraKeys = util.rejectExtraProperties(['name', 'providerURL'], payload)
-    if (extraKeys.length > 0) {
-        return res.status(400).json(new CustomError(400, "Bad Request", `Unexpected properties: ${extraKeys.join(', ')}`));
-    }
     try {
         const provider = await adminDao.createProvider(orgID, payload);
         let providerData = {
@@ -803,23 +745,6 @@ const updateProvider = async (req, res) => {
     try {
         const orgId = req.params.orgId;
         const payload = req.body;
-        if (!orgId) {
-            logger.warn('Missing required parameter: orgId');
-            throw new CustomError(400, "Bad Request", "Missing required parameter: 'orgId'");
-        }
-        const rules = util.validateProvider();
-
-        for (let validation of rules) {
-            await validation.run(req);
-        }
-        const errors = validationResult(req);
-        if (!errors.isEmpty()) {
-            return res.status(400).json(util.getErrors(errors));
-        }
-        const extraKeys = util.rejectExtraProperties(['name', 'providerURL'], payload)
-        if (extraKeys.length > 0) {
-            return res.status(400).json(new CustomError(400, "Bad Request", `Unexpected properties: ${extraKeys.join(', ')}`));
-        }
         const provider = await adminDao.updateProvider(orgId, payload);
         let providerData = {
             orgId: provider[0][0].dataValues.ORG_ID,
@@ -905,9 +830,6 @@ const deleteProvider = async (req, res) => {
         } else {
             deletedRowsCount = await adminDao.deleteProvider(orgId, providerName);
         }
-        if (!orgId || !providerName) {
-            throw new CustomError(400, "Bad Request", "Missing required parameter: 'orgId'");
-        }
         if (deletedRowsCount > 0) {
             res.status(204).send();
         } else {
@@ -936,229 +858,6 @@ function checkAdditionalValues(additionalValues) {
 
 }
 
-const createCPApplicationOnBehalfOfUser = async (cpApplicationName, owner, cpOrgId, patToken) => {
-    logger.info('Creating control plane application', {
-        cpApplicationName
-    });
-    let headers = {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${patToken}`
-    }
-
-    try {
-        //create control plane application
-        url = `${controlPlaneGwUrl}/applications?preserveOwner=true`;
-        const cpAppCreationResponse = await util.apiRequest('POST', url, headers, {
-            name: cpApplicationName,
-            throttlingPolicy: 'Unlimited',
-            tokenType: 'JWT',
-            owner: owner,
-            groups: [],
-            attributes: {},
-            subscriptionScopes: []
-        }, cpOrgId);
-        return cpAppCreationResponse.data;
-    } catch (error) {
-        //application already exists
-        logger.error('Application Creation Failed in CP', {
-            error: error.message,
-            stack: error.stack,
-            cpApplicationName
-        });
-        if (error.statusCode && error.statusCode === 409) {
-            try {
-                logger.info('Application already exists in control plane, retrieving existing application', {
-                    orgId: cpOrgId,
-                    cpApplicationName
-                });
-                const cpAppResponse = await util.apiRequest('GET', `${controlPlaneGwUrl}/applications?query=${cpApplicationName}`, headers, {}, cpOrgId);
-                return cpAppResponse.data.list[0];
-            } catch (error) {
-                logger.error('Error occurred while fetching application', {
-                    error: error.message,
-                    cpApplicationName
-                });
-                throw error;
-            }
-        } else {
-            throw error;
-        }
-    }
-}
-
-const createCPSubscriptionOnBehalfOfUser = async (apiId, cpAppID, policyName, cpOrgId, patToken) => {
-    logger.info('Creating control plane subscription', {
-        apiId,
-        cpAppID,
-        policyName
-    });
-    const headers = {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${patToken}`
-    }
-
-    try {
-        const requestBody = {
-            apiId: apiId,
-            applicationId: cpAppID,
-            throttlingPolicy: policyName
-        };
-        let url = `${controlPlaneGwUrl}/subscriptions`;
-        const cpSubscribeResponse = await util.apiRequest('POST', url, headers, requestBody, cpOrgId);
-        return cpSubscribeResponse.data;
-    } catch (error) {
-        if (error.statusCode && error.statusCode === 409) {
-            const response = await util.apiRequest('GET', `${controlPlaneGwUrl}/subscriptions?apiId=${apiId}&applicationId=${cpAppID}`, headers, null, cpOrgId);
-            return response.data.list[0];
-        }
-        logger.error('key mapping create error failed', {
-            error: error.message,
-            stack: error.stack,
-            apiId,
-            cpAppID
-        });
-        throw error;
-    }
-}
-
-const createAppKeyMappingOnBehalfOfUser = async (cpAppID, keymanager, clientId, keyType, cpOrgId, patToken) => {
-    logger.debug('Creating control plane application key mapping', {
-        cpAppID,
-        keymanager,
-        clientId,
-        keyType
-    });
-    let headers = {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${patToken}`
-    }
-    try {
-        const requestBody = {
-            "consumerKey": clientId,
-            "keyType": keyType,
-            "keyManager": keymanager
-        };
-        let url = `${controlPlaneGwUrl}/applications/${cpAppID}/map-keys`;
-        const cpSubscribeResponse = await util.apiRequest('POST', url, headers, requestBody, cpOrgId);
-        return cpSubscribeResponse.data;
-    } catch (error) {
-        if (error.statusCode && error.statusCode === 409) {
-            const response = await util.apiRequest('GET', `${controlPlaneGwUrl}/applications/${cpAppID}/oauth-keys`, headers, null, cpOrgId);
-
-            // Validate response structure
-            if (!response.data || !Array.isArray(response.data.list)) {
-                throw new CustomError(500, "Internal Server Error", "Invalid response structure from control plane");
-            }
-
-            // Validate each key mapping has required fields
-            let selectedKeyMapping = null;
-            for (const keyMapping of response.data.list) {
-                if (keyMapping.keyManager === keymanager && keyMapping.keyType === keyType && keyMapping.consumerKey === clientId) {
-                    selectedKeyMapping = keyMapping;
-                    break;
-                }
-            }
-            if (!selectedKeyMapping) {
-                throw new CustomError(500, "Internal Server Error", "Key Mapping creation failed");
-            }
-            return selectedKeyMapping;
-        }
-        logger.error('key mapping create error failed', {
-            error: error.message,
-            stack: error.stack,
-            cpAppID
-        });
-        throw error;
-    }
-}
-
-const getAPIMKeyManagersBehalfOfUser = async (cpOrgId, patToken) => {
-
-    let headers = {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${patToken}`
-    }
-    let url = `${controlPlaneGwUrl}/key-managers?devPortalAppEnv=prod`;
-    const keymanagersResponse = await util.apiRequest('GET', url, headers, null, cpOrgId);
-
-    return keymanagersResponse.data.list;
-}
-
-const createCPApplication = async (req, cpApplicationName) => {
-    logger.info('Creating control plane application', {
-        cpApplicationName
-    });
-    try {
-        //create control plane application
-        const cpAppCreationResponse = await invokeApiRequest(req, 'POST', `${controlPlaneUrl}/applications`, {
-            'Content-Type': 'application/json'
-        }, {
-            name: cpApplicationName,
-            throttlingPolicy: 'Unlimited',
-            tokenType: 'JWT',
-            groups: [],
-            attributes: {},
-            subscriptionScopes: []
-        });
-        return cpAppCreationResponse;
-    } catch (error) {
-        //application already exists
-        logger.error('key mapping create error failed', {
-            error: error.message,
-            stack: error.stack,
-            cpApplicationName
-        });
-        if (error.statusCode && error.statusCode === 409) {
-            try {
-                logger.info('Application already exists in control plane, retrieving existing application', {
-                    orgId: req.params?.orgId,
-                    cpApplicationName
-                });
-                const cpAppResponse = await invokeApiRequest(req, 'GET', `${controlPlaneUrl}/applications?query=${cpApplicationName}`, {}, {});
-                return cpAppResponse.list[0];
-            } catch (error) {
-                logger.error('Error occurred while fetching application', {
-                    error: error.message,
-                    cpApplicationName
-                });
-                throw error;
-            }
-        } else {
-            throw error;
-        }
-    }
-}
-
-const createCPSubscription = async (req, apiId, cpAppID, policyDetails) => {
-    logger.info('Creating control plane subscription', {
-        apiId,
-        cpAppID,
-        policyDetails: policyDetails.dataValues ? policyDetails.dataValues.POLICY_NAME : policyDetails,
-    });
-    try {
-        const requestBody = {
-            apiId: apiId,
-            applicationId: cpAppID,
-            throttlingPolicy: policyDetails.dataValues ? policyDetails.dataValues.POLICY_NAME : policyDetails
-        };
-
-        const cpSubscribeResponse = await invokeApiRequest(req, 'POST', `${controlPlaneUrl}/subscriptions`, {}, requestBody);
-        return cpSubscribeResponse;
-    } catch (error) {
-        if (error.statusCode && error.statusCode === 409) {
-            const response = await invokeApiRequest(req, 'GET', `${controlPlaneUrl}/subscriptions?apiId=${apiId}&applicationId=${cpAppID}`, {});
-            return response.list[0];
-        }
-        logger.error('key mapping create error failed', {
-            error: error.message,
-            stack: error.stack,
-            apiId,
-            cpAppID
-        });
-        throw error;
-    }
-}
-
 const getApplicationKeyMap = async (orgId, appId, userId) => {
 
     const appIDResponse = await adminDao.getApplication(orgId, appId, userId);
@@ -1174,35 +873,6 @@ const getApplicationKeyMap = async (orgId, appId, userId) => {
         return new ApplicationDTO(application.dataValues);
     }
 
-}
-
-function parseApplicationDataFromRequest(req) {
-    const file = req.files?.application?.[0];
-    if (file?.buffer) {
-        let parsed;
-        try {
-            parsed = yaml.load(file.buffer.toString('utf8'));
-        } catch (e) {
-            throw new CustomError(400, "Bad Request", `Invalid application YAML: ${e.message}`);
-        }
-        if (!parsed || typeof parsed !== 'object') {
-            throw new CustomError(400, "Bad Request", "Invalid application YAML: expected an object");
-        }
-        const spec = parsed.spec || {};
-        const name = spec.displayName || parsed.metadata?.name;
-        if (!name) {
-            throw new CustomError(400, "Bad Request", "Missing application name");
-        }
-        if (!spec.description) {
-            throw new CustomError(400, "Bad Request", "Missing required application field: description");
-        }
-        return {
-            name,
-            description: spec.description,
-            type: "WEB"
-        };
-    }
-    return req.body;
 }
 
 module.exports = {
@@ -1227,12 +897,6 @@ module.exports = {
     deleteProvider,
     getProvidetByName,
     getApplicationKeyMap,
-    checkAdditionalValues,
-    createCPApplication,
-    createCPSubscription,
-    createCPApplicationOnBehalfOfUser,
-    createCPSubscriptionOnBehalfOfUser,
-    createAppKeyMappingOnBehalfOfUser,
-    getAPIMKeyManagersBehalfOfUser
+    checkAdditionalValues
 };
 

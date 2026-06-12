@@ -444,15 +444,9 @@ jobs:
                       # Timeout for gRPC service connection (in milliseconds)
                       timeout_ms: 60000
 
-                      # Failure mode: false = fail closed (deny requests on error), true = fail open (allow requests on error)
-                      failure_mode_allow: false
-
                       # Route cache action: DEFAULT, RETAIN, or CLEAR
                       # RETAIN: Maintain the route cache across requests (recommended for performance)
                       route_cache_action: RETAIN
-
-                      # Allow per-route override of ext_proc configuration
-                      allow_mode_override: true
 
                       # Message timeout for policy engine processing (in milliseconds)
                       message_timeout_ms: 60000
@@ -738,7 +732,7 @@ jobs:
                     ports:
                       http: 8080
                       https: 8443
-                      envoyAdmin: 9901
+                      routerAdmin: 9901
                       policyEngineAdmin: 9002
                       policyEngineMetrics: 9003
                   deployment:
@@ -1326,8 +1320,11 @@ jobs:
           echo "APIGateway rollout complete. Verifying Controller health..."
           # Give it a moment to stabilize
           sleep 20
-          # Port forward the new controller to check health
-          kubectl port-forward svc/test-gateway-gateway-controller 9092:9092 &
+          # Port forward the new controller to check health.
+          # Use deploy/ (not svc/) because the admin port (9092) is no longer published on
+          # the controller Service by default (gateway.controller.service.expose.admin=false);
+          # the container still listens on 9092, so forward to the pod via the Deployment.
+          kubectl port-forward deploy/test-gateway-gateway-controller 9092:9092 &
           PF_PID=$!
           sleep 5
 

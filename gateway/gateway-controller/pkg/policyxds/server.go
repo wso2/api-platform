@@ -26,9 +26,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/envoyproxy/go-control-plane/pkg/cache/v3"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/apikeyxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/lazyresourcexds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/subscriptionxds"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/webhooksecretxds"
 
 	core "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	discoverygrpc "github.com/envoyproxy/go-control-plane/envoy/service/discovery/v3"
@@ -40,16 +42,17 @@ import (
 
 // Server is the policy xDS gRPC server
 type Server struct {
-	grpcServer              *grpc.Server
-	xdsServer               server.Server
-	snapshotManager         *SnapshotManager
-	apiKeySnapshotMgr       *apikeyxds.APIKeySnapshotManager
-	lazyResourceSnapshotMgr *lazyresourcexds.LazyResourceSnapshotManager
-	subscriptionSnapshotMgr *subscriptionxds.SnapshotManager
-	port                    int
-	tlsConfig               *TLSConfig
-	onFirstConnect          chan struct{}
-	logger                  *slog.Logger
+	grpcServer               *grpc.Server
+	xdsServer                server.Server
+	snapshotManager          *SnapshotManager
+	apiKeySnapshotMgr        *apikeyxds.APIKeySnapshotManager
+	lazyResourceSnapshotMgr  *lazyresourcexds.LazyResourceSnapshotManager
+	subscriptionSnapshotMgr  *subscriptionxds.SnapshotManager
+	webhookSecretSnapshotMgr *webhooksecretxds.SnapshotManager
+	port                     int
+	tlsConfig                *TLSConfig
+	onFirstConnect           chan struct{}
+	logger                   *slog.Logger
 }
 
 // TLSConfig holds TLS configuration for the server
@@ -81,15 +84,16 @@ func WithOnFirstConnect(ch chan struct{}) ServerOption {
 }
 
 // NewServer creates a new policy xDS server
-func NewServer(snapshotManager *SnapshotManager, apiKeySnapshotMgr *apikeyxds.APIKeySnapshotManager, lazyResourceSnapshotMgr *lazyresourcexds.LazyResourceSnapshotManager, subscriptionSnapshotMgr *subscriptionxds.SnapshotManager, port int, logger *slog.Logger, opts ...ServerOption) *Server {
+func NewServer(snapshotManager *SnapshotManager, apiKeySnapshotMgr *apikeyxds.APIKeySnapshotManager, lazyResourceSnapshotMgr *lazyresourcexds.LazyResourceSnapshotManager, subscriptionSnapshotMgr *subscriptionxds.SnapshotManager, webhookSecretSnapshotMgr *webhooksecretxds.SnapshotManager, port int, logger *slog.Logger, opts ...ServerOption) *Server {
 	s := &Server{
-		snapshotManager:         snapshotManager,
-		apiKeySnapshotMgr:       apiKeySnapshotMgr,
-		lazyResourceSnapshotMgr: lazyResourceSnapshotMgr,
-		subscriptionSnapshotMgr: subscriptionSnapshotMgr,
-		port:                    port,
-		logger:                  logger,
-		tlsConfig:               &TLSConfig{Enabled: false},
+		snapshotManager:          snapshotManager,
+		apiKeySnapshotMgr:        apiKeySnapshotMgr,
+		lazyResourceSnapshotMgr:  lazyResourceSnapshotMgr,
+		subscriptionSnapshotMgr:  subscriptionSnapshotMgr,
+		webhookSecretSnapshotMgr: webhookSecretSnapshotMgr,
+		port:                     port,
+		logger:                   logger,
+		tlsConfig:                &TLSConfig{Enabled: false},
 	}
 
 	// Apply options
@@ -124,14 +128,18 @@ func NewServer(snapshotManager *SnapshotManager, apiKeySnapshotMgr *apikeyxds.AP
 
 	grpcServer := grpc.NewServer(grpcOpts...)
 
-	// Create combined cache that handles policy chains, route configs, API key state, lazy resources, subscription state, and event channel configs
+	// Create combined cache that handles policy chains, route configs, API key state, lazy resources, subscription state, event channel configs, and webhook secrets
 	policyCache := snapshotManager.GetPolicyCache()
 	routeConfigCache := snapshotManager.GetRouteCache()
 	eventChannelCache := snapshotManager.GetEventChannelCache()
 	apiKeyCache := apiKeySnapshotMgr.GetCache()
 	lazyResourceCache := lazyResourceSnapshotMgr.GetCache()
 	subscriptionCache := subscriptionSnapshotMgr.GetCache()
-	combinedCache := NewCombinedCache(policyCache, apiKeyCache, lazyResourceCache, subscriptionCache, routeConfigCache, eventChannelCache, logger)
+	var webhookSecretCache cache.Cache
+	if s.webhookSecretSnapshotMgr != nil {
+		webhookSecretCache = s.webhookSecretSnapshotMgr.GetCache()
+	}
+	combinedCache := NewCombinedCache(policyCache, apiKeyCache, lazyResourceCache, subscriptionCache, routeConfigCache, eventChannelCache, webhookSecretCache, logger)
 
 	callbacks := &serverCallbacks{
 		logger:         logger,

@@ -24,7 +24,6 @@ const path = require('path');
 const logger = require('./config/logger');
 const { auditMiddleware } = require('./middlewares/auditLogger');
 const authRoute = require('./routes/authRoute');
-const devportalRoute = require('./routes/devportalRoute');
 const orgContent = require('./routes/orgContentRoute');
 const apiContent = require('./routes/apiContentRoute');
 const applicationContent = require('./routes/applicationsContentRoute');
@@ -46,7 +45,6 @@ const { configurePassport } = require('./middlewares/passport');
 const app = express();
 // const secret = crypto.randomBytes(64).toString('hex');
 const sessionSecret = 'my-secret';
-const filePrefix = config.pathToContent;
 
 const SERVER_ID = uuidv4();
 
@@ -66,7 +64,7 @@ app.use(session({
     resave: false,
     saveUninitialized: true,
     cookie: {
-        secure: !config.advanced.http,
+        secure: !config.advanced.http && !config.designMode?.enabled,
         maxAge: 60 * 60 * 1000,
     },
 }));
@@ -108,6 +106,17 @@ app.use(auditMiddleware({
 app.use(passport.initialize());
 app.use(passport.session());
 
+// Expose the per-session CSRF token as a browser-readable cookie (double-submit
+// pattern). Mutating fetches echo it back as X-CSRF-Token; the value matches
+// what requireCsrfForMutatingApi expects (getSessionCsrfToken).
+const { getSessionCsrfToken } = require('./middlewares/csrfProtection');
+app.use((req, res, next) => {
+    if (req.session) {
+        res.cookie('XSRF-TOKEN', getSessionCsrfToken(req), { sameSite: 'lax', path: '/' });
+    }
+    next();
+});
+
 
 configurePassport(SERVER_ID);
 
@@ -125,22 +134,33 @@ app.use((req, res, next) => {
 });
 
 //backend routes
-if (config.advanced?.openApiValidator?.enabled) {
-    logger.info('Mounting spec-driven /devportal router (advanced.useOpenApiValidator=true)');
-    const devportalApiRouter = require('./openapi/devportalApiRouter');
-    app.use(constants.ROUTE.DEV_PORTAL, devportalApiRouter);
-} else {
-    app.use(constants.ROUTE.DEV_PORTAL, devportalRoute);
-}
+// Spec-driven devportal router (express-openapi-validator): request validation +
+// fine-grained OAuth2 scope enforcement, dispatching by operationId to
+// src/openapi/handlers. Mounted at root since spec paths are root-relative
+// (/o/{orgId}/devportal/v1/..., /applications, /login, ...). Registered before the
+// page route tree so unmatched requests fall through to it.
+const devportalApiRouter = require('./openapi/devportalApiRouter');
+app.use(constants.ROUTE.DEFAULT, devportalApiRouter);
 
 // MCP Server Registry (OpenAPI v0.1)
 app.use('/registry/:orgHandle', mcpRegistryRoute);
 app.use('/:orgHandle/registry', mcpRegistryRoute);
 
-if (config.mode === constants.DEV_MODE) {
-    app.use(constants.ROUTE.STYLES, express.static(path.join(process.cwd(), filePrefix + 'styles')));
-    app.use(constants.ROUTE.IMAGES, express.static(path.join(process.cwd(), filePrefix + 'images')));
-    app.use(constants.ROUTE.MOCK, express.static(path.join(process.cwd(), filePrefix + 'mock')));
+if (config.designMode?.enabled) {
+    const sampleApiLoader = require('./utils/sampleApiLoader');
+    const layoutPath = config.designMode.pathToLayout;
+    // Serve styles/images from pathToLayout first, fall back to src/defaultContent/
+    app.use(constants.ROUTE.STYLES, express.static(path.resolve(process.cwd(), layoutPath, 'styles')));
+    app.use(constants.ROUTE.STYLES, express.static(path.join(process.cwd(), './src/defaultContent/styles')));
+    app.use(constants.ROUTE.IMAGES, express.static(path.resolve(process.cwd(), layoutPath, 'images')));
+    app.use(constants.ROUTE.IMAGES, express.static(path.join(process.cwd(), './src/defaultContent/images')));
+    app.use(constants.ROUTE.MOCK, express.static(path.join(process.cwd(), config.designMode.apiSamplesPath)));
+    // Serve API definition files by resolving the handle to the actual directory
+    app.get('/mock/:apiHandle/definition.yml', (req, res) => {
+        const content = sampleApiLoader.getDefinition(req.params.apiHandle, config.designMode.apiSamplesPath);
+        if (!content) return res.status(404).send('Not found');
+        res.type('text/yaml').send(content);
+    });
     app.use(constants.ROUTE.DEFAULT, designRoute);
 } else {
     app.use(constants.ROUTE.STYLES, express.static(path.join(process.cwd(), './src/defaultContent/' + 'styles')));

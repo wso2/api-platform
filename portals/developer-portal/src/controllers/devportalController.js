@@ -16,11 +16,8 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-const { invokeApiRequest, invokeGraphQLRequest } = require('../utils/util');
 const { config } = require('../config/configLoader');
 const logger = require('../config/logger');
-const controlPlaneUrl = config.controlPlane.url;
-const controlPlaneGraphqlUrl = config.controlPlane.graphqlURL;
 const util = require('../utils/util');
 const passport = require('passport');
 const { Strategy: CustomStrategy } = require('passport-custom');
@@ -28,17 +25,11 @@ const adminDao = require('../dao/admin');
 const constants = require('../utils/constants');
 const { ApplicationDTO } = require('../dto/application');
 const { Sequelize } = require("sequelize");
-const adminService = require('../services/adminService');
-const apiDao = require('../dao/apiMetadata');
 const { trackAppCreationStart, trackAppCreationEnd, trackAppDeletion, trackGenerateKey, trackGenerateCredentials } = require('../utils/telemetry');
-const fs = require('fs');
 const yaml = require('js-yaml');
 const kmDao = require('../dao/keyManager');
 const { getKeyManagerAdapter } = require('../adapters/keyManager');
-const { ImportedApplicationDTO, ApplicationKey } = require('../dto/importedApplication');
 const { CustomError } = require('../utils/errors/customErrors');
-const { APIMetadata, APILabels } = require('../models/apiMetadata');
-const sequelize = require('../db/sequelize');
 // ***** POST / DELETE / PUT Functions ***** (Only work in production)
 
 function parseApplicationDataFromRequest(req) {
@@ -191,27 +182,6 @@ const deleteApplication = async (req, res) => {
         util.handleError(res, error);
     }
 }
-
-// ***** Save Application *****
-
-const resetThrottlingPolicy = async (req, res) => {
-    try {
-        const applicationId = req.params.applicationId;
-        const { userName } = req.body;
-        const responseData = await invokeApiRequest(req, 'POST', `${controlPlaneUrl}/applications/${applicationId}/reset-throttle-policy`, {
-            'Content-Type': 'application/json'
-        }, {
-            userName
-        });
-        res.status(200).json({ message: responseData.message });
-    } catch (error) {
-        logger.error("Error occurred while resetting the application", {
-            error: error.message,
-            stack: error.stack
-        });
-        util.handleError(res, error);
-    }
-};
 
 const generateKeys = async (req, res) => {
     let orgID, appID, userID;
@@ -472,315 +442,14 @@ const login = async (req, res) => {
         });
     })(req, res);
 };
-// Import Application with API Subscriptions
-const importApplications = async (req, res) => {
-    let orgID;
-    let createDevPortalApplication;
-    let controlPlaneApplication;
-    let orgDetails;
-    try {
-        orgDetails = await adminDao.getOrganization(req.params.orgId);
-        orgID = orgDetails.ORG_ID;
-        // Validate required inputs
-        if (!req.file || !req.file.buffer) {
-            return res.status(400).json({ message: 'Missing application.yaml file' });
-        }
-
-        const patToken = req.headers['pat-token'];
-        if (!patToken) {
-            return res.status(400).json({ message: 'Missing PAT Token in request headers' });
-        }
-
-        // read withKeys form Parameters, default to false if not provided
-        const withKeys = req.body.withKeys === 'true';
-        // read keyManager form parameter 
-        const keyManager = req.body.keyManager || null;
-
-        if (withKeys && !keyManager) {
-            return res.status(400).json({ message: 'keyManager parameter is required when withKeys is true' });
-        }
-        if (withKeys) {
-            const keyManagers = await adminService.getAPIMKeyManagersBehalfOfUser(orgDetails.ORGANIZATION_IDENTIFIER, patToken);
-            const isValidKeyManager = keyManagers.some(km => km.name === keyManager);
-
-            if (!isValidKeyManager) {
-                return res.status(400).json({
-                    message: `Invalid keyManager: ${keyManager}. Key manager not found in organization.`
-                });
-            }
-        }
-
-        // Parse YAML file
-        let importedApplication;
-        try {
-            const fileContent = req.file.buffer.toString('utf8');
-            const data = yaml.load(fileContent);
-            importedApplication = new ImportedApplicationDTO(data);
-        } catch (fileReadError) {
-            logger.error('Error reading application.yaml file', {
-                orgId: req.params.orgId,
-                error: fileReadError.message,
-                stack: fileReadError.stack
-            });
-            const error = new CustomError(400, "Bad Request", "Unable to read application.yaml file");
-            return util.handleError(res, error);
-        }
-
-        // Create DevPortal application
-        const applicationTobeCreated = {
-            name: importedApplication.applicationInfo.name,
-            description: importedApplication.applicationInfo.description,
-            type: "WEB"
-        };
-
-        try {
-            createDevPortalApplication = await adminDao.createApplication(
-                orgID,
-                importedApplication.applicationInfo.owner,
-                applicationTobeCreated
-            );
-        } catch (appCreationError) {
-            logger.error('Error creating application in Devportal', {
-                orgId: req.params.orgId,
-                appName: importedApplication.applicationInfo.name,
-                error: appCreationError.message,
-                stack: appCreationError.stack
-            });
-            const error = new CustomError(500, "Internal Server Error", "Failed to create application in Devportal");
-            return util.handleError(res, error);
-        }
-
-        // Create Control Plane application
-        try {
-            controlPlaneApplication = await adminService.createCPApplicationOnBehalfOfUser(
-                createDevPortalApplication.APP_ID,
-                importedApplication.applicationInfo.owner,
-                orgDetails.ORGANIZATION_IDENTIFIER,
-                patToken
-            );
-        } catch (cpAppError) {
-            logger.error('Error creating application in Control Plane', {
-                orgId: req.params.orgId,
-                appName: importedApplication.applicationInfo.name,
-                error: cpAppError.message,
-                stack: cpAppError.stack
-            });
-
-            // Rollback DevPortal application
-            try {
-                await adminDao.deleteApplication(orgID, createDevPortalApplication.APP_ID, importedApplication.applicationInfo.owner);
-            } catch (rollbackError) {
-                logger.error('Rollback failed: DevPortal application not deleted', {
-                    orgId: req.params.orgId,
-                    appId: createDevPortalApplication.APP_ID,
-                    error: rollbackError.message
-                });
-            }
-            const error = new CustomError(500, "Internal Server Error", "Failed to create application in Control Plane");
-            return util.handleError(res, error);
-        }
-
-        // Create subscriptions
-        const failedSubscriptions = await createSubscriptions(
-            importedApplication.subscribedAPIs,
-            orgDetails,
-            createDevPortalApplication.APP_ID,
-            controlPlaneApplication.applicationId,
-            patToken
-        );
-
-        // Create Application-Key mapping
-        if (withKeys) {
-            const keys = importedApplication.applicationInfo.keys;
-            if (keys && Array.isArray(keys)) {
-                const keyEntries = keys.filter(key => key.keyManager === keyManager);
-                for (const keyEntry of keyEntries) {
-                    if (keyEntry) {
-                        const applicationKey = new ApplicationKey(keyEntry);
-                        // Use keyEntry data for creating application-key mapping
-                        try {
-                            const createdKeyMapping = await adminService.createAppKeyMappingOnBehalfOfUser(
-                                controlPlaneApplication.applicationId,
-                                keyManager,
-                                applicationKey.consumerKey,
-                                applicationKey.keyType,
-                                orgDetails.ORGANIZATION_IDENTIFIER,
-                                patToken
-                            );
-                        } catch (appKeyMappingError) {
-                            logger.error('Error creating application-key mapping', {
-                                orgId: orgID,
-                                appId: createDevPortalApplication.APP_ID,
-                                cpAppId: controlPlaneApplication.applicationId,
-                                keyManager: keyManager,
-                                error: appKeyMappingError.message,
-                                stack: appKeyMappingError.stack
-                            });
-                            // Rollback: Delete CP application and DevPortal application
-                            try {
-                                await adminService.deleteCPApplication(controlPlaneApplication.applicationId, orgDetails.ORGANIZATION_IDENTIFIER, patToken);
-                            } catch (rollbackError) {
-                                logger.error('Rollback failed: CP application not deleted', { cpAppId: controlPlaneApplication.applicationId, error: rollbackError.message });
-                            }
-                            try {
-                                await adminDao.deleteApplication(orgID, createDevPortalApplication.APP_ID, importedApplication.applicationInfo.owner);
-                            } catch (rollbackError) {
-                                logger.error('Rollback failed: DevPortal application not deleted', {
-                                    appId: createDevPortalApplication.APP_ID,
-                                    error: rollbackError.message
-                                });
-                            }
-                            const error = new CustomError(500, "Internal Server Error", "Failed to create application-key mapping");
-                            return util.handleError(res, error);
-                        }
-                    }
-                }
-                if (keyEntries.length > 0) {
-                    const appKeyMapppingdbEntry = {
-                        orgID: orgID,
-                        appID: createDevPortalApplication.APP_ID,
-                        cpAppRef: controlPlaneApplication.applicationId,
-                        apiRefID: null,
-                        subscriptionRefID: null,
-                        sharedToken: true,
-                        tokenType: constants.TOKEN_TYPES.OAUTH
-                    }
-                    await adminDao.createApplicationKeyMapping(appKeyMapppingdbEntry);
-                }
-            }
-        }
-
-        const response = failedSubscriptions.length > 0
-            ? { status: "Incomplete", failedSubscriptions }
-            : { status: "Success" };
-
-        return res.status(200).json(response);
-
-    } catch (error) {
-        logger.error('Error importing applications', {
-            orgId: req.params.orgId,
-            error: error.message,
-            stack: error.stack
-        });
-        util.handleError(res, error);
-    }
-};
-
-// Helper function for subscription creation
-const createSubscriptions = async (subscribedAPIs, orgDetails, appId, cpAppId, patToken) => {
-    const failedSubscriptions = [];
-    const orgID = orgDetails.ORG_ID;
-    try {
-        const [allApis, subscriptionPolicies] = await Promise.all([
-            apiDao.getAllAPIMetadataFromAllViews(orgDetails.ORG_ID, []),
-            apiDao.getAllSubscriptionPolicies(orgDetails.ORG_ID)
-        ]);
-
-        for (const apiSubscription of subscribedAPIs) {
-            try {
-                const api = allApis.find(apiItem =>
-                    apiItem.API_NAME === apiSubscription.apiId.apiName &&
-                    apiItem.API_VERSION === apiSubscription.apiId.version
-                );
-
-                const policy = subscriptionPolicies.find(policy =>
-                    policy.POLICY_NAME === apiSubscription.throttlingPolicy
-                );
-
-                if (!api || !policy) {
-                    logger.warn(`Skipping subscription - API or policy not found`, {
-                        orgId: orgID,
-                        apiName: apiSubscription.apiId.apiName,
-                        policyName: apiSubscription.throttlingPolicy
-                    });
-                    failedSubscriptions.push(apiSubscription);
-                    continue;
-                }
-
-                await createSingleSubscription(api, policy, orgDetails, appId, cpAppId, apiSubscription, failedSubscriptions, patToken);
-
-            } catch (subscriptionError) {
-                logger.error(`Error creating subscription for API: ${apiSubscription.apiId.apiName}`, {
-                    orgId: orgID,
-                    apiName: apiSubscription.apiId.apiName,
-                    error: subscriptionError.message,
-                    stack: subscriptionError.stack
-                });
-                failedSubscriptions.push(apiSubscription);
-            }
-        }
-    } catch (error) {
-        logger.error('Failed to fetch APIs or policies', {
-            orgId: orgID,
-            error: error.message,
-            stack: error.stack
-        });
-        // Add all subscriptions to failed list if we can't fetch metadata
-        failedSubscriptions.push(...subscribedAPIs);
-    }
-
-    return failedSubscriptions;
-};
-
-// Helper function for creating individual subscriptions
-const createSingleSubscription = async (api, policy, orgDetails, appId, cpAppId, apiSubscription, failedSubscriptions, patToken) => {
-    const subscription = {
-        applicationID: appId,
-        apiId: api.API_ID,
-        policyId: policy.POLICY_ID
-    };
-
-    let subscriptionInDevportal;
-
-    try {
-        subscriptionInDevportal = await sequelize.transaction({ timeout: 60000 }, async (t) => {
-            return await adminDao.createSubscription(orgDetails.ORG_ID, subscription, t);
-        });
-
-        try {
-            await adminService.createCPSubscriptionOnBehalfOfUser(
-                api.REFERENCE_ID,
-                cpAppId,
-                policy.POLICY_NAME,
-                orgDetails.ORGANIZATION_IDENTIFIER,
-                patToken
-            );
-        } catch (cpSubError) {
-            logger.error(`Error creating CP subscription for API: ${apiSubscription.apiId.apiName}`, {
-                orgId: orgDetails.ORG_ID,
-                apiName: apiSubscription.apiId.apiName,
-                error: cpSubError.message,
-                stack: cpSubError.stack
-            });
-
-            // Rollback DevPortal subscription
-            await sequelize.transaction({ timeout: 60000 }, async (t) => {
-                await adminDao.deleteSubscription(orgDetails.ORG_ID, subscriptionInDevportal.SUBSCRIPTION_ID, t);
-            });
-
-            failedSubscriptions.push(apiSubscription);
-        }
-    } catch (devPortalSubError) {
-        logger.error(`Error creating DevPortal subscription for API: ${apiSubscription.apiId.apiName}`, {
-            orgId: orgDetails.ORG_ID,
-            apiName: apiSubscription.apiId.apiName,
-            error: devPortalSubError.message,
-            stack: devPortalSubError.stack
-        });
-        failedSubscriptions.push(apiSubscription);
-    }
-};
-
 module.exports = {
     saveApplication,
     updateApplication,
     deleteApplication,
-    resetThrottlingPolicy,
     generateKeys,
     generateOAuthKeys,
     revokeOAuthKeys,
     updateOAuthKeys,
     cleanUp,
-    login,
-    importApplications
+    login
 };

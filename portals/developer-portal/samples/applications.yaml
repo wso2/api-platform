@@ -1,0 +1,17 @@
+apiVersion: devportal.api-platform.wso2.com/v1
+kind: ApplicationList
+items:
+
+  - metadata:
+      name: mobile-banking-app
+
+    spec:
+      displayName: Mobile Banking App
+      description: Customer-facing mobile application for retail banking services.
+
+  - metadata:
+      name: analytics-dashboard
+
+    spec:
+      displayName: Analytics Dashboard
+      description: Internal dashboard for tracking API usage metrics and performance.

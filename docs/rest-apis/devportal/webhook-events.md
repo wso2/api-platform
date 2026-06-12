@@ -4,13 +4,13 @@
 
 <a id="opIdlistWebhookEvents"></a>
 
-`GET /organizations/{orgId}/events`
+`GET /o/{orgId}/devportal/v1/webhook-events`
 
 > Code samples
 
 ```shell
 
-curl -X GET http://localhost:3000/devportal/organizations/{orgId}/events \
+curl -X GET https://devportal.api-platform.io/o/{orgId}/devportal/v1/webhook-events \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -152,13 +152,13 @@ Status Code **200**
 
 <a id="opIdgetWebhookEvent"></a>
 
-`GET /organizations/{orgId}/events/{eventId}`
+`GET /o/{orgId}/devportal/v1/webhook-events/{eventId}`
 
 > Code samples
 
 ```shell
 
-curl -X GET http://localhost:3000/devportal/organizations/{orgId}/events/{eventId} \
+curl -X GET https://devportal.api-platform.io/o/{orgId}/devportal/v1/webhook-events/{eventId} \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -254,13 +254,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdretryWebhookDelivery"></a>
 
-`POST /organizations/{orgId}/deliveries/{deliveryId}/retry`
+`POST /o/{orgId}/devportal/v1/webhook-deliveries/{deliveryId}/retry`
 
 > Code samples
 
 ```shell
 
-curl -X POST http://localhost:3000/devportal/organizations/{orgId}/deliveries/{deliveryId}/retry \
+curl -X POST https://devportal.api-platform.io/o/{orgId}/devportal/v1/webhook-deliveries/{deliveryId}/retry \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'

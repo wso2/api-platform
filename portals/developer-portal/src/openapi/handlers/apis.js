@@ -23,9 +23,9 @@
 const apiMetadataService = require('../../services/apiMetadataService');
 
 module.exports = {
-    createAPIMetadata: apiMetadataService.createAPIMetadata,
-    getAPIMetadata: apiMetadataService.getAPIMetadata,
-    getAllAPIMetadataForOrganization: apiMetadataService.getAllAPIMetadata,
-    updateAPIMetadata: apiMetadataService.updateAPIMetadata,
-    deleteAPIMetadata: apiMetadataService.deleteAPIMetadata,
+    createApiMetadata: apiMetadataService.createAPIMetadata,
+    getApiMetadata: apiMetadataService.getAPIMetadata,
+    getAllApiMetadataForOrganization: apiMetadataService.getAllAPIMetadata,
+    updateApiMetadata: apiMetadataService.updateAPIMetadata,
+    deleteApiMetadata: apiMetadataService.deleteAPIMetadata,
 };

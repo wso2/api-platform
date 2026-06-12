@@ -22,6 +22,9 @@
 channels:
   # WebSubApi example: repo-watcher with multiple channels
   - kind: WebSubApi
+    # apiId must match the artifact_uuid of the deployed WebSub API in the
+    # gateway-controller DB — the webhook secret store is keyed by this value.
+    apiId: ""
     name: repo-watcher
     version: v1
     context: /repos

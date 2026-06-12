@@ -7,7 +7,7 @@ The Developer Portal is a self-hosted, multi-tenant web application where API pu
 | Section | Audience | What you'll find |
 |---|---|---|
 | [Introduction](introduction/what-is-developer-portal.md) | Everyone | Overview, quick start, and core concepts |
-| [Administer](administer/manage-organizations.md) | Admins / Operators | Organizations, views, subscription plans, gateway and key manager integration, theming |
+| [Administer](administer/manage-organizations.md) | Admins / Operators | Organizations, views, subscription plans, gateway and key manager integration, theming, design mode |
 | [Publish APIs](publish-apis/publishing-apis.md) | API Publishers / Admins | Registering APIs, uploading definitions and docs, managing API workflows |
 | [Discover APIs](discover-apis/search-apis.md) | Developers | Searching the API catalog, reading documentation, AI agent discovery |
 | [Consume an API](consume-an-api/subscriptions.md) | Developers | Subscribing to APIs, generating API keys and OAuth2 credentials |

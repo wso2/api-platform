@@ -78,17 +78,8 @@ const CONFIG_DEFAULTS = {
             enabled: false,
         },
         openApiValidator: {
-            enabled: false,
             validateResponses: 'off',
         },
-    },
-    controlPlane: {
-        enabled: false,
-        url: '',
-        graphqlURL: '',
-        gwUrl: '',
-        disableCertValidation: true,
-        pathToCertificate: '',
     },
     logging: {
         consoleOnly: true,
@@ -100,6 +91,14 @@ const CONFIG_DEFAULTS = {
     },
     authorizedPages: [],
     authenticatedPages: [],
+    designMode: {
+        enabled: false,
+        apiSamplesPath: './samples/apis/',
+        mcpSamplesPath: './samples/mcps/',
+        subscriptionPlansPath: './samples/subscriptionPlans.yaml',
+        applicationsPath: './samples/applications.yaml',
+        pathToLayout: './src/defaultContent/',
+    },
 };
 
 /**

@@ -15,8 +15,24 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+// Devportal API base segment and version — single source of truth for the
+// org-scoped invocation prefix `/o/{orgId}/devportal/v1`. Change these two to
+// bump the base segment (e.g. devportalv2) or version (e.g. v2) everywhere.
+const DEVPORTAL_BASE_SEGMENT = 'devportal';
+const DEVPORTAL_VERSION = 'v1';
+// Express route prefix for org-scoped routes, e.g. '/o/:orgId/devportal/v1'
+const DEVPORTAL_ORG_PREFIX = `/o/:orgId/${DEVPORTAL_BASE_SEGMENT}/${DEVPORTAL_VERSION}`;
+// Builder for a concrete org path used in server-side URL generation,
+// e.g. devportalOrgPath('abc') => '/o/abc/devportal/v1'
+const devportalOrgPath = (orgId) => `/o/${orgId}/${DEVPORTAL_BASE_SEGMENT}/${DEVPORTAL_VERSION}`;
+
 module.exports = {
-    DEV_MODE: 'development',
+    DEVPORTAL_API: {
+        BASE_SEGMENT: DEVPORTAL_BASE_SEGMENT,
+        VERSION: DEVPORTAL_VERSION,
+        ORG_PREFIX: DEVPORTAL_ORG_PREFIX,
+        orgPath: devportalOrgPath,
+    },
     IMAGE: 'image',
     STYLE: 'style',
     TEXT: 'text',
@@ -131,7 +147,6 @@ module.exports = {
         BASIC: 'BASIC'
     },
     ROUTE: {
-        DEV_PORTAL: '/devportal',
         STYLES: '/styles',
         TECHNICAL_STYLES: '/technical-styles',
         TECHNICAL_SCRIPTS: '/technical-scripts',
@@ -143,7 +158,6 @@ module.exports = {
         API_FILE_PATH: '/apis/',
         API_LANDING_PAGE_PATH: '/api/',
         API_DOCS_PATH: '/docs/',
-        DEVPORTAL_ASSETS_BASE_PATH: '/devportal/organizations/',
         DEVPORTAL_CONFIGURE: ['/*/configure', '/*/views/*/configure'],
         DEVPORTAL_ROOT: ['/portal', '/portal/*/edit', '/devportal'],
         DEVPORTAL_API_LISTING: '/*/apis',
@@ -184,6 +198,10 @@ module.exports = {
         API_DEFINITION_GRAPHQL: 'apiDefinition.graphql',
         API_DEFINITION_XML: 'apiDefinition.xml',
         LLMS_CONFIG: 'llms-config.json',
+    },
+    ARTIFACT_DIR: {
+        WEB: 'web',
+        DOCS: 'docs',
     },
     DEFAULT_SUBSCRIPTION_PLANS: [
         {
@@ -298,5 +316,6 @@ module.exports = {
         'llms-txt',
     ],
     FEDERATED_GATEWAY_VENDORS: ['aws'],
-    DEFAULT_PROFILE_IMAGE_URL: 'https://raw.githubusercontent.com/wso2/docs-bijira/refs/heads/main/en/devportal-theming/profile.svg'
+    DEFAULT_PROFILE_IMAGE_URL: 'https://raw.githubusercontent.com/wso2/docs-bijira/refs/heads/main/en/devportal-theming/profile.svg',
+    WSO2_DEFAULT_URL: 'https://localhost:9443',
 }

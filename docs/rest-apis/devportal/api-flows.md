@@ -2,15 +2,15 @@
 
 ## Create an API flow
 
-<a id="opIdcreateAPIFlow"></a>
+<a id="opIdcreateApiFlow"></a>
 
-`POST /organizations/{orgId}/views/{viewName}/api-flows`
+`POST /o/{orgId}/devportal/v1/views/{viewName}/api-flows`
 
 > Code samples
 
 ```shell
 
-curl -X POST http://localhost:3000/devportal/organizations/{orgId}/views/{viewName}/api-flows \
+curl -X POST https://devportal.api-platform.io/o/{orgId}/devportal/v1/views/{viewName}/api-flows \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -86,15 +86,15 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ## List API flows
 
-<a id="opIdgetAllAPIFlows"></a>
+<a id="opIdgetAllApiFlows"></a>
 
-`GET /organizations/{orgId}/views/{viewName}/api-flows`
+`GET /o/{orgId}/devportal/v1/views/{viewName}/api-flows`
 
 > Code samples
 
 ```shell
 
-curl -X GET http://localhost:3000/devportal/organizations/{orgId}/views/{viewName}/api-flows \
+curl -X GET https://devportal.api-platform.io/o/{orgId}/devportal/v1/views/{viewName}/api-flows \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -178,15 +178,15 @@ Status Code **200**
 
 ## Get an API flow
 
-<a id="opIdgetAPIFlow"></a>
+<a id="opIdgetApiFlow"></a>
 
-`GET /organizations/{orgId}/views/{viewName}/api-flows/{apiFlowId}`
+`GET /o/{orgId}/devportal/v1/views/{viewName}/api-flows/{apiFlowId}`
 
 > Code samples
 
 ```shell
 
-curl -X GET http://localhost:3000/devportal/organizations/{orgId}/views/{viewName}/api-flows/{apiFlowId} \
+curl -X GET https://devportal.api-platform.io/o/{orgId}/devportal/v1/views/{viewName}/api-flows/{apiFlowId} \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -250,15 +250,15 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ## Update an API flow
 
-<a id="opIdupdateAPIFlow"></a>
+<a id="opIdupdateApiFlow"></a>
 
-`PUT /organizations/{orgId}/views/{viewName}/api-flows/{apiFlowId}`
+`PUT /o/{orgId}/devportal/v1/views/{viewName}/api-flows/{apiFlowId}`
 
 > Code samples
 
 ```shell
 
-curl -X PUT http://localhost:3000/devportal/organizations/{orgId}/views/{viewName}/api-flows/{apiFlowId} \
+curl -X PUT https://devportal.api-platform.io/o/{orgId}/devportal/v1/views/{viewName}/api-flows/{apiFlowId} \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -324,15 +324,15 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ## Delete an API flow
 
-<a id="opIddeleteAPIFlow"></a>
+<a id="opIddeleteApiFlow"></a>
 
-`DELETE /organizations/{orgId}/views/{viewName}/api-flows/{apiFlowId}`
+`DELETE /o/{orgId}/devportal/v1/views/{viewName}/api-flows/{apiFlowId}`
 
 > Code samples
 
 ```shell
 
-curl -X DELETE http://localhost:3000/devportal/organizations/{orgId}/views/{viewName}/api-flows/{apiFlowId} \
+curl -X DELETE https://devportal.api-platform.io/o/{orgId}/devportal/v1/views/{viewName}/api-flows/{apiFlowId} \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -378,13 +378,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdgeneratePrompt"></a>
 
-`POST /organizations/{orgId}/views/{viewName}/api-flows/generate-prompt`
+`POST /o/{orgId}/devportal/v1/views/{viewName}/api-flows/generate-prompt`
 
 > Code samples
 
 ```shell
 
-curl -X POST http://localhost:3000/devportal/organizations/{orgId}/views/{viewName}/api-flows/generate-prompt \
+curl -X POST https://devportal.api-platform.io/o/{orgId}/devportal/v1/views/{viewName}/api-flows/generate-prompt \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \

@@ -49,27 +49,50 @@ async function loadMarkdown(filename, dirName) {
 };
 
 
+/**
+ * In design mode, if a template/layout file doesn't exist at the given path
+ * (which may be under a custom pathToLayout), fall back to the same relative
+ * path under src/defaultContent/.
+ */
+function resolveDesignFallback(filePath) {
+    if (!config.designMode?.enabled) return filePath;
+    // Resolve relative to cwd so both relative and absolute pathToLayout values work
+    const abs = path.resolve(process.cwd(), filePath);
+    if (fs.existsSync(abs)) return abs;
+    const designRoot = path.resolve(process.cwd(), config.designMode.pathToLayout);
+    if (abs.startsWith(designRoot)) {
+        // Strip the leading path separator so the relative part doesn't look absolute
+        const relative = abs.slice(designRoot.length).replace(/^[/\\]/, '');
+        return path.resolve(process.cwd(), './src/defaultContent', relative);
+    }
+    return abs;
+}
+
 function renderTemplate(templatePath, layoutPath, templateContent, isTechnical) {
 
     let completeTemplatePath;
     if (isTechnical) {
         completeTemplatePath = path.join(require.main.filename, templatePath);
     } else {
-        completeTemplatePath = path.join(process.cwd(), templatePath);
+        completeTemplatePath = resolveDesignFallback(templatePath);
     }
 
     const templateResponse = fs.readFileSync(completeTemplatePath, constants.CHARSET_UTF8);
-    const completeLayoutPath = path.join(process.cwd(), layoutPath);
+    const completeLayoutPath = resolveDesignFallback(layoutPath);
     const layoutResponse = fs.readFileSync(completeLayoutPath, constants.CHARSET_UTF8)
 
     const template = Handlebars.compile(templateResponse.toString());
     const layout = Handlebars.compile(layoutResponse.toString());
 
     const showApiWorkflowsNav = config.features?.apiWorkflows?.enabled === true;
-    const enrichedContent = { ...templateContent, showApiWorkflowsNav };
+    const enrichedContent = { devportalMode: constants.DEVPORTAL_MODE.DEFAULT, ...templateContent, showApiWorkflowsNav };
     return layout({
         body: template(enrichedContent),
         portalConfigs: config.portalConfigs,
+        devportalApiConfig: {
+            base: constants.DEVPORTAL_API.BASE_SEGMENT,
+            version: constants.DEVPORTAL_API.VERSION,
+        },
         profile: templateContent.profile,
         showApiWorkflowsNav,
     });
@@ -110,17 +133,21 @@ async function renderTemplateFromAPI(templateContent, orgID, orgName, filePath, 
     layoutResponse = fs.readFileSync(completeLayoutPath, constants.CHARSET_UTF8);
     const styleContent = await adminDao.getOrgContent({ orgId: orgID, fileType: 'style', viewName: viewName, fileName: 'main.css' });
     if (styleContent) {
-        layoutResponse = layoutResponse.replace(/\/styles\//g, `${constants.ROUTE.DEVPORTAL_ASSETS_BASE_PATH}${orgID}/views/${viewName}/layout?fileType=style&fileName=`);
+        layoutResponse = layoutResponse.replace(/\/styles\//g, `${constants.DEVPORTAL_API.orgPath(orgID)}/views/${viewName}/layout?fileType=style&fileName=`);
     }
 
     const template = Handlebars.compile(templateResponse.toString());
     const layout = Handlebars.compile(layoutResponse.toString());
 
     const showApiWorkflowsNav = config.features?.apiWorkflows?.enabled === true;
-    const enrichedContent = { ...templateContent, showApiWorkflowsNav };
+    const enrichedContent = { devportalMode: constants.DEVPORTAL_MODE.DEFAULT, ...templateContent, showApiWorkflowsNav };
     return layout({
         body: template(enrichedContent),
         portalConfigs: config.portalConfigs,
+        devportalApiConfig: {
+            base: constants.DEVPORTAL_API.BASE_SEGMENT,
+            version: constants.DEVPORTAL_API.VERSION,
+        },
         profile: templateContent.profile,
         showApiWorkflowsNav,
     });
@@ -179,10 +206,14 @@ async function renderGivenTemplate(templatePage, layoutPage, templateContent) {
     const template = Handlebars.compile(templatePage.toString());
     const layout = Handlebars.compile(layoutPage.toString());
     const showApiWorkflowsNav = config.features?.apiWorkflows?.enabled === true;
-    const enrichedContent = { ...templateContent, showApiWorkflowsNav };
+    const enrichedContent = { devportalMode: constants.DEVPORTAL_MODE.DEFAULT, ...templateContent, showApiWorkflowsNav };
     return layout({
         body: template(enrichedContent),
         portalConfigs: config.portalConfigs,
+        devportalApiConfig: {
+            base: constants.DEVPORTAL_API.BASE_SEGMENT,
+            version: constants.DEVPORTAL_API.VERSION,
+        },
         profile: templateContent.profile,
         showApiWorkflowsNav,
     });
@@ -436,189 +467,6 @@ async function readDocFiles(directory, baseDir = '', topLevelOnly = false) {
 }
 
 
-const invokeGraphQLRequest = async (req, url, query, variables, headers) => {
-    logger.info(`Invoking GraphQL API: ${url}`, {
-        userId: req.user?.id || req.user?.username || 'anonymous',
-        method: 'GraphQL',
-        endpoint: url
-    });
-
-    headers = {
-        ...headers,
-        'Content-Type': 'application/json',
-        Authorization: req.user?.exchangeToken
-            ? `Bearer ${req.user.exchangeToken}`
-            : req.user
-                ? `Bearer ${req.user.accessToken}`
-                : req.headers.authorization
-    };
-
-    let httpsAgent;
-
-    if (config.controlPlane.disableCertValidation) {
-        httpsAgent = new https.Agent({
-            rejectUnauthorized: false,
-        });
-    } else {
-        const certPath = path.join(process.cwd(), config.controlPlane.pathToCertificate);
-        httpsAgent = new https.Agent({
-            ca: fs.readFileSync(certPath),
-            rejectUnauthorized: false,
-        });
-    }
-
-    let graphqlPayload = {
-        query,
-        variables
-    };
-
-    try {
-        if (config.advanced.tokenExchanger?.enabled) {
-            const decodedToken = jwt.decode(req.user.exchangeToken);
-            const orgId = decodedToken.organization.uuid;
-            url = url.includes("?") ? `${url}&organizationId=${orgId}` : `${url}?organizationId=${orgId}`;
-        }
-
-        const response = await axios.post(url, graphqlPayload, {
-            headers,
-            httpsAgent
-        });
-
-        return response.data;
-    } catch (error) {
-        if (error.response?.status === 401 && req.user?.exchangeToken) {
-            try {
-                const newExchangedToken = await tokenExchanger(req.user.accessToken, req.user.returnTo.split("/")[1]);
-                req.user.exchangeToken = newExchangedToken;
-                headers.Authorization = `Bearer ${newExchangedToken}`;
-
-                const retryResponse = await axios.post(url, graphqlPayload, {
-                    headers,
-                    httpsAgent
-                });
-
-                return retryResponse.data;
-            } catch (retryError) {
-                let retryMessage = retryError.response?.data?.description || retryError.message;
-                logger.error('GraphQL request retry failed', {
-                    url: url,
-                    error: retryMessage,
-                    statusCode: retryError.response?.status,
-                    userId: req.user?.id || req.user?.username || 'anonymous'
-                });
-                throw new CustomError(retryError.response?.status || 500, "Request retry failed", retryMessage);
-            }
-        } else {
-            logger.error('GraphQL request error', {
-                url: url,
-                error: error.message,
-                statusCode: error.response?.status,
-                responseData: error.response?.data,
-                userId: req.user?.id || req.user?.username || 'anonymous'
-            });
-            let message = error.response?.data?.description || error.message;
-            throw new CustomError(error.response?.status || 500, 'GraphQL request failed', message);
-        }
-    }
-};
-
-const apiRequest = async (method, url, headers, body, organizationId) => {
-    let httpsAgent;
-    url = url.includes("?") ? `${url}&organizationId=${organizationId}` : `${url}?organizationId=${organizationId}`;
-
-    if (config.controlPlane.disableCertValidation) {
-        httpsAgent = new https.Agent({
-            rejectUnauthorized: false,
-        });
-    } else {
-        const certPath = path.join(process.cwd(), config.controlPlane.pathToCertificate);
-        httpsAgent = new https.Agent({
-            ca: fs.readFileSync(certPath),
-            rejectUnauthorized: false,
-        });
-    }
-    const response = await axios({
-        method,
-        url,
-        headers,
-        data: body,
-        httpsAgent
-    });
-    return response;
-};
-
-const invokeApiRequest = async (req, method, url, headers, body, publicMode = false) => {
-
-    logger.info(`Invoking API: ${url}`, {
-        method: method,
-        userId: req.user?.id || req.user?.username || 'anonymous',
-        endpoint: url
-    });
-    if (!publicMode) {
-        headers = headers || {};
-        headers.Authorization = req.user?.exchangeToken ? `Bearer ${req.user.exchangeToken}` : req.user ? `Bearer ${req.user.accessToken}` : req.headers.authorization;
-    }
-    let orgId = "";
-    try {
-        if (config.advanced.tokenExchanger?.enabled) {
-            if (req.cpOrgID) {
-                orgId = req.cpOrgID;
-            } else {
-                const decodedToken = jwt.decode(req.user.exchangeToken);
-                orgId = decodedToken?.organization.uuid;
-            }
-        } else if (req.cpOrgID) {
-            orgId = req.cpOrgID;
-        }
-        const response = await apiRequest(method, url, headers, body, orgId);
-        return response.data;
-    } catch (error) {
-        logger.error('Error while invoking API', {
-            url: url,
-            method: method,
-            error: error.message,
-            statusCode: error.response?.status,
-            responseData: error.response?.data,
-            userId: req.user?.id || req.user?.username || 'anonymous'
-        });
-        if (error.response?.status === 401) {
-            try {
-                const newExchangedToken = await tokenExchanger(req.user.accessToken, req.originalUrl.split("/")[1]);
-                req.user.exchangeToken = newExchangedToken;
-                headers.Authorization = `Bearer ${newExchangedToken}`;
-                const response = await apiRequest(method, url, headers, body, orgId);
-                return response.data;
-            } catch (retryError) {
-                let retryMessage;
-                if (retryError.response) {
-                    retryMessage = retryError.response.data.description;
-                }
-                logger.error('API request retry failed', {
-                    url: url,
-                    method: method,
-                    error: retryMessage,
-                    userId: req.user?.id || req.user?.username || 'anonymous'
-                });
-                throw new CustomError(error.response.status, "Access denied", error.message || error.response?.data?.description || constants.ERROR_MESSAGE.UNAUTHENTICATED);
-            }
-        } else {
-            let message = error.message;
-            if (error.response) {
-                message = error.response.data.description;
-            }
-            logger.error('API request failed', {
-                url: url,
-                method: method,
-                error: message,
-                statusCode: error.status,
-                userId: req.user?.id || req.user?.username || 'anonymous'
-            });
-            throw new CustomError(error.status, 'Request failed', message);
-        }
-    }
-};
-
-
 const validateIDP = () => {
 
     const validations = [
@@ -766,23 +614,23 @@ async function readFilesInDirectory(directory, orgId, protocol, host, viewName, 
                 if (file.name.endsWith(".css")) {
                     fileType = "style"
                     if (file.name === "main.css") {
-                        strContent = strContent.replace(/@import\s*['"]\/styles\/api-content\.css['"];/g, `@import url("${constants.ROUTE.DEVPORTAL_ASSETS_BASE_PATH}${orgId}/views/${viewName}/layout?fileType=style&fileName=api-content.css");`);
-                        strContent = strContent.replace(/@import\s*['"]\/styles\/home\.css['"];/g, `@import url("${constants.ROUTE.DEVPORTAL_ASSETS_BASE_PATH}${orgId}/views/${viewName}/layout?fileType=style&fileName=home.css");`);
-                        strContent = strContent.replace(/@import\s*['"]\/styles\/main\.css['"];/g, `@import url("${constants.ROUTE.DEVPORTAL_ASSETS_BASE_PATH}${orgId}/views/${viewName}/layout?fileType=style&fileName=main.css");`);
+                        strContent = strContent.replace(/@import\s*['"]\/styles\/api-content\.css['"];/g, `@import url("${constants.DEVPORTAL_API.orgPath(orgId)}/views/${viewName}/layout?fileType=style&fileName=api-content.css");`);
+                        strContent = strContent.replace(/@import\s*['"]\/styles\/home\.css['"];/g, `@import url("${constants.DEVPORTAL_API.orgPath(orgId)}/views/${viewName}/layout?fileType=style&fileName=home.css");`);
+                        strContent = strContent.replace(/@import\s*['"]\/styles\/main\.css['"];/g, `@import url("${constants.DEVPORTAL_API.orgPath(orgId)}/views/${viewName}/layout?fileType=style&fileName=main.css");`);
                     }
-                    strContent = strContent.replace(/"\/images\/(devportalLogo\.[^"]+)/g, `"${constants.ROUTE.DEVPORTAL_ASSETS_BASE_PATH}${orgId}/views/${viewName}/layout?fileType=image&fileName=$1`);
-                    strContent = strContent.replace(/'\/images\/(devportalLogo\.[^']+)/g, `"${constants.ROUTE.DEVPORTAL_ASSETS_BASE_PATH}${orgId}/views/${viewName}/layout?fileType=image&fileName=$1`);
+                    strContent = strContent.replace(/"\/images\/(devportalLogo\.[^"]+)/g, `"${constants.DEVPORTAL_API.orgPath(orgId)}/views/${viewName}/layout?fileType=image&fileName=$1`);
+                    strContent = strContent.replace(/'\/images\/(devportalLogo\.[^']+)/g, `'${constants.DEVPORTAL_API.orgPath(orgId)}/views/${viewName}/layout?fileType=image&fileName=$1`);
                     content = Buffer.from(strContent, constants.CHARSET_UTF8);
                 } else if (file.name.endsWith(".hbs") && dir.endsWith("layout")) {
                     fileType = "layout"
                     if (file.name === "main.hbs") {
-                        strContent = strContent.replace(/\/styles\//g, `${constants.ROUTE.DEVPORTAL_ASSETS_BASE_PATH}${orgId}/views/${viewName}/layout?fileType=style&fileName=`);
+                        strContent = strContent.replace(/\/styles\//g, `${constants.DEVPORTAL_API.orgPath(orgId)}/views/${viewName}/layout?fileType=style&fileName=`);
                         content = Buffer.from(strContent, constants.CHARSET_UTF8);
                     }
                     validateScripts(strContent);
                 } else if (file.name.endsWith(".hbs") && dir.endsWith("partials")) {
-                    strContent = strContent.replace(/"\/images\/([^"]+)/g, `"${constants.ROUTE.DEVPORTAL_ASSETS_BASE_PATH}${orgId}/views/${viewName}/layout?fileType=image&fileName=$1`);
-                    strContent = strContent.replace(/'\/images\/([^']+)/g, `'${constants.ROUTE.DEVPORTAL_ASSETS_BASE_PATH}${orgId}/views/${viewName}/layout?fileType=image&fileName=$1`);
+                    strContent = strContent.replace(/"\/images\/([^"]+)/g, `"${constants.DEVPORTAL_API.orgPath(orgId)}/views/${viewName}/layout?fileType=image&fileName=$1`);
+                    strContent = strContent.replace(/'\/images\/([^']+)/g, `'${constants.DEVPORTAL_API.orgPath(orgId)}/views/${viewName}/layout?fileType=image&fileName=$1`);
                     content = Buffer.from(strContent, constants.CHARSET_UTF8);
                     validateScripts(strContent);
                     fileType = "partial"
@@ -916,7 +764,7 @@ function appendAPIImageURL(subList, req, orgID) {
         const images = element.apiInfo.apiImageMetadata;
         let apiImageUrl = '';
         for (const key in images) {
-            apiImageUrl = `${constants.ROUTE.DEVPORTAL_ASSETS_BASE_PATH}${orgID}${constants.ROUTE.API_FILE_PATH}${element.apiID}${constants.API_TEMPLATE_FILE_NAME}`;
+            apiImageUrl = `${constants.DEVPORTAL_API.orgPath(orgID)}${constants.ROUTE.API_FILE_PATH}${element.apiID}${constants.API_TEMPLATE_FILE_NAME}`;
             const modifiedApiImageURL = apiImageUrl + images[key];
             element.apiInfo.apiImageMetadata[key] = modifiedApiImageURL;
         }
@@ -1100,7 +948,7 @@ function filterAllowedAPIs(searchResults, allowedAPIs) {
         if (constants.FEDERATED_GATEWAY_VENDORS.includes(gatewayVendor)) {
             return true;
         }
-        // MCP servers published via the registry have no referenceID – skip control plane check
+        // MCP servers published via the registry have no referenceID
         if (api?.apiInfo?.apiType === constants.API_TYPE.MCP && !api.apiReferenceID) {
             return true;
         }
@@ -1156,9 +1004,6 @@ module.exports = {
     getAPIImages,
     getAPIDocLinks,
     isTextFile,
-    invokeApiRequest,
-    apiRequest,
-    invokeGraphQLRequest,
     validateIDP,
     validateOrganization,
     getErrors,

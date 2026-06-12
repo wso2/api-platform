@@ -57,7 +57,7 @@ document.addEventListener('DOMContentLoaded', function () {
             e.preventDefault();
             let orgID = form.querySelector('#orgId').value;
             orgID = sanitizeInput(orgID);
-            const response = await fetch(`/devportal/organizations/${orgID}`, {
+            const response = await fetch(devportalApi.root(`/organizations/${orgID}`), {
                 method: 'DELETE'
             });
             if (response.ok) {
@@ -94,7 +94,7 @@ async function createOrg() {
     formData.forEach((value, key) => {
         data[key] = sanitizeInput(value);
     });
-    const response = await fetch(`/devportal/organizations`, {
+    const response = await fetch(devportalApi.root('/organizations'), {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -115,7 +115,7 @@ async function editOrg(orgID, formID) {
     formData.forEach((value, key) => {
         data[key] = sanitizeInput(value);
     });
-    const response = await fetch(`/devportal/organizations/${orgID}`, {
+    const response = await fetch(devportalApi.root(`/organizations/${orgID}`), {
         method: 'PUT',
         headers: {
             'Content-Type': 'application/json',
@@ -149,7 +149,7 @@ function openOrgDeleteModal(orgID) {
 
 
 async function deleteOrg(orgID) {
-    const response = await fetch(`/devportal/organizations/${orgID}`, {
+    const response = await fetch(devportalApi.root(`/organizations/${orgID}`), {
         method: 'DELETE'
     });
     if (response.ok) {

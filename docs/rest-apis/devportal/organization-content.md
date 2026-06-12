@@ -4,13 +4,13 @@
 
 <a id="opIdcreateOrgContent"></a>
 
-`POST /organizations/{orgId}/views/{name}/layout`
+`POST /o/{orgId}/devportal/v1/views/{viewName}/layout`
 
 > Code samples
 
 ```shell
 
-curl -X POST http://localhost:3000/devportal/organizations/{orgId}/views/{name}/layout \
+curl -X POST https://devportal.api-platform.io/o/{orgId}/devportal/v1/views/{viewName}/layout \
   -u {username}:{password} \
   -H 'Content-Type: multipart/form-data' \
   -H 'Accept: application/json' \
@@ -42,7 +42,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |body|body|object|true|ZIP file upload. Organization content uploads are limited to 50 MB.|
 |» file|body|string(binary)|true|ZIP file containing organization layout assets.|
 |orgId|path|string|true|none|
-|name|path|string|true|none|
+|viewName|path|string|true|none|
 
 > Example responses
 
@@ -127,13 +127,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdupdateOrgContent"></a>
 
-`PUT /organizations/{orgId}/views/{name}/layout`
+`PUT /o/{orgId}/devportal/v1/views/{viewName}/layout`
 
 > Code samples
 
 ```shell
 
-curl -X PUT http://localhost:3000/devportal/organizations/{orgId}/views/{name}/layout \
+curl -X PUT https://devportal.api-platform.io/o/{orgId}/devportal/v1/views/{viewName}/layout \
   -u {username}:{password} \
   -H 'Content-Type: multipart/form-data' \
   -H 'Accept: application/json' \
@@ -165,7 +165,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |body|body|object|true|ZIP file upload. Organization content uploads are limited to 50 MB.|
 |» file|body|string(binary)|true|ZIP file containing organization layout assets.|
 |orgId|path|string|true|none|
-|name|path|string|true|none|
+|viewName|path|string|true|none|
 
 > Example responses
 
@@ -250,13 +250,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdgetOrgLayoutContent"></a>
 
-`GET /organizations/{orgId}/views/{name}/layout`
+`GET /o/{orgId}/devportal/v1/views/{viewName}/layout`
 
 > Code samples
 
 ```shell
 
-curl -X GET http://localhost:3000/devportal/organizations/{orgId}/views/{name}/layout?fileType=string&fileName=string \
+curl -X GET https://devportal.api-platform.io/o/{orgId}/devportal/v1/views/{viewName}/layout?fileType=string&fileName=string \
   -u {username}:{password} \
   -H 'Accept: text/css'
 
@@ -272,7 +272,7 @@ Retrieves one organization layout asset when `fileType` and `fileName` are suppl
 |fileName|query|string|true|Stored organization content file name.|
 |filePath|query|string|false|Optional relative content path used together with `fileType` and `fileName`.|
 |orgId|path|string|true|none|
-|name|path|string|true|none|
+|viewName|path|string|true|none|
 
 > Example responses
 
@@ -294,13 +294,13 @@ Retrieves one organization layout asset when `fileType` and `fileName` are suppl
 
 <a id="opIddeleteOrgContent"></a>
 
-`DELETE /organizations/{orgId}/views/{name}/layout`
+`DELETE /o/{orgId}/devportal/v1/views/{viewName}/layout`
 
 > Code samples
 
 ```shell
 
-curl -X DELETE http://localhost:3000/devportal/organizations/{orgId}/views/{name}/layout \
+curl -X DELETE https://devportal.api-platform.io/o/{orgId}/devportal/v1/views/{viewName}/layout \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -322,7 +322,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |---|---|---|---|---|
 |fileName|query|string|false|File name selector used by file retrieval and organization content deletion.|
 |orgId|path|string|true|none|
-|name|path|string|true|none|
+|viewName|path|string|true|none|
 
 > Example responses
 
@@ -387,13 +387,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdgetOrgLayoutContentByFileType"></a>
 
-`GET /organizations/{orgId}/views/{name}/layout/{fileType}`
+`GET /o/{orgId}/devportal/v1/views/{viewName}/layout/{fileType}`
 
 > Code samples
 
 ```shell
 
-curl -X GET http://localhost:3000/devportal/organizations/{orgId}/views/{name}/layout/{fileType} \
+curl -X GET https://devportal.api-platform.io/o/{orgId}/devportal/v1/views/{viewName}/layout/{fileType} \
   -u {username}:{password} \
   -H 'Accept: application/json'
 
@@ -406,7 +406,7 @@ Returns all stored organization layout content records for the selected file typ
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |orgId|path|string|true|none|
-|name|path|string|true|none|
+|viewName|path|string|true|none|
 |fileType|path|string|true|none|
 
 > Example responses

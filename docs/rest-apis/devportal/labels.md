@@ -4,13 +4,13 @@
 
 <a id="opIdcreateLabels"></a>
 
-`POST /organizations/{orgId}/labels`
+`POST /o/{orgId}/devportal/v1/labels`
 
 > Code samples
 
 ```shell
 
-curl -X POST http://localhost:3000/devportal/organizations/{orgId}/labels \
+curl -X POST https://devportal.api-platform.io/o/{orgId}/devportal/v1/labels \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -132,13 +132,13 @@ Status Code **201**
 
 <a id="opIdupdateLabel"></a>
 
-`PUT /organizations/{orgId}/labels`
+`PUT /o/{orgId}/devportal/v1/labels`
 
 > Code samples
 
 ```shell
 
-curl -X PUT http://localhost:3000/devportal/organizations/{orgId}/labels \
+curl -X PUT https://devportal.api-platform.io/o/{orgId}/devportal/v1/labels \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -260,13 +260,13 @@ Status Code **201**
 
 <a id="opIdretrieveLabels"></a>
 
-`GET /organizations/{orgId}/labels`
+`GET /o/{orgId}/devportal/v1/labels`
 
 > Code samples
 
 ```shell
 
-curl -X GET http://localhost:3000/devportal/organizations/{orgId}/labels \
+curl -X GET https://devportal.api-platform.io/o/{orgId}/devportal/v1/labels \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -363,13 +363,13 @@ Status Code **200**
 
 <a id="opIddeleteLabels"></a>
 
-`DELETE /organizations/{orgId}/labels`
+`DELETE /o/{orgId}/devportal/v1/labels`
 
 > Code samples
 
 ```shell
 
-curl -X DELETE http://localhost:3000/devportal/organizations/{orgId}/labels?names=default%2Cpremium \
+curl -X DELETE https://devportal.api-platform.io/o/{orgId}/devportal/v1/labels?names=default%2Cpremium \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'

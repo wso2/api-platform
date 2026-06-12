@@ -34,8 +34,6 @@ const loadAPIApiKeys = async (req, res) => {
     try {
         const orgDetails = await adminDao.getOrganization(orgName);
         const orgID = orgDetails.ORG_ID;
-        const cpOrgID = orgDetails.ORGANIZATION_IDENTIFIER;
-        req.cpOrgID = cpOrgID;
 
         if (!req.user) {
             return res.redirect(`/${orgName}${constants.ROUTE.VIEWS_PATH}${viewName}/login`);
@@ -59,7 +57,7 @@ const loadAPIApiKeys = async (req, res) => {
             const images = metaData.apiInfo?.apiImageMetadata;
             if (images) {
                 for (const key in images) {
-                    images[key] = `${constants.ROUTE.DEVPORTAL_ASSETS_BASE_PATH}${orgID}${constants.ROUTE.API_FILE_PATH}${apiID}${constants.API_TEMPLATE_FILE_NAME}${images[key]}`;
+                    images[key] = `${constants.DEVPORTAL_API.orgPath(orgID)}${constants.ROUTE.API_FILE_PATH}${apiID}${constants.API_TEMPLATE_FILE_NAME}${images[key]}`;
                 }
             }
         } else {

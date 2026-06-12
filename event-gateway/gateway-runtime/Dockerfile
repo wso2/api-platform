@@ -87,6 +87,7 @@ COPY --from=common . /api-platform/common
 COPY --from=analytics . /api-platform/gateway/system-policies/analytics
 COPY --from=policy-engine . /api-platform/gateway/gateway-runtime/policy-engine
 COPY --from=target build.yaml /api-platform/event-gateway/build.yaml
+COPY --from=dev-policies . /api-platform/event-gateway/dev-policies/
 
 RUN mkdir -p /api-platform/output
 

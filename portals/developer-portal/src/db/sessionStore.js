@@ -20,6 +20,11 @@ const { config } = require('../config/configLoader');
 const logger = require('../config/logger');
 
 function createSessionStore() {
+    if (config.designMode?.enabled) {
+        logger.info('Design Mode enabled. Using in-memory session store.');
+        return new session.MemoryStore();
+    }
+
     const dialect = config.db.dialect;
 
     if (dialect === 'sqlite') {

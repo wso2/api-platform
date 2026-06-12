@@ -2,15 +2,15 @@
 
 ## Create API metadata
 
-<a id="opIdcreateAPIMetadata"></a>
+<a id="opIdcreateApiMetadata"></a>
 
-`POST /organizations/{orgId}/apis`
+`POST /o/{orgId}/devportal/v1/apis`
 
 > Code samples
 
 ```shell
 
-curl -X POST http://localhost:3000/devportal/organizations/{orgId}/apis \
+curl -X POST https://devportal.api-platform.io/o/{orgId}/devportal/v1/apis \
   -u {username}:{password} \
   -H 'Content-Type: multipart/form-data' \
   -H 'Accept: application/json' \
@@ -169,15 +169,15 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ## List API metadata
 
-<a id="opIdgetAllAPIMetadataForOrganization"></a>
+<a id="opIdgetAllApiMetadataForOrganization"></a>
 
-`GET /organizations/{orgId}/apis`
+`GET /o/{orgId}/devportal/v1/apis`
 
 > Code samples
 
 ```shell
 
-curl -X GET http://localhost:3000/devportal/organizations/{orgId}/apis \
+curl -X GET https://devportal.api-platform.io/o/{orgId}/devportal/v1/apis \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -350,15 +350,15 @@ Status Code **200**
 
 ## Get API metadata
 
-<a id="opIdgetAPIMetadata"></a>
+<a id="opIdgetApiMetadata"></a>
 
-`GET /organizations/{orgId}/apis/{apiId}`
+`GET /o/{orgId}/devportal/v1/apis/{apiId}`
 
 > Code samples
 
 ```shell
 
-curl -X GET http://localhost:3000/devportal/organizations/{orgId}/apis/{apiId} \
+curl -X GET https://devportal.api-platform.io/o/{orgId}/devportal/v1/apis/{apiId} \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -478,15 +478,15 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ## Update API metadata
 
-<a id="opIdupdateAPIMetadata"></a>
+<a id="opIdupdateApiMetadata"></a>
 
-`PUT /organizations/{orgId}/apis/{apiId}`
+`PUT /o/{orgId}/devportal/v1/apis/{apiId}`
 
 > Code samples
 
 ```shell
 
-curl -X PUT http://localhost:3000/devportal/organizations/{orgId}/apis/{apiId} \
+curl -X PUT https://devportal.api-platform.io/o/{orgId}/devportal/v1/apis/{apiId} \
   -u {username}:{password} \
   -H 'Content-Type: multipart/form-data' \
   -H 'Accept: application/json' \
@@ -644,15 +644,15 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ## Delete API metadata
 
-<a id="opIddeleteAPIMetadata"></a>
+<a id="opIddeleteApiMetadata"></a>
 
-`DELETE /organizations/{orgId}/apis/{apiId}`
+`DELETE /o/{orgId}/devportal/v1/apis/{apiId}`
 
 > Code samples
 
 ```shell
 
-curl -X DELETE http://localhost:3000/devportal/organizations/{orgId}/apis/{apiId} \
+curl -X DELETE https://devportal.api-platform.io/o/{orgId}/devportal/v1/apis/{apiId} \
   -u {username}:{password} \
   -H 'Accept: text/plain' \
   -H 'Authorization: Bearer {access-token}'

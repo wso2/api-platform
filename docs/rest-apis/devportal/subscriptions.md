@@ -4,13 +4,13 @@
 
 <a id="opIdcreateSubscription"></a>
 
-`POST /organizations/{orgId}/subscriptions`
+`POST /o/{orgId}/devportal/v1/subscriptions`
 
 > Code samples
 
 ```shell
 
-curl -X POST http://localhost:3000/devportal/organizations/{orgId}/subscriptions \
+curl -X POST https://devportal.api-platform.io/o/{orgId}/devportal/v1/subscriptions \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -19,7 +19,7 @@ curl -X POST http://localhost:3000/devportal/organizations/{orgId}/subscriptions
 
 ```
 
-Creates a token-based subscription for an API. The Developer Portal API ID is resolved to the control-plane API reference before the subscription is created. The API must exist, have token-based subscriptions enabled, and contain a control-plane reference ID.
+Creates a token-based subscription for an API. The API must exist in the Developer Portal and have token-based subscriptions enabled.
 
 > Payload
 
@@ -40,7 +40,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|body|body|[SubscriptionCreateRequest](schemas.md#schemasubscriptioncreaterequest)|true|Subscription creation payload. `apiId` is the Developer Portal API ID; the service resolves it to the control-plane API reference before forwarding the request.|
+|body|body|[SubscriptionCreateRequest](schemas.md#schemasubscriptioncreaterequest)|true|Subscription creation payload. `apiId` is the Developer Portal API ID.|
 |orgId|path|string|true|none|
 
 > Example responses
@@ -109,7 +109,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|201|[Created](https://tools.ietf.org/html/rfc7231#section-6.3.2)|Subscription DTO returned by the control plane.|[SubscriptionResponse](schemas.md#schemasubscriptionresponse)|
+|201|[Created](https://tools.ietf.org/html/rfc7231#section-6.3.2)|Subscription DTO.|[SubscriptionResponse](schemas.md#schemasubscriptionresponse)|
 |400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.|Inline|
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
@@ -120,20 +120,20 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdlistSubscriptions"></a>
 
-`GET /organizations/{orgId}/subscriptions`
+`GET /o/{orgId}/devportal/v1/subscriptions`
 
 > Code samples
 
 ```shell
 
-curl -X GET http://localhost:3000/devportal/organizations/{orgId}/subscriptions \
+curl -X GET https://devportal.api-platform.io/o/{orgId}/devportal/v1/subscriptions \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
 
 ```
 
-Lists subscriptions from the control plane. When `apiId` is provided, the Developer Portal API ID is validated locally and translated to the control-plane API reference.
+Lists subscriptions stored in the Developer Portal. When `apiId` is provided, results are filtered by the Developer Portal API ID.
 
 ### Authentication
 
@@ -146,7 +146,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|apiId|query|string|false|Optional Developer Portal API ID used to filter by the resolved control-plane API reference.|
+|apiId|query|string|false|Optional Developer Portal API ID used to filter results.|
 |orgId|path|string|true|none|
 
 > Example responses
@@ -219,7 +219,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|List of subscription DTOs returned by the control plane.|Inline|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|List of subscription DTOs.|Inline|
 |400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.|Inline|
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
@@ -240,20 +240,20 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdgetSubscription"></a>
 
-`GET /organizations/{orgId}/subscriptions/{subscriptionId}`
+`GET /o/{orgId}/devportal/v1/subscriptions/{subId}`
 
 > Code samples
 
 ```shell
 
-curl -X GET http://localhost:3000/devportal/organizations/{orgId}/subscriptions/{subscriptionId} \
+curl -X GET https://devportal.api-platform.io/o/{orgId}/devportal/v1/subscriptions/{subId} \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
 
 ```
 
-Retrieves a single subscription from the control plane by subscription ID.
+Retrieves a single subscription by subscription ID.
 
 ### Authentication
 
@@ -267,7 +267,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |orgId|path|string|true|none|
-|subscriptionId|path|string|true|none|
+|subId|path|string|true|none|
 
 > Example responses
 
@@ -309,7 +309,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Subscription DTO returned by the control plane.|[SubscriptionResponse](schemas.md#schemasubscriptionresponse)|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Subscription DTO.|[SubscriptionResponse](schemas.md#schemasubscriptionresponse)|
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
@@ -317,13 +317,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdupdateSubscription"></a>
 
-`PUT /organizations/{orgId}/subscriptions/{subscriptionId}`
+`PUT /o/{orgId}/devportal/v1/subscriptions/{subId}`
 
 > Code samples
 
 ```shell
 
-curl -X PUT http://localhost:3000/devportal/organizations/{orgId}/subscriptions/{subscriptionId} \
+curl -X PUT https://devportal.api-platform.io/o/{orgId}/devportal/v1/subscriptions/{subId} \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -332,7 +332,7 @@ curl -X PUT http://localhost:3000/devportal/organizations/{orgId}/subscriptions/
 
 ```
 
-Updates the subscription status in the control plane. The service accepts only `ACTIVE` or `INACTIVE`.
+Updates the subscription status. Accepts only `ACTIVE` or `INACTIVE`.
 
 > Payload
 
@@ -355,7 +355,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |---|---|---|---|---|
 |body|body|[SubscriptionUpdateRequest](schemas.md#schemasubscriptionupdaterequest)|true|Subscription status update payload.|
 |orgId|path|string|true|none|
-|subscriptionId|path|string|true|none|
+|subId|path|string|true|none|
 
 > Example responses
 
@@ -423,7 +423,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Subscription DTO returned by the control plane.|[SubscriptionResponse](schemas.md#schemasubscriptionresponse)|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Subscription DTO.|[SubscriptionResponse](schemas.md#schemasubscriptionresponse)|
 |400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.|Inline|
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
@@ -434,20 +434,20 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIddeleteSubscription"></a>
 
-`DELETE /organizations/{orgId}/subscriptions/{subscriptionId}`
+`DELETE /o/{orgId}/devportal/v1/subscriptions/{subId}`
 
 > Code samples
 
 ```shell
 
-curl -X DELETE http://localhost:3000/devportal/organizations/{orgId}/subscriptions/{subscriptionId} \
+curl -X DELETE https://devportal.api-platform.io/o/{orgId}/devportal/v1/subscriptions/{subId} \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
 
 ```
 
-Deletes the subscription in the control plane and returns a success message from the Developer Portal.
+Deletes the subscription and returns a success message.
 
 ### Authentication
 
@@ -461,7 +461,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |orgId|path|string|true|none|
-|subscriptionId|path|string|true|none|
+|subId|path|string|true|none|
 
 > Example responses
 

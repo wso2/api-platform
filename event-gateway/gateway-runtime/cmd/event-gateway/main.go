@@ -28,6 +28,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/wso2/api-platform/common/apikey"
+	"github.com/wso2/api-platform/common/webhooksecret"
 	"github.com/wso2/api-platform/event-gateway/gateway-runtime/internal/config"
 	"github.com/wso2/api-platform/event-gateway/gateway-runtime/internal/connectors"
 	"github.com/wso2/api-platform/event-gateway/gateway-runtime/internal/runtime"
@@ -92,11 +93,20 @@ func main() {
 			xdsclient.APIKeyStateTypeURL,
 			apiKeyHandler.HandleResources,
 		)
+		webhookSecretHandler := xdsclient.NewWebhookSecretStateHandler(webhooksecret.GetStoreInstance())
+		webhookSecretClient := xdsclient.NewClient(
+			cfg.ControlPlane.XDSAddress,
+			cfg.ControlPlane.NodeID,
+			xdsclient.WebhookSecretStateTypeURL,
+			webhookSecretHandler.HandleResources,
+		)
 
 		eventConfigClient.Start()
 		apiKeyClient.Start()
+		webhookSecretClient.Start()
 		defer eventConfigClient.Stop()
 		defer apiKeyClient.Stop()
+		defer webhookSecretClient.Stop()
 	} else {
 		// Static mode: parse channel bindings from YAML.
 		if err := rt.LoadChannels(*channelsPath); err != nil {

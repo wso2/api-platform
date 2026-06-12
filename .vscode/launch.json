@@ -5,6 +5,15 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "name": "Developer Portal",
+            "type": "node",
+            "request": "launch",
+            "program": "${workspaceFolder}/portals/developer-portal/src/server.js",
+            "cwd": "${workspaceFolder}/portals/developer-portal",
+            "console": "integratedTerminal",
+            "skipFiles": ["<node_internals>/**"]
+        },
+        {
             "name": "Platform API",
             "type": "go",
             "request": "launch",

@@ -79,6 +79,7 @@ type APIServer struct {
 	gatewayID                   string
 	subscriptionSnapshotUpdater utils.SubscriptionSnapshotUpdater
 	subscriptionResourceService *utils.SubscriptionResourceService
+	webhookSecretService        *utils.WebhookSecretService
 }
 
 // NewAPIServer creates a new API server with dependencies
@@ -99,6 +100,7 @@ func NewAPIServer(
 	subscriptionSnapshotUpdater utils.SubscriptionSnapshotUpdater,
 	secretService *secrets.SecretService,
 	restAPIService *restapi.RestAPIService,
+	webhookSecretService *utils.WebhookSecretService,
 ) *APIServer {
 	if db == nil {
 		panic("APIServer requires non-nil storage")
@@ -149,6 +151,7 @@ func NewAPIServer(
 		gatewayID:                   gatewayID,
 		subscriptionSnapshotUpdater: subscriptionSnapshotUpdater,
 		subscriptionResourceService: subscriptionResourceService,
+		webhookSecretService:        webhookSecretService,
 	}
 	server.restAPIService = restAPIService
 	server.RestAPIHandler = NewRestAPIHandler(restAPIService, logger)

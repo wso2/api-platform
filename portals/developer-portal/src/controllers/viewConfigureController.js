@@ -42,47 +42,39 @@ const loadViewSettingsPage = async (req, res) => {
         showApiWorkflowsNav: config.features?.apiWorkflows?.enabled === true
     };
     try {
-        if (config.mode === constants.DEV_MODE) {
-            templateContent.apiFlows = [];
-            templateContent.orgAPIs = [];
-            templateContent.devportalMode = constants.DEVPORTAL_MODE.DEFAULT;
-            templateContent.llmsConfig = { aiEnabled: true, portalName: '', portalDescription: '' };
-            templateContent.llmsConfigContext = { orgID: '', viewName, csrfToken, baseUrl };
-        } else {
-            const orgName = req.params.orgName;
-            templateContent.loggedOrg = orgName;
-            orgID = await adminDao.getOrgId(orgName);
-            const orgDetails = await adminDao.getOrganization(orgName);
-            templateContent.devportalMode = orgDetails.ORG_CONFIG?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
-            templateContent.orgID = orgID;
+        const orgName = req.params.orgName;
+        templateContent.loggedOrg = orgName;
+        orgID = await adminDao.getOrgId(orgName);
+        const orgDetails = await adminDao.getOrganization(orgName);
+        templateContent.devportalMode = orgDetails.ORG_CONFIG?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
+        templateContent.orgID = orgID;
 
-            const viewId = await apiMetadataDao.getViewID(orgID, viewName);
-            const apiFlows = await apiFlowService.getAllAPIFlowsFromDB(orgID, viewId);
-            templateContent.apiFlows = apiFlows;
+        const viewId = await apiMetadataDao.getViewID(orgID, viewName);
+        const apiFlows = await apiFlowService.getAllAPIFlowsFromDB(orgID, viewId);
+        templateContent.apiFlows = apiFlows;
 
-            const allAPIs = await apiMetadataDao.getAPIMetadataByCondition({ ORG_ID: orgID, STATUS: constants.API_STATUS.PUBLISHED });
-            templateContent.orgAPIs = allAPIs.map(api => ({
-                apiId: api.API_ID,
-                apiName: api.API_NAME,
-                apiHandle: api.API_HANDLE,
-                apiDescription: api.API_DESCRIPTION,
-                apiType: api.API_TYPE,
-                productionUrl: api.PRODUCTION_URL,
-                agentVisibility: api.AGENT_VISIBILITY
-            }));
+        const allAPIs = await apiMetadataDao.getAPIMetadataByCondition({ ORG_ID: orgID, STATUS: constants.API_STATUS.PUBLISHED });
+        templateContent.orgAPIs = allAPIs.map(api => ({
+            apiId: api.API_ID,
+            apiName: api.API_NAME,
+            apiHandle: api.API_HANDLE,
+            apiDescription: api.API_DESCRIPTION,
+            apiType: api.API_TYPE,
+            productionUrl: api.PRODUCTION_URL,
+            agentVisibility: api.AGENT_VISIBILITY
+        }));
 
-            const configAsset = await adminDao.getOrgContent({
-                orgId: orgID, fileType: constants.FILE_TYPE.LLMS_CONFIG, viewName, fileName: constants.FILE_NAME.LLMS_CONFIG
-            });
-            let llmsConfig = { aiEnabled: true, portalName: '', portalDescription: '' };
-            if (configAsset) {
-                try { llmsConfig = { ...llmsConfig, ...JSON.parse(configAsset.FILE_CONTENT.toString('utf8')) }; } catch (e) { /* ignore */ }
-            }
-            templateContent.llmsConfig = llmsConfig;
-            templateContent.llmsConfigContext = { orgID, viewName, csrfToken, baseUrl };
-
-            templateContent.profile = req.user;
+        const configAsset = await adminDao.getOrgContent({
+            orgId: orgID, fileType: constants.FILE_TYPE.LLMS_CONFIG, viewName, fileName: constants.FILE_NAME.LLMS_CONFIG
+        });
+        let llmsConfig = { aiEnabled: true, portalName: '', portalDescription: '' };
+        if (configAsset) {
+            try { llmsConfig = { ...llmsConfig, ...JSON.parse(configAsset.FILE_CONTENT.toString('utf8')) }; } catch (e) { /* ignore */ }
         }
+        templateContent.llmsConfig = llmsConfig;
+        templateContent.llmsConfigContext = { orgID, viewName, csrfToken, baseUrl };
+
+        templateContent.profile = req.user;
         const templateResponse = fs.readFileSync(completeTemplatePath, constants.CHARSET_UTF8);
         const dbLayout = orgID ? await loadLayoutFromAPI(orgID, viewName) : '';
         let html;

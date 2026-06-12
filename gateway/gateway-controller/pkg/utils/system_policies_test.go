@@ -142,8 +142,7 @@ func TestInjectSystemPolicies_AnalyticsDisabled(t *testing.T) {
 func TestInjectSystemPolicies_AnalyticsEnabled(t *testing.T) {
 	cfg := &config.Config{
 		Analytics: config.AnalyticsConfig{
-			Enabled:       true,
-			AllowPayloads: false,
+			Enabled: true,
 		},
 	}
 	policies := []policyenginev1.PolicyInstance{
@@ -163,28 +162,32 @@ func TestInjectSystemPolicies_AnalyticsEnabled(t *testing.T) {
 func TestInjectSystemPolicies_AllowPayloadsTrue(t *testing.T) {
 	cfg := &config.Config{
 		Analytics: config.AnalyticsConfig{
-			Enabled:       true,
-			AllowPayloads: true,
+			Enabled:         true,
+			SendRequestBody: true,
+			SendResponseBody: true,
 		},
 	}
 
 	result := InjectSystemPolicies(nil, cfg, nil)
 	assert.Len(t, result, 1)
 	assert.Equal(t, constants.ANALYTICS_SYSTEM_POLICY_NAME, result[0].Name)
-	assert.Equal(t, true, result[0].Parameters["allow_payloads"])
+	assert.Equal(t, true, result[0].Parameters["send_request_body"])
+	assert.Equal(t, true, result[0].Parameters["send_response_body"])
 }
 
 func TestInjectSystemPolicies_AllowPayloadsFalse(t *testing.T) {
 	cfg := &config.Config{
 		Analytics: config.AnalyticsConfig{
-			Enabled:       true,
-			AllowPayloads: false,
+			Enabled:         true,
+			SendRequestBody: false,
+			SendResponseBody: false,
 		},
 	}
 
 	result := InjectSystemPolicies(nil, cfg, nil)
 	assert.Len(t, result, 1)
-	assert.Equal(t, false, result[0].Parameters["allow_payloads"])
+	assert.Equal(t, false, result[0].Parameters["send_request_body"])
+	assert.Equal(t, false, result[0].Parameters["send_response_body"])
 }
 
 func TestInjectSystemPolicies_WithAdditionalProps(t *testing.T) {

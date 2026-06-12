@@ -66,8 +66,13 @@ format = "text"
 [analytics]
 # Set to true to enable the analytics system policy on every chain.
 enabled = false
-# Set to true to include request/response payloads in analytics events.
-allow_payloads = false
+# Deprecated: allow_payloads is preserved for backward compatibility. When true
+# and both send_request_body and send_response_body are false, both directions
+# are enabled (bool fields cannot distinguish "unset" from explicitly false).
+# To disable payloads entirely, set allow_payloads = false or remove it.
+# allow_payloads = false
+send_request_body = false
+send_response_body = false
 
 # runtime_id is auto-generated if left empty
 # runtime_id = ""

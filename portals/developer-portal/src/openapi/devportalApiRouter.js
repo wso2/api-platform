@@ -36,6 +36,8 @@
  */
 
 const path = require('path');
+const fs = require('fs');
+const yaml = require('js-yaml');
 const express = require('express');
 const OpenApiValidator = require('express-openapi-validator');
 
@@ -46,6 +48,24 @@ const { authResolver, OAuth2Security, apiKeyAuth } = require('./middleware/auth'
 
 const SPEC_PATH = path.join(__dirname, '..', '..', 'docs', 'devportal-openapi-spec-v1.yaml');
 const HANDLERS_DIR = path.join(__dirname, 'handlers');
+
+// Top-level path segments that belong to the devportal API surface, derived
+// from the spec (e.g. 'o', 'applications', 'organizations', 'login', 'apis',
+// 'temp-arazzo-file'). The router is mounted at '/', so it sees every request;
+// this lets us pass rendered page routes (/:orgName/views/...) straight through
+// with next('router') so neither authResolver nor the validator touch them.
+let API_FIRST_SEGMENTS;
+function apiFirstSegments() {
+    if (!API_FIRST_SEGMENTS) {
+        const doc = yaml.load(fs.readFileSync(SPEC_PATH, 'utf8'));
+        API_FIRST_SEGMENTS = new Set(
+            Object.keys(doc.paths || {})
+                .map((p) => p.split('/')[1])
+                .filter(Boolean)
+        );
+    }
+    return API_FIRST_SEGMENTS;
+}
 
 // Map an OpenAPI tag like "Identity Providers" to a handler-file basename
 // like "identityProviders".
@@ -73,8 +93,7 @@ function notImplementedHandler(operationId, tag) {
             code: 501,
             message: 'Not Implemented',
             description:
-                `Operation '${operationId}' (tag '${tag}') has no handler in src/openapi/handlers. ` +
-                `Set advanced.useOpenApiValidator=false to use the legacy /devportal route while migration is in progress.`,
+                `Operation '${operationId}' (tag '${tag}') has no handler in src/openapi/handlers.`,
         });
     };
 }
@@ -129,7 +148,7 @@ function operationResolver(handlersPath, route, apiDoc) {
  *     - false        → off (default in production)
  *     - true         → strict — validator throws 500 on response drift
  *     - 'log-only'   → log drift via logger.warn but pass the response through
- *     - (unset)      → on iff config.mode === 'development'
+ *     - (unset)      → on iff designMode.enabled is true
  *
  * Use 'log-only' to surface drift in staging/QA without breaking clients.
  */
@@ -149,11 +168,22 @@ function resolveValidateResponsesOpt() {
             },
         };
     }
-    return config.mode === constants.DEV_MODE;
+    return config.designMode?.enabled ?? false;
 }
 
 function build() {
     const router = express.Router();
+
+    // The router is mounted at '/', so it receives every request. Skip anything
+    // that isn't a devportal API path (e.g. the rendered /:orgName/views/...
+    // page routes) so authResolver and the validator only run for real API
+    // requests; next('router') hands the request to the page route tree.
+    const apiSegments = apiFirstSegments();
+    router.use((req, res, next) => {
+        const seg = req.path.split('/')[1] || '';
+        if (!apiSegments.has(seg)) return next('router');
+        next();
+    });
 
     // Pre-validator: resolve credentials so OAuth2Security/apiKeyAuth handlers
     router.use(authResolver);

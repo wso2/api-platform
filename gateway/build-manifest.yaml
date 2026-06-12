@@ -63,6 +63,9 @@ policies:
     - name: mcp-authz
       version: v1.0.1
       gomodule: github.com/wso2/gateway-controllers/policies/mcp-authz@v1
+    - name: mcp-ratelimit
+      version: v1.0.0
+      gomodule: github.com/wso2/gateway-controllers/policies/mcp-ratelimit@v1
     - name: mcp-rewrite
       version: v1.0.2
       gomodule: github.com/wso2/gateway-controllers/policies/mcp-rewrite@v1

@@ -85,7 +85,7 @@
 
     async function postGenerate(body) {
         const response = await fetch(
-            '/devportal/organizations/' + encodeURIComponent(orgId) + '/api-keys/generate',
+            devportalApi.org(orgId, '/api-keys/generate'),
             {
                 method: 'POST',
                 credentials: 'same-origin',
@@ -103,7 +103,7 @@
 
     async function postRegenerate(keyId, body) {
         const response = await fetch(
-            '/devportal/organizations/' + encodeURIComponent(orgId) + '/api-keys/' + encodeURIComponent(keyId) + '/regenerate',
+            devportalApi.org(orgId, '/api-keys/' + encodeURIComponent(keyId) + '/regenerate'),
             {
                 method: 'POST',
                 credentials: 'same-origin',
