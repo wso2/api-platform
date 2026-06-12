@@ -13,6 +13,7 @@ jobs:
     permissions:
       contents: write
       packages: write
+      pull-requests: write
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -118,6 +119,10 @@ jobs:
         id: create-pr
         uses: peter-evans/create-pull-request@v6
         with:
+          token: ${{ secrets.API_PLATFORM_BOT_TOKEN }}
+          add-paths: |
+            portals/ai-workspace/VERSION
+            portals/ai-workspace/docker-compose.yaml
           commit-message: "Bump ai-workspace to next dev version"
           title: "chore: Bump ai-workspace to next dev version"
           body: |
