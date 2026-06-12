@@ -194,9 +194,11 @@ function loadOne(apiHandle, samplesDir = './samples/apis/') {
 function getDefinition(apiHandle, samplesDir = './samples/apis/') {
     const apiDir = getApiDir(apiHandle, samplesDir);
     if (!apiDir) return null;
-    const defPath = path.join(apiDir, 'definition.yml');
-    if (!fs.existsSync(defPath)) return null;
-    return fs.readFileSync(defPath, 'utf-8');
+    for (const name of ['definition.graphql', 'definition.yml']) {
+        const candidate = path.join(apiDir, name);
+        if (fs.existsSync(candidate)) return fs.readFileSync(candidate, 'utf-8');
+    }
+    return null;
 }
 
 /**
