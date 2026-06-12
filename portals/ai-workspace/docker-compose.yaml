@@ -42,7 +42,7 @@ services:
   # Platform API  (Go HTTPS backend)
   # ---------------------------------------------------------------------------
   platform-api:
-    image: ghcr.io/wso2/api-platform/platform-api:0.10.0-SNAPSHOT
+    image: ghcr.io/wso2/api-platform/platform-api:0.10.0
     container_name: platform-api
     restart: unless-stopped
     command: ["-config", "/etc/platform-api/config-platform-api.toml"]
@@ -51,6 +51,7 @@ services:
       - AUTH_JWT_SECRET_KEY=${AUTH_JWT_SECRET_KEY:-}
       - DATABASE_PASSWORD=${DATABASE_PASSWORD:-}
       - DATABASE_SUBSCRIPTION_TOKEN_ENCRYPTION_KEY=${DATABASE_SUBSCRIPTION_TOKEN_ENCRYPTION_KEY:-}
+      - APIP_DEMO_MODE=${APIP_DEMO_MODE:-true}
     volumes:
       - ./configs/config-platform-api.toml:/etc/platform-api/config-platform-api.toml:ro
       - platform-api-data:/app/data
