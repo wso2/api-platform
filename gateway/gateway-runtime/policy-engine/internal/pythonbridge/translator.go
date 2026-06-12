@@ -258,6 +258,7 @@ func (t *Translator) toProtoAuthContext(ctx *policy.AuthContext) *proto.AuthCont
 		AuthType:      ctx.AuthType,
 		Subject:       ctx.Subject,
 		Issuer:        ctx.Issuer,
+		TokenId:	   ctx.TokenId
 		Audience:      append([]string(nil), ctx.Audience...),
 		Scopes:        scopes,
 		CredentialId:  ctx.CredentialID,
