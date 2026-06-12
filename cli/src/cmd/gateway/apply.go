@@ -52,7 +52,7 @@ var applyCmd = &cobra.Command{
 	Long:    "Create or update a gateway resource (API, MCP proxy, etc.) from a YAML or JSON file.",
 	Example: ApplyCmdExample,
 	Run: func(cmd *cobra.Command, args []string) {
-		if err := runApplyCommand(); err != nil {
+		if err := runApplyCommand(cmd); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
@@ -60,6 +60,7 @@ var applyCmd = &cobra.Command{
 }
 
 func init() {
+	gateway.AddSelectionFlags(applyCmd)
 	utils.AddStringFlag(applyCmd, utils.FlagFile, &applyFilePath, "", "Path to the resource file")
 	applyCmd.MarkFlagRequired(utils.FlagFile)
 }
@@ -75,7 +76,7 @@ type ResourceDefinition struct {
 	Metadata ResourceMetadata `yaml:"metadata"`
 }
 
-func runApplyCommand() error {
+func runApplyCommand(cmd *cobra.Command) error {
 	// Read the file
 	fileContent, err := os.ReadFile(applyFilePath)
 	if err != nil {
@@ -109,7 +110,7 @@ func runApplyCommand() error {
 	}
 
 	// Create a gateway client for the active gateway
-	client, err := gateway.NewClientForActive()
+	client, err := gateway.NewClientFromCommand(cmd)
 	if err != nil {
 		return err
 	}

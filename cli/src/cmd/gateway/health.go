@@ -41,16 +41,20 @@ var healthCmd = &cobra.Command{
 	Long:    "Returns the health status of the currently active gateway by calling its " + utils.GatewayHealthPath + " endpoint.",
 	Example: HealthCmdExample,
 	Run: func(cmd *cobra.Command, args []string) {
-		if err := runHealthCommand(); err != nil {
+		if err := runHealthCommand(cmd); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
 	},
 }
 
-func runHealthCommand() error {
-	// Create a client for the active gateway
-	client, err := gateway.NewClientForActive()
+func init() {
+	gateway.AddSelectionFlags(healthCmd)
+}
+
+func runHealthCommand(cmd *cobra.Command) error {
+	// Create a client for the selected (or active) gateway
+	client, err := gateway.NewClientFromCommand(cmd)
 	if err != nil {
 		return err
 	}

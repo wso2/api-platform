@@ -54,7 +54,7 @@ var getCmd = &cobra.Command{
 	Long:    "Retrieves a specific API by ID or by name and version, with optional output formatting.",
 	Example: GetCmdExample,
 	Run: func(cmd *cobra.Command, args []string) {
-		if err := runGetCommand(); err != nil {
+		if err := runGetCommand(cmd); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
@@ -62,6 +62,7 @@ var getCmd = &cobra.Command{
 }
 
 func init() {
+	gateway.AddSelectionFlags(getCmd)
 	utils.AddStringFlag(getCmd, utils.FlagID, &getAPIID, "", "API ID (handle)")
 	utils.AddStringFlag(getCmd, utils.FlagName, &getAPIName, "", "API name")
 	utils.AddStringFlag(getCmd, utils.FlagVersion, &getAPIVersion, "", "API version")
@@ -75,7 +76,7 @@ func init() {
 // convenience alias so callers can reason about the resource body shape.
 type APIGetResponse map[string]interface{}
 
-func runGetCommand() error {
+func runGetCommand(cmd *cobra.Command) error {
 	// Validate flags
 	if getAPIID == "" && getAPIName == "" {
 		return fmt.Errorf("either --id or --name (with --version) must be specified")
@@ -95,8 +96,8 @@ func runGetCommand() error {
 		return fmt.Errorf("invalid format: %s (must be 'json' or 'yaml')", getAPIFormat)
 	}
 
-	// Create a client for the active gateway
-	client, err := gateway.NewClientForActive()
+	// Create a client for the selected (or active) gateway
+	client, err := gateway.NewClientFromCommand(cmd)
 	if err != nil {
 		return err
 	}

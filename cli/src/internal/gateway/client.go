@@ -60,12 +60,17 @@ func NewClient(gateway *config.Gateway) *Client {
 
 // NewClientByName creates a new gateway client for the gateway with the specified name
 func NewClientByName(gatewayName string) (*Client, error) {
+	return NewClientByNamePlatform("", gatewayName)
+}
+
+// NewClientByNamePlatform creates a new gateway client for the gateway with the specified name in a platform
+func NewClientByNamePlatform(platformName, gatewayName string) (*Client, error) {
 	cfg, err := config.LoadConfig()
 	if err != nil {
 		return nil, fmt.Errorf("failed to load config: %w", err)
 	}
 
-	gateway, err := cfg.GetGateway(gatewayName)
+	gateway, err := cfg.GetGatewayFromPlatform(cfg.ResolvePlatform(platformName), gatewayName)
 	if err != nil {
 		return nil, err
 	}
@@ -75,12 +80,17 @@ func NewClientByName(gatewayName string) (*Client, error) {
 
 // NewClientForActive creates a new gateway client for the active gateway
 func NewClientForActive() (*Client, error) {
+	return NewClientForActivePlatform("")
+}
+
+// NewClientForActivePlatform creates a new gateway client for the active gateway in a platform
+func NewClientForActivePlatform(platformName string) (*Client, error) {
 	cfg, err := config.LoadConfig()
 	if err != nil {
 		return nil, fmt.Errorf("failed to load config: %w", err)
 	}
 
-	gateway, err := cfg.GetActiveGateway()
+	gateway, err := cfg.GetActiveGatewayFromPlatform(cfg.ResolvePlatform(platformName))
 	if err != nil {
 		return nil, err
 	}
@@ -94,7 +104,7 @@ type credCtxKey struct{}
 // Do executes an HTTP request with the gateway's authentication and settings
 func (c *Client) Do(req *http.Request) (*http.Response, error) {
 	// Apply authentication based on gateway's auth type
-	authType := c.gateway.Auth
+	authType := c.gateway.Auth.Type
 	var credSource utils.CredentialSource
 	switch authType {
 	case utils.AuthTypeNone:
@@ -111,8 +121,8 @@ func (c *Client) Do(req *http.Request) (*http.Response, error) {
 			credSource = utils.CredSourceEnv
 		} else {
 			// Step 2: Fall back to config credentials
-			username := c.gateway.Username
-			password := c.gateway.Password
+			username := c.gateway.Auth.Username
+			password := c.gateway.Auth.Password
 
 			if username == "" || password == "" {
 				// Step 3: Neither env nor config has complete credentials
@@ -133,7 +143,7 @@ func (c *Client) Do(req *http.Request) (*http.Response, error) {
 			credSource = utils.CredSourceEnv
 		} else {
 			// Step 2: Fall back to config token
-			token := c.gateway.Token
+			token := c.gateway.Auth.Token
 
 			if token == "" {
 				// Step 3: Neither env nor config has credentials
@@ -180,7 +190,7 @@ func (c *Client) formatHTTPError(operation string, resp *http.Response) error {
 		operation,
 		resp,
 		"Gateway Controller",
-		c.gateway.Auth,
+		c.gateway.Auth.Type,
 		credSource,
 		c.gateway.Name,
 	)

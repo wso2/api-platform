@@ -209,5 +209,14 @@
                 // },
             ],
         },
+        {
+            "name": "Developer Portal",
+            "type": "node",
+            "request": "launch",
+            "program": "${workspaceFolder}/portals/developer-portal/src/server.js",
+            "cwd": "${workspaceFolder}/portals/developer-portal",
+            "console": "integratedTerminal",
+            "skipFiles": ["<node_internals>/**"]
+        }
     ]
 }

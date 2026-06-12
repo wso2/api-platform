@@ -42,7 +42,7 @@ var listCmd = &cobra.Command{
 	Long:    "Retrieves and displays all APIs deployed on the currently active gateway.",
 	Example: ListCmdExample,
 	Run: func(cmd *cobra.Command, args []string) {
-		if err := runListCommand(); err != nil {
+		if err := runListCommand(cmd); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
@@ -117,9 +117,13 @@ type APIListResponse struct {
 	APIs   []APIListItem `json:"apis"`
 }
 
-func runListCommand() error {
+func init() {
+	gateway.AddSelectionFlags(listCmd)
+}
+
+func runListCommand(cmd *cobra.Command) error {
 	// Create a client for the active gateway
-	client, err := gateway.NewClientForActive()
+	client, err := gateway.NewClientFromCommand(cmd)
 	if err != nil {
 		return err
 	}
