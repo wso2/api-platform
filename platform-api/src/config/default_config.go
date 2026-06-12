@@ -20,8 +20,8 @@ package config
 // defaultConfig returns a Server with all default values.
 func defaultConfig() *Server {
 	return &Server{
-		LogLevel:                   "DEBUG",
-		DevMode:                    false,
+		LogLevel:                   "INFO",
+		DemoMode:                   false,
 		Port:                       "9243",
 		DBSchemaPath:               "./internal/database/schema.sql",
 		OpenAPISpecPath:            "./resources/openapi.yaml",
@@ -40,6 +40,8 @@ func defaultConfig() *Server {
 			ExecuteSchemaDDL: true,
 		},
 		Auth: Auth{
+			// SkipPaths bypasses JWT/IDP auth middleware. Paths below the health/metrics
+			// probes are internal gateway routes authenticated via gateway token instead.
 			SkipPaths: []string{
 				"/health",
 				"/metrics",

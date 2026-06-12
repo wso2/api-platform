@@ -27,7 +27,7 @@
 # Server
 # ---------------------------------------------------------------------------
 log_level = "INFO"   # DEBUG | INFO | WARN | ERROR
-dev_mode  = false    # enables verbose stack traces and relaxed CORS
+demo_mode = false    # enables verbose stack traces and relaxed CORS
 port      = "9243"   # HTTP/HTTPS listen port for Platform API
 
 # Scope-based authorization for API endpoints.

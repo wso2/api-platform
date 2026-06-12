@@ -346,6 +346,9 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	// Build and apply the authenticator middleware.
 	if cfg.Auth.FileBased.Enabled {
 		slogger.Info("Auth mode: file-based (HMAC-signed JWT)")
+		if !cfg.DemoMode {
+			slogger.Warn("file-based authentication is enabled — this is not recommended for production; please configure an IDP of your choice")
+		}
 		router.Use(middleware.LocalJWTAuthMiddleware(middleware.AuthConfig{
 			SecretKey:      cfg.Auth.JWT.SecretKey,
 			TokenIssuer:    cfg.Auth.JWT.Issuer,
@@ -423,12 +426,12 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 func buildAuthenticator(cfg *config.Server, slogger *slog.Logger, roleScopeMap map[string][]string) (middleware.Authenticator, error) {
 	if !cfg.Auth.IDP.Enabled {
 		if cfg.Auth.JWT.SkipValidation {
-			if !cfg.DevMode {
-				slogger.Warn("WARNING: JWT signature validation is DISABLED (AUTH_JWT_SKIP_VALIDATION=true) but DEV_MODE=false. " +
+			if !cfg.DemoMode {
+				slogger.Warn("WARNING: JWT signature validation is DISABLED (AUTH_JWT_SKIP_VALIDATION=true) but DEMO_MODE=false. " +
 					"Tokens are NOT verified — any bearer value will be accepted. " +
-					"Set DEV_MODE=true to suppress this warning, or set AUTH_JWT_SKIP_VALIDATION=false for production.")
+					"Set DEMO_MODE=true to suppress this warning, or set AUTH_JWT_SKIP_VALIDATION=false for production.")
 			} else {
-				slogger.Warn("JWT mode: signature validation disabled (AUTH_JWT_SKIP_VALIDATION=true) [DEV_MODE=true]")
+				slogger.Warn("JWT mode: signature validation disabled (AUTH_JWT_SKIP_VALIDATION=true) [DEMO_MODE=true]")
 			}
 		} else {
 			slogger.Info("JWT mode: HMAC signature validation enabled")

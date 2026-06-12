@@ -21,7 +21,7 @@
 # Server
 # ---------------------------------------------------------------------------
 log_level = "INFO"   # DEBUG | INFO | WARN | ERROR
-dev_mode  = true     # enables verbose stack traces and relaxed CORS
+demo_mode = true     # enables verbose stack traces and relaxed CORS
 port      = "9243"
 
 # ---------------------------------------------------------------------------
