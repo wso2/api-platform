@@ -104,15 +104,27 @@ var_count=$(env | grep -c '^VITE_' || echo "0")
 echo "Runtime configuration generated with $var_count VITE_* variables at /tmp/runtime-config.js"
 
 # ---------------------------------------------------------------------------
-# TLS — generate a self-signed certificate so nginx can serve HTTPS
+# TLS — use a user-provided certificate if mounted, otherwise self-signed.
+# Mount your cert/key at /etc/ai-workspace/tls/tls.crt and tls.key to avoid
+# the browser trust warning (see docker-compose.yaml for the volume example).
 # ---------------------------------------------------------------------------
-echo "Generating self-signed TLS certificate..."
-openssl req -x509 -nodes -newkey rsa:2048 -days 3650 \
-  -keyout /tmp/nginx/tls.key \
-  -out    /tmp/nginx/tls.crt \
-  -subj   "/CN=localhost" 2>/dev/null
-chmod 600 /tmp/nginx/tls.key
-echo "TLS certificate generated at /tmp/nginx/tls.crt"
+USER_CERT="/etc/ai-workspace/tls/tls.crt"
+USER_KEY="/etc/ai-workspace/tls/tls.key"
+
+if [ -f "$USER_CERT" ] && [ -f "$USER_KEY" ]; then
+  echo "Using user-provided TLS certificate from $USER_CERT"
+  cp "$USER_CERT" /tmp/nginx/tls.crt
+  cp "$USER_KEY"  /tmp/nginx/tls.key
+  chmod 600 /tmp/nginx/tls.key
+else
+  echo "No certificate found at $USER_CERT — generating self-signed certificate..."
+  openssl req -x509 -nodes -newkey rsa:2048 -days 3650 \
+    -keyout /tmp/nginx/tls.key \
+    -out    /tmp/nginx/tls.crt \
+    -subj   "/CN=localhost" 2>/dev/null
+  chmod 600 /tmp/nginx/tls.key
+  echo "Self-signed certificate generated (browsers will show a trust warning)"
+fi
 
 # Start nginx in foreground
 echo "Starting nginx..."

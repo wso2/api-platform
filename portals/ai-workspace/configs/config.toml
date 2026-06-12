@@ -94,7 +94,7 @@ enabled = false
 # ---------------------------------------------------------------------------
 [ai_workspace]
 # Domain shown in the browser address bar (host:port or just host for port 80/443).
-domain = "localhost:8080"
+domain = "localhost:5380"
 
 # Authentication mode for the UI: "basic" (local) or "oidc" (external IDP).
 auth_mode = "basic"

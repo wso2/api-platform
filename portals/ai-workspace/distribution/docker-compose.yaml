@@ -21,7 +21,18 @@
 #
 # Ports:
 #   AI Workspace  →  https://localhost:5380
-#   Platform API  →  https://localhost:9243  (self-signed TLS)
+#   Platform API  →  https://localhost:9243
+#
+# TLS certificates (optional — avoids browser trust warnings):
+#   Both services fall back to a self-signed certificate when no cert is mounted.
+#   To use your own certificate, uncomment the volume lines under each service
+#   and place your files in a certs/ directory next to this file:
+#
+#     certs/
+#       ai-workspace.crt   ← PEM certificate (or full chain)
+#       ai-workspace.key   ← PEM private key
+#       platform-api.crt   ← PEM certificate (or full chain)
+#       platform-api.key   ← PEM private key
 # --------------------------------------------------------------------
 
 services:
@@ -42,6 +53,10 @@ services:
     volumes:
       - ./configs/config.toml:/etc/platform-api/config.toml:ro
       - platform-api-data:/app/data
+      # Optional: mount your own TLS certificate to remove the browser trust warning.
+      # The file names must match exactly (cert.pem / key.pem).
+      # - ./certs/platform-api.crt:/app/data/certs/cert.pem:ro
+      # - ./certs/platform-api.key:/app/data/certs/key.pem:ro
     ports:
       - "9243:9243"
     healthcheck:
@@ -69,6 +84,10 @@ services:
       - VITE_PORTAL_API_BASE_URL=/api-proxy/api/portal/v1
     volumes:
       - ./configs/config.toml:/etc/ai-workspace/config.toml:ro
+      # Optional: mount your own TLS certificate to remove the browser trust warning.
+      # The file names must match exactly (tls.crt / tls.key).
+      # - ./certs/ai-workspace.crt:/etc/ai-workspace/tls/tls.crt:ro
+      # - ./certs/ai-workspace.key:/etc/ai-workspace/tls/tls.key:ro
     ports:
       - "5380:5380"
     healthcheck:
