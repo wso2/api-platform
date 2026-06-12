@@ -70,64 +70,108 @@ In each sub-organization:
 
 ---
 
-## 2. Platform API Environment Variables
+## 2. Platform API Configuration
 
-> **Note:** Asgardeo uses `org_id` as the JWT claim for the organization UUID. The Platform API defaults to `organization`, so the mapping overrides below are required.
+The Platform API reads its configuration from `config-platform-api.toml` (mounted at
+`/etc/platform-api/config.toml` in the container). Open `configs/config-platform-api.toml`
+and update the `[auth.idp]` section for production:
 
-```bash
-# Enable JWKS-based IDP authentication (disables local JWT mode)
-export AUTH_IDP_ENABLED=true
-export AUTH_IDP_NAME="asgardeo"
+> **Note:** Asgardeo uses `org_id` as the JWT claim for the organization UUID. The Platform
+> API defaults to `organization`, so the claim name overrides below are required.
 
-# Replace <your-tenant> with your Asgardeo root organization name
-export AUTH_IDP_JWKS_URL="https://api.asgardeo.io/t/<your-tenant>/oauth2/jwks"
-export AUTH_IDP_ISSUER="https://api.asgardeo.io/t/<your-tenant>/oauth2/token"
+```toml
+# Disable local JWT auth when delegating entirely to an external IDP.
+[auth.jwt]
+enabled = false
 
-# Client ID of the AI Workspace application (from Asgardeo Protocol tab)
-export AUTH_IDP_AUDIENCE="<ai-workspace-client-id>"
+# Enable JWKS-based IDP authentication.
+[auth.idp]
+enabled  = true
+name     = "asgardeo"
+jwks_url = "https://api.asgardeo.io/t/<your-tenant>/oauth2/jwks"
+issuer   = ["https://api.asgardeo.io/t/<your-tenant>/oauth2/token"]
+audience = ["<ai-workspace-client-id>"]   # Client ID from Asgardeo Protocol tab
 
-# Asgardeo-specific claim name overrides
-export AUTH_IDP_ORGANIZATION_CLAIM_NAME="org_id"
-export AUTH_IDP_ORG_NAME_CLAIM_NAME="org_name"
-export AUTH_IDP_ORG_HANDLE_CLAIM_NAME="org_handle"
+# Asgardeo-specific claim name overrides.
+[auth.idp.claim_mappings]
+organization_claim_name = "org_id"
+org_name_claim_name     = "org_name"
+org_handle_claim_name   = "org_handle"
 
-export ENABLE_SCOPE_VALIDATION=true
+# Disable file-based auth in production.
+[auth.file_based]
+enabled = false
 ```
 
 Optional overrides (defaults shown):
 
-```bash
-export AUTH_IDP_VALIDATION_MODE="scope"        # or "role" for role-based auth
-export AUTH_IDP_USER_ID_CLAIM_NAME="sub"
-export AUTH_IDP_USERNAME_CLAIM_NAME="username"
-export AUTH_IDP_EMAIL_CLAIM_NAME="email"
-export AUTH_IDP_SCOPE_CLAIM_NAME="scope"
+```toml
+[auth.idp]
+validation_mode = "scope"   # or "role" for role-based auth
+
+[auth.idp.claim_mappings]
+user_id_claim_name  = "sub"
+username_claim_name = "username"
+email_claim_name    = "email"
+scope_claim_name    = "scope"
 ```
 
 ---
 
-## 3. AI Workspace Environment Variables
+## 3. AI Workspace Configuration
 
-> These can be set as environment variables or in a `.env.local` file at the project root.
+The AI Workspace container reads its configuration from a `config.toml` file mounted at
+`/etc/ai-workspace/config.toml`. Environment variables always take priority over values in
+the file (see the key-to-variable mapping below).
 
-```bash
-# OIDC authority (issuer URL — OIDC discovery runs from {authority}/.well-known/openid-configuration)
-export VITE_OIDC_AUTHORITY="https://api.asgardeo.io/t/<your-tenant>/oauth2/token"
+Open `configs/config.toml` and fill in the values for your deployment:
 
-# Client ID of the AI Workspace SPA (from Asgardeo Protocol tab)
-export VITE_OIDC_CLIENT_ID="<ai-workspace-client-id>"
+```toml
+# Host shown in the browser address bar — used to derive OIDC redirect URIs automatically.
+domain = "<your-domain>"                                           # e.g. app.example.com
 
-# Redirect URIs — must match the authorized URLs set in Asgardeo
-export VITE_OIDC_REDIRECT_URI="https://<your-domain>/signin"
-export VITE_OIDC_POST_LOGOUT_REDIRECT_URI="https://<your-domain>/login"
+# Set to "oidc" for production (Asgardeo or any OIDC-compliant IDP).
+auth_mode = "oidc"
 
-# Platform API base URL
-export VITE_PLATFORM_API_BASE_URL="https://<platform-api-host>/api/v1"
+# Issuer URL — OIDC endpoints are auto-discovered from {oidc_authority}/.well-known/openid-configuration.
+oidc_authority = "https://api.asgardeo.io/t/<your-tenant>/oauth2/token"
 
-# JWT claim name overrides — must match AUTH_IDP_*_CLAIM_NAME values in Platform API
-export VITE_OIDC_ORG_ID_CLAIM="org_id"
-export VITE_OIDC_ORG_NAME_CLAIM="org_name"
-export VITE_OIDC_ORG_HANDLE_CLAIM="org_handle"
+# Client ID of the AI Workspace SPA (from Asgardeo Protocol tab).
+oidc_client_id = "<ai-workspace-client-id>"
+
+# JWT claim name mappings — must match AUTH_IDP_*_CLAIM_NAME values in Platform API (section 2).
+oidc_org_id_claim     = "org_id"
+oidc_org_name_claim   = "org_name"
+oidc_org_handle_claim = "org_handle"
+
+# Platform API base URL used by the UI to make API calls.
+platform_api_base_url = "https://<platform-api-host>/api/v1"
+
+# Externally reachable host:port that deployed gateways use to reach the Platform API.
+controlplane_host = "<platform-api-host>"
+
+# Default region assigned to new organizations on first login.
+default_org_region = "us"
 ```
 
-For local development (`VITE_PLATFORM_API_BASE_URL` default: `https://localhost:9243/api/v1`).
+> **Redirect URIs** are derived automatically from `domain`:
+> `https://<domain>/signin` (sign-in) and `https://<domain>/login` (post-logout).
+> These must be listed as authorized redirect URLs in the Asgardeo application (section 1.2).
+
+### config.toml → environment variable mapping
+
+| config.toml key        | Environment variable           |
+|------------------------|-------------------------------|
+| `domain`               | `VITE_DOMAIN`                 |
+| `auth_mode`            | `VITE_AUTH_MODE`              |
+| `oidc_authority`       | `VITE_OIDC_AUTHORITY`         |
+| `oidc_client_id`       | `VITE_OIDC_CLIENT_ID`         |
+| `oidc_org_id_claim`    | `VITE_OIDC_ORG_ID_CLAIM`      |
+| `oidc_org_name_claim`  | `VITE_OIDC_ORG_NAME_CLAIM`    |
+| `oidc_org_handle_claim`| `VITE_OIDC_ORG_HANDLE_CLAIM`  |
+| `platform_api_base_url`| `VITE_PLATFORM_API_BASE_URL`  |
+| `controlplane_host`    | `VITE_CONTROLPLANE_HOST`      |
+| `default_org_region`   | `VITE_DEFAULT_ORG_REGION`     |
+
+Environment variables (e.g. passed via `docker run -e` or a Kubernetes `env:` block) always
+override the corresponding `config.toml` value.
