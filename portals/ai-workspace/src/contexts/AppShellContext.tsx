@@ -29,6 +29,10 @@ import { logger } from '../utils/logger';
 import { getProjects } from '../apis/projectApis';
 import type { Organization, ProjectBase } from '../utils/types';
 import { useChoreoUser } from './ChoreoUserContext';
+import { useAppAuth } from './AppAuthContext';
+import { registerOrganization, getOrganizationByHandle } from '../apis/platformApis';
+import type { PlatformOrganization } from '../apis/platformApis';
+import { DEFAULT_ORG_REGION } from '../config.env';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -41,6 +45,8 @@ export interface AppShellContextType {
   isProjectsLoading: boolean;
   isTokenExchanged: boolean;
   isLoading: boolean;
+  isProvisioning: boolean;
+  provisioningOrgName: string | null;
   error: string | null;
   setCurrentProject: (project: ProjectBase | null) => void;
   refetchProjects: () => Promise<void>;
@@ -55,6 +61,8 @@ const defaultContextValue: AppShellContextType = {
   isProjectsLoading: false,
   isTokenExchanged: true,
   isLoading: true,
+  isProvisioning: false,
+  provisioningOrgName: null,
   error: null,
   setCurrentProject: () => {},
   refetchProjects: async () => {},
@@ -74,8 +82,12 @@ export const AppShellProvider: React.FC<AppShellProviderProps> = ({
   userEmail: initialUserEmail,
 }) => {
   const { setIsTokenExchanged, getOrganizations } = useChoreoUser();
+  const { user } = useAppAuth();
 
   const isInitializedRef = useRef(false);
+  // Keep a ref to avoid stale closure in initialize callback
+  const userRef = useRef(user);
+  useEffect(() => { userRef.current = user; }, [user]);
 
   const userName: string | null = initialUserName || null;
   const userEmail: string | null = initialUserEmail || null;
@@ -85,6 +97,8 @@ export const AppShellProvider: React.FC<AppShellProviderProps> = ({
   const [currentProject, setCurrentProjectState] = useState<ProjectBase | null>(null);
   const [isProjectsLoading, setIsProjectsLoading] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [isProvisioning, setIsProvisioning] = useState(false);
+  const [provisioningOrgName, setProvisioningOrgName] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   // ── Project fetching ────────────────────────────────────────────────────────
@@ -115,23 +129,71 @@ export const AppShellProvider: React.FC<AppShellProviderProps> = ({
 
   // ── Initialization ───────────────────────────────────────────────────────────
 
+  const toOrganization = (p: PlatformOrganization): Organization => ({
+    id: p.id,
+    uuid: p.id,
+    handle: p.handle,
+    name: p.name,
+    region: p.region,
+    owner: { id: 0, idpId: '' },
+  });
+
   const initialize = useCallback(async () => {
     try {
-      const orgs = await getOrganizations();
+      const tokenOrg = userRef.current?.org;
 
-      if (orgs.length === 0) {
-        logger.warn('No organization found in platform API response');
-        setError('Organization not found. Please contact your administrator.');
+      if (tokenOrg?.handle) {
+        // Primary path: fetch org by handle from the token.
+        let platformOrg = await getOrganizationByHandle(tokenOrg.handle);
+
+        if (!platformOrg) {
+          // Org not registered yet — provision it from token claims.
+          const displayName = tokenOrg.name || tokenOrg.handle;
+          logger.info('[AppShellContext] Auto-provisioning organization:', tokenOrg.handle);
+          setIsProvisioning(true);
+          setProvisioningOrgName(displayName);
+          try {
+            await registerOrganization({
+              id: tokenOrg.id,
+              name: displayName,
+              handle: tokenOrg.handle,
+              region: DEFAULT_ORG_REGION,
+            });
+          } catch (provisionErr: any) {
+            // 409 = already exists (race), safe to continue
+            if (!provisionErr?.message?.includes('already exists')) {
+              throw provisionErr;
+            }
+          }
+          setIsProvisioning(false);
+          platformOrg = await getOrganizationByHandle(tokenOrg.handle);
+        }
+
+        if (!platformOrg) {
+          logger.warn('[AppShellContext] Org still not found after provisioning:', tokenOrg.handle);
+          setError('Organization not found. Please contact your administrator.');
+          return;
+        }
+
+        setCurrentOrganizationState(toOrganization(platformOrg));
+        setIsTokenExchanged(true);
+        await fetchProjectsForOrg();
         return;
       }
 
-      const org = orgs[0];
-      setCurrentOrganizationState(org);
+      // Fallback: no handle in token — use list endpoint.
+      const orgs = await getOrganizations();
+      if (orgs.length === 0) {
+        logger.warn('[AppShellContext] No organization found');
+        setError('Organization not found. Please contact your administrator.');
+        return;
+      }
+      setCurrentOrganizationState(orgs[0]);
       setIsTokenExchanged(true);
-
       await fetchProjectsForOrg();
     } catch (err: any) {
       logger.error('Initialization failed:', err);
+      setIsProvisioning(false);
       setError(`Failed to initialize: ${err?.message ?? 'Unknown error'}`);
     } finally {
       setIsLoading(false);
@@ -155,6 +217,8 @@ export const AppShellProvider: React.FC<AppShellProviderProps> = ({
     isProjectsLoading,
     isTokenExchanged: true,
     isLoading,
+    isProvisioning,
+    provisioningOrgName,
     error,
     setCurrentProject,
     refetchProjects,

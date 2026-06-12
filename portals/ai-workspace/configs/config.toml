@@ -113,7 +113,7 @@ platform_api_base_url = "https://localhost:9243/api/v1"
 # Control-plane host — the host:port that deployed gateways use to reach
 # the Platform API. Shown in gateway setup instructions (keys.env, helm values).
 # This must be the externally reachable address, not a relative/proxy path.
-controlplane_host = "localhost:9243"
+controlplane_host = "host.docker.internal:9243"
 
 # Optional
 default_org_region = "us"

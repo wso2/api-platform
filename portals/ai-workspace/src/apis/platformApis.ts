@@ -156,6 +156,30 @@ export async function getOrganization(): Promise<PlatformOrganization> {
 }
 
 /**
+ * Fetch an organization by its handle.
+ * Returns null when the org is not yet registered (404).
+ *
+ * Endpoint: GET /organizations/{handle}
+ * Auth:     Bearer token
+ */
+export async function getOrganizationByHandle(
+  handle: string,
+): Promise<PlatformOrganization | null> {
+  const response = await fetch(platformUrl(`/organizations/${handle}`), {
+    method: 'GET',
+    headers: orgAuthHeaders(),
+  });
+
+  if (response.status === 404) return null;
+  if (!response.ok) {
+    const message = await parseErrorMessage(response);
+    logger.error('getOrganizationByHandle failed:', response.status, message);
+    throw new Error(`Failed to get organization: ${message}`);
+  }
+  return response.json();
+}
+
+/**
  * Check if an organization exists by UUID (HEAD request).
  *
  * Endpoint: HEAD /organizations/{organizationId}

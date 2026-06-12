@@ -39,6 +39,7 @@ import AppHeader from './AppHeader';
 import AppSidebar from './AppSidebar';
 import AppNotifications from './AppNotifications';
 import AILoader from '../../Components/AILoader';
+import OrgProvisioningPage from '../register/OrgProvisioningPage';
 import {
   getOrgSlug,
   getProjectSlug,
@@ -79,6 +80,8 @@ export default function AppLayout(): JSX.Element {
     isProjectsLoading,
 
     isLoading,
+    isProvisioning,
+    provisioningOrgName,
     error,
   } = useWorkspaceAppShell();
 
@@ -243,6 +246,15 @@ export default function AppLayout(): JSX.Element {
         });
     });
   }, [location.pathname]);
+
+  if (isProvisioning) {
+    return (
+      <OrgProvisioningPage
+        orgName={provisioningOrgName ?? undefined}
+        isProvisioning
+      />
+    );
+  }
 
   if (isLoading) {
     return (

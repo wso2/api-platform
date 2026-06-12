@@ -46,7 +46,7 @@ export const OIDC_CLIENT_ID  = getEnvOrDefault('VITE_OIDC_CLIENT_ID', '');
 // JWT claim name mappings — configure to match your IDP's token structure.
 // These must match AUTH_IDP_ORGANIZATION_CLAIM_NAME / AUTH_IDP_ORG_NAME_CLAIM_NAME /
 // AUTH_IDP_ORG_HANDLE_CLAIM_NAME on the Platform API side.
-export const OIDC_ORG_ID_CLAIM     = getEnvOrDefault('VITE_OIDC_ORG_ID_CLAIM',     'organization');
+export const OIDC_ORG_ID_CLAIM     = getEnvOrDefault('VITE_OIDC_ORG_ID_CLAIM',     'org_id');
 export const OIDC_ORG_NAME_CLAIM   = getEnvOrDefault('VITE_OIDC_ORG_NAME_CLAIM',   'org_name');
 export const OIDC_ORG_HANDLE_CLAIM = getEnvOrDefault('VITE_OIDC_ORG_HANDLE_CLAIM', 'org_handle');
 
