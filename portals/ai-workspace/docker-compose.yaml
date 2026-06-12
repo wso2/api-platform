@@ -1,5 +1,5 @@
 # --------------------------------------------------------------------
-# Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+# Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
 #
 # WSO2 LLC. licenses this file to you under the Apache License,
 # Version 2.0 (the "License"); you may not use this file except
@@ -10,7 +10,8 @@
 # AI Workspace + Platform API — standalone release compose file.
 #
 # Configuration:
-#   Edit configs/config.toml for non-sensitive settings.
+#   Edit configs/config.toml for AI Workspace settings.
+#   Edit configs/config-platform-api.toml for Platform API settings.
 #   Set the environment variables below for secrets — either export them
 #   in your shell, or create a .env file next to this file:
 #
@@ -44,19 +45,19 @@ services:
     image: ghcr.io/wso2/api-platform/platform-api:0.10.0-SNAPSHOT
     container_name: platform-api
     restart: unless-stopped
-    command: ["-config", "/etc/platform-api/config.toml"]
+    command: ["-config", "/etc/platform-api/config-platform-api.toml"]
     environment:
       # Secrets — set these in your shell or in a .env file next to this file.
       - AUTH_JWT_SECRET_KEY=${AUTH_JWT_SECRET_KEY:-}
       - DATABASE_PASSWORD=${DATABASE_PASSWORD:-}
       - DATABASE_SUBSCRIPTION_TOKEN_ENCRYPTION_KEY=${DATABASE_SUBSCRIPTION_TOKEN_ENCRYPTION_KEY:-}
     volumes:
-      - ./configs/config.toml:/etc/platform-api/config.toml:ro
+      - ./configs/config-platform-api.toml:/etc/platform-api/config-platform-api.toml:ro
       - platform-api-data:/app/data
       # Optional: mount your own TLS certificate to remove the browser trust warning.
       # The file names must match exactly (cert.pem / key.pem).
-      # - ./certs/platform-api.crt:/app/data/certs/cert.pem:ro
-      # - ./certs/platform-api.key:/app/data/certs/key.pem:ro
+      # - ./resources/certs/platform-api.crt:/app/data/certs/cert.pem:ro
+      # - ./resources/certs/platform-api.key:/app/data/certs/key.pem:ro
     ports:
       - "9243:9243"
     healthcheck:
@@ -70,7 +71,7 @@ services:
   # AI Workspace  (React SPA served by nginx)
   # ---------------------------------------------------------------------------
   ai-workspace:
-    image: ghcr.io/wso2/api-platform/ai-workspace:0.0.0-SNAPSHOT
+    image: ghcr.io/wso2/api-platform/ai-workspace:0.1.0-SNAPSHOT
     container_name: ai-workspace
     restart: unless-stopped
     depends_on:

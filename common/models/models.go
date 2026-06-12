@@ -17,6 +17,8 @@
  */
 package models
 
+import "time"
+
 // AuthContext is a packed authentication/authorization context that can be attached
 // to a request context and passed downstream.
 //
@@ -63,13 +65,15 @@ type User struct {
 
 // IDPConfig holds identity provider configuration
 type IDPConfig struct {
-	Enabled           bool                 `json:"enabled"`
-	IssuerURL         string               `json:"issuer_url"`
-	JWKSUrl           string               `json:"jwks_url"`
-	ScopeClaim        string               `json:"scope_claim"`
-	UsernameClaim     string               `json:"username_claim"`
-	Audience          *string              `json:"audience"`
-	Certificate       *string              `json:"certificate"`
-	ClaimMapping      *map[string]string   `json:"claim_mapping"`
-	PermissionMapping *map[string][]string `json:"permission_mapping"`
+	Enabled                bool                 `json:"enabled"`
+	IssuerURL              string               `json:"issuer_url"`
+	JWKSUrl                string               `json:"jwks_url"`
+	ScopeClaim             string               `json:"scope_claim"`
+	UsernameClaim          string               `json:"username_claim"`
+	Audience               *string              `json:"audience"`
+	Certificate            *string              `json:"certificate"`
+	ClaimMapping           *map[string]string   `json:"claim_mapping"`
+	PermissionMapping      *map[string][]string `json:"permission_mapping"`
+	InsecureSkipVerifyTLS  bool                 `json:"insecure_skip_verify_tls"`
+	JWTLeeway             *time.Duration        `json:"jwt_leeway"`
 }

@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2025, WSO2 LLC. (http://www.wso2.org) All Rights Reserved.
+ *  Copyright (c) 2026, WSO2 LLC. (http://www.wso2.org) All Rights Reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -38,7 +38,7 @@ type loginResponse struct {
 	ExpiresAt int64  `json:"expires_at"`
 }
 
-// AuthLoginHandler issues JWT tokens for locally-configured users (basic-auth mode).
+// AuthLoginHandler issues JWT tokens for locally-configured users (file-based auth mode).
 type AuthLoginHandler struct {
 	cfg *config.Server
 }
@@ -58,11 +58,11 @@ func (h *AuthLoginHandler) Login(c *gin.Context) {
 		return
 	}
 
-	basicAuth := &h.cfg.Auth.BasicAuth
-	var matched *config.BasicAuthUser
-	for i := range basicAuth.Users {
-		if basicAuth.Users[i].Username == req.Username {
-			matched = &basicAuth.Users[i]
+	fileBasedAuth := &h.cfg.Auth.FileBased
+	var matched *config.FileBasedUser
+	for i := range fileBasedAuth.Users {
+		if fileBasedAuth.Users[i].Username == req.Username {
+			matched = &fileBasedAuth.Users[i]
 			break
 		}
 	}
@@ -85,9 +85,9 @@ func (h *AuthLoginHandler) Login(c *gin.Context) {
 		"sub":          matched.Username,
 		"username":     matched.Username,
 		"scope":        matched.Scopes,
-		"organization": basicAuth.Organization.ID,
-		"org_name":     basicAuth.Organization.Name,
-		"org_handle":   basicAuth.Organization.Handle,
+		"organization": fileBasedAuth.Organization.ID,
+		"org_name":     fileBasedAuth.Organization.Name,
+		"org_handle":   fileBasedAuth.Organization.Handle,
 		"iss":          h.cfg.Auth.JWT.Issuer,
 		"exp":          expiry.Unix(),
 		"iat":          time.Now().Unix(),

@@ -30,7 +30,7 @@ import { getProjects } from '../apis/projectApis';
 import type { Organization, ProjectBase } from '../utils/types';
 import { useChoreoUser } from './ChoreoUserContext';
 import { useAppAuth } from './AppAuthContext';
-import { registerOrganization, getOrganizationByHandle } from '../apis/platformApis';
+import { registerOrganization, getOrganizationById } from '../apis/platformApis';
 import type { PlatformOrganization } from '../apis/platformApis';
 import { DEFAULT_ORG_REGION } from '../config.env';
 
@@ -142,11 +142,11 @@ export const AppShellProvider: React.FC<AppShellProviderProps> = ({
     try {
       const tokenOrg = userRef.current?.org;
 
-      if (tokenOrg?.handle) {
-        // Primary path: fetch org by handle from the token.
-        let platformOrg = await getOrganizationByHandle(tokenOrg.handle);
+      if (tokenOrg?.id) {
+        // Primary path: fetch org by UUID from the token (works for both OIDC and file-based auth).
+        let platformOrg = await getOrganizationById(tokenOrg.id);
 
-        if (!platformOrg) {
+        if (!platformOrg && tokenOrg.handle) {
           // Org not registered yet — provision it from token claims.
           const displayName = tokenOrg.name || tokenOrg.handle;
           logger.info('[AppShellContext] Auto-provisioning organization:', tokenOrg.handle);
@@ -166,11 +166,11 @@ export const AppShellProvider: React.FC<AppShellProviderProps> = ({
             }
           }
           setIsProvisioning(false);
-          platformOrg = await getOrganizationByHandle(tokenOrg.handle);
+          platformOrg = await getOrganizationById(tokenOrg.id);
         }
 
         if (!platformOrg) {
-          logger.warn('[AppShellContext] Org still not found after provisioning:', tokenOrg.handle);
+          logger.warn('[AppShellContext] Org not found for id:', tokenOrg.id);
           setError('Organization not found. Please contact your administrator.');
           return;
         }
@@ -181,7 +181,7 @@ export const AppShellProvider: React.FC<AppShellProviderProps> = ({
         return;
       }
 
-      // Fallback: no handle in token — use list endpoint.
+      // Fallback: no org id in token — use list endpoint.
       const orgs = await getOrganizations();
       if (orgs.length === 0) {
         logger.warn('[AppShellContext] No organization found');

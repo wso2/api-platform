@@ -1,4 +1,13 @@
 #!/bin/sh
+# --------------------------------------------------------------------
+# Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+#
+# WSO2 LLC. licenses this file to you under the Apache License,
+# Version 2.0 (the "License"); you may not use this file except
+# in compliance with the License. You may obtain a copy of the
+# License at http://www.apache.org/licenses/LICENSE-2.0
+# --------------------------------------------------------------------
+
 set -e
 
 echo "Starting AI Workspace with runtime configuration..."
@@ -25,26 +34,18 @@ fi
 
 # ---------------------------------------------------------------------------
 # config.toml injection
-# Read [ai_workspace] section from a mounted config.toml and set VITE_* env
-# vars. Environment variables already set in the container take priority —
+# Read key-value pairs from the mounted config.toml and set VITE_* env vars.
+# Environment variables already set in the container take priority —
 # they are never overwritten by the config file.
 # ---------------------------------------------------------------------------
 CONFIG_FILE="/etc/ai-workspace/config.toml"
 if [ -f "$CONFIG_FILE" ]; then
   echo "Loading configuration from $CONFIG_FILE ..."
 
-  in_section=0
   while IFS= read -r line; do
-    # Detect section header
+    # Skip blank lines, comments, and TOML section headers
     case "$line" in
-      '[ai_workspace]') in_section=1; continue ;;
-      '['*']')          in_section=0; continue ;;
-    esac
-    [ "$in_section" -eq 0 ] && continue
-
-    # Skip blank lines and comments
-    case "$line" in
-      ''|'#'*|' #'*) continue ;;
+      ''|'#'*|' #'*|'['*) continue ;;
     esac
 
     # Split on first '='
@@ -55,7 +56,7 @@ if [ -f "$CONFIG_FILE" ]; then
     case "$key" in
       auth_mode)                  vite_key="VITE_AUTH_MODE" ;;
       domain)                     vite_key="VITE_DOMAIN" ;;
-oidc_authority)             vite_key="VITE_OIDC_AUTHORITY" ;;
+      oidc_authority)             vite_key="VITE_OIDC_AUTHORITY" ;;
       oidc_client_id)             vite_key="VITE_OIDC_CLIENT_ID" ;;
       default_org_region)         vite_key="VITE_DEFAULT_ORG_REGION" ;;
       platform_api_base_url)      vite_key="VITE_PLATFORM_API_BASE_URL" ;;

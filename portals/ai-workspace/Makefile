@@ -23,13 +23,20 @@ GIT_COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 DOCKER_REGISTRY ?= ghcr.io/wso2/api-platform
 IMAGE_NAME := $(DOCKER_REGISTRY)/ai-workspace
 
-.PHONY: help build push build-and-push-multiarch version-set version-bump-patch version-bump-minor version-bump-major version-get-release
+.PHONY: help run build push build-and-push-multiarch version-set version-bump-patch version-bump-minor version-bump-major version-bump-next-dev version-get-release
 
 help: ## Show this help message
 	@echo 'AI Workspace Build System (Version: $(VERSION))'
 	@echo ''
 	@echo 'Available targets:'
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  %-25s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
+
+run: ## Start AI Workspace dev server locally (installs deps if needed)
+	@if [ ! -d node_modules ]; then \
+		echo "node_modules not found — running npm install..."; \
+		npm install; \
+	fi
+	npm run dev
 
 build: ## Build Docker image
 	@echo "Building Docker image ($(IMAGE_NAME):$(VERSION))..."
@@ -39,11 +46,6 @@ build: ## Build Docker image
 		-t $(IMAGE_NAME):latest \
 		--load \
 		.
-
-push: ## Push Docker image to registry
-	@echo "Pushing Docker images..."
-	docker push $(IMAGE_NAME):$(VERSION)
-	docker push $(IMAGE_NAME):latest
 
 build-and-push-multiarch: ## Build and push multi-architecture Docker image (linux/amd64, linux/arm64)
 	@echo "Building and pushing multi-arch Docker image: $(IMAGE_NAME):$(VERSION)"
@@ -73,6 +75,9 @@ version-bump-minor: ## Bump minor version
 
 version-bump-major: ## Bump major version
 	@$(MAKE) version-set VERSION=$$(cd ../.. && bash scripts/next-version.sh major ai-workspace)
+
+version-bump-next-dev: ## Bump to next minor dev version with SNAPSHOT suffix
+	@$(MAKE) version-set VERSION=$$(cd ../.. && bash scripts/next-version.sh next-dev ai-workspace)
 
 version-get-release: ## Get release version (strips SNAPSHOT suffix)
 	@VERSION=$$(cat VERSION 2>/dev/null | tr -d '[:space:]' | sed 's/-SNAPSHOT//'); \

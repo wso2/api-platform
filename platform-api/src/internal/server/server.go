@@ -104,10 +104,10 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	webbrokerAPIRepo := repository.NewWebBrokerAPIRepo(db)
 	apiKeyRepo := repository.NewAPIKeyRepo(db)
 
-	// Seed the basic-auth organization on startup if basic-auth mode is enabled.
-	if cfg.Auth.BasicAuth.Enabled {
-		if err := seedBasicAuthOrg(cfg, orgRepo, slogger); err != nil {
-			return nil, fmt.Errorf("failed to seed basic-auth organization: %w", err)
+	// Seed the file-based organization on startup if file-based auth mode is enabled.
+	if cfg.Auth.FileBased.Enabled {
+		if err := seedFileBasedOrg(cfg, orgRepo, slogger); err != nil {
+			return nil, fmt.Errorf("failed to seed file-based organization: %w", err)
 		}
 	}
 
@@ -303,6 +303,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	timeoutService := service.NewDeploymentTimeoutService(deploymentRepo, timeoutConfig, slogger)
 
 	slogger.Info("Initialized all services and handlers successfully")
+	slogger.Info("Platform API configuration", slog.Bool("demoMode", cfg.DemoMode))
 
 	if strings.ToLower(cfg.LogLevel) == "debug" {
 		gin.SetMode(gin.DebugMode)
@@ -344,8 +345,11 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	handler.NewAuthLoginHandler(cfg).RegisterPublicRoutes(router)
 
 	// Build and apply the authenticator middleware.
-	if cfg.Auth.BasicAuth.Enabled {
-		slogger.Info("Auth mode: basic-auth (HMAC-signed JWT)")
+	if cfg.Auth.FileBased.Enabled {
+		slogger.Info("Auth mode: file-based (HMAC-signed JWT)")
+		if !cfg.DemoMode {
+			slogger.Warn("file-based authentication is enabled — this is not recommended for production; please configure an IDP of your choice")
+		}
 		router.Use(middleware.LocalJWTAuthMiddleware(middleware.AuthConfig{
 			SecretKey:      cfg.Auth.JWT.SecretKey,
 			TokenIssuer:    cfg.Auth.JWT.Issuer,
@@ -419,16 +423,16 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 }
 
 // buildAuthenticator constructs an Authenticator from the server configuration.
-// Only called when BasicAuth is disabled.
+// Only called when file-based auth is disabled.
 func buildAuthenticator(cfg *config.Server, slogger *slog.Logger, roleScopeMap map[string][]string) (middleware.Authenticator, error) {
 	if !cfg.Auth.IDP.Enabled {
 		if cfg.Auth.JWT.SkipValidation {
-			if !cfg.DevMode {
-				slogger.Warn("WARNING: JWT signature validation is DISABLED (AUTH_JWT_SKIP_VALIDATION=true) but DEV_MODE=false. " +
+			if !cfg.DemoMode {
+				slogger.Warn("WARNING: JWT signature validation is DISABLED (AUTH_JWT_SKIP_VALIDATION=true) but DEMO_MODE=false. " +
 					"Tokens are NOT verified — any bearer value will be accepted. " +
-					"Set DEV_MODE=true to suppress this warning, or set AUTH_JWT_SKIP_VALIDATION=false for production.")
+					"Set DEMO_MODE=true to suppress this warning, or set AUTH_JWT_SKIP_VALIDATION=false for production.")
 			} else {
-				slogger.Warn("JWT mode: signature validation disabled (AUTH_JWT_SKIP_VALIDATION=true) [DEV_MODE=true]")
+				slogger.Warn("JWT mode: signature validation disabled (AUTH_JWT_SKIP_VALIDATION=true) [DEMO_MODE=true]")
 			}
 		} else {
 			slogger.Info("JWT mode: HMAC signature validation enabled")
@@ -452,7 +456,7 @@ func buildAuthenticator(cfg *config.Server, slogger *slog.Logger, roleScopeMap m
 		Enabled:    true,
 		IssuerURL:  issuerURL,
 		JWKSUrl:    cfg.Auth.IDP.JWKSUrl,
-		ScopeClaim: cfg.Auth.IDP.ScopeClaimName,
+		ScopeClaim: cfg.Auth.IDP.ClaimMappings.ScopeClaimName,
 	}
 	authCfg := commonmodels.AuthConfig{
 		JWTConfig: &idpCfg,
@@ -463,14 +467,14 @@ func buildAuthenticator(cfg *config.Server, slogger *slog.Logger, roleScopeMap m
 		return nil, fmt.Errorf("failed to initialize IDP auth middleware: %w", err)
 	}
 	claimsMiddleware := middleware.PlatformClaimsMiddleware(middleware.PlatformClaimNames{
-		OrganizationClaim: cfg.Auth.IDP.OrganizationClaimName,
-		OrgNameClaim:      cfg.Auth.IDP.OrgNameClaimName,
-		OrgHandleClaim:    cfg.Auth.IDP.OrgHandleClaimName,
-		UserIDClaim:       cfg.Auth.IDP.UserIDClaimName,
-		UsernameClaim:     cfg.Auth.IDP.UsernameClaimName,
-		EmailClaim:        cfg.Auth.IDP.EmailClaimName,
-		ScopeClaim:        cfg.Auth.IDP.ScopeClaimName,
-		RolesClaimPath:    cfg.Auth.IDP.RolesClaimPath,
+		OrganizationClaim: cfg.Auth.IDP.ClaimMappings.OrganizationClaimName,
+		OrgNameClaim:      cfg.Auth.IDP.ClaimMappings.OrgNameClaimName,
+		OrgHandleClaim:    cfg.Auth.IDP.ClaimMappings.OrgHandleClaimName,
+		UserIDClaim:       cfg.Auth.IDP.ClaimMappings.UserIDClaimName,
+		UsernameClaim:     cfg.Auth.IDP.ClaimMappings.UsernameClaimName,
+		EmailClaim:        cfg.Auth.IDP.ClaimMappings.EmailClaimName,
+		ScopeClaim:        cfg.Auth.IDP.ClaimMappings.ScopeClaimName,
+		RolesClaimPath:    cfg.Auth.IDP.ClaimMappings.RolesClaimPath,
 		RoleScopeMap:      roleScopeMap,
 	})
 
@@ -505,6 +509,7 @@ func loadRoleScopeMap(cfg *config.Server, registry *middleware.ScopeRegistry, sl
 		return nil, fmt.Errorf("invalid roles.yaml: %w", err)
 	}
 	slogger.Info("Loaded role-to-scope mapping", "path", cfg.Auth.IDP.RoleMappingsFile, "roles", len(m))
+
 	return m, nil
 }
 
@@ -673,30 +678,20 @@ func (s *Server) GetRouter() *gin.Engine {
 	return s.router
 }
 
-// seedBasicAuthOrg ensures the basic-auth organization exists in the DB.
-// If AUTH_BASIC_AUTH_ORGANIZATION_ID is empty, a UUID is generated and written
-// back into cfg so the login handler issues tokens with the correct org ID.
-func seedBasicAuthOrg(cfg *config.Server, orgRepo repository.OrganizationRepository, slogger *slog.Logger) error {
-	ba := &cfg.Auth.BasicAuth
+// seedFileBasedOrg ensures the file-based auth organization exists in the DB.
+// It fetches by the configured handle first; only creates the org when no
+// matching org is found. The org ID in cfg is updated to the persisted value
+// so the login handler issues tokens with the correct org ID.
+func seedFileBasedOrg(cfg *config.Server, orgRepo repository.OrganizationRepository, slogger *slog.Logger) error {
+	ba := &cfg.Auth.FileBased
 
-	// Auto-generate the org ID if not configured.
-	if ba.Organization.ID == "" {
-		id, err := utils.GenerateUUID()
-		if err != nil {
-			return fmt.Errorf("failed to generate basic-auth org ID: %w", err)
-		}
-		ba.Organization.ID = id
-	}
-
-	existing, err := orgRepo.GetOrganizationByIdOrHandle(ba.Organization.ID, ba.Organization.Handle)
+	existing, err := orgRepo.GetOrganizationByHandle(ba.Organization.Handle)
 	if err != nil {
-		return fmt.Errorf("failed to check basic-auth organization: %w", err)
+		return fmt.Errorf("failed to check file-based organization: %w", err)
 	}
 	if existing != nil {
-		// Already registered — make sure cfg carries the persisted ID (handles the
-		// auto-generate-then-restart case where the ID was written to env).
 		ba.Organization.ID = existing.ID
-		slogger.Info("Basic-auth organization already exists", "id", existing.ID, "handle", existing.Handle)
+		slogger.Info("File-based organization already exists", "id", existing.ID, "handle", existing.Handle)
 		return nil
 	}
 
@@ -710,8 +705,8 @@ func seedBasicAuthOrg(cfg *config.Server, orgRepo repository.OrganizationReposit
 		UpdatedAt: now,
 	}
 	if err := orgRepo.CreateOrganization(org); err != nil {
-		return fmt.Errorf("failed to create basic-auth organization: %w", err)
+		return fmt.Errorf("failed to create file-based organization: %w", err)
 	}
-	slogger.Info("Seeded basic-auth organization", "id", org.ID, "handle", org.Handle)
+	slogger.Info("Seeded file-based organization", "id", org.ID, "handle", org.Handle)
 	return nil
 }
