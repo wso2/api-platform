@@ -421,15 +421,16 @@ func (v *APIValidator) validateRestData(spec *api.APIConfigData) []ValidationErr
 	}
 
 	// Validate vhosts: identical main and sandbox vhosts would collide on route keys.
+	// Rejected even without a sandbox upstream so the latent collision cannot be stored.
 	// Compared case-insensitively since Envoy matches domains case-insensitively.
 	// The xDS builders guard the case where vhosts only collide via router defaults.
-	if spec.Upstream.Sandbox != nil && spec.Vhosts != nil && spec.Vhosts.Sandbox != nil {
+	if spec.Vhosts != nil && spec.Vhosts.Sandbox != nil {
 		mainVhost := strings.TrimSpace(spec.Vhosts.Main)
 		sandboxVhost := strings.TrimSpace(*spec.Vhosts.Sandbox)
 		if mainVhost != "" && strings.EqualFold(mainVhost, sandboxVhost) {
 			errors = append(errors, ValidationError{
 				Field:   "spec.vhosts",
-				Message: "Main and sandbox vhosts must differ when a sandbox upstream is configured",
+				Message: "Main and sandbox vhosts must differ",
 			})
 		}
 	}

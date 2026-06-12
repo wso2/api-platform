@@ -520,7 +520,8 @@ func TestAPIValidator_ValidateVhosts(t *testing.T) {
 	}{
 		{name: "Identical vhosts with sandbox upstream", mainVhost: "api.local", sandboxVhost: stringPtr("api.local"), withSandboxUpstream: true, wantError: true},
 		{name: "Case-insensitively identical vhosts rejected", mainVhost: "API.local", sandboxVhost: stringPtr("api.local"), withSandboxUpstream: true, wantError: true},
-		{name: "Identical vhosts without sandbox upstream", mainVhost: "api.local", sandboxVhost: stringPtr("api.local"), withSandboxUpstream: false, wantError: false},
+		{name: "Identical vhosts without sandbox upstream", mainVhost: "api.local", sandboxVhost: stringPtr("api.local"), withSandboxUpstream: false, wantError: true},
+		{name: "Distinct vhosts without sandbox upstream", mainVhost: "api.local", sandboxVhost: stringPtr("sb.local"), withSandboxUpstream: false, wantError: false},
 		{name: "Distinct vhosts with sandbox upstream", mainVhost: "api.local", sandboxVhost: stringPtr("sb.local"), withSandboxUpstream: true, wantError: false},
 		{name: "No vhosts with sandbox upstream", withSandboxUpstream: true, wantError: false},
 	}
