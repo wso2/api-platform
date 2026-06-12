@@ -17,7 +17,7 @@
  */
 
 import React, { useMemo, useState, useEffect } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { Link as RouterLink, useLocation, useNavigate } from 'react-router-dom';
 import {
   Avatar,
   Box,
@@ -60,6 +60,7 @@ import {
 } from '../../../../utils/projectRouting';
 import { useAIWorkspaceSnackbar } from '../../../../hooks/aiWorkspaceSnackbar';
 import { FormattedMessage } from 'react-intl';
+import NoProjects from '../../../../assets/images/NoProjects.svg';
 
 
 function ProjectListViewInner() {
@@ -106,6 +107,8 @@ function ProjectListViewInner() {
   }, [rowsPerPage, searchQuery, projectsForCurrentOrganization.length]);
 
   const orgProjectsPath = buildOrgPath(currentOrganization, '/projects/list');
+  const newProjectPath = buildOrgPath(currentOrganization, '/projects/new');
+  const hasProjects = projectsForCurrentOrganization.length > 0;
 
   // Must be before any early returns — Rules of Hooks
   useEffect(() => {
@@ -176,41 +179,43 @@ function ProjectListViewInner() {
               }
             />
           </PageTitle.SubHeader>
-          <PageTitle.Actions>
-            <Button
-              variant="contained"
-              size="small"
-              startIcon={<Plus size={16} />}
-              onClick={() => {
-                const path = buildOrgPath(currentOrganization, '/projects/new');
-                if (path) navigate(path);
-              }}
-            >
-              <FormattedMessage
-                id="aiWorkspace.pages.appShell.appShellPages.projects.ProjectListView.new.project"
-                defaultMessage="Add New Project"
-              />
-            </Button>
-          </PageTitle.Actions>
+          {hasProjects && newProjectPath ? (
+            <PageTitle.Actions>
+              <Button
+                variant="contained"
+                size="small"
+                startIcon={<Plus size={16} />}
+                component={RouterLink}
+                to={newProjectPath}
+              >
+                <FormattedMessage
+                  id="aiWorkspace.pages.appShell.appShellPages.projects.ProjectListView.new.project"
+                  defaultMessage="Add New Project"
+                />
+              </Button>
+            </PageTitle.Actions>
+          ) : null}
         </PageTitle>
 
-        <Grid size={{ xs: 12 }}>
-          <TextField
-            fullWidth
-            placeholder="Search projects..."
-            value={searchQuery}
-            onChange={(event) => setSearchQuery(event.target.value)}
-            slotProps={{
-              input: {
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <Search size={20} />
-                  </InputAdornment>
-                ),
-              },
-            }}
-          />
-        </Grid>
+        {hasProjects ? (
+          <Grid size={{ xs: 12 }}>
+            <TextField
+              fullWidth
+              placeholder="Search projects..."
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              slotProps={{
+                input: {
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <Search size={20} />
+                    </InputAdornment>
+                  ),
+                },
+              }}
+            />
+          </Grid>
+        ) : null}
 
         <Grid size={{ xs: 12 }}>
           <Box
@@ -225,12 +230,65 @@ function ProjectListViewInner() {
               gap: 2,
             }}
           >
-            {pagedProjects.length === 0 ? (
-              <Box>
+            {!hasProjects ? (
+              <Box
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gridColumn: '1 / -1',
+                  py: 6,
+                }}
+              >
+                <Stack
+                  spacing={1.5}
+                  alignItems="center"
+                  justifyContent="center"
+                  sx={{ textAlign: 'center', py: 2, width: '100%' }}
+                >
+                  <Box
+                    component="img"
+                    src={NoProjects}
+                    alt="No projects"
+                    sx={{ width: 140, maxWidth: '80%' }}
+                  />
+                  <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                    <FormattedMessage
+                      id="aiWorkspace.pages.appShell.appShellPages.projects.ProjectListView.create.your.first.project"
+                      defaultMessage="Create your first project"
+                    />
+                  </Typography>
+                  <Typography
+                    variant="body2"
+                    color="text.secondary"
+                    sx={{ maxWidth: 420 }}
+                  >
+                    <FormattedMessage
+                      id="aiWorkspace.pages.appShell.appShellPages.projects.ProjectListView.create.your.first.project.description"
+                      defaultMessage="Set up a project to organize your APIs, gateways, and AI workspace resources in one place."
+                    />
+                  </Typography>
+                  {newProjectPath ? (
+                    <Button
+                      variant="contained"
+                      component={RouterLink}
+                      to={newProjectPath}
+                      startIcon={<Plus size={20} />}
+                    >
+                      <FormattedMessage
+                        id="aiWorkspace.pages.appShell.appShellPages.projects.ProjectListView.create.project"
+                        defaultMessage="Create Project"
+                      />
+                    </Button>
+                  ) : null}
+                </Stack>
+              </Box>
+            ) : pagedProjects.length === 0 ? (
+              <Box sx={{ gridColumn: '1 / -1' }}>
                 <Typography variant="body2" color="text.secondary">
                   <FormattedMessage
-                    id="aiWorkspace.pages.appShell.appShellPages.projects.ProjectListView.no.projects.available"
-                    defaultMessage={'No projects available.'}
+                    id="aiWorkspace.pages.appShell.appShellPages.projects.ProjectListView.no.projects.match.search"
+                    defaultMessage={'No projects match your search.'}
                   />
                 </Typography>
               </Box>

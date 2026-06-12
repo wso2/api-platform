@@ -19,7 +19,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link as RouterLink, useNavigate, useParams } from 'react-router-dom';
 import {
-  Alert,
   Avatar,
   Box,
   Button,
@@ -58,13 +57,8 @@ import {
   buildProjectPath,
   getProjectSlug,
 } from '../../../../utils/projectRouting';
-import { DEV_PORTAL_BASE_URL, PLATFORM_API_BASE_URL } from '../../../../config.env';
+import { PLATFORM_API_BASE_URL } from '../../../../config.env';
 import { mcpProxiesApis } from '../../../../apis/MCP/mcpProxiesApis';
-import {
-  checkMCPServerPublished,
-  publishMCPServer,
-  unpublishMCPServer,
-} from '../../../../apis/MCP/mcpDevPortalApis';
 import type { MCPServer } from '../../../../utils/types';
 import NoMCPServers from '../../../../assets/images/NoMCPServers.svg';
 
@@ -94,7 +88,6 @@ export default function ExternalServersList(): JSX.Element {
   const [isServersLoading, setIsServersLoading] = useState(false);
   const [hasFetchedServers, setHasFetchedServers] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<MCPServer | null>(null);
-  const [isDeleteTargetPublished, setIsDeleteTargetPublished] = useState(false);
 
   const organizationId = currentOrganization?.uuid ?? '';
   const projectId = effectiveProject?.id ?? '';
@@ -134,29 +127,6 @@ export default function ExternalServersList(): JSX.Element {
     setSelectedProjectId('');
   }, [currentOrganization?.id]);
 
-  useEffect(() => {
-    if (!deleteTarget || !currentOrganization?.handle) {
-      setIsDeleteTargetPublished(false);
-      return;
-    }
-    let cancelled = false;
-    void (async () => {
-      try {
-        const published = await checkMCPServerPublished(
-          DEV_PORTAL_BASE_URL,
-          currentOrganization.handle,
-          deleteTarget.id
-        );
-        if (!cancelled) setIsDeleteTargetPublished(published);
-      } catch {
-        if (!cancelled) setIsDeleteTargetPublished(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [deleteTarget, currentOrganization?.handle]);
-
   const selectedProject = useMemo(
     () =>
       projectsForCurrentOrganization.find(
@@ -189,40 +159,13 @@ export default function ExternalServersList(): JSX.Element {
   const handleDeleteConfirm = async () => {
     if (!deleteTarget || !organizationId) return;
     const serverId = deleteTarget.id;
-    const orgHandle = currentOrganization?.handle;
-
-    if (isDeleteTargetPublished && orgHandle) {
-      try {
-        await unpublishMCPServer(apimBaseUrl, serverId, organizationId, orgHandle);
-      } catch {
-        showSnackbar('Failed to unpublish MCP Proxy from MCP Hub.', 'error');
-        setDeleteTarget(null);
-        return;
-      }
-    }
-
     try {
       await mcpProxiesApis.deleteMCPServer(serverId, organizationId, apimBaseUrl);
       setServers((prev) => prev.filter((s) => s.id !== serverId));
       showSnackbar('MCP Proxy deleted successfully.', 'success');
     } catch {
       showSnackbar('Failed to delete MCP Proxy.', 'error');
-      if (isDeleteTargetPublished && orgHandle) {
-        const vhost = (deleteTarget.vhost ?? '').trim();
-        const normalizedBase = /^https?:\/\//i.test(vhost)
-          ? vhost.replace(/\/+$/, '')
-          : `https://${vhost.replace(/\/+$/, '')}`;
-        const ctx = (deleteTarget.context ?? '').trim().replace(/\/+$/, '');
-        const normalizedCtx = ctx ? (ctx.startsWith('/') ? ctx : `/${ctx}`) : '';
-        const remoteUrl = `${normalizedBase}${normalizedCtx}/mcp`;
-        try {
-          await publishMCPServer(apimBaseUrl, serverId, organizationId, { orgHandle, remoteUrl });
-        } catch {
-          showSnackbar('Failed to re-publish MCP Proxy after delete failure.', 'warning');
-        }
-      }
     }
-
     setDeleteTarget(null);
   };
 
@@ -620,12 +563,6 @@ export default function ExternalServersList(): JSX.Element {
           <DialogContentText>
             Are you sure you want to delete {deleteTarget?.name}?
           </DialogContentText>
-          {isDeleteTargetPublished && (
-            <Alert severity="warning" sx={{ mt: 2 }}>
-              This MCP Proxy is currently published to MCP Hub. Deleting it will
-              also unpublish it.
-            </Alert>
-          )}
         </DialogContent>
         <DialogActions>
           <Button

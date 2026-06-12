@@ -17,10 +17,12 @@
  */
 
 import {
+  Button,
   Box,
   Grid,
   PageContent,
   PageTitle,
+  Stack,
   Typography,
 } from '@wso2/oxygen-ui';
 
@@ -44,15 +46,33 @@ export default function Insights(): JSX.Element {
               alignItems: 'center',
               justifyContent: 'center',
               minHeight: 300,
+              px: 3,
               border: '1px solid',
               borderColor: 'divider',
               borderRadius: 2,
               backgroundColor: 'background.paper',
             }}
           >
-            <Typography variant="body2" color="text.secondary">
-              Insights are not available.
-            </Typography>
+            <Stack spacing={2} alignItems="center" sx={{ maxWidth: 560, textAlign: 'center' }}>
+              <Typography variant="h5">
+                Your API insights live in Moesif
+              </Typography>
+
+              <Typography variant="body2" color="text.secondary">
+                Track usage trends, request activity, latency, and customer behavior from your
+                Moesif analytics workspace.
+              </Typography>
+
+              <Button
+                variant="contained"
+                component="a"
+                href="https://www.moesif.com/wrap/basic"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Open Moesif Insights
+              </Button>
+            </Stack>
           </Box>
         </Grid>
       </Grid>
