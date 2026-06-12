@@ -318,6 +318,12 @@ func (s *RestAPIService) Update(params UpdateParams) (*UpdateResult, error) {
 		return nil, err
 	}
 
+	// Re-resolve vhosts after rendering so a templated vhost that renders blank is filled
+	// with the router default before validation (Configuration only).
+	if err := utils.ResolveVhostSentinels(&existing.Configuration, s.routerConfig); err != nil {
+		return nil, err
+	}
+
 	// Validate configuration against resolved values
 	renderedConfig := existing.Configuration.(api.RestAPI)
 	validationErrors := s.validator.Validate(&renderedConfig)

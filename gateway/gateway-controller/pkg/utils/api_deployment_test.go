@@ -420,6 +420,61 @@ spec:
 	assert.Nil(t, result)
 }
 
+// A vhost written as a template can render to blank. Because vhost resolution also runs
+// after rendering, both blanks are filled with the (equal) router default, so the
+// same-vhost collision is rejected cleanly at deploy instead of failing later in xDS.
+func TestDeployAPIConfiguration_TemplatedVhostRendersBlankRejected(t *testing.T) {
+	store := storage.NewConfigStore()
+	validator := config.NewAPIValidator()
+	routerCfg := &config.RouterConfig{
+		VHosts: config.VHostsConfig{
+			Main:    config.VHostEntry{Default: "shared.example.com"},
+			Sandbox: config.VHostEntry{Default: "shared.example.com"},
+		},
+	}
+	service := newTestAPIDeploymentService(store, nil, nil, validator, routerCfg)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	yamlData := `
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: RestApi
+metadata:
+  name: templated-vhost-api
+spec:
+  displayName: Templated Vhost API
+  version: v1.0
+  context: /tpl
+  vhosts:
+    main: '{{ env "TPL_MAIN_HOST_UNSET" }}'
+    sandbox: '{{ env "TPL_SANDBOX_HOST_UNSET" }}'
+  upstream:
+    main:
+      url: http://backend:9090
+  operations:
+    - method: GET
+      path: /data
+`
+	params := APIDeploymentParams{
+		Data:          []byte(yamlData),
+		ContentType:   "application/yaml",
+		CorrelationID: "test-corr",
+		Origin:        models.OriginGatewayAPI,
+		Logger:        logger,
+	}
+
+	_, err := service.DeployAPIConfiguration(params)
+	require.Error(t, err)
+	var verr *ValidationErrorListError
+	require.ErrorAs(t, err, &verr)
+	found := false
+	for _, e := range verr.Errors {
+		if e.Field == "spec.vhosts" {
+			found = true
+		}
+	}
+	assert.True(t, found, "expected a spec.vhosts validation error, got %v", verr.Errors)
+}
+
 func TestDeployAPIConfiguration_DBConflictValidation(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	validator := config.NewAPIValidator()

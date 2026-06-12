@@ -297,6 +297,13 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 		return nil, err
 	}
 
+	// Re-resolve vhosts after rendering: a templated vhost may render blank, which would
+	// otherwise slip past validation. Fill blanks on Configuration only (SourceConfiguration
+	// keeps the template) so the validator compares effective vhosts.
+	if err := resolveVhostSentinels(&storedCfg.Configuration, s.routerConfig); err != nil {
+		return nil, fmt.Errorf("failed to resolve vhost sentinels after render: %w", err)
+	}
+
 	// Validate against the rendered Configuration and extract spec-level identifiers.
 	var apiName, apiVersion string
 	switch c := storedCfg.Configuration.(type) {
