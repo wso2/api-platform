@@ -1,4 +1,13 @@
 #!/usr/bin/env bash
+# --------------------------------------------------------------------
+# Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+#
+# WSO2 LLC. licenses this file to you under the Apache License,
+# Version 2.0 (the "License"); you may not use this file except
+# in compliance with the License. You may obtain a copy of the
+# License at http://www.apache.org/licenses/LICENSE-2.0
+# --------------------------------------------------------------------
+
 # register_asgardeo_scopes.sh
 # Fetches a token via client credentials then creates an Asgardeo API resource
 # with all platform scopes (as defined in openapi.yaml securitySchemes) in a single POST request.
