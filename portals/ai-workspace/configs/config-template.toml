@@ -7,204 +7,24 @@
 # License at http://www.apache.org/licenses/LICENSE-2.0
 # --------------------------------------------------------------------
 #
-# AI Workspace + Platform API — unified configuration template
+# AI Workspace configuration template
 #
 # Copy this file to config.toml and edit the values for your deployment.
-#
-# [platform_api.*] keys are read by the Platform API (Go binary).
-# [ai_workspace.*] keys are read by the AI Workspace container at startup.
+# This file is read by the AI Workspace container at startup.
 # Environment variables always override values set here.
 #
-# QUICK START (basic-auth mode — no external IDP needed):
+# QUICK START (basic-auth mode):
 #   1. Copy this file to config.toml.
-#   2. Set [auth.jwt] secret_key to a random string (or use AUTH_JWT_SECRET_KEY env var).
-#   3. Set [auth.basic_auth] enabled = true and configure users.
-#   4. Run: docker compose up
+#   2. Set auth_mode = "basic" (uses the users defined in config-platform-api.toml).
+#   3. Run: docker compose up
 #
-# OIDC mode: keep basic_auth disabled, set [auth.idp] fields,
-# and set [ai_workspace] auth_mode = "oidc" with oidc_* fields.
+# OIDC mode: set auth_mode = "oidc" and fill in the oidc_* fields below.
 # --------------------------------------------------------------------
 
-# ---------------------------------------------------------------------------
-# Server
-# ---------------------------------------------------------------------------
-log_level = "INFO"   # DEBUG | INFO | WARN | ERROR
-dev_mode  = false    # enables verbose stack traces and relaxed CORS
-port      = "9243"   # HTTP/HTTPS listen port for Platform API
-
-# Scope-based authorization for API endpoints.
-# Set to false only to temporarily bypass during development.
-enable_scope_validation = true
-
-# ---------------------------------------------------------------------------
-# Database
-# ---------------------------------------------------------------------------
-[database]
-driver = "sqlite3"   # "sqlite3" or "postgres"
-
-# SQLite — ignored when driver = "postgres"
-path = "/app/data/api_platform.db"
-
-# PostgreSQL — uncomment and set driver = "postgres" above to use
-# host     = "localhost"
-# port     = 5432
-# name     = "platform_api"
-# user     = "platform_api"
-# password = "change-me"
-# ssl_mode = "disable"   # "disable" | "require" | "verify-ca" | "verify-full"
-
-# Connection pool — tune for production workloads
-# max_open_conns    = 25    # maximum open connections
-# max_idle_conns    = 10    # maximum idle connections in the pool
-# conn_max_lifetime = 300   # seconds before a connection is recycled
-
-# Schema management
-# execute_schema_ddl = true   # set to false if you manage migrations yourself
-
-# Encryption key for subscription tokens stored in the database (32-byte hex string).
-# Required when subscription tokens are used; auto-generated if left empty.
-# subscription_token_encryption_key = ""
-
-# ---------------------------------------------------------------------------
-# Authentication — Platform API
-# ---------------------------------------------------------------------------
-
-# JWT (local HMAC) — the default for self-hosted deployments.
-# Disable when delegating auth entirely to an external IDP.
-[auth.jwt]
-enabled    = true
-issuer     = "platform-api"
-# secret_key = "change-me-to-a-random-secret"   # or use AUTH_JWT_SECRET_KEY env var
-# skip_validation = false   # NEVER set true in production
-
-# IDP (JWKS-based) — enable instead of JWT when using Asgardeo, Keycloak, Auth0, etc.
-[auth.idp]
-enabled  = false
-# name     = "asgardeo"                              # friendly name for logging
-# jwks_url = "https://accounts.example.com/oauth2/jwks"
-# issuer   = ["https://accounts.example.com"]       # list of accepted issuers
-# audience = []                                      # list of accepted audiences; empty = skip audience check
-
-# JWT claim name mappings — configure to match your IDP's token structure.
-# organization_claim_name = "organization"   # claim carrying the org ID
-# org_name_claim_name     = "org_name"       # claim carrying the org display name
-# org_handle_claim_name   = "org_handle"     # claim carrying the org URL slug
-# user_id_claim_name      = "sub"            # claim used as the user's unique ID
-# username_claim_name     = "username"
-# email_claim_name        = "email"
-# scope_claim_name        = "scope"          # space-separated scope string
-
-# Authorization mode: "scope" (default) checks the scope claim;
-# "role" checks a roles claim at roles_claim_path.
-# validation_mode  = "scope"
-# roles_claim_path = ""          # JSON path to roles array, e.g. "realm_access.roles"
-# role_mappings    = []          # list of "<idp-role>:<platform-scope>" pairs
-
-# Basic-auth — local username/password login. Ideal for initial / air-gapped setup.
-# When enabled, IDP is NOT used for Platform API authentication.
-[auth.basic_auth]
-enabled = true
-
-[auth.basic_auth.organization]
-# id     = ""           # UUID; auto-generated on first startup if empty
-name   = "My Organization"
-handle = "my-org"       # URL-safe slug
-region = "us"
-
-# Add one [[auth.basic_auth.users]] block per user.
-# Generate a bcrypt hash with: htpasswd -bnBC 12 "" <password> | tr -d ':\n'
-[[auth.basic_auth.users]]
-username      = "admin"
-password_hash = "$2a$12$<bcrypt-hash-of-your-password>"
-# Full scope set — trim to restrict permissions for this user.
-scopes = "ap:organization:read ap:organization:manage ap:gateway:read ap:gateway:create ap:gateway:update ap:gateway:delete ap:gateway:manage ap:gateway:token:read ap:gateway:token:create ap:gateway:token:delete ap:gateway:token:manage ap:gateway:policy:read ap:gateway:policy:create ap:gateway:policy:delete ap:gateway:policy:manage ap:gateway:artifacts:read ap:gateway:manifest:read ap:rest_api:read ap:rest_api:create ap:rest_api:update ap:rest_api:delete ap:rest_api:manage ap:rest_api:import ap:rest_api:deployment:read ap:rest_api:deployment:create ap:rest_api:deployment:delete ap:rest_api:deployment:manage ap:rest_api:api_key:read ap:rest_api:api_key:create ap:rest_api:api_key:delete ap:rest_api:api_key:manage ap:llm_provider:read ap:llm_provider:create ap:llm_provider:update ap:llm_provider:delete ap:llm_provider:manage ap:llm_provider:api_key:read ap:llm_provider:api_key:create ap:llm_provider:api_key:delete ap:llm_provider:api_key:manage ap:llm_provider:deployment:read ap:llm_provider:deployment:create ap:llm_provider:deployment:delete ap:llm_provider:deployment:manage ap:llm_proxy:read ap:llm_proxy:create ap:llm_proxy:update ap:llm_proxy:delete ap:llm_proxy:manage ap:llm_proxy:deployment:read ap:llm_proxy:deployment:create ap:llm_proxy:deployment:delete ap:llm_proxy:deployment:manage ap:mcp_proxy:read ap:mcp_proxy:create ap:mcp_proxy:update ap:mcp_proxy:delete ap:mcp_proxy:manage ap:mcp_proxy:deployment:read ap:mcp_proxy:deployment:create ap:mcp_proxy:deployment:delete ap:mcp_proxy:deployment:manage ap:application:read ap:application:create ap:application:update ap:application:delete ap:application:manage ap:subscription:read ap:subscription:create ap:subscription:update ap:subscription:delete ap:subscription:manage ap:subscription_plan:read ap:subscription_plan:create ap:subscription_plan:update ap:subscription_plan:delete ap:subscription_plan:manage ap:project:manage ap:llm_template:manage"
-
-# Additional users — uncomment and repeat this block as needed
-# [[auth.basic_auth.users]]
-# username      = "readonly"
-# password_hash = "$2a$12$<bcrypt-hash-of-your-password>"
-# scopes        = "ap:organization:read ap:gateway:read ap:rest_api:read ap:llm_provider:read"
-
-# ---------------------------------------------------------------------------
-# TLS — Platform API
-# ---------------------------------------------------------------------------
-[tls]
-# Directory where the Platform API stores and reads its TLS certificate and key.
-# A self-signed certificate is generated here on first startup.
-cert_dir = "/app/data/certs"
-
-# ---------------------------------------------------------------------------
-# API Key
-# ---------------------------------------------------------------------------
-[api_key]
-# Hashing algorithms accepted for API key verification.
-# sha256 is the default; add "sha512" to accept both.
-hashing_algorithms = ["sha256"]
-
-# ---------------------------------------------------------------------------
-# WebSocket
-# ---------------------------------------------------------------------------
-[websocket]
-max_connections        = 1000   # global WebSocket connection limit
-connection_timeout     = 30     # seconds before an idle connection is closed
-rate_limit_per_min     = 1000   # maximum messages per minute per connection
-max_connections_per_org = 3     # maximum concurrent WebSocket connections per org
-metrics_log_enabled    = true   # emit WebSocket metrics to the log
-metrics_log_interval   = 10     # seconds between metrics log lines
-
-# ---------------------------------------------------------------------------
-# Deployments
-# ---------------------------------------------------------------------------
-[deployments]
-max_per_api_gateway          = 20     # maximum API deployments per gateway
-transitional_status_enabled  = false  # expose "pending" deployment states in responses
-
-# Deployment timeout — mark stuck deployments as failed after timeout_duration seconds.
-timeout_enabled  = true
-timeout_interval = 20   # seconds between timeout check sweeps
-timeout_duration = 60   # seconds before a stuck deployment is timed out
-
-# ---------------------------------------------------------------------------
-# Gateway
-# ---------------------------------------------------------------------------
-[gateway]
-# Reject gateway registrations whose runtime version does not match the expected range.
-enable_version_verification = false
-# Reject gateways that report an unexpected functionality type.
-enable_functionality_type_verification = false
-
-# ---------------------------------------------------------------------------
-# DevPortal integration
-# ---------------------------------------------------------------------------
-# Disable for standalone deployments that do not use a DevPortal.
-[default_devportal]
-enabled    = false
-# name       = "Default DevPortal"
-# identifier = "default"           # unique slug used internally
-# api_url    = "http://devportal:3001"
-# hostname   = "devportal.example.com"   # public hostname shown in setup instructions
-# api_key    = "change-me"
-# header_key_name = "x-wso2-api-key"
-# timeout    = 10                  # HTTP client timeout in seconds
-
-# JWT claim name mappings for DevPortal token validation.
-# role_claim_name         = "roles"
-# groups_claim_name       = "groups"
-# organization_claim_name = "organizationID"
-
-# Role names that map to DevPortal access levels.
-# admin_role       = "admin"
-# subscriber_role  = "Internal/subscriber"
-# super_admin_role = "superAdmin"
-
-# ---------------------------------------------------------------------------
-# AI Workspace
-# ---------------------------------------------------------------------------
-[ai_workspace]
 # Domain shown in the browser address bar (host:port, or just host for port 80/443).
 domain = "localhost:8080"
 
-# Authentication mode for the UI: "basic" (local users above) or "oidc" (external IDP).
+# Authentication mode for the UI: "basic" (local users) or "oidc" (external IDP).
 auth_mode = "basic"
 
 # --- OIDC mode (set auth_mode = "oidc" above to enable) ---
@@ -212,6 +32,12 @@ auth_mode = "basic"
 # oidc_authority = "https://accounts.example.com"
 # OIDC client ID registered in your IDP.
 # oidc_client_id = "your-client-id"
+
+# JWT claim name mappings — must match the [auth.idp] claim names in config-platform-api.toml.
+# Override these only if your IDP uses different claim names.
+# oidc_org_id_claim     = "org_id"
+# oidc_org_name_claim   = "org_name"
+# oidc_org_handle_claim = "org_handle"
 
 # Platform API base URL — used by the UI to make API calls (may be a relative
 # path when nginx proxying is in use, e.g. /api-proxy/api/v1).
