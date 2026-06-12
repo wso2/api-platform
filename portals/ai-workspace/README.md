@@ -252,5 +252,4 @@ nginx is the sole process in the AI Workspace container. Key decisions:
 The container runs as UID/GID **10001** (`aiworkspace`). This satisfies the `CKV_CHOREO_1` Checkov policy. All files the process needs to write at runtime are under `/tmp/`, which is world-writable. Static app files under `/app/` are owned by this user at build time via `COPY --chown`.
 
 ## Other Documentations
-[Mock Backend Documentation](workspaces/apps/ai-workspace/mock-service/README.md)
 [Production Documentation](workspaces/apps/ai-workspace/production/README.md)
