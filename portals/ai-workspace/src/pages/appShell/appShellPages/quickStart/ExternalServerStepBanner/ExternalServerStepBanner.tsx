@@ -23,26 +23,23 @@ import {
   CircularProgress,
   IconButton,
   Stack,
-  Tooltip,
   Typography,
 } from '@wso2/oxygen-ui';
-import { ArrowRight, ExternalLink, Globe, Rocket, SlidersHorizontal, X } from '@wso2/oxygen-ui-icons-react';
+import { ArrowRight, Rocket, SlidersHorizontal, X } from '@wso2/oxygen-ui-icons-react';
 import QuickStartCompletedIcon from '../../../../../assets/images/quickStart/QuickStartCompletedIcon';
+
 export type ExternalServerStepBannerStepId =
   | 'add-policies'
-  | 'deploy-to-gateway'
-  | 'publish-to-devportal';
+  | 'deploy-to-gateway';
 
 export type ExternalServerStepBannerProps = {
   serverName?: string;
   hasPolicies: boolean;
   hasDeployments: boolean;
-  isPublished?: boolean;
-  devPortalUrl?: string | null;
   onStepClick?: (stepId: ExternalServerStepBannerStepId) => void;
 };
 
-const TOTAL_STEPS = 4;
+const TOTAL_STEPS = 3;
 
 const stepButtonSx = {
   border: '1px solid',
@@ -70,14 +67,12 @@ export default function ExternalServerStepBanner({
   serverName,
   hasPolicies,
   hasDeployments,
-  isPublished = false,
-  devPortalUrl,
   onStepClick,
 }: ExternalServerStepBannerProps) {
   const [isVisible, setIsVisible] = useState(true);
 
   const resolvedServerName = serverName?.trim() || 'External Server';
-  const completedSteps = 1 + (hasPolicies ? 1 : 0) + (hasDeployments ? 1 : 0) + (isPublished ? 1 : 0);
+  const completedSteps = 1 + (hasPolicies ? 1 : 0) + (hasDeployments ? 1 : 0);
   const progressValue = (completedSteps / TOTAL_STEPS) * 100;
 
   if (!isVisible) return null;
@@ -148,38 +143,11 @@ export default function ExternalServerStepBanner({
         <Stack spacing={0.6} sx={{ minWidth: 0, flex: 1 }}>
           <Box sx={{ gap: 0.1, display: 'flex', flexDirection: 'column' }}>
             <Typography sx={{ fontSize: 16, fontWeight: 500, lineHeight: 1.35 }}>
-              {isPublished && devPortalUrl ? (
-                <>
-                  <Box component="span" sx={{ fontWeight: 700 }}>{resolvedServerName}</Box>
-                  <Box component="span"> MCP Proxy now available in </Box>
-                  <Box
-                    component="a"
-                    href={devPortalUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    sx={{
-                      fontWeight: 700,
-                      color: 'primary.main',
-                      textDecoration: 'none',
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: 0.3,
-                      verticalAlign: 'middle',
-                      '&:hover': { textDecoration: 'underline' },
-                    }}
-                  >
-                    MCP Hub <ExternalLink size={13} />
-                  </Box>
-                </>
-              ) : (
-                <>
-                  <Box component="span">Successfully Created </Box>
-                  <Box component="span" sx={{ fontWeight: 700 }}>{resolvedServerName}</Box>
-                </>
-              )}
+              <Box component="span">Successfully Created </Box>
+              <Box component="span" sx={{ fontWeight: 700 }}>{resolvedServerName}</Box>
             </Typography>
             <Typography sx={{ mt: 0.35, fontSize: 12, color: '#667085', lineHeight: 1.4 }}>
-              Click each step to configure, deploy, and publish your MCP Proxy.
+              Click each step to configure and deploy your MCP Proxy.
             </Typography>
           </Box>
 
@@ -195,7 +163,6 @@ export default function ExternalServerStepBanner({
               scrollbarWidth: 'thin',
             }}
           >
-
             {/* Step 2: Configure Policies */}
             <Box
               component="button"
@@ -223,26 +190,6 @@ export default function ExternalServerStepBanner({
               </Typography>
               <ArrowRight size={16} color="#9b9b9b" />
             </Box>
-
-            {/* Step 4: Publish to Devportal */}
-            <Tooltip
-              title={!hasDeployments ? 'Deploy to a gateway before publishing' : ''}
-              placement="top"
-              arrow
-            >
-              <Box
-                component="button"
-                type="button"
-                onClick={() => onStepClick?.('publish-to-devportal')}
-                sx={stepButtonSx}
-              >
-                {isPublished ? <QuickStartCompletedIcon size={16} /> : <Globe size={16} />}
-                <Typography sx={{ fontSize: 14, fontWeight: 500, whiteSpace: 'nowrap' }}>
-                  Publish to MCP Hub
-                </Typography>
-                <ArrowRight size={16} color="#9b9b9b" />
-              </Box>
-            </Tooltip>
           </Box>
         </Stack>
       </Stack>

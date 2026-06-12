@@ -16,8 +16,8 @@
  * under the License.
  */
 
-import { useState, useEffect } from 'react';
-import { useNavigate, Link as RouterLink } from 'react-router-dom';
+import { useState, useEffect } from "react";
+import { useNavigate, Link as RouterLink } from "react-router-dom";
 import {
   Box,
   Button,
@@ -26,21 +26,15 @@ import {
   PageContent,
   PageTitle,
   Stack,
-  Select,
-  MenuItem,
   FormControl,
   FormLabel,
-} from '@wso2/oxygen-ui';
-import { ChevronLeft } from '@wso2/oxygen-ui-icons-react';
-import { useGatewayList } from '../../../../hooks/useGateway';
-import { useAppShell } from '../../../../contexts/AppShellContext';
-import { buildOrgPath } from '../../../../utils/projectRouting';
-import { setRegistrationToken } from './registrationTokenStore';
-import { useAIWorkspaceSnackbar } from '../../../../hooks/aiWorkspaceSnackbar';
-import {
-  useEnvironments,
-  type EnvironmentOption,
-} from '../../../../hooks/useEnvironments';
+} from "@wso2/oxygen-ui";
+import { ChevronLeft } from "@wso2/oxygen-ui-icons-react";
+import { useGatewayList } from "../../../../hooks/useGateway";
+import { useAppShell } from "../../../../contexts/AppShellContext";
+import { buildOrgPath } from "../../../../utils/projectRouting";
+import { setRegistrationToken } from "./registrationTokenStore";
+import { useAIWorkspaceSnackbar } from "../../../../hooks/aiWorkspaceSnackbar";
 
 // Validation constants
 const MAX_NAME_LENGTH = 255;
@@ -52,8 +46,8 @@ const MAX_DESCRIPTION_LENGTH = 1023;
  */
 const normalizeVhost = (value: string): string => {
   const trimmed = value.trim();
-  if (trimmed.startsWith('https://')) return trimmed.slice(8);
-  if (trimmed.startsWith('http://')) return trimmed.slice(7);
+  if (trimmed.startsWith("https://")) return trimmed.slice(8);
+  if (trimmed.startsWith("http://")) return trimmed.slice(7);
   return trimmed;
 };
 
@@ -61,9 +55,9 @@ const normalizeVhost = (value: string): string => {
  * Returns the full URL for display (adds https:// if vhost has no protocol).
  */
 const getDisplayUrl = (vhost: string): string => {
-  if (!vhost || !vhost.trim()) return '';
+  if (!vhost || !vhost.trim()) return "";
   const trimmed = vhost.trim();
-  if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+  if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
     return trimmed;
   }
   return `https://${trimmed}`;
@@ -74,18 +68,18 @@ const getDisplayUrl = (vhost: string): string => {
  */
 const generateGatewayName = (displayName: string): string => {
   if (!displayName || displayName.trim().length === 0) {
-    return '';
+    return "";
   }
 
   return displayName
     .trim()
     .toLowerCase()
-    .replace(/\s+/g, '-')
-    .replace(/[^a-z0-9-]/g, '')
-    .replace(/^-+|-+$/g, '')
-    .replace(/-+/g, '-')
+    .replace(/\s+/g, "-")
+    .replace(/[^a-z0-9-]/g, "")
+    .replace(/^-+|-+$/g, "")
+    .replace(/-+/g, "-")
     .substring(0, 64)
-    .replace(/-+$/g, '');
+    .replace(/-+$/g, "");
 };
 
 export default function AddGateway() {
@@ -93,36 +87,27 @@ export default function AddGateway() {
   const { currentOrganization } = useAppShell();
   const { createGateway, isCreating } = useGatewayList();
   const showSnackbar = useAIWorkspaceSnackbar();
-  const { environments, isLoading: isLoadingEnvironments } = useEnvironments();
 
-  const [displayName, setDisplayName] = useState('');
-  const [name, setName] = useState('');
-  const [description, setDescription] = useState('');
+  const [displayName, setDisplayName] = useState("");
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
   const [vhost, setVhost] = useState(() =>
-    normalizeVhost('https://localhost:8443')
+    normalizeVhost("https://localhost:8443"),
   );
-  const [environment, setEnvironment] = useState('');
 
   // Always use AI gateway type
-  const functionalityType = 'ai';
+  const functionalityType = "ai";
 
   // Generate name from display name
   useEffect(() => {
     setName(generateGatewayName(displayName));
   }, [displayName]);
 
-  // Set default environment when environments are loaded
-  useEffect(() => {
-    if (environments.length > 0 && !environment) {
-      setEnvironment(environments[0].id);
-    }
-  }, [environments, environment]);
-
   const isFormValid = (): boolean => {
     if (!displayName || displayName.trim().length === 0) return false;
     if (displayName.length > MAX_NAME_LENGTH) return false;
     if (description.length > MAX_DESCRIPTION_LENGTH) return false;
-    const normalizedVhost = normalizeVhost(vhost || '');
+    const normalizedVhost = normalizeVhost(vhost || "");
     if (!normalizedVhost || normalizedVhost.length === 0) return false;
     return true;
   };
@@ -141,10 +126,9 @@ export default function AddGateway() {
         vhost: normalizeVhost(vhost),
         functionalityType,
         description: description || undefined,
-        environment: environment || undefined,
       });
 
-      showSnackbar('AI Gateway registered successfully', 'success');
+      showSnackbar("AI Gateway registered successfully", "success");
 
       // Store token in memory if returned (one-time view)
       if (createdGateway.token) {
@@ -154,19 +138,19 @@ export default function AddGateway() {
       // Redirect to the gateway view page
       const viewPath = buildOrgPath(
         currentOrganization,
-        `/gateways/view/${createdGateway.name}`
+        `/gateways/view/${createdGateway.name}`,
       );
       navigate(viewPath);
     } catch (error: any) {
       showSnackbar(
-        error?.message || 'Failed to register self-hosted gateway',
-        'error'
+        error?.message || "Failed to register self-hosted gateway",
+        "error",
       );
     }
   };
 
   const handleCancel = () => {
-    const listPath = buildOrgPath(currentOrganization, '/gateways');
+    const listPath = buildOrgPath(currentOrganization, "/gateways");
     navigate(listPath);
   };
 
@@ -174,7 +158,7 @@ export default function AddGateway() {
     <PageContent fullWidth>
       <Button
         component={RouterLink}
-        to={buildOrgPath(currentOrganization, '/gateways')}
+        to={buildOrgPath(currentOrganization, "/gateways")}
         size="small"
         startIcon={<ChevronLeft size={24} />}
       >
@@ -203,7 +187,7 @@ export default function AddGateway() {
                   helperText={
                     displayName.length > MAX_NAME_LENGTH
                       ? `Name must not exceed ${MAX_NAME_LENGTH} characters (${displayName.length}/${MAX_NAME_LENGTH})`
-                      : ''
+                      : ""
                   }
                 />
               </FormControl>
@@ -223,7 +207,7 @@ export default function AddGateway() {
                   helperText={
                     description.length > MAX_DESCRIPTION_LENGTH
                       ? `Description must not exceed ${MAX_DESCRIPTION_LENGTH} characters (${description.length}/${MAX_DESCRIPTION_LENGTH})`
-                      : ''
+                      : ""
                   }
                 />
               </FormControl>
@@ -240,37 +224,20 @@ export default function AddGateway() {
                 />
               </FormControl>
             </Grid>
-
-            <Grid size={{ xs: 12 }}>
-              <FormControl fullWidth>
-                <FormLabel>Associated Environment (Optional)</FormLabel>
-                <Select
-                  value={environment}
-                  onChange={(e) => setEnvironment(e.target.value)}
-                  disabled={isLoadingEnvironments || environments.length === 0}
-                >
-                  {environments.map((env: EnvironmentOption) => (
-                    <MenuItem key={env.id} value={env.id}>
-                      {env.name}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Grid>
           </Grid>
 
           <Box
             sx={{
               mt: 3,
-              display: 'flex',
-              justifyContent: 'flex-start',
+              display: "flex",
+              justifyContent: "flex-start",
               gap: 1,
             }}
           >
             <Button
               variant="outlined"
               component={RouterLink}
-              to={buildOrgPath(currentOrganization, '/gateways')}
+              to={buildOrgPath(currentOrganization, "/gateways")}
               color="secondary"
               type="button"
             >
@@ -281,7 +248,7 @@ export default function AddGateway() {
               type="submit"
               disabled={isCreating || !isFormValid()}
             >
-              {isCreating ? 'Adding Gateway...' : 'Add Gateway'}
+              {isCreating ? "Adding Gateway..." : "Add Gateway"}
             </Button>
           </Box>
         </Box>
