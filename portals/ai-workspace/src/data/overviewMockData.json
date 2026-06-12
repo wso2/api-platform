@@ -1,0 +1,198 @@
+{
+  "llmServiceProviders": [
+    {
+      "id": "openai",
+      "name": "OpenAI",
+      "models": 9,
+      "lastUpdated": "2024-09-10T09:45:00Z",
+      "status": "Active",
+      "vhost": "api.openai.com",
+      "version": "1.0"
+    },
+    {
+      "id": "anthropic",
+      "name": "Anthropic",
+      "models": 5,
+      "lastUpdated": "2024-09-12T14:30:00Z",
+      "status": "Active",
+      "vhost": "api.anthropic.com",
+      "version": "1.1"
+    },
+    {
+      "id": "azure-openai",
+      "name": "Azure OpenAI",
+      "models": 7,
+      "lastUpdated": "2024-09-08T11:20:00Z",
+      "status": "Degraded",
+      "vhost": "openai.azure.com",
+      "version": "2024-05-01"
+    },
+    {
+      "id": "aws-bedrock",
+      "name": "AWS Bedrock",
+      "models": 6,
+      "lastUpdated": "2024-09-11T17:10:00Z",
+      "status": "Active",
+      "vhost": "bedrock.fusion.com",
+      "version": "1.0"
+    },
+    {
+      "id": "google-vertex",
+      "name": "Google Vertex",
+      "models": 4,
+      "lastUpdated": "2024-09-09T08:05:00Z",
+      "status": "Active",
+      "vhost": "vertexai.googleapis.com",
+      "version": "v1"
+    },
+    {
+      "id": "cohere",
+      "name": "Cohere",
+      "models": 3,
+      "lastUpdated": "2024-09-07T18:50:00Z",
+      "status": "Paused",
+      "vhost": "api.cohere.ai",
+      "version": "2024-06"
+    }
+  ],
+  "llmProxies": [
+    {
+      "id": "payments-proxy",
+      "name": "Payments App LLM Proxy",
+      "description": "Handles payment orchestration and transaction flows",
+      "version": "v2.3",
+      "context": "/payments-llm",
+      "serviceProvider": "OpenAI",
+      "application": "Payments Hub",
+      "lastUpdated": "2024-09-11T10:10:00Z"
+    },
+    {
+      "id": "recommendations-proxy",
+      "name": "Recommendations App LLM Proxy",
+      "description": "Provides personalized recommendations",
+      "version": "v1.8",
+      "context": "/recommendations-llm",
+      "serviceProvider": "Anthropic",
+      "application": "Retail Concierge",
+      "lastUpdated": "2024-09-13T08:20:00Z"
+    },
+    {
+      "id": "risk-proxy",
+      "name": "Risk Scoring App LLM Proxy",
+      "description": "Evaluates risk signals for transactions",
+      "version": "v3.0",
+      "context": "/risk-scoring",
+      "serviceProvider": "Azure OpenAI",
+      "application": "Fraud Shield",
+      "lastUpdated": "2024-09-09T16:05:00Z"
+    },
+    {
+      "id": "search-proxy",
+      "name": "Enterprise Search App LLM Proxy",
+      "description": "Unified enterprise search layer",
+      "version": "v1.4",
+      "context": "/enterprise-search",
+      "serviceProvider": "Google Vertex",
+      "application": "Knowledge Hub",
+      "lastUpdated": "2024-09-07T12:40:00Z"
+    }
+  ],
+  "externalMcpServers": [
+    {
+      "id": "slack-tools",
+      "name": "Slack Tools",
+      "description": "MCP server for Slack messaging workflows.",
+      "status": "Active"
+    },
+    {
+      "id": "jira-ops",
+      "name": "Jira Ops",
+      "description": "Incident tracking and ticket automation.",
+      "status": "Degraded"
+    },
+    {
+      "id": "notion-sync",
+      "name": "Notion Sync",
+      "description": "Document search and sync for knowledge bases.",
+      "status": "Active"
+    },
+    {
+      "id": "github-automation",
+      "name": "GitHub Automation",
+      "description": "PR summaries, code insights, and repo tools.",
+      "status": "Paused"
+    }
+  ],
+  "applications": [
+    {
+      "id": "documentation-assistant",
+      "name": "Documentation Assistant",
+      "description": "Helps developers find and understand product docs.",
+      "owner": "Developer Experience Team",
+      "lastUpdated": "2024-09-12T08:30:00Z"
+    },
+    {
+      "id": "customer-success-agent",
+      "name": "Customer Success Agent",
+      "description": "Supports customer success workflows with smart replies.",
+      "owner": "Customer Success",
+      "lastUpdated": "2024-09-10T15:12:00Z"
+    },
+    {
+      "id": "retail-concierge",
+      "name": "Retail Concierge",
+      "description": "Personalized shopping assistant for retail customers.",
+      "owner": "Retail AI",
+      "lastUpdated": "2024-09-09T09:15:00Z"
+    },
+    {
+      "id": "knowledge-hub",
+      "name": "Knowledge Hub",
+      "description": "Internal knowledge search and summarization.",
+      "owner": "IT Operations",
+      "lastUpdated": "2024-09-08T12:00:00Z"
+    }
+  ],
+  "developerInsights": {
+    "requestTrend": [
+      { "label": "Mon", "value": 1200 },
+      { "label": "Tue", "value": 1800 },
+      { "label": "Wed", "value": 1400 },
+      { "label": "Thu", "value": 2400 },
+      { "label": "Fri", "value": 3100 },
+      { "label": "Sat", "value": 2800 },
+      { "label": "Sun", "value": 3600 }
+    ],
+    "trafficSplit": [
+      { "label": "Chat", "value": 48, "color": "#4f46e5" },
+      { "label": "Agents", "value": 32, "color": "#06b6d4" },
+      { "label": "Tools", "value": 20, "color": "#f59e0b" }
+    ],
+    "summary": [
+      { "label": "Total Requests", "value": "128k" },
+      { "label": "Avg Latency", "value": "240ms" },
+      { "label": "Success Rate", "value": "99.2%" }
+    ]
+  },
+  "adminInsights": {
+    "requestTrend": [
+      { "label": "Mon", "value": 3200 },
+      { "label": "Tue", "value": 2800 },
+      { "label": "Wed", "value": 3600 },
+      { "label": "Thu", "value": 4200 },
+      { "label": "Fri", "value": 5100 },
+      { "label": "Sat", "value": 4700 },
+      { "label": "Sun", "value": 5400 }
+    ],
+    "trafficSplit": [
+      { "label": "Providers", "value": 52, "color": "#0f766e" },
+      { "label": "MCP Proxy", "value": 33, "color": "#f97316" },
+      { "label": "System", "value": 15, "color": "#2563eb" }
+    ],
+    "summary": [
+      { "label": "Total Requests", "value": "412k" },
+      { "label": "Avg Latency", "value": "190ms" },
+      { "label": "Success Rate", "value": "98.6%" }
+    ]
+  }
+}

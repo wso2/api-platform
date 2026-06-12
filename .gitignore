@@ -38,6 +38,9 @@ node_modules/
 *.tsbuildinfo
 next-env.d.ts
 
+# Vite cache                                                                                                                
+.vite/   
+
 # Build and output directories
 build/
 dist/

@@ -19,9 +19,11 @@ package authenticators
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"slices"
 	"strings"
 	"time"
@@ -68,7 +70,13 @@ func newJWTAuthenticatorWithJWKS(config *models.AuthConfig, logger *slog.Logger,
 		// Create JWKS storage with custom validation options to skip X5TS256 validation
 		// This is required for some OIDC providers like Asgardeo that may have X5TS256 mismatches
 		ctx := context.Background()
+		jwksHTTPClient := &http.Client{
+			Transport: &http.Transport{
+				TLSClientConfig: &tls.Config{InsecureSkipVerify: config.JWTConfig.InsecureSkipVerifyTLS}, //nolint:gosec
+			},
+		}
 		storageOptions := jwkset.HTTPClientStorageOptions{
+			Client:          jwksHTTPClient,
 			Ctx:             ctx,
 			RefreshInterval: 10 * time.Minute,
 			ValidateOptions: jwkset.JWKValidateOptions{
@@ -114,11 +122,18 @@ func (j *JWTAuthenticator) Authenticate(ctx *gin.Context) (*AuthResult, error) {
 	}
 
 	claims := jwt.MapClaims{}
-	validatedToken, err := jwt.ParseWithClaims(tokenString, claims, j.jwks.Keyfunc)
+	leeway := 60 * time.Second
+	if j.config.JWTConfig.JWTLeeway != nil {
+		leeway = *j.config.JWTConfig.JWTLeeway
+	}
+	validatedToken, err := jwt.ParseWithClaims(tokenString, claims, j.jwks.Keyfunc, jwt.WithLeeway(leeway))
 
 	if err != nil {
 		if errors.Is(err, jwt.ErrTokenExpired) {
 			return nil, ErrExpiredToken
+		}
+		if errors.Is(err, jwt.ErrTokenNotValidYet) {
+			return nil, fmt.Errorf("%w: token not yet valid (clock skew?)", ErrInvalidToken)
 		}
 		return nil, fmt.Errorf("%w: %v", ErrInvalidToken, err)
 	}
@@ -144,8 +159,7 @@ func (j *JWTAuthenticator) Authenticate(ctx *gin.Context) (*AuthResult, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to get audience: %w", err)
 		}
-		validAudience := slices.Contains(audience, *j.config.JWTConfig.Audience)
-		if !validAudience {
+		if !slices.Contains(audience, *j.config.JWTConfig.Audience) {
 			return nil, errors.New("invalid audience")
 		}
 	}
@@ -170,7 +184,6 @@ func (j *JWTAuthenticator) Authenticate(ctx *gin.Context) (*AuthResult, error) {
 		Roles:   permissions,
 		Claims:  claims,
 	}, nil
-
 }
 
 func (j *JWTAuthenticator) resolvePermissions(claims jwt.MapClaims) []string {
@@ -237,6 +250,7 @@ func (j *JWTAuthenticator) resolvePermissions(claims jwt.MapClaims) []string {
 	}
 	return permissions
 }
+
 
 // Name returns the authenticator name
 func (j *JWTAuthenticator) Name() string {

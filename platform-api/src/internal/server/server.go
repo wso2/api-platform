@@ -41,6 +41,7 @@ import (
 	"platform-api/src/config"
 	"platform-api/src/internal/database"
 	"platform-api/src/internal/handler"
+	"platform-api/src/internal/model"
 	"platform-api/src/internal/repository"
 	"platform-api/src/internal/service"
 	"platform-api/src/internal/utils"
@@ -48,6 +49,8 @@ import (
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	"github.com/wso2/api-platform/common/authenticators"
+	commonmodels "github.com/wso2/api-platform/common/models"
 )
 
 type Server struct {
@@ -100,6 +103,13 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	websubAPIRepo := repository.NewWebSubAPIRepo(db)
 	webbrokerAPIRepo := repository.NewWebBrokerAPIRepo(db)
 	apiKeyRepo := repository.NewAPIKeyRepo(db)
+
+	// Seed the file-based organization on startup if file-based auth mode is enabled.
+	if cfg.Auth.FileBased.Enabled {
+		if err := seedFileBasedOrg(cfg, orgRepo, slogger); err != nil {
+			return nil, fmt.Errorf("failed to seed file-based organization: %w", err)
+		}
+	}
 
 	// Seed default LLM provider templates into the DB (per organization)
 	cfg.LLMTemplateDefinitionsPath = strings.TrimSpace(cfg.LLMTemplateDefinitionsPath)
@@ -293,6 +303,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	timeoutService := service.NewDeploymentTimeoutService(deploymentRepo, timeoutConfig, slogger)
 
 	slogger.Info("Initialized all services and handlers successfully")
+	slogger.Info("Platform API configuration", slog.Bool("demoMode", demoMode()))
 
 	if strings.ToLower(cfg.LogLevel) == "debug" {
 		gin.SetMode(gin.DebugMode)
@@ -311,14 +322,56 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	corsConfig.AllowCredentials = true
 	router.Use(cors.New(corsConfig))
 
-	// Configure and apply JWT authentication middleware
-	authConfig := middleware.AuthConfig{
-		SecretKey:      cfg.JWT.SecretKey,
-		TokenIssuer:    cfg.JWT.Issuer,
-		SkipPaths:      cfg.JWT.SkipPaths,
-		SkipValidation: cfg.JWT.SkipValidation,
+	// Load the OpenAPI scope registry — source of truth for required scopes per route.
+	scopeRegistry, err := middleware.LoadScopeRegistry(cfg.OpenAPISpecPath)
+	if err != nil {
+		slogger.Error("Failed to load OpenAPI scope registry", "path", cfg.OpenAPISpecPath, "error", err)
+		return nil, fmt.Errorf("failed to load OpenAPI scope registry: %w", err)
 	}
-	router.Use(middleware.AuthMiddleware(authConfig))
+	slogger.Info("Loaded OpenAPI scope registry", "path", cfg.OpenAPISpecPath)
+
+	// Load and validate the role-to-scope map when roles.yaml is configured.
+	roleScopeMap, err := loadRoleScopeMap(cfg, scopeRegistry, slogger)
+	if err != nil {
+		return nil, err
+	}
+
+	if !cfg.EnableScopeValidation {
+		slogger.Warn("scope validation is disabled — all authenticated requests will be allowed regardless of scope")
+	}
+
+	// Register public routes before auth middleware so they bypass authentication.
+	orgHandler.RegisterPublicRoutes(router)
+	handler.NewAuthLoginHandler(cfg).RegisterPublicRoutes(router)
+
+	// Build and apply the authenticator middleware.
+	if cfg.Auth.FileBased.Enabled {
+		slogger.Info("Auth mode: file-based (HMAC-signed JWT)")
+		if !demoMode() {
+			slogger.Warn("file-based authentication is enabled — this is not recommended for production; please configure an IDP of your choice")
+		}
+		router.Use(middleware.LocalJWTAuthMiddleware(middleware.AuthConfig{
+			SecretKey:      cfg.Auth.JWT.SecretKey,
+			TokenIssuer:    cfg.Auth.JWT.Issuer,
+			SkipPaths:      cfg.Auth.SkipPaths,
+			SkipValidation: false,
+		}))
+	} else {
+		authenticator, err := buildAuthenticator(cfg, slogger, roleScopeMap)
+		if err != nil {
+			return nil, err
+		}
+		for _, mw := range authenticator.Middleware() {
+			router.Use(mw)
+		}
+	}
+
+	// Apply the OpenAPI-driven scope enforcer after authentication so identity
+	// values are already in the context when scope checks run.
+	router.Use(middleware.ScopeEnforcer(scopeRegistry, middleware.ScopeEnforcerConfig{
+		ValidationMode: cfg.Auth.IDP.ValidationMode,
+		Enabled:        cfg.EnableScopeValidation,
+	}))
 
 	// Register routes
 	orgHandler.RegisterRoutes(router)
@@ -367,6 +420,107 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 		timeoutService: timeoutService,
 		logger:         slogger,
 	}, nil
+}
+
+// demoMode reports whether APIP_DEMO_MODE is enabled.
+// Defaults to true when the variable is unset.
+func demoMode() bool {
+	v := strings.ToLower(strings.TrimSpace(os.Getenv("APIP_DEMO_MODE")))
+	if v == "" {
+		return true
+	}
+	return v == "true" || v == "1"
+}
+
+// buildAuthenticator constructs an Authenticator from the server configuration.
+// Only called when file-based auth is disabled.
+func buildAuthenticator(cfg *config.Server, slogger *slog.Logger, roleScopeMap map[string][]string) (middleware.Authenticator, error) {
+	if !cfg.Auth.IDP.Enabled {
+		if cfg.Auth.JWT.SkipValidation {
+			if !demoMode() {
+				slogger.Warn("WARNING: JWT signature validation is DISABLED (AUTH_JWT_SKIP_VALIDATION=true) but APIP_DEMO_MODE=false. " +
+					"Tokens are NOT verified — any bearer value will be accepted. " +
+					"Set APIP_DEMO_MODE=true to suppress this warning, or set AUTH_JWT_SKIP_VALIDATION=false for production.")
+			} else {
+				slogger.Warn("JWT mode: signature validation disabled (AUTH_JWT_SKIP_VALIDATION=true) [APIP_DEMO_MODE=true]")
+			}
+		} else {
+			slogger.Info("JWT mode: HMAC signature validation enabled")
+		}
+		return middleware.NewJWTAuthenticator(
+			middleware.LocalJWTAuthMiddleware(middleware.AuthConfig{
+				SecretKey:      cfg.Auth.JWT.SecretKey,
+				TokenIssuer:    cfg.Auth.JWT.Issuer,
+				SkipPaths:      cfg.Auth.SkipPaths,
+				SkipValidation: cfg.Auth.JWT.SkipValidation,
+			}),
+		), nil
+	}
+
+	// IDP mode — same config fields for all providers (Thunder, Keycloak, Asgardeo, etc.)
+	issuerURL := ""
+	if len(cfg.Auth.IDP.Issuer) > 0 {
+		issuerURL = cfg.Auth.IDP.Issuer[0]
+	}
+	idpCfg := commonmodels.IDPConfig{
+		Enabled:    true,
+		IssuerURL:  issuerURL,
+		JWKSUrl:    cfg.Auth.IDP.JWKSUrl,
+		ScopeClaim: cfg.Auth.IDP.ClaimMappings.ScopeClaimName,
+	}
+	authCfg := commonmodels.AuthConfig{
+		JWTConfig: &idpCfg,
+		SkipPaths: cfg.Auth.SkipPaths,
+	}
+	authMiddleware, err := authenticators.AuthMiddleware(authCfg, slogger)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize IDP auth middleware: %w", err)
+	}
+	claimsMiddleware := middleware.PlatformClaimsMiddleware(middleware.PlatformClaimNames{
+		OrganizationClaim: cfg.Auth.IDP.ClaimMappings.OrganizationClaimName,
+		OrgNameClaim:      cfg.Auth.IDP.ClaimMappings.OrgNameClaimName,
+		OrgHandleClaim:    cfg.Auth.IDP.ClaimMappings.OrgHandleClaimName,
+		UserIDClaim:       cfg.Auth.IDP.ClaimMappings.UserIDClaimName,
+		UsernameClaim:     cfg.Auth.IDP.ClaimMappings.UsernameClaimName,
+		EmailClaim:        cfg.Auth.IDP.ClaimMappings.EmailClaimName,
+		ScopeClaim:        cfg.Auth.IDP.ClaimMappings.ScopeClaimName,
+		RolesClaimPath:    cfg.Auth.IDP.ClaimMappings.RolesClaimPath,
+		RoleScopeMap:      roleScopeMap,
+	})
+
+	idpLabel := cfg.Auth.IDP.Name
+	if idpLabel == "" {
+		idpLabel = "IDP"
+	}
+	slogger.Info("IDP authentication enabled",
+		slog.String("name", idpLabel),
+		slog.String("jwksUrl", cfg.Auth.IDP.JWKSUrl),
+		slog.Any("issuers", cfg.Auth.IDP.Issuer),
+	)
+	return middleware.NewJWTAuthenticator(
+		authMiddleware,
+		claimsMiddleware,
+	), nil
+}
+
+// loadRoleScopeMap loads the role-to-scope mapping for IDP role mode.
+// Returns nil when role mode is not active or no mapping file is configured,
+// which causes IDP role names to be used as-is as scope values (passthrough).
+func loadRoleScopeMap(cfg *config.Server, registry *middleware.ScopeRegistry, slogger *slog.Logger) (map[string][]string, error) {
+	if !cfg.Auth.IDP.Enabled || cfg.Auth.IDP.ValidationMode != "role" || cfg.Auth.IDP.RoleMappingsFile == "" {
+		return nil, nil
+	}
+
+	m, err := middleware.LoadRoleScopeMap(cfg.Auth.IDP.RoleMappingsFile)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load role mappings file: %w", err)
+	}
+	if err := middleware.ValidateRoleScopeMap(m, registry); err != nil {
+		return nil, fmt.Errorf("invalid roles.yaml: %w", err)
+	}
+	slogger.Info("Loaded role-to-scope mapping", "path", cfg.Auth.IDP.RoleMappingsFile, "roles", len(m))
+
+	return m, nil
 }
 
 // generateSelfSignedCert creates a self-signed certificate for development and saves it to disk
@@ -503,6 +657,16 @@ func (s *Server) Start(port string, certDir string) error {
 		errCh <- httpServer.ListenAndServeTLS("", "")
 	}()
 
+	fmt.Print("\n\n" +
+		"========================================================================\n" +
+		"\n" +
+		"\n" +
+		"                      Platform API Started\n" +
+		"\n" +
+		"\n" +
+		"========================================================================\n" +
+		"\n\n")
+
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	defer signal.Stop(quit)
@@ -522,4 +686,37 @@ func (s *Server) Start(port string, certDir string) error {
 // GetRouter returns the gin router for testing purposes
 func (s *Server) GetRouter() *gin.Engine {
 	return s.router
+}
+
+// seedFileBasedOrg ensures the file-based auth organization exists in the DB.
+// It fetches by the configured handle first; only creates the org when no
+// matching org is found. The org ID in cfg is updated to the persisted value
+// so the login handler issues tokens with the correct org ID.
+func seedFileBasedOrg(cfg *config.Server, orgRepo repository.OrganizationRepository, slogger *slog.Logger) error {
+	ba := &cfg.Auth.FileBased
+
+	existing, err := orgRepo.GetOrganizationByHandle(ba.Organization.Handle)
+	if err != nil {
+		return fmt.Errorf("failed to check file-based organization: %w", err)
+	}
+	if existing != nil {
+		ba.Organization.ID = existing.ID
+		slogger.Info("File-based organization already exists", "id", existing.ID, "handle", existing.Handle)
+		return nil
+	}
+
+	now := time.Now()
+	org := &model.Organization{
+		ID:        ba.Organization.ID,
+		Name:      ba.Organization.Name,
+		Handle:    ba.Organization.Handle,
+		Region:    ba.Organization.Region,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+	if err := orgRepo.CreateOrganization(org); err != nil {
+		return fmt.Errorf("failed to create file-based organization: %w", err)
+	}
+	slogger.Info("Seeded file-based organization", "id", org.ID, "handle", org.Handle)
+	return nil
 }

@@ -1,0 +1,36 @@
+# --------------------------------------------------------------------
+# Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+#
+# WSO2 LLC. licenses this file to you under the Apache License,
+# Version 2.0 (the "License"); you may not use this file except
+# in compliance with the License. You may obtain a copy of the
+# License at http://www.apache.org/licenses/LICENSE-2.0
+# --------------------------------------------------------------------
+#
+# AI Workspace configuration — quickstart (file-based auth)
+#
+# This file is read by the AI Workspace container at startup.
+# Environment variables always override values set here.
+# --------------------------------------------------------------------
+
+# Domain shown in the browser address bar (host:port or just host for port 80/443).
+domain = "localhost:5380"
+
+# Authentication mode for the UI: "basic" uses the Platform API's file-based login.
+auth_mode = "basic"
+
+# Platform API base URL — used by the UI to make API calls.
+platform_api_base_url = "https://localhost:9243/api/v1"
+
+# Control-plane host — the externally reachable address gateways use to reach
+# the Platform API. Shown in gateway setup instructions (keys.env, helm values).
+controlplane_host = "host.docker.internal:9243"
+
+default_org_region = "us"
+
+# OIDC — disabled in quickstart mode. Uncomment and set auth_mode = "oidc" to use.
+# oidc_authority    = "https://api.asgardeo.io/t/<YOUR_ORG>/oauth2/token"
+# oidc_client_id    = ""
+# oidc_org_id_claim     = "org_id"
+# oidc_org_name_claim   = "org_name"
+# oidc_org_handle_claim = "org_handle"

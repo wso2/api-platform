@@ -58,8 +58,8 @@ func (h *WebSubAPIHandler) RegisterRoutes(r *gin.Engine) {
 		v1.GET("/websub-apis/:apiId", h.GetWebSubAPI)
 		v1.PUT("/websub-apis/:apiId", h.UpdateWebSubAPI)
 		v1.DELETE("/websub-apis/:apiId", h.DeleteWebSubAPI)
-		v1.POST("/websub-apis/:apiId/devportals/publish", h.PublishToDevPortal)
-		v1.POST("/websub-apis/:apiId/devportals/unpublish", h.UnpublishFromDevPortal)
+		v1.POST("/websub-apis/:apiId/publications", h.PublishToDevPortal)
+		v1.DELETE("/websub-apis/:apiId/publications/:devportalId", h.UnpublishFromDevPortal)
 	}
 }
 
@@ -186,7 +186,7 @@ func (h *WebSubAPIHandler) DeleteWebSubAPI(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
-// PublishToDevPortal handles POST /api/v1/websub-apis/:apiId/devportals/publish
+// PublishToDevPortal publishes a WebSub API to a DevPortal.
 func (h *WebSubAPIHandler) PublishToDevPortal(c *gin.Context) {
 	orgID, ok := middleware.GetOrganizationFromContext(c)
 	if !ok {
@@ -210,7 +210,7 @@ func (h *WebSubAPIHandler) PublishToDevPortal(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "WebSub API published successfully to DevPortal"})
 }
 
-// UnpublishFromDevPortal handles POST /api/v1/websub-apis/:apiId/devportals/unpublish
+// UnpublishFromDevPortal unpublishes a WebSub API from a DevPortal.
 func (h *WebSubAPIHandler) UnpublishFromDevPortal(c *gin.Context) {
 	orgID, ok := middleware.GetOrganizationFromContext(c)
 	if !ok {
@@ -219,16 +219,9 @@ func (h *WebSubAPIHandler) UnpublishFromDevPortal(c *gin.Context) {
 	}
 
 	apiHandle := c.Param("apiId")
+	devPortalID := c.Param("devportalId")
 
-	var req api.UnpublishFromDevPortalRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid request body"))
-		return
-	}
-
-	devPortalUUID := req.DevPortalUuid.String()
-
-	if err := h.websubAPIService.UnpublishFromDevPortal(orgID, apiHandle, devPortalUUID); err != nil {
+	if err := h.websubAPIService.UnpublishFromDevPortal(orgID, apiHandle, devPortalID); err != nil {
 		h.handleServiceError(c, err)
 		return
 	}

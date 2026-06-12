@@ -207,7 +207,7 @@ func (h *GatewayHandler) GetGateway(c *gin.Context) {
 	c.JSON(http.StatusOK, gateway)
 }
 
-// GetGatewayStatus handles GET /api/v1/status/gateways
+// GetGatewayStatus retrieves gateway status, optionally filtered by gatewayId query param.
 func (h *GatewayHandler) GetGatewayStatus(c *gin.Context) {
 	orgId, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {
@@ -216,14 +216,12 @@ func (h *GatewayHandler) GetGatewayStatus(c *gin.Context) {
 		return
 	}
 
-	// Get optional gatewayId filter from query parameter
 	gatewayId := c.Query("gatewayId")
 	var gatewayIdPtr *string
 	if gatewayId != "" {
 		gatewayIdPtr = &gatewayId
 	}
 
-	// Get gateway status from service
 	status, err := h.gatewayService.GetGatewayStatus(orgId, gatewayIdPtr)
 	if err != nil {
 		if strings.Contains(err.Error(), "gateway not found") {
@@ -702,12 +700,11 @@ func (h *GatewayHandler) RegisterRoutes(r *gin.Engine) {
 	{
 		customPoliciesGroup.GET("", h.ListCustomPolicies)
 		customPoliciesGroup.POST("/sync", h.SyncCustomPolicy)
+		customPoliciesGroup.GET("/:customPolicyUuid/versions/:version", h.GetCustomPolicy)
+		customPoliciesGroup.DELETE("/:customPolicyUuid/versions/:version", h.DeleteCustomPolicy)
+		// Deprecated paths — kept for backward compatibility.
 		customPoliciesGroup.GET("/:customPolicyUuid/version/:version", h.GetCustomPolicy)
 		customPoliciesGroup.DELETE("/:customPolicyUuid/version/:version", h.DeleteCustomPolicy)
 	}
 
-	gatewayStatusGroup := r.Group("/api/v1/status")
-	{
-		gatewayStatusGroup.GET("/gateways", h.GetGatewayStatus)
-	}
 }

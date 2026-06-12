@@ -58,8 +58,8 @@ func (h *WebBrokerAPIHandler) RegisterRoutes(r *gin.Engine) {
 		v1.GET("/webbroker-apis/:apiId", h.GetWebBrokerAPI)
 		v1.PUT("/webbroker-apis/:apiId", h.UpdateWebBrokerAPI)
 		v1.DELETE("/webbroker-apis/:apiId", h.DeleteWebBrokerAPI)
-		v1.POST("/webbroker-apis/:apiId/devportals/publish", h.PublishToDevPortal)
-		v1.POST("/webbroker-apis/:apiId/devportals/unpublish", h.UnpublishFromDevPortal)
+		v1.POST("/webbroker-apis/:apiId/publications", h.PublishToDevPortal)
+		v1.DELETE("/webbroker-apis/:apiId/publications/:devportalId", h.UnpublishFromDevPortal)
 	}
 }
 
@@ -186,7 +186,7 @@ func (h *WebBrokerAPIHandler) DeleteWebBrokerAPI(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
-// PublishToDevPortal handles POST /api/v1/webbroker-apis/:apiId/devportals/publish
+// PublishToDevPortal publishes a WebBroker API to a DevPortal.
 func (h *WebBrokerAPIHandler) PublishToDevPortal(c *gin.Context) {
 	orgID, ok := middleware.GetOrganizationFromContext(c)
 	if !ok {
@@ -210,7 +210,7 @@ func (h *WebBrokerAPIHandler) PublishToDevPortal(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "WebBroker API published successfully to DevPortal"})
 }
 
-// UnpublishFromDevPortal handles POST /api/v1/webbroker-apis/:apiId/devportals/unpublish
+// UnpublishFromDevPortal unpublishes a WebBroker API from a DevPortal.
 func (h *WebBrokerAPIHandler) UnpublishFromDevPortal(c *gin.Context) {
 	orgID, ok := middleware.GetOrganizationFromContext(c)
 	if !ok {
@@ -219,16 +219,9 @@ func (h *WebBrokerAPIHandler) UnpublishFromDevPortal(c *gin.Context) {
 	}
 
 	apiHandle := c.Param("apiId")
+	devPortalID := c.Param("devportalId")
 
-	var req api.UnpublishFromDevPortalRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid request body"))
-		return
-	}
-
-	devPortalUUID := req.DevPortalUuid.String()
-
-	if err := h.webbrokerAPIService.UnpublishFromDevPortal(orgID, apiHandle, devPortalUUID); err != nil {
+	if err := h.webbrokerAPIService.UnpublishFromDevPortal(orgID, apiHandle, devPortalID); err != nil {
 		h.handleServiceError(c, err)
 		return
 	}

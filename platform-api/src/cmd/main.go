@@ -18,6 +18,7 @@
 package main
 
 import (
+	"flag"
 	"os"
 	"platform-api/src/config"
 	"platform-api/src/internal/logger"
@@ -25,6 +26,13 @@ import (
 )
 
 func main() {
+	configFile := flag.String("config", "", "path to config.toml file (optional; env vars take priority over the file)")
+	flag.Parse()
+
+	if *configFile != "" {
+		config.SetConfigPath(*configFile)
+	}
+
 	cfg := config.GetConfig()
 
 	// Initialize logger
@@ -35,7 +43,6 @@ func main() {
 	slogger := logger.NewLogger(logConfig)
 
 	slogger.Info("Initializing Platform API server...")
-	// CreateOrganization and start server
 	srv, err := server.StartPlatformAPIServer(cfg, slogger)
 	if err != nil {
 		slogger.Error("Failed to create server", "error", err)

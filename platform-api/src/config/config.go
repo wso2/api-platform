@@ -18,184 +18,207 @@
 package config
 
 import (
+	"crypto/rand"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
+	"log/slog"
+	"reflect"
+	"strings"
 	"sync"
 
-	"github.com/kelseyhightower/envconfig"
+	"github.com/go-viper/mapstructure/v2"
+	toml "github.com/knadh/koanf/parsers/toml/v2"
+	kenv "github.com/knadh/koanf/providers/env"
+	"github.com/knadh/koanf/providers/file"
+	"github.com/knadh/koanf/v2"
 )
+
+// FileBasedUser represents a built-in user for file-based auth mode.
+type FileBasedUser struct {
+	Username     string `json:"username"     koanf:"username"`
+	PasswordHash string `json:"password_hash" koanf:"password_hash"`
+	Scopes       string `json:"scopes"       koanf:"scopes"`
+}
+
+// FileBasedUsers is a slice of FileBasedUser that can be decoded from a JSON string (env var)
+// or from a TOML array of tables ([[auth.file_based.users]]).
+type FileBasedUsers []FileBasedUser
+
+// FileBasedOrg holds the single organization used in file-based auth mode.
+type FileBasedOrg struct {
+	// ID is the org UUID. Auto-generated at startup if empty.
+	ID string `koanf:"id"`
+
+	// Name is the display name of the organization.
+	Name string `koanf:"name"`
+
+	// Handle is the URL-safe slug for the organization.
+	Handle string `koanf:"handle"`
+
+	// Region is the deployment region for the organization.
+	Region string `koanf:"region"`
+}
+
+// FileBased holds configuration for local username/password authentication.
+type FileBased struct {
+	Enabled      bool           `koanf:"enabled"`
+	Organization FileBasedOrg   `koanf:"organization"`
+	Users        FileBasedUsers `koanf:"users"`
+}
 
 // Server holds the configuration parameters for the application.
 type Server struct {
-	LogLevel string `envconfig:"LOG_LEVEL" default:"DEBUG"`
-	//Logger   logging.Logger
+	LogLevel string `koanf:"log_level"`
+	Port     string `koanf:"port"`
 
-	// Server configurations
-	Port string `envconfig:"PORT" default:"9243"`
+	DBSchemaPath               string `koanf:"db_schema_path"`
+	OpenAPISpecPath            string `koanf:"openapi_spec_path"`
+	LLMTemplateDefinitionsPath string `koanf:"llm_template_definitions_path"`
 
-	// Database configurations
-	Database     Database `envconfig:"DATABASE"`
-	DBSchemaPath string   `envconfig:"DB_SCHEMA_PATH" default:"./internal/database/schema.sql"`
+	Database         Database         `koanf:"database"`
+	Auth             Auth             `koanf:"auth"`
+	WebSocket        WebSocket        `koanf:"websocket"`
+	DefaultDevPortal DefaultDevPortal `koanf:"default_devportal"`
+	Deployments      Deployments      `koanf:"deployments"`
+	TLS              TLS              `koanf:"tls"`
+	APIKey           APIKey           `koanf:"api_key"`
+	Gateway          Gateway          `koanf:"gateway"`
 
-	// LLM provider template bootstrap (used to seed defaults into the DB)
-	LLMTemplateDefinitionsPath string `envconfig:"LLM_TEMPLATE_DEFINITIONS_PATH" default:"./resources/default-llm-provider-templates"`
+	EnableScopeValidation bool `koanf:"enable_scope_validation"`
+}
 
-	// JWT Authentication configurations
-	JWT JWT `envconfig:"JWT"`
+// Auth groups all authentication-related configuration.
+type Auth struct {
+	SkipPaths []string  `koanf:"skip_paths"`
+	IDP       IDP       `koanf:"idp"`
+	JWT       JWT       `koanf:"jwt"`
+	FileBased FileBased `koanf:"file_based"`
+}
 
-	// WebSocket configurations
-	WebSocket WebSocket `envconfig:"WEBSOCKET"`
+// IDPClaimMappings holds JWT claim name mappings for an IDP.
+type IDPClaimMappings struct {
+	OrganizationClaimName string `koanf:"organization_claim_name"`
+	OrgNameClaimName      string `koanf:"org_name_claim_name"`
+	OrgHandleClaimName    string `koanf:"org_handle_claim_name"`
+	UserIDClaimName       string `koanf:"user_id_claim_name"`
+	UsernameClaimName     string `koanf:"username_claim_name"`
+	EmailClaimName        string `koanf:"email_claim_name"`
+	ScopeClaimName        string `koanf:"scope_claim_name"`
+	RolesClaimPath        string `koanf:"roles_claim_path"`
+}
 
-	// Default DevPortal configurations
-	DefaultDevPortal DefaultDevPortal `envconfig:"DEFAULT_DEVPORTAL"`
-
-	// Deployment configurations
-	Deployments Deployments `envconfig:"DEPLOYMENTS"`
-	// TLS configurations
-	TLS TLS `envconfig:"TLS"`
-
-	// API key configurations
-	APIKey APIKey `envconfig:"API_KEY"`
-
-	// Gateway configurations
-	Gateway Gateway `envconfig:"GATEWAY"`
+// IDP holds configuration for JWKS-based identity providers.
+type IDP struct {
+	Enabled          bool             `koanf:"enabled"`
+	Name             string           `koanf:"name"`
+	JWKSUrl          string           `koanf:"jwks_url"`
+	Issuer           []string         `koanf:"issuer"`
+	Audience         []string         `koanf:"audience"`
+	ValidationMode   string           `koanf:"validation_mode"`
+	RoleMappingsFile string           `koanf:"role_mappings_file"`
+	ClaimMappings    IDPClaimMappings `koanf:"claim_mappings"`
 }
 
 // Gateway holds gateway-related configuration.
 type Gateway struct {
-	// EnableVersionVerification controls whether the platform API rejects gateway
-	// connections whose reported version does not match the registered version.
-	// When false (default), a mismatch is logged and the connection is allowed to proceed.
-	// Env: GATEWAY_ENABLE_VERSION_VERIFICATION (default: false)
-	EnableVersionVerification bool `envconfig:"ENABLE_VERSION_VERIFICATION" default:"false"`
-
-	// EnableFunctionalityTypeVerification controls whether the platform API rejects
-	// gateway connections whose reported functionality type is incompatible with the
-	// registered type. When false (default), a mismatch is logged and the connection
-	// is allowed to proceed.
-	// Env: GATEWAY_ENABLE_FUNCTIONALITY_TYPE_VERIFICATION (default: false)
-	EnableFunctionalityTypeVerification bool `envconfig:"ENABLE_FUNCTIONALITY_TYPE_VERIFICATION" default:"false"`
+	EnableVersionVerification           bool `koanf:"enable_version_verification"`
+	EnableFunctionalityTypeVerification bool `koanf:"enable_functionality_type_verification"`
 }
 
-// TLS holds TLS certificate configuration
+// TLS holds TLS certificate configuration.
 type TLS struct {
-	CertDir string `envconfig:"CERT_DIR" default:"./data/certs"`
+	CertDir string `koanf:"cert_dir"`
 }
 
-// JWT holds JWT-specific configuration
+// JWT holds configuration for local HMAC JWT authentication.
 type JWT struct {
-	SecretKey      string   `envconfig:"SECRET_KEY" default:"your-secret-key-change-in-production"`
-	Issuer         string   `envconfig:"ISSUER" default:"thunder"`
-	SkipPaths      []string `envconfig:"SKIP_PATHS" default:"/health,/metrics,/api/internal/v1/ws/gateways/connect,/api/internal/v1/apis,/api/internal/v1/llm-providers,/api/internal/v1/llm-proxies,/api/internal/v1/subscription-plans,/api/internal/v1/mcp-proxies,/api/internal/v1/gateways,/api/internal/v1/deployments,/api/internal/v1/artifacts,/api/internal/v1/websub-apis,/api/internal/v1/webbroker-apis"`
-	SkipValidation bool     `envconfig:"SKIP_VALIDATION" default:"true"` // Skip signature validation for development
+	Enabled        bool   `koanf:"enabled"`
+	SecretKey      string `koanf:"secret_key"`
+	Issuer         string `koanf:"issuer"`
+	SkipValidation bool   `koanf:"skip_validation"`
 }
 
-// WebSocket holds WebSocket-specific configuration
+// WebSocket holds WebSocket-specific configuration.
 type WebSocket struct {
-	MaxConnections       int  `envconfig:"WS_MAX_CONNECTIONS" default:"1000"`
-	ConnectionTimeout    int  `envconfig:"WS_CONNECTION_TIMEOUT" default:"30"` // seconds
-	RateLimitPerMin      int  `envconfig:"WS_RATE_LIMIT_PER_MINUTE" default:"1000"`
-	MaxConnectionsPerOrg int  `envconfig:"WS_MAX_CONNECTIONS_PER_ORG" default:"3"`
-	MetricsLogEnabled    bool `envconfig:"WS_METRICS_LOG_ENABLED" default:"true"`
-	MetricsLogInterval   int  `envconfig:"WS_METRICS_LOG_INTERVAL" default:"10"` // seconds
+	MaxConnections       int  `koanf:"max_connections"`
+	ConnectionTimeout    int  `koanf:"connection_timeout"`
+	RateLimitPerMin      int  `koanf:"rate_limit_per_min"`
+	MaxConnectionsPerOrg int  `koanf:"max_connections_per_org"`
+	MetricsLogEnabled    bool `koanf:"metrics_log_enabled"`
+	MetricsLogInterval   int  `koanf:"metrics_log_interval"`
 }
 
-// Database holds database-specific configuration
+// Database holds database-specific configuration.
 type Database struct {
-	Driver string `envconfig:"DRIVER" default:"sqlite3"`
-	// DBPath is the file path for SQLite databases.
-	// Use DATABASE_DB_PATH to override; keeping it distinct from the OS PATH variable.
-	Path            string `envconfig:"DB_PATH" default:"./data/api_platform.db"`
-	Host            string `envconfig:"HOST" default:"localhost"`
-	Port            int    `envconfig:"PORT" default:"5432"`
-	Name            string `envconfig:"NAME" default:"platform_api"`
-	User            string `envconfig:"USER" default:""`
-	Password        string `envconfig:"PASSWORD" default:""`
-	SSLMode         string `envconfig:"SSL_MODE" default:"disable"`
-	MaxOpenConns    int    `envconfig:"MAX_OPEN_CONNS" default:"25"`
-	MaxIdleConns    int    `envconfig:"MAX_IDLE_CONNS" default:"10"`
-	ConnMaxLifetime int    `envconfig:"CONN_MAX_LIFETIME" default:"300"` // seconds
+	Driver string `koanf:"driver"`
+	// Path is the file path for SQLite databases.
+	Path            string `koanf:"path"`
+	Host            string `koanf:"host"`
+	Port            int    `koanf:"port"`
+	Name            string `koanf:"name"`
+	User            string `koanf:"user"`
+	Password        string `koanf:"password"`
+	SSLMode         string `koanf:"ssl_mode"`
+	MaxOpenConns    int    `koanf:"max_open_conns"`
+	MaxIdleConns    int    `koanf:"max_idle_conns"`
+	ConnMaxLifetime int    `koanf:"conn_max_lifetime"`
 
-	// ExecuteSchemaDDL controls whether to run the schema DDL (CREATE TABLE, etc.) on startup.
-	// Set to false when the DB user lacks DDL privileges (e.g. deployed Postgres with restricted role).
-	// Env: DATABASE_EXECUTE_SCHEMA_DDL (default: true)
-	ExecuteSchemaDDL bool `envconfig:"EXECUTE_SCHEMA_DDL" default:"true"`
-
-	// SubscriptionTokenEncryptionKey is the 32-byte key for AES-256-GCM encryption of subscription tokens.
-	// Provide as 64 hex chars or 44 base64 chars. Required for storing tokens in encrypted form (retrievable on GET).
-	// Env: DATABASE_SUBSCRIPTION_TOKEN_ENCRYPTION_KEY. If empty, falls back to JWT_SECRET_KEY.
-	SubscriptionTokenEncryptionKey string `envconfig:"SUBSCRIPTION_TOKEN_ENCRYPTION_KEY" default:""`
+	ExecuteSchemaDDL               bool   `koanf:"execute_schema_ddl"`
+	SubscriptionTokenEncryptionKey string `koanf:"subscription_token_encryption_key"`
 }
 
-// DefaultDevPortal holds default DevPortal configuration for new organizations
+// DefaultDevPortal holds default DevPortal configuration for new organizations.
 type DefaultDevPortal struct {
-	Enabled       bool   `envconfig:"ENABLED" default:"true"`
-	Name          string `envconfig:"NAME" default:"Default DevPortal"`
-	Identifier    string `envconfig:"IDENTIFIER" default:"default"`
-	APIUrl        string `envconfig:"API_URL" default:"http://localhost:3001"`
-	Hostname      string `envconfig:"HOSTNAME" default:"devportal.local"`
-	APIKey        string `envconfig:"API_KEY" default:"default-api-key"`
-	HeaderKeyName string `envconfig:"HEADER_KEY_NAME" default:"x-wso2-api-key"`
-	Timeout       int    `envconfig:"TIMEOUT" default:"10"` // seconds
+	Enabled       bool   `koanf:"enabled"`
+	Name          string `koanf:"name"`
+	Identifier    string `koanf:"identifier"`
+	APIUrl        string `koanf:"api_url"`
+	Hostname      string `koanf:"hostname"`
+	APIKey        string `koanf:"api_key"`
+	HeaderKeyName string `koanf:"header_key_name"`
+	Timeout       int    `koanf:"timeout"`
 
-	// Role mapping configuration for DevPortal integrations
-	RoleClaimName         string `envconfig:"ROLE_CLAIM_NAME" default:"roles"`
-	GroupsClaimName       string `envconfig:"GROUPS_CLAIM_NAME" default:"groups"`
-	OrganizationClaimName string `envconfig:"ORGANIZATION_CLAIM_NAME" default:"organizationID"`
-	AdminRole             string `envconfig:"ADMIN_ROLE" default:"admin"`
-	SubscriberRole        string `envconfig:"SUBSCRIBER_ROLE" default:"Internal/subscriber"`
-	SuperAdminRole        string `envconfig:"SUPER_ADMIN_ROLE" default:"superAdmin"`
+	RoleClaimName         string `koanf:"role_claim_name"`
+	GroupsClaimName       string `koanf:"groups_claim_name"`
+	OrganizationClaimName string `koanf:"organization_claim_name"`
+	AdminRole             string `koanf:"admin_role"`
+	SubscriberRole        string `koanf:"subscriber_role"`
+	SuperAdminRole        string `koanf:"super_admin_role"`
 }
 
-// Deployments holds deployment-specific configuration
+// Deployments holds deployment-specific configuration.
 type Deployments struct {
-	MaxPerAPIGateway int `envconfig:"MAX_PER_API_GATEWAY" default:"20"`
-
-	// TransitionalStatusEnabled controls whether deploy/undeploy sets DEPLOYING/UNDEPLOYING
-	// before waiting for a gateway ack. When false (default), status is set immediately to
-	// DEPLOYED/UNDEPLOYED without waiting for acknowledgement.
-	TransitionalStatusEnabled bool `envconfig:"TRANSITIONAL_STATUS_ENABLED" default:"false"`
-
-	// Timeout job settings for transitional deployment statuses (DEPLOYING/UNDEPLOYING).
-	// Only relevant when TransitionalStatusEnabled is true.
-	TimeoutEnabled  bool `envconfig:"TIMEOUT_ENABLED" default:"true"`
-	TimeoutInterval int  `envconfig:"TIMEOUT_INTERVAL" default:"20"` // seconds between checks
-	TimeoutDuration int  `envconfig:"TIMEOUT_DURATION" default:"60"` // seconds before a status is considered stale
+	MaxPerAPIGateway          int  `koanf:"max_per_api_gateway"`
+	TransitionalStatusEnabled bool `koanf:"transitional_status_enabled"`
+	TimeoutEnabled            bool `koanf:"timeout_enabled"`
+	TimeoutInterval           int  `koanf:"timeout_interval"`
+	TimeoutDuration           int  `koanf:"timeout_duration"`
 }
 
-// APIKey holds API key-specific configuration
+// APIKey holds API key-specific configuration.
 type APIKey struct {
-	// HashingAlgorithms is the list of algorithms used to hash API keys before storage and broadcast.
-	// Multiple algorithms can be specified as a comma-separated value (e.g. "sha256,sha512").
-	// Currently only "sha256" is supported. Defaults to "sha256".
-	HashingAlgorithms []string `envconfig:"HASHING_ALGORITHMS" default:"sha256"`
+	HashingAlgorithms []string `koanf:"hashing_algorithms"`
 }
 
-// package-level variable and mutex for thread safety
+// package-level singleton.
 var (
+	configFilePath  string
 	processOnce     sync.Once
 	settingInstance *Server
 )
 
-// GetConfig initializes and returns a singleton instance of the Settings struct.
-// It uses sync.Once to ensure that the initialization logic is executed only once,
-// making it safe for concurrent use. If there is an error during the initialization,
-// the function will panic.
-//
-// Returns:
-//
-//	*Settings - A pointer to the singleton instance of the Settings struct. from environment variables.
+// SetConfigPath configures the path to a config.toml file.
+// Must be called before the first GetConfig() if a config file is used.
+func SetConfigPath(path string) {
+	configFilePath = path
+}
+
+// GetConfig returns the singleton config instance, loading it on first call.
 func GetConfig() *Server {
 	var err error
 	processOnce.Do(func() {
-		settingInstance = &Server{}
-		err = envconfig.Process("", settingInstance)
-		if err == nil {
-			// Validate default devportal configuration
-			err = validateDefaultDevPortalConfig(&settingInstance.DefaultDevPortal)
-		}
-		if err == nil {
-			err = validateDeploymentsConfig(&settingInstance.Deployments)
-		}
+		settingInstance, err = LoadConfig(configFilePath)
 	})
 	if err != nil {
 		panic(err)
@@ -203,62 +226,293 @@ func GetConfig() *Server {
 	return settingInstance
 }
 
-// validateDefaultDevPortalConfig validates default DevPortal configuration
-//
-// When default DevPortal is enabled, this function ensures that required
-// fields are provided.
-//
-// Parameters:
-//   - cfg: default DevPortal configuration to validate
-//
-// Returns:
-//   - error: Validation error if configuration is invalid, nil otherwise
+// LoadConfig loads configuration with priority: env vars > config file > defaults.
+// configPath may be empty — when omitted only env vars and defaults are used.
+func LoadConfig(configPath string) (*Server, error) {
+	applyLegacyEnvAliases()
+
+	cfg := defaultConfig()
+	k := koanf.New(".")
+
+	if configPath != "" {
+		if err := k.Load(file.Provider(configPath), toml.Parser()); err != nil {
+			return nil, fmt.Errorf("failed to load config file %q: %w", configPath, err)
+		}
+	}
+
+	// Load environment variables. The callback maps known env var names to koanf
+	// dot-notation keys; unknown vars or empty values return "" and are skipped.
+	// Empty values are skipped so that ${VAR:-} placeholders in docker-compose
+	// do not override non-empty values already loaded from the config file.
+	if err := k.Load(kenv.ProviderWithValue("", ".", func(s, v string) (string, interface{}) {
+		if v == "" {
+			return "", nil
+		}
+		return envToKoanfKey(strings.ToLower(s)), v
+	}), nil); err != nil {
+		return nil, fmt.Errorf("failed to load environment variables: %w", err)
+	}
+
+	if err := k.UnmarshalWithConf("", cfg, koanf.UnmarshalConf{
+		DecoderConfig: &mapstructure.DecoderConfig{
+			TagName:          "koanf",
+			WeaklyTypedInput: true,
+			Result:           cfg,
+			DecodeHook: mapstructure.ComposeDecodeHookFunc(
+				mapstructure.StringToSliceHookFunc(","),
+				mapstructure.StringToTimeDurationHookFunc(),
+				fileBasedUsersDecodeHook(),
+			),
+		},
+	}); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
+	}
+
+	if err := validateDefaultDevPortalConfig(&cfg.DefaultDevPortal); err != nil {
+		return nil, err
+	}
+	if err := validateDeploymentsConfig(&cfg.Deployments); err != nil {
+		return nil, err
+	}
+	if err := validateIDPConfig(&cfg.Auth.IDP); err != nil {
+		return nil, err
+	}
+	if err := validateFileBasedConfig(&cfg.Auth.FileBased); err != nil {
+		return nil, err
+	}
+
+	if cfg.Auth.JWT.Enabled && cfg.Auth.JWT.SecretKey == "" {
+		key, err := generateRandomSecret()
+		if err != nil {
+			return nil, fmt.Errorf("failed to generate JWT secret key: %w", err)
+		}
+		cfg.Auth.JWT.SecretKey = key
+		slog.Warn("auth.jwt.secret_key is not set — generated an ephemeral random key; all sessions will be invalidated on restart")
+	}
+
+	return cfg, nil
+}
+
+func generateRandomSecret() (string, error) {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(b), nil
+}
+
+
+// envToKoanfKey maps a lowercased environment variable name to its koanf dot-notation key.
+// Returns "" for unknown variables, which causes koanf to skip them.
+// Supports both the current env var names (e.g. DATABASE_DB_PATH) and the legacy
+// WEBSOCKET_WS_* naming from the old envconfig setup.
+func envToKoanfKey(s string) string {
+	switch s {
+	// Server-level
+	case "log_level": return "log_level"
+	case "port":      return "port"
+	case "db_schema_path":                return "db_schema_path"
+	case "openapi_spec_path":             return "openapi_spec_path"
+	case "llm_template_definitions_path": return "llm_template_definitions_path"
+	case "enable_scope_validation":       return "enable_scope_validation"
+
+	// Database
+	case "database_driver":              return "database.driver"
+	case "database_db_path":             return "database.path"
+	case "database_host":                return "database.host"
+	case "database_port":                return "database.port"
+	case "database_name":                return "database.name"
+	case "database_user":                return "database.user"
+	case "database_password":            return "database.password"
+	case "database_ssl_mode":            return "database.ssl_mode"
+	case "database_max_open_conns":      return "database.max_open_conns"
+	case "database_max_idle_conns":      return "database.max_idle_conns"
+	case "database_conn_max_lifetime":   return "database.conn_max_lifetime"
+	case "database_execute_schema_ddl":  return "database.execute_schema_ddl"
+	case "database_subscription_token_encryption_key": return "database.subscription_token_encryption_key"
+
+	// Auth
+	case "auth_skip_paths": return "auth.skip_paths"
+
+	// Auth JWT
+	case "auth_jwt_enabled":         return "auth.jwt.enabled"
+	case "auth_jwt_secret_key":      return "auth.jwt.secret_key"
+	case "auth_jwt_issuer":          return "auth.jwt.issuer"
+	case "auth_jwt_skip_validation": return "auth.jwt.skip_validation"
+
+	// Auth IDP
+	case "auth_idp_enabled":                  return "auth.idp.enabled"
+	case "auth_idp_name":                     return "auth.idp.name"
+	case "auth_idp_jwks_url":                 return "auth.idp.jwks_url"
+	case "auth_idp_issuer":                   return "auth.idp.issuer"
+	case "auth_idp_audience":                 return "auth.idp.audience"
+	case "auth_idp_validation_mode":                         return "auth.idp.validation_mode"
+	case "auth_idp_role_mappings_file":                      return "auth.idp.role_mappings_file"
+	case "auth_idp_claim_mappings_organization_claim_name":  return "auth.idp.claim_mappings.organization_claim_name"
+	case "auth_idp_claim_mappings_org_name_claim_name":      return "auth.idp.claim_mappings.org_name_claim_name"
+	case "auth_idp_claim_mappings_org_handle_claim_name":    return "auth.idp.claim_mappings.org_handle_claim_name"
+	case "auth_idp_claim_mappings_user_id_claim_name":       return "auth.idp.claim_mappings.user_id_claim_name"
+	case "auth_idp_claim_mappings_username_claim_name":      return "auth.idp.claim_mappings.username_claim_name"
+	case "auth_idp_claim_mappings_email_claim_name":         return "auth.idp.claim_mappings.email_claim_name"
+	case "auth_idp_claim_mappings_scope_claim_name":         return "auth.idp.claim_mappings.scope_claim_name"
+	case "auth_idp_claim_mappings_roles_claim_path":         return "auth.idp.claim_mappings.roles_claim_path"
+
+	// Auth FileBased
+	case "auth_file_based_enabled":              return "auth.file_based.enabled"
+	case "auth_file_based_organization_id":      return "auth.file_based.organization.id"
+	case "auth_file_based_organization_name":    return "auth.file_based.organization.name"
+	case "auth_file_based_organization_handle":  return "auth.file_based.organization.handle"
+	case "auth_file_based_organization_region":  return "auth.file_based.organization.region"
+	case "auth_file_based_users":                return "auth.file_based.users"
+
+	// WebSocket — accept both legacy WEBSOCKET_WS_* and clean WEBSOCKET_*
+	case "websocket_ws_max_connections", "websocket_max_connections":
+		return "websocket.max_connections"
+	case "websocket_ws_connection_timeout", "websocket_connection_timeout":
+		return "websocket.connection_timeout"
+	case "websocket_ws_rate_limit_per_minute", "websocket_rate_limit_per_min":
+		return "websocket.rate_limit_per_min"
+	case "websocket_ws_max_connections_per_org", "websocket_max_connections_per_org":
+		return "websocket.max_connections_per_org"
+	case "websocket_ws_metrics_log_enabled", "websocket_metrics_log_enabled":
+		return "websocket.metrics_log_enabled"
+	case "websocket_ws_metrics_log_interval", "websocket_metrics_log_interval":
+		return "websocket.metrics_log_interval"
+
+	// Default DevPortal
+	case "default_devportal_enabled":                  return "default_devportal.enabled"
+	case "default_devportal_name":                     return "default_devportal.name"
+	case "default_devportal_identifier":               return "default_devportal.identifier"
+	case "default_devportal_api_url":                  return "default_devportal.api_url"
+	case "default_devportal_hostname":                 return "default_devportal.hostname"
+	case "default_devportal_api_key":                  return "default_devportal.api_key"
+	case "default_devportal_header_key_name":          return "default_devportal.header_key_name"
+	case "default_devportal_timeout":                  return "default_devportal.timeout"
+	case "default_devportal_role_claim_name":          return "default_devportal.role_claim_name"
+	case "default_devportal_groups_claim_name":        return "default_devportal.groups_claim_name"
+	case "default_devportal_organization_claim_name":  return "default_devportal.organization_claim_name"
+	case "default_devportal_admin_role":               return "default_devportal.admin_role"
+	case "default_devportal_subscriber_role":          return "default_devportal.subscriber_role"
+	case "default_devportal_super_admin_role":         return "default_devportal.super_admin_role"
+
+	// Deployments
+	case "deployments_max_per_api_gateway":          return "deployments.max_per_api_gateway"
+	case "deployments_transitional_status_enabled":  return "deployments.transitional_status_enabled"
+	case "deployments_timeout_enabled":              return "deployments.timeout_enabled"
+	case "deployments_timeout_interval":             return "deployments.timeout_interval"
+	case "deployments_timeout_duration":             return "deployments.timeout_duration"
+
+	// TLS
+	case "tls_cert_dir": return "tls.cert_dir"
+
+	// API Key
+	case "api_key_hashing_algorithms": return "api_key.hashing_algorithms"
+
+	// Gateway
+	case "gateway_enable_version_verification":            return "gateway.enable_version_verification"
+	case "gateway_enable_functionality_type_verification": return "gateway.enable_functionality_type_verification"
+
+	default:
+		return ""
+	}
+}
+
+// fileBasedUsersDecodeHook handles decoding AUTH_FILE_BASED_USERS from a JSON string
+// (env var format) in addition to the native TOML array-of-tables format.
+func fileBasedUsersDecodeHook() mapstructure.DecodeHookFuncType {
+	return func(f reflect.Type, t reflect.Type, data interface{}) (interface{}, error) {
+		if t != reflect.TypeOf(FileBasedUsers{}) {
+			return data, nil
+		}
+		s, ok := data.(string)
+		if !ok {
+			return data, nil
+		}
+		if s == "" {
+			return FileBasedUsers{}, nil
+		}
+		var users FileBasedUsers
+		if err := json.Unmarshal([]byte(s), &users); err != nil {
+			return nil, fmt.Errorf("failed to parse AUTH_FILE_BASED_USERS as JSON: %w", err)
+		}
+		return users, nil
+	}
+}
+
 func validateDefaultDevPortalConfig(cfg *DefaultDevPortal) error {
-	// If default DevPortal is not enabled, no validation needed
 	if !cfg.Enabled {
 		return nil
 	}
-
-	// When enabled, required fields must be provided
 	if cfg.Name == "" {
-		return fmt.Errorf("default DevPortal is enabled but DEFAULT_DEVPORTAL_NAME is not configured")
+		return fmt.Errorf("default DevPortal is enabled but name is not configured")
 	}
-
 	if cfg.Identifier == "" {
-		return fmt.Errorf("default DevPortal is enabled but DEFAULT_DEVPORTAL_IDENTIFIER is not configured")
+		return fmt.Errorf("default DevPortal is enabled but identifier is not configured")
 	}
-
 	if cfg.APIUrl == "" {
-		return fmt.Errorf("default DevPortal is enabled but DEFAULT_DEVPORTAL_API_URL is not configured")
+		return fmt.Errorf("default DevPortal is enabled but api_url is not configured")
 	}
-
 	if cfg.Hostname == "" {
-		return fmt.Errorf("default DevPortal is enabled but DEFAULT_DEVPORTAL_HOSTNAME is not configured")
+		return fmt.Errorf("default DevPortal is enabled but hostname is not configured")
 	}
-
 	if cfg.APIKey == "" {
-		return fmt.Errorf("default DevPortal is enabled but DEFAULT_DEVPORTAL_API_KEY is not configured")
+		return fmt.Errorf("default DevPortal is enabled but api_key is not configured")
 	}
-
-	// Header key name is always required since we use header mode
 	if cfg.HeaderKeyName == "" {
-		return fmt.Errorf("default DevPortal header key name is not configured")
+		return fmt.Errorf("default DevPortal header_key_name is not configured")
 	}
-
 	return nil
 }
 
-// validateDeploymentsConfig validates deployment timeout configuration.
-// When timeout is enabled, interval and duration must be positive.
+func validateIDPConfig(idp *IDP) error {
+	if !idp.Enabled {
+		return nil
+	}
+	if idp.JWKSUrl == "" {
+		return fmt.Errorf("auth.idp.enabled=true requires auth.idp.jwks_url to be configured")
+	}
+	if len(idp.Issuer) == 0 {
+		return fmt.Errorf("auth.idp.enabled=true requires auth.idp.issuer to be configured")
+	}
+	switch idp.ValidationMode {
+	case "scope", "role":
+	default:
+		return fmt.Errorf("auth.idp.validation_mode must be \"scope\" or \"role\" (got %q)", idp.ValidationMode)
+	}
+	if idp.ValidationMode == "role" && idp.ClaimMappings.RolesClaimPath == "" {
+		return fmt.Errorf("auth.idp.validation_mode=role requires auth.idp.claim_mappings.roles_claim_path to be configured")
+	}
+	return nil
+}
+
+func validateFileBasedConfig(cfg *FileBased) error {
+	if !cfg.Enabled {
+		return nil
+	}
+	if cfg.Organization.ID == "" {
+		return fmt.Errorf("auth.file_based.enabled=true requires auth.file_based.organization.id to be configured")
+	}
+	if cfg.Organization.Name == "" {
+		return fmt.Errorf("auth.file_based.enabled=true requires auth.file_based.organization.name to be configured")
+	}
+	if cfg.Organization.Handle == "" {
+		return fmt.Errorf("auth.file_based.enabled=true requires auth.file_based.organization.handle to be configured")
+	}
+	if len(cfg.Users) == 0 {
+		return fmt.Errorf("auth.file_based.enabled=true requires at least one user in auth.file_based.users")
+	}
+	return nil
+}
+
 func validateDeploymentsConfig(cfg *Deployments) error {
 	if !cfg.TimeoutEnabled {
 		return nil
 	}
 	if cfg.TimeoutInterval <= 0 {
-		return fmt.Errorf("DEPLOYMENTS_TIMEOUT_INTERVAL must be a positive integer (got %d)", cfg.TimeoutInterval)
+		return fmt.Errorf("deployments.timeout_interval must be a positive integer (got %d)", cfg.TimeoutInterval)
 	}
 	if cfg.TimeoutDuration <= 0 {
-		return fmt.Errorf("DEPLOYMENTS_TIMEOUT_DURATION must be a positive integer (got %d)", cfg.TimeoutDuration)
+		return fmt.Errorf("deployments.timeout_duration must be a positive integer (got %d)", cfg.TimeoutDuration)
 	}
 	return nil
 }

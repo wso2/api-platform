@@ -26,8 +26,6 @@ import (
 	"platform-api/src/internal/model"
 	"platform-api/src/internal/repository"
 	"platform-api/src/internal/utils"
-	"regexp"
-	"strings"
 	"time"
 
 	openapi_types "github.com/oapi-codegen/runtime/types"
@@ -64,8 +62,8 @@ func NewOrganizationService(orgRepo repository.OrganizationRepository,
 	slogger *slog.Logger,
 ) *OrganizationService {
 	return &OrganizationService{
-		orgRepo:           orgRepo,
-		projectRepo:       projectRepo,
+		orgRepo:     orgRepo,
+		projectRepo: projectRepo,
 		applicationRepo:   applicationRepo,
 		apiRepo:           apiRepo,
 		gatewayRepo:       gatewayRepo,
@@ -171,9 +169,20 @@ func (s *OrganizationService) GetOrganizationSubscription(orgID string) (*api.Or
 }
 
 func (s *OrganizationService) RegisterOrganization(id string, handle string, name string, region string) (*api.Organization, error) {
-	// Validate handle is URL friendly
-	if !s.isURLFriendly(handle) {
-		return nil, constants.ErrInvalidHandle
+	// Auto-generate handle from name if not provided; otherwise validate the explicit handle.
+	if handle == "" {
+		generated, genErr := utils.GenerateHandle(name, func(h string) bool {
+			existing, _ := s.orgRepo.GetOrganizationByIdOrHandle("", h)
+			return existing != nil
+		})
+		if genErr != nil {
+			return nil, fmt.Errorf("failed to generate organization handle: %w", genErr)
+		}
+		handle = generated
+	} else {
+		if err := utils.ValidateHandle(handle); err != nil {
+			return nil, err
+		}
 	}
 
 	// Check if id or handle already exists
@@ -256,6 +265,15 @@ func (s *OrganizationService) RegisterOrganization(id string, handle string, nam
 	return orgResponse, nil
 }
 
+func containsStr(slice []string, val string) bool {
+	for _, s := range slice {
+		if s == val {
+			return true
+		}
+	}
+	return false
+}
+
 func (s *OrganizationService) GetOrganizationByUUID(orgId string) (*api.Organization, error) {
 	orgModel, err := s.orgRepo.GetOrganizationByUUID(orgId)
 	if err != nil {
@@ -272,14 +290,6 @@ func (s *OrganizationService) GetOrganizationByUUID(orgId string) (*api.Organiza
 	}
 
 	return org, nil
-}
-
-func (s *OrganizationService) isURLFriendly(handle string) bool {
-	// URL friendly: lowercase letters, numbers, hyphens, underscores
-	// Must start with letter, no consecutive special chars
-	pattern := `^[a-z][a-z0-9_-]*[a-z0-9]$|^[a-z]$`
-	matched, _ := regexp.MatchString(pattern, strings.ToLower(handle))
-	return matched && handle == strings.ToLower(handle)
 }
 
 // Mapping functions

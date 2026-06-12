@@ -3527,18 +3527,12 @@ type GetLLMProviderDeploymentsParamsStatus string
 
 // RestoreLLMProviderDeploymentParams defines parameters for RestoreLLMProviderDeployment.
 type RestoreLLMProviderDeploymentParams struct {
-	// DeploymentId UUID of the deployment to restore (must be ARCHIVED or UNDEPLOYED)
-	DeploymentId string `form:"deploymentId" json:"deploymentId" yaml:"deploymentId"`
-
 	// GatewayId UUID of the gateway (validated against deployment's bound gateway)
 	GatewayId string `form:"gatewayId" json:"gatewayId" yaml:"gatewayId"`
 }
 
 // UndeployLLMProviderDeploymentParams defines parameters for UndeployLLMProviderDeployment.
 type UndeployLLMProviderDeploymentParams struct {
-	// DeploymentId UUID of the deployment to undeploy
-	DeploymentId string `form:"deploymentId" json:"deploymentId" yaml:"deploymentId"`
-
 	// GatewayId UUID of the gateway (validated against deployment's bound gateway)
 	GatewayId string `form:"gatewayId" json:"gatewayId" yaml:"gatewayId"`
 }
@@ -3578,18 +3572,12 @@ type GetLLMProxyDeploymentsParamsStatus string
 
 // RestoreLLMProxyDeploymentParams defines parameters for RestoreLLMProxyDeployment.
 type RestoreLLMProxyDeploymentParams struct {
-	// DeploymentId UUID of the deployment to restore (must be ARCHIVED or UNDEPLOYED)
-	DeploymentId string `form:"deploymentId" json:"deploymentId" yaml:"deploymentId"`
-
 	// GatewayId UUID of the gateway (validated against deployment's bound gateway)
 	GatewayId string `form:"gatewayId" json:"gatewayId" yaml:"gatewayId"`
 }
 
 // UndeployLLMProxyDeploymentParams defines parameters for UndeployLLMProxyDeployment.
 type UndeployLLMProxyDeploymentParams struct {
-	// DeploymentId UUID of the deployment to undeploy
-	DeploymentId string `form:"deploymentId" json:"deploymentId" yaml:"deploymentId"`
-
 	// GatewayId UUID of the gateway (validated against deployment's bound gateway)
 	GatewayId string `form:"gatewayId" json:"gatewayId" yaml:"gatewayId"`
 }
@@ -3620,18 +3608,12 @@ type GetMCPProxyDeploymentsParamsStatus string
 
 // RestoreMCPProxyDeploymentParams defines parameters for RestoreMCPProxyDeployment.
 type RestoreMCPProxyDeploymentParams struct {
-	// DeploymentId UUID of the deployment to undeploy
-	DeploymentId string `form:"deploymentId" json:"deploymentId" yaml:"deploymentId"`
-
 	// GatewayId UUID of the gateway (validated against deployment's bound gateway)
 	GatewayId string `form:"gatewayId" json:"gatewayId" yaml:"gatewayId"`
 }
 
 // UndeployMCPProxyDeploymentParams defines parameters for UndeployMCPProxyDeployment.
 type UndeployMCPProxyDeploymentParams struct {
-	// DeploymentId UUID of the deployment to undeploy
-	DeploymentId string `form:"deploymentId" json:"deploymentId" yaml:"deploymentId"`
-
 	// GatewayId UUID of the gateway (validated against deployment's bound gateway)
 	GatewayId string `form:"gatewayId" json:"gatewayId" yaml:"gatewayId"`
 }
@@ -3646,24 +3628,28 @@ type ListUserAPIKeysParams struct {
 // ListUserAPIKeysParamsType defines parameters for ListUserAPIKeys.
 type ListUserAPIKeysParamsType string
 
+// ValidateRESTAPIParams defines parameters for ValidateRESTAPI.
+// Kept for use in the ValidateAPI service method.
+type ValidateRESTAPIParams struct {
+	// Identifier **API Identifier** to check for existence within the organization.
+	Identifier *ApiIdentifierQ `form:"identifier,omitempty" json:"identifier,omitempty" yaml:"identifier,omitempty"`
+
+	// Name **API Name** to check for existence within the organization.
+	Name *ApiNameQ `form:"name,omitempty" json:"name,omitempty" yaml:"name,omitempty"`
+
+	// Version **API Version** to check for existence within the organization.
+	Version *ApiVersionQ `form:"version,omitempty" json:"version,omitempty" yaml:"version,omitempty"`
+}
+
 // ListRESTAPIsParams defines parameters for ListRESTAPIs.
 type ListRESTAPIsParams struct {
 	// ProjectId **Project ID** consisting of the **UUID** of the Project to filter APIs by.
 	ProjectId ProjectIdQ `form:"projectId" json:"projectId" yaml:"projectId"`
-}
 
-// ValidateRESTAPIParams defines parameters for ValidateRESTAPI.
-type ValidateRESTAPIParams struct {
-	// Identifier **API Identifier** to check for existence within the organization.
-	// Either this parameter or both 'name' and 'version' parameters are required.
-	Identifier *ApiIdentifierQ `form:"identifier,omitempty" json:"identifier,omitempty" yaml:"identifier,omitempty"`
-
-	// Name **API Name** to check for existence within the organization.
-	// Must be used together with 'version' parameter if 'identifier' is not provided.
+	// Name **API Name** to filter by. Provide together with Version to check name/version uniqueness.
 	Name *ApiNameQ `form:"name,omitempty" json:"name,omitempty" yaml:"name,omitempty"`
 
-	// Version **API Version** to check for existence within the organization.
-	// Must be used together with 'name' parameter if 'identifier' is not provided.
+	// Version **API Version** to filter by. Provide together with Name to check name/version uniqueness.
 	Version *ApiVersionQ `form:"version,omitempty" json:"version,omitempty" yaml:"version,omitempty"`
 }
 
@@ -3681,30 +3667,18 @@ type GetDeploymentsParamsStatus string
 
 // RestoreDeploymentParams defines parameters for RestoreDeployment.
 type RestoreDeploymentParams struct {
-	// DeploymentId UUID of the deployment to restore (must be ARCHIVED or UNDEPLOYED)
-	DeploymentId string `form:"deploymentId" json:"deploymentId" yaml:"deploymentId"`
-
 	// GatewayId UUID of the gateway (validated against deployment's bound gateway)
 	GatewayId string `form:"gatewayId" json:"gatewayId" yaml:"gatewayId"`
 }
 
 // UndeployDeploymentParams defines parameters for UndeployDeployment.
 type UndeployDeploymentParams struct {
-	// DeploymentId UUID of the deployment to undeploy
-	DeploymentId string `form:"deploymentId" json:"deploymentId" yaml:"deploymentId"`
-
 	// GatewayId UUID of the gateway (validated against deployment's bound gateway)
 	GatewayId string `form:"gatewayId" json:"gatewayId" yaml:"gatewayId"`
 }
 
 // AddGatewaysToAPIJSONBody defines parameters for AddGatewaysToAPI.
 type AddGatewaysToAPIJSONBody = []AddGatewayToRESTAPIRequest
-
-// GetGatewayStatusParams defines parameters for GetGatewayStatus.
-type GetGatewayStatusParams struct {
-	// GatewayId **Gateway ID** consisting of the **UUID** of the Gateway to filter status by.
-	GatewayId *GatewayIdQ `form:"gatewayId,omitempty" json:"gatewayId,omitempty" yaml:"gatewayId,omitempty"`
-}
 
 // ListSubscriptionsParams defines parameters for ListSubscriptions.
 type ListSubscriptionsParams struct {
@@ -3763,14 +3737,12 @@ type GetWebBrokerAPIDeploymentsParams struct {
 
 // RestoreWebBrokerAPIDeploymentParams defines parameters for RestoreWebBrokerAPIDeployment.
 type RestoreWebBrokerAPIDeploymentParams struct {
-	DeploymentId string `form:"deploymentId" json:"deploymentId" yaml:"deploymentId"`
-	GatewayId    string `form:"gatewayId" json:"gatewayId" yaml:"gatewayId"`
+	GatewayId string `form:"gatewayId" json:"gatewayId" yaml:"gatewayId"`
 }
 
 // UndeployWebBrokerAPIParams defines parameters for UndeployWebBrokerAPI.
 type UndeployWebBrokerAPIParams struct {
-	DeploymentId string `form:"deploymentId" json:"deploymentId" yaml:"deploymentId"`
-	GatewayId    string `form:"gatewayId" json:"gatewayId" yaml:"gatewayId"`
+	GatewayId string `form:"gatewayId" json:"gatewayId" yaml:"gatewayId"`
 }
 
 // ListWebSubAPIsParams defines parameters for ListWebSubAPIs.
@@ -3788,14 +3760,12 @@ type GetWebSubAPIDeploymentsParams struct {
 
 // RestoreWebSubAPIDeploymentParams defines parameters for RestoreWebSubAPIDeployment.
 type RestoreWebSubAPIDeploymentParams struct {
-	DeploymentId string `form:"deploymentId" json:"deploymentId" yaml:"deploymentId"`
-	GatewayId    string `form:"gatewayId" json:"gatewayId" yaml:"gatewayId"`
+	GatewayId string `form:"gatewayId" json:"gatewayId" yaml:"gatewayId"`
 }
 
 // UndeployWebSubAPIParams defines parameters for UndeployWebSubAPI.
 type UndeployWebSubAPIParams struct {
-	DeploymentId string `form:"deploymentId" json:"deploymentId" yaml:"deploymentId"`
-	GatewayId    string `form:"gatewayId" json:"gatewayId" yaml:"gatewayId"`
+	GatewayId string `form:"gatewayId" json:"gatewayId" yaml:"gatewayId"`
 }
 
 // CreateApplicationJSONRequestBody defines body for CreateApplication for application/json ContentType.

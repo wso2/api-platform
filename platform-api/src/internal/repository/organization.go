@@ -45,12 +45,11 @@ func (r *OrganizationRepo) CreateOrganization(org *model.Organization) error {
 		INSERT INTO organizations (uuid, handle, name, region, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?)
 	`
-	_, err := r.db.Exec(r.db.Rebind(query), org.ID, org.Handle, org.Name, org.Region, org.CreatedAt, org.UpdatedAt)
-
+	_, err := r.db.Exec(r.db.Rebind(query),
+		org.ID, org.Handle, org.Name, org.Region, org.CreatedAt, org.UpdatedAt)
 	return err
 }
 
-// GetOrganizationByIdOrHandle retrieves an organization by id or handle
 func (r *OrganizationRepo) GetOrganizationByIdOrHandle(id, handle string) (*model.Organization, error) {
 	org := &model.Organization{}
 	query := `
@@ -70,7 +69,6 @@ func (r *OrganizationRepo) GetOrganizationByIdOrHandle(id, handle string) (*mode
 	return org, nil
 }
 
-// GetOrganizationByUUID retrieves an organization by ID
 func (r *OrganizationRepo) GetOrganizationByUUID(orgId string) (*model.Organization, error) {
 	org := &model.Organization{}
 	query := `
@@ -90,7 +88,6 @@ func (r *OrganizationRepo) GetOrganizationByUUID(orgId string) (*model.Organizat
 	return org, nil
 }
 
-// GetOrganizationByHandle retrieves an organization by handle
 func (r *OrganizationRepo) GetOrganizationByHandle(handle string) (*model.Organization, error) {
 	org := &model.Organization{}
 	query := `
@@ -110,7 +107,6 @@ func (r *OrganizationRepo) GetOrganizationByHandle(handle string) (*model.Organi
 	return org, nil
 }
 
-// UpdateOrganization modifies an existing organization
 func (r *OrganizationRepo) UpdateOrganization(org *model.Organization) error {
 	org.UpdatedAt = time.Now()
 	query := `
@@ -119,18 +115,15 @@ func (r *OrganizationRepo) UpdateOrganization(org *model.Organization) error {
 		WHERE uuid = ?
 	`
 	_, err := r.db.Exec(r.db.Rebind(query), org.Handle, org.Name, org.Region, org.UpdatedAt, org.ID)
-
 	return err
 }
 
-// DeleteOrganization removes an organization
 func (r *OrganizationRepo) DeleteOrganization(orgId string) error {
 	query := `DELETE FROM organizations WHERE uuid = ?`
 	_, err := r.db.Exec(r.db.Rebind(query), orgId)
 	return err
 }
 
-// ListOrganizations retrieves organizations with pagination
 func (r *OrganizationRepo) ListOrganizations(limit, offset int) ([]*model.Organization, error) {
 	query := `
 		SELECT uuid, handle, name, region, created_at, updated_at
@@ -144,15 +137,13 @@ func (r *OrganizationRepo) ListOrganizations(limit, offset int) ([]*model.Organi
 	}
 	defer rows.Close()
 
-	var organizations []*model.Organization
+	var orgs []*model.Organization
 	for rows.Next() {
 		org := &model.Organization{}
-		err := rows.Scan(&org.ID, &org.Handle, &org.Name, &org.Region, &org.CreatedAt, &org.UpdatedAt)
-		if err != nil {
+		if err := rows.Scan(&org.ID, &org.Handle, &org.Name, &org.Region, &org.CreatedAt, &org.UpdatedAt); err != nil {
 			return nil, err
 		}
-		organizations = append(organizations, org)
+		orgs = append(orgs, org)
 	}
-
-	return organizations, rows.Err()
+	return orgs, rows.Err()
 }
