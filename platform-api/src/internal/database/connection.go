@@ -101,9 +101,16 @@ func NewConnection(cfg *config.Database, slogger *slog.Logger) (*DB, error) {
 		return nil, fmt.Errorf("unsupported database driver: %s", cfg.Driver)
 	}
 
-	// Set connection pool settings
-	db.SetMaxOpenConns(cfg.MaxOpenConns)
-	db.SetMaxIdleConns(cfg.MaxIdleConns)
+	// Set connection pool settings. SQLite serializes writes, so cap at 1 connection
+	// to avoid contention regardless of what the config requests.
+	maxOpen := cfg.MaxOpenConns
+	maxIdle := cfg.MaxIdleConns
+	if strings.ToLower(cfg.Driver) == DriverSQLite {
+		maxOpen = 1
+		maxIdle = 1
+	}
+	db.SetMaxOpenConns(maxOpen)
+	db.SetMaxIdleConns(maxIdle)
 	db.SetConnMaxLifetime(time.Duration(cfg.ConnMaxLifetime) * time.Second)
 
 	// Test the connection

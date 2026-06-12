@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2025, WSO2 LLC. (http://www.wso2.org) All Rights Reserved.
+ *  Copyright (c) 2026, WSO2 LLC. (http://www.wso2.org) All Rights Reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -30,10 +30,6 @@ func defaultConfig() *Server {
 		Database: Database{
 			Driver:           "sqlite3",
 			Path:             "./data/api_platform.db",
-			Host:             "localhost",
-			Port:             5432,
-			Name:             "platform_api",
-			SSLMode:          "disable",
 			MaxOpenConns:     25,
 			MaxIdleConns:     10,
 			ConnMaxLifetime:  300,
