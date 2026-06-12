@@ -7,20 +7,21 @@
 # License at http://www.apache.org/licenses/LICENSE-2.0
 # --------------------------------------------------------------------
 #
-# Platform API configuration (Asgardeo / OIDC mode)
+# Platform API configuration — quickstart (file-based auth)
 #
 # This file is read by the Platform API (Go binary).
 # Environment variables always override values set here.
 #
-# This file is configured for Asgardeo OIDC login with scope-based authorization.
-# Replace <YOUR_ASGARDEO_ORG> with your actual Asgardeo organization name.
+# Default login: username = admin, password = admin
+# Change the password hash before deploying to a shared environment.
+# Generate a new hash: htpasswd -bnBC 12 "" <password> | tr -d ':\n'
 # --------------------------------------------------------------------
 
 # ---------------------------------------------------------------------------
 # Server
 # ---------------------------------------------------------------------------
 log_level = "INFO"   # DEBUG | INFO | WARN | ERROR
-dev_mode  = false
+dev_mode  = true     # enables verbose stack traces and relaxed CORS
 port      = "9243"
 
 # ---------------------------------------------------------------------------
@@ -42,35 +43,31 @@ path   = "/app/data/api_platform.db"   # SQLite file path (ignored for postgres)
 # Authentication
 # ---------------------------------------------------------------------------
 
-# JWT (local HMAC) — disabled in IDP mode; Asgardeo tokens are validated directly.
+# JWT (local HMAC) — issues signed tokens after file-based login.
+# secret_key is auto-generated at startup when not set (ephemeral — sessions reset on restart).
+# Set AUTH_JWT_SECRET_KEY env var or secret_key here to persist sessions across restarts.
 [auth.jwt]
-enabled = false
+enabled = true
+issuer  = "platform-api"
 
-# IDP (JWKS-based) — Asgardeo OIDC with scope-based authorization.
-# Replace <YOUR_ASGARDEO_ORG> with your Asgardeo organization name.
+# IDP (JWKS-based) — disabled in quickstart mode.
+# Enable and configure when using Asgardeo, Keycloak, Auth0, etc.
 [auth.idp]
-enabled  = true
-name     = "asgardeo"
-jwks_url = "https://api.asgardeo.io/t/abcorgdefault/oauth2/jwks"
-issuer   = ["https://api.asgardeo.io/t/abcorgdefault/oauth2/token"]
-audience = []   # leave empty to skip audience check, or set to your client ID
-
-# JWT claim name mappings — Asgardeo standard claim names.
-organization_claim_name = "org_id"
-org_name_claim_name     = "org_name"
-org_handle_claim_name   = "org_handle"
-user_id_claim_name      = "sub"
-username_claim_name     = "username"
-email_claim_name        = "email"
-scope_claim_name        = "scope"
-
-# Scope-based authorization: the token's "scope" claim must contain the
-# required platform scopes. Ensure your Asgardeo application requests these scopes.
-validation_mode = "scope"
-
-# Basic-auth — disabled in IDP mode.
-[auth.basic_auth]
 enabled = false
+
+# File-based auth — local username/password login.
+[auth.file_based]
+enabled = true
+
+[auth.file_based.organization]
+name   = "My Organization"
+handle = "my-org"
+region = "us"
+
+[[auth.file_based.users]]
+username      = "admin"
+password_hash = "$2y$10$U2yKMwGamGwDoMu0hRPT7u8nCuP8z/qxHFOKV6dhIxkJN9NJ0eVQ."
+scopes        = "ap:organization:read ap:organization:manage ap:gateway:read ap:gateway:create ap:gateway:update ap:gateway:delete ap:gateway:manage ap:gateway:token:read ap:gateway:token:create ap:gateway:token:delete ap:gateway:token:manage ap:gateway:policy:read ap:gateway:policy:create ap:gateway:policy:delete ap:gateway:policy:manage ap:gateway:artifacts:read ap:gateway:manifest:read ap:rest_api:read ap:rest_api:create ap:rest_api:update ap:rest_api:delete ap:rest_api:manage ap:rest_api:import ap:rest_api:deployment:read ap:rest_api:deployment:create ap:rest_api:deployment:delete ap:rest_api:deployment:manage ap:rest_api:api_key:read ap:rest_api:api_key:create ap:rest_api:api_key:delete ap:rest_api:api_key:manage ap:llm_provider:read ap:llm_provider:create ap:llm_provider:update ap:llm_provider:delete ap:llm_provider:manage ap:llm_provider:api_key:read ap:llm_provider:api_key:create ap:llm_provider:api_key:delete ap:llm_provider:api_key:manage ap:llm_provider:deployment:read ap:llm_provider:deployment:create ap:llm_provider:deployment:delete ap:llm_provider:deployment:manage ap:llm_proxy:read ap:llm_proxy:create ap:llm_proxy:update ap:llm_proxy:delete ap:llm_proxy:manage ap:llm_proxy:deployment:read ap:llm_proxy:deployment:create ap:llm_proxy:deployment:delete ap:llm_proxy:deployment:manage ap:mcp_proxy:read ap:mcp_proxy:create ap:mcp_proxy:update ap:mcp_proxy:delete ap:mcp_proxy:manage ap:mcp_proxy:deployment:read ap:mcp_proxy:deployment:create ap:mcp_proxy:deployment:delete ap:mcp_proxy:deployment:manage ap:application:read ap:application:create ap:application:update ap:application:delete ap:application:manage ap:subscription:read ap:subscription:create ap:subscription:update ap:subscription:delete ap:subscription:manage ap:subscription_plan:read ap:subscription_plan:create ap:subscription_plan:update ap:subscription_plan:delete ap:subscription_plan:manage ap:project:manage ap:llm_template:manage"
 
 # ---------------------------------------------------------------------------
 # TLS

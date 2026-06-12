@@ -70,11 +70,9 @@ func newJWTAuthenticatorWithJWKS(config *models.AuthConfig, logger *slog.Logger,
 		// Create JWKS storage with custom validation options to skip X5TS256 validation
 		// This is required for some OIDC providers like Asgardeo that may have X5TS256 mismatches
 		ctx := context.Background()
-		// Use a client that skips TLS verification so self-signed certificates (e.g. local Thunder)
-		// don't block JWKS fetching. RSA signature validation of the token itself is unaffected.
 		jwksHTTPClient := &http.Client{
 			Transport: &http.Transport{
-				TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec
+				TLSClientConfig: &tls.Config{InsecureSkipVerify: config.JWTConfig.InsecureSkipVerifyTLS}, //nolint:gosec
 			},
 		}
 		storageOptions := jwkset.HTTPClientStorageOptions{
@@ -124,7 +122,11 @@ func (j *JWTAuthenticator) Authenticate(ctx *gin.Context) (*AuthResult, error) {
 	}
 
 	claims := jwt.MapClaims{}
-	validatedToken, err := jwt.ParseWithClaims(tokenString, claims, j.jwks.Keyfunc, jwt.WithLeeway(60*time.Second))
+	leeway := 60 * time.Second
+	if j.config.JWTConfig.JWTLeeway != nil {
+		leeway = *j.config.JWTConfig.JWTLeeway
+	}
+	validatedToken, err := jwt.ParseWithClaims(tokenString, claims, j.jwks.Keyfunc, jwt.WithLeeway(leeway))
 
 	if err != nil {
 		if errors.Is(err, jwt.ErrTokenExpired) {

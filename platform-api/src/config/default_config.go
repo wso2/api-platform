@@ -1,0 +1,115 @@
+/*
+ *  Copyright (c) 2025, WSO2 LLC. (http://www.wso2.org) All Rights Reserved.
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *  http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ *
+ */
+
+package config
+
+// defaultConfig returns a Server with all default values.
+func defaultConfig() *Server {
+	return &Server{
+		LogLevel:                   "DEBUG",
+		DevMode:                    false,
+		Port:                       "9243",
+		DBSchemaPath:               "./internal/database/schema.sql",
+		OpenAPISpecPath:            "./resources/openapi.yaml",
+		LLMTemplateDefinitionsPath: "./resources/default-llm-provider-templates",
+		EnableScopeValidation:      true,
+		Database: Database{
+			Driver:           "sqlite3",
+			Path:             "./data/api_platform.db",
+			Host:             "localhost",
+			Port:             5432,
+			Name:             "platform_api",
+			SSLMode:          "disable",
+			MaxOpenConns:     25,
+			MaxIdleConns:     10,
+			ConnMaxLifetime:  300,
+			ExecuteSchemaDDL: true,
+		},
+		Auth: Auth{
+			SkipPaths: []string{
+				"/health",
+				"/metrics",
+				"/api/internal/v1/ws/gateways/connect",
+				"/api/internal/v1/apis",
+				"/api/internal/v1/llm-providers",
+				"/api/internal/v1/llm-proxies",
+				"/api/internal/v1/subscription-plans",
+				"/api/internal/v1/mcp-proxies",
+				"/api/internal/v1/gateways",
+				"/api/internal/v1/deployments",
+				"/api/internal/v1/artifacts",
+				"/api/internal/v1/websub-apis",
+				"/api/internal/v1/webbroker-apis",
+			},
+			JWT: JWT{
+				Enabled: true,
+				Issuer:  "platform-api",
+			},
+			IDP: IDP{
+				ValidationMode: "scope",
+				ClaimMappings: IDPClaimMappings{
+					OrganizationClaimName: "organization",
+					OrgNameClaimName:      "org_name",
+					OrgHandleClaimName:    "org_handle",
+					UserIDClaimName:       "sub",
+					UsernameClaimName:     "username",
+					EmailClaimName:        "email",
+					ScopeClaimName:        "scope",
+				},
+			},
+			FileBased: FileBased{
+				Organization: FileBasedOrg{Region: "us"},
+			},
+		},
+		WebSocket: WebSocket{
+			MaxConnections:       1000,
+			ConnectionTimeout:    30,
+			RateLimitPerMin:      1000,
+			MaxConnectionsPerOrg: 3,
+			MetricsLogEnabled:    true,
+			MetricsLogInterval:   10,
+		},
+		DefaultDevPortal: DefaultDevPortal{
+			Enabled:               true,
+			Name:                  "Default DevPortal",
+			Identifier:            "default",
+			APIUrl:                "http://localhost:3001",
+			Hostname:              "devportal.local",
+			APIKey:                "default-api-key",
+			HeaderKeyName:         "x-wso2-api-key",
+			Timeout:               10,
+			RoleClaimName:         "roles",
+			GroupsClaimName:       "groups",
+			OrganizationClaimName: "organizationID",
+			AdminRole:             "admin",
+			SubscriberRole:        "Internal/subscriber",
+			SuperAdminRole:        "superAdmin",
+		},
+		Deployments: Deployments{
+			MaxPerAPIGateway: 20,
+			TimeoutEnabled:   true,
+			TimeoutInterval:  20,
+			TimeoutDuration:  60,
+		},
+		TLS: TLS{
+			CertDir: "./data/certs",
+		},
+		APIKey: APIKey{
+			HashingAlgorithms: []string{"sha256"},
+		},
+	}
+}

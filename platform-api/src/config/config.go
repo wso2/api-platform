@@ -18,8 +18,11 @@
 package config
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"reflect"
 	"strings"
 	"sync"
@@ -31,19 +34,19 @@ import (
 	"github.com/knadh/koanf/v2"
 )
 
-// BasicAuthUser represents a built-in user for basic-auth mode.
-type BasicAuthUser struct {
+// FileBasedUser represents a built-in user for file-based auth mode.
+type FileBasedUser struct {
 	Username     string `json:"username"     koanf:"username"`
 	PasswordHash string `json:"password_hash" koanf:"password_hash"`
 	Scopes       string `json:"scopes"       koanf:"scopes"`
 }
 
-// BasicAuthUsers is a slice of BasicAuthUser that can be decoded from a JSON string (env var)
-// or from a TOML array of tables ([[auth.basic_auth.users]]).
-type BasicAuthUsers []BasicAuthUser
+// FileBasedUsers is a slice of FileBasedUser that can be decoded from a JSON string (env var)
+// or from a TOML array of tables ([[auth.file_based.users]]).
+type FileBasedUsers []FileBasedUser
 
-// BasicAuthOrg holds the single organization used in basic-auth mode.
-type BasicAuthOrg struct {
+// FileBasedOrg holds the single organization used in file-based auth mode.
+type FileBasedOrg struct {
 	// ID is the org UUID. Auto-generated at startup if empty.
 	ID string `koanf:"id"`
 
@@ -57,11 +60,11 @@ type BasicAuthOrg struct {
 	Region string `koanf:"region"`
 }
 
-// BasicAuth holds configuration for local username/password authentication.
-type BasicAuth struct {
-	Enabled      bool          `koanf:"enabled"`
-	Organization BasicAuthOrg  `koanf:"organization"`
-	Users        BasicAuthUsers `koanf:"users"`
+// FileBased holds configuration for local username/password authentication.
+type FileBased struct {
+	Enabled      bool           `koanf:"enabled"`
+	Organization FileBasedOrg   `koanf:"organization"`
+	Users        FileBasedUsers `koanf:"users"`
 }
 
 // Server holds the configuration parameters for the application.
@@ -91,17 +94,11 @@ type Auth struct {
 	SkipPaths []string  `koanf:"skip_paths"`
 	IDP       IDP       `koanf:"idp"`
 	JWT       JWT       `koanf:"jwt"`
-	BasicAuth BasicAuth `koanf:"basic_auth"`
+	FileBased FileBased `koanf:"file_based"`
 }
 
-// IDP holds configuration for JWKS-based identity providers.
-type IDP struct {
-	Enabled bool   `koanf:"enabled"`
-	Name    string `koanf:"name"`
-	JWKSUrl string `koanf:"jwks_url"`
-	Issuer  []string `koanf:"issuer"`
-	Audience []string `koanf:"audience"`
-
+// IDPClaimMappings holds JWT claim name mappings for an IDP.
+type IDPClaimMappings struct {
 	OrganizationClaimName string `koanf:"organization_claim_name"`
 	OrgNameClaimName      string `koanf:"org_name_claim_name"`
 	OrgHandleClaimName    string `koanf:"org_handle_claim_name"`
@@ -109,9 +106,19 @@ type IDP struct {
 	UsernameClaimName     string `koanf:"username_claim_name"`
 	EmailClaimName        string `koanf:"email_claim_name"`
 	ScopeClaimName        string `koanf:"scope_claim_name"`
-	RolesClaimPath   string `koanf:"roles_claim_path"`
-	RoleMappingsFile string `koanf:"role_mappings_file"`
-	ValidationMode   string `koanf:"validation_mode"`
+	RolesClaimPath        string `koanf:"roles_claim_path"`
+}
+
+// IDP holds configuration for JWKS-based identity providers.
+type IDP struct {
+	Enabled          bool             `koanf:"enabled"`
+	Name             string           `koanf:"name"`
+	JWKSUrl          string           `koanf:"jwks_url"`
+	Issuer           []string         `koanf:"issuer"`
+	Audience         []string         `koanf:"audience"`
+	ValidationMode   string           `koanf:"validation_mode"`
+	RoleMappingsFile string           `koanf:"role_mappings_file"`
+	ClaimMappings    IDPClaimMappings `koanf:"claim_mappings"`
 }
 
 // Gateway holds gateway-related configuration.
@@ -255,7 +262,7 @@ func LoadConfig(configPath string) (*Server, error) {
 			DecodeHook: mapstructure.ComposeDecodeHookFunc(
 				mapstructure.StringToSliceHookFunc(","),
 				mapstructure.StringToTimeDurationHookFunc(),
-				basicAuthUsersDecodeHook(),
+				fileBasedUsersDecodeHook(),
 			),
 		},
 	}); err != nil {
@@ -271,108 +278,30 @@ func LoadConfig(configPath string) (*Server, error) {
 	if err := validateIDPConfig(&cfg.Auth.IDP); err != nil {
 		return nil, err
 	}
-	if err := validateBasicAuthConfig(&cfg.Auth.BasicAuth); err != nil {
+	if err := validateFileBasedConfig(&cfg.Auth.FileBased); err != nil {
 		return nil, err
+	}
+
+	if cfg.Auth.JWT.Enabled && cfg.Auth.JWT.SecretKey == "" {
+		key, err := generateRandomSecret()
+		if err != nil {
+			return nil, fmt.Errorf("failed to generate JWT secret key: %w", err)
+		}
+		cfg.Auth.JWT.SecretKey = key
+		slog.Warn("auth.jwt.secret_key is not set — generated an ephemeral random key; all sessions will be invalidated on restart")
 	}
 
 	return cfg, nil
 }
 
-// defaultConfig returns a Server with all default values.
-func defaultConfig() *Server {
-	return &Server{
-		LogLevel:                   "DEBUG",
-		DevMode:                    false,
-		Port:                       "9243",
-		DBSchemaPath:               "./internal/database/schema.sql",
-		OpenAPISpecPath:            "./resources/openapi.yaml",
-		LLMTemplateDefinitionsPath: "./resources/default-llm-provider-templates",
-		EnableScopeValidation:      true,
-		Database: Database{
-			Driver:           "sqlite3",
-			Path:             "./data/api_platform.db",
-			Host:             "localhost",
-			Port:             5432,
-			Name:             "platform_api",
-			SSLMode:          "disable",
-			MaxOpenConns:     25,
-			MaxIdleConns:     10,
-			ConnMaxLifetime:  300,
-			ExecuteSchemaDDL: true,
-		},
-		Auth: Auth{
-			SkipPaths: []string{
-				"/health",
-				"/metrics",
-				"/api/internal/v1/ws/gateways/connect",
-				"/api/internal/v1/apis",
-				"/api/internal/v1/llm-providers",
-				"/api/internal/v1/llm-proxies",
-				"/api/internal/v1/subscription-plans",
-				"/api/internal/v1/mcp-proxies",
-				"/api/internal/v1/gateways",
-				"/api/internal/v1/deployments",
-				"/api/internal/v1/artifacts",
-				"/api/internal/v1/websub-apis",
-				"/api/internal/v1/webbroker-apis",
-			},
-			JWT: JWT{
-				Enabled:   true,
-				SecretKey: "your-secret-key-change-in-production",
-				Issuer:    "platform-api",
-			},
-			IDP: IDP{
-				OrganizationClaimName: "organization",
-				OrgNameClaimName:      "org_name",
-				OrgHandleClaimName:    "org_handle",
-				UserIDClaimName:       "sub",
-				UsernameClaimName:     "username",
-				EmailClaimName:        "email",
-				ScopeClaimName:        "scope",
-				ValidationMode:        "scope",
-			},
-			BasicAuth: BasicAuth{
-				Organization: BasicAuthOrg{Region: "us"},
-			},
-		},
-		WebSocket: WebSocket{
-			MaxConnections:       1000,
-			ConnectionTimeout:    30,
-			RateLimitPerMin:      1000,
-			MaxConnectionsPerOrg: 3,
-			MetricsLogEnabled:    true,
-			MetricsLogInterval:   10,
-		},
-		DefaultDevPortal: DefaultDevPortal{
-			Enabled:               true,
-			Name:                  "Default DevPortal",
-			Identifier:            "default",
-			APIUrl:                "http://localhost:3001",
-			Hostname:              "devportal.local",
-			APIKey:                "default-api-key",
-			HeaderKeyName:         "x-wso2-api-key",
-			Timeout:               10,
-			RoleClaimName:         "roles",
-			GroupsClaimName:       "groups",
-			OrganizationClaimName: "organizationID",
-			AdminRole:             "admin",
-			SubscriberRole:        "Internal/subscriber",
-			SuperAdminRole:        "superAdmin",
-		},
-		Deployments: Deployments{
-			MaxPerAPIGateway: 20,
-			TimeoutEnabled:   true,
-			TimeoutInterval:  20,
-			TimeoutDuration:  60,
-		},
-		TLS: TLS{
-			CertDir: "./data/certs",
-		},
-		APIKey: APIKey{
-			HashingAlgorithms: []string{"sha256"},
-		},
+func generateRandomSecret() (string, error) {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
 	}
+	return hex.EncodeToString(b), nil
 }
+
 
 // envToKoanfKey maps a lowercased environment variable name to its koanf dot-notation key.
 // Returns "" for unknown variables, which causes koanf to skip them.
@@ -419,24 +348,24 @@ func envToKoanfKey(s string) string {
 	case "auth_idp_jwks_url":                 return "auth.idp.jwks_url"
 	case "auth_idp_issuer":                   return "auth.idp.issuer"
 	case "auth_idp_audience":                 return "auth.idp.audience"
-	case "auth_idp_organization_claim_name":  return "auth.idp.organization_claim_name"
-	case "auth_idp_org_name_claim_name":      return "auth.idp.org_name_claim_name"
-	case "auth_idp_org_handle_claim_name":    return "auth.idp.org_handle_claim_name"
-	case "auth_idp_user_id_claim_name":       return "auth.idp.user_id_claim_name"
-	case "auth_idp_username_claim_name":      return "auth.idp.username_claim_name"
-	case "auth_idp_email_claim_name":         return "auth.idp.email_claim_name"
-	case "auth_idp_scope_claim_name":         return "auth.idp.scope_claim_name"
-	case "auth_idp_roles_claim_path":         return "auth.idp.roles_claim_path"
-	case "auth_idp_role_mappings_file":       return "auth.idp.role_mappings_file"
-	case "auth_idp_validation_mode":          return "auth.idp.validation_mode"
+	case "auth_idp_validation_mode":                         return "auth.idp.validation_mode"
+	case "auth_idp_role_mappings_file":                      return "auth.idp.role_mappings_file"
+	case "auth_idp_claim_mappings_organization_claim_name":  return "auth.idp.claim_mappings.organization_claim_name"
+	case "auth_idp_claim_mappings_org_name_claim_name":      return "auth.idp.claim_mappings.org_name_claim_name"
+	case "auth_idp_claim_mappings_org_handle_claim_name":    return "auth.idp.claim_mappings.org_handle_claim_name"
+	case "auth_idp_claim_mappings_user_id_claim_name":       return "auth.idp.claim_mappings.user_id_claim_name"
+	case "auth_idp_claim_mappings_username_claim_name":      return "auth.idp.claim_mappings.username_claim_name"
+	case "auth_idp_claim_mappings_email_claim_name":         return "auth.idp.claim_mappings.email_claim_name"
+	case "auth_idp_claim_mappings_scope_claim_name":         return "auth.idp.claim_mappings.scope_claim_name"
+	case "auth_idp_claim_mappings_roles_claim_path":         return "auth.idp.claim_mappings.roles_claim_path"
 
-	// Auth BasicAuth
-	case "auth_basic_auth_enabled":              return "auth.basic_auth.enabled"
-	case "auth_basic_auth_organization_id":      return "auth.basic_auth.organization.id"
-	case "auth_basic_auth_organization_name":    return "auth.basic_auth.organization.name"
-	case "auth_basic_auth_organization_handle":  return "auth.basic_auth.organization.handle"
-	case "auth_basic_auth_organization_region":  return "auth.basic_auth.organization.region"
-	case "auth_basic_auth_users":                return "auth.basic_auth.users"
+	// Auth FileBased
+	case "auth_file_based_enabled":              return "auth.file_based.enabled"
+	case "auth_file_based_organization_id":      return "auth.file_based.organization.id"
+	case "auth_file_based_organization_name":    return "auth.file_based.organization.name"
+	case "auth_file_based_organization_handle":  return "auth.file_based.organization.handle"
+	case "auth_file_based_organization_region":  return "auth.file_based.organization.region"
+	case "auth_file_based_users":                return "auth.file_based.users"
 
 	// WebSocket — accept both legacy WEBSOCKET_WS_* and clean WEBSOCKET_*
 	case "websocket_ws_max_connections", "websocket_max_connections":
@@ -490,11 +419,11 @@ func envToKoanfKey(s string) string {
 	}
 }
 
-// basicAuthUsersDecodeHook handles decoding AUTH_BASIC_AUTH_USERS from a JSON string
+// fileBasedUsersDecodeHook handles decoding AUTH_FILE_BASED_USERS from a JSON string
 // (env var format) in addition to the native TOML array-of-tables format.
-func basicAuthUsersDecodeHook() mapstructure.DecodeHookFuncType {
+func fileBasedUsersDecodeHook() mapstructure.DecodeHookFuncType {
 	return func(f reflect.Type, t reflect.Type, data interface{}) (interface{}, error) {
-		if t != reflect.TypeOf(BasicAuthUsers{}) {
+		if t != reflect.TypeOf(FileBasedUsers{}) {
 			return data, nil
 		}
 		s, ok := data.(string)
@@ -502,11 +431,11 @@ func basicAuthUsersDecodeHook() mapstructure.DecodeHookFuncType {
 			return data, nil
 		}
 		if s == "" {
-			return BasicAuthUsers{}, nil
+			return FileBasedUsers{}, nil
 		}
-		var users BasicAuthUsers
+		var users FileBasedUsers
 		if err := json.Unmarshal([]byte(s), &users); err != nil {
-			return nil, fmt.Errorf("failed to parse AUTH_BASIC_AUTH_USERS as JSON: %w", err)
+			return nil, fmt.Errorf("failed to parse AUTH_FILE_BASED_USERS as JSON: %w", err)
 		}
 		return users, nil
 	}
@@ -552,24 +481,24 @@ func validateIDPConfig(idp *IDP) error {
 	default:
 		return fmt.Errorf("auth.idp.validation_mode must be \"scope\" or \"role\" (got %q)", idp.ValidationMode)
 	}
-	if idp.ValidationMode == "role" && idp.RolesClaimPath == "" {
-		return fmt.Errorf("auth.idp.validation_mode=role requires auth.idp.roles_claim_path to be configured")
+	if idp.ValidationMode == "role" && idp.ClaimMappings.RolesClaimPath == "" {
+		return fmt.Errorf("auth.idp.validation_mode=role requires auth.idp.claim_mappings.roles_claim_path to be configured")
 	}
 	return nil
 }
 
-func validateBasicAuthConfig(cfg *BasicAuth) error {
+func validateFileBasedConfig(cfg *FileBased) error {
 	if !cfg.Enabled {
 		return nil
 	}
 	if cfg.Organization.Name == "" {
-		return fmt.Errorf("auth.basic_auth.enabled=true requires auth.basic_auth.organization.name to be configured")
+		return fmt.Errorf("auth.file_based.enabled=true requires auth.file_based.organization.name to be configured")
 	}
 	if cfg.Organization.Handle == "" {
-		return fmt.Errorf("auth.basic_auth.enabled=true requires auth.basic_auth.organization.handle to be configured")
+		return fmt.Errorf("auth.file_based.enabled=true requires auth.file_based.organization.handle to be configured")
 	}
 	if len(cfg.Users) == 0 {
-		return fmt.Errorf("auth.basic_auth.enabled=true requires at least one user in auth.basic_auth.users")
+		return fmt.Errorf("auth.file_based.enabled=true requires at least one user in auth.file_based.users")
 	}
 	return nil
 }

@@ -104,8 +104,8 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	webbrokerAPIRepo := repository.NewWebBrokerAPIRepo(db)
 	apiKeyRepo := repository.NewAPIKeyRepo(db)
 
-	// Seed the basic-auth organization on startup if basic-auth mode is enabled.
-	if cfg.Auth.BasicAuth.Enabled {
+	// Seed the file-based organization on startup if file-based auth mode is enabled.
+	if cfg.Auth.FileBased.Enabled {
 		if err := seedBasicAuthOrg(cfg, orgRepo, slogger); err != nil {
 			return nil, fmt.Errorf("failed to seed basic-auth organization: %w", err)
 		}
@@ -344,8 +344,8 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	handler.NewAuthLoginHandler(cfg).RegisterPublicRoutes(router)
 
 	// Build and apply the authenticator middleware.
-	if cfg.Auth.BasicAuth.Enabled {
-		slogger.Info("Auth mode: basic-auth (HMAC-signed JWT)")
+	if cfg.Auth.FileBased.Enabled {
+		slogger.Info("Auth mode: file-based (HMAC-signed JWT)")
 		router.Use(middleware.LocalJWTAuthMiddleware(middleware.AuthConfig{
 			SecretKey:      cfg.Auth.JWT.SecretKey,
 			TokenIssuer:    cfg.Auth.JWT.Issuer,
@@ -419,7 +419,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 }
 
 // buildAuthenticator constructs an Authenticator from the server configuration.
-// Only called when BasicAuth is disabled.
+// Only called when file-based auth is disabled.
 func buildAuthenticator(cfg *config.Server, slogger *slog.Logger, roleScopeMap map[string][]string) (middleware.Authenticator, error) {
 	if !cfg.Auth.IDP.Enabled {
 		if cfg.Auth.JWT.SkipValidation {
@@ -452,7 +452,7 @@ func buildAuthenticator(cfg *config.Server, slogger *slog.Logger, roleScopeMap m
 		Enabled:    true,
 		IssuerURL:  issuerURL,
 		JWKSUrl:    cfg.Auth.IDP.JWKSUrl,
-		ScopeClaim: cfg.Auth.IDP.ScopeClaimName,
+		ScopeClaim: cfg.Auth.IDP.ClaimMappings.ScopeClaimName,
 	}
 	authCfg := commonmodels.AuthConfig{
 		JWTConfig: &idpCfg,
@@ -463,14 +463,14 @@ func buildAuthenticator(cfg *config.Server, slogger *slog.Logger, roleScopeMap m
 		return nil, fmt.Errorf("failed to initialize IDP auth middleware: %w", err)
 	}
 	claimsMiddleware := middleware.PlatformClaimsMiddleware(middleware.PlatformClaimNames{
-		OrganizationClaim: cfg.Auth.IDP.OrganizationClaimName,
-		OrgNameClaim:      cfg.Auth.IDP.OrgNameClaimName,
-		OrgHandleClaim:    cfg.Auth.IDP.OrgHandleClaimName,
-		UserIDClaim:       cfg.Auth.IDP.UserIDClaimName,
-		UsernameClaim:     cfg.Auth.IDP.UsernameClaimName,
-		EmailClaim:        cfg.Auth.IDP.EmailClaimName,
-		ScopeClaim:        cfg.Auth.IDP.ScopeClaimName,
-		RolesClaimPath:    cfg.Auth.IDP.RolesClaimPath,
+		OrganizationClaim: cfg.Auth.IDP.ClaimMappings.OrganizationClaimName,
+		OrgNameClaim:      cfg.Auth.IDP.ClaimMappings.OrgNameClaimName,
+		OrgHandleClaim:    cfg.Auth.IDP.ClaimMappings.OrgHandleClaimName,
+		UserIDClaim:       cfg.Auth.IDP.ClaimMappings.UserIDClaimName,
+		UsernameClaim:     cfg.Auth.IDP.ClaimMappings.UsernameClaimName,
+		EmailClaim:        cfg.Auth.IDP.ClaimMappings.EmailClaimName,
+		ScopeClaim:        cfg.Auth.IDP.ClaimMappings.ScopeClaimName,
+		RolesClaimPath:    cfg.Auth.IDP.ClaimMappings.RolesClaimPath,
 		RoleScopeMap:      roleScopeMap,
 	})
 
@@ -505,6 +505,7 @@ func loadRoleScopeMap(cfg *config.Server, registry *middleware.ScopeRegistry, sl
 		return nil, fmt.Errorf("invalid roles.yaml: %w", err)
 	}
 	slogger.Info("Loaded role-to-scope mapping", "path", cfg.Auth.IDP.RoleMappingsFile, "roles", len(m))
+
 	return m, nil
 }
 
@@ -673,11 +674,11 @@ func (s *Server) GetRouter() *gin.Engine {
 	return s.router
 }
 
-// seedBasicAuthOrg ensures the basic-auth organization exists in the DB.
+// seedBasicAuthOrg ensures the file-based auth organization exists in the DB.
 // If AUTH_BASIC_AUTH_ORGANIZATION_ID is empty, a UUID is generated and written
 // back into cfg so the login handler issues tokens with the correct org ID.
 func seedBasicAuthOrg(cfg *config.Server, orgRepo repository.OrganizationRepository, slogger *slog.Logger) error {
-	ba := &cfg.Auth.BasicAuth
+	ba := &cfg.Auth.FileBased
 
 	// Auto-generate the org ID if not configured.
 	if ba.Organization.ID == "" {

@@ -7,26 +7,17 @@
 # License at http://www.apache.org/licenses/LICENSE-2.0
 # --------------------------------------------------------------------
 #
-# AI Workspace configuration (Asgardeo / OIDC mode)
+# AI Workspace configuration — quickstart (file-based auth)
 #
 # This file is read by the AI Workspace container at startup.
 # Environment variables always override values set here.
-#
-# Replace <YOUR_ASGARDEO_ORG> and <YOUR_CLIENT_ID> with your actual values.
 # --------------------------------------------------------------------
 
 # Domain shown in the browser address bar (host:port or just host for port 80/443).
 domain = "localhost:5380"
 
-# Authentication mode for the UI: "oidc" delegates login to Asgardeo.
-auth_mode = "oidc"
-
-# OIDC issuer URL — endpoints are auto-discovered from /.well-known/openid-configuration.
-# Replace <YOUR_ASGARDEO_ORG> with your Asgardeo organization name.
-oidc_authority = "https://api.asgardeo.io/t/abcorgdefault/oauth2/token"
-
-# OIDC client ID registered in Asgardeo for this application.
-oidc_client_id = "7p7GIiVRQu4za0RjJLOSnl_6Mq0a"
+# Authentication mode for the UI: "basic" uses the Platform API's file-based login.
+auth_mode = "basic"
 
 # Platform API base URL — used by the UI to make API calls.
 platform_api_base_url = "https://localhost:9243/api/v1"
@@ -36,10 +27,10 @@ platform_api_base_url = "https://localhost:9243/api/v1"
 controlplane_host = "host.docker.internal:9243"
 
 default_org_region = "us"
-sentry_env         = "PROD"
 
-# JWT claim name mappings — must match the [auth.idp] claim names configured for the Platform API.
-# Override these if your IDP uses different claim names.
-oidc_org_id_claim     = "org_id"
-oidc_org_name_claim   = "org_name"
-oidc_org_handle_claim = "org_handle"
+# OIDC — disabled in quickstart mode. Uncomment and set auth_mode = "oidc" to use.
+# oidc_authority    = "https://api.asgardeo.io/t/<YOUR_ORG>/oauth2/token"
+# oidc_client_id    = ""
+# oidc_org_id_claim     = "org_id"
+# oidc_org_name_claim   = "org_name"
+# oidc_org_handle_claim = "org_handle"

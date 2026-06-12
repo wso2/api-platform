@@ -51,6 +51,3 @@ controlplane_host = "localhost:9243"
 
 # Default region assigned to new organizations on first login.
 default_org_region = "us"
-
-# Sentry environment tag for error tracking ("PROD", "DEV", etc.).
-# sentry_env = "PROD"

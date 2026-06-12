@@ -58,8 +58,8 @@ func (h *AuthLoginHandler) Login(c *gin.Context) {
 		return
 	}
 
-	basicAuth := &h.cfg.Auth.BasicAuth
-	var matched *config.BasicAuthUser
+	basicAuth := &h.cfg.Auth.FileBased
+	var matched *config.FileBasedUser
 	for i := range basicAuth.Users {
 		if basicAuth.Users[i].Username == req.Username {
 			matched = &basicAuth.Users[i]

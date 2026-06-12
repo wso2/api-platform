@@ -13,13 +13,13 @@
 # This file is read by the Platform API (Go binary).
 # Environment variables always override values set here.
 #
-# QUICK START (basic-auth mode — no external IDP needed):
+# QUICK START (file-based auth mode — no external IDP needed):
 #   1. Copy this file to config-platform-api.toml.
 #   2. Set [auth.jwt] secret_key to a random string (or use AUTH_JWT_SECRET_KEY env var).
-#   3. Set [auth.basic_auth] enabled = true and configure users.
+#   3. Set [auth.file_based] enabled = true and configure users.
 #   4. Run: docker compose up
 #
-# OIDC mode: keep basic_auth disabled, set [auth.idp] fields,
+# OIDC mode: keep file_based disabled, set [auth.idp] fields,
 # and set auth_mode = "oidc" in config.toml with oidc_* fields.
 # --------------------------------------------------------------------
 
@@ -83,7 +83,13 @@ enabled  = false
 # issuer   = ["https://accounts.example.com"]       # list of accepted issuers
 # audience = []                                      # list of accepted audiences; empty = skip audience check
 
+# Authorization mode: "scope" (default) checks the scope claim;
+# "role" checks a roles claim at claim_mappings.roles_claim_path.
+# validation_mode   = "scope"
+# role_mappings_file = ""        # path to a YAML file mapping IDP roles to platform scopes
+
 # JWT claim name mappings — configure to match your IDP's token structure.
+[auth.idp.claim_mappings]
 # organization_claim_name = "organization"   # claim carrying the org ID
 # org_name_claim_name     = "org_name"       # claim carrying the org display name
 # org_handle_claim_name   = "org_handle"     # claim carrying the org URL slug
@@ -91,34 +97,29 @@ enabled  = false
 # username_claim_name     = "username"
 # email_claim_name        = "email"
 # scope_claim_name        = "scope"          # space-separated scope string
+# roles_claim_path        = ""               # JSON path to roles array, e.g. "realm_access.roles"
 
-# Authorization mode: "scope" (default) checks the scope claim;
-# "role" checks a roles claim at roles_claim_path.
-# validation_mode  = "scope"
-# roles_claim_path = ""          # JSON path to roles array, e.g. "realm_access.roles"
-# role_mappings    = []          # list of "<idp-role>:<platform-scope>" pairs
-
-# Basic-auth — local username/password login. Ideal for initial / air-gapped setup.
+# File-based auth — local username/password login. Ideal for initial / air-gapped setup.
 # When enabled, IDP is NOT used for Platform API authentication.
-[auth.basic_auth]
+[auth.file_based]
 enabled = true
 
-[auth.basic_auth.organization]
+[auth.file_based.organization]
 # id     = ""           # UUID; auto-generated on first startup if empty
 name   = "My Organization"
 handle = "my-org"       # URL-safe slug
 region = "us"
 
-# Add one [[auth.basic_auth.users]] block per user.
+# Add one [[auth.file_based.users]] block per user.
 # Generate a bcrypt hash with: htpasswd -bnBC 12 "" <password> | tr -d ':\n'
-[[auth.basic_auth.users]]
+[[auth.file_based.users]]
 username      = "admin"
 password_hash = "$2a$12$<bcrypt-hash-of-your-password>"
 # Full scope set — trim to restrict permissions for this user.
 scopes = "ap:organization:read ap:organization:manage ap:gateway:read ap:gateway:create ap:gateway:update ap:gateway:delete ap:gateway:manage ap:gateway:token:read ap:gateway:token:create ap:gateway:token:delete ap:gateway:token:manage ap:gateway:policy:read ap:gateway:policy:create ap:gateway:policy:delete ap:gateway:policy:manage ap:gateway:artifacts:read ap:gateway:manifest:read ap:rest_api:read ap:rest_api:create ap:rest_api:update ap:rest_api:delete ap:rest_api:manage ap:rest_api:import ap:rest_api:deployment:read ap:rest_api:deployment:create ap:rest_api:deployment:delete ap:rest_api:deployment:manage ap:rest_api:api_key:read ap:rest_api:api_key:create ap:rest_api:api_key:delete ap:rest_api:api_key:manage ap:llm_provider:read ap:llm_provider:create ap:llm_provider:update ap:llm_provider:delete ap:llm_provider:manage ap:llm_provider:api_key:read ap:llm_provider:api_key:create ap:llm_provider:api_key:delete ap:llm_provider:api_key:manage ap:llm_provider:deployment:read ap:llm_provider:deployment:create ap:llm_provider:deployment:delete ap:llm_provider:deployment:manage ap:llm_proxy:read ap:llm_proxy:create ap:llm_proxy:update ap:llm_proxy:delete ap:llm_proxy:manage ap:llm_proxy:deployment:read ap:llm_proxy:deployment:create ap:llm_proxy:deployment:delete ap:llm_proxy:deployment:manage ap:mcp_proxy:read ap:mcp_proxy:create ap:mcp_proxy:update ap:mcp_proxy:delete ap:mcp_proxy:manage ap:mcp_proxy:deployment:read ap:mcp_proxy:deployment:create ap:mcp_proxy:deployment:delete ap:mcp_proxy:deployment:manage ap:application:read ap:application:create ap:application:update ap:application:delete ap:application:manage ap:subscription:read ap:subscription:create ap:subscription:update ap:subscription:delete ap:subscription:manage ap:subscription_plan:read ap:subscription_plan:create ap:subscription_plan:update ap:subscription_plan:delete ap:subscription_plan:manage ap:project:manage ap:llm_template:manage"
 
 # Additional users — uncomment and repeat this block as needed
-# [[auth.basic_auth.users]]
+# [[auth.file_based.users]]
 # username      = "readonly"
 # password_hash = "$2a$12$<bcrypt-hash-of-your-password>"
 # scopes        = "ap:organization:read ap:gateway:read ap:rest_api:read ap:llm_provider:read"
