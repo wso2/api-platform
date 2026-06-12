@@ -60,6 +60,9 @@ oidc_authority)             vite_key="VITE_OIDC_AUTHORITY" ;;
       default_org_region)         vite_key="VITE_DEFAULT_ORG_REGION" ;;
       platform_api_base_url)      vite_key="VITE_PLATFORM_API_BASE_URL" ;;
       controlplane_host)          vite_key="VITE_CONTROLPLANE_HOST" ;;
+      oidc_org_id_claim)          vite_key="VITE_OIDC_ORG_ID_CLAIM" ;;
+      oidc_org_name_claim)        vite_key="VITE_OIDC_ORG_NAME_CLAIM" ;;
+      oidc_org_handle_claim)      vite_key="VITE_OIDC_ORG_HANDLE_CLAIM" ;;
       *)                          continue ;;
     esac
 

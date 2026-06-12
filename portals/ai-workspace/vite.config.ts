@@ -45,7 +45,7 @@ export default defineConfig({
     dedupe: ['react', 'react-dom', 'react/jsx-runtime', 'react/jsx-dev-runtime'],
   },
   server: {
-    port: 3009,
+    port: 5380,
     fs: {
       allow: [
         path.resolve(__dirname),
