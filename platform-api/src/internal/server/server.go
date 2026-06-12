@@ -106,8 +106,8 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 
 	// Seed the file-based organization on startup if file-based auth mode is enabled.
 	if cfg.Auth.FileBased.Enabled {
-		if err := seedBasicAuthOrg(cfg, orgRepo, slogger); err != nil {
-			return nil, fmt.Errorf("failed to seed basic-auth organization: %w", err)
+		if err := seedFileBasedOrg(cfg, orgRepo, slogger); err != nil {
+			return nil, fmt.Errorf("failed to seed file-based organization: %w", err)
 		}
 	}
 
@@ -678,29 +678,21 @@ func (s *Server) GetRouter() *gin.Engine {
 	return s.router
 }
 
-// seedBasicAuthOrg ensures the file-based auth organization exists in the DB.
+// seedFileBasedOrg ensures the file-based auth organization exists in the DB.
 // It fetches by the configured handle first; only creates the org when no
 // matching org is found. The org ID in cfg is updated to the persisted value
 // so the login handler issues tokens with the correct org ID.
-func seedBasicAuthOrg(cfg *config.Server, orgRepo repository.OrganizationRepository, slogger *slog.Logger) error {
+func seedFileBasedOrg(cfg *config.Server, orgRepo repository.OrganizationRepository, slogger *slog.Logger) error {
 	ba := &cfg.Auth.FileBased
 
 	existing, err := orgRepo.GetOrganizationByHandle(ba.Organization.Handle)
 	if err != nil {
-		return fmt.Errorf("failed to check basic-auth organization: %w", err)
+		return fmt.Errorf("failed to check file-based organization: %w", err)
 	}
 	if existing != nil {
 		ba.Organization.ID = existing.ID
-		slogger.Info("Basic-auth organization already exists", "id", existing.ID, "handle", existing.Handle)
+		slogger.Info("File-based organization already exists", "id", existing.ID, "handle", existing.Handle)
 		return nil
-	}
-
-	if ba.Organization.ID == "" {
-		id, err := utils.GenerateUUID()
-		if err != nil {
-			return fmt.Errorf("failed to generate basic-auth org ID: %w", err)
-		}
-		ba.Organization.ID = id
 	}
 
 	now := time.Now()
@@ -713,8 +705,8 @@ func seedBasicAuthOrg(cfg *config.Server, orgRepo repository.OrganizationReposit
 		UpdatedAt: now,
 	}
 	if err := orgRepo.CreateOrganization(org); err != nil {
-		return fmt.Errorf("failed to create basic-auth organization: %w", err)
+		return fmt.Errorf("failed to create file-based organization: %w", err)
 	}
-	slogger.Info("Seeded basic-auth organization", "id", org.ID, "handle", org.Handle)
+	slogger.Info("Seeded file-based organization", "id", org.ID, "handle", org.Handle)
 	return nil
 }

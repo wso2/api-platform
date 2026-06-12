@@ -105,7 +105,7 @@ enabled  = false
 enabled = true
 
 [auth.file_based.organization]
-# id     = ""           # UUID; auto-generated on first startup if empty
+id     = ""             # Required: stable UUID for this org — generate with: uuidgen
 name   = "My Organization"
 handle = "my-org"       # URL-safe slug
 region = "us"

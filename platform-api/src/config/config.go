@@ -491,6 +491,9 @@ func validateFileBasedConfig(cfg *FileBased) error {
 	if !cfg.Enabled {
 		return nil
 	}
+	if cfg.Organization.ID == "" {
+		return fmt.Errorf("auth.file_based.enabled=true requires auth.file_based.organization.id to be configured")
+	}
 	if cfg.Organization.Name == "" {
 		return fmt.Errorf("auth.file_based.enabled=true requires auth.file_based.organization.name to be configured")
 	}

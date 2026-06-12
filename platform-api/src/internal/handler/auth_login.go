@@ -38,7 +38,7 @@ type loginResponse struct {
 	ExpiresAt int64  `json:"expires_at"`
 }
 
-// AuthLoginHandler issues JWT tokens for locally-configured users (basic-auth mode).
+// AuthLoginHandler issues JWT tokens for locally-configured users (file-based auth mode).
 type AuthLoginHandler struct {
 	cfg *config.Server
 }
@@ -58,11 +58,11 @@ func (h *AuthLoginHandler) Login(c *gin.Context) {
 		return
 	}
 
-	basicAuth := &h.cfg.Auth.FileBased
+	fileBasedAuth := &h.cfg.Auth.FileBased
 	var matched *config.FileBasedUser
-	for i := range basicAuth.Users {
-		if basicAuth.Users[i].Username == req.Username {
-			matched = &basicAuth.Users[i]
+	for i := range fileBasedAuth.Users {
+		if fileBasedAuth.Users[i].Username == req.Username {
+			matched = &fileBasedAuth.Users[i]
 			break
 		}
 	}
@@ -85,9 +85,9 @@ func (h *AuthLoginHandler) Login(c *gin.Context) {
 		"sub":          matched.Username,
 		"username":     matched.Username,
 		"scope":        matched.Scopes,
-		"organization": basicAuth.Organization.ID,
-		"org_name":     basicAuth.Organization.Name,
-		"org_handle":   basicAuth.Organization.Handle,
+		"organization": fileBasedAuth.Organization.ID,
+		"org_name":     fileBasedAuth.Organization.Name,
+		"org_handle":   fileBasedAuth.Organization.Handle,
 		"iss":          h.cfg.Auth.JWT.Issuer,
 		"exp":          expiry.Unix(),
 		"iat":          time.Now().Unix(),
