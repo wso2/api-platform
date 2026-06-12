@@ -303,7 +303,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	timeoutService := service.NewDeploymentTimeoutService(deploymentRepo, timeoutConfig, slogger)
 
 	slogger.Info("Initialized all services and handlers successfully")
-	slogger.Info("Platform API configuration", slog.Bool("demoMode", cfg.DemoMode))
+	slogger.Info("Platform API configuration", slog.Bool("demoMode", demoMode()))
 
 	if strings.ToLower(cfg.LogLevel) == "debug" {
 		gin.SetMode(gin.DebugMode)
@@ -347,7 +347,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	// Build and apply the authenticator middleware.
 	if cfg.Auth.FileBased.Enabled {
 		slogger.Info("Auth mode: file-based (HMAC-signed JWT)")
-		if !cfg.DemoMode {
+		if !demoMode() {
 			slogger.Warn("file-based authentication is enabled — this is not recommended for production; please configure an IDP of your choice")
 		}
 		router.Use(middleware.LocalJWTAuthMiddleware(middleware.AuthConfig{
@@ -422,17 +422,27 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	}, nil
 }
 
+// demoMode reports whether APIP_DEMO_MODE is enabled.
+// Defaults to true when the variable is unset.
+func demoMode() bool {
+	v := strings.ToLower(strings.TrimSpace(os.Getenv("APIP_DEMO_MODE")))
+	if v == "" {
+		return true
+	}
+	return v == "true" || v == "1"
+}
+
 // buildAuthenticator constructs an Authenticator from the server configuration.
 // Only called when file-based auth is disabled.
 func buildAuthenticator(cfg *config.Server, slogger *slog.Logger, roleScopeMap map[string][]string) (middleware.Authenticator, error) {
 	if !cfg.Auth.IDP.Enabled {
 		if cfg.Auth.JWT.SkipValidation {
-			if !cfg.DemoMode {
-				slogger.Warn("WARNING: JWT signature validation is DISABLED (AUTH_JWT_SKIP_VALIDATION=true) but DEMO_MODE=false. " +
+			if !demoMode() {
+				slogger.Warn("WARNING: JWT signature validation is DISABLED (AUTH_JWT_SKIP_VALIDATION=true) but APIP_DEMO_MODE=false. " +
 					"Tokens are NOT verified — any bearer value will be accepted. " +
-					"Set DEMO_MODE=true to suppress this warning, or set AUTH_JWT_SKIP_VALIDATION=false for production.")
+					"Set APIP_DEMO_MODE=true to suppress this warning, or set AUTH_JWT_SKIP_VALIDATION=false for production.")
 			} else {
-				slogger.Warn("JWT mode: signature validation disabled (AUTH_JWT_SKIP_VALIDATION=true) [DEMO_MODE=true]")
+				slogger.Warn("JWT mode: signature validation disabled (AUTH_JWT_SKIP_VALIDATION=true) [APIP_DEMO_MODE=true]")
 			}
 		} else {
 			slogger.Info("JWT mode: HMAC signature validation enabled")
