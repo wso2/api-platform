@@ -26,6 +26,7 @@ import (
 	"reflect"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/go-viper/mapstructure/v2"
 	toml "github.com/knadh/koanf/parsers/toml/v2"
@@ -84,6 +85,7 @@ type Server struct {
 	TLS              TLS              `koanf:"tls"`
 	APIKey           APIKey           `koanf:"api_key"`
 	Gateway          Gateway          `koanf:"gateway"`
+	EventHub         EventHub         `koanf:"event_hub"`
 
 	EnableScopeValidation      bool `koanf:"enable_scope_validation"`
 	OrgCreationRequiresAuth    bool `koanf:"org_creation_requires_auth"`
@@ -119,6 +121,13 @@ type IDP struct {
 	ValidationMode   string           `koanf:"validation_mode"`
 	RoleMappingsFile string           `koanf:"role_mappings_file"`
 	ClaimMappings    IDPClaimMappings `koanf:"claim_mappings"`
+}
+
+// EventHub holds EventHub-specific configuration for multi-replica HA event delivery.
+type EventHub struct {
+	PollInterval    time.Duration `koanf:"poll_interval"`
+	CleanupInterval time.Duration `koanf:"cleanup_interval"`
+	RetentionPeriod time.Duration `koanf:"retention_period"`
 }
 
 // Gateway holds gateway-related configuration.
@@ -275,6 +284,9 @@ func LoadConfig(configPath string) (*Server, error) {
 	if err := validateDeploymentsConfig(&cfg.Deployments); err != nil {
 		return nil, err
 	}
+	if err := validateEventHubConfig(&cfg.EventHub); err != nil {
+		return nil, err
+	}
 	if err := validateIDPConfig(&cfg.Auth.IDP); err != nil {
 		return nil, err
 	}
@@ -414,6 +426,11 @@ func envToKoanfKey(s string) string {
 	case "gateway_enable_version_verification":            return "gateway.enable_version_verification"
 	case "gateway_enable_functionality_type_verification": return "gateway.enable_functionality_type_verification"
 
+	// EventHub
+	case "event_hub_poll_interval":    return "event_hub.poll_interval"
+	case "event_hub_cleanup_interval": return "event_hub.cleanup_interval"
+	case "event_hub_retention_period": return "event_hub.retention_period"
+
 	default:
 		return ""
 	}
@@ -502,6 +519,19 @@ func validateFileBasedConfig(cfg *FileBased) error {
 	}
 	if len(cfg.Users) == 0 {
 		return fmt.Errorf("auth.file_based.enabled=true requires at least one user in auth.file_based.users")
+	}
+	return nil
+}
+
+func validateEventHubConfig(e *EventHub) error {
+	if e.PollInterval <= 0 {
+		return fmt.Errorf("event_hub.poll_interval must be a positive duration (got %s)", e.PollInterval)
+	}
+	if e.CleanupInterval <= 0 {
+		return fmt.Errorf("event_hub.cleanup_interval must be a positive duration (got %s)", e.CleanupInterval)
+	}
+	if e.RetentionPeriod <= 0 {
+		return fmt.Errorf("event_hub.retention_period must be a positive duration (got %s)", e.RetentionPeriod)
 	}
 	return nil
 }

@@ -50,6 +50,7 @@ import (
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/wso2/api-platform/common/authenticators"
+	"github.com/wso2/api-platform/common/eventhub"
 	commonmodels "github.com/wso2/api-platform/common/models"
 )
 
@@ -61,6 +62,8 @@ type Server struct {
 	gatewayRepo    repository.GatewayRepository
 	wsManager      *websocket.Manager // WebSocket connection manager
 	timeoutService *service.DeploymentTimeoutService
+	dispatcher     *service.EventDispatcher
+	eventHub       eventhub.EventHub
 	logger         *slog.Logger
 }
 
@@ -171,6 +174,20 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	}
 	wsManager := websocket.NewManager(wsConfig, gatewayRepo, slogger)
 
+	// Initialize EventHub for multi-replica HA event delivery.
+	// Events published here are polled by all platform-api instances; each instance
+	// delivers them to gateway WebSocket connections it holds locally.
+	eventHub := eventhub.New(db.DB, slogger, eventhub.Config{
+		PollInterval:    cfg.EventHub.PollInterval,
+		CleanupInterval: cfg.EventHub.CleanupInterval,
+		RetentionPeriod: cfg.EventHub.RetentionPeriod,
+	})
+	if err := eventHub.Initialize(); err != nil {
+		return nil, fmt.Errorf("failed to initialize event hub: %w", err)
+	}
+	dispatcher := service.NewEventDispatcher(eventHub, wsManager, slogger)
+	wsManager.SetConnectionHooks(dispatcher.OnGatewayConnected, dispatcher.OnGatewayDisconnected)
+
 	// Initialize utilities
 	apiUtil := &utils.APIUtil{}
 
@@ -194,7 +211,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 		slogger,
 	)
 	projectService := service.NewProjectService(projectRepo, orgRepo, apiRepo, mcpProxyRepo, websubAPIRepo, slogger)
-	gatewayEventsService := service.NewGatewayEventsService(wsManager, slogger)
+	gatewayEventsService := service.NewGatewayEventsService(eventHub, slogger)
 	appService := service.NewApplicationService(appRepo, projectRepo, orgRepo, apiRepo, gatewayEventsService, slogger)
 	apiService := service.NewAPIService(apiRepo, projectRepo, orgRepo, gatewayRepo, deploymentRepo, devPortalRepo, publicationRepo,
 		subscriptionPlanRepo, customPolicyRepo, gatewayEventsService, devPortalService, apiUtil, slogger)
@@ -422,6 +439,8 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 		gatewayRepo:    gatewayRepo,
 		wsManager:      wsManager,
 		timeoutService: timeoutService,
+		dispatcher:     dispatcher,
+		eventHub:       eventHub,
 		logger:         slogger,
 	}, nil
 }
@@ -675,15 +694,29 @@ func (s *Server) Start(port string, certDir string) error {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	defer signal.Stop(quit)
 
+	teardown := func() {
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer shutdownCancel()
+		if err := httpServer.Shutdown(shutdownCtx); err != nil {
+			s.logger.Error("HTTP server shutdown error", "error", err)
+		}
+		s.wsManager.Shutdown()
+		s.dispatcher.Shutdown()
+		if err := s.eventHub.Close(); err != nil {
+			s.logger.Error("EventHub close error", "error", err)
+		}
+	}
+
 	select {
 	case err := <-errCh:
+		cancel()
+		teardown()
 		return err
 	case sig := <-quit:
 		s.logger.Info("Received shutdown signal", "signal", sig)
 		cancel()
-		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer shutdownCancel()
-		return httpServer.Shutdown(shutdownCtx)
+		teardown()
+		return nil
 	}
 }
 

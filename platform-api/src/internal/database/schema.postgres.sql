@@ -459,3 +459,25 @@ CREATE INDEX IF NOT EXISTS idx_application_api_keys_app_id ON application_api_ke
 CREATE INDEX IF NOT EXISTS idx_application_api_keys_key_id ON application_api_keys(api_key_id);
 CREATE INDEX IF NOT EXISTS idx_application_artifacts_app_id ON application_artifacts(application_uuid);
 CREATE INDEX IF NOT EXISTS idx_application_artifacts_artifact_id ON application_artifacts(artifact_uuid);
+
+-- EventHub tables for multi-replica HA sync
+CREATE TABLE IF NOT EXISTS gateway_states (
+    gateway_id TEXT PRIMARY KEY,
+    version_id TEXT NOT NULL DEFAULT '',
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS events (
+    gateway_id TEXT NOT NULL,
+    processed_timestamp TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    originated_timestamp TIMESTAMPTZ NOT NULL,
+    entity_type TEXT NOT NULL,
+    action TEXT NOT NULL CHECK(action IN ('CREATE', 'UPDATE', 'DELETE')),
+    entity_id TEXT NOT NULL,
+    event_id TEXT NOT NULL,
+    event_data TEXT NOT NULL,
+    PRIMARY KEY (gateway_id, event_id),
+    FOREIGN KEY (gateway_id) REFERENCES gateway_states(gateway_id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_events_gateway_id_processed_timestamp ON events(gateway_id, processed_timestamp);
