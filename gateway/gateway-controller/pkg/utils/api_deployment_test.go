@@ -996,6 +996,100 @@ func TestResolveVhostSentinels_ExplicitValuesUnchanged(t *testing.T) {
 	assert.Equal(t, "custom-sandbox.example.com", *resolved.Vhosts.Sandbox)
 }
 
+func TestResolveVhostSentinels_PreservesTemplateExpressions(t *testing.T) {
+	sandboxValue := `{{ secret "SandboxHost" }}`
+	routerCfg := &config.RouterConfig{
+		VHosts: config.VHostsConfig{
+			Main:    config.VHostEntry{Default: "*.wso2.com"},
+			Sandbox: config.VHostEntry{Default: "*-sandbox.wso2.com"},
+		},
+	}
+
+	var cfg any = api.RestAPI{
+		Kind: api.RestAPIKindRestApi,
+		Spec: api.APIConfigData{
+			Vhosts: &struct {
+				Main    string  `json:"main" yaml:"main"`
+				Sandbox *string `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+			}{
+				Main:    `{{ env "API_HOST" }}`,
+				Sandbox: &sandboxValue,
+			},
+		},
+	}
+
+	require.NoError(t, resolveVhostSentinels(&cfg, routerCfg))
+
+	resolved := cfg.(api.RestAPI).Spec
+	require.NotNil(t, resolved.Vhosts)
+	assert.Equal(t, `{{ env "API_HOST" }}`, resolved.Vhosts.Main, "template expressions must be left untouched for later rendering")
+	require.NotNil(t, resolved.Vhosts.Sandbox)
+	assert.Equal(t, `{{ secret "SandboxHost" }}`, *resolved.Vhosts.Sandbox, "template expressions must be left untouched for later rendering")
+}
+
+func TestResolveVhostSentinels_NormalizesCaseAndWhitespace(t *testing.T) {
+	sandboxValue := "  Custom-Sandbox.Example.COM  "
+	routerCfg := &config.RouterConfig{
+		VHosts: config.VHostsConfig{
+			Main:    config.VHostEntry{Default: "*.wso2.com"},
+			Sandbox: config.VHostEntry{Default: "*-sandbox.wso2.com"},
+		},
+	}
+
+	var cfg any = api.RestAPI{
+		Kind: api.RestAPIKindRestApi,
+		Spec: api.APIConfigData{
+			Vhosts: &struct {
+				Main    string  `json:"main" yaml:"main"`
+				Sandbox *string `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+			}{
+				Main:    "API.WSO2.COM",
+				Sandbox: &sandboxValue,
+			},
+		},
+	}
+
+	require.NoError(t, resolveVhostSentinels(&cfg, routerCfg))
+
+	resolved := cfg.(api.RestAPI).Spec
+	require.NotNil(t, resolved.Vhosts)
+	assert.Equal(t, "api.wso2.com", resolved.Vhosts.Main, "explicit main vhost should be lower-cased and trimmed")
+	require.NotNil(t, resolved.Vhosts.Sandbox)
+	assert.Equal(t, "custom-sandbox.example.com", *resolved.Vhosts.Sandbox, "explicit sandbox vhost should be lower-cased and trimmed")
+}
+
+func TestResolveVhostSentinels_NormalizesSentinelCaseAndWhitespace(t *testing.T) {
+	sandbox := "  _GATEWAY_DEFAULT_  "
+	routerCfg := &config.RouterConfig{
+		VHosts: config.VHostsConfig{
+			Main:    config.VHostEntry{Default: "*.wso2.com"},
+			Sandbox: config.VHostEntry{Default: "*-sandbox.wso2.com"},
+		},
+	}
+
+	main := "_GATEWAY_DEFAULT_"
+	var cfg any = api.RestAPI{
+		Kind: api.RestAPIKindRestApi,
+		Spec: api.APIConfigData{
+			Vhosts: &struct {
+				Main    string  `json:"main" yaml:"main"`
+				Sandbox *string `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+			}{
+				Main:    main,
+				Sandbox: &sandbox,
+			},
+		},
+	}
+
+	require.NoError(t, resolveVhostSentinels(&cfg, routerCfg))
+
+	resolved := cfg.(api.RestAPI).Spec
+	require.NotNil(t, resolved.Vhosts)
+	assert.Equal(t, "*.wso2.com", resolved.Vhosts.Main, "case and whitespace variant of the sentinel should resolve to the main default")
+	require.NotNil(t, resolved.Vhosts.Sandbox)
+	assert.Equal(t, "*-sandbox.wso2.com", *resolved.Vhosts.Sandbox, "case and whitespace variant of the sentinel should resolve to the sandbox default")
+}
+
 func TestResolveVhostSentinels_NilVhostsPopulatesDefaults(t *testing.T) {
 	routerCfg := &config.RouterConfig{
 		VHosts: config.VHostsConfig{

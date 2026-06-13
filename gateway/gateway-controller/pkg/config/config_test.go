@@ -1045,6 +1045,16 @@ func TestConfig_ValidateVHostsConfig(t *testing.T) {
 	}
 }
 
+func TestConfig_ValidateVHostsConfig_NormalizesDefaults(t *testing.T) {
+	cfg := validConfig()
+	cfg.Router.VHosts.Main.Default = "  API.WSO2.COM  "
+	cfg.Router.VHosts.Sandbox.Default = "API-SANDBOX.WSO2.COM"
+
+	assert.NoError(t, cfg.Validate())
+	assert.Equal(t, "api.wso2.com", cfg.Router.VHosts.Main.Default, "main default should be lower-cased and trimmed")
+	assert.Equal(t, "api-sandbox.wso2.com", cfg.Router.VHosts.Sandbox.Default, "sandbox default should be lower-cased and trimmed")
+}
+
 func TestConfig_ValidateAnalyticsConfig(t *testing.T) {
 	tests := []struct {
 		name        string
