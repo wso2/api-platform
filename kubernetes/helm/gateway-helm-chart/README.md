@@ -123,10 +123,11 @@ Each major workload (controller, gateway-runtime) lives in its own nested templa
 All configurable values are documented in `values.yaml`. Component blocks are fully namespaced so overrides are intuitive:
 
 - `gateway.controller.image` / `gateway.gatewayRuntime.image` – container image metadata and pull policies.
-- `gateway.<component>.deployment.*` – pod-level knobs (replicas, probes, affinities, env overrides, extra volumes) and enable/disable switches.
-- `gateway.<component>.service.*` – service type/ports plus optional annotations and labels.
+- `gateway.<component>.deployment.*` – pod-level knobs (replicas, probes incl. optional `startupProbe`, scheduling via `nodeSelector`/`tolerations`/`affinity`/`topologySpreadConstraints`, update `strategy`, `terminationGracePeriodSeconds`, `hostAliases`, `dnsPolicy`/`dnsConfig`, `automountServiceAccountToken`, env overrides, extra volumes) and enable/disable switches.
+- `gateway.<component>.service.*` – service type/ports plus optional annotations and labels, and network tuning (`clusterIP`, `externalTrafficPolicy`, `loadBalancerClass`, `loadBalancerSourceRanges`, `ipFamilyPolicy`/`ipFamilies`, static `nodePorts.*`).
 - `gateway.<component>.service.expose.*` – per-port toggles for publishing admin/debug ports on the Service. **All default to `false`** so admin surfaces stay pod-internal (reach them with `kubectl port-forward`). Available toggles: `controller.service.expose.admin` (controller admin, 9092), `gatewayRuntime.service.expose.routerAdmin` (Router/Envoy admin, 9901 — includes mutating endpoints, leave off unless trusted), `gatewayRuntime.service.expose.policyEngineAdmin` (policy-engine admin, 9002). Probes are unaffected; they target container ports directly. Note: the controller admin port is no longer exposed by default — set `expose.admin=true` to restore prior behavior. The runtime port key was renamed `envoyAdmin` → `routerAdmin`.
-- `gateway.controller.persistence` / `gateway.controller.configMap` – PVC sizing/claims and component configuration payloads.
+- `gateway.controller.persistence` / `gateway.controller.configMap` – PVC sizing/claims (plus PVC `labels`/`annotations`, e.g. `helm.sh/resource-policy: keep`) and component configuration payloads.
+- `commonLabels` / `commonAnnotations` – applied to every resource the chart renders; per-resource labels/annotations win on key conflicts.
 - `gateway.controller.controlPlane` and `gateway.controller.logging` – control-plane connectivity plus controller logging level.
 - `gateway.controller.tls.*` – TLS certificate configuration for HTTPS listener using cert-manager or existing secrets.
 - `gateway.controller.upstreamCerts.*` – Custom CA certificates for upstream backend TLS verification.
