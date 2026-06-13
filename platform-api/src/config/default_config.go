@@ -17,6 +17,8 @@
 
 package config
 
+import "time"
+
 // defaultConfig returns a Server with all default values.
 func defaultConfig() *Server {
 	return &Server{
@@ -108,6 +110,11 @@ func defaultConfig() *Server {
 		},
 		APIKey: APIKey{
 			HashingAlgorithms: []string{"sha256"},
+		},
+		EventHub: EventHub{
+			PollInterval:    3 * time.Second,
+			CleanupInterval: 10 * time.Minute,
+			RetentionPeriod: 1 * time.Hour,
 		},
 	}
 }
