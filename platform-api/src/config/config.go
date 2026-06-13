@@ -151,6 +151,7 @@ type WebSocket struct {
 
 // Database holds database-specific configuration.
 type Database struct {
+	// Driver supports: sqlite3, postgres/postgresql/pgx, sqlserver/mssql.
 	Driver string `koanf:"driver"`
 	// Path is the file path for SQLite databases.
 	Path            string `koanf:"path"`

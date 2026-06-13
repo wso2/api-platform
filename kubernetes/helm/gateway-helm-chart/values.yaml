@@ -92,9 +92,10 @@ gateway:
 
       # Storage configuration
       storage:
-        # Storage type: "sqlite", "postgres", or "memory"
+        # Storage type: "sqlite", "postgres", "sqlserver", or "memory"
         # - sqlite: Single-instance embedded database backed by a PersistentVolumeClaim
         # - postgres: External PostgreSQL database; enables multi-replica controller deployments
+        # - sqlserver: External SQL Server database; enables multi-replica controller deployments
         # - memory: No persistence; all state is lost on restart (useful for testing only)
         type: sqlite
 
@@ -118,6 +119,49 @@ gateway:
           # Use "require" or stronger in production.
           sslmode: require
 
+          connect_timeout: 5s
+          max_open_conns: 25
+          max_idle_conns: 5
+          conn_max_lifetime: 30m
+          conn_max_idle_time: 5m
+          application_name: gateway-controller
+
+        # Global database configuration (used for type=sqlserver).
+        # Password is injected separately via gateway.controller.sqlserver.passwordSecretRef.
+        # This shape maps to [controller.storage.database] in config.toml.
+        database:
+          driver: sqlserver
+          # Full DSN takes precedence over individual fields when set.
+          # Example: "sqlserver://user:password@host:1433?database=gateway&encrypt=disable&TrustServerCertificate=true"
+          dsn: ""
+
+          host: ""
+          port: 1433
+          database: ""
+          user: ""
+
+          connect_timeout: 5s
+          max_open_conns: 25
+          max_idle_conns: 5
+          conn_max_lifetime: 30m
+          conn_max_idle_time: 5m
+          application_name: gateway-controller
+
+          options:
+            # Encryption mode: disable, false, true, strict
+            encrypt: disable
+            trust_server_certificate: "true"
+
+        # Legacy SQL Server configuration (backward compatible fallback).
+        # Prefer gateway.config.controller.storage.database for new deployments.
+        sqlserver:
+          dsn: ""
+          host: ""
+          port: 1433
+          database: ""
+          user: ""
+          encrypt: disable
+          trust_server_certificate: true
           connect_timeout: 5s
           max_open_conns: 25
           max_idle_conns: 5
@@ -484,6 +528,13 @@ gateway:
     # The password is injected as an env var from a Kubernetes secret rather than stored in the ConfigMap.
     # Create with: kubectl create secret generic <name> --from-literal=password='<db-password>'
     postgres:
+      passwordSecretRef:
+        name: ""
+        key: password
+    # SQL Server password secret reference (used when gateway.config.controller.storage.type=sqlserver).
+    # The password is injected as an env var from a Kubernetes secret rather than stored in the ConfigMap.
+    # Create with: kubectl create secret generic <name> --from-literal=password='<db-password>'
+    sqlserver:
       passwordSecretRef:
         name: ""
         key: password

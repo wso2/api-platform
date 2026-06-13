@@ -30,6 +30,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/jmoiron/sqlx"
+	mssql "github.com/microsoft/go-mssqldb"
 )
 
 const (
@@ -106,6 +107,8 @@ func bindTypeForDB(db *sql.DB) int {
 	switch db.Driver().(type) {
 	case *stdlib.Driver:
 		return sqlx.DOLLAR
+	case *mssql.Driver:
+		return sqlx.AT
 	default:
 		return sqlx.QUESTION
 	}
@@ -113,6 +116,16 @@ func bindTypeForDB(db *sql.DB) int {
 
 func (b *SQLBackend) rebind(query string) string {
 	return sqlx.Rebind(b.bindType, query)
+}
+
+// limitClause returns a portable row-limit clause. SQL Server does not support
+// LIMIT and instead uses ANSI OFFSET/FETCH (which requires an ORDER BY — every
+// call site here is already ordered). The single `?` is rebound like any other.
+func (b *SQLBackend) limitClause() string {
+	if b.bindType == sqlx.AT {
+		return "OFFSET 0 ROWS FETCH NEXT ? ROWS ONLY"
+	}
+	return "LIMIT ?"
 }
 
 // Initialize prepares statements and starts background goroutines
@@ -191,7 +204,7 @@ func (b *SQLBackend) prepareStatements() (err error) {
 		FROM gateway_states
 		WHERE gateway_id > ?
 		ORDER BY gateway_id ASC
-		LIMIT ?
+		` + b.limitClause() + `
 	`))
 	if err != nil {
 		return fmt.Errorf("failed to prepare get gateway states page statement: %w", err)
@@ -208,7 +221,7 @@ func (b *SQLBackend) prepareStatements() (err error) {
 	}
 
 	b.getEventByIDStmt, err = b.db.Prepare(b.rebind(`
-		SELECT event_id FROM events WHERE event_id = ?
+		SELECT event_id FROM events WHERE gateway_id = ? AND event_id = ?
 	`))
 	if err != nil {
 		return fmt.Errorf("failed to prepare get event by ID statement: %w", err)
@@ -305,7 +318,7 @@ func (b *SQLBackend) Publish(gatewayID string, event Event) error {
 		}
 		err = nil
 
-		eventExists, checkErr := b.eventExists(eventID)
+		eventExists, checkErr := b.eventExists(gatewayID, eventID)
 		if checkErr != nil {
 			return fmt.Errorf("failed to check event existence after insert failure: %w", checkErr)
 		}
@@ -347,9 +360,9 @@ func (b *SQLBackend) Publish(gatewayID string, event Event) error {
 	return nil
 }
 
-func (b *SQLBackend) eventExists(eventID string) (bool, error) {
+func (b *SQLBackend) eventExists(gatewayID, eventID string) (bool, error) {
 	var existingEventID string
-	err := b.getEventByIDStmt.QueryRow(eventID).Scan(&existingEventID)
+	err := b.getEventByIDStmt.QueryRow(gatewayID, eventID).Scan(&existingEventID)
 	if err == nil {
 		return true, nil
 	}

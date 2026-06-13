@@ -19,6 +19,8 @@
 package config
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -301,6 +303,151 @@ func TestConfig_Validate_PostgresConfig(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestConfig_Validate_SQLiteConfig_GlobalDatabasePath(t *testing.T) {
+	cfg := validConfig()
+	cfg.Controller.Storage.Type = "sqlite"
+	cfg.Controller.Storage.SQLite.Path = ""
+	cfg.Controller.Storage.Database = &DatabaseConfig{
+		Path: "/tmp/from-global.db",
+	}
+
+	err := cfg.Validate()
+	require.NoError(t, err)
+	assert.Equal(t, "/tmp/from-global.db", cfg.Controller.Storage.EffectiveSQLitePath())
+}
+
+func TestConfig_Validate_PostgresConfig_GlobalDatabaseOverridesLegacy(t *testing.T) {
+	cfg := validConfig()
+	cfg.Controller.Storage.Type = "postgres"
+	cfg.Controller.Storage.Postgres.Host = "legacy-host"
+	cfg.Controller.Storage.Postgres.Database = "legacy-db"
+	cfg.Controller.Storage.Postgres.User = "legacy-user"
+	cfg.Controller.Storage.Database = &DatabaseConfig{
+		Driver:   "postgres",
+		Host:     "global-host",
+		Database: "global-db",
+		User:     "global-user",
+		Options: map[string]string{
+			"sslmode": "prefer",
+		},
+	}
+
+	err := cfg.Validate()
+	require.NoError(t, err)
+	assert.Equal(t, "global-host", cfg.Controller.Storage.Postgres.Host)
+	assert.Equal(t, "global-db", cfg.Controller.Storage.Postgres.Database)
+	assert.Equal(t, "global-user", cfg.Controller.Storage.Postgres.User)
+	assert.Equal(t, "prefer", cfg.Controller.Storage.Postgres.SSLMode)
+}
+
+func TestConfig_Validate_SQLServerConfig_GlobalDatabase(t *testing.T) {
+	tests := []struct {
+		name        string
+		database    *DatabaseConfig
+		wantErr     bool
+		errContains string
+	}{
+		{
+			name:        "Missing global database section",
+			database:    nil,
+			wantErr:     true,
+			errContains: "storage.database is required",
+		},
+		{
+			name: "Invalid driver",
+			database: &DatabaseConfig{
+				Driver:   "postgres",
+				Host:     "localhost",
+				Database: "gw",
+				User:     "sa",
+			},
+			wantErr:     true,
+			errContains: "storage.database.driver must be one of",
+		},
+		{
+			name: "Invalid encrypt option",
+			database: &DatabaseConfig{
+				Driver:   "sqlserver",
+				Host:     "localhost",
+				Database: "gw",
+				User:     "sa",
+				Options: map[string]string{
+					"encrypt": "bad",
+				},
+			},
+			wantErr:     true,
+			errContains: "storage.database.options.encrypt must be one of",
+		},
+		{
+			name: "Valid SQLServer global database config",
+			database: &DatabaseConfig{
+				Driver:   "mssql",
+				Host:     "localhost",
+				Database: "gw",
+				User:     "sa",
+				Options: map[string]string{
+					"encrypt":                  "strict",
+					"trust_server_certificate": "true",
+				},
+			},
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := validConfig()
+			cfg.Controller.Storage.Type = "sqlserver"
+			cfg.Controller.Storage.Database = tt.database
+
+			err := cfg.Validate()
+			if tt.wantErr {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.errContains)
+				return
+			}
+
+			require.NoError(t, err)
+			require.NotNil(t, cfg.Controller.Storage.Database)
+			assert.Equal(t, 1433, cfg.Controller.Storage.Database.Port)
+			assert.Equal(t, "strict", cfg.Controller.Storage.SQLServerEncrypt())
+			assert.True(t, cfg.Controller.Storage.SQLServerTrustServerCertificate())
+		})
+	}
+}
+
+func TestLoadConfig_SQLServerDatabaseFromEnv(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.toml")
+	require.NoError(t, os.WriteFile(configPath, []byte(""), 0o644))
+
+	t.Setenv("APIP_GW_CONTROLLER_STORAGE_TYPE", "sqlserver")
+	t.Setenv("APIP_GW_CONTROLLER_STORAGE_DATABASE_DRIVER", "mssql")
+	t.Setenv("APIP_GW_CONTROLLER_STORAGE_DATABASE_HOST", "sqlserver.local")
+	t.Setenv("APIP_GW_CONTROLLER_STORAGE_DATABASE_PORT", "1433")
+	t.Setenv("APIP_GW_CONTROLLER_STORAGE_DATABASE_DATABASE", "gateway")
+	t.Setenv("APIP_GW_CONTROLLER_STORAGE_DATABASE_USER", "sa")
+	t.Setenv("APIP_GW_CONTROLLER_STORAGE_DATABASE_PASSWORD", "secret")
+	t.Setenv("APIP_GW_CONTROLLER_STORAGE_DATABASE_OPTIONS_ENCRYPT", "disable")
+	t.Setenv("APIP_GW_CONTROLLER_STORAGE_DATABASE_OPTIONS_TRUST__SERVER__CERTIFICATE", "true")
+	t.Setenv("APIP_GW_CONTROLLER_STORAGE_DATABASE_MAX__OPEN__CONNS", "30")
+
+	cfg, err := LoadConfig(configPath)
+	require.NoError(t, err)
+	require.NotNil(t, cfg.Controller.Storage.Database)
+
+	assert.Equal(t, "sqlserver", cfg.Controller.Storage.Type)
+	assert.Equal(t, "mssql", cfg.Controller.Storage.Database.Driver)
+	assert.Equal(t, "sqlserver.local", cfg.Controller.Storage.Database.Host)
+	assert.Equal(t, 1433, cfg.Controller.Storage.Database.Port)
+	assert.Equal(t, "gateway", cfg.Controller.Storage.Database.Database)
+	assert.Equal(t, "sa", cfg.Controller.Storage.Database.User)
+	assert.Equal(t, "secret", cfg.Controller.Storage.Database.Password)
+	assert.Equal(t, 30, cfg.Controller.Storage.Database.MaxOpenConns)
+	assert.Equal(t, "disable", cfg.Controller.Storage.SQLServerEncrypt())
+	assert.True(t, cfg.Controller.Storage.SQLServerTrustServerCertificate())
 }
 
 func TestConfig_Validate_AccessLogFormat(t *testing.T) {

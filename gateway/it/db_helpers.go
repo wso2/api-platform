@@ -39,6 +39,10 @@ const (
 	// Present in docker-compose.test.postgres.yaml only. Has psql built-in.
 	postgresContainer = "it-postgres"
 
+	// sqlserverContainer is the SQL Server service used by the sqlserver compose.
+	// Present in docker-compose.test.sqlserver.yaml only. Has sqlcmd built-in.
+	sqlserverContainer = "it-sqlserver"
+
 	// gatewayDBPath is the SQLite database path inside dbReaderContainer.
 	gatewayDBPath = "/data/gateway.db"
 
@@ -46,6 +50,13 @@ const (
 	// docker-compose.test.postgres.yaml.
 	postgresDB   = "gateway_test"
 	postgresUser = "gateway"
+
+	// sqlserverDB / sqlserverUser match the credentials in
+	// docker-compose.test.sqlserver.yaml. The SA password is read from the
+	// MSSQL_SA_PASSWORD env var (set by the workflow/test runner).
+	sqlserverDB   = "gateway_test"
+	sqlserverUser = "sa"
+	sqlcmdPath    = "/opt/mssql-tools18/bin/sqlcmd"
 
 	// defaultDBQueryTimeout caps the time allowed for a query (including
 	// retries) so a stuck reader container can't hang a scenario.
@@ -91,6 +102,8 @@ func detectDBDriver(ctx context.Context) string {
 		detected = "sqlite"
 	} else if containerRunning(ctx, postgresContainer) {
 		detected = "postgres"
+	} else if containerRunning(ctx, sqlserverContainer) {
+		detected = "sqlserver"
 	}
 
 	if detected != "" {
@@ -182,8 +195,23 @@ func executeQuery(ctx context.Context, query string) (string, error) {
 		// -A unaligned, -t tuples-only, -X no .psqlrc — produces just the value.
 		cmd = exec.CommandContext(ctx, "docker", "exec", postgresContainer,
 			"psql", "-U", postgresUser, "-d", postgresDB, "-AtX", "-c", query)
+	case "sqlserver":
+		// -h -1 no headers; -y 8000 widens the variable-length column display from
+		// sqlcmd's 256-char default to its maximum so the NVARCHAR(MAX) configuration
+		// JSON isn't truncated (test configs are far smaller than 8000); -w 65535
+		// stops long lines from wrapping; -b exits non-zero on error; -C trusts the
+		// self-signed server cert. (-y 0 / -W are rejected alongside -h/-y, and the
+		// caller already TrimSpaces, so neither is used.)
+		pw := os.Getenv("MSSQL_SA_PASSWORD")
+		if pw == "" {
+			return "", fmt.Errorf("MSSQL_SA_PASSWORD must be set for sqlserver test queries")
+		}
+		cmd = exec.CommandContext(ctx, "docker", "exec", sqlserverContainer,
+			sqlcmdPath, "-C", "-S", "localhost", "-U", sqlserverUser, "-P", pw,
+			"-d", sqlserverDB, "-h", "-1", "-y", "8000", "-w", "65535", "-b",
+			"-Q", "SET NOCOUNT ON; "+query)
 	default:
-		return "", fmt.Errorf("no DB reader container is running (looked for %q and %q)", dbReaderContainer, postgresContainer)
+		return "", fmt.Errorf("no DB reader container is running (looked for %q, %q and %q)", dbReaderContainer, postgresContainer, sqlserverContainer)
 	}
 
 	out, err := cmd.CombinedOutput()

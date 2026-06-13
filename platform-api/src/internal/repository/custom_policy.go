@@ -40,15 +40,12 @@ func NewCustomPolicyRepo(db *database.DB) CustomPolicyRepository {
 // InsertCustomPolicy inserts or updates a custom policy by (organization_uuid, name, version).
 func (r *CustomPolicyRepo) InsertCustomPolicy(policy *model.CustomPolicy) error {
 	now := time.Now()
-	query := `
-		INSERT INTO gateway_custom_policies (uuid, organization_uuid, name, display_name, version, description, policy_definition, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(organization_uuid, name, version) DO UPDATE SET
-			display_name     = excluded.display_name,
-			description      = excluded.description,
-			policy_definition = excluded.policy_definition,
-			updated_at       = excluded.updated_at
-	`
+	query := r.db.BuildUpsertQuery(
+		"gateway_custom_policies",
+		[]string{"uuid", "organization_uuid", "name", "display_name", "version", "description", "policy_definition", "created_at", "updated_at"},
+		[]string{"organization_uuid", "name", "version"},
+		[]string{"display_name", "description", "policy_definition", "updated_at"},
+	)
 	_, err := r.db.Exec(r.db.Rebind(query),
 		policy.UUID, policy.OrganizationUUID, policy.Name, policy.DisplayName, policy.Version,
 		policy.Description, policy.PolicyDefinition, now, now,

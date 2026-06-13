@@ -33,3 +33,70 @@ jobs:
       - name: Run tests
         run: make test
         working-directory: platform-api
+
+  pr-check-sqlserver:
+    runs-on: ubuntu-24.04
+    env:
+      MSSQL_SA_PASSWORD: ${{ secrets.CI_MSSQL_SA_PASSWORD }}
+      DATABASE_DRIVER: sqlserver
+      DATABASE_HOST: 127.0.0.1
+      DATABASE_PORT: 1433
+      DATABASE_NAME: platform_api
+      DATABASE_USER: sa
+      DATABASE_PASSWORD: ${{ secrets.CI_MSSQL_SA_PASSWORD }}
+      DATABASE_SSL_MODE: disable
+      DB_SCHEMA_PATH: ./internal/database/schema.sql
+    services:
+      sqlserver:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        env:
+          ACCEPT_EULA: Y
+          MSSQL_PID: Developer
+          MSSQL_SA_PASSWORD: ${{ secrets.CI_MSSQL_SA_PASSWORD }}
+        ports:
+          - 1433:1433
+        # No service-level --health-cmd: the SA-password quoting required by a
+        # GitHub Actions service `options:` block is fragile across the
+        # YAML → runner arg-splitter → container-shell layers. Readiness is
+        # gated explicitly by the "Wait for SQL Server and create database"
+        # step below, which polls with sqlcmd before any build/test runs.
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.2'
+          cache-dependency-path: '**/go.sum'
+
+      - name: Wait for SQL Server and create database
+        run: |
+          set -euo pipefail
+
+          curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | sudo apt-key add -
+          curl -fsSL https://packages.microsoft.com/config/ubuntu/24.04/prod.list | sudo tee /etc/apt/sources.list.d/mssql-release.list >/dev/null
+          sudo apt-get update
+          sudo ACCEPT_EULA=Y apt-get install -y --no-install-recommends mssql-tools18
+
+          for i in {1..60}; do
+            if /opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P "$MSSQL_SA_PASSWORD" -Q "SELECT 1" >/dev/null 2>&1; then
+              break
+            fi
+            if [ "$i" -eq 60 ]; then
+              echo "SQL Server did not become ready in time"
+              exit 1
+            fi
+            sleep 2
+          done
+
+          /opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P "$MSSQL_SA_PASSWORD" \
+            -Q "IF DB_ID('platform_api') IS NULL CREATE DATABASE [platform_api]"
+
+      - name: Build with SQL Server configuration
+        run: go build ./cmd/main.go
+        working-directory: platform-api/src
+
+      - name: Run tests with SQL Server driver configuration
+        run: make test
+        working-directory: platform-api

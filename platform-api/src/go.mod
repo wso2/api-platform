@@ -16,6 +16,7 @@ require (
 	github.com/knadh/koanf/providers/file v1.2.1
 	github.com/knadh/koanf/v2 v2.3.2
 	github.com/mattn/go-sqlite3 v1.14.41
+	github.com/microsoft/go-mssqldb v1.10.0
 	github.com/oapi-codegen/runtime v1.1.2
 	github.com/pb33f/libopenapi v0.28.2
 	github.com/wso2/api-platform/common v0.0.0

@@ -38,10 +38,10 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/restapi"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/webhooksecretxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/transform"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/version"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/webhooksecretxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
 )
 
@@ -54,10 +54,11 @@ const (
 )
 
 func toBackendConfig(cfg *config.Config) storage.BackendConfig {
-	pg := cfg.Controller.Storage.Postgres
+	pg := cfg.Controller.Storage.EffectivePostgresConfig()
+	ms := cfg.Controller.Storage.EffectiveSQLServerConfig()
 	return storage.BackendConfig{
 		Type:       cfg.Controller.Storage.Type,
-		SQLitePath: cfg.Controller.Storage.SQLite.Path,
+		SQLitePath: cfg.Controller.Storage.EffectiveSQLitePath(),
 		Postgres: storage.PostgresConnectionConfig{
 			DSN:             pg.DSN,
 			Host:            pg.Host,
@@ -72,6 +73,22 @@ func toBackendConfig(cfg *config.Config) storage.BackendConfig {
 			ConnMaxLifetime: pg.ConnMaxLifetime,
 			ConnMaxIdleTime: pg.ConnMaxIdleTime,
 			ApplicationName: pg.ApplicationName,
+		},
+		SQLServer: storage.SQLServerConnectionConfig{
+			DSN:                    ms.DSN,
+			Host:                   ms.Host,
+			Port:                   ms.Port,
+			Database:               ms.Database,
+			User:                   ms.User,
+			Password:               ms.Password,
+			Encrypt:                cfg.Controller.Storage.SQLServerEncrypt(),
+			TrustServerCertificate: cfg.Controller.Storage.SQLServerTrustServerCertificate(),
+			ConnectTimeout:         ms.ConnectTimeout,
+			MaxOpenConns:           ms.MaxOpenConns,
+			MaxIdleConns:           ms.MaxIdleConns,
+			ConnMaxLifetime:        ms.ConnMaxLifetime,
+			ConnMaxIdleTime:        ms.ConnMaxIdleTime,
+			ApplicationName:        ms.ApplicationName,
 		},
 		GatewayID: cfg.Controller.Server.GatewayID,
 	}
@@ -127,8 +144,8 @@ func main() {
 	// guarantee a fresh, reproducible state on every boot.
 	if cfg.ImmutableGateway.Enabled {
 		log.Info("Immutable gateway mode enabled — removing existing SQLite files for fresh start",
-			slog.String("path", cfg.Controller.Storage.SQLite.Path))
-		if err := immutable.ResetSQLiteFiles(cfg.Controller.Storage.SQLite.Path, log); err != nil {
+			slog.String("path", cfg.Controller.Storage.EffectiveSQLitePath()))
+		if err := immutable.ResetSQLiteFiles(cfg.Controller.Storage.EffectiveSQLitePath(), log); err != nil {
 			log.Error("Failed to reset SQLite files for immutable mode", slog.Any("error", err))
 			os.Exit(1)
 		}
@@ -140,7 +157,7 @@ func main() {
 	if err != nil {
 		if strings.EqualFold(cfg.Controller.Storage.Type, "sqlite") && errors.Is(err, storage.ErrDatabaseLocked) {
 			log.Error("Database is locked by another process",
-				slog.String("database_path", cfg.Controller.Storage.SQLite.Path),
+				slog.String("database_path", cfg.Controller.Storage.EffectiveSQLitePath()),
 				slog.String("troubleshooting", "Check if another gateway-controller instance is running or remove stale WAL files"))
 			os.Exit(1)
 		}
@@ -156,10 +173,17 @@ func main() {
 	var eventHubStorage storage.Storage
 	// Create separate storage connection for EventHub (avoids SQLite lock contention)
 	ehBackendCfg := toBackendConfig(cfg)
+	// Apply the EventHub-specific pool sizing to whichever SQL backend is in use
+	// (a separate, smaller pool for the poller). Keep this in sync for every
+	// connection-pooled backend so the override isn't silently dropped.
 	ehBackendCfg.Postgres.MaxOpenConns = cfg.Controller.EventHub.Database.MaxOpenConns
 	ehBackendCfg.Postgres.MaxIdleConns = cfg.Controller.EventHub.Database.MaxIdleConns
 	ehBackendCfg.Postgres.ConnMaxLifetime = cfg.Controller.EventHub.Database.ConnMaxLifetime
 	ehBackendCfg.Postgres.ConnMaxIdleTime = cfg.Controller.EventHub.Database.ConnMaxIdleTime
+	ehBackendCfg.SQLServer.MaxOpenConns = cfg.Controller.EventHub.Database.MaxOpenConns
+	ehBackendCfg.SQLServer.MaxIdleConns = cfg.Controller.EventHub.Database.MaxIdleConns
+	ehBackendCfg.SQLServer.ConnMaxLifetime = cfg.Controller.EventHub.Database.ConnMaxLifetime
+	ehBackendCfg.SQLServer.ConnMaxIdleTime = cfg.Controller.EventHub.Database.ConnMaxIdleTime
 	eventHubStorage, err = storage.NewStorage(ehBackendCfg, log)
 	if err != nil {
 		log.Error("Failed to initialize EventHub storage", slog.Any("error", err))

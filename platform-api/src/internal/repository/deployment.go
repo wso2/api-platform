@@ -158,22 +158,12 @@ func (r *DeploymentRepo) CreateWithLimitEnforcement(deployment *model.Deployment
 	}
 
 	// 4. Insert or update deployment status (UPSERT)
-	var statusQuery string
-	if r.db.Driver() == "postgres" || r.db.Driver() == "postgresql" {
-		statusQuery = `
-			INSERT INTO deployment_status (artifact_uuid, organization_uuid, gateway_uuid, deployment_id, status, status_desired, performed_at, status_reason, updated_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?)
-			ON CONFLICT (artifact_uuid, organization_uuid, gateway_uuid)
-			DO UPDATE SET deployment_id = EXCLUDED.deployment_id, status = EXCLUDED.status,
-			             status_desired = EXCLUDED.status_desired, performed_at = EXCLUDED.performed_at,
-			             status_reason = NULL, updated_at = EXCLUDED.updated_at
-		`
-	} else {
-		statusQuery = `
-			REPLACE INTO deployment_status (artifact_uuid, organization_uuid, gateway_uuid, deployment_id, status, status_desired, performed_at, status_reason, updated_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?)
-		`
-	}
+	statusQuery := r.db.BuildUpsertQuery(
+		"deployment_status",
+		[]string{"artifact_uuid", "organization_uuid", "gateway_uuid", "deployment_id", "status", "status_desired", "performed_at", "status_reason", "updated_at"},
+		[]string{"artifact_uuid", "organization_uuid", "gateway_uuid"},
+		[]string{"deployment_id", "status", "status_desired", "performed_at", "status_reason=NULL", "updated_at"},
+	)
 
 	// Status and UpdatedAt are guaranteed to be non-nil by initialization at function start
 	_, err = tx.Exec(r.db.Rebind(statusQuery),
@@ -184,6 +174,7 @@ func (r *DeploymentRepo) CreateWithLimitEnforcement(deployment *model.Deployment
 		*deployment.Status,
 		string(*deployment.Status),
 		*deployment.UpdatedAt,
+		nil,
 		*deployment.UpdatedAt,
 	)
 	if err != nil {
@@ -343,26 +334,15 @@ func (r *DeploymentRepo) SetCurrentWithDetails(artifactUUID, orgUUID, gatewayID,
 		reasonVal = statusReason
 	}
 
-	if r.db.Driver() == "postgres" || r.db.Driver() == "postgresql" {
-		query := `
-			INSERT INTO deployment_status (artifact_uuid, organization_uuid, gateway_uuid, deployment_id, status, status_desired, performed_at, status_reason, updated_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-			ON CONFLICT (artifact_uuid, organization_uuid, gateway_uuid)
-			DO UPDATE SET deployment_id = ?, status = ?, status_desired = ?, performed_at = ?, status_reason = ?, updated_at = ?
-		`
-		_, err := r.db.Exec(r.db.Rebind(query),
-			artifactUUID, orgUUID, gatewayID, deploymentID, status, statusDesired, pat, reasonVal, updatedAt,
-			deploymentID, status, statusDesired, pat, reasonVal, updatedAt)
-		return updatedAt, err
-	} else {
-		query := `
-			REPLACE INTO deployment_status (artifact_uuid, organization_uuid, gateway_uuid, deployment_id, status, status_desired, performed_at, status_reason, updated_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-		`
-		_, err := r.db.Exec(r.db.Rebind(query),
-			artifactUUID, orgUUID, gatewayID, deploymentID, status, statusDesired, pat, reasonVal, updatedAt)
-		return updatedAt, err
-	}
+	query := r.db.BuildUpsertQuery(
+		"deployment_status",
+		[]string{"artifact_uuid", "organization_uuid", "gateway_uuid", "deployment_id", "status", "status_desired", "performed_at", "status_reason", "updated_at"},
+		[]string{"artifact_uuid", "organization_uuid", "gateway_uuid"},
+		[]string{"deployment_id", "status", "status_desired", "performed_at", "status_reason", "updated_at"},
+	)
+	_, err := r.db.Exec(r.db.Rebind(query),
+		artifactUUID, orgUUID, gatewayID, deploymentID, status, statusDesired, pat, reasonVal, updatedAt)
+	return updatedAt, err
 }
 
 // GetStatus retrieves the current deployment status for an artifact on a gateway (lightweight - no content)

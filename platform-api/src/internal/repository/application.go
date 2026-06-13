@@ -20,11 +20,7 @@ package repository
 import (
 	"database/sql"
 	"errors"
-	"strings"
 	"time"
-
-	"github.com/jackc/pgx/v5/pgconn"
-	sqlite3 "github.com/mattn/go-sqlite3"
 
 	"platform-api/src/internal/constants"
 	"platform-api/src/internal/database"
@@ -484,7 +480,7 @@ func (r *ApplicationRepo) AddApplicationAssociations(applicationUUID string, tar
 			INSERT INTO application_artifacts (application_uuid, artifact_uuid, created_at, updated_at)
 			VALUES (?, ?, ?, ?)
 		`), applicationUUID, targetUUID, now, now); err != nil {
-			if isDuplicateKeyError(err) {
+			if r.db.IsDuplicateKeyError(err) {
 				continue
 			}
 			return err
@@ -494,26 +490,6 @@ func (r *ApplicationRepo) AddApplicationAssociations(applicationUUID string, tar
 	return tx.Commit()
 }
 
-func isDuplicateKeyError(err error) bool {
-	if err == nil {
-		return false
-	}
-
-	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-		return true
-	}
-
-	var sqliteErr sqlite3.Error
-	if errors.As(err, &sqliteErr) {
-		return sqliteErr.ExtendedCode == sqlite3.ErrConstraintPrimaryKey ||
-			sqliteErr.ExtendedCode == sqlite3.ErrConstraintUnique
-	}
-
-	lowerMsg := strings.ToLower(err.Error())
-	return strings.Contains(lowerMsg, "duplicate key") ||
-		strings.Contains(lowerMsg, "unique constraint failed")
-}
 
 func (r *ApplicationRepo) RemoveApplicationAPIKey(applicationUUID, apiKeyID string) error {
 	_, err := r.db.Exec(r.db.Rebind(`
