@@ -117,7 +117,7 @@ func TestTranslator_TranslateRuntimeConfigs(t *testing.T) {
 						OperationPath: "/users",
 						Vhost:         "localhost",
 						Upstream: models.RouteUpstream{
-							ClusterKey: "upstream_main_localhost_8080",
+							ClusterKey: "main_fixture",
 						},
 					},
 				},
@@ -129,7 +129,7 @@ func TestTranslator_TranslateRuntimeConfigs(t *testing.T) {
 					},
 				},
 				UpstreamClusters: map[string]*models.UpstreamCluster{
-					"upstream_main_localhost_8080": {
+					"main_fixture": {
 						BasePath:  "/",
 						Endpoints: []models.Endpoint{{Host: "localhost", Port: 8080}},
 					},

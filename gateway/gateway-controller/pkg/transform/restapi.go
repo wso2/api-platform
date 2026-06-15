@@ -31,6 +31,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils/clusterkey"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
 	policyv1alpha "github.com/wso2/api-platform/sdk/core/policy/v1alpha2"
 	policyenginev1 "github.com/wso2/api-platform/sdk/core/policyengine"
@@ -298,9 +299,10 @@ func (t *RestAPITransformer) buildPolicyChain(
 type upstreamClusterResult struct {
 	// ClusterKey is the internal key used in rdc.UpstreamClusters.
 	ClusterKey string
-	// EnvoyClusterName is the Envoy cluster name matching pkg/xds/translator.go's
-	// sanitizeClusterName format ("cluster_<scheme>_<sanitized_host>").
-	// This is the value Envoy knows the cluster by, so PE must use it for x-target-upstream.
+	// EnvoyClusterName is the Envoy cluster name. For API-level upstreams it is
+	// the URL-stable hashed name "<env>_<24-hex>" (matching ClusterKey). This is
+	// the value Envoy knows the cluster by, so the policy engine must use it for
+	// the x-target-upstream header.
 	EnvoyClusterName string
 	// BasePath is the URL path component of the upstream (e.g. "/anything/foo").
 	BasePath string
@@ -337,7 +339,12 @@ func (t *RestAPITransformer) addUpstreamCluster(
 		basePath = "/"
 	}
 
-	clusterKey := fmt.Sprintf("upstream_%s_%s_%d", upstreamName, parsedURL.Hostname(), port)
+	// URL-stable cluster naming: "<env>_<sha256(apiID) fragment>" so a URL edit
+	// updates the same named cluster instead of renaming it (routes and stats
+	// keys stay continuous). ClusterKey and EnvoyClusterName are intentionally
+	// the same string so the policy engine's `default_upstream_cluster` metadata
+	// points at the actual Envoy cluster.
+	clusterKey := clusterkey.APILevelName(upstreamName, rdc.Metadata.UUID)
 
 	rdc.UpstreamClusters[clusterKey] = &models.UpstreamCluster{
 		BasePath: basePath,
@@ -348,19 +355,15 @@ func (t *RestAPITransformer) addUpstreamCluster(
 		TLS: &models.UpstreamTLS{Enabled: parsedURL.Scheme == "https"},
 	}
 
+	// ClusterKey and EnvoyClusterName must be the same string. If they differ,
+	// the default_upstream_cluster metadata written by the policy engine will
+	// not match the Envoy cluster name, producing 503 NoRoute when the default
+	// upstream path is taken.
 	return &upstreamClusterResult{
 		ClusterKey:       clusterKey,
-		EnvoyClusterName: sanitizeEnvoyClusterName(parsedURL.Host, parsedURL.Scheme),
+		EnvoyClusterName: clusterKey,
 		BasePath:         basePath,
 	}, nil
-}
-
-// sanitizeEnvoyClusterName computes the Envoy cluster name from a URL host and scheme,
-// matching the sanitizeClusterName logic in pkg/xds/translator.go.
-func sanitizeEnvoyClusterName(host, scheme string) string {
-	name := strings.ReplaceAll(host, ".", "_")
-	name = strings.ReplaceAll(name, ":", "_")
-	return "cluster_" + scheme + "_" + name
 }
 
 // resolveUpstreamURL resolves the URL from an upstream (direct URL or ref). For a ref it

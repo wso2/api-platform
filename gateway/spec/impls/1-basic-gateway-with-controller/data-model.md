@@ -661,8 +661,8 @@ For each API Configuration, create a RouteConfiguration:
   - **Routes**: One route per operation mapping `{method, path}` to cluster
 
 #### Cluster Creation
-For each unique upstream URL, create a Cluster:
-- **Name**: `cluster_{sanitized_upstream_url}` (e.g., `cluster_api_weather_com`)
+For each API-level upstream (main/sandbox), create a Cluster:
+- **Name**: `{env}_{hash}` where `hash` is the first 12 bytes of `sha256(apiID)` in hex (e.g., `main_f9811b73ac5d1a8db842634f`); main and sandbox share the hash, distinguished by the env prefix. The name is derived from the API's identity, not the URL, so a URL edit never renames the cluster: host/port/scheme changes are applied as an update to the same named cluster (warmed and swapped), path-only changes touch just the route rewrite, and routes and name-keyed stats stay continuous either way.
 - **Type**: `STRICT_DNS` or `LOGICAL_DNS`
 - **Load Assignment**: Endpoint with upstream host and port
 
@@ -691,9 +691,9 @@ data:
 - **Listener**: `listener_http_8080` listening on `0.0.0.0:8080`
 - **Route**: `route_weather_api_v1_0`
   - Match: `GET /weather/{country_code}/{city}`
-  - Action: Forward to `cluster_api_weather_com`
+  - Action: Forward to `main_<hash>` (the API's main upstream cluster)
   - Prefix Rewrite: Prepend `/api/v2` → final path: `/api/v2/{country_code}/{city}`
-- **Cluster**: `cluster_api_weather_com`
+- **Cluster**: `main_<hash>` (identity-derived name, stable across URL edits)
   - Host: `api.weather.com:443`
   - TLS: Enabled (HTTPS upstream)
 

@@ -32,6 +32,7 @@ import (
 	"time"
 
 	commonconstants "github.com/wso2/api-platform/common/constants"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils/clusterkey"
 
 	accesslog "github.com/envoyproxy/go-control-plane/envoy/config/accesslog/v3"
 	cluster "github.com/envoyproxy/go-control-plane/envoy/config/cluster/v3"
@@ -767,7 +768,7 @@ func (t *Translator) translateAPIConfig(cfg *models.StoredConfig, allConfigs []*
 	clusters := []*cluster.Cluster{}
 
 	// -------- MAIN UPSTREAM --------
-	mainClusterName, parsedMainURL, mainTimeout, err := t.resolveUpstreamCluster("main", &apiData.Upstream.Main, apiData.UpstreamDefinitions)
+	mainClusterName, parsedMainURL, mainTimeout, err := t.resolveUpstreamCluster(cfg.UUID, "main", &apiData.Upstream.Main, apiData.UpstreamDefinitions)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -831,7 +832,7 @@ func (t *Translator) translateAPIConfig(cfg *models.StoredConfig, allConfigs []*
 
 	// -------- SANDBOX UPSTREAM --------
 	if apiData.Upstream.Sandbox != nil {
-		sbClusterName, parsedSbURL, sbTimeout, err := t.resolveUpstreamCluster("sandbox", apiData.Upstream.Sandbox, apiData.UpstreamDefinitions)
+		sbClusterName, parsedSbURL, sbTimeout, err := t.resolveUpstreamCluster(cfg.UUID, "sandbox", apiData.Upstream.Sandbox, apiData.UpstreamDefinitions)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -914,7 +915,14 @@ func (t *Translator) translateAPIConfig(cfg *models.StoredConfig, allConfigs []*
 
 // resolveUpstreamCluster validates an upstream (main or sandbox) and creates its cluster.
 // Returns clusterName, parsedURL, timeout (can be nil), and error.
-func (t *Translator) resolveUpstreamCluster(upstreamName string, up *api.Upstream, upstreamDefinitions *[]api.UpstreamDefinition) (string, *url.URL, *resolvedTimeout, error) {
+// The cluster name is "<env>_<sha256(apiID) fragment>", giving the API-level
+// main/sandbox cluster a URL-stable identity: a host, port, or scheme edit
+// becomes an update to the same named cluster (Envoy warms and swaps it)
+// instead of removing one cluster name and adding another, and a path-only
+// edit touches just the route rewrite. Routes and name-keyed stats stay
+// continuous either way. Main and sandbox share the hash fragment (same API),
+// distinguished by the prefix.
+func (t *Translator) resolveUpstreamCluster(apiID, upstreamName string, up *api.Upstream, upstreamDefinitions *[]api.UpstreamDefinition) (string, *url.URL, *resolvedTimeout, error) {
 	var rawURL string
 	var timeout *resolvedTimeout
 	var refBasePath *string
@@ -974,8 +982,8 @@ func (t *Translator) resolveUpstreamCluster(upstreamName string, up *api.Upstrea
 		parsedURL.Path = *refBasePath
 	}
 
-	// Generate cluster name
-	clusterName := t.sanitizeClusterName(parsedURL.Host, parsedURL.Scheme)
+	// Generate cluster name from URL-stable hash (URL intentionally excluded).
+	clusterName := clusterkey.APILevelName(upstreamName, apiID)
 
 	return clusterName, parsedURL, timeout, nil
 }
@@ -2702,14 +2710,6 @@ func (t *Translator) pathToRegex(path string) string {
 
 	// Anchor the regex to match the entire path
 	return "^" + regex + "$"
-}
-
-// sanitizeClusterName creates a valid cluster name from a hostname and scheme
-func (t *Translator) sanitizeClusterName(hostname, scheme string) string {
-	name := strings.ReplaceAll(hostname, ".", "_")
-	name = strings.ReplaceAll(name, ":", "_")
-	// Include scheme to differentiate HTTP and HTTPS clusters for the same host
-	return "cluster_" + scheme + "_" + name
 }
 
 // sanitizeUpstreamDefinitionName sanitizes an upstream definition name for use in Envoy cluster names.

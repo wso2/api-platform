@@ -38,10 +38,10 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/restapi"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/webhooksecretxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/transform"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/version"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/webhooksecretxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
 )
 
@@ -407,6 +407,9 @@ func main() {
 	llmTransformer := transform.NewLLMTransformer(configStore, db, &cfg.Router, cfg, policyDefinitions, policyVersionResolver)
 	transformerRegistry := transform.NewRegistry(restTransformer, llmTransformer)
 	policyManager.SetTransformers(transformerRegistry)
+	// In this controller wiring, only policy xDS receives the transformer
+	// registry. Main Envoy xDS still translates RestAPI configs directly, so
+	// both paths must keep cluster-name derivation in sync.
 
 	// Load runtime configs from existing API configurations on startup.
 	// We write directly to runtimeStore to avoid triggering N separate snapshot updates;
