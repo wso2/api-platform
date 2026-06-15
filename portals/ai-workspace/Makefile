@@ -99,6 +99,7 @@ dist: clean-dist ## Build standalone AI Workspace + Platform API distribution zi
 	@echo "Building distribution $(DIST_NAME)..."
 	@mkdir -p $(DIST_DIR)/configs $(DIST_DIR)/resources/certificates
 	@cp -R configs/. $(DIST_DIR)/configs/
+	@cp ../../platform-api/src/resources/roles.yaml $(DIST_DIR)/resources/roles.yaml
 	@cp docker-compose.yaml $(DIST_DIR)/docker-compose.yaml
 	@sed -i.bak \
 	    -e 's|/ai-workspace:[^[:space:]]*|/ai-workspace:$(DIST_VERSION)|g' \
