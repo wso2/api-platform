@@ -16,13 +16,17 @@ git clone https://github.com/wso2/api-platform.git
 cd api-platform/portals/developer-portal/
 ```
 
-### 2. Create a configuration file
+### 2. Create configuration files
 
-Copy the sample configuration and set the minimum required values:
+Copy both sample configuration files:
 
 ```bash
-mkdir -p configs && cp sample.config.yaml configs/config.yaml
+mkdir -p configs
+cp sample.config.yaml configs/config.yaml
+cp configs/config-platform-api.toml.example configs/config-platform-api.toml
 ```
+
+`config.yaml` controls the Developer Portal itself. `config-platform-api.toml` configures the Platform API sidecar that validates login credentials and issues signed tokens. The default credentials in the example file are `admin` / `admin`.
 
 ### 3. Start the portal
 
@@ -40,7 +44,7 @@ Navigate to:
 https://localhost:3000/default/views/default
 ```
 
-Sign in with `admin` / `admin` (or the credentials you set in `defaultAuth`).
+Sign in with `admin` / `admin` (the credentials defined in `configs/config-platform-api.toml`).
 
 You should see the default API catalog page.
 
@@ -168,13 +172,20 @@ paths:
 
 ```
 
-```bash
-# Get the default org UUID
-ORG_ID=$(curl -sk -u admin:admin https://localhost:3000/organizations | jq -r '.[0].orgID')
+Scripts and CLI tools authenticate with a Bearer token obtained directly from the Platform API. Get one once, then reuse it until it expires:
 
-# Create the API
-curl -sk -X POST "https://localhost:3000/o/$ORG_ID/devportal/v1/apis" \
-  -u admin:admin \
+```bash
+# Get a token from the Platform API (runs alongside the devportal)
+TOKEN=$(curl -sk -X POST "https://localhost:9243/api/portal/v1/auth/login" \
+  -d "username=admin&password=admin" | jq -r .token)
+
+# Find the org UUID
+curl -s -H "Authorization: Bearer $TOKEN" \
+  http://localhost:3000/organizations | jq '.[0].id'
+
+# Publish the API (replace {orgId} with the UUID from above)
+curl -s -H "Authorization: Bearer $TOKEN" \
+  -X POST "http://localhost:3000/devportal/organizations/{orgId}/apis" \
   -F "api=@api.yaml;type=application/yaml" \
   -F "apiDefinition=@openapi.yaml;type=application/yaml"
 ```
@@ -188,7 +199,7 @@ Refresh the portal — the Ping API now appears in the catalog. Click it to view
 | Organization | `default` |
 | Default view | `default` |
 | Portal URL | `https://localhost:3000/default/views/default` |
-| Admin credentials | `admin` / `admin` (local auth) |
+| Admin credentials | `admin` / `admin` (Platform API — see `configs/config-platform-api.toml`) |
 | Sample API | `Ping API` visible in the catalog |
 
 ## Next steps

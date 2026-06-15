@@ -146,8 +146,11 @@ services:
       # Log to console only (no rotating log files)
       DP_LOGGING_CONSOLEONLY: "true"
 
-      # Platform API — used for local auth credential validation
+      # Platform API — used for local auth credential validation.
+      # Set DP_PLATFORMAPI_JWTSECRET to the same value as AUTH_JWT_SECRET_KEY so
+      # the devportal can verify Platform API JWTs locally (no per-request login call).
       DP_PLATFORMAPI_BASEURL: "https://platform-api:9243"
+      DP_PLATFORMAPI_JWTSECRET: ${AUTH_JWT_SECRET_KEY:-}
     env_file:
       - path: .env
         required: false   # Optional — create a .env file to add your own overrides

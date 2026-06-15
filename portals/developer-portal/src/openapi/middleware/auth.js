@@ -23,9 +23,10 @@
  *   authResolver  →  OpenAPI validator (calls OAuth2Security / apiKeyAuth)  →  handler
  *
  * `authResolver` runs once per /devportal request and resolves credentials in the
- * order local → bearer → basic → api key → mTLS). It populates `req.auth` with 
- * `{ mode, scopes, preauthorized, userId } but does NOT enforce scopes — that is the job of `OAuth2Security`, 
- * which the validator invokes with the operation-declared scope list.
+ * order: local session → bearer → api-key → mTLS. It populates `req.auth` with
+ * `{ mode, scopes, preauthorized, userId }` but does NOT enforce scopes — that is
+ * the job of `OAuth2Security`, which the validator invokes with the operation-declared
+ * scope list.
  *
  */
 
@@ -41,6 +42,20 @@ const IdentityProviderDTO = require('../../dto/identityProvider');
 const logger = require('../../config/logger');
 
 const DEFAULT_TOKEN_REFRESH_TIMEOUT_MS = 10000;
+
+function extractPlatformJwtClaims(token, jwtSecret) {
+    try {
+        const payload = jwtSecret
+            ? jwt.verify(token, jwtSecret, { algorithms: ['HS256'] })
+            : JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString('utf8'));
+        return {
+            scopes: String(payload.scope || '').split(' ').filter(Boolean),
+            sub: payload.sub || '',
+        };
+    } catch (_) {
+        return null;
+    }
+}
 
 function resolveTokenRefreshTimeoutMs() {
     const timeout = Number(config.identityProvider?.tokenRefreshTimeoutMs);
@@ -136,8 +151,11 @@ async function resolveOrgIdp(req) {
 async function verifyBearerToken(token, req) {
     const idp = await resolveOrgIdp(req);
     if (!idp || !idp.clientId) {
-        // No IdP configured — accept bearer presence (legacy parity), no scopes.
-        return { valid: true, scopes: '' };
+        // Local auth mode: verify Platform API JWT with shared secret when configured.
+        const jwtSecret = config.platformApi?.jwtSecret;
+        const claims = extractPlatformJwtClaims(token, jwtSecret || null);
+        if (jwtSecret && !claims) return { valid: false, scopes: '' };
+        return { valid: true, scopes: claims?.scopes?.join(' ') ?? '' };
     }
     if (idp.certificate) {
         return verifyWithCertificate(token, idp.certificate);
