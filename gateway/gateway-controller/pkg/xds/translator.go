@@ -149,6 +149,9 @@ func convertServerHeaderTransformation(transformation string) hcm.HttpConnection
 // This format is used by both Envoy routes and the policy engine for route matching
 // It builds the full path by combining context, version, and path using ConstructFullPath
 func GenerateRouteName(method, context, apiVersion, path, vhost string) string {
+	// Uppercase the method so route names and policy keys stay consistent with the
+	// case-sensitive :method matcher, whatever case the operation was declared in.
+	method = strings.ToUpper(method)
 	fullPath := ConstructFullPath(context, apiVersion, path)
 	return fmt.Sprintf("%s|%s|%s", method, fullPath, vhost)
 }

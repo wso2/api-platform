@@ -782,6 +782,26 @@ func TestTranslator_NormalizesMethodCase(t *testing.T) {
 	}
 }
 
+func TestGenerateRouteName_UppercasesMethod(t *testing.T) {
+	// The method segment must be uppercased so Envoy route names and policy-engine
+	// keys agree, regardless of the case the operation was declared in.
+	tests := []struct {
+		name   string
+		method string
+		want   string
+	}{
+		{"lowercase", "get", "GET|/api/v1.0/users|api.example.com"},
+		{"mixed case", "pOsT", "POST|/api/v1.0/users|api.example.com"},
+		{"already uppercase", "DELETE", "DELETE|/api/v1.0/users|api.example.com"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want,
+				GenerateRouteName(tt.method, "/api/$version", "v1.0", "/users", "api.example.com"))
+		})
+	}
+}
+
 func TestTranslator_SanitizeClusterName(t *testing.T) {
 	logger := createTestLogger()
 	routerCfg := testRouterConfig()
