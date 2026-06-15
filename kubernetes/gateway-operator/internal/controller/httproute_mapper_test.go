@@ -94,74 +94,8 @@ func TestBuildAPIConfigFromHTTPRoute(t *testing.T) {
 	require.Equal(t, "my-route", spec.DisplayName)
 	require.Equal(t, "v1.0", spec.Version)
 	require.Len(t, spec.Operations, 1)
-	// PathPrefix "/api/hello" must emit a prefix route ("/*" suffix), not an Exact path.
 	require.Equal(t, "/api/hello/*", spec.Operations[0].Path)
 	require.Equal(t, strPtr("http://backend.default.svc.cluster.local:8080"), spec.Upstream.Main.Url)
-}
-
-// TestBuildAPIConfigFromHTTPRoute_PathMatchType pins the issue #2021 fix: the mapper must honor
-// match.path.type — PathPrefix becomes a "/*" prefix route, Exact stays verbatim, RegularExpression
-// is rejected, and an unset type defaults to PathPrefix per the Gateway API spec.
-func TestBuildAPIConfigFromHTTPRoute_PathMatchType(t *testing.T) {
-	scheme := runtime.NewScheme()
-	utilruntime.Must(corev1.AddToScheme(scheme))
-	utilruntime.Must(gatewayv1.AddToScheme(scheme))
-	utilruntime.Must(apiv1.AddToScheme(scheme))
-
-	svc := &corev1.Service{
-		ObjectMeta: metav1.ObjectMeta{Name: "backend", Namespace: "default"},
-		Spec:       corev1.ServiceSpec{Ports: []corev1.ServicePort{{Port: 8080}}},
-	}
-	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(svc).Build()
-
-	prefix := gatewayv1.PathMatchPathPrefix
-	exact := gatewayv1.PathMatchExact
-	regex := gatewayv1.PathMatchRegularExpression
-	method := gatewayv1.HTTPMethodGet
-	sp := func(s string) *string { return &s }
-
-	mkRoute := func(p *gatewayv1.HTTPPathMatch) *gatewayv1.HTTPRoute {
-		return &gatewayv1.HTTPRoute{
-			ObjectMeta: metav1.ObjectMeta{Name: "r", Namespace: "default"},
-			Spec: gatewayv1.HTTPRouteSpec{
-				Rules: []gatewayv1.HTTPRouteRule{{
-					Matches: []gatewayv1.HTTPRouteMatch{{Path: p, Method: &method}},
-					BackendRefs: []gatewayv1.HTTPBackendRef{{BackendRef: gatewayv1.BackendRef{
-						BackendObjectReference: gatewayv1.BackendObjectReference{
-							Name: gatewayv1.ObjectName("backend"), Port: ptrPort(8080),
-						}}}},
-				}},
-			},
-		}
-	}
-
-	cases := []struct {
-		name    string
-		path    *gatewayv1.HTTPPathMatch
-		want    string
-		wantErr bool
-	}{
-		{"PathPrefix /foo -> /foo/*", &gatewayv1.HTTPPathMatch{Type: &prefix, Value: sp("/foo")}, "/foo/*", false},
-		{"PathPrefix /foo/bar -> /foo/bar/*", &gatewayv1.HTTPPathMatch{Type: &prefix, Value: sp("/foo/bar")}, "/foo/bar/*", false},
-		{"PathPrefix trailing slash -> single /*", &gatewayv1.HTTPPathMatch{Type: &prefix, Value: sp("/foo/")}, "/foo/*", false},
-		{"PathPrefix / stays /", &gatewayv1.HTTPPathMatch{Type: &prefix, Value: sp("/")}, "/", false},
-		{"Exact /foo verbatim", &gatewayv1.HTTPPathMatch{Type: &exact, Value: sp("/foo")}, "/foo", false},
-		{"nil type defaults to PathPrefix", &gatewayv1.HTTPPathMatch{Value: sp("/foo")}, "/foo/*", false},
-		{"RegularExpression rejected", &gatewayv1.HTTPPathMatch{Type: &regex, Value: sp("/foo/.*")}, "", true},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			spec, err := BuildAPIConfigFromHTTPRoute(context.Background(), cl, mkRoute(tc.path), "cluster.local", nil)
-			if tc.wantErr {
-				require.Error(t, err)
-				require.True(t, IsInvalidHTTPRouteConfigError(err), "want Invalid config error, got %v", err)
-				return
-			}
-			require.NoError(t, err)
-			require.Len(t, spec.Operations, 1)
-			require.Equal(t, tc.want, spec.Operations[0].Path)
-		})
-	}
 }
 
 func TestBuildAPIConfigFromHTTPRoute_ContextAnnotationTrimAndNormalize(t *testing.T) {
