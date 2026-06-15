@@ -419,22 +419,6 @@ func TestAPIValidator_ValidateOperations(t *testing.T) {
 			errField:  "spec.operations[0].method",
 		},
 		{
-			name: "Lowercase method rejected",
-			operations: []api.Operation{
-				{Method: "get", Path: "/items"},
-			},
-			wantError: true,
-			errField:  "spec.operations[0].method",
-		},
-		{
-			name: "Mixed-case method rejected",
-			operations: []api.Operation{
-				{Method: "Get", Path: "/items"},
-			},
-			wantError: true,
-			errField:  "spec.operations[0].method",
-		},
-		{
 			name: "Missing path",
 			operations: []api.Operation{
 				{Method: api.OperationMethodGET, Path: ""},

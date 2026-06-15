@@ -217,7 +217,8 @@ func (t *Translator) translateRuntimeConfig(rdc *models.RuntimeDeployConfig) ([]
 // createRouteFromRDC creates an Envoy route from a RuntimeDeployConfig Route.
 func (t *Translator) createRouteFromRDC(routeKey string, rdcRoute *models.Route, rdc *models.RuntimeDeployConfig) *route.Route {
 	fullPath := rdcRoute.Path
-	method := rdcRoute.Method
+	// Envoy's :method matcher is case-sensitive; normalize so any-case methods still route.
+	method := strings.ToUpper(rdcRoute.Method)
 	operationPath := rdcRoute.OperationPath
 
 	// Determine path type
@@ -1738,6 +1739,9 @@ func (t *Translator) extractProviderName(cfg *models.StoredConfig, allConfigs []
 // upstreamDefPaths maps upstream definition names to their URL paths for dynamic path rewriting.
 func (t *Translator) createRoute(apiId, apiName, apiVersion, context, method, path, clusterName,
 	upstreamPath string, vhost string, apiKind string, templateHandle string, providerName string, hostRewrite *api.UpstreamHostRewrite, projectID string, timeoutCfg *resolvedTimeout, useClusterHeader bool, upstreamDefPaths map[string]string) *route.Route {
+	// Envoy's :method matcher is case-sensitive; normalize so any-case methods still route.
+	method = strings.ToUpper(method)
+
 	// Resolve version placeholder in context
 	context = strings.ReplaceAll(context, "$version", apiVersion)
 
