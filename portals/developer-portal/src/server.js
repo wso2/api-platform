@@ -23,6 +23,8 @@ const logger = require('./config/logger');
 const { config } = require('./config/configLoader');
 const webhookDispatcher = require('./services/webhooks/dispatcher');
 const webhookDeliveryWorker = require('./services/webhooks/deliveryWorker');
+const sequelize = require('./db/sequelize');
+const { seedDefaultOrg } = require('./services/seeder');
 const app = require('./app');
 
 const PORT = process.env.PORT || config.defaultPort;
@@ -56,11 +58,23 @@ function logStartupInfo() {
 function onListening() {
     logStartupInfo();
     startBackgroundServices();
+    seedDefaultOrg().catch(err =>
+        logger.error('Unexpected error during default org seeding', { error: err.message })
+    );
 }
 
-if (config.advanced.http || config.designMode?.enabled) {
-    http.createServer(app).listen(PORT, '0.0.0.0', onListening);
-} else {
+let server;
+
+async function startServer() {
+    // Sync database schema for SQLite in production mode
+    if (config.db.dialect === 'sqlite' && !config.designMode?.enabled) {
+        await sequelize.sync();
+        logger.info('SQLite schema synced');
+    }
+
+    if (config.advanced.http || config.designMode?.enabled) {
+        server = http.createServer(app).listen(PORT, '0.0.0.0', onListening);
+    } else {
     try {
         const certPath = path.resolve(config.serverCerts.pathToCert);
         const keyPath = path.resolve(config.serverCerts.pathToPK);
@@ -69,7 +83,7 @@ if (config.advanced.http || config.designMode?.enabled) {
         const serverKey = fs.readFileSync(keyPath);
         const caCert = fs.readFileSync(path.resolve(config.serverCerts.pathToCA));
 
-        https.createServer({
+        server = https.createServer({
             key: serverKey,
             cert: serverCert,
             ca: caCert,
@@ -85,7 +99,10 @@ if (config.advanced.http || config.designMode?.enabled) {
         });
         process.exit(1);
     }
+    }
 }
+
+startServer();
 
 // Handle Uncaught Exceptions
 process.on('uncaughtException', (err) => {
@@ -112,9 +129,19 @@ const gracefulShutdown = (signal) => {
         message: `Received ${signal}. Gracefully shutting down...`
     });
 
-    logger.info('Application shutdown complete');
-    process.exit(0);
+    const done = () => {
+        logger.info('Application shutdown complete');
+        process.exit(0);
+    };
+
+    if (server) {
+        server.close(done);
+    } else {
+        done();
+    }
 };
 
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+// nodemon sends SIGUSR2 to restart; process.once so the next spawned process can re-register
+process.once('SIGUSR2', () => gracefulShutdown('SIGUSR2'));

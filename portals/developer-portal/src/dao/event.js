@@ -54,47 +54,53 @@ async function createDeliveries(eventId, subscribers, perSubscriberEncrypted, tr
  * Returns events with their delivery rows.
  */
 async function claimPendingEvents(batchSize) {
-    return sequelize.transaction({ isolationLevel: Sequelize.Transaction.ISOLATION_LEVELS.READ_COMMITTED },
-        async (t) => {
-            const events = await DPEvent.findAll({
-                where: { STATUS: 'PENDING' },
-                order: [['OCCURRED_AT', 'ASC']],
-                limit: batchSize,
-                lock: t.LOCK.UPDATE,
-                skipLocked: true,
-                transaction: t
-            });
-            if (events.length === 0) return [];
-            const ids = events.map(e => e.EVENT_ID);
-            await DPEvent.update({ STATUS: 'DISPATCHED' }, { where: { EVENT_ID: { [Op.in]: ids } }, transaction: t });
-            return events;
+    const isPostgres = sequelize.getDialect() === 'postgres';
+    const txOpts = isPostgres ? { isolationLevel: Sequelize.Transaction.ISOLATION_LEVELS.READ_COMMITTED } : {};
+    return sequelize.transaction(txOpts, async (t) => {
+        const findOpts = {
+            where: { STATUS: 'PENDING' },
+            order: [['OCCURRED_AT', 'ASC']],
+            limit: batchSize,
+            transaction: t,
+        };
+        if (isPostgres) {
+            findOpts.lock = t.LOCK.UPDATE;
+            findOpts.skipLocked = true;
         }
-    );
+        const events = await DPEvent.findAll(findOpts);
+        if (events.length === 0) return [];
+        const ids = events.map(e => e.EVENT_ID);
+        await DPEvent.update({ STATUS: 'DISPATCHED' }, { where: { EVENT_ID: { [Op.in]: ids } }, transaction: t });
+        return events;
+    });
 }
 
 /**
  * Claim a batch of due PENDING delivery rows using SELECT FOR UPDATE SKIP LOCKED.
  */
 async function claimDueDeliveries(batchSize) {
-    return sequelize.transaction({ isolationLevel: Sequelize.Transaction.ISOLATION_LEVELS.READ_COMMITTED },
-        async (t) => {
-            const rows = await DPEventDelivery.findAll({
-                where: { STATUS: 'PENDING', NEXT_ATTEMPT_AT: { [Op.lte]: new Date() } },
-                order: [['NEXT_ATTEMPT_AT', 'ASC']],
-                limit: batchSize,
-                lock: t.LOCK.UPDATE,
-                skipLocked: true,
-                transaction: t
-            });
-            if (rows.length === 0) return [];
-            const ids = rows.map(r => r.DELIVERY_ID);
-            await DPEventDelivery.update(
-                { STATUS: 'IN_FLIGHT', LAST_ATTEMPT_AT: new Date() },
-                { where: { DELIVERY_ID: { [Op.in]: ids } }, transaction: t }
-            );
-            return rows;
+    const isPostgres = sequelize.getDialect() === 'postgres';
+    const txOpts = isPostgres ? { isolationLevel: Sequelize.Transaction.ISOLATION_LEVELS.READ_COMMITTED } : {};
+    return sequelize.transaction(txOpts, async (t) => {
+        const findOpts = {
+            where: { STATUS: 'PENDING', NEXT_ATTEMPT_AT: { [Op.lte]: new Date() } },
+            order: [['NEXT_ATTEMPT_AT', 'ASC']],
+            limit: batchSize,
+            transaction: t,
+        };
+        if (isPostgres) {
+            findOpts.lock = t.LOCK.UPDATE;
+            findOpts.skipLocked = true;
         }
-    );
+        const rows = await DPEventDelivery.findAll(findOpts);
+        if (rows.length === 0) return [];
+        const ids = rows.map(r => r.DELIVERY_ID);
+        await DPEventDelivery.update(
+            { STATUS: 'IN_FLIGHT', LAST_ATTEMPT_AT: new Date() },
+            { where: { DELIVERY_ID: { [Op.in]: ids } }, transaction: t }
+        );
+        return rows;
+    });
 }
 
 /**

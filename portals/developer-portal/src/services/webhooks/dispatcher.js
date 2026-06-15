@@ -74,7 +74,7 @@ function start() {
         try {
             await runBatch();
         } catch (err) {
-            logger.error('[dispatcher] batch error', { error: err.message });
+            logger.error('[dispatcher] batch error', { error: err.message || String(err) });
         }
     }
 

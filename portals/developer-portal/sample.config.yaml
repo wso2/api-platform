@@ -32,15 +32,19 @@ pathToDBCert: "./resources/security/ca.pem"
 logging:
   consoleOnly: false      # Set to true (or DP_LOGGING_CONSOLEONLY=true) for Docker/cloud
 
-# ─── Database (PostgreSQL) ─────────────────────────────────────────────────────
+# ─── Database ──────────────────────────────────────────────────────────────────
+# Supported dialects: sqlite (default), postgres
+# SQLite: only 'storage' is required (path to the .db file)
+# PostgreSQL: set host, port, database, username, password and dialect: postgres
 
 db:
-  host: "localhost"
-  port: 5432
-  database: "devportal"
-  username: "postgres"
-  password: ""            # Set via DP_DB_PASSWORD in production
-  dialect: "postgres"
+  dialect: "sqlite"
+  storage: "./devportal.db"       # SQLite only: path to the database file
+  # host: "localhost"               # PostgreSQL only
+  # port: 5432                      # PostgreSQL only
+  # database: "devportal"           # PostgreSQL only
+  # username: "postgres"            # PostgreSQL only
+  # password: ""                    # PostgreSQL only — set via DP_DB_PASSWORD in production
 
 # ─── Advanced ──────────────────────────────────────────────────────────────────
 
@@ -86,11 +90,11 @@ identityProvider:
   tokenURL: "https://localhost:9443/oauth2/token"
   userInfoURL: "https://localhost:9443/oauth2/userinfo"
   clientId: ""
-  callbackURL: "http://localhost:3000/ACME/callback"
+  callbackURL: "http://localhost:3000/default/callback"
   scope: "openid profile"
   signUpURL: ""
   logoutURL: "https://localhost:9443/oidc/logout"
-  logoutRedirectURI: "http://localhost:3000/ACME"
+  logoutRedirectURI: "http://localhost:3000/default"
   certificate: ""
   jwksURL: "https://localhost:9443/oauth2/jwks"
   tokenRefreshTimeoutMs: 10000
@@ -108,8 +112,8 @@ defaultAuth:
       email: "admin@example.com"
       roles:
         - "admin"
-      orgClaimName: "ACME"
-      organizationIdentifier: "ACME"
+      orgClaimName: "default"
+      organizationIdentifier: "default"
     - username: "developer"
       password: "developer"
       firstName: "Developer"
@@ -117,8 +121,8 @@ defaultAuth:
       email: "developer@example.com"
       roles:
         - "Internal/subscriber"
-      orgClaimName: "ACME"
-      organizationIdentifier: "ACME"
+      orgClaimName: "default"
+      organizationIdentifier: "default"
 
 # ─── Role & Claim Mapping ──────────────────────────────────────────────────────
 
@@ -184,6 +188,15 @@ telemetry:
 billing:
   enabled: false
   billingKeyEncryptionKey: ""   # 64-char hex key for AES-256-GCM — set via DP_BILLING_BILLINGKEYENCRYPTIONKEY
+
+# ─── Default Organization Seeding ─────────────────────────────────────────────
+# When set, an organization with this name is created automatically on startup
+# (idempotent — safe to leave enabled permanently). Uses the role/claim settings
+# from the sections below (roleClaim, adminRole, subscriberRole, etc.).
+# Set to "" or remove the key to disable auto-seeding.
+# Env var override: DP_DEFAULTORGNAME
+
+defaultOrgName: "default"
 
 # ─── Subscription Policies ─────────────────────────────────────────────────────
 # When true, Bronze/Silver/Gold/Unlimited/AsyncUnlimited plans are auto-created

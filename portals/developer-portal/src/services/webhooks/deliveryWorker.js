@@ -181,7 +181,7 @@ function start() {
         try {
             await runBatch();
         } catch (err) {
-            logger.error('[deliveryWorker] batch error', { error: err.message });
+            logger.error('[deliveryWorker] batch error', { error: err.message || String(err) });
         }
     }
 

@@ -30,22 +30,21 @@ describe('Developer Portal — API Listing', () => {
         });
 
         it('GET /devportal/organizations/:orgId/apis returns 200 with an array', () => {
-            cy.fixture('org').then(({ orgId }) => {
-                cy.apiRequest('GET', `/devportal/organizations/${orgId}/apis`).then((resp) => {
-                    expect(resp.status).to.eq(200);
-                    expect(resp.body).to.be.an('array');
-                });
+            const orgId = Cypress.env('ORG_ID');
+            cy.apiRequest('GET', `/devportal/organizations/${orgId}/apis`).then((resp) => {
+                expect(resp.status).to.eq(200);
+                expect(resp.body).to.be.an('array');
             });
         });
 
         it('GET /devportal/organizations/:orgId/views returns the default view', () => {
-            cy.fixture('org').then(({ orgId, viewName }) => {
-                cy.apiRequest('GET', `/devportal/organizations/${orgId}/views`).then((resp) => {
-                    expect(resp.status).to.eq(200);
-                    expect(resp.body).to.be.an('array');
-                    const names = resp.body.map((v) => v.name || v.NAME);
-                    expect(names).to.include(viewName);
-                });
+            const orgId = Cypress.env('ORG_ID');
+            const viewName = Cypress.env('VIEW_NAME');
+            cy.apiRequest('GET', `/devportal/organizations/${orgId}/views`).then((resp) => {
+                expect(resp.status).to.eq(200);
+                expect(resp.body).to.be.an('array');
+                const names = resp.body.map((v) => v.name || v.NAME);
+                expect(names).to.include(viewName);
             });
         });
     });

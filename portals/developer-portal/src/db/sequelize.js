@@ -22,39 +22,51 @@ const fs = require('fs');
 
 const { config } = require('../config/configLoader');
 
-const sequelizeOptions = {
-    host: config.db.host,
-    port: config.db.port,
-    dialect: config.db.dialect,
-    logging: false,
-    pool: {
-        max: 50,
-        min: 2,
-        acquire: 30000,
-        idle: 10000
-    },
-    dialectOptions: {
-        connectTimeout: 30000,
-        requestTimeout: 30000,
-    },
-};
+const dialect = config.db.dialect;
+let sequelize;
 
-if (config.advanced.dbSslDialectOption) {
-    const dbCAPath = path.join(process.cwd(), config.pathToDBCert);
-    sequelizeOptions.dialectOptions = {
-        ssl: {
-            require: true,
-            rejectUnauthorized: true,
-            ca: fs.readFileSync(dbCAPath).toString(),
-        }
+if (dialect === 'sqlite') {
+    sequelize = new Sequelize({
+        dialect: 'sqlite',
+        dialectModule: require('./better-sqlite3-compat'),
+        storage: config.db.storage || './devportal.db',
+        logging: false,
+    });
+} else {
+    const sequelizeOptions = {
+        host: config.db.host,
+        port: config.db.port,
+        dialect,
+        logging: false,
+        pool: {
+            max: 50,
+            min: 2,
+            acquire: 30000,
+            idle: 10000
+        },
+        dialectOptions: {
+            connectTimeout: 30000,
+            requestTimeout: 30000,
+        },
     };
-}
 
-const sequelize = new Sequelize(
-    config.db.database,
-    config.db.username,
-    config.db.password,
-    sequelizeOptions
-);
+    if (config.advanced.dbSslDialectOption) {
+        const dbCAPath = path.join(process.cwd(), config.pathToDBCert);
+        sequelizeOptions.dialectOptions = {
+            ssl: {
+                require: true,
+                rejectUnauthorized: true,
+                ca: fs.readFileSync(dbCAPath).toString(),
+            }
+        };
+    }
+
+    sequelize = new Sequelize(
+        config.db.database,
+        config.db.username,
+        config.db.password,
+        sequelizeOptions
+    );
+}
 
 module.exports = sequelize;

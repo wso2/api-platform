@@ -41,7 +41,7 @@ const DPEventDelivery = sequelize.define('DP_EVENT_DELIVERY', {
         allowNull: false
     },
     ENCRYPTED_FIELDS: {
-        type: DataTypes.JSONB,
+        type: DataTypes.JSON,
         allowNull: true,
         defaultValue: null
     },
@@ -81,8 +81,8 @@ const DPEventDelivery = sequelize.define('DP_EVENT_DELIVERY', {
     tableName: 'DP_EVENT_DELIVERY',
     returning: true,
     indexes: [
-        { fields: ['STATUS', 'NEXT_ATTEMPT_AT'] },
-        { fields: ['EVENT_ID'] }
+        { name: 'IDX_EVENT_DELIVERY_STATUS_NEXT_ATTEMPT', fields: ['STATUS', 'NEXT_ATTEMPT_AT'] },
+        { name: 'IDX_EVENT_DELIVERY_EVENT_ID', fields: ['EVENT_ID'] }
     ]
 });
 

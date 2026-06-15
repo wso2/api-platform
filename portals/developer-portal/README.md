@@ -12,17 +12,17 @@ For end-user documentation, see [docs/](docs/).
 
 ## Prerequisites
 
-- **Node.js** v22.0.0
+- **Node.js** v23 (or v22+)
 - **Make**
-- **PostgreSQL** 16
 - **Docker + Docker Compose** (for the Docker-based workflow)
-- **psql** (required to run schema/seed scripts manually)
+
+> **PostgreSQL** is optional. The portal uses SQLite by default. See [Database setup](#4-database-setup) if you need PostgreSQL.
 
 ---
 
 ## Quick Start (Docker Compose)
 
-The fastest way to get the portal running — no local Node or PostgreSQL install required.
+The fastest way to get the portal running — no local Node install required.
 
 ### Build
 
@@ -38,15 +38,15 @@ mkdir -p configs && cp sample.config.yaml configs/config.yaml
 docker compose up
 ```
 
-Then open **https://localhost:3000/ACME/views/default**
+Then open **https://localhost:3000/default/views/default**
 
 > **Browser warning:** A self-signed TLS certificate is generated automatically on first start. Click **Advanced → Proceed** (Chrome) or **Accept the Risk** (Firefox) to continue.
 
 Default local users: `admin` / `admin` and `developer` / `developer`
 
 What happens automatically on first start:
-- PostgreSQL starts and the DB schema is applied (`database/01-schema.postgres.sql`)
-- A default **ACME** org, view, labels, and subscription plans are seeded (`database/02-seed_org.postgres.sql`)
+- The DB schema is applied and the database is initialised automatically
+- A default **default** org, view, labels, and subscription plans are seeded automatically on startup (controlled by `defaultOrgName` in config)
 - A self-signed TLS certificate is generated and stored in the `certs_data` Docker volume
 
 ### Test
@@ -64,7 +64,7 @@ For integration test details, see [it/README.md](it/README.md).
 ### Clean
 
 ```bash
-# Stop and remove containers, volumes, and the postgres data volume
+# Stop and remove containers and volumes
 docker compose down -v
 
 # Remove build artifacts and distribution zips
@@ -115,15 +115,13 @@ For local exploration you can skip IdP setup by using the built-in local users i
 
 ### 4. Database setup
 
-#### Create the database
+#### SQLite (default — no setup required)
 
-Create a new database in your local PostgreSQL instancec with,
+The portal uses SQLite out of the box. The database file is created automatically at the path configured by `db.storage` (default: `./devportal.db`). No installation or schema migration step is needed.
 
-```bash
-createdb -h <HOST> -U <USER> devportal
-```
+#### PostgreSQL (optional)
 
-Or spin up PostgreSQL with Docker.
+To use PostgreSQL instead, spin up an instance:
 
 ```bash
 docker run --name devportal-postgres \
@@ -134,40 +132,24 @@ docker run --name devportal-postgres \
   -d postgres:16
 ```
 
-#### Update DB config in `configs/config.yaml`
+Then update the `db` block in `configs/config.yaml`:
 
 ```yaml
 db:
+  dialect: "postgres"
   host: "localhost"
   port: 5432
   database: "devportal"
   username: "postgres"
   password: "postgres"
-  dialect: "postgres"
 ```
 
-In Production setup, you can set the password via `DP_DB_PASSWORD` enviornment variable.
-
-#### Apply the schema
-
-> ⚠️ This drops and recreates all tables. Don't run against a database you can't reset.
-
-```bash
-psql -h <HOST> -p <PORT> -U <USER> -d devportal -f database/01-schema.postgres.sql
-```
+In production, set the password via the `DP_DB_PASSWORD` environment variable instead of storing it in the config file.
 
 ### 5. Seed default organization
 
-```bash
-psql -h <HOST> -p <PORT> -U <USER> -d devportal -f database/02-seed_org.postgres.sql
-```
-
-> **Note:**
->
-> Use the following command to pass the DB password non-interactively.
-> ```bash
-> PGPASSWORD=<DB_PASSWORD> ./seeders/seed-apis.sh
-> ```
+The default organization is seeded automatically on startup when `defaultOrgName` is set in config (or via `DP_DEFAULTORGNAME` env var).
+No manual step is required.
 
 ### 6. Install and run
 
@@ -176,20 +158,30 @@ npm install
 npm start
 ```
 
-### 7. Seed sample APIs (optional)
+Open **http://localhost:3000/default/views/default**
 
+---
+
+## Seed Sample APIs (optional)
+
+Seeds a set of sample APIs into the default organisation. Works with both the Docker Compose and `npm start` workflows.
+
+**npm start (HTTP):**
 ```bash
-sh ./seeders/seed-apis.sh
+DEVPORTAL_URL=http://localhost:3000 ./seeders/seed-apis.sh
+```
+
+**Docker Compose (HTTPS):**
+```bash
+DEVPORTAL_URL=https://localhost:3000 ./seeders/seed-apis.sh
 ```
 
 > **Note:**
-> 
+>
 > Use the following command to pass variables to the script.
 > ```bash
 > DEVPORTAL_URL=https://localhost:3000 ORG_ID=1ba42a09-45c0-40f8-a1bf-e4aa7cde1575 DEVPORTAL_CREDENTIALS=admin:admin ./seeders/seed-apis.sh
 > ```
-
-Open **http://localhost:3000/ACME/views/default**
 
 ---
 
@@ -209,13 +201,13 @@ defaultAuth:
     - username: "admin"
       password: "admin"
       roles: ["admin"]
-      orgClaimName: "ACME"
-      organizationIdentifier: "ACME"
+      orgClaimName: "default"
+      organizationIdentifier: "default"
     - username: "developer"
       password: "developer"
       roles: ["Internal/subscriber"]
-      orgClaimName: "ACME"
-      organizationIdentifier: "ACME"
+      orgClaimName: "default"
+      organizationIdentifier: "default"
 ```
 
 Remove or empty the `users` list in production.
@@ -375,22 +367,24 @@ paths:
 ```
 
 ```bash
-curl -sk -X POST "https://localhost:3000/devportal/organizations/1ba42a09-45c0-40f8-a1bf-e4aa7cde1575/apis" \           ✔
-   -u admin:admin \
-   -F "api=@api.yaml;type=application/yaml" \
-   -F "apiDefinition=@openapi.yaml;type=application/yaml" -k
+# Get the default org UUID
+ORG_ID=$(curl -sk -u admin:admin https://localhost:3000/devportal/organizations | grep -o '"orgID":"[^"]*"' | head -1 | cut -d'"' -f4)
+
+# Create the API
+curl -sk -X POST "https://localhost:3000/devportal/organizations/$ORG_ID/apis" \
+  -u admin:admin \
+  -F "api=@api.yaml;type=application/yaml" \
+  -F "apiDefinition=@openapi.yaml;type=application/yaml"
 ```
 
 Refresh the portal — the Ping API now appears in the catalog. Click it to view the documentation and try-out console.
-
-> **Tip:** For `orgId` you can use the org handle (`ACME`) or the UUID returned when the organization was created.
 
 ## What was just created?
 
 | Resource | Value |
 |---|---|
-| Organization | `ACME` |
+| Organization | `default` |
 | Default view | `default` |
-| Portal URL | `http://localhost:3000/ACME/views/default` |
+| Portal URL | `https://localhost:3000/default/views/default` |
 | Admin credentials | `admin` / `admin` (local auth) |
 | Sample API | `Ping API` visible in the catalog |

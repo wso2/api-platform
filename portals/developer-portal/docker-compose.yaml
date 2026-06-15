@@ -24,7 +24,7 @@
 #
 # Quick start:
 #   docker compose up
-#   Then open https://localhost:3000/ACME/views/default  (accept the self-signed cert warning)
+#   Then open https://localhost:3000/default/views/default  (accept the self-signed cert warning)
 #   Login: admin / admin  (or developer / developer)
 #
 # TLS:
@@ -42,47 +42,23 @@
 #   See sample.config.yaml for the full list of settings.
 
 services:
-  postgres:
-    image: postgres:16
-    environment:
-      POSTGRES_USER: devportal
-      POSTGRES_PASSWORD: devportal
-      POSTGRES_DB: devportal
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-      # SQL files in this directory run automatically on first DB start
-      - ./database:/docker-entrypoint-initdb.d:ro
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U devportal -d devportal"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 15s
-    networks:
-      - devportal-network
-
   devportal:
     build: .
     image: ghcr.io/wso2/api-platform/developer-portal:0.1.0-SNAPSHOT
     ports:
       - "3000:3000"
-    depends_on:
-      postgres:
-        condition: service_healthy
     volumes:
       # Mount config from the configs/ directory (copy of sample.config.yaml).
       - ./configs/config.yaml:/app/configs/config.yaml:ro
+      # Persist the SQLite database across container restarts.
+      - sqlite_data:/app/data
       # Persist the auto-generated TLS certificate across container restarts.
       # To use your own cert, replace with: - ./my-certs:/app/certs:ro
       - certs_data:/app/certs
     environment:
-      # Database — point to the postgres service above
-      DP_DB_HOST: postgres
-      DP_DB_PORT: 5432
-      DP_DB_DIALECT: postgres
-      DP_DB_USERNAME: devportal
-      DP_DB_PASSWORD: devportal
-      DP_DB_DATABASE: devportal
+      # Database — SQLite (default). Override DP_DB_DIALECT and related vars to use postgres.
+      DP_DB_DIALECT: sqlite
+      DP_DB_STORAGE: /app/data/devportal.db
 
       # HTTPS — a self-signed cert is generated automatically on first start.
       # To switch back to plain HTTP, set DP_ADVANCED_HTTP=true and DP_BASEURL=http://localhost:3000.
@@ -92,6 +68,9 @@ services:
       DP_SERVERCERTS_PATHTOPK: "/app/certs/server.key"
       DP_SERVERCERTS_PATHTOCA: "/app/certs/server.crt"
 
+      # Seed a default organization on startup (idempotent)
+      DP_DEFAULTORGNAME: "default"
+
       # Auto-generate default subscription plans for every new org
       DP_GENERATEDEFAULTSUBPOLICIES: "true"
 
@@ -100,13 +79,7 @@ services:
     env_file:
       - path: .env
         required: false   # Optional — create a .env file to add your own overrides
-    networks:
-      - devportal-network
 
 volumes:
-  postgres_data:
+  sqlite_data:
   certs_data:
-
-networks:
-  devportal-network:
-    driver: bridge

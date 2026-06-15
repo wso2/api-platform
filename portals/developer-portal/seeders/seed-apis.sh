@@ -2,8 +2,8 @@
 set -euo pipefail
 
 BASE_URL="${DEVPORTAL_URL:-https://localhost:3000}"
-ORG_ID="${ORG_ID:-1ba42a09-45c0-40f8-a1bf-e4aa7cde1575}"
 CREDENTIALS="${DEVPORTAL_CREDENTIALS:-admin:admin}"
+ORG_HANDLE="${ORG_HANDLE:-default}"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 APIS_DIR="$SCRIPT_DIR/../samples/apis"
@@ -14,6 +14,17 @@ for cmd in jq zip; do
         exit 1
     fi
 done
+
+# Resolve ORG_ID — use env var if set, otherwise discover by handle
+if [ -z "${ORG_ID:-}" ]; then
+    ORG_ID=$(curl -sk -u "$CREDENTIALS" "$BASE_URL/devportal/organizations" | \
+        jq -r --arg h "$ORG_HANDLE" '.[] | select(.orgHandle == $h) | .orgID // empty')
+    if [ -z "$ORG_ID" ]; then
+        echo "Error: organization with handle '$ORG_HANDLE' not found. Ensure the server has started with DP_DEFAULTORGNAME set."
+        exit 1
+    fi
+    echo "Resolved ORG_ID: $ORG_ID"
+fi
 
 seed_docs() {
     local api_dir="$1"
@@ -51,7 +62,7 @@ seed_api() {
     api_name=$(basename "$api_dir")
 
     local api_yaml="$api_dir/api.yaml"
-    local definition="$api_dir/definition.yml"
+    local definition="$api_dir/openapi.yaml"
 
     if [ ! -f "$api_yaml" ]; then
         echo "  skipping $api_name: no api.yaml found"
@@ -81,6 +92,8 @@ seed_api() {
         if [ -d "$api_dir/docs" ] && [ "$api_id" != "null" ]; then
             seed_docs "$api_dir" "$api_id"
         fi
+    elif [ "$http_code" -eq 409 ]; then
+        echo "  already exists, skipping"
     else
         echo "  FAILED ($http_code): $body"
     fi

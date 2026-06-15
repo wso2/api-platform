@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024, WSO2 LLC. (http://www.wso2.com) All Rights Reserved.
+ * Copyright (c) 2026, WSO2 LLC. (http://www.wso2.com) All Rights Reserved.
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -15,29 +15,28 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-const { Sequelize, DataTypes } = require('sequelize');
-const sequelize = require('../db/sequelize')
+const { DataTypes } = require('sequelize');
+const sequelize = require('../db/sequelize');
 
-const APIImageMetadata = sequelize.define('DP_API_IMAGEDATA', {
-    API_ID: {
-        type: DataTypes.UUID,
-        primaryKey: true
-    },
-    IMAGE_TAG: {
+// Session table used by connect-pg-simple (PostgreSQL).
+// For SQLite, connect-session-sequelize manages its own 'sessions' table separately.
+sequelize.define('Session', {
+    sid: {
         type: DataTypes.STRING,
-        allowNull: false,
-        primaryKey: true
+        primaryKey: true,
     },
-    IMAGE_NAME: {
-        type: DataTypes.STRING,
+    sess: {
+        type: DataTypes.JSON,
         allowNull: false,
-        primaryKey: true
-    }
+    },
+    expire: {
+        type: DataTypes.DATE,
+        allowNull: false,
+    },
 }, {
+    tableName: 'session',
     timestamps: false,
-    tableName: 'DP_API_IMAGEDATA',
-    returning: true
+    indexes: [
+        { name: 'IDX_session_expire', fields: ['expire'] },
+    ],
 });
-
-// Export both models
-module.exports = APIImageMetadata;

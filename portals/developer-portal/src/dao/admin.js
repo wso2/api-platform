@@ -31,7 +31,7 @@ const sequelize = require('../db/sequelize');
 const createOrganization = async (orgData, t) => {
     let devPortalID = "";
     if (orgData.orgHandle) {
-        devPortalID = orgData.orgHandle
+        devPortalID = orgData.orgHandle.toLowerCase();
     }
     const createOrgData = {
         ORG_NAME: orgData.orgName,
@@ -59,17 +59,20 @@ const createOrganization = async (orgData, t) => {
     }
 };
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 const getOrganization = async (param) => {
     try {
+        const conditions = [
+            { ORG_NAME: param },
+            { ORG_HANDLE: typeof param === 'string' ? param.toLowerCase() : param },
+            { ORGANIZATION_IDENTIFIER: param },
+        ];
+        if (typeof param === 'string' && UUID_RE.test(param)) {
+            conditions.push({ ORG_ID: param });
+        }
         const organization = await Organization.findOne({
-            where: {
-                [Sequelize.Op.or]: [
-                    { ORG_NAME: param },
-                    { ORG_HANDLE: param },
-                    { ORG_ID: param },
-                    { ORGANIZATION_IDENTIFIER: param }
-                ]
-            }
+            where: { [Sequelize.Op.or]: conditions }
         });
         if (!organization) {
             throw new Sequelize.EmptyResultError('Organization not found');
@@ -89,7 +92,7 @@ const getOrgId = async (orgName) => {
             where: {
                 [Sequelize.Op.or]: [
                     { ORG_NAME: orgName },
-                    { ORG_HANDLE: orgName },
+                    { ORG_HANDLE: typeof orgName === 'string' ? orgName.toLowerCase() : orgName },
                     { ORGANIZATION_IDENTIFIER: orgName }
                 ]
             }
@@ -124,7 +127,7 @@ const getOrganizations = async () => {
 const updateOrganization = async (orgData, t) => {
     let devPortalID = "";
     if (orgData.orgHandle) {
-        devPortalID = orgData.orgHandle
+        devPortalID = orgData.orgHandle.toLowerCase();
     }
     try {
         const [updatedRowsCount, updatedOrg] = await Organization.update(

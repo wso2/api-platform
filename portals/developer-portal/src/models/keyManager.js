@@ -94,6 +94,7 @@ const KeyManager = sequelize.define('DP_KEY_MANAGER', {
     returning: true,
     indexes: [
         {
+            name: 'UQ_KEY_MANAGER_ORG_NAME',
             unique: true,
             fields: ['ORG_ID', 'NAME']
         }

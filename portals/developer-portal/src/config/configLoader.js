@@ -49,14 +49,16 @@ function loadBaseConfig() {
 const CONFIG_DEFAULTS = {
     defaultPort: 3000,
     mode: 'production',
+    defaultOrgName: '',
     baseUrl: 'http://localhost:3000',
     db: {
+        dialect: 'sqlite',
+        storage: './devportal.db',
         host: 'localhost',
         port: 5432,
         database: 'devportal',
         username: 'postgres',
         password: '',
-        dialect: 'postgres',
     },
     advanced: {
         http: true,

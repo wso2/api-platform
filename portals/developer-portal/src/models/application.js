@@ -92,7 +92,7 @@ const ApplicationKeyMapping = sequelize.define('DP_APP_KEY_MAPPING', {
     },
     KEY_TYPE: {
         type: DataTypes.STRING,
-        allowNull: true,
+        allowNull: false,
         defaultValue: 'PRODUCTION'
     },
     ADDITIONAL_PROPERTIES: {
@@ -137,7 +137,7 @@ const SubscriptionMapping = sequelize.define('DP_API_SUBSCRIPTION', {
         },
     },
     POLICY_ID: {
-        type: DataTypes.STRING,
+        type: DataTypes.UUID,
         allowNull: true,
         references: {
             model: SubscriptionPolicy,
