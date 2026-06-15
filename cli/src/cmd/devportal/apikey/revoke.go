@@ -95,7 +95,7 @@ func runRevokeCommand() error {
 
 	client := internaldevportal.NewClientWithOptions(devPortal, revokeInsecure)
 	baseURL := strings.TrimSuffix(devPortal.URL, "/")
-	path := fmt.Sprintf("/devportal/organizations/%s/api-keys/%s/revoke", url.PathEscape(orgID), url.PathEscape(apiKeyID))
+	path := internaldevportal.OrgScopedPath(orgID, "api-keys/"+url.PathEscape(apiKeyID)+"/revoke")
 	req, err := http.NewRequest(http.MethodPost, baseURL+path, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)

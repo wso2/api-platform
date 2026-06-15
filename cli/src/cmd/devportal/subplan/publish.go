@@ -20,7 +20,6 @@ package subplan
 
 import (
 	"fmt"
-	"net/url"
 	"os"
 	"strings"
 
@@ -138,7 +137,7 @@ func runPublishCommand() error {
 	}
 
 	client := internaldevportal.NewClientWithOptions(devPortal, publishInsecure)
-	path := fmt.Sprintf("/devportal/organizations/%s/subscription-policies", url.PathEscape(orgID))
+	path := internaldevportal.OrgScopedPath(orgID, "subscription-policies")
 	resp, err := client.PostMultipartFile(path, multipartFieldName, filePath)
 	if err != nil {
 		return internaldevportal.WrapRequestError("publish subscription plan", err, publishInsecure)

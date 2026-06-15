@@ -84,7 +84,7 @@ func runGetCommand() error {
 	}
 
 	client := internaldevportal.NewClientWithOptions(devPortal, getInsecure)
-	path := fmt.Sprintf("/devportal/organizations/%s", url.PathEscape(orgID))
+	path := fmt.Sprintf("/organizations/%s", url.PathEscape(orgID))
 	resp, err := client.Get(path)
 	if err != nil {
 		return internaldevportal.WrapRequestError("get organization", err, getInsecure)
