@@ -140,6 +140,7 @@ func getFeaturePaths() []string {
 		"features/llm-cost-based-ratelimit.feature",
 		"features/log-message.feature",
 		"features/route-path-matching.feature",
+		"features/http-method-case.feature",
 		"features/secrets.feature",
 		"features/template-functions.feature",
 		// These tests require different gateway configurations and are not included in the default suite run.
