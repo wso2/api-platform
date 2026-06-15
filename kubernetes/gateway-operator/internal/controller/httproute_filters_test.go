@@ -81,8 +81,9 @@ func TestPoliciesFromHTTPRouteFilters_SetHeadersAreObjects(t *testing.T) {
 }
 
 // TestPoliciesFromHTTPRouteFilters_AddHeadersUseAppend guards Gateway-API "add" semantics:
-// an Add filter must emit set-headers with request.appendHeaders (-> append, preserving the
-// existing value), NOT request.headers (which overwrites and fails HTTPRouteRequestHeaderModifier).
+// an Add filter must emit set-headers with top-level mode "append" (-> HeadersToAppend ->
+// APPEND_IF_EXISTS_OR_ADD, preserving the existing value), with the headers under the normal
+// request.headers section. "set" mode (overwrite) would fail HTTPRouteRequestHeaderModifier.
 func TestPoliciesFromHTTPRouteFilters_AddHeadersUseAppend(t *testing.T) {
 	filters := []gatewayv1.HTTPRouteFilter{{
 		Type: gatewayv1.HTTPRouteFilterRequestHeaderModifier,
@@ -96,14 +97,14 @@ func TestPoliciesFromHTTPRouteFilters_AddHeadersUseAppend(t *testing.T) {
 	require.Equal(t, "set-headers", policies[0].Name)
 
 	var params struct {
+		Mode    string `json:"mode"`
 		Request struct {
-			Headers       []map[string]any `json:"headers"`
-			AppendHeaders []map[string]any `json:"appendHeaders"`
+			Headers []map[string]any `json:"headers"`
 		} `json:"request"`
 	}
 	require.NoError(t, json.Unmarshal(policies[0].Params.Raw, &params))
-	require.Empty(t, params.Request.Headers, "Add must not use the overwrite 'headers' section")
-	require.Len(t, params.Request.AppendHeaders, 1)
-	require.Equal(t, "X-Header-Add", params.Request.AppendHeaders[0]["name"])
-	require.Equal(t, "add-appends-values", params.Request.AppendHeaders[0]["value"])
+	require.Equal(t, "append", params.Mode, "Add must select append mode, not the default set (overwrite)")
+	require.Len(t, params.Request.Headers, 1)
+	require.Equal(t, "X-Header-Add", params.Request.Headers[0]["name"])
+	require.Equal(t, "add-appends-values", params.Request.Headers[0]["value"])
 }

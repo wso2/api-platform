@@ -69,9 +69,12 @@ func policiesFromHTTPRouteFilters(filters []gatewayv1.HTTPRouteFilter) ([]apiv1.
 			}
 			if len(mod.Add) > 0 {
 				// Gateway-API "add" APPENDS to any existing header value, unlike "set"
-				// which overwrites. The set-headers policy distinguishes these via the
-				// "appendHeaders" params section (-> HeadersToAppend ->
-				// APPEND_IF_EXISTS_OR_ADD), so a pre-existing client value is preserved.
+				// which overwrites. The set-headers policy selects this via the top-level
+				// "mode": "append" parameter (-> HeadersToAppend -> APPEND_IF_EXISTS_OR_ADD),
+				// so a pre-existing client value is preserved. Headers go under the same
+				// request.headers section as "set"; only the mode differs. Because mode is a
+				// single per-policy setting, Add is emitted as its own set-headers instance,
+				// separate from the Set instance above.
 				headers := make([]map[string]string, 0, len(mod.Add))
 				for _, h := range mod.Add {
 					headers = append(headers, map[string]string{
@@ -80,7 +83,8 @@ func policiesFromHTTPRouteFilters(filters []gatewayv1.HTTPRouteFilter) ([]apiv1.
 					})
 				}
 				p, err := policyFromParams("set-headers", "v1", map[string]interface{}{
-					"request": map[string]interface{}{"appendHeaders": headers},
+					"mode":    "append",
+					"request": map[string]interface{}{"headers": headers},
 				})
 				if err != nil {
 					return nil, nil, err
