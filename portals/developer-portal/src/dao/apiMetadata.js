@@ -1326,8 +1326,9 @@ const getAllAPIMetadataFromAllViews = async (orgID, groups, t) => {
     return apiList;
 };
 
-const searchAPIMetadataFallback = async (orgID, searchTerm, t) => {
+const searchAPIMetadataFallback = async (orgID, searchTerm, viewName, t) => {
     const pattern = `%${searchTerm}%`;
+    const viewID = await getViewID(orgID, viewName);
     return APIMetadata.findAll({
         where: {
             ORG_ID: orgID,
@@ -1346,15 +1347,25 @@ const searchAPIMetadataFallback = async (orgID, searchTerm, t) => {
         include: [
             { model: APIImageMetadata, required: false },
             { model: SubscriptionPolicy, through: { attributes: [] }, required: false },
-            { model: Labels, attributes: ['NAME'], required: false, through: { attributes: [] } },
+            {
+                model: Labels,
+                attributes: ['NAME'],
+                required: true,
+                through: { attributes: [] },
+                where: {
+                    LABEL_ID: {
+                        [Op.in]: Sequelize.literal(`(SELECT "LABEL_ID" FROM "DP_VIEW_LABELS" WHERE "VIEW_ID" = '${viewID}')`)
+                    }
+                }
+            },
         ],
         transaction: t,
     });
 };
 
-const searchAPIMetadata = async (orgID, groups, searchTerm, t) => {
+const searchAPIMetadata = async (orgID, groups, searchTerm, viewName, t) => {
     if (APIMetadata.sequelize.getDialect() !== 'postgres') {
-        return searchAPIMetadataFallback(orgID, searchTerm, t);
+        return searchAPIMetadataFallback(orgID, searchTerm, viewName, t);
     }
     try {
         const results = await APIMetadata.sequelize.query(SEARCH_APIS_POSTGRES_SQL, {
