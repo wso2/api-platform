@@ -64,7 +64,7 @@ type Runtime struct {
 	bindingPaths        map[string][]string // name → registered mux paths
 	bindingTopics       map[string][]string // name → Kafka topics (data + internal sub)
 	websubMux           *DynamicMux
-	wsMux               *http.ServeMux // WebSocket mux for dynamic WebBrokerApi bindings
+	wsMux               *DynamicMux // WebSocket mux for dynamic WebBrokerApi bindings
 	runCtx              context.Context
 	running             bool // true after Run() starts servers
 }
@@ -105,7 +105,7 @@ func New(cfg *config.Config, rawConfig map[string]interface{}, registry *connect
 		bindingPaths:        make(map[string][]string),
 		bindingTopics:       make(map[string][]string),
 		websubMux:           NewDynamicMux(),
-		wsMux:               http.NewServeMux(),
+		wsMux:               NewDynamicMux(),
 	}, nil
 }
 
@@ -128,7 +128,7 @@ func (r *Runtime) LoadChannels(channelsPath string) error {
 	}
 
 	// Create shared HTTP muxes for port sharing.
-	wsMux := http.NewServeMux()
+	wsMux := NewDynamicMux()
 	websubMux := http.NewServeMux()
 
 	// Store wsMux for dynamic bindings
@@ -170,7 +170,7 @@ func (r *Runtime) LoadChannels(channelsPath string) error {
 		r.brokerDrivers = append(r.brokerDrivers, brokerDriver)
 
 		receiverType := resolveReceiverType(b)
-		var mux *http.ServeMux
+		var mux connectors.RouteMux
 		switch receiverType {
 		case "websub":
 			mux = websubMux
@@ -1253,6 +1253,7 @@ func (r *Runtime) AddWebBrokerApiBinding(wbb binding.WebBrokerApiBinding) error 
 		return fmt.Errorf("failed to create receiver for WebBrokerApi %q: %w", wbb.Name, err)
 	}
 	r.activeReceivers[wbb.Name] = receiver
+	r.bindingPaths[wbb.Name] = []string{wbb.Context}
 
 	startNow := r.running
 	startCtx := r.runCtx
@@ -1311,7 +1312,7 @@ func (r *Runtime) RemoveWebBrokerApiBinding(name string) error {
 	// Deregister HTTP routes from the mux.
 	if paths, ok := r.bindingPaths[name]; ok {
 		for _, p := range paths {
-			r.websubMux.Remove(p)
+			r.wsMux.Remove(p)
 		}
 		delete(r.bindingPaths, name)
 	}
