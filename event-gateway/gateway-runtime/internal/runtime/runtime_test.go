@@ -325,6 +325,64 @@ func TestNewManagedServerWebSocketAcceptsReadableTLSFiles(t *testing.T) {
 	}
 }
 
+func TestAddWebBrokerApiBinding_RedeployDoesNotPanic(t *testing.T) {
+	eng, err := enginepkg.New(nil)
+	if err != nil {
+		t.Fatalf("failed to create engine: %v", err)
+	}
+
+	reg := connectors.NewRegistry()
+	reg.RegisterBrokerDriver("kafka", func(_ map[string]interface{}) (connectors.BrokerDriver, error) {
+		return &testBrokerDriver{}, nil
+	})
+	reg.RegisterReceiver("websocket-broker-api", func(cfg connectors.ReceiverConfig) (connectors.Receiver, error) {
+		cfg.Mux.HandleFunc(cfg.Channel.Context, func(http.ResponseWriter, *http.Request) {})
+		return &flakyReceiver{}, nil
+	})
+
+	rt := &Runtime{
+		cfg:                 &config.Config{},
+		engine:              eng,
+		hub:                 hub.NewHub(eng),
+		registry:            reg,
+		activeReceivers:     make(map[string]connectors.Receiver),
+		activeBrokerDrivers: make(map[string]connectors.BrokerDriver),
+		bindingPaths:        make(map[string][]string),
+		bindingTopics:       make(map[string][]string),
+		websubMux:           NewDynamicMux(),
+		wsMux:               NewDynamicMux(),
+	}
+
+	wbb := binding.WebBrokerApiBinding{
+		APIID:   "api-1",
+		Name:    "webbroker-test",
+		Context: "/default/webbroker-test",
+		Version: "v1.0",
+		BrokerDriver: binding.BrokerDriverSpec{
+			Type: "kafka",
+		},
+	}
+
+	if err := rt.AddWebBrokerApiBinding(wbb); err != nil {
+		t.Fatalf("first AddWebBrokerApiBinding failed: %v", err)
+	}
+	if _, ok := rt.bindingPaths[wbb.Name]; !ok {
+		t.Fatal("expected bindingPaths to be populated after first add")
+	}
+
+	if err := rt.RemoveWebBrokerApiBinding(wbb.Name); err != nil {
+		t.Fatalf("RemoveWebBrokerApiBinding failed: %v", err)
+	}
+	if _, ok := rt.bindingPaths[wbb.Name]; ok {
+		t.Fatal("expected bindingPaths to be cleared after remove")
+	}
+
+	// Before the fix this panicked: "pattern already registered" on the http.ServeMux.
+	if err := rt.AddWebBrokerApiBinding(wbb); err != nil {
+		t.Fatalf("second AddWebBrokerApiBinding (redeploy) failed: %v", err)
+	}
+}
+
 type testNoopPolicy struct{}
 
 type flakyReceiver struct {
@@ -354,6 +412,31 @@ func (r *flakyReceiver) Attempts() int {
 	defer r.mu.Unlock()
 	return r.attempts
 }
+
+type testBrokerDriver struct{}
+
+func (testBrokerDriver) Publish(_ context.Context, _ string, _ *connectors.Message) error {
+	return nil
+}
+func (testBrokerDriver) Subscribe(_ string, _ []string, _ connectors.MessageHandler) (connectors.Receiver, error) {
+	return &flakyReceiver{}, nil
+}
+func (testBrokerDriver) SubscribeManual(_ string, _ []string, _ connectors.MessageHandler) (connectors.Receiver, error) {
+	return &flakyReceiver{}, nil
+}
+func (testBrokerDriver) Replay(_ context.Context, _ string, _ connectors.MessageHandler) error {
+	return nil
+}
+func (testBrokerDriver) Watch(_ context.Context, _ string, _ string, _ connectors.MessageHandler) (connectors.Receiver, error) {
+	return &flakyReceiver{}, nil
+}
+func (testBrokerDriver) TopicExists(_ context.Context, _ string) (bool, error) { return true, nil }
+func (testBrokerDriver) EnsureTopics(_ context.Context, _ []string, _ map[string]map[string]string) error {
+	return nil
+}
+func (testBrokerDriver) EnsureCompactedTopic(_ context.Context, _ string) error { return nil }
+func (testBrokerDriver) DeleteTopics(_ context.Context, _ []string) error        { return nil }
+func (testBrokerDriver) Close() error                                             { return nil }
 
 func newTestNoopPolicy(policy.PolicyMetadata, map[string]interface{}) (policy.Policy, error) {
 	return testNoopPolicy{}, nil
