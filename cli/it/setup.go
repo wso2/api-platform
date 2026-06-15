@@ -50,6 +50,9 @@ const (
 
 	// MCPServerPort is the port for MCP server
 	MCPServerPort = "3001"
+
+	// DevPortalPort is the host port the developer portal is published on
+	DevPortalPort = "3000"
 )
 
 // InfrastructureManager manages the lifecycle of test infrastructure
@@ -65,6 +68,11 @@ type InfrastructureManager struct {
 	mu                  sync.Mutex
 	composeProjectName  string
 	reporter            *TestReporter
+
+	// Developer portal stack (separate compose project)
+	devportalComposeFile         string
+	devportalComposeOverrideFile string
+	devportalProjectName         string
 }
 
 func NewInfrastructureManager(reporter *TestReporter, cfg *TestConfig, cfgPath string) *InfrastructureManager {
@@ -80,6 +88,7 @@ func NewInfrastructureManager(reporter *TestReporter, cfg *TestConfig, cfgPath s
 
 	// Generate a per-run compose project name to avoid collisions
 	m.composeProjectName = fmt.Sprintf("cli-it-%d-%d", os.Getpid(), time.Now().UnixNano())
+	m.devportalProjectName = fmt.Sprintf("cli-it-dp-%d-%d", os.Getpid(), time.Now().UnixNano())
 
 	// Resolve compose file from config if set
 	if cfg != nil && cfg.Infrastructure.ComposeFile != "" {
@@ -154,6 +163,11 @@ func (m *InfrastructureManager) SetupInfrastructure(required []InfrastructureID)
 			// Only mark MCP as started if the gateway stack start reported success
 			// or MCP readiness was explicitly verified above.
 			m.startedServices[InfraMCPServer] = true
+		case InfraDevPortal:
+			if err := m.startDevPortalStack(); err != nil {
+				return fmt.Errorf("failed to start devportal stack: %w", err)
+			}
+			m.startedServices[InfraDevPortal] = true
 		}
 	}
 
@@ -326,6 +340,106 @@ func (m *InfrastructureManager) waitForMCPServer() error {
 	return fmt.Errorf("MCP server health check timed out after %v", m.startupTimeout)
 }
 
+// startDevPortalStack starts the developer portal Docker Compose stack. It reuses
+// the developer-portal IT compose file (postgres + devportal) and layers a small
+// override that publishes the devportal port to the host so the CLI (running on
+// the host) can reach it. The cypress service in that compose is never started
+// because it is not a dependency of the devportal service.
+func (m *InfrastructureManager) startDevPortalStack() error {
+	m.reporter.LogPhase1("DEVPORTAL", "Starting developer portal stack...")
+
+	if m.devportalComposeFile == "" {
+		composeFile, err := filepath.Abs("../../portals/developer-portal/it/docker-compose.test.yaml")
+		if err != nil {
+			return fmt.Errorf("failed to resolve devportal compose file path: %w", err)
+		}
+		m.devportalComposeFile = composeFile
+	}
+	if _, err := os.Stat(m.devportalComposeFile); os.IsNotExist(err) {
+		return fmt.Errorf("devportal compose file not found: %s", m.devportalComposeFile)
+	}
+
+	if m.devportalComposeOverrideFile == "" {
+		overrideFile, err := filepath.Abs("docker-compose.devportal.override.yaml")
+		if err != nil {
+			return fmt.Errorf("failed to resolve devportal compose override path: %w", err)
+		}
+		m.devportalComposeOverrideFile = overrideFile
+	}
+	if _, err := os.Stat(m.devportalComposeOverrideFile); os.IsNotExist(err) {
+		return fmt.Errorf("devportal compose override file not found: %s", m.devportalComposeOverrideFile)
+	}
+
+	// Stop any leftover containers from previous runs.
+	m.reporter.LogPhase1Detail("Cleaning up previous devportal containers...")
+	m.stopDevPortalStack()
+
+	m.reporter.LogPhase1Detail("Starting postgres container...")
+	m.reporter.LogPhase1Detail("Starting devportal container...")
+
+	// Start only the devportal service (and its postgres dependency); cypress is
+	// intentionally excluded. --wait blocks until both are healthy.
+	cmd := exec.CommandContext(m.ctx, "docker", "compose",
+		"-f", m.devportalComposeFile,
+		"-f", m.devportalComposeOverrideFile,
+		"-p", m.devportalProjectName,
+		"up", "-d", "--wait", "devportal",
+	)
+	cmd.Dir = filepath.Dir(m.devportalComposeFile)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		m.reporter.LogPhase1Fail("DEVPORTAL", "Failed to start stack", string(output))
+		return fmt.Errorf("failed to start devportal docker compose: %w\nOutput: %s", err, output)
+	}
+
+	m.reporter.LogPhase1Detail("Waiting for devportal health check...")
+	if err := m.waitForDevPortalHealth(); err != nil {
+		m.reporter.LogPhase1Fail("DEVPORTAL", "Health check failed", err.Error())
+		return err
+	}
+
+	m.reporter.LogPhase1Pass("DEVPORTAL", "Developer portal stack ready")
+	return nil
+}
+
+// stopDevPortalStack stops the developer portal Docker Compose stack.
+func (m *InfrastructureManager) stopDevPortalStack() {
+	if m.devportalComposeFile == "" {
+		return
+	}
+
+	args := []string{"compose", "-f", m.devportalComposeFile}
+	if m.devportalComposeOverrideFile != "" {
+		args = append(args, "-f", m.devportalComposeOverrideFile)
+	}
+	args = append(args, "-p", m.devportalProjectName, "down", "-v", "--remove-orphans")
+
+	cmd := exec.CommandContext(m.ctx, "docker", args...)
+	cmd.Dir = filepath.Dir(m.devportalComposeFile)
+	_ = cmd.Run() // Ignore errors during cleanup
+}
+
+// waitForDevPortalHealth waits for the developer portal /health endpoint to return 200.
+func (m *InfrastructureManager) waitForDevPortalHealth() error {
+	healthURL := fmt.Sprintf("http://localhost:%s/health", DevPortalPort)
+	client := &http.Client{Timeout: 5 * time.Second}
+
+	deadline := time.Now().Add(m.startupTimeout)
+	for time.Now().Before(deadline) {
+		resp, err := client.Get(healthURL)
+		if err == nil && resp.StatusCode == http.StatusOK {
+			resp.Body.Close()
+			return nil
+		}
+		if resp != nil {
+			resp.Body.Close()
+		}
+		time.Sleep(m.healthCheckInterval)
+	}
+
+	return fmt.Errorf("devportal health check timed out after %v", m.startupTimeout)
+}
+
 // GetCLIBinaryPath returns the path to the CLI binary
 func (m *InfrastructureManager) GetCLIBinaryPath() string {
 	return m.cliBinaryPath
@@ -355,6 +469,11 @@ func (m *InfrastructureManager) Teardown() error {
 		_ = cmd.Run() // Ignore errors during cleanup
 	}
 
+	// Stop the devportal stack if it was started.
+	if m.startedServices[InfraDevPortal] {
+		m.stopDevPortalStack()
+	}
+
 	m.cancel()
 	return nil
 }
@@ -368,13 +487,28 @@ func CheckDockerAvailable() error {
 	return nil
 }
 
-// CheckPortsAvailable verifies required ports are free
-func CheckPortsAvailable() error {
-	ports := []string{
-		GatewayControllerPort,
-		"8080",  // Router HTTP
-		"18000", // xDS
-		MCPServerPort,
+// CheckPortsAvailable verifies the ports required by the enabled infrastructure
+// are free. Only the ports for infrastructure that will actually be started are
+// checked, so devportal-only runs don't require the gateway ports (and vice versa).
+func CheckPortsAvailable(required []InfrastructureID) error {
+	needed := make(map[InfrastructureID]bool)
+	for _, id := range required {
+		needed[id] = true
+	}
+
+	var ports []string
+	if needed[InfraGateway] {
+		ports = append(ports,
+			GatewayControllerPort,
+			"8080",  // Router HTTP
+			"18000", // xDS
+		)
+	}
+	if needed[InfraMCPServer] {
+		ports = append(ports, MCPServerPort)
+	}
+	if needed[InfraDevPortal] {
+		ports = append(ports, DevPortalPort)
 	}
 
 	for _, port := range ports {

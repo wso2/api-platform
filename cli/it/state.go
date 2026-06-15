@@ -284,3 +284,12 @@ func (s *TestState) GetConfigDir() string {
 	defer s.mu.RUnlock()
 	return s.ConfigDir
 }
+
+// GetWorkingDir returns the per-scenario working directory (a fresh temp dir).
+// CLI commands run with this as their working directory, so it is also where
+// scaffolded API projects and their build output land.
+func (s *TestState) GetWorkingDir() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.WorkingDir
+}

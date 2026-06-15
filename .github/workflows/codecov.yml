@@ -55,6 +55,12 @@ jobs:
           cd cli/it
           make build-cli-coverage
 
+      - name: Build developer-portal :test image
+        continue-on-error: true
+        run: |
+          cd cli/it
+          make build-devportal-image
+
       - name: Run CLI integration tests
         continue-on-error: true
         run: |

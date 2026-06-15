@@ -44,6 +44,33 @@ const (
 
 	// MCPServerMCPEndpoint is the MCP protocol endpoint
 	MCPServerMCPEndpoint = "http://localhost:3001/mcp"
+
+	// DevPortalURL is the developer portal REST API endpoint (published to host)
+	DevPortalURL = "http://localhost:3000"
+
+	// DevPortalHealthURL is the developer portal health endpoint
+	DevPortalHealthURL = DevPortalURL + "/health"
+)
+
+// Developer portal test configuration
+const (
+	// DevPortalName is the default devportal config name used in tests
+	DevPortalName = "test-devportal"
+
+	// DevPortalAuthType is the auth type used to talk to the test devportal
+	DevPortalAuthType = "api-key"
+
+	// DevPortalAPIKey is the api-key seeded into the test devportal via
+	// DP_ADVANCED_APIKEY_KEYVALUE in the IT docker-compose. It grants full
+	// admin access to the /devportal endpoints.
+	DevPortalAPIKey = "devportal-it-test-key"
+
+	// DevPortalDefaultOrgID is the seeded ACME organization UUID
+	// (database/02-seed_org.postgres.sql). Org-scoped commands target this org.
+	DevPortalDefaultOrgID = "1ba42a09-45c0-40f8-a1bf-e4aa7cde1575"
+
+	// DevPortalDefaultOrgHandle is the seeded ACME organization handle/name
+	DevPortalDefaultOrgHandle = "ACME"
 )
 
 // Timeouts and intervals
@@ -128,6 +155,14 @@ func GetResourcePath(filename string) string {
 // GetSampleAPIPath returns the path to the sample API YAML file
 func GetSampleAPIPath() string {
 	return GetResourcePath("sample-api.yaml")
+}
+
+// GetDevPortalResourcePath returns the absolute path to a resource file in the
+// devportal resources folder (resources/devportal/<filename>).
+func GetDevPortalResourcePath(filename string) string {
+	_, currentFile, _, _ := runtime.Caller(0)
+	resourcesDir := filepath.Dir(currentFile)
+	return filepath.Join(resourcesDir, "devportal", filename)
 }
 
 // GetSampleMCPConfigPath returns the path to the sample MCP config file

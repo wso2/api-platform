@@ -39,6 +39,7 @@ type TestState interface {
 	SetAPIInfo(name, version string)
 	SetMCPInfo(name, version string)
 	GetConfigDir() string
+	GetWorkingDir() string
 }
 
 // CLISteps provides CLI execution step definitions
@@ -77,6 +78,9 @@ func (s *CLISteps) RunWithArgs(args string) error {
 			// Extract filename and get absolute path
 			filename := filepath.Base(part)
 			parts[i] = resources.GetResourcePath(filename)
+		} else if strings.HasPrefix(part, "resources/devportal/") {
+			filename := filepath.Base(part)
+			parts[i] = resources.GetDevPortalResourcePath(filename)
 		}
 	}
 

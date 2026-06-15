@@ -48,8 +48,9 @@ var (
 	testConfigPath string
 
 	// Step handlers
-	cliSteps    *steps.CLISteps
-	assertSteps *steps.AssertSteps
+	cliSteps       *steps.CLISteps
+	assertSteps    *steps.AssertSteps
+	devPortalSteps *steps.DevPortalSteps
 
 	// Coverage collector
 	coverageCollector *CoverageCollector
@@ -93,8 +94,13 @@ func TestFeatures(t *testing.T) {
 		TestSuiteInitializer: InitializeTestSuite,
 		ScenarioInitializer:  InitializeScenario,
 		Options: &godog.Options{
-			Format:   "progress",
-			Paths:    []string{"features"},
+			Format: "progress",
+			// Scope feature dirs to the selected suites (IT_SUITES env var);
+			// defaults to all suites.
+			Paths: FeaturePaths(),
+			// Skip work-in-progress scenarios (e.g. devportal commands that depend
+			// on server-side changes not yet in place, such as application APIs).
+			Tags:     "~@wip",
 			TestingT: t,
 			NoColors: false,
 			Output:   io.Discard,
@@ -140,8 +146,11 @@ func InitializeTestSuite(ctx *godog.TestSuiteContext) {
 			}
 		}
 
+		// Determine which infrastructure the enabled tests require.
+		required := testConfig.GetRequiredInfrastructure()
+
 		// Verify required ports are free before starting infrastructure
-		if err := CheckPortsAvailable(); err != nil {
+		if err := CheckPortsAvailable(required); err != nil {
 			log.Fatalf("Pre-flight check failed: Required ports are not available. %v", err)
 		}
 		fmt.Printf("  %s[PORTS]%s  Required ports free %s✓%s\n", ColorBlue, ColorReset, ColorGreen, ColorReset)
@@ -161,10 +170,7 @@ func InitializeTestSuite(ctx *godog.TestSuiteContext) {
 		// Initialize infrastructure manager
 		infraManager = NewInfrastructureManager(testReporter, testConfig, testConfigPath)
 
-		// Get required infrastructure based on enabled tests
-		required := testConfig.GetRequiredInfrastructure()
-
-		// Setup infrastructure
+		// Setup infrastructure (required computed above for port checks)
 		if err := infraManager.SetupInfrastructure(required); err != nil {
 			log.Fatalf("Phase 1 failed: %v", err)
 		}
@@ -288,6 +294,7 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 		// Initialize step handlers
 		cliSteps = steps.NewCLISteps(testState)
 		assertSteps = steps.NewAssertSteps(testState)
+		devPortalSteps = steps.NewDevPortalSteps(testState)
 
 		// Extract test ID from tags if available
 		for _, tag := range sc.Tags {
@@ -328,6 +335,7 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	registerAPISteps(ctx)
 	registerMCPSteps(ctx)
 	registerBuildSteps(ctx)
+	registerDevPortalSteps(ctx)
 }
 
 // registerInfrastructureSteps registers infrastructure-related step definitions
@@ -391,6 +399,21 @@ func registerMCPSteps(ctx *godog.ScenarioContext) {
 func registerBuildSteps(ctx *godog.ScenarioContext) {
 	ctx.Step(`^I build gateway with manifest "([^"]*)"$`, iBuildGatewayWithManifest)
 	ctx.Step(`^the build should complete successfully$`, theBuildShouldComplete)
+}
+
+// registerDevPortalSteps registers developer-portal step definitions
+func registerDevPortalSteps(ctx *godog.ScenarioContext) {
+	ctx.Step(`^the devportal is running$`, theDevPortalIsRunning)
+	ctx.Step(`^I have a devportal named "([^"]*)" configured$`, iHaveDevPortalConfigured)
+	ctx.Step(`^I set the current devportal to "([^"]*)"$`, iSetCurrentDevPortal)
+	// End-to-end publish flow
+	ctx.Step(`^I target organization "([^"]*)"$`, iTargetOrganization)
+	ctx.Step(`^I build the echo API project$`, iBuildEchoAPIProject)
+	ctx.Step(`^I publish the built API$`, iPublishBuiltAPI)
+	ctx.Step(`^the published API should be retrievable$`, thePublishedAPIShouldBeRetrievable)
+	ctx.Step(`^I generate an API key named "([^"]*)" for the published API$`, iGenerateAPIKeyForPublishedAPI)
+	ctx.Step(`^I publish the subscription plan "([^"]*)"$`, iPublishSubscriptionPlan)
+	ctx.Step(`^I create a subscription for the published API with plan "([^"]*)"$`, iCreateSubscriptionForPublishedAPI)
 }
 
 // Step implementations
@@ -540,4 +563,44 @@ func iResetCLIConfiguration() error {
 
 func iApplyResourceFile(filePath string) error {
 	return cliSteps.ApplyResourceFile(filePath)
+}
+
+func theDevPortalIsRunning() error {
+	return infraManager.waitForDevPortalHealth()
+}
+
+func iHaveDevPortalConfigured(name string) error {
+	return devPortalSteps.EnsureDevPortalConfigured(name)
+}
+
+func iSetCurrentDevPortal(name string) error {
+	return devPortalSteps.SetCurrentDevPortal(name)
+}
+
+func iTargetOrganization(orgID string) error {
+	return devPortalSteps.TargetOrganization(orgID)
+}
+
+func iBuildEchoAPIProject() error {
+	return devPortalSteps.BuildEchoAPIProject()
+}
+
+func iPublishBuiltAPI() error {
+	return devPortalSteps.PublishBuiltAPI()
+}
+
+func thePublishedAPIShouldBeRetrievable() error {
+	return devPortalSteps.GetPublishedAPI()
+}
+
+func iGenerateAPIKeyForPublishedAPI(keyName string) error {
+	return devPortalSteps.GenerateAPIKeyForPublishedAPI(keyName)
+}
+
+func iPublishSubscriptionPlan(resourcePath string) error {
+	return devPortalSteps.PublishSubscriptionPlan(resourcePath)
+}
+
+func iCreateSubscriptionForPublishedAPI(plan string) error {
+	return devPortalSteps.CreateSubscriptionForPublishedAPI(plan)
 }

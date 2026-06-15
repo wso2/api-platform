@@ -218,3 +218,207 @@ tests:
         name: build missing manifest file
         enabled: true
         requires: [CLI]
+
+  # Developer portal CLI command tests.
+  # The DEVPORTAL infrastructure starts a postgres + developer-portal stack from
+  # portals/developer-portal/it/docker-compose.test.yaml (port 3000 published).
+  # Requires the developer-portal :test image to be built first
+  # (see `make build-devportal-image`).
+  #
+  # Scenarios tagged @wip in the feature files are SKIPPED regardless of the flags
+  # below (they depend on server-side changes / fixtures not yet in place, e.g.
+  # application APIs and the API publish artifact).
+  devportal:
+    manage:
+      - id: DP-MANAGE-001
+        name: devportal add with api-key auth
+        enabled: true
+        requires: [CLI]
+
+      - id: DP-MANAGE-002
+        name: devportal add without server flag
+        enabled: true
+        requires: [CLI]
+
+      - id: DP-MANAGE-003
+        name: devportal add with invalid auth type
+        enabled: true
+        requires: [CLI]
+
+      - id: DP-MANAGE-004
+        name: devportal list
+        enabled: true
+        requires: [CLI]
+
+      - id: DP-MANAGE-005
+        name: devportal list when empty
+        enabled: true
+        requires: [CLI]
+
+      - id: DP-MANAGE-006
+        name: devportal use existing
+        enabled: true
+        requires: [CLI]
+
+      - id: DP-MANAGE-007
+        name: devportal use non-existent
+        enabled: true
+        requires: [CLI]
+
+      - id: DP-MANAGE-008
+        name: devportal current
+        enabled: true
+        requires: [CLI]
+
+      - id: DP-MANAGE-009
+        name: devportal current when none set
+        enabled: true
+        requires: [CLI]
+
+      - id: DP-MANAGE-010
+        name: devportal remove existing
+        enabled: true
+        requires: [CLI]
+
+      - id: DP-MANAGE-011
+        name: devportal remove non-existent
+        enabled: true
+        requires: [CLI]
+
+      - id: DP-MANAGE-012
+        name: devportal health
+        enabled: true
+        requires: [CLI, DEVPORTAL]
+
+      - id: DP-MANAGE-013
+        name: devportal health unreachable
+        enabled: true
+        requires: [CLI]
+
+    organization:
+      - id: DP-ORG-001
+        name: org list
+        enabled: true
+        requires: [CLI, DEVPORTAL]
+
+      - id: DP-ORG-002
+        name: org get seeded organization
+        enabled: true
+        requires: [CLI, DEVPORTAL]
+
+      - id: DP-ORG-003
+        name: org get without org flag
+        enabled: true
+        requires: [CLI, DEVPORTAL]
+
+      - id: DP-ORG-004
+        name: org create (wip)
+        enabled: false
+        requires: [CLI, DEVPORTAL]
+
+      - id: DP-ORG-005
+        name: org delete (wip)
+        enabled: false
+        requires: [CLI, DEVPORTAL]
+
+    api:
+      - id: DP-API-001
+        name: rest-api list
+        enabled: true
+        requires: [CLI, DEVPORTAL]
+
+      - id: DP-API-002
+        name: rest-api list without org flag
+        enabled: true
+        requires: [CLI, DEVPORTAL]
+
+      - id: DP-API-003
+        name: rest-api get without flags
+        enabled: true
+        requires: [CLI, DEVPORTAL]
+
+      - id: DP-API-004
+        name: rest-api publish (wip)
+        enabled: false
+        requires: [CLI, DEVPORTAL]
+
+      - id: DP-API-005
+        name: rest-api get (wip)
+        enabled: false
+        requires: [CLI, DEVPORTAL]
+
+      - id: DP-API-006
+        name: rest-api delete (wip)
+        enabled: false
+        requires: [CLI, DEVPORTAL]
+
+    subscription:
+      - id: DP-SUB-001
+        name: subscription list
+        enabled: true
+        requires: [CLI, DEVPORTAL]
+
+      - id: DP-SUB-002
+        name: subscription list without org flag
+        enabled: true
+        requires: [CLI, DEVPORTAL]
+
+      - id: DP-SUB-003
+        name: subscription create without flags
+        enabled: true
+        requires: [CLI, DEVPORTAL]
+
+      - id: DP-SUB-004
+        name: subscription create (wip)
+        enabled: false
+        requires: [CLI, DEVPORTAL]
+
+      - id: DP-SUB-005
+        name: subscription delete (wip)
+        enabled: false
+        requires: [CLI, DEVPORTAL]
+
+    apikey:
+      - id: DP-APIKEY-001
+        name: api-key get without flags
+        enabled: true
+        requires: [CLI, DEVPORTAL]
+
+      - id: DP-APIKEY-002
+        name: api-key generate (wip)
+        enabled: false
+        requires: [CLI, DEVPORTAL]
+
+      - id: DP-APIKEY-003
+        name: api-key get (wip)
+        enabled: false
+        requires: [CLI, DEVPORTAL]
+
+    application:
+      - id: DP-APP-001
+        name: application create without flags
+        enabled: true
+        requires: [CLI, DEVPORTAL]
+
+      - id: DP-APP-002
+        name: application create (wip - server alignment pending)
+        enabled: false
+        requires: [CLI, DEVPORTAL]
+
+      - id: DP-APP-003
+        name: application list (wip - server alignment pending)
+        enabled: false
+        requires: [CLI, DEVPORTAL]
+
+      - id: DP-APP-004
+        name: application delete (wip - server alignment pending)
+        enabled: false
+        requires: [CLI, DEVPORTAL]
+
+    # End-to-end flow: apiproject init -> devportal build -> rest-api publish ->
+    # api-key generate -> sub-plan publish -> subscription create.
+    e2e:
+      - id: DP-E2E-001
+        name: build publish key plan subscribe end to end
+        enabled: true
+        requires: [CLI, DEVPORTAL]

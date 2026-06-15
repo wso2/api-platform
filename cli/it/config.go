@@ -21,9 +21,54 @@ package it
 import (
 	"os"
 	"sort"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
+
+// Suite names used to scope a run to a subset of the test groups.
+const (
+	SuiteGateway   = "gateway"
+	SuiteDevPortal = "devportal"
+)
+
+// EnvSuites is the env var that scopes which suites run (comma-separated, e.g.
+// "devportal" or "gateway,devportal"). When unset/empty, all suites run.
+const EnvSuites = "IT_SUITES"
+
+// SelectedSuites returns the set of suites to run, parsed from IT_SUITES. An
+// unset/empty value selects all suites.
+func SelectedSuites() map[string]bool {
+	raw := strings.TrimSpace(os.Getenv(EnvSuites))
+	selected := map[string]bool{}
+	if raw == "" {
+		selected[SuiteGateway] = true
+		selected[SuiteDevPortal] = true
+		return selected
+	}
+	for _, part := range strings.Split(raw, ",") {
+		if name := strings.ToLower(strings.TrimSpace(part)); name != "" {
+			selected[name] = true
+		}
+	}
+	return selected
+}
+
+// FeaturePaths returns the gherkin feature directories for the selected suites.
+func FeaturePaths() []string {
+	selected := SelectedSuites()
+	var paths []string
+	if selected[SuiteGateway] {
+		paths = append(paths, "features/gateway")
+	}
+	if selected[SuiteDevPortal] {
+		paths = append(paths, "features/devportal")
+	}
+	if len(paths) == 0 {
+		paths = []string{"features"}
+	}
+	return paths
+}
 
 // TestConfig represents the test configuration file structure
 type TestConfig struct {
@@ -42,7 +87,8 @@ type InfrastructureConfig struct {
 
 // TestsConfig holds all test group configurations
 type TestsConfig struct {
-	Gateway GatewayTestsConfig `yaml:"gateway"`
+	Gateway   GatewayTestsConfig   `yaml:"gateway"`
+	DevPortal DevPortalTestsConfig `yaml:"devportal"`
 }
 
 // GatewayTestsConfig holds gateway-related test configurations
@@ -52,6 +98,17 @@ type GatewayTestsConfig struct {
 	API    []TestDefinition `yaml:"api"`
 	MCP    []TestDefinition `yaml:"mcp"`
 	Build  []TestDefinition `yaml:"build"`
+}
+
+// DevPortalTestsConfig holds developer-portal-related test configurations
+type DevPortalTestsConfig struct {
+	Manage       []TestDefinition `yaml:"manage"`
+	Organization []TestDefinition `yaml:"organization"`
+	API          []TestDefinition `yaml:"api"`
+	Subscription []TestDefinition `yaml:"subscription"`
+	APIKey       []TestDefinition `yaml:"apikey"`
+	Application  []TestDefinition `yaml:"application"`
+	E2E          []TestDefinition `yaml:"e2e"`
 }
 
 // TestDefinition represents a single test definition
@@ -72,6 +129,8 @@ const (
 	InfraGateway InfrastructureID = "GATEWAY"
 	// InfraMCPServer represents the MCP server
 	InfraMCPServer InfrastructureID = "MCP_SERVER"
+	// InfraDevPortal represents the developer portal stack (postgres + devportal)
+	InfraDevPortal InfrastructureID = "DEVPORTAL"
 )
 
 // LoadTestConfig loads the test configuration from a YAML file
@@ -89,38 +148,55 @@ func LoadTestConfig(path string) (*TestConfig, error) {
 	return &config, nil
 }
 
-// GetEnabledTests returns all enabled test definitions
+// GetEnabledTests returns all enabled test definitions for the selected suites.
 func (c *TestConfig) GetEnabledTests() []TestDefinition {
+	selected := SelectedSuites()
 	var enabled []TestDefinition
 
-	// Collect from all test groups
-	for _, t := range c.Tests.Gateway.Manage {
-		if t.Enabled {
-			enabled = append(enabled, t)
+	if selected[SuiteGateway] {
+		for _, group := range c.gatewayGroups() {
+			for _, t := range group {
+				if t.Enabled {
+					enabled = append(enabled, t)
+				}
+			}
 		}
 	}
-	for _, t := range c.Tests.Gateway.Apply {
-		if t.Enabled {
-			enabled = append(enabled, t)
-		}
-	}
-	for _, t := range c.Tests.Gateway.API {
-		if t.Enabled {
-			enabled = append(enabled, t)
-		}
-	}
-	for _, t := range c.Tests.Gateway.MCP {
-		if t.Enabled {
-			enabled = append(enabled, t)
-		}
-	}
-	for _, t := range c.Tests.Gateway.Build {
-		if t.Enabled {
-			enabled = append(enabled, t)
+	if selected[SuiteDevPortal] {
+		for _, group := range c.devPortalGroups() {
+			for _, t := range group {
+				if t.Enabled {
+					enabled = append(enabled, t)
+				}
+			}
 		}
 	}
 
 	return enabled
+}
+
+// gatewayGroups returns all gateway test groups for iteration.
+func (c *TestConfig) gatewayGroups() [][]TestDefinition {
+	return [][]TestDefinition{
+		c.Tests.Gateway.Manage,
+		c.Tests.Gateway.Apply,
+		c.Tests.Gateway.API,
+		c.Tests.Gateway.MCP,
+		c.Tests.Gateway.Build,
+	}
+}
+
+// devPortalGroups returns all developer-portal test groups for iteration.
+func (c *TestConfig) devPortalGroups() [][]TestDefinition {
+	return [][]TestDefinition{
+		c.Tests.DevPortal.Manage,
+		c.Tests.DevPortal.Organization,
+		c.Tests.DevPortal.API,
+		c.Tests.DevPortal.Subscription,
+		c.Tests.DevPortal.APIKey,
+		c.Tests.DevPortal.Application,
+		c.Tests.DevPortal.E2E,
+	}
 }
 
 // GetAllTests returns all test definitions regardless of enabled status
@@ -132,6 +208,9 @@ func (c *TestConfig) GetAllTests() []TestDefinition {
 	all = append(all, c.Tests.Gateway.API...)
 	all = append(all, c.Tests.Gateway.MCP...)
 	all = append(all, c.Tests.Gateway.Build...)
+	for _, group := range c.devPortalGroups() {
+		all = append(all, group...)
+	}
 
 	return all
 }
@@ -150,6 +229,7 @@ func (c *TestConfig) GetRequiredInfrastructure() []InfrastructureID {
 		InfraCLI,
 		InfraGateway,
 		InfraMCPServer,
+		InfraDevPortal,
 	}
 
 	var result []InfrastructureID

@@ -4,7 +4,42 @@ on:
   workflow_dispatch:
 
 jobs:
+  # Gate the release on the full CLI integration suite of Devportal.
+  # The release job below only runs if this succeeds.
+  integration-tests:
+    name: CLI Integration Tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.2'
+          cache-dependency-path: '**/go.sum'
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build developer-portal :test image
+        run: |
+          cd cli/it
+          make build-devportal-image
+
+      - name: Build CLI binary
+        run: |
+          cd cli/it
+          make build-cli
+
+      - name: Run CLI integration tests (gateway + devportal)
+        run: |
+          cd cli/it
+          make test-devportal
+
   release:
+    needs: integration-tests
     runs-on: ubuntu-latest
     permissions:
       contents: write
