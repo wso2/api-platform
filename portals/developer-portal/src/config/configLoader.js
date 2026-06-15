@@ -107,6 +107,7 @@ const CONFIG_DEFAULTS = {
     platformApi: {
         baseUrl: '',
         jwtSecret: '',
+        insecure: false,
     },
 };
 

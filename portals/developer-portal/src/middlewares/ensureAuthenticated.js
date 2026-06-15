@@ -44,7 +44,7 @@ function enforceSecuirty(scope) {
             // Local auth users: validate dp:* scope from platform JWT
             if (req.isAuthenticated() && req.user && req.user.isLocalAuth && !config.identityProvider?.clientId) {
                 const platformToken = req.user[constants.ACCESS_TOKEN];
-                if (!platformToken) return next();
+                if (!platformToken) return util.handleError(res, new CustomError(401, constants.ERROR_CODE[401], constants.ERROR_MESSAGE.UNAUTHENTICATED));
                 let tokenScopes = [];
                 try {
                     const payload = JSON.parse(
@@ -328,7 +328,7 @@ function validateAuthentication(scope) {
         }
 
         if (valid) {
-            if (scopes.split(' ').includes(scope)) {
+            if (String(scopes || '').split(' ').includes(scope)) {
                 return next();
             }
             if (req.user) {

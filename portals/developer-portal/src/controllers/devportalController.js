@@ -421,7 +421,7 @@ const login = async (req, res) => {
             new URLSearchParams({ username, password }).toString(),
             {
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                httpsAgent: new https.Agent({ rejectUnauthorized: false }),
+                httpsAgent: new https.Agent({ rejectUnauthorized: !config.platformApi?.insecure }),
                 timeout: 10000,
             }
         );
@@ -434,15 +434,19 @@ const login = async (req, res) => {
         return res.status(503).json({ message: 'Authentication service unavailable' });
     }
 
-    let claims = {};
+    let claims;
     try {
         claims = JSON.parse(Buffer.from(platformToken.split('.')[1], 'base64url').toString('utf8'));
     } catch (_) {}
+    if (!claims?.org_handle) {
+        logger.error('Platform API token missing required claims', { operation: 'devportalLogin' });
+        return res.status(503).json({ message: 'Authentication service error' });
+    }
 
     const scopes = (claims.scope || '').split(' ');
     const adminRole = config.adminRole || 'admin';
     const subscriberRole = config.subscriberRole || 'Internal/subscriber';
-    const isAdmin = scopes.some(s => s.endsWith(':manage'));
+    const isAdmin = scopes.some(s => s.endsWith('_manage'));
 
     const profile = {
         firstName: claims.username || username,

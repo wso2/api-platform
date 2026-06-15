@@ -40,7 +40,7 @@ spec:
 
 ```bash
 curl -X POST http://localhost:3000/organizations \
-  -u admin:admin \
+  -H "Authorization: Bearer $TOKEN" \
   -F "organization=@org.yaml"
 ```
 
@@ -67,7 +67,7 @@ After creation, the organization is accessible at `/<orgHandle>/views/<viewName>
 ## List Organizations
 
 ```bash
-curl http://localhost:3000/organizations -u admin:admin
+curl http://localhost:3000/organizations -H "Authorization: Bearer $TOKEN"
 ```
 
 ## Update an Organization
@@ -88,14 +88,14 @@ spec:
 
 ```bash
 curl -X PUT http://localhost:3000/organizations/{orgId} \
-  -u admin:admin \
+  -H "Authorization: Bearer $TOKEN" \
   -F "organization=@org-update.yaml"
 ```
 
 ## Delete an Organization
 
 ```bash
-curl -X DELETE http://localhost:3000/organizations/{orgId} -u admin:admin
+curl -X DELETE http://localhost:3000/organizations/{orgId} -H "Authorization: Bearer $TOKEN"
 ```
 
 > **Warning:** Deleting an organization removes all of its views, APIs, subscriptions, and applications. This action is irreversible.
@@ -131,7 +131,7 @@ spec:
 
 ```bash
 curl -X POST http://localhost:3000/organizations/{orgId}/identityProvider \
-  -u admin:admin \
+  -H "Authorization: Bearer $TOKEN" \
   -F "identityProvider=@idp.yaml"
 ```
 
@@ -176,14 +176,14 @@ spec:
 
 ```bash
 curl -X PUT http://localhost:3000/organizations/{orgId}/identityProvider \
-  -u admin:admin \
+  -H "Authorization: Bearer $TOKEN" \
   -F "identityProvider=@idp-update.yaml"
 ```
 
 ### Remove an IdP
 
 ```bash
-curl -X DELETE http://localhost:3000/organizations/{orgId}/identityProvider -u admin:admin
+curl -X DELETE http://localhost:3000/organizations/{orgId}/identityProvider -H "Authorization: Bearer $TOKEN"
 ```
 
 ---
@@ -257,7 +257,7 @@ TOKEN=$(curl -sk -X POST "https://localhost:9243/api/portal/v1/auth/login" \
 curl -s -H "Authorization: Bearer $TOKEN" http://localhost:3000/organizations
 ```
 
-The token is verified locally by the devportal using the shared `AUTH_JWT_SECRET_KEY` with no extra call to the Platform API per request.
+The token is verified locally by the Developer Portal using the shared `AUTH_JWT_SECRET_KEY` with no extra call to the Platform API per request.
 
 > **Note:** Local auth is for development only. For production, configure an OIDC identity provider per organization (see [Identity Provider Configuration](#identity-provider-configuration)).
 

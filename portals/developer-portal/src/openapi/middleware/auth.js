@@ -185,19 +185,11 @@ async function authResolver(req, res, next) {
         if (req.isAuthenticated && req.isAuthenticated() &&
             req.user?.isLocalAuth && !config.identityProvider?.clientId) {
             const platformToken = req.user[constants.ACCESS_TOKEN];
-            let scopes = [];
-            if (platformToken) {
-                try {
-                    const payload = JSON.parse(
-                        Buffer.from(platformToken.split('.')[1], 'base64url').toString('utf8')
-                    );
-                    scopes = String(payload.scope || '').split(' ').filter(Boolean);
-                } catch (_) {}
-            }
+            const claims = platformToken ? extractPlatformJwtClaims(platformToken, null) : null;
             req.auth = {
                 mode: 'platform-jwt',
                 preauthorized: false,
-                scopes,
+                scopes: claims?.scopes ?? [],
                 userId: req.user[constants.USER_ID],
             };
             return next();

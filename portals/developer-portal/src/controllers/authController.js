@@ -282,14 +282,14 @@ const handleLocalLogin = async (req, res) => {
             new URLSearchParams({ username, password }).toString(),
             {
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                httpsAgent: new https.Agent({ rejectUnauthorized: false }),
+                httpsAgent: new https.Agent({ rejectUnauthorized: !config.platformApi?.insecure }),
                 timeout: 10000,
             }
         );
         platformToken = response.data.token;
     } catch (error) {
         if (error.response?.status === 401) {
-            logger.warn('Platform API login failed: invalid credentials', { orgName, username });
+            logger.warn('Platform API login failed: invalid credentials', { orgName });
             return res.redirect(`${baseUrl}/login?error=Invalid+username+or+password`);
         }
         logger.error('Platform API login request failed', { error: error.message, orgName });
@@ -309,8 +309,8 @@ const handleLocalLogin = async (req, res) => {
     const superAdminRole = config.superAdminRole || 'superAdmin';
     const subscriberRole = config.subscriberRole || 'Internal/subscriber';
     const scopes = (claims.scope || '').split(' ');
-    // Users with any :manage scope are treated as admins in the devportal
-    const isAdmin = scopes.some(s => s.endsWith(':manage'));
+    // Users with any _manage scope are treated as admins in the devportal
+    const isAdmin = scopes.some(s => s.endsWith('_manage'));
     const roles = isAdmin ? [adminRole] : [subscriberRole];
 
     const returnTo = req.session.returnTo;
@@ -330,18 +330,18 @@ const handleLocalLogin = async (req, res) => {
         imageURL: 'https://raw.githubusercontent.com/wso2/docs-bijira/refs/heads/main/en/devportal-theming/profile.svg',
         view,
         idToken: null,
-        [constants.ROLES.ORGANIZATION_CLAIM]: orgName,
+        [constants.ROLES.ORGANIZATION_CLAIM]: claims.org_handle || orgName,
         returnTo: returnTo || baseUrl,
         accessToken: platformToken,
         refreshToken: null,
         exchangeToken: null,
-        authorizedOrgs: [orgName],
+        authorizedOrgs: [claims.org_handle || orgName],
         [constants.ROLES.ROLE_CLAIM]: roles,
         [constants.ROLES.GROUP_CLAIM]: [],
         isAdmin,
         isSuperAdmin: false,
         [constants.USER_ID]: claims.sub || username,
-        userOrg: orgName,
+        userOrg: claims.org_handle || orgName,
         isLocalAuth: true,
     };
 
