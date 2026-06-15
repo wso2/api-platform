@@ -6,12 +6,13 @@ info:
 
     ## Authentication
 
-    All API endpoints require a Bearer JWT token in the `Authorization` header. Tokens are
+    Most API endpoints require a Bearer JWT token in the `Authorization` header. Tokens are
     validated against a configured Identity Provider (IDP) using JWKS-based signature
     verification.
 
-    The organization registration endpoint (`POST /organizations`) can be made public by setting
-    `ORG_CREATION_REQUIRES_AUTH=false` on the server, which is useful for self-service signup flows.
+    The organization registration endpoint (`POST /organizations`) is **public by default** and
+    requires no authentication. Set `ORG_CREATION_REQUIRES_AUTH=true` on the server to enforce
+    authentication for this endpoint in production environments.
 
     **Required claim**: `organization` — UUID of the caller's organization. All operations are
     automatically scoped to this organization.
@@ -49,12 +50,13 @@ paths:
         This endpoint is used during the organization onboarding process.
 
         Authentication is controlled by the `ORG_CREATION_REQUIRES_AUTH` server configuration flag.
-        When enabled (default), a valid Bearer JWT token is required. When disabled, the endpoint
-        is public and no authentication is needed.
+        By default the endpoint is public and no authentication is needed. Set
+        `ORG_CREATION_REQUIRES_AUTH=true` to require a valid Bearer JWT token.
       operationId: RegisterOrganization
       tags:
         - Organizations
       security:
+        - {}
         - OAuth2Security:
             - ap:organization:manage
       requestBody:
