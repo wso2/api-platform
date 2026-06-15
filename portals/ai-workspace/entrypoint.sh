@@ -64,6 +64,7 @@ if [ -f "$CONFIG_FILE" ]; then
       oidc_org_id_claim)          vite_key="VITE_OIDC_ORG_ID_CLAIM" ;;
       oidc_org_name_claim)        vite_key="VITE_OIDC_ORG_NAME_CLAIM" ;;
       oidc_org_handle_claim)      vite_key="VITE_OIDC_ORG_HANDLE_CLAIM" ;;
+      oidc_scope)                 vite_key="VITE_OIDC_SCOPE" ;;
       *)                          continue ;;
     esac
 
