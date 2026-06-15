@@ -6,10 +6,12 @@ info:
 
     ## Authentication
 
-    All API endpoints (except organization registration) require a Bearer JWT token in the
-    `Authorization` header. Tokens are validated against a configured Identity Provider (IDP)
-    using JWKS-based signature verification, or against Thunder STS when IDP integration is
-    disabled.
+    All API endpoints require a Bearer JWT token in the `Authorization` header. Tokens are
+    validated against a configured Identity Provider (IDP) using JWKS-based signature
+    verification.
+
+    The organization registration endpoint (`POST /organizations`) can be made public by setting
+    `ORG_CREATION_REQUIRES_AUTH=false` on the server, which is useful for self-service signup flows.
 
     **Required claim**: `organization` — UUID of the caller's organization. All operations are
     automatically scoped to this organization.
@@ -43,14 +45,18 @@ paths:
     post:
       summary: Register a new organization
       description: |
-        Registers a new organization with a unique UUID and handle. 
+        Registers a new organization with a unique UUID and handle.
         This endpoint is used during the organization onboarding process.
-        
-        **Note**: This endpoint may be excluded from JWT authentication for initial setup.
+
+        Authentication is controlled by the `ORG_CREATION_REQUIRES_AUTH` server configuration flag.
+        When enabled (default), a valid Bearer JWT token is required. When disabled, the endpoint
+        is public and no authentication is needed.
       operationId: RegisterOrganization
       tags:
         - Organizations
-      security: []  # TODO - Use API-key Auth
+      security:
+        - OAuth2Security:
+            - ap:organization:manage
       requestBody:
         description: Organization that needs to be added
         required: true

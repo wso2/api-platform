@@ -23,6 +23,9 @@
 log_level = "INFO"   # DEBUG | INFO | WARN | ERROR
 port      = "9243"
 
+# Set to true in production to require JWT auth on POST /api/v1/organizations.
+# org_creation_requires_auth = false
+
 # ---------------------------------------------------------------------------
 # Database
 # ---------------------------------------------------------------------------

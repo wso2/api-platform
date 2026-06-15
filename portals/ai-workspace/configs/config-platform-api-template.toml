@@ -33,6 +33,12 @@ port      = "9243"   # HTTP/HTTPS listen port for Platform API
 # Set to false only to temporarily bypass during development.
 enable_scope_validation = true
 
+# Controls whether POST /api/v1/organizations requires a valid Bearer JWT.
+# Default: false (public) — preserves backwards-compatible behaviour for existing deployments.
+# Set to true in production to prevent unauthenticated callers from creating organizations.
+# A warning is logged at startup when this is false and APIP_DEMO_MODE is not set.
+org_creation_requires_auth = false
+
 # ---------------------------------------------------------------------------
 # Database
 # ---------------------------------------------------------------------------
