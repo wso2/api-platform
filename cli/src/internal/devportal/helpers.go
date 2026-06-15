@@ -25,12 +25,32 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/wso2/api-platform/cli/internal/config"
 )
+
+// APIVersion is the Developer Portal REST API version segment used in all
+// organization-scoped resource paths. Bump this in one place when the API
+// version changes (for example "v1" -> "v2").
+const APIVersion = "v1"
+
+// OrgScopedPath builds an organization-scoped Developer Portal resource path of
+// the form /o/{orgId}/devportal/{version}/{resource}. The orgID is path-escaped
+// here, so callers pass it raw. The resource is appended as-is, so callers
+// escape any path segments they interpolate and may include a trailing query
+// string (for example "apis/"+url.PathEscape(apiID) or "api-keys?apiId=x").
+//
+// Only organization-management endpoints (under /organizations) live outside
+// this prefix; every other devportal endpoint should be built through here so
+// the /o/{orgId}/devportal/{version} prefix is defined in a single place.
+func OrgScopedPath(orgID, resource string) string {
+	return fmt.Sprintf("/o/%s/devportal/%s/%s",
+		url.PathEscape(orgID), APIVersion, strings.TrimPrefix(resource, "/"))
+}
 
 // ResolveDevPortal resolves the DevPortal to use from either explicit flags
 // or the active DevPortal in the resolved platform.

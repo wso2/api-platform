@@ -92,7 +92,7 @@ func runGetCommand() error {
 	}
 
 	client := internaldevportal.NewClientWithOptions(devPortal, getInsecure)
-	path := fmt.Sprintf("/devportal/organizations/%s/apis/%s", url.PathEscape(orgID), url.PathEscape(apiID))
+	path := internaldevportal.OrgScopedPath(orgID, "apis/"+url.PathEscape(apiID))
 	resp, err := client.Get(path)
 	if err != nil {
 		return internaldevportal.WrapRequestError("get api artifact", err, getInsecure)

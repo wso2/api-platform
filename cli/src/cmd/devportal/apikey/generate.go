@@ -22,7 +22,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"net/url"
 	"os"
 	"regexp"
 	"strings"
@@ -123,7 +122,7 @@ func runGenerateCommand() error {
 	}
 
 	client := internaldevportal.NewClientWithOptions(devPortal, generateInsecure)
-	path := fmt.Sprintf("/devportal/organizations/%s/api-keys/generate", url.PathEscape(orgID))
+	path := internaldevportal.OrgScopedPath(orgID, "api-keys/generate")
 	resp, err := client.PostJSON(path, payload)
 	if err != nil {
 		return internaldevportal.WrapRequestError("generate API key", err, generateInsecure)

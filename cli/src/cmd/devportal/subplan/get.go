@@ -93,7 +93,7 @@ func runGetCommand() error {
 	}
 
 	client := internaldevportal.NewClientWithOptions(devPortal, getInsecure)
-	path := fmt.Sprintf("/devportal/organizations/%s/subscription-policies/%s", url.PathEscape(orgID), url.PathEscape(policyID))
+	path := internaldevportal.OrgScopedPath(orgID, "subscription-policies/"+url.PathEscape(policyID))
 	resp, err := client.Get(path)
 	if err != nil {
 		return internaldevportal.WrapRequestError("get subscription plan", err, getInsecure)

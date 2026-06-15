@@ -23,7 +23,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"os"
 	"strings"
 
@@ -96,7 +95,7 @@ func runListCommand() error {
 	}
 
 	client := internaldevportal.NewClientWithOptions(devPortal, listInsecure)
-	path := fmt.Sprintf("/devportal/organizations/%s/apis?tags=default", url.PathEscape(orgID))
+	path := internaldevportal.OrgScopedPath(orgID, "apis?tags=default")
 	resp, err := client.Get(path)
 	if err != nil {
 		return internaldevportal.WrapRequestError("list api artifacts", err, listInsecure)
