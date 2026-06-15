@@ -5067,7 +5067,9 @@ paths:
         Optionally filter by one or more artifact types using a comma-separated `type` query parameter.
         The plain key value is never returned.
       operationId: listUserAPIKeys
-      security: []
+      security:
+        - OAuth2Security:
+            - ap:api_key:read
       tags:
         - API Keys
       parameters:
@@ -7199,6 +7201,7 @@ components:
         clientCredentials:
           tokenUrl: https://localhost:9243/oauth2/token
           scopes:
+            ap:api_key:read: Read API keys owned by the current user
             ap:application:api_key:create: Create application
             ap:application:api_key:delete: Delete application
             ap:application:api_key:manage: Full access to application
