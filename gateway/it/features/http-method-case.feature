@@ -115,3 +115,9 @@ Feature: Operation HTTP methods are normalized to uppercase
     And I send a GET request to "http://localhost:8080/method-multi/v1.0/resource"
     Then the response should be successful
     And the JSON response field "path" should be "/resource"
+
+    When I clear all headers
+    And I set request host to "method-case.local"
+    And I send a POST request to "http://localhost:8080/method-multi/v1.0/resource"
+    Then the response should be successful
+    And the JSON response field "path" should be "/resource"
