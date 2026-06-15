@@ -109,7 +109,7 @@ async function seedDefaultOrg() {
     }
 
     try {
-        await adminDao.createProvider(orgId, { name: 'WSO2', providerURL: config.controlPlane.url });
+        await adminDao.createProvider(orgId, { name: 'WSO2', providerURL: 'https://wso2.com' });
     } catch (error) {
         if (!(error instanceof Sequelize.UniqueConstraintError)) {
             logger.error('Failed to seed provider', {

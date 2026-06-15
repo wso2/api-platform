@@ -41,13 +41,21 @@ function enforceSecuirty(scope) {
             if (!errors.isEmpty()) {
                 return res.status(400).json(util.getErrors(errors));
             }
-            // Config-auth users: authenticated with no token — allow through directly
+            // Local auth users: validate dp:* scope from platform JWT
             if (req.isAuthenticated() && req.user && req.user.isLocalAuth && !config.identityProvider?.clientId) {
-                return next();
+                const platformToken = req.user[constants.ACCESS_TOKEN];
+                if (!platformToken) return next();
+                let tokenScopes = [];
+                try {
+                    const payload = JSON.parse(
+                        Buffer.from(platformToken.split('.')[1], 'base64url').toString('utf8')
+                    );
+                    tokenScopes = String(payload.scope || '').split(' ').filter(Boolean);
+                } catch (_) {}
+                if (!scope || tokenScopes.includes(scope)) return next();
+                return util.handleError(res, new CustomError(403, constants.ERROR_CODE[403], constants.ERROR_MESSAGE.FORBIDDEN));
             }
             const token = accessTokenPresent(req);
-            const hasBasicAuth = !token && !config.identityProvider?.clientId &&
-                req.headers.authorization?.toLowerCase().startsWith('basic ');
             if (token) {
                 //check user belongs to organization
                 if (req.user && req.user[constants.ROLES.ORGANIZATION_CLAIM] !== req.user[constants.ORG_IDENTIFIER]) {
@@ -65,8 +73,6 @@ function enforceSecuirty(scope) {
                 //set user ID
                 const decodedAccessToken = jwt.decode(token);
                 req[constants.USER_ID] = decodedAccessToken[constants.USER_ID];
-            } else if (hasBasicAuth) {
-                validateAuthentication(scope)(req, res, next);
             } else if (config.advanced.apiKey.enabled) {
                 // Communcation with API KEY
                 if (req.headers.organization) {
@@ -287,10 +293,6 @@ function validateAuthentication(scope) {
         if (!errors.isEmpty()) {
             return res.status(400).json(util.getErrors(errors));
         }
-        // Config-auth users have no JWT to validate — allow through
-        if (req.isAuthenticated() && req.user && req.user.isLocalAuth && !config.identityProvider?.clientId) {
-            return next();
-        }
         let IDP, valid, scopes, orgId, response;
         if (req.params.orgName) {
             orgId = await adminDao.getOrgId(req.params.orgName);
@@ -300,7 +302,6 @@ function validateAuthentication(scope) {
         if (orgId) {
             response = await adminDao.getIdentityProvider(orgId);
             if (response.length !== 0) {
-                //login from super IDP
                 IDP = new IdentityProviderDTO(response[0].dataValues);
             } else {
                 IDP = config.identityProvider || {};
@@ -309,60 +310,36 @@ function validateAuthentication(scope) {
             IDP = config.identityProvider || {};
         }
 
-        let accessToken, basicHeader;
-        //if IDP present, fetch bearer token else use basic header
-        if (IDP.clientId !== "") {
-            if (req.isAuthenticated() && req.user) {
-                accessToken = req.user[constants.ACCESS_TOKEN];
-            } else {
-                accessToken = req.headers.authorization && req.headers.authorization.split(' ')[1];
-            }
-            //fetch certificate or JWKS URL
-            if (IDP.certificate) {
-                const pemKey = IDP.certificate;
-                const publicKey = await importX509(pemKey, 'RS256');
-                [valid, scopes] = await validateWithCert(accessToken, publicKey);
-            } else {
-                if (IDP.jwksURL) {
-                    [valid, scopes] = await validateWithJWKS(accessToken, IDP.jwksURL, req);
-                } else {
-                    valid = false;
-                }
-            }
-            if (!config.advanced.disableScopeValidation && valid) {
-                if (scopes.split(" ").includes(scope)) {
-                    return next();
-                } else {
-                    if (req.user) {
-                        return res.redirect('login');
-                    } else {
-                        return util.handleError(res, new CustomError(403, constants.ERROR_CODE[403], constants.ERROR_MESSAGE.FORBIDDEN));
-                    }
-                }
-            } else {
-                if (req.user) {
-                    return next();
-                } else {
-                    return util.handleError(res, new CustomError(401, constants.ERROR_CODE[401], constants.ERROR_MESSAGE.UNAUTHENTICATED));
-                }
-            }
+        let accessToken;
+        if (req.isAuthenticated() && req.user) {
+            accessToken = req.user[constants.ACCESS_TOKEN];
         } else {
-            if (req.isAuthenticated() && req.user) {
-                basicHeader = req.user[constants.BASIC_HEADER];
-            } else {
-                basicHeader = req.headers.authorization && req.headers.authorization.split(' ')[1];
-            }
-            valid = await validateBasicAuth(basicHeader);
-            if (valid) {
-                return next();
-            } else {
-                if (req.user) {
-                    return res.redirect('login');
-                } else {
-                    return util.handleError(res, new CustomError(401, constants.ERROR_CODE[401], constants.ERROR_MESSAGE.UNAUTHENTICATED));
-                }
-            }
+            accessToken = req.headers.authorization && req.headers.authorization.split(' ')[1];
         }
+
+        if (IDP.certificate) {
+            const pemKey = IDP.certificate;
+            const publicKey = await importX509(pemKey, 'RS256');
+            [valid, scopes] = await validateWithCert(accessToken, publicKey);
+        } else if (IDP.jwksURL) {
+            [valid, scopes] = await validateWithJWKS(accessToken, IDP.jwksURL, req);
+        } else {
+            valid = false;
+        }
+
+        if (valid) {
+            if (scopes.split(' ').includes(scope)) {
+                return next();
+            }
+            if (req.user) {
+                return res.redirect('login');
+            }
+            return util.handleError(res, new CustomError(403, constants.ERROR_CODE[403], constants.ERROR_MESSAGE.FORBIDDEN));
+        }
+        if (req.user) {
+            return res.redirect('login');
+        }
+        return util.handleError(res, new CustomError(401, constants.ERROR_CODE[401], constants.ERROR_MESSAGE.UNAUTHENTICATED));
     }
 }
 
@@ -428,21 +405,6 @@ async function refreshAccessToken(refreshToken) {
         });
         throw err;
     }
-}
-
-const validateBasicAuth = async (basicHeader) => {
-
-    let valid = false;
-    const base64Decoded = Buffer.from(basicHeader, 'base64').toString('utf-8');
-    const [username, password] = base64Decoded.split(':');
-    const users = config.defaultAuth?.users || [];
-    for (let user of users) {
-        if (username === user.username && password === user.password) {
-            valid = true;
-            break;
-        }
-    }
-    return valid;
 }
 
 const enforceMTLS = (req, res, next) => {

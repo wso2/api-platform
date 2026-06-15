@@ -1,0 +1,84 @@
+# --------------------------------------------------------------------
+# Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+#
+# WSO2 LLC. licenses this file to you under the Apache License,
+# Version 2.0 (the "License"); you may not use this file except
+# in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+# --------------------------------------------------------------------
+#
+# Platform API configuration for the Developer Portal.
+#
+# This file defines the local users who can log in to the Developer Portal
+# via the username/password login form. Credentials are validated by the
+# Platform API; the Developer Portal never sees the raw passwords.
+#
+# Changing passwords:
+#   Generate a bcrypt hash: htpasswd -bnBC 12 "" <password> | tr -d ':\n'
+#   Default credentials below: admin / admin
+#
+# Secrets:
+#   Set AUTH_JWT_SECRET_KEY in your environment (or .env file) to keep
+#   sessions alive across Platform API restarts. When unset, a random key
+#   is generated at startup and all sessions are invalidated on restart.
+# --------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# Server
+# ---------------------------------------------------------------------------
+log_level = "INFO"   # DEBUG | INFO | WARN | ERROR
+port      = "9243"
+
+# ---------------------------------------------------------------------------
+# Database
+# ---------------------------------------------------------------------------
+[database]
+driver = "sqlite3"
+path   = "/app/data/platform-api-devportal.db"
+
+# ---------------------------------------------------------------------------
+# Authentication
+# ---------------------------------------------------------------------------
+[auth.jwt]
+enabled = true
+issuer  = "platform-api"
+
+[auth.idp]
+enabled = false
+
+[auth.file_based]
+enabled = true
+
+[auth.file_based.organization]
+id     = "99089a17-72e0-4dd8-a2f4-c8dfbb085295"
+name   = "Default Organization"
+handle = "default"
+region = "us"
+
+# Admin user — password: admin
+# Change this before deploying to a shared environment.
+# Scopes use the dp:* namespace understood by the Developer Portal REST API.
+# Add dp:*_manage scopes to grant full access to every resource area.
+[[auth.file_based.users]]
+username      = "admin"
+password_hash = "$2y$10$U2yKMwGamGwDoMu0hRPT7u8nCuP8z/qxHFOKV6dhIxkJN9NJ0eVQ."
+scopes        = "dp:org_read dp:org_write dp:org_manage dp:org_delete dp:org_content_read dp:org_content_write dp:org_content_manage dp:org_content_delete dp:api_read dp:api_write dp:api_manage dp:api_delete dp:api_content_read dp:api_content_write dp:api_content_manage dp:api_content_delete dp:api_key_read dp:api_key_write dp:api_key_manage dp:api_key_revoke dp:api_flow_read dp:api_flow_write dp:api_flow_manage dp:api_flow_delete dp:app_read dp:app_write dp:app_manage dp:app_delete dp:app_key_write dp:app_key_manage dp:app_key_revoke dp:app_key_mapping_read dp:app_key_mapping_write dp:app_key_mapping_manage dp:subscription_read dp:subscription_write dp:subscription_manage dp:subscription_delete dp:sub_policy_read dp:sub_policy_write dp:sub_policy_manage dp:sub_policy_delete dp:idp_read dp:idp_write dp:idp_manage dp:idp_delete dp:view_read dp:view_write dp:view_manage dp:view_delete dp:km_read dp:km_write dp:km_manage dp:km_delete dp:label_read dp:label_write dp:label_manage dp:label_delete dp:provider_read dp:provider_write dp:provider_manage dp:provider_delete dp:event_read dp:delivery_manage dp:utility_write dp:utility_manage dev"
+
+[[auth.file_based.users]]
+username      = "readonly"
+password_hash = "$2y$10$U2yKMwGamGwDoMu0hRPT7u8nCuP8z/qxHFOKV6dhIxkJN9NJ0eVQ."  # password: admin
+scopes        = "dp:api_read dp:org_read dp:app_read dp:app_write dp:subscription_read"
+
+# ---------------------------------------------------------------------------
+# TLS
+# ---------------------------------------------------------------------------
+[tls]
+cert_dir = "/app/data/certs"
+
+# ---------------------------------------------------------------------------
+# DevPortal integration — disabled (devportal calls us, not the other way)
+# ---------------------------------------------------------------------------
+[default_devportal]
+enabled = false

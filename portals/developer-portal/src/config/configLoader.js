@@ -66,7 +66,6 @@ const CONFIG_DEFAULTS = {
         resourceLoadFromBaseUrl: false,
         disabledRoleValidation: true,
         disableOrgCallback: true,
-        disableScopeValidation: true,
         disableSilentSSO: false,
         encryptionKey: '',
         apiKey: {
@@ -104,6 +103,9 @@ const CONFIG_DEFAULTS = {
         url: '',
         graphqlURL: '',
         disableCertValidation: false,
+    },
+    platformApi: {
+        baseUrl: '',
     },
 };
 

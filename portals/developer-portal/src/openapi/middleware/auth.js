@@ -148,13 +148,6 @@ async function verifyBearerToken(token, req) {
     return { valid: false, scopes: '' };
 }
 
-async function validateBasicAuth(basicHeader) {
-    const decoded = Buffer.from(basicHeader, 'base64').toString('utf-8');
-    const [username, password] = decoded.split(':');
-    const users = config.defaultAuth?.users || [];
-    return users.some(u => u.username === username && u.password === password);
-}
-
 function checkOrgMembership(req) {
     if (!req.user) return true;
     const tokenOrg = req.user[constants.ROLES.ORGANIZATION_CLAIM];
@@ -170,13 +163,23 @@ function checkOrgMembership(req) {
  */
 async function authResolver(req, res, next) {
     try {
-        // 1. Local config-auth users (no IdP configured) — pre-authorized
+        // 1. Local auth users (platform JWT in session, no IdP configured)
         if (req.isAuthenticated && req.isAuthenticated() &&
             req.user?.isLocalAuth && !config.identityProvider?.clientId) {
+            const platformToken = req.user[constants.ACCESS_TOKEN];
+            let scopes = [];
+            if (platformToken) {
+                try {
+                    const payload = JSON.parse(
+                        Buffer.from(platformToken.split('.')[1], 'base64url').toString('utf8')
+                    );
+                    scopes = String(payload.scope || '').split(' ').filter(Boolean);
+                } catch (_) {}
+            }
             req.auth = {
-                mode: 'local',
-                preauthorized: true,
-                scopes: [],
+                mode: 'platform-jwt',
+                preauthorized: false,
+                scopes,
                 userId: req.user[constants.USER_ID],
             };
             return next();
@@ -206,22 +209,7 @@ async function authResolver(req, res, next) {
             return next();
         }
 
-        // 3. Basic auth (no IdP configured path)
-        const authHeader = req.headers.authorization;
-        if (!config.identityProvider?.clientId &&
-            authHeader && authHeader.toLowerCase().startsWith('basic ')) {
-            const basicHeader = authHeader.split(' ')[1];
-            const ok = await validateBasicAuth(basicHeader);
-            if (ok) {
-                req.auth = { mode: 'basic', preauthorized: true, scopes: [] };
-                return next();
-            }
-            const err = new Error('Authentication required');
-            err.status = 401;
-            return next(err);
-        }
-
-        // 4. API key
+        // 3. API key
         if (config.advanced?.apiKey?.enabled) {
             const keyType = config.advanced.apiKey.keyType;
             if (keyType && config.advanced?.apiKey?.keyValue) {
@@ -236,7 +224,7 @@ async function authResolver(req, res, next) {
             }
         }
 
-        // 5. mTLS
+        // 4. mTLS
         if (typeof req.connection?.getPeerCertificate === 'function') {
             const cert = req.connection.getPeerCertificate(true);
             if (cert && Object.keys(cert).length > 0 && req.client?.authorized) {
@@ -248,7 +236,7 @@ async function authResolver(req, res, next) {
             }
         }
 
-        // 6. No usable credential — pass through as anonymous so the OpenAPI
+        // 5. No usable credential — pass through as anonymous so the OpenAPI
         // validator can enforce security on a per-operation basis. Operations
         // with `security: []` (public endpoints) will proceed; operations that
         // declare a security scheme will have their handler invoked by the
@@ -269,9 +257,6 @@ async function authResolver(req, res, next) {
  * OAuth2 security handler invoked by express-openapi-validator with the
  * scope list declared on the operation. Implements any-of semantics over
  * a single security requirement object, matching the OpenAPI spec.
- *
- * Honors `config.advanced.disableScopeValidation` — when true, scope
- * intersection is skipped (request only needs to be authenticated).
  */
 async function OAuth2Security(req /* , requiredScopes, schema */) {
     const requiredScopes = arguments[1] || [];
@@ -281,8 +266,7 @@ async function OAuth2Security(req /* , requiredScopes, schema */) {
         throw err;
     }
     if (req.auth.preauthorized) return true;
-    if (config.advanced?.disableScopeValidation) return true;
-    if (req.auth.mode !== 'oauth2') {
+    if (req.auth.mode !== 'oauth2' && req.auth.mode !== 'platform-jwt') {
         const err = new Error('Authentication required');
         err.status = 401;
         throw err;

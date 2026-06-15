@@ -54,17 +54,14 @@ const Application = sequelize.define('DP_APPLICATION', {
 }, {
     timestamps: false,
     tableName: 'DP_APPLICATION',
-    returning: true
-},
-    {
-        indexes: [
-            {
-                unique: true,
-                fields: ['APP_ID', 'ORG_ID']
-            }
-        ]
-    }
-);
+    returning: true,
+    indexes: [
+        {
+            unique: true,
+            fields: ['APP_ID', 'ORG_ID'],
+        },
+    ],
+});
 
 const ApplicationKeyMapping = sequelize.define('DP_APP_KEY_MAPPING', {
 
