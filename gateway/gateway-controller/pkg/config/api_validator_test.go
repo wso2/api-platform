@@ -508,6 +508,31 @@ func TestAPIValidator_ValidateAllHTTPMethods(t *testing.T) {
 	}
 }
 
+func TestAPIValidator_AcceptsNonUppercaseMethods(t *testing.T) {
+	v := NewAPIValidator()
+
+	// Lower- and mixed-case methods are accepted: the xDS translator normalizes
+	// the method to uppercase for Envoy's :method matcher, so validation must not
+	// reject them.
+	methods := []api.OperationMethod{"get", "Post", "dElEtE", "options"}
+
+	for _, method := range methods {
+		t.Run(string(method), func(t *testing.T) {
+			config := createValidRestAPIConfig()
+			config.Spec.Operations = []api.Operation{
+				{Method: method, Path: "/test"},
+			}
+
+			errors := v.Validate(config)
+			for _, e := range errors {
+				if strings.Contains(e.Field, "method") {
+					t.Errorf("unexpected method error for %q: %v", method, e)
+				}
+			}
+		})
+	}
+}
+
 func TestAPIValidator_ValidateWebSubAPI(t *testing.T) {
 	v := NewAPIValidator()
 

@@ -738,6 +738,50 @@ func TestTranslator_WildcardUpstreamRewriteFromRDC(t *testing.T) {
 	}
 }
 
+func TestTranslator_NormalizesMethodCase(t *testing.T) {
+	logger := createTestLogger()
+	routerCfg := testRouterConfig()
+	cfg := testConfig()
+	translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+	// A lower- or mixed-case method must be emitted uppercased into Envoy's
+	// case-sensitive :method matcher, otherwise uppercase client requests 404.
+	tests := []struct {
+		name     string
+		method   string
+		expected string
+	}{
+		{"lowercase get", "get", "GET"},
+		{"mixed-case get", "gEt", "GET"},
+		{"uppercase get", "GET", "GET"},
+		{"lowercase post", "post", "POST"},
+		{"mixed-case delete", "Delete", "DELETE"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rdc := &models.RuntimeDeployConfig{
+				UpstreamClusters: map[string]*models.UpstreamCluster{
+					"main": {Endpoints: []models.Endpoint{{Host: "echo", Port: 80}}},
+				},
+			}
+			rdcRoute := &models.Route{
+				Method:          tt.method,
+				Path:            "/api/v1.0/users",
+				OperationPath:   "/users",
+				AutoHostRewrite: true,
+				Upstream:        models.RouteUpstream{ClusterKey: "main"},
+			}
+			r := translator.createRouteFromRDC(tt.method+"|/api/v1.0/users|", rdcRoute, rdc)
+			require.NotNil(t, r)
+			require.NotEmpty(t, r.Match.Headers)
+			assert.Equal(t, ":method", r.Match.Headers[0].Name)
+			assert.Equal(t, tt.expected, r.Match.Headers[0].GetStringMatch().GetExact(),
+				"the :method matcher must be uppercased so Envoy routes uppercase client requests")
+		})
+	}
+}
+
 func TestTranslator_SanitizeClusterName(t *testing.T) {
 	logger := createTestLogger()
 	routerCfg := testRouterConfig()
