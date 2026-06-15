@@ -17,7 +17,7 @@ done
 
 # Resolve ORG_ID — use env var if set, otherwise discover by handle
 if [ -z "${ORG_ID:-}" ]; then
-    ORG_ID=$(curl -sk -u "$CREDENTIALS" "$BASE_URL/devportal/organizations" | \
+    ORG_ID=$(curl -sk -u "$CREDENTIALS" "$BASE_URL/organizations" | \
         jq -r --arg h "$ORG_HANDLE" '.[] | select(.orgHandle == $h) | .orgID // empty')
     if [ -z "$ORG_ID" ]; then
         echo "Error: organization with handle '$ORG_HANDLE' not found. Ensure the server has started with DP_DEFAULTORGNAME set."
@@ -40,7 +40,7 @@ seed_docs() {
 
     local response http_code body
     response=$(curl -sk -X POST \
-        "$BASE_URL/devportal/organizations/$ORG_ID/apis/$api_id/content" \
+        "$BASE_URL/o/$ORG_ID/devportal/v1/apis/$api_id/content" \
         -u "$CREDENTIALS" \
         -F "apiContent=@$tmp_zip;type=application/zip" \
         -w "\n%{http_code}")
@@ -72,7 +72,7 @@ seed_api() {
     echo "Seeding: $api_name"
 
     local curl_args=(-sk -X POST \
-        "$BASE_URL/devportal/organizations/$ORG_ID/apis" \
+        "$BASE_URL/o/$ORG_ID/devportal/v1/apis" \
         -u "$CREDENTIALS" \
         -F "api=@$api_yaml;type=application/yaml")
 

@@ -28,10 +28,10 @@ const { requireCsrfForMutatingApi } = require('../../middlewares/csrfProtection'
 const { compose } = require('./_compose');
 
 module.exports = {
-    createAPIFlow: compose(requireCsrfForMutatingApi, apiFlowService.createAPIFlow),
-    getAllAPIFlows: apiFlowService.getAllAPIFlows,
-    getAPIFlow: apiFlowService.getAPIFlow,
-    updateAPIFlow: compose(requireCsrfForMutatingApi, apiFlowService.updateAPIFlow),
-    deleteAPIFlow: compose(requireCsrfForMutatingApi, apiFlowService.deleteAPIFlow),
+    createApiFlow: compose(requireCsrfForMutatingApi, apiFlowService.createAPIFlow),
+    getAllApiFlows: apiFlowService.getAllAPIFlows,
+    getApiFlow: apiFlowService.getAPIFlow,
+    updateApiFlow: compose(requireCsrfForMutatingApi, apiFlowService.updateAPIFlow),
+    deleteApiFlow: compose(requireCsrfForMutatingApi, apiFlowService.deleteAPIFlow),
     generatePrompt: compose(requireCsrfForMutatingApi, apiFlowService.generatePrompt),
 };
