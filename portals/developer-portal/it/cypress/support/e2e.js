@@ -26,7 +26,7 @@ before(() => {
     const apiKey = Cypress.env('API_KEY');
     cy.request({
         method: 'GET',
-        url: '/devportal/organizations',
+        url: '/organizations',
         headers: apiKey ? { 'x-wso2-api-key': apiKey } : {},
         failOnStatusCode: false,
     }).then((resp) => {

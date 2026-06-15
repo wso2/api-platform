@@ -99,6 +99,12 @@ const CONFIG_DEFAULTS = {
         applicationsPath: './samples/applications.yaml',
         pathToLayout: './src/defaultContent/',
     },
+    controlPlane: {
+        enabled: false,
+        url: '',
+        graphqlURL: '',
+        disableCertValidation: false,
+    },
 };
 
 /**
