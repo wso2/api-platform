@@ -124,11 +124,16 @@ func buildWebBrokerCreateRequest() *api.WebBrokerAPI {
 		ProjectId: "project-uuid",
 		Context:   &ctx,
 		Receiver: struct {
-			Name string                       `json:"name" yaml:"name"`
-			Type api.WebBrokerAPIReceiverType `json:"type" yaml:"type"`
+			Name       string                       `json:"name" yaml:"name"`
+			Properties *map[string]interface{}      `json:"properties,omitempty" yaml:"properties,omitempty"`
+			Type       api.WebBrokerAPIReceiverType `json:"type" yaml:"type"`
 		}{
 			Name: "websocket-receiver",
 			Type: receiverType,
+			Properties: &map[string]interface{}{
+				"maxConnections": 100,
+				"pingInterval":   "30s",
+			},
 		},
 		Broker: struct {
 			Name       string                     `json:"name" yaml:"name"`
@@ -815,11 +820,15 @@ func TestWebBrokerAPI_MapBrokerAPIToModel(t *testing.T) {
 func TestWebBrokerAPI_MapReceiverAPIToModel(t *testing.T) {
 	receiverType := api.Websocket
 	in := struct {
-		Name string                       `json:"name" yaml:"name"`
-		Type api.WebBrokerAPIReceiverType `json:"type" yaml:"type"`
+		Name       string                       `json:"name" yaml:"name"`
+		Properties *map[string]interface{}      `json:"properties,omitempty" yaml:"properties,omitempty"`
+		Type       api.WebBrokerAPIReceiverType `json:"type" yaml:"type"`
 	}{
 		Name: "websocket-receiver",
 		Type: receiverType,
+		Properties: &map[string]interface{}{
+			"maxConnections": 100,
+		},
 	}
 
 	out := mapWebBrokerReceiverAPIToModel(in)
@@ -828,6 +837,133 @@ func TestWebBrokerAPI_MapReceiverAPIToModel(t *testing.T) {
 	}
 	if out.Type != "websocket" {
 		t.Errorf("expected receiver type 'websocket', got %q", out.Type)
+	}
+	if out.Properties == nil {
+		t.Fatal("expected non-nil receiver properties")
+	}
+	if out.Properties["maxConnections"] != 100 {
+		t.Errorf("expected maxConnections 100, got %v", out.Properties["maxConnections"])
+	}
+}
+
+// TestWebBrokerAPI_MapReceiverAPIToModel_NilProperties verifies nil properties is handled gracefully
+func TestWebBrokerAPI_MapReceiverAPIToModel_NilProperties(t *testing.T) {
+	in := struct {
+		Name       string                       `json:"name" yaml:"name"`
+		Properties *map[string]interface{}      `json:"properties,omitempty" yaml:"properties,omitempty"`
+		Type       api.WebBrokerAPIReceiverType `json:"type" yaml:"type"`
+	}{
+		Name:       "websocket-receiver",
+		Type:       api.Websocket,
+		Properties: nil,
+	}
+
+	out := mapWebBrokerReceiverAPIToModel(in)
+	if out.Properties != nil {
+		t.Errorf("expected nil receiver properties, got %v", out.Properties)
+	}
+}
+
+// TestWebBrokerAPI_ReceiverPropertiesStoredCorrectly verifies receiver properties are stored in the model
+func TestWebBrokerAPI_ReceiverPropertiesStoredCorrectly(t *testing.T) {
+	repo := newMockWebBrokerAPIRepository()
+	svc := buildWebBrokerService(repo)
+
+	req := buildWebBrokerCreateRequest()
+	_, err := svc.Create("org-uuid", "alice", req)
+	if err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+
+	stored := repo.store["stock-trading-v1-0"]
+	if stored.Configuration.Receiver.Properties == nil {
+		t.Fatal("receiver properties should not be nil after storing")
+	}
+	if stored.Configuration.Receiver.Properties["maxConnections"] != 100 {
+		t.Errorf("expected maxConnections 100, got %v", stored.Configuration.Receiver.Properties["maxConnections"])
+	}
+	if stored.Configuration.Receiver.Properties["pingInterval"] != "30s" {
+		t.Errorf("expected pingInterval '30s', got %v", stored.Configuration.Receiver.Properties["pingInterval"])
+	}
+}
+
+// TestWebBrokerAPI_GetReturnsReceiverProperties verifies Get returns receiver properties in the response
+func TestWebBrokerAPI_GetReturnsReceiverProperties(t *testing.T) {
+	repo := newMockWebBrokerAPIRepository()
+	svc := buildWebBrokerService(repo)
+
+	req := buildWebBrokerCreateRequest()
+	_, err := svc.Create("org-uuid", "alice", req)
+	if err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+
+	resp, err := svc.Get("org-uuid", "stock-trading-v1-0")
+	if err != nil {
+		t.Fatalf("Get failed: %v", err)
+	}
+	if resp.Receiver.Properties == nil {
+		t.Fatal("receiver properties should not be nil in response")
+	}
+	if (*resp.Receiver.Properties)["maxConnections"] != 100 {
+		t.Errorf("expected maxConnections 100 in response, got %v", (*resp.Receiver.Properties)["maxConnections"])
+	}
+}
+
+// TestWebBrokerAPI_UpdateReceiverProperties verifies updating receiver properties works
+func TestWebBrokerAPI_UpdateReceiverProperties(t *testing.T) {
+	repo := newMockWebBrokerAPIRepository()
+	svc := buildWebBrokerService(repo)
+
+	req := buildWebBrokerCreateRequest()
+	_, err := svc.Create("org-uuid", "alice", req)
+	if err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+
+	updateReq := buildWebBrokerCreateRequest()
+	updateReq.Receiver.Properties = &map[string]interface{}{
+		"maxConnections": 500,
+		"pingInterval":   "60s",
+	}
+
+	_, err = svc.Update("org-uuid", "stock-trading-v1-0", updateReq)
+	if err != nil {
+		t.Fatalf("Update failed: %v", err)
+	}
+
+	stored := repo.store["stock-trading-v1-0"]
+	if stored.Configuration.Receiver.Properties["maxConnections"] != 500 {
+		t.Errorf("expected updated maxConnections 500, got %v", stored.Configuration.Receiver.Properties["maxConnections"])
+	}
+	if stored.Configuration.Receiver.Properties["pingInterval"] != "60s" {
+		t.Errorf("expected updated pingInterval '60s', got %v", stored.Configuration.Receiver.Properties["pingInterval"])
+	}
+}
+
+// TestWebBrokerAPI_NilReceiverPropertiesHandled verifies nil receiver properties is handled gracefully
+func TestWebBrokerAPI_NilReceiverPropertiesHandled(t *testing.T) {
+	repo := newMockWebBrokerAPIRepository()
+	svc := buildWebBrokerService(repo)
+
+	req := buildWebBrokerCreateRequest()
+	req.Receiver.Properties = nil
+	_, err := svc.Create("org-uuid", "alice", req)
+	if err != nil {
+		t.Fatalf("Create with nil receiver properties failed: %v", err)
+	}
+
+	stored := repo.store["stock-trading-v1-0"]
+	if stored.Configuration.Receiver.Properties != nil {
+		t.Errorf("expected nil receiver properties in stored model, got %v", stored.Configuration.Receiver.Properties)
+	}
+
+	resp, err := svc.Get("org-uuid", "stock-trading-v1-0")
+	if err != nil {
+		t.Fatalf("Get failed: %v", err)
+	}
+	if resp.Receiver.Properties != nil {
+		t.Errorf("expected nil receiver properties in response, got %v", resp.Receiver.Properties)
 	}
 }
 

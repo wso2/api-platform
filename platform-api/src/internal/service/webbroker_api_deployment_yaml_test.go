@@ -53,6 +53,10 @@ func buildTestWebBrokerAPI() *model.WebBrokerAPI {
 			Receiver: model.WebBrokerReceiver{
 				Name: "websocket-receiver",
 				Type: "websocket",
+				Properties: map[string]interface{}{
+					"maxConnections": 100,
+					"pingInterval":   "30s",
+				},
 			},
 			Broker: model.WebBrokerBroker{
 				Name: "kafka-driver",
@@ -614,6 +618,46 @@ func TestBuildWebBrokerAPIDeploymentYAML_ChannelPolicyParams(t *testing.T) {
 	// The "10/s" rate param only appears in the channel-level throttle policy
 	if !strings.Contains(yamlStr, "10/s") {
 		t.Errorf("channel-level policy param '10/s' missing from YAML.\nFull YAML:\n%s", yamlStr)
+	}
+}
+
+// TestBuildWebBrokerAPIDeploymentYAML_ReceiverPropertiesStored verifies receiver
+// properties are correctly stored in the deployment struct.
+func TestBuildWebBrokerAPIDeploymentYAML_ReceiverPropertiesStored(t *testing.T) {
+	webbrokerAPI := buildTestWebBrokerAPI()
+	d := buildWebBrokerAPIDeploymentYAML(webbrokerAPI)
+
+	if d.Spec.Receiver == nil {
+		t.Fatal("Spec.Receiver should not be nil")
+	}
+	if d.Spec.Receiver.Properties == nil {
+		t.Fatal("Spec.Receiver.Properties should not be nil")
+	}
+	if d.Spec.Receiver.Properties["maxConnections"] != 100 {
+		t.Errorf("expected maxConnections 100, got %v", d.Spec.Receiver.Properties["maxConnections"])
+	}
+	if d.Spec.Receiver.Properties["pingInterval"] != "30s" {
+		t.Errorf("expected pingInterval '30s', got %v", d.Spec.Receiver.Properties["pingInterval"])
+	}
+}
+
+// TestBuildWebBrokerAPIDeploymentYAML_ReceiverPropertiesInYAML verifies receiver
+// properties appear in the marshaled YAML.
+func TestBuildWebBrokerAPIDeploymentYAML_ReceiverPropertiesInYAML(t *testing.T) {
+	webbrokerAPI := buildTestWebBrokerAPI()
+	d := buildWebBrokerAPIDeploymentYAML(webbrokerAPI)
+
+	raw, err := yaml.Marshal(d)
+	if err != nil {
+		t.Fatalf("yaml.Marshal failed: %v", err)
+	}
+	yamlStr := string(raw)
+
+	if !strings.Contains(yamlStr, "maxConnections") {
+		t.Errorf("receiver property 'maxConnections' missing from YAML.\nFull YAML:\n%s", yamlStr)
+	}
+	if !strings.Contains(yamlStr, "pingInterval") {
+		t.Errorf("receiver property 'pingInterval' missing from YAML.\nFull YAML:\n%s", yamlStr)
 	}
 }
 

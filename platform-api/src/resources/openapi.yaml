@@ -11577,6 +11577,9 @@ components:
               enum:
                 - websocket
               example: websocket
+            properties:
+              type: object
+              additionalProperties: true
         broker:
           type: object
           description: Message broker configuration
