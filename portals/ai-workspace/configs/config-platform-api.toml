@@ -23,6 +23,11 @@
 log_level = "INFO"   # DEBUG | INFO | WARN | ERROR
 port      = "9243"
 
+# Controls authentication for POST /api/v1/organizations.
+# When true, the endpoint requires both a valid Bearer JWT and the
+# ap:organization:manage scope; requests without that scope are rejected.
+# org_creation_requires_auth = false
+
 # ---------------------------------------------------------------------------
 # Database
 # ---------------------------------------------------------------------------
