@@ -4188,6 +4188,7 @@ components:
           description: Additional virtual hosts when routing to multiple listener hostnames (e.g. Gateway API HTTPRoute attachment)
           items:
             type: string
+            pattern: '^(\*\.)?[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$'
             example: "*.bar.com"
         subscriptionPlans:
           type: array
@@ -4365,6 +4366,7 @@ components:
         name:
           type: string
           description: Header name (case-insensitive)
+          pattern: '^[a-zA-Z0-9!#$%&''*+\-.^_`|~]+$'
           example: version
         value:
           type: string
@@ -4384,6 +4386,8 @@ components:
         statusCode:
           type: integer
           description: HTTP status code returned directly without contacting an upstream
+          minimum: 100
+          maximum: 599
           example: 302
         headers:
           type: array
@@ -4399,6 +4403,7 @@ components:
       properties:
         name:
           type: string
+          pattern: '^[a-zA-Z0-9!#$%&''*+\-.^_`|~]+$'
           example: Location
         value:
           type: string
