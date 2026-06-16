@@ -62,7 +62,6 @@ seed_api() {
     api_name=$(basename "$api_dir")
 
     local api_yaml="$api_dir/api.yaml"
-    local definition="$api_dir/openapi.yaml"
 
     if [ ! -f "$api_yaml" ]; then
         echo "  skipping $api_name: no api.yaml found"
@@ -71,13 +70,22 @@ seed_api() {
 
     echo "Seeding: $api_name"
 
+    # Find definition.* file (definition.yaml, definition.yml, definition.graphql, etc.)
+    local definition
+    definition=$(compgen -G "$api_dir/definition.*" 2>/dev/null | head -1)
+
     local curl_args=(-sk -X POST \
         "$BASE_URL/o/$ORG_ID/devportal/v1/apis" \
         -u "$CREDENTIALS" \
         -F "api=@$api_yaml;type=application/yaml")
 
-    if [ -f "$definition" ]; then
-        curl_args+=(-F "apiDefinition=@$definition;type=application/yaml")
+    if [ -n "$definition" ]; then
+        local ext="${definition##*.}"
+        if [ "$ext" = "graphql" ]; then
+            curl_args+=(-F "schemaDefinition=@$definition;type=application/octet-stream")
+        else
+            curl_args+=(-F "apiDefinition=@$definition;type=application/octet-stream")
+        fi
     fi
 
     local response http_code body api_id

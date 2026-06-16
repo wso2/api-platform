@@ -507,13 +507,14 @@ const deleteProvider = async (orgID, name) => {
 
 const getProviders = async (orgID) => {
     try {
+        const jsonObjectFn = sequelize.getDialect() === 'sqlite' ? 'json_group_object' : 'JSON_OBJECT_AGG';
         const providers = await Provider.findAll(
             {
                 attributes: [
                     'NAME',
                     [
                         Sequelize.fn(
-                            'JSON_OBJECT_AGG',
+                            jsonObjectFn,
                             Sequelize.col('PROPERTY'),
                             Sequelize.col('VALUE')
                         ),

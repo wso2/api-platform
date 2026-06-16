@@ -78,7 +78,9 @@ const createAPIMetadata = async (req, res) => {
         }
 
         // Validate input
-        if (!apiMetadata.apiInfo || !apiDefinitionFile || !apiMetadata.endPoints) {
+        const hasGraphQLSchema = apiMetadata.apiInfo?.apiType === constants.API_TYPE.GRAPHQL &&
+            req.files?.schemaDefinition?.[0];
+        if (!apiMetadata.apiInfo || (!apiDefinitionFile && !hasGraphQLSchema) || !apiMetadata.endPoints) {
             throw new Sequelize.ValidationError(
                 "Missing or Invalid fields in the request payload"
             );
@@ -128,8 +130,10 @@ const createAPIMetadata = async (req, res) => {
             } else {
                 await apiDao.createAPILabelMapping(orgId, apiID, ['default'], t);
             }
-            // store api definition file
-            await apiDao.storeAPIFile(apiDefinitionFile, apiFileName, apiID, constants.DOC_TYPES.API_DEFINITION, t);
+            // store api definition file (skipped for GraphQL — schema stored below via schemaDefinition)
+            if (apiDefinitionFile) {
+                await apiDao.storeAPIFile(apiDefinitionFile, apiFileName, apiID, constants.DOC_TYPES.API_DEFINITION, t);
+            }
             if (Object.keys(resolvedImageMetadata).length > 0) {
                 await apiDao.storeAPIImageMetadata(resolvedImageMetadata, apiID, t);
             }
@@ -168,7 +172,7 @@ const createAPIMetadata = async (req, res) => {
                     schemaDefinitionFileSize: schemaDefinitionFile.length,
                     schemaFileName: file.originalname
                 });
-                const schemaFileName = file.originalname || constants.FILE_NAME.API_DEFINITION_GRAPHQL;
+                const schemaFileName = constants.FILE_NAME.API_DEFINITION_GRAPHQL;
                 await apiDao.storeAPIFile(schemaDefinitionFile, schemaFileName, apiID,
                     constants.DOC_TYPES.API_DEFINITION, t);
                 logger.info('GraphQL schema definition file stored', {
@@ -379,7 +383,9 @@ const updateAPIMetadata = async (req, res) => {
         }
 
         // Validate input
-        if (!apiMetadata.apiInfo || !apiDefinitionFile || !apiMetadata.endPoints) {
+        const hasGraphQLSchema = apiMetadata.apiInfo?.apiType === constants.API_TYPE.GRAPHQL &&
+            req.files?.schemaDefinition?.[0];
+        if (!apiMetadata.apiInfo || (!apiDefinitionFile && !hasGraphQLSchema) || !apiMetadata.endPoints) {
             throw new Sequelize.ValidationError(
                 "Missing or Invalid fields in the request payload"
             );
@@ -505,7 +511,7 @@ const updateAPIMetadata = async (req, res) => {
             if (constants.API_TYPE.GRAPHQL === apiMetadata.apiInfo.apiType && req.files?.schemaDefinition?.[0]) {
                 const file = req.files.schemaDefinition[0];
                 const schemaDefinitionFile = file.buffer;
-                const schemaFileName = file.originalname || constants.FILE_NAME.API_DEFINITION_GRAPHQL;
+                const schemaFileName = constants.FILE_NAME.API_DEFINITION_GRAPHQL;
                 logger.debug('GraphQL schema definition file received for update', {
                     schemaDefinitionFileSize: schemaDefinitionFile.length,
                     schemaFileName,
@@ -1803,12 +1809,12 @@ function prepareApiDefinitionForStorage(fileName, fileBuffer) {
             }
             throw new Sequelize.ValidationError(`Invalid API definition YAML file: ${e.message}`);
         }
-    } else if (extension === '.xml') {
+    } else if (extension === '.xml' || extension === '.wsdl') {
         if (!fileContent || fileContent.trim() === '') {
             throw new Sequelize.ValidationError('Invalid API definition XML file: empty content');
         }
     } else {
-        throw new Sequelize.ValidationError("Invalid API definition file type. Expected '.json', '.yaml', '.yml', or '.xml'");
+        throw new Sequelize.ValidationError("Invalid API definition file type. Expected '.json', '.yaml', '.yml', '.xml', or '.wsdl'");
     }
 
     return {

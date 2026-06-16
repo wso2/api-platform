@@ -207,8 +207,13 @@ const loadAPIContent = async (req, res) => {
             } else {
                 // REST/SOAP/WS: parse OpenAPI definition for default endpoint view
                 const definitionContent = sampleApiLoader.getDefinition(apiHandle, samplesPath);
-                if (definitionContent && apiType !== constants.API_TYPE.GRAPHQL && apiType !== constants.API_TYPE.WS && apiType !== constants.API_TYPE.WEBSUB) {
+                if (definitionContent && apiType !== constants.API_TYPE.GRAPHQL && apiType !== constants.API_TYPE.SOAP && apiType !== constants.API_TYPE.WS && apiType !== constants.API_TYPE.WEBSUB) {
                     apiDetails = await parseSwagger(parseApiDefinitionContent(definitionContent));
+                    apiDetails.serverDetails = (metaData.endPoints.productionURL || metaData.endPoints.sandboxURL)
+                        ? metaData.endPoints : '';
+                }
+                if (apiType === constants.API_TYPE.SOAP) {
+                    apiDetails = {};
                     apiDetails.serverDetails = (metaData.endPoints.productionURL || metaData.endPoints.sandboxURL)
                         ? metaData.endPoints : '';
                 }
@@ -272,6 +277,7 @@ const loadAPIContent = async (req, res) => {
                     if (
                       metaData.apiInfo &&
                       metaData.apiInfo.apiType !== constants.API_TYPE.GRAPHQL &&
+                      metaData.apiInfo.apiType !== constants.API_TYPE.SOAP &&
                       metaData.apiInfo.apiType !== constants.API_TYPE.WS &&
                       metaData.apiInfo.apiType !== constants.API_TYPE.WEBSUB &&
                       metaData.apiInfo.apiType !== constants.API_TYPE.MCP
@@ -283,6 +289,11 @@ const loadAPIContent = async (req, res) => {
                         } else {
                             apiDetails["serverDetails"] = metaData.endPoints;
                         }
+                    }
+                    if (metaData.apiInfo.apiType === constants.API_TYPE.SOAP) {
+                        apiDetails = {};
+                        apiDetails["serverDetails"] = (metaData.endPoints.productionURL || metaData.endPoints.sandboxURL)
+                            ? metaData.endPoints : "";
                     }
                     if (metaData.apiInfo.apiType === "WS" || metaData.apiInfo.apiType === "WEBSUB") {
                         apiDefinition = await getApiDefinitionFileContent(orgID, apiID);
@@ -405,7 +416,7 @@ const loadAPIContent = async (req, res) => {
             }
 
             let apiDefinitionForNav = null;
-            if (metaData.apiInfo?.apiType !== constants.API_TYPE.GRAPHQL && metaData.apiInfo?.apiType !== constants.API_TYPE.MCP) {
+            if (metaData.apiInfo?.apiType !== constants.API_TYPE.GRAPHQL && metaData.apiInfo?.apiType !== constants.API_TYPE.SOAP && metaData.apiInfo?.apiType !== constants.API_TYPE.MCP) {
                 try {
                     apiDefinitionForNav = await getApiDefinitionFileContent(orgID, apiID);
                 } catch (definitionErr) {
