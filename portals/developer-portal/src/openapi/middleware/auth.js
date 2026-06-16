@@ -23,9 +23,10 @@
  *   authResolver  →  OpenAPI validator (calls OAuth2Security / apiKeyAuth)  →  handler
  *
  * `authResolver` runs once per /devportal request and resolves credentials in the
- * order local → bearer → basic → api key → mTLS). It populates `req.auth` with 
- * `{ mode, scopes, preauthorized, userId } but does NOT enforce scopes — that is the job of `OAuth2Security`, 
- * which the validator invokes with the operation-declared scope list.
+ * order: local session → bearer → api-key → mTLS. It populates `req.auth` with
+ * `{ mode, scopes, preauthorized, userId }` but does NOT enforce scopes — that is
+ * the job of `OAuth2Security`, which the validator invokes with the operation-declared
+ * scope list.
  *
  */
 
@@ -39,6 +40,7 @@ const constants = require('../../utils/constants');
 const adminDao = require('../../dao/admin');
 const IdentityProviderDTO = require('../../dto/identityProvider');
 const logger = require('../../config/logger');
+const { extractPlatformJwtClaims } = require('../../utils/platformJwt');
 
 const DEFAULT_TOKEN_REFRESH_TIMEOUT_MS = 10000;
 
@@ -136,8 +138,11 @@ async function resolveOrgIdp(req) {
 async function verifyBearerToken(token, req) {
     const idp = await resolveOrgIdp(req);
     if (!idp || !idp.clientId) {
-        // No IdP configured — accept bearer presence (legacy parity), no scopes.
-        return { valid: true, scopes: '' };
+        // Local auth mode: verify Platform API JWT with shared secret when configured.
+        const jwtSecret = config.platformApi?.jwtSecret;
+        const claims = extractPlatformJwtClaims(token, jwtSecret || null);
+        if (jwtSecret && !claims) return { valid: false, scopes: '' };
+        return { valid: true, scopes: claims?.scopes?.join(' ') ?? '' };
     }
     if (idp.certificate) {
         return verifyWithCertificate(token, idp.certificate);
@@ -146,13 +151,6 @@ async function verifyBearerToken(token, req) {
         return verifyJwksWithRefresh(token, idp.jwksURL, req);
     }
     return { valid: false, scopes: '' };
-}
-
-async function validateBasicAuth(basicHeader) {
-    const decoded = Buffer.from(basicHeader, 'base64').toString('utf-8');
-    const [username, password] = decoded.split(':');
-    const users = config.defaultAuth?.users || [];
-    return users.some(u => u.username === username && u.password === password);
 }
 
 function checkOrgMembership(req) {
@@ -170,13 +168,15 @@ function checkOrgMembership(req) {
  */
 async function authResolver(req, res, next) {
     try {
-        // 1. Local config-auth users (no IdP configured) — pre-authorized
+        // 1. Local auth users (platform JWT in session, no IdP configured)
         if (req.isAuthenticated && req.isAuthenticated() &&
             req.user?.isLocalAuth && !config.identityProvider?.clientId) {
+            const platformToken = req.user[constants.ACCESS_TOKEN];
+            const claims = platformToken ? extractPlatformJwtClaims(platformToken, null) : null;
             req.auth = {
-                mode: 'local',
-                preauthorized: true,
-                scopes: [],
+                mode: 'platform-jwt',
+                preauthorized: false,
+                scopes: claims?.scopes ?? [],
                 userId: req.user[constants.USER_ID],
             };
             return next();
@@ -206,22 +206,7 @@ async function authResolver(req, res, next) {
             return next();
         }
 
-        // 3. Basic auth (no IdP configured path)
-        const authHeader = req.headers.authorization;
-        if (!config.identityProvider?.clientId &&
-            authHeader && authHeader.toLowerCase().startsWith('basic ')) {
-            const basicHeader = authHeader.split(' ')[1];
-            const ok = await validateBasicAuth(basicHeader);
-            if (ok) {
-                req.auth = { mode: 'basic', preauthorized: true, scopes: [] };
-                return next();
-            }
-            const err = new Error('Authentication required');
-            err.status = 401;
-            return next(err);
-        }
-
-        // 4. API key
+        // 3. API key
         if (config.advanced?.apiKey?.enabled) {
             const keyType = config.advanced.apiKey.keyType;
             if (keyType && config.advanced?.apiKey?.keyValue) {
@@ -236,7 +221,7 @@ async function authResolver(req, res, next) {
             }
         }
 
-        // 5. mTLS
+        // 4. mTLS
         if (typeof req.connection?.getPeerCertificate === 'function') {
             const cert = req.connection.getPeerCertificate(true);
             if (cert && Object.keys(cert).length > 0 && req.client?.authorized) {
@@ -248,7 +233,7 @@ async function authResolver(req, res, next) {
             }
         }
 
-        // 6. No usable credential — pass through as anonymous so the OpenAPI
+        // 5. No usable credential — pass through as anonymous so the OpenAPI
         // validator can enforce security on a per-operation basis. Operations
         // with `security: []` (public endpoints) will proceed; operations that
         // declare a security scheme will have their handler invoked by the
@@ -269,9 +254,6 @@ async function authResolver(req, res, next) {
  * OAuth2 security handler invoked by express-openapi-validator with the
  * scope list declared on the operation. Implements any-of semantics over
  * a single security requirement object, matching the OpenAPI spec.
- *
- * Honors `config.advanced.disableScopeValidation` — when true, scope
- * intersection is skipped (request only needs to be authenticated).
  */
 async function OAuth2Security(req /* , requiredScopes, schema */) {
     const requiredScopes = arguments[1] || [];
@@ -281,8 +263,7 @@ async function OAuth2Security(req /* , requiredScopes, schema */) {
         throw err;
     }
     if (req.auth.preauthorized) return true;
-    if (config.advanced?.disableScopeValidation) return true;
-    if (req.auth.mode !== 'oauth2') {
+    if (req.auth.mode !== 'oauth2' && req.auth.mode !== 'platform-jwt') {
         const err = new Error('Authentication required');
         err.status = 401;
         throw err;

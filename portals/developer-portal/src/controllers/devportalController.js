@@ -16,11 +16,11 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+const axios = require('axios');
+const https = require('https');
 const { config } = require('../config/configLoader');
 const logger = require('../config/logger');
 const util = require('../utils/util');
-const passport = require('passport');
-const { Strategy: CustomStrategy } = require('passport-custom');
 const adminDao = require('../dao/admin');
 const constants = require('../utils/constants');
 const { ApplicationDTO } = require('../dto/application');
@@ -30,6 +30,7 @@ const yaml = require('js-yaml');
 const kmDao = require('../dao/keyManager');
 const { getKeyManagerAdapter } = require('../adapters/keyManager');
 const { CustomError } = require('../utils/errors/customErrors');
+const { extractPlatformJwtClaims } = require('../utils/platformJwt');
 // ***** POST / DELETE / PUT Functions ***** (Only work in production)
 
 function parseApplicationDataFromRequest(req) {
@@ -407,40 +408,75 @@ const updateOAuthKeys = async (req, res) => {
 };
 
 const login = async (req, res) => {
-    const username = req.body.username;
-    const password = req.body.password;
+    const { username, password } = req.body;
 
-    const defaultUser = config.defaultAuth.users.find(user => user.username === username && user.password === password);
-    passport.use(
-        'default-auth',
-        new CustomStrategy((req, done) => {
-            if (defaultUser) {
-                const user = { ...defaultUser };
-                return done(null, user);
-            } else {
-                return done(null, false, { message: 'Invalid credentials' });
+    const platformApiUrl = config.platformApi?.baseUrl;
+    if (!platformApiUrl) {
+        return res.status(503).json({ message: 'Authentication service not configured' });
+    }
+
+    let platformToken;
+    try {
+        const response = await axios.post(
+            `${platformApiUrl}/api/portal/v1/auth/login`,
+            new URLSearchParams({ username, password }).toString(),
+            {
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                httpsAgent: new https.Agent({ rejectUnauthorized: !config.platformApi?.insecure }),
+                timeout: 10000,
             }
-        })
-    );
-
-    passport.authenticate('default-auth', (err, user, info) => {
-        if (err) {
-            logger.error("Error occurred while logging in", {
-                error: err.message,
-                stack: err.stack
-            });
-            return util.handleError(res, err);
-        }
-        if (!user) {
+        );
+        platformToken = response.data.token;
+    } catch (error) {
+        if (error.response?.status === 401) {
             return res.status(401).json({ message: 'Invalid credentials' });
         }
-        req.logIn(user, (err) => {
-            if (err) {
-                return util.handleError(res, err);
+        logger.error('Platform API login request failed', { error: error.message });
+        return res.status(503).json({ message: 'Authentication service unavailable' });
+    }
+
+    const claims = extractPlatformJwtClaims(platformToken, null);
+    if (!claims?.org_handle) {
+        logger.error('Platform API token missing required claims', { operation: 'devportalLogin' });
+        return res.status(503).json({ message: 'Authentication service error' });
+    }
+
+    const scopes = claims.scopes;
+    const adminRole = config.adminRole || 'admin';
+    const subscriberRole = config.subscriberRole || 'Internal/subscriber';
+    const isAdmin = scopes.some(s => s.endsWith('_manage'));
+
+    const profile = {
+        firstName: claims.username || username,
+        lastName: '',
+        email: claims.email || username,
+        [constants.ROLES.ORGANIZATION_CLAIM]: claims.org_handle || '',
+        [constants.ROLES.ROLE_CLAIM]: isAdmin ? [adminRole] : [subscriberRole],
+        [constants.ROLES.GROUP_CLAIM]: [],
+        [constants.USER_ID]: claims.sub || username,
+        accessToken: platformToken,
+        refreshToken: null,
+        exchangeToken: null,
+        authorizedOrgs: [claims.org_handle || ''],
+        userOrg: claims.org_handle || '',
+        isAdmin,
+        isSuperAdmin: false,
+        isLocalAuth: true,
+    };
+
+    req.session.regenerate((err) => {
+        if (err) {
+            logger.error('Session regeneration failed', { error: err.message });
+            return util.handleError(res, err);
+        }
+        req.logIn(profile, (loginErr) => {
+            if (loginErr) {
+                logger.error('Login session error', { error: loginErr.message });
+                return util.handleError(res, loginErr);
             }
-            res.status(200).json({ message: 'Login successful' });
+            req.session.save(() => res.status(200).json({ message: 'Login successful' }));
         });
-    })(req, res);
+    });
 };
 module.exports = {
     saveApplication,

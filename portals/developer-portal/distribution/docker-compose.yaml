@@ -21,15 +21,21 @@
 # the docker-compose.yml one level up.
 #
 # Quick start:
-#   docker compose up
-#   Then open https://localhost:3000/default/views/default  (accept the self-signed cert warning)
-#   Login: admin / admin  (or developer / developer)
+#   1. Copy configs/config-platform-api.toml.example to configs/config-platform-api.toml
+#      and adjust users/org as needed.
+#   2. docker compose up
+#   3. Open https://localhost:3000/default/views/default  (accept the self-signed cert warning)
+#      Login with a user defined in configs/config-platform-api.toml (default: admin / admin)
+#
+# Secrets:
+#   Set AUTH_JWT_SECRET_KEY in your shell or in a .env file to persist login sessions
+#   across Platform API restarts. When unset a random key is generated at startup.
 #
 # Configuration:
-#   Edit configs/config.yaml to customise settings.
-#   Every config value can also be overridden via a DP_* env var.
+#   Edit configs/config.yaml to customise devportal settings.
+#   Edit configs/config-platform-api.toml to customise Platform API settings (users, org, etc.).
+#   Every devportal config value can also be overridden via a DP_* env var.
 #   Create a .env file next to this file for persistent overrides.
-#   See configs/config.yaml for the full list of available settings.
 #
 # Database:
 #   SQLite is used by default — no external database required.
@@ -47,6 +53,28 @@
 #   and ensure it contains server.crt and server.key.
 
 services:
+  # ── Platform API (Go HTTPS backend — handles local auth) ────────────────────
+  platform-api:
+    image: ghcr.io/wso2/api-platform/platform-api:0.10.0
+    container_name: platform-api
+    restart: unless-stopped
+    command: ["-config", "/etc/platform-api/config-platform-api.toml"]
+    environment:
+      - AUTH_JWT_SECRET_KEY=${AUTH_JWT_SECRET_KEY:-}
+    volumes:
+      - ./configs/config-platform-api.toml:/etc/platform-api/config-platform-api.toml:ro
+      - platform-api-data:/app/data
+    ports:
+      - "9243:9243"
+    healthcheck:
+      test: ["CMD", "curl", "-fk", "https://localhost:9243/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+    networks:
+      - devportal-network
+
   # ── PostgreSQL (optional) ────────────────────────────────────────────────────
   # Uncomment this service and replace the DP_DB_* block in `devportal` below
   # with the PostgreSQL block to switch from SQLite to PostgreSQL.
@@ -71,11 +99,14 @@ services:
 
   devportal:
     image: ghcr.io/wso2/api-platform/developer-portal:0.3.0-SNAPSHOT
+    depends_on:
+      platform-api:
+        condition: service_healthy
+      # Uncomment when using PostgreSQL:
+      # postgres:
+      #   condition: service_healthy
     ports:
       - "3000:3000"   # Developer Portal UI (HTTPS)
-    # depends_on:           # Uncomment when using PostgreSQL
-    #   postgres:
-    #     condition: service_healthy
     volumes:
       # Mount config from the configs/ directory.
       - ./configs/config.yaml:/app/configs/config.yaml:ro
@@ -113,6 +144,13 @@ services:
 
       # Log to console only (no rotating log files)
       DP_LOGGING_CONSOLEONLY: "true"
+
+      # Platform API — used for local auth credential validation.
+      # Set DP_PLATFORMAPI_JWTSECRET to the same value as AUTH_JWT_SECRET_KEY so
+      # the devportal can verify Platform API JWTs locally (no per-request login call).
+      DP_PLATFORMAPI_BASEURL: "https://platform-api:9243"
+      DP_PLATFORMAPI_JWTSECRET: ${AUTH_JWT_SECRET_KEY:-}
+      DP_PLATFORMAPI_INSECURE: "true"   # Platform API uses a self-signed cert in this dev setup
     env_file:
       - path: .env
         required: false   # Optional — create a .env file to add your own overrides
@@ -123,6 +161,8 @@ volumes:
   sqlite_data:
     driver: local
   certs_data:
+    driver: local
+  platform-api-data:
     driver: local
   # postgres_data:      # Uncomment when using PostgreSQL
   #   driver: local

@@ -17,6 +17,8 @@
  */
 /* eslint-disable no-undef */
 const passport = require('passport');
+const axios = require('axios');
+const https = require('https');
 const logger = require('../config/logger');
 const { logUserAction } = require('../middlewares/auditLogger');
 const { config } = require('../config/configLoader');
@@ -28,6 +30,7 @@ const minimatch = require('minimatch');
 const { validationResult } = require('express-validator');
 const { renderGivenTemplate } = require('../utils/util');
 const { trackLoginTrigger, trackLogoutTrigger } = require('../utils/telemetry');
+const { extractPlatformJwtClaims } = require('../utils/platformJwt');
 
 
 const fetchAuthJsonContent = async (req, orgName) => {
@@ -187,31 +190,8 @@ const handleLogOut = async (req, res) => {
     }
     const currentPathURI = req.originalUrl.replace('/logout', '');
     res.set('Cache-Control', 'no-store');
-    if (req.user && req.user.accessToken) {
-        const referer = req.get('referer');
-        const regex = /(.+\/views\/[^\/]+)\/?/;
-        const match = referer.match(regex);
-        const logoutURL = match ? match[1] : null;
-        req.logout((err) => {
-            if (err) {
-                logger.error("Logout error", {
-                    userId: req.user?.id || req.user?.username || 'unknown',
-                    orgName: req.params.orgName,
-                    error: err.message,
-                    stack: err.stack
-                });
-            }
-            // Log successful logout action
-            logUserAction('USER_LOGOUT', req, {
-                orgName: req.params.orgName,
-                logoutURL: logoutURL
-            });
-            trackLogoutTrigger({ orgName: req.params.orgName }, req);
-            req.session.currentPathURI = currentPathURI;
-            res.redirect(`${authJsonContent.logoutURL}?post_logout_redirect_uri=${authJsonContent.logoutRedirectURI}&id_token_hint=${idToken}`);
-        });
-    } else if (req.user?.isLocalAuth) {
-        // Local-auth users have no IDP — destroy session and go to login
+    if (req.user?.isLocalAuth) {
+        // Local-auth users have no IDP — destroy session and redirect to login
         req.logout((err) => {
             if (err) {
                 logger.error('Logout error (local-auth)', {
@@ -225,6 +205,28 @@ const handleLogOut = async (req, res) => {
                 res.set('Cache-Control', 'no-store');
                 res.redirect(req.originalUrl.replace('/logout', '/login'));
             });
+        });
+    } else if (req.user && req.user.accessToken) {
+        const referer = req.get('referer');
+        const regex = /(.+\/views\/[^\/]+)\/?/;
+        const match = referer.match(regex);
+        const logoutURL = match ? match[1] : null;
+        req.logout((err) => {
+            if (err) {
+                logger.error("Logout error", {
+                    userId: req.user?.id || req.user?.username || 'unknown',
+                    orgName: req.params.orgName,
+                    error: err.message,
+                    stack: err.stack
+                });
+            }
+            logUserAction('USER_LOGOUT', req, {
+                orgName: req.params.orgName,
+                logoutURL: logoutURL
+            });
+            trackLogoutTrigger({ orgName: req.params.orgName }, req);
+            req.session.currentPathURI = currentPathURI;
+            res.redirect(`${authJsonContent.logoutURL}?post_logout_redirect_uri=${authJsonContent.logoutRedirectURI}&id_token_hint=${idToken}`);
         });
     } else {
         // Unauthenticated or session already gone — original behaviour
@@ -268,17 +270,46 @@ const handleLocalLogin = async (req, res) => {
         return res.redirect(`${baseUrl}/login?error=Username+and+password+are+required`);
     }
 
-    const users = config.defaultAuth?.users || [];
-    const matchedUser = users.find(u => u.username === username && u.password === password);
+    const platformApiUrl = config.platformApi?.baseUrl;
+    if (!platformApiUrl) {
+        logger.error('Local auth attempted but platformApi.baseUrl is not configured');
+        return res.redirect(`${baseUrl}/login?error=Authentication+service+not+configured`);
+    }
 
-    if (!matchedUser) {
-        logger.warn('Local-auth login failed: invalid credentials', { orgName });
-        return res.redirect(`${baseUrl}/login?error=Invalid+username+or+password`);
+    let platformToken;
+    try {
+        const response = await axios.post(
+            `${platformApiUrl}/api/portal/v1/auth/login`,
+            new URLSearchParams({ username, password }).toString(),
+            {
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                httpsAgent: new https.Agent({ rejectUnauthorized: !config.platformApi?.insecure }),
+                timeout: 10000,
+            }
+        );
+        platformToken = response.data.token;
+    } catch (error) {
+        if (error.response?.status === 401) {
+            logger.warn('Platform API login failed: invalid credentials', { orgName });
+            return res.redirect(`${baseUrl}/login?error=Invalid+username+or+password`);
+        }
+        logger.error('Platform API login request failed', { error: error.message, orgName });
+        return res.redirect(`${baseUrl}/login?error=Login+failed%2C+please+try+again`);
+    }
+
+    // Decode JWT claims (token is already verified by the platform API)
+    const claims = extractPlatformJwtClaims(platformToken, null);
+    if (!claims) {
+        logger.error('Failed to decode platform API token');
+        return res.redirect(`${baseUrl}/login?error=Login+failed%2C+please+try+again`);
     }
 
     const adminRole = config.adminRole || 'admin';
     const superAdminRole = config.superAdminRole || 'superAdmin';
-    const roles = matchedUser.roles || [];
+    const subscriberRole = config.subscriberRole || 'Internal/subscriber';
+    // Users with any _manage scope are treated as admins in the devportal
+    const isAdmin = claims.scopes.some(s => s.endsWith('_manage'));
+    const roles = isAdmin ? [adminRole] : [subscriberRole];
 
     const returnTo = req.session.returnTo;
     let view = viewName;
@@ -291,35 +322,35 @@ const handleLocalLogin = async (req, res) => {
     }
 
     const profile = {
-        firstName: matchedUser.firstName || username,
-        lastName: matchedUser.lastName || '',
-        email: matchedUser.email || username,
+        firstName: claims.username || username,
+        lastName: '',
+        email: claims.email || username,
         imageURL: 'https://raw.githubusercontent.com/wso2/docs-bijira/refs/heads/main/en/devportal-theming/profile.svg',
         view,
         idToken: null,
-        [constants.ROLES.ORGANIZATION_CLAIM]: matchedUser.orgClaimName,
+        [constants.ROLES.ORGANIZATION_CLAIM]: claims.org_handle || orgName,
         returnTo: returnTo || baseUrl,
-        accessToken: null,
+        accessToken: platformToken,
         refreshToken: null,
         exchangeToken: null,
-        authorizedOrgs: [matchedUser.organizationIdentifier],
+        authorizedOrgs: [claims.org_handle || orgName],
         [constants.ROLES.ROLE_CLAIM]: roles,
         [constants.ROLES.GROUP_CLAIM]: [],
-        isAdmin: roles.includes(adminRole) || roles.includes(superAdminRole),
-        isSuperAdmin: roles.includes(superAdminRole),
-        [constants.USER_ID]: username,
-        userOrg: matchedUser.organizationIdentifier,
+        isAdmin,
+        isSuperAdmin: false,
+        [constants.USER_ID]: claims.sub || username,
+        userOrg: claims.org_handle || orgName,
         isLocalAuth: true,
     };
 
     req.session.regenerate((err) => {
         if (err) {
-            logger.error('Session regeneration failed (config-auth)', { error: err.message, stack: err.stack });
+            logger.error('Session regeneration failed (platform-auth)', { error: err.message, stack: err.stack });
             return res.redirect(`${baseUrl}/login?error=Login+failed%2C+please+try+again`);
         }
         req.logIn(profile, (loginErr) => {
             if (loginErr) {
-                logger.error('Config-auth login session error', { error: loginErr.message, stack: loginErr.stack });
+                logger.error('Platform-auth login session error', { error: loginErr.message, stack: loginErr.stack });
                 return res.redirect(`${baseUrl}/login?error=Login+failed%2C+please+try+again`);
             }
             res.set('Cache-Control', 'no-store');
