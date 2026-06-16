@@ -497,12 +497,12 @@ func (s *GatewayService) RegisterGateway(orgID, name, displayName, description, 
 	if version == "" {
 		version = defaultGatewayVersion
 	}
-	// Preview versions (e.g. "1.1.0-preview-202603") are persisted verbatim so
-	// the exact build is preserved. Stable versions are canonicalized to
-	// `major.minor` so equality checks against controller-reported versions
-	// (also normalized via extractMajorMinor) cannot diverge over leading
-	// zeros or other lexical variants.
-	if !strings.Contains(version, "-preview") {
+	// CalVer versions (e.g. "2026.05.13") are persisted verbatim so the exact
+	// build is preserved. Two-segment `major.minor` versions are canonicalized
+	// so equality checks against controller-reported versions (also normalized
+	// via extractMajorMinor) cannot diverge over leading zeros or other
+	// lexical variants.
+	if strings.Count(version, ".") == 1 {
 		if canonical := extractMajorMinor(version); canonical != "" {
 			version = canonical
 		}

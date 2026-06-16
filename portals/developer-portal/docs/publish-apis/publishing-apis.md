@@ -1,0 +1,335 @@
+# Publishing APIs
+
+Publishing an API makes it discoverable in the portal catalog. You upload an API manifest file together with the API's definition file. Developers can then find, read documentation for, and subscribe to the API.
+
+## Supported API Types
+
+| Type | Kind | Definition Format |
+|---|---|---|
+| REST | `RestApi` | OpenAPI 2.0 / 3.x (YAML or JSON) |
+| Async | `WS` | AsyncAPI 2.x / 3.x (YAML or JSON) |
+| GraphQL | `GraphQL` | GraphQL schema SDL |
+| SOAP | `SOAP` | WSDL (XML) |
+| WebSub | `WebSubApi` | AsyncAPI |
+| MCP | `MCP` | MCP server specification |
+
+## Step 1 — Create the API Manifest
+
+Create an API manifest file using the appropriate `kind`. The file **must** be named `api.yaml`, `mcp.yaml`, or `devportal.yaml`.
+
+```yaml
+# api.yaml
+apiVersion: devportal.wso2.com/v1
+kind: RestApi   # RestApi | WS | GraphQL | SOAP | WebSubApi
+
+metadata:
+  name: order-api-v1   # API handle — used internally and in URLs
+
+spec:
+  type: REST           # REST | WS | GRAPHQL | SOAP | WEBSUB
+  displayName: Order API
+  version: v1.0
+  description: Create and manage customer orders
+  provider: WSO2
+  status: PUBLISHED
+
+  tags:
+    - ecommerce
+    - orders
+
+  labels:
+    - default
+
+  subscriptionPolicies:
+    - Bronze
+    - Gold
+    - Unlimited
+
+  visibility: PUBLIC
+  visibleGroups: []
+
+  businessInformation:
+    businessOwner: Commerce Team
+    businessOwnerEmail: commerce@example.com
+    technicalOwner: Orders Team
+    technicalOwnerEmail: orders-team@example.com
+
+  endpoints:
+    productionUrl: https://api.example.com/orders
+    sandboxUrl: https://sandbox.example.com/orders
+```
+
+For an MCP server, use `mcp.yaml` instead:
+
+```yaml
+# mcp.yaml
+apiVersion: devportal.api-platform.wso2.com/v1
+kind: MCP
+
+metadata:
+  name: my-mcp-v1
+
+spec:
+  type: MCP
+  displayName: My MCP Server
+  version: 1.0.0
+  description: MCP server exposing AI tools.
+  provider: WSO2
+  status: PUBLISHED
+
+  labels:
+    - default
+
+  subscriptionPolicies:
+    - Gold
+
+  visibility: PUBLIC
+
+  businessInformation:
+    businessOwner: Platform Team
+    businessOwnerEmail: platform-team@example.com
+    technicalOwner: Platform Team
+    technicalOwnerEmail: platform-team@example.com
+
+  endpoints:
+    productionUrl: https://your-mcp-host.example.com
+```
+
+## Step 2 — Upload the API
+
+Send the manifest and definition together as a multipart upload:
+
+```bash
+# REST API with OpenAPI definition
+curl -X POST "http://localhost:3000/organizations/{orgId}/apis" \
+  -u admin:admin \
+  -F "api=@api.yaml" \
+  -F "apiDefinition=@openapi.yaml;type=application/yaml"
+```
+
+```bash
+# GraphQL API
+curl -X POST "http://localhost:3000/organizations/{orgId}/apis" \
+  -u admin:admin \
+  -F "api=@api.yaml" \
+  -F "apiDefinition=@schema.graphql;type=application/graphql"
+```
+
+```bash
+# MCP server
+curl -X POST "http://localhost:3000/organizations/{orgId}/apis" \
+  -u admin:admin \
+  -F "api=@mcp.yaml" \
+  -F "apiDefinition=@mcp-spec.yaml;type=application/yaml"
+```
+
+| Field | Required | Description |
+|---|---|---|
+| `metadata.name` | Yes | API handle — URL-safe identifier used internally |
+| `spec.type` | Yes | API type: `REST`, `WS`, `GRAPHQL`, `SOAP`, `WEBSUB`, or `MCP` |
+| `spec.displayName` | Yes | Display name shown in the catalog |
+| `spec.version` | Yes | Version string (e.g. `v1.0`, `2.3`) |
+| `spec.description` | No | Short description shown in the catalog listing |
+| `spec.provider` | No | Provider name (e.g. `WSO2`) |
+| `spec.status` | No | `PUBLISHED` (default) or `PROTOTYPED` |
+| `spec.tags` | No | Tags for search and filtering |
+| `spec.labels` | No | Labels that control which views the API appears in |
+| `spec.subscriptionPolicies` | No | Names of subscription plans available for this API |
+| `spec.visibility` | No | `PUBLIC` (visible to all) or `PRIVATE` (restricted) |
+| `spec.visibleGroups` | No | Groups that can see a `PRIVATE` API |
+| `spec.endpoints.productionUrl` | No | Production gateway URL |
+| `spec.endpoints.sandboxUrl` | No | Sandbox gateway URL |
+| `spec.businessInformation` | No | Business and technical owner contact details |
+| `spec.gatewayType` | No | Gateway type identifier — used to route webhook events to the matching gateway subscriber |
+
+The response includes the `apiId` needed for subsequent steps.
+
+## Step 3 — Upload the API Definition Separately (Optional)
+
+If you need to update the definition file independently of the manifest:
+
+```bash
+# OpenAPI YAML
+curl -X POST \
+  "http://localhost:3000/organizations/{orgId}/apis/{apiId}/content" \
+  -u admin:admin \
+  -F "apiDefinition=@openapi.yaml;type=application/yaml"
+```
+
+```bash
+# AsyncAPI YAML
+curl -X POST \
+  "http://localhost:3000/organizations/{orgId}/apis/{apiId}/content" \
+  -u admin:admin \
+  -F "apiDefinition=@asyncapi.yaml;type=application/yaml"
+```
+
+The uploaded definition is shown in the API's **Try-Out** tab and is exposed at the machine-readable spec endpoint for AI agent consumption.
+
+## Step 4 — Add Documentation Content (Optional)
+
+Add landing page content and documentation sections to give developers context about the API. See [API Content and Docs](api-content-and-docs.md) for details.
+
+## Access Control Patterns
+
+The portal supports three distinct consumption patterns. The pattern is determined by the combination of `spec.subscriptionPolicies` in the API manifest and the `securitySchemes` (and optional extension headers) in the OpenAPI definition.
+
+---
+
+### 1. API Key Only
+
+The consumer generates an API key from the portal and uses it directly to invoke the API — no subscription is needed.
+
+**`api.yaml`**
+
+```yaml
+spec:
+  gatewayType: wso2/api-platform
+  subscriptionPolicies: []   # no subscription required
+```
+
+**`openapi.yaml`** (relevant excerpt)
+
+```yaml
+components:
+  securitySchemes:
+    ApiKeyHeader:
+      type: apiKey
+      in: header
+      name: X-API-Key
+```
+
+Consumers go to the API's **Manage Keys** page, generate a key, and include it as `X-API-Key` on every request.
+
+---
+
+### 2. API Key with Direct Subscription
+
+The consumer subscribes to a plan and then generates an API key bound to that API. The key alone is sufficient to invoke the API — the gateway enforces the plan tier via the key's subscription association.
+
+**`api.yaml`**
+
+```yaml
+spec:
+  gatewayType: wso2/api-platform
+  subscriptionPolicies:
+    - Gold
+    - Bronze
+```
+
+**`openapi.yaml`** (relevant excerpt)
+
+```yaml
+components:
+  securitySchemes:
+    ApiKeyHeader:
+      type: apiKey   # presence of this scheme marks the API as API-key capable
+      in: header
+      name: X-API-Key
+```
+
+Consumers subscribe to a plan first, then generate an API key. They send only the API key header on each request.
+
+---
+
+### 3. API Key with Token-Based Subscription
+
+The consumer subscribes to a plan and generates an API key. They also receive a **subscription token** at subscription time. Both the API key and the subscription token must be sent as headers on every request.
+
+**`api.yaml`**
+
+```yaml
+spec:
+  gatewayType: wso2/api-platform
+  subscriptionPolicies:
+    - Gold
+    - Silver
+    - Bronze
+```
+
+**`openapi.yaml`** (relevant excerpt)
+
+```yaml
+components:
+  securitySchemes:
+    ApiKeyHeader:
+      type: apiKey   # marks the API as API-key capable
+      in: header
+      name: X-API-Key
+  parameters:
+    SubscriptionTokenHeader:
+      name: X-Subscription-Token
+      x-header-type: subscription-token   # marks the API as token-based subscription
+      in: header
+      required: true
+      schema:
+        type: string
+```
+
+Consumers subscribe to a plan (receiving a subscription token), generate an API key, and include both `X-API-Key` and `X-Subscription-Token` on every request.
+
+---
+
+### Summary
+
+| Pattern | `subscriptionPolicies` | `securitySchemes` | `x-header-type: subscription-token` |
+|---|---|---|---|
+| API key only | `[]` | `apiKey` | No |
+| API key + direct subscription | one or more plans | `apiKey` | No |
+| API key + token subscription | one or more plans | `apiKey` | Yes |
+
+## Update an API
+
+```yaml
+# api-update.yaml
+apiVersion: devportal.wso2.com/v1
+kind: RestApi
+
+metadata:
+  name: order-api-v1
+
+spec:
+  description: Updated description for the Order API
+  labels:
+    - default
+    - ecommerce
+  subscriptionPolicies:
+    - Bronze
+    - Gold
+```
+
+```bash
+curl -X PUT http://localhost:3000/organizations/{orgId}/apis/{apiId} \
+  -u admin:admin \
+  -F "api=@api-update.yaml"
+```
+
+## Delete an API
+
+```bash
+curl -X DELETE http://localhost:3000/organizations/{orgId}/apis/{apiId} \
+  -u admin:admin
+```
+
+> **Note:** Deleting an API removes it from the catalog immediately. Existing subscriptions to the API are not automatically cancelled — notify subscribers before deletion.
+
+## List APIs
+
+```bash
+curl http://localhost:3000/organizations/{orgId}/apis -u admin:admin
+```
+
+## Get an API
+
+```bash
+curl http://localhost:3000/organizations/{orgId}/apis/{apiId} -u admin:admin
+```
+
+## Related
+
+- [API Content and Docs](api-content-and-docs.md) — upload landing page content and documentation
+- [Subscription Plans](../administer/subscription-plans.md) — create the plans referenced in `spec.subscriptionPolicies`
+- [Manage Views](../administer/manage-views.md) — configure labels and views
+- [API Workflows](manage-api-workflows.md) — publish multi-step workflows for this API
+- [Consume with API Key](../consume-an-api/consume-with-api-key.md) — developer view of generating API keys
+- [Subscribe to an API](../consume-an-api/subscriptions.md) — developer view of subscriptions

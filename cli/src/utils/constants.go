@@ -36,31 +36,45 @@ const (
 	DefaultGatewayController = "ghcr.io/wso2/api-platform/gateway-controller:%s" // %s = version
 	DefaultGatewayRuntime    = "ghcr.io/wso2/api-platform/gateway-runtime:%s"    // %s = version
 
-	// Gateway-controller API base paths. These must stay in sync with the
-	// `servers.url` prefixes declared in
-	//   gateway/gateway-controller/api/management-openapi.yaml
-	//   gateway/gateway-controller/api/admin-openapi.yaml
-	GatewayManagementBasePath = "/api/management/v0.9"
-	GatewayAdminBasePath      = "/api/admin/v0.9"
+	// REST API Endpoints
+	GatewayHealthPath       = "/health"
+	GatewayAPIsPath         = "/rest-apis"
+	GatewayAPIByIDPath      = "/rest-apis/%s"
+	GatewayMCPProxiesPath   = "/mcp-proxies"
+	GatewayMCPProxyByIDPath = "/mcp-proxies/%s"
+	DevPortalHealthPath     = "/health"
 
-	// REST API Endpoints (served on the gateway-controller's management port).
-	GatewayAPIsPath         = GatewayManagementBasePath + "/rest-apis"
-	GatewayAPIByIDPath      = GatewayManagementBasePath + "/rest-apis/%s"
-	GatewayMCPProxiesPath   = GatewayManagementBasePath + "/mcp-proxies"
-	GatewayMCPProxyByIDPath = GatewayManagementBasePath + "/mcp-proxies/%s"
+	// API Key Endpoints (scoped to a REST API)
+	GatewayAPIKeysPath          = "/rest-apis/%s/api-keys"    // %s = REST API id
+	GatewayAPIKeyByNamePath     = "/rest-apis/%s/api-keys/%s" // %s = REST API id, %s = api key name
+	GatewayAPIKeyRegeneratePath = "/rest-apis/%s/api-keys/%s/regenerate"
 
-	// Health endpoint (served on the gateway-controller's admin port).
-	GatewayHealthPath = GatewayAdminBasePath + "/health"
+	// Subscription Plan Endpoints
+	GatewaySubscriptionPlansPath    = "/subscription-plans"
+	GatewaySubscriptionPlanByIDPath = "/subscription-plans/%s"
+
+	// Subscription Endpoints
+	GatewaySubscriptionsPath    = "/subscriptions"
+	GatewaySubscriptionByIDPath = "/subscriptions/%s"
 
 	// Auth Types
 	AuthTypeNone   = "none"
 	AuthTypeBasic  = "basic"
 	AuthTypeBearer = "bearer"
+	AuthTypeOAuth  = "oauth"
+	AuthTypeAPIKey = "api-key"
 
 	// Auth Environment Variables
 	EnvGatewayUsername = "WSO2AP_GW_USERNAME" // For Basic Auth
 	EnvGatewayPassword = "WSO2AP_GW_PASSWORD" // For Basic Auth
 	EnvGatewayToken    = "WSO2AP_GW_TOKEN"    // For Bearer Auth
+
+	// DevPortal Authentication Environment Variables
+	EnvDevPortalUsername = "WSO2AP_DEVPORTAL_USERNAME" // For DevPortal basic auth
+	EnvDevPortalPassword = "WSO2AP_DEVPORTAL_PASSWORD" // For DevPortal basic auth
+	EnvDevPortalToken    = "WSO2AP_DEVPORTAL_TOKEN"    // For DevPortal OAuth auth
+	EnvDevPortalAPIKey   = "WSO2AP_DEVPORTAL_API_KEY"  // For DevPortal API key auth
+	DevPortalAPIHeader   = "x-wso2-api-key"
 
 	// Image Build Configuration
 	GatewayVerifyChecksumOnBuild = true
@@ -69,6 +83,10 @@ const (
 	MaxZipFiles            = 1000              // Maximum number of files allowed in the zip (non-directory entries).
 	MaxUncompressedPerFile = 20 * 1024 * 1024  // Maximum uncompressed size allowed per file (20 MB).
 	MaxTotalUncompressed   = 100 * 1024 * 1024 // Maximum total uncompressed size allowed for the archive (100 MB).
+
+	// API Types
+	APITypeREST = "rest"
+	APITypeSOAP = "soap"
 )
 
 // PolicyHub REST API defaults and paths

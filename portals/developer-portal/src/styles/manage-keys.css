@@ -1,0 +1,1396 @@
+/* Manage Keys Page Styles — scoped to .keys-section */
+
+/* ── Page header ── */
+.keys-section .mk-header {
+    margin-bottom: 1.5rem;
+}
+
+.keys-section .mk-title {
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: var(--main-text-color);
+    margin-bottom: 0.25rem;
+}
+
+.keys-section .mk-subtitle {
+    font-size: 0.9rem;
+    color: var(--main-text-color);
+    opacity: 0.7;
+    margin: 0;
+}
+
+/* ── Environment selector ── */
+.keys-section .mk-env-selector {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+}
+
+.keys-section .mk-env-card {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.9rem 1.1rem;
+    border: 1.5px solid var(--bs-gray-200);
+    border-radius: 12px;
+    background: var(--main-bg-color);
+    cursor: pointer;
+    text-align: left;
+    transition: border-color 0.18s, box-shadow 0.18s;
+}
+
+.keys-section .mk-env-card.active {
+    border-color: #4a90d9;
+    box-shadow: 0 0 0 2px color-mix(in srgb, #4a90d9 18%, transparent);
+}
+
+.keys-section .mk-env-card:focus {
+    outline: none;
+}
+
+.keys-section .mk-env-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.keys-section .mk-env-dot-prod { background: var(--secondary-main-color); }
+.keys-section .mk-env-dot-sandbox { background: #5c9fcf; }
+
+.keys-section .mk-env-text {
+    display: flex;
+    flex-direction: column;
+}
+
+.keys-section .mk-env-name {
+    font-weight: 600;
+    font-size: 0.9rem;
+    color: var(--main-text-color);
+}
+
+.keys-section .mk-env-desc {
+    font-size: 0.78rem;
+    color: var(--main-text-color);
+    opacity: 0.6;
+}
+
+/* ── Tab content wrapper ── */
+.keys-section .mk-tab-content {
+    background: transparent;
+    border: none;
+    padding: 0;
+    box-shadow: none;
+}
+
+/* ── Context banner ── */
+.keys-section .mk-context-banner {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.7rem 1rem;
+    border-radius: 8px;
+    font-size: 0.875rem;
+    margin-bottom: 1.1rem;
+}
+
+.keys-section .mk-context-banner-prod {
+    background: color-mix(in srgb, var(--secondary-main-color) 10%, transparent);
+    color: var(--main-text-color);
+}
+
+.keys-section .mk-context-banner-sandbox {
+    background: color-mix(in srgb, #5c9fcf 10%, transparent);
+    color: var(--main-text-color);
+}
+
+.keys-section .mk-env-dot-prod-icon { color: var(--secondary-main-color); font-size: 0.55rem; }
+.keys-section .mk-env-dot-sandbox-icon { color: #5c9fcf; font-size: 0.55rem; }
+
+/* ── Key manager card ── */
+.keys-section .mk-km-card {
+    border: 1px solid var(--bs-gray-200);
+    border-radius: 14px;
+    background: var(--main-bg-color);
+    overflow: hidden;
+    margin-bottom: 1.25rem;
+}
+
+/* ── Card header ── */
+.keys-section .mk-km-header {
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+    padding: 1rem 1.25rem;
+    border-bottom: 1px solid var(--bs-gray-100);
+}
+
+.keys-section .mk-km-icon {
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    background: var(--primary-main-color);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1rem;
+    flex-shrink: 0;
+}
+
+.keys-section .mk-km-icon-sandbox {
+    background: #5c9fcf;
+}
+
+.keys-section .mk-km-info {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.keys-section .mk-km-name {
+    font-weight: 600;
+    font-size: 0.95rem;
+    color: var(--main-text-color);
+}
+
+.keys-section .mk-km-type {
+    font-size: 0.78rem;
+    color: var(--main-text-color);
+    opacity: 0.55;
+}
+
+.keys-section .mk-km-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.3rem 0.75rem;
+    font-size: 0.775rem;
+    font-weight: 600;
+    border-radius: 999px;
+    border: 1.5px solid var(--secondary-main-color);
+    color: var(--secondary-main-color);
+    background: color-mix(in srgb, var(--secondary-main-color) 8%, transparent);
+}
+
+.keys-section .mk-km-badge-sandbox {
+    border-color: #5c9fcf;
+    color: #5c9fcf;
+    background: color-mix(in srgb, #5c9fcf 8%, transparent);
+}
+
+.keys-section .mk-km-badge-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: currentColor;
+    display: inline-block;
+}
+
+/* ── Inner card tab nav ── */
+.keys-section .mk-km-tabnav {
+    display: flex;
+    border-bottom: 1px solid var(--bs-gray-200);
+    padding: 0 1.25rem;
+    gap: 0;
+    background: var(--main-bg-color);
+}
+
+.keys-section .mk-km-tab {
+    background: none;
+    border: none;
+    border-bottom: 2.5px solid transparent;
+    padding: 0.65rem 0.9rem;
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: var(--main-text-color);
+    opacity: 0.6;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    margin-bottom: -1px;
+    transition: opacity 0.15s, border-color 0.15s, color 0.15s;
+    white-space: nowrap;
+}
+
+.keys-section .mk-km-tab:hover {
+    opacity: 0.9;
+    color: var(--primary-main-color);
+}
+
+.keys-section .mk-km-tab.active {
+    border-bottom-color: var(--primary-main-color);
+    color: var(--primary-main-color);
+    opacity: 1;
+    font-weight: 600;
+}
+
+.keys-section .mk-km-tab i {
+    font-size: 0.8rem;
+}
+
+/* ── Card credentials body ── */
+.keys-section .mk-km-body {
+    padding: 1.25rem;
+}
+
+.keys-section .mk-cred-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    margin-bottom: 1.1rem;
+}
+
+@media (max-width: 680px) {
+    .keys-section .mk-cred-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+.keys-section .mk-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+}
+
+.keys-section .mk-field-label {
+    font-size: 0.78rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--main-text-color);
+    opacity: 0.55;
+}
+
+.keys-section .mk-input-row {
+    display: flex;
+    align-items: center;
+    border: 1px solid var(--bs-gray-300);
+    border-radius: 8px;
+    overflow: hidden;
+    background: var(--main-bg-color);
+    transition: border-color 0.15s;
+}
+
+.keys-section .mk-input-row:focus-within {
+    border-color: var(--primary-main-color);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary-main-color) 15%, transparent);
+}
+
+.keys-section .mk-input {
+    flex: 1;
+    border: none;
+    outline: none;
+    padding: 0.55rem 0.75rem;
+    font-size: 0.875rem;
+    font-family: var(--font-family-mono);
+    background: transparent;
+    color: var(--main-text-color);
+    min-width: 0;
+}
+
+.keys-section .mk-input:disabled {
+    background: transparent;
+    color: var(--main-text-color);
+    opacity: 0.85;
+}
+
+.keys-section .mk-input-muted {
+    font-family: var(--font-family-sans);
+    font-size: 0.8rem;
+    opacity: 0.55;
+    font-style: italic;
+}
+
+.keys-section .mk-icon-btn {
+    background: none;
+    border: none;
+    border-left: 1px solid var(--bs-gray-200);
+    padding: 0.55rem 0.65rem;
+    color: var(--main-text-color);
+    opacity: 0.55;
+    cursor: pointer;
+    transition: opacity 0.15s, color 0.15s;
+    font-size: 0.85rem;
+    line-height: 1;
+    flex-shrink: 0;
+}
+
+.keys-section .mk-icon-btn:hover {
+    opacity: 1;
+    color: var(--primary-main-color);
+}
+
+/* ── Grant types metadata row ── */
+.keys-section .mk-cred-meta {
+    padding-top: 1rem;
+    border-top: 1px dashed var(--bs-gray-200);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1.25rem;
+}
+
+.keys-section .mk-meta-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+.keys-section .mk-meta-label {
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--main-text-color);
+    opacity: 0.5;
+}
+
+.keys-section .mk-meta-grants {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+}
+
+.keys-section .mk-grant-pill {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.25rem 0.75rem;
+    font-size: 0.775rem;
+    font-weight: 500;
+    border-radius: 999px;
+    background: #ffffff;
+    color: #40404b;
+    border: 1.5px solid #d0d0d8;
+}
+
+/* ── Card footer ── */
+.keys-section .mk-km-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.9rem 1.25rem;
+    border-top: 1px solid var(--bs-gray-100);
+    background: color-mix(in srgb, var(--bs-gray-100) 40%, transparent);
+    flex-wrap: wrap;
+}
+
+.keys-section .mk-secret-note {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.8rem;
+    color: var(--main-text-color);
+    opacity: 0.6;
+    flex: 1;
+    min-width: 200px;
+}
+
+.keys-section .mk-secret-note i {
+    flex-shrink: 0;
+    font-size: 0.85rem;
+}
+
+.keys-section .mk-footer-actions {
+    display: flex;
+    gap: 0.6rem;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+/* Buttons */
+.keys-section .mk-btn-primary,
+.keys-section .mk-btn-outline,
+.keys-section .mk-btn-danger {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.5rem 1.05rem;
+    font-size: 0.845rem;
+    font-weight: 500;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.15s, box-shadow 0.15s, opacity 0.15s;
+    border: 1.5px solid transparent;
+    line-height: 1.4;
+    white-space: nowrap;
+}
+
+.keys-section .mk-btn-primary {
+    background: var(--primary-main-color);
+    color: #fff;
+    border-color: var(--primary-main-color);
+}
+
+.keys-section .mk-btn-primary:hover {
+    background: color-mix(in srgb, var(--primary-main-color) 85%, black);
+}
+
+.keys-section .mk-btn-outline {
+    background: var(--main-bg-color);
+    color: var(--main-text-color);
+    border-color: var(--bs-gray-300);
+}
+
+.keys-section .mk-btn-outline:hover {
+    background: var(--primary-light-color);
+    border-color: var(--primary-main-color);
+    color: var(--primary-main-color);
+}
+
+.keys-section .mk-btn-danger {
+    background: transparent;
+    color: var(--danger-color);
+    border-color: transparent;
+}
+
+.keys-section .mk-btn-danger:hover {
+    background: color-mix(in srgb, var(--danger-color) 8%, transparent);
+    border-color: color-mix(in srgb, var(--danger-color) 35%, transparent);
+}
+
+/* ── Empty state ── */
+.keys-section .mk-km-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    padding: 2.5rem 1.5rem;
+    gap: 0.5rem;
+}
+
+.keys-section .mk-empty-icon-wrap {
+    width: 52px;
+    height: 52px;
+    border-radius: 14px;
+    background: var(--primary-light-color);
+    color: var(--primary-main-color);
+    font-size: 1.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 0.5rem;
+}
+
+.keys-section .mk-empty-icon-sandbox {
+    background: color-mix(in srgb, #5c9fcf 12%, transparent);
+    color: #5c9fcf;
+}
+
+.keys-section .mk-empty-title {
+    font-weight: 600;
+    font-size: 1rem;
+    color: var(--main-text-color);
+    margin: 0;
+}
+
+.keys-section .mk-empty-desc {
+    font-size: 0.855rem;
+    color: var(--main-text-color);
+    opacity: 0.6;
+    max-width: 400px;
+    margin: 0 0 0.75rem;
+}
+
+/* ── Error container ── */
+.keys-section .mk-error {
+    padding: 0.75rem 1.25rem;
+    background: color-mix(in srgb, var(--danger-color) 8%, transparent);
+    border-top: 1px solid color-mix(in srgb, var(--danger-color) 25%, transparent);
+    color: var(--danger-color);
+    font-size: 0.85rem;
+}
+
+/* ── Unavailable state ── */
+.keys-section .mk-unavailable {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 1rem 1.25rem;
+    border-radius: 10px;
+    border: 1px solid var(--bs-gray-200);
+    background: var(--secondary-bg-color);
+    color: var(--main-text-color);
+    opacity: 0.7;
+    font-size: 0.875rem;
+}
+
+/* ── Sandbox tint ── */
+.keys-section .mk-km-card-sandbox .mk-km-tab.active {
+    border-bottom-color: #5c9fcf;
+    color: #5c9fcf;
+}
+
+.keys-section .mk-btn-sandbox {
+    background: #5c9fcf;
+    border-color: #5c9fcf;
+}
+
+.keys-section .mk-btn-sandbox:hover {
+    background: color-mix(in srgb, #5c9fcf 85%, black);
+}
+
+/* ── Credential grid single-column variant ── */
+.keys-section .mk-cred-grid-single {
+    grid-template-columns: 1fr;
+    max-width: 520px;
+}
+
+/* ── Configuration tab ── */
+.keys-section .mk-config-body {
+    padding: 1.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+}
+
+.keys-section .mk-config-row {
+    display: grid;
+    grid-template-columns: 300px 1fr;
+    align-items: center;
+    gap: 1.5rem;
+    padding: 0.9rem 0;
+    border-bottom: 1px solid var(--bs-gray-100);
+}
+
+.keys-section .mk-config-row:last-child {
+    border-bottom: none;
+}
+
+.keys-section .mk-config-label {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--main-text-color);
+}
+
+.keys-section .mk-config-value {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.keys-section .mk-config-code {
+    font-size: 0.855rem;
+    font-family: var(--font-family-mono);
+    color: var(--main-text-color);
+    word-break: break-all;
+}
+
+.keys-section .mk-config-text {
+    font-size: 0.875rem;
+    color: var(--main-text-color);
+}
+
+.keys-section .mk-config-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.9rem 1.25rem;
+    border-top: 1px solid var(--bs-gray-100);
+    background: color-mix(in srgb, var(--bs-gray-100) 40%, transparent);
+    flex-wrap: wrap;
+}
+
+.keys-section .mk-config-note {
+    font-size: 0.8rem;
+    color: var(--main-text-color);
+    opacity: 0.6;
+    flex: 1;
+}
+
+/* Inline edit form */
+.keys-section .mk-check-item {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin-bottom: 0.35rem;
+}
+
+.keys-section .mk-check-item input[type="checkbox"] {
+    width: 15px;
+    height: 15px;
+    accent-color: var(--primary-main-color);
+    cursor: pointer;
+}
+
+.keys-section .mk-check-item label {
+    font-size: 0.875rem;
+    cursor: pointer;
+    color: var(--main-text-color);
+}
+
+.keys-section .mk-inline-input {
+    width: 100%;
+    max-width: 420px;
+    border: 1px solid var(--bs-gray-300);
+    border-radius: 8px;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.875rem;
+    color: var(--main-text-color);
+    background: var(--main-bg-color);
+    outline: none;
+    transition: border-color 0.15s;
+}
+
+.keys-section .mk-inline-input:focus {
+    border-color: var(--primary-main-color);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary-main-color) 15%, transparent);
+}
+
+.keys-section .mk-btn-sm {
+    padding: 0.4rem 0.85rem;
+    font-size: 0.815rem;
+}
+
+.keys-section .mk-field-hint {
+    font-size: 0.775rem;
+    color: var(--main-text-color);
+    opacity: 0.55;
+    margin-top: 0.25rem;
+}
+
+.keys-section .mk-config-edit-value {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.3rem;
+}
+
+/* ── Edit form layout ── */
+.keys-section .mk-edit-form {
+    padding: 1.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+}
+
+.keys-section .mk-edit-section {
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+}
+
+.keys-section .mk-edit-label {
+    font-size: 0.835rem;
+    font-weight: 600;
+    color: var(--main-text-color);
+}
+
+.keys-section .mk-edit-input {
+    width: 100%;
+    border: 1.5px solid var(--bs-gray-300);
+    border-radius: 8px;
+    padding: 0.55rem 0.8rem;
+    font-size: 0.875rem;
+    color: var(--main-text-color);
+    background: var(--main-bg-color);
+    outline: none;
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.keys-section .mk-edit-input:focus {
+    border-color: var(--primary-main-color);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary-main-color) 12%, transparent);
+}
+
+/* Grant type card grid */
+.keys-section .mk-grant-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+    gap: 0.5rem;
+}
+
+.keys-section .mk-grant-card {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.6rem 0.9rem;
+    border: 1.5px solid var(--bs-gray-200);
+    border-radius: 10px;
+    cursor: pointer;
+    font-size: 0.855rem;
+    font-weight: 500;
+    color: var(--main-text-color);
+    background: var(--main-bg-color);
+    transition: border-color 0.15s, background 0.15s;
+    user-select: none;
+}
+
+.keys-section .mk-grant-card:hover {
+    border-color: var(--bs-gray-400);
+}
+
+.keys-section .mk-grant-card input[type="checkbox"] {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 17px;
+    height: 17px;
+    border: 1.5px solid var(--bs-gray-400);
+    border-radius: 4px;
+    flex-shrink: 0;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+    position: relative;
+}
+
+.keys-section .mk-grant-card input[type="checkbox"]:checked {
+    background-color: var(--secondary-main-color);
+    border-color: var(--secondary-main-color);
+}
+
+.keys-section .mk-grant-card input[type="checkbox"]:checked::after {
+    content: '';
+    position: absolute;
+    left: 4px;
+    top: 1px;
+    width: 5px;
+    height: 9px;
+    border: 2px solid #fff;
+    border-top: none;
+    border-left: none;
+    transform: rotate(45deg);
+}
+
+.keys-section .mk-grant-card:has(input:checked) {
+    border-color: var(--secondary-main-color);
+    background: color-mix(in srgb, var(--secondary-main-color) 6%, transparent);
+}
+
+/* Additional props 2-col grid */
+.keys-section .mk-edit-props-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem 1.5rem;
+}
+
+.keys-section .mk-edit-full-width {
+    grid-column: 1 / -1;
+}
+
+.keys-section .mk-check-hint {
+    margin-top: 0;
+    margin-left: 0.25rem;
+}
+
+/* ── Generate Token tab ── */
+.keys-section .mk-token-form {
+    display: flex;
+    flex-direction: column;
+    gap: 1.1rem;
+}
+
+.keys-section .mk-field-wide {
+    max-width: 100%;
+}
+
+.keys-section .mk-scope-input {
+    border: 1px solid var(--bs-gray-300);
+    border-radius: 8px;
+    padding: 0.45rem 0.65rem;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    align-items: center;
+    min-height: 42px;
+    cursor: text;
+    transition: border-color 0.15s;
+}
+
+.keys-section .mk-scope-input:focus-within {
+    border-color: var(--primary-main-color);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary-main-color) 15%, transparent);
+}
+
+.keys-section .mk-scope-input .text-input {
+    border: none;
+    outline: none;
+    font-size: 0.875rem;
+    min-width: 160px;
+    flex: 1;
+    background: transparent;
+    color: var(--main-text-color);
+}
+
+.keys-section .mk-scope-input .span-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.2rem 0.55rem;
+    border-radius: 999px;
+    font-size: 0.775rem;
+    font-family: var(--font-family-mono);
+    background: color-mix(in srgb, var(--secondary-main-color) 12%, transparent);
+    color: var(--secondary-darkest-color);
+    border: 1px solid color-mix(in srgb, var(--secondary-main-color) 30%, transparent);
+}
+
+.keys-section .mk-scope-input .span-tag .remove {
+    cursor: pointer;
+    margin-left: 0.15rem;
+    opacity: 0.6;
+}
+
+.keys-section .mk-scope-input .span-tag .remove:hover {
+    opacity: 1;
+}
+
+.keys-section .mk-token-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+    flex-wrap: wrap;
+}
+
+.keys-section .mk-token-note {
+    font-size: 0.815rem;
+    color: var(--main-text-color);
+    opacity: 0.6;
+}
+
+/* ── cURL tab ── */
+.keys-section .mk-curl-body {
+    display: flex;
+    flex-direction: column;
+    gap: 1.1rem;
+}
+
+.keys-section .mk-curl-desc {
+    font-size: 0.855rem;
+    color: var(--main-text-color);
+    opacity: 0.7;
+    margin: 0;
+}
+
+.keys-section .mk-curl-details {
+    border: 1px solid var(--bs-gray-200);
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+.keys-section .mk-curl-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 1rem;
+    padding: 0.7rem 1rem;
+    border-bottom: 1px solid var(--bs-gray-100);
+}
+
+.keys-section .mk-curl-row:last-child {
+    border-bottom: none;
+}
+
+.keys-section .mk-curl-label {
+    font-size: 0.775rem;
+    font-weight: 600;
+    color: var(--main-text-color);
+    opacity: 0.55;
+    min-width: 140px;
+    flex-shrink: 0;
+    padding-top: 0.1rem;
+}
+
+.keys-section .mk-curl-value {
+    font-size: 0.825rem;
+    font-family: var(--font-family-mono);
+    color: var(--main-text-color);
+    word-break: break-all;
+}
+
+.keys-section .mk-code-block {
+    position: relative;
+    background: color-mix(in srgb, var(--main-text-color) 4%, var(--main-bg-color));
+    border: 1px solid var(--bs-gray-200);
+    border-radius: 10px;
+    padding: 1rem 1rem 1rem 1.1rem;
+    overflow-x: auto;
+}
+
+.keys-section .mk-code-block code {
+    font-size: 0.815rem;
+    font-family: var(--font-family-mono);
+    color: var(--main-text-color);
+    white-space: pre-wrap;
+    word-break: break-all;
+    display: block;
+    padding-right: 2.5rem;
+}
+
+.keys-section .mk-curl-copy-btn {
+    position: absolute;
+    top: 0.6rem;
+    right: 0.6rem;
+    background: var(--main-bg-color);
+    border: 1px solid var(--bs-gray-200);
+    border-radius: 6px;
+    padding: 0.3rem 0.5rem;
+    cursor: pointer;
+    color: var(--main-text-color);
+    opacity: 0.65;
+    transition: opacity 0.15s;
+    font-size: 0.8rem;
+}
+
+.keys-section .mk-curl-copy-btn:hover {
+    opacity: 1;
+}
+
+/* ── "Generate with another KM" section ── */
+.keys-section .mk-add-km-section {
+    margin-top: 0.75rem;
+}
+
+.keys-section .mk-add-km-dropdown {
+    position: relative;
+    display: inline-block;
+}
+
+.keys-section .mk-add-km-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.7rem 1.1rem;
+    border: 1.5px dashed var(--bs-gray-300);
+    border-radius: 10px;
+    background: transparent;
+    color: var(--main-text-color);
+    opacity: 0.65;
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: border-color 0.15s, opacity 0.15s, color 0.15s;
+}
+
+.keys-section .mk-add-km-btn:hover {
+    border-color: var(--primary-main-color);
+    color: var(--primary-main-color);
+    opacity: 1;
+}
+
+.keys-section .mk-add-km-btn:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
+.keys-section .mk-km-dropdown-menu {
+    display: none;
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    min-width: 240px;
+    max-width: 360px;
+    background: #fff;
+    border: 1px solid var(--bs-gray-200);
+    border-radius: 10px;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.1);
+    padding: 0.35rem 0;
+    margin: 0;
+    list-style: none;
+    z-index: 100;
+}
+
+.keys-section .mk-km-dropdown-menu.mk-km-dropdown-open {
+    display: block;
+}
+
+.keys-section .mk-km-dropdown-item {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    padding: 0.55rem 1rem;
+    font-size: 0.855rem;
+    color: var(--main-text-color);
+    cursor: pointer;
+    transition: background 0.12s;
+}
+
+.keys-section .mk-km-dropdown-item:hover {
+    background: var(--primary-light-color);
+    color: var(--primary-main-color);
+}
+
+.keys-section .mk-km-dropdown-item i {
+    font-size: 0.8rem;
+    opacity: 0.5;
+}
+
+.keys-section .mk-km-dropdown-item:hover i {
+    opacity: 1;
+}
+
+.keys-section .mk-add-km-spinner {
+    display: inline-flex;
+    align-items: center;
+    color: var(--primary-main-color);
+}
+
+/* ── Tab content transitions ── */
+.keys-section .mk-km-tab-content .tab-pane {
+    outline: none;
+}
+
+/* ─────────────────────────────────────────────── */
+/* Legacy styles kept for backward compatibility   */
+/* ─────────────────────────────────────────────── */
+
+/* Improved Manage Keys Page Styles - All scoped to .keys-section */
+
+/* Page header positioning - bring it up for better visual appeal */
+.keys-section .container-header {
+    margin-top: -2rem;
+    margin-bottom: 1.5rem;
+}
+
+.keys-section .key-btn-container {
+    display: flex;
+    flex-direction: row;
+    width: 100%;
+    border-bottom: none;
+    margin-bottom: 0;
+  }
+
+  .keys-section .key-btn-container .nav-item {
+    flex: 1;
+  }
+
+  .keys-section .key-btn {
+    width: 100%;
+    padding: 14px 0;
+    text-align: center;
+    font-weight: 500;
+    background: var(--secondary-bg-color);
+    border: 1px solid var(--bs-gray-200);
+    border-bottom: none;
+    color: var(--main-text-color);
+    border-radius: 0;
+    border-top-left-radius: 12px;
+    border-top-right-radius: 12px;
+    position: relative;
+    transition: all 0.2s ease;
+    opacity: 0.7;
+  }
+
+  .keys-section .key-btn:hover {
+    background: var(--main-bg-color);
+    opacity: 0.9;
+  }
+
+  .keys-section .key-btn:focus {
+    outline: 0.1px solid var(--primary-lightest-color);
+    outline-offset: 0.1px;
+  }
+
+  .keys-section .key-btn.active {
+    background: var(--main-bg-color);
+    z-index: 3;
+    border-top-left-radius: 12px;
+    border-top-right-radius: 12px;
+    border: 1px solid var(--bs-gray-200);
+    border-bottom: none;
+    color: var(--primary-main-color);
+    font-weight: 600;
+    opacity: 1;
+    box-shadow:
+      -4px -4px 8px var(--bs-gray-200),
+       4px -4px 8px var(--bs-gray-200);
+  }
+
+  .keys-section #keysTabContent {
+    background: var(--main-bg-color);
+    padding: 24px;
+    border: 1px solid var(--bs-gray-200);
+    border-radius: 0 0 12px 12px;
+    box-shadow:
+      -4px 0 8px var(--bs-gray-200),
+       4px 0 8px var(--bs-gray-200),
+       0 4px 8px var(--bs-gray-200);
+  }
+
+.keys-section .key-action-buttons-row {
+    gap: 8px;
+}
+
+/* Accordion Headers - Changed from primary color to neutral with subtle accent */
+.keys-section .accordion-button {
+    background-color: var(--secondary-bg-color);
+    color: var(--main-text-color);
+    box-shadow: none;
+    font-weight: 600;
+}
+
+.keys-section .accordion-button:not(.collapsed) {
+    background-color: var(--secondary-bg-color);
+    color: var(--main-text-color);
+    box-shadow: none;
+}
+
+.keys-section .accordion-button:hover {
+    background-color: var(--primary-lightest-color);
+}
+
+.keys-section #sandbox-oauth2.accordion-header,
+.keys-section #production-oauth2.accordion-header,
+.keys-section #production-apikey.accordion-header,
+.keys-section #sandbox-apikey.accordion-header {
+    margin-bottom: 0;
+}
+
+.keys-section .accordion-header {
+    background-color: var(--main-bg-color);
+    color: var(--main-text-color);
+    border: 1px solid var(--bs-gray-300);
+    border-radius: var(--bs-accordion-border-radius);
+    padding: 0;
+}
+
+/* Accordion arrow indicator - Darker for better visibility */
+.keys-section .accordion-button::after,
+.keys-section .accordion-button:not(.collapsed)::after {
+    background-color: var(--main-text-color);
+    mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='%23000' d='M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708z'/%3E%3C/svg%3E");
+    -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='%23000' d='M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708z'/%3E%3C/svg%3E");
+    mask-repeat: no-repeat;
+    mask-position: center;
+    -webkit-mask-repeat: no-repeat;
+    -webkit-mask-position: center;
+    background-image: none;
+}
+
+.keys-section .accordion-body {
+    padding: 1.25rem 1.25rem 1.25rem 0;
+    background-color: var(--main-bg-color);
+    border-top: none;
+    max-height: 60vh;
+    overflow-y: auto;
+    overflow-x: hidden;
+    border-bottom-left-radius: var(--bs-accordion-border-radius);
+    border-bottom-right-radius: var(--bs-accordion-border-radius);
+}
+
+.keys-section .accordion-body .input-group {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: stretch;
+    width: 100%;
+}
+
+.keys-section .accordion-body-content {
+    padding-left: 1.25rem;
+    padding-right: 1.25rem;
+}
+
+/* Table Styling in Accordion */
+.keys-section .app-table {
+    border-collapse: separate;
+    border-spacing: 0;
+}
+
+.keys-section .app-table-container {
+    border-radius: 8px;
+    overflow: hidden;
+    border: 1px solid var(--bs-gray-300);
+    background: var(--secondary-bg-color);
+}
+
+/* Table header styling */
+.keys-section .app-table thead {
+    background-color: var(--primary-lightest-color);
+}
+
+.keys-section .app-table thead tr {
+    background-color: var(--primary-lightest-color);
+}
+
+.keys-section .app-table .app-th {
+    background-color: var(--primary-lightest-color);
+    font-weight: 600;
+    color: var(--main-text-color);
+    padding: 0.75rem 1rem;
+}
+
+/* Primary action buttons - scoped to keys section */
+.keys-section .common-btn-primary.btn-sm {
+    background-color: var(--primary-main-color);
+    color: var(--light-text-color);
+    border: none;
+}
+
+.keys-section .common-btn-primary.btn-sm:hover {
+    background-color: var(--primary-light-color);
+}
+
+/* Main Generate Key button styling - make it more compact and visually appealing */
+.keys-section button[id^="generateKeyBtn-"][data-cyid^="generateKey-"] {
+    background-color: var(--primary-main-color) !important;
+    color: var(--light-text-color) !important;
+    border: none !important;
+    border-radius: 0.5rem !important;
+    padding: 0.75rem 1.5rem !important;
+    font-weight: 500 !important;
+    transition: all 0.3s ease !important;
+    width: auto !important;
+    max-width: fit-content !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 0.5rem !important;
+}
+
+.keys-section button[id^="generateKeyBtn-"][data-cyid^="generateKey-"]:hover {
+    background-color: var(--primary-light-color) !important;
+    transform: translateY(-1px) !important;
+}
+
+.keys-section button[id^="generateKeyBtn-"][data-cyid^="generateKey-"]:active {
+    transform: translateY(0) !important;
+}
+
+.keys-section button[id^="generateKeyBtn-"][data-cyid^="generateKey-"] i {
+    font-size: 1rem;
+}
+
+/* API Key Name Modal - already specific enough, but add scoping for consistency */
+.api-key-name-modal-dialog {
+    max-width: 480px;
+    width: 100%;
+}
+
+.api-key-name-modal .custom-modal-content {
+    padding: 1.5rem 1.75rem;
+}
+
+.api-key-name-modal .custom-modal-title {
+    font-size: 1.15rem;
+    font-weight: 600;
+    color: var(--main-text-color);
+}
+
+.api-key-name-modal .form-label {
+    font-size: 0.9rem;
+    font-weight: 500;
+}
+
+.api-key-name-modal .form-control {
+    border-radius: var(--bs-border-radius);
+    border: 1px solid var(--bs-gray-300);
+    padding: 0.675rem;
+    margin-top: 1rem;
+}
+
+/* Consistent focus styling for modal */
+.api-key-name-modal .form-control:focus {
+    border-color: var(--primary-light-color);
+    box-shadow: 0 0 0 0.125rem var(--primary-light-color);
+}
+
+/* Fix modal close button - prevent our styles from affecting it */
+.keys-section .btn-close,
+.api-key-name-modal .btn-close {
+    min-width: auto !important;
+    padding: 0.25em !important;
+    width: 1em !important;
+    height: 1em !important;
+    border: none !important;
+    font-size: 1rem !important;
+    line-height: 1 !important;
+}
+
+.keys-section .btn-close:hover,
+.api-key-name-modal .btn-close:hover {
+    transform: none !important;
+}
+
+.keys-section .app-th:first-child,
+.keys-section .app-td:first-child {
+  padding-left: 1rem;
+}
+
+/* Align table cells properly */
+.keys-section .app-td {
+  vertical-align: middle;
+  padding: 0.75rem 0.5rem;
+}
+
+.keys-section .app-th {
+  vertical-align: middle;
+  padding: 0.75rem 1rem;
+}
+
+/* Form inputs - Better focus states - SCOPED to keys section only */
+.keys-section .form-control:focus {
+    border-color: var(--primary-light-color);
+    box-shadow: 0 0 0 0.125rem var(--primary-light-color);
+}
+
+/* Password toggle container improvements */
+.keys-section .password-toggle-container {
+    position: relative;
+}
+
+.keys-section .password-toggle-container .form-control {
+    padding-right: 80px;
+}
+
+.keys-section .password-toggle-btn,
+.keys-section .password-copy-btn {
+    background: transparent;
+    border: none;
+    color: var(--main-text-color);
+    opacity: 0.6;
+    padding: 0.375rem 0.5rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.keys-section .password-toggle-btn:hover,
+.keys-section .password-copy-btn:hover {
+    color: var(--secondary-main-color);
+    opacity: 1;
+}
+
+/* Improved spacing and visual hierarchy */
+.keys-section .accordion-item {
+    border: 1px solid var(--bs-gray-300);
+    border-radius: 8px;
+    overflow: hidden;
+    transition: border-color 0.2s ease;
+}
+
+.keys-section .accordion-item:hover {
+    border-color: var(--bs-gray-400);
+}
+
+/* Table row hover effect */
+.keys-section .app-table tbody tr:hover {
+    background-color: var(--secondary-bg-color);
+}
+
+/* Better button spacing and alignment in action rows */
+.keys-section .api-key-actions {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+/* Standardize API key action button sizes and alignment */
+.keys-section .api-key-actions button {
+    min-width: 130px;
+    /* padding: 0.425rem 1rem !important; */
+    /* font-size: 0.875rem; */
+    text-align: center;
+    justify-content: center;
+    white-space: nowrap;
+    font-weight: 500;
+}
+
+.keys-section .api-key-actions button i {
+    margin-right: 0.25rem;
+}
+
+/* Ensure consistent button heights */
+.keys-section .api-key-actions .common-btn-outlined {
+    height: auto;
+    line-height: 1.5;
+}

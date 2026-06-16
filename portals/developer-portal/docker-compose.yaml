@@ -1,5 +1,5 @@
 # --------------------------------------------------------------------
-# Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+# Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
 #
 # WSO2 LLC. licenses this file to you under the Apache License,
 # Version 2.0 (the "License"); you may not use this file except
@@ -16,37 +16,70 @@
 # under the License.
 # --------------------------------------------------------------------
 
-services:
-  postgres:
-    image: postgres:latest
-    container_name: devportal-postgres
-    environment:
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: devportal
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql
-      - ./artifacts/script.sql:/docker-entrypoint-initdb.d/init.sql
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d devportal"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
+# Developer Portal — Docker Compose (development / build-from-source variant)
+#
+# NOTE: distribution/docker-compose.yaml ships the standalone variant (pre-built image) — keep
+#       devportal service config in sync there too. Documented differences that should
+#       diverge: uses `build: .` here vs pre-built GHCR image in distribution.
+#
+# Quick start:
+#   docker compose up
+#   Then open https://localhost:3000/default/views/default  (accept the self-signed cert warning)
+#   Login: admin / admin  (or developer / developer)
+#
+# TLS:
+#   A self-signed certificate is generated automatically on first start and stored
+#   in the certs_data volume. Your browser will show a security warning — click
+#   "Proceed" (or "Advanced → Proceed") to continue.
+#   To use your own certificate, replace the certs_data volume with a bind-mount:
+#     - ./my-certs:/app/certs:ro
+#   and ensure it contains server.crt and server.key.
+#
+# Configuration:
+#   Edit configs/config.yaml (copied from sample.config.yaml) to customise settings.
+#   Every config value can be overridden with a DP_* env var.
+#   Create a .env file at the project root for persistent overrides.
+#   See sample.config.yaml for the full list of settings.
 
+services:
   devportal:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: devportal
+    build: .
+    image: ghcr.io/wso2/api-platform/developer-portal:0.2.0-SNAPSHOT
     ports:
-      - "3001:3001"
+      - "3000:3000"
     volumes:
-      - ./config.json:/app/config.json:ro
-      - ./secret.json:/app/secret.json:ro
-    depends_on:
-      postgres:
-        condition: service_healthy
+      # Mount config from the configs/ directory (copy of sample.config.yaml).
+      - ./configs/config.yaml:/app/configs/config.yaml:ro
+      # Persist the SQLite database across container restarts.
+      - sqlite_data:/app/data
+      # Persist the auto-generated TLS certificate across container restarts.
+      # To use your own cert, replace with: - ./my-certs:/app/certs:ro
+      - certs_data:/app/certs
+    environment:
+      # Database — SQLite (default). Override DP_DB_DIALECT and related vars to use postgres.
+      DP_DB_DIALECT: sqlite
+      DP_DB_STORAGE: /app/data/devportal.db
+
+      # HTTPS — a self-signed cert is generated automatically on first start.
+      # To switch back to plain HTTP, set DP_ADVANCED_HTTP=true and DP_BASEURL=http://localhost:3000.
+      DP_ADVANCED_HTTP: "false"
+      DP_BASEURL: "https://localhost:3000"
+      DP_SERVERCERTS_PATHTOCERT: "/app/certs/server.crt"
+      DP_SERVERCERTS_PATHTOPK: "/app/certs/server.key"
+      DP_SERVERCERTS_PATHTOCA: "/app/certs/server.crt"
+
+      # Seed a default organization on startup (idempotent)
+      DP_DEFAULTORGNAME: "default"
+
+      # Auto-generate default subscription plans for every new org
+      DP_GENERATEDEFAULTSUBPOLICIES: "true"
+
+      # Log to console only (no rotating log files)
+      DP_LOGGING_CONSOLEONLY: "true"
+    env_file:
+      - path: .env
+        required: false   # Optional — create a .env file to add your own overrides
 
 volumes:
-  postgres_data:
+  sqlite_data:
+  certs_data:

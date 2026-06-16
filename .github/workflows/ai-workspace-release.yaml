@@ -1,0 +1,137 @@
+name: AI Workspace Release
+
+on:
+  workflow_dispatch:
+
+env:
+  DOCKER_REGISTRY: ghcr.io/${{ github.repository_owner }}/api-platform
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      packages: write
+      pull-requests: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set Docker registry (lowercase owner)
+        run: |
+          OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          echo "DOCKER_REGISTRY=ghcr.io/${OWNER}/api-platform" >> $GITHUB_ENV
+
+      - name: Determine version from VERSION file
+        id: version
+        run: |
+          VERSION=$(make -C portals/ai-workspace version-get-release --no-print-directory)
+          echo "Releasing ai-workspace version: ${VERSION}"
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+
+      - name: Validate release tag is available
+        run: |
+          VERSION=${{ steps.version.outputs.version }}
+          if git ls-remote --exit-code --tags origin "refs/tags/ai-workspace/v${VERSION}" >/dev/null 2>&1; then
+            echo "Release tag ai-workspace/v${VERSION} already exists"
+            exit 1
+          fi
+
+      - name: Set version
+        run: |
+          VERSION=${{ steps.version.outputs.version }}
+          make -C portals/ai-workspace version-set VERSION=${VERSION}
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: linux/amd64,linux/arm64
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver: docker-container
+
+      - name: Build Docker image for testing
+        run: make -C portals/ai-workspace build
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.API_PLATFORM_BOT_TOKEN }}
+
+      - name: Build and push multi arch Docker image
+        run: make -C portals/ai-workspace build-and-push-multiarch
+
+      - name: Create and push tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
+            git commit -am "Release ai-workspace version ${{ steps.version.outputs.version }}"
+          fi
+          git tag -a ai-workspace/v${{ steps.version.outputs.version }} -m "AI Workspace ${{ steps.version.outputs.version }}"
+          git push origin ai-workspace/v${{ steps.version.outputs.version }}
+
+      - name: Build distribution zip
+        run: make -C portals/ai-workspace dist
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ai-workspace/v${{ steps.version.outputs.version }}
+          name: AI Workspace ${{ steps.version.outputs.version }}
+          body: |
+            ## AI Workspace Release ${{ steps.version.outputs.version }}
+
+            ### Docker Image
+            ```bash
+            docker pull ${{ env.DOCKER_REGISTRY }}/ai-workspace:${{ steps.version.outputs.version }}
+            ```
+
+            ### Supported Platforms
+            - `linux/amd64`
+            - `linux/arm64`
+
+            ### Distribution
+            The attached `wso2apip-ai-workspace-${{ steps.version.outputs.version }}.zip` contains the
+            standalone AI Workspace + Platform API distribution (docker-compose and configs).
+          files: portals/ai-workspace/target/wso2apip-ai-workspace-${{ steps.version.outputs.version }}.zip
+          draft: true
+          prerelease: ${{ contains(steps.version.outputs.version, '-') }}
+          token: ${{ secrets.API_PLATFORM_BOT_TOKEN }}
+
+      - name: Bump to next dev version
+        run: make -C portals/ai-workspace version-bump-next-dev
+
+      - name: Commit version bump
+        run: |
+          if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
+            git commit -am "Bump ai-workspace to next dev version"
+          else
+            echo "No changes to commit"
+          fi
+
+      - name: Create PR for version bump
+        id: create-pr
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.API_PLATFORM_BOT_TOKEN }}
+          add-paths: |
+            portals/ai-workspace/VERSION
+            portals/ai-workspace/docker-compose.yaml
+          commit-message: "Bump ai-workspace to next dev version"
+          title: "chore: Bump ai-workspace to next dev version"
+          body: |
+            Automated version bump after release `ai-workspace/v${{ steps.version.outputs.version }}`
+
+            This PR bumps the ai-workspace version to the next development version.
+          branch: ai-workspace-version-bump-${{ github.run_id }}
+          base: main
+          delete-branch: true
+          labels: |
+            automated
+            version-bump

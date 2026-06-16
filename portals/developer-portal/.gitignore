@@ -3,8 +3,6 @@
 
 /dist
 
-/generated-sdks
-
 # logs
 /logs
 *.log
@@ -94,6 +92,11 @@ eslint.config.mjs
 
 .prettierrc
 
+config*.json
+secret*.json
+config*.yaml
 resources/default-layout
 resources/mock
 
+config.yaml
+.env

@@ -19,6 +19,7 @@ package analytics
 
 import (
 	"testing"
+	"time"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	v3 "github.com/envoyproxy/go-control-plane/envoy/data/accesslog/v3"
@@ -41,6 +42,35 @@ type mockPublisher struct {
 func (m *mockPublisher) Publish(event *dto.Event) {
 	m.called = true
 	m.event = event
+}
+
+func validAnalyticsConfigForValidation(analytics config.AnalyticsConfig) *config.Config {
+	cfg := &config.Config{
+		PolicyEngine: config.PolicyEngine{
+			Server: config.ServerConfig{ExtProcPort: 9001},
+			Admin: config.AdminConfig{
+				Enabled:    true,
+				Port:       9002,
+				AllowedIPs: []string{"127.0.0.1"},
+			},
+			ConfigMode: config.ConfigModeConfig{Mode: "file"},
+			FileConfig: config.FileConfigConfig{Path: "configs/policy-chains.yaml"},
+			Logging:    config.LoggingConfig{Level: "info", Format: "json"},
+			PythonExecutor: config.PythonExecutorConfig{
+				Server:  config.PythonExecutorServerConfig{Port: 9010, Host: "localhost"},
+				Timeout: 30 * time.Second,
+			},
+		},
+		Analytics: analytics,
+	}
+	cfg.Analytics.Enabled = true
+	cfg.Analytics.AccessLogsServiceCfg = config.AccessLogsServiceConfig{
+		Mode:                  "uds",
+		ShutdownTimeout:       600 * time.Second,
+		ExtProcMaxMessageSize: 1000000,
+		ExtProcMaxHeaderLimit: 8192,
+	}
+	return cfg
 }
 
 // =============================================================================
@@ -496,7 +526,8 @@ func TestPrepareAnalyticEvent_WithRequestResponseHeaders(t *testing.T) {
 func TestPrepareAnalyticEvent_WithPayloadsEnabled(t *testing.T) {
 	cfg := &config.Config{
 		Analytics: config.AnalyticsConfig{
-			AllowPayloads: true,
+			SendRequestBody:  true,
+			SendResponseBody: true,
 		},
 	}
 	analytics := NewAnalytics(cfg)
@@ -521,7 +552,8 @@ func TestPrepareAnalyticEvent_WithPayloadsEnabled(t *testing.T) {
 func TestPrepareAnalyticEvent_WithPayloadsDisabled(t *testing.T) {
 	cfg := &config.Config{
 		Analytics: config.AnalyticsConfig{
-			AllowPayloads: false,
+			SendRequestBody:  false,
+			SendResponseBody: false,
 		},
 	}
 	analytics := NewAnalytics(cfg)
@@ -534,8 +566,128 @@ func TestPrepareAnalyticEvent_WithPayloadsDisabled(t *testing.T) {
 	event := analytics.prepareAnalyticEvent(logEntry)
 
 	require.NotNil(t, event)
-	// Payloads should not be included when disabled
 	_, ok := event.Properties["request_payload"]
+	assert.False(t, ok)
+	_, ok = event.Properties["response_payload"]
+	assert.False(t, ok)
+}
+
+func TestPrepareAnalyticEvent_RequestPayloadOnly(t *testing.T) {
+	cfg := &config.Config{
+		Analytics: config.AnalyticsConfig{
+			SendRequestBody:  true,
+			SendResponseBody: false,
+		},
+	}
+	analytics := NewAnalytics(cfg)
+
+	logEntry := createLogEntryWithMetadata(map[string]string{
+		"request_payload":  `{"key": "value"}`,
+		"response_payload": `{"result": "ok"}`,
+	})
+
+	event := analytics.prepareAnalyticEvent(logEntry)
+
+	require.NotNil(t, event)
+	reqPayload, ok := event.Properties["request_payload"]
+	require.True(t, ok)
+	assert.Equal(t, `{"key": "value"}`, reqPayload)
+	_, ok = event.Properties["response_payload"]
+	assert.False(t, ok)
+}
+
+func TestPrepareAnalyticEvent_ResponsePayloadOnly(t *testing.T) {
+	cfg := &config.Config{
+		Analytics: config.AnalyticsConfig{
+			SendRequestBody:  false,
+			SendResponseBody: true,
+		},
+	}
+	analytics := NewAnalytics(cfg)
+
+	logEntry := createLogEntryWithMetadata(map[string]string{
+		"request_payload":  `{"key": "value"}`,
+		"response_payload": `{"result": "ok"}`,
+	})
+
+	event := analytics.prepareAnalyticEvent(logEntry)
+
+	require.NotNil(t, event)
+	_, ok := event.Properties["request_payload"]
+	assert.False(t, ok)
+	respPayload, ok := event.Properties["response_payload"]
+	require.True(t, ok)
+	assert.Equal(t, `{"result": "ok"}`, respPayload)
+}
+
+func TestPrepareAnalyticEvent_LegacyAllowPayloadsFallback(t *testing.T) {
+	cfg := validAnalyticsConfigForValidation(config.AnalyticsConfig{
+		AllowPayloads: true,
+	})
+	require.NoError(t, cfg.Validate())
+
+	analytics := NewAnalytics(cfg)
+
+	logEntry := createLogEntryWithMetadata(map[string]string{
+		"request_payload":  `{"key": "value"}`,
+		"response_payload": `{"result": "ok"}`,
+	})
+
+	event := analytics.prepareAnalyticEvent(logEntry)
+
+	require.NotNil(t, event)
+	reqPayload, ok := event.Properties["request_payload"]
+	require.True(t, ok)
+	assert.Equal(t, `{"key": "value"}`, reqPayload)
+	respPayload, ok := event.Properties["response_payload"]
+	require.True(t, ok)
+	assert.Equal(t, `{"result": "ok"}`, respPayload)
+}
+
+func TestPrepareAnalyticEvent_AllowPayloadsWithoutValidationDoesNotCapture(t *testing.T) {
+	cfg := &config.Config{
+		Analytics: config.AnalyticsConfig{
+			AllowPayloads: true,
+		},
+	}
+	analytics := NewAnalytics(cfg)
+
+	logEntry := createLogEntryWithMetadata(map[string]string{
+		"request_payload":  `{"key": "value"}`,
+		"response_payload": `{"result": "ok"}`,
+	})
+
+	event := analytics.prepareAnalyticEvent(logEntry)
+
+	require.NotNil(t, event)
+	_, ok := event.Properties["request_payload"]
+	assert.False(t, ok)
+	_, ok = event.Properties["response_payload"]
+	assert.False(t, ok)
+}
+
+func TestPrepareAnalyticEvent_NewFlagsOverrideLegacyAllowPayloads(t *testing.T) {
+	cfg := validAnalyticsConfigForValidation(config.AnalyticsConfig{
+		AllowPayloads:    true,
+		SendRequestBody:  true,
+		SendResponseBody: false,
+	})
+	require.NoError(t, cfg.Validate())
+
+	analytics := NewAnalytics(cfg)
+
+	logEntry := createLogEntryWithMetadata(map[string]string{
+		"request_payload":  `{"key": "value"}`,
+		"response_payload": `{"result": "ok"}`,
+	})
+
+	event := analytics.prepareAnalyticEvent(logEntry)
+
+	require.NotNil(t, event)
+	reqPayload, ok := event.Properties["request_payload"]
+	require.True(t, ok)
+	assert.Equal(t, `{"key": "value"}`, reqPayload)
+	_, ok = event.Properties["response_payload"]
 	assert.False(t, ok)
 }
 

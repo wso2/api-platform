@@ -9,7 +9,7 @@
                     </button>
                     <form id="idp-delete" class="d-inline">
                         <button type="button" class="common-btn-outlined btn-outline-danger"
-                            onclick="if (confirm('Are you sure you want to delete this Provider?')) { deleteIDP('{{orgID}}'); }">
+                            onclick="openWarningModal('DeleteIDP', '{{orgID}}', '', '', '', '', '')">
                             <i class="bi bi-trash"></i> Delete
                         </button>
                     </form>

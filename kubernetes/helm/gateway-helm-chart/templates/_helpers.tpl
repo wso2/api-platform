@@ -60,3 +60,53 @@ app.kubernetes.io/component: {{ $component }}
 {{- default "default" .Values.serviceAccount.name -}}
 {{- end -}}
 {{- end -}}
+
+{{/*
+Render a component image reference, applying the WSO2 subscription registry rewrite
+only when wso2.subscription.imagePullSecret is set AND the repository value is
+exactly the chart-canonical default for this component. Any explicit override —
+including overrides that happen to stay under `ghcr.io/wso2/api-platform/` (e.g.
+SHA-pinned references, canary tags) — passes through unchanged.
+
+Args (dict): root, repository, defaultRepository, tag
+*/}}
+{{- define "gateway-operator.componentImage" -}}
+{{- $root := .root -}}
+{{- $repo := .repository -}}
+{{- $defaultRepo := .defaultRepository -}}
+{{- $tag := .tag -}}
+{{- $sub := $root.Values.wso2.subscription.imagePullSecret -}}
+{{- $defaultPrefix := "ghcr.io/wso2/api-platform/" -}}
+{{- $wso2Prefix := "registry.wso2.com/wso2-api-platform/" -}}
+{{- if and (ne $sub "") (eq $repo $defaultRepo) (hasPrefix $defaultPrefix $repo) -}}
+{{- printf "%s%s:%s" $wso2Prefix (trimPrefix $defaultPrefix $repo) $tag -}}
+{{- else -}}
+{{- printf "%s:%s" $repo $tag -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Render an `imagePullSecrets:` YAML block (without indentation) by merging:
+  1. wso2.subscription.imagePullSecret (if set)
+  2. .Values.imagePullSecrets (global)
+  3. component-level imagePullSecrets (passed in)
+
+Returns an empty string when no secrets resolve, so callers can wrap in
+`{{- with (include ...) }} {{- . | nindent N }} {{- end }}`.
+
+Args (dict): root, componentPullSecrets
+*/}}
+{{- define "gateway-operator.componentImagePullSecretsBlock" -}}
+{{- $root := .root -}}
+{{- $componentPullSecrets := default (list) .componentPullSecrets -}}
+{{- $globalPullSecrets := default (list) $root.Values.imagePullSecrets -}}
+{{- $sub := $root.Values.wso2.subscription.imagePullSecret -}}
+{{- $subList := ternary (list $sub) (list) (ne $sub "") -}}
+{{- $all := concat $subList $globalPullSecrets $componentPullSecrets -}}
+{{- if $all -}}
+imagePullSecrets:
+{{- range $all }}
+  - name: {{ . }}
+{{- end }}
+{{- end -}}
+{{- end -}}

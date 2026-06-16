@@ -65,6 +65,7 @@ type MockStorage struct {
 	apiKeys           map[string]*models.APIKey
 	certs             []*models.StoredCertificate
 	secrets           map[string]*models.Secret
+	webhookSecrets    map[string]*models.WebhookSecret
 	subscriptions     map[string]*models.Subscription
 	subscriptionPlans map[string]*models.SubscriptionPlan
 	saveErr           error
@@ -102,6 +103,7 @@ func NewMockStorage() *MockStorage {
 		apiKeys:           make(map[string]*models.APIKey),
 		certs:             make([]*models.StoredCertificate, 0),
 		secrets:           make(map[string]*models.Secret),
+		webhookSecrets:    make(map[string]*models.WebhookSecret),
 		subscriptions:     make(map[string]*models.Subscription),
 		subscriptionPlans: make(map[string]*models.SubscriptionPlan),
 	}
@@ -924,6 +926,85 @@ func (m *MockStorage) SecretExists(handle string) (bool, error) {
 	}
 	_, ok := m.secrets[handle]
 	return ok, nil
+}
+
+func (m *MockStorage) SaveWebhookSecret(secret *models.WebhookSecret) error {
+	if m.saveErr != nil {
+		return m.saveErr
+	}
+	m.webhookSecrets[secret.UUID] = secret
+	return nil
+}
+
+func (m *MockStorage) GetWebhookSecretsByArtifact(artifactUUID string) ([]*models.WebhookSecret, error) {
+	if m.getErr != nil {
+		return nil, m.getErr
+	}
+	var result []*models.WebhookSecret
+	for _, s := range m.webhookSecrets {
+		if s.ArtifactUUID == artifactUUID {
+			result = append(result, s)
+		}
+	}
+	return result, nil
+}
+
+func (m *MockStorage) GetWebhookSecretByArtifactAndName(artifactUUID, name string) (*models.WebhookSecret, error) {
+	if m.getErr != nil {
+		return nil, m.getErr
+	}
+	for _, s := range m.webhookSecrets {
+		if s.ArtifactUUID == artifactUUID && s.Name == name {
+			return s, nil
+		}
+	}
+	return nil, storage.ErrNotFound
+}
+
+func (m *MockStorage) GetWebhookSecretByUUID(uuid string) (*models.WebhookSecret, error) {
+	if m.getErr != nil {
+		return nil, m.getErr
+	}
+	s, ok := m.webhookSecrets[uuid]
+	if !ok {
+		return nil, storage.ErrNotFound
+	}
+	return s, nil
+}
+
+func (m *MockStorage) UpdateWebhookSecret(secret *models.WebhookSecret) error {
+	if m.updateErr != nil {
+		return m.updateErr
+	}
+	if _, ok := m.webhookSecrets[secret.UUID]; !ok {
+		return storage.ErrNotFound
+	}
+	m.webhookSecrets[secret.UUID] = secret
+	return nil
+}
+
+func (m *MockStorage) DeleteWebhookSecret(artifactUUID, name string) error {
+	if m.deleteErr != nil {
+		return m.deleteErr
+	}
+	for uuid, s := range m.webhookSecrets {
+		if s.ArtifactUUID == artifactUUID && s.Name == name {
+			delete(m.webhookSecrets, uuid)
+			return nil
+		}
+	}
+	return storage.ErrNotFound
+}
+
+func (m *MockStorage) GetAllWebhookSecrets() ([]*models.WebhookSecret, error) {
+	if m.getErr != nil {
+		return nil, m.getErr
+	}
+	result := make([]*models.WebhookSecret, 0, len(m.webhookSecrets))
+	for _, s := range m.webhookSecrets {
+		result = append(result, s)
+	}
+	return result, nil
 }
 
 func (m *MockControlPlaneClient) SyncArtifactsToOnPremAPIM(apimConfig *utils.APIMConfig) error {

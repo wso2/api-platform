@@ -89,6 +89,14 @@ func (e *KafkaBrokerDriver) Replay(ctx context.Context, topic string, handler co
 	return ReplayTopic(ctx, e.cfg, topic, handler)
 }
 
+// Watch tails a topic from the current offset and delivers all future messages
+// to handler until ctx is cancelled. consumerID is used as a stable consumer
+// group suffix so Kafka tracks the offset across restarts.
+func (e *KafkaBrokerDriver) Watch(_ context.Context, consumerID string, topic string, handler connectors.MessageHandler) (connectors.Receiver, error) {
+	groupID := "event-gateway-sync-" + consumerID
+	return NewConsumer(e.cfg, groupID, []string{topic}, handler)
+}
+
 // TopicExists checks whether a topic exists in the Kafka cluster.
 func (e *KafkaBrokerDriver) TopicExists(ctx context.Context, topic string) (bool, error) {
 	topics, err := e.admin.ListTopics(ctx)

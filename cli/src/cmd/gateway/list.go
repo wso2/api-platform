@@ -46,6 +46,12 @@ var listCmd = &cobra.Command{
 	},
 }
 
+var listPlatform string
+
+func init() {
+	utils.AddStringFlag(listCmd, utils.FlagPlatform, &listPlatform, "", "Platform name")
+}
+
 func runListCommand() error {
 	// Load existing config
 	cfg, err := config.LoadConfig()
@@ -54,16 +60,22 @@ func runListCommand() error {
 	}
 
 	// Check if there are any gateways
-	if len(cfg.Gateways) == 0 {
-		fmt.Println("No gateways configured")
+	resolvedPlatform := cfg.ResolvePlatform(listPlatform)
+	platform := cfg.Platforms[resolvedPlatform]
+	if platform == nil || len(platform.Gateways) == 0 {
+		fmt.Printf("No gateways configured for platform %s\n", resolvedPlatform)
 		return nil
 	}
 
 	// Display as table
-	headers := []string{"NAME", "SERVER", "AUTH"}
-	rows := make([][]string, 0, len(cfg.Gateways))
-	for _, gw := range cfg.Gateways {
-		rows = append(rows, []string{gw.Name, gw.Server, gw.Auth})
+	headers := []string{"PLATFORM", "NAME", "SERVER", "AUTH", "CURRENT"}
+	rows := make([][]string, 0, len(platform.Gateways))
+	for name, gw := range platform.Gateways {
+		current := ""
+		if name == platform.ActiveGateway {
+			current = "*"
+		}
+		rows = append(rows, []string{resolvedPlatform, name, gw.Server, gw.Auth.Type, current})
 	}
 	utils.PrintTable(headers, rows)
 

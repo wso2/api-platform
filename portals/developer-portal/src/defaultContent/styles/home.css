@@ -5,6 +5,71 @@
 .hero-content {
   border-radius: 0.75rem;
   padding-left: 3rem;
+  position: relative;
+}
+
+.hero-buttons {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: nowrap;
+  max-width: 660px;
+}
+
+.hero-buttons .common-btn-primary {
+  height: 42px;
+  padding: 0 18px;
+  display: inline-flex;
+  align-items: center;
+}
+
+.discover-ai-btn {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(135deg, rgba(168,85,247,0.9), rgba(124,58,237,0.9), rgba(236,72,153,0.85));
+  animation: discover-glow-pulse 3s ease-in-out infinite;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.discover-ai-btn::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 45%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+  animation: discover-shimmer 2.8s ease-in-out infinite;
+  pointer-events: none;
+}
+
+.discover-ai-btn:hover {
+  transform: translateY(-2px) scale(1.04);
+  box-shadow: 0 0 8px 2px rgba(200,80,200,0.25);
+}
+
+@keyframes discover-glow-pulse {
+  0%, 100% { box-shadow: 0 0 3px 1px rgba(168,85,247,0.15); }
+  50%       { box-shadow: 0 0 6px 2px rgba(236,72,153,0.25); }
+}
+
+@keyframes discover-shimmer {
+  0%   { transform: translateX(-120%) skewX(-15deg); }
+  100% { transform: translateX(280%) skewX(-15deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .discover-ai-btn {
+    animation: none;
+    transition: none;
+  }
+  .discover-ai-btn::before {
+    animation: none;
+  }
+  .discover-ai-btn:hover {
+    transform: none;
+    box-shadow: none;
+  }
 }
 
 .hero-title {
@@ -145,7 +210,8 @@
   }
 
   .hero-buttons {
-    flex-direction: column;
+    flex-wrap: wrap;
+    max-width: 100%;
   }
 
   .hero-image-container {

@@ -19,6 +19,8 @@ const express = require('express');
 const router = express.Router();
 const authController = require('../controllers/authController');
 const registerPartials = require('../middlewares/registerPartials');
+const { validateAuthentication } = require('../middlewares/ensureAuthenticated');
+const constants = require('../utils/constants');
 
 // router.get('/portal/login', registerPartials, authController.login);
 // router.get('/portal/callback', authController.handleCallback);
@@ -26,6 +28,7 @@ const registerPartials = require('../middlewares/registerPartials');
 // router.get('/portal/signup', authController.handleSignUp);
 
 router.get('/:orgName/views/:viewName/login', registerPartials, authController.login);
+router.post('/:orgName/views/:viewName/login', authController.handleLocalLogin);
 router.get('/:orgName/callback', authController.handleCallback);
 router.get('/signin', authController.handleCallback);
 router.get('/:orgName/views/:viewName/logout', authController.handleLogOut);

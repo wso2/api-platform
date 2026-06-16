@@ -31,7 +31,7 @@
           <div class="defaultapi-endpoint-row col-12 col-xl-9">
             <div class="defaultapi-endpoint-content">
               <div class="defaultapi-endpoint-url-container d-flex">
-                <pre id="token_mcp_prod_url" class="defaultapi-endpoint-url token-text mb-0">{{resources.serverDetails.productionURL}}/mcp</pre>                
+                <pre id="token_mcp_prod_url" class="defaultapi-endpoint-url token-text mb-0">{{resources.serverDetails.productionURL}}</pre>                
                   <a class="copy-button" aria-label="Copy token" type="button" onclick="copyToken('mcp_prod_url')">
                     <i class="bi bi-copy"></i>
                   </a>
@@ -43,9 +43,11 @@
     </div>
       <div class="defaultapi-section">
       <div class="row">
+        <div class="col-12 col-lg-7 mb-4">
+        {{#if schemaDefinition.tools.length}}
         <div class="container-header mb-4">Tools</div>
-        <div class="defaultapi-resources col-12 col-lg-6 mb-4" style="margin-right: 30px;">
-          {{#each schemaDefinition}}
+        <div class="defaultapi-resources mb-4">
+          {{#each schemaDefinition.tools}}
             <div class="accordion-set">
               <button
                 class="accordion-header"
@@ -67,6 +69,63 @@
             </div>
           {{/each}}
         </div>
+        {{/if}}
+        {{#if schemaDefinition.resources.length}}
+        <div class="container-header mb-4">Resources</div>
+        <div class="defaultapi-resources mb-4">
+          {{#each schemaDefinition.resources}}
+            <div class="accordion-set">
+              <button
+                class="accordion-header"
+                onclick="this.classList.toggle('open')"
+              >
+                <span>{{this.name}}</span>
+                <i class="chevron-icon bi bi-chevron-down"></i>
+              </button>
+              <div class="accordion-body">
+                {{#if this.description}}
+                  <p class="accordion-summary">{{this.description}}</p>
+                {{else}}
+                  <p class="accordion-summary">No summary available.</p>
+                {{/if}}
+                {{#if this.uri}}
+                  <p class="accordion-summary"><strong>URI:</strong> {{this.uri}}</p>
+                {{/if}}
+                {{#if this.mimeType}}
+                  <p class="accordion-summary"><strong>MIME Type:</strong> {{this.mimeType}}</p>
+                {{/if}}
+              </div>
+            </div>
+          {{/each}}
+        </div>
+        {{/if}}
+        {{#if schemaDefinition.prompts.length}}
+        <div class="container-header mb-4">Prompts</div>
+        <div class="defaultapi-resources mb-4">
+          {{#each schemaDefinition.prompts}}
+            <div class="accordion-set">
+              <button
+                class="accordion-header"
+                onclick="this.classList.toggle('open')"
+              >
+                <span>{{this.name}}</span>
+                <i class="chevron-icon bi bi-chevron-down"></i>
+              </button>
+              <div class="accordion-body">
+                {{#if this.description}}
+                  <p class="accordion-summary">{{this.description}}</p>
+                {{else}}
+                  <p class="accordion-summary">No summary available.</p>
+                {{/if}}
+                {{#if this.arguments}}
+                    <pre class="json-block"><code>    {{jsonBeautify this.arguments}}</code></pre>
+                {{/if}}
+              </div>
+            </div>
+          {{/each}}
+        </div>
+        {{/if}}
+        </div>
         <div class="defaultapi-resources-mcp col-12 col-lg-5 mb-4">
           <div class="mcp-json-block-header">MCP Server Configuration</div>
         <div class="server-config-container" style="position: relative;">
@@ -75,7 +134,7 @@
 {
   <span class="schema-title">"servers"</span>: {
     <span class="schema-title">"{{apiMetadata.apiInfo.apiName}}"</span>: {
-      <span class="schema-title">"url"</span>: <span class="schema-content">"{{resources.serverDetails.productionURL}}/mcp"</span>,
+      <span class="schema-title">"url"</span>: <span class="schema-content">"{{resources.serverDetails.productionURL}}"</span>,
       <span class="schema-title">"type"</span>: <span class="schema-content">"http"</span>,
       <span class="schema-title">"headers"</span>: {
         <span class="schema-title">"Authorization"</span>: <span class="schema-content">"Bearer ${token}</span>"

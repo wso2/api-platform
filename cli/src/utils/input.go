@@ -98,3 +98,47 @@ func HasCredentials(authType, username, password, token string) bool {
 		return false
 	}
 }
+
+// PromptDevPortalAPIKey prompts for a DevPortal API key with masked input.
+// Empty values indicate the user chose to use the environment variable instead.
+func PromptDevPortalAPIKey() (string, error) {
+	return PromptPassword(fmt.Sprintf("Enter DevPortal API key (leave empty to use %s env var): ", EnvDevPortalAPIKey))
+}
+
+// PromptDevPortalCredentials prompts for DevPortal credentials based on auth type.
+// Empty values indicate user chose to use environment variables.
+func PromptDevPortalCredentials(authType string) (username, password, token, apiKey string, err error) {
+	switch authType {
+	case AuthTypeBasic:
+		username, err = PromptInput(fmt.Sprintf("Enter DevPortal username (leave empty to use %s env var): ", EnvDevPortalUsername))
+		if err != nil {
+			return "", "", "", "", err
+		}
+
+		password, err = PromptPassword(fmt.Sprintf("Enter DevPortal password (leave empty to use %s env var): ", EnvDevPortalPassword))
+		if err != nil {
+			return "", "", "", "", err
+		}
+
+		return username, password, "", "", nil
+
+	case AuthTypeOAuth:
+		token, err = PromptPassword(fmt.Sprintf("Enter DevPortal OAuth token (leave empty to use %s env var): ", EnvDevPortalToken))
+		if err != nil {
+			return "", "", "", "", err
+		}
+
+		return "", "", token, "", nil
+
+	case AuthTypeAPIKey:
+		apiKey, err = PromptPassword(fmt.Sprintf("Enter DevPortal API key (leave empty to use %s env var): ", EnvDevPortalAPIKey))
+		if err != nil {
+			return "", "", "", "", err
+		}
+
+		return "", "", "", apiKey, nil
+
+	default:
+		return "", "", "", "", fmt.Errorf("unsupported devportal auth type '%s'", authType)
+	}
+}

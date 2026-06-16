@@ -1,3 +1,28 @@
+// Devportal API URL builder — single place that knows the org-scoped prefix
+// `/o/{orgId}/{base}/{version}`. The base segment and version are injected by
+// the server (window.__DEVPORTAL_API__, set in the layout); the fallback keeps
+// pages working if the global is ever missing. Defined synchronously (outside
+// DOMContentLoaded) so it is available before any page script's handlers run.
+(function () {
+    var cfg = window.__DEVPORTAL_API__ || { base: 'devportal', version: 'v1' };
+    window.devportalApi = {
+        // Org-scoped resource: org('abc', '/subscriptions') => '/o/abc/devportal/v1/subscriptions'
+        org: function (orgId, path) {
+            return '/o/' + encodeURIComponent(orgId) + '/' + cfg.base + '/' + cfg.version + (path || '');
+        },
+        // Root resource: root('/applications') => '/applications'
+        root: function (path) {
+            return path || '/';
+        },
+        // Per-session CSRF token from the XSRF-TOKEN cookie, to send as
+        // X-CSRF-Token on mutating requests (see csrfProtection middleware).
+        csrfToken: function () {
+            var m = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]+)/);
+            return m ? decodeURIComponent(m[1]) : '';
+        },
+    };
+})();
+
 document.addEventListener("DOMContentLoaded", function () {
     const sidebar = document.getElementById('sidebar');
     const collapseBtn = document.getElementById('collapseBtn');
@@ -53,13 +78,15 @@ document.addEventListener("DOMContentLoaded", function () {
     // Function to show loading state on subscription button
     window.showSubscribeButtonLoading = function(button) {
         if (button) {
-            // Store original text
-            button.dataset.originalText = button.innerHTML;
+            if (!button.dataset.originalText) {
+                button.dataset.originalText = button.innerHTML;
+            }
             button.disabled = true;
 
-            if (button.textContent === 'Subscribe') {
+            const trimmed = (button.textContent || '').trim();
+            if (trimmed === 'Subscribe') {
                 button.textContent = 'Subscribing...';
-            } else if (button.textContent === 'Update') {
+            } else if (trimmed === 'Update') {
                 button.textContent = 'Updating...';
             }
         }
@@ -70,6 +97,7 @@ document.addEventListener("DOMContentLoaded", function () {
         if (button && button.dataset.originalText) {
             button.innerHTML = button.dataset.originalText;
             button.disabled = false;
+            delete button.dataset.originalText;
         }
     };
 
@@ -78,8 +106,10 @@ document.addEventListener("DOMContentLoaded", function () {
         const currentPath = window.location.pathname;
         const navLinks = document.querySelectorAll('.nav-link');
         const apiSubmenu = document.getElementById('api-submenu');
+
         const mcpSubmenu = document.getElementById('mcp-submenu');
         const apisLink = document.getElementById('apis');
+        const applicationsLink = document.getElementById('applications');
         const mcpLink = document.getElementById('mcps');
 
         // Function to extract base path from links in the sidebar
@@ -120,18 +150,25 @@ document.addEventListener("DOMContentLoaded", function () {
                 // Update the submenu links with the correct API ID and base path
                 document.getElementById('api-overview').href = `${basePath}/api/${apiId}`;
                 document.getElementById('api-docs').href = `${basePath}/api/${apiId}/docs/specification`;
+                document.getElementById('api-subscriptions').href = `${basePath}/api/${apiId}/subscriptions`;
+                const apiKeysLink = document.getElementById('api-keys-nav');
+                if (apiKeysLink) {
+                    apiKeysLink.href = `${basePath}/api/${apiId}/api-keys`;
+                }
 
                 // Set active submenu item
-                if (currentPath.includes('/docs')) {
+                if (currentPath.includes('/subscriptions')) {
+                    document.getElementById('api-subscriptions')?.classList.add('active');
+                } else if (currentPath.includes('/api-keys')) {
+                    document.getElementById('api-keys-nav')?.classList.add('active');
+                } else if (currentPath.includes('/docs')) {
                     document.getElementById('api-docs')?.classList.add('active');
                 } else {
                     document.getElementById('api-overview')?.classList.add('active');
                 }
             }
-        } else if (currentPath.includes('/applications')) {
-            document.getElementById('applications')?.classList.add('active');
-            apiSubmenu.classList.remove('show');
-            apisLink?.classList.remove('has-active-submenu');
+        } else if (currentPath.includes('/applications/') || currentPath.includes('/applications')) {
+            applicationsLink?.classList.add('active');
         } else if (currentPath.includes('/mcps')) {
             document.getElementById('mcps')?.classList.add('active');
             mcpSubmenu.classList.remove('show');
@@ -157,6 +194,8 @@ document.addEventListener("DOMContentLoaded", function () {
                     document.getElementById('mcp-overview')?.classList.add('active');
                 }
             }
+        } else if (currentPath.includes('/subscriptions')) {
+            document.getElementById('subscriptions')?.classList.add('active');
         }
     };
 
@@ -235,7 +274,7 @@ document.addEventListener("DOMContentLoaded", function () {
                 }
                 
                 // Enable the Subscribe button
-                const subscribeButton = parentCard.querySelector('.common-btn-primary[disabled]');
+                const subscribeButton = parentCard.querySelector('.subscription-plan-subscribe-btn[disabled]') || parentCard.querySelector('.common-btn-primary[disabled]');
                 if (subscribeButton) {
                     subscribeButton.removeAttribute('disabled');
                 }
@@ -264,7 +303,7 @@ document.addEventListener("DOMContentLoaded", function () {
     apiCards.forEach(card => {
         const dropdown = card.querySelector(".custom-dropdown");
 
-        if (dropdown) {
+        if (dropdown && !dropdown.closest('.modal')) {
             // Custom select functionality
             const selectSelected = dropdown.querySelector(".select-selected");
             const selectItems = dropdown.querySelector(".select-items");
@@ -290,10 +329,7 @@ document.addEventListener("DOMContentLoaded", function () {
                     const appItem = dropdown.querySelector(`.select-item[data-value="${appId}"]`);
                     if (appItem) {
                         const appName = appItem.getAttribute("data-app-name");
-                        // Update hidden input with selected app ID
-                        const hiddenField = document.getElementById(
-                            dropdown.querySelector("[id^='selectedAppId-']").id
-                        );
+                        const hiddenField = dropdown.querySelector('input[type="hidden"]');
                         if (hiddenField) {
                             hiddenField.value = appId;
                         }
@@ -306,7 +342,7 @@ document.addEventListener("DOMContentLoaded", function () {
                         }
                         
                         // Check if this app is already subscribed (disabled)
-                        const subscribeButton = card.querySelector(".common-btn-primary[disabled]");
+                        const subscribeButton = card.querySelector(".subscribe-btn");
                         if (appItem.classList.contains("disabled")) {
                             // Keep the button disabled if the app is already subscribed
                             if (subscribeButton && !subscribeButton.disabled) {
@@ -327,10 +363,8 @@ document.addEventListener("DOMContentLoaded", function () {
                 if (firstAvailableApp) {
                     appId = firstAvailableApp.getAttribute("data-value");
                     const appName = firstAvailableApp.getAttribute("data-app-name");
-                    // Update hidden input with selected app ID
-                    const hiddenField = document.getElementById(
-                        dropdown.querySelector("[id^='selectedAppId-']").id
-                    );
+                    // Update hidden input with selected app ID (scoped to avoid duplicate-ID collision)
+                    const hiddenField = dropdown.querySelector('input[type="hidden"]');
                     if (hiddenField) {
                         hiddenField.value = appId;
                     }
@@ -343,7 +377,7 @@ document.addEventListener("DOMContentLoaded", function () {
                     }
                     
                     // Enable the Subscribe button
-                    const subscribeButton = card.querySelector(".common-btn-primary[disabled]");
+                    const subscribeButton = card.querySelector(".subscribe-btn");
                     if (subscribeButton) {
                         subscribeButton.removeAttribute("disabled");
                     }
@@ -418,9 +452,7 @@ document.addEventListener("DOMContentLoaded", function () {
                     const appName = this.getAttribute("data-app-name");
                     
                     // Update hidden input with selected app ID
-                    const hiddenField = document.getElementById(
-                        dropdown.querySelector("[id^='selectedAppId-']").id
-                    );
+                    const hiddenField = dropdown.querySelector('input[type="hidden"]');
                     if (hiddenField) {
                         hiddenField.value = appId;
                     }
@@ -452,7 +484,7 @@ document.addEventListener("DOMContentLoaded", function () {
             // Function to create application directly via API
             async function createApplicationDirectly(name, description = '') {
                 try {
-                    const response = await fetch('/devportal/applications', {
+                    const response = await fetch(devportalApi.root('/applications'), {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
@@ -493,9 +525,7 @@ document.addEventListener("DOMContentLoaded", function () {
                         createApplicationDirectly(appName)
                             .then(response => {
                                 // Update hidden input with the new application ID
-                                const hiddenField = document.getElementById(
-                                    dropdown.querySelector("[id^='selectedAppId-']").id
-                                );
+                                const hiddenField = dropdown.querySelector('input[type="hidden"]');
                                 if (hiddenField) {
                                     hiddenField.value = response.id;
                                 }
@@ -613,7 +643,7 @@ document.addEventListener("DOMContentLoaded", function () {
     const subscriptionCards = document.querySelectorAll(".subscription-card");
     subscriptionCards.forEach(card => {
         const dropdown = card.querySelector(".custom-dropdown");
-        const subscribeBtn = card.querySelector(".common-btn-primary");
+        const subscribeBtn = card.querySelector(".subscription-plan-subscribe-btn") || card.querySelector(".common-btn-primary");
 
         if (dropdown && subscribeBtn) {
             // Custom select functionality
@@ -645,7 +675,7 @@ document.addEventListener("DOMContentLoaded", function () {
                     }
                     
                     // Check if this app is already subscribed (disabled)
-                    const subscribeButton = card.querySelector(".common-btn-primary[disabled]");
+                    const subscribeButton = card.querySelector(".subscription-plan-subscribe-btn[disabled]") || card.querySelector(".common-btn-primary[disabled]");
                     if (subscribeButton) {
                         subscribeButton.removeAttribute("disabled");
                     }
@@ -733,7 +763,7 @@ document.addEventListener("DOMContentLoaded", function () {
                     }
                     
                     // Enable the Subscribe button by removing the disabled attribute
-                    const subscribeButton = card.querySelector(".common-btn-primary[disabled]");
+                    const subscribeButton = card.querySelector(".subscription-plan-subscribe-btn[disabled]") || card.querySelector(".common-btn-primary[disabled]");
                     if (subscribeButton) {
                         subscribeButton.removeAttribute("disabled");
                     }
@@ -749,7 +779,7 @@ document.addEventListener("DOMContentLoaded", function () {
             // Function to create application directly via API
             async function createApplicationDirectly(name, description = '') {
                 try {
-                    const response = await fetch('/devportal/applications', {
+                    const response = await fetch(devportalApi.root('/applications'), {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
@@ -988,8 +1018,10 @@ document.addEventListener("DOMContentLoaded", function () {
     document.querySelectorAll('.accordion-header').forEach(btn => {
         btn.addEventListener('click', function () {
             const icon = this.querySelector('.chevron-icon');
-            icon.classList.toggle('bi-chevron-down');
-            icon.classList.toggle('bi-chevron-up');
+            if (icon) {
+                icon.classList.toggle('bi-chevron-down');
+                icon.classList.toggle('bi-chevron-up');
+            }
         });
     });
 

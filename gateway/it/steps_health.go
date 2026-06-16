@@ -275,7 +275,16 @@ func (h *HealthSteps) waitForPolicySnapshotSync() error {
 	maxAttempts := 50
 	attemptInterval := 300 * time.Millisecond
 
-	controllerURL := fmt.Sprintf("%s/xds_sync_status", h.state.Config.GatewayControllerAdminURL)
+	// Probe the controller that actually feeds xDS to gateway-runtime, whose
+	// policy-chain version the policy engine echoes. In the two-controller
+	// Postgres topology the suite sets PolicySnapshotControllerAdminURL to
+	// gateway-controller-xds (port 9093); otherwise (single-controller
+	// topologies, unit tests) we fall back to the management controller.
+	adminBase := h.state.Config.PolicySnapshotControllerAdminURL
+	if adminBase == "" {
+		adminBase = h.state.Config.GatewayControllerAdminURL
+	}
+	controllerURL := fmt.Sprintf("%s/xds_sync_status", adminBase)
 	policyEngineURL := fmt.Sprintf("%s/xds_sync_status", h.state.Config.PolicyEngineURL)
 	lastControllerVersion := ""
 	lastRuntimeVersion := ""

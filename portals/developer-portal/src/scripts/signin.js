@@ -16,8 +16,34 @@
  * under the License.
  */
 document.addEventListener('DOMContentLoaded', function () {
+    const localLoginForm = document.getElementById('local-login-form');
+    if (localLoginForm) {
+        const baseUrl = localLoginForm.getAttribute('data-base-url');
+        localLoginForm.addEventListener('submit', function (e) {
+            e.preventDefault();
+            const params = new URLSearchParams();
+            params.append('username', document.getElementById('username').value);
+            params.append('password', document.getElementById('password').value);
+            fetch(`${baseUrl}/login`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: params.toString(),
+                redirect: 'follow',
+            }).then(res => {
+                window.location.href = res.url;
+            }).catch(() => {
+                window.location.href = `${baseUrl}/login?error=Login+failed%2C+please+try+again`;
+            });
+        });
+        return;
+    }
+
     const signinCard = document.getElementById('signin-card');
     const enterpriseCard = document.getElementById('enterprise-card');
+
+    // Config-auth mode: IDP elements are not rendered — nothing to wire up
+    if (!enterpriseCard) return;
+
     const baseUrl = enterpriseCard.getAttribute('data-base-url');
 
     const showEnterpriseBtn = document.getElementById('show-enterprise');
@@ -52,13 +78,24 @@ document.addEventListener('DOMContentLoaded', function () {
     const emailInput = document.getElementById('enterprise-email');
     const continueBtn = document.getElementById('login-enterprise');
 
+    // Inline error element shown below the email input
+    let emailErrorEl = document.getElementById('enterprise-email-error');
+    if (!emailErrorEl) {
+        emailErrorEl = document.createElement('div');
+        emailErrorEl.id = 'enterprise-email-error';
+        emailErrorEl.className = 'text-danger small mt-1';
+        emailErrorEl.style.display = 'none';
+        emailInput.parentNode.insertBefore(emailErrorEl, emailInput.nextSibling);
+    }
+
     continueBtn.addEventListener('click', function (e) {
         const email = emailInput.value.trim();
         if (!validateEmail(email)) {
-            alert("Please enter a valid email address.");
+            emailErrorEl.textContent = 'Please enter a valid email address.';
+            emailErrorEl.style.display = 'block';
             return;
         }
-
+        emailErrorEl.style.display = 'none';
         const redirectUrl = `${baseUrl}/login?fidp=enterprise&username=${encodeURIComponent(email)}`;
         window.location.href = redirectUrl;
     });
@@ -69,6 +106,9 @@ document.addEventListener('DOMContentLoaded', function () {
 
         continueBtn.disabled = !isValid;
         continueBtn.style.opacity = isValid ? '1' : '0.5';
+        if (isValid) {
+            emailErrorEl.style.display = 'none';
+        }
     });
 
     function validateEmail(email) {

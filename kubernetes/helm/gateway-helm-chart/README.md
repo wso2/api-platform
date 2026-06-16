@@ -42,8 +42,7 @@ helm install ap-gateway .
 Install with custom control plane configuration:
 ```bash
 helm install ap-gateway . \
-  --set gateway.controller.controlPlane.host="host.docker.internal" \
-  --set gateway.controller.controlPlane.port=8443 \
+  --set gateway.controller.controlPlane.host="host.docker.internal:8443" \
   --set gateway.controller.controlPlane.token.value="your-token-here"
 ```
 
@@ -52,8 +51,7 @@ Install in a specific namespace:
 kubectl create namespace api-gateway
 helm install ap-gateway . \
   --namespace api-gateway \
-  --set gateway.controller.controlPlane.host="platform.example.com" \
-  --set gateway.controller.controlPlane.port=8443
+  --set gateway.controller.controlPlane.host="platform.example.com"
 ```
 
 Install with custom values file:
@@ -127,6 +125,7 @@ All configurable values are documented in `values.yaml`. Component blocks are fu
 - `gateway.controller.image` / `gateway.gatewayRuntime.image` – container image metadata and pull policies.
 - `gateway.<component>.deployment.*` – pod-level knobs (replicas, probes, affinities, env overrides, extra volumes) and enable/disable switches.
 - `gateway.<component>.service.*` – service type/ports plus optional annotations and labels.
+- `gateway.<component>.service.expose.*` – per-port toggles for publishing admin/debug ports on the Service. **All default to `false`** so admin surfaces stay pod-internal (reach them with `kubectl port-forward`). Available toggles: `controller.service.expose.admin` (controller admin, 9092), `gatewayRuntime.service.expose.routerAdmin` (Router/Envoy admin, 9901 — includes mutating endpoints, leave off unless trusted), `gatewayRuntime.service.expose.policyEngineAdmin` (policy-engine admin, 9002). Probes are unaffected; they target container ports directly. Note: the controller admin port is no longer exposed by default — set `expose.admin=true` to restore prior behavior. The runtime port key was renamed `envoyAdmin` → `routerAdmin`.
 - `gateway.controller.persistence` / `gateway.controller.configMap` – PVC sizing/claims and component configuration payloads.
 - `gateway.controller.controlPlane` and `gateway.controller.logging` – control-plane connectivity plus controller logging level.
 - `gateway.controller.tls.*` – TLS certificate configuration for HTTPS listener using cert-manager or existing secrets.

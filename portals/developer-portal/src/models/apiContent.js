@@ -18,10 +18,10 @@
 const { Sequelize, DataTypes } = require('sequelize');
 const sequelize = require('../db/sequelize')
 
-const APIContent = sequelize.define('DP_API_CONTENT', { 
+const APIContent = sequelize.define('DP_API_CONTENT', {
     API_ID: {
         type: DataTypes.UUID,
-        defaultValue: Sequelize.UUIDV4,
+        allowNull: false,
         primaryKey: true
     },
     API_FILE: {
@@ -31,16 +31,17 @@ const APIContent = sequelize.define('DP_API_CONTENT', {
     TYPE: {
         type: DataTypes.STRING,
         allowNull: false,
+        primaryKey: true,
     },
     FILE_NAME: {
         type: DataTypes.STRING,
         allowNull: false,
+        primaryKey: true,
     }
 }, {
     timestamps: false,
     tableName: 'DP_API_CONTENT',
     returning: false,
-    primaryKey: true
 });
 
 // Export both models

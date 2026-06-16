@@ -45,9 +45,10 @@
                 </button>
                 {{#unless (eq name "default")}}
                 <button type="button" class="common-btn-outlined" style="margin-right: 10px;"
-                    onclick="if (confirm('Are you sure you want to delete this view?')) { deleteView('{{@root.orgID}}', '{{name}}'); }">
+                    onclick="openWarningModal('DeleteView', '{{@root.orgID}}', '{{name}}', '', '', '', '')">
                     <i class="bi bi-trash"></i>
-                    {{/unless}}
+                </button>
+                {{/unless}}
             </td>
         </tr>
         {{/views}}

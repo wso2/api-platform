@@ -46,16 +46,17 @@ type Options struct {
 // It owns the topic registry, subscription store, delivery engine,
 // consumer manager, and the sync producer for subscription state.
 type WebSubReceiver struct {
-	hubHandler     *HubHandler
-	webhookHandler *WebhookReceiverHandler
-	deliverer      *Deliverer
-	topics         *TopicRegistry
-	store          subscription.SubscriptionStore
-	consumerMgr    *ConsumerManager
-	syncProducer   *subscription.SyncProducer
-	brokerDriver   connectors.BrokerDriver
-	channel        connectors.ChannelInfo
-	opts           Options
+	hubHandler          *HubHandler
+	webhookHandler      *WebhookReceiverHandler
+	deliverer           *Deliverer
+	topics              *TopicRegistry
+	store               subscription.SubscriptionStore
+	consumerMgr         *ConsumerManager
+	syncProducer        *subscription.SyncProducer
+	syncWatcherReceiver connectors.Receiver
+	brokerDriver        connectors.BrokerDriver
+	channel             connectors.ChannelInfo
+	opts                Options
 }
 
 // NewReceiver creates a WebSub receiver supporting multiple channels (topics).
@@ -166,6 +167,10 @@ func (e *WebSubReceiver) Start(ctx context.Context) error {
 	// subscriptions survive a binding update (remove + re-add).
 	e.reconcileSubscriptions(ctx)
 
+	// After reconcile, tail the sync topic to propagate subscription changes
+	// from other instances in real time.
+	e.startSyncWatcher(ctx)
+
 	basePath := binding.WebSubApiBasePath(e.channel.Context, e.channel.Version)
 	slog.Info("WebSub receiver started",
 		"api", e.channel.Name,
@@ -176,8 +181,14 @@ func (e *WebSubReceiver) Start(ctx context.Context) error {
 	return nil
 }
 
-// Stop stops all per-callback consumers and the sync producer.
+// Stop stops the sync watcher first, then all per-callback consumers, then the sync producer.
 func (e *WebSubReceiver) Stop(ctx context.Context) error {
+	if e.syncWatcherReceiver != nil {
+		if err := e.syncWatcherReceiver.Stop(ctx); err != nil {
+			slog.Error("Failed to stop sync watcher", "api", e.channel.Name, "error", err)
+		}
+	}
+
 	e.consumerMgr.StopAll(ctx)
 
 	if e.syncProducer != nil {
@@ -185,6 +196,62 @@ func (e *WebSubReceiver) Stop(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// startSyncWatcher tails the subscription sync topic after reconciliation so
+// that subscription changes made on other instances are applied in real time.
+func (e *WebSubReceiver) startSyncWatcher(ctx context.Context) {
+	if e.channel.InternalSubTopic == "" {
+		return
+	}
+
+	normalized := binding.JoinNormalizedTopic(e.channel.Context, e.channel.Version)
+	apiID := normalized
+	if len(normalized) > 12 {
+		apiID = normalized[:12]
+	}
+	slog.Info("Subscription sync watcher API mapping",
+		"api", e.channel.Name,
+		"context", e.channel.Context,
+		"version", e.channel.Version,
+		"api_id", apiID)
+	watcher := subscription.NewSyncWatcher(e.brokerDriver, e.store, e.opts.RuntimeID, apiID, e.channel.InternalSubTopic)
+
+	ownedChannels := make(map[string]bool, len(e.channel.Channels))
+	for channelName := range e.channel.Channels {
+		ownedChannels[channelName] = true
+	}
+
+	watcher.SetCallback(func(sub *subscription.Subscription, isTombstone bool) {
+		kafkaTopic, ok := e.channel.Channels[sub.Topic]
+		if !ok {
+			return
+		}
+		if isTombstone {
+			if err := e.consumerMgr.RemoveSubscription(sub.CallbackURL, kafkaTopic); err != nil {
+				slog.Error("Sync watcher: failed to remove consumer",
+					"callback", sub.CallbackURL, "topic", sub.Topic, "error", err)
+			}
+			return
+		}
+		if sub.State != subscription.StateActive {
+			return
+		}
+		if !ownedChannels[sub.Topic] {
+			return
+		}
+		if err := e.consumerMgr.AddSubscription(sub.CallbackURL, sub.Secret, kafkaTopic); err != nil {
+			slog.Error("Sync watcher: failed to add consumer",
+				"callback", sub.CallbackURL, "topic", sub.Topic, "error", err)
+		}
+	})
+
+	receiver, err := watcher.Watch(ctx)
+	if err != nil {
+		slog.Warn("Failed to start subscription sync watcher (non-fatal)", "api", e.channel.Name, "error", err)
+		return
+	}
+	e.syncWatcherReceiver = receiver
 }
 
 // reconcileSubscriptions replays subscriptions from the Kafka sync topic and

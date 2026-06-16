@@ -3254,3 +3254,226 @@ func (s *sqlStore) DeleteAPIKeysByUUIDs(uuids []string) error {
 	}
 	return nil
 }
+
+// ============================================================
+// Webhook Secret Methods
+// ============================================================
+
+// SaveWebhookSecret persists a new encrypted HMAC secret for a WebSub API.
+func (s *sqlStore) SaveWebhookSecret(secret *models.WebhookSecret) error {
+	startTime := time.Now()
+	const table = "webhook_secrets"
+
+	query := `
+	INSERT INTO webhook_secrets (uuid, gateway_id, artifact_uuid, name, display_name, ciphertext, status, created_at, updated_at)
+	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+
+	now := time.Now().UTC()
+	_, err := s.exec(query,
+		secret.UUID,
+		s.gatewayId,
+		secret.ArtifactUUID,
+		secret.Name,
+		secret.DisplayName,
+		secret.Ciphertext,
+		"active",
+		now,
+		now,
+	)
+	if err != nil {
+		if s.isUniqueViolation(err) {
+			metrics.DatabaseOperationsTotal.WithLabelValues("insert", table, "error").Inc()
+			metrics.StorageErrorsTotal.WithLabelValues("insert", "conflict").Inc()
+			return fmt.Errorf("%w: webhook secret '%s' already exists for artifact '%s'", ErrConflict, secret.Name, secret.ArtifactUUID)
+		}
+		metrics.DatabaseOperationsTotal.WithLabelValues("insert", table, "error").Inc()
+		metrics.StorageErrorsTotal.WithLabelValues("insert", "exec_error").Inc()
+		return fmt.Errorf("failed to save webhook secret: %w", err)
+	}
+
+	secret.Status = "active"
+	secret.CreatedAt = now
+	secret.UpdatedAt = now
+
+	metrics.DatabaseOperationsTotal.WithLabelValues("insert", table, "success").Inc()
+	metrics.DatabaseOperationDurationSeconds.WithLabelValues("insert", table).Observe(time.Since(startTime).Seconds())
+	return nil
+}
+
+// GetWebhookSecretsByArtifact returns all active webhook secrets for an artifact.
+func (s *sqlStore) GetWebhookSecretsByArtifact(artifactUUID string) ([]*models.WebhookSecret, error) {
+	startTime := time.Now()
+	const table = "webhook_secrets"
+
+	query := `
+	SELECT uuid, artifact_uuid, name, display_name, ciphertext, status, created_at, updated_at
+	FROM webhook_secrets
+	WHERE gateway_id = ? AND artifact_uuid = ? AND status = 'active'
+	ORDER BY created_at DESC`
+
+	rows, err := s.query(query, s.gatewayId, artifactUUID)
+	if err != nil {
+		metrics.DatabaseOperationsTotal.WithLabelValues("read", table, "error").Inc()
+		metrics.StorageErrorsTotal.WithLabelValues("read", "query_error").Inc()
+		return nil, fmt.Errorf("failed to query webhook secrets: %w", err)
+	}
+	defer rows.Close()
+
+	var secrets []*models.WebhookSecret
+	for rows.Next() {
+		ws := &models.WebhookSecret{GatewayID: s.gatewayId}
+		if err := rows.Scan(&ws.UUID, &ws.ArtifactUUID, &ws.Name, &ws.DisplayName, &ws.Ciphertext, &ws.Status, &ws.CreatedAt, &ws.UpdatedAt); err != nil {
+			metrics.DatabaseOperationsTotal.WithLabelValues("read", table, "error").Inc()
+			return nil, fmt.Errorf("failed to scan webhook secret: %w", err)
+		}
+		secrets = append(secrets, ws)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating webhook secrets: %w", err)
+	}
+
+	metrics.DatabaseOperationsTotal.WithLabelValues("read", table, "success").Inc()
+	metrics.DatabaseOperationDurationSeconds.WithLabelValues("read", table).Observe(time.Since(startTime).Seconds())
+	return secrets, nil
+}
+
+// GetWebhookSecretByArtifactAndName retrieves a specific secret by artifact UUID + name.
+func (s *sqlStore) GetWebhookSecretByArtifactAndName(artifactUUID, name string) (*models.WebhookSecret, error) {
+	startTime := time.Now()
+	const table = "webhook_secrets"
+
+	query := `
+	SELECT uuid, artifact_uuid, name, display_name, ciphertext, status, created_at, updated_at
+	FROM webhook_secrets
+	WHERE gateway_id = ? AND artifact_uuid = ? AND name = ?`
+
+	ws := &models.WebhookSecret{GatewayID: s.gatewayId}
+	err := s.queryRow(query, s.gatewayId, artifactUUID, name).Scan(
+		&ws.UUID, &ws.ArtifactUUID, &ws.Name, &ws.DisplayName, &ws.Ciphertext, &ws.Status, &ws.CreatedAt, &ws.UpdatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		metrics.DatabaseOperationsTotal.WithLabelValues("read", table, "error").Inc()
+		return nil, fmt.Errorf("failed to get webhook secret by artifact and name: %w", err)
+	}
+
+	metrics.DatabaseOperationsTotal.WithLabelValues("read", table, "success").Inc()
+	metrics.DatabaseOperationDurationSeconds.WithLabelValues("read", table).Observe(time.Since(startTime).Seconds())
+	return ws, nil
+}
+
+// GetWebhookSecretByUUID retrieves a specific secret by its UUID.
+func (s *sqlStore) GetWebhookSecretByUUID(uuid string) (*models.WebhookSecret, error) {
+	startTime := time.Now()
+	const table = "webhook_secrets"
+
+	query := `
+	SELECT uuid, artifact_uuid, name, display_name, ciphertext, status, created_at, updated_at
+	FROM webhook_secrets
+	WHERE gateway_id = ? AND uuid = ?`
+
+	ws := &models.WebhookSecret{GatewayID: s.gatewayId}
+	err := s.queryRow(query, s.gatewayId, uuid).Scan(
+		&ws.UUID, &ws.ArtifactUUID, &ws.Name, &ws.DisplayName, &ws.Ciphertext, &ws.Status, &ws.CreatedAt, &ws.UpdatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		metrics.DatabaseOperationsTotal.WithLabelValues("read", table, "error").Inc()
+		return nil, fmt.Errorf("failed to get webhook secret by UUID: %w", err)
+	}
+
+	metrics.DatabaseOperationsTotal.WithLabelValues("read", table, "success").Inc()
+	metrics.DatabaseOperationDurationSeconds.WithLabelValues("read", table).Observe(time.Since(startTime).Seconds())
+	return ws, nil
+}
+
+// UpdateWebhookSecret replaces the ciphertext of an existing secret.
+func (s *sqlStore) UpdateWebhookSecret(secret *models.WebhookSecret) error {
+	startTime := time.Now()
+	const table = "webhook_secrets"
+
+	now := time.Now().UTC()
+	query := `UPDATE webhook_secrets SET ciphertext = ?, display_name = ?, updated_at = ? WHERE gateway_id = ? AND artifact_uuid = ? AND name = ?`
+	result, err := s.exec(query, secret.Ciphertext, secret.DisplayName, now, s.gatewayId, secret.ArtifactUUID, secret.Name)
+	if err != nil {
+		metrics.DatabaseOperationsTotal.WithLabelValues("update", table, "error").Inc()
+		return fmt.Errorf("failed to update webhook secret: %w", err)
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+	if n == 0 {
+		return ErrNotFound
+	}
+	secret.UpdatedAt = now
+
+	metrics.DatabaseOperationsTotal.WithLabelValues("update", table, "success").Inc()
+	metrics.DatabaseOperationDurationSeconds.WithLabelValues("update", table).Observe(time.Since(startTime).Seconds())
+	return nil
+}
+
+// DeleteWebhookSecret permanently removes a secret identified by (artifactUUID, name).
+func (s *sqlStore) DeleteWebhookSecret(artifactUUID, name string) error {
+	startTime := time.Now()
+	const table = "webhook_secrets"
+
+	result, err := s.exec(
+		`DELETE FROM webhook_secrets WHERE gateway_id = ? AND artifact_uuid = ? AND name = ?`,
+		s.gatewayId, artifactUUID, name,
+	)
+	if err != nil {
+		metrics.DatabaseOperationsTotal.WithLabelValues("delete", table, "error").Inc()
+		return fmt.Errorf("failed to delete webhook secret: %w", err)
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+	if n == 0 {
+		return ErrNotFound
+	}
+
+	metrics.DatabaseOperationsTotal.WithLabelValues("delete", table, "success").Inc()
+	metrics.DatabaseOperationDurationSeconds.WithLabelValues("delete", table).Observe(time.Since(startTime).Seconds())
+	return nil
+}
+
+// GetAllWebhookSecrets returns all active webhook secrets across all artifacts.
+// Used on startup to bulk-load the in-memory plaintext store.
+func (s *sqlStore) GetAllWebhookSecrets() ([]*models.WebhookSecret, error) {
+	startTime := time.Now()
+	const table = "webhook_secrets"
+
+	query := `
+	SELECT uuid, artifact_uuid, name, display_name, ciphertext, status, created_at, updated_at
+	FROM webhook_secrets
+	WHERE gateway_id = ? AND status = 'active'`
+
+	rows, err := s.query(query, s.gatewayId)
+	if err != nil {
+		metrics.DatabaseOperationsTotal.WithLabelValues("read", table, "error").Inc()
+		return nil, fmt.Errorf("failed to query all webhook secrets: %w", err)
+	}
+	defer rows.Close()
+
+	var secrets []*models.WebhookSecret
+	for rows.Next() {
+		ws := &models.WebhookSecret{GatewayID: s.gatewayId}
+		if err := rows.Scan(&ws.UUID, &ws.ArtifactUUID, &ws.Name, &ws.DisplayName, &ws.Ciphertext, &ws.Status, &ws.CreatedAt, &ws.UpdatedAt); err != nil {
+			return nil, fmt.Errorf("failed to scan webhook secret: %w", err)
+		}
+		secrets = append(secrets, ws)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating webhook secrets: %w", err)
+	}
+
+	metrics.DatabaseOperationsTotal.WithLabelValues("read", table, "success").Inc()
+	metrics.DatabaseOperationDurationSeconds.WithLabelValues("read", table).Observe(time.Since(startTime).Seconds())
+	return secrets, nil
+}

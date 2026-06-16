@@ -576,6 +576,50 @@ func TestValidateUpstreamDefinitions_Valid(t *testing.T) {
 	assert.Empty(t, errors)
 }
 
+// A host-only URL with the base path supplied via basePath is the canonical form.
+func TestValidateUpstreamDefinitions_WithBasePathValid(t *testing.T) {
+	validator := NewAPIValidator()
+
+	basePath := "/api/v2"
+	definitions := &[]api.UpstreamDefinition{
+		{
+			Name:     "my-upstream-1",
+			BasePath: &basePath,
+			Upstreams: []struct {
+				Url    string `json:"url" yaml:"url"`
+				Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
+			}{
+				{Url: "http://backend-1:8080"},
+			},
+		},
+	}
+
+	errors := validator.validateUpstreamDefinitions(definitions)
+	assert.Empty(t, errors)
+}
+
+// upstreamDefinitions URLs must be host[:port] only; a path belongs in basePath.
+func TestValidateUpstreamDefinitions_URLWithPathRejected(t *testing.T) {
+	validator := NewAPIValidator()
+
+	definitions := &[]api.UpstreamDefinition{
+		{
+			Name: "my-upstream-1",
+			Upstreams: []struct {
+				Url    string `json:"url" yaml:"url"`
+				Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
+			}{
+				{Url: "http://backend-1:8080/api/v2"},
+			},
+		},
+	}
+
+	errors := validator.validateUpstreamDefinitions(definitions)
+	require.Len(t, errors, 1)
+	assert.Equal(t, "spec.upstreamDefinitions[0].upstreams[0].url", errors[0].Field)
+	assert.Contains(t, errors[0].Message, "basePath")
+}
+
 func TestValidateUpstreamDefinitions_DuplicateNames(t *testing.T) {
 	validator := NewAPIValidator()
 

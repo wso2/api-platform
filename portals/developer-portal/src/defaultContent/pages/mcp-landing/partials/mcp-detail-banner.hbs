@@ -4,7 +4,7 @@
       <div class="col-12 col-md-7">
         <div class="api-title">
           <span class="badge api-badge-custom1">{{apiMetadata.apiInfo.apiCategory}}</span>
-          <h4>{{apiMetadata.apiInfo.apiName}}</h4>
+          <h4>{{or apiMetadata.apiInfo.apiTitle apiMetadata.apiInfo.apiName}}</h4>
           <p class="api-version"> {{apiMetadata.apiInfo.apiVersion}}</p>
         </div>
         <p class="api-description">{{apiMetadata.apiInfo.apiDescription}}</p>
@@ -14,8 +14,14 @@
           {{/apiMetadata.apiInfo.tags}}
         </div>
         <div class="api-details-btn">
+          {{#if apiMetadata.apiReferenceID}}
           <a type="button" class="common-btn-primary" href="#subscriptionPlans">Subscribe</a>
-          {{#in apiMetadata.apiInfo.apiType values="REST,WS,GraphQL,MCP"}}
+          {{else}}
+          {{#unless (eq apiMetadata.apiInfo.apiType "MCP")}}
+          <a type="button" class="common-btn-primary" href="#subscriptionPlans">Subscribe</a>
+          {{/unless}}
+          {{/if}}
+          {{#in apiMetadata.apiInfo.apiType values="REST,WS,GraphQL,MCP,WEBSUB"}}
           <a type="button" class="common-btn-outlined"
             href="{{baseUrl}}/mcp/{{apiMetadata.apiHandle}}/docs/specification">Documentation</a>
           {{else}}
@@ -27,7 +33,7 @@
         {{#if apiMetadata.apiInfo.apiImageMetadata.api-icon}}
         <img class="img-thumbnail api-image" src="{{apiMetadata.apiInfo.apiImageMetadata.api-icon}}" alt="API Image" />
         {{else}}
-        <div class="img-thumbnail api-image image-icon d-flex justify-content-center align-items-center">{{firstTwoLetters apiMetadata.apiInfo.apiName}}</div>
+        <div class="img-thumbnail api-image image-icon d-flex justify-content-center align-items-center">{{firstTwoLetters (or apiMetadata.apiInfo.apiTitle apiMetadata.apiInfo.apiName)}}</div>
         {{/if}}
       </div>
     </div>

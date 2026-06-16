@@ -278,14 +278,14 @@ func translateRequestActionsCore(result *executor.RequestExecutionResult, execCt
 					"targetUpstream", *targetUpstreamName,
 					"targetUpstreamPath", targetUpstreamPath)
 
-				// Set target_path to trigger Lua filter path transformation if not already set
-				// If request-rewrite policy set it, use that; otherwise use original request path
-				if _, hasTargetPath := out.DynamicMetadata[extProcNS]["request_transformation.target_path"]; !hasTargetPath {
-					out.DynamicMetadata[extProcNS]["request_transformation.target_path"] = execCtx.requestBodyCtx.Path
-					execCtx.dynamicMetadata[extProcNS]["request_transformation.target_path"] = execCtx.requestBodyCtx.Path
-					slog.Info("UpstreamName: set target_path", "path", execCtx.requestBodyCtx.Path)
+				// Surface the raw request path as metadata["path"] so Lua rewrites :path once;
+				// guard so an earlier path-changing policy (e.g. request-rewrite) isn't clobbered.
+				if out.Mutations.Path == nil {
+					rawPath := execCtx.requestBodyCtx.Path
+					out.Mutations.Path = &rawPath
+					slog.Info("UpstreamName: set mutations.Path", "path", rawPath)
 				} else {
-					slog.Info("UpstreamName: target_path already set by policy")
+					slog.Info("UpstreamName: mutations.Path already set by policy")
 				}
 			} else {
 				slog.Warn("UpstreamName: target upstream not found in upstreamDefinitionPaths",
@@ -455,17 +455,20 @@ func TranslateRequestHeaderActions(result *executor.RequestHeaderExecutionResult
 		}
 		execCtx.dynamicMetadata[extProcNS][constants.TargetUpstreamClusterKey] = clusterName
 		execCtx.dynamicMetadata[extProcNS][constants.TargetUpstreamNameKey] = *targetUpstreamName
-		dynamicMetadata[extProcNS] = map[string]interface{}{
-			"api_context":        execCtx.apiContext,
-			"upstream_base_path": execCtx.upstreamBasePath,
+		if dynamicMetadata[extProcNS] == nil {
+			dynamicMetadata[extProcNS] = make(map[string]interface{})
 		}
+		dynamicMetadata[extProcNS]["api_context"] = execCtx.apiContext
+		dynamicMetadata[extProcNS]["upstream_base_path"] = execCtx.upstreamBasePath
 		if execCtx.upstreamDefinitionPaths != nil {
 			if targetUpstreamPath, ok := execCtx.upstreamDefinitionPaths[*targetUpstreamName]; ok {
+				dynamicMetadata[extProcNS]["target_upstream_base_path"] = targetUpstreamPath
+				execCtx.dynamicMetadata[extProcNS]["target_upstream_base_path"] = targetUpstreamPath
+				// Surface the raw request path as metadata["path"] so Lua rewrites :path once;
+				// guard so an earlier path-changing policy (e.g. request-rewrite) isn't clobbered.
 				if mutations.Path == nil {
-					computedPath := computeUpstreamPath(execCtx.requestBodyCtx.Path, execCtx.apiContext, targetUpstreamPath)
-					mutations.Path = &computedPath
-					dynamicMetadata[extProcNS]["request_transformation.target_path"] = computedPath
-					execCtx.dynamicMetadata[extProcNS]["request_transformation.target_path"] = computedPath
+					rawPath := execCtx.requestBodyCtx.Path
+					mutations.Path = &rawPath
 				}
 			}
 		}
@@ -475,10 +478,11 @@ func TranslateRequestHeaderActions(result *executor.RequestHeaderExecutionResult
 		if execCtx.dynamicMetadata[extProcNS] == nil {
 			execCtx.dynamicMetadata[extProcNS] = make(map[string]interface{})
 		}
-		dynamicMetadata[extProcNS] = map[string]interface{}{
-			"api_context":        execCtx.apiContext,
-			"upstream_base_path": execCtx.upstreamBasePath,
+		if dynamicMetadata[extProcNS] == nil {
+			dynamicMetadata[extProcNS] = make(map[string]interface{})
 		}
+		dynamicMetadata[extProcNS]["api_context"] = execCtx.apiContext
+		dynamicMetadata[extProcNS]["upstream_base_path"] = execCtx.upstreamBasePath
 	}
 
 	mergeHeaderMutations(headerMutation, headerOps)
@@ -685,11 +689,13 @@ func TranslateRequestHeaderActionsWithBodyMerge(
 		dynamicMetadata[extProcNS]["upstream_base_path"] = execCtx.upstreamBasePath
 		if execCtx.upstreamDefinitionPaths != nil {
 			if targetUpstreamPath, ok := execCtx.upstreamDefinitionPaths[*targetUpstreamName]; ok {
+				dynamicMetadata[extProcNS]["target_upstream_base_path"] = targetUpstreamPath
+				execCtx.dynamicMetadata[extProcNS]["target_upstream_base_path"] = targetUpstreamPath
+				// Surface the raw request path as metadata["path"] so Lua rewrites :path once;
+				// guard so an earlier path-changing policy (e.g. request-rewrite) isn't clobbered.
 				if mutations.Path == nil {
-					computedPath := computeUpstreamPath(execCtx.requestBodyCtx.Path, execCtx.apiContext, targetUpstreamPath)
-					mutations.Path = &computedPath
-					dynamicMetadata[extProcNS]["request_transformation.target_path"] = computedPath
-					execCtx.dynamicMetadata[extProcNS]["request_transformation.target_path"] = computedPath
+					rawPath := execCtx.requestBodyCtx.Path
+					mutations.Path = &rawPath
 				}
 			}
 		}
@@ -699,10 +705,11 @@ func TranslateRequestHeaderActionsWithBodyMerge(
 		if execCtx.dynamicMetadata[extProcNS] == nil {
 			execCtx.dynamicMetadata[extProcNS] = make(map[string]interface{})
 		}
-		dynamicMetadata[extProcNS] = map[string]interface{}{
-			"api_context":        execCtx.apiContext,
-			"upstream_base_path": execCtx.upstreamBasePath,
+		if dynamicMetadata[extProcNS] == nil {
+			dynamicMetadata[extProcNS] = make(map[string]interface{})
 		}
+		dynamicMetadata[extProcNS]["api_context"] = execCtx.apiContext
+		dynamicMetadata[extProcNS]["upstream_base_path"] = execCtx.upstreamBasePath
 	}
 
 	if bodyModified {
@@ -1741,47 +1748,4 @@ func sanitizeUpstreamDefinitionName(name string) string {
 	sanitized := strings.ReplaceAll(name, ".", "_")
 	sanitized = strings.ReplaceAll(sanitized, ":", "_")
 	return sanitized
-}
-
-// computeUpstreamPath computes the final upstream path by stripping the API context
-// from the current path and prepending the target upstream's path.
-// Example: currentPath="/weather/v1.0/pets", apiContext="/weather/v1.0", upstreamPath="/alternate-backend"
-// Result: "/alternate-backend/pets"
-func computeUpstreamPath(currentPath, apiContext, upstreamPath string) string {
-	if currentPath == "" {
-		return ""
-	}
-
-	// Default values
-	if apiContext == "" {
-		apiContext = "/"
-	}
-	if upstreamPath == "" {
-		upstreamPath = ""
-	}
-
-	// Strip the API context prefix from the current path
-	relativePath := currentPath
-	if apiContext != "/" {
-		if strings.HasPrefix(currentPath, apiContext) {
-			relativePath = strings.TrimPrefix(currentPath, apiContext)
-			if relativePath == "" {
-				relativePath = "/"
-			}
-		}
-	}
-
-	// Prepend the upstream path
-	if upstreamPath == "" || upstreamPath == "/" {
-		return relativePath
-	}
-
-	// Handle trailing slash in upstreamPath and leading slash in relativePath
-	if strings.HasSuffix(upstreamPath, "/") && strings.HasPrefix(relativePath, "/") {
-		return upstreamPath + relativePath[1:]
-	}
-	if !strings.HasSuffix(upstreamPath, "/") && !strings.HasPrefix(relativePath, "/") {
-		return upstreamPath + "/" + relativePath
-	}
-	return upstreamPath + relativePath
 }

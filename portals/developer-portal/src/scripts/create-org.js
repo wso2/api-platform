@@ -10,22 +10,33 @@ document.addEventListener('DOMContentLoaded', function () {
     const cancelAddBtn = document.getElementById('cancelAddBtn');
     const cancelEditBtn = document.getElementById('cancelEditBtn');
 
-    // Show form
-    createOrgBtn.addEventListener('click', function () {
-        orgDefaultContent.style.display = 'none';
-        addOrg.style.display = 'block';
+    // Set up the delete organization handler
+    setDeleteConfirmationHandler('deleteOrg', function(data) {
+        deleteOrg(data.orgID);
     });
+
+    // Show form
+    if (createOrgBtn && orgDefaultContent && addOrg) {
+        createOrgBtn.addEventListener('click', function () {
+            orgDefaultContent.style.display = 'none';
+            addOrg.style.display = 'block';
+        });
+    }
 
     // Hide form (cancel)
-    cancelAddBtn.addEventListener('click', function () {
-        orgDefaultContent.style.display = 'block';
-        addOrg.style.display = 'none';
-    });
+    if (cancelAddBtn && orgDefaultContent && addOrg) {
+        cancelAddBtn.addEventListener('click', function () {
+            orgDefaultContent.style.display = 'block';
+            addOrg.style.display = 'none';
+        });
+    }
 
-    cancelEditBtn.addEventListener('click', function () {
-        orgDefaultContent.style.display = 'block';
-        editOrg.style.display = 'none';
-    });
+    if (cancelEditBtn && orgDefaultContent && editOrg) {
+        cancelEditBtn.addEventListener('click', function () {
+            orgDefaultContent.style.display = 'block';
+            editOrg.style.display = 'none';
+        });
+    }
 
     const editButtons = document.querySelectorAll('.edit-btn');
     editButtons.forEach(button => {
@@ -46,7 +57,7 @@ document.addEventListener('DOMContentLoaded', function () {
             e.preventDefault();
             let orgID = form.querySelector('#orgId').value;
             orgID = sanitizeInput(orgID);
-            const response = await fetch(`/devportal/organizations/${orgID}`, {
+            const response = await fetch(devportalApi.root(`/organizations/${orgID}`), {
                 method: 'DELETE'
             });
             if (response.ok) {
@@ -83,7 +94,7 @@ async function createOrg() {
     formData.forEach((value, key) => {
         data[key] = sanitizeInput(value);
     });
-    const response = await fetch(`/devportal/organizations`, {
+    const response = await fetch(devportalApi.root('/organizations'), {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -104,7 +115,7 @@ async function editOrg(orgID, formID) {
     formData.forEach((value, key) => {
         data[key] = sanitizeInput(value);
     });
-    const response = await fetch(`/devportal/organizations/${orgID}`, {
+    const response = await fetch(devportalApi.root(`/organizations/${orgID}`), {
         method: 'PUT',
         headers: {
             'Content-Type': 'application/json',
@@ -119,19 +130,26 @@ async function editOrg(orgID, formID) {
 }
 
 function openOrgDeleteModal(orgID) {
-
     const modal = document.getElementById('deleteConfirmation');
-    modal.dataset.orgID = orgID;
+    if (!modal) {
+        console.error('openOrgDeleteModal: Modal not found');
+        return;
+    }
+
+    const titleEl = modal.querySelector('.modal-title');
+    const messageEl = modal.querySelector('.modal-message');
+    if (titleEl) titleEl.textContent = 'Do you really want to delete this organization?';
+    if (messageEl) messageEl.textContent = 'This will remove the organization stored in devportal';
+
+    setDeleteConfirmationAction('deleteOrg', { orgID: orgID });
+
     const bootstrapModal = new bootstrap.Modal(modal);
     bootstrapModal.show();
 }
 
 
-async function deleteOrg() {
-
-    const modal = document.getElementById('deleteConfirmation');
-    const orgID = modal.dataset.orgID;
-    const response = await fetch(`/devportal/organizations/${orgID}`, {
+async function deleteOrg(orgID) {
+    const response = await fetch(devportalApi.root(`/organizations/${orgID}`), {
         method: 'DELETE'
     });
     if (response.ok) {
@@ -140,3 +158,7 @@ async function deleteOrg() {
         showAlert(`Field validation failed`, `error`);
     }
 }
+
+// Export functions to global scope
+window.openOrgDeleteModal = openOrgDeleteModal;
+window.deleteOrg = deleteOrg;

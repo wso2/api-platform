@@ -265,21 +265,21 @@ func TestResolveUpstreamURL(t *testing.T) {
 	t.Run("direct URL", func(t *testing.T) {
 		u := "http://direct:8080"
 		up := &api.Upstream{Url: &u}
-		got, err := resolveUpstreamURL("main", up, nil)
+		got, _, err := resolveUpstreamURL("main", up, nil)
 		require.NoError(t, err)
 		assert.Equal(t, u, got)
 	})
 
 	t.Run("ref to existing definition", func(t *testing.T) {
 		up := &api.Upstream{Ref: &refName}
-		got, err := resolveUpstreamURL("main", up, defs)
+		got, _, err := resolveUpstreamURL("main", up, defs)
 		require.NoError(t, err)
 		assert.Equal(t, defURL, got)
 	})
 
 	t.Run("ref but no definitions provided", func(t *testing.T) {
 		up := &api.Upstream{Ref: &refName}
-		_, err := resolveUpstreamURL("main", up, nil)
+		_, _, err := resolveUpstreamURL("main", up, nil)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), refName)
 	})
@@ -287,14 +287,14 @@ func TestResolveUpstreamURL(t *testing.T) {
 	t.Run("ref to unknown definition", func(t *testing.T) {
 		unknownRef := "unknown-def"
 		up := &api.Upstream{Ref: &unknownRef}
-		_, err := resolveUpstreamURL("main", up, defs)
+		_, _, err := resolveUpstreamURL("main", up, defs)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "not found")
 	})
 
 	t.Run("neither URL nor ref", func(t *testing.T) {
 		up := &api.Upstream{}
-		_, err := resolveUpstreamURL("main", up, defs)
+		_, _, err := resolveUpstreamURL("main", up, defs)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "no URL or ref")
 	})
@@ -302,7 +302,7 @@ func TestResolveUpstreamURL(t *testing.T) {
 	t.Run("whitespace-only URL treated as missing", func(t *testing.T) {
 		blank := "   "
 		up := &api.Upstream{Url: &blank}
-		_, err := resolveUpstreamURL("main", up, nil)
+		_, _, err := resolveUpstreamURL("main", up, nil)
 		require.Error(t, err)
 	})
 
@@ -318,7 +318,7 @@ func TestResolveUpstreamURL(t *testing.T) {
 		}
 		emptyRef := "empty-def"
 		up := &api.Upstream{Ref: &emptyRef}
-		_, err := resolveUpstreamURL("main", up, emptyDefs)
+		_, _, err := resolveUpstreamURL("main", up, emptyDefs)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "no URLs")
 	})
@@ -343,4 +343,47 @@ func TestResolvePort(t *testing.T) {
 			assert.Equal(t, tt.expected, ResolvePort(u))
 		})
 	}
+}
+
+// TestRestAPITransformer_SandboxRouteClusterHeader pins the sandbox route's dynamic
+// cluster selection: with upstreamDefinitions the sandbox route uses cluster_header
+// routing (so a dynamic-endpoint policy can divert sandbox traffic) and defaults to the
+// sandbox cluster; without them it stays a static sandbox route.
+func TestRestAPITransformer_SandboxRouteClusterHeader(t *testing.T) {
+	defs := map[string]models.PolicyDefinition{}
+	const sandboxURL = "http://sandbox-backend:9080/sandbox"
+	const sandboxRouteKey = "GET|/test/hello|sandbox.local"
+	expectedSandboxCluster := sanitizeEnvoyClusterName("sandbox-backend:9080", "http")
+
+	t.Run("without upstreamDefinitions the sandbox route is static", func(t *testing.T) {
+		transformer := NewRestAPITransformer(testRouterCfg(), &config.Config{}, defs)
+		cfg := makeRestAPIStoredConfig(nil, nil)
+		restAPI := cfg.Configuration.(api.RestAPI)
+		restAPI.Spec.Upstream.Sandbox = &api.Upstream{Url: ptrStr(sandboxURL)}
+		cfg.Configuration = restAPI
+
+		rdc, err := transformer.Transform(cfg)
+		require.NoError(t, err)
+		r, exists := rdc.Routes[sandboxRouteKey]
+		require.True(t, exists, "sandbox route should exist")
+		assert.False(t, r.Upstream.UseClusterHeader)
+		assert.Equal(t, "", r.Upstream.DefaultCluster)
+	})
+
+	t.Run("with upstreamDefinitions the sandbox route uses cluster_header defaulting to the sandbox cluster", func(t *testing.T) {
+		transformer := NewRestAPITransformer(testRouterCfg(), &config.Config{}, defs)
+		cfg := makeRestAPIStoredConfig(nil, nil)
+		restAPI := cfg.Configuration.(api.RestAPI)
+		restAPI.Spec.Upstream.Sandbox = &api.Upstream{Url: ptrStr(sandboxURL)}
+		restAPI.Spec.UpstreamDefinitions = &[]api.UpstreamDefinition{{Name: "alt-upstream"}}
+		cfg.Configuration = restAPI
+
+		rdc, err := transformer.Transform(cfg)
+		require.NoError(t, err)
+		r, exists := rdc.Routes[sandboxRouteKey]
+		require.True(t, exists, "sandbox route should exist")
+		assert.True(t, r.Upstream.UseClusterHeader)
+		assert.Equal(t, expectedSandboxCluster, r.Upstream.DefaultCluster,
+			"sandbox route must default to the sandbox cluster, not main")
+	})
 }

@@ -622,6 +622,231 @@ func TestIsAllowedByAccessControl(t *testing.T) {
 	})
 }
 
+func TestIsMoreSpecificPath(t *testing.T) {
+	// isMoreSpecificPath is only ever invoked (via moreSpecificPolicyAttachmentCovers) on two
+	// paths that both already match the same target, so "concrete beats wildcard, then longer
+	// beats shorter" is a sound specificity ordering for the path forms in use (exact paths and
+	// trailing "/*" wildcards). These cases pin that behaviour.
+	tests := []struct {
+		name string
+		a    string
+		b    string
+		want bool
+	}{
+		{"concrete beats wildcard", "/chat/completions", "/chat/*", true},
+		{"wildcard loses to concrete", "/chat/*", "/chat/completions", false},
+		{"concrete beats root wildcard", "/chat/completions", "/*", true},
+		{"root wildcard loses to concrete", "/*", "/chat/completions", false},
+		{"longer wildcard prefix beats shorter", "/chat/*", "/*", true},
+		{"shorter wildcard prefix loses", "/*", "/chat/*", false},
+		{"deeper nested wildcard beats shallower", "/chat/completions/*", "/chat/*", true},
+		{"shallower nested wildcard loses", "/chat/*", "/chat/completions/*", false},
+		{"three-level nesting beats one-level", "/a/b/c/*", "/a/*", true},
+		{"identical concrete is not strictly more specific", "/chat/completions", "/chat/completions", false},
+		{"identical wildcard is not strictly more specific", "/chat/*", "/chat/*", false},
+		{"identical root wildcard", "/*", "/*", false},
+		{"longer concrete wins on length", "/chat/completions", "/chat", true},
+		{"shorter concrete loses on length", "/chat", "/chat/completions", false},
+		{"equal-length concrete paths tie", "/aaa/bbb", "/bbb/aaa", false},
+		{"equal-length wildcards tie", "/ab/*", "/cd/*", false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, isMoreSpecificPath(tc.a, tc.b))
+		})
+	}
+
+	// Properties: a path is never strictly more specific than itself (irreflexive), and two
+	// distinct paths cannot each be strictly more specific than the other (antisymmetric).
+	paths := []string{"/chat/completions", "/chat/*", "/*", "/chat/completions/*", "/a"}
+	for _, p := range paths {
+		assert.Falsef(t, isMoreSpecificPath(p, p), "%q should not be more specific than itself", p)
+	}
+	for _, x := range paths {
+		for _, y := range paths {
+			if x != y && isMoreSpecificPath(x, y) {
+				assert.Falsef(t, isMoreSpecificPath(y, x),
+					"%q>%q and %q>%q cannot both hold", x, y, y, x)
+			}
+		}
+	}
+}
+
+func TestMoreSpecificPolicyAttachmentCovers(t *testing.T) {
+	// The function is block-scoped by signature: it only inspects current.policy.Paths, so
+	// these cases construct the block (and the current entry within it) directly. It returns
+	// true iff some OTHER entry in the same block both covers (targetPath, method) and is
+	// strictly more specific than the current entry.
+	mk := func(path string, methods ...string) api.LLMPolicyPath {
+		ms := make([]api.LLMPolicyPathMethods, len(methods))
+		for i, m := range methods {
+			ms[i] = api.LLMPolicyPathMethods(m)
+		}
+		return api.LLMPolicyPath{Path: path, Methods: ms}
+	}
+	ccAll := mk("/chat/completions", "*")
+	ccGet := mk("/chat/completions", "GET")
+	ccPost := mk("/chat/completions", "POST")
+	ccGetPost := mk("/chat/completions", "GET", "POST")
+	chatWild := mk("/chat/*", "*")
+	chatWildPost := mk("/chat/*", "POST")
+	root := mk("/*", "*")
+
+	tests := []struct {
+		name       string
+		block      []api.LLMPolicyPath
+		current    api.LLMPolicyPath
+		targetPath string
+		method     string
+		want       bool
+	}{
+		// --- nothing more specific present ---
+		{"only the current entry in the block", []api.LLMPolicyPath{root}, root, "/chat/completions", "POST", false},
+		{"current is the most specific entry", []api.LLMPolicyPath{ccAll, chatWild, root}, ccAll, "/chat/completions", "POST", false},
+		{"only a less specific sibling", []api.LLMPolicyPath{ccAll, root}, ccAll, "/chat/completions", "POST", false},
+
+		// --- more specific by PATH ---
+		{"more specific concrete sibling covers target", []api.LLMPolicyPath{ccAll, root}, root, "/chat/completions", "POST", true},
+		{"more specific nested-wildcard sibling covers target", []api.LLMPolicyPath{chatWild, root}, root, "/chat/foo", "POST", true},
+		{"more specific sibling does not cover target", []api.LLMPolicyPath{ccAll, root}, root, "/models", "POST", false},
+
+		// --- method gating of the more specific sibling ---
+		{"more specific sibling does not apply to method", []api.LLMPolicyPath{ccGet, root}, root, "/chat/completions", "POST", false},
+		{"more specific sibling applies to method", []api.LLMPolicyPath{ccGet, root}, root, "/chat/completions", "GET", true},
+
+		// --- method specificity on the SAME path ---
+		{"concrete method beats wildcard method", []api.LLMPolicyPath{ccAll, ccGet}, ccAll, "/chat/completions", "GET", true},
+		{"wildcard method not suppressed for uncovered method", []api.LLMPolicyPath{ccAll, ccGet}, ccAll, "/chat/completions", "POST", false},
+		{"concrete-method current not suppressed by wildcard-method sibling", []api.LLMPolicyPath{ccAll, ccGet}, ccGet, "/chat/completions", "GET", false},
+		{"narrower method set beats broader", []api.LLMPolicyPath{ccGetPost, ccPost}, ccGetPost, "/chat/completions", "POST", true},
+		{"broader method set does not suppress narrower", []api.LLMPolicyPath{ccGetPost, ccPost}, ccPost, "/chat/completions", "POST", false},
+
+		// --- ties ---
+		{"equal-specificity duplicate is a tie", []api.LLMPolicyPath{ccPost, mk("/chat/completions", "POST")}, ccPost, "/chat/completions", "POST", false},
+
+		// --- path dominates method ---
+		{"specific path beats method-specific wildcard path", []api.LLMPolicyPath{chatWildPost, ccAll}, chatWildPost, "/chat/completions", "POST", true},
+		{"method-specific wildcard path does not beat specific path", []api.LLMPolicyPath{chatWildPost, ccAll}, ccAll, "/chat/completions", "POST", false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			att := llmPolicyAttachment{
+				policy:    api.LLMPolicy{Name: "advanced-ratelimit", Version: "v1", Paths: tc.block},
+				pathEntry: tc.current,
+			}
+			assert.Equal(t, tc.want, moreSpecificPolicyAttachmentCovers(tc.targetPath, tc.method, att))
+		})
+	}
+}
+
+func TestMethodSet(t *testing.T) {
+	mm := func(methods ...string) []api.LLMPolicyPathMethods {
+		out := make([]api.LLMPolicyPathMethods, len(methods))
+		for i, m := range methods {
+			out[i] = api.LLMPolicyPathMethods(m)
+		}
+		return out
+	}
+
+	t.Run("single concrete method", func(t *testing.T) {
+		assert.Equal(t, map[string]bool{"GET": true}, methodSet(mm("GET")))
+	})
+	t.Run("multiple concrete methods", func(t *testing.T) {
+		assert.Equal(t, map[string]bool{"GET": true, "POST": true}, methodSet(mm("GET", "POST")))
+	})
+	t.Run("duplicate methods are de-duplicated", func(t *testing.T) {
+		assert.Equal(t, map[string]bool{"GET": true}, methodSet(mm("GET", "GET")))
+	})
+	t.Run("empty methods yield empty set", func(t *testing.T) {
+		assert.Empty(t, methodSet(mm()))
+	})
+	t.Run("lone wildcard expands to all supported methods", func(t *testing.T) {
+		got := methodSet(mm("*"))
+		require.Len(t, got, len(constants.WILDCARD_HTTP_METHODS))
+		for _, m := range constants.WILDCARD_HTTP_METHODS {
+			assert.Truef(t, got[m], "expected %s in expanded wildcard set", m)
+		}
+		assert.False(t, got["*"], "the literal '*' must not be a member of the expanded set")
+	})
+	t.Run("wildcard only expands when it is the sole element", func(t *testing.T) {
+		// expandLLMPolicyMethods only treats a single-element ["*"] as the wildcard; mixed with
+		// other methods the '*' stays literal.
+		assert.Equal(t, map[string]bool{"GET": true, "*": true}, methodSet(mm("GET", "*")))
+	})
+}
+
+func TestIsStrictMethodSubset(t *testing.T) {
+	mm := func(methods ...string) []api.LLMPolicyPathMethods {
+		out := make([]api.LLMPolicyPathMethods, len(methods))
+		for i, m := range methods {
+			out[i] = api.LLMPolicyPathMethods(m)
+		}
+		return out
+	}
+	tests := []struct {
+		name string
+		a, b []api.LLMPolicyPathMethods
+		want bool
+	}{
+		{"strict subset", mm("POST"), mm("GET", "POST"), true},
+		{"multi-element strict subset", mm("POST", "PUT"), mm("GET", "POST", "PUT"), true},
+		{"superset is not a subset", mm("GET", "POST"), mm("POST"), false},
+		{"equal single set is not strict", mm("POST"), mm("POST"), false},
+		{"equal multi set is not strict", mm("GET", "POST"), mm("GET", "POST"), false},
+		{"concrete is strict subset of wildcard", mm("POST"), mm("*"), true},
+		{"two concrete are strict subset of wildcard", mm("GET", "POST"), mm("*"), true},
+		{"wildcard is not subset of concrete", mm("*"), mm("POST"), false},
+		{"wildcard equals wildcard is not strict", mm("*"), mm("*"), false},
+		{"disjoint equal length", mm("GET"), mm("POST"), false},
+		{"smaller but not a member subset", mm("GET"), mm("POST", "PUT"), false},
+		{"empty is not a strict subset", mm(), mm("POST"), false},
+		{"both empty", mm(), mm(), false},
+		{"duplicates collapse before comparison", mm("POST", "POST"), mm("POST"), false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, isStrictMethodSubset(tc.a, tc.b))
+		})
+	}
+}
+
+func TestIsMoreSpecificAttachment(t *testing.T) {
+	mk := func(path string, methods ...string) api.LLMPolicyPath {
+		ms := make([]api.LLMPolicyPathMethods, len(methods))
+		for i, m := range methods {
+			ms[i] = api.LLMPolicyPathMethods(m)
+		}
+		return api.LLMPolicyPath{Path: path, Methods: ms}
+	}
+	tests := []struct {
+		name string
+		a, b api.LLMPolicyPath
+		want bool
+	}{
+		// Path specificity dominates, regardless of methods.
+		{"more specific path wins over broader-path narrower-method", mk("/chat/completions", "*"), mk("/chat/*", "POST"), true},
+		{"less specific path loses even with narrower method", mk("/chat/*", "GET"), mk("/chat/completions", "*"), false},
+		{"concrete path beats root wildcard", mk("/chat/completions", "POST"), mk("/*", "*"), true},
+		{"nested wildcard beats root wildcard", mk("/chat/*", "*"), mk("/*", "*"), true},
+		// Same path -> method specificity decides.
+		{"same path, narrower method set wins", mk("/chat/completions", "POST"), mk("/chat/completions", "GET", "POST"), true},
+		{"same path, broader method set loses", mk("/chat/completions", "GET", "POST"), mk("/chat/completions", "POST"), false},
+		{"same path, concrete method beats wildcard method", mk("/chat/completions", "GET"), mk("/chat/completions", "*"), true},
+		{"same path, wildcard method loses to concrete", mk("/chat/completions", "*"), mk("/chat/completions", "GET"), false},
+		{"same path, equal methods are not more specific", mk("/chat/completions", "POST"), mk("/chat/completions", "POST"), false},
+		// Equal path-specificity (different, non-overlapping paths) falls through to method
+		// comparison; unreachable in practice but pins the documented ordering.
+		{"equal path specificity falls through to method subset", mk("/ab/*", "POST"), mk("/cd/*", "GET", "POST"), true},
+		{"equal path specificity, method not a subset", mk("/ab/*", "GET"), mk("/cd/*", "POST"), false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, isMoreSpecificAttachment(tc.a, tc.b))
+		})
+	}
+}
+
 func TestPathsMatch(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -1093,6 +1318,639 @@ func TestTransformProvider_PolicyOrderDoesNotAffectWildcardCoverage(t *testing.T
 
 		assertPolicies(t, result)
 	})
+}
+
+func TestTransformProvider_MostSpecificPathWinsForSamePolicy(t *testing.T) {
+	store := storage.NewConfigStore()
+	db := newTestMockDB()
+	routerConfig := &config.RouterConfig{ListenerPort: 8080}
+	transformer := NewLLMProviderTransformer(store, db, routerConfig, newTestPolicyVersionResolver())
+
+	template := &models.StoredLLMProviderTemplate{
+		UUID: "0000-template-1-0000-000000000002",
+		Configuration: api.LLMProviderTemplate{
+			Metadata: api.Metadata{Name: "openai"},
+			Spec:     api.LLMProviderTemplateData{},
+		},
+	}
+	require.NoError(t, db.SaveLLMProviderTemplate(template))
+	require.NoError(t, store.AddTemplate(template))
+
+	rateLimitParams := func(quotaName string, limit int) map[string]interface{} {
+		return map[string]interface{}{
+			"quotas": []interface{}{
+				map[string]interface{}{
+					"name": quotaName,
+					"limits": []interface{}{
+						map[string]interface{}{"limit": limit, "duration": "1h"},
+					},
+				},
+			},
+		}
+	}
+
+	upstreamURL := "https://api.openai.com"
+	// The same policy (advanced-ratelimit) is attached to a specific path (4/h) and to the
+	// wildcard catch-all (1/h). The most specific path must win, so /chat/completions keeps
+	// only its own quota and is not also limited by the wildcard quota.
+	provider := &api.LLMProviderConfiguration{
+		Metadata: api.Metadata{Name: "openai-provider"},
+		Spec: api.LLMProviderConfigData{
+			DisplayName: "OpenAI Provider",
+			Version:     "1.0.0",
+			Template:    "openai",
+			Upstream: api.LLMProviderConfigData_Upstream{
+				Url: &upstreamURL,
+			},
+			AccessControl: api.LLMAccessControl{Mode: api.AllowAll},
+			Policies: &[]api.LLMPolicy{
+				{
+					Name:    "advanced-ratelimit",
+					Version: "v1",
+					Paths: []api.LLMPolicyPath{
+						{
+							Path:    "/chat/completions",
+							Methods: []api.LLMPolicyPathMethods{"POST"},
+							Params:  rateLimitParams("chat-quota", 4),
+						},
+						{
+							Path:    "/*",
+							Methods: []api.LLMPolicyPathMethods{"*"},
+							Params:  rateLimitParams("wildcard-quota", 1),
+						},
+					},
+				},
+			},
+		},
+	}
+
+	result, err := transformer.Transform(provider, &api.RestAPI{})
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	firstQuotaName := func(params *map[string]interface{}) string {
+		require.NotNil(t, params)
+		quotas, ok := (*params)["quotas"].([]interface{})
+		require.True(t, ok, "params should contain a quotas slice")
+		require.NotEmpty(t, quotas)
+		first, ok := quotas[0].(map[string]interface{})
+		require.True(t, ok)
+		name, ok := first["name"].(string)
+		require.True(t, ok)
+		return name
+	}
+
+	// POST /chat/completions must carry ONLY the specific advanced-ratelimit (chat-quota),
+	// not the wildcard one.
+	chatOp := findOperation(result.Spec.Operations, "/chat/completions", "POST")
+	require.NotNil(t, chatOp)
+	require.NotNil(t, chatOp.Policies)
+	require.Len(t, *chatOp.Policies, 1, "/chat/completions should not stack the wildcard policy on top of its specific one")
+	assert.Equal(t, "advanced-ratelimit", (*chatOp.Policies)[0].Name)
+	assert.Equal(t, "chat-quota", firstQuotaName((*chatOp.Policies)[0].Params))
+
+	// POST /* keeps the wildcard advanced-ratelimit (wildcard-quota) so other paths remain governed by it.
+	wildcardOp := findOperation(result.Spec.Operations, "/*", "POST")
+	require.NotNil(t, wildcardOp)
+	require.NotNil(t, wildcardOp.Policies)
+	require.Len(t, *wildcardOp.Policies, 1)
+	assert.Equal(t, "advanced-ratelimit", (*wildcardOp.Policies)[0].Name)
+	assert.Equal(t, "wildcard-quota", firstQuotaName((*wildcardOp.Policies)[0].Params))
+}
+
+func TestTransformProvider_MostSpecificPathWinsAcrossNestedWildcards(t *testing.T) {
+	store := storage.NewConfigStore()
+	db := newTestMockDB()
+	routerConfig := &config.RouterConfig{ListenerPort: 8080}
+	transformer := NewLLMProviderTransformer(store, db, routerConfig, newTestPolicyVersionResolver())
+
+	template := &models.StoredLLMProviderTemplate{
+		UUID: "0000-template-1-0000-000000000003",
+		Configuration: api.LLMProviderTemplate{
+			Metadata: api.Metadata{Name: "openai"},
+			Spec:     api.LLMProviderTemplateData{},
+		},
+	}
+	require.NoError(t, db.SaveLLMProviderTemplate(template))
+	require.NoError(t, store.AddTemplate(template))
+
+	rlParams := func(limit int) map[string]interface{} {
+		return map[string]interface{}{
+			"quotas": []interface{}{
+				map[string]interface{}{
+					"name": "request-limit",
+					"limits": []interface{}{
+						map[string]interface{}{"limit": limit, "duration": "1h"},
+					},
+				},
+			},
+		}
+	}
+
+	upstreamURL := "https://api.openai.com"
+	// One policy attached to three overlapping paths of decreasing specificity. Each path's
+	// limit differs so we can tell which one governs each operation. The most specific path
+	// must win for every operation - this must work for nested wildcards (/chat/*), not just
+	// the root catch-all (/*).
+	provider := &api.LLMProviderConfiguration{
+		Metadata: api.Metadata{Name: "openai-provider"},
+		Spec: api.LLMProviderConfigData{
+			DisplayName: "OpenAI Provider",
+			Version:     "1.0.0",
+			Template:    "openai",
+			Upstream: api.LLMProviderConfigData_Upstream{
+				Url: &upstreamURL,
+			},
+			AccessControl: api.LLMAccessControl{Mode: api.AllowAll},
+			Policies: &[]api.LLMPolicy{
+				{
+					Name:    "advanced-ratelimit",
+					Version: "v1",
+					Paths: []api.LLMPolicyPath{
+						{Path: "/chat/completions", Methods: []api.LLMPolicyPathMethods{"*"}, Params: rlParams(4)},
+						{Path: "/chat/*", Methods: []api.LLMPolicyPathMethods{"*"}, Params: rlParams(2)},
+						{Path: "/*", Methods: []api.LLMPolicyPathMethods{"*"}, Params: rlParams(1)},
+					},
+				},
+			},
+		},
+	}
+
+	result, err := transformer.Transform(provider, &api.RestAPI{})
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	firstLimit := func(params *map[string]interface{}) int {
+		require.NotNil(t, params)
+		quotas, ok := (*params)["quotas"].([]interface{})
+		require.True(t, ok)
+		require.NotEmpty(t, quotas)
+		quota, ok := quotas[0].(map[string]interface{})
+		require.True(t, ok)
+		limits, ok := quota["limits"].([]interface{})
+		require.True(t, ok)
+		require.NotEmpty(t, limits)
+		limit, ok := limits[0].(map[string]interface{})
+		require.True(t, ok)
+		v, ok := limit["limit"].(int)
+		require.True(t, ok)
+		return v
+	}
+
+	assertSingleLimit := func(t *testing.T, path string, want int) {
+		t.Helper()
+		op := findOperation(result.Spec.Operations, path, "POST")
+		require.NotNil(t, op, "expected a POST operation for %s", path)
+		require.NotNil(t, op.Policies)
+		require.Len(t, *op.Policies, 1, "%s should carry exactly one advanced-ratelimit (most specific path wins)", path)
+		assert.Equal(t, "advanced-ratelimit", (*op.Policies)[0].Name)
+		assert.Equal(t, want, firstLimit((*op.Policies)[0].Params), "%s should be governed by its own limit", path)
+	}
+
+	// /chat/completions (exact) -> 4, /chat/* (nested wildcard) -> 2, /* (root) -> 1.
+	assertSingleLimit(t, "/chat/completions", 4)
+	assertSingleLimit(t, "/chat/*", 2)
+	assertSingleLimit(t, "/*", 1)
+}
+
+func TestTransformProvider_MostSpecificPathWinsAcrossMethodsAndOrder(t *testing.T) {
+	rlParams := func(limit int) map[string]interface{} {
+		return map[string]interface{}{
+			"quotas": []interface{}{
+				map[string]interface{}{
+					"name": "request-limit",
+					"limits": []interface{}{
+						map[string]interface{}{"limit": limit, "duration": "1h"},
+					},
+				},
+			},
+		}
+	}
+
+	ccPost := api.LLMPolicyPath{Path: "/chat/completions", Methods: []api.LLMPolicyPathMethods{"POST"}, Params: rlParams(4)}
+	ccGet := api.LLMPolicyPath{Path: "/chat/completions", Methods: []api.LLMPolicyPathMethods{"GET"}, Params: rlParams(10)}
+	chatWild := api.LLMPolicyPath{Path: "/chat/*", Methods: []api.LLMPolicyPathMethods{"*"}, Params: rlParams(2)}
+	rootWild := api.LLMPolicyPath{Path: "/*", Methods: []api.LLMPolicyPathMethods{"*"}, Params: rlParams(1)}
+
+	// The expected outcome must be identical regardless of declaration order, including a
+	// same path with different methods carrying different limits (POST=4, GET=10).
+	cases := []struct {
+		name  string
+		paths []api.LLMPolicyPath
+	}{
+		{"specific first", []api.LLMPolicyPath{ccPost, ccGet, chatWild, rootWild}},
+		{"wildcards first", []api.LLMPolicyPath{rootWild, chatWild, ccGet, ccPost}},
+		{"interleaved", []api.LLMPolicyPath{rootWild, ccPost, chatWild, ccGet}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			store := storage.NewConfigStore()
+			db := newTestMockDB()
+			routerConfig := &config.RouterConfig{ListenerPort: 8080}
+			transformer := NewLLMProviderTransformer(store, db, routerConfig, newTestPolicyVersionResolver())
+
+			template := &models.StoredLLMProviderTemplate{
+				UUID:          "0000-template-1-0000-000000000004",
+				Configuration: api.LLMProviderTemplate{Metadata: api.Metadata{Name: "openai"}, Spec: api.LLMProviderTemplateData{}},
+			}
+			require.NoError(t, db.SaveLLMProviderTemplate(template))
+			require.NoError(t, store.AddTemplate(template))
+
+			upstreamURL := "https://api.openai.com"
+			provider := &api.LLMProviderConfiguration{
+				Metadata: api.Metadata{Name: "openai-provider"},
+				Spec: api.LLMProviderConfigData{
+					DisplayName:   "OpenAI Provider",
+					Version:       "1.0.0",
+					Template:      "openai",
+					Upstream:      api.LLMProviderConfigData_Upstream{Url: &upstreamURL},
+					AccessControl: api.LLMAccessControl{Mode: api.AllowAll},
+					Policies: &[]api.LLMPolicy{
+						{Name: "advanced-ratelimit", Version: "v1", Paths: tc.paths},
+					},
+				},
+			}
+
+			result, err := transformer.Transform(provider, &api.RestAPI{})
+			require.NoError(t, err)
+			require.NotNil(t, result)
+
+			firstLimit := func(params *map[string]interface{}) int {
+				require.NotNil(t, params)
+				quotas, ok := (*params)["quotas"].([]interface{})
+				require.True(t, ok)
+				require.NotEmpty(t, quotas)
+				quota, ok := quotas[0].(map[string]interface{})
+				require.True(t, ok)
+				limits, ok := quota["limits"].([]interface{})
+				require.True(t, ok)
+				require.NotEmpty(t, limits)
+				limit, ok := limits[0].(map[string]interface{})
+				require.True(t, ok)
+				v, ok := limit["limit"].(int)
+				require.True(t, ok)
+				return v
+			}
+			assertLimit := func(path, method string, want int) {
+				op := findOperation(result.Spec.Operations, path, method)
+				require.NotNil(t, op, "expected %s %s operation", method, path)
+				require.NotNil(t, op.Policies)
+				require.Len(t, *op.Policies, 1, "%s %s should carry exactly one advanced-ratelimit", method, path)
+				assert.Equal(t, want, firstLimit((*op.Policies)[0].Params), "%s %s limit", method, path)
+			}
+
+			// Same path, method-specific limits win over the wildcards.
+			assertLimit("/chat/completions", "POST", 4)
+			assertLimit("/chat/completions", "GET", 10)
+			// Nested wildcard wins over root wildcard, for every method.
+			assertLimit("/chat/*", "POST", 2)
+			assertLimit("/chat/*", "GET", 2)
+			// Root wildcard governs everything else.
+			assertLimit("/*", "POST", 1)
+		})
+	}
+}
+
+func TestTransformProvider_MostSpecificMethodWinsOnSamePath(t *testing.T) {
+	rlParams := func(limit int) map[string]interface{} {
+		return map[string]interface{}{
+			"quotas": []interface{}{
+				map[string]interface{}{
+					"name": "request-limit",
+					"limits": []interface{}{
+						map[string]interface{}{"limit": limit, "duration": "1h"},
+					},
+				},
+			},
+		}
+	}
+
+	// Same path /chat/completions with a wildcard-method entry (limit 4) and a GET-specific
+	// entry (limit 10), plus nested and root wildcards. GET must win on /chat/completions;
+	// every other method falls to the '*' entry.
+	ccAll := api.LLMPolicyPath{Path: "/chat/completions", Methods: []api.LLMPolicyPathMethods{"*"}, Params: rlParams(4)}
+	ccGet := api.LLMPolicyPath{Path: "/chat/completions", Methods: []api.LLMPolicyPathMethods{"GET"}, Params: rlParams(10)}
+	rootWild := api.LLMPolicyPath{Path: "/*", Methods: []api.LLMPolicyPathMethods{"*"}, Params: rlParams(1)}
+	chatWild := api.LLMPolicyPath{Path: "/chat/*", Methods: []api.LLMPolicyPathMethods{"*"}, Params: rlParams(2)}
+
+	cases := []struct {
+		name  string
+		paths []api.LLMPolicyPath
+	}{
+		{"as declared", []api.LLMPolicyPath{ccAll, ccGet, rootWild, chatWild}},
+		{"reversed", []api.LLMPolicyPath{chatWild, rootWild, ccGet, ccAll}},
+		{"get before all", []api.LLMPolicyPath{ccGet, ccAll, chatWild, rootWild}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			store := storage.NewConfigStore()
+			db := newTestMockDB()
+			routerConfig := &config.RouterConfig{ListenerPort: 8080}
+			transformer := NewLLMProviderTransformer(store, db, routerConfig, newTestPolicyVersionResolver())
+
+			template := &models.StoredLLMProviderTemplate{
+				UUID:          "0000-template-1-0000-000000000005",
+				Configuration: api.LLMProviderTemplate{Metadata: api.Metadata{Name: "openai"}, Spec: api.LLMProviderTemplateData{}},
+			}
+			require.NoError(t, db.SaveLLMProviderTemplate(template))
+			require.NoError(t, store.AddTemplate(template))
+
+			upstreamURL := "https://api.openai.com"
+			provider := &api.LLMProviderConfiguration{
+				Metadata: api.Metadata{Name: "openai-provider"},
+				Spec: api.LLMProviderConfigData{
+					DisplayName:   "OpenAI Provider",
+					Version:       "1.0.0",
+					Template:      "openai",
+					Upstream:      api.LLMProviderConfigData_Upstream{Url: &upstreamURL},
+					AccessControl: api.LLMAccessControl{Mode: api.AllowAll},
+					Policies:      &[]api.LLMPolicy{{Name: "advanced-ratelimit", Version: "v1", Paths: tc.paths}},
+				},
+			}
+
+			result, err := transformer.Transform(provider, &api.RestAPI{})
+			require.NoError(t, err)
+			require.NotNil(t, result)
+
+			firstLimit := func(params *map[string]interface{}) int {
+				require.NotNil(t, params)
+				quotas, ok := (*params)["quotas"].([]interface{})
+				require.True(t, ok)
+				require.NotEmpty(t, quotas)
+				quota, ok := quotas[0].(map[string]interface{})
+				require.True(t, ok)
+				limits, ok := quota["limits"].([]interface{})
+				require.True(t, ok)
+				require.NotEmpty(t, limits)
+				limit, ok := limits[0].(map[string]interface{})
+				require.True(t, ok)
+				v, ok := limit["limit"].(int)
+				require.True(t, ok)
+				return v
+			}
+			assertLimit := func(path, method string, want int) {
+				op := findOperation(result.Spec.Operations, path, method)
+				require.NotNil(t, op, "expected %s %s operation", method, path)
+				require.NotNil(t, op.Policies)
+				require.Len(t, *op.Policies, 1, "%s %s should carry exactly one advanced-ratelimit", method, path)
+				assert.Equal(t, want, firstLimit((*op.Policies)[0].Params), "%s %s limit", method, path)
+			}
+
+			// GET is the most specific (concrete method on the most specific path) -> 10.
+			assertLimit("/chat/completions", "GET", 10)
+			// Every other method on /chat/completions falls to the '*' entry -> 4.
+			assertLimit("/chat/completions", "POST", 4)
+			assertLimit("/chat/completions", "PUT", 4)
+			// Nested and root wildcards unchanged.
+			assertLimit("/chat/*", "POST", 2)
+			assertLimit("/*", "POST", 1)
+		})
+	}
+}
+
+// --- shared helpers for policy path/method specificity tests ---
+
+func rlQuota(limit int) map[string]interface{} {
+	return map[string]interface{}{
+		"quotas": []interface{}{
+			map[string]interface{}{
+				"name": "request-limit",
+				"limits": []interface{}{
+					map[string]interface{}{"limit": limit, "duration": "1h"},
+				},
+			},
+		},
+	}
+}
+
+func quotaLimitOf(t *testing.T, p api.Policy) int {
+	t.Helper()
+	require.NotNil(t, p.Params)
+	quotas, ok := (*p.Params)["quotas"].([]interface{})
+	require.True(t, ok)
+	require.NotEmpty(t, quotas)
+	q, ok := quotas[0].(map[string]interface{})
+	require.True(t, ok)
+	limits, ok := q["limits"].([]interface{})
+	require.True(t, ok)
+	require.NotEmpty(t, limits)
+	lim, ok := limits[0].(map[string]interface{})
+	require.True(t, ok)
+	v, ok := lim["limit"].(int)
+	require.True(t, ok)
+	return v
+}
+
+func transformProviderWithPolicies(t *testing.T, uuid string, tmplSpec api.LLMProviderTemplateData,
+	ac api.LLMAccessControl, policies []api.LLMPolicy) *api.RestAPI {
+	t.Helper()
+	store := storage.NewConfigStore()
+	db := newTestMockDB()
+	routerConfig := &config.RouterConfig{ListenerPort: 8080}
+	transformer := NewLLMProviderTransformer(store, db, routerConfig, newTestPolicyVersionResolver())
+	template := &models.StoredLLMProviderTemplate{
+		UUID:          uuid,
+		Configuration: api.LLMProviderTemplate{Metadata: api.Metadata{Name: "openai"}, Spec: tmplSpec},
+	}
+	require.NoError(t, db.SaveLLMProviderTemplate(template))
+	require.NoError(t, store.AddTemplate(template))
+	upstreamURL := "https://api.openai.com"
+	provider := &api.LLMProviderConfiguration{
+		Metadata: api.Metadata{Name: "openai-provider"},
+		Spec: api.LLMProviderConfigData{
+			DisplayName:   "OpenAI Provider",
+			Version:       "1.0.0",
+			Template:      "openai",
+			Upstream:      api.LLMProviderConfigData_Upstream{Url: &upstreamURL},
+			AccessControl: ac,
+			Policies:      &policies,
+		},
+	}
+	result, err := transformer.Transform(provider, &api.RestAPI{})
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	return result
+}
+
+// #1: a narrower HTTP method set is more specific than a broader one on the same path.
+func TestTransformProvider_NarrowerMethodSetWins(t *testing.T) {
+	result := transformProviderWithPolicies(t, "0000-template-1-0000-000000000006",
+		api.LLMProviderTemplateData{}, api.LLMAccessControl{Mode: api.AllowAll},
+		[]api.LLMPolicy{{Name: "advanced-ratelimit", Version: "v1", Paths: []api.LLMPolicyPath{
+			{Path: "/chat/completions", Methods: []api.LLMPolicyPathMethods{"GET", "POST"}, Params: rlQuota(3)},
+			{Path: "/chat/completions", Methods: []api.LLMPolicyPathMethods{"POST"}, Params: rlQuota(100)},
+		}}})
+
+	// GET is only covered by [GET, POST] -> 3.
+	getOp := findOperation(result.Spec.Operations, "/chat/completions", "GET")
+	require.NotNil(t, getOp)
+	require.NotNil(t, getOp.Policies)
+	require.Len(t, *getOp.Policies, 1)
+	assert.Equal(t, 3, quotaLimitOf(t, (*getOp.Policies)[0]))
+
+	// POST is covered by both; the narrower [POST] entry wins -> 100.
+	postOp := findOperation(result.Spec.Operations, "/chat/completions", "POST")
+	require.NotNil(t, postOp)
+	require.NotNil(t, postOp.Policies)
+	require.Len(t, *postOp.Policies, 1, "POST should be governed only by the narrower [POST] entry")
+	assert.Equal(t, 100, quotaLimitOf(t, (*postOp.Policies)[0]))
+}
+
+// #2: path specificity dominates method specificity (confirmed behavior).
+func TestTransformProvider_PathDominatesMethodSpecificity(t *testing.T) {
+	result := transformProviderWithPolicies(t, "0000-template-1-0000-000000000007",
+		api.LLMProviderTemplateData{}, api.LLMAccessControl{Mode: api.AllowAll},
+		[]api.LLMPolicy{{Name: "advanced-ratelimit", Version: "v1", Paths: []api.LLMPolicyPath{
+			{Path: "/chat/*", Methods: []api.LLMPolicyPathMethods{"POST"}, Params: rlQuota(100)},
+			{Path: "/chat/completions", Methods: []api.LLMPolicyPathMethods{"*"}, Params: rlQuota(2)},
+		}}})
+
+	// POST /chat/completions: the more specific PATH wins over a method-specific rule on a
+	// less specific (wildcard) path -> 2.
+	postOp := findOperation(result.Spec.Operations, "/chat/completions", "POST")
+	require.NotNil(t, postOp)
+	require.NotNil(t, postOp.Policies)
+	require.Len(t, *postOp.Policies, 1, "the most specific path must win over a method-specific rule on a wildcard path")
+	assert.Equal(t, 2, quotaLimitOf(t, (*postOp.Policies)[0]))
+
+	// POST /chat/<other> is still governed by /chat/* [POST] -> 100.
+	wildOp := findOperation(result.Spec.Operations, "/chat/*", "POST")
+	require.NotNil(t, wildOp)
+	require.NotNil(t, wildOp.Policies)
+	require.Len(t, *wildOp.Policies, 1)
+	assert.Equal(t, 100, quotaLimitOf(t, (*wildOp.Policies)[0]))
+}
+
+// #3: different policy names resolve their specificity independently (no cross-policy suppression).
+func TestTransformProvider_DifferentPoliciesResolveIndependently(t *testing.T) {
+	hdr := func(scope string) map[string]interface{} {
+		return map[string]interface{}{"scope": scope}
+	}
+	result := transformProviderWithPolicies(t, "0000-template-1-0000-000000000008",
+		api.LLMProviderTemplateData{}, api.LLMAccessControl{Mode: api.AllowAll},
+		[]api.LLMPolicy{
+			{Name: "advanced-ratelimit", Version: "v1", Paths: []api.LLMPolicyPath{
+				{Path: "/chat/completions", Methods: []api.LLMPolicyPathMethods{"*"}, Params: rlQuota(4)},
+				{Path: "/*", Methods: []api.LLMPolicyPathMethods{"*"}, Params: rlQuota(1)},
+			}},
+			{Name: "set-headers", Version: "v1", Paths: []api.LLMPolicyPath{
+				{Path: "/chat/*", Methods: []api.LLMPolicyPathMethods{"*"}, Params: hdr("chat")},
+				{Path: "/*", Methods: []api.LLMPolicyPathMethods{"*"}, Params: hdr("root")},
+			}},
+		})
+
+	// /chat/completions POST: advanced-ratelimit from its own specific path (4) AND
+	// set-headers from /chat/* (the most specific set-headers path covering it).
+	op := findOperation(result.Spec.Operations, "/chat/completions", "POST")
+	require.NotNil(t, op)
+	require.NotNil(t, op.Policies)
+	require.Len(t, *op.Policies, 2, "two different policies must both apply (no cross-policy suppression)")
+	byName := map[string]api.Policy{}
+	for _, p := range *op.Policies {
+		byName[p.Name] = p
+	}
+	require.Contains(t, byName, "advanced-ratelimit")
+	require.Contains(t, byName, "set-headers")
+	assert.Equal(t, 4, quotaLimitOf(t, byName["advanced-ratelimit"]))
+	assert.Equal(t, "chat", (*byName["set-headers"].Params)["scope"])
+}
+
+// #4: most specific wins under deny_all access control (over allowed exception paths).
+func TestTransformProvider_DenyAllModeMostSpecificWins(t *testing.T) {
+	exceptions := []api.RouteException{
+		{Path: "/chat/completions", Methods: []api.RouteExceptionMethods{"*"}},
+		{Path: "/chat/other", Methods: []api.RouteExceptionMethods{"*"}},
+	}
+	result := transformProviderWithPolicies(t, "0000-template-1-0000-000000000009",
+		api.LLMProviderTemplateData{},
+		api.LLMAccessControl{Mode: api.DenyAll, Exceptions: &exceptions},
+		[]api.LLMPolicy{{Name: "advanced-ratelimit", Version: "v1", Paths: []api.LLMPolicyPath{
+			{Path: "/chat/completions", Methods: []api.LLMPolicyPathMethods{"*"}, Params: rlQuota(4)},
+			{Path: "/chat/*", Methods: []api.LLMPolicyPathMethods{"*"}, Params: rlQuota(2)},
+		}}})
+
+	// /chat/completions keeps only its own quota (4), not the /chat/* one.
+	ccOp := findOperation(result.Spec.Operations, "/chat/completions", "POST")
+	require.NotNil(t, ccOp)
+	require.NotNil(t, ccOp.Policies)
+	require.Len(t, *ccOp.Policies, 1, "/chat/completions should keep only its own quota in deny_all mode")
+	assert.Equal(t, 4, quotaLimitOf(t, (*ccOp.Policies)[0]))
+
+	// /chat/other (covered only by /chat/*) gets the /chat/* quota (2).
+	otherOp := findOperation(result.Spec.Operations, "/chat/other", "POST")
+	require.NotNil(t, otherOp)
+	require.NotNil(t, otherOp.Policies)
+	require.Len(t, *otherOp.Policies, 1)
+	assert.Equal(t, 2, quotaLimitOf(t, (*otherOp.Policies)[0]))
+}
+
+// #6: a wildcard policy expanded onto template resource paths still loses to a same-name
+// policy attached directly to that resource path.
+func TestTransformProvider_TemplateExpansionDedupesSameNamePolicy(t *testing.T) {
+	tmplSpec := api.LLMProviderTemplateData{
+		ResourceMappings: &api.LLMProviderTemplateResourceMappings{
+			Resources: &[]api.LLMProviderTemplateResourceMapping{
+				{Resource: "/responses"},
+			},
+		},
+	}
+	result := transformProviderWithPolicies(t, "0000-template-1-0000-000000000010",
+		tmplSpec, api.LLMAccessControl{Mode: api.AllowAll},
+		[]api.LLMPolicy{{Name: "advanced-ratelimit", Version: "v1", Paths: []api.LLMPolicyPath{
+			{Path: "/*", Methods: []api.LLMPolicyPathMethods{"*"}, Params: rlQuota(1)},
+			{Path: "/responses", Methods: []api.LLMPolicyPathMethods{"*"}, Params: rlQuota(5)},
+		}}})
+
+	// /responses (an expanded template resource) keeps ONLY its specific limit (5).
+	respOp := findOperation(result.Spec.Operations, "/responses", "POST")
+	require.NotNil(t, respOp)
+	require.NotNil(t, respOp.Policies)
+	require.Len(t, *respOp.Policies, 1, "/responses should not also carry the wildcard policy after template expansion")
+	assert.Equal(t, 5, quotaLimitOf(t, (*respOp.Policies)[0]))
+
+	// /* keeps the wildcard limit (1).
+	wildOp := findOperation(result.Spec.Operations, "/*", "POST")
+	require.NotNil(t, wildOp)
+	require.NotNil(t, wildOp.Policies)
+	require.Len(t, *wildOp.Policies, 1)
+	assert.Equal(t, 1, quotaLimitOf(t, (*wildOp.Policies)[0]))
+}
+
+// Two separate policy blocks of the SAME name each resolve most-specific-within-block and
+// both layer onto every route (the user's two-advanced-ratelimit scenario).
+func TestTransformProvider_SeparatePoliciesOfSameNameBothApply(t *testing.T) {
+	block1 := api.LLMPolicy{Name: "advanced-ratelimit", Version: "v1", Paths: []api.LLMPolicyPath{
+		{Path: "/chat/completions", Methods: []api.LLMPolicyPathMethods{"*"}, Params: rlQuota(4)},
+		{Path: "/chat/completions", Methods: []api.LLMPolicyPathMethods{"GET"}, Params: rlQuota(10)},
+		{Path: "/*", Methods: []api.LLMPolicyPathMethods{"*"}, Params: rlQuota(1)},
+		{Path: "/chat/*", Methods: []api.LLMPolicyPathMethods{"*"}, Params: rlQuota(2)},
+	}}
+	block2 := api.LLMPolicy{Name: "advanced-ratelimit", Version: "v1", Paths: []api.LLMPolicyPath{
+		{Path: "/*", Methods: []api.LLMPolicyPathMethods{"*"}, Params: rlQuota(100)},
+	}}
+	result := transformProviderWithPolicies(t, "0000-template-1-0000-000000000011",
+		api.LLMProviderTemplateData{}, api.LLMAccessControl{Mode: api.AllowAll},
+		[]api.LLMPolicy{block1, block2})
+
+	limitsFor := func(path, method string) []int {
+		op := findOperation(result.Spec.Operations, path, method)
+		require.NotNil(t, op, "expected %s %s operation", method, path)
+		require.NotNil(t, op.Policies)
+		out := []int{}
+		for _, p := range *op.Policies {
+			assert.Equal(t, "advanced-ratelimit", p.Name)
+			out = append(out, quotaLimitOf(t, p))
+		}
+		return out
+	}
+
+	// Each route carries block #1's most-specific match AND block #2's /* (100). Both apply.
+	assert.ElementsMatch(t, []int{4, 100}, limitsFor("/chat/completions", "POST"))
+	assert.ElementsMatch(t, []int{10, 100}, limitsFor("/chat/completions", "GET"))
+	assert.ElementsMatch(t, []int{2, 100}, limitsFor("/chat/*", "POST"))
+	assert.ElementsMatch(t, []int{1, 100}, limitsFor("/*", "POST"))
 }
 
 func TestTransformProvider_WithUpstreamAuth(t *testing.T) {

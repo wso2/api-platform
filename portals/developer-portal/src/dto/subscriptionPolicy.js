@@ -21,9 +21,9 @@ class SubscriptionPolicy {
         this.policyID = subscriptionPolicy.POLICY_ID;
         this.policyName = subscriptionPolicy.POLICY_NAME;
         this.displayName = subscriptionPolicy.DISPLAY_NAME;
-        this.billingPlan = subscriptionPolicy.BILLING_PLAN;
         this.description = subscriptionPolicy.DESCRIPTION;
         this.requestCount = subscriptionPolicy.REQUEST_COUNT;
+        this.refId = subscriptionPolicy.REF_ID;
         this.orgID = subscriptionPolicy.ORG_ID;
     }
 }

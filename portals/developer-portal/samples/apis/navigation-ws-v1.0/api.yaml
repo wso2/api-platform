@@ -1,0 +1,39 @@
+apiVersion: devportal.api-platform.wso2.com/v1
+kind: WS
+
+metadata:
+  name: navigation-ws-v1.0
+
+spec:
+  type: WS
+  displayName: Navigation API
+  version: v1.0
+  description: Real-time vehicle navigation and live route tracking over WebSocket. Send an origin and destination; receive turn-by-turn updates as the route is calculated and re-routed.
+  provider: WSO2
+  status: PUBLISHED
+
+  tags:
+    - websocket
+    - navigation
+    - real-time
+    - async
+
+  labels:
+    - default
+
+  subscriptionPolicies:
+    - Gold
+    - Silver
+
+  visibility: PUBLIC
+  visibleGroups: []
+
+  businessInformation:
+    businessOwner: Platform Owner
+    businessOwnerEmail: support@example.com
+    technicalOwner: API Team
+    technicalOwnerEmail: architecture@example.com
+
+  endpoints:
+    productionUrl: wss://navigation.example.com/ws
+    sandboxUrl: ws://localhost:8081/ws

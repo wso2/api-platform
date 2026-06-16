@@ -64,7 +64,7 @@ type Runtime struct {
 	bindingPaths        map[string][]string // name → registered mux paths
 	bindingTopics       map[string][]string // name → Kafka topics (data + internal sub)
 	websubMux           *DynamicMux
-	wsMux               *http.ServeMux // WebSocket mux for dynamic WebBrokerApi bindings
+	wsMux               *DynamicMux // WebSocket mux for dynamic WebBrokerApi bindings
 	runCtx              context.Context
 	running             bool // true after Run() starts servers
 }
@@ -105,7 +105,7 @@ func New(cfg *config.Config, rawConfig map[string]interface{}, registry *connect
 		bindingPaths:        make(map[string][]string),
 		bindingTopics:       make(map[string][]string),
 		websubMux:           NewDynamicMux(),
-		wsMux:               http.NewServeMux(),
+		wsMux:               NewDynamicMux(),
 	}, nil
 }
 
@@ -128,7 +128,7 @@ func (r *Runtime) LoadChannels(channelsPath string) error {
 	}
 
 	// Create shared HTTP muxes for port sharing.
-	wsMux := http.NewServeMux()
+	wsMux := NewDynamicMux()
 	websubMux := http.NewServeMux()
 
 	// Store wsMux for dynamic bindings
@@ -170,7 +170,7 @@ func (r *Runtime) LoadChannels(channelsPath string) error {
 		r.brokerDrivers = append(r.brokerDrivers, brokerDriver)
 
 		receiverType := resolveReceiverType(b)
-		var mux *http.ServeMux
+		var mux connectors.RouteMux
 		switch receiverType {
 		case "websub":
 			mux = websubMux
@@ -403,22 +403,30 @@ func (r *Runtime) LoadChannels(channelsPath string) error {
 
 	// Create shared HTTP servers.
 	if hasWS {
-		wsServer, err := r.newManagedServer("WebSocket", r.cfg.Server.WebSocketPort, wsMux, false)
+		wsServer, err := r.newManagedServer("WebSocket", r.cfg.Server.WebSocketPort, wsMux, "", "")
 		if err != nil {
 			return fmt.Errorf("failed to create WebSocket server: %w", err)
 		}
 		r.servers = append(r.servers, wsServer)
+		// Create WSS server if TLS is enabled
+		if r.cfg.Server.WebSocketTLSEnabled {
+			wssServer, err := r.newManagedServer("WebSocket-HTTPS", r.cfg.Server.WebSocketHTTPSPort, wsMux, r.cfg.Server.WebSocketTLSCertFile, r.cfg.Server.WebSocketTLSKeyFile)
+			if err != nil {
+				return fmt.Errorf("failed to create WebSocket HTTPS server: %w", err)
+			}
+			r.servers = append(r.servers, wssServer)
+		}
 	}
 	if hasWebSub && r.cfg.Server.WebSubEnabled {
 		// Create HTTP server
-		websubHTTPServer, err := r.newManagedServer("WebSub-HTTP", r.cfg.Server.WebSubHTTPPort, websubMux, false)
+		websubHTTPServer, err := r.newManagedServer("WebSub-HTTP", r.cfg.Server.WebSubHTTPPort, websubMux, "", "")
 		if err != nil {
 			return fmt.Errorf("failed to create WebSub HTTP server: %w", err)
 		}
 		r.servers = append(r.servers, websubHTTPServer)
 		// Create HTTPS server if TLS is enabled
 		if r.cfg.Server.WebSubTLSEnabled {
-			websubHTTPSServer, err := r.newManagedServer("WebSub-HTTPS", r.cfg.Server.WebSubHTTPSPort, websubMux, true)
+			websubHTTPSServer, err := r.newManagedServer("WebSub-HTTPS", r.cfg.Server.WebSubHTTPSPort, websubMux, r.cfg.Server.WebSubTLSCertFile, r.cfg.Server.WebSubTLSKeyFile)
 			if err != nil {
 				return fmt.Errorf("failed to create WebSub HTTPS server: %w", err)
 			}
@@ -446,7 +454,7 @@ func (r *Runtime) Run(ctx context.Context) error {
 	if r.cfg.ControlPlane.Enabled {
 		// Create WebSocket server for dynamic WebBrokerApi bindings
 		slog.Info("Creating WebSocket server for dynamic WebBrokerApi bindings", "port", r.cfg.Server.WebSocketPort)
-		wsServer, err := r.newManagedServer("WebSocket", r.cfg.Server.WebSocketPort, r.wsMux, false)
+		wsServer, err := r.newManagedServer("WebSocket", r.cfg.Server.WebSocketPort, r.wsMux, "", "")
 		if err != nil {
 			r.mu.Unlock()
 			return fmt.Errorf("failed to create WebSocket server: %w", err)
@@ -456,10 +464,24 @@ func (r *Runtime) Run(ctx context.Context) error {
 			r.runServer(wsServer)
 		}()
 
+		// Create WSS server if TLS is enabled
+		if r.cfg.Server.WebSocketTLSEnabled {
+			slog.Info("Creating WebSocket HTTPS server for dynamic WebBrokerApi bindings", "port", r.cfg.Server.WebSocketHTTPSPort)
+			wssServer, err := r.newManagedServer("WebSocket-HTTPS", r.cfg.Server.WebSocketHTTPSPort, r.wsMux, r.cfg.Server.WebSocketTLSCertFile, r.cfg.Server.WebSocketTLSKeyFile)
+			if err != nil {
+				r.mu.Unlock()
+				return fmt.Errorf("failed to create WebSocket HTTPS server: %w", err)
+			}
+			r.servers = append(r.servers, wssServer)
+			go func() {
+				r.runServer(wssServer)
+			}()
+		}
+
 		// Create WebSub servers for dynamic WebSubApi bindings
 		if r.cfg.Server.WebSubEnabled {
 			slog.Info("Creating WebSub HTTP server for dynamic WebSubApi bindings", "port", r.cfg.Server.WebSubHTTPPort)
-			websubHTTPServer, err := r.newManagedServer("WebSub-HTTP", r.cfg.Server.WebSubHTTPPort, r.websubMux, false)
+			websubHTTPServer, err := r.newManagedServer("WebSub-HTTP", r.cfg.Server.WebSubHTTPPort, r.websubMux, "", "")
 			if err != nil {
 				r.mu.Unlock()
 				return fmt.Errorf("failed to create WebSub HTTP server: %w", err)
@@ -472,7 +494,7 @@ func (r *Runtime) Run(ctx context.Context) error {
 			// Create HTTPS server if TLS is enabled
 			if r.cfg.Server.WebSubTLSEnabled {
 				slog.Info("Creating WebSub HTTPS server for dynamic WebSubApi bindings", "port", r.cfg.Server.WebSubHTTPSPort)
-				websubHTTPSServer, err := r.newManagedServer("WebSub-HTTPS", r.cfg.Server.WebSubHTTPSPort, r.websubMux, true)
+				websubHTTPSServer, err := r.newManagedServer("WebSub-HTTPS", r.cfg.Server.WebSubHTTPSPort, r.websubMux, r.cfg.Server.WebSubTLSCertFile, r.cfg.Server.WebSubTLSKeyFile)
 				if err != nil {
 					r.mu.Unlock()
 					return fmt.Errorf("failed to create WebSub HTTPS server: %w", err)
@@ -562,7 +584,7 @@ func (r *Runtime) Run(ctx context.Context) error {
 	return nil
 }
 
-func (r *Runtime) newManagedServer(name string, port int, handler http.Handler, allowTLS bool) (*managedServer, error) {
+func (r *Runtime) newManagedServer(name string, port int, handler http.Handler, certFile, keyFile string) (*managedServer, error) {
 	server := &managedServer{
 		name: name,
 		server: &http.Server{
@@ -571,16 +593,16 @@ func (r *Runtime) newManagedServer(name string, port int, handler http.Handler, 
 		},
 	}
 
-	if allowTLS && r.cfg.Server.WebSubTLSEnabled {
-		if err := ensureReadableTLSAsset(r.cfg.Server.WebSubTLSCertFile, "server.websub_tls_cert_file"); err != nil {
+	if certFile != "" {
+		if err := ensureReadableTLSAsset(certFile, name+" TLS cert file"); err != nil {
 			return nil, fmt.Errorf("invalid TLS configuration for %s server: %w", name, err)
 		}
-		if err := ensureReadableTLSAsset(r.cfg.Server.WebSubTLSKeyFile, "server.websub_tls_key_file"); err != nil {
+		if err := ensureReadableTLSAsset(keyFile, name+" TLS key file"); err != nil {
 			return nil, fmt.Errorf("invalid TLS configuration for %s server: %w", name, err)
 		}
 		server.tls = true
-		server.certFile = r.cfg.Server.WebSubTLSCertFile
-		server.keyFile = r.cfg.Server.WebSubTLSKeyFile
+		server.certFile = certFile
+		server.keyFile = keyFile
 	}
 
 	return server, nil
@@ -1231,6 +1253,7 @@ func (r *Runtime) AddWebBrokerApiBinding(wbb binding.WebBrokerApiBinding) error 
 		return fmt.Errorf("failed to create receiver for WebBrokerApi %q: %w", wbb.Name, err)
 	}
 	r.activeReceivers[wbb.Name] = receiver
+	r.bindingPaths[wbb.Name] = []string{wbb.Context}
 
 	startNow := r.running
 	startCtx := r.runCtx
@@ -1289,7 +1312,7 @@ func (r *Runtime) RemoveWebBrokerApiBinding(name string) error {
 	// Deregister HTTP routes from the mux.
 	if paths, ok := r.bindingPaths[name]; ok {
 		for _, p := range paths {
-			r.websubMux.Remove(p)
+			r.wsMux.Remove(p)
 		}
 		delete(r.bindingPaths, name)
 	}

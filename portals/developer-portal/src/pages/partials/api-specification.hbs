@@ -63,13 +63,16 @@
       document.addEventListener('DOMContentLoaded', function () {
         const swaggerData = {{{ asyncapi }}};
         let serverUrl = swaggerData.servers && swaggerData.servers.production ? swaggerData.servers.production.url : '';
+        let sandboxURL = swaggerData.servers && swaggerData.servers.sandbox ? swaggerData.servers.sandbox.url : '';
         const rootElement = document.getElementById('root');
         rootElement.innerHTML = '<div style="display: flex; justify-content: center; align-items: center; height: 100vh; font-family: montserrat;">Loading AsyncAPI Viewer...</div>';
         ReactDOM.render(React.createElement(WebSocketViewer.default, {
             apiEndpoint: serverUrl,
+            sandboxEndpoint: sandboxURL,
             token: '<your-token-here>',
             asyncapi: swaggerData,
-            isDevportal: true
+            isDevportal: true,
+            asyncApiType: 'WS'
         }), rootElement);
       });
     } else {
@@ -82,27 +85,376 @@
   </script>
 </main>
 
-{{else if (eq apiType "GraphQL")}}
+{{else if (eq apiType "WEBSUB")}}
 
 <head>
-  <link rel="stylesheet" href="https://unpkg.com/graphiql@latest/graphiql.min.css">
-  <script src="https://unpkg.com/react@18.0.0/umd/react.development.js"></script>
-  <script src="https://unpkg.com/react-dom@18.0.0/umd/react-dom.development.js"></script>
-  <script src="https://unpkg.com/graphiql/graphiql.min.js"></script>
+  <link rel="stylesheet" href="/technical-styles/async-tryout.css">
 </head>
 <main>
   <div id="root" style="height: 100vh;"></div>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@asyncapi/react-component@latest/browser/standalone/index.js"></script>
+  <script src="https://cdn.jsdelivr.net/gh/wso2/api-developer-portal-core@refs/heads/main/libs/async-api-viewer/dist/websocket-viewer.umd.js"></script>
+  <link
+    rel="stylesheet"
+    href="https://cdn.jsdelivr.net/gh/wso2/api-developer-portal-core@refs/heads/main/libs/async-api-viewer/dist/async-api-viewer.css"
+  />
   <script>
-    const fetcher = GraphiQL.createFetcher({ url: '{{ apiMetadata.endPoints.productionURL }}' });
-    const rootElement = document.getElementById('root');
-    const root = ReactDOM.createRoot(rootElement);
-    root.render(
-      React.createElement(GraphiQL, {
-        fetcher: fetcher,
-      })
-    );
+    const isWebSocketTryout = {{#if isWebSocketTryout}}{{isWebSocketTryout}}{{else}}false{{/if}};
+    if (isWebSocketTryout) {
+      document.addEventListener('DOMContentLoaded', function () {
+        const swaggerData = {{{ asyncapi }}};
+        let serverUrl = swaggerData.servers && swaggerData.servers.production ? swaggerData.servers.production.url : '';
+        const rootElement = document.getElementById('root');
+        rootElement.innerHTML = '<div style="display: flex; justify-content: center; align-items: center; height: 100vh; font-family: montserrat;">Loading AsyncAPI Viewer...</div>';
+        ReactDOM.render(React.createElement(WebSocketViewer.default, {
+            apiEndpoint: serverUrl,
+            token: '<your-token-here>',
+            asyncapi: swaggerData,
+            isDevportal: true,
+            asyncApiType: 'WEBSUB'
+        }), rootElement);
+      });
+    } else {
+      const config = { "show": { "sidebar": false }, "sidebar": { "showOperations": "byDefault" } };
+      AsyncApiStandalone.hydrate({
+        schema: {{{ asyncapi }}},
+        config
+      }, document.getElementById('root'));
+    }
   </script>
 </main>
+
+{{else if (eq apiType "GRAPHQL")}}
+
+{{#if isGraphQLTryout}}
+<head>
+  <link rel="stylesheet" href="https://unpkg.com/graphiql@3/graphiql.min.css">
+  <link rel="stylesheet" href="https://unpkg.com/@graphiql/plugin-explorer@3/dist/style.css">
+  <link rel="stylesheet" href="/technical-styles/graphql-tryout.css">
+</head>
+<main>
+  <div class="graphql-tryout-container">
+    <div class="graphql-controls" id="graphql-controls">
+      <div class="graphql-control graphql-control-row">
+        <div class="graphql-endpoint-type-wrapper">
+          <label for="graphql-endpoint-type">Environment</label>
+          <select id="graphql-endpoint-type" aria-label="Endpoint type">
+            <option value="production">Production</option>
+            {{#if apiMetadata.endPoints.sandboxURL}}<option value="sandbox">Sandbox</option>{{/if}}
+          </select>
+        </div>
+        <div class="graphql-endpoint-input-wrapper">
+          <label for="graphql-endpoint-input">Endpoint URL</label>
+          <input id="graphql-endpoint-input" type="text" spellcheck="false" />
+          <div class="control-hint" id="graphql-endpoint-status"></div>
+        </div>
+      </div>
+      <div class="graphql-control" id="graphql-auth-control">
+        <div class="graphql-auth-tabs" id="graphql-auth-tabs" style="display:none;">
+          <button type="button" class="graphql-auth-tab active" id="graphql-tab-oauth" data-tab="oauth">OAuth</button>
+          <button type="button" class="graphql-auth-tab" id="graphql-tab-apikey" data-tab="apikey">API Key</button>
+        </div>
+        <div id="graphql-auth-oauth" class="graphql-auth-panel">
+          <label for="graphql-token-input">Authorization Header</label>
+          <input id="graphql-token-input" type="text" placeholder="Bearer &lt;token&gt;" spellcheck="false" autocomplete="off" />
+          <div class="control-hint" id="graphql-token-status"></div>
+        </div>
+        <div id="graphql-auth-apikey" class="graphql-auth-panel" style="display:none;">
+          <div style="display:flex; gap:8px;">
+            <div style="display:flex; flex-direction:column; gap:4px; flex: 0 0 180px;">
+              <label for="graphql-apikey-header-input">Header Name</label>
+              <input id="graphql-apikey-header-input" type="text" placeholder="apikey" spellcheck="false" />
+            </div>
+            <div style="display:flex; flex-direction:column; gap:4px; flex:1; min-width:0;">
+              <label for="graphql-apikey-input">API Key Value</label>
+              <input id="graphql-apikey-input" type="text" placeholder="Enter API key" spellcheck="false" autocomplete="off" />
+            </div>
+          </div>
+          <div class="control-hint" id="graphql-apikey-status"></div>
+        </div>
+      </div>
+    </div>
+    <div id="root" style="flex: 1; min-height: 0;"></div>
+  </div>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/graphiql@3/graphiql.min.js"></script>
+  <script src="https://unpkg.com/@graphiql/plugin-explorer@3/dist/index.umd.js"></script>
+  <script id="graphql-schema-introspection-json" type="application/json">{{{graphqlSchemaAsIntrospectionJSON}}}</script>
+  <script>
+    document.addEventListener('DOMContentLoaded', function () {
+      const apiEndpoint = '{{ apiMetadata.endPoints.productionURL }}';
+      const sandboxEndpoint = '{{ apiMetadata.endPoints.sandboxURL }}';
+      const securityScheme = {{{graphqlSecurityScheme}}};
+      const apiKeyHeader = '{{ graphqlApiKeyHeader }}';
+      const rootElement = document.getElementById('root');
+      rootElement.innerHTML = '<div style="display: flex; justify-content: center; align-items: center; height: 100vh; font-family: montserrat;">Loading GraphiQL...</div>';
+
+      const endpointInput = document.getElementById('graphql-endpoint-input');
+      const endpointStatus = document.getElementById('graphql-endpoint-status');
+      const endpointTypeSelect = document.getElementById('graphql-endpoint-type');
+      const tokenInput = document.getElementById('graphql-token-input');
+      const tokenStatus = document.getElementById('graphql-token-status');
+      const apikeyHeaderInput = document.getElementById('graphql-apikey-header-input');
+      const apikeyInput = document.getElementById('graphql-apikey-input');
+      const apikeyStatus = document.getElementById('graphql-apikey-status');
+      const authTabs = document.getElementById('graphql-auth-tabs');
+      const authOAuthPanel = document.getElementById('graphql-auth-oauth');
+      const authApiKeyPanel = document.getElementById('graphql-auth-apikey');
+      let selectedEndpointType = 'production';
+      let currentEndpoint = apiEndpoint || '';
+      let authToken = '';
+      let apiKeyValue = '';
+      let activeApiKeyHeader = apiKeyHeader;
+      let activeAuthTab = 'oauth';
+
+      // Show auth tabs only when both oauth2 and api_key are enabled
+      const hasOAuth2 = securityScheme.includes('oauth2');
+      const hasApiKey = securityScheme.includes('api_key');
+      if (hasOAuth2 && hasApiKey) {
+        if (authTabs) authTabs.style.display = 'flex';
+      } else if (hasApiKey && !hasOAuth2) {
+        // Only API key
+        if (authOAuthPanel) authOAuthPanel.style.display = 'none';
+        if (authApiKeyPanel) authApiKeyPanel.style.display = '';
+        activeAuthTab = 'apikey';
+      }
+      // Default (only oauth2 or empty)
+
+      if (authTabs) {
+        authTabs.addEventListener('click', function (event) {
+          const tab = event.target.closest('.graphql-auth-tab');
+          if (!tab) return;
+          const target = tab.dataset.tab;
+          authTabs.querySelectorAll('.graphql-auth-tab').forEach(function (t) {
+            t.classList.remove('active');
+          });
+          tab.classList.add('active');
+          activeAuthTab = target;
+          if (target === 'oauth') {
+            if (authOAuthPanel) authOAuthPanel.style.display = '';
+            if (authApiKeyPanel) authApiKeyPanel.style.display = 'none';
+          } else {
+            if (authOAuthPanel) authOAuthPanel.style.display = 'none';
+            if (authApiKeyPanel) authApiKeyPanel.style.display = '';
+          }
+        });
+      }
+
+      const getEndpointForType = (type) => {
+        return type === 'sandbox' ? (sandboxEndpoint || '') : (apiEndpoint || '');
+      };
+
+      const updateEndpointStatus = () => {
+        if (!endpointStatus) {
+          return;
+        }
+        if (!currentEndpoint) {
+          endpointStatus.textContent = 'Endpoint is required';
+          endpointStatus.style.color = '#d1242f';
+          return;
+        }
+        endpointStatus.textContent = currentEndpoint;
+        endpointStatus.style.color = '#57606a';
+      };
+
+      const updateTokenStatus = () => {
+        if (!tokenStatus) {
+          return;
+        }
+        tokenStatus.textContent = authToken
+          ? 'Authorization header will be sent with each request'
+          : 'Header not set';
+        tokenStatus.style.color = authToken ? '#1f883d' : '#57606a';
+      };
+
+      const updateApiKeyStatus = () => {
+        if (!apikeyStatus) return;
+        apikeyStatus.textContent = apiKeyValue
+          ? 'API key will be sent with each request'
+          : 'API key not set';
+        apikeyStatus.style.color = apiKeyValue ? '#1f883d' : '#57606a';
+      };
+
+      if (endpointTypeSelect) {
+        endpointTypeSelect.addEventListener('change', function (event) {
+          selectedEndpointType = event.target.value;
+          const newEndpoint = getEndpointForType(selectedEndpointType);
+          currentEndpoint = newEndpoint;
+          if (endpointInput) {
+            endpointInput.value = newEndpoint;
+          }
+          updateEndpointStatus();
+        });
+      }
+
+      if (endpointInput) {
+        endpointInput.value = apiEndpoint || '';
+        endpointInput.addEventListener('input', function (event) {
+          const value = (event.target.value || '').trim();
+          currentEndpoint = value || getEndpointForType(selectedEndpointType) || '';
+          updateEndpointStatus();
+        });
+      }
+
+      if (tokenInput) {
+        tokenInput.addEventListener('input', function (event) {
+          authToken = (event.target.value || '').trim();
+          updateTokenStatus();
+        });
+      }
+
+      if (apikeyHeaderInput) {
+        apikeyHeaderInput.value = apiKeyHeader;
+        apikeyHeaderInput.addEventListener('input', function (event) {
+          activeApiKeyHeader = (event.target.value || '').trim() || apiKeyHeader;
+        });
+      }
+
+      if (apikeyInput) {
+        apikeyInput.addEventListener('input', function (event) {
+          apiKeyValue = (event.target.value || '').trim();
+          updateApiKeyStatus();
+        });
+      }
+
+      updateEndpointStatus();
+      updateTokenStatus();
+      updateApiKeyStatus();
+
+      const schemaScript = document.getElementById('graphql-schema-introspection-json');
+      let schemaIntrospectionJSON = null;      
+      try {
+        if (!schemaScript || !schemaScript.textContent || schemaScript.textContent.trim() === '' || schemaScript.textContent === 'null') {
+          rootElement.innerHTML = '<div style="padding: 20px; color: red;">Error: No schema definition found in database. Please ensure the GraphQL schema is properly saved.</div>';
+          return;
+        }
+        schemaIntrospectionJSON = JSON.parse(schemaScript.textContent);
+      } catch (error) {
+        console.error('Error parsing schema introspection JSON:', error);
+        const errorDiv = document.createElement('div');
+        errorDiv.style.cssText = 'padding: 20px; color: red;';
+        errorDiv.textContent = 'Error parsing schema: ' + (error && error.message ? error.message : '');
+        rootElement.innerHTML = '';
+        rootElement.appendChild(errorDiv);
+        return;
+      }
+      
+      const fetcher = async (graphQLParams) => {
+        try {
+          if (!currentEndpoint) {
+            throw new Error('Endpoint URL is required');
+          }
+          
+          const headers = {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+          };
+
+          if (activeAuthTab === 'apikey' && apiKeyValue) {
+            headers[activeApiKeyHeader] = apiKeyValue;
+          } else if (activeAuthTab === 'oauth' && authToken) {
+            headers['Authorization'] = authToken;
+          }
+
+          const response = await fetch(currentEndpoint, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify(graphQLParams),
+          });
+          
+          if (!response.ok) {
+            const errorText = await response.text();
+            console.error('GraphQL response error:', response.status, errorText);
+            return { 
+              errors: [{ 
+                message: `HTTP ${response.status}: ${errorText || response.statusText}` 
+              }] 
+            };
+          }
+          
+          const result = await response.json();
+          return result;
+        } catch (error) {
+          console.error('GraphQL request error:', error);
+          return { 
+            errors: [{ 
+              message: `Network error: ${error.message}. Please check if the endpoint URL is correct and accessible.` 
+            }] 
+          };
+        }
+      };
+      
+      let plugins = [];
+      if (typeof GraphiQLPluginExplorer !== 'undefined' && GraphiQLPluginExplorer.explorerPlugin) {
+        try {
+          const explorerPlugin = GraphiQLPluginExplorer.explorerPlugin();
+          plugins.push(explorerPlugin);
+        } catch (error) {
+          console.warn('Failed to initialize Explorer plugin:', error);
+        }
+      } else {
+        console.warn('Explorer plugin not available');
+      }
+      
+      ReactDOM.render(React.createElement(GraphiQL, {
+        fetcher: fetcher,
+        schema: schemaIntrospectionJSON,
+        plugins: plugins.length > 0 ? plugins : undefined,
+        defaultEditorToolsVisibility: true,
+        forcedTheme: "light"
+      }), rootElement);
+    });
+  </script>
+</main>
+{{else}}
+<head>
+</head>
+<main>
+  <div id="root" style="height: 100vh;"></div>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/gh/wso2/api-developer-portal-core@refs/heads/main/libs/graphql-schema-viewer/dist/graphql-schema-viewer.umd.js"></script>
+  <script id="graphql-schema-data" type="application/json">{{{graphql}}}</script>
+  <script id="graphql-api-metadata" type="application/json">{{{apiMetadataJSON}}}</script>
+  <script>
+      document.addEventListener('DOMContentLoaded', function () {
+        let schemaData = '';
+        let apiMetadata = {};
+        
+        try {
+          const schemaScript = document.getElementById('graphql-schema-data');
+          if (schemaScript && schemaScript.textContent) {
+            schemaData = JSON.parse(schemaScript.textContent);
+          }
+          
+          const metadataScript = document.getElementById('graphql-api-metadata');
+          if (metadataScript && metadataScript.textContent) {
+            apiMetadata = JSON.parse(metadataScript.textContent);
+          }
+        } catch (error) {
+          console.error('Error parsing GraphQL schema or metadata:', error);
+          const rootElement = document.getElementById('root');
+          const errorDiv = document.createElement('div');
+          errorDiv.style.cssText = 'padding: 20px; color: #d1242f;';
+          errorDiv.textContent = 'Error loading GraphQL schema. Please refresh the page.';
+          rootElement.innerHTML = '';
+          rootElement.appendChild(errorDiv);
+          return;
+        }
+        
+        const rootElement = document.getElementById('root');
+        rootElement.innerHTML = '<div style="display: flex; justify-content: center; align-items: center; height: 100vh; font-family: montserrat;">Loading GraphQL Schema Viewer...</div>';
+        ReactDOM.render(React.createElement(GraphQLSchemaViewer.default, {
+          schema: schemaData,
+          apiMetadata: apiMetadata
+        }), rootElement);
+      });
+  </script>
+</main>
+{{/if}}
 
 {{else if (eq apiType "MCP")}}
 
@@ -129,9 +481,11 @@
             const swaggerData = {{{swagger}}};
             let serverUrl = swaggerData.servers && swaggerData.servers.length > 0 ? swaggerData.servers[0].url : '';
 
-            // Add '/mcp' to the end of the URL if URL is available
             if (serverUrl) {
-                serverUrl = serverUrl + '/mcp';
+                serverUrl = serverUrl.replace(/\/$/, '');
+                if (!serverUrl.endsWith('/mcp')) {
+                    serverUrl = serverUrl + '/mcp';
+                }
             }
 
             const rootElement = document.getElementById('root');

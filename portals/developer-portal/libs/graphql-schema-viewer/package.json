@@ -1,0 +1,24 @@
+{
+  "name": "graphql-schema-viewer",
+  "version": "1.0.0",
+  "main": "dist/graphql-schema-viewer.umd.js",
+  "module": "dist/graphql-schema-viewer.es.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build"
+  },
+  "peerDependencies": {
+    "react": "^18.0.0",
+    "react-dom": "^18.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.0.0",
+    "@types/react-dom": "^18.0.0",
+    "@vitejs/plugin-react": "^4.4.1",
+    "vite": "^6.3.5"
+  },
+  "dependencies": {
+    "graphql": "^16.9.0",
+    "@graphql-tools/schema": "^10.0.0"
+  }
+}

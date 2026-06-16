@@ -17,7 +17,7 @@
  */
 /* eslint-disable no-undef */
 const { renderTemplate, renderTemplateFromAPI, loadMarkdown } = require('../utils/util');
-const config = require(process.cwd() + '/config.json');
+const { config } = require('../config/configLoader');
 const markdown = require('marked');
 const fs = require('fs');
 const path = require('path');
@@ -25,32 +25,65 @@ const adminDao = require('../dao/admin');
 const constants = require('../utils/constants');
 const logger = require('../config/logger');
 
-const filePrefix = config.pathToContent;
-const baseURLDev = config.baseUrl + constants.ROUTE.VIEWS_PATH;
 
 const loadCustomContent = async (req, res) => {
 
     let html = "";
     const { orgName, viewName } = req.params;
     let filePath = req.originalUrl.split("/" + orgName + constants.ROUTE.VIEWS_PATH + viewName + "/")[1];
-    if (config.mode === constants.DEV_MODE) {
-        let templateContent = {};
-        templateContent[constants.BASE_URL_NAME] = baseURLDev + viewName;
-        //read all markdown content
-        if (fs.existsSync(path.join(process.cwd(), filePrefix + 'pages', filePath, 'content'))) {
-            const markdDownFiles = fs.readdirSync(path.join(process.cwd(), filePrefix + 'pages/' + filePath + '/content'));
-            markdDownFiles.forEach((filename) => {
-                const tempKey = filename.split('.md')[0];
-                templateContent[tempKey] = loadMarkdown(filename, filePrefix + 'pages/' + filePath + '/content')
-            });
+    
+    // Skip manage-keys routes - they should be handled by the application controller
+    // This is a safety check in case the route doesn't match properly
+    if (filePath && filePath.match(/^applications\/[^/]+\/manage-keys/)) {
+        logger.warn('Manage-keys route intercepted by catch-all route - this should not happen', {
+            orgName,
+            viewName,
+            filePath,
+            originalUrl: req.originalUrl
+        });
+        res.status(404).send('Not found');
+        return;
+    }
+    if (config.designMode?.enabled) {
+        if (!filePath) {
+            res.status(404).send('Not found');
+            return;
         }
-        html = renderTemplate(filePrefix + 'pages/' + filePath + '/page.hbs', filePrefix + 'layout/main.hbs', templateContent, false)
+        const layoutPath = config.designMode.pathToLayout;
+        let templateContent = {};
+        templateContent[constants.BASE_URL_NAME] = config.baseUrl + constants.ROUTE.VIEWS_PATH + viewName;
+        //read all markdown content
+        if (fs.existsSync(path.join(process.cwd(), layoutPath + 'pages', filePath, 'content'))) {
+            const markdDownFiles = fs.readdirSync(path.join(process.cwd(), layoutPath + 'pages/' + filePath + '/content'));
+            for (const filename of markdDownFiles) {
+                const tempKey = filename.split('.md')[0];
+                templateContent[tempKey] = await loadMarkdown(filename, layoutPath + 'pages/' + filePath + '/content');
+            }
+        }
+        html = renderTemplate(layoutPath + 'pages/' + filePath + '/page.hbs', layoutPath + 'layout/main.hbs', templateContent, false)
 
     } else {
         let content = {};
+        let devportalMode = constants.DEVPORTAL_MODE.DEFAULT;
         try {
             filePath = 'pages/' + filePath;
-            let orgId = await adminDao.getOrgId(orgName);
+            // Normalize application-specific manage-keys paths to the shared manage-keys page
+            const manageKeysMatch = filePath.match(/^pages\/applications\/[^/]+\/manage-keys/);
+            if (manageKeysMatch) {
+                filePath = 'pages/manage-keys';
+            }
+            // Check if the file exists before attempting to render
+            const resolvedPagePath = path.join(process.cwd(), filePrefix + filePath + '/page.hbs');
+            if (!fs.existsSync(resolvedPagePath)) {
+                // If it's a manage-keys route that doesn't exist, return 404 or redirect
+                if (filePath.includes('manage-keys')) {
+                    throw new Error(`Manage keys page not found. This route should be handled by the application controller.`);
+                }
+                throw new Error(`Content page not found at ${resolvedPagePath}`);
+            }
+            const orgDetails = await adminDao.getOrganization(orgName);
+            const orgId = orgDetails.ORG_ID;
+            devportalMode = orgDetails.ORG_CONFIG?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
             let markDownFiles = await adminDao.getOrgContent({
                 orgId: orgId,
                 fileType: 'markDown',
@@ -70,14 +103,16 @@ const loadCustomContent = async (req, res) => {
                     firstName: req.user.firstName,
                     lastName: req.user.lastName,
                     email: req.user.email,
+                    isAdmin: req.user.isAdmin,
                 }
             }
             html = await renderTemplateFromAPI(content, orgId, orgName, filePath, viewName);
         } catch (error) {
             const templateContent = {
-                devportalMode: constants.API_TYPE.DEFAULT,
+                devportalMode: devportalMode,
                 baseUrl: '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName,
                 errorMessage: constants.ERROR_MESSAGE.COMMON_ERROR_MESSAGE,
+                profile: req.isAuthenticated() ? req.user : null,
             }
             logger.error('Error while loading custom content', { 
                 orgName,

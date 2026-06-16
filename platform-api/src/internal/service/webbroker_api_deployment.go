@@ -677,9 +677,10 @@ func buildWebBrokerDeployReceiver(receiver *model.WebBrokerReceiver, allChannelP
 		policies = append(policies, allChannelPolicies.OnConnectionInit.Policies...)
 	}
 	return &model.WebBrokerDeployReceiver{
-		Name:     receiver.Name,
-		Type:     receiver.Type,
-		Policies: policies,
+		Name:       receiver.Name,
+		Type:       receiver.Type,
+		Properties: receiver.Properties,
+		Policies:   policies,
 	}
 }
 

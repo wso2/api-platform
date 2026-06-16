@@ -64,6 +64,11 @@ type BrokerDriver interface {
 	Subscribe(groupID string, topics []string, handler MessageHandler) (Receiver, error)
 	SubscribeManual(groupID string, topics []string, handler MessageHandler) (Receiver, error)
 	Replay(ctx context.Context, topic string, handler MessageHandler) error
+	// Watch tails a topic from the current offset and delivers all future messages
+	// to handler until ctx is cancelled. consumerID is a stable, broker-agnostic
+	// identity for this subscriber (e.g. runtimeID) — each unique consumerID receives
+	// all messages independently.
+	Watch(ctx context.Context, consumerID string, topic string, handler MessageHandler) (Receiver, error)
 	TopicExists(ctx context.Context, topic string) (bool, error)
 	EnsureTopics(ctx context.Context, topics []string, metadata map[string]map[string]string) error
 	EnsureCompactedTopic(ctx context.Context, topic string) error

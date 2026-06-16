@@ -193,8 +193,6 @@ server_header_value = "WSO2 API Platform"
 host = "policy-engine"
 port = 9001
 timeout_ms = 60000
-failure_mode_allow = false
-allow_mode_override = true
 message_timeout_ms = 60000
 
 [router.policy_engine.tls]
@@ -264,7 +262,14 @@ host = "localhost"
 # =============================================================================
 [analytics]
 enabled = false
+# Deprecated: allow_payloads is preserved for backward compatibility. When true
+# and both send_request_body and send_response_body are false, both directions
+# are enabled (bool fields cannot distinguish "unset" from explicitly false).
+# To disable payloads entirely, set allow_payloads = false or remove it; do not
+# rely on send_*_body = false while allow_payloads remains true.
 allow_payloads = false
+send_request_body = false
+send_response_body = false
 enabled_publishers = ["moesif"]
 
 [analytics.publishers.moesif]

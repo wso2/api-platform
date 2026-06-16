@@ -16,11 +16,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const nameEditError = document.getElementById('nameEditError');
         const descriptionEditError = document.getElementById('descriptionEditError');
         const inlineEditForm = document.getElementById('inlineEditForm');
-        const addClientID = document.getElementById('addClientID');
-        const clientIDInput = document.getElementById('clientIDInput');
-        const cancelClientIDBtn = document.getElementById('cancelClientIDBtn');
-        const sharedKeyTooltip = document.getElementById('sharedKeyTooltip');
-
         if (!applicationName || !applicationDescription) return;
 
         const applicationId = inlineEditForm.dataset.applicationId;
@@ -142,25 +137,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
 
-        // Add client ID
-        addClientID.addEventListener('click', () => {
-            clientIDInput.contentEditable = true;
-            clientIDInput.focus();
-            addClientID.style.display = 'none';
-            clientIDEditActions.style.display = 'inline-flex';
-            sharedKeyTooltip.style.display = 'none';
-        });
-
-
-        // Cancel description edit
-        cancelClientIDBtn.addEventListener('click', () => {
-            clientIDInput.textContent = applicationDescription.dataset.original;
-            clientIDInput.contentEditable = false;
-            clientIDEditActions.style.display = 'none';
-            addClientID.style.display = 'inline-block';
-            sharedKeyTooltip.style.display = 'inline-block';
-        });
-
     };
 
     // Function to save application changes
@@ -170,7 +146,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 errorElement.style.display = 'none';
             }
 
-            const response = await fetch(`/devportal/applications/${applicationId}`, {
+            const response = await fetch(devportalApi.root(`/applications/${applicationId}`), {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',

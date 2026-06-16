@@ -1,0 +1,17 @@
+{
+  "name": "developer-portal-it",
+  "version": "1.0.0",
+  "description": "Cypress integration tests for the Developer Portal",
+  "private": true,
+  "scripts": {
+    "test": "cypress run --headless",
+    "open": "cypress open",
+    "test:ci": "cypress run --headless --reporter mochawesome --reporter-options reportDir=reports,overwrite=false,html=false,json=true"
+  },
+  "devDependencies": {
+    "cypress": "^13.17.0",
+    "mochawesome": "^7.1.3",
+    "mochawesome-merge": "^4.3.0",
+    "mochawesome-report-generator": "^6.2.0"
+  }
+}

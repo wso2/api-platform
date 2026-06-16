@@ -1,5 +1,7 @@
 <head>
     <link rel="stylesheet" href="/technical-styles/settings.css">
+    <script src='/technical-scripts/delete-confirmation-modal.js' defer></script>
+    <script src='/technical-scripts/warning.js' defer></script>
     <script src='/technical-scripts/create-org.js' defer></script>
     <script src='/technical-scripts/configure-org.js' defer></script>
 </head>
@@ -42,4 +44,5 @@
         </div>
     </div>
 </div>
+{{> warning modalTitle="Confirm" modalMessage="" modalFunction="" }}
 {{> alert}}

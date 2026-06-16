@@ -224,7 +224,7 @@ func TestNewManagedServerRejectsMissingTLSFiles(t *testing.T) {
 		},
 	}
 
-	_, err := rt.newManagedServer("WebSub-HTTPS", 8443, http.NewServeMux(), true)
+	_, err := rt.newManagedServer("WebSub-HTTPS", 8443, http.NewServeMux(), rt.cfg.Server.WebSubTLSCertFile, rt.cfg.Server.WebSubTLSKeyFile)
 	if err == nil {
 		t.Fatal("expected newManagedServer to fail when TLS files are missing")
 	}
@@ -254,7 +254,7 @@ func TestNewManagedServerAcceptsReadableTLSFiles(t *testing.T) {
 		},
 	}
 
-	server, err := rt.newManagedServer("WebSub-HTTPS", 8443, http.NewServeMux(), true)
+	server, err := rt.newManagedServer("WebSub-HTTPS", 8443, http.NewServeMux(), certPath, keyPath)
 	if err != nil {
 		t.Fatalf("expected newManagedServer to succeed, got %v", err)
 	}
@@ -266,6 +266,120 @@ func TestNewManagedServerAcceptsReadableTLSFiles(t *testing.T) {
 	}
 	if server.keyFile != keyPath {
 		t.Fatalf("expected key path %q, got %q", keyPath, server.keyFile)
+	}
+}
+
+func TestNewManagedServerWebSocketRejectsMissingTLSFiles(t *testing.T) {
+	rt := &Runtime{
+		cfg: &config.Config{
+			Server: config.ServerConfig{
+				WebSocketTLSEnabled:  true,
+				WebSocketTLSCertFile: filepath.Join(t.TempDir(), "missing.crt"),
+				WebSocketTLSKeyFile:  filepath.Join(t.TempDir(), "missing.key"),
+			},
+		},
+	}
+
+	_, err := rt.newManagedServer("WebSocket-HTTPS", 8444, http.NewServeMux(), rt.cfg.Server.WebSocketTLSCertFile, rt.cfg.Server.WebSocketTLSKeyFile)
+	if err == nil {
+		t.Fatal("expected newManagedServer to fail when TLS files are missing")
+	}
+	if !strings.Contains(err.Error(), "invalid TLS configuration for WebSocket-HTTPS server") {
+		t.Fatalf("expected wrapped TLS configuration error, got %q", err.Error())
+	}
+}
+
+func TestNewManagedServerWebSocketAcceptsReadableTLSFiles(t *testing.T) {
+	tempDir := t.TempDir()
+	certPath := filepath.Join(tempDir, "tls.crt")
+	keyPath := filepath.Join(tempDir, "tls.key")
+	if err := os.WriteFile(certPath, []byte("cert"), 0o644); err != nil {
+		t.Fatalf("write cert: %v", err)
+	}
+	if err := os.WriteFile(keyPath, []byte("key"), 0o600); err != nil {
+		t.Fatalf("write key: %v", err)
+	}
+
+	rt := &Runtime{
+		cfg: &config.Config{
+			Server: config.ServerConfig{
+				WebSocketTLSEnabled:  true,
+				WebSocketTLSCertFile: certPath,
+				WebSocketTLSKeyFile:  keyPath,
+			},
+		},
+	}
+
+	server, err := rt.newManagedServer("WebSocket-HTTPS", 8444, http.NewServeMux(), certPath, keyPath)
+	if err != nil {
+		t.Fatalf("expected newManagedServer to succeed, got %v", err)
+	}
+	if !server.tls {
+		t.Fatal("expected TLS to be enabled on the managed server")
+	}
+	if server.certFile != certPath {
+		t.Fatalf("expected cert path %q, got %q", certPath, server.certFile)
+	}
+	if server.keyFile != keyPath {
+		t.Fatalf("expected key path %q, got %q", keyPath, server.keyFile)
+	}
+}
+
+func TestAddWebBrokerApiBinding_RedeployDoesNotPanic(t *testing.T) {
+	eng, err := enginepkg.New(nil)
+	if err != nil {
+		t.Fatalf("failed to create engine: %v", err)
+	}
+
+	reg := connectors.NewRegistry()
+	reg.RegisterBrokerDriver("kafka", func(_ map[string]interface{}) (connectors.BrokerDriver, error) {
+		return &testBrokerDriver{}, nil
+	})
+	reg.RegisterReceiver("websocket-broker-api", func(cfg connectors.ReceiverConfig) (connectors.Receiver, error) {
+		cfg.Mux.HandleFunc(cfg.Channel.Context, func(http.ResponseWriter, *http.Request) {})
+		return &flakyReceiver{}, nil
+	})
+
+	rt := &Runtime{
+		cfg:                 &config.Config{},
+		engine:              eng,
+		hub:                 hub.NewHub(eng),
+		registry:            reg,
+		activeReceivers:     make(map[string]connectors.Receiver),
+		activeBrokerDrivers: make(map[string]connectors.BrokerDriver),
+		bindingPaths:        make(map[string][]string),
+		bindingTopics:       make(map[string][]string),
+		websubMux:           NewDynamicMux(),
+		wsMux:               NewDynamicMux(),
+	}
+
+	wbb := binding.WebBrokerApiBinding{
+		APIID:   "api-1",
+		Name:    "webbroker-test",
+		Context: "/default/webbroker-test",
+		Version: "v1.0",
+		BrokerDriver: binding.BrokerDriverSpec{
+			Type: "kafka",
+		},
+	}
+
+	if err := rt.AddWebBrokerApiBinding(wbb); err != nil {
+		t.Fatalf("first AddWebBrokerApiBinding failed: %v", err)
+	}
+	if _, ok := rt.bindingPaths[wbb.Name]; !ok {
+		t.Fatal("expected bindingPaths to be populated after first add")
+	}
+
+	if err := rt.RemoveWebBrokerApiBinding(wbb.Name); err != nil {
+		t.Fatalf("RemoveWebBrokerApiBinding failed: %v", err)
+	}
+	if _, ok := rt.bindingPaths[wbb.Name]; ok {
+		t.Fatal("expected bindingPaths to be cleared after remove")
+	}
+
+	// Before the fix this panicked: "pattern already registered" on the http.ServeMux.
+	if err := rt.AddWebBrokerApiBinding(wbb); err != nil {
+		t.Fatalf("second AddWebBrokerApiBinding (redeploy) failed: %v", err)
 	}
 }
 
@@ -298,6 +412,31 @@ func (r *flakyReceiver) Attempts() int {
 	defer r.mu.Unlock()
 	return r.attempts
 }
+
+type testBrokerDriver struct{}
+
+func (testBrokerDriver) Publish(_ context.Context, _ string, _ *connectors.Message) error {
+	return nil
+}
+func (testBrokerDriver) Subscribe(_ string, _ []string, _ connectors.MessageHandler) (connectors.Receiver, error) {
+	return &flakyReceiver{}, nil
+}
+func (testBrokerDriver) SubscribeManual(_ string, _ []string, _ connectors.MessageHandler) (connectors.Receiver, error) {
+	return &flakyReceiver{}, nil
+}
+func (testBrokerDriver) Replay(_ context.Context, _ string, _ connectors.MessageHandler) error {
+	return nil
+}
+func (testBrokerDriver) Watch(_ context.Context, _ string, _ string, _ connectors.MessageHandler) (connectors.Receiver, error) {
+	return &flakyReceiver{}, nil
+}
+func (testBrokerDriver) TopicExists(_ context.Context, _ string) (bool, error) { return true, nil }
+func (testBrokerDriver) EnsureTopics(_ context.Context, _ []string, _ map[string]map[string]string) error {
+	return nil
+}
+func (testBrokerDriver) EnsureCompactedTopic(_ context.Context, _ string) error { return nil }
+func (testBrokerDriver) DeleteTopics(_ context.Context, _ []string) error        { return nil }
+func (testBrokerDriver) Close() error                                             { return nil }
 
 func newTestNoopPolicy(policy.PolicyMetadata, map[string]interface{}) (policy.Policy, error) {
 	return testNoopPolicy{}, nil

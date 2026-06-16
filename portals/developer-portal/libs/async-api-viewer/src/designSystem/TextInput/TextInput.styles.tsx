@@ -173,10 +173,16 @@ export const useTextFiledStyles = makeStyles((theme) => ({
     resize: 'both',
   },
   copyToClipboardInput: {
-    backgroundColor: '#f5f5f5',
-    border: `1px solid ${theme.palette.grey[100]}`,
+    backgroundColor: 'transparent',
+    border: 'none',
     boxShadow: 'none',
     paddingRight: theme.spacing(5),
+    minHeight: theme.spacing(4.5),
+    fontSize: theme.typography.body2.fontSize,
+    fontFamily: '"Roboto Mono", "Monaco", "Consolas", monospace',
+    '&:hover': {
+      borderColor: 'transparent',
+    },
   },
   textInputInfoIcon: {
     display: 'flex',

@@ -128,6 +128,56 @@ func restAPIOperationMethodsForHTTPRouteMatch(m gatewayv1.HTTPRouteMatch) []apiv
 	return allRESTAPIOperationMethods()
 }
 
+// restAPIPathForHTTPRouteMatch maps a Gateway API path match to an APIConfigData Operation.Path,
+// honoring match.path.type (not just the value).
+//
+// Gateway API PathPrefix semantics — "/foo" matches "/foo" AND any path under "/foo/" — are
+// expressed to the gateway-controller by the "/*" suffix: the xDS translator treats an
+// Operation.Path ending in "/*" as a wildcard prefix route (gateway/gateway-controller/pkg/xds/
+// translator.go), and the bare "/" as a catch-all root. So:
+//   - PathPrefix "/foo"  -> "/foo/*"   (prefix route)
+//   - PathPrefix "/"     -> "/"        (root catch-all; never "//*")
+//   - Exact "/foo"       -> "/foo"     (verbatim, unchanged behavior)
+//   - RegularExpression  -> Invalid config error (unsupported)
+//
+// A nil path, or a path with a nil type, defaults to PathPrefix per the Gateway API spec.
+func restAPIPathForHTTPRouteMatch(m gatewayv1.HTTPRouteMatch) (string, error) {
+	pathVal := "/"
+	matchType := gatewayv1.PathMatchPathPrefix // Gateway API default when path/type is unset
+	if m.Path != nil {
+		if m.Path.Type != nil {
+			matchType = *m.Path.Type
+		}
+		if m.Path.Value != nil {
+			if p := strings.TrimSpace(*m.Path.Value); p != "" {
+				pathVal = p
+			}
+		}
+	}
+	if !strings.HasPrefix(pathVal, "/") {
+		pathVal = "/" + pathVal
+	}
+
+	switch matchType {
+	case gatewayv1.PathMatchExact:
+		return pathVal, nil
+	case gatewayv1.PathMatchPathPrefix:
+		if pathVal == "/" {
+			// PathPrefix "/" is a catch-all; the controller special-cases bare "/".
+			return pathVal, nil
+		}
+		// "/foo" or "/foo/" -> "/foo/*" so the controller routes it as a prefix.
+		return strings.TrimRight(pathVal, "/") + "/*", nil
+	case gatewayv1.PathMatchRegularExpression:
+		return "", newInvalidHTTPRouteConfigError(
+			"HTTPRoute path match type %q is not supported; use Exact or PathPrefix",
+			gatewayv1.PathMatchRegularExpression)
+	default:
+		return "", newInvalidHTTPRouteConfigError(
+			"unsupported HTTPRoute path match type %q (supported: Exact, PathPrefix)", string(matchType))
+	}
+}
+
 // BuildAPIConfigFromHTTPRoute maps HTTPRoute rules to APIConfigData (MVP: single Service backend across rules).
 // clusterDomain is the cluster DNS suffix (e.g. cluster.local or from CLUSTER_DOMAIN / gateway_api.cluster_domain).
 // log may be nil (tests); when set, emits structured diagnostics for policy loading and mapping.
@@ -171,15 +221,9 @@ func BuildAPIConfigFromHTTPRoute(ctx context.Context, c client.Client, route *ga
 			)
 		}
 		for _, m := range rule.Matches {
-			pathVal := "/"
-			if m.Path != nil && m.Path.Value != nil {
-				p := strings.TrimSpace(*m.Path.Value)
-				if p != "" {
-					pathVal = p
-					if !strings.HasPrefix(pathVal, "/") {
-						pathVal = "/" + pathVal
-					}
-				}
+			pathVal, err := restAPIPathForHTTPRouteMatch(m)
+			if err != nil {
+				return nil, err
 			}
 			methods := restAPIOperationMethodsForHTTPRouteMatch(m)
 			for _, method := range methods {

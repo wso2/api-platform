@@ -240,9 +240,10 @@ type WebBrokerDeployTopic struct {
 
 // WebBrokerDeployReceiver represents the receiver section in the deployment YAML.
 type WebBrokerDeployReceiver struct {
-	Name     string   `yaml:"name"`
-	Type     string   `yaml:"type"`
-	Policies []Policy `yaml:"policies,omitempty"`
+	Name       string                 `yaml:"name"`
+	Type       string                 `yaml:"type"`
+	Properties map[string]interface{} `yaml:"properties,omitempty"`
+	Policies   []Policy               `yaml:"policies,omitempty"`
 }
 
 // WebBrokerDeployBroker represents the broker section in the deployment YAML.

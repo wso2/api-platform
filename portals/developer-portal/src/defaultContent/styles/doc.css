@@ -68,6 +68,10 @@
     max-height: 100%;
 }
 
+.api-markdown-content {
+    padding: 1rem;
+}
+
 .doc-section-title {
     font-weight: 500;
     margin-bottom: 0.5rem;

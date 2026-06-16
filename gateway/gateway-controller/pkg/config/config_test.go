@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	commonconstants "github.com/wso2/api-platform/common/constants"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 )
@@ -1157,6 +1158,74 @@ func TestConfig_ValidateAnalyticsConfig(t *testing.T) {
 			} else {
 				assert.NoError(t, err)
 			}
+		})
+	}
+}
+
+func TestConfig_ValidateAnalyticsPayloadMigration(t *testing.T) {
+	setValidAnalyticsGRPC := func(cfg *Config) {
+		cfg.Analytics.Enabled = true
+		cfg.Analytics.GRPCEventServerCfg.Mode = "uds"
+		cfg.Analytics.GRPCEventServerCfg.BufferFlushInterval = 1000
+		cfg.Analytics.GRPCEventServerCfg.BufferSizeBytes = 16384
+		cfg.Analytics.GRPCEventServerCfg.GRPCRequestTimeout = 5000
+		cfg.Analytics.GRPCEventServerCfg.ServerPort = 18090
+	}
+
+	tests := []struct {
+		name             string
+		allowPayloads    bool
+		sendRequestBody  bool
+		sendResponseBody bool
+		wantSendReq      bool
+		wantSendResp     bool
+	}{
+		{
+			name:             "legacy allow_payloads enables both when new flags false",
+			allowPayloads:    true,
+			sendRequestBody:  false,
+			sendResponseBody: false,
+			wantSendReq:      true,
+			wantSendResp:     true,
+		},
+		{
+			name:             "new flags win when at least one is true",
+			allowPayloads:    true,
+			sendRequestBody:  true,
+			sendResponseBody: false,
+			wantSendReq:      true,
+			wantSendResp:     false,
+		},
+		{
+			name:             "no migration when allow_payloads false",
+			allowPayloads:    false,
+			sendRequestBody:  false,
+			sendResponseBody: false,
+			wantSendReq:      false,
+			wantSendResp:     false,
+		},
+		{
+			name:             "new flags only without legacy",
+			allowPayloads:    false,
+			sendRequestBody:  true,
+			sendResponseBody: false,
+			wantSendReq:      true,
+			wantSendResp:     false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := validConfig()
+			setValidAnalyticsGRPC(cfg)
+			cfg.Analytics.AllowPayloads = tt.allowPayloads
+			cfg.Analytics.SendRequestBody = tt.sendRequestBody
+			cfg.Analytics.SendResponseBody = tt.sendResponseBody
+
+			err := cfg.Validate()
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantSendReq, cfg.Analytics.SendRequestBody)
+			assert.Equal(t, tt.wantSendResp, cfg.Analytics.SendResponseBody)
 		})
 	}
 }

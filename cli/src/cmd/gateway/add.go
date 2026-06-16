@@ -54,6 +54,7 @@ ap gateway add --display-name dev --server http://localhost:9090 --auth basic --
 
 var (
 	addName          string
+	addPlatform      string
 	addServer        string
 	addAdminServer   string
 	addAuth          string
@@ -78,6 +79,7 @@ var addCmd = &cobra.Command{
 
 func init() {
 	utils.AddStringFlag(addCmd, utils.FlagName, &addName, "", "Name of the gateway (required)")
+	utils.AddStringFlag(addCmd, utils.FlagPlatform, &addPlatform, "", "Platform name for the gateway")
 	utils.AddStringFlag(addCmd, utils.FlagServer, &addServer, "", "Server URL of the gateway (required)")
 	utils.AddStringFlag(addCmd, utils.FlagAdminServer, &addAdminServer, "",
 		"Admin API URL of the gateway-controller (used by `gateway health`). Defaults to --server when omitted.")
@@ -164,13 +166,15 @@ func runAddCommand() error {
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
+	resolvedPlatform := cfg.ResolvePlatform(addPlatform)
 
 	// Create new gateway
 	gateway := config.Gateway{
-		Name:        addName,
-		Server:      addServer,
-		AdminServer: addAdminServer,
-		Auth:        addAuth,
+		Name:   addName,
+		Server: addServer,
+		Auth: config.AuthConfig{
+			Type: addAuth,
+		},
 	}
 
 	if username != "" || password != "" || token != "" {
@@ -181,17 +185,17 @@ func runAddCommand() error {
 
 	// Only store credentials if they are not empty
 	if username != "" {
-		gateway.Username = username
+		gateway.Auth.Username = username
 	}
 	if password != "" {
-		gateway.Password = password
+		gateway.Auth.Password = password
 	}
 	if token != "" {
-		gateway.Token = token
+		gateway.Auth.Token = token
 	}
 
 	// Add gateway to config
-	if err := cfg.AddGateway(gateway); err != nil {
+	if err := cfg.AddGatewayToPlatform(resolvedPlatform, gateway); err != nil {
 		return fmt.Errorf("failed to add gateway: %w", err)
 	}
 
@@ -208,7 +212,7 @@ func runAddCommand() error {
 	}
 
 	// Print success message (show name first for clarity)
-	fmt.Printf("Gateway %s added (server: %s, auth: %s)\n", addName, addServer, addAuth)
+	fmt.Printf("Gateway %s added (platform: %s, server: %s, auth: %s)\n", addName, resolvedPlatform, addServer, addAuth)
 	fmt.Printf("Configuration saved to: %s\n", configPath)
 
 	// Show info message based on whether credentials were stored

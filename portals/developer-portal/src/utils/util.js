@@ -28,7 +28,7 @@ const unzipper = require('unzipper');
 const axios = require('axios');
 const qs = require('qs');
 const https = require('https');
-const config = require(process.cwd() + '/config.json');
+const { config } = require('../config/configLoader');
 const { body, param, query } = require('express-validator');
 const { Sequelize } = require('sequelize');
 const apiDao = require('../dao/apiMetadata');
@@ -49,25 +49,52 @@ async function loadMarkdown(filename, dirName) {
 };
 
 
+/**
+ * In design mode, if a template/layout file doesn't exist at the given path
+ * (which may be under a custom pathToLayout), fall back to the same relative
+ * path under src/defaultContent/.
+ */
+function resolveDesignFallback(filePath) {
+    if (!config.designMode?.enabled) return filePath;
+    // Resolve relative to cwd so both relative and absolute pathToLayout values work
+    const abs = path.resolve(process.cwd(), filePath);
+    if (fs.existsSync(abs)) return abs;
+    const designRoot = path.resolve(process.cwd(), config.designMode.pathToLayout);
+    if (abs.startsWith(designRoot)) {
+        // Strip the leading path separator so the relative part doesn't look absolute
+        const relative = abs.slice(designRoot.length).replace(/^[/\\]/, '');
+        return path.resolve(process.cwd(), './src/defaultContent', relative);
+    }
+    return abs;
+}
+
 function renderTemplate(templatePath, layoutPath, templateContent, isTechnical) {
 
     let completeTemplatePath;
     if (isTechnical) {
         completeTemplatePath = path.join(require.main.filename, templatePath);
     } else {
-        completeTemplatePath = path.join(process.cwd(), templatePath);
+        completeTemplatePath = resolveDesignFallback(templatePath);
     }
 
     const templateResponse = fs.readFileSync(completeTemplatePath, constants.CHARSET_UTF8);
-    const completeLayoutPath = path.join(process.cwd(), layoutPath);
+    const completeLayoutPath = resolveDesignFallback(layoutPath);
     const layoutResponse = fs.readFileSync(completeLayoutPath, constants.CHARSET_UTF8)
 
     const template = Handlebars.compile(templateResponse.toString());
     const layout = Handlebars.compile(layoutResponse.toString());
 
+    const showApiWorkflowsNav = config.features?.apiWorkflows?.enabled === true;
+    const enrichedContent = { devportalMode: constants.DEVPORTAL_MODE.DEFAULT, ...templateContent, showApiWorkflowsNav };
     return layout({
-        body: template(templateContent),
+        body: template(enrichedContent),
         portalConfigs: config.portalConfigs,
+        devportalApiConfig: {
+            base: constants.DEVPORTAL_API.BASE_SEGMENT,
+            version: constants.DEVPORTAL_API.VERSION,
+        },
+        profile: templateContent.profile,
+        showApiWorkflowsNav,
     });
 }
 
@@ -106,25 +133,89 @@ async function renderTemplateFromAPI(templateContent, orgID, orgName, filePath, 
     layoutResponse = fs.readFileSync(completeLayoutPath, constants.CHARSET_UTF8);
     const styleContent = await adminDao.getOrgContent({ orgId: orgID, fileType: 'style', viewName: viewName, fileName: 'main.css' });
     if (styleContent) {
-        layoutResponse = layoutResponse.replace(/\/styles\//g, `${constants.ROUTE.DEVPORTAL_ASSETS_BASE_PATH}${orgID}/views/${viewName}/layout?fileType=style&fileName=`);
+        layoutResponse = layoutResponse.replace(/\/styles\//g, `${constants.DEVPORTAL_API.orgPath(orgID)}/views/${viewName}/layout?fileType=style&fileName=`);
     }
 
     const template = Handlebars.compile(templateResponse.toString());
     const layout = Handlebars.compile(layoutResponse.toString());
 
+    const showApiWorkflowsNav = config.features?.apiWorkflows?.enabled === true;
+    const enrichedContent = { devportalMode: constants.DEVPORTAL_MODE.DEFAULT, ...templateContent, showApiWorkflowsNav };
     return layout({
-        body: template(templateContent),
+        body: template(enrichedContent),
         portalConfigs: config.portalConfigs,
+        devportalApiConfig: {
+            base: constants.DEVPORTAL_API.BASE_SEGMENT,
+            version: constants.DEVPORTAL_API.VERSION,
+        },
+        profile: templateContent.profile,
+        showApiWorkflowsNav,
     });
 
+}
+
+async function renderLlmsTxt(templateContent, orgID, viewName) {
+
+    const dbPartial = await adminDao.getOrgContent({
+        orgId: orgID,
+        fileType: 'partial',
+        viewName: viewName,
+        fileName: 'llms-txt.hbs'
+    });
+    const partialSource = dbPartial
+        ? dbPartial.FILE_CONTENT.toString(constants.CHARSET_UTF8)
+        : fs.readFileSync(
+            path.join(process.cwd(), filePrefix + 'pages/llms-txt/partials/llms-txt.hbs'),
+            constants.CHARSET_UTF8
+        );
+    Handlebars.registerPartial('llms-txt', partialSource);
+
+    const pageSource = fs.readFileSync(
+        path.join(process.cwd(), filePrefix + 'pages/llms-txt/page.hbs'),
+        constants.CHARSET_UTF8
+    );
+    return Handlebars.compile(pageSource)(templateContent);
+}
+
+async function renderMarkdownTemplateFromAPI(templateContent, orgID, filePath, viewName) {
+
+    const partialName = path.basename(filePath) + '-md';
+    const dbPartial = await adminDao.getOrgContent({
+        orgId: orgID,
+        fileType: 'partial',
+        viewName: viewName,
+        fileName: partialName + '.hbs'
+    });
+    const partialSource = dbPartial
+        ? dbPartial.FILE_CONTENT.toString(constants.CHARSET_UTF8)
+        : fs.readFileSync(
+            path.join(process.cwd(), filePrefix + filePath + '/partials/' + partialName + '.hbs'),
+            constants.CHARSET_UTF8
+        );
+    Handlebars.registerPartial(partialName, partialSource);
+
+    const pageSource = fs.readFileSync(
+        path.join(process.cwd(), filePrefix + filePath + '/page-md.hbs'),
+        constants.CHARSET_UTF8
+    );
+    return Handlebars.compile(pageSource)(templateContent);
 }
 
 async function renderGivenTemplate(templatePage, layoutPage, templateContent) {
 
     const template = Handlebars.compile(templatePage.toString());
     const layout = Handlebars.compile(layoutPage.toString());
+    const showApiWorkflowsNav = config.features?.apiWorkflows?.enabled === true;
+    const enrichedContent = { devportalMode: constants.DEVPORTAL_MODE.DEFAULT, ...templateContent, showApiWorkflowsNav };
     return layout({
-        body: template(templateContent),
+        body: template(enrichedContent),
+        portalConfigs: config.portalConfigs,
+        devportalApiConfig: {
+            base: constants.DEVPORTAL_API.BASE_SEGMENT,
+            version: constants.DEVPORTAL_API.VERSION,
+        },
+        profile: templateContent.profile,
+        showApiWorkflowsNav,
     });
 }
 
@@ -278,8 +369,18 @@ const textFiles = [
     constants.FILE_EXTENSIONS.JSON, constants.FILE_EXTENSIONS.YAML, constants.FILE_EXTENSIONS.YML
 ]
 
+const imageFiles = [
+    constants.FILE_EXTENSIONS.SVG, constants.FILE_EXTENSIONS.JPG,
+    constants.FILE_EXTENSIONS.JPEG, constants.FILE_EXTENSIONS.PNG,
+    constants.FILE_EXTENSIONS.GIF
+]
+
 const isTextFile = (fileExtension) => {
     return textFiles.includes(fileExtension)
+}
+
+const isImageFile = (fileExtension) => {
+    return imageFiles.includes(fileExtension)
 }
 
 const retrieveContentType = (fileName, fileType) => {
@@ -333,7 +434,7 @@ const getAPIDocLinks = (documentMetadata) => {
     return files;
 };
 
-async function readDocFiles(directory, baseDir = '') {
+async function readDocFiles(directory, baseDir = '', topLevelOnly = false) {
 
     const files = await fs.promises.readdir(directory, { withFileTypes: true });
     let fileDetails = [];
@@ -341,13 +442,21 @@ async function readDocFiles(directory, baseDir = '') {
         const filePath = path.join(directory, file.name);
         const relativePath = path.join(baseDir, file.name);
         if (file.isDirectory()) {
-            const subDirContents = await readDocFiles(filePath, relativePath);
+            const subDirContents = await readDocFiles(filePath, relativePath, topLevelOnly);
             fileDetails = fileDetails.concat(subDirContents);
         } else {
             if (!(file.name === '.DS_Store')) {
                 let content = await fs.promises.readFile(filePath);
+                let docType;
+                if (topLevelOnly) {
+                    docType = baseDir
+                        ? baseDir.split(path.sep)[0]
+                        : constants.DOC_TYPES.DOCS.OTHER;
+                } else {
+                    docType = baseDir;
+                }
                 fileDetails.push({
-                    type: constants.DOC_TYPES.DOC_ID + baseDir,
+                    type: constants.DOC_TYPES.DOC_ID + docType,
                     fileName: file.name,
                     content: content,
                 });
@@ -356,189 +465,6 @@ async function readDocFiles(directory, baseDir = '') {
     }
     return fileDetails;
 }
-
-
-const invokeGraphQLRequest = async (req, url, query, variables, headers) => {
-    logger.info(`Invoking GraphQL API: ${url}`, { 
-        userId: req.user?.id || req.user?.username || 'anonymous',
-        method: 'GraphQL',
-        endpoint: url
-    });
-
-    headers = {
-        ...headers,
-        'Content-Type': 'application/json',
-        Authorization: req.user?.exchangeToken
-            ? `Bearer ${req.user.exchangeToken}`
-            : req.user
-                ? `Bearer ${req.user.accessToken}`
-                : req.headers.authorization
-    };
-
-    let httpsAgent;
-
-    if (config.controlPlane.disableCertValidation) {
-        httpsAgent = new https.Agent({
-            rejectUnauthorized: false,
-        });
-    } else {
-        const certPath = path.join(process.cwd(), config.controlPlane.pathToCertificate);
-        httpsAgent = new https.Agent({
-            ca: fs.readFileSync(certPath),
-            rejectUnauthorized: false,
-        });
-    }
-
-    let graphqlPayload = {
-        query,
-        variables
-    };
-
-    try {
-        if (config.advanced.tokenExchanger?.enabled) {
-            const decodedToken = jwt.decode(req.user.exchangeToken);
-            const orgId = decodedToken.organization.uuid;
-            url = url.includes("?") ? `${url}&organizationId=${orgId}` : `${url}?organizationId=${orgId}`;
-        }
-
-        const response = await axios.post(url, graphqlPayload, {
-            headers,
-            httpsAgent
-        });
-
-        return response.data;
-    } catch (error) {
-        if (error.response?.status === 401 && req.user?.exchangeToken) {
-            try {
-                const newExchangedToken = await tokenExchanger(req.user.accessToken, req.user.returnTo.split("/")[1]);
-                req.user.exchangeToken = newExchangedToken;
-                headers.Authorization = `Bearer ${newExchangedToken}`;
-
-                const retryResponse = await axios.post(url, graphqlPayload, {
-                    headers,
-                    httpsAgent
-                });
-
-                return retryResponse.data;
-            } catch (retryError) {
-                let retryMessage = retryError.response?.data?.description || retryError.message;
-                logger.error('GraphQL request retry failed', {
-                    url: url,
-                    error: retryMessage,
-                    statusCode: retryError.response?.status,
-                    userId: req.user?.id || req.user?.username || 'anonymous'
-                });
-                throw new CustomError(retryError.response?.status || 500, "Request retry failed", retryMessage);
-            }
-        } else {
-            logger.error('GraphQL request error', {
-                url: url,
-                error: error.message,
-                statusCode: error.response?.status,
-                responseData: error.response?.data,
-                userId: req.user?.id || req.user?.username || 'anonymous'
-            });
-            let message = error.response?.data?.description || error.message;
-            throw new CustomError(error.response?.status || 500, 'GraphQL request failed', message);
-        }
-    }
-};
-
-const invokeApiRequest = async (req, method, url, headers, body, publicMode = false) => {
-
-    logger.info(`Invoking API: ${url}`, {
-        method: method,
-        userId: req.user?.id || req.user?.username || 'anonymous',        
-        endpoint: url
-    });
-    if (!publicMode) {
-        headers = headers || {};
-        headers.Authorization = req.user?.exchangeToken ? `Bearer ${req.user.exchangeToken}` : req.user ? `Bearer ${req.user.accessToken}` : req.headers.authorization;
-    }
-    let httpsAgent;
-
-    if (config.controlPlane.disableCertValidation) {
-        httpsAgent = new https.Agent({
-            rejectUnauthorized: false,
-        });
-    } else {
-        const certPath = path.join(process.cwd(), config.controlPlane.pathToCertificate);
-        httpsAgent = new https.Agent({
-            ca: fs.readFileSync(certPath),
-            rejectUnauthorized: false,
-        });
-    }
-
-    const options = {
-        method,
-        headers,
-        httpsAgent,
-    };
-
-    try {
-        if (!(body == null || body === '' || (Array.isArray(body) && body.length === 0) || (typeof body === 'object' && !Array.isArray(body) && Object.keys(body).length === 0))) {
-            options.data = body;
-        }
-        if (config.advanced.tokenExchanger?.enabled) {
-            let orgId = "";
-            if (req.cpOrgID) {
-                orgId = req.cpOrgID;
-                url = url.includes("?") ? `${url}&organizationId=${orgId}` : `${url}?organizationId=${orgId}`;
-            } else {
-                const decodedToken = jwt.decode(req.user.exchangeToken);
-                orgId = decodedToken?.organization.uuid;
-                url = url.includes("?") ? `${url}&organizationId=${orgId}` : `${url}?organizationId=${orgId}`;
-            }
-
-        }
-        const response = await axios(url, options);
-        return response.data;
-    } catch (error) {
-        logger.error('Error while invoking API', {
-            url: url,
-            method: method,
-            error: error.message,
-            statusCode: error.response?.status,
-            responseData: error.response?.data,
-            userId: req.user?.id || req.user?.username || 'anonymous'
-        });
-        if (error.response?.status === 401) {
-            try {
-                const newExchangedToken = await tokenExchanger(req.user.accessToken, req.originalUrl.split("/")[1]);
-                req.user.exchangeToken = newExchangedToken;
-                headers.Authorization = `Bearer ${newExchangedToken}`;
-                options.headers = headers;
-                const response = await axios(url, options);
-                return response.data;
-            } catch (retryError) {
-                let retryMessage;
-                if (retryError.response) {
-                    retryMessage = retryError.response.data.description;
-                }
-                logger.error('API request retry failed', {
-                    url: url,
-                    method: method,
-                    error: retryMessage,
-                    userId: req.user?.id || req.user?.username || 'anonymous'
-                });
-                throw new CustomError(error.response.status, "Access denied", error.message || error.response?.data?.description || constants.ERROR_MESSAGE.UNAUTHENTICATED);
-            }
-        } else {
-            let message = error.message;
-            if (error.response) {
-                message = error.response.data.description;
-            }
-            logger.error('API request failed', {
-                url: url,
-                method: method,
-                error: message,
-                statusCode: error.status,
-                userId: req.user?.id || req.user?.username || 'anonymous'
-            });
-            throw new CustomError(error.status, 'Request failed', message);
-        }
-    }
-};
 
 
 const validateIDP = () => {
@@ -688,23 +614,23 @@ async function readFilesInDirectory(directory, orgId, protocol, host, viewName, 
                 if (file.name.endsWith(".css")) {
                     fileType = "style"
                     if (file.name === "main.css") {
-                        strContent = strContent.replace(/@import\s*['"]\/styles\/api-content\.css['"];/g, `@import url("${constants.ROUTE.DEVPORTAL_ASSETS_BASE_PATH}${orgId}/views/${viewName}/layout?fileType=style&fileName=api-content.css");`);
-                        strContent = strContent.replace(/@import\s*['"]\/styles\/home\.css['"];/g, `@import url("${constants.ROUTE.DEVPORTAL_ASSETS_BASE_PATH}${orgId}/views/${viewName}/layout?fileType=style&fileName=home.css");`);
-                        strContent = strContent.replace(/@import\s*['"]\/styles\/main\.css['"];/g, `@import url("${constants.ROUTE.DEVPORTAL_ASSETS_BASE_PATH}${orgId}/views/${viewName}/layout?fileType=style&fileName=main.css");`);
+                        strContent = strContent.replace(/@import\s*['"]\/styles\/api-content\.css['"];/g, `@import url("${constants.DEVPORTAL_API.orgPath(orgId)}/views/${viewName}/layout?fileType=style&fileName=api-content.css");`);
+                        strContent = strContent.replace(/@import\s*['"]\/styles\/home\.css['"];/g, `@import url("${constants.DEVPORTAL_API.orgPath(orgId)}/views/${viewName}/layout?fileType=style&fileName=home.css");`);
+                        strContent = strContent.replace(/@import\s*['"]\/styles\/main\.css['"];/g, `@import url("${constants.DEVPORTAL_API.orgPath(orgId)}/views/${viewName}/layout?fileType=style&fileName=main.css");`);
                     }
-                    strContent = strContent.replace(/"\/images\/(devportalLogo\.[^"]+)/g, `"${constants.ROUTE.DEVPORTAL_ASSETS_BASE_PATH}${orgId}/views/${viewName}/layout?fileType=image&fileName=$1`);
-                    strContent = strContent.replace(/'\/images\/(devportalLogo\.[^']+)/g, `"${constants.ROUTE.DEVPORTAL_ASSETS_BASE_PATH}${orgId}/views/${viewName}/layout?fileType=image&fileName=$1`);
+                    strContent = strContent.replace(/"\/images\/(devportalLogo\.[^"]+)/g, `"${constants.DEVPORTAL_API.orgPath(orgId)}/views/${viewName}/layout?fileType=image&fileName=$1`);
+                    strContent = strContent.replace(/'\/images\/(devportalLogo\.[^']+)/g, `'${constants.DEVPORTAL_API.orgPath(orgId)}/views/${viewName}/layout?fileType=image&fileName=$1`);
                     content = Buffer.from(strContent, constants.CHARSET_UTF8);
                 } else if (file.name.endsWith(".hbs") && dir.endsWith("layout")) {
                     fileType = "layout"
                     if (file.name === "main.hbs") {
-                        strContent = strContent.replace(/\/styles\//g, `${constants.ROUTE.DEVPORTAL_ASSETS_BASE_PATH}${orgId}/views/${viewName}/layout?fileType=style&fileName=`);
+                        strContent = strContent.replace(/\/styles\//g, `${constants.DEVPORTAL_API.orgPath(orgId)}/views/${viewName}/layout?fileType=style&fileName=`);
                         content = Buffer.from(strContent, constants.CHARSET_UTF8);
                     }
                     validateScripts(strContent);
                 } else if (file.name.endsWith(".hbs") && dir.endsWith("partials")) {
-                    strContent = strContent.replace(/"\/images\/([^"]+)/g, `"${constants.ROUTE.DEVPORTAL_ASSETS_BASE_PATH}${orgId}/views/${viewName}/layout?fileType=image&fileName=$1`);
-                    strContent = strContent.replace(/'\/images\/([^']+)/g, `'${constants.ROUTE.DEVPORTAL_ASSETS_BASE_PATH}${orgId}/views/${viewName}/layout?fileType=image&fileName=$1`);
+                    strContent = strContent.replace(/"\/images\/([^"]+)/g, `"${constants.DEVPORTAL_API.orgPath(orgId)}/views/${viewName}/layout?fileType=image&fileName=$1`);
+                    strContent = strContent.replace(/'\/images\/([^']+)/g, `'${constants.DEVPORTAL_API.orgPath(orgId)}/views/${viewName}/layout?fileType=image&fileName=$1`);
                     content = Buffer.from(strContent, constants.CHARSET_UTF8);
                     validateScripts(strContent);
                     fileType = "partial"
@@ -741,6 +667,7 @@ async function readFilesInDirectory(directory, orgId, protocol, host, viewName, 
             orgId: orgId,
             viewName: viewName,
             error: error.message,
+            description: error.description,
             stack: error.stack
         });
         throw new CustomError(error.statusCode || 500, error.message || 'Internal Server Error', error.description || 'Error reading files in directory');
@@ -752,31 +679,81 @@ function validateScripts(strContent) {
     try {
         const allowedScripts = new Set([
             "<script src='https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js'></script>",
+            '<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>',
             "<script src='/technical-scripts/search.js' defer></script>",
             "<script src='/technical-scripts/filter.js' defer></script>",
             "<script src='/technical-scripts/common.js' defer></script>",
             "<script src='/technical-scripts/subscription.js' defer></script>",
-            "<script src='/technical-scripts/add-application-form.js' defer></script>"
+            "<script src='/technical-scripts/add-application-form.js' defer></script>",
+            "<script src='/technical-scripts/subscription.js' defer></script>",
+            "<script src='/technical-scripts/subscription-modal.js' defer></script>",
+            "<script src='/technical-scripts/subscriptions-page.js' defer></script>",
+            "<script src='/technical-scripts/api-keys-page.js' defer></script>",
+            '<script src="/technical-scripts/oauth2-key-generation.js" defer></script>',
+            '<script src="/technical-scripts/api-key-generation.js" defer></script>',
+            "<script src='/technical-scripts/delete-confirmation-modal.js' defer></script>",
+            "<script src='/technical-scripts/api-flow-detail.js' defer></script>",
+            "<script src='/technical-scripts/api-workflows.js' defer></script>",
+            "<script src='/technical-scripts/api-agent-prompt.js' defer></script>",
+            '<script src="/technical-scripts/home-discover.js" defer></script>',
+            '<script src="https://cdn.jsdelivr.net/npm/@jentic/arazzo-ui@1.0.0-alpha.30/dist/arazzo-ui.js" integrity="sha256-OYzURPQLK+lup5rGo+IQmVbjWOjVgjURBWDDtMHIOaw=" crossorigin="anonymous"></script>',
+            '<script src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js" integrity="sha256-Rdw90D3AegZwWiwpibjH9wkBPwS9U4bjJ51ORH8H69c=" crossorigin="anonymous"></script>',
+            '<script src="https://cdn.jsdelivr.net/npm/marked@13.0.3/marked.min.js" integrity="sha256-Wt6n2O5BpwD8zBS7nVAxBPBHDMF6hK0+Fn0/UlHq4No=" crossorigin="anonymous"></script>',
+            '<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.2.7/purify.min.js" integrity="sha512-78KH17QLT5e55GJqP76vutp1D2iAoy06WcYBXB6iBCsmO6wWzx0Qdg8EDpm8mKXv68BcvHOyeeP4wxAL0twJGQ==" crossorigin="anonymous"></script>',
+        ]);
+        const allowedInlineScripts = new Set([
+            // Reo analytics loader (src/defaultContent/layout/main.hbs)
+            "<script type=\"text/javascript\">\n      !function(){var e,t,n;e=\"{{portalConfigs.reoClientID}}\",t=function(){Reo.init({clientID:\"{{portalConfigs.reoClientID}}\"})},(n=document.createElement(\"script\")).src=\"https://static.reo.dev/\"+e+\"/reo.js\",n.defer=!0,n.onload=t,document.head.appendChild(n)}();\n    </script>",
+            // Token-map JSON data island (api-landing/partials/api-subscription-plans.hbs)
+            "<script id=\"token-map-data\" type=\"application/json\">{{{jsonSafeSubscriptions ../subscriptions}}}</script>",
+            // Token-meta bootstrap (api-landing/partials/api-subscription-plans.hbs)
+            "<script>\n                    (function() {\n                        var data = JSON.parse(document.getElementById('token-map-data').textContent || '[]');\n                        window.__tokenMeta = window.__tokenMeta || {};\n                        data.forEach(function(sub) {\n                            // store only non-sensitive metadata and masked token\n                            window.__tokenMeta[sub.subscriptionId] = {\n                                maskedToken: sub.maskedToken,\n                                customerName: sub.customerName,\n                                subscriptionPlanName: sub.subscriptionPlanName,\n                                status: sub.status\n                            };\n                        });\n                        // expose orgID for on-demand fetches\n                        window.__subscriptionOrgID = \"{{@root.orgID}}\";\n                    })();\n                </script>",
+            // Existing-subs JSON data island (api-landing/partials/api-subscription-plans.hbs)
+            "<script id=\"existing-subs-data\" type=\"application/json\">{{{json subscriptions}}}</script>",
+            // API flows JSON data island (pages/api-flows/page.hbs)
+            "<script type=\"application/json\" id=\"apiFlowsDataContainer\">{{{json apiFlows}}}</script>",
+            // AI agent data island (pages/api-landing/page.hbs)
+            "<script type=\"application/json\" id=\"apiAgentData\">{\"baseUrl\":\"{{baseUrl}}\",\"apiHandle\":\"{{apiMetadata.apiHandle}}\"}</script>",
+            // Home discover data island (pages/home/page.hbs)
+            "<script type=\"application/json\" id=\"homeDiscoverData\">{\"baseUrl\":\"{{baseUrl}}\"}</script>",
+            // Existing-subs bootstrap (api-landing/partials/api-subscription-plans.hbs)
+            "<script>\n                (function() {\n                    window.__subscriptionOrgID = window.__subscriptionOrgID || \"{{@root.orgID}}\";\n                    var raw = document.getElementById('existing-subs-data').textContent || '[]';\n                    try {\n                        var parsed = JSON.parse(raw);\n                        window.existingSubscriptions = parsed.map(function(sub) {\n                            return { subscriptionId: sub.subscriptionId, subscriptionPlanName: sub.subscriptionPlanName, status: sub.status };\n                        });\n                    } catch (e) {\n                        window.existingSubscriptions = [];\n                    }\n                })();\n            </script>",
+            // tokenMap + orgID bootstrap (api-subscriptions/partials/api-subscription-list.hbs
+            // and subscriptions/partials/subscription-list.hbs)
+            "<script>\n                window.__tokenMap = window.__tokenMap || {};\n                window.__subscriptionOrgID = \"{{@root.orgID}}\";\n            </script>",
+            // Modal click handler (apis/partials/api-listing.hbs)
+            "<script>\n    (function(){\n      function findClosest(el, selector){\n        while(el && el !== document){\n          if(el.matches && el.matches(selector)) return el;\n          el = el.parentNode;\n        }\n        return null;\n      }\n\n      document.addEventListener('click', function(e){\n        var modalTrigger = findClosest(e.target, '[data-modal]');\n        if(modalTrigger){\n          e.preventDefault();\n          if(modalTrigger.classList.contains('is-readonly') || modalTrigger.getAttribute('aria-disabled') === 'true'){\n            return;\n          }\n          if(typeof loadModal === 'function'){\n            loadModal(modalTrigger.getAttribute('data-modal'));\n          } else {\n            var id = modalTrigger.getAttribute('data-modal');\n            var el = document.getElementById(id);\n            if(el) {\n              el.style.display = 'flex';\n              document.body.classList.add('modal-open');\n              if(typeof prepareSubscriptionModal === 'function') {\n                try { prepareSubscriptionModal(id); } catch(err) { /* noop */ }\n              }\n            }\n          }\n          return;\n        }\n\n        var nav = findClosest(e.target, '[data-href]');\n        if(nav){\n          var href = nav.getAttribute('data-href');\n          if(href){ window.location.href = href; }\n        }\n      }, false);\n    })();\n  </script>",
         ]);
 
-        const scriptRegex = /<script(?:\s+[^>]*)?>[\s\S]*?<\/script>/g;
+        const scriptRegex = /<script(?:\s+[^>]*)?>[\s\S]*?<\/script>/gi;
         let match;
-        const extractedScripts = new Set();
 
         while ((match = scriptRegex.exec(strContent)) !== null) {
-            extractedScripts.add(match[0].trim());
-        }
+            const script = match[0].trim();
+            const openingTag = script.match(/^<script(?:\s+[^>]*)?>/i)?.[0] || '';
+            const hasSrc = /\bsrc\s*=/i.test(openingTag);
 
-        for (const script of extractedScripts) {
+            if (!hasSrc) {
+                const isEmpty = /^<script[^>]*>\s*<\/script>$/i.test(script);
+                if (isEmpty || allowedInlineScripts.has(script)) {
+                    continue;
+                }
+                logger.error("Script validation failed: inline scripts are not allowed", { script });
+                throw new CustomError(400, constants.ERROR_CODE[400], `Inline scripts are not allowed in uploaded themes: ${script}`);
+            }
             if (!allowedScripts.has(script)) {
-                throw new CustomError(400, constants.ERROR_CODE[400], `Additional scripts not allowed`);
+                logger.error("Script validation failed: disallowed script tag found", { script });
+                throw new CustomError(400, constants.ERROR_CODE[400], `Additional scripts not allowed: ${script}`);
             }
         }
     } catch (error) {
-        logger.error("Error occurred while validating scripts", {
-            error: error.message,
-            stack: error.stack,
-        });
+        if (!(error instanceof CustomError)) {
+            logger.error("Error occurred while validating scripts", {
+                error: error.message,
+                description: error.description,
+                stack: error.stack,
+            });
+        }
         throw error;
     }
 }
@@ -787,7 +764,7 @@ function appendAPIImageURL(subList, req, orgID) {
         const images = element.apiInfo.apiImageMetadata;
         let apiImageUrl = '';
         for (const key in images) {
-            apiImageUrl = `${constants.ROUTE.DEVPORTAL_ASSETS_BASE_PATH}${orgID}${constants.ROUTE.API_FILE_PATH}${element.apiID}${constants.API_TEMPLATE_FILE_NAME}`;
+            apiImageUrl = `${constants.DEVPORTAL_API.orgPath(orgID)}${constants.ROUTE.API_FILE_PATH}${element.apiID}${constants.API_TEMPLATE_FILE_NAME}`;
             const modifiedApiImageURL = apiImageUrl + images[key];
             element.apiInfo.apiImageMetadata[key] = modifiedApiImageURL;
         }
@@ -799,12 +776,18 @@ async function appendSubscriptionPlanDetails(orgID, subscriptionPolicies) {
     if (subscriptionPolicies) {
         for (const policy of subscriptionPolicies) {
             const subscriptionPlan = await loadSubscriptionPlan(orgID, policy.policyName);
+            if (!subscriptionPlan) {
+                logger.warn('[appendSubscriptionPlanDetails] Plan not found, skipping', {
+                    orgID,
+                    policyName: policy.policyName
+                });
+                continue;
+            }
             subscriptionPlans.push({
                 policyID: subscriptionPlan.policyID,
                 displayName: subscriptionPlan.displayName,
                 policyName: subscriptionPlan.policyName,
                 description: subscriptionPlan.description,
-                billingPlan: subscriptionPlan.billingPlan,
                 requestCount: subscriptionPlan.requestCount,
             });
         }
@@ -828,7 +811,7 @@ const loadSubscriptionPlan = async (orgID, policyName) => {
             error: error.message,
             stack: error.stack
         });
-        util.handleError(res, error);
+        return null;
     }
 }
 
@@ -911,21 +894,76 @@ async function listFiles(path) {
     return files;
 }
 
+async function findFileByNameRecursive(rootPath, targetNames) {
+    const normalizedTargetNames = new Set(Array.from(targetNames).map(name => String(name).toLowerCase()));
+    const stack = [rootPath];
+
+    while (stack.length > 0) {
+        const currentPath = stack.pop();
+        const entries = await fs.promises.readdir(currentPath, { withFileTypes: true });
+        for (const entry of entries) {
+            if (entry.name === '.DS_Store' || entry.name === '__MACOSX') {
+                continue;
+            }
+            const fullPath = path.join(currentPath, entry.name);
+            if (entry.isDirectory()) {
+                stack.push(fullPath);
+                continue;
+            }
+            if (normalizedTargetNames.has(entry.name.toLowerCase())) {
+                return fullPath;
+            }
+        }
+    }
+    return null;
+}
+
+function normalizeStringArray(value) {
+    if (!Array.isArray(value)) {
+        return [];
+    }
+    return value
+        .filter(item => item !== undefined && item !== null && String(item).trim() !== '')
+        .map(item => String(item).trim());
+}
+
+function resolveApiType(apiType) {
+    if (!apiType || typeof apiType !== 'string') {
+        return constants.API_TYPE.REST;
+    }
+
+    const resolvedType = apiType.replace(/\s+/g, '').toUpperCase();
+    if (!Object.values(constants.API_TYPE).includes(resolvedType)) {
+        throw new Sequelize.ValidationError(
+            "Invalid api type. Supported values: REST, WS, GRAPHQL, SOAP, WEBSUB, MCP"
+        );
+    }
+    return resolvedType;
+}
+
 function filterAllowedAPIs(searchResults, allowedAPIs) {
 
-    searchResults = searchResults.filter(api =>
-        allowedAPIs.some(allowedAPI => api.apiReferenceID === allowedAPI.id)
-    );
+    searchResults = searchResults.filter(api => {
+        const gatewayVendor = api?.apiInfo?.gatewayVendor || 'wso2';
+        if (constants.FEDERATED_GATEWAY_VENDORS.includes(gatewayVendor)) {
+            return true;
+        }
+        // MCP servers published via the registry have no referenceID
+        if (api?.apiInfo?.apiType === constants.API_TYPE.MCP && !api.apiReferenceID) {
+            return true;
+        }
+        return allowedAPIs.some(allowedAPI => api.apiReferenceID === allowedAPI.id);
+    });
     return searchResults;
 }
 
 const enforcePortalMode = async (req, res, next) => {
     const orgDetails = await adminDao.getOrganization(req.params.orgName);
-    const portalMode = orgDetails.ORG_CONFIG?.devportalMode || constants.API_TYPE.DEFAULT;
+    const portalMode = orgDetails.ORG_CONFIG?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
     const path = req.originalUrl.split('/')[4];
 
-    if ((path.includes('apis') || path.includes('api')) && (portalMode === constants.API_TYPE.DEFAULT || portalMode === constants.API_TYPE.API_PROXIES) ||
-        (path.includes('mcps') || path.includes('mcp')) && (portalMode === constants.API_TYPE.DEFAULT || portalMode === constants.API_TYPE.MCP_ONLY)) {
+    if ((path.includes('apis') || path.includes('api')) && (portalMode === constants.DEVPORTAL_MODE.DEFAULT || portalMode === constants.DEVPORTAL_MODE.API_PROXIES) ||
+        (path.includes('mcps') || path.includes('mcp')) && (portalMode === constants.DEVPORTAL_MODE.DEFAULT || portalMode === constants.DEVPORTAL_MODE.MCP_ONLY)) {
         next();
     } else {
         const templateContent = {
@@ -938,12 +976,27 @@ const enforcePortalMode = async (req, res, next) => {
     }
 }
 
+async function isAiDisabledForPortal(orgID, viewName) {
+    const configAsset = await adminDao.getOrgContent({
+        orgId: orgID, fileType: constants.FILE_TYPE.LLMS_CONFIG, viewName, fileName: constants.FILE_NAME.LLMS_CONFIG
+    });
+    if (!configAsset) return false;
+    try {
+        const llmsConfig = JSON.parse(configAsset.FILE_CONTENT.toString('utf8'));
+        return llmsConfig.aiEnabled === false;
+    } catch (e) {
+        return false;
+    }
+}
+
 module.exports = {
     loadMarkdown,
     renderTemplate,
     loadLayoutFromAPI,
     loadTemplateFromAPI,
     renderTemplateFromAPI,
+    renderMarkdownTemplateFromAPI,
+    renderLlmsTxt,
     renderGivenTemplate,
     handleError,
     retrieveContentType,
@@ -951,8 +1004,6 @@ module.exports = {
     getAPIImages,
     getAPIDocLinks,
     isTextFile,
-    invokeApiRequest,
-    invokeGraphQLRequest,
     validateIDP,
     validateOrganization,
     getErrors,
@@ -965,7 +1016,12 @@ module.exports = {
     tokenExchanger,
     listFiles,
     readDocFiles,
+    findFileByNameRecursive,
     unzipDirectory,
     filterAllowedAPIs,
-    enforcePortalMode
+    enforcePortalMode,
+    isAiDisabledForPortal,
+    isImageFile,
+    normalizeStringArray,
+    resolveApiType
 }

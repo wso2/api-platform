@@ -1,0 +1,55 @@
+# {{#if portalName}}{{portalName}}{{else}}{{orgName}} Developer Portal{{/if}}
+
+{{#if portalDescription}}{{portalDescription}}{{else}}Empower your development with our APIs & MCP Servers. Browse, subscribe, and integrate in minutes.{{/if}}
+{{#if workflows}}
+---
+
+## API Workflows
+
+These pre-defined workflows orchestrate multiple APIs to implement common use cases. Each workflow provides what it accomplishes and access to detailed workflow and API specifications. To execute or implement a workflow, follow the steps in the workflow definition at the provided URL. For each step, reference the linked API documentation to understand the exact operation, required credentials, and request/response formats.
+
+{{#workflows}}
+- [{{name}}]({{../baseUrl}}/api-workflows/{{handle}}.md) - {{description}}
+
+{{/workflows}}
+{{/if}}
+{{#if restAPIs}}
+
+## APIs
+
+{{#restAPIs}}
+- [{{apiInfo.apiName}} {{apiInfo.apiVersion}}]({{../baseUrl}}/api/{{apiHandle}}.md){{#if apiInfo.apiDescription}} — {{apiInfo.apiDescription}}{{/if}}
+{{/restAPIs}}
+{{/if}}
+{{#if mcpAPIs}}
+
+## MCPs
+
+{{#mcpAPIs}}
+- [{{apiInfo.apiName}} {{apiInfo.apiVersion}}]({{../baseUrl}}/mcp/{{apiHandle}}.md){{#if apiInfo.apiDescription}} — {{apiInfo.apiDescription}}{{/if}}
+{{/mcpAPIs}}
+{{/if}}
+{{#if graphqlAPIs}}
+
+## GraphQL APIs
+
+{{#graphqlAPIs}}
+- [{{apiInfo.apiName}} {{apiInfo.apiVersion}}]({{../baseUrl}}/api/{{apiHandle}}.md){{#if apiInfo.apiDescription}} — {{apiInfo.apiDescription}}{{/if}}
+{{/graphqlAPIs}}
+{{/if}}
+{{#if wsAPIs}}
+
+## Async / WebSocket APIs
+
+{{#wsAPIs}}
+- [{{apiInfo.apiName}} {{apiInfo.apiVersion}}]({{../baseUrl}}/api/{{apiHandle}}.md){{#if apiInfo.apiDescription}} — {{apiInfo.apiDescription}}{{/if}}
+{{/wsAPIs}}
+{{/if}}
+{{#if websubAPIs}}
+
+## WebSub APIs
+
+{{#websubAPIs}}
+- [{{apiInfo.apiName}} {{apiInfo.apiVersion}}]({{../baseUrl}}/api/{{apiHandle}}.md){{#if apiInfo.apiDescription}} — {{apiInfo.apiDescription}}{{/if}}
+{{/websubAPIs}}
+{{/if}}

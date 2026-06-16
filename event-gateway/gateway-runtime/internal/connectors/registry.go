@@ -20,6 +20,7 @@ package connectors
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 )
 
@@ -63,6 +64,7 @@ func (r *Registry) RegisterBrokerDriver(name string, factory BrokerDriverFactory
 
 // CreateReceiver creates a receiver using the registered factory.
 func (r *Registry) CreateReceiver(name string, cfg ReceiverConfig) (Receiver, error) {
+	name = strings.ToLower(name)
 	r.mu.RLock()
 	factory, ok := r.receivers[name]
 	r.mu.RUnlock()
@@ -74,6 +76,7 @@ func (r *Registry) CreateReceiver(name string, cfg ReceiverConfig) (Receiver, er
 
 // CreateBrokerDriver creates a broker-driver using the registered factory.
 func (r *Registry) CreateBrokerDriver(name string, cfg map[string]interface{}) (BrokerDriver, error) {
+	name = strings.ToLower(name)
 	r.mu.RLock()
 	factory, ok := r.brokerDrivers[name]
 	r.mu.RUnlock()

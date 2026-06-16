@@ -1,0 +1,148 @@
+{{#if apiKeysLoadError}}
+<div class="alert alert-danger" role="alert">
+    <strong>Unable to load API keys.</strong> Refresh the page or try again later. Generate, regenerate, and revoke are disabled until the list loads successfully.
+</div>
+{{else}}
+<div class="text-center text-muted py-5" id="no-api-keys" style="{{#if apiKeys.length}}display:none;{{/if}}">
+    <i class="bi bi-key" style="font-size: 3rem;"></i>
+    <p class="mt-3">No API keys found for this API.</p>
+    {{#unless isReadOnlyMode}}
+    <p class="small">Generate a key to authenticate requests to this API.</p>
+    {{/unless}}
+</div>
+{{/if}}
+{{#if apiKeys.length}}
+<div class="app-table-container api-keys-table-wrap my-3">
+    <table class="app-table" id="api-keys-table">
+        <thead>
+            <tr>
+                <th class="app-th">Name</th>
+                <th class="app-th">Key</th>
+                <th class="app-th">Status</th>
+                <th class="app-th">Expires</th>
+                <th class="app-th" style="min-width: 280px;">Key Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {{#each apiKeys}}
+            <tr class="data-row" id="api-key-row-{{@index}}">
+                <td class="app-td">{{this.name}}</td>
+                <td class="app-td">
+                    <code class="masked-api-key">{{this.maskedApiKey}}</code>
+                </td>
+                <td class="app-td">
+                    <span class="badge {{#if (eq this.status 'active')}}bg-success{{else}}bg-secondary{{/if}}">{{this.status}}</span>
+                </td>
+                <td class="app-td">
+                    {{#if this.expiresAt}}
+                    <span class="text-nowrap">{{formatExpiresAt this.expiresAt}}</span>
+                    {{else}}
+                    <span class="text-muted">&mdash;</span>
+                    {{/if}}
+                </td>
+                <td class="app-td">
+                    {{#unless @root.isReadOnlyMode}}
+                    <div class="api-key-actions">
+                        <button type="button"
+                            class="common-btn-outlined btn-sm me-1 btn-regenerate-key {{#if @root.isReadOnlyMode}}disabled{{/if}}"
+                            data-key-id="{{this.keyId}}" data-key-name="{{this.name}}">
+                            <span class="button-normal-state">
+                                <i class="bi bi-key me-1"></i> Regenerate
+                            </span>
+                        </button>
+                        <button type="button"
+                            class="common-btn-outlined btn-sm api-key-revoke btn-revoke-key {{#if @root.isReadOnlyMode}}disabled{{/if}}"
+                            data-key-id="{{this.keyId}}">
+                            <span class="button-normal-state">
+                                <i class="bi bi-key me-1"></i> Revoke
+                            </span>
+                        </button>
+                    </div>
+                    {{else}}
+                    <span class="text-muted small">Read only</span>
+                    {{/unless}}
+                </td>
+            </tr>
+            {{/each}}
+        </tbody>
+    </table>
+</div>
+{{/if}}
+
+{{#unless apiKeysLoadError}}
+{{#unless isReadOnlyMode}}
+<div class="modal fade" id="generateApiKeyModal" tabindex="-1" aria-labelledby="generateApiKeyModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="generateApiKeyModalLabel">Generate API Key</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label for="api-key-name" class="form-label">Name <span class="text-danger">*</span></label>
+                    <input type="text" class="form-control" id="api-key-name" placeholder="my-key-01" autocomplete="off" />
+                    <div class="form-text">Lowercase letters, numbers, hyphens and underscores (URL-safe).</div>
+                </div>
+                <div class="mb-0">
+                    <label for="api-key-expires" class="form-label">Expires at (optional)</label>
+                    <input type="datetime-local" class="form-control" id="api-key-expires" />
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="common-btn-primary btn-sm" id="btn-submit-generate-api-key">Generate</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="regenerateApiKeyModal" tabindex="-1" aria-labelledby="regenerateApiKeyModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="regenerateApiKeyModalLabel">Regenerate API Key</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p class="small text-muted">The previous key will stop working immediately after regeneration.</p>
+                <input type="hidden" id="regenerate-key-id" value="" />
+                <div class="mb-3">
+                    <label for="regenerate-api-key-name" class="form-label">Name <span class="text-danger">*</span></label>
+                    <input type="text" class="form-control" id="regenerate-api-key-name" autocomplete="off" />
+                </div>
+                <div class="mb-0">
+                    <label for="regenerate-api-key-expires" class="form-label">Expires at (optional)</label>
+                    <input type="datetime-local" class="form-control" id="regenerate-api-key-expires" />
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="common-btn-primary btn-sm" id="btn-submit-regenerate-api-key">Regenerate</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="showApiKeySecretModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">API Key generated</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p class="small text-warning">Copy this key now. You will not be able to see the full value again.</p>
+                <div class="input-group">
+                    <input type="text" class="form-control font-monospace" id="api-key-secret-value" readonly />
+                    <button class="btn btn-outline-secondary" type="button" id="btn-copy-api-key-secret">Copy</button>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="common-btn-primary btn-sm" data-bs-dismiss="modal">Done</button>
+            </div>
+        </div>
+    </div>
+</div>
+{{/unless}}
+{{/unless}}

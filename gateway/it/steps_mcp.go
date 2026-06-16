@@ -93,6 +93,14 @@ func RegisterMCPSteps(ctx *godog.ScenarioContext, state *TestState, httpSteps *s
 		})
 	})
 
+	ctx.Step(`^I use the MCP Client to send a tools/list request to "([^"]*)"$`, func(url string) error {
+		httpSteps.SetHeader("Content-Type", "application/json")
+		payload := generateMcpPayload("tools/list", "")
+		return httpSteps.SendMcpRequest(url, &godog.DocString{
+			Content: payload,
+		})
+	})
+
 	ctx.Step(`^I get the MCP proxy "([^"]*)"$`, func(name string) error {
 		return httpSteps.SendGETToService("gateway-controller", "/mcp-proxies/"+name)
 	})
@@ -135,6 +143,13 @@ func generateMcpPayload(method, tool string) string {
 				"capabilities":    map[string]interface{}{"roots": map[string]bool{"listChanged": true}},
 				"clientInfo":      map[string]string{"name": "gateway-it-client", "version": "1.0.0"},
 			},
+		}
+	case "tools/list":
+		initRequest = JsonRPCRequest{
+			JSONRPC: "2.0",
+			ID:      3,
+			Method:  method,
+			Params:  map[string]any{},
 		}
 	case "tools/call":
 		switch tool {

@@ -91,10 +91,12 @@ build-docker: ## Build Docker image
 		--build-context policy-engine=../../gateway/gateway-runtime/policy-engine \
 		--build-context analytics=../../gateway/system-policies/analytics \
 		--build-context gateway-builder=../gateway-builder \
+		--build-context dev-policies=../dev-policies \
 		--build-context target=target \
 		--build-arg VERSION=$(VERSION) \
 		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
 		-t $(IMAGE_NAME):$(VERSION) \
+		-t $(IMAGE_NAME):latest \
 		-f Dockerfile .
 	@rm -rf target
 	@echo "✓ Built $(IMAGE_NAME):$(VERSION)"
@@ -113,10 +115,12 @@ build-debug: ## Build Docker image with Delve remote debugger (port 2345)
 		--build-context policy-engine=../../gateway/gateway-runtime/policy-engine \
 		--build-context analytics=../../gateway/system-policies/analytics \
 		--build-context gateway-builder=../gateway-builder \
+		--build-context dev-policies=../dev-policies \
 		--build-context target=target \
 		--build-arg VERSION=$(VERSION) \
 		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
 		-t $(IMAGE_NAME)-debug:$(VERSION) \
+		-t $(IMAGE_NAME)-debug:latest \
 		-f Dockerfile.debug .
 	@rm -rf target
 	@echo "✓ Built $(IMAGE_NAME)-debug:$(VERSION) (Delve on :2345)"
@@ -135,10 +139,12 @@ build-and-push-multiarch: ## Build and push Docker image for multiple architectu
 		--build-context policy-engine=../../gateway/gateway-runtime/policy-engine \
 		--build-context analytics=../../gateway/system-policies/analytics \
 		--build-context gateway-builder=../gateway-builder \
+		--build-context dev-policies=../dev-policies \
 		--build-context target=target \
 		--build-arg VERSION=$(VERSION) \
 		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
 		-t $(IMAGE_NAME):$(VERSION) \
+		-t $(IMAGE_NAME):latest \
 		-f Dockerfile .
 	@rm -rf target
 	@echo "✓ Built and pushed $(IMAGE_NAME):$(VERSION) for linux/amd64,linux/arm64"

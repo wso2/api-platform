@@ -247,7 +247,7 @@ spec:
         key: X-API-Key
         in: header
     
-    - name: rate-limit
+    - name: basic-ratelimit
       version: v1
       params:
         limit: 1000
@@ -258,7 +258,7 @@ spec:
       path: /pet/{petId}
       # Operation-level policies override API-level
       policies:
-        - name: rate-limit
+        - name: basic-ratelimit
           version: v1
           params:
             limit: 100          # More restrictive per-operation
@@ -457,7 +457,7 @@ Update your API definition to add a rate limit policy:
     },
     "policies": [
       {
-        "name": "rate-limit",
+        "name": "basic-ratelimit",
         "version": "v1",
         "params": {
           "limit": 1000,

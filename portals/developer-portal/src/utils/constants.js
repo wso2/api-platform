@@ -15,16 +15,32 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+// Devportal API base segment and version — single source of truth for the
+// org-scoped invocation prefix `/o/{orgId}/devportal/v1`. Change these two to
+// bump the base segment (e.g. devportalv2) or version (e.g. v2) everywhere.
+const DEVPORTAL_BASE_SEGMENT = 'devportal';
+const DEVPORTAL_VERSION = 'v1';
+// Express route prefix for org-scoped routes, e.g. '/o/:orgId/devportal/v1'
+const DEVPORTAL_ORG_PREFIX = `/o/:orgId/${DEVPORTAL_BASE_SEGMENT}/${DEVPORTAL_VERSION}`;
+// Builder for a concrete org path used in server-side URL generation,
+// e.g. devportalOrgPath('abc') => '/o/abc/devportal/v1'
+const devportalOrgPath = (orgId) => `/o/${orgId}/${DEVPORTAL_BASE_SEGMENT}/${DEVPORTAL_VERSION}`;
+
 module.exports = {
-    DEV_MODE: 'development',
+    DEVPORTAL_API: {
+        BASE_SEGMENT: DEVPORTAL_BASE_SEGMENT,
+        VERSION: DEVPORTAL_VERSION,
+        ORG_PREFIX: DEVPORTAL_ORG_PREFIX,
+        orgPath: devportalOrgPath,
+    },
     IMAGE: 'image',
     STYLE: 'style',
     TEXT: 'text',
     CHARSET_UTF8: 'utf-8',
     FILE_NAME_PARAM: '&fileName=',
     API_ICON: 'api-icon',
-    API_TEMPLATE_FILE_NAME: '/template?type=IMAGE&fileName=',
-    API_TYPE_QUERY: '/template?type=',
+    API_TEMPLATE_FILE_NAME: '/content?type=IMAGE&fileName=',
+    API_TYPE_QUERY: '/content?type=',
     BASE_URL: 'https://localhost:',
     BASE_URL_NAME: 'baseUrl',
     ORG_ID: 'orgID',
@@ -44,11 +60,17 @@ module.exports = {
         UNPUBLISHED: "CREATED"
     },
     API_TYPE: {
+        REST: "REST",
+        SOAP: "SOAP",
         MCP: "MCP",
+        WS: "WS",
+        WEBSUB: "WEBSUB",
+        GRAPHQL: "GRAPHQL",
+    },
+    DEVPORTAL_MODE: {
+        DEFAULT: "DEFAULT",
         MCP_ONLY: "MCPSERVERSONLY",
         API_PROXIES: "APISONLY",
-        DEFAULT: "DEFAULT",
-        WS: "WS"
     },
     DOC_TYPES: {
         DOC_ID: 'DOC_',
@@ -113,13 +135,18 @@ module.exports = {
         RESIDENT_KEY_MANAGER: 'Resident Key Manager',
         APP_DEV_STS_KEY_MANAGER: '_appdev_sts_key_manager_',
     },
+    KEY_MANAGER_TYPES: {
+        ASGARDEO: 'ASGARDEO',
+        WSO2IS: 'WSO2IS',
+        KEYCLOAK: 'KEYCLOAK',
+        GENERIC_OIDC: 'GENERIC_OIDC',
+    },
     TOKEN_TYPES: {
         API_KEY: 'API_KEY',
         OAUTH: 'OAUTH',
         BASIC: 'BASIC'
     },
     ROUTE: {
-        DEV_PORTAL: '/devportal',
         STYLES: '/styles',
         TECHNICAL_STYLES: '/technical-styles',
         TECHNICAL_SCRIPTS: '/technical-scripts',
@@ -131,8 +158,7 @@ module.exports = {
         API_FILE_PATH: '/apis/',
         API_LANDING_PAGE_PATH: '/api/',
         API_DOCS_PATH: '/docs/',
-        DEVPORTAL_ASSETS_BASE_PATH: '/devportal/organizations/',
-        DEVPORTAL_CONFIGURE: '/*/configure',
+        DEVPORTAL_CONFIGURE: ['/*/configure', '/*/views/*/configure'],
         DEVPORTAL_ROOT: ['/portal', '/portal/*/edit', '/devportal'],
         DEVPORTAL_API_LISTING: '/*/apis',
         DEVPORTAL_TECHNICAL_PAGES: ['*/application'],
@@ -149,6 +175,7 @@ module.exports = {
     FILE_TYPE: {
         LAYOUT: 'layout',
         TEMPLATE: 'template',
+        LLMS_CONFIG: 'llms-config',
     },
     KEY_TYPE: {
         PRODUCTION: 'PRODUCTION',
@@ -164,10 +191,17 @@ module.exports = {
         API_CONTENT_PARTIAL_NAME: "api-content",
         API_DOC_PARTIAL_NAME: "api-doc",
         API_DEFINITION_FILE_NAME: 'apiDefinition.json',
+        API_DEFINITION_YAML_FILE_NAME: 'apiDefinition.yaml',
         SCHEMA_DEFINITION_FILE_NAME: 'schemaDefinition.json',
+        SCHEMA_DEFINITION_YAML_FILE_NAME: 'schemaDefinition.yaml',
         API_SPECIFICATION_PATH: 'specification',
         API_DEFINITION_GRAPHQL: 'apiDefinition.graphql',
         API_DEFINITION_XML: 'apiDefinition.xml',
+        LLMS_CONFIG: 'llms-config.json',
+    },
+    ARTIFACT_DIR: {
+        WEB: 'web',
+        DOCS: 'docs',
     },
     DEFAULT_SUBSCRIPTION_PLANS: [
         {
@@ -175,28 +209,30 @@ module.exports = {
             "description": "Allows 1000 requests per minute",
             "requestCount": 1000,
             "displayName": "Bronze",
-            "billingPlan": "FREE"
         },
         {
             "policyName": "Gold",
             "description": "Allows 5000 requests per minute",
             "displayName": "Gold",
             "requestCount": 5000,
-            "billingPlan": "FREE"
         },
         {
             "policyName": "Silver",
             "description": "Allows 2000 requests per minute",
             "displayName": "Silver",
             "requestCount": 2000,
-            "billingPlan": "FREE"
         },
         {
             "policyName": "Unlimited",
             "description": "Allows unlimited requests",
             "displayName": "Unlimited",
             "requestCount": "Unlimited",
-            "billingPlan": "FREE"
+        },
+        {
+            "policyName": "AsyncUnlimited",
+            "description": "Allows unlimited requests for Async APIs",
+            "displayName": "AsyncUnlimited",
+            "requestCount": "Unlimited",
         }
     ],
     ERROR_MESSAGE: {
@@ -249,6 +285,12 @@ module.exports = {
         KEY_MAPPING_CREATE_ERROR: "Error while creating key mapping",
         KEY_MAPPING_RETRIEVE_ERROR: "Error while retrieving key mapping",
         KEY_MAPPING_DELETE_ERROR: "Error while deleting key mapping",
+        KEY_MANAGER_CREATE_ERROR: "Error while creating key manager",
+        KEY_MANAGER_UPDATE_ERROR: "Error while updating key manager",
+        KEY_MANAGER_DELETE_ERROR: "Error while deleting key manager",
+        KEY_MANAGER_RETRIEVE_ERROR: "Error while retrieving key manager",
+        KEY_MANAGER_NOT_FOUND: "Key manager not found",
+        KEY_MANAGER_ENCRYPTION_ERROR: "Key manager encryption key not configured",
         ERR_SUB_EXIST: "ERR_SUB_EXIST",
         UNAUTHORIZED_ORG: "You are not authorized to access this organization",
         UNAUTHORIZED_API: "You are not authorized to access this API",
@@ -257,28 +299,8 @@ module.exports = {
         COMMON_ERROR_MESSAGE: "Oops! Something went wrong",
         COMMON_PAGE_NOT_FOUND_ERROR_MESSAGE: "Requested page not found!"
     },
-    REDIS_CONSTANTS: {
-        SDK_PROGRESS_CHANNEL: 'sdk-progress',
-        KEY_PREFIX: 'sdkfiles:',
-        CONNECTION_STATES: {
-            CONNECTED: 'connected',
-            DISCONNECTED: 'disconnected',
-            CONNECTING: 'connecting',
-            OFFLINE: 'offline'
-        },
-        ERRORS: {
-            CONNECTION_CLOSED: 'Connection is closed',
-            COMMAND_TIMEOUT: 'Command timed out',
-            CONNECTION_LOST: 'Connection lost',
-            SOCKET_CLOSED: 'Socket closed unexpectedly',
-            PIPELINE_TIMEOUT: 'Redis pipeline timeout',
-            STORE_FAILED: 'Failed to store file in Redis',
-            FILE_NOT_EXIST: 'File does not exist',
-            FILE_NOT_FOUND: 'File not found',
-            MAX_ATTEMPTS_REACHED: 'Max reconnection attempts exceeded'
-        }
-    },
     ERROR_CODE: {
+        400: "Bad Request",
         401: "Unauthenticated",
         403: "Forbidden",
         404: "Not Found",
@@ -289,5 +311,11 @@ module.exports = {
         'main',
         'home',
         'api-content',
-    ]
+        'apis-md',
+        'api-landing-md',
+        'llms-txt',
+    ],
+    FEDERATED_GATEWAY_VENDORS: ['aws'],
+    DEFAULT_PROFILE_IMAGE_URL: 'https://raw.githubusercontent.com/wso2/docs-bijira/refs/heads/main/en/devportal-theming/profile.svg',
+    WSO2_DEFAULT_URL: 'https://localhost:9443',
 }

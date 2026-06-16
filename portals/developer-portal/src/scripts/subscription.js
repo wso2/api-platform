@@ -1,424 +1,547 @@
-document.addEventListener('DOMContentLoaded', checkQueryParamsAndLoadModal);
+/*
+ * Copyright (c) 2026, WSO2 LLC. (http://www.wso2.com) All Rights Reserved.
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied. See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
 
-function checkQueryParamsAndLoadModal() {
-    const urlParams = new URLSearchParams(window.location.search);
-    const subPlan = urlParams.get('policyName');
-    const apiName = urlParams.get('apiName');
-    const apiVersion = urlParams.get('apiVersion');
-
-    if (subPlan && apiName && apiVersion) {
-        const modal = document.getElementById('planModal');
-        modal.style.display = 'block';
-
-        const planName = document.getElementById('planName');
-        planName.innerText = subPlan;
-    }
-}
-
-async function unsubscribe(subscriptionId) {
+async function subscribe(orgID, apiId, planName) {
     try {
-        const response = await fetch(`/devportal/subscriptions/${subscriptionId}`, {
-            method: 'DELETE',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-        });
+        const body = { apiId, subscriptionPlanName: planName };
 
-        if (response.ok) {
-            await showAlert(`Unsubscribed successfully!`, 'success');
-            const url = new URL(window.location.origin + window.location.pathname);
-            window.location.href = url.toString();
-        } else {
-            const responseData = await response.json();
-            console.error('Failed to unsubscribe:', responseData);
-            await showAlert(`Failed to unsubscribe.\n${responseData.description}`, 'error');
-        }
-    } catch (error) {
-        console.error('Error:', error);
-        await showAlert(`An error occurred.\n${error.message}`, 'error');
-    }
-}
-
-function hideElementById(elementId) {
-    const element = document.getElementById(elementId);
-    if (element) {
-        element.style.display = 'none';
-    }
-}
-
-function closeModal(elementId) {
-    hideElementById(elementId);
-    document.querySelector("form").reset();
-}
-
-window.onclick = function (event) {
-    const modal = document.getElementById('planModal');
-    if (event.target === modal) {
-        closeModal();
-    }
-};
-
-// Function to show the application creation form
-function showApplicationForm() {
-    const creationForm = document.getElementById('applicationFormCreation');
-    creationForm.style.display = 'block';
-
-    hideElementById('applicationFormSection');
-
-    const subButton = document.getElementById('createSubButton');
-    subButton.style.display = 'block';
-}
-
-// Function to handle application creation
-async function handleCreateSubscribe() {
-    const urlParams = new URLSearchParams(window.location.search);
-    try {
-        // Sanitize the application name
-        const appName = document.getElementById('appName').value.trim().replace(/[^a-zA-Z0-9\s]/g, '');
-        if (!appName) {
-            await showAlert('Application name cannot be empty.', 'error');
-            return;
-        }
-
-        const response = await fetch(`/devportal/applications`, {
+        const response = await fetch(devportalApi.org(orgID, '/subscriptions'), {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ name: sanitize(appName) }),
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() },
+            body: JSON.stringify(body),
         });
 
         const responseData = await response.json();
 
         if (response.ok) {
-            handleSubscribe(responseData.applicationId);
+            window.__subscriptionChanged = true;
+            window.existingSubscriptions = window.existingSubscriptions || [];
+            window.existingSubscriptions.push({
+                subscriptionId: responseData.subscriptionId,
+                subscriptionPlanName: planName,
+                status: 'ACTIVE'
+            });
+            const modalId = 'planModal-' + apiId;
+            const modalEl = document.getElementById(modalId);
+            const isTokenBased = modalEl && modalEl.dataset.hasSubscriptionToken === 'true';
+            if (isTokenBased) {
+                const token = responseData.subscriptionToken;
+                if (modalEl && modalEl.style.display && modalEl.style.display !== 'none') {
+                    try {
+                        showSubscriptionTokenInModal(apiId, token, planName);
+                    } catch (e) {
+                        await showSubscriptionTokenModal(token, planName);
+                    }
+                } else {
+                    await showSubscriptionTokenModal(token, planName);
+                }
+            } else {
+                await refreshLandingPageSubscriptions();
+            }
         } else {
-            console.error('Failed to create application:', responseData);
-            await showAlert(`Failed to create application. Please try again.\n${responseData.description}`, 'error');
+            await showAlert(`Failed to subscribe: ${responseData.description || 'Unknown error'}`, 'error');
         }
     } catch (error) {
-        console.error('Error:', error);
-        await showAlert(`An error occurred while subscribing: \n${error.message}`, 'error');
+        await showAlert(`Error while subscribing: ${error.message}`, 'error');
     }
 }
 
-function sanitize(input) {
-    const div = document.createElement('div');
-    div.appendChild(document.createTextNode(input));
-    return div.innerHTML;
-}
+async function handlePlanSubscription(btnElement) {
+    const orgID = btnElement.dataset.orgId;
+    const apiId = btnElement.dataset.apiId;
+    const planName = btnElement.dataset.policyName;
+    const displayName = btnElement.dataset.displayName;
 
-async function handleSubscribe(appId, apiName, apiVersion, apiRefId) {
-    const applicationSelect = document.getElementById('applicationSelect');
-    let policyName;
-
-    const applicationId = appId !== null
-        ? appId
-        : (applicationSelect ? applicationSelect.value : window.location.pathname.split('/').pop());
-
-
-    if (!applicationId) {
-        await showAlert('Please select an application.', 'error');
+    // If a modal exists for this API and the button is NOT inside it, open the modal.
+    // If the button IS inside the modal, proceed directly to subscribe.
+    const modalId = 'planModal-' + apiId;
+    const modalEl = document.getElementById(modalId);
+    if (modalEl && !btnElement.closest('#' + modalId)) {
+        loadModal(modalId);
         return;
     }
 
-    try {
-        const urlParams = new URLSearchParams(window.location.search);
+    const existingSubs = window.existingSubscriptions || [];
 
-        if (urlParams.has('apiName') && urlParams.has('policyName')) {
-            apiName = urlParams.get('apiName');
-            apiVersion = urlParams.get('apiVersion');
-            policyName = urlParams.get('policyName');
-        } else {
-            policyName = document.getElementById('subscriptionPlan').value;
-        }
-
-        const response = await fetch(`/devportal/subscriptions`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                applicationId: applicationId.replace(/[^a-zA-Z0-9\s-]/g, ''),
-                apiName: apiName.replace(/[^a-zA-Z0-9\s-]/g, ''),
-                apiVersion: apiVersion.replace(/[^a-zA-Z0-9\s-.]/g, ''),
-                throttlingPolicy: policyName.replace(/[^a-zA-Z0-9\s-]/g, ''),
-                apiRefId: apiRefId,
-            }),
-        });
-
-        const responseData = await response.json();
-        if (response.ok) {
-            await showAlert('Subscribed successfully!', 'success');
-            const url = new URL(window.location.origin + window.location.pathname);
-            window.location.href = url.toString();
-        } else {
-            console.error('Failed to subscribe:', responseData);
-            await showAlert(`Failed to subscribe. Please try again.\n${responseData.description}`, 'error');
-        }
-    } catch (error) {
-        console.error('Error:', error);
-        await showAlert(`An error occurred while subscribing: \n${error.message}`, 'error');
+    if (existingSubs.length === 0) {
+        showSubscribeButtonLoading(btnElement);
+        await subscribe(orgID, apiId, planName);
+        return;
     }
-}
 
-function loadModal(modalID) {
-    const modal = document.getElementById(modalID);
-    modal.style.display = 'flex';
-}
+    const currentSub = existingSubs[0];
+    const currentPlan = currentSub.subscriptionPlanName || 'current plan';
 
-async function subscribe(orgID, applicationID, apiId, apiReferenceID, policyId, policyName) {
-    console.log('Subscribing to API:', apiId);
-
-    // Find the related card and button elements
-    const card = getSubscriptionCard(apiId, policyId);
-    const subscribeButton = card ? card.querySelector(".common-btn-primary") : null;
-    const messageOverlay = card ? card.querySelector(".message-overlay") : null;
-    let response;
-
-    try {
-        // Get application ID from hidden field if not provided
-        if (!applicationID && card) {
-            const hiddenField = card.querySelector('input[type="hidden"]');
-            if (hiddenField && hiddenField.value) {
-                applicationID = hiddenField.value;
-            }
-        }
-
-        // Make the API request
-        response = await fetch(`/devportal/organizations/${orgID}/subscriptions`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ applicationID, apiId, apiReferenceID, policyId, policyName }),
-        });
-
-        const responseData = await response.json();
-
-        // Always reset button state and close modal
-        const planButton = document.getElementById('subscribe-btn-' + policyId);
-        if (planButton) {
-            resetSubscribeButtonState(planButton);
-        }
-        closeModal('planModal-' + apiId);
-        resetSubscribeButtonState(subscribeButton);
-
-        if (response.ok) {
-            // Show success notification
-            showSubscriptionMessage(messageOverlay, 'Successfully subscribed', 'success');
-
-            if (card) {
-                // Show "Subscribed" label
-                const subscriptionFlag = card.querySelector('.subscription-flag');
-                if (subscriptionFlag) {
-                    subscriptionFlag.style.display = 'block';
-                }
-
-                // Mark the application as subscribed
-                const dropdown = card.querySelector('.custom-dropdown');
-                if (dropdown) {
-                    // Mark the application as subscribed in the dropdown
-                    const appOption = dropdown.querySelector(`.select-item[data-value="${applicationID}"]`);
-                    if (appOption) {
-                        // Show the subscription icon by changing display style
-                        let subscriptionIcon = appOption.querySelector('.subscription-icon');
-                        if (subscriptionIcon) {
-                            subscriptionIcon.style.display = 'inline-block';
-                        } else {
-                            const subscriptionIconHtml = `<img src="https://raw.githubusercontent.com/wso2/docs-bijira/refs/heads/main/en/devportal-theming/success-rounded.svg"
-                            alt="Subscribed" class="subscription-icon" style="display: inline-block;" />`;
-                            const tempDiv = document.createElement('div');
-                            tempDiv.innerHTML = subscriptionIconHtml;
-                            subscriptionIcon = tempDiv.firstElementChild;
-                            appOption.appendChild(subscriptionIcon);
-                        }
-
-                        // Mark option as disabled
-                        appOption.classList.add('disabled');
-                    }
-
-                    // Disable the subscribe button
-                    const subscribeButton = card.querySelector('.common-btn-primary');
-                    if (subscribeButton) {
-                        subscribeButton.setAttribute('disabled', 'disabled');
-                    }
-                }
-            }
-        } else {
-            // Handle API error
-            console.error('Failed to create subscription:', responseData);
-            const errorMessage = `Failed to subscribe: ${responseData.description || 'Unknown error'}`;
-            showSubscriptionMessage(messageOverlay, errorMessage, 'error');
-        }
-    } catch (error) {
-        // Handle exceptions
-        console.error('Error:', error);
-
-        // Always reset button state and close modal
-        const planButton = document.getElementById('subscribe-btn-' + policyId);
-        if (planButton) {
-            resetSubscribeButtonState(planButton);
-        }
-        closeModal('planModal-' + apiId);
-        resetSubscribeButtonState(subscribeButton);
-
-        let errorMessage = ``
-        if (response.headers.get("content-type") && response.headers.get("content-type").includes("application/json")) {
-            errorMessage = `: ${error.message}`;
-        }
-        showSubscriptionMessage(messageOverlay, `Error while subscribing${errorMessage}`, 'error');
+    if (typeof openWarningModal !== 'function') {
+        await showAlert('Confirmation dialog is not available. Please refresh the page.', 'error');
+        return;
     }
+    window.__pendingPlanSwitchBtn = btnElement;
+    openWarningModal(
+        'SwitchSubscriptionPlan',
+        orgID,
+        apiId,
+        planName,
+        displayName,
+        currentSub.subscriptionId,
+        currentPlan
+    );
 }
 
-async function updateSubscription(orgID, applicationID, apiId, apiReferenceID, policyId, policyName, oldPolicyName, subID) {
-
-    // Find the related card and button elements
-    const card = getSubscriptionCard(apiId, policyId);
-    const subscribeButton = card ? card.querySelector(".common-btn-primary") : null;
-    const messageOverlay = card ? card.querySelector(".message-overlay") : null;
-
+async function toggleSubscriptionStatus(orgID, subscriptionId, newStatus) {
     try {
-        // Get application ID from hidden field if not provided
-        if (!applicationID && card) {
-            const hiddenField = card.querySelector('input[type="hidden"]');
-            if (hiddenField && hiddenField.value) {
-                applicationID = hiddenField.value;
-            }
-        }
-
-        // Make the API request
-        const response = await fetch(`/devportal/organizations/${orgID}/subscriptions`, {
+        const response = await fetch(devportalApi.org(orgID, `/subscriptions/${encodeURIComponent(subscriptionId)}`), {
             method: 'PUT',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ applicationID, apiId, apiReferenceID, policyId, policyName }),
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() },
+            body: JSON.stringify({ status: newStatus }),
         });
 
-        const responseData = await response.json();
-
-        // Always reset button state and close modal
-        const updatedButton = document.getElementById('subscribe-btn-' + apiId + "-" + policyName);
-        if (updatedButton) {
-            resetSubscribeButtonState(updatedButton);
-        }
-        // closeModal('planModal-' + apiId);
-        resetSubscribeButtonState(subscribeButton);
-
         if (response.ok) {
-
-            // Show success notification
-            const updatedPlanCard = document.getElementById('api-card-' + apiId + "-" + policyName);
-            updatedPlanCard.style.borderColor = 'var(--primary-main-color)';
-
-            updatedButton.setAttribute('disabled', 'disabled');
-            updatedButton.classList.add('disabled');
-            updatedButton.style.setProperty('pointer-events', 'none', 'important');
-            updatedButton.textContent = 'Update';
-
-            const apiCards = document.querySelectorAll(`[id^="api-card-${apiId}-"]`);
-            apiCards.forEach(card => {
-                if (card.id !== `api-card-${apiId}-${policyName}`) {
-                    card.style.borderColor = '';
-                    const cardButton = card.querySelector('a[type="button"]');
-                    cardButton.style.pointerEvents = 'auto';
-                    cardButton.removeAttribute('disabled');
-                    cardButton.classList.remove('disabled');
-                }
-            });
-            document.getElementById('policy_' + subID).textContent = policyName;
-            showSubscriptionMessage(messageOverlay, 'Successfully updated API subscription', 'success');
-        } else {
-            // Handle API error
-            console.error('Failed to create subscription:', responseData);
-            const errorMessage = `Failed to subscribe: ${responseData.description || 'Unknown error'}`;
-            showSubscriptionMessage(messageOverlay, errorMessage, 'error');
-        }
-    } catch (error) {
-        // Handle exceptions
-        console.error('Error:', error);
-
-        // Always reset button state and close modal
-        const planButton = document.getElementById('subscribe-btn-' + policyId);
-        if (planButton) {
-            resetSubscribeButtonState(planButton);
-        }
-        closeModal('planModal-' + apiId);
-        resetSubscribeButtonState(subscribeButton);
-
-        const errorMessage = `Error while updating subscription: ${error.message}`;
-        showSubscriptionMessage(messageOverlay, errorMessage, 'error');
-    }
-}
-
-// Helper functions for the subscribe function
-function getSubscriptionCard(apiId, policyId) {
-    return document.getElementById('apiCard-' + apiId) ||
-        document.getElementById('subscriptionCard-' + policyId) ||
-        null;
-}
-
-function resetSubscribeButtonState(button) {
-    if (button && typeof window.resetSubscribeButtonState === 'function') {
-        window.resetSubscribeButtonState(button);
-    }
-}
-
-function showSubscriptionMessage(messageOverlay, message, type) {
-    if (messageOverlay && typeof window.showApiMessage === 'function') {
-        window.showApiMessage(messageOverlay, message, type);
-    } else {
-        showAlert(message, type);
-    }
-}
-
-function addAPISubscription(selectElement) {
-    const selectedOption = selectElement.options[selectElement.selectedIndex];
-    const subscriptionPolicies = JSON.parse(selectedOption.getAttribute("data-policies") || "[]");
-    const planSelect = document.getElementById("planSelect");
-
-    planSelect.innerHTML = '<option value="" disabled selected>Select a Plan</option>';
-
-    subscriptionPolicies.forEach(policy => {
-        const option = document.createElement("option");
-        option.value = policy.policyID;
-        option.textContent = policy.displayName;
-        option.setAttribute("data-policyName", policy.policyName);
-        planSelect.appendChild(option);
-    });
-
-}
-
-async function removeSubscription(orgID, appID, apiRefID, subID) {
-
-    try {
-        const response = await fetch(`/devportal/organizations/${orgID}/subscriptions?appID=${appID}&apiReferenceID=${apiRefID}&subscriptionID=${subID}`, {
-            method: 'DELETE',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-        });
-        if (response.ok) {
-            await showAlert(`Unsubscribed successfully!`, 'success');
-            document.getElementById(`data-row-${subID}`)?.remove();
-            const rowCount = document.getElementById(`app-table-${appID}`).rows.length;
-            if (rowCount === 1) {
-                document.getElementById(`app-table-${appID}`).remove();
-                document.getElementById('no-subscription').style.display = 'block';
-            }
-            const mcpTable = document.getElementById(`app-table-mcp-${appID}`);
-            if (mcpTable && mcpTable.rows.length === 1) {
-                mcpTable.remove();
-                document.getElementById('no-subscription-mcp').style.display = 'block';
-            }
+            window.__subscriptionChanged = true;
+            await showAlert(`Subscription ${newStatus === 'ACTIVE' ? 'activated' : 'deactivated'} successfully!`, 'success');
+            refreshModalOrReload(orgID);
         } else {
             const responseData = await response.json();
-            console.error('Failed to unsubscribe:', responseData);
-            await showAlert(`Failed to unsubscribe.\n${responseData.description}`, 'error');
+            await showAlert(`Failed to update subscription: ${responseData.description || 'Unknown error'}`, 'error');
         }
     } catch (error) {
-        console.error('Error:', error);
-        await showAlert(`An error occurred.\n${error.message}`, 'error');
+        await showAlert(`Error: ${error.message}`, 'error');
     }
+}
+
+function confirmDeleteSubscription(orgID, subscriptionId) {
+    if (typeof openWarningModal !== 'function') {
+        showAlert('Confirmation dialog is not available. Please refresh the page.', 'error');
+        return;
+    }
+    openWarningModal('DeleteSubscription', orgID, subscriptionId, '', '', '', '');
+}
+
+async function executeDeleteSubscription(orgID, subscriptionId) {
+    try {
+        const response = await fetch(devportalApi.org(orgID, `/subscriptions/${encodeURIComponent(subscriptionId)}`), {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() },
+        });
+
+        if (response.ok) {
+            window.__subscriptionChanged = true;
+            await showAlert('Subscription deleted successfully!', 'success');
+            refreshModalOrReload(orgID);
+        } else {
+            const responseData = await response.json().catch(() => ({}));
+            await showAlert(`Failed to delete subscription: ${responseData.description || 'Unknown error'}`, 'error');
+        }
+    } catch (error) {
+        await showAlert(`Error: ${error.message}`, 'error');
+    }
+}
+
+async function runPendingPlanSwitch(orgID, apiId, planName, displayName, subscriptionId) {
+    const btnElement = window.__pendingPlanSwitchBtn;
+    window.__pendingPlanSwitchBtn = null;
+
+    if (btnElement && typeof showSubscribeButtonLoading === 'function') {
+        showSubscribeButtonLoading(btnElement);
+    }
+
+    try {
+        const deleteResponse = await fetch(devportalApi.org(orgID, `/subscriptions/${encodeURIComponent(subscriptionId)}`), {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() },
+        });
+
+        if (!deleteResponse.ok) {
+            const errorData = await deleteResponse.json().catch(() => ({}));
+            await showAlert(`Failed to remove existing subscription: ${errorData.description || 'Unknown error'}`, 'error');
+            return;
+        }
+
+        await subscribe(orgID, apiId, planName);
+    } catch (error) {
+        await showAlert(`Error during plan change: ${error.message}`, 'error');
+    }
+}
+
+function refreshModalOrReload(orgID) {
+    // If inside a visible modal, re-render its content instead of reloading the page
+    var visibleModal = document.querySelector('.modal.custom-modal[style*="flex"]');
+    if (visibleModal && visibleModal.id && typeof prepareSubscriptionModal === 'function') {
+        prepareSubscriptionModal(visibleModal.id);
+        return;
+    }
+    // On the landing page, refresh inline without full reload
+    if (document.getElementById('subscriptionPlans')) {
+        refreshLandingPageSubscriptions();
+        return;
+    }
+    window.location.reload();
+}
+
+async function refreshLandingPageSubscriptions() {
+    var planBtn = document.querySelector('#subscriptionPlans [data-api-id]');
+    var orgID = window.__subscriptionOrgID || (planBtn && planBtn.dataset.orgId);
+    if (!orgID) { window.location.reload(); return; }
+
+    var apiId = planBtn ? planBtn.dataset.apiId : null;
+    if (!apiId) { window.location.reload(); return; }
+
+    try {
+        var resp = await fetch(devportalApi.org(orgID, '/subscriptions?apiId=' + encodeURIComponent(apiId)), { headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() } });
+        if (!resp.ok) { window.location.reload(); return; }
+        var data = await resp.json();
+        var existing = data.list || data || [];
+
+        // Update window state
+        window.existingSubscriptions = existing.map(function(s) {
+            return { subscriptionId: s.subscriptionId, subscriptionPlanName: s.subscriptionPlanName, status: s.status };
+        });
+        window.__tokenMeta = window.__tokenMeta || {};
+        existing.forEach(function(sub) {
+            window.__tokenMeta[sub.subscriptionId] = { maskedToken: sub.maskedToken, subscriptionPlanName: sub.subscriptionPlanName, status: sub.status };
+        });
+
+        // Re-render existing subscriptions table
+        var existingSection = document.querySelector('#subscriptionPlans .existing-subscriptions');
+        if (existing.length > 0) {
+            if (!existingSection) {
+                existingSection = document.createElement('div');
+                existingSection.className = 'existing-subscriptions mb-4';
+                var plansHeader = document.querySelector('#subscriptionPlans .container-header');
+                if (plansHeader) {
+                    plansHeader.parentNode.insertBefore(existingSection, plansHeader);
+                } else {
+                    document.querySelector('#subscriptionPlans .container-fluid').prepend(existingSection);
+                }
+            }
+            var modalEl = document.getElementById('planModal-' + apiId);
+            var isTokenBased = modalEl && modalEl.dataset.hasSubscriptionToken === 'true';
+
+            existingSection.innerHTML = '<div class="container-header mb-4">Subscriptions</div>';
+            var table = document.createElement('table');
+            table.className = 'table';
+            var headerHtml = '<thead><tr><th>Plan</th><th>Status</th>';
+            if (isTokenBased) headerHtml += '<th>Subscription Token</th>';
+            headerHtml += '<th>Actions</th></tr></thead><tbody></tbody>';
+            table.innerHTML = headerHtml;
+            var tbody = table.querySelector('tbody');
+            existing.forEach(function(sub) {
+                var tr = document.createElement('tr');
+
+                // Plan name cell
+                var tdPlan = document.createElement('td');
+                tdPlan.textContent = sub.subscriptionPlanName || '';
+                tr.appendChild(tdPlan);
+
+                // Status cell
+                var tdStatus = document.createElement('td');
+                var badge = document.createElement('span');
+                badge.className = 'badge ' + (sub.status === 'ACTIVE' ? 'bg-success' : 'bg-secondary');
+                badge.textContent = sub.status || '';
+                tdStatus.appendChild(badge);
+                tr.appendChild(tdStatus);
+
+                // Token cell — only for token-based subscription APIs
+                if (isTokenBased) {
+                    var tdToken = document.createElement('td');
+                    var tokenDisplay = document.createElement('div');
+                    tokenDisplay.className = 'token-display';
+                    var code = document.createElement('code');
+                    code.className = 'masked-token';
+                    code.id = 'token-' + sub.subscriptionId;
+                    code.dataset.revealed = 'false';
+                    code.textContent = '****';
+                    var revealBtn = document.createElement('button');
+                    revealBtn.className = 'btn btn-sm btn-outline-secondary';
+                    revealBtn.title = 'Reveal token';
+                    revealBtn.innerHTML = '<i class="bi bi-eye"></i>';
+                    revealBtn.dataset.subscriptionId = sub.subscriptionId;
+                    revealBtn.addEventListener('click', function() { toggleTokenVisibility(this.dataset.subscriptionId); });
+                    var copyBtn = document.createElement('button');
+                    copyBtn.className = 'btn btn-sm btn-outline-secondary';
+                    copyBtn.title = 'Copy token';
+                    copyBtn.innerHTML = '<i class="bi bi-clipboard"></i>';
+                    copyBtn.dataset.subscriptionId = sub.subscriptionId;
+                    copyBtn.addEventListener('click', function() { copySubscriptionToken(this.dataset.subscriptionId); });
+                    tokenDisplay.appendChild(code);
+                    tokenDisplay.appendChild(revealBtn);
+                    tokenDisplay.appendChild(copyBtn);
+                    tdToken.appendChild(tokenDisplay);
+                    tr.appendChild(tdToken);
+                }
+
+                // Actions cell
+                var tdActions = document.createElement('td');
+                var newStatus = sub.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
+                var toggleBtn = document.createElement('button');
+                toggleBtn.className = 'btn btn-sm btn-outline-warning';
+                toggleBtn.innerHTML = sub.status === 'ACTIVE' ? '<i class="bi bi-pause-circle"></i>' : '<i class="bi bi-play-circle"></i>';
+                toggleBtn.dataset.orgId = orgID;
+                toggleBtn.dataset.subscriptionId = sub.subscriptionId;
+                toggleBtn.dataset.newStatus = newStatus;
+                toggleBtn.addEventListener('click', function() {
+                    toggleSubscriptionStatus(this.dataset.orgId, this.dataset.subscriptionId, this.dataset.newStatus);
+                });
+                var deleteBtn = document.createElement('button');
+                deleteBtn.className = 'btn btn-sm btn-outline-danger';
+                deleteBtn.innerHTML = '<i class="bi bi-trash"></i>';
+                deleteBtn.dataset.orgId = orgID;
+                deleteBtn.dataset.subscriptionId = sub.subscriptionId;
+                deleteBtn.addEventListener('click', function() {
+                    confirmDeleteSubscription(this.dataset.orgId, this.dataset.subscriptionId);
+                });
+                tdActions.appendChild(toggleBtn);
+                tdActions.appendChild(deleteBtn);
+                tr.appendChild(tdActions);
+
+                tbody.appendChild(tr);
+            });
+            existingSection.appendChild(table);
+        } else if (existingSection) {
+            existingSection.remove();
+        }
+
+        // Update plan card buttons: mark current plan or reset to Subscribe
+        var activePlanNames = existing
+            .filter(function(s) { return s.status === 'ACTIVE'; })
+            .map(function(s) { return (s.subscriptionPlanName || '').toLowerCase(); });
+
+        var planCards = document.querySelectorAll('#subscriptionPlans .subscription-card');
+        planCards.forEach(function(card) {
+            var btn = card.querySelector('.subscription-plan-subscribe-btn, .subscribe-btn, .current-plan-btn');
+            if (!btn) return;
+            var policyName = (btn.dataset.policyName || '').toLowerCase();
+            if (activePlanNames.indexOf(policyName) !== -1) {
+                btn.textContent = 'Current Plan';
+                btn.disabled = true;
+                btn.classList.add('disabled', 'current-plan-btn');
+                btn.removeAttribute('onclick');
+            } else {
+                btn.textContent = 'Subscribe';
+                btn.disabled = false;
+                btn.classList.remove('disabled', 'current-plan-btn');
+                btn.setAttribute('onclick', 'handlePlanSubscription(this)');
+            }
+        });
+    } catch (e) {
+        window.location.reload();
+    }
+}
+
+function copySubscriptionToken(subscriptionId) {
+    (async function() {
+        try {
+            const token = await fetchTokenIfNeeded(subscriptionId);
+            if (!token) return;
+            navigator.clipboard.writeText(token).then(() => {
+                showAlert('Subscription token copied to clipboard!', 'success');
+            }).catch(() => {
+                const textArea = document.createElement('textarea');
+                textArea.value = token;
+                textArea.style.position = 'fixed';
+                textArea.style.opacity = '0';
+                document.body.appendChild(textArea);
+                textArea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textArea);
+                showAlert('Subscription token copied to clipboard!', 'success');
+            });
+        } catch (e) {
+            // noop
+        }
+    })();
+}
+
+function toggleTokenVisibility(subscriptionId) {
+    (async function() {
+        const tokenEl = document.getElementById('token-' + subscriptionId);
+        if (!tokenEl) return;
+        if (tokenEl.dataset.revealed === 'true') {
+            // hide and show masked value from token meta if available
+            const meta = (window.__tokenMeta || {})[subscriptionId];
+            tokenEl.textContent = meta && meta.maskedToken ? meta.maskedToken : '****';
+            tokenEl.dataset.revealed = 'false';
+            return;
+        }
+
+        try {
+            const fullToken = await fetchTokenIfNeeded(subscriptionId);
+            if (!fullToken) return;
+            tokenEl.textContent = fullToken;
+            tokenEl.dataset.revealed = 'true';
+        } catch (e) {
+            // noop
+        }
+    })();
+}
+
+const _tokenCache = {};
+
+async function fetchTokenIfNeeded(subscriptionId) {
+    if (_tokenCache[subscriptionId]) return _tokenCache[subscriptionId];
+    const existing = (window.__tokenMap || {})[subscriptionId];
+    if (existing && typeof existing === 'string' && !existing.startsWith('****')) {
+        _tokenCache[subscriptionId] = existing;
+        return existing;
+    }
+    const orgID = window.__subscriptionOrgID;
+    if (!orgID) return null;
+    try {
+        const resp = await fetch(devportalApi.org(orgID, `/subscriptions/${encodeURIComponent(subscriptionId)}`), { headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() } });
+        if (!resp.ok) return null;
+        const data = await resp.json();
+        const token = data.subscriptionToken;
+        if (!token) return null;
+        _tokenCache[subscriptionId] = token;
+        window.__tokenMap = window.__tokenMap || {};
+        window.__tokenMap[subscriptionId] = token;
+        return token;
+    } catch (e) {
+        return null;
+    }
+}
+
+function showSubscriptionTokenModal(token, planName) {
+    return new Promise((resolve) => {
+        const overlay = document.createElement('div');
+        overlay.className = 'modal custom-modal';
+        overlay.style.display = 'flex';
+
+        const safeplanName = document.createElement('span');
+        safeplanName.textContent = planName;
+
+        const safeToken = document.createElement('code');
+        safeToken.textContent = token;
+        safeToken.className = 'flex-grow-1 p-2 bg-light border rounded';
+        safeToken.style.wordBreak = 'break-all';
+
+        overlay.innerHTML = `
+            <div class="modal-dialog" role="document">
+                <div class="modal-content custom-modal-content">
+                    <div class="custom-modal-header">
+                        <h2 class="custom-modal-title m-0">Subscription Created</h2>
+                        <button type="button" class="btn-close" id="closeTokenModal"></button>
+                    </div>
+                    <div class="custom-modal-body">
+                        <p>Your subscription to the <strong id="planNameDisplay"></strong> plan has been created successfully.</p>
+                        <p class="mb-2"><strong>Subscription Token:</strong></p>
+                        <div class="d-flex align-items-center gap-2 mb-3" id="tokenContainer"></div>
+                        <div class="alert alert-warning mb-0">
+                            <i class="bi bi-exclamation-triangle"></i>
+                            Use this token as the <code>Subscription-Key</code> header when invoking the API.
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(overlay);
+
+        overlay.querySelector('#planNameDisplay').textContent = planName;
+
+        const tokenContainer = overlay.querySelector('#tokenContainer');
+        tokenContainer.appendChild(safeToken);
+
+        const copyBtn = document.createElement('button');
+        copyBtn.className = 'btn btn-sm btn-outline-secondary';
+        copyBtn.innerHTML = '<i class="bi bi-clipboard"></i> Copy';
+        copyBtn.addEventListener('click', () => {
+            // copy raw token string directly (token is available in this scope)
+            navigator.clipboard.writeText(token).then(() => {
+                showAlert('Subscription token copied to clipboard!', 'success');
+            }).catch(() => {
+                const textArea = document.createElement('textarea');
+                textArea.value = token;
+                textArea.style.position = 'fixed';
+                textArea.style.opacity = '0';
+                document.body.appendChild(textArea);
+                textArea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textArea);
+                showAlert('Subscription token copied to clipboard!', 'success');
+            });
+        });
+        tokenContainer.appendChild(copyBtn);
+
+        overlay.querySelector('#closeTokenModal').addEventListener('click', () => {
+            overlay.remove();
+            if (window.__subscriptionChanged) {
+                window.__subscriptionChanged = false;
+                if (document.getElementById('subscriptionPlans')) {
+                    refreshLandingPageSubscriptions();
+                } else {
+                    window.location.reload();
+                }
+            }
+            resolve();
+        });
+    });
+}
+
+function showSubscriptionTokenInModal(apiId, token, planName) {
+    const area = document.getElementById('subscriptionTokenArea-' + apiId);
+    if (!area) {
+        return showSubscriptionTokenModal(token, planName);
+    }
+
+    area.innerHTML = '';
+    const wrapper = document.createElement('div');
+    wrapper.className = 'p-3 mb-3 border rounded bg-light';
+
+    const title = document.createElement('div');
+    title.innerHTML = `<strong>Subscription Created</strong> — ${escapeHtml(planName)}`;
+
+    const tokenBlock = document.createElement('div');
+    tokenBlock.className = 'd-flex gap-2 align-items-center mt-2';
+    const code = document.createElement('code');
+    code.textContent = token;
+    code.style.wordBreak = 'break-all';
+    code.className = 'p-2 bg-white border rounded flex-grow-1';
+
+    const copyBtn = document.createElement('button');
+    copyBtn.className = 'btn btn-sm btn-outline-secondary';
+    copyBtn.innerHTML = '<i class="bi bi-clipboard"></i> Copy';
+    copyBtn.addEventListener('click', function() {
+        navigator.clipboard.writeText(token).then(() => showAlert('Subscription token copied to clipboard!', 'success'))
+            .catch(() => showAlert('Could not copy token', 'error'));
+    });
+
+    tokenBlock.appendChild(code);
+    tokenBlock.appendChild(copyBtn);
+    wrapper.appendChild(title);
+    wrapper.appendChild(tokenBlock);
+
+    const info = document.createElement('div');
+    info.className = 'alert alert-warning mt-2 mb-0';
+    info.innerHTML = '<i class="bi bi-exclamation-triangle"></i> Use this token as the <code>Subscription-Key</code> header when invoking the API.';
+    wrapper.appendChild(info);
+
+    area.appendChild(wrapper);
+    area.style.display = 'block';
+
+    // Refresh the subscriptions/plans below the token with updated data
+    const modalEl = area.closest('.modal');
+    if (modalEl && modalEl.id && typeof prepareSubscriptionModal === 'function') {
+        window.__preserveTokenArea = true;
+        prepareSubscriptionModal(modalEl.id);
+    }
+}
+
+function escapeHtml(unsafe) {
+    return String(unsafe).replace(/[&<>"'`]/g, function (m) { return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":"&#39;","`":"&#96;"})[m]; });
 }

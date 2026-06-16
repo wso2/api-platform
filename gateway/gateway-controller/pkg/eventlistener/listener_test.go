@@ -256,6 +256,9 @@ func TestNewEventListener_RequiresSystemConfig(t *testing.T) {
 			nil,
 			nil,
 			nil,
+			nil,
+			nil,
+			nil,
 		)
 	})
 }
@@ -274,6 +277,9 @@ func TestNewEventListener_RequiresGatewayID(t *testing.T) {
 			nil,
 			newTestLogger(),
 			&config.Config{Controller: config.Controller{}},
+			nil,
+			nil,
+			nil,
 			nil,
 			nil,
 		)
@@ -300,6 +306,9 @@ func TestStart_SubscribesWithTrimmedGatewayID(t *testing.T) {
 				},
 			},
 		},
+		nil,
+		nil,
+		nil,
 		nil,
 		nil,
 	)

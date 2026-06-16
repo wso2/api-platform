@@ -9,13 +9,13 @@
         {{#if profile}}
         <a class="dropdown-toggle profile-link d-flex align-items-center p-1 fw-light" href="#" id="navbarDropdown"
           role="button" data-bs-toggle="dropdown" aria-expanded="false">
-          <img src={{profile.imageURL}} alt="Profile" class="profile-icon me-2" />
+          <img src="{{profile.imageURL}}" alt="Profile" class="profile-icon me-2" />
           <span>{{profile.firstName}}</span>
         </a>
         <ul class="dropdown-menu dropdown-menu-end profile-options" aria-labelledby="navbarDropdown">
           <li class="dropdown-item">
             <div class="userprofile-info d-flex align-items-center">
-              <img src={{profile.imageURL}} class="profile-icon me-2" />
+              <img src="{{profile.imageURL}}" class="profile-icon me-2" />
               <div>
                 <span class="user-name d-block">{{profile.firstName}} {{profile.lastName}}</span>
                 <span class="user-email text-muted">{{profile.email}}</span>

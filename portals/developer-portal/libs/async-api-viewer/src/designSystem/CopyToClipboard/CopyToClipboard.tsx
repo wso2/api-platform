@@ -23,6 +23,7 @@ import useStyles from './CopyToClipboard.styles';
 interface CopyToClipboardProps extends ITextInputProps {
   testId: string;
   component?: 'textInput' | 'card';
+  isMultiline?: boolean;
   endAdornment?: React.ReactNode;
 }
 
@@ -35,6 +36,7 @@ const CopyToClipboard = (props: CopyToClipboardProps) => {
     component = 'textInput',
     endAdornment,
     testId,
+    isMultiline,
     ...rest
   } = props;
   const fieldValue = value as string;
@@ -50,6 +52,7 @@ const CopyToClipboard = (props: CopyToClipboardProps) => {
             value={value}
             readOnly
             className={textFiledClasses.copyToClipboardInput}
+            multiline={isMultiline}
             {...rest}
             size={size}
             testId={testId}

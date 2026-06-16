@@ -40,6 +40,7 @@ func TestTranslatorToProtoSharedContextPreservesStructuredAuth(t *testing.T) {
 			Authorized:    true,
 			AuthType:      "jwt",
 			Subject:       "alice",
+			TokenId:       "tok-abc",
 			Scopes:        map[string]bool{"read:pets": true},
 			Properties:    map[string]string{"tenant": "demo"},
 			Previous: &policy.AuthContext{
@@ -57,6 +58,7 @@ func TestTranslatorToProtoSharedContextPreservesStructuredAuth(t *testing.T) {
 	assert.Equal(t, true, result.GetMetadata().GetFields()["flag"].GetBoolValue())
 	require.NotNil(t, result.GetAuthContext())
 	assert.Equal(t, "jwt", result.GetAuthContext().GetAuthType())
+	assert.Equal(t, "tok-abc", result.GetAuthContext().GetTokenId())
 	assert.Equal(t, true, result.GetAuthContext().GetScopes()["read:pets"])
 	require.NotNil(t, result.GetAuthContext().GetPrevious())
 	assert.Equal(t, "apikey", result.GetAuthContext().GetPrevious().GetAuthType())

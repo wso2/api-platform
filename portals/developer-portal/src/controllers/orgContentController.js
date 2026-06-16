@@ -23,17 +23,15 @@ const logger = require('../config/logger');
 const { logUserAction } = require('../middlewares/auditLogger');
 const { renderTemplate, renderTemplateFromAPI } = require('../utils/util');
 const { trackHomePageVisit } = require('../utils/telemetry');
-const config = require(process.cwd() + '/config.json');
+const { config } = require('../config/configLoader');
 const constants = require('../utils/constants');
 const adminDao = require('../dao/admin');
 
-const filePrefix = config.pathToContent;
-const baseURLDev = config.baseUrl + constants.ROUTE.VIEWS_PATH;
 
 const loadOrganizationContent = async (req, res) => {
 
     let html = "";
-    if (config.mode === constants.DEV_MODE) {
+    if (config.designMode?.enabled) {
         html = await loadOrgContentFromFile(req, res);
     } else {
         html = await loadOrgContentFromAPI(req, res);
@@ -51,33 +49,31 @@ const loadDefaultLandingPage = async (req, res) => {
     // Track home page visit telemetry for default landing page
     trackHomePageVisit({
         idpId: req.isAuthenticated() ? (req[constants.USER_ID] || req.user.sub) : undefined
-    });
+    }, req);
     
     res.send(html);
 }
 const loadOrgContentFromFile = async (req, res) => {
 
-    //TODO fetch from DB
-    const mockProfileDataPath = path.join(process.cwd(), filePrefix + '../mock', '/userProfiles.json');
-    const mockProfileData = JSON.parse(fs.readFileSync(mockProfileDataPath, constants.CHARSET_UTF8));
+    const layoutPath = config.designMode.pathToLayout;
     const templateContent = {
-        userProfiles: mockProfileData,
-        baseUrl: baseURLDev + req.params.viewName
+        userProfiles: [],
+        baseUrl: config.baseUrl + constants.ROUTE.VIEWS_PATH + req.params.viewName,
+        devMode: true,
     };
-    
-    // Track home page visit telemetry for dev mode
+
     trackHomePageVisit({
         idpId: req.isAuthenticated() ? (req[constants.USER_ID] || req.user.sub) : undefined
-    });
-    
-    return renderTemplate(filePrefix + 'pages/home/page.hbs', filePrefix + 'layout/main.hbs', templateContent, false)
+    }, req);
+
+    return renderTemplate(layoutPath + 'pages/home/page.hbs', layoutPath + 'layout/main.hbs', templateContent, false)
 }
 
 const loadOrgContentFromAPI = async (req, res) => {
     let html;
     const orgName = req.params.orgName;
     const orgDetails = await adminDao.getOrganization(orgName);
-    const devportalMode = orgDetails.ORG_CONFIG?.devportalMode || constants.API_TYPE.DEFAULT;
+    const devportalMode = orgDetails.ORG_CONFIG?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
     try {
         const orgId = await adminDao.getOrgId(orgName);
         let profile = null;
@@ -87,6 +83,7 @@ const loadOrgContentFromAPI = async (req, res) => {
                 firstName: req.user.firstName,
                 lastName: req.user.lastName,
                 email: req.user.email,
+                isAdmin: req.user.isAdmin,
             }
         }
         templateContent = {
@@ -95,12 +92,11 @@ const loadOrgContentFromAPI = async (req, res) => {
             profile: req.isAuthenticated() ? profile : null
         };
         html = await renderTemplateFromAPI(templateContent, orgId, orgName, 'pages/home', req.params.viewName);
-        
         // Track home page visit telemetry
         trackHomePageVisit({ 
             orgId: orgId, 
             idpId: req.isAuthenticated() ? (req[constants.USER_ID] || req.user.sub) : undefined
-        });
+        }, req);
     } catch (error) {
         logger.error(`Failed to load organization`, {
             orgName: req.params?.orgName,

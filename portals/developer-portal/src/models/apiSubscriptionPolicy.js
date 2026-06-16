@@ -30,7 +30,7 @@ const APISubscriptionPolicy = sequelize.define('DP_API_SUBSCRIPTION_POLICY', {
         type: DataTypes.UUID,
         allowNull: false,
         primaryKey: true
-    }
+    },
 }, {
     timestamps: false,
     tableName: 'DP_API_SUBSCRIPTION_POLICY',

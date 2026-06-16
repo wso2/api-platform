@@ -325,14 +325,11 @@ func (t *Translator) createRouteFromRDC(routeKey string, rdcRoute *models.Route,
 		upstreamPath = ""
 	}
 
-	// Derive context prefix from fullPath minus operationPath
-	// fullPath = contextWithVersion + operationPath
+	// Derive context prefix from fullPath minus operationPath (fullPath = context + operationPath).
+	// For a wildcard operation path like "/foo/*", strip only the context so the matched literal
+	// prefix ("/foo") is PRESERVED on the upstream — consistent with exact paths. The bare "/*"
+	// catch-all (empty literal prefix) and "/" root are unaffected. See issue #2071.
 	contextWithVersion := strings.TrimSuffix(fullPath, operationPath)
-	if isWildcardPath {
-		// For wildcard, include the path up to the /* in the context for rewriting
-		pathWithoutWildcard := strings.TrimSuffix(operationPath, "/*")
-		contextWithVersion = strings.TrimSuffix(fullPath, operationPath) + pathWithoutWildcard
-	}
 
 	escapedContext := regexp.QuoteMeta(contextWithVersion)
 	if isRootPath {
@@ -752,7 +749,7 @@ func (t *Translator) translateAsyncAPIConfig(cfg *models.StoredConfig, allConfig
 	// Extract template handle and provider name for LLM provider/proxy scenarios
 	templateHandle := t.extractTemplateHandle(cfg, allConfigs)
 	providerName := t.extractProviderName(cfg, allConfigs)
-	r := t.createRoute(cfg.UUID, apiData.DisplayName, apiData.Version, apiData.Context, "POST", constants.WEBSUB_PATH, mainClusterName, "/", effectiveMainVHost, cfg.Kind, templateHandle, providerName, nil, apiProjectID, nil, false, "", nil)
+	r := t.createRoute(cfg.UUID, apiData.DisplayName, apiData.Version, apiData.Context, "POST", constants.WEBSUB_PATH, mainClusterName, "/", effectiveMainVHost, cfg.Kind, templateHandle, providerName, nil, apiProjectID, nil, false, nil)
 	routesList = append(routesList, mainRoutesList...)
 	routesList = append(routesList, r)
 
@@ -825,14 +822,9 @@ func (t *Translator) translateAPIConfig(cfg *models.StoredConfig, allConfigs []*
 		// Determine if dynamic cluster selection should be used
 		// When upstreamDefinitions exist, use cluster_header routing so policies can select the upstream
 		useClusterHeader := apiData.UpstreamDefinitions != nil && len(*apiData.UpstreamDefinitions) > 0
-		defaultCluster := ""
-		if useClusterHeader {
-			// Default to the main cluster (with the upstream_ prefix for cluster_header lookup)
-			defaultCluster = mainClusterName
-		}
 
 		r := t.createRoute(cfg.UUID, apiData.DisplayName, apiData.Version, apiData.Context, string(op.Method), op.Path,
-			mainClusterName, parsedMainURL.Path, effectiveMainVHost, cfg.Kind, templateHandle, providerName, apiData.Upstream.Main.HostRewrite, apiProjectID, mainTimeout, useClusterHeader, defaultCluster, upstreamDefPaths)
+			mainClusterName, parsedMainURL.Path, effectiveMainVHost, cfg.Kind, templateHandle, providerName, apiData.Upstream.Main.HostRewrite, apiProjectID, mainTimeout, useClusterHeader, upstreamDefPaths)
 		mainRoutesList = append(mainRoutesList, r)
 	}
 	routesList = append(routesList, mainRoutesList...)
@@ -853,13 +845,13 @@ func (t *Translator) translateAPIConfig(cfg *models.StoredConfig, allConfigs []*
 		sandboxCluster := t.createCluster(sbClusterName, parsedSbURL, nil, sbUpstreamClusterConnectTimeout)
 		clusters = append(clusters, sandboxCluster)
 
-		// Create sandbox routes for each operation
+		// Create sandbox routes. When upstreamDefinitions exist, enable dynamic cluster
+		// selection (mirrors main).
 		sbRoutesList := make([]*route.Route, 0)
+		sbUseClusterHeader := apiData.UpstreamDefinitions != nil && len(*apiData.UpstreamDefinitions) > 0
 		for _, op := range apiData.Operations {
-			// Use sbClusterName for sandbox upstream path
-			// Sandbox routes don't support dynamic cluster selection
 			r := t.createRoute(cfg.UUID, apiData.DisplayName, apiData.Version, apiData.Context, string(op.Method), op.Path,
-				sbClusterName, parsedSbURL.Path, effectiveSandboxVHost, cfg.Kind, templateHandle, providerName, apiData.Upstream.Sandbox.HostRewrite, apiProjectID, sbTimeout, false, "", nil)
+				sbClusterName, parsedSbURL.Path, effectiveSandboxVHost, cfg.Kind, templateHandle, providerName, apiData.Upstream.Sandbox.HostRewrite, apiProjectID, sbTimeout, sbUseClusterHeader, upstreamDefPaths)
 			sbRoutesList = append(sbRoutesList, r)
 		}
 		routesList = append(routesList, sbRoutesList...)
@@ -925,6 +917,7 @@ func (t *Translator) translateAPIConfig(cfg *models.StoredConfig, allConfigs []*
 func (t *Translator) resolveUpstreamCluster(upstreamName string, up *api.Upstream, upstreamDefinitions *[]api.UpstreamDefinition) (string, *url.URL, *resolvedTimeout, error) {
 	var rawURL string
 	var timeout *resolvedTimeout
+	var refBasePath *string
 
 	// Resolve URL and timeout
 	if up.Url != nil && strings.TrimSpace(*up.Url) != "" {
@@ -947,6 +940,14 @@ func (t *Translator) resolveUpstreamCluster(upstreamName string, up *api.Upstrea
 		}
 		rawURL = definition.Upstreams[0].Url
 
+		// A referenced definition's base path comes solely from its basePath field
+		// (upstreamDefinitions URLs are host[:port] only).
+		defBasePath := ""
+		if definition.BasePath != nil {
+			defBasePath = *definition.BasePath
+		}
+		refBasePath = &defBasePath
+
 		// Extract timeout if specified in the definition (may be nil)
 		if definition.Timeout != nil {
 			resolved, err := resolveTimeoutFromDefinition(definition)
@@ -966,6 +967,11 @@ func (t *Translator) resolveUpstreamCluster(upstreamName string, up *api.Upstrea
 	}
 	if parsedURL.Host == "" || (parsedURL.Scheme != "http" && parsedURL.Scheme != "https") {
 		return "", nil, nil, fmt.Errorf("invalid %s upstream URL: must include host and http/https scheme", upstreamName)
+	}
+
+	// A referenced definition's base path overrides the URL path (which must be empty).
+	if refBasePath != nil {
+		parsedURL.Path = *refBasePath
 	}
 
 	// Generate cluster name
@@ -1726,11 +1732,12 @@ func (t *Translator) extractProviderName(cfg *models.StoredConfig, allConfigs []
 }
 
 // createRoute creates a route for an operation
-// When useClusterHeader is true, the route uses cluster_header for dynamic cluster selection,
-// and defaultCluster specifies the cluster to use when no policy overrides it.
+// When useClusterHeader is true, the route uses cluster_header for dynamic cluster selection;
+// the no-policy fallback cluster is supplied by the policy engine (default_upstream_cluster),
+// not by the route action.
 // upstreamDefPaths maps upstream definition names to their URL paths for dynamic path rewriting.
 func (t *Translator) createRoute(apiId, apiName, apiVersion, context, method, path, clusterName,
-	upstreamPath string, vhost string, apiKind string, templateHandle string, providerName string, hostRewrite *api.UpstreamHostRewrite, projectID string, timeoutCfg *resolvedTimeout, useClusterHeader bool, defaultCluster string, upstreamDefPaths map[string]string) *route.Route {
+	upstreamPath string, vhost string, apiKind string, templateHandle string, providerName string, hostRewrite *api.UpstreamHostRewrite, projectID string, timeoutCfg *resolvedTimeout, useClusterHeader bool, upstreamDefPaths map[string]string) *route.Route {
 	// Resolve version placeholder in context
 	context = strings.ReplaceAll(context, "$version", apiVersion)
 
@@ -1870,15 +1877,12 @@ func (t *Translator) createRoute(apiId, apiName, apiVersion, context, method, pa
 	if upstreamIsRoot {
 		upstreamPath = ""
 	}
-	// For wildcard routes, construct the regex to match everything after the prefix
-	var contextWithVersion string
-	if isWildcardPath {
-		// Remove the /* from the end before constructing the context
-		pathWithoutWildcard := strings.TrimSuffix(path, "/*")
-		contextWithVersion = ConstructFullPath(context, apiVersion, pathWithoutWildcard)
-	} else {
-		contextWithVersion = ConstructFullPath(context, apiVersion, "")
-	}
+	// Strip only the API context (with version) from the upstream path. For a wildcard
+	// operation path like "/foo/*", the matched literal prefix ("/foo") is PRESERVED on the
+	// upstream — the capture group below already includes everything after the context — so
+	// behavior is consistent with exact paths (exact "/foo" also forwards "/foo"). The bare
+	// "/*" catch-all (empty literal prefix) and "/" root are unaffected. See issue #2071.
+	contextWithVersion := ConstructFullPath(context, apiVersion, "")
 	escapedContext := regexp.QuoteMeta(contextWithVersion)
 	if isRootPath {
 		// Root path ("/") matches both /ctx and /ctx/. Using a non-capturing pattern
@@ -2956,9 +2960,12 @@ func (t *Translator) createExtProcFilter() (*hcm.HttpFilter, error) {
 			},
 			Timeout: durationpb.New(time.Duration(policyEngine.TimeoutMs) * time.Millisecond),
 		},
-		FailureModeAllow:  policyEngine.FailureModeAllow,
-		RouteCacheAction:  extproc.ExternalProcessor_DEFAULT,
-		AllowModeOverride: policyEngine.AllowModeOverride,
+		// Always fail closed: if the policy engine fails, the request must not reach the upstream.
+		FailureModeAllow: false,
+		RouteCacheAction: extproc.ExternalProcessor_DEFAULT,
+		// Always allow mode override: the policy engine sets the per-request body mode
+		// (skip/buffered/streamed); without this Envoy would ignore it and never send bodies.
+		AllowModeOverride: true,
 		RequestAttributes: []string{constants.ExtProcRequestAttributeRouteName},
 		ProcessingMode: &extproc.ProcessingMode{
 			RequestHeaderMode: extproc.ProcessingMode_SEND,

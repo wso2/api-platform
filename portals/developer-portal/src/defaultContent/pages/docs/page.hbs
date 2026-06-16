@@ -17,8 +17,8 @@
  */
  -->
 <main>
-    {{> header profile=profile baseUrl=baseUrl devportalMode=devportalMode }}
-    {{> sidebar profile=profile baseUrl=baseUrl devportalMode=devportalMode }}
+    {{> header profile=profile baseUrl=baseUrl devportalMode=devportalMode showApiWorkflowsNav=showApiWorkflowsNav }}
+    {{> sidebar profile=profile baseUrl=baseUrl devportalMode=devportalMode showApiKeysNav=showApiKeysNav showApiWorkflowsNav=showApiWorkflowsNav }}
     <div class="doc-content me-4">
         <div class="documents">
             <aside class="documents-sidebar">
@@ -50,6 +50,26 @@
                         </a>
                     </div>
                     {{/if}}
+                    {{#if (eq ../apiType "WEBSUB")}}
+                    <div class="doc-links">
+                        <a href="{{../baseDocUrl}}/docs/specification?tryout=true" class="doc-link">
+                            <i class="bi bi-code"></i>
+                            <div class="doc-title">
+                                Tryout
+                            </div>
+                        </a>
+                    </div>
+                    {{/if}}
+                    {{#if (eq ../apiType "GRAPHQL")}}
+                    <div class="doc-links">
+                        <a href="{{../baseDocUrl}}/docs/specification?tryout=true" class="doc-link">
+                            <i class="bi bi-code"></i>
+                            <div class="doc-title">
+                                Tryout
+                            </div>
+                        </a>
+                    </div>
+                    {{/if}}
                 </div>
                 {{else}}
                 <div>
@@ -58,7 +78,7 @@
                     </div>
                     <div class="doc-links">
                         {{#names}}
-                        <a href="{{../../baseDocUrl}}/docs/{{../type}}/{{this}}" class="doc-link">
+                        <a href="{{../../baseDocUrl}}/docs/{{../type}}/{{stripMdExtension this}}" class="doc-link">
                             <i class="bi bi-file-text"></i>
                             <div class="doc-title">
                                 {{beforeSeparator this "."}}

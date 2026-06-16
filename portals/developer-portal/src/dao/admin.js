@@ -25,11 +25,13 @@ const { APIMetadata } = require('../models/apiMetadata');
 const APIImageMetadata = require('../models/apiImages');
 const SubscriptionPolicy = require('../models/subscriptionPolicy');
 const logger = require('../config/logger');
+const { decrypt } = require('../utils/cryptoUtil');
+const sequelize = require('../db/sequelize');
 
 const createOrganization = async (orgData, t) => {
     let devPortalID = "";
     if (orgData.orgHandle) {
-        devPortalID = orgData.orgHandle
+        devPortalID = orgData.orgHandle.toLowerCase();
     }
     const createOrgData = {
         ORG_NAME: orgData.orgName,
@@ -46,10 +48,6 @@ const createOrganization = async (orgData, t) => {
         SUPER_ADMIN_ROLE: orgData.superAdminRole,
         ORG_CONFIG: orgData.orgConfig
     };
-    // If orgId is provided, use it instead of auto-generating
-    if (orgData.orgId) {
-        createOrgData.ORG_ID = orgData.orgId;
-    }
     try {
         const organization = await Organization.create(createOrgData, { transaction: t });
         return organization;
@@ -61,17 +59,20 @@ const createOrganization = async (orgData, t) => {
     }
 };
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 const getOrganization = async (param) => {
     try {
+        const conditions = [
+            { ORG_NAME: param },
+            { ORG_HANDLE: typeof param === 'string' ? param.toLowerCase() : param },
+            { ORGANIZATION_IDENTIFIER: param },
+        ];
+        if (typeof param === 'string' && UUID_RE.test(param)) {
+            conditions.push({ ORG_ID: param });
+        }
         const organization = await Organization.findOne({
-            where: {
-                [Sequelize.Op.or]: [
-                    { ORG_NAME: param },
-                    { ORG_HANDLE: param },
-                    { ORG_ID: param },
-                    { ORGANIZATION_IDENTIFIER: param }
-                ]
-            }
+            where: { [Sequelize.Op.or]: conditions }
         });
         if (!organization) {
             throw new Sequelize.EmptyResultError('Organization not found');
@@ -91,7 +92,7 @@ const getOrgId = async (orgName) => {
             where: {
                 [Sequelize.Op.or]: [
                     { ORG_NAME: orgName },
-                    { ORG_HANDLE: orgName },
+                    { ORG_HANDLE: typeof orgName === 'string' ? orgName.toLowerCase() : orgName },
                     { ORGANIZATION_IDENTIFIER: orgName }
                 ]
             }
@@ -123,10 +124,10 @@ const getOrganizations = async () => {
     }
 };
 
-const updateOrganization = async (orgData) => {
+const updateOrganization = async (orgData, t) => {
     let devPortalID = "";
     if (orgData.orgHandle) {
-        devPortalID = orgData.orgHandle
+        devPortalID = orgData.orgHandle.toLowerCase();
     }
     try {
         const [updatedRowsCount, updatedOrg] = await Organization.update(
@@ -147,7 +148,8 @@ const updateOrganization = async (orgData) => {
             },
             {
                 where: { ORG_ID: orgData.orgId },
-                returning: true
+                returning: true,
+                transaction: t,
             }
         );
         if (updatedRowsCount < 1) {
@@ -179,7 +181,7 @@ const deleteOrganization = async (orgId) => {
     }
 }
 
-const createIdentityProvider = async (orgId, idpData) => {
+const createIdentityProvider = async (orgId, idpData, t) => {
     try {
         const idpResponse = await IdentityProvider.create({
             ORG_ID: orgId,
@@ -196,7 +198,7 @@ const createIdentityProvider = async (orgId, idpData) => {
             ...(idpData.scope && { SCOPE: idpData.scope }),
             ...(idpData.jwksURL && { JWKS_URL: idpData.jwksURL }),
             ...(idpData.certificate && { CERTIFICATE: idpData.certificate })
-        });
+        }, { transaction: t });
         return idpResponse;
     } catch (error) {
         if (error instanceof Sequelize.UniqueConstraintError) {
@@ -206,7 +208,7 @@ const createIdentityProvider = async (orgId, idpData) => {
     }
 }
 
-const updateIdentityProvider = async (orgID, idpData) => {
+const updateIdentityProvider = async (orgID, idpData, t) => {
     try {
         const [updatedRowsCount, idpContent] = await IdentityProvider.update(
             {
@@ -226,10 +228,9 @@ const updateIdentityProvider = async (orgID, idpData) => {
                 ...(idpData.certificate && { CERTIFICATE: idpData.certificate })
             },
             {
-                where: {
-                    ORG_ID: orgID
-                },
-                returning: true
+                where: { ORG_ID: orgID },
+                returning: true,
+                transaction: t,
             }
         );
         if (updatedRowsCount < 1) {
@@ -786,26 +787,19 @@ const deleteSubscription = async (orgID, subID, t) => {
     }
 }
 
-const deleteAppKeyMapping = async (orgID, appID, apiID, t) => {
+
+const deleteAppMappingsByIds = async (orgID, mappingIds, t) => {
+    if (!mappingIds || mappingIds.length === 0) return 0;
     try {
-        const deletedRowsCount = await ApplicationKeyMapping.destroy({
-            where: {
-                ORG_ID: orgID,
-                APP_ID: appID,
-                API_REF_ID: apiID
-            }, transaction: t
+        return await ApplicationKeyMapping.destroy({
+            where: { MAPPING_ID: mappingIds, ORG_ID: orgID },
+            transaction: t,
         });
-        if (deletedRowsCount < 1 && apiID !== null) {
-            throw Object.assign(new Sequelize.EmptyResultError('Application Key Mapping not found'));
-        }
-        return deletedRowsCount;
     } catch (error) {
-        if (error instanceof Sequelize.EmptyResultError) {
-            throw error;
-        }
+        if (error instanceof Sequelize.EmptyResultError) throw error;
         throw new Sequelize.DatabaseError(error);
     }
-}
+};
 
 const deleteAppMappings = async (orgID, appID, t) => {
     try {
@@ -832,41 +826,10 @@ const deleteAppMappings = async (orgID, appID, t) => {
     }
 }
 
-const getAPISubscriptionReference = async (orgID, appID, apiID, t) => {
-    try {
-        const subscriptionReference = await ApplicationKeyMapping.findAll(
-            {
-                attributes: ['SUBSCRIPTION_REF_ID'],
-                where: {
-                    ORG_ID: orgID,
-                    APP_ID: appID,
-                    API_REF_ID: apiID
-                }
-            }, { transaction: t });
-        return subscriptionReference;
-    } catch (error) {
-        if (error instanceof Sequelize.EmptyResultError) {
-            throw error;
-        }
-        throw new Sequelize.DatabaseError(error);
-    }
-}
-
-const createAppKeyMapping = async (appKeyMap, t) => {
-    try {
-        const appKeyMapping = await ApplicationKeyMapping.create(appKeyMap, { transaction: t });
-        return appKeyMapping;
-    } catch (error) {
-        if (error instanceof Sequelize.UniqueConstraintError) {
-            throw error;
-        }
-        throw new Sequelize.DatabaseError(error);
-    }
-}
 
 const getKeyMapping = async (orgID, appID, t) => {
     try {
-        return await Application.findOne(
+        const result = await Application.findOne(
             {
                 where: {
                     ORG_ID: orgID,
@@ -879,8 +842,10 @@ const getKeyMapping = async (orgID, appID, t) => {
                             APP_ID: appID
                         }
                     }
-                ]
-            }, { transaction: t });
+                ],
+                ...(t && { transaction: t })
+            });
+        return result;
     } catch (error) {
         if (error instanceof Sequelize.EmptyResultError) {
             throw error;
@@ -918,16 +883,11 @@ const getSubscribedAPIs = async (orgID, appID) => {
     }
 }
 
-const getApplicationKeyMapping = async (orgID, appID, isSharedToken) => {
+const getApplicationKeyMapping = async (orgID, appID) => {
     try {
-        return await ApplicationKeyMapping.findAll(
-            {
-                where: {
-                    ORG_ID: orgID,
-                    APP_ID: appID,
-                    SHARED_TOKEN: isSharedToken
-                }
-            });
+        return await ApplicationKeyMapping.findAll({
+            where: { ORG_ID: orgID, APP_ID: appID }
+        });
     } catch (error) {
         if (error instanceof Sequelize.EmptyResultError) {
             throw error;
@@ -936,36 +896,16 @@ const getApplicationKeyMapping = async (orgID, appID, isSharedToken) => {
     }
 }
 
-const getApplicationAPIMapping = async (orgID, appID, apiID, appRefID, isSharedToken) => {
-    try {
-        return await ApplicationKeyMapping.findAll(
-            {
-                where: {
-                    ORG_ID: orgID,
-                    APP_ID: appID,
-                    API_REF_ID: apiID,
-                    CP_APP_REF: appRefID,
-                    SHARED_TOKEN: isSharedToken
-                }
-            });
-    } catch (error) {
-        if (error instanceof Sequelize.EmptyResultError) {
-            throw error;
-        }
-        throw new Sequelize.DatabaseError(error);
-    }
-}
 
 const createApplicationKeyMapping = async (mappingData, t) => {
     try {
         const appKeyMapping = await ApplicationKeyMapping.create({
             ORG_ID: mappingData.orgID,
             APP_ID: mappingData.appID,
-            CP_APP_REF: mappingData.cpAppRef,
-            API_REF_ID: mappingData.apiRefID,
-            SUBSCRIPTION_REF_ID: mappingData.subscriptionRefID,
-            SHARED_TOKEN: mappingData.sharedToken,
-            TOKEN_TYPE: mappingData.tokenType
+            ...(mappingData.kmID && { KM_ID: mappingData.kmID }),
+            ...(mappingData.asClientID && { AS_CLIENT_ID: mappingData.asClientID }),
+            ...(mappingData.keyType && { KEY_TYPE: mappingData.keyType }),
+            ...(mappingData.additionalProperties && { ADDITIONAL_PROPERTIES: mappingData.additionalProperties }),
         }, { transaction: t });
         return appKeyMapping;
     } catch (error) {
@@ -976,32 +916,91 @@ const createApplicationKeyMapping = async (mappingData, t) => {
     }
 }
 
-const updateApplicationKeyMapping = async (apiID, mappingData, t) => {
+const upsertApplicationKeyMapping = async (mappingData, t) => {
     try {
-        const [updatedRowsCount, appContent] = await ApplicationKeyMapping.update({
-            API_REF_ID: mappingData.apiRefID,
-            CP_APP_REF: mappingData.cpAppRef,
-            SUBSCRIPTION_REF_ID: mappingData.subscriptionRefID,
-            SHARED_TOKEN: mappingData.sharedToken,
-            TOKEN_TYPE: mappingData.tokenType
-        },
-            {
-                where: {
-                    ORG_ID: mappingData.orgID,
-                    APP_ID: mappingData.appID,
-                    API_REF_ID: apiID
-                },
-                transaction: t
-            });
-
-        return [updatedRowsCount, appContent];
+        const existing = await ApplicationKeyMapping.findOne({
+            where: {
+                ORG_ID: mappingData.orgID,
+                APP_ID: mappingData.appID,
+                ...(mappingData.kmID && { KM_ID: mappingData.kmID }),
+                KEY_TYPE: mappingData.keyType,
+            },
+            ...(t && { transaction: t }),
+        });
+        if (existing) {
+            await existing.update({
+                AS_CLIENT_ID: mappingData.asClientID,
+                ADDITIONAL_PROPERTIES: mappingData.additionalProperties,
+            }, { transaction: t });
+            return existing;
+        }
+        return await ApplicationKeyMapping.create({
+            ORG_ID: mappingData.orgID,
+            APP_ID: mappingData.appID,
+            ...(mappingData.kmID && { KM_ID: mappingData.kmID }),
+            AS_CLIENT_ID: mappingData.asClientID,
+            KEY_TYPE: mappingData.keyType,
+            ADDITIONAL_PROPERTIES: mappingData.additionalProperties,
+        }, { transaction: t });
     } catch (error) {
         if (error instanceof Sequelize.UniqueConstraintError) {
             throw error;
         }
         throw new Sequelize.DatabaseError(error);
     }
-}
+};
+
+
+/**
+ * Find subscription by unique key (app, api, policy)
+ */
+const findSubscriptionByUniqueKey = async (orgID, appID, apiID, policyID, t) => {
+    try {
+        return await SubscriptionMapping.findOne({
+            where: { ORG_ID: orgID, APP_ID: appID, API_ID: apiID, POLICY_ID: policyID },
+            transaction: t,
+        });
+    } catch (error) {
+        if (error instanceof Sequelize.EmptyResultError) return null;
+        throw new Sequelize.DatabaseError(error);
+    }
+};
+
+/**
+ * List all subscriptions for an organization
+ */
+const listSubscriptionsByOrg = async (orgID) => {
+    try {
+        return await SubscriptionMapping.findAll({
+            where: { ORG_ID: orgID },
+        });
+    } catch (error) {
+        throw new Sequelize.DatabaseError(error);
+    }
+};
+
+/**
+ * List subscriptions for a specific user in an organization
+ */
+const listSubscriptionsByUser = async (orgID, userID) => {
+    try {
+        const userApps = await Application.findAll({
+            where: { ORG_ID: orgID, CREATED_BY: userID },
+            attributes: ['APP_ID'],
+        });
+        const appIds = userApps.map((app) => app.APP_ID);
+        if (appIds.length === 0) return [];
+        return await SubscriptionMapping.findAll({
+            where: {
+                ORG_ID: orgID,
+                APP_ID: { [Sequelize.Op.in]: appIds },
+            },
+        });
+    } catch (error) {
+        logger.error('listSubscriptionsByUser failed', { error, orgID, userID });
+        throw new Sequelize.DatabaseError(error);
+    }
+};
 
 module.exports = {
     createOrganization,
@@ -1035,16 +1034,16 @@ module.exports = {
     getSubscription,
     getSubscriptions,
     deleteSubscription,
-    deleteAppKeyMapping,
-    getAPISubscriptionReference,
     getApplicationID,
-    createAppKeyMapping,
     getKeyMapping,
     getAppApiSubscription,
     getSubscribedAPIs,
     getApplicationKeyMapping,
     createApplicationKeyMapping,
-    updateApplicationKeyMapping,
-    getApplicationAPIMapping,
-    deleteAppMappings
+    upsertApplicationKeyMapping,
+    deleteAppMappings,
+    deleteAppMappingsByIds,
+    findSubscriptionByUniqueKey,
+    listSubscriptionsByOrg,
+    listSubscriptionsByUser,
 };

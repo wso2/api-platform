@@ -1,19 +1,19 @@
-<div class="modal custom-modal" id='keysInstructionsModal'>
+{{#each keyManagersMetadata}}
+{{#if enabled}}
+{{#each applicationKeys}}
+<div class="modal custom-modal" id='keysInstructionsModal-{{keyType}}'>
     <div class="modal-dialog modal-xl" role="document">
         <div class="modal-content custom-modal-content">
             <div class="custom-modal-header">
-                <h2 class="custom-modal-title m-0">Instructions to Generate Access Token</h2>
+                <h2 class="custom-modal-title m-0">Instructions to Generate Access Token ({{keyType}})</h2>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"
-                    onclick="closeModal('keysInstructionsModal')"></button>
+                    onclick="closeModal('keysInstructionsModal-{{keyType}}')"></button>
             </div>
             <div class="custom-modal-body">
                 <div class="container">
-                    {{#each keyManagersMetadata}}
-                    {{#if enabled}}
-                    {{#let "keys" (conditionalIf ../isProduction productionKeys sandboxKeys)}}
-                    <div id="tokenGenerationButtons_{{../name}}" class="mb-4">
+                    <div id="tokenGenerationButtons_{{../name}}_{{keyType}}" class="mb-4">
                         <div class="row">
-                            <div id="requestDetails_{{../name}}" class="mb-3">
+                            <div id="requestDetails_{{../name}}_{{keyType}}" class="mb-3">
                                 <p class="small instruction-text">You can use the following details to generate an access token using the client credentials grant type:</p>
                                 <div class="token-details-card">
                                     <div class="token-details-content">
@@ -37,7 +37,7 @@
                                 </div>
                             </div>
                             
-                            <div id="curlDisplay_{{../name}}" style="{{#unless keys.consumerSecret}} display: none; {{/unless}}">
+                            <div id="curlDisplay_{{../name}}_{{keyType}}">
                                 <p class="small mb-2 instruction-header">cURL to Generate Access Token</p>
                                 <p class="curl-description">
                                     The following cURL command template allows you to generate an access token using the
@@ -45,21 +45,21 @@
                                     actual credentials inserted.
                                 </p>
                                 <div class="code-block">
-                                    <button class="copy-button" id="curl-copy-{{../id}}-{{#if ../../isProduction}}production{{else}}sandbox{{/if}}"
+                                    <button class="copy-button" id="curl-copy-{{../id}}-{{keyType}}"
                                         data-endpoint="{{../tokenEndpoint}}" aria-label="Copy to clipboard with real values" onclick="copyRealCurl(this)">
                                         <i class="bi bi-copy"></i>
                                     </button>
                                     <code
-                                        id="curl_{{../name}}">curl -k -X POST &lt;TOKEN_ENDPOINT_URL&gt; -d "grant_type=client_credentials" -H "Authorization: Basic Base64(&lt;CONSUMER_KEY&gt;:&lt;CONSUMER_SECRET&gt;)"</code>
+                                        id="curl_{{../name}}_{{keyType}}">curl -k -X POST &lt;TOKEN_ENDPOINT_URL&gt; -d "grant_type=client_credentials" -H "Authorization: Basic Base64(&lt;CONSUMER_KEY&gt;:&lt;CONSUMER_SECRET&gt;)"</code>
                                 </div>
                             </div>
                         </div>
                     </div>
-                    {{/let}}
-                    {{/if}}
-                    {{/each}}
                 </div>
             </div>
         </div>
     </div>
 </div>
+{{/each}}
+{{/if}}
+{{/each}}

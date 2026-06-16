@@ -1,0 +1,11 @@
+Discover and Integrate MCP Servers
+
+Explore our MCP server catalog and connect AI agents to powerful tools and data sources.
+{{#if mcpAPIs}}
+
+# MCP Servers
+
+{{#mcpAPIs}}
+- [{{apiInfo.apiName}} v{{apiInfo.apiVersion}}]({{../baseUrl}}/mcp/{{apiHandle}}.md){{#if apiInfo.apiDescription}} - {{apiInfo.apiDescription}}{{/if}}
+{{/mcpAPIs}}
+{{/if}}

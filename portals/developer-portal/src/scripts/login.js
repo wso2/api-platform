@@ -8,7 +8,7 @@ document.addEventListener('DOMContentLoaded', function () {
         const password = document.getElementById('password').value.trim();
 
         try {
-            const response = await fetch(`/devportal/login`, {
+            const response = await fetch(devportalApi.root('/login'), {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

@@ -19,6 +19,12 @@ websub_tls_enabled = true
 websub_tls_cert_file = "/etc/event-gateway/tls/default-listener.crt"
 websub_tls_key_file = "/etc/event-gateway/tls/default-listener.key"
 websocket_port = 8081
+# HTTPS port for WebSocket server (used when TLS is enabled for WebBrokerApi)
+websocket_https_port = 8444
+# Set to true to serve WebBrokerApi WebSocket connections over WSS (TLS).
+websocket_tls_enabled = true
+websocket_tls_cert_file = "/etc/event-gateway/tls/default-listener.crt"
+websocket_tls_key_file = "/etc/event-gateway/tls/default-listener.key"
 admin_port = 9002
 metrics_port = 9003
 
@@ -60,8 +66,13 @@ format = "text"
 [analytics]
 # Set to true to enable the analytics system policy on every chain.
 enabled = false
-# Set to true to include request/response payloads in analytics events.
-allow_payloads = false
+# Deprecated: allow_payloads is preserved for backward compatibility. When true
+# and both send_request_body and send_response_body are false, both directions
+# are enabled (bool fields cannot distinguish "unset" from explicitly false).
+# To disable payloads entirely, set allow_payloads = false or remove it.
+# allow_payloads = false
+send_request_body = false
+send_response_body = false
 
 # runtime_id is auto-generated if left empty
 # runtime_id = ""

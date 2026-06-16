@@ -1,0 +1,117 @@
+/*
+ * Copyright (c) 2026, WSO2 LLC. (http://www.wso2.com) All Rights Reserved.
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied. See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+/* ===== Subscriptions Page ===== */
+
+.subscriptions-container .container-header {
+    display: block;
+    color: var(--primary-main-color);
+    font-size: 1.5rem;
+    font-weight: 600;
+}
+
+/* ===== API Name Links ===== */
+
+#subscriptions-table td a {
+    color: var(--primary-main-color);
+    text-decoration: none;
+    font-weight: 500;
+}
+
+#subscriptions-table td a:hover {
+    text-decoration: underline;
+}
+
+/* ===== Token Display ===== */
+
+.token-display {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+.masked-token {
+    font-family: SFMono-Regular, Consolas, Liberation Mono, Menlo, monospace;
+    font-size: 0.85rem;
+    background-color: var(--bs-light, #f8f9fa);
+    padding: 0.15rem 0.4rem;
+    border-radius: 0.25rem;
+    word-break: break-all;
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* ===== Existing Subscriptions Table (API Landing) ===== */
+
+.existing-subscriptions {
+    text-align: left;
+}
+
+.existing-subscriptions .table {
+    margin-bottom: 0;
+}
+
+.existing-subscriptions .table th {
+    font-weight: 600;
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.025em;
+    color: var(--bs-secondary, #6c757d);
+    border-bottom-width: 2px;
+}
+
+.existing-subscriptions .table td {
+    vertical-align: middle;
+}
+
+/* ===== Subscriptions Table (Subscriptions Page) ===== */
+
+#subscriptions-table th {
+    font-weight: 600;
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.025em;
+    color: var(--bs-secondary, #6c757d);
+    border-bottom-width: 2px;
+}
+
+#subscriptions-table td {
+    vertical-align: middle;
+}
+
+/* ===== Responsive ===== */
+
+@media (max-width: 768px) {
+    .token-display {
+        flex-wrap: wrap;
+    }
+
+    .masked-token {
+        max-width: 120px;
+    }
+
+    #subscriptions-table {
+        font-size: 0.85rem;
+    }
+
+    .existing-subscriptions .table {
+        font-size: 0.85rem;
+    }
+}

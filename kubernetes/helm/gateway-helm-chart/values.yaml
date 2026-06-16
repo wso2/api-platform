@@ -6,6 +6,24 @@ fullnameOverride: ""
 
 imagePullSecrets: []
 
+# WSO2 Subscription parameters (https://wso2.com/subscription/)
+wso2:
+  subscription:
+    # Name of a docker-registry Secret (in the release namespace) holding credentials
+    # for registry.wso2.com. Setting this enables WSO2 subscription mode:
+    #   1. The secret is added to every component's imagePullSecrets.
+    #   2. Default `ghcr.io/wso2/api-platform/*` image repositories are rewritten to
+    #      `registry.wso2.com/wso2-api-platform/*`, so the released WSO2 images at
+    #      https://docker.wso2.com/ are pulled instead.
+    # Explicit image.repository overrides are preserved as-is.
+    #
+    # Create the secret with:
+    #   kubectl create secret docker-registry wso2-subscription-creds \
+    #     --docker-server=registry.wso2.com \
+    #     --docker-username=<wso2-email> \
+    #     --docker-password=<wso2-password-or-token>
+    imagePullSecret: ""
+
 commonLabels: {}
 commonAnnotations: {}
 
@@ -259,15 +277,9 @@ gateway:
         # Timeout for gRPC service connection (in milliseconds)
         timeout_ms: 60000
 
-        # Failure mode: false = fail closed (deny requests on error), true = fail open (allow requests on error)
-        failure_mode_allow: false
-
         # Route cache action: DEFAULT, RETAIN, or CLEAR
         # RETAIN: Maintain the route cache across requests (recommended for performance)
         route_cache_action: RETAIN
-
-        # Allow per-route override of ext_proc configuration
-        allow_mode_override: true
 
         # Message timeout for policy engine processing (in milliseconds)
         message_timeout_ms: 60000
@@ -386,9 +398,16 @@ gateway:
         policy: 18001
         admin: 9092
         metrics: 9091
+      # Publish admin/debug ports on the controller Service. Off by default — the admin
+      # server serves config_dump and xds_sync_status, so keep it pod-internal (reach it
+      # via `kubectl port-forward`) unless you need in-cluster Service access. Liveness/
+      # readiness probes are unaffected: they hit the container port directly, not the Service.
+      expose:
+        admin: false
     controlPlane:
-      host: host.docker.internal
-      port: 8443
+      # Control plane endpoint. Used directly as the HTTPS/WSS authority, so include
+      # a non-default port here (e.g. "host.docker.internal:8443"); 443 is assumed if omitted.
+      host: host.docker.internal:8443
       token:
         value: ""
         secretName: ""
@@ -567,9 +586,17 @@ gateway:
       ports:
         http: 8080
         https: 8443
-        envoyAdmin: 9901
+        routerAdmin: 9901
         policyEngineAdmin: 9002
         policyEngineMetrics: 9003
+      # Publish the runtime admin/debug ports on the Service. Off by default — these serve
+      # config_dump and health; keep them pod-internal unless needed. Probes are unaffected.
+      expose:
+        # Router (Envoy) admin: exposes MUTATING endpoints (/quitquitquit, /healthcheck/fail,
+        # /runtime_modify) — leave OFF unless you fully trust in-cluster network access.
+        routerAdmin: false
+        # Policy-engine admin: config_dump + health.
+        policyEngineAdmin: false
     # Policy-related file mounts for the gateway runtime
     policies:
       # LLM pricing data for the llm_cost_v1 policy.

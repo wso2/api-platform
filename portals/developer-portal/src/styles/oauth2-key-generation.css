@@ -325,6 +325,48 @@ input[type="checkbox"]:checked {
   margin-left: 1rem;
 }
 
+/* API Key Warning - Scoped styles for prominent copy message */
+.api-key-warning {
+  background-color: color-mix(in srgb, var(--warning-color) 15%, white);
+  border-left: 6px solid var(--warning-color);
+  /* border: 1px solid var(--warning-color); */
+  border-radius: 0 0.5rem 0.5rem 0;
+  /* padding: 1.25rem; */
+  animation: highlightPulse 0.6s ease-out;
+}
+
+.api-key-warning .info-title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--main-text-color);
+  margin-bottom: 0.5rem;
+}
+
+.api-key-warning .info-text {
+  color: var(--main-text-color);
+  line-height: 1.4;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.api-key-warning .info-icon {
+  color: color-mix(in srgb, var(--warning-color) 90%, black);
+  font-size: 1.75rem;
+}
+
+/* Subtle pulse animation on initial load */
+@keyframes highlightPulse {
+  0% {
+    box-shadow: 0 4px 6px color-mix(in srgb, var(--primary-light-color) 20%, transparent);
+  }
+  50% {
+    box-shadow: 0 4px 12px color-mix(in srgb, var(--primary-light-color) 40%, transparent);
+  }
+  100% {
+    box-shadow: 0 4px 6px color-mix(in srgb, var(--primary-light-color) 20%, transparent);
+  }
+}
+
 .token-card {
   background-color: #fff;
   border: 1px solid #e5e7eb;

@@ -117,7 +117,7 @@ See [GATEWAY_API_IMPLEMENTATION_NOTES](../../../gateway-operator/docs/GATEWAY_AP
 | `Gateway` never Programmed | `kubectl describe gateway platform-gw-apim -n gateway-api-demo-apim`; operator logs; Helm chart/image pull; `GatewayClass` must match operator `managedGatewayClassNames`. |
 | Controller logs `control_plane_token_configured:false` | Ensure ConfigMap uses key `values.yaml` and path `gateway.controller.controlPlane.token.value` (camelCase `controlPlane`). Re-apply `01-gateway-values-configmap.yaml` and `02-gateway.yaml`. |
 | Controller logs `Control plane token not configured, skipping connection` | Verify merged Helm values and deployment env var `APIP_GW_GATEWAY_REGISTRATION_TOKEN` in `platform-gw-apim-gateway-controller`. |
-| APIM still unreachable | Verify `gateway.controller.controlPlane.host` and `port` values and network reachability from cluster/pods. |
+| APIM still unreachable | Verify the `gateway.controller.controlPlane.host` value (include the port, e.g. `apim:9444`) and network reachability from cluster/pods. |
 | Helm fails with `gateway.controller.encryptionKeys must be enabled when gateway.developmentMode is false` | Keep `gateway.developmentMode: true` for demo, or configure `gateway.controller.encryptionKeys` for production-like setups. |
 | `HTTPRoute` stuck, parent not accepted | Parent `Gateway` must be same namespace or `parentRefs` namespace set; registry only after Gateway sync succeeds. |
 | `RestApi` deploys to Kubernetes `Gateway` release instead of `APIGateway` | Ensure this `Gateway` has `gateway.api-platform.wso2.com/api-selector` annotation and `RestApi` labels use a different `gateway.api-platform.wso2.com/restapi-target` value in mixed demos. |

@@ -21,6 +21,7 @@ package it
 import (
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"regexp"
 	"strings"
@@ -112,6 +113,24 @@ func containerRunning(ctx context.Context, name string) bool {
 		return false
 	}
 	return strings.TrimSpace(string(out)) == "true"
+}
+
+// envRuntimeControllerXDS is set (via the Makefile, see test-postgres) for the
+// two-controller Postgres topology, where gateway-runtime is fed xDS by
+// gateway-controller-xds rather than the management controller.
+const envRuntimeControllerXDS = "IT_GATEWAY_CONTROLLER_HA"
+
+// policySnapshotControllerAdminURL returns the admin base URL the policy-chain
+// xDS-sync probe should target, or "" to use the default management controller.
+// When IT_GATEWAY_CONTROLLER_HA=true it points at the runtime-facing
+// controller (host port 9093), whose policy-chain version the policy engine
+// echoes. Returning "" lets waitForPolicySnapshotSync fall back to the
+// management controller (single-controller topologies and unit tests).
+func policySnapshotControllerAdminURL() string {
+	if os.Getenv(envRuntimeControllerXDS) == "true" {
+		return fmt.Sprintf("http://localhost:%s%s", GatewayControllerRuntimeAdminPort, GatewayAdminAPIBasePath)
+	}
+	return ""
 }
 
 // queryStoredConfiguration runs a SELECT against one of the per-resource-type

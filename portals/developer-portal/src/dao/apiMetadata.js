@@ -28,6 +28,13 @@ const { Op } = require('sequelize');
 const constants = require('../utils/constants');
 const { CustomError } = require('../utils/errors/customErrors');
 const logger = require('../config/logger');
+const fs = require('fs');
+const path = require('path');
+
+const SEARCH_APIS_POSTGRES_SQL = fs.readFileSync(
+    path.join(__dirname, '../../database/queries/search-apis.postgres.sql'),
+    'utf8'
+);
 
 const createAPIMetadata = async (orgID, apiMetadata, t) => {
 
@@ -37,7 +44,7 @@ const createAPIMetadata = async (orgID, apiMetadata, t) => {
         owners = apiInfo.owners;
     }
     try {
-        const createData = {
+        const apiMetadataResponse = await APIMetadata.create({
             REFERENCE_ID: apiInfo.referenceID,
             STATUS: apiInfo.apiStatus,
             PROVIDER: apiInfo.provider,
@@ -48,6 +55,7 @@ const createAPIMetadata = async (orgID, apiMetadata, t) => {
             API_TYPE: apiInfo.apiType,
             VISIBILITY: apiInfo.visibility,
             VISIBLE_GROUPS: apiInfo.visibleGroups ? apiInfo.visibleGroups.join(' ') : null,
+            AGENT_VISIBILITY: apiMetadata.agentVisibility || apiInfo.agentVisibility || 'VISIBLE',
             TAGS: apiInfo.tags ? apiInfo.tags.join(' ') : null,
             TECHNICAL_OWNER: owners.technicalOwner,
             TECHNICAL_OWNER_EMAIL: owners.technicalOwnerEmail,
@@ -56,13 +64,9 @@ const createAPIMetadata = async (orgID, apiMetadata, t) => {
             SANDBOX_URL: apiMetadata.endPoints.sandboxURL,
             PRODUCTION_URL: apiMetadata.endPoints.productionURL,
             METADATA_SEARCH: apiMetadata,
+            GATEWAY_TYPE: apiMetadata.apiInfo.gatewayType || null,
             ORG_ID: orgID
-        };
-        // If apiId is provided, use it instead of auto-generating
-        if (apiInfo.apiId) {
-            createData.API_ID = apiInfo.apiId;
-        }
-        const apiMetadataResponse = await APIMetadata.create(createData,
+        },
             { transaction: t }
         );
         return apiMetadataResponse;
@@ -86,7 +90,7 @@ const createAPILabelMapping = async (orgID, apiID, labels, t) => {
                 ORG_ID: orgID
             });
         });
-        const labelResponse = await APILabels.bulkCreate(labelList, { transaction: t });
+        const labelResponse = await APILabels.bulkCreate(labelList, { transaction: t, ignoreDuplicates: true });
         return labelResponse;
     } catch (error) {
         if (error instanceof Sequelize.UniqueConstraintError) {
@@ -118,7 +122,7 @@ const createLabels = async (orgID, labels, t) => {
     }
 }
 
-const updateLabel = async (orgID, label) => {
+const updateLabel = async (orgID, label, t) => {
 
     try {
         let [record, created] = await Labels.findOrCreate({
@@ -130,10 +134,11 @@ const updateLabel = async (orgID, label) => {
                 NAME: label.name,
                 DISPLAY_NAME: label.displayName,
             },
+            transaction: t,
             returning: true
         });
         if (!created) {
-            record = await record.update(label); // Update if found
+            record = await record.update(label, { transaction: t }); // Update if found
         }
         return record;
     } catch (error) {
@@ -246,7 +251,7 @@ const updateView = async (orgID, name, displayName, t) => {
             record = await record.update({
                 NAME: name,
                 DISPLAY_NAME: displayName,
-            }); // Update if found
+            }, { transaction: t }); // Update if found
         }
         return record;
     } catch (error) {
@@ -385,6 +390,20 @@ const addLabel = async (orgID, labelID, viewID, t) => {
     }
 }
 
+const replaceViewLabels = async (orgID, viewID, labelNames, t) => {
+    try {
+        await ViewLabels.destroy({ where: { VIEW_ID: viewID, ORG_ID: orgID }, transaction: t });
+        if (labelNames?.length) {
+            await addViewLabels(orgID, viewID, labelNames, t);
+        }
+    } catch (error) {
+        if (error instanceof Sequelize.UniqueConstraintError || error instanceof CustomError) {
+            throw error;
+        }
+        throw new Sequelize.DatabaseError(error);
+    }
+}
+
 const deleteViewLabels = async (orgID, viewID, labels, t) => {
 
     const IDList = await getLabelID(orgID, labels);
@@ -432,62 +451,75 @@ const deleteAPILabels = async (orgID, apiID, labels, t) => {
     }
 }
 
-const createAPISubscriptionPolicy = async (apiSubscriptionPolicies, apiID, t) => {
+const toUpper = (v) => (v ? String(v).toUpperCase() : null);
 
-    let apiSubscriptionPolicyList = []
-    try {
-        apiSubscriptionPolicies.forEach(policy => {
-            apiSubscriptionPolicyList.push({
-                POLICY_ID: policy.policyID,
-                API_ID: apiID
-            })
-        });
-        const apiSubscriptionPolicyResponse = await APISubscriptionPolicy.bulkCreate(apiSubscriptionPolicyList, { transaction: t });
-        return apiSubscriptionPolicyResponse;
-    } catch (error) {
-        if (error instanceof Sequelize.ValidationError) {
-            throw error;
-        }
-        throw new Sequelize.DatabaseError(error);
-    }
-}
+const computeRequestCount = (policy) => {
+  const type = (policy.type || "").toLowerCase();
+
+  if (type === "requestcount") {
+    return policy.requestCount === -1 ? "Unlimited" : String(policy.requestCount);
+  }
+  if (type === "eventcount") {
+    return policy.eventCount === -1 ? "Unlimited" : String(policy.eventCount);
+  }
+  return null;
+};
+
+const buildSubscriptionPolicyRow = (orgID, policy) => {
+  const requestCount = computeRequestCount(policy);
+
+  return {
+    ORG_ID: orgID,
+
+    // Store the APIM policy UUID if provided
+    POLICY_ID: policy.policyId ?? policy.policyID ?? undefined,
+
+    POLICY_NAME: policy.policyName,
+    DISPLAY_NAME: policy.displayName,
+    DESCRIPTION: policy.description,
+    REQUEST_COUNT: requestCount,
+    REF_ID: policy.refId ?? null,
+  };
+};
+
+const createAPISubscriptionPolicy = async (apiSubscriptionPolicies, apiID, t) => {
+  try {
+    const rows = apiSubscriptionPolicies.map((policy) => ({
+      POLICY_ID: policy.policyId ?? policy.policyID,
+      API_ID: apiID,
+    }));
+
+    return await APISubscriptionPolicy.bulkCreate(rows, { transaction: t });
+  } catch (error) {
+    if (error instanceof Sequelize.ValidationError) throw error;
+    throw new Sequelize.DatabaseError(error);
+  }
+};
 
 const putSubscriptionPolicy = async (orgID, policy, t) => {
-    const currentSubscriptionPolicy = await getSubscriptionPolicyByName(orgID, policy.policyName, t);
-    if (currentSubscriptionPolicy) {
-        const updatedPolicy = await updateSubscriptionPolicy(orgID, currentSubscriptionPolicy.POLICY_ID, policy, t); 
-        return {
-            subscriptionPolicyResponse: updatedPolicy,
-            statusCode: 200
-        };
-    } else {
-        const createdPolicy = await createSubscriptionPolicy(orgID, policy, t);
-        return {
-            subscriptionPolicyResponse: createdPolicy,
-            statusCode: 201
-        };
-    }
+  const current = await getSubscriptionPolicyByName(orgID, policy.policyName, t);
+  if (current) {
+    const updated = await updateSubscriptionPolicy(orgID, current.POLICY_ID, policy, t);
+    return { subscriptionPolicyResponse: updated, statusCode: 200 };
+  }
+  const created = await createSubscriptionPolicy(orgID, policy, t);
+  return { subscriptionPolicyResponse: created, statusCode: 201 };
 };
 
+
 const createSubscriptionPolicy = async (orgID, policy, t) => {
-    const requestCount = policy.requestCount === -1 ? "Unlimited" : policy.requestCount;
-    try {
-        const subscriptionPolicyResponse = await SubscriptionPolicy.create({
-            POLICY_NAME: policy.policyName,
-            DISPLAY_NAME: policy.displayName,
-            BILLING_PLAN: policy.billingPlan,
-            DESCRIPTION: policy.description,
-            REQUEST_COUNT: requestCount,
-            ORG_ID: orgID
-        }, { transaction: t });
-        return subscriptionPolicyResponse;
-    } catch (error) {
-        if (error instanceof Sequelize.UniqueConstraintError || error instanceof Sequelize.ValidationError) {
-            throw error;
-        }
-        throw new Sequelize.DatabaseError(error);
+  try {
+    const row = buildSubscriptionPolicyRow(orgID, policy);
+
+    return await SubscriptionPolicy.create(row, { transaction: t });
+  } catch (error) {
+    if (error instanceof Sequelize.UniqueConstraintError || error instanceof Sequelize.ValidationError) {
+      throw error;
     }
+    throw new Sequelize.DatabaseError(error);
+  }
 };
+
 /**
  * Bulk create subscription policies
  * @param {} orgID 
@@ -496,53 +528,44 @@ const createSubscriptionPolicy = async (orgID, policy, t) => {
  * @returns 
  */
 const bulkCreateSubscriptionPolicies = async (orgID, policies, t) => {
-    let subscriptionPoliciesList = [];
-    try {
-        policies.forEach(policy => {
-            const requestCount = policy.requestCount === -1 ? "Unlimited" : policy.requestCount;
-            subscriptionPoliciesList.push({
-                POLICY_NAME: policy.policyName,
-                DISPLAY_NAME: policy.displayName,
-                BILLING_PLAN: policy.billingPlan,
-                DESCRIPTION: policy.description,
-                REQUEST_COUNT: requestCount,
-                ORG_ID: orgID
-            });
-        });
-        return await SubscriptionPolicy.bulkCreate(subscriptionPoliciesList, { transaction: t });
-    } catch (error) {
-        if (error instanceof Sequelize.UniqueConstraintError || error instanceof Sequelize.ValidationError) {
-            throw error;
-        }
-        throw new Sequelize.DatabaseError(error);
+  try {
+    const rows = policies.map((policy) => buildSubscriptionPolicyRow(orgID, policy));
+
+    return await SubscriptionPolicy.bulkCreate(rows, { transaction: t });
+  } catch (error) {
+    if (error instanceof Sequelize.UniqueConstraintError || error instanceof Sequelize.ValidationError) {
+      throw error;
     }
-}
+    throw new Sequelize.DatabaseError(error);
+  }
+};
 
 const updateSubscriptionPolicy = async (orgID, policyID, policy, t) => {
-    const requestCount = policy.requestCount === -1 ? "Unlimited" : policy.requestCount;
-    try {
-        const [affectedCount, updatedRows] = await SubscriptionPolicy.update({
-            POLICY_NAME: policy.policyName,
-            DISPLAY_NAME: policy.displayName,
-            BILLING_PLAN: policy.billingPlan,
-            DESCRIPTION: policy.description,
-            REQUEST_COUNT: requestCount,
-        }, {
-            where: {
-                POLICY_ID: policyID,
-                ORG_ID: orgID
-            },
-            returning: true,
-            transaction: t
-        });
-        return updatedRows[0];
-    } catch (error) {
-        if (error instanceof Sequelize.UniqueConstraintError || error instanceof Sequelize.ValidationError) {
-            throw error;
-        }
-        throw new Sequelize.DatabaseError(error);
+  try {
+    const row = buildSubscriptionPolicyRow(orgID, policy);
+
+    // Don’t update primary keys
+    delete row.ORG_ID;
+    delete row.POLICY_ID;
+    if (!Object.prototype.hasOwnProperty.call(policy, 'refId')) {
+      delete row.REF_ID;
     }
+
+    const [_, updatedRows] = await SubscriptionPolicy.update(row, {
+      where: { POLICY_ID: policyID, ORG_ID: orgID },
+      returning: true,
+      transaction: t
+    });
+
+    return updatedRows[0];
+  } catch (error) {
+    if (error instanceof Sequelize.UniqueConstraintError || error instanceof Sequelize.ValidationError) {
+      throw error;
+    }
+    throw new Sequelize.DatabaseError(error);
+  }
 };
+
 
 const deleteSubscriptionPolicy = async (orgID, policyName, t) => {
 
@@ -552,7 +575,27 @@ const deleteSubscriptionPolicy = async (orgID, policyName, t) => {
                 POLICY_NAME: policyName,
                 ORG_ID: orgID
             },
-            transaction: t 
+            transaction: t
+        });
+        return subscriptionPolicyResponse;
+    } catch (error) {
+        if (error instanceof Sequelize.ValidationError) {
+            throw error;
+        }
+        throw new Sequelize.DatabaseError(error);
+    }
+}
+
+
+const deleteSubscriptionPolicyById = async (orgID, policyID, t) => {
+
+    try {
+        const subscriptionPolicyResponse = await SubscriptionPolicy.destroy({
+            where: {
+                POLICY_ID: policyID,
+                ORG_ID: orgID
+            },
+            transaction: t
         });
         return subscriptionPolicyResponse;
     } catch (error) {
@@ -572,7 +615,7 @@ const getSubscriptionPolicyByName = async (orgID, policyName, t) => {
                 POLICY_NAME: policyName,
                 ORG_ID: orgID
             },
-            transaction: t 
+            transaction: t
         });
         return subscriptionPolicyResponse;
     } catch (error) {
@@ -713,9 +756,77 @@ const getAPIFile = async (fileName, type, orgID, apiID, t) => {
                     }
                 }
             ],
-            transaction: t 
+            transaction: t
         });
         return apiFileResponse;
+    } catch (error) {
+        if (error instanceof Sequelize.UniqueConstraintError) {
+            throw error;
+        }
+        throw new Sequelize.DatabaseError(error);
+    }
+}
+
+const getAPIFileByType = async (type, orgID, apiID, t) => {
+    try {
+        const apiFileResponse = await APIContent.findOne({
+            where: {
+                API_ID: apiID,
+                TYPE: type
+            },
+            include: [
+                {
+                    model: APIMetadata,
+                    where: {
+                        ORG_ID: orgID
+                    }
+                }
+            ],
+            transaction: t
+        });
+        return apiFileResponse;
+    } catch (error) {
+        if (error instanceof Sequelize.UniqueConstraintError) {
+            throw error;
+        }
+        throw new Sequelize.DatabaseError(error);
+    }
+}
+
+const upsertAPIFileByType = async (apiFile, fileName, apiID, orgID, type, t) => {
+    try {
+        const apiFileResponse = await getAPIFileByType(type, orgID, apiID, t);
+        let fileUpdateResponse;
+        if (apiFileResponse == null || apiFileResponse == undefined) {
+            fileUpdateResponse = await APIContent.create({
+                API_FILE: apiFile,
+                FILE_NAME: fileName,
+                API_ID: apiID,
+                TYPE: type
+            }, { transaction: t });
+        } else {
+            fileUpdateResponse = await APIContent.update({
+                API_FILE: apiFile,
+                FILE_NAME: fileName
+            },
+                {
+                    where: {
+                        API_ID: apiID,
+                        TYPE: type
+                    },
+                    include: [
+                        {
+                            model: APIMetadata,
+                            where: {
+                                ORG_ID: orgID
+                            }
+                        }
+                    ],
+                    transaction: t
+                }
+            );
+        }
+        return fileUpdateResponse;
     } catch (error) {
         if (error instanceof Sequelize.UniqueConstraintError) {
             throw error;
@@ -740,7 +851,7 @@ const getAPIDoc = async (type, orgID, apiID, t) => {
                     }
                 }
             ],
-            transaction: t 
+            transaction: t
         });
         return apiFileResponse;
     } catch (error) {
@@ -767,7 +878,7 @@ const getAPIDocByName = async (type, name, orgID, apiID, t) => {
                         ORG_ID: orgID
                     }
                 }
-            ], transaction: t 
+            ], transaction: t
         });
         return apiFileResponse;
     } catch (error) {
@@ -779,13 +890,14 @@ const getAPIDocByName = async (type, name, orgID, apiID, t) => {
 }
 
 const getAPIDocTypes = async (orgID, apiID) => {
+    const isPostgres = APIContent.sequelize.getDialect() === 'postgres';
+    const fileNamesExpr = isPostgres
+        ? [Sequelize.fn("ARRAY_AGG", Sequelize.col("DP_API_CONTENT.FILE_NAME")), "FILE_NAMES"]
+        : [Sequelize.fn("GROUP_CONCAT", Sequelize.col("DP_API_CONTENT.FILE_NAME"), "|||"), "FILE_NAMES"];
 
     try {
-        const apiFileResponse = await APIContent.findAll({
-            attributes: [
-                "TYPE",
-                [Sequelize.fn("ARRAY_AGG", Sequelize.col("DP_API_CONTENT.FILE_NAME")), "FILE_NAMES"]
-            ],
+        const rows = await APIContent.findAll({
+            attributes: ["TYPE", fileNamesExpr],
             where: {
                 API_ID: apiID,
                 TYPE: {
@@ -808,7 +920,14 @@ const getAPIDocTypes = async (orgID, apiID) => {
             ]
         });
 
-        return apiFileResponse;
+        if (!isPostgres) {
+            for (const row of rows) {
+                const raw = row.dataValues.FILE_NAMES;
+                row.dataValues.FILE_NAMES = raw ? raw.split("|||") : [];
+            }
+        }
+
+        return rows;
     } catch (error) {
         if (error instanceof Sequelize.UniqueConstraintError) {
             throw error;
@@ -818,34 +937,44 @@ const getAPIDocTypes = async (orgID, apiID) => {
 }
 
 const getAPIDocs = async (orgID, apiID) => {
-    try {
-        const apiFileResponse = await APIContent.findAll({
-            attributes: [
-                "TYPE",
-                [Sequelize.fn("ARRAY_AGG", Sequelize.col("DP_API_CONTENT.FILE_NAME")), "FILE_NAMES"],
-                [Sequelize.fn("ARRAY_AGG", Sequelize.col("DP_API_CONTENT.API_FILE")), "API_FILES"]
-            ],
-            where: {
-                API_ID: apiID,
-                [Op.or]: [
-                    { TYPE: { [Op.like]: "DOC_%" } },
-                    { FILE_NAME: { [Op.like]: "LINK_%" } }
-                ]
-            },
-            group: ["DP_API_CONTENT.TYPE"],
-            include: [
-                {
-                    model: APIMetadata,
-                    required: true,
-                    attributes: [],
-                    where: {
-                        ORG_ID: orgID
-                    }
-                }
-            ]
-        });
+    const isPostgres = APIContent.sequelize.getDialect() === 'postgres';
+    const include = [{
+        model: APIMetadata,
+        required: true,
+        attributes: [],
+        where: { ORG_ID: orgID }
+    }];
+    const where = {
+        API_ID: apiID,
+        [Op.or]: [
+            { TYPE: { [Op.like]: "DOC_%" } },
+            { FILE_NAME: { [Op.like]: "LINK_%" } }
+        ]
+    };
 
-        return apiFileResponse;
+    try {
+        if (isPostgres) {
+            return await APIContent.findAll({
+                attributes: [
+                    "TYPE",
+                    [Sequelize.fn("ARRAY_AGG", Sequelize.col("DP_API_CONTENT.FILE_NAME")), "FILE_NAMES"],
+                    [Sequelize.fn("ARRAY_AGG", Sequelize.col("DP_API_CONTENT.API_FILE")), "API_FILES"]
+                ],
+                where,
+                group: ["DP_API_CONTENT.TYPE"],
+                include
+            });
+        }
+
+        const rows = await APIContent.findAll({ attributes: ["TYPE", "FILE_NAME", "API_FILE"], where, include });
+        const typeMap = new Map();
+        for (const row of rows) {
+            const { TYPE, FILE_NAME, API_FILE } = row.dataValues;
+            if (!typeMap.has(TYPE)) typeMap.set(TYPE, { TYPE, FILE_NAMES: [], API_FILES: [] });
+            typeMap.get(TYPE).FILE_NAMES.push(FILE_NAME);
+            typeMap.get(TYPE).API_FILES.push(API_FILE);
+        }
+        return Array.from(typeMap.values()).map(g => ({ dataValues: g }));
     } catch (error) {
         if (error instanceof Sequelize.UniqueConstraintError) {
             throw error;
@@ -856,34 +985,41 @@ const getAPIDocs = async (orgID, apiID) => {
 
 
 const getAPIDocLinks = async (orgID, apiID) => {
+    const isPostgres = APIContent.sequelize.getDialect() === 'postgres';
+    const include = [{
+        model: APIMetadata,
+        required: true,
+        attributes: [],
+        where: { ORG_ID: orgID }
+    }];
+    const where = {
+        API_ID: apiID,
+        FILE_NAME: { [Op.like]: "LINK_%" }
+    };
 
     try {
-        const apiFileResponse = await APIContent.findAll({
-            attributes: [
-                "TYPE",
-                [Sequelize.fn("ARRAY_AGG", Sequelize.col("DP_API_CONTENT.FILE_NAME")), "FILE_NAMES"],
-                [Sequelize.fn("ARRAY_AGG", Sequelize.col("DP_API_CONTENT.API_FILE")), "API_FILES"]
-            ],
-            where: {
-                API_ID: apiID,
-                FILE_NAME: {
-                    [Op.like]: "LINK_%"
-                },
-            },
-            group: ["DP_API_CONTENT.TYPE"],
-            include: [
-                {
-                    model: APIMetadata,
-                    required: true,
-                    attributes: [],
-                    where: {
-                        ORG_ID: orgID
-                    }
-                }
-            ]
-        });
+        if (isPostgres) {
+            return await APIContent.findAll({
+                attributes: [
+                    "TYPE",
+                    [Sequelize.fn("ARRAY_AGG", Sequelize.col("DP_API_CONTENT.FILE_NAME")), "FILE_NAMES"],
+                    [Sequelize.fn("ARRAY_AGG", Sequelize.col("DP_API_CONTENT.API_FILE")), "API_FILES"]
+                ],
+                where,
+                group: ["DP_API_CONTENT.TYPE"],
+                include
+            });
+        }
 
-        return apiFileResponse;
+        const rows = await APIContent.findAll({ attributes: ["TYPE", "FILE_NAME", "API_FILE"], where, include });
+        const typeMap = new Map();
+        for (const row of rows) {
+            const { TYPE, FILE_NAME, API_FILE } = row.dataValues;
+            if (!typeMap.has(TYPE)) typeMap.set(TYPE, { TYPE, FILE_NAMES: [], API_FILES: [] });
+            typeMap.get(TYPE).FILE_NAMES.push(FILE_NAME);
+            typeMap.get(TYPE).API_FILES.push(API_FILE);
+        }
+        return Array.from(typeMap.values()).map(g => ({ dataValues: g }));
     } catch (error) {
         if (error instanceof Sequelize.UniqueConstraintError) {
             throw error;
@@ -919,7 +1055,7 @@ const getAPISpecs = async (orgID, apiIDs) => {
         });
 
         return apiSpecsResponse.map(spec => {
-            
+
             return {
                 apiID: spec.API_ID,
                 fileName: spec.FILE_NAME,
@@ -927,8 +1063,8 @@ const getAPISpecs = async (orgID, apiIDs) => {
             };
         }).filter(spec => spec !== null);
     } catch (error) {
-        logger.error('Error fetching API specifications', { 
-            error: error.message, 
+        logger.error('Error fetching API specifications', {
+            error: error.message,
             stack: error.stack,
             operation: 'fetchAPISpecifications'
         });
@@ -975,7 +1111,7 @@ const getAPIMetadataByCondition = async (condition, t) => {
             }
             ],
             where: condition,
-            transaction: t 
+            transaction: t
         });
         return apiMetadataResponse;
     } catch (error) {
@@ -1011,8 +1147,8 @@ const getAPIMetadata = async (orgID, apiID, t) => {
                 ORG_ID: orgID,
                 API_ID: apiID,
                 STATUS: constants.API_STATUS.PUBLISHED
-            }, 
-            transaction: t 
+            },
+            transaction: t
         });
         return apiMetadataResponse;
     } catch (error) {
@@ -1057,8 +1193,8 @@ const getAllAPIMetadata = async (orgID, groups, viewName, t) => {
                     }
                 }
                 ],
-            transaction: t
-        });
+                transaction: t
+            });
             if (apiMetadataResponse) {
                 apiList.push(...apiMetadataResponse);
             }
@@ -1098,7 +1234,7 @@ const getAllAPIMetadata = async (orgID, groups, viewName, t) => {
                 }
             }
             ],
-            transaction: t 
+            transaction: t
         });
         apiList.push(...publicAPIS);
     } catch (error) {
@@ -1112,77 +1248,128 @@ const getAllAPIMetadata = async (orgID, groups, viewName, t) => {
     return apiList;
 };
 
-const searchAPIMetadata = async (orgID, groups, searchTerm, t) => {
-    try {
-        const query = `
-        SELECT 
-            metadata.*,
-            COALESCE(
-                JSON_AGG("DP_API_IMAGEDATA") FILTER (WHERE "DP_API_IMAGEDATA"."API_ID" IS NOT NULL), 
-                '[]'
-            ) AS "DP_API_IMAGEDATA",
-             COALESCE(
-                JSON_AGG("DP_API_SUBSCRIPTION_POLICY") FILTER (WHERE "DP_API_SUBSCRIPTION_POLICY"."API_ID" IS NOT NULL), 
-                '[]'
-            ) AS "DP_API_SUBSCRIPTION_POLICY",
-            COALESCE(
-                ARRAY_AGG(DISTINCT "DP_LABELS"."NAME") FILTER (WHERE "DP_LABELS"."NAME" IS NOT NULL), 
-                '{}'
-            ) AS "DP_LABELs",
-            ts_rank(
-                to_tsvector('english', metadata."METADATA_SEARCH"::text),
-                plainto_tsquery('english', COALESCE(:searchTerm, ''))
-            ) AS "rank_metadata",
-            STRING_AGG(
-		        DISTINCT CASE 
-		            WHEN content."API_FILE" IS NOT NULL 
-		            AND to_tsvector('english', convert_from(content."API_FILE", 'UTF8')) @@ plainto_tsquery('english', :searchTerm)
-		            THEN content."TYPE"
-		            ELSE 'METADATA'
-		        END, ', '
-		    ) AS "DATA_SOURCE" 
-        FROM 
-            "DP_API_METADATA" metadata
-        LEFT JOIN  
-            "DP_API_CONTENT" content 
-            ON metadata."API_ID" = content."API_ID"
-            AND (
-                content."FILE_NAME" LIKE '%.hbs' 
-                OR content."FILE_NAME" LIKE '%.md%' 
-                OR content."FILE_NAME" LIKE '%.json%'
-                OR content."FILE_NAME" LIKE '%.xml%'
-                OR content."FILE_NAME" LIKE '%.graphql%'
-            ) 
-        LEFT OUTER JOIN 
-            "DP_API_IMAGEDATA" 
-            ON metadata."API_ID" = "DP_API_IMAGEDATA"."API_ID"
-        LEFT OUTER JOIN 
-            "DP_API_SUBSCRIPTION_POLICY" 
-            ON metadata."API_ID" = "DP_API_SUBSCRIPTION_POLICY"."API_ID"
-        LEFT OUTER JOIN 
-            "DP_API_LABELS"  
-            ON metadata."API_ID" = "DP_API_LABELS"."API_ID"
-        LEFT OUTER JOIN 
-            "DP_LABELS" 
-            ON "DP_API_LABELS"."LABEL_ID" = "DP_LABELS"."LABEL_ID"
-        WHERE 
-            (
-                to_tsvector('english', metadata."METADATA_SEARCH"::text) @@ plainto_tsquery('english', COALESCE(:searchTerm, ''))
-                OR (
-                    content."API_FILE" IS NOT NULL AND
-                    to_tsvector('english', convert_from(content."API_FILE", 'UTF8')) @@ plainto_tsquery('english', :searchTerm)
-                )
-            )
-            AND metadata."ORG_ID" = :orgID
-        GROUP BY 
-            metadata."API_ID"
-        ORDER BY
-            rank_metadata DESC;
-        `;
-        const formattedGroups = `{${groups.map((g) => `"${g}"`).join(',')}}`;
+const getAllAPIMetadataFromAllViews = async (orgID, groups, t) => {
 
-        const results = await APIMetadata.sequelize.query(query, {
-            replacements: { searchTerm, orgID, groups: formattedGroups },
+    let apiList = [];
+    for (const group of groups) {
+        try {
+            const apiMetadataResponse = await APIMetadata.findAll({
+                where: {
+                    ORG_ID: orgID,
+                    VISIBLE_GROUPS: {
+                        [Op.like]: `%${group}%`
+                    },
+                    STATUS: constants.API_STATUS.PUBLISHED
+                },
+                include: [{
+                    model: APIImageMetadata,
+                    required: false
+                }, {
+                    model: SubscriptionPolicy,
+                    through: { attributes: [] },
+                    required: false
+                },
+                {
+                    model: Labels,
+                    attributes: ["NAME"],
+                    required: false,
+                    through: { attributes: [] }
+                }
+                ],
+                transaction: t
+            });
+            if (apiMetadataResponse) {
+                apiList.push(...apiMetadataResponse);
+            }
+        } catch (error) {
+            {
+                if (error instanceof Sequelize.UniqueConstraintError) {
+                    throw error;
+                }
+                throw new Sequelize.DatabaseError(error);
+            }
+        }
+    }
+    // add all public apis
+    try {
+        const publicAPIS = await APIMetadata.findAll({
+            where: {
+                ORG_ID: orgID,
+                STATUS: constants.API_STATUS.PUBLISHED
+            },
+            include: [{
+                model: APIImageMetadata,
+                required: false
+            }, {
+                model: SubscriptionPolicy,
+                through: { attributes: [] },
+                required: false
+            },
+            {
+                model: Labels,
+                attributes: ["NAME"],
+                required: true,
+                through: { attributes: [] }
+            }
+            ],
+            transaction: t
+        });
+        apiList.push(...publicAPIS);
+    } catch (error) {
+        {
+            if (error instanceof Sequelize.UniqueConstraintError) {
+                throw error;
+            }
+            throw new Sequelize.DatabaseError(error);
+        }
+    }
+    return apiList;
+};
+
+const searchAPIMetadataFallback = async (orgID, searchTerm, viewName, t) => {
+    const pattern = `%${searchTerm}%`;
+    const viewID = await getViewID(orgID, viewName);
+    return APIMetadata.findAll({
+        where: {
+            ORG_ID: orgID,
+            STATUS: constants.API_STATUS.PUBLISHED,
+            [Op.or]: [
+                Sequelize.where(
+                    Sequelize.cast(Sequelize.col('DP_API_METADATA.METADATA_SEARCH'), 'TEXT'),
+                    { [Op.like]: pattern }
+                ),
+                Sequelize.where(
+                    Sequelize.col('DP_API_METADATA.TAGS'),
+                    { [Op.like]: pattern }
+                ),
+            ],
+        },
+        include: [
+            { model: APIImageMetadata, required: false },
+            { model: SubscriptionPolicy, through: { attributes: [] }, required: false },
+            {
+                model: Labels,
+                attributes: ['NAME'],
+                required: true,
+                through: { attributes: [] },
+                where: {
+                    LABEL_ID: {
+                        [Op.in]: Sequelize.literal(`(SELECT "LABEL_ID" FROM "DP_VIEW_LABELS" WHERE "VIEW_ID" = '${viewID}')`)
+                    }
+                }
+            },
+        ],
+        transaction: t,
+    });
+};
+
+const searchAPIMetadata = async (orgID, groups, searchTerm, viewName, t) => {
+    if (APIMetadata.sequelize.getDialect() !== 'postgres') {
+        return searchAPIMetadataFallback(orgID, searchTerm, viewName, t);
+    }
+    try {
+        const results = await APIMetadata.sequelize.query(SEARCH_APIS_POSTGRES_SQL, {
+            replacements: { searchTerm, orgID },
             type: Sequelize.QueryTypes.SELECT,
         });
         return results;
@@ -1202,7 +1389,7 @@ const deleteAPIMetadata = async (orgID, apiID, t) => {
                 API_ID: apiID,
                 ORG_ID: orgID
             },
-            transaction: t 
+            transaction: t
         });
         return apiMetadataResponse;
     } catch (error) {
@@ -1234,6 +1421,7 @@ const updateAPIMetadata = async (orgID, apiID, apiMetadata, t) => {
             TAGS: apiInfo.tags ? apiInfo.tags.join(' ') : null,
             VISIBILITY: apiInfo.visibility,
             VISIBLE_GROUPS: apiInfo.visibleGroups ? apiInfo.visibleGroups.join(' ') : null,
+            AGENT_VISIBILITY: apiMetadata.agentVisibility || apiInfo.agentVisibility || 'VISIBLE',
             TECHNICAL_OWNER: owners.technicalOwner,
             TECHNICAL_OWNER_EMAIL: owners.technicalOwnerEmail,
             BUSINESS_OWNER_EMAIL: owners.businessOwnerEmail,
@@ -1241,13 +1429,14 @@ const updateAPIMetadata = async (orgID, apiID, apiMetadata, t) => {
             SANDBOX_URL: apiMetadata.endPoints.sandboxURL,
             PRODUCTION_URL: apiMetadata.endPoints.productionURL,
             METADATA_SEARCH: apiMetadata,
+            GATEWAY_TYPE: apiMetadata.apiInfo.gatewayType || null,
         }, {
             where: {
                 API_ID: apiID,
                 ORG_ID: orgID,
             },
             returning: true,
-            transaction: t 
+            transaction: t
         });
         return [updateCount, apiMetadataResponse];
     } catch (error) {
@@ -1264,14 +1453,14 @@ async function updateAPISubscriptionPolicy(subscriptionPolicies, apiID, t) {
     try {
         for (const policy of subscriptionPolicies) {
             policiesToCreate.push({
-                POLICY_ID: policy.policyID,
-                API_ID: apiID
+                POLICY_ID: policy.policyId ?? policy.policyID,
+                API_ID: apiID,
             })
         }
         if (policiesToCreate.length > 0) {
             await APISubscriptionPolicy.destroy({
-                where: { 
-                    API_ID: apiID 
+                where: {
+                    API_ID: apiID
                 },
                 transaction: t
             });
@@ -1327,6 +1516,23 @@ const getSubscriptionPolicies = async (apiID, t) => {
     }
 }
 
+async function getAllSubscriptionPolicies(orgID, t) {
+    try {
+
+        const subscriptionPoliciesResponse = await SubscriptionPolicy.findAll({
+            where: {
+                ORG_ID: orgID
+            },
+            transaction: t
+        });
+        return subscriptionPoliciesResponse;
+    } catch (error) {
+        if (error instanceof Sequelize.UniqueConstraintError) {
+            throw error;
+        }
+        throw new Sequelize.DatabaseError(error);
+    }
+}
 const updateAPIImageMetadata = async (apiImages, orgID, apiID, t) => {
 
     let imageCreateList = [];
@@ -1359,15 +1565,15 @@ const updateAPIImageMetadata = async (apiImages, orgID, apiID, t) => {
                             }
                         }
                     ],
-                    transaction: t 
+                    transaction: t
                 });
                 if (!apiImageDataUpdate) {
                     throw new Sequelize.EmptyResultError("Error updating API Image Metadata");
                 }
             }
-            if (imageCreateList.length > 0) {
-                await APIImageMetadata.bulkCreate(imageCreateList, { transaction: t });
-            }
+        }
+        if (imageCreateList.length > 0) {
+            await APIImageMetadata.bulkCreate(imageCreateList, { transaction: t });
         }
     } catch (error) {
         if (error instanceof Sequelize.UniqueConstraintError) {
@@ -1396,7 +1602,7 @@ const getImageMetadata = async (imageTag, imageName, orgID, apiID, t) => {
                     }
                 }
             ],
-            transaction: t 
+            transaction: t
         });
         return apiImageData;
     } catch (error) {
@@ -1414,7 +1620,7 @@ const getImage = async (imageTag, apiID, t) => {
                 IMAGE_TAG: imageTag,
                 API_ID: apiID
             },
-            transaction: t 
+            transaction: t
         });
         return apiImageData;
     } catch (error) {
@@ -1432,7 +1638,7 @@ const deleteImage = async (imageTag, apiID, t) => {
                 IMAGE_TAG: imageTag,
                 API_ID: apiID
             },
-            transaction: t 
+            transaction: t
         });
         return apiImageData;
     } catch (error) {
@@ -1494,7 +1700,7 @@ const deleteAPIFile = async (fileName, type, orgID, apiID, t) => {
             where: {
                 FILE_NAME: fileName,
                 API_ID: apiID,
-                TYPE: { [Op.like]: `%${type}%`  }
+                TYPE: { [Op.like]: `%${type}%` }
             },
             include: [
                 {
@@ -1531,7 +1737,7 @@ const deleteAllAPIFiles = async (type, orgID, apiID, t) => {
             where: {
                 API_ID: apiID,
                 TYPE: {
-                    [Op.like]: `%${type}%` 
+                    [Op.like]: `%${type}%`
                 }
             },
             include: [
@@ -1599,6 +1805,25 @@ const getAPIHandle = async (orgID, apiRefID) => {
     }
 }
 
+const getApiIdByReferenceId = async (orgID, referenceId, t) => {
+    try {
+        const api = await APIMetadata.findOne({
+            attributes: ['API_ID'],
+            where: {
+                REFERENCE_ID: referenceId,
+                ORG_ID: orgID
+            },
+            transaction: t
+        });
+        return api?.API_ID;
+    } catch (error) {
+        if (error instanceof Sequelize.EmptyResultError) {
+            throw error;
+        }
+        throw new Sequelize.DatabaseError(error);
+    }
+};
+
 module.exports = {
     createAPIMetadata,
     createAPISubscriptionPolicy,
@@ -1614,6 +1839,8 @@ module.exports = {
     storeAPIFiles,
     updateOrCreateAPIFiles,
     getAPIFile,
+    getAPIFileByType,
+    upsertAPIFileByType,
     getAPIDoc,
     deleteAPIFile,
     deleteAllAPIFiles,
@@ -1630,6 +1857,7 @@ module.exports = {
     createSubscriptionPolicy,
     bulkCreateSubscriptionPolicies,
     getSubscriptionPolicyByName,
+    deleteSubscriptionPolicyById,
     getSubscriptionPolicy,
     getSubscriptionPolicies,
     deleteSubscriptionPolicy,
@@ -1639,6 +1867,7 @@ module.exports = {
     getLabels,
     addView,
     addViewLabels,
+    replaceViewLabels,
     deleteViewLabels,
     updateView,
     deleteView,
@@ -1650,5 +1879,8 @@ module.exports = {
     updateLabel,
     addLabel,
     getImage,
-    deleteImage
+    deleteImage,
+    getAllSubscriptionPolicies,
+    getAllAPIMetadataFromAllViews,
+    getApiIdByReferenceId
 };

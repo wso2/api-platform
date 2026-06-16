@@ -37,6 +37,8 @@ const (
 	EventChannelConfigTypeURL = "api-platform.wso2.org/v1.EventChannelConfig"
 	// APIKeyStateTypeURL is the xDS type URL for API key state snapshots.
 	APIKeyStateTypeURL = "api-platform.wso2.org/v1.APIKeyState"
+	// WebhookSecretStateTypeURL is the xDS type URL for webhook secret state snapshots.
+	WebhookSecretStateTypeURL = "api-platform.wso2.org/v1.WebhookSecretState"
 
 	defaultNodeID  = "event-gateway-node"
 	defaultCluster = "event-gateway"

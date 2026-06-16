@@ -869,7 +869,7 @@ type CreateGatewayRequest struct {
 	// Properties Custom key-value properties for the gateway
 	Properties *map[string]interface{} `json:"properties,omitempty" yaml:"properties,omitempty"`
 
-	// Version Gateway version in `major.minor` format (e.g. `1.0`) or `major.minor.patch-preview-<build>` format (e.g. `1.1.0-preview-202603` or `1.1.0-preview-202603.1`). Defaults to `1.0` if not provided.
+	// Version Gateway version in `major.minor` format (e.g. `1.0`) or CalVer `YYYY.MM.DD` format (e.g. `2026.05.13`). Defaults to `1.0` if not provided.
 	Version *string `json:"version,omitempty" yaml:"version,omitempty"`
 
 	// Vhost Virtual host (domain name) for the gateway
@@ -1358,7 +1358,7 @@ type GatewayResponse struct {
 	// UpdatedAt Timestamp when gateway was last updated
 	UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
 
-	// Version Gateway version in `major.minor` format (e.g. `1.0`) or `major.minor.patch-preview-<build>` format (e.g. `1.1.0-preview-202603` or `1.1.0-preview-202603.1`)
+	// Version Gateway version in `major.minor` format (e.g. `1.0`) or CalVer `YYYY.MM.DD` format (e.g. `2026.05.13`)
 	Version *string `json:"version,omitempty" yaml:"version,omitempty"`
 
 	// Vhost Virtual host (domain name) for the gateway
@@ -2502,7 +2502,7 @@ type RESTAPIGatewayResponse struct {
 	// UpdatedAt Timestamp when gateway was last updated
 	UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
 
-	// Version Gateway version in `major.minor` format (e.g. `1.0`) or `major.minor.patch-preview-<build>` format (e.g. `1.1.0-preview-202603` or `1.1.0-preview-202603.1`)
+	// Version Gateway version in `major.minor` format (e.g. `1.0`) or CalVer `YYYY.MM.DD` format (e.g. `2026.05.13`)
 	Version *string `json:"version,omitempty" yaml:"version,omitempty"`
 
 	// Vhost Virtual host (domain name) for the gateway
@@ -3131,8 +3131,9 @@ type WebBrokerAPI struct {
 
 	// Receiver WebSocket receiver configuration
 	Receiver struct {
-		Name string                   `json:"name" yaml:"name"`
-		Type WebBrokerAPIReceiverType `json:"type" yaml:"type"`
+		Name       string                   `json:"name" yaml:"name"`
+		Properties *map[string]interface{}  `json:"properties,omitempty" yaml:"properties,omitempty"`
+		Type       WebBrokerAPIReceiverType `json:"type" yaml:"type"`
 	} `binding:"required" json:"receiver" yaml:"receiver"`
 
 	// SubscriptionPlans List of subscription plan IDs

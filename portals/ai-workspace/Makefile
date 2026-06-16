@@ -48,7 +48,7 @@ build: ## Build Docker image
 		.
 
 build-and-push-multiarch: ## Build and push multi-architecture Docker image (linux/amd64, linux/arm64)
-	@echo "Building and pushing multi-arch Docker image: $(IMAGE_NAME):$(VERSION)"
+	@echo "Building and pushing multi-arch ai-workspace Docker image: $(IMAGE_NAME):$(VERSION)"
 	docker buildx build \
 		--platform linux/amd64,linux/arm64 \
 		--build-arg VERSION=$(VERSION) \
@@ -63,21 +63,20 @@ version-set: ## Set ai-workspace version and update artifacts
 		exit 1; \
 	fi
 	@echo "$(VERSION)" > VERSION
-	@bash ../../scripts/update-docker-compose.sh ai-workspace $(VERSION)
-	@bash ../../scripts/update-helm.sh ai-workspace $(VERSION)
+	@(cd ../.. && bash scripts/update-docker-compose.sh ai-workspace $(VERSION))
 	@echo "✓ Set ai-workspace version to $(VERSION)"
 
 version-bump-patch: ## Bump patch version
-	@$(MAKE) version-set VERSION=$$(cd ../.. && bash scripts/next-version.sh patch ai-workspace)
+	@$(MAKE) version-set VERSION=$$(cd ../.. && bash scripts/next-version.sh patch portals/ai-workspace)
 
 version-bump-minor: ## Bump minor version
-	@$(MAKE) version-set VERSION=$$(cd ../.. && bash scripts/next-version.sh minor ai-workspace)
+	@$(MAKE) version-set VERSION=$$(cd ../.. && bash scripts/next-version.sh minor portals/ai-workspace)
 
 version-bump-major: ## Bump major version
-	@$(MAKE) version-set VERSION=$$(cd ../.. && bash scripts/next-version.sh major ai-workspace)
+	@$(MAKE) version-set VERSION=$$(cd ../.. && bash scripts/next-version.sh major portals/ai-workspace)
 
 version-bump-next-dev: ## Bump to next minor dev version with SNAPSHOT suffix
-	@$(MAKE) version-set VERSION=$$(cd ../.. && bash scripts/next-version.sh next-dev ai-workspace)
+	@$(MAKE) version-set VERSION=$$(cd ../.. && bash scripts/next-version.sh next-dev portals/ai-workspace)
 
 version-get-release: ## Get release version (strips SNAPSHOT suffix)
 	@VERSION=$$(cat VERSION 2>/dev/null | tr -d '[:space:]' | sed 's/-SNAPSHOT//'); \

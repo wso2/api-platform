@@ -31,10 +31,6 @@ import {
   Card,
   Chip,
   CircularProgress,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
   Divider,
   FormControl,
   FormLabel,
@@ -52,7 +48,7 @@ import {
   Tooltip,
   Typography,
 } from '@wso2/oxygen-ui';
-import { ChevronLeft, Clock, Copy, Edit, ExternalLink } from '@wso2/oxygen-ui-icons-react';
+import { ChevronLeft, Clock, Copy, Edit } from '@wso2/oxygen-ui-icons-react';
 import { FormattedMessage } from 'react-intl';
 import { useAppShell } from '../../../../contexts/AppShellContext';
 import { formatRelativeTime } from '../../../../contexts/llmProvider';
@@ -60,14 +56,9 @@ import {
   buildProjectPath,
   getProjectSlug,
 } from '../../../../utils/projectRouting';
-import { DEV_PORTAL_BASE_URL, DOMAIN, PLATFORM_API_BASE_URL } from '../../../../config.env';
+import { PLATFORM_API_BASE_URL } from '../../../../config.env';
 import { mcpProxiesApis } from '../../../../apis/MCP/mcpProxiesApis';
-import {
-  checkMCPServerPublished,
-  publishMCPServer,
-  unpublishMCPServer,
-} from '../../../../apis/MCP/mcpDevPortalApis';
-import { getDevPortalBaseUrl } from '../../../../utils/devPortalUtils';import { getGuardrails } from '../../../../apis/policyHubApis';
+import { getGuardrails } from '../../../../apis/policyHubApis';
 import { getMCPServerDeployments } from '../../../../apis/MCP/mcpServerDeployApis';
 import { getGateways } from '../../../../apis/gatewayApis';
 import type { Gateway } from '../../../../apis/gatewayTypes';
@@ -205,14 +196,6 @@ export default function ExternalServersOverview(): JSX.Element {
   const [selectedPolicies, setSelectedPolicies] = useState<SelectedPolicy[]>(
     []
   );
-
-  // Publish to Developer Portal state
-  const [isPublished, setIsPublished] = useState(false);
-  const [isPublishStatusLoading, setIsPublishStatusLoading] = useState(false);
-  const [isPublishActionLoading, setIsPublishActionLoading] = useState(false);
-  const [isPublishDialogOpen, setIsPublishDialogOpen] = useState(false);
-  const [isUnpublishConfirmOpen, setIsUnpublishConfirmOpen] = useState(false);
-  const [publishDialogGatewayId, setPublishDialogGatewayId] = useState('');
 
   const selectedPoliciesRef = useRef<SelectedPolicy[]>([]);
   const [initialPolicies, setInitialPolicies] = useState<SelectedPolicy[]>([]);
@@ -437,11 +420,6 @@ export default function ExternalServersOverview(): JSX.Element {
     void mapPolicies();
   }, [server, updateSelectedPolicies]);
 
-  const mcpHubViewUrl = useMemo(() => {
-    if (!isPublished || !server || !currentOrganization?.handle) return null;
-    return `${DEV_PORTAL_BASE_URL.replace(/\/?$/, '')}/${encodeURIComponent(currentOrganization.handle)}/views/default/mcp/${encodeURIComponent(server.id)}`;
-  }, [isPublished, server, currentOrganization?.handle]);
-
   const hasUnsavedChanges = useMemo(() => {
     if (selectedPolicies.length !== initialPolicies.length) return true;
     return selectedPolicies.some(
@@ -451,110 +429,6 @@ export default function ExternalServersOverview(): JSX.Element {
         JSON.stringify(p.params) !== JSON.stringify(initialPolicies[i]?.params)
     );
   }, [selectedPolicies, initialPolicies]);
-
-  // Check published status once server + deployments are both resolved
-  useEffect(() => {
-    if (isLoading || isGatewaysLoading || !server || !organizationId) return;
-
-    const orgHandle = currentOrganization?.handle;
-    if (!orgHandle) return;
-
-    console.debug('[publish-check] DOMAIN:', DOMAIN, '| devPortalBaseUrl:', DEV_PORTAL_BASE_URL, '| orgHandle:', orgHandle, '| server.id:', server.id);
-
-    let cancelled = false;
-    void (async () => {
-      setIsPublishStatusLoading(true);
-      try {
-        const published = await checkMCPServerPublished(
-          DEV_PORTAL_BASE_URL,
-          orgHandle,
-          server.id
-        );
-        if (!cancelled) setIsPublished(published);
-      } catch {
-        // Non-blocking — leave isPublished as false
-        if (!cancelled) setIsPublished(false);
-      } finally {
-        if (!cancelled) setIsPublishStatusLoading(false);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [isLoading, isGatewaysLoading, server, organizationId, currentOrganization?.handle]);
-
-  const refreshPublishStatus = async () => {
-    if (!server || !organizationId || !currentOrganization?.handle) return;
-    console.debug('[publish-check refresh] DOMAIN:', DOMAIN, '| devPortalBaseUrl:', DEV_PORTAL_BASE_URL, '| orgHandle:', currentOrganization.handle, '| server.id:', server.id);
-    try {
-      const published = await checkMCPServerPublished(
-        DEV_PORTAL_BASE_URL,
-        currentOrganization.handle,
-        server.id
-      );
-      setIsPublished(published);
-    } catch {
-      // ignore
-    }
-  };
-
-  const handleOpenPublishDialog = () => {
-    // Pre-select the gateway already chosen in the overview URL picker, or first deployed
-    setPublishDialogGatewayId(selectedGatewayId || deployedGateways[0]?.id || '');
-    setIsPublishDialogOpen(true);
-  };
-
-  const handleConfirmPublish = async () => {
-    if (!server || !organizationId || !currentOrganization?.handle) return;
-    const gateway = deployedGateways.find((g) => g.id === publishDialogGatewayId);
-    if (!gateway) return;
-
-    const vhost = gateway.vhost?.trim() ?? '';
-    const normalizedBase = /^https?:\/\//i.test(vhost)
-      ? vhost.replace(/\/+$/, '')
-      : `https://${vhost.replace(/\/+$/, '')}`;
-    const context = (server.context || '').trim().replace(/\/+$/, '');
-    const normalizedContext = context ? (context.startsWith('/') ? context : `/${context}`) : '';
-    const endpointUrl = `${normalizedBase}${normalizedContext}/mcp`;
-
-    setIsPublishActionLoading(true);
-    setIsPublishDialogOpen(false);
-    try {
-      await publishMCPServer(
-        apimBaseUrl,
-        server.id,
-        organizationId,
-        { orgHandle: currentOrganization.handle, remoteUrl: endpointUrl }
-      );
-      showSnackbar('MCP Proxy published to MCP Hub.', 'success');
-      await refreshPublishStatus();
-    } catch {
-      showSnackbar('Failed to publish MCP Proxy.', 'error');
-    } finally {
-      setIsPublishActionLoading(false);
-    }
-  };
-
-  const handleConfirmUnpublish = async () => {
-    if (!server || !organizationId || !currentOrganization?.handle) return;
-    setIsPublishActionLoading(true);
-    setIsUnpublishConfirmOpen(false);
-    try {
-      await unpublishMCPServer(
-        apimBaseUrl,
-        server.id,
-        organizationId,
-        currentOrganization.handle
-      );
-      showSnackbar('MCP Proxy unpublished from MCP Hub.', 'success');
-      await refreshPublishStatus();
-    } catch {
-      showSnackbar('Failed to unpublish MCP Proxy.', 'error');
-    } finally {
-      setIsPublishActionLoading(false);
-    }
-  };
 
   const handleCancelChanges = () => {
     updateSelectedPolicies(initialPolicies);
@@ -601,12 +475,6 @@ export default function ExternalServersOverview(): JSX.Element {
       setTabIndex(1);
     } else if (stepId === 'deploy-to-gateway') {
       navigate('deploy');
-    } else if (stepId === 'publish-to-devportal') {
-      if (isPublished && mcpHubViewUrl) {
-        window.open(mcpHubViewUrl, '_blank', 'noopener,noreferrer');
-      } else {
-        handleOpenPublishDialog();
-      }
     }
   };
 
@@ -744,8 +612,6 @@ export default function ExternalServersOverview(): JSX.Element {
         serverName={server?.name}
         hasPolicies={(server?.policies?.length ?? 0) > 0}
         hasDeployments={deployedGateways.length > 0}
-        isPublished={isPublished}
-        devPortalUrl={mcpHubViewUrl}
         onStepClick={handleStepBannerClick}
       />
 
@@ -840,58 +706,6 @@ export default function ExternalServersOverview(): JSX.Element {
                   defaultMessage="Deploy to Gateway"
                 />
               </Button>
-              <Tooltip
-                title={
-                  deployedGateways.length === 0
-                    ? 'Deploy to a gateway before publishing'
-                    : ''
-                }
-              >
-                <span>
-                  <Button
-                    variant="outlined"
-                    color={isPublished && deployedGateways.length > 0 ? 'error' : 'primary'}
-                    disabled={
-                      deployedGateways.length === 0 ||
-                      isPublishStatusLoading ||
-                      isPublishActionLoading ||
-                      isGatewaysLoading
-                    }
-                    onClick={
-                      isPublished && deployedGateways.length > 0
-                        ? () => setIsUnpublishConfirmOpen(true)
-                        : handleOpenPublishDialog
-                    }
-                    startIcon={
-                      (isPublishStatusLoading || isPublishActionLoading) ? (
-                        <CircularProgress size={14} color="inherit" />
-                      ) : undefined
-                    }
-                  >
-                    {isPublished && deployedGateways.length > 0 ? 'Unpublish from MCP Hub' : 'Publish to MCP Hub'}
-                  </Button>
-                </span>
-              </Tooltip>
-              {isPublished && deployedGateways.length > 0 && mcpHubViewUrl ? (
-                <Box
-                  component="a"
-                  href={mcpHubViewUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  sx={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 0.5,
-                    fontSize: '0.75rem',
-                    color: 'primary.main',
-                    textDecoration: 'none',
-                    justifyContent: 'center',
-                    '&:hover': { textDecoration: 'underline' },
-                  }}
-                >
-                  View in MCP Hub <ExternalLink size={12} />
-                </Box>
-              ) : null}
             </Stack>
           </Box>
         </Card>
@@ -1073,112 +887,6 @@ export default function ExternalServersOverview(): JSX.Element {
           </Stack>
         </Card>
       </Box>
-
-      {/* Publish: endpoint selection Dialog */}
-      <Dialog
-        open={isPublishDialogOpen}
-        onClose={() => setIsPublishDialogOpen(false)}
-        maxWidth="sm"
-        fullWidth
-      >
-        <DialogTitle>Publish to MCP Hub</DialogTitle>
-        <DialogContent>
-          <Stack spacing={2} sx={{ mt: 1 }}>
-            <Typography variant="body2" color="text.secondary">
-              Select the gateway endpoint that clients will use to connect to
-              this MCP proxy in the MCP Hub.
-            </Typography>
-            <FormControl fullWidth>
-              <FormLabel>Gateway</FormLabel>
-              <Select
-                size="small"
-                value={publishDialogGatewayId}
-                onChange={(e) =>
-                  setPublishDialogGatewayId(String(e.target.value))
-                }
-              >
-                {deployedGateways.map((gateway) => (
-                  <MenuItem key={gateway.id} value={gateway.id}>
-                    {gateway.displayName || gateway.name}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-            {publishDialogGatewayId ? (() => {
-              const gw = deployedGateways.find(
-                (g) => g.id === publishDialogGatewayId
-              );
-              const vhost = gw?.vhost?.trim() ?? '';
-              const base = /^https?:\/\//i.test(vhost)
-                ? vhost.replace(/\/+$/, '')
-                : `https://${vhost.replace(/\/+$/, '')}`;
-              const ctx = (server?.context || '').trim().replace(/\/+$/, '');
-              const normalizedCtx = ctx ? (ctx.startsWith('/') ? ctx : `/${ctx}`) : '';
-              const endpointUrl = `${base}${normalizedCtx}/mcp`;
-              return (
-                <FormControl fullWidth>
-                  <FormLabel>Endpoint URL</FormLabel>
-                  <TextField
-                    size="small"
-                    value={endpointUrl}
-                    slotProps={{ input: { readOnly: true } }}
-                  />
-                </FormControl>
-              );
-            })() : null}
-          </Stack>
-        </DialogContent>
-        <DialogActions>
-          <Button
-            variant="outlined"
-            color="secondary"
-            onClick={() => setIsPublishDialogOpen(false)}
-          >
-            Cancel
-          </Button>
-          <Button
-            variant="contained"
-            disabled={!publishDialogGatewayId || isPublishActionLoading}
-            onClick={() => void handleConfirmPublish()}
-          >
-            Publish
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Unpublish: confirmation Dialog */}
-      <Dialog
-        open={isUnpublishConfirmOpen}
-        onClose={() => setIsUnpublishConfirmOpen(false)}
-        maxWidth="xs"
-        fullWidth
-      >
-        <DialogTitle>Unpublish from MCP Hub</DialogTitle>
-        <DialogContent>
-          <Typography variant="body2">
-            Are you sure you want to unpublish{' '}
-            <strong>{server?.name}</strong> from the MCP Hub? Clients
-            will no longer be able to discover it.
-          </Typography>
-        </DialogContent>
-        <DialogActions>
-          <Button
-            variant="outlined"
-            color="secondary"
-            onClick={() => setIsUnpublishConfirmOpen(false)}
-          >
-            Cancel
-          </Button>
-          <Button
-            variant="contained"
-            color="error"
-            disabled={isPublishActionLoading}
-            onClick={() => void handleConfirmUnpublish()}
-          >
-            Unpublish
-          </Button>
-        </DialogActions>
-      </Dialog>
     </PageContent>
   );
 }

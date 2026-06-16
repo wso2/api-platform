@@ -246,6 +246,9 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 							if attachedPolicyPaths[targetPath] {
 								continue
 							}
+							if moreSpecificPolicyAttachmentCovers(targetPath, policyMethod, attachment) {
+								continue
+							}
 							targetKey := pathMethodKey{path: targetPath, method: policyMethod}
 							targetOp, exists := operationRegistry[targetKey]
 							if !exists {
@@ -464,6 +467,9 @@ func (t *LLMProviderTransformer) transformProvider(provider *api.LLMProviderConf
 								if attachedPolicyPaths[targetPath] {
 									continue
 								}
+								if moreSpecificPolicyAttachmentCovers(targetPath, policyMethod, attachment) {
+									continue
+								}
 								targetKey := pathMethodKey{path: targetPath, method: policyMethod}
 								targetOp, exists := operationRegistry[targetKey]
 								if !exists {
@@ -549,6 +555,9 @@ func (t *LLMProviderTransformer) transformProvider(provider *api.LLMProviderConf
 						if pathsMatch(op.Path, attachment.pathEntry.Path) {
 							for _, targetPath := range expandPolicyTargetPaths(op.Path, &tmpl.Configuration.Spec) {
 								if attachedPolicyPaths[targetPath] {
+									continue
+								}
+								if moreSpecificPolicyAttachmentCovers(targetPath, policyMethod, attachment) {
 									continue
 								}
 								targetKey := pathMethodKey{path: targetPath, method: policyMethod}
@@ -779,6 +788,91 @@ func shouldAttachPathBefore(leftPath, rightPath string) bool {
 	}
 
 	return leftPath < rightPath
+}
+
+// isMoreSpecificPath reports whether policy path a is strictly more specific than b.
+// A concrete (non-wildcard) path is more specific than a wildcard one; among paths with
+// the same wildcard-ness, the longer path is more specific.
+func isMoreSpecificPath(a, b string) bool {
+	aWildcard := strings.Contains(a, constants.WILD_CARD)
+	bWildcard := strings.Contains(b, constants.WILD_CARD)
+	if aWildcard != bWildcard {
+		return !aWildcard
+	}
+	return len(a) > len(b)
+}
+
+// methodsInclude reports whether method is present in methods.
+func methodsInclude(methods []string, method string) bool {
+	for _, m := range methods {
+		if m == method {
+			return true
+		}
+	}
+	return false
+}
+
+// moreSpecificPolicyAttachmentCovers reports whether another path entry WITHIN THE SAME policy
+// block covers targetPath for the given HTTP method and is strictly more specific than the
+// current entry. When true, the current (less specific) entry must not be layered onto
+// targetPath, so the most specific match wins within that block. Specificity is compared by
+// path first (see isMoreSpecificPath) and then, for entries on an equally specific path, by
+// method (the narrower method set wins). Resolution is scoped to a single block, so separate
+// policy blocks - even ones with the same name - each contribute their most specific match and
+// all layer onto the route.
+func moreSpecificPolicyAttachmentCovers(targetPath, method string, current llmPolicyAttachment) bool {
+	for i := range current.policy.Paths {
+		other := current.policy.Paths[i]
+		if !pathsMatch(targetPath, other.Path) {
+			continue
+		}
+		if !methodsInclude(expandLLMPolicyMethods(other.Methods), method) {
+			continue
+		}
+		if isMoreSpecificAttachment(other, current.pathEntry) {
+			return true
+		}
+	}
+	return false
+}
+
+// isMoreSpecificAttachment reports whether path entry a is strictly more specific than b.
+// Path specificity dominates (see isMoreSpecificPath); for entries on an equally specific
+// path, the narrower HTTP method set is more specific.
+func isMoreSpecificAttachment(a, b api.LLMPolicyPath) bool {
+	if isMoreSpecificPath(a.Path, b.Path) {
+		return true
+	}
+	if isMoreSpecificPath(b.Path, a.Path) {
+		return false
+	}
+	return isStrictMethodSubset(a.Methods, b.Methods)
+}
+
+// isStrictMethodSubset reports whether the methods covered by a are a strict subset of the
+// methods covered by b ('*' expands to the full supported method set). This makes e.g.
+// [POST] more specific than [GET, POST], which in turn is more specific than '*'.
+func isStrictMethodSubset(a, b []api.LLMPolicyPathMethods) bool {
+	aSet := methodSet(a)
+	bSet := methodSet(b)
+	if len(aSet) == 0 || len(aSet) >= len(bSet) {
+		return false
+	}
+	for m := range aSet {
+		if !bSet[m] {
+			return false
+		}
+	}
+	return true
+}
+
+// methodSet returns the set of concrete HTTP methods an entry covers, with '*' expanded.
+func methodSet(methods []api.LLMPolicyPathMethods) map[string]bool {
+	set := make(map[string]bool)
+	for _, m := range expandLLMPolicyMethods(methods) {
+		set[m] = true
+	}
+	return set
 }
 
 // ensureOperation checks if an operation for the given path+method exists in the registry, and creates it if not

@@ -46,7 +46,7 @@ var deleteCmd = &cobra.Command{
 	Long:    "Deletes a specific MCP from the gateway by ID.",
 	Example: DeleteCmdExample,
 	Run: func(cmd *cobra.Command, args []string) {
-		if err := runDeleteCommand(); err != nil {
+		if err := runDeleteCommand(cmd); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
@@ -54,15 +54,16 @@ var deleteCmd = &cobra.Command{
 }
 
 func init() {
+	gateway.AddSelectionFlags(deleteCmd)
 	utils.AddStringFlag(deleteCmd, utils.FlagID, &deleteMCPID, "", "MCP ID (handle) to delete")
 	deleteCmd.MarkFlagRequired(utils.FlagID)
 }
 
-func runDeleteCommand() error {
+func runDeleteCommand(cmd *cobra.Command) error {
 	// Proceed with deletion (no confirm flag required)
 
 	// Create a client for the active gateway
-	client, err := gateway.NewClientForActive()
+	client, err := gateway.NewClientFromCommand(cmd)
 	if err != nil {
 		return err
 	}

@@ -41,7 +41,7 @@ var listCmd = &cobra.Command{
 	Long:    "Retrieves and displays all MCP proxies deployed on the currently active gateway.",
 	Example: ListCmdExample,
 	Run: func(cmd *cobra.Command, args []string) {
-		if err := runListCommand(); err != nil {
+		if err := runListCommand(cmd); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
@@ -115,9 +115,13 @@ type MCPListResponse struct {
 	MCPProxies []MCPListItem `json:"mcpProxies"`
 }
 
-func runListCommand() error {
-	// Create a client for the active gateway
-	client, err := gateway.NewClientForActive()
+func init() {
+	gateway.AddSelectionFlags(listCmd)
+}
+
+func runListCommand(cmd *cobra.Command) error {
+	// Create a client for the selected (or active) gateway
+	client, err := gateway.NewClientFromCommand(cmd)
 	if err != nil {
 		return err
 	}

@@ -749,3 +749,146 @@ func TestTranslateResponseActionsCore_NoShortCircuit(t *testing.T) {
 	require.NotNil(t, headerMutation)
 	assert.Len(t, headerMutation.SetHeaders, 1)
 }
+
+// =============================================================================
+// Dynamic-endpoint request-header translation
+// =============================================================================
+
+// A dynamic-endpoint policy sets UpstreamName: the header phase must advertise the target
+// upstream base path in dynamic metadata and surface the RAW request path as metadata["path"]
+// (via the mutation struct). The Lua filter strips api_context and prepends the target base
+// exactly once, so the value must be the raw path, never a pre-baked one. A path-changing
+// policy that already set mutations.Path must win (not be clobbered).
+func TestTranslateRequestHeaderActions_DynamicEndpoint(t *testing.T) {
+	newExecCtx := func() *PolicyExecutionContext {
+		kernel := NewKernel()
+		chainExecutor := executor.NewChainExecutor(nil, nil, nil)
+		server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "")
+		execCtx := newPolicyExecutionContext(server, "test-route", &registry.PolicyChain{})
+		execCtx.sharedCtx = &policy.SharedContext{APIKind: "API", APIId: "api-123"}
+		execCtx.requestBodyCtx = &policy.RequestContext{
+			Path:          "/api/whoami",
+			SharedContext: execCtx.sharedCtx,
+		}
+		execCtx.apiContext = "/api"
+		execCtx.upstreamBasePath = "/sandbox"
+		execCtx.upstreamDefinitionPaths = map[string]string{"alt-upstream": "/alternate"}
+		return execCtx
+	}
+
+	targetUpstream := "alt-upstream"
+	chain := &registry.PolicyChain{}
+
+	t.Run("surfaces the raw request path and target upstream base path", func(t *testing.T) {
+		execCtx := newExecCtx()
+		result := &executor.RequestHeaderExecutionResult{
+			Results: []executor.RequestHeaderPolicyResult{
+				{Action: policy.UpstreamRequestHeaderModifications{UpstreamName: &targetUpstream}},
+			},
+		}
+
+		resp, err := TranslateRequestHeaderActions(result, chain, execCtx)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+
+		hm := resp.GetRequestHeaders().GetResponse().GetHeaderMutation()
+		require.NotNil(t, hm)
+		expectedCluster := constants.UpstreamDefinitionClusterPrefix + "API_api-123_" + sanitizeUpstreamDefinitionName(targetUpstream)
+		var headerValue string
+		for _, h := range hm.SetHeaders {
+			if h.Header.Key == constants.TargetUpstreamHeader {
+				headerValue = string(h.Header.RawValue)
+			}
+		}
+		assert.Equal(t, expectedCluster, headerValue, "x-target-upstream must select the alt-upstream cluster")
+
+		extProc := resp.DynamicMetadata.Fields[constants.ExtProcFilterName].GetStructValue()
+		require.NotNil(t, extProc)
+		assert.Equal(t, "/alternate", extProc.Fields["target_upstream_base_path"].GetStringValue())
+		assert.Equal(t, "/api/whoami", extProc.Fields["path"].GetStringValue())
+		assert.NotContains(t, extProc.Fields, "request_transformation.target_path")
+	})
+
+	t.Run("does not clobber a path set by an earlier policy", func(t *testing.T) {
+		execCtx := newExecCtx()
+		rewrittenPath := "/rewritten/path"
+		result := &executor.RequestHeaderExecutionResult{
+			Results: []executor.RequestHeaderPolicyResult{
+				{Action: policy.UpstreamRequestHeaderModifications{
+					UpstreamName: &targetUpstream,
+					Path:         &rewrittenPath,
+				}},
+			},
+		}
+
+		resp, err := TranslateRequestHeaderActions(result, chain, execCtx)
+		require.NoError(t, err)
+		extProc := resp.DynamicMetadata.Fields[constants.ExtProcFilterName].GetStructValue()
+		require.NotNil(t, extProc)
+		assert.Equal(t, "/rewritten/path", extProc.Fields["path"].GetStringValue())
+		assert.Equal(t, "/alternate", extProc.Fields["target_upstream_base_path"].GetStringValue())
+		assert.NotContains(t, extProc.Fields, "request_transformation.target_path")
+	})
+}
+
+// The body-merge variant (body-less requests) shares the same dynamic-endpoint contract:
+// the policy runs in the header phase, surfaces the raw request path as metadata["path"],
+// and must not clobber a path already set by an earlier policy.
+func TestTranslateRequestHeaderActionsWithBodyMerge_DynamicEndpoint(t *testing.T) {
+	newExecCtx := func() *PolicyExecutionContext {
+		kernel := NewKernel()
+		chainExecutor := executor.NewChainExecutor(nil, nil, nil)
+		server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "")
+		execCtx := newPolicyExecutionContext(server, "test-route", &registry.PolicyChain{})
+		execCtx.sharedCtx = &policy.SharedContext{APIKind: "API", APIId: "api-123"}
+		execCtx.requestBodyCtx = &policy.RequestContext{
+			Path:          "/api/whoami",
+			SharedContext: execCtx.sharedCtx,
+		}
+		execCtx.apiContext = "/api"
+		execCtx.upstreamBasePath = "/sandbox"
+		execCtx.upstreamDefinitionPaths = map[string]string{"alt-upstream": "/alternate"}
+		return execCtx
+	}
+	targetUpstream := "alt-upstream"
+	emptyBody := func() *executor.RequestExecutionResult {
+		return &executor.RequestExecutionResult{Results: []executor.RequestPolicyResult{}}
+	}
+
+	t.Run("surfaces the raw request path and target upstream base path", func(t *testing.T) {
+		execCtx := newExecCtx()
+		headerResult := &executor.RequestHeaderExecutionResult{
+			Results: []executor.RequestHeaderPolicyResult{
+				{Action: policy.UpstreamRequestHeaderModifications{UpstreamName: &targetUpstream}},
+			},
+		}
+		resp, err := TranslateRequestHeaderActionsWithBodyMerge(headerResult, emptyBody(), execCtx)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		extProc := resp.DynamicMetadata.Fields[constants.ExtProcFilterName].GetStructValue()
+		require.NotNil(t, extProc)
+		assert.Equal(t, "/alternate", extProc.Fields["target_upstream_base_path"].GetStringValue())
+		assert.Equal(t, "/api/whoami", extProc.Fields["path"].GetStringValue())
+		assert.NotContains(t, extProc.Fields, "request_transformation.target_path")
+	})
+
+	t.Run("does not clobber a path set by an earlier policy", func(t *testing.T) {
+		execCtx := newExecCtx()
+		rewrittenPath := "/rewritten/path"
+		headerResult := &executor.RequestHeaderExecutionResult{
+			Results: []executor.RequestHeaderPolicyResult{
+				{Action: policy.UpstreamRequestHeaderModifications{
+					UpstreamName: &targetUpstream,
+					Path:         &rewrittenPath,
+				}},
+			},
+		}
+		resp, err := TranslateRequestHeaderActionsWithBodyMerge(headerResult, emptyBody(), execCtx)
+		require.NoError(t, err)
+		extProc := resp.DynamicMetadata.Fields[constants.ExtProcFilterName].GetStructValue()
+		require.NotNil(t, extProc)
+		assert.Equal(t, "/rewritten/path", extProc.Fields["path"].GetStringValue())
+		assert.Equal(t, "/alternate", extProc.Fields["target_upstream_base_path"].GetStringValue())
+		assert.NotContains(t, extProc.Fields, "request_transformation.target_path")
+	})
+}

@@ -78,30 +78,33 @@ const ApplicationKeyMapping = sequelize.define('DP_APP_KEY_MAPPING', {
         type: DataTypes.UUID,
         allowNull: false
     },
-    CP_APP_REF: {
-        type: DataTypes.STRING,
-        allowNull: false
-    },
-    API_REF_ID: {
-        type: DataTypes.UUID,
-        allowNull: true
-    },
     ORG_ID: {
         type: DataTypes.UUID,
         allowNull: false
     },
-    SUBSCRIPTION_REF_ID: {
+    KM_ID: {
         type: DataTypes.UUID,
         allowNull: true
     },
-    SHARED_TOKEN: {
-        type: DataTypes.BOOLEAN,
-        allowNull: false
+    AS_CLIENT_ID: {
+        type: DataTypes.STRING,
+        allowNull: true
     },
-    TOKEN_TYPE: {
-        type: DataTypes.ENUM,
-        values: [constants.TOKEN_TYPES.API_KEY, constants.TOKEN_TYPES.OAUTH, constants.TOKEN_TYPES.BASIC],
-        allowNull: false
+    KEY_TYPE: {
+        type: DataTypes.STRING,
+        allowNull: false,
+        defaultValue: 'PRODUCTION'
+    },
+    ADDITIONAL_PROPERTIES: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+        get() {
+            const raw = this.getDataValue('ADDITIONAL_PROPERTIES');
+            return raw ? JSON.parse(raw) : null;
+        },
+        set(val) {
+            this.setDataValue('ADDITIONAL_PROPERTIES', val ? JSON.stringify(val) : null);
+        }
     }
 }, {
     timestamps: false,
@@ -119,7 +122,7 @@ const SubscriptionMapping = sequelize.define('DP_API_SUBSCRIPTION', {
     },
     APP_ID: {
         type: DataTypes.UUID,
-        allowNull: false,
+        allowNull: true,
         references: {
             model: Application,
             key: 'APP_ID',
@@ -134,8 +137,8 @@ const SubscriptionMapping = sequelize.define('DP_API_SUBSCRIPTION', {
         },
     },
     POLICY_ID: {
-        type: DataTypes.STRING,
-        allowNull: false,
+        type: DataTypes.UUID,
+        allowNull: true,
         references: {
             model: SubscriptionPolicy,
             key: 'POLICY_ID',
@@ -144,7 +147,9 @@ const SubscriptionMapping = sequelize.define('DP_API_SUBSCRIPTION', {
     ORG_ID: {
         type: DataTypes.UUID,
         allowNull: false
-    }
+    },
+    SUB_TOKEN: { type: DataTypes.STRING(512), allowNull: true, unique: true },
+    STATUS:     { type: DataTypes.STRING(32), allowNull: false, defaultValue: 'ACTIVE' },
 }, {
     timestamps: false,
     tableName: 'DP_API_SUBSCRIPTION',
@@ -180,6 +185,9 @@ SubscriptionPolicy.belongsToMany(APIMetadata, {
     foreignKey: "POLICY_ID",
     otherKey: "API_ID",
 });
+
+SubscriptionMapping.belongsTo(APIMetadata, { foreignKey: 'API_ID', as: 'DP_API_METADATA' });
+SubscriptionMapping.belongsTo(SubscriptionPolicy, { foreignKey: 'POLICY_ID', as: 'DP_SUBSCRIPTION_POLICY' });
 
 Application.belongsTo(Organization, {
     foreignKey: 'ORG_ID'

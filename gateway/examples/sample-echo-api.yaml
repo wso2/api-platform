@@ -1,0 +1,55 @@
+# --------------------------------------------------------------------
+# Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+# --------------------------------------------------------------------
+
+# Sample echo API — debug aid.
+#
+# Targets the `sample-backend` service from gateway/docker-compose.yaml
+# (ghcr.io/wso2/api-platform/sample-service), which echoes the full
+# request back as JSON: method, path, query, headers, body. That makes
+# it ideal for verifying exactly what the gateway forwards upstream —
+# header injections, path stripping, body transforms — without leaving
+# the local docker network.
+#
+# Used by the `gateway-debug` agent skill to reproduce issues with
+# minimal moving parts.
+
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: RestApi
+metadata:
+  name: sample-echo-v1
+spec:
+  displayName: Sample Echo
+  version: v1
+  context: /echo
+  upstream:
+    main:
+      url: http://sample-backend:5000
+  policies:
+    - name: api-key-auth
+      version: v1
+      params:
+        key: X-API-Key
+        in: header
+    - name: set-headers
+      version: v1
+      params:
+        request:
+          headers:
+            - name: X-Gateway-Marker
+              value: "ap-gateway"
+  operations:
+    - method: GET
+      path: /anything
+    - method: POST
+      path: /anything
+    - method: PUT
+      path: /anything
+    - method: DELETE
+      path: /anything

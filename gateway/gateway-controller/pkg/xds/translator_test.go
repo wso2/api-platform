@@ -23,6 +23,7 @@ import (
 	"math"
 	"net/url"
 	"regexp"
+	"strings"
 	"testing"
 	"time"
 
@@ -178,12 +179,14 @@ func TestResolveUpstreamCluster_WithRef_WithTimeout(t *testing.T) {
 	translator := &Translator{}
 	ref := "my-upstream"
 	timeoutStr := "45s"
+	basePath := "/v2"
 	upstream := &api.Upstream{
 		Ref: &ref,
 	}
 	definitions := &[]api.UpstreamDefinition{
 		{
-			Name: "my-upstream",
+			Name:     "my-upstream",
+			BasePath: &basePath,
 			Timeout: &api.UpstreamTimeout{
 				Connect: &timeoutStr,
 			},
@@ -192,7 +195,7 @@ func TestResolveUpstreamCluster_WithRef_WithTimeout(t *testing.T) {
 				Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
 			}{
 				{
-					Url: "http://backend-1:9000/v2",
+					Url: "http://backend-1:9000",
 				},
 			},
 		},
@@ -562,7 +565,7 @@ func TestTranslator_CreateRoute_PathSpecifier(t *testing.T) {
 				"test-id", "TestAPI", tt.apiVersion, tt.context,
 				"GET", tt.path, "test-cluster", "/",
 				"localhost", "http/rest", "", "", nil, "", nil,
-				false, "", nil,
+				false, nil,
 			)
 			require.NotNil(t, r)
 			{
@@ -613,7 +616,7 @@ func TestTranslator_WildcardRegexBoundary(t *testing.T) {
 			"test-id", "TestAPI", tc.apiVersion, tc.context,
 			"GET", tc.path, "test-cluster", "/",
 			"localhost", "http/rest", "", "", nil, "", nil,
-			false, "", nil,
+			false, nil,
 		)
 		require.NotNil(t, r)
 		regexSpec, ok := r.Match.PathSpecifier.(*route.RouteMatch_SafeRegex)
@@ -626,6 +629,112 @@ func TestTranslator_WildcardRegexBoundary(t *testing.T) {
 		for _, p := range tc.shouldNotMatch {
 			assert.False(t, re.MatchString(p), "regex %q should NOT match %q", regexSpec.SafeRegex.Regex, p)
 		}
+	}
+}
+
+// applyEnvoyRewrite emulates how Envoy applies a route's RegexRewrite to a request path:
+// the request must first be matched by the route's path specifier, then the rewrite regex
+// substitution is applied. Envoy uses "\1" substitution syntax; Go's regexp uses "$1".
+func applyEnvoyRewrite(t *testing.T, r *route.Route, requestPath string) string {
+	t.Helper()
+	spec, ok := r.Match.PathSpecifier.(*route.RouteMatch_SafeRegex)
+	require.True(t, ok, "expected SafeRegex path specifier")
+	require.True(t, regexp.MustCompile(spec.SafeRegex.Regex).MatchString(requestPath),
+		"match regex %q should match request %q", spec.SafeRegex.Regex, requestPath)
+
+	rw := r.GetRoute().GetRegexRewrite()
+	require.NotNil(t, rw, "route should have a RegexRewrite")
+	pattern := regexp.MustCompile(rw.GetPattern().GetRegex())
+	goSub := strings.ReplaceAll(rw.GetSubstitution(), `\1`, `${1}`)
+	return pattern.ReplaceAllString(requestPath, goSub)
+}
+
+// TestTranslator_WildcardUpstreamRewrite verifies that a non-root wildcard operation path
+// ("/foo/*") preserves the matched literal prefix ("/foo") on the upstream — consistent with
+// exact paths — while the bare "/*" catch-all and base-path upstreams behave as before.
+// Regression test for issue #2071 (PathPrefix-derived routes forwarded the wrong upstream path).
+func TestTranslator_WildcardUpstreamRewrite(t *testing.T) {
+	logger := createTestLogger()
+	routerCfg := testRouterConfig()
+	cfg := testConfig()
+	translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+	tests := []struct {
+		name         string
+		context      string
+		path         string
+		upstreamPath string
+		request      string
+		wantUpstream string
+	}{
+		// Non-root wildcard: the matched literal prefix "/forecast" must be preserved (the bug).
+		{"wildcard subpath, root upstream, bare prefix", "/route/$version", "/forecast/*", "/", "/route/v1.0/forecast", "/forecast"},
+		{"wildcard subpath, root upstream, with subpath", "/route/$version", "/forecast/*", "/", "/route/v1.0/forecast/today", "/forecast/today"},
+		{"wildcard subpath, base-path upstream, bare prefix", "/route/$version", "/forecast/*", "/api/v2", "/route/v1.0/forecast", "/api/v2/forecast"},
+		{"wildcard subpath, base-path upstream, with subpath", "/route/$version", "/forecast/*", "/api/v2", "/route/v1.0/forecast/today", "/api/v2/forecast/today"},
+		// Bare /* catch-all: unchanged — the whole context is the stripped prefix.
+		{"bare wildcard, root upstream, subpath", "/api/$version", "/*", "/", "/api/v1.0/users", "/users"},
+		{"bare wildcard, root upstream, bare context", "/api/$version", "/*", "/", "/api/v1.0", "/"},
+		{"bare wildcard, base-path upstream, subpath", "/api/$version", "/*", "/svc", "/api/v1.0/users", "/svc/users"},
+		// Exact path: unchanged — operation path preserved on the upstream.
+		{"exact path, root upstream", "/route/$version", "/weather", "/", "/route/v1.0/weather", "/weather"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := translator.createRoute(
+				"test-id", "TestAPI", "v1.0", tt.context,
+				"GET", tt.path, "test-cluster", tt.upstreamPath,
+				"localhost", "http/rest", "", "", nil, "", nil,
+				false, nil,
+			)
+			require.NotNil(t, r)
+			assert.Equal(t, tt.wantUpstream, applyEnvoyRewrite(t, r, tt.request))
+		})
+	}
+}
+
+// TestTranslator_WildcardUpstreamRewriteFromRDC verifies the same prefix-preserving behavior on
+// the RuntimeDeployConfig path (createRouteFromRDC), which the policy/runtime xDS pipeline uses.
+func TestTranslator_WildcardUpstreamRewriteFromRDC(t *testing.T) {
+	logger := createTestLogger()
+	routerCfg := testRouterConfig()
+	cfg := testConfig()
+	translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+	tests := []struct {
+		name          string
+		fullPath      string
+		operationPath string
+		basePath      string
+		request       string
+		wantUpstream  string
+	}{
+		{"wildcard subpath, root upstream, bare prefix", "/route/v1.0/forecast/*", "/forecast/*", "", "/route/v1.0/forecast", "/forecast"},
+		{"wildcard subpath, root upstream, with subpath", "/route/v1.0/forecast/*", "/forecast/*", "", "/route/v1.0/forecast/today", "/forecast/today"},
+		{"wildcard subpath, base-path upstream", "/route/v1.0/forecast/*", "/forecast/*", "/api/v2", "/route/v1.0/forecast/today", "/api/v2/forecast/today"},
+		{"bare wildcard, root upstream, subpath", "/api/v1.0/*", "/*", "", "/api/v1.0/users", "/users"},
+		{"bare wildcard, root upstream, bare context", "/api/v1.0/*", "/*", "", "/api/v1.0", "/"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rdc := &models.RuntimeDeployConfig{
+				UpstreamClusters: map[string]*models.UpstreamCluster{
+					"main": {BasePath: tt.basePath, Endpoints: []models.Endpoint{{Host: "echo", Port: 80}}},
+				},
+			}
+			rdcRoute := &models.Route{
+				Method:          "GET",
+				Path:            tt.fullPath,
+				OperationPath:   tt.operationPath,
+				AutoHostRewrite: true,
+				Upstream:        models.RouteUpstream{ClusterKey: "main"},
+			}
+			r := translator.createRouteFromRDC("GET|"+tt.fullPath+"|", rdcRoute, rdc)
+			require.NotNil(t, r)
+			assert.Equal(t, tt.wantUpstream, applyEnvoyRewrite(t, r, tt.request))
+		})
 	}
 }
 
@@ -1520,13 +1629,53 @@ func TestTranslator_CreateRoute_Basic(t *testing.T) {
 		"proj-001",                        // projectID
 		nil,                               // timeoutCfg
 		false,                             // useClusterHeader
-		"",                                // defaultCluster
 		nil,                               // upstreamDefPaths
 	)
 
 	assert.NotNil(t, route)
 	assert.Contains(t, route.Name, "GET")
 	assert.Contains(t, route.Name, "/api/users")
+}
+
+// TestTranslator_CreateRoute_DynamicRouting pins the cluster specifier createRoute emits:
+// a static cluster when useClusterHeader is false, and cluster_header routing (with the
+// x-target-upstream header stripped before forwarding) when it is true. This is the
+// legacy-xDS half of the sandbox dynamic-endpoint fix.
+func TestTranslator_CreateRoute_DynamicRouting(t *testing.T) {
+	logger := createTestLogger()
+	routerCfg := testRouterConfig()
+	cfg := testConfig()
+	translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+	t.Run("static cluster when useClusterHeader is false", func(t *testing.T) {
+		r := translator.createRoute(
+			"api-123", "0000-test-api-0000-000000000000", "v1", "/api", "GET", "/users",
+			"static-cluster", "", "localhost", "API", "", "", nil, "proj-001", nil,
+			false, nil,
+		)
+		require.NotNil(t, r)
+		routeAction, ok := r.Action.(*route.Route_Route)
+		require.True(t, ok)
+		clusterSpec, ok := routeAction.Route.ClusterSpecifier.(*route.RouteAction_Cluster)
+		require.True(t, ok, "expected a static cluster specifier")
+		assert.Equal(t, "static-cluster", clusterSpec.Cluster)
+		assert.NotContains(t, r.RequestHeadersToRemove, constants.TargetUpstreamHeader)
+	})
+
+	t.Run("cluster_header routing when useClusterHeader is true", func(t *testing.T) {
+		r := translator.createRoute(
+			"api-123", "0000-test-api-0000-000000000000", "v1", "/api", "GET", "/users",
+			"static-cluster", "", "localhost", "API", "", "", nil, "proj-001", nil,
+			true, nil,
+		)
+		require.NotNil(t, r)
+		routeAction, ok := r.Action.(*route.Route_Route)
+		require.True(t, ok)
+		clusterSpec, ok := routeAction.Route.ClusterSpecifier.(*route.RouteAction_ClusterHeader)
+		require.True(t, ok, "expected a cluster_header specifier for dynamic selection")
+		assert.Equal(t, constants.TargetUpstreamHeader, clusterSpec.ClusterHeader)
+		assert.Contains(t, r.RequestHeadersToRemove, constants.TargetUpstreamHeader)
+	})
 }
 
 func TestTranslator_ExtractTemplateHandle_ValidLLMProvider(t *testing.T) {

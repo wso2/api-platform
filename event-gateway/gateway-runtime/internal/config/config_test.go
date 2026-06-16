@@ -228,6 +228,134 @@ websub_tls_key_file = "`+keyPath+`"
 	}
 }
 
+func TestLoadAppliesWebSocketTLSEnvironmentOverrides(t *testing.T) {
+	tempDir := t.TempDir()
+	certPath := filepath.Join(tempDir, "tls.crt")
+	keyPath := filepath.Join(tempDir, "tls.key")
+	if err := os.WriteFile(certPath, []byte("cert"), 0o644); err != nil {
+		t.Fatalf("write cert: %v", err)
+	}
+	if err := os.WriteFile(keyPath, []byte("key"), 0o600); err != nil {
+		t.Fatalf("write key: %v", err)
+	}
+
+	t.Setenv("APIP_EGW_SERVER_WEBSOCKET_HTTPS_PORT", "9444")
+	t.Setenv("APIP_EGW_SERVER_WEBSOCKET_TLS_ENABLED", "true")
+	t.Setenv("APIP_EGW_SERVER_WEBSOCKET_TLS_CERT_FILE", certPath)
+	t.Setenv("APIP_EGW_SERVER_WEBSOCKET_TLS_KEY_FILE", keyPath)
+
+	configPath := filepath.Join(t.TempDir(), "config.toml")
+	if err := os.WriteFile(configPath, []byte(`
+[kafka]
+brokers = ["localhost:9092"]
+`), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	cfg, _, err := Load(configPath)
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+
+	if cfg.Server.WebSocketHTTPSPort != 9444 {
+		t.Fatalf("expected websocket https port 9444, got %d", cfg.Server.WebSocketHTTPSPort)
+	}
+	if !cfg.Server.WebSocketTLSEnabled {
+		t.Fatalf("expected websocket TLS to be enabled")
+	}
+	if cfg.Server.WebSocketTLSCertFile != certPath {
+		t.Fatalf("expected websocket TLS cert file override, got %q", cfg.Server.WebSocketTLSCertFile)
+	}
+	if cfg.Server.WebSocketTLSKeyFile != keyPath {
+		t.Fatalf("expected websocket TLS key file override, got %q", cfg.Server.WebSocketTLSKeyFile)
+	}
+}
+
+func TestLoadRequiresWebSocketTLSFilesWhenEnabled(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "config.toml")
+	if err := os.WriteFile(configPath, []byte(`
+[server]
+websocket_tls_enabled = true
+`), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	_, _, err := Load(configPath)
+	if err == nil {
+		t.Fatalf("expected load to fail when TLS files are missing")
+	}
+
+	want := "server.websocket_tls_cert_file is required when server.websocket_tls_enabled is true"
+	if err.Error() != want {
+		t.Fatalf("expected error %q, got %q", want, err.Error())
+	}
+}
+
+func TestLoadRejectsMissingWebSocketTLSFilesWhenEnabled(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "config.toml")
+	missingCert := filepath.Join(t.TempDir(), "missing.crt")
+	missingKey := filepath.Join(t.TempDir(), "missing.key")
+	if err := os.WriteFile(configPath, []byte(`
+[server]
+websocket_tls_enabled = true
+websocket_tls_cert_file = "`+missingCert+`"
+websocket_tls_key_file = "`+missingKey+`"
+`), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	_, _, err := Load(configPath)
+	if err == nil {
+		t.Fatalf("expected load to fail when TLS cert file is missing")
+	}
+
+	if !strings.Contains(err.Error(), `server.websocket_tls_cert_file file "`) || !strings.Contains(err.Error(), `does not exist`) {
+		t.Fatalf("expected missing cert file error, got %q", err.Error())
+	}
+}
+
+func TestLoadRejectsUnreadableWebSocketTLSKeyFileWhenEnabled(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("permission-based readability checks are unreliable when running as root")
+	}
+
+	tempDir := t.TempDir()
+	certPath := filepath.Join(tempDir, "tls.crt")
+	keyPath := filepath.Join(tempDir, "tls.key")
+	configPath := filepath.Join(tempDir, "config.toml")
+
+	if err := os.WriteFile(certPath, []byte("cert"), 0o644); err != nil {
+		t.Fatalf("write cert: %v", err)
+	}
+	if err := os.WriteFile(keyPath, []byte("key"), 0o600); err != nil {
+		t.Fatalf("write key: %v", err)
+	}
+	if err := os.Chmod(keyPath, 0o000); err != nil {
+		t.Fatalf("chmod key unreadable: %v", err)
+	}
+	defer func() {
+		_ = os.Chmod(keyPath, 0o600)
+	}()
+
+	if err := os.WriteFile(configPath, []byte(`
+[server]
+websocket_tls_enabled = true
+websocket_tls_cert_file = "`+certPath+`"
+websocket_tls_key_file = "`+keyPath+`"
+`), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	_, _, err := Load(configPath)
+	if err == nil {
+		t.Fatalf("expected load to fail when TLS key file is unreadable")
+	}
+
+	if !strings.Contains(err.Error(), `server.websocket_tls_key_file file "`) || !strings.Contains(err.Error(), `is not readable`) {
+		t.Fatalf("expected unreadable key file error, got %q", err.Error())
+	}
+}
+
 func TestLoadRejectsNonPositiveServerPorts(t *testing.T) {
 	configPath := filepath.Join(t.TempDir(), "config.toml")
 	if err := os.WriteFile(configPath, []byte(`

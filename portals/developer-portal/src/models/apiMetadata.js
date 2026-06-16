@@ -46,12 +46,12 @@ const APIMetadata = sequelize.define('DP_API_METADATA', {
     allowNull: false,
   },
   API_VERSION: {
-    type: DataTypes.INTEGER,
+    type: DataTypes.STRING,
     allowNull: false,
   },
   API_TYPE: {
     type: DataTypes.ENUM,
-    values: ['REST', 'WS', 'GraphQL', 'SOAP'],
+    values: ['REST', 'WS', 'GRAPHQL', 'SOAP', 'WEBSUB', 'MCP'],
     allowNull: false
   },
   VISIBILITY: {
@@ -62,6 +62,12 @@ const APIMetadata = sequelize.define('DP_API_METADATA', {
   VISIBLE_GROUPS: {
     type: DataTypes.STRING,
     allowNull: true
+  },
+  AGENT_VISIBILITY: {
+    type: DataTypes.ENUM,
+    values: ['VISIBLE', 'HIDDEN'],
+    allowNull: false,
+    defaultValue: 'VISIBLE'
   },
   TECHNICAL_OWNER: {
     type: DataTypes.STRING,
@@ -85,11 +91,11 @@ const APIMetadata = sequelize.define('DP_API_METADATA', {
   },
   PRODUCTION_URL: {
     type: DataTypes.STRING,
-    allowNull: false
+    allowNull: true
   },
   PROVIDER: {
     type: DataTypes.STRING,
-    allowNull: false
+    allowNull: true
   },
   METADATA_SEARCH: {
     type: DataTypes.JSON,
@@ -100,6 +106,10 @@ const APIMetadata = sequelize.define('DP_API_METADATA', {
     allowNull: true
   },
   API_HANDLE: {
+    type: DataTypes.STRING,
+    allowNull: true
+  },
+  GATEWAY_TYPE: {
     type: DataTypes.STRING,
     allowNull: true
   },
@@ -146,7 +156,13 @@ const APILabels = sequelize.define('DP_API_LABELS', {
   timestamps: false,
   tableName: 'DP_API_LABELS',
   returning: true,
-  unique: false
+  indexes: [
+      {
+          name: 'UQ_API_LABELS_LABEL_API_ORG',
+          unique: true,
+          fields: ['LABEL_ID', 'API_ID', 'ORG_ID']
+      }
+  ]
 });
 
 APILabels.belongsTo(Organization, {
