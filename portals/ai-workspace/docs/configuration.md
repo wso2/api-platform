@@ -10,7 +10,7 @@ Copy `configs/config-template.toml` to `configs/config.toml` and fill in the val
 
 | Key | Env variable | Default | Description |
 |-----|-------------|---------|-------------|
-| `domain` | `VITE_DOMAIN` | `localhost:8080` | Host (and optional port) shown in the browser address bar. Used to derive OIDC redirect URIs automatically. |
+| `domain` | `VITE_DOMAIN` | `localhost:5380` | Host (and optional port) shown in the browser address bar. Used to derive OIDC redirect URIs automatically. |
 | `auth_mode` | `VITE_AUTH_MODE` | `basic` | Authentication mode. `"basic"` for file-based local auth; `"oidc"` for external IDP. |
 | `platform_api_base_url` | `VITE_PLATFORM_API_BASE_URL` | `https://localhost:9243/api/v1` | Base URL the browser uses to reach the Platform API. May be a relative path (e.g. `/api-proxy/api/v1`) when nginx reverse-proxying is in use. |
 | `controlplane_host` | `VITE_CONTROLPLANE_HOST` | `localhost:9243` | Externally reachable `host:port` that deployed gateways use to reach the Platform API. Shown in gateway setup instructions. Must be an absolute address, not a relative path. |
