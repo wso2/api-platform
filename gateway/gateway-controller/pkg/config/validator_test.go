@@ -620,7 +620,7 @@ func TestValidateUpstreamDefinitions_URLWithPathRejected(t *testing.T) {
 	assert.Contains(t, errors[0].Message, "basePath")
 }
 
-// upstreamDefinitions URLs must be host[:port] only; a query string is dropped, not honored.
+// upstreamDefinitions URLs must be host[:port] only; a query string is dropped.
 func TestValidateUpstreamDefinitions_URLWithQueryRejected(t *testing.T) {
 	validator := NewAPIValidator()
 
@@ -642,7 +642,7 @@ func TestValidateUpstreamDefinitions_URLWithQueryRejected(t *testing.T) {
 	assert.Contains(t, errors[0].Message, "query string")
 }
 
-// upstreamDefinitions URLs must be host[:port] only; a bare "?" query marker is dropped, not honored.
+// upstreamDefinitions URLs must be host[:port] only; a bare "?" query marker is dropped.
 func TestValidateUpstreamDefinitions_URLWithBareQueryRejected(t *testing.T) {
 	validator := NewAPIValidator()
 
@@ -664,7 +664,7 @@ func TestValidateUpstreamDefinitions_URLWithBareQueryRejected(t *testing.T) {
 	assert.Contains(t, errors[0].Message, "query string")
 }
 
-// upstreamDefinitions URLs must be host[:port] only; a fragment is dropped, not honored.
+// upstreamDefinitions URLs must be host[:port] only; a fragment is dropped.
 func TestValidateUpstreamDefinitions_URLWithFragmentRejected(t *testing.T) {
 	validator := NewAPIValidator()
 

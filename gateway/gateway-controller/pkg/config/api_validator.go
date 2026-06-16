@@ -343,18 +343,18 @@ func (v *APIValidator) validateUpstreamDefinitions(definitions *[]api.UpstreamDe
 				}
 
 				// A query string or fragment is not part of the upstream cluster
-				// (host[:port] only), so it would be silently dropped — reject it.
+				// (host[:port] only), so it would be silently dropped. Reject it.
 				if parsedURL.RawQuery != "" || parsedURL.ForceQuery {
 					errors = append(errors, ValidationError{
 						Field:   fmt.Sprintf("spec.upstreamDefinitions[%d].upstreams[%d].url", i, j),
-						Message: "URL must not include a query string; it is not honored for upstreamDefinitions URLs",
+						Message: "URL must not include a query string; only host[:port] is used",
 					})
 				}
 
 				if parsedURL.Fragment != "" {
 					errors = append(errors, ValidationError{
 						Field:   fmt.Sprintf("spec.upstreamDefinitions[%d].upstreams[%d].url", i, j),
-						Message: "URL must not include a fragment; it is not honored for upstreamDefinitions URLs",
+						Message: "URL must not include a fragment; only host[:port] is used",
 					})
 				}
 			}
