@@ -30,6 +30,7 @@ const minimatch = require('minimatch');
 const { validationResult } = require('express-validator');
 const { renderGivenTemplate } = require('../utils/util');
 const { trackLoginTrigger, trackLogoutTrigger } = require('../utils/telemetry');
+const { extractPlatformJwtClaims } = require('../utils/platformJwt');
 
 
 const fetchAuthJsonContent = async (req, orgName) => {
@@ -297,20 +298,17 @@ const handleLocalLogin = async (req, res) => {
     }
 
     // Decode JWT claims (token is already verified by the platform API)
-    let claims;
-    try {
-        claims = JSON.parse(Buffer.from(platformToken.split('.')[1], 'base64url').toString('utf8'));
-    } catch (err) {
-        logger.error('Failed to decode platform API token', { error: err.message });
+    const claims = extractPlatformJwtClaims(platformToken, null);
+    if (!claims) {
+        logger.error('Failed to decode platform API token');
         return res.redirect(`${baseUrl}/login?error=Login+failed%2C+please+try+again`);
     }
 
     const adminRole = config.adminRole || 'admin';
     const superAdminRole = config.superAdminRole || 'superAdmin';
     const subscriberRole = config.subscriberRole || 'Internal/subscriber';
-    const scopes = (claims.scope || '').split(' ');
     // Users with any _manage scope are treated as admins in the devportal
-    const isAdmin = scopes.some(s => s.endsWith('_manage'));
+    const isAdmin = claims.scopes.some(s => s.endsWith('_manage'));
     const roles = isAdmin ? [adminRole] : [subscriberRole];
 
     const returnTo = req.session.returnTo;

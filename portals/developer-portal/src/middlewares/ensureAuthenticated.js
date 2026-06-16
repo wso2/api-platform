@@ -29,6 +29,7 @@ const jwt = require('jsonwebtoken');
 const axios = require('axios');
 const logger = require('../config/logger');
 const qs = require('qs');
+const { extractPlatformJwtClaims } = require('../utils/platformJwt');
 
 function enforceSecuirty(scope) {
     return async function (req, res, next) {
@@ -45,13 +46,7 @@ function enforceSecuirty(scope) {
             if (req.isAuthenticated() && req.user && req.user.isLocalAuth && !config.identityProvider?.clientId) {
                 const platformToken = req.user[constants.ACCESS_TOKEN];
                 if (!platformToken) return util.handleError(res, new CustomError(401, constants.ERROR_CODE[401], constants.ERROR_MESSAGE.UNAUTHENTICATED));
-                let tokenScopes = [];
-                try {
-                    const payload = JSON.parse(
-                        Buffer.from(platformToken.split('.')[1], 'base64url').toString('utf8')
-                    );
-                    tokenScopes = String(payload.scope || '').split(' ').filter(Boolean);
-                } catch (_) {}
+                const tokenScopes = extractPlatformJwtClaims(platformToken, null)?.scopes ?? [];
                 if (!scope || tokenScopes.includes(scope)) return next();
                 return util.handleError(res, new CustomError(403, constants.ERROR_CODE[403], constants.ERROR_MESSAGE.FORBIDDEN));
             }

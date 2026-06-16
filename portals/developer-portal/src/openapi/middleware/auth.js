@@ -40,22 +40,9 @@ const constants = require('../../utils/constants');
 const adminDao = require('../../dao/admin');
 const IdentityProviderDTO = require('../../dto/identityProvider');
 const logger = require('../../config/logger');
+const { extractPlatformJwtClaims } = require('../../utils/platformJwt');
 
 const DEFAULT_TOKEN_REFRESH_TIMEOUT_MS = 10000;
-
-function extractPlatformJwtClaims(token, jwtSecret) {
-    try {
-        const payload = jwtSecret
-            ? jwt.verify(token, jwtSecret, { algorithms: ['HS256'] })
-            : JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString('utf8'));
-        return {
-            scopes: String(payload.scope || '').split(' ').filter(Boolean),
-            sub: payload.sub || '',
-        };
-    } catch (_) {
-        return null;
-    }
-}
 
 function resolveTokenRefreshTimeoutMs() {
     const timeout = Number(config.identityProvider?.tokenRefreshTimeoutMs);

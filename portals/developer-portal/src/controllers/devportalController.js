@@ -30,6 +30,7 @@ const yaml = require('js-yaml');
 const kmDao = require('../dao/keyManager');
 const { getKeyManagerAdapter } = require('../adapters/keyManager');
 const { CustomError } = require('../utils/errors/customErrors');
+const { extractPlatformJwtClaims } = require('../utils/platformJwt');
 // ***** POST / DELETE / PUT Functions ***** (Only work in production)
 
 function parseApplicationDataFromRequest(req) {
@@ -434,16 +435,13 @@ const login = async (req, res) => {
         return res.status(503).json({ message: 'Authentication service unavailable' });
     }
 
-    let claims;
-    try {
-        claims = JSON.parse(Buffer.from(platformToken.split('.')[1], 'base64url').toString('utf8'));
-    } catch (_) {}
+    const claims = extractPlatformJwtClaims(platformToken, null);
     if (!claims?.org_handle) {
         logger.error('Platform API token missing required claims', { operation: 'devportalLogin' });
         return res.status(503).json({ message: 'Authentication service error' });
     }
 
-    const scopes = (claims.scope || '').split(' ');
+    const scopes = claims.scopes;
     const adminRole = config.adminRole || 'admin';
     const subscriberRole = config.subscriberRole || 'Internal/subscriber';
     const isAdmin = scopes.some(s => s.endsWith('_manage'));
