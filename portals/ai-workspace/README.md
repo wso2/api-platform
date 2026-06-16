@@ -106,7 +106,7 @@ npm run dev
 ```
 This starts the AI Workspace frontend in development mode.
 
-Update platform-api/config/config.toml and set the following configuration:
+Update platform-api/src/config/config.toml and set the following configuration:
 
 ```bash
 [auth.file_based]
