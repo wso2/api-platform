@@ -38,52 +38,60 @@ type gatewaySubscription struct {
 // regardless of how many WebSocket connections that gateway has to this instance.
 // This enables HA: any replica can publish an event; only the replica holding the
 // WebSocket connection will actually deliver it.
+//
+// Connection lifecycle is derived directly from the Manager's connection map (the
+// authoritative source of truth) rather than a local ref-count. A local counter
+// can desync when deliver() calls manager.Unregister() for a failed send while
+// the deliver loop is still iterating: an onDisconnect for an old connection fires
+// after a new connection (and new subscription) has already been established,
+// decrementing the counter for the wrong lifecycle and tearing down the live goroutine.
 type EventDispatcher struct {
-	hub      eventhub.EventHub
-	manager  *ws.Manager
-	logger   *slog.Logger
-	mu       sync.Mutex
-	subs     map[string]*gatewaySubscription // gatewayID → subscription
-	refCount map[string]int                  // active connection count per gateway on this instance
-	ctx      context.Context
-	cancel   context.CancelFunc
+	hub     eventhub.EventHub
+	manager *ws.Manager
+	logger  *slog.Logger
+	mu      sync.Mutex
+	subs    map[string]*gatewaySubscription // gatewayID → subscription
+	ctx     context.Context
+	cancel  context.CancelFunc
 }
 
 // NewEventDispatcher creates an EventDispatcher backed by the given EventHub.
 func NewEventDispatcher(hub eventhub.EventHub, manager *ws.Manager, logger *slog.Logger) *EventDispatcher {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &EventDispatcher{
-		hub:      hub,
-		manager:  manager,
-		logger:   logger,
-		subs:     make(map[string]*gatewaySubscription),
-		refCount: make(map[string]int),
-		ctx:      ctx,
-		cancel:   cancel,
+		hub:    hub,
+		manager: manager,
+		logger:  logger,
+		subs:    make(map[string]*gatewaySubscription),
+		ctx:     ctx,
+		cancel:  cancel,
 	}
 }
 
 // OnGatewayConnected is called whenever a WebSocket connection for gatewayID is registered
-// on this instance. On the first connection, it subscribes to the EventHub for that gateway
-// and starts a dispatch goroutine. Subsequent connections only increment the ref count.
-func (d *EventDispatcher) OnGatewayConnected(gatewayID string) {
+// on this instance. On the first connection it subscribes to the EventHub and starts a
+// dispatch goroutine. Subsequent connections for the same gateway return immediately —
+// deliver() fans out to all connections returned by manager.GetConnections(), so a
+// single subscription covers every replica of the gateway on this platform-api instance.
+func (d *EventDispatcher) OnGatewayConnected(gatewayID string) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
-	d.refCount[gatewayID]++
-	if d.refCount[gatewayID] > 1 {
-		return // already subscribed
+	// Subscription already exists — the dispatch goroutine is running and will
+	// deliver to all connections the Manager currently holds for this gateway.
+	if _, exists := d.subs[gatewayID]; exists {
+		return nil
 	}
 
 	if err := d.hub.RegisterGateway(gatewayID); err != nil {
 		d.logger.Error("EventDispatcher: failed to register gateway", "gatewayID", gatewayID, "error", err)
+		return fmt.Errorf("failed to register gateway: %w", err)
 	}
 
 	ch, err := d.hub.Subscribe(gatewayID)
 	if err != nil {
 		d.logger.Error("EventDispatcher: failed to subscribe to gateway events", "gatewayID", gatewayID, "error", err)
-		d.refCount[gatewayID]--
-		return
+		return fmt.Errorf("failed to subscribe to gateway events: %w", err)
 	}
 
 	done := make(chan struct{})
@@ -91,26 +99,32 @@ func (d *EventDispatcher) OnGatewayConnected(gatewayID string) {
 	go d.dispatchLoop(gatewayID, ch, done)
 
 	d.logger.Debug("EventDispatcher: subscribed to gateway", "gatewayID", gatewayID)
+	return nil
 }
 
 // OnGatewayDisconnected is called whenever a WebSocket connection for gatewayID is removed
-// from this instance. When the last connection is gone, it unsubscribes from the EventHub
-// and stops the dispatch goroutine.
-func (d *EventDispatcher) OnGatewayDisconnected(gatewayID string) {
+// from this instance. It consults the Manager's live connection map: if connections remain
+// the subscription is kept alive; only when the Manager reports zero connections for this
+// gateway is the EventHub subscription torn down.
+//
+// Using the Manager as the source of truth prevents the desync that a local ref-count
+// introduces: a stale onDisconnect (from a connection removed during a previous deliver
+// loop iteration) can fire after a new connection has already been established, and would
+// incorrectly tear down the fresh subscription if counted locally.
+func (d *EventDispatcher) OnGatewayDisconnected(gatewayID string) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
-	if d.refCount[gatewayID] <= 0 {
-		return
-	}
-	d.refCount[gatewayID]--
-	if d.refCount[gatewayID] > 0 {
-		return // other connections remain
+	// Manager.Unregister removes the connection before calling this hook, so
+	// GetConnections reflects the post-removal state. If any connections remain,
+	// keep the subscription alive.
+	if len(d.manager.GetConnections(gatewayID)) > 0 {
+		return nil
 	}
 
 	sub, ok := d.subs[gatewayID]
 	if !ok {
-		return
+		return nil
 	}
 
 	if err := d.hub.Unsubscribe(gatewayID, sub.ch); err != nil {
@@ -118,9 +132,9 @@ func (d *EventDispatcher) OnGatewayDisconnected(gatewayID string) {
 	}
 	close(sub.done)
 	delete(d.subs, gatewayID)
-	delete(d.refCount, gatewayID)
 
 	d.logger.Debug("EventDispatcher: unsubscribed from gateway", "gatewayID", gatewayID)
+	return nil
 }
 
 // Shutdown stops all dispatch goroutines and releases resources. Call during graceful shutdown.
@@ -137,7 +151,6 @@ func (d *EventDispatcher) Shutdown() {
 		close(sub.done)
 	}
 	d.subs = make(map[string]*gatewaySubscription)
-	d.refCount = make(map[string]int)
 }
 
 // dispatchLoop reads events from ch and delivers them to local WebSocket connections.
@@ -178,6 +191,11 @@ func (d *EventDispatcher) deliver(gatewayID string, event eventhub.Event) {
 				"error", err,
 			)
 			conn.DeliveryStats.IncrementFailed(fmt.Sprintf("send error: %v", err))
+			// A send error means the transport is broken. Unregister the connection
+			// immediately so the gateway reconnects and triggers a cursor reset +
+			// replay via initialPollSkewWindow, rather than waiting for the heartbeat
+			// monitor to detect the stale connection.
+			d.manager.Unregister(gatewayID, conn.ConnectionID)
 		} else {
 			successCount++
 			conn.DeliveryStats.IncrementTotalSent()
