@@ -23,7 +23,9 @@
 log_level = "INFO"   # DEBUG | INFO | WARN | ERROR
 port      = "9243"
 
-# Set to true in production to require JWT auth on POST /api/v1/organizations.
+# Controls authentication for POST /api/v1/organizations.
+# When true, the endpoint requires both a valid Bearer JWT and the
+# ap:organization:manage scope; requests without that scope are rejected.
 # org_creation_requires_auth = false
 
 # ---------------------------------------------------------------------------
