@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, WSO2 LLC. (http://www.wso2.com) All Rights Reserved.
+ * Copyright (c) 2024, WSO2 LLC. (http://www.wso2.com) All Rights Reserved.
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -16,47 +16,28 @@
  * under the License.
  */
 const { Sequelize, DataTypes } = require('sequelize');
-const sequelize = require('../db/sequelize');
-const { Organization } = require('./organization');
+const sequelize = require('../db/sequelizeConfig')
 
-
-const Labels = sequelize.define('DP_LABELS', {
-
-    LABEL_ID: {
+const APIImageMetadata = sequelize.define('DP_API_IMAGEDATA', {
+    API_ID: {
         type: DataTypes.UUID,
-        defaultValue: Sequelize.UUIDV4,
         primaryKey: true
     },
-    ORG_ID: {
-        type: DataTypes.UUID,
-        defaultValue: Sequelize.UUIDV4,
-        unique: true
-    },
-    NAME: {
+    IMAGE_TAG: {
         type: DataTypes.STRING,
-        allowNull: false
+        allowNull: false,
+        primaryKey: true
     },
-    DISPLAY_NAME: {
+    IMAGE_NAME: {
         type: DataTypes.STRING,
-        allowNull: false
-    },
+        allowNull: false,
+        primaryKey: true
+    }
 }, {
     timestamps: false,
-    tableName: 'DP_LABELS',
+    tableName: 'DP_API_IMAGEDATA',
     returning: true
-},
-    {
-        indexes: [
-            {
-                unique: true,
-                fields: ['NAME', 'DISPLAY_NAME', 'ORG_ID']
-            }
-        ]
-    });
+});
 
-Labels.belongsTo(Organization, {
-    foreignKey: 'ORG_ID'
-})
-
-module.exports = Labels;
-
+// Export both models
+module.exports = APIImageMetadata;

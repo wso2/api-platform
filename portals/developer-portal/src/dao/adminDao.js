@@ -22,11 +22,11 @@ const { Application, ApplicationKeyMapping, SubscriptionMapping } = require('../
 const Provider = require('../models/provider');
 const apiDao = require('./apiMetadata');
 const { APIMetadata } = require('../models/apiMetadata');
-const APIImageMetadata = require('../models/apiImages');
+const APIImageMetadata = require('../models/apiImage');
 const SubscriptionPolicy = require('../models/subscriptionPolicy');
 const logger = require('../config/logger');
 const { decrypt } = require('../utils/cryptoUtil');
-const sequelize = require('../db/sequelize');
+const sequelize = require('../db/sequelizeConfig');
 
 const createOrganization = async (orgData, t) => {
     let devPortalID = "";

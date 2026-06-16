@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024, WSO2 LLC. (http://www.wso2.com) All Rights Reserved.
+ * Copyright (c) 2025, WSO2 LLC. (http://www.wso2.com) All Rights Reserved.
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -16,28 +16,39 @@
  * under the License.
  */
 const { Sequelize, DataTypes } = require('sequelize');
-const sequelize = require('../db/sequelize')
+const sequelize = require('../db/sequelizeConfig');
 
-const APIImageMetadata = sequelize.define('DP_API_IMAGEDATA', {
-    API_ID: {
+const View = sequelize.define('DP_VIEWS', {
+    VIEW_ID: {
         type: DataTypes.UUID,
+        defaultValue: Sequelize.UUIDV4,
         primaryKey: true
     },
-    IMAGE_TAG: {
-        type: DataTypes.STRING,
-        allowNull: false,
-        primaryKey: true
+    ORG_ID: {
+        type: DataTypes.UUID,
+        defaultValue: Sequelize.UUIDV4,
+        unique: true
     },
-    IMAGE_NAME: {
+    NAME: {
         type: DataTypes.STRING,
-        allowNull: false,
-        primaryKey: true
+        allowNull: false
+    },
+    DISPLAY_NAME: {
+        type: DataTypes.STRING,
+        allowNull: false
     }
 }, {
     timestamps: false,
-    tableName: 'DP_API_IMAGEDATA',
+    tableName: 'DP_VIEWS',
     returning: true
-});
+},
+    {
+        indexes: [
+            {
+                unique: true,
+                fields: ['NAME', 'DISPLAY_NAME', 'ORG_ID']
+            }
+        ]
+    });
 
-// Export both models
-module.exports = APIImageMetadata;
+module.exports = View;

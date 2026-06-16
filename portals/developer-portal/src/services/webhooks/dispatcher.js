@@ -16,10 +16,10 @@
  * under the License.
  */
 const { config } = require('../../config/configLoader');
-const eventDao = require('../../dao/event');
+const eventDao = require('../../dao/eventDao');
 const { matchSubscribers } = require('./subscriberRegistry');
 const { onPublished } = require('./eventPublisher');
-const sequelize = require('../../db/sequelize');
+const sequelize = require('../../db/sequelizeConfig');
 const DPEvent = require('../../models/event');
 const logger = require('../../config/logger');
 

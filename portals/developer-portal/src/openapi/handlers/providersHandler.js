@@ -22,7 +22,7 @@
  */
 const adminService = require('../../services/adminService');
 const { requireCsrfForMutatingApi } = require('../../middlewares/csrfProtection')
-const { compose } = require('./_compose');
+const { compose } = require('./compose');
 
 module.exports = {
     createProvider: compose(requireCsrfForMutatingApi, adminService.createProvider),

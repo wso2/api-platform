@@ -20,9 +20,9 @@ const { renderTemplateFromAPI, renderTemplate } = require('../utils/util');
 const { config } = require('../config/configLoader');
 const logger = require('../config/logger');
 const constants = require('../utils/constants');
-const adminDao = require('../dao/admin');
-const apiDao = require('../dao/apiMetadata');
-const subDao = require('../dao/subscription');
+const adminDao = require('../dao/adminDao');
+const apiDao = require('../dao/apiMetadataDao');
+const subDao = require('../dao/subscriptionDao');
 const apiMetadataService = require('../services/apiMetadataService');
 const { apiUsesApiKeySecurity } = require('../utils/apiDefinitionUtil');
 

@@ -22,10 +22,10 @@ const logger = require('../config/logger');
 const constants = require('../utils/constants');
 const path = require('path');
 const fs = require('fs');
-const adminDao = require('../dao/admin');
-const { ApplicationDTO } = require('../dto/application');
+const adminDao = require('../dao/adminDao');
+const { ApplicationDTO } = require('../dto/applicationDto');
 const sampleApiLoader = require('../utils/sampleApiLoader');
-const kmDao = require('../dao/keyManager');
+const kmDao = require('../dao/keyManagerDao');
 const adminService = require('../services/adminService');
 
 const orgIDValue = async (orgName) => {

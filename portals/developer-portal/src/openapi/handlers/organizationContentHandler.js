@@ -23,7 +23,7 @@
 const adminService = require('../../services/adminService');
 const devportalService = require('../../services/devportalService');
 const { requireCsrfForMutatingApi } = require('../../middlewares/csrfProtection')
-const { compose } = require('./_compose');
+const { compose } = require('./compose');
 
 module.exports = {
     createOrgContent: compose(requireCsrfForMutatingApi, adminService.createOrgContent),

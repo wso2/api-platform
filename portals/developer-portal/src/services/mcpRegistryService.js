@@ -17,11 +17,11 @@
  */
 /* eslint-disable no-undef */
 const { Sequelize, Op } = require('sequelize');
-const sequelize = require('../db/sequelize');
+const sequelize = require('../db/sequelizeConfig');
 const { APIMetadata } = require('../models/apiMetadata');
-const apiDao = require('../dao/apiMetadata');
-const adminDao = require('../dao/admin');
-const ServerResponseDTO = require('../dto/mcpServer');
+const apiDao = require('../dao/apiMetadataDao');
+const adminDao = require('../dao/adminDao');
+const ServerResponseDTO = require('../dto/mcpServerDto');
 const logger = require('../config/logger');
 const constants = require('../utils/constants');
 

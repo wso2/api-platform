@@ -17,22 +17,22 @@
  */
 /* eslint-disable no-undef */
 const { CustomError } = require('../utils/errors/customErrors');
-const adminDao = require('../dao/admin');
-const apiDao = require('../dao/apiMetadata');
+const adminDao = require('../dao/adminDao');
+const apiDao = require('../dao/apiMetadataDao');
 const util = require('../utils/util');
 const fs = require('fs');
 const path = require('path');
 const logger = require('../config/logger');
-const IdentityProviderDTO = require("../dto/identityProvider");
+const IdentityProviderDTO = require("../dto/identityProviderDto");
 const constants = require('../utils/constants');
-const sequelize = require("../db/sequelize");
-const { ApplicationDTO, SubscriptionDTO } = require('../dto/application');
-const APIDTO = require('../dto/apiDTO');
+const sequelize = require('../db/sequelizeConfig');
+const { ApplicationDTO, SubscriptionDTO } = require('../dto/applicationDto');
+const APIDTO = require('../dto/apiDto');
 const { config } = require('../config/configLoader');
 const yaml = require('js-yaml');
 const { Sequelize } = require("sequelize");
-const { trackGenerateCredentials, trackSubscribeApi, trackUnsubscribeApi } = require('../utils/telemetry');
-const kmDao = require('../dao/keyManager');
+const { trackGenerateCredentials, trackSubscribeApi, trackUnsubscribeApi } = require('../utils/telemetryUtil');
+const kmDao = require('../dao/keyManagerDao');
 const { getKeyManagerAdapter } = require('../adapters/keyManager');
 
 function mapYamlToOrganization(parsed) {

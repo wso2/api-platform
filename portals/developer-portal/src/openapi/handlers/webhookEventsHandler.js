@@ -24,7 +24,7 @@
  */
 const webhookAdminController = require('../../controllers/webhookAdminController');
 const { requireCsrfForMutatingApi } = require('../../middlewares/csrfProtection');
-const { compose } = require('./_compose');
+const { compose } = require('./compose');
 
 module.exports = {
     listWebhookEvents: webhookAdminController.listEvents,

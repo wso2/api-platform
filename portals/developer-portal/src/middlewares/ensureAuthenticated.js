@@ -19,12 +19,12 @@
 const minimatch = require('minimatch');
 const constants = require('../utils/constants');
 const { config } = require('../config/configLoader');
-const adminDao = require('../dao/admin');
+const adminDao = require('../dao/adminDao');
 const { validationResult } = require('express-validator');
 const { jwtVerify, createRemoteJWKSet, importX509 } = require('jose');
 const util = require('../utils/util');
 const { CustomError } = require('../utils/errors/customErrors');
-const IdentityProviderDTO = require("../dto/identityProvider");
+const IdentityProviderDTO = require("../dto/identityProviderDto");
 const jwt = require('jsonwebtoken');
 const axios = require('axios');
 const logger = require('../config/logger');

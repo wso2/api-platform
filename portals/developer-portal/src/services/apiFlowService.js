@@ -15,10 +15,10 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-const apiFlowDao = require('../dao/apiFlow');
-const adminDao = require('../dao/admin');
-const apiMetadataDao = require('../dao/apiMetadata');
-const sequelize = require('../db/sequelize');
+const apiFlowDao = require('../dao/apiFlowDao');
+const adminDao = require('../dao/adminDao');
+const apiMetadataDao = require('../dao/apiMetadataDao');
+const sequelize = require('../db/sequelizeConfig');
 const { UniqueConstraintError } = require('sequelize');
 const logger = require('../config/logger');
 const { config } = require('../config/configLoader');

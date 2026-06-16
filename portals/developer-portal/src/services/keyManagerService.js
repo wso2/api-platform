@@ -17,8 +17,8 @@
  */
 const yaml = require('js-yaml');
 const { Sequelize } = require('sequelize');
-const kmDao = require('../dao/keyManager');
-const { KeyManagerDTO, KeyManagerPublicDTO } = require('../dto/keyManager');
+const kmDao = require('../dao/keyManagerDao');
+const { KeyManagerDTO, KeyManagerPublicDTO } = require('../dto/keyManagerDto');
 const constants = require('../utils/constants');
 const logger = require('../config/logger');
 

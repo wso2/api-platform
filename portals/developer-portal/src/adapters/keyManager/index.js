@@ -16,7 +16,7 @@
  * under the License.
  */
 const constants = require('../../utils/constants');
-const { decryptAdminCredentials } = require('../../dao/keyManager');
+const { decryptAdminCredentials } = require('../../dao/keyManagerDao');
 const AsgardeoAdapter = require('./asgardeoAdapter');
 // Other adapters (WSO2IS, Keycloak, GenericOIDC) are kept but not yet wired up.
 // Uncomment the relevant entries in ADAPTER_MAP when they are ready to use.

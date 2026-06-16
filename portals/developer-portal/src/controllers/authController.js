@@ -24,12 +24,12 @@ const { logUserAction } = require('../middlewares/auditLogger');
 const { config } = require('../config/configLoader');
 const constants = require('../utils/constants');
 const util = require('../utils/util');
-const adminDao = require('../dao/admin');
-const IdentityProviderDTO = require("../dto/identityProvider");
+const adminDao = require('../dao/adminDao');
+const IdentityProviderDTO = require("../dto/identityProviderDto");
 const minimatch = require('minimatch');
 const { validationResult } = require('express-validator');
 const { renderGivenTemplate } = require('../utils/util');
-const { trackLoginTrigger, trackLogoutTrigger } = require('../utils/telemetry');
+const { trackLoginTrigger, trackLogoutTrigger } = require('../utils/telemetryUtil');
 const { extractPlatformJwtClaims } = require('../utils/platformJwt');
 
 

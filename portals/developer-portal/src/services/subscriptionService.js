@@ -15,9 +15,9 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-const apiDao = require('../dao/apiMetadata');
-const subDao = require('../dao/subscription');
-const sequelize = require('../db/sequelize');
+const apiDao = require('../dao/apiMetadataDao');
+const subDao = require('../dao/subscriptionDao');
+const sequelize = require('../db/sequelizeConfig');
 const { publish: publishWebhookEvent } = require('./webhooks/eventPublisher');
 const util = require('../utils/util');
 const logger = require('../config/logger');

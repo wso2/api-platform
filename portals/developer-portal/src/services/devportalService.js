@@ -17,7 +17,7 @@
  */
 /* eslint-disable no-undef */
 const adminService = require('../services/adminService');
-const adminDao = require('../dao/admin');
+const adminDao = require('../dao/adminDao');
 const util = require('../utils/util');
 const logger = require('../config/logger');
 const constants = require('../utils/constants');

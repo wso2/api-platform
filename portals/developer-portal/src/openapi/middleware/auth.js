@@ -37,8 +37,8 @@ const { jwtVerify, createRemoteJWKSet, importX509 } = require('jose');
 
 const { config } = require('../../config/configLoader');
 const constants = require('../../utils/constants');
-const adminDao = require('../../dao/admin');
-const IdentityProviderDTO = require('../../dto/identityProvider');
+const adminDao = require('../../dao/adminDao');
+const IdentityProviderDTO = require('../../dto/identityProviderDto');
 const logger = require('../../config/logger');
 const { extractPlatformJwtClaims } = require('../../utils/platformJwt');
 

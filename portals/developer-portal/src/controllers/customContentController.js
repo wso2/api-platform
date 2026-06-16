@@ -21,7 +21,7 @@ const { config } = require('../config/configLoader');
 const markdown = require('marked');
 const fs = require('fs');
 const path = require('path');
-const adminDao = require('../dao/admin');
+const adminDao = require('../dao/adminDao');
 const constants = require('../utils/constants');
 const logger = require('../config/logger');
 

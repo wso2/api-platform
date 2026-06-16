@@ -28,7 +28,7 @@ let sequelize;
 if (dialect === 'sqlite') {
     sequelize = new Sequelize({
         dialect: 'sqlite',
-        dialectModule: require('./better-sqlite3-compat'),
+        dialectModule: require('./betterSqlite3Compat'),
         storage: config.db.storage || './devportal.db',
         logging: false,
     });

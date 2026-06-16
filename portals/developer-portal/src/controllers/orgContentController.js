@@ -22,10 +22,10 @@ const Handlebars = require('handlebars');
 const logger = require('../config/logger');
 const { logUserAction } = require('../middlewares/auditLogger');
 const { renderTemplate, renderTemplateFromAPI } = require('../utils/util');
-const { trackHomePageVisit } = require('../utils/telemetry');
+const { trackHomePageVisit } = require('../utils/telemetryUtil');
 const { config } = require('../config/configLoader');
 const constants = require('../utils/constants');
-const adminDao = require('../dao/admin');
+const adminDao = require('../dao/adminDao');
 
 
 const loadOrganizationContent = async (req, res) => {

@@ -22,7 +22,7 @@ const marked = require('marked');
 const Handlebars = require('handlebars');
 const logger = require('../config/logger');
 const { CustomError } = require('../utils/errors/customErrors');
-const adminDao = require('../dao/admin');
+const adminDao = require('../dao/adminDao');
 const constants = require('../utils/constants');
 const unzipper = require('unzipper');
 const axios = require('axios');
@@ -31,8 +31,8 @@ const https = require('https');
 const { config } = require('../config/configLoader');
 const { body, param, query } = require('express-validator');
 const { Sequelize } = require('sequelize');
-const apiDao = require('../dao/apiMetadata');
-const subscriptionPolicyDTO = require('../dto/subscriptionPolicy');
+const apiDao = require('../dao/apiMetadataDao');
+const subscriptionPolicyDTO = require('../dto/subscriptionPolicyDto');
 const jwt = require('jsonwebtoken');
 const filePrefix = '/src/defaultContent/';
 
@@ -618,8 +618,8 @@ async function readFilesInDirectory(directory, orgId, protocol, host, viewName, 
                         strContent = strContent.replace(/@import\s*['"]\/styles\/home\.css['"];/g, `@import url("${constants.DEVPORTAL_API.orgPath(orgId)}/views/${viewName}/layout?fileType=style&fileName=home.css");`);
                         strContent = strContent.replace(/@import\s*['"]\/styles\/main\.css['"];/g, `@import url("${constants.DEVPORTAL_API.orgPath(orgId)}/views/${viewName}/layout?fileType=style&fileName=main.css");`);
                     }
-                    strContent = strContent.replace(/"\/images\/(devportalLogo\.[^"]+)/g, `"${constants.DEVPORTAL_API.orgPath(orgId)}/views/${viewName}/layout?fileType=image&fileName=$1`);
-                    strContent = strContent.replace(/'\/images\/(devportalLogo\.[^']+)/g, `'${constants.DEVPORTAL_API.orgPath(orgId)}/views/${viewName}/layout?fileType=image&fileName=$1`);
+                    strContent = strContent.replace(/"\/images\/(devportal-logo\.[^"]+)/g, `"${constants.DEVPORTAL_API.orgPath(orgId)}/views/${viewName}/layout?fileType=image&fileName=$1`);
+                    strContent = strContent.replace(/'\/images\/(devportal-logo\.[^']+)/g, `'${constants.DEVPORTAL_API.orgPath(orgId)}/views/${viewName}/layout?fileType=image&fileName=$1`);
                     content = Buffer.from(strContent, constants.CHARSET_UTF8);
                 } else if (file.name.endsWith(".hbs") && dir.endsWith("layout")) {
                     fileType = "layout"

@@ -78,7 +78,7 @@ function tagToFileName(tag) {
             if (i === 0) return lower;
             return lower.charAt(0).toUpperCase() + lower.slice(1);
         })
-        .join('');
+        .join('') + 'Handler';
 }
 
 function notImplementedHandler(operationId, tag) {

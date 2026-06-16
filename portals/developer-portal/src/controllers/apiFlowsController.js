@@ -15,9 +15,9 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-const apiFlowDao = require('../dao/apiFlow');
-const adminDao = require('../dao/admin');
-const apiMetadataDao = require('../dao/apiMetadata');
+const apiFlowDao = require('../dao/apiFlowDao');
+const adminDao = require('../dao/adminDao');
+const apiMetadataDao = require('../dao/apiMetadataDao');
 const apiFlowService = require('../services/apiFlowService');
 const logger = require('../config/logger');
 const { renderTemplate, loadLayoutFromAPI, renderGivenTemplate, renderTemplateFromAPI, isAiDisabledForPortal } = require('../utils/util');

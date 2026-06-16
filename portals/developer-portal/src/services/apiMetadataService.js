@@ -17,9 +17,9 @@
  */
 /* eslint-disable no-undef */
 const { Sequelize } = require("sequelize");
-const sequelize = require("../db/sequelize");
-const apiDao = require("../dao/apiMetadata");
-const adminDao = require("../dao/admin");
+const sequelize = require('../db/sequelizeConfig');
+const apiDao = require("../dao/apiMetadataDao");
+const adminDao = require("../dao/adminDao");
 const util = require("../utils/util");
 const logger = require("../config/logger");
 const { config } = require('../config/configLoader');
@@ -27,13 +27,13 @@ const path = require("path");
 const fs = require("fs").promises;
 const fsDir = require("fs");
 const yaml = require('js-yaml');
-const APIDTO = require("../dto/apiDTO");
-const ViewDTO = require("../dto/views");
-const APIDocDTO = require("../dto/apiDoc");
+const APIDTO = require("../dto/apiDto");
+const ViewDTO = require("../dto/viewsDto");
+const APIDocDTO = require("../dto/apiDocDto");
 const constants = require("../utils/constants");
-const subscriptionPolicyDTO = require("../dto/subscriptionPolicy");
+const subscriptionPolicyDTO = require("../dto/subscriptionPolicyDto");
 const { CustomError } = require("../utils/errors/customErrors");
-const LabelDTO = require("../dto/label");
+const LabelDTO = require("../dto/labelDto");
 
 const createAPIMetadata = async (req, res) => {
     const orgId = req.params.orgId;

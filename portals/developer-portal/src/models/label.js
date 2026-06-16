@@ -16,10 +16,13 @@
  * under the License.
  */
 const { Sequelize, DataTypes } = require('sequelize');
-const sequelize = require('../db/sequelize');
+const sequelize = require('../db/sequelizeConfig');
+const { Organization } = require('./organization');
 
-const View = sequelize.define('DP_VIEWS', {
-    VIEW_ID: {
+
+const Labels = sequelize.define('DP_LABELS', {
+
+    LABEL_ID: {
         type: DataTypes.UUID,
         defaultValue: Sequelize.UUIDV4,
         primaryKey: true
@@ -36,10 +39,10 @@ const View = sequelize.define('DP_VIEWS', {
     DISPLAY_NAME: {
         type: DataTypes.STRING,
         allowNull: false
-    }
+    },
 }, {
     timestamps: false,
-    tableName: 'DP_VIEWS',
+    tableName: 'DP_LABELS',
     returning: true
 },
     {
@@ -51,4 +54,9 @@ const View = sequelize.define('DP_VIEWS', {
         ]
     });
 
-module.exports = View;
+Labels.belongsTo(Organization, {
+    foreignKey: 'ORG_ID'
+})
+
+module.exports = Labels;
+

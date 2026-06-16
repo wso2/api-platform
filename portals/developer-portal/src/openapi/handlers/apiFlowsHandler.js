@@ -18,17 +18,20 @@
  */
 
 /*
- * Tag: API Keys
+ * Tag: API Flows
  *
- * Mutating ops are CSRF-protected.
+ * Mutating ops are CSRF-protected with compose(requireCsrfForMutatingApi, serviceFn). Non-mutating ops are just serviceFn.
  */
-const apiKeyController = require('../../controllers/apiKeyController');
+
+const apiFlowService = require('../../services/apiFlowService');
 const { requireCsrfForMutatingApi } = require('../../middlewares/csrfProtection');
-const { compose } = require('./_compose');
+const { compose } = require('./compose');
 
 module.exports = {
-    generateApiKey: compose(requireCsrfForMutatingApi, apiKeyController.generateApiKey),
-    listApiKeys: apiKeyController.listApiKeys,
-    regenerateApiKey: compose(requireCsrfForMutatingApi, apiKeyController.regenerateApiKey),
-    revokeApiKey: compose(requireCsrfForMutatingApi, apiKeyController.revokeApiKey),
+    createApiFlow: compose(requireCsrfForMutatingApi, apiFlowService.createAPIFlow),
+    getAllApiFlows: apiFlowService.getAllAPIFlows,
+    getApiFlow: apiFlowService.getAPIFlow,
+    updateApiFlow: compose(requireCsrfForMutatingApi, apiFlowService.updateAPIFlow),
+    deleteApiFlow: compose(requireCsrfForMutatingApi, apiFlowService.deleteAPIFlow),
+    generatePrompt: compose(requireCsrfForMutatingApi, apiFlowService.generatePrompt),
 };

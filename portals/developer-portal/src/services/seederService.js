@@ -18,8 +18,8 @@
 'use strict';
 
 const { Sequelize } = require('sequelize');
-const adminDao = require('../dao/admin');
-const apiDao = require('../dao/apiMetadata');
+const adminDao = require('../dao/adminDao');
+const apiDao = require('../dao/apiMetadataDao');
 const { config } = require('../config/configLoader');
 const constants = require('../utils/constants');
 const logger = require('../config/logger');

@@ -16,7 +16,7 @@
  * under the License.
  */
 const { Sequelize, DataTypes } = require('sequelize');
-const sequelize = require('../db/sequelize')
+const sequelize = require('../db/sequelizeConfig')
 const { Organization } = require('./organization')
 
 const IdentityProvider = sequelize.define('DP_IDENTITY_PROVIDER', {

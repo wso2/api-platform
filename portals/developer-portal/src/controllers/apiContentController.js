@@ -25,15 +25,15 @@ const path = require('path');
 const exphbs = require('express-handlebars');
 const util = require('../utils/util');
 const constants = require('../utils/constants');
-const adminDao = require('../dao/admin');
-const apiDao = require('../dao/apiMetadata');
-const subDao = require('../dao/subscription');
+const adminDao = require('../dao/adminDao');
+const apiDao = require('../dao/apiMetadataDao');
+const subDao = require('../dao/subscriptionDao');
 const apiMetadataService = require('../services/apiMetadataService');
 const { apiUsesApiKeySecurity, findSubscriptionTokenHeader } = require('../utils/apiDefinitionUtil');
 const sampleApiLoader = require('../utils/sampleApiLoader');
 const adminService = require('../services/adminService');
 const apiFlowService = require('../services/apiFlowService');
-const { ApplicationDTO } = require('../dto/application');
+const { ApplicationDTO } = require('../dto/applicationDto');
 const { buildSchema, getIntrospectionQuery, graphql: executeGraphQL } = require('graphql');
 const yaml = require('js-yaml');
 const generateArray = (length) => Array.from({ length });
@@ -1246,7 +1246,7 @@ async function buildLlmsTxtTemplateContent(req, orgID, orgName, viewName, config
         if (byType[type]) byType[type].push(api);
     }
 
-    const apiMetadataDao = require('../dao/apiMetadata');
+    const apiMetadataDao = require('../dao/apiMetadataDao');
     const viewId = await apiMetadataDao.getViewID(orgID, viewName);
     const allApiFlows = await apiFlowService.getAllAPIFlowsFromDB(orgID, viewId);
     const allPublishedWorkflows = allApiFlows.filter(flow => flow.status === 'PUBLISHED');

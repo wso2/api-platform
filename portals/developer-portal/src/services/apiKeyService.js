@@ -16,11 +16,11 @@
  * under the License.
  */
 const crypto = require('crypto');
-const sequelize = require('../db/sequelize');
-const apiKeyDao = require('../dao/apiKey');
-const apiMetadataDao = require('../dao/apiMetadata');
+const sequelize = require('../db/sequelizeConfig');
+const apiKeyDao = require('../dao/apiKeyDao');
+const apiMetadataDao = require('../dao/apiMetadataDao');
 const { publish } = require('./webhooks/eventPublisher');
-const subDao = require('../dao/subscription');
+const subDao = require('../dao/subscriptionDao');
 const logger = require('../config/logger');
 const { config } = require('../config/configLoader');
 

@@ -16,7 +16,7 @@
  * under the License.
  */
 const EventEmitter = require('events');
-const eventDao = require('../../dao/event');
+const eventDao = require('../../dao/eventDao');
 const { matchSubscribers } = require('./subscriberRegistry');
 const { encryptToSubscriber } = require('./envelopeCrypto');
 const logger = require('../../config/logger');

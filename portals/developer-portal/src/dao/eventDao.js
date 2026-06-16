@@ -16,7 +16,7 @@
  * under the License.
  */
 const { Op, Sequelize } = require('sequelize');
-const sequelize = require('../db/sequelize');
+const sequelize = require('../db/sequelizeConfig');
 const DPEvent = require('../models/event');
 const DPEventDelivery = require('../models/eventDelivery');
 

@@ -38,9 +38,9 @@ const settingsRoute = require('./routes/configureRoute');
 const apiFlowsRoute = require('./routes/apiFlowsRoute');
 const { v4: uuidv4 } = require('uuid');
 const util = require('./utils/util');
-const sessionStore = require('./db/sessionStore');
+const sessionStore = require('./db/sessionStoreConfig');
 const { registerHelpers } = require('./helpers/handlebarsHelpers');
-const { configurePassport } = require('./middlewares/passport');
+const { configurePassport } = require('./middlewares/passportConfig');
 
 const app = express();
 // const secret = crypto.randomBytes(64).toString('hex');

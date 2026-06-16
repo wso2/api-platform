@@ -15,7 +15,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-const eventDao = require('../dao/event');
+const eventDao = require('../dao/eventDao');
 const logger = require('../config/logger');
 
 function formatDelivery(d) {

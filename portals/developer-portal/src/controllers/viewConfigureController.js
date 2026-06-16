@@ -18,8 +18,8 @@
 const fs = require('fs');
 const path = require('path');
 const logger = require('../config/logger');
-const adminDao = require('../dao/admin');
-const apiMetadataDao = require('../dao/apiMetadata');
+const adminDao = require('../dao/adminDao');
+const apiMetadataDao = require('../dao/apiMetadataDao');
 const apiFlowService = require('../services/apiFlowService');
 const { renderGivenTemplate, loadLayoutFromAPI } = require('../utils/util');
 const { getSessionCsrfToken } = require('../middlewares/csrfProtection');
