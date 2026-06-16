@@ -141,7 +141,7 @@ Every scope referenced in `roles.yaml` **must** be declared in the OpenAPI catal
 
 ## Checklist for adding a resource / operation
 
-1. **Design the URL first** (Rule 5). Prefer ID-scoped action paths (`/deployments/{id}/undeploy`) and query-param filters over nested status reads.
+1. **Design the URL first** (Rule 5 + "Writing the path"): plural collections, kebab-case segments, `{id}`-scoped actions, query-param filters over property-paths.
 2. Pick the **action verb**: CRUD closed set (Rule 2) → use it; side-effect-free GET → `read` (Rule 3); genuine lifecycle op → an allowed custom verb.
 3. Build the scope `ap:<resource>[:<sub-resource>]:<action>` — snake_case, colon delimiters, nest only on real ownership (Rule 1).
 4. In the operation's `security` block, list the **specific scope + the resource's `:manage` scope**, OR-evaluated.
@@ -161,3 +161,6 @@ Every scope referenced in `roles.yaml` **must** be declared in the OpenAPI catal
 - Nesting a sub-resource that isn't owned by the parent — make it a top-level resource instead.
 - An operation that lists only the fine-grained scope and omits `:manage`.
 - A scope used in a `security` block but missing from the scope catalog (or vice versa).
+- `snake_case` or `camelCase` URL segments (`/rest_apis`, `/restApis`) — paths are kebab-case (`/rest-apis`).
+- A literal `/status`, `/default`, or `/validate` path segment for what is really a property/filter — use a query param on the collection.
+- A collection-level action verb (`POST /deployments/undeploy`) when the action targets one instance — scope it `{id}` (`/deployments/{id}/undeploy`).
