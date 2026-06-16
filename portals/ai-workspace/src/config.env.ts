@@ -37,7 +37,7 @@ import { getEnvOrDefault } from './utils/getEnvOrDefault';
 export const DEBUG = getEnvOrDefault('VITE_DEBUG', false);
 
 // Domain and environment settings
-export const DOMAIN = getEnvOrDefault('VITE_DOMAIN', 'localhost:3009');
+export const DOMAIN = getEnvOrDefault('VITE_DOMAIN', 'localhost:5380');
 //Static OIDC configuration — set these to match the root-org OIDC app in your IDP.
 // Authority is the issuer URL; the OIDC client will auto-discover endpoints from {authority}/.well-known/openid-configuration.
 export const OIDC_AUTHORITY  = getEnvOrDefault('VITE_OIDC_AUTHORITY', '');
