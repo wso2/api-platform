@@ -25,6 +25,10 @@ port      = "9243"
 
 # Validate OAuth2 scopes on incoming requests.
 enable_scope_validation = true
+# Controls authentication for POST /api/v1/organizations.
+# When true, the endpoint requires both a valid Bearer JWT and the
+# ap:organization:manage scope; requests without that scope are rejected.
+org_creation_requires_auth = true
 
 # ---------------------------------------------------------------------------
 # Database

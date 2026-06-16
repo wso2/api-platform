@@ -33,8 +33,7 @@ const Application = sequelize.define('DP_APPLICATION', {
     },
     ORG_ID: {
         type: DataTypes.UUID,
-        defaultValue: Sequelize.UUIDV4,
-        unique: true
+        defaultValue: Sequelize.UUIDV4
     },
     CREATED_BY: {
         type: DataTypes.STRING,

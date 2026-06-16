@@ -25,6 +25,7 @@ import (
 
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/utils"
 	"google.golang.org/protobuf/types/known/structpb"
+	"google.golang.org/protobuf/types/known/wrapperspb"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
@@ -40,6 +41,19 @@ import (
 type headerOp struct {
 	opType string // "set", "append", or "remove"
 	value  string // for set and append operations
+}
+
+// addAppendHeaderOps records an "append" header operation for each value in headersToAppend.
+// Append preserves any existing header values (Envoy APPEND_IF_EXISTS_OR_ADD) — unlike "set",
+// which overwrites. It mirrors how the HeadersToSet path feeds headerOps. A nil/empty map is a
+// no-op, so policies that only set/remove headers are unaffected.
+func addAppendHeaderOps(headerOps map[string][]*headerOp, headersToAppend map[string][]string) {
+	for key, values := range headersToAppend {
+		lk := strings.ToLower(key)
+		for _, value := range values {
+			headerOps[lk] = append(headerOps[lk], &headerOp{opType: "append", value: value})
+		}
+	}
 }
 
 // Mutations holds header and body mutations for request/response processing
@@ -151,6 +165,9 @@ func translateRequestActionsCore(result *executor.RequestExecutionResult, execCt
 				for key, value := range mods.HeadersToSet {
 					headerOps[strings.ToLower(key)] = append(headerOps[strings.ToLower(key)], &headerOp{opType: "set", value: value})
 				}
+
+				// Collect AppendHeader operations (preserve existing values)
+				addAppendHeaderOps(headerOps, mods.HeadersToAppend)
 
 				// Collect RemoveHeader operations (deprecated flat field)
 				for _, key := range mods.HeadersToRemove {
@@ -400,6 +417,7 @@ func TranslateRequestHeaderActions(result *executor.RequestHeaderExecutionResult
 		for k, v := range mods.HeadersToSet {
 			headerOps[strings.ToLower(k)] = append(headerOps[strings.ToLower(k)], &headerOp{opType: "set", value: v})
 		}
+		addAppendHeaderOps(headerOps, mods.HeadersToAppend)
 		for _, k := range mods.HeadersToRemove {
 			headerOps[strings.ToLower(k)] = append(headerOps[strings.ToLower(k)], &headerOp{opType: "remove", value: ""})
 		}
@@ -566,6 +584,7 @@ func TranslateRequestHeaderActionsWithBodyMerge(
 		for k, v := range mods.HeadersToSet {
 			headerOps[strings.ToLower(k)] = append(headerOps[strings.ToLower(k)], &headerOp{opType: "set", value: v})
 		}
+		addAppendHeaderOps(headerOps, mods.HeadersToAppend)
 		for _, k := range mods.HeadersToRemove {
 			headerOps[strings.ToLower(k)] = append(headerOps[strings.ToLower(k)], &headerOp{opType: "remove", value: ""})
 		}
@@ -620,6 +639,7 @@ func TranslateRequestHeaderActionsWithBodyMerge(
 		for k, v := range mods.HeadersToSet {
 			headerOps[strings.ToLower(k)] = append(headerOps[strings.ToLower(k)], &headerOp{opType: "set", value: v})
 		}
+		addAppendHeaderOps(headerOps, mods.HeadersToAppend)
 		for _, k := range mods.HeadersToRemove {
 			headerOps[strings.ToLower(k)] = append(headerOps[strings.ToLower(k)], &headerOp{opType: "remove", value: ""})
 		}
@@ -793,6 +813,7 @@ func TranslateResponseHeaderActions(result *executor.ResponseHeaderExecutionResu
 		for k, v := range mods.HeadersToSet {
 			headerOps[strings.ToLower(k)] = append(headerOps[strings.ToLower(k)], &headerOp{opType: "set", value: v})
 		}
+		addAppendHeaderOps(headerOps, mods.HeadersToAppend)
 		for _, k := range mods.HeadersToRemove {
 			headerOps[strings.ToLower(k)] = append(headerOps[strings.ToLower(k)], &headerOp{opType: "remove", value: ""})
 		}
@@ -894,6 +915,7 @@ func TranslateResponseHeaderActionsWithBodyMerge(
 		for k, v := range mods.HeadersToSet {
 			headerOps[strings.ToLower(k)] = append(headerOps[strings.ToLower(k)], &headerOp{opType: "set", value: v})
 		}
+		addAppendHeaderOps(headerOps, mods.HeadersToAppend)
 		for _, k := range mods.HeadersToRemove {
 			headerOps[strings.ToLower(k)] = append(headerOps[strings.ToLower(k)], &headerOp{opType: "remove", value: ""})
 		}
@@ -928,6 +950,7 @@ func TranslateResponseHeaderActionsWithBodyMerge(
 		for k, v := range mods.HeadersToSet {
 			headerOps[strings.ToLower(k)] = append(headerOps[strings.ToLower(k)], &headerOp{opType: "set", value: v})
 		}
+		addAppendHeaderOps(headerOps, mods.HeadersToAppend)
 		for _, k := range mods.HeadersToRemove {
 			headerOps[strings.ToLower(k)] = append(headerOps[strings.ToLower(k)], &headerOp{opType: "remove", value: ""})
 		}
@@ -1136,6 +1159,9 @@ func translateResponseActionsCore(result *executor.ResponseExecutionResult, exec
 				for key, value := range mods.HeadersToSet {
 					headerOps[strings.ToLower(key)] = append(headerOps[strings.ToLower(key)], &headerOp{opType: "set", value: value})
 				}
+
+				// Collect AppendHeader operations (preserve existing values)
+				addAppendHeaderOps(headerOps, mods.HeadersToAppend)
 
 				// Collect RemoveHeader operations (deprecated flat field)
 				for _, key := range mods.HeadersToRemove {
@@ -1680,6 +1706,12 @@ func buildHeaderMutationFromOps(headerOps map[string][]*headerOp) *extprocv3.Hea
 							RawValue: []byte(ops[i].value),
 						},
 						AppendAction: corev3.HeaderValueOption_APPEND_IF_EXISTS_OR_ADD,
+						// Envoy's ext_proc (through at least v1.38) ignores append_action and
+						// only honors the deprecated `append` BoolValue when applying
+						// set_headers mutations (mutation_utils.cc uses
+						// PROTOBUF_GET_WRAPPED_OR_DEFAULT(sh, append, false)). Without this,
+						// appends are applied as setCopy (overwrite).
+						Append: wrapperspb.Bool(true),
 					})
 				}
 			}

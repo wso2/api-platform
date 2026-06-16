@@ -26,6 +26,7 @@ func defaultConfig() *Server {
 		OpenAPISpecPath:            "./resources/openapi.yaml",
 		LLMTemplateDefinitionsPath: "./resources/default-llm-provider-templates",
 		EnableScopeValidation:      false,
+    OrgCreationRequiresAuth:    false,
 		Database: Database{
 			Driver:           "sqlite3",
 			Path:             "./data/api_platform.db",

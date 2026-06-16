@@ -267,7 +267,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	)
 
 	// Initialize handlers
-	orgHandler := handler.NewOrganizationHandler(orgService, slogger)
+	orgHandler := handler.NewOrganizationHandler(orgService, cfg.OrgCreationRequiresAuth, slogger)
 	projectHandler := handler.NewProjectHandler(projectService, slogger)
 	apiHandler := handler.NewAPIHandler(apiService, slogger)
 	devPortalHandler := handler.NewDevPortalHandler(devPortalService, slogger)
@@ -338,6 +338,10 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 
 	if !cfg.EnableScopeValidation {
 		slogger.Warn("scope validation is disabled — all authenticated requests will be allowed regardless of scope")
+	}
+
+	if !cfg.OrgCreationRequiresAuth && !demoMode() {
+		slogger.Warn("WARNING: organization creation endpoint is public — any unauthenticated caller can create organizations; set ORG_CREATION_REQUIRES_AUTH=true for production")
 	}
 
 	// Register public routes before auth middleware so they bypass authentication.
