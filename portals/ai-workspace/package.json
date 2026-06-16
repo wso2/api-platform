@@ -7,7 +7,10 @@
     "dev": "vite",
     "start": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:e2e": "CYPRESS_BASE_URL=${CYPRESS_BASE_URL:-https://host.docker.internal:5380} docker run --rm -v \"$(pwd):/e2e\" -w /e2e -e CYPRESS_BASE_URL cypress/included:13.17.0 cypress run --headless --browser electron --config-file cypress.config.js",
+    "test:e2e:local": "cypress run --headless --config-file cypress.config.js",
+    "test:e2e:open": "CYPRESS_BASE_URL=${CYPRESS_BASE_URL:-https://localhost:5380} cypress open --e2e --config-file cypress.config.js"
   },
   "dependencies": {
     "@babel/runtime-corejs3": "7.29.0",
@@ -43,6 +46,7 @@
     "@types/react-dom": "19.2.3",
     "@vitejs/plugin-basic-ssl": "1.2.0",
     "@vitejs/plugin-react": "5.1.4",
+    "cypress": "13.17.0",
     "typescript": "5.9.3",
     "vite": "5.4.21"
   }

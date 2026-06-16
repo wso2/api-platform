@@ -1,0 +1,189 @@
+/*
+ * Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+describe('AI Workspace - OpenAI provider and proxy lifecycle', () => {
+  const suffix = Date.now().toString().slice(-8);
+  const projectName = `E2E Project ${suffix}`;
+  const providerName = `E2E OpenAI Provider ${suffix}`;
+  const providerId = toSlug(providerName);
+  const providerDescription = 'Cypress OpenAI provider UI lifecycle test';
+  const proxyName = `E2E OpenAI Proxy ${suffix}`;
+  const proxyId = toSlug(proxyName);
+  const proxyDescription = 'Cypress App LLM proxy UI lifecycle test';
+
+  beforeEach(() => {
+    cy.login();
+  });
+
+  it('creates and deletes an OpenAI provider and app llm proxy using only the UI', () => {
+    cy.contains('Projects', { timeout: 30000 })
+      .should('be.visible')
+      .click();
+
+    cy.contains('button, a', /Create Project|Add New Project/, {
+      timeout: 30000,
+    })
+      .should('be.visible')
+      .click();
+
+    cy.get('input[placeholder="My AI Project"]', { timeout: 30000 })
+      .should('be.visible')
+      .type(projectName);
+    cy.get('textarea[placeholder="Short description of the project."]').type(
+      'Cypress project for provider and proxy lifecycle coverage.'
+    );
+    cy.contains('button', 'Create')
+      .should('not.be.disabled')
+      .click();
+
+    cy.contains(projectName, { timeout: 30000 }).should('be.visible');
+
+    cy.get('[data-cyid="nav-service-provider"]', { timeout: 30000 })
+      .should('be.visible')
+      .click();
+
+    cy.get('[data-cyid="add-new-provider-button"]', { timeout: 30000 })
+      .should('be.visible')
+      .click();
+
+    cy.get('[data-cyid="provider-template-openai-card"]', {
+      timeout: 30000,
+    }).should('be.visible').click();
+
+    cy.get('[data-cyid="provider-name-input"] input:visible')
+      .should('be.visible')
+      .clear()
+      .type(providerName);
+    cy.get('[data-cyid="provider-description-input"] textarea:visible')
+      .clear()
+      .type(providerDescription);
+    cy.get('[data-cyid="provider-context-input"] input:visible').should(
+      'have.value',
+      `/${providerId}`
+    );
+    cy.get('[data-cyid="provider-api-key-input"] input:visible').type(
+      'sk-e2e-openai-provider-key'
+    );
+    cy.get('[data-cyid="add-provider-button"]')
+      .should('not.be.disabled')
+      .click();
+
+    cy.location('pathname', { timeout: 30000 }).should(
+      'eq',
+      `/organizations/ap-org/service-provider/${providerId}`
+    );
+    cy.contains(providerName, { timeout: 30000 }).should('be.visible');
+
+    cy.contains('button', 'Create App LLM Proxy', { timeout: 30000 })
+      .should('be.visible')
+      .click();
+
+    cy.contains('label', 'Projects', { timeout: 30000 })
+      .parent()
+      .find('[role="combobox"]')
+      .click();
+    cy.contains('[role="option"]', projectName, { timeout: 30000 }).click();
+    cy.contains('button', 'Continue')
+      .should('not.be.disabled')
+      .click();
+
+    cy.contains('Create App LLM Proxy', { timeout: 30000 }).should(
+      'be.visible'
+    );
+    cy.get('input[placeholder="WSO2 OpenAI Provider Proxy"]', {
+      timeout: 30000,
+    })
+      .should('be.visible')
+      .type(proxyName);
+    cy.get('textarea[placeholder="Primary OpenAI provider"]').type(
+      proxyDescription
+    );
+    cy.get('input[placeholder="Enter API key"]').type('sk-e2e-openai-proxy-key');
+    cy.contains('button', 'Create Proxy', { timeout: 30000 })
+      .should('not.be.disabled')
+      .click();
+
+    cy.location('pathname', { timeout: 30000 }).should(
+      'include',
+      `/proxies/${proxyId}`
+    );
+    cy.contains(proxyName, { timeout: 30000 }).should('be.visible');
+
+    cy.get('button[aria-label="Delete proxy"]', { timeout: 30000 })
+      .should('be.visible')
+      .click();
+    cy.contains('Delete App LLM Proxy', { timeout: 30000 }).should('be.visible');
+    cy.get('[role="dialog"]').within(() => {
+      cy.contains('button', 'Delete').click();
+    });
+
+    cy.location('pathname', { timeout: 30000 }).should('include', '/proxies');
+    cy.contains(proxyName).should('not.exist');
+
+    cy.get('button[aria-label="Go to organization level"]', { timeout: 30000 })
+      .should('be.visible')
+      .click();
+
+    cy.get('[data-cyid="nav-service-provider"]', { timeout: 30000 })
+      .should('be.visible')
+      .click();
+
+    cy.get(`[data-cyid="provider-card-${providerId}"]`, { timeout: 30000 })
+      .should('be.visible')
+      .within(() => {
+        cy.get('[data-cyid="delete-provider-button"]').click();
+      });
+
+    cy.get('[data-cyid="delete-provider-confirm-input"]', { timeout: 30000 })
+      .should('be.visible')
+      .type(providerName);
+    cy.get('[data-cyid="delete-provider-confirm-button"]')
+      .should('not.be.disabled')
+      .click();
+
+    cy.get(`[data-cyid="provider-card-${providerId}"]`, { timeout: 30000 }).should(
+      'not.exist'
+    );
+
+    cy.contains('Projects', { timeout: 30000 })
+      .should('be.visible')
+      .click();
+
+    cy.contains(projectName, { timeout: 30000 })
+      .should('be.visible')
+      .closest('.MuiCard-root')
+      .within(() => {
+        cy.get('button[aria-label="Delete project"]').click();
+      });
+
+    cy.contains('Delete Project', { timeout: 30000 }).should('be.visible');
+    cy.get('[role="dialog"]').within(() => {
+      cy.contains('button', 'Delete').click();
+    });
+
+    cy.contains(projectName, { timeout: 30000 }).should('not.exist');
+  });
+});
+
+function toSlug(value) {
+  return value
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
