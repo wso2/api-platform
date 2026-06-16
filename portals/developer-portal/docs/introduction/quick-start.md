@@ -30,14 +30,14 @@ mkdir -p configs && cp sample.config.yaml configs/config.yaml
 docker compose up
 ```
 
-Docker Compose starts PostgreSQL and the Developer Portal. On first boot the database schema and a default organization (`ACME`) with a `default` view are created automatically.
+Docker Compose starts the Developer Portal (SQLite by default). On first boot the database schema and a default organization (`default`) with a `default` view are created automatically.
 
 ### 4. Open the portal
 
 Navigate to:
 
 ```
-http://localhost:3000/ACME/views/default
+https://localhost:3000/default/views/default
 ```
 
 Sign in with `admin` / `admin` (or the credentials you set in `defaultAuth`).
@@ -169,10 +169,14 @@ paths:
 ```
 
 ```bash
-curl -sk -X POST "https://localhost:3000/devportal/organizations/1ba42a09-45c0-40f8-a1bf-e4aa7cde1575/apis" \           ✔
-   -u admin:admin \
-   -F "api=@api.yaml;type=application/yaml" \
-   -F "apiDefinition=@openapi.yaml;type=application/yaml" -k
+# Get the default org UUID
+ORG_ID=$(curl -sk -u admin:admin https://localhost:3000/organizations | jq -r '.[0].orgID')
+
+# Create the API
+curl -sk -X POST "https://localhost:3000/o/$ORG_ID/devportal/v1/apis" \
+  -u admin:admin \
+  -F "api=@api.yaml;type=application/yaml" \
+  -F "apiDefinition=@openapi.yaml;type=application/yaml"
 ```
 
 Refresh the portal — the Ping API now appears in the catalog. Click it to view the documentation and try-out console.
@@ -181,9 +185,9 @@ Refresh the portal — the Ping API now appears in the catalog. Click it to view
 
 | Resource | Value |
 |---|---|
-| Organization | `ACME` |
+| Organization | `default` |
 | Default view | `default` |
-| Portal URL | `http://localhost:3000/ACME/views/default` |
+| Portal URL | `https://localhost:3000/default/views/default` |
 | Admin credentials | `admin` / `admin` (local auth) |
 | Sample API | `Ping API` visible in the catalog |
 

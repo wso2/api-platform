@@ -73,6 +73,63 @@ make clean
 
 ---
 
+## Makefile Targets
+
+Run `make help` to see the full list. Summary:
+
+### Build
+
+| Target | Description |
+|--------|-------------|
+| `make build` | Build the developer-portal Docker image (local, current arch) |
+| `make build-and-push-multiarch` | Build and push a multi-arch image (`linux/amd64`, `linux/arm64`) to GHCR |
+
+### Distribution
+
+| Target | Description |
+|--------|-------------|
+| `make dist` | Build standalone distribution zip (`target/wso2apip-developer-portal-<VERSION>.zip`) |
+| `make clean-dist` | Remove distribution staging directory and zip |
+
+### Version Management
+
+| Target | Description |
+|--------|-------------|
+| `make version-set VERSION=X` | Set version and update all artifacts |
+| `make version-bump-patch` | Bump patch version (e.g. `1.0.0` → `1.0.1`) |
+| `make version-bump-minor` | Bump minor version (e.g. `1.0.0` → `1.1.0`) |
+| `make version-bump-major` | Bump major version (e.g. `1.0.0` → `2.0.0`) |
+| `make version-bump-next-dev` | Bump to next minor dev version with `-SNAPSHOT` suffix |
+| `make version-get-release` | Print release version (strips `-SNAPSHOT` suffix) |
+
+### Integration Tests
+
+| Target | Description |
+|--------|-------------|
+| `make it` | Run Cypress integration tests against SQLite (headless, in Docker) |
+| `make it-postgres` | Run Cypress integration tests against PostgreSQL (headless, in Docker) |
+| `make it-open` | Open Cypress interactive UI (requires the portal running locally) |
+
+### Database
+
+| Target | Description |
+|--------|-------------|
+| `make generate-ddl` | Generate DDL schema files from Sequelize models for all supported dialects |
+
+### Docs
+
+| Target | Description |
+|--------|-------------|
+| `make generate-apidocs` | Generate REST API docs from the OpenAPI spec |
+
+### Clean
+
+| Target | Description |
+|--------|-------------|
+| `make clean` | Remove all build artifacts |
+
+---
+
 ## Development (`npm start`)
 
 Use this for active development, custom IdP configuration, or when you prefer to run Node directly.
