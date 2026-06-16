@@ -31,16 +31,14 @@ import (
 const (
 	InitCmdLiteral = "init"
 	InitCmdExample = `# Initialize a new API project
-ap apiproject init --display-name foo-api --type rest --version 1.0 --context /foo
+ap apiproject init --display-name foo-api --type rest
 
 # Add a API project fully interactively cobra
 ap apiproject init`
 )
 
 var displayName string
-var apiType string
-var apiVersion string
-var apiContext string
+var projectType string
 var addNoInteractive bool
 
 var initCmd = &cobra.Command{
@@ -57,10 +55,8 @@ var initCmd = &cobra.Command{
 }
 
 func init() {
-	utils.AddStringFlag(initCmd, utils.FlagName, &displayName, "", "Display name of the API")
-	utils.AddStringFlag(initCmd, utils.FlagType, &apiType, "", "Type of the API")
-	utils.AddStringFlag(initCmd, utils.FlagVersion, &apiVersion, "", "Version of the API")
-	utils.AddStringFlag(initCmd, utils.FlagContext, &apiContext, "", "Context of the API")
+	utils.AddStringFlag(initCmd, utils.FlagName, &displayName, "", "Display name of the artifact")
+	utils.AddStringFlag(initCmd, utils.FlagType, &projectType, "", "Type of the artifact")
 	utils.AddBoolFlag(initCmd, utils.FlagNoInteractive, &addNoInteractive, false, "Skip interactive prompts")
 }
 
@@ -73,59 +69,39 @@ func runInitCommand() error {
 				return fmt.Errorf("Failed to read display name: %w", err)
 			}
 		}
-		if strings.TrimSpace(apiType) == "" {
-			apiType, err = utils.PromptInput("Enter API type (e.g., rest): ")
+		if strings.TrimSpace(projectType) == "" {
+			projectType, err = utils.PromptInput(fmt.Sprintf("Enter artifact type (%s): ", strings.Join(supportedArtifactTypes(), ", ")))
 			if err != nil {
-				return fmt.Errorf("Failed to read API type: %w", err)
-			}
-		}
-		if strings.TrimSpace(apiVersion) == "" {
-			apiVersion, err = utils.PromptInput("Enter API version: ")
-			if err != nil {
-				return fmt.Errorf("Failed to read API version: %w", err)
-			}
-		}
-		if strings.TrimSpace(apiContext) == "" {
-			apiContext, err = utils.PromptInput("Enter API context (e.g., /foo): ")
-			if err != nil {
-				return fmt.Errorf("Failed to read API context: %w", err)
+				return fmt.Errorf("Failed to read artifact type: %w", err)
 			}
 		}
 	}
 
 	displayName = strings.TrimSpace(displayName)
-	apiType = strings.ToLower(strings.TrimSpace(apiType))
-	apiVersion = strings.TrimSpace(apiVersion)
-	apiContext = strings.TrimSpace(apiContext)
+	projectType = strings.ToLower(strings.TrimSpace(projectType))
 
 	if displayName == "" {
 		return fmt.Errorf("display name is required")
 	}
-	if apiType == "" {
-		return fmt.Errorf("API type is required")
-	}
-	if apiVersion == "" {
-		return fmt.Errorf("API version is required")
-	}
-	if apiContext == "" {
-		return fmt.Errorf("API context is required")
+	if projectType == "" {
+		return fmt.Errorf("artifact type is required")
 	}
 
-	if apiType != utils.APITypeREST {
-		return fmt.Errorf("unsupported API type: %s", apiType)
+	if !isValidArtifactType(projectType) {
+		return fmt.Errorf("unsupported artifact type: %s (supported types: %s)", projectType, strings.Join(supportedArtifactTypes(), ", "))
 	}
 
-	if err := buildDirectoryStructure(displayName, apiType, apiVersion, apiContext); err != nil {
+	if err := buildDirectoryStructure(displayName, projectType); err != nil {
 		return err
 	}
 
-	fmt.Printf("API project created at .%c%s\n", os.PathSeparator, displayName)
+	fmt.Printf("Artifact project created at .%c%s\n", os.PathSeparator, displayName)
 	return nil
 }
 
-func buildDirectoryStructure(name, apiType, version, context string) error {
-	if apiType != utils.APITypeREST {
-		return fmt.Errorf("API project scaffolding currently supports only %s APIs", utils.APITypeREST)
+func buildDirectoryStructure(name, artifactType string) error {
+	if !isValidArtifactType(artifactType) {
+		return fmt.Errorf("unsupported artifact type: %s (supported types: %s)", artifactType, strings.Join(supportedArtifactTypes(), ", "))
 	}
 
 	projectDirName, err := validateProjectDirectoryName(name)
@@ -156,12 +132,12 @@ func buildDirectoryStructure(name, apiType, version, context string) error {
 		}
 	}
 
-	resourceName := buildResourceName(name, version)
+	resourceName := buildResourceName(name)
 	files := map[string]string{
 		filepath.Join(projectRoot, ".api-platform", "config.yaml"): buildConfigYAML(),
-		filepath.Join(projectRoot, "api.yaml"):                     buildAPIYAML(resourceName),
-		filepath.Join(projectRoot, "gateway.yaml"):                 buildGatewayYAML(resourceName, name, version, context),
-		filepath.Join(projectRoot, "definition.yaml"):              buildDefinitionYAML(name, version, context),
+		filepath.Join(projectRoot, "metadata.yaml"):                buildMetadataYAML(resourceName, artifactType),
+		filepath.Join(projectRoot, "runtime.yaml"):                 buildRuntimeYAML(resourceName, name, artifactType),
+		filepath.Join(projectRoot, "definition.yaml"):              buildDefinitionYAML(name),
 	}
 	for path, content := range files {
 		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
@@ -193,7 +169,7 @@ func validateProjectDirectoryName(name string) (string, error) {
 	return name, nil
 }
 
-func buildResourceName(name, version string) string {
+func buildResourceName(name string) string {
 	normalized := strings.ToLower(strings.TrimSpace(name))
 	normalized = strings.ReplaceAll(normalized, "_", "-")
 	normalized = strings.ReplaceAll(normalized, " ", "-")
@@ -209,7 +185,7 @@ func buildResourceName(name, version string) string {
 		normalized = "api"
 	}
 
-	return fmt.Sprintf("%s-%s", normalized, version)
+	return fmt.Sprintf("%s", normalized)
 }
 
 func buildConfigYAML() string {
@@ -217,8 +193,8 @@ func buildConfigYAML() string {
 
 # Default file paths (can be customized)
 filePaths:
-  deploymentArtifact: ./gateway.yaml
-  apiMetadata: ./api.yaml
+  deploymentArtifact: ./runtime.yaml
+  metadataFile: ./metadata.yaml
   apiDefinition: ./definition.yaml
   docs: ./docs
   tests: ./tests
@@ -232,9 +208,11 @@ autoSync:
 `
 }
 
-func buildAPIYAML(resourceName string) string {
-	return fmt.Sprintf(`apiVersion: management.api-platform.wso2.com/v1
-kind: Api
+func buildMetadataYAML(resourceName, artifactType string) string {
+	apiVersion := getApiVersion(artifactType)
+	kind := getArtifactKind(artifactType)
+	return fmt.Sprintf(`apiVersion: %s
+kind: %s
 metadata:
   name: %q
 spec:
@@ -252,18 +230,19 @@ spec:
   endpoints:
     sandboxUrl: ""
     productionUrl: ""
-`, resourceName)
+`, apiVersion, kind, resourceName)
 }
 
-func buildGatewayYAML(resourceName, displayName, version, context string) string {
+func buildRuntimeYAML(resourceName, displayName, artifactType string) string {
+	kind := getArtifactKind(artifactType)
 	return fmt.Sprintf(`apiVersion: gateway.api-platform.wso2.com/v1
-kind: RestApi
+kind: %s
 metadata:
   name: %q
 spec:
   displayName: %q
-  version: %q
-  context: %q
+  version:
+  context:
   upstream:
     main:
       url: "http://sample-backend.org:9080"           # Change this to your backend URL
@@ -278,16 +257,16 @@ spec:
       method: DELETE
 	- path: /*
 	  method: OPTIONS
-`, resourceName, displayName, version, context)
+`, kind, resourceName, displayName)
 }
 
-func buildDefinitionYAML(displayName, version, context string) string {
+func buildDefinitionYAML(displayName string) string {
 	return fmt.Sprintf(`openapi: 3.0.3
 info:
   title: %q
-  version: %q
+  version: v1.0
 servers:
-  - url: %q
+  - url: https://example.com
 paths:
   "/*":
     get:
@@ -310,5 +289,49 @@ paths:
       responses:
         "200":
           description: OK
-`, displayName, version, context)
+`, displayName)
+}
+
+func supportedArtifactTypes() []string {
+	return []string{
+		utils.TypeREST,
+		utils.TypeLLMProxy,
+		utils.TypeLLMProvider,
+		utils.TypeLLMProviderTemplate,
+		utils.TypeMCPProxy,
+	}
+}
+
+func isValidArtifactType(artifactType string) bool {
+	for _, t := range supportedArtifactTypes() {
+		if artifactType == t {
+			return true
+		}
+	}
+	return false
+}
+
+func getArtifactKind(artifactType string) string {
+	kindMap := map[string]string{
+		utils.TypeREST:                    "RestApi",
+		utils.TypeLLMProxy:                "LlmProxy",
+		utils.TypeLLMProvider:             "LlmProvider",
+		utils.TypeLLMProviderTemplate:     "LlmProviderTemplate",
+		utils.TypeMCPProxy:                "McpProxy",
+	}
+	if kind, exists := kindMap[artifactType]; exists {
+		return kind
+	}
+	return "RestApi"
+}
+
+func getApiVersion(artifactType string) string {
+	switch artifactType {
+	case utils.TypeREST:
+		return "management.api-platform.wso2.com/v1"
+	case utils.TypeLLMProxy, utils.TypeLLMProvider, utils.TypeLLMProviderTemplate, utils.TypeMCPProxy:
+		return "ai-workspace.api-platform.wso2.com/v1"
+	default:
+		return "management.api-platform.wso2.com/v1"
+	}
 }

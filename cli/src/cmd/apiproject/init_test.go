@@ -43,7 +43,7 @@ func TestBuildDirectoryStructureCreatesExpectedFiles(t *testing.T) {
 		t.Fatalf("failed to change working directory: %v", err)
 	}
 
-	if err := buildDirectoryStructure("FooAPI", utils.APITypeREST, "1.0.0", "/petstore"); err != nil {
+	if err := buildDirectoryStructure("FooAPI", utils.TypeREST); err != nil {
 		t.Fatalf("buildDirectoryStructure returned an error: %v", err)
 	}
 
