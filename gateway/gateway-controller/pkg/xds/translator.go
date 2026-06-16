@@ -914,14 +914,8 @@ func (t *Translator) translateAPIConfig(cfg *models.StoredConfig, allConfigs []*
 }
 
 // resolveUpstreamCluster validates an upstream (main or sandbox) and creates its cluster.
-// Returns clusterName, parsedURL, timeout (can be nil), and error.
-// The cluster name is "<env>_<sha256(apiID) fragment>", giving the API-level
-// main/sandbox cluster a URL-stable identity: a host, port, or scheme edit
-// becomes an update to the same named cluster (Envoy warms and swaps it)
-// instead of removing one cluster name and adding another, and a path-only
-// edit touches just the route rewrite. Routes and name-keyed stats stay
-// continuous either way. Main and sandbox share the hash fragment (same API),
-// distinguished by the prefix.
+// Returns clusterName, parsedURL, timeout (can be nil), and error. The cluster name is
+// "<env>_<sha256(apiID)[:12]>", URL-stable for the API's lifetime.
 func (t *Translator) resolveUpstreamCluster(apiID, upstreamName string, up *api.Upstream, upstreamDefinitions *[]api.UpstreamDefinition) (string, *url.URL, *resolvedTimeout, error) {
 	var rawURL string
 	var timeout *resolvedTimeout

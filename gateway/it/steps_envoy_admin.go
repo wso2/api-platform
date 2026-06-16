@@ -38,7 +38,9 @@ const envoyAdminURL = "http://localhost:9901"
 var envoyAdminClient = &http.Client{Timeout: 10 * time.Second}
 
 // rememberedClusterSets holds cluster-name sets captured during a scenario,
-// keyed by name prefix. Cleared before each scenario.
+// keyed by name prefix. Cleared before each scenario. Safe under godog's
+// default sequential execution; it would need per-scenario state if scenario
+// parallelism is ever enabled.
 var rememberedClusterSets = map[string][]string{}
 
 // fetchEnvoyClusterNames returns the sorted, de-duplicated set of cluster

@@ -390,10 +390,19 @@ Feature: API-Level Upstream URL-Stable Cluster Naming
     And the response body should not contain "cluster_http_"
     And the response body should not contain "cluster_https_"
 
-    Given I authenticate using basic auth as "admin"
-    When I delete the API "api-level-url-stable-shared-a-v1.0"
-    Then the response should be successful
-
+    # Delete API-B and confirm API-A still routes, proving the two APIs own
+    # independent clusters (deleting one does not disturb the other).
     Given I authenticate using basic auth as "admin"
     When I delete the API "api-level-url-stable-shared-b-v1.0"
+    Then the response should be successful
+
+    When I clear all headers
+    And I set request host to "api-level-url-stable-shared-a.local"
+    And I send a GET request to "http://localhost:8080/api-level-url-stable-shared-a/v1.0/endpoint"
+    Then the response should be successful
+    And the response should be valid JSON
+    And the JSON response field "path" should be "/shared-a/endpoint"
+
+    Given I authenticate using basic auth as "admin"
+    When I delete the API "api-level-url-stable-shared-a-v1.0"
     Then the response should be successful

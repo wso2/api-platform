@@ -29,14 +29,8 @@ import (
 // fragment shape produced by APILevel.
 var hexShape24 = regexp.MustCompile("^[a-f0-9]{24}$")
 
-// TestAPILevel validates the contract for API-level cluster naming:
-//   - deterministic for identical input
-//   - distinct for distinct apiIDs
-//   - 24 hex chars from SHA-256[:12]
-//
-// The fragment is shared by an API's main and sandbox clusters by design (the
-// env prefix the caller prepends provides the distinction), so an operator
-// can pair an API's clusters at a glance.
+// TestAPILevel validates the API-level cluster-key fragment: deterministic,
+// distinct per apiID, and pinned to SHA-256[:12] (24 hex chars).
 func TestAPILevel(t *testing.T) {
 	t.Run("deterministic for identical input", func(t *testing.T) {
 		a := APILevel("api-1")
@@ -56,6 +50,8 @@ func TestAPILevel(t *testing.T) {
 	t.Run("known-answer vectors", func(t *testing.T) {
 		assert.Equal(t, "f9811b73ac5d1a8db842634f", APILevel("api-1"))
 		assert.Equal(t, "2a28373e2cacc6ea903d8c7e", APILevel("test-api"))
+		// A realistic UUIDv7-shaped apiID, the form used in production.
+		assert.Equal(t, "54a9b3e5ce2b6ccb97168e59", APILevel("0190b3e2-7b1c-7c2a-9b3d-1a2b3c4d5e6f"))
 	})
 
 	// Empty input is deterministic (the SHA-256 of the empty string), documenting

@@ -16,10 +16,8 @@
  * under the License.
  */
 
-// Package clusterkey produces deterministic, hex-encoded cluster-key fragments
-// used by the gateway-controller to name Envoy clusters. It is a leaf package
-// (stdlib imports only) so both xDS builders (pkg/xds and pkg/transform) can
-// share one naming source without import cycles.
+// Package clusterkey produces deterministic Envoy cluster-key fragments for the
+// gateway-controller, shared by both xDS builders so they name clusters identically.
 package clusterkey
 
 import (
@@ -27,26 +25,16 @@ import (
 	"encoding/hex"
 )
 
-// APILevel returns a deterministic, hex-encoded cluster-key fragment for an
-// API-level upstream cluster. The key is derived from SHA-256 of the apiID
-// alone, so an API's main and sandbox clusters share the same fragment and an
-// operator can pair them at a glance; the env prefix the caller prepends
-// ("main_"/"sandbox_") distinguishes them. The backend URL is deliberately
-// excluded from the input so the cluster NAME stays stable across URL edits:
-// host, port, or scheme changes reach Envoy as an update to the same named
-// cluster (warmed and swapped) instead of removing one cluster name and
-// adding another, and path-only changes touch just the route rewrite, leaving
-// the cluster untouched. Routes and name-keyed stats stay continuous either
-// way. Cross-API uniqueness rests on the 12-byte (96-bit) truncation, which
-// makes collisions between distinct apiIDs cryptographically unlikely, not
-// impossible.
+// APILevel returns the 24-hex cluster-key fragment for an API-level upstream,
+// the first 12 bytes of SHA-256(apiID). The URL is excluded so the name is stable
+// across URL edits; main and sandbox share it, set apart by the caller's env prefix.
 func APILevel(apiID string) string {
 	sum := sha256.Sum256([]byte(apiID))
 	return hex.EncodeToString(sum[:12])
 }
 
 // APILevelName joins the env prefix ("main"/"sandbox") to the APILevel fragment
-// to form the full Envoy cluster name, so both xDS builders name clusters identically.
+// to form the full Envoy cluster name.
 func APILevelName(env, apiID string) string {
 	return env + "_" + APILevel(apiID)
 }

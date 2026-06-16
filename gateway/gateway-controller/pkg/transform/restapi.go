@@ -355,10 +355,6 @@ func (t *RestAPITransformer) addUpstreamCluster(
 		TLS: &models.UpstreamTLS{Enabled: parsedURL.Scheme == "https"},
 	}
 
-	// ClusterKey and EnvoyClusterName must be the same string. If they differ,
-	// the default_upstream_cluster metadata written by the policy engine will
-	// not match the Envoy cluster name, producing 503 NoRoute when the default
-	// upstream path is taken.
 	return &upstreamClusterResult{
 		ClusterKey:       clusterKey,
 		EnvoyClusterName: clusterKey,

@@ -551,3 +551,23 @@ func TestRestAPITransformer_APILevelMainOnlyHasNoSandboxCluster(t *testing.T) {
 	assert.False(t, sandboxRouteExists,
 		"no sandbox route should exist for a main-only API")
 }
+
+// TestRestAPITransformer_ClusterNameUsesSharedHelper locks the cross-builder
+// naming contract: the transform path names the cluster exactly
+// clusterkey.APILevelName(env, cfg.UUID), the same helper and argument the xDS
+// translator uses (pinned on that side in pkg/xds tests), so the two builders
+// cannot drift to different names for the same API.
+func TestRestAPITransformer_ClusterNameUsesSharedHelper(t *testing.T) {
+	transformer := NewRestAPITransformer(testRouterCfg(), &config.Config{}, map[string]models.PolicyDefinition{})
+	cfg := makeRestAPIWithOps([]api.Operation{
+		{Method: "GET", Path: "/users"},
+	})
+
+	rdc, err := transformer.Transform(cfg)
+	require.NoError(t, err)
+
+	assert.Equal(t, clusterkey.APILevelName("main", cfg.UUID),
+		rdc.Routes["GET|/test/users|main.local"].Upstream.ClusterKey)
+	assert.Equal(t, clusterkey.APILevelName("sandbox", cfg.UUID),
+		rdc.Routes["GET|/test/users|sandbox.local"].Upstream.ClusterKey)
+}
