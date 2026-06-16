@@ -3,18 +3,16 @@
  *
  * API Flows Gallery
  -->
-<head>
+{{#pageHead}}
     <link rel="stylesheet" href="/technical-styles/agent-prompt.css">
     <link rel="stylesheet" href="/technical-styles/api-workflows.css">
     <script type="application/json" id="apiFlowsDataContainer">{{{json apiFlows}}}</script>
+{{/pageHead}}
+{{#pageScripts}}
     <script src='/technical-scripts/api-workflows.js' defer></script>
-</head>
+{{/pageScripts}}
 
-<main>
-    {{> header profile=profile baseUrl=baseUrl devportalMode=devportalMode showApiWorkflowsNav=showApiWorkflowsNav}}
-    {{> sidebar profile=profile baseUrl=baseUrl devportalMode=devportalMode showApiWorkflowsNav=showApiWorkflowsNav}}
-
-    <div class="flows-section">
+<div class="flows-section">
         {{!-- Hero --}}
         <div class="flows-hero">
             <div style="width:100%; display:flex; justify-content:space-between; align-items:flex-start;">
@@ -111,4 +109,3 @@
     </div>
 
     {{> alert}}
-</main>

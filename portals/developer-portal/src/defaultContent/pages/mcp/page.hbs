@@ -16,13 +16,9 @@
  * under the License.
  */
  --}}
-<head>
+{{#pageScripts}}
   <script src='/technical-scripts/add-application-form.js' defer></script>
-</head>
-<main>
-    {{> header profile=profile baseUrl=baseUrl devportalMode=devportalMode showApiWorkflowsNav=showApiWorkflowsNav }}
-    {{> sidebar profile=profile baseUrl=baseUrl devportalMode=devportalMode showApiWorkflowsNav=showApiWorkflowsNav }}
-    {{> mcp-listing }}
-    {{> create-app }}
-    {{> alert }}
-</main>
+{{/pageScripts}}
+{{> mcp-listing }}
+{{> create-app }}
+{{> alert }}

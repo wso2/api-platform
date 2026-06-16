@@ -84,17 +84,17 @@ function renderTemplate(templatePath, layoutPath, templateContent, isTechnical) 
     const template = Handlebars.compile(templateResponse.toString());
     const layout = Handlebars.compile(layoutResponse.toString());
 
+    const slots = {};
     const showApiWorkflowsNav = config.features?.apiWorkflows?.enabled === true;
-    const enrichedContent = { devportalMode: constants.DEVPORTAL_MODE.DEFAULT, ...templateContent, showApiWorkflowsNav };
+    const enrichedContent = { devportalMode: constants.DEVPORTAL_MODE.DEFAULT, ...templateContent, showApiWorkflowsNav, slots };
     return layout({
+        ...enrichedContent,
         body: template(enrichedContent),
         portalConfigs: config.portalConfigs,
         devportalApiConfig: {
             base: constants.DEVPORTAL_API.BASE_SEGMENT,
             version: constants.DEVPORTAL_API.VERSION,
         },
-        profile: templateContent.profile,
-        showApiWorkflowsNav,
     });
 }
 
@@ -139,17 +139,17 @@ async function renderTemplateFromAPI(templateContent, orgID, orgName, filePath, 
     const template = Handlebars.compile(templateResponse.toString());
     const layout = Handlebars.compile(layoutResponse.toString());
 
+    const slots = {};
     const showApiWorkflowsNav = config.features?.apiWorkflows?.enabled === true;
-    const enrichedContent = { devportalMode: constants.DEVPORTAL_MODE.DEFAULT, ...templateContent, showApiWorkflowsNav };
+    const enrichedContent = { devportalMode: constants.DEVPORTAL_MODE.DEFAULT, ...templateContent, showApiWorkflowsNav, slots };
     return layout({
+        ...enrichedContent,
         body: template(enrichedContent),
         portalConfigs: config.portalConfigs,
         devportalApiConfig: {
             base: constants.DEVPORTAL_API.BASE_SEGMENT,
             version: constants.DEVPORTAL_API.VERSION,
         },
-        profile: templateContent.profile,
-        showApiWorkflowsNav,
     });
 
 }
@@ -205,17 +205,17 @@ async function renderGivenTemplate(templatePage, layoutPage, templateContent) {
 
     const template = Handlebars.compile(templatePage.toString());
     const layout = Handlebars.compile(layoutPage.toString());
+    const slots = {};
     const showApiWorkflowsNav = config.features?.apiWorkflows?.enabled === true;
-    const enrichedContent = { devportalMode: constants.DEVPORTAL_MODE.DEFAULT, ...templateContent, showApiWorkflowsNav };
+    const enrichedContent = { devportalMode: constants.DEVPORTAL_MODE.DEFAULT, ...templateContent, showApiWorkflowsNav, slots };
     return layout({
+        ...enrichedContent,
         body: template(enrichedContent),
         portalConfigs: config.portalConfigs,
         devportalApiConfig: {
             base: constants.DEVPORTAL_API.BASE_SEGMENT,
             version: constants.DEVPORTAL_API.VERSION,
         },
-        profile: templateContent.profile,
-        showApiWorkflowsNav,
     });
 }
 
@@ -702,8 +702,6 @@ function validateScripts(strContent) {
             '<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.2.7/purify.min.js" integrity="sha512-78KH17QLT5e55GJqP76vutp1D2iAoy06WcYBXB6iBCsmO6wWzx0Qdg8EDpm8mKXv68BcvHOyeeP4wxAL0twJGQ==" crossorigin="anonymous"></script>',
         ]);
         const allowedInlineScripts = new Set([
-            // Reo analytics loader (src/defaultContent/layout/main.hbs)
-            "<script type=\"text/javascript\">\n      !function(){var e,t,n;e=\"{{portalConfigs.reoClientID}}\",t=function(){Reo.init({clientID:\"{{portalConfigs.reoClientID}}\"})},(n=document.createElement(\"script\")).src=\"https://static.reo.dev/\"+e+\"/reo.js\",n.defer=!0,n.onload=t,document.head.appendChild(n)}();\n    </script>",
             // Token-map JSON data island (api-landing/partials/api-subscription-plans.hbs)
             "<script id=\"token-map-data\" type=\"application/json\">{{{jsonSafeSubscriptions ../subscriptions}}}</script>",
             // Token-meta bootstrap (api-landing/partials/api-subscription-plans.hbs)
