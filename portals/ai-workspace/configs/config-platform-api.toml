@@ -23,6 +23,9 @@
 log_level = "INFO"   # DEBUG | INFO | WARN | ERROR
 port      = "9243"
 
+# Validate OAuth2 scopes on incoming requests.
+enable_scope_validation = true
+
 # ---------------------------------------------------------------------------
 # Database
 # ---------------------------------------------------------------------------
@@ -46,8 +49,9 @@ path   = "/app/data/api_platform.db"   # SQLite file path (ignored for postgres)
 # secret_key is auto-generated at startup when not set (ephemeral — sessions reset on restart).
 # Set AUTH_JWT_SECRET_KEY env var or secret_key here to persist sessions across restarts.
 [auth.jwt]
-enabled = true
-issuer  = "platform-api"
+enabled         = true
+issuer          = "platform-api"
+skip_validation = false   # verify JWT signature
 
 # IDP (JWKS-based) — disabled in quickstart mode.
 # Enable and configure when using Asgardeo, Keycloak, Auth0, etc.

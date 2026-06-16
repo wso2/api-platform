@@ -106,6 +106,14 @@ npm run dev
 ```
 This starts the AI Workspace frontend in development mode.
 
+Update platform-api/config/config.toml and set the following configuration:
+
+```bash
+[auth.file_based]
+enabled = true
+```
+This enables file-based authentication, allowing users configured in the file-based authentication settings to log in.
+
 Terminal 2:
 ```bash
 cd platform-api/src
