@@ -21,7 +21,7 @@ const { config } = require('../config/configLoader');
 const markdown = require('marked');
 const fs = require('fs');
 const path = require('path');
-const adminDao = require('../dao/adminDao');
+const orgDao = require('../dao/organizationDao');
 const constants = require('../utils/constants');
 const logger = require('../config/logger');
 
@@ -81,10 +81,10 @@ const loadCustomContent = async (req, res) => {
                 }
                 throw new Error(`Content page not found at ${resolvedPagePath}`);
             }
-            const orgDetails = await adminDao.getOrganization(orgName);
+            const orgDetails = await orgDao.get(orgName);
             const orgId = orgDetails.ORG_ID;
             devportalMode = orgDetails.ORG_CONFIG?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
-            let markDownFiles = await adminDao.getOrgContent({
+            let markDownFiles = await orgDao.getContent({
                 orgId: orgId,
                 fileType: 'markDown',
                 viewName: viewName

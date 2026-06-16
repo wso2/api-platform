@@ -37,7 +37,8 @@ const { jwtVerify, createRemoteJWKSet, importX509 } = require('jose');
 
 const { config } = require('../../config/configLoader');
 const constants = require('../../utils/constants');
-const adminDao = require('../../dao/adminDao');
+const orgDao = require('../../dao/organizationDao');
+const idpDao = require('../../dao/identityProviderDao');
 const IdentityProviderDTO = require('../../dto/identityProviderDto');
 const logger = require('../../config/logger');
 const { extractPlatformJwtClaims } = require('../../utils/platformJwt');
@@ -125,10 +126,10 @@ async function resolveOrgIdp(req) {
     if (req.params && req.params.orgId) {
         orgId = req.params.orgId;
     } else if (req.params && req.params.orgName) {
-        orgId = await adminDao.getOrgId(req.params.orgName);
+        orgId = await orgDao.getId(req.params.orgName);
     }
     if (!orgId) return config.identityProvider || {};
-    const rows = await adminDao.getIdentityProvider(orgId);
+    const rows = await idpDao.get(orgId);
     if (rows && rows.length > 0) {
         return new IdentityProviderDTO(rows[0].dataValues);
     }

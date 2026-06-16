@@ -25,7 +25,7 @@ const { renderTemplate, renderTemplateFromAPI } = require('../utils/util');
 const { trackHomePageVisit } = require('../utils/telemetryUtil');
 const { config } = require('../config/configLoader');
 const constants = require('../utils/constants');
-const adminDao = require('../dao/adminDao');
+const orgDao = require('../dao/organizationDao');
 
 
 const loadOrganizationContent = async (req, res) => {
@@ -72,10 +72,10 @@ const loadOrgContentFromFile = async (req, res) => {
 const loadOrgContentFromAPI = async (req, res) => {
     let html;
     const orgName = req.params.orgName;
-    const orgDetails = await adminDao.getOrganization(orgName);
+    const orgDetails = await orgDao.get(orgName);
     const devportalMode = orgDetails.ORG_CONFIG?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
     try {
-        const orgId = await adminDao.getOrgId(orgName);
+        const orgId = await orgDao.getId(orgName);
         let profile = null;
         if (req.user) {
             profile = {

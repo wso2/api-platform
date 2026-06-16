@@ -22,14 +22,15 @@ const logger = require('../config/logger');
 const constants = require('../utils/constants');
 const path = require('path');
 const fs = require('fs');
-const adminDao = require('../dao/adminDao');
+const orgDao = require('../dao/organizationDao');
+const appDao = require('../dao/applicationDao');
 const { ApplicationDTO } = require('../dto/applicationDto');
 const sampleApiLoader = require('../utils/sampleApiLoader');
 const kmDao = require('../dao/keyManagerDao');
 const adminService = require('../services/adminService');
 
 const orgIDValue = async (orgName) => {
-    const organization = await adminDao.getOrganization(orgName);
+    const organization = await orgDao.get(orgName);
     return organization.ORG_ID;
 }
 
@@ -74,7 +75,7 @@ const loadApplicationData = async (req, orgName, applicationId, viewName) => {
             for (const mapping of localMappings) {
                 if (mapping.AS_CLIENT_ID && mapping.KM_ID) {
                     try {
-                        const km = await kmDao.getKeyManager(mapping.KM_ID);
+                        const km = await kmDao.get(mapping.KM_ID);
                         const storedProps = mapping.ADDITIONAL_PROPERTIES || {};
                         keyList.push({
                             keyManager: km.NAME,
@@ -105,7 +106,7 @@ const loadApplicationData = async (req, orgName, applicationId, viewName) => {
 
     let kMmetaData = [];
     try {
-        const dbKeyManagers = await kmDao.getEnabledKeyManagers(orgID);
+        const dbKeyManagers = await kmDao.listEnabled(orgID);
         for (const km of dbKeyManagers) {
             const grantTypes = km.SUPPORTED_GRANT_TYPES || ['client_credentials'];
             kMmetaData.push({
@@ -210,13 +211,13 @@ const loadApplications = async (req, res) => {
     }
 
     const orgName = req.params.orgName;
-    const orgDetails = await adminDao.getOrganization(orgName);
+    const orgDetails = await orgDao.get(orgName);
     const devportalMode = orgDetails.ORG_CONFIG?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
     let html, metaData, templateContent;
     try {
         const orgName = req.params.orgName;
         const orgID = await orgIDValue(orgName);
-        const applications = await adminDao.getApplications(orgID, req.user.sub)
+        const applications = await appDao.list(orgID, req.user.sub)
         const metaData = applications.map(application => new ApplicationDTO(application));
         let profile = null;
         if (req.user) {
@@ -265,7 +266,7 @@ const loadApplication = async (req, res) => {
     let html, templateContent, metaData, kMmetaData;
     const viewName = req.params.viewName;
     const orgName = req.params.orgName;
-    const orgDetails = await adminDao.getOrganization(orgName);
+    const orgDetails = await orgDao.get(orgName);
     const devportalMode = orgDetails.ORG_CONFIG?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
     try {
         const applicationId = req.params.applicationId;
@@ -330,7 +331,7 @@ const loadApplicationKeys = async (req, res) => {
     let html, templateContent, metaData, kMmetaData;
     const viewName = req.params.viewName;
     const orgName = req.params.orgName;
-    const orgDetails = await adminDao.getOrganization(orgName);
+    const orgDetails = await orgDao.get(orgName);
     const devportalMode = orgDetails.ORG_CONFIG?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
     try {
         const applicationId = req.params.applicationId;

@@ -21,7 +21,8 @@ const fs = require('fs');
 const path = require('path');
 const logger = require('../config/logger');
 const { logUserAction } = require('../middlewares/auditLogger');
-const adminDao = require('../dao/adminDao');
+const orgDao = require('../dao/organizationDao');
+const idpDao = require('../dao/identityProviderDao');
 const IdentityProviderDTO = require("../dto/identityProviderDto");
 const { config } = require('../config/configLoader');
 const constants = require('../utils/constants');
@@ -46,14 +47,14 @@ const loadOrgSettingsPage = async (req, res) => {
     try {
         let orgName = req.params.orgName;
         templateContent.loggedOrg = orgName;
-        orgID = await adminDao.getOrgId(orgName);
+        orgID = await orgDao.getId(orgName);
         templateContent.orgID = orgID;
 
         const organizations = await adminService.getAllOrganizations();
         if (organizations.length > 0) {
             templateContent.organizations = organizations;
         }
-        const retrievedIDP = await adminDao.getIdentityProvider(orgID);
+        const retrievedIDP = await idpDao.get(orgID);
         if (retrievedIDP.length > 0) {
             templateContent.idp = new IdentityProviderDTO(retrievedIDP[0]);
         } else {
@@ -132,7 +133,7 @@ const loadEditOrganizationPage = async (req, res) => {
     try {
         const orgName = req.params.orgName;
         if (req.params.orgId !== 'create') {
-            orgID = await adminDao.getOrgId(orgName);
+            orgID = await orgDao.getId(orgName);
 
             //orgID = req.params.orgId;
             const organization = await devPortalService.getOrganizationDetails(orgID);

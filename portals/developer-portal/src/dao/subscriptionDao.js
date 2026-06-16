@@ -16,11 +16,13 @@
  * under the License.
  */
 const crypto = require('crypto');
-const { SubscriptionMapping } = require('../models/application');
+const { SubscriptionMapping, Application } = require('../models/application');
 const { APIMetadata } = require('../models/apiMetadata');
 const SubscriptionPolicy = require('../models/subscriptionPolicy');
 const { createCryptoUtil } = require('../utils/cryptoUtil');
 const { config } = require('../config/configLoader');
+const { Sequelize } = require('sequelize');
+const logger = require('../config/logger');
 
 const subCrypto = createCryptoUtil(config.advanced.encryptionKey);
 
@@ -59,7 +61,7 @@ function generateSubToken() {
     return crypto.randomBytes(32).toString('hex');
 }
 
-async function createSubscription(orgId, apiId, policyId, transaction) {
+async function create(orgId, apiId, policyId, transaction) {
     for (let attempt = 0; attempt < 3; attempt++) {
         const subToken = generateSubToken();
         try {
@@ -89,7 +91,7 @@ async function createSubscription(orgId, apiId, policyId, transaction) {
     }
 }
 
-async function listSubscriptions(orgId, { apiId } = {}) {
+async function list(orgId, { apiId } = {}) {
     const where = { ORG_ID: orgId, APP_ID: null };
     if (apiId) where.API_ID = apiId;
     const rows = await SubscriptionMapping.findAll({
@@ -100,14 +102,14 @@ async function listSubscriptions(orgId, { apiId } = {}) {
     return rows.map(decryptSubRecord);
 }
 
-async function getSubscription(orgId, subId) {
+async function get(orgId, subId) {
     return decryptSubRecord(await SubscriptionMapping.findOne({
         where: { SUB_ID: subId, ORG_ID: orgId, APP_ID: null },
         include: INCLUDE_API_AND_POLICY,
     }));
 }
 
-async function updateSubscriptionStatus(orgId, subId, status, transaction) {
+async function updateStatus(orgId, subId, status, transaction) {
     const [count] = await SubscriptionMapping.update(
         { STATUS: status },
         { where: { SUB_ID: subId, ORG_ID: orgId, APP_ID: null }, transaction }
@@ -123,18 +125,133 @@ async function deleteSubscription(orgId, subId, transaction) {
     return count > 0;
 }
 
-async function getSubscriptionById(orgId, subId) {
+async function getById(orgId, subId) {
     return decryptSubRecord(await SubscriptionMapping.findOne({
         where: { SUB_ID: subId, ORG_ID: orgId },
         include: INCLUDE_API_AND_POLICY,
     }));
 }
 
+const listByAppAndApi = async (orgID, appID, apiID) => {
+    try {
+        return await SubscriptionMapping.findAll(
+            {
+                where: {
+                    ORG_ID: orgID,
+                    [Sequelize.Op.or]: [
+                        { APP_ID: appID },
+                        { API_ID: apiID }
+                    ]
+                }
+            });
+    } catch (error) {
+        if (error instanceof Sequelize.EmptyResultError) {
+            throw error;
+        }
+        throw new Sequelize.DatabaseError(error);
+    }
+}
+
+const getByAppAndApi = async (orgID, appID, apiID) => {
+    try {
+        return await SubscriptionMapping.findAll(
+            {
+                where: {
+                    ORG_ID: orgID,
+                    APP_ID: appID,
+                    API_ID: apiID
+                }
+            });
+    } catch (error) {
+        if (error instanceof Sequelize.EmptyResultError) {
+            throw error;
+        }
+        throw new Sequelize.DatabaseError(error);
+    }
+}
+
+const getSubscribedApis = async (orgID, appID) => {
+    try {
+        const { APIImageMetadata } = require('../models/apiImage');
+        const subscribedAPIs = await APIMetadata.findAll({
+            where: { ORG_ID: orgID },
+            include: [{
+                model: Application,
+                where: { APP_ID: appID },
+                required: true,
+                through: { attributes: ["SUB_ID", "POLICY_ID"] }
+            },
+            {
+                model: APIImageMetadata,
+                required: false
+            }, {
+                model: SubscriptionPolicy,
+                through: { attributes: ['POLICY_ID'] },
+                required: false
+            }]
+        });
+        return subscribedAPIs;
+    } catch (error) {
+        if (error instanceof Sequelize.EmptyResultError) {
+            throw error;
+        }
+        throw new Sequelize.DatabaseError(error);
+    }
+}
+
+const listByOrg = async (orgID) => {
+    try {
+        return await SubscriptionMapping.findAll({
+            where: { ORG_ID: orgID },
+        });
+    } catch (error) {
+        throw new Sequelize.DatabaseError(error);
+    }
+};
+
+const listByUser = async (orgID, userID) => {
+    try {
+        const userApps = await Application.findAll({
+            where: { ORG_ID: orgID, CREATED_BY: userID },
+            attributes: ['APP_ID'],
+        });
+        const appIds = userApps.map((app) => app.APP_ID);
+        if (appIds.length === 0) return [];
+        return await SubscriptionMapping.findAll({
+            where: {
+                ORG_ID: orgID,
+                APP_ID: { [Sequelize.Op.in]: appIds },
+            },
+        });
+    } catch (error) {
+        logger.error('listByUser failed', { error, orgID, userID });
+        throw new Sequelize.DatabaseError(error);
+    }
+};
+
+const findByKey = async (orgID, appID, apiID, policyID, t) => {
+    try {
+        return await SubscriptionMapping.findOne({
+            where: { ORG_ID: orgID, APP_ID: appID, API_ID: apiID, POLICY_ID: policyID },
+            transaction: t,
+        });
+    } catch (error) {
+        if (error instanceof Sequelize.EmptyResultError) return null;
+        throw new Sequelize.DatabaseError(error);
+    }
+};
+
 module.exports = {
-    createSubscription,
-    listSubscriptions,
-    getSubscription,
-    getSubscriptionById,
-    updateSubscriptionStatus,
-    deleteSubscription,
+    create,
+    list,
+    get,
+    getById,
+    updateStatus,
+    delete: deleteSubscription,
+    listByAppAndApi,
+    getByAppAndApi,
+    getSubscribedApis,
+    listByOrg,
+    listByUser,
+    findByKey,
 };

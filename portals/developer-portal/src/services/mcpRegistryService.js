@@ -19,8 +19,10 @@
 const { Sequelize, Op } = require('sequelize');
 const sequelize = require('../db/sequelizeConfig');
 const { APIMetadata } = require('../models/apiMetadata');
-const apiDao = require('../dao/apiMetadataDao');
-const adminDao = require('../dao/adminDao');
+const apiDao = require('../dao/apiDao');
+const apiFileDao = require('../dao/apiFileDao');
+const labelDao = require('../dao/labelDao');
+const orgDao = require('../dao/organizationDao');
 const ServerResponseDTO = require('../dto/mcpServerDto');
 const logger = require('../config/logger');
 const constants = require('../utils/constants');
@@ -160,7 +162,7 @@ function handleUnexpectedError(res, error, operation, fallbackMessage) {
  * Throws Sequelize.EmptyResultError if org not found.
  */
 async function resolveOrgId(orgHandle) {
-    return adminDao.getOrgId(orgHandle);
+    return orgDao.getId(orgHandle);
 }
 
 
@@ -178,7 +180,7 @@ function deriveApiHandle(name, orgHandle) {
 }
 
 /**
- * Builds the apiMetadata shape expected by apiDao.createAPIMetadata / updateAPIMetadata.
+ * Builds the apiMetadata shape expected by apiDao.create / apiDao.update.
  */
 function buildApiMetadataPayload(name, version, description, remotes, title, publishedAt, updatedAt, proxyId, orgHandle) {
     const normalizedRemotes = (Array.isArray(remotes) ? remotes : []).map(r => ({
@@ -344,7 +346,7 @@ const getVersion = async (req, res) => {
             return sendError(res, 404, 'Server not found');
         }
 
-        const schemaContent = await apiDao.getAPIDoc(
+        const schemaContent = await apiFileDao.getDoc(
             constants.DOC_TYPES.SCHEMA_DEFINITION, orgId, row.API_ID, null
         );
         const schema = parseSchema(schemaContent);
@@ -412,10 +414,10 @@ const publishServer = async (req, res) => {
                 existingApiId = existing.API_ID;
                 const existingPublishedAt = existing.METADATA_SEARCH?.apiInfo?.publishedAt || now;
                 const apiMetadataPayload = buildApiMetadataPayload(name, version, description, remotes, title, existingPublishedAt, now, proxyId, orgHandle);
-                await apiDao.updateAPIMetadata(orgId, existing.API_ID, apiMetadataPayload, t);
-                await apiDao.createAPILabelMapping(orgId, existing.API_ID, ['default'], t);
+                await apiDao.update(orgId, existing.API_ID, apiMetadataPayload, t);
+                await labelDao.createApiMapping(orgId, existing.API_ID, ['default'], t);
                 if (schemaBuffer) {
-                    await apiDao.updateOrCreateAPIFiles(
+                    await apiFileDao.upsertMany(
                         [{ content: schemaBuffer, fileName: SCHEMA_FILE_NAME, type: constants.DOC_TYPES.SCHEMA_DEFINITION }],
                         existing.API_ID, orgId, t
                     );
@@ -423,11 +425,11 @@ const publishServer = async (req, res) => {
                 row = await APIMetadata.findOne({ where: { API_ID: existing.API_ID }, transaction: t });
             } else {
                 const apiMetadataPayload = buildApiMetadataPayload(name, version, description, remotes, title, now, now, proxyId, orgHandle);
-                const created_row = await apiDao.createAPIMetadata(orgId, apiMetadataPayload, t);
+                const created_row = await apiDao.create(orgId, apiMetadataPayload, t);
                 const apiId = created_row.dataValues.API_ID;
-                await apiDao.createAPILabelMapping(orgId, apiId, ['default'], t);
+                await labelDao.createApiMapping(orgId, apiId, ['default'], t);
                 const newSchemaBuffer = schemaBuffer || Buffer.from(JSON.stringify({ tools: [], resources: [], prompts: [] }), 'utf-8');
-                await apiDao.storeAPIFile(newSchemaBuffer, SCHEMA_FILE_NAME, apiId, constants.DOC_TYPES.SCHEMA_DEFINITION, t);
+                await apiFileDao.store(newSchemaBuffer, SCHEMA_FILE_NAME, apiId, constants.DOC_TYPES.SCHEMA_DEFINITION, t);
                 row = await APIMetadata.findOne({ where: { API_ID: apiId }, transaction: t });
                 created = true;
             }
@@ -438,7 +440,7 @@ const publishServer = async (req, res) => {
         if (choreoMeta) {
             schema = { tools, resources, prompts };
         } else if (existingApiId) {
-            const schemaContent = await apiDao.getAPIDoc(constants.DOC_TYPES.SCHEMA_DEFINITION, orgId, existingApiId, null);
+            const schemaContent = await apiFileDao.getDoc(constants.DOC_TYPES.SCHEMA_DEFINITION, orgId, existingApiId, null);
             schema = parseSchema(schemaContent);
         } else {
             schema = { tools: [], resources: [], prompts: [] };
@@ -486,10 +488,10 @@ const updateVersion = async (req, res) => {
             const existingPublishedAt = existing.METADATA_SEARCH?.apiInfo?.publishedAt || new Date().toISOString();
             const existingProxyId = proxyId || existing.METADATA_SEARCH?.apiInfo?.proxyId || null;
             const apiMetadataPayload = buildApiMetadataPayload(existing.API_NAME, version, description, remotes, title, existingPublishedAt, new Date().toISOString(), existingProxyId, orgHandle);
-            await apiDao.updateAPIMetadata(orgId, existing.API_ID, apiMetadataPayload, t);
-            await apiDao.createAPILabelMapping(orgId, existing.API_ID, ['default'], t);
+            await apiDao.update(orgId, existing.API_ID, apiMetadataPayload, t);
+            await labelDao.createApiMapping(orgId, existing.API_ID, ['default'], t);
             if (schemaBuffer) {
-                await apiDao.updateOrCreateAPIFiles(
+                await apiFileDao.upsertMany(
                     [{ content: schemaBuffer, fileName: SCHEMA_FILE_NAME, type: constants.DOC_TYPES.SCHEMA_DEFINITION }],
                     existing.API_ID, orgId, t
                 );
@@ -504,7 +506,7 @@ const updateVersion = async (req, res) => {
         if (choreoMeta) {
             schema = { tools, resources, prompts };
         } else {
-            const schemaContent = await apiDao.getAPIDoc(constants.DOC_TYPES.SCHEMA_DEFINITION, orgId, updatedApiId, null);
+            const schemaContent = await apiFileDao.getDoc(constants.DOC_TYPES.SCHEMA_DEFINITION, orgId, updatedApiId, null);
             schema = parseSchema(schemaContent);
         }
         return res.status(200).json(new ServerResponseDTO(row, schema));

@@ -24,7 +24,8 @@ const { logUserAction } = require('../middlewares/auditLogger');
 const { config } = require('../config/configLoader');
 const constants = require('../utils/constants');
 const util = require('../utils/util');
-const adminDao = require('../dao/adminDao');
+const orgDao = require('../dao/organizationDao');
+const idpDao = require('../dao/identityProviderDao');
 const IdentityProviderDTO = require("../dto/identityProviderDto");
 const minimatch = require('minimatch');
 const { validationResult } = require('express-validator');
@@ -43,8 +44,8 @@ const fetchAuthJsonContent = async (req, orgName) => {
     }
     //if no idp per org, use super IDP
     try {
-        const orgId = await adminDao.getOrgId(orgName);
-        const response = await adminDao.getIdentityProvider(orgId);
+        const orgId = await orgDao.getId(orgName);
+        const response = await idpDao.get(orgId);
         if (response.length === 0) {
             //login from super IDP
             return config.identityProvider;
@@ -69,7 +70,7 @@ const login = async (req, res, next) => {
     };  
     const orgName = req.params.orgName;
     const baseUrl = '/' + orgName + constants.ROUTE.VIEWS_PATH + req.params.viewName;
-    const orgDetails = await adminDao.getOrganization(orgName);
+    const orgDetails = await orgDao.get(orgName);
     if (orgDetails) {
         claimNames[constants.ROLES.ROLE_CLAIM] = orgDetails.ROLE_CLAIM_NAME || config.roleClaim;
         claimNames[constants.ROLES.GROUP_CLAIM] = orgDetails.GROUPS_CLAIM_NAME || config.groupsClaim;

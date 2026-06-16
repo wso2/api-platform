@@ -19,7 +19,8 @@
 const minimatch = require('minimatch');
 const constants = require('../utils/constants');
 const { config } = require('../config/configLoader');
-const adminDao = require('../dao/adminDao');
+const orgDao = require('../dao/organizationDao');
+const idpDao = require('../dao/identityProviderDao');
 const { validationResult } = require('express-validator');
 const { jwtVerify, createRemoteJWKSet, importX509 } = require('jose');
 const util = require('../utils/util');
@@ -148,7 +149,7 @@ const ensureAuthenticated = async (req, res, next) => {
         }
         let orgDetails;
         if (!(orgID === undefined)) {
-            orgDetails = await adminDao.getOrganization(orgID);
+            orgDetails = await orgDao.get(orgID);
             adminRole = orgDetails.ADMIN_ROLE || adminRole;
             superAdminRole = orgDetails.SUPER_ADMIN_ROLE || superAdminRole;
             subscriberRole = orgDetails.SUBSCRIBER_ROLE || subscriberRole;
@@ -290,12 +291,12 @@ function validateAuthentication(scope) {
         }
         let IDP, valid, scopes, orgId, response;
         if (req.params.orgName) {
-            orgId = await adminDao.getOrgId(req.params.orgName);
+            orgId = await orgDao.getId(req.params.orgName);
         } else {
             orgId = req.params.orgId;
         }
         if (orgId) {
-            response = await adminDao.getIdentityProvider(orgId);
+            response = await idpDao.get(orgId);
             if (response.length !== 0) {
                 IDP = new IdentityProviderDTO(response[0].dataValues);
             } else {

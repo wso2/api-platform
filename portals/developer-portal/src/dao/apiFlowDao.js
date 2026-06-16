@@ -19,7 +19,7 @@ const { APIFlow } = require('../models/apiFlow');
 const { Sequelize } = require('sequelize');
 const logger = require('../config/logger');
 
-const createAPIFlow = async (orgID, viewId, apiFlowData, t) => {
+const create = async (orgID, viewId, apiFlowData, t) => {
     try {
         const apiFlow = await APIFlow.create({
             ORG_ID: orgID,
@@ -46,7 +46,7 @@ const createAPIFlow = async (orgID, viewId, apiFlowData, t) => {
     }
 };
 
-const updateAPIFlow = async (orgID, viewId, apiFlowId, apiFlowData, t) => {
+const update = async (orgID, viewId, apiFlowId, apiFlowData, t) => {
     const updateFields = { UPDATED_AT: new Date() };
     if (apiFlowData.name !== undefined) updateFields.NAME = apiFlowData.name;
     if (apiFlowData.handle !== undefined) updateFields.HANDLE = apiFlowData.handle;
@@ -66,33 +66,33 @@ const updateAPIFlow = async (orgID, viewId, apiFlowId, apiFlowData, t) => {
     return [count, rows];
 };
 
-const deleteAPIFlow = async (orgID, viewId, apiFlowId, t) => {
+const deleteFlow = async (orgID, viewId, apiFlowId, t) => {
     return await APIFlow.destroy({
         where: { API_FLOW_ID: apiFlowId, ORG_ID: orgID, VIEW_ID: viewId },
         transaction: t
     });
 };
 
-const getAPIFlow = async (orgID, viewId, apiFlowId) => {
+const get = async (orgID, viewId, apiFlowId) => {
     return await APIFlow.findOne({
         where: { API_FLOW_ID: apiFlowId, ORG_ID: orgID, VIEW_ID: viewId }
     });
 };
 
-const getAPIFlowByHandle = async (orgID, viewId, handle) => {
+const getByHandle = async (orgID, viewId, handle) => {
     return await APIFlow.findOne({
         where: { HANDLE: handle, ORG_ID: orgID, VIEW_ID: viewId }
     });
 };
 
-const getAllAPIFlows = async (orgID, viewId) => {
+const list = async (orgID, viewId) => {
     return await APIFlow.findAll({
         where: { ORG_ID: orgID, VIEW_ID: viewId },
         order: [['CREATED_AT', 'DESC']]
     });
 };
 
-const getPublishedAPIFlows = async (orgID, viewId, { visibility, agentVisibility } = {}) => {
+const listPublished = async (orgID, viewId, { visibility, agentVisibility } = {}) => {
     const where = { ORG_ID: orgID, VIEW_ID: viewId, STATUS: 'PUBLISHED' };
     if (visibility) where.VISIBILITY = visibility;
     if (agentVisibility) where.AGENT_VISIBILITY = agentVisibility;
@@ -102,7 +102,7 @@ const getPublishedAPIFlows = async (orgID, viewId, { visibility, agentVisibility
     });
 };
 
-const getPublishedAPIFlowByHandle = async (orgID, viewId, handle, { visibility, agentVisibility } = {}) => {
+const getPublishedByHandle = async (orgID, viewId, handle, { visibility, agentVisibility } = {}) => {
     const where = { HANDLE: handle, ORG_ID: orgID, VIEW_ID: viewId, STATUS: 'PUBLISHED' };
     if (visibility) where.VISIBILITY = visibility;
     if (agentVisibility) where.AGENT_VISIBILITY = agentVisibility;
@@ -110,12 +110,12 @@ const getPublishedAPIFlowByHandle = async (orgID, viewId, handle, { visibility, 
 };
 
 module.exports = {
-    createAPIFlow,
-    updateAPIFlow,
-    deleteAPIFlow,
-    getAPIFlow,
-    getAPIFlowByHandle,
-    getAllAPIFlows,
-    getPublishedAPIFlows,
-    getPublishedAPIFlowByHandle
+    create,
+    update,
+    delete: deleteFlow,
+    get,
+    getByHandle,
+    list,
+    listPublished,
+    getPublishedByHandle
 };

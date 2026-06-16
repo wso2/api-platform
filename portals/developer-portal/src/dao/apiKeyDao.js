@@ -19,7 +19,7 @@ const { Op } = require('sequelize');
 const APIKey = require('../models/apiKey');
 const { APIMetadata } = require('../models/apiMetadata');
 
-async function createKey({ apiId, subscriptionId, orgId, name, expiresAt, createdBy }, transaction) {
+async function create({ apiId, subscriptionId, orgId, name, expiresAt, createdBy }, transaction) {
     return APIKey.create(
         { API_ID: apiId, SUBSCRIPTION_ID: subscriptionId || null, ORG_ID: orgId,
           NAME: name, EXPIRES_AT: expiresAt || null, CREATED_BY: createdBy, STATUS: 'ACTIVE' },
@@ -27,7 +27,7 @@ async function createKey({ apiId, subscriptionId, orgId, name, expiresAt, create
     );
 }
 
-async function getKey(orgId, keyId, transaction) {
+async function get(orgId, keyId, transaction) {
     return APIKey.findOne({
         where: { KEY_ID: keyId, ORG_ID: orgId },
         include: [{ model: APIMetadata, attributes: ['API_ID', 'GATEWAY_TYPE', 'API_NAME'] }],
@@ -35,7 +35,7 @@ async function getKey(orgId, keyId, transaction) {
     });
 }
 
-async function listKeys(orgId, { apiId, subscriptionId, status } = {}) {
+async function list(orgId, { apiId, subscriptionId, status } = {}) {
     const where = { ORG_ID: orgId };
     if (apiId) where.API_ID = apiId;
     if (subscriptionId) where.SUBSCRIPTION_ID = subscriptionId;
@@ -47,7 +47,7 @@ async function listKeys(orgId, { apiId, subscriptionId, status } = {}) {
     });
 }
 
-async function revokeKey(orgId, keyId, transaction) {
+async function revoke(orgId, keyId, transaction) {
     const [count] = await APIKey.update(
         { STATUS: 'REVOKED', REVOKED_AT: new Date() },
         { where: { KEY_ID: keyId, ORG_ID: orgId, STATUS: 'ACTIVE' }, transaction }
@@ -55,4 +55,4 @@ async function revokeKey(orgId, keyId, transaction) {
     return count > 0;
 }
 
-module.exports = { createKey, getKey, listKeys, revokeKey };
+module.exports = { create, get, list, revoke };

@@ -33,7 +33,7 @@ let intervalHandle = null;
 async function runBatch() {
     const delivery = config.webhooks && config.webhooks.delivery;
     const batchSize = (delivery && delivery.batchSize) || 50;
-    const events = await eventDao.claimPendingEvents(batchSize);
+    const events = await eventDao.claimPending(batchSize);
     if (events.length === 0) return;
 
     for (const event of events) {

@@ -66,7 +66,7 @@ async function publish(eventType, payload, opts) {
     if (!orgId) throw new Error('publish() requires orgId');
     if (!aggregateId) throw new Error('publish() requires aggregateId');
 
-    const event = await eventDao.createEvent({
+    const event = await eventDao.create({
         eventType,
         orgId,
         gatewayType: gatewayType || null,

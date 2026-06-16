@@ -27,7 +27,7 @@ const kmCrypto = createCryptoUtil(config.advanced.encryptionKey);
  * Create a new key manager for an organization.
  * Admin credentials are encrypted before storage.
  */
-const createKeyManager = async (orgId, kmData) => {
+const create = async (orgId, kmData) => {
     try {
         if (!kmCrypto.enabled) {
             throw new Error('Key manager encryption key is not configured. ' +
@@ -62,7 +62,7 @@ const createKeyManager = async (orgId, kmData) => {
  * Update an existing key manager.
  * Re-encrypts admin credentials if they are provided.
  */
-const updateKeyManager = async (kmId, kmData) => {
+const update = async (kmId, kmData) => {
     try {
         const updatePayload = {
             ...(kmData.name && { NAME: kmData.name }),
@@ -112,7 +112,7 @@ const updateKeyManager = async (kmId, kmData) => {
  * List all key managers for an organization.
  * Returns raw records (encrypted fields included for internal use).
  */
-const getKeyManagers = async (orgId) => {
+const list = async (orgId) => {
     try {
         return await KeyManager.findAll({
             where: { ORG_ID: orgId }
@@ -126,7 +126,7 @@ const getKeyManagers = async (orgId) => {
 /**
  * List only enabled key managers for an organization.
  */
-const getEnabledKeyManagers = async (orgId) => {
+const listEnabled = async (orgId) => {
     try {
         return await KeyManager.findAll({
             where: { ORG_ID: orgId, ENABLED: true }
@@ -140,7 +140,7 @@ const getEnabledKeyManagers = async (orgId) => {
 /**
  * Get a single key manager by ID.
  */
-const getKeyManager = async (kmId) => {
+const get = async (kmId) => {
     try {
         const km = await KeyManager.findByPk(kmId);
         if (!km) {
@@ -159,7 +159,7 @@ const getKeyManager = async (kmId) => {
 /**
  * Get a key manager by name within an organization.
  */
-const getKeyManagerByName = async (orgId, name) => {
+const getByName = async (orgId, name) => {
     try {
         const km = await KeyManager.findOne({
             where: { ORG_ID: orgId, NAME: name }
@@ -180,7 +180,7 @@ const getKeyManagerByName = async (orgId, name) => {
 /**
  * Delete a key manager.
  */
-const deleteKeyManager = async (kmId) => {
+const deleteKm = async (kmId) => {
     try {
         const deleted = await KeyManager.destroy({
             where: { KM_ID: kmId }
@@ -202,7 +202,7 @@ const deleteKeyManager = async (kmId) => {
  * Decrypt admin credentials for a key manager record.
  * Used internally by adapters to make admin API calls.
  */
-const decryptAdminCredentials = (kmRecord) => {
+const decryptCredentials = (kmRecord) => {
     if (!kmCrypto.enabled) {
         throw new Error('Key manager encryption key is not configured.');
     }
@@ -213,12 +213,12 @@ const decryptAdminCredentials = (kmRecord) => {
 };
 
 module.exports = {
-    createKeyManager,
-    updateKeyManager,
-    getKeyManagers,
-    getEnabledKeyManagers,
-    getKeyManager,
-    getKeyManagerByName,
-    deleteKeyManager,
-    decryptAdminCredentials,
+    create,
+    update,
+    list,
+    listEnabled,
+    get,
+    getByName,
+    delete: deleteKm,
+    decryptCredentials,
 };

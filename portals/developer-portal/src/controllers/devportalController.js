@@ -21,7 +21,8 @@ const https = require('https');
 const { config } = require('../config/configLoader');
 const logger = require('../config/logger');
 const util = require('../utils/util');
-const adminDao = require('../dao/adminDao');
+const orgDao = require('../dao/organizationDao');
+const appDao = require('../dao/applicationDao');
 const constants = require('../utils/constants');
 const { ApplicationDTO } = require('../dto/applicationDto');
 const { Sequelize } = require("sequelize");
@@ -66,10 +67,10 @@ function parseApplicationDataFromRequest(req) {
 
 const saveApplication = async (req, res) => {
     try {
-        const orgID = await adminDao.getOrgId(req.user[constants.ORG_IDENTIFIER]);
+        const orgID = await orgDao.getId(req.user[constants.ORG_IDENTIFIER]);
         const applicationData = parseApplicationDataFromRequest(req);
         trackAppCreationStart({ orgId: orgID, appName: applicationData.name, idpId: req.isAuthenticated() ? (req[constants.USER_ID] || req.user.sub) : undefined }, req);
-        const application = await adminDao.createApplication(orgID, req.user.sub, applicationData);
+        const application = await appDao.create(orgID, req.user.sub, applicationData);
         trackAppCreationEnd({ orgId: orgID, appName: applicationData.name, idpId: req.isAuthenticated() ? (req[constants.USER_ID] || req.user.sub) : undefined }, req);
         return res.status(201).json(new ApplicationDTO(application.dataValues));
     } catch (error) {
@@ -86,10 +87,10 @@ const saveApplication = async (req, res) => {
 
 const updateApplication = async (req, res) => {
     try {
-        const orgID = await adminDao.getOrgId(req.user[constants.ORG_IDENTIFIER]);
+        const orgID = await orgDao.getId(req.user[constants.ORG_IDENTIFIER]);
         const appID = req.params.applicationId;
         const applicationData = parseApplicationDataFromRequest(req);
-        const [updatedRows, updatedApp] = await adminDao.updateApplication(orgID, appID, req.user.sub, applicationData);
+        const [updatedRows, updatedApp] = await appDao.update(orgID, appID, req.user.sub, applicationData);
         if (!updatedRows) {
             throw new Sequelize.EmptyResultError("No record found to update");
         }
@@ -115,7 +116,7 @@ const revokeAppKeyMappings = async (orgID, appID) => {
     for (const mapping of mappings) {
         if (mapping.KM_ID && mapping.AS_CLIENT_ID) {
             try {
-                const kmRecord = await kmDao.getKeyManager(mapping.KM_ID);
+                const kmRecord = await kmDao.get(mapping.KM_ID);
                 const adapter = getKeyManagerAdapter(kmRecord);
                 await adapter.deleteOAuthClient(mapping.AS_CLIENT_ID);
                 succeededMappingIds.push(mapping.MAPPING_ID);
@@ -133,7 +134,7 @@ const revokeAppKeyMappings = async (orgID, appID) => {
             succeededMappingIds.push(mapping.MAPPING_ID);
         }
     }
-    await adminDao.deleteAppMappingsByIds(orgID, succeededMappingIds);
+    await appDao.deleteMappingsByIds(orgID, succeededMappingIds);
     if (failedMappingIds.length > 0) {
         throw new Error(
             `Failed to revoke OAuth clients for ${failedMappingIds.length} mapping(s) ` +
@@ -144,11 +145,11 @@ const revokeAppKeyMappings = async (orgID, appID) => {
 
 const deleteApplication = async (req, res) => {
     try {
-        const orgID = await adminDao.getOrgId(req.user[constants.ORG_IDENTIFIER]);
+        const orgID = await orgDao.getId(req.user[constants.ORG_IDENTIFIER]);
         const applicationId = req.params.applicationId;
         try {
             await revokeAppKeyMappings(orgID, applicationId);
-            const appDeleteResponse = await adminDao.deleteApplication(orgID, applicationId, req.user.sub);
+            const appDeleteResponse = await appDao.delete(orgID, applicationId, req.user.sub);
             if (appDeleteResponse === 0) {
                 throw new Sequelize.EmptyResultError("Resource not found to delete");
             } else {
@@ -158,7 +159,7 @@ const deleteApplication = async (req, res) => {
         } catch (error) {
             if (error.statusCode === 404) {
                 await revokeAppKeyMappings(orgID, applicationId);
-                const appDeleteResponse = await adminDao.deleteApplication(orgID, applicationId, req.user.sub);
+                const appDeleteResponse = await appDao.delete(orgID, applicationId, req.user.sub);
                 if (appDeleteResponse === 0) {
                     throw new Sequelize.EmptyResultError("Resource not found to delete");
                 } else {
@@ -187,7 +188,7 @@ const deleteApplication = async (req, res) => {
 const generateKeys = async (req, res) => {
     let orgID, appID, userID;
     try {
-        orgID = await adminDao.getOrgId(req.user[constants.ORG_IDENTIFIER]);
+        orgID = await orgDao.getId(req.user[constants.ORG_IDENTIFIER]);
         appID = req.params.applicationId;
         userID = req[constants.USER_ID] || req.user?.sub;
         logger.info('Initiate create application key mapping...', { orgId: orgID, appId: appID });
@@ -200,7 +201,7 @@ const generateKeys = async (req, res) => {
             additionalProperties: additionalProps,
         } = req.body;
 
-        const kmRecord = await kmDao.getKeyManagerByName(orgID, kmName);
+        const kmRecord = await kmDao.getByName(orgID, kmName);
         const adapter = getKeyManagerAdapter(kmRecord);
 
         const grantTypes = grantTypesToBeSupported || ['client_credentials'];
@@ -234,7 +235,7 @@ const generateKeys = async (req, res) => {
         };
         let keyMappingRecord;
         try {
-            keyMappingRecord = await adminDao.upsertApplicationKeyMapping(appKeyMapping);
+            keyMappingRecord = await appDao.upsertKeyMapping(appKeyMapping);
         } catch (dbError) {
             if (oauthClient) {
                 await adapter.deleteOAuthClient(oauthClient.clientId).catch((cleanupErr) => {
@@ -278,7 +279,7 @@ const generateOAuthKeys = async (req, res) => {
         if (!keyMapping || !keyMapping.KM_ID) {
             return util.handleError(res, { statusCode: 404, message: 'Key mapping not found or missing key manager reference' });
         }
-        const kmRecord = await kmDao.getKeyManager(keyMapping.KM_ID);
+        const kmRecord = await kmDao.get(keyMapping.KM_ID);
         const adapter = getKeyManagerAdapter(kmRecord);
         const { consumerSecret, scopes, validityPeriod } = req.body;
         const tokenResult = await adapter.generateToken(
@@ -321,7 +322,7 @@ const revokeOAuthKeys = async (req, res) => {
         if (!keyMapping || !keyMapping.KM_ID) {
             return util.handleError(res, { statusCode: 404, message: 'Key mapping not found or missing key manager reference' });
         }
-        const kmRecord = await kmDao.getKeyManager(keyMapping.KM_ID);
+        const kmRecord = await kmDao.get(keyMapping.KM_ID);
         const adapter = getKeyManagerAdapter(kmRecord);
         await adapter.deleteOAuthClient(keyMapping.AS_CLIENT_ID);
         await ApplicationKeyMapping.update(
@@ -349,7 +350,7 @@ const cleanUp = async (req, res) => {
             where: { MAPPING_ID: keyMappingId, APP_ID: applicationId },
         });
         if (keyMapping && keyMapping.KM_ID && keyMapping.AS_CLIENT_ID) {
-            const kmRecord = await kmDao.getKeyManager(keyMapping.KM_ID);
+            const kmRecord = await kmDao.get(keyMapping.KM_ID);
             const adapter = getKeyManagerAdapter(kmRecord);
             await adapter.deleteOAuthClient(keyMapping.AS_CLIENT_ID);
         }
@@ -378,7 +379,7 @@ const updateOAuthKeys = async (req, res) => {
         if (!keyMapping || !keyMapping.KM_ID) {
             return util.handleError(res, { statusCode: 404, message: 'Key mapping not found or missing key manager reference' });
         }
-        const kmRecord = await kmDao.getKeyManager(keyMapping.KM_ID);
+        const kmRecord = await kmDao.get(keyMapping.KM_ID);
         const adapter = getKeyManagerAdapter(kmRecord);
         const updatedGrantTypes = tokenDetails.supportedGrantTypes || tokenDetails.grantTypesToBeSupported;
         const result = await adapter.updateOAuthClient(

@@ -24,7 +24,7 @@ const DPEventDelivery = require('../models/eventDelivery');
  * Write an event row within the caller's transaction.
  * Returns the created event instance.
  */
-async function createEvent({ eventType, orgId, gatewayType, aggregateType, aggregateId, payload }, transaction) {
+async function create({ eventType, orgId, gatewayType, aggregateType, aggregateId, payload }, transaction) {
     return DPEvent.create(
         { EVENT_TYPE: eventType, ORG_ID: orgId, GATEWAY_TYPE: gatewayType || null,
           AGGREGATE_TYPE: aggregateType, AGGREGATE_ID: aggregateId, PAYLOAD: payload || {} },
@@ -53,7 +53,7 @@ async function createDeliveries(eventId, subscribers, perSubscriberEncrypted, tr
  * Claim a batch of PENDING events using SELECT FOR UPDATE SKIP LOCKED.
  * Returns events with their delivery rows.
  */
-async function claimPendingEvents(batchSize) {
+async function claimPending(batchSize) {
     const isPostgres = sequelize.getDialect() === 'postgres';
     const txOpts = isPostgres ? { isolationLevel: Sequelize.Transaction.ISOLATION_LEVELS.READ_COMMITTED } : {};
     return sequelize.transaction(txOpts, async (t) => {
@@ -111,7 +111,7 @@ async function markDelivered(deliveryId, httpStatus) {
         { STATUS: 'DELIVERED', LAST_HTTP_STATUS: httpStatus, DELIVERED_AT: new Date() },
         { where: { DELIVERY_ID: deliveryId } }
     );
-    await reconcileEventStatus(await DPEventDelivery.findByPk(deliveryId));
+    await reconcile(await DPEventDelivery.findByPk(deliveryId));
 }
 
 /**
@@ -127,7 +127,7 @@ async function markFailed(deliveryId, { httpStatus, error, attemptCount, nextAtt
     };
     await DPEventDelivery.update(update, { where: { DELIVERY_ID: deliveryId } });
     if (deadLetter) {
-        await reconcileEventStatus(await DPEventDelivery.findByPk(deliveryId));
+        await reconcile(await DPEventDelivery.findByPk(deliveryId));
     }
 }
 
@@ -135,7 +135,7 @@ async function markFailed(deliveryId, { httpStatus, error, attemptCount, nextAtt
  * If all deliveries for an event are terminal (DELIVERED or DEAD_LETTERED),
  * update the event status accordingly.
  */
-async function reconcileEventStatus(delivery) {
+async function reconcile(delivery) {
     if (!delivery) return;
     const all = await DPEventDelivery.findAll({ where: { EVENT_ID: delivery.EVENT_ID } });
     if (all.length === 0) return;
@@ -151,7 +151,7 @@ async function reconcileEventStatus(delivery) {
 /**
  * Admin: list recent events with delivery counts.
  */
-async function listEvents({ orgId, status, limit = 50, offset = 0 }) {
+async function list({ orgId, status, limit = 50, offset = 0 }) {
     const where = {};
     if (orgId) where.ORG_ID = orgId;
     if (status) where.STATUS = status;
@@ -167,7 +167,7 @@ async function listEvents({ orgId, status, limit = 50, offset = 0 }) {
 /**
  * Admin: get a single event with all delivery details.
  */
-async function getEvent(eventId) {
+async function get(eventId) {
     return DPEvent.findByPk(eventId, {
         include: [{ model: DPEventDelivery }]
     });
@@ -195,8 +195,9 @@ async function retryDelivery(deliveryId, orgId) {
 }
 
 module.exports = {
-    createEvent, createDeliveries,
-    claimPendingEvents, claimDueDeliveries,
+    create, createDeliveries,
+    claimPending, claimDueDeliveries,
     markDelivered, markFailed,
-    listEvents, getEvent, retryDelivery
+    list, get, retryDelivery,
+    reconcile
 };

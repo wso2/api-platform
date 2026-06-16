@@ -16,8 +16,9 @@
  * under the License.
  */
 const apiFlowDao = require('../dao/apiFlowDao');
-const adminDao = require('../dao/adminDao');
-const apiMetadataDao = require('../dao/apiMetadataDao');
+const orgDao = require('../dao/organizationDao');
+const apiDao = require('../dao/apiDao');
+const viewDao = require('../dao/viewDao');
 const apiFlowService = require('../services/apiFlowService');
 const logger = require('../config/logger');
 const { renderTemplate, loadLayoutFromAPI, renderGivenTemplate, renderTemplateFromAPI, isAiDisabledForPortal } = require('../utils/util');
@@ -29,7 +30,7 @@ const Handlebars = require('handlebars');
 const yaml = require('js-yaml');
 
 const resolveViewId = async (orgID, viewName) => {
-    return await apiMetadataDao.getViewID(orgID, viewName);
+    return await viewDao.getId(orgID, viewName);
 };
 
 
@@ -60,7 +61,7 @@ const resolveSourceUrls = async (sources, orgName, viewName, orgID) => {
         const match = source.url.match(pattern);
         if (!match) return source;
         const [, apiType, apiHandle] = match;
-        const apiId = await apiMetadataDao.getAPIId(orgID, apiHandle);
+        const apiId = await apiDao.getId(orgID, apiHandle);
         if (!apiId) return source;
         return { ...source, url: `/${orgName}/views/${viewName}/${apiType}/${apiHandle}.md`, isDevportalApi: true };
     }));
@@ -71,7 +72,7 @@ const loadAPIFlows = async (req, res) => {
     const { orgName, viewName } = req.params;
 
     try {
-        const orgDetails = await adminDao.getOrganization(orgName);
+        const orgDetails = await orgDao.get(orgName);
         if (!orgDetails) {
             const templateContent = { errorMessage: 'Organization not found' };
             const html = renderTemplate('src/pages/error-page/page.hbs', 'src/defaultContent/layout/main.hbs', templateContent, false);
@@ -82,7 +83,7 @@ const loadAPIFlows = async (req, res) => {
         const viewId = await resolveViewId(orgID, viewName);
 
         const visibilityFilter = req.user ? undefined : 'PUBLIC';
-        const apiFlows = await apiFlowDao.getPublishedAPIFlows(orgID, viewId, { visibility: visibilityFilter });
+        const apiFlows = await apiFlowDao.listPublished(orgID, viewId, { visibility: visibilityFilter });
 
         const profile = req.user ? {
             username: req.user.sub,
@@ -126,7 +127,7 @@ const loadAPIFlows = async (req, res) => {
         if (dbLayout) {
             const templatePath = path.join(process.cwd(), 'src/defaultContent/pages/api-flows/page.hbs');
             const templateResponse = fs.readFileSync(templatePath, 'utf8');
-            const styleContent = await adminDao.getOrgContent({ orgId: orgID, fileType: 'style', viewName: viewName, fileName: 'main.css' });
+            const styleContent = await orgDao.getContent({ orgId: orgID, fileType: 'style', viewName: viewName, fileName: 'main.css' });
             const themedLayout = styleContent
                 ? dbLayout.replace(/\/styles\//g, `${constants.DEVPORTAL_API.orgPath(orgID)}/views/${viewName}/layout?fileType=style&fileName=`)
                 : dbLayout;
@@ -152,7 +153,7 @@ const loadAPIFlowDetail = async (req, res) => {
     const { orgName, viewName, handle } = req.params;
 
     try {
-        const orgDetails = await adminDao.getOrganization(orgName);
+        const orgDetails = await orgDao.get(orgName);
         if (!orgDetails) {
             const templateContent = { errorMessage: 'Organization not found' };
             const html = renderTemplate('src/pages/error-page/page.hbs', 'src/defaultContent/layout/main.hbs', templateContent, false);
@@ -162,7 +163,7 @@ const loadAPIFlowDetail = async (req, res) => {
         const orgID = orgDetails.ORG_ID;
         const viewId = await resolveViewId(orgID, viewName);
 
-        const apiFlow = await apiFlowDao.getPublishedAPIFlowByHandle(orgID, viewId, handle);
+        const apiFlow = await apiFlowDao.getPublishedByHandle(orgID, viewId, handle);
 
         if (!apiFlow) {
             const templateContent = { errorMessage: 'API Workflow not found or not published' };
@@ -219,7 +220,7 @@ const loadAPIFlowDetail = async (req, res) => {
         if (dbLayout) {
             const templatePath = path.join(process.cwd(), 'src/defaultContent/pages/api-flows/detail/page.hbs');
             const templateResponse = fs.readFileSync(templatePath, 'utf8');
-            const styleContent = await adminDao.getOrgContent({ orgId: orgID, fileType: 'style', viewName: viewName, fileName: 'main.css' });
+            const styleContent = await orgDao.getContent({ orgId: orgID, fileType: 'style', viewName: viewName, fileName: 'main.css' });
             const themedLayout = styleContent
                 ? dbLayout.replace(/\/styles\//g, `${constants.DEVPORTAL_API.orgPath(orgID)}/views/${viewName}/layout?fileType=style&fileName=`)
                 : dbLayout;
@@ -246,7 +247,7 @@ const getFlowPromptJSON = async (req, res) => {
     const { orgName, viewName, handle } = req.params;
 
     try {
-        const orgDetails = await adminDao.getOrganization(orgName);
+        const orgDetails = await orgDao.get(orgName);
         if (!orgDetails) {
             return res.status(404).json({ error: 'Organization not found' });
         }
@@ -259,7 +260,7 @@ const getFlowPromptJSON = async (req, res) => {
 
         const viewId = await resolveViewId(orgID, viewName);
 
-        const apiFlow = await apiFlowDao.getPublishedAPIFlowByHandle(orgID, viewId, handle, { agentVisibility: 'VISIBLE' });
+        const apiFlow = await apiFlowDao.getPublishedByHandle(orgID, viewId, handle, { agentVisibility: 'VISIBLE' });
 
         if (!apiFlow) {
             return res.status(404).json({ error: 'API Workflow not found or not published' });
@@ -297,7 +298,7 @@ const getWorkflowDetailMd = async (req, res) => {
     const { orgName, viewName, handle } = req.params;
 
     try {
-        const orgDetails = await adminDao.getOrganization(orgName);
+        const orgDetails = await orgDao.get(orgName);
         if (!orgDetails) {
             return res.status(404).send('# Error\n\nOrganization not found.');
         }
@@ -310,7 +311,7 @@ const getWorkflowDetailMd = async (req, res) => {
 
         const viewId = await resolveViewId(orgID, viewName);
 
-        const apiFlow = await apiFlowDao.getPublishedAPIFlowByHandle(orgID, viewId, handle, { agentVisibility: 'VISIBLE' });
+        const apiFlow = await apiFlowDao.getPublishedByHandle(orgID, viewId, handle, { agentVisibility: 'VISIBLE' });
 
         if (!apiFlow) {
             return res.status(404).send('# Error\n\nWorkflow is not available for Agents or not Published.');
@@ -405,7 +406,7 @@ const getAllPublishedFlowsMD = async (req, res) => {
     const { orgName, viewName } = req.params;
 
     try {
-        const orgDetails = await adminDao.getOrganization(orgName);
+        const orgDetails = await orgDao.get(orgName);
         if (!orgDetails) {
             return res.status(404).send('# Error\n\nOrganization not found.');
         }
@@ -418,7 +419,7 @@ const getAllPublishedFlowsMD = async (req, res) => {
 
         const viewId = await resolveViewId(orgID, viewName);
 
-        const allPublishedFlows = await apiFlowDao.getPublishedAPIFlows(orgID, viewId);
+        const allPublishedFlows = await apiFlowDao.listPublished(orgID, viewId);
         const apiFlows = allPublishedFlows.filter(f => (f.AGENT_VISIBILITY || 'VISIBLE') !== 'HIDDEN');
         const hiddenWorkflowCount = allPublishedFlows.length - apiFlows.length;
 
@@ -453,7 +454,7 @@ const getWorkflowArazzoSpec = async (req, res) => {
     const { orgName, viewName, handle } = req.params;
 
     try {
-        const orgDetails = await adminDao.getOrganization(orgName);
+        const orgDetails = await orgDao.get(orgName);
         if (!orgDetails) {
             return res.status(404).json({ error: 'Organization not found' });
         }
@@ -466,7 +467,7 @@ const getWorkflowArazzoSpec = async (req, res) => {
 
         const viewId = await resolveViewId(orgID, viewName);
 
-        const apiFlow = await apiFlowDao.getPublishedAPIFlowByHandle(orgID, viewId, handle);
+        const apiFlow = await apiFlowDao.getPublishedByHandle(orgID, viewId, handle);
         if (!apiFlow) {
             return res.status(404).json({ error: 'API Workflow not found or not published' });
         }

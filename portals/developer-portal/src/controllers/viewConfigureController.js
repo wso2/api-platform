@@ -18,8 +18,9 @@
 const fs = require('fs');
 const path = require('path');
 const logger = require('../config/logger');
-const adminDao = require('../dao/adminDao');
-const apiMetadataDao = require('../dao/apiMetadataDao');
+const orgDao = require('../dao/organizationDao');
+const apiDao = require('../dao/apiDao');
+const viewDao = require('../dao/viewDao');
 const apiFlowService = require('../services/apiFlowService');
 const { renderGivenTemplate, loadLayoutFromAPI } = require('../utils/util');
 const { getSessionCsrfToken } = require('../middlewares/csrfProtection');
@@ -44,16 +45,16 @@ const loadViewSettingsPage = async (req, res) => {
     try {
         const orgName = req.params.orgName;
         templateContent.loggedOrg = orgName;
-        orgID = await adminDao.getOrgId(orgName);
-        const orgDetails = await adminDao.getOrganization(orgName);
+        orgID = await orgDao.getId(orgName);
+        const orgDetails = await orgDao.get(orgName);
         templateContent.devportalMode = orgDetails.ORG_CONFIG?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
         templateContent.orgID = orgID;
 
-        const viewId = await apiMetadataDao.getViewID(orgID, viewName);
+        const viewId = await viewDao.getId(orgID, viewName);
         const apiFlows = await apiFlowService.getAllAPIFlowsFromDB(orgID, viewId);
         templateContent.apiFlows = apiFlows;
 
-        const allAPIs = await apiMetadataDao.getAPIMetadataByCondition({ ORG_ID: orgID, STATUS: constants.API_STATUS.PUBLISHED });
+        const allAPIs = await apiDao.getByCondition({ ORG_ID: orgID, STATUS: constants.API_STATUS.PUBLISHED });
         templateContent.orgAPIs = allAPIs.map(api => ({
             apiId: api.API_ID,
             apiName: api.API_NAME,
@@ -64,7 +65,7 @@ const loadViewSettingsPage = async (req, res) => {
             agentVisibility: api.AGENT_VISIBILITY
         }));
 
-        const configAsset = await adminDao.getOrgContent({
+        const configAsset = await orgDao.getContent({
             orgId: orgID, fileType: constants.FILE_TYPE.LLMS_CONFIG, viewName, fileName: constants.FILE_NAME.LLMS_CONFIG
         });
         let llmsConfig = { aiEnabled: true, portalName: '', portalDescription: '' };
@@ -97,8 +98,8 @@ const loadViewSettingsPage = async (req, res) => {
 const getLlmsConfig = async (req, res) => {
     const { orgName, viewName } = req.params;
     try {
-        const orgID = await adminDao.getOrgId(orgName);
-        const asset = await adminDao.getOrgContent({
+        const orgID = await orgDao.getId(orgName);
+        const asset = await orgDao.getContent({
             orgId: orgID, fileType: constants.FILE_TYPE.LLMS_CONFIG, viewName, fileName: constants.FILE_NAME.LLMS_CONFIG
         });
         if (!asset) {
@@ -122,19 +123,19 @@ const saveLlmsConfig = async (req, res) => {
         .trim().replace(/[<>"'&]/g, '').slice(0, 1000);
 
     try {
-        const orgID = await adminDao.getOrgId(orgName);
+        const orgID = await orgDao.getId(orgName);
         const content = Buffer.from(JSON.stringify({ aiEnabled, portalName, portalDescription }));
         const orgData = {
             orgId: orgID, fileType: constants.FILE_TYPE.LLMS_CONFIG, viewName,
             fileName: constants.FILE_NAME.LLMS_CONFIG, fileContent: content, filePath: constants.FILE_TYPE.LLMS_CONFIG
         };
-        const existing = await adminDao.getOrgContent({
+        const existing = await orgDao.getContent({
             orgId: orgID, fileType: constants.FILE_TYPE.LLMS_CONFIG, viewName, fileName: constants.FILE_NAME.LLMS_CONFIG
         });
         if (existing) {
-            await adminDao.updateOrgContent(orgData);
+            await orgDao.updateContent(orgData);
         } else {
-            await adminDao.createOrgContent(orgData);
+            await orgDao.createContent(orgData);
         }
         res.json({ message: 'Saved successfully' });
     } catch (err) {

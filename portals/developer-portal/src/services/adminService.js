@@ -17,8 +17,14 @@
  */
 /* eslint-disable no-undef */
 const { CustomError } = require('../utils/errors/customErrors');
-const adminDao = require('../dao/adminDao');
-const apiDao = require('../dao/apiMetadataDao');
+const orgDao = require('../dao/organizationDao');
+const idpDao = require('../dao/identityProviderDao');
+const providerDao = require('../dao/providerDao');
+const appDao = require('../dao/applicationDao');
+const apiDao = require('../dao/apiDao');
+const labelDao = require('../dao/labelDao');
+const viewDao = require('../dao/viewDao');
+const subscriptionPolicyDao = require('../dao/subscriptionPolicyDao');
 const util = require('../utils/util');
 const fs = require('fs');
 const path = require('path');
@@ -170,7 +176,7 @@ const createOrganization = async (req, res) => {
         await sequelize.transaction({
             timeout: 60000,
         }, async (t) => {
-            organization = await adminDao.createOrganization(payload, t);
+            organization = await orgDao.create(payload, t);
             const orgId = organization.ORG_ID;
             logger.info('Organization created successfully', {
                 orgId,
@@ -182,7 +188,7 @@ const createOrganization = async (req, res) => {
                 ? payload.labels
                 : [{ name: 'default', displayName: 'default' }];
 
-            const createdLabels = await apiDao.createLabels(orgId, labelDefs, t);
+            const createdLabels = await labelDao.createMany(orgId, labelDefs, t);
             logger.info('Labels created successfully', { orgId });
 
             // Build name→ID map for view→label linking
@@ -195,32 +201,32 @@ const createOrganization = async (req, res) => {
                 : [{ name: 'default', displayName: 'default', labels: [labelDefs[0].name] }];
 
             for (const viewDef of viewDefs) {
-                const viewResponse = await apiDao.addView(orgId, viewDef, t);
+                const viewResponse = await viewDao.create(orgId, viewDef, t);
                 const viewID = viewResponse.dataValues.VIEW_ID;
                 for (const lName of (viewDef.labels || [])) {
                     const labelId = labelMap[lName];
                     if (labelId) {
-                        await apiDao.addLabel(orgId, labelId, viewID, t);
+                        await labelDao.addToView(orgId, labelId, viewID, t);
                     }
                 }
             }
             logger.info('Views created successfully', { orgId });
             //create default provider
-            await adminDao.createProvider(organization.ORG_ID, { name: 'WSO2', providerURL: constants.WSO2_DEFAULT_URL }, t);
+            await providerDao.create(organization.ORG_ID, { name: 'WSO2', providerURL: constants.WSO2_DEFAULT_URL }, t);
             logger.info('Default provider created successfully', {
                 orgId
             });
 
             //store default subscription policies
             if (config.generateDefaultSubPolicies) {
-                await apiDao.bulkCreateSubscriptionPolicies(orgId, constants.DEFAULT_SUBSCRIPTION_PLANS, t);
+                await subscriptionPolicyDao.createMany(orgId, constants.DEFAULT_SUBSCRIPTION_PLANS, t);
             }
             logger.info('Default subscription policies created successfully', {
                 orgId
             });
 
             if (payload.identityProvider) {
-                await adminDao.createIdentityProvider(orgId, payload.identityProvider, t);
+                await idpDao.create(orgId, payload.identityProvider, t);
                 logger.info('Identity provider created successfully', { orgId });
             }
         });
@@ -265,7 +271,7 @@ const getOrganizations = async (req, res) => {
 };
 
 const getAllOrganizations = async () => {
-    const organizations = await adminDao.getOrganizations();
+    const organizations = await orgDao.list();
     const orgList = [];
     if (organizations.length > 0) {
         for (const organization of organizations) {
@@ -309,16 +315,16 @@ const updateOrganization = async (req, res) => {
 
         let updatedOrg;
         await sequelize.transaction({ timeout: 60000 }, async (t) => {
-            [, updatedOrg] = await adminDao.updateOrganization(payload, t);
+            [, updatedOrg] = await orgDao.update(payload, t);
             logger.info('Organization update successful', { orgId });
 
             // IDP upsert — only if present in payload
             if (payload.identityProvider) {
-                const existing = await adminDao.getIdentityProvider(orgId);
+                const existing = await idpDao.get(orgId);
                 if (existing.length > 0) {
-                    await adminDao.updateIdentityProvider(orgId, payload.identityProvider, t);
+                    await idpDao.update(orgId, payload.identityProvider, t);
                 } else {
-                    await adminDao.createIdentityProvider(orgId, payload.identityProvider, t);
+                    await idpDao.create(orgId, payload.identityProvider, t);
                 }
                 logger.info('Identity provider upserted successfully', { orgId });
             }
@@ -326,7 +332,7 @@ const updateOrganization = async (req, res) => {
             // Labels upsert — only if present in payload
             if (payload.labels?.length) {
                 for (const label of payload.labels) {
-                    await apiDao.updateLabel(orgId, label, t);
+                    await labelDao.update(orgId, label, t);
                 }
                 logger.info('Labels upserted successfully', { orgId });
             }
@@ -334,9 +340,9 @@ const updateOrganization = async (req, res) => {
             // Views upsert — only if present in payload
             if (payload.views?.length) {
                 for (const viewDef of payload.views) {
-                    const view = await apiDao.updateView(orgId, viewDef.name, viewDef.displayName, t);
+                    const view = await viewDao.update(orgId, viewDef.name, viewDef.displayName, t);
                     if (viewDef.labels?.length) {
-                        await apiDao.replaceViewLabels(orgId, view.dataValues.VIEW_ID, viewDef.labels, t);
+                        await viewDao.replaceLabels(orgId, view.dataValues.VIEW_ID, viewDef.labels, t);
                     }
                 }
                 logger.info('Views upserted successfully', { orgId });
@@ -375,7 +381,7 @@ const deleteOrganization = async (req, res) => {
         orgId
     });
     try {
-        const deletedRowsCount = await adminDao.deleteOrganization(orgId);
+        const deletedRowsCount = await orgDao.delete(orgId);
         if (deletedRowsCount > 0) {
             logger.info('Organization deletion successful', {
                 orgId
@@ -409,7 +415,7 @@ const createIdentityProvider = async (req, res) => {
     });
     try {
         const idpData = req.body;
-        const idpResponse = await adminDao.createIdentityProvider(orgId, idpData);
+        const idpResponse = await idpDao.create(orgId, idpData);
         logger.info('Identity provider created successfully', {
             orgId
         });
@@ -439,7 +445,7 @@ const updateIdentityProvider = async (req, res) => {
         ...idpData
     });
     try {
-        const [updatedRows, updatedIDP] = await adminDao.updateIdentityProvider(orgId, idpData);
+        const [updatedRows, updatedIDP] = await idpDao.update(orgId, idpData);
         if (!updatedRows) {
             throw new Sequelize.EmptyResultError("No record found to update");
         }
@@ -461,7 +467,7 @@ const getIdentityProvider = async (req, res) => {
 
     const orgID = req.params.orgId;
     try {
-        const retrievedIDP = await adminDao.getIdentityProvider(orgID);
+        const retrievedIDP = await idpDao.get(orgID);
         // Create response object
         if (retrievedIDP.length > 0) {
             res.status(200).send(new IdentityProviderDTO(retrievedIDP[0]));
@@ -484,7 +490,7 @@ const deleteIdentityProvider = async (req, res) => {
         orgId: orgId
     });
     try {
-        const idpDeleteResponse = await adminDao.deleteIdentityProvider(orgId);
+        const idpDeleteResponse = await idpDao.delete(orgId);
         if (idpDeleteResponse === 0) {
             throw new Sequelize.EmptyResultError("Resource not found to delete");
         } else {
@@ -560,7 +566,7 @@ const createContent = async (filePath, fileName, fileContent, fileType, orgId, v
     // eslint-disable-next-line no-useless-catch
     try {
         if (fileName != null && !fileName.startsWith('.')) {
-            content = await adminDao.createOrgContent({
+            content = await orgDao.createContent({
                 fileType: fileType,
                 fileName: fileName,
                 fileContent: fileContent,
@@ -604,7 +610,7 @@ const updateOrgContent = async (req, res) => {
             if (fileName != null && !fileName.startsWith('.')) {
                 const organizationContent = await getOrgContent(orgId, viewName, fileType, fileName, filePath);
                 if (organizationContent) {
-                    await adminDao.updateOrgContent({
+                    await orgDao.updateContent({
                         fileType: fileType,
                         fileName: fileName,
                         fileContent: fileContent,
@@ -647,7 +653,7 @@ const updateOrgContent = async (req, res) => {
 
 const getOrgContent = async (orgId, viewName, fileType, fileName, filePath) => {
 
-    return await adminDao.getOrgContent({
+    return await orgDao.getContent({
         orgId: orgId,
         viewName: viewName,
         fileType: fileType,
@@ -666,9 +672,9 @@ const deleteOrgContent = async (req, res) => {
         const fileName = req.query.fileName;
         let deletedRowsCount;
         if (!req.query.fileName) {
-            deletedRowsCount = await adminDao.deleteAllOrgContent(orgId, req.params.viewName);
+            deletedRowsCount = await orgDao.deleteAllContent(orgId, req.params.viewName);
         } else {
-            deletedRowsCount = await adminDao.deleteOrgContent(orgId, req.params.viewName, fileName);
+            deletedRowsCount = await orgDao.deleteContent(orgId, req.params.viewName, fileName);
         }
         if (deletedRowsCount > 0) {
             logger.info('Organization content deletion successful', {
@@ -696,7 +702,7 @@ const deleteAllOrgContent = async (req, res) => {
         viewName: req.params.viewName
     });
     try {
-        const deletedRowsCount = await adminDao.deleteAllOrgContent(orgId, req.params.viewName, fileName);
+        const deletedRowsCount = await orgDao.deleteAllContent(orgId, req.params.viewName, fileName);
         if (deletedRowsCount > 0) {
             logger.info('All organization content deletion successful', {
                 orgId,
@@ -721,7 +727,7 @@ const createProvider = async (req, res) => {
     const orgID = req.params.orgId;
     const payload = req.body;
     try {
-        const provider = await adminDao.createProvider(orgID, payload);
+        const provider = await providerDao.create(orgID, payload);
         let providerData = {
             orgId: provider[0].dataValues.ORG_ID,
             name: provider[0].dataValues.NAME,
@@ -745,7 +751,7 @@ const updateProvider = async (req, res) => {
     try {
         const orgId = req.params.orgId;
         const payload = req.body;
-        const provider = await adminDao.updateProvider(orgId, payload);
+        const provider = await providerDao.update(orgId, payload);
         let providerData = {
             orgId: provider[0][0].dataValues.ORG_ID,
             name: provider[0][0].dataValues.NAME,
@@ -788,7 +794,7 @@ const getProviders = async (req, res) => {
 
 const getProvidetByName = async (orgID, name) => {
 
-    const providerData = await adminDao.getProvider(orgID, name);
+    const providerData = await providerDao.get(orgID, name);
     if (providerData.length > 0) {
         const providerResponse = {
             name: providerData[0].dataValues.NAME,
@@ -803,7 +809,7 @@ const getProvidetByName = async (orgID, name) => {
 
 const getAllProviders = async (orgID) => {
 
-    const providers = await adminDao.getProviders(orgID);
+    const providers = await providerDao.list(orgID);
     const providerList = [];
     if (providers.length > 0) {
         for (const provider of providers) {
@@ -826,9 +832,9 @@ const deleteProvider = async (req, res) => {
         let property, deletedRowsCount;
         if (req.query.property) {
             property = req.query.property;
-            deletedRowsCount = await adminDao.deleteProviderProperty(orgId, property, providerName);
+            deletedRowsCount = await providerDao.deleteProperty(orgId, property, providerName);
         } else {
-            deletedRowsCount = await adminDao.deleteProvider(orgId, providerName);
+            deletedRowsCount = await providerDao.delete(orgId, providerName);
         }
         if (deletedRowsCount > 0) {
             res.status(204).send();
@@ -860,16 +866,16 @@ function checkAdditionalValues(additionalValues) {
 
 const getApplicationKeyMap = async (orgId, appId, userId) => {
 
-    const appIDResponse = await adminDao.getApplication(orgId, appId, userId);
+    const appIDResponse = await appDao.get(orgId, appId, userId);
     if (!appIDResponse) {
         throw new CustomError(404, "Records Not Found", 'Application not found');
     }
-    const appKeyMappings = await adminDao.getKeyMapping(orgId, appId);
+    const appKeyMappings = await appDao.getKeyMapping(orgId, appId);
     if (appKeyMappings) {
         const appMappingDTO = new ApplicationDTO(appKeyMappings);
         return appMappingDTO;
     } else {
-        const application = await adminDao.getApplication(orgId, appId, userId);
+        const application = await appDao.get(orgId, appId, userId);
         return new ApplicationDTO(application.dataValues);
     }
 
