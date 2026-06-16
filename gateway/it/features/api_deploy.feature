@@ -128,3 +128,35 @@ Feature: API Deployment and Invocation
     And the response should be valid JSON
     And the JSON response field "status" should be "error"
     And the response body should contain "Configuration validation failed"
+
+  Scenario: Deploy an API with a query string in an upstreamDefinitions URL should fail
+    Given I authenticate using basic auth as "admin"
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: RestApi
+      metadata:
+        name: invalid-upstream-query-api-v1.0
+      spec:
+        displayName: Invalid-Upstream-Query-API
+        version: v1.0
+        context: /invalid-upstream-query/$version
+        vhosts:
+          main: invalid-upstream-query.local
+        upstreamDefinitions:
+          - name: backend-default
+            basePath: /api-main
+            upstreams:
+              - url: http://sample-backend:9080?region=eu
+        upstream:
+          main:
+            ref: backend-default
+        operations:
+          - method: GET
+            path: /endpoint
+      """
+    Then the response should be a client error
+    And the response should be valid JSON
+    And the JSON response field "status" should be "error"
+    And the response body should contain "Configuration validation failed"
+    And the response body should contain "must not include a query string"
