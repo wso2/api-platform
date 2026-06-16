@@ -256,3 +256,144 @@ Feature: API-Level Upstream URL-Stable Cluster Naming
     Given I authenticate using basic auth as "admin"
     When I delete the API "api-level-url-stable-default-api-v1.0"
     Then the response should be successful
+
+  Scenario: API-level main and sandbox on the same backend host get separate identity-named clusters
+    Given I authenticate using basic auth as "admin"
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: RestApi
+      metadata:
+        name: api-level-url-stable-collision-api-v1.0
+      spec:
+        displayName: API-Level-URL-Stable-Collision-API
+        version: v1.0
+        context: /api-level-url-stable-collision/$version
+        vhosts:
+          main: api-level-url-stable-collision-main.local
+          sandbox: api-level-url-stable-collision-sb.local
+        upstream:
+          main:
+            url: http://sample-backend:9080/collision-main
+          sandbox:
+            url: http://sample-backend:9080/collision-sandbox
+        operations:
+          - method: GET
+            path: /endpoint
+      """
+    Then the response should be successful
+    And I wait for the endpoint "http://localhost:8080/api-level-url-stable-collision/v1.0/endpoint" to be ready with host "api-level-url-stable-collision-main.local"
+
+    # Main and sandbox share the same backend host:port but must route to their
+    # own base paths. The old URL-derived naming keyed the cluster on host and
+    # scheme only, so main and sandbox collapsed into one shared cluster here;
+    # identity naming gives each its own.
+    When I clear all headers
+    And I set request host to "api-level-url-stable-collision-main.local"
+    And I send a GET request to "http://localhost:8080/api-level-url-stable-collision/v1.0/endpoint"
+    Then the response should be successful
+    And the response should be valid JSON
+    And the JSON response field "path" should be "/collision-main/endpoint"
+
+    When I clear all headers
+    And I set request host to "api-level-url-stable-collision-sb.local"
+    And I send a GET request to "http://localhost:8080/api-level-url-stable-collision/v1.0/endpoint"
+    Then the response should be successful
+    And the response should be valid JSON
+    And the JSON response field "path" should be "/collision-sandbox/endpoint"
+
+    # Envoy admin: an identity-named main_<hash> and a sandbox_<hash> cluster
+    # must both exist (they do not collide), and no URL-derived cluster may
+    # exist. Under the old naming both upstreams shared one cluster_<scheme>_<host>
+    # cluster, so this assertion fails on the previous scheme.
+    When I clear all headers
+    And I send a GET request to "http://localhost:9901/clusters"
+    Then the response should be successful
+    And the response body should contain "main_"
+    And the response body should contain "sandbox_"
+    And the response body should not contain "cluster_http_"
+    And the response body should not contain "cluster_https_"
+
+    Given I authenticate using basic auth as "admin"
+    When I delete the API "api-level-url-stable-collision-api-v1.0"
+    Then the response should be successful
+
+  Scenario: Two APIs sharing the same backend host each route under their own identity-named cluster
+    Given I authenticate using basic auth as "admin"
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: RestApi
+      metadata:
+        name: api-level-url-stable-shared-a-v1.0
+      spec:
+        displayName: API-Level-URL-Stable-Shared-A
+        version: v1.0
+        context: /api-level-url-stable-shared-a/$version
+        vhosts:
+          main: api-level-url-stable-shared-a.local
+        upstream:
+          main:
+            url: http://sample-backend:9080/shared-a
+        operations:
+          - method: GET
+            path: /endpoint
+      """
+    Then the response should be successful
+    And I wait for the endpoint "http://localhost:8080/api-level-url-stable-shared-a/v1.0/endpoint" to be ready with host "api-level-url-stable-shared-a.local"
+
+    Given I authenticate using basic auth as "admin"
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: RestApi
+      metadata:
+        name: api-level-url-stable-shared-b-v1.0
+      spec:
+        displayName: API-Level-URL-Stable-Shared-B
+        version: v1.0
+        context: /api-level-url-stable-shared-b/$version
+        vhosts:
+          main: api-level-url-stable-shared-b.local
+        upstream:
+          main:
+            url: http://sample-backend:9080/shared-b
+        operations:
+          - method: GET
+            path: /endpoint
+      """
+    Then the response should be successful
+    And I wait for the endpoint "http://localhost:8080/api-level-url-stable-shared-b/v1.0/endpoint" to be ready with host "api-level-url-stable-shared-b.local"
+
+    # Two distinct APIs point at the same backend host:port. The old URL-derived
+    # naming made them share one cluster_<scheme>_<host> cluster; identity naming
+    # keys each cluster on its apiID, so the two APIs route independently to their
+    # own base paths under identity-named clusters and no URL-derived cluster exists.
+    When I clear all headers
+    And I set request host to "api-level-url-stable-shared-a.local"
+    And I send a GET request to "http://localhost:8080/api-level-url-stable-shared-a/v1.0/endpoint"
+    Then the response should be successful
+    And the response should be valid JSON
+    And the JSON response field "path" should be "/shared-a/endpoint"
+
+    When I clear all headers
+    And I set request host to "api-level-url-stable-shared-b.local"
+    And I send a GET request to "http://localhost:8080/api-level-url-stable-shared-b/v1.0/endpoint"
+    Then the response should be successful
+    And the response should be valid JSON
+    And the JSON response field "path" should be "/shared-b/endpoint"
+
+    When I clear all headers
+    And I send a GET request to "http://localhost:9901/clusters"
+    Then the response should be successful
+    And the response body should contain "main_"
+    And the response body should not contain "cluster_http_"
+    And the response body should not contain "cluster_https_"
+
+    Given I authenticate using basic auth as "admin"
+    When I delete the API "api-level-url-stable-shared-a-v1.0"
+    Then the response should be successful
+
+    Given I authenticate using basic auth as "admin"
+    When I delete the API "api-level-url-stable-shared-b-v1.0"
+    Then the response should be successful
