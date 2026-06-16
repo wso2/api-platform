@@ -89,8 +89,8 @@ type Manager struct {
 	// Both are optional (nil means no-op).
 	// These fields are written only by SetConnectionHooks, which must be called during
 	// initialization before the gateway accepts connections to avoid concurrent access.
-	onConnect    func(gatewayID string)
-	onDisconnect func(gatewayID string)
+	onConnect    func(gatewayID string) error
+	onDisconnect func(gatewayID string) error
 }
 
 // ManagerConfig contains configuration parameters for the connection manager
@@ -155,7 +155,7 @@ func NewManager(config ManagerConfig, gatewayRepo repository.GatewayRepository, 
 // Callbacks are invoked synchronously and must not acquire the manager's locks.
 // This method must be called only during initialization, before the gateway begins accepting
 // connections. It is not safe to call concurrently with Register or Unregister.
-func (m *Manager) SetConnectionHooks(onConnect, onDisconnect func(gatewayID string)) {
+func (m *Manager) SetConnectionHooks(onConnect, onDisconnect func(gatewayID string) error) {
 	m.onConnect = onConnect
 	m.onDisconnect = onDisconnect
 }
