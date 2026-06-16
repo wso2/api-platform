@@ -25,7 +25,7 @@ func defaultConfig() *Server {
 		DBSchemaPath:               "./internal/database/schema.sql",
 		OpenAPISpecPath:            "./resources/openapi.yaml",
 		LLMTemplateDefinitionsPath: "./resources/default-llm-provider-templates",
-		EnableScopeValidation:      false,
+		EnableScopeValidation:      true,
     	OrgCreationRequiresAuth:    false,
 		Database: Database{
 			Driver:           "sqlite3",
@@ -59,6 +59,7 @@ func defaultConfig() *Server {
 				SkipValidation: true,
 			},
 			IDP: IDP{
+				Enabled: 		false,
 				ValidationMode: "scope",
 				ClaimMappings: IDPClaimMappings{
 					OrganizationClaimName: "organization",
@@ -71,6 +72,7 @@ func defaultConfig() *Server {
 				},
 			},
 			FileBased: FileBased{
+				Enabled: 		false,
 				Organization: FileBasedOrg{
 					ID:     "99089a17-72e0-4dd8-a2f4-c8dfbb085295",
 					Name:   "AP Organization",
