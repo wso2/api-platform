@@ -10,6 +10,12 @@ https://<host>/<orgHandle>/views/<viewName>
 
 ## Create a View
 
+> **Authentication:** The examples below use a `$TOKEN` variable. Obtain a Bearer token first:
+> ```bash
+> TOKEN=$(curl -sk -X POST "https://localhost:9243/api/portal/v1/auth/login" \
+>   -d "username=admin&password=admin" | jq -r .token)
+> ```
+
 ```yaml
 # view.yaml
 name: internal
@@ -20,9 +26,9 @@ labels:
 ```
 
 ```bash
-curl -X POST http://localhost:3000/organizations/{orgId}/views \
+curl -X POST http://localhost:3000/o/{orgId}/devportal/v1/views \
   -H "Content-Type: application/yaml" \
-  -u admin:admin \
+  -H "Authorization: Bearer $TOKEN" \
   --data-binary @view.yaml
 ```
 
@@ -35,13 +41,13 @@ curl -X POST http://localhost:3000/organizations/{orgId}/views \
 ## List Views
 
 ```bash
-curl http://localhost:3000/organizations/{orgId}/views -u admin:admin
+curl http://localhost:3000/o/{orgId}/devportal/v1/views -H "Authorization: Bearer $TOKEN"
 ```
 
 ## Get a View
 
 ```bash
-curl http://localhost:3000/organizations/{orgId}/views/{name} -u admin:admin
+curl http://localhost:3000/o/{orgId}/devportal/v1/views/{name} -H "Authorization: Bearer $TOKEN"
 ```
 
 ## Update a View
@@ -57,16 +63,16 @@ removedLabels: []
 ```
 
 ```bash
-curl -X PUT http://localhost:3000/organizations/{orgId}/views/{name} \
+curl -X PUT http://localhost:3000/o/{orgId}/devportal/v1/views/{name} \
   -H "Content-Type: application/yaml" \
-  -u admin:admin \
+  -H "Authorization: Bearer $TOKEN" \
   --data-binary @view-update.yaml
 ```
 
 ## Delete a View
 
 ```bash
-curl -X DELETE http://localhost:3000/organizations/{orgId}/views/{name} -u admin:admin
+curl -X DELETE http://localhost:3000/o/{orgId}/devportal/v1/views/{name} -H "Authorization: Bearer $TOKEN"
 ```
 
 ---
@@ -76,8 +82,8 @@ curl -X DELETE http://localhost:3000/organizations/{orgId}/views/{name} -u admin
 A layout is a set of Handlebars (`.hbs`) template files that define the page structure for a view. Upload a custom layout to give a view its own branding independent of the theme color settings.
 
 ```bash
-curl -X POST "http://localhost:3000/organizations/{orgId}/views/{name}/layout" \
-  -u admin:admin \
+curl -X POST "http://localhost:3000/o/{orgId}/devportal/v1/views/{name}/layout" \
+  -H "Authorization: Bearer $TOKEN" \
   -F "zipFile=@my-layout.zip"
 ```
 
@@ -86,16 +92,16 @@ The ZIP file should contain `.hbs` template files following the portal's page st
 To update an existing layout:
 
 ```bash
-curl -X PUT "http://localhost:3000/organizations/{orgId}/views/{name}/layout" \
-  -u admin:admin \
+curl -X PUT "http://localhost:3000/o/{orgId}/devportal/v1/views/{name}/layout" \
+  -H "Authorization: Bearer $TOKEN" \
   -F "zipFile=@my-layout-v2.zip"
 ```
 
 To remove a custom layout and revert to the default:
 
 ```bash
-curl -X DELETE "http://localhost:3000/organizations/{orgId}/views/{name}/layout/template" \
-  -u admin:admin
+curl -X DELETE "http://localhost:3000/o/{orgId}/devportal/v1/views/{name}/layout/template" \
+  -H "Authorization: Bearer $TOKEN"
 ```
 
 ---
@@ -117,9 +123,9 @@ Labels are submitted as a JSON array (no YAML format for labels):
 ```
 
 ```bash
-curl -X POST http://localhost:3000/organizations/{orgId}/labels \
+curl -X POST http://localhost:3000/o/{orgId}/devportal/v1/labels \
   -H "Content-Type: application/json" \
-  -u admin:admin \
+  -H "Authorization: Bearer $TOKEN" \
   --data-binary @labels.json
 ```
 
@@ -131,7 +137,7 @@ curl -X POST http://localhost:3000/organizations/{orgId}/labels \
 ### List Labels
 
 ```bash
-curl http://localhost:3000/organizations/{orgId}/labels -u admin:admin
+curl http://localhost:3000/o/{orgId}/devportal/v1/labels -H "Authorization: Bearer $TOKEN"
 ```
 
 ### Update Labels
@@ -144,17 +150,17 @@ curl http://localhost:3000/organizations/{orgId}/labels -u admin:admin
 ```
 
 ```bash
-curl -X PUT http://localhost:3000/organizations/{orgId}/labels \
+curl -X PUT http://localhost:3000/o/{orgId}/devportal/v1/labels \
   -H "Content-Type: application/json" \
-  -u admin:admin \
+  -H "Authorization: Bearer $TOKEN" \
   --data-binary @labels-update.json
 ```
 
 ### Delete a Label
 
 ```bash
-curl -X DELETE "http://localhost:3000/organizations/{orgId}/labels?labelName=internal" \
-  -u admin:admin
+curl -X DELETE "http://localhost:3000/o/{orgId}/devportal/v1/labels?labelName=internal" \
+  -H "Authorization: Bearer $TOKEN"
 ```
 
 > **Note:** Deleting a label does not remove it from APIs that already have it assigned. Update each API to remove the label reference if needed.

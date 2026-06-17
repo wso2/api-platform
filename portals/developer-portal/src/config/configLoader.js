@@ -63,7 +63,6 @@ const CONFIG_DEFAULTS = {
     advanced: {
         http: true,
         dbSslDialectOption: false,
-        resourceLoadFromBaseUrl: false,
         disabledRoleValidation: true,
         disableOrgCallback: true,
         disableSilentSSO: false,
@@ -97,12 +96,6 @@ const CONFIG_DEFAULTS = {
         subscriptionPlansPath: './samples/subscriptionPlans.yaml',
         applicationsPath: './samples/applications.yaml',
         pathToLayout: './src/defaultContent/',
-    },
-    controlPlane: {
-        enabled: false,
-        url: '',
-        graphqlURL: '',
-        disableCertValidation: false,
     },
     platformApi: {
         baseUrl: '',

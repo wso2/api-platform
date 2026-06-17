@@ -130,7 +130,7 @@ spec:
 ```
 
 ```bash
-curl -X POST http://localhost:3000/organizations/{orgId}/identityProvider \
+curl -X POST http://localhost:3000/o/{orgId}/devportal/v1/identity-providers \
   -H "Authorization: Bearer $TOKEN" \
   -F "identityProvider=@idp.yaml"
 ```
@@ -175,7 +175,7 @@ spec:
 ```
 
 ```bash
-curl -X PUT http://localhost:3000/organizations/{orgId}/identityProvider \
+curl -X PUT http://localhost:3000/o/{orgId}/devportal/v1/identity-providers \
   -H "Authorization: Bearer $TOKEN" \
   -F "identityProvider=@idp-update.yaml"
 ```
@@ -183,7 +183,7 @@ curl -X PUT http://localhost:3000/organizations/{orgId}/identityProvider \
 ### Remove an IdP
 
 ```bash
-curl -X DELETE http://localhost:3000/organizations/{orgId}/identityProvider -H "Authorization: Bearer $TOKEN"
+curl -X DELETE http://localhost:3000/o/{orgId}/devportal/v1/identity-providers -H "Authorization: Bearer $TOKEN"
 ```
 
 ---

@@ -42,7 +42,7 @@ Then open **https://localhost:3000/default/views/default**
 
 > **Browser warning:** A self-signed TLS certificate is generated automatically on first start. Click **Advanced → Proceed** (Chrome) or **Accept the Risk** (Firefox) to continue.
 
-Default local users: `admin` / `admin` and `developer` / `developer`
+Default credentials: `admin` / `admin` (defined in `configs/config-platform-api.toml`)
 
 What happens automatically on first start:
 - The DB schema is applied and the database is initialised automatically
@@ -223,22 +223,21 @@ Open **http://localhost:3000/default/views/default**
 
 Seeds a set of sample APIs into the default organisation. Works with both the Docker Compose and `npm start` workflows.
 
+Get a Bearer token first, then pass it via `DEVPORTAL_TOKEN`:
+
 **npm start (HTTP):**
 ```bash
-DEVPORTAL_URL=http://localhost:3000 ./seeders/seed-apis.sh
+TOKEN=$(curl -sk -X POST "https://localhost:9243/api/portal/v1/auth/login" \
+  -d "username=admin&password=admin" | jq -r .token)
+DEVPORTAL_URL=http://localhost:3000 DEVPORTAL_TOKEN=$TOKEN ./seeders/seed-apis.sh
 ```
 
 **Docker Compose (HTTPS):**
 ```bash
-DEVPORTAL_URL=https://localhost:3000 ./seeders/seed-apis.sh
+TOKEN=$(curl -sk -X POST "https://localhost:9243/api/portal/v1/auth/login" \
+  -d "username=admin&password=admin" | jq -r .token)
+DEVPORTAL_URL=https://localhost:3000 DEVPORTAL_TOKEN=$TOKEN ./seeders/seed-apis.sh
 ```
-
-> **Note:**
->
-> Use the following command to pass variables to the script.
-> ```bash
-> DEVPORTAL_URL=https://localhost:3000 ORG_ID=1ba42a09-45c0-40f8-a1bf-e4aa7cde1575 DEVPORTAL_CREDENTIALS=admin:admin ./seeders/seed-apis.sh
-> ```
 
 ---
 
@@ -250,24 +249,25 @@ The full annotated list of settings is in [`sample.config.yaml`](sample.config.y
 
 ### Local auth
 
-For quick exploration without an IdP, the portal includes built-in local users enabled by default in `sample.config.yaml`:
+For quick exploration without an IdP, the portal delegates credential validation to a Platform API sidecar. Users, bcrypt-hashed passwords, and `dp:*` scopes are defined in `configs/config-platform-api.toml` (copy from `configs/config-platform-api.toml.example`):
 
-```yaml
-defaultAuth:
-  users:
-    - username: "admin"
-      password: "admin"
-      roles: ["admin"]
-      orgClaimName: "default"
-      organizationIdentifier: "default"
-    - username: "developer"
-      password: "developer"
-      roles: ["Internal/subscriber"]
-      orgClaimName: "default"
-      organizationIdentifier: "default"
+```toml
+[[auth.file_based.users]]
+username      = "admin"
+password_hash = "$2y$10$..."   # bcrypt hash — generate with: htpasswd -bnBC 12 "" <pw> | tr -d ':\n'
+scopes        = "dp:org_manage dp:api_manage ..."
 ```
 
-Remove or empty the `users` list in production.
+The portal config (or `DP_PLATFORMAPI_*` env vars) must point to the Platform API. Docker Compose sets these automatically:
+
+```yaml
+platformApi:
+  baseUrl: "https://platform-api:9243"   # env: DP_PLATFORMAPI_BASEURL
+  jwtSecret: ""                           # same as AUTH_JWT_SECRET_KEY — env: DP_PLATFORMAPI_JWTSECRET
+  insecure: false                         # set true when Platform API uses a self-signed cert
+```
+
+For production, configure an OIDC identity provider per organization instead of local auth.
 
 ### Environment variable overrides
 
@@ -424,12 +424,17 @@ paths:
 ```
 
 ```bash
+# Get a Bearer token
+TOKEN=$(curl -sk -X POST "https://localhost:9243/api/portal/v1/auth/login" \
+  -d "username=admin&password=admin" | jq -r .token)
+
 # Get the default org UUID
-ORG_ID=$(curl -sk -u admin:admin https://localhost:3000/devportal/organizations | grep -o '"orgID":"[^"]*"' | head -1 | cut -d'"' -f4)
+ORG_ID=$(curl -sk -H "Authorization: Bearer $TOKEN" \
+  https://localhost:3000/organizations | jq -r '.[0].orgID')
 
 # Create the API
-curl -sk -X POST "https://localhost:3000/devportal/organizations/$ORG_ID/apis" \
-  -u admin:admin \
+curl -sk -X POST "https://localhost:3000/o/$ORG_ID/devportal/v1/apis" \
+  -H "Authorization: Bearer $TOKEN" \
   -F "api=@api.yaml;type=application/yaml" \
   -F "apiDefinition=@openapi.yaml;type=application/yaml"
 ```

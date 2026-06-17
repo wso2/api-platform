@@ -385,22 +385,28 @@ After all attempts are exhausted, the delivery is marked as failed. You can trig
 
 ## Monitoring Event Deliveries
 
+> **Authentication:** The examples below use a `$TOKEN` variable. Obtain a Bearer token first:
+> ```bash
+> TOKEN=$(curl -sk -X POST "https://localhost:9243/api/portal/v1/auth/login" \
+>   -d "username=admin&password=admin" | jq -r .token)
+> ```
+
 ### List recent events
 
 ```bash
-curl http://localhost:3000/organizations/{orgId}/events -u admin:admin
+curl http://localhost:3000/o/{orgId}/devportal/v1/events -H "Authorization: Bearer $TOKEN"
 ```
 
 ### Get event details
 
 ```bash
-curl http://localhost:3000/organizations/{orgId}/events/{eventId} -u admin:admin
+curl http://localhost:3000/o/{orgId}/devportal/v1/events/{eventId} -H "Authorization: Bearer $TOKEN"
 ```
 
 ### Retry a failed delivery
 
 ```bash
 curl -X POST \
-  http://localhost:3000/organizations/{orgId}/deliveries/{deliveryId}/retry \
-  -u admin:admin
+  http://localhost:3000/o/{orgId}/devportal/v1/webhook-deliveries/{deliveryId}/retry \
+  -H "Authorization: Bearer $TOKEN"
 ```
