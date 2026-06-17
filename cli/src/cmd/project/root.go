@@ -15,26 +15,26 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-package apiproject
+package project
 
 import "github.com/spf13/cobra"
 
 const (
-	ApiProjectCmdLiteral = "apiproject"
-	ApiProjectCmdExample = `# Add a new API project
-ap apiproject init --display-name foo-api --type rest --version 1.0 --context /foo`
+	ProjectCmdLiteral = "project"
+	ProjectCmdExample = `# Initialize a new project
+ap project init --display-name foo-api --type rest`
 )
 
-var ApiProjectCmd = &cobra.Command{
-	Use:     ApiProjectCmdLiteral,
-	Short:   "Execute API project operations",
-	Long:    "This command allows you to manage API projects.",
-	Example: ApiProjectCmdExample,
+var ProjectCmd = &cobra.Command{
+	Use:     ProjectCmdLiteral,
+	Short:   "Execute project operations",
+	Long:    "This command allows you to manage projects (REST/SOAP/GraphQL APIs, LLM proxies/providers, MCP proxies).",
+	Example: ProjectCmdExample,
 	Run: func(cmd *cobra.Command, args []string) {
 		cmd.Help()
 	},
 }
 
 func init() {
-	ApiProjectCmd.AddCommand(initCmd)
+	ProjectCmd.AddCommand(initCmd)
 }

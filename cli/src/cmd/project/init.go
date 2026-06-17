@@ -15,7 +15,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-package apiproject
+package project
 
 import (
 	"fmt"
@@ -31,11 +31,11 @@ import (
 
 const (
 	InitCmdLiteral = "init"
-	InitCmdExample = `# Initialize a new API project
-ap apiproject init --display-name foo-api --type rest
+	InitCmdExample = `# Initialize a new project
+ap project init --display-name foo-api --type rest
 
-# Add a API project fully interactively cobra
-ap apiproject init`
+# Initialize a new project interactively
+ap project init`
 )
 
 var displayName string
@@ -44,8 +44,8 @@ var addNoInteractive bool
 
 var initCmd = &cobra.Command{
 	Use:     InitCmdLiteral,
-	Short:   "Initialize a new API project",
-	Long:    "Initialize a new API project with the specified parameters.",
+	Short:   "Initialize a new project",
+	Long:    "Initialize a new project with the specified parameters.",
 	Example: InitCmdExample,
 	Run: func(cmd *cobra.Command, args []string) {
 		if err := runInitCommand(); err != nil {
@@ -65,7 +65,7 @@ func runInitCommand() error {
 	var err error
 	if !addNoInteractive {
 		if strings.TrimSpace(displayName) == "" {
-			displayName, err = utils.PromptInput("Enter API Project name: ")
+			displayName, err = utils.PromptInput("Enter project name: ")
 			if err != nil {
 				return fmt.Errorf("Failed to read display name: %w", err)
 			}
@@ -96,7 +96,7 @@ func runInitCommand() error {
 		return err
 	}
 
-	fmt.Printf("Artifact project created at .%c%s\n", os.PathSeparator, displayName)
+	fmt.Printf("Project created at .%c%s\n", os.PathSeparator, displayName)
 	return nil
 }
 

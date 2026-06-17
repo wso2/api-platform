@@ -19,7 +19,7 @@
 // Package project holds the shared model for an api-platform project on disk:
 // the .api-platform/config.yaml schema, the per-portal config layout, and the
 // helpers used to scaffold and load them. Keeping these types here lets the
-// apiproject, devportal and (future) ai-workspace commands share a single
+// project, devportal and (future) ai-workspace commands share a single
 // source of truth instead of redeclaring the structs in each command package.
 package project
 
