@@ -57,6 +57,7 @@ function formatSubscriptionResponse(sub) {
         gatewayType: api.GATEWAY_TYPE || null,
         apiId: sub.API_ID,
         subscriptionPlanName: policy.POLICY_NAME || null,
+        createdBy: sub.CREATED_BY || null,
         createdAt: sub.createdAt || null,
     };
 }
@@ -64,6 +65,7 @@ function formatSubscriptionResponse(sub) {
 const createSubscription = async (req, res) => {
     const orgID = req.params.orgId;
     const { apiId, subscriptionPlanName } = req.body;
+    const createdBy = req.user.sub;
 
     try {
         const apiMetadataResponse = await apiDao.get(orgID, apiId);
@@ -101,7 +103,7 @@ const createSubscription = async (req, res) => {
         let newSub;
         await sequelize.transaction(async (t) => {
             newSub = await subDao.create(
-                orgID, apiId, policyId, t
+                orgID, apiId, policyId, createdBy, t
             );
             await safePublish('subscription.created', buildWebhookPayload(newSub, apiMetadata, matchedPlan), {
                 transaction: t,
@@ -143,7 +145,7 @@ const listSubscriptions = async (req, res) => {
             }
         }
 
-        const subs = await subDao.list(orgID, { apiId });
+        const subs = await subDao.list(orgID, { apiId, createdBy: req.user.sub });
         return res.status(200).json({ count: subs.length, list: subs.map(formatSubscriptionResponse) });
     } catch (error) {
         logger.error('Error listing subscriptions', {

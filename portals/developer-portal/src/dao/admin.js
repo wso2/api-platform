@@ -580,7 +580,7 @@ const deleteApplication = async (orgID, appID, userID) => {
 const createSubscription = async (orgID, subscription, t) => {
     try {
         const subMapping = await SubscriptionMapping.create({
-            APP_ID: subscription.applicationID,
+            CREATED_BY: subscription.createdBy,
             API_ID: subscription.apiId,
             POLICY_ID: subscription.policyId,
             ORG_ID: orgID,
@@ -601,8 +601,7 @@ const updateSubscription = async (orgID, subscription, t) => {
         }, {
             where: {
                 ORG_ID: orgID,
-                APP_ID: subscription.applicationID,
-                API_ID: subscription.apiId
+                SUB_ID: subscription.subId
             }
         }, { transaction: t });
         return subMapping;
@@ -631,34 +630,13 @@ const getSubscription = async (orgID, subID, t) => {
     }
 }
 
-const getSubscriptions = async (orgID, appID, apiID) => {
+const getSubscriptions = async (orgID, apiID) => {
     try {
         return await SubscriptionMapping.findAll(
             {
                 where: {
                     ORG_ID: orgID,
-                    [Sequelize.Op.or]: [
-                        { APP_ID: appID },
-                        { API_ID: apiID }
-                    ]
-                }
-            });
-    } catch (error) {
-        if (error instanceof Sequelize.EmptyResultError) {
-            throw error;
-        }
-        throw new Sequelize.DatabaseError(error);
-    }
-}
-
-const getAppApiSubscription = async (orgID, appID, apiID) => {
-    try {
-        return await SubscriptionMapping.findAll(
-            {
-                where: {
-                    ORG_ID: orgID,
-                    APP_ID: appID,
-                    API_ID: apiID
+                    API_ID: apiID,
                 }
             });
     } catch (error) {
@@ -857,10 +835,10 @@ const upsertApplicationKeyMapping = async (mappingData, t) => {
 /**
  * Find subscription by unique key (app, api, policy)
  */
-const findSubscriptionByUniqueKey = async (orgID, appID, apiID, policyID, t) => {
+const findSubscriptionByUniqueKey = async (orgID, apiID, policyID, t) => {
     try {
         return await SubscriptionMapping.findOne({
-            where: { ORG_ID: orgID, APP_ID: appID, API_ID: apiID, POLICY_ID: policyID },
+            where: { ORG_ID: orgID, API_ID: apiID, POLICY_ID: policyID },
             transaction: t,
         });
     } catch (error) {
@@ -887,17 +865,8 @@ const listSubscriptionsByOrg = async (orgID) => {
  */
 const listSubscriptionsByUser = async (orgID, userID) => {
     try {
-        const userApps = await Application.findAll({
-            where: { ORG_ID: orgID, CREATED_BY: userID },
-            attributes: ['APP_ID'],
-        });
-        const appIds = userApps.map((app) => app.APP_ID);
-        if (appIds.length === 0) return [];
         return await SubscriptionMapping.findAll({
-            where: {
-                ORG_ID: orgID,
-                APP_ID: { [Sequelize.Op.in]: appIds },
-            },
+            where: { ORG_ID: orgID, CREATED_BY: userID },
         });
     } catch (error) {
         logger.error('listSubscriptionsByUser failed', { error, orgID, userID });
@@ -935,7 +904,6 @@ module.exports = {
     deleteSubscription,
     getApplicationID,
     getKeyMapping,
-    getAppApiSubscription,
     getSubscribedAPIs,
     getApplicationKeyMapping,
     createApplicationKeyMapping,

@@ -44,7 +44,8 @@ const loadSubscriptions = async (req, res) => {
 
         let allSubscriptions = [];
         try {
-            const localSubs = await subDao.list(orgID);
+            const createdBy = req.user && req.user.sub;
+            const localSubs = await subDao.list(orgID, { createdBy });
             allSubscriptions = localSubs.map(sub => ({
                 id: sub.SUB_ID,
                 type: 'TOKEN_BASED',
@@ -139,7 +140,8 @@ const loadAPISubscriptions = async (req, res) => {
         }
         let allSubscriptions = [];
         try {
-            const localSubs = await subDao.list(orgID, { apiId: apiID });
+            const createdBy = req.user && req.user.sub;
+            const localSubs = await subDao.list(orgID, { apiId: apiID, createdBy });
             allSubscriptions = localSubs.map(sub => ({
                 id: sub.SUB_ID,
                 type: 'TOKEN_BASED',

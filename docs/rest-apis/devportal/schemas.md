@@ -1058,8 +1058,7 @@ xor
 ```json
 {
   "apiId": "api-7f4c2a6b",
-  "subscriptionPlanName": "Gold",
-  "applicationId": "cp-app-98765"
+  "subscriptionPlanName": "Gold"
 }
 
 ```
@@ -1070,7 +1069,6 @@ xor
 |---|---|---|---|---|
 |apiId|string|true|none|Developer Portal API ID.|
 |subscriptionPlanName|string|false|none|Optional subscription plan name.|
-|applicationId|string|false|none|Optional application ID.|
 
 <h2 id="tocS_SubscriptionUpdateRequest">SubscriptionUpdateRequest</h2>
 
@@ -1109,15 +1107,13 @@ xor
 ```json
 {
   "subscriptionId": "sub-12345",
-  "id": "sub-12345",
-  "apiId": "cp-api-12345",
-  "apiName": "Weather API",
-  "applicationId": "cp-app-98765",
-  "applicationName": "Weather App",
+  "apiId": "api-7f4c2a6b",
+  "subscriptionToken": "a3f1...",
   "subscriptionPlanName": "Gold",
+  "gatewayType": "wso2/api-platform",
   "status": "ACTIVE",
-  "createdTime": "2019-08-24T14:15:22Z",
-  "updatedTime": "2019-08-24T14:15:22Z"
+  "createdBy": "alice@example.com",
+  "createdAt": "2019-08-24T14:15:22Z"
 }
 
 ```
@@ -1129,15 +1125,13 @@ Subscription payload.
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |subscriptionId|string|false|none|none|
-|id|string|false|none|Alternative subscription identifier.|
-|apiId|string|false|none|API reference ID.|
-|apiName|string|false|none|none|
-|applicationId|string|false|none|none|
-|applicationName|string|false|none|none|
+|apiId|string|false|none|Developer Portal API ID.|
+|subscriptionToken|string|false|none|Plaintext subscription token (returned on create; encrypted at rest).|
 |subscriptionPlanName|string|false|none|none|
+|gatewayType|string|false|none|none|
 |status|string|false|none|none|
-|createdTime|string(date-time)|false|none|none|
-|updatedTime|string(date-time)|false|none|none|
+|createdBy|string|false|none|Identity (sub claim) of the user who created the subscription.|
+|createdAt|string(date-time)|false|none|none|
 
 #### Enumerated Values
 
@@ -1145,9 +1139,6 @@ Subscription payload.
 |---|---|
 |status|ACTIVE|
 |status|INACTIVE|
-|status|ON_HOLD|
-|status|REJECTED|
-|status|TIER_UPDATE_PENDING|
 
 <h2 id="tocS_ApiKeyRequest">ApiKeyRequest</h2>
 

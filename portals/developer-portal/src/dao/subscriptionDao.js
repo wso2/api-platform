@@ -61,13 +61,13 @@ function generateSubToken() {
     return crypto.randomBytes(32).toString('hex');
 }
 
-async function create(orgId, apiId, policyId, transaction) {
+async function create(orgId, apiId, policyId, createdBy, transaction) {
     for (let attempt = 0; attempt < 3; attempt++) {
         const subToken = generateSubToken();
         try {
             const record = await SubscriptionMapping.create(
                 {
-                    APP_ID: null,
+                    CREATED_BY: createdBy,
                     ORG_ID: orgId,
                     API_ID: apiId,
                     POLICY_ID: policyId || null,
@@ -91,9 +91,10 @@ async function create(orgId, apiId, policyId, transaction) {
     }
 }
 
-async function list(orgId, { apiId } = {}) {
-    const where = { ORG_ID: orgId, APP_ID: null };
+async function list(orgId, { apiId, createdBy } = {}) {
+    const where = { ORG_ID: orgId };
     if (apiId) where.API_ID = apiId;
+    if (createdBy) where.CREATED_BY = createdBy;
     const rows = await SubscriptionMapping.findAll({
         where,
         include: INCLUDE_API_AND_POLICY,
@@ -104,7 +105,7 @@ async function list(orgId, { apiId } = {}) {
 
 async function get(orgId, subId) {
     return decryptSubRecord(await SubscriptionMapping.findOne({
-        where: { SUB_ID: subId, ORG_ID: orgId, APP_ID: null },
+        where: { SUB_ID: subId, ORG_ID: orgId },
         include: INCLUDE_API_AND_POLICY,
     }));
 }
@@ -112,14 +113,14 @@ async function get(orgId, subId) {
 async function updateStatus(orgId, subId, status, transaction) {
     const [count] = await SubscriptionMapping.update(
         { STATUS: status },
-        { where: { SUB_ID: subId, ORG_ID: orgId, APP_ID: null }, transaction }
+        { where: { SUB_ID: subId, ORG_ID: orgId }, transaction }
     );
     return count > 0;
 }
 
 async function deleteSubscription(orgId, subId, transaction) {
     const count = await SubscriptionMapping.destroy({
-        where: { SUB_ID: subId, ORG_ID: orgId, APP_ID: null },
+        where: { SUB_ID: subId, ORG_ID: orgId },
         transaction,
     });
     return count > 0;

@@ -913,8 +913,8 @@ paths:
       operationId: createSubscription
       summary: Create a subscription
       description: >-
-        Creates a token-based subscription for an API. The API must exist in the Developer Portal
-        and have token-based subscriptions enabled.
+        Creates a subscription for an API. The API must exist in the Developer Portal and have
+        subscription plans enabled. The subscription is owned by the authenticated user.
       requestBody:
         $ref: "#/components/requestBodies/SubscriptionCreateBody"
       responses:
@@ -936,8 +936,8 @@ paths:
       operationId: listSubscriptions
       summary: List subscriptions
       description: >-
-        Lists subscriptions stored in the Developer Portal. When `apiId` is provided,
-        results are filtered by the Developer Portal API ID.
+        Lists subscriptions owned by the authenticated user. When `apiId` is provided,
+        results are additionally filtered by the Developer Portal API ID.
       parameters:
         - $ref: "#/components/parameters/ApiIdQueryOptional"
       responses:
@@ -2097,14 +2097,6 @@ components:
         type: string
         example: app-12345
       description: Developer Portal application ID.
-    AppIdQueryOptional:
-      name: appId
-      in: query
-      required: false
-      schema:
-        type: string
-        example: app-12345
-      description: Optional Developer Portal application ID used to filter subscriptions.
     ApiReferenceIDQuery:
       name: apiReferenceID
       in: query
@@ -2260,12 +2252,11 @@ components:
               summary: Subscribe with the API default plan
               value:
                 apiId: api-7f4c2a6b
-            selectedPlanAndApplication:
-              summary: Subscribe using a specific plan and application
+            selectedPlan:
+              summary: Subscribe using a specific plan
               value:
                 apiId: api-7f4c2a6b
                 subscriptionPlanName: Gold
-                applicationId: cp-app-98765
     SubscriptionUpdateBody:
       required: true
       description: Subscription status update payload.
@@ -3100,39 +3091,35 @@ components:
             $ref: "#/components/schemas/SubscriptionResponse"
           example:
             subscriptionId: sub-12345
-            apiId: cp-api-12345
-            apiName: Weather API
-            applicationId: cp-app-98765
+            apiId: api-7f4c2a6b
+            subscriptionToken: a3f1e8b2...
             subscriptionPlanName: Gold
+            gatewayType: wso2/api-platform
             status: ACTIVE
-            createdTime: "2026-05-07T08:30:00Z"
+            createdBy: alice@example.com
+            createdAt: "2026-05-07T08:30:00Z"
     SubscriptionListResponse:
       description: List of subscription DTOs.
       content:
         application/json:
           schema:
-            oneOf:
-              - type: array
+            type: object
+            properties:
+              count:
+                type: integer
+              list:
+                type: array
                 items:
                   $ref: "#/components/schemas/SubscriptionResponse"
-              - type: object
-                properties:
-                  count:
-                    type: integer
-                  list:
-                    type: array
-                    items:
-                      $ref: "#/components/schemas/SubscriptionResponse"
-                additionalProperties: true
           example:
             count: 1
             list:
               - subscriptionId: sub-12345
-                apiId: cp-api-12345
-                apiName: Weather API
-                applicationId: cp-app-98765
+                apiId: api-7f4c2a6b
                 subscriptionPlanName: Gold
+                gatewayType: wso2/api-platform
                 status: ACTIVE
+                createdBy: alice@example.com
     ApiKeyGenerateResponse:
       description: Generated or regenerated API key. The plaintext `key` is returned exactly once.
       content:
@@ -3946,10 +3933,6 @@ components:
           type: string
           description: Optional subscription plan name.
           example: Gold
-        applicationId:
-          type: string
-          description: Optional application ID.
-          example: cp-app-98765
       additionalProperties: false
     SubscriptionUpdateRequest:
       type: object
@@ -3970,42 +3953,34 @@ components:
         subscriptionId:
           type: string
           example: sub-12345
-        id:
-          type: string
-          description: Alternative subscription identifier.
-          example: sub-12345
         apiId:
           type: string
-          description: API reference ID.
-          example: cp-api-12345
-        apiName:
+          description: Developer Portal API ID.
+          example: api-7f4c2a6b
+        subscriptionToken:
           type: string
-          example: Weather API
-        applicationId:
-          type: string
-          example: cp-app-98765
-        applicationName:
-          type: string
-          example: Weather App
+          description: Plaintext subscription token (returned on create; encrypted at rest).
+          example: a3f1...
         subscriptionPlanName:
           type: string
           example: Gold
+        gatewayType:
+          type: string
+          example: wso2/api-platform
         status:
           type: string
           enum:
             - ACTIVE
             - INACTIVE
-            - ON_HOLD
-            - REJECTED
-            - TIER_UPDATE_PENDING
           example: ACTIVE
-        createdTime:
+        createdBy:
+          type: string
+          description: Identity (sub claim) of the user who created the subscription.
+          example: alice@example.com
+        createdAt:
           type: string
           format: date-time
-        updatedTime:
-          type: string
-          format: date-time
-      additionalProperties: true
+      additionalProperties: false
     ApiKeyRequest:
       type: object
       required:

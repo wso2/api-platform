@@ -110,13 +110,9 @@ const SubscriptionMapping = sequelize.define('DP_API_SUBSCRIPTION', {
         defaultValue: Sequelize.UUIDV4,
         primaryKey: true
     },
-    APP_ID: {
-        type: DataTypes.UUID,
-        allowNull: true,
-        references: {
-            model: Application,
-            key: 'APP_ID',
-        },
+    CREATED_BY: {
+        type: DataTypes.STRING,
+        allowNull: false,
     },
     API_ID: {
         type: DataTypes.UUID,
@@ -153,17 +149,6 @@ SubscriptionMapping.belongsTo(Organization, {
 Organization.hasMany(SubscriptionMapping, {
     foreignKey: 'ORG_ID'
 })
-Application.belongsToMany(APIMetadata, {
-    through: SubscriptionMapping,
-    foreignKey: "APP_ID",
-    otherKey: "API_ID",
-});
-APIMetadata.belongsToMany(Application, {
-    through: SubscriptionMapping,
-    foreignKey: "API_ID",
-    otherKey: "APP_ID",
-});
-
 APIMetadata.belongsToMany(SubscriptionPolicy, {
     through: APISubscriptionPolicy,
     foreignKey: "API_ID",

@@ -36,7 +36,6 @@ const { apiUsesApiKeySecurity, findSubscriptionTokenHeader } = require('../utils
 const sampleApiLoader = require('../utils/sampleApiLoader');
 const adminService = require('../services/adminService');
 const apiFlowService = require('../services/apiFlowService');
-const { ApplicationDTO } = require('../dto/applicationDto');
 const { buildSchema, getIntrospectionQuery, graphql: executeGraphQL } = require('graphql');
 const yaml = require('js-yaml');
 const generateArray = (length) => Array.from({ length });
@@ -45,7 +44,6 @@ const loadAPIs = async (req, res) => {
 
     const { orgName, viewName } = req.params;
     let html;
-    let allApplications = [];
     if (config.designMode?.enabled) {
         const layoutPath = config.designMode.pathToLayout;
         const isMcpListing = req.originalUrl.includes('/mcps');
@@ -70,7 +68,6 @@ const loadAPIs = async (req, res) => {
             const tags = req.query.tags;
             let metaDataList = await loadAPIMetaDataListFromAPI(req, orgID, orgName, searchTerm, tags, viewName);
             const apiData = await loadAPIMetaDataListFromAPI(req, orgID, orgName, searchTerm, tags, viewName);
-            let appList = [];
             let apiTags = [];
             apiData.forEach(api => {
                 if (api.apiInfo.tags) {
@@ -82,36 +79,15 @@ const loadAPIs = async (req, res) => {
                 }
             });
 
-            // Fetch all applications for the user/org once
-            if (req.user) {
-                allApplications = await appDao.list(orgID, req.user.sub);
-            }
             for (const metaData of metaDataList) {
                 metaData.subscriptionPolicyDetails = await util.appendSubscriptionPlanDetails(orgID, metaData.subscriptionPolicies);
-                let perApiAppList = [];
-                if (allApplications.length > 0) {
-                    perApiAppList = await Promise.all(
-                        allApplications.map(async (app) => {
-                            const subscription = await subDao.getByAppAndApi(orgID, app.APP_ID, metaData.apiID);
-                            const subscriptionData = subscription.length > 0 ? {
-                                policyId: subscription[0].POLICY_ID,
-                                policyName: metaData.subscriptionPolicies.find(p => p.policyID === subscription[0].POLICY_ID)?.policyName || 'Unknown'
-                            } : null;
-                            return {
-                                ...new ApplicationDTO(app),
-                                subscribed: subscription.length > 0,
-                                subscriptionPolicy: subscriptionData
-                            };
-                        })
-                    );
-                }
-                metaData.applications = perApiAppList;
             }
 
             // Load subscriptions for APIs with subscription plans (single call for all)
             if (req.user) {
                 try {
-                    const localSubs = await subDao.list(orgID);
+                    const createdBy = req.user && req.user.sub;
+                    const localSubs = await subDao.list(orgID, { createdBy });
                     const subscribedApiIds = new Set(localSubs.map(sub => sub.API_ID));
                     for (const metaData of metaDataList) {
                         const hasPlans = (metaData.subscriptionPolicies || []).length > 0;
@@ -145,7 +121,7 @@ const loadAPIs = async (req, res) => {
                 profile: req.isAuthenticated() ? profile : null,
                 devportalMode: devportalMode,
                 isReadOnlyMode: config.readOnlyMode,
-                applications: allApplications.map(app => new ApplicationDTO(app)) // top-level applications array
+                applications: []
             };
 
             if (req.originalUrl.includes("/mcps")) {
@@ -363,33 +339,13 @@ const loadAPIContent = async (req, res) => {
                     }
                 }
             }
-            let appList = [];
-            if (req.user) {
-                let applications = await appDao.list(orgID, req.user.sub);
-                if (applications.length > 0) {
-                    appList = await Promise.all(
-                        applications.map(async (app) => {
-                            const subscription = await subDao.getByAppAndApi(orgID, app.APP_ID, metaData.apiID);
-                            const subscriptionData = subscription.length > 0 ? {
-                                policyId: subscription[0].POLICY_ID,
-                                policyName: metaData.subscriptionPolicies.find(p => p.policyID === subscription[0].POLICY_ID)?.policyName || 'Unknown'
-                            } : null;
-                            return {
-                                ...new ApplicationDTO(app),
-                                subscribed: subscription.length > 0,
-                                subscriptionPolicy: subscriptionData
-                            };
-                        })
-                    );
-                }
-            }
-
             // Load subscriptions for APIs with subscription plans
             let subscriptions = [];
             const hasPlans = (subscriptionPlans || []).length > 0;
             if (req.user && hasPlans) {
                 try {
-                    const localSubs = await subDao.list(orgID, { apiId: apiID });
+                    const createdBy = req.user && req.user.sub;
+                    const localSubs = await subDao.list(orgID, { apiId: apiID, createdBy });
                     subscriptions = (localSubs || []).map(sub => ({
                         subscriptionId: sub.SUB_ID,
                         subscriptionPlanName: sub.DP_SUBSCRIPTION_POLICY?.DISPLAY_NAME || sub.DP_SUBSCRIPTION_POLICY?.POLICY_NAME || '',
@@ -433,7 +389,6 @@ const loadAPIContent = async (req, res) => {
 
             templateContent = {
                 isAuthenticated: req.isAuthenticated(),
-                applications: appList,
                 provider: metaData.provider,
                 providerUrl: providerUrl,
                 apiMetadata: metaData,
