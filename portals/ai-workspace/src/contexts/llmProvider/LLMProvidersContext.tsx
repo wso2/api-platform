@@ -31,6 +31,11 @@ import type {
   LLMProvidersResponse,
 } from '../../utils/types';
 import * as llmProviderApis from '../../apis/llmProviderApis';
+import {
+  createSecret,
+  buildSecretPlaceholder,
+  generateSecretHandle,
+} from '../../apis/secretApis';
 import { useAppShell } from '../AppShellContext';
 import { PLATFORM_API_BASE_URL } from '../../config.env';
 import { logger } from '../../utils/logger';
@@ -136,8 +141,48 @@ export function LLMProvidersProvider({ children }: LLMProvidersProviderProps) {
         throw new Error('Organization ID is missing');
       }
       try {
+        // If the upstream auth value contains a plain-text credential (not already
+        // a secret placeholder), encrypt it via the Platform API secrets endpoint
+        // and substitute a {{ secret "..." }} placeholder before persisting.
+        let providerPayload = provider;
+        const authValue = provider.upstream?.main?.auth?.value;
+        const isAlreadyPlaceholder =
+          typeof authValue === 'string' && authValue.includes('{{ secret ');
+
+        if (authValue && !isAlreadyPlaceholder) {
+          const secretHandle = generateSecretHandle(provider.id, 'api-key');
+          const secretResponse = await createSecret(
+            {
+              name: secretHandle,
+              displayName: `${provider.name} API Key`,
+              description: `Auto-generated secret for LLM provider ${provider.name}`,
+              value: authValue,
+              type: 'API_KEY',
+            },
+            PLATFORM_API_BASE_URL
+          );
+          logger.info('Created secret for LLM provider', {
+            secretName: secretResponse.name,
+            providerId: provider.id,
+          });
+
+          providerPayload = {
+            ...provider,
+            upstream: {
+              ...provider.upstream,
+              main: {
+                ...provider.upstream.main,
+                auth: {
+                  ...provider.upstream.main.auth,
+                  value: buildSecretPlaceholder(secretResponse.name),
+                },
+              },
+            },
+          };
+        }
+
         const newProvider = await llmProviderApis.createLLMProvider(
-          provider,
+          providerPayload,
           organizationId,
           PLATFORM_API_BASE_URL
         );
@@ -173,9 +218,50 @@ export function LLMProvidersProvider({ children }: LLMProvidersProviderProps) {
         throw new Error('Organization ID is missing');
       }
       try {
+        // If the upstream auth value is a new plain-text credential (not already a
+        // placeholder), rotate the existing secret via PUT /secrets/:id or create a
+        // new one, then substitute the placeholder before persisting.
+        let updatesPayload = updates;
+        const authValue = updates.upstream?.main?.auth?.value;
+        const isAlreadyPlaceholder =
+          typeof authValue === 'string' && authValue.includes('{{ secret ');
+
+        if (authValue && !isAlreadyPlaceholder) {
+          const secretHandle = generateSecretHandle(providerId, 'api-key');
+          const secretResponse = await createSecret(
+            {
+              name: secretHandle,
+              displayName: `${providerId} API Key`,
+              description: `Auto-generated secret for LLM provider ${providerId}`,
+              value: authValue,
+              type: 'API_KEY',
+            },
+            PLATFORM_API_BASE_URL
+          );
+          logger.info('Rotated/created secret for LLM provider update', {
+            secretName: secretResponse.name,
+            providerId,
+          });
+
+          updatesPayload = {
+            ...updates,
+            upstream: {
+              ...updates.upstream,
+              main: {
+                ...updates.upstream?.main,
+                url: updates.upstream?.main?.url ?? '',
+                auth: {
+                  ...updates.upstream?.main?.auth,
+                  value: buildSecretPlaceholder(secretResponse.name),
+                },
+              },
+            },
+          };
+        }
+
         const updatedProvider = await llmProviderApis.updateLLMProvider(
           providerId,
-          updates,
+          updatesPayload,
           organizationId,
           PLATFORM_API_BASE_URL
         );

@@ -55,6 +55,11 @@ import { useMCPServerValidation } from '../../../../contexts/MCP';
 import useAIWorkspaceSnackbar from '../../../../hooks/aiWorkspaceSnackbar';
 import { PLATFORM_API_BASE_URL } from '../../../../config.env';
 import { mcpProxiesApis } from '../../../../apis/MCP/mcpProxiesApis';
+import {
+  createSecret,
+  buildSecretPlaceholder,
+  generateSecretHandle,
+} from '../../../../apis/secretApis';
 import type { MCPServerInfoFetchRequest, CreateMCPServerRequest } from '../../../../utils/types';
 import ExternalServersCreateForm from './ExternalServersCreateForm';
 import ExternalServersValidationDetails from './ExternalServersValidationDetails';
@@ -233,6 +238,31 @@ export default function ExternalServersNew(): JSX.Element {
   const handleCreate = async () => {
     if (!effectiveProject?.id) return;
 
+    // Encrypt the upstream auth value as a secret so the plaintext credential is
+    // never stored in the MCP server config. Skip if already a placeholder.
+    let resolvedAuthValue = authHeaderValue.trim();
+    if (authHeaderName.trim() && resolvedAuthValue && !resolvedAuthValue.includes('{{ secret ')) {
+      try {
+        const serverId = generateServerId(serverName);
+        const secretHandle = generateSecretHandle(serverId, 'auth');
+        const secretResponse = await createSecret(
+          {
+            name: secretHandle,
+            displayName: `${serverName.trim()} upstream auth`,
+            description: `Auto-generated secret for MCP server ${serverName.trim()}`,
+            value: resolvedAuthValue,
+            type: 'API_KEY',
+            projectId: effectiveProject.id,
+          },
+          PLATFORM_API_BASE_URL
+        );
+        resolvedAuthValue = buildSecretPlaceholder(secretResponse.name);
+      } catch (err) {
+        showSnackbar('Failed to encrypt upstream auth credential', 'error');
+        return;
+      }
+    }
+
     const payload: CreateMCPServerRequest = {
       id: generateServerId(serverName),
       name: serverName.trim(),
@@ -244,12 +274,12 @@ export default function ExternalServersNew(): JSX.Element {
       upstream: {
         main: {
           url: serverTarget.trim().replace(/\/mcp$/, ''),
-          ...(authHeaderName.trim() && authHeaderValue.trim()
+          ...(authHeaderName.trim() && resolvedAuthValue
             ? {
                 auth: {
                   type: 'header',
                   header: authHeaderName.trim(),
-                  value: authHeaderValue.trim(),
+                  value: resolvedAuthValue,
                 },
               }
             : {}),
