@@ -39,6 +39,17 @@ const logger = require('../config/logger');
 const { extractPlatformJwtClaims } = require('../utils/platformJwt');
 const { accessTokenPresent, refreshAccessToken, verifyWithCertificate, resolveOrgIdp } = require('../utils/tokenUtil');
 
+const DEFAULT_TOKEN_REFRESH_TIMEOUT_MS = 10000;
+
+function resolveTokenRefreshTimeoutMs() {
+    const timeout = Number(config.identityProvider?.tokenRefreshTimeoutMs);
+    if (Number.isFinite(timeout) && timeout > 0) {
+        return timeout;
+    }
+    return DEFAULT_TOKEN_REFRESH_TIMEOUT_MS;
+}
+
+
 async function verifyJwksWithRefresh(token, jwksURL, req) {
     try {
         const jwks = await createRemoteJWKSet(new URL(jwksURL));
@@ -124,7 +135,7 @@ async function authResolver(req, res, next) {
                 err.status = 401;
                 return next(err);
             }
-            const { valid, scopes } = await verifyBearerToken(token, req);
+            const { valid, scopes } = await verifyBearerToken(token);
             if (!valid) {
                 const err = new Error('Authentication required');
                 err.status = 401;

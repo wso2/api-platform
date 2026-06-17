@@ -60,7 +60,6 @@ curl -X POST http://localhost:3000/organizations \
 | `spec.businessOwnerEmail` | No | Business owner's email address |
 | `spec.labels` | No | Labels to create for this org. Defaults to a single `default` label if omitted |
 | `spec.views` | No | Views to create for this org. Defaults to a single `default` view if omitted |
-| `spec.identityProvider` | No | Inline IdP configuration (see [Identity Provider Configuration](#identity-provider-configuration)) |
 
 After creation, the organization is accessible at `/<orgHandle>/views/<viewName>` once a view is created for it.
 
@@ -99,92 +98,6 @@ curl -X DELETE http://localhost:3000/organizations/{orgId} -H "Authorization: Be
 ```
 
 > **Warning:** Deleting an organization removes all of its views, APIs, subscriptions, and applications. This action is irreversible.
-
----
-
-## Identity Provider Configuration
-
-Each organization needs an identity provider (IdP) configured so that users can sign in via OAuth2/OIDC. The portal supports any standards-compliant OAuth2/OIDC provider (Asgardeo, Keycloak, Azure AD, Auth0, etc.).
-
-### Add an IdP
-
-```yaml
-# idp.yaml
-apiVersion: devportal.api-platform.wso2.com/v1
-kind: IdentityProvider
-
-metadata:
-  name: Asgardeo
-
-spec:
-  issuer: https://api.asgardeo.io/t/myorg/oauth2/token
-  authorizationURL: https://api.asgardeo.io/t/myorg/oauth2/authorize
-  tokenURL: https://api.asgardeo.io/t/myorg/oauth2/token
-  userInfoURL: https://api.asgardeo.io/t/myorg/oauth2/userinfo
-  clientId: your-client-id
-  callbackURL: http://localhost:3000/acme/callback
-  scope: "openid profile email"
-  logoutURL: https://api.asgardeo.io/t/myorg/oidc/logout
-  logoutRedirectURI: http://localhost:3000/acme
-  jwksURL: https://api.asgardeo.io/t/myorg/oauth2/jwks
-```
-
-```bash
-curl -X POST http://localhost:3000/organizations/{orgId}/identityProvider \
-  -H "Authorization: Bearer $TOKEN" \
-  -F "identityProvider=@idp.yaml"
-```
-
-| Field | Description |
-|---|---|
-| `metadata.name` | Display name for the IdP (shown in admin UIs) |
-| `spec.issuer` | Token issuer URL — used to validate the `iss` claim in tokens |
-| `spec.authorizationURL` | OAuth2 authorization endpoint |
-| `spec.tokenURL` | Token exchange endpoint |
-| `spec.userInfoURL` | User info endpoint for fetching profile claims |
-| `spec.clientId` | OAuth2 client ID registered with the IdP |
-| `spec.callbackURL` | Redirect URI registered with the IdP — must be `<baseUrl>/<orgHandle>/callback` |
-| `spec.scope` | Space-separated OAuth2 scopes to request (minimum: `openid profile`) |
-| `spec.logoutURL` | IdP logout endpoint |
-| `spec.logoutRedirectURI` | URI the IdP redirects back to after logout (typically `<baseUrl>/<orgHandle>`) |
-| `spec.jwksURL` | JWKS endpoint for token signature validation |
-| `spec.certificate` | Optional PEM certificate for environments that don't expose a JWKS endpoint |
-
-> **Note:** The OAuth2 client secret is not stored in the IdP record. It is configured separately in `config.yaml` or via the environment variable `DP_CLIENT_SECRET`.
-
-### Claim Mapping
-
-The portal uses claims in the IdP token to identify the user's organization and role. These are set when [creating the organization](#create-an-organization) via `spec.roleClaimName`, `spec.groupsClaimName`, `spec.organizationClaimName`, `spec.organizationIdentifier`, `spec.adminRole`, `spec.subscriberRole`, and `spec.superAdminRole`.
-
-Ensure your IdP is configured to include these claims in the ID token or userinfo response.
-
-### Update an IdP
-
-```yaml
-# idp-update.yaml
-apiVersion: devportal.api-platform.wso2.com/v1
-kind: IdentityProvider
-
-metadata:
-  name: Asgardeo
-
-spec:
-  clientId: new-client-id
-  callbackURL: http://localhost:3000/acme/callback
-  logoutRedirectURI: http://localhost:3000/acme
-```
-
-```bash
-curl -X PUT http://localhost:3000/organizations/{orgId}/identityProvider \
-  -H "Authorization: Bearer $TOKEN" \
-  -F "identityProvider=@idp-update.yaml"
-```
-
-### Remove an IdP
-
-```bash
-curl -X DELETE http://localhost:3000/organizations/{orgId}/identityProvider -H "Authorization: Bearer $TOKEN"
-```
 
 ---
 
@@ -259,7 +172,7 @@ curl -s -H "Authorization: Bearer $TOKEN" http://localhost:3000/organizations
 
 The token is verified locally by the Developer Portal using the shared `AUTH_JWT_SECRET_KEY` with no extra call to the Platform API per request.
 
-> **Note:** Local auth is for development only. For production, configure an OIDC identity provider per organization (see [Identity Provider Configuration](#identity-provider-configuration)).
+> **Note:** Local auth is for development only. For production, configure the global OIDC identity provider via `DP_IDENTITY_PROVIDER_*` environment variables.
 
 ---
 

@@ -231,7 +231,7 @@ const ensureAuthenticated = async (req, res, next) => {
             });
         }
     } else {
-        if (req.isAuthenticated()) {
+        if (req.isAuthenticated() && !(req.user?.isLocalAuth && !config.identityProvider?.clientId)) {
             const token = accessTokenPresent(req);
             if (token && config.identityProvider.jwksURL) {
                 await validateWithJwks(token, config.identityProvider.jwksURL, req);
@@ -251,8 +251,8 @@ function validateAuthentication(scope) {
         if (!errors.isEmpty()) {
             return res.status(400).json(util.getErrors(errors));
         }
-
-        const IDP = await resolveOrgIdp(req);
+        let IDP, valid, scopes;
+        IDP = config.identityProvider || {};
 
         let accessToken;
         if (req.isAuthenticated() && req.user) {

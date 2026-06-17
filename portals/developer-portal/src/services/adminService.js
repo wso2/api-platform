@@ -56,7 +56,6 @@ function mapYamlToOrganization(parsed) {
         adminRole: spec.adminRole,
         subscriberRole: spec.subscriberRole,
         superAdminRole: spec.superAdminRole,
-        identityProvider: spec.identityProvider || null,
         labels: spec.labels || null,
         views: spec.views || null,
     };
@@ -88,11 +87,6 @@ function parseOrganizationFromYamlFile(fileBuffer) {
             throw new Sequelize.ValidationError("Invalid organization YAML: 'spec.views' must be an array of objects with a 'name' field");
         }
     }
-    if (spec.identityProvider !== undefined && spec.identityProvider !== null) {
-        if (typeof spec.identityProvider !== 'object' || Array.isArray(spec.identityProvider)) {
-            throw new Sequelize.ValidationError("Invalid organization YAML: 'spec.identityProvider' must be an object");
-        }
-    }
     const organization = mapYamlToOrganization(parsed);
     // Required-field validation for the YAML upload path. The OpenAPI validator only
     // checks that the multipart file field is present; it cannot inspect the file's
@@ -107,53 +101,6 @@ function parseOrganizationFromYamlFile(fileBuffer) {
         );
     }
     return organization;
-}
-
-function mapYamlToIdentityProvider(parsed) {
-    const { metadata = {}, spec = {} } = parsed;
-    return {
-        name: metadata.name,
-        issuer: spec.issuer,
-        authorizationURL: spec.authorizationURL,
-        tokenURL: spec.tokenURL,
-        userInfoURL: spec.userInfoURL,
-        clientId: spec.clientId,
-        callbackURL: spec.callbackURL,
-        scope: spec.scope,
-        signUpURL: spec.signUpURL,
-        logoutURL: spec.logoutURL,
-        logoutRedirectURI: spec.logoutRedirectURI,
-        jwksURL: spec.jwksURL,
-        certificate: spec.certificate,
-    };
-}
-
-function parseIdentityProviderFromYamlFile(fileBuffer) {
-    let parsed;
-    try {
-        parsed = yaml.load(fileBuffer.toString(constants.CHARSET_UTF8));
-    } catch (e) {
-        throw new Sequelize.ValidationError(`Invalid identity provider YAML file: ${e.message}`);
-    }
-    if (!parsed || typeof parsed !== 'object') {
-        throw new Sequelize.ValidationError('Identity provider YAML file is empty or invalid');
-    }
-    if (parsed.kind !== 'IdentityProvider') {
-        throw new Sequelize.ValidationError(
-            `Unknown YAML kind '${parsed.kind}'. Expected 'IdentityProvider'`
-        );
-    }
-    const identityProvider = mapYamlToIdentityProvider(parsed);
-    // Required-field validation for the YAML upload path.
-    const requiredFields = ['issuer', 'name', 'authorizationURL', 'tokenURL', 'clientId',
-        'callbackURL', 'logoutURL', 'logoutRedirectURI'];
-    const missingFields = requiredFields.filter((field) => !identityProvider[field]);
-    if (missingFields.length > 0) {
-        throw new Sequelize.ValidationError(
-            `Invalid identity provider YAML: missing required field(s): ${missingFields.join(', ')}`
-        );
-    }
-    return identityProvider;
 }
 
 const createOrganization = async (req, res) => {
@@ -225,10 +172,6 @@ const createOrganization = async (req, res) => {
                 orgId
             });
 
-            if (payload.identityProvider) {
-                await idpDao.create(orgId, payload.identityProvider, t);
-                logger.info('Identity provider created successfully', { orgId });
-            }
         });
 
         const orgCreationResponse = {
@@ -318,17 +261,6 @@ const updateOrganization = async (req, res) => {
             [, updatedOrg] = await orgDao.update(payload, t);
             logger.info('Organization update successful', { orgId });
 
-            // IDP upsert — only if present in payload
-            if (payload.identityProvider) {
-                const existing = await idpDao.get(orgId);
-                if (existing.length > 0) {
-                    await idpDao.update(orgId, payload.identityProvider, t);
-                } else {
-                    await idpDao.create(orgId, payload.identityProvider, t);
-                }
-                logger.info('Identity provider upserted successfully', { orgId });
-            }
-
             // Labels upsert — only if present in payload
             if (payload.labels?.length) {
                 for (const label of payload.labels) {
@@ -392,115 +324,6 @@ const deleteOrganization = async (req, res) => {
         }
     } catch (error) {
         logger.error('Organization deletion failed', {
-            error: error.message,
-            stack: error.stack,
-            orgId
-        });
-        util.handleError(res, error);
-    }
-};
-
-const createIdentityProvider = async (req, res) => {
-    const orgId = req.params.orgId;
-    if (req.files?.identityProvider?.[0]) {
-        try {
-            req.body = parseIdentityProviderFromYamlFile(req.files.identityProvider[0].buffer);
-        } catch (error) {
-            return util.handleError(res, error);
-        }
-    }
-    logger.info('Initiate create identity provider...', {
-        orgId,
-        ...req.body
-    });
-    try {
-        const idpData = req.body;
-        const idpResponse = await idpDao.create(orgId, idpData);
-        logger.info('Identity provider created successfully', {
-            orgId
-        });
-        res.status(201).send(new IdentityProviderDTO(idpResponse.dataValues));
-    } catch (error) {
-        logger.error('Identity provider creation failed', {
-            error: error.message,
-            stack: error.stack,
-            orgId
-        });
-        util.handleError(res, error);
-    }
-};
-
-const updateIdentityProvider = async (req, res) => {
-    const orgId = req.params.orgId;
-    if (req.files?.identityProvider?.[0]) {
-        try {
-            req.body = parseIdentityProviderFromYamlFile(req.files.identityProvider[0].buffer);
-        } catch (error) {
-            return util.handleError(res, error);
-        }
-    }
-    const idpData = req.body;
-    logger.info('Initiate update identity provider...', {
-        orgId,
-        ...idpData
-    });
-    try {
-        const [updatedRows, updatedIDP] = await idpDao.update(orgId, idpData);
-        if (!updatedRows) {
-            throw new Sequelize.EmptyResultError("No record found to update");
-        }
-        logger.info('Identity provider updated successfully', {
-            orgId
-        });
-        res.status(200).send(new IdentityProviderDTO(updatedIDP[0].dataValues));
-    } catch (error) {
-        logger.error('Identity provider update failed', {
-            error: error.message,
-            stack: error.stack,
-            orgId
-        });
-        util.handleError(res, error);
-    }
-};
-
-const getIdentityProvider = async (req, res) => {
-
-    const orgID = req.params.orgId;
-    try {
-        const retrievedIDP = await idpDao.get(orgID);
-        // Create response object
-        if (retrievedIDP.length > 0) {
-            res.status(200).send(new IdentityProviderDTO(retrievedIDP[0]));
-        } else {
-            res.status(404).send();
-        }
-    } catch (error) {
-        logger.error('Identity provider retrieval failed', {
-            error: error.message,
-            stack: error.stack,
-            orgId: orgID
-        });
-        util.handleError(res, error);
-    }
-}
-
-const deleteIdentityProvider = async (req, res) => {
-    const orgId = req.params.orgId;
-    logger.info('Initiate delete identity provider...', {
-        orgId: orgId
-    });
-    try {
-        const idpDeleteResponse = await idpDao.delete(orgId);
-        if (idpDeleteResponse === 0) {
-            throw new Sequelize.EmptyResultError("Resource not found to delete");
-        } else {
-            logger.info('Identity provider deleted successfully', {
-                orgId: orgId
-            });
-            res.status(200).send("Resouce Deleted Successfully");
-        }
-    } catch (error) {
-        logger.error('Identity provider deletion failed', {
             error: error.message,
             stack: error.stack,
             orgId
@@ -890,10 +713,6 @@ module.exports = {
     getOrgContent,
     deleteOrgContent,
     deleteAllOrgContent,
-    createIdentityProvider,
-    updateIdentityProvider,
-    getIdentityProvider,
-    deleteIdentityProvider,
     getOrganizations,
     getAllOrganizations,
     createProvider,

@@ -54,12 +54,6 @@ const loadOrgSettingsPage = async (req, res) => {
         if (organizations.length > 0) {
             templateContent.organizations = organizations;
         }
-        const retrievedIDP = await idpDao.get(orgID);
-        if (retrievedIDP.length > 0) {
-            templateContent.idp = new IdentityProviderDTO(retrievedIDP[0]);
-        } else {
-            templateContent.createIDP = true;
-        }
         templateContent.viewCreate = true;
         const views = await apiMetadataService.getViewsFromDB(orgID);
         if (views.length > 0) {

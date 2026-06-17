@@ -63,7 +63,6 @@ const CONFIG_DEFAULTS = {
     advanced: {
         http: true,
         dbSslDialectOption: false,
-        resourceLoadFromBaseUrl: false,
         disabledRoleValidation: true,
         disableOrgCallback: true,
         disableSilentSSO: false,
@@ -97,12 +96,6 @@ const CONFIG_DEFAULTS = {
         subscriptionPlansPath: './samples/subscriptionPlans.yaml',
         applicationsPath: './samples/applications.yaml',
         pathToLayout: './src/defaultContent/',
-    },
-    controlPlane: {
-        enabled: false,
-        url: '',
-        graphqlURL: '',
-        disableCertValidation: false,
     },
     platformApi: {
         baseUrl: '',
@@ -205,14 +198,14 @@ applyEnvOverrides(config);
 
 // Webhook subscriber secrets/key paths can be supplied via env vars:
 // DP_WEBHOOK_SECRET_<SUBSCRIBER_ID_UPPERCASED_UNDERSCORED>=<secret>
-// DP_WEBHOOK_PUBKEY_PATH_<SUBSCRIBER_ID_UPPERCASED_UNDERSCORED>=<path-to-pem-file>
+// DP_WEBHOOK_PUBLIC_KEY_PATH_<SUBSCRIBER_ID_UPPERCASED_UNDERSCORED>=<path-to-pem-file>
 const webhookSubscribers = config.webhooks && config.webhooks.subscribers;
 if (Array.isArray(webhookSubscribers)) {
     for (const sub of webhookSubscribers) {
         if (!sub.id) continue;
         const envKey = 'DP_WEBHOOK_SECRET_' + sub.id.toUpperCase().replace(/[^A-Z0-9]/g, '_');
         if (process.env[envKey]) sub.secret = process.env[envKey];
-        const pubKeyPathEnv = 'DP_WEBHOOK_PUBKEY_PATH_' + sub.id.toUpperCase().replace(/[^A-Z0-9]/g, '_');
+        const pubKeyPathEnv = 'DP_WEBHOOK_PUBLIC_KEY_PATH_' + sub.id.toUpperCase().replace(/[^A-Z0-9]/g, '_');
         if (process.env[pubKeyPathEnv]) sub.publicKeyPath = process.env[pubKeyPathEnv];
     }
 

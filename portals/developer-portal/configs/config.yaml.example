@@ -12,7 +12,6 @@
 #     DP_DB_PASSWORD=pass                  → db.password
 #     DP_IDENTITYPROVIDER_CLIENTID=abc     → identityProvider.clientId
 #     DP_ADVANCED_APIKEY_KEYVALUE=secret   → advanced.apiKey.keyValue
-#     DP_BILLING_ENCRYPTIONKEY=hexkey      → billing.encryptionKey
 #     DP_TELEMETRY_CONNECTIONSTRING=...    → telemetry.connectionString
 #
 # You can place env var overrides in a .env file at the project root.
@@ -51,10 +50,9 @@ db:
 advanced:
   http: true              # Use plain HTTP (no TLS). Set to false to require serverCerts below
   dbSslDialectOption: false
-  resourceLoadFromBaseUrl: false
   disabledRoleValidation: true
   disableOrgCallback: true
-  disableScopeValidation: true
+
   disableSilentSSO: false
   encryptionKey: ""  # 64-char hex key for AES-256-GCM encryption of sensitive data at rest
   apiKey:
@@ -81,7 +79,7 @@ serverCerts:
   pathToCA: "./resources/security/client-truststore.pem"
 
 # ─── Identity Provider (OAuth2 / OIDC) ────────────────────────────────────────
-# Leave these values as placeholders when using local auth (defaultAuth below).
+# Leave clientId empty to use local auth (Platform API sidecar) instead of OIDC.
 
 identityProvider:
   name: "IS"
@@ -99,30 +97,19 @@ identityProvider:
   jwksURL: "https://localhost:9443/oauth2/jwks"
   tokenRefreshTimeoutMs: 10000
 
-# ─── Local / Default Auth ──────────────────────────────────────────────────────
-# Built-in local users for first-time exploration. Disable in production by
-# removing or emptying the users list.
+# ─── Platform API (local auth sidecar) ────────────────────────────────────────
+# Required when using the built-in username/password login form.
+# The Platform API validates credentials and issues signed JWTs.
+# Users and their dp:* scopes are defined in configs/config-platform-api.toml.
+# Leave baseUrl empty (or unset) to disable local auth entirely.
 
-defaultAuth:
-  users:
-    - username: "admin"
-      password: "admin"
-      firstName: "Admin"
-      lastName: "User"
-      email: "admin@example.com"
-      roles:
-        - "admin"
-      orgClaimName: "default"
-      organizationIdentifier: "default"
-    - username: "developer"
-      password: "developer"
-      firstName: "Developer"
-      lastName: "User"
-      email: "developer@example.com"
-      roles:
-        - "Internal/subscriber"
-      orgClaimName: "default"
-      organizationIdentifier: "default"
+platformApi:
+  baseUrl: ""           # e.g. https://platform-api:9243  — env: DP_PLATFORMAPI_BASEURL
+  jwtSecret: ""         # Same value as AUTH_JWT_SECRET_KEY in the Platform API; enables
+                        # local HS256 verification of Bearer tokens with no network call.
+                        # env: DP_PLATFORMAPI_JWTSECRET
+  insecure: false       # Accept self-signed Platform API certs (dev only).
+                        # env: DP_PLATFORMAPI_INSECURE
 
 # ─── Role & Claim Mapping ──────────────────────────────────────────────────────
 
@@ -165,11 +152,6 @@ authorizedPages:
   - "**/myapis/**"
   - "**/myapis?**"
 
-# ─── Provider URLs ─────────────────────────────────────────────────────────────
-
-providerURL:
-  AWS: "https://aws.amazon.com"
-
 # ─── Portal UI Config ──────────────────────────────────────────────────────────
 
 portalConfigs:
@@ -181,13 +163,6 @@ portalConfigs:
 telemetry:
   enabled: false
   azureInsightsConnectionString: ""   # Azure Application Insights — set via DP_TELEMETRY_AZUREINSIGHTSCONNECTIONSTRING
-
-# ─── Billing ───────────────────────────────────────────────────────────────────
-# Billing (Stripe integration) requires billing.encryptionKey to be set.
-# If the key is absent the portal starts normally but billing endpoints are disabled.
-billing:
-  enabled: false
-  billingKeyEncryptionKey: ""   # 64-char hex key for AES-256-GCM — set via DP_BILLING_BILLINGKEYENCRYPTIONKEY
 
 # ─── Default Organization Seeding ─────────────────────────────────────────────
 # When set, an organization with this name is created automatically on startup
@@ -225,10 +200,7 @@ webhooks:
   #     gatewayType: "my-gateway-type"          # matches API.GATEWAY_TYPE; use "*" for all
   #     url: "https://gateway.example.com/devportal/events"
   #     secret: "change-me-32-chars-minimum"   # env: DP_WEBHOOK_SECRET_MY_GATEWAY
-  #     publicKey: |                            # RSA-2048+ PEM; encrypts apikey.* payloads
-  #       -----BEGIN PUBLIC KEY-----
-  #       ...
-  #       -----END PUBLIC KEY-----
+  #     publicKeyPath: "/run/secrets/gateway-pubkey.pem"  # RSA-2048+ PEM file; env: DP_WEBHOOK_PUBLIC_KEY_PATH_MY_GATEWAY
   #     events:                                 # allowlist — omit to receive all event types
   #       - apikey.*
   #       - subscription.*

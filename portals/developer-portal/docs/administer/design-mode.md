@@ -134,29 +134,33 @@ zip -r my-theme.zip layout/ partials/ styles/ images/
 
 **Option 1 — Admin UI:** Go to **Admin Settings → Developer Portal → Org Level → Upload View Content**, select the ZIP, and click **Publish To Developer Portal**.
 
-**Option 2 — curl:** Replace `{orgId}` with your organization ID and `{viewName}` with the view name (e.g. `default`).
+**Option 2 — curl:** Replace `{orgId}` with your organization ID and `{viewName}` with the view name (e.g. `default`). The examples use a `$TOKEN` variable — get one first:
+```bash
+TOKEN=$(curl -sk -X POST "https://localhost:9243/api/portal/v1/auth/login" \
+  -d "username=admin&password=admin" | jq -r .token)
+```
 
 Initial upload:
 
 ```bash
-curl -X POST "http://localhost:3000/organizations/{orgId}/views/{viewName}/layout" \
-  -u admin:admin \
+curl -X POST "http://localhost:3000/o/{orgId}/devportal/v1/views/{viewName}/layout" \
+  -H "Authorization: Bearer $TOKEN" \
   -F "zipFile=@my-theme.zip"
 ```
 
 Update an existing layout:
 
 ```bash
-curl -X PUT "http://localhost:3000/organizations/{orgId}/views/{viewName}/layout" \
-  -u admin:admin \
+curl -X PUT "http://localhost:3000/o/{orgId}/devportal/v1/views/{viewName}/layout" \
+  -H "Authorization: Bearer $TOKEN" \
   -F "zipFile=@my-theme.zip"
 ```
 
 Revert to the default layout:
 
 ```bash
-curl -X DELETE "http://localhost:3000/organizations/{orgId}/views/{viewName}/layout/template" \
-  -u admin:admin
+curl -X DELETE "http://localhost:3000/o/{orgId}/devportal/v1/views/{viewName}/layout/template" \
+  -H "Authorization: Bearer $TOKEN"
 ```
 
 ## Sample APIs and MCP Servers

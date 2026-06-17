@@ -165,7 +165,7 @@ const handleSignUp = async (req, res) => {
     if (!errors.isEmpty()) {
         return res.status(400).json(util.getErrors(errors));
     }
-    const authJsonContent = await fetchAuthJsonContent(req.params.orgName);
+    const authJsonContent = config.identityProvider;
     if (authJsonContent.signUpURL) {
         res.redirect(authJsonContent.signUpURL);
     } else {
@@ -184,7 +184,7 @@ const handleLogOut = async (req, res) => {
     if (!errors.isEmpty()) {
         return res.status(400).json(util.getErrors(errors));
     }
-    const authJsonContent = await fetchAuthJsonContent(req, req.params.orgName);
+    const authJsonContent = config.identityProvider;
     let idToken = ''
     if (req.user != null) {
         idToken = req.user.idToken;
