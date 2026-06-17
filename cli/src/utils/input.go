@@ -142,3 +142,41 @@ func PromptDevPortalCredentials(authType string) (username, password, token, api
 		return "", "", "", "", fmt.Errorf("unsupported devportal auth type '%s'", authType)
 	}
 }
+
+// PromptAIWorkspaceCredentials prompts for AI workspace credentials based on auth type.
+// Empty values indicate user chose to use environment variables.
+func PromptAIWorkspaceCredentials(authType string) (username, password, token, apiKey string, err error) {
+	switch authType {
+	case AuthTypeBasic:
+		username, err = PromptInput(fmt.Sprintf("Enter AI workspace username (leave empty to use %s env var): ", EnvAIWorkspaceUsername))
+		if err != nil {
+			return "", "", "", "", err
+		}
+
+		password, err = PromptPassword(fmt.Sprintf("Enter AI workspace password (leave empty to use %s env var): ", EnvAIWorkspacePassword))
+		if err != nil {
+			return "", "", "", "", err
+		}
+
+		return username, password, "", "", nil
+
+	case AuthTypeOAuth:
+		token, err = PromptPassword(fmt.Sprintf("Enter AI workspace OAuth token (leave empty to use %s env var): ", EnvAIWorkspaceToken))
+		if err != nil {
+			return "", "", "", "", err
+		}
+
+		return "", "", token, "", nil
+
+	case AuthTypeAPIKey:
+		apiKey, err = PromptPassword(fmt.Sprintf("Enter AI workspace API key (leave empty to use %s env var): ", EnvAIWorkspaceAPIKey))
+		if err != nil {
+			return "", "", "", "", err
+		}
+
+		return "", "", "", apiKey, nil
+
+	default:
+		return "", "", "", "", fmt.Errorf("unsupported ai-workspace auth type '%s'", authType)
+	}
+}

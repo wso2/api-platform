@@ -76,6 +76,12 @@ const (
 	EnvDevPortalAPIKey   = "WSO2AP_DEVPORTAL_API_KEY"  // For DevPortal API key auth
 	DevPortalAPIHeader   = "x-wso2-api-key"
 
+	// AI Workspace Authentication Environment Variables
+	EnvAIWorkspaceUsername = "WSO2AP_AIWORKSPACE_USERNAME" // For AI workspace basic auth
+	EnvAIWorkspacePassword = "WSO2AP_AIWORKSPACE_PASSWORD" // For AI workspace basic auth
+	EnvAIWorkspaceToken    = "WSO2AP_AIWORKSPACE_TOKEN"    // For AI workspace OAuth auth
+	EnvAIWorkspaceAPIKey   = "WSO2AP_AIWORKSPACE_API_KEY"  // For AI workspace API key auth
+
 	// Image Build Configuration
 	GatewayVerifyChecksumOnBuild = true
 
@@ -85,13 +91,12 @@ const (
 	MaxTotalUncompressed   = 100 * 1024 * 1024 // Maximum total uncompressed size allowed for the archive (100 MB).
 
 	// Artifact Types
-	TypeREST = "rest"
-	TypeSOAP = "soap"
-	TypeLLMProxy = "llm-proxy"
-	TypeLLMProvider = "llm-provider"
+	TypeREST                = "rest"
+	TypeSOAP                = "soap"
+	TypeLLMProxy            = "llm-proxy"
+	TypeLLMProvider         = "llm-provider"
 	TypeLLMProviderTemplate = "llm-provider-template"
-	TypeMCPProxy = "mcp-proxy"
-
+	TypeMCPProxy            = "mcp-proxy"
 )
 
 // PolicyHub REST API defaults and paths

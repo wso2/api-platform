@@ -55,9 +55,8 @@ type FilePaths struct {
 	Tests              string `yaml:"tests,omitempty"`
 }
 
-// PortalFilePaths describes a portal-specific artifact layout. Every portal
-// section (devportals, aiWorkspaces) shares the same {name, portalRoot,
-// filePaths} layout; only the contents of filePaths are portal specific.
+// PortalFilePaths describes a devportal's artifact layout, relative to its
+// portalRoot.
 type PortalFilePaths struct {
 	MetadataFile string `yaml:"metadataFile,omitempty"`
 	Definition   string `yaml:"definition,omitempty"`
@@ -65,12 +64,38 @@ type PortalFilePaths struct {
 	Content      string `yaml:"content,omitempty"`
 }
 
-// PortalConfig is the shared layout for any portal section in the project
-// config (devportals, aiWorkspaces, ...).
+// PortalConfig is the layout for a devportal section in the project config.
 type PortalConfig struct {
 	Name       string          `yaml:"name,omitempty"`
 	PortalRoot string          `yaml:"portalRoot,omitempty"`
 	FilePaths  PortalFilePaths `yaml:"filePaths,omitempty"`
+}
+
+// Default file paths for an ai-workspace portal config, relative to its
+// portalRoot.
+const (
+	DefaultAIWorkspaceMetadata   = "./metadata.yaml"
+	DefaultAIWorkspaceRuntime    = "./runtime.yaml"
+	DefaultAIWorkspaceDefinition = "./definition.yaml"
+	DefaultAIWorkspaceDocs       = "./docs"
+)
+
+// AIWorkspaceFilePaths describes an ai-workspace portal's artifact layout,
+// relative to its portalRoot. Unlike a devportal it carries a runtime artifact.
+// Definition is the optional OpenAPI spec folded into the generated llm-proxy
+// payload.
+type AIWorkspaceFilePaths struct {
+	Metadata   string `yaml:"metadata,omitempty"`
+	Runtime    string `yaml:"runtime,omitempty"`
+	Definition string `yaml:"definition,omitempty"`
+}
+
+// AIWorkspaceConfig is one ai-workspace portal configuration in the project
+// config.
+type AIWorkspaceConfig struct {
+	Name       string               `yaml:"name,omitempty"`
+	PortalRoot string               `yaml:"portalRoot,omitempty"`
+	FilePaths  AIWorkspaceFilePaths `yaml:"filePaths,omitempty"`
 }
 
 // Config is the on-disk .api-platform/config.yaml for an api-platform project.
@@ -80,7 +105,7 @@ type Config struct {
 	GovernanceRulesets []string               `yaml:"governanceRulesets"`
 	AutoSync           map[string]interface{} `yaml:"autoSync,omitempty"`
 	DevPortals         []PortalConfig         `yaml:"devportals,omitempty"`
-	AIWorkspaces       []PortalConfig         `yaml:"aiWorkspaces,omitempty"`
+	AIWorkspaces       []AIWorkspaceConfig    `yaml:"ai-workspaces,omitempty"`
 }
 
 // DefaultFilePaths returns the project-level file paths used when scaffolding a

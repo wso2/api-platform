@@ -95,9 +95,35 @@ type runtimeOperation struct {
 	Method string `yaml:"method"`
 }
 
+// portalConfigTemplate is appended (commented out) to a freshly scaffolded
+// config.yaml so users have a ready-to-edit reference for wiring up
+// ai-workspace and devportal publishing targets. Uncomment and adjust to add a
+// portal; the keys match the structs the build commands parse.
+const portalConfigTemplate = `
+# AI-Workspace portal configurations
+# ai-workspaces:
+#   - name: dev
+#     portalRoot: ./ai-workspace
+#     filePaths:                  # paths relative to portal root
+#       metadata: ./artifact.yaml
+#       runtime: ./runtime.yaml
+#       definition: ./definition.yaml   # only folded into the payload with --use-spec
+
+# Dev portal configurations
+# devportals:
+#   - name: default
+#     portalRoot: ./devportal
+#     filePaths:                  # paths relative to portal root
+#       metadata: ./devportal.yaml
+#       definition: ./definition.yaml
+#       docs: ./docs
+#       content: ./content
+`
+
 // BuildConfigYAML renders the default .api-platform/config.yaml for a new
 // project, sourcing the file-path values from the shared FilePaths struct so
-// the scaffold and the loader can never drift apart.
+// the scaffold and the loader can never drift apart. A commented-out portal
+// configuration template is appended for the user to edit.
 func BuildConfigYAML() (string, error) {
 	config := Config{
 		Version:            DefaultConfigVersion,
@@ -108,13 +134,18 @@ func BuildConfigYAML() (string, error) {
 		},
 	}
 
-	return renderYAML(config, map[string]string{
+	rendered, err := renderYAML(config, map[string]string{
 		"filePaths":          "Default file paths (can be customized)",
 		"governanceRulesets": "Governance rulesets for design-time validation",
 		"autoSync":           "Auto-sync configuration for vscode plugin",
 	}, map[string]string{
 		"autoSync.gatewayArtifactFromDefinition": "Auto-generate runtime.yaml when definition.yaml changes",
 	})
+	if err != nil {
+		return "", err
+	}
+
+	return rendered + portalConfigTemplate, nil
 }
 
 // BuildMetadataYAML renders the default metadata.yaml for the given artifact
