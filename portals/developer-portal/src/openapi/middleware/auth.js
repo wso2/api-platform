@@ -37,8 +37,6 @@ const { jwtVerify, createRemoteJWKSet, importX509 } = require('jose');
 
 const { config } = require('../../config/configLoader');
 const constants = require('../../utils/constants');
-const adminDao = require('../../dao/admin');
-const IdentityProviderDTO = require('../../dto/identityProvider');
 const logger = require('../../config/logger');
 const { extractPlatformJwtClaims } = require('../../utils/platformJwt');
 
@@ -120,23 +118,8 @@ async function verifyWithCertificate(token, pemCertificate) {
     }
 }
 
-async function resolveOrgIdp(req) {
-    let orgId;
-    if (req.params && req.params.orgId) {
-        orgId = req.params.orgId;
-    } else if (req.params && req.params.orgName) {
-        orgId = await adminDao.getOrgId(req.params.orgName);
-    }
-    if (!orgId) return config.identityProvider || {};
-    const rows = await adminDao.getIdentityProvider(orgId);
-    if (rows && rows.length > 0) {
-        return new IdentityProviderDTO(rows[0].dataValues);
-    }
-    return config.identityProvider || {};
-}
-
-async function verifyBearerToken(token, req) {
-    const idp = await resolveOrgIdp(req);
+async function verifyBearerToken(token) {
+    const idp = config.identityProvider || {};
     if (!idp || !idp.clientId) {
         // Local auth mode: verify Platform API JWT with shared secret when configured.
         const jwtSecret = config.platformApi?.jwtSecret;
@@ -190,7 +173,7 @@ async function authResolver(req, res, next) {
                 err.status = 401;
                 return next(err);
             }
-            const { valid, scopes } = await verifyBearerToken(token, req);
+            const { valid, scopes } = await verifyBearerToken(token);
             if (!valid) {
                 const err = new Error('Authentication required');
                 err.status = 401;

@@ -1,7 +1,7 @@
 
 <h1 id="wso2-api-developer-portal-core-devportal-routes">WSO2 API Developer Portal Core - Devportal Routes v1.0.0</h1>
 
-Fine-grained Developer Portal API for managing organizations, identity providers, providers,
+Fine-grained Developer Portal API for managing organizations, providers,
 API metadata and content, applications, subscriptions, application credentials, and API flows.
 
 Organization-scoped resources are served under `/o/{orgId}/devportal/v1`. Operations declare
@@ -24,13 +24,6 @@ Base URLs:
 - [Update an organization](organizations.md#update-an-organization)
 - [Get an organization](organizations.md#get-an-organization)
 - [Delete an organization](organizations.md#delete-an-organization)
-
-### [Identity Providers](identity-providers.md)
-
-- [Create an identity provider](identity-providers.md#create-an-identity-provider)
-- [Update an identity provider](identity-providers.md#update-an-identity-provider)
-- [Get an identity provider](identity-providers.md#get-an-identity-provider)
-- [Delete an identity provider](identity-providers.md#delete-an-identity-provider)
 
 ### [Organization Content](organization-content.md)
 

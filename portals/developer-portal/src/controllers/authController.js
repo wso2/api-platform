@@ -25,40 +25,10 @@ const { config } = require('../config/configLoader');
 const constants = require('../utils/constants');
 const util = require('../utils/util');
 const adminDao = require('../dao/admin');
-const IdentityProviderDTO = require("../dto/identityProvider");
-const minimatch = require('minimatch');
 const { validationResult } = require('express-validator');
-const { renderGivenTemplate } = require('../utils/util');
 const { trackLoginTrigger, trackLogoutTrigger } = require('../utils/telemetry');
 const { extractPlatformJwtClaims } = require('../utils/platformJwt');
 
-
-const fetchAuthJsonContent = async (req, orgName) => {
-
-    //use super admin for org creation page login
-    if (req.session.returnTo) {
-        if (constants.ROUTE.DEVPORTAL_ROOT.some(pattern => minimatch.minimatch(req.session.returnTo, pattern))) {
-            return config.identityProvider;
-        }
-    }
-    //if no idp per org, use super IDP
-    try {
-        const orgId = await adminDao.getOrgId(orgName);
-        const response = await adminDao.getIdentityProvider(orgId);
-        if (response.length === 0) {
-            //login from super IDP
-            return config.identityProvider;
-        }
-        return new IdentityProviderDTO(response[0].dataValues);
-    } catch (error) {
-        logger.error("Failed to fetch identity provider details", {
-            orgName: orgName,
-            error: error.message,
-            stack: error.stack
-        });
-        return config.identityProvider;
-    }
-};
 
 const login = async (req, res, next) => {
 
@@ -164,7 +134,7 @@ const handleSignUp = async (req, res) => {
     if (!errors.isEmpty()) {
         return res.status(400).json(util.getErrors(errors));
     }
-    const authJsonContent = await fetchAuthJsonContent(req.params.orgName);
+    const authJsonContent = config.identityProvider;
     if (authJsonContent.signUpURL) {
         res.redirect(authJsonContent.signUpURL);
     } else {
@@ -183,7 +153,7 @@ const handleLogOut = async (req, res) => {
     if (!errors.isEmpty()) {
         return res.status(400).json(util.getErrors(errors));
     }
-    const authJsonContent = await fetchAuthJsonContent(req, req.params.orgName);
+    const authJsonContent = config.identityProvider;
     let idToken = ''
     if (req.user != null) {
         idToken = req.user.idToken;

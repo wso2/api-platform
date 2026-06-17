@@ -22,8 +22,6 @@ const path = require('path');
 const logger = require('../config/logger');
 const { logUserAction } = require('../middlewares/auditLogger');
 const adminDao = require('../dao/admin');
-const IdentityProviderDTO = require("../dto/identityProvider");
-const { config } = require('../config/configLoader');
 const constants = require('../utils/constants');
 const adminService = require('../services/adminService');
 const apiMetadataService = require('../services/apiMetadataService');
@@ -52,12 +50,6 @@ const loadOrgSettingsPage = async (req, res) => {
         const organizations = await adminService.getAllOrganizations();
         if (organizations.length > 0) {
             templateContent.organizations = organizations;
-        }
-        const retrievedIDP = await adminDao.getIdentityProvider(orgID);
-        if (retrievedIDP.length > 0) {
-            templateContent.idp = new IdentityProviderDTO(retrievedIDP[0]);
-        } else {
-            templateContent.createIDP = true;
         }
         templateContent.viewCreate = true;
         const views = await apiMetadataService.getViewsFromDB(orgID);

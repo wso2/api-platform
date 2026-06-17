@@ -143,24 +143,6 @@ const SAMPLES = [
         orgConfiguration: {},
     }],
 
-    // Identity Providers — IdentityProviderDTO output (src/dto/identityProvider.js)
-    ['createIdentityProvider', 201, {
-        name: 'IS', issuer: 'https://idp/iss', authorizationURL: 'https://idp/auth',
-        tokenURL: 'https://idp/token', clientId: 'cid', callbackURL: 'http://cb',
-        scope: 'openid', logoutURL: 'http://lo', logoutRedirectURI: 'http://lr',
-        userInfoURL: 'http://ui',
-    }],
-    ['updateIdentityProvider', 200, {
-        name: 'IS', issuer: 'https://idp/iss', authorizationURL: 'https://idp/auth',
-        tokenURL: 'https://idp/token', clientId: 'cid', callbackURL: 'http://cb',
-        scope: 'openid', logoutURL: 'http://lo', logoutRedirectURI: 'http://lr',
-    }],
-    ['getIdentityProvider', 200, {
-        name: 'IS', issuer: 'https://idp/iss', authorizationURL: 'https://idp/auth',
-        tokenURL: 'https://idp/token', clientId: 'cid', callbackURL: 'http://cb',
-        scope: 'openid', logoutURL: 'http://lo', logoutRedirectURI: 'http://lr',
-    }],
-
     // Org content — adminService.createOrgContent L402, updateOrgContent L488 (both 201)
     ['createOrgContent', 201, { orgId: 'org-1', fileName: 'theme.zip' }],
     ['updateOrgContent', 201, { orgId: 'org-1', fileName: 'theme.zip' }],

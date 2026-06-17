@@ -24,7 +24,6 @@ const { validationResult } = require('express-validator');
 const { jwtVerify, createRemoteJWKSet, importX509 } = require('jose');
 const util = require('../utils/util');
 const { CustomError } = require('../utils/errors/customErrors');
-const IdentityProviderDTO = require("../dto/identityProvider");
 const jwt = require('jsonwebtoken');
 const axios = require('axios');
 const logger = require('../config/logger');
@@ -288,22 +287,8 @@ function validateAuthentication(scope) {
         if (!errors.isEmpty()) {
             return res.status(400).json(util.getErrors(errors));
         }
-        let IDP, valid, scopes, orgId, response;
-        if (req.params.orgName) {
-            orgId = await adminDao.getOrgId(req.params.orgName);
-        } else {
-            orgId = req.params.orgId;
-        }
-        if (orgId) {
-            response = await adminDao.getIdentityProvider(orgId);
-            if (response.length !== 0) {
-                IDP = new IdentityProviderDTO(response[0].dataValues);
-            } else {
-                IDP = config.identityProvider || {};
-            }
-        } else {
-            IDP = config.identityProvider || {};
-        }
+        let IDP, valid, scopes;
+        IDP = config.identityProvider || {};
 
         let accessToken;
         if (req.isAuthenticated() && req.user) {
