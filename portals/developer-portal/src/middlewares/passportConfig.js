@@ -71,7 +71,7 @@ function configurePassport(SERVER_ID) {
                     return done(error);
                 }
             }
-            const decodedJWT = jwt.decode(params.id_token);
+            const decodedJWT = jwt.decode(params.id_token) || {};
             const decodedAccessToken = jwt.decode(accessToken);
             const firstName = decodedJWT['given_name'] || decodedJWT['nickname'];
             const lastName = decodedJWT['family_name'];

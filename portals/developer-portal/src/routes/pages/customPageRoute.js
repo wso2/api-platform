@@ -17,9 +17,9 @@
  */
 const express = require('express');
 const router = express.Router();
-const contentController = require('../controllers/customContentController');
-const registerPartials = require('../middlewares/registerPartials');
-const { ensureAuthenticated } = require('../middlewares/ensureAuthenticated');
+const contentController = require('../../controllers/customContentController');
+const registerPartials = require('../../middlewares/registerPartials');
+const { ensureAuthenticated } = require('../../middlewares/ensureAuthenticated');
 
 // eslint-disable-next-line no-useless-escape
 // Exclude specific paths

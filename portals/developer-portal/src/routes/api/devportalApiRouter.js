@@ -26,7 +26,7 @@
  *   1. authResolver        — populates req.auth (legacy auth-mode parity)
  *   2. OpenApiValidator    — request schema check + security handler dispatch
  *                            + operationId-based handler routing
- *   3. operation handler   — thin shim from src/openapi/handlers/<tag>.js
+ *   3. operation handler   — thin shim from src/routes/api/handlers/<tag>.js
  *
  * Operations whose tag has no handler module yet, or whose operationId is
  * not exported by the matching module, fall through to a 501 stub. This is
@@ -41,12 +41,12 @@ const yaml = require('js-yaml');
 const express = require('express');
 const OpenApiValidator = require('express-openapi-validator');
 
-const { config } = require('../config/configLoader');
-const constants = require('../utils/constants');
-const logger = require('../config/logger');
-const { authResolver, OAuth2Security, apiKeyAuth } = require('./middleware/auth');
+const { config } = require('../../config/configLoader');
+const constants = require('../../utils/constants');
+const logger = require('../../config/logger');
+const { authResolver, OAuth2Security, apiKeyAuth } = require('../../middlewares/authMiddleware');
 
-const SPEC_PATH = path.join(__dirname, '..', '..', 'docs', 'devportal-openapi-spec-v1.yaml');
+const SPEC_PATH = path.join(__dirname, '..', '..', '..', 'docs', 'devportal-openapi-spec-v1.yaml');
 const HANDLERS_DIR = path.join(__dirname, 'handlers');
 
 // Top-level path segments that belong to the devportal API surface, derived
@@ -93,7 +93,7 @@ function notImplementedHandler(operationId, tag) {
             code: 501,
             message: 'Not Implemented',
             description:
-                `Operation '${operationId}' (tag '${tag}') has no handler in src/openapi/handlers.`,
+                `Operation '${operationId}' (tag '${tag}') has no handler in src/routes/api/handlers.`,
         });
     };
 }

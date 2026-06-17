@@ -17,13 +17,13 @@
  */
 const express = require('express');
 const router = express.Router();
-const apiController = require('../controllers/apiContentController');
-const subscriptionsController = require('../controllers/subscriptionsContentController');
-const apiKeysContentController = require('../controllers/apiKeysPageController');
-const registerPartials = require('../middlewares/registerPartials');
-const { ensureAuthenticated } = require('../middlewares/ensureAuthenticated');
-const authController = require('../controllers/authController');
-const util = require('../utils/util');
+const apiController = require('../../controllers/apiContentController');
+const subscriptionsController = require('../../controllers/subscriptionsContentController');
+const apiKeysContentController = require('../../controllers/apiKeysPageController');
+const registerPartials = require('../../middlewares/registerPartials');
+const { ensureAuthenticated } = require('../../middlewares/ensureAuthenticated');
+const authController = require('../../controllers/authController');
+const util = require('../../utils/util');
 
 router.get('/:orgName/views/:viewName/llms.txt', (req, res, next) => {
     if (req.params.orgName === 'favicon.ico') {

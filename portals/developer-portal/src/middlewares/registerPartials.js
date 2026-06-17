@@ -74,7 +74,7 @@ const registerPartials = async (req, res, next) => {
 
         if (isNonConfigure) {
           const orgID = await orgDao.getId(req.params.orgName);
-          await registerPartialsFromAPI(req);
+          await registerPartialsFromAPI(req, orgID);
           //register doc page partials
           if (req.originalUrl.includes(constants.ROUTE.API_DOCS_PATH) && req.params.docType && req.params.docName) {
             await registerDocsPageContent(req, orgID, {});
@@ -161,11 +161,9 @@ const registerAllPartialsFromFile = async (baseURL, req, filePrefix) => {
   }
 }
 
-const registerPartialsFromAPI = async (req) => {
+const registerPartialsFromAPI = async (req, orgID) => {
 
-  const orgName = req.params.orgName;
   const viewName = req.params.viewName;
-  const orgID = await orgDao.getId(orgName);
 
   let partials = await orgDao.getContent({
     orgId: orgID,
@@ -255,12 +253,16 @@ async function registerPartialsFromFile(baseURL, dir, req) {
   if (!dir || !fs.existsSync(dir)) return;
   const filenames = fs.readdirSync(dir);
 
+  let orgID;
+  if (req.params.orgName) {
+    orgID = await orgDao.getId(req.params.orgName);
+  }
+
   for (const filename of filenames) {
     if (filename.endsWith(".hbs")) {
       let name = filename.split(".hbs")[0];
       const template = fs.readFileSync(path.join(dir, filename), constants.CHARSET_UTF8);
-      if (constants.CUSTOMIZABLE_FILES.includes(name) && req.params.orgName) {
-        const orgID = await orgDao.getId(req.params.orgName);
+      if (constants.CUSTOMIZABLE_FILES.includes(name) && orgID) {
         const content = await orgDao.getContent({ orgId: orgID, fileType: 'partial', viewName: req.params.viewName, fileName: name + '.hbs' });
         if (!(content)) {
           hbs.handlebars.registerPartial(name, template);

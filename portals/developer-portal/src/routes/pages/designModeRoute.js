@@ -17,11 +17,11 @@
  */
 const express = require('express');
 const router = express.Router();
-const orgController = require('../controllers/orgContentController');
-const apiController = require('../controllers/apiContentController');
-const applicationController = require('../controllers/applicationsContentController');
-const contentController = require('../controllers/customContentController');
-const registerPartials = require('../middlewares/registerPartials');
+const orgController = require('../../controllers/orgContentController');
+const apiController = require('../../controllers/apiContentController');
+const applicationController = require('../../controllers/applicationsContentController');
+const contentController = require('../../controllers/customContentController');
+const registerPartials = require('../../middlewares/registerPartials');
 
 router.get('/views/:viewName', registerPartials, orgController.loadOrganizationContent);
 

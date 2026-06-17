@@ -30,52 +30,14 @@
  *
  */
 
-const axios = require('axios');
-const qs = require('qs');
 const jwt = require('jsonwebtoken');
-const { jwtVerify, createRemoteJWKSet, importX509 } = require('jose');
+const { jwtVerify, createRemoteJWKSet } = require('jose');
 
-const { config } = require('../../config/configLoader');
-const constants = require('../../utils/constants');
-const orgDao = require('../../dao/organizationDao');
-const idpDao = require('../../dao/identityProviderDao');
-const IdentityProviderDTO = require('../../dto/identityProviderDto');
-const logger = require('../../config/logger');
-const { extractPlatformJwtClaims } = require('../../utils/platformJwt');
-
-const DEFAULT_TOKEN_REFRESH_TIMEOUT_MS = 10000;
-
-function resolveTokenRefreshTimeoutMs() {
-    const timeout = Number(config.identityProvider?.tokenRefreshTimeoutMs);
-    if (Number.isFinite(timeout) && timeout > 0) {
-        return timeout;
-    }
-    return DEFAULT_TOKEN_REFRESH_TIMEOUT_MS;
-}
-
-function accessTokenPresent(req) {
-    if (req.user && req.user[constants.ACCESS_TOKEN]) {
-        return req.user[constants.ACCESS_TOKEN];
-    }
-    const auth = req.headers.authorization;
-    if (auth && auth.toLowerCase().startsWith('bearer ')) {
-        return auth.split(' ')[1];
-    }
-    return null;
-}
-
-async function refreshAccessToken(refreshToken) {
-    const data = qs.stringify({
-        grant_type: 'refresh_token',
-        refresh_token: refreshToken,
-        client_id: config.identityProvider.clientId,
-    });
-    const response = await axios.post(config.identityProvider.tokenURL, data, {
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        timeout: resolveTokenRefreshTimeoutMs(),
-    });
-    return response.data;
-}
+const { config } = require('../config/configLoader');
+const constants = require('../utils/constants');
+const logger = require('../config/logger');
+const { extractPlatformJwtClaims } = require('../utils/platformJwt');
+const { accessTokenPresent, refreshAccessToken, verifyWithCertificate, resolveOrgIdp } = require('../utils/tokenUtil');
 
 async function verifyJwksWithRefresh(token, jwksURL, req) {
     try {
@@ -105,35 +67,6 @@ async function verifyJwksWithRefresh(token, jwksURL, req) {
         });
         return { valid: false, scopes: '' };
     }
-}
-
-async function verifyWithCertificate(token, pemCertificate) {
-    try {
-        const publicKey = await importX509(pemCertificate, 'RS256');
-        const { payload } = await jwtVerify(token, publicKey);
-        return { valid: true, scopes: payload.scope || '' };
-    } catch (err) {
-        logger.error('Bearer token cert validation failed', {
-            error: err.message,
-            operation: 'verifyWithCertificate',
-        });
-        return { valid: false, scopes: '' };
-    }
-}
-
-async function resolveOrgIdp(req) {
-    let orgId;
-    if (req.params && req.params.orgId) {
-        orgId = req.params.orgId;
-    } else if (req.params && req.params.orgName) {
-        orgId = await orgDao.getId(req.params.orgName);
-    }
-    if (!orgId) return config.identityProvider || {};
-    const rows = await idpDao.get(orgId);
-    if (rows && rows.length > 0) {
-        return new IdentityProviderDTO(rows[0].dataValues);
-    }
-    return config.identityProvider || {};
 }
 
 async function verifyBearerToken(token, req) {
@@ -223,8 +156,8 @@ async function authResolver(req, res, next) {
         }
 
         // 4. mTLS
-        if (typeof req.connection?.getPeerCertificate === 'function') {
-            const cert = req.connection.getPeerCertificate(true);
+        if (typeof req.socket?.getPeerCertificate === 'function') {
+            const cert = req.socket.getPeerCertificate(true);
             if (cert && Object.keys(cert).length > 0 && req.client?.authorized) {
                 const now = new Date();
                 if (new Date(cert.valid_from) <= now && new Date(cert.valid_to) >= now) {
@@ -286,7 +219,7 @@ async function OAuth2Security(req /* , requiredScopes, schema */) {
  * mirror legacy behaviour where API key endpoints also accepted basic/mTLS).
  */
 /*
- * TODO: once the API key support introduces with scope support, change the method 
+ * TODO: once the API key support introduces with scope support, change the method
  * to check for scopes as well, and rename it to ApiKeySecurity for clarity.
  */
 async function apiKeyAuth(req /* , scopes, schema */) {

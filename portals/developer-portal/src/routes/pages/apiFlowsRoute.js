@@ -17,9 +17,9 @@
  */
 const express = require('express');
 const router = express.Router();
-const apiFlowsController = require('../controllers/apiFlowsController');
-const registerPartials = require('../middlewares/registerPartials');
-const util = require('../utils/util');
+const apiFlowsController = require('../../controllers/apiFlowsController');
+const registerPartials = require('../../middlewares/registerPartials');
+const util = require('../../utils/util');
 
 // API Workflows gallery - no authentication required
 router.get('/:orgName/views/:viewName/api-workflows', (req, res, next) => {

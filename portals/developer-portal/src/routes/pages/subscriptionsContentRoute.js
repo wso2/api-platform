@@ -17,9 +17,9 @@
  */
 const express = require('express');
 const router = express.Router();
-const subscriptionsController = require('../controllers/subscriptionsContentController');
-const registerPartials = require('../middlewares/registerPartials');
-const { ensureAuthenticated } = require('../middlewares/ensureAuthenticated');
+const subscriptionsController = require('../../controllers/subscriptionsContentController');
+const registerPartials = require('../../middlewares/registerPartials');
+const { ensureAuthenticated } = require('../../middlewares/ensureAuthenticated');
 
 router.get('/:orgName/views/:viewName/subscriptions', (req, res, next) => {
     if (req.params.orgName === 'favicon.ico') {

@@ -17,9 +17,9 @@
  */
 const express = require('express');
 const router = express.Router({ mergeParams: true });
-const mcpRegistryService = require('../services/mcpRegistryService');
-const { enforceSecuirty } = require('../middlewares/ensureAuthenticated');
-const constants = require('../utils/constants');
+const mcpRegistryService = require('../../services/mcpRegistryService');
+const { enforceSecurity } = require('../../middlewares/ensureAuthenticated');
+const constants = require('../../utils/constants');
 
 router.use((req, res, next) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -36,10 +36,10 @@ router.get('/v0.1/servers/:serverName/versions', mcpRegistryService.listVersions
 router.get('/v0.1/servers/:serverName/versions/:version', mcpRegistryService.getVersion);
 
 // Publishing endpoints (API key or session auth — same as all other devportal write routes)
-router.post('/v0.1/publish', enforceSecuirty(constants.SCOPES.DEVELOPER), mcpRegistryService.publishServer);
-router.put('/v0.1/servers/:serverName/versions/:version', enforceSecuirty(constants.SCOPES.DEVELOPER), mcpRegistryService.updateVersion);
-router.delete('/v0.1/servers/:serverName/versions/:version', enforceSecuirty(constants.SCOPES.DEVELOPER), mcpRegistryService.deleteVersion);
-router.patch('/v0.1/servers/:serverName/versions/:version/status', enforceSecuirty(constants.SCOPES.DEVELOPER), mcpRegistryService.updateVersionStatus);
-router.patch('/v0.1/servers/:serverName/status', enforceSecuirty(constants.SCOPES.DEVELOPER), mcpRegistryService.updateAllVersionsStatus);
+router.post('/v0.1/publish', enforceSecurity(constants.SCOPES.DEVELOPER), mcpRegistryService.publishServer);
+router.put('/v0.1/servers/:serverName/versions/:version', enforceSecurity(constants.SCOPES.DEVELOPER), mcpRegistryService.updateVersion);
+router.delete('/v0.1/servers/:serverName/versions/:version', enforceSecurity(constants.SCOPES.DEVELOPER), mcpRegistryService.deleteVersion);
+router.patch('/v0.1/servers/:serverName/versions/:version/status', enforceSecurity(constants.SCOPES.DEVELOPER), mcpRegistryService.updateVersionStatus);
+router.patch('/v0.1/servers/:serverName/status', enforceSecurity(constants.SCOPES.DEVELOPER), mcpRegistryService.updateAllVersionsStatus);
 
 module.exports = router;
