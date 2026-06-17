@@ -101,6 +101,12 @@ type ControlPlaneClient interface {
 	GetAPIMConfig() *utils.APIMConfig
 }
 
+// secretSyncer is the narrow interface the sync loop needs from the secrets service.
+// *secrets.SecretService satisfies this interface.
+type secretSyncer interface {
+	UpsertFromPlatform(handle, displayName, plaintext string) error
+}
+
 // Client manages the WebSocket connection to the control plane
 type Client struct {
 	config                      config.ControlPlaneConfig
@@ -134,6 +140,8 @@ type Client struct {
 	gatewayPath                 string      // cached gateway path from well-known discovery
 	syncOnce                    sync.Once   // ensures deployment sync runs only on first connect
 	isFirstConnect              atomic.Bool // true on first connect, flipped to false after
+	secretSyncer                secretSyncer
+	secretHashCache             sync.Map // handle → last-known Platform API hash (string)
 }
 
 // NewClient creates a new control plane client
@@ -211,6 +219,12 @@ func NewClient(
 	}
 
 	client.isFirstConnect.Store(true)
+
+	// If the secretResolver also satisfies secretSyncer, store it so syncSecrets can
+	// upsert Platform API-sourced secrets into local encrypted storage.
+	if ss, ok := secretResolver.(secretSyncer); ok {
+		client.secretSyncer = ss
+	}
 
 	policyVersionResolver := utils.NewLoadedPolicyVersionResolver(policyDefinitions)
 	policyValidator := config.NewPolicyValidator(policyDefinitions)
@@ -439,6 +453,9 @@ func (c *Client) Connect() error {
 		c.wg.Add(1)
 		go func(gwID string) {
 			defer c.wg.Done()
+			// Sync secrets before deployments so {{ secret "..." }} placeholders
+			// in API configs resolve correctly during the first render pass.
+			c.syncSecrets()
 			c.syncDeployments(gwID)
 			// Bottom-up sync: push gateway-created APIs to on-prem control plane
 			if c.IsOnPrem() {
@@ -465,6 +482,10 @@ func (c *Client) Connect() error {
 					c.logger.Error("Failed to sync artifacts to on-prem APIM", slog.Any("error", err))
 				}
 			}
+			// Re-sync secrets on reconnect so any rotated or newly added secrets
+			// are picked up. Hash-based change detection ensures only changed
+			// secrets trigger a plaintext fetch.
+			c.syncSecrets()
 			c.syncSubscriptionPlans(gwID)
 			c.syncSubscriptionsForExistingAPIs(gwID)
 			// Sync API keys for LlmProvider, LlmProxy, and RestApi artifacts.
