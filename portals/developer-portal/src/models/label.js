@@ -30,7 +30,6 @@ const Labels = sequelize.define('DP_LABELS', {
     ORG_ID: {
         type: DataTypes.UUID,
         defaultValue: Sequelize.UUIDV4,
-        unique: true
     },
     NAME: {
         type: DataTypes.STRING,
@@ -43,16 +42,15 @@ const Labels = sequelize.define('DP_LABELS', {
 }, {
     timestamps: false,
     tableName: 'DP_LABELS',
-    returning: true
-},
-    {
-        indexes: [
-            {
-                unique: true,
-                fields: ['NAME', 'DISPLAY_NAME', 'ORG_ID']
-            }
-        ]
-    });
+    returning: true,
+    indexes: [
+        {
+            name: 'UQ_LABELS_NAME_ORG_ID',
+            unique: true,
+            fields: ['NAME', 'ORG_ID'],
+        }
+    ],
+});
 
 Labels.belongsTo(Organization, {
     foreignKey: 'ORG_ID'

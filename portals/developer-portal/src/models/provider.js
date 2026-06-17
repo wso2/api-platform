@@ -27,13 +27,11 @@ const Provider = sequelize.define('DP_PROVIDER', {
     NAME: {
         type: DataTypes.STRING,
         allowNull: false,
-        unique: true,
         primaryKey: true
     },
     PROPERTY: {
         type: DataTypes.STRING,
         allowNull: false,
-        unique: true,
         primaryKey: true
     },
     VALUE: {

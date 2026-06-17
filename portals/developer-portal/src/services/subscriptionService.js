@@ -58,7 +58,7 @@ function formatSubscriptionResponse(sub) {
         apiId: sub.API_ID,
         subscriptionPlanName: policy.POLICY_NAME || null,
         createdBy: sub.CREATED_BY || null,
-        createdAt: sub.createdAt || null,
+        createdAt: sub.CREATED_AT || null,
     };
 }
 
@@ -115,7 +115,7 @@ const createSubscription = async (req, res) => {
             });
         });
 
-        const created = await subDao.get(orgID, newSub.SUB_ID);
+        const created = await subDao.get(orgID, newSub.SUB_ID, createdBy);
         return res.status(201).json(formatSubscriptionResponse(created));
     } catch (error) {
         if (error.name === 'SequelizeUniqueConstraintError') {
@@ -160,7 +160,7 @@ const getSubscription = async (req, res) => {
     const subscriptionId = req.params.subId;
 
     try {
-        const sub = await subDao.get(orgID, subscriptionId);
+        const sub = await subDao.get(orgID, subscriptionId, req.user.sub);
         if (!sub) {
             return res.status(404).json({
                 code: '404', message: 'Not Found', description: 'Subscription not found',
@@ -182,14 +182,14 @@ const updateSubscription = async (req, res) => {
 
     try {
         const updated = await subDao.updateStatus(
-            orgID, subscriptionId, status
+            orgID, subscriptionId, status, req.user.sub
         );
         if (!updated) {
             return res.status(404).json({
                 code: '404', message: 'Not Found', description: 'Subscription not found',
             });
         }
-        const sub = await subDao.get(orgID, subscriptionId);
+        const sub = await subDao.get(orgID, subscriptionId, req.user.sub);
         return res.status(200).json(formatSubscriptionResponse(sub));
     } catch (error) {
         logger.error('Error updating subscription', {
@@ -204,7 +204,7 @@ const deleteSubscription = async (req, res) => {
     const subscriptionId = req.params.subId;
 
     try {
-        const existing = await subDao.get(orgID, subscriptionId);
+        const existing = await subDao.get(orgID, subscriptionId, req.user.sub);
         if (!existing) {
             return res.status(404).json({
                 code: '404', message: 'Not Found', description: 'Subscription not found',
@@ -215,7 +215,7 @@ const deleteSubscription = async (req, res) => {
         const policy = existing.DP_SUBSCRIPTION_POLICY;
 
         await sequelize.transaction(async (t) => {
-            const deleted = await subDao.delete(orgID, subscriptionId, t);
+            const deleted = await subDao.delete(orgID, subscriptionId, req.user.sub, t);
             if (!deleted) throw Object.assign(new Error('Not found'), { statusCode: 404 });
             await safePublish('subscription.deleted', buildWebhookPayload(existing, apiMetadata, policy), {
                 transaction: t,
