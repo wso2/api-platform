@@ -901,19 +901,19 @@ func (c *Client) syncSubscriptionsForExistingAPIs(gatewayID string) {
 	}
 }
 
+// onPremSupportedAPIKeyKinds lists the artifact kinds for which the on-prem APIM control plane
+// exposes an API-key backfill endpoint. LLM, WebSub, and WebBroker kinds are cloud-only.
+var onPremSupportedAPIKeyKinds = map[string]bool{
+	models.KindRestApi: true,
+}
+
 // syncAPIKeysForExistingArtifacts performs a one-time bulk sync of API keys for all
 // currently known RestApi, WebSubApi, LlmProvider, and LlmProxy artifacts after the WebSocket connection
 // is established. Upserts fetched keys into the DB, reconciles deletions per artifact,
 // then reloads the in-memory store and refreshes the xDS snapshot once.
+// For on-prem control planes only KindRestApi is synced; other kinds are skipped because
+// the corresponding backfill endpoints do not exist in carbon-apimgt for now.
 func (c *Client) syncAPIKeysForExistingArtifacts(gatewayID string) {
-	// Skip for on-prem control planes
-	if c.isOnPrem() {
-		c.logger.Debug("Skipping API Key bulk sync: on-prem control plane detected",
-			slog.String("gateway_id", gatewayID),
-		)
-		return
-	}
-
 	if c.apiUtilsService == nil || c.store == nil || c.apiKeyStore == nil {
 		return
 	}
@@ -946,6 +946,14 @@ func (c *Client) syncAPIKeysForExistingArtifacts(gatewayID string) {
 	}
 
 	for _, kind := range []string{models.KindRestApi, models.KindWebSubApi, models.KindWebBrokerApi, models.KindLlmProvider, models.KindLlmProxy} {
+		// On-prem APIM only exposes backfill endpoints for RestApi keys.
+		if c.isOnPrem() && !onPremSupportedAPIKeyKinds[kind] {
+			c.logger.Debug("Skipping API key bulk sync for kind: not supported by on-prem control plane",
+				slog.String("kind", kind),
+				slog.String("gateway_id", gatewayID),
+			)
+			continue
+		}
 		select {
 		case <-c.ctx.Done():
 			c.logger.Info("Stopping API key bulk sync due to client context cancellation")
