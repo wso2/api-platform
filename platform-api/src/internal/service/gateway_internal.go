@@ -49,6 +49,7 @@ type GatewayInternalAPIService struct {
 	projectRepo          repository.ProjectRepository
 	apiKeyRepo           repository.APIKeyRepository
 	artifactRepo         repository.ArtifactRepository
+	secretRepo           repository.SecretRepository
 	apiUtil              *utils.APIUtil
 	cfg                  *config.Server
 	slogger              *slog.Logger
@@ -60,7 +61,7 @@ func NewGatewayInternalAPIService(apiRepo repository.APIRepository, subscription
 	proxyRepo repository.LLMProxyRepository, mcpProxyRepo repository.MCPProxyRepository, websubAPIRepo repository.WebSubAPIRepository,
 	webbrokerAPIRepo repository.WebBrokerAPIRepository, deploymentRepo repository.DeploymentRepository, gatewayRepo repository.GatewayRepository,
 	orgRepo repository.OrganizationRepository, projectRepo repository.ProjectRepository, apiKeyRepo repository.APIKeyRepository,
-	artifactRepo repository.ArtifactRepository, cfg *config.Server, slogger *slog.Logger) *GatewayInternalAPIService {
+	artifactRepo repository.ArtifactRepository, secretRepo repository.SecretRepository, cfg *config.Server, slogger *slog.Logger) *GatewayInternalAPIService {
 	return &GatewayInternalAPIService{
 		apiRepo:              apiRepo,
 		subscriptionRepo:     subscriptionRepo,
@@ -76,10 +77,26 @@ func NewGatewayInternalAPIService(apiRepo repository.APIRepository, subscription
 		projectRepo:          projectRepo,
 		apiKeyRepo:           apiKeyRepo,
 		artifactRepo:         artifactRepo,
+		secretRepo:           secretRepo,
 		apiUtil:              &utils.APIUtil{},
 		cfg:                  cfg,
 		slogger:              slogger,
 	}
+}
+
+// GetSecretsByGateway returns secrets referenced by artifacts deployed on this gateway.
+// Handles are sourced from deployment_secret_refs (maintained at deploy time) so no
+// config blob JOIN or application-level regex is needed here.
+// If updatedAfter is set, only secrets updated after that time are included.
+func (s *GatewayInternalAPIService) GetSecretsByGateway(orgID, gatewayID string, updatedAfter *time.Time) ([]*model.Secret, error) {
+	handles, err := s.deploymentRepo.GetSecretHandlesByGateway(gatewayID, orgID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get secret handles for gateway: %w", err)
+	}
+	if len(handles) == 0 {
+		return nil, nil
+	}
+	return s.secretRepo.ListByHandles(orgID, handles, updatedAfter)
 }
 
 // GetAPIByUUID retrieves an API by its ID
