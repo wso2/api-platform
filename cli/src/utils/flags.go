@@ -78,6 +78,8 @@ const (
 	FlagSubscriptionToken      = "subscription-token"
 	FlagBillingCustomerID      = "billing-customer-id"
 	FlagBillingSubscriptionID  = "billing-subscription-id"
+	FlagReferenceID            = "reference-id"
+	FlagGatewayType            = "gateway-type"
 )
 
 var shortFlags = map[string]string{

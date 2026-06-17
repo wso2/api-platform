@@ -25,6 +25,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	"github.com/wso2/api-platform/cli/internal/project"
 	"github.com/wso2/api-platform/cli/utils"
 )
 
@@ -70,7 +71,7 @@ func runInitCommand() error {
 			}
 		}
 		if strings.TrimSpace(projectType) == "" {
-			projectType, err = utils.PromptInput(fmt.Sprintf("Enter artifact type (%s): ", strings.Join(supportedArtifactTypes(), ", ")))
+			projectType, err = utils.PromptInput(fmt.Sprintf("Enter artifact type (%s): ", strings.Join(project.SupportedArtifactTypes(), ", ")))
 			if err != nil {
 				return fmt.Errorf("Failed to read artifact type: %w", err)
 			}
@@ -87,8 +88,8 @@ func runInitCommand() error {
 		return fmt.Errorf("artifact type is required")
 	}
 
-	if !isValidArtifactType(projectType) {
-		return fmt.Errorf("unsupported artifact type: %s (supported types: %s)", projectType, strings.Join(supportedArtifactTypes(), ", "))
+	if !project.IsValidArtifactType(projectType) {
+		return fmt.Errorf("unsupported artifact type: %s (supported types: %s)", projectType, strings.Join(project.SupportedArtifactTypes(), ", "))
 	}
 
 	if err := buildDirectoryStructure(displayName, projectType); err != nil {
@@ -100,8 +101,8 @@ func runInitCommand() error {
 }
 
 func buildDirectoryStructure(name, artifactType string) error {
-	if !isValidArtifactType(artifactType) {
-		return fmt.Errorf("unsupported artifact type: %s (supported types: %s)", artifactType, strings.Join(supportedArtifactTypes(), ", "))
+	if !project.IsValidArtifactType(artifactType) {
+		return fmt.Errorf("unsupported artifact type: %s (supported types: %s)", artifactType, strings.Join(project.SupportedArtifactTypes(), ", "))
 	}
 
 	projectDirName, err := validateProjectDirectoryName(name)
@@ -133,11 +134,25 @@ func buildDirectoryStructure(name, artifactType string) error {
 	}
 
 	resourceName := buildResourceName(name)
+
+	configYAML, err := project.BuildConfigYAML()
+	if err != nil {
+		return err
+	}
+	metadataYAML, err := project.BuildMetadataYAML(artifactType, resourceName, name)
+	if err != nil {
+		return err
+	}
+	runtimeYAML, err := project.BuildRuntimeYAML(artifactType, resourceName, name)
+	if err != nil {
+		return err
+	}
+
 	files := map[string]string{
-		filepath.Join(projectRoot, ".api-platform", "config.yaml"): buildConfigYAML(),
-		filepath.Join(projectRoot, "metadata.yaml"):                buildMetadataYAML(resourceName, artifactType),
-		filepath.Join(projectRoot, "runtime.yaml"):                 buildRuntimeYAML(resourceName, name, artifactType),
-		filepath.Join(projectRoot, "definition.yaml"):              buildDefinitionYAML(name),
+		filepath.Join(projectRoot, ".api-platform", "config.yaml"): configYAML,
+		filepath.Join(projectRoot, "metadata.yaml"):                metadataYAML,
+		filepath.Join(projectRoot, "runtime.yaml"):                 runtimeYAML,
+		filepath.Join(projectRoot, "definition.yaml"):              project.BuildDefinitionYAML(name),
 	}
 	for path, content := range files {
 		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
@@ -185,153 +200,5 @@ func buildResourceName(name string) string {
 		normalized = "api"
 	}
 
-	return fmt.Sprintf("%s", normalized)
-}
-
-func buildConfigYAML() string {
-	return `version: 1.0.0
-
-# Default file paths (can be customized)
-filePaths:
-  deploymentArtifact: ./runtime.yaml
-  metadataFile: ./metadata.yaml
-  apiDefinition: ./definition.yaml
-  docs: ./docs
-  tests: ./tests
-
-# Governance rulesets for design-time validation
-governanceRulesets: []
-
-# Auto-sync configuration for vscode plugin
-autoSync:
-  gatewayArtifactFromDefinition: true  # Auto-generate gateway.yaml when definition.yaml changes
-`
-}
-
-func buildMetadataYAML(resourceName, artifactType string) string {
-	apiVersion := getApiVersion(artifactType)
-	kind := getArtifactKind(artifactType)
-	return fmt.Sprintf(`apiVersion: %s
-kind: %s
-metadata:
-  name: %q
-spec:
-  description: ""
-  gatewayType: wso2/api-platform
-  status: PUBLISHED
-  referenceID: ""
-  tags: []
-  labels: []
-  businessInformation:
-    businessOwner: ""
-    businessOwnerEmail: ""
-    technicalOwner: ""
-    technicalOwnerEmail: ""
-  endpoints:
-    sandboxUrl: ""
-    productionUrl: ""
-`, apiVersion, kind, resourceName)
-}
-
-func buildRuntimeYAML(resourceName, displayName, artifactType string) string {
-	kind := getArtifactKind(artifactType)
-	return fmt.Sprintf(`apiVersion: gateway.api-platform.wso2.com/v1
-kind: %s
-metadata:
-  name: %q
-spec:
-  displayName: %q
-  version:
-  context:
-  upstream:
-    main:
-      url: "http://sample-backend.org:9080"           # Change this to your backend URL
-  operations:
-    - path: /*
-      method: GET
-    - path: /*
-      method: POST
-    - path: /*
-      method: PUT
-    - path: /*
-      method: DELETE
-	- path: /*
-	  method: OPTIONS
-`, kind, resourceName, displayName)
-}
-
-func buildDefinitionYAML(displayName string) string {
-	return fmt.Sprintf(`openapi: 3.0.3
-info:
-  title: %q
-  version: v1.0
-servers:
-  - url: https://example.com
-paths:
-  "/*":
-    get:
-      responses:
-        "200":
-          description: OK
-    post:
-      responses:
-        "200":
-          description: OK
-    put:
-      responses:
-        "200":
-          description: OK
-    delete:
-      responses:
-        "200":
-          description: OK
-    options:
-      responses:
-        "200":
-          description: OK
-`, displayName)
-}
-
-func supportedArtifactTypes() []string {
-	return []string{
-		utils.TypeREST,
-		utils.TypeLLMProxy,
-		utils.TypeLLMProvider,
-		utils.TypeLLMProviderTemplate,
-		utils.TypeMCPProxy,
-	}
-}
-
-func isValidArtifactType(artifactType string) bool {
-	for _, t := range supportedArtifactTypes() {
-		if artifactType == t {
-			return true
-		}
-	}
-	return false
-}
-
-func getArtifactKind(artifactType string) string {
-	kindMap := map[string]string{
-		utils.TypeREST:                    "RestApi",
-		utils.TypeLLMProxy:                "LlmProxy",
-		utils.TypeLLMProvider:             "LlmProvider",
-		utils.TypeLLMProviderTemplate:     "LlmProviderTemplate",
-		utils.TypeMCPProxy:                "McpProxy",
-	}
-	if kind, exists := kindMap[artifactType]; exists {
-		return kind
-	}
-	return "RestApi"
-}
-
-func getApiVersion(artifactType string) string {
-	switch artifactType {
-	case utils.TypeREST:
-		return "management.api-platform.wso2.com/v1"
-	case utils.TypeLLMProxy, utils.TypeLLMProvider, utils.TypeLLMProviderTemplate, utils.TypeMCPProxy:
-		return "ai-workspace.api-platform.wso2.com/v1"
-	default:
-		return "management.api-platform.wso2.com/v1"
-	}
+	return normalized
 }

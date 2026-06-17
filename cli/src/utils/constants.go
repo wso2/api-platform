@@ -84,9 +84,14 @@ const (
 	MaxUncompressedPerFile = 20 * 1024 * 1024  // Maximum uncompressed size allowed per file (20 MB).
 	MaxTotalUncompressed   = 100 * 1024 * 1024 // Maximum total uncompressed size allowed for the archive (100 MB).
 
-	// API Types
-	APITypeREST = "rest"
-	APITypeSOAP = "soap"
+	// Artifact Types
+	TypeREST = "rest"
+	TypeSOAP = "soap"
+	TypeLLMProxy = "llm-proxy"
+	TypeLLMProvider = "llm-provider"
+	TypeLLMProviderTemplate = "llm-provider-template"
+	TypeMCPProxy = "mcp-proxy"
+
 )
 
 // PolicyHub REST API defaults and paths
