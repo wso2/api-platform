@@ -20,8 +20,8 @@
 /*
  * Tag: Providers
  */
-const adminService = require('../../services/adminService');
-const { requireCsrfForMutatingApi } = require('../../middlewares/csrfProtection')
+const adminService = require('../../../services/adminService');
+const { requireCsrfForMutatingApi } = require('../../../middlewares/csrfProtection')
 const { compose } = require('./compose');
 
 module.exports = {

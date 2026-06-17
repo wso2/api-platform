@@ -20,7 +20,7 @@
 /*
  * Tag: Applications
  */
-const devportalController = require('../../controllers/devportalController');
+const devportalController = require('../../../controllers/devportalController');
 
 module.exports = {
     saveApplication: devportalController.saveApplication,

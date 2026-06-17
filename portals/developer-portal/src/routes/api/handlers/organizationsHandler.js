@@ -20,8 +20,8 @@
 /*
  * OpenAPI operation handlers for the Organizations tag.
  */
-const adminService = require('../../services/adminService');
-const devportalService = require('../../services/devportalService');
+const adminService = require('../../../services/adminService');
+const devportalService = require('../../../services/devportalService');
 
 module.exports = {
     createOrganization: adminService.createOrganization,

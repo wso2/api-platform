@@ -20,7 +20,7 @@
 /*
  * Tag: APIs
  */
-const apiMetadataService = require('../../services/apiMetadataService');
+const apiMetadataService = require('../../../services/apiMetadataService');
 
 module.exports = {
     createApiMetadata: apiMetadataService.createAPIMetadata,

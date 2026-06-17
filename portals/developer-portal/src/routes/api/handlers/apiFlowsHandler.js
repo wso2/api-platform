@@ -23,8 +23,8 @@
  * Mutating ops are CSRF-protected with compose(requireCsrfForMutatingApi, serviceFn). Non-mutating ops are just serviceFn.
  */
 
-const apiFlowService = require('../../services/apiFlowService');
-const { requireCsrfForMutatingApi } = require('../../middlewares/csrfProtection');
+const apiFlowService = require('../../../services/apiFlowService');
+const { requireCsrfForMutatingApi } = require('../../../middlewares/csrfProtection');
 const { compose } = require('./compose');
 
 module.exports = {

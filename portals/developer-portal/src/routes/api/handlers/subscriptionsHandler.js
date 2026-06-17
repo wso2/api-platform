@@ -20,8 +20,8 @@
 /*
  * Tag: Subscriptions
  */
-const subscriptionService = require('../../services/subscriptionService');
-const { requireCsrfForMutatingApi } = require('../../middlewares/csrfProtection');
+const subscriptionService = require('../../../services/subscriptionService');
+const { requireCsrfForMutatingApi } = require('../../../middlewares/csrfProtection');
 const { compose } = require('./compose');
 
 module.exports = {

@@ -20,7 +20,7 @@
 /*
  * Tag: Authentication
  */
-const devportalController = require('../../controllers/devportalController');
+const devportalController = require('../../../controllers/devportalController');
 
 module.exports = {
     login: devportalController.login,

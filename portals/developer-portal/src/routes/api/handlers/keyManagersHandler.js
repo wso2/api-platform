@@ -20,7 +20,7 @@
 /*
  * Tag: Key Managers
  */
-const keyManagerService = require('../../services/keyManagerService');
+const keyManagerService = require('../../../services/keyManagerService');
 
 module.exports = {
     createKeyManager: keyManagerService.createKeyManager,

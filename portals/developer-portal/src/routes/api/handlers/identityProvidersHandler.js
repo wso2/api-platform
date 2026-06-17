@@ -20,7 +20,7 @@
 /*
  * OpenAPI operation handlers for the Identity Providers tag.
  */
-const adminService = require('../../services/adminService');
+const adminService = require('../../../services/adminService');
 
 module.exports = {
     createIdentityProvider: adminService.createIdentityProvider,

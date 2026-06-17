@@ -20,9 +20,9 @@
 /*
  * Tag: Organization Content
  */
-const adminService = require('../../services/adminService');
-const devportalService = require('../../services/devportalService');
-const { requireCsrfForMutatingApi } = require('../../middlewares/csrfProtection')
+const adminService = require('../../../services/adminService');
+const devportalService = require('../../../services/devportalService');
+const { requireCsrfForMutatingApi } = require('../../../middlewares/csrfProtection')
 const { compose } = require('./compose');
 
 module.exports = {

@@ -22,8 +22,8 @@
  *
  * Mutating ops are CSRF-protected.
  */
-const apiKeyController = require('../../controllers/apiKeyController');
-const { requireCsrfForMutatingApi } = require('../../middlewares/csrfProtection');
+const apiKeyController = require('../../../controllers/apiKeyController');
+const { requireCsrfForMutatingApi } = require('../../../middlewares/csrfProtection');
 const { compose } = require('./compose');
 
 module.exports = {

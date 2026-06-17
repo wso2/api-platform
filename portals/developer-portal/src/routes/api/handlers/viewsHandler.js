@@ -20,7 +20,7 @@
 /*
  * Tag: Views
  */
-const apiMetadataService = require('../../services/apiMetadataService');
+const apiMetadataService = require('../../../services/apiMetadataService');
 
 module.exports = {
     addView: apiMetadataService.addView,

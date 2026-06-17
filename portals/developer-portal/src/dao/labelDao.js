@@ -46,7 +46,7 @@ const createMany = async (orgID, labels, t) => {
 const createApiMapping = async (orgID, apiID, labels, t) => {
 
     const labelList = [];
-    const IDList = await getIdList(orgID, labels, t);
+    const IDList = await getId(orgID, labels, t);
     try {
         IDList.forEach(label => {
             labelList.push({
@@ -182,18 +182,13 @@ const deleteApiMapping = async (orgID, apiID, labels, t) => {
 }
 
 const addToView = async (orgID, labelID, viewID, t) => {
-
     try {
-        const labelResponse = await ViewLabels.create({
-            LABEL_ID: labelID,
-            VIEW_ID: viewID,
-            ORG_ID: orgID
-        }, { transaction: t });
-        return labelResponse;
+        const [record] = await ViewLabels.findOrCreate({
+            where: { LABEL_ID: labelID, VIEW_ID: viewID, ORG_ID: orgID },
+            transaction: t,
+        });
+        return record;
     } catch (error) {
-        if (error instanceof Sequelize.UniqueConstraintError) {
-            throw error;
-        }
         throw new Sequelize.DatabaseError(error);
     }
 }

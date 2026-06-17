@@ -52,24 +52,23 @@ async function seedDefaultOrg() {
 
     let orgId;
     try {
-        const organization = await orgDao.create(payload);
-        orgId = organization.ORG_ID;
-    } catch (error) {
-        if (error instanceof Sequelize.UniqueConstraintError) {
-            try {
-                const existing = await orgDao.get(orgName);
-                orgId = existing.ORG_ID;
-            } catch (lookupError) {
-                logger.error('Failed to look up existing default organization', {
-                    error: lookupError.message,
-                    operation: 'seedDefaultOrg',
-                });
-                return;
-            }
-        } else {
+        const existing = await orgDao.get(orgName);
+        orgId = existing.ORG_ID;
+    } catch (notFound) {
+        if (!(notFound instanceof Sequelize.EmptyResultError)) {
+            logger.error('Failed to look up default organization', {
+                error: notFound.message,
+                operation: 'seedDefaultOrg',
+            });
+            return;
+        }
+        try {
+            const organization = await orgDao.create(payload);
+            orgId = organization.ORG_ID;
+        } catch (createError) {
             logger.error('Failed to seed default organization', {
-                error: error.message,
-                stack: error.stack,
+                error: createError.message,
+                stack: createError.stack,
                 operation: 'seedDefaultOrg',
             });
             return;
@@ -113,15 +112,16 @@ async function seedDefaultOrg() {
     }
 
     try {
-        await providerDao.create(orgId, { name: 'WSO2', providerURL: 'https://wso2.com' });
-    } catch (error) {
-        if (!(error instanceof Sequelize.UniqueConstraintError)) {
-            logger.error('Failed to seed provider', {
-                error: error.message,
-                operation: 'seedDefaultOrg',
-            });
-            return;
+        const existingProvider = await providerDao.get(orgId, 'WSO2');
+        if (!existingProvider || existingProvider.length === 0) {
+            await providerDao.create(orgId, { name: 'WSO2', providerURL: 'https://wso2.com' });
         }
+    } catch (error) {
+        logger.error('Failed to seed provider', {
+            error: error.message,
+            operation: 'seedDefaultOrg',
+        });
+        return;
     }
 
     if (config.generateDefaultSubPolicies) {

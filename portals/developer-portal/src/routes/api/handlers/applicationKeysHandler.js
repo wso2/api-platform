@@ -20,7 +20,7 @@
 /*
  * Tag: Application Keys
  */
-const devportalController = require('../../controllers/devportalController');
+const devportalController = require('../../../controllers/devportalController');
 
 module.exports = {
     generateApplicationKeys: devportalController.generateKeys,

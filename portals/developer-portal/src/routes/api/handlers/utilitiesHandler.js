@@ -24,7 +24,7 @@
 const path = require('path');
 const os = require('os');
 const fs = require('fs').promises;
-const { requireCsrfForMutatingApi } = require('../../middlewares/csrfProtection');
+const { requireCsrfForMutatingApi } = require('../../../middlewares/csrfProtection');
 const { compose } = require('./compose');
 
 function isSafeFileName(fileName) {
