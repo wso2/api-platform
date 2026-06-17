@@ -481,3 +481,48 @@ CREATE TABLE IF NOT EXISTS events (
 );
 
 CREATE INDEX IF NOT EXISTS idx_events_gateway_id_processed_timestamp ON events(gateway_id, processed_timestamp);
+-- Secrets table for encrypted secret management
+CREATE TABLE IF NOT EXISTS secrets (
+    uuid            VARCHAR(40)  NOT NULL UNIQUE,
+    organization_id VARCHAR(40)  NOT NULL,
+    handle          VARCHAR(100) NOT NULL,
+    project_id      VARCHAR(40),
+    display_name    VARCHAR(255) NOT NULL,
+    description     VARCHAR(1023),
+    ciphertext      BYTEA        NOT NULL,
+    hash            VARCHAR(80)  NOT NULL,
+    type            VARCHAR(20)  NOT NULL DEFAULT 'GENERIC',
+    provider        VARCHAR(20)  NOT NULL DEFAULT 'IN_HOUSE',
+    status          VARCHAR(20)  NOT NULL DEFAULT 'ACTIVE',
+    environment     VARCHAR(50)  NOT NULL DEFAULT '__ALL_ENV',
+    created_at      TIMESTAMP    NOT NULL,
+    created_by      VARCHAR(255),
+    updated_at      TIMESTAMP    NOT NULL,
+    updated_by      VARCHAR(255),
+    PRIMARY KEY (organization_id, handle),
+    FOREIGN KEY (organization_id) REFERENCES organizations(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (project_id) REFERENCES projects(uuid) ON DELETE CASCADE
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_secrets_scope_handle
+    ON secrets(organization_id, COALESCE(project_id, ''), handle);
+
+CREATE INDEX IF NOT EXISTS idx_secrets_updated_at ON secrets(updated_at);
+CREATE INDEX IF NOT EXISTS idx_secrets_project_id ON secrets(project_id);
+
+-- Pre-computed secret handle references per deployed artifact per gateway.
+-- Populated at deploy time (status→DEPLOYED) and cleared at undeploy time.
+-- Eliminates the 6-table JOIN + application-level regex on every GW secret sync.
+CREATE TABLE IF NOT EXISTS deployment_secret_refs (
+    organization_id VARCHAR(40)  NOT NULL,
+    gateway_id      VARCHAR(40)  NOT NULL,
+    artifact_uuid   VARCHAR(40)  NOT NULL,
+    secret_handle   VARCHAR(100) NOT NULL,
+    deployment_id   VARCHAR(40)  NOT NULL,
+    created_at      TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (organization_id, gateway_id, artifact_uuid, secret_handle),
+    FOREIGN KEY (organization_id) REFERENCES organizations(uuid) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_dsr_gateway_org
+    ON deployment_secret_refs(gateway_id, organization_id);

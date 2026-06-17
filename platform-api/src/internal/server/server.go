@@ -45,6 +45,7 @@ import (
 	"platform-api/src/internal/repository"
 	"platform-api/src/internal/service"
 	"platform-api/src/internal/utils"
+	internalvault "platform-api/src/internal/vault"
 	"platform-api/src/internal/websocket"
 
 	"github.com/gin-contrib/cors"
@@ -106,6 +107,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	websubAPIRepo := repository.NewWebSubAPIRepo(db)
 	webbrokerAPIRepo := repository.NewWebBrokerAPIRepo(db)
 	apiKeyRepo := repository.NewAPIKeyRepo(db)
+	secretRepo := repository.NewSecretRepo(db)
 
 	// Seed the file-based organization on startup if file-based auth mode is enabled.
 	if cfg.Auth.FileBased.Enabled {
@@ -218,7 +220,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	gatewayService := service.NewGatewayService(gatewayRepo, orgRepo, apiRepo, customPolicyRepo, gatewayEventsService, slogger, cfg.Gateway.EnableVersionVerification, cfg.Gateway.EnableFunctionalityTypeVerification)
 	subscriptionService := service.NewSubscriptionService(apiRepo, subscriptionRepo, gatewayEventsService, slogger)
 	subscriptionPlanService := service.NewSubscriptionPlanService(subscriptionPlanRepo, gatewayRepo, gatewayEventsService, slogger)
-	internalGatewayService := service.NewGatewayInternalAPIService(apiRepo, subscriptionRepo, subscriptionPlanRepo, llmProviderRepo, llmProxyRepo, mcpProxyRepo, websubAPIRepo, webbrokerAPIRepo, deploymentRepo, gatewayRepo, orgRepo, projectRepo, apiKeyRepo, artifactRepo, cfg, slogger)
+	internalGatewayService := service.NewGatewayInternalAPIService(apiRepo, subscriptionRepo, subscriptionPlanRepo, llmProviderRepo, llmProxyRepo, mcpProxyRepo, websubAPIRepo, webbrokerAPIRepo, deploymentRepo, gatewayRepo, orgRepo, projectRepo, apiKeyRepo, artifactRepo, secretRepo, cfg, slogger)
 	apiKeyService := service.NewAPIKeyService(apiRepo, apiKeyRepo, gatewayEventsService, cfg.APIKey.HashingAlgorithms, slogger)
 	gitService := service.NewGitService()
 	deploymentService := service.NewDeploymentService(apiRepo, artifactRepo, deploymentRepo, gatewayRepo, orgRepo, gatewayEventsService, apiUtil, cfg, slogger)
@@ -283,6 +285,20 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 		slogger,
 	)
 
+	// Initialize secret vault and service — startup fails if key is absent or invalid
+	if cfg.Database.SecretEncryptionKey == "" {
+		return nil, fmt.Errorf("PLATFORM_SECRET_ENCRYPTION_KEY is required for secrets management — set the env var and restart")
+	}
+	secretKey, keyErr := utils.DeriveEncryptionKey(cfg.Database.SecretEncryptionKey)
+	if keyErr != nil {
+		return nil, fmt.Errorf("invalid PLATFORM_SECRET_ENCRYPTION_KEY: %w", keyErr)
+	}
+	secretVault, vaultErr := internalvault.NewInHouseVault(secretKey)
+	if vaultErr != nil {
+		return nil, fmt.Errorf("failed to initialize secret vault: %w", vaultErr)
+	}
+	secretService := service.NewSecretService(secretRepo, secretVault)
+
 	// Initialize handlers
 	orgHandler := handler.NewOrganizationHandler(orgService, cfg.OrgCreationRequiresAuth, slogger)
 	projectHandler := handler.NewProjectHandler(projectService, slogger)
@@ -293,7 +309,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	subscriptionPlanHandler := handler.NewSubscriptionPlanHandler(subscriptionPlanService, slogger)
 	appHandler := handler.NewApplicationHandler(appService, slogger)
 	wsHandler := handler.NewWebSocketHandler(wsManager, gatewayService, deploymentService, cfg.WebSocket.RateLimitPerMin, slogger)
-	internalGatewayHandler := handler.NewGatewayInternalAPIHandler(gatewayService, internalGatewayService, slogger)
+	internalGatewayHandler := handler.NewGatewayInternalAPIHandler(gatewayService, internalGatewayService, secretService, slogger)
 	apiKeyHandler := handler.NewAPIKeyHandler(apiKeyService, slogger)
 	gitHandler := handler.NewGitHandler(gitService, slogger)
 	deploymentHandler := handler.NewDeploymentHandler(deploymentService, slogger)
@@ -311,6 +327,9 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	webbrokerAPIHandler := handler.NewWebBrokerAPIHandler(webbrokerAPIService, slogger)
 	webbrokerAPIKeyHandler := handler.NewWebBrokerAPIKeyHandler(webbrokerAPIService, apiKeyService, slogger)
 	webbrokerAPIDeploymentHandler := handler.NewWebBrokerAPIDeploymentHandler(webbrokerAPIDeploymentService, slogger)
+	// Wire secret placeholder validation into dependent services
+	llmProviderService.SetSecretService(secretService)
+	secretHandler := handler.NewSecretHandler(secretService, slogger)
 	// Start deployment timeout background job
 	timeoutConfig := service.DeploymentTimeoutConfig{
 		Enabled:  cfg.Deployments.TimeoutEnabled,
@@ -422,6 +441,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	webbrokerAPIHandler.RegisterRoutes(router)
 	webbrokerAPIKeyHandler.RegisterRoutes(router)
 	webbrokerAPIDeploymentHandler.RegisterRoutes(router)
+	secretHandler.RegisterRoutes(router)
 	slogger.Info("Registered API routes successfully")
 
 	slogger.Info("WebSocket manager initialized",

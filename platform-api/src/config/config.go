@@ -177,6 +177,8 @@ type Database struct {
 
 	ExecuteSchemaDDL               bool   `koanf:"execute_schema_ddl"`
 	SubscriptionTokenEncryptionKey string `koanf:"subscription_token_encryption_key"`
+	SecretEncryptionKey            string `koanf:"secret_encryption_key"`
+	SecretVaultProvider            string `koanf:"secret_vault_provider"`
 }
 
 // DefaultDevPortal holds default DevPortal configuration for new organizations.
@@ -343,6 +345,8 @@ func envToKoanfKey(s string) string {
 	case "database_conn_max_lifetime":   return "database.conn_max_lifetime"
 	case "database_execute_schema_ddl":  return "database.execute_schema_ddl"
 	case "database_subscription_token_encryption_key": return "database.subscription_token_encryption_key"
+	case "platform_secret_encryption_key":             return "database.secret_encryption_key"
+	case "platform_secret_vault_provider":             return "database.secret_vault_provider"
 
 	// Auth
 	case "auth_skip_paths": return "auth.skip_paths"
