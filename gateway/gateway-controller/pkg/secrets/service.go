@@ -336,6 +336,37 @@ func (s *SecretService) UpdateSecret(handle string, params SecretParams) (*model
 	return updatedSecret, nil
 }
 
+// UpsertFromPlatform stores a secret whose plaintext was fetched from the Platform API.
+// If the handle already exists the value is re-encrypted and updated; otherwise a new
+// secret is created. This is used by the GW controller sync loop.
+func (s *SecretService) UpsertFromPlatform(handle, displayName, plaintext string) error {
+	payload, err := s.providerManager.Encrypt([]byte(plaintext))
+	if err != nil {
+		return fmt.Errorf("encryption failed: %w", err)
+	}
+	ciphertext := encryption.MarshalPayload(payload)
+
+	exists, err := s.storage.SecretExists(handle)
+	if err != nil {
+		return fmt.Errorf("failed to check secret existence: %w", err)
+	}
+
+	if exists {
+		_, err = s.storage.UpdateSecret(&models.Secret{
+			Handle:      handle,
+			DisplayName: displayName,
+			Ciphertext:  []byte(ciphertext),
+		})
+	} else {
+		err = s.storage.SaveSecret(&models.Secret{
+			Handle:      handle,
+			DisplayName: displayName,
+			Ciphertext:  []byte(ciphertext),
+		})
+	}
+	return err
+}
+
 // Delete permanently removes a secret
 func (s *SecretService) Delete(id string, correlationID string) error {
 	s.logger.Info("Deleting secret",
