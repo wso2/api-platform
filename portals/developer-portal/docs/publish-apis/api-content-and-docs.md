@@ -26,10 +26,16 @@ At least one of `web/` or `docs/` must be present in the ZIP.
 
 ## Upload API Content
 
+> **Authentication:** The examples below use a `$TOKEN` variable. Obtain a Bearer token first:
+> ```bash
+> TOKEN=$(curl -sk -X POST "https://localhost:9243/api/portal/v1/auth/login" \
+>   -d "username=admin&password=admin" | jq -r .token)
+> ```
+
 ```bash
 curl -X POST \
-  "http://localhost:3000/organizations/{orgId}/apis/{apiId}/content" \
-  -u admin:admin \
+  "http://localhost:3000/o/{orgId}/devportal/v1/apis/{apiId}/content" \
+  -H "Authorization: Bearer $TOKEN" \
   -F "apiContent=@my-api-content.zip" \
   -F 'imageMetadata={"api-icon":"api-icon.png"}'
 ```
@@ -38,8 +44,8 @@ To update existing content, use `PUT`:
 
 ```bash
 curl -X PUT \
-  "http://localhost:3000/organizations/{orgId}/apis/{apiId}/content" \
-  -u admin:admin \
+  "http://localhost:3000/o/{orgId}/devportal/v1/apis/{apiId}/content" \
+  -H "Authorization: Bearer $TOKEN" \
   -F "apiContent=@my-api-content-v2.zip" \
   -F 'imageMetadata={"api-icon":"api-icon.png"}'
 ```
@@ -131,8 +137,8 @@ To link to externally hosted documentation (rather than uploaded files), pass `d
 
 ```bash
 curl -X POST \
-  "http://localhost:3000/organizations/{orgId}/apis/{apiId}/content" \
-  -u admin:admin \
+  "http://localhost:3000/o/{orgId}/devportal/v1/apis/{apiId}/content" \
+  -H "Authorization: Bearer $TOKEN" \
   -F "apiContent=@my-api-content.zip" \
   -F 'docMetadata=[{"name":"External Guide","url":"https://docs.example.com/guide","type":"LINK"}]'
 ```
@@ -140,8 +146,8 @@ curl -X POST \
 ## Get API Content
 
 ```bash
-curl http://localhost:3000/organizations/{orgId}/apis/{apiId}/content \
-  -u admin:admin
+curl http://localhost:3000/o/{orgId}/devportal/v1/apis/{apiId}/content \
+  -H "Authorization: Bearer $TOKEN"
 ```
 
 ## Related

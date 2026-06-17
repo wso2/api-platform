@@ -21,6 +21,12 @@ You can create additional custom plans alongside these defaults.
 
 ## Create a Subscription Plan
 
+> **Authentication:** The examples below use a `$TOKEN` variable. Obtain a Bearer token first:
+> ```bash
+> TOKEN=$(curl -sk -X POST "https://localhost:9243/api/portal/v1/auth/login" \
+>   -d "username=admin&password=admin" | jq -r .token)
+> ```
+
 Use the `SubscriptionPolicy` manifest format:
 
 ```yaml
@@ -39,8 +45,8 @@ spec:
 ```
 
 ```bash
-curl -X POST http://localhost:3000/organizations/{orgId}/subscription-policies \
-  -u admin:admin \
+curl -X POST http://localhost:3000/o/{orgId}/devportal/v1/subscription-policies \
+  -H "Authorization: Bearer $TOKEN" \
   -F "subscriptionPolicy=@plan.yaml"
 ```
 
@@ -82,22 +88,22 @@ items:
 ```
 
 ```bash
-curl -X POST http://localhost:3000/organizations/{orgId}/subscription-policies \
-  -u admin:admin \
+curl -X POST http://localhost:3000/o/{orgId}/devportal/v1/subscription-policies \
+  -H "Authorization: Bearer $TOKEN" \
   -F "subscriptionPolicy=@plans.yaml"
 ```
 
 ## List Subscription Plans
 
 ```bash
-curl http://localhost:3000/organizations/{orgId}/subscription-policies -u admin:admin
+curl http://localhost:3000/o/{orgId}/devportal/v1/subscription-policies -H "Authorization: Bearer $TOKEN"
 ```
 
 ## Get a Subscription Plan
 
 ```bash
-curl http://localhost:3000/organizations/{orgId}/subscription-policies/{policyIdOrName} \
-  -u admin:admin
+curl http://localhost:3000/o/{orgId}/devportal/v1/subscription-policies/{policyIdOrName} \
+  -H "Authorization: Bearer $TOKEN"
 ```
 
 ## Update a Subscription Plan
@@ -118,16 +124,16 @@ spec:
 ```
 
 ```bash
-curl -X PUT http://localhost:3000/organizations/{orgId}/subscription-policies \
-  -u admin:admin \
+curl -X PUT http://localhost:3000/o/{orgId}/devportal/v1/subscription-policies \
+  -H "Authorization: Bearer $TOKEN" \
   -F "subscriptionPolicy=@plan-update.yaml"
 ```
 
 ## Delete a Subscription Plan
 
 ```bash
-curl -X DELETE "http://localhost:3000/organizations/{orgId}/subscription-policies/{policyName}" \
-  -u admin:admin
+curl -X DELETE "http://localhost:3000/o/{orgId}/devportal/v1/subscription-policies/{policyName}" \
+  -H "Authorization: Bearer $TOKEN"
 ```
 
 > **Note:** Deleting a plan that has active subscriptions will prevent those subscriptions from renewing. Verify there are no active subscribers before deleting a plan.

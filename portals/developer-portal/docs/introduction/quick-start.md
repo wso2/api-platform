@@ -22,7 +22,7 @@ Copy both sample configuration files:
 
 ```bash
 mkdir -p configs
-cp sample.config.yaml configs/config.yaml
+cp configs/config.yaml.example configs/config.yaml
 cp configs/config-platform-api.toml.example configs/config-platform-api.toml
 ```
 
@@ -180,12 +180,12 @@ TOKEN=$(curl -sk -X POST "https://localhost:9243/api/portal/v1/auth/login" \
   -d "username=admin&password=admin" | jq -r .token)
 
 # Find the org UUID
-curl -s -H "Authorization: Bearer $TOKEN" \
-  http://localhost:3000/organizations | jq '.[0].id'
+ORG_ID=$(curl -sk -H "Authorization: Bearer $TOKEN" \
+  https://localhost:3000/organizations | jq -r '.[0].orgID')
 
-# Publish the API (replace {orgId} with the UUID from above)
-curl -s -H "Authorization: Bearer $TOKEN" \
-  -X POST "http://localhost:3000/devportal/organizations/{orgId}/apis" \
+# Publish the API
+curl -sk -X POST "https://localhost:3000/o/$ORG_ID/devportal/v1/apis" \
+  -H "Authorization: Bearer $TOKEN" \
   -F "api=@api.yaml;type=application/yaml" \
   -F "apiDefinition=@openapi.yaml;type=application/yaml"
 ```

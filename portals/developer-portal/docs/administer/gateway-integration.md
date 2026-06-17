@@ -74,7 +74,7 @@ To avoid storing secrets in `config.yaml`, use environment variables. The ID is 
 ```bash
 # For subscriber id: my-gateway
 export DP_WEBHOOK_SECRET_MY_GATEWAY="your-hmac-secret"
-export DP_WEBHOOK_PUBKEY_PATH_MY_GATEWAY="/run/secrets/gateway-pubkey.pem"
+export DP_WEBHOOK_PUBLIC_KEY_PATH_MY_GATEWAY="/run/secrets/gateway-pubkey.pem"
 ```
 
 ## Webhook Request Format
@@ -146,7 +146,7 @@ Fired when a developer generates a new API key for an API.
 ```
 
 - `subscription` is present only when the key is bound to a subscription
-- `encrypted_key` is present only when a `publicKey` is configured for the subscriber (see [Envelope Encryption](#envelope-encryption))
+- `encrypted_key` is present only when a `publicKeyPath` is configured for the subscriber (see [Envelope Encryption](#envelope-encryption))
 - `expires_at` is `null` for non-expiring keys
 
 ### `apikey.regenerated`
@@ -231,7 +231,7 @@ Fired when a developer subscribes to an API. The subscription token is delivered
 ```
 
 - `encrypted_key` decrypts to the subscription token — the value developers must include as `X-Subscription-Token` on APIs that use token-based subscription enforcement
-- `encrypted_key` is present only when a `publicKey` is configured for the subscriber; if no public key is configured, the token is not delivered
+- `encrypted_key` is present only when a `publicKeyPath` is configured for the subscriber; if no public key is configured, the token is not delivered
 
 ### `subscription.plan_changed`
 
@@ -328,7 +328,7 @@ function verifySignature(secret, rawBody, signatureHeader) {
 
 ### Envelope encryption
 
-`apikey.generated`, `apikey.regenerated`, and `subscription.created` events include an `encrypted_key` object when a `publicKey` is configured for the subscriber. The sensitive value (API key secret or subscription token) is never included in plaintext.
+`apikey.generated`, `apikey.regenerated`, and `subscription.created` events include an `encrypted_key` object when a `publicKeyPath` is configured for the subscriber. The sensitive value (API key secret or subscription token) is never included in plaintext.
 
 **Encryption scheme:** hybrid RSA-OAEP + AES-256-GCM.
 
@@ -364,7 +364,7 @@ function decryptSecret(privateKeyPem, encryptedKey) {
 }
 ```
 
-If no `publicKey` is configured for the subscriber, `encrypted_key` is omitted and the sensitive value is not delivered at all — configure a public key before going to production.
+If no `publicKeyPath` is configured for the subscriber, `encrypted_key` is omitted and the sensitive value is not delivered at all — configure a public key before going to production.
 
 ## Delivery Retry
 
@@ -385,22 +385,28 @@ After all attempts are exhausted, the delivery is marked as failed. You can trig
 
 ## Monitoring Event Deliveries
 
+> **Authentication:** The examples below use a `$TOKEN` variable. Obtain a Bearer token first:
+> ```bash
+> TOKEN=$(curl -sk -X POST "https://localhost:9243/api/portal/v1/auth/login" \
+>   -d "username=admin&password=admin" | jq -r .token)
+> ```
+
 ### List recent events
 
 ```bash
-curl http://localhost:3000/organizations/{orgId}/events -u admin:admin
+curl http://localhost:3000/o/{orgId}/devportal/v1/events -H "Authorization: Bearer $TOKEN"
 ```
 
 ### Get event details
 
 ```bash
-curl http://localhost:3000/organizations/{orgId}/events/{eventId} -u admin:admin
+curl http://localhost:3000/o/{orgId}/devportal/v1/events/{eventId} -H "Authorization: Bearer $TOKEN"
 ```
 
 ### Retry a failed delivery
 
 ```bash
 curl -X POST \
-  http://localhost:3000/organizations/{orgId}/deliveries/{deliveryId}/retry \
-  -u admin:admin
+  http://localhost:3000/o/{orgId}/devportal/v1/webhook-deliveries/{deliveryId}/retry \
+  -H "Authorization: Bearer $TOKEN"
 ```
