@@ -34,7 +34,7 @@ make build
 ### Run
 
 ```bash
-mkdir -p configs && cp sample.config.yaml configs/config.yaml
+mkdir -p configs && cp configs/config.yaml.example configs/config.yaml
 docker compose up
 ```
 
@@ -137,14 +137,14 @@ Use this for active development, custom IdP configuration, or when you prefer to
 ### 1. Create config file
 
 ```bash
-mkdir -p configs && cp sample.config.yaml configs/config.yaml
+mkdir -p configs && cp configs/config.yaml.example configs/config.yaml
 ```
 
 `configs/config.yaml` is your local config file (not committed to git). See [Configuration reference](#configuration-reference) below for all available settings.
 
 ### 2. Configure HTTP mode (optional)
 
-Open `configs/config.yaml` and confirm these are set (they are the defaults in `sample.config.yaml`):
+Open `configs/config.yaml` and confirm these are set (they are the defaults in `configs/config.yaml.example`):
 
 ```yaml
 advanced:
@@ -245,7 +245,7 @@ DEVPORTAL_URL=https://localhost:3000 DEVPORTAL_TOKEN=$TOKEN ./seeders/seed-apis.
 
 All settings live in `configs/config.yaml`. Every setting can also be overridden with a `DP_*` environment variable.
 
-The full annotated list of settings is in [`sample.config.yaml`](sample.config.yaml).
+The full annotated list of settings is in [`configs/config.yaml.example`](configs/config.yaml.example).
 
 ### Local auth
 

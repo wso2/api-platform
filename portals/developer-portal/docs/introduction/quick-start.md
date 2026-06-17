@@ -22,7 +22,7 @@ Copy both sample configuration files:
 
 ```bash
 mkdir -p configs
-cp sample.config.yaml configs/config.yaml
+cp configs/config.yaml.example configs/config.yaml
 cp configs/config-platform-api.toml.example configs/config-platform-api.toml
 ```
 
