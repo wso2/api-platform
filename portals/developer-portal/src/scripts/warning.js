@@ -137,15 +137,6 @@ function openWarningModal(param1, param2, param3, param4, param5, param6, param7
                 deleteProvider(sanitizedParam2, sanitizedParam3);
             }
         };
-    } else if (param1 === 'DeleteIDP') {
-        modalTitle.innerText = 'Delete Identity Provider?';
-        modalMessage.innerText = 'Are you sure you want to delete this Identity Provider? This action cannot be undone.';
-        modalFunction.innerText = 'Delete';
-        modalFunction.onclick = function() {
-            if (typeof deleteIDP === 'function') {
-                deleteIDP(sanitizedParam2);
-            }
-        };
     } else if (param1 === 'DeleteView') {
         modalTitle.innerText = 'Delete View?';
         modalMessage.innerText = 'Are you sure you want to delete this view? This action cannot be undone.';

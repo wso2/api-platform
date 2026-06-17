@@ -263,50 +263,6 @@ continued
 |superAdminRole|string¦null|false|none|none|
 |orgConfiguration|[GenericObject](#schemagenericobject)|false|none|none|
 
-<h2 id="tocS_IdentityProviderResponse">IdentityProviderResponse</h2>
-
-<a id="schemaidentityproviderresponse"></a>
-<a id="schema_IdentityProviderResponse"></a>
-<a id="tocSidentityproviderresponse"></a>
-<a id="tocsidentityproviderresponse"></a>
-
-```json
-{
-  "name": "string",
-  "issuer": "string",
-  "authorizationURL": "http://example.com",
-  "tokenURL": "http://example.com",
-  "clientId": "string",
-  "callbackURL": "http://example.com",
-  "scope": "string",
-  "logoutURL": "http://example.com",
-  "logoutRedirectURI": "http://example.com",
-  "userInfoURL": "http://example.com",
-  "signUpURL": "http://example.com",
-  "jwksURL": "http://example.com",
-  "certificate": "string"
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|name|string|false|none|none|
-|issuer|string|false|none|none|
-|authorizationURL|string(uri)|false|none|none|
-|tokenURL|string(uri)|false|none|none|
-|clientId|string|false|none|none|
-|callbackURL|string(uri)|false|none|none|
-|scope|string¦null|false|none|none|
-|logoutURL|string(uri)|false|none|none|
-|logoutRedirectURI|string(uri)|false|none|none|
-|userInfoURL|string(uri)|false|none|none|
-|signUpURL|string(uri)|false|none|none|
-|jwksURL|string(uri)|false|none|none|
-|certificate|string|false|none|none|
-
 <h2 id="tocS_OrganizationContentUploadResponse">OrganizationContentUploadResponse</h2>
 
 <a id="schemaorganizationcontentuploadresponse"></a>
@@ -953,50 +909,6 @@ continued
 |subscriberRole|string|true|none|none|
 |superAdminRole|string|true|none|none|
 |orgConfiguration|[GenericObject](#schemagenericobject)|false|none|none|
-
-<h2 id="tocS_IdentityProviderRequest">IdentityProviderRequest</h2>
-
-<a id="schemaidentityproviderrequest"></a>
-<a id="schema_IdentityProviderRequest"></a>
-<a id="tocSidentityproviderrequest"></a>
-<a id="tocsidentityproviderrequest"></a>
-
-```json
-{
-  "issuer": "string",
-  "name": "string",
-  "authorizationURL": "http://example.com",
-  "tokenURL": "http://example.com",
-  "userInfoURL": "http://example.com",
-  "clientId": "string",
-  "callbackURL": "http://example.com",
-  "signUpURL": "http://example.com",
-  "logoutURL": "http://example.com",
-  "logoutRedirectURI": "http://example.com",
-  "scope": "string",
-  "jwksURL": "http://example.com",
-  "certificate": "string"
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|issuer|string|true|none|none|
-|name|string|true|none|none|
-|authorizationURL|string(uri)|true|none|none|
-|tokenURL|string(uri)|true|none|none|
-|userInfoURL|string(uri)|false|none|none|
-|clientId|string|true|none|none|
-|callbackURL|string(uri)|true|none|none|
-|signUpURL|string(uri)|false|none|none|
-|logoutURL|string(uri)|true|none|none|
-|logoutRedirectURI|string(uri)|true|none|none|
-|scope|string|false|none|none|
-|jwksURL|string(uri)|false|none|none|
-|certificate|string|false|none|none|
 
 <h2 id="tocS_ProviderRequest">ProviderRequest</h2>
 

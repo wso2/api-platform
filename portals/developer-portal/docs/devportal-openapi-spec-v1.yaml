@@ -21,7 +21,7 @@ info:
   title: WSO2 API Developer Portal Core - Devportal Routes
   version: 1.0.0
   description: |
-    Fine-grained Developer Portal API for managing organizations, identity providers, providers,
+    Fine-grained Developer Portal API for managing organizations, providers,
     API metadata and content, applications, subscriptions, application credentials, and API flows.
 
     Organization-scoped resources are served under `/o/{orgId}/devportal/v1`. Operations declare
@@ -168,91 +168,6 @@ paths:
         - OAuth2Security:
             - dp:org_delete
             - dp:org_manage
-  /o/{orgId}/devportal/v1/identity-providers:
-    parameters:
-      - $ref: "#/components/parameters/OrgId"
-    post:
-      tags:
-        - Identity Providers
-      summary: Create an identity provider
-      description: Creates the organization-level OIDC identity provider configuration.
-      operationId: createIdentityProvider
-      requestBody:
-        $ref: "#/components/requestBodies/IdentityProviderBody"
-      responses:
-        "201":
-          $ref: "#/components/responses/IdentityProviderResponse"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "409":
-          $ref: "#/components/responses/Conflict"
-        "500":
-          $ref: "#/components/responses/InternalServerError"
-      security:
-        - OAuth2Security:
-            - dp:idp_write
-            - dp:idp_manage
-    put:
-      tags:
-        - Identity Providers
-      summary: Update an identity provider
-      description: Updates the organization-level OIDC identity provider configuration.
-      operationId: updateIdentityProvider
-      requestBody:
-        $ref: "#/components/requestBodies/IdentityProviderBody"
-      responses:
-        "200":
-          $ref: "#/components/responses/IdentityProviderResponse"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "409":
-          $ref: "#/components/responses/Conflict"
-        "500":
-          $ref: "#/components/responses/InternalServerError"
-      security:
-        - OAuth2Security:
-            - dp:idp_write
-            - dp:idp_manage
-    get:
-      tags:
-        - Identity Providers
-      summary: Get an identity provider
-      description: Retrieves the organization-level OIDC identity provider configuration.
-      operationId: getIdentityProvider
-      responses:
-        "200":
-          $ref: "#/components/responses/IdentityProviderResponse"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "404":
-          description: Identity provider configuration not found.
-        "500":
-          $ref: "#/components/responses/InternalServerError"
-      security:
-        - OAuth2Security:
-            - dp:idp_read
-            - dp:idp_manage
-    delete:
-      tags:
-        - Identity Providers
-      summary: Delete an identity provider
-      description: Deletes the organization-level OIDC identity provider configuration.
-      operationId: deleteIdentityProvider
-      responses:
-        "200":
-          $ref: "#/components/responses/TextMessageResponse"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "500":
-          $ref: "#/components/responses/InternalServerError"
-      security:
-        - OAuth2Security:
-            - dp:idp_delete
-            - dp:idp_manage
   /o/{orgId}/devportal/v1/views/{viewName}/layout:
     parameters:
       - $ref: "#/components/parameters/OrgId"
@@ -1844,10 +1759,6 @@ components:
             dp:org_write: Create or update organizations.
             dp:org_delete: Delete organizations.
             dp:org_manage: Manage organizations (including creating, updating, and deleting).
-            dp:idp_read: Read organization identity provider configuration.
-            dp:idp_write: Create or update identity provider configuration.
-            dp:idp_delete: Delete identity provider configuration.
-            dp:idp_manage: Manage organization identity provider configuration.
             dp:provider_read: Read providers.
             dp:provider_write: Create or update providers.
             dp:provider_delete: Delete providers.
@@ -2280,31 +2191,6 @@ components:
               summary: Organization YAML upload
               value:
                 organization: org.yaml
-    IdentityProviderBody:
-      required: true
-      description: >-
-        Identity provider payload. Send JSON or an identity provider YAML file in the
-        `identityProvider` multipart field. When YAML is used, the service reads `metadata.name`
-        as the provider name and all other fields from `spec`.
-      content:
-        application/json:
-          schema:
-            $ref: "#/components/schemas/IdentityProviderRequest"
-        multipart/form-data:
-          schema:
-            type: object
-            required:
-              - identityProvider
-            properties:
-              identityProvider:
-                type: string
-                format: binary
-                description: "Identity provider YAML file (kind: IdentityProvider)."
-          examples:
-            yamlFile:
-              summary: Identity provider YAML upload
-              value:
-                identityProvider: idp.yaml
     ProviderBody:
       required: true
       content:
@@ -2831,12 +2717,6 @@ components:
             type: array
             items:
               $ref: "#/components/schemas/OrganizationListItemResponse"
-    IdentityProviderResponse:
-      description: Identity provider DTO returned by create, update, and lookup operations.
-      content:
-        application/json:
-          schema:
-            $ref: "#/components/schemas/IdentityProviderResponse"
     OrganizationContentUploadResponse:
       description: Organization content upload accepted and stored successfully.
       content:
@@ -3639,45 +3519,6 @@ components:
         orgConfiguration:
           $ref: "#/components/schemas/GenericObject"
       additionalProperties: false
-    IdentityProviderResponse:
-      type: object
-      properties:
-        name:
-          type: string
-        issuer:
-          type: string
-        authorizationURL:
-          type: string
-          format: uri
-        tokenURL:
-          type: string
-          format: uri
-        clientId:
-          type: string
-        callbackURL:
-          type: string
-          format: uri
-        scope:
-          type: string
-          nullable: true
-        logoutURL:
-          type: string
-          format: uri
-        logoutRedirectURI:
-          type: string
-          format: uri
-        userInfoURL:
-          type: string
-          format: uri
-        signUpURL:
-          type: string
-          format: uri
-        jwksURL:
-          type: string
-          format: uri
-        certificate:
-          type: string
-      additionalProperties: false
     OrganizationContentUploadResponse:
       type: object
       required:
@@ -4016,53 +3857,6 @@ components:
           type: string
         orgConfiguration:
           $ref: "#/components/schemas/GenericObject"
-    IdentityProviderRequest:
-      type: object
-      required:
-        - issuer
-        - name
-        - authorizationURL
-        - tokenURL
-        - clientId
-        - callbackURL
-        - logoutURL
-        - logoutRedirectURI
-      properties:
-        issuer:
-          type: string
-        name:
-          type: string
-        authorizationURL:
-          type: string
-          format: uri
-        tokenURL:
-          type: string
-          format: uri
-        userInfoURL:
-          type: string
-          format: uri
-        clientId:
-          type: string
-        callbackURL:
-          type: string
-          format: uri
-        signUpURL:
-          type: string
-          format: uri
-        logoutURL:
-          type: string
-          format: uri
-        logoutRedirectURI:
-          type: string
-          format: uri
-        scope:
-          type: string
-        jwksURL:
-          type: string
-          format: uri
-        certificate:
-          type: string
-      additionalProperties: false
     ProviderRequest:
       type: object
       required:

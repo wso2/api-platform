@@ -18,12 +18,11 @@ The Developer Portal is a self-hosted, multi-tenant web application where API pu
 **Setting up the portal for the first time**
 1. [Quick Start](introduction/quick-start.md)
 2. [Manage Organizations](administer/manage-organizations.md)
-3. [Identity Provider](administer/manage-organizations.md#identity-provider-configuration)
-4. [Manage Views](administer/manage-views.md)
-5. [Subscription Plans](administer/subscription-plans.md)
-6. [Gateway Integration](administer/gateway-integration.md)
-7. [Key Manager Integration](administer/key-manager-integration.md)
-8. [Publish APIs](publish-apis/publishing-apis.md)
+3. [Manage Views](administer/manage-views.md)
+4. [Subscription Plans](administer/subscription-plans.md)
+5. [Gateway Integration](administer/gateway-integration.md)
+6. [Key Manager Integration](administer/key-manager-integration.md)
+7. [Publish APIs](publish-apis/publishing-apis.md)
 
 **As a developer consuming APIs**
 1. [What is the Developer Portal?](introduction/what-is-developer-portal.md)
