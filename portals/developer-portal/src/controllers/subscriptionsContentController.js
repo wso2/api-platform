@@ -53,11 +53,9 @@ const loadSubscriptions = async (req, res) => {
                 apiVersion: sub.DP_API_METADATA?.API_VERSION || '',
                 apiHandle: sub.DP_API_METADATA?.API_HANDLE || '#',
                 planName: sub.DP_SUBSCRIPTION_POLICY?.POLICY_NAME || '',
-                applicationName: null,
-                applicationId: null,
                 status: sub.STATUS,
                 subscriptionToken: sub.SUB_TOKEN,
-                createdAt: null,
+                createdAt: sub.CREATED_AT || null,
             }));
         } catch (err) {
             logger.warn('Failed to load subscriptions', {
@@ -150,11 +148,9 @@ const loadAPISubscriptions = async (req, res) => {
                 apiHandle: sub.DP_API_METADATA?.API_HANDLE || apiHandle,
                 apiRefId: sub.API_ID,
                 planName: sub.DP_SUBSCRIPTION_POLICY?.POLICY_NAME || '',
-                applicationName: null,
-                applicationId: null,
                 status: sub.STATUS,
                 subscriptionToken: sub.SUB_TOKEN,
-                createdAt: null,
+                createdAt: sub.CREATED_AT || null,
             }));
         } catch (err) {
             logger.warn('Failed to load subscriptions for API', {

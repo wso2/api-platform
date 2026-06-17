@@ -736,33 +736,6 @@ const getKeyMapping = async (orgID, appID, t) => {
 }
 
 
-const getSubscribedAPIs = async (orgID, appID) => {
-    try {
-        const subscribedAPIs = await APIMetadata.findAll({
-            where: { ORG_ID: orgID },
-            include: [{
-                model: Application,
-                where: { APP_ID: appID },
-                required: true,
-                through: { attributes: ["SUB_ID", "POLICY_ID"] }
-            },
-            {
-                model: APIImageMetadata,
-                required: false
-            }, {
-                model: SubscriptionPolicy,
-                through: { attributes: ['POLICY_ID'] },
-                required: false
-            }]
-        });
-        return subscribedAPIs;
-    } catch (error) {
-        if (error instanceof Sequelize.EmptyResultError) {
-            throw error;
-        }
-        throw new Sequelize.DatabaseError(error);
-    }
-}
 
 const getApplicationKeyMapping = async (orgID, appID) => {
     try {
@@ -904,7 +877,6 @@ module.exports = {
     deleteSubscription,
     getApplicationID,
     getKeyMapping,
-    getSubscribedAPIs,
     getApplicationKeyMapping,
     createApplicationKeyMapping,
     upsertApplicationKeyMapping,
