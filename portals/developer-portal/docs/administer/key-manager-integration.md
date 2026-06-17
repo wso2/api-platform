@@ -142,7 +142,8 @@ curl http://localhost:3000/o/{orgId}/devportal/v1/key-managers/{kmId} -H "Author
 Developers can use this endpoint to see which key managers are available for their organization:
 
 ```bash
-curl http://localhost:3000/o/{orgId}/devportal/v1/key-managers/discover
+curl http://localhost:3000/o/{orgId}/devportal/v1/key-managers/discover \
+  -H "Authorization: Bearer $TOKEN"
 ```
 
 ## Update a Key Manager

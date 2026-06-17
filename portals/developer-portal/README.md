@@ -168,7 +168,7 @@ identityProvider:
   callbackURL: "http://localhost:3000/<orgHandle>/callback"
 ```
 
-For local exploration you can skip IdP setup by using the built-in local users instead (see [Local auth](#local-auth)).
+For local exploration you can skip IdP setup by using the Platform API sidecar instead (see [Local auth](#local-auth)).
 
 ### 4. Database setup
 
