@@ -18,7 +18,7 @@
 const { Sequelize, DataTypes } = require('sequelize');
 const sequelize = require('../db/sequelizeConfig');
 const Provider = require('./provider');
-const View = require('./views');
+const View = require('./view');
 
 const Organization = sequelize.define('DP_ORGANIZATION', {
     ORG_ID: {

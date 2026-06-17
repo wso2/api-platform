@@ -29,7 +29,7 @@ function createSessionStore() {
 
     if (dialect === 'sqlite') {
         const SequelizeStore = require('connect-session-sequelize')(session.Store);
-        const sequelize = require('./sequelize');
+        const sequelize = require('./sequelizeConfig');
         const store = new SequelizeStore({
             db: sequelize,
             tableName: 'sessions',
@@ -41,7 +41,7 @@ function createSessionStore() {
     }
 
     const pgSession = require('connect-pg-simple')(session);
-    const pool = require('./pool');
+    const pool = require('./dbPool');
     return new pgSession({
         pool,
         tableName: 'session',

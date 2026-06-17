@@ -18,8 +18,8 @@
 const { Sequelize, DataTypes } = require('sequelize');
 const sequelize = require('../db/sequelizeConfig');
 const { Organization } = require('./organization');
-const View = require('./views');
-const Labels = require('./labels');
+const View = require('./view');
+const Labels = require('./label');
 
 
 const ViewLabels = sequelize.define('DP_VIEW_LABELS', {
