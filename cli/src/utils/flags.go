@@ -80,6 +80,7 @@ const (
 	FlagBillingSubscriptionID  = "billing-subscription-id"
 	FlagReferenceID            = "reference-id"
 	FlagGatewayType            = "gateway-type"
+	FlagUseSpec                = "use-spec"
 )
 
 var shortFlags = map[string]string{
