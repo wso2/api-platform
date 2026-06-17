@@ -200,10 +200,7 @@ webhooks:
   #     gatewayType: "my-gateway-type"          # matches API.GATEWAY_TYPE; use "*" for all
   #     url: "https://gateway.example.com/devportal/events"
   #     secret: "change-me-32-chars-minimum"   # env: DP_WEBHOOK_SECRET_MY_GATEWAY
-  #     publicKey: |                            # RSA-2048+ PEM; encrypts apikey.* payloads
-  #       -----BEGIN PUBLIC KEY-----
-  #       ...
-  #       -----END PUBLIC KEY-----
+  #     publicKeyPath: "/run/secrets/gateway-pubkey.pem"  # RSA-2048+ PEM file; env: DP_WEBHOOK_PUBLIC_KEY_PATH_MY_GATEWAY
   #     events:                                 # allowlist — omit to receive all event types
   #       - apikey.*
   #       - subscription.*
