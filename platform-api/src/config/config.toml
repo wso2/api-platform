@@ -56,7 +56,7 @@ enabled = false
 
 # File-based auth — local username/password login.
 [auth.file_based]
-enabled = true
+enabled = false
 
 [auth.file_based.organization]
 id     = "99089a17-72e0-4dd8-a2f4-c8dfbb085295"
