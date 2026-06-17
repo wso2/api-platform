@@ -268,7 +268,7 @@ const ensureAuthenticated = async (req, res, next) => {
             });
         }
     } else {
-        if (req.isAuthenticated()) {
+        if (req.isAuthenticated() && !(req.user?.isLocalAuth && !config.identityProvider?.clientId)) {
             const token = accessTokenPresent(req);
             if (token && config.identityProvider.jwksURL) {
                 await validateWithJWKS(token, config.identityProvider.jwksURL, req);
