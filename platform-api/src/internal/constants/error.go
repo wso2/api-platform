@@ -221,3 +221,11 @@ var (
 	ErrMissingAPIKey   = errors.New("API key is required")
 	ErrInvalidAPIToken = errors.New("invalid API token")
 )
+
+var (
+	ErrSecretAlreadyExists  = errors.New("secret already exists for this organization and handle")
+	ErrSecretNotFound       = errors.New("secret not found")
+	ErrSecretInUse          = errors.New("secret is referenced by one or more resources")
+	ErrSecretRefMissing     = errors.New("one or more referenced secrets do not exist")
+	ErrSecretEncryptionKey  = errors.New("PLATFORM_SECRET_ENCRYPTION_KEY is required for secrets management")
+)
