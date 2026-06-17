@@ -41,6 +41,11 @@
 #     - ./my-certs:/app/certs:ro
 #   and ensure it contains server.crt and server.key.
 #
+# Database:
+#   SQLite is used by default — no external database required.
+#   To switch to PostgreSQL, run with the postgres override file:
+#     docker compose -f docker-compose.yaml -f docker-compose.postgres.yaml up
+#
 # Configuration:
 #   Edit configs/config.yaml to customise devportal settings.
 #   Edit configs/config-platform-api.toml to customise Platform API settings (users, org, etc.).
@@ -70,7 +75,7 @@ services:
 
   devportal:
     build: .
-    image: ghcr.io/wso2/api-platform/developer-portal:0.2.0-SNAPSHOT
+    image: ghcr.io/wso2/api-platform/developer-portal:0.3.0-SNAPSHOT
     depends_on:
       platform-api:
         condition: service_healthy
@@ -85,9 +90,20 @@ services:
       # To use your own cert, replace with: - ./my-certs:/app/certs:ro
       - certs_data:/app/certs
     environment:
-      # Database — SQLite (default). Override DP_DB_DIALECT and related vars to use postgres.
+      # ── Database: SQLite (default) ───────────────────────────────────────────
       DP_DB_DIALECT: sqlite
       DP_DB_STORAGE: /app/data/devportal.db
+
+      # ── Database: PostgreSQL (optional) ─────────────────────────────────────
+      # Use docker-compose.postgres.yaml instead of editing here:
+      #   docker compose -f docker-compose.yaml -f docker-compose.postgres.yaml up
+      #
+      # DP_DB_DIALECT: postgres
+      # DP_DB_HOST: postgres
+      # DP_DB_PORT: 5432
+      # DP_DB_USERNAME: devportal
+      # DP_DB_PASSWORD: devportal
+      # DP_DB_DATABASE: devportal
 
       # HTTPS — a self-signed cert is generated automatically on first start.
       # To switch back to plain HTTP, set DP_ADVANCED_HTTP=true and DP_BASEURL=http://localhost:3000.
