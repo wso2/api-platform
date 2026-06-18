@@ -82,7 +82,7 @@ func runPushCommand() error {
 	}
 
 	var meta struct {
-		ID string `json:"id"`
+		ID   string `json:"id"`
 		Name string `json:"name"`
 	}
 	if err := json.Unmarshal(payload, &meta); err != nil {
@@ -110,7 +110,7 @@ func runPushCommand() error {
 		return aiworkspace.WrapRequestError("push llm provider", err, pushInsecure)
 	}
 
-	if resp.StatusCode <= 200 || resp.StatusCode >= 300 {
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("failed to push llm provider, status: %s", resp.Status)
 	}
 

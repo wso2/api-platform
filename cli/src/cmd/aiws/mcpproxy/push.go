@@ -16,7 +16,7 @@
  * under the License.
  */
 
-package llmproxy
+package mcpproxy
 
 import (
 	"encoding/json"
@@ -32,11 +32,11 @@ import (
 
 const (
 	PushCmdLiteral = "push"
-	PushCmdExample = `# Push an LLM proxy artifact using the active AI workspace
-ap ai-ws llm-proxy push -f build/wso2-openai-proxy.json --org <org-id> --project-id <project-id>
+	PushCmdExample = `# Push an MCP proxy artifact using the active AI workspace
+ap ai-ws mcp-proxy push -f build/bijira-mcp-everything.json --org <org-id> --project-id <project-id>
 
 # Push using a specific AI workspace
-ap ai-ws llm-proxy push -f build/wso2-openai-proxy.json --org <org-id> --project-id <project-id> --display-name my-workspace --platform eu`
+ap ai-ws mcp-proxy push -f build/bijira-mcp-everything.json --org <org-id> --project-id <project-id> --display-name my-workspace --platform eu`
 )
 
 var (
@@ -50,8 +50,8 @@ var (
 
 var pushCmd = &cobra.Command{
 	Use:     PushCmdLiteral,
-	Short:   "Push an LLM proxy artifact to the AI workspace",
-	Long:    "Push a generated LLM proxy creation payload (JSON) to the WSO2 API Platform AI workspace. The supplied project ID is injected into the payload before it is sent.",
+	Short:   "Push an MCP proxy artifact to the AI workspace",
+	Long:    "Push a generated MCP proxy creation payload (JSON) to the WSO2 API Platform AI workspace. The supplied project ID is injected into the payload before it is sent.",
 	Example: PushCmdExample,
 	Run: func(cmd *cobra.Command, args []string) {
 		if err := runPushCommand(); err != nil {
@@ -62,7 +62,7 @@ var pushCmd = &cobra.Command{
 }
 
 func init() {
-	utils.AddStringFlag(pushCmd, utils.FlagFile, &pushFilePath, "", "Path to the LLM proxy payload JSON file (required)")
+	utils.AddStringFlag(pushCmd, utils.FlagFile, &pushFilePath, "", "Path to the MCP proxy payload JSON file (required)")
 	utils.AddStringFlag(pushCmd, utils.FlagOrgID, &pushOrgID, "", "Organization ID (required)")
 	utils.AddStringFlag(pushCmd, utils.FlagProjectID, &pushProjectID, "", "Project ID to set on the payload (required)")
 	utils.AddStringFlag(pushCmd, utils.FlagName, &pushName, "", "AI workspace display name")
@@ -119,15 +119,15 @@ func runPushCommand() error {
 	}
 
 	client := aiworkspace.NewClientWithOptions(aiWorkspace, pushInsecure)
-	resp, err := client.PostJSON(aiworkspace.ProxyPath(orgID), body)
+	resp, err := client.PostJSON(aiworkspace.MCPProxyPath(orgID), body)
 	if err != nil {
-		return aiworkspace.WrapRequestError("push llm proxy", err, pushInsecure)
+		return aiworkspace.WrapRequestError("push mcp proxy", err, pushInsecure)
 	}
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("failed to push llm proxy, status: %s", resp.Status)
+		return fmt.Errorf("failed to push mcp proxy, status: %s", resp.Status)
 	}
 
-	fmt.Printf("LLM proxy %q pushed to ai-workspace %s (platform: %s)\n", proxyID, aiWorkspace.Name, resolvedPlatform)
+	fmt.Printf("MCP proxy %q pushed to ai-workspace %s (platform: %s)\n", proxyID, aiWorkspace.Name, resolvedPlatform)
 	return aiworkspace.PrintJSONResponse(resp)
 }

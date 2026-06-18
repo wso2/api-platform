@@ -79,7 +79,7 @@ func ArtifactKind(artifactType string) string {
 	case utils.TypeLLMProviderTemplate:
 		return "LlmProviderTemplate"
 	case utils.TypeMCPProxy:
-		return "McpProxy"
+		return "Mcp"
 	default:
 		return "RestApi"
 	}

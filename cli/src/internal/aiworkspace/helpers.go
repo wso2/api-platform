@@ -72,6 +72,30 @@ func ProxyPath(orgID string) string {
 	return withOrg(utils.AIWorkspaceLLMProxiesPath, orgID)
 }
 
+// MCPProxyPath builds the mcp-proxies resource path with the organizationId
+// query parameter.
+func MCPProxyPath(orgID string) string {
+	return withOrg(utils.AIWorkspaceMCPProxiesPath, orgID)
+}
+
+// ProviderResourcePath builds the llm-providers/{id} resource path with the
+// organizationId query parameter.
+func ProviderResourcePath(orgID, id string) string {
+	return withOrg(utils.AIWorkspaceLLMProvidersPath+"/"+url.PathEscape(id), orgID)
+}
+
+// ProxyResourcePath builds the llm-proxies/{id} resource path with the
+// organizationId query parameter.
+func ProxyResourcePath(orgID, id string) string {
+	return withOrg(utils.AIWorkspaceLLMProxiesPath+"/"+url.PathEscape(id), orgID)
+}
+
+// MCPProxyResourcePath builds the mcp-proxies/{id} resource path with the
+// organizationId query parameter.
+func MCPProxyResourcePath(orgID, id string) string {
+	return withOrg(utils.AIWorkspaceMCPProxiesPath+"/"+url.PathEscape(id), orgID)
+}
+
 func withOrg(path, orgID string) string {
 	return fmt.Sprintf("%s?organizationId=%s", path, url.QueryEscape(orgID))
 }

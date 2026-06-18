@@ -16,30 +16,30 @@
  * under the License.
  */
 
-package llmproxy
+package mcpproxy
 
 import (
 	"github.com/spf13/cobra"
 )
 
 const (
-	LLMProxyCmdLiteral = "llm-proxy"
-	LLMProxyCmdExample = `# Push an LLM proxy artifact to the AI workspace
-ap ai-ws llm-proxy push -f build/wso2-openai-proxy.json --org <org-id> --project-id <project-id>`
+	MCPProxyCmdLiteral = "mcp-proxy"
+	MCPProxyCmdExample = `# Push an MCP proxy artifact to the AI workspace
+ap ai-ws mcp-proxy push -f build/bijira-mcp-everything.json --org <org-id> --project-id <project-id>`
 )
 
-// LLMProxyCmd is the parent command for LLM proxy operations.
-var LLMProxyCmd = &cobra.Command{
-	Use:     LLMProxyCmdLiteral,
-	Short:   "Manage LLM proxies on the AI workspace",
-	Long:    "This command allows you to manage LLM proxies on the WSO2 API Platform AI workspace.",
-	Example: LLMProxyCmdExample,
+// MCPProxyCmd is the parent command for MCP proxy operations.
+var MCPProxyCmd = &cobra.Command{
+	Use:     MCPProxyCmdLiteral,
+	Short:   "Manage MCP proxies on the AI workspace",
+	Long:    "This command allows you to manage MCP proxies on the WSO2 API Platform AI workspace.",
+	Example: MCPProxyCmdExample,
 	Run: func(cmd *cobra.Command, args []string) {
 		cmd.Help()
 	},
 }
 
 func init() {
-	LLMProxyCmd.AddCommand(pushCmd)
-	LLMProxyCmd.AddCommand(editCmd)
+	MCPProxyCmd.AddCommand(pushCmd)
+	MCPProxyCmd.AddCommand(editCmd)
 }

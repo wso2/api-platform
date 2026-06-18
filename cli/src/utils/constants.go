@@ -83,9 +83,10 @@ const (
 	EnvAIWorkspaceAPIKey   = "WSO2AP_AIWORKSPACE_API_KEY"  // For AI workspace API key auth
 	AIWorkspaceAPIHeader   = "x-wso2-api-key"
 
-	// AI Workspace REST API Endpoints (%s = resource id)
+	// AI Workspace REST API Endpoints
 	AIWorkspaceLLMProvidersPath = "/api-proxy/api/v1/llm-providers"
 	AIWorkspaceLLMProxiesPath   = "/api-proxy/api/v1/llm-proxies"
+	AIWorkspaceMCPProxiesPath   = "/api-proxy/api/v1/mcp-proxies"
 
 	// Image Build Configuration
 	GatewayVerifyChecksumOnBuild = true
