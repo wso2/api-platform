@@ -406,3 +406,132 @@ Feature: API-Level Upstream URL-Stable Cluster Naming
     Given I authenticate using basic auth as "admin"
     When I delete the API "api-level-url-stable-shared-a-v1.0"
     Then the response should be successful
+
+  Scenario: API-level main upstream scheme and port change keeps the same identity-named cluster
+    Given I authenticate using basic auth as "admin"
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: RestApi
+      metadata:
+        name: api-level-url-stable-scheme-api-v1.0
+      spec:
+        displayName: API-Level-URL-Stable-Scheme-API
+        version: v1.0
+        context: /api-level-url-stable-scheme/$version
+        vhosts:
+          main: api-level-url-stable-scheme.local
+        upstream:
+          main:
+            url: http://sample-backend:9080/version-a
+        operations:
+          - method: GET
+            path: /endpoint
+      """
+    Then the response should be successful
+    And I wait for the endpoint "http://localhost:8080/api-level-url-stable-scheme/v1.0/endpoint" to be ready with host "api-level-url-stable-scheme.local"
+
+    # Capture the identity-derived cluster name while the upstream is plain http.
+    When I clear all headers
+    And I send a GET request to "http://localhost:9901/clusters"
+    Then the response should be successful
+    And the response body should contain "main_"
+    And the response body should not contain "cluster_http_"
+    And the response body should not contain "cluster_https_"
+    And I capture the Envoy cluster names prefixed "main_"
+
+    # Change the upstream scheme (http -> https) AND port (9080 -> 9443) in one
+    # edit. The old URL-derived naming embedded scheme and port in the cluster
+    # name (cluster_<scheme>_<host>_<port>), so this edit would have minted a new
+    # cluster_https_ cluster and dropped the previous one. Identity-based naming
+    # must keep the SAME main_<hash> and never produce a cluster_https_. TLS
+    # routing itself is not asserted (there is no TLS echo backend); the cluster
+    # name is stable independent of upstream reachability.
+    Given I authenticate using basic auth as "admin"
+    When I update the API "api-level-url-stable-scheme-api-v1.0" with this configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: RestApi
+      metadata:
+        name: api-level-url-stable-scheme-api-v1.0
+      spec:
+        displayName: API-Level-URL-Stable-Scheme-API
+        version: v1.0
+        context: /api-level-url-stable-scheme/$version
+        vhosts:
+          main: api-level-url-stable-scheme.local
+        upstream:
+          main:
+            url: https://sample-backend:9443/version-b
+        operations:
+          - method: GET
+            path: /endpoint
+      """
+    Then the response should be successful
+
+    # The main_<hash> name set must be UNCHANGED after the scheme/port edit, and
+    # no URL-derived cluster_https_ may appear.
+    When I clear all headers
+    And I send a GET request to "http://localhost:9901/clusters"
+    Then the response should be successful
+    And the response body should contain "main_"
+    And the response body should not contain "cluster_http_"
+    And the response body should not contain "cluster_https_"
+    And the Envoy cluster names prefixed "main_" should be unchanged
+
+    Given I authenticate using basic auth as "admin"
+    When I delete the API "api-level-url-stable-scheme-api-v1.0"
+    Then the response should be successful
+
+  Scenario: API-level cluster name survives a gateway-controller restart (deterministic from stored identity)
+    Given I authenticate using basic auth as "admin"
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: RestApi
+      metadata:
+        name: api-level-url-stable-restart-api-v1.0
+      spec:
+        displayName: API-Level-URL-Stable-Restart-API
+        version: v1.0
+        context: /api-level-url-stable-restart/$version
+        vhosts:
+          main: api-level-url-stable-restart.local
+        upstream:
+          main:
+            url: http://sample-backend:9080/version-a
+        operations:
+          - method: GET
+            path: /endpoint
+      """
+    Then the response should be successful
+    And I wait for the endpoint "http://localhost:8080/api-level-url-stable-restart/v1.0/endpoint" to be ready with host "api-level-url-stable-restart.local"
+
+    # Capture the identity-derived cluster name before the restart.
+    When I clear all headers
+    And I send a GET request to "http://localhost:9901/clusters"
+    Then the response should be successful
+    And the response body should contain "main_"
+    And the response body should not contain "cluster_http_"
+    And the response body should not contain "cluster_https_"
+    And I capture the Envoy cluster names prefixed "main_"
+
+    # Restart the controller so it re-reads the stored API and re-derives the
+    # cluster name from the persisted apiID, a cold path the in-process update
+    # scenarios do not exercise. A non-deterministic apiID would rename the
+    # cluster on restart and churn EDS; identity naming must reproduce the same
+    # main_<hash>.
+    When I restart the "gateway-controller" service
+    And I wait for the endpoint "http://localhost:8080/api-level-url-stable-restart/v1.0/endpoint" to be ready with host "api-level-url-stable-restart.local"
+
+    When I clear all headers
+    And I send a GET request to "http://localhost:9901/clusters"
+    Then the response should be successful
+    And the response body should contain "main_"
+    And the response body should not contain "cluster_http_"
+    And the response body should not contain "cluster_https_"
+    And the Envoy cluster names prefixed "main_" should be unchanged
+
+    Given I authenticate using basic auth as "admin"
+    When I delete the API "api-level-url-stable-restart-api-v1.0"
+    Then the response should be successful
