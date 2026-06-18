@@ -361,7 +361,7 @@ func loadAIWorkspaceSpec(projectRoot, baseDir string, config *project.AIWorkspac
 // command's pending design questions) and are omitted from the payload.
 func buildLLMProviderPayload(name string, metadata aiWorkspaceMetadata, runtime aiWorkspaceRuntime, openapi string) llmProviderPayload {
 	payload := llmProviderPayload{
-		ID:       name,
+		ID:       resourceID(metadata.Spec.DisplayName, name),
 		Name:     name,
 		Version:  strings.TrimSpace(metadata.Spec.Version),
 		Context:  strings.TrimSpace(runtime.Spec.Context),
@@ -688,6 +688,7 @@ func buildSecurityFromPolicies(policies []runtimeProviderPolicy) *securityConfig
 // caller to fill in at publish time.
 func buildLLMProxyPayload(proxyName string, metadata aiWorkspaceMetadata, runtime aiWorkspaceRuntime, openapi string) llmProxyPayload {
 	payload := llmProxyPayload{
+		ID:       resourceID(metadata.Spec.DisplayName, proxyName),
 		Name:     proxyName,
 		Version:  strings.TrimSpace(metadata.Spec.Version),
 		Context:  strings.TrimSpace(runtime.Spec.Context),
@@ -710,6 +711,17 @@ func buildLLMProxyPayload(proxyName string, metadata aiWorkspaceMetadata, runtim
 	}
 
 	return payload
+}
+
+// resourceID derives the payload id from a display name: lowercased, with
+// whitespace runs collapsed to single hyphens. Falls back to fallback when the
+// display name is empty.
+func resourceID(displayName, fallback string) string {
+	id := strings.Join(strings.Fields(strings.ToLower(displayName)), "-")
+	if id == "" {
+		return fallback
+	}
+	return id
 }
 
 func payloadFileName(name string) string {
@@ -805,6 +817,7 @@ type runtimePolicyPath struct {
 // --- createLLMProxy request body (subset; see openapi.yaml LLMProxy schema) ---
 
 type llmProxyPayload struct {
+	ID       string           `json:"id"`
 	Name     string           `json:"name"`
 	Version  string           `json:"version"`
 	Context  string           `json:"context,omitempty"`
