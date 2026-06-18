@@ -167,7 +167,18 @@ func (r *HTTPRouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{Requeue: true}, nil
 	}
 
-	backendResolution := resolveHTTPRouteBackendRefs(ctx, r.Client, route, r.Config.GatewayAPI.ClusterDomain)
+	backendResolution, err := resolveHTTPRouteBackendRefs(ctx, r.Client, route, r.Config.GatewayAPI.ClusterDomain)
+	if err != nil {
+		// Transient backend lookup failure (e.g. API read error). Report a retry reason and
+		// requeue instead of latching a permanent ResolvedRefs result on the route.
+		log.Error("resolve backend refs", zap.Error(err))
+		r.patchResolvedRefsForParents(ctx, route, parentTargets, &HTTPRouteBackendResolution{
+			AllResolved:         false,
+			FirstFailureReason:  gatewayv1.RouteConditionReason("Retrying"),
+			FirstFailureMessage: err.Error(),
+		})
+		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+	}
 	r.patchResolvedRefsForParents(ctx, route, parentTargets, backendResolution)
 
 	anyAttached := false

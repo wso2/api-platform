@@ -587,3 +587,85 @@ func TestRestAPITransformer_HeaderMatchRoutesDoNotCollide(t *testing.T) {
 	require.Contains(t, rdc.Routes, baseKey)
 	assert.Equal(t, 4, rdc.Routes[baseKey].Order)
 }
+
+// TestRestAPITransformer_MixedSchemeUpstreamDefinition guards the upstream-definitions loop: a
+// single Envoy cluster has one transport socket and the model carries one TLS bit for the whole
+// cluster, so a weighted definition that mixes https and non-https endpoints cannot be represented
+// (the plaintext endpoints would be silently dialed over TLS). The transform must reject it with a
+// clear error. Uniform definitions (all https or all plaintext) must still transform, preserving the
+// previous TLS-enabled result.
+func TestRestAPITransformer_MixedSchemeUpstreamDefinition(t *testing.T) {
+	mkUpstreams := func(urls ...string) []struct {
+		Url    string `json:"url" yaml:"url"`
+		Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
+	} {
+		ups := make([]struct {
+			Url    string `json:"url" yaml:"url"`
+			Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
+		}, 0, len(urls))
+		for _, u := range urls {
+			ups = append(ups, struct {
+				Url    string `json:"url" yaml:"url"`
+				Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
+			}{Url: u})
+		}
+		return ups
+	}
+
+	mkCfg := func(urls ...string) *models.StoredConfig {
+		upDefs := []api.UpstreamDefinition{{Name: "weighted", Upstreams: mkUpstreams(urls...)}}
+		apiData := api.APIConfigData{
+			DisplayName:         "mixed-scheme",
+			Context:             "/test",
+			Version:             "1.0.0",
+			UpstreamDefinitions: &upDefs,
+			Operations:          []api.Operation{{Method: "GET", Path: "/hello"}},
+			Upstream: struct {
+				Main    api.Upstream  `json:"main" yaml:"main"`
+				Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+			}{
+				Main: api.Upstream{Url: ptrStr("http://backend:8080")},
+			},
+		}
+		return &models.StoredConfig{
+			UUID:          "mixed-api",
+			Kind:          string(api.RestAPIKindRestApi),
+			Configuration: api.RestAPI{Kind: api.RestAPIKindRestApi, Metadata: api.Metadata{Name: "mixed-api"}, Spec: apiData},
+		}
+	}
+
+	weightedCluster := func(rdc *models.RuntimeDeployConfig) *models.UpstreamCluster {
+		for _, uc := range rdc.UpstreamClusters {
+			if uc.Name == "weighted" {
+				return uc
+			}
+		}
+		return nil
+	}
+
+	transformer := NewRestAPITransformer(testRouterCfg(), &config.Config{}, map[string]models.PolicyDefinition{})
+
+	t.Run("mixed https and http is rejected", func(t *testing.T) {
+		_, err := transformer.Transform(mkCfg("https://a:8443", "http://b:8080"))
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "mixes https and non-https")
+	})
+
+	t.Run("uniform https transforms with TLS enabled", func(t *testing.T) {
+		rdc, err := transformer.Transform(mkCfg("https://a:8443", "https://b:8443"))
+		require.NoError(t, err)
+		uc := weightedCluster(rdc)
+		require.NotNil(t, uc, "weighted upstream cluster should exist")
+		require.NotNil(t, uc.TLS)
+		assert.True(t, uc.TLS.Enabled, "uniform-https definition must keep TLS enabled")
+	})
+
+	t.Run("uniform plaintext transforms with TLS disabled", func(t *testing.T) {
+		rdc, err := transformer.Transform(mkCfg("http://a:8080", "http://b:8080"))
+		require.NoError(t, err)
+		uc := weightedCluster(rdc)
+		require.NotNil(t, uc, "weighted upstream cluster should exist")
+		require.NotNil(t, uc.TLS)
+		assert.False(t, uc.TLS.Enabled, "uniform-plaintext definition must keep TLS disabled")
+	})
+}

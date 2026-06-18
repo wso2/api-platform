@@ -80,6 +80,7 @@ func NewK8sGatewayReconciler(cl client.Client, scheme *runtime.Scheme, cfg *conf
 //+kubebuilder:rbac:groups=gateway.networking.k8s.io,resources=gateways/finalizers,verbs=update
 //+kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch
 //+kubebuilder:rbac:groups="",resources=namespaces,verbs=get;list;watch
+//+kubebuilder:rbac:groups="",resources=nodes,verbs=get;list;watch
 
 func (r *K8sGatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	gw := &gatewayv1.Gateway{}
@@ -495,7 +496,14 @@ func (r *K8sGatewayReconciler) syncGateway(ctx context.Context, gw *gatewayv1.Ga
 	if err != nil {
 		return fmt.Errorf("discover gateway runtime service: %w", err)
 	}
-	addrs := resolveGatewayAddressesFromService(runtimeSvc)
+	var nodePortAddrs []gatewayv1.GatewayStatusAddress
+	if runtimeSvc != nil && runtimeSvc.Spec.Type == corev1.ServiceTypeNodePort {
+		nodePortAddrs, err = r.resolveNodePortGatewayAddresses(ctx)
+		if err != nil {
+			return fmt.Errorf("resolve NodePort gateway addresses: %w", err)
+		}
+	}
+	addrs := resolveGatewayAddressesFromService(runtimeSvc, nodePortAddrs)
 	if runtimeSvc.Spec.Type == corev1.ServiceTypeLoadBalancer && len(addrs) == 0 {
 		pendingMsg := "Waiting for LoadBalancer address to be assigned to gateway runtime Service"
 		_ = r.patchGatewayStatus(ctx, gw, listenerStatuses, nil, metav1.Condition{
@@ -519,6 +527,23 @@ func (r *K8sGatewayReconciler) syncGateway(ctx context.Context, gw *gatewayv1.Ga
 			LastTransitionTime: metav1.Now(),
 		},
 	)
+}
+
+// resolveNodePortGatewayAddresses determines the Gateway status addresses for a NodePort
+// runtime Service. When NodePortAddressOverride is configured (intended for local clusters
+// reachable only via loopback) it is published verbatim; otherwise the operator lists the
+// cluster Nodes and advertises their real addresses (ExternalIP, falling back to InternalIP).
+func (r *K8sGatewayReconciler) resolveNodePortGatewayAddresses(ctx context.Context) ([]gatewayv1.GatewayStatusAddress, error) {
+	if r.Config != nil {
+		if override := strings.TrimSpace(r.Config.GatewayAPI.NodePortAddressOverride); override != "" {
+			return []gatewayv1.GatewayStatusAddress{gatewayIPAddress(override)}, nil
+		}
+	}
+	var nodes corev1.NodeList
+	if err := r.List(ctx, &nodes); err != nil {
+		return nil, fmt.Errorf("list nodes: %w", err)
+	}
+	return nodePortGatewayAddressesFromNodes(nodes.Items), nil
 }
 
 // gatewayProgrammedConditionStale reports whether the Gateway's Programmed condition is

@@ -304,9 +304,9 @@ func (t *Translator) createRouteFromRDC(routeKey string, rdcRoute *models.Route,
 		return t.createDirectResponseRoute(routeKey, method, fullPath, operationPath, rdcRoute)
 	}
 
-	// Determine path type
+	// Path-type flags needed below for the regex rewrite. The route's path matcher
+	// itself is built by setMatchPathSpecifier (shared with direct-response routes).
 	isWildcardPath := strings.HasSuffix(operationPath, "/*")
-	hasParams := strings.Contains(operationPath, "{")
 	isRootPath := operationPath == "/"
 	isExactPath := strings.EqualFold(rdcRoute.PathMatchType, "Exact")
 
@@ -386,61 +386,10 @@ func (t *Translator) createRouteFromRDC(routeKey string, rdcRoute *models.Route,
 		r.RequestHeadersToRemove = append(r.RequestHeadersToRemove, constants.TargetUpstreamHeader)
 	}
 
-	headerMatchers := []*route.HeaderMatcher{{
-		Name: ":method",
-		HeaderMatchSpecifier: &route.HeaderMatcher_StringMatch{
-			StringMatch: &matcher.StringMatcher{
-				MatchPattern: &matcher.StringMatcher_Exact{
-					Exact: method,
-				},
-			},
-		},
-	}}
-	for _, hm := range rdcRoute.MatchHeaders {
-		name := strings.ToLower(strings.TrimSpace(hm.Name))
-		matchType := strings.TrimSpace(hm.Type)
-		if matchType == "RegularExpression" {
-			headerMatchers = append(headerMatchers, &route.HeaderMatcher{
-				Name: name,
-				HeaderMatchSpecifier: &route.HeaderMatcher_SafeRegexMatch{
-					SafeRegexMatch: &matcher.RegexMatcher{Regex: hm.Value},
-				},
-			})
-		} else {
-			headerMatchers = append(headerMatchers, &route.HeaderMatcher{
-				Name: name,
-				HeaderMatchSpecifier: &route.HeaderMatcher_StringMatch{
-					StringMatch: &matcher.StringMatcher{
-						MatchPattern: &matcher.StringMatcher_Exact{
-							Exact: hm.Value,
-						},
-					},
-				},
-			})
-		}
-	}
-	r.Match.Headers = headerMatchers
-
-	// Set path specifier
-	if isWildcardPath || hasParams || isRootPath {
-		r.Match.PathSpecifier = pathSpecifier
-	} else if isExactPath {
-		// Use Envoy's native exact path matcher (not safe_regex) so that
-		// SortRoutesByPriority ranks Exact above Regex/Prefix. Rendering exact
-		// paths as safe_regex made every route look like a Regex to the sorter,
-		// which then fell back to regex-string length and let a longer prefix
-		// regex (e.g. ^/match(?:/.*)?$) outrank a shorter exact (^/match/exact$).
-		r.Match.PathSpecifier = &route.RouteMatch_Path{
-			Path: fullPath,
-		}
-	} else {
-		// Accept both /path and /path/ but preserve the trailing slash in the rewrite.
-		r.Match.PathSpecifier = &route.RouteMatch_SafeRegex{
-			SafeRegex: &matcher.RegexMatcher{
-				Regex: "^" + regexp.QuoteMeta(fullPath) + "/?$",
-			},
-		}
-	}
+	// Build the request matchers (shared with direct-response routes so both kinds of
+	// route match identical requests).
+	r.Match.Headers = buildMatchHeaders(method, rdcRoute)
+	t.setMatchPathSpecifier(r.Match, fullPath, operationPath, rdcRoute)
 
 	// Compute regex rewrite to strip context and prepend upstream path
 	upstreamPath := ""
@@ -528,7 +477,7 @@ func (t *Translator) createDirectResponseRoute(routeKey, method, fullPath, opera
 			Match:  &route.RouteMatch{},
 			Action: &route.Route_Redirect{Redirect: redirect},
 		}
-		setDirectResponseMatch(r, method, fullPath, operationPath, rdcRoute)
+		t.setDirectResponseMatch(r, method, fullPath, operationPath, rdcRoute)
 		return r
 	}
 
@@ -540,7 +489,7 @@ func (t *Translator) createDirectResponseRoute(routeKey, method, fullPath, opera
 		Match:  &route.RouteMatch{},
 		Action: action,
 	}
-	setDirectResponseMatch(r, method, fullPath, operationPath, rdcRoute)
+	t.setDirectResponseMatch(r, method, fullPath, operationPath, rdcRoute)
 
 	if len(dr.Headers) > 0 {
 		r.ResponseHeadersToAdd = make([]*core.HeaderValueOption, 0, len(dr.Headers))
@@ -553,11 +502,22 @@ func (t *Translator) createDirectResponseRoute(routeKey, method, fullPath, opera
 	return r
 }
 
-// setDirectResponseMatch populates r.Match for a direct-response/redirect route: the :method
-// matcher, any header matchers, and the path specifier (mirroring createRouteFromRDC's path
-// handling, including the native exact matcher so the route sorter ranks Exact above Regex/Prefix).
-func setDirectResponseMatch(r *route.Route, method, fullPath, operationPath string, rdcRoute *models.Route) {
-	r.Match.Headers = []*route.HeaderMatcher{{
+// setDirectResponseMatch populates r.Match for a direct-response/redirect route so that it
+// matches exactly the same requests its non-direct counterpart would. It reuses the shared
+// buildMatchHeaders / setMatchPathSpecifier helpers (the same ones createRouteFromRDC uses),
+// so parameterized ({param}) paths and RegularExpression header matches are handled
+// identically and the two paths cannot drift apart.
+func (t *Translator) setDirectResponseMatch(r *route.Route, method, fullPath, operationPath string, rdcRoute *models.Route) {
+	r.Match.Headers = buildMatchHeaders(method, rdcRoute)
+	t.setMatchPathSpecifier(r.Match, fullPath, operationPath, rdcRoute)
+}
+
+// buildMatchHeaders builds the Envoy header matchers for a route: the mandatory :method matcher
+// followed by any configured header matches. A header match of type RegularExpression becomes a
+// SafeRegexMatch; everything else is an exact string match. Shared by createRouteFromRDC and
+// setDirectResponseMatch so normal and direct-response routes match identical requests.
+func buildMatchHeaders(method string, rdcRoute *models.Route) []*route.HeaderMatcher {
+	headerMatchers := []*route.HeaderMatcher{{
 		Name: ":method",
 		HeaderMatchSpecifier: &route.HeaderMatcher_StringMatch{
 			StringMatch: &matcher.StringMatcher{
@@ -567,42 +527,72 @@ func setDirectResponseMatch(r *route.Route, method, fullPath, operationPath stri
 	}}
 	for _, hm := range rdcRoute.MatchHeaders {
 		name := strings.ToLower(strings.TrimSpace(hm.Name))
-		r.Match.Headers = append(r.Match.Headers, &route.HeaderMatcher{
-			Name: name,
-			HeaderMatchSpecifier: &route.HeaderMatcher_StringMatch{
-				StringMatch: &matcher.StringMatcher{
-					MatchPattern: &matcher.StringMatcher_Exact{Exact: hm.Value},
+		matchType := strings.TrimSpace(hm.Type)
+		if matchType == "RegularExpression" {
+			headerMatchers = append(headerMatchers, &route.HeaderMatcher{
+				Name: name,
+				HeaderMatchSpecifier: &route.HeaderMatcher_SafeRegexMatch{
+					SafeRegexMatch: &matcher.RegexMatcher{Regex: hm.Value},
 				},
-			},
-		})
+			})
+		} else {
+			headerMatchers = append(headerMatchers, &route.HeaderMatcher{
+				Name: name,
+				HeaderMatchSpecifier: &route.HeaderMatcher_StringMatch{
+					StringMatch: &matcher.StringMatcher{
+						MatchPattern: &matcher.StringMatcher_Exact{Exact: hm.Value},
+					},
+				},
+			})
+		}
 	}
+	return headerMatchers
+}
 
+// setMatchPathSpecifier sets m.PathSpecifier for the given operation, covering every path type:
+// wildcard prefix, parameterized ({param}) regex, root, Envoy's native exact matcher, and the
+// default plain-path regex (accepting an optional trailing slash). Branch precedence matches the
+// original createRouteFromRDC logic (wildcard > params > root > exact > default). Shared by
+// createRouteFromRDC and setDirectResponseMatch so the two paths match identical requests.
+func (t *Translator) setMatchPathSpecifier(m *route.RouteMatch, fullPath, operationPath string, rdcRoute *models.Route) {
 	isWildcardPath := strings.HasSuffix(operationPath, "/*")
-	isRootPath := operationPath == "/" || operationPath == "/*"
+	hasParams := strings.Contains(operationPath, "{")
+	isRootPath := operationPath == "/"
 	isExactPath := strings.EqualFold(rdcRoute.PathMatchType, "Exact")
 
 	switch {
 	case isWildcardPath:
 		prefixPath := strings.TrimSuffix(fullPath, "/*")
-		r.Match.PathSpecifier = &route.RouteMatch_SafeRegex{
+		m.PathSpecifier = &route.RouteMatch_SafeRegex{
 			SafeRegex: &matcher.RegexMatcher{
 				Regex: "^" + regexp.QuoteMeta(prefixPath) + "(?:/.*)?$",
 			},
 		}
+	case hasParams:
+		m.PathSpecifier = &route.RouteMatch_SafeRegex{
+			SafeRegex: &matcher.RegexMatcher{
+				Regex: t.pathToRegex(fullPath),
+			},
+		}
 	case isRootPath:
 		trimmedPath := strings.TrimSuffix(fullPath, "/")
-		r.Match.PathSpecifier = &route.RouteMatch_SafeRegex{
+		m.PathSpecifier = &route.RouteMatch_SafeRegex{
 			SafeRegex: &matcher.RegexMatcher{
 				Regex: "^" + regexp.QuoteMeta(trimmedPath) + "/?$",
 			},
 		}
 	case isExactPath:
-		// Native exact matcher so the route sorter ranks it above Regex/Prefix.
-		r.Match.PathSpecifier = &route.RouteMatch_Path{
+		// Use Envoy's native exact path matcher (not safe_regex) so that
+		// SortRoutesByPriority ranks Exact above Regex/Prefix. Rendering exact
+		// paths as safe_regex made every route look like a Regex to the sorter,
+		// which then fell back to regex-string length and let a longer prefix
+		// regex (e.g. ^/match(?:/.*)?$) outrank a shorter exact (^/match/exact$).
+		m.PathSpecifier = &route.RouteMatch_Path{
 			Path: fullPath,
 		}
 	default:
-		r.Match.PathSpecifier = &route.RouteMatch_SafeRegex{
+		// Accept both /path and /path/ but preserve the trailing slash in the rewrite.
+		m.PathSpecifier = &route.RouteMatch_SafeRegex{
 			SafeRegex: &matcher.RegexMatcher{
 				Regex: "^" + regexp.QuoteMeta(fullPath) + "/?$",
 			},
@@ -684,13 +674,11 @@ func (t *Translator) createWeightedCluster(
 	tls *models.UpstreamTLS,
 	connectTimeout *time.Duration,
 ) *cluster.Cluster {
+	tlsEnabled := tls != nil && tls.Enabled
+
 	lbEndpoints := make([]*endpoint.LbEndpoint, 0, len(endpoints))
-	for _, ep := range endpoints {
-		scheme := "http"
-		if tls != nil && tls.Enabled {
-			scheme = "https"
-		}
-		hostPort := net.JoinHostPort(ep.Host, strconv.Itoa(ep.Port))
+	var transportSocketMatches []*cluster.Cluster_TransportSocketMatch
+	for i, ep := range endpoints {
 		lb := &endpoint.LbEndpoint{
 			HostIdentifier: &endpoint.LbEndpoint_Endpoint{
 				Endpoint: &endpoint.Endpoint{
@@ -709,8 +697,47 @@ func (t *Translator) createWeightedCluster(
 		if ep.Weight != nil && *ep.Weight > 0 {
 			lb.LoadBalancingWeight = &wrapperspb.UInt32Value{Value: uint32(*ep.Weight)}
 		}
-		_ = scheme
-		_ = hostPort
+
+		// When the upstream definition is HTTPS, dial each endpoint over TLS. Endpoints in a
+		// weighted definition can have different hostnames, so each gets its own transport
+		// socket match carrying an UpstreamTlsContext with that endpoint's SNI, and the
+		// LbEndpoint is tagged with the matching lb_id. This mirrors processEndpoint (the
+		// single-endpoint path), generalized to multiple endpoints; certs are nil here, same
+		// as the single-endpoint RDC path, so TLS relies on SDS or the system trust store.
+		if tlsEnabled {
+			matchID := strconv.Itoa(i)
+			tlsContext := t.createUpstreamTLSContext(nil, ep.Host)
+			marshalledTLSContext, err := anypb.New(tlsContext)
+			if err != nil {
+				t.logger.Error("internal error while marshalling the weighted upstream TLS context",
+					slog.String("cluster", name), slog.Any("error", err))
+			} else {
+				transportSocketMatches = append(transportSocketMatches, &cluster.Cluster_TransportSocketMatch{
+					Name: constants.TransportSocketPrefix + matchID,
+					Match: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							constants.LoadBalancerIDKey: structpb.NewStringValue(matchID),
+						},
+					},
+					TransportSocket: &core.TransportSocket{
+						Name: constants.EnvoyTLSTransportSocket,
+						ConfigType: &core.TransportSocket_TypedConfig{
+							TypedConfig: marshalledTLSContext,
+						},
+					},
+				})
+				lb.Metadata = &core.Metadata{
+					FilterMetadata: map[string]*structpb.Struct{
+						constants.TransportSocketMatchKey: {
+							Fields: map[string]*structpb.Value{
+								constants.LoadBalancerIDKey: structpb.NewStringValue(matchID),
+							},
+						},
+					},
+				}
+			}
+		}
+
 		lbEndpoints = append(lbEndpoints, lb)
 	}
 
@@ -724,7 +751,7 @@ func (t *Translator) createWeightedCluster(
 		}
 	}
 
-	return &cluster.Cluster{
+	c := &cluster.Cluster{
 		Name:                 name,
 		ConnectTimeout:       durationpb.New(effectiveConnectTimeout),
 		ClusterDiscoveryType: &cluster.Cluster_Type{Type: cluster.Cluster_STRICT_DNS},
@@ -737,6 +764,10 @@ func (t *Translator) createWeightedCluster(
 			}},
 		},
 	}
+	if len(transportSocketMatches) > 0 {
+		c.TransportSocketMatches = transportSocketMatches
+	}
+	return c
 }
 
 // TranslateConfigs translates all API configurations to Envoy resources

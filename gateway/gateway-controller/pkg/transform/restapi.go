@@ -248,7 +248,8 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 				basePath = *def.BasePath
 			}
 			endpoints := make([]models.Endpoint, 0, len(def.Upstreams))
-			tlsEnabled := false
+			tlsExists := false
+			plaintextExists := false
 			for _, up := range def.Upstreams {
 				parsedURL, err := url.Parse(up.Url)
 				if err != nil {
@@ -261,14 +262,26 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 				}
 				endpoints = append(endpoints, ep)
 				if parsedURL.Scheme == "https" {
-					tlsEnabled = true
+					tlsExists = true
+				} else {
+					plaintextExists = true
 				}
+			}
+			// A single Envoy cluster has one transport socket, and the model carries one TLS bit
+			// for the whole cluster (createWeightedCluster applies it to every endpoint). A weighted
+			// definition that mixes https and non-https endpoints therefore cannot be represented —
+			// the plaintext endpoints would be silently dialed over TLS. Reject it with a clear error
+			// instead of collapsing to an ambiguous single flag. Uniform definitions (all https or all
+			// plaintext) are unaffected: Enabled = tlsExists matches the previous "any https" result.
+			if tlsExists && plaintextExists {
+				return nil, fmt.Errorf("upstream definition '%s' mixes https and non-https endpoints; "+
+					"all endpoints in a definition must use the same scheme", def.Name)
 			}
 			rdc.UpstreamClusters[defClusterKey] = &models.UpstreamCluster{
 				Name:      def.Name,
 				BasePath:  basePath,
 				Endpoints: endpoints,
-				TLS:       &models.UpstreamTLS{Enabled: tlsEnabled},
+				TLS:       &models.UpstreamTLS{Enabled: tlsExists},
 			}
 		}
 	}

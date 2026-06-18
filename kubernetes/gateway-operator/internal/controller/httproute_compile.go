@@ -45,7 +45,11 @@ func BuildAPIConfigFromHTTPRoute(
 		return nil, newInvalidHTTPRouteConfigError("HTTPRoute has no rules")
 	}
 	if backendResolution == nil {
-		backendResolution = resolveHTTPRouteBackendRefs(ctx, c, route, clusterDomain)
+		var err error
+		backendResolution, err = resolveHTTPRouteBackendRefs(ctx, c, route, clusterDomain)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	displayName := route.Name
@@ -64,7 +68,10 @@ func BuildAPIConfigFromHTTPRoute(
 		contextPath = "/" + contextPath
 	}
 
-	vhostMain, vhostList := deriveVhosts(ctx, c, parentGW, route, parentTargets)
+	vhostMain, vhostList, err := deriveVhosts(ctx, c, parentGW, route, parentTargets)
+	if err != nil {
+		return nil, err
+	}
 
 	defsByName := make(map[string]apiv1.UpstreamDefinition)
 	var ops []apiv1.Operation
@@ -311,7 +318,7 @@ func needsDynamicEndpoint(defs map[string]apiv1.UpstreamDefinition) bool {
 	return len(defs) > 1
 }
 
-func deriveVhosts(ctx context.Context, c client.Client, parentGW *gatewayv1.Gateway, route *gatewayv1.HTTPRoute, parentTargets []gatewayParentTarget) (main string, additional []string) {
+func deriveVhosts(ctx context.Context, c client.Client, parentGW *gatewayv1.Gateway, route *gatewayv1.HTTPRoute, parentTargets []gatewayParentTarget) (main string, additional []string, err error) {
 	seen := make(map[string]struct{})
 	addHost := func(h string) {
 		h = strings.TrimSpace(h)
@@ -338,12 +345,17 @@ func deriveVhosts(ctx context.Context, c client.Client, parentGW *gatewayv1.Gate
 	// vhost), preserving behavior for routes that don't use hostname-based routing.
 	if parentGW != nil {
 		for _, target := range parentTargets {
-			attached, _, _ := evaluateHTTPRouteAttachment(ctx, c, parentGW, route, target.ref)
-			if !attached {
-				continue
-			}
 			for _, listener := range parentGW.Spec.Listeners {
-				if !parentRefAttachesToListener(target.ref, listener) {
+				// Only emit vhosts for listeners that actually accept this route — the same
+				// per-listener predicate evaluateHTTPRouteAttachment applies (kind + namespace +
+				// hostname), not just the structural parentRef match. A gateway-wide parentRef
+				// matches every listener structurally, so the bare structural check would emit
+				// vhosts for listeners the route never attached to.
+				accepted, aErr := httpRouteAcceptedByListener(ctx, c, parentGW, route, target.ref, listener)
+				if aErr != nil {
+					return "", nil, aErr
+				}
+				if !accepted {
 					continue
 				}
 				listenerHost := ""
@@ -367,9 +379,9 @@ func deriveVhosts(ctx context.Context, c client.Client, parentGW *gatewayv1.Gate
 	}
 
 	if main != "" && len(additional) > 0 {
-		return main, additional
+		return main, additional, nil
 	}
-	return main, nil
+	return main, nil, nil
 }
 
 // intersectHostname returns the effective hostname produced by intersecting an HTTPRoute hostname

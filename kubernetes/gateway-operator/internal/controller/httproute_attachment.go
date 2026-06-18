@@ -51,10 +51,11 @@ func evaluateHTTPRouteAttachment(
 		}
 		matchedListener = true
 
+		// Pre-hostname gates (kind + namespace) shared with httpRouteAcceptedByListener; tracked
+		// here only to compute the precise not-attached reason below.
 		if !listenerAllowsHTTPRouteKind(listener) {
 			continue
 		}
-
 		allowedNs, err := namespacesAllowedByListener(ctx, cl, listener, gw)
 		if err != nil {
 			return false, gatewayv1.RouteReasonNotAllowedByListeners, fmt.Sprintf("failed to resolve allowed namespaces: %v", err)
@@ -64,7 +65,11 @@ func evaluateHTTPRouteAttachment(
 		}
 
 		hostnameChecked = true
-		if hostnamesIntersect(listener.Hostname, route.Spec.Hostnames) {
+		accepted, err := httpRouteAcceptedByListener(ctx, cl, gw, route, parentRef, listener)
+		if err != nil {
+			return false, gatewayv1.RouteReasonNotAllowedByListeners, fmt.Sprintf("failed to resolve allowed namespaces: %v", err)
+		}
+		if accepted {
 			hostnameMatch = true
 			return true, gatewayv1.RouteReasonAccepted, "Route attaches to listener"
 		}
@@ -80,6 +85,38 @@ func evaluateHTTPRouteAttachment(
 		return false, gatewayv1.RouteReasonNoMatchingListenerHostname, "No matching listener hostname"
 	}
 	return false, gatewayv1.RouteReasonNotAllowedByListeners, "Route is not allowed by any matching listener"
+}
+
+// httpRouteAcceptedByListener reports whether a single listener actually accepts the route under
+// Gateway API attachment semantics: the parentRef must target the listener (sectionName/port),
+// and the listener must allow the HTTPRoute kind, allow the route's namespace, and have a
+// hostname that intersects the route's hostnames. This is the same per-listener predicate
+// evaluateHTTPRouteAttachment applies; it is factored out so vhost derivation uses the identical
+// acceptance check rather than the bare structural parentRefAttachesToListener (which, for a
+// gateway-wide parentRef, matches every listener and would otherwise emit vhosts for listeners
+// the route never attached to).
+func httpRouteAcceptedByListener(
+	ctx context.Context,
+	cl client.Client,
+	gw *gatewayv1.Gateway,
+	route *gatewayv1.HTTPRoute,
+	parentRef gatewayv1.ParentReference,
+	listener gatewayv1.Listener,
+) (bool, error) {
+	if !parentRefAttachesToListener(parentRef, listener) {
+		return false, nil
+	}
+	if !listenerAllowsHTTPRouteKind(listener) {
+		return false, nil
+	}
+	allowedNs, err := namespacesAllowedByListener(ctx, cl, listener, gw)
+	if err != nil {
+		return false, err
+	}
+	if !namespaceAllowed(route.Namespace, allowedNs) {
+		return false, nil
+	}
+	return hostnamesIntersect(listener.Hostname, route.Spec.Hostnames), nil
 }
 
 func namespaceAllowed(routeNamespace string, allowed []string) bool {

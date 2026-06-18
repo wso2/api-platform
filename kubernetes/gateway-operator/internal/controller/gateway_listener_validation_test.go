@@ -29,9 +29,12 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 	gatewayv1beta1 "sigs.k8s.io/gateway-api/apis/v1beta1"
 )
@@ -772,7 +775,10 @@ func TestValidateTLSCertificateRefs(t *testing.T) {
 			}
 			cl := clientBuilder.Build()
 
-			valid, reason, _ := validateTLSCertificateRefs(context.Background(), cl, gwNS, tt.listener)
+			valid, reason, _, err := validateTLSCertificateRefs(context.Background(), cl, gwNS, tt.listener)
+			if err != nil {
+				t.Fatalf("unexpected transient error: %v", err)
+			}
 
 			if valid != tt.wantValid {
 				t.Errorf("valid = %v, want %v", valid, tt.wantValid)
@@ -980,4 +986,96 @@ func TestEvaluateListeners_RefNotPermittedOnCrossNamespaceSecret(t *testing.T) {
 	if programmed.Status != metav1.ConditionFalse {
 		t.Errorf("Programmed.Status = %v, want False", programmed.Status)
 	}
+}
+
+// TestValidateTLSCertificateRefs_TransientErrors verifies that a failed ReferenceGrant lookup or
+// a non-NotFound Secret read is surfaced as a (retryable) error rather than collapsed into a
+// permanent RefNotPermitted / InvalidCertificateRef result.
+func TestValidateTLSCertificateRefs_TransientErrors(t *testing.T) {
+	gwNS := "infra"
+	secretNS := "certs"
+	secretName := "tls-secret"
+
+	group := gatewayv1.Group("")
+	kind := gatewayv1.Kind("Secret")
+	certNS := gatewayv1.Namespace(secretNS)
+	listener := gatewayv1.Listener{
+		Name:     "https",
+		Protocol: gatewayv1.HTTPSProtocolType,
+		Port:     443,
+		TLS: &gatewayv1.ListenerTLSConfig{
+			CertificateRefs: []gatewayv1.SecretObjectReference{{
+				Group:     &group,
+				Kind:      &kind,
+				Name:      gatewayv1.ObjectName(secretName),
+				Namespace: &certNS,
+			}},
+		},
+	}
+
+	scheme := runtime.NewScheme()
+	_ = corev1.AddToScheme(scheme)
+	_ = gatewayv1beta1.Install(scheme)
+
+	t.Run("ReferenceGrant list failure is transient", func(t *testing.T) {
+		base := fake.NewClientBuilder().WithScheme(scheme).Build()
+		cl := interceptor.NewClient(base, interceptor.Funcs{
+			List: func(ctx context.Context, c client.WithWatch, list client.ObjectList, opts ...client.ListOption) error {
+				if _, ok := list.(*gatewayv1beta1.ReferenceGrantList); ok {
+					return apierrors.NewServiceUnavailable("transient: cannot list ReferenceGrants")
+				}
+				return c.List(ctx, list, opts...)
+			},
+		})
+
+		valid, _, _, err := validateTLSCertificateRefs(context.Background(), cl, gwNS, listener)
+		if err == nil {
+			t.Fatalf("expected transient error from failed ReferenceGrant lookup, got nil (valid=%v)", valid)
+		}
+	})
+
+	t.Run("non-NotFound Secret read is transient", func(t *testing.T) {
+		// A ReferenceGrant permitting the cross-namespace ref exists, so the grant check passes;
+		// the Secret Get then fails transiently.
+		grant := &gatewayv1beta1.ReferenceGrant{
+			ObjectMeta: metav1.ObjectMeta{Name: "grant", Namespace: secretNS},
+			Spec: gatewayv1beta1.ReferenceGrantSpec{
+				From: []gatewayv1beta1.ReferenceGrantFrom{{
+					Group:     gatewayv1.GroupName,
+					Kind:      "Gateway",
+					Namespace: gatewayv1.Namespace(gwNS),
+				}},
+				To: []gatewayv1beta1.ReferenceGrantTo{{Kind: "Secret"}},
+			},
+		}
+		base := fake.NewClientBuilder().WithScheme(scheme).WithObjects(grant).Build()
+		cl := interceptor.NewClient(base, interceptor.Funcs{
+			Get: func(ctx context.Context, c client.WithWatch, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+				if _, ok := obj.(*corev1.Secret); ok {
+					return apierrors.NewServiceUnavailable("transient: cannot read Secret")
+				}
+				return c.Get(ctx, key, obj, opts...)
+			},
+		})
+
+		valid, _, _, err := validateTLSCertificateRefs(context.Background(), cl, gwNS, listener)
+		if err == nil {
+			t.Fatalf("expected transient error from failed Secret read, got nil (valid=%v)", valid)
+		}
+	})
+
+	t.Run("missing ReferenceGrant remains a permanent deny (no error)", func(t *testing.T) {
+		// No grant, no interceptor: the lookup completes and finds nothing -> permanent deny.
+		cl := fake.NewClientBuilder().WithScheme(scheme).Build()
+		valid, reason, _, err := validateTLSCertificateRefs(context.Background(), cl, gwNS, listener)
+		if err != nil {
+			t.Fatalf("genuine deny must not produce an error, got %v", err)
+		}
+		if valid {
+			t.Fatalf("expected valid=false for missing ReferenceGrant")
+		}
+		if reason != string(gatewayv1.ListenerReasonRefNotPermitted) {
+			t.Fatalf("reason = %q, want RefNotPermitted", reason)
+		}
+	})
 }

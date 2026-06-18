@@ -100,7 +100,12 @@ func evaluateListeners(ctx context.Context, cl client.Client, gw *gatewayv1.Gate
 
 		// For HTTPS listeners, validate TLS certificateRefs
 		if l.Protocol == gatewayv1.HTTPSProtocolType && resolvedRefsStatus == metav1.ConditionTrue {
-			valid, reason, msg := validateTLSCertificateRefs(ctx, cl, gw.Namespace, l)
+			valid, reason, msg, err := validateTLSCertificateRefs(ctx, cl, gw.Namespace, l)
+			if err != nil {
+				// Transient lookup failure (ReferenceGrant list or Secret read): bubble up so the
+				// Gateway reconcile requeues instead of recording a permanent listener failure.
+				return nil, false, err
+			}
 			if !valid {
 				resolvedRefsStatus = metav1.ConditionFalse
 				resolvedRefsReason = reason
@@ -225,23 +230,27 @@ func validateAllowedRouteKinds(l gatewayv1.Listener, gw *gatewayv1.Gateway) ([]g
 }
 
 // validateTLSCertificateRefs validates TLS certificate references for an HTTPS listener.
-// Returns (valid bool, reason string, message string).
-func validateTLSCertificateRefs(ctx context.Context, cl client.Client, gwNamespace string, l gatewayv1.Listener) (bool, string, string) {
+// Returns (valid bool, reason string, message string, err error). A non-nil err signals a
+// TRANSIENT lookup failure (ReferenceGrant list or Secret read failed) that the caller should
+// retry; in that case valid/reason/message are not meaningful. A completed validation returns a
+// nil err with valid reflecting the outcome (e.g. a genuine RefNotPermitted or NotFound is a
+// permanent valid=false with nil err).
+func validateTLSCertificateRefs(ctx context.Context, cl client.Client, gwNamespace string, l gatewayv1.Listener) (bool, string, string, error) {
 	if l.TLS == nil || len(l.TLS.CertificateRefs) == 0 {
 		// No TLS config, treat as valid (HTTP listener or HTTPS without explicit cert ref)
-		return true, string(gatewayv1.ListenerReasonResolvedRefs), "All references resolved"
+		return true, string(gatewayv1.ListenerReasonResolvedRefs), "All references resolved", nil
 	}
 
 	for _, certRef := range l.TLS.CertificateRefs {
 		// Validate the cert ref group/kind
 		if certRef.Group != nil && string(*certRef.Group) != "" && string(*certRef.Group) != "core" {
 			return false, string(gatewayv1.ListenerReasonInvalidCertificateRef),
-				fmt.Sprintf("Unsupported group %q for certificateRef", *certRef.Group)
+				fmt.Sprintf("Unsupported group %q for certificateRef", *certRef.Group), nil
 		}
 
 		if certRef.Kind != nil && string(*certRef.Kind) != "Secret" {
 			return false, string(gatewayv1.ListenerReasonInvalidCertificateRef),
-				fmt.Sprintf("Unsupported kind %q for certificateRef; only Secret is supported", *certRef.Kind)
+				fmt.Sprintf("Unsupported kind %q for certificateRef; only Secret is supported", *certRef.Kind), nil
 		}
 
 		// Determine the namespace
@@ -251,9 +260,15 @@ func validateTLSCertificateRefs(ctx context.Context, cl client.Client, gwNamespa
 		}
 
 		if ns != gwNamespace {
-			if !crossNamespaceSecretReferenceGrantPermitted(ctx, cl, gwNamespace, ns, string(certRef.Name)) {
+			permitted, err := crossNamespaceSecretReferenceGrantPermitted(ctx, cl, gwNamespace, ns, string(certRef.Name))
+			if err != nil {
+				// Transient: the ReferenceGrant lookup failed. Surface for retry rather than
+				// reporting a permanent RefNotPermitted.
+				return false, "", "", err
+			}
+			if !permitted {
 				return false, string(gatewayv1.ListenerReasonRefNotPermitted),
-					fmt.Sprintf("no ReferenceGrant in %q allowing Gateway from %q to Secret %q", ns, gwNamespace, certRef.Name)
+					fmt.Sprintf("no ReferenceGrant in %q allowing Gateway from %q to Secret %q", ns, gwNamespace, certRef.Name), nil
 			}
 		}
 
@@ -262,36 +277,36 @@ func validateTLSCertificateRefs(ctx context.Context, cl client.Client, gwNamespa
 		if err := cl.Get(ctx, client.ObjectKey{Name: string(certRef.Name), Namespace: ns}, secret); err != nil {
 			if apierrors.IsNotFound(err) {
 				return false, string(gatewayv1.ListenerReasonInvalidCertificateRef),
-					fmt.Sprintf("Secret %s/%s not found", ns, certRef.Name)
+					fmt.Sprintf("Secret %s/%s not found", ns, certRef.Name), nil
 			}
-			// Other errors (permissions, etc.) - treat as invalid
-			return false, string(gatewayv1.ListenerReasonInvalidCertificateRef),
-				fmt.Sprintf("Failed to get Secret %s/%s", ns, certRef.Name)
+			// Transient read failure (API server unavailable, throttling, etc.): surface for
+			// retry rather than latching a permanent InvalidCertificateRef.
+			return false, "", "", fmt.Errorf("get Secret %s/%s: %w", ns, certRef.Name, err)
 		}
 
 		// Validate that the secret has required TLS data
 		if secret.Type != corev1.SecretTypeTLS {
 			return false, string(gatewayv1.ListenerReasonInvalidCertificateRef),
-				fmt.Sprintf("Secret %s/%s is not of type kubernetes.io/tls", ns, certRef.Name)
+				fmt.Sprintf("Secret %s/%s is not of type kubernetes.io/tls", ns, certRef.Name), nil
 		}
 
 		if _, hasCert := secret.Data["tls.crt"]; !hasCert {
 			return false, string(gatewayv1.ListenerReasonInvalidCertificateRef),
-				fmt.Sprintf("Secret %s/%s does not contain tls.crt", ns, certRef.Name)
+				fmt.Sprintf("Secret %s/%s does not contain tls.crt", ns, certRef.Name), nil
 		}
 
 		if _, hasKey := secret.Data["tls.key"]; !hasKey {
 			return false, string(gatewayv1.ListenerReasonInvalidCertificateRef),
-				fmt.Sprintf("Secret %s/%s does not contain tls.key", ns, certRef.Name)
+				fmt.Sprintf("Secret %s/%s does not contain tls.key", ns, certRef.Name), nil
 		}
 
 		if _, err := cryptotls.X509KeyPair(secret.Data["tls.crt"], secret.Data["tls.key"]); err != nil {
 			return false, string(gatewayv1.ListenerReasonInvalidCertificateRef),
-				fmt.Sprintf("Secret %s/%s contains malformed TLS certificate data", ns, certRef.Name)
+				fmt.Sprintf("Secret %s/%s contains malformed TLS certificate data", ns, certRef.Name), nil
 		}
 	}
 
-	return true, string(gatewayv1.ListenerReasonResolvedRefs), "All references resolved"
+	return true, string(gatewayv1.ListenerReasonResolvedRefs), "All references resolved", nil
 }
 
 // validateParametersRef checks if the Gateway's spec.infrastructure.parametersRef is valid.

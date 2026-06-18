@@ -115,6 +115,14 @@ Common RBAC rules shared between ClusterRole (global) and Role (scoped)
 - apiGroups:
   - ""
   resources:
+  - nodes
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - ""
+  resources:
   - namespaces
   verbs:
   - get

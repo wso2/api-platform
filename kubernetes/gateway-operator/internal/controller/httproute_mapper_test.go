@@ -35,7 +35,10 @@ import (
 )
 
 func buildAPIConfigFromHTTPRouteForTest(ctx context.Context, cl client.Client, route *gatewayv1.HTTPRoute, clusterDomain string) (*apiv1.APIConfigData, error) {
-	resolution := resolveHTTPRouteBackendRefs(ctx, cl, route, clusterDomain)
+	resolution, err := resolveHTTPRouteBackendRefs(ctx, cl, route, clusterDomain)
+	if err != nil {
+		return nil, err
+	}
 	return BuildAPIConfigFromHTTPRoute(ctx, cl, nil, route, parentGatewayRefs(route), resolution, clusterDomain, nil)
 }
 

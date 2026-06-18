@@ -23,6 +23,7 @@ import (
 	"math"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -2718,6 +2719,171 @@ func TestBuildRedirectAction(t *testing.T) {
 	assert.Nil(t, buildRedirectAction(404, loc("http://example.org")))
 	// 3xx without a Location header is not a representable redirect.
 	assert.Nil(t, buildRedirectAction(302, nil))
+}
+
+// TestDirectResponseMatch_MirrorsNormalRoute guards the fix for the reviewer concern
+// "Keep direct-response matching identical to normal route matching." A direct-response /
+// redirect route must match exactly the same requests its non-direct counterpart would.
+// Before the fix, setDirectResponseMatch had drifted: parameterized ({param}) paths fell
+// back to a literal-escaped regex, and RegularExpression header matches were downgraded to
+// exact matches — so direct-response routes matched a different request set. Both kinds of
+// route now build their matchers through the same shared helpers, so these assert parity.
+func TestDirectResponseMatch_MirrorsNormalRoute(t *testing.T) {
+	logger := createTestLogger()
+	translator := NewTranslator(logger, testRouterConfig(), nil, testConfig())
+
+	rdc := &models.RuntimeDeployConfig{
+		UpstreamClusters: map[string]*models.UpstreamCluster{
+			"main": {BasePath: "", Endpoints: []models.Endpoint{{Host: "echo", Port: 80}}},
+		},
+	}
+
+	t.Run("parameterized path uses the same regex matcher", func(t *testing.T) {
+		base := &models.Route{
+			Method:        "GET",
+			Path:          "/api/users/{id}",
+			OperationPath: "/users/{id}",
+			Upstream:      models.RouteUpstream{ClusterKey: "main"},
+		}
+		// Normal route.
+		normal := translator.createRouteFromRDC("GET|/api/users/{id}|", base, rdc)
+		require.NotNil(t, normal)
+		normalRegex, ok := normal.GetMatch().GetPathSpecifier().(*route.RouteMatch_SafeRegex)
+		require.True(t, ok, "normal route should use safe_regex, got %T", normal.GetMatch().GetPathSpecifier())
+
+		// Direct-response route on the same operation.
+		dr := *base
+		dr.DirectResponse = &models.RouteDirectResponse{StatusCode: 418}
+		direct := translator.createRouteFromRDC("GET|/api/users/{id}|", &dr, rdc)
+		require.NotNil(t, direct)
+		directRegex, ok := direct.GetMatch().GetPathSpecifier().(*route.RouteMatch_SafeRegex)
+		require.True(t, ok, "direct-response route should use safe_regex, got %T", direct.GetMatch().GetPathSpecifier())
+
+		// Both must use the parameterized regex (param expanded), NOT a literal-escaped {id}.
+		assert.Equal(t, "^/api/users/[^/]+$", directRegex.SafeRegex.GetRegex())
+		assert.Equal(t, normalRegex.SafeRegex.GetRegex(), directRegex.SafeRegex.GetRegex(),
+			"direct-response path matcher must be identical to the normal route's")
+	})
+
+	t.Run("RegularExpression header match is not downgraded to exact", func(t *testing.T) {
+		base := &models.Route{
+			Method:        "GET",
+			Path:          "/svc/v1/things",
+			OperationPath: "/things",
+			Upstream:      models.RouteUpstream{ClusterKey: "main"},
+			MatchHeaders: []models.RouteHeaderMatch{
+				{Name: "X-Flavor", Type: "RegularExpression", Value: "red|blue"},
+			},
+		}
+		dr := *base
+		dr.DirectResponse = &models.RouteDirectResponse{StatusCode: 503}
+		direct := translator.createRouteFromRDC("GET|/svc/v1/things|", &dr, rdc)
+		require.NotNil(t, direct)
+
+		// Find the X-Flavor header matcher (lower-cased) and assert it is a SafeRegexMatch.
+		var flavor *route.HeaderMatcher
+		for _, h := range direct.GetMatch().GetHeaders() {
+			if h.GetName() == "x-flavor" {
+				flavor = h
+				break
+			}
+		}
+		require.NotNil(t, flavor, "expected an x-flavor header matcher")
+		rx, ok := flavor.GetHeaderMatchSpecifier().(*route.HeaderMatcher_SafeRegexMatch)
+		require.True(t, ok, "RegularExpression header match must stay a safe_regex, got %T", flavor.GetHeaderMatchSpecifier())
+		assert.Equal(t, "red|blue", rx.SafeRegexMatch.GetRegex())
+	})
+
+	t.Run("plain and exact paths are unchanged", func(t *testing.T) {
+		// Plain path -> default trailing-slash regex (same as before the refactor).
+		plain := &models.Route{
+			Method: "GET", Path: "/p/plain", OperationPath: "/plain",
+			DirectResponse: &models.RouteDirectResponse{StatusCode: 200},
+			Upstream:       models.RouteUpstream{ClusterKey: "main"},
+		}
+		rp := translator.createRouteFromRDC("GET|/p/plain|", plain, rdc)
+		require.NotNil(t, rp)
+		rpRegex, ok := rp.GetMatch().GetPathSpecifier().(*route.RouteMatch_SafeRegex)
+		require.True(t, ok)
+		assert.Equal(t, "^/p/plain/?$", rpRegex.SafeRegex.GetRegex())
+
+		// Exact path -> native exact matcher (so the sorter ranks it above regex/prefix).
+		exact := &models.Route{
+			Method: "GET", Path: "/p/exact", OperationPath: "/exact", PathMatchType: "Exact",
+			DirectResponse: &models.RouteDirectResponse{StatusCode: 200},
+			Upstream:       models.RouteUpstream{ClusterKey: "main"},
+		}
+		re := translator.createRouteFromRDC("GET|/p/exact|", exact, rdc)
+		require.NotNil(t, re)
+		rePath, ok := re.GetMatch().GetPathSpecifier().(*route.RouteMatch_Path)
+		require.True(t, ok, "exact direct-response path should use native matcher, got %T", re.GetMatch().GetPathSpecifier())
+		assert.Equal(t, "/p/exact", rePath.Path)
+	})
+}
+
+// TestCreateWeightedCluster_TLS guards the fix for the reviewer concern
+// "Configure TLS for weighted HTTPS upstreams." A multi-endpoint (weighted) upstream
+// definition whose endpoints are HTTPS must be dialed over TLS, mirroring the single-endpoint
+// createCluster path. Before the fix createWeightedCluster discarded the scheme and produced a
+// plain cluster with no transport socket, silently downgrading HTTPS weighted upstreams to
+// plaintext.
+func TestCreateWeightedCluster_TLS(t *testing.T) {
+	logger := createTestLogger()
+	translator := NewTranslator(logger, testRouterConfig(), nil, testConfig())
+
+	w := func(n int) *int { return &n }
+	endpoints := []models.Endpoint{
+		{Host: "a.example.com", Port: 443, Weight: w(70)},
+		{Host: "b.example.com", Port: 443, Weight: w(30)},
+	}
+
+	t.Run("https weighted upstream gets per-endpoint TLS transport sockets", func(t *testing.T) {
+		c := translator.createWeightedCluster("upstream_secure", endpoints, &models.UpstreamTLS{Enabled: true}, nil)
+		require.NotNil(t, c)
+
+		// One transport socket match per endpoint, each carrying a TLS transport socket.
+		require.Len(t, c.GetTransportSocketMatches(), len(endpoints),
+			"each HTTPS endpoint must get its own transport socket match")
+		for i, tsm := range c.GetTransportSocketMatches() {
+			matchID := strconv.Itoa(i)
+			assert.Equal(t, "ts"+matchID, tsm.GetName())
+			assert.Equal(t, matchID, tsm.GetMatch().GetFields()["lb_id"].GetStringValue())
+			require.NotNil(t, tsm.GetTransportSocket())
+			assert.Equal(t, "envoy.transport_sockets.tls", tsm.GetTransportSocket().GetName())
+
+			// The transport socket must hold an UpstreamTlsContext with the endpoint's host as SNI.
+			tc := &tlsv3.UpstreamTlsContext{}
+			require.NoError(t, tsm.GetTransportSocket().GetTypedConfig().UnmarshalTo(tc))
+			assert.Equal(t, endpoints[i].Host, tc.GetSni(),
+				"each endpoint's TLS context must use its own hostname as SNI")
+		}
+
+		// Every LbEndpoint must be tagged with the matching lb_id so Envoy selects its socket.
+		lbs := c.GetLoadAssignment().GetEndpoints()[0].GetLbEndpoints()
+		require.Len(t, lbs, len(endpoints))
+		for i, lb := range lbs {
+			md := lb.GetMetadata().GetFilterMetadata()["envoy.transport_socket_match"]
+			require.NotNil(t, md, "HTTPS endpoint must carry transport_socket_match metadata")
+			assert.Equal(t, strconv.Itoa(i), md.GetFields()["lb_id"].GetStringValue())
+		}
+	})
+
+	t.Run("plaintext weighted upstream is unchanged (no transport socket)", func(t *testing.T) {
+		plain := []models.Endpoint{
+			{Host: "a.internal", Port: 8080, Weight: w(1)},
+			{Host: "b.internal", Port: 8080, Weight: w(1)},
+		}
+		// Both nil TLS and explicitly-disabled TLS must produce a plain cluster.
+		for _, tls := range []*models.UpstreamTLS{nil, {Enabled: false}} {
+			c := translator.createWeightedCluster("upstream_plain", plain, tls, nil)
+			require.NotNil(t, c)
+			assert.Empty(t, c.GetTransportSocketMatches(),
+				"plaintext weighted upstream must not get transport socket matches")
+			for _, lb := range c.GetLoadAssignment().GetEndpoints()[0].GetLbEndpoints() {
+				assert.Nil(t, lb.GetMetadata(), "plaintext endpoint must not carry transport-socket metadata")
+			}
+		}
+	})
 }
 
 // parseDurationAllowZero must accept exactly what the CRD admission controller accepts

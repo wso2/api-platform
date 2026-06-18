@@ -22,11 +22,12 @@ import (
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
 
-const localClusterNodeAddressFallback = "127.0.0.1"
-
 // resolveGatewayAddressesFromService derives Gateway status addresses from the
-// gateway-runtime Service fronting the data plane.
-func resolveGatewayAddressesFromService(svc *corev1.Service) []gatewayv1.GatewayStatusAddress {
+// gateway-runtime Service fronting the data plane. For NodePort services the caller
+// resolves the addresses separately (override or derived node addresses) and passes
+// them in via nodePortAddresses, since that requires cluster/config state this pure
+// function does not have.
+func resolveGatewayAddressesFromService(svc *corev1.Service, nodePortAddresses []gatewayv1.GatewayStatusAddress) []gatewayv1.GatewayStatusAddress {
 	if svc == nil {
 		return nil
 	}
@@ -35,7 +36,7 @@ func resolveGatewayAddressesFromService(svc *corev1.Service) []gatewayv1.Gateway
 	case corev1.ServiceTypeLoadBalancer:
 		return loadBalancerGatewayAddresses(svc)
 	case corev1.ServiceTypeNodePort:
-		return nodePortGatewayAddresses()
+		return nodePortAddresses
 	case corev1.ServiceTypeExternalName:
 		if svc.Spec.ExternalName == "" {
 			return nil
@@ -69,8 +70,35 @@ func clusterIPGatewayAddresses(clusterIP string) []gatewayv1.GatewayStatusAddres
 	return []gatewayv1.GatewayStatusAddress{gatewayIPAddress(clusterIP)}
 }
 
-func nodePortGatewayAddresses() []gatewayv1.GatewayStatusAddress {
-	return []gatewayv1.GatewayStatusAddress{gatewayIPAddress(localClusterNodeAddressFallback)}
+// nodePortGatewayAddressesFromNodes derives Gateway status addresses for a NodePort
+// Service from the cluster's Nodes, preferring externally reachable addresses
+// (NodeExternalIP) and falling back to NodeInternalIP only when no external address
+// exists. Returns nil when no usable node address is found, so the Gateway advertises
+// no address rather than an unreachable one.
+func nodePortGatewayAddressesFromNodes(nodes []corev1.Node) []gatewayv1.GatewayStatusAddress {
+	var external, internal []gatewayv1.GatewayStatusAddress
+	seenExternal := make(map[string]bool)
+	seenInternal := make(map[string]bool)
+	for _, n := range nodes {
+		for _, addr := range n.Status.Addresses {
+			switch addr.Type {
+			case corev1.NodeExternalIP:
+				if addr.Address != "" && !seenExternal[addr.Address] {
+					seenExternal[addr.Address] = true
+					external = append(external, gatewayIPAddress(addr.Address))
+				}
+			case corev1.NodeInternalIP:
+				if addr.Address != "" && !seenInternal[addr.Address] {
+					seenInternal[addr.Address] = true
+					internal = append(internal, gatewayIPAddress(addr.Address))
+				}
+			}
+		}
+	}
+	if len(external) > 0 {
+		return external
+	}
+	return internal
 }
 
 func gatewayIPAddress(value string) gatewayv1.GatewayStatusAddress {

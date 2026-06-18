@@ -42,23 +42,34 @@ import (
 // the matching ServicePort's targetPort. Connecting to a headless backend on the Service port
 // (when targetPort differs) fails the TCP connect and surfaces as a 503.
 //
-// When the targetPort is a named port or is left unset (Kubernetes then defaults it to the
-// Service port), it cannot be resolved to a number from the Service spec alone, so we fall
-// back to the Service port.
-func serviceConnectionPort(svc *corev1.Service, servicePort int32) int32 {
+// A numeric targetPort is used directly. An unset targetPort is defaulted by Kubernetes to
+// the Service port (so a persisted Service reports it as that number), and is handled by the
+// numeric branch. A NAMED targetPort, however, resolves to a containerPort number defined in
+// the pod spec that the Service spec alone cannot give us and that may differ from the Service
+// port; silently using the Service port could build an upstream URL that fails the pod TCP
+// connect (a silent 503). For headless backends we therefore fail resolution explicitly for a
+// named targetPort rather than returning a port that may be wrong.
+func serviceConnectionPort(svc *corev1.Service, servicePort int32) (int32, error) {
 	if svc == nil || svc.Spec.ClusterIP != corev1.ClusterIPNone {
-		return servicePort
+		return servicePort, nil
 	}
 	for _, p := range svc.Spec.Ports {
 		if p.Port != servicePort {
 			continue
 		}
+		if p.TargetPort.Type == intstr.String {
+			return 0, newInvalidHTTPRouteConfigError(
+				"headless service %s/%s port %d uses named targetPort %q; named target ports are not "+
+					"supported for headless backends, use a numeric targetPort",
+				svc.Namespace, svc.Name, servicePort, p.TargetPort.StrVal,
+			)
+		}
 		if p.TargetPort.Type == intstr.Int && p.TargetPort.IntVal > 0 {
-			return p.TargetPort.IntVal
+			return p.TargetPort.IntVal, nil
 		}
 		break
 	}
-	return servicePort
+	return servicePort, nil
 }
 
 // HTTPRouteBackendRefError is a permanent backend reference resolution failure with a Gateway API reason.
@@ -126,8 +137,11 @@ type HTTPRouteBackendResolution struct {
 	PlaceholderURL      string
 }
 
-// resolveHTTPRouteBackendRefs resolves every backendRef on the route independently.
-func resolveHTTPRouteBackendRefs(ctx context.Context, c client.Client, route *gatewayv1.HTTPRoute, clusterDomain string) *HTTPRouteBackendResolution {
+// resolveHTTPRouteBackendRefs resolves every backendRef on the route independently. It returns
+// a non-nil error only for TRANSIENT failures (e.g. an API read error looking up a Service) so
+// the caller can retry the whole reconcile; permanent per-ref failures (NotFound, invalid kind,
+// unsupported port, etc.) are recorded on the returned resolution and the error is nil.
+func resolveHTTPRouteBackendRefs(ctx context.Context, c client.Client, route *gatewayv1.HTTPRoute, clusterDomain string) (*HTTPRouteBackendResolution, error) {
 	out := &HTTPRouteBackendResolution{AllResolved: true}
 	dnsBase := effectiveClusterDNSBase(clusterDomain)
 	routeNS := route.Namespace
@@ -188,14 +202,15 @@ func resolveHTTPRouteBackendRefs(ctx context.Context, c client.Client, route *ga
 			svc := &corev1.Service{}
 			key := types.NamespacedName{Namespace: svcNS, Name: svcName}
 			if err := c.Get(ctx, key, svc); err != nil {
-				ref.OK = false
-				if apierrors.IsNotFound(err) {
-					ref.Reason = gatewayv1.RouteReasonBackendNotFound
-					ref.Message = fmt.Sprintf("backend Service %s not found", key.String())
-				} else {
-					ref.Reason = gatewayv1.RouteReasonBackendNotFound
-					ref.Message = fmt.Sprintf("get backend Service %s: %v", key.String(), err)
+				if !apierrors.IsNotFound(err) {
+					// Transient read failure (API server unavailable, timeout, throttling, etc.).
+					// Do NOT latch this as a permanent BackendNotFound: surface it so the caller
+					// retries the whole reconcile instead of treating it as a resolved failure.
+					return out, newTransientHTTPRouteConfigError("get backend Service %s: %v", key.String(), err)
 				}
+				ref.OK = false
+				ref.Reason = gatewayv1.RouteReasonBackendNotFound
+				ref.Message = fmt.Sprintf("backend Service %s not found", key.String())
 				out.Refs = append(out.Refs, ref)
 				out.recordFailure(ref.Reason, ref.Message)
 				continue
@@ -211,14 +226,23 @@ func resolveHTTPRouteBackendRefs(ctx context.Context, c client.Client, route *ga
 				continue
 			}
 
+			// Connect on the Service port for ClusterIP Services (kube-proxy translates to
+			// the target port); for headless Services connect directly to pods on the
+			// target port. ref.Port keeps the Service port for stable cluster naming.
+			connPort, err := serviceConnectionPort(svc, portNum)
+			if err != nil {
+				ref.OK = false
+				ref.Reason = gatewayv1.RouteReasonUnsupportedValue
+				ref.Message = err.Error()
+				out.Refs = append(out.Refs, ref)
+				out.recordFailure(ref.Reason, ref.Message)
+				continue
+			}
+
 			ref.OK = true
 			ref.ServiceNS = svcNS
 			ref.ServiceName = svcName
 			ref.Port = portNum
-			// Connect on the Service port for ClusterIP Services (kube-proxy translates to
-			// the target port); for headless Services connect directly to pods on the
-			// target port. ref.Port keeps the Service port for stable cluster naming.
-			connPort := serviceConnectionPort(svc, portNum)
 			ref.URL = fmt.Sprintf("http://%s.%s.svc.%s:%d", svcName, svcNS, dnsBase, connPort)
 			out.Refs = append(out.Refs, ref)
 			if out.PlaceholderURL == "" {
@@ -230,7 +254,7 @@ func resolveHTTPRouteBackendRefs(ctx context.Context, c client.Client, route *ga
 	if len(out.Refs) == 0 {
 		out.AllResolved = true
 	}
-	return out
+	return out, nil
 }
 
 func (r *HTTPRouteBackendResolution) recordFailure(reason gatewayv1.RouteConditionReason, message string) {

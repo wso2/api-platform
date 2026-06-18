@@ -280,7 +280,10 @@ func BuildAPIConfigFromHTTPRoute(ctx context.Context, c client.Client, route *ga
 }
 
 func firstBackendURL(ctx context.Context, c client.Client, route *gatewayv1.HTTPRoute, clusterDomain string) (string, error) {
-	res := resolveHTTPRouteBackendRefs(ctx, c, route, clusterDomain)
+	res, err := resolveHTTPRouteBackendRefs(ctx, c, route, clusterDomain)
+	if err != nil {
+		return "", err
+	}
 	if res.PlaceholderURL != "" {
 		return res.PlaceholderURL, nil
 	}
