@@ -533,6 +533,14 @@ func main() {
 		// Don't fail startup - gateway can run in degraded mode without control plane
 	}
 
+	// Wire the DP->CP push into the LLM/MCP deployment services so artifacts created through
+	// the service layer (notably the immutable-gateway loader, which bypasses the REST
+	// handlers) are pushed to the control plane, matching the REST API service behavior. The
+	// control plane client's own internal services are intentionally left unwired so
+	// CP-originated applies are never pushed back.
+	llmSvc.SetControlPlanePusher(cpClient, cfg.Controller.ControlPlane.DeploymentSyncEnabled)
+	mcpSvc.SetControlPlanePusher(cpClient, cfg.Controller.ControlPlane.DeploymentSyncEnabled)
+
 	restAPIService := restapi.NewRestAPIService(
 		configStore, db, snapshotManager, policyManager,
 		apiSvc, apiKeyXDSManager,

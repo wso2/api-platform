@@ -104,6 +104,14 @@ var (
 	ErrArtifactNotFound    = errors.New("artifact not found")
 	ErrArtifactExists      = errors.New("artifact already exists")
 	ErrArtifactInvalidKind = errors.New("invalid artifact kind")
+	// ErrArtifactReadOnly is returned when a mutating control-plane operation is
+	// attempted on a data-plane-originated (origin=DP) artifact. Such artifacts are
+	// read-only in the control plane; only documentation/OpenAPI updates are allowed.
+	ErrArtifactReadOnly = errors.New("artifact is read-only: it originated from a data-plane gateway")
+	// ErrArtifactDeployed is returned when a DP-originated artifact is deleted from the
+	// control plane while still deployed on one or more gateways. It can only be deleted
+	// once it is undeployed on all gateways it was deployed to.
+	ErrArtifactDeployed = errors.New("artifact is still deployed on a gateway and cannot be deleted")
 )
 
 var (

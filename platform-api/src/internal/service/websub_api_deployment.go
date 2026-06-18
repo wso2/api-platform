@@ -142,6 +142,10 @@ func (s *WebSubAPIDeploymentService) deployWebSubAPI(apiUUID string, req *api.De
 	if req == nil {
 		return nil, constants.ErrInvalidInput
 	}
+	// DP-originated artifacts are read-only in the control plane; deployment cannot be CP-initiated.
+	if err := ensureArtifactMutableByUUID(s.artifactRepo, apiUUID, orgID); err != nil {
+		return nil, err
+	}
 	if req.Base == "" {
 		return nil, constants.ErrDeploymentBaseRequired
 	}
@@ -260,6 +264,21 @@ func (s *WebSubAPIDeploymentService) deployWebSubAPI(apiUUID string, req *api.De
 
 // undeployWebSubAPIDeployment undeploys a WebSub API from a gateway
 func (s *WebSubAPIDeploymentService) undeployWebSubAPIDeployment(apiUUID string, deploymentId *string, gatewayId *string, orgID string) (*api.DeploymentResponse, error) {
+	// DP-originated artifacts are read-only in the control plane: their deploy/undeploy
+	// lifecycle is owned by the data-plane gateway, so the control plane must not
+	// initiate an undeployment for them.
+	if s.artifactRepo != nil {
+		artifact, err := s.artifactRepo.GetByUUID(apiUUID, orgID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to look up artifact origin: %w", err)
+		}
+		if artifact != nil {
+			if err := ensureOriginMutable(artifact.Origin); err != nil {
+				return nil, err
+			}
+		}
+	}
+
 	websubAPI, err := s.websubAPIRepo.GetByUUID(apiUUID, orgID)
 	if err != nil {
 		return nil, err
@@ -345,6 +364,12 @@ func (s *WebSubAPIDeploymentService) undeployWebSubAPIDeployment(apiUUID string,
 
 // restoreWebSubAPIDeployment restores a previously undeployed WebSub API deployment
 func (s *WebSubAPIDeploymentService) restoreWebSubAPIDeployment(apiUUID string, deploymentId *string, gatewayId *string, orgID string) (*api.DeploymentResponse, error) {
+	// DP-originated artifacts are read-only in the control plane; their deployment
+	// lifecycle is owned by the data-plane gateway, so restore cannot be CP-initiated.
+	if err := ensureArtifactMutableByUUID(s.artifactRepo, apiUUID, orgID); err != nil {
+		return nil, err
+	}
+
 	targetDeployment, err := s.deploymentRepo.GetWithContent(*deploymentId, apiUUID, orgID)
 	if err != nil {
 		return nil, err

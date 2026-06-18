@@ -566,7 +566,7 @@ type ControlPlaneConfig struct {
 	ReconnectMax          time.Duration `koanf:"reconnect_max"`           // Maximum retry delay
 	PollingInterval       time.Duration `koanf:"polling_interval"`        // Reconciliation polling interval
 	InsecureSkipVerify    bool          `koanf:"insecure_skip_verify"`    // Skip TLS certificate verification (insecure, dev/test only)
-	DeploymentPushEnabled bool          `koanf:"deployment_push_enabled"` // Push API deployments to control plane (default: false)
+	DeploymentSyncEnabled bool          `koanf:"deployment_sync_enabled"` // Enable two-way artifact/deployment sync with the control plane: DP->CP push and CP->DP pull (default: true)
 	SyncBatchSize         int           `koanf:"sync_batch_size"`         // Number of deployments to fetch per batch request during startup sync (default: 50)
 	// OAuth2 credentials for on-prem APIM API import (for bottom-up API deployment)
 	ApimOAuth2ClientID     string `koanf:"apim_oauth2_client_id"`     // APIM OAuth2 client ID
@@ -648,8 +648,8 @@ func LoadConfig(configPath string) (*Config, error) {
 			return "controller.controlplane.polling_interval"
 		case "controller_controlplane_insecure_skip_verify":
 			return "controller.controlplane.insecure_skip_verify"
-		case "controller_controlplane_deployment_push_enabled":
-			return "controller.controlplane.deployment_push_enabled"
+		case "controller_controlplane_deployment_sync_enabled":
+			return "controller.controlplane.deployment_sync_enabled"
 		case "controller_controlplane_sync_batch_size":
 			return "controller.controlplane.sync_batch_size"
 		case "immutable_gateway_enabled":
@@ -765,7 +765,7 @@ func defaultConfig() *Config {
 				ReconnectMax:          5 * time.Minute,
 				PollingInterval:       15 * time.Minute,
 				InsecureSkipVerify:    false,
-				DeploymentPushEnabled: false,
+				DeploymentSyncEnabled: true,
 				SyncBatchSize:         50,
 			},
 			EventHub: EventHubConfig{

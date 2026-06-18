@@ -129,14 +129,15 @@ func (s *WebSubAPIService) Create(orgUUID, createdBy string, req *api.WebSubAPI)
 	}
 
 	m := &model.WebSubAPI{
-		Handle:          handle,
+		Handle:           handle,
 		OrganizationUUID: orgUUID,
-		ProjectUUID:     req.ProjectId,
-		Name:            req.Name,
-		Description:     utils.ValueOrEmpty(req.Description),
-		CreatedBy:       createdBy,
-		Version:         req.Version,
-		LifeCycleStatus: lifeCycleStatus,
+		ProjectUUID:      req.ProjectId,
+		Name:             req.Name,
+		Description:      utils.ValueOrEmpty(req.Description),
+		CreatedBy:        createdBy,
+		Version:          req.Version,
+		LifeCycleStatus:  lifeCycleStatus,
+		Origin:           constants.OriginCP,
 		Configuration: model.WebSubAPIConfiguration{
 			Name:              req.Name,
 			Version:           req.Version,
@@ -232,6 +233,10 @@ func (s *WebSubAPIService) Update(orgUUID, handle, updatedBy string, req *api.We
 	if existing == nil {
 		return nil, constants.ErrWebSubAPINotFound
 	}
+	// DP-originated artifacts are read-only in the control plane.
+	if err := ensureOriginMutable(existing.Origin); err != nil {
+		return nil, err
+	}
 
 	transport := existing.Configuration.Transport
 	if req.Transport != nil && len(*req.Transport) > 0 {
@@ -293,6 +298,10 @@ func (s *WebSubAPIService) Delete(orgUUID, handle, deletedBy string) error {
 	}
 	if websubAPI == nil {
 		return constants.ErrWebSubAPINotFound
+	}
+	// DP-originated artifacts are read-only in the control plane and cannot be deleted from the CP.
+	if err := ensureOriginMutable(websubAPI.Origin); err != nil {
+		return err
 	}
 
 	// Get all gateways in the organization to broadcast deletion event
@@ -378,6 +387,7 @@ func mapWebSubAPIModelToAPI(m *model.WebSubAPI, apiUtil *utils.APIUtil) *api.Web
 		Channels:          *mapWebSubChannelsModelToAPI(m.Configuration.Channels),
 		AllChannels:       mapWebSubAllChannelPoliciesModelToAPI(m.Configuration.AllChannels),
 		SubscriptionPlans: subscriptionPlans,
+		ReadOnly:          utils.BoolPtr(m.Origin == constants.OriginDP),
 		CreatedAt:         utils.TimePtr(m.CreatedAt),
 		UpdatedAt:         utils.TimePtr(m.UpdatedAt),
 	}
@@ -524,6 +534,7 @@ func mapWebSubAPIModelToListItem(m *model.WebSubAPI) *api.WebSubAPIListItem {
 		ProjectId:       utils.StringPtrIfNotEmpty(m.ProjectUUID),
 		Context:         m.Configuration.Context,
 		LifeCycleStatus: &lifeCycleStatus,
+		ReadOnly:        utils.BoolPtr(m.Origin == constants.OriginDP),
 		CreatedAt:       utils.TimePtr(m.CreatedAt),
 		UpdatedAt:       utils.TimePtr(m.UpdatedAt),
 	}

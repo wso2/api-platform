@@ -7242,6 +7242,11 @@ components:
           readOnly: true
           description: Timestamp when the api was last updated
           example: "2023-10-12T10:30:00Z"
+        readOnly:
+          type: boolean
+          readOnly: true
+          description: True if the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane; false for control-plane created artifacts.
+          example: false
         upstream:
           $ref: "#/components/schemas/Upstream"
         lifeCycleStatus:
@@ -9160,6 +9165,11 @@ components:
           readOnly: true
           maxLength: 200
           example: jane.doe
+        readOnly:
+          type: boolean
+          readOnly: true
+          description: True if the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane; false for control-plane created artifacts.
+          example: false
         version:
           type: string
           description: |
@@ -9330,6 +9340,10 @@ components:
           type: string
           format: date-time
           example: 2025-11-25T10:30:00Z
+        readOnly:
+          type: boolean
+          description: True when the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane.
+          example: false
 
     LLMProviderTemplateListResponse:
       type: object
@@ -9673,6 +9687,11 @@ components:
           description: Username of the creator
           readOnly: true
           example: jane.doe
+        readOnly:
+          type: boolean
+          readOnly: true
+          description: True if the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane; false for control-plane created artifacts.
+          example: false
         version:
           type: string
           description: Semantic version of the LLM Provider
@@ -9805,6 +9824,10 @@ components:
         createdBy:
           type: string
           example: jane.doe
+        readOnly:
+          type: boolean
+          description: True when the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane.
+          example: false
         version:
           type: string
           example: v1.0
@@ -9911,6 +9934,11 @@ components:
           description: Username of the creator
           readOnly: true
           example: jane.doe
+        readOnly:
+          type: boolean
+          readOnly: true
+          description: True if the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane; false for control-plane created artifacts.
+          example: false
         version:
           type: string
           description: Semantic version of the LLM proxy
@@ -10036,6 +10064,10 @@ components:
           type: string
           format: date-time
           example: 2025-11-25T10:30:00Z
+        readOnly:
+          type: boolean
+          description: True when the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane.
+          example: false
 
     LLMProxyListResponse:
       type: object
@@ -10206,6 +10238,11 @@ components:
           description: Username of the creator
           readOnly: true
           example: jane.doe
+        readOnly:
+          type: boolean
+          readOnly: true
+          description: True if the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane; false for control-plane created artifacts.
+          example: false
         version:
           type: string
           description: Semantic version of the MCP proxy
@@ -10322,6 +10359,10 @@ components:
           type: string
           format: date-time
           example: 2025-11-25T10:30:00Z
+        readOnly:
+          type: boolean
+          description: True when the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane.
+          example: false
 
     MCPProxyListResponse:
       type: object
@@ -10478,6 +10519,10 @@ components:
           readOnly: true
           default: WebSubApi
           example: WebSubApi
+        readOnly:
+          type: boolean
+          description: True when the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane.
+          example: false
         createdBy:
           type: string
           description: Username of the creator
@@ -10518,6 +10563,10 @@ components:
             - DEPRECATED
             - RETIRED
           example: CREATED
+        readOnly:
+          type: boolean
+          description: True when the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane.
+          example: false
         createdAt:
           type: string
           format: date-time
@@ -10780,6 +10829,10 @@ components:
           readOnly: true
           default: WebBrokerApi
           example: WebBrokerApi
+        readOnly:
+          type: boolean
+          description: True when the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane.
+          example: false
         createdBy:
           type: string
           description: Username of the creator
@@ -10820,6 +10873,10 @@ components:
             - DEPRECATED
             - RETIRED
           example: CREATED
+        readOnly:
+          type: boolean
+          description: True when the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane.
+          example: false
         createdAt:
           type: string
           format: date-time

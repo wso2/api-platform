@@ -87,6 +87,9 @@ func (h *DeploymentHandler) DeployAPI(c *gin.Context) {
 	createdBy, _ := middleware.GetUsernameFromContext(c)
 	deployment, err := h.deploymentService.DeployAPIByHandle(apiId, &req, orgId, createdBy)
 	if err != nil {
+		if respondArtifactGuardError(c, err) {
+			return
+		}
 		if errors.Is(err, constants.ErrAPINotFound) {
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
 				"API not found"))
@@ -167,6 +170,10 @@ func (h *DeploymentHandler) UndeployDeployment(c *gin.Context) {
 	actor, _ := middleware.GetUsernameFromContext(c)
 	deployment, err := h.deploymentService.UndeployDeploymentByHandle(apiId, deploymentId, gatewayId, orgId, actor)
 	if err != nil {
+		// DP-originated artifacts are read-only: undeployment cannot be initiated from the CP.
+		if respondArtifactGuardError(c, err) {
+			return
+		}
 		if errors.Is(err, constants.ErrAPINotFound) {
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
 				"API not found"))
@@ -226,6 +233,10 @@ func (h *DeploymentHandler) RestoreDeployment(c *gin.Context) {
 	actor, _ := middleware.GetUsernameFromContext(c)
 	deployment, err := h.deploymentService.RestoreDeploymentByHandle(apiId, deploymentId, gatewayId, orgId, actor)
 	if err != nil {
+		// DP-originated artifacts are read-only: restore cannot be initiated from the CP.
+		if respondArtifactGuardError(c, err) {
+			return
+		}
 		if errors.Is(err, constants.ErrAPINotFound) {
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
 				"API not found"))

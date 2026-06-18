@@ -264,6 +264,11 @@ func (s *APIService) UpdateAPI(apiUUID string, req *api.UpdateRESTAPIRequest, or
 		return nil, constants.ErrAPINotFound
 	}
 
+	// DP-originated artifacts are read-only in the control plane.
+	if err := ensureOriginMutable(existingAPIModel.Origin); err != nil {
+		return nil, err
+	}
+
 	// Apply updates using shared helper
 	updatedAPI, err := s.applyAPIUpdates(existingAPIModel, req, orgUUID)
 	if err != nil {
@@ -301,6 +306,11 @@ func (s *APIService) DeleteAPI(apiUUID, orgUUID, deletedBy string) error {
 	}
 	if api.OrganizationID != orgUUID {
 		return constants.ErrAPINotFound
+	}
+
+	// DP-originated artifacts may only be deleted once undeployed on all gateways.
+	if err := ensureOriginDeletable(s.deploymentRepo, api.Origin, apiUUID, orgUUID); err != nil {
+		return err
 	}
 
 	// Get all gateways in the organization to broadcast deletion event.
@@ -1052,7 +1062,7 @@ func (s *APIService) ImportFromOpenAPI(userAPI *api.RESTAPI, url *string, defini
 }
 
 // ValidateAPI validates if an API with the given identifier or name+version combination exists within an organization
-func (s *APIService) ValidateAPI(params *api.ValidateRESTAPIParams, orgUUID string) (*api.RESTAPIValidationResponse, error) {
+func (s *APIService) ValidateAPI(params *dto.ValidateRESTAPIParams, orgUUID string) (*api.RESTAPIValidationResponse, error) {
 	var identifier, name, version string
 	if params != nil {
 		if params.Identifier != nil {
@@ -1340,6 +1350,7 @@ func (s *APIService) restAPIToProjectValidationAPI(restAPI *api.RESTAPI) *struct
 	Operations        []api.Operation                                         `json:"operations" yaml:"operations"`
 	Policies          *[]api.Policy                                           `json:"policies,omitempty" yaml:"policies,omitempty"`
 	ProjectId         openapi_types.UUID                                      `binding:"required" json:"projectId" yaml:"projectId"`
+	ReadOnly          *bool                                                   `json:"readOnly,omitempty" yaml:"readOnly,omitempty"`
 	SubscriptionPlans *[]string                                               `json:"subscriptionPlans,omitempty" yaml:"subscriptionPlans,omitempty"`
 	Transport         *[]string                                               `json:"transport,omitempty" yaml:"transport,omitempty"`
 	UpdatedAt         *time.Time                                              `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
@@ -1379,6 +1390,7 @@ func (s *APIService) restAPIToProjectValidationAPI(restAPI *api.RESTAPI) *struct
 		Operations        []api.Operation                                         `json:"operations" yaml:"operations"`
 		Policies          *[]api.Policy                                           `json:"policies,omitempty" yaml:"policies,omitempty"`
 		ProjectId         openapi_types.UUID                                      `binding:"required" json:"projectId" yaml:"projectId"`
+		ReadOnly          *bool                                                   `json:"readOnly,omitempty" yaml:"readOnly,omitempty"`
 		SubscriptionPlans *[]string                                               `json:"subscriptionPlans,omitempty" yaml:"subscriptionPlans,omitempty"`
 		Transport         *[]string                                               `json:"transport,omitempty" yaml:"transport,omitempty"`
 		UpdatedAt         *time.Time                                              `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
@@ -1397,6 +1409,7 @@ func (s *APIService) restAPIToProjectValidationAPI(restAPI *api.RESTAPI) *struct
 		Operations:        operations,
 		Policies:          restAPI.Policies,
 		ProjectId:         openapi_types.UUID{},
+		ReadOnly:          restAPI.ReadOnly,
 		SubscriptionPlans: restAPI.SubscriptionPlans,
 		Transport:         restAPI.Transport,
 		UpdatedAt:         restAPI.UpdatedAt,
@@ -1418,6 +1431,7 @@ func (s *APIService) restAPIToOpenAPIValidationAPI(restAPI *api.RESTAPI) *struct
 	Operations        []api.Operation                                  `json:"operations" yaml:"operations"`
 	Policies          *[]api.Policy                                    `json:"policies,omitempty" yaml:"policies,omitempty"`
 	ProjectId         openapi_types.UUID                               `binding:"required" json:"projectId" yaml:"projectId"`
+	ReadOnly          *bool                                            `json:"readOnly,omitempty" yaml:"readOnly,omitempty"`
 	SubscriptionPlans *[]string                                        `json:"subscriptionPlans,omitempty" yaml:"subscriptionPlans,omitempty"`
 	Transport         *[]string                                        `json:"transport,omitempty" yaml:"transport,omitempty"`
 	UpdatedAt         *time.Time                                       `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
@@ -1452,6 +1466,7 @@ func (s *APIService) restAPIToOpenAPIValidationAPI(restAPI *api.RESTAPI) *struct
 		Operations        []api.Operation                                  `json:"operations" yaml:"operations"`
 		Policies          *[]api.Policy                                    `json:"policies,omitempty" yaml:"policies,omitempty"`
 		ProjectId         openapi_types.UUID                               `binding:"required" json:"projectId" yaml:"projectId"`
+		ReadOnly          *bool                                            `json:"readOnly,omitempty" yaml:"readOnly,omitempty"`
 		SubscriptionPlans *[]string                                        `json:"subscriptionPlans,omitempty" yaml:"subscriptionPlans,omitempty"`
 		Transport         *[]string                                        `json:"transport,omitempty" yaml:"transport,omitempty"`
 		UpdatedAt         *time.Time                                       `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
@@ -1470,6 +1485,7 @@ func (s *APIService) restAPIToOpenAPIValidationAPI(restAPI *api.RESTAPI) *struct
 		Operations:        operations,
 		Policies:          restAPI.Policies,
 		ProjectId:         openapi_types.UUID{},
+		ReadOnly:          restAPI.ReadOnly,
 		SubscriptionPlans: restAPI.SubscriptionPlans,
 		Transport:         restAPI.Transport,
 		UpdatedAt:         restAPI.UpdatedAt,

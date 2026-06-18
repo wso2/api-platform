@@ -521,6 +521,81 @@ func TestGetDeploymentsWithState_MultipleGateways(t *testing.T) {
 	})
 }
 
+// createTestAPIWithOrigin inserts an artifact + rest_apis row with an explicit origin.
+// The organization/project are assumed to already exist (created via createTestAPI).
+func createTestAPIWithOrigin(t *testing.T, db *database.DB, apiUUID, handle, orgUUID, origin string) {
+	t.Helper()
+
+	artifactQuery := `
+		INSERT INTO artifacts (uuid, handle, name, version, kind, organization_uuid, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+	`
+	_, err := db.Exec(artifactQuery, apiUUID, handle, handle, "1.0.0", "RestApi", orgUUID)
+	if err != nil {
+		t.Fatalf("Failed to create test artifact: %v", err)
+	}
+
+	apiQuery := `
+		INSERT INTO rest_apis (uuid, description, created_by, project_uuid, lifecycle_status, transport, configuration, origin)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+	`
+	_, err = db.Exec(apiQuery, apiUUID, "desc", "test-user", "project-001", "CREATED", `["https"]`, "{}", origin)
+	if err != nil {
+		t.Fatalf("Failed to create test API: %v", err)
+	}
+}
+
+// TestGetControlPlaneDeploymentsByGateway_ExcludesGatewayOrigin verifies that data-plane-originated
+// (gateway_api) artifacts are excluded from the gateway sync feed, while control_plane-origin
+// artifacts are still returned. This guards against the "configuration already exists" error
+// caused by syncing a gateway's own pushed artifacts back down to it.
+func TestGetControlPlaneDeploymentsByGateway_ExcludesGatewayOrigin(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	repo := NewDeploymentRepo(db)
+
+	orgUUID := "org-001"
+	gatewayUUID := "gateway-001"
+
+	// createTestAPI seeds org + project + a control_plane-origin RestApi ("api-cp").
+	cpUUID := "api-cp"
+	createTestAPI(t, db, cpUUID, orgUUID)
+	createTestGateway(t, db, gatewayUUID, orgUUID)
+
+	// Add a data-plane-originated (gateway_api) artifact.
+	dpUUID := "api-dp"
+	createTestAPIWithOrigin(t, db, dpUUID, "test-api-dp", orgUUID, "gateway_api")
+
+	// Both artifacts are deployed to the same gateway.
+	insertDeployment(t, db, "deploy-cp", "CP Deployment", cpUUID, orgUUID, gatewayUUID, time.Now())
+	setDeploymentStatus(t, db, cpUUID, orgUUID, gatewayUUID, "deploy-cp", model.DeploymentStatusDeployed)
+
+	insertDeployment(t, db, "deploy-dp", "DP Deployment", dpUUID, orgUUID, gatewayUUID, time.Now())
+	setDeploymentStatus(t, db, dpUUID, orgUUID, gatewayUUID, "deploy-dp", model.DeploymentStatusDeployed)
+
+	deployments, err := repo.GetControlPlaneDeploymentsByGateway(gatewayUUID, orgUUID, nil)
+	if err != nil {
+		t.Fatalf("GetControlPlaneDeploymentsByGateway failed: %v", err)
+	}
+
+	for _, d := range deployments {
+		if d.ArtifactID == dpUUID {
+			t.Errorf("gateway_api-origin artifact %q should be excluded from the gateway sync feed", dpUUID)
+		}
+	}
+
+	foundCP := false
+	for _, d := range deployments {
+		if d.ArtifactID == cpUUID {
+			foundCP = true
+		}
+	}
+	if !foundCP {
+		t.Errorf("control_plane-origin artifact %q should be included in the gateway sync feed", cpUUID)
+	}
+}
+
 func TestMain(m *testing.M) {
 	// Allow GetConfig() to generate an ephemeral secret_encryption_key without failing.
 	os.Setenv("APIP_DEMO_MODE", "true")

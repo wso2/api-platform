@@ -341,6 +341,9 @@ func (h *LLMHandler) UpdateLLMProviderTemplate(c *gin.Context) {
 	updatedBy, _ := middleware.GetUsernameFromContext(c)
 	resp, err := h.templateService.Update(orgID, id, updatedBy, &req)
 	if err != nil {
+		if respondArtifactGuardError(c, err) {
+			return
+		}
 		switch {
 		case errors.Is(err, constants.ErrLLMProviderTemplateNotFound):
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "LLM provider template not found"))
@@ -373,6 +376,9 @@ func (h *LLMHandler) DeleteLLMProviderTemplate(c *gin.Context) {
 	deletedBy, _ := middleware.GetUsernameFromContext(c)
 
 	if err := h.templateService.Delete(orgID, id, deletedBy); err != nil {
+		if respondArtifactGuardError(c, err) {
+			return
+		}
 		switch {
 		case errors.Is(err, constants.ErrLLMProviderTemplateNotFound):
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "LLM provider template not found"))
@@ -548,6 +554,9 @@ func (h *LLMHandler) UpdateLLMProvider(c *gin.Context) {
 	updatedBy, _ := middleware.GetUsernameFromContext(c)
 	resp, err := h.providerService.Update(orgID, id, updatedBy, &req)
 	if err != nil {
+		if respondArtifactGuardError(c, err) {
+			return
+		}
 		switch {
 		case errors.Is(err, constants.ErrLLMProviderNotFound):
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "LLM provider not found"))
@@ -580,6 +589,9 @@ func (h *LLMHandler) DeleteLLMProvider(c *gin.Context) {
 	deletedBy, _ := middleware.GetUsernameFromContext(c)
 
 	if err := h.providerService.Delete(orgID, id, deletedBy); err != nil {
+		if respondArtifactGuardError(c, err) {
+			return
+		}
 		switch {
 		case errors.Is(err, constants.ErrLLMProviderNotFound):
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "LLM provider not found"))
@@ -769,6 +781,9 @@ func (h *LLMHandler) UpdateLLMProxy(c *gin.Context) {
 	updatedBy, _ := middleware.GetUsernameFromContext(c)
 	resp, err := h.proxyService.Update(orgID, id, updatedBy, &req)
 	if err != nil {
+		if respondArtifactGuardError(c, err) {
+			return
+		}
 		switch {
 		case errors.Is(err, constants.ErrLLMProxyNotFound):
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "LLM proxy not found"))
@@ -798,6 +813,9 @@ func (h *LLMHandler) DeleteLLMProxy(c *gin.Context) {
 	deletedBy, _ := middleware.GetUsernameFromContext(c)
 
 	if err := h.proxyService.Delete(orgID, id, deletedBy); err != nil {
+		if respondArtifactGuardError(c, err) {
+			return
+		}
 		switch {
 		case errors.Is(err, constants.ErrLLMProxyNotFound):
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "LLM proxy not found"))

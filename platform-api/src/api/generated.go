@@ -235,6 +235,18 @@ const (
 	OpenAPIValidationResponseApiLifeCycleStatusSTAGED     OpenAPIValidationResponseApiLifeCycleStatus = "STAGED"
 )
 
+// Defines values for OperationPolicyPathMethods.
+const (
+	OperationPolicyPathMethodsAsterisk OperationPolicyPathMethods = "*"
+	OperationPolicyPathMethodsDELETE   OperationPolicyPathMethods = "DELETE"
+	OperationPolicyPathMethodsGET      OperationPolicyPathMethods = "GET"
+	OperationPolicyPathMethodsHEAD     OperationPolicyPathMethods = "HEAD"
+	OperationPolicyPathMethodsOPTIONS  OperationPolicyPathMethods = "OPTIONS"
+	OperationPolicyPathMethodsPATCH    OperationPolicyPathMethods = "PATCH"
+	OperationPolicyPathMethodsPOST     OperationPolicyPathMethods = "POST"
+	OperationPolicyPathMethodsPUT      OperationPolicyPathMethods = "PUT"
+)
+
 // Defines values for OperationRequestMethod.
 const (
 	OperationRequestMethodDELETE  OperationRequestMethod = "DELETE"
@@ -311,14 +323,14 @@ const (
 
 // Defines values for RouteExceptionMethods.
 const (
-	Asterisk RouteExceptionMethods = "*"
-	DELETE   RouteExceptionMethods = "DELETE"
-	GET      RouteExceptionMethods = "GET"
-	HEAD     RouteExceptionMethods = "HEAD"
-	OPTIONS  RouteExceptionMethods = "OPTIONS"
-	PATCH    RouteExceptionMethods = "PATCH"
-	POST     RouteExceptionMethods = "POST"
-	PUT      RouteExceptionMethods = "PUT"
+	RouteExceptionMethodsAsterisk RouteExceptionMethods = "*"
+	RouteExceptionMethodsDELETE   RouteExceptionMethods = "DELETE"
+	RouteExceptionMethodsGET      RouteExceptionMethods = "GET"
+	RouteExceptionMethodsHEAD     RouteExceptionMethods = "HEAD"
+	RouteExceptionMethodsOPTIONS  RouteExceptionMethods = "OPTIONS"
+	RouteExceptionMethodsPATCH    RouteExceptionMethods = "PATCH"
+	RouteExceptionMethodsPOST     RouteExceptionMethods = "POST"
+	RouteExceptionMethodsPUT      RouteExceptionMethods = "PUT"
 )
 
 // Defines values for SubscriptionStatus.
@@ -1055,6 +1067,9 @@ type CreateRESTAPIRequest struct {
 	// ProjectId ID of the project this API belongs to
 	ProjectId openapi_types.UUID `binding:"required" json:"projectId" yaml:"projectId"`
 
+	// ReadOnly True if the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane; false for control-plane created artifacts.
+	ReadOnly *bool `json:"readOnly,omitempty" yaml:"readOnly,omitempty"`
+
 	// SubscriptionPlans List of subscription plan names enabled for this API (e.g. Gold, Silver).
 	// When set, only these plans can be used when subscribing to the API.
 	SubscriptionPlans *[]string `json:"subscriptionPlans,omitempty" yaml:"subscriptionPlans,omitempty"`
@@ -1429,6 +1444,29 @@ type GatewayResponse struct {
 // GatewayResponseFunctionalityType Type of gateway functionality
 type GatewayResponseFunctionalityType string
 
+// GatewayStatusListResponse List of gateway status information for polling
+type GatewayStatusListResponse struct {
+	// Count Number of items in current response
+	Count      int                     `binding:"required" json:"count" yaml:"count"`
+	List       []GatewayStatusResponse `binding:"required" json:"list" yaml:"list"`
+	Pagination Pagination              `json:"pagination" yaml:"pagination"`
+}
+
+// GatewayStatusResponse Lightweight gateway status information optimized for frequent polling
+type GatewayStatusResponse struct {
+	// Id Unique identifier for the gateway
+	Id *openapi_types.UUID `json:"id,omitempty" yaml:"id,omitempty"`
+
+	// IsActive Indicates if the gateway is currently connected to the platform via WebSocket
+	IsActive *bool `json:"isActive,omitempty" yaml:"isActive,omitempty"`
+
+	// IsCritical Whether the gateway is critical for production
+	IsCritical *bool `json:"isCritical,omitempty" yaml:"isCritical,omitempty"`
+
+	// Name URL-friendly gateway identifier
+	Name *string `json:"name,omitempty" yaml:"name,omitempty"`
+}
+
 // GitRepoBranch defines model for GitRepoBranch.
 type GitRepoBranch struct {
 	// IsDefault Whether this branch is the default branch
@@ -1558,6 +1596,9 @@ type ImportAPIProjectRequest struct {
 		// ProjectId ID of the project this API belongs to
 		ProjectId openapi_types.UUID `binding:"required" json:"projectId" yaml:"projectId"`
 
+		// ReadOnly True if the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane; false for control-plane created artifacts.
+		ReadOnly *bool `json:"readOnly,omitempty" yaml:"readOnly,omitempty"`
+
 		// SubscriptionPlans List of subscription plan names enabled for this API (e.g. Gold, Silver).
 		// When set, only these plans can be used when subscribing to the API.
 		SubscriptionPlans *[]string `json:"subscriptionPlans,omitempty" yaml:"subscriptionPlans,omitempty"`
@@ -1672,26 +1713,6 @@ type LLMPolicyPath struct {
 // LLMPolicyPathMethods defines model for LLMPolicyPath.Methods.
 type LLMPolicyPathMethods string
 
-// OperationPolicy defines model for OperationPolicy.
-type OperationPolicy struct {
-	// ExecutionCondition Condition under which the policy is executed
-	ExecutionCondition *string `json:"executionCondition,omitempty" yaml:"executionCondition,omitempty"`
-
-	Name  string                `binding:"required" json:"name" yaml:"name"`
-	Paths []OperationPolicyPath `binding:"required" json:"paths" yaml:"paths"`
-
-	Version string `binding:"required" json:"version" yaml:"version"`
-}
-
-// OperationPolicyPath defines model for OperationPolicyPath.
-type OperationPolicyPath struct {
-	Methods []string `binding:"required" json:"methods" yaml:"methods"`
-
-	// Params Policy parameters (key-value pairs specific to the policy)
-	Params map[string]interface{} `binding:"required" json:"params" yaml:"params"`
-	Path   string                 `binding:"required" json:"path" yaml:"path"`
-}
-
 // LLMProvider defines model for LLMProvider.
 type LLMProvider struct {
 	AccessControl LLMAccessControl `json:"accessControl" yaml:"accessControl"`
@@ -1708,6 +1729,9 @@ type LLMProvider struct {
 	// Description Description of the LLM provider
 	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
 
+	// GlobalPolicies Global (api-level) policies applied across ALL operations as one shared scope, evaluated before operation-level policies.
+	GlobalPolicies *[]Policy `json:"globalPolicies,omitempty" yaml:"globalPolicies,omitempty"`
+
 	// Id Unique handle for the provider
 	Id string `binding:"required" json:"id" yaml:"id"`
 
@@ -1720,17 +1744,18 @@ type LLMProvider struct {
 	// Openapi OpenAPI specification (JSON or YAML) for the provider endpoint
 	Openapi *string `json:"openapi,omitempty" yaml:"openapi,omitempty"`
 
-	// GlobalPolicies List of policies applied at the API level (shared rate-limit bucket across all operations)
-	GlobalPolicies *[]Policy `json:"globalPolicies,omitempty" yaml:"globalPolicies,omitempty"`
-
-	// OperationPolicies List of policies applied per operation (independent rate-limit bucket per resource)
+	// OperationPolicies Operation-level policies scoped to specific paths/methods, evaluated after global policies.
 	OperationPolicies *[]OperationPolicy `json:"operationPolicies,omitempty" yaml:"operationPolicies,omitempty"`
 
-	// Policies Deprecated: use operationPolicies instead. List of policies applied only to this operation (overrides or adds to API-level policies)
+	// Policies DEPRECATED - use operationPolicies. Still honoured (treated identically to operationPolicies).
+	// Deprecated: this property has been marked as deprecated upstream, but no `x-deprecated-reason` was set
 	Policies *[]LLMPolicy `json:"policies,omitempty" yaml:"policies,omitempty"`
 
 	// RateLimiting Rate limiting configuration for an LLM provider at provider and consumer levels.
 	RateLimiting *LLMRateLimitingConfig `json:"rateLimiting,omitempty" yaml:"rateLimiting,omitempty"`
+
+	// ReadOnly True if the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane; false for control-plane created artifacts.
+	ReadOnly *bool `json:"readOnly,omitempty" yaml:"readOnly,omitempty"`
 
 	// Security Defines security mechanisms (API key, OAuth2) applicable to the API
 	Security *SecurityConfig `json:"security,omitempty" yaml:"security,omitempty"`
@@ -1762,15 +1787,18 @@ type LLMProviderAPIKeyListResponse struct {
 
 // LLMProviderListItem defines model for LLMProviderListItem.
 type LLMProviderListItem struct {
-	CreatedAt   *time.Time                 `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
-	CreatedBy   *string                    `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
-	Description *string                    `json:"description,omitempty" yaml:"description,omitempty"`
-	Id          *string                    `json:"id,omitempty" yaml:"id,omitempty"`
-	Name        *string                    `json:"name,omitempty" yaml:"name,omitempty"`
-	Status      *LLMProviderListItemStatus `json:"status,omitempty" yaml:"status,omitempty"`
-	Template    *string                    `json:"template,omitempty" yaml:"template,omitempty"`
-	UpdatedAt   *time.Time                 `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
-	Version     *string                    `json:"version,omitempty" yaml:"version,omitempty"`
+	CreatedAt   *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+	CreatedBy   *string    `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
+	Description *string    `json:"description,omitempty" yaml:"description,omitempty"`
+	Id          *string    `json:"id,omitempty" yaml:"id,omitempty"`
+	Name        *string    `json:"name,omitempty" yaml:"name,omitempty"`
+
+	// ReadOnly True when the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane.
+	ReadOnly  *bool                      `json:"readOnly,omitempty" yaml:"readOnly,omitempty"`
+	Status    *LLMProviderListItemStatus `json:"status,omitempty" yaml:"status,omitempty"`
+	Template  *string                    `json:"template,omitempty" yaml:"template,omitempty"`
+	UpdatedAt *time.Time                 `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+	Version   *string                    `json:"version,omitempty" yaml:"version,omitempty"`
 }
 
 // LLMProviderListItemStatus defines model for LLMProviderListItem.Status.
@@ -1820,8 +1848,9 @@ type LLMProviderTemplate struct {
 	Metadata  *LLMProviderTemplateMetadata `json:"metadata,omitempty" yaml:"metadata,omitempty"`
 
 	// Name Human-readable LLM Template name
-	Name string `binding:"required" json:"name" yaml:"name"`
-
+	Name         string                `binding:"required" json:"name" yaml:"name"`
+	// ReadOnly True if the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane; false for control-plane created artifacts.
+	ReadOnly         *bool                                `json:"readOnly,omitempty" yaml:"readOnly,omitempty"`
 	// Openapi OpenAPI specification content (JSON or YAML) for the provider, when
 	// uploaded/pasted. Use metadata.openapiSpecUrl instead to reference the
 	// spec by URL.
@@ -1877,6 +1906,8 @@ type LLMProviderTemplateListItem struct {
 	// ManagedBy Who manages the template ('wso2' for built-in, otherwise custom-defined).
 	ManagedBy *string    `json:"managedBy,omitempty" yaml:"managedBy,omitempty"`
 	Name      *string    `json:"name,omitempty" yaml:"name,omitempty"`
+	// ReadOnly True when the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane.
+	ReadOnly  *bool      `json:"readOnly,omitempty" yaml:"readOnly,omitempty"`
 	UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
 
 	// Version Content version, matching the v<major>.<minor> pattern (e.g. v1.0, v2.0).
@@ -1936,27 +1967,31 @@ type LLMProxy struct {
 	// Description Description of the LLM proxy
 	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
 
+	// GlobalPolicies Global (api-level) policies applied across ALL operations as one shared scope, evaluated before operation-level policies.
+	GlobalPolicies *[]Policy `json:"globalPolicies,omitempty" yaml:"globalPolicies,omitempty"`
+
 	// Id Unique handle for the proxy
 	Id string `binding:"required" json:"id" yaml:"id"`
 
 	// Name Human-readable LLM proxy name (must be URL-friendly - only letters, numbers, spaces, hyphens, underscores, and dots allowed)
 	Name string `binding:"required" json:"name" yaml:"name"`
 
-	// GlobalPolicies List of policies applied at the API level (shared rate-limit bucket across all operations)
-	GlobalPolicies *[]Policy `json:"globalPolicies,omitempty" yaml:"globalPolicies,omitempty"`
-
-	// OperationPolicies List of policies applied per operation (independent rate-limit bucket per resource)
-	OperationPolicies *[]OperationPolicy `json:"operationPolicies,omitempty" yaml:"operationPolicies,omitempty"`
-
 	// Openapi OpenAPI specification (JSON or YAML) for the proxy endpoint
 	Openapi *string `json:"openapi,omitempty" yaml:"openapi,omitempty"`
 
-	// Policies Deprecated: use operationPolicies instead. List of policies applied only to this operation (overrides or adds to API-level policies)
+	// OperationPolicies Operation-level policies scoped to specific paths/methods, evaluated after global policies.
+	OperationPolicies *[]OperationPolicy `json:"operationPolicies,omitempty" yaml:"operationPolicies,omitempty"`
+
+	// Policies DEPRECATED - use operationPolicies. Still honoured (treated identically to operationPolicies).
+	// Deprecated: this property has been marked as deprecated upstream, but no `x-deprecated-reason` was set
 	Policies *[]LLMPolicy `json:"policies,omitempty" yaml:"policies,omitempty"`
 
 	// ProjectId UUID of the project this proxy belongs to
 	ProjectId string           `binding:"required" json:"projectId" yaml:"projectId"`
 	Provider  LLMProxyProvider `json:"provider" yaml:"provider"`
+
+	// ReadOnly True if the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane; false for control-plane created artifacts.
+	ReadOnly *bool `json:"readOnly,omitempty" yaml:"readOnly,omitempty"`
 
 	// Security Defines security mechanisms (API key, OAuth2) applicable to the API
 	Security *SecurityConfig `json:"security,omitempty" yaml:"security,omitempty"`
@@ -1994,7 +2029,10 @@ type LLMProxyListItem struct {
 	ProjectId *string `json:"projectId,omitempty" yaml:"projectId,omitempty"`
 
 	// Provider Unique id of a deployed llm provider
-	Provider  *string                 `json:"provider,omitempty" yaml:"provider,omitempty"`
+	Provider *string `json:"provider,omitempty" yaml:"provider,omitempty"`
+
+	// ReadOnly True when the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane.
+	ReadOnly  *bool                   `json:"readOnly,omitempty" yaml:"readOnly,omitempty"`
 	Status    *LLMProxyListItemStatus `json:"status,omitempty" yaml:"status,omitempty"`
 	UpdatedAt *time.Time              `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
 	Version   *string                 `json:"version,omitempty" yaml:"version,omitempty"`
@@ -2062,6 +2100,9 @@ type MCPProxy struct {
 	// ProjectId UUID of the project this proxy belongs to
 	ProjectId *string `json:"projectId,omitempty" yaml:"projectId,omitempty"`
 
+	// ReadOnly True if the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane; false for control-plane created artifacts.
+	ReadOnly *bool `json:"readOnly,omitempty" yaml:"readOnly,omitempty"`
+
 	// UpdatedAt Timestamp when the resource was last updated
 	UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
 
@@ -2102,7 +2143,10 @@ type MCPProxyListItem struct {
 	Name           *string    `json:"name,omitempty" yaml:"name,omitempty"`
 
 	// ProjectId UUID of the project this proxy belongs to
-	ProjectId *string                 `json:"projectId,omitempty" yaml:"projectId,omitempty"`
+	ProjectId *string `json:"projectId,omitempty" yaml:"projectId,omitempty"`
+
+	// ReadOnly True when the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane.
+	ReadOnly  *bool                   `json:"readOnly,omitempty" yaml:"readOnly,omitempty"`
 	Status    *MCPProxyListItemStatus `json:"status,omitempty" yaml:"status,omitempty"`
 	UpdatedAt *time.Time              `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
 	Version   *string                 `json:"version,omitempty" yaml:"version,omitempty"`
@@ -2215,6 +2259,9 @@ type OpenAPIValidationResponse struct {
 		// ProjectId ID of the project this API belongs to
 		ProjectId openapi_types.UUID `binding:"required" json:"projectId" yaml:"projectId"`
 
+		// ReadOnly True if the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane; false for control-plane created artifacts.
+		ReadOnly *bool `json:"readOnly,omitempty" yaml:"readOnly,omitempty"`
+
 		// SubscriptionPlans List of subscription plan names enabled for this API (e.g. Gold, Silver).
 		// When set, only these plans can be used when subscribing to the API.
 		SubscriptionPlans *[]string `json:"subscriptionPlans,omitempty" yaml:"subscriptionPlans,omitempty"`
@@ -2251,6 +2298,27 @@ type Operation struct {
 	// Request Request details for an API operation
 	Request OperationRequest `json:"request" yaml:"request"`
 }
+
+// OperationPolicy defines model for OperationPolicy.
+type OperationPolicy struct {
+	// ExecutionCondition Optional per-request CEL expression controlling whether the policy runs
+	ExecutionCondition *string               `json:"executionCondition,omitempty" yaml:"executionCondition,omitempty"`
+	Name               string                `binding:"required" json:"name" yaml:"name"`
+	Paths              []OperationPolicyPath `binding:"required" json:"paths" yaml:"paths"`
+	Version            string                `binding:"required" json:"version" yaml:"version"`
+}
+
+// OperationPolicyPath defines model for OperationPolicyPath.
+type OperationPolicyPath struct {
+	Methods []OperationPolicyPathMethods `binding:"required" json:"methods" yaml:"methods"`
+
+	// Params Policy parameters
+	Params map[string]interface{} `binding:"required" json:"params" yaml:"params"`
+	Path   string                 `binding:"required" json:"path" yaml:"path"`
+}
+
+// OperationPolicyPathMethods HTTP method: GET, POST, PUT, DELETE, PATCH, OPTIONS, HEAD, or * for all
+type OperationPolicyPathMethods string
 
 // OperationRequest Request details for an API operation
 type OperationRequest struct {
@@ -2419,6 +2487,21 @@ type PublishRESTAPIInfo struct {
 // PublishRESTAPIInfoVisibility Visibility of the API
 type PublishRESTAPIInfoVisibility string
 
+// PublishRESTAPIResponse defines model for PublishRESTAPIResponse.
+type PublishRESTAPIResponse struct {
+	// ApiId Platform-api API identifier
+	ApiId openapi_types.UUID `binding:"required" json:"apiId" yaml:"apiId"`
+
+	// DevPortalRefId DevPortal reference ID for the published API
+	DevPortalRefId string `binding:"required" json:"devPortalRefId" yaml:"devPortalRefId"`
+
+	// Message Human-readable success message
+	Message string `binding:"required" json:"message" yaml:"message"`
+
+	// PublishedAt Timestamp of publication
+	PublishedAt time.Time `binding:"required" json:"publishedAt" yaml:"publishedAt"`
+}
+
 // PublishToDevPortalRequest defines model for PublishToDevPortalRequest.
 type PublishToDevPortalRequest struct {
 	// ApiInfo User-overridable API metadata for publishing
@@ -2467,6 +2550,9 @@ type RESTAPI struct {
 
 	// ProjectId ID of the project this API belongs to
 	ProjectId openapi_types.UUID `binding:"required" json:"projectId" yaml:"projectId"`
+
+	// ReadOnly True if the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane; false for control-plane created artifacts.
+	ReadOnly *bool `json:"readOnly,omitempty" yaml:"readOnly,omitempty"`
 
 	// SubscriptionPlans List of subscription plan names enabled for this API (e.g. Gold, Silver).
 	// When set, only these plans can be used when subscribing to the API.
@@ -2673,6 +2759,9 @@ type RESTAPIProjectValidationResponse struct {
 		// ProjectId ID of the project this API belongs to
 		ProjectId openapi_types.UUID `binding:"required" json:"projectId" yaml:"projectId"`
 
+		// ReadOnly True if the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane; false for control-plane created artifacts.
+		ReadOnly *bool `json:"readOnly,omitempty" yaml:"readOnly,omitempty"`
+
 		// SubscriptionPlans List of subscription plan names enabled for this API (e.g. Gold, Silver).
 		// When set, only these plans can be used when subscribing to the API.
 		SubscriptionPlans *[]string `json:"subscriptionPlans,omitempty" yaml:"subscriptionPlans,omitempty"`
@@ -2730,6 +2819,21 @@ type RESTAPIPublicationDetails struct {
 
 // RESTAPIPublicationDetailsStatus Current publication status
 type RESTAPIPublicationDetailsStatus string
+
+// RESTAPIValidationResponse defines model for RESTAPIValidationResponse.
+type RESTAPIValidationResponse struct {
+	// Error Error details if validation fails
+	Error *struct {
+		// Code Error code indicating the type of validation failure
+		Code string `json:"code" yaml:"code"`
+
+		// Message Human-readable error message
+		Message string `json:"message" yaml:"message"`
+	} `binding:"required" json:"error" yaml:"error"`
+
+	// Valid Whether the API identifier or name-version combination is valid (not already in use) in the organization
+	Valid bool `binding:"required" json:"valid" yaml:"valid"`
+}
 
 // RateLimitResetWindow defines model for RateLimitResetWindow.
 type RateLimitResetWindow struct {
@@ -2924,6 +3028,24 @@ type TokenRotationResponse struct {
 
 	// Token Plain-text new authentication token (only exposed once during rotation)
 	Token *string `json:"token,omitempty" yaml:"token,omitempty"`
+}
+
+// UnpublishFromDevPortalRequest defines model for UnpublishFromDevPortalRequest.
+type UnpublishFromDevPortalRequest struct {
+	// DevPortalUuid UUID of the DevPortal to unpublish from
+	DevPortalUuid openapi_types.UUID `binding:"required" json:"devPortalUuid" yaml:"devPortalUuid"`
+}
+
+// UnpublishRESTAPIResponse defines model for UnpublishRESTAPIResponse.
+type UnpublishRESTAPIResponse struct {
+	// ApiId Platform-api API identifier
+	ApiId openapi_types.UUID `binding:"required" json:"apiId" yaml:"apiId"`
+
+	// Message Human-readable success message
+	Message string `binding:"required" json:"message" yaml:"message"`
+
+	// UnpublishedAt Timestamp when API was unpublished
+	UnpublishedAt time.Time `binding:"required" json:"unpublishedAt" yaml:"unpublishedAt"`
 }
 
 // UpdateAPIKeyRequest defines model for UpdateAPIKeyRequest.
@@ -3226,6 +3348,9 @@ type WebBrokerAPI struct {
 	// ProjectId UUID of the project this API belongs to
 	ProjectId string `binding:"required" json:"projectId" yaml:"projectId"`
 
+	// ReadOnly True when the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane.
+	ReadOnly *bool `json:"readOnly,omitempty" yaml:"readOnly,omitempty"`
+
 	// Receiver WebSocket receiver configuration
 	Receiver struct {
 		Name       string                   `json:"name" yaml:"name"`
@@ -3332,8 +3457,11 @@ type WebBrokerAPIListItem struct {
 	LifeCycleStatus *WebBrokerAPIListItemLifeCycleStatus `json:"lifeCycleStatus,omitempty" yaml:"lifeCycleStatus,omitempty"`
 	Name            *string                              `json:"name,omitempty" yaml:"name,omitempty"`
 	ProjectId       *string                              `json:"projectId,omitempty" yaml:"projectId,omitempty"`
-	UpdatedAt       *time.Time                           `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
-	Version         *string                              `json:"version,omitempty" yaml:"version,omitempty"`
+
+	// ReadOnly True when the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane.
+	ReadOnly  *bool      `json:"readOnly,omitempty" yaml:"readOnly,omitempty"`
+	UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+	Version   *string    `json:"version,omitempty" yaml:"version,omitempty"`
 }
 
 // WebBrokerAPIListItemLifeCycleStatus defines model for WebBrokerAPIListItem.LifeCycleStatus.
@@ -3437,6 +3565,9 @@ type WebSubAPI struct {
 
 	// ProjectId UUID of the project this API belongs to
 	ProjectId string `binding:"required" json:"projectId" yaml:"projectId"`
+
+	// ReadOnly True when the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane.
+	ReadOnly *bool `json:"readOnly,omitempty" yaml:"readOnly,omitempty"`
 
 	// SubscriptionPlans List of subscription plan IDs
 	SubscriptionPlans *[]string `json:"subscriptionPlans,omitempty" yaml:"subscriptionPlans,omitempty"`
@@ -3585,8 +3716,11 @@ type WebSubAPIListItem struct {
 	LifeCycleStatus *WebSubAPIListItemLifeCycleStatus `json:"lifeCycleStatus,omitempty" yaml:"lifeCycleStatus,omitempty"`
 	Name            *string                           `json:"name,omitempty" yaml:"name,omitempty"`
 	ProjectId       *string                           `json:"projectId,omitempty" yaml:"projectId,omitempty"`
-	UpdatedAt       *time.Time                        `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
-	Version         *string                           `json:"version,omitempty" yaml:"version,omitempty"`
+
+	// ReadOnly True when the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane.
+	ReadOnly  *bool      `json:"readOnly,omitempty" yaml:"readOnly,omitempty"`
+	UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+	Version   *string    `json:"version,omitempty" yaml:"version,omitempty"`
 }
 
 // WebSubAPIListItemLifeCycleStatus defines model for WebSubAPIListItem.LifeCycleStatus.
@@ -3671,6 +3805,9 @@ type ProjectID = openapi_types.UUID
 // TokenID defines model for TokenID.
 type TokenID = openapi_types.UUID
 
+// ApiIdentifierQ defines model for api-identifier-Q.
+type ApiIdentifierQ = string
+
 // ApiNameQ defines model for api-name-Q.
 type ApiNameQ = string
 
@@ -3689,6 +3826,9 @@ type AssociationId = string
 // DeploymentId defines model for deploymentId.
 type DeploymentId = openapi_types.UUID
 
+// DeploymentIdQ defines model for deploymentId-Q.
+type DeploymentIdQ = string
+
 // DeploymentStatusQ defines model for deploymentStatus-Q.
 type DeploymentStatusQ string
 
@@ -3700,6 +3840,9 @@ type EntityIDQ = string
 
 // GatewayIdQ defines model for gatewayId-Q.
 type GatewayIdQ = string
+
+// KeyId defines model for keyId.
+type KeyId = openapi_types.UUID
 
 // MappedKeyId defines model for mappedKeyId.
 type MappedKeyId = string

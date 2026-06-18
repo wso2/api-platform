@@ -74,15 +74,20 @@ func (r *WebBrokerAPIRepo) Create(a *model.WebBrokerAPI) error {
 		return fmt.Errorf("failed to create artifact: %w", err)
 	}
 
+	origin := a.Origin
+	if origin == "" {
+		origin = constants.OriginCP
+	}
+
 	// Insert into webbroker_apis table
 	query := `
 		INSERT INTO webbroker_apis (
-			uuid, organization_uuid, handle, name, version, project_uuid, description, created_by, lifecycle_status, configuration, created_at, updated_at
+			uuid, organization_uuid, handle, name, version, project_uuid, description, created_by, lifecycle_status, configuration, origin, created_at, updated_at
 		)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 	_, err = tx.Exec(r.db.Rebind(query),
 		a.UUID, a.OrganizationUUID, a.Handle, a.Name, a.Version, a.ProjectUUID, a.Description, a.CreatedBy, a.LifeCycleStatus,
-		configurationJSON, a.CreatedAt, a.UpdatedAt,
+		configurationJSON, origin, a.CreatedAt, a.UpdatedAt,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to create WebBroker API: %w", err)
@@ -98,7 +103,7 @@ func (r *WebBrokerAPIRepo) Create(a *model.WebBrokerAPI) error {
 func (r *WebBrokerAPIRepo) GetByHandle(handle, orgUUID string) (*model.WebBrokerAPI, error) {
 	query := `
 		SELECT
-			uuid, handle, name, version, organization_uuid, created_at, updated_at,
+			uuid, handle, name, version, organization_uuid, origin, created_at, updated_at,
 			project_uuid, description, created_by, updated_by, lifecycle_status, configuration
 		FROM webbroker_apis
 		WHERE handle = ? AND organization_uuid = ?`
@@ -110,7 +115,7 @@ func (r *WebBrokerAPIRepo) GetByHandle(handle, orgUUID string) (*model.WebBroker
 func (r *WebBrokerAPIRepo) GetByUUID(uuid, orgUUID string) (*model.WebBrokerAPI, error) {
 	query := `
 		SELECT
-			uuid, handle, name, version, organization_uuid, created_at, updated_at,
+			uuid, handle, name, version, organization_uuid, origin, created_at, updated_at,
 			project_uuid, description, created_by, updated_by, lifecycle_status, configuration
 		FROM webbroker_apis
 		WHERE uuid = ? AND organization_uuid = ?`
@@ -127,7 +132,7 @@ func (r *WebBrokerAPIRepo) List(orgUUID, projectUUID string, limit, offset int) 
 	if projectUUID != "" {
 		query = `
 			SELECT
-				uuid, handle, name, version, organization_uuid, created_at, updated_at,
+				uuid, handle, name, version, organization_uuid, origin, created_at, updated_at,
 				project_uuid, description, created_by, updated_by, lifecycle_status, configuration
 			FROM webbroker_apis
 			WHERE organization_uuid = ? AND project_uuid = ?
@@ -137,7 +142,7 @@ func (r *WebBrokerAPIRepo) List(orgUUID, projectUUID string, limit, offset int) 
 	} else {
 		query = `
 			SELECT
-				uuid, handle, name, version, organization_uuid, created_at, updated_at,
+				uuid, handle, name, version, organization_uuid, origin, created_at, updated_at,
 				project_uuid, description, created_by, updated_by, lifecycle_status, configuration
 			FROM webbroker_apis
 			WHERE organization_uuid = ?
@@ -282,7 +287,7 @@ func (r *WebBrokerAPIRepo) scanWebBrokerAPI(row *sql.Row) (*model.WebBrokerAPI, 
 	var createdBy, updatedBy sql.NullString
 	var configurationJSON []byte
 	if err := row.Scan(
-		&a.UUID, &a.Handle, &a.Name, &a.Version, &a.OrganizationUUID, &a.CreatedAt, &a.UpdatedAt,
+		&a.UUID, &a.Handle, &a.Name, &a.Version, &a.OrganizationUUID, &a.Origin, &a.CreatedAt, &a.UpdatedAt,
 		&a.ProjectUUID, &a.Description, &createdBy, &updatedBy, &a.LifeCycleStatus, &configurationJSON,
 	); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -308,7 +313,7 @@ func (r *WebBrokerAPIRepo) scanWebBrokerAPIFromRows(rows *sql.Rows) (*model.WebB
 	var createdBy, updatedBy sql.NullString
 	var configurationJSON []byte
 	if err := rows.Scan(
-		&a.UUID, &a.Handle, &a.Name, &a.Version, &a.OrganizationUUID, &a.CreatedAt, &a.UpdatedAt,
+		&a.UUID, &a.Handle, &a.Name, &a.Version, &a.OrganizationUUID, &a.Origin, &a.CreatedAt, &a.UpdatedAt,
 		&a.ProjectUUID, &a.Description, &createdBy, &updatedBy, &a.LifeCycleStatus, &configurationJSON,
 	); err != nil {
 		return nil, err

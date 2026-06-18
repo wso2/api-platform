@@ -833,6 +833,18 @@ func (m *MockStorage) GetPendingBottomUpAPIs() ([]*models.StoredConfig, error) {
 	return pending, nil
 }
 
+func (m *MockStorage) GetPendingCPSyncArtifacts() ([]*models.StoredConfig, error) {
+	var pending []*models.StoredConfig
+	for _, config := range m.configs {
+		if config != nil &&
+			config.Origin == models.OriginGatewayAPI &&
+			(config.CPSyncStatus == models.CPSyncStatusPending || config.CPSyncStatus == models.CPSyncStatusFailed) {
+			pending = append(pending, config)
+		}
+	}
+	return pending, nil
+}
+
 // MockControlPlaneClient implements controlplane.ControlPlaneClient for testing
 type MockControlPlaneClient struct {
 	connected bool
@@ -849,7 +861,7 @@ func (m *MockControlPlaneClient) IsConnected() bool {
 	return m.connected
 }
 
-func (m *MockControlPlaneClient) PushAPIDeployment(apiID string, cfg *models.StoredConfig, deploymentID string) error {
+func (m *MockControlPlaneClient) PushArtifact(apiID string, cfg *models.StoredConfig, deploymentID string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.pushedIDs = append(m.pushedIDs, apiID)

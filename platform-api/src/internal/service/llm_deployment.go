@@ -153,6 +153,12 @@ func (s *LLMProviderDeploymentService) DeployLLMProvider(providerID string, req 
 		return nil, constants.ErrLLMProviderNotFound
 	}
 
+	// DP-originated artifacts are read-only in the control plane and cannot be
+	// (re)deployed from the CP.
+	if err := ensureOriginMutable(provider.Origin); err != nil {
+		return nil, err
+	}
+
 	// Validate deployment name is provided
 	if req.Name == "" {
 		return nil, constants.ErrDeploymentNameRequired
@@ -273,6 +279,10 @@ func (s *LLMProviderDeploymentService) RestoreLLMProviderDeployment(providerID, 
 	if provider == nil {
 		return nil, constants.ErrLLMProviderNotFound
 	}
+	// DP-originated artifacts are read-only in the control plane; restore cannot be CP-initiated.
+	if err := ensureOriginMutable(provider.Origin); err != nil {
+		return nil, err
+	}
 
 	targetDeployment, err := s.deploymentRepo.GetWithContent(deploymentID, provider.UUID, orgUUID)
 	if err != nil {
@@ -350,6 +360,12 @@ func (s *LLMProviderDeploymentService) UndeployLLMProviderDeployment(providerID,
 	}
 	if provider == nil {
 		return nil, constants.ErrLLMProviderNotFound
+	}
+	// DP-originated artifacts are read-only in the control plane: their deploy/undeploy
+	// lifecycle is owned by the data-plane gateway, so undeployment cannot be initiated
+	// from the control plane.
+	if err := ensureOriginMutable(provider.Origin); err != nil {
+		return nil, err
 	}
 
 	deployment, err := s.deploymentRepo.GetWithState(deploymentID, provider.UUID, orgUUID)
@@ -685,7 +701,7 @@ func generateLLMProviderDeploymentYAML(provider *model.LLMProvider, templateHand
 					}
 					addOrAppendOperationPolicyPath(&operationPolicies, tokenBasedRateLimitPolicyName, "", api.OperationPolicyPath{
 						Path:    "/*",
-						Methods: []string{"*"},
+						Methods: []api.OperationPolicyPathMethods{api.OperationPolicyPathMethodsAsterisk},
 						Params: map[string]interface{}{
 							"totalTokenLimits": []map[string]interface{}{
 								{"count": tokenLimit.Count, "duration": duration},
@@ -701,7 +717,7 @@ func generateLLMProviderDeploymentYAML(provider *model.LLMProvider, templateHand
 					}
 					addOrAppendOperationPolicyPath(&operationPolicies, advancedRateLimitPolicyName, "", api.OperationPolicyPath{
 						Path:    "/*",
-						Methods: []string{"*"},
+						Methods: []api.OperationPolicyPathMethods{api.OperationPolicyPathMethodsAsterisk},
 						Params: map[string]interface{}{
 							"quotas": []map[string]interface{}{
 								{
@@ -722,7 +738,7 @@ func generateLLMProviderDeploymentYAML(provider *model.LLMProvider, templateHand
 					}
 					addOrAppendOperationPolicyPath(&operationPolicies, llmCostBasedRateLimitPolicyName, "", api.OperationPolicyPath{
 						Path:    "/*",
-						Methods: []string{"*"},
+						Methods: []api.OperationPolicyPathMethods{api.OperationPolicyPathMethodsAsterisk},
 						Params: map[string]interface{}{
 							"budgetLimits": []map[string]interface{}{
 								{"amount": costLimit.Amount, "duration": duration},
@@ -732,7 +748,7 @@ func generateLLMProviderDeploymentYAML(provider *model.LLMProvider, templateHand
 					if !hasOperationPolicy(operationPolicies, llmCostPolicyName) {
 						operationPolicies = append(operationPolicies, api.OperationPolicy{
 							Name:  llmCostPolicyName,
-							Paths: []api.OperationPolicyPath{{Path: "/*", Methods: []string{"*"}, Params: map[string]interface{}{}}},
+							Paths: []api.OperationPolicyPath{{Path: "/*", Methods: []api.OperationPolicyPathMethods{api.OperationPolicyPathMethodsAsterisk}, Params: map[string]interface{}{}}},
 						})
 					}
 				}
@@ -747,7 +763,7 @@ func generateLLMProviderDeploymentYAML(provider *model.LLMProvider, templateHand
 						}
 						addOrAppendOperationPolicyPath(&operationPolicies, tokenBasedRateLimitPolicyName, "", api.OperationPolicyPath{
 							Path:    r.Resource,
-							Methods: []string{"*"},
+							Methods: []api.OperationPolicyPathMethods{api.OperationPolicyPathMethodsAsterisk},
 							Params: map[string]interface{}{
 								"totalTokenLimits": []map[string]interface{}{
 									{"count": tokenLimit.Count, "duration": duration},
@@ -763,7 +779,7 @@ func generateLLMProviderDeploymentYAML(provider *model.LLMProvider, templateHand
 						}
 						addOrAppendOperationPolicyPath(&operationPolicies, advancedRateLimitPolicyName, "", api.OperationPolicyPath{
 							Path:    r.Resource,
-							Methods: []string{"*"},
+							Methods: []api.OperationPolicyPathMethods{api.OperationPolicyPathMethodsAsterisk},
 							Params: map[string]interface{}{
 								"quotas": []map[string]interface{}{
 									{
@@ -784,7 +800,7 @@ func generateLLMProviderDeploymentYAML(provider *model.LLMProvider, templateHand
 						}
 						addOrAppendOperationPolicyPath(&operationPolicies, llmCostBasedRateLimitPolicyName, "", api.OperationPolicyPath{
 							Path:    r.Resource,
-							Methods: []string{"*"},
+							Methods: []api.OperationPolicyPathMethods{api.OperationPolicyPathMethodsAsterisk},
 							Params: map[string]interface{}{
 								"budgetLimits": []map[string]interface{}{
 									{"amount": costLimit.Amount, "duration": duration},
@@ -794,7 +810,7 @@ func generateLLMProviderDeploymentYAML(provider *model.LLMProvider, templateHand
 						if !hasOperationPolicy(operationPolicies, llmCostPolicyName) {
 							operationPolicies = append(operationPolicies, api.OperationPolicy{
 								Name:  llmCostPolicyName,
-								Paths: []api.OperationPolicyPath{{Path: "/*", Methods: []string{"*"}, Params: map[string]interface{}{}}},
+								Paths: []api.OperationPolicyPath{{Path: "/*", Methods: []api.OperationPolicyPathMethods{api.OperationPolicyPathMethodsAsterisk}, Params: map[string]interface{}{}}},
 							})
 						}
 					}
@@ -1010,7 +1026,11 @@ func generateLLMProviderDeploymentYAML(provider *model.LLMProvider, templateHand
 	for _, p := range provider.Configuration.OperationPolicies {
 		paths := make([]api.OperationPolicyPath, 0, len(p.Paths))
 		for _, pp := range p.Paths {
-			paths = append(paths, api.OperationPolicyPath{Path: pp.Path, Methods: pp.Methods, Params: pp.Params})
+			methods := make([]api.OperationPolicyPathMethods, 0, len(pp.Methods))
+			for _, mm := range pp.Methods {
+				methods = append(methods, api.OperationPolicyPathMethods(mm))
+			}
+			paths = append(paths, api.OperationPolicyPath{Path: pp.Path, Methods: methods, Params: pp.Params})
 		}
 		entry := api.OperationPolicy{Name: p.Name, Version: normalizePolicyVersionToMajor(p.Version), Paths: paths}
 		if p.ExecutionCondition != "" {
@@ -1072,9 +1092,9 @@ func generateLLMProviderDeploymentYAML(provider *model.LLMProvider, templateHand
 	for _, p := range providerDeployment.Spec.Policies {
 		paths := make([]api.OperationPolicyPath, 0, len(p.Paths))
 		for _, pp := range p.Paths {
-			methods := make([]string, 0, len(pp.Methods))
+			methods := make([]api.OperationPolicyPathMethods, 0, len(pp.Methods))
 			for _, m := range pp.Methods {
-				methods = append(methods, string(m))
+				methods = append(methods, api.OperationPolicyPathMethods(m))
 			}
 			paths = append(paths, api.OperationPolicyPath{Path: pp.Path, Methods: methods, Params: pp.Params})
 		}
@@ -1223,6 +1243,12 @@ func (s *LLMProxyDeploymentService) DeployLLMProxy(proxyID string, req *api.Depl
 		return nil, constants.ErrLLMProxyNotFound
 	}
 
+	// DP-originated artifacts are read-only in the control plane and cannot be
+	// (re)deployed from the CP.
+	if err := ensureOriginMutable(proxy.Origin); err != nil {
+		return nil, err
+	}
+
 	// Validate deployment name is provided
 	if req.Name == "" {
 		return nil, constants.ErrDeploymentNameRequired
@@ -1339,6 +1365,10 @@ func (s *LLMProxyDeploymentService) RestoreLLMProxyDeployment(proxyID, deploymen
 	if proxy == nil {
 		return nil, constants.ErrLLMProxyNotFound
 	}
+	// DP-originated artifacts are read-only in the control plane; restore cannot be CP-initiated.
+	if err := ensureOriginMutable(proxy.Origin); err != nil {
+		return nil, err
+	}
 
 	targetDeployment, err := s.deploymentRepo.GetWithContent(deploymentID, proxy.UUID, orgUUID)
 	if err != nil {
@@ -1416,6 +1446,12 @@ func (s *LLMProxyDeploymentService) UndeployLLMProxyDeployment(proxyID, deployme
 	}
 	if proxy == nil {
 		return nil, constants.ErrLLMProxyNotFound
+	}
+	// DP-originated artifacts are read-only in the control plane: their deploy/undeploy
+	// lifecycle is owned by the data-plane gateway, so undeployment cannot be initiated
+	// from the control plane.
+	if err := ensureOriginMutable(proxy.Origin); err != nil {
+		return nil, err
 	}
 
 	deployment, err := s.deploymentRepo.GetWithState(deploymentID, proxy.UUID, orgUUID)
@@ -1663,7 +1699,11 @@ func generateLLMProxyDeploymentYAML(proxy *model.LLMProxy) (dto.LLMProxyDeployme
 	for _, p := range proxy.Configuration.OperationPolicies {
 		paths := make([]api.OperationPolicyPath, 0, len(p.Paths))
 		for _, pp := range p.Paths {
-			paths = append(paths, api.OperationPolicyPath{Path: pp.Path, Methods: pp.Methods, Params: pp.Params})
+			methods := make([]api.OperationPolicyPathMethods, 0, len(pp.Methods))
+			for _, mm := range pp.Methods {
+				methods = append(methods, api.OperationPolicyPathMethods(mm))
+			}
+			paths = append(paths, api.OperationPolicyPath{Path: pp.Path, Methods: methods, Params: pp.Params})
 		}
 		entry := api.OperationPolicy{Name: p.Name, Version: normalizePolicyVersionToMajor(p.Version), Paths: paths}
 		if p.ExecutionCondition != "" {
@@ -1715,9 +1755,9 @@ func generateLLMProxyDeploymentYAML(proxy *model.LLMProxy) (dto.LLMProxyDeployme
 	for _, p := range proxyDeployment.Spec.Policies {
 		paths := make([]api.OperationPolicyPath, 0, len(p.Paths))
 		for _, pp := range p.Paths {
-			methods := make([]string, 0, len(pp.Methods))
+			methods := make([]api.OperationPolicyPathMethods, 0, len(pp.Methods))
 			for _, m := range pp.Methods {
-				methods = append(methods, string(m))
+				methods = append(methods, api.OperationPolicyPathMethods(m))
 			}
 			paths = append(paths, api.OperationPolicyPath{Path: pp.Path, Methods: methods, Params: pp.Params})
 		}

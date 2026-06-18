@@ -153,8 +153,19 @@ func NewAPIServer(
 		subscriptionResourceService: subscriptionResourceService,
 		webhookSecretService:        webhookSecretService,
 	}
+	// Wire the DP->CP push into the LLM/MCP deployment services so create flows push to the
+	// control plane from the service layer (mirroring the REST API service), instead of the
+	// handler doing it. This keeps the push behavior identical whether an artifact is created
+	// via these handlers or directly through the service layer (e.g. the immutable loader).
+	pushEnabled := systemConfig.Controller.ControlPlane.DeploymentSyncEnabled
+	server.mcpDeploymentService.SetControlPlanePusher(controlPlaneClient, pushEnabled)
+	server.llmDeploymentService.SetControlPlanePusher(controlPlaneClient, pushEnabled)
+
 	server.restAPIService = restAPIService
 	server.RestAPIHandler = NewRestAPIHandler(restAPIService, logger)
+	// Wire the shared control-plane (DP->CP) push hooks so REST APIs use the same push
+	// path (APIServer.waitForDeploymentAndPush / pushArtifactUndeploy) as all other kinds.
+	server.RestAPIHandler.pushArtifactUndeploy = server.pushArtifactUndeploy
 
 	// Register status update callback
 	snapshotManager.SetStatusCallback(server.handleStatusUpdate)
@@ -327,6 +338,26 @@ func (s *APIServer) GetAPIByNameVersion(c *gin.Context, name string, version str
 	c.JSON(http.StatusOK, buildResourceResponseFromStored(cfg.SourceConfiguration, cfg))
 }
 
+// pushArtifactUndeploy notifies the control plane that a gateway-originated artifact
+// has been deleted from this gateway. The control plane keeps the artifact but marks
+// it undeployed (it is not removed and can be re-deployed later). It is a no-op for
+// control-plane-originated artifacts or when push is disabled / disconnected.
+func (s *APIServer) pushArtifactUndeploy(cfg *models.StoredConfig, log *slog.Logger) {
+	if cfg == nil || cfg.Origin != models.OriginGatewayAPI {
+		return
+	}
+	if s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected() && s.systemConfig.Controller.ControlPlane.DeploymentSyncEnabled {
+		undeploy := *cfg
+		undeploy.DesiredState = models.StateUndeployed
+		go func(uc models.StoredConfig) {
+			if err := s.controlPlaneClient.PushArtifact(uc.UUID, &uc, uc.DeploymentID); err != nil {
+				log.Error("Failed to push artifact undeploy to control plane",
+					slog.String("artifact_id", uc.UUID), slog.Any("error", err))
+			}
+		}(undeploy)
+	}
+}
+
 // waitForDeploymentAndPush waits for API deployment to complete and pushes it to the control plane
 // This is only called for APIs created directly via gateway endpoint (not from platform API)
 func (s *APIServer) waitForDeploymentAndPush(configID string, correlationID string, log *slog.Logger) {
@@ -364,7 +395,7 @@ func (s *APIServer) waitForDeploymentAndPush(configID string, correlationID stri
 				apiID := configID
 				deploymentID := cfg.DeploymentID
 
-				if err := s.controlPlaneClient.PushAPIDeployment(apiID, cfg, deploymentID); err != nil {
+				if err := s.controlPlaneClient.PushArtifact(apiID, cfg, deploymentID); err != nil {
 					log.Error("Failed to push deployment to control plane",
 						slog.String("api_id", apiID),
 						slog.Any("error", err))

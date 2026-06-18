@@ -29,8 +29,6 @@ import (
 	"platform-api/src/internal/repository"
 	"platform-api/src/internal/utils"
 	"time"
-
-	"gopkg.in/yaml.v3"
 )
 
 // GatewayInternalAPIService handles internal gateway API operations
@@ -576,7 +574,7 @@ func (s *GatewayInternalAPIService) CreateGatewayDeployment(apiHandle, orgID, ga
 // If since is provided, only returns deployments updated after that timestamp
 func (s *GatewayInternalAPIService) GetDeploymentsByGateway(orgID, gatewayID string, since *time.Time) (*dto.GatewayDeploymentsResponse, error) {
 	// Get all deployments for this gateway (optionally filtered by timestamp)
-	deployments, err := s.deploymentRepo.GetAllDeploymentsByGateway(gatewayID, orgID, since)
+	deployments, err := s.deploymentRepo.GetControlPlaneDeploymentsByGateway(gatewayID, orgID, since)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get deployments: %w", err)
 	}

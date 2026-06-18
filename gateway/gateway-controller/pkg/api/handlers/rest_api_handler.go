@@ -31,6 +31,7 @@ import (
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/middleware"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/metrics"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/restapi"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
@@ -40,6 +41,12 @@ import (
 type RestAPIHandler struct {
 	service *restapi.RestAPIService
 	logger  *slog.Logger
+
+	// pushArtifactUndeploy is the shared control-plane (DP->CP)
+	// push hook, wired from APIServer so REST APIs use the same push path as every other
+	// artifact kind. Internally gated (origin/connection/enabled) and run asynchronously;
+	// they are nil when no control plane is configured (e.g. in unit tests).
+	pushArtifactUndeploy func(cfg *models.StoredConfig, log *slog.Logger)
 }
 
 // NewRestAPIHandler creates a new RestAPIHandler.
@@ -200,7 +207,7 @@ func (h *RestAPIHandler) DeleteRestAPI(c *gin.Context, id string) {
 
 	correlationID := middleware.GetCorrelationID(c)
 
-	_, err := h.service.Delete(restapi.DeleteParams{
+	result, err := h.service.Delete(restapi.DeleteParams{
 		Handle:        id,
 		CorrelationID: correlationID,
 		Logger:        log,
@@ -214,6 +221,12 @@ func (h *RestAPIHandler) DeleteRestAPI(c *gin.Context, id string) {
 	metrics.APIOperationsTotal.WithLabelValues(operation, "success", "rest_api").Inc()
 	metrics.APIOperationDurationSeconds.WithLabelValues(operation, "rest_api").Observe(time.Since(startTime).Seconds())
 	metrics.APIsTotal.WithLabelValues("rest_api", "active").Dec()
+
+	// Notify the control plane (DP->CP) that this artifact was deleted via the shared
+	// handler path; it keeps the artifact and marks it undeployed.
+	if h.pushArtifactUndeploy != nil {
+		h.pushArtifactUndeploy(result.Config, log)
+	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"status":  "success",

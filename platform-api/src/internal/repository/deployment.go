@@ -62,7 +62,11 @@ func (r *DeploymentRepo) CreateWithLimitEnforcement(deployment *model.Deployment
 		}
 		deployment.DeploymentID = deploymentID
 	}
-	deployment.CreatedAt = time.Now()
+	// Preserve a caller-provided created_at (the DP->CP import flow sets it to the gateway's
+	// deployment time, which drives the last-in-wins watermark); default to now otherwise.
+	if deployment.CreatedAt.IsZero() {
+		deployment.CreatedAt = time.Now()
+	}
 
 	// Status must be provided and should be DEPLOYED for new deployments
 	if deployment.Status == nil {
@@ -721,6 +725,44 @@ func (r *DeploymentRepo) GetDeploymentsWithState(artifactUUID, orgUUID string, g
 	return deployments, nil
 }
 
+// HasActiveDeployment reports whether the artifact has a DEPLOYED (or in-flight
+// DEPLOYING/UNDEPLOYING) status on any gateway. Used to gate deletion of
+// data-plane-originated artifacts, which may only be deleted once they are
+// undeployed on every gateway they were deployed to.
+func (r *DeploymentRepo) HasActiveDeployment(artifactUUID, orgUUID string) (bool, error) {
+	query := `
+		SELECT COUNT(*) FROM deployment_status
+		WHERE artifact_uuid = ? AND organization_uuid = ?
+		  AND status IN ('DEPLOYED', 'DEPLOYING', 'UNDEPLOYING')
+	`
+	var count int
+	if err := r.db.QueryRow(r.db.Rebind(query), artifactUUID, orgUUID).Scan(&count); err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}
+
+// GetLatestDeploymentTime returns the most recent deployment created_at across all gateways
+// for the given artifact, or nil when the artifact has no deployment records. The DP->CP
+// import flow uses this as the "latest deployment" watermark for its last-in-wins decision:
+// the control plane's working copy is updated only when an incoming push's deployment time is
+// later than every recorded deployment of the artifact.
+func (r *DeploymentRepo) GetLatestDeploymentTime(artifactUUID, orgUUID string) (*time.Time, error) {
+	query := `
+		SELECT created_at FROM deployments
+		WHERE artifact_uuid = ? AND organization_uuid = ?
+		ORDER BY created_at DESC
+		` + r.db.FetchFirstClause(1)
+	var latest time.Time
+	if err := r.db.QueryRow(r.db.Rebind(query), artifactUUID, orgUUID).Scan(&latest); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &latest, nil
+}
+
 // GetDeployedGatewayIDs returns the gateway IDs that have an active deployment status
 // (DEPLOYED or UNDEPLOYED) for the given artifact. Since the deployment_status table
 // only holds rows for those two states, a plain SELECT is sufficient.
@@ -749,13 +791,16 @@ func (r *DeploymentRepo) GetDeployedGatewayIDs(artifactUUID, orgUUID string) ([]
 	return gatewayIDs, nil
 }
 
-// GetAllDeploymentsByGateway retrieves all deployments for a specific gateway
+// GetControlPlaneDeploymentsByGateway retrieves the control-plane-owned deployments for a
+// specific gateway. Data-plane-originated (gateway_api) artifacts are excluded because they are
+// owned by the gateway and pushed up to the CP (DP->CP); syncing them back down would make the
+// gateway try to re-create artifacts it already has.
 // Returns lightweight DeploymentInfo for listing deployments
 // Only returns deployments that have an active status (DEPLOYED or UNDEPLOYED)
 // Results are ordered by kind (RestApi -> LlmProvider -> LlmProxy -> Mcp) to ensure
 // dependencies are processed in correct order (LLM Proxies depend on LLM Providers)
 // If since is provided, only returns deployments updated after that timestamp
-func (r *DeploymentRepo) GetAllDeploymentsByGateway(gatewayID, orgUUID string, since *time.Time) ([]*model.DeploymentInfo, error) {
+func (r *DeploymentRepo) GetControlPlaneDeploymentsByGateway(gatewayID, orgUUID string, since *time.Time) ([]*model.DeploymentInfo, error) {
 	query := `
 		SELECT
 			s.deployment_uuid,

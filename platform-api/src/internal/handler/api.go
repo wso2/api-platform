@@ -25,6 +25,7 @@ import (
 	"net/http"
 	"platform-api/src/api"
 	"platform-api/src/internal/constants"
+	"platform-api/src/internal/dto"
 	"platform-api/src/internal/middleware"
 	"platform-api/src/internal/service"
 	"platform-api/src/internal/utils"
@@ -280,6 +281,9 @@ func (h *APIHandler) UpdateAPI(c *gin.Context) {
 	updatedBy, _ := middleware.GetUsernameFromContext(c)
 	apiResponse, err := h.apiService.UpdateAPIByHandle(apiId, &req, orgId, updatedBy)
 	if err != nil {
+		if respondArtifactGuardError(c, err) {
+			return
+		}
 		if errors.Is(err, constants.ErrAPINotFound) {
 			h.slogger.Error("API not found", "apiId", apiId, "organizationId", orgId)
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
@@ -338,6 +342,9 @@ func (h *APIHandler) DeleteAPI(c *gin.Context) {
 	deletedBy, _ := middleware.GetUsernameFromContext(c)
 	err := h.apiService.DeleteAPIByHandle(apiId, orgId, deletedBy)
 	if err != nil {
+		if respondArtifactGuardError(c, err) {
+			return
+		}
 		if errors.Is(err, constants.ErrAPINotFound) {
 			h.slogger.Error("API not found", "apiId", apiId, "organizationId", orgId)
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
@@ -811,7 +818,7 @@ func (h *APIHandler) ValidateAPI(c *gin.Context) {
 		return
 	}
 
-	var params api.ValidateRESTAPIParams
+	var params dto.ValidateRESTAPIParams
 	if err := c.ShouldBindQuery(&params); err != nil {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))
 		return
