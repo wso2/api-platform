@@ -212,6 +212,7 @@ async function prepareSubscriptionModal(modalId) {
                 btn.textContent = 'Subscribe';
                 btn.dataset.orgId = orgID;
                 btn.dataset.apiId = apiId;
+                btn.dataset.policyId = plan.policyID || plan.policyId || '';
                 btn.dataset.policyName = plan.policyName || plan.subscriptionPlanName || '';
                 btn.dataset.displayName = plan.displayName || plan.subscriptionPlanName || '';
                 if (window.isReadOnly) {

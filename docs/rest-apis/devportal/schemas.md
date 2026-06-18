@@ -943,6 +943,7 @@ continued
 {
   "policyId": "string",
   "policyID": "string",
+  "refId": "string",
   "policyName": "string",
   "displayName": "string",
   "description": "string",
@@ -959,6 +960,7 @@ continued
 |---|---|---|---|---|
 |policyId|string|false|none|Optional external/APIM policy UUID.|
 |policyID|string|false|none|Alternative casing accepted by the DAO.|
+|refId|string|false|none|Platform API subscription plan UUID to associate with this policy.|
 |policyName|string|true|none|none|
 |displayName|string|true|none|none|
 |description|string|false|none|none|
@@ -1058,7 +1060,7 @@ xor
 ```json
 {
   "apiId": "api-7f4c2a6b",
-  "subscriptionPlanName": "Gold"
+  "subscriptionPlanId": "pol-7f4c2a6b"
 }
 
 ```
@@ -1068,7 +1070,7 @@ xor
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |apiId|string|true|none|Developer Portal API ID.|
-|subscriptionPlanName|string|false|none|Optional subscription plan name.|
+|subscriptionPlanId|string|false|none|Developer Portal subscription plan (policy) ID.|
 
 <h2 id="tocS_SubscriptionUpdateRequest">SubscriptionUpdateRequest</h2>
 

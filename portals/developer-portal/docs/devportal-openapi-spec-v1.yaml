@@ -2256,7 +2256,7 @@ components:
               summary: Subscribe using a specific plan
               value:
                 apiId: api-7f4c2a6b
-                subscriptionPlanName: Gold
+                subscriptionPlanId: pol-7f4c2a6b
     SubscriptionUpdateBody:
       required: true
       description: Subscription status update payload.
@@ -3869,6 +3869,9 @@ components:
         policyID:
           type: string
           description: Alternative casing accepted by the DAO.
+        refId:
+          type: string
+          description: Platform API subscription plan UUID to associate with this policy.
         policyName:
           type: string
         displayName:
@@ -3929,10 +3932,10 @@ components:
           type: string
           description: Developer Portal API ID.
           example: api-7f4c2a6b
-        subscriptionPlanName:
+        subscriptionPlanId:
           type: string
-          description: Optional subscription plan name.
-          example: Gold
+          description: Developer Portal subscription plan (policy) ID.
+          example: pol-7f4c2a6b
       additionalProperties: false
     SubscriptionUpdateRequest:
       type: object

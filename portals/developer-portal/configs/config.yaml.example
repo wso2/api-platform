@@ -97,11 +97,20 @@ identityProvider:
   jwksURL: "https://localhost:9443/oauth2/jwks"
   tokenRefreshTimeoutMs: 10000
 
-# ─── Platform API (local auth sidecar) ────────────────────────────────────────
-# Required when using the built-in username/password login form.
-# The Platform API validates credentials and issues signed JWTs.
-# Users and their dp:* scopes are defined in configs/config-platform-api.toml.
-# Leave baseUrl empty (or unset) to disable local auth entirely.
+# ─── Platform API ─────────────────────────────────────────────────────────────
+# Used for two purposes:
+#
+# 1. Local auth — when identityProvider.clientId is empty, the built-in login
+#    form authenticates against Platform API and receives a signed JWT.
+#    Users and their scopes are defined in configs/config-platform-api.toml.
+#
+# 2. Direct gateway integration — when an API has GATEWAY_TYPE = "wso2/api-platform"
+#    and baseUrl is set, subscription and API key operations are forwarded to the
+#    Platform API instead of publishing webhook events. The Platform API is then
+#    responsible for propagating state to the gateway.
+#    If baseUrl is unset, the webhook path is used as a fallback for all gateway types.
+#
+# Leave baseUrl empty (or unset) to disable both features.
 
 platformApi:
   baseUrl: ""           # e.g. https://platform-api:9243  — env: DP_PLATFORMAPI_BASEURL

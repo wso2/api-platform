@@ -25,6 +25,7 @@ const viewDao = require('../dao/viewDao');
 const subscriptionPolicyDao = require('../dao/subscriptionPolicyDao');
 const apiFileDao = require('../dao/apiFileDao');
 const apiImageDao = require('../dao/apiImageDao');
+const apiKeyDao = require("../dao/apiKeyDao");
 const util = require("../utils/util");
 const logger = require("../config/logger");
 const { config } = require('../config/configLoader');
@@ -240,7 +241,7 @@ async function allowAPIStatusChange(apiStatus, orgId, apiId) {
     
     if (apiStatus === constants.API_STATUS.UNPUBLISHED) {
 
-        const subApis = await subDao.listByAppAndApi(orgId, '', apiId);
+        const subApis = await subDao.listByApi(orgId, apiId);
         if (subApis.length > 0) {
             return false;
         }
@@ -552,10 +553,13 @@ const deleteAPIMetadata = async (req, res) => {
         timeout: 60000,
     }, async (t) => {
         try {
-            //check if subscriptions exist for the application
-            const subApis = await subDao.listByAppAndApi(orgId, '', apiId);
+            const subApis = await subDao.listByApi(orgId, apiId);
             if (subApis.length > 0) {
                 throw new CustomError(409, constants.ERROR_MESSAGE.ERR_SUB_EXIST, "API has subscriptions.");
+            }
+            const activeKeys = await apiKeyDao.list(orgId, { apiId, status: 'ACTIVE' });
+            if (activeKeys.length > 0) {
+                throw new CustomError(409, constants.ERROR_MESSAGE.ERR_KEY_EXIST, "API has active keys.");
             }
             const apiDeleteResponse = await apiDao.delete(orgId, apiId, t);
             if (apiDeleteResponse === 0) {

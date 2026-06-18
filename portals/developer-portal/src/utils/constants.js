@@ -292,6 +292,7 @@ module.exports = {
         KEY_MANAGER_NOT_FOUND: "Key manager not found",
         KEY_MANAGER_ENCRYPTION_ERROR: "Key manager encryption key not configured",
         ERR_SUB_EXIST: "ERR_SUB_EXIST",
+        ERR_KEY_EXIST: "ERR_KEY_EXIST",
         UNAUTHORIZED_ORG: "You are not authorized to access this organization",
         UNAUTHORIZED_API: "You are not authorized to access this API",
         API_NOT_FOUND: "Requested API not found",

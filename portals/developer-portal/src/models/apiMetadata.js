@@ -170,14 +170,17 @@ APILabels.belongsTo(Organization, {
 });
 
 APILabels.belongsTo(APIMetadata, {
-  foreignKey: 'API_ID'
+  foreignKey: 'API_ID',
+  onDelete: 'CASCADE'
 });
 
 APIContent.belongsTo(APIMetadata, {
   foreignKey: 'API_ID',
+  onDelete: 'CASCADE'
 });
 APIImages.belongsTo(APIMetadata, {
   foreignKey: 'API_ID',
+  onDelete: 'CASCADE'
 });
 APIMetadata.belongsTo(Organization, {
   foreignKey: 'ORG_ID'

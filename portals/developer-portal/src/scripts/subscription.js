@@ -16,9 +16,9 @@
  * under the License.
  */
 
-async function subscribe(orgID, apiId, planName) {
+async function subscribe(orgID, apiId, planName, policyId) {
     try {
-        const body = { apiId, subscriptionPlanName: planName };
+        const body = { apiId, subscriptionPlanId: policyId };
 
         const response = await fetch(devportalApi.org(orgID, '/subscriptions'), {
             method: 'POST',
@@ -65,6 +65,7 @@ async function handlePlanSubscription(btnElement) {
     const orgID = btnElement.dataset.orgId;
     const apiId = btnElement.dataset.apiId;
     const planName = btnElement.dataset.policyName;
+    const policyId = btnElement.dataset.policyId;
     const displayName = btnElement.dataset.displayName;
 
     // If a modal exists for this API and the button is NOT inside it, open the modal.
@@ -80,7 +81,7 @@ async function handlePlanSubscription(btnElement) {
 
     if (existingSubs.length === 0) {
         showSubscribeButtonLoading(btnElement);
-        await subscribe(orgID, apiId, planName);
+        await subscribe(orgID, apiId, planName, policyId);
         return;
     }
 
@@ -154,6 +155,7 @@ async function executeDeleteSubscription(orgID, subscriptionId) {
 
 async function runPendingPlanSwitch(orgID, apiId, planName, displayName, subscriptionId) {
     const btnElement = window.__pendingPlanSwitchBtn;
+    const policyId = btnElement ? btnElement.dataset.policyId : undefined;
     window.__pendingPlanSwitchBtn = null;
 
     if (btnElement && typeof showSubscribeButtonLoading === 'function') {
@@ -172,7 +174,7 @@ async function runPendingPlanSwitch(orgID, apiId, planName, displayName, subscri
             return;
         }
 
-        await subscribe(orgID, apiId, planName);
+        await subscribe(orgID, apiId, planName, policyId);
     } catch (error) {
         await showAlert(`Error during plan change: ${error.message}`, 'error');
     }

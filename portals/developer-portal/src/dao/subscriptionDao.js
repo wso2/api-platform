@@ -61,7 +61,24 @@ function generateSubToken() {
     return crypto.randomBytes(32).toString('hex');
 }
 
-async function create(orgId, apiId, policyId, createdBy, transaction) {
+async function create(orgId, apiId, policyId, createdBy, transaction, opts = {}) {
+    // If a token is provided externally (e.g. from Platform API), use it directly.
+    if (opts.subToken) {
+        const record = await SubscriptionMapping.create(
+            {
+                CREATED_BY: createdBy,
+                ORG_ID: orgId,
+                API_ID: apiId,
+                POLICY_ID: policyId || null,
+                SUB_TOKEN: encryptToken(opts.subToken),
+                STATUS: 'ACTIVE',
+            },
+            { transaction }
+        );
+        record.dataValues.SUB_TOKEN = opts.subToken;
+        return record;
+    }
+
     for (let attempt = 0; attempt < 3; attempt++) {
         const subToken = generateSubToken();
         try {
@@ -136,7 +153,7 @@ async function getById(orgId, subId) {
     }));
 }
 
-const listByAppAndApi = async (orgID, appID, apiID) => {
+const listByApi = async (orgID, apiID) => {
     try {
         return await SubscriptionMapping.findAll(
             {
@@ -193,7 +210,7 @@ module.exports = {
     getById,
     updateStatus,
     delete: deleteSubscription,
-    listByAppAndApi,
+    listByApi,
     listByOrg,
     listByUser,
     findByKey,
