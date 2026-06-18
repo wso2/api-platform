@@ -1,0 +1,254 @@
+<!--
+ * Copyright (c) 2026, WSO2 LLC. (http://www.wso2.com) All Rights Reserved.
+ * Apache License 2.0
+-->
+<style>
+  :root { --wso2-gradient: linear-gradient(135deg, #ef4223 0%, #ff8636 100%); }
+
+  @keyframes dp-ob-pop    { from { opacity:0; transform:translateY(10px) scale(.985); } to { opacity:1; transform:none; } }
+  @keyframes dp-ob-fadein { from { opacity:0; } to { opacity:1; } }
+  @keyframes dp-ob-spin   { to { transform:rotate(360deg); } }
+
+  #dp-onboarding {
+    position:fixed; inset:0; z-index:9999;
+    display:flex; align-items:center; justify-content:center;
+    background:rgba(20,40,70,.38);
+    backdrop-filter:blur(7px); -webkit-backdrop-filter:blur(7px);
+    animation:dp-ob-fadein .25s ease;
+  }
+
+  .dp-ob-card { background:#fff; border-radius:18px; box-shadow:0 24px 60px rgba(10,25,50,.34); animation:dp-ob-pop .35s ease; }
+  .dp-ob-panel { display:none; }
+  .dp-ob-panel.active { display:flex; }
+
+  /* Intro */
+  #dp-ob-intro { flex-direction:column; align-items:center; text-align:center; width:460px; padding:40px 40px 34px; }
+  .dp-ob-icon-wrap { width:68px; height:68px; border-radius:18px; background:var(--wso2-gradient);
+                     display:flex; align-items:center; justify-content:center; color:#fff;
+                     box-shadow:0 8px 20px rgba(239,66,35,.32); font-size:1.75rem; }
+  #dp-ob-intro h2 { margin:22px 0 0; font-size:1.375rem; font-weight:700; line-height:1.3; color:#1a2433; }
+  #dp-ob-intro p  { margin:12px 0 0; font-size:0.9rem; line-height:1.6; color:#5e6b7a; }
+  .dp-ob-btn-primary { margin-top:26px; width:100%; background:var(--wso2-gradient); color:#fff;
+                       border:none; border-radius:10px; padding:14px; font-size:0.94rem; font-weight:600;
+                       cursor:pointer; transition:opacity .15s; }
+  .dp-ob-btn-primary:hover { opacity:.88; }
+  .dp-ob-btn-primary:disabled { opacity:.6; cursor:default; }
+  .dp-ob-btn-skip { margin-top:16px; background:none; border:none; font-size:0.84rem;
+                    font-weight:600; color:#8a93a0; cursor:pointer; }
+  .dp-ob-btn-skip:hover { color:#374151; text-decoration:underline; }
+
+  /* Deploying */
+  #dp-ob-deploying { flex-direction:column; width:480px; padding:36px 36px 30px; }
+  #dp-ob-deploying h2 { margin:0; font-size:1.2rem; font-weight:700; color:#1a2433; }
+  #dp-ob-deploying .dp-ob-sub { margin:8px 0 0; font-size:0.84rem; line-height:1.5; color:#637282; }
+  .dp-ob-progress-track { margin-top:18px; height:7px; border-radius:4px; background:#eef1f5; overflow:hidden; }
+  .dp-ob-progress-fill { height:100%; width:0%; border-radius:4px; background:var(--wso2-gradient); transition:width .5s ease; }
+  .dp-ob-samples { margin-top:20px; display:flex; flex-direction:column; gap:10px; max-height:340px; overflow-y:auto; }
+  .dp-ob-sample-row { display:flex; align-items:center; gap:14px; padding:10px 14px;
+                      border:1px solid #eef1f5; border-radius:11px; opacity:.55; transition:opacity .3s; }
+  .dp-ob-sample-row.done { opacity:1; }
+  .dp-ob-spinner { width:20px; height:20px; flex:none; border:2.5px solid #f0d9c2;
+                   border-top-color:#e65f00; border-radius:50%; animation:dp-ob-spin .7s linear infinite; }
+  .dp-ob-check { display:none; flex:none; width:20px; height:20px; border-radius:50%;
+                 background:#2e7d32; color:#fff; align-items:center; justify-content:center; }
+  .dp-ob-check svg { display:block; }
+  .dp-ob-sample-name { font-size:0.875rem; font-weight:600; color:#1a2433; }
+  .dp-ob-sample-meta { font-size:0.72rem; color:#8a93a0; margin-top:2px; font-family:monospace; }
+
+  /* Done */
+  #dp-ob-done { flex-direction:column; align-items:center; text-align:center; width:440px; padding:44px 40px; }
+  .dp-ob-success-circle { width:76px; height:76px; border-radius:50%; background:#2e7d32;
+                          display:flex; align-items:center; justify-content:center;
+                          color:#fff; box-shadow:0 8px 22px rgba(46,125,50,.34); }
+  #dp-ob-done h2 { margin:22px 0 0; font-size:1.3rem; font-weight:700; color:#1a2433; }
+  #dp-ob-done p  { margin:10px 0 0; font-size:0.9rem; line-height:1.6; color:#5e6b7a; }
+  #dp-ob-done .dp-ob-done-detail { font-size:0.8rem; color:#8a93a0; margin-top:6px; }
+
+  /* Error state */
+  .dp-ob-error { margin-top:14px; font-size:0.82rem; color:#b91c1c; text-align:left; background:#fff7f7;
+                 border:1px solid #fecaca; border-radius:6px; padding:8px 12px; }
+</style>
+
+<div id="dp-onboarding" role="dialog" aria-modal="true" aria-labelledby="dp-ob-title">
+
+  <!-- Intro -->
+  <div class="dp-ob-card dp-ob-panel active" id="dp-ob-intro">
+    <div class="dp-ob-icon-wrap"><i class="bi bi-rocket-takeoff"></i></div>
+    <h2 id="dp-ob-title">Welcome to your developer portal</h2>
+    <p>You don't have any APIs yet. Deploy a set of ready-made sample APIs to explore
+       subscriptions, keys, and try-it-out in minutes.</p>
+    <button class="dp-ob-btn-primary" id="dp-ob-deploy-btn">Deploy sample APIs</button>
+    <button class="dp-ob-btn-skip" id="dp-ob-skip-btn">I'll explore on my own</button>
+  </div>
+
+  <!-- Deploying -->
+  <div class="dp-ob-card dp-ob-panel" id="dp-ob-deploying">
+    <h2>Deploying sample APIs</h2>
+    <p class="dp-ob-sub" id="dp-ob-progress-label">Starting deployment…</p>
+    <div class="dp-ob-progress-track">
+      <div class="dp-ob-progress-fill" id="dp-ob-progress-fill"></div>
+    </div>
+    <div class="dp-ob-samples" id="dp-ob-samples"></div>
+  </div>
+
+  <!-- Done -->
+  <div class="dp-ob-card dp-ob-panel" id="dp-ob-done">
+    <div class="dp-ob-success-circle">
+      <svg width="40" height="40" viewBox="0 0 24 24" fill="none">
+        <path d="M5 12.5l4.5 4.5L19 7" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </div>
+    <h2>All set!</h2>
+    <p id="dp-ob-done-msg">Sample APIs were deployed to your portal. Taking you to your API catalog…</p>
+    <p class="dp-ob-done-detail" id="dp-ob-done-detail"></p>
+  </div>
+
+</div>
+
+<script>
+(function () {
+  var STORAGE_KEY = 'dp_ob_dismissed';
+  var BASE_URL    = '{{baseUrl}}';
+  var SEED_URL    = BASE_URL + '/apis/seed-samples';
+
+  var overlay       = document.getElementById('dp-onboarding');
+  var introPanel    = document.getElementById('dp-ob-intro');
+  var deployPanel   = document.getElementById('dp-ob-deploying');
+  var donePanel     = document.getElementById('dp-ob-done');
+  var deployBtn     = document.getElementById('dp-ob-deploy-btn');
+  var skipBtn       = document.getElementById('dp-ob-skip-btn');
+  var progressFill  = document.getElementById('dp-ob-progress-fill');
+  var progressLabel = document.getElementById('dp-ob-progress-label');
+  var samplesEl     = document.getElementById('dp-ob-samples');
+  var doneMsgEl     = document.getElementById('dp-ob-done-msg');
+  var doneDetailEl  = document.getElementById('dp-ob-done-detail');
+
+  // Sample APIs on the filesystem — drives the progress animation
+  var SAMPLES = [
+    { name: 'Ping API',               meta: 'REST · v1.0'   },
+    { name: 'Booking API',            meta: 'REST · v1.0'   },
+    { name: 'Catalog API',            meta: 'REST · v1.0'   },
+    { name: 'Swagger Petstore',       meta: 'REST · v1.0.7' },
+    { name: 'Countries GraphQL API',  meta: 'GraphQL · v1.0'},
+    { name: 'Leisure Activities API', meta: 'SOAP · v1.0'   },
+    { name: 'Navigation API',         meta: 'WS · v1.0'     },
+  ];
+  var TOTAL = SAMPLES.length;
+
+  // Build sample rows
+  SAMPLES.forEach(function (s, i) {
+    var row = document.createElement('div');
+    row.className = 'dp-ob-sample-row';
+    row.id = 'dp-ob-row-' + i;
+    row.innerHTML =
+      '<div class="dp-ob-spinner" id="dp-ob-spin-' + i + '"></div>' +
+      '<div class="dp-ob-check" id="dp-ob-check-' + i + '">' +
+        '<svg width="13" height="13" viewBox="0 0 24 24" fill="none">' +
+          '<path d="M5 12.5l4.5 4.5L19 7" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>' +
+        '</svg>' +
+      '</div>' +
+      '<div><div class="dp-ob-sample-name">' + s.name + '</div>' +
+      '<div class="dp-ob-sample-meta">' + s.meta + '</div></div>';
+    samplesEl.appendChild(row);
+  });
+
+  function dismiss() {
+    try { sessionStorage.setItem(STORAGE_KEY, '1'); } catch (_) {}
+    overlay.style.display = 'none';
+  }
+
+  function show(panelEl) {
+    [introPanel, deployPanel, donePanel].forEach(function (p) { p.classList.remove('active'); });
+    panelEl.classList.add('active');
+  }
+
+  function markRow(i) {
+    var row   = document.getElementById('dp-ob-row-' + i);
+    var spin  = document.getElementById('dp-ob-spin-' + i);
+    var check = document.getElementById('dp-ob-check-' + i);
+    if (spin)  spin.style.display  = 'none';
+    if (check) check.style.display = 'inline-flex';
+    if (row)   row.classList.add('done');
+  }
+
+  function runAnimation(onComplete) {
+    var done = 0;
+    function tick(i) {
+      if (i >= TOTAL) { onComplete && onComplete(); return; }
+      setTimeout(function () {
+        done++;
+        markRow(i);
+        progressFill.style.width = Math.round(done / TOTAL * 100) + '%';
+        progressLabel.textContent = done + ' of ' + TOTAL + ' deploying…';
+        tick(i + 1);
+      }, 700);
+    }
+    tick(0);
+  }
+
+  function runDeploy() {
+    show(deployPanel);
+    deployBtn.disabled = true;
+
+    var animDone = false;
+    var fetchDone = false;
+    var fetchResult = null;
+
+    function tryFinish() {
+      if (!animDone || !fetchDone) return;
+      var deployed = fetchResult ? fetchResult.deployed : 0;
+      var skipped  = fetchResult ? fetchResult.skipped  : 0;
+      var failed   = fetchResult ? fetchResult.failed   : 0;
+      var detail = [];
+      if (deployed > 0) detail.push(deployed + ' deployed');
+      if (skipped  > 0) detail.push(skipped  + ' already existed');
+      if (failed   > 0) detail.push(failed   + ' failed');
+      doneMsgEl.textContent     = 'Sample APIs are ready in your portal. Taking you to your API catalog…';
+      doneDetailEl.textContent  = detail.join(' · ');
+      show(donePanel);
+      setTimeout(function () {
+        try { sessionStorage.setItem(STORAGE_KEY, '1'); } catch (_) {}
+        window.location.href = BASE_URL + '/apis';
+      }, 2000);
+    }
+
+    // Kick off animation
+    runAnimation(function () { animDone = true; tryFinish(); });
+
+    // Kick off real deployment
+    var csrfToken = '';
+    try {
+      var m = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]+)/);
+      if (m) csrfToken = decodeURIComponent(m[1]);
+    } catch (_) {}
+
+    fetch(SEED_URL, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'X-CSRF-Token': csrfToken, 'Content-Type': 'application/json' },
+    })
+    .then(function (r) { return r.json(); })
+    .then(function (data) { fetchResult = data; })
+    .catch(function (err) {
+      console.warn('Sample seed fetch error:', err);
+      fetchResult = { deployed: 0, skipped: 0, failed: 0 };
+    })
+    .finally(function () { fetchDone = true; tryFinish(); });
+  }
+
+  // Suppress if already dismissed this session
+  try {
+    if (sessionStorage.getItem(STORAGE_KEY)) {
+      overlay.style.display = 'none';
+      return;
+    }
+  } catch (_) {}
+
+  deployBtn.addEventListener('click', runDeploy);
+  skipBtn.addEventListener('click', dismiss);
+  overlay.addEventListener('click', function (e) { if (e.target === overlay) dismiss(); });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && overlay.style.display !== 'none') dismiss();
+  });
+}());
+</script>

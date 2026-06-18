@@ -46,6 +46,11 @@ router.get('/:orgName/views/:viewName/mcps.md', (req, res, next) => {
     next();
 }, util.enforcePortalMode, apiController.loadMCPsMd);
 
+router.post('/:orgName/views/:viewName/apis/seed-samples', (req, res, next) => {
+    if (req.params.orgName === 'favicon.ico') return res.status(404).json({ error: 'Not Found' });
+    next();
+}, ensureAuthenticated, apiController.seedSamples);
+
 router.get('/:orgName/views/:viewName/apis', (req, res, next) => {
     if (req.params.orgName === 'favicon.ico') {
         return res.status(404).send('Not Found');

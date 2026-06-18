@@ -35,6 +35,7 @@ const apiMetadataService = require('../services/apiMetadataService');
 const { apiUsesApiKeySecurity, findSubscriptionTokenHeader } = require('../utils/apiDefinitionUtil');
 const sampleApiLoader = require('../utils/sampleApiLoader');
 const adminService = require('../services/adminService');
+const { seedSampleAPIs } = require('../services/sampleSeederService');
 const apiFlowService = require('../services/apiFlowService');
 const { buildSchema, getIntrospectionQuery, graphql: executeGraphQL } = require('graphql');
 const yaml = require('js-yaml');
@@ -1493,6 +1494,25 @@ const loadDocumentMd = async (req, res) => {
     }
 };
 
+const seedSamples = async (req, res) => {
+    const { orgName } = req.params;
+    if (!req.user?.isAdmin) {
+        return res.status(403).json({ error: 'Access denied' });
+    }
+    try {
+        const orgDetails = await orgDao.get(orgName);
+        const results = await seedSampleAPIs(orgDetails.ORG_ID);
+        const deployed = results.filter(r => r.status === 'ok').length;
+        const skipped  = results.filter(r => r.status === 'exists').length;
+        const failed   = results.filter(r => r.status === 'failed').length;
+        logger.info('Sample seed complete', { orgName, deployed, skipped, failed });
+        res.json({ results, deployed, skipped, failed });
+    } catch (err) {
+        logger.error('Sample seed error', { orgName, error: err.message });
+        res.status(500).json({ error: err.message });
+    }
+};
+
 module.exports = {
     loadAPIs,
     loadAPIContent,
@@ -1505,4 +1525,5 @@ module.exports = {
     loadAPIContentMd,
     loadDocumentMd,
     loadSpecificationRaw: loadAPIDefinitionRaw,
+    seedSamples,
 };
