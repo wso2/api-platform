@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -253,31 +254,42 @@ func buildSingleAIWorkspacePayload(projectRoot, outputDir, outputFile string, us
 		return "", fmt.Errorf("ai-workspace config %q: failed to read runtime: %w", config.Name, err)
 	}
 
-	proxyName := strings.TrimSpace(metadata.Metadata.Name)
-	if proxyName == "" {
+	// The kind declared in metadata.yaml and runtime.yaml must match.
+	metadataKind := strings.TrimSpace(metadata.Kind)
+	runtimeKind := strings.TrimSpace(runtime.Kind)
+	if metadataKind != runtimeKind {
+		return "", fmt.Errorf("ai-workspace config %q: kind mismatch: metadata.yaml has kind %q but runtime.yaml has kind %q", config.Name, metadataKind, runtimeKind)
+	}
+
+	resourceName := strings.TrimSpace(metadata.Metadata.Name)
+	if resourceName == "" {
 		return "", fmt.Errorf("ai-workspace config %q is invalid: metadata.metadata.name is required", config.Name)
 	}
 
-	// The openapi field is left empty by default. It is populated only when the
-	// user opts in with --use-spec and the configured definition.yaml exists.
-	openapi := ""
-	if useSpec {
-		definitionPath := resolveProjectPath(baseDir, config.FilePaths.Definition)
-		if err := ensureWithinProjectRoot(projectRoot, definitionPath, config.Name, "definition"); err != nil {
+	// The payload shape and whether an OpenAPI spec is required are driven by the
+	// declared kind. An LlmProxy rarely needs a spec, so it stays opt-in via
+	// --use-spec; an LlmProvider always needs one, so the definition is required.
+	var payload interface{}
+	switch metadataKind {
+	case kindLLMProxy:
+		openapi := ""
+		if useSpec {
+			spec, err := loadAIWorkspaceSpec(projectRoot, baseDir, config, false)
+			if err != nil {
+				return "", err
+			}
+			openapi = spec
+		}
+		payload = buildLLMProxyPayload(resourceName, metadata, runtime, openapi)
+	case kindLLMProvider:
+		openapi, err := loadAIWorkspaceSpec(projectRoot, baseDir, config, true)
+		if err != nil {
 			return "", err
 		}
-		if info, err := os.Stat(definitionPath); err == nil && !info.IsDir() {
-			data, err := os.ReadFile(definitionPath)
-			if err != nil {
-				return "", fmt.Errorf("ai-workspace config %q: failed to read definition: %w", config.Name, err)
-			}
-			openapi = string(data)
-		} else if err != nil && !os.IsNotExist(err) {
-			return "", fmt.Errorf("ai-workspace config %q: failed to inspect definition: %w", config.Name, err)
-		}
+		payload = buildLLMProviderPayload(resourceName, metadata, runtime, openapi)
+	default:
+		return "", fmt.Errorf("ai-workspace config %q: unsupported kind %q (supported: %s, %s)", config.Name, metadataKind, kindLLMProxy, kindLLMProvider)
 	}
-
-	payload := buildLLMProxyPayload(proxyName, metadata, runtime, openapi)
 
 	// An explicit -o file path wins; otherwise the artifact is named after the
 	// ai-workspace config name (not metadata.name) under the output directory,
@@ -301,6 +313,373 @@ func buildSingleAIWorkspacePayload(projectRoot, outputDir, outputFile string, us
 	}
 
 	return outputPath, nil
+}
+
+// Supported artifact kinds. These match the `kind` declared in metadata.yaml
+// and runtime.yaml.
+const (
+	kindLLMProxy    = "LlmProxy"
+	kindLLMProvider = "LlmProvider"
+)
+
+// loadAIWorkspaceSpec reads the configured definition.yaml relative to baseDir
+// and returns its content. When required is true a missing definition is an
+// error; otherwise a missing definition yields an empty spec.
+func loadAIWorkspaceSpec(projectRoot, baseDir string, config *project.AIWorkspaceConfig, required bool) (string, error) {
+	definitionPath := resolveProjectPath(baseDir, config.FilePaths.Definition)
+	if err := ensureWithinProjectRoot(projectRoot, definitionPath, config.Name, "definition"); err != nil {
+		return "", err
+	}
+
+	info, err := os.Stat(definitionPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			if required {
+				return "", fmt.Errorf("ai-workspace config %q is invalid: definition path does not exist: %s", config.Name, definitionPath)
+			}
+			return "", nil
+		}
+		return "", fmt.Errorf("ai-workspace config %q: failed to inspect definition: %w", config.Name, err)
+	}
+	if info.IsDir() {
+		return "", fmt.Errorf("ai-workspace config %q is invalid: definition must be a file: %s", config.Name, definitionPath)
+	}
+
+	data, err := os.ReadFile(definitionPath)
+	if err != nil {
+		return "", fmt.Errorf("ai-workspace config %q: failed to read definition: %w", config.Name, err)
+	}
+	return string(data), nil
+}
+
+// buildLLMProviderPayload assembles the createLLMProvider request body from the
+// project's metadata.yaml (name/version) and runtime.yaml (context, template,
+// upstream, accessControl, policies). The api-key-auth policy is mapped to the
+// security block.
+//
+// NOTE: modelProviders and rateLimiting are not yet populated (see the
+// command's pending design questions) and are omitted from the payload.
+func buildLLMProviderPayload(name string, metadata aiWorkspaceMetadata, runtime aiWorkspaceRuntime, openapi string) llmProviderPayload {
+	payload := llmProviderPayload{
+		ID:       name,
+		Name:     name,
+		Version:  strings.TrimSpace(metadata.Spec.Version),
+		Context:  strings.TrimSpace(runtime.Spec.Context),
+		Template: strings.TrimSpace(runtime.Spec.Template),
+		OpenAPI:  openapi,
+	}
+
+	if up := runtime.Spec.Upstream; up != nil {
+		target := llmUpstreamTarget{URL: strings.TrimSpace(up.URL)}
+		if up.Auth != nil {
+			target.Auth = &llmUpstreamAuth{Type: up.Auth.Type, Header: up.Auth.Header, Value: up.Auth.Value}
+		}
+		payload.Upstream = &llmUpstream{Main: target}
+	}
+
+	if ac := runtime.Spec.AccessControl; ac != nil {
+		mapped := &llmAccessControl{Mode: ac.Mode}
+		for _, exception := range ac.Exceptions {
+			mapped.Exceptions = append(mapped.Exceptions, routeException{Methods: exception.Methods, Path: exception.Path})
+		}
+		payload.AccessControl = mapped
+	}
+
+	payload.RateLimiting = buildRateLimitingFromPolicies(runtime.Spec.Policies)
+	payload.Security = buildSecurityFromPolicies(runtime.Spec.Policies)
+
+	// Any policy that is not mapped to security (api-key-auth) or rateLimiting
+	// (*-ratelimit) passes through into the policies array unchanged.
+	for _, policy := range runtime.Spec.Policies {
+		if policy.Name == "api-key-auth" || strings.HasSuffix(policy.Name, "-ratelimit") {
+			continue
+		}
+		payload.Policies = append(payload.Policies, mapPolicy(policy))
+	}
+
+	return payload
+}
+
+// mapPolicy converts a runtime.yaml policy into the payload policy shape.
+func mapPolicy(policy runtimeProviderPolicy) llmPolicy {
+	mapped := llmPolicy{
+		Name:    policy.Name,
+		Version: policy.Version,
+		Paths:   make([]llmPolicyPath, 0, len(policy.Paths)),
+	}
+	for _, path := range policy.Paths {
+		mapped.Paths = append(mapped.Paths, llmPolicyPath{
+			Path:    path.Path,
+			Methods: path.Methods,
+			Params:  path.Params,
+		})
+	}
+	return mapped
+}
+
+// buildRateLimitingFromPolicies maps the *-ratelimit policies in runtime.yaml
+// into the provider's rateLimiting block. The policy name selects the dimension
+// (advanced-* -> request, token-based-* -> token, llm-cost-based-* -> cost) and
+// the scope is consumer-level when the policy is flagged consumerBased (or, for
+// advanced quotas, when the quota name carries a "consumer" prefix); otherwise
+// it is provider-level.
+//
+// Each limit is applied globally when its path is "/*" and resource-wise (keyed
+// by the path) otherwise. A scope that has any resource-wise limit is emitted as
+// resourceWise, with any "/*" limits folded into its default.
+func buildRateLimitingFromPolicies(policies []runtimeProviderPolicy) *llmRateLimiting {
+	provider := &scopeAccumulator{}
+	consumer := &scopeAccumulator{}
+
+	for _, policy := range policies {
+		if !strings.HasSuffix(policy.Name, "-ratelimit") {
+			continue
+		}
+		for _, path := range policy.Paths {
+			params := path.Params
+			if params == nil {
+				continue
+			}
+			consumerBased := asBool(params["consumerBased"])
+
+			switch {
+			case strings.HasPrefix(policy.Name, "advanced"):
+				dimension, quotaConsumer := advancedRequestDimension(params)
+				if dimension == nil {
+					continue
+				}
+				scope := provider
+				if consumerBased || quotaConsumer {
+					scope = consumer
+				}
+				scope.configFor(path.Path).Request = dimension
+			case strings.Contains(policy.Name, "token"):
+				dimension := tokenDimension(params)
+				if dimension == nil {
+					continue
+				}
+				scope := provider
+				if consumerBased {
+					scope = consumer
+				}
+				scope.configFor(path.Path).Token = dimension
+			case strings.Contains(policy.Name, "cost"):
+				dimension := costDimension(params)
+				if dimension == nil {
+					continue
+				}
+				scope := provider
+				if consumerBased {
+					scope = consumer
+				}
+				scope.configFor(path.Path).Cost = dimension
+			}
+		}
+	}
+
+	providerScope := provider.build()
+	consumerScope := consumer.build()
+	if providerScope == nil && consumerScope == nil {
+		return nil
+	}
+	return &llmRateLimiting{ProviderLevel: providerScope, ConsumerLevel: consumerScope}
+}
+
+// scopeAccumulator collects rate-limit dimensions for one scope (provider or
+// consumer), separating global ("/*") limits from per-path (resource-wise) ones.
+type scopeAccumulator struct {
+	global    *rateLimitConfig
+	resources map[string]*rateLimitConfig
+	order     []string // preserves resource insertion order
+}
+
+// configFor returns the limit config a dimension on path should be written to,
+// creating it on first use.
+func (a *scopeAccumulator) configFor(path string) *rateLimitConfig {
+	if path == "" || path == "/*" {
+		if a.global == nil {
+			a.global = &rateLimitConfig{}
+		}
+		return a.global
+	}
+	if a.resources == nil {
+		a.resources = map[string]*rateLimitConfig{}
+	}
+	if config, ok := a.resources[path]; ok {
+		return config
+	}
+	config := &rateLimitConfig{}
+	a.resources[path] = config
+	a.order = append(a.order, path)
+	return config
+}
+
+// build renders the accumulator into a scope: global when only "/*" limits were
+// seen, resourceWise (with "/*" limits as the default) when any path-specific
+// limit was seen, or nil when empty.
+func (a *scopeAccumulator) build() *rateLimitScope {
+	if len(a.order) == 0 {
+		if a.global == nil {
+			return nil
+		}
+		return &rateLimitScope{Global: a.global}
+	}
+
+	defaultConfig := a.global
+	if defaultConfig == nil {
+		defaultConfig = &rateLimitConfig{}
+	}
+	resourceWise := &resourceWiseConfig{Default: defaultConfig}
+	for _, path := range a.order {
+		resourceWise.Resources = append(resourceWise.Resources, resourceLimit{Resource: path, Limit: a.resources[path]})
+	}
+	return &rateLimitScope{ResourceWise: resourceWise}
+}
+
+// advancedRequestDimension reads the first quota's first limit into a request
+// dimension and reports whether the quota name marks it consumer-scoped.
+func advancedRequestDimension(params map[string]interface{}) (*rateLimitDimension, bool) {
+	quota := firstMap(params["quotas"])
+	if quota == nil {
+		return nil, false
+	}
+	isConsumer := strings.HasPrefix(asString(quota["name"]), "consumer")
+	limit := firstMap(quota["limits"])
+	if limit == nil {
+		return nil, isConsumer
+	}
+	count, _ := asInt(limit["limit"])
+	return &rateLimitDimension{
+		Enabled: true,
+		Count:   count,
+		Reset:   parseResetWindow(asString(limit["duration"])),
+	}, isConsumer
+}
+
+func tokenDimension(params map[string]interface{}) *rateLimitDimension {
+	limit := firstMap(params["totalTokenLimits"])
+	if limit == nil {
+		return nil
+	}
+	count, _ := asInt(limit["count"])
+	return &rateLimitDimension{
+		Enabled: true,
+		Count:   count,
+		Reset:   parseResetWindow(asString(limit["duration"])),
+	}
+}
+
+func costDimension(params map[string]interface{}) *rateLimitCostDimension {
+	limit := firstMap(params["budgetLimits"])
+	if limit == nil {
+		return nil
+	}
+	amount, _ := asFloat(limit["amount"])
+	return &rateLimitCostDimension{
+		Enabled: true,
+		Amount:  amount,
+		Reset:   parseResetWindow(asString(limit["duration"])),
+	}
+}
+
+// parseResetWindow turns a duration like "1h" or "3h" into a {duration, unit}
+// reset window. Unknown unit suffixes are passed through unchanged.
+func parseResetWindow(value string) *rateLimitReset {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil
+	}
+	i := 0
+	for i < len(value) && value[i] >= '0' && value[i] <= '9' {
+		i++
+	}
+	if i == 0 {
+		return nil
+	}
+	duration, err := strconv.Atoi(value[:i])
+	if err != nil {
+		return nil
+	}
+	unit := strings.ToLower(strings.TrimSpace(value[i:]))
+	switch unit {
+	case "m", "min", "minute", "minutes":
+		unit = "minute"
+	case "h", "hr", "hour", "hours":
+		unit = "hour"
+	case "d", "day", "days":
+		unit = "day"
+	case "w", "week", "weeks":
+		unit = "week"
+	case "mo", "month", "months":
+		unit = "month"
+	}
+	return &rateLimitReset{Duration: duration, Unit: unit}
+}
+
+// --- free-form params accessors (runtime policy params are open JSON) ---
+
+func firstMap(value interface{}) map[string]interface{} {
+	slice, ok := value.([]interface{})
+	if !ok || len(slice) == 0 {
+		return nil
+	}
+	m, _ := slice[0].(map[string]interface{})
+	return m
+}
+
+func asString(value interface{}) string {
+	s, _ := value.(string)
+	return s
+}
+
+func asBool(value interface{}) bool {
+	b, _ := value.(bool)
+	return b
+}
+
+func asInt(value interface{}) (int, bool) {
+	switch n := value.(type) {
+	case int:
+		return n, true
+	case int64:
+		return int(n), true
+	case float64:
+		return int(n), true
+	}
+	return 0, false
+}
+
+func asFloat(value interface{}) (float64, bool) {
+	switch n := value.(type) {
+	case float64:
+		return n, true
+	case int:
+		return float64(n), true
+	case int64:
+		return float64(n), true
+	}
+	return 0, false
+}
+
+// buildSecurityFromPolicies maps the api-key-auth policy (if present) to the
+// provider's security block.
+func buildSecurityFromPolicies(policies []runtimeProviderPolicy) *securityConfig {
+	for _, policy := range policies {
+		if policy.Name != "api-key-auth" {
+			continue
+		}
+		apiKey := &apiKeySecurity{Enabled: true}
+		for _, path := range policy.Paths {
+			if v, ok := path.Params["key"].(string); ok && apiKey.Key == "" {
+				apiKey.Key = v
+			}
+			if v, ok := path.Params["in"].(string); ok && apiKey.In == "" {
+				apiKey.In = v
+			}
+		}
+		return &securityConfig{Enabled: true, APIKey: apiKey}
+	}
+	return nil
 }
 
 // buildLLMProxyPayload assembles the createLLMProxy request body from the
@@ -327,19 +706,7 @@ func buildLLMProxyPayload(proxyName string, metadata aiWorkspaceMetadata, runtim
 	}
 
 	for _, policy := range runtime.Spec.Policies {
-		mapped := llmPolicy{
-			Name:    policy.Name,
-			Version: policy.Version,
-			Paths:   make([]llmPolicyPath, 0, len(policy.Paths)),
-		}
-		for _, path := range policy.Paths {
-			mapped.Paths = append(mapped.Paths, llmPolicyPath{
-				Path:    path.Path,
-				Methods: path.Methods,
-				Params:  path.Params,
-			})
-		}
-		payload.Policies = append(payload.Policies, mapped)
+		payload.Policies = append(payload.Policies, mapPolicy(policy))
 	}
 
 	return payload
@@ -370,6 +737,7 @@ func readYAMLFile(path string, out interface{}) error {
 // --- metadata.yaml / runtime.yaml input shapes (only the fields used here) ---
 
 type aiWorkspaceMetadata struct {
+	Kind     string `yaml:"kind"`
 	Metadata struct {
 		Name string `yaml:"name"`
 	} `yaml:"metadata"`
@@ -380,15 +748,19 @@ type aiWorkspaceMetadata struct {
 }
 
 type aiWorkspaceRuntime struct {
+	Kind     string `yaml:"kind"`
 	Metadata struct {
 		Name string `yaml:"name"`
 	} `yaml:"metadata"`
 	Spec struct {
-		DisplayName string                  `yaml:"displayName"`
-		Version     string                  `yaml:"version"`
-		Context     string                  `yaml:"context"`
-		Provider    runtimeProvider         `yaml:"provider"`
-		Policies    []runtimeProviderPolicy `yaml:"policies"`
+		DisplayName   string                  `yaml:"displayName"`
+		Version       string                  `yaml:"version"`
+		Context       string                  `yaml:"context"`
+		Template      string                  `yaml:"template"`
+		Provider      runtimeProvider         `yaml:"provider"`
+		Upstream      *runtimeUpstream        `yaml:"upstream"`
+		AccessControl *runtimeAccessControl   `yaml:"accessControl"`
+		Policies      []runtimeProviderPolicy `yaml:"policies"`
 	} `yaml:"spec"`
 }
 
@@ -401,6 +773,21 @@ type runtimeProviderAuth struct {
 	Type   string `yaml:"type"`
 	Header string `yaml:"header"`
 	Value  string `yaml:"value"`
+}
+
+type runtimeUpstream struct {
+	URL  string               `yaml:"url"`
+	Auth *runtimeProviderAuth `yaml:"auth"`
+}
+
+type runtimeAccessControl struct {
+	Mode       string                  `yaml:"mode"`
+	Exceptions []runtimeRouteException `yaml:"exceptions"`
+}
+
+type runtimeRouteException struct {
+	Methods []string `yaml:"methods"`
+	Path    string   `yaml:"path"`
 }
 
 type runtimeProviderPolicy struct {
@@ -448,6 +835,95 @@ type llmPolicyPath struct {
 	Path    string                 `json:"path"`
 	Methods []string               `json:"methods"`
 	Params  map[string]interface{} `json:"params"`
+}
+
+// --- createLLMProvider request body (subset; see openapi.yaml LLMProvider schema) ---
+
+type llmProviderPayload struct {
+	ID            string            `json:"id"`
+	Name          string            `json:"name"`
+	Version       string            `json:"version"`
+	Context       string            `json:"context,omitempty"`
+	Template      string            `json:"template"`
+	Upstream      *llmUpstream      `json:"upstream,omitempty"`
+	AccessControl *llmAccessControl `json:"accessControl,omitempty"`
+	OpenAPI       string            `json:"openapi"`
+	RateLimiting  *llmRateLimiting  `json:"rateLimiting,omitempty"`
+	Security      *securityConfig   `json:"security,omitempty"`
+	Policies      []llmPolicy       `json:"policies,omitempty"`
+}
+
+type llmRateLimiting struct {
+	ProviderLevel *rateLimitScope `json:"providerLevel,omitempty"`
+	ConsumerLevel *rateLimitScope `json:"consumerLevel,omitempty"`
+}
+
+type rateLimitScope struct {
+	Global       *rateLimitConfig    `json:"global,omitempty"`
+	ResourceWise *resourceWiseConfig `json:"resourceWise,omitempty"`
+}
+
+type resourceWiseConfig struct {
+	Default   *rateLimitConfig `json:"default,omitempty"`
+	Resources []resourceLimit  `json:"resources"`
+}
+
+type resourceLimit struct {
+	Resource string           `json:"resource"`
+	Limit    *rateLimitConfig `json:"limit,omitempty"`
+}
+
+type rateLimitConfig struct {
+	Request *rateLimitDimension     `json:"request,omitempty"`
+	Token   *rateLimitDimension     `json:"token,omitempty"`
+	Cost    *rateLimitCostDimension `json:"cost,omitempty"`
+}
+
+type rateLimitDimension struct {
+	Enabled bool            `json:"enabled"`
+	Count   int             `json:"count"`
+	Reset   *rateLimitReset `json:"reset,omitempty"`
+}
+
+type rateLimitCostDimension struct {
+	Enabled bool            `json:"enabled"`
+	Amount  float64         `json:"amount"`
+	Reset   *rateLimitReset `json:"reset,omitempty"`
+}
+
+type rateLimitReset struct {
+	Duration int    `json:"duration"`
+	Unit     string `json:"unit"`
+}
+
+type llmUpstream struct {
+	Main llmUpstreamTarget `json:"main"`
+}
+
+type llmUpstreamTarget struct {
+	URL  string           `json:"url,omitempty"`
+	Auth *llmUpstreamAuth `json:"auth,omitempty"`
+}
+
+type llmAccessControl struct {
+	Mode       string           `json:"mode"`
+	Exceptions []routeException `json:"exceptions,omitempty"`
+}
+
+type routeException struct {
+	Methods []string `json:"methods"`
+	Path    string   `json:"path"`
+}
+
+type securityConfig struct {
+	Enabled bool            `json:"enabled"`
+	APIKey  *apiKeySecurity `json:"apiKey,omitempty"`
+}
+
+type apiKeySecurity struct {
+	Enabled bool   `json:"enabled"`
+	Key     string `json:"key,omitempty"`
+	In      string `json:"in,omitempty"`
 }
 
 // --- path helpers ---
