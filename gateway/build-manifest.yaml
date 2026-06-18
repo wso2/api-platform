@@ -16,7 +16,7 @@ policies:
       version: v1.0.2
       gomodule: github.com/wso2/gateway-controllers/policies/azure-content-safety-content-moderation@v1
     - name: basic-auth
-      version: v1.0.1
+      version: v1.0.2
       gomodule: github.com/wso2/gateway-controllers/policies/basic-auth@v1
     - name: basic-ratelimit
       version: v1.0.2
@@ -112,7 +112,7 @@ policies:
       version: v1.0.2
       gomodule: github.com/wso2/gateway-controllers/policies/sentence-count-guardrail@v1
     - name: set-headers
-      version: v1.0.1
+      version: v1.1.0
       gomodule: github.com/wso2/gateway-controllers/policies/set-headers@v1
     - name: subscription-validation
       version: v1.0.2

@@ -25,14 +25,21 @@ const (
 	SecretTypePrivateKey  = "PRIVATE_KEY"
 	SecretTypeGeneric     = "GENERIC"
 
-	SecretProviderInHouse        = "IN_HOUSE"
+	SecretProviderInHouse        = "IN_BUILT"
 	SecretProviderAWSKMS         = "AWS_KMS"
 	SecretProviderHashiCorpVault = "HASHICORP_VAULT"
 
 	SecretStatusActive     = "ACTIVE"
 	SecretStatusDeprecated = "DEPRECATED"
 
-	SecretDefaultEnvironment = "__ALL_ENV"
+	// ValueScope controls where and how a secret value is supplied.
+	// Only ORG_SHARED is implemented in v1; the others are reserved.
+	SecretValueScopeOrgShared         = "ORG_SHARED"
+	SecretValueScopeProjectShared     = "PROJECT_SHARED"
+	SecretValueScopeOrgEnvironment    = "ORG_ENVIRONMENT"
+	SecretValueScopeProjectEnvironment = "PROJECT_ENVIRONMENT"
+
+	SecretDefaultValueScope = SecretValueScopeOrgShared
 )
 
 // Secret represents an encrypted secret stored in the platform.
@@ -48,7 +55,7 @@ type Secret struct {
 	Type           string    `db:"type"`
 	Provider       string    `db:"provider"`
 	Status         string    `db:"status"`
-	Environment    string    `db:"environment"`
+	ValueScope     string    `db:"value_scope"`
 	CreatedAt      time.Time `db:"created_at"`
 	CreatedBy      string    `db:"created_by"`
 	UpdatedAt      time.Time `db:"updated_at"`

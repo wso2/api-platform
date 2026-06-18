@@ -851,8 +851,7 @@ func (h *GatewayInternalAPIHandler) GetGatewaySecrets(c *gin.Context) {
 			Provider:    s.Provider,
 			Status:      s.Status,
 			Hash:        s.Hash,
-			Environment: s.Environment,
-			ProjectID:   s.ProjectID,
+			ValueScope: s.ValueScope,
 			CreatedAt:   s.CreatedAt,
 			UpdatedAt:   s.UpdatedAt,
 		}

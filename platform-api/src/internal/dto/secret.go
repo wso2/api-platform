@@ -21,13 +21,11 @@ import "time"
 
 // CreateSecretRequest is the request body for POST /api/v1/secrets.
 type CreateSecretRequest struct {
-	Handle      string  `json:"name" binding:"required"`
-	DisplayName string  `json:"displayName" binding:"required"`
-	Description string  `json:"description"`
-	Value       string  `json:"value" binding:"required"`
-	Type        string  `json:"type"`
-	ProjectID   *string `json:"projectId"`
-	Environment string  `json:"environment"`
+	Handle      string `json:"name" binding:"required"`
+	DisplayName string `json:"displayName" binding:"required"`
+	Description string `json:"description"`
+	Value       string `json:"value" binding:"required"`
+	Type        string `json:"type"`
 }
 
 // UpdateSecretRequest is the request body for PUT /api/v1/secrets/:id.
@@ -35,7 +33,6 @@ type UpdateSecretRequest struct {
 	DisplayName string `json:"displayName"`
 	Description string `json:"description"`
 	Value       string `json:"value" binding:"required"`
-	Environment string `json:"environment"`
 }
 
 // SecretResponse is returned on POST and PUT — includes the plaintext value once.
@@ -49,8 +46,7 @@ type SecretResponse struct {
 	Provider    string    `json:"provider"`
 	Status      string    `json:"status"`
 	Hash        string    `json:"hash"`
-	Environment string    `json:"environment"`
-	ProjectID   *string   `json:"projectId,omitempty"`
+	ValueScope  string    `json:"valueScope"`
 	CreatedAt   time.Time `json:"createdAt"`
 	CreatedBy   string    `json:"createdBy,omitempty"`
 	UpdatedAt   time.Time `json:"updatedAt"`
@@ -67,16 +63,15 @@ type SecretSummary struct {
 	Provider    string    `json:"provider"`
 	Status      string    `json:"status"`
 	Hash        string    `json:"hash"`
-	Environment string    `json:"environment"`
-	ProjectID   *string   `json:"projectId,omitempty"`
+	ValueScope  string    `json:"valueScope"`
 	CreatedAt   time.Time `json:"createdAt"`
 	UpdatedAt   time.Time `json:"updatedAt"`
 }
 
 // SecretListResponse wraps the paginated list of secrets.
 type SecretListResponse struct {
-	List  []*SecretSummary `json:"list"`
-	Count int              `json:"count"`
+	List       []*SecretSummary `json:"list"`
+	Pagination Pagination       `json:"pagination"`
 }
 
 // SecretSyncItem is returned by the internal GW sync endpoint.
@@ -89,8 +84,7 @@ type SecretSyncItem struct {
 	Provider    string    `json:"provider"`
 	Status      string    `json:"status"`
 	Hash        string    `json:"hash"`
-	Environment string    `json:"environment"`
-	ProjectID   *string   `json:"projectId,omitempty"`
+	ValueScope  string    `json:"valueScope"`
 	CreatedAt   time.Time `json:"createdAt"`
 	UpdatedAt   time.Time `json:"updatedAt"`
 	Value       *string   `json:"value,omitempty"`

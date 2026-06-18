@@ -50,8 +50,8 @@ func (r *SecretRepo) Create(s *model.Secret) error {
 		}
 		s.UUID = id
 	}
-	if s.Environment == "" {
-		s.Environment = model.SecretDefaultEnvironment
+	if s.ValueScope == "" {
+		s.ValueScope = model.SecretDefaultValueScope
 	}
 	if s.Type == "" {
 		s.Type = model.SecretTypeGeneric
@@ -66,14 +66,14 @@ func (r *SecretRepo) Create(s *model.Secret) error {
 	query := r.db.Rebind(`
 		INSERT INTO secrets (
 			uuid, organization_id, handle, project_id, display_name, description,
-			ciphertext, hash, type, provider, status, environment,
+			ciphertext, hash, type, provider, status, value_scope,
 			created_at, created_by, updated_at, updated_by
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`)
 
 	_, err := r.db.Exec(query,
-		s.UUID, s.OrganizationID, s.Handle, s.ProjectID, s.DisplayName, s.Description,
-		s.Ciphertext, s.Hash, s.Type, s.Provider, s.Status, s.Environment,
+		s.UUID, s.OrganizationID, s.Handle, s.DisplayName, s.Description,
+		s.Ciphertext, s.Hash, s.Type, s.Provider, s.Status, s.ValueScope,
 		s.CreatedAt, s.CreatedBy, s.UpdatedAt, s.UpdatedBy,
 	)
 	if err != nil {
@@ -85,16 +85,16 @@ func (r *SecretRepo) Create(s *model.Secret) error {
 func (r *SecretRepo) GetByHandle(orgID, handle string) (*model.Secret, error) {
 	query := r.db.Rebind(`
 		SELECT uuid, organization_id, handle, project_id, display_name, description,
-		       ciphertext, hash, type, provider, status, environment,
+		       ciphertext, hash, type, provider, status, value_scope,
 		       created_at, created_by, updated_at, updated_by
 		FROM secrets
-		WHERE organization_id = ? AND handle = ?
+		WHERE organization_id = ? AND handle = ? AND project_id IS NULL
 	`)
 
 	s := &model.Secret{}
 	err := r.db.QueryRow(query, orgID, handle).Scan(
 		&s.UUID, &s.OrganizationID, &s.Handle, &s.ProjectID, &s.DisplayName, &s.Description,
-		&s.Ciphertext, &s.Hash, &s.Type, &s.Provider, &s.Status, &s.Environment,
+		&s.Ciphertext, &s.Hash, &s.Type, &s.Provider, &s.Status, &s.ValueScope,
 		&s.CreatedAt, &s.CreatedBy, &s.UpdatedAt, &s.UpdatedBy,
 	)
 	if err != nil {
@@ -106,28 +106,21 @@ func (r *SecretRepo) GetByHandle(orgID, handle string) (*model.Secret, error) {
 	return s, nil
 }
 
-func (r *SecretRepo) List(orgID string, projectID *string, limit, offset int, updatedAfter *time.Time) ([]*model.Secret, error) {
+func (r *SecretRepo) List(orgID string, limit, offset int, updatedAfter *time.Time) ([]*model.Secret, error) {
 	var (
 		query string
 		args  []interface{}
 	)
 
 	const cols = `SELECT uuid, organization_id, handle, project_id, display_name, description,
-		       ciphertext, hash, type, provider, status, environment,
+		       ciphertext, hash, type, provider, status, value_scope,
 		       created_at, created_by, updated_at, updated_by FROM secrets`
 
-	switch {
-	case projectID != nil && updatedAfter != nil:
-		query = r.db.Rebind(cols + ` WHERE organization_id = ? AND project_id = ? AND updated_at > ? ORDER BY updated_at DESC LIMIT ? OFFSET ?`)
-		args = []interface{}{orgID, *projectID, *updatedAfter, limit, offset}
-	case projectID != nil:
-		query = r.db.Rebind(cols + ` WHERE organization_id = ? AND project_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?`)
-		args = []interface{}{orgID, *projectID, limit, offset}
-	case updatedAfter != nil:
-		query = r.db.Rebind(cols + ` WHERE organization_id = ? AND updated_at > ? ORDER BY updated_at DESC LIMIT ? OFFSET ?`)
+	if updatedAfter != nil {
+		query = r.db.Rebind(cols + ` WHERE organization_id = ? AND project_id IS NULL AND updated_at > ? ORDER BY updated_at DESC LIMIT ? OFFSET ?`)
 		args = []interface{}{orgID, *updatedAfter, limit, offset}
-	default:
-		query = r.db.Rebind(cols + ` WHERE organization_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?`)
+	} else {
+		query = r.db.Rebind(cols + ` WHERE organization_id = ? AND project_id IS NULL ORDER BY created_at DESC LIMIT ? OFFSET ?`)
 		args = []interface{}{orgID, limit, offset}
 	}
 
@@ -142,7 +135,7 @@ func (r *SecretRepo) List(orgID string, projectID *string, limit, offset int, up
 		s := &model.Secret{}
 		if err := rows.Scan(
 			&s.UUID, &s.OrganizationID, &s.Handle, &s.ProjectID, &s.DisplayName, &s.Description,
-			&s.Ciphertext, &s.Hash, &s.Type, &s.Provider, &s.Status, &s.Environment,
+			&s.Ciphertext, &s.Hash, &s.Type, &s.Provider, &s.Status, &s.ValueScope,
 			&s.CreatedAt, &s.CreatedBy, &s.UpdatedAt, &s.UpdatedBy,
 		); err != nil {
 			return nil, fmt.Errorf("failed to scan secret row: %w", err)
@@ -155,31 +148,41 @@ func (r *SecretRepo) List(orgID string, projectID *string, limit, offset int, up
 // ListByHandles returns secrets for the given org whose handle is in the provided list.
 // If updatedAfter is set, only secrets updated after that time are returned.
 // Returns an empty slice (not an error) when handles is empty.
-func (r *SecretRepo) ListByHandles(orgID string, handles []string, updatedAfter *time.Time) ([]*model.Secret, error) {
+func (r *SecretRepo) ListByHandles(orgID string, handles []string, updatedAfter *time.Time, valueScopes []string) ([]*model.Secret, error) {
 	if len(handles) == 0 {
 		return nil, nil
 	}
 
 	const cols = `SELECT uuid, organization_id, handle, project_id, display_name, description,
-		       ciphertext, hash, type, provider, status, environment,
+		       ciphertext, hash, type, provider, status, value_scope,
 		       created_at, created_by, updated_at, updated_by FROM secrets`
 
-	// Build IN clause placeholders
-	placeholders := make([]string, len(handles))
-	args := make([]interface{}, 0, len(handles)+3)
+	args := make([]interface{}, 0, len(handles)+len(valueScopes)+3)
 	args = append(args, orgID)
+
+	handlePlaceholders := make([]string, len(handles))
 	for i, h := range handles {
-		placeholders[i] = "?"
+		handlePlaceholders[i] = "?"
 		args = append(args, h)
 	}
-	inClause := strings.Join(placeholders, ",")
+	inClause := `handle IN (` + strings.Join(handlePlaceholders, ",") + `)`
+
+	scopeClause := ""
+	if len(valueScopes) > 0 {
+		scopePlaceholders := make([]string, len(valueScopes))
+		for i, s := range valueScopes {
+			scopePlaceholders[i] = "?"
+			args = append(args, s)
+		}
+		scopeClause = ` AND value_scope IN (` + strings.Join(scopePlaceholders, ",") + `)`
+	}
 
 	var query string
 	if updatedAfter != nil {
-		query = r.db.Rebind(cols + ` WHERE organization_id = ? AND handle IN (` + inClause + `) AND updated_at > ? ORDER BY updated_at DESC`)
+		query = r.db.Rebind(cols + ` WHERE organization_id = ? AND project_id IS NULL AND ` + inClause + scopeClause + ` AND updated_at > ? ORDER BY updated_at DESC`)
 		args = append(args, *updatedAfter)
 	} else {
-		query = r.db.Rebind(cols + ` WHERE organization_id = ? AND handle IN (` + inClause + `) ORDER BY created_at DESC`)
+		query = r.db.Rebind(cols + ` WHERE organization_id = ? AND project_id IS NULL AND ` + inClause + scopeClause + ` ORDER BY created_at DESC`)
 	}
 
 	rows, err := r.db.Query(query, args...)
@@ -193,7 +196,7 @@ func (r *SecretRepo) ListByHandles(orgID string, handles []string, updatedAfter 
 		s := &model.Secret{}
 		if err := rows.Scan(
 			&s.UUID, &s.OrganizationID, &s.Handle, &s.ProjectID, &s.DisplayName, &s.Description,
-			&s.Ciphertext, &s.Hash, &s.Type, &s.Provider, &s.Status, &s.Environment,
+			&s.Ciphertext, &s.Hash, &s.Type, &s.Provider, &s.Status, &s.ValueScope,
 			&s.CreatedAt, &s.CreatedBy, &s.UpdatedAt, &s.UpdatedBy,
 		); err != nil {
 			return nil, fmt.Errorf("failed to scan secret row: %w", err)
@@ -203,22 +206,10 @@ func (r *SecretRepo) ListByHandles(orgID string, handles []string, updatedAfter 
 	return secrets, rows.Err()
 }
 
-func (r *SecretRepo) Count(orgID string, projectID *string) (int, error) {
-	var (
-		query string
-		args  []interface{}
-		count int
-	)
-
-	if projectID != nil {
-		query = r.db.Rebind(`SELECT COUNT(*) FROM secrets WHERE organization_id = ? AND project_id = ?`)
-		args = []interface{}{orgID, *projectID}
-	} else {
-		query = r.db.Rebind(`SELECT COUNT(*) FROM secrets WHERE organization_id = ?`)
-		args = []interface{}{orgID}
-	}
-
-	if err := r.db.QueryRow(query, args...).Scan(&count); err != nil {
+func (r *SecretRepo) Count(orgID string) (int, error) {
+	var count int
+	query := r.db.Rebind(`SELECT COUNT(*) FROM secrets WHERE organization_id = ? AND project_id IS NULL`)
+	if err := r.db.QueryRow(query, orgID).Scan(&count); err != nil {
 		return 0, fmt.Errorf("failed to count secrets: %w", err)
 	}
 	return count, nil
@@ -230,13 +221,13 @@ func (r *SecretRepo) Update(s *model.Secret) error {
 	query := r.db.Rebind(`
 		UPDATE secrets
 		SET display_name = ?, description = ?, ciphertext = ?, hash = ?,
-		    environment = ?, updated_at = ?, updated_by = ?
+		    updated_at = ?, updated_by = ?
 		WHERE organization_id = ? AND handle = ?
 	`)
 
 	result, err := r.db.Exec(query,
 		s.DisplayName, s.Description, s.Ciphertext, s.Hash,
-		s.Environment, s.UpdatedAt, s.UpdatedBy,
+		s.UpdatedAt, s.UpdatedBy,
 		s.OrganizationID, s.Handle,
 	)
 	if err != nil {
@@ -327,26 +318,13 @@ func (r *SecretRepo) FindAPIRefs(orgID, handle string) ([]model.SecretReference,
 	return refs, rows.Err()
 }
 
-func (r *SecretRepo) Exists(orgID string, projectID *string, handle string) (bool, error) {
+func (r *SecretRepo) Exists(orgID, handle string) (bool, error) {
 	var count int
-	var err error
-
-	if projectID != nil {
-		query := r.db.Rebind(`
-			SELECT COUNT(*) FROM secrets
-			WHERE organization_id = ? AND COALESCE(project_id, '') = ? AND handle = ? AND status = 'ACTIVE'
-		`)
-		err = r.db.QueryRow(query, orgID, *projectID, handle).Scan(&count)
-	} else {
-		// org-wide lookup: check project_id IS NULL
-		query := r.db.Rebind(`
-			SELECT COUNT(*) FROM secrets
-			WHERE organization_id = ? AND project_id IS NULL AND handle = ? AND status = 'ACTIVE'
-		`)
-		err = r.db.QueryRow(query, orgID, handle).Scan(&count)
-	}
-
-	if err != nil {
+	query := r.db.Rebind(`
+		SELECT COUNT(*) FROM secrets
+		WHERE organization_id = ? AND project_id IS NULL AND handle = ? AND status = 'ACTIVE'
+	`)
+	if err := r.db.QueryRow(query, orgID, handle).Scan(&count); err != nil {
 		return false, fmt.Errorf("failed to check secret existence: %w", err)
 	}
 	return count > 0, nil

@@ -389,9 +389,9 @@ func (r *DeploymentRepo) SetCurrentWithDetails(artifactUUID, orgUUID, gatewayID,
 
 		for _, handle := range extractSecretHandles(content) {
 			_, err = tx.Exec(r.db.Rebind(`
-				INSERT INTO deployment_secret_refs (organization_id, gateway_id, artifact_uuid, secret_handle, deployment_id)
-				VALUES (?, ?, ?, ?, ?)
-			`), orgUUID, gatewayID, artifactUUID, handle, deploymentID)
+				INSERT INTO deployment_secret_refs (organization_id, gateway_id, artifact_uuid, secret_handle)
+				VALUES (?, ?, ?, ?)
+			`), orgUUID, gatewayID, artifactUUID, handle)
 			if err != nil {
 				return time.Time{}, fmt.Errorf("failed to insert deployment secret ref: %w", err)
 			}
