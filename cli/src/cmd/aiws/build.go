@@ -266,6 +266,11 @@ func buildSingleAIWorkspacePayload(projectRoot, outputDir, outputFile string, us
 		return "", fmt.Errorf("ai-workspace config %q is invalid: metadata.metadata.name is required", config.Name)
 	}
 
+	// metadata.name must match between metadata.yaml and runtime.yaml.
+	if runtimeName := strings.TrimSpace(runtime.Metadata.Name); runtimeName != resourceName {
+		return "", fmt.Errorf("ai-workspace config %q: name mismatch: metadata.yaml has metadata.name %q but runtime.yaml has metadata.name %q", config.Name, resourceName, runtimeName)
+	}
+
 	// The payload shape and whether an OpenAPI spec is required are driven by the
 	// declared kind. An LlmProxy rarely needs a spec, so it stays opt-in via
 	// --use-spec; an LlmProvider always needs one, so the definition is required.
@@ -287,8 +292,19 @@ func buildSingleAIWorkspacePayload(projectRoot, outputDir, outputFile string, us
 			return "", err
 		}
 		payload = buildLLMProviderPayload(resourceName, metadata, runtime, openapi)
+	case kindMCP:
+		// An MCP proxy always needs the definition (its capabilities live there).
+		spec, err := loadAIWorkspaceSpec(projectRoot, baseDir, config, true)
+		if err != nil {
+			return "", err
+		}
+		var definition mcpDefinition
+		if err := yaml.Unmarshal([]byte(spec), &definition); err != nil {
+			return "", fmt.Errorf("ai-workspace config %q: failed to parse definition: %w", config.Name, err)
+		}
+		payload = buildMCPProxyPayload(resourceName, metadata, runtime, definition)
 	default:
-		return "", fmt.Errorf("ai-workspace config %q: unsupported kind %q (supported: %s, %s)", config.Name, metadataKind, kindLLMProxy, kindLLMProvider)
+		return "", fmt.Errorf("ai-workspace config %q: unsupported kind %q (supported: %s, %s, %s)", config.Name, metadataKind, kindLLMProxy, kindLLMProvider, kindMCP)
 	}
 
 	// An explicit -o file path wins; otherwise the artifact is named after the
@@ -320,6 +336,7 @@ func buildSingleAIWorkspacePayload(projectRoot, outputDir, outputFile string, us
 const (
 	kindLLMProxy    = "LlmProxy"
 	kindLLMProvider = "LlmProvider"
+	kindMCP         = "Mcp"
 )
 
 // loadAIWorkspaceSpec reads the configured definition.yaml relative to baseDir
@@ -361,7 +378,7 @@ func loadAIWorkspaceSpec(projectRoot, baseDir string, config *project.AIWorkspac
 // command's pending design questions) and are omitted from the payload.
 func buildLLMProviderPayload(name string, metadata aiWorkspaceMetadata, runtime aiWorkspaceRuntime, openapi string) llmProviderPayload {
 	payload := llmProviderPayload{
-		ID:       resourceID(metadata.Spec.DisplayName, name),
+		ID:       name,
 		Name:     name,
 		Version:  strings.TrimSpace(metadata.Spec.Version),
 		Context:  strings.TrimSpace(runtime.Spec.Context),
@@ -415,6 +432,61 @@ func mapPolicy(policy runtimeProviderPolicy) llmPolicy {
 		})
 	}
 	return mapped
+}
+
+// buildMCPProxyPayload assembles the MCP proxy creation payload from the
+// project's metadata.yaml (name/version), runtime.yaml (context, mcpSpecVersion,
+// upstream, policies) and definition.yaml (capabilities). projectId is left out
+// here and injected at publish time.
+func buildMCPProxyPayload(name string, metadata aiWorkspaceMetadata, runtime aiWorkspaceRuntime, definition mcpDefinition) mcpProxyPayload {
+	payload := mcpProxyPayload{
+		ID:             name,
+		Name:           name,
+		Version:        strings.TrimSpace(metadata.Spec.Version),
+		Context:        strings.TrimSpace(runtime.Spec.Context),
+		Description:    "",
+		MCPSpecVersion: strings.TrimSpace(runtime.Spec.SpecVersion),
+		Capabilities: &mcpCapabilities{
+			Prompts:   definition.Prompts,
+			Resources: mcpResources(definition.Resources),
+			Tools:     definition.Tools,
+		},
+	}
+
+	if up := runtime.Spec.Upstream; up != nil {
+		target := llmUpstreamTarget{URL: strings.TrimSpace(up.URL)}
+		if up.Auth != nil {
+			target.Auth = &llmUpstreamAuth{Type: up.Auth.Type, Header: up.Auth.Header, Value: up.Auth.Value}
+		}
+		payload.Upstream = &llmUpstream{Main: target}
+	}
+
+	for _, policy := range runtime.Spec.Policies {
+		payload.Policies = append(payload.Policies, mcpPolicy{
+			Name:    policy.Name,
+			Version: policy.Version,
+			Params:  policy.Params,
+		})
+	}
+
+	return payload
+}
+
+// mcpResources strips each definition resource down to the fields the
+// capabilities block carries (uri, name, mimeType), dropping inline text/blob
+// content.
+func mcpResources(resources []map[string]interface{}) []map[string]interface{} {
+	out := make([]map[string]interface{}, 0, len(resources))
+	for _, resource := range resources {
+		trimmed := map[string]interface{}{}
+		for _, key := range []string{"uri", "name", "mimeType"} {
+			if value, ok := resource[key]; ok {
+				trimmed[key] = value
+			}
+		}
+		out = append(out, trimmed)
+	}
+	return out
 }
 
 // buildRateLimitingFromPolicies maps the *-ratelimit policies in runtime.yaml
@@ -688,7 +760,7 @@ func buildSecurityFromPolicies(policies []runtimeProviderPolicy) *securityConfig
 // caller to fill in at publish time.
 func buildLLMProxyPayload(proxyName string, metadata aiWorkspaceMetadata, runtime aiWorkspaceRuntime, openapi string) llmProxyPayload {
 	payload := llmProxyPayload{
-		ID:       resourceID(metadata.Spec.DisplayName, proxyName),
+		ID:       proxyName,
 		Name:     proxyName,
 		Version:  strings.TrimSpace(metadata.Spec.Version),
 		Context:  strings.TrimSpace(runtime.Spec.Context),
@@ -711,17 +783,6 @@ func buildLLMProxyPayload(proxyName string, metadata aiWorkspaceMetadata, runtim
 	}
 
 	return payload
-}
-
-// resourceID derives the payload id from a display name: lowercased, with
-// whitespace runs collapsed to single hyphens. Falls back to fallback when the
-// display name is empty.
-func resourceID(displayName, fallback string) string {
-	id := strings.Join(strings.Fields(strings.ToLower(displayName)), "-")
-	if id == "" {
-		return fallback
-	}
-	return id
 }
 
 func payloadFileName(name string) string {
@@ -769,6 +830,7 @@ type aiWorkspaceRuntime struct {
 		Version       string                  `yaml:"version"`
 		Context       string                  `yaml:"context"`
 		Template      string                  `yaml:"template"`
+		SpecVersion   string                  `yaml:"specVersion"`
 		Provider      runtimeProvider         `yaml:"provider"`
 		Upstream      *runtimeUpstream        `yaml:"upstream"`
 		AccessControl *runtimeAccessControl   `yaml:"accessControl"`
@@ -806,6 +868,9 @@ type runtimeProviderPolicy struct {
 	Name    string              `yaml:"name"`
 	Version string              `yaml:"version"`
 	Paths   []runtimePolicyPath `yaml:"paths"`
+	// Params holds policy-level params used by MCP policies (LLM proxy/provider
+	// policies carry their params under paths[].params instead).
+	Params map[string]interface{} `yaml:"params"`
 }
 
 type runtimePolicyPath struct {
@@ -847,6 +912,40 @@ type llmPolicy struct {
 type llmPolicyPath struct {
 	Path    string                 `json:"path"`
 	Methods []string               `json:"methods"`
+	Params  map[string]interface{} `json:"params"`
+}
+
+// --- MCP definition input (definition.yaml) and MCP proxy request body ---
+
+// mcpDefinition is the parsed definition.yaml for an MCP proxy. Prompts and
+// tools pass through verbatim; resources are trimmed before being emitted.
+type mcpDefinition struct {
+	Prompts   []map[string]interface{} `yaml:"prompts"`
+	Resources []map[string]interface{} `yaml:"resources"`
+	Tools     []map[string]interface{} `yaml:"tools"`
+}
+
+type mcpProxyPayload struct {
+	ID             string           `json:"id"`
+	Name           string           `json:"name"`
+	Version        string           `json:"version"`
+	Context        string           `json:"context,omitempty"`
+	Description    string           `json:"description"`
+	MCPSpecVersion string           `json:"mcpSpecVersion,omitempty"`
+	Upstream       *llmUpstream     `json:"upstream,omitempty"`
+	Capabilities   *mcpCapabilities `json:"capabilities,omitempty"`
+	Policies       []mcpPolicy      `json:"policies,omitempty"`
+}
+
+type mcpCapabilities struct {
+	Prompts   []map[string]interface{} `json:"prompts"`
+	Resources []map[string]interface{} `json:"resources"`
+	Tools     []map[string]interface{} `json:"tools"`
+}
+
+type mcpPolicy struct {
+	Name    string                 `json:"name"`
+	Version string                 `json:"version"`
 	Params  map[string]interface{} `json:"params"`
 }
 
