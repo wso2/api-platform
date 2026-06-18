@@ -1,0 +1,23 @@
+# Prometheus configuration for gateway metrics
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  # Gateway Controller metrics
+  - job_name: 'gateway-controller'
+    static_configs:
+      - targets: ['gateway-controller:9091']
+    metrics_path: /metrics
+
+  # Policy Engine metrics
+  - job_name: 'policy-engine'
+    static_configs:
+      - targets: ['policy-engine:9003']
+    metrics_path: /metrics
+
+  # Envoy Router stats (built-in Prometheus format)
+  - job_name: 'router'
+    static_configs:
+      - targets: ['router:9901']
+    metrics_path: /stats/prometheus

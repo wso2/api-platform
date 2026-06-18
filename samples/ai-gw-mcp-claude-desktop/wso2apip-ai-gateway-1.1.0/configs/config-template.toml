@@ -1,0 +1,300 @@
+# =============================================================================
+# CONTROLLER CONFIGURATION
+# =============================================================================
+
+[controller.server]
+# REST API port for gateway management
+api_port = 9090
+# xDS gRPC port for Envoy communication
+xds_port = 18000
+# Graceful shutdown timeout
+shutdown_timeout = "15s"
+# Unique identifier for the gateway instance (used in persistent storage)
+# It is recommended to use a uuid_v7 for this to improve db efficiency.
+gateway_id = "platform-gateway-id"
+
+[controller.admin_server]
+# Dedicated admin/debug HTTP server for config dump and xDS sync endpoints
+enabled = true
+port = 9092
+allowed_ips = ["*"]
+
+[controller.policy_server]
+# Policy xDS gRPC port for policy distribution
+port = 18001
+
+[controller.policy_server.tls]
+# Enable or disable TLS
+enabled = false
+# Path to TLS certificate file (required if TLS is enabled)
+cert_file = "./certs/server.crt"
+# Path to TLS private key file (required if TLS is enabled)
+key_file = "./certs/server.key"
+
+[controller.controlplane]
+# Control plane websocket endpoint
+host = ""
+# Control plane authentication token
+token = ""
+# Initial reconnect delay
+reconnect_initial = "1s"
+# Maximum reconnect delay
+reconnect_max = "5m"
+# Polling interval for periodic sync
+polling_interval = "15m"
+# Skip TLS certificate verification for control plane connections
+insecure_skip_verify = false
+
+[controller.storage]
+# Storage type: "sqlite", "postgres", or "memory"
+type = "sqlite"
+
+[controller.storage.sqlite]
+path = "./data/gateway.db"
+
+[controller.storage.postgres]
+# Optional DSN. If set, host/port/database/user/password are ignored.
+# dsn = "postgres://user:password@localhost:5432/gateway?sslmode=require"
+host = "localhost"
+port = 5432
+database = "gateway"
+user = "gateway"
+password = ""
+sslmode = "require" # disable, require, verify-ca, verify-full
+connect_timeout = "5s"
+max_open_conns = 25
+max_idle_conns = 5
+conn_max_lifetime = "30m"
+conn_max_idle_time = "5m"
+application_name = "gateway-controller"
+
+[controller.policies]
+# Directory containing policy definitions
+definitions_path = "./default-policies"
+
+[controller.auth.basic]
+enabled = true
+
+[[controller.auth.basic.users]]
+username = "admin"
+password = "admin"
+password_hashed = false
+roles = ["admin"]
+
+[controller.auth.idp]
+enabled = false
+jwks_url = ""
+issuer = ""
+
+[api_key]
+api_keys_per_user_per_api = 10
+algorithm = "sha256"
+issuer = "api-platform-devportal"
+
+[controller.logging]
+level = "info"
+format = "text"
+
+[controller.metrics]
+enabled = true
+port = 9091
+
+[controller.event_hub]
+# Interval at which events are polled from the database
+poll_interval = "3s"
+# Interval at which old events are cleaned up
+cleanup_interval = "10m"
+# How long events are retained before being deleted
+retention_period = "1h"
+
+[controller.event_hub.database]
+# Connection pool settings for the EventHub database connection
+max_open_conns = 5
+max_idle_conns = 2
+conn_max_lifetime = "30m"
+conn_max_idle_time = "5m"
+
+# =============================================================================
+# ROUTER CONFIGURATION
+# =============================================================================
+
+[router]
+# Gateway host for incoming requests
+gateway_host = "*"
+# Listener port for incoming HTTP traffic (Envoy proxy port)
+listener_port = 8080
+# HTTPS listener configuration
+https_enabled = true
+https_port = 8443
+# Tracing service name
+tracing_service_name = "router"
+
+[router.access_logs]
+# Enable or disable access logs
+enabled = true
+# Log format: "json" or "text"
+format = "text"
+# Text format template
+text_format = """
+[%START_TIME%] "%REQ(:METHOD)% %REQ(X-ENVOY-ORIGINAL-PATH?:PATH)% %PROTOCOL%" %REQ(:PATH)% %UPSTREAM_PROTOCOL% %RESPONSE_CODE% %RESPONSE_FLAGS% %RESPONSE_CODE_DETAILS% %CONNECTION_TERMINATION_DETAILS% %BYTES_RECEIVED% %BYTES_SENT% %DURATION% %REQUEST_TX_DURATION% %RESPONSE_TX_DURATION% %REQUEST_DURATION% %RESPONSE_DURATION% "%REQ(X-FORWARDED-FOR)%" "%REQ(USER-AGENT)%" "%REQ(X-REQUEST-ID)%" "%REQ(:AUTHORITY)%" "%UPSTREAM_HOST%"
+"""
+
+[router.access_logs.json_fields]
+t = "%START_TIME%"
+meth = "%REQ(:METHOD)%"
+path = "%REQ(X-ENVOY-ORIGINAL-PATH?:PATH)%"
+proto = "%PROTOCOL%"
+respCd = "%RESPONSE_CODE%"
+respFlg = "%RESPONSE_FLAGS%"
+bytesRx = "%BYTES_RECEIVED%"
+bytesTx = "%BYTES_SENT%"
+dur = "%DURATION%"
+upSvcT = "%RESP(X-ENVOY-UPSTREAM-SERVICE-TIME)%"
+xff = "%REQ(X-FORWARDED-FOR)%"
+ua = "%REQ(USER-AGENT)%"
+reqId = "%REQ(X-REQUEST-ID)%"
+host = "%REQ(:AUTHORITY)%"
+upHost = "%UPSTREAM_HOST%"
+upProto = "%UPSTREAM_PROTOCOL%"
+upPath = "%REQ(:PATH)%"
+respCdDtl = "%RESPONSE_CODE_DETAILS%"
+connTrmDtl = "%CONNECTION_TERMINATION_DETAILS%"
+reqTxDur = "%REQUEST_TX_DURATION%"
+respTxDur = "%RESPONSE_TX_DURATION%"
+reqDur = "%REQUEST_DURATION%"
+respDur = "%RESPONSE_DURATION%"
+
+[router.downstream_tls]
+cert_path = "./listener-certs/default-listener.crt"
+key_path = "./listener-certs/default-listener.key"
+minimum_protocol_version = "TLS1_2"
+maximum_protocol_version = "TLS1_3"
+ciphers = "ECDHE-ECDSA-AES128-GCM-SHA256,ECDHE-RSA-AES128-GCM-SHA256,ECDHE-ECDSA-AES128-SHA,ECDHE-RSA-AES128-SHA,AES128-GCM-SHA256,AES128-SHA,ECDHE-ECDSA-AES256-GCM-SHA384,ECDHE-RSA-AES256-GCM-SHA384,ECDHE-ECDSA-AES256-SHA,ECDHE-RSA-AES256-SHA,AES256-GCM-SHA384,AES256-SHA"
+
+[router.upstream.tls]
+minimum_protocol_version = "TLS1_2"
+maximum_protocol_version = "TLS1_3"
+ciphers = "ECDHE-ECDSA-AES128-GCM-SHA256,ECDHE-RSA-AES128-GCM-SHA256,ECDHE-ECDSA-AES128-SHA,ECDHE-RSA-AES128-SHA,AES128-GCM-SHA256,AES128-SHA,ECDHE-ECDSA-AES256-GCM-SHA384,ECDHE-RSA-AES256-GCM-SHA384,ECDHE-ECDSA-AES256-SHA,ECDHE-RSA-AES256-SHA,AES256-GCM-SHA384,AES256-SHA"
+trusted_cert_path = "/etc/ssl/certs/ca-certificates.crt"
+custom_certs_path = "./certificates"
+verify_host_name = true
+disable_ssl_verification = false
+
+[router.upstream.timeouts]
+route_timeout_ms = 60000
+route_idle_timeout_ms = 300000
+connect_timeout_ms = 5000
+
+[router.http_listener]
+server_header_transformation = "OVERWRITE"
+server_header_value = "WSO2 API Platform"
+
+[router.policy_engine]
+host = "policy-engine"
+port = 9001
+timeout_ms = 60000
+failure_mode_allow = false
+allow_mode_override = true
+message_timeout_ms = 60000
+
+[router.policy_engine.tls]
+enabled = false
+cert_path = ""
+key_path = ""
+ca_path = ""
+server_name = ""
+skip_verify = false
+
+# =============================================================================
+# POLICY ENGINE CONFIGURATION
+# =============================================================================
+
+[policy_engine.server]
+extproc_port = 9001
+
+[policy_engine.admin]
+enabled = true
+port = 9002
+allowed_ips = ["*", "127.0.0.1"]
+
+[policy_engine.config_mode]
+mode = "xds"
+
+[policy_engine.xds]
+connect_timeout = "10s"
+request_timeout = "5s"
+initial_reconnect_delay = "1s"
+max_reconnect_delay = "60s"
+
+[policy_engine.xds.tls]
+enabled = false
+# cert_path = "/path/to/client-cert.pem"
+# key_path = "/path/to/client-key.pem"
+# ca_path = "/path/to/ca-cert.pem"
+
+[policy_engine.file_config]
+path = ""
+
+[policy_engine.logging]
+level = "info"
+format = "text"
+
+[policy_engine.metrics]
+enabled = true
+port = 9003
+
+# =============================================================================
+# ANALYTICS CONFIGURATION
+# =============================================================================
+[analytics]
+enabled = false
+allow_payloads = false
+enabled_publishers = ["moesif"]
+
+[analytics.publishers.moesif]
+application_id = "<MOESIF_APPLICATION_ID>"
+moesif_base_url = "https://api.moesif.net"
+publish_interval = 5
+event_queue_size = 10000
+batch_size = 50
+timer_wakeup_seconds = 3
+
+[analytics.grpc_event_server]
+buffer_flush_interval = 1000000000
+buffer_size_bytes = 16384
+grpc_request_timeout = 20000000000
+server_port = 18090
+shutdown_timeout = "600s"
+public_key_path = ""
+private_key_path = ""
+als_plain_text = true
+max_message_size = 1000000000
+max_header_limit = 8192
+
+# =============================================================================
+# POLICY CONFIGURATIONS
+# =============================================================================
+
+[policy_configurations.llm_cost_v1]
+pricing_file = "/etc/policy-engine/llm-pricing/model_prices.json"
+
+# =============================================================================
+# IMMUTABLE GATEWAY CONFIGURATION
+# =============================================================================
+
+[immutable_gateway]
+enabled = false
+artifacts_dir = "/etc/api-platform-gateway/immutable_gateway/artifacts"
+
+# =============================================================================
+# TRACING CONFIGURATION
+# =============================================================================
+
+[tracing]
+enabled = false
+endpoint = "otel-collector:4317"
+insecure = true
+service_version = "1.0.0"
+batch_timeout = "1s"
+max_export_batch_size = 512
+sampling_rate = 1.0
