@@ -20,6 +20,8 @@ openssl rand -hex 32
 Set the output as `encryptionKey`. You can also provide it via the environment variable `DP_ADVANCED_ENCRYPTIONKEY`.
 
 > **Important:** Store this key securely. If it is lost, all encrypted data in the database cannot be decrypted.
+>
+> If `encryptionKey` is not set, the Developer Portal auto-generates an ephemeral key at startup and logs a warning to stderr. This is convenient for local development but means encrypted data (subscription tokens, key manager credentials) becomes unreadable after each restart. Always set a stable key in production.
 
 ## Add a Key Manager
 
