@@ -305,6 +305,15 @@ func LoadConfig(configPath string) (*Server, error) {
 		slog.Warn("auth.jwt.secret_key is not set — generated an ephemeral random key; all sessions will be invalidated on restart")
 	}
 
+	if cfg.Database.SecretEncryptionKey == "" {
+		key, err := generateRandomSecret()
+		if err != nil {
+			return nil, fmt.Errorf("failed to generate secret encryption key: %w", err)
+		}
+		cfg.Database.SecretEncryptionKey = key
+		slog.Warn("database.secret_encryption_key is not set — generated an ephemeral random key; all encrypted secrets will be unreadable on restart")
+	}
+
 	return cfg, nil
 }
 

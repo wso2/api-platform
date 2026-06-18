@@ -57,7 +57,7 @@ func (s *SecretService) Create(orgID, createdBy string, req *dto.CreateSecretReq
 		secretType = model.SecretTypeGeneric
 	}
 
-	exists, err := s.repo.Exists(orgID, req.ProjectID, req.Handle)
+	exists, err := s.repo.Exists(orgID, req.Handle)
 	if err != nil {
 		return nil, fmt.Errorf("failed to check secret existence: %w", err)
 	}
@@ -73,7 +73,6 @@ func (s *SecretService) Create(orgID, createdBy string, req *dto.CreateSecretReq
 	secret := &model.Secret{
 		OrganizationID: orgID,
 		Handle:         req.Handle,
-		ProjectID:      req.ProjectID,
 		DisplayName:    req.DisplayName,
 		Description:    req.Description,
 		Ciphertext:     ciphertext,
@@ -81,7 +80,7 @@ func (s *SecretService) Create(orgID, createdBy string, req *dto.CreateSecretReq
 		Type:           secretType,
 		Provider:       s.vault.ProviderName(),
 		Status:         model.SecretStatusActive,
-		Environment:    req.Environment,
+		ValueScope:     model.SecretDefaultValueScope,
 		CreatedBy:      createdBy,
 		UpdatedBy:      createdBy,
 	}
@@ -95,13 +94,13 @@ func (s *SecretService) Create(orgID, createdBy string, req *dto.CreateSecretReq
 	return resp, nil
 }
 
-func (s *SecretService) List(orgID string, projectID *string, limit, offset int, updatedAfter *time.Time) (*dto.SecretListResponse, error) {
-	secrets, err := s.repo.List(orgID, projectID, limit, offset, updatedAfter)
+func (s *SecretService) List(orgID string, limit, offset int, updatedAfter *time.Time) (*dto.SecretListResponse, error) {
+	secrets, err := s.repo.List(orgID, limit, offset, updatedAfter)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list secrets: %w", err)
 	}
 
-	count, err := s.repo.Count(orgID, projectID)
+	total, err := s.repo.Count(orgID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to count secrets: %w", err)
 	}
@@ -111,7 +110,14 @@ func (s *SecretService) List(orgID string, projectID *string, limit, offset int,
 		summaries = append(summaries, secretToSummary(sec))
 	}
 
-	return &dto.SecretListResponse{List: summaries, Count: count}, nil
+	return &dto.SecretListResponse{
+		List: summaries,
+		Pagination: dto.Pagination{
+			Total:  total,
+			Limit:  limit,
+			Offset: offset,
+		},
+	}, nil
 }
 
 func (s *SecretService) Get(orgID, handle string) (*dto.SecretSummary, error) {
@@ -138,9 +144,6 @@ func (s *SecretService) Update(orgID, handle, updatedBy string, req *dto.UpdateS
 	}
 	if req.Description != "" {
 		existing.Description = req.Description
-	}
-	if req.Environment != "" {
-		existing.Environment = req.Environment
 	}
 	existing.Ciphertext = ciphertext
 	existing.Hash = hashSecret(req.Value)
@@ -175,8 +178,8 @@ func (s *SecretService) Delete(orgID, handle, updatedBy string) error {
 }
 
 // ValidateSecretRefs checks that every {{ secret "handle" }} placeholder in configText
-// resolves to an active secret within the given org/project scope.
-func (s *SecretService) ValidateSecretRefs(orgID string, projectID *string, configText string) error {
+// resolves to an active org-scoped secret.
+func (s *SecretService) ValidateSecretRefs(orgID, configText string) error {
 	matches := secretPlaceholderRegex.FindAllStringSubmatch(configText, -1)
 	if len(matches) == 0 {
 		return nil
@@ -192,14 +195,7 @@ func (s *SecretService) ValidateSecretRefs(orgID string, projectID *string, conf
 		}
 		seen[handle] = struct{}{}
 
-		// Most-specific-wins: check project scope first, fall back to org-wide.
-		found := false
-		if projectID != nil {
-			found, _ = s.repo.Exists(orgID, projectID, handle)
-		}
-		if !found {
-			found, _ = s.repo.Exists(orgID, nil, handle)
-		}
+		found, _ := s.repo.Exists(orgID, handle)
 		if !found {
 			missing = append(missing, handle)
 		}
@@ -238,8 +234,7 @@ func secretToResponse(s *model.Secret) *dto.SecretResponse {
 		Provider:    s.Provider,
 		Status:      s.Status,
 		Hash:        s.Hash,
-		Environment: s.Environment,
-		ProjectID:   s.ProjectID,
+		ValueScope: s.ValueScope,
 		CreatedAt:   s.CreatedAt,
 		CreatedBy:   s.CreatedBy,
 		UpdatedAt:   s.UpdatedAt,
@@ -257,8 +252,7 @@ func secretToSummary(s *model.Secret) *dto.SecretSummary {
 		Provider:    s.Provider,
 		Status:      s.Status,
 		Hash:        s.Hash,
-		Environment: s.Environment,
-		ProjectID:   s.ProjectID,
+		ValueScope: s.ValueScope,
 		CreatedAt:   s.CreatedAt,
 		UpdatedAt:   s.UpdatedAt,
 	}
