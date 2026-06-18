@@ -1634,6 +1634,26 @@ type LLMPolicyPath struct {
 // LLMPolicyPathMethods defines model for LLMPolicyPath.Methods.
 type LLMPolicyPathMethods string
 
+// OperationPolicy defines model for OperationPolicy.
+type OperationPolicy struct {
+	// ExecutionCondition Condition under which the policy is executed
+	ExecutionCondition *string `json:"executionCondition,omitempty" yaml:"executionCondition,omitempty"`
+
+	Name  string                `binding:"required" json:"name" yaml:"name"`
+	Paths []OperationPolicyPath `binding:"required" json:"paths" yaml:"paths"`
+
+	Version string `binding:"required" json:"version" yaml:"version"`
+}
+
+// OperationPolicyPath defines model for OperationPolicyPath.
+type OperationPolicyPath struct {
+	Methods []string `binding:"required" json:"methods" yaml:"methods"`
+
+	// Params Policy parameters (key-value pairs specific to the policy)
+	Params map[string]interface{} `binding:"required" json:"params" yaml:"params"`
+	Path   string                 `binding:"required" json:"path" yaml:"path"`
+}
+
 // LLMProvider defines model for LLMProvider.
 type LLMProvider struct {
 	AccessControl LLMAccessControl `json:"accessControl" yaml:"accessControl"`
@@ -1662,7 +1682,13 @@ type LLMProvider struct {
 	// Openapi OpenAPI specification (JSON or YAML) for the provider endpoint
 	Openapi *string `json:"openapi,omitempty" yaml:"openapi,omitempty"`
 
-	// Policies List of policies applied only to this operation (overrides or adds to API-level policies)
+	// GlobalPolicies List of policies applied at the API level (shared rate-limit bucket across all operations)
+	GlobalPolicies *[]Policy `json:"globalPolicies,omitempty" yaml:"globalPolicies,omitempty"`
+
+	// OperationPolicies List of policies applied per operation (independent rate-limit bucket per resource)
+	OperationPolicies *[]OperationPolicy `json:"operationPolicies,omitempty" yaml:"operationPolicies,omitempty"`
+
+	// Policies Deprecated: use operationPolicies instead. List of policies applied only to this operation (overrides or adds to API-level policies)
 	Policies *[]LLMPolicy `json:"policies,omitempty" yaml:"policies,omitempty"`
 
 	// RateLimiting Rate limiting configuration for an LLM provider at provider and consumer levels.
@@ -1830,10 +1856,16 @@ type LLMProxy struct {
 	// Name Human-readable LLM proxy name (must be URL-friendly - only letters, numbers, spaces, hyphens, underscores, and dots allowed)
 	Name string `binding:"required" json:"name" yaml:"name"`
 
+	// GlobalPolicies List of policies applied at the API level (shared rate-limit bucket across all operations)
+	GlobalPolicies *[]Policy `json:"globalPolicies,omitempty" yaml:"globalPolicies,omitempty"`
+
+	// OperationPolicies List of policies applied per operation (independent rate-limit bucket per resource)
+	OperationPolicies *[]OperationPolicy `json:"operationPolicies,omitempty" yaml:"operationPolicies,omitempty"`
+
 	// Openapi OpenAPI specification (JSON or YAML) for the proxy endpoint
 	Openapi *string `json:"openapi,omitempty" yaml:"openapi,omitempty"`
 
-	// Policies List of policies applied only to this operation (overrides or adds to API-level policies)
+	// Policies Deprecated: use operationPolicies instead. List of policies applied only to this operation (overrides or adds to API-level policies)
 	Policies *[]LLMPolicy `json:"policies,omitempty" yaml:"policies,omitempty"`
 
 	// ProjectId UUID of the project this proxy belongs to

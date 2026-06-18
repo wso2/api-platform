@@ -384,7 +384,32 @@ func (v *LLMValidator) validateProviderSpec(spec *api.LLMProviderConfigData) []V
 	// Validate access control
 	errors = append(errors, v.validateAccessControl("spec.accessControl", &spec.AccessControl)...)
 
+	// The deprecated `policies` list must not coexist with the new policy lists
+	errors = append(errors, v.validatePolicyListExclusivity(spec.GlobalPolicies, spec.OperationPolicies, spec.Policies)...)
+
 	return errors
+}
+
+// validatePolicyListExclusivity enforces that the deprecated `policies` list is not used
+// together with the new `globalPolicies`/`operationPolicies` lists. A configuration must use
+// EITHER the legacy style OR the new style — never a mix of both.
+func (v *LLMValidator) validatePolicyListExclusivity(globalPolicies *[]api.Policy,
+	operationPolicies *[]api.OperationPolicy, legacyPolicies *[]api.LLMPolicy) []ValidationError {
+
+	hasLegacy := legacyPolicies != nil && len(*legacyPolicies) > 0
+	hasNew := (globalPolicies != nil && len(*globalPolicies) > 0) ||
+		(operationPolicies != nil && len(*operationPolicies) > 0)
+
+	if hasLegacy && hasNew {
+		return []ValidationError{{
+			Field: "spec.policies",
+			Message: "The deprecated 'policies' field cannot be used together with 'globalPolicies' or " +
+				"'operationPolicies'. Use either the legacy 'policies' list or the new " +
+				"'globalPolicies'/'operationPolicies' lists, not both.",
+		}}
+	}
+
+	return nil
 }
 
 // validateUpstreamWithAuth validates an UpstreamWithAuth configuration
@@ -565,6 +590,9 @@ func (v *LLMValidator) validateProxyData(spec *api.LLMProxyConfigData) []Validat
 			Message: "spec.provider.id must consist of lowercase alphanumeric characters, hyphens, or dots, and must start and end with an alphanumeric character",
 		})
 	}
+
+	// The deprecated `policies` list must not coexist with the new policy lists
+	errors = append(errors, v.validatePolicyListExclusivity(spec.GlobalPolicies, spec.OperationPolicies, spec.Policies)...)
 
 	return errors
 }

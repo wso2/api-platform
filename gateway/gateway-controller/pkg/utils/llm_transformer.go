@@ -27,8 +27,8 @@ type pathMethodKey struct {
 }
 
 type llmPolicyAttachment struct {
-	policy    api.LLMPolicy
-	pathEntry api.LLMPolicyPath
+	policy    api.OperationPolicy
+	pathEntry api.OperationPolicyPath
 }
 
 func NewLLMProviderTransformer(store *storage.ConfigStore, db storage.Storage, routerConfig *config.RouterConfig, policyVersionResolver PolicyVersionResolver) *LLMProviderTransformer {
@@ -228,11 +228,12 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 		operationRegistry[pathMethodKey{path: op.Path, method: method}] = op
 	}
 
-	// Phase 2: Process User-Defined Policies
-	if proxy.Spec.Policies != nil {
-		registerExplicitLLMPolicyOperations(operationRegistry, *proxy.Spec.Policies, nil)
+	// Phase 2: Process User-Defined Policies (operationPolicies + deprecated policies)
+	opLevelPolicies := collectOperationLevelLLMPolicies(proxy.Spec.OperationPolicies, proxy.Spec.Policies)
+	if len(opLevelPolicies) > 0 {
+		registerExplicitLLMPolicyOperations(operationRegistry, opLevelPolicies, nil)
 
-		for _, attachment := range orderedLLMPolicyAttachments(*proxy.Spec.Policies) {
+		for _, attachment := range orderedLLMPolicyAttachments(opLevelPolicies) {
 			policyMethods := expandLLMPolicyMethods(attachment.pathEntry.Methods)
 
 			for _, policyMethod := range policyMethods {
@@ -264,9 +265,10 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 								return nil, fmt.Errorf("failed to build template params: %w", err)
 							}
 							pol := api.Policy{
-								Name:    attachment.policy.Name,
-								Version: attachment.policy.Version,
-								Params:  mergeParams(attachment.pathEntry.Params, templateParams),
+								Name:               attachment.policy.Name,
+								Version:            attachment.policy.Version,
+								ExecutionCondition: attachment.policy.ExecutionCondition,
+								Params:             mergeParams(attachment.pathEntry.Params, templateParams),
 							}
 							appendOperationPolicy(targetOp, pol)
 							attachedPolicyPaths[targetPath] = true
@@ -294,6 +296,19 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 		}
 	}
 	spec.Operations = ops
+
+	// Global (api-level) policies: route into the derived RestAPI's spec.Policies so they are
+	// applied across ALL operations as one shared scope, evaluated before operation-level policies.
+	// Append because the proxy may already hold an api-level host-header policy (see Step 3).
+	if proxy.Spec.GlobalPolicies != nil && len(*proxy.Spec.GlobalPolicies) > 0 {
+		gp := *proxy.Spec.GlobalPolicies
+		if spec.Policies == nil {
+			spec.Policies = &gp
+		} else {
+			merged := append(*spec.Policies, gp...)
+			spec.Policies = &merged
+		}
+	}
 
 	output.Spec = spec
 	return output, nil
@@ -438,13 +453,14 @@ func (t *LLMProviderTransformer) transformProvider(provider *api.LLMProviderConf
 			}
 		}
 
-		// Phase 3: Process User-Defined Policies
-		if provider.Spec.Policies != nil {
-			registerExplicitLLMPolicyOperations(operationRegistry, *provider.Spec.Policies, func(path, method string) bool {
+		// Phase 3: Process User-Defined Policies (operationPolicies + deprecated policies)
+		opLevelPolicies := collectOperationLevelLLMPolicies(provider.Spec.OperationPolicies, provider.Spec.Policies)
+		if len(opLevelPolicies) > 0 {
+			registerExplicitLLMPolicyOperations(operationRegistry, opLevelPolicies, func(path, method string) bool {
 				return !isDeniedByException(path, method, deniedPathMethods)
 			})
 
-			for _, attachment := range orderedLLMPolicyAttachments(*provider.Spec.Policies) {
+			for _, attachment := range orderedLLMPolicyAttachments(opLevelPolicies) {
 				policyMethods := expandLLMPolicyMethods(attachment.pathEntry.Methods)
 
 				for _, policyMethod := range policyMethods {
@@ -489,9 +505,10 @@ func (t *LLMProviderTransformer) transformProvider(provider *api.LLMProviderConf
 									return nil, fmt.Errorf("failed to build template params: %w", err)
 								}
 								pol := api.Policy{
-									Name:    attachment.policy.Name,
-									Version: attachment.policy.Version,
-									Params:  mergeParams(attachment.pathEntry.Params, templateParams),
+									Name:               attachment.policy.Name,
+									Version:            attachment.policy.Version,
+									ExecutionCondition: attachment.policy.ExecutionCondition,
+									Params:             mergeParams(attachment.pathEntry.Params, templateParams),
 								}
 								appendOperationPolicy(targetOp, pol)
 								attachedPolicyPaths[targetPath] = true
@@ -538,13 +555,14 @@ func (t *LLMProviderTransformer) transformProvider(provider *api.LLMProviderConf
 			operationRegistry[key] = op
 		}
 
-		// Phase 3: Process Policies with Dynamic Operation Creation
-		if provider.Spec.Policies != nil {
-			registerExplicitLLMPolicyOperations(operationRegistry, *provider.Spec.Policies, func(path, method string) bool {
+		// Phase 3: Process Policies with Dynamic Operation Creation (operationPolicies + deprecated policies)
+		opLevelPolicies := collectOperationLevelLLMPolicies(provider.Spec.OperationPolicies, provider.Spec.Policies)
+		if len(opLevelPolicies) > 0 {
+			registerExplicitLLMPolicyOperations(operationRegistry, opLevelPolicies, func(path, method string) bool {
 				return isAllowedByAccessControl(path, method, normalizedExceptions)
 			})
 
-			for _, attachment := range orderedLLMPolicyAttachments(*provider.Spec.Policies) {
+			for _, attachment := range orderedLLMPolicyAttachments(opLevelPolicies) {
 				policyMethods := expandLLMPolicyMethods(attachment.pathEntry.Methods)
 
 				for _, policyMethod := range policyMethods {
@@ -575,9 +593,10 @@ func (t *LLMProviderTransformer) transformProvider(provider *api.LLMProviderConf
 									return nil, fmt.Errorf("failed to build template params: %w", err)
 								}
 								pol := api.Policy{
-									Name:    attachment.policy.Name,
-									Version: attachment.policy.Version,
-									Params:  mergeParams(attachment.pathEntry.Params, templateParams),
+									Name:               attachment.policy.Name,
+									Version:            attachment.policy.Version,
+									ExecutionCondition: attachment.policy.ExecutionCondition,
+									Params:             mergeParams(attachment.pathEntry.Params, templateParams),
 								}
 								appendOperationPolicy(targetOp, pol)
 								attachedPolicyPaths[targetPath] = true
@@ -610,6 +629,18 @@ func (t *LLMProviderTransformer) transformProvider(provider *api.LLMProviderConf
 		}
 	}
 	spec.Operations = ops
+
+	// Global (api-level) policies: route into the derived RestAPI's spec.Policies so they are
+	// applied across ALL operations as one shared scope, evaluated before operation-level policies.
+	if provider.Spec.GlobalPolicies != nil && len(*provider.Spec.GlobalPolicies) > 0 {
+		gp := *provider.Spec.GlobalPolicies
+		if spec.Policies == nil {
+			spec.Policies = &gp
+		} else {
+			merged := append(*spec.Policies, gp...)
+			spec.Policies = &merged
+		}
+	}
 
 	output.Spec = spec
 	return output, nil
@@ -757,7 +788,38 @@ func appendOperationPolicy(op *api.Operation, pol api.Policy) {
 	op.Policies = &existing
 }
 
-func orderedLLMPolicyAttachments(policies []api.LLMPolicy) []llmPolicyAttachment {
+// legacyToOperationPolicy converts a deprecated LLMPolicy into an OperationPolicy.
+// This is the SOLE remaining reference to the legacy LLMPolicy type; remove it (along
+// with the LLMPolicy/LLMPolicyPath types) once the deprecated `policies` field is dropped.
+func legacyToOperationPolicy(p api.LLMPolicy) api.OperationPolicy {
+	op := api.OperationPolicy{Name: p.Name, Version: p.Version}
+	for _, pe := range p.Paths {
+		methods := make([]string, 0, len(pe.Methods))
+		for _, m := range pe.Methods {
+			methods = append(methods, string(m))
+		}
+		op.Paths = append(op.Paths, api.OperationPolicyPath{Path: pe.Path, Methods: methods, Params: pe.Params})
+	}
+	return op
+}
+
+// collectOperationLevelLLMPolicies merges the operation-level policies with the deprecated
+// `policies` list (converted to operation policies), operationPolicies first. The deprecated
+// list is treated identically to operationPolicies; setting both is discouraged.
+func collectOperationLevelLLMPolicies(operationPolicies *[]api.OperationPolicy, deprecated *[]api.LLMPolicy) []api.OperationPolicy {
+	var out []api.OperationPolicy
+	if operationPolicies != nil {
+		out = append(out, *operationPolicies...)
+	}
+	if deprecated != nil {
+		for _, p := range *deprecated {
+			out = append(out, legacyToOperationPolicy(p))
+		}
+	}
+	return out
+}
+
+func orderedLLMPolicyAttachments(policies []api.OperationPolicy) []llmPolicyAttachment {
 	attachments := make([]llmPolicyAttachment, 0)
 	for _, llmPol := range policies {
 		for _, pathEntry := range llmPol.Paths {
@@ -839,7 +901,7 @@ func moreSpecificPolicyAttachmentCovers(targetPath, method string, current llmPo
 // isMoreSpecificAttachment reports whether path entry a is strictly more specific than b.
 // Path specificity dominates (see isMoreSpecificPath); for entries on an equally specific
 // path, the narrower HTTP method set is more specific.
-func isMoreSpecificAttachment(a, b api.LLMPolicyPath) bool {
+func isMoreSpecificAttachment(a, b api.OperationPolicyPath) bool {
 	if isMoreSpecificPath(a.Path, b.Path) {
 		return true
 	}
@@ -852,7 +914,7 @@ func isMoreSpecificAttachment(a, b api.LLMPolicyPath) bool {
 // isStrictMethodSubset reports whether the methods covered by a are a strict subset of the
 // methods covered by b ('*' expands to the full supported method set). This makes e.g.
 // [POST] more specific than [GET, POST], which in turn is more specific than '*'.
-func isStrictMethodSubset(a, b []api.LLMPolicyPathMethods) bool {
+func isStrictMethodSubset(a, b []string) bool {
 	aSet := methodSet(a)
 	bSet := methodSet(b)
 	if len(aSet) == 0 || len(aSet) >= len(bSet) {
@@ -867,7 +929,7 @@ func isStrictMethodSubset(a, b []api.LLMPolicyPathMethods) bool {
 }
 
 // methodSet returns the set of concrete HTTP methods an entry covers, with '*' expanded.
-func methodSet(methods []api.LLMPolicyPathMethods) map[string]bool {
+func methodSet(methods []string) map[string]bool {
 	set := make(map[string]bool)
 	for _, m := range expandLLMPolicyMethods(methods) {
 		set[m] = true
@@ -891,22 +953,20 @@ func ensureOperation(operationRegistry map[pathMethodKey]*api.Operation, path, m
 }
 
 // expandLLMPolicyMethods takes the methods defined in an LLM policy and expands them to actual HTTP methods if wildcard is used
-func expandLLMPolicyMethods(methods []api.LLMPolicyPathMethods) []string {
-	if len(methods) == 1 && string(methods[0]) == constants.WILD_CARD {
+func expandLLMPolicyMethods(methods []string) []string {
+	if len(methods) == 1 && methods[0] == constants.WILD_CARD {
 		return append([]string(nil), constants.WILDCARD_HTTP_METHODS...)
 	}
 
 	expanded := make([]string, len(methods))
-	for i, method := range methods {
-		expanded[i] = string(method)
-	}
+	copy(expanded, methods)
 	return expanded
 }
 
 // registerExplicitLLMPolicyOperations iterates through the explicitly defined policies in the LLM policy and ensures that operations
 // exist for their paths and methods in the operation registry. The shouldRegister callback allows conditional registration based on
 // path and method (e.g., to skip paths/methods denied by access control exceptions).
-func registerExplicitLLMPolicyOperations(operationRegistry map[pathMethodKey]*api.Operation, policies []api.LLMPolicy,
+func registerExplicitLLMPolicyOperations(operationRegistry map[pathMethodKey]*api.Operation, policies []api.OperationPolicy,
 	shouldRegister func(path, method string) bool) {
 	for _, llmPol := range policies {
 		for _, pathEntry := range llmPol.Paths {

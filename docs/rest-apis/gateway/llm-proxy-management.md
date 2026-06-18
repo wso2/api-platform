@@ -218,7 +218,20 @@ Status Code **200**
 |»»»»»» type|string|true|none|none|
 |»»»»»» header|string|false|none|none|
 |»»»»»» value|string|false|none|none|
-|»»»» policies|[[LLMPolicy](schemas.md#schemallmpolicy)]|false|none|List of policies applied only to this operation (overrides or adds to API-level policies)|
+|»»»» globalPolicies|[[Policy](schemas.md#schemapolicy)]|false|none|Global (api-level) policies applied across ALL operations as one shared scope, evaluated before operation-level policies.|
+|»»»»» name|string|true|none|Name of the policy|
+|»»»»» version|string|true|none|Version of the policy. Only major-only version is allowed (e.g., v0, v1). Full semantic version (e.g., v1.0.0) is not accepted and will be rejected. The Gateway Controller resolves the major version to the single matching full version installed in the gateway image.|
+|»»»»» executionCondition|string|false|none|Expression controlling conditional execution of the policy|
+|»»»»» params|object|false|none|Arbitrary parameters for the policy (free-form key/value structure)|
+|»»»» operationPolicies|[[OperationPolicy](schemas.md#schemaoperationpolicy)]|false|none|Operation-level policies scoped to specific paths/methods, evaluated after global policies.|
+|»»»»» name|string|true|none|none|
+|»»»»» version|string|true|none|none|
+|»»»»» executionCondition|string|false|none|Expression controlling conditional execution of the policy|
+|»»»»» paths|[[OperationPolicyPath](schemas.md#schemaoperationpolicypath)]|true|none|none|
+|»»»»»» path|string|true|none|none|
+|»»»»»» methods|[string]|true|none|none|
+|»»»»»» params|object|true|none|JSON Schema describing the parameters accepted by this policy. This itself is a JSON Schema document.|
+|»»»» policies|[[LLMPolicy](schemas.md#schemallmpolicy)]|false|none|DEPRECATED - use operationPolicies. Still honoured (treated identically to operationPolicies).|
 |»»»»» name|string|true|none|none|
 |»»»»» version|string|true|none|none|
 |»»»»» paths|[[LLMPolicyPath](schemas.md#schemallmpolicypath)]|true|none|none|

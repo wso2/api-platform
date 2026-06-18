@@ -3033,7 +3033,15 @@ and
       }
     ]
   },
-  "policies": [
+  "globalPolicies": [
+    {
+      "name": "cors",
+      "version": "v1",
+      "executionCondition": "request.metadata[authenticated] != true",
+      "params": {}
+    }
+  ],
+  "operationPolicies": [
     {
       "name": "llm-cost-based-ratelimit",
       "version": "v1",
@@ -3081,7 +3089,9 @@ continued
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |accessControl|[LLMAccessControl](#schemallmaccesscontrol)|true|none|none|
-|policies|[[LLMPolicy](#schemallmpolicy)]|false|none|List of policies applied only to this operation (overrides or adds to API-level policies)|
+|globalPolicies|[[Policy](#schemapolicy)]|false|none|Global (api-level) policies applied across ALL operations as one shared scope, evaluated before operation-level policies.|
+|operationPolicies|[[OperationPolicy](#schemaoperationpolicy)]|false|none|Operation-level policies scoped to specific paths/methods, evaluated after global policies.|
+|policies|[[LLMPolicy](#schemallmpolicy)]|false|none|DEPRECATED - use operationPolicies. Still honoured (treated identically to operationPolicies).|
 |deploymentState|string|false|none|Desired deployment state - 'deployed' (default) or 'undeployed'. When set to 'undeployed', the LLM Provider is removed from router traffic but configuration and policies are preserved for potential redeployment.|
 
 #### Enumerated Values
@@ -3298,6 +3308,66 @@ continued
 |methods|[string]|true|none|none|
 |params|object|true|none|JSON Schema describing the parameters accepted by this policy. This itself is a JSON Schema document.|
 
+<h2 id="tocS_OperationPolicy">OperationPolicy</h2>
+
+<a id="schemaoperationpolicy"></a>
+<a id="schema_OperationPolicy"></a>
+<a id="tocSoperationpolicy"></a>
+<a id="tocsoperationpolicy"></a>
+
+```json
+{
+  "name": "token-based-ratelimit",
+  "version": "v1",
+  "executionCondition": "string",
+  "paths": [
+    {
+      "path": "/chat/completions",
+      "methods": [
+        "string"
+      ],
+      "params": {}
+    }
+  ]
+}
+
+```
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|name|string|true|none|none|
+|version|string|true|none|none|
+|executionCondition|string|false|none|Expression controlling conditional execution of the policy|
+|paths|[[OperationPolicyPath](#schemaoperationpolicypath)]|true|none|none|
+
+<h2 id="tocS_OperationPolicyPath">OperationPolicyPath</h2>
+
+<a id="schemaoperationpolicypath"></a>
+<a id="schema_OperationPolicyPath"></a>
+<a id="tocSoperationpolicypath"></a>
+<a id="tocsoperationpolicypath"></a>
+
+```json
+{
+  "path": "/chat/completions",
+  "methods": [
+    "string"
+  ],
+  "params": {}
+}
+
+```
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|path|string|true|none|none|
+|methods|[string]|true|none|none|
+|params|object|true|none|JSON Schema describing the parameters accepted by this policy. This itself is a JSON Schema document.|
+
 <h2 id="tocS_LLMProxyConfigurationRequest">LLMProxyConfigurationRequest</h2>
 
 <a id="schemallmproxyconfigurationrequest"></a>
@@ -3411,6 +3481,30 @@ and
       "value": "string"
     }
   },
+  "globalPolicies": [
+    {
+      "name": "cors",
+      "version": "v1",
+      "executionCondition": "request.metadata[authenticated] != true",
+      "params": {}
+    }
+  ],
+  "operationPolicies": [
+    {
+      "name": "token-based-ratelimit",
+      "version": "v1",
+      "executionCondition": "string",
+      "paths": [
+        {
+          "path": "/chat/completions",
+          "methods": [
+            "string"
+          ],
+          "params": {}
+        }
+      ]
+    }
+  ],
   "policies": [
     {
       "name": "llm-cost-based-ratelimit",
@@ -3440,7 +3534,9 @@ and
 |context|string|false|none|Base path for all API routes (must start with /, no trailing slash)|
 |vhost|string|false|none|Virtual host name used for routing. Supports standard domain names, subdomains, or wildcard domains. Must follow RFC-compliant hostname rules. Wildcards are only allowed in the left-most label (e.g., *.example.com).|
 |provider|[LLMProxyProvider](#schemallmproxyprovider)|true|none|none|
-|policies|[[LLMPolicy](#schemallmpolicy)]|false|none|List of policies applied only to this operation (overrides or adds to API-level policies)|
+|globalPolicies|[[Policy](#schemapolicy)]|false|none|Global (api-level) policies applied across ALL operations as one shared scope, evaluated before operation-level policies.|
+|operationPolicies|[[OperationPolicy](#schemaoperationpolicy)]|false|none|Operation-level policies scoped to specific paths/methods, evaluated after global policies.|
+|policies|[[LLMPolicy](#schemallmpolicy)]|false|none|DEPRECATED - use operationPolicies. Still honoured (treated identically to operationPolicies).|
 |deploymentState|string|false|none|Desired deployment state - 'deployed' (default) or 'undeployed'. When set to 'undeployed', the LLM Proxy is removed from router traffic but configuration and policies are preserved for potential redeployment.|
 
 #### Enumerated Values
@@ -3761,6 +3857,127 @@ and
 |apiKeys|[[APIKey](#schemaapikey)]|false|none|[Details of an API key]|
 |totalCount|integer|false|none|Total number of API keys|
 |status|string|false|none|none|
+
+<h2 id="tocS_WebhookSecretCreationRequest">WebhookSecretCreationRequest</h2>
+
+<a id="schemawebhooksecretcreationrequest"></a>
+<a id="schema_WebhookSecretCreationRequest"></a>
+<a id="tocSwebhooksecretcreationrequest"></a>
+<a id="tocswebhooksecretcreationrequest"></a>
+
+```json
+{
+  "displayName": "GitHub Webhook"
+}
+
+```
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|displayName|string|true|none|Human-readable label for this secret (used to derive the immutable name slug).|
+
+<h2 id="tocS_WebhookSecretInfo">WebhookSecretInfo</h2>
+
+<a id="schemawebhooksecretinfo"></a>
+<a id="schema_WebhookSecretInfo"></a>
+<a id="tocSwebhooksecretinfo"></a>
+<a id="tocswebhooksecretinfo"></a>
+
+```json
+{
+  "name": "github-webhook",
+  "displayName": "GitHub Webhook",
+  "status": "active",
+  "createdAt": "2026-06-01T10:00:00Z",
+  "updatedAt": "2026-06-01T10:00:00Z"
+}
+
+```
+
+Metadata for an HMAC secret. The plaintext value is never included.
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|name|string|false|none|URL-safe slug (immutable, used as path parameter for regenerate/delete).|
+|displayName|string|false|none|Human-readable label.|
+|status|string|false|none|none|
+|createdAt|string(date-time)|false|none|none|
+|updatedAt|string(date-time)|false|none|none|
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|status|active|
+|status|revoked|
+
+<h2 id="tocS_WebhookSecretCreationResponse">WebhookSecretCreationResponse</h2>
+
+<a id="schemawebhooksecretcreationresponse"></a>
+<a id="schema_WebhookSecretCreationResponse"></a>
+<a id="tocSwebhooksecretcreationresponse"></a>
+<a id="tocswebhooksecretcreationresponse"></a>
+
+```json
+{
+  "status": "success",
+  "message": "Webhook secret generated successfully",
+  "secret": "whsec_1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b",
+  "webhookSecret": {
+    "name": "github-webhook",
+    "displayName": "GitHub Webhook",
+    "status": "active",
+    "createdAt": "2026-06-01T10:00:00Z",
+    "updatedAt": "2026-06-01T10:00:00Z"
+  }
+}
+
+```
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|status|string|true|none|none|
+|message|string|true|none|none|
+|secret|string|true|none|The generated plaintext secret value (whsec_ prefix + 64 hex chars).<br>Returned exactly once — store it immediately as it will not be retrievable again.|
+|webhookSecret|[WebhookSecretInfo](#schemawebhooksecretinfo)|false|none|Metadata for an HMAC secret. The plaintext value is never included.|
+
+<h2 id="tocS_WebhookSecretListResponse">WebhookSecretListResponse</h2>
+
+<a id="schemawebhooksecretlistresponse"></a>
+<a id="schema_WebhookSecretListResponse"></a>
+<a id="tocSwebhooksecretlistresponse"></a>
+<a id="tocswebhooksecretlistresponse"></a>
+
+```json
+{
+  "status": "success",
+  "totalCount": 2,
+  "secrets": [
+    {
+      "name": "github-webhook",
+      "displayName": "GitHub Webhook",
+      "status": "active",
+      "createdAt": "2026-06-01T10:00:00Z",
+      "updatedAt": "2026-06-01T10:00:00Z"
+    }
+  ]
+}
+
+```
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|status|string|false|none|none|
+|totalCount|integer|false|none|Total number of active secrets for this API|
+|secrets|[[WebhookSecretInfo](#schemawebhooksecretinfo)]|false|none|[Metadata for an HMAC secret. The plaintext value is never included.]|
 
 <h2 id="tocS_SecretListResponse">SecretListResponse</h2>
 
