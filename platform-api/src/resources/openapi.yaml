@@ -10512,7 +10512,7 @@ components:
           enum: [API_KEY, CERTIFICATE, PRIVATE_KEY, GENERIC]
         provider:
           type: string
-          enum: [IN_HOUSE, AWS_KMS, HASHICORP_VAULT]
+          enum: [IN_BUILT, AWS_KMS, HASHICORP_VAULT]
         status:
           type: string
           enum: [ACTIVE, DEPRECATED]
@@ -10558,7 +10558,7 @@ components:
           enum: [API_KEY, CERTIFICATE, PRIVATE_KEY, GENERIC]
         provider:
           type: string
-          enum: [IN_HOUSE, AWS_KMS, HASHICORP_VAULT]
+          enum: [IN_BUILT, AWS_KMS, HASHICORP_VAULT]
         status:
           type: string
           enum: [ACTIVE, DEPRECATED]

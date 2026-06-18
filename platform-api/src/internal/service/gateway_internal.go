@@ -96,7 +96,7 @@ func (s *GatewayInternalAPIService) GetSecretsByGateway(orgID, gatewayID string,
 	if len(handles) == 0 {
 		return nil, nil
 	}
-	return s.secretRepo.ListByHandles(orgID, handles, updatedAfter)
+	return s.secretRepo.ListByHandles(orgID, handles, updatedAfter, []string{model.SecretValueScopeOrgShared})
 }
 
 // GetAPIByUUID retrieves an API by its ID

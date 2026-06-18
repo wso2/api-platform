@@ -101,11 +101,6 @@ func (h *SecretHandler) ListSecrets(c *gin.Context) {
 		}
 	}
 
-	var projectID *string
-	if p := c.Query("projectId"); p != "" {
-		projectID = &p
-	}
-
 	var updatedAfter *time.Time
 	if ua := c.Query("updatedAfter"); ua != "" {
 		t, err := time.Parse(time.RFC3339, ua)
@@ -116,7 +111,7 @@ func (h *SecretHandler) ListSecrets(c *gin.Context) {
 		updatedAfter = &t
 	}
 
-	resp, err := h.secretService.List(orgID, projectID, limit, offset, updatedAfter)
+	resp, err := h.secretService.List(orgID, limit, offset, updatedAfter)
 	if err != nil {
 		h.slogger.Error("failed to list secrets", "error", err)
 		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to list secrets"))

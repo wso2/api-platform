@@ -304,10 +304,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 		slogger,
 	)
 
-	// Initialize secret vault and service — startup fails if key is absent or invalid
-	if cfg.Database.SecretEncryptionKey == "" {
-		return nil, fmt.Errorf("PLATFORM_SECRET_ENCRYPTION_KEY is required for secrets management — set the env var and restart")
-	}
+	// Initialize secret vault and service
 	secretKey, keyErr := utils.DeriveEncryptionKey(cfg.Database.SecretEncryptionKey)
 	if keyErr != nil {
 		return nil, fmt.Errorf("invalid PLATFORM_SECRET_ENCRYPTION_KEY: %w", keyErr)

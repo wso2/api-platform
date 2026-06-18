@@ -591,7 +591,6 @@ CREATE TABLE IF NOT EXISTS deployment_secret_refs (
     gateway_id      TEXT NOT NULL,
     artifact_uuid   TEXT NOT NULL,
     secret_handle   TEXT NOT NULL,
-    deployment_id   TEXT NOT NULL,
     created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (organization_id, gateway_id, artifact_uuid, secret_handle),
     FOREIGN KEY (organization_id) REFERENCES organizations(uuid) ON DELETE CASCADE

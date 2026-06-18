@@ -304,14 +304,14 @@ type WebBrokerAPIRepository interface {
 type SecretRepository interface {
 	Create(s *model.Secret) error
 	GetByHandle(orgID, handle string) (*model.Secret, error)
-	List(orgID string, projectID *string, limit, offset int, updatedAfter *time.Time) ([]*model.Secret, error)
-	ListByHandles(orgID string, handles []string, updatedAfter *time.Time) ([]*model.Secret, error)
-	Count(orgID string, projectID *string) (int, error)
+	List(orgID string, limit, offset int, updatedAfter *time.Time) ([]*model.Secret, error)
+	ListByHandles(orgID string, handles []string, updatedAfter *time.Time, valueScopes []string) ([]*model.Secret, error)
+	Count(orgID string) (int, error)
 	Update(s *model.Secret) error
 	SoftDelete(orgID, handle, updatedBy string) error
 	FindLLMProviderRefs(orgID, handle string) ([]model.SecretReference, error)
 	FindAPIRefs(orgID, handle string) ([]model.SecretReference, error)
-	Exists(orgID string, projectID *string, handle string) (bool, error)
+	Exists(orgID, handle string) (bool, error)
 }
 
 // CustomPolicyRepository defines the interface for custom policy persistence
