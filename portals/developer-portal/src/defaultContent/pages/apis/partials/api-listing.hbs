@@ -1,5 +1,5 @@
 <!--
- * Copyright (c) 2025, WSO2 LLC. (http://www.wso2.com) All Rights Reserved.
+ * Copyright (c) 2026, WSO2 LLC. (http://www.wso2.com) All Rights Reserved.
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -14,169 +14,149 @@
  * KIND, either express or implied. See the License for the
  * specific language governing permissions and limitations
  * under the License.
- */
  -->
 
 <section class="apis-section">
   <div class="container-fluid">
+    <!-- Hero -->
     <div class="apilist-hero-container">
       <div class="apilist-hero-content">
-        <div class="apilist-hero-header">
-          <h1 class="apilist-hero-title">
-            Discover, Integrate, and Innovate with Scalable APIs
-          </h1>
-          <div class="apilist-hero-description">
-            Explore our extensive API catalog and discover how to integrate them seamlessly into your application.
-          </div>
-        </div>
+        <h1 class="apilist-hero-title">Discover, Integrate, and Innovate with Scalable APIs</h1>
+        <p class="apilist-hero-description">Explore our extensive API catalog and discover how to integrate them seamlessly into your application.</p>
       </div>
-      <div class="col-lg-6 col-md-12 apilist-hero-image">
-        <img
-          src="https://raw.githubusercontent.com/wso2/docs-bijira/refs/heads/main/en/devportal-theming/apisHeroImg.png"
-          alt="Hero Image" class="img-fluid" />
+      <div class="apilist-hero-image">
+        <svg width="280" height="150" viewBox="0 0 320 190" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M82 62 H128" stroke="#a9c1e6" stroke-width="2" stroke-dasharray="3 7" stroke-linecap="round"/>
+          <path d="M192 128 H238" stroke="#a9c1e6" stroke-width="2" stroke-dasharray="3 7" stroke-linecap="round"/>
+          <path d="M160 96 V62 H128" stroke="#a9c1e6" stroke-width="2" stroke-dasharray="3 7" stroke-linecap="round"/>
+          <rect x="120" y="44" width="120" height="104" rx="16" fill="#dbe7f8" stroke="#9db8e0" stroke-width="2"/>
+          <rect x="138" y="66" width="84" height="11" rx="5.5" fill="#ffffff"/>
+          <rect x="138" y="90" width="66" height="8" rx="4" fill="#b6caea"/>
+          <rect x="138" y="108" width="78" height="8" rx="4" fill="#b6caea"/>
+          <rect x="138" y="126" width="50" height="8" rx="4" fill="#b6caea"/>
+          <circle cx="56" cy="62" r="27" fill="#c7d8f3" stroke="#8fa9d6" stroke-width="2"/>
+          <circle cx="56" cy="62" r="6" fill="#5b7fb9"/>
+          <circle cx="266" cy="128" r="27" fill="#5b7fb9"/>
+          <rect x="256" y="125" width="20" height="15" rx="3" fill="#fff"/>
+          <path d="M259 125 v-3.5 a7 7 0 0 1 14 0 V125" stroke="#fff" stroke-width="2.4" fill="none"/>
+        </svg>
       </div>
     </div>
   </div>
+
   <div class="container-fluid apilist-container">
+    <!-- Search -->
     <div class="search-container">
       <div class="search-input">
-        <img src="https://raw.githubusercontent.com/wso2/docs-bijira/refs/heads/main/en/devportal-theming/search.svg"
-          alt="search" class="search-icon" />
+        <i class="bi bi-search search-icon"></i>
         <input type="text" id="query" placeholder="Search APIs" autocomplete="off" />
       </div>
     </div>
-    <div class="row row-gap-4">
-      {{#if (eq apiMetadata.length 0)}}
-      <div class="ps-3" id="no-subscription">
-        <div class="api-info-box">
-          <div class="api-info-content">
-            <div class="api-info-title">
-              No APIs available.
-            </div>
-          </div>
-        </div>
+
+    {{#if (eq apiMetadata.length 0)}}
+    <!-- Empty state -->
+    <div class="apilist-empty" id="no-subscription">
+      <div class="apilist-empty-icon">
+        <i class="bi bi-info-circle"></i>
       </div>
-      {{/if}}
+      <div class="apilist-empty-body">
+        <div class="apilist-empty-title">No APIs available yet</div>
+        <p class="apilist-empty-desc">There are no published APIs in this developer portal right now. Once APIs are published, they'll appear here for you to explore and subscribe to.</p>
+      </div>
+    </div>
+    {{else}}
+    <!-- Results bar -->
+    <div class="apilist-results-bar">
+      <h2 class="apilist-results-heading">APIs <span class="apilist-results-count">{{apiMetadata.length}}</span></h2>
+    </div>
+    {{/if}}
+
+    <!-- Grid -->
+    <div class="row row-gap-4">
+
       {{#apiMetadata}}
       {{#unless (eq apiInfo.apiType "MCP")}}
       <div class="col-lg-4 col-md-6 col-sm-12" id="apiCard-{{apiID}}">
-        <div class="card api-card d-flex flex-column">
-          <div class="api-card-header d-flex align-items-center gap-3 position-relative overflow-hidden"
-            data-href="{{../baseUrl}}/api/{{apiHandle}}" style="cursor: pointer;">
-               {{#if apiInfo.apiImageMetadata.api-icon}}
-                  <img src="{{apiInfo.apiImageMetadata.api-icon}}" class="api-card-img" alt="..." />
-                {{else}}
-                  <div class="image-icon">{{firstTwoLetters apiInfo.apiName}}</div>
-                {{/if}}
-            <div class="flex-grow-1">
-              <h5 class="api-card-title mb-0">{{apiInfo.apiName}}</h5>
-              <div class="d-flex align-items-center gap-2">
-                <p class="mb-0 mt-1" style="font-size: 16px;">{{apiInfo.apiVersion}}</p>
-                <div class="type-badge badge-custom2" style="display: flex; flex-direction: row; align-items: center;">
-                  <div style="margin-right: 8px; display: flex;">
-                    {{#if (eq apiInfo.apiType "WS")}}
-                    <img
-                      src="https://raw.githubusercontent.com/wso2/docs-bijira/refs/heads/main/en/devportal-theming/WebSocket.svg"
-                      style=" height: 16px; object-fit: contain;"
-                    />
-                    {{else if (eq apiInfo.apiType "GRAPHQL")}}
-                    <img
-                      src="https://raw.githubusercontent.com/wso2/docs-bijira/refs/heads/main/en/devportal-theming/graphql.svg"
-                      style="height: 16px; object-fit: contain;"
-                     />
-                    {{else if (eq apiInfo.apiType "WEBSUB")}}
-                    <img
-                      src="https://raw.githubusercontent.com/wso2/docs-bijira/refs/heads/main/en/devportal-theming/webhook.svg"
-                      style="height: 16px; object-fit: contain;"
-                     />
-                    {{else}}
-                    <img
-                      src="https://raw.githubusercontent.com/wso2/docs-bijira/refs/heads/main/en/devportal-theming/REST.svg"
-                      style=" height: 16px; object-fit: contain;"
-                    />
-                    {{/if}}
-                  </div>
-                  {{#if (eq apiInfo.apiType "WS")}}
-                  <span>WebSocket</span>
-                  {{else if (eq apiInfo.apiType "WEBSUB")}}
-                  <span>WebSub</span>
-                  {{else}}
-                  <span>{{apiInfo.apiType}}</span>
-                  {{/if}}
-                </div>
-              </div>
-              <div class="api-card-chips mt-2">
-                {{#if ../showApiWorkflowsNav}}
-                {{#unless (eq apiInfo.agentVisibility "HIDDEN")}}
-                <span class="api-agent-chip api-agent-chip--ready"
-                    title="AI agents can discover and use this API">
-                    <span class="api-agent-chip__dot"></span>
-                    <i class="bi bi-robot"></i> AI Ready
+        <div class="api-card d-flex flex-column">
+
+          <!-- Top: icon + name + version + type badge -->
+          <div class="api-card-top" data-href="{{../baseUrl}}/api/{{apiHandle}}" style="cursor:pointer;">
+            {{#if apiInfo.apiImageMetadata.api-icon}}
+            <img src="{{apiInfo.apiImageMetadata.api-icon}}" class="api-card-img" alt="{{apiInfo.apiName}}" />
+            {{else}}
+            <span class="api-icon
+              {{#if (eq apiInfo.apiType "GRAPHQL")}}api-icon--graphql
+              {{else if (eq apiInfo.apiType "WS")}}api-icon--ws
+              {{else if (eq apiInfo.apiType "SOAP")}}api-icon--soap
+              {{else}}api-icon--rest{{/if}}">{{firstTwoLetters apiInfo.apiName}}</span>
+            {{/if}}
+            <div class="api-card-meta">
+              <h5 class="api-card-title">{{apiInfo.apiName}}</h5>
+              <div class="api-card-meta-row">
+                <span class="api-version">{{apiInfo.apiVersion}}</span>
+                <span class="api-type-badge
+                  {{#if (eq apiInfo.apiType "GRAPHQL")}}api-type-badge--graphql
+                  {{else if (eq apiInfo.apiType "WS")}}api-type-badge--ws
+                  {{else if (eq apiInfo.apiType "SOAP")}}api-type-badge--soap
+                  {{else if (eq apiInfo.apiType "WEBSUB")}}api-type-badge--ws
+                  {{else}}api-type-badge--rest{{/if}}">
+                  {{#if (eq apiInfo.apiType "GRAPHQL")}}<i class="bi bi-share"></i> GraphQL
+                  {{else if (eq apiInfo.apiType "WS")}}<i class="bi bi-broadcast"></i> WebSocket
+                  {{else if (eq apiInfo.apiType "WEBSUB")}}<i class="bi bi-broadcast-pin"></i> WebSub
+                  {{else if (eq apiInfo.apiType "SOAP")}}<i class="bi bi-file-code"></i> SOAP
+                  {{else}}<i class="bi bi-braces"></i> REST{{/if}}
                 </span>
-                {{/unless}}
-                {{/if}}
               </div>
-            </div>
-            {{#if ../isAuthenticated}}
-            <div class="subscription-flag fw-bold" style="display: {{#if hasSubscription}}block{{else}}none{{/if}};">Subscribed</div>
-            {{/if}}
-          </div>
-          <div class="api-card-body flex-grow-1" data-href="{{../baseUrl}}/api/{{apiHandle}}" style="cursor: pointer;">
-            <div class="truncate-text fw-light apilisting-api-description small mb-3">{{apiInfo.apiDescription}}</div>
-            
-            {{#if ../isAuthenticated}}
-              {{#if subscriptionPolicies}}
-                <div class="plans-summary-card">
-                  <div class="plans-summary-card__row">
-                    <div class="plans-summary-card__left">
-                      <span class="plans-summary-card__label">
-                        <i class="fas fa-tags" aria-hidden="true"></i>
-                        Plans
-                        <span class="plans-summary-card__count">({{subscriptionPolicies.length}})</span>
-                      </span>
-
-                      {{!-- optional: show “Free available” if any plan is free --}}
-                      {{#if (some subscriptionPolicies "isFreePlan")}}
-                        <span class="plans-summary-card__pill plans-summary-card__pill--free">Free available</span>
-                      {{/if}}
-                    </div>
-
-                    <a class="plans-summary-card__link" href="{{../baseUrl}}/api/{{apiHandle}}#subscriptionPlans">
-                      View plans
-                    </a>
-                  </div>
-                </div>
+              {{#if ../showApiWorkflowsNav}}
+              {{#unless (eq apiInfo.agentVisibility "HIDDEN")}}
+              <div class="api-card-chips mt-1">
+                <span class="api-agent-chip api-agent-chip--ready" title="AI agents can discover and use this API">
+                  <span class="api-agent-chip__dot"></span>
+                  <i class="bi bi-robot"></i> AI Ready
+                </span>
+              </div>
+              {{/unless}}
               {{/if}}
+            </div>
+            {{#if ../isAuthenticated}}
+            <div class="subscription-flag fw-bold" style="display:{{#if hasSubscription}}block{{else}}none{{/if}};">Subscribed</div>
             {{/if}}
-            <div class="row">
-              <div class="apilisting-tags">
-                {{#apiInfo.tags}}
-                <span class="badge badge-custom2">{{this}}</span>
-                {{/apiInfo.tags}}
-              </div>
-            </div>
           </div>
-          {{#if subscriptionPolicies.length}}
-          <hr class="card-separator" />
-          {{/if}}
+
+          <!-- Description -->
+          <p class="api-card-desc clamp2" data-href="{{../baseUrl}}/api/{{apiHandle}}" style="cursor:pointer;">{{apiInfo.apiDescription}}</p>
+
+          <!-- Tags -->
+          <div class="api-card-tags">
+            {{#apiInfo.tags}}
+            <span class="api-tag">{{this}}</span>
+            {{/apiInfo.tags}}
+          </div>
+
+          <!-- Footer -->
           <div class="api-card-footer">
-            <div id="btnSection" class="d-flex align-items-center gap-2 w-100">
-              <div id="subscriptionBox" class="subscription-container w-100">
-                {{#if subscriptionPolicies.length}}
-                <a type="button" class="common-btn-primary w-100 {{#if @root.isReadOnlyMode}}disabled{{/if}}"
-                  {{#unless @root.isReadOnlyMode}}href="{{../baseUrl}}/api/{{apiHandle}}#subscriptionPlans"{{/unless}}
-                  {{#if @root.isReadOnlyMode}}aria-disabled="true"{{/if}}>Subscribe</a>
-                {{/if}}
-              </div>
+            <div class="api-card-footer-left">
+              {{#if subscriptionPolicies.length}}
+              <a href="{{../baseUrl}}/api/{{apiHandle}}#subscriptionPlans" class="api-plans-link">
+                <i class="bi bi-tag"></i> {{subscriptionPolicies.length}} plans
+              </a>
+              {{else}}
+              <span class="api-public-badge">
+                <span class="api-public-dot"></span> Public API
+              </span>
+              {{/if}}
             </div>
-            
-            <div class="message-overlay hidden">
-              <div class="message-content">
-                <i class="bi message-icon"></i>
-                <p class="message-text"></p>
-              </div>
-              <button type="button" class="close-message" aria-label="Close message">&times;</button>
+            <a href="{{../baseUrl}}/api/{{apiHandle}}{{#if subscriptionPolicies.length}}#subscriptionPlans{{/if}}"
+               class="api-subscribe-btn {{#if @root.isReadOnlyMode}}disabled{{/if}}"
+               {{#if @root.isReadOnlyMode}}aria-disabled="true" tabindex="-1"{{/if}}>Subscribe</a>
+          </div>
+
+          <div class="message-overlay hidden">
+            <div class="message-content">
+              <i class="bi message-icon"></i>
+              <p class="message-text"></p>
             </div>
+            <button type="button" class="close-message" aria-label="Close message">&times;</button>
           </div>
         </div>
       </div>
@@ -184,6 +164,7 @@
       {{/apiMetadata}}
     </div>
   </div>
+
   <script>
     (function(){
       function findClosest(el, selector){
