@@ -26,7 +26,7 @@ const { CustomError } = require('../utils/errors/customErrors');
 const jwt = require('jsonwebtoken');
 const logger = require('../config/logger');
 const { extractPlatformJwtClaims } = require('../utils/platformJwt');
-const { accessTokenPresent, refreshAccessToken, verifyWithCertificate, resolveOrgIdp } = require('../utils/tokenUtil');
+const { accessTokenPresent, refreshAccessToken, verifyWithCertificate } = require('../utils/tokenUtil');
 
 function enforceSecurity(scope) {
     return async function (req, res, next) {
@@ -261,7 +261,6 @@ function validateAuthentication(scope) {
             accessToken = req.headers.authorization && req.headers.authorization.split(' ')[1];
         }
 
-        let valid, scopes;
         if (IDP.certificate) {
             ({ valid, scopes } = await verifyWithCertificate(accessToken, IDP.certificate));
         } else if (IDP.jwksURL) {

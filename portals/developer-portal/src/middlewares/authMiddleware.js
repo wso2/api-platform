@@ -135,7 +135,7 @@ async function authResolver(req, res, next) {
                 err.status = 401;
                 return next(err);
             }
-            const { valid, scopes } = await verifyBearerToken(token);
+            const { valid, scopes } = await verifyBearerToken(token, req);
             if (!valid) {
                 const err = new Error('Authentication required');
                 err.status = 401;

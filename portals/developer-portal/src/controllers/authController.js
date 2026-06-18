@@ -25,8 +25,6 @@ const { config } = require('../config/configLoader');
 const constants = require('../utils/constants');
 const util = require('../utils/util');
 const orgDao = require('../dao/organizationDao');
-const idpDao = require('../dao/identityProviderDao');
-const IdentityProviderDTO = require("../dto/identityProviderDto");
 const minimatch = require('minimatch');
 const { validationResult } = require('express-validator');
 const { renderGivenTemplate } = require('../utils/util');
@@ -34,32 +32,6 @@ const { trackLoginTrigger, trackLogoutTrigger } = require('../utils/telemetryUti
 const { extractPlatformJwtClaims } = require('../utils/platformJwt');
 
 
-const fetchAuthJsonContent = async (req, orgName) => {
-
-    //use super admin for org creation page login
-    if (req.session.returnTo) {
-        if (constants.ROUTE.DEVPORTAL_ROOT.some(pattern => minimatch.minimatch(req.session.returnTo, pattern))) {
-            return config.identityProvider;
-        }
-    }
-    //if no idp per org, use super IDP
-    try {
-        const orgId = await orgDao.getId(orgName);
-        const response = await idpDao.get(orgId);
-        if (response.length === 0) {
-            //login from super IDP
-            return config.identityProvider;
-        }
-        return new IdentityProviderDTO(response[0].dataValues);
-    } catch (error) {
-        logger.error("Failed to fetch identity provider details", {
-            orgName: orgName,
-            error: error.message,
-            stack: error.stack
-        });
-        return config.identityProvider;
-    }
-};
 
 const login = async (req, res, next) => {
 

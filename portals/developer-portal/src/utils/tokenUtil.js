@@ -20,9 +20,6 @@ const qs = require('qs');
 const { jwtVerify, importX509 } = require('jose');
 const { config } = require('../config/configLoader');
 const constants = require('./constants');
-const orgDao = require('../dao/organizationDao');
-const idpDao = require('../dao/identityProviderDao');
-const IdentityProviderDTO = require('../dto/identityProviderDto');
 const logger = require('../config/logger');
 
 const DEFAULT_TOKEN_REFRESH_TIMEOUT_MS = 10000;
@@ -64,18 +61,7 @@ async function verifyWithCertificate(token, pemCertificate) {
     }
 }
 
-async function resolveOrgIdp(req) {
-    let orgId;
-    if (req.params?.orgId) {
-        orgId = req.params.orgId;
-    } else if (req.params?.orgName) {
-        orgId = await orgDao.getId(req.params.orgName);
-    }
-    if (!orgId) return config.identityProvider || {};
-    const rows = await idpDao.get(orgId);
-    if (rows && rows.length > 0) {
-        return new IdentityProviderDTO(rows[0].dataValues);
-    }
+function resolveOrgIdp() {
     return config.identityProvider || {};
 }
 

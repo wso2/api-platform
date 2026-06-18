@@ -18,7 +18,6 @@
 /* eslint-disable no-undef */
 const { CustomError } = require('../utils/errors/customErrors');
 const orgDao = require('../dao/organizationDao');
-const idpDao = require('../dao/identityProviderDao');
 const providerDao = require('../dao/providerDao');
 const appDao = require('../dao/applicationDao');
 const apiDao = require('../dao/apiDao');
@@ -29,7 +28,6 @@ const util = require('../utils/util');
 const fs = require('fs');
 const path = require('path');
 const logger = require('../config/logger');
-const IdentityProviderDTO = require("../dto/identityProviderDto");
 const constants = require('../utils/constants');
 const sequelize = require('../db/sequelizeConfig');
 const { ApplicationDTO, SubscriptionDTO } = require('../dto/applicationDto');
