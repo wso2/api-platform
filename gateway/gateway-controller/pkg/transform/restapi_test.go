@@ -431,8 +431,10 @@ func TestRestAPITransformer_APILevelClusterNameShape(t *testing.T) {
 	rdc, err := transformer.Transform(cfg)
 	require.NoError(t, err)
 
-	expectedMain := "main_" + clusterkey.APILevel(cfg.UUID)
-	expectedSandbox := "sandbox_" + clusterkey.APILevel(cfg.UUID)
+	// Expected name is hard-coded (sha256("test-api")[:12]), not computed via
+	// clusterkey.APILevel, so a change to the hashing function is caught here.
+	expectedMain := "main_2a28373e2cacc6ea903d8c7e"
+	expectedSandbox := "sandbox_2a28373e2cacc6ea903d8c7e"
 
 	mainRoute := rdc.Routes["GET|/test/users|main.local"]
 	require.NotNil(t, mainRoute, "main route must exist")
@@ -537,8 +539,10 @@ func TestRestAPITransformer_APILevelMainOnlyHasNoSandboxCluster(t *testing.T) {
 	rdc, err := transformer.Transform(cfg)
 	require.NoError(t, err)
 
-	expectedMain := "main_" + clusterkey.APILevel(cfg.UUID)
-	expectedSandbox := "sandbox_" + clusterkey.APILevel(cfg.UUID)
+	// Expected name is hard-coded (sha256("test-api")[:12]), not computed via
+	// clusterkey.APILevel, so a change to the hashing function is caught here.
+	expectedMain := "main_2a28373e2cacc6ea903d8c7e"
+	expectedSandbox := "sandbox_2a28373e2cacc6ea903d8c7e"
 
 	_, mainExists := rdc.UpstreamClusters[expectedMain]
 	require.True(t, mainExists, "main cluster %q must still be registered", expectedMain)
