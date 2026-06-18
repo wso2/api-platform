@@ -17,7 +17,7 @@
  */
 /* eslint-disable no-undef */
 const adminService = require('../services/adminService');
-const adminDao = require('../dao/admin');
+const orgDao = require('../dao/organizationDao');
 const util = require('../utils/util');
 const logger = require('../config/logger');
 const constants = require('../utils/constants');
@@ -33,7 +33,7 @@ const getOrganization = async (req, res) => {
 };
 
 const getOrganizationDetails = async (orgId) => {
-    const organization = await adminDao.getOrganization(orgId);
+    const organization = await orgDao.get(orgId);
     return {
         orgId: organization.ORG_ID,
         orgName: organization.ORG_NAME,

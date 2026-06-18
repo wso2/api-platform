@@ -16,7 +16,7 @@
  * under the License.
  */
 const { Sequelize, DataTypes } = require('sequelize');
-const sequelize = require('../db/sequelize');
+const sequelize = require('../db/sequelizeConfig');
 const DPEvent = require('./event');
 
 // One delivery row per (event × subscriber). ENCRYPTED_FIELDS holds per-subscriber

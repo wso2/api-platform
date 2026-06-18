@@ -2,6 +2,7 @@
 set -euo pipefail
 
 BASE_URL="${DEVPORTAL_URL:-https://localhost:3000}"
+PLATFORM_API_URL="${PLATFORM_API_URL:-https://localhost:9243}"
 CREDENTIALS="${DEVPORTAL_CREDENTIALS:-admin:admin}"
 ORG_HANDLE="${ORG_HANDLE:-default}"
 
@@ -15,9 +16,22 @@ for cmd in jq zip; do
     fi
 done
 
+# Acquire bearer token from Platform API
+PLATFORM_USER="${CREDENTIALS%%:*}"
+PLATFORM_PASS="${CREDENTIALS#*:}"
+
+TOKEN=$(curl -sk -X POST "$PLATFORM_API_URL/api/portal/v1/auth/login" \
+    -d "username=$PLATFORM_USER&password=$PLATFORM_PASS" | jq -r '.token // empty')
+if [ -z "$TOKEN" ]; then
+    echo "Error: failed to obtain token from $PLATFORM_API_URL — check credentials and that Platform API is running"
+    exit 1
+fi
+
+AUTH_HEADER="Authorization: Bearer $TOKEN"
+
 # Resolve ORG_ID — use env var if set, otherwise discover by handle
 if [ -z "${ORG_ID:-}" ]; then
-    ORG_ID=$(curl -sk -u "$CREDENTIALS" "$BASE_URL/organizations" | \
+    ORG_ID=$(curl -sk -H "$AUTH_HEADER" "$BASE_URL/organizations" | \
         jq -r --arg h "$ORG_HANDLE" '.[] | select(.orgHandle == $h) | .orgID // empty')
     if [ -z "$ORG_ID" ]; then
         echo "Error: organization with handle '$ORG_HANDLE' not found. Ensure the server has started with DP_DEFAULTORGNAME set."
@@ -41,7 +55,7 @@ seed_docs() {
     local response http_code body
     response=$(curl -sk -X POST \
         "$BASE_URL/o/$ORG_ID/devportal/v1/apis/$api_id/content" \
-        -u "$CREDENTIALS" \
+        -H "$AUTH_HEADER" \
         -F "apiContent=@$tmp_zip;type=application/zip" \
         -w "\n%{http_code}")
     http_code=$(echo "$response" | tail -1)
@@ -76,7 +90,7 @@ seed_api() {
 
     local curl_args=(-sk -X POST \
         "$BASE_URL/o/$ORG_ID/devportal/v1/apis" \
-        -u "$CREDENTIALS" \
+        -H "$AUTH_HEADER" \
         -F "api=@$api_yaml;type=application/yaml")
 
     if [ -n "$definition" ]; then

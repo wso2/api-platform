@@ -23,24 +23,24 @@ const session = require('express-session');
 const path = require('path');
 const logger = require('./config/logger');
 const { auditMiddleware } = require('./middlewares/auditLogger');
-const authRoute = require('./routes/authRoute');
-const orgContent = require('./routes/orgContentRoute');
-const apiContent = require('./routes/apiContentRoute');
-const applicationContent = require('./routes/applicationsContentRoute');
-const customContent = require('./routes/customPageRoute');
-const subscriptionsContent = require('./routes/subscriptionsContentRoute');
-const mcpRegistryRoute = require('./routes/mcpRegistryRoute');
+const authRoute = require('./routes/pages/authRoute');
+const orgContent = require('./routes/pages/orgContentRoute');
+const apiContent = require('./routes/pages/apiContentRoute');
+const applicationContent = require('./routes/pages/applicationsContentRoute');
+const customContent = require('./routes/pages/customPageRoute');
+const subscriptionsContent = require('./routes/pages/subscriptionsContentRoute');
+const mcpRegistryRoute = require('./routes/pages/mcpRegistryRoute');
 const { config } = require('./config/configLoader');
 const Handlebars = require('handlebars');
 const constants = require("./utils/constants");
-const designRoute = require('./routes/designModeRoute');
-const settingsRoute = require('./routes/configureRoute');
-const apiFlowsRoute = require('./routes/apiFlowsRoute');
+const designRoute = require('./routes/pages/designModeRoute');
+const settingsRoute = require('./routes/pages/configureRoute');
+const apiFlowsRoute = require('./routes/pages/apiFlowsRoute');
 const { v4: uuidv4 } = require('uuid');
 const util = require('./utils/util');
-const sessionStore = require('./db/sessionStore');
+const sessionStore = require('./db/sessionStoreConfig');
 const { registerHelpers } = require('./helpers/handlebarsHelpers');
-const { configurePassport } = require('./middlewares/passport');
+const { configurePassport } = require('./middlewares/passportConfig');
 
 const app = express();
 // const secret = crypto.randomBytes(64).toString('hex');
@@ -139,7 +139,7 @@ app.use((req, res, next) => {
 // src/openapi/handlers. Mounted at root since spec paths are root-relative
 // (/o/{orgId}/devportal/v1/..., /applications, /login, ...). Registered before the
 // page route tree so unmatched requests fall through to it.
-const devportalApiRouter = require('./openapi/devportalApiRouter');
+const devportalApiRouter = require('./routes/api/devportalApiRouter');
 app.use(constants.ROUTE.DEFAULT, devportalApiRouter);
 
 // MCP Server Registry (OpenAPI v0.1)

@@ -22,7 +22,7 @@ const marked = require('marked');
 const Handlebars = require('handlebars');
 const logger = require('../config/logger');
 const { CustomError } = require('../utils/errors/customErrors');
-const adminDao = require('../dao/admin');
+const orgDao = require('../dao/organizationDao');
 const constants = require('../utils/constants');
 const unzipper = require('unzipper');
 const axios = require('axios');
@@ -31,8 +31,9 @@ const https = require('https');
 const { config } = require('../config/configLoader');
 const { body, param, query } = require('express-validator');
 const { Sequelize } = require('sequelize');
-const apiDao = require('../dao/apiMetadata');
-const subscriptionPolicyDTO = require('../dto/subscriptionPolicy');
+const apiDao = require('../dao/apiDao');
+const subscriptionPolicyDao = require('../dao/subscriptionPolicyDao');
+const subscriptionPolicyDTO = require('../dto/subscriptionPolicyDto');
 const jwt = require('jsonwebtoken');
 const filePrefix = '/src/defaultContent/';
 
@@ -84,23 +85,23 @@ function renderTemplate(templatePath, layoutPath, templateContent, isTechnical) 
     const template = Handlebars.compile(templateResponse.toString());
     const layout = Handlebars.compile(layoutResponse.toString());
 
+    const slots = {};
     const showApiWorkflowsNav = config.features?.apiWorkflows?.enabled === true;
-    const enrichedContent = { devportalMode: constants.DEVPORTAL_MODE.DEFAULT, ...templateContent, showApiWorkflowsNav };
+    const enrichedContent = { devportalMode: constants.DEVPORTAL_MODE.DEFAULT, ...templateContent, showApiWorkflowsNav, slots };
     return layout({
+        ...enrichedContent,
         body: template(enrichedContent),
         portalConfigs: config.portalConfigs,
         devportalApiConfig: {
             base: constants.DEVPORTAL_API.BASE_SEGMENT,
             version: constants.DEVPORTAL_API.VERSION,
         },
-        profile: templateContent.profile,
-        showApiWorkflowsNav,
     });
 }
 
 async function loadLayoutFromAPI(orgID, viewName) {
 
-    var layoutContent = await adminDao.getOrgContent({
+    var layoutContent = await orgDao.getContent({
         orgId: orgID,
         fileType: constants.FILE_TYPE.LAYOUT,
         fileName: constants.FILE_NAME.MAIN,
@@ -115,7 +116,7 @@ async function loadLayoutFromAPI(orgID, viewName) {
 
 async function loadTemplateFromAPI(orgID, filePath, viewName) {
 
-    var templateContent = await adminDao.getOrgContent({
+    var templateContent = await orgDao.getContent({
         orgId: orgID,
         filePath: filePath,
         fileType: constants.FILE_TYPE.TEMPLATE,
@@ -131,7 +132,7 @@ async function renderTemplateFromAPI(templateContent, orgID, orgName, filePath, 
     const completeLayoutPath = path.join(process.cwd(), filePrefix + 'layout/main.hbs');
 
     layoutResponse = fs.readFileSync(completeLayoutPath, constants.CHARSET_UTF8);
-    const styleContent = await adminDao.getOrgContent({ orgId: orgID, fileType: 'style', viewName: viewName, fileName: 'main.css' });
+    const styleContent = await orgDao.getContent({ orgId: orgID, fileType: 'style', viewName: viewName, fileName: 'main.css' });
     if (styleContent) {
         layoutResponse = layoutResponse.replace(/\/styles\//g, `${constants.DEVPORTAL_API.orgPath(orgID)}/views/${viewName}/layout?fileType=style&fileName=`);
     }
@@ -139,24 +140,24 @@ async function renderTemplateFromAPI(templateContent, orgID, orgName, filePath, 
     const template = Handlebars.compile(templateResponse.toString());
     const layout = Handlebars.compile(layoutResponse.toString());
 
+    const slots = {};
     const showApiWorkflowsNav = config.features?.apiWorkflows?.enabled === true;
-    const enrichedContent = { devportalMode: constants.DEVPORTAL_MODE.DEFAULT, ...templateContent, showApiWorkflowsNav };
+    const enrichedContent = { devportalMode: constants.DEVPORTAL_MODE.DEFAULT, ...templateContent, showApiWorkflowsNav, slots };
     return layout({
+        ...enrichedContent,
         body: template(enrichedContent),
         portalConfigs: config.portalConfigs,
         devportalApiConfig: {
             base: constants.DEVPORTAL_API.BASE_SEGMENT,
             version: constants.DEVPORTAL_API.VERSION,
         },
-        profile: templateContent.profile,
-        showApiWorkflowsNav,
     });
 
 }
 
 async function renderLlmsTxt(templateContent, orgID, viewName) {
 
-    const dbPartial = await adminDao.getOrgContent({
+    const dbPartial = await orgDao.getContent({
         orgId: orgID,
         fileType: 'partial',
         viewName: viewName,
@@ -180,7 +181,7 @@ async function renderLlmsTxt(templateContent, orgID, viewName) {
 async function renderMarkdownTemplateFromAPI(templateContent, orgID, filePath, viewName) {
 
     const partialName = path.basename(filePath) + '-md';
-    const dbPartial = await adminDao.getOrgContent({
+    const dbPartial = await orgDao.getContent({
         orgId: orgID,
         fileType: 'partial',
         viewName: viewName,
@@ -205,17 +206,17 @@ async function renderGivenTemplate(templatePage, layoutPage, templateContent) {
 
     const template = Handlebars.compile(templatePage.toString());
     const layout = Handlebars.compile(layoutPage.toString());
+    const slots = {};
     const showApiWorkflowsNav = config.features?.apiWorkflows?.enabled === true;
-    const enrichedContent = { devportalMode: constants.DEVPORTAL_MODE.DEFAULT, ...templateContent, showApiWorkflowsNav };
+    const enrichedContent = { devportalMode: constants.DEVPORTAL_MODE.DEFAULT, ...templateContent, showApiWorkflowsNav, slots };
     return layout({
+        ...enrichedContent,
         body: template(enrichedContent),
         portalConfigs: config.portalConfigs,
         devportalApiConfig: {
             base: constants.DEVPORTAL_API.BASE_SEGMENT,
             version: constants.DEVPORTAL_API.VERSION,
         },
-        profile: templateContent.profile,
-        showApiWorkflowsNav,
     });
 }
 
@@ -618,8 +619,8 @@ async function readFilesInDirectory(directory, orgId, protocol, host, viewName, 
                         strContent = strContent.replace(/@import\s*['"]\/styles\/home\.css['"];/g, `@import url("${constants.DEVPORTAL_API.orgPath(orgId)}/views/${viewName}/layout?fileType=style&fileName=home.css");`);
                         strContent = strContent.replace(/@import\s*['"]\/styles\/main\.css['"];/g, `@import url("${constants.DEVPORTAL_API.orgPath(orgId)}/views/${viewName}/layout?fileType=style&fileName=main.css");`);
                     }
-                    strContent = strContent.replace(/"\/images\/(devportalLogo\.[^"]+)/g, `"${constants.DEVPORTAL_API.orgPath(orgId)}/views/${viewName}/layout?fileType=image&fileName=$1`);
-                    strContent = strContent.replace(/'\/images\/(devportalLogo\.[^']+)/g, `'${constants.DEVPORTAL_API.orgPath(orgId)}/views/${viewName}/layout?fileType=image&fileName=$1`);
+                    strContent = strContent.replace(/"\/images\/(devportal-logo\.[^"]+)/g, `"${constants.DEVPORTAL_API.orgPath(orgId)}/views/${viewName}/layout?fileType=image&fileName=$1`);
+                    strContent = strContent.replace(/'\/images\/(devportal-logo\.[^']+)/g, `'${constants.DEVPORTAL_API.orgPath(orgId)}/views/${viewName}/layout?fileType=image&fileName=$1`);
                     content = Buffer.from(strContent, constants.CHARSET_UTF8);
                 } else if (file.name.endsWith(".hbs") && dir.endsWith("layout")) {
                     fileType = "layout"
@@ -702,8 +703,6 @@ function validateScripts(strContent) {
             '<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.2.7/purify.min.js" integrity="sha512-78KH17QLT5e55GJqP76vutp1D2iAoy06WcYBXB6iBCsmO6wWzx0Qdg8EDpm8mKXv68BcvHOyeeP4wxAL0twJGQ==" crossorigin="anonymous"></script>',
         ]);
         const allowedInlineScripts = new Set([
-            // Reo analytics loader (src/defaultContent/layout/main.hbs)
-            "<script type=\"text/javascript\">\n      !function(){var e,t,n;e=\"{{portalConfigs.reoClientID}}\",t=function(){Reo.init({clientID:\"{{portalConfigs.reoClientID}}\"})},(n=document.createElement(\"script\")).src=\"https://static.reo.dev/\"+e+\"/reo.js\",n.defer=!0,n.onload=t,document.head.appendChild(n)}();\n    </script>",
             // Token-map JSON data island (api-landing/partials/api-subscription-plans.hbs)
             "<script id=\"token-map-data\" type=\"application/json\">{{{jsonSafeSubscriptions ../subscriptions}}}</script>",
             // Token-meta bootstrap (api-landing/partials/api-subscription-plans.hbs)
@@ -798,7 +797,7 @@ async function appendSubscriptionPlanDetails(orgID, subscriptionPolicies) {
 const loadSubscriptionPlan = async (orgID, policyName) => {
 
     try {
-        const policyData = await apiDao.getSubscriptionPolicyByName(orgID, policyName);
+        const policyData = await subscriptionPolicyDao.getByName(orgID, policyName);
         if (policyData) {
             return new subscriptionPolicyDTO(policyData);
         } else {
@@ -823,7 +822,7 @@ async function tokenExchanger(token, orgName) {
     const url = config.advanced.tokenExchanger.url;
     const maxRetries = 3;
     let delay = 1000;
-    const orgDetails = await adminDao.getOrganization(orgName);
+    const orgDetails = await orgDao.get(orgName);
     if (!orgDetails) {
         throw new Error('Organization not found');
     } else if (!orgDetails.ORGANIZATION_IDENTIFIER) {
@@ -958,7 +957,7 @@ function filterAllowedAPIs(searchResults, allowedAPIs) {
 }
 
 const enforcePortalMode = async (req, res, next) => {
-    const orgDetails = await adminDao.getOrganization(req.params.orgName);
+    const orgDetails = await orgDao.get(req.params.orgName);
     const portalMode = orgDetails.ORG_CONFIG?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
     const path = req.originalUrl.split('/')[4];
 
@@ -977,7 +976,7 @@ const enforcePortalMode = async (req, res, next) => {
 }
 
 async function isAiDisabledForPortal(orgID, viewName) {
-    const configAsset = await adminDao.getOrgContent({
+    const configAsset = await orgDao.getContent({
         orgId: orgID, fileType: constants.FILE_TYPE.LLMS_CONFIG, viewName, fileName: constants.FILE_NAME.LLMS_CONFIG
     });
     if (!configAsset) return false;

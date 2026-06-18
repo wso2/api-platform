@@ -16,10 +16,10 @@
  * under the License.
  */
 const { config } = require('../../config/configLoader');
-const eventDao = require('../../dao/event');
+const eventDao = require('../../dao/eventDao');
 const { matchSubscribers } = require('./subscriberRegistry');
 const { onPublished } = require('./eventPublisher');
-const sequelize = require('../../db/sequelize');
+const sequelize = require('../../db/sequelizeConfig');
 const DPEvent = require('../../models/event');
 const logger = require('../../config/logger');
 
@@ -33,7 +33,7 @@ let intervalHandle = null;
 async function runBatch() {
     const delivery = config.webhooks && config.webhooks.delivery;
     const batchSize = (delivery && delivery.batchSize) || 50;
-    const events = await eventDao.claimPendingEvents(batchSize);
+    const events = await eventDao.claimPending(batchSize);
     if (events.length === 0) return;
 
     for (const event of events) {

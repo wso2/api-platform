@@ -23,8 +23,8 @@ const logger = require('./config/logger');
 const { config } = require('./config/configLoader');
 const webhookDispatcher = require('./services/webhooks/dispatcher');
 const webhookDeliveryWorker = require('./services/webhooks/deliveryWorker');
-const sequelize = require('./db/sequelize');
-const { seedDefaultOrg } = require('./services/seeder');
+const sequelize = require('./db/sequelizeConfig');
+const { seedDefaultOrg } = require('./services/seederService');
 const app = require('./app');
 
 const PORT = process.env.PORT || config.defaultPort;

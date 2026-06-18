@@ -24,10 +24,13 @@ const { logUserAction } = require('../middlewares/auditLogger');
 const { config } = require('../config/configLoader');
 const constants = require('../utils/constants');
 const util = require('../utils/util');
-const adminDao = require('../dao/admin');
+const orgDao = require('../dao/organizationDao');
+const minimatch = require('minimatch');
 const { validationResult } = require('express-validator');
-const { trackLoginTrigger, trackLogoutTrigger } = require('../utils/telemetry');
+const { renderGivenTemplate } = require('../utils/util');
+const { trackLoginTrigger, trackLogoutTrigger } = require('../utils/telemetryUtil');
 const { extractPlatformJwtClaims } = require('../utils/platformJwt');
+
 
 
 const login = async (req, res, next) => {
@@ -39,7 +42,7 @@ const login = async (req, res, next) => {
     };  
     const orgName = req.params.orgName;
     const baseUrl = '/' + orgName + constants.ROUTE.VIEWS_PATH + req.params.viewName;
-    const orgDetails = await adminDao.getOrganization(orgName);
+    const orgDetails = await orgDao.get(orgName);
     if (orgDetails) {
         claimNames[constants.ROLES.ROLE_CLAIM] = orgDetails.ROLE_CLAIM_NAME || config.roleClaim;
         claimNames[constants.ROLES.GROUP_CLAIM] = orgDetails.GROUPS_CLAIM_NAME || config.groupsClaim;

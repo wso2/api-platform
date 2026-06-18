@@ -16,11 +16,11 @@
  * under the License.
  */
 const crypto = require('crypto');
-const sequelize = require('../db/sequelize');
-const apiKeyDao = require('../dao/apiKey');
-const apiMetadataDao = require('../dao/apiMetadata');
+const sequelize = require('../db/sequelizeConfig');
+const apiKeyDao = require('../dao/apiKeyDao');
+const apiDao = require('../dao/apiDao');
 const { publish } = require('./webhooks/eventPublisher');
-const subDao = require('../dao/subscription');
+const subDao = require('../dao/subscriptionDao');
 const logger = require('../config/logger');
 const { config } = require('../config/configLoader');
 
@@ -66,7 +66,7 @@ function parseExpiresAt(raw) {
 }
 
 async function resolveApi(orgId, apiId) {
-    const rows = await apiMetadataDao.getAPIMetadata(orgId, apiId);
+    const rows = await apiDao.get(orgId, apiId);
     if (!rows || rows.length === 0) {
         return { error: { status: 404, message: 'API not found' } };
     }
@@ -82,7 +82,7 @@ async function resolveApi(orgId, apiId) {
 }
 
 async function resolveApiDirect(orgId, apiId) {
-    const rows = await apiMetadataDao.getAPIMetadataByCondition({ API_ID: apiId, ORG_ID: orgId });
+    const rows = await apiDao.getByCondition({ API_ID: apiId, ORG_ID: orgId });
     if (!rows || rows.length === 0) return null;
     const dv = rows[0].dataValues || rows[0];
     return {
@@ -95,7 +95,7 @@ async function resolveApiDirect(orgId, apiId) {
 
 async function resolveSubscription(orgId, subscriptionId) {
     if (!subscriptionId) return null;
-    const sub = await subDao.getSubscriptionById(orgId, subscriptionId);
+    const sub = await subDao.getById(orgId, subscriptionId);
     if (!sub) return null;
     const policy = sub.DP_SUBSCRIPTION_POLICY;
     return {
@@ -127,7 +127,7 @@ async function generate({ orgId, apiId, subscriptionId, name, expiresAt, actor }
 
     try {
         await sequelize.transaction(async (t) => {
-            const key = await apiKeyDao.createKey(
+            const key = await apiKeyDao.create(
                 { apiId: api.apiId, subscriptionId, orgId, name: normalizedName,
                   expiresAt: expiry.date, createdBy: actor },
                 t
@@ -162,7 +162,7 @@ async function generate({ orgId, apiId, subscriptionId, name, expiresAt, actor }
 async function regenerate({ orgId, keyId, actor }) {
     if (config.readOnlyMode) throw Object.assign(new Error('Read-only mode'), { status: 403 });
 
-    const existing = await apiKeyDao.getKey(orgId, keyId);
+    const existing = await apiKeyDao.get(orgId, keyId);
     if (!existing) throw Object.assign(new Error('API key not found'), { status: 404 });
     if (existing.STATUS === 'REVOKED') throw Object.assign(new Error('Cannot regenerate a revoked key'), { status: 409 });
 
@@ -200,7 +200,7 @@ async function regenerate({ orgId, keyId, actor }) {
 async function revoke({ orgId, keyId, actor }) {
     if (config.readOnlyMode) throw Object.assign(new Error('Read-only mode'), { status: 403 });
 
-    const existing = await apiKeyDao.getKey(orgId, keyId);
+    const existing = await apiKeyDao.get(orgId, keyId);
     if (!existing) throw Object.assign(new Error('API key not found'), { status: 404 });
 
     const revokeApiInfo = await resolveApiDirect(orgId, existing.API_ID);
@@ -208,7 +208,7 @@ async function revoke({ orgId, keyId, actor }) {
     const subscription = await resolveSubscription(orgId, existing.SUBSCRIPTION_ID);
 
     await sequelize.transaction(async (t) => {
-        const revoked = await apiKeyDao.revokeKey(orgId, keyId, t);
+        const revoked = await apiKeyDao.revoke(orgId, keyId, t);
         if (!revoked) throw Object.assign(new Error('Key already revoked or not found'), { status: 409 });
 
         await publish('apikey.revoked',
@@ -227,7 +227,7 @@ async function revoke({ orgId, keyId, actor }) {
 }
 
 async function list(orgId, filters) {
-    return apiKeyDao.listKeys(orgId, filters);
+    return apiKeyDao.list(orgId, filters);
 }
 
 module.exports = { generate, regenerate, revoke, list };

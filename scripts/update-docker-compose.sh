@@ -36,7 +36,7 @@ COMPOSE_FILE="gateway/docker-compose.yaml"
 DIST_COMPOSE_FILE="gateway/distribution/docker-compose.yaml"
 IT_COMPOSE_FILE="gateway/it/docker-compose.test.yaml"
 EVENT_GATEWAY_COMPOSE_FILE="event-gateway/docker-compose.yaml"
-DEVPORTAL_COMPOSE_FILE="portals/developer-portal/docker-compose.yml"
+DEVPORTAL_COMPOSE_FILE="portals/developer-portal/docker-compose.yaml"
 DEVPORTAL_DIST_COMPOSE_FILE="portals/developer-portal/distribution/docker-compose.yaml"
 AI_WORKSPACE_COMPOSE_FILE="portals/ai-workspace/docker-compose.yaml"
 

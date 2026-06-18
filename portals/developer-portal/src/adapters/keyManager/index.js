@@ -16,7 +16,7 @@
  * under the License.
  */
 const constants = require('../../utils/constants');
-const { decryptAdminCredentials } = require('../../dao/keyManager');
+const { decryptCredentials } = require('../../dao/keyManagerDao');
 const AsgardeoAdapter = require('./asgardeoAdapter');
 // Other adapters (WSO2IS, Keycloak, GenericOIDC) are kept but not yet wired up.
 // Uncomment the relevant entries in ADAPTER_MAP when they are ready to use.
@@ -39,7 +39,7 @@ function getKeyManagerAdapter(kmRecord) {
     if (!AdapterClass) {
         throw new Error(`Unsupported key manager type: ${kmRecord.TYPE}`);
     }
-    const credentials = decryptAdminCredentials(kmRecord);
+    const credentials = decryptCredentials(kmRecord);
     return new AdapterClass(kmRecord, credentials);
 }
 

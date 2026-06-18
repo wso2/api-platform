@@ -139,6 +139,9 @@ services:
       DP_SERVERCERTS_PATHTOPK: "/app/certs/server.key"
       DP_SERVERCERTS_PATHTOCA: "/app/certs/server.crt"
 
+      # Seed a default organization on startup (idempotent)
+      DP_DEFAULTORGNAME: "default"
+
       # Auto-generate default subscription plans for every new org
       DP_GENERATEDEFAULTSUBPOLICIES: "true"
 

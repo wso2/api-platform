@@ -16,11 +16,11 @@
  * under the License.
  */
 const { Sequelize, DataTypes } = require('sequelize');
-const sequelize = require('../db/sequelize')
+const sequelize = require('../db/sequelizeConfig')
 const APIContent = require('../models/apiContent')
-const APIImages = require('./apiImages')
+const APIImages = require('./apiImage')
 const { Organization } = require('./organization')
-const Labels = require('./labels');
+const Labels = require('./label');
 
 const APIMetadata = sequelize.define('DP_API_METADATA', {
   API_ID: {

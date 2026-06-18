@@ -16,7 +16,7 @@
  * under the License.
  */
 const { DataTypes } = require('sequelize');
-const sequelize = require('../db/sequelize');
+const sequelize = require('../db/sequelizeConfig');
 const SubscriptionPolicy = require('./subscriptionPolicy');
 const { APIMetadata } = require('./apiMetadata');
 

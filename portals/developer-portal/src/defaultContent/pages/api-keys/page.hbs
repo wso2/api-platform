@@ -16,15 +16,14 @@
  * under the License.
  -->
 
-<head>
+{{#pageHead}}
   <link rel='stylesheet' href='/technical-styles/subscriptions.css' />
   <link rel='stylesheet' href='/technical-styles/api-keys.css' />
+{{/pageHead}}
+{{#pageScripts}}
   <script src='/technical-scripts/api-keys-page.js' defer></script>
-</head>
-<main>
-    {{> header profile=profile baseUrl=baseUrl devportalMode=devportalMode showApiWorkflowsNav=showApiWorkflowsNav }}
-    {{> sidebar profile=profile baseUrl=baseUrl devportalMode=devportalMode showApiKeysNav=showApiKeysNav showApiWorkflowsNav=showApiWorkflowsNav }}
-    <div class="content">
+{{/pageScripts}}
+<div class="content">
         <div class="container-fluid subscriptions-container api-keys-page">
             <div class="container-header mb-4 d-flex flex-wrap align-items-center justify-content-between gap-2">
                 <span>API Keys</span>
@@ -48,4 +47,3 @@
     </div>
     {{> warning modalTitle="Confirm" modalMessage="" modalFunction="" }}
     {{> alert }}
-</main>

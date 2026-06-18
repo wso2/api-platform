@@ -1,14 +1,13 @@
-<head>
+{{#pageHead}}
     <link rel="stylesheet" href="/technical-styles/api-flows.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css" integrity="sha512-uf06llspW44/LZpHzHT6qBOIVODjWtv4MxCricRxkzvopAlSWnTf6hpZTFxuuZcuNE9CBQhqE0Seu1CoRk84nQ==" crossorigin="anonymous">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js" integrity="sha512-OeZ4Yrb/W7d2W4rAMOO0HQ9Ro/aWLtpW9BUSR2UOWnSV2hprXLkkYnnCGc9NeLUxxE4ZG7zN16UuT1Elqq8Opg==" crossorigin="anonymous"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/yaml/yaml.min.js" integrity="sha512-Prlj899DsOyGWU8noS4ZqQ8Z4jy+215JiZPxt/cT3ds3VqbwwsjSYZ64zCWQ/Z7AUZvymKGRllUSLPW5RKylNQ==" crossorigin="anonymous"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/js-yaml/4.1.0/js-yaml.min.js" integrity="sha512-CSBhVREyzHAjAFfBlIBakjoRUKp5h7VSweP0InR/pAJyptH7peuhCsqAI/snV+TwZmXZqoUklpXp6R6wMnYf5Q==" crossorigin="anonymous"></script>
+{{/pageHead}}
+{{#pageScripts}}
     <script src='/technical-scripts/api-flows.js' defer></script>
-</head>
-
-{{> header profile=profile baseUrl=baseUrl showApiWorkflowsNav=showApiWorkflowsNav}}
-{{> sidebar profile=profile baseUrl=baseUrl devportalMode=devportalMode showApiWorkflowsNav=showApiWorkflowsNav}}
+{{/pageScripts}}
 
 <div class="container mt-4 mb-4">
     <div class="mb-3">

@@ -17,9 +17,14 @@
  */
 /* eslint-disable no-undef */
 const { Sequelize } = require("sequelize");
-const sequelize = require("../db/sequelize");
-const apiDao = require("../dao/apiMetadata");
-const adminDao = require("../dao/admin");
+const sequelize = require('../db/sequelizeConfig');
+const apiDao = require("../dao/apiDao");
+const subDao = require('../dao/subscriptionDao');
+const labelDao = require('../dao/labelDao');
+const viewDao = require('../dao/viewDao');
+const subscriptionPolicyDao = require('../dao/subscriptionPolicyDao');
+const apiFileDao = require('../dao/apiFileDao');
+const apiImageDao = require('../dao/apiImageDao');
 const util = require("../utils/util");
 const logger = require("../config/logger");
 const { config } = require('../config/configLoader');
@@ -27,13 +32,13 @@ const path = require("path");
 const fs = require("fs").promises;
 const fsDir = require("fs");
 const yaml = require('js-yaml');
-const APIDTO = require("../dto/apiDTO");
-const ViewDTO = require("../dto/views");
-const APIDocDTO = require("../dto/apiDoc");
+const APIDTO = require("../dto/apiDto");
+const ViewDTO = require("../dto/viewsDto");
+const APIDocDTO = require("../dto/apiDocDto");
 const constants = require("../utils/constants");
-const subscriptionPolicyDTO = require("../dto/subscriptionPolicy");
+const subscriptionPolicyDTO = require("../dto/subscriptionPolicyDto");
 const { CustomError } = require("../utils/errors/customErrors");
-const LabelDTO = require("../dto/label");
+const LabelDTO = require("../dto/labelDto");
 
 const createAPIMetadata = async (req, res) => {
     const orgId = req.params.orgId;
@@ -97,7 +102,7 @@ const createAPIMetadata = async (req, res) => {
             timeout: 60000,
         }, async (t) => {
             // Create apimetadata record
-            const createdAPI = await apiDao.createAPIMetadata(orgId, apiMetadata, t);
+            const createdAPI = await apiDao.create(orgId, apiMetadata, t);
             const apiID = createdAPI.dataValues.API_ID;
             if (apiMetadata.subscriptionPolicies) {
                 const subscriptionPolicies = [];
@@ -108,7 +113,7 @@ const createAPIMetadata = async (req, res) => {
                     );
                 } else {
                     for (const policy of apiSubscriptionPolicies) {
-                        const subscriptionPolicy = await apiDao.getSubscriptionPolicyByName(orgId, policy.policyName);
+                        const subscriptionPolicy = await subscriptionPolicyDao.getByName(orgId, policy.policyName);
                         if (!subscriptionPolicy) {
                             throw new Sequelize.EmptyResultError("Subscription policy not found");
                         } else {
@@ -116,7 +121,7 @@ const createAPIMetadata = async (req, res) => {
                         }
                     };
                 }
-                await apiDao.createAPISubscriptionPolicy(subscriptionPolicies, apiID, t);
+                await subscriptionPolicyDao.createApiMapping(subscriptionPolicies, apiID, t);
             }
             //store api labels
             if (apiMetadata.apiInfo.labels) {
@@ -126,16 +131,16 @@ const createAPIMetadata = async (req, res) => {
                         "Missing or Invalid fields in the request payload"
                     );
                 }
-                await apiDao.createAPILabelMapping(orgId, apiID, labels, t);
+                await labelDao.createApiMapping(orgId, apiID, labels, t);
             } else {
-                await apiDao.createAPILabelMapping(orgId, apiID, ['default'], t);
+                await labelDao.createApiMapping(orgId, apiID, ['default'], t);
             }
             // store api definition file (skipped for GraphQL — schema stored below via schemaDefinition)
             if (apiDefinitionFile) {
-                await apiDao.storeAPIFile(apiDefinitionFile, apiFileName, apiID, constants.DOC_TYPES.API_DEFINITION, t);
+                await apiFileDao.store(apiDefinitionFile, apiFileName, apiID, constants.DOC_TYPES.API_DEFINITION, t);
             }
             if (Object.keys(resolvedImageMetadata).length > 0) {
-                await apiDao.storeAPIImageMetadata(resolvedImageMetadata, apiID, t);
+                await apiImageDao.store(resolvedImageMetadata, apiID, t);
             }
             // Save MCP tools as schema definition if the API type is MCP
             if (constants.API_TYPE.MCP === apiMetadata.apiInfo.apiType) {
@@ -155,7 +160,7 @@ const createAPIMetadata = async (req, res) => {
                         schemaDefinitionFileSize: schemaDefinition.schemaDefinitionFile.length,
                         schemaFileName: schemaDefinition.schemaDefinitionFileName
                     });
-                    await apiDao.storeAPIFile(schemaDefinition.schemaDefinitionFile, schemaDefinition.schemaDefinitionFileName, apiID,
+                    await apiFileDao.store(schemaDefinition.schemaDefinitionFile, schemaDefinition.schemaDefinitionFileName, apiID,
                         constants.DOC_TYPES.SCHEMA_DEFINITION, t);
                     logger.info('Schema definition file stored', {
                         apiId: apiID,
@@ -173,7 +178,7 @@ const createAPIMetadata = async (req, res) => {
                     schemaFileName: file.originalname
                 });
                 const schemaFileName = constants.FILE_NAME.API_DEFINITION_GRAPHQL;
-                await apiDao.storeAPIFile(schemaDefinitionFile, schemaFileName, apiID,
+                await apiFileDao.store(schemaDefinitionFile, schemaFileName, apiID,
                     constants.DOC_TYPES.API_DEFINITION, t);
                 logger.info('GraphQL schema definition file stored', {
                     apiId: apiID,
@@ -182,7 +187,7 @@ const createAPIMetadata = async (req, res) => {
             }
 
             if (apiArtifactFile?.buffer && artifactApiContent.length > 0) {
-                await apiDao.storeAPIFiles(artifactApiContent, apiID, t);
+                await apiFileDao.storeMany(artifactApiContent, apiID, t);
             }
             apiMetadata.apiID = apiID;
         });
@@ -235,7 +240,7 @@ async function allowAPIStatusChange(apiStatus, orgId, apiId) {
     
     if (apiStatus === constants.API_STATUS.UNPUBLISHED) {
 
-        const subApis = await adminDao.getSubscriptions(orgId, '', apiId);
+        const subApis = await subDao.listByAppAndApi(orgId, '', apiId);
         if (subApis.length > 0) {
             return false;
         }
@@ -270,7 +275,7 @@ const getMetadataFromDB = async (orgID, apiID) => {
     return await sequelize.transaction({
         timeout: 60000,
     }, async (t) => {
-        const retrievedAPI = await apiDao.getAPIMetadata(orgID, apiID, t);
+        const retrievedAPI = await apiDao.get(orgID, apiID, t);
         if (retrievedAPI.length > 0) {
             return new APIDTO(retrievedAPI[0]);
         } else {
@@ -320,11 +325,11 @@ const getMetadataListFromDB = async (orgID, groups, searchTerm, tags, apiName, a
             if (apiVersion) condition.API_VERSION = apiVersion;
             if (tags) condition.TAGS = tags;
             condition.ORG_ID = orgID;
-            retrievedAPIs = await apiDao.getAPIMetadataByCondition(condition);
+            retrievedAPIs = await apiDao.getByCondition(condition);
         } else if (searchTerm) {
-            retrievedAPIs = await apiDao.searchAPIMetadata(orgID, groups, searchTerm, viewName, t);
+            retrievedAPIs = await apiDao.search(orgID, groups, searchTerm, viewName, t);
         } else if (viewName) {
-            retrievedAPIs = await apiDao.getAllAPIMetadata(orgID, groups, viewName, t);
+            retrievedAPIs = await apiDao.list(orgID, groups, viewName, t);
         }
         // Create response object
         const apiCreationResponse = retrievedAPIs ? retrievedAPIs.map((api) => new APIDTO(api)) : [];
@@ -418,7 +423,7 @@ const updateAPIMetadata = async (req, res) => {
                 orgId,
                 apiId
             });
-            let [updatedRows, updatedAPI] = await apiDao.updateAPIMetadata(orgId, apiId, apiMetadata, t);
+            let [updatedRows, updatedAPI] = await apiDao.update(orgId, apiId, apiMetadata, t);
             if (!updatedRows) {
                 throw new Sequelize.EmptyResultError("No record found to update");
             }
@@ -429,7 +434,7 @@ const updateAPIMetadata = async (req, res) => {
                         "Missing or Invalid fields in the request payload"
                     );
                 }
-                await apiDao.createAPILabelMapping(orgId, apiId, labels, t);
+                await labelDao.createApiMapping(orgId, apiId, labels, t);
                 updatedAPI[0].dataValues.addedLabels = apiMetadata.apiInfo.addedLabels;
             }
             if (apiMetadata.apiInfo.removedLabels) {
@@ -439,7 +444,7 @@ const updateAPIMetadata = async (req, res) => {
                         "Missing or Invalid fields in the request payload"
                     );
                 }
-                const labelDelete = await apiDao.deleteAPILabels(orgId, apiId, labels, t);
+                const labelDelete = await labelDao.deleteApiMapping(orgId, apiId, labels, t);
                 if (labelDelete === 0) {
                     throw new Sequelize.EmptyResultError("API Labels not found to delete");
                 }
@@ -454,7 +459,7 @@ const updateAPIMetadata = async (req, res) => {
                     );
                 } else {
                     for (const policy of apiSubscriptionPolicies) {
-                        const subscriptionPolicy = await apiDao.getSubscriptionPolicyByName(orgId, policy.policyName);
+                        const subscriptionPolicy = await subscriptionPolicyDao.getByName(orgId, policy.policyName);
                         if (!subscriptionPolicy) {
                             throw new Sequelize.EmptyResultError("Subscription policy not found");
                         } else {
@@ -463,17 +468,17 @@ const updateAPIMetadata = async (req, res) => {
                     };
                 }
                 // Get subscription policy IDs and fail if any policy is not found
-                await apiDao.updateAPISubscriptionPolicy(subscriptionPolicies, apiId, t);
-                updatedAPI[0].dataValues["DP_SUBSCRIPTION_POLICies"] = await apiDao.getSubscriptionPolicies(apiId, t);
+                await subscriptionPolicyDao.updateApiMapping(subscriptionPolicies, apiId, t);
+                updatedAPI[0].dataValues["DP_SUBSCRIPTION_POLICies"] = await subscriptionPolicyDao.listByApi(apiId, t);
             }
             // update api definition file
-            const updatedFileCount = await apiDao.updateAPIFile(apiDefinitionFile, apiFileName, apiId, orgId,
+            const updatedFileCount = await apiFileDao.update(apiDefinitionFile, apiFileName, apiId, orgId,
                 constants.DOC_TYPES.API_DEFINITION, t);
             if (!updatedFileCount) {
                 throw new Sequelize.EmptyResultError("No record found to update");
             }
             if (Object.keys(resolvedImageMetadata).length > 0) {
-                await apiDao.updateAPIImageMetadata(resolvedImageMetadata, orgId, apiId, t);
+                await apiImageDao.update(resolvedImageMetadata, orgId, apiId, t);
             }
             // Update MCP tools schema definition if the API type is MCP
             const hasSchemaDefinitionFile = !!req.files?.schemaDefinition?.[0] || !!fullApiBundle?.schemaDefinitionFile;
@@ -499,7 +504,7 @@ const updateAPIMetadata = async (req, res) => {
                         schemaFileName: schemaDefinition.schemaDefinitionFileName,
                         apiId
                     });
-                    await apiDao.upsertAPIFileByType(schemaDefinition.schemaDefinitionFile, schemaDefinition.schemaDefinitionFileName, apiId, orgId,
+                    await apiFileDao.upsert(schemaDefinition.schemaDefinitionFile, schemaDefinition.schemaDefinitionFileName, apiId, orgId,
                         constants.DOC_TYPES.SCHEMA_DEFINITION, t);
                     logger.info('Schema definition file updated', {
                         schemaFileName: schemaDefinition.schemaDefinitionFileName,
@@ -517,7 +522,7 @@ const updateAPIMetadata = async (req, res) => {
                     schemaFileName,
                     apiId
                 });
-                await apiDao.updateAPIFile(schemaDefinitionFile, schemaFileName, apiId, orgId,
+                await apiFileDao.update(schemaDefinitionFile, schemaFileName, apiId, orgId,
                     constants.DOC_TYPES.API_DEFINITION, t);
                 logger.info('GraphQL schema definition file updated', {
                     schemaFileName,
@@ -526,7 +531,7 @@ const updateAPIMetadata = async (req, res) => {
             }
 
             if (apiArtifactFile?.buffer && artifactApiContent.length > 0) {
-                await apiDao.updateOrCreateAPIFiles(artifactApiContent, apiId, orgId, t);
+                await apiFileDao.upsertMany(artifactApiContent, apiId, orgId, t);
             }
             res.status(200).send(new APIDTO(updatedAPI[0].dataValues));
         });
@@ -548,11 +553,11 @@ const deleteAPIMetadata = async (req, res) => {
     }, async (t) => {
         try {
             //check if subscriptions exist for the application
-            const subApis = await adminDao.getSubscriptions(orgId, '', apiId);
+            const subApis = await subDao.listByAppAndApi(orgId, '', apiId);
             if (subApis.length > 0) {
                 throw new CustomError(409, constants.ERROR_MESSAGE.ERR_SUB_EXIST, "API has subscriptions.");
             }
-            const apiDeleteResponse = await apiDao.deleteAPIMetadata(orgId, apiId, t);
+            const apiDeleteResponse = await apiDao.delete(orgId, apiId, t);
             if (apiDeleteResponse === 0) {
                 throw new Sequelize.EmptyResultError("Resource not found to delete");
             } else {
@@ -646,17 +651,17 @@ const createAPITemplate = async (req, res) => {
             timeout: 60000,
         }, async (t) => {
             //check whether api belongs to given org
-            let apiMetadata = await apiDao.getAPIMetadata(orgId, apiId, t);
-            let existingAPIImage = await apiDao.getImage(constants.API_ICON, apiId, t);
+            let apiMetadata = await apiDao.get(orgId, apiId, t);
+            let existingAPIImage = await apiImageDao.get(constants.API_ICON, apiId, t);
 
             if (imageMetadata[constants.API_ICON] && existingAPIImage) {
-                await apiDao.deleteImage(constants.API_ICON, apiId, t);
+                await apiImageDao.delete(constants.API_ICON, apiId, t);
             }
 
             if (apiMetadata) {
                 // Store image metadata
-                await apiDao.storeAPIImageMetadata(imageMetadata, apiId, t);
-                await apiDao.storeAPIFiles(apiContent, apiId, t);
+                await apiImageDao.store(imageMetadata, apiId, t);
+                await apiFileDao.storeMany(apiContent, apiId, t);
             } else {
                 throw new Sequelize.ValidationError(constants.ERROR_MESSAGE.API_NOT_IN_ORG);
             }
@@ -700,19 +705,19 @@ const createAPIContent = async (req, res) => {
             timeout: 60000,
         }, async (t) => {
             //check whether api belongs to given org
-            let apiMetadata = await apiDao.getAPIMetadata(orgId, apiId, t);
-            let existingAPIImage = await apiDao.getImage(constants.API_ICON, apiId, t);
+            let apiMetadata = await apiDao.get(orgId, apiId, t);
+            let existingAPIImage = await apiImageDao.get(constants.API_ICON, apiId, t);
 
             if (resolvedImageMetadata[constants.API_ICON] && existingAPIImage) {
-                await apiDao.deleteImage(constants.API_ICON, apiId, t);
+                await apiImageDao.delete(constants.API_ICON, apiId, t);
             }
 
             if (apiMetadata) {
                 // Store image metadata
                 if (Object.keys(resolvedImageMetadata).length > 0) {
-                    await apiDao.storeAPIImageMetadata(resolvedImageMetadata, apiId, t);
+                    await apiImageDao.store(resolvedImageMetadata, apiId, t);
                 }
-                await apiDao.storeAPIFiles(apiContent, apiId, t);
+                await apiFileDao.storeMany(apiContent, apiId, t);
             } else {
                 throw new Sequelize.ValidationError(constants.ERROR_MESSAGE.API_NOT_IN_ORG);
             }
@@ -804,12 +809,12 @@ const updateAPITemplate = async (req, res) => {
             timeout: 60000,
         }, async (t) => {
             //check whether api belongs to given org
-            const apiMetadata = await apiDao.getAPIMetadata(orgId, apiId, t);
+            const apiMetadata = await apiDao.get(orgId, apiId, t);
             if (apiMetadata) {
                 // Update image metadata
-                await apiDao.updateAPIImageMetadata(imageMetadata, orgId, apiId, t);
+                await apiImageDao.update(imageMetadata, orgId, apiId, t);
                 // Update API files
-                await apiDao.updateOrCreateAPIFiles(apiContent, apiId, orgId, t);
+                await apiFileDao.upsertMany(apiContent, apiId, orgId, t);
             } else {
                 throw new Sequelize.ValidationError(constants.ERROR_MESSAGE.API_NOT_IN_ORG);
             }
@@ -853,14 +858,14 @@ const updateAPIContent = async (req, res) => {
             timeout: 60000,
         }, async (t) => {
             //check whether api belongs to given org
-            const apiMetadata = await apiDao.getAPIMetadata(orgId, apiId, t);
+            const apiMetadata = await apiDao.get(orgId, apiId, t);
             if (apiMetadata) {
                 // Update image metadata
                 if (Object.keys(resolvedImageMetadata).length > 0) {
-                    await apiDao.updateAPIImageMetadata(resolvedImageMetadata, orgId, apiId, t);
+                    await apiImageDao.update(resolvedImageMetadata, orgId, apiId, t);
                 }
                 // Update API files
-                await apiDao.updateOrCreateAPIFiles(apiContent, apiId, orgId, t);
+                await apiFileDao.upsertMany(apiContent, apiId, orgId, t);
             } else {
                 throw new Sequelize.ValidationError(constants.ERROR_MESSAGE.API_NOT_IN_ORG);
             }
@@ -888,7 +893,7 @@ const getAPIFile = async (req, res) => {
     let contentType = "";
     try {
         const fileExtension = path.extname(apiFileName).toLowerCase();
-        apiFileResponse = await apiDao.getAPIFile(apiFileName, type, orgId, apiId);
+        apiFileResponse = await apiFileDao.get(apiFileName, type, orgId, apiId);
         if (apiFileResponse) {
             apiFile = apiFileResponse.API_FILE;
             //convert to text to check if link
@@ -925,7 +930,7 @@ const getAPIFile = async (req, res) => {
 const getAPIDocTypes = async (orgID, apiID) => {
 
     try {
-        const docTypeResponse = await apiDao.getAPIDocTypes(orgID, apiID);
+        const docTypeResponse = await apiFileDao.getDocTypes(orgID, apiID);
         const apiCreationResponse = docTypeResponse.map((doc) => new APIDocDTO(doc.dataValues));
         return apiCreationResponse;
     } catch (error) {
@@ -953,9 +958,9 @@ const deleteAPIFile = async (req, res) => {
     try {
         let apiFileResponse;
         if (apiFileName) {
-            apiFileResponse = await apiDao.deleteAPIFile(apiFileName, fileType, orgId, apiId);
+            apiFileResponse = await apiFileDao.delete(apiFileName, fileType, orgId, apiId);
         } else {
-            apiFileResponse = await apiDao.deleteAllAPIFiles(fileType, orgId, apiId);
+            apiFileResponse = await apiFileDao.deleteAll(fileType, orgId, apiId);
         }
         if (!apiFileResponse) {
             res.status(204).send();
@@ -1025,7 +1030,7 @@ const createSubscriptionPolicy = async (req, res) => {
         await sequelize.transaction({
             timeout: 60000,
         }, async (t) => {
-            const subscriptionPolicyResponse = await apiDao.createSubscriptionPolicy(orgId, subscriptionPolicy, t);
+            const subscriptionPolicyResponse = await subscriptionPolicyDao.create(orgId, subscriptionPolicy, t);
             if (subscriptionPolicyResponse) {
                 logger.info('Created subscription policy', {
                     orgId
@@ -1072,7 +1077,7 @@ const createSubscriptionPolicies = async (req, res) => {
                         throw new CustomError(400, constants.ERROR_CODE[400], 'subscriptionPolicy.type must be a string');
                     }
                     if (policy.type.toLowerCase() == "requestcount" || policy.type.toLowerCase() == "eventcount") {
-                        const created = await apiDao.createSubscriptionPolicy(orgId, policy, t);
+                        const created = await subscriptionPolicyDao.create(orgId, policy, t);
                         if (!created) {
                             throw new CustomError(
                                 500,
@@ -1119,7 +1124,7 @@ const updateSubscriptionPolicy = async (req, res) => {
         await sequelize.transaction({
             timeout: 60000,
         }, async (t) => {
-            const { subscriptionPolicyResponse, statusCode } =  await apiDao.putSubscriptionPolicy(orgId, subscriptionPolicy, t);
+            const { subscriptionPolicyResponse, statusCode } =  await subscriptionPolicyDao.put(orgId, subscriptionPolicy, t);
             if (subscriptionPolicyResponse) {
                 res.status(statusCode).send(new subscriptionPolicyDTO(subscriptionPolicyResponse));
             } else {
@@ -1162,7 +1167,7 @@ const updateSubscriptionPolicies = async (req, res) => {
                         throw new CustomError(400, constants.ERROR_CODE[400], 'subscriptionPolicy.type must be a string');
                     }
                     if (policy.type.toLowerCase() == "requestcount" || policy.type.toLowerCase() == "eventcount") {
-                        const created = await apiDao.putSubscriptionPolicy(orgId, policy, t);
+                        const created = await subscriptionPolicyDao.put(orgId, policy, t);
                         if (!created) {
                             throw new CustomError(
                                 500,
@@ -1197,7 +1202,7 @@ const deleteSubscriptionPolicy = async (req, res) => {
         await sequelize.transaction({
             timeout: 60000,
         }, async (t) => {
-            const deleteCount = await apiDao.deleteSubscriptionPolicyById(orgId, policyId, t);
+            const deleteCount = await subscriptionPolicyDao.deleteById(orgId, policyId, t);
             if (deleteCount === 0) {
                 throw new CustomError(404, constants.ERROR_CODE[404], constants.ERROR_MESSAGE.SUBSCRIPTION_POLICY_NOT_FOUND);
             } else {
@@ -1220,7 +1225,7 @@ const getSubscriptionPolicy = async (req, res) => {
     const { orgId, policyId } = req.params;
 
     try {
-        const subscriptionPolicyResponse = await apiDao.getSubscriptionPolicy(policyId, orgId);
+        const subscriptionPolicyResponse = await subscriptionPolicyDao.get(policyId, orgId);
         if (subscriptionPolicyResponse) {
             res.status(200).send(new subscriptionPolicyDTO(subscriptionPolicyResponse));
         } else {
@@ -1247,10 +1252,10 @@ const listSubscriptionPolicies = async (req, res) => {
     try {
         let policies;
         if (name) {
-            const policy = await apiDao.getSubscriptionPolicyByName(orgId, name);
+            const policy = await subscriptionPolicyDao.getByName(orgId, name);
             policies = policy ? [policy] : [];
         } else {
-            policies = await apiDao.getAllSubscriptionPolicies(orgId);
+            policies = await subscriptionPolicyDao.list(orgId);
         }
         res.status(200).send(policies.map((policy) => new subscriptionPolicyDTO(policy)));
     } catch (error) {
@@ -1268,7 +1273,7 @@ const createLabels = async (req, res) => {
     const orgId = req.params.orgId;
     const labels = req.body;
     try {
-        await apiDao.createLabels(orgId, labels);
+        await labelDao.createMany(orgId, labels);
         res.status(201).send(labels);
     } catch (error) {
         logger.error('label create error failed', {
@@ -1286,7 +1291,7 @@ const updateLabel = async (req, res) => {
     const labels = req.body;
     try {
         for (const label of labels) {
-            await apiDao.updateLabel(orgId, label);
+            await labelDao.update(orgId, label);
         };
         res.status(201).send(labels);
     } catch (error) {
@@ -1305,7 +1310,7 @@ const deleteLabels = async (req, res) => {
     const labelNames = req.query.names;
     const labelList = labelNames.split(",");
     try {
-        await apiDao.deleteLabel(orgId, labelList);
+        await labelDao.delete(orgId, labelList);
         res.status(204).send();
     } catch (error) {
         logger.error('label delete error failed', {
@@ -1336,7 +1341,7 @@ const retrieveLabels = async (req, res) => {
 const getOrgLabels = async (orgId) => {
 
     try {
-        const labels = await apiDao.getLabels(orgId);
+        const labels = await labelDao.list(orgId);
         return labels.map((label) => new LabelDTO(label));
     } catch (error) {
         logger.error('label update error failed', {
@@ -1356,9 +1361,9 @@ const addView = async (req, res) => {
         timeout: 60000,
     }, async (t) => {
         try {
-            const viewResponse = await apiDao.addView(orgId, req.body, t);
+            const viewResponse = await viewDao.create(orgId, req.body, t);
             const viewID = viewResponse.dataValues.VIEW_ID;
-            await apiDao.addViewLabels(orgId, viewID, labels, t);
+            await viewDao.addLabels(orgId, viewID, labels, t);
             res.status(201).send({ message: "View added successfully" });
         } catch (error) {
             logger.error('view create error failed', {
@@ -1384,15 +1389,15 @@ const updateView = async (req, res) => {
 
             let viewID = "";
             if (req.body.displayName) {
-                let viewResponse = await apiDao.updateView(orgId, viewName, req.body.displayName, t);
+                let viewResponse = await viewDao.update(orgId, viewName, req.body.displayName, t);
                 viewID = viewResponse.dataValues.VIEW_ID;
             }
             if (removedLabels.length !== 0) {
-                await apiDao.deleteViewLabels(orgId, viewID, removedLabels, t);
+                await viewDao.deleteLabels(orgId, viewID, removedLabels, t);
             }
             if (addedLabels.length !== 0) {
-                viewID = viewID ? viewID : await apiDao.getViewID(orgId, viewName, t);
-                await apiDao.addViewLabels(orgId, viewID, addedLabels, t);
+                viewID = viewID ? viewID : await viewDao.getId(orgId, viewName, t);
+                await viewDao.addLabels(orgId, viewID, addedLabels, t);
             }
             res.status(200).send(req.body);
         });
@@ -1411,7 +1416,7 @@ const deleteView = async (req, res) => {
     const orgId = req.params.orgId;
     const name = req.params.viewName;
     try {
-        const viewDelete = await apiDao.deleteView(orgId, name);
+        const viewDelete = await viewDao.delete(orgId, name);
         if (viewDelete === 0) {
             throw new Sequelize.EmptyResultError("Resource not found to delete");
         } else {
@@ -1450,7 +1455,7 @@ const getView = async (req, res) => {
 
 const getViewInfo = async (orgId, name) => {
 
-    const view = await apiDao.getView(orgId, name);
+    const view = await viewDao.get(orgId, name);
     if (view.dataValues) {
         return new ViewDTO(view.dataValues);
     } else {
@@ -1480,7 +1485,7 @@ const getAllViews = async (req, res) => {
 
 const getViewsFromDB = async (orgId) => {
 
-    const views = await apiDao.getAllViews(orgId);
+    const views = await viewDao.list(orgId);
     if (views.length > 0) {
         return views.map((view) => new ViewDTO(view));
     } else {
