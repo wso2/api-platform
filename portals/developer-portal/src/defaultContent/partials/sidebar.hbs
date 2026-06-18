@@ -84,13 +84,11 @@
       </a>
   </nav>
 
-  {{#if showApiWorkflowsNav}}
   {{#if profile.isAdmin}}
-  <a href="{{baseUrl}}/configure" class="nav-link" id="ai-settings">
+  <a href="{{baseUrl}}/configure" class="nav-link" id="admin-settings">
     <img src="/images/settings-icon.svg" />
     <span class="nav-text">Settings</span>
   </a>
-  {{/if}}
   {{/if}}
   <div class="nav-section-divider"></div>
   <button class="collapse-btn" id="collapseBtn">
