@@ -38,7 +38,7 @@ async function subscribe(orgID, apiId, planName, policyId) {
             });
             const modalId = 'planModal-' + apiId;
             const modalEl = document.getElementById(modalId);
-            const isTokenBased = modalEl && modalEl.dataset.hasSubscriptionToken === 'true';
+            const isTokenBased = (modalEl && modalEl.dataset.hasSubscriptionToken === 'true') || !!responseData.subscriptionToken;
             if (isTokenBased) {
                 const token = responseData.subscriptionToken;
                 if (modalEl && modalEl.style.display && modalEl.style.display !== 'none') {
@@ -232,7 +232,7 @@ async function refreshLandingPageSubscriptions() {
                 }
             }
             var modalEl = document.getElementById('planModal-' + apiId);
-            var isTokenBased = modalEl && modalEl.dataset.hasSubscriptionToken === 'true';
+            var isTokenBased = (modalEl && modalEl.dataset.hasSubscriptionToken === 'true') || existing.some(function(s) { return !!s.subscriptionToken; });
 
             existingSection.innerHTML = '<div class="container-header mb-4">Subscriptions</div>';
             var table = document.createElement('table');
