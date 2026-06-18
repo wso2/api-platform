@@ -81,6 +81,11 @@ const (
 	EnvAIWorkspacePassword = "WSO2AP_AIWORKSPACE_PASSWORD" // For AI workspace basic auth
 	EnvAIWorkspaceToken    = "WSO2AP_AIWORKSPACE_TOKEN"    // For AI workspace OAuth auth
 	EnvAIWorkspaceAPIKey   = "WSO2AP_AIWORKSPACE_API_KEY"  // For AI workspace API key auth
+	AIWorkspaceAPIHeader   = "x-wso2-api-key"
+
+	// AI Workspace REST API Endpoints (%s = resource id)
+	AIWorkspaceLLMProvidersPath = "/api-proxy/api/v1/llm-providers"
+	AIWorkspaceLLMProxiesPath   = "/api-proxy/api/v1/llm-proxies"
 
 	// Image Build Configuration
 	GatewayVerifyChecksumOnBuild = true

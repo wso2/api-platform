@@ -81,6 +81,7 @@ const (
 	FlagReferenceID            = "reference-id"
 	FlagGatewayType            = "gateway-type"
 	FlagUseSpec                = "use-spec"
+	FlagProjectID              = "project-id"
 )
 
 var shortFlags = map[string]string{

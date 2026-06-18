@@ -20,6 +20,8 @@ package aiws
 
 import (
 	"github.com/spf13/cobra"
+	"github.com/wso2/api-platform/cli/cmd/aiws/llmprovider"
+	"github.com/wso2/api-platform/cli/cmd/aiws/llmproxy"
 )
 
 const (
@@ -45,4 +47,6 @@ func init() {
 	AiWSCmd.AddCommand(useCmd)
 	AiWSCmd.AddCommand(currentCmd)
 	AiWSCmd.AddCommand(buildCmd)
+	AiWSCmd.AddCommand(llmprovider.LLMProviderCmd)
+	AiWSCmd.AddCommand(llmproxy.LLMProxyCmd)
 }
