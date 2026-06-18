@@ -45,6 +45,7 @@ var (
 	editName     string
 	editPlatform string
 	editInsecure bool
+	editOutput   string
 )
 
 var editCmd = &cobra.Command{
@@ -65,6 +66,7 @@ func init() {
 	utils.AddStringFlag(editCmd, utils.FlagOrgID, &editOrgID, "", "Organization ID (required)")
 	utils.AddStringFlag(editCmd, utils.FlagName, &editName, "", "AI workspace display name")
 	utils.AddStringFlag(editCmd, utils.FlagPlatform, &editPlatform, "", "Platform name")
+	utils.AddStringFlag(editCmd, utils.FlagOutput, &editOutput, "", "Output format: \"json\" prints the full server response (default: summary)")
 	editCmd.Flags().BoolVar(&editInsecure, "insecure", false, "Skip TLS certificate verification")
 	_ = editCmd.MarkFlagRequired(utils.FlagFile)
 	_ = editCmd.MarkFlagRequired(utils.FlagOrgID)
@@ -108,6 +110,6 @@ func runEditCommand() error {
 		return aiworkspace.WrapRequestError("update llm provider", err, editInsecure)
 	}
 
-	fmt.Printf("LLM provider %q updated on ai-workspace %s (platform: %s)\n", providerID, aiWorkspace.Name, resolvedPlatform)
-	return aiworkspace.PrintJSONResponse(resp)
+	return aiworkspace.PrintArtifactResult(resp, editOutput,
+		fmt.Sprintf("LLM provider %q updated on ai-workspace %s (platform: %s)", providerID, aiWorkspace.Name, resolvedPlatform))
 }

@@ -324,6 +324,7 @@ ap ai-ws mcp-proxy push -f build/bijira-mcp-everything.json --org <org-id> --pro
 Notes:
 
 - `--file` and `--org` are required for all push commands; `--project-id` is also required for LLM proxies and MCP proxies.
+- By default only a concise summary line is printed. Pass `--output json` (or `-o json`) to print the full server response (useful for piping to `jq`).
 - `--insecure` skips TLS verification for local or self-signed HTTPS endpoints.
 
 ## Edit Commands
@@ -358,6 +359,7 @@ Notes:
 
 - `--file` and `--org` are required for all edit commands; `--project-id` is also required for LLM proxies and MCP proxies.
 - The payload must contain the `id` of the artifact to update; it identifies the resource in the request URL.
+- By default only a concise summary line is printed. Pass `--output json` (or `-o json`) to print the full server response (useful for piping to `jq`).
 - `--insecure` skips TLS verification for local or self-signed HTTPS endpoints.
 
 ## Related Commands

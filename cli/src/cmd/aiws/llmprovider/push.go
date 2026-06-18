@@ -45,6 +45,7 @@ var (
 	pushName     string
 	pushPlatform string
 	pushInsecure bool
+	pushOutput   string
 )
 
 var pushCmd = &cobra.Command{
@@ -65,6 +66,7 @@ func init() {
 	utils.AddStringFlag(pushCmd, utils.FlagOrgID, &pushOrgID, "", "Organization ID (required)")
 	utils.AddStringFlag(pushCmd, utils.FlagName, &pushName, "", "AI workspace display name")
 	utils.AddStringFlag(pushCmd, utils.FlagPlatform, &pushPlatform, "", "Platform name")
+	utils.AddStringFlag(pushCmd, utils.FlagOutput, &pushOutput, "", "Output format: \"json\" prints the full server response (default: summary)")
 	pushCmd.Flags().BoolVar(&pushInsecure, "insecure", false, "Skip TLS certificate verification")
 	_ = pushCmd.MarkFlagRequired(utils.FlagFile)
 	_ = pushCmd.MarkFlagRequired(utils.FlagOrgID)
@@ -110,10 +112,6 @@ func runPushCommand() error {
 		return aiworkspace.WrapRequestError("push llm provider", err, pushInsecure)
 	}
 
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("failed to push llm provider, status: %s", resp.Status)
-	}
-
-	fmt.Printf("LLM provider %q pushed to ai-workspace %s (platform: %s)\n", providerID, aiWorkspace.Name, resolvedPlatform)
-	return aiworkspace.PrintJSONResponse(resp)
+	return aiworkspace.PrintArtifactResult(resp, pushOutput,
+		fmt.Sprintf("LLM provider %q pushed to ai-workspace %s (platform: %s)", providerID, aiWorkspace.Name, resolvedPlatform))
 }

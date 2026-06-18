@@ -149,6 +149,50 @@ func shouldSuggestInsecure(err error) bool {
 		strings.Contains(err.Error(), certificateInvalidErrorString)
 }
 
+// OutputJSON reports whether the requested output format is the full JSON body.
+func OutputJSON(format string) bool {
+	return strings.EqualFold(strings.TrimSpace(format), "json")
+}
+
+// PrintArtifactResult prints the result of a create/edit operation. By default
+// it prints only the concise summary line (the server-returned artifact is
+// drained and discarded so it does not clutter the terminal). When the output
+// format is "json" the full response body is pretty-printed instead, so the
+// command stays scriptable (e.g. `... -o json | jq`).
+func PrintArtifactResult(resp *http.Response, outputFormat, summary string) error {
+	if OutputJSON(outputFormat) {
+		return PrintJSONResponse(resp)
+	}
+
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if extra := summarizeArtifact(body); extra != "" {
+		summary += " " + extra
+	}
+	fmt.Println(summary)
+	return nil
+}
+
+// summarizeArtifact extracts a few server-assigned fields worth surfacing in the
+// summary line. It returns an empty string when none are present.
+func summarizeArtifact(body []byte) string {
+	var m map[string]interface{}
+	if err := json.Unmarshal(body, &m); err != nil {
+		return ""
+	}
+	var parts []string
+	if v, ok := m["version"].(string); ok && strings.TrimSpace(v) != "" {
+		parts = append(parts, "version: "+v)
+	}
+	if s, ok := m["status"].(string); ok && strings.TrimSpace(s) != "" {
+		parts = append(parts, "status: "+s)
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return "(" + strings.Join(parts, ", ") + ")"
+}
+
 // PrintJSONResponse prints an HTTP response as pretty JSON when possible and
 // falls back to the raw trimmed body otherwise.
 func PrintJSONResponse(resp *http.Response) error {

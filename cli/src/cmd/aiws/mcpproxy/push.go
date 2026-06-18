@@ -46,6 +46,7 @@ var (
 	pushName      string
 	pushPlatform  string
 	pushInsecure  bool
+	pushOutput    string
 )
 
 var pushCmd = &cobra.Command{
@@ -67,6 +68,7 @@ func init() {
 	utils.AddStringFlag(pushCmd, utils.FlagProjectID, &pushProjectID, "", "Project ID to set on the payload (required)")
 	utils.AddStringFlag(pushCmd, utils.FlagName, &pushName, "", "AI workspace display name")
 	utils.AddStringFlag(pushCmd, utils.FlagPlatform, &pushPlatform, "", "Platform name")
+	utils.AddStringFlag(pushCmd, utils.FlagOutput, &pushOutput, "", "Output format: \"json\" prints the full server response (default: summary)")
 	pushCmd.Flags().BoolVar(&pushInsecure, "insecure", false, "Skip TLS certificate verification")
 	_ = pushCmd.MarkFlagRequired(utils.FlagFile)
 	_ = pushCmd.MarkFlagRequired(utils.FlagOrgID)
@@ -124,10 +126,6 @@ func runPushCommand() error {
 		return aiworkspace.WrapRequestError("push mcp proxy", err, pushInsecure)
 	}
 
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("failed to push mcp proxy, status: %s", resp.Status)
-	}
-
-	fmt.Printf("MCP proxy %q pushed to ai-workspace %s (platform: %s)\n", proxyID, aiWorkspace.Name, resolvedPlatform)
-	return aiworkspace.PrintJSONResponse(resp)
+	return aiworkspace.PrintArtifactResult(resp, pushOutput,
+		fmt.Sprintf("MCP proxy %q pushed to ai-workspace %s (platform: %s)", proxyID, aiWorkspace.Name, resolvedPlatform))
 }
