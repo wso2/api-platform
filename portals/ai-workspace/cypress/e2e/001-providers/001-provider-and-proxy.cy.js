@@ -20,6 +20,7 @@ describe('AI Workspace - OpenAI provider and proxy lifecycle', () => {
   const suffix = Date.now().toString().slice(-8);
   const orgHandle = Cypress.env('ORG_HANDLE');
   const projectName = `E2E Project ${suffix}`;
+  const cleanupProjectName = 'AI Workspace E2E Cleanup Project';
   const providerName = `E2E OpenAI Provider ${suffix}`;
   const providerId = toSlug(providerName);
   const providerDescription = 'Cypress OpenAI provider UI lifecycle test';
@@ -58,6 +59,16 @@ describe('AI Workspace - OpenAI provider and proxy lifecycle', () => {
         organizationId = response.body?.id ?? '';
         expect(organizationId).to.not.equal('');
       });
+  });
+
+  afterEach(() => {
+    if (!authToken || !organizationId) {
+      return;
+    }
+
+    return deleteLinkedProxies(authToken, organizationId, createdProviderId)
+      .then(() => deleteProjectByName(authToken, projectName, cleanupProjectName))
+      .then(() => deleteProvider(authToken, organizationId, createdProviderId));
   });
 
   it('creates and deletes an OpenAI provider and app llm proxy using only the UI', () => {
@@ -169,45 +180,107 @@ describe('AI Workspace - OpenAI provider and proxy lifecycle', () => {
 
     cy.location('pathname', { timeout: 30000 }).should('include', '/proxies');
     cy.contains(proxyName).should('not.exist');
-
-    cy.request({
-      method: 'DELETE',
-      url: `/api-proxy/api/v1/llm-providers/${encodeURIComponent(createdProviderId)}?organizationId=${encodeURIComponent(organizationId)}`,
-      headers: {
-        Authorization: `Bearer ${authToken}`,
-      },
-    }).then((response) => {
-      expect(response.status).to.be.oneOf([200, 204]);
-    });
-
-    cy.request({
-      url: '/api-proxy/api/v1/projects',
-      headers: {
-        Authorization: `Bearer ${authToken}`,
-      },
-    })
-      .then((response) => {
-        expect(response.status).to.eq(200);
-
-        const createdProject = (response.body?.list ?? []).find(
-          (project) => project.name === projectName
-        );
-
-        expect(createdProject?.id).to.be.a('string').and.not.be.empty;
-
-        return cy.request({
-          method: 'DELETE',
-          url: `/api-proxy/api/v1/projects/${encodeURIComponent(createdProject.id)}`,
-          headers: {
-            Authorization: `Bearer ${authToken}`,
-          },
-        });
-      })
-      .then((response) => {
-        expect(response.status).to.be.oneOf([200, 204]);
-      });
   });
 });
+
+function deleteLinkedProxies(authToken, organizationId, providerId) {
+  return requestWithAuth(authToken, {
+    url: `/api-proxy/api/v1/llm-providers/${encodeURIComponent(providerId)}/llm-proxies?organizationId=${encodeURIComponent(organizationId)}`,
+    failOnStatusCode: false,
+  }).then((response) => {
+    expect(response.status).to.be.oneOf([200, 404]);
+
+    if (response.status === 404) {
+      return;
+    }
+
+    const proxies = response.body?.list ?? [];
+    if (!proxies.length) {
+      return;
+    }
+
+    return cy.wrap(proxies).each((proxy) =>
+      requestWithAuth(authToken, {
+        method: 'DELETE',
+        url: `/api-proxy/api/v1/llm-proxies/${encodeURIComponent(proxy.id)}?organizationId=${encodeURIComponent(organizationId)}`,
+        failOnStatusCode: false,
+      }).then((deleteResponse) => {
+        expect(deleteResponse.status).to.be.oneOf([200, 204, 404]);
+      })
+    );
+  });
+}
+
+function deleteProjectByName(authToken, targetProjectName, fallbackProjectName) {
+  return requestWithAuth(authToken, {
+    url: '/api-proxy/api/v1/projects',
+  }).then((response) => {
+    expect(response.status).to.eq(200);
+
+    const projects = response.body?.list ?? [];
+    const targetProject = projects.find(
+      (project) => project.name === targetProjectName
+    );
+
+    if (!targetProject?.id) {
+      return;
+    }
+
+    if (projects.length <= 1) {
+      return ensureFallbackProject(authToken, fallbackProjectName).then(() =>
+        deleteProject(authToken, targetProject.id)
+      );
+    }
+
+    return deleteProject(authToken, targetProject.id);
+  });
+}
+
+function ensureFallbackProject(authToken, fallbackProjectName) {
+  return requestWithAuth(authToken, {
+    method: 'POST',
+    url: '/api-proxy/api/v1/projects',
+    body: {
+      name: fallbackProjectName,
+      description: 'Reserved project to satisfy E2E cleanup invariants.',
+    },
+    failOnStatusCode: false,
+  }).then((response) => {
+    expect(response.status).to.be.oneOf([200, 201, 409]);
+  });
+}
+
+function deleteProject(authToken, projectId) {
+  return requestWithAuth(authToken, {
+    method: 'DELETE',
+    url: `/api-proxy/api/v1/projects/${encodeURIComponent(projectId)}`,
+    failOnStatusCode: false,
+  }).then((response) => {
+    expect(response.status).to.be.oneOf([200, 204, 404]);
+  });
+}
+
+function deleteProvider(authToken, organizationId, providerId) {
+  return requestWithAuth(authToken, {
+    method: 'DELETE',
+    url: `/api-proxy/api/v1/llm-providers/${encodeURIComponent(providerId)}?organizationId=${encodeURIComponent(organizationId)}`,
+    failOnStatusCode: false,
+  }).then((response) => {
+    expect(response.status).to.be.oneOf([200, 204, 404]);
+  });
+}
+
+function requestWithAuth(authToken, options) {
+  const headers = {
+    Authorization: `Bearer ${authToken}`,
+    ...(options.headers ?? {}),
+  };
+
+  return cy.request({
+    ...options,
+    headers,
+  });
+}
 
 function toSlug(value) {
   return value
