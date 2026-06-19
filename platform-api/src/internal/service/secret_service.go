@@ -159,19 +159,13 @@ func (s *SecretService) Update(orgID, handle, updatedBy string, req *dto.UpdateS
 }
 
 func (s *SecretService) Delete(orgID, handle, updatedBy string) error {
-	llmRefs, err := s.repo.FindLLMProviderRefs(orgID, handle)
+	refs, err := s.repo.FindRefs(orgID, handle)
 	if err != nil {
-		return fmt.Errorf("failed to scan LLM provider references: %w", err)
+		return fmt.Errorf("failed to scan artifact references: %w", err)
 	}
 
-	apiRefs, err := s.repo.FindAPIRefs(orgID, handle)
-	if err != nil {
-		return fmt.Errorf("failed to scan API references: %w", err)
-	}
-
-	allRefs := append(llmRefs, apiRefs...)
-	if len(allRefs) > 0 {
-		return &SecretInUseError{References: allRefs}
+	if len(refs) > 0 {
+		return &SecretInUseError{References: refs}
 	}
 
 	return s.repo.SoftDelete(orgID, handle, updatedBy)

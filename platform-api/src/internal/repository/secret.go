@@ -266,51 +266,24 @@ func (r *SecretRepo) SoftDelete(orgID, handle, updatedBy string) error {
 	return nil
 }
 
-func (r *SecretRepo) FindLLMProviderRefs(orgID, handle string) ([]model.SecretReference, error) {
-	pattern := fmt.Sprintf(`%%{{ secret "%s" }}%%`, handle)
+func (r *SecretRepo) FindRefs(orgID, handle string) ([]model.SecretReference, error) {
 	query := r.db.Rebind(`
-		SELECT art.handle, art.name
-		FROM llm_providers lp
-		JOIN artifacts art ON lp.uuid = art.uuid
-		WHERE art.organization_uuid = ? AND lp.configuration LIKE ?
+		SELECT art.handle, art.name, art.kind
+		FROM artifact_secret_refs asr
+		JOIN artifacts art ON art.uuid = asr.artifact_uuid
+		WHERE asr.organization_id = ? AND asr.secret_handle = ?
 	`)
 
-	rows, err := r.db.Query(query, orgID, pattern)
+	rows, err := r.db.Query(query, orgID, handle)
 	if err != nil {
-		return nil, fmt.Errorf("failed to scan LLM provider refs: %w", err)
+		return nil, fmt.Errorf("failed to find secret refs: %w", err)
 	}
 	defer rows.Close()
 
 	var refs []model.SecretReference
 	for rows.Next() {
-		ref := model.SecretReference{Type: "llm_provider"}
-		if err := rows.Scan(&ref.Handle, &ref.Name); err != nil {
-			return nil, err
-		}
-		refs = append(refs, ref)
-	}
-	return refs, rows.Err()
-}
-
-func (r *SecretRepo) FindAPIRefs(orgID, handle string) ([]model.SecretReference, error) {
-	pattern := fmt.Sprintf(`%%{{ secret "%s" }}%%`, handle)
-	query := r.db.Rebind(`
-		SELECT art.handle, art.name
-		FROM rest_apis a
-		JOIN artifacts art ON a.uuid = art.uuid
-		WHERE art.organization_uuid = ? AND a.configuration LIKE ?
-	`)
-
-	rows, err := r.db.Query(query, orgID, pattern)
-	if err != nil {
-		return nil, fmt.Errorf("failed to scan API refs: %w", err)
-	}
-	defer rows.Close()
-
-	var refs []model.SecretReference
-	for rows.Next() {
-		ref := model.SecretReference{Type: "api"}
-		if err := rows.Scan(&ref.Handle, &ref.Name); err != nil {
+		var ref model.SecretReference
+		if err := rows.Scan(&ref.Handle, &ref.Name, &ref.Type); err != nil {
 			return nil, err
 		}
 		refs = append(refs, ref)
