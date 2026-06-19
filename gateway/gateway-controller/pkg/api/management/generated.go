@@ -257,6 +257,27 @@ const (
 	OperationHeaderMatchTypeRegularExpression OperationHeaderMatchType = "RegularExpression"
 )
 
+// Defines values for OperationRedirectScheme.
+const (
+	Http  OperationRedirectScheme = "http"
+	Https OperationRedirectScheme = "https"
+)
+
+// Defines values for OperationRedirectStatusCode.
+const (
+	N301 OperationRedirectStatusCode = 301
+	N302 OperationRedirectStatusCode = 302
+	N303 OperationRedirectStatusCode = 303
+	N307 OperationRedirectStatusCode = 307
+	N308 OperationRedirectStatusCode = 308
+)
+
+// Defines values for OperationRedirectPathType.
+const (
+	ReplaceFullPath    OperationRedirectPathType = "ReplaceFullPath"
+	ReplacePrefixMatch OperationRedirectPathType = "ReplacePrefixMatch"
+)
+
 // Defines values for ResourceStatusState.
 const (
 	ResourceStatusStateDeployed   ResourceStatusState = "deployed"
@@ -537,12 +558,12 @@ type APIConfigData struct {
 	// Version Semantic version of the API
 	Version string `json:"version" yaml:"version"`
 
-	// VhostList Additional virtual hosts when routing to multiple listener hostnames (e.g. Gateway API HTTPRoute attachment)
-	VhostList *[]string `json:"vhostList,omitempty" yaml:"vhostList,omitempty"`
-
 	// Vhosts Custom virtual hosts/domains for the API
 	Vhosts *struct {
-		// Main Custom virtual host/domain for production traffic
+		// Main Custom virtual host(s)/domain(s) for production traffic. One or more hostnames
+		// separated by ';' — each hostname serves the main upstream (e.g. when a Gateway API
+		// HTTPRoute attaches to multiple listener hostnames). The first entry is the primary
+		// vhost. Each hostname may be a wildcard such as *.example.com.
 		Main string `json:"main" yaml:"main"`
 
 		// Sandbox Custom virtual host/domain for sandbox traffic
@@ -1270,6 +1291,10 @@ type Operation struct {
 	// Policies List of policies applied only to this operation (overrides or adds to API-level policies)
 	Policies *[]Policy `json:"policies,omitempty" yaml:"policies,omitempty"`
 
+	// Redirect Structured Gateway-API RequestRedirect. Each component left unset is preserved from the
+	// original request (scheme, host, port, path), matching Gateway-API semantics.
+	Redirect *OperationRedirect `json:"redirect,omitempty" yaml:"redirect,omitempty"`
+
 	// Resilience Backend/route timeout configuration. Maps to Envoy RouteAction timeouts. Can be set at the API level (applies to all routes) and/or the operation level (applies to that operation's route). When set at both levels, the operation-level value takes precedence. When unset, the gateway's global route timeout defaults apply.
 	Resilience *Resilience `json:"resilience,omitempty" yaml:"resilience,omitempty"`
 }
@@ -1324,6 +1349,44 @@ type OperationHeaderMatch struct {
 
 // OperationHeaderMatchType Header match type
 type OperationHeaderMatchType string
+
+// OperationRedirect Structured Gateway-API RequestRedirect. Each component left unset is preserved from the
+// original request (scheme, host, port, path), matching Gateway-API semantics.
+type OperationRedirect struct {
+	// Hostname Redirect host; omit to preserve the request Host
+	Hostname *string `json:"hostname,omitempty" yaml:"hostname,omitempty"`
+
+	// Path Path rewrite for a redirect (mirrors Gateway-API HTTPPathModifier).
+	Path *OperationRedirectPath `json:"path,omitempty" yaml:"path,omitempty"`
+
+	// Port Redirect port; omit to preserve the request port / use the scheme default
+	Port *int `json:"port,omitempty" yaml:"port,omitempty"`
+
+	// Scheme Redirect scheme; omit to preserve the request scheme
+	Scheme *OperationRedirectScheme `json:"scheme,omitempty" yaml:"scheme,omitempty"`
+
+	// StatusCode HTTP redirect status code
+	StatusCode OperationRedirectStatusCode `json:"statusCode" yaml:"statusCode"`
+}
+
+// OperationRedirectScheme Redirect scheme; omit to preserve the request scheme
+type OperationRedirectScheme string
+
+// OperationRedirectStatusCode HTTP redirect status code
+type OperationRedirectStatusCode int
+
+// OperationRedirectPath Path rewrite for a redirect (mirrors Gateway-API HTTPPathModifier).
+type OperationRedirectPath struct {
+	// ReplaceFullPath Full replacement path when type is ReplaceFullPath
+	ReplaceFullPath *string `json:"replaceFullPath,omitempty" yaml:"replaceFullPath,omitempty"`
+
+	// ReplacePrefixMatch Replacement for the matched path prefix when type is ReplacePrefixMatch
+	ReplacePrefixMatch *string                   `json:"replacePrefixMatch,omitempty" yaml:"replacePrefixMatch,omitempty"`
+	Type               OperationRedirectPathType `json:"type" yaml:"type"`
+}
+
+// OperationRedirectPathType defines model for OperationRedirectPath.Type.
+type OperationRedirectPathType string
 
 // OperationResponseHeader defines model for OperationResponseHeader.
 type OperationResponseHeader struct {
