@@ -58,6 +58,7 @@ paths:
       security:
         - {}
         - OAuth2Security:
+            - ap:organization:create
             - ap:organization:manage
       requestBody:
         description: Organization that needs to be added
@@ -139,6 +140,10 @@ paths:
         Checks if an organization with the specified UUID.
         Returns only headers without a response body.
       operationId: HeadOrganizationByUuid
+      security:
+        - OAuth2Security:
+            - ap:organization:read
+            - ap:organization:manage
       tags:
         - Organizations
       parameters:
@@ -654,7 +659,8 @@ paths:
       operationId: ListApplicationAssociations
       security:
         - OAuth2Security:
-            - ap:application:associations:read
+            - ap:application:association:read
+            - ap:application:association:manage
             - ap:application:manage
       tags:
         - Applications
@@ -698,8 +704,8 @@ paths:
       operationId: AddApplicationAssociations
       security:
         - OAuth2Security:
-            - ap:application:associations:create
-            - ap:application:associations:manage
+            - ap:application:association:create
+            - ap:application:association:manage
             - ap:application:manage
       tags:
         - Applications
@@ -737,8 +743,8 @@ paths:
       operationId: RemoveApplicationAssociation
       security:
         - OAuth2Security:
-            - ap:application:associations:delete
-            - ap:application:associations:manage
+            - ap:application:association:delete
+            - ap:application:association:manage
             - ap:application:manage
       tags:
         - Applications
@@ -767,7 +773,8 @@ paths:
       operationId: ListApplicationAssociationAPIKeys
       security:
         - OAuth2Security:
-            - ap:application:associations:api_key:read
+            - ap:application:association:api_key:read
+            - ap:application:association:manage
             - ap:application:manage
       tags:
         - Applications
@@ -2204,98 +2211,6 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /rest-apis/{apiId}/deployments/undeploy:
-    post:
-      deprecated: true
-      summary: "[Deprecated] Use POST /rest-apis/{apiId}/deployments/{deploymentId}/undeploy"
-      description: Deprecated. Pass deploymentId as a path parameter instead of a query parameter.
-      operationId: UndeployDeploymentDeprecated
-      security:
-        - OAuth2Security:
-            - ap:rest_api:deployment:undeploy
-            - ap:rest_api:deployment:manage
-            - ap:rest_api:manage
-      tags:
-        - REST API Deployments
-        - Deployments
-      parameters:
-        - $ref: '#/components/parameters/apiId'
-        - name: deploymentId
-          in: query
-          required: true
-          schema:
-            type: string
-        - name: gatewayId
-          in: query
-          required: true
-          schema:
-            type: string
-      responses:
-        '200':
-          description: Undeploy initiated successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/DeploymentResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '409':
-          $ref: '#/components/responses/Conflict'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
-  /rest-apis/{apiId}/deployments/restore:
-    post:
-      deprecated: true
-      summary: "[Deprecated] Use POST /rest-apis/{apiId}/deployments/{deploymentId}/restore"
-      description: Deprecated. Pass deploymentId as a path parameter instead of a query parameter.
-      operationId: RestoreDeploymentDeprecated
-      security:
-        - OAuth2Security:
-            - ap:rest_api:deployment:restore
-            - ap:rest_api:deployment:manage
-            - ap:rest_api:manage
-      tags:
-        - REST API Deployments
-        - Deployments
-      parameters:
-        - $ref: '#/components/parameters/apiId'
-        - name: deploymentId
-          in: query
-          required: true
-          schema:
-            type: string
-        - name: gatewayId
-          in: query
-          required: true
-          schema:
-            type: string
-      responses:
-        '200':
-          description: Restore initiated successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/DeploymentResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '409':
-          $ref: '#/components/responses/Conflict'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
   /gateways:
     post:
       summary: Register a new gateway
@@ -2607,7 +2522,7 @@ paths:
       operationId: GetGatewayArtifacts
       security:
         - OAuth2Security:
-            - ap:gateway:artifacts:read
+            - ap:gateway:artifact:read
             - ap:gateway:manage
       tags:
         - Gateways
@@ -2796,84 +2711,6 @@ paths:
             type: string
           description: Version of the custom policy (e.g. "1.0.0")
           example: "1.0.0"
-      responses:
-        '204':
-          description: Custom policy deleted successfully
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '409':
-          description: Custom policy is in use by one or more APIs
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
-  /gateway-custom-policies/{customPolicyUuid}/version/{version}:
-    get:
-      deprecated: true
-      summary: "[Deprecated] Use GET /gateway-custom-policies/{customPolicyUuid}/versions/{version}"
-      description: Deprecated. Use the plural `/versions/` path instead.
-      operationId: GetGatewayCustomPolicyDeprecated
-      security:
-        - OAuth2Security:
-            - ap:gateway_custom_policy:read
-            - ap:gateway_custom_policy:manage
-      tags:
-        - Gateway Policies
-      parameters:
-        - name: customPolicyUuid
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-        - name: version
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        '200':
-          description: Custom policy retrieved successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/CustomPolicyResponse'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-    delete:
-      deprecated: true
-      summary: "[Deprecated] Use DELETE /gateway-custom-policies/{customPolicyUuid}/versions/{version}"
-      description: Deprecated. Use the plural `/versions/` path instead.
-      operationId: DeleteGatewayCustomPolicyDeprecated
-      security:
-        - OAuth2Security:
-            - ap:gateway_custom_policy:delete
-            - ap:gateway_custom_policy:manage
-      tags:
-        - Gateway Policies
-      parameters:
-        - name: customPolicyUuid
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-        - name: version
-          in: path
-          required: true
-          schema:
-            type: string
       responses:
         '204':
           description: Custom policy deleted successfully
@@ -4062,106 +3899,6 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /llm-providers/{id}/deployments/undeploy:
-    post:
-      deprecated: true
-      summary: "[Deprecated] Use POST /llm-providers/{id}/deployments/{deploymentId}/undeploy"
-      description: Deprecated. Pass deploymentId as a path parameter instead of a query parameter.
-      operationId: undeployLLMProviderDeploymentDeprecated
-      security:
-        - OAuth2Security:
-            - ap:llm_provider:deployment:undeploy
-            - ap:llm_provider:deployment:manage
-            - ap:llm_provider:manage
-      tags:
-        - LLM Provider Deployments
-        - Deployments
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-        - name: deploymentId
-          in: query
-          required: true
-          schema:
-            type: string
-        - name: gatewayId
-          in: query
-          required: true
-          schema:
-            type: string
-      responses:
-        '200':
-          description: Undeploy initiated successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/DeploymentResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '409':
-          $ref: '#/components/responses/Conflict'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
-  /llm-providers/{id}/deployments/restore:
-    post:
-      deprecated: true
-      summary: "[Deprecated] Use POST /llm-providers/{id}/deployments/{deploymentId}/restore"
-      description: Deprecated. Pass deploymentId as a path parameter instead of a query parameter.
-      operationId: restoreLLMProviderDeploymentDeprecated
-      security:
-        - OAuth2Security:
-            - ap:llm_provider:deployment:restore
-            - ap:llm_provider:deployment:manage
-            - ap:llm_provider:manage
-      tags:
-        - LLM Provider Deployments
-        - Deployments
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-        - name: deploymentId
-          in: query
-          required: true
-          schema:
-            type: string
-        - name: gatewayId
-          in: query
-          required: true
-          schema:
-            type: string
-      responses:
-        '200':
-          description: Restore initiated successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/DeploymentResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '409':
-          $ref: '#/components/responses/Conflict'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
   /llm-proxies/{id}/deployments:
     post:
       summary: Create and deploy a new LLM proxy deployment
@@ -4450,106 +4187,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
-  /llm-proxies/{id}/deployments/undeploy:
-    post:
-      deprecated: true
-      summary: "[Deprecated] Use POST /llm-proxies/{id}/deployments/{deploymentId}/undeploy"
-      description: Deprecated. Pass deploymentId as a path parameter instead of a query parameter.
-      operationId: undeployLLMProxyDeploymentDeprecated
-      security:
-        - OAuth2Security:
-            - ap:llm_proxy:deployment:undeploy
-            - ap:llm_proxy:deployment:manage
-            - ap:llm_proxy:manage
-      tags:
-        - LLM Proxy Deployments
-        - Deployments
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-        - name: deploymentId
-          in: query
-          required: true
-          schema:
-            type: string
-        - name: gatewayId
-          in: query
-          required: true
-          schema:
-            type: string
-      responses:
-        '200':
-          description: Undeploy initiated successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/DeploymentResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '409':
-          $ref: '#/components/responses/Conflict'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
-  /llm-proxies/{id}/deployments/restore:
-    post:
-      deprecated: true
-      summary: "[Deprecated] Use POST /llm-proxies/{id}/deployments/{deploymentId}/restore"
-      description: Deprecated. Pass deploymentId as a path parameter instead of a query parameter.
-      operationId: restoreLLMProxyDeploymentDeprecated
-      security:
-        - OAuth2Security:
-            - ap:llm_proxy:deployment:restore
-            - ap:llm_proxy:deployment:manage
-            - ap:llm_proxy:manage
-      tags:
-        - LLM Proxy Deployments
-        - Deployments
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-        - name: deploymentId
-          in: query
-          required: true
-          schema:
-            type: string
-        - name: gatewayId
-          in: query
-          required: true
-          schema:
-            type: string
-      responses:
-        '200':
-          description: Restore initiated successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/DeploymentResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '409':
-          $ref: '#/components/responses/Conflict'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -5569,106 +5206,6 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /mcp-proxies/{id}/deployments/undeploy:
-    post:
-      deprecated: true
-      summary: "[Deprecated] Use POST /mcp-proxies/{id}/deployments/{deploymentId}/undeploy"
-      description: Deprecated. Pass deploymentId as a path parameter instead of a query parameter.
-      operationId: UndeployMCPProxyDeploymentDeprecated
-      security:
-        - OAuth2Security:
-            - ap:mcp_proxy:deployment:undeploy
-            - ap:mcp_proxy:deployment:manage
-            - ap:mcp_proxy:manage
-      tags:
-        - MCP Proxy Deployments
-        - Deployments
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-        - name: deploymentId
-          in: query
-          required: true
-          schema:
-            type: string
-        - name: gatewayId
-          in: query
-          required: true
-          schema:
-            type: string
-      responses:
-        '200':
-          description: Undeploy initiated successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/DeploymentResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '409':
-          $ref: '#/components/responses/Conflict'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
-  /mcp-proxies/{id}/deployments/restore:
-    post:
-      deprecated: true
-      summary: "[Deprecated] Use POST /mcp-proxies/{id}/deployments/{deploymentId}/restore"
-      description: Deprecated. Pass deploymentId as a path parameter instead of a query parameter.
-      operationId: RestoreMCPProxyDeploymentDeprecated
-      security:
-        - OAuth2Security:
-            - ap:mcp_proxy:deployment:restore
-            - ap:mcp_proxy:deployment:manage
-            - ap:mcp_proxy:manage
-      tags:
-        - MCP Proxy Deployments
-        - Deployments
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-        - name: deploymentId
-          in: query
-          required: true
-          schema:
-            type: string
-        - name: gatewayId
-          in: query
-          required: true
-          schema:
-            type: string
-      responses:
-        '200':
-          description: Restore initiated successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/DeploymentResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '409':
-          $ref: '#/components/responses/Conflict'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
   /mcp-proxies/fetch-server-info:
     post:
       summary: Fetch server info from MCP proxy backend services
@@ -6353,106 +5890,6 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /websub-apis/{apiId}/deployments/undeploy:
-    post:
-      deprecated: true
-      summary: "[Deprecated] Use POST /websub-apis/{apiId}/deployments/{deploymentId}/undeploy"
-      description: Deprecated. Pass deploymentId as a path parameter instead of a query parameter.
-      operationId: undeployWebSubAPIDeprecated
-      security:
-        - OAuth2Security:
-            - ap:websub_api:deployment:undeploy
-            - ap:websub_api:deployment:manage
-            - ap:websub_api:manage
-      tags:
-        - WebSubAPI Deployments
-        - Deployments
-      parameters:
-        - name: apiId
-          in: path
-          required: true
-          schema:
-            type: string
-        - name: deploymentId
-          in: query
-          required: true
-          schema:
-            type: string
-        - name: gatewayId
-          in: query
-          required: true
-          schema:
-            type: string
-      responses:
-        '200':
-          description: Undeploy initiated successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/DeploymentResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '409':
-          $ref: '#/components/responses/Conflict'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
-  /websub-apis/{apiId}/deployments/restore:
-    post:
-      deprecated: true
-      summary: "[Deprecated] Use POST /websub-apis/{apiId}/deployments/{deploymentId}/restore"
-      description: Deprecated. Pass deploymentId as a path parameter instead of a query parameter.
-      operationId: restoreWebSubAPIDeploymentDeprecated
-      security:
-        - OAuth2Security:
-            - ap:websub_api:deployment:restore
-            - ap:websub_api:deployment:manage
-            - ap:websub_api:manage
-      tags:
-        - WebSubAPI Deployments
-        - Deployments
-      parameters:
-        - name: apiId
-          in: path
-          required: true
-          schema:
-            type: string
-        - name: deploymentId
-          in: query
-          required: true
-          schema:
-            type: string
-        - name: gatewayId
-          in: query
-          required: true
-          schema:
-            type: string
-      responses:
-        '200':
-          description: Restore initiated successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/DeploymentResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '409':
-          $ref: '#/components/responses/Conflict'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
   /webbroker-apis:
     post:
       summary: Create a new WebBroker API
@@ -7101,106 +6538,6 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /webbroker-apis/{apiId}/deployments/undeploy:
-    post:
-      deprecated: true
-      summary: "[Deprecated] Use POST /webbroker-apis/{apiId}/deployments/{deploymentId}/undeploy"
-      description: Deprecated. Pass deploymentId as a path parameter instead of a query parameter.
-      operationId: undeployWebBrokerAPIDeprecated
-      security:
-        - OAuth2Security:
-            - ap:webbroker_api:deployment:undeploy
-            - ap:webbroker_api:deployment:manage
-            - ap:webbroker_api:manage
-      tags:
-        - WebBrokerAPI Deployments
-        - Deployments
-      parameters:
-        - name: apiId
-          in: path
-          required: true
-          schema:
-            type: string
-        - name: deploymentId
-          in: query
-          required: true
-          schema:
-            type: string
-        - name: gatewayId
-          in: query
-          required: true
-          schema:
-            type: string
-      responses:
-        '200':
-          description: Undeploy initiated successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/DeploymentResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '409':
-          $ref: '#/components/responses/Conflict'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
-  /webbroker-apis/{apiId}/deployments/restore:
-    post:
-      deprecated: true
-      summary: "[Deprecated] Use POST /webbroker-apis/{apiId}/deployments/{deploymentId}/restore"
-      description: Deprecated. Pass deploymentId as a path parameter instead of a query parameter.
-      operationId: restoreWebBrokerAPIDeploymentDeprecated
-      security:
-        - OAuth2Security:
-            - ap:webbroker_api:deployment:restore
-            - ap:webbroker_api:deployment:manage
-            - ap:webbroker_api:manage
-      tags:
-        - WebBrokerAPI Deployments
-        - Deployments
-      parameters:
-        - name: apiId
-          in: path
-          required: true
-          schema:
-            type: string
-        - name: deploymentId
-          in: query
-          required: true
-          schema:
-            type: string
-        - name: gatewayId
-          in: query
-          required: true
-          schema:
-            type: string
-      responses:
-        '200':
-          description: Restore initiated successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/DeploymentResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '409':
-          $ref: '#/components/responses/Conflict'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
 components:
   securitySchemes:
     OAuth2Security:
@@ -7210,161 +6547,164 @@ components:
           tokenUrl: https://localhost:9243/oauth2/token
           scopes:
             ap:api_key:read: Read API keys owned by the current user
-            ap:application:api_key:create: Create application
-            ap:application:api_key:delete: Delete application
-            ap:application:api_key:manage: Full access to application
-            ap:application:api_key:read: Read application
-            ap:application:associations:api_key:read: Read application
-            ap:application:associations:create: Create application
-            ap:application:associations:delete: Delete application
-            ap:application:associations:manage: Full access to application
-            ap:application:associations:read: Read application
-            ap:application:create: Create application
-            ap:application:delete: Delete application
-            ap:application:manage: Full access to application
-            ap:application:read: Read application
-            ap:application:update: Update application
-            ap:devportal:create: Create devportal
-            ap:devportal:delete: Delete devportal
-            ap:devportal:manage: Full access to devportal
-            ap:devportal:read: Read devportal
-            ap:devportal:update: Update devportal
-            ap:gateway:artifacts:read: Read gateway
-            ap:gateway:create: Create gateway
-            ap:gateway:delete: Delete gateway
-            ap:gateway:manage: Full access to gateway
-            ap:gateway:manifest:read: Read gateway
-            ap:gateway:read: Read gateway
-            ap:gateway_custom_policy:create: Create gateway
-            ap:gateway_custom_policy:delete: Delete gateway
-            ap:gateway_custom_policy:manage: Full access to gateway
-            ap:gateway_custom_policy:read: Read gateway
-            ap:gateway:token:create: Create gateway
-            ap:gateway:token:delete: Delete gateway
-            ap:gateway:token:manage: Full access to gateway
-            ap:gateway:token:read: Read gateway
-            ap:gateway:update: Update gateway
-            ap:git:read: Read git
-            ap:llm_provider:api_key:create: Create llm provider
-            ap:llm_provider:api_key:delete: Delete llm provider
-            ap:llm_provider:api_key:manage: Full access to llm provider
-            ap:llm_provider:api_key:read: Read llm provider
-            ap:llm_provider:create: Create llm provider
-            ap:llm_provider:delete: Delete llm provider
-            ap:llm_provider:deployment:create: Create llm provider
-            ap:llm_provider:deployment:delete: Delete llm provider
-            ap:llm_provider:deployment:manage: Full access to llm provider
-            ap:llm_provider:deployment:read: Read llm provider
-            ap:llm_provider:deployment:restore: Restore llm provider
-            ap:llm_provider:deployment:undeploy: Undeploy llm provider
-            ap:llm_provider:manage: Full access to llm provider
-            ap:llm_provider:read: Read llm provider
-            ap:llm_provider:update: Update llm provider
-            ap:llm_proxy:api_key:create: Create llm proxy
-            ap:llm_proxy:api_key:delete: Delete llm proxy
-            ap:llm_proxy:api_key:manage: Full access to llm proxy
-            ap:llm_proxy:api_key:read: Read llm proxy
-            ap:llm_proxy:create: Create llm proxy
-            ap:llm_proxy:delete: Delete llm proxy
-            ap:llm_proxy:deployment:create: Create llm proxy
-            ap:llm_proxy:deployment:delete: Delete llm proxy
-            ap:llm_proxy:deployment:manage: Full access to llm proxy
-            ap:llm_proxy:deployment:read: Read llm proxy
-            ap:llm_proxy:deployment:restore: Restore llm proxy
-            ap:llm_proxy:deployment:undeploy: Undeploy llm proxy
-            ap:llm_proxy:manage: Full access to llm proxy
-            ap:llm_proxy:read: Read llm proxy
-            ap:llm_proxy:update: Update llm proxy
-            ap:llm_template:create: Create llm template
-            ap:llm_template:delete: Delete llm template
-            ap:llm_template:manage: Full access to llm template
-            ap:llm_template:read: Read llm template
-            ap:llm_template:update: Update llm template
-            ap:mcp_proxy:create: Create mcp proxy
-            ap:mcp_proxy:delete: Delete mcp proxy
-            ap:mcp_proxy:deployment:create: Create mcp proxy
-            ap:mcp_proxy:deployment:delete: Delete mcp proxy
-            ap:mcp_proxy:deployment:manage: Full access to mcp proxy
-            ap:mcp_proxy:deployment:read: Read mcp proxy
-            ap:mcp_proxy:deployment:restore: Restore mcp proxy
-            ap:mcp_proxy:deployment:undeploy: Undeploy mcp proxy
-            ap:mcp_proxy:manage: Full access to mcp proxy
-            ap:mcp_proxy:read: Read mcp proxy
-            ap:mcp_proxy:update: Update mcp proxy
-            ap:project:create: Create project
-            ap:project:delete: Delete project
-            ap:project:manage: Full access to project
-            ap:project:read: Read project
-            ap:project:update: Update project
-            ap:rest_api:api_key:create: Create rest api
-            ap:rest_api:api_key:delete: Delete rest api
-            ap:rest_api:api_key:manage: Full access to rest api
-            ap:rest_api:api_key:read: Read rest api
-            ap:rest_api:api_key:update: Update rest api
-            ap:rest_api:create: Create rest api
-            ap:rest_api:delete: Delete rest api
-            ap:rest_api:deployment:create: Create rest api
-            ap:rest_api:deployment:delete: Delete rest api
-            ap:rest_api:deployment:manage: Full access to rest api
-            ap:rest_api:deployment:read: Read rest api
-            ap:rest_api:deployment:restore: Restore rest api
-            ap:rest_api:deployment:undeploy: Undeploy rest api
-            ap:rest_api:gateway:create: Create rest api
-            ap:rest_api:gateway:manage: Full access to rest api
-            ap:rest_api:gateway:read: Read rest api
-            ap:rest_api:import: Import rest api
-            ap:rest_api:manage: Full access to rest api
-            ap:rest_api:publication:create: Create rest api
-            ap:rest_api:publication:delete: Delete rest api
-            ap:rest_api:publication:read: Read rest api
-            ap:rest_api:read: Read rest api
-            ap:rest_api:update: Update rest api
-            ap:subscription:create: Create subscription
-            ap:subscription:delete: Delete subscription
-            ap:subscription:manage: Full access to subscription
-            ap:subscription:read: Read subscription
-            ap:subscription:update: Update subscription
-            ap:subscription_plan:create: Create subscription plan
-            ap:subscription_plan:delete: Delete subscription plan
-            ap:subscription_plan:manage: Full access to subscription plan
-            ap:subscription_plan:read: Read subscription plan
-            ap:subscription_plan:update: Update subscription plan
-            ap:webbroker_api:api_key:create: Create webbroker api
-            ap:webbroker_api:api_key:delete: Delete webbroker api
-            ap:webbroker_api:api_key:manage: Full access to webbroker api
-            ap:webbroker_api:api_key:update: Update webbroker api
-            ap:webbroker_api:create: Create webbroker api
-            ap:webbroker_api:delete: Delete webbroker api
-            ap:webbroker_api:deployment:create: Create webbroker api
-            ap:webbroker_api:deployment:delete: Delete webbroker api
-            ap:webbroker_api:deployment:manage: Full access to webbroker api
-            ap:webbroker_api:deployment:read: Read webbroker api
-            ap:webbroker_api:deployment:restore: Restore webbroker api
-            ap:webbroker_api:deployment:undeploy: Undeploy webbroker api
-            ap:webbroker_api:manage: Full access to webbroker api
-            ap:webbroker_api:publication:create: Publish webbroker api to DevPortal
-            ap:webbroker_api:publication:delete: Unpublish webbroker api from DevPortal
-            ap:webbroker_api:publication:read: Read webbroker api DevPortal publications
-            ap:webbroker_api:read: Read webbroker api
-            ap:webbroker_api:update: Update webbroker api
-            ap:websub_api:api_key:create: Create websub api
-            ap:websub_api:api_key:delete: Delete websub api
-            ap:websub_api:api_key:manage: Full access to websub api
-            ap:websub_api:api_key:update: Update websub api
-            ap:websub_api:create: Create websub api
-            ap:websub_api:delete: Delete websub api
-            ap:websub_api:deployment:create: Create websub api
-            ap:websub_api:deployment:delete: Delete websub api
-            ap:websub_api:deployment:manage: Full access to websub api
-            ap:websub_api:deployment:read: Read websub api
-            ap:websub_api:deployment:restore: Restore websub api
-            ap:websub_api:deployment:undeploy: Undeploy websub api
-            ap:websub_api:manage: Full access to websub api
-            ap:websub_api:publication:create: Publish websub api to DevPortal
-            ap:websub_api:publication:delete: Unpublish websub api from DevPortal
-            ap:websub_api:publication:read: Read websub api DevPortal publications
-            ap:websub_api:read: Read websub api
-            ap:websub_api:update: Update websub api
+            ap:application:api_key:create: Create an application API key
+            ap:application:api_key:delete: Delete an application API key
+            ap:application:api_key:manage: Full access to application API keys
+            ap:application:api_key:read: Read application API keys
+            ap:application:association:api_key:read: Read API keys for an application association
+            ap:application:association:create: Create an application association
+            ap:application:association:delete: Delete an application association
+            ap:application:association:manage: Full access to application associations
+            ap:application:association:read: Read application associations
+            ap:application:create: Create an application
+            ap:application:delete: Delete an application
+            ap:application:manage: Full access to applications
+            ap:application:read: Read applications
+            ap:application:update: Update an application
+            ap:devportal:create: Create a DevPortal
+            ap:devportal:delete: Delete a DevPortal
+            ap:devportal:manage: Full access to DevPortals
+            ap:devportal:read: Read DevPortals
+            ap:devportal:update: Update a DevPortal
+            ap:gateway:artifact:read: Read gateway live proxy artifacts
+            ap:gateway:create: Create a gateway
+            ap:gateway:delete: Delete a gateway
+            ap:gateway:manage: Full access to gateways
+            ap:gateway:manifest:read: Read a gateway manifest
+            ap:gateway:read: Read gateways
+            ap:gateway_custom_policy:create: Create a gateway custom policy
+            ap:gateway_custom_policy:delete: Delete a gateway custom policy
+            ap:gateway_custom_policy:manage: Full access to gateway custom policies
+            ap:gateway_custom_policy:read: Read gateway custom policies
+            ap:gateway:token:create: Create a gateway token
+            ap:gateway:token:delete: Delete a gateway token
+            ap:gateway:token:manage: Full access to gateway tokens
+            ap:gateway:token:read: Read gateway tokens
+            ap:gateway:update: Update a gateway
+            ap:git:read: Read Git repository data
+            ap:llm_provider:api_key:create: Create an LLM provider API key
+            ap:llm_provider:api_key:delete: Delete an LLM provider API key
+            ap:llm_provider:api_key:manage: Full access to LLM provider API keys
+            ap:llm_provider:api_key:read: Read LLM provider API keys
+            ap:llm_provider:create: Create an LLM provider
+            ap:llm_provider:delete: Delete an LLM provider
+            ap:llm_provider:deployment:create: Deploy an LLM provider
+            ap:llm_provider:deployment:delete: Delete an LLM provider deployment
+            ap:llm_provider:deployment:manage: Full access to LLM provider deployments
+            ap:llm_provider:deployment:read: Read LLM provider deployments
+            ap:llm_provider:deployment:restore: Restore an LLM provider deployment
+            ap:llm_provider:deployment:undeploy: Undeploy an LLM provider deployment
+            ap:llm_provider:manage: Full access to LLM providers
+            ap:llm_provider:read: Read LLM providers
+            ap:llm_provider:update: Update an LLM provider
+            ap:llm_proxy:api_key:create: Create an LLM proxy API key
+            ap:llm_proxy:api_key:delete: Delete an LLM proxy API key
+            ap:llm_proxy:api_key:manage: Full access to LLM proxy API keys
+            ap:llm_proxy:api_key:read: Read LLM proxy API keys
+            ap:llm_proxy:create: Create an LLM proxy
+            ap:llm_proxy:delete: Delete an LLM proxy
+            ap:llm_proxy:deployment:create: Deploy an LLM proxy
+            ap:llm_proxy:deployment:delete: Delete an LLM proxy deployment
+            ap:llm_proxy:deployment:manage: Full access to LLM proxy deployments
+            ap:llm_proxy:deployment:read: Read LLM proxy deployments
+            ap:llm_proxy:deployment:restore: Restore an LLM proxy deployment
+            ap:llm_proxy:deployment:undeploy: Undeploy an LLM proxy deployment
+            ap:llm_proxy:manage: Full access to LLM proxies
+            ap:llm_proxy:read: Read LLM proxies
+            ap:llm_proxy:update: Update an LLM proxy
+            ap:llm_template:create: Create an LLM provider template
+            ap:llm_template:delete: Delete an LLM provider template
+            ap:llm_template:manage: Full access to LLM provider templates
+            ap:llm_template:read: Read LLM provider templates
+            ap:llm_template:update: Update an LLM provider template
+            ap:mcp_proxy:create: Create an MCP proxy
+            ap:mcp_proxy:delete: Delete an MCP proxy
+            ap:mcp_proxy:deployment:create: Deploy an MCP proxy
+            ap:mcp_proxy:deployment:delete: Delete an MCP proxy deployment
+            ap:mcp_proxy:deployment:manage: Full access to MCP proxy deployments
+            ap:mcp_proxy:deployment:read: Read MCP proxy deployments
+            ap:mcp_proxy:deployment:restore: Restore an MCP proxy deployment
+            ap:mcp_proxy:deployment:undeploy: Undeploy an MCP proxy deployment
+            ap:mcp_proxy:manage: Full access to MCP proxies
+            ap:mcp_proxy:read: Read MCP proxies
+            ap:mcp_proxy:update: Update an MCP proxy
+            ap:organization:create: Create an organization
+            ap:organization:manage: Full access to an organization
+            ap:organization:read: Read an organization
+            ap:organization:subscription:read: Read an organization's subscription
+            ap:project:create: Create a project
+            ap:project:delete: Delete a project
+            ap:project:manage: Full access to projects
+            ap:project:read: Read projects
+            ap:project:update: Update a project
+            ap:rest_api:api_key:create: Create an API key for a REST API
+            ap:rest_api:api_key:delete: Delete an API key of a REST API
+            ap:rest_api:api_key:manage: Full access to a REST API's API keys
+            ap:rest_api:api_key:update: Update an API key of a REST API
+            ap:rest_api:create: Create a REST API
+            ap:rest_api:delete: Delete a REST API
+            ap:rest_api:deployment:create: Deploy a REST API
+            ap:rest_api:deployment:delete: Delete a REST API deployment
+            ap:rest_api:deployment:manage: Full access to REST API deployments
+            ap:rest_api:deployment:read: Read REST API deployments
+            ap:rest_api:deployment:restore: Restore a REST API deployment
+            ap:rest_api:deployment:undeploy: Undeploy a REST API deployment
+            ap:rest_api:gateway:create: Add gateways to a REST API
+            ap:rest_api:gateway:manage: Full access to a REST API's gateways
+            ap:rest_api:gateway:read: Read a REST API's gateways
+            ap:rest_api:import: Import a REST API
+            ap:rest_api:manage: Full access to REST APIs
+            ap:rest_api:publication:create: Publish a REST API to a DevPortal
+            ap:rest_api:publication:delete: Unpublish a REST API from a DevPortal
+            ap:rest_api:publication:read: Read a REST API's DevPortal publications
+            ap:rest_api:read: Read REST APIs
+            ap:rest_api:update: Update a REST API
+            ap:subscription:create: Create a subscription
+            ap:subscription:delete: Delete a subscription
+            ap:subscription:manage: Full access to subscriptions
+            ap:subscription:read: Read subscriptions
+            ap:subscription:update: Update a subscription
+            ap:subscription_plan:create: Create a subscription plan
+            ap:subscription_plan:delete: Delete a subscription plan
+            ap:subscription_plan:manage: Full access to subscription plans
+            ap:subscription_plan:read: Read subscription plans
+            ap:subscription_plan:update: Update a subscription plan
+            ap:webbroker_api:api_key:create: Create an API key for a WebBroker API
+            ap:webbroker_api:api_key:delete: Delete an API key of a WebBroker API
+            ap:webbroker_api:api_key:manage: Full access to a WebBroker API's API keys
+            ap:webbroker_api:api_key:update: Update an API key of a WebBroker API
+            ap:webbroker_api:create: Create a WebBroker API
+            ap:webbroker_api:delete: Delete a WebBroker API
+            ap:webbroker_api:deployment:create: Deploy a WebBroker API
+            ap:webbroker_api:deployment:delete: Delete a WebBroker API deployment
+            ap:webbroker_api:deployment:manage: Full access to WebBroker API deployments
+            ap:webbroker_api:deployment:read: Read WebBroker API deployments
+            ap:webbroker_api:deployment:restore: Restore a WebBroker API deployment
+            ap:webbroker_api:deployment:undeploy: Undeploy a WebBroker API deployment
+            ap:webbroker_api:manage: Full access to WebBroker APIs
+            ap:webbroker_api:publication:create: Publish a WebBroker API to a DevPortal
+            ap:webbroker_api:publication:delete: Unpublish a WebBroker API from a DevPortal
+            ap:webbroker_api:publication:read: Read a WebBroker API's DevPortal publications
+            ap:webbroker_api:read: Read WebBroker APIs
+            ap:webbroker_api:update: Update a WebBroker API
+            ap:websub_api:api_key:create: Create an API key for a WebSub API
+            ap:websub_api:api_key:delete: Delete an API key of a WebSub API
+            ap:websub_api:api_key:manage: Full access to a WebSub API's API keys
+            ap:websub_api:api_key:update: Update an API key of a WebSub API
+            ap:websub_api:create: Create a WebSub API
+            ap:websub_api:delete: Delete a WebSub API
+            ap:websub_api:deployment:create: Deploy a WebSub API
+            ap:websub_api:deployment:delete: Delete a WebSub API deployment
+            ap:websub_api:deployment:manage: Full access to WebSub API deployments
+            ap:websub_api:deployment:read: Read WebSub API deployments
+            ap:websub_api:deployment:restore: Restore a WebSub API deployment
+            ap:websub_api:deployment:undeploy: Undeploy a WebSub API deployment
+            ap:websub_api:manage: Full access to WebSub APIs
+            ap:websub_api:publication:create: Publish a WebSub API to a DevPortal
+            ap:websub_api:publication:delete: Unpublish a WebSub API from a DevPortal
+            ap:websub_api:publication:read: Read a WebSub API's DevPortal publications
+            ap:websub_api:read: Read WebSub APIs
+            ap:websub_api:update: Update a WebSub API
   schemas:
     APIKeyItem:
       type: object

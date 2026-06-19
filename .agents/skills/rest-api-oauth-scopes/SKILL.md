@@ -79,6 +79,9 @@ For a write on a sub-resource, include the sub-resource's manage scope (and, whe
 
 The scope list on an operation is **OR-evaluated**: holding any one scope in the list is sufficient. This is what lets the specific scope and the `:manage` superset coexist on the same operation.
 
+## Catalog descriptions
+
+Each catalog entry's description is **`<action> <the most specific entity the scope governs>`** — name the deepest segment (the sub-resource), not the parent, so the entry reads distinctly from both its parent and its siblings on a consent screen. `<prefix>:rest_api:api_key:create` → "Create an API key for a REST API" (**not** "Create REST API"); `<prefix>:gateway:token:read` → "Read gateway tokens"; `:manage` → "Full access to …". Spell resource names in human prose with proper casing (REST API, LLM provider, DevPortal), not the snake_case scope segment.
 
 ## Checklist for adding a resource / operation
 
@@ -86,7 +89,7 @@ The scope list on an operation is **OR-evaluated**: holding any one scope in the
 2. Pick the **action verb**: CRUD closed set (Rule 2) → use it; side-effect-free GET → `read` (Rule 3); genuine lifecycle op → an allowed custom verb.
 3. Build the scope `<prefix>:<resource>[:<sub-resource>]:<action>` — snake_case, colon delimiters, nest only on real ownership (Rule 1).
 4. In the operation's `security` block, list the **specific scope + the resource's `:manage` scope**, OR-evaluated.
-5. Add **both** scopes (and `:manage`) to the **scope catalog** with descriptions.
+5. Add **both** scopes (and `:manage`) to the **scope catalog**, each with a description that names the specific entity it governs (see "Catalog descriptions").
 6. If a built-in role should get the new scope, add it to the role→scopes map.
 7. Build and verify the enforcement point parses the spec and validates the role map.
 
@@ -98,6 +101,7 @@ The scope list on an operation is **OR-evaluated**: holding any one scope in the
 - Nesting a sub-resource that isn't owned by the parent — make it a top-level resource instead.
 - An operation that lists only the fine-grained scope and omits `:manage`.
 - A scope used in a `security` block but missing from the scope catalog (or vice versa).
+- A sub-resource scope described by its parent (`<prefix>:rest_api:api_key:create` → "Create REST API") — describe the actual subject ("Create an API key for a REST API").
 - snake_case or camelCase URL segments (`/rest_apis`, `/restApis`) — paths are kebab-case (`/rest-apis`).
 - A literal `/status`, `/default`, or `/validate` path segment for what is really a property/filter — use a query param on the collection.
 - A collection-level action verb (`POST /deployments/undeploy`) when the action targets one instance — scope it `{id}` (`/deployments/{id}/undeploy`).

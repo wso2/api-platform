@@ -236,7 +236,7 @@ Tokens are validated against any standards-compliant identity provider (Thunder,
 | `AUTH_IDP_NAME` | _(empty)_ | Optional label shown in startup logs (e.g. `thunder`, `asgardeo`) |
 | `AUTH_IDP_JWKS_URL` | _(required)_ | IDP's JWKS endpoint for public key retrieval |
 | `AUTH_IDP_ISSUER` | _(required)_ | Accepted JWT issuer |
-| `AUTH_IDP_AUDIENCE` | _(empty)_ | Accepted JWT audiences (comma-separated). Entries ending with `*` are treated as prefix matches |
+| `AUTH_IDP_AUDIENCE` | _(empty)_ | Accepted JWT audience. When set, the token's `aud` claim must contain this value; empty skips the check |
 | `AUTH_IDP_ORGANIZATION_CLAIM_NAME` | `organization` | JWT claim holding the org UUID for the active session |
 | `AUTH_IDP_ORG_NAME_CLAIM_NAME` | `org_name` | JWT claim for the org display name |
 | `AUTH_IDP_ORG_HANDLE_CLAIM_NAME` | `org_handle` | JWT claim for the org URL-safe handle |

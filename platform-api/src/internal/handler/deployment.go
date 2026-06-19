@@ -140,11 +140,7 @@ func (h *DeploymentHandler) UndeployDeployment(c *gin.Context) {
 	}
 
 	apiId := c.Param("apiId")
-	// New route: deploymentId in path. Deprecated route: deploymentId in query.
 	deploymentId := c.Param("deploymentId")
-	if deploymentId == "" {
-		deploymentId = c.Query("deploymentId")
-	}
 	gatewayId := c.Query("gatewayId")
 	if deploymentId == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
@@ -212,11 +208,7 @@ func (h *DeploymentHandler) RestoreDeployment(c *gin.Context) {
 	}
 
 	apiId := c.Param("apiId")
-	// New route: deploymentId in path. Deprecated route: deploymentId in query.
 	deploymentId := c.Param("deploymentId")
-	if deploymentId == "" {
-		deploymentId = c.Query("deploymentId")
-	}
 	gatewayId := c.Query("gatewayId")
 	if deploymentId == "00000000-0000-0000-0000-000000000000" || gatewayId == "00000000-0000-0000-0000-000000000000" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
@@ -418,9 +410,6 @@ func (h *DeploymentHandler) RegisterRoutes(r *gin.Engine) {
 		apiGroup.POST("/deployments", h.DeployAPI)
 		apiGroup.POST("/deployments/:deploymentId/undeploy", h.UndeployDeployment)
 		apiGroup.POST("/deployments/:deploymentId/restore", h.RestoreDeployment)
-		// Deprecated paths — kept for backward compatibility.
-		apiGroup.POST("/deployments/undeploy", h.UndeployDeployment)
-		apiGroup.POST("/deployments/restore", h.RestoreDeployment)
 		apiGroup.GET("/deployments", h.GetDeployments)
 		apiGroup.GET("/deployments/:deploymentId", h.GetDeployment)
 		apiGroup.DELETE("/deployments/:deploymentId", h.DeleteDeployment)
