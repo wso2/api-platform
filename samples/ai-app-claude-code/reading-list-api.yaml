@@ -1,0 +1,28 @@
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: RestApi
+metadata:
+  name: reading-list-api
+spec:
+  displayName: Reading List API
+  version: v1.0
+  context: /reading-list/v1
+  upstream:
+    main:
+      url: https://apis.bijira.dev/samples/reading-list-api-service/v1.0
+  policies:
+    - name: api-key-auth
+      version: v1
+      params:
+        key: X-API-Key
+        in: header
+  operations:
+    - method: GET
+      path: /books
+    - method: POST
+      path: /books
+    - method: GET
+      path: /books/{id}
+    - method: PUT
+      path: /books/{id}
+    - method: DELETE
+      path: /books/{id}
