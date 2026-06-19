@@ -18,6 +18,7 @@ package config
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"strings"
 	"time"
@@ -261,6 +262,13 @@ func (c *OperatorConfig) Validate() error {
 	c.GatewayAPI.ClusterDomain = strings.Trim(strings.TrimSpace(c.GatewayAPI.ClusterDomain), ".")
 	if c.GatewayAPI.ClusterDomain == "" {
 		c.GatewayAPI.ClusterDomain = "cluster.local"
+	}
+
+	if v := strings.TrimSpace(c.GatewayAPI.NodePortAddressOverride); v != "" {
+		if net.ParseIP(v) == nil {
+			return fmt.Errorf("gateway_api.nodeport_address_override must be a valid IP address")
+		}
+		c.GatewayAPI.NodePortAddressOverride = v
 	}
 
 	// Validate log level

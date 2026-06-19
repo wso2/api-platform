@@ -55,9 +55,9 @@ type RestApiList struct {
 
 // APIConfigData defines model for APIConfigData.
 type APIConfigData struct {
-	// Context Base path for all API routes (must start with /, no trailing slash)
+	// Context Base path for all API routes (must start with /, no trailing slash; "/" denotes the root context)
 	// +kubebuilder:validation:Required
-	// +kubebuilder:validation:Pattern=`^/[a-zA-Z0-9\-._~!$&'()*+,;=:@%/]*[^/]$`
+	// +kubebuilder:validation:Pattern=`^/([a-zA-Z0-9\-._~!$&'()*+,;=:@%/]*[^/])?$`
 	Context string `json:"context"`
 
 	// DisplayName Human-readable API name (must be URL-friendly - only letters, numbers, spaces, hyphens, underscores, and dots allowed)
@@ -97,11 +97,6 @@ type APIConfigData struct {
 	// +optional
 	Vhosts *VhostConfig `json:"vhosts,omitempty"`
 
-	// VhostList Additional virtual hosts when an HTTPRoute attaches to multiple listeners with distinct hostnames.
-	// When non-empty, routes are created for each entry (in addition to Vhosts.Main when set).
-	// +optional
-	VhostList []string `json:"vhostList,omitempty"`
-
 	// UpstreamDefinitions Reusable upstream targets for dynamic routing and weighted load balancing.
 	// +optional
 	UpstreamDefinitions []UpstreamDefinition `json:"upstreamDefinitions,omitempty"`
@@ -120,7 +115,9 @@ type UpstreamConfig struct {
 
 // VhostConfig defines custom virtual hosts/domains for the API
 type VhostConfig struct {
-	// Main Custom virtual host/domain for production traffic
+	// Main Custom virtual host(s)/domain(s) for production traffic. One or more hostnames separated
+	// by ";" — each serves the main upstream (e.g. when an HTTPRoute attaches to multiple listeners
+	// with distinct hostnames). The first entry is the primary vhost.
 	// +kubebuilder:validation:Required
 	Main string `json:"main"`
 

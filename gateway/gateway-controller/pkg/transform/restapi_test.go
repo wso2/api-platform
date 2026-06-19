@@ -588,6 +588,69 @@ func TestRestAPITransformer_HeaderMatchRoutesDoNotCollide(t *testing.T) {
 	assert.Equal(t, 4, rdc.Routes[baseKey].Order)
 }
 
+// TestSplitVhosts covers the ";"-separated vhosts.main parser: single host, multiple hosts,
+// surrounding whitespace, empty entries, duplicate removal, and an empty input.
+func TestSplitVhosts(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+		want []string
+	}{
+		{"empty", "", []string{}},
+		{"single", "api.example.com", []string{"api.example.com"}},
+		{"multi", "api.example.com;docs.example.com;*.example.com", []string{"api.example.com", "docs.example.com", "*.example.com"}},
+		{"whitespace", " api.example.com ; docs.example.com ", []string{"api.example.com", "docs.example.com"}},
+		{"empty entries", "api.example.com;;;docs.example.com;", []string{"api.example.com", "docs.example.com"}},
+		{"dedupe preserves order", "a.com;b.com;a.com", []string{"a.com", "b.com"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, splitVhosts(tc.in))
+		})
+	}
+}
+
+// TestRestAPITransformer_SemicolonVhostsExpandToMultipleHosts verifies that a ";"-separated
+// vhosts.main produces one route per production hostname (each serving the main upstream), and
+// that the first entry is the primary vhost. This is the replacement for the removed vhostList.
+func TestRestAPITransformer_SemicolonVhostsExpandToMultipleHosts(t *testing.T) {
+	transformer := NewRestAPITransformer(testRouterCfg(), &config.Config{}, map[string]models.PolicyDefinition{})
+
+	apiData := api.APIConfigData{
+		DisplayName: "Multi VHost API",
+		Context:     "/test",
+		Version:     "1.0.0",
+		Operations:  []api.Operation{{Method: "GET", Path: "/hello"}},
+		Upstream: struct {
+			Main    api.Upstream  `json:"main" yaml:"main"`
+			Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+		}{
+			Main: api.Upstream{Url: ptrStr("http://backend:8080")},
+		},
+		Vhosts: &struct {
+			Main    string  `json:"main" yaml:"main"`
+			Sandbox *string `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+		}{Main: "api.example.com;docs.example.com;*.example.com"},
+	}
+	cfg := &models.StoredConfig{
+		UUID:          "multi-vhost-api",
+		Kind:          string(api.RestAPIKindRestApi),
+		Configuration: api.RestAPI{Kind: api.RestAPIKindRestApi, Metadata: api.Metadata{Name: "multi-vhost-api"}, Spec: apiData},
+	}
+
+	rdc, err := transformer.Transform(cfg)
+	require.NoError(t, err)
+	require.NotNil(t, rdc)
+
+	// One operation across three production vhosts -> three distinct routes, one per host.
+	assert.Len(t, rdc.Routes, 3, "each production vhost must produce its own route")
+	for _, host := range []string{"api.example.com", "docs.example.com", "*.example.com"} {
+		key := "GET|/test/hello|" + host
+		require.Contains(t, rdc.Routes, key, "expected a route on vhost %q", host)
+		assert.Equal(t, host, rdc.Routes[key].Vhost)
+	}
+}
+
 // TestRestAPITransformer_MixedSchemeUpstreamDefinition guards the upstream-definitions loop: a
 // single Envoy cluster has one transport socket and the model carries one TLS bit for the whole
 // cluster, so a weighted definition that mixes https and non-https endpoints cannot be represented

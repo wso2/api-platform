@@ -108,12 +108,15 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 	// Collect validated API-level policies
 	apiPolicies := t.collectAPIPolicies(apiData.Policies)
 
-	// Determine effective vhosts
-	effectiveMainVHost := t.routerConfig.VHosts.Main.Default
+	// Determine effective vhosts. vhosts.main may carry several production hostnames separated
+	// by ";" (e.g. when a Gateway-API HTTPRoute attaches to multiple listener hostnames); every
+	// entry serves the main upstream and the first is the primary vhost. When unset, the gateway
+	// default applies. Sandbox is always a single hostname.
 	effectiveSandboxVHost := t.routerConfig.VHosts.Sandbox.Default
+	mainVhosts := []string{t.routerConfig.VHosts.Main.Default}
 	if apiData.Vhosts != nil {
-		if strings.TrimSpace(apiData.Vhosts.Main) != "" {
-			effectiveMainVHost = apiData.Vhosts.Main
+		if parsed := splitVhosts(apiData.Vhosts.Main); len(parsed) > 0 {
+			mainVhosts = parsed
 		}
 		if apiData.Vhosts.Sandbox != nil && strings.TrimSpace(*apiData.Vhosts.Sandbox) != "" {
 			effectiveSandboxVHost = *apiData.Vhosts.Sandbox
@@ -153,15 +156,10 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 	// Guard: sandbox and main vhosts must differ, otherwise sandbox routes would
 	// overwrite main routes (same route key) and the sandbox patch would leave only
 	// a sandbox-cluster route with no main-cluster route at all.
-	if hasSandbox && effectiveMainVHost == effectiveSandboxVHost {
-		return nil, fmt.Errorf("sandbox upstream is configured but resolves to the same vhost %q as the main upstream; configure distinct vhosts to avoid route conflicts", effectiveMainVHost)
-	}
-
-	mainVhosts := []string{effectiveMainVHost}
-	if apiData.VhostList != nil {
-		for _, vh := range *apiData.VhostList {
-			if strings.TrimSpace(vh) != "" {
-				mainVhosts = append(mainVhosts, strings.TrimSpace(vh))
+	if hasSandbox {
+		for _, mv := range mainVhosts {
+			if mv == effectiveSandboxVHost {
+				return nil, fmt.Errorf("sandbox upstream is configured but resolves to the same vhost %q as a main upstream; configure distinct vhosts to avoid route conflicts", effectiveSandboxVHost)
 			}
 		}
 	}
@@ -322,6 +320,28 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 	}
 
 	return rdc, nil
+}
+
+// splitVhosts parses a vhosts.main value into its individual production hostnames. Multiple
+// hostnames may be provided separated by ";" (each serves the main upstream); surrounding
+// whitespace is trimmed, empty entries are dropped, and duplicates are removed while preserving
+// order. A single hostname (the common case) returns a one-element slice.
+func splitVhosts(raw string) []string {
+	parts := strings.Split(raw, ";")
+	out := make([]string, 0, len(parts))
+	seen := make(map[string]struct{}, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		if _, ok := seen[p]; ok {
+			continue
+		}
+		seen[p] = struct{}{}
+		out = append(out, p)
+	}
+	return out
 }
 
 // routeHeaderMatches converts an operation's Gateway-API-style header matchers into the model form

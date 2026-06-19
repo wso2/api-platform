@@ -4148,7 +4148,7 @@ components:
         context:
           type: string
           description: Base path for all API routes (must start with /, no trailing slash). Use $version to embed the version in the path (e.g., /reading-list/$version resolves to /reading-list/v1.0).
-          pattern: '^\/[a-zA-Z0-9_\-\/]*[^\/]$'
+          pattern: '^\/([a-zA-Z0-9_\-\/]*[^\/])?$'
           minLength: 1
           maxLength: 200
           example: /reading-list/$version
@@ -4175,21 +4175,18 @@ components:
           properties:
             main:
               type: string
-              description: Custom virtual host/domain for production traffic
-              pattern: '^[a-zA-Z0-9\.\-]+$'
-              example: api.example.com
+              description: |
+                Custom virtual host(s)/domain(s) for production traffic. One or more hostnames
+                separated by ';' — each hostname serves the main upstream (e.g. when a Gateway API
+                HTTPRoute attaches to multiple listener hostnames). The first entry is the primary
+                vhost. Each hostname may be a wildcard such as *.example.com.
+              pattern: '^(\*\.)?[a-zA-Z0-9.\-]+(\s*;\s*(\*\.)?[a-zA-Z0-9.\-]+)*$'
+              example: api.example.com;docs.example.com;*.example.com
             sandbox:
               type: string
               description: Custom virtual host/domain for sandbox traffic
               pattern: '^[a-zA-Z0-9\.\-]+$'
               example: sandbox-api.example.com
-        vhostList:
-          type: array
-          description: Additional virtual hosts when routing to multiple listener hostnames (e.g. Gateway API HTTPRoute attachment)
-          items:
-            type: string
-            pattern: '^(\*\.)?[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$'
-            example: "*.bar.com"
         subscriptionPlans:
           type: array
           description: List of subscription plan names available for this API
@@ -4462,7 +4459,7 @@ components:
         context:
           type: string
           description: Base path for all API routes (must start with /, no trailing slash)
-          pattern: '^\/[a-zA-Z0-9_\-\/]*[^\/]$'
+          pattern: '^\/([a-zA-Z0-9_\-\/]*[^\/])?$'
           minLength: 1
           maxLength: 200
           example: /weather
@@ -4771,7 +4768,7 @@ components:
         context:
           type: string
           description: Base path for all API routes (must start with /, no trailing slash)
-          pattern: '^\/[a-zA-Z0-9_\-\/]*[^\/]$'
+          pattern: '^\/([a-zA-Z0-9_\-\/]*[^\/])?$'
           minLength: 1
           maxLength: 200
           example: /stock-trading

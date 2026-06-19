@@ -29,6 +29,32 @@ import (
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
 
+// TestNormalizeContext verifies the compiled Context always satisfies the APIConfigData schema
+// contract: a single leading "/", no trailing slash, with "/" for the root context. Trailing-slash
+// inputs (which the controller's validator rejects) must be normalized, not passed through.
+func TestNormalizeContext(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"empty defaults to root", "", "/"},
+		{"root stays root", "/", "/"},
+		{"whitespace defaults to root", "   ", "/"},
+		{"missing leading slash", "api", "/api"},
+		{"trailing slash stripped", "/api/", "/api"},
+		{"nested trailing slash stripped", "/api/v1/", "/api/v1"},
+		{"surrounding whitespace trimmed", "  /api/v1  ", "/api/v1"},
+		{"already normalized unchanged", "/reading-list/v1.0", "/reading-list/v1.0"},
+		{"version placeholder preserved", "/reading-list/$version", "/reading-list/$version"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, normalizeContext(tc.in))
+		})
+	}
+}
+
 // TestIntersectHostname covers the Gateway-API hostname intersection rules exercised by the
 // HTTPRouteHostnameIntersection conformance test (listeners very.specific.com, *.wildcard.io,
 // *.anotherwildcard.io).

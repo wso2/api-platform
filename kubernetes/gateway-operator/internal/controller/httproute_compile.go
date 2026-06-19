@@ -61,12 +61,7 @@ func BuildAPIConfigFromHTTPRoute(
 		version = "v1.0"
 	}
 
-	contextPath := strings.TrimSpace(route.Annotations[AnnHTTPRouteContext])
-	if contextPath == "" {
-		contextPath = "/"
-	} else if !strings.HasPrefix(contextPath, "/") {
-		contextPath = "/" + contextPath
-	}
+	contextPath := normalizeContext(route.Annotations[AnnHTTPRouteContext])
 
 	vhostMain, vhostList, err := deriveVhosts(ctx, c, parentGW, route, parentTargets)
 	if err != nil {
@@ -265,10 +260,14 @@ func BuildAPIConfigFromHTTPRoute(
 		UpstreamDefinitions: upstreamDefs,
 	}
 	if vhostMain != "" {
-		spec.Vhosts = &apiv1.VhostConfig{Main: vhostMain}
-	}
-	if len(vhostList) > 0 {
-		spec.VhostList = vhostList
+		// vhosts.main carries the production hostnames as a ";"-separated list. When the route
+		// attaches to multiple listener hostnames, the primary (first) host and the additional
+		// hosts are joined here; the gateway-controller splits them back into per-host vhosts.
+		main := vhostMain
+		if len(vhostList) > 0 {
+			main = strings.Join(append([]string{vhostMain}, vhostList...), ";")
+		}
+		spec.Vhosts = &apiv1.VhostConfig{Main: main}
 	}
 
 	if _, err := resolveAPIConfigPolicyParamsValueFrom(ctx, c, route.Namespace, spec, log); err != nil {
@@ -316,6 +315,14 @@ func allRuleBackendsResolved(refs []ResolvedBackendRef) bool {
 
 func needsDynamicEndpoint(defs map[string]apiv1.UpstreamDefinition) bool {
 	return len(defs) > 1
+}
+
+// normalizeContext maps a raw context annotation to the APIConfigData.Context contract: a single
+// leading "/", no trailing slash, with "/" itself denoting the root context. It strips leading and
+// trailing slashes then re-adds one leading slash, so "" and "/" -> "/", "/api/" -> "/api",
+// "api" -> "/api". This keeps the compiled payload within the schema the controller validates.
+func normalizeContext(raw string) string {
+	return "/" + strings.Trim(strings.TrimSpace(raw), "/")
 }
 
 func deriveVhosts(ctx context.Context, c client.Client, parentGW *gatewayv1.Gateway, route *gatewayv1.HTTPRoute, parentTargets []gatewayParentTarget) (main string, additional []string, err error) {
