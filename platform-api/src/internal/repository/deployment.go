@@ -22,7 +22,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"regexp"
 	"time"
 
 	"platform-api/src/internal/constants"
@@ -30,24 +29,6 @@ import (
 	"platform-api/src/internal/model"
 	"platform-api/src/internal/utils"
 )
-
-// secretPlaceholderRe extracts handles from {{ secret "handle" }} in deployment content.
-var secretPlaceholderRe = regexp.MustCompile(`\{\{\s*secret\s+"([^"]+)"\s*\}\}`)
-
-// extractSecretHandles returns unique secret handles found in the given content blob.
-func extractSecretHandles(content []byte) []string {
-	matches := secretPlaceholderRe.FindAllSubmatch(content, -1)
-	seen := make(map[string]struct{}, len(matches))
-	handles := make([]string, 0, len(matches))
-	for _, m := range matches {
-		h := string(m[1])
-		if _, ok := seen[h]; !ok {
-			seen[h] = struct{}{}
-			handles = append(handles, h)
-		}
-	}
-	return handles
-}
 
 // DeploymentRepo implements DeploymentRepository
 type DeploymentRepo struct {
@@ -333,7 +314,7 @@ func (r *DeploymentRepo) SetCurrent(artifactUUID, orgUUID, gatewayID, deployment
 // statusDesired is the user's intended final state (DEPLOYED/UNDEPLOYED).
 // performedAt, if non-nil, is used as the concurrency token; otherwise defaults to now.
 // statusReason is an optional error code (cleared on new deployments).
-// Also maintains deployment_secret_refs: inserts refs on DEPLOYED, deletes them otherwise.
+// Also maintains artifact_secret_refs (gateway_id rows): inserts refs on DEPLOYED, deletes them otherwise.
 func (r *DeploymentRepo) SetCurrentWithDetails(artifactUUID, orgUUID, gatewayID, deploymentID string, status model.DeploymentStatus, statusDesired string, performedAt *time.Time, statusReason string) (time.Time, error) {
 	updatedAt := time.Now()
 	var pat time.Time
@@ -370,32 +351,17 @@ func (r *DeploymentRepo) SetCurrentWithDetails(artifactUUID, orgUUID, gatewayID,
 		return time.Time{}, fmt.Errorf("failed to upsert deployment status: %w", err)
 	}
 
-	// Always clear existing refs for this artifact+gateway pair first.
-	_, err = tx.Exec(r.db.Rebind(`
-		DELETE FROM deployment_secret_refs
-		WHERE organization_id = ? AND gateway_id = ? AND artifact_uuid = ?
-	`), orgUUID, gatewayID, artifactUUID)
-	if err != nil {
-		return time.Time{}, fmt.Errorf("failed to clear deployment secret refs: %w", err)
-	}
-
-	// On DEPLOYED, re-derive handles from the deployment content and insert refs.
+	// Maintain gateway-specific secret refs from the deployment snapshot.
+	// On DEPLOYED: derive handles from snapshot and insert; on UNDEPLOYED/ARCHIVED: clear only.
+	var content []byte
 	if status == model.DeploymentStatusDeployed {
-		var content []byte
 		err = tx.QueryRow(r.db.Rebind(`SELECT content FROM deployments WHERE deployment_id = ?`), deploymentID).Scan(&content)
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return time.Time{}, fmt.Errorf("failed to fetch deployment content for secret refs: %w", err)
 		}
-
-		for _, handle := range extractSecretHandles(content) {
-			_, err = tx.Exec(r.db.Rebind(`
-				INSERT INTO deployment_secret_refs (organization_id, gateway_id, artifact_uuid, secret_handle)
-				VALUES (?, ?, ?, ?)
-			`), orgUUID, gatewayID, artifactUUID, handle)
-			if err != nil {
-				return time.Time{}, fmt.Errorf("failed to insert deployment secret ref: %w", err)
-			}
-		}
+	}
+	if err := upsertDeploymentSecretRefs(tx, r.db, orgUUID, artifactUUID, gatewayID, content); err != nil {
+		return time.Time{}, fmt.Errorf("failed to upsert deployment secret refs: %w", err)
 	}
 
 	return updatedAt, tx.Commit()
@@ -963,16 +929,16 @@ func (r *DeploymentRepo) GetDeploymentContentByIDs(deploymentIDs []string, orgUU
 }
 
 // GetSecretHandlesByGateway returns the distinct secret handles referenced by all
-// artifacts currently deployed on the gateway. Sourced from deployment_secret_refs
-// which is maintained atomically at deploy/undeploy time.
+// artifacts currently deployed on the gateway. Sourced from artifact_secret_refs
+// where gateway_id matches — maintained at deploy/undeploy time.
 func (r *DeploymentRepo) GetSecretHandlesByGateway(gatewayID, orgUUID string) ([]string, error) {
 	query := r.db.Rebind(`
 		SELECT DISTINCT secret_handle
-		FROM deployment_secret_refs
-		WHERE gateway_id = ? AND organization_id = ?
+		FROM artifact_secret_refs
+		WHERE organization_id = ? AND gateway_id = ?
 	`)
 
-	rows, err := r.db.Query(query, gatewayID, orgUUID)
+	rows, err := r.db.Query(query, orgUUID, gatewayID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query secret handles for gateway %s: %w", gatewayID, err)
 	}
