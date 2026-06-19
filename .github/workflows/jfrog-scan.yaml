@@ -108,3 +108,31 @@ jobs:
         run: |
           docker pull localhost:5000/event-gateway-controller:trivy
           jf docker scan localhost:5000/event-gateway-controller:trivy
+
+      # -------------------------
+      # Platform API
+      # -------------------------
+      - name: Build & push platform-api to temp registry
+        run: |
+          make -C platform-api build-and-push-multiarch \
+            IMAGE_NAME=localhost:5000/platform-api \
+            VERSION=trivy
+
+      - name: JFrog scan platform-api
+        run: |
+          docker pull localhost:5000/platform-api:trivy
+          jf docker scan localhost:5000/platform-api:trivy
+
+      # -------------------------
+      # AI Workspace
+      # -------------------------
+      - name: Build & push ai-workspace to temp registry
+        run: |
+          make -C portals/ai-workspace build-and-push-multiarch \
+            IMAGE_NAME=localhost:5000/ai-workspace \
+            VERSION=trivy
+
+      - name: JFrog scan ai-workspace
+        run: |
+          docker pull localhost:5000/ai-workspace:trivy
+          jf docker scan localhost:5000/ai-workspace:trivy
