@@ -3962,7 +3962,7 @@ components:
           example: api-7f4c2a6b
         subscriptionToken:
           type: string
-          description: Plaintext subscription token (returned on create; encrypted at rest).
+          description: Plaintext subscription token. Present on create and when the token has not been encrypted at rest.
           example: a3f1...
         subscriptionPlanName:
           type: string

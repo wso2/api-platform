@@ -235,7 +235,7 @@ Status Code **200**
 |» list|[[SubscriptionResponse](schemas.md#schemasubscriptionresponse)]|false|none|[Subscription payload.]|
 |»» subscriptionId|string|false|none|none|
 |»» apiId|string|false|none|Developer Portal API ID.|
-|»» subscriptionToken|string|false|none|Plaintext subscription token (returned on create; encrypted at rest).|
+|»» subscriptionToken|string|false|none|Plaintext subscription token. Present on create and when the token has not been encrypted at rest.|
 |»» subscriptionPlanName|string|false|none|none|
 |»» gatewayType|string|false|none|none|
 |»» status|string|false|none|none|

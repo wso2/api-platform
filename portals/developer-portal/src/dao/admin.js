@@ -602,8 +602,9 @@ const updateSubscription = async (orgID, subscription, t) => {
             where: {
                 ORG_ID: orgID,
                 SUB_ID: subscription.subId
-            }
-        }, { transaction: t });
+            },
+            transaction: t,
+        });
         return subMapping;
     } catch (error) {
         if (error instanceof Sequelize.UniqueConstraintError) {
@@ -615,13 +616,10 @@ const updateSubscription = async (orgID, subscription, t) => {
 
 const getSubscription = async (orgID, subID, t) => {
     try {
-        return await SubscriptionMapping.findOne(
-            {
-                where: {
-                    ORG_ID: orgID,
-                    SUB_ID: subID
-                }, transaction: t
-            }, { transaction: t });
+        return await SubscriptionMapping.findOne({
+            where: { ORG_ID: orgID, SUB_ID: subID },
+            transaction: t,
+        });
     } catch (error) {
         if (error instanceof Sequelize.EmptyResultError) {
             throw error;
@@ -651,11 +649,9 @@ const deleteSubscription = async (orgID, subID, t) => {
 
     try {
         const deletedRowsCount = await SubscriptionMapping.destroy({
-            where: {
-                ORG_ID: orgID,
-                SUB_ID: subID
-            }, transaction: t
-        }, { transaction: t });
+            where: { ORG_ID: orgID, SUB_ID: subID },
+            transaction: t,
+        });
         if (deletedRowsCount < 1) {
             throw new Sequelize.EmptyResultError('Subscription not found');
         }
@@ -691,11 +687,11 @@ const deleteAppMappings = async (orgID, appID, t) => {
             }, transaction: t
         }, { transaction: t });
         if (deletedRowsCount < 1) {
-            logger.info("No Application Key Mapping found", { 
-                orgID, 
-                appID, 
+            logger.info("No Application Key Mapping found", {
+                orgID,
+                appID,
                 deletedRowsCount,
-                operation: "deleteApplicationKeyMapping" 
+                operation: "deleteApplicationKeyMapping"
             });
         }
         return deletedRowsCount;

@@ -20,6 +20,10 @@ const https = require('https');
 const { config } = require('../config/configLoader');
 const logger = require('../config/logger');
 
+function isPlatformApiPath(gatewayType) {
+    return gatewayType === 'wso2/api-platform' && !!(config.platformApi?.baseUrl);
+}
+
 function createAxiosClient(userToken) {
     const baseURL = config.platformApi?.baseUrl;
     return axios.create({
@@ -127,6 +131,7 @@ async function revokeApiKey(userToken, { apiRefId, keyName }) {
 }
 
 module.exports = {
+    isPlatformApiPath,
     createSubscription,
     findSubscription,
     deleteSubscription,

@@ -22,12 +22,9 @@ const apiDao = require('../dao/apiDao');
 const { publish } = require('./webhooks/eventPublisher');
 const subDao = require('../dao/subscriptionDao');
 const platformClient = require('./platformApiClient');
+const { isPlatformApiPath } = platformClient;
 const logger = require('../config/logger');
 const { config } = require('../config/configLoader');
-
-function isPlatformApiPath(gatewayType) {
-    return gatewayType === 'wso2/api-platform' && !!(config.platformApi?.baseUrl);
-}
 
 const KEY_NAME_PATTERN = /^[a-z0-9][a-z0-9_-]{0,127}$/;
 const EXPIRES_AT_HAS_TZ = /(?:Z|[+-]\d{2}:\d{2})$/;
@@ -153,7 +150,7 @@ async function generate({ orgId, apiId, subscriptionId, name, expiresAt, actor, 
     } else {
         try {
             await sequelize.transaction(async (t) => {
-                const key = await apiKeyDao.createKey(
+                const key = await apiKeyDao.create(
                     { apiId: api.apiId, subscriptionId, orgId, name: normalizedName,
                       expiresAt: expiry.date, createdBy: actor },
                     t

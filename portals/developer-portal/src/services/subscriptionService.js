@@ -20,13 +20,9 @@ const subDao = require('../dao/subscriptionDao');
 const sequelize = require('../db/sequelizeConfig');
 const { publish: publishWebhookEvent } = require('./webhooks/eventPublisher');
 const platformClient = require('./platformApiClient');
-const { config } = require('../config/configLoader');
+const { isPlatformApiPath } = platformClient;
 const util = require('../utils/util');
 const logger = require('../config/logger');
-
-function isPlatformApiPath(gatewayType) {
-    return gatewayType === 'wso2/api-platform' && !!(config.platformApi?.baseUrl);
-}
 
 async function safePublish(eventType, payload, opts) {
     try {
@@ -218,6 +214,10 @@ const updateSubscription = async (req, res) => {
                     platformSubId: platformSub.id,
                     subscriberId: req.user.sub,
                     status,
+                });
+            } else {
+                logger.warn('[subscriptionService] platform-api subscription not found, updating local DB only', {
+                    subscriptionId, apiRefId: apiMetadata.REFERENCE_ID,
                 });
             }
             await subDao.updateStatus(orgID, subscriptionId, status, req.user.sub);
