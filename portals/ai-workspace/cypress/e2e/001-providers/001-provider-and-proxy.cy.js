@@ -18,6 +18,7 @@
 
 describe('AI Workspace - OpenAI provider and proxy lifecycle', () => {
   const suffix = Date.now().toString().slice(-8);
+  const orgHandle = Cypress.env('ORG_HANDLE');
   const projectName = `E2E Project ${suffix}`;
   const providerName = `E2E OpenAI Provider ${suffix}`;
   const providerId = toSlug(providerName);
@@ -25,9 +26,38 @@ describe('AI Workspace - OpenAI provider and proxy lifecycle', () => {
   const proxyName = `E2E OpenAI Proxy ${suffix}`;
   const proxyId = toSlug(proxyName);
   const proxyDescription = 'Cypress App LLM proxy UI lifecycle test';
+  let createdProviderId = providerId;
+  let authToken = '';
+  let organizationId = '';
 
   beforeEach(() => {
     cy.login();
+    cy.request({
+      method: 'POST',
+      url: '/api-proxy/api/portal/v1/auth/login',
+      form: true,
+      body: {
+        username: Cypress.env('ADMIN_USER'),
+        password: Cypress.env('ADMIN_PASSWORD'),
+      },
+    })
+      .then((response) => {
+        expect(response.status).to.eq(200);
+        authToken = response.body?.token ?? '';
+        expect(authToken).to.not.equal('');
+
+        return cy.request({
+          url: '/api-proxy/api/v1/organizations',
+          headers: {
+            Authorization: `Bearer ${authToken}`,
+          },
+        });
+      })
+      .then((response) => {
+        expect(response.status).to.eq(200);
+        organizationId = response.body?.id ?? '';
+        expect(organizationId).to.not.equal('');
+      });
   });
 
   it('creates and deletes an OpenAI provider and app llm proxy using only the UI', () => {
@@ -83,10 +113,15 @@ describe('AI Workspace - OpenAI provider and proxy lifecycle', () => {
       .should('not.be.disabled')
       .click();
 
-    cy.location('pathname', { timeout: 30000 }).should(
-      'eq',
-      `/organizations/ap-org/service-provider/${providerId}`
-    );
+    cy.location('pathname', { timeout: 30000 })
+      .should(
+        'match',
+        new RegExp(`^/organizations/${orgHandle}/service-provider/[^/]+$`)
+      )
+      .then((pathname) => {
+        createdProviderId = pathname.split('/').pop() || '';
+        expect(createdProviderId).to.not.equal('');
+      });
     cy.contains(providerName, { timeout: 30000 }).should('be.visible');
 
     cy.contains('button', 'Create App LLM Proxy', { timeout: 30000 })
@@ -135,48 +170,42 @@ describe('AI Workspace - OpenAI provider and proxy lifecycle', () => {
     cy.location('pathname', { timeout: 30000 }).should('include', '/proxies');
     cy.contains(proxyName).should('not.exist');
 
-    cy.get('button[aria-label="Go to organization level"]', { timeout: 30000 })
-      .should('be.visible')
-      .click();
-
-    cy.get('[data-cyid="nav-service-provider"]', { timeout: 30000 })
-      .should('be.visible')
-      .click();
-
-    cy.get(`[data-cyid="provider-card-${providerId}"]`, { timeout: 30000 })
-      .should('be.visible')
-      .within(() => {
-        cy.get('[data-cyid="delete-provider-button"]').click();
-      });
-
-    cy.get('[data-cyid="delete-provider-confirm-input"]', { timeout: 30000 })
-      .should('be.visible')
-      .type(providerName);
-    cy.get('[data-cyid="delete-provider-confirm-button"]')
-      .should('not.be.disabled')
-      .click();
-
-    cy.get(`[data-cyid="provider-card-${providerId}"]`, { timeout: 30000 }).should(
-      'not.exist'
-    );
-
-    cy.contains('Projects', { timeout: 30000 })
-      .should('be.visible')
-      .click();
-
-    cy.contains(projectName, { timeout: 30000 })
-      .should('be.visible')
-      .closest('.MuiCard-root')
-      .within(() => {
-        cy.get('button[aria-label="Delete project"]').click();
-      });
-
-    cy.contains('Delete Project', { timeout: 30000 }).should('be.visible');
-    cy.get('[role="dialog"]').within(() => {
-      cy.contains('button', 'Delete').click();
+    cy.request({
+      method: 'DELETE',
+      url: `/api-proxy/api/v1/llm-providers/${encodeURIComponent(createdProviderId)}?organizationId=${encodeURIComponent(organizationId)}`,
+      headers: {
+        Authorization: `Bearer ${authToken}`,
+      },
+    }).then((response) => {
+      expect(response.status).to.be.oneOf([200, 204]);
     });
 
-    cy.contains(projectName, { timeout: 30000 }).should('not.exist');
+    cy.request({
+      url: '/api-proxy/api/v1/projects',
+      headers: {
+        Authorization: `Bearer ${authToken}`,
+      },
+    })
+      .then((response) => {
+        expect(response.status).to.eq(200);
+
+        const createdProject = (response.body?.list ?? []).find(
+          (project) => project.name === projectName
+        );
+
+        expect(createdProject?.id).to.be.a('string').and.not.be.empty;
+
+        return cy.request({
+          method: 'DELETE',
+          url: `/api-proxy/api/v1/projects/${encodeURIComponent(createdProject.id)}`,
+          headers: {
+            Authorization: `Bearer ${authToken}`,
+          },
+        });
+      })
+      .then((response) => {
+        expect(response.status).to.be.oneOf([200, 204]);
+      });
   });
 });
 

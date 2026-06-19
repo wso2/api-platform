@@ -8,7 +8,7 @@
     "start": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test:e2e": "CYPRESS_BASE_URL=${CYPRESS_BASE_URL:-https://host.docker.internal:5380} docker run --rm -v \"$(pwd):/e2e\" -w /e2e -e CYPRESS_BASE_URL cypress/included:13.17.0 cypress run --headless --browser electron --config-file cypress.config.js",
+    "test:e2e": "CYPRESS_BASE_URL=${CYPRESS_BASE_URL:-https://host.docker.internal:5380} docker run --rm --add-host=host.docker.internal:host-gateway -v \"$(pwd):/e2e\" -w /e2e -e CYPRESS_BASE_URL cypress/included:13.17.0 cypress run --headless --browser electron --config-file cypress.config.js",
     "test:e2e:local": "cypress run --headless --config-file cypress.config.js",
     "test:e2e:open": "CYPRESS_BASE_URL=${CYPRESS_BASE_URL:-https://localhost:5380} cypress open --e2e --config-file cypress.config.js"
   },

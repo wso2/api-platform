@@ -116,7 +116,7 @@ Use the following commands after the stack is up:
   make e2e-open
   ```
 
-`npm run test:e2e` runs against `https://host.docker.internal:5380`, which maps back to your local quickstart stack from inside the Cypress container. `npm run test:e2e:open` runs locally against `https://localhost:5380`.
+`npm run test:e2e` runs against `https://host.docker.internal:5380`, which maps back to your local quickstart stack from inside the Cypress container. The command adds an explicit `host-gateway` mapping so it also works on Linux Docker hosts. `npm run test:e2e:open` runs locally against `https://localhost:5380`.
 
 The quickstart login used by the tests is:
 
