@@ -1,5 +1,6 @@
 {{#pageHead}}
     <link rel="stylesheet" href="/technical-styles/api-flows.css">
+    <link rel="stylesheet" href="/technical-styles/settings-layout.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css" integrity="sha512-uf06llspW44/LZpHzHT6qBOIVODjWtv4MxCricRxkzvopAlSWnTf6hpZTFxuuZcuNE9CBQhqE0Seu1CoRk84nQ==" crossorigin="anonymous">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js" integrity="sha512-OeZ4Yrb/W7d2W4rAMOO0HQ9Ro/aWLtpW9BUSR2UOWnSV2hprXLkkYnnCGc9NeLUxxE4ZG7zN16UuT1Elqq8Opg==" crossorigin="anonymous"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/yaml/yaml.min.js" integrity="sha512-Prlj899DsOyGWU8noS4ZqQ8Z4jy+215JiZPxt/cT3ds3VqbwwsjSYZ64zCWQ/Z7AUZvymKGRllUSLPW5RKylNQ==" crossorigin="anonymous"></script>
@@ -9,37 +10,195 @@
     <script src='/technical-scripts/api-flows.js' defer></script>
 {{/pageScripts}}
 
-<div class="container mt-4 mb-4">
-    <div class="mb-3">
-        <a href="{{baseUrl}}/" class="d-inline-flex align-items-center text-muted"
-            style="text-decoration: none; font-size: 14px;">
-            <i class="fas fa-arrow-left me-2"></i>Home
-        </a>
-    </div>
-    <ul class="nav configure-tabs mb-4" id="viewConfigureTabs" role="tablist">
-        <li class="nav-item" role="presentation">
-            <button class="nav-link active" id="llms-tab-btn" type="button" role="tab"
-                aria-selected="true" aria-controls="llmsTabContent"
-                onclick="activateTab(this); history.replaceState(null,'',location.pathname+'#llm-instruction')">
-                <img src="{{base}}/images/llm-instructions-icon.svg" width="18" height="18" class="me-2" style="vertical-align:-3px;flex-shrink:0;" alt="">LLM Instructions
-            </button>
-        </li>
-        <li class="nav-item" role="presentation">
-            <button class="nav-link" id="workflows-tab-btn" type="button" role="tab"
-                aria-selected="false" aria-controls="workflowsTabContent"
-                onclick="activateTab(this); history.replaceState(null,'',location.pathname+'#apiflows')">
-                <i class="bi bi-diagram-3 me-2"></i>API Workflows
-            </button>
-        </li>
-    </ul>
-    <div id="viewConfigureTabContent">
-        <div id="llmsTabContent" role="tabpanel" aria-labelledby="llms-tab-btn">
-            {{> llms-config}}
-        </div>
-        <div id="workflowsTabContent" role="tabpanel" aria-labelledby="workflows-tab-btn" style="display:none;">
-            {{> api-flows}}
-        </div>
-    </div>
+<!-- Hidden tab buttons kept for api-flows.js compatibility -->
+<div style="display:none;" aria-hidden="true">
+  <button id="llms-tab-btn"      aria-controls="llmsTabContent"     type="button"></button>
+  <button id="workflows-tab-btn" aria-controls="workflowsTabContent" type="button"></button>
 </div>
 
+<div class="cfg-page">
+
+  <a href="{{baseUrl}}/" class="cfg-back-link">
+    <i class="bi bi-arrow-left"></i> Home
+  </a>
+  <h1 class="cfg-heading">Settings</h1>
+
+  <div class="cfg-layout">
+
+    <!-- ── Left sub-nav ── -->
+    <nav class="cfg-nav" aria-label="Settings navigation">
+
+      <div class="cfg-nav-section">AI &amp; DISCOVERY</div>
+      <div class="cfg-nav-items">
+        <a href="#cfg-llm" class="cfg-nav-item" data-panel="cfg-llm">
+          <i class="bi bi-stars"></i><span>LLM Instructions</span>
+        </a>
+        <a href="#cfg-workflows" class="cfg-nav-item" data-panel="cfg-workflows">
+          <i class="bi bi-diagram-3"></i><span>API Workflows</span>
+        </a>
+      </div>
+
+      <div class="cfg-nav-section">MANAGEMENT</div>
+      <div class="cfg-nav-items">
+        <a href="#cfg-apis" class="cfg-nav-item" data-panel="cfg-apis">
+          <i class="bi bi-boxes"></i><span>Manage APIs</span>
+        </a>
+        <a href="#cfg-orgs" class="cfg-nav-item" data-panel="cfg-orgs">
+          <i class="bi bi-building"></i><span>Manage Organizations</span>
+        </a>
+      </div>
+
+    </nav>
+
+    <!-- ── Content panes ── -->
+    <div class="cfg-content">
+
+      <!-- LLM Instructions -->
+      <div class="cfg-panel" id="cfg-llm">
+        <div id="llmsTabContent">
+          {{> llms-config}}
+        </div>
+      </div>
+
+      <!-- API Workflows -->
+      <div class="cfg-panel" id="cfg-workflows">
+        <div id="workflowsTabContent">
+          {{> api-flows}}
+        </div>
+      </div>
+
+      <!-- Manage APIs -->
+      <div class="cfg-panel" id="cfg-apis">
+        <div class="cfg-panel-header">
+          <div>
+            <h2 class="cfg-panel-title">Manage APIs</h2>
+            <p class="cfg-panel-desc">Publish, unpublish, and manage the APIs visible in this developer portal.</p>
+          </div>
+          <button class="cfg-btn-primary" disabled title="Backend not wired yet — UI preview only">
+            <i class="bi bi-plus"></i> Add API
+          </button>
+        </div>
+
+        <div class="cfg-table-wrap">
+          <table class="cfg-table">
+            <thead>
+              <tr>
+                <th>API</th>
+                <th>Type</th>
+                <th>Status</th>
+                <th style="width:40px;"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {{#orgAPIs}}
+              <tr>
+                <td>
+                  <div class="cfg-api-cell">
+                    <span class="cfg-api-avatar
+                      {{#if (eq apiType "GRAPHQL")}}cfg-api-avatar--graphql
+                      {{else if (eq apiType "WS")}}cfg-api-avatar--ws
+                      {{else if (eq apiType "SOAP")}}cfg-api-avatar--soap
+                      {{else}}cfg-api-avatar--rest{{/if}}">{{firstTwoLetters apiName}}</span>
+                    <span class="cfg-cell-name">{{apiName}}</span>
+                  </div>
+                </td>
+                <td>
+                  <span class="cfg-type-badge
+                    {{#if (eq apiType "GRAPHQL")}}cfg-type-badge--graphql
+                    {{else if (eq apiType "WS")}}cfg-type-badge--ws
+                    {{else if (eq apiType "SOAP")}}cfg-type-badge--soap
+                    {{else}}cfg-type-badge--rest{{/if}}">
+                    {{#if (eq apiType "WS")}}WebSocket
+                    {{else if (eq apiType "GRAPHQL")}}GraphQL
+                    {{else if (eq apiType "SOAP")}}SOAP
+                    {{else if (eq apiType "WEBSUB")}}WebSub
+                    {{else}}REST{{/if}}
+                  </span>
+                </td>
+                <td>
+                  <span class="cfg-status-badge cfg-status-published">
+                    <span class="cfg-status-dot"></span>Published
+                  </span>
+                </td>
+                <td class="cfg-cell-actions">
+                  <button class="cfg-action-btn" disabled title="Backend not wired yet — UI preview only">
+                    <i class="bi bi-three-dots-vertical"></i>
+                  </button>
+                </td>
+              </tr>
+              {{/orgAPIs}}
+              {{#unless orgAPIs.length}}
+              <tr>
+                <td colspan="4" class="cfg-empty-row">No APIs found.</td>
+              </tr>
+              {{/unless}}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Manage Organizations -->
+      <div class="cfg-panel" id="cfg-orgs">
+        <div class="cfg-panel-header">
+          <div>
+            <h2 class="cfg-panel-title">Manage Organizations</h2>
+            <p class="cfg-panel-desc">Organizations group members and their access to this developer portal.</p>
+          </div>
+        </div>
+        <div class="cfg-orgs-link-panel">
+          <div class="cfg-orgs-link-icon"><i class="bi bi-building"></i></div>
+          <div class="cfg-orgs-link-body">
+            <div class="cfg-orgs-link-title">Organization settings</div>
+            <p class="cfg-orgs-link-desc">Manage organizations, views, labels, and API providers from the organization settings page.</p>
+            <a href="/{{loggedOrg}}/configure" class="cfg-btn-primary cfg-orgs-link-btn">
+              <i class="bi bi-box-arrow-up-right"></i> Open Organization Settings
+            </a>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /.cfg-content -->
+  </div><!-- /.cfg-layout -->
+</div><!-- /.cfg-page -->
+
 {{> alert}}
+
+<script>
+(function () {
+  var PANELS      = ['cfg-llm', 'cfg-workflows', 'cfg-apis', 'cfg-orgs'];
+  var navItems    = document.querySelectorAll('.cfg-nav-item');
+  var panels      = document.querySelectorAll('.cfg-panel');
+
+  function activate(id) {
+    if (!PANELS.includes(id)) id = 'cfg-llm';
+
+    navItems.forEach(function (a) {
+      a.classList.toggle('active', a.dataset.panel === id);
+    });
+    panels.forEach(function (p) {
+      p.style.display = p.id === id ? 'flex' : 'none';
+    });
+
+    // Ensure LLM content is visible when switching to that panel
+    // (api-flows.js may have hidden it via activateTab)
+    if (id === 'cfg-llm') {
+      var el = document.getElementById('llmsTabContent');
+      if (el) el.style.display = 'block';
+    }
+
+    history.replaceState(null, '', location.pathname + '#' + id);
+  }
+
+  navItems.forEach(function (a) {
+    a.addEventListener('click', function (e) {
+      e.preventDefault();
+      activate(a.dataset.panel);
+    });
+  });
+
+  // Activate from hash or default; also support legacy #apiflows / #llm-instruction hashes
+  var hash = location.hash.replace('#', '');
+  var legacyMap = { 'apiflows': 'cfg-workflows', 'llm-instruction': 'cfg-llm' };
+  activate(legacyMap[hash] || hash);
+}());
+</script>

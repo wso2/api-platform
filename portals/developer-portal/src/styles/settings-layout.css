@@ -1,0 +1,352 @@
+/* ── Settings page layout ────────────────────────────────── */
+
+:root {
+  --wso2-gradient: linear-gradient(135deg, #ef4223 0%, #ff8636 100%);
+}
+
+.cfg-page {
+  padding: 24px 36px 40px;
+}
+
+.cfg-back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #637282;
+  font-size: 0.844rem;
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.cfg-back-link:hover { color: #1a2433; }
+
+.cfg-heading {
+  margin: 14px 0 22px;
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #1a2433;
+}
+
+/* ── Two-column layout ───────────────────────────────────── */
+
+.cfg-layout {
+  display: flex;
+  gap: 32px;
+  align-items: flex-start;
+}
+
+/* ── Left sub-nav ────────────────────────────────────────── */
+
+.cfg-nav {
+  width: 252px;
+  flex: none;
+}
+
+.cfg-nav-section {
+  font-size: 0.688rem;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  color: #9aa3af;
+  padding: 0 12px;
+  text-transform: uppercase;
+}
+
+.cfg-nav-section + .cfg-nav-items { margin-top: 10px; }
+
+.cfg-nav-items {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-bottom: 22px;
+}
+
+.cfg-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 10px 12px;
+  border-radius: 9px;
+  cursor: pointer;
+  text-decoration: none;
+  font-size: 0.844rem;
+  font-weight: 500;
+  color: #44505f;
+  background: transparent;
+  transition: background-color 0.15s;
+  white-space: nowrap;
+}
+
+.cfg-nav-item i { font-size: 1rem; flex: none; }
+
+.cfg-nav-item:hover {
+  background: #f1f4f8;
+  color: #1a2433;
+  text-decoration: none;
+}
+
+.cfg-nav-item.active {
+  background: #eef4fb;
+  color: #1f6feb;
+  font-weight: 600;
+}
+
+/* ── Content area ────────────────────────────────────────── */
+
+.cfg-content {
+  flex: 1;
+  min-width: 0;
+  border-left: 1px solid #e6eaf0;
+  padding-left: 32px;
+}
+
+.cfg-panel {
+  display: none;
+  flex-direction: column;
+}
+
+.cfg-panel.active {
+  display: flex;
+}
+
+/* ── Panel header (title + action button) ───────────────── */
+
+.cfg-panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 22px;
+}
+
+.cfg-panel-title {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #1a2433;
+}
+
+.cfg-panel-desc {
+  margin: 6px 0 0;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: #637282;
+}
+
+/* ── Primary button ──────────────────────────────────────── */
+
+.cfg-btn-primary {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--wso2-gradient);
+  color: #fff;
+  border: none;
+  border-radius: 20px;
+  padding: 11px 20px;
+  font-size: 0.844rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: none;
+  transition: opacity 0.15s;
+  white-space: nowrap;
+}
+
+.cfg-btn-primary:hover { opacity: 0.9; color: #fff; text-decoration: none; }
+
+.cfg-btn-primary:disabled {
+  opacity: 0.55;
+  cursor: default;
+  pointer-events: none;
+}
+
+/* ── Manage APIs table ───────────────────────────────────── */
+
+.cfg-table-wrap {
+  border: 1px solid #e6eaf0;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.cfg-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.cfg-table thead tr { background: #f6f8fb; }
+
+.cfg-table th {
+  text-align: left;
+  padding: 12px 18px;
+  font-size: 0.719rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: #8a93a0;
+  text-transform: uppercase;
+}
+
+.cfg-table tbody tr { border-top: 1px solid #eef1f5; }
+
+.cfg-table tbody tr:hover { background: #fafbfc; }
+
+.cfg-table td { padding: 13px 18px; }
+
+/* API name cell */
+.cfg-api-cell {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+
+.cfg-api-avatar {
+  width: 32px;
+  height: 32px;
+  flex: none;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.cfg-api-avatar--rest    { background: #e6f2fb; color: #0277bd; }
+.cfg-api-avatar--graphql { background: #fce4ef; color: #d6336c; }
+.cfg-api-avatar--soap    { background: #ece9fb; color: #6741d9; }
+.cfg-api-avatar--ws      { background: #fff1e6; color: #e65100; }
+
+.cfg-cell-name {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #1a2433;
+}
+
+/* Type badge */
+.cfg-type-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 0.688rem;
+  font-weight: 600;
+}
+
+.cfg-type-badge--rest    { background: #e6f2fb; color: #0277bd; }
+.cfg-type-badge--graphql { background: #fce4ef; color: #d6336c; }
+.cfg-type-badge--soap    { background: #ece9fb; color: #6741d9; }
+.cfg-type-badge--ws      { background: #fff1e6; color: #e65100; }
+
+/* Status badge */
+.cfg-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 20px;
+  padding: 5px 11px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.cfg-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex: none;
+}
+
+.cfg-status-published {
+  background: #e6f4ea;
+  color: #2e7d32;
+}
+
+.cfg-status-published .cfg-status-dot { background: #2e7d32; }
+
+.cfg-status-draft {
+  background: #f1f4f8;
+  color: #8a93a0;
+}
+
+.cfg-status-draft .cfg-status-dot { background: #8a93a0; }
+
+/* Actions cell */
+.cfg-cell-actions { text-align: center; }
+
+.cfg-action-btn {
+  background: none;
+  border: none;
+  color: #9aa3af;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition: color 0.15s, background 0.15s;
+}
+
+.cfg-action-btn:hover { color: #1a2433; background: #f1f4f8; }
+.cfg-action-btn:disabled { opacity: 0.4; cursor: default; pointer-events: none; }
+
+.cfg-empty-row {
+  text-align: center;
+  color: #9aa3af;
+  font-size: 0.875rem;
+  padding: 28px 18px !important;
+}
+
+/* ── Manage Organizations link panel ─────────────────────── */
+
+.cfg-orgs-link-panel {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  background: #f6f8fb;
+  border: 1px solid #e6eaf0;
+  border-radius: 12px;
+  padding: 22px 24px;
+}
+
+.cfg-orgs-link-icon {
+  flex: none;
+  width: 46px;
+  height: 46px;
+  border-radius: 11px;
+  background: #e6f2fb;
+  color: #0277bd;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.375rem;
+}
+
+.cfg-orgs-link-body { flex: 1; min-width: 0; }
+
+.cfg-orgs-link-title {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: #1a2433;
+  line-height: 1.3;
+}
+
+.cfg-orgs-link-desc {
+  margin: 4px 0 16px;
+  font-size: 0.844rem;
+  line-height: 1.5;
+  color: #637282;
+}
+
+.cfg-orgs-link-btn { margin-top: 0; }
+
+/* ── Responsive ──────────────────────────────────────────── */
+
+@media (max-width: 900px) {
+  .cfg-layout { flex-direction: column; gap: 0; }
+  .cfg-nav {
+    width: 100%;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 20px;
+  }
+  .cfg-nav-section { display: none; }
+  .cfg-nav-items { flex-direction: row; flex-wrap: wrap; margin-bottom: 0; }
+  .cfg-content { border-left: none; padding-left: 0; border-top: 1px solid #e6eaf0; padding-top: 20px; }
+}

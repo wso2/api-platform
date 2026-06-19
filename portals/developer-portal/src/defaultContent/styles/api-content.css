@@ -415,13 +415,14 @@ hr {
   border-radius: 50%;
   object-fit: cover;
   margin-bottom: 0;
-  float: right;
+  float: right
 }
 
 .api-version {
   font-weight: 700;
-  margin-bottom: 0.5rem;
+  margin: 0;
   color: var(--dark-text-color);
+  padding: 4px 0;
 }
 
 .api-badge-custom1 {

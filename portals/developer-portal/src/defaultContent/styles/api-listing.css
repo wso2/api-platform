@@ -256,7 +256,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-top: auto;
+  margin-top: 18px;
   padding-top: 18px;
   border-top: 1px solid #eef1f5;
   position: relative;

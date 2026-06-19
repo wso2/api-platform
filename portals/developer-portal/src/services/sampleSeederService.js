@@ -42,6 +42,32 @@ function findDefinitionPath(apiDir) {
 }
 
 /**
+ * Recursively read docs/ under an API directory.
+ * Top-level .md files → TYPE = DOC_Other
+ * Files in a subdirectory (e.g. docs/FAQ/) → TYPE = DOC_FAQ
+ * Returns [{ type, fileName, content }]
+ */
+function readDocFiles(docsDir, subDir) {
+    const docs = [];
+    if (!fs.existsSync(docsDir)) return docs;
+    for (const entry of fs.readdirSync(docsDir)) {
+        if (entry.startsWith('.')) continue;
+        const full = path.join(docsDir, entry);
+        if (fs.statSync(full).isDirectory()) {
+            docs.push(...readDocFiles(full, entry));
+        } else if (/\.(md|MD)$/.test(entry)) {
+            const docType = subDir || constants.DOC_TYPES.DOCS.OTHER;
+            docs.push({
+                type: constants.DOC_TYPES.DOC_ID + docType,
+                fileName: entry,
+                content: Buffer.from(fs.readFileSync(full)),
+            });
+        }
+    }
+    return docs;
+}
+
+/**
  * Deploy all sample APIs from samples/apis/ into the given org.
  * Already-existing APIs (UniqueConstraintError) are skipped silently.
  * Returns an array of { name, status ('ok'|'exists'|'failed'), apiId?, error? }.
@@ -114,6 +140,12 @@ async function seedSampleAPIs(orgId) {
                     const isGraphQL = apiMetadata.apiInfo.apiType === constants.API_TYPE.GRAPHQL;
                     const storedName = isGraphQL ? constants.FILE_NAME.API_DEFINITION_GRAPHQL : apiFileName;
                     await apiFileDao.store(apiDefinitionFile, storedName, apiId, constants.DOC_TYPES.API_DEFINITION, t);
+                }
+
+                // Documentation files from docs/
+                const docs = readDocFiles(path.join(apiDir, 'docs'), '');
+                if (docs.length) {
+                    await apiFileDao.storeMany(docs, apiId, t);
                 }
             });
 
