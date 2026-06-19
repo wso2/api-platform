@@ -1,0 +1,255 @@
+/* Login page — ln-* prefix (loaded alongside os.css) */
+
+/* ── Brand panel: feature list ──────────────────────────────── */
+.ln-features {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  margin-top: 38px;
+}
+
+.ln-feature-item {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.ln-feature-icon {
+  flex: none;
+  width: 42px;
+  height: 42px;
+  border-radius: 11px;
+  background: rgba(255,255,255,.06);
+  border: 1px solid rgba(255,255,255,.12);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #f8a35a;
+  font-size: 17px;
+}
+
+.ln-feature-text {
+  font-size: 15.5px;
+  line-height: 1.45;
+  color: rgba(232,242,251,.92);
+}
+
+/* ── Right panel width override ─────────────────────────────── */
+.ln-form-inner {
+  width: 392px;
+}
+
+/* ── Form fields ────────────────────────────────────────────── */
+.ln-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  margin-top: 34px;
+}
+
+/* Password label row (label + forgot link) */
+.ln-pw-label-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 8px;
+}
+
+.ln-pw-label-row .os-field-label { margin-bottom: 0; }
+
+.ln-forgot-link {
+  font-size: 12.5px;
+  font-weight: 500;
+  line-height: 1;
+  color: #1f6feb;
+  text-decoration: none;
+}
+
+.ln-forgot-link:hover { text-decoration: underline; }
+
+/* Password toggle button */
+.ln-pw-input { padding-right: 44px; }
+
+.ln-pw-toggle {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  padding: 4px;
+  cursor: pointer;
+  color: #9aa7b4;
+  font-size: 16px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+}
+
+.ln-pw-toggle:hover { color: #44505f; }
+
+/* Remember me checkbox */
+.ln-remember {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 13.5px;
+  line-height: 1;
+  color: #4a5868;
+  cursor: pointer;
+  user-select: none;
+}
+
+.ln-remember-check {
+  width: 16px;
+  height: 16px;
+  accent-color: #1f6feb;
+  cursor: pointer;
+  flex: none;
+}
+
+/* Sign in button — reuses os-continue-btn, just change the tag */
+.ln-signin-btn {
+  margin-top: 4px;
+}
+
+/* Error banner */
+.ln-error-banner {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-top: 18px;
+  padding: 11px 14px;
+  background: #fff2f2;
+  border: 1px solid #fcc8c8;
+  border-radius: 8px;
+  font-size: 13.5px;
+  line-height: 1.45;
+  color: #c62828;
+}
+
+.ln-error-banner i { flex: none; font-size: 15px; }
+
+/* ── Social buttons (non-local-auth branch) ─────────────────── */
+.ln-social-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 28px;
+}
+
+.ln-social-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  padding: 12px 16px;
+  border: 1px solid #d4dde6;
+  border-radius: 8px;
+  background: #fff;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  color: #1a2433;
+  cursor: pointer;
+  text-decoration: none;
+  transition: background .14s, border-color .14s;
+}
+
+.ln-social-btn:hover {
+  background: #f4f7fb;
+  border-color: #bcc8d4;
+  color: #1a2433;
+}
+
+.ln-social-btn--outline {
+  background: transparent;
+  color: #44505f;
+}
+
+.ln-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: #9aa7b4;
+  font-size: 12.5px;
+  font-weight: 500;
+  margin: 4px 0;
+}
+
+.ln-divider::before,
+.ln-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: #e1e7ee;
+}
+
+/* ── Enterprise card (fallback for toggle) ──────────────────── */
+.enterprise-login { width: 100%; }
+
+.enterprise-login-form-group { margin-bottom: 14px; }
+
+.enterprise-login-input {
+  width: 100%;
+  border: 1px solid #d4dde6;
+  border-radius: 8px;
+  padding: 13px 14px;
+  font-family: inherit;
+  font-size: 14.5px;
+  line-height: 1;
+  color: #152433;
+  background: #fff;
+  outline: none;
+  transition: border-color .2s, box-shadow .2s;
+}
+
+.enterprise-login-input:focus {
+  border-color: #1f6feb;
+  box-shadow: 0 0 0 3px rgba(31,111,235,.14);
+}
+
+.enterprise-login-input::placeholder { color: #9aa7b4; }
+
+.common-btn-primary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 14px;
+  border: none;
+  border-radius: 20px;
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  color: #fff;
+  background: var(--wso2-gradient);
+  cursor: pointer;
+  box-shadow: 0 8px 20px rgba(239,66,35,.22);
+  transition: opacity .2s;
+  text-decoration: none;
+}
+
+.common-btn-primary:hover { opacity: .9; }
+
+.common-btn-outlined {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 13px;
+  border: 1px solid #d4dde6;
+  border-radius: 20px;
+  font-family: inherit;
+  font-size: 14.5px;
+  font-weight: 500;
+  color: #44505f;
+  background: #fff;
+  cursor: pointer;
+  text-decoration: none;
+  transition: background .14s, border-color .14s;
+  text-align: center;
+}
+
+.common-btn-outlined:hover { background: #f4f7fb; border-color: #bcc8d4; }
