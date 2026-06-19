@@ -85,7 +85,7 @@ func NewGatewayInternalAPIService(apiRepo repository.APIRepository, subscription
 }
 
 // GetSecretsByGateway returns secrets referenced by artifacts deployed on this gateway.
-// Handles are sourced from deployment_secret_refs (maintained at deploy time) so no
+// Handles are sourced from artifact_secret_refs (gateway_id rows, maintained at deploy time) so no
 // config blob JOIN or application-level regex is needed here.
 // If updatedAfter is set, only secrets updated after that time are included.
 func (s *GatewayInternalAPIService) GetSecretsByGateway(orgID, gatewayID string, updatedAfter *time.Time) ([]*model.Secret, error) {

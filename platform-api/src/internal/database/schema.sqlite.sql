@@ -586,15 +586,21 @@ CREATE INDEX IF NOT EXISTS idx_secrets_project_id ON secrets(project_id);
 -- Pre-computed secret handle references per deployed artifact per gateway.
 -- Populated at deploy time (status→DEPLOYED) and cleared at undeploy time.
 -- Eliminates the 6-table JOIN + application-level regex on every GW secret sync.
-CREATE TABLE IF NOT EXISTS deployment_secret_refs (
+CREATE TABLE IF NOT EXISTS artifact_secret_refs (
     organization_id TEXT NOT NULL,
-    gateway_id      TEXT NOT NULL,
     artifact_uuid   TEXT NOT NULL,
     secret_handle   TEXT NOT NULL,
+    gateway_id      TEXT NOT NULL DEFAULT '', -- '' = artifact-level (current config); gateway UUID = deployed
     created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (organization_id, gateway_id, artifact_uuid, secret_handle),
-    FOREIGN KEY (organization_id) REFERENCES organizations(uuid) ON DELETE CASCADE
+    PRIMARY KEY (organization_id, artifact_uuid, secret_handle, gateway_id),
+    FOREIGN KEY (organization_id) REFERENCES organizations(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (artifact_uuid)   REFERENCES artifacts(uuid)     ON DELETE CASCADE
 );
 
-CREATE INDEX IF NOT EXISTS idx_dsr_gateway_org
-    ON deployment_secret_refs(gateway_id, organization_id);
+-- Fast delete-protection lookups: does any row reference this secret?
+CREATE INDEX IF NOT EXISTS idx_asr_org_handle
+    ON artifact_secret_refs(organization_id, secret_handle);
+
+-- Fast gateway sync lookups: which handles does this gateway need?
+CREATE INDEX IF NOT EXISTS idx_asr_org_gateway
+    ON artifact_secret_refs(organization_id, gateway_id);

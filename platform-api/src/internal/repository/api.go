@@ -87,6 +87,10 @@ func (r *APIRepo) CreateAPI(api *model.API) error {
 		return err
 	}
 
+	if err := upsertArtifactSecretRefs(tx, r.db, api.OrganizationID, api.ID, []byte(configurationJSON)); err != nil {
+		return fmt.Errorf("failed to upsert artifact secret refs: %w", err)
+	}
+
 	return tx.Commit()
 }
 
@@ -370,6 +374,10 @@ func (r *APIRepo) UpdateAPI(api *model.API) error {
 		return err
 	}
 
+	if err := upsertArtifactSecretRefs(tx, r.db, api.OrganizationID, api.ID, []byte(configurationJSON)); err != nil {
+		return fmt.Errorf("failed to upsert artifact secret refs: %w", err)
+	}
+
 	return tx.Commit()
 }
 
@@ -454,10 +462,10 @@ func deserializePolicies(policiesJSON sql.NullString) ([]model.Policy, error) {
 	return policies, nil
 }
 
-func serializeAPIConfigurations(config model.RestAPIConfig) (any, error) {
+func serializeAPIConfigurations(config model.RestAPIConfig) (string, error) {
 	configJSON, err := json.Marshal(config)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 
 	return configJSON, nil

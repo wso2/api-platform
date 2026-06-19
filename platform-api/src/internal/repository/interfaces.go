@@ -138,7 +138,7 @@ type DeploymentRepository interface {
 	GetAllDeploymentsByGateway(gatewayID, orgUUID string, since *time.Time) ([]*model.DeploymentInfo, error)
 	GetDeploymentContentByIDs(deploymentIDs []string, orgUUID string, gatewayUUID string) (map[string]*model.DeploymentContent, error)
 	// GetSecretHandlesByGateway returns the distinct secret handles referenced by all
-	// artifacts currently deployed on a gateway, sourced from deployment_secret_refs.
+	// artifacts currently deployed on a gateway, sourced from artifact_secret_refs (gateway_id rows).
 	GetSecretHandlesByGateway(gatewayID, orgUUID string) ([]string, error)
 }
 
@@ -309,8 +309,7 @@ type SecretRepository interface {
 	Count(orgID string) (int, error)
 	Update(s *model.Secret) error
 	SoftDelete(orgID, handle, updatedBy string) error
-	FindLLMProviderRefs(orgID, handle string) ([]model.SecretReference, error)
-	FindAPIRefs(orgID, handle string) ([]model.SecretReference, error)
+	FindRefs(orgID, handle string) ([]model.SecretReference, error)
 	Exists(orgID, handle string) (bool, error)
 }
 
