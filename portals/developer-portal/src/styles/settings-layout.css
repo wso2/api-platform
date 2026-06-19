@@ -350,3 +350,546 @@
   .cfg-nav-items { flex-direction: row; flex-wrap: wrap; margin-bottom: 0; }
   .cfg-content { border-left: none; padding-left: 0; border-top: 1px solid #e6eaf0; padding-top: 20px; }
 }
+
+/* ── Table extras (version / context cells) ──────────────── */
+
+.cfg-cell-version {
+  font-family: monospace;
+  font-size: 0.8125rem;
+  color: #637282;
+  padding: 13px 14px !important;
+}
+
+.cfg-cell-context {
+  font-family: monospace;
+  font-size: 0.6875rem;
+  color: #9aa3af;
+  margin-top: 3px;
+}
+
+/* ── Dropdown menu ───────────────────────────────────────── */
+
+.cfg-cell-actions { position: relative; text-align: center; }
+
+.cfg-dropdown {
+  position: absolute;
+  top: calc(100% - 6px);
+  right: 8px;
+  z-index: 50;
+  width: 148px;
+  background: #fff;
+  border: 1px solid #e6eaf0;
+  border-radius: 10px;
+  box-shadow: 0 10px 28px rgba(20, 40, 70, 0.16);
+  padding: 6px;
+  flex-direction: column;
+  display: none;
+}
+
+.cfg-dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 9px 10px;
+  border: none;
+  background: none;
+  border-radius: 7px;
+  font-size: 0.844rem;
+  font-weight: 500;
+  color: #1a2433;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.12s;
+}
+
+.cfg-dropdown-item:hover:not(:disabled) { background: #f4f6f9; }
+.cfg-dropdown-item--danger { color: #c62828; }
+.cfg-dropdown-item--danger:hover:not(:disabled) { background: #fdeaea; }
+.cfg-dropdown-item:disabled { opacity: 0.45; cursor: default; pointer-events: none; }
+
+/* ── Wizard container ────────────────────────────────────── */
+
+#cfg-apis-wizard {
+  flex-direction: column;
+}
+
+.cfg-wizard-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: #637282;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.cfg-wizard-back:hover { color: #1a2433; text-decoration: none; }
+
+/* ── Stepper ─────────────────────────────────────────────── */
+
+.cfg-stepper {
+  display: flex;
+  align-items: center;
+  margin-top: 22px;
+  margin-bottom: 0;
+}
+
+.cfg-step {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: default;
+}
+
+.cfg-step-circle {
+  width: 28px;
+  height: 28px;
+  flex: none;
+  border-radius: 50%;
+  background: #eef1f5;
+  color: #8a93a0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.781rem;
+  font-weight: 700;
+  line-height: 1;
+  transition: background 0.2s, color 0.2s;
+}
+
+.cfg-step--active .cfg-step-circle { background: #1f6feb; color: #fff; }
+.cfg-step--done   .cfg-step-circle { background: #2e7d32; color: #fff; }
+.cfg-step--done { cursor: pointer; }
+
+.cfg-step-label {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: #9aa3af;
+  white-space: nowrap;
+  transition: color 0.2s;
+}
+
+.cfg-step--active .cfg-step-label { color: #1f6feb; }
+.cfg-step--done   .cfg-step-label { color: #1a2433; }
+
+.cfg-step-connector {
+  flex: 1;
+  height: 2px;
+  min-width: 24px;
+  background: #e6eaf0;
+  margin: 0 14px;
+  transition: background 0.2s;
+}
+
+.cfg-step-connector--done { background: #2e7d32; }
+
+/* ── Wizard step panels ──────────────────────────────────── */
+
+.cfg-wizard-step {
+  margin-top: 26px;
+  max-width: 680px;
+  display: flex;
+  flex-direction: column;
+}
+
+.cfg-wstep-desc {
+  margin: 0 0 18px;
+  font-size: 0.844rem;
+  line-height: 1.55;
+  color: #637282;
+}
+
+/* ── Wizard form ─────────────────────────────────────────── */
+
+.cfg-form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+}
+
+.cfg-form-group label {
+  display: block;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: #1a2433;
+  margin-bottom: 8px;
+}
+
+.cfg-form-group .required { color: #c62828; }
+
+.cfg-form-input {
+  width: 100%;
+  border: 1px solid #d0d7de;
+  border-radius: 8px;
+  padding: 11px 13px;
+  font-size: 0.875rem;
+  font-family: inherit;
+  color: #1a2433;
+  background: #fff;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  appearance: auto;
+}
+
+.cfg-form-input:focus {
+  border-color: #1f6feb;
+  box-shadow: 0 0 0 3px rgba(31, 111, 235, 0.12);
+}
+
+.cfg-form-input--mono { font-family: monospace; font-size: 0.8125rem; }
+
+/* ── File upload zone ────────────────────────────────────── */
+
+.cfg-upload-zone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 42px 20px;
+  border: 1.5px dashed #c3d0de;
+  border-radius: 14px;
+  background: #f8fafc;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.cfg-upload-zone:hover { border-color: #1f6feb; background: #f1f6fd; }
+.cfg-upload-zone input[type=file] { display: none; }
+
+.cfg-upload-icon {
+  width: 54px;
+  height: 54px;
+  border-radius: 13px;
+  background: #e6f2fb;
+  color: #0277bd;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
+}
+
+.cfg-upload-label {
+  font-size: 0.906rem;
+  font-weight: 600;
+  color: #1a2433;
+}
+
+.cfg-upload-label span { color: #1f6feb; }
+.cfg-upload-hint { font-size: 0.781rem; color: #9aa3af; }
+
+/* ── Spec chip (uploaded file indicator) ─────────────────── */
+
+.cfg-spec-chip {
+  display: none;
+  align-items: center;
+  gap: 12px;
+  margin-top: 16px;
+  border: 1px solid #d4e7d9;
+  background: #f3faf4;
+  border-radius: 10px;
+  padding: 13px 15px;
+}
+
+.cfg-spec-chip.visible { display: flex; }
+
+.cfg-spec-icon {
+  width: 34px;
+  height: 34px;
+  flex: none;
+  border-radius: 8px;
+  background: #e6f4ea;
+  color: #2e7d32;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1rem;
+}
+
+.cfg-spec-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.844rem;
+  font-weight: 600;
+  color: #1a2433;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cfg-spec-sub { font-size: 0.719rem; color: #637282; margin-top: 2px; }
+
+/* ── Docs upload (compact variant) ──────────────────────── */
+
+.cfg-upload-compact {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 11px;
+  padding: 22px;
+  border: 1.5px dashed #c3d0de;
+  border-radius: 12px;
+  background: #f8fafc;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.cfg-upload-compact:hover { border-color: #1f6feb; background: #f1f6fd; }
+.cfg-upload-compact input[type=file] { display: none; }
+
+.cfg-docs-empty {
+  margin-top: 16px;
+  font-size: 0.8125rem;
+  color: #9aa3af;
+  text-align: center;
+  padding: 14px;
+}
+
+.cfg-docs-list {
+  margin-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.cfg-docs-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid #e6eaf0;
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+
+.cfg-docs-icon {
+  width: 32px;
+  height: 32px;
+  flex: none;
+  border-radius: 8px;
+  background: #eef1f5;
+  color: #52606d;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.9rem;
+}
+
+.cfg-docs-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.844rem;
+  font-weight: 600;
+  color: #1a2433;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cfg-docs-remove {
+  color: #9aa3af;
+  cursor: pointer;
+  padding: 5px;
+  border: none;
+  background: none;
+  border-radius: 6px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.12s, background 0.12s;
+}
+
+.cfg-docs-remove:hover { color: #c62828; background: #fdeaea; }
+
+/* ── Review step ─────────────────────────────────────────── */
+
+.cfg-review-section {
+  border: 1px solid #e6eaf0;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.cfg-review-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 18px;
+  background: #f6f8fb;
+}
+
+.cfg-review-header + .cfg-review-header {
+  border-top: 1px solid #eef1f5;
+}
+
+.cfg-review-header-title {
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: #8a93a0;
+  text-transform: uppercase;
+}
+
+.cfg-review-edit {
+  font-size: 0.781rem;
+  font-weight: 600;
+  color: #1f6feb;
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 0;
+}
+
+.cfg-review-edit:hover { text-decoration: underline; }
+
+.cfg-review-body { padding: 8px 18px 16px; }
+
+.cfg-review-grid {
+  display: grid;
+  grid-template-columns: 160px 1fr;
+  gap: 4px 16px;
+  font-size: 0.844rem;
+  line-height: 1.7;
+}
+
+.cfg-review-label { color: #8a93a0; }
+.cfg-review-value { color: #1a2433; font-weight: 600; }
+.cfg-review-value--mono { font-family: monospace; font-size: 0.8125rem; font-weight: 400; }
+
+/* ── Wizard footer ───────────────────────────────────────── */
+
+.cfg-wizard-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 26px;
+  padding-top: 18px;
+  border-top: 1px solid #e6eaf0;
+}
+
+.cfg-wizard-actions-right {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.cfg-btn-ghost {
+  background: none;
+  border: none;
+  color: #637282;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 11px 4px;
+}
+
+.cfg-btn-ghost:hover { color: #1a2433; }
+
+.cfg-btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: #fff;
+  border: 1px solid #cdd8e6;
+  color: #1f3d5c;
+  border-radius: 20px;
+  padding: 11px 20px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+  text-decoration: none;
+}
+
+.cfg-btn-secondary:hover { background: #f3f7fc; color: #1f3d5c; text-decoration: none; }
+
+/* ── Delete confirmation modal ───────────────────────────── */
+
+.cfg-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(20, 40, 70, 0.34);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.cfg-modal {
+  width: 420px;
+  max-width: calc(100vw - 32px);
+  background: #fff;
+  border-radius: 16px;
+  padding: 30px;
+  box-shadow: 0 24px 60px rgba(10, 25, 50, 0.34);
+  animation: cfg-pop 0.28s ease;
+}
+
+@keyframes cfg-pop {
+  from { opacity: 0; transform: translateY(10px) scale(0.985); }
+  to   { opacity: 1; transform: none; }
+}
+
+.cfg-modal-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 16px;
+}
+
+.cfg-modal-icon {
+  width: 46px;
+  height: 46px;
+  flex: none;
+  border-radius: 11px;
+  background: #fdeaea;
+  color: #c62828;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.25rem;
+}
+
+.cfg-modal-title {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: #1a2433;
+}
+
+.cfg-modal-body {
+  font-size: 0.875rem;
+  line-height: 1.6;
+  color: #56657a;
+  margin: 0 0 24px;
+}
+
+.cfg-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.cfg-btn-danger {
+  background: #c62828;
+  border: none;
+  color: #fff;
+  border-radius: 20px;
+  padding: 10px 22px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.cfg-btn-danger:hover { opacity: 0.9; }
+.cfg-btn-danger:disabled { opacity: 0.45; cursor: default; pointer-events: none; }
+
+/* ── Responsive additions ────────────────────────────────── */
+
+@media (max-width: 680px) {
+  .cfg-form-grid { grid-template-columns: 1fr; }
+  .cfg-step-label { display: none; }
+  .cfg-stepper { gap: 0; }
+}

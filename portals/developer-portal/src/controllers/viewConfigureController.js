@@ -61,6 +61,7 @@ const loadViewSettingsPage = async (req, res) => {
             apiHandle: api.API_HANDLE,
             apiDescription: api.API_DESCRIPTION,
             apiType: api.API_TYPE,
+            apiVersion: api.API_VERSION,
             productionUrl: api.PRODUCTION_URL,
             agentVisibility: api.AGENT_VISIBILITY
         }));

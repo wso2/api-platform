@@ -69,72 +69,244 @@
 
       <!-- Manage APIs -->
       <div class="cfg-panel" id="cfg-apis">
-        <div class="cfg-panel-header">
-          <div>
-            <h2 class="cfg-panel-title">Manage APIs</h2>
-            <p class="cfg-panel-desc">Publish, unpublish, and manage the APIs visible in this developer portal.</p>
+
+        <!-- ── List view ── -->
+        <div id="cfg-apis-list">
+          <div class="cfg-panel-header">
+            <div>
+              <h2 class="cfg-panel-title">Manage APIs</h2>
+              <p class="cfg-panel-desc">Add, edit, and remove the APIs visible in this developer portal.</p>
+            </div>
+            <button class="cfg-btn-primary" id="cfg-add-api-btn" type="button">
+              <i class="bi bi-plus"></i> Add API
+            </button>
           </div>
-          <button class="cfg-btn-primary" disabled title="Backend not wired yet — UI preview only">
-            <i class="bi bi-plus"></i> Add API
-          </button>
+
+          <div class="cfg-table-wrap">
+            <table class="cfg-table">
+              <thead>
+                <tr>
+                  <th>API</th>
+                  <th>Type</th>
+                  <th>Version</th>
+                  <th>Status</th>
+                  <th style="width:52px;"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {{#orgAPIs}}
+                <tr>
+                  <td>
+                    <div class="cfg-api-cell">
+                      <span class="cfg-api-avatar
+                        {{#if (eq apiType "GRAPHQL")}}cfg-api-avatar--graphql
+                        {{else if (eq apiType "WS")}}cfg-api-avatar--ws
+                        {{else if (eq apiType "SOAP")}}cfg-api-avatar--soap
+                        {{else}}cfg-api-avatar--rest{{/if}}">{{firstTwoLetters apiName}}</span>
+                      <div>
+                        <div class="cfg-cell-name">{{apiName}}</div>
+                        <div class="cfg-cell-context">/{{apiHandle}}</div>
+                      </div>
+                    </div>
+                  </td>
+                  <td>
+                    <span class="cfg-type-badge
+                      {{#if (eq apiType "GRAPHQL")}}cfg-type-badge--graphql
+                      {{else if (eq apiType "WS")}}cfg-type-badge--ws
+                      {{else if (eq apiType "SOAP")}}cfg-type-badge--soap
+                      {{else}}cfg-type-badge--rest{{/if}}">
+                      {{#if (eq apiType "WS")}}WebSocket
+                      {{else if (eq apiType "GRAPHQL")}}GraphQL
+                      {{else if (eq apiType "SOAP")}}SOAP
+                      {{else if (eq apiType "WEBSUB")}}WebSub
+                      {{else}}REST{{/if}}
+                    </span>
+                  </td>
+                  <td class="cfg-cell-version">{{apiVersion}}</td>
+                  <td>
+                    <span class="cfg-status-badge cfg-status-published">
+                      <span class="cfg-status-dot"></span>Published
+                    </span>
+                  </td>
+                  <td class="cfg-cell-actions">
+                    <button class="cfg-action-btn cfg-menu-trigger" type="button" aria-label="API actions">
+                      <i class="bi bi-three-dots-vertical"></i>
+                    </button>
+                    <div class="cfg-dropdown">
+                      <button class="cfg-dropdown-item" type="button" disabled title="Backend not wired yet — UI preview only">
+                        <i class="bi bi-pencil"></i> Edit
+                      </button>
+                      <button class="cfg-dropdown-item cfg-dropdown-item--danger cfg-delete-trigger" type="button" data-name="{{apiName}}">
+                        <i class="bi bi-trash"></i> Delete
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+                {{/orgAPIs}}
+                {{#unless orgAPIs.length}}
+                <tr>
+                  <td colspan="5" class="cfg-empty-row">No APIs found.</td>
+                </tr>
+                {{/unless}}
+              </tbody>
+            </table>
+          </div>
         </div>
 
-        <div class="cfg-table-wrap">
-          <table class="cfg-table">
-            <thead>
-              <tr>
-                <th>API</th>
-                <th>Type</th>
-                <th>Status</th>
-                <th style="width:40px;"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {{#orgAPIs}}
-              <tr>
-                <td>
-                  <div class="cfg-api-cell">
-                    <span class="cfg-api-avatar
-                      {{#if (eq apiType "GRAPHQL")}}cfg-api-avatar--graphql
-                      {{else if (eq apiType "WS")}}cfg-api-avatar--ws
-                      {{else if (eq apiType "SOAP")}}cfg-api-avatar--soap
-                      {{else}}cfg-api-avatar--rest{{/if}}">{{firstTwoLetters apiName}}</span>
-                    <span class="cfg-cell-name">{{apiName}}</span>
-                  </div>
-                </td>
-                <td>
-                  <span class="cfg-type-badge
-                    {{#if (eq apiType "GRAPHQL")}}cfg-type-badge--graphql
-                    {{else if (eq apiType "WS")}}cfg-type-badge--ws
-                    {{else if (eq apiType "SOAP")}}cfg-type-badge--soap
-                    {{else}}cfg-type-badge--rest{{/if}}">
-                    {{#if (eq apiType "WS")}}WebSocket
-                    {{else if (eq apiType "GRAPHQL")}}GraphQL
-                    {{else if (eq apiType "SOAP")}}SOAP
-                    {{else if (eq apiType "WEBSUB")}}WebSub
-                    {{else}}REST{{/if}}
-                  </span>
-                </td>
-                <td>
-                  <span class="cfg-status-badge cfg-status-published">
-                    <span class="cfg-status-dot"></span>Published
-                  </span>
-                </td>
-                <td class="cfg-cell-actions">
-                  <button class="cfg-action-btn" disabled title="Backend not wired yet — UI preview only">
-                    <i class="bi bi-three-dots-vertical"></i>
-                  </button>
-                </td>
-              </tr>
-              {{/orgAPIs}}
-              {{#unless orgAPIs.length}}
-              <tr>
-                <td colspan="4" class="cfg-empty-row">No APIs found.</td>
-              </tr>
-              {{/unless}}
-            </tbody>
-          </table>
+        <!-- ── Add API wizard ── -->
+        <div id="cfg-apis-wizard" style="display:none;">
+          <a href="#" class="cfg-wizard-back" id="cfg-wizard-back-link">
+            <i class="bi bi-arrow-left"></i> Back to Manage APIs
+          </a>
+          <h2 class="cfg-panel-title" style="margin:14px 0 0;">Add API</h2>
+
+          <!-- Stepper -->
+          <div class="cfg-stepper">
+            <div class="cfg-step cfg-step--active" data-step="0">
+              <span class="cfg-step-circle">1</span>
+              <span class="cfg-step-label">Details</span>
+            </div>
+            <div class="cfg-step-connector"></div>
+            <div class="cfg-step" data-step="1">
+              <span class="cfg-step-circle">2</span>
+              <span class="cfg-step-label">Spec</span>
+            </div>
+            <div class="cfg-step-connector"></div>
+            <div class="cfg-step" data-step="2">
+              <span class="cfg-step-circle">3</span>
+              <span class="cfg-step-label">Documentation</span>
+            </div>
+            <div class="cfg-step-connector"></div>
+            <div class="cfg-step" data-step="3">
+              <span class="cfg-step-circle">4</span>
+              <span class="cfg-step-label">Review</span>
+            </div>
+          </div>
+
+          <!-- Step 0: Details -->
+          <div class="cfg-wizard-step" id="cfg-wstep-0">
+            <div class="cfg-form-grid">
+              <div class="cfg-form-group">
+                <label for="wz-name">API name <span class="required">*</span></label>
+                <input type="text" id="wz-name" class="cfg-form-input" placeholder="e.g. Booking API" />
+              </div>
+              <div class="cfg-form-group">
+                <label for="wz-version">Version <span class="required">*</span></label>
+                <input type="text" id="wz-version" class="cfg-form-input" placeholder="e.g. v1.0" />
+              </div>
+              <div class="cfg-form-group">
+                <label for="wz-type">API type</label>
+                <select id="wz-type" class="cfg-form-input">
+                  <option>REST</option>
+                  <option>GraphQL</option>
+                  <option>SOAP</option>
+                  <option>WebSocket</option>
+                  <option>AsyncAPI</option>
+                </select>
+              </div>
+              <div class="cfg-form-group">
+                <label for="wz-context">Context / base path</label>
+                <input type="text" id="wz-context" class="cfg-form-input cfg-form-input--mono" placeholder="/booking" />
+              </div>
+              <div class="cfg-form-group">
+                <label for="wz-prod">Production endpoint</label>
+                <input type="text" id="wz-prod" class="cfg-form-input cfg-form-input--mono" placeholder="https://api.example.com/booking" />
+              </div>
+              <div class="cfg-form-group">
+                <label for="wz-sandbox">Sandbox endpoint</label>
+                <input type="text" id="wz-sandbox" class="cfg-form-input cfg-form-input--mono" placeholder="https://sandbox.example.com/booking" />
+              </div>
+            </div>
+            <div class="cfg-form-group" style="margin-top:18px;">
+              <label for="wz-desc">Description</label>
+              <textarea id="wz-desc" class="cfg-form-input" rows="3" placeholder="Describe what this API does in 1–2 sentences…" style="resize:vertical;"></textarea>
+            </div>
+            <div class="cfg-form-group" style="margin-top:18px;">
+              <label for="wz-tags">Tags</label>
+              <input type="text" id="wz-tags" class="cfg-form-input" placeholder="booking, api-key, travel  (comma separated)" />
+            </div>
+          </div>
+
+          <!-- Step 1: Spec -->
+          <div class="cfg-wizard-step" id="cfg-wstep-1" style="display:none;">
+            <p class="cfg-wstep-desc">Upload the contract that defines this API. Accepted: OpenAPI (.json / .yaml), AsyncAPI, GraphQL SDL (.graphql), or WSDL (.wsdl / .xml).</p>
+            <label class="cfg-upload-zone">
+              <span class="cfg-upload-icon"><i class="bi bi-file-earmark-arrow-up"></i></span>
+              <span class="cfg-upload-label">Drag &amp; drop or <span>browse</span> to upload</span>
+              <span class="cfg-upload-hint">Single spec file · up to 10 MB</span>
+              <input type="file" id="wz-spec-input" accept=".json,.yaml,.yml,.graphql,.gql,.wsdl,.xml" />
+            </label>
+            <div class="cfg-spec-chip" id="wz-spec-chip">
+              <span class="cfg-spec-icon"><i class="bi bi-file-check"></i></span>
+              <div>
+                <div class="cfg-spec-name" id="wz-spec-name"></div>
+                <div class="cfg-spec-sub">Spec uploaded</div>
+              </div>
+              <button type="button" class="cfg-action-btn" id="wz-spec-remove" style="margin-left:auto;">
+                <i class="bi bi-x-lg"></i>
+              </button>
+            </div>
+          </div>
+
+          <!-- Step 2: Documentation -->
+          <div class="cfg-wizard-step" id="cfg-wstep-2" style="display:none;">
+            <p class="cfg-wstep-desc">Add guides, references, or PDFs to help developers use this API. You can upload multiple files (.md, .pdf).</p>
+            <label class="cfg-upload-compact">
+              <i class="bi bi-upload" style="color:#0277bd;font-size:1rem;flex:none;"></i>
+              <span style="font-size:0.844rem;font-weight:600;color:#1a2433;">Upload documents <span style="color:#9aa3af;font-weight:400;">— .md, .pdf · multiple</span></span>
+              <input type="file" id="wz-docs-input" multiple accept=".md,.markdown,.pdf" />
+            </label>
+            <div id="wz-docs-empty" class="cfg-docs-empty">No documents added yet.</div>
+            <div id="wz-docs-list" class="cfg-docs-list"></div>
+          </div>
+
+          <!-- Step 3: Review -->
+          <div class="cfg-wizard-step" id="cfg-wstep-3" style="display:none; max-width:720px;">
+            <p class="cfg-wstep-desc">Confirm the details below, then publish this API to your developer portal.</p>
+            <div class="cfg-review-section">
+              <div class="cfg-review-header">
+                <span class="cfg-review-header-title">API Details</span>
+                <button type="button" class="cfg-review-edit" data-goto="0">Edit</button>
+              </div>
+              <div class="cfg-review-body">
+                <div class="cfg-review-grid">
+                  <span class="cfg-review-label">Name</span><span class="cfg-review-value" id="rv-name">—</span>
+                  <span class="cfg-review-label">Version</span><span class="cfg-review-value" id="rv-version">—</span>
+                  <span class="cfg-review-label">Type</span><span class="cfg-review-value" id="rv-type">—</span>
+                  <span class="cfg-review-label">Context</span><span class="cfg-review-value cfg-review-value--mono" id="rv-context">—</span>
+                  <span class="cfg-review-label">Production endpoint</span><span class="cfg-review-value cfg-review-value--mono" id="rv-prod">—</span>
+                  <span class="cfg-review-label">Description</span><span class="cfg-review-value" id="rv-desc">—</span>
+                </div>
+              </div>
+              <div class="cfg-review-header">
+                <span class="cfg-review-header-title">Spec</span>
+                <button type="button" class="cfg-review-edit" data-goto="1">Edit</button>
+              </div>
+              <div class="cfg-review-body" style="padding:14px 18px;">
+                <span style="font-size:0.844rem;color:#1a2433;" id="rv-spec">No spec uploaded</span>
+              </div>
+              <div class="cfg-review-header" style="border-top:1px solid #eef1f5;">
+                <span class="cfg-review-header-title">Documentation</span>
+                <button type="button" class="cfg-review-edit" data-goto="2">Edit</button>
+              </div>
+              <div class="cfg-review-body" style="padding:14px 18px;">
+                <span style="font-size:0.844rem;color:#1a2433;" id="rv-docs">No documents added</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Wizard actions -->
+          <div class="cfg-wizard-actions">
+            <button type="button" class="cfg-btn-ghost" id="cfg-wizard-cancel">Cancel</button>
+            <div class="cfg-wizard-actions-right">
+              <button type="button" class="cfg-btn-secondary" id="cfg-wizard-back-step" style="display:none;">
+                <i class="bi bi-arrow-left"></i> Back
+              </button>
+              <button type="button" class="cfg-btn-primary" id="cfg-wizard-next">Continue</button>
+            </div>
+          </div>
         </div>
+
       </div>
 
       <!-- Manage Organizations -->
@@ -160,6 +332,21 @@
     </div><!-- /.cfg-content -->
   </div><!-- /.cfg-layout -->
 </div><!-- /.cfg-page -->
+
+<!-- Delete confirmation modal (position:fixed — must be outside cfg-panel) -->
+<div class="cfg-modal-overlay" id="cfg-delete-modal" style="display:none;">
+  <div class="cfg-modal">
+    <div class="cfg-modal-header">
+      <span class="cfg-modal-icon"><i class="bi bi-trash"></i></span>
+      <h2 class="cfg-modal-title">Delete API</h2>
+    </div>
+    <p class="cfg-modal-body">Are you sure you want to delete <strong id="cfg-delete-api-name"></strong>? This removes it from the developer portal along with its spec and documentation. This action can't be undone.</p>
+    <div class="cfg-modal-actions">
+      <button type="button" class="cfg-btn-secondary" id="cfg-delete-cancel">Cancel</button>
+      <button type="button" class="cfg-btn-danger" disabled title="Backend not wired yet — UI preview only">Delete API</button>
+    </div>
+  </div>
+</div>
 
 {{> alert}}
 
@@ -200,5 +387,207 @@
   var hash = location.hash.replace('#', '');
   var legacyMap = { 'apiflows': 'cfg-workflows', 'llm-instruction': 'cfg-llm' };
   activate(legacyMap[hash] || hash);
+}());
+</script>
+
+<script>
+(function () {
+  var currentStep = 0;
+  var specFileName = null;
+  var docFiles = [];
+
+  function escHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  /* ── Wizard show/hide ── */
+  function showWizard() {
+    document.getElementById('cfg-apis-list').style.display = 'none';
+    document.getElementById('cfg-apis-wizard').style.display = 'flex';
+    // Reset state
+    currentStep = 0;
+    specFileName = null;
+    docFiles = [];
+    ['wz-name','wz-version','wz-context','wz-prod','wz-sandbox','wz-desc','wz-tags'].forEach(function(id) {
+      var el = document.getElementById(id);
+      if (el) el.value = '';
+    });
+    var typeEl = document.getElementById('wz-type');
+    if (typeEl) typeEl.selectedIndex = 0;
+    document.getElementById('wz-spec-chip').classList.remove('visible');
+    document.getElementById('wz-docs-list').innerHTML = '';
+    document.getElementById('wz-docs-empty').style.display = 'block';
+    updateWizardStep(0);
+  }
+
+  function hideWizard() {
+    document.getElementById('cfg-apis-list').style.display = '';
+    document.getElementById('cfg-apis-wizard').style.display = 'none';
+  }
+
+  /* ── Step navigation ── */
+  function updateWizardStep(step) {
+    currentStep = step;
+
+    // Show active step panel
+    for (var i = 0; i < 4; i++) {
+      var panel = document.getElementById('cfg-wstep-' + i);
+      if (panel) panel.style.display = i === step ? 'flex' : 'none';
+    }
+
+    // Update stepper circles + connectors
+    var stepEls = document.querySelectorAll('#cfg-apis-wizard .cfg-step');
+    var connEls = document.querySelectorAll('#cfg-apis-wizard .cfg-step-connector');
+    stepEls.forEach(function(el, i) {
+      el.classList.remove('cfg-step--active', 'cfg-step--done');
+      var circle = el.querySelector('.cfg-step-circle');
+      if (i < step) {
+        el.classList.add('cfg-step--done');
+        circle.innerHTML = '<i class="bi bi-check" style="font-size:.75rem;line-height:1;"></i>';
+      } else {
+        if (i === step) el.classList.add('cfg-step--active');
+        circle.textContent = String(i + 1);
+      }
+    });
+    connEls.forEach(function(el, i) {
+      el.classList.toggle('cfg-step-connector--done', i < step);
+    });
+
+    // Update footer buttons
+    var backStepBtn = document.getElementById('cfg-wizard-back-step');
+    var nextBtn     = document.getElementById('cfg-wizard-next');
+    backStepBtn.style.display = step > 0 ? 'inline-flex' : 'none';
+    if (step === 3) {
+      nextBtn.textContent = 'Publish API';
+      nextBtn.disabled    = true;
+      nextBtn.title       = 'Backend not wired yet — UI preview only';
+      populateReview();
+    } else {
+      nextBtn.textContent = 'Continue';
+      nextBtn.disabled    = false;
+      nextBtn.title       = '';
+    }
+  }
+
+  function populateReview() {
+    function val(id) { var el = document.getElementById(id); return el ? el.value.trim() : ''; }
+    function set(id, v) { var el = document.getElementById(id); if (el) el.textContent = v || '—'; }
+    set('rv-name',    val('wz-name'));
+    set('rv-version', val('wz-version'));
+    set('rv-type',    document.getElementById('wz-type') ? document.getElementById('wz-type').value : '—');
+    set('rv-context', val('wz-context'));
+    set('rv-prod',    val('wz-prod'));
+    set('rv-desc',    val('wz-desc'));
+    set('rv-spec',    specFileName || 'No spec uploaded');
+    var docsEl = document.getElementById('rv-docs');
+    if (docsEl) {
+      docsEl.textContent = docFiles.length
+        ? docFiles.length + ' file(s): ' + docFiles.join(', ')
+        : 'No documents added';
+    }
+  }
+
+  /* ── Button wiring ── */
+  document.getElementById('cfg-add-api-btn').addEventListener('click', function() { showWizard(); });
+  document.getElementById('cfg-wizard-back-link').addEventListener('click', function(e) { e.preventDefault(); hideWizard(); });
+  document.getElementById('cfg-wizard-cancel').addEventListener('click', function() { hideWizard(); });
+  document.getElementById('cfg-wizard-back-step').addEventListener('click', function() {
+    if (currentStep > 0) updateWizardStep(currentStep - 1);
+  });
+  document.getElementById('cfg-wizard-next').addEventListener('click', function() {
+    if (currentStep < 3) updateWizardStep(currentStep + 1);
+  });
+
+  // Stepper: click completed steps to go back
+  document.querySelectorAll('#cfg-apis-wizard .cfg-step').forEach(function(el) {
+    el.addEventListener('click', function() {
+      var s = parseInt(el.getAttribute('data-step'), 10);
+      if (s < currentStep) updateWizardStep(s);
+    });
+  });
+
+  // Review "Edit" links
+  document.querySelectorAll('.cfg-review-edit').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      updateWizardStep(parseInt(btn.getAttribute('data-goto'), 10));
+    });
+  });
+
+  /* ── Spec upload ── */
+  document.getElementById('wz-spec-input').addEventListener('change', function(e) {
+    var file = e.target.files && e.target.files[0];
+    if (!file) return;
+    specFileName = file.name;
+    document.getElementById('wz-spec-name').textContent = file.name;
+    document.getElementById('wz-spec-chip').classList.add('visible');
+  });
+  document.getElementById('wz-spec-remove').addEventListener('click', function() {
+    specFileName = null;
+    document.getElementById('wz-spec-input').value = '';
+    document.getElementById('wz-spec-chip').classList.remove('visible');
+  });
+
+  /* ── Docs upload ── */
+  document.getElementById('wz-docs-input').addEventListener('change', function(e) {
+    var files = Array.prototype.slice.call(e.target.files || []);
+    files.forEach(function(f) {
+      if (docFiles.indexOf(f.name) === -1) {
+        docFiles.push(f.name);
+        appendDocItem(f.name);
+      }
+    });
+    document.getElementById('wz-docs-empty').style.display = docFiles.length ? 'none' : 'block';
+    e.target.value = '';
+  });
+
+  function appendDocItem(name) {
+    var list = document.getElementById('wz-docs-list');
+    var item = document.createElement('div');
+    item.className = 'cfg-docs-item';
+    item.innerHTML =
+      '<span class="cfg-docs-icon"><i class="bi bi-file-text"></i></span>' +
+      '<span class="cfg-docs-name">' + escHtml(name) + '</span>' +
+      '<button type="button" class="cfg-docs-remove" title="Remove"><i class="bi bi-trash"></i></button>';
+    item.querySelector('.cfg-docs-remove').addEventListener('click', function() {
+      docFiles = docFiles.filter(function(d) { return d !== name; });
+      item.remove();
+      document.getElementById('wz-docs-empty').style.display = docFiles.length ? 'none' : 'block';
+    });
+    list.appendChild(item);
+  }
+
+  /* ── Dropdown menus ── */
+  document.addEventListener('click', function(e) {
+    if (e.target.closest('.cfg-menu-trigger')) {
+      e.stopPropagation();
+      var trigger  = e.target.closest('.cfg-menu-trigger');
+      var dropdown = trigger.parentElement.querySelector('.cfg-dropdown');
+      var isOpen   = dropdown.style.display === 'flex';
+      document.querySelectorAll('.cfg-dropdown').forEach(function(d) { d.style.display = 'none'; });
+      if (!isOpen) dropdown.style.display = 'flex';
+      return;
+    }
+    if (!e.target.closest('.cfg-dropdown')) {
+      document.querySelectorAll('.cfg-dropdown').forEach(function(d) { d.style.display = 'none'; });
+    }
+  });
+
+  /* ── Delete flow ── */
+  document.addEventListener('click', function(e) {
+    var trigger = e.target.closest('.cfg-delete-trigger');
+    if (!trigger) return;
+    e.stopPropagation();
+    document.querySelectorAll('.cfg-dropdown').forEach(function(d) { d.style.display = 'none'; });
+    var name = trigger.getAttribute('data-name') || 'this API';
+    document.getElementById('cfg-delete-api-name').textContent = name;
+    document.getElementById('cfg-delete-modal').style.display = 'flex';
+  });
+
+  document.getElementById('cfg-delete-cancel').addEventListener('click', function() {
+    document.getElementById('cfg-delete-modal').style.display = 'none';
+  });
+  document.getElementById('cfg-delete-modal').addEventListener('click', function(e) {
+    if (e.target === this) this.style.display = 'none';
+  });
 }());
 </script>
