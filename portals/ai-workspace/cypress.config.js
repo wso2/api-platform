@@ -16,9 +16,7 @@
  * under the License.
  */
 
-import { defineConfig } from 'cypress';
-
-export default defineConfig({
+export default {
   e2e: {
     baseUrl: process.env.CYPRESS_BASE_URL || 'https://localhost:5380',
     specPattern: 'cypress/e2e/**/*.cy.js',
@@ -50,4 +48,4 @@ export default defineConfig({
     ORG_HANDLE: 'ap-org',
     QS_INTRO_STORAGE_KEY: 'qs_intro_seen_v1',
   },
-});
+};

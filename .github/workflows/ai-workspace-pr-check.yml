@@ -27,6 +27,10 @@ jobs:
         with:
           node-version: '20'
 
+      - name: Install AI Workspace dependencies
+        run: npm ci
+        working-directory: portals/ai-workspace
+
       - name: Build AI Workspace image
         run: make build
         working-directory: portals/ai-workspace
