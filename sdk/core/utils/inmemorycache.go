@@ -162,6 +162,17 @@ func (c *InMemoryCache[T]) Set(_ context.Context, key CacheKey, value T) error {
 		return nil
 	}
 
+	if c.size <= 0 {
+		return nil
+	}
+
+	// Evict before inserting so the new entry is never a candidate for immediate removal.
+	// Under LFU, a post-insert evict could self-evict the just-added entry (accessCount=1)
+	// if all existing entries have higher counts.
+	if len(c.cache) >= c.size {
+		c.evict()
+	}
+
 	listElement := c.accessOrder.PushFront(key)
 
 	var heapItem *lfuHeapItem
@@ -176,10 +187,6 @@ func (c *InMemoryCache[T]) Set(_ context.Context, key CacheKey, value T) error {
 		heapItem:    heapItem,
 		lastAccess:  now,
 		accessCount: 1,
-	}
-
-	if len(c.cache) > c.size {
-		c.evict()
 	}
 
 	return nil

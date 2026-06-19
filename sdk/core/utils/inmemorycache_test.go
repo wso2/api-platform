@@ -242,20 +242,34 @@ func TestCleanupExpiredPreservesNonExpired(t *testing.T) {
 	c := NewInMemoryCache[string]("cache", 100, 50*time.Millisecond, LRUEvictionPolicy)
 	ctx := context.Background()
 
-	_ = c.Set(ctx, CacheKey{Key: "expires"}, "a")
+	// Insert entries that will expire.
+	_ = c.Set(ctx, CacheKey{Key: "expires1"}, "a")
+	_ = c.Set(ctx, CacheKey{Key: "expires2"}, "b")
+
 	time.Sleep(100 * time.Millisecond)
 
-	// Add a no-expiry entry after the TTL window.
-	noExpiry := NewInMemoryCache[string]("cache2", 100, 0, LRUEvictionPolicy)
-	_ = noExpiry.Set(ctx, CacheKey{Key: "forever"}, "b")
-	noExpiry.CleanupExpired()
-	if noExpiry.GetStats().Size != 1 {
-		t.Error("expected zero-TTL entry to survive CleanupExpired")
+	// After the TTL window, add fresh entries into the same cache.
+	// These get ExpiryTime = now+50ms, so they are not yet expired when
+	// CleanupExpired runs immediately below.
+	_ = c.Set(ctx, CacheKey{Key: "fresh1"}, "c")
+	_ = c.Set(ctx, CacheKey{Key: "fresh2"}, "d")
+
+	if c.GetStats().Size != 4 {
+		t.Fatalf("expected 4 entries (2 expired + 2 fresh) before cleanup, got %d", c.GetStats().Size)
 	}
 
 	c.CleanupExpired()
-	if c.GetStats().Size != 0 {
-		t.Errorf("expected expired entry to be removed, got size %d", c.GetStats().Size)
+
+	if c.GetStats().Size != 2 {
+		t.Errorf("expected 2 non-expired entries to survive CleanupExpired, got %d", c.GetStats().Size)
+	}
+	_, found := c.Get(ctx, CacheKey{Key: "fresh1"})
+	if !found {
+		t.Error("expected fresh1 to survive CleanupExpired")
+	}
+	_, found = c.Get(ctx, CacheKey{Key: "fresh2"})
+	if !found {
+		t.Error("expected fresh2 to survive CleanupExpired")
 	}
 }
 
@@ -294,6 +308,30 @@ func TestLRUEviction(t *testing.T) {
 	_, found = c.Get(ctx, CacheKey{Key: "key3"})
 	if !found {
 		t.Error("expected key3 to exist")
+	}
+}
+
+func TestLFUNewEntryNotSelfEvicted(t *testing.T) {
+	// Regression: before the fix, Set inserted the entry then evicted under LFU.
+	// The new entry (accessCount=1) was always the cheapest victim when existing
+	// entries had been accessed more, causing immediate self-eviction.
+	c := NewInMemoryCache[string]("lfu", 2, 60*time.Second, LFUEvictionPolicy)
+	ctx := context.Background()
+
+	_ = c.Set(ctx, CacheKey{Key: "k0"}, "v0")
+	_ = c.Set(ctx, CacheKey{Key: "k1"}, "v1")
+	for i := 0; i < 5; i++ {
+		_, _ = c.Get(ctx, CacheKey{Key: "k0"})
+		_, _ = c.Get(ctx, CacheKey{Key: "k1"})
+	}
+
+	// k0 and k1 both have accessCount > 1. The new entry starts at 1.
+	// Without the fix it would be self-evicted; with the fix one of k0/k1 is removed first.
+	_ = c.Set(ctx, CacheKey{Key: "k2"}, "v2")
+
+	_, found := c.Get(ctx, CacheKey{Key: "k2"})
+	if !found {
+		t.Error("newly inserted entry was self-evicted under LFU policy")
 	}
 }
 
