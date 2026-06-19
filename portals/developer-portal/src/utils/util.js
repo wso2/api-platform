@@ -814,64 +814,6 @@ const loadSubscriptionPlan = async (orgID, policyName) => {
     }
 }
 
-async function tokenExchanger(token, orgName) {
-    logger.info(`Exchanging token for organization: ${orgName}`, {
-        orgName: orgName,
-        action: 'token_exchange'
-    });
-    const url = config.advanced.tokenExchanger.url;
-    const maxRetries = 3;
-    let delay = 1000;
-    const orgDetails = await orgDao.get(orgName);
-    if (!orgDetails) {
-        throw new Error('Organization not found');
-    } else if (!orgDetails.ORGANIZATION_IDENTIFIER) {
-        throw new Error('Organization Identifier not found');
-    }
-
-    const data = qs.stringify({
-        client_id: config.advanced.tokenExchanger.client_id,
-        grant_type: config.advanced.tokenExchanger.grant_type,
-        subject_token_type: config.advanced.tokenExchanger.subject_token_type,
-        requested_token_type: config.advanced.tokenExchanger.requested_token_type,
-        scope: config.advanced.tokenExchanger.scope,
-        subject_token: token,
-        orgHandle: orgDetails.ORG_HANDLE
-    });
-
-    for (let attempt = 0; attempt <= maxRetries; attempt++) {
-        try {
-            const response = await axios.post(url, data, {
-                headers: {
-                    'Referer': '',
-                    'Accept': 'application/json',
-                    'Content-Type': 'application/x-www-form-urlencoded'
-                }
-            });
-
-            return response.data.access_token;
-        } catch (error) {
-            if (error.response?.status >= 500 && error.response?.status < 600 && attempt < maxRetries) {
-                logger.warn(`Token exchange failed. Retrying in ${delay}ms... (Attempt ${attempt + 1}/${maxRetries})`, {
-                    orgName: orgName,
-                    statusCode: error.response?.status,
-                    error: error.message
-                });
-                await new Promise(resolve => setTimeout(resolve, delay));
-                delay *= 2;
-            } else {
-                logger.error('Token exchange failed', {
-                    orgName: orgName,
-                    attempt: attempt + 1,
-                    error: error.message,
-                    statusCode: error.response?.status,
-                    responseData: error.response?.data
-                });
-                throw new Error('Failed to exchange token');
-            }
-        }
-    }
-}
 
 async function listFiles(path) {
 
@@ -1012,7 +954,6 @@ module.exports = {
     readFilesInDirectory,
     appendAPIImageURL,
     appendSubscriptionPlanDetails,
-    tokenExchanger,
     listFiles,
     readDocFiles,
     findFileByNameRecursive,

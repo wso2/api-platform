@@ -53,8 +53,13 @@ function resolveTokenRefreshTimeoutMs() {
 async function verifyJwksWithRefresh(token, jwksURL, req) {
     try {
         const jwks = await createRemoteJWKSet(new URL(jwksURL));
-        const { payload } = await jwtVerify(token, jwks);
-        return { valid: true, scopes: payload.scope || '' };
+        const jwtVerifyOptions = {};
+        if (config.identityProvider?.issuer) jwtVerifyOptions.issuer = config.identityProvider.issuer;
+        if (config.identityProvider?.audience) jwtVerifyOptions.audience = config.identityProvider.audience;
+        const { payload } = await jwtVerify(token, jwks, jwtVerifyOptions);
+        const rawScope = payload.scope ?? payload.scp;
+        const scopes = Array.isArray(rawScope) ? rawScope.join(' ') : (rawScope || '');
+        return { valid: true, scopes };
     } catch (err) {
         if (err.code === 'ERR_JWT_EXPIRED' && req.user && req.user.refreshToken) {
             try {
@@ -127,7 +132,17 @@ async function authResolver(req, res, next) {
             return next();
         }
 
-        // 2. Bearer token (session-attached or Authorization header)
+        // 2. Session fast-path: scopes captured at login — skip JWKS re-validation
+        if (req.isAuthenticated && req.isAuthenticated() && req.user?.grantedScopes !== undefined && config.identityProvider?.clientId) {
+            req.auth = {
+                mode: 'oauth2',
+                scopes: String(req.user.grantedScopes || '').split(' ').filter(Boolean),
+                userId: req.user[constants.USER_ID],
+            };
+            return next();
+        }
+
+        // 3. Bearer token (session-attached or Authorization header)
         const token = accessTokenPresent(req);
         if (token) {
             if (!checkOrgMembership(req)) {
@@ -151,7 +166,7 @@ async function authResolver(req, res, next) {
             return next();
         }
 
-        // 3. API key
+        // 4. API key
         if (config.advanced?.apiKey?.enabled) {
             const keyType = config.advanced.apiKey.keyType;
             if (keyType && config.advanced?.apiKey?.keyValue) {
@@ -166,7 +181,7 @@ async function authResolver(req, res, next) {
             }
         }
 
-        // 4. mTLS
+        // 5. mTLS
         if (typeof req.socket?.getPeerCertificate === 'function') {
             const cert = req.socket.getPeerCertificate(true);
             if (cert && Object.keys(cert).length > 0 && req.client?.authorized) {
@@ -178,7 +193,7 @@ async function authResolver(req, res, next) {
             }
         }
 
-        // 5. No usable credential — pass through as anonymous so the OpenAPI
+        // 6. No usable credential — pass through as anonymous so the OpenAPI
         // validator can enforce security on a per-operation basis. Operations
         // with `security: []` (public endpoints) will proceed; operations that
         // declare a security scheme will have their handler invoked by the

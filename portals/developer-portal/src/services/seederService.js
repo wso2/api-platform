@@ -40,13 +40,13 @@ async function seedDefaultOrg() {
     const payload = {
         orgName,
         orgHandle: orgName,
-        roleClaimName: config.roleClaim,
-        groupsClaimName: config.groupsClaim,
-        organizationClaimName: config.orgIDClaim,
+        roleClaimName: config.identityProvider.roleClaim,
+        groupsClaimName: config.identityProvider.groupsClaim,
+        organizationClaimName: config.identityProvider.orgIDClaim,
         organizationIdentifier: orgName,
-        adminRole: config.adminRole,
-        subscriberRole: config.subscriberRole,
-        superAdminRole: config.superAdminRole,
+        adminRole: config.identityProvider.adminRole,
+        subscriberRole: config.identityProvider.subscriberRole,
+        superAdminRole: config.identityProvider.superAdminRole,
         orgConfig: { devportalMode: constants.DEVPORTAL_MODE.DEFAULT },
     };
 

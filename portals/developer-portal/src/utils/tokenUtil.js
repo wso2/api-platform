@@ -38,11 +38,15 @@ function accessTokenPresent(req) {
 async function refreshAccessToken(refreshToken) {
     const timeout = Number(config.identityProvider?.tokenRefreshTimeoutMs);
     const timeoutMs = (Number.isFinite(timeout) && timeout > 0) ? timeout : DEFAULT_TOKEN_REFRESH_TIMEOUT_MS;
-    const data = qs.stringify({
+    const params = {
         grant_type: 'refresh_token',
         refresh_token: refreshToken,
         client_id: config.identityProvider.clientId,
-    });
+    };
+    if (config.identityProvider.clientSecret) {
+        params.client_secret = config.identityProvider.clientSecret;
+    }
+    const data = qs.stringify(params);
     const response = await axios.post(config.identityProvider.tokenURL, data, {
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         timeout: timeoutMs,
