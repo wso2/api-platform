@@ -19,7 +19,7 @@ curl -X POST https://devportal.api-platform.io/o/{orgId}/devportal/v1/subscripti
 
 ```
 
-Creates a token-based subscription for an API. The API must exist in the Developer Portal and have token-based subscriptions enabled.
+Creates a subscription for an API. The API must exist in the Developer Portal and have subscription plans enabled. The subscription is owned by the authenticated user.
 
 > Payload
 
@@ -50,12 +50,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 ```json
 {
   "subscriptionId": "sub-12345",
-  "apiId": "cp-api-12345",
-  "apiName": "Weather API",
-  "applicationId": "cp-app-98765",
+  "apiId": "api-7f4c2a6b",
+  "subscriptionToken": "a3f1e8b2...",
   "subscriptionPlanName": "Gold",
+  "gatewayType": "wso2/api-platform",
   "status": "ACTIVE",
-  "createdTime": "2026-05-07T08:30:00Z"
+  "createdBy": "alice@example.com",
+  "createdAt": "2026-05-07T08:30:00Z"
 }
 ```
 
@@ -133,7 +134,7 @@ curl -X GET https://devportal.api-platform.io/o/{orgId}/devportal/v1/subscriptio
 
 ```
 
-Lists subscriptions stored in the Developer Portal. When `apiId` is provided, results are filtered by the Developer Portal API ID.
+Lists subscriptions owned by the authenticated user. When `apiId` is provided, results are additionally filtered by the Developer Portal API ID.
 
 ### Authentication
 
@@ -159,11 +160,11 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "list": [
     {
       "subscriptionId": "sub-12345",
-      "apiId": "cp-api-12345",
-      "apiName": "Weather API",
-      "applicationId": "cp-app-98765",
+      "apiId": "api-7f4c2a6b",
       "subscriptionPlanName": "Gold",
-      "status": "ACTIVE"
+      "gatewayType": "wso2/api-platform",
+      "status": "ACTIVE",
+      "createdBy": "alice@example.com"
     }
   ]
 }
@@ -226,15 +227,27 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <h3 id="list-subscriptions-responseschema">Response Schema</h3>
 
+Status Code **200**
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|» count|integer|false|none|none|
+|» list|[[SubscriptionResponse](schemas.md#schemasubscriptionresponse)]|false|none|[Subscription payload.]|
+|»» subscriptionId|string|false|none|none|
+|»» apiId|string|false|none|Developer Portal API ID.|
+|»» subscriptionToken|string|false|none|Plaintext subscription token. Present on create and when the token has not been encrypted at rest.|
+|»» subscriptionPlanName|string|false|none|none|
+|»» gatewayType|string|false|none|none|
+|»» status|string|false|none|none|
+|»» createdBy|string|false|none|Identity (sub claim) of the user who created the subscription.|
+|»» createdAt|string(date-time)|false|none|none|
+
 #### Enumerated Values
 
 |Property|Value|
 |---|---|
 |status|ACTIVE|
 |status|INACTIVE|
-|status|ON_HOLD|
-|status|REJECTED|
-|status|TIER_UPDATE_PENDING|
 
 ## Get a subscription
 
@@ -276,12 +289,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 ```json
 {
   "subscriptionId": "sub-12345",
-  "apiId": "cp-api-12345",
-  "apiName": "Weather API",
-  "applicationId": "cp-app-98765",
+  "apiId": "api-7f4c2a6b",
+  "subscriptionToken": "a3f1e8b2...",
   "subscriptionPlanName": "Gold",
+  "gatewayType": "wso2/api-platform",
   "status": "ACTIVE",
-  "createdTime": "2026-05-07T08:30:00Z"
+  "createdBy": "alice@example.com",
+  "createdAt": "2026-05-07T08:30:00Z"
 }
 ```
 
@@ -364,12 +378,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 ```json
 {
   "subscriptionId": "sub-12345",
-  "apiId": "cp-api-12345",
-  "apiName": "Weather API",
-  "applicationId": "cp-app-98765",
+  "apiId": "api-7f4c2a6b",
+  "subscriptionToken": "a3f1e8b2...",
   "subscriptionPlanName": "Gold",
+  "gatewayType": "wso2/api-platform",
   "status": "ACTIVE",
-  "createdTime": "2026-05-07T08:30:00Z"
+  "createdBy": "alice@example.com",
+  "createdAt": "2026-05-07T08:30:00Z"
 }
 ```
 

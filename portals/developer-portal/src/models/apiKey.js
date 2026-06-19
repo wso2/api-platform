@@ -67,7 +67,10 @@ const APIKey = sequelize.define('DP_API_KEY', {
     createdAt: 'CREATED_AT',
     updatedAt: false,
     tableName: 'DP_API_KEY',
-    returning: true
+    returning: true,
+    indexes: [
+        { name: 'IDX_API_KEY_ORG_API_ID', fields: ['ORG_ID', 'API_ID'] },
+    ],
 });
 
 APIKey.belongsTo(Organization, { foreignKey: 'ORG_ID' });

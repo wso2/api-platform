@@ -44,7 +44,8 @@ const loadSubscriptions = async (req, res) => {
 
         let allSubscriptions = [];
         try {
-            const localSubs = await subDao.list(orgID);
+            const createdBy = req.user && req.user.sub;
+            const localSubs = await subDao.list(orgID, { createdBy });
             allSubscriptions = localSubs.map(sub => ({
                 id: sub.SUB_ID,
                 type: 'TOKEN_BASED',
@@ -52,11 +53,9 @@ const loadSubscriptions = async (req, res) => {
                 apiVersion: sub.DP_API_METADATA?.API_VERSION || '',
                 apiHandle: sub.DP_API_METADATA?.API_HANDLE || '#',
                 planName: sub.DP_SUBSCRIPTION_POLICY?.POLICY_NAME || '',
-                applicationName: null,
-                applicationId: null,
                 status: sub.STATUS,
                 subscriptionToken: sub.SUB_TOKEN,
-                createdAt: null,
+                createdAt: sub.CREATED_AT || null,
             }));
         } catch (err) {
             logger.warn('Failed to load subscriptions', {
@@ -139,7 +138,8 @@ const loadAPISubscriptions = async (req, res) => {
         }
         let allSubscriptions = [];
         try {
-            const localSubs = await subDao.list(orgID, { apiId: apiID });
+            const createdBy = req.user && req.user.sub;
+            const localSubs = await subDao.list(orgID, { apiId: apiID, createdBy });
             allSubscriptions = localSubs.map(sub => ({
                 id: sub.SUB_ID,
                 type: 'TOKEN_BASED',
@@ -148,11 +148,9 @@ const loadAPISubscriptions = async (req, res) => {
                 apiHandle: sub.DP_API_METADATA?.API_HANDLE || apiHandle,
                 apiRefId: sub.API_ID,
                 planName: sub.DP_SUBSCRIPTION_POLICY?.POLICY_NAME || '',
-                applicationName: null,
-                applicationId: null,
                 status: sub.STATUS,
                 subscriptionToken: sub.SUB_TOKEN,
-                createdAt: null,
+                createdAt: sub.CREATED_AT || null,
             }));
         } catch (err) {
             logger.warn('Failed to load subscriptions for API', {

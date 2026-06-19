@@ -49,7 +49,10 @@ const SubscriptionPolicy = sequelize.define('DP_SUBSCRIPTION_POLICY', {
 }, {
     timestamps: false,
     tableName: 'DP_SUBSCRIPTION_POLICY',
-    returning: true
+    returning: true,
+    indexes: [
+        { name: 'IDX_SUB_POLICY_ORG_NAME', unique: true, fields: ['ORG_ID', 'POLICY_NAME'] }
+    ]
 });
 
 SubscriptionPolicy.belongsTo(Organization, {

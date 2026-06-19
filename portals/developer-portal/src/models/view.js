@@ -27,7 +27,6 @@ const View = sequelize.define('DP_VIEWS', {
     ORG_ID: {
         type: DataTypes.UUID,
         defaultValue: Sequelize.UUIDV4,
-        unique: true
     },
     NAME: {
         type: DataTypes.STRING,
@@ -40,15 +39,14 @@ const View = sequelize.define('DP_VIEWS', {
 }, {
     timestamps: false,
     tableName: 'DP_VIEWS',
-    returning: true
-},
-    {
-        indexes: [
-            {
-                unique: true,
-                fields: ['NAME', 'DISPLAY_NAME', 'ORG_ID']
-            }
-        ]
-    });
+    returning: true,
+    indexes: [
+        {
+            name: 'UQ_VIEWS_NAME_ORG_ID',
+            unique: true,
+            fields: ['NAME', 'ORG_ID'],
+        }
+    ],
+});
 
 module.exports = View;

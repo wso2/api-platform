@@ -580,7 +580,7 @@ const deleteApplication = async (orgID, appID, userID) => {
 const createSubscription = async (orgID, subscription, t) => {
     try {
         const subMapping = await SubscriptionMapping.create({
-            APP_ID: subscription.applicationID,
+            CREATED_BY: subscription.createdBy,
             API_ID: subscription.apiId,
             POLICY_ID: subscription.policyId,
             ORG_ID: orgID,
@@ -601,10 +601,10 @@ const updateSubscription = async (orgID, subscription, t) => {
         }, {
             where: {
                 ORG_ID: orgID,
-                APP_ID: subscription.applicationID,
-                API_ID: subscription.apiId
-            }
-        }, { transaction: t });
+                SUB_ID: subscription.subId
+            },
+            transaction: t,
+        });
         return subMapping;
     } catch (error) {
         if (error instanceof Sequelize.UniqueConstraintError) {
@@ -616,13 +616,10 @@ const updateSubscription = async (orgID, subscription, t) => {
 
 const getSubscription = async (orgID, subID, t) => {
     try {
-        return await SubscriptionMapping.findOne(
-            {
-                where: {
-                    ORG_ID: orgID,
-                    SUB_ID: subID
-                }, transaction: t
-            }, { transaction: t });
+        return await SubscriptionMapping.findOne({
+            where: { ORG_ID: orgID, SUB_ID: subID },
+            transaction: t,
+        });
     } catch (error) {
         if (error instanceof Sequelize.EmptyResultError) {
             throw error;
@@ -631,34 +628,13 @@ const getSubscription = async (orgID, subID, t) => {
     }
 }
 
-const getSubscriptions = async (orgID, appID, apiID) => {
+const getSubscriptions = async (orgID, apiID) => {
     try {
         return await SubscriptionMapping.findAll(
             {
                 where: {
                     ORG_ID: orgID,
-                    [Sequelize.Op.or]: [
-                        { APP_ID: appID },
-                        { API_ID: apiID }
-                    ]
-                }
-            });
-    } catch (error) {
-        if (error instanceof Sequelize.EmptyResultError) {
-            throw error;
-        }
-        throw new Sequelize.DatabaseError(error);
-    }
-}
-
-const getAppApiSubscription = async (orgID, appID, apiID) => {
-    try {
-        return await SubscriptionMapping.findAll(
-            {
-                where: {
-                    ORG_ID: orgID,
-                    APP_ID: appID,
-                    API_ID: apiID
+                    API_ID: apiID,
                 }
             });
     } catch (error) {
@@ -673,11 +649,9 @@ const deleteSubscription = async (orgID, subID, t) => {
 
     try {
         const deletedRowsCount = await SubscriptionMapping.destroy({
-            where: {
-                ORG_ID: orgID,
-                SUB_ID: subID
-            }, transaction: t
-        }, { transaction: t });
+            where: { ORG_ID: orgID, SUB_ID: subID },
+            transaction: t,
+        });
         if (deletedRowsCount < 1) {
             throw new Sequelize.EmptyResultError('Subscription not found');
         }
@@ -713,11 +687,11 @@ const deleteAppMappings = async (orgID, appID, t) => {
             }, transaction: t
         }, { transaction: t });
         if (deletedRowsCount < 1) {
-            logger.info("No Application Key Mapping found", { 
-                orgID, 
-                appID, 
+            logger.info("No Application Key Mapping found", {
+                orgID,
+                appID,
                 deletedRowsCount,
-                operation: "deleteApplicationKeyMapping" 
+                operation: "deleteApplicationKeyMapping"
             });
         }
         return deletedRowsCount;
@@ -758,33 +732,6 @@ const getKeyMapping = async (orgID, appID, t) => {
 }
 
 
-const getSubscribedAPIs = async (orgID, appID) => {
-    try {
-        const subscribedAPIs = await APIMetadata.findAll({
-            where: { ORG_ID: orgID },
-            include: [{
-                model: Application,
-                where: { APP_ID: appID },
-                required: true,
-                through: { attributes: ["SUB_ID", "POLICY_ID"] }
-            },
-            {
-                model: APIImageMetadata,
-                required: false
-            }, {
-                model: SubscriptionPolicy,
-                through: { attributes: ['POLICY_ID'] },
-                required: false
-            }]
-        });
-        return subscribedAPIs;
-    } catch (error) {
-        if (error instanceof Sequelize.EmptyResultError) {
-            throw error;
-        }
-        throw new Sequelize.DatabaseError(error);
-    }
-}
 
 const getApplicationKeyMapping = async (orgID, appID) => {
     try {
@@ -857,10 +804,10 @@ const upsertApplicationKeyMapping = async (mappingData, t) => {
 /**
  * Find subscription by unique key (app, api, policy)
  */
-const findSubscriptionByUniqueKey = async (orgID, appID, apiID, policyID, t) => {
+const findSubscriptionByUniqueKey = async (orgID, apiID, policyID, t) => {
     try {
         return await SubscriptionMapping.findOne({
-            where: { ORG_ID: orgID, APP_ID: appID, API_ID: apiID, POLICY_ID: policyID },
+            where: { ORG_ID: orgID, API_ID: apiID, POLICY_ID: policyID },
             transaction: t,
         });
     } catch (error) {
@@ -887,17 +834,8 @@ const listSubscriptionsByOrg = async (orgID) => {
  */
 const listSubscriptionsByUser = async (orgID, userID) => {
     try {
-        const userApps = await Application.findAll({
-            where: { ORG_ID: orgID, CREATED_BY: userID },
-            attributes: ['APP_ID'],
-        });
-        const appIds = userApps.map((app) => app.APP_ID);
-        if (appIds.length === 0) return [];
         return await SubscriptionMapping.findAll({
-            where: {
-                ORG_ID: orgID,
-                APP_ID: { [Sequelize.Op.in]: appIds },
-            },
+            where: { ORG_ID: orgID, CREATED_BY: userID },
         });
     } catch (error) {
         logger.error('listSubscriptionsByUser failed', { error, orgID, userID });
@@ -935,8 +873,6 @@ module.exports = {
     deleteSubscription,
     getApplicationID,
     getKeyMapping,
-    getAppApiSubscription,
-    getSubscribedAPIs,
     getApplicationKeyMapping,
     createApplicationKeyMapping,
     upsertApplicationKeyMapping,

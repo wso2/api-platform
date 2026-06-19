@@ -1,5 +1,62 @@
 # Gateway Integration
 
+The Developer Portal supports two integration modes for propagating API key and subscription state to the gateway:
+
+| Mode | When it activates | How it works |
+|---|---|---|
+| **Platform API** | API has `GATEWAY_TYPE = wso2/api-platform` **and** `platformApi.baseUrl` is configured | Devportal calls the Platform API directly. The Platform API is responsible for broadcasting state to the gateways. Webhook events are not fired. |
+| **Webhook** | All other cases (different gateway type, or `platformApi.baseUrl` not set) | Devportal delivers signed HTTP POST events to configured webhook subscribers. |
+
+The two modes are described in detail below.
+
+---
+
+## Platform API Mode (`wso2/api-platform`)
+
+When both conditions are met — the API's `GATEWAY_TYPE` is `wso2/api-platform` and `platformApi.baseUrl` is set in config — the devportal integrates directly with the Platform API for subscriptions and API keys.
+
+```
+Developer Portal
+       │
+       │  REST calls (Bearer JWT of the current user)
+       ▼
+  Platform API
+       │
+       │  broadcasts to connected gateways
+       ▼
+  Gateway instances
+```
+
+### Subscription flow
+
+| Operation | Platform API call |
+|---|---|
+| Subscribe | `POST /api/v1/subscriptions` — Platform API generates the subscription token and returns it; devportal stores it. |
+| Unsubscribe | `GET /api/v1/subscriptions?apiId=…&subscriberId=…` → `DELETE /api/v1/subscriptions/{id}` |
+| Update status | `GET /api/v1/subscriptions?apiId=…&subscriberId=…` → `PUT /api/v1/subscriptions/{id}` |
+
+### API key flow
+
+| Operation | Platform API call |
+|---|---|
+| Generate | Key generated in devportal; pushed to `POST /api/v1/rest-apis/{apiHandle}/api-keys` |
+| Regenerate | New key generated in devportal; pushed to `PUT /api/v1/rest-apis/{apiHandle}/api-keys/{name}` |
+| Revoke | `DELETE /api/v1/rest-apis/{apiHandle}/api-keys/{name}`; devportal DB status updated |
+
+### Configuration
+
+Set `platformApi.baseUrl` in `config.yaml` (or `DP_PLATFORMAPI_BASEURL` env var). No webhook subscriber configuration is needed for APIs using this mode.
+
+```yaml
+platformApi:
+  baseUrl: "https://platform-api:9243"
+  insecure: false   # set true only for self-signed certs in dev
+```
+
+---
+
+## Webhook Mode
+
 The Developer Portal integrates with the API Gateway by delivering real-time webhook events whenever API key or subscription state changes. This allows the gateway to enforce access immediately — for example, revoking a key at the gateway the moment a developer revokes it in the portal.
 
 ## How It Works
@@ -410,3 +467,4 @@ curl -X POST \
   http://localhost:3000/o/{orgId}/devportal/v1/webhook-deliveries/{deliveryId}/retry \
   -H "Authorization: Bearer $TOKEN"
 ```
+

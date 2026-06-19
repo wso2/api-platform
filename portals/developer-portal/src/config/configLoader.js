@@ -20,6 +20,7 @@
 
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 const yaml = require('js-yaml');
 
 // Load .env file if present (silently ignored if absent)
@@ -195,6 +196,16 @@ function applyEnvOverrides(config) {
 const config = loadBaseConfig();
 mergeDefaults(config, CONFIG_DEFAULTS);
 applyEnvOverrides(config);
+
+if (!config.advanced.encryptionKey || !/^[0-9a-fA-F]{64}$/.test(config.advanced.encryptionKey)) {
+    config.advanced.encryptionKey = crypto.randomBytes(32).toString('hex');
+    // Use process.stderr directly — logger is not yet initialised at this point
+    process.stderr.write(
+        '[WARN] advanced.encryptionKey is not set — generated an ephemeral key. ' +
+        'Encrypted data (subscription tokens, key manager credentials) will be unreadable after restart. ' +
+        'Set DP_ADVANCED_ENCRYPTIONKEY in your .env file to persist it.\n'
+    );
+}
 
 // Webhook subscriber secrets/key paths can be supplied via env vars:
 // DP_WEBHOOK_SECRET_<SUBSCRIBER_ID_UPPERCASED_UNDERSCORED>=<secret>
