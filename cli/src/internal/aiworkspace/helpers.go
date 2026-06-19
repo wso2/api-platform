@@ -96,8 +96,66 @@ func MCPProxyResourcePath(orgID, id string) string {
 	return withOrg(utils.AIWorkspaceMCPProxiesPath+"/"+url.PathEscape(id), orgID)
 }
 
+// ProxyByIDPath builds the llm-proxies/{id} path. Fetching a single proxy takes
+// only the id path parameter (no organizationId/projectId query).
+func ProxyByIDPath(id string) string {
+	return utils.AIWorkspaceLLMProxiesPath + "/" + url.PathEscape(id)
+}
+
+// MCPProxyByIDPath builds the mcp-proxies/{id} path. Fetching a single proxy
+// takes only the id path parameter (no organizationId/projectId query).
+func MCPProxyByIDPath(id string) string {
+	return utils.AIWorkspaceMCPProxiesPath + "/" + url.PathEscape(id)
+}
+
 func withOrg(path, orgID string) string {
 	return fmt.Sprintf("%s?organizationId=%s", path, url.QueryEscape(orgID))
+}
+
+func withProject(path, projectID string) string {
+	return fmt.Sprintf("%s?projectId=%s", path, url.QueryEscape(projectID))
+}
+
+// ListQuery holds optional pagination parameters for list requests.
+type ListQuery struct {
+	Limit  string
+	Offset string
+}
+
+func withListParams(basePath, orgID string, q ListQuery) string {
+	return appendPagination(withOrg(basePath, orgID), q)
+}
+
+func withProjectListParams(basePath, projectID string, q ListQuery) string {
+	return appendPagination(withProject(basePath, projectID), q)
+}
+
+func appendPagination(path string, q ListQuery) string {
+	if v := strings.TrimSpace(q.Limit); v != "" {
+		path += "&limit=" + url.QueryEscape(v)
+	}
+	if v := strings.TrimSpace(q.Offset); v != "" {
+		path += "&offset=" + url.QueryEscape(v)
+	}
+	return path
+}
+
+// ProviderListPath builds the llm-providers list path with the organizationId
+// query parameter and optional pagination.
+func ProviderListPath(orgID string, q ListQuery) string {
+	return withListParams(utils.AIWorkspaceLLMProvidersPath, orgID, q)
+}
+
+// ProxyListPath builds the llm-proxies list path with the projectId query
+// parameter and optional pagination.
+func ProxyListPath(projectID string, q ListQuery) string {
+	return withProjectListParams(utils.AIWorkspaceLLMProxiesPath, projectID, q)
+}
+
+// MCPProxyListPath builds the mcp-proxies list path with the projectId query
+// parameter and optional pagination.
+func MCPProxyListPath(projectID string, q ListQuery) string {
+	return withProjectListParams(utils.AIWorkspaceMCPProxiesPath, projectID, q)
 }
 
 // ReadJSONFile reads and validates a JSON payload file from disk.

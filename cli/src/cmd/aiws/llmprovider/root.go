@@ -42,4 +42,5 @@ var LLMProviderCmd = &cobra.Command{
 func init() {
 	LLMProviderCmd.AddCommand(pushCmd)
 	LLMProviderCmd.AddCommand(editCmd)
+	LLMProviderCmd.AddCommand(getCmd)
 }

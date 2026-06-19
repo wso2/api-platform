@@ -39,6 +39,8 @@ const (
 	FlagFormat                 = "format"
 	FlagVersion                = "version"
 	FlagID                     = "id"
+	FlagLimit                  = "limit"
+	FlagOffset                 = "offset"
 	FlagAPIID                  = "api-id"
 	FlagSubID                  = "sub-id"
 	FlagConfirm                = "confirm"

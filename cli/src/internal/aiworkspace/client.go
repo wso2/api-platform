@@ -72,6 +72,33 @@ func (c *Client) PostJSON(path string, body []byte) (*http.Response, error) {
 	return c.sendJSON(http.MethodPost, path, body)
 }
 
+// Get sends a GET request and returns the response when it is a 2xx.
+func (c *Client) Get(path string) (*http.Response, error) {
+	baseURL := strings.TrimSuffix(c.aiWorkspace.URL, "/")
+	if !strings.HasPrefix(path, "/") {
+		path = "/" + path
+	}
+
+	req, err := http.NewRequest(http.MethodGet, baseURL+path, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Accept", "application/json")
+	if baseURL != "" {
+		req.Header.Set("Origin", baseURL)
+	}
+
+	resp, err := c.Do(req)
+	if err != nil {
+		return nil, err
+	}
+
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		return resp, nil
+	}
+	return nil, c.formatHTTPError(fmt.Sprintf("GET %s", path), resp)
+}
+
 func (c *Client) sendJSON(method, path string, body []byte) (*http.Response, error) {
 	baseURL := strings.TrimSuffix(c.aiWorkspace.URL, "/")
 	if !strings.HasPrefix(path, "/") {

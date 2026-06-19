@@ -121,7 +121,7 @@ func runEditCommand() error {
 	}
 
 	client := aiworkspace.NewClientWithOptions(aiWorkspace, editInsecure)
-	resp, err := client.PutJSON(aiworkspace.ProxyResourcePath(orgID, proxyID), body)
+	resp, err := client.PutJSON(aiworkspace.ProxyByIDPath(proxyID), body)
 	if err != nil {
 		return aiworkspace.WrapRequestError("update llm proxy", err, editInsecure)
 	}
