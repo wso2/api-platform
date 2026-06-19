@@ -53,6 +53,7 @@ func init() {
 	DevPortalCmd.AddCommand(currentCmd)
 	DevPortalCmd.AddCommand(healthCmd)
 	DevPortalCmd.AddCommand(buildCmd)
+	DevPortalCmd.AddCommand(genCmd)
 	DevPortalCmd.AddCommand(devportalorg.OrgCmd)
 	DevPortalCmd.AddCommand(devportalapikey.APIKeyCmd)
 	DevPortalCmd.AddCommand(devportalapplication.ApplicationCmd)

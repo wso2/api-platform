@@ -97,9 +97,13 @@ func runBuildCommand() error {
 		return err
 	}
 
-	// create default devportal config if none exists and persist it to the project config
+	// Build only zips devportal folders; it never generates their contents
+	// (that is `ap devportal gen`'s job, which also registers the config). As a
+	// fallback, if the project config carries no devportal configs but the
+	// default ./devportal folder exists, register it here and persist it so the
+	// build can proceed.
 	if len(projectConfig.DevPortals) == 0 {
-		portalConfig, err := createDefaultDevPortalConfig(projectConfig, projectRoot)
+		portalConfig, err := registerDefaultDevPortalConfig(projectRoot)
 		if err != nil {
 			return err
 		}
@@ -143,72 +147,6 @@ func runBuildCommand() error {
 	return nil
 }
 
-// projectAPIResource is the subset of the project metadata.yaml the devportal
-// manifest is derived from.
-type projectAPIResource struct {
-	Kind     string `yaml:"kind"`
-	Metadata struct {
-		Name string `yaml:"name"`
-	} `yaml:"metadata"`
-	Spec struct {
-		Description         string                       `yaml:"description"`
-		ReferenceID         string                       `yaml:"referenceID"`
-		GatewayType         string                       `yaml:"gatewayType"`
-		Tags                []string                     `yaml:"tags"`
-		Labels              []string                     `yaml:"labels"`
-		BusinessInformation devPortalBusinessInformation `yaml:"businessInformation"`
-		Endpoints           devPortalEndpoints           `yaml:"endpoints"`
-	} `yaml:"spec"`
-}
-
-// gatewayResource is the subset of the project runtime.yaml the devportal
-// manifest is derived from.
-type gatewayResource struct {
-	Spec struct {
-		DisplayName       string   `yaml:"displayName"`
-		Version           string   `yaml:"version"`
-		SubscriptionPlans []string `yaml:"subscriptionPlans"`
-	} `yaml:"spec"`
-}
-
-type devPortalManifest struct {
-	APIVersion string                `yaml:"apiVersion"`
-	Kind       string                `yaml:"kind"`
-	Metadata   devPortalManifestMeta `yaml:"metadata"`
-	Spec       devPortalManifestSpec `yaml:"spec"`
-}
-
-type devPortalManifestMeta struct {
-	Name string `yaml:"name"`
-}
-
-type devPortalManifestSpec struct {
-	DisplayName          string                       `yaml:"displayName"`
-	Version              string                       `yaml:"version"`
-	Description          string                       `yaml:"description"`
-	GatewayType          string                       `yaml:"gatewayType"`
-	ReferenceID          string                       `yaml:"referenceID"`
-	Tags                 []string                     `yaml:"tags"`
-	Labels               []string                     `yaml:"labels"`
-	SubscriptionPolicies []string                     `yaml:"subscriptionPolicies"`
-	Visibility           string                       `yaml:"visibility"`
-	VisibleGroups        []string                     `yaml:"visibleGroups"`
-	BusinessInformation  devPortalBusinessInformation `yaml:"businessInformation"`
-	Endpoints            devPortalEndpoints           `yaml:"endpoints"`
-}
-
-type devPortalBusinessInformation struct {
-	BusinessOwner       string `yaml:"businessOwner"`
-	BusinessOwnerEmail  string `yaml:"businessOwnerEmail"`
-	TechnicalOwner      string `yaml:"technicalOwner"`
-	TechnicalOwnerEmail string `yaml:"technicalOwnerEmail"`
-}
-
-type devPortalEndpoints struct {
-	SandboxURL    string `yaml:"sandboxUrl"`
-	ProductionURL string `yaml:"productionUrl"`
-}
-
 // failedPortal records a devportal config that could not be built so the others
 // can still be archived and the failures reported together.
 type failedPortal struct {
@@ -216,8 +154,12 @@ type failedPortal struct {
 	err  error
 }
 
-func createDefaultDevPortalConfig(projectConfig *project.Config, projectRoot string) (*project.PortalConfig, error) {
-	portalConfig := &project.PortalConfig{
+// defaultDevPortalConfig returns the portal config describing a project's
+// default ./devportal folder. Both `gen` (when generating the folder) and
+// `build` (as a fallback when no config is registered) use it so the layout
+// stays in one place.
+func defaultDevPortalConfig() project.PortalConfig {
+	return project.PortalConfig{
 		Name:       "default",
 		PortalRoot: "./devportal",
 		FilePaths: project.PortalFilePaths{
@@ -227,124 +169,29 @@ func createDefaultDevPortalConfig(projectConfig *project.Config, projectRoot str
 			Content:      "./content",
 		},
 	}
-
-	portalRoot := resolveProjectPath(projectRoot, portalConfig.PortalRoot)
-	if err := os.MkdirAll(portalRoot, 0755); err != nil {
-		return nil, fmt.Errorf("failed to create devportal directory: %w", err)
-	}
-
-	definitionSource := resolveProjectPath(projectRoot, projectConfig.FilePaths.Definition)
-	if err := ensureWithinProjectRoot(projectRoot, definitionSource, portalConfig.Name, "definition"); err != nil {
-		return nil, err
-	}
-	definitionTarget := filepath.Join(portalRoot, "definition.yaml")
-	if err := copyFile(definitionSource, definitionTarget); err != nil {
-		return nil, err
-	}
-
-	docsSource := resolveProjectPath(projectRoot, projectConfig.FilePaths.Docs)
-	if err := ensureWithinProjectRoot(projectRoot, docsSource, portalConfig.Name, "docs"); err != nil {
-		return nil, err
-	}
-	docsTarget := filepath.Join(portalRoot, "docs")
-	if err := copyDirectory(docsSource, docsTarget); err != nil {
-		return nil, err
-	}
-
-	contentDir := filepath.Join(portalRoot, "content")
-	if err := os.MkdirAll(contentDir, 0755); err != nil {
-		return nil, fmt.Errorf("failed to create devportal content directory: %w", err)
-	}
-
-	manifest, err := buildDefaultDevPortalManifest(projectRoot, projectConfig)
-	if err != nil {
-		return nil, err
-	}
-
-	manifestData, err := marshalManifest(manifest)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal devportal manifest: %w", err)
-	}
-
-	manifestPath := filepath.Join(portalRoot, "devportal.yaml")
-	if err := os.WriteFile(manifestPath, manifestData, 0644); err != nil {
-		return nil, fmt.Errorf("failed to write devportal manifest: %w", err)
-	}
-
-	return portalConfig, nil
 }
 
-func buildDefaultDevPortalManifest(projectRoot string, projectConfig *project.Config) (*devPortalManifest, error) {
-	metadataPath := resolveProjectPath(projectRoot, projectConfig.FilePaths.MetadataFile)
-	if err := ensureWithinProjectRoot(projectRoot, metadataPath, "default", "metadataFile"); err != nil {
-		return nil, err
-	}
-	runtimePath := resolveProjectPath(projectRoot, projectConfig.FilePaths.DeploymentArtifact)
-	if err := ensureWithinProjectRoot(projectRoot, runtimePath, "default", "deploymentArtifact"); err != nil {
-		return nil, err
-	}
+// registerDefaultDevPortalConfig is build's fallback path: when the project
+// config carries no devportal configs but the default ./devportal folder
+// exists on disk, it returns the config describing that folder so build can
+// archive it. The folder's contents are produced by `ap devportal gen`; build
+// never generates them. It errors if the folder is missing.
+func registerDefaultDevPortalConfig(projectRoot string) (*project.PortalConfig, error) {
+	portalConfig := defaultDevPortalConfig()
 
-	metadataData, err := os.ReadFile(metadataPath)
+	portalRoot := resolveProjectPath(projectRoot, portalConfig.PortalRoot)
+	info, err := os.Stat(portalRoot)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read project metadata: %w", err)
+		if os.IsNotExist(err) {
+			return nil, fmt.Errorf("no devportal artifact found at %s; run 'ap devportal gen' to generate one", portalRoot)
+		}
+		return nil, fmt.Errorf("failed to inspect devportal directory: %w", err)
+	}
+	if !info.IsDir() {
+		return nil, fmt.Errorf("expected devportal artifact directory but found a file at %s", portalRoot)
 	}
 
-	var apiMetadata projectAPIResource
-	if err := yaml.Unmarshal(metadataData, &apiMetadata); err != nil {
-		return nil, fmt.Errorf("failed to parse project metadata: %w", err)
-	}
-
-	runtimeData, err := os.ReadFile(runtimePath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read deployment artifact: %w", err)
-	}
-
-	var gateway gatewayResource
-	if err := yaml.Unmarshal(runtimeData, &gateway); err != nil {
-		return nil, fmt.Errorf("failed to parse deployment artifact: %w", err)
-	}
-
-	tags := apiMetadata.Spec.Tags
-	if len(tags) == 0 {
-		tags = []string{"default"}
-	}
-
-	labels := apiMetadata.Spec.Labels
-	if len(labels) == 0 {
-		labels = []string{"default"}
-	}
-
-	gatewayType := apiMetadata.Spec.GatewayType
-	if gatewayType == "" {
-		gatewayType = project.DefaultGatewayType
-	}
-
-	kind := strings.TrimSpace(apiMetadata.Kind)
-	if kind == "" {
-		kind = "RestApi"
-	}
-
-	return &devPortalManifest{
-		APIVersion: "devportal.api-platform.wso2.com/v1",
-		Kind:       kind,
-		Metadata: devPortalManifestMeta{
-			Name: strings.TrimSpace(apiMetadata.Metadata.Name),
-		},
-		Spec: devPortalManifestSpec{
-			DisplayName:          strings.TrimSpace(gateway.Spec.DisplayName),
-			Version:              strings.TrimSpace(gateway.Spec.Version),
-			Description:          strings.TrimSpace(apiMetadata.Spec.Description),
-			GatewayType:          gatewayType,
-			ReferenceID:          strings.TrimSpace(apiMetadata.Spec.ReferenceID),
-			Tags:                 tags,
-			Labels:               labels,
-			SubscriptionPolicies: gateway.Spec.SubscriptionPlans,
-			Visibility:           "PUBLIC",
-			VisibleGroups:        []string{},
-			BusinessInformation:  apiMetadata.Spec.BusinessInformation,
-			Endpoints:            apiMetadata.Spec.Endpoints,
-		},
-	}, nil
+	return &portalConfig, nil
 }
 
 func resolveProjectPath(projectRoot, pathValue string) string {

@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 
@@ -38,15 +39,21 @@ const (
 ap devportal rest-api list --org org_1
 
 # List all APIs using a specific devportal
-ap devportal rest-api list --org org_1 --display-name my-portal --platform eu`
+ap devportal rest-api list --org org_1 --display-name my-portal --platform eu
+
+# List APIs from a specific view (defaults to "default")
+ap devportal rest-api list --org org_1 --view internal`
 )
 
 var (
 	listOrgID    string
 	listName     string
 	listPlatform string
+	listView     string
 	listInsecure bool
 )
+
+const defaultView = "default"
 
 type apiListRow struct {
 	APIID     string `json:"apiID"`
@@ -74,6 +81,7 @@ func init() {
 	utils.AddStringFlag(listCmd, utils.FlagOrgID, &listOrgID, "", "Organization ID")
 	utils.AddStringFlag(listCmd, utils.FlagName, &listName, "", "DevPortal display name")
 	utils.AddStringFlag(listCmd, utils.FlagPlatform, &listPlatform, "", "Platform name")
+	utils.AddStringFlag(listCmd, utils.FlagView, &listView, defaultView, "View to list APIs from")
 	listCmd.Flags().BoolVar(&listInsecure, "insecure", false, "Skip TLS certificate verification")
 	_ = listCmd.MarkFlagRequired(utils.FlagOrgID)
 }
@@ -94,8 +102,14 @@ func runListCommand() error {
 		return err
 	}
 
+	view := strings.TrimSpace(listView)
+	if view == "" {
+		view = defaultView
+	}
+
 	client := internaldevportal.NewClientWithOptions(devPortal, listInsecure)
-	path := internaldevportal.OrgScopedPath(orgID, "apis?tags=default")
+	resource := "apis?view=" + url.QueryEscape(view)
+	path := internaldevportal.OrgScopedPath(orgID, resource)
 	resp, err := client.Get(path)
 	if err != nil {
 		return internaldevportal.WrapRequestError("list api artifacts", err, listInsecure)

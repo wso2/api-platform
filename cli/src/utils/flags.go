@@ -52,6 +52,7 @@ const (
 	FlagHeader                 = "header"
 	FlagPolicyId               = "policy-id"
 	FlagOrgID                  = "org"
+	FlagView                   = "view"
 	FlagRequestCount           = "request-count"
 	FlagEventCount             = "event-count"
 	FlagPricingModel           = "pricing-model"
