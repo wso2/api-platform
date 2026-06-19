@@ -153,13 +153,21 @@ func (j *JWTAuthenticator) Authenticate(ctx *gin.Context) (*AuthResult, error) {
 		}
 	}
 
-	// Validate audience if configured
-	if j.config.JWTConfig.Audience != nil && *j.config.JWTConfig.Audience != "" {
+	// Validate audience if configured. The token is accepted when its "aud"
+	// claim contains at least one of the configured audiences.
+	if j.config.JWTConfig.Audience != nil && len(*j.config.JWTConfig.Audience) > 0 {
 		audience, err := claims.GetAudience()
 		if err != nil {
 			return nil, fmt.Errorf("failed to get audience: %w", err)
 		}
-		if !slices.Contains(audience, *j.config.JWTConfig.Audience) {
+		matched := false
+		for _, expected := range *j.config.JWTConfig.Audience {
+			if expected != "" && slices.Contains(audience, expected) {
+				matched = true
+				break
+			}
+		}
+		if !matched {
 			return nil, errors.New("invalid audience")
 		}
 	}

@@ -53,6 +53,12 @@ issuer  = "platform-api"
 # Enable and configure when using Asgardeo, Keycloak, Auth0, etc.
 [auth.idp]
 enabled = false
+# jwks_url = "https://idp.example.com/oauth2/jwks"
+# issuer   = ["https://idp.example.com/oauth2/token"]
+# audience — list of accepted "aud" values. When set, a token is rejected
+# unless its "aud" claim contains at least one of these values. Leave empty
+# to skip the check. Override with AUTH_IDP_AUDIENCE.
+audience = []
 
 # File-based auth — local username/password login.
 [auth.file_based]
