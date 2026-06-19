@@ -81,7 +81,7 @@ func BuildAPIConfigFromHTTPRoute(
 		if err != nil {
 			return nil, err
 		}
-		filterPolicies, ruleDirect, err := policiesFromHTTPRouteFilters(rule.Filters)
+		filterPolicies, ruleDirect, ruleRedirect, err := policiesFromHTTPRouteFilters(rule.Filters)
 		if err != nil {
 			return nil, err
 		}
@@ -132,7 +132,13 @@ func BuildAPIConfigFromHTTPRoute(
 		}
 
 		var useDirect *apiv1.OperationDirectResponse
+		var useRedirect *apiv1.OperationRedirect
 		switch {
+		case ruleRedirect != nil:
+			// A RequestRedirect rule terminates at the gateway and legitimately has no
+			// backendRefs, so the redirect branch must take precedence over the
+			// "no backends → 500" fallback below.
+			useRedirect = ruleRedirect
 		case !ruleHasBackendRefs(rule):
 			if ruleDirect != nil {
 				useDirect = ruleDirect
@@ -177,7 +183,9 @@ func BuildAPIConfigFromHTTPRoute(
 				}
 				op.Policies = append(op.Policies, filterPolicies...)
 
-				if useDirect != nil {
+				if useRedirect != nil {
+					op.Redirect = useRedirect
+				} else if useDirect != nil {
 					op.DirectResponse = useDirect
 				} else if weightedRule {
 					// A weighted rule is realized as ONE upstream definition ("rule-N-weighted")

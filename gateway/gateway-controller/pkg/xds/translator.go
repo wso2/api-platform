@@ -300,6 +300,10 @@ func (t *Translator) createRouteFromRDC(routeKey string, rdcRoute *models.Route,
 	method := rdcRoute.Method
 	operationPath := rdcRoute.OperationPath
 
+	if rdcRoute.Redirect != nil {
+		return t.createRedirectRoute(routeKey, method, fullPath, operationPath, rdcRoute)
+	}
+
 	if rdcRoute.DirectResponse != nil {
 		return t.createDirectResponseRoute(routeKey, method, fullPath, operationPath, rdcRoute)
 	}
@@ -464,23 +468,6 @@ func (t *Translator) createDirectResponseRoute(routeKey, method, fullPath, opera
 		status = 500
 	}
 
-	// A 3xx direct response carrying a Location header is a redirect (e.g. the Gateway-API
-	// RequestRedirect filter). Render it as Envoy's native RedirectAction rather than a
-	// direct_response + manual Location header: Envoy then emits a single, correct Location
-	// (preserving the original request path) and applies the right response code. Building it
-	// as a direct_response leaves Envoy to synthesize its own Location for the 3xx, to which
-	// the manual header is appended (default append semantics), producing a comma-joined,
-	// invalid Location value.
-	if redirect := buildRedirectAction(status, dr.Headers); redirect != nil {
-		r := &route.Route{
-			Name:   routeKey,
-			Match:  &route.RouteMatch{},
-			Action: &route.Route_Redirect{Redirect: redirect},
-		}
-		t.setDirectResponseMatch(r, method, fullPath, operationPath, rdcRoute)
-		return r
-	}
-
 	action := &route.Route_DirectResponse{
 		DirectResponse: &route.DirectResponseAction{Status: status},
 	}
@@ -498,6 +485,36 @@ func (t *Translator) createDirectResponseRoute(routeKey, method, fullPath, opera
 				Header: &core.HeaderValue{Key: hdr.Name, Value: hdr.Value},
 			})
 		}
+	}
+	return r
+}
+
+// createRedirectRoute renders a structured Gateway-API RequestRedirect as an Envoy route. When the
+// status code maps to an Envoy RedirectAction (301/302/303/307/308) it emits a native redirect that
+// preserves every component the filter left unset (scheme, host, port, path) from the original
+// request. For any other status it falls back to a plain direct_response with that code. Matching is
+// built with the shared helpers so a redirect route selects exactly the same requests a normal route
+// would (no path/header drift).
+func (t *Translator) createRedirectRoute(routeKey, method, fullPath, operationPath string, rdcRoute *models.Route) *route.Route {
+	r := &route.Route{
+		Name:  routeKey,
+		Match: &route.RouteMatch{},
+	}
+	t.setDirectResponseMatch(r, method, fullPath, operationPath, rdcRoute)
+
+	if redirect := buildRedirectAction(rdcRoute.Redirect); redirect != nil {
+		r.Action = &route.Route_Redirect{Redirect: redirect}
+		return r
+	}
+
+	// Unsupported redirect status code: fall back to a plain direct response with that status
+	// so the route still terminates deterministically instead of routing to no upstream.
+	status := uint32(rdcRoute.Redirect.StatusCode)
+	if status == 0 {
+		status = 302
+	}
+	r.Action = &route.Route_DirectResponse{
+		DirectResponse: &route.DirectResponseAction{Status: status},
 	}
 	return r
 }
@@ -600,50 +617,44 @@ func (t *Translator) setMatchPathSpecifier(m *route.RouteMatch, fullPath, operat
 	}
 }
 
-// buildRedirectAction returns an Envoy RedirectAction for a 3xx status that carries a Location
-// header, or nil when the response is not a representable redirect (non-3xx, no Location, or a
-// 3xx code Envoy's RedirectAction cannot express). The Location value is the scheme://host[:port]
-// (and optional path) the operator derived from the Gateway-API RequestRedirect filter; any field
-// it omits is left unset so Envoy preserves the original request value (notably the path).
-func buildRedirectAction(status uint32, headers []models.RouteResponseHeader) *route.RedirectAction {
-	if status < 300 || status >= 400 {
+// buildRedirectAction builds an Envoy RedirectAction from a structured RouteRedirect, or returns
+// nil when the status code is not one Envoy's RedirectAction can express (the caller then falls
+// back to a direct_response). Each component is set only when the redirect specifies it; anything
+// left unset is preserved from the original request by Envoy — the core Gateway-API contract:
+//   - Scheme omitted   → SchemeRewriteSpecifier unset → request scheme preserved
+//   - Hostname omitted → HostRedirect unset           → request authority preserved
+//   - Port omitted     → PortRedirect unset           → request port / scheme default
+//   - Path omitted     → PathRewriteSpecifier unset   → request path preserved
+func buildRedirectAction(rd *models.RouteRedirect) *route.RedirectAction {
+	if rd == nil {
 		return nil
 	}
-	var location string
-	for _, h := range headers {
-		if strings.EqualFold(h.Name, "Location") {
-			location = strings.TrimSpace(h.Value)
-			break
-		}
+	status := uint32(rd.StatusCode)
+	if status == 0 {
+		status = 302 // Gateway-API default when the filter omits statusCode.
 	}
-	if location == "" {
-		return nil
-	}
-
 	code, ok := redirectResponseCode(status)
 	if !ok {
-		return nil // unsupported 3xx code; fall back to direct_response
-	}
-
-	u, err := url.Parse(location)
-	if err != nil || u.Host == "" {
-		return nil
+		return nil // unsupported status; caller falls back to direct_response
 	}
 
 	redirect := &route.RedirectAction{ResponseCode: code}
-	redirect.HostRedirect = u.Hostname()
-	if u.Scheme != "" {
-		redirect.SchemeRewriteSpecifier = &route.RedirectAction_SchemeRedirect{SchemeRedirect: u.Scheme}
+	if rd.Scheme != nil && *rd.Scheme != "" {
+		redirect.SchemeRewriteSpecifier = &route.RedirectAction_SchemeRedirect{SchemeRedirect: *rd.Scheme}
 	}
-	if p := u.Port(); p != "" {
-		if pn, perr := strconv.Atoi(p); perr == nil && pn > 0 {
-			redirect.PortRedirect = uint32(pn)
+	if rd.Hostname != nil && *rd.Hostname != "" {
+		redirect.HostRedirect = *rd.Hostname
+	}
+	if rd.Port != nil && *rd.Port > 0 {
+		redirect.PortRedirect = uint32(*rd.Port)
+	}
+	if rd.Path != nil {
+		switch {
+		case rd.Path.ReplaceFullPath != nil:
+			redirect.PathRewriteSpecifier = &route.RedirectAction_PathRedirect{PathRedirect: *rd.Path.ReplaceFullPath}
+		case rd.Path.ReplacePrefixMatch != nil:
+			redirect.PathRewriteSpecifier = &route.RedirectAction_PrefixRewrite{PrefixRewrite: *rd.Path.ReplacePrefixMatch}
 		}
-	}
-	// Only override the path when the filter specified one; otherwise Envoy preserves the
-	// original request path (Gateway-API default for a hostname-only redirect).
-	if u.Path != "" && u.Path != "/" {
-		redirect.PathRewriteSpecifier = &route.RedirectAction_PathRedirect{PathRedirect: u.Path}
 	}
 	return redirect
 }

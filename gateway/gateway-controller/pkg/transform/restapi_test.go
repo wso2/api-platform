@@ -651,6 +651,58 @@ func TestRestAPITransformer_SemicolonVhostsExpandToMultipleHosts(t *testing.T) {
 	}
 }
 
+// TestMapOperationRedirect verifies the management Operation.Redirect → models.Route.Redirect
+// conversion preserves pointer-nil ⇒ "omitted, preserve from request" semantics for every component.
+func TestMapOperationRedirect(t *testing.T) {
+	strptr := func(s string) *string { return &s }
+	intptr := func(i int) *int { return &i }
+	scheme := func(s api.OperationRedirectScheme) *api.OperationRedirectScheme { return &s }
+
+	// nil in → nil out.
+	require.Nil(t, mapOperationRedirect(nil))
+
+	// Status-only: scheme/host/port/path all nil (preserve everything).
+	got := mapOperationRedirect(&api.OperationRedirect{StatusCode: 301})
+	require.NotNil(t, got)
+	assert.Equal(t, 301, got.StatusCode)
+	assert.Nil(t, got.Scheme)
+	assert.Nil(t, got.Hostname)
+	assert.Nil(t, got.Port)
+	assert.Nil(t, got.Path)
+
+	// All components set, with a ReplaceFullPath path.
+	got = mapOperationRedirect(&api.OperationRedirect{
+		StatusCode: 308,
+		Scheme:     scheme("https"),
+		Hostname:   strptr("example.org"),
+		Port:       intptr(8443),
+		Path:       &api.OperationRedirectPath{Type: "ReplaceFullPath", ReplaceFullPath: strptr("/new")},
+	})
+	require.NotNil(t, got)
+	assert.Equal(t, 308, got.StatusCode)
+	require.NotNil(t, got.Scheme)
+	assert.Equal(t, "https", *got.Scheme)
+	require.NotNil(t, got.Hostname)
+	assert.Equal(t, "example.org", *got.Hostname)
+	require.NotNil(t, got.Port)
+	assert.Equal(t, 8443, *got.Port)
+	require.NotNil(t, got.Path)
+	assert.Equal(t, "ReplaceFullPath", got.Path.Type)
+	require.NotNil(t, got.Path.ReplaceFullPath)
+	assert.Equal(t, "/new", *got.Path.ReplaceFullPath)
+	assert.Nil(t, got.Path.ReplacePrefixMatch)
+
+	// ReplacePrefixMatch path.
+	got = mapOperationRedirect(&api.OperationRedirect{
+		StatusCode: 302,
+		Path:       &api.OperationRedirectPath{Type: "ReplacePrefixMatch", ReplacePrefixMatch: strptr("/p")},
+	})
+	require.NotNil(t, got.Path)
+	require.NotNil(t, got.Path.ReplacePrefixMatch)
+	assert.Equal(t, "/p", *got.Path.ReplacePrefixMatch)
+	assert.Nil(t, got.Path.ReplaceFullPath)
+}
+
 // TestRestAPITransformer_MixedSchemeUpstreamDefinition guards the upstream-definitions loop: a
 // single Envoy cluster has one transport socket and the model carries one TLS bit for the whole
 // cluster, so a weighted definition that mixes https and non-https endpoints cannot be represented

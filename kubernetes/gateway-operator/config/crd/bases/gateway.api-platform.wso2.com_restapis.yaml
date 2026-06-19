@@ -55,6 +55,56 @@ spec:
                 items:
                   description: Operation defines model for Operation.
                   properties:
+                    directResponse:
+                      description: DirectResponse When set, the gateway responds directly
+                        without calling an upstream.
+                      properties:
+                        headers:
+                          description: Headers Optional response headers (e.g. Location
+                            for redirects)
+                          items:
+                            description: OperationResponseHeader is a single response
+                              header on a direct response.
+                            properties:
+                              name:
+                                type: string
+                              value:
+                                type: string
+                            required:
+                            - name
+                            - value
+                            type: object
+                          type: array
+                        statusCode:
+                          description: StatusCode HTTP status code
+                          type: integer
+                      required:
+                      - statusCode
+                      type: object
+                    matchHeaders:
+                      description: MatchHeaders ANDed header matchers applied before
+                        routing to this operation.
+                      items:
+                        description: OperationHeaderMatch mirrors Gateway API HTTPHeaderMatch
+                          for Envoy route selection.
+                        properties:
+                          name:
+                            description: Name Header name (case-insensitive)
+                            type: string
+                          type:
+                            description: Type Match type (Exact or RegularExpression)
+                            enum:
+                            - Exact
+                            - RegularExpression
+                            type: string
+                          value:
+                            description: Value Header value to match
+                            type: string
+                        required:
+                        - name
+                        - value
+                        type: object
+                      type: array
                     method:
                       description: Method HTTP method
                       enum:
@@ -69,6 +119,13 @@ spec:
                     path:
                       description: Path Route path with optional {param} placeholders
                       pattern: ^/[a-zA-Z0-9\-._~!$&'()*+,;=:@%/{}\[\]]*$
+                      type: string
+                    pathMatchType:
+                      description: PathMatchType How the path is matched (Exact or
+                        PathPrefix). Defaults to Exact when omitted.
+                      enum:
+                      - Exact
+                      - PathPrefix
                       type: string
                     policies:
                       description: Policies List of policies applied only to this
@@ -112,6 +169,59 @@ spec:
                             to upstream response). "0s" disables.
                           pattern: ^\d+(\.\d+)?(ms|s|m|h)$
                           type: string
+                      type: object
+                    redirect:
+                      description: |-
+                        Redirect When set, the gateway issues an HTTP redirect (Gateway-API RequestRedirect).
+                        Components left unset are preserved from the original request.
+                      properties:
+                        hostname:
+                          description: Hostname Redirect host; omit to preserve the
+                            request Host
+                          type: string
+                        path:
+                          description: Path Path rewrite; omit to preserve the request
+                            path
+                          properties:
+                            replaceFullPath:
+                              description: ReplaceFullPath Full replacement path when
+                                Type is ReplaceFullPath
+                              type: string
+                            replacePrefixMatch:
+                              description: ReplacePrefixMatch Replacement for the
+                                matched path prefix when Type is ReplacePrefixMatch
+                              type: string
+                            type:
+                              description: Type Path rewrite type
+                              enum:
+                              - ReplaceFullPath
+                              - ReplacePrefixMatch
+                              type: string
+                          required:
+                          - type
+                          type: object
+                        port:
+                          description: Port Redirect port; omit to preserve the request
+                            port / use the scheme default
+                          type: integer
+                        scheme:
+                          description: Scheme Redirect scheme; omit to preserve the
+                            request scheme
+                          enum:
+                          - http
+                          - https
+                          type: string
+                        statusCode:
+                          description: StatusCode HTTP redirect status code
+                          enum:
+                          - 301
+                          - 302
+                          - 303
+                          - 307
+                          - 308
+                          type: integer
+                      required:
+                      - statusCode
                       type: object
                   required:
                   - method
@@ -169,6 +279,19 @@ spec:
                     description: Main Upstream backend configuration for production
                       traffic
                     properties:
+                      hostRewrite:
+                        description: |-
+                          HostRewrite controls how the Host header is handled when routing to the upstream.
+                          "auto" lets Envoy rewrite the Host header to the upstream cluster host; "manual"
+                          disables automatic rewriting so the incoming Host header is preserved. When unset,
+                          the gateway-controller defaults to "auto".
+                        enum:
+                        - auto
+                        - manual
+                        type: string
+                      ref:
+                        description: Ref Reference to a named entry in upstreamDefinitions
+                        type: string
                       ref:
                         description: Ref Name of a predefined upstreamDefinition to
                           route through.
@@ -186,6 +309,19 @@ spec:
                     description: Sandbox Upstream backend configuration for sandbox/testing
                       traffic
                     properties:
+                      hostRewrite:
+                        description: |-
+                          HostRewrite controls how the Host header is handled when routing to the upstream.
+                          "auto" lets Envoy rewrite the Host header to the upstream cluster host; "manual"
+                          disables automatic rewriting so the incoming Host header is preserved. When unset,
+                          the gateway-controller defaults to "auto".
+                        enum:
+                        - auto
+                        - manual
+                        type: string
+                      ref:
+                        description: Ref Reference to a named entry in upstreamDefinitions
+                        type: string
                       ref:
                         description: Ref Name of a predefined upstreamDefinition to
                           route through.
@@ -272,7 +408,10 @@ spec:
                 description: Vhosts Custom virtual hosts/domains for the API
                 properties:
                   main:
-                    description: Main Custom virtual host/domain for production traffic
+                    description: |-
+                      Main Custom virtual host(s)/domain(s) for production traffic. One or more hostnames separated
+                      by ";" — each serves the main upstream (e.g. when an HTTPRoute attaches to multiple listeners
+                      with distinct hostnames). The first entry is the primary vhost.
                     type: string
                   sandbox:
                     description: Sandbox Custom virtual host/domain for sandbox traffic

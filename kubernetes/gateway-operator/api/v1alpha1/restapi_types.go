@@ -154,6 +154,53 @@ type Operation struct {
 	// DirectResponse When set, the gateway responds directly without calling an upstream.
 	// +optional
 	DirectResponse *OperationDirectResponse `json:"directResponse,omitempty"`
+
+	// Redirect When set, the gateway issues an HTTP redirect (Gateway-API RequestRedirect).
+	// Components left unset are preserved from the original request.
+	// +optional
+	Redirect *OperationRedirect `json:"redirect,omitempty"`
+}
+
+// OperationRedirect is a structured Gateway-API RequestRedirect. Each optional component left unset
+// is preserved from the original request (scheme, host, port, path), matching Gateway-API semantics.
+type OperationRedirect struct {
+	// StatusCode HTTP redirect status code
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:Enum=301;302;303;307;308
+	StatusCode int `json:"statusCode"`
+
+	// Scheme Redirect scheme; omit to preserve the request scheme
+	// +optional
+	// +kubebuilder:validation:Enum=http;https
+	Scheme *string `json:"scheme,omitempty"`
+
+	// Hostname Redirect host; omit to preserve the request Host
+	// +optional
+	Hostname *string `json:"hostname,omitempty"`
+
+	// Port Redirect port; omit to preserve the request port / use the scheme default
+	// +optional
+	Port *int `json:"port,omitempty"`
+
+	// Path Path rewrite; omit to preserve the request path
+	// +optional
+	Path *OperationRedirectPath `json:"path,omitempty"`
+}
+
+// OperationRedirectPath is a path rewrite for a redirect (mirrors Gateway-API HTTPPathModifier).
+type OperationRedirectPath struct {
+	// Type Path rewrite type
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:Enum=ReplaceFullPath;ReplacePrefixMatch
+	Type string `json:"type"`
+
+	// ReplaceFullPath Full replacement path when Type is ReplaceFullPath
+	// +optional
+	ReplaceFullPath *string `json:"replaceFullPath,omitempty"`
+
+	// ReplacePrefixMatch Replacement for the matched path prefix when Type is ReplacePrefixMatch
+	// +optional
+	ReplacePrefixMatch *string `json:"replacePrefixMatch,omitempty"`
 }
 
 // OperationPathMatchType controls path matching semantics.

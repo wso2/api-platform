@@ -37,7 +37,7 @@ func TestPoliciesFromHTTPRouteFilters_RemoveHeadersAreObjects(t *testing.T) {
 		},
 	}}
 
-	policies, _, err := policiesFromHTTPRouteFilters(filters)
+	policies, _, _, err := policiesFromHTTPRouteFilters(filters)
 	require.NoError(t, err)
 	require.Len(t, policies, 1)
 	require.Equal(t, "remove-headers", policies[0].Name)
@@ -64,7 +64,7 @@ func TestPoliciesFromHTTPRouteFilters_SetHeadersAreObjects(t *testing.T) {
 			Set: []gatewayv1.HTTPHeader{{Name: "X-Set", Value: "v"}},
 		},
 	}}
-	policies, _, err := policiesFromHTTPRouteFilters(filters)
+	policies, _, _, err := policiesFromHTTPRouteFilters(filters)
 	require.NoError(t, err)
 	require.Len(t, policies, 1)
 	require.Equal(t, "set-headers", policies[0].Name)
@@ -91,7 +91,7 @@ func TestPoliciesFromHTTPRouteFilters_AddHeadersUseAppend(t *testing.T) {
 			Add: []gatewayv1.HTTPHeader{{Name: "X-Header-Add", Value: "add-appends-values"}},
 		},
 	}}
-	policies, _, err := policiesFromHTTPRouteFilters(filters)
+	policies, _, _, err := policiesFromHTTPRouteFilters(filters)
 	require.NoError(t, err)
 	require.Len(t, policies, 1)
 	require.Equal(t, "set-headers", policies[0].Name)
@@ -107,4 +107,107 @@ func TestPoliciesFromHTTPRouteFilters_AddHeadersUseAppend(t *testing.T) {
 	require.Len(t, params.Request.Headers, 1)
 	require.Equal(t, "X-Header-Add", params.Request.Headers[0]["name"])
 	require.Equal(t, "add-appends-values", params.Request.Headers[0]["value"])
+}
+
+// TestPoliciesFromHTTPRouteFilters_RedirectStructured guards faithful Gateway-API RequestRedirect:
+// the filter is mapped to a structured OperationRedirect where every component the filter omits stays
+// nil (preserved from the original request), the omitted status defaults to 302, and a redirect never
+// produces an OperationDirectResponse nor any Location header / localhost / forced-http fallback.
+func TestPoliciesFromHTTPRouteFilters_RedirectStructured(t *testing.T) {
+	strptr := func(s string) *string { return &s }
+	redirectFilter := func(r *gatewayv1.HTTPRequestRedirectFilter) []gatewayv1.HTTPRouteFilter {
+		return []gatewayv1.HTTPRouteFilter{{Type: gatewayv1.HTTPRouteFilterRequestRedirect, RequestRedirect: r}}
+	}
+
+	t.Run("status only preserves everything else", func(t *testing.T) {
+		status := 301
+		_, direct, redirect, err := policiesFromHTTPRouteFilters(redirectFilter(
+			&gatewayv1.HTTPRequestRedirectFilter{StatusCode: &status}))
+		require.NoError(t, err)
+		require.Nil(t, direct, "a redirect must not produce a direct response")
+		require.NotNil(t, redirect)
+		require.Equal(t, 301, redirect.StatusCode)
+		require.Nil(t, redirect.Scheme, "omitted scheme stays nil (preserve request scheme)")
+		require.Nil(t, redirect.Hostname, "omitted hostname stays nil (no localhost)")
+		require.Nil(t, redirect.Port)
+		require.Nil(t, redirect.Path)
+	})
+
+	t.Run("omitted status defaults to 302", func(t *testing.T) {
+		_, _, redirect, err := policiesFromHTTPRouteFilters(redirectFilter(&gatewayv1.HTTPRequestRedirectFilter{}))
+		require.NoError(t, err)
+		require.NotNil(t, redirect)
+		require.Equal(t, 302, redirect.StatusCode)
+	})
+
+	t.Run("scheme only", func(t *testing.T) {
+		_, _, redirect, err := policiesFromHTTPRouteFilters(redirectFilter(
+			&gatewayv1.HTTPRequestRedirectFilter{Scheme: strptr("https")}))
+		require.NoError(t, err)
+		require.NotNil(t, redirect.Scheme)
+		require.Equal(t, "https", *redirect.Scheme)
+		require.Nil(t, redirect.Hostname)
+		require.Nil(t, redirect.Port)
+	})
+
+	t.Run("hostname only", func(t *testing.T) {
+		host := gatewayv1.PreciseHostname("example.org")
+		_, _, redirect, err := policiesFromHTTPRouteFilters(redirectFilter(
+			&gatewayv1.HTTPRequestRedirectFilter{Hostname: &host}))
+		require.NoError(t, err)
+		require.NotNil(t, redirect.Hostname)
+		require.Equal(t, "example.org", *redirect.Hostname)
+		require.Nil(t, redirect.Scheme)
+		require.Nil(t, redirect.Port)
+	})
+
+	t.Run("port only", func(t *testing.T) {
+		port := gatewayv1.PortNumber(8443)
+		_, _, redirect, err := policiesFromHTTPRouteFilters(redirectFilter(
+			&gatewayv1.HTTPRequestRedirectFilter{Port: &port}))
+		require.NoError(t, err)
+		require.NotNil(t, redirect.Port)
+		require.Equal(t, 8443, *redirect.Port)
+	})
+
+	t.Run("path ReplaceFullPath", func(t *testing.T) {
+		_, _, redirect, err := policiesFromHTTPRouteFilters(redirectFilter(
+			&gatewayv1.HTTPRequestRedirectFilter{Path: &gatewayv1.HTTPPathModifier{
+				Type: gatewayv1.FullPathHTTPPathModifier, ReplaceFullPath: strptr("/new"),
+			}}))
+		require.NoError(t, err)
+		require.NotNil(t, redirect.Path)
+		require.Equal(t, "ReplaceFullPath", redirect.Path.Type)
+		require.NotNil(t, redirect.Path.ReplaceFullPath)
+		require.Equal(t, "/new", *redirect.Path.ReplaceFullPath)
+		require.Nil(t, redirect.Path.ReplacePrefixMatch)
+	})
+
+	t.Run("path ReplacePrefixMatch", func(t *testing.T) {
+		_, _, redirect, err := policiesFromHTTPRouteFilters(redirectFilter(
+			&gatewayv1.HTTPRequestRedirectFilter{Path: &gatewayv1.HTTPPathModifier{
+				Type: gatewayv1.PrefixMatchHTTPPathModifier, ReplacePrefixMatch: strptr("/p"),
+			}}))
+		require.NoError(t, err)
+		require.NotNil(t, redirect.Path)
+		require.Equal(t, "ReplacePrefixMatch", redirect.Path.Type)
+		require.NotNil(t, redirect.Path.ReplacePrefixMatch)
+		require.Equal(t, "/p", *redirect.Path.ReplacePrefixMatch)
+		require.Nil(t, redirect.Path.ReplaceFullPath)
+	})
+
+	t.Run("combined hostname and status, no direct response", func(t *testing.T) {
+		status := 307
+		host := gatewayv1.PreciseHostname("h.example.org")
+		_, direct, redirect, err := policiesFromHTTPRouteFilters(redirectFilter(
+			&gatewayv1.HTTPRequestRedirectFilter{StatusCode: &status, Hostname: &host}))
+		require.NoError(t, err)
+		require.Nil(t, direct)
+		require.NotNil(t, redirect)
+		require.Equal(t, 307, redirect.StatusCode)
+		require.Equal(t, "h.example.org", *redirect.Hostname)
+		require.Nil(t, redirect.Scheme)
+		require.Nil(t, redirect.Port)
+		require.Nil(t, redirect.Path)
+	})
 }

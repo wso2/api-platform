@@ -40,9 +40,10 @@ func policyFromParams(name, version string, params map[string]interface{}) (apiv
 	}, nil
 }
 
-func policiesFromHTTPRouteFilters(filters []gatewayv1.HTTPRouteFilter) ([]apiv1.Policy, *apiv1.OperationDirectResponse, error) {
+func policiesFromHTTPRouteFilters(filters []gatewayv1.HTTPRouteFilter) ([]apiv1.Policy, *apiv1.OperationDirectResponse, *apiv1.OperationRedirect, error) {
 	var policies []apiv1.Policy
 	var direct *apiv1.OperationDirectResponse
+	var redirect *apiv1.OperationRedirect
 
 	for _, f := range filters {
 		switch f.Type {
@@ -63,7 +64,7 @@ func policiesFromHTTPRouteFilters(filters []gatewayv1.HTTPRouteFilter) ([]apiv1.
 					"request": map[string]interface{}{"headers": headers},
 				})
 				if err != nil {
-					return nil, nil, err
+					return nil, nil, nil, err
 				}
 				policies = append(policies, p)
 			}
@@ -87,7 +88,7 @@ func policiesFromHTTPRouteFilters(filters []gatewayv1.HTTPRouteFilter) ([]apiv1.
 					"request": map[string]interface{}{"headers": headers},
 				})
 				if err != nil {
-					return nil, nil, err
+					return nil, nil, nil, err
 				}
 				policies = append(policies, p)
 			}
@@ -104,7 +105,7 @@ func policiesFromHTTPRouteFilters(filters []gatewayv1.HTTPRouteFilter) ([]apiv1.
 					"request": map[string]interface{}{"headers": headers},
 				})
 				if err != nil {
-					return nil, nil, err
+					return nil, nil, nil, err
 				}
 				policies = append(policies, p)
 			}
@@ -113,35 +114,43 @@ func policiesFromHTTPRouteFilters(filters []gatewayv1.HTTPRouteFilter) ([]apiv1.
 				continue
 			}
 			redir := f.RequestRedirect
-			status := 302
+			// Build a structured redirect: set ONLY the components the filter specifies.
+			// Every omitted component is left nil so the controller/Envoy preserves it from
+			// the original request (scheme, host, port, path) — the Gateway-API contract.
+			out := &apiv1.OperationRedirect{StatusCode: 302} // Gateway-API default status.
 			if redir.StatusCode != nil {
-				status = int(*redir.StatusCode)
+				out.StatusCode = int(*redir.StatusCode)
 			}
-			host := ""
-			if redir.Hostname != nil {
-				host = string(*redir.Hostname)
-			}
-			scheme := "http"
 			if redir.Scheme != nil && *redir.Scheme != "" {
-				scheme = string(*redir.Scheme)
+				s := *redir.Scheme
+				out.Scheme = &s
 			}
-			locHost := host
-			if locHost == "" {
-				locHost = "localhost"
+			if redir.Hostname != nil {
+				h := string(*redir.Hostname)
+				out.Hostname = &h
 			}
-			headers := []apiv1.OperationResponseHeader{{
-				Name:  "Location",
-				Value: fmt.Sprintf("%s://%s", scheme, locHost),
-			}}
-			direct = &apiv1.OperationDirectResponse{
-				StatusCode: status,
-				Headers:    headers,
+			if redir.Port != nil {
+				p := int(*redir.Port)
+				out.Port = &p
 			}
+			if redir.Path != nil {
+				rp := &apiv1.OperationRedirectPath{Type: string(redir.Path.Type)}
+				if redir.Path.ReplaceFullPath != nil {
+					v := *redir.Path.ReplaceFullPath
+					rp.ReplaceFullPath = &v
+				}
+				if redir.Path.ReplacePrefixMatch != nil {
+					v := *redir.Path.ReplacePrefixMatch
+					rp.ReplacePrefixMatch = &v
+				}
+				out.Path = rp
+			}
+			redirect = out
 		default:
 			// ExtensionRef and unsupported filters are handled elsewhere or ignored.
 		}
 	}
-	return policies, direct, nil
+	return policies, direct, redirect, nil
 }
 
 func directResponse500() *apiv1.OperationDirectResponse {
