@@ -131,18 +131,9 @@ jobs:
       # -------------------------
       - name: Build & push event-gateway-controller to temp registry
         run: |
-          cd gateway/gateway-controller && \
-          docker buildx build -f Dockerfile \
-            --build-context sdk=../../sdk \
-            --build-context sdk-core=../../sdk/core \
-            --build-context common=../../common \
-            --build-context build-manifest=.. \
-            --platform linux/amd64,linux/arm64 \
-            --build-arg VERSION=trivy \
-            --target production \
-            -t localhost:5000/event-gateway-controller:trivy \
-            --push \
-            .
+          make -C gateway/gateway-controller build-and-push-multiarch \
+            IMAGE_NAME=localhost:5000/event-gateway-controller \
+            VERSION=trivy
 
       - name: JFrog scan event-gateway-controller
         run: |
