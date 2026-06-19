@@ -624,6 +624,8 @@ const loadDocument = async (req, res) => {
         templateContent.baseUrl = config.baseUrl + constants.ROUTE.VIEWS_PATH + viewName;
         templateContent.baseDocUrl = config.baseUrl + constants.ROUTE.VIEWS_PATH + viewName + '/api/' + apiHandle;
         templateContent.docTypes = metaData.docTypes;
+        templateContent.currentDocName = docName || null;
+        templateContent.currentDocType = docType || null;
         const metaForNav = { apiInfo: { gatewayType: metaData.apiInfo?.gatewayType }, apiReferenceID: metaData.apiReferenceID };
         templateContent.showApiKeysNav = apiUsesApiKeySecurity(metaForNav);
         const html = renderTemplate(layoutPath + 'pages/docs/page.hbs', layoutPath + 'layout/main.hbs', templateContent, false);
@@ -752,6 +754,8 @@ const loadDocument = async (req, res) => {
             templateContent.baseUrl = '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName;
             templateContent.baseDocUrl = baseDocUrl;
             templateContent.docTypes = docNames;
+            templateContent.currentDocName = docName || null;
+            templateContent.currentDocType = docType || null;
             let profile = null;
             if (req.user) {
                 profile = {

@@ -1,69 +1,75 @@
-<section class="api-banner-section">
-  <div class="container-fluid">
-    <div class="api-banner-content align-items-center">
-      <div class="col-12 col-md-7">
-        <div class="api-title">
-          <span class="badge api-badge-custom1">{{apiMetadata.apiInfo.apiCategory}}</span>
-          <h4>{{apiMetadata.apiInfo.apiName}}</h4>
-          <div class="api-version-row">
-            <p class="api-version">{{apiMetadata.apiInfo.apiVersion}}</p>
-            {{#if showApiWorkflowsNav}}
-            {{#unless (eq apiMetadata.apiInfo.agentVisibility "HIDDEN")}}
-            <span class="api-agent-chip api-agent-chip--ready"
-                title="AI agents can discover and use this API">
-                <span class="api-agent-chip__dot"></span>
-                <i class="bi bi-robot"></i> AI Ready
-            </span>
-            {{/unless}}
-            {{/if}}
-          </div>
-        </div>
-        <p class="api-description">{{apiMetadata.apiInfo.apiDescription}}</p>
-        <hr style="opacity: 0.3; margin: 8px 0; border: none; height: 1px; background-color: #ccc;">
-        <div class="api-tags">
-          {{#apiMetadata.apiInfo.tags}}
-          <span class="badge api-badge-custom2">{{this}}</span>
-          {{/apiMetadata.apiInfo.tags}}
-        </div>
-
-
-        <div class="api-details-btn">
-          {{!-- Subscribe --}}
-          {{#if subscriptionPlans.length}}
-            {{#unless subscriptions.length}}
-          <a type="button" class="common-btn-primary" href="#subscriptionPlans">Subscribe</a>
-            {{/unless}}
-          {{/if}}
-          {{#in apiMetadata.apiInfo.apiType values="REST,WS,WEBSUB,GRAPHQL,MCP"}}
-          <a type="button" class="common-btn-outlined"
-            href="{{baseUrl}}/api/{{apiMetadata.apiHandle}}/docs/specification">Documentation</a>
-          {{else}}
-          <a type="button" class="common-btn-outlined" href="{{{schemaUrl}}}" download>Download</a>
-          {{/in}}
-          {{!-- Subscriptions --}}
-          {{#if subscriptionPlans.length}}
-          <a type="button" class="common-btn-outlined" href="{{baseUrl}}/api/{{apiMetadata.apiHandle}}/subscriptions">Subscriptions</a>
-          {{/if}}
-          {{#if showApiKeysNav}}
-          <a type="button" class="common-btn-outlined" href="{{baseUrl}}/api/{{apiMetadata.apiHandle}}/api-keys">API Keys</a>
-          {{/if}}
-        </div>
-      </div>
-      <div class="col-12 col-md-5 api-banner-icon">
-        {{#if apiMetadata.apiInfo.apiImageMetadata.api-icon}}
-        <img class="img-thumbnail api-image" src="{{apiMetadata.apiInfo.apiImageMetadata.api-icon}}" alt="API Image" />
-        {{else}}
-        <div class="img-thumbnail api-image image-icon d-flex justify-content-center align-items-center">{{firstTwoLetters apiMetadata.apiInfo.apiName}}</div>
-        {{/if}}
-        {{#if showApiWorkflowsNav}}
-        {{#unless (eq apiMetadata.apiInfo.agentVisibility "HIDDEN")}}
-        <button type="button" class="btn-icon-ai api-banner-ai-btn" data-bs-toggle="modal" data-bs-target="#apiAgentPromptModal">
-          <img src="https://raw.githubusercontent.com/wso2/docs-bijira/refs/heads/main/en/devportal-theming/ai-stars-icon.svg" width="18" height="18" aria-hidden="true" alt="">
-          <span class="btn-icon-tooltip">Try with AI</span>
-        </button>
+<div class="aov-hero">
+  <div class="aov-hero-left">
+    <div class="aov-hero-title-row">
+      <h1 class="aov-hero-name">{{apiMetadata.apiInfo.apiName}}</h1>
+      {{#if apiMetadata.apiInfo.apiVersion}}
+      <span class="aov-version-badge">{{apiMetadata.apiInfo.apiVersion}}</span>
+      {{/if}}
+      {{#if apiMetadata.apiInfo.apiType}}
+      <span class="aov-tag aov-tag--type">
+        <i class="bi bi-braces"></i> {{apiMetadata.apiInfo.apiType}}
+      </span>
+      {{/if}}
+      {{#if showApiWorkflowsNav}}
+      {{#unless (eq apiMetadata.apiInfo.agentVisibility "HIDDEN")}}
+      <span class="aov-tag aov-tag--ai" title="AI agents can discover and use this API">
+        <i class="bi bi-robot"></i> AI Ready
+      </span>
+      {{/unless}}
+      {{/if}}
+    </div>
+    {{#if apiMetadata.apiInfo.apiDescription}}
+    <p class="aov-hero-desc">{{apiMetadata.apiInfo.apiDescription}}</p>
+    {{/if}}
+    {{#if apiMetadata.apiInfo.tags}}
+    <div class="aov-hero-pills">
+      {{#apiMetadata.apiInfo.tags}}
+      <span class="aov-pill">{{this}}</span>
+      {{/apiMetadata.apiInfo.tags}}
+    </div>
+    {{/if}}
+    <div class="aov-hero-actions">
+      {{#if subscriptionPlans.length}}
+        {{#unless subscriptions.length}}
+      <a class="aov-btn aov-btn--primary" href="#subscriptionPlans">
+        <i class="bi bi-bookmark-plus"></i> Subscribe
+      </a>
         {{/unless}}
-        {{/if}}
-      </div>
+      {{/if}}
+      {{#in apiMetadata.apiInfo.apiType values="REST,WS,WEBSUB,GRAPHQL,MCP"}}
+      <a class="aov-btn aov-btn--outline" href="{{baseUrl}}/api/{{apiMetadata.apiHandle}}/docs/specification">
+        <i class="bi bi-book"></i> Documentation
+      </a>
+      {{else}}
+      <a class="aov-btn aov-btn--outline" href="{{{schemaUrl}}}" download>
+        <i class="bi bi-download"></i> Download
+      </a>
+      {{/in}}
+      {{#if subscriptionPlans.length}}
+      <a class="aov-btn aov-btn--outline" href="{{baseUrl}}/api/{{apiMetadata.apiHandle}}/subscriptions">
+        <i class="bi bi-layers"></i> Subscriptions
+      </a>
+      {{/if}}
+      {{#if showApiKeysNav}}
+      <a class="aov-btn aov-btn--outline" href="{{baseUrl}}/api/{{apiMetadata.apiHandle}}/api-keys">
+        <i class="bi bi-key"></i> API Keys
+      </a>
+      {{/if}}
     </div>
   </div>
-</section>
+  <div class="aov-hero-right">
+    {{#if apiMetadata.apiInfo.apiImageMetadata.api-icon}}
+    <img class="aov-api-img" src="{{apiMetadata.apiInfo.apiImageMetadata.api-icon}}" alt="{{apiMetadata.apiInfo.apiName}}" />
+    {{else}}
+    <div class="aov-api-avatar">{{firstTwoLetters apiMetadata.apiInfo.apiName}}</div>
+    {{/if}}
+    {{#if showApiWorkflowsNav}}
+    {{#unless (eq apiMetadata.apiInfo.agentVisibility "HIDDEN")}}
+    <button type="button" class="btn-icon-ai api-banner-ai-btn" data-bs-toggle="modal" data-bs-target="#apiAgentPromptModal">
+      <img src="https://raw.githubusercontent.com/wso2/docs-bijira/refs/heads/main/en/devportal-theming/ai-stars-icon.svg" width="18" height="18" aria-hidden="true" alt="">
+      <span class="btn-icon-tooltip">Try with AI</span>
+    </button>
+    {{/unless}}
+    {{/if}}
+  </div>
+</div>

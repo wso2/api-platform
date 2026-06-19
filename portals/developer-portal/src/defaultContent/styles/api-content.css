@@ -1415,3 +1415,429 @@ hr {
   50%  { background-position: 100% 50%; }
   100% { background-position: 0% 50%; }
 }
+
+/* ── API Overview redesign ─────────────────────────────────── */
+:root { --wso2-gradient: linear-gradient(135deg, #ef4223 0%, #ff8636 100%); }
+
+/* Hero */
+.aov-hero {
+  margin: 20px 24px 0;
+  background: linear-gradient(135deg, #f1f6fc 0%, #e9f1fa 100%);
+  border: 1px solid #e0eaf4;
+  border-radius: 16px;
+  padding: 32px 34px;
+  display: flex;
+  justify-content: space-between;
+  gap: 28px;
+}
+.aov-hero-left { flex: 1; min-width: 0; }
+.aov-hero-title-row { display: flex; align-items: center; gap: 13px; flex-wrap: wrap; }
+.aov-hero-name {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 700;
+  color: #1c3d5a;
+  letter-spacing: -0.01em;
+  line-height: 1.1;
+}
+.aov-version-badge {
+  font-family: monospace;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #637282;
+  background: #fff;
+  border: 1px solid #dbe6f1;
+  border-radius: 6px;
+  padding: 5px 9px;
+  white-space: nowrap;
+}
+.aov-hero-tags { margin-top: 12px; display: flex; flex-wrap: wrap; gap: 8px; }
+.aov-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 6px;
+  padding: 5px 10px;
+  font-size: 11.5px;
+  font-weight: 600;
+}
+.aov-tag--type    { background: #e6f2fb; color: #0277bd; }
+.aov-tag--status  { background: #e6f4ea; color: #2e7d32; }
+.aov-tag--ai      { background: #ece9fb; color: #6741d9; }
+.aov-hero-desc {
+  margin: 16px 0 0;
+  max-width: 620px;
+  font-size: 14.5px;
+  line-height: 1.6;
+  color: #4a5a6a;
+}
+.aov-hero-pills { margin-top: 18px; display: flex; flex-wrap: wrap; gap: 7px; }
+.aov-pill {
+  background: #fff;
+  border: 1px solid #dbe6f1;
+  color: #52606d;
+  border-radius: 20px;
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 500;
+}
+.aov-hero-actions { margin-top: 24px; display: flex; flex-wrap: wrap; gap: 11px; }
+.aov-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: 20px;
+  padding: 11px 22px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: none;
+  transition: opacity 0.15s, background 0.15s;
+  border: none;
+}
+.aov-btn--primary {
+  background: var(--wso2-gradient);
+  color: #fff;
+}
+.aov-btn--primary:hover { opacity: 0.9; color: #fff; text-decoration: none; }
+.aov-btn--outline {
+  background: #fff;
+  border: 1px solid #cdd8e6;
+  color: #1f3d5c;
+}
+.aov-btn--outline:hover { background: #f3f7fc; color: #1f3d5c; text-decoration: none; }
+.aov-hero-right {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.aov-api-avatar {
+  width: 128px;
+  height: 128px;
+  border-radius: 28px;
+  background: linear-gradient(135deg, #1f6feb 0%, #0b4ea8 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 44px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  box-shadow: 0 10px 28px rgba(31,111,235,.32);
+}
+.aov-api-img {
+  width: 128px;
+  height: 128px;
+  border-radius: 28px;
+  object-fit: cover;
+  box-shadow: 0 10px 28px rgba(31,111,235,.18);
+}
+
+/* Two-column body */
+.aov-body {
+  display: flex;
+  gap: 30px;
+  align-items: flex-start;
+  padding: 30px 24px 40px;
+}
+.aov-body-main { flex: 1; min-width: 0; }
+.aov-body-sidebar { width: 360px; flex: none; }
+
+/* Content sections */
+.aov-section { margin-bottom: 30px; }
+.aov-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+.aov-section-title { margin: 0; font-size: 17px; font-weight: 700; color: #1a2433; }
+.aov-section-count { font-size: 12.5px; font-weight: 500; color: #8a93a0; }
+
+/* Endpoints */
+.aov-endpoint-card {
+  border: 1px solid #e6eaf0;
+  border-radius: 12px;
+  padding: 16px 18px;
+  margin-bottom: 12px;
+}
+.aov-endpoint-label-row { display: flex; align-items: center; gap: 9px; }
+.aov-endpoint-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+.aov-endpoint-dot--prod    { background: #2e7d32; }
+.aov-endpoint-dot--sandbox { background: #e65100; }
+.aov-endpoint-label { font-size: 12.5px; font-weight: 600; color: #1a2433; }
+.aov-endpoint-url-row {
+  margin-top: 11px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #f6f8fb;
+  border: 1px solid #e6eaf0;
+  border-radius: 9px;
+  padding: 11px 14px;
+}
+.aov-endpoint-url {
+  flex: 1;
+  min-width: 0;
+  font-family: monospace;
+  font-size: 13px;
+  font-weight: 500;
+  color: #1a2433;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin: 0;
+}
+.aov-copy-btn {
+  color: #8a93a0;
+  cursor: pointer;
+  display: inline-flex;
+  padding: 5px;
+  border-radius: 6px;
+  background: transparent;
+  border: none;
+  transition: background 0.15s, color 0.15s;
+  flex: none;
+}
+.aov-copy-btn:hover { background: #e6eaf0; color: #1f6feb; }
+
+/* Resources */
+.aov-resource-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  border: 1px solid #e6eaf0;
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-bottom: 9px;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.aov-resource-row:hover {
+  border-color: #cdd9e8;
+  box-shadow: 0 4px 14px rgba(20,40,70,.06);
+}
+.aov-method-badge {
+  flex: none;
+  width: 62px;
+  text-align: center;
+  border-radius: 6px;
+  padding: 5px 0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+.aov-method-badge--GET    { background: #e6f2fb; color: #0277bd; }
+.aov-method-badge--POST   { background: #e6f4ea; color: #2e7d32; }
+.aov-method-badge--DELETE { background: #fdeaea; color: #c62828; }
+.aov-method-badge--PUT    { background: #fff4e6; color: #e65100; }
+.aov-method-badge--PATCH  { background: #e6f9f4; color: #00695c; }
+.aov-resource-path {
+  flex: none;
+  max-width: 220px;
+  font-family: monospace;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #1a2433;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.aov-resource-summary {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  color: #637282;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Scopes */
+.aov-scopes-empty {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border: 1px dashed #d6dde7;
+  border-radius: 12px;
+  padding: 18px 20px;
+  color: #8a93a0;
+  font-size: 13.5px;
+}
+.aov-scope-pill {
+  display: inline-flex;
+  align-items: center;
+  background: #f1f5f9;
+  border: 1px solid #e0eaf4;
+  color: #3a4f6a;
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 500;
+  margin: 4px 4px 4px 0;
+}
+
+/* WS/WEBSUB channel rows */
+.aov-channel-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  border: 1px solid #e6eaf0;
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-bottom: 9px;
+}
+.aov-channel-badge {
+  flex: none;
+  border-radius: 6px;
+  padding: 5px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+.aov-channel-badge--pub { background: #e6f4ea; color: #2e7d32; }
+.aov-channel-badge--sub { background: #e6f2fb; color: #0277bd; }
+
+/* Subscription plans sidebar */
+.aov-plans-wrap { padding: 0; }
+.aov-plans-title { margin: 0 0 14px; font-size: 17px; font-weight: 700; color: #1a2433; }
+.aov-plan-card {
+  position: relative;
+  overflow: hidden;
+  border: 1.5px solid #e6eaf0;
+  border-radius: 14px;
+  padding: 18px 20px;
+  margin-bottom: 12px;
+  background: #fff;
+}
+.aov-plan-card--featured    { border-color: #f3c98a; background: #fffbf4; }
+.aov-plan-card--subscribed  { border-color: #bfe3c6; background: #f5fbf6; }
+
+/* Subscribed ribbon */
+.aov-plan-ribbon {
+  display: none;
+  position: absolute;
+  top: 0; right: 0;
+  width: 116px; height: 116px;
+  pointer-events: none;
+}
+.aov-plan-card--subscribed .aov-plan-ribbon { display: block; }
+.aov-plan-ribbon-label {
+  position: absolute;
+  top: 20px; right: -36px;
+  width: 150px;
+  text-align: center;
+  transform: rotate(45deg);
+  background: #2e7d32;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  padding: 5px 0;
+  box-shadow: 0 2px 6px rgba(0,0,0,.18);
+}
+.aov-plan-card-head { display: flex; align-items: center; justify-content: space-between; }
+.aov-plan-name-row { display: flex; align-items: center; gap: 9px; }
+.aov-plan-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+}
+.aov-plan-name { font-size: 15px; font-weight: 700; color: #1a2433; }
+.aov-recommended-badge {
+  background: var(--wso2-gradient);
+  color: #fff;
+  border-radius: 20px;
+  padding: 4px 10px;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+}
+.aov-plan-limit { margin-top: 14px; display: flex; align-items: baseline; gap: 7px; }
+.aov-plan-count { font-size: 26px; font-weight: 700; color: #1c3d5a; }
+.aov-plan-unit  { font-size: 12.5px; color: #8a93a0; }
+.aov-plan-subscribe-btn {
+  display: block;
+  margin-top: 16px;
+  width: 100%;
+  border-radius: 20px;
+  padding: 10px;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s, background 0.15s;
+  text-align: center;
+}
+.aov-plan-subscribe-btn--featured {
+  background: var(--wso2-gradient);
+  color: #fff;
+  border: none;
+}
+.aov-plan-subscribe-btn--default {
+  background: #fff;
+  color: #1f3d5c;
+  border: 1px solid #cdd8e6;
+}
+.aov-plan-subscribe-btn:hover { opacity: 0.92; }
+.aov-plan-subscribe-btn:disabled { opacity: 0.45; cursor: default; }
+.aov-plan-subscribe-btn.current-plan-btn {
+  background: #eef1f5;
+  color: #637282;
+  border: none;
+  cursor: default;
+}
+
+/* Subscribe button spinner */
+.aov-plan-spinner {
+  display: none;
+  width: 14px; height: 14px;
+  border: 2px solid #c9d9ef;
+  border-top-color: #1f6feb;
+  border-radius: 50%;
+  animation: aov-spin .7s linear infinite;
+  flex: none;
+}
+@keyframes aov-spin { to { transform: rotate(360deg); } }
+.aov-btn-loading .aov-plan-spinner { display: inline-block; }
+.aov-btn-loading {
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  opacity: 0.85;
+  pointer-events: none;
+}
+
+/* Per-card error block */
+.aov-plan-error {
+  display: none;
+  margin-top: 10px;
+  align-items: flex-start;
+  gap: 8px;
+  background: #fdf3f3;
+  border: 1px solid #f3c9c9;
+  border-radius: 9px;
+  padding: 9px 11px;
+}
+.aov-plan-error--visible { display: flex; }
+.aov-plan-error-title { font-size: 12px; font-weight: 600; line-height: 1.3; color: #c62828; }
+.aov-plan-error-desc  { margin-top: 2px; font-size: 11.5px; line-height: 1.4; color: #9a4a4a; }
+
+/* Existing subscriptions table in sidebar */
+.aov-existing-subs { margin-bottom: 20px; }
+.aov-existing-subs-title { font-size: 14px; font-weight: 600; color: #1a2433; margin-bottom: 10px; }
+
+@media (max-width: 1024px) {
+  .aov-body { flex-direction: column; }
+  .aov-body-sidebar { width: 100%; }
+}
+@media (max-width: 768px) {
+  .aov-hero { flex-direction: column-reverse; }
+  .aov-hero-right { align-items: flex-start; }
+  .aov-hero-name { font-size: 22px; }
+  .aov-api-avatar { width: 84px; height: 84px; font-size: 28px; }
+}

@@ -236,13 +236,13 @@
     .finally(function () { fetchDone = true; tryFinish(); });
   }
 
-  // Suppress if already dismissed this session
-  try {
-    if (sessionStorage.getItem(STORAGE_KEY)) {
-      overlay.style.display = 'none';
-      return;
-    }
-  } catch (_) {}
+  // TODO: re-enable before release
+  // try {
+  //   if (sessionStorage.getItem(STORAGE_KEY)) {
+  //     overlay.style.display = 'none';
+  //     return;
+  //   }
+  // } catch (_) {}
 
   deployBtn.addEventListener('click', runDeploy);
   skipBtn.addEventListener('click', dismiss);
