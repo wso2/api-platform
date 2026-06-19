@@ -43,7 +43,18 @@ A `GET` with no side effects is **always** `:read`, even if the URL segment look
 - `GET /rest-apis/validate` → `<prefix>:rest_api:read` (not `:validate`)
 - `GET /.../{id}/preview` → `<prefix>:...:read` (not `:preview`)
 
-**Rule 4 — URLs first, scopes follow.**
+**Rule 4 — Wildcards: `:*`, own-level only.**
+`:*` covers all actions directly at that level — never descends into sub-resources, never matches a prefix (e.g. `application*`), never transitive.
+
+| Wildcard | Covers |
+|---|---|
+| `<prefix>:*` | Every action on **root-level resources** (`gateway:create`, `rest_api:read`, …). Own-level like every `:*` — **not** sub-resources such as `gateway:token:*` or `application:api_key:*`. |
+| `<prefix>:<resource>:*` | All actions **directly** on the resource. **Not** its sub-resources. |
+| `<prefix>:<resource>:<sub>:*` | All actions directly on that sub-resource. |
+
+This means a token with `ap:gateway:*` satisfies `ap:gateway:create` but **not** `ap:gateway:token:create` — that sub-resource needs its own grant (`ap:gateway:token:*` or `ap:gateway:token:create`).
+
+**Rule 5 — URLs first, scopes follow.**
 Design the REST URL first, then derive the scope from the *subject being operated on* — not from literal URL path segments. Restructure the URL (e.g. move an action under its `{id}` path, filter with a query param instead of a nested read) before inventing a verb.
 
 ## Writing the path (design it first)
@@ -85,7 +96,7 @@ Each catalog entry's description is **`<action> <the most specific entity the sc
 
 ## Checklist for adding a resource / operation
 
-1. **Design the URL first** (Rule 4 + "Writing the path"): plural collections, kebab-case segments, `{id}`-scoped actions, query-param filters over property-paths.
+1. **Design the URL first** (Rule 5 + "Writing the path"): plural collections, kebab-case segments, `{id}`-scoped actions, query-param filters over property-paths.
 2. Pick the **action verb**: CRUD closed set (Rule 2) → use it; side-effect-free GET → `read` (Rule 3); genuine lifecycle op → an allowed custom verb.
 3. Build the scope `<prefix>:<resource>[:<sub-resource>]:<action>` — snake_case, colon delimiters, nest only on real ownership (Rule 1).
 4. In the operation's `security` block, list the **specific scope + the resource's `:manage` scope**, OR-evaluated.
