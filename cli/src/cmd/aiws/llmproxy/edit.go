@@ -126,6 +126,6 @@ func runEditCommand() error {
 		return aiworkspace.WrapRequestError("update llm proxy", err, editInsecure)
 	}
 
-	return aiworkspace.PrintArtifactResult(resp, editOutput,
-		fmt.Sprintf("LLM proxy %q updated on ai-workspace %s (platform: %s)", proxyID, aiWorkspace.Name, resolvedPlatform))
+	return aiworkspace.PrintArtifactResult(resp, editOutput, proxyID,
+		fmt.Sprintf("LLM proxy updated on ai-workspace %s (platform: %s)", aiWorkspace.Name, resolvedPlatform))
 }

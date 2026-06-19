@@ -74,12 +74,21 @@ func (c *Client) PostJSON(path string, body []byte) (*http.Response, error) {
 
 // Get sends a GET request and returns the response when it is a 2xx.
 func (c *Client) Get(path string) (*http.Response, error) {
+	return c.sendNoBody(http.MethodGet, path)
+}
+
+// Delete sends a DELETE request and returns the response when it is a 2xx.
+func (c *Client) Delete(path string) (*http.Response, error) {
+	return c.sendNoBody(http.MethodDelete, path)
+}
+
+func (c *Client) sendNoBody(method, path string) (*http.Response, error) {
 	baseURL := strings.TrimSuffix(c.aiWorkspace.URL, "/")
 	if !strings.HasPrefix(path, "/") {
 		path = "/" + path
 	}
 
-	req, err := http.NewRequest(http.MethodGet, baseURL+path, nil)
+	req, err := http.NewRequest(method, baseURL+path, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -96,7 +105,7 @@ func (c *Client) Get(path string) (*http.Response, error) {
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		return resp, nil
 	}
-	return nil, c.formatHTTPError(fmt.Sprintf("GET %s", path), resp)
+	return nil, c.formatHTTPError(fmt.Sprintf("%s %s", method, path), resp)
 }
 
 func (c *Client) sendJSON(method, path string, body []byte) (*http.Response, error) {

@@ -126,6 +126,6 @@ func runEditCommand() error {
 		return aiworkspace.WrapRequestError("update mcp proxy", err, editInsecure)
 	}
 
-	return aiworkspace.PrintArtifactResult(resp, editOutput,
-		fmt.Sprintf("MCP proxy %q updated on ai-workspace %s (platform: %s)", proxyID, aiWorkspace.Name, resolvedPlatform))
+	return aiworkspace.PrintArtifactResult(resp, editOutput, proxyID,
+		fmt.Sprintf("MCP proxy updated on ai-workspace %s (platform: %s)", aiWorkspace.Name, resolvedPlatform))
 }

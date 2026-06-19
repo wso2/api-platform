@@ -274,6 +274,78 @@ Behavior notes:
 - A `.json` file target can only hold one payload, so `-o <file.json>` with **multiple** `ai-workspaces` configurations is an error — use a directory instead.
 - With a directory target and multiple configurations, one file per config is produced (`<config-name>.json`).
 
+## Get Commands
+
+These commands retrieve artifacts from the AI workspace resolved from the CLI config (`--display-name`/`--platform`, or the active AI workspace). With `--id` a single artifact is fetched; without it all artifacts are listed, with optional `--limit`/`--offset` pagination. The full JSON response is printed.
+
+The scoping query parameter differs by resource:
+
+- **LLM providers** are scoped by `organizationId` (`--org`).
+- **LLM/MCP proxies** are scoped by `projectId` (`--project-id`) when listing; fetching a single proxy by `--id` takes only the id path parameter (no org/project query).
+
+### `ap ai-ws llm-provider get`
+
+```shell
+# List all LLM providers
+ap ai-ws llm-provider get --org <org-id> [--limit <n>] [--offset <n>] [--display-name <name>] [--platform <platform>] [--insecure]
+
+# Get a single LLM provider
+ap ai-ws llm-provider get --org <org-id> --id <provider-id>
+```
+
+### `ap ai-ws llm-proxy get`
+
+```shell
+# List all LLM proxies in a project (GET /llm-proxies?projectId={project})
+ap ai-ws llm-proxy get --project-id <project-id> [--limit <n>] [--offset <n>] [--display-name <name>] [--platform <platform>] [--insecure]
+
+# Get a single LLM proxy (GET /llm-proxies/{id})
+ap ai-ws llm-proxy get --id <proxy-id>
+```
+
+### `ap ai-ws mcp-proxy get`
+
+```shell
+# List all MCP proxies in a project (GET /mcp-proxies?projectId={project})
+ap ai-ws mcp-proxy get --project-id <project-id> [--limit <n>] [--offset <n>] [--display-name <name>] [--platform <platform>] [--insecure]
+
+# Get a single MCP proxy (GET /mcp-proxies/{id})
+ap ai-ws mcp-proxy get --id <proxy-id>
+```
+
+Notes:
+
+- For `llm-provider get`, `--org` is required. For `llm-proxy`/`mcp-proxy get`, `--project-id` is required only when listing; fetching a single proxy needs just `--id`.
+- `--limit` and `--offset` apply only when listing.
+- `--insecure` skips TLS verification for local or self-signed HTTPS endpoints.
+
+## Delete Commands
+
+These commands delete an artifact by its identifier (`DELETE /{resource}/{id}`). The artifact is identified solely by `--id` — no organization or project scoping is required — and a successful delete (`204 No Content`) prints a confirmation line.
+
+### `ap ai-ws llm-provider delete`
+
+```shell
+ap ai-ws llm-provider delete --id <provider-id> [--display-name <name>] [--platform <platform>] [--insecure]
+```
+
+### `ap ai-ws llm-proxy delete`
+
+```shell
+ap ai-ws llm-proxy delete --id <proxy-id> [--display-name <name>] [--platform <platform>] [--insecure]
+```
+
+### `ap ai-ws mcp-proxy delete`
+
+```shell
+ap ai-ws mcp-proxy delete --id <proxy-id> [--display-name <name>] [--platform <platform>] [--insecure]
+```
+
+Notes:
+
+- `--id` is required for all delete commands.
+- `--insecure` skips TLS verification for local or self-signed HTTPS endpoints.
+
 ## Push Commands
 
 These commands push a payload JSON (produced by `ap ai-ws build`) to the AI workspace server resolved from the CLI config (`--display-name`/`--platform`, or the active AI workspace). The resource `id` in the request URL is taken from the payload's `id` field, and credentials come from the configured auth type (see [Authentication](#authentication)).
@@ -324,7 +396,7 @@ ap ai-ws mcp-proxy push -f build/bijira-mcp-everything.json --org <org-id> --pro
 Notes:
 
 - `--file` and `--org` are required for all push commands; `--project-id` is also required for LLM proxies and MCP proxies.
-- By default only a concise summary line is printed. Pass `--output json` (or `-o json`) to print the full server response (useful for piping to `jq`).
+- By default a concise summary line is printed, including the artifact `id` (the value other commands need for `--id`). Pass `--output json` (or `-o json`) to print the full server response instead (useful for piping to `jq`).
 - `--insecure` skips TLS verification for local or self-signed HTTPS endpoints.
 
 ## Edit Commands
@@ -359,7 +431,7 @@ Notes:
 
 - `--file` and `--org` are required for all edit commands; `--project-id` is also required for LLM proxies and MCP proxies.
 - The payload must contain the `id` of the artifact to update; it identifies the resource in the request URL.
-- By default only a concise summary line is printed. Pass `--output json` (or `-o json`) to print the full server response (useful for piping to `jq`).
+- By default a concise summary line is printed, including the artifact `id` (the value other commands need for `--id`). Pass `--output json` (or `-o json`) to print the full server response instead (useful for piping to `jq`).
 - `--insecure` skips TLS verification for local or self-signed HTTPS endpoints.
 
 ## Related Commands

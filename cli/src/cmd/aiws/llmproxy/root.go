@@ -43,4 +43,5 @@ func init() {
 	LLMProxyCmd.AddCommand(pushCmd)
 	LLMProxyCmd.AddCommand(editCmd)
 	LLMProxyCmd.AddCommand(getCmd)
+	LLMProxyCmd.AddCommand(deleteCmd)
 }

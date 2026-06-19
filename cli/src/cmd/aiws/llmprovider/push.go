@@ -112,6 +112,6 @@ func runPushCommand() error {
 		return aiworkspace.WrapRequestError("push llm provider", err, pushInsecure)
 	}
 
-	return aiworkspace.PrintArtifactResult(resp, pushOutput,
-		fmt.Sprintf("LLM provider %q pushed to ai-workspace %s (platform: %s)", providerID, aiWorkspace.Name, resolvedPlatform))
+	return aiworkspace.PrintArtifactResult(resp, pushOutput, providerID,
+		fmt.Sprintf("LLM provider pushed to ai-workspace %s (platform: %s)", aiWorkspace.Name, resolvedPlatform))
 }

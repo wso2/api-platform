@@ -126,6 +126,6 @@ func runPushCommand() error {
 		return aiworkspace.WrapRequestError("push mcp proxy", err, pushInsecure)
 	}
 
-	return aiworkspace.PrintArtifactResult(resp, pushOutput,
-		fmt.Sprintf("MCP proxy %q pushed to ai-workspace %s (platform: %s)", proxyID, aiWorkspace.Name, resolvedPlatform))
+	return aiworkspace.PrintArtifactResult(resp, pushOutput, proxyID,
+		fmt.Sprintf("MCP proxy pushed to ai-workspace %s (platform: %s)", aiWorkspace.Name, resolvedPlatform))
 }

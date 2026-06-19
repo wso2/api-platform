@@ -110,6 +110,6 @@ func runEditCommand() error {
 		return aiworkspace.WrapRequestError("update llm provider", err, editInsecure)
 	}
 
-	return aiworkspace.PrintArtifactResult(resp, editOutput,
-		fmt.Sprintf("LLM provider %q updated on ai-workspace %s (platform: %s)", providerID, aiWorkspace.Name, resolvedPlatform))
+	return aiworkspace.PrintArtifactResult(resp, editOutput, providerID,
+		fmt.Sprintf("LLM provider updated on ai-workspace %s (platform: %s)", aiWorkspace.Name, resolvedPlatform))
 }

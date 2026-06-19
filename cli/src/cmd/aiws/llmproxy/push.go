@@ -126,6 +126,6 @@ func runPushCommand() error {
 		return aiworkspace.WrapRequestError("push llm proxy", err, pushInsecure)
 	}
 
-	return aiworkspace.PrintArtifactResult(resp, pushOutput,
-		fmt.Sprintf("LLM proxy %q pushed to ai-workspace %s (platform: %s)", proxyID, aiWorkspace.Name, resolvedPlatform))
+	return aiworkspace.PrintArtifactResult(resp, pushOutput, proxyID,
+		fmt.Sprintf("LLM proxy pushed to ai-workspace %s (platform: %s)", aiWorkspace.Name, resolvedPlatform))
 }

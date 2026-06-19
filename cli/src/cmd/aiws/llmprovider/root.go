@@ -43,4 +43,5 @@ func init() {
 	LLMProviderCmd.AddCommand(pushCmd)
 	LLMProviderCmd.AddCommand(editCmd)
 	LLMProviderCmd.AddCommand(getCmd)
+	LLMProviderCmd.AddCommand(deleteCmd)
 }
