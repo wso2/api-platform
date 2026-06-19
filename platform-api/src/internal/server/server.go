@@ -491,6 +491,10 @@ func buildAuthenticator(cfg *config.Server, slogger *slog.Logger, roleScopeMap m
 		JWKSUrl:    cfg.Auth.IDP.JWKSUrl,
 		ScopeClaim: cfg.Auth.IDP.ClaimMappings.ScopeClaimName,
 	}
+	// Enforce audience validation only when at least one audience is configured.
+	if len(cfg.Auth.IDP.Audience) > 0 {
+		idpCfg.Audience = &cfg.Auth.IDP.Audience
+	}
 	authCfg := commonmodels.AuthConfig{
 		JWTConfig: &idpCfg,
 		SkipPaths: cfg.Auth.SkipPaths,

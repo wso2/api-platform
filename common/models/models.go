@@ -70,7 +70,7 @@ type IDPConfig struct {
 	JWKSUrl                string               `json:"jwks_url"`
 	ScopeClaim             string               `json:"scope_claim"`
 	UsernameClaim          string               `json:"username_claim"`
-	Audience               *string              `json:"audience"`
+	Audience               *[]string            `json:"audience"`
 	Certificate            *string              `json:"certificate"`
 	ClaimMapping           *map[string]string   `json:"claim_mapping"`
 	PermissionMapping      *map[string][]string `json:"permission_mapping"`
