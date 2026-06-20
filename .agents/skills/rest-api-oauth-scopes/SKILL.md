@@ -104,6 +104,76 @@ Each catalog entry's description is **`<action> <the most specific entity the sc
 6. If a built-in role should get the new scope, add it to the role→scopes map.
 7. Build and verify the enforcement point parses the spec and validates the role map.
 
+## Path placement in the OpenAPI spec
+
+When adding a new path to `platform-api/src/resources/openapi.yaml`, insert it in the **canonical resource-group order** below and keep all sub-resources of a parent immediately beneath it.
+
+### Canonical group order
+
+| # | Group | Root path(s) |
+|---|---|---|
+| 1 | Organizations | `/organizations` |
+| 2 | Projects | `/projects` |
+| 3 | REST APIs | `/api-projects`, `/rest-apis` |
+| 4 | WebSub APIs | `/websub-apis` |
+| 5 | WebBroker APIs | `/webbroker-apis` |
+| 6 | LLM Provider Templates | `/llm-provider-templates` |
+| 7 | LLM Providers | `/llm-providers` |
+| 8 | LLM Proxies | `/llm-proxies` |
+| 9 | MCP Proxies | `/mcp-proxies` |
+| 10 | Gateways | `/gateways`, `/gateway-custom-policies` |
+| 11 | Applications | `/applications` |
+| 12 | Subscription Plans | `/subscription-plans` |
+| 13 | Subscriptions | `/subscriptions` |
+| 14 | DevPortals | `/devportals` |
+| 15 | Git | `/git` |
+| 16 | Me | `/me` |
+
+### Sub-resource placement rule
+
+A sub-resource path **always follows its parent immediately** — never floats to a different group or appears before the parent. The order within a group is:
+
+1. Collection (`/resource`)
+2. Item (`/resource/{id}`)
+3. Utility / variant actions on the collection (`/resource/import-openapi`, `/resource/validate`)
+4. Sub-resource collection (`/resource/{id}/sub`)
+5. Sub-resource item (`/resource/{id}/sub/{subId}`)
+6. Sub-resource lifecycle actions (`/resource/{id}/sub/{subId}/undeploy`, `.../restore`)
+
+Example for REST APIs:
+```
+/api-projects/validate
+/api-projects/import
+/rest-apis
+/rest-apis/import-openapi
+/rest-apis/validate-openapi
+/rest-apis/{apiId}
+/rest-apis/{apiId}/gateways
+/rest-apis/{apiId}/api-keys
+/rest-apis/{apiId}/api-keys/{keyName}
+/rest-apis/{apiId}/publications
+/rest-apis/{apiId}/publications/{devportalId}
+/rest-apis/{apiId}/deployments
+/rest-apis/{apiId}/deployments/{deploymentId}
+/rest-apis/{apiId}/deployments/{deploymentId}/undeploy
+/rest-apis/{apiId}/deployments/{deploymentId}/restore
+```
+
+### Checklist for placing a new path
+
+1. Identify which group the root resource belongs to using the table above.
+2. Locate the last existing path in that group; insert the new path directly after it.
+3. If the new path is a sub-resource, insert it immediately after its parent's last existing sub-resource (not at the end of the group).
+4. Never insert a path outside its group or between two unrelated groups.
+5. Add a matching entry to the top-level `tags:` list if the path introduces a new tag.
+
+### Anti-patterns for path placement
+
+- A sub-resource path appearing before its parent (e.g. `/llm-proxies/{id}/deployments` before `/llm-proxies`).
+- Sub-resources of one group scattered inside another group (e.g. `/rest-apis/{apiId}/publications` appearing after `/subscription-plans`).
+- A new group inserted at an arbitrary position rather than following the canonical order.
+- A tag referenced in an operation's `tags:` list that has no entry in the top-level `tags:` section.
+
 ## Anti-patterns (reject in review)
 
 - `<prefix>:rest-api:create` / `<prefix>:restApi:create` — must be snake_case `rest_api`.
