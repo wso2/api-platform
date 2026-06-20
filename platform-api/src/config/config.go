@@ -239,8 +239,6 @@ func GetConfig() *Server {
 // LoadConfig loads configuration with priority: env vars > config file > defaults.
 // configPath may be empty — when omitted only env vars and defaults are used.
 func LoadConfig(configPath string) (*Server, error) {
-	applyLegacyEnvAliases()
-
 	cfg := defaultConfig()
 	k := koanf.New(".")
 
