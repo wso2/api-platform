@@ -23,6 +23,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"os"
 	"reflect"
 	"strings"
 	"sync"
@@ -295,12 +296,19 @@ func LoadConfig(configPath string) (*Server, error) {
 	}
 
 	if cfg.Auth.JWT.Enabled && cfg.Auth.JWT.SecretKey == "" {
+		if !demoMode() {
+			return nil, fmt.Errorf(
+				"AUTH_JWT_SECRET_KEY must be configured when APIP_DEMO_MODE=false and JWT authentication is enabled; " +
+					"generate a secret with: openssl rand -hex 32",
+			)
+		}
 		key, err := generateRandomSecret()
 		if err != nil {
 			return nil, fmt.Errorf("failed to generate JWT secret key: %w", err)
 		}
 		cfg.Auth.JWT.SecretKey = key
-		slog.Warn("auth.jwt.secret_key is not set — generated an ephemeral random key; all sessions will be invalidated on restart")
+		slog.Warn("JWT_SIGNING_SECRET not set — generated an ephemeral demo key (restart will invalidate all sessions)",
+			slog.String("JWT_SIGNING_SECRET", key))
 	}
 
 	return cfg, nil
@@ -312,6 +320,16 @@ func generateRandomSecret() (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(b), nil
+}
+
+// demoMode reports whether APIP_DEMO_MODE is enabled.
+// Defaults to true when the variable is unset.
+func demoMode() bool {
+	v := strings.ToLower(strings.TrimSpace(os.Getenv("APIP_DEMO_MODE")))
+	if v == "" {
+		return true
+	}
+	return v == "true" || v == "1"
 }
 
 
