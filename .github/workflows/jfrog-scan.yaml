@@ -24,6 +24,19 @@ jobs:
         with:
           driver-opts: network=host
 
+      - name: Wait for local registry to be ready
+        run: |
+          echo "Waiting for registry at http://localhost:5000/v2/ ..."
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:5000/v2/ >/dev/null 2>&1; then
+              echo "Registry is ready"
+              break
+            fi
+            echo "Registry not ready yet, sleeping..."
+            sleep 2
+          done
+          curl -fsS http://localhost:5000/v2/ || (echo "Local registry unreachable" && exit 1)
+
       - name: Setup JFrog CLI
         uses: jfrog/setup-jfrog-cli@v4
         env:
