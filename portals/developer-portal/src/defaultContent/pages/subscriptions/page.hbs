@@ -17,19 +17,24 @@
  -->
 
 {{#pageHead}}
-  <link rel='stylesheet' href='/technical-styles/subscriptions.css' />
+  <link rel="stylesheet" href="/styles/subscriptions.css">
 {{/pageHead}}
 {{#pageScripts}}
-  <script src='/technical-scripts/subscriptions-page.js' defer></script>
-  <script src='/technical-scripts/subscription.js' defer></script>
+  <script src="/technical-scripts/subscriptions-page.js" defer></script>
+  <script src="/technical-scripts/subscription.js" defer></script>
 {{/pageScripts}}
-<div class="content">
-        <div class="container-fluid subscriptions-container">
-            <div class="container-header mb-4">
-                <span>Subscriptions</span>
-            </div>
-            {{> subscription-list }}
-        </div>
-    </div>
-    {{> warning modalTitle="Confirm" modalMessage="" modalFunction="" }}
-    {{> alert }}
+
+<div class="sub-page-header">
+  <div>
+    <h1 class="sub-page-title">Subscriptions</h1>
+    <p class="sub-page-desc">APIs and MCP servers your applications are subscribed to.</p>
+  </div>
+  <button class="sub-new-btn" disabled title="Backend not wired yet — UI preview only">
+    <i class="bi bi-plus"></i> New subscription
+  </button>
+</div>
+
+{{> subscription-list }}
+
+{{> warning modalTitle="Confirm" modalMessage="" modalFunction="" }}
+{{> alert }}
