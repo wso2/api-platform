@@ -602,13 +602,10 @@ func generateLLMProviderDeploymentYAML(provider *model.LLMProvider, templateHand
 				return dto.LLMProviderDeploymentYAML{}, fmt.Errorf("invalid api key security configuration: in must be 'header' or 'query', got %q", security.APIKey.In)
 			}
 
-			addOrAppendPolicyPath(&policies, apiKeyAuthPolicyName, "", api.LLMPolicyPath{
-				Path:    "/*",
-				Methods: []api.LLMPolicyPathMethods{"*"},
-				Params: map[string]interface{}{
-					"key": key,
-					"in":  in,
-				},
+			params := map[string]interface{}{"key": key, "in": in}
+			globalPolicies = append(globalPolicies, api.Policy{
+				Name:   apiKeyAuthPolicyName,
+				Params: &params,
 			})
 		}
 	}
@@ -1627,13 +1624,10 @@ func generateLLMProxyDeploymentYAML(proxy *model.LLMProxy) (dto.LLMProxyDeployme
 				return dto.LLMProxyDeploymentYAML{}, fmt.Errorf("invalid api key security configuration: in must be 'header' or 'query', got %q", security.APIKey.In)
 			}
 
-			addOrAppendPolicyPath(&proxyPolicies, apiKeyAuthPolicyName, "", api.LLMPolicyPath{
-				Path:    "/*",
-				Methods: []api.LLMPolicyPathMethods{"*"},
-				Params: map[string]interface{}{
-					"key": key,
-					"in":  in,
-				},
+			params := map[string]interface{}{"key": key, "in": in}
+			proxyGlobalPolicies = append(proxyGlobalPolicies, api.Policy{
+				Name:   apiKeyAuthPolicyName,
+				Params: &params,
 			})
 		}
 	}

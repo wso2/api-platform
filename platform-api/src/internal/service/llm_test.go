@@ -371,33 +371,28 @@ func TestGenerateLLMProviderDeploymentYAML_WithSecurityAPIKeyPolicy(t *testing.T
 		t.Fatalf("expected access control mode allow_all, got: %s", out.Spec.AccessControl.Mode)
 	}
 
-	if len(out.Spec.OperationPolicies) != 1 {
-		t.Fatalf("expected 1 operation policy, got: %d", len(out.Spec.OperationPolicies))
+	if len(out.Spec.OperationPolicies) != 0 {
+		t.Fatalf("expected 0 operation policies, got: %d", len(out.Spec.OperationPolicies))
+	}
+	if len(out.Spec.GlobalPolicies) != 1 {
+		t.Fatalf("expected 1 global policy, got: %d", len(out.Spec.GlobalPolicies))
 	}
 
-	policy := out.Spec.OperationPolicies[0]
+	policy := out.Spec.GlobalPolicies[0]
 	if policy.Name != "api-key-auth" {
 		t.Fatalf("expected policy name api-key-auth, got: %s", policy.Name)
 	}
 	if policy.Version != "" {
 		t.Fatalf("expected policy version empty, got: %s", policy.Version)
 	}
-	if len(policy.Paths) != 1 {
-		t.Fatalf("expected 1 policy path, got: %d", len(policy.Paths))
+	if policy.Params == nil {
+		t.Fatalf("expected policy params to be present")
 	}
-
-	path := policy.Paths[0]
-	if path.Path != "/*" {
-		t.Fatalf("expected policy path /*, got: %s", path.Path)
+	if (*policy.Params)["key"] != "X-API-Key" {
+		t.Fatalf("expected params.key X-API-Key, got: %#v", (*policy.Params)["key"])
 	}
-	if len(path.Methods) != 1 || path.Methods[0] != "*" {
-		t.Fatalf("expected methods [*], got: %#v", path.Methods)
-	}
-	if path.Params["key"] != "X-API-Key" {
-		t.Fatalf("expected params.key X-API-Key, got: %#v", path.Params["key"])
-	}
-	if path.Params["in"] != "header" {
-		t.Fatalf("expected params.in header, got: %#v", path.Params["in"])
+	if (*policy.Params)["in"] != "header" {
+		t.Fatalf("expected params.in header, got: %#v", (*policy.Params)["in"])
 	}
 }
 
@@ -469,16 +464,19 @@ func TestGenerateLLMProviderDeploymentYAML_WithSecurityAndAdditionalPolicy(t *te
 	}
 
 
-	if len(out.Spec.OperationPolicies) != 2 {
-		t.Fatalf("expected 2 operation policies, got: %d", len(out.Spec.OperationPolicies))
+	if len(out.Spec.OperationPolicies) != 1 {
+		t.Fatalf("expected 1 operation policy, got: %d", len(out.Spec.OperationPolicies))
+	}
+	if len(out.Spec.GlobalPolicies) != 1 {
+		t.Fatalf("expected 1 global policy, got: %d", len(out.Spec.GlobalPolicies))
 	}
 
-	apiKeyPolicy := findOperationPolicy(out.Spec.OperationPolicies, "api-key-auth")
-	if apiKeyPolicy == nil {
-		t.Fatalf("expected api-key-auth policy to exist")
+	apiKeyPolicy := out.Spec.GlobalPolicies[0]
+	if apiKeyPolicy.Name != "api-key-auth" {
+		t.Fatalf("expected api-key-auth global policy, got: %s", apiKeyPolicy.Name)
 	}
-	if len(apiKeyPolicy.Paths) != 1 || apiKeyPolicy.Paths[0].Path != "/*" {
-		t.Fatalf("expected api-key-auth path /*")
+	if apiKeyPolicy.Params == nil || (*apiKeyPolicy.Params)["key"] != "X-API-Key" {
+		t.Fatalf("expected api-key-auth params.key X-API-Key")
 	}
 
 	guardrailPolicy := findOperationPolicy(out.Spec.OperationPolicies, "word-count-guardrail")
