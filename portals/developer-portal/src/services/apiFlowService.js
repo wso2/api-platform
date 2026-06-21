@@ -183,9 +183,10 @@ const createAPIFlow = async (req, res) => {
     if (resolvedContentType !== 'MD' && resolvedContent === null) {
         return res.status(400).json({ message: 'Invalid API flow definition: content could not be parsed as valid JSON or YAML.' });
     }
-    const orgDetails = await orgDao.get(orgID);
-    const t = await sequelize.transaction();
+    let t;
     try {
+        const orgDetails = await orgDao.get(orgID);
+        t = await sequelize.transaction();
         const viewId = await resolveViewId(orgID, viewName);
         const resolvedPrompt = agentPrompt && agentPrompt.trim()
             ? agentPrompt.trim()
@@ -211,7 +212,7 @@ const createAPIFlow = async (req, res) => {
             status: apiFlow.STATUS
         });
     } catch (error) {
-        await t.rollback();
+        if (t) await t.rollback();
         if (error instanceof UniqueConstraintError) {
             return res.status(409).json({ message: 'An API workflow with this handle already exists. Please use a different handle.' });
         }
