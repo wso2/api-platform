@@ -16,8 +16,23 @@
  * under the License.
  */
  -->
-<div class="adoc-wrap">
+ <div class="page-container">
+<nav class="dp-breadcrumb">
+  {{#if (eq apiType "MCP")}}
+    <a class="dp-breadcrumb-item" href="{{baseUrl}}/mcp">MCP Servers</a>
+  {{else}}
+    <a class="dp-breadcrumb-item" href="{{baseUrl}}/apis">APIs</a>
+  {{/if}}
+  <i class="bi bi-chevron-right dp-breadcrumb-sep"></i>
+  <a class="dp-breadcrumb-item" href="{{baseDocUrl}}">{{apiName}}</a>
+  <i class="bi bi-chevron-right dp-breadcrumb-sep"></i>
+  <span class="dp-breadcrumb-current">Documentation</span>
+</nav>
+<div class="page-header">
+  <h1 class="page-title">Documentation</h1>
+</div>
 
+<div class="adoc-wrap">
   <aside class="adoc-nav">
     {{#docTypes}}
 
@@ -70,4 +85,4 @@
     {{> api-doc}}
   </div>
 
-</div>
+</div></div>

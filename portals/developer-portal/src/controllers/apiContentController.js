@@ -506,8 +506,10 @@ const loadDocsPage = async (req, res) => {
         const templateContent = {
             apiMD: '',
             baseUrl: config.baseUrl + constants.ROUTE.VIEWS_PATH + viewName + '/api/' + apiHandle,
+            baseDocUrl: config.baseUrl + constants.ROUTE.VIEWS_PATH + viewName + '/api/' + apiHandle,
             docTypes: docNames,
             apiType: apiMetadata.apiInfo?.apiType,
+            apiName: apiMetadata.apiInfo?.apiName || '',
             showApiKeysNav: apiUsesApiKeySecurity(metaForNav),
         }
         html = renderTemplate(layoutPath + 'pages/docs/page.hbs', layoutPath + 'layout/main.hbs', templateContent, false);
@@ -555,8 +557,10 @@ const loadDocsPage = async (req, res) => {
 
             const templateContent = {
                 baseUrl: '/' + orgName + '/views/' + viewName + "/api/" + apiHandle,
+                baseDocUrl: '/' + orgName + '/views/' + viewName + "/api/" + apiHandle,
                 docTypes: docNames,
                 apiType: apiType,
+                apiName: apiMetadata[0].dataValues.API_NAME || '',
                 profile: req.isAuthenticated() ? profile : null,
                 devportalMode: devportalMode,
                 showApiKeysNav: apiUsesApiKeySecurity(metaForNav, apiDefinitionForNav),
@@ -626,6 +630,7 @@ const loadDocument = async (req, res) => {
         templateContent.docTypes = metaData.docTypes;
         templateContent.currentDocName = docName || null;
         templateContent.currentDocType = docType || null;
+        templateContent.apiName = metaData.apiInfo?.apiName || '';
         const metaForNav = { apiInfo: { gatewayType: metaData.apiInfo?.gatewayType }, apiReferenceID: metaData.apiReferenceID };
         templateContent.showApiKeysNav = apiUsesApiKeySecurity(metaForNav);
         const html = renderTemplate(layoutPath + 'pages/docs/page.hbs', layoutPath + 'layout/main.hbs', templateContent, false);
@@ -756,6 +761,7 @@ const loadDocument = async (req, res) => {
             templateContent.docTypes = docNames;
             templateContent.currentDocName = docName || null;
             templateContent.currentDocType = docType || null;
+            templateContent.apiName = apiMetadata[0].dataValues.API_NAME || '';
             let profile = null;
             if (req.user) {
                 profile = {

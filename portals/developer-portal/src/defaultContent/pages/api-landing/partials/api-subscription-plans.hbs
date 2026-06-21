@@ -102,7 +102,7 @@
       {{#if ../isAuthenticated}}
         {{#if (isCurrentPlan policyName @root.subscriptions)}}
         <button type="button"
-          class="aov-plan-subscribe-btn aov-plan-subscribe-btn--default current-plan-btn subscribe-btn"
+          class="dp-btn dp-btn--outline dp-btn--block dp-btn--current subscribe-btn"
           data-org-id="{{@root.orgID}}"
           data-api-id="{{../apiMetadata.apiID}}"
           data-policy-name="{{policyName}}"
@@ -110,7 +110,7 @@
           disabled>Current Plan</button>
         {{else}}
         <button id="subscribe-btn-{{policyID}}" type="button"
-          class="aov-plan-subscribe-btn aov-plan-subscribe-btn--default subscribe-btn {{#if @root.isReadOnlyMode}}disabled{{/if}}"
+          class="dp-btn dp-btn--outline dp-btn--block subscribe-btn {{#if @root.isReadOnlyMode}}disabled{{/if}}"
           data-org-id="{{@root.orgID}}"
           data-api-id="{{../apiMetadata.apiID}}"
           data-policy-id="{{policyID}}"
@@ -120,7 +120,7 @@
           {{#if @root.isReadOnlyMode}}disabled{{/if}}><span class="aov-plan-spinner"></span>Subscribe</button>
         {{/if}}
       {{else}}
-      <a class="aov-plan-subscribe-btn aov-plan-subscribe-btn--default" href="{{@root.baseUrl}}/login">Subscribe</a>
+      <a class="dp-btn dp-btn--outline dp-btn--block" href="{{@root.baseUrl}}/login">Subscribe</a>
       {{/if}}
       <div class="message-overlay hidden">
         <div class="message-content">

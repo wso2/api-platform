@@ -1,24 +1,24 @@
 <!-- ── Hero ───────────────────────────────────────────────── -->
-<section class="hh-hero" aria-label="Portal hero">
-  <div class="hh-particles" id="hh-particles" aria-hidden="true"></div>
+<section class="hero" aria-label="Portal hero">
+  <div class="hero-particles" id="hero-particles" aria-hidden="true"></div>
 
-  <div class="hh-hero-body">
-    <span class="hh-pill">
+  <div class="hero-hero-body">
+    <span class="hero-pill">
       <i class="bi bi-stars" aria-hidden="true"></i>
       Ready for AI agents
     </span>
 
-    <h1 class="hh-headline">
+    <h1 class="hero-headline">
       {{#if (eq devportalMode "MCPSERVERSONLY")}}
-      <span class="hh-headline-accent">MCP servers</span><br>built for AI agents.
+      <span class="hero-headline-accent">MCP servers</span><br>built for AI agents.
       {{else if (eq devportalMode "APISONLY")}}
-      <span class="hh-headline-accent">APIs &amp; workflows</span><br>built for developers and AI.
+      <span class="hero-headline-accent">APIs &amp; workflows</span><br>built for developers and AI.
       {{else}}
-      <span class="hh-headline-accent">APIs, MCP servers &amp; workflows</span><br>built for developers and AI.
+      <span class="hero-headline-accent">APIs, MCP servers &amp; workflows</span><br>built for developers and AI.
       {{/if}}
     </h1>
 
-    <p class="hh-desc">
+    <p class="hero-desc">
       {{#if (eq devportalMode "MCPSERVERSONLY")}}
       Discover MCP tools and servers, configure them for your AI agents, and get up and running in minutes.
       {{else}}
@@ -26,19 +26,19 @@
       {{/if}}
     </p>
 
-    <div class="hh-ctas">
+    <div class="hero-ctas">
       {{#in devportalMode values="DEFAULT,APISONLY"}}
-      <a href="{{baseUrl}}/apis" class="hh-btn hh-btn--gradient">
+      <a href="{{baseUrl}}/apis" class="hero-btn hero-btn--gradient">
         Browse our APIs <i class="bi bi-arrow-right" aria-hidden="true"></i>
       </a>
       {{/in}}
       {{#in devportalMode values="DEFAULT,MCPSERVERSONLY"}}
-      <a href="{{baseUrl}}/mcps" class="hh-btn hh-btn--gradient">
+      <a href="{{baseUrl}}/mcps" class="hero-btn hero-btn--gradient">
         Browse our MCP servers <i class="bi bi-arrow-right" aria-hidden="true"></i>
       </a>
       {{/in}}
       {{#if showApiWorkflowsNav}}
-      <button type="button" class="hh-btn hh-btn--ai" data-bs-toggle="modal" data-bs-target="#discoverAiModal">
+      <button type="button" class="hero-btn hero-btn--ai" data-bs-toggle="modal" data-bs-target="#discoverAiModal">
         <i class="bi bi-stars" aria-hidden="true"></i> Discover with AI
       </button>
       {{/if}}
@@ -50,39 +50,39 @@
 {{#if showApiWorkflowsNav}}
 <div class="modal fade" id="discoverAiModal" tabindex="-1" aria-labelledby="discoverAiModalLabel" aria-hidden="true">
   <div class="modal-dialog modal-lg modal-dialog-scrollable modal-dialog-centered">
-    <div class="modal-content hh-modal">
+    <div class="modal-content hero-modal">
 
       <!-- Modal header -->
-      <div class="hh-modal-header">
-        <div class="hh-modal-title-row">
-          <span class="hh-modal-icon"><i class="bi bi-stars" aria-hidden="true"></i></span>
-          <h2 class="hh-modal-title" id="discoverAiModalLabel">Discover with AI agents</h2>
+      <div class="hero-modal-header">
+        <div class="hero-modal-title-row">
+          <span class="hero-modal-icon"><i class="bi bi-stars" aria-hidden="true"></i></span>
+          <h2 class="hero-modal-title" id="discoverAiModalLabel">Discover with AI agents</h2>
         </div>
-        <button type="button" class="hh-modal-close" data-bs-dismiss="modal" aria-label="Close">
+        <button type="button" class="hero-modal-close" data-bs-dismiss="modal" aria-label="Close">
           <i class="bi bi-x-lg" aria-hidden="true"></i>
         </button>
       </div>
 
       <!-- Info bar -->
-      <div class="hh-modal-info">
-        <p class="hh-modal-info-text">Use this prompt to let your AI agent explore and discover what's available in this portal.</p>
-        <button type="button" class="hh-run-btn" id="discoverBtnRunClaude">
+      <div class="hero-modal-info">
+        <p class="hero-modal-info-text">Use this prompt to let your AI agent explore and discover what's available in this portal.</p>
+        <button type="button" class="hero-run-btn" id="discoverBtnRunClaude">
           <i class="bi bi-play-fill" aria-hidden="true"></i> Run in Claude
         </button>
       </div>
 
       <!-- Prompt body -->
-      <div class="modal-body hh-modal-body">
-        <div class="hh-prompt-card">
-          <div class="hh-prompt-actions">
-            <button type="button" class="hh-prompt-tool" id="discoverBtnDownloadPrompt" title="Download as .txt">
+      <div class="modal-body hero-modal-body">
+        <div class="hero-prompt-card">
+          <div class="hero-prompt-actions">
+            <button type="button" class="hero-prompt-tool" id="discoverBtnDownloadPrompt" title="Download as .txt">
               <i class="bi bi-download"></i>
             </button>
-            <button type="button" class="hh-prompt-tool" id="discoverBtnCopyPrompt" title="Copy prompt">
+            <button type="button" class="hero-prompt-tool" id="discoverBtnCopyPrompt" title="Copy prompt">
               <i class="bi bi-copy" id="discoverCopyIcon"></i>
             </button>
           </div>
-          <pre class="hh-prompt-pre" id="discoverPromptText"></pre>
+          <pre class="hero-prompt-pre" id="discoverPromptText"></pre>
         </div>
       </div>
 
@@ -96,9 +96,9 @@
 (function () {
   function init() {
     if (typeof window.particlesJS === 'undefined') return;
-    var el = document.getElementById('hh-particles');
+    var el = document.getElementById('hero-particles');
     if (!el) return;
-    window.particlesJS('hh-particles', {
+    window.particlesJS('hero-particles', {
       particles: {
         number: { value: 64, density: { enable: true, value_area: 900 } },
         color: { value: ['#ffffff', '#f9a04b', '#5cd1ff'] },

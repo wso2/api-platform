@@ -2,56 +2,65 @@
   <div class="aov-hero-left">
     <div class="aov-hero-title-row">
       <h1 class="aov-hero-name">{{apiMetadata.apiInfo.apiName}}</h1>
-      {{#if apiMetadata.apiInfo.apiVersion}}
-      <span class="aov-version-badge">{{apiMetadata.apiInfo.apiVersion}}</span>
-      {{/if}}
-      {{#if apiMetadata.apiInfo.apiType}}
-      <span class="aov-tag aov-tag--type">
-        <i class="bi bi-braces"></i> {{apiMetadata.apiInfo.apiType}}
-      </span>
-      {{/if}}
-      {{#if showApiWorkflowsNav}}
-      {{#unless (eq apiMetadata.apiInfo.agentVisibility "HIDDEN")}}
-      <span class="aov-tag aov-tag--ai" title="AI agents can discover and use this API">
-        <i class="bi bi-robot"></i> AI Ready
-      </span>
-      {{/unless}}
-      {{/if}}
+      <div class="aov-hero-badges">
+        {{#if apiMetadata.apiInfo.apiVersion}}
+        <span class="dp-badge dp-badge--version">{{apiMetadata.apiInfo.apiVersion}}</span>
+        {{/if}}
+        {{#if apiMetadata.apiInfo.apiType}}
+        <span class="dp-badge
+          {{#if (eq apiMetadata.apiInfo.apiType "GRAPHQL")}}dp-badge--graphql
+          {{else if (eq apiMetadata.apiInfo.apiType "WS")}}dp-badge--ws
+          {{else if (eq apiMetadata.apiInfo.apiType "SOAP")}}dp-badge--soap
+          {{else}}dp-badge--rest{{/if}}">
+          {{#if (eq apiMetadata.apiInfo.apiType "GRAPHQL")}}<i class="bi bi-share"></i> GraphQL
+          {{else if (eq apiMetadata.apiInfo.apiType "WS")}}<i class="bi bi-broadcast"></i> WebSocket
+          {{else if (eq apiMetadata.apiInfo.apiType "SOAP")}}<i class="bi bi-file-code"></i> SOAP
+          {{else}}<i class="bi bi-braces"></i> {{apiMetadata.apiInfo.apiType}}{{/if}}
+        </span>
+        {{/if}}
+        {{#if showApiWorkflowsNav}}
+        {{#unless (eq apiMetadata.apiInfo.agentVisibility "HIDDEN")}}
+        <span class="dp-badge dp-badge--ai" title="AI agents can discover and use this API">
+          <i class="bi bi-robot"></i> AI Ready
+        </span>
+        {{/unless}}
+        {{/if}}
+      </div>
     </div>
     {{#if apiMetadata.apiInfo.apiDescription}}
     <p class="aov-hero-desc">{{apiMetadata.apiInfo.apiDescription}}</p>
     {{/if}}
     {{#if apiMetadata.apiInfo.tags}}
-    <div class="aov-hero-pills">
+    <div class="dp-tags">
       {{#apiMetadata.apiInfo.tags}}
-      <span class="aov-pill">{{this}}</span>
+      <span class="dp-tag dp-tag--white">{{this}}</span>
       {{/apiMetadata.apiInfo.tags}}
     </div>
     {{/if}}
     <div class="aov-hero-actions">
       {{#if subscriptionPlans.length}}
         {{#unless subscriptions.length}}
-      <a class="aov-btn aov-btn--primary" href="#subscriptionPlans">
+      <a class="dp-btn dp-btn--primary" href="#subscriptionPlans">
         <i class="bi bi-bookmark-plus"></i> Subscribe
       </a>
         {{/unless}}
       {{/if}}
       {{#in apiMetadata.apiInfo.apiType values="REST,WS,WEBSUB,GRAPHQL,MCP"}}
-      <a class="aov-btn aov-btn--outline" href="{{baseUrl}}/api/{{apiMetadata.apiHandle}}/docs/specification">
+      <a class="dp-btn dp-btn--outline" href="{{baseUrl}}/api/{{apiMetadata.apiHandle}}/docs/specification">
         <i class="bi bi-book"></i> Documentation
       </a>
       {{else}}
-      <a class="aov-btn aov-btn--outline" href="{{{schemaUrl}}}" download>
+      <a class="dp-btn dp-btn--outline" href="{{{schemaUrl}}}" download>
         <i class="bi bi-download"></i> Download
       </a>
       {{/in}}
       {{#if subscriptionPlans.length}}
-      <a class="aov-btn aov-btn--outline" href="{{baseUrl}}/api/{{apiMetadata.apiHandle}}/subscriptions">
+      <a class="dp-btn dp-btn--outline" href="{{baseUrl}}/api/{{apiMetadata.apiHandle}}/subscriptions">
         <i class="bi bi-layers"></i> Subscriptions
       </a>
       {{/if}}
       {{#if showApiKeysNav}}
-      <a class="aov-btn aov-btn--outline" href="{{baseUrl}}/api/{{apiMetadata.apiHandle}}/api-keys">
+      <a class="dp-btn dp-btn--outline" href="{{baseUrl}}/api/{{apiMetadata.apiHandle}}/api-keys">
         <i class="bi bi-key"></i> API Keys
       </a>
       {{/if}}

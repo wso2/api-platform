@@ -27,18 +27,20 @@
         devportalMode=devportalMode
         showApiWorkflowsNav=showApiWorkflowsNav
     }}
-    {{> sidebar
-        profile=profile
-        baseUrl=baseUrl
-        devportalMode=devportalMode
-        showApiKeysNav=showApiKeysNav
-        showApiWorkflowsNav=showApiWorkflowsNav
-    }}
-    <main class="main-container">
-        <div class="content-area">
-        {{{ body }}}
-        </div>
-    </main>
+    <div class="layout-body">
+        {{> sidebar
+            profile=profile
+            baseUrl=baseUrl
+            devportalMode=devportalMode
+            showApiKeysNav=showApiKeysNav
+            showApiWorkflowsNav=showApiWorkflowsNav
+        }}
+        <main class="main-container">
+            <div class="content-area">
+            {{{ body }}}
+            </div>
+        </main>
+    </div>
     {{> footer }}
 
     {{!-- Global Delete Confirmation Modal --}}
@@ -49,6 +51,27 @@
     <script src='/technical-scripts/common.js' defer></script>
     <script src='/technical-scripts/delete-confirmation-modal.js' defer></script>
     {{{slots.scripts}}}
+    <script>
+    /* Live-reload: connects to the dev SSE endpoint. Self-disables in production
+       (onerror fires before onopen when the endpoint returns 404 → stops retrying). */
+    (function () {
+        var connected = false, reloadPending = false;
+        function connect() {
+            var es = new EventSource('/__dev_reload');
+            es.onopen = function () {
+                if (connected && reloadPending) { location.reload(); return; }
+                connected = true;
+            };
+            es.onmessage = function () { reloadPending = true; };
+            es.onerror = function () {
+                es.close();
+                if (!connected) return; // endpoint absent (production) — stop retrying
+                setTimeout(connect, 1000);
+            };
+        }
+        connect();
+    }());
+    </script>
 </body>
 
 </html>

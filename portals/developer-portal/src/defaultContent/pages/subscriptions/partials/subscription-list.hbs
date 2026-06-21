@@ -37,24 +37,10 @@
             </span>
           </td>
           <td>
-            <div class="sub-token-wrap">
-              <code class="sub-token-code masked-token" id="list-token-{{this.id}}" data-revealed="false">****</code>
-              <button class="sub-token-btn" onclick="toggleListTokenVisibility('{{this.id}}')" title="Reveal token">
-                <i class="bi bi-eye"></i>
-              </button>
-              <button class="sub-token-btn" onclick="copySubscriptionToken('{{this.id}}')" title="Copy token">
-                <i class="bi bi-copy"></i>
-              </button>
-            </div>
+            <span class="sub-token-code">****</span>
           </td>
           <td>
             <div class="sub-actions">
-              <button class="sub-action-btn sub-action-btn--toggle {{#if @root.isReadOnlyMode}}disabled{{/if}}"
-                title="{{#if (eq this.status 'ACTIVE')}}Deactivate{{else}}Activate{{/if}}"
-                {{#unless @root.isReadOnlyMode}}onclick="toggleSubscriptionStatus('{{../orgID}}', '{{this.id}}', '{{#if (eq this.status "ACTIVE")}}INACTIVE{{else}}ACTIVE{{/if}}')"{{/unless}}
-                {{#if @root.isReadOnlyMode}}disabled{{/if}}>
-                {{#if (eq this.status 'ACTIVE')}}<i class="bi bi-pause-circle"></i>{{else}}<i class="bi bi-play-circle"></i>{{/if}}
-              </button>
               <button class="sub-action-btn sub-action-btn--delete {{#if @root.isReadOnlyMode}}disabled{{/if}}"
                 title="Delete"
                 {{#unless @root.isReadOnlyMode}}onclick="prepareDeleteSubscription('{{../orgID}}', '{{this.id}}')"{{/unless}}
@@ -69,24 +55,24 @@
     </table>
   </div>
 </div>
-<div class="sub-empty" id="no-subscriptions" style="display:none;">
-  <span class="sub-empty-icon">
+{{!-- <div class="dp-empty" id="no-subscriptions" style="display:none;">
+  <span class="dp-empty-icon">
     <i class="bi bi-inbox"></i>
   </span>
-  <h2 class="sub-empty-title">No subscriptions yet</h2>
-  <p class="sub-empty-desc">Subscribe an application to an API or MCP server to start making calls. Your active subscriptions will show up here.</p>
-  <button class="sub-empty-btn" disabled title="Backend not wired yet — UI preview only">
+  <h2 class="dp-empty-title">No subscriptions yet</h2>
+  <p class="dp-empty-desc">Subscribe an application to an API or MCP server to start making calls. Your active subscriptions will show up here.</p>
+  <button class="dp-btn dp-btn--primary dp-btn--lg" disabled title="Backend not wired yet — UI preview only">
     <i class="bi bi-plus"></i> Create subscription
   </button>
-</div>
+</div> --}}
 {{else}}
-<div class="sub-empty" id="no-subscriptions">
-  <span class="sub-empty-icon">
+<div class="dp-empty" id="no-subscriptions">
+  <span class="dp-empty-icon">
     <i class="bi bi-inbox"></i>
   </span>
-  <h2 class="sub-empty-title">No subscriptions yet</h2>
-  <p class="sub-empty-desc">Subscribe an application to an API or MCP server to start making calls. Your active subscriptions will show up here.</p>
-  <button class="sub-empty-btn" disabled title="Backend not wired yet — UI preview only">
+  <h2 class="dp-empty-title">No subscriptions yet</h2>
+  <p class="dp-empty-desc">Subscribe an application to an API or MCP server to start making calls. Your active subscriptions will show up here.</p>
+  <button class="dp-btn dp-btn--primary dp-btn--lg" disabled title="Backend not wired yet — UI preview only">
     <i class="bi bi-plus"></i> Create subscription
   </button>
 </div>

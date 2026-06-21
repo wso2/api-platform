@@ -21,6 +21,8 @@ const logger = require('../config/logger');
 const orgDao = require('../dao/organizationDao');
 const apiDao = require('../dao/apiDao');
 const viewDao = require('../dao/viewDao');
+const labelDao = require('../dao/labelDao');
+const subscriptionPolicyDao = require('../dao/subscriptionPolicyDao');
 const apiFlowService = require('../services/apiFlowService');
 const { renderGivenTemplate, loadLayoutFromAPI } = require('../utils/util');
 const { getSessionCsrfToken } = require('../middlewares/csrfProtection');
@@ -54,7 +56,7 @@ const loadViewSettingsPage = async (req, res) => {
         const apiFlows = await apiFlowService.getAllAPIFlowsFromDB(orgID, viewId);
         templateContent.apiFlows = apiFlows;
 
-        const allAPIs = await apiDao.getByCondition({ ORG_ID: orgID, STATUS: constants.API_STATUS.PUBLISHED });
+        const allAPIs = await apiDao.getByCondition({ ORG_ID: orgID });
         templateContent.orgAPIs = allAPIs.map(api => ({
             apiId: api.API_ID,
             apiName: api.API_NAME,
@@ -62,9 +64,40 @@ const loadViewSettingsPage = async (req, res) => {
             apiDescription: api.API_DESCRIPTION,
             apiType: api.API_TYPE,
             apiVersion: api.API_VERSION,
+            apiStatus: api.STATUS,
             productionUrl: api.PRODUCTION_URL,
-            agentVisibility: api.AGENT_VISIBILITY
+            sandboxUrl: api.SANDBOX_URL,
+            provider: api.PROVIDER,
+            gatewayType: api.GATEWAY_TYPE,
+            tags: api.TAGS || '',
+            agentVisibility: api.AGENT_VISIBILITY,
+            subscriptionPolicies: (api.SubscriptionPolicies || []).map(p => p.POLICY_NAME),
         }));
+
+        let orgLabels = [];
+        try {
+            const labelsRaw = await labelDao.list(orgID);
+            orgLabels = labelsRaw.map(l => ({ labelId: l.LABEL_ID, name: l.NAME, displayName: l.DISPLAY_NAME }));
+        } catch (err) {
+            logger.warn('Failed to load labels for settings page', { error: err.message });
+        }
+        templateContent.orgLabels = orgLabels;
+
+        let orgPolicies = [];
+        try {
+            const policiesRaw = await subscriptionPolicyDao.list(orgID);
+            orgPolicies = policiesRaw.map(p => ({
+                policyId: p.POLICY_ID,
+                policyName: p.POLICY_NAME,
+                displayName: p.DISPLAY_NAME,
+                description: p.DESCRIPTION || '',
+                requestCount: p.REQUEST_COUNT,
+                refId: p.REF_ID || '',
+            }));
+        } catch (err) {
+            logger.warn('Failed to load subscription policies for settings page', { error: err.message });
+        }
+        templateContent.orgPolicies = orgPolicies;
 
         const configAsset = await orgDao.getContent({
             orgId: orgID, fileType: constants.FILE_TYPE.LLMS_CONFIG, viewName, fileName: constants.FILE_NAME.LLMS_CONFIG

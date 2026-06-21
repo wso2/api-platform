@@ -2,72 +2,70 @@
   <link rel='stylesheet' href='/technical-styles/applications.css' />
 {{/pageHead}}
 
-<section class="apps-section">
-  <div class="apps-page-container">
+<div class="page-container">
 
-    <!-- Page header -->
-    <div class="apps-page-header">
-      <div>
-        <h1 class="apps-page-title">Applications</h1>
-        <p class="apps-page-desc">Applications hold the API keys and subscriptions you use to call APIs.</p>
-      </div>
-      {{#if applicationsMetadata.length}}
-      <button class="apps-create-btn" id="apps-create-btn" type="button"
-        {{#if @root.isReadOnlyMode}}disabled title="Read-only mode"{{/if}}>
-        <i class="bi bi-plus"></i> Create application
-      </button>
-      {{/if}}
+  <!-- Page header -->
+  <div class="page-header">
+    <div>
+      <h1 class="page-title">Applications</h1>
+      <p class="page-desc">Applications hold the API keys and subscriptions you use to call APIs.</p>
     </div>
-
-    <!-- Empty state -->
-    {{#unless applicationsMetadata.length}}
-    <div class="apps-empty-state">
-      <span class="apps-empty-icon"><i class="bi bi-grid-3x3-gap-fill"></i></span>
-      <h2 class="apps-empty-title">No applications yet</h2>
-      <p class="apps-empty-desc">Create an application to generate API keys and subscribe to APIs. You can manage all your credentials in one place.</p>
-      <button class="apps-create-btn" id="apps-create-btn-empty" type="button"
-        {{#if @root.isReadOnlyMode}}disabled title="Read-only mode"{{/if}}>
-        <i class="bi bi-plus"></i> Create application
-      </button>
-    </div>
-    {{/unless}}
-
-    <!-- Card grid -->
     {{#if applicationsMetadata.length}}
-    <div class="apps-grid" id="applicationsContainer">
-      {{#applicationsMetadata}}
-      <div class="app-card" id="app-card-{{id}}" data-id="{{id}}" data-name="{{name}}"
-        style="cursor:pointer;" onclick="window.location.href='{{../baseUrl}}/applications/{{id}}'">
-
-        <div class="app-card-top">
-          <span class="app-avatar" data-name="{{name}}"></span>
-          <div class="app-card-meta">
-            <h3 class="app-card-name">{{name}}</h3>
-          </div>
-        </div>
-
-        <p class="app-card-desc">{{description}}</p>
-
-        <div class="app-card-footer">
-          <span class="app-subs-label">
-            <i class="bi bi-layers"></i> Subscriptions
-          </span>
-          {{#unless @root.isReadOnlyMode}}
-          <button type="button" class="app-delete-btn" id="trash-btn-{{id}}"
-            title="Delete application"
-            onclick="event.stopPropagation(); appShowDeleteModal('{{id}}', '{{name}}')">
-            <i class="bi bi-trash"></i>
-          </button>
-          {{/unless}}
-        </div>
-
-      </div>
-      {{/applicationsMetadata}}
-    </div>
+    <button class="apps-create-btn" id="apps-create-btn" type="button"
+      {{#if @root.isReadOnlyMode}}disabled title="Read-only mode"{{/if}}>
+      <i class="bi bi-plus"></i> Create application
+    </button>
     {{/if}}
-
   </div>
-</section>
+
+  <!-- Empty state -->
+  {{#unless applicationsMetadata.length}}
+  <div class="dp-empty">
+    <span class="dp-empty-icon"><i class="bi bi-grid-3x3-gap-fill"></i></span>
+    <h2 class="dp-empty-title">No applications yet</h2>
+    <p class="dp-empty-desc">Create an application to generate API keys and subscribe to APIs. You can manage all your credentials in one place.</p>
+    <button class="dp-btn dp-btn--primary dp-btn--lg" id="apps-create-btn-empty" type="button"
+      {{#if @root.isReadOnlyMode}}disabled title="Read-only mode"{{/if}}>
+      <i class="bi bi-plus"></i> Create application
+    </button>
+  </div>
+  {{/unless}}
+
+  <!-- Card grid -->
+  {{#if applicationsMetadata.length}}
+  <div class="apps-grid" id="applicationsContainer">
+    {{#applicationsMetadata}}
+    <div class="app-card" id="app-card-{{id}}" data-id="{{id}}" data-name="{{name}}"
+      style="cursor:pointer;" onclick="window.location.href='{{../baseUrl}}/applications/{{id}}'">
+
+      <div class="app-card-top">
+        <span class="app-avatar" data-name="{{name}}"></span>
+        <div class="app-card-meta">
+          <h3 class="app-card-name">{{name}}</h3>
+        </div>
+      </div>
+
+      <p class="app-card-desc">{{description}}</p>
+
+      <div class="app-card-footer">
+        <span class="app-subs-label">
+          <i class="bi bi-layers"></i> Subscriptions
+        </span>
+        {{#unless @root.isReadOnlyMode}}
+        <button type="button" class="app-delete-btn" id="trash-btn-{{id}}"
+          title="Delete application"
+          onclick="event.stopPropagation(); appShowDeleteModal('{{id}}', '{{name}}')">
+          <i class="bi bi-trash"></i>
+        </button>
+        {{/unless}}
+      </div>
+
+    </div>
+    {{/applicationsMetadata}}
+  </div>
+  {{/if}}
+
+</div>
 
 <!-- ── Create application modal ── -->
 <div class="app-modal-overlay" id="app-create-modal" style="display:none;">

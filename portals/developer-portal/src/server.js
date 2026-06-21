@@ -27,6 +27,8 @@ const sequelize = require('./db/sequelizeConfig');
 const { seedDefaultOrg } = require('./services/seederService');
 const app = require('./app');
 
+const liveReload = process.env.NODE_ENV === 'development' ? require('./liveReload') : null;
+
 const PORT = process.env.PORT || config.defaultPort;
 
 function startBackgroundServices() {
@@ -111,6 +113,7 @@ process.on('uncaughtException', (err) => {
         stack: err.stack,
         type: 'uncaughtException'
     });
+    process.exit(1);
 });
 
 // Handle Unhandled Rejections
@@ -120,6 +123,7 @@ process.on('unhandledRejection', (reason, promise) => {
         promise: promise?.toString(),
         type: 'unhandledRejection'
     });
+    process.exit(1);
 });
 
 // Graceful shutdown handlers
@@ -135,13 +139,24 @@ const gracefulShutdown = (signal) => {
     };
 
     if (server) {
+        // Close keep-alive connections immediately so server.close() doesn't hang
+        server.closeAllConnections();
         server.close(done);
     } else {
         done();
     }
+
+    // Force-exit after 3 s if graceful close hangs (e.g. long-polling connections)
+    setTimeout(() => {
+        logger.warn('Graceful shutdown timed out — forcing exit');
+        process.exit(1);
+    }, 3000).unref();
 };
 
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 // nodemon sends SIGUSR2 to restart; process.once so the next spawned process can re-register
-process.once('SIGUSR2', () => gracefulShutdown('SIGUSR2'));
+process.once('SIGUSR2', () => {
+    if (liveReload) liveReload.notify();
+    gracefulShutdown('SIGUSR2');
+});

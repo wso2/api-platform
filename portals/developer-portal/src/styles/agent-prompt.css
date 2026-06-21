@@ -113,7 +113,7 @@
 }
 
 .btn-icon-ai {
-    position: relative;
+    position: absolute;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -128,6 +128,8 @@
     box-shadow: 0 2px 6px rgba(124,58,237,0.3);
     animation: ai-glow-pulse 3s ease-in-out infinite;
     transition: transform 0.2s ease, box-shadow 0.2s ease, filter 0.2s ease;
+    top: 160px;
+    right: 70px;
 }
 
 .btn-icon-ai::before {

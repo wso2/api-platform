@@ -15,22 +15,17 @@
     {{!-- ── LIST VIEW ── --}}
     <div id="apiFlowList">
         <!-- Header -->
-        <div class="api-flows-header mb-4">
-            <div class="d-flex justify-content-between align-items-center">
-                <div class="p-1">
-                    <div class="container-header mb-4 d-sm-flex justify-content-between align-items-center">
-                        <span>API Workflows</span>
-                    </div>
-                    <p class="text-muted mb-2"> Encode your real-world API use cases as guided workflows — so AI agents
-                        know exactly how your
-                        APIs work together, in the right order, for the right purpose. No guesswork, no hallucinations.</p>
-                </div>
-                {{#if apiFlows.length}}
-                <button type="button" class="common-btn-primary text-nowrap flex-shrink-0" id="createApiFlowBtn">
-                    <i class="bi bi-plus-circle me-1"></i> Create
-                </button>
-                {{/if}}
+        <div class="cfg-panel-header">
+            <div>
+                <h2 class="cfg-panel-title">API Workflows</h2>
+                <p class="cfg-panel-desc">Encode your real-world API use cases as guided workflows, so AI agents know exactly how your APIs work together, <br />
+                    in the right order, for the right purpose. No guesswork, no hallucinations.</p>
             </div>
+            {{#if apiFlows.length}}
+            <button class="cfg-btn-primary" id="createApiFlowBtn" type="button">
+                <i class="bi bi-plus me-1"></i> Create
+            </button>
+            {{/if}}
         </div>
 
         {{#if apiFlows.length}}

@@ -94,29 +94,26 @@
               <h5 class="api-card-title">{{apiInfo.apiName}}</h5>
               <div class="api-card-meta-row">
                 <span class="api-version">{{apiInfo.apiVersion}}</span>
-                <span class="api-type-badge
-                  {{#if (eq apiInfo.apiType "GRAPHQL")}}api-type-badge--graphql
-                  {{else if (eq apiInfo.apiType "WS")}}api-type-badge--ws
-                  {{else if (eq apiInfo.apiType "SOAP")}}api-type-badge--soap
-                  {{else if (eq apiInfo.apiType "WEBSUB")}}api-type-badge--ws
-                  {{else}}api-type-badge--rest{{/if}}">
+                <span class="dp-badge
+                  {{#if (eq apiInfo.apiType "GRAPHQL")}}dp-badge--graphql
+                  {{else if (eq apiInfo.apiType "WS")}}dp-badge--ws
+                  {{else if (eq apiInfo.apiType "SOAP")}}dp-badge--soap
+                  {{else if (eq apiInfo.apiType "WEBSUB")}}dp-badge--ws
+                  {{else}}dp-badge--rest{{/if}}">
                   {{#if (eq apiInfo.apiType "GRAPHQL")}}<i class="bi bi-share"></i> GraphQL
                   {{else if (eq apiInfo.apiType "WS")}}<i class="bi bi-broadcast"></i> WebSocket
                   {{else if (eq apiInfo.apiType "WEBSUB")}}<i class="bi bi-broadcast-pin"></i> WebSub
                   {{else if (eq apiInfo.apiType "SOAP")}}<i class="bi bi-file-code"></i> SOAP
                   {{else}}<i class="bi bi-braces"></i> REST{{/if}}
                 </span>
-              </div>
-              {{#if ../showApiWorkflowsNav}}
-              {{#unless (eq apiInfo.agentVisibility "HIDDEN")}}
-              <div class="api-card-chips mt-1">
-                <span class="api-agent-chip api-agent-chip--ready" title="AI agents can discover and use this API">
-                  <span class="api-agent-chip__dot"></span>
+                {{#if ../showApiWorkflowsNav}}
+                {{#unless (eq apiInfo.agentVisibility "HIDDEN")}}
+                <span class="dp-badge dp-badge--ai" title="AI agents can discover and use this API">
                   <i class="bi bi-robot"></i> AI Ready
                 </span>
+                {{/unless}}
+                {{/if}}
               </div>
-              {{/unless}}
-              {{/if}}
             </div>
             {{#if ../isAuthenticated}}
             <div class="subscription-flag fw-bold" style="display:{{#if hasSubscription}}block{{else}}none{{/if}};">Subscribed</div>
@@ -129,27 +126,23 @@
           <!-- Tags -->
           <div class="api-card-tags">
             {{#apiInfo.tags}}
-            <span class="api-tag">{{this}}</span>
+            <span class="dp-tag">{{this}}</span>
             {{/apiInfo.tags}}
           </div>
 
           <!-- Footer -->
+          {{#if subscriptionPolicies.length}}
           <div class="api-card-footer">
             <div class="api-card-footer-left">
-              {{#if subscriptionPolicies.length}}
               <a href="{{../baseUrl}}/api/{{apiHandle}}#subscriptionPlans" class="api-plans-link">
                 <i class="bi bi-tag"></i> {{subscriptionPolicies.length}} plans
               </a>
-              {{else}}
-              <span class="api-public-badge">
-                <span class="api-public-dot"></span> Public API
-              </span>
-              {{/if}}
             </div>
-            <a href="{{../baseUrl}}/api/{{apiHandle}}{{#if subscriptionPolicies.length}}#subscriptionPlans{{/if}}"
-               class="api-subscribe-btn {{#if @root.isReadOnlyMode}}disabled{{/if}}"
+            <a href="{{../baseUrl}}/api/{{apiHandle}}#subscriptionPlans"
+               class="dp-btn dp-btn--primary {{#if @root.isReadOnlyMode}}disabled{{/if}}"
                {{#if @root.isReadOnlyMode}}aria-disabled="true" tabindex="-1"{{/if}}>Subscribe</a>
           </div>
+          {{/if}}
 
           <div class="message-overlay hidden">
             <div class="message-content">
