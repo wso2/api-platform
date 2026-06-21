@@ -205,3 +205,9 @@ If you are also running ai-workspace and platform-api with Asgardeo, the setups 
 | **platform-api** | — (validates tokens via JWKS; same `ap:*` scopes as ai-workspace) | — | — |
 
 Each application is registered separately in Asgardeo with its own client ID and scopes.
+
+---
+
+## Next Steps
+
+- [Get a Bearer Token via curl](api-token-curl.md) — test the devportal REST API from the terminal once IDP is set up
