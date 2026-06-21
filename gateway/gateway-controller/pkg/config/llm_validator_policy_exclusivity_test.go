@@ -21,8 +21,9 @@ package config
 import (
 	"testing"
 
-	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/stretchr/testify/assert"
+
+	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 )
 
 // policyExclusivityErr reports whether the validation errors contain the
@@ -61,7 +62,7 @@ func sampleLegacyPolicies() *[]api.LLMPolicy {
 
 func providerWithPolicies(global *[]api.Policy, operation *[]api.OperationPolicy, legacy *[]api.LLMPolicy) *api.LLMProviderConfiguration {
 	return &api.LLMProviderConfiguration{
-		ApiVersion: api.LLMProviderConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		ApiVersion: api.LLMProviderConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha2,
 		Kind:       api.LLMProviderConfigurationKindLlmProvider,
 		Metadata:   api.Metadata{Name: "openai"},
 		Spec: api.LLMProviderConfigData{
@@ -81,7 +82,7 @@ func providerWithPolicies(global *[]api.Policy, operation *[]api.OperationPolicy
 
 func proxyWithPolicies(global *[]api.Policy, operation *[]api.OperationPolicy, legacy *[]api.LLMPolicy) *api.LLMProxyConfiguration {
 	return &api.LLMProxyConfiguration{
-		ApiVersion: api.LLMProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		ApiVersion: api.LLMProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha2,
 		Kind:       api.LLMProxyConfigurationKindLlmProxy,
 		Metadata:   api.Metadata{Name: "openai-proxy"},
 		Spec: api.LLMProxyConfigData{

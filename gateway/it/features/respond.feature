@@ -12,7 +12,7 @@ Feature: Respond Policy Integration Tests
   Scenario: Return simple 200 OK response with plain text body
     When I deploy an API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: test-respond-simple-200
@@ -42,7 +42,7 @@ Feature: Respond Policy Integration Tests
   Scenario: Return 201 Created with JSON body and headers
     When I deploy an API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: test-respond-201-json
@@ -90,7 +90,7 @@ Feature: Respond Policy Integration Tests
   Scenario: Return 204 No Content with empty body
     When I deploy an API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: test-respond-204-empty
@@ -127,7 +127,7 @@ Feature: Respond Policy Integration Tests
   Scenario: Default status code is 200 when not specified
     When I deploy an API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: test-respond-default-200
@@ -160,7 +160,7 @@ Feature: Respond Policy Integration Tests
   Scenario: Return 400 Bad Request error
     When I deploy an API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: test-respond-400-error
@@ -205,7 +205,7 @@ Feature: Respond Policy Integration Tests
   Scenario: Return 401 Unauthorized error
     When I deploy an API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: test-respond-401-error
@@ -249,7 +249,7 @@ Feature: Respond Policy Integration Tests
   Scenario: Return 403 Forbidden error
     When I deploy an API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: test-respond-403-error
@@ -291,7 +291,7 @@ Feature: Respond Policy Integration Tests
   Scenario: Return 404 Not Found error
     When I deploy an API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: test-respond-404-error
@@ -332,7 +332,7 @@ Feature: Respond Policy Integration Tests
   Scenario: Return 429 Too Many Requests
     When I deploy an API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: test-respond-429-ratelimit
@@ -383,7 +383,7 @@ Feature: Respond Policy Integration Tests
   Scenario: Return 500 Internal Server Error
     When I deploy an API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: test-respond-500-error
@@ -424,7 +424,7 @@ Feature: Respond Policy Integration Tests
   Scenario: Return 503 Service Unavailable (maintenance mode)
     When I deploy an API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: test-respond-503-maintenance
@@ -472,7 +472,7 @@ Feature: Respond Policy Integration Tests
   Scenario: Return 301 Moved Permanently redirect
     When I deploy an API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: test-respond-301-redirect
@@ -512,7 +512,7 @@ Feature: Respond Policy Integration Tests
   Scenario: Return 302 Found temporary redirect
     When I deploy an API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: test-respond-302-redirect
@@ -556,7 +556,7 @@ Feature: Respond Policy Integration Tests
   Scenario: Return XML response
     When I deploy an API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: test-respond-xml
@@ -590,7 +590,7 @@ Feature: Respond Policy Integration Tests
   Scenario: Return HTML response
     When I deploy an API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: test-respond-html
@@ -624,7 +624,7 @@ Feature: Respond Policy Integration Tests
   Scenario: Return plain text response
     When I deploy an API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: test-respond-text
@@ -662,7 +662,7 @@ Feature: Respond Policy Integration Tests
   Scenario: API mocking - return mocked user data
     When I deploy an API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: test-respond-mock-user
@@ -707,7 +707,7 @@ Feature: Respond Policy Integration Tests
   Scenario: Deprecated API endpoint notice
     When I deploy an API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: test-respond-deprecated
@@ -754,7 +754,7 @@ Feature: Respond Policy Integration Tests
   Scenario: Health check stub
     When I deploy an API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: test-respond-health
@@ -790,7 +790,7 @@ Feature: Respond Policy Integration Tests
   Scenario: CORS preflight OPTIONS response
     When I deploy an API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: test-respond-cors-preflight
@@ -842,7 +842,7 @@ Feature: Respond Policy Integration Tests
   Scenario: Response with no body and no headers
     When I deploy an API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: test-respond-minimal
@@ -870,7 +870,7 @@ Feature: Respond Policy Integration Tests
   Scenario: Response with empty body string
     When I deploy an API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: test-respond-empty-body
@@ -900,7 +900,7 @@ Feature: Respond Policy Integration Tests
   Scenario: Response with multiple custom headers
     When I deploy an API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: test-respond-multiple-headers
@@ -947,7 +947,7 @@ Feature: Respond Policy Integration Tests
   Scenario: Large JSON response body
     When I deploy an API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: test-respond-large-json
@@ -982,7 +982,7 @@ Feature: Respond Policy Integration Tests
   Scenario: Response with special characters in body
     When I deploy an API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: test-respond-special-chars
@@ -1020,7 +1020,7 @@ Feature: Respond Policy Integration Tests
   Scenario: Return 206 Partial Content status code
     When I deploy an API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: test-respond-206-partial
@@ -1067,7 +1067,7 @@ Feature: Respond Policy Integration Tests
   Scenario: Return custom error code 418 I'm a teapot
     When I deploy an API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: test-respond-418-teapot
@@ -1115,7 +1115,7 @@ Feature: Respond Policy Integration Tests
   Scenario: Return different response based on path but same policy
     When I deploy an API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: test-respond-multi-path
@@ -1166,7 +1166,7 @@ Feature: Respond Policy Integration Tests
   Scenario: Response with cache control headers
     When I deploy an API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: test-respond-cache-control

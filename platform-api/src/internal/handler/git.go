@@ -21,6 +21,7 @@ import (
 	"log/slog"
 	"net/http"
 	"platform-api/src/api"
+	"platform-api/src/internal/constants"
 	"platform-api/src/internal/middleware"
 	"platform-api/src/internal/service"
 	"strings"
@@ -250,7 +251,7 @@ func (h *GitHandler) FetchRepoContent(c *gin.Context) {
 
 // RegisterRoutes registers Git-related routes
 func (h *GitHandler) RegisterRoutes(router *gin.Engine) {
-	gitRoutes := router.Group("/api/v1/git")
+	gitRoutes := router.Group(constants.APIBasePath + "/git")
 	{
 		gitRoutes.POST("/repo/fetch-branches", h.FetchRepoBranches)
 		gitRoutes.POST("/repo/branch/fetch-content", h.FetchRepoContent)

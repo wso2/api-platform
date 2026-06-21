@@ -33,7 +33,7 @@ Feature: Provider-wide rate limiting for LLM providers
     Given I authenticate using basic auth as "admin"
     When I create this LLM provider template:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: LlmProviderTemplate
       metadata:
         name: global-rl-template
@@ -54,7 +54,7 @@ Feature: Provider-wide rate limiting for LLM providers
     Given I authenticate using basic auth as "admin"
     When I create this LLM provider:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: LlmProvider
       metadata:
         name: global-rl-provider
@@ -104,7 +104,7 @@ Feature: Provider-wide rate limiting for LLM providers
     Given I authenticate using basic auth as "admin"
     When I create this LLM provider template:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: LlmProviderTemplate
       metadata:
         name: op-rl-template
@@ -125,7 +125,7 @@ Feature: Provider-wide rate limiting for LLM providers
     Given I authenticate using basic auth as "admin"
     When I create this LLM provider:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: LlmProvider
       metadata:
         name: op-rl-provider
@@ -182,7 +182,7 @@ Feature: Provider-wide rate limiting for LLM providers
     Given I authenticate using basic auth as "admin"
     When I create this LLM provider template:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: LlmProviderTemplate
       metadata:
         name: combined-rl-template
@@ -203,7 +203,7 @@ Feature: Provider-wide rate limiting for LLM providers
     Given I authenticate using basic auth as "admin"
     When I create this LLM provider:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: LlmProvider
       metadata:
         name: combined-rl-provider
@@ -266,7 +266,7 @@ Feature: Provider-wide rate limiting for LLM providers
     Given I authenticate using basic auth as "admin"
     When I create this LLM provider template:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: LlmProviderTemplate
       metadata:
         name: legacy-rl-template
@@ -287,7 +287,7 @@ Feature: Provider-wide rate limiting for LLM providers
     Given I authenticate using basic auth as "admin"
     When I create this LLM provider:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: LlmProvider
       metadata:
         name: legacy-rl-provider

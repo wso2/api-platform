@@ -28,7 +28,7 @@ Feature: API Error Responses
   Scenario: Create API returns validation errors with field details
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: create-error-response-api
@@ -51,7 +51,7 @@ Feature: API Error Responses
   Scenario: Create API returns policy schema validation errors
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: policy-schema-error-api
@@ -81,7 +81,7 @@ Feature: API Error Responses
   Scenario: Create API returns policy not found errors
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: policy-not-found-error-api
@@ -110,7 +110,7 @@ Feature: API Error Responses
   Scenario: Create API returns metadata name validation errors
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata: {}
       spec:
@@ -134,7 +134,7 @@ Feature: API Error Responses
   Scenario: Create API returns version format validation errors
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: invalid-version-format-api
@@ -159,7 +159,7 @@ Feature: API Error Responses
   Scenario: Update API parse errors include detailed message
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: update-parse-error-api
@@ -192,7 +192,7 @@ Feature: API Error Responses
   Scenario: Update API returns validation errors with field details
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: update-validation-error-api
@@ -210,7 +210,7 @@ Feature: API Error Responses
     Then the response should be successful
     When I update the API "update-validation-error-api" with this configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: update-validation-error-api

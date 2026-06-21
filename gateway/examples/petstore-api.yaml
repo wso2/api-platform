@@ -16,7 +16,7 @@
 # under the License.
 # --------------------------------------------------------------------
 
-apiVersion: gateway.api-platform.wso2.com/v1alpha1
+apiVersion: gateway.api-platform.wso2.com/v1alpha2
 kind: RestApi
 metadata:
   name: petstore-api-v1.0

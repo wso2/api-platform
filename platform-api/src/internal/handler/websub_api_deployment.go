@@ -50,7 +50,7 @@ func NewWebSubAPIDeploymentHandler(websubAPIDeploymentService *service.WebSubAPI
 
 // RegisterRoutes registers WebSub API deployment routes
 func (h *WebSubAPIDeploymentHandler) RegisterRoutes(r *gin.Engine) {
-	g := r.Group("/api/v1/websub-apis/:apiId")
+	g := r.Group(constants.APIBasePath + "/websub-apis/:apiId")
 	{
 		g.POST("/deployments", h.DeployWebSubAPI)
 		g.POST("/deployments/:deploymentId/undeploy", h.UndeployDeployment)
@@ -61,7 +61,7 @@ func (h *WebSubAPIDeploymentHandler) RegisterRoutes(r *gin.Engine) {
 	}
 }
 
-// DeployWebSubAPI handles POST /api/v1/websub-apis/:apiId/deployments
+// DeployWebSubAPI handles POST /api/v1alpha2/websub-apis/:apiId/deployments
 func (h *WebSubAPIDeploymentHandler) DeployWebSubAPI(c *gin.Context) {
 	orgId, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {
@@ -103,7 +103,7 @@ func (h *WebSubAPIDeploymentHandler) DeployWebSubAPI(c *gin.Context) {
 	c.JSON(http.StatusCreated, deployment)
 }
 
-// UndeployDeployment handles POST /api/v1/websub-apis/:apiId/deployments/:deploymentId/undeploy
+// UndeployDeployment handles POST /api/v1alpha2/websub-apis/:apiId/deployments/:deploymentId/undeploy
 func (h *WebSubAPIDeploymentHandler) UndeployDeployment(c *gin.Context) {
 	orgId, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {
@@ -132,7 +132,7 @@ func (h *WebSubAPIDeploymentHandler) UndeployDeployment(c *gin.Context) {
 	c.JSON(http.StatusOK, deployment)
 }
 
-// RestoreDeployment handles POST /api/v1/websub-apis/:apiId/deployments/:deploymentId/restore
+// RestoreDeployment handles POST /api/v1alpha2/websub-apis/:apiId/deployments/:deploymentId/restore
 func (h *WebSubAPIDeploymentHandler) RestoreDeployment(c *gin.Context) {
 	orgId, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {
@@ -161,7 +161,7 @@ func (h *WebSubAPIDeploymentHandler) RestoreDeployment(c *gin.Context) {
 	c.JSON(http.StatusOK, deployment)
 }
 
-// GetDeployments handles GET /api/v1/websub-apis/:apiId/deployments
+// GetDeployments handles GET /api/v1alpha2/websub-apis/:apiId/deployments
 func (h *WebSubAPIDeploymentHandler) GetDeployments(c *gin.Context) {
 	orgId, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {
@@ -198,7 +198,7 @@ func (h *WebSubAPIDeploymentHandler) GetDeployments(c *gin.Context) {
 	c.JSON(http.StatusOK, deployments)
 }
 
-// GetDeployment handles GET /api/v1/websub-apis/:apiId/deployments/:deploymentId
+// GetDeployment handles GET /api/v1alpha2/websub-apis/:apiId/deployments/:deploymentId
 func (h *WebSubAPIDeploymentHandler) GetDeployment(c *gin.Context) {
 	orgId, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {
@@ -218,7 +218,7 @@ func (h *WebSubAPIDeploymentHandler) GetDeployment(c *gin.Context) {
 	c.JSON(http.StatusOK, deployment)
 }
 
-// DeleteDeployment handles DELETE /api/v1/websub-apis/:apiId/deployments/:deploymentId
+// DeleteDeployment handles DELETE /api/v1alpha2/websub-apis/:apiId/deployments/:deploymentId
 func (h *WebSubAPIDeploymentHandler) DeleteDeployment(c *gin.Context) {
 	orgId, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {

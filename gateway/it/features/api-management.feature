@@ -36,7 +36,7 @@ Feature: API Management Handler Operations
   Scenario: List APIs after deploying one
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: test-list-api
@@ -82,7 +82,7 @@ Feature: API Management Handler Operations
   Scenario: Get API by existing ID returns API details
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: get-by-id-test-api
@@ -119,7 +119,7 @@ Feature: API Management Handler Operations
   Scenario: Delete existing API successfully
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: delete-test-api
@@ -148,7 +148,7 @@ Feature: API Management Handler Operations
   Scenario: Update non-existent API returns 404
     When I update the API "non-existent-api-to-update" with this configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: non-existent-api-to-update
@@ -168,7 +168,7 @@ Feature: API Management Handler Operations
   Scenario: Update existing API successfully
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: update-test-api
@@ -186,7 +186,7 @@ Feature: API Management Handler Operations
     Then the response should be successful
     When I update the API "update-test-api" with this configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: update-test-api
@@ -215,7 +215,7 @@ Feature: API Management Handler Operations
   Scenario: Create API with minimal required fields
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: minimal-api
@@ -240,7 +240,7 @@ Feature: API Management Handler Operations
   Scenario: Create API with multiple operations
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: multi-operation-api
@@ -273,7 +273,7 @@ Feature: API Management Handler Operations
   Scenario: Create API with displayName
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: display-name-api
@@ -297,7 +297,7 @@ Feature: API Management Handler Operations
   Scenario: Create API with context containing version placeholder
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: versioned-context-api
@@ -330,7 +330,7 @@ Feature: API Management Handler Operations
   Scenario: Create API then verify it appears in list
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: list-verification-api
@@ -356,7 +356,7 @@ Feature: API Management Handler Operations
   Scenario: Create API with wildcard path
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: wildcard-path-api
@@ -380,7 +380,7 @@ Feature: API Management Handler Operations
   Scenario: Create multiple APIs with different contexts
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: first-api
@@ -398,7 +398,7 @@ Feature: API Management Handler Operations
     Then the response should be successful
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: second-api
@@ -425,7 +425,7 @@ Feature: API Management Handler Operations
   Scenario: Create API with missing context returns error
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: missing-context-api
@@ -446,7 +446,7 @@ Feature: API Management Handler Operations
   Scenario: Create API with missing version returns error
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: missing-version-api
@@ -466,7 +466,7 @@ Feature: API Management Handler Operations
   Scenario: Create API with missing upstream returns error
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: missing-upstream-api
@@ -484,7 +484,7 @@ Feature: API Management Handler Operations
   Scenario: Create API with empty operations returns error
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: empty-ops-api
@@ -503,7 +503,7 @@ Feature: API Management Handler Operations
   Scenario: Create API with invalid labels (spaces in keys) should fail
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: invalid-labels-api
@@ -527,7 +527,7 @@ Feature: API Management Handler Operations
   Scenario: Create API with labels and verify they are stored
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: labeled-api
@@ -562,7 +562,7 @@ Feature: API Management Handler Operations
     # First create an API
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: handle-mismatch-api
@@ -581,7 +581,7 @@ Feature: API Management Handler Operations
     # Try to update with mismatched handle in YAML
     When I update the API "handle-mismatch-api" with this configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: different-handle-name
@@ -608,7 +608,7 @@ Feature: API Management Handler Operations
     # First create an API
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: update-validation-api
@@ -627,7 +627,7 @@ Feature: API Management Handler Operations
     # Try to update with missing context
     When I update the API "update-validation-api" with this configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: update-validation-api
@@ -662,7 +662,7 @@ Feature: API Management Handler Operations
   Scenario: Create API with sandbox upstream
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: sandbox-api
@@ -689,7 +689,7 @@ Feature: API Management Handler Operations
   Scenario: Create API with path parameters
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: path-params-api
@@ -719,7 +719,7 @@ Feature: API Management Handler Operations
   Scenario: List APIs filtered by displayName
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: filter-display-api
@@ -746,7 +746,7 @@ Feature: API Management Handler Operations
   Scenario: List APIs filtered by version
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: filter-version-api
@@ -773,7 +773,7 @@ Feature: API Management Handler Operations
   Scenario: List APIs filtered by context
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: filter-context-api
@@ -802,7 +802,7 @@ Feature: API Management Handler Operations
   Scenario: Update API with invalid JSON body returns error
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: update-invalid-json-api
@@ -832,7 +832,7 @@ Feature: API Management Handler Operations
   Scenario: Update API version while keeping same context
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: update-version-api
@@ -850,7 +850,7 @@ Feature: API Management Handler Operations
     Then the response should be successful
     When I update the API "update-version-api" with this configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: update-version-api
@@ -884,7 +884,7 @@ Feature: API Management Handler Operations
   Scenario: Delete same API twice (idempotent check)
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: delete-twice-api

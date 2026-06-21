@@ -10,7 +10,7 @@
 
 ```shell
 
-curl -X POST http://localhost:9090/api/management/v0.9/websub-apis \
+curl -X POST http://localhost:9090/api/management/v1alpha2/websub-apis \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -24,7 +24,7 @@ Add a new WebSubAPI to the Gateway.
 
 ```json
 {
-  "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+  "apiVersion": "gateway.api-platform.wso2.com/v1alpha2",
   "kind": "WebSubApi",
   "metadata": {
     "name": "github-events-v1.0"
@@ -68,7 +68,7 @@ Required roles: `admin`, `developer`
 
 ```json
 {
-  "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+  "apiVersion": "gateway.api-platform.wso2.com/v1alpha2",
   "kind": "WebSubApi",
   "metadata": {
     "name": "github-events-v1.0"
@@ -117,7 +117,7 @@ Required roles: `admin`, `developer`
 
 ```shell
 
-curl -X GET http://localhost:9090/api/management/v0.9/websub-apis \
+curl -X GET http://localhost:9090/api/management/v1alpha2/websub-apis \
   -u {username}:{password} \
   -H 'Accept: application/json'
 
@@ -160,7 +160,7 @@ Required roles: `admin`, `developer`
   "count": 5,
   "apis": [
     {
-      "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+      "apiVersion": "gateway.api-platform.wso2.com/v1alpha2",
       "kind": "WebSubApi",
       "metadata": {
         "name": "github-events-v1.0"
@@ -263,7 +263,7 @@ Status Code **200**
 
 |Property|Value|
 |---|---|
-|apiVersion|gateway.api-platform.wso2.com/v1alpha1|
+|apiVersion|gateway.api-platform.wso2.com/v1alpha2|
 |kind|WebSubApi|
 |deploymentState|deployed|
 |deploymentState|undeployed|
@@ -280,7 +280,7 @@ Status Code **200**
 
 ```shell
 
-curl -X POST http://localhost:9090/api/management/v0.9/websub-apis/{id}/api-keys \
+curl -X POST http://localhost:9090/api/management/v1alpha2/websub-apis/{id}/api-keys \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -357,7 +357,7 @@ Required roles: `admin`, `consumer`
 
 ```shell
 
-curl -X GET http://localhost:9090/api/management/v0.9/websub-apis/{id}/api-keys \
+curl -X GET http://localhost:9090/api/management/v1alpha2/websub-apis/{id}/api-keys \
   -u {username}:{password} \
   -H 'Accept: application/json'
 
@@ -422,7 +422,7 @@ Required roles: `admin`, `consumer`
 
 ```shell
 
-curl -X POST http://localhost:9090/api/management/v0.9/websub-apis/{id}/api-keys/{apiKeyName}/regenerate \
+curl -X POST http://localhost:9090/api/management/v1alpha2/websub-apis/{id}/api-keys/{apiKeyName}/regenerate \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -497,7 +497,7 @@ Required roles: `admin`, `consumer`
 
 ```shell
 
-curl -X PUT http://localhost:9090/api/management/v0.9/websub-apis/{id}/api-keys/{apiKeyName} \
+curl -X PUT http://localhost:9090/api/management/v1alpha2/websub-apis/{id}/api-keys/{apiKeyName} \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -575,7 +575,7 @@ Required roles: `admin`, `consumer`
 
 ```shell
 
-curl -X DELETE http://localhost:9090/api/management/v0.9/websub-apis/{id}/api-keys/{apiKeyName} \
+curl -X DELETE http://localhost:9090/api/management/v1alpha2/websub-apis/{id}/api-keys/{apiKeyName} \
   -u {username}:{password} \
   -H 'Accept: application/json'
 
@@ -629,7 +629,7 @@ Required roles: `admin`, `consumer`
 
 ```shell
 
-curl -X GET http://localhost:9090/api/management/v0.9/websub-apis/{id} \
+curl -X GET http://localhost:9090/api/management/v1alpha2/websub-apis/{id} \
   -u {username}:{password} \
   -H 'Accept: application/json'
 
@@ -662,7 +662,7 @@ Required roles: `admin`, `developer`
 
 ```json
 {
-  "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+  "apiVersion": "gateway.api-platform.wso2.com/v1alpha2",
   "kind": "WebSubApi",
   "metadata": {
     "name": "github-events-v1.0"
@@ -710,7 +710,7 @@ Required roles: `admin`, `developer`
 
 ```shell
 
-curl -X PUT http://localhost:9090/api/management/v0.9/websub-apis/{id} \
+curl -X PUT http://localhost:9090/api/management/v1alpha2/websub-apis/{id} \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -724,7 +724,7 @@ Update an existing WebSubAPI in the Gateway.
 
 ```json
 {
-  "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+  "apiVersion": "gateway.api-platform.wso2.com/v1alpha2",
   "kind": "WebSubApi",
   "metadata": {
     "name": "github-events-v1.0"
@@ -773,7 +773,7 @@ Required roles: `admin`, `developer`
 
 ```json
 {
-  "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+  "apiVersion": "gateway.api-platform.wso2.com/v1alpha2",
   "kind": "WebSubApi",
   "metadata": {
     "name": "github-events-v1.0"
@@ -822,7 +822,7 @@ Required roles: `admin`, `developer`
 
 ```shell
 
-curl -X DELETE http://localhost:9090/api/management/v0.9/websub-apis/{id} \
+curl -X DELETE http://localhost:9090/api/management/v1alpha2/websub-apis/{id} \
   -u {username}:{password} \
   -H 'Accept: application/json'
 

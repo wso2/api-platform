@@ -147,7 +147,7 @@ export const POLICY_HUB_WEB_URL = getEnvOrDefault(
 // only if calling the platform API directly.
 export const PLATFORM_API_BASE_URL = getEnvOrDefault(
   'VITE_PLATFORM_API_BASE_URL',
-  '/api-proxy/api/v1'
+  '/api-proxy/api/v1alpha2'
 );
 
 // Control-plane host shown in gateway setup instructions (host:port).

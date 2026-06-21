@@ -22,7 +22,7 @@ func TestDeployAPIConfigurationWebSubKindTopicRegistration(t *testing.T) {
 
 	// Inline YAML config similar to websubhub.yaml
 	yamlConfig := `kind: WebSubApi
-apiVersion: gateway.api-platform.wso2.com/v1alpha1
+apiVersion: gateway.api-platform.wso2.com/v1alpha2
 metadata:
   name: testapi
 spec:
@@ -73,7 +73,7 @@ func TestDeployAPIConfigurationWebSubKindRevisionDeployment(t *testing.T) {
 
 	// Inline YAML config similar to websubhub.yaml
 	yamlConfig := `kind: WebSubApi
-apiVersion: gateway.api-platform.wso2.com/v1alpha1
+apiVersion: gateway.api-platform.wso2.com/v1alpha2
 metadata:
   name: testapi
 spec:
@@ -117,7 +117,7 @@ spec:
 
 	// Second deployment with topic2 removed -> should deregister topic2
 	yamlConfig2 := `kind: WebSubApi
-apiVersion: gateway.api-platform.wso2.com/v1alpha1
+apiVersion: gateway.api-platform.wso2.com/v1alpha2
 metadata:
   name: testapi
 spec:
@@ -160,7 +160,7 @@ func TestTopicRegistrationForConcurrentAPIConfigs(t *testing.T) {
 
 	// Two different API YAMLs
 	yamlA := `kind: WebSubApi
-apiVersion: gateway.api-platform.wso2.com/v1alpha1
+apiVersion: gateway.api-platform.wso2.com/v1alpha2
 metadata:
   name: testapiA
 spec:
@@ -174,7 +174,7 @@ spec:
     /topic2: {}`
 
 	yamlB := `kind: WebSubApi
-apiVersion: gateway.api-platform.wso2.com/v1alpha1
+apiVersion: gateway.api-platform.wso2.com/v1alpha2
 metadata:
   name: testapiB
 spec:
@@ -268,7 +268,7 @@ func TestTopicDeregistrationOnConfigDeletion(t *testing.T) {
 
 	// Inline YAML config similar to websubhub.yaml
 	yamlConfig := `kind: WebSubApi
-apiVersion: gateway.api-platform.wso2.com/v1alpha1
+apiVersion: gateway.api-platform.wso2.com/v1alpha2
 metadata:
   name: testapi
 spec:

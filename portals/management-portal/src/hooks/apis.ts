@@ -177,7 +177,7 @@ export const useApisApi = () => {
         body.contract = contract;
       }
 
-      const response = await fetch(`${baseUrl}/api/v1/apis`, {
+      const response = await fetch(`${baseUrl}/api/v1alpha2/apis`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -200,9 +200,9 @@ export const useApisApi = () => {
   );
 
   /**
-   * Fetch from /api/v1/apis with optional projectId filter:
-   * - /api/v1/apis                 => all APIs in org
-   * - /api/v1/apis?projectId=....  => APIs for a specific project
+   * Fetch from /api/v1alpha2/apis with optional projectId filter:
+   * - /api/v1alpha2/apis                 => all APIs in org
+   * - /api/v1alpha2/apis?projectId=....  => APIs for a specific project
    */
   const fetchProjectApis = useCallback(
     async (projectId: string): Promise<ApiSummary[]> => {
@@ -210,8 +210,8 @@ export const useApisApi = () => {
 
       const url =
         projectId && projectId.length > 0
-          ? `${baseUrl}/api/v1/apis?projectId=${encodeURIComponent(projectId)}`
-          : `${baseUrl}/api/v1/apis`;
+          ? `${baseUrl}/api/v1alpha2/apis?projectId=${encodeURIComponent(projectId)}`
+          : `${baseUrl}/api/v1alpha2/apis`;
 
       const response = await fetch(url, {
         method: "GET",
@@ -251,7 +251,7 @@ export const useApisApi = () => {
   const fetchApi = useCallback(async (apiId: string): Promise<ApiSummary> => {
     const { token, baseUrl } = getApiConfig();
 
-    const response = await fetch(`${baseUrl}/api/v1/apis/${apiId}`, {
+    const response = await fetch(`${baseUrl}/api/v1alpha2/apis/${apiId}`, {
       method: "GET",
       headers: {
         Authorization: `Bearer ${token}`,
@@ -272,7 +272,7 @@ export const useApisApi = () => {
   const deleteApi = useCallback(async (apiId: string): Promise<void> => {
     const { token, baseUrl } = getApiConfig();
 
-    const response = await fetch(`${baseUrl}/api/v1/apis/${apiId}`, {
+    const response = await fetch(`${baseUrl}/api/v1alpha2/apis/${apiId}`, {
       method: "DELETE",
       headers: {
         Authorization: `Bearer ${token}`,
@@ -293,7 +293,7 @@ export const useApisApi = () => {
       const { token, baseUrl } = getApiConfig();
 
       const response = await fetch(
-        `${baseUrl}/api/v1/apis/${encodeURIComponent(apiId)}/gateways`,
+        `${baseUrl}/api/v1alpha2/apis/${encodeURIComponent(apiId)}/gateways`,
         {
           method: "GET",
           headers: { Authorization: `Bearer ${token}` },
@@ -339,7 +339,7 @@ export const useApisApi = () => {
         formData.append("definition", payload.definition);
       }
 
-      const res = await fetch(`${baseUrl}/api/v1/import/open-api`, {
+      const res = await fetch(`${baseUrl}/api/v1alpha2/import/open-api`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -380,7 +380,7 @@ export const useApisApi = () => {
       const payload = gatewayIds.map((gatewayId) => ({ gatewayId }));
 
       const response = await fetch(
-        `${baseUrl}/api/v1/apis/${encodeURIComponent(apiId)}/gateways`,
+        `${baseUrl}/api/v1alpha2/apis/${encodeURIComponent(apiId)}/gateways`,
         {
           method: "POST",
           headers: {

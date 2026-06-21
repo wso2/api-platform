@@ -39,7 +39,7 @@ func testLLMProviderTemplate(uuid, handle string) *models.StoredLLMProviderTempl
 	return &models.StoredLLMProviderTemplate{
 		UUID: uuid,
 		Configuration: api.LLMProviderTemplate{
-			ApiVersion: api.LLMProviderTemplateApiVersionGatewayApiPlatformWso2Comv1alpha1,
+			ApiVersion: api.LLMProviderTemplateApiVersionGatewayApiPlatformWso2Comv1alpha2,
 			Kind:       api.LLMProviderTemplateKindLlmProviderTemplate,
 			Metadata: api.Metadata{
 				Name: handle,
@@ -56,7 +56,7 @@ func testLLMProviderTemplate(uuid, handle string) *models.StoredLLMProviderTempl
 func testLLMProviderStoredConfig(uuid, handle, template string, policies *[]api.LLMPolicy) *models.StoredConfig {
 	now := time.Now()
 	provider := api.LLMProviderConfiguration{
-		ApiVersion: api.LLMProviderConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		ApiVersion: api.LLMProviderConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha2,
 		Kind:       api.LLMProviderConfigurationKindLlmProvider,
 		Metadata: api.Metadata{
 			Name: handle,
@@ -90,7 +90,7 @@ func testLLMProviderStoredConfig(uuid, handle, template string, policies *[]api.
 func testLLMProxyStoredConfig(uuid, handle, provider string, policies *[]api.LLMPolicy) *models.StoredConfig {
 	now := time.Now()
 	proxy := api.LLMProxyConfiguration{
-		ApiVersion: api.LLMProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		ApiVersion: api.LLMProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha2,
 		Kind:       api.LLMProxyConfigurationKindLlmProxy,
 		Metadata: api.Metadata{
 			Name: handle,

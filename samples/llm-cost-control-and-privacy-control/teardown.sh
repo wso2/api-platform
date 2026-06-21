@@ -8,7 +8,7 @@ DIST_VERSION="1.1.0"
 DIST_NAME="wso2apip-ai-gateway-${DIST_VERSION}"
 DIST_ZIP="${DIST_NAME}.zip"
 
-GATEWAY_MGMT_URL="http://localhost:9090/api/management/v0.9"
+GATEWAY_MGMT_URL="http://localhost:9090/api/management/v1alpha2"
 AUTH_HEADER="Authorization: Basic YWRtaW46YWRtaW4="   # admin:admin
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

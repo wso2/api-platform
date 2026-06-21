@@ -30,7 +30,7 @@ func TestLabelValidationForAllTypes(t *testing.T) {
 	t.Run("LlmProvider with invalid labels", func(t *testing.T) {
 		validator := NewLLMValidator()
 		provider := api.LLMProviderConfiguration{
-			ApiVersion: "gateway.api-platform.wso2.com/v1alpha1",
+			ApiVersion: "gateway.api-platform.wso2.com/v1alpha2",
 			Kind:       api.LLMProviderConfigurationKindLlmProvider,
 			Metadata: api.Metadata{
 				Name: "test-provider",
@@ -71,7 +71,7 @@ func TestLabelValidationForAllTypes(t *testing.T) {
 	t.Run("LlmProvider with valid labels", func(t *testing.T) {
 		validator := NewLLMValidator()
 		provider := api.LLMProviderConfiguration{
-			ApiVersion: "gateway.api-platform.wso2.com/v1alpha1",
+			ApiVersion: "gateway.api-platform.wso2.com/v1alpha2",
 			Kind:       api.LLMProviderConfigurationKindLlmProvider,
 			Metadata: api.Metadata{
 				Name: "test-provider",
@@ -112,7 +112,7 @@ func TestLabelValidationForAllTypes(t *testing.T) {
 	t.Run("LlmProxy with invalid labels", func(t *testing.T) {
 		validator := NewLLMValidator()
 		proxy := api.LLMProxyConfiguration{
-			ApiVersion: "gateway.api-platform.wso2.com/v1alpha1",
+			ApiVersion: "gateway.api-platform.wso2.com/v1alpha2",
 			Kind:       api.LLMProxyConfigurationKindLlmProxy,
 			Metadata: api.Metadata{
 				Name: "test-proxy",
@@ -148,7 +148,7 @@ func TestLabelValidationForAllTypes(t *testing.T) {
 	t.Run("MCPProxyConfiguration with invalid labels", func(t *testing.T) {
 		validator := NewMCPValidator()
 		mcp := api.MCPProxyConfiguration{
-			ApiVersion: "gateway.api-platform.wso2.com/v1alpha1",
+			ApiVersion: "gateway.api-platform.wso2.com/v1alpha2",
 			Kind:       "Mcp",
 			Metadata: api.Metadata{
 				Name: "test-mcp",
@@ -184,7 +184,7 @@ func TestLabelValidationForAllTypes(t *testing.T) {
 	t.Run("MCPProxyConfiguration with valid labels", func(t *testing.T) {
 		validator := NewMCPValidator()
 		mcp := api.MCPProxyConfiguration{
-			ApiVersion: "gateway.api-platform.wso2.com/v1alpha1",
+			ApiVersion: "gateway.api-platform.wso2.com/v1alpha2",
 			Kind:       "Mcp",
 			Metadata: api.Metadata{
 				Name: "test-mcp",

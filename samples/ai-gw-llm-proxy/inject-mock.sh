@@ -23,7 +23,7 @@ fi
 
 MGMT_PORT="${MGMT_PORT:-9090}"
 INBOUND_API_KEY="${INBOUND_API_KEY:-demo-api-key}"
-MGMT_BASE="http://localhost:${MGMT_PORT}/api/management/v0.9"
+MGMT_BASE="http://localhost:${MGMT_PORT}/api/management/v1alpha2"
 AUTH="Authorization: Basic YWRtaW46YWRtaW4="
 
 print_info "Registering LLM Provider (upstream: mock-llm-openai, policy: token-based-ratelimit)..."

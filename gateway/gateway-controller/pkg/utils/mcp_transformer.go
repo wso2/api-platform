@@ -102,7 +102,7 @@ func (t *MCPTransformer) Transform(input any, output *api.RestAPI) (*api.RestAPI
 	if !ok || mcpConfig == nil {
 		return nil, fmt.Errorf("invalid input type: expected *api.MCPProxyConfiguration")
 	}
-	output.ApiVersion = api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1
+	output.ApiVersion = api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha2
 	output.Kind = api.RestAPIKindRestApi
 
 	// Build APIConfigData and set it directly on the RestAPI spec
@@ -148,8 +148,8 @@ func (t *MCPTransformer) Transform(input any, output *api.RestAPI) (*api.RestAPI
 			return nil, fmt.Errorf("failed to build upstream auth params: %w", err)
 		}
 		pol := api.Policy{
-			Name:    constants.SET_HEADERS_POLICY_NAME,
-			Params:  &params,
+			Name:   constants.SET_HEADERS_POLICY_NAME,
+			Params: &params,
 		}
 		policies = append(policies, pol)
 	}

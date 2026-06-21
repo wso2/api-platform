@@ -170,10 +170,11 @@ func (s *LLMProviderDeploymentService) DeployLLMProvider(providerID string, req 
 		if err != nil {
 			return nil, fmt.Errorf("failed to generate LLM provider deployment YAML: %w", err)
 		}
+		target := deploymenttransform.ParseVersion(gateway.Version)
 		if err := deploymenttransform.Default().Transform(
 			constants.LLMProvider,
-			deploymenttransform.ParseVersion(gateway.Version),
-			&providerDeployment.Spec,
+			target,
+			&providerDeployment,
 		); err != nil {
 			return nil, fmt.Errorf("failed to transform LLM provider deployment for gateway %s: %w", gateway.Version, err)
 		}
@@ -1041,7 +1042,7 @@ func generateLLMProviderDeploymentYAML(provider *model.LLMProvider, templateHand
 	}
 
 	providerDeployment := dto.LLMProviderDeploymentYAML{
-		ApiVersion: "gateway.api-platform.wso2.com/v1alpha1",
+		ApiVersion: constants.GatewayApiVersion,
 		Kind:       constants.LLMProvider,
 		Metadata: dto.DeploymentMetadata{
 			Name: provider.ID,
@@ -1231,10 +1232,11 @@ func (s *LLMProxyDeploymentService) DeployLLMProxy(proxyID string, req *api.Depl
 		if err != nil {
 			return nil, fmt.Errorf("failed to generate LLM proxy deployment YAML: %w", err)
 		}
+		target := deploymenttransform.ParseVersion(gateway.Version)
 		if err := deploymenttransform.Default().Transform(
 			constants.LLMProxy,
-			deploymenttransform.ParseVersion(gateway.Version),
-			&proxyDeployment.Spec,
+			target,
+			&proxyDeployment,
 		); err != nil {
 			return nil, fmt.Errorf("failed to transform LLM proxy deployment for gateway %s: %w", gateway.Version, err)
 		}
@@ -1677,7 +1679,7 @@ func generateLLMProxyDeploymentYAML(proxy *model.LLMProxy) (dto.LLMProxyDeployme
 	proxyPolicies = orderLLMPolicies(proxyPolicies)
 
 	proxyDeployment := dto.LLMProxyDeploymentYAML{
-		ApiVersion: "gateway.api-platform.wso2.com/v1alpha1",
+		ApiVersion: constants.GatewayApiVersion,
 		Kind:       constants.LLMProxy,
 		Metadata: dto.DeploymentMetadata{
 			Name: proxy.ID,

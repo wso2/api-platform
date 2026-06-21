@@ -49,7 +49,7 @@ import (
 // These must stay in sync with the `servers.url` values in the OpenAPI specs
 // (api/management-openapi.yaml and api/admin-openapi.yaml).
 const (
-	managementAPIBasePath = "/api/management/v0.9"
+	managementAPIBasePath = "/api/management/v1alpha2"
 	adminAPIBasePath      = "/api/admin/v0.9"
 )
 

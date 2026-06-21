@@ -31,7 +31,7 @@ Feature: Startup DB Bootstrap
   Scenario: Restarted gateway-controller restores persisted resources from the database
     When I create this LLM provider:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: LlmProvider
       metadata:
         name: startup-db-llm-provider
@@ -53,7 +53,7 @@ Feature: Startup DB Bootstrap
 
     When I deploy this LLM proxy configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: LlmProxy
       metadata:
         name: startup-db-llm-proxy
@@ -68,7 +68,7 @@ Feature: Startup DB Bootstrap
 
     When I deploy this MCP configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: Mcp
       metadata:
         name: startup-db-mcp-v1.0
@@ -89,7 +89,7 @@ Feature: Startup DB Bootstrap
 
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: startup-db-rest-api

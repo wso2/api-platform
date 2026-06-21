@@ -49,7 +49,7 @@ func TestValidateLLMProviderTemplate_Valid(t *testing.T) {
 		{
 			name: "full template with all fields",
 			template: api.LLMProviderTemplate{
-				ApiVersion: "gateway.api-platform.wso2.com/v1alpha1",
+				ApiVersion: "gateway.api-platform.wso2.com/v1alpha2",
 				Kind:       api.LLMProviderTemplateKindLlmProviderTemplate,
 				Metadata:   api.Metadata{Name: "openai"},
 				Spec: api.LLMProviderTemplateData{
@@ -76,7 +76,7 @@ func TestValidateLLMProviderTemplate_Valid(t *testing.T) {
 		{
 			name: "minimal template",
 			template: api.LLMProviderTemplate{
-				ApiVersion: "gateway.api-platform.wso2.com/v1alpha1",
+				ApiVersion: "gateway.api-platform.wso2.com/v1alpha2",
 				Kind:       api.LLMProviderTemplateKindLlmProviderTemplate,
 				Metadata:   api.Metadata{Name: "openai"},
 				Spec: api.LLMProviderTemplateData{
@@ -87,7 +87,7 @@ func TestValidateLLMProviderTemplate_Valid(t *testing.T) {
 		{
 			name: "template with header extraction",
 			template: api.LLMProviderTemplate{
-				ApiVersion: "gateway.api-platform.wso2.com/v1alpha1",
+				ApiVersion: "gateway.api-platform.wso2.com/v1alpha2",
 				Kind:       api.LLMProviderTemplateKindLlmProviderTemplate,
 				Metadata:   api.Metadata{Name: "openai"},
 				Spec: api.LLMProviderTemplateData{
@@ -102,7 +102,7 @@ func TestValidateLLMProviderTemplate_Valid(t *testing.T) {
 		{
 			name: "template with various name formats",
 			template: api.LLMProviderTemplate{
-				ApiVersion: "gateway.api-platform.wso2.com/v1alpha1",
+				ApiVersion: "gateway.api-platform.wso2.com/v1alpha2",
 				Kind:       api.LLMProviderTemplateKindLlmProviderTemplate,
 				Metadata:   api.Metadata{Name: "openai"},
 				Spec: api.LLMProviderTemplateData{
@@ -154,12 +154,12 @@ func TestValidateLLMProviderTemplate_InvalidVersion(t *testing.T) {
 		},
 		{
 			name:        "valid version",
-			version:     "gateway.api-platform.wso2.com/v1alpha1",
+			version:     "gateway.api-platform.wso2.com/v1alpha2",
 			expectError: false,
 		},
 		{
 			name:        "valid version with patch",
-			version:     "gateway.api-platform.wso2.com/v1alpha1",
+			version:     "gateway.api-platform.wso2.com/v1alpha2",
 			expectError: false,
 		},
 	}
@@ -230,7 +230,7 @@ func TestValidateLLMProviderTemplate_InvalidKind(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			template := api.LLMProviderTemplate{
-				ApiVersion: "gateway.api-platform.wso2.com/v1alpha1",
+				ApiVersion: "gateway.api-platform.wso2.com/v1alpha2",
 				Kind:       api.LLMProviderTemplateKind(tt.kind),
 				Metadata:   api.Metadata{Name: "openai"},
 				Spec: api.LLMProviderTemplateData{
@@ -284,7 +284,7 @@ func TestValidateLLMProviderTemplate_InvalidName(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			template := api.LLMProviderTemplate{
-				ApiVersion: "gateway.api-platform.wso2.com/v1alpha1",
+				ApiVersion: "gateway.api-platform.wso2.com/v1alpha2",
 				Kind:       api.LLMProviderTemplateKindLlmProviderTemplate,
 				Metadata:   api.Metadata{Name: "openai"},
 				Spec: api.LLMProviderTemplateData{
@@ -505,7 +505,7 @@ func TestValidateLLMProviderTemplate_InvalidMetadataName(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			provider := api.LLMProviderConfiguration{
-				ApiVersion: "gateway.api-platform.wso2.com/v1alpha1",
+				ApiVersion: "gateway.api-platform.wso2.com/v1alpha2",
 				Kind:       api.LLMProviderConfigurationKindLlmProvider,
 				Metadata:   api.Metadata{Name: tt.metadataName},
 				Spec: api.LLMProviderConfigData{
@@ -607,7 +607,7 @@ func TestValidateLLMProviderTemplate_ExtractionIdentifier(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			template := api.LLMProviderTemplate{
-				ApiVersion: "gateway.api-platform.wso2.com/v1alpha1",
+				ApiVersion: "gateway.api-platform.wso2.com/v1alpha2",
 				Kind:       api.LLMProviderTemplateKindLlmProviderTemplate,
 				Metadata:   api.Metadata{Name: "openai"},
 				Spec: api.LLMProviderTemplateData{
@@ -648,7 +648,7 @@ func TestValidateLLMProvider_Valid(t *testing.T) {
 		{
 			name: "full provider with all fields",
 			provider: api.LLMProviderConfiguration{
-				ApiVersion: "gateway.api-platform.wso2.com/v1alpha1",
+				ApiVersion: "gateway.api-platform.wso2.com/v1alpha2",
 				Kind:       api.LLMProviderConfigurationKindLlmProvider,
 				Metadata:   api.Metadata{Name: "openai"},
 				Spec: api.LLMProviderConfigData{
@@ -678,7 +678,7 @@ func TestValidateLLMProvider_Valid(t *testing.T) {
 		{
 			name: "minimal provider",
 			provider: api.LLMProviderConfiguration{
-				ApiVersion: "gateway.api-platform.wso2.com/v1alpha1",
+				ApiVersion: "gateway.api-platform.wso2.com/v1alpha2",
 				Kind:       api.LLMProviderConfigurationKindLlmProvider,
 				Metadata:   api.Metadata{Name: "openai"},
 				Spec: api.LLMProviderConfigData{
@@ -697,7 +697,7 @@ func TestValidateLLMProvider_Valid(t *testing.T) {
 		{
 			name: "provider with deny_all mode",
 			provider: api.LLMProviderConfiguration{
-				ApiVersion: "gateway.api-platform.wso2.com/v1alpha1",
+				ApiVersion: "gateway.api-platform.wso2.com/v1alpha2",
 				Kind:       api.LLMProviderConfigurationKindLlmProvider,
 				Metadata:   api.Metadata{Name: "openai"},
 				Spec: api.LLMProviderConfigData{
@@ -750,7 +750,7 @@ func TestValidateLLMProvider_InvalidVersion(t *testing.T) {
 		},
 		{
 			name:        "valid version - v1",
-			version:     "gateway.api-platform.wso2.com/v1alpha1",
+			version:     "gateway.api-platform.wso2.com/v1alpha2",
 			expectError: false,
 		},
 	}
@@ -824,7 +824,7 @@ func TestValidateLLMProvider_InvalidKind(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			provider := api.LLMProviderConfiguration{
-				ApiVersion: "gateway.api-platform.wso2.com/v1alpha1",
+				ApiVersion: "gateway.api-platform.wso2.com/v1alpha2",
 				Kind:       api.LLMProviderConfigurationKind(tt.kind),
 				Metadata:   api.Metadata{Name: "openai"},
 				Spec: api.LLMProviderConfigData{
@@ -886,7 +886,7 @@ func TestValidateLLMProvider_Name(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			provider := api.LLMProviderConfiguration{
-				ApiVersion: "gateway.api-platform.wso2.com/v1alpha1",
+				ApiVersion: "gateway.api-platform.wso2.com/v1alpha2",
 				Kind:       api.LLMProviderConfigurationKindLlmProvider,
 				Metadata:   api.Metadata{Name: "openai"},
 				Spec: api.LLMProviderConfigData{
@@ -1115,7 +1115,7 @@ func TestValidateLLMProvider_InvalidMetadataName(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			provider := api.LLMProviderConfiguration{
-				ApiVersion: "gateway.api-platform.wso2.com/v1alpha1",
+				ApiVersion: "gateway.api-platform.wso2.com/v1alpha2",
 				Kind:       api.LLMProviderConfigurationKindLlmProvider,
 				Metadata:   api.Metadata{Name: tt.metadataName},
 				Spec: api.LLMProviderConfigData{
@@ -1179,7 +1179,7 @@ func TestValidateLLMProvider_ProviderVersion(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			provider := api.LLMProviderConfiguration{
-				ApiVersion: "gateway.api-platform.wso2.com/v1alpha1",
+				ApiVersion: "gateway.api-platform.wso2.com/v1alpha2",
 				Kind:       api.LLMProviderConfigurationKindLlmProvider,
 				Metadata:   api.Metadata{Name: "openai"},
 				Spec: api.LLMProviderConfigData{
@@ -1238,7 +1238,7 @@ func TestValidateLLMProvider_Template(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			provider := api.LLMProviderConfiguration{
-				ApiVersion: "gateway.api-platform.wso2.com/v1alpha1",
+				ApiVersion: "gateway.api-platform.wso2.com/v1alpha2",
 				Kind:       api.LLMProviderConfigurationKindLlmProvider,
 				Metadata:   api.Metadata{Name: "openai"},
 				Spec: api.LLMProviderConfigData{
@@ -1352,7 +1352,7 @@ func TestValidateLLMProvider_Upstream(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			provider := api.LLMProviderConfiguration{
-				ApiVersion: "gateway.api-platform.wso2.com/v1alpha1",
+				ApiVersion: "gateway.api-platform.wso2.com/v1alpha2",
 				Kind:       api.LLMProviderConfigurationKindLlmProvider,
 				Metadata:   api.Metadata{Name: "openai"},
 				Spec: api.LLMProviderConfigData{
@@ -1506,7 +1506,7 @@ func TestValidateLLMProvider_UpstreamAuth(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			provider := api.LLMProviderConfiguration{
-				ApiVersion: "gateway.api-platform.wso2.com/v1alpha1",
+				ApiVersion: "gateway.api-platform.wso2.com/v1alpha2",
 				Kind:       api.LLMProviderConfigurationKindLlmProvider,
 				Metadata:   api.Metadata{Name: "openai"},
 				Spec: api.LLMProviderConfigData{
@@ -1589,7 +1589,7 @@ func TestValidateLLMProvider_AccessControl(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			provider := api.LLMProviderConfiguration{
-				ApiVersion: "gateway.api-platform.wso2.com/v1alpha1",
+				ApiVersion: "gateway.api-platform.wso2.com/v1alpha2",
 				Kind:       api.LLMProviderConfigurationKindLlmProvider,
 				Metadata:   api.Metadata{Name: "openai"},
 				Spec: api.LLMProviderConfigData{
@@ -1701,7 +1701,7 @@ func TestValidateLLMProvider_AccessControlExceptions(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			provider := api.LLMProviderConfiguration{
-				ApiVersion: "gateway.api-platform.wso2.com/v1alpha1",
+				ApiVersion: "gateway.api-platform.wso2.com/v1alpha2",
 				Kind:       api.LLMProviderConfigurationKindLlmProvider,
 				Metadata:   api.Metadata{Name: "openai"},
 				Spec: api.LLMProviderConfigData{
@@ -1746,7 +1746,7 @@ func TestValidateLLMProvider_NilSpec(t *testing.T) {
 	validator := NewLLMValidator()
 
 	provider := api.LLMProviderConfiguration{
-		ApiVersion: "gateway.api-platform.wso2.com/v1alpha1",
+		ApiVersion: "gateway.api-platform.wso2.com/v1alpha2",
 		Kind:       api.LLMProviderConfigurationKindLlmProvider,
 		// Spec is nil/zero value
 	}
@@ -1767,7 +1767,7 @@ func TestValidateLLMProvider_ExtremelyLongInputs(t *testing.T) {
 	}
 
 	provider := api.LLMProviderConfiguration{
-		ApiVersion: "gateway.api-platform.wso2.com/v1alpha1",
+		ApiVersion: "gateway.api-platform.wso2.com/v1alpha2",
 		Kind:       api.LLMProviderConfigurationKindLlmProvider,
 		Metadata:   api.Metadata{Name: "openai"},
 		Spec: api.LLMProviderConfigData{
@@ -1860,7 +1860,7 @@ func TestValidateLLMProvider_URLValidation(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			provider := api.LLMProviderConfiguration{
-				ApiVersion: "gateway.api-platform.wso2.com/v1alpha1",
+				ApiVersion: "gateway.api-platform.wso2.com/v1alpha2",
 				Kind:       api.LLMProviderConfigurationKindLlmProvider,
 				Metadata:   api.Metadata{Name: "openai"},
 				Spec: api.LLMProviderConfigData{

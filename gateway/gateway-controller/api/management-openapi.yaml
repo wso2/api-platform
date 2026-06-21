@@ -7,9 +7,9 @@ info:
   contact:
     name: WSO2 API Platform Team
 servers:
-  - url: http://localhost:9090/api/management/v0.9
+  - url: http://localhost:9090/api/management/v1alpha2
     description: Local development
-  - url: http://gateway-controller:9090/api/management/v0.9
+  - url: http://gateway-controller:9090/api/management/v1alpha2
     description: Docker/Kubernetes deployment
 
 security:
@@ -3659,7 +3659,7 @@ paths:
                 created:
                   summary: Successful creation
                   value:
-                    apiVersion: gateway.api-platform.wso2.com/v1alpha1
+                    apiVersion: gateway.api-platform.wso2.com/v1alpha2
                     kind: Secret
                     metadata:
                       name: database-password
@@ -3732,7 +3732,7 @@ paths:
                 success:
                   summary: Successful retrieval
                   value:
-                    apiVersion: "gateway.api-platform.wso2.com/v1alpha1"
+                    apiVersion: "gateway.api-platform.wso2.com/v1alpha2"
                     kind: "Secret"
                     metadata:
                       name: "database-password"
@@ -3793,7 +3793,7 @@ paths:
                 updated:
                   summary: Successful update
                   value:
-                    apiVersion: gateway.api-platform.wso2.com/v1alpha1
+                    apiVersion: gateway.api-platform.wso2.com/v1alpha2
                     kind: Secret
                     metadata:
                       name: database-password
@@ -3919,9 +3919,9 @@ components:
         apiVersion:
           type: string
           description: API specification version
-          example: gateway.api-platform.wso2.com/v1alpha1
+          example: gateway.api-platform.wso2.com/v1alpha2
           enum:
-            - gateway.api-platform.wso2.com/v1alpha1
+            - gateway.api-platform.wso2.com/v1alpha2
         kind:
           type: string
           description: API type
@@ -3933,7 +3933,7 @@ components:
         spec:
           $ref: '#/components/schemas/APIConfigData'
       example:
-        apiVersion: gateway.api-platform.wso2.com/v1alpha1
+        apiVersion: gateway.api-platform.wso2.com/v1alpha2
         kind: RestApi
         metadata:
           name: reading-list-api-v1.0
@@ -3980,7 +3980,7 @@ components:
               allOf:
                 - $ref: '#/components/schemas/ResourceStatus'
       example:
-        apiVersion: gateway.api-platform.wso2.com/v1alpha1
+        apiVersion: gateway.api-platform.wso2.com/v1alpha2
         kind: RestApi
         metadata:
           name: reading-list-api-v1.0
@@ -4032,9 +4032,9 @@ components:
         apiVersion:
           type: string
           description: API specification version
-          example: gateway.api-platform.wso2.com/v1alpha1
+          example: gateway.api-platform.wso2.com/v1alpha2
           enum:
-            - gateway.api-platform.wso2.com/v1alpha1
+            - gateway.api-platform.wso2.com/v1alpha2
         kind:
           type: string
           description: API type
@@ -4046,7 +4046,7 @@ components:
         spec:
           $ref: '#/components/schemas/WebhookAPIData'
       example:
-        apiVersion: gateway.api-platform.wso2.com/v1alpha1
+        apiVersion: gateway.api-platform.wso2.com/v1alpha2
         kind: WebSubApi
         metadata:
           name: github-events-v1.0
@@ -4071,7 +4071,7 @@ components:
               allOf:
                 - $ref: '#/components/schemas/ResourceStatus'
       example:
-        apiVersion: gateway.api-platform.wso2.com/v1alpha1
+        apiVersion: gateway.api-platform.wso2.com/v1alpha2
         kind: WebSubApi
         metadata:
           name: github-events-v1.0
@@ -4544,9 +4544,9 @@ components:
         apiVersion:
           type: string
           description: API specification version
-          example: gateway.api-platform.wso2.com/v1alpha1
+          example: gateway.api-platform.wso2.com/v1alpha2
           enum:
-            - gateway.api-platform.wso2.com/v1alpha1
+            - gateway.api-platform.wso2.com/v1alpha2
         kind:
           type: string
           description: API type
@@ -4558,7 +4558,7 @@ components:
         spec:
           $ref: '#/components/schemas/WebBrokerApiData'
       example:
-        apiVersion: gateway.api-platform.wso2.com/v1alpha1
+        apiVersion: gateway.api-platform.wso2.com/v1alpha2
         kind: WebBrokerApi
         metadata:
           name: stock-trading-v1.0
@@ -4607,7 +4607,7 @@ components:
               allOf:
                 - $ref: '#/components/schemas/ResourceStatus'
       example:
-        apiVersion: gateway.api-platform.wso2.com/v1alpha1
+        apiVersion: gateway.api-platform.wso2.com/v1alpha2
         kind: WebBrokerApi
         metadata:
           name: stock-trading-v1.0
@@ -5225,9 +5225,9 @@ components:
         apiVersion:
           type: string
           description: MCP Proxy specification version
-          example: gateway.api-platform.wso2.com/v1alpha1
+          example: gateway.api-platform.wso2.com/v1alpha2
           enum:
-            - gateway.api-platform.wso2.com/v1alpha1
+            - gateway.api-platform.wso2.com/v1alpha2
         kind:
           type: string
           description: MCP Proxy type
@@ -5239,7 +5239,7 @@ components:
         spec:
           $ref: "#/components/schemas/MCPProxyConfigData"
       example:
-        apiVersion: gateway.api-platform.wso2.com/v1alpha1
+        apiVersion: gateway.api-platform.wso2.com/v1alpha2
         kind: Mcp
         metadata:
           name: everything-mcp-v1.0
@@ -5265,7 +5265,7 @@ components:
               allOf:
                 - $ref: '#/components/schemas/ResourceStatus'
       example:
-        apiVersion: gateway.api-platform.wso2.com/v1alpha1
+        apiVersion: gateway.api-platform.wso2.com/v1alpha2
         kind: Mcp
         metadata:
           name: everything-mcp-v1.0
@@ -5476,9 +5476,9 @@ components:
         apiVersion:
           type: string
           description: Template specification version
-          example: gateway.api-platform.wso2.com/v1alpha1
+          example: gateway.api-platform.wso2.com/v1alpha2
           enum:
-            - gateway.api-platform.wso2.com/v1alpha1
+            - gateway.api-platform.wso2.com/v1alpha2
         kind:
           type: string
           description: Template kind
@@ -5490,7 +5490,7 @@ components:
         spec:
           $ref: '#/components/schemas/LLMProviderTemplateData'
       example:
-        apiVersion: gateway.api-platform.wso2.com/v1alpha1
+        apiVersion: gateway.api-platform.wso2.com/v1alpha2
         kind: LlmProviderTemplate
         metadata:
           name: openai-template
@@ -5526,7 +5526,7 @@ components:
               allOf:
                 - $ref: '#/components/schemas/ResourceStatus'
       example:
-        apiVersion: gateway.api-platform.wso2.com/v1alpha1
+        apiVersion: gateway.api-platform.wso2.com/v1alpha2
         kind: LlmProviderTemplate
         metadata:
           name: openai-template
@@ -5643,9 +5643,9 @@ components:
         apiVersion:
           type: string
           description: Provider specification version
-          example: gateway.api-platform.wso2.com/v1alpha1
+          example: gateway.api-platform.wso2.com/v1alpha2
           enum:
-            - gateway.api-platform.wso2.com/v1alpha1
+            - gateway.api-platform.wso2.com/v1alpha2
         kind:
           type: string
           description: Provider kind
@@ -5657,7 +5657,7 @@ components:
         spec:
           $ref: '#/components/schemas/LLMProviderConfigData'
       example:
-        apiVersion: gateway.api-platform.wso2.com/v1alpha1
+        apiVersion: gateway.api-platform.wso2.com/v1alpha2
         kind: LlmProvider
         metadata:
           name: wso2-openai-provider
@@ -5693,7 +5693,7 @@ components:
               allOf:
                 - $ref: '#/components/schemas/ResourceStatus'
       example:
-        apiVersion: gateway.api-platform.wso2.com/v1alpha1
+        apiVersion: gateway.api-platform.wso2.com/v1alpha2
         kind: LlmProvider
         metadata:
           name: wso2-openai-provider
@@ -5967,9 +5967,9 @@ components:
         apiVersion:
           type: string
           description: Proxy specification version
-          example: gateway.api-platform.wso2.com/v1alpha1
+          example: gateway.api-platform.wso2.com/v1alpha2
           enum:
-            - gateway.api-platform.wso2.com/v1alpha1
+            - gateway.api-platform.wso2.com/v1alpha2
         kind:
           type: string
           description: Proxy kind
@@ -5981,7 +5981,7 @@ components:
         spec:
           $ref: '#/components/schemas/LLMProxyConfigData'
       example:
-        apiVersion: gateway.api-platform.wso2.com/v1alpha1
+        apiVersion: gateway.api-platform.wso2.com/v1alpha2
         kind: LlmProxy
         metadata:
           name: openai-proxy
@@ -6004,7 +6004,7 @@ components:
               allOf:
                 - $ref: '#/components/schemas/ResourceStatus'
       example:
-        apiVersion: gateway.api-platform.wso2.com/v1alpha1
+        apiVersion: gateway.api-platform.wso2.com/v1alpha2
         kind: LlmProxy
         metadata:
           name: openai-proxy
@@ -6095,9 +6095,9 @@ components:
         apiVersion:
           type: string
           description: Secret specification version
-          example: gateway.api-platform.wso2.com/v1alpha1
+          example: gateway.api-platform.wso2.com/v1alpha2
           enum:
-            - gateway.api-platform.wso2.com/v1alpha1
+            - gateway.api-platform.wso2.com/v1alpha2
 
         kind:
           type: string
@@ -6112,7 +6112,7 @@ components:
         spec:
           $ref: "#/components/schemas/SecretConfigData"
       example:
-        apiVersion: gateway.api-platform.wso2.com/v1alpha1
+        apiVersion: gateway.api-platform.wso2.com/v1alpha2
         kind: Secret
         metadata:
           name: database-password
@@ -6137,7 +6137,7 @@ components:
               allOf:
                 - $ref: "#/components/schemas/ResourceStatus"
       example:
-        apiVersion: gateway.api-platform.wso2.com/v1alpha1
+        apiVersion: gateway.api-platform.wso2.com/v1alpha2
         kind: Secret
         metadata:
           name: database-password
@@ -6210,9 +6210,9 @@ components:
         apiVersion:
           type: string
           description: Secret specification version
-          example: gateway.api-platform.wso2.com/v1alpha1
+          example: gateway.api-platform.wso2.com/v1alpha2
           enum:
-            - gateway.api-platform.wso2.com/v1alpha1
+            - gateway.api-platform.wso2.com/v1alpha2
 
         kind:
           type: string
@@ -6233,7 +6233,7 @@ components:
           allOf:
             - $ref: "#/components/schemas/ResourceStatus"
       example:
-        apiVersion: gateway.api-platform.wso2.com/v1alpha1
+        apiVersion: gateway.api-platform.wso2.com/v1alpha2
         kind: Secret
         metadata:
           name: database-password
@@ -6464,7 +6464,7 @@ components:
       properties:
         apiVersion:
           type: string
-          enum: [ gateway.api-platform.wso2.com/v1alpha1 ]
+          enum: [ gateway.api-platform.wso2.com/v1alpha2 ]
         kind:
           type: string
           enum: [ Secret ]
@@ -6475,7 +6475,7 @@ components:
         status:
           $ref: '#/components/schemas/SecretResourceServiceStatus'
       example:
-        apiVersion: gateway.api-platform.wso2.com/v1alpha1
+        apiVersion: gateway.api-platform.wso2.com/v1alpha2
         kind: Secret
         metadata:
           name: database-password
@@ -6500,7 +6500,7 @@ components:
       properties:
         apiVersion:
           type: string
-          enum: [ gateway.api-platform.wso2.com/v1alpha1 ]
+          enum: [ gateway.api-platform.wso2.com/v1alpha2 ]
         kind:
           type: string
           enum: [ Secret ]
@@ -6511,7 +6511,7 @@ components:
         status:
           $ref: '#/components/schemas/SecretResourceServiceStatus'
       example:
-        apiVersion: "gateway.api-platform.wso2.com/v1alpha1"
+        apiVersion: "gateway.api-platform.wso2.com/v1alpha2"
         kind: "Secret"
         metadata:
           name: "database-password"

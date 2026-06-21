@@ -1193,6 +1193,37 @@ func appendLegacyOperationPath(policies *[]model.OperationPolicy, name, version 
 	})
 }
 
+// splitLegacyPoliciesForRead converts a stored legacy policies list into the two
+// canonical lists for read responses, using the same rule as the save-time migration:
+//   - path "/*" + methods ["*"] → GlobalPolicy (shared api-level bucket)
+//   - any other path            → OperationPolicy (per-path bucket)
+//
+// Called only when both new lists are empty and the legacy list is non-empty.
+func splitLegacyPoliciesForRead(legacy []model.LLMPolicy) ([]model.GlobalPolicy, []model.OperationPolicy) {
+	var global []model.GlobalPolicy
+	var operation []model.OperationPolicy
+	for _, p := range legacy {
+		for _, pe := range p.Paths {
+			if pe.Path == "/*" && isWildcardOnlyMethods(pe.Methods) {
+				if !hasGlobalPolicyByName(global, p.Name) {
+					global = append(global, model.GlobalPolicy{
+						Name:    p.Name,
+						Version: p.Version,
+						Params:  pe.Params,
+					})
+				}
+			} else {
+				appendLegacyOperationPath(&operation, p.Name, p.Version, model.OperationPolicyPath{
+					Path:    pe.Path,
+					Methods: pe.Methods,
+					Params:  pe.Params,
+				})
+			}
+		}
+	}
+	return global, operation
+}
+
 func mapUpstreamAuthAPIToModel(in *api.UpstreamAuth) *model.UpstreamAuth {
 	if in == nil {
 		return nil
@@ -1662,20 +1693,21 @@ func mapProviderModelToAPI(m *model.LLMProvider, templateHandle string) *api.LLM
 		ac.Exceptions = &exc
 	}
 
-	globalPolicies := mapGlobalPoliciesModelToAPI(m.Configuration.GlobalPolicies)
+	globalPolicyCfg := m.Configuration.GlobalPolicies
+	operationPolicyCfg := m.Configuration.OperationPolicies
+	// For legacy rows stored before v1alpha2 migration: split policies on read.
+	if len(globalPolicyCfg) == 0 && len(operationPolicyCfg) == 0 && len(m.Configuration.Policies) > 0 {
+		globalPolicyCfg, operationPolicyCfg = splitLegacyPoliciesForRead(m.Configuration.Policies)
+	}
+	globalPolicies := mapGlobalPoliciesModelToAPI(globalPolicyCfg)
 	if globalPolicies == nil {
 		empty := []api.Policy{}
 		globalPolicies = &empty
 	}
-	operationPolicies := mapOperationPoliciesModelToAPI(m.Configuration.OperationPolicies)
+	operationPolicies := mapOperationPoliciesModelToAPI(operationPolicyCfg)
 	if operationPolicies == nil {
 		empty := []api.OperationPolicy{}
 		operationPolicies = &empty
-	}
-	policies := mapPoliciesModelToAPI(m.Configuration.Policies)
-	if policies == nil {
-		empty := []api.LLMPolicy{}
-		policies = &empty
 	}
 
 	modelProviders := mapModelProvidersModelToAPI(m.ModelProviders)
@@ -1700,7 +1732,7 @@ func mapProviderModelToAPI(m *model.LLMProvider, templateHandle string) *api.LLM
 		AccessControl:     ac,
 		GlobalPolicies:    globalPolicies,
 		OperationPolicies: operationPolicies,
-		Policies:          policies,
+		Policies:          nil,
 		Security:          mapSecurityModelToAPI(m.Configuration.Security),
 		CreatedAt:      utils.TimePtr(m.CreatedAt),
 		UpdatedAt:      utils.TimePtr(m.UpdatedAt),
@@ -1992,20 +2024,21 @@ func mapProxyModelToAPI(m *model.LLMProxy) *api.LLMProxy {
 		v := *m.Configuration.Vhost
 		vhostValue = &v
 	}
-	globalPoliciesProxy := mapGlobalPoliciesModelToAPI(m.Configuration.GlobalPolicies)
+	globalPolicyCfgProxy := m.Configuration.GlobalPolicies
+	operationPolicyCfgProxy := m.Configuration.OperationPolicies
+	// For legacy rows stored before v1alpha2 migration: split policies on read.
+	if len(globalPolicyCfgProxy) == 0 && len(operationPolicyCfgProxy) == 0 && len(m.Configuration.Policies) > 0 {
+		globalPolicyCfgProxy, operationPolicyCfgProxy = splitLegacyPoliciesForRead(m.Configuration.Policies)
+	}
+	globalPoliciesProxy := mapGlobalPoliciesModelToAPI(globalPolicyCfgProxy)
 	if globalPoliciesProxy == nil {
 		empty := []api.Policy{}
 		globalPoliciesProxy = &empty
 	}
-	operationPoliciesProxy := mapOperationPoliciesModelToAPI(m.Configuration.OperationPolicies)
+	operationPoliciesProxy := mapOperationPoliciesModelToAPI(operationPolicyCfgProxy)
 	if operationPoliciesProxy == nil {
 		empty := []api.OperationPolicy{}
 		operationPoliciesProxy = &empty
-	}
-	policies := mapPoliciesModelToAPI(m.Configuration.Policies)
-	if policies == nil {
-		empty := []api.LLMPolicy{}
-		policies = &empty
 	}
 	createdAt := utils.TimePtr(m.CreatedAt)
 	updatedAt := utils.TimePtr(m.UpdatedAt)
@@ -2041,7 +2074,7 @@ func mapProxyModelToAPI(m *model.LLMProxy) *api.LLMProxy {
 	}
 	out.GlobalPolicies = globalPoliciesProxy
 	out.OperationPolicies = operationPoliciesProxy
-	out.Policies = policies
+	out.Policies = nil
 	return out
 }
 

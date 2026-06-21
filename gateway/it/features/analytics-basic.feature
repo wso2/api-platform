@@ -11,7 +11,7 @@ Feature: Analytics - Basic Event Capture
   Scenario: REST API request generates analytics event
     Given I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: test-analytics-api
@@ -37,7 +37,7 @@ Feature: Analytics - Basic Event Capture
   Scenario: Analytics event contains API metadata
     Given I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: metadata-test-api
@@ -67,7 +67,7 @@ Feature: Analytics - Basic Event Capture
   Scenario: Multiple requests generate multiple analytics events
     Given I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: multi-request-api

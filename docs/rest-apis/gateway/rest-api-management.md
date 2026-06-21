@@ -12,7 +12,7 @@ CRUD operations for Rest APIs
 
 ```shell
 
-curl -X POST http://localhost:9090/api/management/v0.9/rest-apis \
+curl -X POST http://localhost:9090/api/management/v1alpha2/rest-apis \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -26,7 +26,7 @@ Add a new RestAPI to the Gateway.
 
 ```json
 {
-  "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+  "apiVersion": "gateway.api-platform.wso2.com/v1alpha2",
   "kind": "RestApi",
   "metadata": {
     "name": "reading-list-api-v1.0"
@@ -111,7 +111,7 @@ Required roles: `admin`, `developer`
 
 ```json
 {
-  "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+  "apiVersion": "gateway.api-platform.wso2.com/v1alpha2",
   "kind": "RestApi",
   "metadata": {
     "name": "reading-list-api-v1.0"
@@ -201,7 +201,7 @@ Required roles: `admin`, `developer`
 
 ```shell
 
-curl -X GET http://localhost:9090/api/management/v0.9/rest-apis \
+curl -X GET http://localhost:9090/api/management/v1alpha2/rest-apis \
   -u {username}:{password} \
   -H 'Accept: application/json'
 
@@ -244,7 +244,7 @@ Required roles: `admin`, `developer`
   "count": 5,
   "apis": [
     {
-      "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+      "apiVersion": "gateway.api-platform.wso2.com/v1alpha2",
       "kind": "RestApi",
       "metadata": {
         "name": "reading-list-api-v1.0"
@@ -413,7 +413,7 @@ Status Code **200**
 
 |Property|Value|
 |---|---|
-|apiVersion|gateway.api-platform.wso2.com/v1alpha1|
+|apiVersion|gateway.api-platform.wso2.com/v1alpha2|
 |kind|RestApi|
 |hostRewrite|auto|
 |hostRewrite|manual|
@@ -439,7 +439,7 @@ Status Code **200**
 
 ```shell
 
-curl -X GET http://localhost:9090/api/management/v0.9/rest-apis/{id} \
+curl -X GET http://localhost:9090/api/management/v1alpha2/rest-apis/{id} \
   -u {username}:{password} \
   -H 'Accept: application/json'
 
@@ -472,7 +472,7 @@ Required roles: `admin`, `developer`
 
 ```json
 {
-  "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+  "apiVersion": "gateway.api-platform.wso2.com/v1alpha2",
   "kind": "RestApi",
   "metadata": {
     "name": "reading-list-api-v1.0"
@@ -561,7 +561,7 @@ Required roles: `admin`, `developer`
 
 ```shell
 
-curl -X PUT http://localhost:9090/api/management/v0.9/rest-apis/{id} \
+curl -X PUT http://localhost:9090/api/management/v1alpha2/rest-apis/{id} \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -575,7 +575,7 @@ Update an existing RestAPI in the Gateway.
 
 ```json
 {
-  "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+  "apiVersion": "gateway.api-platform.wso2.com/v1alpha2",
   "kind": "RestApi",
   "metadata": {
     "name": "reading-list-api-v1.0"
@@ -665,7 +665,7 @@ Required roles: `admin`, `developer`
 
 ```json
 {
-  "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+  "apiVersion": "gateway.api-platform.wso2.com/v1alpha2",
   "kind": "RestApi",
   "metadata": {
     "name": "reading-list-api-v1.0"
@@ -755,7 +755,7 @@ Required roles: `admin`, `developer`
 
 ```shell
 
-curl -X DELETE http://localhost:9090/api/management/v0.9/rest-apis/{id} \
+curl -X DELETE http://localhost:9090/api/management/v1alpha2/rest-apis/{id} \
   -u {username}:{password} \
   -H 'Accept: application/json'
 
@@ -822,7 +822,7 @@ Status Code **200**
 
 ```shell
 
-curl -X POST http://localhost:9090/api/management/v0.9/rest-apis/{id}/api-keys \
+curl -X POST http://localhost:9090/api/management/v1alpha2/rest-apis/{id}/api-keys \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -902,7 +902,7 @@ Required roles: `admin`, `consumer`
 
 ```shell
 
-curl -X GET http://localhost:9090/api/management/v0.9/rest-apis/{id}/api-keys \
+curl -X GET http://localhost:9090/api/management/v1alpha2/rest-apis/{id}/api-keys \
   -u {username}:{password} \
   -H 'Accept: application/json'
 
@@ -971,7 +971,7 @@ Required roles: `admin`, `consumer`
 
 ```shell
 
-curl -X POST http://localhost:9090/api/management/v0.9/rest-apis/{id}/api-keys/{apiKeyName}/regenerate \
+curl -X POST http://localhost:9090/api/management/v1alpha2/rest-apis/{id}/api-keys/{apiKeyName}/regenerate \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -1052,7 +1052,7 @@ Required roles: `admin`, `consumer`
 
 ```shell
 
-curl -X PUT http://localhost:9090/api/management/v0.9/rest-apis/{id}/api-keys/{apiKeyName} \
+curl -X PUT http://localhost:9090/api/management/v1alpha2/rest-apis/{id}/api-keys/{apiKeyName} \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -1135,7 +1135,7 @@ Required roles: `admin`, `consumer`
 
 ```shell
 
-curl -X DELETE http://localhost:9090/api/management/v0.9/rest-apis/{id}/api-keys/{apiKeyName} \
+curl -X DELETE http://localhost:9090/api/management/v1alpha2/rest-apis/{id}/api-keys/{apiKeyName} \
   -u {username}:{password} \
   -H 'Accept: application/json'
 
@@ -1195,7 +1195,7 @@ Required roles: `admin`, `consumer`
 
 ```shell
 
-curl -X POST http://localhost:9090/api/management/v0.9/subscription-plans \
+curl -X POST http://localhost:9090/api/management/v1alpha2/subscription-plans \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -1273,7 +1273,7 @@ Required roles: `admin`, `developer`
 
 ```shell
 
-curl -X GET http://localhost:9090/api/management/v0.9/subscription-plans \
+curl -X GET http://localhost:9090/api/management/v1alpha2/subscription-plans \
   -u {username}:{password} \
   -H 'Accept: application/json'
 
@@ -1332,7 +1332,7 @@ Required roles: `admin`, `developer`
 
 ```shell
 
-curl -X GET http://localhost:9090/api/management/v0.9/subscription-plans/{planId} \
+curl -X GET http://localhost:9090/api/management/v1alpha2/subscription-plans/{planId} \
   -u {username}:{password} \
   -H 'Accept: application/json'
 
@@ -1393,7 +1393,7 @@ Required roles: `admin`, `developer`
 
 ```shell
 
-curl -X PUT http://localhost:9090/api/management/v0.9/subscription-plans/{planId} \
+curl -X PUT http://localhost:9090/api/management/v1alpha2/subscription-plans/{planId} \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -1471,7 +1471,7 @@ Required roles: `admin`, `developer`
 
 ```shell
 
-curl -X DELETE http://localhost:9090/api/management/v0.9/subscription-plans/{planId} \
+curl -X DELETE http://localhost:9090/api/management/v1alpha2/subscription-plans/{planId} \
   -u {username}:{password} \
   -H 'Accept: application/json'
 
@@ -1529,7 +1529,7 @@ Required roles: `admin`, `developer`
 
 ```shell
 
-curl -X POST http://localhost:9090/api/management/v0.9/subscriptions \
+curl -X POST http://localhost:9090/api/management/v1alpha2/subscriptions \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -1607,7 +1607,7 @@ Required roles: `admin`, `developer`
 
 ```shell
 
-curl -X GET http://localhost:9090/api/management/v0.9/subscriptions \
+curl -X GET http://localhost:9090/api/management/v1alpha2/subscriptions \
   -u {username}:{password} \
   -H 'Accept: application/json'
 
@@ -1682,7 +1682,7 @@ Required roles: `admin`, `developer`
 
 ```shell
 
-curl -X GET http://localhost:9090/api/management/v0.9/subscriptions/{subscriptionId} \
+curl -X GET http://localhost:9090/api/management/v1alpha2/subscriptions/{subscriptionId} \
   -u {username}:{password} \
   -H 'Accept: application/json'
 
@@ -1743,7 +1743,7 @@ Required roles: `admin`, `developer`
 
 ```shell
 
-curl -X PUT http://localhost:9090/api/management/v0.9/subscriptions/{subscriptionId} \
+curl -X PUT http://localhost:9090/api/management/v1alpha2/subscriptions/{subscriptionId} \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -1815,7 +1815,7 @@ Required roles: `admin`, `developer`
 
 ```shell
 
-curl -X DELETE http://localhost:9090/api/management/v0.9/subscriptions/{subscriptionId} \
+curl -X DELETE http://localhost:9090/api/management/v1alpha2/subscriptions/{subscriptionId} \
   -u {username}:{password} \
   -H 'Accept: application/json'
 

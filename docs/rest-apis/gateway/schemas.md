@@ -46,7 +46,7 @@ Server-managed lifecycle information for a resource
 
 ```json
 {
-  "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+  "apiVersion": "gateway.api-platform.wso2.com/v1alpha2",
   "kind": "RestApi",
   "metadata": {
     "name": "reading-list-api-v1.0"
@@ -124,7 +124,7 @@ Server-managed lifecycle information for a resource
 
 |Property|Value|
 |---|---|
-|apiVersion|gateway.api-platform.wso2.com/v1alpha1|
+|apiVersion|gateway.api-platform.wso2.com/v1alpha2|
 |kind|RestApi|
 
 <h2 id="tocS_RestAPI">RestAPI</h2>
@@ -136,7 +136,7 @@ Server-managed lifecycle information for a resource
 
 ```json
 {
-  "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+  "apiVersion": "gateway.api-platform.wso2.com/v1alpha2",
   "kind": "RestApi",
   "metadata": {
     "name": "reading-list-api-v1.0"
@@ -232,7 +232,7 @@ and
 
 ```json
 {
-  "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+  "apiVersion": "gateway.api-platform.wso2.com/v1alpha2",
   "kind": "WebSubApi",
   "metadata": {
     "name": "github-events-v1.0"
@@ -269,7 +269,7 @@ and
 
 |Property|Value|
 |---|---|
-|apiVersion|gateway.api-platform.wso2.com/v1alpha1|
+|apiVersion|gateway.api-platform.wso2.com/v1alpha2|
 |kind|WebSubApi|
 
 <h2 id="tocS_WebSubAPI">WebSubAPI</h2>
@@ -281,7 +281,7 @@ and
 
 ```json
 {
-  "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+  "apiVersion": "gateway.api-platform.wso2.com/v1alpha2",
   "kind": "WebSubApi",
   "metadata": {
     "name": "github-events-v1.0"
@@ -1064,7 +1064,7 @@ Channel (topic/event stream) definition for async APIs.
 
 ```json
 {
-  "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+  "apiVersion": "gateway.api-platform.wso2.com/v1alpha2",
   "kind": "WebBrokerApi",
   "metadata": {
     "name": "stock-trading-v1.0"
@@ -1135,7 +1135,7 @@ Channel (topic/event stream) definition for async APIs.
 
 |Property|Value|
 |---|---|
-|apiVersion|gateway.api-platform.wso2.com/v1alpha1|
+|apiVersion|gateway.api-platform.wso2.com/v1alpha2|
 |kind|WebBrokerApi|
 
 <h2 id="tocS_WebBrokerApi">WebBrokerApi</h2>
@@ -1147,7 +1147,7 @@ Channel (topic/event stream) definition for async APIs.
 
 ```json
 {
-  "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+  "apiVersion": "gateway.api-platform.wso2.com/v1alpha2",
   "kind": "WebBrokerApi",
   "metadata": {
     "name": "stock-trading-v1.0"
@@ -2167,7 +2167,7 @@ Details of an API key
 
 ```json
 {
-  "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+  "apiVersion": "gateway.api-platform.wso2.com/v1alpha2",
   "kind": "Mcp",
   "metadata": {
     "name": "everything-mcp-v1.0"
@@ -2201,7 +2201,7 @@ Details of an API key
 
 |Property|Value|
 |---|---|
-|apiVersion|gateway.api-platform.wso2.com/v1alpha1|
+|apiVersion|gateway.api-platform.wso2.com/v1alpha2|
 |kind|Mcp|
 
 <h2 id="tocS_MCPProxyConfiguration">MCPProxyConfiguration</h2>
@@ -2213,7 +2213,7 @@ Details of an API key
 
 ```json
 {
-  "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+  "apiVersion": "gateway.api-platform.wso2.com/v1alpha2",
   "kind": "Mcp",
   "metadata": {
     "name": "everything-mcp-v1.0"
@@ -2522,7 +2522,7 @@ continued
 
 ```json
 {
-  "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+  "apiVersion": "gateway.api-platform.wso2.com/v1alpha2",
   "kind": "LlmProviderTemplate",
   "metadata": {
     "name": "openai-template"
@@ -2571,7 +2571,7 @@ continued
 
 |Property|Value|
 |---|---|
-|apiVersion|gateway.api-platform.wso2.com/v1alpha1|
+|apiVersion|gateway.api-platform.wso2.com/v1alpha2|
 |kind|LlmProviderTemplate|
 
 <h2 id="tocS_LLMProviderTemplate">LLMProviderTemplate</h2>
@@ -2583,7 +2583,7 @@ continued
 
 ```json
 {
-  "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+  "apiVersion": "gateway.api-platform.wso2.com/v1alpha2",
   "kind": "LlmProviderTemplate",
   "metadata": {
     "name": "openai-template"
@@ -2859,7 +2859,7 @@ and
 
 ```json
 {
-  "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+  "apiVersion": "gateway.api-platform.wso2.com/v1alpha2",
   "kind": "LlmProvider",
   "metadata": {
     "name": "wso2-openai-provider"
@@ -2918,7 +2918,7 @@ and
 
 |Property|Value|
 |---|---|
-|apiVersion|gateway.api-platform.wso2.com/v1alpha1|
+|apiVersion|gateway.api-platform.wso2.com/v1alpha2|
 |kind|LlmProvider|
 
 <h2 id="tocS_LLMProviderConfiguration">LLMProviderConfiguration</h2>
@@ -2930,7 +2930,7 @@ and
 
 ```json
 {
-  "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+  "apiVersion": "gateway.api-platform.wso2.com/v1alpha2",
   "kind": "LlmProvider",
   "metadata": {
     "name": "wso2-openai-provider"
@@ -3377,7 +3377,7 @@ continued
 
 ```json
 {
-  "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+  "apiVersion": "gateway.api-platform.wso2.com/v1alpha2",
   "kind": "LlmProxy",
   "metadata": {
     "name": "openai-proxy"
@@ -3408,7 +3408,7 @@ continued
 
 |Property|Value|
 |---|---|
-|apiVersion|gateway.api-platform.wso2.com/v1alpha1|
+|apiVersion|gateway.api-platform.wso2.com/v1alpha2|
 |kind|LlmProxy|
 
 <h2 id="tocS_LLMProxyConfiguration">LLMProxyConfiguration</h2>
@@ -3420,7 +3420,7 @@ continued
 
 ```json
 {
-  "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+  "apiVersion": "gateway.api-platform.wso2.com/v1alpha2",
   "kind": "LlmProxy",
   "metadata": {
     "name": "openai-proxy"
@@ -3555,7 +3555,7 @@ and
 
 ```json
 {
-  "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+  "apiVersion": "gateway.api-platform.wso2.com/v1alpha2",
   "kind": "Secret",
   "metadata": {
     "name": "database-password"
@@ -3582,7 +3582,7 @@ and
 
 |Property|Value|
 |---|---|
-|apiVersion|gateway.api-platform.wso2.com/v1alpha1|
+|apiVersion|gateway.api-platform.wso2.com/v1alpha2|
 |kind|Secret|
 
 <h2 id="tocS_SecretConfiguration">SecretConfiguration</h2>
@@ -3594,7 +3594,7 @@ and
 
 ```json
 {
-  "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+  "apiVersion": "gateway.api-platform.wso2.com/v1alpha2",
   "kind": "Secret",
   "metadata": {
     "name": "database-password"
@@ -3688,7 +3688,7 @@ and
 
 ```json
 {
-  "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+  "apiVersion": "gateway.api-platform.wso2.com/v1alpha2",
   "kind": "Secret",
   "metadata": {
     "name": "database-password"
@@ -3719,7 +3719,7 @@ and
 
 |Property|Value|
 |---|---|
-|apiVersion|gateway.api-platform.wso2.com/v1alpha1|
+|apiVersion|gateway.api-platform.wso2.com/v1alpha2|
 |kind|Secret|
 
 <h2 id="tocS_CertificateUploadRequest">CertificateUploadRequest</h2>
@@ -3992,7 +3992,7 @@ Metadata for an HMAC secret. The plaintext value is never included.
   "count": 5,
   "secrets": [
     {
-      "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+      "apiVersion": "gateway.api-platform.wso2.com/v1alpha2",
       "kind": "Secret",
       "metadata": {
         "name": "database-password"
@@ -4055,7 +4055,7 @@ Id and optional timestamps. Not the full ResourceStatus model (no `state` or
 
 ```json
 {
-  "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+  "apiVersion": "gateway.api-platform.wso2.com/v1alpha2",
   "kind": "Secret",
   "metadata": {
     "name": "database-password"
@@ -4089,7 +4089,7 @@ POST/PUT /secrets response. `spec.value` is not returned; see SecretConfiguratio
 
 |Property|Value|
 |---|---|
-|apiVersion|gateway.api-platform.wso2.com/v1alpha1|
+|apiVersion|gateway.api-platform.wso2.com/v1alpha2|
 |kind|Secret|
 
 <h2 id="tocS_SecretConfigurationResponseRetrieved">SecretConfigurationResponseRetrieved</h2>
@@ -4101,7 +4101,7 @@ POST/PUT /secrets response. `spec.value` is not returned; see SecretConfiguratio
 
 ```json
 {
-  "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+  "apiVersion": "gateway.api-platform.wso2.com/v1alpha2",
   "kind": "Secret",
   "metadata": {
     "name": "database-password"
@@ -4136,5 +4136,5 @@ GET /secrets/{id} response including decrypted `spec.value`.
 
 |Property|Value|
 |---|---|
-|apiVersion|gateway.api-platform.wso2.com/v1alpha1|
+|apiVersion|gateway.api-platform.wso2.com/v1alpha2|
 |kind|Secret|

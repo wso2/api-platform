@@ -10,7 +10,7 @@
 
 ```shell
 
-curl -X POST http://localhost:9090/api/management/v0.9/webbroker-apis \
+curl -X POST http://localhost:9090/api/management/v1alpha2/webbroker-apis \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -24,7 +24,7 @@ Add a new WebBrokerAPI to the Gateway. WebBrokerAPI provides bidirectional strea
 
 ```json
 {
-  "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+  "apiVersion": "gateway.api-platform.wso2.com/v1alpha2",
   "kind": "WebBrokerApi",
   "metadata": {
     "name": "stock-trading-v1.0"
@@ -102,7 +102,7 @@ Required roles: `admin`, `developer`
 
 ```json
 {
-  "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+  "apiVersion": "gateway.api-platform.wso2.com/v1alpha2",
   "kind": "WebBrokerApi",
   "metadata": {
     "name": "stock-trading-v1.0"
@@ -185,7 +185,7 @@ Required roles: `admin`, `developer`
 
 ```shell
 
-curl -X GET http://localhost:9090/api/management/v0.9/webbroker-apis \
+curl -X GET http://localhost:9090/api/management/v1alpha2/webbroker-apis \
   -u {username}:{password} \
   -H 'Accept: application/json'
 
@@ -227,7 +227,7 @@ Required roles: `admin`, `developer`
   "count": 3,
   "apis": [
     {
-      "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+      "apiVersion": "gateway.api-platform.wso2.com/v1alpha2",
       "kind": "WebBrokerApi",
       "metadata": {
         "name": "stock-trading-v1.0"
@@ -374,7 +374,7 @@ Status Code **200**
 
 |Property|Value|
 |---|---|
-|apiVersion|gateway.api-platform.wso2.com/v1alpha1|
+|apiVersion|gateway.api-platform.wso2.com/v1alpha2|
 |kind|WebBrokerApi|
 |deploymentState|deployed|
 |deploymentState|undeployed|
@@ -391,7 +391,7 @@ Status Code **200**
 
 ```shell
 
-curl -X GET http://localhost:9090/api/management/v0.9/webbroker-apis/{id} \
+curl -X GET http://localhost:9090/api/management/v1alpha2/webbroker-apis/{id} \
   -u {username}:{password} \
   -H 'Accept: application/json'
 
@@ -424,7 +424,7 @@ Required roles: `admin`, `developer`
 
 ```json
 {
-  "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+  "apiVersion": "gateway.api-platform.wso2.com/v1alpha2",
   "kind": "WebBrokerApi",
   "metadata": {
     "name": "stock-trading-v1.0"
@@ -506,7 +506,7 @@ Required roles: `admin`, `developer`
 
 ```shell
 
-curl -X DELETE http://localhost:9090/api/management/v0.9/webbroker-apis/{id} \
+curl -X DELETE http://localhost:9090/api/management/v1alpha2/webbroker-apis/{id} \
   -u {username}:{password} \
   -H 'Accept: application/json'
 
@@ -573,7 +573,7 @@ Status Code **200**
 
 ```shell
 
-curl -X POST http://localhost:9090/api/management/v0.9/webbroker-apis/{id}/api-keys \
+curl -X POST http://localhost:9090/api/management/v1alpha2/webbroker-apis/{id}/api-keys \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -650,7 +650,7 @@ Required roles: `admin`, `consumer`
 
 ```shell
 
-curl -X GET http://localhost:9090/api/management/v0.9/webbroker-apis/{id}/api-keys \
+curl -X GET http://localhost:9090/api/management/v1alpha2/webbroker-apis/{id}/api-keys \
   -u {username}:{password} \
   -H 'Accept: application/json'
 
@@ -715,7 +715,7 @@ Required roles: `admin`, `consumer`
 
 ```shell
 
-curl -X POST http://localhost:9090/api/management/v0.9/webbroker-apis/{id}/api-keys/{apiKeyName}/regenerate \
+curl -X POST http://localhost:9090/api/management/v1alpha2/webbroker-apis/{id}/api-keys/{apiKeyName}/regenerate \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -790,7 +790,7 @@ Required roles: `admin`, `consumer`
 
 ```shell
 
-curl -X PUT http://localhost:9090/api/management/v0.9/webbroker-apis/{id}/api-keys/{apiKeyName} \
+curl -X PUT http://localhost:9090/api/management/v1alpha2/webbroker-apis/{id}/api-keys/{apiKeyName} \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -870,7 +870,7 @@ Required roles: `admin`, `consumer`
 
 ```shell
 
-curl -X DELETE http://localhost:9090/api/management/v0.9/webbroker-apis/{id}/api-keys/{apiKeyName} \
+curl -X DELETE http://localhost:9090/api/management/v1alpha2/webbroker-apis/{id}/api-keys/{apiKeyName} \
   -u {username}:{password} \
   -H 'Accept: application/json'
 

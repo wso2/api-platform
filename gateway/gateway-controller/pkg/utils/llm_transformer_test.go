@@ -77,7 +77,7 @@ func TestLLMProviderTransformer_TransformProvider_ReadsTemplateFromDB(t *testing
 	template := &models.StoredLLMProviderTemplate{
 		UUID: "0000-db-template-id-0000-000000000000",
 		Configuration: api.LLMProviderTemplate{
-			ApiVersion: api.LLMProviderTemplateApiVersionGatewayApiPlatformWso2Comv1alpha1,
+			ApiVersion: api.LLMProviderTemplateApiVersionGatewayApiPlatformWso2Comv1alpha2,
 			Kind:       api.LLMProviderTemplateKindLlmProviderTemplate,
 			Metadata:   api.Metadata{Name: "openai"},
 			Spec: api.LLMProviderTemplateData{
@@ -93,7 +93,7 @@ func TestLLMProviderTransformer_TransformProvider_ReadsTemplateFromDB(t *testing
 	transformer := NewLLMProviderTransformer(store, db, routerConfig, newTestPolicyVersionResolver())
 
 	provider := &api.LLMProviderConfiguration{
-		ApiVersion: api.LLMProviderConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		ApiVersion: api.LLMProviderConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha2,
 		Kind:       api.LLMProviderConfigurationKindLlmProvider,
 		Metadata:   api.Metadata{Name: "db-backed-provider"},
 		Spec: api.LLMProviderConfigData{
@@ -120,7 +120,7 @@ func TestLLMProviderTransformer_TransformProxy_ReadsProviderAndTemplateFromDB(t 
 	template := &models.StoredLLMProviderTemplate{
 		UUID: "0000-db-template-id-0000-000000000001",
 		Configuration: api.LLMProviderTemplate{
-			ApiVersion: api.LLMProviderTemplateApiVersionGatewayApiPlatformWso2Comv1alpha1,
+			ApiVersion: api.LLMProviderTemplateApiVersionGatewayApiPlatformWso2Comv1alpha2,
 			Kind:       api.LLMProviderTemplateKindLlmProviderTemplate,
 			Metadata:   api.Metadata{Name: "openai"},
 			Spec: api.LLMProviderTemplateData{
@@ -132,7 +132,7 @@ func TestLLMProviderTransformer_TransformProxy_ReadsProviderAndTemplateFromDB(t 
 
 	now := time.Now()
 	providerSourceConfig := api.LLMProviderConfiguration{
-		ApiVersion: api.LLMProviderConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		ApiVersion: api.LLMProviderConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha2,
 		Kind:       api.LLMProviderConfigurationKindLlmProvider,
 		Metadata:   api.Metadata{Name: "db-provider"},
 		Spec: api.LLMProviderConfigData{
@@ -147,7 +147,7 @@ func TestLLMProviderTransformer_TransformProxy_ReadsProviderAndTemplateFromDB(t 
 		},
 	}
 	providerRuntimeConfig := api.RestAPI{
-		ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha2,
 		Kind:       api.RestAPIKindRestApi,
 		Metadata:   api.Metadata{Name: "db-provider"},
 		Spec: api.APIConfigData{
@@ -182,7 +182,7 @@ func TestLLMProviderTransformer_TransformProxy_ReadsProviderAndTemplateFromDB(t 
 	transformer := NewLLMProviderTransformer(store, db, routerConfig, newTestPolicyVersionResolver())
 
 	proxy := &api.LLMProxyConfiguration{
-		ApiVersion: api.LLMProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		ApiVersion: api.LLMProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha2,
 		Kind:       api.LLMProxyConfigurationKindLlmProxy,
 		Metadata:   api.Metadata{Name: "db-proxy"},
 		Spec: api.LLMProxyConfigData{

@@ -12,7 +12,7 @@ CRUD operations for LLM Provider configurations
 
 ```shell
 
-curl -X POST http://localhost:9090/api/management/v0.9/llm-providers \
+curl -X POST http://localhost:9090/api/management/v1alpha2/llm-providers \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -26,7 +26,7 @@ Add a new LLM provider to the Gateway. A provider defines how to interact with a
 
 ```json
 {
-  "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+  "apiVersion": "gateway.api-platform.wso2.com/v1alpha2",
   "kind": "LlmProvider",
   "metadata": {
     "name": "wso2-openai-provider"
@@ -92,7 +92,7 @@ Required roles: `admin`
 
 ```json
 {
-  "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+  "apiVersion": "gateway.api-platform.wso2.com/v1alpha2",
   "kind": "LlmProvider",
   "metadata": {
     "name": "wso2-openai-provider"
@@ -163,7 +163,7 @@ Required roles: `admin`
 
 ```shell
 
-curl -X GET http://localhost:9090/api/management/v0.9/llm-providers \
+curl -X GET http://localhost:9090/api/management/v1alpha2/llm-providers \
   -u {username}:{password} \
   -H 'Accept: application/json'
 
@@ -207,7 +207,7 @@ Required roles: `admin`, `developer`
   "count": 2,
   "providers": [
     {
-      "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+      "apiVersion": "gateway.api-platform.wso2.com/v1alpha2",
       "kind": "LlmProvider",
       "metadata": {
         "name": "wso2-openai-provider"
@@ -377,7 +377,7 @@ Status Code **200**
 
 |Property|Value|
 |---|---|
-|apiVersion|gateway.api-platform.wso2.com/v1alpha1|
+|apiVersion|gateway.api-platform.wso2.com/v1alpha2|
 |kind|LlmProvider|
 |hostRewrite|auto|
 |hostRewrite|manual|
@@ -399,7 +399,7 @@ Status Code **200**
 
 ```shell
 
-curl -X GET http://localhost:9090/api/management/v0.9/llm-providers/{id} \
+curl -X GET http://localhost:9090/api/management/v1alpha2/llm-providers/{id} \
   -u {username}:{password} \
   -H 'Accept: application/json'
 
@@ -428,7 +428,7 @@ Required roles: `admin`, `developer`
 
 ```json
 {
-  "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+  "apiVersion": "gateway.api-platform.wso2.com/v1alpha2",
   "kind": "LlmProvider",
   "metadata": {
     "name": "wso2-openai-provider"
@@ -498,7 +498,7 @@ Required roles: `admin`, `developer`
 
 ```shell
 
-curl -X PUT http://localhost:9090/api/management/v0.9/llm-providers/{id} \
+curl -X PUT http://localhost:9090/api/management/v1alpha2/llm-providers/{id} \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -512,7 +512,7 @@ Update an existing LLM provider in the Gateway.
 
 ```json
 {
-  "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+  "apiVersion": "gateway.api-platform.wso2.com/v1alpha2",
   "kind": "LlmProvider",
   "metadata": {
     "name": "wso2-openai-provider"
@@ -579,7 +579,7 @@ Required roles: `admin`
 
 ```json
 {
-  "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+  "apiVersion": "gateway.api-platform.wso2.com/v1alpha2",
   "kind": "LlmProvider",
   "metadata": {
     "name": "wso2-openai-provider"
@@ -650,7 +650,7 @@ Required roles: `admin`
 
 ```shell
 
-curl -X DELETE http://localhost:9090/api/management/v0.9/llm-providers/{id} \
+curl -X DELETE http://localhost:9090/api/management/v1alpha2/llm-providers/{id} \
   -u {username}:{password} \
   -H 'Accept: application/json'
 
@@ -713,7 +713,7 @@ Status Code **200**
 
 ```shell
 
-curl -X POST http://localhost:9090/api/management/v0.9/llm-providers/{id}/api-keys \
+curl -X POST http://localhost:9090/api/management/v1alpha2/llm-providers/{id}/api-keys \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -790,7 +790,7 @@ Required roles: `admin`, `consumer`
 
 ```shell
 
-curl -X GET http://localhost:9090/api/management/v0.9/llm-providers/{id}/api-keys \
+curl -X GET http://localhost:9090/api/management/v1alpha2/llm-providers/{id}/api-keys \
   -u {username}:{password} \
   -H 'Accept: application/json'
 
@@ -855,7 +855,7 @@ Required roles: `admin`, `consumer`
 
 ```shell
 
-curl -X POST http://localhost:9090/api/management/v0.9/llm-providers/{id}/api-keys/{apiKeyName}/regenerate \
+curl -X POST http://localhost:9090/api/management/v1alpha2/llm-providers/{id}/api-keys/{apiKeyName}/regenerate \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -930,7 +930,7 @@ Required roles: `admin`, `consumer`
 
 ```shell
 
-curl -X PUT http://localhost:9090/api/management/v0.9/llm-providers/{id}/api-keys/{apiKeyName} \
+curl -X PUT http://localhost:9090/api/management/v1alpha2/llm-providers/{id}/api-keys/{apiKeyName} \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -1008,7 +1008,7 @@ Required roles: `admin`, `consumer`
 
 ```shell
 
-curl -X DELETE http://localhost:9090/api/management/v0.9/llm-providers/{id}/api-keys/{apiKeyName} \
+curl -X DELETE http://localhost:9090/api/management/v1alpha2/llm-providers/{id}/api-keys/{apiKeyName} \
   -u {username}:{password} \
   -H 'Accept: application/json'
 

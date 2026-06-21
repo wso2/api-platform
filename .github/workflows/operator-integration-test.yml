@@ -768,7 +768,7 @@ jobs:
 
           # Create Gateway CR
           cat <<EOF | kubectl apply -f -
-          apiVersion: gateway.api-platform.wso2.com/v1alpha1
+          apiVersion: gateway.api-platform.wso2.com/v1alpha2
           kind: APIGateway
           metadata:
             name: test-gateway
@@ -791,7 +791,7 @@ jobs:
       - name: Create test RestApi
         run: |
           cat <<EOF | kubectl apply -f -
-          apiVersion: gateway.api-platform.wso2.com/v1alpha1
+          apiVersion: gateway.api-platform.wso2.com/v1alpha2
           kind: RestApi
           metadata:
             name: test-api
@@ -843,7 +843,7 @@ jobs:
         run: |
           echo "Updating test-api to add PUT /put..."
           cat <<EOF | kubectl apply -f -
-          apiVersion: gateway.api-platform.wso2.com/v1alpha1
+          apiVersion: gateway.api-platform.wso2.com/v1alpha2
           kind: RestApi
           metadata:
             name: test-api
@@ -893,7 +893,7 @@ jobs:
       - name: Create JWT Protected API
         run: |
           cat <<EOF | kubectl apply -f -
-          apiVersion: gateway.api-platform.wso2.com/v1alpha1
+          apiVersion: gateway.api-platform.wso2.com/v1alpha2
           kind: RestApi
           metadata:
             name: jwt-api
@@ -971,7 +971,7 @@ jobs:
         run: |
           echo "Updating jwt-api to use DummyKeyManager..."
           cat <<EOF | kubectl apply -f -
-          apiVersion: gateway.api-platform.wso2.com/v1alpha1
+          apiVersion: gateway.api-platform.wso2.com/v1alpha2
           kind: RestApi
           metadata:
             name: jwt-api
@@ -1064,7 +1064,7 @@ jobs:
           kubectl apply -f "${DEMO}/05f0-apikey-resources.yaml"
           sleep 2
           kubectl apply -f - <<'EOF'
-          apiVersion: gateway.api-platform.wso2.com/v1alpha1
+          apiVersion: gateway.api-platform.wso2.com/v1alpha2
           kind: SubscriptionPlan
           metadata:
             name: demo-plan
@@ -1114,7 +1114,7 @@ jobs:
           API_READY=""
           for i in $(seq 1 60); do
             API_STATUS=$(curl -s -o /tmp/subscription-precheck-body.txt -w "%{http_code}" -u admin:admin \
-              "http://localhost:9090/api/management/v0.9/rest-apis/hello-sub-api" || true)
+              "http://localhost:9090/api/management/v1alpha2/rest-apis/hello-sub-api" || true)
             if [ "${API_STATUS}" = "200" ]; then
               API_READY="yes"
               echo "hello-sub-api is resolvable via management API"
@@ -1138,7 +1138,7 @@ jobs:
           fi
 
           kubectl apply -f - <<'EOF'
-          apiVersion: gateway.api-platform.wso2.com/v1alpha1
+          apiVersion: gateway.api-platform.wso2.com/v1alpha2
           kind: Subscription
           metadata:
             name: demo-subscription
@@ -1353,7 +1353,7 @@ jobs:
           
           echo "Creating RestApi in test-ns..."
           cat <<EOF | kubectl apply -f -
-          apiVersion: gateway.api-platform.wso2.com/v1alpha1
+          apiVersion: gateway.api-platform.wso2.com/v1alpha2
           kind: RestApi
           metadata:
             name: multi-ns-api
@@ -1497,7 +1497,7 @@ jobs:
             name: test-k8s-route
             namespace: ${TEST_NS}
             annotations:
-              gateway.api-platform.wso2.com/api-version: "v1.0"
+              gateway.api-platform.wso2.com/api-version: "v1alpha2"
               gateway.api-platform.wso2.com/context: "/k8s"
               gateway.api-platform.wso2.com/display-name: "k8s-gateway-api-smoke"
           spec:
@@ -1565,7 +1565,7 @@ jobs:
             name: test-k8s-route
             namespace: ${TEST_NS}
             annotations:
-              gateway.api-platform.wso2.com/api-version: "v1.0"
+              gateway.api-platform.wso2.com/api-version: "v1alpha2"
               gateway.api-platform.wso2.com/context: "/k8s"
               gateway.api-platform.wso2.com/display-name: "k8s-gateway-api-smoke"
           spec:
@@ -1636,7 +1636,7 @@ jobs:
           TEST_NS="gateway-api-test"
           echo "Creating rule-scoped APIPolicy and HTTPRoute..."
           cat <<EOF | kubectl apply -f -
-          apiVersion: gateway.api-platform.wso2.com/v1alpha1
+          apiVersion: gateway.api-platform.wso2.com/v1alpha2
           kind: APIPolicy
           metadata:
             name: test-k8s-rule-jwt
@@ -1655,7 +1655,7 @@ jobs:
             name: test-k8s-policy-route
             namespace: ${TEST_NS}
             annotations:
-              gateway.api-platform.wso2.com/api-version: "v1.0"
+              gateway.api-platform.wso2.com/api-version: "v1alpha2"
               gateway.api-platform.wso2.com/context: "/policy"
               gateway.api-platform.wso2.com/display-name: "k8s-gateway-api-policy-smoke"
           spec:
@@ -1942,7 +1942,7 @@ jobs:
           kubectl create configmap test-gateway-config --from-file=values.yaml=<(kubectl get cm test-gateway-config -n default -o jsonpath='{.data.values\.yaml}') -n scoped-test
 
           cat <<EOF | kubectl apply -f -
-          apiVersion: gateway.api-platform.wso2.com/v1alpha1
+          apiVersion: gateway.api-platform.wso2.com/v1alpha2
           kind: APIGateway
           metadata:
             name: scoped-gateway
@@ -1959,7 +1959,7 @@ jobs:
 
           echo "Deploying RestApi in scoped-test..."
           cat <<EOF | kubectl apply -f -
-          apiVersion: gateway.api-platform.wso2.com/v1alpha1
+          apiVersion: gateway.api-platform.wso2.com/v1alpha2
           kind: RestApi
           metadata:
             name: scoped-api
@@ -2025,7 +2025,7 @@ jobs:
 
           echo "Deploying RestApi in ignored-ns (should be ignored)..."
           cat <<EOF | kubectl apply -f -
-          apiVersion: gateway.api-platform.wso2.com/v1alpha1
+          apiVersion: gateway.api-platform.wso2.com/v1alpha2
           kind: RestApi
           metadata:
             name: ignored-api

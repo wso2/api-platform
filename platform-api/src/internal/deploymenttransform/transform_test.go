@@ -49,21 +49,29 @@ func TestParseVersion(t *testing.T) {
 // Helper spec builders
 // ---------------------------------------------------------------------------
 
-func newProviderSpec(global []api.Policy, operation []api.OperationPolicy, legacy []api.LLMPolicy) *dto.LLMProviderDeploymentSpec {
-	return &dto.LLMProviderDeploymentSpec{
-		DisplayName:       "test",
-		GlobalPolicies:    global,
-		OperationPolicies: operation,
-		Policies:          legacy,
+func newProviderArtifact(global []api.Policy, operation []api.OperationPolicy, legacy []api.LLMPolicy) *dto.LLMProviderDeploymentYAML {
+	return &dto.LLMProviderDeploymentYAML{
+		ApiVersion: constants.GatewayApiVersion,
+		Kind:       constants.LLMProvider,
+		Spec: dto.LLMProviderDeploymentSpec{
+			DisplayName:       "test",
+			GlobalPolicies:    global,
+			OperationPolicies: operation,
+			Policies:          legacy,
+		},
 	}
 }
 
-func newProxySpec(global []api.Policy, operation []api.OperationPolicy, legacy []api.LLMPolicy) *dto.LLMProxyDeploymentSpec {
-	return &dto.LLMProxyDeploymentSpec{
-		DisplayName:       "test",
-		GlobalPolicies:    global,
-		OperationPolicies: operation,
-		Policies:          legacy,
+func newProxyArtifact(global []api.Policy, operation []api.OperationPolicy, legacy []api.LLMPolicy) *dto.LLMProxyDeploymentYAML {
+	return &dto.LLMProxyDeploymentYAML{
+		ApiVersion: constants.GatewayApiVersion,
+		Kind:       constants.LLMProxy,
+		Spec: dto.LLMProxyDeploymentSpec{
+			DisplayName:       "test",
+			GlobalPolicies:    global,
+			OperationPolicies: operation,
+			Policies:          legacy,
+		},
 	}
 }
 
@@ -94,22 +102,24 @@ func sampleLegacy() []api.LLMPolicy {
 // ---------------------------------------------------------------------------
 
 func TestTransform_Provider_NewGateway_CanonicalPassthrough(t *testing.T) {
-	spec := newProviderSpec(sampleGlobal(), sampleOperation(), nil)
-	err := Default().Transform(constants.LLMProvider, ParseVersion(MinSplitPoliciesVersion), spec)
+	artifact := newProviderArtifact(sampleGlobal(), sampleOperation(), nil)
+	err := Default().Transform(constants.LLMProvider, ParseVersion(MinSplitPoliciesVersion), artifact)
 	require.NoError(t, err)
-	// New gateway: no-op — canonical shape preserved as-is.
-	assert.Len(t, spec.GlobalPolicies, 1)
-	assert.Len(t, spec.OperationPolicies, 1)
-	assert.Nil(t, spec.Policies)
+	// New gateway: no-op — canonical shape and apiVersion preserved as-is.
+	assert.Equal(t, constants.GatewayApiVersion, artifact.ApiVersion)
+	assert.Len(t, artifact.Spec.GlobalPolicies, 1)
+	assert.Len(t, artifact.Spec.OperationPolicies, 1)
+	assert.Nil(t, artifact.Spec.Policies)
 }
 
 func TestTransform_Proxy_NewGateway_CanonicalPassthrough(t *testing.T) {
-	spec := newProxySpec(sampleGlobal(), sampleOperation(), nil)
-	err := Default().Transform(constants.LLMProxy, ParseVersion("1.2.0-SNAPSHOT"), spec)
+	artifact := newProxyArtifact(sampleGlobal(), sampleOperation(), nil)
+	err := Default().Transform(constants.LLMProxy, ParseVersion("1.2.0-SNAPSHOT"), artifact)
 	require.NoError(t, err)
-	assert.Len(t, spec.GlobalPolicies, 1)
-	assert.Len(t, spec.OperationPolicies, 1)
-	assert.Nil(t, spec.Policies)
+	assert.Equal(t, constants.GatewayApiVersion, artifact.ApiVersion)
+	assert.Len(t, artifact.Spec.GlobalPolicies, 1)
+	assert.Len(t, artifact.Spec.OperationPolicies, 1)
+	assert.Nil(t, artifact.Spec.Policies)
 }
 
 // ---------------------------------------------------------------------------
@@ -117,19 +127,21 @@ func TestTransform_Proxy_NewGateway_CanonicalPassthrough(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestTransform_Provider_OldGateway_FlattensToLegacy(t *testing.T) {
-	spec := newProviderSpec(sampleGlobal(), sampleOperation(), nil)
-	err := Default().Transform(constants.LLMProvider, ParseVersion("1.1.0"), spec)
+	artifact := newProviderArtifact(sampleGlobal(), sampleOperation(), nil)
+	err := Default().Transform(constants.LLMProvider, ParseVersion("1.1.0"), artifact)
 	require.NoError(t, err)
-	assert.Nil(t, spec.GlobalPolicies)
-	assert.Nil(t, spec.OperationPolicies)
-	require.Len(t, spec.Policies, 2)
+	// Old gateway: apiVersion downgraded and policies flattened.
+	assert.Equal(t, constants.GatewayApiVersionV1Alpha1, artifact.ApiVersion)
+	assert.Nil(t, artifact.Spec.GlobalPolicies)
+	assert.Nil(t, artifact.Spec.OperationPolicies)
+	require.Len(t, artifact.Spec.Policies, 2)
 	// Global policy → legacy entry with path "/*", methods ["*"]
 	var wildcardEntry, chatEntry *api.LLMPolicy
-	for i := range spec.Policies {
-		if len(spec.Policies[i].Paths) > 0 && spec.Policies[i].Paths[0].Path == "/*" {
-			wildcardEntry = &spec.Policies[i]
+	for i := range artifact.Spec.Policies {
+		if len(artifact.Spec.Policies[i].Paths) > 0 && artifact.Spec.Policies[i].Paths[0].Path == "/*" {
+			wildcardEntry = &artifact.Spec.Policies[i]
 		} else {
-			chatEntry = &spec.Policies[i]
+			chatEntry = &artifact.Spec.Policies[i]
 		}
 	}
 	require.NotNil(t, wildcardEntry, "global policy must produce a /* legacy entry")
@@ -140,12 +152,13 @@ func TestTransform_Provider_OldGateway_FlattensToLegacy(t *testing.T) {
 
 func TestTransform_Provider_EmptyVersion_TreatedAsOld(t *testing.T) {
 	// Empty version string → ParseVersion returns 1.0.0 → old gateway.
-	spec := newProviderSpec(sampleGlobal(), nil, nil)
-	err := Default().Transform(constants.LLMProvider, ParseVersion(""), spec)
+	artifact := newProviderArtifact(sampleGlobal(), nil, nil)
+	err := Default().Transform(constants.LLMProvider, ParseVersion(""), artifact)
 	require.NoError(t, err)
-	assert.Nil(t, spec.GlobalPolicies)
-	require.Len(t, spec.Policies, 1)
-	assert.Equal(t, "/*", spec.Policies[0].Paths[0].Path)
+	assert.Equal(t, constants.GatewayApiVersionV1Alpha1, artifact.ApiVersion)
+	assert.Nil(t, artifact.Spec.GlobalPolicies)
+	require.Len(t, artifact.Spec.Policies, 1)
+	assert.Equal(t, "/*", artifact.Spec.Policies[0].Paths[0].Path)
 }
 
 func TestTransform_Provider_OldGateway_AppendedToExistingLegacy(t *testing.T) {
@@ -153,21 +166,23 @@ func TestTransform_Provider_OldGateway_AppendedToExistingLegacy(t *testing.T) {
 	// that are present when the old-gateway path is tested in isolation),
 	// down-convert appends to them then re-orders.
 	existing := sampleLegacy()
-	spec := newProviderSpec(sampleGlobal(), nil, existing)
-	err := Default().Transform(constants.LLMProvider, ParseVersion("1.0.0"), spec)
+	artifact := newProviderArtifact(sampleGlobal(), nil, existing)
+	err := Default().Transform(constants.LLMProvider, ParseVersion("1.0.0"), artifact)
 	require.NoError(t, err)
-	assert.Nil(t, spec.GlobalPolicies)
+	assert.Equal(t, constants.GatewayApiVersionV1Alpha1, artifact.ApiVersion)
+	assert.Nil(t, artifact.Spec.GlobalPolicies)
 	// existing (1) + global flattened (1) = 2
-	assert.Len(t, spec.Policies, 2)
+	assert.Len(t, artifact.Spec.Policies, 2)
 }
 
 func TestTransform_Proxy_OldGateway_FlattensToLegacy(t *testing.T) {
-	spec := newProxySpec(sampleGlobal(), nil, nil)
-	err := Default().Transform(constants.LLMProxy, ParseVersion("1.0.0"), spec)
+	artifact := newProxyArtifact(sampleGlobal(), nil, nil)
+	err := Default().Transform(constants.LLMProxy, ParseVersion("1.0.0"), artifact)
 	require.NoError(t, err)
-	assert.Nil(t, spec.GlobalPolicies)
-	require.Len(t, spec.Policies, 1)
-	assert.Equal(t, "/*", spec.Policies[0].Paths[0].Path)
+	assert.Equal(t, constants.GatewayApiVersionV1Alpha1, artifact.ApiVersion)
+	assert.Nil(t, artifact.Spec.GlobalPolicies)
+	require.Len(t, artifact.Spec.Policies, 1)
+	assert.Equal(t, "/*", artifact.Spec.Policies[0].Paths[0].Path)
 }
 
 // ---------------------------------------------------------------------------
@@ -175,16 +190,18 @@ func TestTransform_Proxy_OldGateway_FlattensToLegacy(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestTransform_UnknownKind_Noop(t *testing.T) {
-	spec := newProviderSpec(sampleGlobal(), nil, nil)
-	err := Default().Transform("UnknownKind", ParseVersion("1.0.0"), spec)
+	artifact := newProviderArtifact(sampleGlobal(), nil, nil)
+	err := Default().Transform("UnknownKind", ParseVersion("1.0.0"), artifact)
 	require.NoError(t, err)
-	assert.Len(t, spec.GlobalPolicies, 1) // unchanged
+	// Unknown kind: no-op — artifact unchanged.
+	assert.Equal(t, constants.GatewayApiVersion, artifact.ApiVersion)
+	assert.Len(t, artifact.Spec.GlobalPolicies, 1)
 }
 
 func TestTransform_WrongPayloadType_ReturnsError(t *testing.T) {
-	// Passing a *dto.LLMProviderDeploymentSpec where LLMProxy is expected
+	// Passing a *dto.LLMProviderDeploymentYAML where LLMProxy is expected
 	// triggers the type-assertion guard in Apply.
-	spec := newProviderSpec(sampleGlobal(), nil, nil)
-	err := Default().Transform(constants.LLMProxy, ParseVersion("1.0.0"), spec)
+	artifact := newProviderArtifact(sampleGlobal(), nil, nil)
+	err := Default().Transform(constants.LLMProxy, ParseVersion("1.0.0"), artifact)
 	assert.Error(t, err)
 }

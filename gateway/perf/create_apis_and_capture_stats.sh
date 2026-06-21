@@ -7,7 +7,7 @@ CONTROLLER_CTN="gateway-gateway-controller-1"
 
 
 # ---------------- API endpoint ----------------
-API_MGR_URL="http://localhost:9090/api/management/v0.9/rest-apis"
+API_MGR_URL="http://localhost:9090/api/management/v1alpha2/rest-apis"
 
 # ---------------- params ----------------
 TOTAL="${1:-50}"
@@ -43,7 +43,7 @@ for i in $(seq 1 "$TOTAL"); do
       -u admin:admin \
       -H "Content-Type: application/yaml" \
       --data-binary @- <<EOF
-apiVersion: gateway.api-platform.wso2.com/v1alpha1
+apiVersion: gateway.api-platform.wso2.com/v1alpha2
 kind: RestApi
 metadata:
   name: ${api_name}

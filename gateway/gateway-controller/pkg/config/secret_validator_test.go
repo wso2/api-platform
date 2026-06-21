@@ -48,7 +48,7 @@ func TestSecretValidator_Validate_PointerAndValue(t *testing.T) {
 	v := NewSecretValidator()
 
 	cfg := api.SecretConfigurationRequest{
-		ApiVersion: api.SecretConfigurationRequestApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		ApiVersion: api.SecretConfigurationRequestApiVersionGatewayApiPlatformWso2Comv1alpha2,
 		Kind:       api.SecretConfigurationRequestKindSecret,
 		Metadata:   api.Metadata{Name: "my-secret"},
 		Spec: api.SecretConfigData{
@@ -69,7 +69,7 @@ func TestSecretValidator_ValidateSecretConfiguration_Valid(t *testing.T) {
 	v := NewSecretValidator()
 	desc := "A test secret"
 	cfg := &api.SecretConfigurationRequest{
-		ApiVersion: api.SecretConfigurationRequestApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		ApiVersion: api.SecretConfigurationRequestApiVersionGatewayApiPlatformWso2Comv1alpha2,
 		Kind:       api.SecretConfigurationRequestKindSecret,
 		Metadata:   api.Metadata{Name: "test-secret"},
 		Spec: api.SecretConfigData{
@@ -102,7 +102,7 @@ func TestSecretValidator_InvalidApiVersion(t *testing.T) {
 func TestSecretValidator_InvalidKind(t *testing.T) {
 	v := NewSecretValidator()
 	cfg := &api.SecretConfigurationRequest{
-		ApiVersion: api.SecretConfigurationRequestApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		ApiVersion: api.SecretConfigurationRequestApiVersionGatewayApiPlatformWso2Comv1alpha2,
 		Kind:       "NotSecret",
 		Metadata:   api.Metadata{Name: "test-secret"},
 		Spec: api.SecretConfigData{
@@ -119,7 +119,7 @@ func TestSecretValidator_InvalidKind(t *testing.T) {
 func TestSecretValidator_MissingDisplayName(t *testing.T) {
 	v := NewSecretValidator()
 	cfg := &api.SecretConfigurationRequest{
-		ApiVersion: api.SecretConfigurationRequestApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		ApiVersion: api.SecretConfigurationRequestApiVersionGatewayApiPlatformWso2Comv1alpha2,
 		Kind:       api.SecretConfigurationRequestKindSecret,
 		Metadata:   api.Metadata{Name: "test-secret"},
 		Spec: api.SecretConfigData{
@@ -136,7 +136,7 @@ func TestSecretValidator_MissingDisplayName(t *testing.T) {
 func TestSecretValidator_DisplayNameTooLong(t *testing.T) {
 	v := NewSecretValidator()
 	cfg := &api.SecretConfigurationRequest{
-		ApiVersion: api.SecretConfigurationRequestApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		ApiVersion: api.SecretConfigurationRequestApiVersionGatewayApiPlatformWso2Comv1alpha2,
 		Kind:       api.SecretConfigurationRequestKindSecret,
 		Metadata:   api.Metadata{Name: "test-secret"},
 		Spec: api.SecretConfigData{
@@ -153,7 +153,7 @@ func TestSecretValidator_DisplayNameTooLong(t *testing.T) {
 func TestSecretValidator_DisplayNameInvalidChars(t *testing.T) {
 	v := NewSecretValidator()
 	cfg := &api.SecretConfigurationRequest{
-		ApiVersion: api.SecretConfigurationRequestApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		ApiVersion: api.SecretConfigurationRequestApiVersionGatewayApiPlatformWso2Comv1alpha2,
 		Kind:       api.SecretConfigurationRequestKindSecret,
 		Metadata:   api.Metadata{Name: "test-secret"},
 		Spec: api.SecretConfigData{
@@ -171,7 +171,7 @@ func TestSecretValidator_DescriptionTooLong(t *testing.T) {
 	v := NewSecretValidator()
 	longDesc := strings.Repeat("x", 1025)
 	cfg := &api.SecretConfigurationRequest{
-		ApiVersion: api.SecretConfigurationRequestApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		ApiVersion: api.SecretConfigurationRequestApiVersionGatewayApiPlatformWso2Comv1alpha2,
 		Kind:       api.SecretConfigurationRequestKindSecret,
 		Metadata:   api.Metadata{Name: "test-secret"},
 		Spec: api.SecretConfigData{
@@ -189,7 +189,7 @@ func TestSecretValidator_DescriptionTooLong(t *testing.T) {
 func TestSecretValidator_MissingValue(t *testing.T) {
 	v := NewSecretValidator()
 	cfg := &api.SecretConfigurationRequest{
-		ApiVersion: api.SecretConfigurationRequestApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		ApiVersion: api.SecretConfigurationRequestApiVersionGatewayApiPlatformWso2Comv1alpha2,
 		Kind:       api.SecretConfigurationRequestKindSecret,
 		Metadata:   api.Metadata{Name: "test-secret"},
 		Spec: api.SecretConfigData{
@@ -206,7 +206,7 @@ func TestSecretValidator_MissingValue(t *testing.T) {
 func TestSecretValidator_ValueTooLarge(t *testing.T) {
 	v := NewSecretValidator()
 	cfg := &api.SecretConfigurationRequest{
-		ApiVersion: api.SecretConfigurationRequestApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		ApiVersion: api.SecretConfigurationRequestApiVersionGatewayApiPlatformWso2Comv1alpha2,
 		Kind:       api.SecretConfigurationRequestKindSecret,
 		Metadata:   api.Metadata{Name: "test-secret"},
 		Spec: api.SecretConfigData{

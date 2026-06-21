@@ -44,16 +44,17 @@ func init() {
 		Kind:        constants.LLMProvider,
 		AppliesWhen: isOldGateway,
 		Apply: func(payload any) error {
-			spec, ok := payload.(*dto.LLMProviderDeploymentSpec)
+			artifact, ok := payload.(*dto.LLMProviderDeploymentYAML)
 			if !ok {
-				return fmt.Errorf("expected *dto.LLMProviderDeploymentSpec, got %T", payload)
+				return fmt.Errorf("expected *dto.LLMProviderDeploymentYAML, got %T", payload)
 			}
 			downconvertPolicyLists(
-				spec.GlobalPolicies, spec.OperationPolicies,
-				&spec.Policies,
+				artifact.Spec.GlobalPolicies, artifact.Spec.OperationPolicies,
+				&artifact.Spec.Policies,
 			)
-			spec.GlobalPolicies = nil
-			spec.OperationPolicies = nil
+			artifact.Spec.GlobalPolicies = nil
+			artifact.Spec.OperationPolicies = nil
+			artifact.ApiVersion = constants.GatewayApiVersionV1Alpha1
 			return nil
 		},
 	})
@@ -63,16 +64,17 @@ func init() {
 		Kind:        constants.LLMProxy,
 		AppliesWhen: isOldGateway,
 		Apply: func(payload any) error {
-			spec, ok := payload.(*dto.LLMProxyDeploymentSpec)
+			artifact, ok := payload.(*dto.LLMProxyDeploymentYAML)
 			if !ok {
-				return fmt.Errorf("expected *dto.LLMProxyDeploymentSpec, got %T", payload)
+				return fmt.Errorf("expected *dto.LLMProxyDeploymentYAML, got %T", payload)
 			}
 			downconvertPolicyLists(
-				spec.GlobalPolicies, spec.OperationPolicies,
-				&spec.Policies,
+				artifact.Spec.GlobalPolicies, artifact.Spec.OperationPolicies,
+				&artifact.Spec.Policies,
 			)
-			spec.GlobalPolicies = nil
-			spec.OperationPolicies = nil
+			artifact.Spec.GlobalPolicies = nil
+			artifact.Spec.OperationPolicies = nil
+			artifact.ApiVersion = constants.GatewayApiVersionV1Alpha1
 			return nil
 		},
 	})
