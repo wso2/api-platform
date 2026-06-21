@@ -59,8 +59,6 @@ advanced:
     enabled: true
     keyType: "x-wso2-api-key"
     keyValue: ""              # Secret key value — set via DP_ADVANCED_APIKEY_KEYVALUE in production
-  tokenExchanger:
-    enabled: false
   # OpenAPI-spec-driven /devportal router: request validation + fine-grained OAuth2
   # scope enforcement, dispatching by operationId to src/openapi/handlers.
   openApiValidator:
@@ -80,22 +78,45 @@ serverCerts:
 
 # ─── Identity Provider (OAuth2 / OIDC) ────────────────────────────────────────
 # Leave clientId empty to use local auth (Platform API sidecar) instead of OIDC.
+# For IDP-specific setup guides (Asgardeo, Keycloak) see docs/administer/authentication.md
 
 identityProvider:
-  name: "IS"
+  name: "IS"                 # IDP name used in logs — env: DP_IDENTITYPROVIDER_NAME
   issuer: "https://localhost:9443/oauth2/token"
   authorizationURL: "https://localhost:9443/oauth2/authorize"
   tokenURL: "https://localhost:9443/oauth2/token"
   userInfoURL: "https://localhost:9443/oauth2/userinfo"
-  clientId: ""
+  clientId: ""               # Set to enable OIDC — env: DP_IDENTITYPROVIDER_CLIENTID
+  clientSecret: ""           # Confidential client secret (Traditional Web App / Keycloak)
+                             # Leave empty for PKCE public client — env: DP_IDENTITYPROVIDER_CLIENTSECRET
+  audience: ""               # JWT aud claim to verify (usually the clientId); leave empty to skip
+                             # env: DP_IDENTITYPROVIDER_AUDIENCE
   callbackURL: "http://localhost:3000/default/callback"
-  scope: "openid profile"
+  scope: "openid profile email"  # Space-separated OIDC scopes to request
+                                  # env: DP_IDENTITYPROVIDER_SCOPE
   signUpURL: ""
   logoutURL: "https://localhost:9443/oidc/logout"
   logoutRedirectURI: "http://localhost:3000/default"
   certificate: ""
   jwksURL: "https://localhost:9443/oauth2/jwks"
   tokenRefreshTimeoutMs: 10000
+
+  # ── Claim name mappings — adjust to match what your IDP puts in the JWT ──────
+  # Dot-notation is supported for nested claims (e.g. "realm_access.roles" for Keycloak)
+  roleClaim: "roles"                # env: DP_IDENTITYPROVIDER_ROLECLAIM
+  orgIDClaim: "organization.uuid"   # Asgardeo B2B uses "org_id" — env: DP_IDENTITYPROVIDER_ORGIDCLAIM
+  groupsClaim: "groups"             # env: DP_IDENTITYPROVIDER_GROUPSCLAIM
+  adminRole: "admin"                # env: DP_IDENTITYPROVIDER_ADMINROLE
+  subscriberRole: "Internal/subscriber"  # env: DP_IDENTITYPROVIDER_SUBSCRIBERROLE
+  superAdminRole: "superAdmin"      # env: DP_IDENTITYPROVIDER_SUPERADMINROLE
+
+  # ── Federated IdP hints — maps ?fidp=<key> query param to IDP identifier ─────
+  fidp:
+    google: "google"
+    github: "github"
+    microsoft: "microsoft"
+    enterprise: "EnterpriseIDP"
+    email: "LOCAL"
 
 # ─── Platform API ─────────────────────────────────────────────────────────────
 # Used for two purposes:
@@ -119,25 +140,6 @@ platformApi:
                         # env: DP_PLATFORMAPI_JWTSECRET
   insecure: false       # Accept self-signed Platform API certs (dev only).
                         # env: DP_PLATFORMAPI_INSECURE
-
-# ─── Role & Claim Mapping ──────────────────────────────────────────────────────
-
-roleClaim: "roles"
-orgIDClaim: "organization.uuid"
-groupsClaim: "groups"
-adminRole: "admin"
-subscriberRole: "Internal/subscriber"
-superAdminRole: "superAdmin"
-tokenExchange: true
-
-# ─── Federated IdP Hints ──────────────────────────────────────────────────────
-
-fidp:
-  google: "google"
-  github: "github"
-  microsoft: "microsoft"
-  enterprise: "EnterpriseIDP"
-  email: "LOCAL"
 
 # ─── Page Access Rules ─────────────────────────────────────────────────────────
 

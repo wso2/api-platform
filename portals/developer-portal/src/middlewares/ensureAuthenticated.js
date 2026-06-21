@@ -98,9 +98,9 @@ const ensurePermission = (currentPage, role, req) => {
 }
 
 const ensureAuthenticated = async (req, res, next) => {
-    let adminRole = config.adminRole;
-    let superAdminRole = config.superAdminRole;
-    let subscriberRole = config.subscriberRole;
+    let adminRole = config.identityProvider.adminRole;
+    let superAdminRole = config.identityProvider.superAdminRole;
+    let subscriberRole = config.identityProvider.subscriberRole;
     const rules = util.validateRequestParameters();
     for (let validation of rules) {
         await validation.run(req);
@@ -173,39 +173,13 @@ const ensureAuthenticated = async (req, res, next) => {
                     }
                 }
                 const isMatch = constants.ROUTE.DEVPORTAL_ROOT.some(pattern => minimatch.minimatch(req.originalUrl, pattern));
-
                 if (!isMatch) {
-                    if (req.user && req.user[constants.ROLES.ORGANIZATION_CLAIM] !== req.user[constants.ORG_IDENTIFIER]) {
-                        const allowedOrgs = req.user.authorizedOrgs;
-                        logger.debug("User authorized organization", { userOrg: req.user.userOrg });
-                        if (req.user.userOrg !== req.user[constants.ORG_IDENTIFIER]) {
-                            if (allowedOrgs && (allowedOrgs.includes(req.user[constants.ORG_IDENTIFIER]))) {
-                                try {
-                                    const exchangedToken = await util.tokenExchanger(req.user[constants.EXCHANGE_TOKEN], req.user[constants.ORG_IDENTIFIER]);
-                                    const decodedExchangedToken = jwt.decode(exchangedToken);
-                                    const userOrg = decodedExchangedToken.organization.uuid;
-
-                                    req.user[constants.EXCHANGE_TOKEN] = exchangedToken;
-                                    req.user['userOrg'] = userOrg;
-                                    req.user[constants.ROLES.ORGANIZATION_CLAIM] = userOrg;
-                                    req.user[constants.ORG_IDENTIFIER] = userOrg;
-
-                                    const freshScopes = (decodedExchangedToken?.scope || '').split(' ');
-                                    const freshScopeHasAdmin = freshScopes.includes(config.advanced.tokenExchanger.admin_scope || "apim:admin");
-                                    const roleBasedAdmin = role && (role.includes(adminRole) || role.includes(superAdminRole));
-                                    req.user.isAdmin = freshScopeHasAdmin || roleBasedAdmin;
-                                } catch (error) {
-                                    logger.error("Error during token exchange", { error: error.message, stack: error.stack, operation: "tokenExchange" });
-                                    const err = new Error('Authentication required');
-                                    err.status = 401;
-                                    return next(err);
-                                }
-                            } else {
-                                const err = new Error('Authentication required');
-                                err.status = 401;
-                                return next(err);
-                            }
-                        }
+                    const orgIdentifier = orgDetails?.ORGANIZATION_IDENTIFIER;
+                    const tokenOrgClaim = req.user[constants.ROLES.ORGANIZATION_CLAIM];
+                    if (orgIdentifier && tokenOrgClaim && tokenOrgClaim !== orgIdentifier) {
+                        const err = new Error('Authentication required');
+                        err.status = 401;
+                        return next(err);
                     }
                 }
                 if (!config.advanced.disabledRoleValidation) {
@@ -298,7 +272,6 @@ const validateWithJwks = async (token, jwksURL, req) => {
                 const response = await refreshAccessToken(req.user.refreshToken);
                 req.user[constants.ACCESS_TOKEN] = response.access_token;
                 req.user[constants.REFRESH_TOKEN] = response.refresh_token;
-                req.user[constants.EXCHANGE_TOKEN] = await util.tokenExchanger(response.access_token, req.user.returnTo.split('/')[1]);
                 return { valid: true, scopes: response.scope || '' };
             } catch (error) {
                 req.user = null;

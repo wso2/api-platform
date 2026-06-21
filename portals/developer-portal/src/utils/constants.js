@@ -48,7 +48,6 @@ module.exports = {
     ORG_HANDLE: 'orgHandle',
     ACCESS_TOKEN: 'accessToken',
     REFRESH_TOKEN: 'refreshToken',
-    EXCHANGE_TOKEN: 'exchangeToken',
     USER_ID: 'sub',
     BASIC_HEADER: 'basicAuthHeader',
     API_VISIBILITY: {

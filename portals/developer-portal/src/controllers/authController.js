@@ -34,37 +34,31 @@ const { extractPlatformJwtClaims } = require('../utils/platformJwt');
 
 
 const login = async (req, res, next) => {
-
-    let claimNames = {
-        [constants.ROLES.ROLE_CLAIM]: config.roleClaim,
-        [constants.ROLES.GROUP_CLAIM]: config.groupsClaim,
-        [constants.ROLES.ORGANIZATION_CLAIM]: config.orgIDClaim
-    };  
     const orgName = req.params.orgName;
     const baseUrl = '/' + orgName + constants.ROUTE.VIEWS_PATH + req.params.viewName;
-    const orgDetails = await orgDao.get(orgName);
-    if (orgDetails) {
-        claimNames[constants.ROLES.ROLE_CLAIM] = orgDetails.ROLE_CLAIM_NAME || config.roleClaim;
-        claimNames[constants.ROLES.GROUP_CLAIM] = orgDetails.GROUPS_CLAIM_NAME || config.groupsClaim;
-        claimNames[constants.ROLES.ORGANIZATION_CLAIM] = orgDetails.ORGANIZATION_CLAIM_NAME || config.orgIDClaim;
-    }
     if (!req.isAuthenticated()) {
         const fidp = req.query.fidp;
-        if (config.identityProvider?.clientId && fidp && config.fidp[fidp]) {
-            if (fidp == 'enterprise' && req.query.username) {
-                req.session.username = req.query.username;
-                await passport.authenticate('oauth2', { fidp: config.fidp[fidp], username: req.query.username })(req, res, next);
+        const fidpMap = config.identityProvider?.fidp || {};
+        if (config.identityProvider?.clientId) {
+            // IDP mode: redirect directly to the IDP, no intermediate login page
+            const orgDetails = await orgDao.get(orgName);
+            const orgIdentifier = orgDetails?.ORGANIZATION_IDENTIFIER;
+            if (fidp && fidpMap[fidp]) {
+                if (fidp === 'enterprise' && req.query.username) {
+                    req.session.username = req.query.username;
+                    await passport.authenticate('oauth2', { fidp: fidpMap[fidp], username: req.query.username, ...(orgIdentifier && { org: orgIdentifier }) })(req, res, next);
+                } else {
+                    await passport.authenticate('oauth2', { fidp: fidpMap[fidp], ...(orgIdentifier && { org: orgIdentifier }) })(req, res, next);
+                }
             } else {
-                await passport.authenticate('oauth2', { fidp: config.fidp[fidp] })(req, res, next);
+                await passport.authenticate('oauth2', { ...(orgIdentifier && { org: orgIdentifier }) })(req, res, next);
             }
             trackLoginTrigger({ orgName }, req);
-        } else if (config.identityProvider?.clientId && fidp && fidp == 'default') {
-            await passport.authenticate('oauth2')(req, res, next);
         } else {
-            const localAuthEnabled = !config.identityProvider?.clientId;
+            // Local auth mode: show username/password form
             const templateContent = {
                 baseUrl: '/' + orgName + constants.ROUTE.VIEWS_PATH + req.params.viewName,
-                localAuthEnabled,
+                localAuthEnabled: true,
                 loginError: req.query.error || null,
             };
             const html = util.renderTemplate('../pages/login-page/page.hbs',
@@ -277,9 +271,9 @@ const handleLocalLogin = async (req, res) => {
         return res.redirect(`${baseUrl}/login?error=Login+failed%2C+please+try+again`);
     }
 
-    const adminRole = config.adminRole || 'admin';
-    const superAdminRole = config.superAdminRole || 'superAdmin';
-    const subscriberRole = config.subscriberRole || 'Internal/subscriber';
+    const adminRole = config.identityProvider.adminRole || 'admin';
+    const superAdminRole = config.identityProvider.superAdminRole || 'superAdmin';
+    const subscriberRole = config.identityProvider.subscriberRole || 'Internal/subscriber';
     // Users with any _manage scope are treated as admins in the devportal
     const isAdmin = claims.scopes.some(s => s.endsWith('_manage'));
     const roles = isAdmin ? [adminRole] : [subscriberRole];
@@ -305,7 +299,6 @@ const handleLocalLogin = async (req, res) => {
         returnTo: returnTo || baseUrl,
         accessToken: platformToken,
         refreshToken: null,
-        exchangeToken: null,
         authorizedOrgs: [claims.org_handle || orgName],
         [constants.ROLES.ROLE_CLAIM]: roles,
         [constants.ROLES.GROUP_CLAIM]: [],

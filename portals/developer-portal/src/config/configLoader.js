@@ -73,9 +73,6 @@ const CONFIG_DEFAULTS = {
             keyType: 'x-wso2-api-key',
             keyValue: '',
         },
-        tokenExchanger: {
-            enabled: false,
-        },
         openApiValidator: {
             validateResponses: 'off',
         },
@@ -102,6 +99,20 @@ const CONFIG_DEFAULTS = {
         baseUrl: '',
         jwtSecret: '',
         insecure: false,
+    },
+    identityProvider: {
+        name: '',
+        clientSecret: '',
+        audience: '',
+        scope: 'openid profile email',
+        tokenRefreshTimeoutMs: 10000,
+        roleClaim: 'roles',
+        orgIDClaim: 'organization.uuid',
+        groupsClaim: 'groups',
+        adminRole: 'admin',
+        subscriberRole: 'Internal/subscriber',
+        superAdminRole: 'superAdmin',
+        fidp: {},
     },
 };
 

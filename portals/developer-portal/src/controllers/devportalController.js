@@ -443,8 +443,8 @@ const login = async (req, res) => {
     }
 
     const scopes = claims.scopes;
-    const adminRole = config.adminRole || 'admin';
-    const subscriberRole = config.subscriberRole || 'Internal/subscriber';
+    const adminRole = config.identityProvider.adminRole || 'admin';
+    const subscriberRole = config.identityProvider.subscriberRole || 'Internal/subscriber';
     const isAdmin = scopes.some(s => s.endsWith('_manage'));
 
     const profile = {
@@ -457,7 +457,6 @@ const login = async (req, res) => {
         [constants.USER_ID]: claims.sub || username,
         accessToken: platformToken,
         refreshToken: null,
-        exchangeToken: null,
         authorizedOrgs: [claims.org_handle || ''],
         userOrg: claims.org_handle || '',
         isAdmin,
