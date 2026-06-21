@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -23,8 +23,8 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/wso2/api-platform/event-gateway/gateway-controller/pkg/eventgateway"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/bootstrap"
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/controllerext"
 )
 
 func main() {
@@ -37,5 +37,5 @@ func main() {
 		os.Exit(1)
 	}
 
-	bootstrap.Run(*configPath, controllerext.NoOpExtension{})
+	bootstrap.Run(*configPath, eventgateway.NewExtension())
 }

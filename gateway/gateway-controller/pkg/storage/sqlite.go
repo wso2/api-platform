@@ -34,12 +34,13 @@ var schemaSQL string
 
 // SQLiteStorage implements the Storage interface using SQLite
 type SQLiteStorage struct {
-	db     *sql.DB
-	logger *slog.Logger
+	db           *sql.DB
+	logger       *slog.Logger
+	extraSchemas []string
 }
 
 // newSQLiteStorage creates a new SQLite storage instance.
-func newSQLiteStorage(dbPath string, logger *slog.Logger) (*SQLiteStorage, error) {
+func newSQLiteStorage(dbPath string, logger *slog.Logger, extraSchemaSQL ...string) (*SQLiteStorage, error) {
 	// Build connection string with SQLite pragmas for optimal performance
 	dsn := fmt.Sprintf("file:%s?_journal_mode=WAL&_busy_timeout=5000&_synchronous=NORMAL&_cache_size=2000&_foreign_keys=ON", dbPath)
 
@@ -54,8 +55,9 @@ func newSQLiteStorage(dbPath string, logger *slog.Logger) (*SQLiteStorage, error
 	db.SetConnMaxLifetime(0)
 
 	storage := &SQLiteStorage{
-		db:     db,
-		logger: logger,
+		db:           db,
+		logger:       logger,
+		extraSchemas: extraSchemaSQL,
 	}
 
 	// Initialize schema if needed
@@ -91,6 +93,12 @@ func (s *SQLiteStorage) initSchema() error {
 		s.logger.Info("Database schema initialized successfully")
 	} else if version != currentSchemaVersion {
 		return fmt.Errorf("unsupported schema version %d, expected %d; delete the database to recreate", version, currentSchemaVersion)
+	}
+
+	for _, extra := range s.extraSchemas {
+		if _, err := s.db.Exec(extra); err != nil {
+			return fmt.Errorf("failed to apply extension schema: %w", err)
+		}
 	}
 
 	s.logger.Info("Database schema up to date", slog.Int("version", currentSchemaVersion))

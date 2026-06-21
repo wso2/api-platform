@@ -62,12 +62,13 @@ type PostgresConnectionConfig struct {
 
 // PostgresStorage implements the Storage interface using PostgreSQL.
 type PostgresStorage struct {
-	db     *sql.DB
-	logger *slog.Logger
+	db           *sql.DB
+	logger       *slog.Logger
+	extraSchemas []string
 }
 
 // newPostgresStorage creates a new PostgreSQL storage instance.
-func newPostgresStorage(cfg PostgresConnectionConfig, logger *slog.Logger) (*PostgresStorage, error) {
+func newPostgresStorage(cfg PostgresConnectionConfig, logger *slog.Logger, extraSchemaSQL ...string) (*PostgresStorage, error) {
 	cfg = withDefaultPostgresConfig(cfg)
 	dsn, err := buildPostgresDSN(cfg)
 	if err != nil {
@@ -85,8 +86,9 @@ func newPostgresStorage(cfg PostgresConnectionConfig, logger *slog.Logger) (*Pos
 	db.SetConnMaxIdleTime(cfg.ConnMaxIdleTime)
 
 	storage := &PostgresStorage{
-		db:     db,
-		logger: logger,
+		db:           db,
+		logger:       logger,
+		extraSchemas: extraSchemaSQL,
 	}
 
 	pingTimeout := cfg.ConnectTimeout
@@ -153,6 +155,12 @@ func (s *PostgresStorage) initSchema() (retErr error) {
 	s.logger.Info("Initializing PostgreSQL schema")
 	if err := s.execSchemaStatements(ctx, conn, postgresSchemaSQL); err != nil {
 		return fmt.Errorf("failed to execute postgres schema: %w", err)
+	}
+
+	for _, extra := range s.extraSchemas {
+		if err := s.execSchemaStatements(ctx, conn, extra); err != nil {
+			return fmt.Errorf("failed to apply extension schema: %w", err)
+		}
 	}
 
 	s.logger.Info("PostgreSQL schema initialized")

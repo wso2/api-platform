@@ -24,6 +24,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/bootstrap"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	policybuilder "github.com/wso2/api-platform/gateway/gateway-controller/pkg/policy"
@@ -564,7 +565,7 @@ func TestGenerateAuthConfig(t *testing.T) {
 			},
 		}
 
-		authConfig := generateAuthConfig(cfg)
+		authConfig := bootstrap.GenerateAuthConfig(cfg, bootstrap.ManagementAPIBasePath, nil)
 
 		assert.False(t, authConfig.BasicAuth.Enabled)
 		assert.False(t, authConfig.JWTConfig.Enabled)
@@ -599,7 +600,7 @@ func TestGenerateAuthConfig(t *testing.T) {
 			},
 		}
 
-		authConfig := generateAuthConfig(cfg)
+		authConfig := bootstrap.GenerateAuthConfig(cfg, bootstrap.ManagementAPIBasePath, nil)
 
 		assert.True(t, authConfig.BasicAuth.Enabled)
 		assert.Len(t, authConfig.BasicAuth.Users, 2)
@@ -633,7 +634,7 @@ func TestGenerateAuthConfig(t *testing.T) {
 			},
 		}
 
-		authConfig := generateAuthConfig(cfg)
+		authConfig := bootstrap.GenerateAuthConfig(cfg, bootstrap.ManagementAPIBasePath, nil)
 
 		assert.False(t, authConfig.BasicAuth.Enabled)
 		assert.True(t, authConfig.JWTConfig.Enabled)
@@ -663,7 +664,7 @@ func TestGenerateAuthConfig(t *testing.T) {
 			},
 		}
 
-		authConfig := generateAuthConfig(cfg)
+		authConfig := bootstrap.GenerateAuthConfig(cfg, bootstrap.ManagementAPIBasePath, nil)
 
 		assert.True(t, authConfig.BasicAuth.Enabled)
 		assert.True(t, authConfig.JWTConfig.Enabled)
@@ -679,19 +680,19 @@ func TestGenerateAuthConfig(t *testing.T) {
 			},
 		}
 
-		authConfig := generateAuthConfig(cfg)
+		authConfig := bootstrap.GenerateAuthConfig(cfg, bootstrap.ManagementAPIBasePath, nil)
 
-		// Check some expected resource roles (keys are prefixed with managementAPIBasePath)
-		assert.Contains(t, authConfig.ResourceRoles, "POST "+managementAPIBasePath+"/rest-apis")
-		assert.Contains(t, authConfig.ResourceRoles, "GET "+managementAPIBasePath+"/rest-apis")
-		assert.Contains(t, authConfig.ResourceRoles, "POST "+managementAPIBasePath+"/llm-providers/:id/api-keys")
-		assert.Contains(t, authConfig.ResourceRoles, "GET "+managementAPIBasePath+"/llm-providers/:id/api-keys")
-		assert.Contains(t, authConfig.ResourceRoles, "POST "+managementAPIBasePath+"/llm-proxies/:id/api-keys")
-		assert.Contains(t, authConfig.ResourceRoles, "GET "+managementAPIBasePath+"/llm-proxies/:id/api-keys")
-		assert.Contains(t, authConfig.ResourceRoles, "GET "+managementAPIBasePath+"/policies")
+		// Check some expected resource roles (keys are prefixed with bootstrap.ManagementAPIBasePath)
+		assert.Contains(t, authConfig.ResourceRoles, "POST "+bootstrap.ManagementAPIBasePath+"/rest-apis")
+		assert.Contains(t, authConfig.ResourceRoles, "GET "+bootstrap.ManagementAPIBasePath+"/rest-apis")
+		assert.Contains(t, authConfig.ResourceRoles, "POST "+bootstrap.ManagementAPIBasePath+"/llm-providers/:id/api-keys")
+		assert.Contains(t, authConfig.ResourceRoles, "GET "+bootstrap.ManagementAPIBasePath+"/llm-providers/:id/api-keys")
+		assert.Contains(t, authConfig.ResourceRoles, "POST "+bootstrap.ManagementAPIBasePath+"/llm-proxies/:id/api-keys")
+		assert.Contains(t, authConfig.ResourceRoles, "GET "+bootstrap.ManagementAPIBasePath+"/llm-proxies/:id/api-keys")
+		assert.Contains(t, authConfig.ResourceRoles, "GET "+bootstrap.ManagementAPIBasePath+"/policies")
 		// Admin API paths are served separately and must not leak into management auth config.
-		assert.NotContains(t, authConfig.ResourceRoles, "GET "+managementAPIBasePath+"/config_dump")
-		assert.NotContains(t, authConfig.ResourceRoles, "GET "+managementAPIBasePath+"/xds_sync_status")
+		assert.NotContains(t, authConfig.ResourceRoles, "GET "+bootstrap.ManagementAPIBasePath+"/config_dump")
+		assert.NotContains(t, authConfig.ResourceRoles, "GET "+bootstrap.ManagementAPIBasePath+"/xds_sync_status")
 
 		// Legacy unprefixed keys must also be present while the deprecated
 		// routes continue to be supported.
@@ -700,7 +701,7 @@ func TestGenerateAuthConfig(t *testing.T) {
 		assert.Contains(t, authConfig.ResourceRoles, "GET /policies")
 
 		// Check role assignments
-		postRestAPIs := "POST " + managementAPIBasePath + "/rest-apis"
+		postRestAPIs := "POST " + bootstrap.ManagementAPIBasePath + "/rest-apis"
 		assert.Contains(t, authConfig.ResourceRoles[postRestAPIs], "admin")
 		assert.Contains(t, authConfig.ResourceRoles[postRestAPIs], "developer")
 		// Legacy key carries the same role assignments.

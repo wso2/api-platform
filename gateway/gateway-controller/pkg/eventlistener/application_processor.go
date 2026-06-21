@@ -19,40 +19,14 @@
 package eventlistener
 
 import (
-	"context"
 	"encoding/json"
 	"log/slog"
 	"sort"
 	"strings"
-	"time"
 
 	"github.com/wso2/api-platform/common/eventhub"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 )
-
-// processSubscriptionEvent refreshes replica-local subscription xDS state after subscription changes.
-func (l *EventListener) processSubscriptionEvent(event eventhub.Event) {
-	switch event.Action {
-	case "CREATE", "UPDATE", "DELETE":
-		l.refreshSubscriptionState("subscription", event)
-	default:
-		l.logger.Warn("Unknown subscription event action",
-			slog.String("action", event.Action),
-			slog.String("entity_id", event.EntityID))
-	}
-}
-
-// processSubscriptionPlanEvent refreshes replica-local subscription xDS state after plan changes.
-func (l *EventListener) processSubscriptionPlanEvent(event eventhub.Event) {
-	switch event.Action {
-	case "CREATE", "UPDATE", "DELETE":
-		l.refreshSubscriptionState("subscription_plan", event)
-	default:
-		l.logger.Warn("Unknown subscription plan event action",
-			slog.String("action", event.Action),
-			slog.String("entity_id", event.EntityID))
-	}
-}
 
 // processApplicationEvent synchronizes replica-local API key/application state from canonical DB state.
 func (l *EventListener) processApplicationEvent(event eventhub.Event) {
@@ -239,33 +213,4 @@ func (l *EventListener) resolveAffectedApplicationAPIKeys(applicationUUID string
 	}
 
 	return affectedKeys, nil
-}
-
-func (l *EventListener) refreshSubscriptionState(resource string, event eventhub.Event) {
-	if l.subscriptionManager == nil {
-		l.logger.Warn("Subscription snapshot manager not available for replica sync",
-			slog.String("resource", resource),
-			slog.String("entity_id", event.EntityID),
-			slog.String("event_id", event.EventID))
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	if err := l.subscriptionManager.UpdateSnapshot(ctx); err != nil {
-		l.logger.Error("Failed to refresh subscription snapshot from replica sync event",
-			slog.String("resource", resource),
-			slog.String("action", event.Action),
-			slog.String("entity_id", event.EntityID),
-			slog.String("event_id", event.EventID),
-			slog.Any("error", err))
-		return
-	}
-
-	l.logger.Info("Successfully refreshed subscription snapshot from replica sync event",
-		slog.String("resource", resource),
-		slog.String("action", event.Action),
-		slog.String("entity_id", event.EntityID),
-		slog.String("event_id", event.EventID))
 }

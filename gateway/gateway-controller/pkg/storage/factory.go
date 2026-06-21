@@ -35,10 +35,11 @@ type BackendConfig struct {
 }
 
 // NewStorage creates the configured persistent storage backend.
-func NewStorage(cfg BackendConfig, logger *slog.Logger) (Storage, error) {
+// extraSchemaSQL contains additional DDL statements applied after the base schema (e.g. from extensions).
+func NewStorage(cfg BackendConfig, logger *slog.Logger, extraSchemaSQL ...string) (Storage, error) {
 	switch cfg.Type {
 	case "sqlite":
-		backend, err := newSQLiteStorage(cfg.SQLitePath, logger)
+		backend, err := newSQLiteStorage(cfg.SQLitePath, logger, extraSchemaSQL...)
 		if err != nil {
 			if strings.Contains(err.Error(), "database is locked") {
 				return nil, fmt.Errorf("%w: %w", ErrDatabaseLocked, err)
@@ -52,7 +53,7 @@ func NewStorage(cfg BackendConfig, logger *slog.Logger) (Storage, error) {
 		return store, nil
 
 	case "postgres":
-		backend, err := newPostgresStorage(cfg.Postgres, logger)
+		backend, err := newPostgresStorage(cfg.Postgres, logger, extraSchemaSQL...)
 		if err != nil {
 			return nil, err
 		}

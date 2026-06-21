@@ -25,15 +25,13 @@ import (
 	"strings"
 
 	"github.com/wso2/api-platform/common/eventhub"
-	"github.com/wso2/api-platform/common/webhooksecret"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/encryption"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/controllerext"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/lazyresourcexds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/templateengine/funcs"
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/webhooksecretxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
 )
 
@@ -44,9 +42,16 @@ type APIKeyXDSManager interface {
 	RemoveAPIKeysByAPI(apiId, apiName, apiVersion, correlationID string) error
 }
 
-// SubscriptionSnapshotUpdater defines the subscription xDS refresh surface used by the listener.
-type SubscriptionSnapshotUpdater interface {
-	UpdateSnapshot(ctx context.Context) error
+// EventListenerOption is a functional option for EventListener.
+type EventListenerOption func(*EventListener)
+
+// WithExtraProcessors registers additional event processors that handle event types
+// not covered by the base EventListener (e.g. subscription and webhook-secret events
+// added by the event-gateway extension).
+func WithExtraProcessors(procs ...controllerext.ExtraEventProcessor) EventListenerOption {
+	return func(l *EventListener) {
+		l.extraProcessors = append(l.extraProcessors, procs...)
+	}
 }
 
 // EventListener listens for events from EventHub and processes them
@@ -56,7 +61,6 @@ type EventListener struct {
 	store               *storage.ConfigStore
 	db                  storage.Storage
 	snapshotManager     *xds.SnapshotManager
-	subscriptionManager SubscriptionSnapshotUpdater
 	apiKeyXDSManager    APIKeyXDSManager
 	lazyResourceManager *lazyresourcexds.LazyResourceStateManager
 	policyManager       *policyxds.PolicyManager
@@ -64,10 +68,8 @@ type EventListener struct {
 	logger              *slog.Logger
 	systemConfig        *config.Config
 	policyDefinitions   map[string]models.PolicyDefinition
-	secretResolver              funcs.SecretResolver
-	webhookSecretStore          *webhooksecret.WebhookSecretStore
-	webhookSecretSnapshotManager *webhooksecretxds.SnapshotManager
-	providerManager             *encryption.ProviderManager
+	secretResolver      funcs.SecretResolver
+	extraProcessors     []controllerext.ExtraEventProcessor // registered by extensions
 
 	eventCh <-chan eventhub.Event
 	ctx     context.Context
@@ -80,7 +82,6 @@ func NewEventListener(
 	store *storage.ConfigStore,
 	db storage.Storage,
 	snapshotManager *xds.SnapshotManager,
-	subscriptionManager SubscriptionSnapshotUpdater,
 	apiKeyXDSManager APIKeyXDSManager,
 	lazyResourceManager *lazyresourcexds.LazyResourceStateManager,
 	policyManager *policyxds.PolicyManager,
@@ -89,9 +90,7 @@ func NewEventListener(
 	systemConfig *config.Config,
 	policyDefinitions map[string]models.PolicyDefinition,
 	secretResolver funcs.SecretResolver,
-	webhookSecretStore *webhooksecret.WebhookSecretStore,
-	webhookSecretSnapshotManager *webhooksecretxds.SnapshotManager,
-	providerManager *encryption.ProviderManager,
+	opts ...EventListenerOption,
 ) *EventListener {
 	if eventHub == nil {
 		panic("event listener requires non-nil EventHub")
@@ -111,12 +110,11 @@ func NewEventListener(
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	return &EventListener{
+	l := &EventListener{
 		eventHub:            eventHub,
 		store:               store,
 		db:                  db,
 		snapshotManager:     snapshotManager,
-		subscriptionManager: subscriptionManager,
 		apiKeyXDSManager:    apiKeyXDSManager,
 		lazyResourceManager: lazyResourceManager,
 		policyManager:       policyManager,
@@ -124,13 +122,14 @@ func NewEventListener(
 		logger:              logger,
 		systemConfig:        systemConfig,
 		policyDefinitions:   policyDefinitions,
-		secretResolver:               secretResolver,
-		webhookSecretStore:           webhookSecretStore,
-		webhookSecretSnapshotManager: webhookSecretSnapshotManager,
-		providerManager:              providerManager,
+		secretResolver:      secretResolver,
 		ctx:                 ctx,
 		cancel:              cancel,
 	}
+	for _, opt := range opts {
+		opt(l)
+	}
+	return l
 }
 
 // Start begins listening for events
@@ -216,12 +215,6 @@ func (l *EventListener) handleEvent(event eventhub.Event) {
 	case eventhub.EventTypeCertificate:
 		l.logger.Info("Certificate event received (processing not yet implemented)",
 			slog.String("entity_id", event.EntityID))
-	case eventhub.EventTypeSubscription:
-		l.processSubscriptionEvent(event)
-	case eventhub.EventTypeSubscriptionPlan:
-		l.processSubscriptionPlanEvent(event)
-	case eventhub.EventTypeApplication:
-		l.processApplicationEvent(event)
 	case eventhub.EventTypeLLMProvider:
 		l.processLLMProviderEvent(event)
 	case eventhub.EventTypeLLMProxy:
@@ -230,9 +223,16 @@ func (l *EventListener) handleEvent(event eventhub.Event) {
 		l.processLLMTemplateEvent(event)
 	case eventhub.EventTypeMCPProxy:
 		l.processMCPProxyEvent(event)
-	case eventhub.EventTypeWebhookSecret:
-		l.processWebhookSecretEvent(event)
+	case eventhub.EventTypeApplication:
+		l.processApplicationEvent(event)
 	default:
+		// Delegate to extension-provided processors (e.g. event-gateway subscription/webhook events).
+		for _, p := range l.extraProcessors {
+			if p.HandlesEventType(event.EventType) {
+				p.Process(l.ctx, event)
+				return
+			}
+		}
 		l.logger.Warn("Unknown event type received",
 			slog.String("event_type", string(event.EventType)),
 			slog.String("entity_id", event.EntityID))

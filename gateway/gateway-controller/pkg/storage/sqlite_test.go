@@ -35,10 +35,9 @@ import (
 )
 
 var (
-	configCounter       int
-	llmTemplateCounter  int
-	apiKeyCounter       int
-	subscriptionCounter int
+	configCounter      int
+	llmTemplateCounter int
+	apiKeyCounter      int
 )
 
 func TestNewSQLiteStorage_Success(t *testing.T) {
@@ -80,19 +79,19 @@ func TestSQLiteStorage_SchemaInitialization(t *testing.T) {
 	assert.NilError(t, err)
 	assert.Equal(t, version, 3) // Current schema version
 
-	// Verify tables exist
+	// Verify tables exist. Event-gateway business tables (subscriptions, subscription_plans,
+	// webhook_secrets) are NOT in the base schema — they are created by the event-gateway extension.
 	tables := []string{
 		"artifacts",
 		"rest_apis",
 		"websub_apis",
+		"webbroker_apis",
 		"llm_providers",
 		"llm_proxies",
 		"mcp_proxies",
 		"certificates",
 		"llm_provider_templates",
 		"api_keys",
-		"subscriptions",
-		"subscription_plans",
 		"events",
 		"gateway_states",
 		"applications",
@@ -170,12 +169,6 @@ func TestSQLiteStorage_DeleteConfig_RemovesRelaxedChildren(t *testing.T) {
 	err := storage.SaveAPIKey(apiKey)
 	assert.NilError(t, err)
 
-	subscription := createTestSubscription()
-	subscription.ID = "delete-subscription"
-	subscription.APIID = apiID
-	err = storage.SaveSubscription(subscription)
-	assert.NilError(t, err)
-
 	config := createTestStoredConfig()
 	config.UUID = apiID
 	config.Handle = "delete-api-handle"
@@ -191,15 +184,6 @@ func TestSQLiteStorage_DeleteConfig_RemovesRelaxedChildren(t *testing.T) {
 	assert.NilError(t, err)
 	assert.Equal(t, apiKeyCount, 1)
 
-	var subscriptionCount int
-	err = storage.db.QueryRow(`
-		SELECT COUNT(*)
-		FROM subscriptions
-		WHERE gateway_id = ? AND api_id = ?
-	`, storage.gatewayId, apiID).Scan(&subscriptionCount)
-	assert.NilError(t, err)
-	assert.Equal(t, subscriptionCount, 1)
-
 	err = storage.DeleteConfig(apiID)
 	assert.NilError(t, err)
 
@@ -210,14 +194,6 @@ func TestSQLiteStorage_DeleteConfig_RemovesRelaxedChildren(t *testing.T) {
 	`, storage.gatewayId, apiID).Scan(&apiKeyCount)
 	assert.NilError(t, err)
 	assert.Equal(t, apiKeyCount, 0)
-
-	err = storage.db.QueryRow(`
-		SELECT COUNT(*)
-		FROM subscriptions
-		WHERE gateway_id = ? AND api_id = ?
-	`, storage.gatewayId, apiID).Scan(&subscriptionCount)
-	assert.NilError(t, err)
-	assert.Equal(t, subscriptionCount, 0)
 
 	_, err = storage.GetConfig(apiID)
 	assert.Assert(t, errors.Is(err, ErrNotFound))
@@ -920,24 +896,6 @@ func TestSQLiteStorage_CountActiveAPIKeysByUserAndAPI_Success(t *testing.T) {
 	assert.Equal(t, count, 1)
 }
 
-func TestSQLiteStorage_SaveSubscription_AllowsUndeployedAPI(t *testing.T) {
-	storage := setupTestStorage(t)
-	defer storage.db.Close()
-
-	subscription := createTestSubscription()
-	subscription.ID = "undeployed-subscription"
-	subscription.APIID = "undeployed-api"
-
-	err := storage.SaveSubscription(subscription)
-	assert.NilError(t, err)
-
-	retrieved, err := storage.GetSubscriptionByID(subscription.ID, storage.gatewayId)
-	assert.NilError(t, err)
-	assert.Equal(t, retrieved.ID, subscription.ID)
-	assert.Equal(t, retrieved.APIID, subscription.APIID)
-	assert.Assert(t, retrieved.SubscriptionTokenHash != "")
-}
-
 func TestSQLiteStorage_ReplaceApplicationAPIKeyMappings_Success(t *testing.T) {
 	storage := setupTestStorage(t)
 	defer storage.db.Close()
@@ -1216,19 +1174,6 @@ func createTestAPIKey() *models.APIKey {
 	}
 }
 
-func createTestSubscription() *models.Subscription {
-	subscriptionCounter++
-	applicationID := fmt.Sprintf("test-application-%d", subscriptionCounter)
-	return &models.Subscription{
-		ID:                fmt.Sprintf("test-subscription-%d", subscriptionCounter),
-		APIID:             fmt.Sprintf("test-api-%d", subscriptionCounter),
-		ApplicationID:     &applicationID,
-		SubscriptionToken: fmt.Sprintf("subscription-token-%d-%d", subscriptionCounter, time.Now().UnixNano()),
-		Status:            models.SubscriptionStatusActive,
-		CreatedAt:         time.Now(),
-		UpdatedAt:         time.Now(),
-	}
-}
 
 func TestSQLiteStorage_UpsertConfig(t *testing.T) {
 	storage := setupTestStorage(t)

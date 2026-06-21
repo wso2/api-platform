@@ -178,10 +178,9 @@ func TestNewCombinedCache(t *testing.T) {
 		})
 	})
 
-	t.Run("panics with nil subscription cache", func(t *testing.T) {
-		assert.Panics(t, func() {
-			NewCombinedCache(policyCache, apiKeyCache, lazyResourceCache, nil, nil, nil, nil, logger)
-		})
+	t.Run("allows nil subscription cache (optional extension)", func(t *testing.T) {
+		cc := NewCombinedCache(policyCache, apiKeyCache, lazyResourceCache, nil, nil, nil, nil, logger)
+		assert.NotNil(t, cc)
 	})
 
 	t.Run("uses default logger when nil", func(t *testing.T) {

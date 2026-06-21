@@ -29,8 +29,6 @@ import (
 	"github.com/envoyproxy/go-control-plane/pkg/cache/v3"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/apikeyxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/lazyresourcexds"
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/subscriptionxds"
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/webhooksecretxds"
 
 	core "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	discoverygrpc "github.com/envoyproxy/go-control-plane/envoy/service/discovery/v3"
@@ -40,19 +38,24 @@ import (
 	"google.golang.org/grpc/keepalive"
 )
 
+// namedCache pairs a type URL with an xDS cache contributed by an extension.
+type namedCache struct {
+	typeURL string
+	c       cache.Cache
+}
+
 // Server is the policy xDS gRPC server
 type Server struct {
-	grpcServer               *grpc.Server
-	xdsServer                server.Server
-	snapshotManager          *SnapshotManager
-	apiKeySnapshotMgr        *apikeyxds.APIKeySnapshotManager
-	lazyResourceSnapshotMgr  *lazyresourcexds.LazyResourceSnapshotManager
-	subscriptionSnapshotMgr  *subscriptionxds.SnapshotManager
-	webhookSecretSnapshotMgr *webhooksecretxds.SnapshotManager
-	port                     int
-	tlsConfig                *TLSConfig
-	onFirstConnect           chan struct{}
-	logger                   *slog.Logger
+	grpcServer              *grpc.Server
+	xdsServer               server.Server
+	snapshotManager         *SnapshotManager
+	apiKeySnapshotMgr       *apikeyxds.APIKeySnapshotManager
+	lazyResourceSnapshotMgr *lazyresourcexds.LazyResourceSnapshotManager
+	extraCaches             []namedCache // extension-provided caches (e.g. subscription, webhook-secret)
+	port                    int
+	tlsConfig               *TLSConfig
+	onFirstConnect          chan struct{}
+	logger                  *slog.Logger
 }
 
 // TLSConfig holds TLS configuration for the server
@@ -83,17 +86,24 @@ func WithOnFirstConnect(ch chan struct{}) ServerOption {
 	}
 }
 
+// WithExtraCache registers an additional xDS cache keyed by its type URL.
+// Extensions (e.g. event-gateway) use this to plug in subscription and webhook-secret caches.
+// The name is used for debug logging only.
+func WithExtraCache(typeURL string, c cache.Cache) ServerOption {
+	return func(s *Server) {
+		s.extraCaches = append(s.extraCaches, namedCache{typeURL: typeURL, c: c})
+	}
+}
+
 // NewServer creates a new policy xDS server
-func NewServer(snapshotManager *SnapshotManager, apiKeySnapshotMgr *apikeyxds.APIKeySnapshotManager, lazyResourceSnapshotMgr *lazyresourcexds.LazyResourceSnapshotManager, subscriptionSnapshotMgr *subscriptionxds.SnapshotManager, webhookSecretSnapshotMgr *webhooksecretxds.SnapshotManager, port int, logger *slog.Logger, opts ...ServerOption) *Server {
+func NewServer(snapshotManager *SnapshotManager, apiKeySnapshotMgr *apikeyxds.APIKeySnapshotManager, lazyResourceSnapshotMgr *lazyresourcexds.LazyResourceSnapshotManager, port int, logger *slog.Logger, opts ...ServerOption) *Server {
 	s := &Server{
-		snapshotManager:          snapshotManager,
-		apiKeySnapshotMgr:        apiKeySnapshotMgr,
-		lazyResourceSnapshotMgr:  lazyResourceSnapshotMgr,
-		subscriptionSnapshotMgr:  subscriptionSnapshotMgr,
-		webhookSecretSnapshotMgr: webhookSecretSnapshotMgr,
-		port:                     port,
-		logger:                   logger,
-		tlsConfig:                &TLSConfig{Enabled: false},
+		snapshotManager:         snapshotManager,
+		apiKeySnapshotMgr:       apiKeySnapshotMgr,
+		lazyResourceSnapshotMgr: lazyResourceSnapshotMgr,
+		port:                    port,
+		logger:                  logger,
+		tlsConfig:               &TLSConfig{Enabled: false},
 	}
 
 	// Apply options
@@ -128,17 +138,24 @@ func NewServer(snapshotManager *SnapshotManager, apiKeySnapshotMgr *apikeyxds.AP
 
 	grpcServer := grpc.NewServer(grpcOpts...)
 
-	// Create combined cache that handles policy chains, route configs, API key state, lazy resources, subscription state, event channel configs, and webhook secrets
+	// Extract extra caches by type URL so extensions can plug in subscription/webhook-secret caches.
+	var subscriptionCache, webhookSecretCache cache.Cache
+	for _, nc := range s.extraCaches {
+		switch nc.typeURL {
+		case subscriptionStateTypeURL:
+			subscriptionCache = nc.c
+		case webhookSecretStateTypeURL:
+			webhookSecretCache = nc.c
+		}
+	}
+
+	// Create combined cache that handles policy chains, route configs, API key state,
+	// lazy resources, subscription state, event channel configs, and webhook secrets.
 	policyCache := snapshotManager.GetPolicyCache()
 	routeConfigCache := snapshotManager.GetRouteCache()
 	eventChannelCache := snapshotManager.GetEventChannelCache()
 	apiKeyCache := apiKeySnapshotMgr.GetCache()
 	lazyResourceCache := lazyResourceSnapshotMgr.GetCache()
-	subscriptionCache := subscriptionSnapshotMgr.GetCache()
-	var webhookSecretCache cache.Cache
-	if s.webhookSecretSnapshotMgr != nil {
-		webhookSecretCache = s.webhookSecretSnapshotMgr.GetCache()
-	}
 	combinedCache := NewCombinedCache(policyCache, apiKeyCache, lazyResourceCache, subscriptionCache, routeConfigCache, eventChannelCache, webhookSecretCache, logger)
 
 	callbacks := &serverCallbacks{

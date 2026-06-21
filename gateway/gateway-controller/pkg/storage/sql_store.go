@@ -589,12 +589,6 @@ func (s *sqlStore) DeleteConfig(id string) error {
 		}
 	}()
 
-	if _, err := tx.ExecQ(`DELETE FROM subscriptions WHERE gateway_id = ? AND api_id = ?`, s.gatewayId, id); err != nil {
-		metrics.DatabaseOperationsTotal.WithLabelValues("delete", table, "error").Inc()
-		metrics.StorageErrorsTotal.WithLabelValues("delete", "cleanup_subscriptions_error").Inc()
-		return fmt.Errorf("failed to delete subscriptions for configuration: %w", err)
-	}
-
 	if _, err := tx.ExecQ(`DELETE FROM api_keys WHERE gateway_id = ? AND artifact_uuid = ?`, s.gatewayId, id); err != nil {
 		metrics.DatabaseOperationsTotal.WithLabelValues("delete", table, "error").Inc()
 		metrics.StorageErrorsTotal.WithLabelValues("delete", "cleanup_api_keys_error").Inc()

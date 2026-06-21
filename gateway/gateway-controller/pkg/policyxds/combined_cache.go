@@ -28,8 +28,14 @@ import (
 	"github.com/envoyproxy/go-control-plane/pkg/cache/v3"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/apikeyxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/lazyresourcexds"
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/subscriptionxds"
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/webhooksecretxds"
+)
+
+// Type URL constants for extension-provided xDS caches.
+// These match the values defined in the subscriptionxds and webhooksecretxds packages
+// but are inlined here so the policyxds package does not import those packages directly.
+const (
+	subscriptionStateTypeURL  = "api-platform.wso2.org/v1.SubscriptionState"
+	webhookSecretStateTypeURL = "api-platform.wso2.org/v1.WebhookSecretState"
 )
 
 // CombinedCache combines policy, API key, lazy resource, subscription, route config, event channel,
@@ -71,8 +77,8 @@ type combinedWatcher struct {
 // subscription, route config, event channel, and webhook secret caches.
 // Returns a cache.Cache interface implementation.
 func NewCombinedCache(policyCache cache.Cache, apiKeyCache cache.Cache, lazyResourceCache cache.Cache, subscriptionCache cache.Cache, routeConfigCache cache.Cache, eventChannelCache cache.Cache, webhookSecretCache cache.Cache, logger *slog.Logger) cache.Cache {
-	if policyCache == nil || apiKeyCache == nil || lazyResourceCache == nil || subscriptionCache == nil {
-		panic("policyCache, apiKeyCache, lazyResourceCache, and subscriptionCache must not be nil")
+	if policyCache == nil || apiKeyCache == nil || lazyResourceCache == nil {
+		panic("policyCache, apiKeyCache, and lazyResourceCache must not be nil")
 	}
 	if logger == nil {
 		logger = slog.Default()
@@ -160,7 +166,11 @@ func (c *CombinedCache) CreateWatch(request *cache.Request, subscription cache.S
 			delete(c.watchers, watcherID)
 			return nil, fmt.Errorf("create lazy resource watch: %w", err)
 		}
-	case subscriptionxds.SubscriptionStateTypeURL:
+	case subscriptionStateTypeURL:
+		if c.subscriptionCache == nil {
+			delete(c.watchers, watcherID)
+			return nil, fmt.Errorf("subscription cache is not configured for type %s", request.TypeUrl)
+		}
 		subscriptionResponseChan = make(chan cache.Response, 1)
 		watcher.subscriptionCancel, err = c.subscriptionCache.CreateWatch(request, subscription, subscriptionResponseChan)
 		if err != nil {
@@ -178,7 +188,7 @@ func (c *CombinedCache) CreateWatch(request *cache.Request, subscription cache.S
 			delete(c.watchers, watcherID)
 			return nil, fmt.Errorf("create event channel watch: %w", err)
 		}
-	case webhooksecretxds.WebhookSecretStateTypeURL:
+	case webhookSecretStateTypeURL:
 		if c.webhookSecretCache == nil {
 			delete(c.watchers, watcherID)
 			return nil, fmt.Errorf("webhook secret cache is not configured for type %s", request.TypeUrl)
@@ -552,7 +562,7 @@ func (c *CombinedCache) CreateDeltaWatch(request *cache.DeltaRequest, subscripti
 				return nil, fmt.Errorf("create lazy resource delta watch: %w", err)
 			}
 		}
-	case subscriptionxds.SubscriptionStateTypeURL:
+	case subscriptionStateTypeURL:
 		if deltaWatcher, ok := c.subscriptionCache.(interface {
 			CreateDeltaWatch(*cache.DeltaRequest, cache.Subscription, chan cache.DeltaResponse) (func(), error)
 		}); ok {
@@ -572,7 +582,7 @@ func (c *CombinedCache) CreateDeltaWatch(request *cache.DeltaRequest, subscripti
 				}
 			}
 		}
-	case webhooksecretxds.WebhookSecretStateTypeURL:
+	case webhookSecretStateTypeURL:
 		if c.webhookSecretCache != nil {
 			if deltaWatcher, ok := c.webhookSecretCache.(interface {
 				CreateDeltaWatch(*cache.DeltaRequest, cache.Subscription, chan cache.DeltaResponse) (func(), error)
