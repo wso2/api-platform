@@ -72,9 +72,10 @@ Base URLs:
 
 ### [Applications](applications.md)
 
-- [Create an application for the authenticated user's organization](applications.md#create-an-application-for-the-authenticated-users-organization)
-- [Update an application for the authenticated user](applications.md#update-an-application-for-the-authenticated-user)
-- [Delete an application for the authenticated user](applications.md#delete-an-application-for-the-authenticated-user)
+- [List applications for the authenticated user](applications.md#list-applications-for-the-authenticated-user)
+- [Create an application](applications.md#create-an-application)
+- [Update an application](applications.md#update-an-application)
+- [Delete an application](applications.md#delete-an-application)
 
 ### [Subscriptions](subscriptions.md)
 
