@@ -192,11 +192,11 @@ const ensureAuthenticated = async (req, res, next) => {
             }
             return next();
         } else {
-            await req.session.save(async (err) => {
+            req.session.returnTo = req.originalUrl || `/${req.params.orgName}`;
+            req.session.save((err) => {
                 if (err) {
-                    return res.status(500).send('Internal Server Error');
+                    logger.error('Session save failed before login redirect', { error: err.message });
                 }
-                req.session.returnTo = req.originalUrl || `/${req.params.orgName}`;
                 if (req.params.orgName) {
                     res.redirect(`/${req.params.orgName}/views/${req.params.viewName}/login`);
                 } else {

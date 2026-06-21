@@ -339,7 +339,6 @@ const getMetadataListFromDB = async (orgID, groups, searchTerm, tags, apiName, a
 };
 
 const updateAPIMetadata = async (req, res) => {
-    //TODO: Get orgId from the orgName
     const { orgId, apiId } = req.params;
     logger.info('Updating API metadata', {
         orgId,

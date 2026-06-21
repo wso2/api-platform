@@ -98,7 +98,14 @@ async function verifyBearerToken(token, req) {
  * ORGANIZATION_IDENTIFIER of the org identified by `pathOrgId`.
  * Returns an Error (with .status set) on failure, null on success.
  */
+const ORG_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 async function checkOrgIsolation(pathOrgId, orgClaim) {
+    if (!ORG_UUID_RE.test(pathOrgId)) {
+        const err = new Error('Invalid organization ID: must be a UUID');
+        err.status = 400;
+        return err;
+    }
     if (!orgClaim) {
         const err = new Error('Token org does not match requested organization');
         err.status = 403;

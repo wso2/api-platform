@@ -17,6 +17,7 @@
  */
 const apiFlowDao = require('../dao/apiFlowDao');
 const viewDao = require('../dao/viewDao');
+const orgDao = require('../dao/organizationDao');
 const sequelize = require('../db/sequelizeConfig');
 const { UniqueConstraintError } = require('sequelize');
 const logger = require('../config/logger');
@@ -182,12 +183,13 @@ const createAPIFlow = async (req, res) => {
     if (resolvedContentType !== 'MD' && resolvedContent === null) {
         return res.status(400).json({ message: 'Invalid API flow definition: content could not be parsed as valid JSON or YAML.' });
     }
+    const orgDetails = await orgDao.get(orgID);
     const t = await sequelize.transaction();
     try {
         const viewId = await resolveViewId(orgID, viewName);
         const resolvedPrompt = agentPrompt && agentPrompt.trim()
             ? agentPrompt.trim()
-            : generateAgentPrompt(name, description, [], req.params.orgName, viewName, '', resolvedHandle);
+            : generateAgentPrompt(name, description, [], orgDetails.ORGANIZATION_IDENTIFIER || '', viewName, '', resolvedHandle);
 
         const apiFlow = await apiFlowDao.create(orgID, viewId, {
             name,

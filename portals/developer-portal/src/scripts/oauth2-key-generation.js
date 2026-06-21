@@ -85,7 +85,7 @@ async function generateApplicationKey(formId, appId, keyType, keyManager, client
         "additionalProperties": jsonObject.additionalProperties,
     })
     try {
-        const response = await fetch(`/devportal/applications/${appId}/generate-keys`, {
+        const response = await fetch(devportalApi.org(orgID, `/applications/${appId}/generate-keys`), {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -416,7 +416,7 @@ async function selectKmAndGenerate(keyType, appId, appName, orgID, itemEl) {
     });
 
     try {
-        const response = await fetch(`/devportal/applications/${appId}/generate-keys`, {
+        const response = await fetch(devportalApi.org(orgID, `/applications/${appId}/generate-keys`), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: payload,
@@ -519,7 +519,7 @@ async function saveInlineKeyConfig(kmId, keyType, appId, keyManager, keyMappingI
     };
 
     try {
-        const response = await fetch(`/devportal/applications/${appId}/oauth-keys/${keyMappingId}`, {
+        const response = await fetch(devportalApi.org(devportalApi.orgId, `/applications/${appId}/oauth-keys/${keyMappingId}`), {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: payload,
