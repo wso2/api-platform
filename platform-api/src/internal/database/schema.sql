@@ -303,10 +303,13 @@ CREATE TABLE IF NOT EXISTS llm_provider_templates (
     description VARCHAR(1023),
     created_by VARCHAR(255),
     configuration TEXT NOT NULL,
+    openapi_spec TEXT,
+    version VARCHAR(40) NOT NULL DEFAULT 'v1.0',
+    is_latest BOOLEAN NOT NULL DEFAULT TRUE,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
-    UNIQUE(organization_uuid, handle)
+    UNIQUE(organization_uuid, handle, version)
 );
 
 -- LLM Providers table

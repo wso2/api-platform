@@ -1762,11 +1762,17 @@ type LLMProviderTemplate struct {
 	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
 
 	// Id Unique handle for the template
-	Id       string                       `binding:"required" json:"id" yaml:"id"`
+	Id string `binding:"required" json:"id" yaml:"id"`
+
+	// IsLatest Whether this is the latest version of the template.
+	IsLatest *bool                        `json:"isLatest,omitempty" yaml:"isLatest,omitempty"`
 	Metadata *LLMProviderTemplateMetadata `json:"metadata,omitempty" yaml:"metadata,omitempty"`
 
 	// Name Human-readable LLM Template name
-	Name             string                               `binding:"required" json:"name" yaml:"name"`
+	Name string `binding:"required" json:"name" yaml:"name"`
+
+	// Openapi OpenAPI specification (JSON or YAML) content stored on the template
+	Openapi          *string                              `json:"openapi,omitempty" yaml:"openapi,omitempty"`
 	PromptTokens     *ExtractionIdentifier                `json:"promptTokens,omitempty" yaml:"promptTokens,omitempty"`
 	RemainingTokens  *ExtractionIdentifier                `json:"remainingTokens,omitempty" yaml:"remainingTokens,omitempty"`
 	RequestModel     *ExtractionIdentifier                `json:"requestModel,omitempty" yaml:"requestModel,omitempty"`
@@ -1776,6 +1782,9 @@ type LLMProviderTemplate struct {
 
 	// UpdatedAt Timestamp when the resource was last updated
 	UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+
+	// Version Content version, e.g. v1.0. Defaults to v1.0 on create. Editing a template updates it in place; supply a new unique version only when creating a new version via POST /llm-provider-templates/{id}/versions.
+	Version *string `json:"version,omitempty" yaml:"version,omitempty"`
 }
 
 // LLMProviderTemplateAuth defines model for LLMProviderTemplateAuth.
@@ -1796,8 +1805,14 @@ type LLMProviderTemplateListItem struct {
 	CreatedBy   *string    `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
 	Description *string    `json:"description,omitempty" yaml:"description,omitempty"`
 	Id          *string    `json:"id,omitempty" yaml:"id,omitempty"`
-	Name        *string    `json:"name,omitempty" yaml:"name,omitempty"`
-	UpdatedAt   *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+
+	// IsLatest Whether this is the latest version of the template.
+	IsLatest *bool   `json:"isLatest,omitempty" yaml:"isLatest,omitempty"`
+	Name     *string `json:"name,omitempty" yaml:"name,omitempty"`
+
+	// Version Content version, matching the v<major>.<minor> pattern (e.g. v1.0, v2.0).
+	Version   *string    `json:"version,omitempty" yaml:"version,omitempty"`
+	UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
 }
 
 // LLMProviderTemplateListResponse defines model for LLMProviderTemplateListResponse.

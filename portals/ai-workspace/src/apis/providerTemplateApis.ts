@@ -126,8 +126,93 @@ export async function getProviderTemplate(
 }
 
 /**
+ * List all versions of a Provider Template (newest first).
+ *
+ * Templates are immutable per version — each edit creates a new version. This
+ * powers the version switcher on the overview page.
+ *
+ * @param templateId - The provider template ID (handle)
+ * @param organizationId - The organization ID
+ * @returns Promise with the list of versions (most recent first)
+ */
+export async function getProviderTemplateVersions(
+  templateId: string,
+  organizationId: string,
+  baseUrl: string
+): Promise<ProviderTemplate[]> {
+  try {
+    const response = await get<ProviderTemplate[] | ProviderTemplatesResponse>(
+      `/llm-provider-templates/${encodeURIComponent(templateId)}/versions?organizationId=${encodeURIComponent(organizationId)}`,
+      undefined,
+      baseUrl
+    );
+    return Array.isArray(response) ? response : response.list ?? [];
+  } catch (error) {
+    logger.error(`Failed to fetch versions for provider template ${templateId}:`, error);
+    throw error;
+  }
+}
+
+/**
+ * Fetch a specific immutable version of a Provider Template.
+ *
+ * @param templateId - The provider template ID (handle)
+ * @param version - The version to fetch (e.g. "v2")
+ * @param organizationId - The organization ID
+ * @returns Promise with that version's full template
+ */
+export async function getProviderTemplateVersion(
+  templateId: string,
+  version: string,
+  organizationId: string,
+  baseUrl: string
+): Promise<ProviderTemplate> {
+  try {
+    const response = await get<ProviderTemplate>(
+      `/llm-provider-templates/${encodeURIComponent(templateId)}/versions/${encodeURIComponent(version)}?organizationId=${encodeURIComponent(organizationId)}`,
+      undefined,
+      baseUrl
+    );
+    return response;
+  } catch (error) {
+    logger.error(`Failed to fetch version ${version} of provider template ${templateId}:`, error);
+    throw error;
+  }
+}
+
+/**
+ * Create a new version of an existing Provider Template.
+ *
+ * The supplied template must include a `version` (e.g. "v2.0") that is unique
+ * for the template; the new version becomes the latest.
+ *
+ * @param templateId - The provider template ID (handle)
+ * @param template - The new version's configuration (must include `version`)
+ * @param organizationId - The organization ID
+ * @returns Promise with the newly created version
+ */
+export async function createProviderTemplateVersion(
+  templateId: string,
+  template: ProviderTemplate,
+  organizationId: string,
+  baseUrl: string
+): Promise<ProviderTemplate> {
+  try {
+    const response = await post<ProviderTemplate>(
+      `/llm-provider-templates/${encodeURIComponent(templateId)}/versions?organizationId=${encodeURIComponent(organizationId)}`,
+      template,
+      baseUrl
+    );
+    return response;
+  } catch (error) {
+    logger.error(`Failed to create new version for provider template ${templateId}:`, error);
+    throw error;
+  }
+}
+
+/**
  * Update an existing Provider Template
- * 
+ *
  * @param templateId - The provider template ID
  * @param updates - The fields to update
  * @param organizationId - The organization ID

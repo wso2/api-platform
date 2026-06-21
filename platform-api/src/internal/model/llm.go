@@ -165,6 +165,8 @@ type LLMProviderTemplate struct {
 	Name             string                               `json:"name" db:"name"`
 	Description      string                               `json:"description,omitempty" db:"description"`
 	CreatedBy        string                               `json:"createdBy,omitempty" db:"created_by"`
+	Version  		 string 							  `json:"version" db:"version"`
+	IsLatest 		 bool    							  `json:"isLatest" db:"is_latest"`
 	Metadata         *LLMProviderTemplateMetadata         `json:"metadata,omitempty" db:"-"`
 	PromptTokens     *ExtractionIdentifier                `json:"promptTokens,omitempty" db:"-"`
 	CompletionTokens *ExtractionIdentifier                `json:"completionTokens,omitempty" db:"-"`
@@ -173,6 +175,7 @@ type LLMProviderTemplate struct {
 	RequestModel     *ExtractionIdentifier                `json:"requestModel,omitempty" db:"-"`
 	ResponseModel    *ExtractionIdentifier                `json:"responseModel,omitempty" db:"-"`
 	ResourceMappings *LLMProviderTemplateResourceMappings `json:"resourceMappings,omitempty" db:"-"`
+	OpenAPISpec      string                               `json:"openapi,omitempty" db:"openapi_spec"`
 	CreatedAt        time.Time                            `json:"createdAt" db:"created_at"`
 	UpdatedAt        time.Time                            `json:"updatedAt" db:"updated_at"`
 }

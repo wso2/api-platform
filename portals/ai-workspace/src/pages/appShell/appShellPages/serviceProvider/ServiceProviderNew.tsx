@@ -51,6 +51,8 @@ import type {
   FormState,
   GuardrailSelection,
 } from './AddNewProvider/serviceProviderTypes';
+import type { ProviderTemplate } from '../../../../utils/types';
+import TemplateVersionDialog from './AddNewProvider/TemplateVersionDialog';
 import { FormattedMessage } from 'react-intl';
 
 const VERSION_PATTERN = /^v\d+\.\d+$/;
@@ -147,6 +149,16 @@ export default function ServiceProviderNew() {
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(
     null
   );
+  // The specific template version the provider is based on (chosen in the
+  // version dialog after picking a template).
+  const [selectedTemplateVersion, setSelectedTemplateVersion] = useState<
+    string | null
+  >(null);
+  // Template just clicked, pending version selection in the dialog.
+  const [pendingTemplate, setPendingTemplate] = useState<ProviderTemplate | null>(
+    null
+  );
+  const [versionDialogOpen, setVersionDialogOpen] = useState(false);
   const [openapiSpec, setOpenapiSpec] = useState<string>('');
 
   const [formState, setFormState] = useState<FormState>({
@@ -329,6 +341,9 @@ export default function ServiceProviderNew() {
         version: formState.version.trim(),
         context: formState.context.trim() || '/',
         template: selectedTemplateId,
+        ...(selectedTemplateVersion
+          ? { templateVersion: selectedTemplateVersion }
+          : {}),
         openapi: openapiSpec,
         upstream,
         globalPolicies: [
@@ -396,7 +411,7 @@ export default function ServiceProviderNew() {
           <PageTitle.Header>
             <FormattedMessage
               id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ServiceProviderNew.add.llm.service.provider"
-              defaultMessage={'Add LLM Service Provider'}
+              defaultMessage={'Add LLM Provider'}
             />
           </PageTitle.Header>
         </PageTitle>
@@ -412,17 +427,39 @@ export default function ServiceProviderNew() {
             selectedTemplateId={selectedTemplateId}
             onRetryTemplates={refreshTemplates}
             onSelectTemplate={(template) => {
-              setSelectedTemplateId(template.id ?? null);
-              setFormState((prev) => ({
-                ...prev,
-                providerType: template.name,
-              }));
-              setOpenapiSpec('');
+              setPendingTemplate(template);
+              setVersionDialogOpen(true);
             }}
           />
 
+          {pendingTemplate && (
+            <TemplateVersionDialog
+              open={versionDialogOpen}
+              templateId={pendingTemplate.id ?? ''}
+              templateName={pendingTemplate.name}
+              onClose={() => {
+                setVersionDialogOpen(false);
+                setPendingTemplate(null);
+              }}
+              onConfirm={(version) => {
+                setSelectedTemplateId(pendingTemplate.id ?? null);
+                setSelectedTemplateVersion(version);
+                setFormState((prev) => ({
+                  ...prev,
+                  providerType: pendingTemplate.name,
+                }));
+                setOpenapiSpec('');
+                setVersionDialogOpen(false);
+                setPendingTemplate(null);
+              }}
+            />
+          )}
+
           {selectedTemplateId && (
-            <ProviderTemplateProvider templateId={selectedTemplateId}>
+            <ProviderTemplateProvider
+              templateId={selectedTemplateId}
+              version={selectedTemplateVersion ?? undefined}
+            >
               <TemplateBasedFormFieldsContainer
                 formState={formState}
                 setFormState={setFormState}

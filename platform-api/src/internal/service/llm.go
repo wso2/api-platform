@@ -22,6 +22,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"regexp"
 	"strings"
 
 	"platform-api/src/api"
@@ -130,6 +131,7 @@ func (s *LLMProviderTemplateService) Create(orgUUID, createdBy string, req *api.
 		Name:             req.Name,
 		Description:      utils.ValueOrEmpty(req.Description),
 		CreatedBy:        createdBy,
+		OpenAPISpec:      utils.ValueOrEmpty(req.Openapi),
 		Metadata:         mapTemplateMetadataAPI(req.Metadata),
 		PromptTokens:     mapExtractionIdentifierAPI(req.PromptTokens),
 		CompletionTokens: mapExtractionIdentifierAPI(req.CompletionTokens),
@@ -154,12 +156,18 @@ func (s *LLMProviderTemplateService) Create(orgUUID, createdBy string, req *api.
 	return mapTemplateModelToAPI(m), nil
 }
 
-func (s *LLMProviderTemplateService) List(orgUUID string, limit, offset int) (*api.LLMProviderTemplateListResponse, error) {
-	items, err := s.repo.List(orgUUID, limit, offset)
+func (s *LLMProviderTemplateService) List(orgUUID string, limit, offset int, allVersions bool) (*api.LLMProviderTemplateListResponse, error) {
+	listFn := s.repo.List
+	countFn := s.repo.Count
+	if allVersions {
+		listFn = s.repo.ListAllVersions
+		countFn = s.repo.CountAllVersions
+	}
+	items, err := listFn(orgUUID, limit, offset)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list templates: %w", err)
 	}
-	totalCount, err := s.repo.Count(orgUUID)
+	totalCount, err := countFn(orgUUID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to count templates: %w", err)
 	}
@@ -173,18 +181,7 @@ func (s *LLMProviderTemplateService) List(orgUUID string, limit, offset int) (*a
 	}
 	resp.List = make([]api.LLMProviderTemplateListItem, 0, len(items))
 	for _, t := range items {
-		id := t.ID
-		name := t.Name
-		desc := utils.StringPtrIfNotEmpty(t.Description)
-		createdBy := utils.StringPtrIfNotEmpty(t.CreatedBy)
-		resp.List = append(resp.List, api.LLMProviderTemplateListItem{
-			Id:          &id,
-			Name:        &name,
-			Description: desc,
-			CreatedBy:   createdBy,
-			CreatedAt:   utils.TimePtr(t.CreatedAt),
-			UpdatedAt:   utils.TimePtr(t.UpdatedAt),
-		})
+		resp.List = append(resp.List, templateListItem(t))
 	}
 	return resp, nil
 }
@@ -219,6 +216,7 @@ func (s *LLMProviderTemplateService) Update(orgUUID, handle string, req *api.LLM
 		ID:               handle,
 		Name:             req.Name,
 		Description:      utils.ValueOrEmpty(req.Description),
+		OpenAPISpec:      utils.ValueOrEmpty(req.Openapi),
 		Metadata:         mapTemplateMetadataAPI(req.Metadata),
 		PromptTokens:     mapExtractionIdentifierAPI(req.PromptTokens),
 		CompletionTokens: mapExtractionIdentifierAPI(req.CompletionTokens),
@@ -233,6 +231,7 @@ func (s *LLMProviderTemplateService) Update(orgUUID, handle string, req *api.LLM
 	}
 	m.ResourceMappings = resourceMappings
 
+	// Editing a template updates the latest version in place (no new version).
 	if err := s.repo.Update(m); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, constants.ErrLLMProviderTemplateNotFound
@@ -248,6 +247,114 @@ func (s *LLMProviderTemplateService) Update(orgUUID, handle string, req *api.LLM
 		return nil, constants.ErrLLMProviderTemplateNotFound
 	}
 	return mapTemplateModelToAPI(updated), nil
+}
+
+var templateVersionPattern = regexp.MustCompile(`^[vV]\d+\.\d+$`)
+
+func normalizeTemplateVersion(v string) (string, bool) {
+	v = strings.TrimSpace(v)
+	if !templateVersionPattern.MatchString(v) {
+		return "", false
+	}
+	return "v" + strings.TrimPrefix(strings.TrimPrefix(v, "v"), "V"), true
+}
+
+func (s *LLMProviderTemplateService) CreateVersion(orgUUID, handle string, req *api.LLMProviderTemplate) (*api.LLMProviderTemplate, error) {
+	if handle == "" || req == nil {
+		return nil, constants.ErrInvalidInput
+	}
+	if req.Id != "" && req.Id != handle {
+		return nil, constants.ErrInvalidInput
+	}
+	if req.Name == "" {
+		return nil, constants.ErrInvalidInput
+	}
+	version, ok := normalizeTemplateVersion(utils.ValueOrEmpty(req.Version))
+	if !ok {
+		return nil, constants.ErrInvalidInput
+	}
+
+	m := &model.LLMProviderTemplate{
+		OrganizationUUID: orgUUID,
+		ID:               handle,
+		Name:             req.Name,
+		Description:      utils.ValueOrEmpty(req.Description),
+		Version:          version,
+		OpenAPISpec:      utils.ValueOrEmpty(req.Openapi),
+		Metadata:         mapTemplateMetadataAPI(req.Metadata),
+		PromptTokens:     mapExtractionIdentifierAPI(req.PromptTokens),
+		CompletionTokens: mapExtractionIdentifierAPI(req.CompletionTokens),
+		TotalTokens:      mapExtractionIdentifierAPI(req.TotalTokens),
+		RemainingTokens:  mapExtractionIdentifierAPI(req.RemainingTokens),
+		RequestModel:     mapExtractionIdentifierAPI(req.RequestModel),
+		ResponseModel:    mapExtractionIdentifierAPI(req.ResponseModel),
+	}
+	resourceMappings, err := mapTemplateResourceMappingsAPI(req.ResourceMappings)
+	if err != nil {
+		return nil, err
+	}
+	m.ResourceMappings = resourceMappings
+
+	if err := s.repo.CreateNewVersion(m); err != nil {
+		switch {
+		case errors.Is(err, sql.ErrNoRows):
+			return nil, constants.ErrLLMProviderTemplateNotFound
+		case errors.Is(err, constants.ErrLLMProviderTemplateVersionExists):
+			return nil, constants.ErrLLMProviderTemplateVersionExists
+		default:
+			return nil, fmt.Errorf("failed to create new template version: %w", err)
+		}
+	}
+
+	return mapTemplateModelToAPI(m), nil
+}
+
+func (s *LLMProviderTemplateService) ListVersions(orgUUID, handle string, limit, offset int) (*api.LLMProviderTemplateListResponse, error) {
+	if handle == "" {
+		return nil, constants.ErrInvalidInput
+	}
+	total, err := s.repo.CountVersions(handle, orgUUID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to count template versions: %w", err)
+	}
+	if total == 0 {
+		return nil, constants.ErrLLMProviderTemplateNotFound
+	}
+	items, err := s.repo.ListVersions(handle, orgUUID, limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list template versions: %w", err)
+	}
+	resp := &api.LLMProviderTemplateListResponse{
+		Count: len(items),
+		Pagination: api.Pagination{
+			Limit:  limit,
+			Offset: offset,
+			Total:  total,
+		},
+	}
+	resp.List = make([]api.LLMProviderTemplateListItem, 0, len(items))
+	for _, t := range items {
+		resp.List = append(resp.List, templateListItem(t))
+	}
+	return resp, nil
+}
+
+func (s *LLMProviderTemplateService) GetVersion(orgUUID, handle, version string) (*api.LLMProviderTemplate, error) {
+	v := strings.TrimSpace(version)
+	if handle == "" || v == "" {
+		return nil, constants.ErrInvalidInput
+	}
+	if normalized, ok := normalizeTemplateVersion(v); ok {
+		v = normalized
+	}
+	m, err := s.repo.GetByVersion(handle, orgUUID, v)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get template version: %w", err)
+	}
+	if m == nil {
+		return nil, constants.ErrLLMProviderTemplateNotFound
+	}
+	return mapTemplateModelToAPI(m), nil
 }
 
 func (s *LLMProviderTemplateService) Delete(orgUUID, handle string) error {
@@ -1508,15 +1615,37 @@ func mapResourceWiseRateLimitingAPIToModel(in *api.ResourceWiseRateLimitingConfi
 	}
 }
 
+func templateListItem(t *model.LLMProviderTemplate) api.LLMProviderTemplateListItem {
+	id := t.ID
+	name := t.Name
+	version := t.Version
+	isLatest := t.IsLatest
+	return api.LLMProviderTemplateListItem{
+		Id:          &id,
+		Name:        &name,
+		Description: utils.StringPtrIfNotEmpty(t.Description),
+		CreatedBy:   utils.StringPtrIfNotEmpty(t.CreatedBy),
+		Version:     &version,
+		IsLatest:    &isLatest,
+		CreatedAt:   utils.TimePtr(t.CreatedAt),
+		UpdatedAt:   utils.TimePtr(t.UpdatedAt),
+	}
+}
+
 func mapTemplateModelToAPI(m *model.LLMProviderTemplate) *api.LLMProviderTemplate {
 	if m == nil {
 		return nil
 	}
+	version := m.Version
+	isLatest := m.IsLatest
 	return &api.LLMProviderTemplate{
 		Id:               m.ID,
 		Name:             m.Name,
 		Description:      utils.StringPtrIfNotEmpty(m.Description),
 		CreatedBy:        utils.StringPtrIfNotEmpty(m.CreatedBy),
+		Version:          &version,
+		IsLatest:         &isLatest,
+		Openapi:          utils.StringPtrIfNotEmpty(m.OpenAPISpec),
 		Metadata:         mapTemplateMetadataModelToAPI(m.Metadata),
 		PromptTokens:     mapExtractionIdentifierModelToAPI(m.PromptTokens),
 		CompletionTokens: mapExtractionIdentifierModelToAPI(m.CompletionTokens),

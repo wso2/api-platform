@@ -28,6 +28,24 @@ const PROVIDER_TEMPLATE_NAME_MAP: Record<string, string> = {
   'google-vertex': 'Google Vertex AI',
 };
 
+/**
+ * IDs of the built-in (predefined) provider templates that the backend seeds.
+ * These appear in the "Add Provider" catalog but are NOT user-created custom
+ * templates, so screens that manage custom templates should exclude them.
+ */
+const BUILTIN_PROVIDER_TEMPLATE_IDS = new Set(
+  Object.keys(PROVIDER_TEMPLATE_NAME_MAP)
+);
+
+/**
+ * Returns true if the given template id is one of the predefined built-ins.
+ */
+export function isBuiltInProviderTemplate(id?: string | null): boolean {
+  const normalized = id?.trim().toLowerCase();
+  if (!normalized) return false;
+  return BUILTIN_PROVIDER_TEMPLATE_IDS.has(normalized);
+}
+
 export function getProviderTemplateDisplayName(template?: string | null): string {
   const normalizedTemplate = template?.trim().toLowerCase();
   if (!normalizedTemplate) {

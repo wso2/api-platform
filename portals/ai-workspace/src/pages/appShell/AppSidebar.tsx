@@ -27,6 +27,7 @@ import {
   Layers,
   Network,
   Rocket,
+  Settings,
   Workflow,
 } from '@wso2/oxygen-ui-icons-react';
 import McpMenuIcon from '../../assets/icons/McpMenuIcon';
@@ -302,7 +303,7 @@ export default function AppSidebar({
         </Box>
       </Sidebar.Nav>
 
-      {/* <Sidebar.Footer>
+      <Sidebar.Footer>
         <Sidebar.Category>
           <NavLink to={settingsPath} style={navLinkStyle}>
             <Sidebar.Item id="settings">
@@ -313,14 +314,14 @@ export default function AppSidebar({
             </Sidebar.Item>
           </NavLink>
 
-          <Sidebar.Item id="help">
+          {/* <Sidebar.Item id="help">
             <Sidebar.ItemIcon>
               <HelpCircle size={20} />
             </Sidebar.ItemIcon>
             <Sidebar.ItemLabel>Help & Support</Sidebar.ItemLabel>
-          </Sidebar.Item>
+          </Sidebar.Item> */}
         </Sidebar.Category>
-      </Sidebar.Footer> */}
+      </Sidebar.Footer>
     </Sidebar>
   );
 }

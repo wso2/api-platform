@@ -448,7 +448,7 @@ export type UpdateLLMProviderRequest = Partial<
  * Token location configuration
  */
 export interface TokenLocation {
-  location: 'payload' | 'header' | 'query' | string;
+  location: 'payload' | 'header' | 'queryParam' | 'pathParam' | string;
   identifier: string;
 }
 
@@ -480,6 +480,8 @@ export interface ProviderTemplate {
   id?: string;
   name: string;
   description?: string;
+  version?: string;
+  isLatest?: boolean;
   promptTokens?: TokenLocation;
   completionTokens?: TokenLocation;
   totalTokens?: TokenLocation;
@@ -487,12 +489,40 @@ export interface ProviderTemplate {
   requestModel?: TokenLocation;
   responseModel?: TokenLocation;
   metadata?: TemplateMetadata;
+  resourceMappings?: ResourceMappings;
+  openapi?: string;
+  createdBy?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 /**
- * Create Provider Template request - only required fields
+ * Per-resource token & model extraction overrides. Each mapping targets a
+ * resource path pattern (e.g. "/responses" or "/chat/*") and may override any
+ * of the six extraction identifiers for requests matching that path.
  */
-export type CreateProviderTemplateRequest = Omit<ProviderTemplate, 'id'>;
+export interface ResourceMapping {
+  resource: string;
+  promptTokens?: TokenLocation;
+  completionTokens?: TokenLocation;
+  totalTokens?: TokenLocation;
+  remainingTokens?: TokenLocation;
+  requestModel?: TokenLocation;
+  responseModel?: TokenLocation;
+}
+
+export interface ResourceMappings {
+  resources?: ResourceMapping[];
+}
+
+/**
+ * Create Provider Template request.
+ * The backend expects an explicit `id` for the template (e.g. "kimi-full"),
+ * so it is required here (unlike the read model where it is optional).
+ */
+export type CreateProviderTemplateRequest = Omit<ProviderTemplate, 'id'> & {
+  id: string;
+};
 
 /**
  * Update Provider Template request - all fields optional

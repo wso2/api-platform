@@ -118,7 +118,7 @@ export function ProviderTemplatesProvider({ children }: ProviderTemplatesProvide
       setTemplatesResponse((prev) => ({
         ...prev,
         count: prev.count + 1,
-        list: [newTemplate, ...prev.list],
+        list: [newTemplate, ...prev.list], //appear last created as first one
         pagination: { ...prev.pagination, total: prev.pagination.total + 1 },
       }));
       return newTemplate;

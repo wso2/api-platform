@@ -150,6 +150,7 @@ var (
 var (
 	ErrLLMProviderTemplateExists   = errors.New("llm provider template already exists")
 	ErrLLMProviderTemplateNotFound = errors.New("llm provider template not found")
+	ErrLLMProviderTemplateVersionExists = errors.New("llm provider template version already exists")
 	ErrLLMProviderExists           = errors.New("llm provider already exists")
 	ErrLLMProviderNotFound         = errors.New("llm provider not found")
 	ErrLLMProviderLimitReached     = errors.New("llm provider limit reached for organization")

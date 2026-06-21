@@ -18,6 +18,7 @@
 package handler
 
 import (
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -56,6 +57,9 @@ func (h *LLMHandler) RegisterRoutes(r *gin.Engine) {
 		v1.POST("/llm-provider-templates", h.CreateLLMProviderTemplate)
 		v1.GET("/llm-provider-templates", h.ListLLMProviderTemplates)
 		v1.GET("/llm-provider-templates/:id", h.GetLLMProviderTemplate)
+		v1.GET("/llm-provider-templates/:id/versions", h.ListLLMProviderTemplateVersions)
+		v1.GET("/llm-provider-templates/:id/versions/:version", h.GetLLMProviderTemplateVersion)
+		v1.POST("/llm-provider-templates/:id/versions", h.CreateLLMProviderTemplateVersion)
 		v1.PUT("/llm-provider-templates/:id", h.UpdateLLMProviderTemplate)
 		v1.DELETE("/llm-provider-templates/:id", h.DeleteLLMProviderTemplate)
 
@@ -134,7 +138,9 @@ func (h *LLMHandler) ListLLMProviderTemplates(c *gin.Context) {
 		offset = 0
 	}
 
-	resp, err := h.templateService.List(orgID, limit, offset)
+	allVersions := strings.EqualFold(c.Query("versions"), "all")
+
+	resp, err := h.templateService.List(orgID, limit, offset, allVersions)
 	if err != nil {
 		h.slogger.Error("Failed to list LLM provider templates", "organizationId", orgID, "error", err)
 		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to list LLM provider templates"))
@@ -163,6 +169,109 @@ func (h *LLMHandler) GetLLMProviderTemplate(c *gin.Context) {
 		default:
 			h.slogger.Error("Failed to get LLM provider template", "organizationId", orgID, "templateId", id, "error", err)
 			c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to get LLM provider template"))
+			return
+		}
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
+func (h *LLMHandler) ListLLMProviderTemplateVersions(c *gin.Context) {
+	orgID, ok := middleware.GetOrganizationFromContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
+		return
+	}
+	id := c.Param("id")
+
+	limit, err := strconv.Atoi(c.DefaultQuery("limit", "20"))
+	if err != nil || limit <= 0 {
+		limit = 20
+	}
+	if limit > 100 {
+		limit = 100
+	}
+	offset, err := strconv.Atoi(c.DefaultQuery("offset", "0"))
+	if err != nil || offset < 0 {
+		offset = 0
+	}
+
+	resp, err := h.templateService.ListVersions(orgID, id, limit, offset)
+	if err != nil {
+		switch {
+		case errors.Is(err, constants.ErrLLMProviderTemplateNotFound):
+			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "LLM provider template not found"))
+			return
+		case errors.Is(err, constants.ErrInvalidInput):
+			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid template id"))
+			return
+		default:
+			h.slogger.Error("Failed to list LLM provider template versions", "organizationId", orgID, "templateId", id, "error", err)
+			c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to list LLM provider template versions"))
+			return
+		}
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
+func (h *LLMHandler) CreateLLMProviderTemplateVersion(c *gin.Context) {
+	orgID, ok := middleware.GetOrganizationFromContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
+		return
+	}
+	id := c.Param("id")
+
+	var req api.LLMProviderTemplate
+	if err := json.NewDecoder(c.Request.Body).Decode(&req); err != nil {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid request body"))
+		return
+	}
+	if req.Id == "" {
+		req.Id = id
+	}
+
+	created, err := h.templateService.CreateVersion(orgID, id, &req)
+	if err != nil {
+		switch {
+		case errors.Is(err, constants.ErrLLMProviderTemplateNotFound):
+			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "LLM provider template not found"))
+			return
+		case errors.Is(err, constants.ErrLLMProviderTemplateVersionExists):
+			c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict", "A version with this number already exists"))
+			return
+		case errors.Is(err, constants.ErrInvalidInput):
+			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid input. Version must match the v<major>.<minor> pattern (e.g. v1.0)"))
+			return
+		default:
+			h.slogger.Error("Failed to create LLM provider template version", "organizationId", orgID, "templateId", id, "error", err)
+			c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to create LLM provider template version"))
+			return
+		}
+	}
+	c.JSON(http.StatusCreated, created)
+}
+
+func (h *LLMHandler) GetLLMProviderTemplateVersion(c *gin.Context) {
+	orgID, ok := middleware.GetOrganizationFromContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
+		return
+	}
+	id := c.Param("id")
+	version := c.Param("version")
+
+	resp, err := h.templateService.GetVersion(orgID, id, version)
+	if err != nil {
+		switch {
+		case errors.Is(err, constants.ErrLLMProviderTemplateNotFound):
+			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "LLM provider template version not found"))
+			return
+		case errors.Is(err, constants.ErrInvalidInput):
+			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid template id or version"))
+			return
+		default:
+			h.slogger.Error("Failed to get LLM provider template version", "organizationId", orgID, "templateId", id, "version", version, "error", err)
+			c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to get LLM provider template version"))
 			return
 		}
 	}
