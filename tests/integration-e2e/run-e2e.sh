@@ -11,7 +11,7 @@
 # Usage: ./run-e2e.sh [up|down]   (default: full run + teardown)
 set -uo pipefail
 
-cd "$(dirname "$0")"
+cd "$(dirname "$0")" || { echo "failed to cd to script directory"; exit 1; }
 # DB selection: E2E_DB = postgres (default) | sqlite | sqlserver
 DB="${E2E_DB:-postgres}"
 case "$DB" in

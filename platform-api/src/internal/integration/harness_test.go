@@ -34,6 +34,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"regexp"
 	"strconv"
 	"testing"
 	"time"
@@ -115,9 +116,17 @@ func connectITDB(t *testing.T, cfg *config.Database, logger *slog.Logger) *datab
 	return nil
 }
 
+// validDBName guards the database name that is interpolated into the
+// CREATE DATABASE statement below (identifiers cannot be bound as parameters).
+// The name comes from IT_DB_NAME; restrict it to a safe identifier charset.
+var validDBName = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_]{0,62}$`)
+
 // ensureSQLServerDB creates the SQL Server test database (via master) if absent.
 func ensureSQLServerDB(t *testing.T, logger *slog.Logger, name string) {
 	t.Helper()
+	if !validDBName.MatchString(name) {
+		t.Fatalf("invalid IT_DB_NAME %q: must match %s", name, validDBName.String())
+	}
 	master := connectITDB(t, &config.Database{
 		Driver: "sqlserver", Host: envOr("IT_DB_HOST", "localhost"), Port: atoiOr("IT_DB_PORT", 1433),
 		Name: "master", User: envOr("IT_DB_USER", "sa"), Password: os.Getenv("IT_DB_PASSWORD"),

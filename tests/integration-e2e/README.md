@@ -37,20 +37,19 @@ variant uses one server with two databases (`init-db.sql`).
 ## Bootstrap (solves the token chicken-and-egg)
 
 The gateway-controller needs a valid registration token at start-up, but the
-token is minted by platform-api at run time. The scenario therefore runs in two
+token is minted by platform-api at run time. `run-e2e.sh` therefore runs in two
 phases:
 
-1. **Phase 1** – start `postgres` + `platform-api`. Authenticate, then via the
-   platform-api REST API: `POST /organizations` → `POST /projects` →
-   create the REST API → `POST /gateways` (CreateGateway) →
-   `POST /gateways/{id}/tokens` (RotateToken) to mint the registration token.
+1. **Phase 1** – start the database + `platform-api` + `sample-backend`,
+   authenticate (`admin`/`admin`), then via the platform-api REST API create a
+   project, the REST API, a gateway and a registration token, attach the gateway
+   and deploy the API.
 2. **Phase 2** – start `gateway-controller` (with
-   `GATEWAY_REGISTRATION_TOKEN=<minted token>`) + `gateway-runtime` +
-   `sample-backend`. The controller connects to platform-api and receives
-   pushed deployments.
-3. **Assert** – `POST /apis/{id}/gateways` + `POST /apis/deployments` in
-   platform-api, then send a request to the gateway-runtime ingress
-   (`http://localhost:8080/...`) and assert the sample-backend response.
+   `GATEWAY_REGISTRATION_TOKEN=<minted token>`) + `gateway-runtime`. The
+   controller connects to platform-api and syncs the deployment.
+
+See "What the scenario does" below for the exact endpoints and assertions used
+by the script.
 
 ## Running
 

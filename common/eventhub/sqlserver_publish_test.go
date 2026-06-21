@@ -86,27 +86,29 @@ func setupSQLServerHub(t *testing.T) (*sql.DB, EventHub) {
 	return db, hub
 }
 
-// TestSQLServerPublish_DuplicateCheckIsGatewayScoped verifies the fix: an
-// INSERT failure for one gateway must not be masked as a "duplicate" just
-// because a DIFFERENT gateway already used the same event_id.
+// TestSQLServerPublish_DuplicateCheckIsGatewayScoped verifies the duplicate
+// check is gateway-scoped: the SAME event_id published to two DIFFERENT gateways
+// must be stored independently for each, never suppressed as a cross-gateway
+// "duplicate".
 //
-// Repro of the original bug:
-//  1. Register gateway A, publish event "shared-id" to A — succeeds.
-//  2. Do NOT register gateway B.
-//  3. Publish event "shared-id" to B — the INSERT fails the gateway_states FK.
-//     The post-failure existence check then runs. With a non-gateway-scoped
-//     check it finds A's row and returns nil (silent suppression). With the
-//     gateway-scoped check it finds no B row and surfaces the real error.
+// PublishEvent ensures the gateway_states row exists before the FK-constrained
+// event insert, so publishing to a not-yet-connected gateway succeeds (it is
+// auto-registered) rather than failing. The composite (gateway_id, event_id) key
+// then lets the same event_id coexist for both gateways. A non-gateway-scoped
+// duplicate check would have wrongly seen A's row and skipped B's insert.
 func TestSQLServerPublish_DuplicateCheckIsGatewayScoped(t *testing.T) {
 	db, hub := setupSQLServerHub(t)
 
 	suffix := fmt.Sprintf("%d", time.Now().UnixNano())
 	gwA := "gw-a-" + suffix
-	gwB := "gw-b-" + suffix // intentionally never registered
+	gwB := "gw-b-" + suffix // not explicitly registered; auto-created on publish
 	sharedEventID := "shared-evt-" + suffix
 
 	require.NoError(t, hub.RegisterGateway(gwA))
-	t.Cleanup(func() { _, _ = db.Exec("DELETE FROM gateway_states WHERE gateway_id = @p1", gwA) })
+	t.Cleanup(func() {
+		_, _ = db.Exec("DELETE FROM gateway_states WHERE gateway_id = @p1", gwA)
+		_, _ = db.Exec("DELETE FROM gateway_states WHERE gateway_id = @p1", gwB)
+	})
 
 	evt := Event{
 		EventType:           EventTypeAPI,
@@ -117,21 +119,21 @@ func TestSQLServerPublish_DuplicateCheckIsGatewayScoped(t *testing.T) {
 		EventData:           EmptyEventData,
 	}
 
-	// (1) Publish to the registered gateway A — must succeed.
+	// Publish to the registered gateway A — must succeed.
 	require.NoError(t, hub.PublishEvent(gwA, evt))
 
-	// (3) Publish the SAME event_id to the UNREGISTERED gateway B. The INSERT
-	// hits the FK violation; the fixed gateway-scoped existence check must NOT
-	// treat A's row as B's duplicate, so a real error is returned.
-	err := hub.PublishEvent(gwB, evt)
-	assert.Error(t, err, "publish to unregistered gateway B must surface an error, not be silently suppressed as a duplicate")
+	// Publish the SAME event_id to gateway B. B is auto-registered, and because
+	// the duplicate check is gateway-scoped it must NOT treat A's row as B's
+	// duplicate — so this succeeds and stores a distinct row for B.
+	require.NoError(t, hub.PublishEvent(gwB, evt),
+		"publish of a shared event_id to a different gateway must succeed, not be suppressed as a duplicate")
 
-	// Sanity: A's row exists, B's does not.
+	// Both gateways must independently hold the event.
 	var countA, countB int
 	require.NoError(t, db.QueryRow("SELECT COUNT(*) FROM events WHERE gateway_id = @p1 AND event_id = @p2", gwA, sharedEventID).Scan(&countA))
 	require.NoError(t, db.QueryRow("SELECT COUNT(*) FROM events WHERE gateway_id = @p1 AND event_id = @p2", gwB, sharedEventID).Scan(&countB))
 	assert.Equal(t, 1, countA, "gateway A event should be persisted")
-	assert.Equal(t, 0, countB, "gateway B event must not exist")
+	assert.Equal(t, 1, countB, "gateway B event should be persisted independently of A")
 }
 
 // TestSQLServerPublish_TrueDuplicateStillSuppressed verifies the fix does not
