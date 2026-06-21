@@ -1,0 +1,56 @@
+name: Platform API + Gateway E2E
+
+# Combined live-traffic end-to-end test: the real platform-api control plane
+# deploys an API to the real gateway data plane, and a request through the
+# gateway ingress must reach the sample backend — exercised on every database.
+#
+# This builds the gateway (Envoy) images, so it is intentionally not on the
+# per-PR critical path: it runs on demand and when the e2e itself changes.
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'tests/integration-e2e/**'
+      - '.github/workflows/platform-api-gateway-e2e.yml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  e2e:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        db: [sqlite, postgres, sqlserver]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.2'
+          cache-dependency-path: '**/go.sum'
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build platform-api image
+        run: docker build -t platform-api:it-e2e --build-context common=../common .
+        working-directory: platform-api
+
+      - name: Build gateway images (controller + runtime)
+        run: make build VERSION=it-e2e
+        working-directory: gateway
+
+      - name: Build sample-service image
+        run: make build
+        working-directory: samples/sample-service
+
+      - name: Run combined e2e (${{ matrix.db }})
+        run: E2E_DB=${{ matrix.db }} ./run-e2e.sh
+        working-directory: tests/integration-e2e

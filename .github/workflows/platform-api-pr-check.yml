@@ -34,16 +34,31 @@ jobs:
         run: make test
         working-directory: platform-api
 
-  pr-check-sqlserver:
+      - name: Cross-database integration tests (SQLite)
+        run: IT_DB=sqlite go test -tags integration -count=1 ./internal/integration/...
+        working-directory: platform-api/src
+
+  pr-check-postgres:
     runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: platform_api_it
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d platform_api_it"
+          --health-interval 2s --health-timeout 3s --health-retries 30
     env:
-      DATABASE_DRIVER: sqlserver
-      DATABASE_HOST: 127.0.0.1
-      DATABASE_PORT: 1433
-      DATABASE_NAME: platform_api
-      DATABASE_USER: sa
-      DATABASE_SSL_MODE: disable
-      DB_SCHEMA_PATH: ./internal/database/schema.sql
+      IT_DB: postgres
+      IT_DB_HOST: localhost
+      IT_DB_PORT: 5432
+      IT_DB_USER: postgres
+      IT_DB_PASSWORD: postgres
+      IT_DB_NAME: platform_api_it
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -54,20 +69,39 @@ jobs:
           go-version: '1.26.2'
           cache-dependency-path: '**/go.sum'
 
-      - name: Start SQL Server and create database
+      - name: Cross-database integration tests (PostgreSQL)
+        run: go test -tags integration -count=1 -v ./internal/integration/...
+        working-directory: platform-api/src
+
+  pr-check-sqlserver:
+    runs-on: ubuntu-24.04
+    env:
+      IT_DB: sqlserver
+      IT_DB_HOST: 127.0.0.1
+      IT_DB_PORT: 1433
+      IT_DB_USER: sa
+      IT_DB_NAME: platform_api_it
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.2'
+          cache-dependency-path: '**/go.sum'
+
+      - name: Start SQL Server
         run: |
           set -euo pipefail
 
           # Generate the SA password at runtime instead of using a committed
           # literal or a stored secret. A runtime value avoids secret-scanner
-          # false positives and the secret-handling pitfalls (e.g. a stray
-          # trailing newline) that silently fail SQL Server's password policy at
-          # container init. The value satisfies SQL Server complexity
-          # (uppercase + lowercase + digits) and contains no shell-special
-          # characters, so it survives every quoting layer intact.
+          # false positives and secret-handling pitfalls (e.g. a stray trailing
+          # newline) that silently fail SQL Server's password policy at init.
           SA_PASSWORD="Aa1$(openssl rand -hex 16)"
           echo "::add-mask::$SA_PASSWORD"
-          echo "DATABASE_PASSWORD=$SA_PASSWORD" >> "$GITHUB_ENV"
+          echo "IT_DB_PASSWORD=$SA_PASSWORD" >> "$GITHUB_ENV"
 
           docker run -d --name sqlserver \
             -e ACCEPT_EULA=Y \
@@ -76,30 +110,13 @@ jobs:
             -p 1433:1433 \
             mcr.microsoft.com/mssql/server:2022-latest
 
-          curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | sudo apt-key add -
-          curl -fsSL https://packages.microsoft.com/config/ubuntu/24.04/prod.list | sudo tee /etc/apt/sources.list.d/mssql-release.list >/dev/null
-          sudo apt-get update
-          sudo ACCEPT_EULA=Y apt-get install -y --no-install-recommends mssql-tools18
-
-          for i in {1..60}; do
-            if /opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P "$SA_PASSWORD" -Q "SELECT 1" >/dev/null 2>&1; then
-              break
-            fi
-            if [ "$i" -eq 60 ]; then
-              echo "SQL Server did not become ready in time"
-              docker logs sqlserver || true
-              exit 1
-            fi
-            sleep 2
-          done
-
-          /opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P "$SA_PASSWORD" \
-            -Q "IF DB_ID('platform_api') IS NULL CREATE DATABASE [platform_api]"
-
       - name: Build with SQL Server configuration
         run: go build ./cmd/main.go
         working-directory: platform-api/src
 
-      - name: Run tests with SQL Server driver configuration
-        run: make test
-        working-directory: platform-api
+      # The harness waits for the server and creates the test database itself,
+      # then exercises the real schema, pagination and delete cascades against
+      # SQL Server (the previous `make test` step here only ran SQLite).
+      - name: Cross-database integration tests (SQL Server)
+        run: go test -tags integration -count=1 -v ./internal/integration/...
+        working-directory: platform-api/src
