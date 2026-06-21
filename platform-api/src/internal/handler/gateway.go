@@ -582,7 +582,7 @@ func (h *GatewayHandler) SyncCustomPolicy(c *gin.Context) {
 	c.JSON(http.StatusOK, policy)
 }
 
-// GetCustomPolicy handles GET /api/v1/gateway-custom-policies/:customPolicyUuid/version/:version
+// GetCustomPolicy handles GET /api/v1/gateway-custom-policies/:customPolicyUuid/versions/:version
 func (h *GatewayHandler) GetCustomPolicy(c *gin.Context) {
 	orgId, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {
@@ -618,7 +618,7 @@ func (h *GatewayHandler) GetCustomPolicy(c *gin.Context) {
 	c.JSON(http.StatusOK, policy)
 }
 
-// DeleteCustomPolicy handles DELETE /api/v1/gateway-custom-policies/:customPolicyUuid/version/:version
+// DeleteCustomPolicy handles DELETE /api/v1/gateway-custom-policies/:customPolicyUuid/versions/:version
 func (h *GatewayHandler) DeleteCustomPolicy(c *gin.Context) {
 	orgId, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {
@@ -702,9 +702,6 @@ func (h *GatewayHandler) RegisterRoutes(r *gin.Engine) {
 		customPoliciesGroup.POST("/sync", h.SyncCustomPolicy)
 		customPoliciesGroup.GET("/:customPolicyUuid/versions/:version", h.GetCustomPolicy)
 		customPoliciesGroup.DELETE("/:customPolicyUuid/versions/:version", h.DeleteCustomPolicy)
-		// Deprecated paths — kept for backward compatibility.
-		customPoliciesGroup.GET("/:customPolicyUuid/version/:version", h.GetCustomPolicy)
-		customPoliciesGroup.DELETE("/:customPolicyUuid/version/:version", h.DeleteCustomPolicy)
 	}
 
 }

@@ -61,11 +61,11 @@ export const OIDC_SCOPE = getEnvOrDefault(
   ' ap:project:read ap:project:create ap:project:update ap:project:delete ap:project:manage' +
   ' ap:application:read ap:application:create ap:application:update ap:application:delete ap:application:manage' +
   ' ap:application:api_key:read ap:application:api_key:create ap:application:api_key:delete ap:application:api_key:manage' +
-  ' ap:application:associations:read ap:application:associations:create ap:application:associations:delete ap:application:associations:manage ap:application:associations:api_key:read' +
+  ' ap:application:association:read ap:application:association:create ap:application:association:delete ap:application:association:manage ap:application:association:api_key:read' +
   ' ap:gateway:read ap:gateway:create ap:gateway:update ap:gateway:delete ap:gateway:manage' +
   ' ap:gateway:token:read ap:gateway:token:create ap:gateway:token:delete ap:gateway:token:manage' +
   ' ap:gateway_custom_policy:read ap:gateway_custom_policy:create ap:gateway_custom_policy:delete ap:gateway_custom_policy:manage' +
-  ' ap:gateway:artifacts:read ap:gateway:manifest:read' +
+  ' ap:gateway:artifact:read ap:gateway:manifest:read' +
   ' ap:rest_api:read ap:rest_api:create ap:rest_api:update ap:rest_api:delete ap:rest_api:manage ap:rest_api:import' +
   ' ap:rest_api:gateway:read ap:rest_api:gateway:create ap:rest_api:gateway:manage' +
   ' ap:rest_api:deployment:read ap:rest_api:deployment:create ap:rest_api:deployment:delete ap:rest_api:deployment:manage ap:rest_api:deployment:undeploy ap:rest_api:deployment:restore' +

@@ -55,9 +55,6 @@ func (h *WebBrokerAPIDeploymentHandler) RegisterRoutes(r *gin.Engine) {
 		g.POST("/deployments", h.DeployWebBrokerAPI)
 		g.POST("/deployments/:deploymentId/undeploy", h.UndeployDeployment)
 		g.POST("/deployments/:deploymentId/restore", h.RestoreDeployment)
-		// Deprecated paths — kept for backward compatibility.
-		g.POST("/deployments/undeploy", h.UndeployDeployment)
-		g.POST("/deployments/restore", h.RestoreDeployment)
 		g.GET("/deployments", h.GetDeployments)
 		g.GET("/deployments/:deploymentId", h.GetDeployment)
 		g.DELETE("/deployments/:deploymentId", h.DeleteDeployment)
@@ -116,9 +113,6 @@ func (h *WebBrokerAPIDeploymentHandler) UndeployDeployment(c *gin.Context) {
 
 	apiId := c.Param("apiId")
 	deploymentId := c.Param("deploymentId")
-	if deploymentId == "" {
-		deploymentId = c.Query("deploymentId")
-	}
 	gatewayId := c.Query("gatewayId")
 	if deploymentId == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "deploymentId is required"))
@@ -148,9 +142,6 @@ func (h *WebBrokerAPIDeploymentHandler) RestoreDeployment(c *gin.Context) {
 
 	apiId := c.Param("apiId")
 	deploymentId := c.Param("deploymentId")
-	if deploymentId == "" {
-		deploymentId = c.Query("deploymentId")
-	}
 	gatewayId := c.Query("gatewayId")
 	if deploymentId == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "deploymentId is required"))

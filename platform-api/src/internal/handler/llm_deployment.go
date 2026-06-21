@@ -149,9 +149,6 @@ func (h *LLMProviderDeploymentHandler) UndeployLLMProviderDeployment(c *gin.Cont
 
 	providerId := c.Param("id")
 	deploymentId := c.Param("deploymentId")
-	if deploymentId == "" {
-		deploymentId = c.Query("deploymentId")
-	}
 	gatewayId := c.Query("gatewayId")
 
 	if providerId == "" {
@@ -203,9 +200,6 @@ func (h *LLMProviderDeploymentHandler) RestoreLLMProviderDeployment(c *gin.Conte
 
 	providerId := c.Param("id")
 	deploymentId := c.Param("deploymentId")
-	if deploymentId == "" {
-		deploymentId = c.Query("deploymentId")
-	}
 	gatewayId := c.Query("gatewayId")
 
 	if providerId == "" {
@@ -400,9 +394,6 @@ func (h *LLMProviderDeploymentHandler) RegisterRoutes(r *gin.Engine) {
 		providerGroup.POST("/deployments", h.DeployLLMProvider)
 		providerGroup.POST("/deployments/:deploymentId/undeploy", h.UndeployLLMProviderDeployment)
 		providerGroup.POST("/deployments/:deploymentId/restore", h.RestoreLLMProviderDeployment)
-		// Deprecated paths — kept for backward compatibility.
-		providerGroup.POST("/deployments/undeploy", h.UndeployLLMProviderDeployment)
-		providerGroup.POST("/deployments/restore", h.RestoreLLMProviderDeployment)
 		providerGroup.GET("/deployments", h.GetLLMProviderDeployments)
 		providerGroup.GET("/deployments/:deploymentId", h.GetLLMProviderDeployment)
 		providerGroup.DELETE("/deployments/:deploymentId", h.DeleteLLMProviderDeployment)
@@ -500,9 +491,6 @@ func (h *LLMProxyDeploymentHandler) UndeployLLMProxyDeployment(c *gin.Context) {
 
 	proxyId := c.Param("id")
 	deploymentId := c.Param("deploymentId")
-	if deploymentId == "" {
-		deploymentId = c.Query("deploymentId")
-	}
 	gatewayId := c.Query("gatewayId")
 
 	if proxyId == "" {
@@ -554,9 +542,6 @@ func (h *LLMProxyDeploymentHandler) RestoreLLMProxyDeployment(c *gin.Context) {
 
 	proxyId := c.Param("id")
 	deploymentId := c.Param("deploymentId")
-	if deploymentId == "" {
-		deploymentId = c.Query("deploymentId")
-	}
 	gatewayId := c.Query("gatewayId")
 
 	if proxyId == "" {
@@ -751,9 +736,6 @@ func (h *LLMProxyDeploymentHandler) RegisterRoutes(r *gin.Engine) {
 		proxyGroup.POST("/deployments", h.DeployLLMProxy)
 		proxyGroup.POST("/deployments/:deploymentId/undeploy", h.UndeployLLMProxyDeployment)
 		proxyGroup.POST("/deployments/:deploymentId/restore", h.RestoreLLMProxyDeployment)
-		// Deprecated paths — kept for backward compatibility.
-		proxyGroup.POST("/deployments/undeploy", h.UndeployLLMProxyDeployment)
-		proxyGroup.POST("/deployments/restore", h.RestoreLLMProxyDeployment)
 		proxyGroup.GET("/deployments", h.GetLLMProxyDeployments)
 		proxyGroup.GET("/deployments/:deploymentId", h.GetLLMProxyDeployment)
 		proxyGroup.DELETE("/deployments/:deploymentId", h.DeleteLLMProxyDeployment)

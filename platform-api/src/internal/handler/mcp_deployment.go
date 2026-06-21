@@ -55,9 +55,6 @@ func (h *MCPProxyDeploymentHandler) RegisterRoutes(r *gin.Engine) {
 		proxyGroup.POST("/deployments", h.DeployMCPProxy)
 		proxyGroup.POST("/deployments/:deploymentId/undeploy", h.UndeployMCPProxyDeployment)
 		proxyGroup.POST("/deployments/:deploymentId/restore", h.RestoreMCPProxyDeployment)
-		// Deprecated paths — kept for backward compatibility.
-		proxyGroup.POST("/deployments/undeploy", h.UndeployMCPProxyDeployment)
-		proxyGroup.POST("/deployments/restore", h.RestoreMCPProxyDeployment)
 		proxyGroup.GET("/deployments", h.GetMCPProxyDeployments)
 		proxyGroup.GET("/deployments/:deploymentId", h.GetMCPProxyDeployment)
 		proxyGroup.DELETE("/deployments/:deploymentId", h.DeleteMCPProxyDeployment)
@@ -155,9 +152,6 @@ func (h *MCPProxyDeploymentHandler) UndeployMCPProxyDeployment(c *gin.Context) {
 
 	proxyId := c.Param("id")
 	deploymentId := c.Param("deploymentId")
-	if deploymentId == "" {
-		deploymentId = c.Query("deploymentId")
-	}
 	gatewayId := c.Query("gatewayId")
 	if deploymentId == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
@@ -220,9 +214,6 @@ func (h *MCPProxyDeploymentHandler) RestoreMCPProxyDeployment(c *gin.Context) {
 
 	proxyId := c.Param("id")
 	deploymentId := c.Param("deploymentId")
-	if deploymentId == "" {
-		deploymentId = c.Query("deploymentId")
-	}
 	gatewayId := c.Query("gatewayId")
 
 	if deploymentId == "" {

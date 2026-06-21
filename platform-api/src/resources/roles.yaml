@@ -54,8 +54,8 @@ roles:
       - ap:rest_api:publication:read
       - ap:application:read
       - ap:application:api_key:read
-      - ap:application:associations:read
-      - ap:application:associations:api_key:read
+      - ap:application:association:read
+      - ap:application:association:api_key:read
       - ap:subscription:read
       - ap:llm_provider:read
       - ap:llm_provider:deployment:read
@@ -80,7 +80,7 @@ roles:
       - ap:project:manage
       - ap:git:read
       - ap:gateway:read
-      - ap:gateway:artifacts:read
+      - ap:gateway:artifact:read
       - ap:gateway:manifest:read
       - ap:gateway_custom_policy:read
       - ap:devportal:read
@@ -102,7 +102,7 @@ roles:
       - ap:organization:subscription:read
       - ap:project:read
       - ap:gateway:read
-      - ap:gateway:artifacts:read
+      - ap:gateway:artifact:read
       - ap:gateway:manifest:read
       - ap:gateway_custom_policy:read
       - ap:devportal:read
@@ -111,8 +111,8 @@ roles:
       - ap:rest_api:publication:read
       - ap:application:read
       - ap:application:api_key:read
-      - ap:application:associations:read
-      - ap:application:associations:api_key:read
+      - ap:application:association:read
+      - ap:application:association:api_key:read
       - ap:subscription:read
       - ap:subscription_plan:read
       - ap:llm_template:read

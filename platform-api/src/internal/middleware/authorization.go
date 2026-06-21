@@ -82,7 +82,7 @@ func ScopeEnforcer(registry *ScopeRegistry, cfg ScopeEnforcerConfig) gin.Handler
 
 		for _, required := range requiredScopes {
 			for _, have := range effectiveScopes {
-				if have == required {
+				if scopeSatisfies(have, required) {
 					c.Next()
 					return
 				}
@@ -92,6 +92,55 @@ func ScopeEnforcer(registry *ScopeRegistry, cfg ScopeEnforcerConfig) gin.Handler
 		c.JSON(http.StatusForbidden, gin.H{"error": "insufficient permissions"})
 		c.Abort()
 	}
+}
+
+// scopeSatisfies reports whether a held scope grants a required scope.
+//
+// A required scope (sourced from the OpenAPI spec) is always concrete:
+// <prefix>:<resource>[:<sub-resource>...]:<action>. A held scope may be concrete
+// (exact match) or a wildcard ending in ":*".
+//
+// Wildcards are own-level only — they cover every action directly at their level
+// and never descend into sub-resources, never match a prefix, never transitively:
+//
+//	<prefix>:*                     covers <prefix>:<resource>:<action>
+//	                               (every action on root-level resources;
+//	                                NOT <prefix>:<resource>:<sub>:<action>)
+//	<prefix>:<resource>:*          covers <prefix>:<resource>:<action>
+//	                               (all actions directly on the resource;
+//	                                NOT its sub-resources)
+//	<prefix>:<resource>:<sub>:*    covers <prefix>:<resource>:<sub>:<action>
+//	                               (all actions directly on that sub-resource)
+//
+// The top-level wildcard (one segment before ":*", e.g. "ap:*") expands across
+// every root resource, so it covers a resource + action pair (two trailing
+// segments). Every deeper wildcard covers exactly one trailing segment — the
+// action — at its own level.
+func scopeSatisfies(have, required string) bool {
+	if have == required {
+		return true
+	}
+	if !strings.HasSuffix(have, ":*") {
+		return false
+	}
+	// base keeps the trailing colon, e.g. "ap:" or "ap:gateway:".
+	base := strings.TrimSuffix(have, "*")
+	if !strings.HasPrefix(required, base) {
+		return false
+	}
+	remainder := required[len(base):]
+	if remainder == "" {
+		return false
+	}
+	segments := strings.Count(remainder, ":") + 1
+	// A top-level namespace wildcard ("<prefix>:*") leaves only the prefix and its
+	// trailing colon in base (a single colon), so it covers a resource + action
+	// pair. Every deeper wildcard covers a single trailing action segment at its
+	// own level.
+	if strings.Count(base, ":") == 1 {
+		return segments == 2
+	}
+	return segments == 1
 }
 
 // resolveEffectiveScopes returns the effective scopes for the request.
