@@ -17,7 +17,7 @@
 
 -- Organizations table
 CREATE TABLE IF NOT EXISTS organizations (
-    uuid VARCHAR(40) PRIMARY KEY,
+    uuid UUID PRIMARY KEY,
     handle VARCHAR(255) UNIQUE NOT NULL,
     name VARCHAR(255) NOT NULL,
     region VARCHAR(63) NOT NULL,
@@ -28,9 +28,9 @@ CREATE TABLE IF NOT EXISTS organizations (
 
 -- Projects table
 CREATE TABLE IF NOT EXISTS projects (
-    uuid VARCHAR(40) PRIMARY KEY,
+    uuid UUID PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
-    organization_uuid VARCHAR(40) NOT NULL,
+    organization_uuid UUID NOT NULL,
     description VARCHAR(1023),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -40,10 +40,10 @@ CREATE TABLE IF NOT EXISTS projects (
 
 -- Applications table
 CREATE TABLE IF NOT EXISTS applications (
-    uuid VARCHAR(40) PRIMARY KEY,
+    uuid UUID PRIMARY KEY,
     handle VARCHAR(255) NOT NULL,
-    project_uuid VARCHAR(40) NOT NULL,
-    organization_uuid VARCHAR(40) NOT NULL,
+    project_uuid UUID NOT NULL,
+    organization_uuid UUID NOT NULL,
     created_by VARCHAR(255),
     name VARCHAR(255) NOT NULL,
     description VARCHAR(1023),
@@ -58,12 +58,12 @@ CREATE TABLE IF NOT EXISTS applications (
 
 -- Artifacts table
 CREATE TABLE IF NOT EXISTS artifacts (
-    uuid VARCHAR(40) PRIMARY KEY,
+    uuid UUID PRIMARY KEY,
     handle VARCHAR(255) NOT NULL,
     name VARCHAR(255) NOT NULL,
     version VARCHAR(30) NOT NULL,
     kind VARCHAR(20) NOT NULL,
-    organization_uuid VARCHAR(40) NOT NULL,
+    organization_uuid UUID NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE RESTRICT,
@@ -76,10 +76,10 @@ CREATE TABLE IF NOT EXISTS artifacts (
 
 -- REST APIs table
 CREATE TABLE IF NOT EXISTS rest_apis (
-    uuid VARCHAR(40) PRIMARY KEY,
+    uuid UUID PRIMARY KEY,
     description VARCHAR(1023),
     created_by VARCHAR(200),
-    project_uuid VARCHAR(40) NOT NULL,
+    project_uuid UUID NOT NULL,
     lifecycle_status VARCHAR(20) DEFAULT 'CREATED',
     transport VARCHAR(255), -- JSON array as TEXT
     configuration JSONB NOT NULL,
@@ -89,14 +89,14 @@ CREATE TABLE IF NOT EXISTS rest_apis (
 
 -- Subscription plans table (organization-scoped rate/billing plans)
 CREATE TABLE IF NOT EXISTS subscription_plans (
-    uuid VARCHAR(40) PRIMARY KEY,
+    uuid UUID PRIMARY KEY,
     plan_name VARCHAR(40) NOT NULL,
     billing_plan VARCHAR(255),
     stop_on_quota_reach BOOLEAN DEFAULT TRUE,
     throttle_limit_count INTEGER,
     throttle_limit_unit VARCHAR(20),
     expiry_time TIMESTAMP,
-    organization_uuid VARCHAR(40) NOT NULL,
+    organization_uuid UUID NOT NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -114,14 +114,14 @@ CREATE TABLE IF NOT EXISTS subscription_plans (
 -- subscription_token: encrypted value (AES-256-GCM) for retrieval (legacy rows have hash)
 -- subscription_token_hash: SHA-256 hash for uniqueness and gateway sync
 CREATE TABLE IF NOT EXISTS subscriptions (
-    uuid VARCHAR(40) PRIMARY KEY,
-    api_uuid VARCHAR(40) NOT NULL,
+    uuid UUID PRIMARY KEY,
+    api_uuid UUID NOT NULL,
     subscriber_id VARCHAR(255) NOT NULL,
     application_id VARCHAR(255),
     subscription_token VARCHAR(512) NOT NULL,
     subscription_token_hash VARCHAR(64) NOT NULL,
-    subscription_plan_uuid VARCHAR(40),
-    organization_uuid VARCHAR(40) NOT NULL,
+    subscription_plan_uuid UUID,
+    organization_uuid UUID NOT NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -143,8 +143,8 @@ CREATE INDEX IF NOT EXISTS idx_subscriptions_org_subscriber ON subscriptions(org
 -- Gateways table (scoped to organizations)
 -- Must be created before deployments which references it
 CREATE TABLE IF NOT EXISTS gateways (
-    uuid VARCHAR(40) PRIMARY KEY,
-    organization_uuid VARCHAR(40) NOT NULL,
+    uuid UUID PRIMARY KEY,
+    organization_uuid UUID NOT NULL,
     name VARCHAR(255) NOT NULL,
     version VARCHAR(64) NOT NULL DEFAULT '1.0',
     display_name VARCHAR(255) NOT NULL,
@@ -164,8 +164,8 @@ CREATE TABLE IF NOT EXISTS gateways (
 
 -- Gateway Custom Policies table (org-scoped custom policies synced from gateway manifests)
 CREATE TABLE IF NOT EXISTS gateway_custom_policies (
-    uuid VARCHAR(40) PRIMARY KEY,
-    organization_uuid VARCHAR(40) NOT NULL,
+    uuid UUID PRIMARY KEY,
+    organization_uuid UUID NOT NULL,
     name VARCHAR(255) NOT NULL,
     display_name VARCHAR(255),
     version VARCHAR(15) NOT NULL,
@@ -179,8 +179,8 @@ CREATE TABLE IF NOT EXISTS gateway_custom_policies (
 
 -- Gateway Custom Policy Usages table (tracks which APIs use each custom policy)
 CREATE TABLE IF NOT EXISTS gateway_custom_policy_usages (
-    policy_uuid VARCHAR(40) NOT NULL,
-    api_uuid VARCHAR(40) NOT NULL,
+    policy_uuid UUID NOT NULL,
+    api_uuid UUID NOT NULL,
     PRIMARY KEY (policy_uuid, api_uuid),
     FOREIGN KEY (policy_uuid) REFERENCES gateway_custom_policies(uuid) ON DELETE CASCADE,
     FOREIGN KEY (api_uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE
@@ -188,8 +188,8 @@ CREATE TABLE IF NOT EXISTS gateway_custom_policy_usages (
 
 -- Gateway Tokens table
 CREATE TABLE IF NOT EXISTS gateway_tokens (
-    uuid VARCHAR(40) PRIMARY KEY,
-    gateway_uuid VARCHAR(40) NOT NULL,
+    uuid UUID PRIMARY KEY,
+    gateway_uuid UUID NOT NULL,
     token_hash VARCHAR(255) NOT NULL,
     salt VARCHAR(255) NOT NULL,
     status VARCHAR(10) NOT NULL DEFAULT 'active',
@@ -202,12 +202,12 @@ CREATE TABLE IF NOT EXISTS gateway_tokens (
 
 -- Artifact Deployments table (immutable deployment artifacts)
 CREATE TABLE IF NOT EXISTS deployments (
-    deployment_id VARCHAR(40) PRIMARY KEY,
+    deployment_id UUID PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
-    artifact_uuid VARCHAR(40) NOT NULL,
-    organization_uuid VARCHAR(40) NOT NULL,
-    gateway_uuid VARCHAR(40) NOT NULL,
-    base_deployment_id VARCHAR(40),
+    artifact_uuid UUID NOT NULL,
+    organization_uuid UUID NOT NULL,
+    gateway_uuid UUID NOT NULL,
+    base_deployment_id UUID,
     content BYTEA NOT NULL,
     metadata TEXT, -- JSON object as TEXT
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -219,10 +219,10 @@ CREATE TABLE IF NOT EXISTS deployments (
 
 -- Artifact Deployment Status table (current deployment state per artifact+Gateway)
 CREATE TABLE IF NOT EXISTS deployment_status (
-    artifact_uuid VARCHAR(40) NOT NULL,
-    organization_uuid VARCHAR(40) NOT NULL,
-    gateway_uuid VARCHAR(40) NOT NULL,
-    deployment_id VARCHAR(40) NOT NULL,
+    artifact_uuid UUID NOT NULL,
+    organization_uuid UUID NOT NULL,
+    gateway_uuid UUID NOT NULL,
+    deployment_id UUID NOT NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'DEPLOYED',
     status_desired VARCHAR(20),
     performed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -238,9 +238,9 @@ CREATE TABLE IF NOT EXISTS deployment_status (
 -- Artifact Associations table (for both gateways and dev portals)
 CREATE TABLE IF NOT EXISTS association_mappings (
     id SERIAL PRIMARY KEY,
-    artifact_uuid VARCHAR(40) NOT NULL,
-    organization_uuid VARCHAR(40) NOT NULL,
-    resource_uuid VARCHAR(40) NOT NULL,
+    artifact_uuid UUID NOT NULL,
+    organization_uuid UUID NOT NULL,
+    resource_uuid UUID NOT NULL,
     association_type VARCHAR(20) NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -252,8 +252,8 @@ CREATE TABLE IF NOT EXISTS association_mappings (
 
 -- DevPortals table
 CREATE TABLE IF NOT EXISTS devportals (
-    uuid VARCHAR(40) PRIMARY KEY,
-    organization_uuid VARCHAR(40) NOT NULL,
+    uuid UUID PRIMARY KEY,
+    organization_uuid UUID NOT NULL,
     name VARCHAR(100) NOT NULL,
     identifier VARCHAR(100) NOT NULL,
     api_url VARCHAR(255) NOT NULL,
@@ -276,9 +276,9 @@ CREATE TABLE IF NOT EXISTS devportals (
 -- This table tracks which APIs are published to which DevPortals
 
 CREATE TABLE IF NOT EXISTS publication_mappings (
-    api_uuid VARCHAR(40) NOT NULL,
-    devportal_uuid VARCHAR(40) NOT NULL,
-    organization_uuid VARCHAR(40) NOT NULL,
+    api_uuid UUID NOT NULL,
+    devportal_uuid UUID NOT NULL,
+    organization_uuid UUID NOT NULL,
     status VARCHAR(20) NOT NULL CHECK (status IN ('published', 'failed', 'publishing')),
     api_version VARCHAR(50),
     devportal_ref_id VARCHAR(100),
@@ -295,14 +295,13 @@ CREATE TABLE IF NOT EXISTS publication_mappings (
     PRIMARY KEY (api_uuid, devportal_uuid, organization_uuid),
     FOREIGN KEY (api_uuid) REFERENCES rest_apis(uuid) ON DELETE CASCADE,
     FOREIGN KEY (devportal_uuid) REFERENCES devportals(uuid) ON DELETE CASCADE,
-    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
-    UNIQUE (api_uuid, devportal_uuid, organization_uuid)
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE
 );
 
 -- LLM Provider Templates table
 CREATE TABLE IF NOT EXISTS llm_provider_templates (
-    uuid VARCHAR(40) PRIMARY KEY,
-    organization_uuid VARCHAR(40) NOT NULL,
+    uuid UUID PRIMARY KEY,
+    organization_uuid UUID NOT NULL,
     handle VARCHAR(255) NOT NULL,
     name VARCHAR(253) NOT NULL,
     description VARCHAR(1023),
@@ -316,10 +315,10 @@ CREATE TABLE IF NOT EXISTS llm_provider_templates (
 
 -- LLM Providers table
 CREATE TABLE IF NOT EXISTS llm_providers (
-    uuid VARCHAR(40) PRIMARY KEY,
+    uuid UUID PRIMARY KEY,
     description VARCHAR(1023),
     created_by VARCHAR(255),
-    template_uuid VARCHAR(40) NOT NULL,
+    template_uuid UUID NOT NULL,
     openapi_spec TEXT,
     model_list TEXT,
     status VARCHAR(20) NOT NULL DEFAULT 'CREATED',
@@ -330,11 +329,11 @@ CREATE TABLE IF NOT EXISTS llm_providers (
 
 -- LLM Proxies table
 CREATE TABLE IF NOT EXISTS llm_proxies (
-    uuid VARCHAR(40) PRIMARY KEY,
-    project_uuid VARCHAR(40) NOT NULL,
+    uuid UUID PRIMARY KEY,
+    project_uuid UUID NOT NULL,
     description VARCHAR(1023),
     created_by VARCHAR(255),
-    provider_uuid VARCHAR(40) NOT NULL,
+    provider_uuid UUID NOT NULL,
     openapi_spec TEXT,
     status VARCHAR(20) NOT NULL DEFAULT 'CREATED',
     configuration JSONB NOT NULL,
@@ -345,8 +344,8 @@ CREATE TABLE IF NOT EXISTS llm_proxies (
 
 -- MCP Proxies table
 CREATE TABLE IF NOT EXISTS mcp_proxies (
-    uuid VARCHAR(40) PRIMARY KEY,
-    project_uuid VARCHAR(40),
+    uuid UUID PRIMARY KEY,
+    project_uuid UUID,
     description VARCHAR(1023),
     created_by VARCHAR(255),
     status VARCHAR(20) NOT NULL DEFAULT 'CREATED',
@@ -357,8 +356,8 @@ CREATE TABLE IF NOT EXISTS mcp_proxies (
 
 -- WEBSUB APIs table
 CREATE TABLE IF NOT EXISTS websub_apis (
-    uuid VARCHAR(40) PRIMARY KEY,
-    project_uuid VARCHAR(40) NOT NULL,
+    uuid UUID PRIMARY KEY,
+    project_uuid UUID NOT NULL,
     description VARCHAR(1023),
     created_by VARCHAR(255),
     lifecycle_status VARCHAR(20) NOT NULL DEFAULT 'CREATED',
@@ -371,8 +370,8 @@ CREATE INDEX IF NOT EXISTS idx_websub_apis_project ON websub_apis(project_uuid);
 
 -- WEBBROKER APIs table
 CREATE TABLE IF NOT EXISTS webbroker_apis (
-    uuid VARCHAR(40) PRIMARY KEY,
-    project_uuid VARCHAR(40) NOT NULL,
+    uuid UUID PRIMARY KEY,
+    project_uuid UUID NOT NULL,
     description VARCHAR(1023),
     created_by VARCHAR(255),
     lifecycle_status VARCHAR(20) NOT NULL DEFAULT 'CREATED',
@@ -385,8 +384,8 @@ CREATE INDEX IF NOT EXISTS idx_webbroker_apis_project ON webbroker_apis(project_
 
 -- API Keys table (stores API keys for artifacts with hashes as JSON string)
 CREATE TABLE IF NOT EXISTS api_keys (
-    uuid VARCHAR(40) PRIMARY KEY,
-    artifact_uuid VARCHAR(40) NOT NULL,
+    uuid UUID PRIMARY KEY,
+    artifact_uuid UUID NOT NULL,
     name VARCHAR(63) NOT NULL,
     masked_api_key VARCHAR(8) NOT NULL,
     api_key_hashes TEXT NOT NULL DEFAULT '{}',
@@ -403,8 +402,8 @@ CREATE TABLE IF NOT EXISTS api_keys (
 
 -- Application API Key mappings table
 CREATE TABLE IF NOT EXISTS application_api_keys (
-    application_uuid VARCHAR(40) NOT NULL,
-    api_key_id VARCHAR(40) NOT NULL,
+    application_uuid UUID NOT NULL,
+    api_key_id UUID NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (application_uuid, api_key_id),
@@ -414,8 +413,8 @@ CREATE TABLE IF NOT EXISTS application_api_keys (
 
 -- Application to artifacts mapping table
 CREATE TABLE IF NOT EXISTS application_artifacts (
-    application_uuid VARCHAR(40) NOT NULL,
-    artifact_uuid VARCHAR(40) NOT NULL,
+    application_uuid UUID NOT NULL,
+    artifact_uuid UUID NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (application_uuid, artifact_uuid),
@@ -459,12 +458,19 @@ CREATE INDEX IF NOT EXISTS idx_application_api_keys_app_id ON application_api_ke
 CREATE INDEX IF NOT EXISTS idx_application_api_keys_key_id ON application_api_keys(api_key_id);
 CREATE INDEX IF NOT EXISTS idx_application_artifacts_app_id ON application_artifacts(application_uuid);
 CREATE INDEX IF NOT EXISTS idx_application_artifacts_artifact_id ON application_artifacts(artifact_uuid);
+CREATE INDEX IF NOT EXISTS idx_api_keys_status ON api_keys(status);
+CREATE INDEX IF NOT EXISTS idx_api_keys_expires_at ON api_keys(expires_at) WHERE expires_at IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_gateway_custom_policy_usages_api ON gateway_custom_policy_usages(api_uuid);
+CREATE INDEX IF NOT EXISTS idx_mcp_proxies_project ON mcp_proxies(project_uuid);
+CREATE INDEX IF NOT EXISTS idx_rest_apis_lifecycle_status ON rest_apis(lifecycle_status);
+CREATE INDEX IF NOT EXISTS idx_subscription_plans_status ON subscription_plans(status);
 
 -- EventHub tables for multi-replica HA sync
 CREATE TABLE IF NOT EXISTS gateway_states (
     gateway_id TEXT PRIMARY KEY,
     version_id TEXT NOT NULL DEFAULT '',
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (gateway_id) REFERENCES gateways(uuid) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS events (
@@ -481,3 +487,4 @@ CREATE TABLE IF NOT EXISTS events (
 );
 
 CREATE INDEX IF NOT EXISTS idx_events_gateway_id_processed_timestamp ON events(gateway_id, processed_timestamp);
+CREATE INDEX IF NOT EXISTS idx_events_entity ON events(entity_type, entity_id);

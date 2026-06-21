@@ -290,8 +290,7 @@ CREATE TABLE IF NOT EXISTS publication_mappings (
     PRIMARY KEY (api_uuid, devportal_uuid, organization_uuid),
     FOREIGN KEY (api_uuid) REFERENCES rest_apis(uuid) ON DELETE CASCADE,
     FOREIGN KEY (devportal_uuid) REFERENCES devportals(uuid) ON DELETE CASCADE,
-    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
-    UNIQUE (api_uuid, devportal_uuid, organization_uuid)
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE
 );
 
 -- LLM Provider Templates table
@@ -457,12 +456,19 @@ CREATE INDEX IF NOT EXISTS idx_application_api_keys_app_id ON application_api_ke
 CREATE INDEX IF NOT EXISTS idx_application_api_keys_key_id ON application_api_keys(api_key_id);
 CREATE INDEX IF NOT EXISTS idx_application_artifacts_app_id ON application_artifacts(application_uuid);
 CREATE INDEX IF NOT EXISTS idx_application_artifacts_artifact_id ON application_artifacts(artifact_uuid);
+CREATE INDEX IF NOT EXISTS idx_api_keys_status ON api_keys(status);
+CREATE INDEX IF NOT EXISTS idx_api_keys_expires_at ON api_keys(expires_at) WHERE expires_at IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_gateway_custom_policy_usages_api ON gateway_custom_policy_usages(api_uuid);
+CREATE INDEX IF NOT EXISTS idx_mcp_proxies_project ON mcp_proxies(project_uuid);
+CREATE INDEX IF NOT EXISTS idx_rest_apis_lifecycle_status ON rest_apis(lifecycle_status);
+CREATE INDEX IF NOT EXISTS idx_subscription_plans_status ON subscription_plans(status);
 
 -- EventHub tables for multi-replica HA sync
 CREATE TABLE IF NOT EXISTS gateway_states (
     gateway_id TEXT PRIMARY KEY,
     version_id TEXT NOT NULL DEFAULT '',
-    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (gateway_id) REFERENCES gateways(uuid) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS events (
@@ -479,3 +485,4 @@ CREATE TABLE IF NOT EXISTS events (
 );
 
 CREATE INDEX IF NOT EXISTS idx_events_gateway_id_processed_timestamp ON events(gateway_id, processed_timestamp);
+CREATE INDEX IF NOT EXISTS idx_events_entity ON events(entity_type, entity_id);
