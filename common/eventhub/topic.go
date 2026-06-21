@@ -112,6 +112,15 @@ func (r *gatewayRegistry) removeSubscriber(gatewayID string, subscriber <-chan E
 		gw.subscribers[i] = gw.subscribers[last]
 		gw.subscribers[last] = nil
 		gw.subscribers = gw.subscribers[:last]
+
+		// Reset knownVersion so the next poll detects a version mismatch and
+		// fetches events since lastPolled. lastPolled is intentionally kept so
+		// the reconnecting gateway replays all events missed during the disconnect
+		// window (up to the retention period), not just the last 120 s skew window.
+		if len(gw.subscribers) == 0 {
+			gw.knownVersion = ""
+		}
+
 		return ch, nil
 	}
 
@@ -130,6 +139,7 @@ func (r *gatewayRegistry) removeAllSubscribers(gatewayID string) ([]chan Event, 
 
 	subscribers := gw.subscribers
 	gw.subscribers = nil
+	gw.knownVersion = ""
 	return subscribers, nil
 }
 

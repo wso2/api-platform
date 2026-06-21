@@ -1,9 +1,9 @@
 {{#in apiType values="REST"}}
 
-<head>
+{{#pageHead}}
   <link rel="stylesheet" href="https://unpkg.com/@stoplight/elements/styles.min.css">
   <script src="https://unpkg.com/@stoplight/elements/web-components.min.js"></script>
-</head>
+{{/pageHead}}
 <main>
   <div class="p-4">
     <elements-api apiDescriptionDocument='{{swagger}}' router="hash" layout="sidebar" />
@@ -44,19 +44,16 @@
 {{/in}}
 {{#if (eq apiType "WS")}}
 
-<head>
+{{#pageHead}}
   <link rel="stylesheet" href="/technical-styles/async-tryout.css">
-</head>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/wso2/api-developer-portal-core@refs/heads/main/libs/async-api-viewer/dist/async-api-viewer.css">
+{{/pageHead}}
 <main>
   <div id="root" style="height: 100vh;"></div>
   <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@asyncapi/react-component@latest/browser/standalone/index.js"></script>
   <script src="https://cdn.jsdelivr.net/gh/wso2/api-developer-portal-core@refs/heads/main/libs/async-api-viewer/dist/websocket-viewer.umd.js"></script>
-  <link
-    rel="stylesheet"
-    href="https://cdn.jsdelivr.net/gh/wso2/api-developer-portal-core@refs/heads/main/libs/async-api-viewer/dist/async-api-viewer.css"
-  />
   <script>
     const isWebSocketTryout = {{#if isWebSocketTryout}}{{isWebSocketTryout}}{{else}}false{{/if}};
     if (isWebSocketTryout) {
@@ -87,19 +84,16 @@
 
 {{else if (eq apiType "WEBSUB")}}
 
-<head>
+{{#pageHead}}
   <link rel="stylesheet" href="/technical-styles/async-tryout.css">
-</head>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/wso2/api-developer-portal-core@refs/heads/main/libs/async-api-viewer/dist/async-api-viewer.css">
+{{/pageHead}}
 <main>
   <div id="root" style="height: 100vh;"></div>
   <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@asyncapi/react-component@latest/browser/standalone/index.js"></script>
   <script src="https://cdn.jsdelivr.net/gh/wso2/api-developer-portal-core@refs/heads/main/libs/async-api-viewer/dist/websocket-viewer.umd.js"></script>
-  <link
-    rel="stylesheet"
-    href="https://cdn.jsdelivr.net/gh/wso2/api-developer-portal-core@refs/heads/main/libs/async-api-viewer/dist/async-api-viewer.css"
-  />
   <script>
     const isWebSocketTryout = {{#if isWebSocketTryout}}{{isWebSocketTryout}}{{else}}false{{/if}};
     if (isWebSocketTryout) {
@@ -129,11 +123,11 @@
 {{else if (eq apiType "GRAPHQL")}}
 
 {{#if isGraphQLTryout}}
-<head>
+{{#pageHead}}
   <link rel="stylesheet" href="https://unpkg.com/graphiql@3/graphiql.min.css">
   <link rel="stylesheet" href="https://unpkg.com/@graphiql/plugin-explorer@3/dist/style.css">
   <link rel="stylesheet" href="/technical-styles/graphql-tryout.css">
-</head>
+{{/pageHead}}
 <main>
   <div class="graphql-tryout-container">
     <div class="graphql-controls" id="graphql-controls">
@@ -410,8 +404,6 @@
   </script>
 </main>
 {{else}}
-<head>
-</head>
 <main>
   <div id="root" style="height: 100vh;"></div>
   <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
@@ -458,7 +450,7 @@
 
 {{else if (eq apiType "MCP")}}
 
-<head>
+{{#pageHead}}
     <script>
         window.process = {env: {NODE_ENV: 'production'}};
     </script>
@@ -466,7 +458,7 @@
     <script src="https://unpkg.com/react-dom@17.0.2/umd/react-dom.development.js"></script>
     <script src="https://cdn.jsdelivr.net/gh/thisaltennakoon/mcp-inspector@main11/dist/mcp-inspector.umd.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700&display=swap" rel="stylesheet">
-</head>
+{{/pageHead}}
 <main>
     <div id="root" style="height: 100vh;"></div>
     <style>

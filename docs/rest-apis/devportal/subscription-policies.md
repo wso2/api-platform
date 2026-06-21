@@ -152,6 +152,7 @@ Creates one subscription policy when the request body is an object, or multiple 
 {
   "policyId": "string",
   "policyID": "string",
+  "refId": "string",
   "policyName": "string",
   "displayName": "string",
   "description": "string",
@@ -164,6 +165,7 @@ Creates one subscription policy when the request body is an object, or multiple 
 ```yaml
 policyId: string
 policyID: string
+refId: string
 policyName: string
 displayName: string
 description: string
@@ -282,6 +284,7 @@ Upserts one subscription policy when the request body is an object, or multiple 
 {
   "policyId": "string",
   "policyID": "string",
+  "refId": "string",
   "policyName": "string",
   "displayName": "string",
   "description": "string",
@@ -294,6 +297,7 @@ Upserts one subscription policy when the request body is an object, or multiple 
 ```yaml
 policyId: string
 policyID: string
+refId: string
 policyName: string
 displayName: string
 description: string

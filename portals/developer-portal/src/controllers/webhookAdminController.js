@@ -15,7 +15,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-const eventDao = require('../dao/event');
+const eventDao = require('../dao/eventDao');
 const logger = require('../config/logger');
 
 function formatDelivery(d) {
@@ -55,7 +55,7 @@ async function listEvents(req, res) {
     try {
         const { orgId } = req.params;
         const { status, limit = '50', offset = '0' } = req.query;
-        const result = await eventDao.listEvents({
+        const result = await eventDao.list({
             orgId,
             status: status || undefined,
             limit: Math.min(parseInt(limit, 10) || 50, 200),
@@ -73,7 +73,7 @@ async function listEvents(req, res) {
  */
 async function getEvent(req, res) {
     try {
-        const event = await eventDao.getEvent(req.params.eventId);
+        const event = await eventDao.get(req.params.eventId);
         if (!event || event.ORG_ID !== req.params.orgId) {
             return res.status(404).json({ message: 'Event not found' });
         }

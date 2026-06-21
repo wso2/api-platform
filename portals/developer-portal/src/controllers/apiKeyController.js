@@ -18,10 +18,6 @@
 const apiKeyService = require('../services/apiKeyService');
 const logger = require('../config/logger');
 
-function actor(req) {
-    return (req.user && req.user.email) || (req.user && req.user.sub) || 'unknown';
-}
-
 function errorStatus(err) {
     return err.status || 500;
 }
@@ -40,7 +36,8 @@ async function generateApiKey(req, res) {
 
     try {
         const result = await apiKeyService.generate({
-            orgId, apiId: apiId.trim(), subscriptionId, name, expiresAt, actor: actor(req)
+            orgId, apiId: apiId.trim(), subscriptionId, name, expiresAt,
+            actor: req.user.sub, userToken: req.user.accessToken,
         });
         return res.status(201).json(result);
     } catch (err) {
@@ -89,7 +86,9 @@ async function regenerateApiKey(req, res) {
     const { orgId, apiKeyId } = req.params;
 
     try {
-        const result = await apiKeyService.regenerate({ orgId, keyId: apiKeyId, actor: actor(req) });
+        const result = await apiKeyService.regenerate({
+            orgId, keyId: apiKeyId, actor: req.user.sub, userToken: req.user.accessToken,
+        });
         return res.status(200).json(result);
     } catch (err) {
         logger.error('[apiKeyController] regenerate failed', { error: err.message, orgId, apiKeyId });
@@ -104,7 +103,7 @@ async function revokeApiKey(req, res) {
     const { orgId, apiKeyId } = req.params;
 
     try {
-        await apiKeyService.revoke({ orgId, keyId: apiKeyId, actor: actor(req) });
+        await apiKeyService.revoke({ orgId, keyId: apiKeyId, actor: req.user.sub, userToken: req.user.accessToken });
         return res.status(204).send();
     } catch (err) {
         logger.error('[apiKeyController] revoke failed', { error: err.message, orgId, apiKeyId });

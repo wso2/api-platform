@@ -16,7 +16,7 @@
  * under the License.
  */
 const { Sequelize, DataTypes } = require('sequelize');
-const sequelize = require('../db/sequelize');
+const sequelize = require('../db/sequelizeConfig');
 const { Organization } = require('./organization');
 
 const SubscriptionPolicy = sequelize.define('DP_SUBSCRIPTION_POLICY', {
@@ -49,7 +49,10 @@ const SubscriptionPolicy = sequelize.define('DP_SUBSCRIPTION_POLICY', {
 }, {
     timestamps: false,
     tableName: 'DP_SUBSCRIPTION_POLICY',
-    returning: true
+    returning: true,
+    indexes: [
+        { name: 'IDX_SUB_POLICY_ORG_NAME', unique: true, fields: ['ORG_ID', 'POLICY_NAME'] }
+    ]
 });
 
 SubscriptionPolicy.belongsTo(Organization, {

@@ -17,8 +17,8 @@
  */
 const yaml = require('js-yaml');
 const { Sequelize } = require('sequelize');
-const kmDao = require('../dao/keyManager');
-const { KeyManagerDTO, KeyManagerPublicDTO } = require('../dto/keyManager');
+const kmDao = require('../dao/keyManagerDao');
+const { KeyManagerDTO, KeyManagerPublicDTO } = require('../dto/keyManagerDto');
 const constants = require('../utils/constants');
 const logger = require('../config/logger');
 
@@ -120,7 +120,7 @@ const createKeyManager = async (req, res) => {
             return res.status(400).json({ error: validationError });
         }
 
-        const record = await kmDao.createKeyManager(orgId, payload);
+        const record = await kmDao.create(orgId, payload);
         const dto = new KeyManagerDTO(record);
         return res.status(201).json(dto);
     } catch (error) {
@@ -148,7 +148,7 @@ const updateKeyManager = async (req, res) => {
             });
         }
 
-        const [, updatedRows] = await kmDao.updateKeyManager(kmId, payload);
+        const [, updatedRows] = await kmDao.update(kmId, payload);
         const dto = new KeyManagerDTO(updatedRows[0]);
         return res.status(200).json(dto);
     } catch (error) {
@@ -171,7 +171,7 @@ const updateKeyManager = async (req, res) => {
 const getKeyManagers = async (req, res) => {
     try {
         const orgId = req.params.orgId;
-        const records = await kmDao.getKeyManagers(orgId);
+        const records = await kmDao.list(orgId);
         const dtos = records.map(r => new KeyManagerDTO(r));
         return res.status(200).json(dtos);
     } catch (error) {
@@ -183,7 +183,7 @@ const getKeyManagers = async (req, res) => {
 const getKeyManager = async (req, res) => {
     try {
         const { kmId } = req.params;
-        const record = await kmDao.getKeyManager(kmId);
+        const record = await kmDao.get(kmId);
         const dto = new KeyManagerDTO(record);
         return res.status(200).json(dto);
     } catch (error) {
@@ -198,7 +198,7 @@ const getKeyManager = async (req, res) => {
 const deleteKeyManager = async (req, res) => {
     try {
         const { kmId } = req.params;
-        await kmDao.deleteKeyManager(kmId);
+        await kmDao.delete(kmId);
         return res.status(204).send();
     } catch (error) {
         if (error instanceof Sequelize.EmptyResultError) {
@@ -215,7 +215,7 @@ const deleteKeyManager = async (req, res) => {
 const getAvailableKeyManagers = async (req, res) => {
     try {
         const orgId = req.params.orgId;
-        const records = await kmDao.getEnabledKeyManagers(orgId);
+        const records = await kmDao.listEnabled(orgId);
         const dtos = records.map(r => new KeyManagerPublicDTO(r));
         return res.status(200).json(dtos);
     } catch (error) {

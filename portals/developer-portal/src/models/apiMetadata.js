@@ -16,11 +16,11 @@
  * under the License.
  */
 const { Sequelize, DataTypes } = require('sequelize');
-const sequelize = require('../db/sequelize')
+const sequelize = require('../db/sequelizeConfig')
 const APIContent = require('../models/apiContent')
-const APIImages = require('./apiImages')
+const APIImages = require('./apiImage')
 const { Organization } = require('./organization')
-const Labels = require('./labels');
+const Labels = require('./label');
 
 const APIMetadata = sequelize.define('DP_API_METADATA', {
   API_ID: {
@@ -91,11 +91,11 @@ const APIMetadata = sequelize.define('DP_API_METADATA', {
   },
   PRODUCTION_URL: {
     type: DataTypes.STRING,
-    allowNull: false
+    allowNull: true
   },
   PROVIDER: {
     type: DataTypes.STRING,
-    allowNull: false
+    allowNull: true
   },
   METADATA_SEARCH: {
     type: DataTypes.JSON,
@@ -156,7 +156,13 @@ const APILabels = sequelize.define('DP_API_LABELS', {
   timestamps: false,
   tableName: 'DP_API_LABELS',
   returning: true,
-  unique: false
+  indexes: [
+      {
+          name: 'UQ_API_LABELS_LABEL_API_ORG',
+          unique: true,
+          fields: ['LABEL_ID', 'API_ID', 'ORG_ID']
+      }
+  ]
 });
 
 APILabels.belongsTo(Organization, {
@@ -164,14 +170,17 @@ APILabels.belongsTo(Organization, {
 });
 
 APILabels.belongsTo(APIMetadata, {
-  foreignKey: 'API_ID'
+  foreignKey: 'API_ID',
+  onDelete: 'CASCADE'
 });
 
 APIContent.belongsTo(APIMetadata, {
   foreignKey: 'API_ID',
+  onDelete: 'CASCADE'
 });
 APIImages.belongsTo(APIMetadata, {
   foreignKey: 'API_ID',
+  onDelete: 'CASCADE'
 });
 APIMetadata.belongsTo(Organization, {
   foreignKey: 'ORG_ID'

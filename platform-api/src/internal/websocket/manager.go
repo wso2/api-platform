@@ -83,6 +83,14 @@ type Manager struct {
 	failedConnections     int64
 	disconnections        int64
 	eventsSent            int64
+
+	// Connection lifecycle hooks — called synchronously on connect/disconnect.
+	// onConnect fires for every new connection; onDisconnect fires for every removal.
+	// Both are optional (nil means no-op).
+	// These fields are written only by SetConnectionHooks, which must be called during
+	// initialization before the gateway accepts connections to avoid concurrent access.
+	onConnect    func(gatewayID string) error
+	onDisconnect func(gatewayID string) error
 }
 
 // ManagerConfig contains configuration parameters for the connection manager
@@ -142,6 +150,16 @@ func NewManager(config ManagerConfig, gatewayRepo repository.GatewayRepository, 
 	return mgr
 }
 
+// SetConnectionHooks registers optional callbacks invoked on every gateway connect and disconnect.
+// onConnect is called after a connection is stored; onDisconnect after it is removed.
+// Callbacks are invoked synchronously and must not acquire the manager's locks.
+// This method must be called only during initialization, before the gateway begins accepting
+// connections. It is not safe to call concurrently with Register or Unregister.
+func (m *Manager) SetConnectionHooks(onConnect, onDisconnect func(gatewayID string) error) {
+	m.onConnect = onConnect
+	m.onDisconnect = onDisconnect
+}
+
 // Register adds a new connection to the registry and starts heartbeat monitoring.
 // Returns an error if the maximum connection limit is reached.
 //
@@ -196,6 +214,10 @@ func (m *Manager) Register(gatewayID string, transport Transport, authToken stri
 	m.slogger.Info("Gateway connected", "gatewayID", gatewayID, "connectionID", connectionID,
 		"orgID", orgID, "totalConnections", m.GetConnectionCount(), "orgConnections", m.countOrgConnections(orgID))
 
+	if m.onConnect != nil {
+		m.onConnect(gatewayID)
+	}
+
 	return conn, nil
 }
 
@@ -238,6 +260,10 @@ func (m *Manager) Unregister(gatewayID, connectionID string) {
 	// Close the connection gracefully
 	if err := removed.Close(1000, "normal closure"); err != nil {
 		m.slogger.Error("Failed to close connection", "gatewayID", gatewayID, "connectionID", connectionID, "error", err)
+	}
+
+	if m.onDisconnect != nil {
+		m.onDisconnect(gatewayID)
 	}
 
 	// Decrement connection count

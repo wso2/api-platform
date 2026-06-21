@@ -51,6 +51,9 @@ function auditMiddleware(options = {}) {
 
             // Create and log audit log entry
             const auditEntry = {
+                userId: req.user ? (req.user.id || req.user.username || req.user.email || 'unknown') : 'anonymous',
+                sessionId: req.sessionID || 'no-session',
+                ip: getClientIP(req),
                 requestBody: Object.keys(sanitizedBody).length > 0 ? sanitizedBody : "",
                 queryParams: Object.keys(req.query || {}).length > 0 ? req.query : "",
             };

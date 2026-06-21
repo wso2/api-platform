@@ -17,20 +17,30 @@
 # --------------------------------------------------------------------
 
 # Developer Portal Dockerfile
-# Use Node.js 23 Alpine for a smaller base image
-FROM node:23-alpine
+# Uses node:23-slim (Debian/glibc) so better-sqlite3 can compile its native binding.
+# Build tools (python3, make, g++) are installed only in the builder stage and are not
+# carried into the runtime image.
 
-# Install only the runtime utilities needed by the entrypoint (bash, openssl)
-RUN apk add --no-cache bash openssl
+# Build stage — installs production dependencies (including native build of better-sqlite3)
+FROM node:23-slim AS builder
+WORKDIR /app
+# Install native build tools required by better-sqlite3's node-gyp compilation.
+# python3 is needed by node-gyp; make and g++ compile the C++ binding.
+RUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ && rm -rf /var/lib/apt/lists/*
+COPY package*.json ./
+RUN npm ci --omit=dev
+
+# Runtime stage
+FROM node:23-slim
+
+# Install runtime utilities needed by the entrypoint (openssl for cert generation)
+RUN apt-get update && apt-get install -y --no-install-recommends openssl curl && rm -rf /var/lib/apt/lists/*
 
 # Set the working directory inside the container
 WORKDIR /app
 
-# Copy package.json and package-lock.json first to leverage Docker caching
-COPY package*.json ./
-
-# Install dependencies using npm ci for faster, cleaner installations in production
-RUN npm ci --only=production --ignore-scripts
+# Copy compiled node_modules from the builder stage
+COPY --from=builder /app/node_modules ./node_modules
 
 # Copy the rest of the application files
 COPY . .
@@ -39,11 +49,11 @@ COPY . .
 EXPOSE 8080
 
 # Create a non-root user with UID 10001 to satisfy Checkov CKV_CHOREO_1
-RUN addgroup -g 10001 appgroup && adduser -D -u 10001 -G appgroup -s /bin/bash appuser
+RUN groupadd -g 10001 appgroup && useradd -u 10001 -g appgroup -s /bin/bash -M appuser
 
 # Pre-create the certs and logs directories owned by the non-root user so the
 # entrypoint script can write self-signed certs, and the app can write log files.
-RUN mkdir -p /app/certs /app/logs && chown -R 10001:10001 /app/certs /app/logs
+RUN mkdir -p /app/certs /app/logs /app/data && chown -R 10001:10001 /app/certs /app/logs /app/data
 
 RUN chmod +x /app/docker-entrypoint.sh
 

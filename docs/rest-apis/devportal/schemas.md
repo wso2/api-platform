@@ -263,50 +263,6 @@ continued
 |superAdminRole|string¦null|false|none|none|
 |orgConfiguration|[GenericObject](#schemagenericobject)|false|none|none|
 
-<h2 id="tocS_IdentityProviderResponse">IdentityProviderResponse</h2>
-
-<a id="schemaidentityproviderresponse"></a>
-<a id="schema_IdentityProviderResponse"></a>
-<a id="tocSidentityproviderresponse"></a>
-<a id="tocsidentityproviderresponse"></a>
-
-```json
-{
-  "name": "string",
-  "issuer": "string",
-  "authorizationURL": "http://example.com",
-  "tokenURL": "http://example.com",
-  "clientId": "string",
-  "callbackURL": "http://example.com",
-  "scope": "string",
-  "logoutURL": "http://example.com",
-  "logoutRedirectURI": "http://example.com",
-  "userInfoURL": "http://example.com",
-  "signUpURL": "http://example.com",
-  "jwksURL": "http://example.com",
-  "certificate": "string"
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|name|string|false|none|none|
-|issuer|string|false|none|none|
-|authorizationURL|string(uri)|false|none|none|
-|tokenURL|string(uri)|false|none|none|
-|clientId|string|false|none|none|
-|callbackURL|string(uri)|false|none|none|
-|scope|string¦null|false|none|none|
-|logoutURL|string(uri)|false|none|none|
-|logoutRedirectURI|string(uri)|false|none|none|
-|userInfoURL|string(uri)|false|none|none|
-|signUpURL|string(uri)|false|none|none|
-|jwksURL|string(uri)|false|none|none|
-|certificate|string|false|none|none|
-
 <h2 id="tocS_OrganizationContentUploadResponse">OrganizationContentUploadResponse</h2>
 
 <a id="schemaorganizationcontentuploadresponse"></a>
@@ -954,50 +910,6 @@ continued
 |superAdminRole|string|true|none|none|
 |orgConfiguration|[GenericObject](#schemagenericobject)|false|none|none|
 
-<h2 id="tocS_IdentityProviderRequest">IdentityProviderRequest</h2>
-
-<a id="schemaidentityproviderrequest"></a>
-<a id="schema_IdentityProviderRequest"></a>
-<a id="tocSidentityproviderrequest"></a>
-<a id="tocsidentityproviderrequest"></a>
-
-```json
-{
-  "issuer": "string",
-  "name": "string",
-  "authorizationURL": "http://example.com",
-  "tokenURL": "http://example.com",
-  "userInfoURL": "http://example.com",
-  "clientId": "string",
-  "callbackURL": "http://example.com",
-  "signUpURL": "http://example.com",
-  "logoutURL": "http://example.com",
-  "logoutRedirectURI": "http://example.com",
-  "scope": "string",
-  "jwksURL": "http://example.com",
-  "certificate": "string"
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|issuer|string|true|none|none|
-|name|string|true|none|none|
-|authorizationURL|string(uri)|true|none|none|
-|tokenURL|string(uri)|true|none|none|
-|userInfoURL|string(uri)|false|none|none|
-|clientId|string|true|none|none|
-|callbackURL|string(uri)|true|none|none|
-|signUpURL|string(uri)|false|none|none|
-|logoutURL|string(uri)|true|none|none|
-|logoutRedirectURI|string(uri)|true|none|none|
-|scope|string|false|none|none|
-|jwksURL|string(uri)|false|none|none|
-|certificate|string|false|none|none|
-
 <h2 id="tocS_ProviderRequest">ProviderRequest</h2>
 
 <a id="schemaproviderrequest"></a>
@@ -1031,6 +943,7 @@ continued
 {
   "policyId": "string",
   "policyID": "string",
+  "refId": "string",
   "policyName": "string",
   "displayName": "string",
   "description": "string",
@@ -1047,6 +960,7 @@ continued
 |---|---|---|---|---|
 |policyId|string|false|none|Optional external/APIM policy UUID.|
 |policyID|string|false|none|Alternative casing accepted by the DAO.|
+|refId|string|false|none|Platform API subscription plan UUID to associate with this policy.|
 |policyName|string|true|none|none|
 |displayName|string|true|none|none|
 |description|string|false|none|none|
@@ -1146,8 +1060,7 @@ xor
 ```json
 {
   "apiId": "api-7f4c2a6b",
-  "subscriptionPlanName": "Gold",
-  "applicationId": "cp-app-98765"
+  "subscriptionPlanId": "pol-7f4c2a6b"
 }
 
 ```
@@ -1157,8 +1070,7 @@ xor
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |apiId|string|true|none|Developer Portal API ID.|
-|subscriptionPlanName|string|false|none|Optional subscription plan name.|
-|applicationId|string|false|none|Optional application ID.|
+|subscriptionPlanId|string|false|none|Developer Portal subscription plan (policy) ID.|
 
 <h2 id="tocS_SubscriptionUpdateRequest">SubscriptionUpdateRequest</h2>
 
@@ -1197,15 +1109,13 @@ xor
 ```json
 {
   "subscriptionId": "sub-12345",
-  "id": "sub-12345",
-  "apiId": "cp-api-12345",
-  "apiName": "Weather API",
-  "applicationId": "cp-app-98765",
-  "applicationName": "Weather App",
+  "apiId": "api-7f4c2a6b",
+  "subscriptionToken": "a3f1...",
   "subscriptionPlanName": "Gold",
+  "gatewayType": "wso2/api-platform",
   "status": "ACTIVE",
-  "createdTime": "2019-08-24T14:15:22Z",
-  "updatedTime": "2019-08-24T14:15:22Z"
+  "createdBy": "alice@example.com",
+  "createdAt": "2019-08-24T14:15:22Z"
 }
 
 ```
@@ -1217,15 +1127,13 @@ Subscription payload.
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |subscriptionId|string|false|none|none|
-|id|string|false|none|Alternative subscription identifier.|
-|apiId|string|false|none|API reference ID.|
-|apiName|string|false|none|none|
-|applicationId|string|false|none|none|
-|applicationName|string|false|none|none|
+|apiId|string|false|none|Developer Portal API ID.|
+|subscriptionToken|string|false|none|Plaintext subscription token. Present on create and when the token has not been encrypted at rest.|
 |subscriptionPlanName|string|false|none|none|
+|gatewayType|string|false|none|none|
 |status|string|false|none|none|
-|createdTime|string(date-time)|false|none|none|
-|updatedTime|string(date-time)|false|none|none|
+|createdBy|string|false|none|Identity (sub claim) of the user who created the subscription.|
+|createdAt|string(date-time)|false|none|none|
 
 #### Enumerated Values
 
@@ -1233,9 +1141,6 @@ Subscription payload.
 |---|---|
 |status|ACTIVE|
 |status|INACTIVE|
-|status|ON_HOLD|
-|status|REJECTED|
-|status|TIER_UPDATE_PENDING|
 
 <h2 id="tocS_ApiKeyRequest">ApiKeyRequest</h2>
 

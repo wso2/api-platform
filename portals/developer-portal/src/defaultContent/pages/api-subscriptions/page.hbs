@@ -16,22 +16,20 @@
  * under the License.
  -->
 
-<head>
+{{#pageHead}}
   <link rel='stylesheet' href='/technical-styles/subscriptions.css' />
+{{/pageHead}}
+{{#pageScripts}}
   <script src='/technical-scripts/subscriptions-page.js' defer></script>
   <script src='/technical-scripts/subscription.js' defer></script>
-</head>
-<main>
-    {{> header profile=profile baseUrl=baseUrl devportalMode=devportalMode showApiWorkflowsNav=showApiWorkflowsNav }}
-    {{> sidebar profile=profile baseUrl=baseUrl devportalMode=devportalMode showApiKeysNav=showApiKeysNav showApiWorkflowsNav=showApiWorkflowsNav showSubscriptionsNav=showSubscriptionsNav }}
-    <div class="content">
-        <div class="container-fluid subscriptions-container">
-            <div class="container-header mb-4">
-                <span>Subscriptions</span>
-            </div>
-            {{> api-subscription-list }}
+{{/pageScripts}}
+<div class="content">
+    <div class="container-fluid subscriptions-container">
+        <div class="container-header mb-4">
+            <span>Subscriptions</span>
         </div>
+        {{> api-subscription-list }}
     </div>
-    {{> warning modalTitle="Confirm" modalMessage="" modalFunction="" }}
-    {{> alert }}
-</main>
+</div>
+{{> warning modalTitle="Confirm" modalMessage="" modalFunction="" }}
+{{> alert }}

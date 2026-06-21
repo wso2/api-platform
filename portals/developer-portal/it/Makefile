@@ -16,7 +16,7 @@
 # under the License.
 # --------------------------------------------------------------------
 
-.PHONY: all test open clean deps ensure-test-tag
+.PHONY: all test test-postgres open clean deps ensure-test-tag
 
 VERSION ?= $(shell cat ../VERSION 2>/dev/null | tr -d '[:space:]' || echo "0.0.1-SNAPSHOT")
 DOCKER_REGISTRY ?= ghcr.io/wso2/api-platform
@@ -39,16 +39,23 @@ ensure-test-tag:
 		echo "Error: No image found for $(IMAGE_NAME) (:$(VERSION) or :test). Run 'make build' in portals/developer-portal/ first." && exit 1; \
 	fi
 
-# Run Cypress tests headlessly inside Docker Compose (CI-friendly).
+# Run Cypress tests headlessly against SQLite (CI-friendly, no external DB required).
 # Requires the developer-portal image to be built first: make build (from portals/developer-portal/).
 test: ensure-test-tag
 	CYPRESS_PLATFORM=$(CYPRESS_PLATFORM) DOCKER_REGISTRY=$(DOCKER_REGISTRY) docker compose -f docker-compose.test.yaml up --abort-on-container-exit --exit-code-from cypress
-	$(MAKE) _collect-exit
+	$(MAKE) _collect-exit COMPOSE_FILE=docker-compose.test.yaml
+
+# Run Cypress tests headlessly against PostgreSQL.
+# Requires the developer-portal image to be built first: make build (from portals/developer-portal/).
+test-postgres: ensure-test-tag
+	CYPRESS_PLATFORM=$(CYPRESS_PLATFORM) DOCKER_REGISTRY=$(DOCKER_REGISTRY) docker compose -f docker-compose.test.postgres.yaml up --abort-on-container-exit --exit-code-from cypress
+	$(MAKE) _collect-exit COMPOSE_FILE=docker-compose.test.postgres.yaml
 
 # Capture the exit code from the cypress container even after compose exits.
+COMPOSE_FILE ?= docker-compose.test.yaml
 _collect-exit:
-	@EXIT=$$(docker compose -f docker-compose.test.yaml ps -q cypress | xargs docker inspect --format='{{.State.ExitCode}}' 2>/dev/null || echo 0); \
-	docker compose -f docker-compose.test.yaml down -v --remove-orphans; \
+	@EXIT=$$(docker compose -f $(COMPOSE_FILE) ps -q cypress | xargs docker inspect --format='{{.State.ExitCode}}' 2>/dev/null || echo 0); \
+	docker compose -f $(COMPOSE_FILE) down -v --remove-orphans; \
 	exit $$EXIT
 
 # Open Cypress interactive UI — runs against a LOCALLY running devportal (not in Docker).
@@ -63,4 +70,5 @@ deps:
 # Tear down any leftover test containers and volumes.
 clean:
 	docker compose -f docker-compose.test.yaml down -v --remove-orphans 2>/dev/null || true
+	docker compose -f docker-compose.test.postgres.yaml down -v --remove-orphans 2>/dev/null || true
 	rm -rf reports/videos reports/screenshots reports/*.json reports/*.html node_modules/.cache

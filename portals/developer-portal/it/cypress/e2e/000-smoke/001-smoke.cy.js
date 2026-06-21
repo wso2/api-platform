@@ -29,7 +29,7 @@ describe('Developer Portal — Smoke', () => {
         });
     });
 
-    it('ACME default view loads and shows a page', () => {
+    it('Default org view loads and shows a page', () => {
         cy.visitPortal();
         cy.get('body').should('be.visible');
         // Should not show a 404/500 error page.
@@ -48,13 +48,12 @@ describe('Developer Portal — Smoke', () => {
     });
 
     it('serves (or correctly 404s) the main CSS asset for the default view', () => {
-        cy.fixture('org').then(({ orgId }) => {
-            cy.request({
-                url: `/devportal/organizations/${orgId}/views/default/layout?fileType=style&fileName=main.css`,
-                failOnStatusCode: false,
-            }).then((resp) => {
-                expect(resp.status).to.be.oneOf([200, 304, 404]);
-            });
+        const orgId = Cypress.env('ORG_ID');
+        cy.request({
+            url: `/devportal/organizations/${orgId}/views/default/layout?fileType=style&fileName=main.css`,
+            failOnStatusCode: false,
+        }).then((resp) => {
+            expect(resp.status).to.be.oneOf([200, 304, 404]);
         });
     });
 });

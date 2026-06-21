@@ -16,7 +16,7 @@
  * under the License.
  */
 const { Sequelize, DataTypes } = require('sequelize');
-const sequelize = require('../db/sequelize');
+const sequelize = require('../db/sequelizeConfig');
 
 const Provider = sequelize.define('DP_PROVIDER', {
     ORG_ID: {
@@ -27,13 +27,11 @@ const Provider = sequelize.define('DP_PROVIDER', {
     NAME: {
         type: DataTypes.STRING,
         allowNull: false,
-        unique: true,
         primaryKey: true
     },
     PROPERTY: {
         type: DataTypes.STRING,
         allowNull: false,
-        unique: true,
         primaryKey: true
     },
     VALUE: {

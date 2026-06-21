@@ -17,6 +17,8 @@
 
 package config
 
+import "time"
+
 // defaultConfig returns a Server with all default values.
 func defaultConfig() *Server {
 	return &Server{
@@ -26,6 +28,7 @@ func defaultConfig() *Server {
 		OpenAPISpecPath:            "./resources/openapi.yaml",
 		LLMTemplateDefinitionsPath: "./resources/default-llm-provider-templates",
 		EnableScopeValidation:      true,
+    	OrgCreationRequiresAuth:    false,
 		Database: Database{
 			Driver:           "sqlite3",
 			Path:             "./data/api_platform.db",
@@ -53,10 +56,12 @@ func defaultConfig() *Server {
 				"/api/internal/v1/webbroker-apis",
 			},
 			JWT: JWT{
-				Enabled: true,
-				Issuer:  "platform-api",
+				Enabled:        true,
+				Issuer:         "platform-api",
+				SkipValidation: true,
 			},
 			IDP: IDP{
+				Enabled: 		false,
 				ValidationMode: "scope",
 				ClaimMappings: IDPClaimMappings{
 					OrganizationClaimName: "organization",
@@ -69,7 +74,20 @@ func defaultConfig() *Server {
 				},
 			},
 			FileBased: FileBased{
-				Organization: FileBasedOrg{Region: "us"},
+				Enabled: 		false,
+				Organization: FileBasedOrg{
+					ID:     "99089a17-72e0-4dd8-a2f4-c8dfbb085295",
+					Name:   "AP Organization",
+					Handle: "ap-org",
+					Region: "us",
+				},
+				Users: FileBasedUsers{
+					{
+						Username:     "admin",
+						PasswordHash: "$2y$10$U2yKMwGamGwDoMu0hRPT7u8nCuP8z/qxHFOKV6dhIxkJN9NJ0eVQ.",
+						Scopes:       "ap:organization:manage ap:gateway:manage ap:gateway_custom_policy:manage ap:rest_api:manage ap:llm_provider:manage ap:llm_proxy:manage ap:mcp_proxy:manage ap:webbroker_api:manage ap:websub_api:manage ap:application:manage ap:subscription:manage ap:subscription_plan:manage ap:project:manage ap:llm_template:manage ap:devportal:manage ap:git:read ap:api_key:read",
+					},
+				},
 			},
 		},
 		WebSocket: WebSocket{
@@ -107,6 +125,11 @@ func defaultConfig() *Server {
 		},
 		APIKey: APIKey{
 			HashingAlgorithms: []string{"sha256"},
+		},
+		EventHub: EventHub{
+			PollInterval:    3 * time.Second,
+			CleanupInterval: 10 * time.Minute,
+			RetentionPeriod: 1 * time.Hour,
 		},
 	}
 }

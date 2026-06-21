@@ -24,6 +24,19 @@ jobs:
         with:
           driver-opts: network=host
 
+      - name: Wait for local registry to be ready
+        run: |
+          echo "Waiting for registry at http://localhost:5000/v2/ ..."
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:5000/v2/ >/dev/null 2>&1; then
+              echo "Registry is ready"
+              break
+            fi
+            echo "Registry not ready yet, sleeping..."
+            sleep 2
+          done
+          curl -fsS http://localhost:5000/v2/ || (echo "Local registry unreachable" && exit 1)
+
       - name: Setup JFrog CLI
         uses: jfrog/setup-jfrog-cli@v4
         env:
@@ -71,6 +84,33 @@ jobs:
         run: |
           docker pull localhost:5000/gateway-builder:trivy
           jf docker scan localhost:5000/gateway-builder:trivy
+      # -------------------------
+      # Platform API
+      # -------------------------
+      - name: Build & push platform-api to temp registry
+        run: |
+          make -C platform-api build-and-push-multiarch \
+            IMAGE_NAME=localhost:5000/platform-api \
+            VERSION=trivy
+
+      - name: JFrog scan platform-api
+        run: |
+          docker pull localhost:5000/platform-api:trivy
+          jf docker scan localhost:5000/platform-api:trivy
+
+      # -------------------------
+      # AI Workspace
+      # -------------------------
+      - name: Build & push ai-workspace to temp registry
+        run: |
+          make -C portals/ai-workspace build-and-push-multiarch \
+            IMAGE_NAME=localhost:5000/ai-workspace \
+            VERSION=trivy
+
+      - name: JFrog scan ai-workspace
+        run: |
+          docker pull localhost:5000/ai-workspace:trivy
+          jf docker scan localhost:5000/ai-workspace:trivy
 
       # -------------------------
       # Event Gateway Runtime

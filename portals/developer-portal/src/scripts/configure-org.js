@@ -46,20 +46,7 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     }
 
-    //update IDP
-    const editIDPButton = document.getElementById('idpEdit');
-    if (editIDPButton) {
-        editIDPButton.addEventListener('click', function () {
-            const details = this.closest('.organization').querySelector('.organization-details');
-            if (details.style.display === 'block') {
-                details.style.display = 'none';
-                this.textContent = 'Edit';
-            } else {
-                details.style.display = 'block';
-                this.textContent = 'Close';
-            }
-        });
-    }
+
 
     const editOrgPButton = document.getElementById('orgEdit');
     if (editOrgPButton) {
@@ -139,67 +126,6 @@ function sanitizeInput(input) {
     const div = document.createElement('div');
     div.appendChild(document.createTextNode(input));
     return div.innerHTML;
-}
-
-async function createIDP(orgID) {
-
-    const formData = new FormData(document.getElementById("createIDP"));
-    const data = {};
-    formData.forEach((value, key) => {
-        data[key] = sanitizeInput(value);
-    });
-    data['scope'] = 'openid';
-    const response = await fetch(devportalApi.org(orgID, '/identity-providers'), {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(data),
-    });
-    if (response.ok) {
-        window.location.href = 'configure';
-    } else {
-        showAlert(`Field validation failed`, `error`);
-    }
-
-    // Clear the form
-    document.getElementById('providerId').value = '';
-    document.getElementById('providerUrl').value = '';
-}
-
-async function editIDP(orgID, formID) {
-
-    const editIDP = document.getElementById(formID);
-    const formData = new FormData(editIDP);
-    const data = {};
-    formData.forEach((value, key) => {
-        data[key] = sanitizeInput(value);
-    });
-    data['scope'] = 'openid';
-    const response = await fetch(devportalApi.org(orgID, '/identity-providers'), {
-        method: 'PUT',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(data),
-    });
-    if (response.ok) {
-        window.location.href = 'configure';
-    } else {
-        showAlert(`Field validation failed`, `error`);
-    }
-}
-
-async function deleteIDP(orgID) {
-
-    const response = await fetch(devportalApi.org(orgID, '/identity-providers'), {
-        method: 'DELETE',
-    });
-    if (response.ok) {
-        window.location.href = 'configure';
-    } else {
-        showAlert(`Field validation failed`, `error`);
-    }
 }
 
 async function updateOrgContent(orgID) {

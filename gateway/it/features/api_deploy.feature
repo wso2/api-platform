@@ -128,3 +128,132 @@ Feature: API Deployment and Invocation
     And the response should be valid JSON
     And the JSON response field "status" should be "error"
     And the response body should contain "Configuration validation failed"
+
+  Scenario: Deploy an API with a query string in an upstreamDefinitions URL should fail
+    Given I authenticate using basic auth as "admin"
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: RestApi
+      metadata:
+        name: invalid-upstream-query-api-v1.0
+      spec:
+        displayName: Invalid-Upstream-Query-API
+        version: v1.0
+        context: /invalid-upstream-query/$version
+        vhosts:
+          main: invalid-upstream-query.local
+        upstreamDefinitions:
+          - name: backend-default
+            basePath: /api-main
+            upstreams:
+              - url: http://sample-backend:9080?region=eu
+        upstream:
+          main:
+            ref: backend-default
+        operations:
+          - method: GET
+            path: /endpoint
+      """
+    Then the response should be a client error
+    And the response should be valid JSON
+    And the JSON response field "status" should be "error"
+    And the response body should contain "Configuration validation failed"
+    And the response body should contain "must not include a query string"
+
+  Scenario: Deploy an API with a bare query marker in an upstreamDefinitions URL should fail
+    Given I authenticate using basic auth as "admin"
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: RestApi
+      metadata:
+        name: invalid-upstream-bare-query-api-v1.0
+      spec:
+        displayName: Invalid-Upstream-Bare-Query-API
+        version: v1.0
+        context: /invalid-upstream-bare-query/$version
+        vhosts:
+          main: invalid-upstream-bare-query.local
+        upstreamDefinitions:
+          - name: backend-default
+            basePath: /api-main
+            upstreams:
+              - url: http://sample-backend:9080?
+        upstream:
+          main:
+            ref: backend-default
+        operations:
+          - method: GET
+            path: /endpoint
+      """
+    Then the response should be a client error
+    And the response should be valid JSON
+    And the JSON response field "status" should be "error"
+    And the response body should contain "Configuration validation failed"
+    And the response body should contain "must not include a query string"
+
+  Scenario: Deploy an API with a fragment in an upstreamDefinitions URL should fail
+    Given I authenticate using basic auth as "admin"
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: RestApi
+      metadata:
+        name: invalid-upstream-fragment-api-v1.0
+      spec:
+        displayName: Invalid-Upstream-Fragment-API
+        version: v1.0
+        context: /invalid-upstream-fragment/$version
+        vhosts:
+          main: invalid-upstream-fragment.local
+        upstreamDefinitions:
+          - name: backend-default
+            basePath: /api-main
+            upstreams:
+              - url: http://sample-backend:9080#section
+        upstream:
+          main:
+            ref: backend-default
+        operations:
+          - method: GET
+            path: /endpoint
+      """
+    Then the response should be a client error
+    And the response should be valid JSON
+    And the JSON response field "status" should be "error"
+    And the response body should contain "Configuration validation failed"
+    And the response body should contain "must not include a fragment"
+
+  Scenario: Deploy an API with both a query string and a fragment in an upstreamDefinitions URL should fail
+    Given I authenticate using basic auth as "admin"
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: RestApi
+      metadata:
+        name: invalid-upstream-query-fragment-api-v1.0
+      spec:
+        displayName: Invalid-Upstream-Query-Fragment-API
+        version: v1.0
+        context: /invalid-upstream-query-fragment/$version
+        vhosts:
+          main: invalid-upstream-query-fragment.local
+        upstreamDefinitions:
+          - name: backend-default
+            basePath: /api-main
+            upstreams:
+              - url: http://sample-backend:9080?a=1#top
+        upstream:
+          main:
+            ref: backend-default
+        operations:
+          - method: GET
+            path: /endpoint
+      """
+    Then the response should be a client error
+    And the response should be valid JSON
+    And the JSON response field "status" should be "error"
+    And the response body should contain "Configuration validation failed"
+    And the response body should contain "must not include a query string"
+    And the response body should contain "must not include a fragment"

@@ -21,7 +21,7 @@ info:
   title: WSO2 API Developer Portal Core - Devportal Routes
   version: 1.0.0
   description: |
-    Fine-grained Developer Portal API for managing organizations, identity providers, providers,
+    Fine-grained Developer Portal API for managing organizations, providers,
     API metadata and content, applications, subscriptions, application credentials, and API flows.
 
     Organization-scoped resources are served under `/o/{orgId}/devportal/v1`. Operations declare
@@ -168,91 +168,6 @@ paths:
         - OAuth2Security:
             - dp:org_delete
             - dp:org_manage
-  /o/{orgId}/devportal/v1/identity-providers:
-    parameters:
-      - $ref: "#/components/parameters/OrgId"
-    post:
-      tags:
-        - Identity Providers
-      summary: Create an identity provider
-      description: Creates the organization-level OIDC identity provider configuration.
-      operationId: createIdentityProvider
-      requestBody:
-        $ref: "#/components/requestBodies/IdentityProviderBody"
-      responses:
-        "201":
-          $ref: "#/components/responses/IdentityProviderResponse"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "409":
-          $ref: "#/components/responses/Conflict"
-        "500":
-          $ref: "#/components/responses/InternalServerError"
-      security:
-        - OAuth2Security:
-            - dp:idp_write
-            - dp:idp_manage
-    put:
-      tags:
-        - Identity Providers
-      summary: Update an identity provider
-      description: Updates the organization-level OIDC identity provider configuration.
-      operationId: updateIdentityProvider
-      requestBody:
-        $ref: "#/components/requestBodies/IdentityProviderBody"
-      responses:
-        "200":
-          $ref: "#/components/responses/IdentityProviderResponse"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "409":
-          $ref: "#/components/responses/Conflict"
-        "500":
-          $ref: "#/components/responses/InternalServerError"
-      security:
-        - OAuth2Security:
-            - dp:idp_write
-            - dp:idp_manage
-    get:
-      tags:
-        - Identity Providers
-      summary: Get an identity provider
-      description: Retrieves the organization-level OIDC identity provider configuration.
-      operationId: getIdentityProvider
-      responses:
-        "200":
-          $ref: "#/components/responses/IdentityProviderResponse"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "404":
-          description: Identity provider configuration not found.
-        "500":
-          $ref: "#/components/responses/InternalServerError"
-      security:
-        - OAuth2Security:
-            - dp:idp_read
-            - dp:idp_manage
-    delete:
-      tags:
-        - Identity Providers
-      summary: Delete an identity provider
-      description: Deletes the organization-level OIDC identity provider configuration.
-      operationId: deleteIdentityProvider
-      responses:
-        "200":
-          $ref: "#/components/responses/TextMessageResponse"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "500":
-          $ref: "#/components/responses/InternalServerError"
-      security:
-        - OAuth2Security:
-            - dp:idp_delete
-            - dp:idp_manage
   /o/{orgId}/devportal/v1/views/{viewName}/layout:
     parameters:
       - $ref: "#/components/parameters/OrgId"
@@ -998,8 +913,8 @@ paths:
       operationId: createSubscription
       summary: Create a subscription
       description: >-
-        Creates a token-based subscription for an API. The API must exist in the Developer Portal
-        and have token-based subscriptions enabled.
+        Creates a subscription for an API. The API must exist in the Developer Portal and have
+        subscription plans enabled. The subscription is owned by the authenticated user.
       requestBody:
         $ref: "#/components/requestBodies/SubscriptionCreateBody"
       responses:
@@ -1021,8 +936,8 @@ paths:
       operationId: listSubscriptions
       summary: List subscriptions
       description: >-
-        Lists subscriptions stored in the Developer Portal. When `apiId` is provided,
-        results are filtered by the Developer Portal API ID.
+        Lists subscriptions owned by the authenticated user. When `apiId` is provided,
+        results are additionally filtered by the Developer Portal API ID.
       parameters:
         - $ref: "#/components/parameters/ApiIdQueryOptional"
       responses:
@@ -1844,10 +1759,6 @@ components:
             dp:org_write: Create or update organizations.
             dp:org_delete: Delete organizations.
             dp:org_manage: Manage organizations (including creating, updating, and deleting).
-            dp:idp_read: Read organization identity provider configuration.
-            dp:idp_write: Create or update identity provider configuration.
-            dp:idp_delete: Delete identity provider configuration.
-            dp:idp_manage: Manage organization identity provider configuration.
             dp:provider_read: Read providers.
             dp:provider_write: Create or update providers.
             dp:provider_delete: Delete providers.
@@ -2186,14 +2097,6 @@ components:
         type: string
         example: app-12345
       description: Developer Portal application ID.
-    AppIdQueryOptional:
-      name: appId
-      in: query
-      required: false
-      schema:
-        type: string
-        example: app-12345
-      description: Optional Developer Portal application ID used to filter subscriptions.
     ApiReferenceIDQuery:
       name: apiReferenceID
       in: query
@@ -2280,31 +2183,6 @@ components:
               summary: Organization YAML upload
               value:
                 organization: org.yaml
-    IdentityProviderBody:
-      required: true
-      description: >-
-        Identity provider payload. Send JSON or an identity provider YAML file in the
-        `identityProvider` multipart field. When YAML is used, the service reads `metadata.name`
-        as the provider name and all other fields from `spec`.
-      content:
-        application/json:
-          schema:
-            $ref: "#/components/schemas/IdentityProviderRequest"
-        multipart/form-data:
-          schema:
-            type: object
-            required:
-              - identityProvider
-            properties:
-              identityProvider:
-                type: string
-                format: binary
-                description: "Identity provider YAML file (kind: IdentityProvider)."
-          examples:
-            yamlFile:
-              summary: Identity provider YAML upload
-              value:
-                identityProvider: idp.yaml
     ProviderBody:
       required: true
       content:
@@ -2374,12 +2252,11 @@ components:
               summary: Subscribe with the API default plan
               value:
                 apiId: api-7f4c2a6b
-            selectedPlanAndApplication:
-              summary: Subscribe using a specific plan and application
+            selectedPlan:
+              summary: Subscribe using a specific plan
               value:
                 apiId: api-7f4c2a6b
-                subscriptionPlanName: Gold
-                applicationId: cp-app-98765
+                subscriptionPlanId: pol-7f4c2a6b
     SubscriptionUpdateBody:
       required: true
       description: Subscription status update payload.
@@ -2831,12 +2708,6 @@ components:
             type: array
             items:
               $ref: "#/components/schemas/OrganizationListItemResponse"
-    IdentityProviderResponse:
-      description: Identity provider DTO returned by create, update, and lookup operations.
-      content:
-        application/json:
-          schema:
-            $ref: "#/components/schemas/IdentityProviderResponse"
     OrganizationContentUploadResponse:
       description: Organization content upload accepted and stored successfully.
       content:
@@ -3220,39 +3091,35 @@ components:
             $ref: "#/components/schemas/SubscriptionResponse"
           example:
             subscriptionId: sub-12345
-            apiId: cp-api-12345
-            apiName: Weather API
-            applicationId: cp-app-98765
+            apiId: api-7f4c2a6b
+            subscriptionToken: a3f1e8b2...
             subscriptionPlanName: Gold
+            gatewayType: wso2/api-platform
             status: ACTIVE
-            createdTime: "2026-05-07T08:30:00Z"
+            createdBy: alice@example.com
+            createdAt: "2026-05-07T08:30:00Z"
     SubscriptionListResponse:
       description: List of subscription DTOs.
       content:
         application/json:
           schema:
-            oneOf:
-              - type: array
+            type: object
+            properties:
+              count:
+                type: integer
+              list:
+                type: array
                 items:
                   $ref: "#/components/schemas/SubscriptionResponse"
-              - type: object
-                properties:
-                  count:
-                    type: integer
-                  list:
-                    type: array
-                    items:
-                      $ref: "#/components/schemas/SubscriptionResponse"
-                additionalProperties: true
           example:
             count: 1
             list:
               - subscriptionId: sub-12345
-                apiId: cp-api-12345
-                apiName: Weather API
-                applicationId: cp-app-98765
+                apiId: api-7f4c2a6b
                 subscriptionPlanName: Gold
+                gatewayType: wso2/api-platform
                 status: ACTIVE
+                createdBy: alice@example.com
     ApiKeyGenerateResponse:
       description: Generated or regenerated API key. The plaintext `key` is returned exactly once.
       content:
@@ -3639,45 +3506,6 @@ components:
         orgConfiguration:
           $ref: "#/components/schemas/GenericObject"
       additionalProperties: false
-    IdentityProviderResponse:
-      type: object
-      properties:
-        name:
-          type: string
-        issuer:
-          type: string
-        authorizationURL:
-          type: string
-          format: uri
-        tokenURL:
-          type: string
-          format: uri
-        clientId:
-          type: string
-        callbackURL:
-          type: string
-          format: uri
-        scope:
-          type: string
-          nullable: true
-        logoutURL:
-          type: string
-          format: uri
-        logoutRedirectURI:
-          type: string
-          format: uri
-        userInfoURL:
-          type: string
-          format: uri
-        signUpURL:
-          type: string
-          format: uri
-        jwksURL:
-          type: string
-          format: uri
-        certificate:
-          type: string
-      additionalProperties: false
     OrganizationContentUploadResponse:
       type: object
       required:
@@ -4016,53 +3844,6 @@ components:
           type: string
         orgConfiguration:
           $ref: "#/components/schemas/GenericObject"
-    IdentityProviderRequest:
-      type: object
-      required:
-        - issuer
-        - name
-        - authorizationURL
-        - tokenURL
-        - clientId
-        - callbackURL
-        - logoutURL
-        - logoutRedirectURI
-      properties:
-        issuer:
-          type: string
-        name:
-          type: string
-        authorizationURL:
-          type: string
-          format: uri
-        tokenURL:
-          type: string
-          format: uri
-        userInfoURL:
-          type: string
-          format: uri
-        clientId:
-          type: string
-        callbackURL:
-          type: string
-          format: uri
-        signUpURL:
-          type: string
-          format: uri
-        logoutURL:
-          type: string
-          format: uri
-        logoutRedirectURI:
-          type: string
-          format: uri
-        scope:
-          type: string
-        jwksURL:
-          type: string
-          format: uri
-        certificate:
-          type: string
-      additionalProperties: false
     ProviderRequest:
       type: object
       required:
@@ -4088,6 +3869,9 @@ components:
         policyID:
           type: string
           description: Alternative casing accepted by the DAO.
+        refId:
+          type: string
+          description: Platform API subscription plan UUID to associate with this policy.
         policyName:
           type: string
         displayName:
@@ -4148,14 +3932,10 @@ components:
           type: string
           description: Developer Portal API ID.
           example: api-7f4c2a6b
-        subscriptionPlanName:
+        subscriptionPlanId:
           type: string
-          description: Optional subscription plan name.
-          example: Gold
-        applicationId:
-          type: string
-          description: Optional application ID.
-          example: cp-app-98765
+          description: Developer Portal subscription plan (policy) ID.
+          example: pol-7f4c2a6b
       additionalProperties: false
     SubscriptionUpdateRequest:
       type: object
@@ -4176,42 +3956,34 @@ components:
         subscriptionId:
           type: string
           example: sub-12345
-        id:
-          type: string
-          description: Alternative subscription identifier.
-          example: sub-12345
         apiId:
           type: string
-          description: API reference ID.
-          example: cp-api-12345
-        apiName:
+          description: Developer Portal API ID.
+          example: api-7f4c2a6b
+        subscriptionToken:
           type: string
-          example: Weather API
-        applicationId:
-          type: string
-          example: cp-app-98765
-        applicationName:
-          type: string
-          example: Weather App
+          description: Plaintext subscription token. Present on create and when the token has not been encrypted at rest.
+          example: a3f1...
         subscriptionPlanName:
           type: string
           example: Gold
+        gatewayType:
+          type: string
+          example: wso2/api-platform
         status:
           type: string
           enum:
             - ACTIVE
             - INACTIVE
-            - ON_HOLD
-            - REJECTED
-            - TIER_UPDATE_PENDING
           example: ACTIVE
-        createdTime:
+        createdBy:
+          type: string
+          description: Identity (sub claim) of the user who created the subscription.
+          example: alice@example.com
+        createdAt:
           type: string
           format: date-time
-        updatedTime:
-          type: string
-          format: date-time
-      additionalProperties: true
+      additionalProperties: false
     ApiKeyRequest:
       type: object
       required:

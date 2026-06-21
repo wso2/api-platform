@@ -33,6 +33,14 @@ port      = "9243"   # HTTP/HTTPS listen port for Platform API
 # Set to false only to temporarily bypass during development.
 enable_scope_validation = true
 
+# Controls authentication for POST /api/v1/organizations.
+# When true, the endpoint requires both a valid Bearer JWT and the
+# ap:organization:manage scope; requests without that scope are rejected.
+# Default: false (public) — preserves backwards-compatible behaviour for existing deployments.
+# Set to true in production to prevent unauthenticated callers from creating organizations.
+# A warning is logged at startup when this is false and APIP_DEMO_MODE is not set.
+org_creation_requires_auth = false
+
 # ---------------------------------------------------------------------------
 # Database
 # ---------------------------------------------------------------------------
@@ -115,7 +123,7 @@ region = "us"
 username      = "admin"
 password_hash = "$2a$12$<bcrypt-hash-of-your-password>"
 # Full scope set — trim to restrict permissions for this user.
-scopes = "ap:organization:read ap:organization:manage ap:gateway:read ap:gateway:create ap:gateway:update ap:gateway:delete ap:gateway:manage ap:gateway:token:read ap:gateway:token:create ap:gateway:token:delete ap:gateway:token:manage ap:gateway:policy:read ap:gateway:policy:create ap:gateway:policy:delete ap:gateway:policy:manage ap:gateway:artifacts:read ap:gateway:manifest:read ap:rest_api:read ap:rest_api:create ap:rest_api:update ap:rest_api:delete ap:rest_api:manage ap:rest_api:import ap:rest_api:deployment:read ap:rest_api:deployment:create ap:rest_api:deployment:delete ap:rest_api:deployment:manage ap:rest_api:api_key:read ap:rest_api:api_key:create ap:rest_api:api_key:delete ap:rest_api:api_key:manage ap:llm_provider:read ap:llm_provider:create ap:llm_provider:update ap:llm_provider:delete ap:llm_provider:manage ap:llm_provider:api_key:read ap:llm_provider:api_key:create ap:llm_provider:api_key:delete ap:llm_provider:api_key:manage ap:llm_provider:deployment:read ap:llm_provider:deployment:create ap:llm_provider:deployment:delete ap:llm_provider:deployment:manage ap:llm_proxy:read ap:llm_proxy:create ap:llm_proxy:update ap:llm_proxy:delete ap:llm_proxy:manage ap:llm_proxy:deployment:read ap:llm_proxy:deployment:create ap:llm_proxy:deployment:delete ap:llm_proxy:deployment:manage ap:mcp_proxy:read ap:mcp_proxy:create ap:mcp_proxy:update ap:mcp_proxy:delete ap:mcp_proxy:manage ap:mcp_proxy:deployment:read ap:mcp_proxy:deployment:create ap:mcp_proxy:deployment:delete ap:mcp_proxy:deployment:manage ap:application:read ap:application:create ap:application:update ap:application:delete ap:application:manage ap:subscription:read ap:subscription:create ap:subscription:update ap:subscription:delete ap:subscription:manage ap:subscription_plan:read ap:subscription_plan:create ap:subscription_plan:update ap:subscription_plan:delete ap:subscription_plan:manage ap:project:manage ap:llm_template:manage"
+scopes = "ap:organization:manage ap:gateway:manage ap:gateway_custom_policy:manage ap:rest_api:manage ap:llm_provider:manage ap:llm_proxy:manage ap:mcp_proxy:manage ap:webbroker_api:manage ap:websub_api:manage ap:application:manage ap:subscription:manage ap:subscription_plan:manage ap:project:manage ap:llm_template:manage ap:devportal:manage ap:git:read ap:api_key:read"
 
 # Additional users — uncomment and repeat this block as needed
 # [[auth.file_based.users]]

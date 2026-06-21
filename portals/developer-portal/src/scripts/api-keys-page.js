@@ -120,7 +120,7 @@
     }
 
     async function postRevoke(keyId) {
-        const url = '/devportal/organizations/' + encodeURIComponent(orgId) + '/api-keys/' + encodeURIComponent(keyId) + '/revoke?apiId=' + encodeURIComponent(apiId);
+        const url = '/o/' + encodeURIComponent(orgId) + '/devportal/v1/api-keys/' + encodeURIComponent(keyId) + '/revoke';
         const response = await fetch(url, {
             method: 'POST',
             credentials: 'same-origin',

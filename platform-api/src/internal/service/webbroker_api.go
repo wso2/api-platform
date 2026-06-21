@@ -429,27 +429,38 @@ func mapWebBrokerAPIModelToAPI(m *model.WebBrokerAPI, apiUtil *utils.APIUtil) *a
 
 // mapWebBrokerReceiverAPIToModel converts API receiver to model receiver
 func mapWebBrokerReceiverAPIToModel(in struct {
-	Name string                       `json:"name" yaml:"name"`
-	Type api.WebBrokerAPIReceiverType `json:"type" yaml:"type"`
+	Name       string                       `json:"name" yaml:"name"`
+	Properties *map[string]interface{}      `json:"properties,omitempty" yaml:"properties,omitempty"`
+	Type       api.WebBrokerAPIReceiverType `json:"type" yaml:"type"`
 }) model.WebBrokerReceiver {
-	return model.WebBrokerReceiver{
+	r := model.WebBrokerReceiver{
 		Name: in.Name,
 		Type: string(in.Type),
 	}
+	if in.Properties != nil {
+		r.Properties = *in.Properties
+	}
+	return r
 }
 
 // mapWebBrokerReceiverModelToAPI converts model receiver to API receiver
 func mapWebBrokerReceiverModelToAPI(in model.WebBrokerReceiver) struct {
-	Name string                       `json:"name" yaml:"name"`
-	Type api.WebBrokerAPIReceiverType `json:"type" yaml:"type"`
+	Name       string                       `json:"name" yaml:"name"`
+	Properties *map[string]interface{}      `json:"properties,omitempty" yaml:"properties,omitempty"`
+	Type       api.WebBrokerAPIReceiverType `json:"type" yaml:"type"`
 } {
-	return struct {
-		Name string                       `json:"name" yaml:"name"`
-		Type api.WebBrokerAPIReceiverType `json:"type" yaml:"type"`
+	out := struct {
+		Name       string                       `json:"name" yaml:"name"`
+		Properties *map[string]interface{}      `json:"properties,omitempty" yaml:"properties,omitempty"`
+		Type       api.WebBrokerAPIReceiverType `json:"type" yaml:"type"`
 	}{
 		Name: in.Name,
 		Type: api.WebBrokerAPIReceiverType(in.Type),
 	}
+	if in.Properties != nil {
+		out.Properties = &in.Properties
+	}
+	return out
 }
 
 // mapWebBrokerBrokerAPIToModel converts API broker to model broker

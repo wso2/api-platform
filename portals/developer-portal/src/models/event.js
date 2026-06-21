@@ -16,7 +16,7 @@
  * under the License.
  */
 const { Sequelize, DataTypes } = require('sequelize');
-const sequelize = require('../db/sequelize');
+const sequelize = require('../db/sequelizeConfig');
 
 // Outbox table — one row per domain event. Payload never contains plaintext key secrets.
 const DPEvent = sequelize.define('DP_EVENT', {
@@ -46,7 +46,7 @@ const DPEvent = sequelize.define('DP_EVENT', {
         allowNull: false
     },
     PAYLOAD: {
-        type: DataTypes.JSONB,
+        type: DataTypes.JSON,
         allowNull: false,
         defaultValue: {}
     },
@@ -65,7 +65,7 @@ const DPEvent = sequelize.define('DP_EVENT', {
     tableName: 'DP_EVENT',
     returning: true,
     indexes: [
-        { fields: ['STATUS', 'OCCURRED_AT'] }
+        { name: 'IDX_EVENT_STATUS_OCCURRED_AT', fields: ['STATUS', 'OCCURRED_AT'] }
     ]
 });
 

@@ -25,36 +25,14 @@
 # The devportal service uses the pre-built image tagged :test (set by make ensure-test-tag).
 
 services:
-  postgres:
-    image: postgres:16
-    environment:
-      POSTGRES_USER: devportal
-      POSTGRES_PASSWORD: devportal
-      POSTGRES_DB: devportal
-    volumes:
-      - ../database:/docker-entrypoint-initdb.d:ro
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U devportal -d devportal"]
-      interval: 5s
-      timeout: 5s
-      retries: 20
-      start_period: 10s
-    networks:
-      - it-devportal-network
-
   devportal:
     image: ${DOCKER_REGISTRY:-ghcr.io/wso2/api-platform}/developer-portal:test
-    depends_on:
-      postgres:
-        condition: service_healthy
     environment:
-      DP_DB_HOST: postgres
-      DP_DB_PORT: 5432
-      DP_DB_DIALECT: postgres
-      DP_DB_USERNAME: devportal
-      DP_DB_PASSWORD: devportal
-      DP_DB_DATABASE: devportal
-      DP_SECRETS_DBSECRET: devportal
+      # SQLite — no external database required.
+      DP_DB_DIALECT: sqlite
+      DP_DB_STORAGE: /tmp/devportal-it.db
+      # Seed the default org on startup.
+      DP_DEFAULTORGNAME: "default"
       # Use plain HTTP inside the test network so Cypress doesn't need to trust a cert.
       DP_ADVANCED_HTTP: "true"
       DP_BASEURL: "http://devportal:3000"

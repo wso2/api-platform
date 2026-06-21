@@ -37,7 +37,7 @@ import { getEnvOrDefault } from './utils/getEnvOrDefault';
 export const DEBUG = getEnvOrDefault('VITE_DEBUG', false);
 
 // Domain and environment settings
-export const DOMAIN = getEnvOrDefault('VITE_DOMAIN', 'localhost:3009');
+export const DOMAIN = getEnvOrDefault('VITE_DOMAIN', 'localhost:5380');
 //Static OIDC configuration — set these to match the root-org OIDC app in your IDP.
 // Authority is the issuer URL; the OIDC client will auto-discover endpoints from {authority}/.well-known/openid-configuration.
 export const OIDC_AUTHORITY  = getEnvOrDefault('VITE_OIDC_AUTHORITY', '');
@@ -64,7 +64,7 @@ export const OIDC_SCOPE = getEnvOrDefault(
   ' ap:application:associations:read ap:application:associations:create ap:application:associations:delete ap:application:associations:manage ap:application:associations:api_key:read' +
   ' ap:gateway:read ap:gateway:create ap:gateway:update ap:gateway:delete ap:gateway:manage' +
   ' ap:gateway:token:read ap:gateway:token:create ap:gateway:token:delete ap:gateway:token:manage' +
-  ' ap:gateway:policy:read ap:gateway:policy:create ap:gateway:policy:delete ap:gateway:policy:manage' +
+  ' ap:gateway_custom_policy:read ap:gateway_custom_policy:create ap:gateway_custom_policy:delete ap:gateway_custom_policy:manage' +
   ' ap:gateway:artifacts:read ap:gateway:manifest:read' +
   ' ap:rest_api:read ap:rest_api:create ap:rest_api:update ap:rest_api:delete ap:rest_api:manage ap:rest_api:import' +
   ' ap:rest_api:gateway:read ap:rest_api:gateway:create ap:rest_api:gateway:manage' +
@@ -141,10 +141,13 @@ export const POLICY_HUB_WEB_URL = getEnvOrDefault(
   'https://wso2.com/api-platform/policy-hub/'
 );
 
-// Platform API base URL (local dev: https://localhost:9243/api/v1)
+// Platform API base URL. Defaults to a relative path routed through the dev-server / nginx
+// proxy (/api-proxy → https://localhost:9243, secure:false) so the browser only ever talks to
+// the app origin and never sees the platform-api self-signed cert. Override with an absolute URL
+// only if calling the platform API directly.
 export const PLATFORM_API_BASE_URL = getEnvOrDefault(
   'VITE_PLATFORM_API_BASE_URL',
-  'https://localhost:9243/api/v1'
+  '/api-proxy/api/v1'
 );
 
 // Control-plane host shown in gateway setup instructions (host:port).
@@ -156,7 +159,7 @@ export const CONTROLPLANE_HOST = getEnvOrDefault(
 
 export const PORTAL_API_BASE_URL = getEnvOrDefault(
   'VITE_PORTAL_API_BASE_URL',
-  'https://localhost:9243/api/portal/v1'
+  '/api-proxy/api/portal/v1'
 );
 
 // JWT claim names for user display — configure to match your IDP's token structure.
@@ -165,5 +168,4 @@ export const OIDC_USERNAME_CLAIM = getEnvOrDefault('VITE_OIDC_USERNAME_CLAIM', '
 export const OIDC_EMAIL_CLAIM = getEnvOrDefault('VITE_OIDC_EMAIL_CLAIM', 'email');
 
 // Auth mode: 'oidc' (default) uses react-oidc-context; 'basic' posts credentials to /api/portal/v1/auth/login.
-export const AUTH_MODE = getEnvOrDefault('VITE_AUTH_MODE', 'oidc') as 'oidc' | 'basic';
-
+export const AUTH_MODE = getEnvOrDefault('VITE_AUTH_MODE', 'basic') as 'oidc' | 'basic';

@@ -341,6 +341,22 @@ func (v *APIValidator) validateUpstreamDefinitions(definitions *[]api.UpstreamDe
 						Message: "URL must not include a path; set the base path in upstreamDefinitions[].basePath instead",
 					})
 				}
+
+				// A query string or fragment is not part of the upstream cluster
+				// (host[:port] only), so it would be silently dropped. Reject it.
+				if parsedURL.RawQuery != "" || parsedURL.ForceQuery {
+					errors = append(errors, ValidationError{
+						Field:   fmt.Sprintf("spec.upstreamDefinitions[%d].upstreams[%d].url", i, j),
+						Message: "URL must not include a query string; only host[:port] is used",
+					})
+				}
+
+				if parsedURL.Fragment != "" {
+					errors = append(errors, ValidationError{
+						Field:   fmt.Sprintf("spec.upstreamDefinitions[%d].upstreams[%d].url", i, j),
+						Message: "URL must not include a fragment; only host[:port] is used",
+					})
+				}
 			}
 
 			// Validate weight if present

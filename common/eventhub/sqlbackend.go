@@ -55,6 +55,7 @@ type SQLBackend struct {
 	stmtMu                   sync.RWMutex
 	insertEventStmt          *sql.Stmt
 	updateGatewayVersionStmt *sql.Stmt
+	ensureGatewayStmt        *sql.Stmt
 	getGatewayStateStmt      *sql.Stmt
 	getGatewayStatesPageStmt *sql.Stmt
 	getEventsStmt            *sql.Stmt
@@ -155,6 +156,7 @@ func (b *SQLBackend) closeStatements() {
 	stmts := []*sql.Stmt{
 		b.insertEventStmt,
 		b.updateGatewayVersionStmt,
+		b.ensureGatewayStmt,
 		b.getGatewayStateStmt,
 		b.getGatewayStatesPageStmt,
 		b.getEventsStmt,
@@ -190,6 +192,16 @@ func (b *SQLBackend) prepareStatements() (err error) {
 	`))
 	if err != nil {
 		return fmt.Errorf("failed to prepare update gateway version statement: %w", err)
+	}
+
+	// Idempotent upsert — creates the gateway_states row when publishing for a gateway
+	// that has not yet established a WebSocket connection (and therefore has not been
+	// explicitly registered).  ON CONFLICT DO NOTHING leaves an existing row unchanged.
+	b.ensureGatewayStmt, err = b.db.Prepare(b.rebind(`
+		INSERT INTO gateway_states (gateway_id, version_id) VALUES (?, '') ON CONFLICT (gateway_id) DO NOTHING
+	`))
+	if err != nil {
+		return fmt.Errorf("failed to prepare ensure gateway statement: %w", err)
 	}
 
 	b.getGatewayStateStmt, err = b.db.Prepare(b.rebind(`
@@ -300,6 +312,13 @@ func (b *SQLBackend) Publish(gatewayID string, event Event) error {
 		}
 	}()
 
+	// Ensure the gateway_states row exists before the FK-constrained event insert.
+	// A gateway may not have connected via WebSocket yet (and therefore not been
+	// explicitly registered), but the resource has already been mutated.
+	if _, err = tx.Stmt(b.ensureGatewayStmt).Exec(gatewayID); err != nil {
+		return fmt.Errorf("failed to ensure gateway registration: %w", err)
+	}
+
 	// Insert event (explicitly pass processed_timestamp to ensure consistent time format with Go driver)
 	_, err = tx.Stmt(b.insertEventStmt).Exec(
 		gatewayID,
@@ -336,14 +355,8 @@ func (b *SQLBackend) Publish(gatewayID string, event Event) error {
 	}
 
 	// Update gateway version
-	result, err := tx.Stmt(b.updateGatewayVersionStmt).Exec(newVersion, gatewayID)
-	if err != nil {
+	if _, err = tx.Stmt(b.updateGatewayVersionStmt).Exec(newVersion, gatewayID); err != nil {
 		return fmt.Errorf("failed to update gateway version: %w", err)
-	}
-
-	if rows, _ := result.RowsAffected(); rows == 0 {
-		err = fmt.Errorf("gateway %q is not registered", gatewayID)
-		return err
 	}
 
 	if err = tx.Commit(); err != nil {
@@ -519,11 +532,19 @@ func (b *SQLBackend) getGatewayStatesPage(cursor string, limit int) ([]GatewaySt
 }
 
 func (b *SQLBackend) pollGatewayWithState(gw *gateway, state GatewayState) error {
-	// Check if version has changed
 	b.registry.mu.RLock()
 	knownVersion := gw.knownVersion
 	lastPolled := gw.lastPolled
+	hasSubscribers := len(gw.subscribers) > 0
 	b.registry.mu.RUnlock()
+
+	// No active connections on this replica — skip delivery and, crucially, skip
+	// cursor advancement.  This preserves the reset cursor set by removeSubscriber
+	// so that a reconnecting gateway gets the initialPollSkewWindow replay instead
+	// of inheriting the stale knownVersion/lastPolled of the failed connection.
+	if !hasSubscribers {
+		return nil
+	}
 
 	if state.VersionID == knownVersion || state.VersionID == "" {
 		return nil // No changes

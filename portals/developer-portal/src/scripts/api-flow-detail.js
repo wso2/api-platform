@@ -134,7 +134,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = (document.querySelector('main').dataset.flowHandle || 'workflow') + '.txt';
+            a.download = (document.querySelector('[data-flow-handle]').dataset.flowHandle || 'workflow') + '.txt';
             a.click();
             URL.revokeObjectURL(url);
         });
@@ -152,7 +152,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     const specContent = document.getElementById('specContent').value.trim();
-    const contentType = document.querySelector('main').dataset.flowContentType;
+    const contentType = document.querySelector('[data-flow-handle]').dataset.flowContentType;
 
     if (contentType === 'MD') {
         renderMarkdownPreview(specContent);

@@ -20,8 +20,16 @@ openssl rand -hex 32
 Set the output as `encryptionKey`. You can also provide it via the environment variable `DP_ADVANCED_ENCRYPTIONKEY`.
 
 > **Important:** Store this key securely. If it is lost, all encrypted data in the database cannot be decrypted.
+>
+> If `encryptionKey` is not set, the Developer Portal auto-generates an ephemeral key at startup and logs a warning to stderr. This is convenient for local development but means encrypted data (subscription tokens, key manager credentials) becomes unreadable after each restart. Always set a stable key in production.
 
 ## Add a Key Manager
+
+> **Authentication:** The examples below use a `$TOKEN` variable. Obtain a Bearer token first:
+> ```bash
+> TOKEN=$(curl -sk -X POST "https://localhost:9243/api/portal/v1/auth/login" \
+>   -d "username=admin&password=admin" | jq -r .token)
+> ```
 
 Use the `KeyManager` manifest format:
 
@@ -99,8 +107,8 @@ spec:
 ```
 
 ```bash
-curl -X POST http://localhost:3000/organizations/{orgId}/key-managers \
-  -u admin:admin \
+curl -X POST http://localhost:3000/o/{orgId}/devportal/v1/key-managers \
+  -H "Authorization: Bearer $TOKEN" \
   -F "keymanager=@keymanager.yaml"
 ```
 
@@ -122,13 +130,13 @@ curl -X POST http://localhost:3000/organizations/{orgId}/key-managers \
 ## List Key Managers
 
 ```bash
-curl http://localhost:3000/organizations/{orgId}/key-managers -u admin:admin
+curl http://localhost:3000/o/{orgId}/devportal/v1/key-managers -H "Authorization: Bearer $TOKEN"
 ```
 
 ## Get a Key Manager
 
 ```bash
-curl http://localhost:3000/organizations/{orgId}/key-managers/{kmId} -u admin:admin
+curl http://localhost:3000/o/{orgId}/devportal/v1/key-managers/{kmId} -H "Authorization: Bearer $TOKEN"
 ```
 
 ## Discover Available Key Managers
@@ -136,7 +144,8 @@ curl http://localhost:3000/organizations/{orgId}/key-managers/{kmId} -u admin:ad
 Developers can use this endpoint to see which key managers are available for their organization:
 
 ```bash
-curl http://localhost:3000/organizations/{orgId}/key-managers/discover
+curl http://localhost:3000/o/{orgId}/devportal/v1/key-managers/discover \
+  -H "Authorization: Bearer $TOKEN"
 ```
 
 ## Update a Key Manager
@@ -155,16 +164,16 @@ spec:
 ```
 
 ```bash
-curl -X PUT http://localhost:3000/organizations/{orgId}/key-managers/{kmId} \
-  -u admin:admin \
+curl -X PUT http://localhost:3000/o/{orgId}/devportal/v1/key-managers/{kmId} \
+  -H "Authorization: Bearer $TOKEN" \
   -F "keymanager=@keymanager-update.yaml"
 ```
 
 ## Delete a Key Manager
 
 ```bash
-curl -X DELETE http://localhost:3000/organizations/{orgId}/key-managers/{kmId} \
-  -u admin:admin
+curl -X DELETE http://localhost:3000/o/{orgId}/devportal/v1/key-managers/{kmId} \
+  -H "Authorization: Bearer $TOKEN"
 ```
 
 > **Warning:** Deleting a key manager that has active applications associated with it will prevent those applications from generating new credentials. Existing tokens issued by the key manager remain valid until they expire.

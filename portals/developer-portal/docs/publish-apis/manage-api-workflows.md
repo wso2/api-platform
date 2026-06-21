@@ -6,6 +6,12 @@ For the portal UI guide, see [Managing API Workflows](../administer/managing-api
 
 This page covers the admin API endpoints for managing workflows programmatically.
 
+> **Authentication:** The examples below use a `$TOKEN` variable. Obtain a Bearer token first:
+> ```bash
+> TOKEN=$(curl -sk -X POST "https://localhost:9243/api/portal/v1/auth/login" \
+>   -d "username=admin&password=admin" | jq -r .token)
+> ```
+
 ## Create a Workflow
 
 API flow requests are JSON. The `apiFlowDefinition` field contains the Arazzo content as an inline object.
@@ -65,9 +71,9 @@ API flow requests are JSON. The `apiFlowDefinition` field contains the Arazzo co
 
 ```bash
 curl -X POST \
-  "http://localhost:3000/organizations/{orgId}/views/{viewName}/api-flows" \
+  "http://localhost:3000/o/{orgId}/devportal/v1/views/{viewName}/api-flows" \
   -H "Content-Type: application/json" \
-  -u admin:admin \
+  -H "Authorization: Bearer $TOKEN" \
   --data-binary @workflow.json
 ```
 
@@ -85,15 +91,15 @@ curl -X POST \
 ## List Workflows
 
 ```bash
-curl http://localhost:3000/organizations/{orgId}/views/{viewName}/api-flows \
-  -u admin:admin
+curl http://localhost:3000/o/{orgId}/devportal/v1/views/{viewName}/api-flows \
+  -H "Authorization: Bearer $TOKEN"
 ```
 
 ## Get a Workflow
 
 ```bash
-curl http://localhost:3000/organizations/{orgId}/views/{viewName}/api-flows/{apiFlowId} \
-  -u admin:admin
+curl http://localhost:3000/o/{orgId}/devportal/v1/views/{viewName}/api-flows/{apiFlowId} \
+  -H "Authorization: Bearer $TOKEN"
 ```
 
 ## Update a Workflow
@@ -109,9 +115,9 @@ curl http://localhost:3000/organizations/{orgId}/views/{viewName}/api-flows/{api
 
 ```bash
 curl -X PUT \
-  "http://localhost:3000/organizations/{orgId}/views/{viewName}/api-flows/{apiFlowId}" \
+  "http://localhost:3000/o/{orgId}/devportal/v1/views/{viewName}/api-flows/{apiFlowId}" \
   -H "Content-Type: application/json" \
-  -u admin:admin \
+  -H "Authorization: Bearer $TOKEN" \
   --data-binary @workflow-update.json
 ```
 
@@ -119,8 +125,8 @@ curl -X PUT \
 
 ```bash
 curl -X DELETE \
-  "http://localhost:3000/organizations/{orgId}/views/{viewName}/api-flows/{apiFlowId}" \
-  -u admin:admin
+  "http://localhost:3000/o/{orgId}/devportal/v1/views/{viewName}/api-flows/{apiFlowId}" \
+  -H "Authorization: Bearer $TOKEN"
 ```
 
 ## Generate an Agent Prompt with AI
@@ -143,9 +149,9 @@ The portal can generate a suggested agent prompt for a workflow using AI:
 
 ```bash
 curl -X POST \
-  "http://localhost:3000/organizations/{orgId}/views/{viewName}/api-flows/generate-prompt" \
+  "http://localhost:3000/o/{orgId}/devportal/v1/views/{viewName}/api-flows/generate-prompt" \
   -H "Content-Type: application/json" \
-  -u admin:admin \
+  -H "Authorization: Bearer $TOKEN" \
   --data-binary @generate-prompt.json
 ```
 

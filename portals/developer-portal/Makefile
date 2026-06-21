@@ -60,11 +60,15 @@ help: ## Show this help message
 	@echo 'Docs Targets:'
 	@echo '  make generate-apidocs            - Generate REST API docs from OpenAPI spec'
 	@echo ''
+	@echo 'Database Targets:'
+	@echo '  make generate-ddl                - Generate DDL files from models for all supported dialects'
+	@echo ''
 	@echo 'Clean Targets:'
 	@echo '  make clean                       - Clean all build artifacts'
 	@echo ''
 	@echo 'Integration Tests:'
-	@echo '  make it                          - Run Cypress integration tests (headless, in Docker)'
+	@echo '  make it                          - Run Cypress integration tests against SQLite (headless, in Docker)'
+	@echo '  make it-postgres                 - Run Cypress integration tests against PostgreSQL (headless, in Docker)'
 	@echo '  make it-open                     - Open Cypress interactive UI (needs devportal running locally)'
 
 # Build Targets
@@ -137,7 +141,7 @@ dist: clean-dist ## Build standalone developer portal distribution zip
 	@echo "Building distribution $(DIST_NAME)..."
 	@mkdir -p $(DIST_DIR)/configs
 	@cp -R database $(DIST_DIR)
-	@cp sample.config.yaml $(DIST_DIR)/configs/config.yaml
+	@cp configs/config.yaml.example $(DIST_DIR)/configs/config.yaml
 	@cp distribution/docker-compose.yaml $(DIST_DIR)/docker-compose.yaml
 	@sed -i.bak \
 	    -e 's|image: .*/developer-portal:[^[:space:]]*|image: $(DEVPORTAL_IMAGE):$(DIST_VERSION)|g' \
@@ -157,6 +161,18 @@ clean-dist: ## Remove distribution staging dir and zip
 clean: clean-dist ## Clean all build artifacts
 	@echo "Cleaned developer portal build artifacts"
 
+# Database Targets
+
+.PHONY: generate-ddl
+generate-ddl: ## Generate DDL schema files from Sequelize models for all supported dialects
+	@echo "Generating DDL files (postgres, mysql, mariadb, mssql, sqlite)..."
+	@node scripts/generate-ddl.js postgres
+	@node scripts/generate-ddl.js mysql
+	@node scripts/generate-ddl.js mariadb
+	@node scripts/generate-ddl.js mssql
+	@node scripts/generate-ddl.js sqlite
+	@echo "Done. Files written to database/"
+
 # Docs Targets
 
 .PHONY: generate-apidocs
@@ -170,9 +186,12 @@ generate-apidocs: ## Generate REST API docs from devportal OpenAPI spec
 
 # Integration Test Targets
 
-.PHONY: it it-open
-it: ## Run Cypress integration tests headlessly inside Docker Compose
+.PHONY: it it-postgres it-open
+it: ## Run Cypress integration tests against SQLite (headless, in Docker)
 	$(MAKE) -C it test DOCKER_REGISTRY=$(DOCKER_REGISTRY)
+
+it-postgres: ## Run Cypress integration tests against PostgreSQL (headless, in Docker)
+	$(MAKE) -C it test-postgres DOCKER_REGISTRY=$(DOCKER_REGISTRY)
 
 it-open: ## Open Cypress interactive UI against a locally running devportal
 	$(MAKE) -C it open DOCKER_REGISTRY=$(DOCKER_REGISTRY)

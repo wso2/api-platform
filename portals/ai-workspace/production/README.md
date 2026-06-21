@@ -169,6 +169,7 @@ default_org_region = "us"
 | `oidc_org_id_claim`    | `VITE_OIDC_ORG_ID_CLAIM`      |
 | `oidc_org_name_claim`  | `VITE_OIDC_ORG_NAME_CLAIM`    |
 | `oidc_org_handle_claim`| `VITE_OIDC_ORG_HANDLE_CLAIM`  |
+| `oidc_scope`           | `VITE_OIDC_SCOPE`             |
 | `platform_api_base_url`| `VITE_PLATFORM_API_BASE_URL`  |
 | `controlplane_host`    | `VITE_CONTROLPLANE_HOST`      |
 | `default_org_region`   | `VITE_DEFAULT_ORG_REGION`     |

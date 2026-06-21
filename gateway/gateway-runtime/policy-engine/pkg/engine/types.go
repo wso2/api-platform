@@ -30,6 +30,7 @@ import (
 // no meaning in the event-gateway context.
 type RequestHeaderResult struct {
 	HeadersToSet      map[string]string
+	HeadersToAppend   map[string][]string
 	HeadersToRemove   []string
 	ShortCircuited    bool
 	ImmediateResponse *ImmediateResponseResult
@@ -39,6 +40,7 @@ type RequestHeaderResult struct {
 // RequestBodyResult is the exported result of executing request body policies.
 type RequestBodyResult struct {
 	HeadersToSet      map[string]string
+	HeadersToAppend   map[string][]string
 	HeadersToRemove   []string
 	Body              []byte
 	Topic             string // Broker topic for publish (set by policies like map-topic)
@@ -50,6 +52,7 @@ type RequestBodyResult struct {
 // ResponseHeaderResult is the exported result of executing response header policies.
 type ResponseHeaderResult struct {
 	HeadersToSet      map[string]string
+	HeadersToAppend   map[string][]string
 	HeadersToRemove   []string
 	ShortCircuited    bool
 	ImmediateResponse *ImmediateResponseResult
@@ -59,6 +62,7 @@ type ResponseHeaderResult struct {
 // ResponseBodyResult is the exported result of executing response body policies.
 type ResponseBodyResult struct {
 	HeadersToSet      map[string]string
+	HeadersToAppend   map[string][]string
 	HeadersToRemove   []string
 	Body              []byte
 	StatusCode        *int
@@ -88,6 +92,7 @@ func mapRequestHeaderResult(r *executor.RequestHeaderExecutionResult) *RequestHe
 		switch a := r.FinalAction.(type) {
 		case policy.UpstreamRequestHeaderModifications:
 			res.HeadersToSet = a.HeadersToSet
+			res.HeadersToAppend = a.HeadersToAppend
 			res.HeadersToRemove = a.HeadersToRemove
 		case policy.ImmediateResponse:
 			res.ShortCircuited = true
@@ -102,6 +107,7 @@ func mapRequestHeaderResult(r *executor.RequestHeaderExecutionResult) *RequestHe
 	// Merge all non-short-circuit results
 	if !res.ShortCircuited {
 		merged := make(map[string]string)
+		appended := make(map[string][]string)
 		var removed []string
 		for _, pr := range r.Results {
 			if pr.Skipped {
@@ -111,11 +117,17 @@ func mapRequestHeaderResult(r *executor.RequestHeaderExecutionResult) *RequestHe
 				for k, v := range mods.HeadersToSet {
 					merged[k] = v
 				}
+				for k, vs := range mods.HeadersToAppend {
+					appended[k] = append(appended[k], vs...)
+				}
 				removed = append(removed, mods.HeadersToRemove...)
 			}
 		}
 		if len(merged) > 0 {
 			res.HeadersToSet = merged
+		}
+		if len(appended) > 0 {
+			res.HeadersToAppend = appended
 		}
 		if len(removed) > 0 {
 			res.HeadersToRemove = removed
@@ -146,6 +158,7 @@ func mapRequestBodyResult(r *executor.RequestExecutionResult) *RequestBodyResult
 		switch a := r.FinalAction.(type) {
 		case policy.UpstreamRequestModifications:
 			res.HeadersToSet = a.HeadersToSet
+			res.HeadersToAppend = a.HeadersToAppend
 			res.HeadersToRemove = a.HeadersToRemove
 			res.Body = a.Body
 		case policy.ImmediateResponse:
@@ -175,6 +188,7 @@ func mapResponseHeaderResult(r *executor.ResponseHeaderExecutionResult) *Respons
 		switch a := r.FinalAction.(type) {
 		case policy.DownstreamResponseHeaderModifications:
 			res.HeadersToSet = a.HeadersToSet
+			res.HeadersToAppend = a.HeadersToAppend
 			res.HeadersToRemove = a.HeadersToRemove
 		case policy.ImmediateResponse:
 			res.ShortCircuited = true
@@ -189,6 +203,7 @@ func mapResponseHeaderResult(r *executor.ResponseHeaderExecutionResult) *Respons
 	// Merge all non-short-circuit results
 	if !res.ShortCircuited {
 		merged := make(map[string]string)
+		appended := make(map[string][]string)
 		var removed []string
 		for _, pr := range r.Results {
 			if pr.Skipped {
@@ -198,11 +213,17 @@ func mapResponseHeaderResult(r *executor.ResponseHeaderExecutionResult) *Respons
 				for k, v := range mods.HeadersToSet {
 					merged[k] = v
 				}
+				for k, vs := range mods.HeadersToAppend {
+					appended[k] = append(appended[k], vs...)
+				}
 				removed = append(removed, mods.HeadersToRemove...)
 			}
 		}
 		if len(merged) > 0 {
 			res.HeadersToSet = merged
+		}
+		if len(appended) > 0 {
+			res.HeadersToAppend = appended
 		}
 		if len(removed) > 0 {
 			res.HeadersToRemove = removed
@@ -226,6 +247,7 @@ func mapResponseBodyResult(r *executor.ResponseExecutionResult) *ResponseBodyRes
 		switch a := r.FinalAction.(type) {
 		case policy.DownstreamResponseModifications:
 			res.HeadersToSet = a.HeadersToSet
+			res.HeadersToAppend = a.HeadersToAppend
 			res.HeadersToRemove = a.HeadersToRemove
 			res.Body = a.Body
 			res.StatusCode = a.StatusCode

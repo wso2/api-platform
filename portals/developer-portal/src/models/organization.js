@@ -16,9 +16,9 @@
  * under the License.
  */
 const { Sequelize, DataTypes } = require('sequelize');
-const sequelize = require('../db/sequelize');
+const sequelize = require('../db/sequelizeConfig');
 const Provider = require('./provider');
-const View = require('./views');
+const View = require('./view');
 
 const Organization = sequelize.define('DP_ORGANIZATION', {
     ORG_ID: {
@@ -78,7 +78,7 @@ const Organization = sequelize.define('DP_ORGANIZATION', {
     },   
     ORG_CONFIG: {
         type: DataTypes.JSON,
-        allowNull: true
+        allowNull: false
     },
 }, {
     timestamps: false,
@@ -111,7 +111,7 @@ const OrgContent = sequelize.define('DP_ORGANIZATION_ASSETS', {
     ORG_ID: {
         type: DataTypes.UUID,
         allowNull: false,
-        forignKey: true,
+        foreignKey: true,
     },
     VIEW_ID: {
         type: DataTypes.UUID,

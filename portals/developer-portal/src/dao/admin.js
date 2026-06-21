@@ -17,7 +17,6 @@
  */
 const { Organization, OrgContent } = require('../models/organization');
 const { Sequelize } = require('sequelize');
-const { IdentityProvider } = require('../models/identityProvider');
 const { Application, ApplicationKeyMapping, SubscriptionMapping } = require('../models/application');
 const Provider = require('../models/provider');
 const apiDao = require('./apiMetadata');
@@ -25,13 +24,12 @@ const { APIMetadata } = require('../models/apiMetadata');
 const APIImageMetadata = require('../models/apiImages');
 const SubscriptionPolicy = require('../models/subscriptionPolicy');
 const logger = require('../config/logger');
-const { decrypt } = require('../utils/cryptoUtil');
 const sequelize = require('../db/sequelize');
 
 const createOrganization = async (orgData, t) => {
     let devPortalID = "";
     if (orgData.orgHandle) {
-        devPortalID = orgData.orgHandle
+        devPortalID = orgData.orgHandle.toLowerCase();
     }
     const createOrgData = {
         ORG_NAME: orgData.orgName,
@@ -59,17 +57,20 @@ const createOrganization = async (orgData, t) => {
     }
 };
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 const getOrganization = async (param) => {
     try {
+        const conditions = [
+            { ORG_NAME: param },
+            { ORG_HANDLE: typeof param === 'string' ? param.toLowerCase() : param },
+            { ORGANIZATION_IDENTIFIER: param },
+        ];
+        if (typeof param === 'string' && UUID_RE.test(param)) {
+            conditions.push({ ORG_ID: param });
+        }
         const organization = await Organization.findOne({
-            where: {
-                [Sequelize.Op.or]: [
-                    { ORG_NAME: param },
-                    { ORG_HANDLE: param },
-                    { ORG_ID: param },
-                    { ORGANIZATION_IDENTIFIER: param }
-                ]
-            }
+            where: { [Sequelize.Op.or]: conditions }
         });
         if (!organization) {
             throw new Sequelize.EmptyResultError('Organization not found');
@@ -89,7 +90,7 @@ const getOrgId = async (orgName) => {
             where: {
                 [Sequelize.Op.or]: [
                     { ORG_NAME: orgName },
-                    { ORG_HANDLE: orgName },
+                    { ORG_HANDLE: typeof orgName === 'string' ? orgName.toLowerCase() : orgName },
                     { ORGANIZATION_IDENTIFIER: orgName }
                 ]
             }
@@ -124,7 +125,7 @@ const getOrganizations = async () => {
 const updateOrganization = async (orgData, t) => {
     let devPortalID = "";
     if (orgData.orgHandle) {
-        devPortalID = orgData.orgHandle
+        devPortalID = orgData.orgHandle.toLowerCase();
     }
     try {
         const [updatedRowsCount, updatedOrg] = await Organization.update(
@@ -172,102 +173,6 @@ const deleteOrganization = async (orgId) => {
         return deletedRowsCount;
     } catch (error) {
         if (error instanceof Sequelize.EmptyResultError) {
-            throw error;
-        }
-        throw new Sequelize.DatabaseError(error);
-    }
-}
-
-const createIdentityProvider = async (orgId, idpData, t) => {
-    try {
-        const idpResponse = await IdentityProvider.create({
-            ORG_ID: orgId,
-            ISSUER: idpData.issuer,
-            NAME: idpData.name,
-            AUTHORIZATION_URL: idpData.authorizationURL,
-            TOKEN_URL: idpData.tokenURL,
-            ...(idpData.userInfoURL && { USER_INFOR_URL: idpData.userInfoURL }),
-            CLIENT_ID: idpData.clientId,
-            CALLBACK_URL: idpData.callbackURL,
-            ...(idpData.signUpURL && { SIGNUP_URL: idpData.signUpURL }),
-            LOGOUT_URL: idpData.logoutURL,
-            LOGOUT_REDIRECT_URL: idpData.logoutRedirectURI,
-            ...(idpData.scope && { SCOPE: idpData.scope }),
-            ...(idpData.jwksURL && { JWKS_URL: idpData.jwksURL }),
-            ...(idpData.certificate && { CERTIFICATE: idpData.certificate })
-        }, { transaction: t });
-        return idpResponse;
-    } catch (error) {
-        if (error instanceof Sequelize.UniqueConstraintError) {
-            throw error;
-        }
-        throw new Sequelize.DatabaseError(error);
-    }
-}
-
-const updateIdentityProvider = async (orgID, idpData, t) => {
-    try {
-        const [updatedRowsCount, idpContent] = await IdentityProvider.update(
-            {
-                ORG_ID: idpData.orgId,
-                ISSUER: idpData.issuer,
-                NAME: idpData.name,
-                AUTHORIZATION_URL: idpData.authorizationURL,
-                TOKEN_URL: idpData.tokenURL,
-                ...(idpData.userInfoURL && { USER_INFOR_URL: idpData.userInfoURL }),
-                CLIENT_ID: idpData.clientId,
-                CALLBACK_URL: idpData.callbackURL,
-                ...(idpData.signUpURL && { SIGNUP_URL: idpData.signUpURL }),
-                LOGOUT_URL: idpData.logoutURL,
-                LOGOUT_REDIRECT_URI: idpData.logoutRedirectURI,
-                SCOPE: idpData.scope,
-                ...(idpData.jwksURL && { JWKS_URL: idpData.jwksURL }),
-                ...(idpData.certificate && { CERTIFICATE: idpData.certificate })
-            },
-            {
-                where: { ORG_ID: orgID },
-                returning: true,
-                transaction: t,
-            }
-        );
-        if (updatedRowsCount < 1) {
-            throw new Sequelize.EmptyResultError('IdentityProvider not found');
-        }
-        return [updatedRowsCount, idpContent];
-    } catch (error) {
-        if (error instanceof Sequelize.UniqueConstraintError) {
-            throw error;
-        }
-        throw new Sequelize.DatabaseError(error);
-    }
-}
-
-const getIdentityProvider = async (orgID) => {
-    try {
-        const idpResponse = await IdentityProvider.findAll({
-            where: {
-                ORG_ID: orgID,
-            }
-        });
-        return idpResponse;
-    } catch (error) {
-        if (error instanceof Sequelize.UniqueConstraintError) {
-            throw error;
-        }
-        throw new Sequelize.DatabaseError(error);
-    }
-};
-
-const deleteIdentityProvider = async (orgID) => {
-    try {
-        const idpResponse = await IdentityProvider.destroy({
-            where: {
-                ORG_ID: orgID
-            }
-        });
-        return idpResponse;
-    } catch (error) {
-        if (error instanceof Sequelize.UniqueConstraintError) {
             throw error;
         }
         throw new Sequelize.DatabaseError(error);
@@ -504,13 +409,14 @@ const deleteProvider = async (orgID, name) => {
 
 const getProviders = async (orgID) => {
     try {
+        const jsonObjectFn = sequelize.getDialect() === 'sqlite' ? 'json_group_object' : 'JSON_OBJECT_AGG';
         const providers = await Provider.findAll(
             {
                 attributes: [
                     'NAME',
                     [
                         Sequelize.fn(
-                            'JSON_OBJECT_AGG',
+                            jsonObjectFn,
                             Sequelize.col('PROPERTY'),
                             Sequelize.col('VALUE')
                         ),
@@ -674,7 +580,7 @@ const deleteApplication = async (orgID, appID, userID) => {
 const createSubscription = async (orgID, subscription, t) => {
     try {
         const subMapping = await SubscriptionMapping.create({
-            APP_ID: subscription.applicationID,
+            CREATED_BY: subscription.createdBy,
             API_ID: subscription.apiId,
             POLICY_ID: subscription.policyId,
             ORG_ID: orgID,
@@ -695,10 +601,10 @@ const updateSubscription = async (orgID, subscription, t) => {
         }, {
             where: {
                 ORG_ID: orgID,
-                APP_ID: subscription.applicationID,
-                API_ID: subscription.apiId
-            }
-        }, { transaction: t });
+                SUB_ID: subscription.subId
+            },
+            transaction: t,
+        });
         return subMapping;
     } catch (error) {
         if (error instanceof Sequelize.UniqueConstraintError) {
@@ -710,13 +616,10 @@ const updateSubscription = async (orgID, subscription, t) => {
 
 const getSubscription = async (orgID, subID, t) => {
     try {
-        return await SubscriptionMapping.findOne(
-            {
-                where: {
-                    ORG_ID: orgID,
-                    SUB_ID: subID
-                }, transaction: t
-            }, { transaction: t });
+        return await SubscriptionMapping.findOne({
+            where: { ORG_ID: orgID, SUB_ID: subID },
+            transaction: t,
+        });
     } catch (error) {
         if (error instanceof Sequelize.EmptyResultError) {
             throw error;
@@ -725,34 +628,13 @@ const getSubscription = async (orgID, subID, t) => {
     }
 }
 
-const getSubscriptions = async (orgID, appID, apiID) => {
+const getSubscriptions = async (orgID, apiID) => {
     try {
         return await SubscriptionMapping.findAll(
             {
                 where: {
                     ORG_ID: orgID,
-                    [Sequelize.Op.or]: [
-                        { APP_ID: appID },
-                        { API_ID: apiID }
-                    ]
-                }
-            });
-    } catch (error) {
-        if (error instanceof Sequelize.EmptyResultError) {
-            throw error;
-        }
-        throw new Sequelize.DatabaseError(error);
-    }
-}
-
-const getAppApiSubscription = async (orgID, appID, apiID) => {
-    try {
-        return await SubscriptionMapping.findAll(
-            {
-                where: {
-                    ORG_ID: orgID,
-                    APP_ID: appID,
-                    API_ID: apiID
+                    API_ID: apiID,
                 }
             });
     } catch (error) {
@@ -767,11 +649,9 @@ const deleteSubscription = async (orgID, subID, t) => {
 
     try {
         const deletedRowsCount = await SubscriptionMapping.destroy({
-            where: {
-                ORG_ID: orgID,
-                SUB_ID: subID
-            }, transaction: t
-        }, { transaction: t });
+            where: { ORG_ID: orgID, SUB_ID: subID },
+            transaction: t,
+        });
         if (deletedRowsCount < 1) {
             throw new Sequelize.EmptyResultError('Subscription not found');
         }
@@ -807,11 +687,11 @@ const deleteAppMappings = async (orgID, appID, t) => {
             }, transaction: t
         }, { transaction: t });
         if (deletedRowsCount < 1) {
-            logger.info("No Application Key Mapping found", { 
-                orgID, 
-                appID, 
+            logger.info("No Application Key Mapping found", {
+                orgID,
+                appID,
                 deletedRowsCount,
-                operation: "deleteApplicationKeyMapping" 
+                operation: "deleteApplicationKeyMapping"
             });
         }
         return deletedRowsCount;
@@ -852,33 +732,6 @@ const getKeyMapping = async (orgID, appID, t) => {
 }
 
 
-const getSubscribedAPIs = async (orgID, appID) => {
-    try {
-        const subscribedAPIs = await APIMetadata.findAll({
-            where: { ORG_ID: orgID },
-            include: [{
-                model: Application,
-                where: { APP_ID: appID },
-                required: true,
-                through: { attributes: ["SUB_ID", "POLICY_ID"] }
-            },
-            {
-                model: APIImageMetadata,
-                required: false
-            }, {
-                model: SubscriptionPolicy,
-                through: { attributes: ['POLICY_ID'] },
-                required: false
-            }]
-        });
-        return subscribedAPIs;
-    } catch (error) {
-        if (error instanceof Sequelize.EmptyResultError) {
-            throw error;
-        }
-        throw new Sequelize.DatabaseError(error);
-    }
-}
 
 const getApplicationKeyMapping = async (orgID, appID) => {
     try {
@@ -951,10 +804,10 @@ const upsertApplicationKeyMapping = async (mappingData, t) => {
 /**
  * Find subscription by unique key (app, api, policy)
  */
-const findSubscriptionByUniqueKey = async (orgID, appID, apiID, policyID, t) => {
+const findSubscriptionByUniqueKey = async (orgID, apiID, policyID, t) => {
     try {
         return await SubscriptionMapping.findOne({
-            where: { ORG_ID: orgID, APP_ID: appID, API_ID: apiID, POLICY_ID: policyID },
+            where: { ORG_ID: orgID, API_ID: apiID, POLICY_ID: policyID },
             transaction: t,
         });
     } catch (error) {
@@ -981,17 +834,8 @@ const listSubscriptionsByOrg = async (orgID) => {
  */
 const listSubscriptionsByUser = async (orgID, userID) => {
     try {
-        const userApps = await Application.findAll({
-            where: { ORG_ID: orgID, CREATED_BY: userID },
-            attributes: ['APP_ID'],
-        });
-        const appIds = userApps.map((app) => app.APP_ID);
-        if (appIds.length === 0) return [];
         return await SubscriptionMapping.findAll({
-            where: {
-                ORG_ID: orgID,
-                APP_ID: { [Sequelize.Op.in]: appIds },
-            },
+            where: { ORG_ID: orgID, CREATED_BY: userID },
         });
     } catch (error) {
         logger.error('listSubscriptionsByUser failed', { error, orgID, userID });
@@ -1009,10 +853,6 @@ module.exports = {
     getOrgContent,
     deleteOrgContent,
     deleteAllOrgContent,
-    createIdentityProvider,
-    updateIdentityProvider,
-    getIdentityProvider,
-    deleteIdentityProvider,
     getOrgId,
     getOrganizations,
     createProvider,
@@ -1033,8 +873,6 @@ module.exports = {
     deleteSubscription,
     getApplicationID,
     getKeyMapping,
-    getAppApiSubscription,
-    getSubscribedAPIs,
     getApplicationKeyMapping,
     createApplicationKeyMapping,
     upsertApplicationKeyMapping,

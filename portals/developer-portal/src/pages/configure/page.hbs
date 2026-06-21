@@ -1,10 +1,12 @@
-<head>
-    <link rel="stylesheet" href="/technical-styles/settings.css">
-    <script src='/technical-scripts/delete-confirmation-modal.js' defer></script>
-    <script src='/technical-scripts/warning.js' defer></script>
-    <script src='/technical-scripts/create-org.js' defer></script>
-    <script src='/technical-scripts/configure-org.js' defer></script>
-</head>
+{{#pageHead}}
+<link rel="stylesheet" href="/technical-styles/settings.css">
+{{/pageHead}}
+{{#pageScripts}}
+<script src='/technical-scripts/delete-confirmation-modal.js' defer></script>
+<script src='/technical-scripts/warning.js' defer></script>
+<script src='/technical-scripts/create-org.js' defer></script>
+<script src='/technical-scripts/configure-org.js' defer></script>
+{{/pageScripts}}
 
 <div class="container mt-5 mb-4">
     <!-- Nav tabs -->
@@ -17,9 +19,6 @@
         </li>
         <li class="nav-item" role="presentation">
             <a class="nav-link" data-bs-toggle="tab" href="#labels" role="tab">Labels</a>
-        </li>
-        <li class="nav-item" role="presentation">
-            <a class="nav-link" data-bs-toggle="tab" href="#identityprovider" role="tab">Identity Provider</a>
         </li>
         <li class="nav-item" role="presentation">
             <a class="nav-link" data-bs-toggle="tab" href="#apiprovider" role="tab">API Provider</a>
@@ -35,9 +34,6 @@
         </div>
         <div class="tab-pane fade" id="labels" role="tabpanel" aria-labelledby="label-tab">
             {{> labels}}
-        </div>
-        <div class="tab-pane fade" id="identityprovider" role="tabpanel" aria-labelledby="idp-tab">
-            {{> identity-provider}}
         </div>
         <div class="tab-pane fade" id="apiprovider" role="tabpanel" aria-labelledby="provider-tab">
             {{> api-provider}}

@@ -74,9 +74,14 @@ portals/ai-workspace/
 
 ## Local development
 
+### Option 1
+
 ```bash
 # Build images
 cd portals/ai-workspace && make build
+
+# Optional
+# cd platform-api && make build --> Update docker-compose file in portals/ai-workspace folder, with the new build tag
 
 # Start the stack
 docker compose up -d
@@ -88,6 +93,35 @@ The stack exposes:
 |---|---|---|
 | AI Workspace (nginx) | `5380` | HTTPS |
 | Platform API | `9243` | HTTPS |
+
+
+### Option 2
+
+Open two separate terminals and run the following commands.
+
+Terminal 1:
+```bash
+cd portals/ai-workspace
+npm run dev
+```
+This starts the AI Workspace frontend in development mode.
+
+Update platform-api/src/config/config.toml and set the following configuration:
+
+```bash
+[auth.file_based]
+enabled = true
+```
+This enables file-based authentication, allowing users configured in the file-based authentication settings to log in.
+
+Terminal 2:
+```bash
+cd platform-api/src
+go run ./cmd/main.go -config ./config/config.toml
+```
+This starts the Platform API using the local configuration file.
+
+Ensure both services are running before accessing the application.
 
 > **Browser trust warning?** Both services use a self-signed TLS certificate by default. Click **Advanced → Proceed** to continue, then return to the workspace. See [Custom TLS certificates](#custom-tls-certificates) to remove the warning permanently.
 

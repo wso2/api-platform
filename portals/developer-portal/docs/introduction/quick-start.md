@@ -16,13 +16,17 @@ git clone https://github.com/wso2/api-platform.git
 cd api-platform/portals/developer-portal/
 ```
 
-### 2. Create a configuration file
+### 2. Create configuration files
 
-Copy the sample configuration and set the minimum required values:
+Copy both sample configuration files:
 
 ```bash
-mkdir -p configs && cp sample.config.yaml configs/config.yaml
+mkdir -p configs
+cp configs/config.yaml.example configs/config.yaml
+cp configs/config-platform-api.toml.example configs/config-platform-api.toml
 ```
+
+`config.yaml` controls the Developer Portal itself. `config-platform-api.toml` configures the Platform API sidecar that validates login credentials and issues signed tokens. The default credentials in the example file are `admin` / `admin`.
 
 ### 3. Start the portal
 
@@ -30,17 +34,17 @@ mkdir -p configs && cp sample.config.yaml configs/config.yaml
 docker compose up
 ```
 
-Docker Compose starts PostgreSQL and the Developer Portal. On first boot the database schema and a default organization (`ACME`) with a `default` view are created automatically.
+Docker Compose starts the Developer Portal (SQLite by default). On first boot the database schema and a default organization (`default`) with a `default` view are created automatically.
 
 ### 4. Open the portal
 
 Navigate to:
 
 ```
-http://localhost:3000/ACME/views/default
+https://localhost:3000/default/views/default
 ```
 
-Sign in with `admin` / `admin` (or the credentials you set in `defaultAuth`).
+Sign in with `admin` / `admin` (the credentials defined in `configs/config-platform-api.toml`).
 
 You should see the default API catalog page.
 
@@ -168,11 +172,22 @@ paths:
 
 ```
 
+Scripts and CLI tools authenticate with a Bearer token obtained directly from the Platform API. Get one once, then reuse it until it expires:
+
 ```bash
-curl -sk -X POST "https://localhost:3000/devportal/organizations/1ba42a09-45c0-40f8-a1bf-e4aa7cde1575/apis" \           ✔
-   -u admin:admin \
-   -F "api=@api.yaml;type=application/yaml" \
-   -F "apiDefinition=@openapi.yaml;type=application/yaml" -k
+# Get a token from the Platform API (runs alongside the devportal)
+TOKEN=$(curl -sk -X POST "https://localhost:9243/api/portal/v1/auth/login" \
+  -d "username=admin&password=admin" | jq -r .token)
+
+# Find the org UUID
+ORG_ID=$(curl -sk -H "Authorization: Bearer $TOKEN" \
+  https://localhost:3000/organizations | jq -r '.[0].orgID')
+
+# Publish the API
+curl -sk -X POST "https://localhost:3000/o/$ORG_ID/devportal/v1/apis" \
+  -H "Authorization: Bearer $TOKEN" \
+  -F "api=@api.yaml;type=application/yaml" \
+  -F "apiDefinition=@openapi.yaml;type=application/yaml"
 ```
 
 Refresh the portal — the Ping API now appears in the catalog. Click it to view the documentation and try-out console.
@@ -181,10 +196,10 @@ Refresh the portal — the Ping API now appears in the catalog. Click it to view
 
 | Resource | Value |
 |---|---|
-| Organization | `ACME` |
+| Organization | `default` |
 | Default view | `default` |
-| Portal URL | `http://localhost:3000/ACME/views/default` |
-| Admin credentials | `admin` / `admin` (local auth) |
+| Portal URL | `https://localhost:3000/default/views/default` |
+| Admin credentials | `admin` / `admin` (Platform API — see `configs/config-platform-api.toml`) |
 | Sample API | `Ping API` visible in the catalog |
 
 ## Next steps

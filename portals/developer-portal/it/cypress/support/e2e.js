@@ -19,3 +19,19 @@
 // Global support file — imported before every spec.
 // Import custom commands so they are available in all specs.
 import './commands';
+
+// Resolve the default org UUID from the API at runtime so tests are not
+// coupled to a hardcoded UUID that changes between database backends.
+before(() => {
+    const apiKey = Cypress.env('API_KEY');
+    cy.request({
+        method: 'GET',
+        url: '/organizations',
+        headers: apiKey ? { 'x-wso2-api-key': apiKey } : {},
+        failOnStatusCode: false,
+    }).then((resp) => {
+        if (resp.status === 200 && resp.body && resp.body.length > 0) {
+            Cypress.env('ORG_ID', resp.body[0].orgID);
+        }
+    });
+});
