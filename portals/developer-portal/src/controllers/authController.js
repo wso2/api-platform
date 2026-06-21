@@ -164,7 +164,6 @@ const handleLogOut = async (req, res) => {
                 if (destroyErr) {
                     logger.error('Session destroy failed on local-auth logout', { error: destroyErr.message });
                 }
-                res.set('Cache-Control', 'no-store');
                 res.redirect(req.originalUrl.replace('/logout', '/login'));
             });
         });
@@ -221,7 +220,7 @@ const handleSilentSSO = async (req, res, next) => {
 
     req.session.returnTo = req.originalUrl;
     req.session.silentAuthRedirected = true;
-    await req.session.save((err) => {
+    req.session.save((err) => {
         if (err) {
             logger.error('Session save failed during silent SSO', { error: err.message });
             return next();

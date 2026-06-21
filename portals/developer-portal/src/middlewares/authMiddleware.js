@@ -115,14 +115,14 @@ async function checkOrgIsolation(pathOrgId, orgClaim) {
     try {
         orgDetails = await orgDao.get(pathOrgId);
     } catch (e) {
+        if (e.name === 'SequelizeEmptyResultError') {
+            const err = new Error('Organization not found');
+            err.status = 404;
+            return err;
+        }
         logger.error('Org lookup failed during isolation check', { error: e.message, pathOrgId });
         const err = new Error('Internal Server Error');
         err.status = 500;
-        return err;
-    }
-    if (!orgDetails) {
-        const err = new Error('Organization not found');
-        err.status = 404;
         return err;
     }
     if (orgClaim !== orgDetails.ORGANIZATION_IDENTIFIER) {
