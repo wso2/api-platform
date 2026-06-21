@@ -20,6 +20,7 @@ package utils
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 )
@@ -421,24 +422,40 @@ func TestGetName(t *testing.T) {
 	}
 }
 
+func TestZeroSizeCache(t *testing.T) {
+	c := NewInMemoryCache[string]("zero", 0, 60*time.Second, LRUEvictionPolicy)
+	ctx := context.Background()
+	key := CacheKey{Key: "k"}
+
+	if err := c.Set(ctx, key, "v"); err != nil {
+		t.Fatalf("Set on zero-size cache returned error: %v", err)
+	}
+	_, found := c.Get(ctx, key)
+	if found {
+		t.Error("zero-size cache must never store entries")
+	}
+	if c.GetStats().Size != 0 {
+		t.Errorf("expected Size 0 for zero-size cache, got %d", c.GetStats().Size)
+	}
+}
+
 func TestConcurrentAccess(t *testing.T) {
 	c := NewInMemoryCache[int]("concurrent", 50, 60*time.Second, LRUEvictionPolicy)
 	ctx := context.Background()
-	done := make(chan struct{})
+	var wg sync.WaitGroup
 
 	for g := 0; g < 10; g++ {
+		wg.Add(1)
 		go func(id int) {
+			defer wg.Done()
 			for i := 0; i < 20; i++ {
 				key := CacheKey{Key: "key" + string(rune('0'+id))}
 				_ = c.Set(ctx, key, id*100+i)
 				_, _ = c.Get(ctx, key)
 				_ = c.GetStats()
 			}
-			done <- struct{}{}
 		}(g)
 	}
 
-	for i := 0; i < 10; i++ {
-		<-done
-	}
+	wg.Wait()
 }

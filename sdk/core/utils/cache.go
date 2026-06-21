@@ -47,8 +47,8 @@ type CacheKey struct {
 	Key string
 }
 
-// ToString returns the string representation of the CacheKey.
-func (k CacheKey) ToString() string {
+// String returns the string representation of the CacheKey, satisfying fmt.Stringer.
+func (k CacheKey) String() string {
 	return k.Key
 }
 

@@ -30,8 +30,8 @@ import (
 type evictionPolicy string
 
 const (
-	evictionPolicyLRU evictionPolicy = "LRU"
-	evictionPolicyLFU evictionPolicy = "LFU"
+	evictionPolicyLRU evictionPolicy = LRUEvictionPolicy
+	evictionPolicyLFU evictionPolicy = LFUEvictionPolicy
 )
 
 // lfuHeapItem is a node in the LFU min-heap.
@@ -152,7 +152,9 @@ func (c *InMemoryCache[T]) Set(_ context.Context, key CacheKey, value T) error {
 		existing.ExpiryTime = expiryTime
 		existing.lastAccess = now
 		existing.accessCount++
-		c.accessOrder.MoveToFront(existing.listElement)
+		if c.evictionPolicy == evictionPolicyLRU {
+			c.accessOrder.MoveToFront(existing.listElement)
+		}
 
 		if c.evictionPolicy == evictionPolicyLFU && existing.heapItem != nil {
 			existing.heapItem.accessCount = existing.accessCount
@@ -173,7 +175,10 @@ func (c *InMemoryCache[T]) Set(_ context.Context, key CacheKey, value T) error {
 		c.evict()
 	}
 
-	listElement := c.accessOrder.PushFront(key)
+	var listElement *list.Element
+	if c.evictionPolicy == evictionPolicyLRU {
+		listElement = c.accessOrder.PushFront(key)
+	}
 
 	var heapItem *lfuHeapItem
 	if c.evictionPolicy == evictionPolicyLFU {
@@ -218,7 +223,9 @@ func (c *InMemoryCache[T]) Get(_ context.Context, key CacheKey) (T, bool) {
 
 	entry.lastAccess = time.Now()
 	entry.accessCount++
-	c.accessOrder.MoveToFront(entry.listElement)
+	if c.evictionPolicy == evictionPolicyLRU {
+		c.accessOrder.MoveToFront(entry.listElement)
+	}
 	c.hitCount.Add(1)
 
 	if c.evictionPolicy == evictionPolicyLFU && entry.heapItem != nil {
@@ -294,6 +301,7 @@ func (c *InMemoryCache[T]) GetStats() CacheStat {
 }
 
 // CleanupExpired removes all entries whose TTL has elapsed.
+// It holds the write lock for the full scan; avoid calling it on very large caches at high frequency.
 func (c *InMemoryCache[T]) CleanupExpired() {
 	if !c.enabled {
 		return
@@ -349,7 +357,9 @@ func (c *InMemoryCache[T]) evictLeastFrequent() {
 // Must be called with the write lock held.
 func (c *InMemoryCache[T]) deleteEntry(key CacheKey, entry *inMemoryCacheEntry[T]) {
 	delete(c.cache, key)
-	c.accessOrder.Remove(entry.listElement)
+	if c.evictionPolicy == evictionPolicyLRU && entry.listElement != nil {
+		c.accessOrder.Remove(entry.listElement)
+	}
 	// heap.Pop already sets index=-1; only call heap.Remove for non-popped items.
 	if c.evictionPolicy == evictionPolicyLFU && entry.heapItem != nil && entry.heapItem.index >= 0 {
 		heap.Remove(c.lfuHeap, entry.heapItem.index)
