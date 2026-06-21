@@ -27,6 +27,7 @@ import (
 	"log/slog"
 	"net/url"
 	"strconv"
+	"regexp"
 	"strings"
 	"time"
 
@@ -48,6 +49,10 @@ const (
 	// in tests). The config layer normalizes/validates the value before this for
 	// config-driven startup; this keeps the storage layer self-sufficient.
 	defaultSQLServerEncrypt = "true"
+	// schemaInitTimeout bounds the schema-initialization path (connection,
+	// application lock and DDL) so a stalled server cannot hang startup forever.
+	// It must exceed the 30s app-lock wait used in initSchema.
+	schemaInitTimeout = 2 * time.Minute
 )
 
 // SQLServerConnectionConfig holds SQL Server-specific connection settings.
@@ -132,7 +137,10 @@ func newSQLServerStorage(cfg SQLServerConnectionConfig, logger *slog.Logger) (*S
 // schema is idempotent (every object is guarded by IF NOT EXISTS); an
 // application lock serializes concurrent initialization across replicas.
 func (s *SQLServerStorage) initSchema() (retErr error) {
-	ctx := context.Background()
+	// Bound the whole init path (connection acquisition, app-lock wait and DDL)
+	// so startup cannot hang indefinitely if SQL Server stalls after the ping.
+	ctx, cancel := context.WithTimeout(context.Background(), schemaInitTimeout)
+	defer cancel()
 
 	conn, err := s.db.Conn(ctx)
 	if err != nil {
@@ -242,7 +250,18 @@ func buildSQLServerDSN(cfg SQLServerConnectionConfig) (string, error) {
 	return u.String(), nil
 }
 
+// sqlServerSemicolonPasswordRe matches the password key in ADO/ODBC-style
+// (semicolon-separated) DSNs, e.g. "server=h;password=secret;..." — both
+// "password" and "pwd", any case — so the value can be redacted before logging.
+var sqlServerSemicolonPasswordRe = regexp.MustCompile(`(?i)\b(password|pwd)\s*=[^;]*`)
+
 func sanitizeSQLServerDSN(dsn string) string {
+	// go-mssqldb also accepts ADO ("server=...;password=...") and ODBC
+	// ("odbc:...;pwd=...") DSNs, which url.Parse does not understand. Redact the
+	// password token directly for those so it never reaches the logs.
+	if strings.Contains(dsn, ";") || !strings.Contains(dsn, "://") {
+		return sqlServerSemicolonPasswordRe.ReplaceAllString(dsn, "${1}=****")
+	}
 	u, err := url.Parse(dsn)
 	if err != nil {
 		return "<redacted>"
@@ -251,6 +270,22 @@ func sanitizeSQLServerDSN(dsn string) string {
 		username := u.User.Username()
 		if username != "" {
 			u.User = url.UserPassword(username, "****")
+		}
+	}
+	// go-mssqldb also accepts the password as a URL query parameter
+	// (e.g. sqlserver://host?user id=sa&password=secret), which is not part of
+	// the userinfo above — redact those too.
+	if q := u.Query(); len(q) > 0 {
+		changed := false
+		for key := range q {
+			switch strings.ToLower(key) {
+			case "password", "pwd":
+				q.Set(key, "****")
+				changed = true
+			}
+		}
+		if changed {
+			u.RawQuery = q.Encode()
 		}
 	}
 	return u.String()

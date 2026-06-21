@@ -53,10 +53,12 @@ const (
 
 	// sqlserverDB / sqlserverUser match the credentials in
 	// docker-compose.test.sqlserver.yaml. The SA password is read from the
-	// MSSQL_SA_PASSWORD env var (set by the workflow/test runner).
-	sqlserverDB   = "gateway_test"
-	sqlserverUser = "sa"
-	sqlcmdPath    = "/opt/mssql-tools18/bin/sqlcmd"
+	// MSSQL_SA_PASSWORD env var, falling back to the same default the compose
+	// file uses so local runs work without exporting it.
+	sqlserverDB              = "gateway_test"
+	sqlserverUser            = "sa"
+	sqlserverDefaultPassword = "Gateway_Strong!Pass123"
+	sqlcmdPath               = "/opt/mssql-tools18/bin/sqlcmd"
 
 	// defaultDBQueryTimeout caps the time allowed for a query (including
 	// retries) so a stuck reader container can't hang a scenario.
@@ -204,7 +206,7 @@ func executeQuery(ctx context.Context, query string) (string, error) {
 		// caller already TrimSpaces, so neither is used.)
 		pw := os.Getenv("MSSQL_SA_PASSWORD")
 		if pw == "" {
-			return "", fmt.Errorf("MSSQL_SA_PASSWORD must be set for sqlserver test queries")
+			pw = sqlserverDefaultPassword
 		}
 		cmd = exec.CommandContext(ctx, "docker", "exec", sqlserverContainer,
 			sqlcmdPath, "-C", "-S", "localhost", "-U", sqlserverUser, "-P", pw,

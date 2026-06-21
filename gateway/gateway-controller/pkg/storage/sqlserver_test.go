@@ -23,6 +23,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/metrics"
@@ -142,4 +143,28 @@ func TestSQLServerStorage_SaveLLMProviderTemplate_UniqueConstraintError(t *testi
 
 	err := ms.SaveLLMProviderTemplate(conflictingTemplate)
 	assert.Assert(t, errors.Is(err, ErrConflict))
+}
+
+// TestSanitizeSQLServerDSN verifies passwords are redacted before logging across
+// the DSN formats go-mssqldb accepts: URL (userinfo and query), ADO and ODBC
+// (semicolon-separated). This is a pure-unit test (no database required).
+func TestSanitizeSQLServerDSN(t *testing.T) {
+	cases := []struct {
+		name string
+		dsn  string
+	}{
+		{"url userinfo", "sqlserver://sa:secret@host:1433?database=db"},
+		{"url query password", "sqlserver://host:1433?user+id=sa&password=secret&database=db"},
+		{"ado semicolon", "server=host;user id=sa;password=secret;encrypt=disable"},
+		{"odbc semicolon", "odbc:server=host;uid=sa;pwd=secret;"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := sanitizeSQLServerDSN(tc.dsn)
+			assert.Assert(t, !strings.Contains(got, "secret"),
+				"password leaked in sanitized DSN: %q", got)
+			assert.Assert(t, got != tc.dsn,
+				"DSN was returned unchanged (password not redacted): %q", got)
+		})
+	}
 }
