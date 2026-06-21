@@ -132,10 +132,14 @@ async function authResolver(req, res, next) {
             return next();
         }
 
-        // 2. Session fast-path: scopes captured at login — skip JWKS re-validation
+        // 2. Session fast-path: browser login via IDP — role check is done by ensureAuthenticated
+        // on page routes, so scope enforcement here is redundant and would require listing all
+        // dp:* scopes in the OIDC scope config. Set preauthorized to bypass the per-operation
+        // scope check for session users (same as API key and mTLS paths).
         if (req.isAuthenticated && req.isAuthenticated() && req.user?.grantedScopes !== undefined && config.identityProvider?.clientId) {
             req.auth = {
                 mode: 'oauth2',
+                preauthorized: true,
                 scopes: String(req.user.grantedScopes || '').split(' ').filter(Boolean),
                 userId: req.user[constants.USER_ID],
             };

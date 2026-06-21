@@ -4,6 +4,22 @@ This guide walks through configuring WSO2 Asgardeo as the identity provider for 
 
 A full configuration reference is in [authentication.md](authentication.md).
 
+## Overview
+
+The Developer Portal uses Asgardeo's sub-organization model: each devportal organization maps to one Asgardeo sub-organization. A single Asgardeo application (Traditional Web App) is shared across all devportal orgs, but each login session is scoped to a specific sub-org.
+
+**How it works end-to-end:**
+
+1. A devportal org has an `ORGANIZATION_IDENTIFIER` set to its Asgardeo sub-org handle.
+2. When a user clicks Login, the devportal redirects to Asgardeo with `org=<identifier>`, scoping the authorization to that sub-org.
+3. Asgardeo issues a JWT with `org_id` set to the sub-org's UUID. The devportal verifies this claim matches the org on every authenticated request.
+4. Each login session is bound to one sub-org — accessing a different devportal org's protected pages requires logging out and back in on that org.
+
+**Key design decisions:**
+- One Asgardeo application (confidential client) serves all devportal orgs — the callback URL is shared, with per-request routing via session state.
+- Public pages (API catalog, docs) are always accessible without authentication.
+- Protected pages (applications, subscriptions, API keys) enforce the org claim match.
+
 ## Prerequisites
 
 - An Asgardeo account at [console.asgardeo.io](https://console.asgardeo.io)
@@ -45,6 +61,8 @@ Note the **Client ID** and **Client Secret** from the Protocol tab.
 
 ## 3. Register dp:* Scopes
 
+> The `dp:*` scopes are enforced per-operation by the devportal for machine API clients that call `/devportal/v1/*` directly with a Bearer token. Browser sessions (IDP login) are preauthorized — the portal trusts session-level authentication and skips per-operation scope checks for session users. The Platform API uses its own `ap:*` scopes and does not validate `dp:*`.
+
 Create a system OIDC application (e.g. `DevPortal System`) and under **API Authorization** add:
 - **API Resource Management API** (Management APIs)
 - **Application Management API** (Management APIs)
@@ -60,6 +78,8 @@ ASGARDEO_RESOURCE_IDENTIFIER=https://<your-domain> \
 ```
 
 For local development, the default `ASGARDEO_RESOURCE_IDENTIFIER=https://localhost:3000` works without changes.
+
+> The system application is only needed to run this script. Once the `dp:*` API resource is registered in Asgardeo, the system app can be deleted.
 
 ---
 
@@ -90,8 +110,8 @@ identityProvider:
   logoutURL: "https://api.asgardeo.io/t/<your-tenant>/oidc/logout"
   logoutRedirectURI: "https://<your-domain>/default"
   jwksURL: "https://api.asgardeo.io/t/<your-tenant>/oauth2/jwks"
-  scope: "openid profile email dp:org_manage dp:api_read dp:app_manage dp:subscription_manage"
-  orgIDClaim: "org_id"    # Asgardeo B2B sub-org claim
+  scope: "openid profile email"   # dp:* not needed — browser sessions are preauthorized
+  orgIDClaim: "org_name"    # Asgardeo B2B: org_name matches ORGANIZATION_IDENTIFIER (sub-org display name)
   roleClaim: "roles"
 ```
 
@@ -134,7 +154,6 @@ issuer   = ["https://api.asgardeo.io/t/<your-tenant>/oauth2/token"]
 audience = ["<devportal-app-client-id>"]
 
 [auth.idp.claim_mappings]
-scope_claim_name        = "scope"   # Asgardeo uses "scope" (space-separated)
 organization_claim_name = "org_id"  # Asgardeo B2B sub-org UUID
 org_handle_claim_name   = "org_id"  # Asgardeo does not emit "org_handle"; use org_id
 user_id_claim_name      = "sub"
@@ -147,9 +166,14 @@ AUTH_IDP_ENABLED=true
 AUTH_IDP_JWKS_URL=https://api.asgardeo.io/t/<your-tenant>/oauth2/jwks
 AUTH_IDP_ISSUER=https://api.asgardeo.io/t/<your-tenant>/oauth2/token
 AUTH_IDP_AUDIENCE=<devportal-app-client-id>
-AUTH_IDP_CLAIM_MAPPINGS_SCOPE_CLAIM_NAME=scope
 AUTH_IDP_CLAIM_MAPPINGS_ORGANIZATION_CLAIM_NAME=org_id
 AUTH_IDP_CLAIM_MAPPINGS_ORG_HANDLE_CLAIM_NAME=org_id
+```
+
+**Scope validation:** The Platform API's subscription and API key endpoints require `ap:*` scopes, but a devportal user's Asgardeo token carries `dp:*` scopes — not `ap:*`. With the default `enable_scope_validation: true`, these calls will be rejected with 403. Disable scope validation for the devportal integration path:
+
+```toml
+enable_scope_validation = false
 ```
 
 > The devportal's `platformApi.jwtSecret` setting is only used in local auth mode (to verify Platform API-issued HMAC tokens on the devportal side). It has no effect when an external IDP is configured — leave it empty.
@@ -161,10 +185,12 @@ AUTH_IDP_CLAIM_MAPPINGS_ORG_HANDLE_CLAIM_NAME=org_id
 ```
 Asgardeo token
   ├── sub      → user identity
-  ├── org_id   → organization UUID  (→ orgIDClaim)
-  ├── roles    → role list          (→ roleClaim → isAdmin check)
-  └── scope    → space-separated dp:* scopes enforced per API operation
+  ├── org_name → sub-org display name  (→ orgIDClaim → compared to ORGANIZATION_IDENTIFIER)
+  ├── org_id   → sub-org UUID          (available but not used for org matching)
+  └── roles    → role list             (→ roleClaim → isAdmin check)
 ```
+
+> Browser sessions are preauthorized — the `scope` claim is not checked against per-operation requirements for session users. Machine API clients calling `/devportal/v1/*` directly with a Bearer token have their `scope` claim enforced as usual.
 
 ---
 
