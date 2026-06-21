@@ -97,7 +97,7 @@ func (r *DeploymentRepo) CreateWithLimitEnforcement(deployment *model.Deployment
 			WHERE d.artifact_uuid = ? AND d.gateway_uuid = ? AND d.organization_uuid = ?
 				AND s.deployment_id IS NULL
 			ORDER BY d.created_at ASC
-			LIMIT 5
+			` + r.db.FetchFirstClause(5) + `
 		`
 
 		rows, err := tx.Query(r.db.Rebind(getOldestQuery), deployment.ArtifactID, deployment.GatewayID, deployment.OrganizationID)
@@ -264,7 +264,7 @@ func (r *DeploymentRepo) GetCurrentByGateway(artifactUUID, gatewayID, orgUUID st
 		WHERE d.artifact_uuid = ? AND d.gateway_uuid = ? AND d.organization_uuid = ?
 			AND s.status_desired = 'DEPLOYED'
 		ORDER BY d.created_at DESC
-		LIMIT 1
+		` + r.db.FetchFirstClause(1) + `
 	`
 
 	var baseDeploymentID sql.NullString

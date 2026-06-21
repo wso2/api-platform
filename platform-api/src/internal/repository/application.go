@@ -76,8 +76,8 @@ func (r *ApplicationRepo) GetApplicationByIDOrHandle(appIDOrHandle, orgID string
 		FROM applications
 		WHERE organization_uuid = ? AND (uuid = ? OR handle = ?)
 		ORDER BY CASE WHEN uuid = ? THEN 0 ELSE 1 END
-		LIMIT 1
-	`), orgID, appIDOrHandle, appIDOrHandle, appIDOrHandle)
+		`+r.db.FetchFirstClause(1)),
+		orgID, appIDOrHandle, appIDOrHandle, appIDOrHandle)
 
 	app, err := scanApplication(row)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -120,8 +120,8 @@ func (r *ApplicationRepo) GetAssociationTargetByIDOrHandle(targetIDOrHandle, org
 		FROM artifacts
 		WHERE organization_uuid = ? AND (uuid = ? OR handle = ?)
 		ORDER BY CASE WHEN uuid = ? THEN 0 ELSE 1 END
-		LIMIT 1
-	`), orgID, targetIDOrHandle, targetIDOrHandle, targetIDOrHandle)
+		`+r.db.FetchFirstClause(1)),
+		orgID, targetIDOrHandle, targetIDOrHandle, targetIDOrHandle)
 
 	target := &model.Artifact{}
 	err := row.Scan(
@@ -150,8 +150,8 @@ func (r *ApplicationRepo) GetAssociationTargetByIDOrHandleAndKind(targetIDOrHand
 		FROM artifacts
 		WHERE organization_uuid = ? AND kind = ? AND (uuid = ? OR handle = ?)
 		ORDER BY CASE WHEN uuid = ? THEN 0 ELSE 1 END
-		LIMIT 1
-	`), orgID, kind, targetIDOrHandle, targetIDOrHandle, targetIDOrHandle)
+		`+r.db.FetchFirstClause(1)),
+		orgID, kind, targetIDOrHandle, targetIDOrHandle, targetIDOrHandle)
 
 	target := &model.Artifact{}
 	err := row.Scan(

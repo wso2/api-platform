@@ -418,6 +418,30 @@ func (db *DB) Rebind(query string) string {
 	return query
 }
 
+// PaginationClause returns a dialect-appropriate row-limiting clause to append
+// after an ORDER BY, together with its bind arguments in the order the clause
+// expects them. SQL Server has no LIMIT keyword and instead uses ANSI
+// OFFSET/FETCH, which (a) requires an ORDER BY in the statement and (b) lists
+// OFFSET before the row count — the reverse of "LIMIT ? OFFSET ?". The returned
+// clause uses ? placeholders; pass the assembled query through Rebind as usual.
+func (db *DB) PaginationClause(limit, offset int) (string, []any) {
+	if isSQLServerDriver(db.driver) {
+		return "OFFSET ? ROWS FETCH NEXT ? ROWS ONLY", []any{offset, limit}
+	}
+	return "LIMIT ? OFFSET ?", []any{limit, offset}
+}
+
+// FetchFirstClause returns a row-limiting clause for a fixed number of rows,
+// safe to embed directly into a query string (n is an integer constant, not
+// user input). As with PaginationClause, SQL Server requires the statement to
+// carry an ORDER BY; add "ORDER BY (SELECT NULL)" when ordering is irrelevant.
+func (db *DB) FetchFirstClause(n int) string {
+	if isSQLServerDriver(db.driver) {
+		return fmt.Sprintf("OFFSET 0 ROWS FETCH NEXT %d ROWS ONLY", n)
+	}
+	return fmt.Sprintf("LIMIT %d", n)
+}
+
 // BuildUpsertQuery generates a dialect-appropriate INSERT … ON CONFLICT … DO UPDATE query.
 // insertCols are all columns being inserted (each maps to one ? placeholder).
 // conflictCols are the columns that define uniqueness.
