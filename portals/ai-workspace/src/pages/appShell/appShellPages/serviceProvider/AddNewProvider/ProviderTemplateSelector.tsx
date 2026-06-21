@@ -42,6 +42,7 @@ import googleGeminiLogo from '../../../../../assets/brands/googlegemini.png';
 import mistralAiLogo from '../../../../../assets/brands/mistralai.png';
 import { FormattedMessage } from 'react-intl';
 import ErrorAlert from '../../../../../Components/common/ErrorAlert';
+import { truncateProviderDisplayName } from '../../../../../utils/providerTemplateDisplay';
 
 // Logo mapping for provider templates by name (case-insensitive partial match)
 const getLogoForTemplate = (templateName: string): string | null => {
@@ -193,14 +194,18 @@ export default function ProviderTemplateSelector({
                     )}
                   </Box>
                   <Box sx={{ minWidth: 0, flex: 1 }}>
-                    <Typography variant="subtitle2">{template.name}</Typography>
+                    <Typography variant="subtitle2" noWrap title={template.name}>
+                      {truncateProviderDisplayName(template.name)}
+                    </Typography>
                     {template.description && (
                       <Typography
                         variant="caption"
                         color="text.secondary"
                         noWrap
+                        title={template.description}
+                        sx={{ display: 'block' }}
                       >
-                        {template.description}
+                        {truncateProviderDisplayName(template.description, 70)}
                       </Typography>
                     )}
                   </Box>

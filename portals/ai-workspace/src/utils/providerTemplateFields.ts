@@ -75,6 +75,19 @@ export const DEFAULT_AUTH_CONFIG = {
   valuePrefix: 'Bearer',
 } as const;
 
+/** True if the value is a syntactically valid http(s) URL. Empty strings are
+ * treated as valid (the fields are optional) — callers check required-ness. */
+export function isValidHttpUrl(value: string): boolean {
+  const v = value.trim();
+  if (!v) return true;
+  try {
+    const url = new URL(v);
+    return url.protocol === 'http:' || url.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
 /** Build a TokenConfig draft from an entity that carries the six TokenLocation fields. */
 export function toTokenConfig(source?: Partial<
   Record<TokenFieldKey, TokenLocation | undefined>

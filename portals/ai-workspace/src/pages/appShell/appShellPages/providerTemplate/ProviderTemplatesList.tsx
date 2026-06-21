@@ -37,7 +37,7 @@ import {
   TextField,
   Typography,
 } from '@wso2/oxygen-ui';
-import { Clock, Plus, Search, Trash2 } from '@wso2/oxygen-ui-icons-react';
+import { ChevronLeft, ChevronRight, Clock, Plus, Search, Trash2 } from '@wso2/oxygen-ui-icons-react';
 import { FormattedMessage } from 'react-intl';
 import { formatRelativeTime } from '../../../../contexts/llmProvider';
 import { useProviderTemplates } from '../../../../contexts/llmProvider/providerTemplate';
@@ -45,7 +45,10 @@ import { useAppShell } from '../../../../contexts/AppShellContext';
 import { buildOrgPath } from '../../../../utils/projectRouting';
 import useAIWorkspaceSnackbar from '../../../../hooks/aiWorkspaceSnackbar';
 import ErrorAlert from '../../../../Components/common/ErrorAlert';
-import { isBuiltInProviderTemplate } from '../../../../utils/providerTemplateDisplay';
+import {
+  isBuiltInProviderTemplate,
+  truncateProviderDisplayName,
+} from '../../../../utils/providerTemplateDisplay';
 import type { ProviderTemplate } from '../../../../utils/types';
 import AnthropicLogo from '../../../../assets/brands/Anthropic.jpg';
 import AWSBedrockLogo from '../../../../assets/brands/AWSBedrock.webp';
@@ -127,6 +130,20 @@ export default function ProviderTemplatesList({
         (template.description ?? '').toLowerCase().includes(query)
     );
   }, [templates, searchQuery]);
+
+  // Paginate the custom templates ~2 rows at a time. Clamp the page so it stays
+  // valid when the filtered list shrinks (e.g. while searching).
+  const CUSTOM_PAGE_SIZE = 6;
+  const [customPage, setCustomPage] = useState(1);
+  const customTotalPages = Math.max(
+    1,
+    Math.ceil(filteredTemplates.length / CUSTOM_PAGE_SIZE)
+  );
+  const currentCustomPage = Math.min(customPage, customTotalPages);
+  const pagedCustomTemplates = filteredTemplates.slice(
+    (currentCustomPage - 1) * CUSTOM_PAGE_SIZE,
+    currentCustomPage * CUSTOM_PAGE_SIZE
+  );
 
   const builtInTemplates = useMemo(
     () =>
@@ -214,16 +231,25 @@ export default function ProviderTemplatesList({
               {!hasLogo ? getInitials(template.name) : null}
             </Avatar>
             <Box sx={{ flex: 1, minWidth: 0 }}>
-              <Typography variant="h5" sx={{ fontWeight: 600 }}>
-                {template.name}
+              <Typography
+                variant="h5"
+                noWrap
+                sx={{ fontWeight: 600 }}
+                title={template.name}
+              >
+                {truncateProviderDisplayName(template.name)}
               </Typography>
               <Typography
                 variant="body2"
                 color="text.secondary"
                 fontSize="0.75rem"
+                noWrap
                 sx={{ mt: 0.5 }}
+                title={template.description?.trim() || undefined}
               >
-                {template.description?.trim() || 'No description'}
+                {template.description?.trim()
+                  ? truncateProviderDisplayName(template.description, 70)
+                  : 'No description'}
               </Typography>
             </Box>
           </Box>
@@ -392,7 +418,10 @@ export default function ProviderTemplatesList({
                 fullWidth
                 placeholder="Search templates..."
                 value={searchQuery}
-                onChange={(event) => setSearchQuery(event.target.value)}
+                onChange={(event) => {
+                  setSearchQuery(event.target.value);
+                  setCustomPage(1);
+                }}
                 data-cyid="provider-template-search-input"
                 slotProps={{
                   input: {
@@ -406,10 +435,50 @@ export default function ProviderTemplatesList({
               />
             </Box>
 
+            <Typography variant="h6" sx={{ fontWeight: 700, mb: 0.5 }}>
+              Custom LLM Providers
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              Templates you create to connect your own LLM providers.
+            </Typography>
+
             {filteredTemplates.length > 0 ? (
-              <Box sx={cardGridSx}>
-                {filteredTemplates.map((template) => renderCard(template, true))}
-              </Box>
+              <>
+                <Box sx={cardGridSx}>
+                  {pagedCustomTemplates.map((template) =>
+                    renderCard(template, true)
+                  )}
+                </Box>
+                {customTotalPages > 1 && (
+                  <Stack
+                    direction="row"
+                    spacing={1}
+                    alignItems="center"
+                    justifyContent="center"
+                    sx={{ mt: 3 }}
+                  >
+                    <IconButton
+                      size="small"
+                      disabled={currentCustomPage <= 1}
+                      onClick={() => setCustomPage(currentCustomPage - 1)}
+                      aria-label="Previous page"
+                    >
+                      <ChevronLeft size={18} />
+                    </IconButton>
+                    <Typography variant="body2" color="text.secondary">
+                      Page {currentCustomPage} of {customTotalPages}
+                    </Typography>
+                    <IconButton
+                      size="small"
+                      disabled={currentCustomPage >= customTotalPages}
+                      onClick={() => setCustomPage(currentCustomPage + 1)}
+                      aria-label="Next page"
+                    >
+                      <ChevronRight size={18} />
+                    </IconButton>
+                  </Stack>
+                )}
+              </>
             ) : (
               <Typography variant="body2" color="text.secondary" sx={{ py: 1 }}>
                 {templates.length === 0
@@ -425,8 +494,8 @@ export default function ProviderTemplatesList({
                   Built-in templates
                 </Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                  Provided out of the box. View their details, or base a provider
-                  on them.
+                  Ready-made templates for popular LLM providers, included by
+                  default.
                 </Typography>
                 {filteredBuiltIn.length > 0 ? (
                   <Box sx={cardGridSx}>

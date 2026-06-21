@@ -49,9 +49,11 @@ import useAIWorkspaceSnackbar from '../../../../hooks/aiWorkspaceSnackbar';
 import * as providerTemplateApis from '../../../../apis/providerTemplateApis';
 import { PLATFORM_API_BASE_URL } from '../../../../config.env';
 import { buildOrgPath } from '../../../../utils/projectRouting';
+import { truncateProviderDisplayName } from '../../../../utils/providerTemplateDisplay';
 import {
   DEFAULT_AUTH_CONFIG,
   fromTokenConfig,
+  isValidHttpUrl,
   toTokenConfigWithDefaults,
   type TokenConfig,
   type TokenFieldKey,
@@ -105,21 +107,17 @@ function parseOpenApiSpec(text: string): Record<string, unknown> | null {
   }
 }
 
-function DetailRow({ label, value }: { label: string; value?: string }) {
-  return (
-    <Stack direction="row" spacing={2} sx={{ py: 0.75 }}>
-      <Typography
-        variant="body2"
-        color="text.secondary"
-        sx={{ minWidth: 180, flexShrink: 0 }}
-      >
-        {label}
-      </Typography>
-      <Typography variant="body2" sx={{ wordBreak: 'break-word' }}>
-        {value?.trim() ? value : '—'}
-      </Typography>
-    </Stack>
-  );
+function specServerUrl(text: string): string | null {
+  const spec = parseOpenApiSpec(text) as {
+    servers?: Array<{ url?: string }>;
+  } | null;
+  const url = spec?.servers?.[0]?.url;
+  return typeof url === 'string' && url.trim() ? url.trim() : null;
+}
+
+function isParseableSpec(text: string): boolean {
+  const spec = parseOpenApiSpec(text);
+  return !!spec && ('openapi' in spec || 'swagger' in spec || 'paths' in spec);
 }
 
 export default function ProviderTemplateOverview() {
@@ -154,6 +152,12 @@ export default function ProviderTemplateOverview() {
   const [isSaving, setIsSaving] = useState(false);
   const [urlSpecText, setUrlSpecText] = useState('');
   const [isSpecLoading, setIsSpecLoading] = useState(false);
+  // Inline OpenAPI spec content (uploaded/pasted) — seeded from the template and
+  // editable on the Connection tab via URL fetch or file upload (same as create).
+  const [specContent, setSpecContent] = useState('');
+  const [specFileName, setSpecFileName] = useState('');
+  const [isFetchingSpec, setIsFetchingSpec] = useState(false);
+  const fileInputRef = React.useRef<HTMLInputElement | null>(null);
 
   const listPath = buildOrgPath(currentOrganization, '/settings/llm-provider-templates');
 
@@ -191,7 +195,12 @@ export default function ProviderTemplateOverview() {
     providerTemplateApis
       .getProviderTemplateVersions(templateId, organizationId, PLATFORM_API_BASE_URL)
       .then((list) => {
-        if (isMounted && list.length) setVersions(list);
+        if (isMounted && list.length) {
+          setVersions(list);
+          // Default the switcher to the latest version.
+          const latest = list.find((v) => v.isLatest) ?? list[0];
+          if (latest?.version) setSelectedVersion(latest.version);
+        }
       })
       .catch(() => {
         /* switcher gracefully degrades to the single current version */
@@ -246,8 +255,69 @@ export default function ProviderTemplateOverview() {
     setValuePrefix(t.metadata?.auth?.valuePrefix ?? DEFAULT_AUTH_CONFIG.valuePrefix);
     setDefaultTokens(toTokenConfigWithDefaults(t));
     setResourceMappings(t.resourceMappings?.resources ?? []);
+    setSpecContent(t.openapi ?? '');
+    setSpecFileName('');
     setIsDirty(false);
   }, []);
+
+  // Fetch & validate a spec from the entered URL; fills the endpoint from its
+  // servers. URL mode references the spec by link (clears inline content).
+  const fetchSpecFromUrl = async () => {
+    const url = openapiSpecUrl.trim();
+    if (!url) return;
+    setIsFetchingSpec(true);
+    try {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`Failed to fetch: ${res.statusText}`);
+      const text = await res.text();
+      if (!isParseableSpec(text)) {
+        showSnackbar('That URL did not return a valid OpenAPI specification.', 'error');
+        return;
+      }
+      setSpecFileName('');
+      setSpecContent('');
+      setIsDirty(true);
+      const server = specServerUrl(text);
+      if (server) {
+        setEndpointUrl(server);
+        showSnackbar('Specification fetched. Endpoint URL filled from servers.', 'success');
+      } else {
+        showSnackbar('Fetched the spec, but no server URL was found — enter the endpoint manually.', 'info');
+      }
+    } catch {
+      showSnackbar('Failed to fetch specification from that URL.', 'error');
+    } finally {
+      setIsFetchingSpec(false);
+    }
+  };
+
+  // Upload a spec file: store its content inline (clears the URL reference).
+  const handleSpecFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      if (!isParseableSpec(text)) {
+        showSnackbar('That file is not a valid OpenAPI specification (JSON or YAML).', 'error');
+        return;
+      }
+      setSpecFileName(file.name);
+      setSpecContent(text);
+      setOpenapiSpecUrl('');
+      setIsDirty(true);
+      const server = specServerUrl(text);
+      if (server) {
+        setEndpointUrl(server);
+        showSnackbar('Specification uploaded. Endpoint URL filled from servers.', 'success');
+      } else {
+        showSnackbar('Read the spec, but no server URL was found — enter the endpoint manually.', 'info');
+      }
+    } catch {
+      showSnackbar('Failed to read the specification file.', 'error');
+    } finally {
+      e.target.value = '';
+    }
+  };
 
   useEffect(() => {
     if (template) seedDrafts(template);
@@ -297,6 +367,14 @@ export default function ProviderTemplateOverview() {
       showSnackbar('Endpoint URL is required.', 'error');
       return;
     }
+    if (
+      !isValidHttpUrl(endpointUrl) ||
+      !isValidHttpUrl(openapiSpecUrl) ||
+      !isValidHttpUrl(logoUrlField)
+    ) {
+      showSnackbar('Enter valid http(s) URLs for the endpoint, spec and logo.', 'error');
+      return;
+    }
 
     const metadata: TemplateMetadata = {};
     if (endpointUrl.trim()) metadata.endpointUrl = endpointUrl.trim();
@@ -317,7 +395,8 @@ export default function ProviderTemplateOverview() {
       resourceMappings: resourceMappings.length
         ? { resources: resourceMappings }
         : undefined,
-      openapi: template.openapi,
+      // Inline spec content (uploaded/pasted); empty when referenced by URL.
+      openapi: specContent.trim() ? specContent : undefined,
     };
 
     setIsSaving(true);
@@ -414,7 +493,7 @@ export default function ProviderTemplateOverview() {
   const logoUrl = metadata?.logoUrl?.trim();
   const hasLogo = Boolean(logoUrl);
   const description = template.description?.trim() || 'No description';
-  const createdTime = template.createdAt ?? template.updatedAt;
+  const lastUpdated = template.updatedAt ?? template.createdAt;
 
   return (
     <PageContent fullWidth>
@@ -453,7 +532,9 @@ export default function ProviderTemplateOverview() {
               </Avatar>
               <Stack spacing={0.75} sx={{ minWidth: 0 }}>
                 <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
-                  <Typography variant="h3">{template.name}</Typography>
+                  <Typography variant="h3" title={template.name}>
+                    {truncateProviderDisplayName(template.name)}
+                  </Typography>
                   <Tooltip title="Edit template">
                     <IconButton component={RouterLink} to="edit" size="small">
                       <Edit size={16} />
@@ -523,25 +604,26 @@ export default function ProviderTemplateOverview() {
                     </MenuItem>
                   </Menu>
                 </Stack>
-                <Typography variant="body2" color="text.secondary">
-                  {description}
+                <Typography
+                  variant="body2"
+                  color="text.secondary"
+                  title={description}
+                >
+                  {description === 'No description'
+                    ? description
+                    : truncateProviderDisplayName(description, 70)}
                 </Typography>
-                <Stack direction="row" spacing={1.5} alignItems="center" flexWrap="wrap">
-                  {template.createdBy ? (
-                    <Typography variant="caption" color="text.secondary">
-                      <FormattedMessage
-                        id="aiWorkspace.pages.appShell.appShellPages.providerTemplate.ProviderTemplateOverview.createdBy"
-                        defaultMessage={'Created by {user}'}
-                        values={{ user: template.createdBy }}
-                      />
-                    </Typography>
-                  ) : null}
-                  <Stack direction="row" spacing={0.5} alignItems="center">
-                    <Clock size={14} />
-                    <Typography variant="caption" color="text.secondary">
-                      {formatRelativeTime(createdTime)}
-                    </Typography>
-                  </Stack>
+                <Stack direction="row" spacing={0.75} alignItems="center">
+                  <Typography variant="caption" color="text.secondary">
+                    <FormattedMessage
+                      id="aiWorkspace.pages.appShell.appShellPages.providerTemplate.ProviderTemplateOverview.lastUpdated"
+                      defaultMessage={'Last updated :'}
+                    />
+                  </Typography>
+                  <Clock size={14} />
+                  <Typography variant="caption" color="text.secondary">
+                    {lastUpdated ? formatRelativeTime(lastUpdated) : '—'}
+                  </Typography>
                 </Stack>
               </Stack>
             </Box>
@@ -578,20 +660,7 @@ export default function ProviderTemplateOverview() {
           <Box padding={2}>
             {/* Overview */}
             <TabPanel value={tabIndex} index={0}>
-              <Stack divider={<Divider flexItem />} spacing={0.5}>
-                <DetailRow label="Template ID" value={template.id} />
-                <DetailRow
-                  label="Version"
-                  value={selectedVersion || template.version || 'v1'}
-                />
-                <DetailRow label="Endpoint URL" value={metadata?.endpointUrl} />
-                <DetailRow
-                  label="Total Versions"
-                  value={String(versions.length || 1)}
-                />
-              </Stack>
-
-              <Box sx={{ mt: 3 }}>
+              <Box>
                 <Typography variant="h6" sx={{ mb: 1, fontWeight: 600 }}>
                   OpenAPI Resources
                 </Typography>
@@ -655,35 +724,89 @@ export default function ProviderTemplateOverview() {
                         setIsDirty(true);
                       }}
                       placeholder="https://api.openai.com"
-                      error={!endpointUrl.trim()}
+                      error={!endpointUrl.trim() || !isValidHttpUrl(endpointUrl)}
                       helperText={
-                        !endpointUrl.trim() ? 'Endpoint URL is required.' : ''
+                        !endpointUrl.trim()
+                          ? 'Endpoint URL is required.'
+                          : !isValidHttpUrl(endpointUrl)
+                            ? 'Enter a valid URL.'
+                            : ''
                       }
                     />
                   </FormControl>
                 </Grid>
                 <Grid size={{ xs: 12 }}>
                   <FormControl fullWidth>
-                    <FormLabel>OpenAPI Spec URL</FormLabel>
-                    <TextField
-                      fullWidth
-                      value={openapiSpecUrl}
-                      onChange={(e) => {
-                        setOpenapiSpecUrl(e.target.value);
-                        setIsDirty(true);
-                      }}
-                      placeholder="https://api.openai.com/openapi.json"
+                    <FormLabel>OpenAPI Specification</FormLabel>
+                    <Stack
+                      direction="row"
+                      spacing={1.5}
+                      alignItems="center"
+                      sx={{ mt: 1 }}
+                    >
+                      <TextField
+                        size="small"
+                        fullWidth
+                        value={openapiSpecUrl}
+                        onChange={(e) => {
+                          setOpenapiSpecUrl(e.target.value);
+                          setSpecContent('');
+                          setSpecFileName('');
+                          setIsDirty(true);
+                        }}
+                        placeholder="https://api.openai.com/openapi.json"
+                        error={!isValidHttpUrl(openapiSpecUrl)}
+                        helperText={
+                          !isValidHttpUrl(openapiSpecUrl)
+                            ? 'Enter a valid URL.'
+                            : ''
+                        }
+                      />
+                      <Button
+                        variant="outlined"
+                        size="small"
+                        disabled={
+                          isFetchingSpec ||
+                          !openapiSpecUrl.trim() ||
+                          !isValidHttpUrl(openapiSpecUrl)
+                        }
+                        onClick={() => void fetchSpecFromUrl()}
+                        sx={{ whiteSpace: 'nowrap', flexShrink: 0 }}
+                      >
+                        {isFetchingSpec ? 'Fetching…' : 'Fetch specification'}
+                      </Button>
+                      <Divider orientation="vertical" flexItem>
+                        Or
+                      </Divider>
+                      <Button
+                        variant="outlined"
+                        size="small"
+                        onClick={() => fileInputRef.current?.click()}
+                        sx={{ whiteSpace: 'nowrap', flexShrink: 0 }}
+                      >
+                        {specFileName
+                          ? `Uploaded: ${specFileName}`
+                          : 'Upload Your Specification'}
+                      </Button>
+                    </Stack>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      hidden
+                      accept=".json,.yaml,.yml"
+                      onChange={handleSpecFileChange}
                     />
-                    {template.openapi?.trim() ? (
+                    {specContent.trim() ? (
                       <Typography
                         variant="caption"
                         color="text.secondary"
                         sx={{ mt: 0.5 }}
                       >
-                        An OpenAPI spec is stored inline (uploaded) —{' '}
-                        {(template.openapi.length / 1024).toFixed(1)} KB. It powers
-                        the resources above. Setting a URL here references a spec by
-                        link instead.
+                        An OpenAPI spec is stored inline
+                        {specFileName ? ` (${specFileName})` : ''} —{' '}
+                        {(specContent.length / 1024).toFixed(1)} KB. It powers the
+                        resources on the Overview tab. Setting a URL here references
+                        a spec by link instead.
                       </Typography>
                     ) : null}
                   </FormControl>
@@ -699,6 +822,12 @@ export default function ProviderTemplateOverview() {
                         setIsDirty(true);
                       }}
                       placeholder="https://cdn.example.com/logos/openai.svg"
+                      error={!isValidHttpUrl(logoUrlField)}
+                      helperText={
+                        !isValidHttpUrl(logoUrlField)
+                          ? 'Enter a valid URL.'
+                          : ''
+                      }
                     />
                   </FormControl>
                 </Grid>
@@ -788,7 +917,14 @@ export default function ProviderTemplateOverview() {
                 </Button>
                 <Button
                   variant="contained"
-                  disabled={!isDirty || isSaving || !endpointUrl.trim()}
+                  disabled={
+                    !isDirty ||
+                    isSaving ||
+                    !endpointUrl.trim() ||
+                    !isValidHttpUrl(endpointUrl) ||
+                    !isValidHttpUrl(openapiSpecUrl) ||
+                    !isValidHttpUrl(logoUrlField)
+                  }
                   onClick={() => void handleSaveChanges()}
                 >
                   {isSaving ? 'Updating...' : 'Update'}

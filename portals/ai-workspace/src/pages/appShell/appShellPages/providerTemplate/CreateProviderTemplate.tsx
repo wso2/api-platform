@@ -52,6 +52,7 @@ import {
   DEFAULT_AUTH_CONFIG,
   DEFAULT_TOKEN_CONFIG,
   fromTokenConfig,
+  isValidHttpUrl,
   TOKEN_FIELDS,
   TOKEN_LOCATIONS,
   type TokenConfig,
@@ -78,6 +79,27 @@ function parseSpecServerUrl(text: string): string | null {
   return typeof url === 'string' && url.trim() ? url.trim() : null;
 }
 
+// True if the text parses (JSON or YAML) into a plausible OpenAPI document.
+// Used to reject obviously-invalid specs on upload/fetch.
+function isParseableSpec(text: string): boolean {
+  if (!text.trim()) return false;
+  let spec: unknown = null;
+  try {
+    spec = JSON.parse(text);
+  } catch {
+    try {
+      spec = YAML.parse(text);
+    } catch {
+      return false;
+    }
+  }
+  return (
+    !!spec &&
+    typeof spec === 'object' &&
+    ('openapi' in spec || 'swagger' in spec || 'paths' in spec)
+  );
+}
+
 export default function CreateProviderTemplate() {
   const navigate = useNavigate();
   const { currentOrganization } = useAppShell();
@@ -91,6 +113,9 @@ export default function CreateProviderTemplate() {
   const [isFetchingSpec, setIsFetchingSpec] = useState(false);
   const [specFileName, setSpecFileName] = useState('');
   const [specContent, setSpecContent] = useState('');
+  // Whether the entered spec URL has been fetched (and validated). Required
+  // before create so a URL can't be saved without confirming it resolves.
+  const [specFetched, setSpecFetched] = useState(false);
 
   const [tokenConfig, setTokenConfig] = useState<TokenConfig>(() => ({
     ...DEFAULT_TOKEN_CONFIG,
@@ -119,9 +144,14 @@ export default function CreateProviderTemplate() {
       const res = await fetch(url);
       if (!res.ok) throw new Error(`Failed to fetch: ${res.statusText}`);
       const text = await res.text();
+      if (!isParseableSpec(text)) {
+        showSnackbar('That URL did not return a valid OpenAPI specification.', 'error');
+        return;
+      }
       const serverUrl = parseSpecServerUrl(text);
       setSpecFileName('');
       setSpecContent('');
+      setSpecFetched(true);
       if (serverUrl) {
         setEndpointUrl(serverUrl);
         showSnackbar('Specification fetched. Endpoint URL filled from servers.', 'success');
@@ -140,10 +170,15 @@ export default function CreateProviderTemplate() {
     if (!file) return;
     try {
       const text = await file.text();
+      if (!isParseableSpec(text)) {
+        showSnackbar('That file is not a valid OpenAPI specification (JSON or YAML).', 'error');
+        return;
+      }
       const serverUrl = parseSpecServerUrl(text);
       setSpecFileName(file.name);
       setSpecContent(text);
       setOpenapiSpecUrl('');
+      setSpecFetched(true);
       if (serverUrl) {
         setEndpointUrl(serverUrl);
         showSnackbar('Specification uploaded. Endpoint URL filled from servers.', 'success');
@@ -166,8 +201,14 @@ export default function CreateProviderTemplate() {
 
   const isNameValid = name.trim().length > 0 && name.length <= MAX_NAME_LENGTH;
   const isDescriptionValid = description.length <= MAX_DESCRIPTION_LENGTH;
-  const isEndpointValid = endpointUrl.trim().length > 0;
-  const isFormValid = isNameValid && isDescriptionValid && isEndpointValid;
+  const isEndpointValid =
+    endpointUrl.trim().length > 0 && isValidHttpUrl(endpointUrl);
+  const specUrlEntered = openapiSpecUrl.trim().length > 0;
+  const isSpecUrlValid = isValidHttpUrl(openapiSpecUrl);
+  // A spec URL, if provided, must be a valid URL AND fetched before creating.
+  const isSpecReady = !specUrlEntered || (isSpecUrlValid && specFetched);
+  const isFormValid =
+    isNameValid && isDescriptionValid && isEndpointValid && isSpecReady;
 
   const handleSubmit = async (event?: React.FormEvent) => {
     if (event) event.preventDefault();
@@ -330,13 +371,17 @@ export default function CreateProviderTemplate() {
                       setOpenapiSpecUrl(e.target.value);
                       setSpecFileName('');
                       setSpecContent('');
+                      setSpecFetched(false);
                     }}
                     placeholder="https://api.openai.com/openapi.json"
+                    error={specUrlEntered && (!isSpecUrlValid || !specFetched)}
                   />
                   <Button
                     variant="outlined"
                     size="small"
-                    disabled={isFetchingSpec || !openapiSpecUrl.trim()}
+                    disabled={
+                      isFetchingSpec || !openapiSpecUrl.trim() || !isSpecUrlValid
+                    }
                     onClick={() => void fetchSpecFromUrl()}
                     sx={{ whiteSpace: 'nowrap', flexShrink: 0 }}
                   >
@@ -356,6 +401,20 @@ export default function CreateProviderTemplate() {
                       : 'Upload Your Specification'}
                   </Button>
                 </Stack>
+                {/* Reserved fixed-height line so the message doesn't shift the
+                    row above it. Shown in red since fetching is mandatory. */}
+                <Box sx={{ minHeight: 20, mt: 0.5 }}>
+                  {specUrlEntered && !isSpecUrlValid ? (
+                    <Typography variant="caption" color="error">
+                      Enter a valid URL.
+                    </Typography>
+                  ) : specUrlEntered && !specFetched ? (
+                    <Typography variant="caption" color="error">
+                      Click &apos;Fetch specification&apos; to validate the URL
+                      before creating.
+                    </Typography>
+                  ) : null}
+                </Box>
                 <input
                   ref={fileInputRef}
                   type="file"
@@ -380,6 +439,12 @@ export default function CreateProviderTemplate() {
                   value={endpointUrl}
                   onChange={(e) => setEndpointUrl(e.target.value)}
                   placeholder="https://api.openai.com"
+                  error={endpointUrl.trim().length > 0 && !isValidHttpUrl(endpointUrl)}
+                  helperText={
+                    endpointUrl.trim().length > 0 && !isValidHttpUrl(endpointUrl)
+                      ? 'Enter a valid http(s) URL.'
+                      : ''
+                  }
                 />
               </FormControl>
             </Grid>
