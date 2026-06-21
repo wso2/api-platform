@@ -28,7 +28,13 @@ DOCKER_REGISTRY ?= ghcr.io/wso2/api-platform
 IMAGE_NAME := $(DOCKER_REGISTRY)/platform-api
 PORT ?= 9243
 
-.PHONY: help build test push build-and-push-multiarch
+# Integration test configuration
+IT_PROJECT ?= platform-api-it
+MSSQL_PASSWORD ?= Strong!Passw0rd
+# On Apple Silicon, override with: MSSQL_IMAGE=mcr.microsoft.com/azure-sql-edge:latest
+MSSQL_IMAGE ?= mcr.microsoft.com/mssql/server:2022-latest
+
+.PHONY: help build test push build-and-push-multiarch it it-sqlite it-postgres it-sqlserver it-all-dbs
 
 help: ## Show this help message
 	@echo 'Platform API Build System (Version: $(VERSION))'
@@ -39,6 +45,44 @@ help: ## Show this help message
 test: ## Run tests
 	@echo "Running tests..."
 	@cd src && go test -v ./...
+
+it: it-sqlite ## Run cross-database integration tests on SQLite (alias of it-sqlite)
+
+it-sqlite: ## Run cross-database integration tests on SQLite
+	@echo "Running integration tests on SQLite..."
+	@cd src && IT_DB=sqlite go test -tags integration -count=1 -v ./internal/integration/...
+
+it-postgres: ## Run cross-database integration tests on PostgreSQL (spins up a container)
+	@echo "Starting PostgreSQL for integration tests..."
+	@docker compose -p $(IT_PROJECT) -f it/docker-compose.postgres.yaml up -d --wait
+	@cd src && IT_DB=postgres IT_DB_HOST=localhost IT_DB_PORT=55432 IT_DB_USER=postgres \
+		IT_DB_PASSWORD=postgres IT_DB_NAME=platform_api_it \
+		go test -tags integration -count=1 -v ./internal/integration/...; rc=$$?; \
+		docker compose -p $(IT_PROJECT) -f it/docker-compose.postgres.yaml down -v >/dev/null 2>&1; \
+		exit $$rc
+
+it-sqlserver: ## Run cross-database integration tests on SQL Server (spins up a container)
+	@echo "Starting SQL Server ($(MSSQL_IMAGE)) for integration tests..."
+	@MSSQL_IMAGE=$(MSSQL_IMAGE) MSSQL_PASSWORD='$(MSSQL_PASSWORD)' \
+		docker compose -p $(IT_PROJECT) -f it/docker-compose.sqlserver.yaml up -d
+	@cd src && IT_DB=sqlserver IT_DB_HOST=localhost IT_DB_PORT=14333 IT_DB_USER=sa \
+		IT_DB_PASSWORD='$(MSSQL_PASSWORD)' IT_DB_NAME=platform_api_it \
+		go test -tags integration -count=1 -v ./internal/integration/...; rc=$$?; \
+		docker compose -p $(IT_PROJECT) -f it/docker-compose.sqlserver.yaml down -v >/dev/null 2>&1; \
+		exit $$rc
+
+it-all-dbs: ## Run integration tests across SQLite, PostgreSQL and SQL Server
+	@$(MAKE) it-sqlite
+	@$(MAKE) it-postgres
+	@$(MAKE) it-sqlserver
+
+e2e: ## Run the combined platform-api + gateway live-traffic e2e (E2E_DB=postgres|sqlite|sqlserver)
+	@cd ../tests/integration-e2e && E2E_DB=$${E2E_DB:-postgres} ./run-e2e.sh
+
+e2e-all-dbs: ## Run the combined e2e across all three databases
+	@cd ../tests/integration-e2e && E2E_DB=sqlite ./run-e2e.sh
+	@cd ../tests/integration-e2e && E2E_DB=postgres ./run-e2e.sh
+	@cd ../tests/integration-e2e && E2E_DB=sqlserver ./run-e2e.sh
 
 build: ## Build Docker image
 	@echo "Building Docker image ($(IMAGE_NAME):$(VERSION))..."
