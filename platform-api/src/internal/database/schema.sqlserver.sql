@@ -54,7 +54,11 @@ CREATE TABLE dbo.applications (
     created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     updated_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     FOREIGN KEY (project_uuid) REFERENCES projects(uuid) ON DELETE CASCADE,
-    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
+    -- NO ACTION (not CASCADE) to avoid the SQL Server multiple-cascade-paths
+    -- restriction (error 1785). Deleting an organization still removes its
+    -- applications via organizations -> projects -> applications, so no
+    -- cleanup behavior is lost relative to the Postgres schema.
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE NO ACTION,
     UNIQUE(project_uuid, organization_uuid, name),
     UNIQUE(handle, organization_uuid)
 );
@@ -133,11 +137,15 @@ CREATE TABLE dbo.subscriptions (
     created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     updated_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     FOREIGN KEY (api_uuid) REFERENCES rest_apis(uuid) ON DELETE CASCADE,
-    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
+    -- NO ACTION on the organization and artifacts edges to avoid the SQL Server
+    -- multiple-cascade-paths restriction (error 1785). Subscriptions are still
+    -- removed via the api_uuid -> rest_apis CASCADE edge (which itself cascades
+    -- from artifacts/projects/organizations), so cleanup behavior is preserved.
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE NO ACTION,
     FOREIGN KEY (subscription_plan_uuid, organization_uuid)
     REFERENCES subscription_plans(uuid, organization_uuid) ON DELETE NO ACTION,
     FOREIGN KEY (api_uuid, organization_uuid)
-      REFERENCES artifacts(uuid, organization_uuid) ON DELETE CASCADE,
+      REFERENCES artifacts(uuid, organization_uuid) ON DELETE NO ACTION,
     UNIQUE(api_uuid, subscription_token_hash),
     UNIQUE(api_uuid, subscriber_id, organization_uuid),
     CHECK (status IN ('ACTIVE', 'INACTIVE', 'REVOKED'))
@@ -226,9 +234,17 @@ CREATE TABLE dbo.deployments (
     metadata NVARCHAR(MAX), -- JSON object as NVARCHAR(MAX)
     created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     FOREIGN KEY (artifact_uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
-    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
+    -- NO ACTION to avoid the SQL Server multiple-cascade-paths restriction
+    -- (error 1785). Organization deletes still reach deployments through
+    -- organizations -> gateways -> deployments.
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE NO ACTION,
     FOREIGN KEY (gateway_uuid) REFERENCES gateways(uuid) ON DELETE CASCADE,
-    FOREIGN KEY (base_deployment_id) REFERENCES deployments(deployment_id) ON DELETE SET NULL
+    -- NO ACTION (not SET NULL): SQL Server forbids cascade actions on a
+    -- self-referencing FK (error 1785, "may cause cycles"). Deployments for an
+    -- artifact/gateway are deleted together in a single statement (or via the
+    -- artifact/gateway CASCADE), so the referenced base row is removed in the
+    -- same operation and no dangling reference remains.
+    FOREIGN KEY (base_deployment_id) REFERENCES deployments(deployment_id) ON DELETE NO ACTION
 );
 
 -- Artifact Deployment Status table (current deployment state per artifact+Gateway)
@@ -244,9 +260,15 @@ CREATE TABLE dbo.deployment_status (
     status_reason VARCHAR(50),
     updated_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     PRIMARY KEY (artifact_uuid, organization_uuid, gateway_uuid),
-    FOREIGN KEY (artifact_uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
-    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
-    FOREIGN KEY (gateway_uuid) REFERENCES gateways(uuid) ON DELETE CASCADE,
+    -- Only the deployment_id edge cascades. The artifact/organization/gateway
+    -- edges are NO ACTION to avoid the SQL Server multiple-cascade-paths
+    -- restriction (error 1785). A status row is always removed when its
+    -- referenced deployment is deleted, and deletes of an artifact, gateway or
+    -- organization funnel through deployments
+    -- (artifact/gateway -> deployments -> deployment_status), so no cleanup is lost.
+    FOREIGN KEY (artifact_uuid) REFERENCES artifacts(uuid) ON DELETE NO ACTION,
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE NO ACTION,
+    FOREIGN KEY (gateway_uuid) REFERENCES gateways(uuid) ON DELETE NO ACTION,
     FOREIGN KEY (deployment_id) REFERENCES deployments(deployment_id) ON DELETE CASCADE
 );
 
@@ -311,9 +333,14 @@ CREATE TABLE dbo.publication_mappings (
 
     -- Foreign key constraints
     PRIMARY KEY (api_uuid, devportal_uuid, organization_uuid),
-    FOREIGN KEY (api_uuid) REFERENCES rest_apis(uuid) ON DELETE CASCADE,
+    -- Only the devportal edge cascades. The api and organization edges are
+    -- NO ACTION to avoid the SQL Server multiple-cascade-paths restriction
+    -- (error 1785). API deletion removes publication rows explicitly in
+    -- application code (APIRepo.DeleteAPI), and organization deletes reach them
+    -- through organizations -> devportals -> publication_mappings.
+    FOREIGN KEY (api_uuid) REFERENCES rest_apis(uuid) ON DELETE NO ACTION,
     FOREIGN KEY (devportal_uuid) REFERENCES devportals(uuid) ON DELETE CASCADE,
-    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE NO ACTION,
     UNIQUE (api_uuid, devportal_uuid, organization_uuid)
 );
 
@@ -523,3 +550,30 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_application_artifact
 CREATE INDEX idx_application_artifacts_app_id ON dbo.application_artifacts(application_uuid);
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_application_artifacts_artifact_id' AND object_id = OBJECT_ID(N'dbo.application_artifacts'))
 CREATE INDEX idx_application_artifacts_artifact_id ON dbo.application_artifacts(artifact_uuid);
+
+-- EventHub tables for multi-replica HA sync and gateway event propagation.
+-- Counterpart of the gateway_states / events tables in schema.postgres.sql.
+-- Keyed columns are bounded NVARCHAR to stay within SQL Server index-key limits.
+IF OBJECT_ID(N'dbo.gateway_states', N'U') IS NULL
+CREATE TABLE dbo.gateway_states (
+    gateway_id NVARCHAR(64) PRIMARY KEY,
+    version_id NVARCHAR(255) NOT NULL DEFAULT '',
+    updated_at DATETIME2(7) NOT NULL DEFAULT SYSUTCDATETIME()
+);
+
+IF OBJECT_ID(N'dbo.events', N'U') IS NULL
+CREATE TABLE dbo.events (
+    gateway_id NVARCHAR(64) NOT NULL,
+    processed_timestamp DATETIME2(7) NOT NULL DEFAULT SYSUTCDATETIME(),
+    originated_timestamp DATETIME2(7) NOT NULL,
+    entity_type NVARCHAR(255) NOT NULL,
+    action NVARCHAR(20) NOT NULL CHECK(action IN ('CREATE', 'UPDATE', 'DELETE')),
+    entity_id NVARCHAR(255) NOT NULL,
+    event_id NVARCHAR(64) NOT NULL,
+    event_data NVARCHAR(MAX) NOT NULL,
+    PRIMARY KEY (gateway_id, event_id),
+    FOREIGN KEY (gateway_id) REFERENCES dbo.gateway_states(gateway_id) ON DELETE CASCADE
+);
+
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_events_gateway_id_processed_timestamp' AND object_id = OBJECT_ID(N'dbo.events'))
+CREATE INDEX idx_events_gateway_id_processed_timestamp ON dbo.events(gateway_id, processed_timestamp);
