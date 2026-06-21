@@ -40,17 +40,6 @@ const { extractPlatformJwtClaims } = require('../utils/platformJwt');
 const { accessTokenPresent, refreshAccessToken, verifyWithCertificate, resolveOrgIdp } = require('../utils/tokenUtil');
 const orgDao = require('../dao/organizationDao');
 
-const DEFAULT_TOKEN_REFRESH_TIMEOUT_MS = 10000;
-
-function resolveTokenRefreshTimeoutMs() {
-    const timeout = Number(config.identityProvider?.tokenRefreshTimeoutMs);
-    if (Number.isFinite(timeout) && timeout > 0) {
-        return timeout;
-    }
-    return DEFAULT_TOKEN_REFRESH_TIMEOUT_MS;
-}
-
-
 async function verifyJwksWithRefresh(token, jwksURL, req) {
     try {
         const jwks = await createRemoteJWKSet(new URL(jwksURL));
@@ -87,7 +76,7 @@ async function verifyJwksWithRefresh(token, jwksURL, req) {
 }
 
 async function verifyBearerToken(token, req) {
-    const idp = await resolveOrgIdp(req);
+    const idp = resolveOrgIdp();
     if (!idp || !idp.clientId) {
         // Local auth mode: verify Platform API JWT with shared secret when configured.
         const jwtSecret = config.platformApi?.jwtSecret;
@@ -104,13 +93,42 @@ async function verifyBearerToken(token, req) {
     return { valid: false, scopes: '' };
 }
 
-function checkOrgMembership(req) {
-    if (!req.user) return true;
-    const tokenOrg = req.user[constants.ROLES.ORGANIZATION_CLAIM];
-    const targetOrg = req.user[constants.ORG_IDENTIFIER];
-    if (!targetOrg || tokenOrg === targetOrg) return true;
-    const authorizedOrgs = req.user.authorizedOrgs;
-    return Array.isArray(authorizedOrgs) && authorizedOrgs.includes(targetOrg);
+/**
+ * Verifies that `orgClaim` (from the token or session) matches the
+ * ORGANIZATION_IDENTIFIER of the org identified by `pathOrgId`.
+ * Returns an Error (with .status set) on failure, null on success.
+ */
+async function checkOrgIsolation(pathOrgId, orgClaim) {
+    if (!orgClaim) {
+        const err = new Error('Token org does not match requested organization');
+        err.status = 403;
+        return err;
+    }
+    let orgDetails;
+    try {
+        orgDetails = await orgDao.get(pathOrgId);
+    } catch (e) {
+        logger.error('Org lookup failed during isolation check', { error: e.message, pathOrgId });
+        const err = new Error('Internal Server Error');
+        err.status = 500;
+        return err;
+    }
+    if (!orgDetails) {
+        const err = new Error('Organization not found');
+        err.status = 404;
+        return err;
+    }
+    if (orgClaim !== orgDetails.ORGANIZATION_IDENTIFIER) {
+        logger.warn('Org isolation mismatch', {
+            pathOrgId,
+            orgIdentifier: orgDetails.ORGANIZATION_IDENTIFIER,
+            orgClaim,
+        });
+        const err = new Error('Token org does not match requested organization');
+        err.status = 403;
+        return err;
+    }
+    return null;
 }
 
 /**
@@ -143,21 +161,10 @@ async function authResolver(req, res, next) {
             const orgIDClaim = config.identityProvider?.orgIDClaim;
             if (pathOrgId && orgIDClaim) {
                 const sessionOrgClaim = req.user[constants.ROLES.ORGANIZATION_CLAIM];
-                if (sessionOrgClaim) {
-                    try {
-                        const orgDetails = await orgDao.get(pathOrgId);
-                        const orgIdentifier = orgDetails?.ORGANIZATION_IDENTIFIER;
-                        if (orgIdentifier && sessionOrgClaim !== orgIdentifier) {
-                            logger.warn('Session org mismatch', { pathOrgId, orgIdentifier, sessionOrgClaim });
-                            const err = new Error('Token org does not match requested organization');
-                            err.status = 403;
-                            return next(err);
-                        }
-                    } catch (e) {
-                        // org not found — let the handler return 404
-                    }
-                }
+                const isolationErr = await checkOrgIsolation(pathOrgId, sessionOrgClaim);
+                if (isolationErr) return next(isolationErr);
             }
+            req[constants.USER_ID] = req.user[constants.USER_ID];
             req.auth = {
                 mode: 'oauth2',
                 preauthorized: true,
@@ -170,11 +177,6 @@ async function authResolver(req, res, next) {
         // 3. Bearer token (session-attached or Authorization header)
         const token = accessTokenPresent(req);
         if (token) {
-            if (!checkOrgMembership(req)) {
-                const err = new Error('Authentication required');
-                err.status = 401;
-                return next(err);
-            }
             const { valid, scopes } = await verifyBearerToken(token, req);
             if (!valid) {
                 const err = new Error('Authentication required');
@@ -191,24 +193,8 @@ async function authResolver(req, res, next) {
             const orgIDClaim = config.identityProvider?.orgIDClaim;
             if (pathOrgId && config.identityProvider?.clientId && orgIDClaim) {
                 const tokenOrgClaim = decoded[orgIDClaim];
-                if (tokenOrgClaim) {
-                    try {
-                        const orgDetails = await orgDao.get(pathOrgId);
-                        const orgIdentifier = orgDetails?.ORGANIZATION_IDENTIFIER;
-                        if (orgIdentifier && tokenOrgClaim !== orgIdentifier) {
-                            logger.warn('Bearer token org mismatch', {
-                                pathOrgId,
-                                orgIdentifier,
-                                tokenOrgClaim,
-                            });
-                            const err = new Error('Token org does not match requested organization');
-                            err.status = 403;
-                            return next(err);
-                        }
-                    } catch (e) {
-                        // org not found — let the handler return 404
-                    }
-                }
+                const isolationErr = await checkOrgIsolation(pathOrgId, tokenOrgClaim);
+                if (isolationErr) return next(isolationErr);
             }
             req[constants.USER_ID] = decoded[constants.USER_ID];
             req.auth = {

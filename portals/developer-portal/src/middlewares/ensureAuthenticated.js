@@ -49,11 +49,11 @@ function enforceSecurity(scope) {
             }
             const token = accessTokenPresent(req);
             if (token) {
-                if (req.user && req.user[constants.ROLES.ORGANIZATION_CLAIM] !== req.user[constants.ORG_IDENTIFIER]) {
+                if (req.user && req.user[constants.ORG_IDENTIFIER] && req.user[constants.ROLES.ORGANIZATION_CLAIM] !== req.user[constants.ORG_IDENTIFIER]) {
                     const authorizedOrgs = req.user.authorizedOrgs;
                     if ((authorizedOrgs && !(authorizedOrgs.includes(req.user[constants.ORG_IDENTIFIER]))) || !authorizedOrgs) {
-                        const err = new Error('Authentication required');
-                        err.status = 401;
+                        const err = new Error('Forbidden');
+                        err.status = 403;
                         return next(err);
                     }
                 }
@@ -98,9 +98,9 @@ const ensurePermission = (currentPage, role, req) => {
 }
 
 const ensureAuthenticated = async (req, res, next) => {
-    let adminRole = config.identityProvider.adminRole;
-    let superAdminRole = config.identityProvider.superAdminRole;
-    let subscriberRole = config.identityProvider.subscriberRole;
+    let adminRole = config.identityProvider?.adminRole;
+    let superAdminRole = config.identityProvider?.superAdminRole;
+    let subscriberRole = config.identityProvider?.subscriberRole;
     const rules = util.validateRequestParameters();
     for (let validation of rules) {
         await validation.run(req);
@@ -125,9 +125,9 @@ const ensureAuthenticated = async (req, res, next) => {
         let orgDetails;
         if (orgID !== undefined) {
             orgDetails = await orgDao.get(orgID);
-            adminRole = orgDetails.ADMIN_ROLE || adminRole;
-            superAdminRole = orgDetails.SUPER_ADMIN_ROLE || superAdminRole;
-            subscriberRole = orgDetails.SUBSCRIBER_ROLE || subscriberRole;
+            adminRole = orgDetails?.ADMIN_ROLE || adminRole;
+            superAdminRole = orgDetails?.SUPER_ADMIN_ROLE || superAdminRole;
+            subscriberRole = orgDetails?.SUBSCRIBER_ROLE || subscriberRole;
         }
         let role;
         logger.debug("Request authentication status", { isAuthenticated: req.isAuthenticated() });
@@ -159,7 +159,7 @@ const ensureAuthenticated = async (req, res, next) => {
             const token = accessTokenPresent(req);
             if (token) {
                 const decodedAccessToken = jwt.decode(token);
-                req[constants.USER_ID] = decodedAccessToken[constants.USER_ID];
+                req[constants.USER_ID] = decodedAccessToken?.[constants.USER_ID];
             }
             if (config.authorizedPages.some(pattern => minimatch.minimatch(req.originalUrl, pattern))) {
                 role = req.user[constants.ROLES.ROLE_CLAIM];
@@ -177,8 +177,8 @@ const ensureAuthenticated = async (req, res, next) => {
                     const orgIdentifier = orgDetails?.ORGANIZATION_IDENTIFIER;
                     const tokenOrgClaim = req.user[constants.ROLES.ORGANIZATION_CLAIM];
                     if (orgIdentifier && tokenOrgClaim && tokenOrgClaim !== orgIdentifier) {
-                        const err = new Error('Authentication required');
-                        err.status = 401;
+                        const err = new Error('Forbidden');
+                        err.status = 403;
                         return next(err);
                     }
                 }
@@ -186,7 +186,7 @@ const ensureAuthenticated = async (req, res, next) => {
                     if (ensurePermission(req.originalUrl, role, req)) {
                         return next();
                     } else {
-                        return res.send("User unauthorized");
+                        return res.status(403).send("User unauthorized");
                     }
                 }
             }
@@ -205,12 +205,6 @@ const ensureAuthenticated = async (req, res, next) => {
             });
         }
     } else {
-        if (req.isAuthenticated() && !(req.user?.isLocalAuth && !config.identityProvider?.clientId)) {
-            const token = accessTokenPresent(req);
-            if (token && config.identityProvider.jwksURL) {
-                await validateWithJwks(token, config.identityProvider.jwksURL, req);
-            }
-        }
         return next();
     };
 };
@@ -247,9 +241,6 @@ function validateAuthentication(scope) {
             if (String(scopes || '').split(' ').includes(scope)) {
                 return next();
             }
-            if (req.user) {
-                return res.redirect('login');
-            }
             return util.handleError(res, new CustomError(403, constants.ERROR_CODE[403], constants.ERROR_MESSAGE.FORBIDDEN));
         }
         if (req.user) {
@@ -262,7 +253,10 @@ function validateAuthentication(scope) {
 const validateWithJwks = async (token, jwksURL, req) => {
     try {
         const jwks = await createRemoteJWKSet(new URL(jwksURL));
-        const { payload } = await jwtVerify(token, jwks);
+        const jwtVerifyOptions = {};
+        if (config.identityProvider?.issuer) jwtVerifyOptions.issuer = config.identityProvider.issuer;
+        if (config.identityProvider?.audience) jwtVerifyOptions.audience = config.identityProvider.audience;
+        const { payload } = await jwtVerify(token, jwks, jwtVerifyOptions);
         return { valid: true, scopes: payload.scope || '' };
     } catch (err) {
         logger.error("Invalid token", { error: err.message, stack: err.stack, operation: "tokenValidation" });
@@ -274,7 +268,6 @@ const validateWithJwks = async (token, jwksURL, req) => {
                 req.user[constants.REFRESH_TOKEN] = response.refresh_token;
                 return { valid: true, scopes: response.scope || '' };
             } catch (error) {
-                req.user = null;
                 logger.error("Error refreshing access token", { error: error.message, stack: error.stack, operation: "refreshToken" });
                 return { valid: false, scopes: '' };
             }
