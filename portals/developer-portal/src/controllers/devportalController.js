@@ -72,7 +72,7 @@ const listApplications = async (req, res) => {
         const applications = await appDao.list(orgID, userID);
         return res.status(200).json(applications.map(a => new ApplicationDTO(a.dataValues)));
     } catch (error) {
-        logger.error('Error occurred while listing applications', { orgId: orgID, error: error.message, stack: error.stack });
+        logger.error('Error occurred while listing applications', { orgId: req.params.orgId, error: error.message, stack: error.stack });
         util.handleError(res, error);
     }
 };
@@ -87,7 +87,7 @@ const saveApplication = async (req, res) => {
         trackAppCreationEnd({ orgId: orgID, appName: applicationData.name, idpId: userID }, req);
         return res.status(201).json(new ApplicationDTO(application.dataValues));
     } catch (error) {
-        logger.error('Error occurred while creating the application', { orgId: orgID, error: error.message, stack: error.stack });
+        logger.error('Error occurred while creating the application', { orgId: req.params.orgId, error: error.message, stack: error.stack });
         util.handleError(res, error);
     }
 };
@@ -106,7 +106,7 @@ const updateApplication = async (req, res) => {
         }
         res.status(200).send(new ApplicationDTO(updatedApp[0].dataValues));
     } catch (error) {
-        logger.error("Error occurred while updating the application", { orgId: orgID, error: error.message, stack: error.stack });
+        logger.error("Error occurred while updating the application", { orgId: req.params.orgId, error: error.message, stack: error.stack });
         util.handleError(res, error);
     }
 };
@@ -151,9 +151,9 @@ const revokeAppKeyMappings = async (orgID, appID) => {
 };
 
 const deleteApplication = async (req, res) => {
-    const orgID = req.params.orgId;
     const userID = req.auth?.userId || req.user?.sub;
     const applicationId = req.params.applicationId;
+    const orgID = req.params.orgId;
     try {
         try {
             await revokeAppKeyMappings(orgID, applicationId);
@@ -175,7 +175,7 @@ const deleteApplication = async (req, res) => {
                     return res.status(200).send("Resouce Deleted Successfully");
                 }
             }
-            logger.error('Error occurred while deleting the application', { orgId: orgID, appId: applicationId, error: error.message, stack: error.stack });
+            logger.error('Error occurred while deleting the application', { orgId: req.params.orgId, appId: applicationId, error: error.message, stack: error.stack });
             util.handleError(res, error);
         }
     } catch (error) {

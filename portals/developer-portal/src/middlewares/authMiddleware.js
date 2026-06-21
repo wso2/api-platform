@@ -38,6 +38,7 @@ const constants = require('../utils/constants');
 const logger = require('../config/logger');
 const { extractPlatformJwtClaims } = require('../utils/platformJwt');
 const { accessTokenPresent, refreshAccessToken, verifyWithCertificate, resolveOrgIdp } = require('../utils/tokenUtil');
+const orgDao = require('../dao/organizationDao');
 
 const DEFAULT_TOKEN_REFRESH_TIMEOUT_MS = 10000;
 
@@ -137,6 +138,26 @@ async function authResolver(req, res, next) {
         // dp:* scopes in the OIDC scope config. Set preauthorized to bypass the per-operation
         // scope check for session users (same as API key and mTLS paths).
         if (req.isAuthenticated && req.isAuthenticated() && req.user?.grantedScopes !== undefined && config.identityProvider?.clientId) {
+            const pathOrgMatch = req.path.match(/^\/o\/([^/]+)\//);
+            const pathOrgId = pathOrgMatch ? pathOrgMatch[1] : null;
+            const orgIDClaim = config.identityProvider?.orgIDClaim;
+            if (pathOrgId && orgIDClaim) {
+                const sessionOrgClaim = req.user[constants.ROLES.ORGANIZATION_CLAIM];
+                if (sessionOrgClaim) {
+                    try {
+                        const orgDetails = await orgDao.get(pathOrgId);
+                        const orgIdentifier = orgDetails?.ORGANIZATION_IDENTIFIER;
+                        if (orgIdentifier && sessionOrgClaim !== orgIdentifier) {
+                            logger.warn('Session org mismatch', { pathOrgId, orgIdentifier, sessionOrgClaim });
+                            const err = new Error('Token org does not match requested organization');
+                            err.status = 403;
+                            return next(err);
+                        }
+                    } catch (e) {
+                        // org not found — let the handler return 404
+                    }
+                }
+            }
             req.auth = {
                 mode: 'oauth2',
                 preauthorized: true,
@@ -161,6 +182,34 @@ async function authResolver(req, res, next) {
                 return next(err);
             }
             const decoded = jwt.decode(req.user?.[constants.ACCESS_TOKEN] || token) || {};
+            // Org isolation: verify the token's org claim matches the org in the URL path.
+            // Only enforced in IDP mode — local-auth and platform-JWT tokens have no org claim.
+            // req.params is not yet populated here (authResolver runs before route matching),
+            // so extract orgId directly from the path: /o/<orgId>/devportal/v1/...
+            const pathOrgMatch = req.path.match(/^\/o\/([^/]+)\//);
+            const pathOrgId = pathOrgMatch ? pathOrgMatch[1] : null;
+            const orgIDClaim = config.identityProvider?.orgIDClaim;
+            if (pathOrgId && config.identityProvider?.clientId && orgIDClaim) {
+                const tokenOrgClaim = decoded[orgIDClaim];
+                if (tokenOrgClaim) {
+                    try {
+                        const orgDetails = await orgDao.get(pathOrgId);
+                        const orgIdentifier = orgDetails?.ORGANIZATION_IDENTIFIER;
+                        if (orgIdentifier && tokenOrgClaim !== orgIdentifier) {
+                            logger.warn('Bearer token org mismatch', {
+                                pathOrgId,
+                                orgIdentifier,
+                                tokenOrgClaim,
+                            });
+                            const err = new Error('Token org does not match requested organization');
+                            err.status = 403;
+                            return next(err);
+                        }
+                    } catch (e) {
+                        // org not found — let the handler return 404
+                    }
+                }
+            }
             req[constants.USER_ID] = decoded[constants.USER_ID];
             req.auth = {
                 mode: 'oauth2',
