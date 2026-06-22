@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"platform-api/src/internal/constants"
@@ -494,6 +495,25 @@ func (r *LLMProviderTemplateRepo) Exists(templateID, orgUUID string) (bool, erro
 func (r *LLMProviderTemplateRepo) Count(orgUUID string) (int, error) {
 	var count int
 	if err := r.db.QueryRow(r.db.Rebind(`SELECT COUNT(*) FROM llm_provider_templates WHERE organization_uuid = ? AND is_latest = ?`), orgUUID, true).Scan(&count); err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
+// CountProvidersUsingTemplate counts how many LLM providers are using a specific template.
+func (r *LLMProviderTemplateRepo) CountProvidersUsingTemplate(templateID, orgUUID, version string) (int, error) {
+	query := `
+		SELECT COUNT(*)
+		FROM llm_providers p
+		JOIN llm_provider_templates t ON p.template_uuid = t.uuid
+		WHERE t.handle = ? AND t.organization_uuid = ?`
+	args := []interface{}{templateID, orgUUID}
+	if strings.TrimSpace(version) != "" {
+		query += ` AND t.version = ?`
+		args = append(args, version)
+	}
+	var count int
+	if err := r.db.QueryRow(r.db.Rebind(query), args...).Scan(&count); err != nil {
 		return 0, err
 	}
 	return count, nil

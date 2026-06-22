@@ -362,6 +362,9 @@ func (h *LLMHandler) DeleteLLMProviderTemplate(c *gin.Context) {
 		case errors.Is(err, constants.ErrLLMProviderTemplateNotFound):
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "LLM provider template not found"))
 			return
+		case errors.Is(err, constants.ErrLLMProviderTemplateInUse):
+			c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict", "Template cannot be deleted while providers are using it"))
+			return
 		case errors.Is(err, constants.ErrInvalidInput):
 			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid template id"))
 			return
@@ -389,6 +392,9 @@ func (h *LLMHandler) DeleteLLMProviderTemplateVersion(c *gin.Context) {
 		switch {
 		case errors.Is(err, constants.ErrLLMProviderTemplateNotFound):
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "LLM provider template version not found"))
+			return
+		case errors.Is(err, constants.ErrLLMProviderTemplateInUse):
+			c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict", "Template version cannot be deleted while providers are using it"))
 			return
 		case errors.Is(err, constants.ErrInvalidInput):
 			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid template id or version"))

@@ -389,6 +389,14 @@ func (s *LLMProviderTemplateService) Delete(orgUUID, handle string) error {
 	if handle == "" {
 		return constants.ErrInvalidInput
 	}
+	// Block deletion while any provider (built from any version) still depends on it.
+	inUse, err := s.repo.CountProvidersUsingTemplate(handle, orgUUID, "")
+	if err != nil {
+		return fmt.Errorf("failed to check template usage: %w", err)
+	}
+	if inUse > 0 {
+		return constants.ErrLLMProviderTemplateInUse
+	}
 	if err := s.repo.Delete(handle, orgUUID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return constants.ErrLLMProviderTemplateNotFound
@@ -405,6 +413,14 @@ func (s *LLMProviderTemplateService) DeleteVersion(orgUUID, handle, version stri
 	}
 	if normalized, ok := normalizeTemplateVersion(v); ok {
 		v = normalized
+	}
+	// Block deletion while any provider built from this specific version still depends on it.
+	inUse, err := s.repo.CountProvidersUsingTemplate(handle, orgUUID, v)
+	if err != nil {
+		return fmt.Errorf("failed to check template version usage: %w", err)
+	}
+	if inUse > 0 {
+		return constants.ErrLLMProviderTemplateInUse
 	}
 	if err := s.repo.DeleteVersion(handle, orgUUID, v); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {

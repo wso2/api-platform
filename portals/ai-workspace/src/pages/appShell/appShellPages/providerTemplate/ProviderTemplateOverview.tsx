@@ -575,6 +575,22 @@ export default function ProviderTemplateOverview() {
     if (!template.id || !organizationId || isDeleting) return;
     setIsDeleting(true);
     try {
+      // Guard: a template that has providers created from it can't be deleted,
+      const providers = await getLLMProviders(
+        organizationId,
+        PLATFORM_API_BASE_URL
+      );
+      const inUse = (providers.list ?? []).some(
+        (p) => p.template === template.id
+      );
+      if (inUse) {
+        showSnackbar(
+          'Cannot delete: one or more providers were created from this template.',
+          'error'
+        );
+        setDeleteOpen(false);
+        return;
+      }
       await providerTemplateApis.deleteProviderTemplateVersion(
         template.id,
         currentVersion,

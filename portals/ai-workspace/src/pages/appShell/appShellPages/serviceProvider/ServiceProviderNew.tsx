@@ -334,8 +334,11 @@ export default function ServiceProviderNew() {
             header:
               selectedTemplate?.metadata?.auth?.header ||
               formState.upstreamAuthHeader,
+            // Join the prefix and value with a single space (e.g. "Bearer <key>").
+            // trimEnd() so a template prefix that already carries a trailing
+            // space (e.g. "Bearer ") doesn't produce a double space.
             value: formState.valuePrefix
-              ? `${formState.valuePrefix}${formState.upstreamAuthValue}`
+              ? `${formState.valuePrefix.trimEnd()} ${formState.upstreamAuthValue}`
               : formState.upstreamAuthValue,
           },
         },
