@@ -1,0 +1,28 @@
+{
+  "request": {
+    "method": "POST",
+    "url": "/mcp",
+    "bodyPatterns": [
+      {
+        "matchesJsonPath": {
+          "expression": "$.method",
+          "equalTo": "tools/call"
+        }
+      },
+      {
+        "matchesJsonPath": {
+          "expression": "$.params.name",
+          "equalTo": "listBooks"
+        }
+      }
+    ]
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "body": "{\"jsonrpc\":\"2.0\",\"id\":{{jsonPath request.body '$.id'}},\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"[{\\\"id\\\":\\\"1\\\",\\\"title\\\":\\\"The Pragmatic Programmer\\\",\\\"author\\\":\\\"Andy Hunt\\\",\\\"status\\\":\\\"reading\\\"},{\\\"id\\\":\\\"2\\\",\\\"title\\\":\\\"Clean Code\\\",\\\"author\\\":\\\"Robert C. Martin\\\",\\\"status\\\":\\\"to_read\\\"},{\\\"id\\\":\\\"3\\\",\\\"title\\\":\\\"Designing Data-Intensive Applications\\\",\\\"author\\\":\\\"Martin Kleppmann\\\",\\\"status\\\":\\\"read\\\"}]\"}]}}",
+    "transformers": ["response-template"]
+  }
+}
