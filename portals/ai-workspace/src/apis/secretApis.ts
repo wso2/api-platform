@@ -77,8 +77,12 @@ export function buildSecretPlaceholder(secretName: string): string {
  * Example: generateSecretHandle('wso2-openai', 'api-key') → 'wso2-openai-api-key'
  */
 export function generateSecretHandle(providerId: string, fieldName = 'api-key'): string {
-  return `${providerId}-${fieldName}`
+  const handle = `${providerId}-${fieldName}`
     .toLowerCase()
     .replace(/[^a-z0-9-]+/g, '-')
     .replace(/^-+|-+$/g, '');
+  if (!handle) {
+    throw new Error(`Cannot generate a valid secret handle from providerId="${providerId}" and fieldName="${fieldName}"`);
+  }
+  return handle;
 }

@@ -189,7 +189,10 @@ func (s *SecretService) ValidateSecretRefs(orgID, configText string) error {
 		}
 		seen[handle] = struct{}{}
 
-		found, _ := s.repo.Exists(orgID, handle)
+		found, err := s.repo.Exists(orgID, handle)
+		if err != nil {
+			return fmt.Errorf("failed to check existence of secret %q: %w", handle, err)
+		}
 		if !found {
 			missing = append(missing, handle)
 		}
