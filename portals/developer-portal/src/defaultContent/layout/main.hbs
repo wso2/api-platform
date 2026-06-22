@@ -51,9 +51,9 @@
     <script src='/technical-scripts/common.js' defer></script>
     <script src='/technical-scripts/delete-confirmation-modal.js' defer></script>
     {{{slots.scripts}}}
+    {{#if devReloadEnabled}}
     <script>
-    /* Live-reload: connects to the dev SSE endpoint. Self-disables in production
-       (onerror fires before onopen when the endpoint returns 404 → stops retrying). */
+    /* Live-reload: connects to the dev SSE endpoint. Only emitted when NODE_ENV=development. */
     (function () {
         var connected = false, reloadPending = false;
         function connect() {
@@ -65,13 +65,14 @@
             es.onmessage = function () { reloadPending = true; };
             es.onerror = function () {
                 es.close();
-                if (!connected) return; // endpoint absent (production) — stop retrying
+                if (!connected) return;
                 setTimeout(connect, 1000);
             };
         }
         connect();
     }());
     </script>
+    {{/if}}
 </body>
 
 </html>
