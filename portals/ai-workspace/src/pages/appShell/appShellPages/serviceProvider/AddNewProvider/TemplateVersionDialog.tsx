@@ -67,6 +67,8 @@ export default function TemplateVersionDialog({
     let isMounted = true;
     setIsLoading(true);
     setError(null);
+    setVersions([]);
+    setSelected('');
     providerTemplateApis
       .getProviderTemplateVersions(templateId, organizationId, PLATFORM_API_BASE_URL)
       .then((list) => {
@@ -81,6 +83,7 @@ export default function TemplateVersionDialog({
       .catch((err: unknown) => {
         if (isMounted) {
           setError(err instanceof Error ? err.message : 'Failed to load versions');
+          setSelected('');
         }
       })
       .finally(() => {
@@ -155,7 +158,7 @@ export default function TemplateVersionDialog({
         <Button
           onClick={() => onConfirm(selected)}
           variant="contained"
-          disabled={!selected || isLoading}
+          disabled={!selected || isLoading || Boolean(error) || versions.length === 0}
         >
           Continue
         </Button>

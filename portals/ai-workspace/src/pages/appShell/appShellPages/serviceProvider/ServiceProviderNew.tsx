@@ -351,9 +351,6 @@ export default function ServiceProviderNew() {
         version: formState.version.trim(),
         context: formState.context.trim() || '/',
         template: selectedTemplateId,
-        ...(selectedTemplateVersion
-          ? { templateVersion: selectedTemplateVersion }
-          : {}),
         openapi: openapiSpec,
         upstream,
         globalPolicies: [
@@ -428,7 +425,14 @@ export default function ServiceProviderNew() {
           PLATFORM_API_BASE_URL
         )
       ).filter((v) => v.enabled !== false);
-      if (enabledVersions.length <= 1) {
+      if (enabledVersions.length === 0) {
+        showSnackbar(
+          'No enabled versions are available for this template.',
+          'error'
+        );
+        return;
+      }
+      if (enabledVersions.length === 1) {
         const only = enabledVersions[0];
         applyTemplateSelection(
           template,

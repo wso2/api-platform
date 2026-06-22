@@ -199,6 +199,7 @@ export default function CreateProviderTemplate() {
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/^-+|-+$/g, '');
 
+  const normalizedTemplateId = toTemplateId(name);
   const isNameValid = name.trim().length > 0 && name.length <= MAX_NAME_LENGTH;
   const isDescriptionValid = description.length <= MAX_DESCRIPTION_LENGTH;
   const isEndpointValid =
@@ -208,7 +209,11 @@ export default function CreateProviderTemplate() {
   // A spec URL, if provided, must be a valid URL AND fetched before creating.
   const isSpecReady = !specUrlEntered || (isSpecUrlValid && specFetched);
   const isFormValid =
-    isNameValid && isDescriptionValid && isEndpointValid && isSpecReady;
+    isNameValid &&
+    Boolean(normalizedTemplateId) &&
+    isDescriptionValid &&
+    isEndpointValid &&
+    isSpecReady;
 
   const handleSubmit = async (event?: React.FormEvent) => {
     if (event) event.preventDefault();
@@ -223,7 +228,7 @@ export default function CreateProviderTemplate() {
     metadata.auth = { ...DEFAULT_AUTH_CONFIG };
 
     const payload: CreateProviderTemplateRequest = {
-      id: toTemplateId(name),
+      id: normalizedTemplateId,
       name: name.trim(),
       description: description.trim() || undefined,
       ...tokenFields,

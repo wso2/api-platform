@@ -46,12 +46,12 @@ import {
 } from '../../../../utils/providerTemplateFields';
 
 interface DiscoveredResource {
-  method: string;
+  methods: string[];
   path: string;
   summary?: string;
 }
 
-// Extract method/path/summary entries from a parsed OpenAPI spec.
+// Extract path/methods/summary entries from a parsed OpenAPI spec, one per path.
 function extractResources(spec: Record<string, unknown> | null): DiscoveredResource[] {
   const paths = (spec?.paths ?? null) as Record<
     string,
@@ -63,16 +63,18 @@ function extractResources(spec: Record<string, unknown> | null): DiscoveredResou
   Object.keys(paths).forEach((path) => {
     const ops = paths[path];
     if (!ops || typeof ops !== 'object') return;
+    const methods: string[] = [];
+    let summary: string | undefined;
     Object.keys(ops).forEach((m) => {
       if (!METHODS.has(m.toLowerCase())) return;
-      out.push({
-        method: m.toUpperCase(),
-        path,
-        summary: ops[m]?.summary || ops[m]?.description || undefined,
-      });
+      methods.push(m.toUpperCase());
+      if (!summary) summary = ops[m]?.summary || ops[m]?.description || undefined;
     });
+    if (methods.length === 0) return;
+    methods.sort();
+    out.push({ methods, path, summary });
   });
-  out.sort((a, b) => a.path.localeCompare(b.path) || a.method.localeCompare(b.method));
+  out.sort((a, b) => a.path.localeCompare(b.path));
   return out;
 }
 
@@ -148,7 +150,7 @@ export default function TemplateTokenMapping({
     const q = search.trim().toLowerCase();
     if (!q) return resources;
     return resources.filter((r) =>
-      `${r.method} ${r.path} ${r.summary ?? ''}`.toLowerCase().includes(q)
+      `${r.methods.join(' ')} ${r.path} ${r.summary ?? ''}`.toLowerCase().includes(q)
     );
   }, [resources, search]);
 
@@ -240,13 +242,17 @@ export default function TemplateTokenMapping({
           ) : (
             <Box sx={{ maxHeight: 460, overflowY: 'auto', pr: 0.5 }}>
               {filtered.map((r) => {
-                const key = `${r.method}-${r.path}`;
+                const key = r.path;
                 const overridden = isOverridden(r.path);
                 const isOpen = openKey === key;
                 return (
                   <Box key={key} sx={{ mb: 0.8 }}>
                     <ResourceRow
-                      resource={r}
+                      resource={{
+                        method: r.methods.join('/'),
+                        path: r.path,
+                        summary: r.summary,
+                      }}
                       selected={overridden}
                       onClick={() => setOpenKey(isOpen ? null : key)}
                       trailing={

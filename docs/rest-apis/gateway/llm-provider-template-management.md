@@ -248,6 +248,8 @@ Status Code **200**
 |»»»»» **additionalProperties**|string|false|none|none|
 |»»» spec|[LLMProviderTemplateData](schemas.md#schemallmprovidertemplatedata)|true|none|none|
 |»»»» displayName|string|true|none|Human-readable LLM Template name|
+|»»»» provider|string|false|none|Origin of the template. Built-in templates use 'wso2'; custom<br>templates default to 'other' and may be set to any value.|
+|»»»» version|string|false|none|Template content version (e.g. v1.0). Multiple versions of the same<br>handle can coexist; defaults to v1.0 when omitted.|
 |»»»» promptTokens|[ExtractionIdentifier](schemas.md#schemaextractionidentifier)|false|none|none|
 |»»»»» location|string|true|none|Where to find the token information|
 |»»»»» identifier|string|true|none|JSONPath expression or header name to identify the token value|

@@ -98,6 +98,27 @@ function parseSpecServerUrl(text: string): string | null {
   return typeof url === 'string' && url.trim() ? url.trim() : null;
 }
 
+// True if the text parses (JSON or YAML) into a plausible OpenAPI document.
+// Used to reject obviously-invalid specs on upload/fetch.
+function isParseableSpec(text: string): boolean {
+  if (!text.trim()) return false;
+  let spec: unknown = null;
+  try {
+    spec = JSON.parse(text);
+  } catch {
+    try {
+      spec = YAML.parse(text);
+    } catch {
+      return false;
+    }
+  }
+  return (
+    !!spec &&
+    typeof spec === 'object' &&
+    ('openapi' in spec || 'swagger' in spec || 'paths' in spec)
+  );
+}
+
 function CreateProviderTemplateVersionForm({
   template,
 }: {
@@ -157,6 +178,10 @@ function CreateProviderTemplateVersionForm({
       const res = await fetch(url);
       if (!res.ok) throw new Error(`Failed to fetch: ${res.statusText}`);
       const text = await res.text();
+      if (!isParseableSpec(text)) {
+        showSnackbar('That URL did not return a valid OpenAPI specification.', 'error');
+        return;
+      }
       const serverUrl = parseSpecServerUrl(text);
       setSpecFileName('');
       setSpecContent('');
@@ -178,6 +203,10 @@ function CreateProviderTemplateVersionForm({
     if (!file) return;
     try {
       const text = await file.text();
+      if (!isParseableSpec(text)) {
+        showSnackbar('That file is not a valid OpenAPI specification (JSON or YAML).', 'error');
+        return;
+      }
       const serverUrl = parseSpecServerUrl(text);
       setSpecFileName(file.name);
       setSpecContent(text);

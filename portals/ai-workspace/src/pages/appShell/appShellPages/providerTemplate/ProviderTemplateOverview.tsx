@@ -233,7 +233,6 @@ export default function ProviderTemplateOverview() {
   const handleSwitchVersion = async (version: string) => {
     const organizationId = currentOrganization?.uuid;
     if (!templateId || !organizationId || version === selectedVersion) return;
-    setSelectedVersion(version);
     setIsLoading(true);
     try {
       const isLatest = versions.find((v) => v.version === version)?.isLatest;
@@ -249,6 +248,7 @@ export default function ProviderTemplateOverview() {
             organizationId,
             PLATFORM_API_BASE_URL
           );
+      setSelectedVersion(version);
       setTemplate(full);
     } catch (err) {
       showSnackbar(

@@ -42,9 +42,11 @@ type ConfigStore struct {
 	// templateIdByHandle maps a handle to the UUID of its LATEST (most recently
 	// created) version, so handle-based lookups resolve to the newest template.
 	templateIdByHandle map[string]string
-	// templateIdByHandleVersion maps "handle@version" to a UUID, allowing
-	// multiple versions of the same handle to coexist.
-	templateIdByHandleVersion map[string]string
+	// templateIdByHandleVersion maps a (handle, version) pair to a UUID, allowing
+	// multiple versions of the same handle to coexist. A typed composite key is
+	// used instead of a delimiter-joined string so distinct pairs can never
+	// collide on the same map key.
+	templateIdByHandleVersion map[templateVersionKey]string
 
 	// API Keys storage
 	apiKeysByAPI map[string]map[string]*models.APIKey // Key: configID → Value: map[keyID]*APIKey
@@ -63,7 +65,7 @@ func NewConfigStore() *ConfigStore {
 		TopicManager:       NewTopicManager(),
 		templates:                 make(map[string]*models.StoredLLMProviderTemplate),
 		templateIdByHandle:         make(map[string]string),
-		templateIdByHandleVersion: make(map[string]string),
+		templateIdByHandleVersion: make(map[templateVersionKey]string),
 		apiKeysByAPI:       make(map[string]map[string]*models.APIKey),
 		labelsByAPI:        make(map[string]map[string]string),
 	}
@@ -352,9 +354,15 @@ func (cs *ConfigStore) SetSnapshotVersion(version int64) {
 // LLM Provider Template Methods
 // ========================================
 
-// handleVersionKey builds the composite "handle@version" index key.
-func handleVersionKey(handle, version string) string {
-	return handle + "@" + version
+// templateVersionKey is a composite key type for indexing templates by (handle, version).
+type templateVersionKey struct {
+	handle  string
+	version string
+}
+
+// handleVersionKey builds the composite (handle, version) index key.
+func handleVersionKey(handle, version string) templateVersionKey {
+	return templateVersionKey{handle: handle, version: version}
 }
 
 // recomputeLatestLocked re-evaluates which version of a handle is the latest

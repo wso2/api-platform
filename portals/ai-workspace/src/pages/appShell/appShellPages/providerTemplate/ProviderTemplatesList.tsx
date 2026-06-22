@@ -290,7 +290,7 @@ export default function ProviderTemplatesList({
           </PageTitle.SubHeader>
         </PageTitle>
 
-        {templates.length > 0 && (
+        {(templates.length > 0 || builtInTemplates.length > 0) && (
           <Button
             variant="contained"
             color="primary"
