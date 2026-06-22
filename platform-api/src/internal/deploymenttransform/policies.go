@@ -40,7 +40,7 @@ func init() {
 	// globalPolicies/operationPolicies. Flatten both new lists into the legacy
 	// policies field so those gateways can still consume the artifact.
 	defaultRegistry.Register(Transformation{
-		Name:        "policy-lists/downconvert-pre-1.2.0",
+		Name:        "policy-lists/downconvert-pre-1.2.0/llm-provider",
 		Kind:        constants.LLMProvider,
 		AppliesWhen: isOldGateway,
 		Apply: func(payload any) error {
@@ -60,7 +60,7 @@ func init() {
 	})
 
 	defaultRegistry.Register(Transformation{
-		Name:        "policy-lists/downconvert-pre-1.2.0",
+		Name:        "policy-lists/downconvert-pre-1.2.0/llm-proxy",
 		Kind:        constants.LLMProxy,
 		AppliesWhen: isOldGateway,
 		Apply: func(payload any) error {

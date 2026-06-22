@@ -38,7 +38,8 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// TODO: Temporary
+// Policy names referenced during LLM deployment artifact generation, migration,
+// and version-aware downconversion.
 const (
 	tokenBasedRateLimitPolicyName   = "token-based-ratelimit"
 	advancedRateLimitPolicyName     = "advanced-ratelimit"
@@ -1300,7 +1301,7 @@ func (s *LLMProxyDeploymentService) DeployLLMProxy(proxyID string, req *api.Depl
 		initialStatus, string(model.DeploymentStatusDeployed),
 		&performedAt, "",
 	); err != nil {
-		s.slogger.Warn("Failed to set deployment status for LLM proxy", "error", err)
+		return nil, fmt.Errorf("failed to set deployment status for LLM proxy: %w", err)
 	}
 
 	// Broadcast LLM proxy deployment event to gateway
@@ -1641,6 +1642,9 @@ func generateLLMProxyDeploymentYAML(proxy *model.LLMProxy) (dto.LLMProxyDeployme
 
 	// Carry through user-set globalPolicies from the model
 	for _, p := range proxy.Configuration.GlobalPolicies {
+		if hasGlobalPolicy(proxyGlobalPolicies, p.Name) {
+			continue
+		}
 		params := p.Params
 		if p.Name == advancedRateLimitPolicyName && params != nil {
 			params = withGlobalAdvancedRatelimitKeyExtraction(params)
@@ -1770,9 +1774,14 @@ func orderLLMPolicies(policies []api.LLMPolicy) []api.LLMPolicy {
 }
 
 // withGlobalAdvancedRatelimitKeyExtraction returns a copy of params with
-// keyExtraction set to [{type:"apiname"}] if not already present. This ensures
-// that advanced-ratelimit in globalPolicies uses a shared API-level counter
-// rather than the default per-route (routename) bucket.
+// keyExtraction defaulted to [{type:"apiname"}] when the caller did not set one.
+// advanced-ratelimit defaults to a per-route (routename) key; in globalPolicies
+// that would create one bucket per operation, so an apiname key is injected to
+// give a single shared API-level counter.
+//
+// An explicit keyExtraction is intentionally preserved untouched: a user who sets
+// it (e.g. a per-consumer header key, or routename on purpose) has made a
+// deliberate choice that this default must not override.
 func withGlobalAdvancedRatelimitKeyExtraction(params map[string]interface{}) map[string]interface{} {
 	if _, ok := params["keyExtraction"]; ok {
 		return params
