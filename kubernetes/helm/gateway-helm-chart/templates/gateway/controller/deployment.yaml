@@ -12,14 +12,17 @@ metadata:
   name: {{ include "gateway-operator.fullname" . }}-controller
   labels:
     {{- include "gateway-operator.componentLabels" (list . "controller" $deployment.labels) | nindent 4 }}
-  {{- $annotations := merge (deepCopy (default (dict) .Values.commonAnnotations)) (default (dict) $deployment.annotations) }}
-  {{- if $annotations }}
+  {{- with (include "gateway-operator.annotations" (list . $deployment.annotations)) }}
   annotations:
-    {{- toYaml $annotations | nindent 4 }}
+    {{- . | nindent 4 }}
   {{- end }}
 spec:
   {{- if not $controller.hpa.enabled }}
   replicas: {{ $deployment.replicaCount }}
+  {{- end }}
+  {{- with $deployment.strategy }}
+  strategy:
+    {{- toYaml . | nindent 4 }}
   {{- end }}
   selector:
     matchLabels:
@@ -27,18 +30,12 @@ spec:
   template:
     metadata:
       labels:
-        {{- with .Values.commonLabels }}
-        {{- toYaml . | nindent 8 }}
-        {{- end }}
-        {{- with $deployment.podLabels }}
-        {{- toYaml . | nindent 8 }}
-        {{- end }}
-        {{- include "gateway-operator.componentSelectorLabels" (list . "controller") | nindent 8 }}
-      {{- $podAnnotations := merge (deepCopy (default (dict) $deployment.podAnnotations)) (default (dict) .Values.commonAnnotations) }}
+        {{- include "gateway-operator.componentPodLabels" (list . "controller" $deployment.podLabels) | nindent 8 }}
+      {{- $podAnnotations := omit (merge (dict) (default (dict) $deployment.podAnnotations) (default (dict) .Values.commonAnnotations)) "checksum/config" }}
       annotations:
         checksum/config: {{ include (print $.Template.BasePath "/gateway/gateway-config.yaml") . | sha256sum }}
         {{- with $podAnnotations }}
-        {{- toYaml . | nindent 8 }}
+        {{- include "gateway-operator.renderStringMap" . | nindent 8 }}
         {{- end }}
     spec:
       serviceAccountName: {{ include "gateway-operator.serviceAccountName" . }}
@@ -63,6 +60,27 @@ spec:
       {{- with $deployment.tolerations }}
       tolerations:
         {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $deployment.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if hasKey $deployment "terminationGracePeriodSeconds" }}
+      terminationGracePeriodSeconds: {{ $deployment.terminationGracePeriodSeconds }}
+      {{- end }}
+      {{- with $deployment.hostAliases }}
+      hostAliases:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $deployment.dnsPolicy }}
+      dnsPolicy: {{ . }}
+      {{- end }}
+      {{- with $deployment.dnsConfig }}
+      dnsConfig:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if hasKey $deployment "automountServiceAccountToken" }}
+      automountServiceAccountToken: {{ $deployment.automountServiceAccountToken }}
       {{- end }}
       containers:
         - name: gateway-controller
@@ -131,6 +149,10 @@ spec:
               protocol: TCP
           livenessProbe:
             {{- toYaml $deployment.livenessProbe | nindent 12 }}
+          {{- with $deployment.startupProbe }}
+          startupProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           readinessProbe:
             {{- toYaml $deployment.readinessProbe | nindent 12 }}
           resources:
