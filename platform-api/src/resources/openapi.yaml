@@ -25,7 +25,7 @@ info:
     Authorization is enforced via OAuth2 scopes carried in the JWT. Both read (GET) and write
     operations require specific scopes declared in the `security` field of each operation.
 
-  version: 1.0.0
+  version: v1alpha2
   contact:
     name: WSO2 API Platform Team
   license:
@@ -33,9 +33,9 @@ info:
     url: https://www.apache.org/licenses/LICENSE-2.0.html
 
 servers:
-  - url: https://localhost:9243/api/v1
+  - url: https://localhost:9243/api/v1alpha2
     description: Development server (HTTPS)
-  - url: https://api.platform.com/api/v1
+  - url: https://api.platform.com/api/v1alpha2
     description: Production server
 
 security:
@@ -10003,6 +10003,47 @@ components:
           description: JSON Schema describing the parameters accepted by this policy. This itself is a JSON Schema document.
           additionalProperties: true
 
+    OperationPolicy:
+      type: object
+      required:
+        - name
+        - version
+        - paths
+      properties:
+        name:
+          type: string
+          example: token-based-ratelimit
+        version:
+          type: string
+          example: v1
+        executionCondition:
+          type: string
+          description: Optional per-request CEL expression controlling whether the policy runs
+        paths:
+          type: array
+          items:
+            $ref: '#/components/schemas/OperationPolicyPath'
+
+    OperationPolicyPath:
+      type: object
+      required:
+        - path
+        - methods
+        - params
+      properties:
+        path:
+          type: string
+          example: /chat/completions
+        methods:
+          type: array
+          items:
+            type: string
+            description: "HTTP method: GET, POST, PUT, DELETE, PATCH, OPTIONS, HEAD, or * for all"
+        params:
+          type: object
+          description: Policy parameters
+          additionalProperties: true
+
     LLMRateLimitingConfig:
       type: object
       description: Rate limiting configuration for an LLM provider at provider and consumer levels.
@@ -10263,9 +10304,20 @@ components:
           $ref: '#/components/schemas/LLMAccessControl'
         rateLimiting:
           $ref: '#/components/schemas/LLMRateLimitingConfig'
-        policies:
+        globalPolicies:
           type: array
-          description: List of policies applied only to this operation (overrides or adds to API-level policies)
+          description: Global (api-level) policies applied across ALL operations as one shared scope, evaluated before operation-level policies.
+          items:
+            $ref: "#/components/schemas/Policy"
+        operationPolicies:
+          type: array
+          description: Operation-level policies scoped to specific paths/methods, evaluated after global policies.
+          items:
+            $ref: "#/components/schemas/OperationPolicy"
+        policies:
+          deprecated: true
+          type: array
+          description: DEPRECATED - use operationPolicies. Still honoured (treated identically to operationPolicies).
           items:
             $ref: "#/components/schemas/LLMPolicy"
         security:
@@ -10442,9 +10494,20 @@ components:
               title: Proxy API
               version: v1.0
             paths: {}
-        policies:
+        globalPolicies:
           type: array
-          description: List of policies applied only to this operation (overrides or adds to API-level policies)
+          description: Global (api-level) policies applied across ALL operations as one shared scope, evaluated before operation-level policies.
+          items:
+            $ref: "#/components/schemas/Policy"
+        operationPolicies:
+          type: array
+          description: Operation-level policies scoped to specific paths/methods, evaluated after global policies.
+          items:
+            $ref: "#/components/schemas/OperationPolicy"
+        policies:
+          deprecated: true
+          type: array
+          description: DEPRECATED - use operationPolicies. Still honoured (treated identically to operationPolicies).
           items:
             $ref: "#/components/schemas/LLMPolicy"
         security:

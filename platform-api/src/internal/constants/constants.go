@@ -140,7 +140,18 @@ const (
 	MaxWebBrokerAPIsPerOrganization = 5
 )
 
-const GatewayApiVersion = "gateway.api-platform.wso2.com/v1alpha1"
+// GatewayApiVersionV1Alpha1 is the legacy artifact apiVersion for gateways < 1.2.0.
+// Use this only in down-convert paths (deploymenttransform) that must produce
+// artifacts consumable by old gateways. New code should use GatewayApiVersion.
+const GatewayApiVersionV1Alpha1 = "gateway.api-platform.wso2.com/v1alpha1"
+const GatewayApiVersion = "gateway.api-platform.wso2.com/v1alpha2"
+
+// APIVersion is the platform-api resource URL version segment, and APIBasePath is the
+// single source of truth for the prefix every handler route group is mounted under.
+// NOTE: this is a DIFFERENT axis from GatewayApiVersion* (the gateway artifact
+// apiVersion).
+const APIVersion = "v1alpha2"
+const APIBasePath = "/api/" + APIVersion
 
 // Custom Policy ManagedBy constants
 const (

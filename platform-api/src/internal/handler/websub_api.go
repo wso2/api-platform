@@ -51,7 +51,7 @@ func NewWebSubAPIHandler(websubAPIService *service.WebSubAPIService, slogger *sl
 
 // RegisterRoutes registers WebSub API routes
 func (h *WebSubAPIHandler) RegisterRoutes(r *gin.Engine) {
-	v1 := r.Group("/api/v1")
+	v1 := r.Group(constants.APIBasePath)
 	{
 		v1.POST("/websub-apis", h.CreateWebSubAPI)
 		v1.GET("/websub-apis", h.ListWebSubAPIs)
@@ -63,7 +63,7 @@ func (h *WebSubAPIHandler) RegisterRoutes(r *gin.Engine) {
 	}
 }
 
-// CreateWebSubAPI handles POST /api/v1/websub-apis
+// CreateWebSubAPI handles POST /api/v1alpha2/websub-apis
 func (h *WebSubAPIHandler) CreateWebSubAPI(c *gin.Context) {
 	orgID, ok := middleware.GetOrganizationFromContext(c)
 	if !ok {
@@ -89,7 +89,7 @@ func (h *WebSubAPIHandler) CreateWebSubAPI(c *gin.Context) {
 	c.JSON(http.StatusCreated, resp)
 }
 
-// ListWebSubAPIs handles GET /api/v1/websub-apis
+// ListWebSubAPIs handles GET /api/v1alpha2/websub-apis
 func (h *WebSubAPIHandler) ListWebSubAPIs(c *gin.Context) {
 	orgID, ok := middleware.GetOrganizationFromContext(c)
 	if !ok {
@@ -124,7 +124,7 @@ func (h *WebSubAPIHandler) ListWebSubAPIs(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
-// GetWebSubAPI handles GET /api/v1/websub-apis/:apiId
+// GetWebSubAPI handles GET /api/v1alpha2/websub-apis/:apiId
 func (h *WebSubAPIHandler) GetWebSubAPI(c *gin.Context) {
 	orgID, ok := middleware.GetOrganizationFromContext(c)
 	if !ok {
@@ -142,7 +142,7 @@ func (h *WebSubAPIHandler) GetWebSubAPI(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
-// UpdateWebSubAPI handles PUT /api/v1/websub-apis/:apiId
+// UpdateWebSubAPI handles PUT /api/v1alpha2/websub-apis/:apiId
 func (h *WebSubAPIHandler) UpdateWebSubAPI(c *gin.Context) {
 	orgID, ok := middleware.GetOrganizationFromContext(c)
 	if !ok {
@@ -168,7 +168,7 @@ func (h *WebSubAPIHandler) UpdateWebSubAPI(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
-// DeleteWebSubAPI handles DELETE /api/v1/websub-apis/:apiId
+// DeleteWebSubAPI handles DELETE /api/v1alpha2/websub-apis/:apiId
 func (h *WebSubAPIHandler) DeleteWebSubAPI(c *gin.Context) {
 	orgID, ok := middleware.GetOrganizationFromContext(c)
 	if !ok {

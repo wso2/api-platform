@@ -637,7 +637,7 @@ func TestBuildAPIDeploymentYAML(t *testing.T) {
 	}
 
 	// Verify key struct fields
-	if deploymentStruct.ApiVersion != "gateway.api-platform.wso2.com/v1alpha1" {
+	if deploymentStruct.ApiVersion != "gateway.api-platform.wso2.com/v1alpha2" {
 		t.Errorf("ApiVersion = %q", deploymentStruct.ApiVersion)
 	}
 	if deploymentStruct.Kind != constants.RestApi {

@@ -52,7 +52,7 @@ func NewSubscriptionHandler(subscriptionService *service.SubscriptionService, su
 	}
 }
 
-// CreateSubscriptionRequest is the body for POST /api/v1/subscriptions
+// CreateSubscriptionRequest is the body for POST /api/v1alpha2/subscriptions
 type CreateSubscriptionRequest struct {
 	APIID              string  `json:"apiId" binding:"required"`
 	SubscriberID       string  `json:"subscriberId" binding:"required"`
@@ -61,12 +61,12 @@ type CreateSubscriptionRequest struct {
 	Status             string  `json:"status,omitempty"`
 }
 
-// UpdateSubscriptionRequest is the body for PUT /api/v1/subscriptions/:subscriptionId
+// UpdateSubscriptionRequest is the body for PUT /api/v1alpha2/subscriptions/:subscriptionId
 type UpdateSubscriptionRequest struct {
 	Status string `json:"status,omitempty"`
 }
 
-// CreateSubscription handles POST /api/v1/subscriptions
+// CreateSubscription handles POST /api/v1alpha2/subscriptions
 func (h *SubscriptionHandler) CreateSubscription(c *gin.Context) {
 	orgId, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {
@@ -112,7 +112,7 @@ func (h *SubscriptionHandler) CreateSubscription(c *gin.Context) {
 	c.JSON(http.StatusCreated, h.toSubscriptionResponse(sub, orgId))
 }
 
-// ListSubscriptions handles GET /api/v1/subscriptions
+// ListSubscriptions handles GET /api/v1alpha2/subscriptions
 func (h *SubscriptionHandler) ListSubscriptions(c *gin.Context) {
 	apiId := c.Query("apiId")
 	subscriberID := c.Query("subscriberId")
@@ -214,7 +214,7 @@ func (h *SubscriptionHandler) ListSubscriptions(c *gin.Context) {
 	})
 }
 
-// GetSubscription handles GET /api/v1/subscriptions/:subscriptionId
+// GetSubscription handles GET /api/v1alpha2/subscriptions/:subscriptionId
 func (h *SubscriptionHandler) GetSubscription(c *gin.Context) {
 	orgId, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {
@@ -240,7 +240,7 @@ func (h *SubscriptionHandler) GetSubscription(c *gin.Context) {
 	c.JSON(http.StatusOK, h.toSubscriptionResponse(sub, orgId))
 }
 
-// UpdateSubscription handles PUT /api/v1/subscriptions/:subscriptionId
+// UpdateSubscription handles PUT /api/v1alpha2/subscriptions/:subscriptionId
 func (h *SubscriptionHandler) UpdateSubscription(c *gin.Context) {
 	orgId, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {
@@ -285,7 +285,7 @@ func (h *SubscriptionHandler) UpdateSubscription(c *gin.Context) {
 	c.JSON(http.StatusOK, h.toSubscriptionResponse(sub, orgId))
 }
 
-// DeleteSubscription handles DELETE /api/v1/subscriptions/:subscriptionId
+// DeleteSubscription handles DELETE /api/v1alpha2/subscriptions/:subscriptionId
 func (h *SubscriptionHandler) DeleteSubscription(c *gin.Context) {
 	orgId, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {
@@ -330,7 +330,7 @@ func requireSubscriptionSubscriberQuery(c *gin.Context) (string, bool) {
 }
 
 func (h *SubscriptionHandler) RegisterRoutes(r *gin.Engine) {
-	subGroup := r.Group("/api/v1/subscriptions")
+	subGroup := r.Group(constants.APIBasePath + "/subscriptions")
 	{
 		subGroup.POST("", h.CreateSubscription)
 		subGroup.GET("", h.ListSubscriptions)

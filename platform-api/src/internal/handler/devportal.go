@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"platform-api/src/api"
+	"platform-api/src/internal/constants"
 	"platform-api/src/internal/middleware"
 	"platform-api/src/internal/service"
 	"platform-api/src/internal/utils"
@@ -45,7 +46,7 @@ func NewDevPortalHandler(devPortalService *service.DevPortalService, logger *slo
 	}
 }
 
-// CreateDevPortal handles POST /api/v1/devportals
+// CreateDevPortal handles POST /api/v1alpha2/devportals
 func (h *DevPortalHandler) CreateDevPortal(c *gin.Context) {
 	// Extract organization ID from context
 	orgID, exists := middleware.GetOrganizationFromContext(c)
@@ -80,7 +81,7 @@ func (h *DevPortalHandler) CreateDevPortal(c *gin.Context) {
 	c.JSON(http.StatusCreated, response)
 }
 
-// GetDevPortal handles GET /api/v1/devportals/:devportalId
+// GetDevPortal handles GET /api/v1alpha2/devportals/:devportalId
 func (h *DevPortalHandler) GetDevPortal(c *gin.Context) {
 	// Extract organization ID from context
 	orgID, exists := middleware.GetOrganizationFromContext(c)
@@ -110,7 +111,7 @@ func (h *DevPortalHandler) GetDevPortal(c *gin.Context) {
 	c.JSON(http.StatusOK, response)
 }
 
-// ListDevPortals handles GET /api/v1/devportals
+// ListDevPortals handles GET /api/v1alpha2/devportals
 func (h *DevPortalHandler) ListDevPortals(c *gin.Context) {
 	// Extract organization ID from context
 	orgID, exists := middleware.GetOrganizationFromContext(c)
@@ -163,7 +164,7 @@ func (h *DevPortalHandler) ListDevPortals(c *gin.Context) {
 	c.JSON(http.StatusOK, response)
 }
 
-// UpdateDevPortal handles PUT /api/v1/devportals/:devportalId
+// UpdateDevPortal handles PUT /api/v1alpha2/devportals/:devportalId
 func (h *DevPortalHandler) UpdateDevPortal(c *gin.Context) {
 	// Extract organization ID from context
 	orgID, exists := middleware.GetOrganizationFromContext(c)
@@ -206,7 +207,7 @@ func (h *DevPortalHandler) UpdateDevPortal(c *gin.Context) {
 	c.JSON(http.StatusOK, response)
 }
 
-// DeleteDevPortal handles DELETE /api/v1/devportals/:devportalId
+// DeleteDevPortal handles DELETE /api/v1alpha2/devportals/:devportalId
 func (h *DevPortalHandler) DeleteDevPortal(c *gin.Context) {
 	// Extract organization ID from context
 	orgID, exists := middleware.GetOrganizationFromContext(c)
@@ -239,7 +240,7 @@ func (h *DevPortalHandler) DeleteDevPortal(c *gin.Context) {
 	c.JSON(http.StatusNoContent, nil)
 }
 
-// ActivateDevPortal handles POST /api/v1/devportals/:devportalId/activate
+// ActivateDevPortal handles POST /api/v1alpha2/devportals/:devportalId/activate
 func (h *DevPortalHandler) ActivateDevPortal(c *gin.Context) {
 	// Extract organization ID from context
 	orgID, exists := middleware.GetOrganizationFromContext(c)
@@ -277,7 +278,7 @@ func (h *DevPortalHandler) ActivateDevPortal(c *gin.Context) {
 	})
 }
 
-// DeactivateDevPortal handles POST /api/v1/devportals/:devportalId/deactivate
+// DeactivateDevPortal handles POST /api/v1alpha2/devportals/:devportalId/deactivate
 func (h *DevPortalHandler) DeactivateDevPortal(c *gin.Context) {
 	// Extract organization ID from context
 	orgID, exists := middleware.GetOrganizationFromContext(c)
@@ -315,7 +316,7 @@ func (h *DevPortalHandler) DeactivateDevPortal(c *gin.Context) {
 	})
 }
 
-// SetAsDefault handles POST /api/v1/devportals/:devportalId/set-default
+// SetAsDefault handles POST /api/v1alpha2/devportals/:devportalId/set-default
 func (h *DevPortalHandler) SetAsDefault(c *gin.Context) {
 	// Extract organization ID from context
 	orgID, exists := middleware.GetOrganizationFromContext(c)
@@ -373,7 +374,7 @@ func (h *DevPortalHandler) GetDefaultDevPortal(c *gin.Context) {
 // RegisterRoutes registers all DevPortal routes
 func (h *DevPortalHandler) RegisterRoutes(r *gin.Engine) {
 	h.logger.Debug("Registering DevPortal routes")
-	v1 := r.Group("/api/v1")
+	v1 := r.Group(constants.APIBasePath)
 	{
 		// DevPortal CRUD operations
 		v1.POST("/devportals", h.CreateDevPortal)

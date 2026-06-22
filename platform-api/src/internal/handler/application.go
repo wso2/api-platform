@@ -437,7 +437,7 @@ func (h *ApplicationHandler) RemoveApplicationAPIKey(c *gin.Context) {
 }
 
 func (h *ApplicationHandler) RegisterRoutes(r *gin.Engine) {
-	applicationGroup := r.Group("/api/v1/applications")
+	applicationGroup := r.Group(constants.APIBasePath + "/applications")
 	{
 		applicationGroup.GET("", h.ListApplications)
 		applicationGroup.POST("", h.CreateApplication)
