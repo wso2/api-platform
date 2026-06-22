@@ -48,9 +48,6 @@
       <p class="app-card-desc">{{description}}</p>
 
       <div class="app-card-footer">
-        <span class="app-subs-label">
-          <i class="bi bi-layers"></i> Subscriptions
-        </span>
         {{#unless @root.isReadOnlyMode}}
         <button type="button" class="app-delete-btn" id="trash-btn-{{id}}"
           title="Delete application"
@@ -179,7 +176,7 @@
     var btn = this;
     btn.disabled = true;
     btn.textContent = 'Creating…';
-    fetch(devportalApi.root('/applications'), {
+    fetch(devportalApi.org(devportalApi.orgId, '/applications'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
@@ -220,7 +217,7 @@
     var btn = this;
     btn.disabled = true;
     btn.textContent = 'Deleting…';
-    fetch(devportalApi.root('/applications/' + pendingDeleteId), {
+    fetch(devportalApi.org(devportalApi.orgId, '/applications/' + pendingDeleteId), {
       method: 'DELETE',
       credentials: 'include',
     })

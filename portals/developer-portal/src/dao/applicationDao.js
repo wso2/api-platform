@@ -40,7 +40,7 @@ const create = async (orgID, userID, appData) => {
 
 const update = async (orgID, appID, userID, appData) => {
     try {
-        const [updatedRowsCount, appContent] = await Application.update(
+        const [updatedRowsCount] = await Application.update(
             {
                 NAME: appData.name,
                 DESCRIPTION: appData.description,
@@ -51,11 +51,14 @@ const update = async (orgID, appID, userID, appData) => {
                     ORG_ID: orgID,
                     APP_ID: appID,
                     CREATED_BY: userID
-                },
-                returning: true
+                }
             }
         );
-        return [updatedRowsCount, appContent];
+        if (!updatedRowsCount) {
+            return [updatedRowsCount, null];
+        }
+        const updatedApp = await Application.findOne({ where: { ORG_ID: orgID, APP_ID: appID } });
+        return [updatedRowsCount, [updatedApp]];
     } catch (error) {
         if (error instanceof Sequelize.UniqueConstraintError) {
             throw error;

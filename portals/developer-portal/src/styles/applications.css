@@ -579,15 +579,6 @@
   border-top: 1px solid #eef1f5;
 }
 
-.app-subs-label {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 0.781rem;
-  font-weight: 500;
-  color: #637282;
-}
-
 .app-delete-btn {
   display: inline-flex;
   align-items: center;

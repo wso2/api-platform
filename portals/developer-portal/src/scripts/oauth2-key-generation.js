@@ -85,7 +85,7 @@ async function generateApplicationKey(formId, appId, keyType, keyManager, client
         "additionalProperties": jsonObject.additionalProperties,
     })
     try {
-        const response = await fetch(`/devportal/applications/${appId}/generate-keys`, {
+        const response = await fetch(devportalApi.org(orgID, `/applications/${appId}/generate-keys`), {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -416,7 +416,7 @@ async function selectKmAndGenerate(keyType, appId, appName, orgID, itemEl) {
     });
 
     try {
-        const response = await fetch(`/devportal/applications/${appId}/generate-keys`, {
+        const response = await fetch(devportalApi.org(orgID, `/applications/${appId}/generate-keys`), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: payload,
@@ -519,7 +519,7 @@ async function saveInlineKeyConfig(kmId, keyType, appId, keyManager, keyMappingI
     };
 
     try {
-        const response = await fetch(`/devportal/applications/${appId}/oauth-keys/${keyMappingId}`, {
+        const response = await fetch(devportalApi.org(devportalApi.orgId, `/applications/${appId}/oauth-keys/${keyMappingId}`), {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: payload,
@@ -548,7 +548,7 @@ async function confirmRegenerateSecret(applicationId, keyMappingId) {
 
 async function cleanUp(applicationId, keyMappingId) {
     try {
-        const response = await fetch(devportalApi.root(`/applications/${applicationId}/oauth-keys/${keyMappingId}/clean-up`), {
+        const response = await fetch(devportalApi.org(devportalApi.orgId, `/applications/${applicationId}/oauth-keys/${keyMappingId}/clean-up`), {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -689,7 +689,7 @@ async function updateApplicationKey(formId, appId, keyType, keyManager, keyManag
             "additionalProperties": jsonObject.additionalProperties
         });
         try {
-            const response = await fetch(devportalApi.root(`/applications/${appId}/oauth-keys/${keyMappingId}`), {
+            const response = await fetch(devportalApi.org(devportalApi.orgId, `/applications/${appId}/oauth-keys/${keyMappingId}`), {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',
@@ -774,7 +774,7 @@ async function removeApplicationKeys(applicationId, keyMappingId, keyType) {
         return;
     }
     try {
-        const response = await fetch(devportalApi.root(`/applications/${applicationId}/oauth-keys/${keyMappingId}`), {
+        const response = await fetch(devportalApi.org(devportalApi.orgId, `/applications/${applicationId}/oauth-keys/${keyMappingId}`), {
             method: 'DELETE',
             headers: {
                 'Content-Type': 'application/json',
@@ -937,7 +937,7 @@ async function generateOauthKey(formId, appId, keyMappingId, keyManager, clientN
     const jsonObject = getFormData(formData, keyManager, clientName);
 
     try {
-        const response = await fetch(devportalApi.root(`/applications/${appId}/oauth-keys/${keyMappingId}/generate-token`), {
+        const response = await fetch(devportalApi.org(devportalApi.orgId, `/applications/${appId}/oauth-keys/${keyMappingId}/generate-token`), {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',

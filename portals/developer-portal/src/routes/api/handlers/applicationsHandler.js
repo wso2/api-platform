@@ -23,6 +23,7 @@
 const devportalController = require('../../../controllers/devportalController');
 
 module.exports = {
+    listApplications: devportalController.listApplications,
     saveApplication: devportalController.saveApplication,
     updateApplication: devportalController.updateApplication,
     deleteApplication: devportalController.deleteApplication,
