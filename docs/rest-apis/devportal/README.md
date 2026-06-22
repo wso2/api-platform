@@ -138,5 +138,13 @@ Base URLs:
 - [Get a webhook event](webhook-events.md#get-a-webhook-event)
 - [Retry a failed webhook delivery](webhook-events.md#retry-a-failed-webhook-delivery)
 
+### [Webhook Subscribers](webhook-subscribers.md)
+
+- [Create a webhook subscriber](webhook-subscribers.md#create-a-webhook-subscriber)
+- [List webhook subscribers](webhook-subscribers.md#list-webhook-subscribers)
+- [Get a webhook subscriber](webhook-subscribers.md#get-a-webhook-subscriber)
+- [Update a webhook subscriber](webhook-subscribers.md#update-a-webhook-subscriber)
+- [Delete a webhook subscriber](webhook-subscribers.md#delete-a-webhook-subscriber)
+
 ### [Schemas](schemas.md)
 

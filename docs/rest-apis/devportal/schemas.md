@@ -1522,6 +1522,84 @@ Minimal developer-facing key manager view. No admin credentials or DCR endpoints
 |type|KEYCLOAK|
 |type|GENERIC_OIDC|
 
+<h2 id="tocS_WebhookSubscriberRequest">WebhookSubscriberRequest</h2>
+
+<a id="schemawebhooksubscriberrequest"></a>
+<a id="schema_WebhookSubscriberRequest"></a>
+<a id="tocSwebhooksubscriberrequest"></a>
+<a id="tocswebhooksubscriberrequest"></a>
+
+```json
+{
+  "name": "Production Gateway",
+  "url": "https://gateway.example.com/devportal-webhook",
+  "secret": "<shared-secret>",
+  "publicKey": "string",
+  "gatewayType": "*",
+  "events": [
+    "apikey.*",
+    "subscription.*"
+  ],
+  "enabled": true,
+  "timeoutMs": 5000
+}
+
+```
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|name|string|false|none|Unique name within the organization.|
+|url|string(uri)|false|none|Target URL events are POSTed to.|
+|secret|string|false|none|Shared secret used to sign outgoing payloads (HMAC). Stored encrypted; never returned in responses.|
+|publicKey|string|false|none|PEM-encoded public key. When set, secret event payloads (apikey.*, subscription.*) are additionally encrypted to this key so only the subscriber can read the plaintext key.|
+|gatewayType|string|false|none|Restricts delivery to events with a matching DP_EVENT.GATEWAY_TYPE. Use "*" (default) to match any.|
+|events|[string]|false|none|Glob-style event type allowlist (only a trailing `*` wildcard is supported, e.g. `apikey.*`). Omit or leave empty to receive all event types.|
+|enabled|boolean|false|none|none|
+|timeoutMs|integer|false|none|none|
+
+<h2 id="tocS_WebhookSubscriberResponseSchema">WebhookSubscriberResponseSchema</h2>
+
+<a id="schemawebhooksubscriberresponseschema"></a>
+<a id="schema_WebhookSubscriberResponseSchema"></a>
+<a id="tocSwebhooksubscriberresponseschema"></a>
+<a id="tocswebhooksubscriberresponseschema"></a>
+
+```json
+{
+  "id": "sub-uuid-12345",
+  "orgId": "org-12345",
+  "name": "Production Gateway",
+  "url": "https://gateway.example.com/devportal-webhook",
+  "enabled": true,
+  "gatewayType": "*",
+  "events": [
+    "apikey.*",
+    "subscription.*"
+  ],
+  "timeoutMs": 5000,
+  "hasPublicKey": false
+}
+
+```
+
+Webhook subscriber configuration. The secret is never included.
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|id|string|false|none|Webhook subscriber UUID.|
+|orgId|string|false|none|none|
+|name|string|false|none|none|
+|url|string(uri)|false|none|none|
+|enabled|boolean|false|none|none|
+|gatewayType|string|false|none|none|
+|events|[string]|false|none|none|
+|timeoutMs|integer|false|none|none|
+|hasPublicKey|boolean|false|none|Whether a public key is configured for envelope-encrypting secret event payloads.|
+
 <h2 id="tocS_AppKeyMappingRequest">AppKeyMappingRequest</h2>
 
 <a id="schemaappkeymappingrequest"></a>

@@ -87,7 +87,7 @@ async function publish(eventType, payload, opts) {
     // For key events, encrypt the plaintext per subscriber and write delivery rows now
     // (inside the same TX) so the plaintext never leaves this call's stack.
     if (SECRET_EVENT_TYPES.has(eventType) && plaintextKey) {
-        const subscribers = matchSubscribers(eventType, gatewayType || null);
+        const subscribers = await matchSubscribers(orgId, eventType, gatewayType || null);
         const perSubscriberEncrypted = {};
 
         for (const sub of subscribers) {

@@ -55,6 +55,7 @@ tags:
   - name: Authentication
   - name: Key Managers
   - name: Webhook Events
+  - name: Webhook Subscribers
 paths:
   /organizations:
     post:
@@ -1654,6 +1655,111 @@ paths:
         - OAuth2Security:
             - dp:km_delete
             - dp:km_manage
+  /o/{orgId}/devportal/v1/webhook-subscribers:
+    parameters:
+      - $ref: "#/components/parameters/OrgId"
+    post:
+      tags:
+        - Webhook Subscribers
+      summary: Create a webhook subscriber
+      description: >-
+        Registers a webhook subscriber for the organization. Gateway event deliveries (apikey.*,
+        subscription.*, etc.) matching the subscriber's gatewayType/events filters are fanned out
+        to its target URL. The `secret` is encrypted at rest using AES-256-GCM.
+      operationId: createWebhookSubscriber
+      requestBody:
+        $ref: "#/components/requestBodies/WebhookSubscriberBody"
+      responses:
+        "201":
+          $ref: "#/components/responses/WebhookSubscriberResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      security:
+        - OAuth2Security:
+            - dp:webhook_subscriber_write
+            - dp:webhook_subscriber_manage
+    get:
+      tags:
+        - Webhook Subscribers
+      summary: List webhook subscribers
+      description: Returns all webhook subscriber configurations for the organization. Secrets are never included in the response.
+      operationId: getWebhookSubscribers
+      responses:
+        "200":
+          $ref: "#/components/responses/WebhookSubscriberListResponse"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      security:
+        - OAuth2Security:
+            - dp:webhook_subscriber_read
+            - dp:webhook_subscriber_manage
+  /o/{orgId}/devportal/v1/webhook-subscribers/{subscriberId}:
+    parameters:
+      - $ref: "#/components/parameters/OrgId"
+      - $ref: "#/components/parameters/SubscriberId"
+    get:
+      tags:
+        - Webhook Subscribers
+      summary: Get a webhook subscriber
+      description: Retrieves a single webhook subscriber configuration by ID.
+      operationId: getWebhookSubscriber
+      responses:
+        "200":
+          $ref: "#/components/responses/WebhookSubscriberResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      security:
+        - OAuth2Security:
+            - dp:webhook_subscriber_read
+            - dp:webhook_subscriber_manage
+    put:
+      tags:
+        - Webhook Subscribers
+      summary: Update a webhook subscriber
+      description: >-
+        Updates an existing webhook subscriber configuration. Only supplied fields are updated;
+        omitted fields retain their stored values.
+      operationId: updateWebhookSubscriber
+      requestBody:
+        $ref: "#/components/requestBodies/WebhookSubscriberUpdateBody"
+      responses:
+        "200":
+          $ref: "#/components/responses/WebhookSubscriberResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      security:
+        - OAuth2Security:
+            - dp:webhook_subscriber_write
+            - dp:webhook_subscriber_manage
+    delete:
+      tags:
+        - Webhook Subscribers
+      summary: Delete a webhook subscriber
+      description: Deletes a webhook subscriber configuration by ID.
+      operationId: deleteWebhookSubscriber
+      responses:
+        "204":
+          description: Webhook subscriber deleted successfully.
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      security:
+        - OAuth2Security:
+            - dp:webhook_subscriber_delete
+            - dp:webhook_subscriber_manage
   /login:
     post:
       tags:
@@ -1839,6 +1945,10 @@ components:
             dp:km_write: Create or update key manager configurations.
             dp:km_delete: Delete key manager configurations.
             dp:km_manage: Manage key manager configurations (including creating, updating, and deleting).
+            dp:webhook_subscriber_read: Read webhook subscriber configurations.
+            dp:webhook_subscriber_write: Create or update webhook subscriber configurations.
+            dp:webhook_subscriber_delete: Delete webhook subscriber configurations.
+            dp:webhook_subscriber_manage: Manage webhook subscriber configurations (including creating, updating, and deleting).
     apiKeyAuth:
       type: apiKey
       in: header
@@ -1926,6 +2036,14 @@ components:
         type: string
         example: km-uuid-12345
       description: Key manager ID (UUID).
+    SubscriberId:
+      name: subscriberId
+      in: path
+      required: true
+      schema:
+        type: string
+        example: sub-uuid-12345
+      description: Webhook subscriber ID (UUID).
     ApiKeyID:
       name: apiKeyID
       in: path
@@ -2492,6 +2610,30 @@ components:
                 type: string
                 format: binary
                 description: KeyManager YAML file.
+    WebhookSubscriberBody:
+      description: Webhook subscriber configuration payload.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/WebhookSubscriberRequest"
+          example:
+            name: Production Gateway
+            url: https://gateway.example.com/devportal-webhook
+            secret: "<shared-secret>"
+            gatewayType: "*"
+            events:
+              - apikey.*
+              - subscription.*
+            enabled: true
+            timeoutMs: 5000
+    WebhookSubscriberUpdateBody:
+      description: >-
+        Webhook subscriber update payload. All fields are optional; only supplied fields are
+        updated.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/WebhookSubscriberRequest"
     KeyManagerUpdateBody:
       description: >-
         Key manager update payload. All fields are optional; only supplied fields are updated.
@@ -3226,6 +3368,20 @@ components:
             type: array
             items:
               $ref: "#/components/schemas/KeyManagerPublicResponseSchema"
+    WebhookSubscriberResponse:
+      description: Webhook subscriber configuration response.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/WebhookSubscriberResponseSchema"
+    WebhookSubscriberListResponse:
+      description: List of webhook subscriber configurations.
+      content:
+        application/json:
+          schema:
+            type: array
+            items:
+              $ref: "#/components/schemas/WebhookSubscriberResponseSchema"
     ApplicationApiKeyGenerateResponse:
       description: API key generation or regeneration response.
       content:
@@ -4375,6 +4531,89 @@ components:
             - openid
             - profile
       additionalProperties: false
+    WebhookSubscriberRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          description: Unique name within the organization.
+          example: Production Gateway
+        url:
+          type: string
+          format: uri
+          description: Target URL events are POSTed to.
+          example: https://gateway.example.com/devportal-webhook
+        secret:
+          type: string
+          description: Shared secret used to sign outgoing payloads (HMAC). Stored encrypted; never returned in responses.
+          example: "<shared-secret>"
+        publicKey:
+          type: string
+          description: >-
+            PEM-encoded public key. When set, secret event payloads (apikey.*, subscription.*)
+            are additionally encrypted to this key so only the subscriber can read the plaintext key.
+        gatewayType:
+          type: string
+          description: Restricts delivery to events with a matching DP_EVENT.GATEWAY_TYPE. Use "*" (default) to match any.
+          default: "*"
+          example: "*"
+        events:
+          type: array
+          items:
+            type: string
+          description: >-
+            Glob-style event type allowlist (only a trailing `*` wildcard is supported, e.g. `apikey.*`).
+            Omit or leave empty to receive all event types.
+          example:
+            - apikey.*
+            - subscription.*
+        enabled:
+          type: boolean
+          default: true
+          example: true
+        timeoutMs:
+          type: integer
+          default: 5000
+          example: 5000
+      additionalProperties: false
+    WebhookSubscriberResponseSchema:
+      type: object
+      description: Webhook subscriber configuration. The secret is never included.
+      properties:
+        id:
+          type: string
+          description: Webhook subscriber UUID.
+          example: sub-uuid-12345
+        orgId:
+          type: string
+          example: org-12345
+        name:
+          type: string
+          example: Production Gateway
+        url:
+          type: string
+          format: uri
+          example: https://gateway.example.com/devportal-webhook
+        enabled:
+          type: boolean
+          example: true
+        gatewayType:
+          type: string
+          example: "*"
+        events:
+          type: array
+          items:
+            type: string
+          example:
+            - apikey.*
+            - subscription.*
+        timeoutMs:
+          type: integer
+          example: 5000
+        hasPublicKey:
+          type: boolean
+          description: Whether a public key is configured for envelope-encrypting secret event payloads.
+          example: false
     AppKeyMappingRequest:
       type: object
       required:
