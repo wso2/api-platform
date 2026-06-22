@@ -78,99 +78,120 @@ echo ""
 
 SCOPES=(
   # organization
+  "dp:org_create"
   "dp:org_read"
-  "dp:org_write"
+  "dp:org_update"
   "dp:org_delete"
   "dp:org_manage"
 
   # organization content
+  "dp:org_content_create"
   "dp:org_content_read"
-  "dp:org_content_write"
+  "dp:org_content_update"
   "dp:org_content_delete"
   "dp:org_content_manage"
 
   # views
+  "dp:view_create"
   "dp:view_read"
-  "dp:view_write"
+  "dp:view_update"
   "dp:view_delete"
   "dp:view_manage"
 
   # labels
+  "dp:label_create"
   "dp:label_read"
-  "dp:label_write"
+  "dp:label_update"
   "dp:label_delete"
   "dp:label_manage"
 
   # providers
+  "dp:provider_create"
   "dp:provider_read"
-  "dp:provider_write"
+  "dp:provider_update"
   "dp:provider_delete"
   "dp:provider_manage"
 
   # key managers
+  "dp:km_create"
   "dp:km_read"
-  "dp:km_write"
+  "dp:km_update"
   "dp:km_delete"
   "dp:km_manage"
 
   # APIs
+  "dp:api_create"
   "dp:api_read"
-  "dp:api_write"
+  "dp:api_update"
   "dp:api_delete"
   "dp:api_manage"
 
   # API content
+  "dp:api_content_create"
   "dp:api_content_read"
-  "dp:api_content_write"
+  "dp:api_content_update"
   "dp:api_content_delete"
   "dp:api_content_manage"
 
   # API flows
+  "dp:api_flow_create"
   "dp:api_flow_read"
-  "dp:api_flow_write"
+  "dp:api_flow_update"
   "dp:api_flow_delete"
   "dp:api_flow_manage"
 
   # API keys
+  "dp:api_key_create"
   "dp:api_key_read"
-  "dp:api_key_write"
+  "dp:api_key_update"
   "dp:api_key_revoke"
   "dp:api_key_manage"
 
   # applications
+  "dp:app_create"
   "dp:app_read"
-  "dp:app_write"
+  "dp:app_update"
   "dp:app_delete"
   "dp:app_manage"
 
   # application keys
-  "dp:app_key_write"
+  "dp:app_key_create"
+  "dp:app_key_update"
   "dp:app_key_revoke"
   "dp:app_key_manage"
 
   # application key mappings
+  "dp:app_key_mapping_create"
   "dp:app_key_mapping_read"
-  "dp:app_key_mapping_write"
   "dp:app_key_mapping_manage"
 
   # subscriptions
+  "dp:subscription_create"
   "dp:subscription_read"
-  "dp:subscription_write"
+  "dp:subscription_update"
   "dp:subscription_delete"
   "dp:subscription_manage"
 
   # subscription plans
+  "dp:sub_plan_create"
   "dp:sub_plan_read"
-  "dp:sub_plan_write"
+  "dp:sub_plan_update"
   "dp:sub_plan_delete"
   "dp:sub_plan_manage"
+
+  # webhook subscribers
+  "dp:webhook_subscriber_create"
+  "dp:webhook_subscriber_read"
+  "dp:webhook_subscriber_update"
+  "dp:webhook_subscriber_delete"
+  "dp:webhook_subscriber_manage"
 
   # webhook events
   "dp:event_read"
   "dp:delivery_manage"
 
   # utilities
-  "dp:utility_write"
+  "dp:utility_create"
   "dp:utility_manage"
 )
 
