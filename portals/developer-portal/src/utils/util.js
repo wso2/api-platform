@@ -32,8 +32,8 @@ const { config } = require('../config/configLoader');
 const { body, param, query } = require('express-validator');
 const { Sequelize } = require('sequelize');
 const apiDao = require('../dao/apiDao');
-const subscriptionPolicyDao = require('../dao/subscriptionPolicyDao');
-const subscriptionPolicyDTO = require('../dto/subscriptionPolicyDto');
+const subscriptionPlanDao = require('../dao/subscriptionPlanDao');
+const subscriptionPlanDTO = require('../dto/subscriptionPlanDto');
 const jwt = require('jsonwebtoken');
 const filePrefix = '/src/defaultContent/';
 
@@ -773,43 +773,43 @@ function appendAPIImageURL(subList, req, orgID) {
     });
 }
 
-async function appendSubscriptionPlanDetails(orgID, subscriptionPolicies) {
-    let subscriptionPlans = [];
-    if (subscriptionPolicies) {
-        for (const policy of subscriptionPolicies) {
-            const subscriptionPlan = await loadSubscriptionPlan(orgID, policy.policyName);
+async function appendSubscriptionPlanDetails(orgID, subscriptionPlans) {
+    const enrichedPlans = [];
+    if (subscriptionPlans) {
+        for (const plan of subscriptionPlans) {
+            const subscriptionPlan = await loadSubscriptionPlan(orgID, plan.planName);
             if (!subscriptionPlan) {
                 logger.warn('[appendSubscriptionPlanDetails] Plan not found, skipping', {
                     orgID,
-                    policyName: policy.policyName
+                    planName: plan.planName
                 });
                 continue;
             }
-            subscriptionPlans.push({
-                policyID: subscriptionPlan.policyID,
+            enrichedPlans.push({
+                planID: subscriptionPlan.planID,
                 displayName: subscriptionPlan.displayName,
-                policyName: subscriptionPlan.policyName,
+                planName: subscriptionPlan.planName,
                 description: subscriptionPlan.description,
                 requestCount: subscriptionPlan.requestCount,
             });
         }
     }
-    return subscriptionPlans;
+    return enrichedPlans;
 }
 
-const loadSubscriptionPlan = async (orgID, policyName) => {
+const loadSubscriptionPlan = async (orgID, planName) => {
 
     try {
-        const policyData = await subscriptionPolicyDao.getByName(orgID, policyName);
-        if (policyData) {
-            return new subscriptionPolicyDTO(policyData);
+        const planData = await subscriptionPlanDao.getByName(orgID, planName);
+        if (planData) {
+            return new subscriptionPlanDTO(planData);
         } else {
-            throw new CustomError(404, constants.ERROR_CODE[404], constants.ERROR_MESSAGE.SUBSCRIPTION_POLICY_NOT_FOUND);
+            throw new CustomError(404, constants.ERROR_CODE[404], constants.ERROR_MESSAGE.SUBSCRIPTION_PLAN_NOT_FOUND);
         }
     } catch (error) {
         logger.error("Error occurred while loading subscription plans", {
             orgID: orgID,
-            policyName: policyName,
+            planName: planName,
             error: error.message,
             stack: error.stack
         });

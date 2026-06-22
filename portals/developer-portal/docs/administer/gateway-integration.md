@@ -211,7 +211,7 @@ Fired when a developer generates a new API key for an API.
     },
     "subscription": {
       "ref_id": "sub-uuid",
-      "plan_ref_id": "policy-uuid",
+      "plan_ref_id": "plan-uuid",
       "plan_name": "Gold"
     },
     "encrypted_key": {
@@ -246,7 +246,7 @@ Fired when a developer rotates an existing key. The `key_id` is unchanged; the o
     },
     "subscription": {
       "ref_id": "sub-uuid",
-      "plan_ref_id": "policy-uuid",
+      "plan_ref_id": "plan-uuid",
       "plan_name": "Gold"
     },
     "encrypted_key": { "wrappedKey": "...", "iv": "...", "tag": "...", "ciphertext": "..." }
@@ -271,7 +271,7 @@ Fired when a developer revokes a key. The gateway should reject any request pres
     },
     "subscription": {
       "ref_id": "sub-uuid",
-      "plan_ref_id": "policy-uuid",
+      "plan_ref_id": "plan-uuid",
       "plan_name": "Gold"
     }
   }
@@ -291,7 +291,7 @@ Fired when a developer subscribes to an API. The subscription token is delivered
   "data": {
     "subscription_id": "sub-uuid",
     "subscription_plan": {
-      "ref_id": "policy-uuid",
+      "ref_id": "plan-uuid",
       "name": "Gold"
     },
     "api": {
@@ -322,7 +322,7 @@ Fired when a subscription's plan changes.
   "data": {
     "subscription": {
       "plan_name": "Bronze",
-      "plan_ref_id": "policy-uuid",
+      "plan_ref_id": "plan-uuid",
       "status": "ACTIVE"
     },
     "api": {
@@ -346,7 +346,7 @@ Fired when a developer unsubscribes. The gateway should revoke access for the co
   "data": {
     "subscription_id": "sub-uuid",
     "subscription_plan": {
-      "ref_id": "policy-uuid",
+      "ref_id": "plan-uuid",
       "name": "Gold"
     },
     "api": {

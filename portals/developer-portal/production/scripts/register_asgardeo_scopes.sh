@@ -159,11 +159,11 @@ SCOPES=(
   "dp:subscription_delete"
   "dp:subscription_manage"
 
-  # subscription policies
-  "dp:sub_policy_read"
-  "dp:sub_policy_write"
-  "dp:sub_policy_delete"
-  "dp:sub_policy_manage"
+  # subscription plans
+  "dp:sub_plan_read"
+  "dp:sub_plan_write"
+  "dp:sub_plan_delete"
+  "dp:sub_plan_manage"
 
   # webhook events
   "dp:event_read"

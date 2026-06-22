@@ -23,7 +23,7 @@ const appDao = require('../dao/applicationDao');
 const apiDao = require('../dao/apiDao');
 const labelDao = require('../dao/labelDao');
 const viewDao = require('../dao/viewDao');
-const subscriptionPolicyDao = require('../dao/subscriptionPolicyDao');
+const subscriptionPlanDao = require('../dao/subscriptionPlanDao');
 const util = require('../utils/util');
 const fs = require('fs');
 const path = require('path');
@@ -162,11 +162,11 @@ const createOrganization = async (req, res) => {
                 orgId
             });
 
-            //store default subscription policies
-            if (config.generateDefaultSubPolicies) {
-                await subscriptionPolicyDao.createMany(orgId, constants.DEFAULT_SUBSCRIPTION_PLANS, t);
+            //store default subscription plans
+            if (config.generateDefaultSubPlans) {
+                await subscriptionPlanDao.createMany(orgId, constants.DEFAULT_SUBSCRIPTION_PLANS, t);
             }
-            logger.info('Default subscription policies created successfully', {
+            logger.info('Default subscription plans created successfully', {
                 orgId
             });
 

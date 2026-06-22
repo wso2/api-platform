@@ -16,16 +16,16 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-class SubscriptionPolicy {
-    constructor(subscriptionPolicy) {
-        this.policyID = subscriptionPolicy.POLICY_ID;
-        this.policyName = subscriptionPolicy.POLICY_NAME;
-        this.displayName = subscriptionPolicy.DISPLAY_NAME;
-        this.description = subscriptionPolicy.DESCRIPTION;
-        this.requestCount = subscriptionPolicy.REQUEST_COUNT;
-        this.refId = subscriptionPolicy.REF_ID;
-        this.orgID = subscriptionPolicy.ORG_ID;
+class SubscriptionPlan {
+    constructor(subscriptionPlan) {
+        this.planID = subscriptionPlan.PLAN_ID;
+        this.planName = subscriptionPlan.PLAN_NAME;
+        this.displayName = subscriptionPlan.DISPLAY_NAME;
+        this.description = subscriptionPlan.DESCRIPTION;
+        this.requestCount = subscriptionPlan.REQUEST_COUNT;
+        this.refId = subscriptionPlan.REF_ID;
+        this.orgID = subscriptionPlan.ORG_ID;
     }
 }
 
-module.exports = SubscriptionPolicy;
+module.exports = SubscriptionPlan;

@@ -18,7 +18,7 @@
 const crypto = require('crypto');
 const { SubscriptionMapping, Application } = require('../models/application');
 const { APIMetadata } = require('../models/apiMetadata');
-const SubscriptionPolicy = require('../models/subscriptionPolicy');
+const SubscriptionPlan = require('../models/subscriptionPlan');
 const { createCryptoUtil } = require('../utils/cryptoUtil');
 const { config } = require('../config/configLoader');
 const { Sequelize } = require('sequelize');
@@ -42,7 +42,7 @@ function decryptSubRecord(sub) {
     return sub;
 }
 
-const INCLUDE_API_AND_POLICY = [
+const INCLUDE_API_AND_PLAN = [
     {
         model: APIMetadata,
         as: 'DP_API_METADATA',
@@ -50,9 +50,9 @@ const INCLUDE_API_AND_POLICY = [
         required: false,
     },
     {
-        model: SubscriptionPolicy,
-        as: 'DP_SUBSCRIPTION_POLICY',
-        attributes: ['POLICY_ID', 'POLICY_NAME', 'DISPLAY_NAME', 'REF_ID'],
+        model: SubscriptionPlan,
+        as: 'DP_SUBSCRIPTION_PLAN',
+        attributes: ['PLAN_ID', 'PLAN_NAME', 'DISPLAY_NAME', 'REF_ID'],
         required: false,
     },
 ];
@@ -61,7 +61,7 @@ function generateSubToken() {
     return crypto.randomBytes(32).toString('hex');
 }
 
-async function create(orgId, apiId, policyId, createdBy, transaction, opts = {}) {
+async function create(orgId, apiId, planId, createdBy, transaction, opts = {}) {
     // If a token is provided externally (e.g. from Platform API), use it directly.
     if (opts.subToken) {
         const record = await SubscriptionMapping.create(
@@ -69,7 +69,7 @@ async function create(orgId, apiId, policyId, createdBy, transaction, opts = {})
                 CREATED_BY: createdBy,
                 ORG_ID: orgId,
                 API_ID: apiId,
-                POLICY_ID: policyId || null,
+                PLAN_ID: planId || null,
                 SUB_TOKEN: encryptToken(opts.subToken),
                 STATUS: 'ACTIVE',
             },
@@ -87,7 +87,7 @@ async function create(orgId, apiId, policyId, createdBy, transaction, opts = {})
                     CREATED_BY: createdBy,
                     ORG_ID: orgId,
                     API_ID: apiId,
-                    POLICY_ID: policyId || null,
+                    PLAN_ID: planId || null,
                     SUB_TOKEN: encryptToken(subToken),
                     STATUS: 'ACTIVE',
                 },
@@ -114,7 +114,7 @@ async function list(orgId, { apiId, createdBy } = {}) {
     if (createdBy) where.CREATED_BY = createdBy;
     const rows = await SubscriptionMapping.findAll({
         where,
-        include: INCLUDE_API_AND_POLICY,
+        include: INCLUDE_API_AND_PLAN,
         order: [['SUB_ID', 'ASC']],
     });
     return rows.map(decryptSubRecord);
@@ -125,7 +125,7 @@ async function get(orgId, subId, createdBy) {
     if (createdBy) where.CREATED_BY = createdBy;
     return decryptSubRecord(await SubscriptionMapping.findOne({
         where,
-        include: INCLUDE_API_AND_POLICY,
+        include: INCLUDE_API_AND_PLAN,
     }));
 }
 
@@ -149,7 +149,7 @@ async function deleteSubscription(orgId, subId, createdBy, transaction) {
 async function getById(orgId, subId) {
     return decryptSubRecord(await SubscriptionMapping.findOne({
         where: { SUB_ID: subId, ORG_ID: orgId },
-        include: INCLUDE_API_AND_POLICY,
+        include: INCLUDE_API_AND_PLAN,
     }));
 }
 
@@ -191,10 +191,10 @@ const listByUser = async (orgID, userID) => {
     }
 };
 
-const findByKey = async (orgID, apiID, policyID, t) => {
+const findByKey = async (orgID, apiID, planID, t) => {
     try {
         return await SubscriptionMapping.findOne({
-            where: { ORG_ID: orgID, API_ID: apiID, POLICY_ID: policyID },
+            where: { ORG_ID: orgID, API_ID: apiID, PLAN_ID: planID },
             transaction: t,
         });
     } catch (error) {

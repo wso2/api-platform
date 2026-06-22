@@ -15,47 +15,47 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-const SubscriptionPolicy = require('../models/subscriptionPolicy');
-const APISubscriptionPolicy = require('../models/apiSubscriptionPolicy');
+const SubscriptionPlan = require('../models/subscriptionPlan');
+const APISubscriptionPlan = require('../models/apiSubscriptionPlan');
 const { APIMetadata } = require('../models/apiMetadata');
 const { Sequelize } = require('sequelize');
 
 const toUpper = (v) => (v ? String(v).toUpperCase() : null);
 
-const computeRequestCount = (policy) => {
-  const type = (policy.type || "").toLowerCase();
+const computeRequestCount = (plan) => {
+  const type = (plan.type || "").toLowerCase();
 
   if (type === "requestcount") {
-    return policy.requestCount === -1 ? "Unlimited" : String(policy.requestCount);
+    return plan.requestCount === -1 ? "Unlimited" : String(plan.requestCount);
   }
   if (type === "eventcount") {
-    return policy.eventCount === -1 ? "Unlimited" : String(policy.eventCount);
+    return plan.eventCount === -1 ? "Unlimited" : String(plan.eventCount);
   }
   return null;
 };
 
-const buildSubscriptionPolicyRow = (orgID, policy) => {
-  const requestCount = computeRequestCount(policy);
+const buildSubscriptionPlanRow = (orgID, plan) => {
+  const requestCount = computeRequestCount(plan);
 
   return {
     ORG_ID: orgID,
 
-    // Store the APIM policy UUID if provided
-    POLICY_ID: policy.policyId ?? policy.policyID ?? undefined,
+    // Store the APIM plan UUID if provided
+    PLAN_ID: plan.planId ?? plan.planID ?? undefined,
 
-    POLICY_NAME: policy.policyName,
-    DISPLAY_NAME: policy.displayName,
-    DESCRIPTION: policy.description,
+    PLAN_NAME: plan.planName,
+    DISPLAY_NAME: plan.displayName,
+    DESCRIPTION: plan.description,
     REQUEST_COUNT: requestCount,
-    REF_ID: policy.refId ?? null,
+    REF_ID: plan.refId ?? null,
   };
 };
 
-const create = async (orgID, policy, t) => {
+const create = async (orgID, plan, t) => {
   try {
-    const row = buildSubscriptionPolicyRow(orgID, policy);
+    const row = buildSubscriptionPlanRow(orgID, plan);
 
-    return await SubscriptionPolicy.create(row, { transaction: t });
+    return await SubscriptionPlan.create(row, { transaction: t });
   } catch (error) {
     if (error instanceof Sequelize.UniqueConstraintError || error instanceof Sequelize.ValidationError) {
       throw error;
@@ -64,11 +64,11 @@ const create = async (orgID, policy, t) => {
   }
 };
 
-const createMany = async (orgID, policies, t) => {
+const createMany = async (orgID, plans, t) => {
   try {
-    const rows = policies.map((policy) => buildSubscriptionPolicyRow(orgID, policy));
+    const rows = plans.map((plan) => buildSubscriptionPlanRow(orgID, plan));
 
-    return await SubscriptionPolicy.bulkCreate(rows, { transaction: t });
+    return await SubscriptionPlan.bulkCreate(rows, { transaction: t });
   } catch (error) {
     if (error instanceof Sequelize.UniqueConstraintError || error instanceof Sequelize.ValidationError) {
       throw error;
@@ -77,34 +77,38 @@ const createMany = async (orgID, policies, t) => {
   }
 };
 
-const put = async (orgID, policy, t) => {
-  const current = await getByName(orgID, policy.policyName, t);
+const put = async (orgID, plan, t) => {
+  const current = await getByName(orgID, plan.planName, t);
   if (current) {
-    const updated = await update(orgID, current.POLICY_ID, policy, t);
-    return { subscriptionPolicyResponse: updated, statusCode: 200 };
+    const updated = await update(orgID, current.PLAN_ID, plan, t);
+    return { subscriptionPlanResponse: updated, statusCode: 200 };
   }
-  const created = await create(orgID, policy, t);
-  return { subscriptionPolicyResponse: created, statusCode: 201 };
+  const created = await create(orgID, plan, t);
+  return { subscriptionPlanResponse: created, statusCode: 201 };
 };
 
-const update = async (orgID, policyID, policy, t) => {
+const update = async (orgID, planID, plan, t) => {
   try {
-    const row = buildSubscriptionPolicyRow(orgID, policy);
+    const row = buildSubscriptionPlanRow(orgID, plan);
 
     // Don't update primary keys
     delete row.ORG_ID;
-    delete row.POLICY_ID;
-    if (!Object.prototype.hasOwnProperty.call(policy, 'refId')) {
+    delete row.PLAN_ID;
+    if (!Object.prototype.hasOwnProperty.call(plan, 'refId')) {
       delete row.REF_ID;
     }
 
-    const [_, updatedRows] = await SubscriptionPolicy.update(row, {
-      where: { POLICY_ID: policyID, ORG_ID: orgID },
-      returning: true,
+    await SubscriptionPlan.update(row, {
+      where: { PLAN_ID: planID, ORG_ID: orgID },
       transaction: t
     });
 
-    return updatedRows[0];
+    // `returning: true` only yields row instances on Postgres; re-fetch
+    // explicitly so the result is reliable on SQLite too.
+    return await SubscriptionPlan.findOne({
+      where: { PLAN_ID: planID, ORG_ID: orgID },
+      transaction: t
+    });
   } catch (error) {
     if (error instanceof Sequelize.UniqueConstraintError || error instanceof Sequelize.ValidationError) {
       throw error;
@@ -113,17 +117,17 @@ const update = async (orgID, policyID, policy, t) => {
   }
 };
 
-const deletePolicy = async (orgID, policyName, t) => {
+const deletePlan = async (orgID, planName, t) => {
 
     try {
-        const subscriptionPolicyResponse = await SubscriptionPolicy.destroy({
+        const subscriptionPlanResponse = await SubscriptionPlan.destroy({
             where: {
-                POLICY_NAME: policyName,
+                PLAN_NAME: planName,
                 ORG_ID: orgID
             },
             transaction: t
         });
-        return subscriptionPolicyResponse;
+        return subscriptionPlanResponse;
     } catch (error) {
         if (error instanceof Sequelize.ValidationError) {
             throw error;
@@ -132,17 +136,17 @@ const deletePolicy = async (orgID, policyName, t) => {
     }
 }
 
-const deleteById = async (orgID, policyID, t) => {
+const deleteById = async (orgID, planID, t) => {
 
     try {
-        const subscriptionPolicyResponse = await SubscriptionPolicy.destroy({
+        const subscriptionPlanResponse = await SubscriptionPlan.destroy({
             where: {
-                POLICY_ID: policyID,
+                PLAN_ID: planID,
                 ORG_ID: orgID
             },
             transaction: t
         });
-        return subscriptionPolicyResponse;
+        return subscriptionPlanResponse;
     } catch (error) {
         if (error instanceof Sequelize.ValidationError) {
             throw error;
@@ -151,17 +155,17 @@ const deleteById = async (orgID, policyID, t) => {
     }
 }
 
-const getByName = async (orgID, policyName, t) => {
+const getByName = async (orgID, planName, t) => {
 
     try {
-        const subscriptionPolicyResponse = await SubscriptionPolicy.findOne({
+        const subscriptionPlanResponse = await SubscriptionPlan.findOne({
             where: {
-                POLICY_NAME: policyName,
+                PLAN_NAME: planName,
                 ORG_ID: orgID
             },
             transaction: t
         });
-        return subscriptionPolicyResponse;
+        return subscriptionPlanResponse;
     } catch (error) {
         if (error instanceof Sequelize.ValidationError) {
             throw error;
@@ -170,16 +174,16 @@ const getByName = async (orgID, policyName, t) => {
     }
 };
 
-const get = async (policyID, orgID, t) => {
+const get = async (planID, orgID, t) => {
     try {
-        const subscriptionPolicyResponse = await SubscriptionPolicy.findOne({
+        const subscriptionPlanResponse = await SubscriptionPlan.findOne({
             where: {
                 ORG_ID: orgID,
-                POLICY_ID: policyID
+                PLAN_ID: planID
             },
             transaction: t
         });
-        return subscriptionPolicyResponse;
+        return subscriptionPlanResponse;
     } catch (error) {
         if (error instanceof Sequelize.EmptyResultError) {
             throw error;
@@ -191,7 +195,7 @@ const get = async (policyID, orgID, t) => {
 const listByApi = async (apiID, t) => {
 
     try {
-        const subscriptionPolicyResponse = await SubscriptionPolicy.findAll({
+        const subscriptionPlanResponse = await SubscriptionPlan.findAll({
             include: [
                 {
                     model: APIMetadata,
@@ -201,7 +205,7 @@ const listByApi = async (apiID, t) => {
             ],
             transaction: t
         });
-        return subscriptionPolicyResponse;
+        return subscriptionPlanResponse;
     } catch (error) {
         if (error instanceof Sequelize.UniqueConstraintError) {
             throw error;
@@ -213,13 +217,13 @@ const listByApi = async (apiID, t) => {
 const list = async (orgID, t) => {
     try {
 
-        const subscriptionPoliciesResponse = await SubscriptionPolicy.findAll({
+        const subscriptionPlansResponse = await SubscriptionPlan.findAll({
             where: {
                 ORG_ID: orgID
             },
             transaction: t
         });
-        return subscriptionPoliciesResponse;
+        return subscriptionPlansResponse;
     } catch (error) {
         if (error instanceof Sequelize.UniqueConstraintError) {
             throw error;
@@ -228,40 +232,40 @@ const list = async (orgID, t) => {
     }
 }
 
-const createApiMapping = async (apiSubscriptionPolicies, apiID, t) => {
+const createApiMapping = async (apiSubscriptionPlans, apiID, t) => {
   try {
-    const rows = apiSubscriptionPolicies.map((policy) => ({
-      POLICY_ID: policy.policyId ?? policy.policyID,
+    const rows = apiSubscriptionPlans.map((plan) => ({
+      PLAN_ID: plan.planId ?? plan.planID,
       API_ID: apiID,
     }));
 
-    return await APISubscriptionPolicy.bulkCreate(rows, { transaction: t });
+    return await APISubscriptionPlan.bulkCreate(rows, { transaction: t });
   } catch (error) {
     if (error instanceof Sequelize.ValidationError) throw error;
     throw new Sequelize.DatabaseError(error);
   }
 };
 
-const updateApiMapping = async (subscriptionPolicies, apiID, t) => {
+const updateApiMapping = async (subscriptionPlans, apiID, t) => {
 
-    let policiesToCreate = [];
+    let plansToCreate = [];
     try {
-        for (const policy of subscriptionPolicies) {
-            policiesToCreate.push({
-                POLICY_ID: policy.policyId ?? policy.policyID,
+        for (const plan of subscriptionPlans) {
+            plansToCreate.push({
+                PLAN_ID: plan.planId ?? plan.planID,
                 API_ID: apiID,
             })
         }
-        if (policiesToCreate.length > 0) {
-            await APISubscriptionPolicy.destroy({
+        if (plansToCreate.length > 0) {
+            await APISubscriptionPlan.destroy({
                 where: {
                     API_ID: apiID
                 },
                 transaction: t
             });
-            return await APISubscriptionPolicy.bulkCreate(policiesToCreate, { transaction: t });
+            return await APISubscriptionPlan.bulkCreate(plansToCreate, { transaction: t });
         } else {
-            return policiesToCreate;
+            return plansToCreate;
         }
     } catch (error) {
         if (error instanceof Sequelize.UniqueConstraintError) {
@@ -276,7 +280,7 @@ module.exports = {
     createMany,
     put,
     update,
-    delete: deletePolicy,
+    delete: deletePlan,
     deleteById,
     getByName,
     get,

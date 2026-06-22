@@ -20,7 +20,7 @@ spec:
   labels:
     - default
 
-  subscriptionPolicies:
+  subscriptionPlans:
     - Gold
     - Bronze
 

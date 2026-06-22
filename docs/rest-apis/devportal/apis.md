@@ -19,7 +19,7 @@ curl -X POST https://devportal.api-platform.io/o/{orgId}/devportal/v1/apis \
 
 ```
 
-Creates Developer Portal API metadata from either a full API artifact ZIP, an API metadata YAML file, or an `apiMetadata` JSON string. An API definition file is required unless supplied by the artifact ZIP. The service also stores labels, subscription policy mappings, image metadata, and schema definitions for MCP or GraphQL APIs when provided.
+Creates Developer Portal API metadata from either a full API artifact ZIP, an API metadata YAML file, or an `apiMetadata` JSON string. An API definition file is required unless supplied by the artifact ZIP. The service also stores labels, subscription plan mappings, image metadata, and schema definitions for MCP or GraphQL APIs when provided.
 
 > Payload
 
@@ -32,7 +32,7 @@ apiMetadata: '{"apiInfo":{"apiName":"Weather
   API","apiVersion":"v1","apiDescription":"Weather forecast
   API","apiType":"REST","visibility":"PUBLIC","provider":"WSO2","apiStatus":"PUBLISHED","tags":["weather"],
   "labels":["default"]},"endPoints":{"productionURL":"https://api.example.com/weather",
-  "sandboxURL":"https://sandbox.example.com/weather"},"subscriptionPolicies":[{"policyName":"Gold"}]}'
+  "sandboxURL":"https://sandbox.example.com/weather"},"subscriptionPlans":[{"planName":"Gold"}]}'
 
 ```
 
@@ -88,10 +88,10 @@ This operation requires <strong>Basic Auth</strong> authentication.
     "productionURL": "https://api.example.com/weather",
     "sandboxURL": "https://sandbox.example.com/weather"
   },
-  "subscriptionPolicies": [
+  "subscriptionPlans": [
     {
-      "policyID": "policy-gold",
-      "policyName": "Gold",
+      "planID": "plan-gold",
+      "planName": "Gold",
       "displayName": "Gold",
       "requestCount": 10000
     }
@@ -295,7 +295,7 @@ Status Code **200**
 |» apiHandle|string|false|none|none|
 |» provider|string|false|none|none|
 |» dataSource|string|false|none|none|
-|» policyID|string|false|none|none|
+|» planID|string|false|none|none|
 |» apiInfo|[ApiInfoResponse](schemas.md#schemaapiinforesponse)|false|none|none|
 |»» apiName|string|false|none|none|
 |»» apiTitle|string¦null|false|none|none|
@@ -323,9 +323,9 @@ Status Code **200**
 |» endPoints|[ApiEndpointsResponse](schemas.md#schemaapiendpointsresponse)|false|none|none|
 |»» sandboxURL|string|false|none|none|
 |»» productionURL|string|false|none|none|
-|» subscriptionPolicies|[[SubscriptionPolicyResponse](schemas.md#schemasubscriptionpolicyresponse)]|false|none|none|
-|»» policyID|string|false|none|none|
-|»» policyName|string|false|none|none|
+|» subscriptionPlans|[[SubscriptionPlanResponse](schemas.md#schemasubscriptionplanresponse)]|false|none|none|
+|»» planID|string|false|none|none|
+|»» planName|string|false|none|none|
 |»» displayName|string|false|none|none|
 |»» description|string|false|none|none|
 |»» requestCount|any|false|none|none|
@@ -412,10 +412,10 @@ This operation requires <strong>Basic Auth</strong> authentication.
     "sandboxURL": "https://sandbox.example.com/weather",
     "productionURL": "https://api.example.com/weather"
   },
-  "subscriptionPolicies": [
+  "subscriptionPlans": [
     {
-      "policyID": "policy-gold",
-      "policyName": "Gold",
+      "planID": "plan-gold",
+      "planName": "Gold",
       "displayName": "Gold",
       "requestCount": 10000
     }
@@ -495,7 +495,7 @@ curl -X PUT https://devportal.api-platform.io/o/{orgId}/devportal/v1/apis/{apiId
 
 ```
 
-Updates Developer Portal API metadata and its stored definition. The update flow can also adjust label mappings, subscription policy mappings, schema definitions, and image metadata. Status changes to unpublished are rejected when active subscriptions exist.
+Updates Developer Portal API metadata and its stored definition. The update flow can also adjust label mappings, subscription plan mappings, schema definitions, and image metadata. Status changes to unpublished are rejected when active subscriptions exist.
 
 > Payload
 
@@ -508,7 +508,7 @@ apiMetadata: '{"apiInfo":{"apiName":"Weather
   API","apiVersion":"v1","apiDescription":"Weather forecast
   API","apiType":"REST","visibility":"PUBLIC","provider":"WSO2","apiStatus":"PUBLISHED","tags":["weather"],
   "labels":["default"]},"endPoints":{"productionURL":"https://api.example.com/weather",
-  "sandboxURL":"https://sandbox.example.com/weather"},"subscriptionPolicies":[{"policyName":"Gold"}]}'
+  "sandboxURL":"https://sandbox.example.com/weather"},"subscriptionPlans":[{"planName":"Gold"}]}'
 
 ```
 
@@ -563,10 +563,10 @@ This operation requires <strong>Basic Auth</strong> authentication.
     "sandboxURL": "https://sandbox.example.com/weather",
     "productionURL": "https://api.example.com/weather"
   },
-  "subscriptionPolicies": [
+  "subscriptionPlans": [
     {
-      "policyID": "policy-gold",
-      "policyName": "Gold",
+      "planID": "plan-gold",
+      "planName": "Gold",
       "displayName": "Gold",
       "requestCount": 10000
     }

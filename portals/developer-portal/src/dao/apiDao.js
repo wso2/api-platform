@@ -16,7 +16,7 @@
  * under the License.
  */
 const { APIMetadata, APILabels } = require('../models/apiMetadata');
-const SubscriptionPolicy = require('../models/subscriptionPolicy');
+const SubscriptionPlan = require('../models/subscriptionPlan');
 const APIImageMetadata = require('../models/apiImage');
 const Labels = require('../models/label');
 const { Sequelize } = require('sequelize');
@@ -150,7 +150,7 @@ const get = async (orgID, apiID, t) => {
                 },
                 required: false
             }, {
-                model: SubscriptionPolicy,
+                model: SubscriptionPlan,
                 through: { attributes: [] },
                 required: false
             },
@@ -206,7 +206,7 @@ const getByCondition = async (condition, t) => {
                 model: APIImageMetadata,
                 required: false
             }, {
-                model: SubscriptionPolicy,
+                model: SubscriptionPlan,
                 through: { attributes: [] },
                 required: false
             }
@@ -242,7 +242,7 @@ const list = async (orgID, groups, viewName, t) => {
                     model: APIImageMetadata,
                     required: false
                 }, {
-                    model: SubscriptionPolicy,
+                    model: SubscriptionPlan,
                     through: { attributes: [] },
                     required: false
                 },
@@ -283,7 +283,7 @@ const list = async (orgID, groups, viewName, t) => {
                 model: APIImageMetadata,
                 required: false
             }, {
-                model: SubscriptionPolicy,
+                model: SubscriptionPlan,
                 through: { attributes: [] },
                 required: false
             },
@@ -330,7 +330,7 @@ const listFromAllViews = async (orgID, groups, t) => {
                     model: APIImageMetadata,
                     required: false
                 }, {
-                    model: SubscriptionPolicy,
+                    model: SubscriptionPlan,
                     through: { attributes: [] },
                     required: false
                 },
@@ -366,7 +366,7 @@ const listFromAllViews = async (orgID, groups, t) => {
                 model: APIImageMetadata,
                 required: false
             }, {
-                model: SubscriptionPolicy,
+                model: SubscriptionPlan,
                 through: { attributes: [] },
                 required: false
             },
@@ -412,7 +412,7 @@ const searchFallback = async (orgID, searchTerm, viewName, t) => {
         },
         include: [
             { model: APIImageMetadata, required: false },
-            { model: SubscriptionPolicy, through: { attributes: [] }, required: false },
+            { model: SubscriptionPlan, through: { attributes: [] }, required: false },
             {
                 model: Labels,
                 attributes: ['NAME'],

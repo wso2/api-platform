@@ -20,8 +20,8 @@ const sequelize = require('../db/sequelizeConfig');
 const { Organization } = require('./organization');
 const { APIMetadata } = require('./apiMetadata');
 const constants = require('../utils/constants');
-const SubscriptionPolicy = require('./subscriptionPolicy');
-const APISubscriptionPolicy = require('./apiSubscriptionPolicy');
+const SubscriptionPlan = require('./subscriptionPlan');
+const APISubscriptionPlan = require('./apiSubscriptionPlan');
 
 
 const Application = sequelize.define('DP_APPLICATION', {
@@ -125,12 +125,12 @@ const SubscriptionMapping = sequelize.define('DP_API_SUBSCRIPTION', {
             key: 'API_ID',
         },
     },
-    POLICY_ID: {
+    PLAN_ID: {
         type: DataTypes.UUID,
         allowNull: true,
         references: {
-            model: SubscriptionPolicy,
-            key: 'POLICY_ID',
+            model: SubscriptionPlan,
+            key: 'PLAN_ID',
         },
     },
     ORG_ID: {
@@ -156,20 +156,20 @@ SubscriptionMapping.belongsTo(Organization, {
 Organization.hasMany(SubscriptionMapping, {
     foreignKey: 'ORG_ID'
 })
-APIMetadata.belongsToMany(SubscriptionPolicy, {
-    through: APISubscriptionPolicy,
+APIMetadata.belongsToMany(SubscriptionPlan, {
+    through: APISubscriptionPlan,
     foreignKey: "API_ID",
-    otherKey: "POLICY_ID",
+    otherKey: "PLAN_ID",
 });
 
-SubscriptionPolicy.belongsToMany(APIMetadata, {
-    through: APISubscriptionPolicy,
-    foreignKey: "POLICY_ID",
+SubscriptionPlan.belongsToMany(APIMetadata, {
+    through: APISubscriptionPlan,
+    foreignKey: "PLAN_ID",
     otherKey: "API_ID",
 });
 
 SubscriptionMapping.belongsTo(APIMetadata, { foreignKey: 'API_ID', as: 'DP_API_METADATA' });
-SubscriptionMapping.belongsTo(SubscriptionPolicy, { foreignKey: 'POLICY_ID', as: 'DP_SUBSCRIPTION_POLICY' });
+SubscriptionMapping.belongsTo(SubscriptionPlan, { foreignKey: 'PLAN_ID', as: 'DP_SUBSCRIPTION_PLAN' });
 
 Application.belongsTo(Organization, {
     foreignKey: 'ORG_ID'

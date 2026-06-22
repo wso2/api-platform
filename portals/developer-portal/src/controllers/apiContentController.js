@@ -51,7 +51,7 @@ const loadAPIs = async (req, res) => {
         const listingSamplesPath = isMcpListing ? config.designMode.mcpSamplesPath : config.designMode.apiSamplesPath;
         const metaDataList = await loadAPIMetaDataList(listingSamplesPath);
         for (const metaData of metaDataList) {
-            metaData.subscriptionPolicyDetails = metaData.subscriptionPolicies;
+            metaData.subscriptionPlanDetails = metaData.subscriptionPlans;
         }
         const templateContent = {
             apiMetadata: metaDataList,
@@ -81,7 +81,7 @@ const loadAPIs = async (req, res) => {
             });
 
             for (const metaData of metaDataList) {
-                metaData.subscriptionPolicyDetails = await util.appendSubscriptionPlanDetails(orgID, metaData.subscriptionPolicies);
+                metaData.subscriptionPlanDetails = await util.appendSubscriptionPlanDetails(orgID, metaData.subscriptionPlans);
             }
 
             // Load subscriptions for APIs with subscription plans (single call for all)
@@ -91,7 +91,7 @@ const loadAPIs = async (req, res) => {
                     const localSubs = await subDao.list(orgID, { createdBy });
                     const subscribedApiIds = new Set(localSubs.map(sub => sub.API_ID));
                     for (const metaData of metaDataList) {
-                        const hasPlans = (metaData.subscriptionPolicies || []).length > 0;
+                        const hasPlans = (metaData.subscriptionPlans || []).length > 0;
                         if (hasPlans) {
                             metaData.hasSubscription = subscribedApiIds.has(metaData.apiID);
                         }
@@ -208,11 +208,11 @@ const loadAPIContent = async (req, res) => {
             resources: apiDetails,
             schemaDefinition,
             apiMetadata: metaData,
-            subscriptionPlans: metaData.subscriptionPolicies,
+            subscriptionPlans: metaData.subscriptionPlans,
             baseUrl: config.baseUrl + constants.ROUTE.VIEWS_PATH + viewName,
             schemaUrl: `/mock/${apiHandle}/definition.yml`,
             showApiKeysNav: apiUsesApiKeySecurity(metaData),
-            showSubscriptionsNav: (metaData.subscriptionPolicies || []).length > 0,
+            showSubscriptionsNav: (metaData.subscriptionPlans || []).length > 0,
         }
         const landingPage = isMCP ? 'pages/mcp-landing' : 'pages/api-landing';
         html = renderTemplate(layoutPath + landingPage + '/page.hbs', layoutPath + 'layout/main.hbs', templateContent, false);
@@ -236,7 +236,7 @@ const loadAPIContent = async (req, res) => {
             const gatewayVendor = metaData?.apiInfo?.gatewayVendor ? metaData?.apiInfo?.gatewayVendor: 'wso2';
             const isFederatedAPI = constants.FEDERATED_GATEWAY_VENDORS.includes(gatewayVendor);
             
-            let subscriptionPlans = await util.appendSubscriptionPlanDetails(orgID, metaData.subscriptionPolicies);
+            let subscriptionPlans = await util.appendSubscriptionPlanDetails(orgID, metaData.subscriptionPlans);
             let providerUrl;
             if (metaData.provider === "WSO2") {
                 providerUrl = '#subscriptionPlans';
@@ -349,7 +349,7 @@ const loadAPIContent = async (req, res) => {
                     const localSubs = await subDao.list(orgID, { apiId: apiID, createdBy });
                     subscriptions = (localSubs || []).map(sub => ({
                         subscriptionId: sub.SUB_ID,
-                        subscriptionPlanName: sub.DP_SUBSCRIPTION_POLICY?.DISPLAY_NAME || sub.DP_SUBSCRIPTION_POLICY?.POLICY_NAME || '',
+                        subscriptionPlanName: sub.DP_SUBSCRIPTION_PLAN?.DISPLAY_NAME || sub.DP_SUBSCRIPTION_PLAN?.PLAN_NAME || '',
                         status: sub.STATUS,
                         subscriptionToken: sub.SUB_TOKEN,
                         customerName: null
@@ -408,7 +408,7 @@ const loadAPIContent = async (req, res) => {
                 isFederatedAPI: isFederatedAPI,
             };
             templateContent.showApiKeysNav = apiUsesApiKeySecurity(metaData, apiDefinitionForNav);
-            templateContent.showSubscriptionsNav = (metaData?.subscriptionPolicies || []).length > 0;
+            templateContent.showSubscriptionsNav = (metaData?.subscriptionPlans || []).length > 0;
             templateContent.hasSubscriptionToken = !!findSubscriptionTokenHeader(apiDefinitionForNav);
             if (metaData.apiInfo.apiType == "MCP") {
                 html = await renderTemplateFromAPI(templateContent, orgID, orgName, "pages/mcp-landing", viewName);
@@ -1094,7 +1094,7 @@ const loadAPIContentMd = async (req, res) => {
             return res.status(404).send('# Not Found\n\nThis API is not available for agents.');
         }
 
-        const subscriptionPlans = await util.appendSubscriptionPlanDetails(orgID, metaData.subscriptionPolicies);
+        const subscriptionPlans = await util.appendSubscriptionPlanDetails(orgID, metaData.subscriptionPlans);
 
         const isMCPFromRegistry = metaData.apiInfo?.apiType === constants.API_TYPE.MCP && !metaData.apiReferenceID;
         let showOAuth2 = true;

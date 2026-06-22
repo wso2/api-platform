@@ -10,7 +10,7 @@
                     <select class="form-select bg-white text-dark" onchange="addAPISubscription(this)" id="apiSelect">
                         <option value="" disabled selected>Select an API</option>
                         {{#each nonSubAPIs}}
-                        <option value="{{apiID}}" data-apiRefID= "{{apiReferenceID}}" data-policies='{{{json this.subscriptionPolicyDetails}}}'>
+                        <option value="{{apiID}}" data-apiRefID= "{{apiReferenceID}}" data-plans='{{{json this.subscriptionPlanDetails}}}'>
                             {{apiInfo.apiName}} - {{apiInfo.apiVersion}}</option>
                         {{/each}}
                     </select>

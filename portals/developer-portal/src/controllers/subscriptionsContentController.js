@@ -52,7 +52,7 @@ const loadSubscriptions = async (req, res) => {
                 apiName: sub.DP_API_METADATA?.API_NAME || '',
                 apiVersion: sub.DP_API_METADATA?.API_VERSION || '',
                 apiHandle: sub.DP_API_METADATA?.API_HANDLE || '#',
-                planName: sub.DP_SUBSCRIPTION_POLICY?.POLICY_NAME || '',
+                planName: sub.DP_SUBSCRIPTION_PLAN?.PLAN_NAME || '',
                 status: sub.STATUS,
                 subscriptionToken: sub.SUB_TOKEN,
                 createdAt: sub.CREATED_AT || null,
@@ -147,7 +147,7 @@ const loadAPISubscriptions = async (req, res) => {
                 apiVersion: sub.DP_API_METADATA?.API_VERSION || metaData?.apiInfo?.apiVersion || '',
                 apiHandle: sub.DP_API_METADATA?.API_HANDLE || apiHandle,
                 apiRefId: sub.API_ID,
-                planName: sub.DP_SUBSCRIPTION_POLICY?.POLICY_NAME || '',
+                planName: sub.DP_SUBSCRIPTION_PLAN?.PLAN_NAME || '',
                 status: sub.STATUS,
                 subscriptionToken: sub.SUB_TOKEN,
                 createdAt: sub.CREATED_AT || null,
@@ -190,7 +190,7 @@ const loadAPISubscriptions = async (req, res) => {
             apiHandle: apiHandle,
             isReadOnlyMode: config.readOnlyMode,
             showApiKeysNav: apiUsesApiKeySecurity(metaData, apiDefinitionForNav),
-            showSubscriptionsNav: (metaData?.subscriptionPolicies || []).length > 0,
+            showSubscriptionsNav: (metaData?.subscriptionPlans || []).length > 0,
         };
 
         html = await renderTemplateFromAPI(templateContent, orgID, orgName, 'pages/api-subscriptions', viewName);

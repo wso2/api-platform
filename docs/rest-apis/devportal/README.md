@@ -55,13 +55,13 @@ Base URLs:
 - [Get an API content file](api-content.md#get-an-api-content-file)
 - [Delete API content files](api-content.md#delete-api-content-files)
 
-### [Subscription Policies](subscription-policies.md)
+### [Subscription Plans](subscription-plans.md)
 
-- [List subscription policies](subscription-policies.md#list-subscription-policies)
-- [Create subscription policies](subscription-policies.md#create-subscription-policies)
-- [Upsert subscription policies](subscription-policies.md#upsert-subscription-policies)
-- [Get a subscription policy](subscription-policies.md#get-a-subscription-policy)
-- [Delete a subscription policy](subscription-policies.md#delete-a-subscription-policy)
+- [List subscription plans](subscription-plans.md#list-subscription-plans)
+- [Create subscription plans](subscription-plans.md#create-subscription-plans)
+- [Upsert subscription plans](subscription-plans.md#upsert-subscription-plans)
+- [Get a subscription plan](subscription-plans.md#get-a-subscription-plan)
+- [Delete a subscription plan](subscription-plans.md#delete-a-subscription-plan)
 
 ### [Labels](labels.md)
 

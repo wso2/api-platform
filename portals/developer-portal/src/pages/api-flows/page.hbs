@@ -18,7 +18,7 @@
 
 <!-- Server-side data for JS -->
 <script type="application/json" id="cfg-org-apis-data">{{{ json orgAPIs }}}</script>
-<script type="application/json" id="cfg-policies-data">{{{ json orgPolicies }}}</script>
+<script type="application/json" id="cfg-plans-data">{{{ json orgPlans }}}</script>
 
 <div class="cfg-page">
 
@@ -50,8 +50,8 @@
         <a href="#cfg-labels" class="cfg-nav-item" data-panel="cfg-labels">
           <i class="bi bi-tags"></i><span>Labels</span>
         </a>
-        <a href="#cfg-policies" class="cfg-nav-item" data-panel="cfg-policies">
-          <i class="bi bi-speedometer2"></i><span>Subscription Policies</span>
+        <a href="#cfg-plans" class="cfg-nav-item" data-panel="cfg-plans">
+          <i class="bi bi-speedometer2"></i><span>Subscription Plans</span>
         </a>
         <a href="#cfg-orgs" class="cfg-nav-item" data-panel="cfg-orgs">
           <i class="bi bi-building"></i><span>Organizations</span>
@@ -322,21 +322,21 @@
               </div>
             </div>
 
-            <!-- SUBSCRIPTION POLICIES -->
+            <!-- SUBSCRIPTION PLANS -->
             <div class="cfg-form-section">
-              <p class="cfg-form-section-title">Applicable Subscription Policies</p>
-              <div class="cfg-policy-list" id="wz-policy-list">
-                {{#orgPolicies}}
-                <label class="cfg-policy-card" data-name="{{policyName}}">
-                  <input type="checkbox" class="wz-policy-check" value="{{policyName}}" />
+              <p class="cfg-form-section-title">Applicable Subscription Plans</p>
+              <div class="cfg-plan-list" id="wz-plan-list">
+                {{#orgPlans}}
+                <label class="cfg-plan-card" data-name="{{planName}}">
+                  <input type="checkbox" class="wz-plan-check" value="{{planName}}" />
                   <div>
-                    <div class="cfg-policy-card-name">{{displayName}}</div>
-                    <div class="cfg-policy-card-sub">{{policyName}} · {{requestCount}} requests</div>
+                    <div class="cfg-plan-card-name">{{displayName}}</div>
+                    <div class="cfg-plan-card-sub">{{planName}} · {{requestCount}} requests</div>
                   </div>
                 </label>
-                {{/orgPolicies}}
-                {{#unless orgPolicies.length}}
-                <p style="font-size:.844rem;color:#9aa3af;margin:0;">No subscription policies yet. Create them under <strong>Subscription Policies</strong>.</p>
+                {{/orgPlans}}
+                {{#unless orgPlans.length}}
+                <p style="font-size:.844rem;color:#9aa3af;margin:0;">No subscription plans yet. Create them under <strong>Subscription Plans</strong>.</p>
                 {{/unless}}
               </div>
             </div>
@@ -397,7 +397,7 @@
                   <span class="cfg-review-label">Sandbox URL</span>   <span class="cfg-review-value cfg-review-value--mono" id="rv-sandbox">—</span>
                   <span class="cfg-review-label">Tech owner</span>    <span class="cfg-review-value" id="rv-tech-owner">—</span>
                   <span class="cfg-review-label">Biz owner</span>     <span class="cfg-review-value" id="rv-biz-owner">—</span>
-                  <span class="cfg-review-label">Policies</span>      <span class="cfg-review-value" id="rv-policies">—</span>
+                  <span class="cfg-review-label">Plans</span>      <span class="cfg-review-value" id="rv-plans">—</span>
                   <span class="cfg-review-label">Description</span>   <span class="cfg-review-value" id="rv-desc">—</span>
                 </div>
               </div>
@@ -483,15 +483,15 @@
         </div>
       </div><!-- /#cfg-labels -->
 
-      <!-- ══ Subscription Policies ══ -->
-      <div class="cfg-panel" id="cfg-policies">
+      <!-- ══ Subscription Plans ══ -->
+      <div class="cfg-panel" id="cfg-plans">
         <div class="cfg-panel-header">
           <div>
-            <h2 class="cfg-panel-title">Subscription Policies</h2>
+            <h2 class="cfg-panel-title">Subscription Plans</h2>
             <p class="cfg-panel-desc">Define the rate and quota tiers applications can subscribe to.</p>
           </div>
-          <button class="cfg-btn-primary" id="cfg-add-policy-btn" type="button">
-            <i class="bi bi-plus"></i> Add policy
+          <button class="cfg-btn-primary" id="cfg-add-plan-btn" type="button">
+            <i class="bi bi-plus"></i> Add plan
           </button>
         </div>
 
@@ -499,18 +499,18 @@
           <table class="cfg-table">
             <thead>
               <tr>
-                <th>Policy</th>
+                <th>Plan</th>
                 <th>Name</th>
                 <th>Type</th>
                 <th>Limit</th>
                 <th style="width:90px;"></th>
               </tr>
             </thead>
-            <tbody id="cfg-policies-tbody">
-              {{#orgPolicies}}
-              <tr id="cfg-policy-row-{{policyId}}"
-                data-id="{{policyId}}"
-                data-name="{{policyName}}"
+            <tbody id="cfg-plans-tbody">
+              {{#orgPlans}}
+              <tr id="cfg-plan-row-{{planId}}"
+                data-id="{{planId}}"
+                data-name="{{planName}}"
                 data-display="{{displayName}}"
                 data-desc="{{description}}"
                 data-count="{{requestCount}}"
@@ -519,37 +519,37 @@
                   <div style="font-size:.875rem;font-weight:600;color:#1a2433;">{{displayName}}</div>
                   {{#if description}}<div style="font-size:.75rem;color:#637282;margin-top:2px;">{{description}}</div>{{/if}}
                 </td>
-                <td><span class="cfg-name-chip">{{policyName}}</span></td>
+                <td><span class="cfg-name-chip">{{planName}}</span></td>
                 <td>
                   {{#if refId}}
-                  <span class="cfg-policy-type-badge cfg-policy-type--event">Event count</span>
+                  <span class="cfg-plan-type-badge cfg-plan-type--event">Event count</span>
                   {{else}}
-                  <span class="cfg-policy-type-badge cfg-policy-type--request">Request count</span>
+                  <span class="cfg-plan-type-badge cfg-plan-type--request">Request count</span>
                   {{/if}}
                 </td>
                 <td><span class="cfg-count-chip">{{requestCount}}</span></td>
                 <td>
                   <div class="cfg-row-actions">
-                    <button class="cfg-icon-btn cfg-policy-edit-btn" type="button"
-                      data-id="{{policyId}}" data-name="{{policyName}}" data-display="{{displayName}}"
+                    <button class="cfg-icon-btn cfg-plan-edit-btn" type="button"
+                      data-id="{{planId}}" data-name="{{planName}}" data-display="{{displayName}}"
                       data-desc="{{description}}" data-count="{{requestCount}}" data-refid="{{refId}}" title="Edit">
                       <i class="bi bi-pencil"></i>
                     </button>
-                    <button class="cfg-icon-btn cfg-icon-btn--danger cfg-policy-delete-btn" type="button"
-                      data-id="{{policyId}}" data-name="{{policyName}}" data-display="{{displayName}}" title="Delete">
+                    <button class="cfg-icon-btn cfg-icon-btn--danger cfg-plan-delete-btn" type="button"
+                      data-id="{{planId}}" data-name="{{planName}}" data-display="{{displayName}}" title="Delete">
                       <i class="bi bi-trash"></i>
                     </button>
                   </div>
                 </td>
               </tr>
-              {{/orgPolicies}}
-              {{#unless orgPolicies.length}}
-              <tr><td colspan="5" class="cfg-tbl-empty">No subscription policies yet. Add one to get started.</td></tr>
+              {{/orgPlans}}
+              {{#unless orgPlans.length}}
+              <tr><td colspan="5" class="cfg-tbl-empty">No subscription plans yet. Add one to get started.</td></tr>
               {{/unless}}
             </tbody>
           </table>
         </div>
-      </div><!-- /#cfg-policies -->
+      </div><!-- /#cfg-plans -->
 
       <!-- ══ Manage Organizations ══ -->
       <div class="cfg-panel" id="cfg-orgs">
@@ -607,17 +607,17 @@
   </div>
 </div>
 
-<!-- Delete Policy modal -->
-<div class="cfg-modal-overlay" id="cfg-delete-policy-modal" style="display:none;">
+<!-- Delete Plan modal -->
+<div class="cfg-modal-overlay" id="cfg-delete-plan-modal" style="display:none;">
   <div class="cfg-modal">
     <div class="cfg-modal-header">
       <span class="cfg-modal-icon"><i class="bi bi-trash"></i></span>
-      <h2 class="cfg-modal-title">Delete Policy</h2>
+      <h2 class="cfg-modal-title">Delete Plan</h2>
     </div>
-    <p class="cfg-modal-body">Are you sure you want to delete <strong id="cfg-del-policy-name-txt"></strong>? Applications subscribed under it will need a new policy. This action can't be undone.</p>
+    <p class="cfg-modal-body">Are you sure you want to delete <strong id="cfg-del-plan-name-txt"></strong>? Applications subscribed under it will need a new plan. This action can't be undone.</p>
     <div class="cfg-modal-actions">
-      <button type="button" class="cfg-btn-secondary" id="cfg-del-policy-cancel">Cancel</button>
-      <button type="button" class="cfg-btn-danger" id="cfg-del-policy-confirm">Delete policy</button>
+      <button type="button" class="cfg-btn-secondary" id="cfg-del-plan-cancel">Cancel</button>
+      <button type="button" class="cfg-btn-danger" id="cfg-del-plan-confirm">Delete plan</button>
     </div>
   </div>
 </div>
@@ -645,12 +645,12 @@
   </div>
 </div>
 
-<!-- Add / Edit Policy modal -->
-<div class="cfg-modal-overlay" id="cfg-policy-modal" style="display:none;">
+<!-- Add / Edit Plan modal -->
+<div class="cfg-modal-overlay" id="cfg-plan-modal" style="display:none;">
   <div class="cfg-form-modal cfg-form-modal--wide">
     <div class="cfg-modal-titlerow">
-      <h2 class="cfg-modal-form-title" id="cfg-policy-modal-title">Add subscription policy</h2>
-      <button type="button" class="cfg-modal-close" id="cfg-policy-modal-close"><i class="bi bi-x-lg"></i></button>
+      <h2 class="cfg-modal-form-title" id="cfg-plan-modal-title">Add subscription plan</h2>
+      <button type="button" class="cfg-modal-close" id="cfg-plan-modal-close"><i class="bi bi-x-lg"></i></button>
     </div>
     <div class="cfg-form-grid" style="margin-bottom:16px;">
       <div class="cfg-form-group">
@@ -682,11 +682,11 @@
     <div class="cfg-form-group" style="margin-bottom:24px;">
       <label for="pol-refid">External reference ID <span style="color:#9aa3af;font-weight:400;">(optional)</span></label>
       <input type="text" id="pol-refid" class="cfg-form-input cfg-form-input--mono" placeholder="e.g. 7c9e6679-7425-40de-944b-e07fc1f90ae7" />
-      <p class="cfg-field-hint">UUID linking this policy to an external billing or quota system.</p>
+      <p class="cfg-field-hint">UUID linking this plan to an external billing or quota system.</p>
     </div>
     <div class="cfg-modal-actions">
-      <button type="button" class="cfg-btn-secondary" id="cfg-policy-modal-cancel">Cancel</button>
-      <button type="button" class="cfg-btn-primary" id="cfg-policy-modal-save">Add policy</button>
+      <button type="button" class="cfg-btn-secondary" id="cfg-plan-modal-cancel">Cancel</button>
+      <button type="button" class="cfg-btn-primary" id="cfg-plan-modal-save">Add plan</button>
     </div>
   </div>
 </div>
@@ -721,7 +721,7 @@
 <!-- ══ Panel navigation ══ -->
 <script>
 (function () {
-  var PANELS   = ['cfg-llm', 'cfg-workflows', 'cfg-apis', 'cfg-labels', 'cfg-policies', 'cfg-orgs'];
+  var PANELS   = ['cfg-llm', 'cfg-workflows', 'cfg-apis', 'cfg-labels', 'cfg-plans', 'cfg-orgs'];
   var navItems = document.querySelectorAll('.cfg-nav-item');
   var panels   = document.querySelectorAll('.cfg-panel');
 
@@ -812,21 +812,21 @@
     document.getElementById('wz-vis-visible').classList.remove('active');
   });
 
-  /* ── policy card selection ── */
-  document.querySelectorAll('.cfg-policy-card').forEach(function(card) {
+  /* ── plan card selection ── */
+  document.querySelectorAll('.cfg-plan-card').forEach(function(card) {
     var cb = card.querySelector('input[type=checkbox]');
     cb.addEventListener('change', function() {
       card.classList.toggle('selected', cb.checked);
     });
   });
-  function selectedPolicies() {
-    return Array.prototype.slice.call(document.querySelectorAll('.wz-policy-check:checked')).map(function(c){ return c.value; });
+  function selectedPlans() {
+    return Array.prototype.slice.call(document.querySelectorAll('.wz-plan-check:checked')).map(function(c){ return c.value; });
   }
-  function setSelectedPolicies(names) {
-    document.querySelectorAll('.wz-policy-check').forEach(function(c) {
+  function setSelectedPlans(names) {
+    document.querySelectorAll('.wz-plan-check').forEach(function(c) {
       var checked = names && names.includes(c.value);
       c.checked = checked;
-      var card = c.closest('.cfg-policy-card');
+      var card = c.closest('.cfg-plan-card');
       if (card) card.classList.toggle('selected', checked);
     });
   }
@@ -855,7 +855,7 @@
       agentVis = api.agentVisibility || 'Visible';
       document.getElementById('wz-vis-visible').classList.toggle('active', agentVis !== 'Hidden');
       document.getElementById('wz-vis-hidden').classList.toggle('active',  agentVis === 'Hidden');
-      setSelectedPolicies(api.subscriptionPolicies || []);
+      setSelectedPlans(api.subscriptionPlans || []);
     } else {
       /* add mode */
       editingId = null;
@@ -865,7 +865,7 @@
       agentVis = 'Visible';
       document.getElementById('wz-vis-visible').classList.add('active');
       document.getElementById('wz-vis-hidden').classList.remove('active');
-      setSelectedPolicies([]);
+      setSelectedPlans([]);
     }
 
     document.getElementById('wz-spec-chip').classList.remove('visible');
@@ -925,8 +925,8 @@
     set('rv-sandbox',   v('wz-sandbox'));
     set('rv-tech-owner',v('wz-tech-owner'));
     set('rv-biz-owner', v('wz-biz-owner'));
-    var pols = selectedPolicies();
-    set('rv-policies',  pols.length ? pols.join(', ') : '—');
+    var pols = selectedPlans();
+    set('rv-plans',  pols.length ? pols.join(', ') : '—');
     set('rv-desc',      v('wz-desc'));
     set('rv-spec',      specFile ? specFile.name : 'No spec uploaded');
     var docsEl = document.getElementById('rv-docs');
@@ -962,7 +962,7 @@
         productionURL: v('wz-prod') || undefined,
         sandboxURL:    v('wz-sandbox') || undefined,
       },
-      subscriptionPolicies: selectedPolicies().map(function(n){ return { policyName: n }; }),
+      subscriptionPlans: selectedPlans().map(function(n){ return { planName: n }; }),
     };
 
     var fd = new FormData();
@@ -1034,7 +1034,7 @@
       var meta = {
         apiInfo: Object.assign({}, apiData.apiInfo || {}, { apiStatus: newStatus }),
         endPoints: apiData.endPoints || {},
-        subscriptionPolicies: apiData.subscriptionPolicies || [],
+        subscriptionPlans: apiData.subscriptionPlans || [],
       };
       var fd = new FormData();
       fd.append('apiMetadata', JSON.stringify(meta));
@@ -1205,7 +1205,7 @@
       row('Production URL', api.productionUrl, true),
       row('Sandbox URL', api.sandboxUrl, true),
       row('Tags', api.tags),
-      row('Policies', (api.subscriptionPolicies||[]).join(', ')),
+      row('Plans', (api.subscriptionPlans||[]).join(', ')),
     ].join('');
     document.getElementById('cfg-drawer-edit-btn').onclick = function() {
       document.getElementById('cfg-detail-drawer').classList.remove('open');
@@ -1330,11 +1330,11 @@
 }());
 </script>
 
-<!-- ══ Subscription Policies JS ══ -->
+<!-- ══ Subscription Plans JS ══ -->
 <script>
 (function () {
   var ORG_ID = '{{orgID}}';
-  var editPolicyId = null;
+  var editPlanId = null;
 
   function v(id) { var e=document.getElementById(id); return e?e.value.trim():''; }
 
@@ -1344,48 +1344,48 @@
   });
 
   /* open modal */
-  function openPolicyModal(mode, data) {
-    editPolicyId = mode === 'edit' ? data.policyId : null;
-    document.getElementById('cfg-policy-modal-title').textContent = mode === 'edit' ? 'Edit subscription policy' : 'Add subscription policy';
-    document.getElementById('cfg-policy-modal-save').textContent  = mode === 'edit' ? 'Save changes' : 'Add policy';
+  function openPlanModal(mode, data) {
+    editPlanId = mode === 'edit' ? data.planId : null;
+    document.getElementById('cfg-plan-modal-title').textContent = mode === 'edit' ? 'Edit subscription plan' : 'Add subscription plan';
+    document.getElementById('cfg-plan-modal-save').textContent  = mode === 'edit' ? 'Save changes' : 'Add plan';
     document.getElementById('pol-display').value = mode === 'edit' ? (data.displayName||'') : '';
-    document.getElementById('pol-name').value    = mode === 'edit' ? (data.policyName||'')  : '';
+    document.getElementById('pol-name').value    = mode === 'edit' ? (data.planName||'')  : '';
     document.getElementById('pol-desc').value    = mode === 'edit' ? (data.description||'') : '';
     document.getElementById('pol-count').value   = mode === 'edit' ? (data.requestCount||'') : '';
     document.getElementById('pol-refid').value   = mode === 'edit' ? (data.refId||'')        : '';
     var isEvent = mode === 'edit' && data.refId;
     document.getElementById('pol-type').value = isEvent ? 'eventcount' : 'requestcount';
     document.getElementById('pol-count-label').textContent = isEvent ? 'Event count' : 'Request count';
-    document.getElementById('cfg-policy-modal').style.display = 'flex';
+    document.getElementById('cfg-plan-modal').style.display = 'flex';
     document.getElementById('pol-display').focus();
   }
-  function closePolicyModal() { document.getElementById('cfg-policy-modal').style.display='none'; editPolicyId=null; }
+  function closePlanModal() { document.getElementById('cfg-plan-modal').style.display='none'; editPlanId=null; }
 
   /* save */
-  document.getElementById('cfg-policy-modal-save').addEventListener('click', async function() {
+  document.getElementById('cfg-plan-modal-save').addEventListener('click', async function() {
     var displayName = v('pol-display');
-    var policyName  = v('pol-name');
-    if (!displayName || !policyName) { await showAlert('Display name and name are required.', 'error'); return; }
+    var planName  = v('pol-name');
+    if (!displayName || !planName) { await showAlert('Display name and name are required.', 'error'); return; }
 
     var body = {
       displayName:  displayName,
-      policyName:   policyName,
+      planName:   planName,
       description:  v('pol-desc') || undefined,
       type:         document.getElementById('pol-type').value,
       requestCount: parseInt(v('pol-count'),10) || undefined,
       refId:        v('pol-refid') || undefined,
     };
-    if (editPolicyId) body.policyId = editPolicyId;
+    if (editPlanId) body.planId = editPlanId;
 
     try {
-      var method = editPolicyId ? 'PUT' : 'POST';
-      var res = await fetch(window.devportalApi.org(ORG_ID, '/subscription-policies'), {
+      var method = editPlanId ? 'PUT' : 'POST';
+      var res = await fetch(window.devportalApi.org(ORG_ID, '/subscription-plans'), {
         method: method,
         headers: { 'Content-Type':'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() },
         body: JSON.stringify(body),
       });
       if (res.ok) {
-        await showAlert(editPolicyId ? 'Policy updated.' : 'Policy created.', 'success');
+        await showAlert(editPlanId ? 'Plan updated.' : 'Plan created.', 'success');
         window.location.reload();
       } else {
         var err = await res.json().catch(function(){ return {}; });
@@ -1394,20 +1394,20 @@
     } catch(e) { await showAlert('Error: '+e.message, 'error'); }
   });
 
-  document.getElementById('cfg-policy-modal-close').addEventListener('click', closePolicyModal);
-  document.getElementById('cfg-policy-modal-cancel').addEventListener('click', closePolicyModal);
-  document.getElementById('cfg-policy-modal').addEventListener('click', function(e){ if(e.target===this) closePolicyModal(); });
+  document.getElementById('cfg-plan-modal-close').addEventListener('click', closePlanModal);
+  document.getElementById('cfg-plan-modal-cancel').addEventListener('click', closePlanModal);
+  document.getElementById('cfg-plan-modal').addEventListener('click', function(e){ if(e.target===this) closePlanModal(); });
 
-  document.getElementById('cfg-add-policy-btn').addEventListener('click', function() { openPolicyModal('add'); });
+  document.getElementById('cfg-add-plan-btn').addEventListener('click', function() { openPlanModal('add'); });
 
   /* edit / delete delegation */
-  var pendingDelPolicyId = null;
+  var pendingDelPlanId = null;
   document.addEventListener('click', function(e) {
-    if (e.target.closest('.cfg-policy-edit-btn')) {
-      var btn = e.target.closest('.cfg-policy-edit-btn');
-      openPolicyModal('edit', {
-        policyId:    btn.dataset.id,
-        policyName:  btn.dataset.name,
+    if (e.target.closest('.cfg-plan-edit-btn')) {
+      var btn = e.target.closest('.cfg-plan-edit-btn');
+      openPlanModal('edit', {
+        planId:    btn.dataset.id,
+        planName:  btn.dataset.name,
         displayName: btn.dataset.display,
         description: btn.dataset.desc,
         requestCount:btn.dataset.count,
@@ -1415,36 +1415,36 @@
       });
       return;
     }
-    if (e.target.closest('.cfg-policy-delete-btn')) {
-      var btn = e.target.closest('.cfg-policy-delete-btn');
-      pendingDelPolicyId = btn.dataset.id;
-      document.getElementById('cfg-del-policy-name-txt').textContent = btn.dataset.display || btn.dataset.name;
-      document.getElementById('cfg-delete-policy-modal').style.display = 'flex';
+    if (e.target.closest('.cfg-plan-delete-btn')) {
+      var btn = e.target.closest('.cfg-plan-delete-btn');
+      pendingDelPlanId = btn.dataset.id;
+      document.getElementById('cfg-del-plan-name-txt').textContent = btn.dataset.display || btn.dataset.name;
+      document.getElementById('cfg-delete-plan-modal').style.display = 'flex';
       return;
     }
   });
 
-  document.getElementById('cfg-del-policy-cancel').addEventListener('click', function() {
-    document.getElementById('cfg-delete-policy-modal').style.display = 'none';
+  document.getElementById('cfg-del-plan-cancel').addEventListener('click', function() {
+    document.getElementById('cfg-delete-plan-modal').style.display = 'none';
   });
-  document.getElementById('cfg-delete-policy-modal').addEventListener('click', function(e){ if(e.target===this) this.style.display='none'; });
-  document.getElementById('cfg-del-policy-confirm').addEventListener('click', async function() {
-    if (!pendingDelPolicyId) return;
-    document.getElementById('cfg-delete-policy-modal').style.display = 'none';
+  document.getElementById('cfg-delete-plan-modal').addEventListener('click', function(e){ if(e.target===this) this.style.display='none'; });
+  document.getElementById('cfg-del-plan-confirm').addEventListener('click', async function() {
+    if (!pendingDelPlanId) return;
+    document.getElementById('cfg-delete-plan-modal').style.display = 'none';
     try {
-      var res = await fetch(window.devportalApi.org(ORG_ID, '/subscription-policies/'+encodeURIComponent(pendingDelPolicyId)), {
+      var res = await fetch(window.devportalApi.org(ORG_ID, '/subscription-plans/'+encodeURIComponent(pendingDelPlanId)), {
         method: 'DELETE',
         headers: { 'X-CSRF-Token': window.devportalApi.csrfToken() },
       });
       if (res.ok || res.status===204) {
-        await showAlert('Policy deleted.', 'success');
+        await showAlert('Plan deleted.', 'success');
         window.location.reload();
       } else {
         var err = await res.json().catch(function(){ return {}; });
         await showAlert('Delete failed: '+(err.description||err.message||res.statusText), 'error');
       }
     } catch(e) { await showAlert('Error: '+e.message, 'error'); }
-    pendingDelPolicyId = null;
+    pendingDelPlanId = null;
   });
 }());
 </script>

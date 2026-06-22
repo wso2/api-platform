@@ -65,7 +65,7 @@ async function generateApplicationKey(formId, appId, keyType, keyManager, client
         apiList.push({
             "apiName": subscription.name,
             "apiRefId": subscription.refID,
-            "policyID": subscription.policyID
+            "planID": subscription.planID
         });
     });
     const formData = new FormData(form);

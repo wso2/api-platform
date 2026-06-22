@@ -102,14 +102,14 @@ async function generateAPIKey(projectID, apiID, subPlan, cpAppID, appID, subID, 
   const nameInput = document.getElementById('apiKeyName-' + subID + '-' + keyType);
   const apiKeyName = nameInput ? nameInput.value.trim() : '';
 
-  const policyElement = document.getElementById('policy_' + subID);
-  if (!policyElement) {
+  const planElement = document.getElementById('plan_' + subID);
+  if (!planElement) {
     console.error('Unable to find subscription plan.');
     normalState.style.display = 'inline-block';
     loadingState.style.display = 'none';
     return;
   }
-  const subscriptionPlan = policyElement.textContent.trim();
+  const subscriptionPlan = planElement.textContent.trim();
   const scopeContainer = document.getElementById('scopeContainer-' + subID + '-' + keyType);
   if (!scopeContainer) {
     console.error('Unable to find scope container.');

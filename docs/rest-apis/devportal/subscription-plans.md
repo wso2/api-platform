@@ -1,23 +1,23 @@
-<h1 id="wso2-api-developer-portal-core-devportal-routes-subscription-policies">Subscription Policies</h1>
+<h1 id="wso2-api-developer-portal-core-devportal-routes-subscription-plans">Subscription Plans</h1>
 
-## List subscription policies
+## List subscription plans
 
-<a id="opIdlistSubscriptionPolicies"></a>
+<a id="opIdlistSubscriptionPlans"></a>
 
-`GET /o/{orgId}/devportal/v1/subscription-policies`
+`GET /o/{orgId}/devportal/v1/subscription-plans`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://devportal.api-platform.io/o/{orgId}/devportal/v1/subscription-policies \
+curl -X GET https://devportal.api-platform.io/o/{orgId}/devportal/v1/subscription-plans \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
 
 ```
 
-Lists subscription policies for an organization. When `name` is supplied, only the matching policy (if any) is returned. Policy names are unique within an organization.
+Lists subscription plans for an organization. When `name` is supplied, only the matching plan (if any) is returned. Plan names are unique within an organization.
 
 ### Authentication
 
@@ -26,11 +26,11 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 </aside>
 
-<h3 id="list-subscription-policies-parameters">Parameters</h3>
+<h3 id="list-subscription-plans-parameters">Parameters</h3>
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|name|query|string|false|Filter by exact policy name. Returns an array of zero or one items.|
+|name|query|string|false|Filter by exact plan name. Returns an array of zero or one items.|
 |orgId|path|string|true|none|
 
 > Example responses
@@ -40,8 +40,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
 ```json
 [
   {
-    "policyID": "string",
-    "policyName": "string",
+    "planID": "string",
+    "planName": "string",
     "displayName": "string",
     "description": "string",
     "requestCount": 0,
@@ -86,23 +86,23 @@ This operation requires <strong>Basic Auth</strong> authentication.
 }
 ```
 
-<h3 id="list-subscription-policies-responses">Responses</h3>
+<h3 id="list-subscription-plans-responses">Responses</h3>
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|List of subscription policy DTOs. Empty array when no policies match.|Inline|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|List of subscription plan DTOs. Empty array when no plans match.|Inline|
 |400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.|Inline|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
-<h3 id="list-subscription-policies-responseschema">Response Schema</h3>
+<h3 id="list-subscription-plans-responseschema">Response Schema</h3>
 
 Status Code **200**
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|*anonymous*|[[SubscriptionPolicyResponse](schemas.md#schemasubscriptionpolicyresponse)]|false|none|none|
-|» policyID|string|false|none|none|
-|» policyName|string|false|none|none|
+|*anonymous*|[[SubscriptionPlanResponse](schemas.md#schemasubscriptionplanresponse)]|false|none|none|
+|» planID|string|false|none|none|
+|» planName|string|false|none|none|
 |» displayName|string|false|none|none|
 |» description|string|false|none|none|
 |» requestCount|any|false|none|none|
@@ -125,17 +125,17 @@ Status Code **200**
 |---|---|---|---|---|
 |» orgID|string|false|none|none|
 
-## Create subscription policies
+## Create subscription plans
 
-<a id="opIdaddSubscriptionPolicies"></a>
+<a id="opIdaddSubscriptionPlans"></a>
 
-`POST /o/{orgId}/devportal/v1/subscription-policies`
+`POST /o/{orgId}/devportal/v1/subscription-plans`
 
 > Code samples
 
 ```shell
 
-curl -X POST https://devportal.api-platform.io/o/{orgId}/devportal/v1/subscription-policies \
+curl -X POST https://devportal.api-platform.io/o/{orgId}/devportal/v1/subscription-plans \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -144,16 +144,16 @@ curl -X POST https://devportal.api-platform.io/o/{orgId}/devportal/v1/subscripti
 
 ```
 
-Creates one subscription policy when the request body is an object, or multiple subscription policies when the body is an array. Bulk creation returns a message instead of creating policies when `generateDefaultSubPolicies` is enabled.
+Creates one subscription plan when the request body is an object, or multiple subscription plans when the body is an array. Bulk creation returns a message instead of creating plans when `generateDefaultSubPlans` is enabled.
 
 > Payload
 
 ```json
 {
-  "policyId": "string",
-  "policyID": "string",
+  "planId": "string",
+  "planID": "string",
   "refId": "string",
-  "policyName": "string",
+  "planName": "string",
   "displayName": "string",
   "description": "string",
   "type": "requestcount",
@@ -163,10 +163,10 @@ Creates one subscription policy when the request body is an object, or multiple 
 ```
 
 ```yaml
-policyId: string
-policyID: string
+planId: string
+planID: string
 refId: string
-policyName: string
+planName: string
 displayName: string
 description: string
 type: requestcount
@@ -182,11 +182,11 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 </aside>
 
-<h3 id="create-subscription-policies-parameters">Parameters</h3>
+<h3 id="create-subscription-plans-parameters">Parameters</h3>
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|body|body|any|true|Subscription policy payload. Send a single object for single create/upsert, or a non-empty array for bulk create/upsert. The service currently processes policies with `type` set to `requestcount` or `eventcount`. Alternatively, upload a YAML file in the `subscriptionPolicy` multipart field; use `kind: SubscriptionPolicy` for a single policy or `kind: SubscriptionPolicyList` with an `items` array for bulk operations.|
+|body|body|any|true|Subscription plan payload. Send a single object for single create/upsert, or a non-empty array for bulk create/upsert. The service currently processes plans with `type` set to `requestcount` or `eventcount`. Alternatively, upload a YAML file in the `subscriptionPlan` multipart field; use `kind: SubscriptionPlan` for a single plan or `kind: SubscriptionPlanList` with an `items` array for bulk operations.|
 |orgId|path|string|true|none|
 
 > Example responses
@@ -245,29 +245,29 @@ This operation requires <strong>Basic Auth</strong> authentication.
 }
 ```
 
-<h3 id="create-subscription-policies-responses">Responses</h3>
+<h3 id="create-subscription-plans-responses">Responses</h3>
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
 |200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|JSON message response.|[MessageResponse](schemas.md#schemamessageresponse)|
-|201|[Created](https://tools.ietf.org/html/rfc7231#section-6.3.2)|Subscription policy create/update response for single or bulk operations.|Inline|
+|201|[Created](https://tools.ietf.org/html/rfc7231#section-6.3.2)|Subscription plan create/update response for single or bulk operations.|Inline|
 |400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.|Inline|
 |409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Duplicate organization data conflicts with an existing record.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
-<h3 id="create-subscription-policies-responseschema">Response Schema</h3>
+<h3 id="create-subscription-plans-responseschema">Response Schema</h3>
 
-## Upsert subscription policies
+## Upsert subscription plans
 
-<a id="opIdputSubscriptionPolicies"></a>
+<a id="opIdputSubscriptionPlans"></a>
 
-`PUT /o/{orgId}/devportal/v1/subscription-policies`
+`PUT /o/{orgId}/devportal/v1/subscription-plans`
 
 > Code samples
 
 ```shell
 
-curl -X PUT https://devportal.api-platform.io/o/{orgId}/devportal/v1/subscription-policies \
+curl -X PUT https://devportal.api-platform.io/o/{orgId}/devportal/v1/subscription-plans \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -276,16 +276,16 @@ curl -X PUT https://devportal.api-platform.io/o/{orgId}/devportal/v1/subscriptio
 
 ```
 
-Upserts one subscription policy when the request body is an object, or multiple policies when the body is an array. A single policy update returns `200` when an existing policy is updated and `201` when a new policy is created. Bulk updates return a message when `generateDefaultSubPolicies` is enabled.
+Upserts one subscription plan when the request body is an object, or multiple plans when the body is an array. A single plan update returns `200` when an existing plan is updated and `201` when a new plan is created. Bulk updates return a message when `generateDefaultSubPlans` is enabled.
 
 > Payload
 
 ```json
 {
-  "policyId": "string",
-  "policyID": "string",
+  "planId": "string",
+  "planID": "string",
   "refId": "string",
-  "policyName": "string",
+  "planName": "string",
   "displayName": "string",
   "description": "string",
   "type": "requestcount",
@@ -295,10 +295,10 @@ Upserts one subscription policy when the request body is an object, or multiple 
 ```
 
 ```yaml
-policyId: string
-policyID: string
+planId: string
+planID: string
 refId: string
-policyName: string
+planName: string
 displayName: string
 description: string
 type: requestcount
@@ -314,11 +314,11 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 </aside>
 
-<h3 id="upsert-subscription-policies-parameters">Parameters</h3>
+<h3 id="upsert-subscription-plans-parameters">Parameters</h3>
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|body|body|any|true|Subscription policy payload. Send a single object for single create/upsert, or a non-empty array for bulk create/upsert. The service currently processes policies with `type` set to `requestcount` or `eventcount`. Alternatively, upload a YAML file in the `subscriptionPolicy` multipart field; use `kind: SubscriptionPolicy` for a single policy or `kind: SubscriptionPolicyList` with an `items` array for bulk operations.|
+|body|body|any|true|Subscription plan payload. Send a single object for single create/upsert, or a non-empty array for bulk create/upsert. The service currently processes plans with `type` set to `requestcount` or `eventcount`. Alternatively, upload a YAML file in the `subscriptionPlan` multipart field; use `kind: SubscriptionPlan` for a single plan or `kind: SubscriptionPlanList` with an `items` array for bulk operations.|
 |orgId|path|string|true|none|
 
 > Example responses
@@ -327,8 +327,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "policyID": "string",
-  "policyName": "string",
+  "planID": "string",
+  "planName": "string",
   "displayName": "string",
   "description": "string",
   "requestCount": 0,
@@ -392,37 +392,37 @@ This operation requires <strong>Basic Auth</strong> authentication.
 }
 ```
 
-<h3 id="upsert-subscription-policies-responses">Responses</h3>
+<h3 id="upsert-subscription-plans-responses">Responses</h3>
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Subscription policy update response. Bulk updates may return a list, and some configurations return a message.|Inline|
-|201|[Created](https://tools.ietf.org/html/rfc7231#section-6.3.2)|Subscription policy create/update response for single or bulk operations.|Inline|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Subscription plan update response. Bulk updates may return a list, and some configurations return a message.|Inline|
+|201|[Created](https://tools.ietf.org/html/rfc7231#section-6.3.2)|Subscription plan create/update response for single or bulk operations.|Inline|
 |400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.|Inline|
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Duplicate organization data conflicts with an existing record.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
-<h3 id="upsert-subscription-policies-responseschema">Response Schema</h3>
+<h3 id="upsert-subscription-plans-responseschema">Response Schema</h3>
 
-## Get a subscription policy
+## Get a subscription plan
 
-<a id="opIdgetSubscriptionPolicy"></a>
+<a id="opIdgetSubscriptionPlan"></a>
 
-`GET /o/{orgId}/devportal/v1/subscription-policies/{policyId}`
+`GET /o/{orgId}/devportal/v1/subscription-plans/{planId}`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://devportal.api-platform.io/o/{orgId}/devportal/v1/subscription-policies/{policyId} \
+curl -X GET https://devportal.api-platform.io/o/{orgId}/devportal/v1/subscription-plans/{planId} \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
 
 ```
 
-Retrieves a single subscription policy by `policyId`.
+Retrieves a single subscription plan by `planId`.
 
 ### Authentication
 
@@ -431,12 +431,12 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 </aside>
 
-<h3 id="get-a-subscription-policy-parameters">Parameters</h3>
+<h3 id="get-a-subscription-plan-parameters">Parameters</h3>
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |orgId|path|string|true|none|
-|policyId|path|string|true|none|
+|planId|path|string|true|none|
 
 > Example responses
 
@@ -444,8 +444,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "policyID": "string",
-  "policyName": "string",
+  "planID": "string",
+  "planName": "string",
   "displayName": "string",
   "description": "string",
   "requestCount": 0,
@@ -499,35 +499,35 @@ This operation requires <strong>Basic Auth</strong> authentication.
 }
 ```
 
-<h3 id="get-a-subscription-policy-responses">Responses</h3>
+<h3 id="get-a-subscription-plan-responses">Responses</h3>
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Subscription policy DTO.|[SubscriptionPolicyResponse](schemas.md#schemasubscriptionpolicyresponse)|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Subscription plan DTO.|[SubscriptionPlanResponse](schemas.md#schemasubscriptionplanresponse)|
 |400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.|Inline|
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
-<h3 id="get-a-subscription-policy-responseschema">Response Schema</h3>
+<h3 id="get-a-subscription-plan-responseschema">Response Schema</h3>
 
-## Delete a subscription policy
+## Delete a subscription plan
 
-<a id="opIddeleteSubscriptionPolicy"></a>
+<a id="opIddeleteSubscriptionPlan"></a>
 
-`DELETE /o/{orgId}/devportal/v1/subscription-policies/{policyId}`
+`DELETE /o/{orgId}/devportal/v1/subscription-plans/{planId}`
 
 > Code samples
 
 ```shell
 
-curl -X DELETE https://devportal.api-platform.io/o/{orgId}/devportal/v1/subscription-policies/{policyId} \
+curl -X DELETE https://devportal.api-platform.io/o/{orgId}/devportal/v1/subscription-plans/{planId} \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
 
 ```
 
-Deletes a subscription policy by `policyId`.
+Deletes a subscription plan by `planId`.
 
 ### Authentication
 
@@ -536,12 +536,12 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 </aside>
 
-<h3 id="delete-a-subscription-policy-parameters">Parameters</h3>
+<h3 id="delete-a-subscription-plan-parameters">Parameters</h3>
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |orgId|path|string|true|none|
-|policyId|path|string|true|none|
+|planId|path|string|true|none|
 
 > Example responses
 
@@ -591,13 +591,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 }
 ```
 
-<h3 id="delete-a-subscription-policy-responses">Responses</h3>
+<h3 id="delete-a-subscription-plan-responses">Responses</h3>
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|204|[No Content](https://tools.ietf.org/html/rfc7231#section-6.3.5)|Subscription policy deleted successfully.|None|
+|204|[No Content](https://tools.ietf.org/html/rfc7231#section-6.3.5)|Subscription plan deleted successfully.|None|
 |400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.|Inline|
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
-<h3 id="delete-a-subscription-policy-responseschema">Response Schema</h3>
+<h3 id="delete-a-subscription-plan-responseschema">Response Schema</h3>

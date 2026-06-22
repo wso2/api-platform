@@ -18,14 +18,14 @@
  */
 
 /*
- * Tag: Subscription Policies
+ * Tag: Subscription Plans
  */
 const apiMetadataService = require('../../../services/apiMetadataService');
 
 module.exports = {
-    listSubscriptionPolicies: apiMetadataService.listSubscriptionPolicies,
-    addSubscriptionPolicies: apiMetadataService.addSubscriptionPolicies,
-    putSubscriptionPolicies: apiMetadataService.putSubscriptionPolicies,
-    getSubscriptionPolicy: apiMetadataService.getSubscriptionPolicy,
-    deleteSubscriptionPolicy: apiMetadataService.deleteSubscriptionPolicy,
+    listSubscriptionPlans: apiMetadataService.listSubscriptionPlans,
+    addSubscriptionPlans: apiMetadataService.addSubscriptionPlans,
+    putSubscriptionPlans: apiMetadataService.putSubscriptionPlans,
+    getSubscriptionPlan: apiMetadataService.getSubscriptionPlan,
+    deleteSubscriptionPlan: apiMetadataService.deleteSubscriptionPlan,
 };

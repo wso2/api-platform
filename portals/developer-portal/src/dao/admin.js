@@ -22,7 +22,7 @@ const Provider = require('../models/provider');
 const apiDao = require('./apiMetadata');
 const { APIMetadata } = require('../models/apiMetadata');
 const APIImageMetadata = require('../models/apiImages');
-const SubscriptionPolicy = require('../models/subscriptionPolicy');
+const SubscriptionPlan = require('../models/subscriptionPlan');
 const logger = require('../config/logger');
 const sequelize = require('../db/sequelize');
 
@@ -582,7 +582,7 @@ const createSubscription = async (orgID, subscription, t) => {
         const subMapping = await SubscriptionMapping.create({
             CREATED_BY: subscription.createdBy,
             API_ID: subscription.apiId,
-            POLICY_ID: subscription.policyId,
+            PLAN_ID: subscription.planId,
             ORG_ID: orgID,
         }, { transaction: t });
         return subMapping;
@@ -597,7 +597,7 @@ const createSubscription = async (orgID, subscription, t) => {
 const updateSubscription = async (orgID, subscription, t) => {
     try {
         const subMapping = await SubscriptionMapping.update({
-            POLICY_ID: subscription.policyId
+            PLAN_ID: subscription.planId
         }, {
             where: {
                 ORG_ID: orgID,
@@ -802,12 +802,12 @@ const upsertApplicationKeyMapping = async (mappingData, t) => {
 
 
 /**
- * Find subscription by unique key (app, api, policy)
+ * Find subscription by unique key (app, api, plan)
  */
-const findSubscriptionByUniqueKey = async (orgID, apiID, policyID, t) => {
+const findSubscriptionByUniqueKey = async (orgID, apiID, planID, t) => {
     try {
         return await SubscriptionMapping.findOne({
-            where: { ORG_ID: orgID, API_ID: apiID, POLICY_ID: policyID },
+            where: { ORG_ID: orgID, API_ID: apiID, PLAN_ID: planID },
             transaction: t,
         });
     } catch (error) {

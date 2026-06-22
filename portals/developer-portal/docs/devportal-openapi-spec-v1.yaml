@@ -43,7 +43,7 @@ tags:
   - name: Providers
   - name: APIs
   - name: API Content
-  - name: Subscription Policies
+  - name: Subscription Plans
   - name: Labels
   - name: Applications
   - name: Subscriptions
@@ -64,7 +64,7 @@ paths:
       summary: Create an organization
       description: >-
         Creates a Developer Portal organization and initializes its default portal configuration,
-        default label, default view, default WSO2 provider, and default subscription policies when
+        default label, default view, default WSO2 provider, and default subscription plans when
         configured.
       operationId: createOrganization
       requestBody:
@@ -393,7 +393,7 @@ paths:
       description: >-
         Creates Developer Portal API metadata from either a full API artifact ZIP, an API metadata YAML
         file, or an `apiMetadata` JSON string. An API definition file is required unless supplied by the
-        artifact ZIP. The service also stores labels, subscription policy mappings, image metadata, and
+        artifact ZIP. The service also stores labels, subscription plan mappings, image metadata, and
         schema definitions for MCP or GraphQL APIs when provided.
       operationId: createApiMetadata
       requestBody:
@@ -469,7 +469,7 @@ paths:
       summary: Update API metadata
       description: >-
         Updates Developer Portal API metadata and its stored definition. The update flow can also adjust
-        label mappings, subscription policy mappings, schema definitions, and image metadata. Status
+        label mappings, subscription plan mappings, schema definitions, and image metadata. Status
         changes to unpublished are rejected when active subscriptions exist.
       operationId: updateApiMetadata
       requestBody:
@@ -510,51 +510,51 @@ paths:
         - OAuth2Security:
             - dp:api_delete
             - dp:api_manage
-  /o/{orgId}/devportal/v1/subscription-policies:
+  /o/{orgId}/devportal/v1/subscription-plans:
     parameters:
       - $ref: "#/components/parameters/OrgId"
     get:
       tags:
-        - Subscription Policies
-      summary: List subscription policies
+        - Subscription Plans
+      summary: List subscription plans
       description: >-
-        Lists subscription policies for an organization. When `name` is supplied, only the matching
-        policy (if any) is returned. Policy names are unique within an organization.
-      operationId: listSubscriptionPolicies
+        Lists subscription plans for an organization. When `name` is supplied, only the matching
+        plan (if any) is returned. Plan names are unique within an organization.
+      operationId: listSubscriptionPlans
       parameters:
         - in: query
           name: name
           required: false
           schema:
             type: string
-          description: Filter by exact policy name. Returns an array of zero or one items.
+          description: Filter by exact plan name. Returns an array of zero or one items.
       responses:
         "200":
-          $ref: "#/components/responses/SubscriptionPolicyListResponse"
+          $ref: "#/components/responses/SubscriptionPlanListResponse"
         "400":
           $ref: "#/components/responses/BadRequest"
         "500":
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:sub_policy_read
-            - dp:sub_policy_manage
+            - dp:sub_plan_read
+            - dp:sub_plan_manage
     post:
       tags:
-        - Subscription Policies
-      summary: Create subscription policies
+        - Subscription Plans
+      summary: Create subscription plans
       description: >-
-        Creates one subscription policy when the request body is an object, or multiple subscription
-        policies when the body is an array. Bulk creation returns a message instead of creating policies
-        when `generateDefaultSubPolicies` is enabled.
-      operationId: addSubscriptionPolicies
+        Creates one subscription plan when the request body is an object, or multiple subscription
+        plans when the body is an array. Bulk creation returns a message instead of creating plans
+        when `generateDefaultSubPlans` is enabled.
+      operationId: addSubscriptionPlans
       requestBody:
-        $ref: "#/components/requestBodies/SubscriptionPolicyBody"
+        $ref: "#/components/requestBodies/SubscriptionPlanBody"
       responses:
         "200":
           $ref: "#/components/responses/MessageResponse"
         "201":
-          $ref: "#/components/responses/SubscriptionPolicyMutationResponse"
+          $ref: "#/components/responses/SubscriptionPlanMutationResponse"
         "400":
           $ref: "#/components/responses/BadRequest"
         "409":
@@ -563,25 +563,25 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:sub_policy_write
-            - dp:sub_policy_manage
+            - dp:sub_plan_write
+            - dp:sub_plan_manage
     put:
       tags:
-        - Subscription Policies
-      summary: Upsert subscription policies
+        - Subscription Plans
+      summary: Upsert subscription plans
       description: >-
-        Upserts one subscription policy when the request body is an object, or multiple policies when the
-        body is an array. A single policy update returns `200` when an existing policy is updated and
-        `201` when a new policy is created. Bulk updates return a message when `generateDefaultSubPolicies`
+        Upserts one subscription plan when the request body is an object, or multiple plans when the
+        body is an array. A single plan update returns `200` when an existing plan is updated and
+        `201` when a new plan is created. Bulk updates return a message when `generateDefaultSubPlans`
         is enabled.
-      operationId: putSubscriptionPolicies
+      operationId: putSubscriptionPlans
       requestBody:
-        $ref: "#/components/requestBodies/SubscriptionPolicyBody"
+        $ref: "#/components/requestBodies/SubscriptionPlanBody"
       responses:
         "200":
-          $ref: "#/components/responses/SubscriptionPolicyPutResponse"
+          $ref: "#/components/responses/SubscriptionPlanPutResponse"
         "201":
-          $ref: "#/components/responses/SubscriptionPolicyMutationResponse"
+          $ref: "#/components/responses/SubscriptionPlanMutationResponse"
         "400":
           $ref: "#/components/responses/BadRequest"
         "404":
@@ -592,21 +592,21 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:sub_policy_write
-            - dp:sub_policy_manage
-  /o/{orgId}/devportal/v1/subscription-policies/{policyId}:
+            - dp:sub_plan_write
+            - dp:sub_plan_manage
+  /o/{orgId}/devportal/v1/subscription-plans/{planId}:
     parameters:
       - $ref: "#/components/parameters/OrgId"
-      - $ref: "#/components/parameters/PolicyId"
+      - $ref: "#/components/parameters/PlanId"
     get:
       tags:
-        - Subscription Policies
-      summary: Get a subscription policy
-      operationId: getSubscriptionPolicy
-      description: Retrieves a single subscription policy by `policyId`.
+        - Subscription Plans
+      summary: Get a subscription plan
+      operationId: getSubscriptionPlan
+      description: Retrieves a single subscription plan by `planId`.
       responses:
         "200":
-          $ref: "#/components/responses/SubscriptionPolicyResponse"
+          $ref: "#/components/responses/SubscriptionPlanResponse"
         "400":
           $ref: "#/components/responses/BadRequest"
         "404":
@@ -615,17 +615,17 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:sub_policy_read
-            - dp:sub_policy_manage
+            - dp:sub_plan_read
+            - dp:sub_plan_manage
     delete:
       tags:
-        - Subscription Policies
-      summary: Delete a subscription policy
-      operationId: deleteSubscriptionPolicy
-      description: Deletes a subscription policy by `policyId`.
+        - Subscription Plans
+      summary: Delete a subscription plan
+      operationId: deleteSubscriptionPlan
+      description: Deletes a subscription plan by `planId`.
       responses:
         "204":
-          description: Subscription policy deleted successfully.
+          description: Subscription plan deleted successfully.
         "400":
           $ref: "#/components/responses/BadRequest"
         "404":
@@ -634,8 +634,8 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:sub_policy_delete
-            - dp:sub_policy_manage
+            - dp:sub_plan_delete
+            - dp:sub_plan_manage
   /o/{orgId}/devportal/v1/apis/{apiId}/content:
     parameters:
       - $ref: "#/components/parameters/OrgId"
@@ -1903,10 +1903,10 @@ components:
             dp:api_content_write: Create or update API content.
             dp:api_content_delete: Delete API content.
             dp:api_content_manage: Manage API content.
-            dp:sub_policy_read: Read subscription policies.
-            dp:sub_policy_write: Create or update subscription policies.
-            dp:sub_policy_delete: Delete subscription policies.
-            dp:sub_policy_manage: Manage subscription policies.
+            dp:sub_plan_read: Read subscription plans.
+            dp:sub_plan_write: Create or update subscription plans.
+            dp:sub_plan_delete: Delete subscription plans.
+            dp:sub_plan_manage: Manage subscription plans.
             dp:label_read: Read labels.
             dp:label_write: Create or update labels.
             dp:label_delete: Delete labels.
@@ -1976,8 +1976,8 @@ components:
       schema:
         type: string
         example: api-7f4c2a6b
-    PolicyId:
-      name: policyId
+    PlanId:
+      name: planId
       in: path
       required: true
       schema:
@@ -2329,42 +2329,42 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/ProviderRequest"
-    SubscriptionPolicyBody:
+    SubscriptionPlanBody:
       required: true
       description: >-
-        Subscription policy payload. Send a single object for single create/upsert, or a non-empty array
-        for bulk create/upsert. The service currently processes policies with `type` set to
-        `requestcount` or `eventcount`. Alternatively, upload a YAML file in the `subscriptionPolicy`
-        multipart field; use `kind: SubscriptionPolicy` for a single policy or `kind: SubscriptionPolicyList`
+        Subscription plan payload. Send a single object for single create/upsert, or a non-empty array
+        for bulk create/upsert. The service currently processes plans with `type` set to
+        `requestcount` or `eventcount`. Alternatively, upload a YAML file in the `subscriptionPlan`
+        multipart field; use `kind: SubscriptionPlan` for a single plan or `kind: SubscriptionPlanList`
         with an `items` array for bulk operations.
       content:
         application/json:
           schema:
             oneOf:
-              - $ref: "#/components/schemas/SubscriptionPolicyRequest"
+              - $ref: "#/components/schemas/SubscriptionPlanRequest"
               - type: array
                 minItems: 1
                 items:
-                  $ref: "#/components/schemas/SubscriptionPolicyRequest"
+                  $ref: "#/components/schemas/SubscriptionPlanRequest"
         multipart/form-data:
           schema:
             type: object
             properties:
-              subscriptionPolicy:
+              subscriptionPlan:
                 type: string
                 format: binary
                 description: >-
-                  Subscription policy YAML file. Use `kind: SubscriptionPolicy` for a single policy
-                  or `kind: SubscriptionPolicyList` (with an `items` array) for bulk operations.
+                  Subscription plan YAML file. Use `kind: SubscriptionPlan` for a single plan
+                  or `kind: SubscriptionPlanList` (with an `items` array) for bulk operations.
           examples:
-            singlePolicy:
-              summary: Single subscription policy YAML upload
+            singlePlan:
+              summary: Single subscription plan YAML upload
               value:
-                subscriptionPolicy: plan.yaml
-            policyList:
-              summary: Bulk subscription policy YAML upload
+                subscriptionPlan: plan.yaml
+            planList:
+              summary: Bulk subscription plan YAML upload
               value:
-                subscriptionPolicy: plans.yaml
+                subscriptionPlan: plans.yaml
     LabelsBody:
       required: true
       description: Label array to create or upsert.
@@ -2428,7 +2428,7 @@ components:
               value:
                 apiId: api-7f4c2a6b
                 name: weather_sandbox_key
-                policyName: Silver
+                planName: Silver
     AppKeyMappingBody:
       required: true
       description: >-
@@ -2513,7 +2513,7 @@ components:
                 keyType: PRODUCTION
                 name: weather-prod-key
                 subscriptionPlan:
-                  policyName: Gold
+                  planName: Gold
             sandboxKey:
               summary: Generate a sandbox API key
               value:
@@ -2763,7 +2763,7 @@ components:
                   {"apiInfo":{"apiName":"Weather API","apiVersion":"v1","apiDescription":"Weather forecast
                   API","apiType":"REST","visibility":"PUBLIC","provider":"WSO2","apiStatus":"PUBLISHED","tags":["weather"],
                   "labels":["default"]},"endPoints":{"productionURL":"https://api.example.com/weather",
-                  "sandboxURL":"https://sandbox.example.com/weather"},"subscriptionPolicies":[{"policyName":"Gold"}]}
+                  "sandboxURL":"https://sandbox.example.com/weather"},"subscriptionPlans":[{"planName":"Gold"}]}
     ApiContentZipMultipartBody:
       required: true
       description: |
@@ -3103,9 +3103,9 @@ components:
             endPoints:
               productionURL: https://api.example.com/weather
               sandboxURL: https://sandbox.example.com/weather
-            subscriptionPolicies:
-              - policyID: policy-gold
-                policyName: Gold
+            subscriptionPlans:
+              - planID: plan-gold
+                planName: Gold
                 displayName: Gold
                 requestCount: 10000
     ApiMetadataResponse:
@@ -3137,9 +3137,9 @@ components:
             endPoints:
               sandboxURL: https://sandbox.example.com/weather
               productionURL: https://api.example.com/weather
-            subscriptionPolicies:
-              - policyID: policy-gold
-                policyName: Gold
+            subscriptionPlans:
+              - planID: plan-gold
+                planName: Gold
                 displayName: Gold
                 requestCount: 10000
     ApiMetadataListResponse:
@@ -3171,40 +3171,40 @@ components:
               endPoints:
                 sandboxURL: https://sandbox.example.com/weather
                 productionURL: https://api.example.com/weather
-    SubscriptionPolicyResponse:
-      description: Subscription policy DTO.
+    SubscriptionPlanResponse:
+      description: Subscription plan DTO.
       content:
         application/json:
           schema:
-            $ref: "#/components/schemas/SubscriptionPolicyResponse"
-    SubscriptionPolicyListResponse:
-      description: List of subscription policy DTOs. Empty array when no policies match.
+            $ref: "#/components/schemas/SubscriptionPlanResponse"
+    SubscriptionPlanListResponse:
+      description: List of subscription plan DTOs. Empty array when no plans match.
       content:
         application/json:
           schema:
             type: array
             items:
-              $ref: "#/components/schemas/SubscriptionPolicyResponse"
-    SubscriptionPolicyMutationResponse:
-      description: Subscription policy create/update response for single or bulk operations.
+              $ref: "#/components/schemas/SubscriptionPlanResponse"
+    SubscriptionPlanMutationResponse:
+      description: Subscription plan create/update response for single or bulk operations.
       content:
         application/json:
           schema:
             oneOf:
-              - $ref: "#/components/schemas/SubscriptionPolicyResponse"
+              - $ref: "#/components/schemas/SubscriptionPlanResponse"
               - type: array
                 items:
-                  $ref: "#/components/schemas/SubscriptionPolicyResponse"
-    SubscriptionPolicyPutResponse:
-      description: Subscription policy update response. Bulk updates may return a list, and some configurations return a message.
+                  $ref: "#/components/schemas/SubscriptionPlanResponse"
+    SubscriptionPlanPutResponse:
+      description: Subscription plan update response. Bulk updates may return a list, and some configurations return a message.
       content:
         application/json:
           schema:
             oneOf:
-              - $ref: "#/components/schemas/SubscriptionPolicyResponse"
+              - $ref: "#/components/schemas/SubscriptionPlanResponse"
               - type: array
                 items:
-                  $ref: "#/components/schemas/SubscriptionPolicyResponse"
+                  $ref: "#/components/schemas/SubscriptionPlanResponse"
               - $ref: "#/components/schemas/MessageResponse"
     LabelsResponse:
       description: List of label DTOs.
@@ -3752,10 +3752,10 @@ components:
           $ref: "#/components/schemas/ApiInfoResponse"
         endPoints:
           $ref: "#/components/schemas/ApiEndpointsResponse"
-        subscriptionPolicies:
+        subscriptionPlans:
           type: array
           items:
-            $ref: "#/components/schemas/SubscriptionPolicyResponse"
+            $ref: "#/components/schemas/SubscriptionPlanResponse"
       additionalProperties: true
     ApiMetadataResponse:
       type: object
@@ -3770,16 +3770,16 @@ components:
           type: string
         dataSource:
           type: string
-        policyID:
+        planID:
           type: string
         apiInfo:
           $ref: "#/components/schemas/ApiInfoResponse"
         endPoints:
           $ref: "#/components/schemas/ApiEndpointsResponse"
-        subscriptionPolicies:
+        subscriptionPlans:
           type: array
           items:
-            $ref: "#/components/schemas/SubscriptionPolicyResponse"
+            $ref: "#/components/schemas/SubscriptionPlanResponse"
       additionalProperties: false
     ApiInfoResponse:
       type: object
@@ -3860,12 +3860,12 @@ components:
       type: object
       additionalProperties:
         type: string
-    SubscriptionPolicyResponse:
+    SubscriptionPlanResponse:
       type: object
       properties:
-        policyID:
+        planID:
           type: string
-        policyName:
+        planName:
           type: string
         displayName:
           type: string
@@ -4034,23 +4034,23 @@ components:
           type: string
           format: uri
       additionalProperties: false
-    SubscriptionPolicyRequest:
+    SubscriptionPlanRequest:
       type: object
       required:
-        - policyName
+        - planName
         - displayName
         - type
       properties:
-        policyId:
+        planId:
           type: string
-          description: Optional external/APIM policy UUID.
-        policyID:
+          description: Optional external/APIM-assigned plan UUID.
+        planID:
           type: string
           description: Alternative casing accepted by the DAO.
         refId:
           type: string
-          description: Platform API subscription plan UUID to associate with this policy.
-        policyName:
+          description: Platform API subscription plan UUID to associate with this plan.
+        planName:
           type: string
         displayName:
           type: string
@@ -4066,12 +4066,12 @@ components:
           oneOf:
             - type: integer
             - type: string
-          description: Required for request-count policies. Use -1 for unlimited.
+          description: Required for request-count plans. Use -1 for unlimited.
         eventCount:
           oneOf:
             - type: integer
             - type: string
-          description: Required for event-count policies. Use -1 for unlimited.
+          description: Required for event-count plans. Use -1 for unlimited.
     LabelRequest:
       type: object
       required:
@@ -4112,8 +4112,8 @@ components:
           example: api-7f4c2a6b
         subscriptionPlanId:
           type: string
-          description: Developer Portal subscription plan (policy) ID.
-          example: pol-7f4c2a6b
+          description: Developer Portal subscription plan ID.
+          example: plan-7f4c2a6b
       additionalProperties: false
     SubscriptionUpdateRequest:
       type: object
@@ -4237,7 +4237,7 @@ components:
       required:
         - applicationID
         - apiId
-        - policyId
+        - planId
       properties:
         applicationID:
           type: string
@@ -4251,13 +4251,13 @@ components:
           type: string
           description: Control-plane API reference ID, used when a CP subscription is created or updated.
           example: cp-api-12345
-        policyId:
+        planId:
           type: string
-          description: Developer Portal subscription policy ID.
-          example: policy-gold
-        policyName:
+          description: Developer Portal subscription plan ID.
+          example: plan-gold
+        planName:
           type: string
-          description: Subscription policy name used as the throttling policy.
+          description: Subscription plan name used as the throttling policy.
           example: Gold
       additionalProperties: false
     KeyManagerRequest:
@@ -4848,7 +4848,7 @@ components:
           oneOf:
             - type: string
             - $ref: "#/components/schemas/GenericObject"
-          description: Subscription plan or policy details for the subscription.
+          description: Subscription plan details for the subscription.
       additionalProperties: true
     ApplicationKeysGenerateRequest:
       type: object

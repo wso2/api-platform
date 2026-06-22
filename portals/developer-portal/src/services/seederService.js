@@ -23,7 +23,7 @@ const providerDao = require('../dao/providerDao');
 const apiDao = require('../dao/apiDao');
 const labelDao = require('../dao/labelDao');
 const viewDao = require('../dao/viewDao');
-const subscriptionPolicyDao = require('../dao/subscriptionPolicyDao');
+const subscriptionPlanDao = require('../dao/subscriptionPlanDao');
 const { config } = require('../config/configLoader');
 const constants = require('../utils/constants');
 const logger = require('../config/logger');
@@ -124,13 +124,13 @@ async function seedDefaultOrg() {
         return;
     }
 
-    if (config.generateDefaultSubPolicies) {
+    if (config.generateDefaultSubPlans) {
         for (const plan of constants.DEFAULT_SUBSCRIPTION_PLANS) {
             try {
-                await subscriptionPolicyDao.createMany(orgId, [plan]);
+                await subscriptionPlanDao.createMany(orgId, [plan]);
             } catch (error) {
                 if (!(error instanceof Sequelize.UniqueConstraintError)) {
-                    logger.error('Failed to seed subscription policy', {
+                    logger.error('Failed to seed subscription plan', {
                         error: error.message,
                         operation: 'seedDefaultOrg',
                         plan: plan.name,

@@ -27,11 +27,11 @@ class APIDTO {
         this.apiInfo = new APIInfo(api);
         this.endPoints = new Endpoints(api);
         
-        if (api.DP_SUBSCRIPTION_POLICies) {
-            this.subscriptionPolicies = api.DP_SUBSCRIPTION_POLICies.map(policy => new APISubscriptionPolicy(policy));
+        if (api.DP_SUBSCRIPTION_PLANs) {
+            this.subscriptionPlans = api.DP_SUBSCRIPTION_PLANs.map(plan => new APISubscriptionPlan(plan));
         }
         if (api.DP_APPLICATIONs) {
-            this.policyID = api.DP_APPLICATIONs[0].DP_API_SUBSCRIPTION.dataValues.POLICY_ID;
+            this.planID = api.DP_APPLICATIONs[0].DP_API_SUBSCRIPTION.dataValues.PLAN_ID;
         }
     }
 
@@ -84,13 +84,13 @@ class APIInfo {
     }
 }
 
-class APISubscriptionPolicy {
-    constructor(apiSubscriptionPolicy) {
-        this.policyName = apiSubscriptionPolicy.POLICY_NAME;
-        this.displayName = apiSubscriptionPolicy.DISPLAY_NAME;
-        this.requestCount = apiSubscriptionPolicy.REQUEST_COUNT;
-        this.policyID = apiSubscriptionPolicy.POLICY_ID;
-        this.description = apiSubscriptionPolicy.DESCRIPTION;
+class APISubscriptionPlan {
+    constructor(apiSubscriptionPlan) {
+        this.planName = apiSubscriptionPlan.PLAN_NAME;
+        this.displayName = apiSubscriptionPlan.DISPLAY_NAME;
+        this.requestCount = apiSubscriptionPlan.REQUEST_COUNT;
+        this.planID = apiSubscriptionPlan.PLAN_ID;
+        this.description = apiSubscriptionPlan.DESCRIPTION;
     }
 }
 

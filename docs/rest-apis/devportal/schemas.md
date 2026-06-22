@@ -413,10 +413,10 @@ continued
     "sandboxURL": "string",
     "productionURL": "string"
   },
-  "subscriptionPolicies": [
+  "subscriptionPlans": [
     {
-      "policyID": "string",
-      "policyName": "string",
+      "planID": "string",
+      "planName": "string",
       "displayName": "string",
       "description": "string",
       "requestCount": 0,
@@ -438,7 +438,7 @@ continued
 |dataSource|string|false|none|none|
 |apiInfo|[ApiInfoResponse](#schemaapiinforesponse)|false|none|none|
 |endPoints|[ApiEndpointsResponse](#schemaapiendpointsresponse)|false|none|none|
-|subscriptionPolicies|[[SubscriptionPolicyResponse](#schemasubscriptionpolicyresponse)]|false|none|none|
+|subscriptionPlans|[[SubscriptionPlanResponse](#schemasubscriptionplanresponse)]|false|none|none|
 
 <h2 id="tocS_ApiMetadataResponse">ApiMetadataResponse</h2>
 
@@ -454,7 +454,7 @@ continued
   "apiHandle": "string",
   "provider": "string",
   "dataSource": "string",
-  "policyID": "string",
+  "planID": "string",
   "apiInfo": {
     "apiName": "string",
     "apiTitle": "string",
@@ -499,10 +499,10 @@ continued
     "sandboxURL": "string",
     "productionURL": "string"
   },
-  "subscriptionPolicies": [
+  "subscriptionPlans": [
     {
-      "policyID": "string",
-      "policyName": "string",
+      "planID": "string",
+      "planName": "string",
       "displayName": "string",
       "description": "string",
       "requestCount": 0,
@@ -522,10 +522,10 @@ continued
 |apiHandle|string|false|none|none|
 |provider|string|false|none|none|
 |dataSource|string|false|none|none|
-|policyID|string|false|none|none|
+|planID|string|false|none|none|
 |apiInfo|[ApiInfoResponse](#schemaapiinforesponse)|false|none|none|
 |endPoints|[ApiEndpointsResponse](#schemaapiendpointsresponse)|false|none|none|
-|subscriptionPolicies|[[SubscriptionPolicyResponse](#schemasubscriptionpolicyresponse)]|false|none|none|
+|subscriptionPlans|[[SubscriptionPlanResponse](#schemasubscriptionplanresponse)]|false|none|none|
 
 <h2 id="tocS_ApiInfoResponse">ApiInfoResponse</h2>
 
@@ -670,17 +670,17 @@ continued
 |---|---|---|---|---|
 |**additionalProperties**|string|false|none|none|
 
-<h2 id="tocS_SubscriptionPolicyResponse">SubscriptionPolicyResponse</h2>
+<h2 id="tocS_SubscriptionPlanResponse">SubscriptionPlanResponse</h2>
 
-<a id="schemasubscriptionpolicyresponse"></a>
-<a id="schema_SubscriptionPolicyResponse"></a>
-<a id="tocSsubscriptionpolicyresponse"></a>
-<a id="tocssubscriptionpolicyresponse"></a>
+<a id="schemasubscriptionplanresponse"></a>
+<a id="schema_SubscriptionPlanResponse"></a>
+<a id="tocSsubscriptionplanresponse"></a>
+<a id="tocssubscriptionplanresponse"></a>
 
 ```json
 {
-  "policyID": "string",
-  "policyName": "string",
+  "planID": "string",
+  "planName": "string",
   "displayName": "string",
   "description": "string",
   "requestCount": 0,
@@ -693,8 +693,8 @@ continued
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|policyID|string|false|none|none|
-|policyName|string|false|none|none|
+|planID|string|false|none|none|
+|planName|string|false|none|none|
 |displayName|string|false|none|none|
 |description|string|false|none|none|
 |requestCount|any|false|none|none|
@@ -932,19 +932,19 @@ continued
 |name|string|true|none|none|
 |providerURL|string(uri)|true|none|none|
 
-<h2 id="tocS_SubscriptionPolicyRequest">SubscriptionPolicyRequest</h2>
+<h2 id="tocS_SubscriptionPlanRequest">SubscriptionPlanRequest</h2>
 
-<a id="schemasubscriptionpolicyrequest"></a>
-<a id="schema_SubscriptionPolicyRequest"></a>
-<a id="tocSsubscriptionpolicyrequest"></a>
-<a id="tocssubscriptionpolicyrequest"></a>
+<a id="schemasubscriptionplanrequest"></a>
+<a id="schema_SubscriptionPlanRequest"></a>
+<a id="tocSsubscriptionplanrequest"></a>
+<a id="tocssubscriptionplanrequest"></a>
 
 ```json
 {
-  "policyId": "string",
-  "policyID": "string",
+  "planId": "string",
+  "planID": "string",
   "refId": "string",
-  "policyName": "string",
+  "planName": "string",
   "displayName": "string",
   "description": "string",
   "type": "requestcount",
@@ -958,14 +958,14 @@ continued
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|policyId|string|false|none|Optional external/APIM policy UUID.|
-|policyID|string|false|none|Alternative casing accepted by the DAO.|
-|refId|string|false|none|Platform API subscription plan UUID to associate with this policy.|
-|policyName|string|true|none|none|
+|planId|string|false|none|Optional external/APIM-assigned plan UUID.|
+|planID|string|false|none|Alternative casing accepted by the DAO.|
+|refId|string|false|none|Platform API subscription plan UUID to associate with this plan.|
+|planName|string|true|none|none|
 |displayName|string|true|none|none|
 |description|string|false|none|none|
 |type|string|true|none|Service accepts case-insensitive `requestcount` or `eventcount`.|
-|requestCount|any|false|none|Required for request-count policies. Use -1 for unlimited.|
+|requestCount|any|false|none|Required for request-count plans. Use -1 for unlimited.|
 
 oneOf
 
@@ -983,7 +983,7 @@ continued
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|eventCount|any|false|none|Required for event-count policies. Use -1 for unlimited.|
+|eventCount|any|false|none|Required for event-count plans. Use -1 for unlimited.|
 
 oneOf
 
@@ -1060,7 +1060,7 @@ xor
 ```json
 {
   "apiId": "api-7f4c2a6b",
-  "subscriptionPlanId": "pol-7f4c2a6b"
+  "subscriptionPlanId": "plan-7f4c2a6b"
 }
 
 ```
@@ -1070,7 +1070,7 @@ xor
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |apiId|string|true|none|Developer Portal API ID.|
-|subscriptionPlanId|string|false|none|Developer Portal subscription plan (policy) ID.|
+|subscriptionPlanId|string|false|none|Developer Portal subscription plan ID.|
 
 <h2 id="tocS_SubscriptionUpdateRequest">SubscriptionUpdateRequest</h2>
 
@@ -1269,8 +1269,8 @@ and
   "applicationID": "app-12345",
   "apiId": "api-7f4c2a6b",
   "apiReferenceID": "cp-api-12345",
-  "policyId": "policy-gold",
-  "policyName": "Gold"
+  "planId": "plan-gold",
+  "planName": "Gold"
 }
 
 ```
@@ -1282,8 +1282,8 @@ and
 |applicationID|string|true|none|Developer Portal application ID.|
 |apiId|string|true|none|Developer Portal API ID.|
 |apiReferenceID|string|false|none|Control-plane API reference ID, used when a CP subscription is created or updated.|
-|policyId|string|true|none|Developer Portal subscription policy ID.|
-|policyName|string|false|none|Subscription policy name used as the throttling policy.|
+|planId|string|true|none|Developer Portal subscription plan ID.|
+|planName|string|false|none|Subscription plan name used as the throttling policy.|
 
 <h2 id="tocS_KeyManagerRequest">KeyManagerRequest</h2>
 
@@ -1867,7 +1867,7 @@ Application row with included key mapping rows as returned by Sequelize.
 |projectID|string|true|none|Project ID used to resolve environment templates.|
 |keyType|string|true|none|none|
 |name|string|false|none|Optional API key name. When omitted, the service generates a name from API handle, application reference, and key type.|
-|subscriptionPlan|any|false|none|Subscription plan or policy details for the subscription.|
+|subscriptionPlan|any|false|none|Subscription plan details for the subscription.|
 
 oneOf
 
