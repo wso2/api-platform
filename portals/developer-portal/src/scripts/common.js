@@ -6,6 +6,8 @@
 (function () {
     var cfg = window.__DEVPORTAL_API__ || { base: 'devportal', version: 'v1' };
     window.devportalApi = {
+        // Current page's org UUID, injected by the layout (window.__DEVPORTAL_API__.orgId).
+        orgId: cfg.orgId || '',
         // Org-scoped resource: org('abc', '/subscriptions') => '/o/abc/devportal/v1/subscriptions'
         org: function (orgId, path) {
             return '/o/' + encodeURIComponent(orgId) + '/' + cfg.base + '/' + cfg.version + (path || '');
@@ -26,21 +28,28 @@
 document.addEventListener("DOMContentLoaded", function () {
     const sidebar = document.getElementById('sidebar');
     const collapseBtn = document.getElementById('collapseBtn');
-    
+
     // Remove reference to sidebarPlaceholder which no longer exists
     const sidebarPlaceholder = document.getElementById('sidebarPlaceholder');
     if (sidebarPlaceholder) {
         sidebarPlaceholder.remove();
     }
-    
+
+    // Restore persisted sidebar state
+    if (localStorage.getItem('sidebar-expanded') === '1') {
+        sidebar.classList.add('expanded');
+        sidebar.classList.remove('force-collapse');
+        collapseBtn.querySelector('.collapse-text').textContent = "Collapse";
+    }
+
     // Track if the mouse has left the sidebar
     let mouseLeftSidebar = false;
-    
+
     // Add mouse enter and leave event listeners
     sidebar.addEventListener('mouseleave', () => {
         mouseLeftSidebar = true;
     });
-    
+
     sidebar.addEventListener('mouseenter', () => {
         // If mouse re-enters and the sidebar was previously force-collapsed
         if (mouseLeftSidebar && sidebar.classList.contains('force-collapse')) {
@@ -48,29 +57,21 @@ document.addEventListener("DOMContentLoaded", function () {
         }
         mouseLeftSidebar = false;
     });
-    
+
     // Toggle between expanded and collapsed state when clicking the collapse button
     collapseBtn.addEventListener('click', () => {
         if (sidebar.classList.contains('expanded')) {
-            // If currently expanded, collapse and add a class to prevent hover expansion
+            // If currently expanded (pinned), collapse and prevent hover expansion
             sidebar.classList.remove('expanded');
-            
-            // Disable hover expansion until mouse re-enters
             sidebar.classList.add('force-collapse');
-            
-            // Update button text and icon
             collapseBtn.querySelector('.collapse-text').textContent = "Expand";
-            collapseBtn.querySelector('i').classList.remove('bi-chevron-left');
-            collapseBtn.querySelector('i').classList.add('bi-chevron-right');
+            localStorage.setItem('sidebar-expanded', '0');
         } else {
-            // If currently collapsed, expand
+            // If currently collapsed, pin it expanded
             sidebar.classList.add('expanded');
             sidebar.classList.remove('force-collapse');
-            
-            // Update button text and icon
             collapseBtn.querySelector('.collapse-text').textContent = "Collapse";
-            collapseBtn.querySelector('i').classList.remove('bi-chevron-right');
-            collapseBtn.querySelector('i').classList.add('bi-chevron-left');
+            localStorage.setItem('sidebar-expanded', '1');
         }
     });
     
@@ -484,7 +485,7 @@ document.addEventListener("DOMContentLoaded", function () {
             // Function to create application directly via API
             async function createApplicationDirectly(name, description = '') {
                 try {
-                    const response = await fetch(devportalApi.root('/applications'), {
+                    const response = await fetch(devportalApi.org(devportalApi.orgId, '/applications'), {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
@@ -779,7 +780,7 @@ document.addEventListener("DOMContentLoaded", function () {
             // Function to create application directly via API
             async function createApplicationDirectly(name, description = '') {
                 try {
-                    const response = await fetch(devportalApi.root('/applications'), {
+                    const response = await fetch(devportalApi.org(devportalApi.orgId, '/applications'), {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',

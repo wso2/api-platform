@@ -123,6 +123,11 @@ configurePassport(SERVER_ID);
 app.use(constants.ROUTE.TECHNICAL_STYLES, express.static(path.join(require.main.filename, '../styles')));
 app.use(constants.ROUTE.TECHNICAL_SCRIPTS, express.static(path.join(require.main.filename, '../scripts')));
 
+// Dev live-reload SSE endpoint — must be registered before org-resolution routes
+if (process.env.NODE_ENV === 'development') {
+    require('./liveReload').setup(app);
+}
+
 // Redirect unrecognised root-level paths (e.g. /robots.txt, /sitemap.xml) before
 // the /:orgName route can treat them as org IDs.
 app.use((req, res, next) => {

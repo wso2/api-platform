@@ -1,127 +1,240 @@
 {{#pageHead}}
   <link rel='stylesheet' href='/technical-styles/applications.css' />
 {{/pageHead}}
-{{#pageScripts}}
-  <script src='/technical-scripts/application-listing.js' defer></script>
-  <script src='/technical-scripts/add-application-form.js' defer></script>
-{{/pageScripts}}
 
-<section class="section mt-0 mb-6">
-  <div class="container-fluid applicationspage-container" id="applicationsContainer">
-    <div class="container-header mb-4 d-sm-flex justify-content-between align-items-center">
-      <span>Applications</span>
+<div class="page-container">
 
-      {{#if applicationsMetadata.length}}
-      <!-- Show button if there are applications -->
-      <div class="create-application-btn">
-        <button class="btn common-btn-primary {{#if @root.isReadOnlyMode}}disabled{{/if}}" onclick="toggleCreateCard()" id="createButton">Create</button>
-      </div>
-      {{/if}}
+  <!-- Page header -->
+  <div class="page-header">
+    <div>
+      <h1 class="page-title">Applications</h1>
+      <p class="page-desc">Applications hold the API keys and subscriptions you use to call APIs.</p>
     </div>
+    {{#if applicationsMetadata.length}}
+    <button class="apps-create-btn" id="apps-create-btn" type="button"
+      {{#if @root.isReadOnlyMode}}disabled title="Read-only mode"{{/if}}>
+      <i class="bi bi-plus"></i> Create application
+    </button>
+    {{/if}}
+  </div>
 
-    <div class="row row-gap-4">
+  <!-- Empty state -->
+  {{#unless applicationsMetadata.length}}
+  <div class="dp-empty">
+    <span class="dp-empty-icon"><i class="bi bi-grid-3x3-gap-fill"></i></span>
+    <h2 class="dp-empty-title">No applications yet</h2>
+    <p class="dp-empty-desc">Create an application to generate API keys and subscribe to APIs. You can manage all your credentials in one place.</p>
+    <button class="dp-btn dp-btn--primary dp-btn--lg" id="apps-create-btn-empty" type="button"
+      {{#if @root.isReadOnlyMode}}disabled title="Read-only mode"{{/if}}>
+      <i class="bi bi-plus"></i> Create application
+    </button>
+  </div>
+  {{/unless}}
 
-      <!-- Create application Card -->
-      <div class="col-12 col-md-6 col-lg-4 col-xl-3 {{#if applicationsMetadata.length}}d-none{{/if}}" id="createApplicationCardWrapper">
-        <div class="create-application-card card {{#if @root.isReadOnlyMode}}disabled{{/if}} {{#if applicationsMetadata.length}}d-none{{/if}}" id="applicationCreateCard" style="{{#if @root.isReadOnlyMode}}pointer-events: none; opacity: 0.5;{{else}} cursor: pointer; {{/if}}"
-          onclick="showApplicationForm()">
-          <span class="plus-icon">+</span>
-          <span class="create-text">Create Application</span>
-        </div>
+  <!-- Card grid -->
+  {{#if applicationsMetadata.length}}
+  <div class="apps-grid" id="applicationsContainer">
+    {{#applicationsMetadata}}
+    <div class="app-card" id="app-card-{{id}}" data-id="{{id}}" data-name="{{name}}"
+      style="cursor:pointer;" onclick="window.location.href='{{../baseUrl}}/applications/{{id}}'">
 
-        <div class="application-create-card card d-none" style=" cursor: pointer;"
-          id="applicationCreateForm">
-          <div class="application-layout">
-            <div class="application-content">
-              <form id='applicationForm' class='create-app-form'>
-                <div class="d-flex">
-                  <div class="application-icon-container">
-                    <img
-                      src="https://raw.githubusercontent.com/wso2/docs-bijira/refs/heads/main/en/devportal-theming/application.svg"
-                      alt="Application icon" />
-                  </div>
-                  <div class="flex-grow-1 application-card-body">
-                    <!-- Application Name -->
-                    <div class="w-100">
-                      <input type="text" id="applicationName" class="form-control" placeholder="Name" required />
-                    </div>
-                    <div id="nameError" class="error-msg text-danger mt-1 d-none">
-                      Application name cannot be empty.
-                    </div>
-                  </div>
-                </div>
-                <div class="application-card-footer">
-                    <button type='button' class='btn common-btn-outlined add-application-action-btn' id='cancelCreateButton' 
-                      data-has-apps="{{#if applicationsMetadata.length}}true{{else}}false{{/if}}" onclick="event.stopPropagation(); hideApplicationForm(this);">
-                        Cancel
-                      </button>
-                    <button type='submit' class='btn common-btn-primary add-application-action-btn' id='createAppButton'>
-                      Create  
-                    </button>
-                </div>
-              </form>
-          </div>
-           <div class="message-overlay hidden" id="message-overlay">
-              <div class="message-content" >
-                  <i class="bi message-icon"></i>
-                  <p class="message-text"></p>
-              </div>
-              <button type="button" class="close-message" aria-label="Close message">&times;</button>
-            </div>
-          </div>
+      <div class="app-card-top">
+        <span class="app-avatar" data-name="{{name}}"></span>
+        <div class="app-card-meta">
+          <h3 class="app-card-name">{{name}}</h3>
         </div>
       </div>
 
+      <p class="app-card-desc">{{description}}</p>
 
-      <!-- Application Cards -->
-      {{#applicationsMetadata}}
-
-      <div class="col-12 col-md-6 col-lg-4 col-xl-3">
-        <div class="card app-card application-card" id="app-card-{{id}}" data-name="{{name}}" style="cursor: pointer;"
-          onclick="window.location.href='{{../baseUrl}}/applications/{{id}}'">
-          <div class="application-layout">
-            <div class="application-icon-container">
-              <img
-                src="https://raw.githubusercontent.com/wso2/docs-bijira/refs/heads/main/en/devportal-theming/application.svg"
-                alt="Application icon" />
-            </div>
-            <div class="application-content">
-              <div class="application-card-header">
-                <div class="overflow-hidden">
-                  <div>
-                    <a href="{{../baseUrl}}/applications/{{id}}" class="application-name-link">
-                      {{name}}
-                    </a>
-                  </div>
-                </div>
-              </div>
-              <div class="application-card-body">
-                <div class="application-card-meta">
-                  <p class="fw-light application-description">
-                    <span class="truncate-text">{{description}}</span>
-                  </p>
-                </div>
-              </div>
-              <div class="application-card-footer">
-                <div class="application-card-actions">
-                  <button type="button" class="btn application-btn-icon delete-button {{#if @root.isReadOnlyMode}}disabled{{/if}}" title="Delete"
-                      id="trash-btn-{{id}}" onclick="event.stopPropagation(); openWarningModal('deleteApplication', '{{id}}')">
-                    <i class="bi bi-trash"></i>
-                  </button>
-                </div>
-              </div>
-               <div class="message-overlay hidden" id="message-overlay-{{id}}">
-                <div class="message-content" >
-                    <i class="bi message-icon"></i>
-                    <p class="message-text"></p>
-                </div>
-                <button type="button" class="close-message" aria-label="Close message">&times;</button>
-            </div>
-            </div>
-          </div>
-        </div>
+      <div class="app-card-footer">
+        {{#unless @root.isReadOnlyMode}}
+        <button type="button" class="app-delete-btn" id="trash-btn-{{id}}"
+          title="Delete application"
+          onclick="event.stopPropagation(); appShowDeleteModal('{{id}}', '{{name}}')">
+          <i class="bi bi-trash"></i>
+        </button>
+        {{/unless}}
       </div>
-      {{/applicationsMetadata}}
+
+    </div>
+    {{/applicationsMetadata}}
+  </div>
+  {{/if}}
+
+</div>
+
+<!-- ── Create application modal ── -->
+<div class="app-modal-overlay" id="app-create-modal" style="display:none;">
+  <div class="app-modal">
+    <div class="app-modal-head">
+      <div class="app-modal-head-left">
+        <span class="app-modal-icon"><i class="bi bi-grid-3x3-gap-fill"></i></span>
+        <h2 class="app-modal-title">Create application</h2>
+      </div>
+      <button type="button" class="app-modal-close" id="app-create-close" aria-label="Close">
+        <i class="bi bi-x-lg"></i>
+      </button>
+    </div>
+    <div class="app-modal-body">
+      <div class="app-form-group">
+        <label for="app-name-input">Application name <span class="app-required">*</span></label>
+        <input type="text" id="app-name-input" class="app-form-input" placeholder="e.g. My Mobile App" maxlength="100" autocomplete="off" />
+      </div>
+      <div class="app-form-group">
+        <label for="app-desc-input">Description</label>
+        <textarea id="app-desc-input" class="app-form-input" rows="3"
+          placeholder="What is this application for? (optional)"
+          maxlength="256" style="resize:vertical;"></textarea>
+      </div>
+    </div>
+    <div class="app-modal-footer">
+      <button type="button" class="app-btn-secondary" id="app-create-cancel">Cancel</button>
+      <button type="button" class="app-btn-primary" id="app-create-confirm" disabled>Create</button>
     </div>
   </div>
-</section>
+</div>
+
+<!-- ── Delete confirmation modal ── -->
+<div class="app-modal-overlay" id="app-delete-modal" style="display:none;">
+  <div class="app-modal app-modal--sm">
+    <div class="app-modal-head">
+      <div class="app-modal-head-left">
+        <span class="app-modal-icon app-modal-icon--danger"><i class="bi bi-trash"></i></span>
+        <h2 class="app-modal-title">Delete application</h2>
+      </div>
+    </div>
+    <p class="app-modal-body-text">
+      Are you sure you want to delete <strong id="app-delete-name"></strong>?
+      Its API keys and subscriptions will be revoked. This action can't be undone.
+    </p>
+    <div class="app-modal-footer">
+      <button type="button" class="app-btn-secondary" id="app-delete-cancel">Cancel</button>
+      <button type="button" class="app-btn-danger" id="app-delete-confirm">Delete</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  /* ── Avatar palette ──────────────────────────────── */
+  var palette = [
+    { bg: '#e6f2fb', fg: '#0277bd' },
+    { bg: '#ece9fb', fg: '#6741d9' },
+    { bg: '#fff1e6', fg: '#e65100' },
+    { bg: '#e6f4ea', fg: '#2e7d32' },
+    { bg: '#fce4ef', fg: '#d6336c' },
+  ];
+
+  function initials(name) {
+    var x = (name || '').replace(/[^A-Za-z0-9 ]/g, '').trim()
+      .split(/\s+/).map(function (w) { return w[0] || ''; }).join('');
+    return (x || 'AP').slice(0, 2).toUpperCase();
+  }
+
+  document.querySelectorAll('.app-avatar[data-name]').forEach(function (el, i) {
+    var c = palette[i % palette.length];
+    el.style.background = c.bg;
+    el.style.color = c.fg;
+    el.textContent = initials(el.getAttribute('data-name'));
+  });
+
+  /* ── Create modal ────────────────────────────────── */
+  function openCreateModal() {
+    document.getElementById('app-name-input').value = '';
+    document.getElementById('app-desc-input').value = '';
+    document.getElementById('app-create-confirm').disabled = true;
+    document.getElementById('app-create-modal').style.display = 'flex';
+    setTimeout(function () { document.getElementById('app-name-input').focus(); }, 60);
+  }
+
+  function closeCreateModal() {
+    document.getElementById('app-create-modal').style.display = 'none';
+  }
+
+  var createBtn = document.getElementById('apps-create-btn');
+  if (createBtn) createBtn.addEventListener('click', openCreateModal);
+  var createBtnEmpty = document.getElementById('apps-create-btn-empty');
+  if (createBtnEmpty) createBtnEmpty.addEventListener('click', openCreateModal);
+
+  document.getElementById('app-create-close').addEventListener('click', closeCreateModal);
+  document.getElementById('app-create-cancel').addEventListener('click', closeCreateModal);
+  document.getElementById('app-create-modal').addEventListener('click', function (e) {
+    if (e.target === this) closeCreateModal();
+  });
+
+  document.getElementById('app-name-input').addEventListener('input', function () {
+    document.getElementById('app-create-confirm').disabled = !this.value.trim();
+  });
+
+  document.getElementById('app-create-confirm').addEventListener('click', function () {
+    var name = document.getElementById('app-name-input').value.trim();
+    var desc = document.getElementById('app-desc-input').value.trim();
+    if (!name) return;
+    var btn = this;
+    btn.disabled = true;
+    btn.textContent = 'Creating…';
+    fetch(devportalApi.org(devportalApi.orgId, '/applications'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ name: name, description: desc, type: 'WEB' }),
+    })
+      .then(function (r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+      })
+      .then(function () { window.location.reload(); })
+      .catch(function (err) {
+        btn.disabled = false;
+        btn.textContent = 'Create';
+        console.error('Create application failed:', err);
+      });
+  });
+
+  /* ── Delete modal ────────────────────────────────── */
+  var pendingDeleteId = null;
+
+  window.appShowDeleteModal = function (id, name) {
+    pendingDeleteId = id;
+    document.getElementById('app-delete-name').textContent = name;
+    document.getElementById('app-delete-confirm').disabled = false;
+    document.getElementById('app-delete-confirm').textContent = 'Delete';
+    document.getElementById('app-delete-modal').style.display = 'flex';
+  };
+
+  document.getElementById('app-delete-cancel').addEventListener('click', function () {
+    document.getElementById('app-delete-modal').style.display = 'none';
+  });
+  document.getElementById('app-delete-modal').addEventListener('click', function (e) {
+    if (e.target === this) this.style.display = 'none';
+  });
+
+  document.getElementById('app-delete-confirm').addEventListener('click', function () {
+    if (!pendingDeleteId) return;
+    var btn = this;
+    btn.disabled = true;
+    btn.textContent = 'Deleting…';
+    fetch(devportalApi.org(devportalApi.orgId, '/applications/' + pendingDeleteId), {
+      method: 'DELETE',
+      credentials: 'include',
+    })
+      .then(function (r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        document.getElementById('app-delete-modal').style.display = 'none';
+        var card = document.getElementById('app-card-' + pendingDeleteId);
+        if (card) card.remove();
+        if (!document.querySelector('.app-card')) {
+          window.location.reload();
+        }
+      })
+      .catch(function (err) {
+        btn.disabled = false;
+        btn.textContent = 'Delete';
+        console.error('Delete application failed:', err);
+      });
+  });
+}());
+</script>

@@ -14,79 +14,113 @@
  * KIND, either express or implied. See the License for the
  * specific language governing permissions and limitations
  * under the License.
- */
  -->
 {{#if localAuthEnabled}}
-<div class="container">
-    <h2 class="fw-bold">Sign in to continue</h2>
 
-    {{#if loginError}}
-    <div class="alert alert-danger" role="alert" style="margin-bottom: 12px; font-size: 14px; color: #842029; background-color: #f8d7da; border: 1px solid #f5c2c7; border-radius: 4px; padding: 8px 12px;">
-        {{loginError}}
+<h2 class="os-form-title">Sign in to continue</h2>
+<p class="os-form-sub">Enter your credentials to access the developer portal.</p>
+
+{{#if loginError}}
+<div class="ln-error-banner" role="alert">
+  <i class="bi bi-exclamation-circle-fill"></i>
+  {{loginError}}
+</div>
+{{/if}}
+
+<form id="local-login-form" method="POST" data-base-url="{{baseUrl}}">
+  <div class="ln-fields">
+
+    <div class="os-field">
+      <label class="os-field-label" for="username">Username</label>
+      <div class="os-input-wrap">
+        <i class="bi bi-person os-input-icon" aria-hidden="true"></i>
+        <input
+          type="text"
+          id="username"
+          name="username"
+          class="os-input"
+          placeholder="Enter username"
+          required
+          autocomplete="username"
+        >
+      </div>
     </div>
-    {{/if}}
 
-    <form id="local-login-form" method="POST" data-base-url="{{baseUrl}}">
-        <div class="mb-3" style="text-align: left; margin-bottom: 16px;">
-            <label for="username" class="form-label" style="font-size: 14px; display: block; margin-bottom: 4px;">Username</label>
-            <input
-                type="text"
-                class="form-control"
-                id="username"
-                name="username"
-                placeholder="Enter username"
-                required
-                autocomplete="username"
-                style="width: 100%; padding: 8px 12px; border: 1px solid #ced4da; border-radius: 4px; font-size: 14px;"
-            />
-        </div>
-        <div class="mb-3" style="text-align: left; margin-bottom: 16px;">
-            <label for="password" class="form-label" style="font-size: 14px; display: block; margin-bottom: 4px;">Password</label>
-            <input
-                type="password"
-                class="form-control"
-                id="password"
-                name="password"
-                placeholder="Enter password"
-                required
-                autocomplete="current-password"
-                style="width: 100%; padding: 8px 12px; border: 1px solid #ced4da; border-radius: 4px; font-size: 14px;"
-            />
-        </div>
-        <button type="submit" class="btn w-100" style="background-color: #0d6efd; color: white; border: none; padding: 10px; border-radius: 4px; font-size: 14px; cursor: pointer; width: 100%; margin-top: 4px;">
-            Sign In
+    <div class="os-field">
+      <div class="ln-pw-label-row">
+        <label class="os-field-label" for="password">Password</label>
+        <a href="#" class="ln-forgot-link">Forgot password?</a>
+      </div>
+      <div class="os-input-wrap">
+        <i class="bi bi-lock os-input-icon" aria-hidden="true"></i>
+        <input
+          type="password"
+          id="password"
+          name="password"
+          class="os-input ln-pw-input"
+          placeholder="Enter password"
+          required
+          autocomplete="current-password"
+        >
+        <button type="button" class="ln-pw-toggle" id="ln-pw-toggle" aria-label="Toggle password visibility" tabindex="-1">
+          <i class="bi bi-eye" id="ln-pw-icon"></i>
         </button>
-    </form>
-</div>
+      </div>
+    </div>
+
+    <label class="ln-remember">
+      <input type="checkbox" name="rememberMe" class="ln-remember-check">
+      Keep me signed in
+    </label>
+
+    <button type="submit" class="ln-signin-btn os-continue-btn os-continue-btn--active">Sign in</button>
+
+  </div>
+</form>
+
+<script>
+  (function () {
+    var toggle = document.getElementById('ln-pw-toggle');
+    var input  = document.getElementById('password');
+    var icon   = document.getElementById('ln-pw-icon');
+    if (!toggle) return;
+    toggle.addEventListener('click', function () {
+      var show = input.type === 'password';
+      input.type = show ? 'text' : 'password';
+      icon.className = show ? 'bi bi-eye-slash' : 'bi bi-eye';
+    });
+  })();
+</script>
+
 {{else}}
-<div class="container">
-    <h2 class="fw-bold">Sign in to continue</h2>
-    <button class="btn" id="login-google">
-        <img src="https://raw.githubusercontent.com/wso2/docs-bijira/refs/heads/main/en/devportal-theming/Google.svg" alt="Google" width="20">
-        Continue with Google
-    </button>
-    <button class="btn" id="login-github">
-        <img src="https://raw.githubusercontent.com/wso2/docs-bijira/refs/heads/main/en/devportal-theming/Github.svg" alt="GitHub" width="20">
-        Continue with GitHub
-    </button>
-    <button class="btn" id="login-microsoft">
-        <img src="https://raw.githubusercontent.com/wso2/docs-bijira/refs/heads/main/en/devportal-theming/Microsoft.svg" alt="Microsoft" width="20">
-        Continue with Microsoft
-    </button>
-    <a class="btn" id="show-enterprise">
-        <img src="https://raw.githubusercontent.com/wso2/docs-bijira/refs/heads/main/en/devportal-theming/Enterprise.svg" alt="Enterprise" width="20">
-        Sign in with Enterprise ID
-    </a>
 
-    <div class="or-divider">OR</div>
+<h2 class="os-form-title">Sign in to continue</h2>
+<p class="os-form-sub">Choose how you'd like to sign in.</p>
 
-    <button class="btn" id="login-email">
-        <img src="https://raw.githubusercontent.com/wso2/docs-bijira/refs/heads/main/en/devportal-theming/Email.svg" alt="Email" width="20">
-        Sign in with Email
-    </button>
+<div class="ln-social-list">
+  <button class="ln-social-btn" id="login-google">
+    <img src="https://raw.githubusercontent.com/wso2/docs-bijira/refs/heads/main/en/devportal-theming/Google.svg" alt="" width="18" aria-hidden="true">
+    Continue with Google
+  </button>
+  <button class="ln-social-btn" id="login-github">
+    <img src="https://raw.githubusercontent.com/wso2/docs-bijira/refs/heads/main/en/devportal-theming/Github.svg" alt="" width="18" aria-hidden="true">
+    Continue with GitHub
+  </button>
+  <button class="ln-social-btn" id="login-microsoft">
+    <img src="https://raw.githubusercontent.com/wso2/docs-bijira/refs/heads/main/en/devportal-theming/Microsoft.svg" alt="" width="18" aria-hidden="true">
+    Continue with Microsoft
+  </button>
 
-    {{!-- <div class="signup">
-        Don't have an account? <a>Sign Up</a>
-    </div> --}}
+  <div class="ln-divider"><span>or</span></div>
+
+  <button class="ln-social-btn" id="login-email">
+    <img src="https://raw.githubusercontent.com/wso2/docs-bijira/refs/heads/main/en/devportal-theming/Email.svg" alt="" width="18" aria-hidden="true">
+    Sign in with Email
+  </button>
+  <a class="ln-social-btn ln-social-btn--outline" id="show-enterprise">
+    <img src="https://raw.githubusercontent.com/wso2/docs-bijira/refs/heads/main/en/devportal-theming/Enterprise.svg" alt="" width="18" aria-hidden="true">
+    Sign in with Enterprise ID
+  </a>
 </div>
+
 {{/if}}

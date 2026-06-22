@@ -96,6 +96,7 @@ function renderTemplate(templatePath, layoutPath, templateContent, isTechnical) 
             base: constants.DEVPORTAL_API.BASE_SEGMENT,
             version: constants.DEVPORTAL_API.VERSION,
         },
+        devReloadEnabled: process.env.NODE_ENV === 'development',
     });
 }
 
@@ -151,6 +152,7 @@ async function renderTemplateFromAPI(templateContent, orgID, orgName, filePath, 
             base: constants.DEVPORTAL_API.BASE_SEGMENT,
             version: constants.DEVPORTAL_API.VERSION,
         },
+        devReloadEnabled: process.env.NODE_ENV === 'development',
     });
 
 }
@@ -217,6 +219,7 @@ async function renderGivenTemplate(templatePage, layoutPage, templateContent) {
             base: constants.DEVPORTAL_API.BASE_SEGMENT,
             version: constants.DEVPORTAL_API.VERSION,
         },
+        devReloadEnabled: process.env.NODE_ENV === 'development',
     });
 }
 

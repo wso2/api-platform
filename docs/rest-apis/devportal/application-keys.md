@@ -4,13 +4,13 @@
 
 <a id="opIdgenerateApplicationKeys"></a>
 
-`POST /applications/{applicationId}/generate-keys`
+`POST /o/{orgId}/devportal/v1/applications/{applicationId}/generate-keys`
 
 > Code samples
 
 ```shell
 
-curl -X POST https://devportal.api-platform.io/applications/{applicationId}/generate-keys \
+curl -X POST https://devportal.api-platform.io/o/{orgId}/devportal/v1/applications/{applicationId}/generate-keys \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -51,6 +51,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |body|body|[AppKeyMappingRequest](schemas.md#schemaappkeymappingrequest)|true|OAuth key generation payload. The application is identified by the `applicationId` path parameter.|
+|orgId|path|string|true|none|
 |applicationId|path|string|true|none|
 
 > Example responses
@@ -144,13 +145,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdgenerateOAuthKeys"></a>
 
-`POST /applications/{applicationId}/oauth-keys/{keyMappingId}/generate-token`
+`POST /o/{orgId}/devportal/v1/applications/{applicationId}/oauth-keys/{keyMappingId}/generate-token`
 
 > Code samples
 
 ```shell
 
-curl -X POST https://devportal.api-platform.io/applications/{applicationId}/oauth-keys/{keyMappingId}/generate-token \
+curl -X POST https://devportal.api-platform.io/o/{orgId}/devportal/v1/applications/{applicationId}/oauth-keys/{keyMappingId}/generate-token \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -185,6 +186,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |body|body|[OAuthGenerateTokenRequest](schemas.md#schemaoauthgeneratetokenrequest)|false|OAuth token generation payload. The portal calls the Authorization Server token endpoint directly.|
+|orgId|path|string|true|none|
 |applicationId|path|string|true|none|
 |keyMappingId|path|string|true|none|
 
@@ -262,13 +264,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdrevokeOAuthKeys"></a>
 
-`DELETE /applications/{applicationId}/oauth-keys/{keyMappingId}`
+`DELETE /o/{orgId}/devportal/v1/applications/{applicationId}/oauth-keys/{keyMappingId}`
 
 > Code samples
 
 ```shell
 
-curl -X DELETE https://devportal.api-platform.io/applications/{applicationId}/oauth-keys/{keyMappingId} \
+curl -X DELETE https://devportal.api-platform.io/o/{orgId}/devportal/v1/applications/{applicationId}/oauth-keys/{keyMappingId} \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -288,6 +290,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
+|orgId|path|string|true|none|
 |applicationId|path|string|true|none|
 |keyMappingId|path|string|true|none|
 
@@ -335,13 +338,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdupdateOAuthKeys"></a>
 
-`PUT /applications/{applicationId}/oauth-keys/{keyMappingId}`
+`PUT /o/{orgId}/devportal/v1/applications/{applicationId}/oauth-keys/{keyMappingId}`
 
 > Code samples
 
 ```shell
 
-curl -X PUT https://devportal.api-platform.io/applications/{applicationId}/oauth-keys/{keyMappingId} \
+curl -X PUT https://devportal.api-platform.io/o/{orgId}/devportal/v1/applications/{applicationId}/oauth-keys/{keyMappingId} \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -377,6 +380,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |body|body|[OAuthKeyUpdateRequest](schemas.md#schemaoauthkeyupdaterequest)|false|OAuth key update payload forwarded to the configured key manager.|
+|orgId|path|string|true|none|
 |applicationId|path|string|true|none|
 |keyMappingId|path|string|true|none|
 
@@ -460,13 +464,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdcleanUpOAuthKeys"></a>
 
-`POST /applications/{applicationId}/oauth-keys/{keyMappingId}/clean-up`
+`POST /o/{orgId}/devportal/v1/applications/{applicationId}/oauth-keys/{keyMappingId}/clean-up`
 
 > Code samples
 
 ```shell
 
-curl -X POST https://devportal.api-platform.io/applications/{applicationId}/oauth-keys/{keyMappingId}/clean-up \
+curl -X POST https://devportal.api-platform.io/o/{orgId}/devportal/v1/applications/{applicationId}/oauth-keys/{keyMappingId}/clean-up \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -498,6 +502,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |body|body|[OAuthKeyCleanUpRequest](schemas.md#schemaoauthkeycleanuprequest)|false|OAuth cleanup payload forwarded to the configured key manager.|
+|orgId|path|string|true|none|
 |applicationId|path|string|true|none|
 |keyMappingId|path|string|true|none|
 

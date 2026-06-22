@@ -1,148 +1,243 @@
-<section class="section mt-0 mb-6" id="subscriptionPlans">
-    <div class="container-fluid text-center">
-        {{#if subscriptionPlans.length}}
-            <!-- ===== TOKEN-BASED SUBSCRIPTION UI ===== -->
+{{#if subscriptionPlans.length}}
+<section id="subscriptionPlans" class="aov-plans-wrap">
 
-            <!-- Existing subscriptions for this API -->
-            {{#if subscriptions.length}}
-            <div class="existing-subscriptions mb-4">
-                <div class="container-header mb-4">Subscriptions</div>
-                <table class="table">
-                    <thead>
-                        <tr>
-                            <th>Plan</th>
-                            <th>Status</th>
-                            <th>Subscription Token</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {{#each subscriptions}}
-                {{#if @first}}
-                <script id="token-map-data" type="application/json">{{{jsonSafeSubscriptions ../subscriptions}}}</script>
-                <script>
-                    (function() {
-                        var data = JSON.parse(document.getElementById('token-map-data').textContent || '[]');
-                        window.__tokenMeta = window.__tokenMeta || {};
-                        data.forEach(function(sub) {
-                            // store only non-sensitive metadata and masked token
-                            window.__tokenMeta[sub.subscriptionId] = {
-                                maskedToken: sub.maskedToken,
-                                customerName: sub.customerName,
-                                subscriptionPlanName: sub.subscriptionPlanName,
-                                status: sub.status
-                            };
-                        });
-                        // expose orgID for on-demand fetches
-                        window.__subscriptionOrgID = "{{@root.orgID}}";
-                    })();
-                </script>
-                {{/if}}
-                        <tr>
-                            <td>{{this.subscriptionPlanName}}</td>
-                            <td>
-                                <span class="badge {{#if (eq this.status 'ACTIVE')}}bg-success{{else}}bg-secondary{{/if}}">
-                                    {{this.status}}
-                                </span>
-                            </td>
-                            <td>
-                                <div class="token-display">
-                                    <code class="masked-token" id="token-{{this.subscriptionId}}" data-revealed="false">****</code>
-                                    <button class="btn btn-sm btn-outline-secondary" onclick="toggleTokenVisibility('{{this.subscriptionId}}')" title="Reveal token">
-                                        <i class="bi bi-eye"></i>
-                                    </button>
-                                    <button class="btn btn-sm btn-outline-secondary" onclick="copySubscriptionToken('{{this.subscriptionId}}')" title="Copy token">
-                                        <i class="bi bi-clipboard"></i>
-                                    </button>
-                                </div>
-                            </td>
-                            <td>
-                                <button class="btn btn-sm btn-outline-warning {{#if @root.isReadOnlyMode}}disabled{{/if}}" title="{{#if (eq this.status 'ACTIVE')}}Deactivate{{else}}Activate{{/if}}"
-                                    {{#unless @root.isReadOnlyMode}}onclick="toggleSubscriptionStatus('{{@root.orgID}}', '{{this.subscriptionId}}', '{{#if (eq this.status "ACTIVE")}}INACTIVE{{else}}ACTIVE{{/if}}')"{{/unless}}
-                                    {{#if @root.isReadOnlyMode}}disabled{{/if}}>
-                                    {{#if (eq this.status 'ACTIVE')}}<i class="bi bi-pause-circle"></i>{{else}}<i class="bi bi-play-circle"></i>{{/if}}
-                                </button>
-                                <button class="btn btn-sm btn-outline-danger {{#if @root.isReadOnlyMode}}disabled{{/if}}" title="Delete"
-                                    {{#unless @root.isReadOnlyMode}}onclick="confirmDeleteSubscription('{{@root.orgID}}', '{{this.subscriptionId}}')"{{/unless}}
-                                    {{#if @root.isReadOnlyMode}}disabled{{/if}}>
-                                    <i class="bi bi-trash"></i>
-                                </button>
-                            </td>
-                        </tr>
-                        {{/each}}
-                    </tbody>
-                </table>
+  {{!-- Existing subscriptions --}}
+  {{#if subscriptions.length}}
+  <div class="aov-existing-subs">
+    <div class="aov-existing-subs-title">Your Subscriptions</div>
+    <table class="table table-sm" style="font-size:13px;">
+      <thead>
+        <tr>
+          <th>Plan</th>
+          <th>Status</th>
+          <th>Token</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {{#each subscriptions}}
+        {{#if @first}}
+        <script id="token-map-data" type="application/json">{{{jsonSafeSubscriptions ../subscriptions}}}</script>
+        <script>
+          (function() {
+            var data = JSON.parse(document.getElementById('token-map-data').textContent || '[]');
+            window.__tokenMeta = window.__tokenMeta || {};
+            data.forEach(function(sub) {
+              window.__tokenMeta[sub.subscriptionId] = {
+                maskedToken: sub.maskedToken,
+                customerName: sub.customerName,
+                subscriptionPlanName: sub.subscriptionPlanName,
+                status: sub.status
+              };
+            });
+            window.__subscriptionOrgID = "{{@root.orgID}}";
+          })();
+        </script>
+        {{/if}}
+        <tr>
+          <td>{{this.subscriptionPlanName}}</td>
+          <td>
+            <span class="badge {{#if (eq this.status 'ACTIVE')}}bg-success{{else}}bg-secondary{{/if}}" style="font-size:11px;">
+              {{this.status}}
+            </span>
+          </td>
+          <td>
+            <div class="token-display" style="display:flex;align-items:center;gap:6px;">
+              <code class="masked-token" id="token-{{this.subscriptionId}}" data-revealed="false">****</code>
+              <button class="btn btn-sm btn-outline-secondary" onclick="toggleTokenVisibility('{{this.subscriptionId}}')" title="Reveal token">
+                <i class="bi bi-eye"></i>
+              </button>
+              <button class="btn btn-sm btn-outline-secondary" onclick="copySubscriptionToken('{{this.subscriptionId}}')" title="Copy token">
+                <i class="bi bi-clipboard"></i>
+              </button>
             </div>
-            {{/if}}
+          </td>
+          <td>
+            <button class="btn btn-sm btn-outline-warning {{#if @root.isReadOnlyMode}}disabled{{/if}}"
+              title="{{#if (eq this.status 'ACTIVE')}}Deactivate{{else}}Activate{{/if}}"
+              {{#unless @root.isReadOnlyMode}}onclick="toggleSubscriptionStatus('{{@root.orgID}}', '{{this.subscriptionId}}', '{{#if (eq this.status "ACTIVE")}}INACTIVE{{else}}ACTIVE{{/if}}')"{{/unless}}
+              {{#if @root.isReadOnlyMode}}disabled{{/if}}>
+              {{#if (eq this.status 'ACTIVE')}}<i class="bi bi-pause-circle"></i>{{else}}<i class="bi bi-play-circle"></i>{{/if}}
+            </button>
+            <button class="btn btn-sm btn-outline-danger {{#if @root.isReadOnlyMode}}disabled{{/if}}"
+              title="Delete"
+              {{#unless @root.isReadOnlyMode}}onclick="confirmDeleteSubscription('{{@root.orgID}}', '{{this.subscriptionId}}')"{{/unless}}
+              {{#if @root.isReadOnlyMode}}disabled{{/if}}>
+              <i class="bi bi-trash"></i>
+            </button>
+          </td>
+        </tr>
+        {{/each}}
+      </tbody>
+    </table>
+  </div>
+  {{/if}}
 
-            <!-- Subscribe to new plan (token-based, no mandatory app) -->
-            {{#if subscriptionPlans.length}}
-            <div class="container-header mb-4">Subscription Plans</div>
-            {{/if}}
-            <div class="row row-gap-4 justify-content-center align-items-start">
-                {{#each subscriptionPlans}}
-                <div class="col-lg-4 col-md-6 col-12" id="subscriptionCard-{{policyID}}">
-                    <div class="card dev-card subscription-card">
-                        <div class="card-body align-items-center text-center p-0">
-                            <span class="subscription-plans-card-title">{{displayName}}</span>
-                            <h1 class="subscription-plans-request-count">{{requestCount}}</h1>
-                            <p class="subscription-plans-card-subtitle pt-0">requests per minute</p>
-                        </div>
-                        <div class="position-relative">
-                            {{#if ../isAuthenticated}}
-                            {{#if (isCurrentPlan policyName @root.subscriptions)}}
-                            <button type="button"
-                                class="common-btn-primary subscribe-btn w-100 disabled current-plan-btn"
-                                data-org-id="{{@root.orgID}}"
-                                data-api-id="{{../apiMetadata.apiID}}"
-                                data-policy-name="{{policyName}}"
-                                data-display-name="{{displayName}}"
-                                disabled>Current Plan</button>
-                            {{else}}
-                            <button id="subscribe-btn-{{policyID}}" type="button"
-                                class="common-btn-primary subscribe-btn w-100 {{#if @root.isReadOnlyMode}}disabled{{/if}}"
-                                data-org-id="{{@root.orgID}}"
-                                data-api-id="{{../apiMetadata.apiID}}"
-                                data-policy-id="{{policyID}}"
-                                data-policy-name="{{policyName}}"
-                                data-display-name="{{displayName}}"
-                                onclick="handlePlanSubscription(this)"
-                                >Subscribe</button>
-                            {{/if}}
-                            {{else}}
-                            <a type="button" class="common-btn-primary w-100 subscription-plan-subscribe-btn"
-                                href="{{@root.baseUrl}}/login">Subscribe</a>
-                            {{/if}}
-                            <div class="message-overlay hidden">
-                                <div class="message-content">
-                                    <i class="bi message-icon"></i>
-                                    <p class="message-text"></p>
-                                </div>
-                                <button type="button" class="close-message" aria-label="Close">&times;</button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                {{/each}}
-            </div>
+  {{!-- Plan cards --}}
+  <h2 class="aov-plans-title">Subscription plans</h2>
 
-            <script id="existing-subs-data" type="application/json">{{{json subscriptions}}}</script>
-            <script>
-                (function() {
-                    window.__subscriptionOrgID = window.__subscriptionOrgID || "{{@root.orgID}}";
-                    var raw = document.getElementById('existing-subs-data').textContent || '[]';
-                    try {
-                        var parsed = JSON.parse(raw);
-                        window.existingSubscriptions = parsed.map(function(sub) {
-                            return { subscriptionId: sub.subscriptionId, subscriptionPlanName: sub.subscriptionPlanName, status: sub.status };
-                        });
-                    } catch (e) {
-                        window.existingSubscriptions = [];
-                    }
-                })();
-            </script>
-            {{else}}
-            {{!-- API without subscription plans: no subscription needed --}}
-            {{/if}}
+  {{#each subscriptionPlans}}
+  <div class="aov-plan-card subscription-card{{#if (isCurrentPlan policyName @root.subscriptions)}} aov-plan-card--subscribed{{/if}}"
+    id="subscriptionCard-{{policyID}}">
+    {{!-- Subscribed ribbon (shown via CSS when card has aov-plan-card--subscribed) --}}
+    <div class="aov-plan-ribbon" aria-hidden="true">
+      <div class="aov-plan-ribbon-label">SUBSCRIBED</div>
     </div>
+    <div class="aov-plan-card-head">
+      <div class="aov-plan-name-row">
+        <span class="aov-plan-icon" style="background:#eef1f5;color:#3a4f6a;">
+          <i class="bi bi-lightning-charge-fill"></i>
+        </span>
+        <span class="aov-plan-name">{{#if displayName}}{{displayName}}{{else}}{{policyName}}{{/if}}</span>
+      </div>
+      {{#if (isCurrentPlan policyName @root.subscriptions)}}
+      <span class="aov-recommended-badge">CURRENT</span>
+      {{/if}}
+    </div>
+    <div class="aov-plan-limit">
+      <span class="aov-plan-count">{{#if requestCount}}{{requestCount}}{{else}}0{{/if}}</span>
+      <span class="aov-plan-unit">requests / min</span>
+    </div>
+    <div class="position-relative">
+      {{#if ../isAuthenticated}}
+        {{#if (isCurrentPlan policyName @root.subscriptions)}}
+        <button type="button"
+          class="dp-btn dp-btn--outline dp-btn--block dp-btn--current subscribe-btn"
+          data-org-id="{{@root.orgID}}"
+          data-api-id="{{../apiMetadata.apiID}}"
+          data-policy-name="{{policyName}}"
+          data-display-name="{{displayName}}"
+          disabled>Current Plan</button>
+        {{else}}
+        <button id="subscribe-btn-{{policyID}}" type="button"
+          class="dp-btn dp-btn--outline dp-btn--block subscribe-btn {{#if @root.isReadOnlyMode}}disabled{{/if}}"
+          data-org-id="{{@root.orgID}}"
+          data-api-id="{{../apiMetadata.apiID}}"
+          data-policy-id="{{policyID}}"
+          data-policy-name="{{policyName}}"
+          data-display-name="{{displayName}}"
+          onclick="handlePlanSubscription(this)"
+          {{#if @root.isReadOnlyMode}}disabled{{/if}}><span class="aov-plan-spinner"></span>Subscribe</button>
+        {{/if}}
+      {{else}}
+      <a class="dp-btn dp-btn--outline dp-btn--block" href="{{@root.baseUrl}}/login">Subscribe</a>
+      {{/if}}
+      <div class="message-overlay hidden">
+        <div class="message-content">
+          <i class="bi message-icon"></i>
+          <p class="message-text"></p>
+        </div>
+        <button type="button" class="close-message" aria-label="Close">&times;</button>
+      </div>
+    </div>
+    {{!-- Per-card error block --}}
+    <div class="aov-plan-error">
+      <i class="bi bi-exclamation-circle-fill" style="color:#c62828;font-size:15px;flex:none;margin-top:1px;"></i>
+      <div>
+        <div class="aov-plan-error-title">Subscription failed</div>
+        <div class="aov-plan-error-desc">We couldn't subscribe you to this plan. Please try again.</div>
+      </div>
+    </div>
+  </div>
+  {{/each}}
+
+  <script id="existing-subs-data" type="application/json">{{{json subscriptions}}}</script>
+  <script>
+    (function() {
+      window.__subscriptionOrgID = window.__subscriptionOrgID || "{{@root.orgID}}";
+      var raw = document.getElementById('existing-subs-data').textContent || '[]';
+      try {
+        var parsed = JSON.parse(raw);
+        window.existingSubscriptions = parsed.map(function(sub) {
+          return { subscriptionId: sub.subscriptionId, subscriptionPlanName: sub.subscriptionPlanName, status: sub.status };
+        });
+      } catch (e) {
+        window.existingSubscriptions = [];
+      }
+    })();
+  </script>
+
+  <script>
+    (function() {
+      var _activeSubCard = null;
+
+      // Deferred setup: runs after all `defer` scripts (including alert.js) have executed
+      document.addEventListener('DOMContentLoaded', function() {
+        // Intercept showAlert to show per-card error block on subscription failure
+        var _origShowAlert = window.showAlert;
+        window.showAlert = function(message, type) {
+          if (type === 'error' && _activeSubCard) {
+            var card = _activeSubCard;
+            _activeSubCard = null;
+            var btn = card.querySelector('.subscribe-btn');
+            if (btn) btn.classList.remove('aov-btn-loading');
+            var errBlock = card.querySelector('.aov-plan-error');
+            if (errBlock) errBlock.classList.add('aov-plan-error--visible');
+          }
+          return _origShowAlert ? _origShowAlert(message, type) : Promise.resolve();
+        };
+
+        // Intercept resetSubscribeButtonState to also remove loading class
+        var _origReset = window.resetSubscribeButtonState;
+        window.resetSubscribeButtonState = function(btn) {
+          if (btn) btn.classList.remove('aov-btn-loading');
+          if (_origReset) _origReset(btn);
+        };
+      });
+
+      function wireButtons() {
+        document.querySelectorAll('#subscriptionPlans .subscribe-btn:not([disabled])').forEach(function(btn) {
+          if (btn.dataset.aovWired) return;
+          btn.dataset.aovWired = '1';
+          btn.addEventListener('click', function() {
+            var card = btn.closest('.aov-plan-card');
+            if (!card) return;
+            var errBlock = card.querySelector('.aov-plan-error');
+            if (errBlock) errBlock.classList.remove('aov-plan-error--visible');
+            btn.classList.add('aov-btn-loading');
+            _activeSubCard = card;
+            // Safety fallback: clear loading state after 10s if nothing resolved it
+            setTimeout(function() {
+              if (_activeSubCard === card) {
+                _activeSubCard = null;
+                btn.classList.remove('aov-btn-loading');
+              }
+            }, 10000);
+          });
+        });
+      }
+
+      function updateSubscribedCards() {
+        var existing = window.existingSubscriptions || [];
+        var subscribedPlans = existing.map(function(s) { return s.subscriptionPlanName; });
+        document.querySelectorAll('#subscriptionPlans .aov-plan-card').forEach(function(card) {
+          var btn = card.querySelector('[data-policy-name]');
+          if (!btn) return;
+          var planName = btn.dataset.policyName;
+          if (!planName) return;
+          if (subscribedPlans.indexOf(planName) !== -1) {
+            card.classList.add('aov-plan-card--subscribed');
+            var subBtn = card.querySelector('.subscribe-btn');
+            if (subBtn) subBtn.classList.remove('aov-btn-loading');
+            if (_activeSubCard === card) _activeSubCard = null;
+          } else {
+            card.classList.remove('aov-plan-card--subscribed');
+          }
+        });
+      }
+
+      var plansSection = document.getElementById('subscriptionPlans');
+      if (plansSection) {
+        new MutationObserver(function() {
+          updateSubscribedCards();
+          wireButtons();
+        }).observe(plansSection, { childList: true, subtree: true });
+      }
+
+      wireButtons();
+      updateSubscribedCards();
+    }());
+  </script>
+
 </section>
+{{/if}}

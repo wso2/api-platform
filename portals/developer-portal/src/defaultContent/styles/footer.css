@@ -1,7 +1,7 @@
 .footer-section {
   padding: 1rem 0;
   display: flex;
-  margin: 0 0 0 0;
+  margin: 0;
   position: fixed;
   bottom: 0;
   left: 0;
@@ -9,6 +9,8 @@
   background-color: #fff;
   height: 3rem;
   box-sizing: border-box;
+  border-top: 1px solid #e6eaf0;
+  z-index: 100;
 }
 
 .footer-container {

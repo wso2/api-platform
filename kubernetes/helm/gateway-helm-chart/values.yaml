@@ -31,6 +31,9 @@ serviceAccount:
   create: true
   annotations: {}
   name: ""
+  # Mount the service account token into pods by default (Kubernetes default: true).
+  # Individual pods can override via gateway.<component>.deployment.automountServiceAccountToken.
+  automountServiceAccountToken: true
 
 ## moved to each component's deployment block below
 
@@ -404,6 +407,27 @@ gateway:
       # readiness probes are unaffected: they hit the container port directly, not the Service.
       expose:
         admin: false
+      # Static cluster IP (e.g. "None" for a headless Service). Empty = auto-assign.
+      clusterIP: ""
+      # External traffic policy: "Cluster" or "Local".
+      # Only rendered when type is LoadBalancer or NodePort.
+      externalTrafficPolicy: ""
+      # Load balancer implementation class. Only rendered when type is LoadBalancer.
+      loadBalancerClass: ""
+      # CIDR ranges allowed to reach the load balancer. Only rendered when type is LoadBalancer.
+      loadBalancerSourceRanges: []
+      # IP family policy: SingleStack, PreferDualStack or RequireDualStack. Empty = cluster default.
+      ipFamilyPolicy: ""
+      # IP families, e.g. ["IPv4"], ["IPv6"] or ["IPv4", "IPv6"]. Empty = cluster default.
+      ipFamilies: []
+      # Static nodePort per named service port. Only rendered when type is NodePort or
+      # LoadBalancer; empty = auto-allocate.
+      nodePorts:
+        rest: ""
+        xds: ""
+        policy: ""
+        admin: ""
+        metrics: ""
     controlPlane:
       # Control plane endpoint. Used directly as the HTTPS/WSS authority, so include
       # a non-default port here (e.g. "host.docker.internal:8443"); 443 is assumed if omitted.
@@ -496,6 +520,13 @@ gateway:
         - ReadWriteOnce
       size: 100Mi
       storageClass: ""
+      # Extra labels for the PersistentVolumeClaim.
+      labels: {}
+      # Extra annotations for the PersistentVolumeClaim (merged with commonAnnotations;
+      # these win on conflict). Example — keep the claim across helm uninstall:
+      #   annotations:
+      #     helm.sh/resource-policy: keep
+      annotations: {}
     deployment:
       enabled: true
       replicaCount: 1
@@ -531,6 +562,13 @@ gateway:
         periodSeconds: 5
         timeoutSeconds: 3
         failureThreshold: 3
+      # Optional startup probe for slow-starting environments. Uncomment to enable.
+      # startupProbe:
+      #   httpGet:
+      #     path: /api/admin/v0.9/health
+      #     port: admin
+      #   periodSeconds: 5
+      #   failureThreshold: 30
       # Resource limits and requests
       # Uncomment and adjust based on your workload
       resources: {}
@@ -545,6 +583,36 @@ gateway:
       nodeSelector: {}
       tolerations: []
       affinity: {}
+      # Topology spread constraints (list of topologySpreadConstraint objects).
+      # Example:
+      #   - maxSkew: 1
+      #     topologyKey: topology.kubernetes.io/zone
+      #     whenUnsatisfiable: ScheduleAnyway
+      #     labelSelector:
+      #       matchLabels:
+      #         app.kubernetes.io/component: controller
+      topologySpreadConstraints: []
+      # Deployment update strategy (full apps/v1 DeploymentStrategy object).
+      # Empty = Kubernetes default (RollingUpdate, 25% maxSurge / 25% maxUnavailable).
+      # Example:
+      #   type: RollingUpdate
+      #   rollingUpdate:
+      #     maxSurge: 1
+      #     maxUnavailable: 0
+      strategy: {}
+      # Seconds the pod is given to terminate gracefully. Uncomment to override the
+      # Kubernetes default (30).
+      # terminationGracePeriodSeconds: 30
+      # Additional /etc/hosts entries (list of hostAlias objects).
+      hostAliases: []
+      # Pod DNS policy: ClusterFirst, Default, ClusterFirstWithHostNet or None.
+      # Empty = Kubernetes default.
+      dnsPolicy: ""
+      # Pod DNS configuration (nameservers / searches / options); used with dnsPolicy.
+      dnsConfig: {}
+      # Override service account token automounting for this pod (takes precedence
+      # over serviceAccount.automountServiceAccountToken). Uncomment to set.
+      # automountServiceAccountToken: false
     # Horizontal Pod Autoscaler for the controller.
     # Requires gateway.config.controller.storage.type=postgres — SQLite does not support multiple replicas.
     # When enabled, replicaCount is managed by HPA and the Deployment's replicas field is omitted.
@@ -597,6 +665,27 @@ gateway:
         routerAdmin: false
         # Policy-engine admin: config_dump + health.
         policyEngineAdmin: false
+      # Static cluster IP (e.g. "None" for a headless Service). Empty = auto-assign.
+      clusterIP: ""
+      # External traffic policy: "Cluster" or "Local". "Local" preserves client source IPs.
+      # Only rendered when type is LoadBalancer or NodePort.
+      externalTrafficPolicy: ""
+      # Load balancer implementation class. Only rendered when type is LoadBalancer.
+      loadBalancerClass: ""
+      # CIDR ranges allowed to reach the load balancer. Only rendered when type is LoadBalancer.
+      loadBalancerSourceRanges: []
+      # IP family policy: SingleStack, PreferDualStack or RequireDualStack. Empty = cluster default.
+      ipFamilyPolicy: ""
+      # IP families, e.g. ["IPv4"], ["IPv6"] or ["IPv4", "IPv6"]. Empty = cluster default.
+      ipFamilies: []
+      # Static nodePort per named service port. Only rendered when type is NodePort or
+      # LoadBalancer; empty = auto-allocate.
+      nodePorts:
+        http: ""
+        https: ""
+        routerAdmin: ""
+        policyEngineAdmin: ""
+        policyEngineMetrics: ""
     # Policy-related file mounts for the gateway runtime
     policies:
       # LLM pricing data for the llm_cost_v1 policy.
@@ -642,6 +731,12 @@ gateway:
         periodSeconds: 5
         timeoutSeconds: 3
         failureThreshold: 6
+      # Optional startup probe for slow-starting environments. Uncomment to enable.
+      # startupProbe:
+      #   exec:
+      #     command: ["health-check.sh"]
+      #   periodSeconds: 5
+      #   failureThreshold: 30
       # Resource limits and requests
       # Uncomment and adjust based on your workload
       resources: {}
@@ -656,6 +751,36 @@ gateway:
       nodeSelector: {}
       tolerations: []
       affinity: {}
+      # Topology spread constraints (list of topologySpreadConstraint objects).
+      # Example:
+      #   - maxSkew: 1
+      #     topologyKey: topology.kubernetes.io/zone
+      #     whenUnsatisfiable: ScheduleAnyway
+      #     labelSelector:
+      #       matchLabels:
+      #         app.kubernetes.io/component: gateway-runtime
+      topologySpreadConstraints: []
+      # Deployment update strategy (full apps/v1 DeploymentStrategy object).
+      # Empty = Kubernetes default (RollingUpdate, 25% maxSurge / 25% maxUnavailable).
+      # Example:
+      #   type: RollingUpdate
+      #   rollingUpdate:
+      #     maxSurge: 1
+      #     maxUnavailable: 0
+      strategy: {}
+      # Seconds the pod is given to terminate gracefully — allow time for Envoy to
+      # drain in-flight connections. Uncomment to override the Kubernetes default (30).
+      # terminationGracePeriodSeconds: 30
+      # Additional /etc/hosts entries (list of hostAlias objects).
+      hostAliases: []
+      # Pod DNS policy: ClusterFirst, Default, ClusterFirstWithHostNet or None.
+      # Empty = Kubernetes default.
+      dnsPolicy: ""
+      # Pod DNS configuration (nameservers / searches / options); used with dnsPolicy.
+      dnsConfig: {}
+      # Override service account token automounting for this pod (takes precedence
+      # over serviceAccount.automountServiceAccountToken). Uncomment to set.
+      # automountServiceAccountToken: false
     # Horizontal Pod Autoscaler for the gateway runtime.
     # When enabled, replicaCount is managed by HPA and the Deployment's replicas field is omitted.
     hpa:

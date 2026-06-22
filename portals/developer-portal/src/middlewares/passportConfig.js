@@ -104,7 +104,7 @@ function configurePassport(SERVER_ID) {
                 [constants.ROLES.GROUP_CLAIM]: groups,
                 isAdmin,
                 isSuperAdmin,
-                [constants.USER_ID]: decodedAccessToken[constants.USER_ID],
+                [constants.USER_ID]: decodedAccessToken?.[constants.USER_ID],
                 serverId: SERVER_ID,
                 imageURL,
             };

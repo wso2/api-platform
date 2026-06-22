@@ -57,7 +57,10 @@ async function refreshAccessToken(refreshToken) {
 async function verifyWithCertificate(token, pemCertificate) {
     try {
         const publicKey = await importX509(pemCertificate, 'RS256');
-        const { payload } = await jwtVerify(token, publicKey);
+        const jwtVerifyOptions = {};
+        if (config.identityProvider?.issuer) jwtVerifyOptions.issuer = config.identityProvider.issuer;
+        if (config.identityProvider?.audience) jwtVerifyOptions.audience = config.identityProvider.audience;
+        const { payload } = await jwtVerify(token, publicKey, jwtVerifyOptions);
         return { valid: true, scopes: payload.scope || '' };
     } catch (err) {
         logger.error('Bearer token cert validation failed', { error: err.message, operation: 'verifyWithCertificate' });

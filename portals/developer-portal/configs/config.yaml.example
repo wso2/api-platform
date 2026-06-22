@@ -92,7 +92,11 @@ identityProvider:
   audience: ""               # JWT aud claim to verify (usually the clientId); leave empty to skip
                              # env: DP_IDENTITYPROVIDER_AUDIENCE
   callbackURL: "http://localhost:3000/default/callback"
-  scope: "openid profile email"  # Space-separated OIDC scopes to request
+  scope: "openid profile email"    # Space-separated OIDC scopes to request for browser login.
+                                  # dp:* scopes are not needed here — browser sessions are
+                                  # preauthorized so per-operation scope checks are skipped.
+                                  # Machine API clients that call /devportal/v1/* directly with
+                                  # a Bearer token still need the dp:* scopes in their tokens.
                                   # env: DP_IDENTITYPROVIDER_SCOPE
   signUpURL: ""
   logoutURL: "https://localhost:9443/oidc/logout"
@@ -104,7 +108,7 @@ identityProvider:
   # ── Claim name mappings — adjust to match what your IDP puts in the JWT ──────
   # Dot-notation is supported for nested claims (e.g. "realm_access.roles" for Keycloak)
   roleClaim: "roles"                # env: DP_IDENTITYPROVIDER_ROLECLAIM
-  orgIDClaim: "organization.uuid"   # Asgardeo B2B uses "org_id" — env: DP_IDENTITYPROVIDER_ORGIDCLAIM
+  orgIDClaim: "org_name"             # Asgardeo B2B: "org_name" matches ORGANIZATION_IDENTIFIER (the sub-org display name/handle) — env: DP_IDENTITYPROVIDER_ORGIDCLAIM
   groupsClaim: "groups"             # env: DP_IDENTITYPROVIDER_GROUPSCLAIM
   adminRole: "admin"                # env: DP_IDENTITYPROVIDER_ADMINROLE
   subscriberRole: "Internal/subscriber"  # env: DP_IDENTITYPROVIDER_SUBSCRIBERROLE

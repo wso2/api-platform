@@ -1,143 +1,248 @@
-/* Content Area Styles */
-.doc-content {
-    flex: 1;
+/* Documentation page layout */
+.adoc-wrap {
+  display: flex;
+  gap: 2rem;
+  align-items: flex-start;
+  margin-top: 1.375rem;
 }
 
-/* Documents Section */
-.documents {
-    display: flex;
-    gap: 2rem;
+/* Nav sidebar */
+.adoc-nav {
+  width: 15.5rem;
+  flex: none;
 }
 
-.documents-sidebar {
-    padding: 1rem 2rem 1rem 0rem;
-    flex-shrink: 0;
-    border-right: 1px solid #e0e2e9;
+.adoc-nav-group {
+  margin-bottom: 1.375rem;
 }
 
-.documents-sidebar .search-container {
-    display: flex;
-    margin-bottom: 1rem;
-    justify-content: center;
-    width: 100%;
+.adoc-nav-group-title {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: .07em;
+  color: #9aa3af;
+  padding: 0 0.75rem;
+  margin-bottom: 0.625rem;
 }
 
-.documents-sidebar .search-input {
-    display: flex;
-    align-items: center;
-    background-color: #e0e2e9;
-    padding: 0.625rem 1rem;
-    border-radius: 5px;
-    width: 100%;
+.adoc-nav-items {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1875rem;
 }
 
-.documents-sidebar .search-icon {
-    width: 1rem;
-    height: 1rem;
-    opacity: 0.5;
+.adoc-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 0.6875rem;
+  padding: 0.625rem 0.75rem;
+  border-radius: 0.5625rem;
+  font-size: 0.84375rem;
+  font-weight: 500;
+  line-height: 1;
+  color: #44505f;
+  text-decoration: none;
+  transition: background-color .15s, color .15s;
+  white-space: nowrap;
+  background: transparent;
 }
 
-.documents-sidebar .search-input input {
-    border: none;
-    outline: none;
-    width: 100%;
-    margin-left: 1rem;
-    font-size: 14px;
-    font-weight: 300;
-    background-color: transparent;
-    color: var(--main-text-color);
+.adoc-nav-item:hover {
+  background: #f3f6fb;
+  color: #1f6feb;
+  text-decoration: none;
 }
 
-.documents-sidebar #docQuery::placeholder {
-    color: var(--main-text-color);
-    opacity: 0.5;
+.adoc-nav-item--active,
+.adoc-nav-item.active {
+  background: #eef4fb !important;
+  color: #1f6feb !important;
+  font-weight: 600;
 }
 
-.doc-content-wrapper {
-    width: 100%;
-    overflow-x: auto;
-    border: 0.5px solid #e0e2e9;
-    border-radius: 16px;
-    box-shadow: 0px 2px 4px #0000000a;
-    display: flex;
+/* Content card */
+.adoc-content-card {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid #e6eaf0;
+  border-radius: 0.875rem;
+  padding: 1rem;
+  overflow-x: auto;
 }
 
-.doc-section {
-    flex: 1;
-    padding: 1rem;
-    max-height: 100%;
+/* Filename badge */
+.adoc-file-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  border-radius: 0.375rem;
+  padding: 0.3125rem 0.625rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  line-height: 1;
+  margin-bottom: 1.125rem;
 }
 
+.adoc-file-badge--doc {
+  background: #fff4e6;
+  color: #e65100;
+}
+
+.adoc-file-badge--spec {
+  background: #e6f2fb;
+  color: #0277bd;
+}
+
+/* Markdown content typography */
 .api-markdown-content {
-    padding: 1rem;
+  padding: 0;
 }
 
-.doc-section-title {
-    font-weight: 500;
-    margin-bottom: 0.5rem;
-    color: var(--main-text-color);
+.api-markdown-content h1 {
+  font-size: 1.75rem;
+  font-weight: 700;
+  line-height: 1.2;
+  color: #1a2433;
+  margin: 0 0 1rem;
+  letter-spacing: -0.01em;
 }
 
-.doc-links {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    margin-bottom: 16px;
+.api-markdown-content h2 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  line-height: 1.3;
+  color: #1a2433;
+  margin: 2.125rem 0 0;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid #eef1f5;
 }
 
-.doc-link {
-    display: flex;
-    align-items: center;
-    min-width: 200px;;
-    padding: 8px 12px;
-    gap: 12px;
-    background: var(--main-bg-color);
-    box-shadow: 0px 0px 0px 1px #e0e2e9, 0px 1px 1px #CBCEDB;
-    border-radius: 8px;
-    text-decoration: none;
-    color: var(--main-text-color);
+.api-markdown-content h3 {
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.3;
+  color: #1a2433;
+  margin: 1.5rem 0 0.5rem;
 }
 
-.doc-link:hover {
-    background-color: var(--secondary-bg-color);
+.api-markdown-content p {
+  font-size: 0.9375rem;
+  line-height: 1.65;
+  color: #3a4a5a;
+  margin: 0.875rem 0 0;
 }
 
-.doc-link.active {
-    background-color: var(--secondary-bg-color);
+.api-markdown-content p:first-child { margin-top: 0; }
+
+.api-markdown-content strong { color: #1a2433; font-weight: 600; }
+
+.api-markdown-content a { color: #1f6feb; }
+
+.api-markdown-content code {
+  font-family: monospace;
+  font-size: 0.78125rem;
+  color: #d6336c;
+  background: #fff0f3;
+  padding: 0.125rem 0.3125rem;
+  border-radius: 0.25rem;
 }
 
-.doc-link i {
-    width: auto;
-    height: auto;
-    color: var(--primary-main-color);
+.api-markdown-content pre {
+  background: #16242f;
+  border-radius: 0.75rem;
+  padding: 1.25rem;
+  overflow: auto;
+  margin: 1rem 0 0;
 }
 
-.doc-title {
-    font-family: 'Gilmer Medium', sans-serif;
-    font-weight: 600;
-    font-size: 12px;
-    line-height: 24px;
-    color: var(--primary-main-color);
+.api-markdown-content pre code {
+  color: #c8d6e2;
+  background: none;
+  padding: 0;
+  font-size: 0.78125rem;
+  line-height: 1.7;
 }
 
-.doc-spec {
-    display: block;
-    color: var(--main-text-color);
-    text-decoration: none;
-    font-weight: 500;
-    font-size: 1rem;
+.api-markdown-content ul,
+.api-markdown-content ol {
+  font-size: 0.9375rem;
+  line-height: 1.65;
+  color: #3a4a5a;
+  padding-left: 1.5rem;
+  margin: 0.75rem 0 0;
 }
 
-/* Responsive Design */
+.api-markdown-content li { margin-top: 0.375rem; }
+
+.api-markdown-content table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 0.875rem 0 0.25rem;
+}
+
+.api-markdown-content th {
+  text-align: left;
+  font-size: 0.78125rem;
+  font-weight: 600;
+  line-height: 1.3;
+  color: #1a2433;
+  padding: 0.625rem 1rem;
+  background: #f6f8fb;
+  border: 1px solid #e6eaf0;
+}
+
+.api-markdown-content td {
+  font-size: 0.84375rem;
+  line-height: 1.5;
+  color: #3a4a5a;
+  padding: 0.625rem 1rem;
+  border: 1px solid #eef1f5;
+  vertical-align: top;
+}
+
+.api-markdown-content blockquote {
+  margin: 1rem 0 0;
+  padding: 0.8125rem 0.9375rem 0.8125rem 1rem;
+  background: #e9f3fb;
+  border: 1px solid #cfe3f5;
+  border-left: 4px solid #1f6feb;
+  border-radius: 0.625rem;
+}
+
+.api-markdown-content blockquote p {
+  color: #2a4a63;
+  margin: 0;
+}
+
+.api-markdown-content hr {
+  border: none;
+  border-top: 1px solid #eef1f5;
+  margin: 1.75rem 0;
+}
+
+/* Responsive */
+@media (max-width: 1024px) {
+  .adoc-wrap { flex-direction: column; }
+  .adoc-nav { width: 100%; }
+  .adoc-nav-items { flex-direction: row; flex-wrap: wrap; }
+  .adoc-content-card { padding: 1.5rem 1.25rem; }
+}
+
 @media (max-width: 768px) {
-
-    .documents {
-        flex-direction: column;
-    }
-
-    .documents-sidebar {
-        width: 100%;
-        border-right: none;
-        border-bottom: 1px solid #e0e2e9;
-    }
+  .adoc-content-card { padding: 1.25rem 1rem; }
 }
+
+/* ── Legacy markdown content ─────────────────────────────────── */
+.api-md-content {
+  padding: 2.5rem 8.125rem;
+  background-color: var(--main-bg-color);
+  line-height: 1.8;
+}
+
+.api-md-content h1 { font-size: 1.875rem; color: var(--main-text-color); }
+.api-md-content h2, .api-md-content h3 { font-size: 1.5rem; color: var(--main-text-color); }
+.api-md-content h4, .api-md-content h5, .api-md-content h6 { font-size: 1.25rem; color: var(--main-text-color); }
+.api-md-content p { font-size: 0.9375rem; color: var(--main-text-color); }
+.api-md-content li { font-size: 0.9375rem; color: var(--main-text-color); }
+.api-md-content li::marker { color: var(--primary-color); }

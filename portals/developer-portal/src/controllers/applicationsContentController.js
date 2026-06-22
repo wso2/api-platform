@@ -231,6 +231,7 @@ const loadApplications = async (req, res) => {
         }
 
         templateContent = {
+            orgID,
             applicationsMetadata: metaData,
             baseUrl: '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName,
             profile: req.isAuthenticated() ? profile : null,

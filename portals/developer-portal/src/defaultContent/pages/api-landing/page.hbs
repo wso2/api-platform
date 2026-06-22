@@ -28,52 +28,65 @@
   <script src='/technical-scripts/api-agent-prompt.js' defer></script>
   <script type="application/json" id="apiAgentData">{"baseUrl":"{{baseUrl}}","apiHandle":"{{apiMetadata.apiHandle}}"}</script>
 {{/pageScripts}}
-{{> api-detail-banner }}
+
+<div class="container-fluid">
+    {{> api-detail-banner }}
+</div>
+
+<div class="aov-body">
+  <div class="aov-body-main">
     {{#if loadDefault}}
     {{> api-default}}
     {{else}}
     {{> api-content }}
     {{/if}}
+  </div>
+  {{#if subscriptionPlans.length}}
+  <div class="aov-body-sidebar">
     {{> api-subscription-plans}}
-    {{> create-app }}
-    {{> warning modalTitle="Confirm" modalMessage="" modalFunction="" }}
-    {{> alert }}
+  </div>
+  {{/if}}
+</div>
 
-    {{!-- ── AGENT PROMPT MODAL ── --}}
-    {{#if showApiWorkflowsNav}}
-    {{#unless (eq apiMetadata.apiInfo.agentVisibility "HIDDEN")}}
-    <div class="modal fade" id="apiAgentPromptModal" tabindex="-1" aria-labelledby="apiAgentPromptModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-lg modal-dialog-scrollable">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <div>
-                        <h5 class="modal-title mb-0" id="apiAgentPromptModalLabel">Agent Prompt</h5>
-                    </div>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+{{> create-app }}
+{{> warning modalTitle="Confirm" modalMessage="" modalFunction="" }}
+{{> alert }}
+
+{{!-- ── AGENT PROMPT MODAL ── --}}
+{{#if showApiWorkflowsNav}}
+{{#unless (eq apiMetadata.apiInfo.agentVisibility "HIDDEN")}}
+<div class="modal fade" id="apiAgentPromptModal" tabindex="-1" aria-labelledby="apiAgentPromptModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div>
+                    <h5 class="modal-title mb-0" id="apiAgentPromptModalLabel">Agent Prompt</h5>
                 </div>
-                <div class="modal-body p-0">
-                    <div class="api-flow-prompt-toolbar">
-                        <span class="small text-muted">Use this prompt to let your AI agent discover and call this API automatically</span>
-                        <div class="prompt-modal-toolbar">
-                            <button type="button" class="btn-run-prompt" id="apiBtnRunClaude">
-                                <i class="bi bi-play-fill"></i> Run in Claude
-                            </button>
-                        </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-0">
+                <div class="api-flow-prompt-toolbar">
+                    <span class="small text-muted">Use this prompt to let your AI agent discover and call this API automatically</span>
+                    <div class="prompt-modal-toolbar">
+                        <button type="button" class="btn-run-prompt" id="apiBtnRunClaude">
+                            <i class="bi bi-play-fill"></i> Run in Claude
+                        </button>
                     </div>
-                    <div class="api-flow-prompt-pre-wrapper">
-                        <div class="prompt-pre-actions">
-                            <button type="button" class="prompt-tool-btn" id="apiBtnDownloadPrompt" title="Download as .txt">
-                                <i class="bi bi-download"></i>
-                            </button>
-                            <button type="button" class="prompt-tool-btn" id="apiBtnCopyPrompt" title="Copy prompt">
-                                <i class="bi bi-copy"></i>
-                            </button>
-                        </div>
-                        <pre id="apiAgentPromptText" class="api-flow-prompt-pre">Loading...</pre>
+                </div>
+                <div class="api-flow-prompt-pre-wrapper">
+                    <div class="prompt-pre-actions">
+                        <button type="button" class="prompt-tool-btn" id="apiBtnDownloadPrompt" title="Download as .txt">
+                            <i class="bi bi-download"></i>
+                        </button>
+                        <button type="button" class="prompt-tool-btn" id="apiBtnCopyPrompt" title="Copy prompt">
+                            <i class="bi bi-copy"></i>
+                        </button>
                     </div>
+                    <pre id="apiAgentPromptText" class="api-flow-prompt-pre">Loading...</pre>
                 </div>
             </div>
         </div>
     </div>
-    {{/unless}}
-    {{/if}}
+</div>
+{{/unless}}
+{{/if}}

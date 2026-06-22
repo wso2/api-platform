@@ -1,67 +1,79 @@
 {{#if subscriptions.length}}
-<div class="table-responsive">
-    <table class="table table-hover" id="subscriptions-table">
-        <thead>
-            <tr>
-                <th>API</th>
-                <th>Version</th>
-                <th>Plan</th>
-                <th>Status</th>
-                <th>Subscription Token</th>
-                <th>Actions</th>
-            </tr>
-        </thead>
-        <tbody>
-            <script>
-                window.__tokenMap = window.__tokenMap || {};
-                window.__subscriptionOrgID = "{{@root.orgID}}";
-            </script>
-            {{#each subscriptions}}
-            <tr id="sub-row-{{this.id}}">
-                <td>
-                    <a href="{{../baseUrl}}/api/{{this.apiHandle}}">{{this.apiName}}</a>
-                </td>
-                <td>{{this.apiVersion}}</td>
-                <td>{{this.planName}}</td>
-                <td>
-                    <span class="badge {{#if (eq this.status 'ACTIVE')}}bg-success{{else}}bg-secondary{{/if}}">
-                        {{this.status}}
-                    </span>
-                </td>
-                <td>
-                    <div class="token-display d-flex align-items-center gap-1">
-                        <code class="masked-token" id="list-token-{{this.id}}" data-revealed="false">****</code>
-                        <button class="btn btn-sm btn-link p-0" onclick="toggleListTokenVisibility('{{this.id}}')" title="Reveal">
-                            <i class="bi bi-eye"></i>
-                        </button>
-                        <button class="btn btn-sm btn-link p-0" onclick="copySubscriptionToken('{{this.id}}')" title="Copy">
-                            <i class="bi bi-clipboard"></i>
-                        </button>
-                    </div>
-                </td>
-                <td>
-                    <div class="d-flex gap-1">
-                        <button class="btn btn-sm btn-outline-warning {{#if @root.isReadOnlyMode}}disabled{{/if}}" title="{{#if (eq this.status 'ACTIVE')}}Deactivate{{else}}Activate{{/if}}"
-                            {{#unless @root.isReadOnlyMode}}onclick="toggleSubscriptionStatus('{{../orgID}}', '{{this.id}}', '{{#if (eq this.status "ACTIVE")}}INACTIVE{{else}}ACTIVE{{/if}}')"{{/unless}}
-                            {{#if @root.isReadOnlyMode}}disabled{{/if}}>
-                            {{#if (eq this.status 'ACTIVE')}}<i class="bi bi-pause-circle"></i>{{else}}<i class="bi bi-play-circle"></i>{{/if}}
-                        </button>
-                        <button class="btn btn-sm btn-outline-danger {{#if @root.isReadOnlyMode}}disabled{{/if}}" title="Delete"
-                            {{#unless @root.isReadOnlyMode}}onclick="prepareDeleteSubscription('{{../orgID}}', '{{this.id}}')"{{/unless}}
-                            {{#if @root.isReadOnlyMode}}disabled{{/if}}>
-                            <i class="bi bi-trash"></i>
-                        </button>
-                    </div>
-                </td>
-            </tr>
-            {{/each}}
-        </tbody>
+<div class="sub-scroll table-responsive">
+  <div class="sub-tablewrap">
+    <script>
+      window.__tokenMap = window.__tokenMap || {};
+      window.__subscriptionOrgID = "{{@root.orgID}}";
+    </script>
+    <table class="sub-table" id="subscriptions-table">
+      <thead>
+        <tr>
+          <th>API</th>
+          <th>Version</th>
+          <th>Type</th>
+          <th>Plan</th>
+          <th>Application</th>
+          <th>Status</th>
+          <th>Subscription token</th>
+          <th style="text-align:right;">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{#each subscriptions}}
+        <tr id="sub-row-{{this.id}}">
+          <td>
+            <a class="sub-api-link" href="{{../baseUrl}}/api/{{this.apiHandle}}">{{this.apiName}}</a>
+          </td>
+          <td>{{this.apiVersion}}</td>
+          <td>
+            <span class="sub-type-pill">{{#if this.type}}{{this.type}}{{else}}Token-based{{/if}}</span>
+          </td>
+          <td>{{this.planName}}</td>
+          <td style="color:#8a98a6;">{{#if this.applicationName}}{{this.applicationName}}{{else}}—{{/if}}</td>
+          <td>
+            <span class="sub-status-pill {{#if (eq this.status 'ACTIVE')}}sub-status-pill--active{{else}}sub-status-pill--inactive{{/if}}">
+              <span class="sub-status-dot"></span>
+              {{this.status}}
+            </span>
+          </td>
+          <td>
+            <span class="sub-token-code">****</span>
+          </td>
+          <td>
+            <div class="sub-actions">
+              <button class="sub-action-btn sub-action-btn--delete {{#if @root.isReadOnlyMode}}disabled{{/if}}"
+                title="Delete"
+                {{#unless @root.isReadOnlyMode}}onclick="prepareDeleteSubscription('{{../orgID}}', '{{this.id}}')"{{/unless}}
+                {{#if @root.isReadOnlyMode}}disabled{{/if}}>
+                <i class="bi bi-trash"></i>
+              </button>
+            </div>
+          </td>
+        </tr>
+        {{/each}}
+      </tbody>
     </table>
+  </div>
 </div>
+{{!-- <div class="dp-empty" id="no-subscriptions" style="display:none;">
+  <span class="dp-empty-icon">
+    <i class="bi bi-inbox"></i>
+  </span>
+  <h2 class="dp-empty-title">No subscriptions yet</h2>
+  <p class="dp-empty-desc">Subscribe an application to an API or MCP server to start making calls. Your active subscriptions will show up here.</p>
+  <button class="dp-btn dp-btn--primary dp-btn--lg" disabled title="Backend not wired yet — UI preview only">
+    <i class="bi bi-plus"></i> Create subscription
+  </button>
+</div> --}}
 {{else}}
-<div class="text-center text-muted py-5" id="no-subscriptions">
-    <i class="bi bi-inbox" style="font-size: 3rem;"></i>
-    <p class="mt-3">You have no subscriptions yet.</p>
-    <p>Browse <a href="{{baseUrl}}/apis">APIs</a> to get started.</p>
+<div class="dp-empty" id="no-subscriptions">
+  <span class="dp-empty-icon">
+    <i class="bi bi-inbox"></i>
+  </span>
+  <h2 class="dp-empty-title">No subscriptions yet</h2>
+  <p class="dp-empty-desc">Subscribe an application to an API or MCP server to start making calls. Your active subscriptions will show up here.</p>
+  <button class="dp-btn dp-btn--primary dp-btn--lg" disabled title="Backend not wired yet — UI preview only">
+    <i class="bi bi-plus"></i> Create subscription
+  </button>
 </div>
 {{/if}}

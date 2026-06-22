@@ -28,7 +28,8 @@ const SubscriptionPolicy = sequelize.define('DP_SUBSCRIPTION_POLICY', {
     },
     POLICY_NAME: {
         type: DataTypes.STRING,
-        allowNull: false
+        allowNull: false,
+        unique: 'unique_org_policy_name'
     },
     DISPLAY_NAME: {
         type: DataTypes.STRING,
@@ -56,7 +57,10 @@ const SubscriptionPolicy = sequelize.define('DP_SUBSCRIPTION_POLICY', {
 });
 
 SubscriptionPolicy.belongsTo(Organization, {
-    foreignKey: 'ORG_ID'
+    foreignKey: {
+        name: 'ORG_ID',
+        unique: 'unique_org_policy_name'
+    }
 });
 
 module.exports = SubscriptionPolicy;

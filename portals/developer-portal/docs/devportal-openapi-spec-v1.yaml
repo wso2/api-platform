@@ -830,14 +830,31 @@ paths:
         - OAuth2Security:
             - dp:label_delete
             - dp:label_manage
-  /applications:
+  /o/{orgId}/devportal/v1/applications:
+    parameters:
+      - $ref: "#/components/parameters/OrgId"
+    get:
+      tags:
+        - Applications
+      summary: List applications for the authenticated user
+      description: Returns all applications owned by the authenticated user in the specified organization.
+      operationId: listApplications
+      responses:
+        "200":
+          $ref: "#/components/responses/ApplicationListResponse"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      security:
+        - OAuth2Security:
+            - dp:app_read
+            - dp:app_manage
     post:
       tags:
         - Applications
-      summary: Create an application for the authenticated user's organization
+      summary: Create an application
       description: >-
-        Creates a Developer Portal application in the organization resolved from the authenticated user's
-        organization identifier. The request may be JSON, multipart form fields, or an application YAML
+        Creates a Developer Portal application in the specified organization.
+        The request may be JSON, multipart form fields, or an application YAML
         file in the `application` multipart field.
       operationId: saveApplication
       requestBody:
@@ -855,17 +872,18 @@ paths:
         - OAuth2Security:
             - dp:app_write
             - dp:app_manage
-  /applications/{applicationId}:
+  /o/{orgId}/devportal/v1/applications/{applicationId}:
     parameters:
+      - $ref: "#/components/parameters/OrgId"
       - $ref: "#/components/parameters/ApplicationId"
     put:
       tags:
         - Applications
-      summary: Update an application for the authenticated user
+      summary: Update an application
       description: >-
-        Updates an application owned by the authenticated user in the organization resolved from the
-        authenticated user's organization identifier. The request may be JSON, multipart form fields, or
-        an application YAML file in the `application` multipart field.
+        Updates an application owned by the authenticated user in the specified organization.
+        The request may be JSON, multipart form fields, or an application YAML file in the
+        `application` multipart field.
       operationId: updateApplication
       requestBody:
         $ref: "#/components/requestBodies/ApplicationMultipartBody"
@@ -887,7 +905,7 @@ paths:
     delete:
       tags:
         - Applications
-      summary: Delete an application for the authenticated user
+      summary: Delete an application
       description: >-
         Deletes an application owned by the authenticated user. Before removing the application record the
         service will make a best-effort attempt to revoke registered OAuth clients with their respective key
@@ -1232,8 +1250,9 @@ paths:
         - OAuth2Security:
             - dp:view_delete
             - dp:view_manage
-  /applications/{applicationId}/generate-keys:
+  /o/{orgId}/devportal/v1/applications/{applicationId}/generate-keys:
     parameters:
+      - $ref: "#/components/parameters/OrgId"
       - $ref: "#/components/parameters/ApplicationId"
     post:
       tags:
@@ -1261,8 +1280,9 @@ paths:
         - OAuth2Security:
             - dp:app_key_write
             - dp:app_key_manage
-  /applications/{applicationId}/oauth-keys/{keyMappingId}/generate-token:
+  /o/{orgId}/devportal/v1/applications/{applicationId}/oauth-keys/{keyMappingId}/generate-token:
     parameters:
+      - $ref: "#/components/parameters/OrgId"
       - $ref: "#/components/parameters/ApplicationId"
       - $ref: "#/components/parameters/KeyMappingId"
     post:
@@ -1288,8 +1308,9 @@ paths:
         - OAuth2Security:
             - dp:app_key_write
             - dp:app_key_manage
-  /applications/{applicationId}/oauth-keys/{keyMappingId}:
+  /o/{orgId}/devportal/v1/applications/{applicationId}/oauth-keys/{keyMappingId}:
     parameters:
+      - $ref: "#/components/parameters/OrgId"
       - $ref: "#/components/parameters/ApplicationId"
       - $ref: "#/components/parameters/KeyMappingId"
     delete:
@@ -1330,8 +1351,9 @@ paths:
         - OAuth2Security:
             - dp:app_key_write
             - dp:app_key_manage
-  /applications/{applicationId}/oauth-keys/{keyMappingId}/clean-up:
+  /o/{orgId}/devportal/v1/applications/{applicationId}/oauth-keys/{keyMappingId}/clean-up:
     parameters:
+      - $ref: "#/components/parameters/OrgId"
       - $ref: "#/components/parameters/ApplicationId"
       - $ref: "#/components/parameters/KeyMappingId"
     post:
