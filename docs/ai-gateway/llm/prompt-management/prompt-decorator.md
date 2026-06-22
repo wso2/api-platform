@@ -82,11 +82,11 @@ The decorator supports JSONPath expressions to target specific fields. Common ex
 Add a summarization instruction to user prompts:
 
 ```bash
-curl -X POST http://localhost:9090/api/management/v0.9/llm-providers \
+curl -X POST http://localhost:9090/api/management/v1alpha2/llm-providers \
   -H "Content-Type: application/yaml" \
   -H "Authorization: Basic YWRtaW46YWRtaW4=" \
   --data-binary @- <<'EOF'
-apiVersion: gateway.api-platform.wso2.com/v1alpha1
+apiVersion: gateway.api-platform.wso2.com/v1alpha2
 kind: LlmProvider
 metadata:
   name: summarization-provider
@@ -155,11 +155,11 @@ curl -X POST http://openai:8080/chat/completions \
 Add a system message to define AI behavior:
 
 ```bash
-curl -X POST http://localhost:9090/api/management/v0.9/llm-providers \
+curl -X POST http://localhost:9090/api/management/v1alpha2/llm-providers \
   -H "Content-Type: application/yaml" \
   -H "Authorization: Basic YWRtaW46YWRtaW4=" \
   --data-binary @- <<'EOF'
-apiVersion: gateway.api-platform.wso2.com/v1alpha1
+apiVersion: gateway.api-platform.wso2.com/v1alpha2
 kind: LlmProvider
 metadata:
   name: hotel-booking-provider

@@ -226,7 +226,7 @@ Bottom-up APIs are REST APIs deployed via the gateway controller that are **auto
 All REST APIs deployed via the gateway will be synced to on-prem APIM automatically. Here's a complete example:
 
 ```yaml
-apiVersion: gateway.api-platform.wso2.com/v1alpha1
+apiVersion: gateway.api-platform.wso2.com/v1alpha2
 kind: RestApi
 metadata:
   name: PetStoreAPI
@@ -299,7 +299,7 @@ Save the API definition as `petstore-api.json`:
 
 ```json
 {
-  "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+  "apiVersion": "gateway.api-platform.wso2.com/v1alpha2",
   "kind": "RestApi",
   "metadata": {
     "name": "PetStoreAPI"
@@ -441,7 +441,7 @@ Update your API definition to add a rate limit policy:
 
 ```json
 {
-  "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+  "apiVersion": "gateway.api-platform.wso2.com/v1alpha2",
   "kind": "RestApi",
   "metadata": {
     "name": "PetStoreAPI"
@@ -516,7 +516,7 @@ To undeploy an API, set `desiredState: undeployed` and update:
 
 ```json
 {
-  "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+  "apiVersion": "gateway.api-platform.wso2.com/v1alpha2",
   "kind": "RestApi",
   "metadata": {
     "name": "PetStoreAPI"

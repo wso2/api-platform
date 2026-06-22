@@ -118,7 +118,7 @@ spec:
 A populated example:
 
 ```yaml
-apiVersion: gateway.api-platform.wso2.com/v1alpha1
+apiVersion: gateway.api-platform.wso2.com/v1alpha2
 kind: RestApi
 metadata:
   name: echo-api-v2.0

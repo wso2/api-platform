@@ -29,7 +29,7 @@ These templates are automatically loaded when the gateway starts and are immedia
 Each LLM provider template follows a standard YAML structure:
 
 ```yaml
-apiVersion: gateway.api-platform.wso2.com/v1alpha1
+apiVersion: gateway.api-platform.wso2.com/v1alpha2
 kind: LlmProviderTemplate
 metadata:
   name: <template-id>
@@ -71,7 +71,7 @@ Templates support three types of extraction locations:
 The OpenAI template extracts metadata from OpenAI API responses.
 
 ```yaml
-apiVersion: gateway.api-platform.wso2.com/v1alpha1
+apiVersion: gateway.api-platform.wso2.com/v1alpha2
 kind: LlmProviderTemplate
 metadata:
   name: openai
@@ -102,7 +102,7 @@ spec:
 The Azure OpenAI template is compatible with Microsoft's Azure OpenAI Service API.
 
 ```yaml
-apiVersion: gateway.api-platform.wso2.com/v1alpha1
+apiVersion: gateway.api-platform.wso2.com/v1alpha2
 kind: LlmProviderTemplate
 metadata:
   name: azure-openai
@@ -133,7 +133,7 @@ spec:
 The Anthropic template extracts metadata from Anthropic Claude API responses.
 
 ```yaml
-apiVersion: gateway.api-platform.wso2.com/v1alpha1
+apiVersion: gateway.api-platform.wso2.com/v1alpha2
 kind: LlmProviderTemplate
 metadata:
   name: anthropic
@@ -161,7 +161,7 @@ spec:
 The Gemini template is designed for Google's Gemini API.
 
 ```yaml
-apiVersion: gateway.api-platform.wso2.com/v1alpha1
+apiVersion: gateway.api-platform.wso2.com/v1alpha2
 kind: LlmProviderTemplate
 metadata:
   name: gemini
@@ -192,7 +192,7 @@ spec:
 The MistralAI template supports Mistral AI's API.
 
 ```yaml
-apiVersion: gateway.api-platform.wso2.com/v1alpha1
+apiVersion: gateway.api-platform.wso2.com/v1alpha2
 kind: LlmProviderTemplate
 metadata:
   name: mistralai
@@ -223,7 +223,7 @@ spec:
 The AWS Bedrock template is designed for Amazon Bedrock's unified API.
 
 ```yaml
-apiVersion: gateway.api-platform.wso2.com/v1alpha1
+apiVersion: gateway.api-platform.wso2.com/v1alpha2
 kind: LlmProviderTemplate
 metadata:
   name: awsbedrock
@@ -251,7 +251,7 @@ spec:
 The Azure AI Foundry template supports Microsoft's Azure AI Foundry platform.
 
 ```yaml
-apiVersion: gateway.api-platform.wso2.com/v1alpha1
+apiVersion: gateway.api-platform.wso2.com/v1alpha2
 kind: LlmProviderTemplate
 metadata:
   name: azureai-foundry
@@ -282,11 +282,11 @@ spec:
 To create an LLM provider using any of the out-of-the-box templates:
 
 ```bash
-curl -X POST http://localhost:9090/api/management/v0.9/llm-providers \
+curl -X POST http://localhost:9090/api/management/v1alpha2/llm-providers \
   -H "Content-Type: application/yaml" \
   -H "Authorization: Basic YWRtaW46YWRtaW4=" \
   --data-binary @- <<'EOF'
-apiVersion: gateway.api-platform.wso2.com/v1alpha1
+apiVersion: gateway.api-platform.wso2.com/v1alpha2
 kind: LlmProvider
 metadata:
   name: <unique-id>
@@ -332,7 +332,7 @@ The gateway automatically uses the template's metadata extraction patterns to:
 To list all available LLM provider templates:
 
 ```bash
-curl -X GET http://localhost:9090/api/management/v0.9/llm-provider-templates \
+curl -X GET http://localhost:9090/api/management/v1alpha2/llm-provider-templates \
   -H "Authorization: Basic YWRtaW46YWRtaW4="
 ```
 
@@ -341,7 +341,7 @@ curl -X GET http://localhost:9090/api/management/v0.9/llm-provider-templates \
 To retrieve details of a specific template:
 
 ```bash
-curl -X GET http://localhost:9090/api/management/v0.9/llm-provider-templates/openai \
+curl -X GET http://localhost:9090/api/management/v1alpha2/llm-provider-templates/openai \
   -H "Authorization: Basic YWRtaW46YWRtaW4="
 ```
 
@@ -350,11 +350,11 @@ curl -X GET http://localhost:9090/api/management/v0.9/llm-provider-templates/ope
 Platform administrators can create custom templates for LLM providers not covered by the out-of-the-box templates:
 
 ```bash
-curl -X POST http://localhost:9090/api/management/v0.9/llm-provider-templates \
+curl -X POST http://localhost:9090/api/management/v1alpha2/llm-provider-templates \
   -H "Content-Type: application/yaml" \
   -H "Authorization: Basic YWRtaW46YWRtaW4=" \
   --data-binary @- <<'EOF'
-apiVersion: gateway.api-platform.wso2.com/v1alpha1
+apiVersion: gateway.api-platform.wso2.com/v1alpha2
 kind: LlmProviderTemplate
 metadata:
   name: custom-provider
@@ -371,11 +371,11 @@ EOF
 To update an existing custom template:
 
 ```bash
-curl -X PUT http://localhost:9090/api/management/v0.9/llm-provider-templates/custom-provider \
+curl -X PUT http://localhost:9090/api/management/v1alpha2/llm-provider-templates/custom-provider \
   -H "Content-Type: application/yaml" \
   -H "Authorization: Basic YWRtaW46YWRtaW4=" \
   --data-binary @- <<'EOF'
-apiVersion: gateway.api-platform.wso2.com/v1alpha1
+apiVersion: gateway.api-platform.wso2.com/v1alpha2
 kind: LlmProviderTemplate
 metadata:
   name: custom-provider
@@ -393,7 +393,7 @@ EOF
 To delete a custom template:
 
 ```bash
-curl -X DELETE http://localhost:9090/api/management/v0.9/llm-provider-templates/custom-provider \
+curl -X DELETE http://localhost:9090/api/management/v1alpha2/llm-provider-templates/custom-provider \
   -H "Authorization: Basic YWRtaW46YWRtaW4="
 ```
 
@@ -403,7 +403,7 @@ curl -X DELETE http://localhost:9090/api/management/v0.9/llm-provider-templates/
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `apiVersion` | string | Yes | API version, must be `gateway.api-platform.wso2.com/v1alpha1` |
+| `apiVersion` | string | Yes | API version, must be `gateway.api-platform.wso2.com/v1alpha2` |
 | `kind` | string | Yes | Resource kind, must be `LlmProviderTemplate` |
 | `metadata.name` | string | Yes | Unique identifier for the template (used as template ID) |
 | `spec.displayName` | string | Yes | Human-readable name for the template |

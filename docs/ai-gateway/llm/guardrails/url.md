@@ -71,11 +71,11 @@ If `jsonPath` is empty or not specified, the entire payload is treated as a stri
 Deploy an LLM provider that validates URLs in request content using HTTP HEAD requests:
 
 ```bash
-curl -X POST http://localhost:9090/api/management/v0.9/llm-providers \
+curl -X POST http://localhost:9090/api/management/v1alpha2/llm-providers \
   -H "Content-Type: application/yaml" \
   -H "Authorization: Basic YWRtaW46YWRtaW4=" \
   --data-binary @- <<'EOF'
-apiVersion: gateway.api-platform.wso2.com/v1alpha1
+apiVersion: gateway.api-platform.wso2.com/v1alpha2
 kind: LlmProvider
 metadata:
   name: url-guardrail-provider

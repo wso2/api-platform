@@ -63,11 +63,11 @@ The guardrail counts sequences of characters ending with these punctuation marks
 Deploy an LLM provider that ensures requests contain between 1 and 10 sentences:
 
 ```bash
-curl -X POST http://localhost:9090/api/management/v0.9/llm-providers \
+curl -X POST http://localhost:9090/api/management/v1alpha2/llm-providers \
   -H "Content-Type: application/yaml" \
   -H "Authorization: Basic YWRtaW46YWRtaW4=" \
   --data-binary @- <<'EOF'
-apiVersion: gateway.api-platform.wso2.com/v1alpha1
+apiVersion: gateway.api-platform.wso2.com/v1alpha2
 kind: LlmProvider
 metadata:
   name: sentence-count-provider

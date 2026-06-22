@@ -62,7 +62,7 @@ Use `| redact` for sensitive values to hide them from config dumps. A `| default
 Save the following as `artifacts/reading-list-v1.yaml`:
 
 ```yaml
-apiVersion: gateway.api-platform.wso2.com/v1alpha1
+apiVersion: gateway.api-platform.wso2.com/v1alpha2
 kind: RestApi
 metadata:
   name: reading-list-api-v1

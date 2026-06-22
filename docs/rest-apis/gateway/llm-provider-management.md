@@ -339,7 +339,7 @@ Status Code **200**
 |»»»»» exceptions|[[RouteException](schemas.md#schemarouteexception)]|false|none|Path exceptions to the access control mode|
 |»»»»»» path|string|true|none|Path pattern|
 |»»»»»» methods|[string]|true|none|HTTP methods|
-|»»»» globalPolicies|[[Policy](schemas.md#schemapolicy)]|false|none|Global (api-level) policies applied across ALL operations as one shared scope, evaluated before operation-level policies.|
+|»»»» globalPolicies|[[Policy](schemas.md#schemapolicy)]|false|none|Global (api-level) policies applied across ALL operations as one shared scope, evaluated before operation-level policies. **Note:** when using `advanced-ratelimit` here, set `keyExtraction: [{type: "apiname"}]` in `params` to create one shared counter across all operations. Without it the default `routename` key creates an independent bucket per route, defeating the provider-wide limit.|
 |»»»»» name|string|true|none|Name of the policy|
 |»»»»» version|string|true|none|Version of the policy. Only major-only version is allowed (e.g., v0, v1). Full semantic version (e.g., v1.0.0) is not accepted and will be rejected. The Gateway Controller resolves the major version to the single matching full version installed in the gateway image.|
 |»»»»» executionCondition|string|false|none|Expression controlling conditional execution of the policy|

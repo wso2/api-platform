@@ -55,11 +55,11 @@ Each filter parameter (`requestHeadersToFilter` and `responseHeadersToFilter`) i
 The following example demonstrates how to apply the Analytics Header Filter policy to a LlmProvider:
 
 ```bash
-curl -X POST http://localhost:9090/api/management/v0.9/llm-providers \
+curl -X POST http://localhost:9090/api/management/v1alpha2/llm-providers \
   -H "Content-Type: application/yaml" \
   -H "Authorization: Basic <base64-credentials>" \
   --data-binary @- <<'EOF'
-apiVersion: gateway.api-platform.wso2.com/v1alpha1
+apiVersion: gateway.api-platform.wso2.com/v1alpha2
 kind: LlmProvider
 metadata:
   name: openai-provider

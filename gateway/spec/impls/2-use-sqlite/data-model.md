@@ -154,7 +154,7 @@ INSERT INTO deployments (
     'v1.0',
     '/weather',
     'RestApi',
-    '{"version":"gateway.api-platform.wso2.com/v1alpha1","kind":"RestApi","data":{"name":"Weather API","version":"v1.0","context":"/weather","upstream":[{"url":"http://api.weather.com"}],"operations":[{"method":"GET","path":"/{country}/{city}"}]}}',
+    '{"version":"gateway.api-platform.wso2.com/v1alpha2","kind":"RestApi","data":{"name":"Weather API","version":"v1.0","context":"/weather","upstream":[{"url":"http://api.weather.com"}],"operations":[{"method":"GET","path":"/{country}/{city}"}]}}',
     'pending',
     '2025-10-19T10:00:00Z',
     '2025-10-19T10:00:00Z',
@@ -189,7 +189,7 @@ type StoredAPIConfig struct {
 **Example JSON** (stored in `configuration` column):
 ```json
 {
-  "version": "gateway.api-platform.wso2.com/v1alpha1",
+  "version": "gateway.api-platform.wso2.com/v1alpha2",
   "kind": "RestApi",
   "data": {
     "name": "Weather API",

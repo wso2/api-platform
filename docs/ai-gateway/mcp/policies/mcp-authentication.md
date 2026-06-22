@@ -136,7 +136,7 @@ Inside the `gateway/build.yaml`, ensure the policy module is added under `polici
 Apply MCP authentication to an API using a specific key manager:
 
 ```yaml
-apiVersion: gateway.api-platform.wso2.com/v1alpha1
+apiVersion: gateway.api-platform.wso2.com/v1alpha2
 kind: Mcp
 metadata:
     name: mcp-server-api-v1.0
@@ -162,7 +162,7 @@ spec:
 Disable authentication for specific tools while keeping it enabled for others:
 
 ```yaml
-apiVersion: gateway.api-platform.wso2.com/v1alpha1
+apiVersion: gateway.api-platform.wso2.com/v1alpha2
 kind: Mcp
 metadata:
     name: mcp-server-api-v1.0
@@ -199,7 +199,7 @@ spec:
 Advertise required scopes in the protected resource metadata (scopes are not enforced by this policy):
 
 ```yaml
-apiVersion: gateway.api-platform.wso2.com/v1alpha1
+apiVersion: gateway.api-platform.wso2.com/v1alpha2
 kind: Mcp
 metadata:
     name: mcp-server-api-v1.0
@@ -228,7 +228,7 @@ spec:
 Map JWT claims to downstream headers for use by backend services:
 
 ```yaml
-apiVersion: gateway.api-platform.wso2.com/v1alpha1
+apiVersion: gateway.api-platform.wso2.com/v1alpha2
 kind: Mcp
 metadata:
     name: mcp-server-api-v1.0
@@ -258,7 +258,7 @@ spec:
 Completely disable authentication for MCP resources while keeping it for tools:
 
 ```yaml
-apiVersion: gateway.api-platform.wso2.com/v1alpha1
+apiVersion: gateway.api-platform.wso2.com/v1alpha2
 kind: Mcp
 metadata:
     name: mcp-server-api-v1.0
