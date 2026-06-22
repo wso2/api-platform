@@ -35,6 +35,7 @@ const apiMetadataService = require('../services/apiMetadataService');
 const { apiUsesApiKeySecurity, findSubscriptionTokenHeader } = require('../utils/apiDefinitionUtil');
 const sampleApiLoader = require('../utils/sampleApiLoader');
 const adminService = require('../services/adminService');
+const { seedSampleAPIs } = require('../services/sampleSeederService');
 const apiFlowService = require('../services/apiFlowService');
 const { buildSchema, getIntrospectionQuery, graphql: executeGraphQL } = require('graphql');
 const yaml = require('js-yaml');
@@ -505,8 +506,10 @@ const loadDocsPage = async (req, res) => {
         const templateContent = {
             apiMD: '',
             baseUrl: config.baseUrl + constants.ROUTE.VIEWS_PATH + viewName + '/api/' + apiHandle,
+            baseDocUrl: config.baseUrl + constants.ROUTE.VIEWS_PATH + viewName + '/api/' + apiHandle,
             docTypes: docNames,
             apiType: apiMetadata.apiInfo?.apiType,
+            apiName: apiMetadata.apiInfo?.apiName || '',
             showApiKeysNav: apiUsesApiKeySecurity(metaForNav),
         }
         html = renderTemplate(layoutPath + 'pages/docs/page.hbs', layoutPath + 'layout/main.hbs', templateContent, false);
@@ -554,8 +557,10 @@ const loadDocsPage = async (req, res) => {
 
             const templateContent = {
                 baseUrl: '/' + orgName + '/views/' + viewName + "/api/" + apiHandle,
+                baseDocUrl: '/' + orgName + '/views/' + viewName + "/api/" + apiHandle,
                 docTypes: docNames,
                 apiType: apiType,
+                apiName: apiMetadata[0].dataValues.API_NAME || '',
                 profile: req.isAuthenticated() ? profile : null,
                 devportalMode: devportalMode,
                 showApiKeysNav: apiUsesApiKeySecurity(metaForNav, apiDefinitionForNav),
@@ -623,6 +628,9 @@ const loadDocument = async (req, res) => {
         templateContent.baseUrl = config.baseUrl + constants.ROUTE.VIEWS_PATH + viewName;
         templateContent.baseDocUrl = config.baseUrl + constants.ROUTE.VIEWS_PATH + viewName + '/api/' + apiHandle;
         templateContent.docTypes = metaData.docTypes;
+        templateContent.currentDocName = docName || null;
+        templateContent.currentDocType = docType || null;
+        templateContent.apiName = metaData.apiInfo?.apiName || '';
         const metaForNav = { apiInfo: { gatewayType: metaData.apiInfo?.gatewayType }, apiReferenceID: metaData.apiReferenceID };
         templateContent.showApiKeysNav = apiUsesApiKeySecurity(metaForNav);
         const html = renderTemplate(layoutPath + 'pages/docs/page.hbs', layoutPath + 'layout/main.hbs', templateContent, false);
@@ -751,6 +759,9 @@ const loadDocument = async (req, res) => {
             templateContent.baseUrl = '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName;
             templateContent.baseDocUrl = baseDocUrl;
             templateContent.docTypes = docNames;
+            templateContent.currentDocName = docName || null;
+            templateContent.currentDocType = docType || null;
+            templateContent.apiName = apiMetadata[0].dataValues.API_NAME || '';
             let profile = null;
             if (req.user) {
                 profile = {
@@ -1493,6 +1504,25 @@ const loadDocumentMd = async (req, res) => {
     }
 };
 
+const seedSamples = async (req, res) => {
+    const { orgName } = req.params;
+    if (!req.user?.isAdmin) {
+        return res.status(403).json({ error: 'Access denied' });
+    }
+    try {
+        const orgDetails = await orgDao.get(orgName);
+        const results = await seedSampleAPIs(orgDetails.ORG_ID);
+        const deployed = results.filter(r => r.status === 'ok').length;
+        const skipped  = results.filter(r => r.status === 'exists').length;
+        const failed   = results.filter(r => r.status === 'failed').length;
+        logger.info('Sample seed complete', { orgName, deployed, skipped, failed });
+        res.json({ results, deployed, skipped, failed });
+    } catch (err) {
+        logger.error('Sample seed error', { orgName, error: err.message });
+        res.status(500).json({ error: err.message });
+    }
+};
+
 module.exports = {
     loadAPIs,
     loadAPIContent,
@@ -1505,4 +1535,5 @@ module.exports = {
     loadAPIContentMd,
     loadDocumentMd,
     loadSpecificationRaw: loadAPIDefinitionRaw,
+    seedSamples,
 };

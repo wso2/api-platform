@@ -89,7 +89,8 @@ const loadOrgContentFromAPI = async (req, res) => {
         templateContent = {
             devportalMode: devportalMode,
             baseUrl: '/' + orgName + constants.ROUTE.VIEWS_PATH + req.params.viewName,
-            profile: req.isAuthenticated() ? profile : null
+            profile: req.isAuthenticated() ? profile : null,
+            showOnboarding: !!(profile?.isAdmin),
         };
         html = await renderTemplateFromAPI(templateContent, orgId, orgName, 'pages/home', req.params.viewName);
         // Track home page visit telemetry

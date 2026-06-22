@@ -4,329 +4,269 @@
     box-sizing: border-box;
 }
 
-/* Sidebar base styles */
+/* ── Sidebar shell ── */
 .sidebar {
-    position: fixed;
-    top: 5rem;
-    left: 0;
-    z-index: 1000;
+    flex: none;
     display: flex;
     flex-direction: column;
-    justify-content: space-between;
-    height: calc(100vh - 8rem);
-    padding: 1rem 0;
-    background-color: var(--primary-main-color);
-    width: 4.5rem;
-    transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    border-radius: 0 0.5rem 0.5rem 0;
-    box-shadow: 0 0.25rem 0.75rem rgba(0, 0, 0, 0.1);
+    height: 100%;
+    padding: 1rem 0.75rem;
+    background: linear-gradient(180deg, #16415c 0%, #0f2f44 100%);
+    width: 4.625rem;
+    transition: width 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 2px 0 8px rgba(0, 0, 0, 0.12);
     overflow: hidden;
+    z-index: 10;
 }
 
-/* Hover state - expand as overlay without affecting content */
-.sidebar:hover:not(.expanded):not(.force-collapse) {
-    width: 16rem;
+/* Hover-expand (not force-collapsed) */
+.sidebar:hover:not(.force-collapse) {
+    width: 15.5rem;
 }
 
-/* Prevent hover expansion when force-collapse is active */
+/* Prevent hover expansion after explicit collapse */
 .sidebar.force-collapse:hover {
-    width: 4.5rem;
+    width: 4.625rem;
 }
 
-/* Expanded state - stays fixed but content area adjusts */
+/* Expanded via button */
 .sidebar.expanded {
-    width: 16rem;
+    width: 15.5rem;
 }
 
-/* Default content area margin */
-.content-area {
-    margin-left: 7.75rem;
-    transition: margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    will-change: margin-left;
-}
-
-/* Content area when sidebar is expanded */
-.sidebar.expanded ~ .content-area {
-    margin-left: 19.25rem;
-}
-
-.sidebar.collapsed {
-    width: 4.5rem;
-}
-
-.sidebar .nav a {
-    font-size: 1rem;
-}
-
+/* ── Nav items list ── */
 .nav {
     flex: 1;
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
+    gap: 0.25rem;
+    overflow: hidden;
 }
 
 .nav-link {
-    padding: 1rem;
     display: flex;
     align-items: center;
+    justify-content: center;
+    gap: 0;
+    padding: 0.8125rem 0.9375rem;
+    border-radius: 0.625rem;
     text-decoration: none;
-    color: var(--primary-lightest-color);
-    border-radius: 0.5rem;
-    transition: background-color 0.2s;
-    margin: 0 0.5rem;
+    color: rgba(255, 255, 255, 0.82);
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.15s, color 0.15s;
+    overflow: hidden;
 }
 
-/* Align to left when expanded or hovered (and not force-collapsed) */
+/* Align left when expanded or hovered */
 .sidebar:hover:not(.force-collapse) .nav-link,
 .sidebar.expanded .nav-link {
     justify-content: flex-start;
 }
 
 .nav-link:hover {
-    background-color: var(--primary-light-color);
-    color: var(--light-text-color);
-}
-
-.nav-link:hover img,
-.nav-link:hover svg {
-    filter: brightness(0) invert(1);
+    background: rgba(255, 255, 255, 0.07);
+    color: #fff;
 }
 
 .nav-link.active {
-    background-color: var(--primary-light-color);
-    color: var(--light-text-color);
+    background: rgba(92, 162, 212, 0.34);
+    color: #fff;
 }
 
-.nav-link.active img,
-.nav-link.active svg {
-    filter: brightness(0) invert(1);
+/* ── Icons ── */
+.sidebar-icon {
+    font-size: 1.125rem;
+    flex: none;
+    width: 1.125rem;
+    height: 1.125rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
-.nav-link svg {
-    width: 1rem;
-    height: 1rem;
-    flex-shrink: 0;
-}
-
+/* ── Nav label text (hidden when collapsed) ── */
 .nav-text {
     margin: 0;
     white-space: nowrap;
     opacity: 0;
     visibility: hidden;
-    transition: opacity 0.2s ease, visibility 0.2s ease, margin 0.2s ease;
     overflow: hidden;
-    width: 0; /* Take no space when hidden */
-    font-weight: normal; 
-    color: var(--light-text-color);
-    font-size: smaller;
+    width: 0;
+    font-size: 0.9375rem;
+    font-weight: 500;
+    line-height: 1;
+    color: inherit;
+    transition: opacity 0.2s ease, visibility 0.2s ease, margin 0.2s ease, width 0.2s ease;
 }
 
-/* Show text only when hovered (and not force-collapsed) or expanded */
 .sidebar:hover:not(.force-collapse) .nav-text,
 .sidebar.expanded .nav-text {
-    margin: 0 0 0 1rem;
+    margin-left: 0.875rem;
     opacity: 1;
     visibility: visible;
     width: auto;
 }
 
-.sidebar:hover .nav-text,
-.sidebar.expanded .nav-text {
-    opacity: 1;
+/* ── Submenu chevron ── */
+.sidebar-chevron {
+    font-size: 0.75rem;
+    margin-left: auto;
+    flex: none;
+    transition: transform 0.2s ease, opacity 0.2s ease;
 }
 
-.collapsed .nav-text {
-    display: none;
-}
-
-.api-icon {
-    width: 1.25rem;
-    height: 1.25rem;
-    border: 0.125rem solid currentColor;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 0.625rem;
-    flex-shrink: 0;
-}
-
-/* Adjust collapse button alignment */
-.collapse-btn {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 1rem;
-    background: none;
-    border: none;
-    margin: 0 0.3125rem;
-    color: var(--primary-lightest-color);
-    cursor: pointer;
-    transition: color 0.2s;
-}
-
-/* Align to left when expanded or hovered (and not force-collapsed) */
-.sidebar:hover:not(.force-collapse) .collapse-btn,
-.sidebar.expanded .collapse-btn {
-    justify-content: flex-start;
-}
-
-.collapse-btn i {
-    display: flex;
-    align-items: center;
-    font-size: 1rem;
-}
-
-.collapse-btn:hover {
-    color: var(--light-text-color);
-}
-
-.collapse-btn svg {
-    width: 1.25rem;
-    height: 1.25rem;
-    transition: transform 0.3s;
-}
-
-.collapsed .collapse-btn svg {
-    transform: rotate(180deg);
-}
-
-/* Improved styling for the collapse button text */
-.collapse-text {
-    white-space: nowrap;
+/* Hide chevron when submenu is not accessible (href values not yet wired by JS) */
+.sidebar:hover:not(.force-collapse) .nav-link:not(.has-active-submenu) .sidebar-chevron,
+.sidebar.expanded .nav-link:not(.has-active-submenu) .sidebar-chevron {
     opacity: 0;
     visibility: hidden;
-    transition: opacity 0.2s ease, visibility 0.2s ease;
-    overflow: hidden;
     width: 0;
-    font-weight: normal; 
-    color: var(--light-text-color);
-    font-size: smaller;
-}
-
-/* Show collapse button text when sidebar is hovered (and not force-collapsed) or expanded */
-.sidebar:hover:not(.force-collapse) .collapse-text,
-.sidebar.expanded .collapse-text {
-    opacity: 1;
-    visibility: visible;
-    width: auto;
-}
-
-.collapsed .collapse-text {
-    opacity: 0;
-    width: 0;
+    margin-left: 0;
     overflow: hidden;
 }
 
+.nav-link.has-active-submenu .sidebar-chevron,
+#apis.has-active-submenu .sidebar-chevron,
+#mcps.has-active-submenu .sidebar-chevron {
+    transform: rotate(90deg);
+}
+
+/* ── Submenu group ── */
 .submenu {
     display: none;
     flex-direction: column;
-    background-color: var(--primary-dark-color);
+    gap: 0.125rem;
+    background: rgba(6, 22, 36, 0.5);
     border-radius: 0 0 0.5rem 0.5rem;
-    padding: 0.25rem 0;
-    margin: -1rem 0.5rem 0 0.5rem;
+    padding: 0.25rem 0.5rem 0.5rem;
+    margin: -0.25rem 0 0;
 }
 
 .submenu.show {
     display: flex;
 }
 
-#apis.has-active-submenu {
-    background-color: var(--primary-dark-color);
-    border-bottom-left-radius: 0;
-    border-bottom-right-radius: 0;
-    margin-bottom: 0;
-}
-
+/* Parent item when submenu is open */
+#apis.has-active-submenu,
 #mcps.has-active-submenu {
-    background-color: var(--primary-dark-color);
+    background: rgba(6, 22, 36, 0.5);
     border-bottom-left-radius: 0;
     border-bottom-right-radius: 0;
-    margin-bottom: 0;
 }
 
 .submenu-link {
+    padding: 0.6875rem 0.9375rem;
+    border-radius: 0.5rem;
     margin: 0;
-    border-radius: 0;
-    padding: 0.75rem 1rem !important;
-    background-color: transparent;
+    color: rgba(255, 255, 255, 0.78);
+}
+
+.submenu-link:hover {
+    background: rgba(255, 255, 255, 0.07);
+    color: #fff;
 }
 
 .submenu-link.active {
-    background-color: var(--primary-light-color);
-    border-radius: 0;
+    background: rgba(92, 162, 212, 0.34);
+    color: #fff;
+    border-radius: 0.5rem;
 }
 
 .submenu-icon {
-    width: 1.375rem;
-    height: 1rem;
-    flex-shrink: 0;
-}
-
-.sidebar.collapsed .submenu {
-    /* padding-left: 0; */
-    display: none;
-}
-
-.sidebar.collapsed .submenu.show {
+    font-size: 1.125rem;
+    flex: none;
+    width: 1.125rem;
+    height: 1.125rem;
     display: flex;
-}
-
-.sidebar.collapsed .submenu-link {
+    align-items: center;
     justify-content: center;
 }
 
-.sidebar.collapsed .submenu-icon {
-    display: block;
-    margin: 0;
+/* Hide submenu when collapsed (allow hover to still show it via parent hover rule) */
+.sidebar:not(:hover).sidebar:not(.expanded) .submenu {
+    display: none !important;
+}
+
+/* ── Bottom: admin settings + divider + collapse btn ── */
+#admin-settings {
+    margin-top: 0.5rem;
+    flex: none;
 }
 
 .nav-section-divider {
     height: 1px;
-    background-color: rgba(255, 255, 255, 0.15);
-    margin: 0.5rem 1rem;
+    background: rgba(255, 255, 255, 0.12);
+    margin: 0.5rem 0.25rem;
+    flex: none;
 }
 
-.nav-section-label {
-    font-size: 0.65rem;
-    font-weight: 600;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: rgba(255, 255, 255, 0.45);
-    padding: 0 1.5rem;
-    display: none;
+.collapse-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
+    padding: 0.75rem 0.9375rem;
+    border-radius: 0.625rem;
+    background: none;
+    border: none;
+    color: rgba(255, 255, 255, 0.7);
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.15s, color 0.15s;
+    overflow: hidden;
+    flex: none;
 }
 
-.sidebar:hover:not(.force-collapse) .nav-section-label,
-.sidebar.expanded .nav-section-label {
-    display: block;
+.sidebar:hover:not(.force-collapse) .collapse-btn,
+.sidebar.expanded .collapse-btn {
+    justify-content: flex-start;
 }
 
+.collapse-btn:hover {
+    background: rgba(255, 255, 255, 0.07);
+    color: #fff;
+}
 
-.nav-new-badge {
+.collapse-btn i {
+    font-size: 1.125rem;
+    flex: none;
+    transition: transform 0.25s ease;
+    display: flex;
+    align-items: center;
+}
+
+/* Rotate collapse button icon when sidebar is expanded */
+.sidebar.expanded .collapse-btn i,
+.sidebar:hover:not(.force-collapse) .collapse-btn i {
+    transform: rotate(180deg);
+}
+
+.collapse-text {
+    margin: 0;
+    white-space: nowrap;
     opacity: 0;
     visibility: hidden;
-    width: 0;
     overflow: hidden;
-    font-size: 0.55rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    background-color: var(--secondary-light-color);
-    color: #fff;
-    border-radius: 999px;
-    padding: 0;
-    white-space: nowrap;
-    line-height: 1.2;
-    align-self: center;
-    transition: opacity 0.2s ease, visibility 0.2s ease, padding 0.2s ease, width 0.2s ease;
+    width: 0;
+    font-size: 0.875rem;
+    font-weight: 500;
+    line-height: 1;
+    color: inherit;
+    transition: opacity 0.2s ease, visibility 0.2s ease, margin 0.2s ease, width 0.2s ease;
 }
 
-.sidebar:hover:not(.force-collapse) .nav-new-badge,
-.sidebar.expanded .nav-new-badge {
+.sidebar:hover:not(.force-collapse) .collapse-text,
+.sidebar.expanded .collapse-text {
+    margin-left: 0.875rem;
     opacity: 1;
     visibility: visible;
     width: auto;
-    padding: 0.2rem 0.45rem;
-    margin-left: 0.5rem;
+}
+
+/* ── Responsive: hide on narrow screens ── */
+@media (max-width: 860px) {
+    .sidebar {
+        display: none;
+    }
 }

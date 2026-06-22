@@ -1,0 +1,376 @@
+/* API Keys page — ak-* prefix */
+
+/* ── Page wrapper ─────────────────────────────────────────────── */
+.ak-page-wrap {
+  padding-top: 0.5rem;
+}
+
+/* ── Inline code in page description ─────────────────────────── */
+.ak-inline-code {
+  font-family: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
+  font-size: 0.78125rem;
+  background: #f1f4f8;
+  padding: 0.125rem 0.375rem;
+  border-radius: 0.3125rem;
+  color: #1a2433;
+}
+
+/* ── Table wrapper ────────────────────────────────────────────── */
+.ak-tablewrap {
+  margin-top: 1.5rem;
+  border: 1px solid #e6eaf0;
+  border-radius: 0.75rem;
+  overflow: hidden;
+}
+
+.ak-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+  color: #2a3947;
+  min-width: 48.75rem;
+}
+
+.ak-table thead tr {
+  background: #eef4fb;
+}
+
+.ak-table thead th {
+  padding: 0.875rem 1.375rem;
+  font-size: 0.71875rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: #52607a;
+  white-space: nowrap;
+  text-align: left;
+}
+
+.ak-table thead th.ak-th-right {
+  text-align: right;
+}
+
+.ak-table tbody tr {
+  border-top: 1px solid #eef1f5;
+  transition: background 0.12s;
+}
+
+.ak-table tbody tr:hover {
+  background: #fafbfc;
+}
+
+.ak-table tbody td {
+  padding: 1.125rem 1.375rem;
+  vertical-align: middle;
+}
+
+/* ── Key name ─────────────────────────────────────────────────── */
+.ak-key-name {
+  font-weight: 700;
+  color: #1a2433;
+  font-size: 0.875rem;
+  line-height: 1.2;
+}
+
+/* ── Masked key pill ──────────────────────────────────────────── */
+.ak-key-masked {
+  display: inline-flex;
+  align-items: center;
+  background: #fdf2f8;
+  border-radius: 0.375rem;
+  padding: 0.375rem 0.6875rem;
+  letter-spacing: 0.125rem;
+  color: #d6336c;
+  font-family: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
+  font-weight: 700;
+  font-size: 0.8125rem;
+  line-height: 1;
+}
+
+/* ── Status badge ─────────────────────────────────────────────── */
+.ak-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  border-radius: 0.375rem;
+  padding: 0.3125rem 0.625rem;
+  font-size: 0.71875rem;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.ak-status-dot {
+  width: 0.375rem;
+  height: 0.375rem;
+  border-radius: 50%;
+  flex: none;
+}
+
+.ak-status--active  { background: #e6f4ea; color: #2e7d32; }
+.ak-status--active  .ak-status-dot { background: #2e7d32; }
+.ak-status--inactive { background: #f1f3f5; color: #6c757d; }
+.ak-status--inactive .ak-status-dot { background: #9aa7b4; }
+
+/* ── Expires cell ─────────────────────────────────────────────── */
+.ak-expires {
+  font-size: 0.84375rem;
+  color: #52607a;
+  line-height: 1.3;
+}
+
+/* ── Key actions ──────────────────────────────────────────────── */
+.ak-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.625rem;
+}
+
+.ak-btn-regen,
+.ak-btn-revoke {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4375rem;
+  border-radius: 0.5625rem;
+  padding: 0.5rem 0.875rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s;
+  white-space: nowrap;
+  background: #fff;
+}
+
+.ak-btn-regen  { border: 1px solid #c2d3ea; color: #1f6feb; }
+.ak-btn-revoke { border: 1px solid #f0c4c4; color: #c62828; }
+
+.ak-btn-regen:hover:not(:disabled)  { background: #f3f8fe; }
+.ak-btn-revoke:hover:not(:disabled) { background: #fdeaea; }
+
+.ak-btn-regen:disabled,
+.ak-btn-revoke:disabled { opacity: 0.5; cursor: not-allowed; pointer-events: none; }
+
+/* ── Modal overlay ────────────────────────────────────────────── */
+.ak-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(20, 40, 70, 0.34);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 1050;
+}
+
+/* ── Modal box ────────────────────────────────────────────────── */
+.ak-modal {
+  width: 30rem;
+  max-width: calc(100vw - 2rem);
+  background: #fff;
+  border-radius: 1rem;
+  box-shadow: 0 24px 60px rgba(10, 25, 50, 0.34);
+  overflow: hidden;
+  animation: ak-pop 0.28s ease;
+}
+
+.ak-modal--lg { width: 31.25rem; }
+
+@keyframes ak-pop {
+  from { opacity: 0; transform: translateY(10px) scale(0.985); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* ── Modal header ─────────────────────────────────────────────── */
+.ak-modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.375rem 1.625rem;
+  border-bottom: 1px solid #eef1f5;
+}
+
+.ak-modal-title {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: #1a2433;
+  line-height: 1.3;
+}
+
+.ak-modal-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border: none;
+  background: none;
+  border-radius: 0.4375rem;
+  color: #8a93a0;
+  cursor: pointer;
+  font-size: 0.875rem;
+  transition: background 0.12s, color 0.12s;
+}
+.ak-modal-close:hover { background: #eef1f5; color: #1a2433; }
+
+/* ── Modal body ───────────────────────────────────────────────── */
+.ak-modal-body {
+  padding: 1.5rem 1.625rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+/* ── Modal footer ─────────────────────────────────────────────── */
+.ak-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  padding: 1.125rem 1.625rem;
+  border-top: 1px solid #eef1f5;
+}
+
+/* ── Form elements ────────────────────────────────────────────── */
+.ak-form-group label {
+  display: block;
+  font-size: 0.84375rem;
+  font-weight: 600;
+  color: #1a2433;
+  margin-bottom: 0.5rem;
+}
+
+.ak-required { color: #c62828; }
+
+.ak-form-hint {
+  margin-top: 0.4375rem;
+  font-size: 0.75rem;
+  color: #9aa3af;
+  line-height: 1.4;
+}
+
+.ak-form-input {
+  width: 100%;
+  border: 1px solid #d0d7de;
+  border-radius: 0.5rem;
+  padding: 0.6875rem 0.8125rem;
+  font-size: 0.875rem;
+  font-family: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
+  color: #1a2433;
+  background: #fff;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  box-sizing: border-box;
+}
+.ak-form-input:focus { border-color: #1f6feb; box-shadow: 0 0 0 3px rgba(31,111,235,.14); }
+.ak-form-input--date { font-family: inherit; }
+
+/* ── Warning banner (secret modal) ───────────────────────────── */
+.ak-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5625rem;
+  color: #e65100;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+/* ── Key code + copy row ──────────────────────────────────────── */
+.ak-key-display {
+  display: flex;
+  align-items: stretch;
+  gap: 0.625rem;
+}
+
+.ak-key-code {
+  flex: 1;
+  min-width: 0;
+  background: #f6f8fb;
+  border: 1px solid #e6eaf0;
+  border-radius: 0.5625rem;
+  padding: 0.75rem 0.875rem;
+  font-family: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
+  font-size: 0.84375rem;
+  font-weight: 600;
+  color: #1a2433;
+  word-break: break-all;
+  line-height: 1.4;
+}
+
+.ak-copy-btn {
+  flex: none;
+  align-self: stretch;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4375rem;
+  border-radius: 0.5625rem;
+  padding: 0 1rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.15s;
+  border: 1px solid #cdd8e6;
+  background: #fff;
+  color: #1f3d5c;
+  white-space: nowrap;
+}
+.ak-copy-btn:hover { background: #f3f7fc; }
+.ak-copy-btn--copied { background: #e6f4ea; border-color: #bfe3c6; color: #2e7d32; }
+
+/* ── Revoke compact modal ─────────────────────────────────────── */
+.ak-revoke-modal {
+  width: 26.25rem;
+  max-width: calc(100vw - 2rem);
+  background: #fff;
+  border-radius: 1rem;
+  padding: 1.875rem;
+  box-shadow: 0 24px 60px rgba(10, 25, 50, 0.34);
+  animation: ak-pop 0.28s ease;
+}
+
+.ak-revoke-head {
+  display: flex;
+  align-items: center;
+  gap: 0.875rem;
+  margin-bottom: 1rem;
+}
+
+.ak-revoke-icon {
+  width: 2.875rem;
+  height: 2.875rem;
+  flex: none;
+  border-radius: 0.6875rem;
+  background: #fdeaea;
+  color: #c62828;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.3125rem;
+}
+
+.ak-revoke-title {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: #1a2433;
+}
+
+.ak-revoke-body {
+  font-size: 0.875rem;
+  line-height: 1.6;
+  color: #56657a;
+  margin: 0 0 1.5rem;
+}
+
+.ak-revoke-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+}
+
+/* ── Responsive ───────────────────────────────────────────────── */
+@media (max-width: 760px) {
+  .ak-tablewrap { overflow-x: auto; }
+  .ak-table { min-width: 48.75rem; }
+}

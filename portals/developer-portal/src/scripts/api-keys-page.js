@@ -18,104 +18,158 @@
 
 (function () {
     const cfg = document.getElementById('api-keys-config');
-    if (!cfg) {
-        return;
-    }
+    if (!cfg) return;
 
     const orgId = cfg.dataset.orgId;
     const apiId = cfg.dataset.apiId;
     const readOnly = cfg.dataset.readOnly === 'true';
     const csrfToken = cfg.dataset.csrfToken || '';
-    if (cfg.dataset.loadError === 'true') {
-        return;
-    }
+    if (cfg.dataset.loadError === 'true') return;
 
     function jsonMutationHeaders() {
         const h = { 'Content-Type': 'application/json' };
-        if (csrfToken) {
-            h['X-CSRF-Token'] = csrfToken;
-        }
+        if (csrfToken) h['X-CSRF-Token'] = csrfToken;
         return h;
     }
 
     function expiresToIso(val) {
-        if (!val || !String(val).trim()) {
-            return null;
-        }
+        if (!val || !String(val).trim()) return null;
         const d = new Date(val);
-        if (Number.isNaN(d.getTime())) {
-            return null;
-        }
+        if (Number.isNaN(d.getTime())) return null;
         return d.toISOString();
     }
 
+    /* ── Custom modal helpers ─────────────────────────────────── */
+
+    function akShowModal(id) {
+        const el = document.getElementById(id);
+        if (el) el.style.display = 'flex';
+    }
+
+    function akHideModal(id) {
+        const el = document.getElementById(id);
+        if (el) el.style.display = 'none';
+    }
+
+    // Close any overlay when clicking on the backdrop
+    ['generateApiKeyModal', 'regenerateApiKeyModal', 'showApiKeySecretModal', 'ak-revoke-modal'].forEach(function (id) {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.addEventListener('click', function (e) {
+            if (e.target === el) akHideModal(id);
+        });
+    });
+
+    /* ── Secret modal ─────────────────────────────────────────── */
+
+    var _secretReloadOnClose = false;
+    var _copyTimer = null;
+
     function showSecretModal(value, reloadOnClose) {
-        const input = document.getElementById('api-key-secret-value');
-        const modalEl = document.getElementById('showApiKeySecretModal');
-        if (!input || !modalEl || typeof bootstrap === 'undefined') {
-            if (typeof showAlert === 'function') {
-                showAlert('API key: ' + value, 'success');
-            }
-            if (reloadOnClose) {
-                window.location.reload();
-            }
-            return;
-        }
-        input.value = value;
-        if (reloadOnClose) {
-            const onHidden = function () {
-                modalEl.removeEventListener('hidden.bs.modal', onHidden);
-                window.location.reload();
-            };
-            modalEl.addEventListener('hidden.bs.modal', onHidden);
-        }
-        const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
-        modal.show();
+        _secretReloadOnClose = !!reloadOnClose;
+        const codeEl = document.getElementById('api-key-secret-value');
+        if (codeEl) codeEl.textContent = value || '';
+        // Reset copy button to default state
         const copyBtn = document.getElementById('btn-copy-api-key-secret');
         if (copyBtn) {
-            copyBtn.onclick = function () {
-                input.select();
-                document.execCommand('copy');
-                if (typeof showAlert === 'function') {
-                    showAlert('Copied to clipboard', 'success');
-                }
-            };
+            copyBtn.className = 'ak-copy-btn';
+            copyBtn.innerHTML = '<i class="bi bi-copy"></i> Copy';
+        }
+        akShowModal('showApiKeySecretModal');
+    }
+
+    function closeSecretModal() {
+        akHideModal('showApiKeySecretModal');
+        if (_secretReloadOnClose) {
+            _secretReloadOnClose = false;
+            window.location.reload();
         }
     }
 
+    const secretDoneBtn = document.getElementById('ak-secret-done');
+    if (secretDoneBtn) secretDoneBtn.addEventListener('click', closeSecretModal);
+    const secretCloseBtn = document.getElementById('ak-secret-close');
+    if (secretCloseBtn) secretCloseBtn.addEventListener('click', closeSecretModal);
+
+    const copyBtn = document.getElementById('btn-copy-api-key-secret');
+    if (copyBtn) {
+        copyBtn.addEventListener('click', function () {
+            const codeEl = document.getElementById('api-key-secret-value');
+            const text = codeEl ? codeEl.textContent : '';
+            if (!text) return;
+            try {
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(text).catch(function () {});
+                } else {
+                    const ta = document.createElement('textarea');
+                    ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+                    document.body.appendChild(ta); ta.select(); document.execCommand('copy');
+                    document.body.removeChild(ta);
+                }
+            } catch (e) {}
+            copyBtn.className = 'ak-copy-btn ak-copy-btn--copied';
+            copyBtn.innerHTML = '<i class="bi bi-check-lg"></i> Copied';
+            if (_copyTimer) clearTimeout(_copyTimer);
+            _copyTimer = setTimeout(function () {
+                copyBtn.className = 'ak-copy-btn';
+                copyBtn.innerHTML = '<i class="bi bi-copy"></i> Copy';
+            }, 1600);
+        });
+    }
+
+    /* ── Generate modal ───────────────────────────────────────── */
+
+    function openGenModal() {
+        const nameInput = document.getElementById('api-key-name');
+        const expInput = document.getElementById('api-key-expires');
+        if (nameInput) nameInput.value = '';
+        if (expInput) expInput.value = '';
+        akShowModal('generateApiKeyModal');
+        setTimeout(function () { if (nameInput) nameInput.focus(); }, 60);
+    }
+
+    function closeGenModal() { akHideModal('generateApiKeyModal'); }
+
+    const genOpenBtn = document.getElementById('btn-open-generate-api-key');
+    if (genOpenBtn) genOpenBtn.addEventListener('click', openGenModal);
+    const genOpenBtnEmpty = document.getElementById('btn-open-generate-api-key-empty');
+    if (genOpenBtnEmpty) genOpenBtnEmpty.addEventListener('click', openGenModal);
+
+    const genCloseBtn = document.getElementById('ak-gen-close');
+    if (genCloseBtn) genCloseBtn.addEventListener('click', closeGenModal);
+    const genCancelBtn = document.getElementById('ak-gen-cancel');
+    if (genCancelBtn) genCancelBtn.addEventListener('click', closeGenModal);
+
+    /* ── Regenerate modal ─────────────────────────────────────── */
+
+    function closeRegenModal() { akHideModal('regenerateApiKeyModal'); }
+
+    const regenCloseBtn = document.getElementById('ak-regen-close');
+    if (regenCloseBtn) regenCloseBtn.addEventListener('click', closeRegenModal);
+    const regenCancelBtn = document.getElementById('ak-regen-cancel');
+    if (regenCancelBtn) regenCancelBtn.addEventListener('click', closeRegenModal);
+
+    /* ── API requests ─────────────────────────────────────────── */
+
+    const namePattern = /^[a-z0-9][a-z0-9_-]{0,127}$/;
+
     async function postGenerate(body) {
-        const response = await fetch(
-            devportalApi.org(orgId, '/api-keys/generate'),
-            {
-                method: 'POST',
-                credentials: 'same-origin',
-                headers: jsonMutationHeaders(),
-                body: JSON.stringify(body)
-            }
-        );
+        const response = await fetch(devportalApi.org(orgId, '/api-keys/generate'), {
+            method: 'POST', credentials: 'same-origin',
+            headers: jsonMutationHeaders(), body: JSON.stringify(body),
+        });
         const data = await response.json().catch(function () { return {}; });
-        if (!response.ok) {
-            const msg = data.description || data.message || response.statusText || 'Request failed';
-            throw new Error(msg);
-        }
+        if (!response.ok) throw new Error(data.description || data.message || response.statusText || 'Request failed');
         return data;
     }
 
     async function postRegenerate(keyId, body) {
-        const response = await fetch(
-            devportalApi.org(orgId, '/api-keys/' + encodeURIComponent(keyId) + '/regenerate'),
-            {
-                method: 'POST',
-                credentials: 'same-origin',
-                headers: jsonMutationHeaders(),
-                body: JSON.stringify(body)
-            }
-        );
+        const response = await fetch(devportalApi.org(orgId, '/api-keys/' + encodeURIComponent(keyId) + '/regenerate'), {
+            method: 'POST', credentials: 'same-origin',
+            headers: jsonMutationHeaders(), body: JSON.stringify(body),
+        });
         const data = await response.json().catch(function () { return {}; });
-        if (!response.ok) {
-            const msg = data.description || data.message || response.statusText || 'Request failed';
-            throw new Error(msg);
-        }
+        if (!response.ok) throw new Error(data.description || data.message || response.statusText || 'Request failed');
         return data;
     }
 
@@ -128,202 +182,148 @@
         });
         if (!response.ok) {
             const data = await response.json().catch(function () { return {}; });
-            const msg = data.description || data.message || response.statusText || 'Request failed';
-            throw new Error(msg);
+            throw new Error(data.description || data.message || response.statusText || 'Request failed');
         }
     }
 
-    const namePattern = /^[a-z0-9][a-z0-9_-]{0,127}$/;
+    /* ── Generate submit ──────────────────────────────────────── */
 
-    document.getElementById('btn-submit-generate-api-key')?.addEventListener('click', async function () {
-        const submitBtn = document.getElementById('btn-submit-generate-api-key');
-        const nameInput = document.getElementById('api-key-name');
-        const expInput = document.getElementById('api-key-expires');
-        const name = (nameInput && nameInput.value) ? nameInput.value.trim() : '';
-        if (!namePattern.test(name)) {
-            if (typeof showAlert === 'function') {
-                await showAlert('Enter a valid name: start with a letter or number, then up to 128 URL-safe characters.', 'error');
+    const submitGenBtn = document.getElementById('btn-submit-generate-api-key');
+    if (submitGenBtn) {
+        submitGenBtn.addEventListener('click', async function () {
+            if (submitGenBtn.disabled || submitGenBtn.dataset.loading === 'true') return;
+            const nameInput = document.getElementById('api-key-name');
+            const expInput = document.getElementById('api-key-expires');
+            const name = (nameInput && nameInput.value) ? nameInput.value.trim() : '';
+            if (!namePattern.test(name)) {
+                if (typeof showAlert === 'function') await showAlert('Enter a valid name: start with a letter or number, then up to 128 URL-safe characters.', 'error');
+                return;
             }
-            return;
-        }
-        if (submitBtn && (submitBtn.disabled || submitBtn.dataset.loading === 'true')) {
-            return;
-        }
-        const body = { apiId: apiId, name: name };
-        const iso = expInput ? expiresToIso(expInput.value) : null;
-        if (iso) {
-            body.expiresAt = iso;
-        }
-        let data;
-        if (submitBtn) {
-            submitBtn.dataset.loading = 'true';
-            submitBtn.disabled = true;
-        }
-        try {
-            data = await postGenerate(body);
-            const modalEl = document.getElementById('generateApiKeyModal');
-            if (modalEl && typeof bootstrap !== 'undefined') {
-                const m = bootstrap.Modal.getInstance(modalEl);
-                if (m) {
-                    m.hide();
-                }
+            const body = { apiId: apiId, name: name };
+            const iso = expInput ? expiresToIso(expInput.value) : null;
+            if (iso) body.expiresAt = iso;
+            submitGenBtn.dataset.loading = 'true';
+            submitGenBtn.disabled = true;
+            let data;
+            try {
+                data = await postGenerate(body);
+                closeGenModal();
+                if (nameInput) nameInput.value = '';
+                if (expInput) expInput.value = '';
+            } catch (e) {
+                if (typeof showAlert === 'function') await showAlert(e.message || 'Failed to generate API key', 'error');
+            } finally {
+                submitGenBtn.disabled = false;
+                delete submitGenBtn.dataset.loading;
             }
-            if (nameInput) {
-                nameInput.value = '';
+            if (data && data.key) {
+                showSecretModal(data.key, true);
+            } else if (data) {
+                window.location.reload();
             }
-            if (expInput) {
-                expInput.value = '';
-            }
-        } catch (e) {
-            if (typeof showAlert === 'function') {
-                await showAlert(e.message || 'Failed to generate API key', 'error');
-            }
-        } finally {
-            if (submitBtn) {
-                submitBtn.disabled = false;
-                delete submitBtn.dataset.loading;
-            }
-        }
-        if (data && data.key) {
-            showSecretModal(data.key, true);
-        } else if (data) {
-            window.location.reload();
-        }
-    });
+        });
+    }
+
+    /* ── Regenerate buttons ───────────────────────────────────── */
 
     document.querySelectorAll('.btn-regenerate-key').forEach(function (btn) {
         btn.addEventListener('click', function () {
-            if (readOnly || btn.dataset.loading === 'true') {
-                return;
-            }
+            if (readOnly) return;
             const keyId = btn.getAttribute('data-key-id') || '';
             const keyName = btn.getAttribute('data-key-name') || keyId;
-            document.getElementById('regenerate-key-id').value = keyId;
+            const keyIdInput = document.getElementById('regenerate-key-id');
+            if (keyIdInput) keyIdInput.value = keyId;
             const nameField = document.getElementById('regenerate-api-key-name');
-            if (nameField) {
-                nameField.value = keyName;
-            }
+            if (nameField) nameField.value = keyName;
             const expField = document.getElementById('regenerate-api-key-expires');
-            if (expField) {
-                expField.value = '';
-            }
-            const modalEl = document.getElementById('regenerateApiKeyModal');
-            if (modalEl && typeof bootstrap !== 'undefined') {
-                btn.dataset.loading = 'true';
-                btn.disabled = true;
-                const onShown = function () {
-                    modalEl.removeEventListener('shown.bs.modal', onShown);
-                    btn.disabled = false;
-                    delete btn.dataset.loading;
-                };
-                modalEl.addEventListener('shown.bs.modal', onShown);
-                try {
-                    bootstrap.Modal.getOrCreateInstance(modalEl).show();
-                } catch (err) {
-                    modalEl.removeEventListener('shown.bs.modal', onShown);
-                    btn.disabled = false;
-                    delete btn.dataset.loading;
-                }
-            }
+            if (expField) expField.value = '';
+            akShowModal('regenerateApiKeyModal');
         });
     });
 
-    document.getElementById('btn-submit-regenerate-api-key')?.addEventListener('click', async function () {
-        const submitBtn = document.getElementById('btn-submit-regenerate-api-key');
-        const keyId = document.getElementById('regenerate-key-id')?.value || '';
-        const nameField = document.getElementById('regenerate-api-key-name');
-        const expField = document.getElementById('regenerate-api-key-expires');
-        const name = (nameField && nameField.value) ? nameField.value.trim() : '';
-        if (!namePattern.test(name)) {
-            if (typeof showAlert === 'function') {
-                await showAlert('Enter a valid name for the new key.', 'error');
-            }
-            return;
-        }
-        if (submitBtn && (submitBtn.disabled || submitBtn.dataset.loading === 'true')) {
-            return;
-        }
-        const body = { apiId: apiId, name: name };
-        const iso = expField ? expiresToIso(expField.value) : null;
-        if (iso) {
-            body.expiresAt = iso;
-        }
-        let data;
-        if (submitBtn) {
-            submitBtn.dataset.loading = 'true';
-            submitBtn.disabled = true;
-        }
-        try {
-            data = await postRegenerate(keyId, body);
-            const modalEl = document.getElementById('regenerateApiKeyModal');
-            if (modalEl && typeof bootstrap !== 'undefined') {
-                const m = bootstrap.Modal.getInstance(modalEl);
-                if (m) {
-                    m.hide();
-                }
-            }
-        } catch (e) {
-            if (typeof showAlert === 'function') {
-                await showAlert(e.message || 'Failed to regenerate API key', 'error');
-            }
-        } finally {
-            if (submitBtn) {
-                submitBtn.disabled = false;
-                delete submitBtn.dataset.loading;
-            }
-        }
-        if (data && data.key) {
-            showSecretModal(data.key, true);
-        } else if (data) {
-            window.location.reload();
-        }
-    });
+    /* ── Regenerate submit ────────────────────────────────────── */
 
-    // Expose revoke executor for the warning modal confirm button
-    window.__pendingRevokeKeyBtn = null;
-    window.executeRevokeApiKey = async function () {
-        const btn = window.__pendingRevokeKeyBtn;
-        const keyId = btn ? (btn.getAttribute('data-key-id') || '') : '';
-        if (!keyId) return;
-        if (btn) {
-            btn.dataset.loading = 'true';
-            btn.disabled = true;
-        }
-        try {
-            await postRevoke(keyId);
-            if (typeof showAlert === 'function') {
-                await showAlert('API key revoked.', 'success');
+    const submitRegenBtn = document.getElementById('btn-submit-regenerate-api-key');
+    if (submitRegenBtn) {
+        submitRegenBtn.addEventListener('click', async function () {
+            if (submitRegenBtn.disabled || submitRegenBtn.dataset.loading === 'true') return;
+            const keyId = document.getElementById('regenerate-key-id')?.value || '';
+            const nameField = document.getElementById('regenerate-api-key-name');
+            const expField = document.getElementById('regenerate-api-key-expires');
+            const name = (nameField && nameField.value) ? nameField.value.trim() : '';
+            if (!namePattern.test(name)) {
+                if (typeof showAlert === 'function') await showAlert('Enter a valid name for the new key.', 'error');
+                return;
             }
-            window.location.reload();
-        } catch (e) {
-            if (typeof showAlert === 'function') {
-                await showAlert(e.message || 'Failed to revoke API key', 'error');
+            const body = { apiId: apiId, name: name };
+            const iso = expField ? expiresToIso(expField.value) : null;
+            if (iso) body.expiresAt = iso;
+            submitRegenBtn.dataset.loading = 'true';
+            submitRegenBtn.disabled = true;
+            let data;
+            try {
+                data = await postRegenerate(keyId, body);
+                closeRegenModal();
+            } catch (e) {
+                if (typeof showAlert === 'function') await showAlert(e.message || 'Failed to regenerate API key', 'error');
+            } finally {
+                submitRegenBtn.disabled = false;
+                delete submitRegenBtn.dataset.loading;
             }
-        } finally {
-            if (btn) {
-                btn.disabled = false;
-                delete btn.dataset.loading;
+            if (data && data.key) {
+                showSecretModal(data.key, true);
+            } else if (data) {
+                window.location.reload();
             }
-            window.__pendingRevokeKeyBtn = null;
-        }
-    };
+        });
+    }
+
+    /* ── Revoke modal ─────────────────────────────────────────── */
+
+    var _pendingRevokeKeyId = null;
 
     document.querySelectorAll('.btn-revoke-key').forEach(function (btn) {
         btn.addEventListener('click', function () {
-            if (readOnly || btn.dataset.loading === 'true') {
-                return;
-            }
+            if (readOnly) return;
             const keyId = btn.getAttribute('data-key-id') || '';
-            if (!keyId) {
-                return;
-            }
-            window.__pendingRevokeKeyBtn = btn;
-            if (typeof openWarningModal === 'function') {
-                openWarningModal('RevokeApiKey', keyId, '', '', '', '', '');
-            } else {
-                // fallback — should not happen if warning partial is included
-                window.executeRevokeApiKey();
-            }
+            const keyName = btn.getAttribute('data-key-name') || keyId;
+            if (!keyId) return;
+            _pendingRevokeKeyId = keyId;
+            const nameEl = document.getElementById('ak-revoke-name');
+            if (nameEl) nameEl.textContent = keyName;
+            const confirmBtn = document.getElementById('ak-revoke-confirm');
+            if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = 'Revoke key'; }
+            akShowModal('ak-revoke-modal');
         });
     });
-})();
+
+    const revokeCancelBtn = document.getElementById('ak-revoke-cancel');
+    if (revokeCancelBtn) revokeCancelBtn.addEventListener('click', function () { akHideModal('ak-revoke-modal'); });
+
+    const revokeConfirmBtn = document.getElementById('ak-revoke-confirm');
+    if (revokeConfirmBtn) {
+        revokeConfirmBtn.addEventListener('click', async function () {
+            if (!_pendingRevokeKeyId) return;
+            const keyId = _pendingRevokeKeyId;
+            revokeConfirmBtn.disabled = true;
+            revokeConfirmBtn.textContent = 'Revoking…';
+            try {
+                await postRevoke(keyId);
+                if (typeof showAlert === 'function') await showAlert('API key revoked.', 'success');
+                window.location.reload();
+            } catch (e) {
+                if (typeof showAlert === 'function') await showAlert(e.message || 'Failed to revoke API key', 'error');
+                revokeConfirmBtn.disabled = false;
+                revokeConfirmBtn.textContent = 'Revoke key';
+            } finally {
+                _pendingRevokeKeyId = null;
+            }
+        });
+    }
+
+    // Backward-compat shim in case any external code still calls executeRevokeApiKey
+    window.executeRevokeApiKey = async function () {
+        if (revokeConfirmBtn) revokeConfirmBtn.click();
+    };
+
+}());

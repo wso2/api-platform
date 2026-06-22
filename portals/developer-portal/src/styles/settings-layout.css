@@ -1,0 +1,1296 @@
+/* ── Settings page layout ────────────────────────────────── */
+
+:root {
+  --wso2-gradient: linear-gradient(135deg, #ef4223 0%, #ff8636 100%);
+}
+
+.cfg-page {
+  padding: 24px 36px 40px;
+}
+
+.cfg-back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #637282;
+  font-size: 0.844rem;
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.cfg-back-link:hover { color: #1a2433; }
+
+.cfg-heading {
+  margin: 14px 0 22px;
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #1a2433;
+}
+
+/* ── Two-column layout ───────────────────────────────────── */
+
+.cfg-layout {
+  display: flex;
+  gap: 32px;
+  align-items: flex-start;
+}
+
+/* ── Left sub-nav ────────────────────────────────────────── */
+
+.cfg-nav {
+  width: 252px;
+  flex: none;
+}
+
+.cfg-nav-section {
+  font-size: 0.688rem;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  color: #9aa3af;
+  padding: 0 12px;
+  text-transform: uppercase;
+}
+
+.cfg-nav-section + .cfg-nav-items { margin-top: 10px; }
+
+.cfg-nav-items {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-bottom: 22px;
+}
+
+.cfg-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 10px 12px;
+  border-radius: 9px;
+  cursor: pointer;
+  text-decoration: none;
+  font-size: 0.844rem;
+  font-weight: 500;
+  color: #44505f;
+  background: transparent;
+  transition: background-color 0.15s;
+  white-space: nowrap;
+}
+
+.cfg-nav-item i { font-size: 1rem; flex: none; }
+
+.cfg-nav-item:hover {
+  background: #f1f4f8;
+  color: #1a2433;
+  text-decoration: none;
+}
+
+.cfg-nav-item.active {
+  background: #eef4fb;
+  color: #1f6feb;
+  font-weight: 600;
+}
+
+/* ── Content area ────────────────────────────────────────── */
+
+.cfg-content {
+  flex: 1;
+  min-width: 0;
+  border-left: 1px solid #e6eaf0;
+  padding-left: 32px;
+}
+
+.cfg-panel {
+  display: none;
+  flex-direction: column;
+}
+
+.cfg-panel.active {
+  display: flex;
+}
+
+/* ── Panel header (title + action button) ───────────────── */
+
+.cfg-panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 22px;
+}
+
+.cfg-panel-title {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #1a2433;
+}
+
+.cfg-panel-desc {
+  margin: 6px 0 0;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: #637282;
+}
+
+/* ── Primary button ──────────────────────────────────────── */
+
+.cfg-btn-primary {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--wso2-gradient);
+  color: #fff;
+  border: none;
+  border-radius: 20px;
+  padding: 11px 20px;
+  font-size: 0.844rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: none;
+  transition: opacity 0.15s;
+  white-space: nowrap;
+}
+
+.cfg-btn-primary:hover { opacity: 0.9; color: #fff; text-decoration: none; }
+
+.cfg-btn-primary:disabled {
+  opacity: 0.55;
+  cursor: default;
+  pointer-events: none;
+}
+
+/* ── Manage APIs table ───────────────────────────────────── */
+
+.cfg-table-wrap {
+  border: 1px solid #e6eaf0;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.cfg-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.cfg-table thead tr { background: #f6f8fb; }
+
+.cfg-table th {
+  text-align: left;
+  padding: 12px 18px;
+  font-size: 0.719rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: #8a93a0;
+  text-transform: uppercase;
+}
+
+.cfg-table tbody tr { border-top: 1px solid #eef1f5; }
+
+.cfg-table tbody tr:hover { background: #fafbfc; }
+
+.cfg-table td { padding: 13px 18px; }
+
+/* API name cell */
+.cfg-api-cell {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+
+.cfg-api-avatar {
+  width: 32px;
+  height: 32px;
+  flex: none;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.cfg-api-avatar--rest    { background: #e6f2fb; color: #0277bd; }
+.cfg-api-avatar--graphql { background: #fce4ef; color: #d6336c; }
+.cfg-api-avatar--soap    { background: #ece9fb; color: #6741d9; }
+.cfg-api-avatar--ws      { background: #fff1e6; color: #e65100; }
+
+.cfg-cell-name {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #1a2433;
+}
+
+/* Type badge */
+.cfg-type-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 0.688rem;
+  font-weight: 600;
+}
+
+.cfg-type-badge--rest    { background: #e6f2fb; color: #0277bd; }
+.cfg-type-badge--graphql { background: #fce4ef; color: #d6336c; }
+.cfg-type-badge--soap    { background: #ece9fb; color: #6741d9; }
+.cfg-type-badge--ws      { background: #fff1e6; color: #e65100; }
+
+/* Status badge */
+.cfg-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 20px;
+  padding: 5px 11px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.cfg-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex: none;
+}
+
+.cfg-status-published {
+  background: #e6f4ea;
+  color: #2e7d32;
+}
+
+.cfg-status-published .cfg-status-dot { background: #2e7d32; }
+
+.cfg-status-draft {
+  background: #f1f4f8;
+  color: #8a93a0;
+}
+
+.cfg-status-draft .cfg-status-dot { background: #8a93a0; }
+
+/* Actions cell */
+.cfg-cell-actions { text-align: center; }
+
+.cfg-action-btn {
+  background: none;
+  border: none;
+  color: #9aa3af;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition: color 0.15s, background 0.15s;
+}
+
+.cfg-action-btn:hover { color: #1a2433; background: #f1f4f8; }
+.cfg-action-btn:disabled { opacity: 0.4; cursor: default; pointer-events: none; }
+
+.cfg-empty-row {
+  text-align: center;
+  color: #9aa3af;
+  font-size: 0.875rem;
+  padding: 28px 18px !important;
+}
+
+/* ── Manage Organizations link panel ─────────────────────── */
+
+.cfg-orgs-link-panel {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  background: #f6f8fb;
+  border: 1px solid #e6eaf0;
+  border-radius: 12px;
+  padding: 22px 24px;
+}
+
+.cfg-orgs-link-icon {
+  flex: none;
+  width: 46px;
+  height: 46px;
+  border-radius: 11px;
+  background: #e6f2fb;
+  color: #0277bd;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.375rem;
+}
+
+.cfg-orgs-link-body { flex: 1; min-width: 0; }
+
+.cfg-orgs-link-title {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: #1a2433;
+  line-height: 1.3;
+}
+
+.cfg-orgs-link-desc {
+  margin: 4px 0 16px;
+  font-size: 0.844rem;
+  line-height: 1.5;
+  color: #637282;
+}
+
+.cfg-orgs-link-btn { margin-top: 0; }
+
+/* ── Responsive ──────────────────────────────────────────── */
+
+@media (max-width: 900px) {
+  .cfg-layout { flex-direction: column; gap: 0; }
+  .cfg-nav {
+    width: 100%;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 20px;
+  }
+  .cfg-nav-section { display: none; }
+  .cfg-nav-items { flex-direction: row; flex-wrap: wrap; margin-bottom: 0; }
+  .cfg-content { border-left: none; padding-left: 0; border-top: 1px solid #e6eaf0; padding-top: 20px; }
+}
+
+/* ── Table extras (version / context cells) ──────────────── */
+
+.cfg-cell-version {
+  font-family: monospace;
+  font-size: 0.8125rem;
+  color: #637282;
+  padding: 13px 14px !important;
+}
+
+.cfg-cell-context {
+  font-family: monospace;
+  font-size: 0.6875rem;
+  color: #9aa3af;
+  margin-top: 3px;
+}
+
+/* ── Dropdown menu ───────────────────────────────────────── */
+
+.cfg-cell-actions { position: relative; text-align: center; }
+
+.cfg-dropdown {
+  position: absolute;
+  top: calc(100% - 6px);
+  right: 8px;
+  z-index: 50;
+  width: 148px;
+  background: #fff;
+  border: 1px solid #e6eaf0;
+  border-radius: 10px;
+  box-shadow: 0 10px 28px rgba(20, 40, 70, 0.16);
+  padding: 6px;
+  flex-direction: column;
+  display: none;
+}
+
+.cfg-dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 9px 10px;
+  border: none;
+  background: none;
+  border-radius: 7px;
+  font-size: 0.844rem;
+  font-weight: 500;
+  color: #1a2433;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.12s;
+}
+
+.cfg-dropdown-item:hover:not(:disabled) { background: #f4f6f9; }
+.cfg-dropdown-item--danger { color: #c62828; }
+.cfg-dropdown-item--danger:hover:not(:disabled) { background: #fdeaea; }
+.cfg-dropdown-item:disabled { opacity: 0.45; cursor: default; pointer-events: none; }
+
+/* ── Wizard container ────────────────────────────────────── */
+
+#cfg-apis-wizard {
+  flex-direction: column;
+}
+
+.cfg-wizard-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: #637282;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.cfg-wizard-back:hover { color: #1a2433; text-decoration: none; }
+
+/* ── Stepper ─────────────────────────────────────────────── */
+
+.cfg-stepper {
+  display: flex;
+  align-items: center;
+  margin-top: 22px;
+  margin-bottom: 0;
+}
+
+.cfg-step {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: default;
+}
+
+.cfg-step-circle {
+  width: 28px;
+  height: 28px;
+  flex: none;
+  border-radius: 50%;
+  background: #eef1f5;
+  color: #8a93a0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.781rem;
+  font-weight: 700;
+  line-height: 1;
+  transition: background 0.2s, color 0.2s;
+}
+
+.cfg-step--active .cfg-step-circle { background: #1f6feb; color: #fff; }
+.cfg-step--done   .cfg-step-circle { background: #2e7d32; color: #fff; }
+.cfg-step--done { cursor: pointer; }
+
+.cfg-step-label {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: #9aa3af;
+  white-space: nowrap;
+  transition: color 0.2s;
+}
+
+.cfg-step--active .cfg-step-label { color: #1f6feb; }
+.cfg-step--done   .cfg-step-label { color: #1a2433; }
+
+.cfg-step-connector {
+  flex: 1;
+  height: 2px;
+  min-width: 24px;
+  background: #e6eaf0;
+  margin: 0 14px;
+  transition: background 0.2s;
+}
+
+.cfg-step-connector--done { background: #2e7d32; }
+
+/* ── Wizard step panels ──────────────────────────────────── */
+
+.cfg-wizard-step {
+  margin-top: 26px;
+  max-width: 680px;
+  display: flex;
+  flex-direction: column;
+}
+
+.cfg-wstep-desc {
+  margin: 0 0 18px;
+  font-size: 0.844rem;
+  line-height: 1.55;
+  color: #637282;
+}
+
+/* ── Wizard form ─────────────────────────────────────────── */
+
+.cfg-form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+}
+
+.cfg-form-group label {
+  display: block;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: #1a2433;
+  margin-bottom: 8px;
+}
+
+.cfg-form-group .required { color: #c62828; }
+
+.cfg-form-input {
+  width: 100%;
+  border: 1px solid #d0d7de;
+  border-radius: 8px;
+  padding: 11px 13px;
+  font-size: 0.875rem;
+  font-family: inherit;
+  color: #1a2433;
+  background: #fff;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  appearance: auto;
+}
+
+.cfg-form-input:focus {
+  border-color: #1f6feb;
+  box-shadow: 0 0 0 3px rgba(31, 111, 235, 0.12);
+}
+
+.cfg-form-input--mono { font-family: monospace; font-size: 0.8125rem; }
+
+/* ── File upload zone ────────────────────────────────────── */
+
+.cfg-upload-zone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 42px 20px;
+  border: 1.5px dashed #c3d0de;
+  border-radius: 14px;
+  background: #f8fafc;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.cfg-upload-zone:hover { border-color: #1f6feb; background: #f1f6fd; }
+.cfg-upload-zone input[type=file] { display: none; }
+
+.cfg-upload-icon {
+  width: 54px;
+  height: 54px;
+  border-radius: 13px;
+  background: #e6f2fb;
+  color: #0277bd;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
+}
+
+.cfg-upload-label {
+  font-size: 0.906rem;
+  font-weight: 600;
+  color: #1a2433;
+}
+
+.cfg-upload-label span { color: #1f6feb; }
+.cfg-upload-hint { font-size: 0.781rem; color: #9aa3af; }
+
+/* ── Spec chip (uploaded file indicator) ─────────────────── */
+
+.cfg-spec-chip {
+  display: none;
+  align-items: center;
+  gap: 12px;
+  margin-top: 16px;
+  border: 1px solid #d4e7d9;
+  background: #f3faf4;
+  border-radius: 10px;
+  padding: 13px 15px;
+}
+
+.cfg-spec-chip.visible { display: flex; }
+
+.cfg-spec-icon {
+  width: 34px;
+  height: 34px;
+  flex: none;
+  border-radius: 8px;
+  background: #e6f4ea;
+  color: #2e7d32;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1rem;
+}
+
+.cfg-spec-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.844rem;
+  font-weight: 600;
+  color: #1a2433;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cfg-spec-sub { font-size: 0.719rem; color: #637282; margin-top: 2px; }
+
+/* ── Docs upload (compact variant) ──────────────────────── */
+
+.cfg-upload-compact {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 11px;
+  padding: 22px;
+  border: 1.5px dashed #c3d0de;
+  border-radius: 12px;
+  background: #f8fafc;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.cfg-upload-compact:hover { border-color: #1f6feb; background: #f1f6fd; }
+.cfg-upload-compact input[type=file] { display: none; }
+
+.cfg-docs-empty {
+  margin-top: 16px;
+  font-size: 0.8125rem;
+  color: #9aa3af;
+  text-align: center;
+  padding: 14px;
+}
+
+.cfg-docs-list {
+  margin-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.cfg-docs-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid #e6eaf0;
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+
+.cfg-docs-icon {
+  width: 32px;
+  height: 32px;
+  flex: none;
+  border-radius: 8px;
+  background: #eef1f5;
+  color: #52606d;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.9rem;
+}
+
+.cfg-docs-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.844rem;
+  font-weight: 600;
+  color: #1a2433;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cfg-docs-remove {
+  color: #9aa3af;
+  cursor: pointer;
+  padding: 5px;
+  border: none;
+  background: none;
+  border-radius: 6px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.12s, background 0.12s;
+}
+
+.cfg-docs-remove:hover { color: #c62828; background: #fdeaea; }
+
+/* ── Review step ─────────────────────────────────────────── */
+
+.cfg-review-section {
+  border: 1px solid #e6eaf0;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.cfg-review-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 18px;
+  background: #f6f8fb;
+}
+
+.cfg-review-header + .cfg-review-header {
+  border-top: 1px solid #eef1f5;
+}
+
+.cfg-review-header-title {
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: #8a93a0;
+  text-transform: uppercase;
+}
+
+.cfg-review-edit {
+  font-size: 0.781rem;
+  font-weight: 600;
+  color: #1f6feb;
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 0;
+}
+
+.cfg-review-edit:hover { text-decoration: underline; }
+
+.cfg-review-body { padding: 8px 18px 16px; }
+
+.cfg-review-grid {
+  display: grid;
+  grid-template-columns: 160px 1fr;
+  gap: 4px 16px;
+  font-size: 0.844rem;
+  line-height: 1.7;
+}
+
+.cfg-review-label { color: #8a93a0; }
+.cfg-review-value { color: #1a2433; font-weight: 600; }
+.cfg-review-value--mono { font-family: monospace; font-size: 0.8125rem; font-weight: 400; }
+
+/* ── Wizard footer ───────────────────────────────────────── */
+
+.cfg-wizard-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 26px;
+  padding-top: 18px;
+  border-top: 1px solid #e6eaf0;
+}
+
+.cfg-wizard-actions-right {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.cfg-btn-ghost {
+  background: none;
+  border: none;
+  color: #637282;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 11px 4px;
+}
+
+.cfg-btn-ghost:hover { color: #1a2433; }
+
+.cfg-btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: #fff;
+  border: 1px solid #cdd8e6;
+  color: #1f3d5c;
+  border-radius: 20px;
+  padding: 11px 20px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+  text-decoration: none;
+}
+
+.cfg-btn-secondary:hover { background: #f3f7fc; color: #1f3d5c; text-decoration: none; }
+
+/* ── Delete confirmation modal ───────────────────────────── */
+
+.cfg-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(20, 40, 70, 0.34);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.cfg-modal {
+  width: 420px;
+  max-width: calc(100vw - 32px);
+  background: #fff;
+  border-radius: 16px;
+  padding: 30px;
+  box-shadow: 0 24px 60px rgba(10, 25, 50, 0.34);
+  animation: cfg-pop 0.28s ease;
+}
+
+@keyframes cfg-pop {
+  from { opacity: 0; transform: translateY(10px) scale(0.985); }
+  to   { opacity: 1; transform: none; }
+}
+
+.cfg-modal-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 16px;
+}
+
+.cfg-modal-icon {
+  width: 46px;
+  height: 46px;
+  flex: none;
+  border-radius: 11px;
+  background: #fdeaea;
+  color: #c62828;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.25rem;
+}
+
+.cfg-modal-title {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: #1a2433;
+}
+
+.cfg-modal-body {
+  font-size: 0.875rem;
+  line-height: 1.6;
+  color: #56657a;
+  margin: 0 0 24px;
+}
+
+.cfg-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.cfg-btn-danger {
+  background: #c62828;
+  border: none;
+  color: #fff;
+  border-radius: 20px;
+  padding: 10px 22px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.cfg-btn-danger:hover { opacity: 0.9; }
+.cfg-btn-danger:disabled { opacity: 0.45; cursor: default; pointer-events: none; }
+
+/* ── Responsive additions ────────────────────────────────── */
+
+@media (max-width: 680px) {
+  .cfg-form-grid { grid-template-columns: 1fr; }
+  .cfg-step-label { display: none; }
+  .cfg-stepper { gap: 0; }
+}
+
+/* ── Wizard form section title ───────────────────────────── */
+
+.cfg-form-section {
+  margin-top: 28px;
+}
+
+.cfg-form-section-title {
+  font-size: 0.688rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #9aa3af;
+  margin: 0 0 14px;
+}
+
+/* ── Field hint text ─────────────────────────────────────── */
+
+.cfg-field-hint {
+  font-size: 0.75rem;
+  color: #9aa3af;
+  margin-top: 5px;
+  line-height: 1.4;
+}
+
+/* ── Agent visibility toggle ─────────────────────────────── */
+
+.cfg-vis-toggle {
+  display: flex;
+  border: 1px solid #d0d7de;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.cfg-vis-btn {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 10px 0;
+  border: none;
+  background: #fff;
+  font-size: 0.844rem;
+  font-weight: 500;
+  color: #637282;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.cfg-vis-btn + .cfg-vis-btn { border-left: 1px solid #d0d7de; }
+
+.cfg-vis-btn.active {
+  background: #eef4fb;
+  color: #1f6feb;
+  font-weight: 600;
+}
+
+/* ── Subscription policy checkbox cards ─────────────────── */
+
+.cfg-policy-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.cfg-policy-card {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  padding: 12px 14px;
+  border: 1.5px solid #e6eaf0;
+  border-radius: 9px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.cfg-policy-card:hover { border-color: #c3d0de; background: #f8fafc; }
+
+.cfg-policy-card.selected {
+  border-color: #1f6feb;
+  background: #f5f9ff;
+}
+
+.cfg-policy-card input[type=checkbox] {
+  accent-color: #1f6feb;
+  width: 15px;
+  height: 15px;
+  flex: none;
+  cursor: pointer;
+}
+
+.cfg-policy-card-name {
+  font-size: 0.844rem;
+  font-weight: 600;
+  color: #1a2433;
+}
+
+.cfg-policy-card-sub {
+  font-size: 0.75rem;
+  color: #637282;
+  margin-top: 1px;
+}
+
+/* ── Type badge extras (MCP, WebSub) ─────────────────────── */
+
+.cfg-api-avatar--mcp    { background: #e0f5f2; color: #0d9488; }
+.cfg-api-avatar--websub { background: #e6f4ea; color: #2e7d32; }
+.cfg-type-badge--mcp    { background: #e0f5f2; color: #0d9488; }
+.cfg-type-badge--websub { background: #e6f4ea; color: #2e7d32; }
+
+/* ── API status badges (Created / Published) ─────────────── */
+
+.cfg-status-created {
+  background: #f1f4f8;
+  color: #637282;
+}
+
+.cfg-status-created .cfg-status-dot { background: #9aa3af; }
+
+/* ── Labels table ────────────────────────────────────────── */
+
+.cfg-label-icon {
+  width: 30px;
+  height: 30px;
+  flex: none;
+  border-radius: 8px;
+  background: #eef4fb;
+  color: #1f6feb;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.875rem;
+}
+
+.cfg-name-chip {
+  display: inline-block;
+  background: #f1f4f8;
+  color: #637282;
+  border-radius: 6px;
+  padding: 3px 9px;
+  font-family: monospace;
+  font-size: 0.8125rem;
+}
+
+.cfg-row-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.cfg-icon-btn {
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #e6eaf0;
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+  color: #56657a;
+  font-size: 0.875rem;
+  transition: background 0.13s, border-color 0.13s, color 0.13s;
+  padding: 0;
+}
+
+.cfg-icon-btn:hover { background: #f1f4f8; border-color: #cdd5df; }
+
+.cfg-icon-btn--danger { color: #c62828; border-color: #f3c6c6; }
+.cfg-icon-btn--danger:hover { background: #fdecec; border-color: #e88; }
+
+/* ── Subscription policies table extras ──────────────────── */
+
+.cfg-count-chip {
+  font-family: monospace;
+  font-size: 0.8125rem;
+  color: #1a2433;
+  font-weight: 600;
+}
+
+.cfg-policy-type-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 0.688rem;
+  font-weight: 600;
+}
+
+.cfg-policy-type--request { background: #e6f2fb; color: #0277bd; }
+.cfg-policy-type--event   { background: #e6f4ea; color: #2e7d32; }
+
+/* ── Add / Edit modal (labels, policies) ─────────────────── */
+
+.cfg-form-modal {
+  width: 460px;
+  max-width: calc(100vw - 32px);
+  max-height: 90vh;
+  overflow-y: auto;
+  background: #fff;
+  border-radius: 16px;
+  padding: 30px;
+  box-shadow: 0 24px 60px rgba(10,25,50,.34);
+  animation: cfg-pop 0.28s ease;
+}
+
+.cfg-form-modal--wide { width: 560px; }
+
+.cfg-modal-close {
+  width: 32px;
+  height: 32px;
+  flex: none;
+  border: none;
+  background: none;
+  border-radius: 8px;
+  cursor: pointer;
+  color: #8a93a0;
+  font-size: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s;
+  margin-left: auto;
+}
+
+.cfg-modal-close:hover { background: #f1f4f8; color: #1a2433; }
+
+.cfg-modal-titlerow {
+  display: flex;
+  align-items: center;
+  margin-bottom: 22px;
+}
+
+.cfg-modal-form-title {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: #1a2433;
+}
+
+/* ── Drawer (API detail slide-over) ──────────────────────── */
+
+.cfg-drawer-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(20,40,70,.28);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  z-index: 900;
+  display: none;
+  justify-content: flex-end;
+}
+
+.cfg-drawer-overlay.open { display: flex; }
+
+.cfg-drawer {
+  width: 520px;
+  max-width: 100vw;
+  background: #fff;
+  height: 100%;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  box-shadow: -8px 0 32px rgba(10,25,50,.18);
+  animation: cfg-slide-in .26s ease;
+}
+
+@keyframes cfg-slide-in {
+  from { transform: translateX(100%); }
+  to   { transform: translateX(0); }
+}
+
+.cfg-drawer-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 24px 24px 20px;
+  border-bottom: 1px solid #eef1f5;
+  position: sticky;
+  top: 0;
+  background: #fff;
+  z-index: 1;
+}
+
+.cfg-drawer-avatar {
+  width: 42px;
+  height: 42px;
+  flex: none;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+
+.cfg-drawer-name {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #1a2433;
+  line-height: 1.2;
+}
+
+.cfg-drawer-handle {
+  font-family: monospace;
+  font-size: 0.8125rem;
+  color: #9aa3af;
+  margin-top: 3px;
+}
+
+.cfg-drawer-close {
+  margin-left: auto;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: none;
+  border-radius: 8px;
+  cursor: pointer;
+  color: #8a93a0;
+  font-size: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background .15s;
+}
+
+.cfg-drawer-close:hover { background: #f1f4f8; }
+
+.cfg-drawer-body {
+  flex: 1;
+  padding: 22px 24px;
+}
+
+.cfg-drawer-meta-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.cfg-drawer-desc {
+  font-size: 0.875rem;
+  line-height: 1.6;
+  color: #56657a;
+  margin: 0 0 20px;
+}
+
+.cfg-drawer-grid {
+  display: grid;
+  grid-template-columns: 140px 1fr;
+  gap: 6px 14px;
+  font-size: 0.844rem;
+  line-height: 1.7;
+}
+
+.cfg-drawer-lbl { color: #8a93a0; }
+.cfg-drawer-val { color: #1a2433; font-weight: 500; word-break: break-word; }
+.cfg-drawer-val--mono { font-family: monospace; font-size: 0.8125rem; font-weight: 400; }
+
+.cfg-drawer-foot {
+  padding: 16px 24px;
+  border-top: 1px solid #eef1f5;
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+}
+
+/* ── Dropdown divider ────────────────────────────────────── */
+
+.cfg-dropdown-divider {
+  height: 1px;
+  background: #eef1f5;
+  margin: 5px 6px;
+}
+
+/* ── Empty state (labels / policies) ────────────────────── */
+
+.cfg-tbl-empty {
+  text-align: center;
+  padding: 40px 24px;
+  color: #9aa3af;
+  font-size: 0.875rem;
+}
+
+/* ── Textarea ────────────────────────────────────────────── */
+
+.cfg-form-input[rows] {
+  resize: vertical;
+  min-height: 70px;
+}
+
+/* ── Handle field wrapper (for hint) ─────────────────────── */
+
+.cfg-form-group-full {
+  grid-column: 1 / -1;
+}

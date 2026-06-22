@@ -389,3 +389,430 @@
   text-align: right;
 }
 
+/* ═══════════════════════════════════════════════════════════
+   Applications redesign — new layout styles
+   ══════════════════════════════════════════════════════════ */
+
+:root {
+  --wso2-gradient: linear-gradient(135deg, #ef4223 0%, #ff8636 100%);
+}
+
+/* ── Page container ───────────────────────────────────────── */
+
+.apps-section {
+  padding: 0;
+}
+
+.apps-page-container {
+  padding: 28px 36px 40px;
+}
+
+/* ── Page header ──────────────────────────────────────────── */
+
+.page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 26px;
+}
+
+.page-title {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #1a2433;
+  line-height: 1;
+}
+
+.page-desc {
+  margin: 9px 0 0;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: #637282;
+}
+
+/* ── Create button ────────────────────────────────────────── */
+
+.apps-create-btn {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--wso2-gradient);
+  color: #fff;
+  border: none;
+  border-radius: 20px;
+  padding: 11px 22px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s;
+  white-space: nowrap;
+}
+
+.apps-create-btn:hover { opacity: 0.9; }
+.apps-create-btn:disabled { opacity: 0.5; cursor: default; pointer-events: none; }
+
+/* ── Empty state ──────────────────────────────────────────── */
+
+/* .apps-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 60px 0 80px;
+}
+
+.apps-empty-icon {
+  width: 84px;
+  height: 84px;
+  border-radius: 22px;
+  background: #eef4fb;
+  color: #1f6feb;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2rem;
+}
+
+.apps-empty-title {
+  margin: 24px 0 0;
+  font-size: 1.1875rem;
+  font-weight: 700;
+  color: #1a2433;
+}
+
+.apps-empty-desc {
+  margin: 10px 0 0;
+  max-width: 420px;
+  font-size: 0.875rem;
+  line-height: 1.6;
+  color: #637282;
+}
+
+.apps-empty-state .apps-create-btn {
+  margin-top: 24px;
+  padding: 12px 26px;
+} */
+
+/* ── Card grid ────────────────────────────────────────────── */
+
+.apps-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+}
+
+/* ── Application card ─────────────────────────────────────── */
+
+.app-card {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid #e6eaf0;
+  border-radius: 14px;
+  padding: 22px;
+  background: var(--main-bg-color, #fff);
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+}
+
+.app-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 12px 28px rgba(20, 40, 70, 0.10);
+  border-color: #cdd9e8;
+}
+
+.app-card-top {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+}
+
+.app-avatar {
+  width: 48px;
+  height: 48px;
+  flex: none;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  line-height: 1;
+}
+
+.app-card-meta {
+  flex: 1;
+  min-width: 0;
+}
+
+.app-card-name {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #1a2433;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.app-card-desc {
+  flex: 1;
+  margin: 14px 0 0;
+  font-size: 0.8125rem;
+  line-height: 1.55;
+  color: #637282;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.app-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid #eef1f5;
+}
+
+.app-subs-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.781rem;
+  font-weight: 500;
+  color: #637282;
+}
+
+.app-delete-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px;
+  border: none;
+  background: none;
+  border-radius: 7px;
+  color: #b9c2cd;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.app-delete-btn:hover {
+  background: #fdeaea;
+  color: #c62828;
+}
+
+/* ── Modals ───────────────────────────────────────────────── */
+
+.app-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(20, 40, 70, 0.34);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  align-items: center;
+  justify-content: center;
+  z-index: 1050;
+  animation: app-fade-in 0.18s ease;
+}
+
+@keyframes app-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.app-modal {
+  width: 480px;
+  max-width: calc(100vw - 32px);
+  background: #fff;
+  border-radius: 16px;
+  padding: 28px 30px 24px;
+  box-shadow: 0 24px 60px rgba(10, 25, 50, 0.34);
+  animation: app-modal-pop 0.28s ease;
+}
+
+.app-modal--sm {
+  width: 420px;
+}
+
+@keyframes app-modal-pop {
+  from { opacity: 0; transform: translateY(10px) scale(0.985); }
+  to   { opacity: 1; transform: none; }
+}
+
+.app-modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 22px;
+}
+
+.app-modal-head-left {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+}
+
+.app-modal-icon {
+  width: 44px;
+  height: 44px;
+  flex: none;
+  border-radius: 11px;
+  background: #eef4fb;
+  color: #1f6feb;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.25rem;
+}
+
+.app-modal-icon--danger {
+  background: #fdeaea;
+  color: #c62828;
+}
+
+.app-modal-title {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: #1a2433;
+}
+
+.app-modal-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: none;
+  border-radius: 7px;
+  color: #8a93a0;
+  cursor: pointer;
+  font-size: 0.875rem;
+  transition: background 0.12s, color 0.12s;
+}
+
+.app-modal-close:hover { background: #eef1f5; color: #1a2433; }
+
+.app-modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.app-modal-body-text {
+  margin: 0 0 24px;
+  font-size: 0.875rem;
+  line-height: 1.6;
+  color: #56657a;
+}
+
+.app-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+/* ── Form elements ────────────────────────────────────────── */
+
+.app-form-group label {
+  display: block;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: #1a2433;
+  margin-bottom: 8px;
+}
+
+.app-required { color: #c62828; }
+
+.app-form-input {
+  width: 100%;
+  border: 1px solid #d0d7de;
+  border-radius: 8px;
+  padding: 11px 13px;
+  font-size: 0.875rem;
+  font-family: inherit;
+  color: #1a2433;
+  background: #fff;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.app-form-input:focus {
+  border-color: #1f6feb;
+  box-shadow: 0 0 0 3px rgba(31, 111, 235, 0.12);
+}
+
+/* ── Modal buttons ────────────────────────────────────────── */
+
+.app-btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--wso2-gradient);
+  color: #fff;
+  border: none;
+  border-radius: 20px;
+  padding: 10px 22px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.app-btn-primary:hover { opacity: 0.9; }
+.app-btn-primary:disabled { opacity: 0.5; cursor: default; pointer-events: none; }
+
+.app-btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  background: #fff;
+  border: 1px solid #cdd8e6;
+  color: #1f3d5c;
+  border-radius: 20px;
+  padding: 10px 20px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.app-btn-secondary:hover { background: #f3f7fc; }
+
+.app-btn-danger {
+  display: inline-flex;
+  align-items: center;
+  background: #c62828;
+  border: none;
+  color: #fff;
+  border-radius: 20px;
+  padding: 10px 22px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.app-btn-danger:hover { opacity: 0.9; }
+.app-btn-danger:disabled { opacity: 0.5; cursor: default; pointer-events: none; }
+
+/* ── Responsive ───────────────────────────────────────────── */
+
+@media (max-width: 1100px) {
+  .apps-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (max-width: 700px) {
+  .apps-grid { grid-template-columns: 1fr; }
+  .apps-page-container { padding: 20px 16px 32px; }
+  .page-header { flex-direction: column; align-items: flex-start; }
+}
+

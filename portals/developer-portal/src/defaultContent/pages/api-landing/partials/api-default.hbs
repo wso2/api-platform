@@ -1,129 +1,124 @@
-<!--
- * Copyright (c) 2025, WSO2 LLC. (http://www.wso2.com) All Rights Reserved.
- *
- * WSO2 LLC. licenses this file to you under the Apache License,
- * Version 2.0 (the "License"); you may not use this file except
- * in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
- * KIND, either express or implied. See the License for the
- * specific language governing permissions and limitations
- * under the License.
- */
- -->
-<section class="section mb-4">
-    <div class="container-fluid">
-        <div class="defaultapi-section">
-            <div class="container-header mb-4">Endpoints</div>
-            {{#if (eq resources.serverDetails "")}}
-            <div class="defaultapi-endpoint-row col-12 col-xl-9">
-                <div class="defaultapi-endpoint-content ">
-                    <span class="defaultapi-development-label">No endpoints available</span>
-                </div>
-            </div>
-            {{else}}
-            {{#unless (eq resources.serverDetails.productionURL "")}}
-            <div class="defaultapi-endpoint-row col-12 col-xl-9">
-                <div class="defaultapi-endpoint-content">
-                    <span class="defaultapi-development-label">Production Endpoint</span>
-                    <div class="defaultapi-endpoint-url-container d-flex">
-                        <pre id="token_api_prod_url" class="defaultapi-endpoint-url token-text mb-0">{{resources.serverDetails.productionURL}}</pre>
-                        <a class="copy-button" aria-label="Copy token" type="button" onclick="copyToken('api_prod_url')">
-                            <i class="bi bi-copy"></i>
-                        </a>
-                    </div>
-                </div>
-            </div>
-            {{/unless}}
-            {{#unless (eq apiMetadata.apiInfo.apiType "MCP")}}
-            {{#unless (eq resources.serverDetails.sandboxURL "")}}
-            <div class="defaultapi-endpoint-row col-12 col-xl-9">
-                <div class="defaultapi-endpoint-content">
-                    <span class="defaultapi-development-label">Sandbox Endpoint</span>
-                    <div class="defaultapi-endpoint-url-container d-flex">
-                        <pre id="token_api_dev_url" class="defaultapi-endpoint-url token-text mb-0">{{resources.serverDetails.sandboxURL}}</pre>
-                        <a class="copy-button" aria-label="Copy token" type="button" onclick="copyToken('api_dev_url')">
-                            <i class="bi bi-copy"></i>
-                        </a>
-                    </div>
-                </div>
-            </div>
-            {{/unless}}
-            {{/unless}}
-            {{/if}}
-        </div>
-        {{#unless (eq apiMetadata.apiInfo.apiType "WS")}}
-        {{#unless (eq apiMetadata.apiInfo.apiType "WEBSUB")}}
-        {{#unless (eq apiMetadata.apiInfo.apiType "GRAPHQL")}}
-        <div class="defaultapi-section">
-            <div class="container-header mb-4">Scopes</div>
-            {{#if scopes.length}}
-            {{#scopes}}
-            <span class="api-span-tag"> {{this.key}} </span>
-            {{/scopes}}
-            {{else}}
-            <span> No scopes available </span>
-            {{/if}}
-        </div>
-        {{/unless}}
-        {{/unless}}
-        {{/unless}}
-        {{#unless (eq apiMetadata.apiInfo.apiType "MCP")}}
-        {{#unless (eq apiMetadata.apiInfo.apiType "WS")}}
-        {{#unless (eq apiMetadata.apiInfo.apiType "WEBSUB")}}
-        {{#unless (eq apiMetadata.apiInfo.apiType "GRAPHQL")}}
-        <div class="defaultapi-section">
-        <div class="container-header mb-4">Resources</div>
-        <div class="defaultapi-resources col-12">
-            {{#resources.endpoints}}
-            {{#methods}}
-            <div class="defaultapi-resource-item defaultapi-resource-item-{{method}}">
-            <div class="defaultapi-http-method defaultapi-http-method-{{method}}">{{method}}</div>
-            <div class="defaultapi-resource-path">{{../path}}</div>
-            <div class="defaultapi-resource-summary">{{summary}}</div>
-            </div>
-            {{/methods}}
-            {{/resources.endpoints}}
-        </div>
-        </div>
-        {{/unless}}
-        {{/unless}}
-        {{/unless}}
-        {{/unless}}
-        {{#if (eq apiMetadata.apiInfo.apiType "WS")}}
-        <div class="defaultapi-section">
-            <div class="container-header mb-4">Channels</div>
-            <div class="defaultapi-resources col-12">
-                {{#each resources.channels}}
-                <div class="defaultapi-resources-channel">
-                    <div class="defaultapi-resources-channel-operations">
-                        <div class="pub-box">PUB</div>
-                        <div class="sub-box">SUB</div>
-                    </div>
-                    <div class="defaultapi-resource-path">{{name}}</div>
-                </div>
-                {{/each}}
-            </div>
-        </div>
-        {{else if (eq apiMetadata.apiInfo.apiType "WEBSUB")}}
-        <div class="defaultapi-section">
-            <div class="container-header mb-4">Channels</div>
-            <div class="defaultapi-resources col-12">
-                {{#each resources.channels}}
-                <div class="defaultapi-resources-channel">
-                    <div class="defaultapi-resources-channel-operations">
-                        <div class="sub-box">SUB</div>
-                    </div>
-                    <div class="defaultapi-resource-path">{{name}}</div>
-                </div>
-                {{/each}}
-            </div>
-        </div>
-        {{/if}}
+{{!-- Endpoints --}}
+<div class="aov-section">
+  <div class="aov-section-header">
+    <h2 class="aov-section-title">Endpoints</h2>
+  </div>
+  {{#if (eq resources.serverDetails "")}}
+  <div class="aov-endpoint-card">
+    <span style="font-size:13px;color:#8a93a0;">No endpoints available</span>
+  </div>
+  {{else}}
+  {{#unless (eq resources.serverDetails.productionURL "")}}
+  <div class="aov-endpoint-card">
+    <div class="aov-endpoint-label-row">
+      <span class="aov-endpoint-dot aov-endpoint-dot--prod"></span>
+      <span class="aov-endpoint-label">Production</span>
     </div>
-</section>
+    <div class="aov-endpoint-url-row">
+      <i class="bi bi-link-45deg" style="color:#8a93a0;flex:none;"></i>
+      <pre id="token_api_prod_url" class="aov-endpoint-url token-text">{{resources.serverDetails.productionURL}}</pre>
+      <button class="dp-btn-icon" aria-label="Copy URL" type="button" onclick="copyToken('api_prod_url')">
+        <i class="bi bi-copy"></i>
+      </button>
+    </div>
+  </div>
+  {{/unless}}
+  {{#unless (eq apiMetadata.apiInfo.apiType "MCP")}}
+  {{#unless (eq resources.serverDetails.sandboxURL "")}}
+  <div class="aov-endpoint-card">
+    <div class="aov-endpoint-label-row">
+      <span class="aov-endpoint-dot aov-endpoint-dot--sandbox"></span>
+      <span class="aov-endpoint-label">Sandbox</span>
+    </div>
+    <div class="aov-endpoint-url-row">
+      <i class="bi bi-link-45deg" style="color:#8a93a0;flex:none;"></i>
+      <pre id="token_api_dev_url" class="aov-endpoint-url token-text">{{resources.serverDetails.sandboxURL}}</pre>
+      <button class="dp-btn-icon" aria-label="Copy URL" type="button" onclick="copyToken('api_dev_url')">
+        <i class="bi bi-copy"></i>
+      </button>
+    </div>
+  </div>
+  {{/unless}}
+  {{/unless}}
+  {{/if}}
+</div>
+
+{{!-- Resources (REST / MCP) --}}
+{{#unless (eq apiMetadata.apiInfo.apiType "WS")}}
+{{#unless (eq apiMetadata.apiInfo.apiType "WEBSUB")}}
+{{#unless (eq apiMetadata.apiInfo.apiType "GRAPHQL")}}
+{{#unless (eq apiMetadata.apiInfo.apiType "MCP")}}
+<div class="aov-section">
+  <div class="aov-section-header">
+    <h2 class="aov-section-title">Resources</h2>
+  </div>
+  {{#resources.endpoints}}
+  {{#methods}}
+  <div class="aov-resource-row">
+    <span class="aov-method-badge aov-method-badge--{{method}}">{{method}}</span>
+    <span class="aov-resource-path">{{../path}}</span>
+    <span class="aov-resource-summary">{{summary}}</span>
+  </div>
+  {{/methods}}
+  {{/resources.endpoints}}
+</div>
+{{/unless}}
+{{/unless}}
+{{/unless}}
+{{/unless}}
+
+{{!-- Channels (WS) --}}
+{{#if (eq apiMetadata.apiInfo.apiType "WS")}}
+<div class="aov-section">
+  <div class="aov-section-header">
+    <h2 class="aov-section-title">Channels</h2>
+  </div>
+  {{#each resources.channels}}
+  <div class="aov-channel-row">
+    <span class="aov-channel-badge aov-channel-badge--pub">PUB</span>
+    <span class="aov-channel-badge aov-channel-badge--sub">SUB</span>
+    <span class="aov-resource-path">{{name}}</span>
+  </div>
+  {{/each}}
+</div>
+{{/if}}
+
+{{!-- Channels (WEBSUB) --}}
+{{#if (eq apiMetadata.apiInfo.apiType "WEBSUB")}}
+<div class="aov-section">
+  <div class="aov-section-header">
+    <h2 class="aov-section-title">Channels</h2>
+  </div>
+  {{#each resources.channels}}
+  <div class="aov-channel-row">
+    <span class="aov-channel-badge aov-channel-badge--sub">SUB</span>
+    <span class="aov-resource-path">{{name}}</span>
+  </div>
+  {{/each}}
+</div>
+{{/if}}
+
+{{!-- Scopes --}}
+{{#unless (eq apiMetadata.apiInfo.apiType "WS")}}
+{{#unless (eq apiMetadata.apiInfo.apiType "WEBSUB")}}
+{{#unless (eq apiMetadata.apiInfo.apiType "GRAPHQL")}}
+<div class="aov-section">
+  <div class="aov-section-header">
+    <h2 class="aov-section-title">Scopes</h2>
+  </div>
+  {{#if scopes.length}}
+  <div>
+    {{#scopes}}
+    <span class="aov-scope-pill"><i class="bi bi-shield-check" style="margin-right:5px;"></i>{{this.key}}</span>
+    {{/scopes}}
+  </div>
+  {{else}}
+  <div class="aov-scopes-empty">
+    <i class="bi bi-shield-slash" style="font-size:18px;"></i>
+    <span>No scopes are defined for this API.</span>
+  </div>
+  {{/if}}
+</div>
+{{/unless}}
+{{/unless}}
+{{/unless}}

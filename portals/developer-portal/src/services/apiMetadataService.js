@@ -1901,5 +1901,7 @@ module.exports = {
     getView,
     getAllViews,
     getViewsFromDB,
-    getViewInfo
+    getViewInfo,
+    parseApiMetadataFromYamlFile,
+    prepareApiDefinitionForStorage,
 };
