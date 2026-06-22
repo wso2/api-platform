@@ -34,7 +34,13 @@ const (
 	// ManagementAPIBasePath is the URL prefix under which the gateway-controller
 	// management API is served. It must stay in sync with `servers.url` in the
 	// gateway-controller's api/management-openapi.yaml.
-	ManagementAPIBasePath = "/api/management/v0.9"
+	ManagementAPIBasePath = "/api/management/v1alpha2"
+
+	// ManagementArtifactAPIVersion is the apiVersion stamped on all artifact
+	// payloads sent to the gateway-controller management API. This is the
+	// management API artifact version, which is independent of the Kubernetes
+	// CRD storage version (gateway.api-platform.wso2.com/v1alpha1).
+	ManagementArtifactAPIVersion = "gateway.api-platform.wso2.com/v1alpha2"
 
 	restAPIsResourcePath = ManagementAPIBasePath + "/rest-apis"
 )

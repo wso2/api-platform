@@ -412,7 +412,7 @@ func (r *RestApiReconciler) executeDeployment(ctx context.Context, apiConfig *ap
 	}
 
 	apiYAML, err := gatewayclient.BuildRestAPIYAML(
-		apiConfig.APIVersion,
+		gatewayclient.ManagementArtifactAPIVersion,
 		apiConfig.Kind,
 		payloadMetadataForRestAPI(apiConfig),
 		*spec,
