@@ -1761,6 +1761,9 @@ type LLMProviderTemplate struct {
 	// Description Description of the LLM provider template
 	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
 
+	// Enabled Whether this version is offered when creating providers (disabled versions stay in the catalog but are hidden from the picker).
+	Enabled *bool `json:"enabled,omitempty" yaml:"enabled,omitempty"`
+
 	// Id Unique handle for the template
 	Id string `binding:"required" json:"id" yaml:"id"`
 
@@ -1804,7 +1807,10 @@ type LLMProviderTemplateListItem struct {
 	CreatedAt   *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
 	CreatedBy   *string    `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
 	Description *string    `json:"description,omitempty" yaml:"description,omitempty"`
-	Id          *string    `json:"id,omitempty" yaml:"id,omitempty"`
+
+	// Enabled Whether this version is offered when creating providers.
+	Enabled *bool   `json:"enabled,omitempty" yaml:"enabled,omitempty"`
+	Id      *string `json:"id,omitempty" yaml:"id,omitempty"`
 
 	// IsLatest Whether this is the latest version of the template.
 	IsLatest *bool   `json:"isLatest,omitempty" yaml:"isLatest,omitempty"`

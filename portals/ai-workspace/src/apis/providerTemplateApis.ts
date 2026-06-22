@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { get, post, put, del } from '../clients/choreoApiClient';
+import { get, post, put, del, patch } from '../clients/choreoApiClient';
 import { logger } from '../utils/logger';
 
 // ============================================================================
@@ -227,6 +227,61 @@ export async function createProviderTemplateVersion(
  * console.log(template); // { id: '...', name: 'OpenAI Template Updated', ... }
  * ```
  */
+/**
+ * Enable or disable a specific version of a Provider Template. Disabled
+ * versions stay in the catalog but are hidden from the provider picker.
+ *
+ * @param templateId - The provider template ID (handle)
+ * @param version - The version to toggle (e.g. "v1.0")
+ * @param enabled - Whether the version should be enabled
+ * @returns Promise with the updated version
+ */
+export async function setProviderTemplateVersionEnabled(
+  templateId: string,
+  version: string,
+  enabled: boolean,
+  organizationId: string,
+  baseUrl: string
+): Promise<ProviderTemplate> {
+  try {
+    const response = await patch<ProviderTemplate>(
+      `/llm-provider-templates/${encodeURIComponent(templateId)}/versions/${encodeURIComponent(version)}?organizationId=${encodeURIComponent(organizationId)}`,
+      { enabled },
+      baseUrl
+    );
+    return response;
+  } catch (error) {
+    logger.error(`Failed to set enabled=${enabled} for ${templateId} ${version}:`, error);
+    throw error;
+  }
+}
+
+/**
+ * Delete a single version of a Provider Template. If it was the only version
+ * the template is removed; otherwise the newest remaining version becomes the
+ * latest.
+ *
+ * @param templateId - The provider template ID (handle)
+ * @param version - The version to delete (e.g. "v2.0")
+ */
+export async function deleteProviderTemplateVersion(
+  templateId: string,
+  version: string,
+  organizationId: string,
+  baseUrl: string
+): Promise<void> {
+  try {
+    await del<void>(
+      `/llm-provider-templates/${encodeURIComponent(templateId)}/versions/${encodeURIComponent(version)}?organizationId=${encodeURIComponent(organizationId)}`,
+      undefined,
+      baseUrl
+    );
+  } catch (error) {
+    logger.error(`Failed to delete version ${version} of ${templateId}:`, error);
+    throw error;
+  }
+}
+
 export async function updateProviderTemplate(
   templateId: string,
   updates: UpdateProviderTemplateRequest,

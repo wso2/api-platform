@@ -305,14 +305,16 @@ export default function AppSidebar({
 
       <Sidebar.Footer>
         <Sidebar.Category>
-          <NavLink to={settingsPath} style={navLinkStyle}>
-            <Sidebar.Item id="settings">
-              <Sidebar.ItemIcon>
-                <Settings size={20} />
-              </Sidebar.ItemIcon>
-              <Sidebar.ItemLabel>Settings</Sidebar.ItemLabel>
-            </Sidebar.Item>
-          </NavLink>
+          {hasPermission(SCOPES.LLM_TEMPLATE_MANAGE) && (
+            <NavLink to={settingsPath} style={navLinkStyle}>
+              <Sidebar.Item id="settings">
+                <Sidebar.ItemIcon>
+                  <Settings size={20} />
+                </Sidebar.ItemIcon>
+                <Sidebar.ItemLabel>Settings</Sidebar.ItemLabel>
+              </Sidebar.Item>
+            </NavLink>
+          )}
 
           {/* <Sidebar.Item id="help">
             <Sidebar.ItemIcon>

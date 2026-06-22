@@ -167,6 +167,7 @@ type LLMProviderTemplate struct {
 	CreatedBy        string                               `json:"createdBy,omitempty" db:"created_by"`
 	Version  		 string 							  `json:"version" db:"version"`
 	IsLatest 		 bool    							  `json:"isLatest" db:"is_latest"`
+	Enabled 		 bool 								  `json:"enabled" db:"enabled"`
 	Metadata         *LLMProviderTemplateMetadata         `json:"metadata,omitempty" db:"-"`
 	PromptTokens     *ExtractionIdentifier                `json:"promptTokens,omitempty" db:"-"`
 	CompletionTokens *ExtractionIdentifier                `json:"completionTokens,omitempty" db:"-"`

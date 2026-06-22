@@ -23,11 +23,8 @@ import {
   Box,
   Button,
   Card,
+  Chip,
   Divider,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
   IconButton,
   InputAdornment,
   PageContent,
@@ -37,13 +34,12 @@ import {
   TextField,
   Typography,
 } from '@wso2/oxygen-ui';
-import { ChevronLeft, ChevronRight, Clock, Plus, Search, Trash2 } from '@wso2/oxygen-ui-icons-react';
+import { ChevronLeft, ChevronRight, Clock, Plus, Search } from '@wso2/oxygen-ui-icons-react';
 import { FormattedMessage } from 'react-intl';
 import { formatRelativeTime } from '../../../../contexts/llmProvider';
 import { useProviderTemplates } from '../../../../contexts/llmProvider/providerTemplate';
 import { useAppShell } from '../../../../contexts/AppShellContext';
 import { buildOrgPath } from '../../../../utils/projectRouting';
-import useAIWorkspaceSnackbar from '../../../../hooks/aiWorkspaceSnackbar';
 import ErrorAlert from '../../../../Components/common/ErrorAlert';
 import {
   isBuiltInProviderTemplate,
@@ -93,20 +89,10 @@ export default function ProviderTemplatesList({
   const navigate = useNavigate();
   const { currentOrganization } = useAppShell();
 
-  const {
-    templatesResponse,
-    isLoading,
-    error,
-    deleteTemplate,
-    refreshTemplates,
-  } = useProviderTemplates();
+  const { templatesResponse, isLoading, error, refreshTemplates } =
+    useProviderTemplates();
 
-  const showSnackbar = useAIWorkspaceSnackbar();
   const [searchQuery, setSearchQuery] = useState('');
-  const [deleteTarget, setDeleteTarget] = useState<{
-    id: string;
-    name: string;
-  } | null>(null);
 
   const templates = useMemo(
     () =>
@@ -162,18 +148,7 @@ export default function ProviderTemplatesList({
     );
   }, [builtInTemplates, searchQuery]);
 
-  const handleDeleteConfirm = async () => {
-    if (!deleteTarget) return;
-    try {
-      await deleteTemplate(deleteTarget.id);
-      showSnackbar('Template deleted successfully.', 'success');
-      setDeleteTarget(null);
-    } catch {
-      showSnackbar('Failed to delete template. Please try again.', 'error');
-    }
-  };
-
-  const renderCard = (template: ProviderTemplate, deletable: boolean) => {
+  const renderCard = (template: ProviderTemplate) => {
     const templateId = template.id ?? template.name;
     const overviewPath = `${templatesBase}/${templateId}`;
     const logoSrc = resolveTemplateLogo(template);
@@ -195,7 +170,9 @@ export default function ProviderTemplatesList({
           height: '100%',
           width: '100%',
           cursor: 'pointer',
-          transition: 'box-shadow 0.2s ease',
+          // Disabled templates are dimmed but still clickable (to re-enable).
+          opacity: template.enabled === false ? 0.55 : 1,
+          transition: 'box-shadow 0.2s ease, opacity 0.2s ease',
           '&.MuiCard-root:hover': { boxShadow: 3 },
           '&:focus-visible': {
             outline: '2px solid',
@@ -269,22 +246,9 @@ export default function ProviderTemplatesList({
                 {formatRelativeTime(template.createdAt ?? template.updatedAt)}
               </Typography>
             </Stack>
-
-            {deletable && (
-              <IconButton
-                size="small"
-                color="error"
-                sx={{ ml: 'auto' }}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  setDeleteTarget({ id: templateId, name: template.name });
-                }}
-                aria-label={`Delete ${template.name}`}
-                data-cyid="delete-provider-template-button"
-              >
-                <Trash2 size={16} />
-              </IconButton>
-            )}
+            {template.enabled === false ? (
+              <Chip label="Disabled" size="small" variant="outlined" />
+            ) : null}
           </Box>
         </Box>
       </Card>
@@ -446,7 +410,7 @@ export default function ProviderTemplatesList({
               <>
                 <Box sx={cardGridSx}>
                   {pagedCustomTemplates.map((template) =>
-                    renderCard(template, true)
+                    renderCard(template)
                   )}
                 </Box>
                 {customTotalPages > 1 && (
@@ -499,7 +463,7 @@ export default function ProviderTemplatesList({
                 </Typography>
                 {filteredBuiltIn.length > 0 ? (
                   <Box sx={cardGridSx}>
-                    {filteredBuiltIn.map((template) => renderCard(template, false))}
+                    {filteredBuiltIn.map((template) => renderCard(template))}
                   </Box>
                 ) : (
                   <Typography variant="body2" color="text.secondary" sx={{ py: 1 }}>
@@ -510,43 +474,6 @@ export default function ProviderTemplatesList({
             )}
           </>
         )}
-
-      <Dialog
-        open={Boolean(deleteTarget)}
-        onClose={() => setDeleteTarget(null)}
-      >
-        <DialogTitle>
-          Are you sure you want to delete the template{' '}
-          <strong>'{deleteTarget?.name ?? ''}'</strong>?
-        </DialogTitle>
-        <DialogContent>
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-            This action is irreversible.
-          </Typography>
-        </DialogContent>
-        <DialogActions>
-          <Button
-            variant="outlined"
-            color="secondary"
-            onClick={() => setDeleteTarget(null)}
-          >
-            <FormattedMessage
-              id="aiWorkspace.pages.appShell.appShellPages.providerTemplate.ProviderTemplatesList.cancel"
-              defaultMessage={'Cancel'}
-            />
-          </Button>
-          <Button
-            color="error"
-            onClick={handleDeleteConfirm}
-            data-cyid="delete-provider-template-confirm-button"
-          >
-            <FormattedMessage
-              id="aiWorkspace.pages.appShell.appShellPages.providerTemplate.ProviderTemplatesList.delete"
-              defaultMessage={'Delete'}
-            />
-          </Button>
-        </DialogActions>
-      </Dialog>
     </Wrapper>
   );
 }

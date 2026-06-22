@@ -24,7 +24,7 @@
 // ---------------------------------------------------------------------------
 
 import { type ReactNode } from 'react';
-import { Outlet, useNavigate } from 'react-router-dom';
+import { Navigate, Outlet, useNavigate } from 'react-router-dom';
 import {
   Box,
   Divider,
@@ -38,6 +38,8 @@ import {
 import { LayoutTemplate } from '@wso2/oxygen-ui-icons-react';
 import { FormattedMessage } from 'react-intl';
 import { useAppShell } from '../../../../contexts/AppShellContext';
+import { useAppAuth } from '../../../../contexts/AppAuthContext';
+import { SCOPES } from '../../../../auth/permissions';
 import { buildOrgPath } from '../../../../utils/projectRouting';
 
 interface NavItem {
@@ -61,8 +63,19 @@ const NAV_ITEMS: NavItem[] = [
 export default function Settings() {
   const navigate = useNavigate();
   const { currentOrganization } = useAppShell();
+  const { hasPermission } = useAppAuth();
   // Only one area today; it stays selected across all its sub-pages.
   const selectedKey = 'templates';
+
+  // Settings requires template-manage permission; send others to org home.
+  if (!hasPermission(SCOPES.LLM_TEMPLATE_MANAGE)) {
+    return (
+      <Navigate
+        to={buildOrgPath(currentOrganization, '/home')}
+        replace
+      />
+    );
+  }
 
   return (
     <Box sx={{ display: 'flex', alignItems: 'stretch', minHeight: '100%', width: '100%' }}>

@@ -2973,6 +2973,97 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+    patch:
+      summary: Enable or disable a specific version of an LLM provider template
+      description: |
+        Toggle whether a version is offered when creating providers. Disabled
+        versions stay in the catalog but are hidden from the provider picker.
+      operationId: setLLMProviderTemplateVersionEnabled
+      security:
+        - OAuth2Security:
+            - ap:llm_template:manage
+      tags:
+        - LLM Provider Templates
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique identifier for the LLM provider template
+          schema:
+            type: string
+          example: openai
+        - name: version
+          in: path
+          required: true
+          description: Version to toggle (e.g. v1.0). Matched case-insensitively.
+          schema:
+            type: string
+          example: v1.0
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - enabled
+              properties:
+                enabled:
+                  type: boolean
+                  example: false
+      responses:
+        '200':
+          description: Updated template version
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LLMProviderTemplate'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      summary: Delete a specific version of an LLM provider template
+      description: |
+        Delete a single version. If it was the only version the template is
+        removed; otherwise the newest remaining version becomes the latest.
+      operationId: deleteLLMProviderTemplateVersion
+      security:
+        - OAuth2Security:
+            - ap:llm_template:delete
+            - ap:llm_template:manage
+      tags:
+        - LLM Provider Templates
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique identifier for the LLM provider template
+          schema:
+            type: string
+          example: openai
+        - name: version
+          in: path
+          required: true
+          description: Version to delete (e.g. v2.0). Matched case-insensitively.
+          schema:
+            type: string
+          example: v2.0
+      responses:
+        '204':
+          description: Version deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /llm-providers:
     post:
       summary: Create a new LLM provider
@@ -10014,6 +10105,13 @@ components:
           description: Whether this is the latest version of the template.
           readOnly: true
           example: true
+        enabled:
+          type: boolean
+          description: |
+            Whether this version is offered when creating providers. Disabled
+            versions stay in the catalog but are hidden from the provider picker.
+            Toggle via PATCH /llm-provider-templates/{id}/versions/{version}.
+          example: true
         openapi:
           type: string
           description: |
@@ -10077,6 +10175,10 @@ components:
         isLatest:
           type: boolean
           description: Whether this is the latest version of the template.
+          example: true
+        enabled:
+          type: boolean
+          description: Whether this version is offered when creating providers.
           example: true
         createdAt:
           type: string

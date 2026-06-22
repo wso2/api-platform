@@ -357,6 +357,31 @@ func (s *LLMProviderTemplateService) GetVersion(orgUUID, handle, version string)
 	return mapTemplateModelToAPI(m), nil
 }
 
+// SetVersionEnabled enables or disables a specific version of a template.
+func (s *LLMProviderTemplateService) SetVersionEnabled(orgUUID, handle, version string, enabled bool) (*api.LLMProviderTemplate, error) {
+	v := strings.TrimSpace(version)
+	if handle == "" || v == "" {
+		return nil, constants.ErrInvalidInput
+	}
+	if normalized, ok := normalizeTemplateVersion(v); ok {
+		v = normalized
+	}
+	if err := s.repo.SetEnabled(handle, orgUUID, v, enabled); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, constants.ErrLLMProviderTemplateNotFound
+		}
+		return nil, fmt.Errorf("failed to set template version enabled: %w", err)
+	}
+	m, err := s.repo.GetByVersion(handle, orgUUID, v)
+	if err != nil {
+		return nil, fmt.Errorf("failed to reload template version: %w", err)
+	}
+	if m == nil {
+		return nil, constants.ErrLLMProviderTemplateNotFound
+	}
+	return mapTemplateModelToAPI(m), nil
+}
+
 func (s *LLMProviderTemplateService) Delete(orgUUID, handle string) error {
 	if handle == "" {
 		return constants.ErrInvalidInput
@@ -366,6 +391,23 @@ func (s *LLMProviderTemplateService) Delete(orgUUID, handle string) error {
 			return constants.ErrLLMProviderTemplateNotFound
 		}
 		return fmt.Errorf("failed to delete template: %w", err)
+	}
+	return nil
+}
+
+func (s *LLMProviderTemplateService) DeleteVersion(orgUUID, handle, version string) error {
+	v := strings.TrimSpace(version)
+	if handle == "" || v == "" {
+		return constants.ErrInvalidInput
+	}
+	if normalized, ok := normalizeTemplateVersion(v); ok {
+		v = normalized
+	}
+	if err := s.repo.DeleteVersion(handle, orgUUID, v); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return constants.ErrLLMProviderTemplateNotFound
+		}
+		return fmt.Errorf("failed to delete template version: %w", err)
 	}
 	return nil
 }
@@ -1620,6 +1662,7 @@ func templateListItem(t *model.LLMProviderTemplate) api.LLMProviderTemplateListI
 	name := t.Name
 	version := t.Version
 	isLatest := t.IsLatest
+	enabled := t.Enabled
 	return api.LLMProviderTemplateListItem{
 		Id:          &id,
 		Name:        &name,
@@ -1627,6 +1670,7 @@ func templateListItem(t *model.LLMProviderTemplate) api.LLMProviderTemplateListI
 		CreatedBy:   utils.StringPtrIfNotEmpty(t.CreatedBy),
 		Version:     &version,
 		IsLatest:    &isLatest,
+		Enabled:     &enabled,
 		CreatedAt:   utils.TimePtr(t.CreatedAt),
 		UpdatedAt:   utils.TimePtr(t.UpdatedAt),
 	}
@@ -1638,6 +1682,7 @@ func mapTemplateModelToAPI(m *model.LLMProviderTemplate) *api.LLMProviderTemplat
 	}
 	version := m.Version
 	isLatest := m.IsLatest
+	enabled := m.Enabled
 	return &api.LLMProviderTemplate{
 		Id:               m.ID,
 		Name:             m.Name,
@@ -1645,6 +1690,7 @@ func mapTemplateModelToAPI(m *model.LLMProviderTemplate) *api.LLMProviderTemplat
 		CreatedBy:        utils.StringPtrIfNotEmpty(m.CreatedBy),
 		Version:          &version,
 		IsLatest:         &isLatest,
+		Enabled:          &enabled,
 		Openapi:          utils.StringPtrIfNotEmpty(m.OpenAPISpec),
 		Metadata:         mapTemplateMetadataModelToAPI(m.Metadata),
 		PromptTokens:     mapExtractionIdentifierModelToAPI(m.PromptTokens),

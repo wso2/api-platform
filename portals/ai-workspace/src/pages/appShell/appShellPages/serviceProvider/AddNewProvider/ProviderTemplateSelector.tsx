@@ -27,8 +27,10 @@ import {
   FormLabel,
   Grid,
   Stack,
+  Tooltip,
   Typography,
 } from '@wso2/oxygen-ui';
+import { ChevronDown, ChevronUp } from '@wso2/oxygen-ui-icons-react';
 import type {
   ProviderTemplate,
   ProviderTemplatesResponse,
@@ -76,6 +78,7 @@ type ProviderTemplateSelectorProps = {
   templatesError: Error | null;
   templatesResponse: ProviderTemplatesResponse;
   selectedTemplateId: string | null;
+  selectedTemplateVersion?: string;
   onSelectTemplate: (template: ProviderTemplate) => void;
   onRetryTemplates: () => void | Promise<void>;
 };
@@ -85,9 +88,23 @@ export default function ProviderTemplateSelector({
   templatesError,
   templatesResponse,
   selectedTemplateId,
+  selectedTemplateVersion,
   onSelectTemplate,
   onRetryTemplates,
 }: ProviderTemplateSelectorProps) {
+  // Collapse the grid to two rows (8 cards) with a See more / Show less toggle.
+  const COLLAPSED_COUNT = 8;
+  const [showAll, setShowAll] = React.useState(false);
+  const enabledTemplates = (templatesResponse?.list ?? []).filter(
+    (template) => template.enabled !== false
+  );
+  const hasMore = enabledTemplates.length > COLLAPSED_COUNT;
+  const hiddenCount = enabledTemplates.length - COLLAPSED_COUNT;
+  const visibleTemplates =
+    hasMore && !showAll
+      ? enabledTemplates.slice(0, COLLAPSED_COUNT)
+      : enabledTemplates;
+
   return (
     <Grid size={{ xs: 12 }}>
       <FormControl fullWidth>
@@ -126,7 +143,7 @@ export default function ProviderTemplateSelector({
               },
             }}
           >
-            {templatesResponse?.list?.map((template) => {
+            {visibleTemplates.map((template) => {
               const templateId = (template.id ?? '').toLowerCase();
               const isComingSoon = COMING_SOON_TEMPLATE_IDS.has(templateId);
               const isSelected = !isComingSoon && selectedTemplateId === template.id;
@@ -194,21 +211,26 @@ export default function ProviderTemplateSelector({
                     )}
                   </Box>
                   <Box sx={{ minWidth: 0, flex: 1 }}>
-                    <Typography variant="subtitle2" noWrap title={template.name}>
+                    <Typography
+                      variant="subtitle2"
+                      noWrap
+                      title={template.name}
+                    >
                       {truncateProviderDisplayName(template.name)}
                     </Typography>
-                    {template.description && (
-                      <Typography
-                        variant="caption"
-                        color="text.secondary"
-                        noWrap
-                        title={template.description}
-                        sx={{ display: 'block' }}
-                      >
-                        {truncateProviderDisplayName(template.description, 70)}
-                      </Typography>
-                    )}
                   </Box>
+                  {/* Version chip only on the selected card, in the right corner. */}
+                  {isSelected && selectedTemplateVersion ? (
+                    <Tooltip title="Selected version">
+                      <Chip
+                        label={selectedTemplateVersion}
+                        size="small"
+                        color="primary"
+                        variant="outlined"
+                        sx={{ flexShrink: 0, mr: 1, height: 20 }}
+                      />
+                    </Tooltip>
+                  ) : null}
                   {isComingSoon ? (
                     <Chip
                       label="Coming soon"
@@ -228,6 +250,37 @@ export default function ProviderTemplateSelector({
                 </Form.CardButton>
               );
             })}
+
+            {hasMore && (
+              <Form.CardButton
+                onClick={() => setShowAll((prev) => !prev)}
+                data-cyid="provider-template-see-more"
+                sx={{
+                  display: 'flex',
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 1,
+                  py: 1,
+                  border: '1px dashed',
+                  borderColor: 'divider',
+                  cursor: 'pointer',
+                }}
+              >
+                {!showAll && (
+                  <Chip
+                    label={`+${hiddenCount}`}
+                    size="small"
+                    color="primary"
+                    sx={{ height: 24, fontWeight: 600 }}
+                  />
+                )}
+                <Typography variant="body2" color="text.secondary">
+                  {showAll ? 'Show less' : 'See more'}
+                </Typography>
+                {showAll ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+              </Form.CardButton>
+            )}
           </Box>
         )}
       </FormControl>

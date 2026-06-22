@@ -60,6 +60,8 @@ func (h *LLMHandler) RegisterRoutes(r *gin.Engine) {
 		v1.GET("/llm-provider-templates/:id/versions", h.ListLLMProviderTemplateVersions)
 		v1.GET("/llm-provider-templates/:id/versions/:version", h.GetLLMProviderTemplateVersion)
 		v1.POST("/llm-provider-templates/:id/versions", h.CreateLLMProviderTemplateVersion)
+		v1.PATCH("/llm-provider-templates/:id/versions/:version", h.SetLLMProviderTemplateVersionEnabled)
+		v1.DELETE("/llm-provider-templates/:id/versions/:version", h.DeleteLLMProviderTemplateVersion)
 		v1.PUT("/llm-provider-templates/:id", h.UpdateLLMProviderTemplate)
 		v1.DELETE("/llm-provider-templates/:id", h.DeleteLLMProviderTemplate)
 
@@ -278,6 +280,43 @@ func (h *LLMHandler) GetLLMProviderTemplateVersion(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
+// SetLLMProviderTemplateVersionEnabled enables/disables a specific template
+// version. Body: {"enabled": true|false}.
+func (h *LLMHandler) SetLLMProviderTemplateVersionEnabled(c *gin.Context) {
+	orgID, ok := middleware.GetOrganizationFromContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
+		return
+	}
+	id := c.Param("id")
+	version := c.Param("version")
+
+	var body struct {
+		Enabled *bool `json:"enabled"`
+	}
+	if err := json.NewDecoder(c.Request.Body).Decode(&body); err != nil || body.Enabled == nil {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Request body must include a boolean 'enabled' field"))
+		return
+	}
+
+	resp, err := h.templateService.SetVersionEnabled(orgID, id, version, *body.Enabled)
+	if err != nil {
+		switch {
+		case errors.Is(err, constants.ErrLLMProviderTemplateNotFound):
+			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "LLM provider template version not found"))
+			return
+		case errors.Is(err, constants.ErrInvalidInput):
+			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid template id or version"))
+			return
+		default:
+			h.slogger.Error("Failed to set LLM provider template version enabled", "organizationId", orgID, "templateId", id, "version", version, "error", err)
+			c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to update template version"))
+			return
+		}
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
 func (h *LLMHandler) UpdateLLMProviderTemplate(c *gin.Context) {
 	orgID, ok := middleware.GetOrganizationFromContext(c)
 	if !ok {
@@ -329,6 +368,34 @@ func (h *LLMHandler) DeleteLLMProviderTemplate(c *gin.Context) {
 		default:
 			h.slogger.Error("Failed to delete LLM provider template", "organizationId", orgID, "templateId", id, "error", err)
 			c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to delete LLM provider template"))
+			return
+		}
+	}
+
+	c.Status(http.StatusNoContent)
+}
+
+// DeleteLLMProviderTemplateVersion removes a single version of a template.
+func (h *LLMHandler) DeleteLLMProviderTemplateVersion(c *gin.Context) {
+	orgID, ok := middleware.GetOrganizationFromContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
+		return
+	}
+	id := c.Param("id")
+	version := c.Param("version")
+
+	if err := h.templateService.DeleteVersion(orgID, id, version); err != nil {
+		switch {
+		case errors.Is(err, constants.ErrLLMProviderTemplateNotFound):
+			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "LLM provider template version not found"))
+			return
+		case errors.Is(err, constants.ErrInvalidInput):
+			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid template id or version"))
+			return
+		default:
+			h.slogger.Error("Failed to delete LLM provider template version", "organizationId", orgID, "templateId", id, "version", version, "error", err)
+			c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to delete template version"))
 			return
 		}
 	}

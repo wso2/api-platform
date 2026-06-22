@@ -306,6 +306,7 @@ CREATE TABLE IF NOT EXISTS llm_provider_templates (
     openapi_spec TEXT,
     version VARCHAR(40) NOT NULL DEFAULT 'v1.0',
     is_latest BOOLEAN NOT NULL DEFAULT TRUE,
+    enabled BOOLEAN NOT NULL DEFAULT TRUE,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,

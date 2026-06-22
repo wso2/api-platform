@@ -17,14 +17,19 @@
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { Link as RouterLink, useParams } from 'react-router-dom';
+import { Link as RouterLink, useNavigate, useParams } from 'react-router-dom';
 import YAML from 'yaml';
 import {
   Avatar,
   Box,
   Button,
   Card,
+  Chip,
   CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   Divider,
   FormControl,
   FormLabel,
@@ -34,22 +39,27 @@ import {
   MenuItem,
   PageContent,
   Stack,
+  Switch,
   Tab,
   Tabs,
   TextField,
   Tooltip,
   Typography,
 } from '@wso2/oxygen-ui';
-import { Check, ChevronDown, ChevronLeft, Clock, Download, Edit, GitBranch } from '@wso2/oxygen-ui-icons-react';
+import { Check, ChevronDown, ChevronLeft, Clock, Download, Edit, GitBranch, Lock, Trash2 } from '@wso2/oxygen-ui-icons-react';
 import { FormattedMessage } from 'react-intl';
 import { formatRelativeTime } from '../../../../contexts/llmProvider';
 import { useProviderTemplates } from '../../../../contexts/llmProvider/providerTemplate';
 import { useAppShell } from '../../../../contexts/AppShellContext';
 import useAIWorkspaceSnackbar from '../../../../hooks/aiWorkspaceSnackbar';
 import * as providerTemplateApis from '../../../../apis/providerTemplateApis';
+import { getLLMProviders } from '../../../../apis/llmProviderApis';
 import { PLATFORM_API_BASE_URL } from '../../../../config.env';
 import { buildOrgPath } from '../../../../utils/projectRouting';
-import { truncateProviderDisplayName } from '../../../../utils/providerTemplateDisplay';
+import {
+  isBuiltInProviderTemplate,
+  truncateProviderDisplayName,
+} from '../../../../utils/providerTemplateDisplay';
 import {
   DEFAULT_AUTH_CONFIG,
   fromTokenConfig,
@@ -122,8 +132,9 @@ function isParseableSpec(text: string): boolean {
 
 export default function ProviderTemplateOverview() {
   const { templateId } = useParams<{ templateId: string }>();
+  const navigate = useNavigate();
   const { currentOrganization } = useAppShell();
-  const { updateTemplate } = useProviderTemplates();
+  const { updateTemplate, refreshTemplates } = useProviderTemplates();
   const showSnackbar = useAIWorkspaceSnackbar();
   const [tabIndex, setTabIndex] = useState(0);
 
@@ -158,6 +169,9 @@ export default function ProviderTemplateOverview() {
   const [specFileName, setSpecFileName] = useState('');
   const [isFetchingSpec, setIsFetchingSpec] = useState(false);
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
+  const [isTogglingEnabled, setIsTogglingEnabled] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const listPath = buildOrgPath(currentOrganization, '/settings/llm-provider-templates');
 
@@ -495,6 +509,106 @@ export default function ProviderTemplateOverview() {
   const description = template.description?.trim() || 'No description';
   const lastUpdated = template.updatedAt ?? template.createdAt;
 
+  const currentVersion = selectedVersion || template.version || 'v1.0';
+  const isBuiltIn = isBuiltInProviderTemplate(template.id);
+  // The seeded built-in version (v1.0) is read-only; user-created versions
+  // (v2.0+) of a built-in template can still be edited.
+  const isBaseVersion = currentVersion === 'v1.0' || currentVersion === 'v1';
+  const isReadOnly = isBuiltIn && isBaseVersion;
+  const canEdit = !isReadOnly;
+  // Built-in v1.0 is read-only (toggle only); every other version (built-in
+  // v2.0+ and all custom versions) can be deleted, one version at a time.
+  const canDelete = !isReadOnly;
+  const isEnabled = template.enabled !== false;
+
+  const handleToggleEnabled = async (next: boolean) => {
+    const organizationId = currentOrganization?.uuid;
+    if (!template.id || !organizationId || isTogglingEnabled) return;
+    setIsTogglingEnabled(true);
+    try {
+      // Guard: a template that has providers created from it can't be disabled.
+      if (!next) {
+        const providers = await getLLMProviders(
+          organizationId,
+          PLATFORM_API_BASE_URL
+        );
+        const inUse = (providers.list ?? []).some(
+          (p) => p.template === template.id
+        );
+        if (inUse) {
+          showSnackbar(
+            'Cannot disable: one or more providers were created from this template.',
+            'error'
+          );
+          return;
+        }
+      }
+      const updated =
+        await providerTemplateApis.setProviderTemplateVersionEnabled(
+          template.id,
+          currentVersion,
+          next,
+          organizationId,
+          PLATFORM_API_BASE_URL
+        );
+      setTemplate(updated);
+      setVersions((prev) =>
+        prev.map((v) => (v.version === updated.version ? updated : v))
+      );
+      await refreshTemplates();
+      showSnackbar(next ? 'Version enabled.' : 'Version disabled.', 'success');
+    } catch {
+      showSnackbar('Failed to update the version.', 'error');
+    } finally {
+      setIsTogglingEnabled(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    const organizationId = currentOrganization?.uuid;
+    if (!template.id || !organizationId || isDeleting) return;
+    setIsDeleting(true);
+    try {
+      await providerTemplateApis.deleteProviderTemplateVersion(
+        template.id,
+        currentVersion,
+        organizationId,
+        PLATFORM_API_BASE_URL
+      );
+      await refreshTemplates();
+      showSnackbar(`Version ${currentVersion} deleted.`, 'success');
+
+      // If that was the only version the template is gone; otherwise reload the
+      // remaining versions and switch to the new latest.
+      const remaining = versions.filter((v) => v.version !== currentVersion);
+      if (remaining.length === 0) {
+        navigate(listPath);
+        return;
+      }
+      const [full, list] = await Promise.all([
+        providerTemplateApis.getProviderTemplate(
+          template.id,
+          organizationId,
+          PLATFORM_API_BASE_URL
+        ),
+        providerTemplateApis.getProviderTemplateVersions(
+          template.id,
+          organizationId,
+          PLATFORM_API_BASE_URL
+        ),
+      ]);
+      setTemplate(full);
+      setVersions(list);
+      const latest = list.find((v) => v.isLatest) ?? list[0];
+      setSelectedVersion(latest?.version ?? '');
+      setDeleteOpen(false);
+    } catch {
+      showSnackbar('Failed to delete the version.', 'error');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   return (
     <PageContent fullWidth>
       {backButton}
@@ -535,11 +649,13 @@ export default function ProviderTemplateOverview() {
                   <Typography variant="h3" title={template.name}>
                     {truncateProviderDisplayName(template.name)}
                   </Typography>
-                  <Tooltip title="Edit template">
-                    <IconButton component={RouterLink} to="edit" size="small">
-                      <Edit size={16} />
-                    </IconButton>
-                  </Tooltip>
+                  {canEdit && (
+                    <Tooltip title="Edit template">
+                      <IconButton component={RouterLink} to="edit" size="small">
+                        <Edit size={16} />
+                      </IconButton>
+                    </Tooltip>
+                  )}
                   {/* Version switcher — a pill that opens the versions menu. */}
                   <Button
                     variant="outlined"
@@ -628,21 +744,66 @@ export default function ProviderTemplateOverview() {
               </Stack>
             </Box>
 
-            <Button
-              variant="contained"
-              onClick={() => {
-                const name = downloadTemplateYaml(template);
-                showSnackbar(`${name} downloaded`, 'success');
-              }}
-              startIcon={<Download size={16} />}
-            >
-              <FormattedMessage
-                id="aiWorkspace.pages.appShell.appShellPages.providerTemplate.ProviderTemplateOverview.downloadYaml"
-                defaultMessage={'Download YAML'}
-              />
-            </Button>
+            <Stack direction="row" spacing={1.5} alignItems="center">
+              <Button
+                variant="contained"
+                onClick={() => {
+                  const name = downloadTemplateYaml(template);
+                  showSnackbar(`${name} downloaded`, 'success');
+                }}
+                startIcon={<Download size={16} />}
+              >
+                <FormattedMessage
+                  id="aiWorkspace.pages.appShell.appShellPages.providerTemplate.ProviderTemplateOverview.downloadYaml"
+                  defaultMessage={'Download YAML'}
+                />
+              </Button>
+              {/* Only the read-only built-in v1.0 gets the enable/disable toggle
+                  (it can't be deleted). New versions behave like custom
+                  templates: editable + deletable, no toggle. */}
+              {isReadOnly && (
+                <Stack direction="row" spacing={1} alignItems="center">
+                  <Chip
+                    size="small"
+                    label={isEnabled ? 'Enabled' : 'Disabled'}
+                    color={isEnabled ? 'success' : 'default'}
+                    variant="outlined"
+                  />
+                  <Switch
+                    checked={isEnabled}
+                    disabled={isTogglingEnabled}
+                    onChange={(e) => void handleToggleEnabled(e.target.checked)}
+                    inputProps={{ 'aria-label': 'Enable or disable this version' }}
+                  />
+                </Stack>
+              )}
+              {/* Custom templates can be deleted entirely (all versions). */}
+              {canDelete && (
+                <Button
+                  variant="outlined"
+                  color="error"
+                  startIcon={<Trash2 size={16} />}
+                  onClick={() => setDeleteOpen(true)}
+                >
+                  Delete
+                </Button>
+              )}
+            </Stack>
           </Box>
         </Card>
+
+        {/* Built-in base version: read-only notice. */}
+        {isReadOnly && (
+          <Card sx={{ bgcolor: 'action.hover' }}>
+            <Stack direction="row" spacing={1.5} alignItems="center" sx={{ p: 2 }}>
+              <Lock size={18} />
+              <Typography variant="body2">
+                <strong>Built-in version — read-only.</strong> You can enable or
+                disable it, but its configuration can&apos;t be edited or deleted.
+              </Typography>
+            </Stack>
+          </Card>
+        )}
 
         {/* Tabbed card */}
         <Card>
@@ -711,7 +872,15 @@ export default function ProviderTemplateOverview() {
             </TabPanel>
 
             <TabPanel value={tabIndex} index={1}>
-              <Grid container spacing={2}>
+              {/* Built-in v1.0 is read-only — block all edits on this tab. */}
+              <Box
+                sx={
+                  isReadOnly
+                    ? { pointerEvents: 'none', opacity: 0.7 }
+                    : undefined
+                }
+              >
+                <Grid container spacing={2}>
                 <Grid size={{ xs: 12 }}>
                   <FormControl fullWidth>
                     <FormLabel required>Endpoint URL</FormLabel>
@@ -873,24 +1042,35 @@ export default function ProviderTemplateOverview() {
                     />
                   </FormControl>
                 </Grid>
-              </Grid>
+                </Grid>
+              </Box>
             </TabPanel>
 
             <TabPanel value={tabIndex} index={2}>
-              <TemplateTokenMapping
-                defaultTokens={defaultTokens}
-                onChangeDefaultToken={updateToken}
-                resourceMappings={resourceMappings}
-                onChangeResourceMappings={(next) => {
-                  setResourceMappings(next);
-                  setIsDirty(true);
-                }}
-                spec={parsedSpec}
-              />
+              <Box
+                sx={
+                  isReadOnly
+                    ? { pointerEvents: 'none', opacity: 0.7 }
+                    : undefined
+                }
+              >
+                <TemplateTokenMapping
+                  defaultTokens={defaultTokens}
+                  onChangeDefaultToken={updateToken}
+                  resourceMappings={resourceMappings}
+                  onChangeResourceMappings={(next) => {
+                    setResourceMappings(next);
+                    setIsDirty(true);
+                  }}
+                  spec={parsedSpec}
+                />
+              </Box>
             </TabPanel>
           </Box>
         </Card>
 
+        {/* Save/cancel bar — hidden for read-only built-in versions. */}
+        {!isReadOnly && (
         <Box sx={{ position: 'sticky', bottom: 0, zIndex: 10 }}>
           <Card>
             <Stack
@@ -933,7 +1113,35 @@ export default function ProviderTemplateOverview() {
             </Stack>
           </Card>
         </Box>
+        )}
       </Stack>
+
+      <Dialog open={deleteOpen} onClose={() => setDeleteOpen(false)}>
+        <DialogTitle>
+          Delete version <strong>{currentVersion}</strong> of{' '}
+          <strong>&apos;{template.name}&apos;</strong>?
+        </DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+            {versions.length <= 1
+              ? 'This is the only version, so the template will be removed. This action is irreversible.'
+              : 'Only this version is removed; other versions remain. This action is irreversible.'}
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button
+            variant="outlined"
+            color="secondary"
+            onClick={() => setDeleteOpen(false)}
+            disabled={isDeleting}
+          >
+            Cancel
+          </Button>
+          <Button color="error" onClick={() => void handleDelete()} disabled={isDeleting}>
+            {isDeleting ? 'Deleting...' : 'Delete'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </PageContent>
   );
 }

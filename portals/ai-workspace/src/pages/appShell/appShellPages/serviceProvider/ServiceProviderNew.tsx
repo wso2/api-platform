@@ -38,6 +38,8 @@ import { ChevronLeft } from '@wso2/oxygen-ui-icons-react';
 import { useAppAuth } from '../../../../contexts/AppAuthContext';
 import { SCOPES } from '../../../../auth/permissions';
 import { useAppShell } from '../../../../contexts/AppShellContext';
+import * as providerTemplateApis from '../../../../apis/providerTemplateApis';
+import { PLATFORM_API_BASE_URL } from '../../../../config.env';
 import {
   buildOrgPath,
   buildProjectPath,
@@ -392,6 +394,47 @@ export default function ServiceProviderNew() {
     }
   };
 
+  // Apply a chosen template + version to the form.
+  const applyTemplateSelection = (
+    template: ProviderTemplate,
+    version: string
+  ) => {
+    setSelectedTemplateId(template.id ?? null);
+    setSelectedTemplateVersion(version);
+    setFormState((prev) => ({ ...prev, providerType: template.name }));
+    setOpenapiSpec('');
+    setVersionDialogOpen(false);
+    setPendingTemplate(null);
+  };
+
+  // When a template is picked, only prompt for a version if more than one
+  // enabled version exists — otherwise auto-select the single version.
+  const handleSelectTemplate = async (template: ProviderTemplate) => {
+    const organizationId = currentOrganization?.uuid;
+    if (!template.id || !organizationId) return;
+    try {
+      const enabledVersions = (
+        await providerTemplateApis.getProviderTemplateVersions(
+          template.id,
+          organizationId,
+          PLATFORM_API_BASE_URL
+        )
+      ).filter((v) => v.enabled !== false);
+      if (enabledVersions.length <= 1) {
+        const only = enabledVersions[0];
+        applyTemplateSelection(
+          template,
+          only?.version ?? template.version ?? 'v1.0'
+        );
+        return;
+      }
+    } catch {
+      // Couldn't load versions — fall back to the picker.
+    }
+    setPendingTemplate(template);
+    setVersionDialogOpen(true);
+  };
+
   return (
     <PageContent fullWidth>
       <Button
@@ -426,10 +469,8 @@ export default function ServiceProviderNew() {
             templatesResponse={templatesResponse}
             selectedTemplateId={selectedTemplateId}
             onRetryTemplates={refreshTemplates}
-            onSelectTemplate={(template) => {
-              setPendingTemplate(template);
-              setVersionDialogOpen(true);
-            }}
+            selectedTemplateVersion={selectedTemplateVersion ?? undefined}
+            onSelectTemplate={(template) => void handleSelectTemplate(template)}
           />
 
           {pendingTemplate && (
@@ -441,17 +482,9 @@ export default function ServiceProviderNew() {
                 setVersionDialogOpen(false);
                 setPendingTemplate(null);
               }}
-              onConfirm={(version) => {
-                setSelectedTemplateId(pendingTemplate.id ?? null);
-                setSelectedTemplateVersion(version);
-                setFormState((prev) => ({
-                  ...prev,
-                  providerType: pendingTemplate.name,
-                }));
-                setOpenapiSpec('');
-                setVersionDialogOpen(false);
-                setPendingTemplate(null);
-              }}
+              onConfirm={(version) =>
+                applyTemplateSelection(pendingTemplate, version)
+              }
             />
           )}
 

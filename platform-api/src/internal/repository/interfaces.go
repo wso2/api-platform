@@ -238,6 +238,8 @@ type LLMProviderTemplateRepository interface {
 	ListAllVersions(orgUUID string, limit, offset int) ([]*model.LLMProviderTemplate, error)
 	CountAllVersions(orgUUID string) (int, error)
 	Update(t *model.LLMProviderTemplate) error
+	SetEnabled(templateID, orgUUID, version string, enabled bool) error
+	DeleteVersion(templateID, orgUUID, version string) error
 	Delete(templateID, orgUUID string) error
 	Exists(templateID, orgUUID string) (bool, error)
 }
