@@ -14,14 +14,16 @@ jobs:
       matrix:
         include:
           - { name: gateway-runtime, make_dir: gateway/gateway-runtime }
-          - { name: gateway-controller, make_dir: gateway/gateway-controller }
+          # gateway-controller embeds the compiled policy YAMLs, so it needs the policy
+          # export from the gateway-runtime build first (needs_policies).
+          - { name: gateway-controller, make_dir: gateway/gateway-controller, needs_policies: true }
           - { name: gateway-builder, make_dir: gateway/gateway-builder }
           - { name: platform-api, make_dir: platform-api }
           - { name: ai-workspace, make_dir: portals/ai-workspace }
           - { name: event-gateway-runtime, make_dir: event-gateway/gateway-runtime }
           # event-gateway-controller is built from the gateway-controller Makefile target,
-          # tagged under its own image name.
-          - { name: event-gateway-controller, make_dir: gateway/gateway-controller }
+          # tagged under its own image name; it needs the same policy export.
+          - { name: event-gateway-controller, make_dir: gateway/gateway-controller, needs_policies: true }
 
     # Hard ceiling for the whole job. The scan step has its own per-attempt timeout below,
     # so this only guards against an unexpected hang in build/setup.
@@ -61,6 +63,16 @@ jobs:
         env:
           JF_URL: ${{ secrets.JF_URL }}
           JF_ACCESS_TOKEN: ${{ secrets.JF_ACCESS_TOKEN }}
+
+      # The gateway-controller / event-gateway-controller images COPY in the compiled
+      # policy definitions, which are produced by the gateway-runtime "policy-export"
+      # Dockerfile stage into gateway/target/build/gateway-controller/policies. The old
+      # single-job workflow got these for free because gateway-runtime built first; with one
+      # job per image we extract them explicitly before building the controller image.
+      - name: Extract controller policy definitions
+        if: ${{ matrix.needs_policies }}
+        run: |
+          make -C gateway/gateway-runtime extract-policies VERSION=trivy
 
       - name: Build & push ${{ matrix.name }} to temp registry
         run: |
