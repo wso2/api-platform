@@ -28,7 +28,7 @@ import { logger } from '../utils/logger';
  * Organization schema from the Platform API.
  *
  * curl reference:
- *   POST https://localhost:9243/api/v1/organizations
+ *   POST https://localhost:9243/api/v1alpha2/organizations
  *   -H 'Authorization: Bearer <token>'
  *   -H 'accept: application/json' -H 'content-type: application/json'
  *   --data-raw '{"id":"<uuid>","name":"<name>","handle":"<handle>","region":"us"}'

@@ -331,27 +331,15 @@ export default function ServiceProviderNew() {
         template: selectedTemplateId,
         openapi: openapiSpec,
         upstream,
-        policies: [
+        globalPolicies: [
           ...(selectedTemplateId !== 'azure-openai' &&
           selectedTemplateId !== 'azureai-foundry'
-            ? [
-                {
-                  name: 'llm-cost',
-                  version: 'v1',
-                  paths: [{ path: '/*', methods: ['*'], params: {} }],
-                },
-              ]
+            ? [{ name: 'llm-cost', version: 'v1', params: {} }]
             : []),
           ...guardrails.map((guardrail) => ({
             name: guardrail.name,
             version: guardrail.version,
-            paths: [
-              {
-                path: '/*',
-                methods: ['*'],
-                params: guardrail.settings ?? {},
-              },
-            ],
+            params: guardrail.settings ?? {},
           })),
         ],
         accessControl: {

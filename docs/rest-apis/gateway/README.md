@@ -4,8 +4,8 @@
 REST API for managing API configurations in the WSO2 API Platform Gateway.
 
 Base URLs:
-* <a href="http://localhost:9090/api/management/v0.9">http://localhost:9090/api/management/v0.9</a>
-* <a href="http://gateway-controller:9090/api/management/v0.9">http://gateway-controller:9090/api/management/v0.9</a>
+* <a href="http://localhost:9090/api/management/v1alpha2">http://localhost:9090/api/management/v1alpha2</a>
+* <a href="http://gateway-controller:9090/api/management/v1alpha2">http://gateway-controller:9090/api/management/v1alpha2</a>
 
 ## Table of Contents
 

@@ -1115,7 +1115,7 @@ jobs:
           API_READY=""
           for i in $(seq 1 60); do
             API_STATUS=$(curl -s -o /tmp/subscription-precheck-body.txt -w "%{http_code}" -u admin:admin \
-              "http://localhost:9090/api/management/v0.9/rest-apis/hello-sub-api" || true)
+              "http://localhost:9090/api/management/v1alpha2/rest-apis/hello-sub-api" || true)
             if [ "${API_STATUS}" = "200" ]; then
               API_READY="yes"
               echo "hello-sub-api is resolvable via management API"

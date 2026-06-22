@@ -40,9 +40,9 @@ auth_mode = "basic"
 # oidc_org_handle_claim = "org_handle"
 
 # Platform API base URL — used by the UI to make API calls (may be a relative
-# path when nginx proxying is in use, e.g. /api-proxy/api/v1).
-# Defaults to https://localhost:9243/api/v1 if unset.
-platform_api_base_url = "https://localhost:9243/api/v1"
+# path when nginx proxying is in use, e.g. /api-proxy/api/v1alpha2).
+# Defaults to https://localhost:9243/api/v1alpha2 if unset.
+platform_api_base_url = "https://localhost:9243/api/v1alpha2"
 
 # Control-plane host — the host:port that deployed gateways use to reach
 # the Platform API. Shown in gateway setup instructions (keys.env, helm values).

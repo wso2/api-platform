@@ -12,7 +12,7 @@ CRUD operations for MCPProxies
 
 ```shell
 
-curl -X POST http://localhost:9090/api/management/v0.9/mcp-proxies \
+curl -X POST http://localhost:9090/api/management/v1alpha2/mcp-proxies \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -26,7 +26,7 @@ Add a new MCPProxy to the Gateway.
 
 ```json
 {
-  "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+  "apiVersion": "gateway.api-platform.wso2.com/v1alpha2",
   "kind": "Mcp",
   "metadata": {
     "name": "everything-mcp-v1.0"
@@ -67,7 +67,7 @@ Required roles: `admin`, `developer`
 
 ```json
 {
-  "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+  "apiVersion": "gateway.api-platform.wso2.com/v1alpha2",
   "kind": "Mcp",
   "metadata": {
     "name": "everything-mcp-v1.0"
@@ -113,7 +113,7 @@ Required roles: `admin`, `developer`
 
 ```shell
 
-curl -X GET http://localhost:9090/api/management/v0.9/mcp-proxies \
+curl -X GET http://localhost:9090/api/management/v1alpha2/mcp-proxies \
   -u {username}:{password} \
   -H 'Accept: application/json'
 
@@ -156,7 +156,7 @@ Required roles: `admin`, `developer`
   "count": 5,
   "mcpProxies": [
     {
-      "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+      "apiVersion": "gateway.api-platform.wso2.com/v1alpha2",
       "kind": "Mcp",
       "metadata": {
         "name": "everything-mcp-v1.0"
@@ -303,7 +303,7 @@ Status Code **200**
 
 |Property|Value|
 |---|---|
-|apiVersion|gateway.api-platform.wso2.com/v1alpha1|
+|apiVersion|gateway.api-platform.wso2.com/v1alpha2|
 |kind|Mcp|
 |hostRewrite|auto|
 |hostRewrite|manual|
@@ -323,7 +323,7 @@ Status Code **200**
 
 ```shell
 
-curl -X GET http://localhost:9090/api/management/v0.9/mcp-proxies/{id} \
+curl -X GET http://localhost:9090/api/management/v1alpha2/mcp-proxies/{id} \
   -u {username}:{password} \
   -H 'Accept: application/json'
 
@@ -356,7 +356,7 @@ Required roles: `admin`, `developer`
 
 ```json
 {
-  "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+  "apiVersion": "gateway.api-platform.wso2.com/v1alpha2",
   "kind": "Mcp",
   "metadata": {
     "name": "everything-mcp-v1.0"
@@ -401,7 +401,7 @@ Required roles: `admin`, `developer`
 
 ```shell
 
-curl -X PUT http://localhost:9090/api/management/v0.9/mcp-proxies/{id} \
+curl -X PUT http://localhost:9090/api/management/v1alpha2/mcp-proxies/{id} \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -415,7 +415,7 @@ Update an existing MCPProxy in the Gateway.
 
 ```json
 {
-  "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+  "apiVersion": "gateway.api-platform.wso2.com/v1alpha2",
   "kind": "Mcp",
   "metadata": {
     "name": "everything-mcp-v1.0"
@@ -461,7 +461,7 @@ Required roles: `admin`, `developer`
 
 ```json
 {
-  "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+  "apiVersion": "gateway.api-platform.wso2.com/v1alpha2",
   "kind": "Mcp",
   "metadata": {
     "name": "everything-mcp-v1.0"
@@ -507,7 +507,7 @@ Required roles: `admin`, `developer`
 
 ```shell
 
-curl -X DELETE http://localhost:9090/api/management/v0.9/mcp-proxies/{id} \
+curl -X DELETE http://localhost:9090/api/management/v1alpha2/mcp-proxies/{id} \
   -u {username}:{password} \
   -H 'Accept: application/json'
 

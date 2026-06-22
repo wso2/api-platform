@@ -41,7 +41,7 @@ ap gateway subscription-plan create --file subscription-plan.yaml
 ap gateway subscription-plan create -f subscription-plan.json
 
 # The file is a SubscriptionPlan custom resource, e.g.:
-#   apiVersion: gateway.api-platform.wso2.com/v1alpha1
+#   apiVersion: gateway.api-platform.wso2.com/v1alpha2
 #   kind: SubscriptionPlan
 #   metadata:
 #     name: bronze-1k-per-min

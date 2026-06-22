@@ -26,7 +26,7 @@ export const useProjectsApi = () => {
     ): Promise<Project> => {
       const { token, baseUrl } = getApiConfig();
 
-      const response = await fetch(`${baseUrl}/api/v1/projects`, {
+      const response = await fetch(`${baseUrl}/api/v1alpha2/projects`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -51,7 +51,7 @@ export const useProjectsApi = () => {
   const fetchProject = useCallback(async (projectId: string): Promise<Project> => {
     const { token, baseUrl } = getApiConfig();
 
-    const response = await fetch(`${baseUrl}/api/v1/projects/${projectId}`, {
+    const response = await fetch(`${baseUrl}/api/v1alpha2/projects/${projectId}`, {
       method: "GET",
       headers: {
         Authorization: `Bearer ${token}`,
@@ -73,7 +73,7 @@ export const useProjectsApi = () => {
     async (): Promise<Project[]> => {
       const { token, baseUrl } = getApiConfig();
 
-      const response = await fetch(`${baseUrl}/api/v1/projects`, {
+      const response = await fetch(`${baseUrl}/api/v1alpha2/projects`, {
         method: "GET",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -106,7 +106,7 @@ export const useProjectsApi = () => {
   const deleteProject = useCallback(async (projectId: string): Promise<void> => {
     const { token, baseUrl } = getApiConfig();
 
-    const response = await fetch(`${baseUrl}/api/v1/projects/${projectId}`, {
+    const response = await fetch(`${baseUrl}/api/v1alpha2/projects/${projectId}`, {
       method: "DELETE",
       headers: {
         Authorization: `Bearer ${token}`,

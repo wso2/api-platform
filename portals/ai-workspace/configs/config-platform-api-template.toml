@@ -33,7 +33,7 @@ port      = "9243"   # HTTP/HTTPS listen port for Platform API
 # Set to false only to temporarily bypass during development.
 enable_scope_validation = true
 
-# Controls authentication for POST /api/v1/organizations.
+# Controls authentication for POST /api/v1alpha2/organizations.
 # When true, the endpoint requires both a valid Bearer JWT and the
 # ap:organization:manage scope; requests without that scope are rejected.
 # Default: false (public) — preserves backwards-compatible behaviour for existing deployments.

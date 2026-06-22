@@ -54,7 +54,7 @@ export const useDevPortalsApi = () => {
   const fetchDevPortals = useCallback(async (): Promise<Portal[]> => {
     const { token, baseUrl } = getApiConfig();
 
-    const response = await fetch(`${baseUrl}/api/v1/devportals`, {
+    const response = await fetch(`${baseUrl}/api/v1alpha2/devportals`, {
       method: "GET",
       headers: {
         Authorization: `Bearer ${token}`,
@@ -77,7 +77,7 @@ export const useDevPortalsApi = () => {
     async (uuid: string): Promise<Portal> => {
       const { token, baseUrl } = getApiConfig();
 
-      const response = await fetch(`${baseUrl}/api/v1/devportals/${uuid}`, {
+      const response = await fetch(`${baseUrl}/api/v1alpha2/devportals/${uuid}`, {
         method: "GET",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -101,7 +101,7 @@ export const useDevPortalsApi = () => {
     async (payload: CreatePortalPayload): Promise<Portal> => {
       const { token, baseUrl } = getApiConfig();
 
-      const response = await fetch(`${baseUrl}/api/v1/devportals`, {
+      const response = await fetch(`${baseUrl}/api/v1alpha2/devportals`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -130,7 +130,7 @@ export const useDevPortalsApi = () => {
     ): Promise<DevPortalAPIModel> => {
       const { token, baseUrl } = getApiConfig();
 
-      const response = await fetch(`${baseUrl}/api/v1/devportals/${uuid}`, {
+      const response = await fetch(`${baseUrl}/api/v1alpha2/devportals/${uuid}`, {
         method: "PUT",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -156,7 +156,7 @@ export const useDevPortalsApi = () => {
     async (uuid: string): Promise<void> => {
       const { token, baseUrl } = getApiConfig();
 
-      const response = await fetch(`${baseUrl}/api/v1/devportals/${uuid}`, {
+      const response = await fetch(`${baseUrl}/api/v1alpha2/devportals/${uuid}`, {
         method: "DELETE",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -178,7 +178,7 @@ export const useDevPortalsApi = () => {
   const activateDevPortal = useCallback(async (uuid: string): Promise<void> => {
     const { token, baseUrl } = getApiConfig();
 
-    const response = await fetch(`${baseUrl}/api/v1/devportals/${uuid}/activate`, {
+    const response = await fetch(`${baseUrl}/api/v1alpha2/devportals/${uuid}/activate`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${token}`,
