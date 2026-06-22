@@ -28,7 +28,7 @@ import (
 // These rows represent the current artifact config and are used for delete protection.
 const artifactLevelGatewayID = ""
 
-var secretPlaceholderRe = regexp.MustCompile(`\{\{\s*secret\s+"([^"]+)"\s*\}\}`)
+var secretPlaceholderRe = regexp.MustCompile(`\{\{\s*secret\s+\\?"([^"\\]+)\\?"\s*\}\}`)
 
 // extractSecretHandles returns unique secret handles found in the given content blob.
 func extractSecretHandles(content []byte) []string {

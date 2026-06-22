@@ -52,6 +52,7 @@ func defaultConfig() *Server {
 				"/api/internal/v1/gateways",
 				"/api/internal/v1/deployments",
 				"/api/internal/v1/artifacts",
+				"/api/internal/v1/secrets",
 				"/api/internal/v1/websub-apis",
 				"/api/internal/v1/webbroker-apis",
 			},

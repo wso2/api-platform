@@ -467,6 +467,33 @@ func TestSecretService_ValidateSecretRefs_MissingHandle(t *testing.T) {
 	}
 }
 
+func TestSecretService_ValidateSecretRefs_JSONEscapedForm(t *testing.T) {
+	repo := newMockRepo()
+	repo.secrets["my-key"] = &model.Secret{Handle: "my-key", Status: model.SecretStatusActive}
+
+	svc := NewSecretService(repo, &mockVault{})
+	// Simulates what Go's json.Marshal produces when the placeholder is inside a string field:
+	// the surrounding quotes are escaped as \", giving {{ secret \"my-key\" }}.
+	config := `{{ secret \"my-key\" }}`
+	if err := svc.ValidateSecretRefs("org1", config); err != nil {
+		t.Errorf("unexpected error for JSON-escaped placeholder: %v", err)
+	}
+}
+
+func TestSecretService_ValidateSecretRefs_JSONEscapedForm_Missing(t *testing.T) {
+	repo := newMockRepo()
+	svc := NewSecretService(repo, &mockVault{})
+
+	config := `{{ secret \"nonexistent-key\" }}`
+	err := svc.ValidateSecretRefs("org1", config)
+	if err == nil {
+		t.Fatal("expected error for missing JSON-escaped secret handle")
+	}
+	if !errors.Is(err, constants.ErrSecretRefMissing) {
+		t.Errorf("expected ErrSecretRefMissing, got %v", err)
+	}
+}
+
 func TestSecretService_ValidateSecretRefs_DeduplicatesHandles(t *testing.T) {
 	callCount := 0
 	repo := newMockRepo()
