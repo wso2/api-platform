@@ -308,7 +308,7 @@ type SecretRepository interface {
 	ListByHandles(orgID string, handles []string, updatedAfter *time.Time, valueScopes []string) ([]*model.Secret, error)
 	Count(orgID string) (int, error)
 	Update(s *model.Secret) error
-	SoftDelete(orgID, handle, updatedBy string) error
+	FindRefsAndSoftDelete(orgID, handle, updatedBy string) ([]model.SecretReference, error)
 	FindRefs(orgID, handle string) ([]model.SecretReference, error)
 	Exists(orgID, handle string) (bool, error)
 }

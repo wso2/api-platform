@@ -159,16 +159,14 @@ func (s *SecretService) Update(orgID, handle, updatedBy string, req *dto.UpdateS
 }
 
 func (s *SecretService) Delete(orgID, handle, updatedBy string) error {
-	refs, err := s.repo.FindRefs(orgID, handle)
+	refs, err := s.repo.FindRefsAndSoftDelete(orgID, handle, updatedBy)
 	if err != nil {
-		return fmt.Errorf("failed to scan artifact references: %w", err)
+		return fmt.Errorf("failed to delete secret: %w", err)
 	}
-
 	if len(refs) > 0 {
 		return &SecretInUseError{References: refs}
 	}
-
-	return s.repo.SoftDelete(orgID, handle, updatedBy)
+	return nil
 }
 
 // ValidateSecretRefs checks that every {{ secret "handle" }} placeholder in configText

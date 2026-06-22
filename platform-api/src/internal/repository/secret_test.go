@@ -202,8 +202,12 @@ func TestSecretRepo_SoftDelete(t *testing.T) {
 		t.Fatalf("Create: %v", err)
 	}
 
-	if err := repo.SoftDelete(orgID, "deletable", "admin"); err != nil {
-		t.Fatalf("SoftDelete: %v", err)
+	refs, err := repo.FindRefsAndSoftDelete(orgID, "deletable", "admin")
+	if err != nil {
+		t.Fatalf("FindRefsAndSoftDelete: %v", err)
+	}
+	if len(refs) > 0 {
+		t.Fatalf("expected no refs blocking delete, got %v", refs)
 	}
 
 	// Exists should return false after soft-delete (status=DEPRECATED)
@@ -805,6 +809,138 @@ func TestUpsertDeploymentSecretRefs_OnUndeploy_ClearsRows(t *testing.T) {
 	}
 	if count != 0 {
 		t.Errorf("expected 0 refs after undeploy, got %d", count)
+	}
+}
+
+// TestSecretRepo_Create_UniqueConstraint_409 verifies that creating a secret with
+// a duplicate (orgID, handle) returns ErrSecretAlreadyExists (scenario 86).
+func TestSecretRepo_Create_UniqueConstraint_409(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	t.Cleanup(cleanup)
+
+	orgID := "org-uc-001"
+	createTestOrganizationAndProject(t, db, orgID, "proj-uc-001")
+
+	repo := NewSecretRepo(db)
+	s := &model.Secret{
+		OrganizationID: orgID,
+		Handle:         "dup-handle",
+		DisplayName:    "Dup Handle",
+		Ciphertext:     []byte("ct"),
+		Hash:           "h",
+		Type:           model.SecretTypeGeneric,
+		Provider:       model.SecretProviderInHouse,
+		Status:         model.SecretStatusActive,
+		ValueScope:     model.SecretDefaultValueScope,
+		CreatedBy:      "u",
+		UpdatedBy:      "u",
+	}
+	if err := repo.Create(s); err != nil {
+		t.Fatalf("first Create: %v", err)
+	}
+
+	// Second create with same handle must return ErrSecretAlreadyExists, not a raw DB error.
+	s2 := &model.Secret{
+		OrganizationID: orgID,
+		Handle:         "dup-handle",
+		DisplayName:    "Another",
+		Ciphertext:     []byte("ct2"),
+		Hash:           "h2",
+		Type:           model.SecretTypeGeneric,
+		Provider:       model.SecretProviderInHouse,
+		Status:         model.SecretStatusActive,
+		ValueScope:     model.SecretDefaultValueScope,
+		CreatedBy:      "u",
+		UpdatedBy:      "u",
+	}
+	err := repo.Create(s2)
+	if err == nil {
+		t.Fatal("expected error on duplicate handle, got nil")
+	}
+	if err != constants.ErrSecretAlreadyExists {
+		t.Errorf("expected ErrSecretAlreadyExists, got: %v", err)
+	}
+}
+
+// TestSecretRepo_FindRefsAndSoftDelete_Transactional verifies the transactional
+// behaviour of FindRefsAndSoftDelete (scenario 87):
+//   - When refs exist the secret is NOT deprecated and the refs are returned.
+//   - After refs are removed a second call DOES deprecate the secret.
+func TestSecretRepo_FindRefsAndSoftDelete_Transactional(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	t.Cleanup(cleanup)
+
+	orgID := "org-txn-001"
+	createTestOrganizationAndProject(t, db, orgID, "proj-txn-001")
+
+	repo := NewSecretRepo(db)
+	s := &model.Secret{
+		OrganizationID: orgID,
+		Handle:         "txn-secret",
+		Ciphertext:     []byte("ct"),
+		Hash:           "h",
+		Type:           model.SecretTypeGeneric,
+		Provider:       model.SecretProviderInHouse,
+		Status:         model.SecretStatusActive,
+		ValueScope:     model.SecretDefaultValueScope,
+		CreatedBy:      "u",
+		UpdatedBy:      "u",
+	}
+	if err := repo.Create(s); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	// Insert an artifact and an artifact-level secret ref.
+	_, err := db.Exec(`INSERT INTO artifacts (uuid, handle, name, version, kind, organization_uuid, created_at, updated_at)
+		VALUES ('art-txn-001', 'txn-api', 'Txn API', '1.0', 'RestApi', ?, datetime('now'), datetime('now'))`, orgID)
+	if err != nil {
+		t.Fatalf("insert artifact: %v", err)
+	}
+	_, err = db.Exec(`INSERT INTO artifact_secret_refs (organization_id, artifact_uuid, secret_handle, gateway_id)
+		VALUES (?, 'art-txn-001', 'txn-secret', '')`, orgID)
+	if err != nil {
+		t.Fatalf("insert ref: %v", err)
+	}
+
+	// (a) With refs present: FindRefsAndSoftDelete must return refs and must NOT deprecate.
+	refs, err := repo.FindRefsAndSoftDelete(orgID, "txn-secret", "admin")
+	if err != nil {
+		t.Fatalf("FindRefsAndSoftDelete (with refs): %v", err)
+	}
+	if len(refs) == 0 {
+		t.Fatal("expected refs to block deletion, got none")
+	}
+
+	// Secret must still be ACTIVE.
+	got, err := repo.GetByHandle(orgID, "txn-secret")
+	if err != nil {
+		t.Fatalf("GetByHandle after blocked delete: %v", err)
+	}
+	if got.Status != model.SecretStatusActive {
+		t.Errorf("secret should still be ACTIVE, got %q", got.Status)
+	}
+
+	// (b) Remove the ref, then FindRefsAndSoftDelete must deprecate the secret.
+	_, err = db.Exec(`DELETE FROM artifact_secret_refs WHERE organization_id = ? AND artifact_uuid = 'art-txn-001'`, orgID)
+	if err != nil {
+		t.Fatalf("delete ref: %v", err)
+	}
+
+	refs, err = repo.FindRefsAndSoftDelete(orgID, "txn-secret", "admin")
+	if err != nil {
+		t.Fatalf("FindRefsAndSoftDelete (no refs): %v", err)
+	}
+	if len(refs) != 0 {
+		t.Errorf("expected no refs after removal, got %d", len(refs))
+	}
+
+	// Secret must now be DEPRECATED (active Exists returns false).
+	exists, err := repo.Exists(orgID, "txn-secret")
+	if err != nil {
+		t.Fatalf("Exists: %v", err)
+	}
+	if exists {
+		t.Error("expected secret to be DEPRECATED (inactive) after successful soft-delete")
 	}
 }
 

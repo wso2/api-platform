@@ -24,6 +24,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
+	sqlite3 "github.com/mattn/go-sqlite3"
+
 	"platform-api/src/internal/constants"
 	"platform-api/src/internal/database"
 	"platform-api/src/internal/model"
@@ -77,6 +80,9 @@ func (r *SecretRepo) Create(s *model.Secret) error {
 		s.CreatedAt, s.CreatedBy, s.UpdatedAt, s.UpdatedBy,
 	)
 	if err != nil {
+		if isSecretUniqueViolation(err) {
+			return constants.ErrSecretAlreadyExists
+		}
 		return fmt.Errorf("failed to create secret: %w", err)
 	}
 	return nil
@@ -244,26 +250,66 @@ func (r *SecretRepo) Update(s *model.Secret) error {
 	return nil
 }
 
-func (r *SecretRepo) SoftDelete(orgID, handle, updatedBy string) error {
-	query := r.db.Rebind(`
+// FindRefsAndSoftDelete checks for active artifact references and deprecates the
+// secret in a single transaction, eliminating the TOCTOU window that exists
+// when replicas run FindRefs and SoftDelete as separate operations.
+// Returns the references without deprecating if any are found.
+func (r *SecretRepo) FindRefsAndSoftDelete(orgID, handle, updatedBy string) ([]model.SecretReference, error) {
+	tx, err := r.db.Begin()
+	if err != nil {
+		return nil, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback() //nolint:errcheck
+
+	refsQuery := r.db.Rebind(`
+		SELECT DISTINCT art.handle, art.name, art.kind
+		FROM artifact_secret_refs asr
+		JOIN artifacts art ON art.uuid = asr.artifact_uuid
+		WHERE asr.organization_id = ? AND asr.secret_handle = ?
+	`)
+	rows, err := tx.Query(refsQuery, orgID, handle)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find secret refs: %w", err)
+	}
+	var refs []model.SecretReference
+	for rows.Next() {
+		var ref model.SecretReference
+		if err := rows.Scan(&ref.Handle, &ref.Name, &ref.Type); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		refs = append(refs, ref)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	if len(refs) > 0 {
+		return refs, nil
+	}
+
+	deleteQuery := r.db.Rebind(`
 		UPDATE secrets
 		SET status = 'DEPRECATED', updated_at = ?, updated_by = ?
 		WHERE organization_id = ? AND handle = ?
 	`)
-
-	result, err := r.db.Exec(query, time.Now(), updatedBy, orgID, handle)
+	result, err := tx.Exec(deleteQuery, time.Now(), updatedBy, orgID, handle)
 	if err != nil {
-		return fmt.Errorf("failed to deprecate secret: %w", err)
+		return nil, fmt.Errorf("failed to deprecate secret: %w", err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return nil, err
+	}
+	if affected == 0 {
+		return nil, constants.ErrSecretNotFound
 	}
 
-	rows, err := result.RowsAffected()
-	if err != nil {
-		return err
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("failed to commit secret deletion: %w", err)
 	}
-	if rows == 0 {
-		return constants.ErrSecretNotFound
-	}
-	return nil
+	return nil, nil
 }
 
 func (r *SecretRepo) FindRefs(orgID, handle string) ([]model.SecretReference, error) {
@@ -289,6 +335,24 @@ func (r *SecretRepo) FindRefs(orgID, handle string) ([]model.SecretReference, er
 		refs = append(refs, ref)
 	}
 	return refs, rows.Err()
+}
+
+func isSecretUniqueViolation(err error) bool {
+	if err == nil {
+		return false
+	}
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+		return true
+	}
+	var sqliteErr sqlite3.Error
+	if errors.As(err, &sqliteErr) {
+		return sqliteErr.ExtendedCode == sqlite3.ErrConstraintPrimaryKey ||
+			sqliteErr.ExtendedCode == sqlite3.ErrConstraintUnique
+	}
+	lowerMsg := strings.ToLower(err.Error())
+	return strings.Contains(lowerMsg, "duplicate key") ||
+		strings.Contains(lowerMsg, "unique constraint failed")
 }
 
 func (r *SecretRepo) Exists(orgID, handle string) (bool, error) {
