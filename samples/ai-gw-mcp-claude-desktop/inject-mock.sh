@@ -22,7 +22,7 @@ if [ -f "${SCRIPT_DIR}/.env" ]; then
 fi
 
 MGMT_PORT="${MGMT_PORT:-9090}"
-MGMT_BASE="http://localhost:${MGMT_PORT}/api/management/v0.9"
+MGMT_BASE="http://localhost:${MGMT_PORT}/api/management/v1alpha2"
 AUTH="Authorization: Basic YWRtaW46YWRtaW4="
 
 print_info "Registering MCP Proxy (context: /reading-list, policy: mcp-auth)..."
