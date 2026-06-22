@@ -335,3 +335,522 @@ Feature: Provider-wide rate limiting for LLM providers
     # Separate resource has its OWN bucket — still served
     When I send a GET request to "http://localhost:8080/legacy-rl/embeddings"
     Then the response status code should be 200
+
+  # ---------------------------------------------------------------------------
+  # Scenarios 5–6: advanced-ratelimit on LLM providers
+  # ---------------------------------------------------------------------------
+
+  # Scenario 5 — advanced-ratelimit in globalPolicies with keyExtraction=apiname.
+  # All operations share ONE counter. Exhausting /chat/completions also limits
+  # /embeddings because the counter key is the API name, not the route.
+  Scenario: advanced-ratelimit globalPolicies with keyExtraction=apiname shares one bucket across all provider resources
+    Given I authenticate using basic auth as "admin"
+    When I create this LLM provider template:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      kind: LlmProviderTemplate
+      metadata:
+        name: adv-gl-prov-tpl
+      spec:
+        displayName: Adv Global Provider Template
+        promptTokens:
+          location: payload
+          identifier: $.json.usage.prompt_tokens
+        completionTokens:
+          location: payload
+          identifier: $.json.usage.completion_tokens
+        totalTokens:
+          location: payload
+          identifier: $.json.usage.total_tokens
+      """
+    Then the response status code should be 201
+
+    Given I authenticate using basic auth as "admin"
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      kind: LlmProvider
+      metadata:
+        name: adv-gl-provider
+      spec:
+        displayName: Adv Global RateLimit Provider
+        version: v1.0
+        context: /adv-gl
+        template: adv-gl-prov-tpl
+        upstream:
+          url: http://echo-backend-multi-arch:8080/anything
+          auth:
+            type: api-key
+            header: Authorization
+            value: test-api-key
+        accessControl:
+          mode: deny_all
+          exceptions:
+            - path: /chat/completions
+              methods: [GET]
+            - path: /embeddings
+              methods: [GET]
+        globalPolicies:
+          - name: advanced-ratelimit
+            version: v1
+            params:
+              quotas:
+                - name: request-limit
+                  limits:
+                    - limit: 10
+                      duration: "1h"
+              keyExtraction:
+                - type: apiname
+      """
+    Then the response status code should be 201
+    And I wait for the endpoint "http://localhost:8080/adv-gl/chat/completions" to be ready
+
+    # Exhaust the shared api-level bucket via /chat/completions
+    When I send 20 GET requests to "http://localhost:8080/adv-gl/chat/completions"
+    Then the response status code should be 429
+
+    # KEY ASSERTION: /embeddings shares the same apiname-keyed bucket — must also be limited
+    When I send a GET request to "http://localhost:8080/adv-gl/embeddings"
+    Then the response status code should be 429
+    And the response body should contain "Rate limit exceeded"
+
+  # Scenario 6 — advanced-ratelimit in operationPolicies without keyExtraction.
+  # Default key is routename, so each operation gets its own isolated counter.
+  # Exhausting /chat/completions leaves /embeddings unaffected.
+  Scenario: advanced-ratelimit operationPolicies without keyExtraction keeps independent buckets per provider resource
+    Given I authenticate using basic auth as "admin"
+    When I create this LLM provider template:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      kind: LlmProviderTemplate
+      metadata:
+        name: adv-op-prov-tpl
+      spec:
+        displayName: Adv Op Provider Template
+        promptTokens:
+          location: payload
+          identifier: $.json.usage.prompt_tokens
+        completionTokens:
+          location: payload
+          identifier: $.json.usage.completion_tokens
+        totalTokens:
+          location: payload
+          identifier: $.json.usage.total_tokens
+      """
+    Then the response status code should be 201
+
+    Given I authenticate using basic auth as "admin"
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      kind: LlmProvider
+      metadata:
+        name: adv-op-provider
+      spec:
+        displayName: Adv Op RateLimit Provider
+        version: v1.0
+        context: /adv-op
+        template: adv-op-prov-tpl
+        upstream:
+          url: http://echo-backend-multi-arch:8080/anything
+          auth:
+            type: api-key
+            header: Authorization
+            value: test-api-key
+        accessControl:
+          mode: deny_all
+          exceptions:
+            - path: /chat/completions
+              methods: [GET]
+            - path: /embeddings
+              methods: [GET]
+        operationPolicies:
+          - name: advanced-ratelimit
+            version: v1
+            paths:
+              - path: /chat/completions
+                methods: [GET]
+                params:
+                  quotas:
+                    - name: request-limit
+                      limits:
+                        - limit: 10
+                          duration: "1h"
+              - path: /embeddings
+                methods: [GET]
+                params:
+                  quotas:
+                    - name: request-limit
+                      limits:
+                        - limit: 10
+                          duration: "1h"
+      """
+    Then the response status code should be 201
+    And I wait for the endpoint "http://localhost:8080/adv-op/chat/completions" to be ready
+
+    When I send 20 GET requests to "http://localhost:8080/adv-op/chat/completions"
+    Then the response status code should be 429
+
+    # /embeddings has its own routename-keyed bucket — completely unaffected
+    When I send a GET request to "http://localhost:8080/adv-op/embeddings"
+    Then the response status code should be 200
+
+  # ---------------------------------------------------------------------------
+  # Scenarios 7–8: advanced-ratelimit on LLM proxies
+  # ---------------------------------------------------------------------------
+
+  # Scenario 7 — advanced-ratelimit in proxy globalPolicies with keyExtraction=apiname.
+  # The proxy exposes multiple operations; the shared apiname counter spans all of them.
+  Scenario: advanced-ratelimit globalPolicies with keyExtraction=apiname shares one bucket across all proxy resources
+    Given I authenticate using basic auth as "admin"
+    When I create this LLM provider template:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      kind: LlmProviderTemplate
+      metadata:
+        name: adv-gl-proxy-tpl
+      spec:
+        displayName: Adv Global Proxy Template
+        promptTokens:
+          location: payload
+          identifier: $.json.usage.prompt_tokens
+        completionTokens:
+          location: payload
+          identifier: $.json.usage.completion_tokens
+        totalTokens:
+          location: payload
+          identifier: $.json.usage.total_tokens
+      """
+    Then the response status code should be 201
+
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      kind: LlmProvider
+      metadata:
+        name: adv-gl-proxy-backend
+      spec:
+        displayName: Adv Global Proxy Backend
+        version: v1.0
+        context: /adv-gl-pb
+        template: adv-gl-proxy-tpl
+        upstream:
+          url: http://echo-backend-multi-arch:8080/anything
+          auth:
+            type: api-key
+            header: Authorization
+            value: test-api-key
+        accessControl:
+          mode: allow_all
+      """
+    Then the response status code should be 201
+
+    When I deploy this LLM proxy configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      kind: LlmProxy
+      metadata:
+        name: adv-gl-proxy
+      spec:
+        displayName: Adv Global RateLimit Proxy
+        version: v1.0
+        context: /adv-gl-px
+        provider:
+          id: adv-gl-proxy-backend
+        globalPolicies:
+          - name: advanced-ratelimit
+            version: v1
+            params:
+              quotas:
+                - name: request-limit
+                  limits:
+                    - limit: 10
+                      duration: "1h"
+              keyExtraction:
+                - type: apiname
+      """
+    Then the response status code should be 201
+    And I wait for the endpoint "http://localhost:8080/adv-gl-px/chat/completions" to be ready
+
+    # Exhaust the shared api-level proxy bucket via /chat/completions
+    When I send 20 GET requests to "http://localhost:8080/adv-gl-px/chat/completions"
+    Then the response status code should be 429
+
+    # KEY ASSERTION: /embeddings shares the same apiname-keyed bucket — must also be limited
+    When I send a GET request to "http://localhost:8080/adv-gl-px/embeddings"
+    Then the response status code should be 429
+    And the response body should contain "Rate limit exceeded"
+
+  # Scenario 8 — advanced-ratelimit in proxy operationPolicies without keyExtraction.
+  # Default routename key gives each operation its own isolated counter.
+  # Exhausting /chat/completions leaves /embeddings unaffected.
+  Scenario: advanced-ratelimit operationPolicies without keyExtraction keeps independent buckets per proxy resource
+    Given I authenticate using basic auth as "admin"
+    When I create this LLM provider template:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      kind: LlmProviderTemplate
+      metadata:
+        name: adv-op-proxy-tpl
+      spec:
+        displayName: Adv Op Proxy Template
+        promptTokens:
+          location: payload
+          identifier: $.json.usage.prompt_tokens
+        completionTokens:
+          location: payload
+          identifier: $.json.usage.completion_tokens
+        totalTokens:
+          location: payload
+          identifier: $.json.usage.total_tokens
+      """
+    Then the response status code should be 201
+
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      kind: LlmProvider
+      metadata:
+        name: adv-op-proxy-backend
+      spec:
+        displayName: Adv Op Proxy Backend
+        version: v1.0
+        context: /adv-op-pb
+        template: adv-op-proxy-tpl
+        upstream:
+          url: http://echo-backend-multi-arch:8080/anything
+          auth:
+            type: api-key
+            header: Authorization
+            value: test-api-key
+        accessControl:
+          mode: allow_all
+      """
+    Then the response status code should be 201
+
+    When I deploy this LLM proxy configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      kind: LlmProxy
+      metadata:
+        name: adv-op-proxy
+      spec:
+        displayName: Adv Op RateLimit Proxy
+        version: v1.0
+        context: /adv-op-px
+        provider:
+          id: adv-op-proxy-backend
+        operationPolicies:
+          - name: advanced-ratelimit
+            version: v1
+            paths:
+              - path: /chat/completions
+                methods: [GET]
+                params:
+                  quotas:
+                    - name: request-limit
+                      limits:
+                        - limit: 10
+                          duration: "1h"
+      """
+    Then the response status code should be 201
+    And I wait for the endpoint "http://localhost:8080/adv-op-px/chat/completions" to be ready
+
+    When I send 20 GET requests to "http://localhost:8080/adv-op-px/chat/completions"
+    Then the response status code should be 429
+
+    # /embeddings has its own routename-keyed bucket — completely unaffected
+    When I send a GET request to "http://localhost:8080/adv-op-px/embeddings"
+    Then the response status code should be 200
+
+  # ---------------------------------------------------------------------------
+  # Scenarios 9–10: mixed advanced-ratelimit (global) + basic-ratelimit (operation)
+  # This is the realistic production case: a provider-wide cap enforced by
+  # advanced-ratelimit (apiname key) combined with a tighter per-path cap
+  # enforced by basic-ratelimit. The operation policy fires first; but because
+  # global policies run before operation policies in the chain, the shared global
+  # counter is still incremented even for requests that the operation policy
+  # ultimately rejects — so /embeddings eventually hits the global cap even
+  # though it has no operation policy of its own.
+  # ---------------------------------------------------------------------------
+
+  # Scenario 9 — Provider: advanced-ratelimit global (5/hr, apiname) +
+  # basic-ratelimit operation (3/hr for /chat/completions).
+  Scenario: mixed advanced-ratelimit global and basic-ratelimit operation on provider — global bucket exhausted by rejected operation traffic
+    Given I authenticate using basic auth as "admin"
+    When I create this LLM provider template:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      kind: LlmProviderTemplate
+      metadata:
+        name: mix-prov-tpl
+      spec:
+        displayName: Mix Provider Template
+        promptTokens:
+          location: payload
+          identifier: $.json.usage.prompt_tokens
+        completionTokens:
+          location: payload
+          identifier: $.json.usage.completion_tokens
+        totalTokens:
+          location: payload
+          identifier: $.json.usage.total_tokens
+      """
+    Then the response status code should be 201
+
+    Given I authenticate using basic auth as "admin"
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      kind: LlmProvider
+      metadata:
+        name: mix-provider
+      spec:
+        displayName: Mix RateLimit Provider
+        version: v1.0
+        context: /mix-prov
+        template: mix-prov-tpl
+        upstream:
+          url: http://echo-backend-multi-arch:8080/anything
+          auth:
+            type: api-key
+            header: Authorization
+            value: test-api-key
+        accessControl:
+          mode: deny_all
+          exceptions:
+            - path: /chat/completions
+              methods: [GET]
+            - path: /embeddings
+              methods: [GET]
+        globalPolicies:
+          - name: advanced-ratelimit
+            version: v1
+            params:
+              quotas:
+                - name: request-limit
+                  limits:
+                    - limit: 5
+                      duration: "1h"
+              keyExtraction:
+                - type: apiname
+        operationPolicies:
+          - name: basic-ratelimit
+            version: v1
+            paths:
+              - path: /chat/completions
+                methods: [GET]
+                params:
+                  limits:
+                    - requests: 3
+                      duration: "1h"
+      """
+    Then the response status code should be 201
+    And I wait for the endpoint "http://localhost:8080/mix-prov/chat/completions" to be ready
+
+    # Operation policy (3/hr) fires before global (5/hr) for /chat/completions.
+    # Global still increments on every attempt — including those the operation policy rejects.
+    When I send 10 GET requests to "http://localhost:8080/mix-prov/chat/completions"
+    Then the response status code should be 429
+
+    # KEY ASSERTION: /embeddings has no operation policy but shares the global
+    # apiname bucket. The global was exhausted by /chat/completions traffic,
+    # so /embeddings is also blocked.
+    When I send a GET request to "http://localhost:8080/mix-prov/embeddings"
+    Then the response status code should be 429
+    And the response body should contain "Rate limit exceeded"
+
+  # Scenario 10 — Proxy: advanced-ratelimit global (5/hr, apiname) +
+  # basic-ratelimit operation (3/hr for /chat/completions).
+  Scenario: mixed advanced-ratelimit global and basic-ratelimit operation on proxy — global bucket exhausted by rejected operation traffic
+    Given I authenticate using basic auth as "admin"
+    When I create this LLM provider template:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      kind: LlmProviderTemplate
+      metadata:
+        name: mix-proxy-tpl
+      spec:
+        displayName: Mix Proxy Template
+        promptTokens:
+          location: payload
+          identifier: $.json.usage.prompt_tokens
+        completionTokens:
+          location: payload
+          identifier: $.json.usage.completion_tokens
+        totalTokens:
+          location: payload
+          identifier: $.json.usage.total_tokens
+      """
+    Then the response status code should be 201
+
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      kind: LlmProvider
+      metadata:
+        name: mix-proxy-backend
+      spec:
+        displayName: Mix Proxy Backend
+        version: v1.0
+        context: /mix-pb
+        template: mix-proxy-tpl
+        upstream:
+          url: http://echo-backend-multi-arch:8080/anything
+          auth:
+            type: api-key
+            header: Authorization
+            value: test-api-key
+        accessControl:
+          mode: allow_all
+      """
+    Then the response status code should be 201
+
+    When I deploy this LLM proxy configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      kind: LlmProxy
+      metadata:
+        name: mix-proxy
+      spec:
+        displayName: Mix RateLimit Proxy
+        version: v1.0
+        context: /mix-px
+        provider:
+          id: mix-proxy-backend
+        globalPolicies:
+          - name: advanced-ratelimit
+            version: v1
+            params:
+              quotas:
+                - name: request-limit
+                  limits:
+                    - limit: 5
+                      duration: "1h"
+              keyExtraction:
+                - type: apiname
+        operationPolicies:
+          - name: basic-ratelimit
+            version: v1
+            paths:
+              - path: /chat/completions
+                methods: [GET]
+                params:
+                  limits:
+                    - requests: 3
+                      duration: "1h"
+      """
+    Then the response status code should be 201
+    And I wait for the endpoint "http://localhost:8080/mix-px/chat/completions" to be ready
+
+    # Operation policy (3/hr) fires before global (5/hr) for /chat/completions.
+    # Global still increments on every attempt — including those the operation policy rejects.
+    When I send 10 GET requests to "http://localhost:8080/mix-px/chat/completions"
+    Then the response status code should be 429
+
+    # KEY ASSERTION: /embeddings has no operation policy but shares the global
+    # apiname bucket. The global was exhausted by /chat/completions traffic,
+    # so /embeddings is also blocked.
+    When I send a GET request to "http://localhost:8080/mix-px/embeddings"
+    Then the response status code should be 429
+    And the response body should contain "Rate limit exceeded"

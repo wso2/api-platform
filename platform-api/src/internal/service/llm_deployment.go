@@ -648,6 +648,9 @@ func generateLLMProviderDeploymentYAML(provider *model.LLMProvider, templateHand
 								},
 							},
 						},
+						"keyExtraction": []map[string]interface{}{
+							{"type": "apiname"},
+						},
 					}
 					globalPolicies = append(globalPolicies, api.Policy{Name: advancedRateLimitPolicyName, Version: "", Params: &params})
 				}
@@ -988,12 +991,16 @@ func generateLLMProviderDeploymentYAML(provider *model.LLMProvider, templateHand
 		if hasGlobalPolicy(globalPolicies, p.Name) {
 			continue
 		}
+		params := p.Params
+		if p.Name == advancedRateLimitPolicyName && params != nil {
+			params = withGlobalAdvancedRatelimitKeyExtraction(params)
+		}
 		entry := api.Policy{Name: p.Name, Version: normalizePolicyVersionToMajor(p.Version)}
 		if p.ExecutionCondition != "" {
 			entry.ExecutionCondition = &p.ExecutionCondition
 		}
-		if p.Params != nil {
-			entry.Params = &p.Params
+		if params != nil {
+			entry.Params = &params
 		}
 		globalPolicies = append(globalPolicies, entry)
 	}
@@ -1634,12 +1641,16 @@ func generateLLMProxyDeploymentYAML(proxy *model.LLMProxy) (dto.LLMProxyDeployme
 
 	// Carry through user-set globalPolicies from the model
 	for _, p := range proxy.Configuration.GlobalPolicies {
+		params := p.Params
+		if p.Name == advancedRateLimitPolicyName && params != nil {
+			params = withGlobalAdvancedRatelimitKeyExtraction(params)
+		}
 		entry := api.Policy{Name: p.Name, Version: normalizePolicyVersionToMajor(p.Version)}
 		if p.ExecutionCondition != "" {
 			entry.ExecutionCondition = &p.ExecutionCondition
 		}
-		if p.Params != nil {
-			entry.Params = &p.Params
+		if params != nil {
+			entry.Params = &params
 		}
 		proxyGlobalPolicies = append(proxyGlobalPolicies, entry)
 	}
@@ -1756,6 +1767,22 @@ func orderLLMPolicies(policies []api.LLMPolicy) []api.LLMPolicy {
 		policies[costIdx], policies[rateLimitIdx] = policies[rateLimitIdx], policies[costIdx]
 	}
 	return policies
+}
+
+// withGlobalAdvancedRatelimitKeyExtraction returns a copy of params with
+// keyExtraction set to [{type:"apiname"}] if not already present. This ensures
+// that advanced-ratelimit in globalPolicies uses a shared API-level counter
+// rather than the default per-route (routename) bucket.
+func withGlobalAdvancedRatelimitKeyExtraction(params map[string]interface{}) map[string]interface{} {
+	if _, ok := params["keyExtraction"]; ok {
+		return params
+	}
+	out := make(map[string]interface{}, len(params)+1)
+	for k, v := range params {
+		out[k] = v
+	}
+	out["keyExtraction"] = []map[string]interface{}{{"type": "apiname"}}
+	return out
 }
 
 // orderLLMGlobalPolicies ensures llm-cost-based-ratelimit precedes llm-cost in the global policy list.
