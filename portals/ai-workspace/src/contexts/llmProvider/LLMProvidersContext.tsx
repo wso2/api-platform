@@ -243,13 +243,16 @@ export function LLMProvidersProvider({ children }: LLMProvidersProviderProps) {
             providerId,
           });
 
+          const currentProvider = providersResponse.list.find(
+            (p) => p.id === providerId
+          );
           updatesPayload = {
             ...updates,
             upstream: {
               ...updates.upstream,
               main: {
                 ...updates.upstream?.main,
-                url: updates.upstream?.main?.url ?? '',
+                url: updates.upstream?.main?.url ?? currentProvider?.upstream?.main?.url ?? '',
                 auth: {
                   ...updates.upstream?.main?.auth,
                   value: buildSecretPlaceholder(secretResponse.name),
@@ -285,7 +288,7 @@ export function LLMProvidersProvider({ children }: LLMProvidersProviderProps) {
         throw err;
       }
     },
-    [organizationId, PLATFORM_API_BASE_URL]
+    [organizationId, PLATFORM_API_BASE_URL, providersResponse.list]
   );
 
   const deleteProvider = useCallback(

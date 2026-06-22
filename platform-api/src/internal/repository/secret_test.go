@@ -512,11 +512,11 @@ func TestSecretRepo_FindRefs_DeduplicatesAcrossGateways(t *testing.T) {
 	if err != nil {
 		t.Fatalf("FindRefs: %v", err)
 	}
-	// JOIN with artifacts deduplicates by artifact — one distinct artifact
-	// Note: query has no DISTINCT so it returns one row per matching asr row.
-	// Verify at least 1 ref is returned (deletion should be blocked).
-	if len(refs) == 0 {
-		t.Error("expected refs to be returned, got none")
+	// Three artifact_secret_refs rows (gateway_id = "", "gw-001", "gw-002") all
+	// point to the same artifact. DISTINCT on (handle, name, kind) must collapse
+	// them into exactly one SecretReference.
+	if len(refs) != 1 {
+		t.Errorf("expected 1 deduplicated ref, got %d", len(refs))
 	}
 }
 
@@ -623,23 +623,44 @@ func TestUpsertArtifactSecretRefs_ReplacesOnUpdate(t *testing.T) {
 
 	// Initial config with old-key
 	config1 := []byte(`{{ secret "old-key" }}`)
-	tx, _ := db.Begin()
-	upsertArtifactSecretRefs(tx, db, orgID, "art-upsert-002", config1)
-	tx.Commit()
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatalf("begin tx: %v", err)
+	}
+	if err = upsertArtifactSecretRefs(tx, db, orgID, "art-upsert-002", config1); err != nil {
+		tx.Rollback()
+		t.Fatalf("upsertArtifactSecretRefs (config1): %v", err)
+	}
+	if err = tx.Commit(); err != nil {
+		t.Fatalf("commit tx: %v", err)
+	}
 
 	// Updated config — old-key removed, new-key added
 	config2 := []byte(`{{ secret "new-key" }}`)
-	tx, _ = db.Begin()
-	upsertArtifactSecretRefs(tx, db, orgID, "art-upsert-002", config2)
-	tx.Commit()
+	tx, err = db.Begin()
+	if err != nil {
+		t.Fatalf("begin tx: %v", err)
+	}
+	if err = upsertArtifactSecretRefs(tx, db, orgID, "art-upsert-002", config2); err != nil {
+		tx.Rollback()
+		t.Fatalf("upsertArtifactSecretRefs (config2): %v", err)
+	}
+	if err = tx.Commit(); err != nil {
+		t.Fatalf("commit tx: %v", err)
+	}
 
 	var handles []string
-	rows, _ := db.Query(`SELECT secret_handle FROM artifact_secret_refs WHERE organization_id = ? AND artifact_uuid = ? AND gateway_id = ''`,
+	rows, err := db.Query(`SELECT secret_handle FROM artifact_secret_refs WHERE organization_id = ? AND artifact_uuid = ? AND gateway_id = ''`,
 		orgID, "art-upsert-002")
+	if err != nil {
+		t.Fatalf("query refs: %v", err)
+	}
 	defer rows.Close()
 	for rows.Next() {
 		var h string
-		rows.Scan(&h)
+		if err = rows.Scan(&h); err != nil {
+			t.Fatalf("scan handle: %v", err)
+		}
 		handles = append(handles, h)
 	}
 
@@ -661,18 +682,36 @@ func TestUpsertArtifactSecretRefs_ClearsWhenNoSecrets(t *testing.T) {
 		t.Fatalf("insert artifact: %v", err)
 	}
 
-	tx, _ := db.Begin()
-	upsertArtifactSecretRefs(tx, db, orgID, "art-upsert-003", []byte(`{{ secret "some-key" }}`))
-	tx.Commit()
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatalf("begin tx: %v", err)
+	}
+	if err = upsertArtifactSecretRefs(tx, db, orgID, "art-upsert-003", []byte(`{{ secret "some-key" }}`)); err != nil {
+		tx.Rollback()
+		t.Fatalf("upsertArtifactSecretRefs (initial): %v", err)
+	}
+	if err = tx.Commit(); err != nil {
+		t.Fatalf("commit tx: %v", err)
+	}
 
 	// Config update that removes all secrets
-	tx, _ = db.Begin()
-	upsertArtifactSecretRefs(tx, db, orgID, "art-upsert-003", []byte(`{"plain": "config"}`))
-	tx.Commit()
+	tx, err = db.Begin()
+	if err != nil {
+		t.Fatalf("begin tx: %v", err)
+	}
+	if err = upsertArtifactSecretRefs(tx, db, orgID, "art-upsert-003", []byte(`{"plain": "config"}`)); err != nil {
+		tx.Rollback()
+		t.Fatalf("upsertArtifactSecretRefs (clear): %v", err)
+	}
+	if err = tx.Commit(); err != nil {
+		t.Fatalf("commit tx: %v", err)
+	}
 
 	var count int
-	db.QueryRow(`SELECT COUNT(*) FROM artifact_secret_refs WHERE organization_id = ? AND artifact_uuid = ? AND gateway_id = ''`,
-		orgID, "art-upsert-003").Scan(&count)
+	if err = db.QueryRow(`SELECT COUNT(*) FROM artifact_secret_refs WHERE organization_id = ? AND artifact_uuid = ? AND gateway_id = ''`,
+		orgID, "art-upsert-003").Scan(&count); err != nil {
+		t.Fatalf("count refs: %v", err)
+	}
 	if count != 0 {
 		t.Errorf("expected 0 refs after removing all secrets, got %d", count)
 	}
@@ -696,16 +735,23 @@ func TestUpsertDeploymentSecretRefs_OnDeploy(t *testing.T) {
 	gatewayID := "gw-uuid-001"
 	content := []byte(`{{ secret "gw-secret" }}`)
 
-	tx, _ := db.Begin()
-	if err := upsertDeploymentSecretRefs(tx, db, orgID, "art-dep-001", gatewayID, content); err != nil {
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatalf("begin tx: %v", err)
+	}
+	if err = upsertDeploymentSecretRefs(tx, db, orgID, "art-dep-001", gatewayID, content); err != nil {
 		tx.Rollback()
 		t.Fatalf("upsertDeploymentSecretRefs: %v", err)
 	}
-	tx.Commit()
+	if err = tx.Commit(); err != nil {
+		t.Fatalf("commit tx: %v", err)
+	}
 
 	var count int
-	db.QueryRow(`SELECT COUNT(*) FROM artifact_secret_refs WHERE organization_id = ? AND artifact_uuid = ? AND gateway_id = ?`,
-		orgID, "art-dep-001", gatewayID).Scan(&count)
+	if err = db.QueryRow(`SELECT COUNT(*) FROM artifact_secret_refs WHERE organization_id = ? AND artifact_uuid = ? AND gateway_id = ?`,
+		orgID, "art-dep-001", gatewayID).Scan(&count); err != nil {
+		t.Fatalf("count refs: %v", err)
+	}
 	if count != 1 {
 		t.Errorf("expected 1 deployment ref, got %d", count)
 	}
@@ -727,21 +773,36 @@ func TestUpsertDeploymentSecretRefs_OnUndeploy_ClearsRows(t *testing.T) {
 	gatewayID := "gw-uuid-002"
 
 	// Deploy
-	tx, _ := db.Begin()
-	upsertDeploymentSecretRefs(tx, db, orgID, "art-dep-002", gatewayID, []byte(`{{ secret "key" }}`))
-	tx.Commit()
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatalf("begin tx: %v", err)
+	}
+	if err = upsertDeploymentSecretRefs(tx, db, orgID, "art-dep-002", gatewayID, []byte(`{{ secret "key" }}`)); err != nil {
+		tx.Rollback()
+		t.Fatalf("upsertDeploymentSecretRefs (deploy): %v", err)
+	}
+	if err = tx.Commit(); err != nil {
+		t.Fatalf("commit tx: %v", err)
+	}
 
 	// Undeploy — pass nil content
-	tx, _ = db.Begin()
-	if err := upsertDeploymentSecretRefs(tx, db, orgID, "art-dep-002", gatewayID, nil); err != nil {
+	tx, err = db.Begin()
+	if err != nil {
+		t.Fatalf("begin tx: %v", err)
+	}
+	if err = upsertDeploymentSecretRefs(tx, db, orgID, "art-dep-002", gatewayID, nil); err != nil {
 		tx.Rollback()
 		t.Fatalf("upsertDeploymentSecretRefs (undeploy): %v", err)
 	}
-	tx.Commit()
+	if err = tx.Commit(); err != nil {
+		t.Fatalf("commit tx: %v", err)
+	}
 
 	var count int
-	db.QueryRow(`SELECT COUNT(*) FROM artifact_secret_refs WHERE organization_id = ? AND artifact_uuid = ? AND gateway_id = ?`,
-		orgID, "art-dep-002", gatewayID).Scan(&count)
+	if err = db.QueryRow(`SELECT COUNT(*) FROM artifact_secret_refs WHERE organization_id = ? AND artifact_uuid = ? AND gateway_id = ?`,
+		orgID, "art-dep-002", gatewayID).Scan(&count); err != nil {
+		t.Fatalf("count refs: %v", err)
+	}
 	if count != 0 {
 		t.Errorf("expected 0 refs after undeploy, got %d", count)
 	}
@@ -769,13 +830,23 @@ func TestUpsertDeploymentSecretRefs_DoesNotAffectArtifactLevelRows(t *testing.T)
 
 	// Undeploy from a gateway — should NOT touch the '' row
 	gatewayID := "gw-uuid-003"
-	tx, _ := db.Begin()
-	upsertDeploymentSecretRefs(tx, db, orgID, "art-dep-003", gatewayID, nil)
-	tx.Commit()
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatalf("begin tx: %v", err)
+	}
+	if err = upsertDeploymentSecretRefs(tx, db, orgID, "art-dep-003", gatewayID, nil); err != nil {
+		tx.Rollback()
+		t.Fatalf("upsertDeploymentSecretRefs (undeploy): %v", err)
+	}
+	if err = tx.Commit(); err != nil {
+		t.Fatalf("commit tx: %v", err)
+	}
 
 	var count int
-	db.QueryRow(`SELECT COUNT(*) FROM artifact_secret_refs WHERE organization_id = ? AND artifact_uuid = ? AND gateway_id = ''`,
-		orgID, "art-dep-003").Scan(&count)
+	if err = db.QueryRow(`SELECT COUNT(*) FROM artifact_secret_refs WHERE organization_id = ? AND artifact_uuid = ? AND gateway_id = ''`,
+		orgID, "art-dep-003").Scan(&count); err != nil {
+		t.Fatalf("count refs: %v", err)
+	}
 	if count != 1 {
 		t.Errorf("artifact-level row should survive undeploy, count = %d", count)
 	}

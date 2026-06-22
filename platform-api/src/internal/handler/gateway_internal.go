@@ -859,9 +859,11 @@ func (h *GatewayInternalAPIHandler) GetGatewaySecrets(c *gin.Context) {
 			plaintext, err := h.secretService.Decrypt(orgID, s.Handle)
 			if err != nil {
 				h.slogger.Error("Failed to decrypt secret for bulk fetch", "orgID", orgID, "handle", s.Handle, "error", err)
-			} else {
-				item.Value = &plaintext
+				c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+					"Failed to decrypt secret"))
+				return
 			}
+			item.Value = &plaintext
 		}
 		items = append(items, item)
 	}
