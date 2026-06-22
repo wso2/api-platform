@@ -806,9 +806,9 @@ func appendOperationPolicy(op *api.Operation, pol api.Policy) {
 func legacyToOperationPolicy(p api.LLMPolicy) api.OperationPolicy {
 	op := api.OperationPolicy{Name: p.Name, Version: p.Version}
 	for _, pe := range p.Paths {
-		methods := make([]string, 0, len(pe.Methods))
+		methods := make([]api.OperationPolicyPathMethods, 0, len(pe.Methods))
 		for _, m := range pe.Methods {
-			methods = append(methods, string(m))
+			methods = append(methods, api.OperationPolicyPathMethods(m))
 		}
 		op.Paths = append(op.Paths, api.OperationPolicyPath{Path: pe.Path, Methods: methods, Params: pe.Params})
 	}
@@ -949,7 +949,7 @@ func isMoreSpecificAttachment(a, b api.OperationPolicyPath) bool {
 // isStrictMethodSubset reports whether the methods covered by a are a strict subset of the
 // methods covered by b ('*' expands to the full supported method set). This makes e.g.
 // [POST] more specific than [GET, POST], which in turn is more specific than '*'.
-func isStrictMethodSubset(a, b []string) bool {
+func isStrictMethodSubset(a, b []api.OperationPolicyPathMethods) bool {
 	aSet := methodSet(a)
 	bSet := methodSet(b)
 	if len(aSet) == 0 || len(aSet) >= len(bSet) {
@@ -964,7 +964,7 @@ func isStrictMethodSubset(a, b []string) bool {
 }
 
 // methodSet returns the set of concrete HTTP methods an entry covers, with '*' expanded.
-func methodSet(methods []string) map[string]bool {
+func methodSet(methods []api.OperationPolicyPathMethods) map[string]bool {
 	set := make(map[string]bool)
 	for _, m := range expandLLMPolicyMethods(methods) {
 		set[m] = true
@@ -988,13 +988,15 @@ func ensureOperation(operationRegistry map[pathMethodKey]*api.Operation, path, m
 }
 
 // expandLLMPolicyMethods takes the methods defined in an LLM policy and expands them to actual HTTP methods if wildcard is used
-func expandLLMPolicyMethods(methods []string) []string {
-	if len(methods) == 1 && methods[0] == constants.WILD_CARD {
+func expandLLMPolicyMethods(methods []api.OperationPolicyPathMethods) []string {
+	if len(methods) == 1 && string(methods[0]) == constants.WILD_CARD {
 		return append([]string(nil), constants.WILDCARD_HTTP_METHODS...)
 	}
 
 	expanded := make([]string, len(methods))
-	copy(expanded, methods)
+	for i, m := range methods {
+		expanded[i] = string(m)
+	}
 	return expanded
 }
 

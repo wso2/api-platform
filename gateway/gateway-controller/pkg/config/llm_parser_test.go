@@ -889,15 +889,15 @@ spec:
 	// Verify first exception
 	assert.Equal(t, "/admin", exceptions[0].Path)
 	assert.Len(t, exceptions[0].Methods, 2)
-	assert.Contains(t, exceptions[0].Methods, api.GET)
-	assert.Contains(t, exceptions[0].Methods, api.POST)
+	assert.Contains(t, exceptions[0].Methods, api.RouteExceptionMethodsGET)
+	assert.Contains(t, exceptions[0].Methods, api.RouteExceptionMethodsPOST)
 
 	// Verify second exception
 	assert.Equal(t, "/internal/metrics", exceptions[1].Path)
 	assert.Len(t, exceptions[1].Methods, 3)
-	assert.Contains(t, exceptions[1].Methods, api.GET)
-	assert.Contains(t, exceptions[1].Methods, api.POST)
-	assert.Contains(t, exceptions[1].Methods, api.DELETE)
+	assert.Contains(t, exceptions[1].Methods, api.RouteExceptionMethodsGET)
+	assert.Contains(t, exceptions[1].Methods, api.RouteExceptionMethodsPOST)
+	assert.Contains(t, exceptions[1].Methods, api.RouteExceptionMethodsDELETE)
 }
 
 // TestParseLLMProvider_UpstreamAuth tests parsing of upstream authentication

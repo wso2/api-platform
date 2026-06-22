@@ -609,7 +609,7 @@ func TestTransform_AllowAll_WithSingleException(t *testing.T) {
 	exceptions := []api.RouteException{
 		{
 			Path:    "/admin",
-			Methods: []api.RouteExceptionMethods{api.GET, api.POST},
+			Methods: []api.RouteExceptionMethods{api.RouteExceptionMethodsGET, api.RouteExceptionMethodsPOST},
 		},
 	}
 
@@ -817,11 +817,11 @@ func TestTransform_AllowAll_WithMultipleExceptions(t *testing.T) {
 	exceptions := []api.RouteException{
 		{
 			Path:    "/admin",
-			Methods: []api.RouteExceptionMethods{api.GET},
+			Methods: []api.RouteExceptionMethods{api.RouteExceptionMethodsGET},
 		},
 		{
 			Path:    "/internal/metrics",
-			Methods: []api.RouteExceptionMethods{api.GET, api.POST, api.DELETE},
+			Methods: []api.RouteExceptionMethods{api.RouteExceptionMethodsGET, api.RouteExceptionMethodsPOST, api.RouteExceptionMethodsDELETE},
 		},
 	}
 
@@ -920,7 +920,7 @@ func TestTransform_DenyAll_WithSingleException(t *testing.T) {
 	exceptions := []api.RouteException{
 		{
 			Path:    "/v1/chat/completions",
-			Methods: []api.RouteExceptionMethods{api.POST},
+			Methods: []api.RouteExceptionMethods{api.RouteExceptionMethodsPOST},
 		},
 	}
 
@@ -1094,15 +1094,15 @@ func TestTransform_DenyAll_WithMultipleExceptions(t *testing.T) {
 	exceptions := []api.RouteException{
 		{
 			Path:    "/v1/chat/completions",
-			Methods: []api.RouteExceptionMethods{api.POST},
+			Methods: []api.RouteExceptionMethods{api.RouteExceptionMethodsPOST},
 		},
 		{
 			Path:    "/v1/embeddings",
-			Methods: []api.RouteExceptionMethods{api.POST},
+			Methods: []api.RouteExceptionMethods{api.RouteExceptionMethodsPOST},
 		},
 		{
 			Path:    "/health",
-			Methods: []api.RouteExceptionMethods{api.GET},
+			Methods: []api.RouteExceptionMethods{api.RouteExceptionMethodsGET},
 		},
 	}
 
@@ -1201,7 +1201,7 @@ func TestTransform_WithSinglePolicy(t *testing.T) {
 	exceptions := []api.RouteException{
 		{
 			Path:    "/v1/chat/completions",
-			Methods: []api.RouteExceptionMethods{api.POST},
+			Methods: []api.RouteExceptionMethods{api.RouteExceptionMethodsPOST},
 		},
 	}
 
@@ -1286,7 +1286,7 @@ func TestTransform_WithMultiplePoliciesSameRoute(t *testing.T) {
 	exceptions := []api.RouteException{
 		{
 			Path:    "/v1/chat/completions",
-			Methods: []api.RouteExceptionMethods{api.POST},
+			Methods: []api.RouteExceptionMethods{api.RouteExceptionMethodsPOST},
 		},
 	}
 
@@ -1367,11 +1367,11 @@ func TestTransform_PolicyOnDifferentRoutes(t *testing.T) {
 	exceptions := []api.RouteException{
 		{
 			Path:    "/v1/chat/completions",
-			Methods: []api.RouteExceptionMethods{api.POST},
+			Methods: []api.RouteExceptionMethods{api.RouteExceptionMethodsPOST},
 		},
 		{
 			Path:    "/v1/embeddings",
-			Methods: []api.RouteExceptionMethods{api.POST},
+			Methods: []api.RouteExceptionMethods{api.RouteExceptionMethodsPOST},
 		},
 	}
 
@@ -1444,7 +1444,7 @@ func TestTransform_PolicyOnWildcardMethod_1(t *testing.T) {
 	exceptions := []api.RouteException{
 		{
 			Path:    "/v1/chat/completions",
-			Methods: []api.RouteExceptionMethods{api.POST, api.GET},
+			Methods: []api.RouteExceptionMethods{api.RouteExceptionMethodsPOST, api.RouteExceptionMethodsGET},
 		},
 	}
 
@@ -1599,7 +1599,7 @@ func TestTransform_PolicyOnNonExistentRoute(t *testing.T) {
 	exceptions := []api.RouteException{
 		{
 			Path:    "/v1/chat/completions", // Different path
-			Methods: []api.RouteExceptionMethods{api.POST},
+			Methods: []api.RouteExceptionMethods{api.RouteExceptionMethodsPOST},
 		},
 	}
 
@@ -1649,7 +1649,7 @@ func TestTransform_AuthWithAllowAll(t *testing.T) {
 	exceptions := []api.RouteException{
 		{
 			Path:    "/admin",
-			Methods: []api.RouteExceptionMethods{api.GET},
+			Methods: []api.RouteExceptionMethods{api.RouteExceptionMethodsGET},
 		},
 	}
 
@@ -1819,11 +1819,11 @@ func TestTransform_DuplicateExceptionPaths(t *testing.T) {
 	exceptions := []api.RouteException{
 		{
 			Path:    "/admin",
-			Methods: []api.RouteExceptionMethods{api.GET},
+			Methods: []api.RouteExceptionMethods{api.RouteExceptionMethodsGET},
 		},
 		{
 			Path:    "/admin",
-			Methods: []api.RouteExceptionMethods{api.POST},
+			Methods: []api.RouteExceptionMethods{api.RouteExceptionMethodsPOST},
 		},
 	}
 
@@ -1894,7 +1894,7 @@ func TestTransform_AllowAllWithPolicies(t *testing.T) {
 	exceptions := []api.RouteException{
 		{
 			Path:    "/admin",
-			Methods: []api.RouteExceptionMethods{api.GET},
+			Methods: []api.RouteExceptionMethods{api.RouteExceptionMethodsGET},
 		},
 	}
 
@@ -2036,7 +2036,7 @@ func TestTransform_APILevelPolicy_DenyAll(t *testing.T) {
 	exceptions := []api.RouteException{
 		{
 			Path:    "/health",
-			Methods: []api.RouteExceptionMethods{api.GET},
+			Methods: []api.RouteExceptionMethods{api.RouteExceptionMethodsGET},
 		},
 	}
 
@@ -2503,11 +2503,11 @@ func TestTransform_APILevel_Plus_OperationLevel_Policies_DenyAll(t *testing.T) {
 	exceptions := []api.RouteException{
 		{
 			Path:    "/chat/completions",
-			Methods: []api.RouteExceptionMethods{api.POST},
+			Methods: []api.RouteExceptionMethods{api.RouteExceptionMethodsPOST},
 		},
 		{
 			Path:    "/health",
-			Methods: []api.RouteExceptionMethods{api.GET},
+			Methods: []api.RouteExceptionMethods{api.RouteExceptionMethodsGET},
 		},
 	}
 
@@ -2698,7 +2698,7 @@ func TestTransform_ExceptionPrecedence_ExactMatch(t *testing.T) {
 	exceptions := []api.RouteException{
 		{
 			Path:    "/admin/delete",
-			Methods: []api.RouteExceptionMethods{api.DELETE},
+			Methods: []api.RouteExceptionMethods{api.RouteExceptionMethodsDELETE},
 		},
 	}
 
@@ -4262,7 +4262,7 @@ func TestTransform_PolicyMoreGeneral_AccessControlSpecific_DenyAll(t *testing.T)
 	exceptions := []api.RouteException{
 		{
 			Path:    "chat/completions/stream",
-			Methods: []api.RouteExceptionMethods{api.POST},
+			Methods: []api.RouteExceptionMethods{api.RouteExceptionMethodsPOST},
 		},
 	}
 
@@ -4423,7 +4423,7 @@ func TestTransform_PolicyMoreSpecific_AccessControlWildcard_DenyAll(t *testing.T
 	exceptions := []api.RouteException{
 		{
 			Path:    "chat/*",
-			Methods: []api.RouteExceptionMethods{api.POST},
+			Methods: []api.RouteExceptionMethods{api.RouteExceptionMethodsPOST},
 		},
 	}
 
@@ -4492,11 +4492,11 @@ func TestTransform_MultipleOverlappingWildcards_DenyAll(t *testing.T) {
 	exceptions := []api.RouteException{
 		{
 			Path:    "chat/*",
-			Methods: []api.RouteExceptionMethods{api.POST},
+			Methods: []api.RouteExceptionMethods{api.RouteExceptionMethodsPOST},
 		},
 		{
 			Path:    "chat/comp*",
-			Methods: []api.RouteExceptionMethods{api.POST},
+			Methods: []api.RouteExceptionMethods{api.RouteExceptionMethodsPOST},
 		},
 	}
 
@@ -4582,15 +4582,15 @@ func TestTransform_TripleNestedWildcards_DenyAll(t *testing.T) {
 	exceptions := []api.RouteException{
 		{
 			Path:    "api/*",
-			Methods: []api.RouteExceptionMethods{api.GET},
+			Methods: []api.RouteExceptionMethods{api.RouteExceptionMethodsGET},
 		},
 		{
 			Path:    "api/v1/*",
-			Methods: []api.RouteExceptionMethods{api.GET},
+			Methods: []api.RouteExceptionMethods{api.RouteExceptionMethodsGET},
 		},
 		{
 			Path:    "api/v1/models/*",
-			Methods: []api.RouteExceptionMethods{api.GET},
+			Methods: []api.RouteExceptionMethods{api.RouteExceptionMethodsGET},
 		},
 	}
 
@@ -4698,11 +4698,11 @@ func TestTransform_SiblingWildcards_DenyAll(t *testing.T) {
 	exceptions := []api.RouteException{
 		{
 			Path:    "chat/*",
-			Methods: []api.RouteExceptionMethods{api.POST},
+			Methods: []api.RouteExceptionMethods{api.RouteExceptionMethodsPOST},
 		},
 		{
 			Path:    "models/*",
-			Methods: []api.RouteExceptionMethods{api.GET},
+			Methods: []api.RouteExceptionMethods{api.RouteExceptionMethodsGET},
 		},
 	}
 
@@ -4793,7 +4793,7 @@ func TestTransform_PathMatchingEdgeCases_AllowAll_PolicyMoreGeneral(t *testing.T
 	exceptions := []api.RouteException{
 		{
 			Path:    "internal/metrics",
-			Methods: []api.RouteExceptionMethods{api.GET},
+			Methods: []api.RouteExceptionMethods{api.RouteExceptionMethodsGET},
 		},
 	}
 

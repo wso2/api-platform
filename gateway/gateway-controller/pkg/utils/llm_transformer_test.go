@@ -678,7 +678,11 @@ func TestMoreSpecificPolicyAttachmentCovers(t *testing.T) {
 	// true iff some OTHER entry in the same block both covers (targetPath, method) and is
 	// strictly more specific than the current entry.
 	mk := func(path string, methods ...string) api.OperationPolicyPath {
-		return api.OperationPolicyPath{Path: path, Methods: methods}
+		ms := make([]api.OperationPolicyPathMethods, len(methods))
+		for i, m := range methods {
+			ms[i] = api.OperationPolicyPathMethods(m)
+		}
+		return api.OperationPolicyPath{Path: path, Methods: ms}
 	}
 	ccAll := mk("/chat/completions", "*")
 	ccGet := mk("/chat/completions", "GET")
@@ -737,7 +741,13 @@ func TestMoreSpecificPolicyAttachmentCovers(t *testing.T) {
 }
 
 func TestMethodSet(t *testing.T) {
-	mm := func(methods ...string) []string { return methods }
+	mm := func(methods ...string) []api.OperationPolicyPathMethods {
+		ms := make([]api.OperationPolicyPathMethods, len(methods))
+		for i, m := range methods {
+			ms[i] = api.OperationPolicyPathMethods(m)
+		}
+		return ms
+	}
 
 	t.Run("single concrete method", func(t *testing.T) {
 		assert.Equal(t, map[string]bool{"GET": true}, methodSet(mm("GET")))
@@ -767,10 +777,16 @@ func TestMethodSet(t *testing.T) {
 }
 
 func TestIsStrictMethodSubset(t *testing.T) {
-	mm := func(methods ...string) []string { return methods }
+	mm := func(methods ...string) []api.OperationPolicyPathMethods {
+		ms := make([]api.OperationPolicyPathMethods, len(methods))
+		for i, m := range methods {
+			ms[i] = api.OperationPolicyPathMethods(m)
+		}
+		return ms
+	}
 	tests := []struct {
 		name string
-		a, b []string
+		a, b []api.OperationPolicyPathMethods
 		want bool
 	}{
 		{"strict subset", mm("POST"), mm("GET", "POST"), true},
@@ -797,7 +813,11 @@ func TestIsStrictMethodSubset(t *testing.T) {
 
 func TestIsMoreSpecificAttachment(t *testing.T) {
 	mk := func(path string, methods ...string) api.OperationPolicyPath {
-		return api.OperationPolicyPath{Path: path, Methods: methods}
+		ms := make([]api.OperationPolicyPathMethods, len(methods))
+		for i, m := range methods {
+			ms[i] = api.OperationPolicyPathMethods(m)
+		}
+		return api.OperationPolicyPath{Path: path, Methods: ms}
 	}
 	tests := []struct {
 		name string

@@ -712,7 +712,7 @@ func TestValidateLLMProvider_Valid(t *testing.T) {
 						Exceptions: &[]api.RouteException{
 							{
 								Path:    "/v1/chat/completions",
-								Methods: []api.RouteExceptionMethods{api.POST},
+								Methods: []api.RouteExceptionMethods{api.RouteExceptionMethodsPOST},
 							},
 						},
 					},
@@ -1636,7 +1636,7 @@ func TestValidateLLMProvider_AccessControlExceptions(t *testing.T) {
 			exceptions: []api.RouteException{
 				{
 					Path:    "",
-					Methods: []api.RouteExceptionMethods{api.GET},
+					Methods: []api.RouteExceptionMethods{api.RouteExceptionMethodsGET},
 				},
 			},
 			expectError: true,
@@ -1660,7 +1660,7 @@ func TestValidateLLMProvider_AccessControlExceptions(t *testing.T) {
 			exceptions: []api.RouteException{
 				{
 					Path:    "/admin",
-					Methods: []api.RouteExceptionMethods{api.GET, api.POST},
+					Methods: []api.RouteExceptionMethods{api.RouteExceptionMethodsGET, api.RouteExceptionMethodsPOST},
 				},
 			},
 			expectError: false,
@@ -1670,11 +1670,11 @@ func TestValidateLLMProvider_AccessControlExceptions(t *testing.T) {
 			exceptions: []api.RouteException{
 				{
 					Path:    "/admin",
-					Methods: []api.RouteExceptionMethods{api.GET},
+					Methods: []api.RouteExceptionMethods{api.RouteExceptionMethodsGET},
 				},
 				{
 					Path:    "/internal/metrics",
-					Methods: []api.RouteExceptionMethods{api.GET, api.POST, api.DELETE},
+					Methods: []api.RouteExceptionMethods{api.RouteExceptionMethodsGET, api.RouteExceptionMethodsPOST, api.RouteExceptionMethodsDELETE},
 				},
 			},
 			expectError: false,
@@ -1684,11 +1684,11 @@ func TestValidateLLMProvider_AccessControlExceptions(t *testing.T) {
 			exceptions: []api.RouteException{
 				{
 					Path:    "/admin",
-					Methods: []api.RouteExceptionMethods{api.GET},
+					Methods: []api.RouteExceptionMethods{api.RouteExceptionMethodsGET},
 				},
 				{
 					Path:    "",
-					Methods: []api.RouteExceptionMethods{api.POST},
+					Methods: []api.RouteExceptionMethods{api.RouteExceptionMethodsPOST},
 				},
 			},
 			expectError: true,
