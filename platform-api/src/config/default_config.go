@@ -57,7 +57,7 @@ func defaultConfig() *Server {
 			},
 			JWT: JWT{
 				Enabled:        true,
-				Issuer:         "platform-api",
+				Issuer:         "",
 				SkipValidation: true,
 			},
 			IDP: IDP{

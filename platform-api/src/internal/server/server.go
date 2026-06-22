@@ -468,6 +468,10 @@ func buildAuthenticator(cfg *config.Server, slogger *slog.Logger, roleScopeMap m
 				slogger.Warn("JWT mode: signature validation disabled (AUTH_JWT_SKIP_VALIDATION=true) [APIP_DEMO_MODE=true]")
 			}
 		} else {
+			if cfg.Auth.JWT.Issuer == "" && !demoMode() {
+				return nil, fmt.Errorf("auth.jwt.issuer must be set when JWT validation is enabled; " +
+					"set APIP_DEMO_MODE=true to suppress this check in development")
+			}
 			slogger.Info("JWT mode: HMAC signature validation enabled")
 		}
 		return middleware.NewJWTAuthenticator(

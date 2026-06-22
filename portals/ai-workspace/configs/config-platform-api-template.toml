@@ -36,10 +36,10 @@ enable_scope_validation = true
 # Controls authentication for POST /api/v1/organizations.
 # When true, the endpoint requires both a valid Bearer JWT and the
 # ap:organization:manage scope; requests without that scope are rejected.
-# Default: false (public) — preserves backwards-compatible behaviour for existing deployments.
+# Default: true (public) — preserves backwards-compatible behaviour for existing deployments.
 # Set to true in production to prevent unauthenticated callers from creating organizations.
 # A warning is logged at startup when this is false and APIP_DEMO_MODE is not set.
-org_creation_requires_auth = false
+org_creation_requires_auth = true
 
 # ---------------------------------------------------------------------------
 # Database
@@ -78,7 +78,7 @@ path = "/app/data/api_platform.db"
 # Disable when delegating auth entirely to an external IDP.
 [auth.jwt]
 enabled    = true
-issuer     = "platform-api"
+# issuer   = ""             # required in production; omit or leave empty only with APIP_DEMO_MODE=true
 # secret_key = "change-me-to-a-random-secret"   # or use AUTH_JWT_SECRET_KEY env var
 # skip_validation = false   # NEVER set true in production
 

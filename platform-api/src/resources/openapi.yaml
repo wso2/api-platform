@@ -52,7 +52,7 @@ paths:
         Authentication is controlled by the `ORG_CREATION_REQUIRES_AUTH` server configuration flag.
         By default the endpoint is public and no authentication is needed. Set
         `ORG_CREATION_REQUIRES_AUTH=true` to require a valid Bearer JWT token.
-      operationId: RegisterOrganization
+      operationId: registerOrganization
       tags:
         - Organizations
       security:
@@ -86,7 +86,7 @@ paths:
       description: |
         Retrieves the organization details for the organization specified in the JWT token's 
         `organization` claim.
-      operationId: GetOrganization
+      operationId: getOrganization
       security:
         - OAuth2Security:
             - ap:organization:read
@@ -112,7 +112,7 @@ paths:
       summary: Get organization by UUID
       description: |
         Returns the organization with the specified UUID.
-      operationId: GetOrganizationByUUID
+      operationId: getOrganizationByUuid
       security:
         - OAuth2Security:
             - ap:organization:read
@@ -139,7 +139,7 @@ paths:
       description: |
         Checks if an organization with the specified UUID.
         Returns only headers without a response body.
-      operationId: HeadOrganizationByUuid
+      operationId: headOrganizationByUuid
       security:
         - OAuth2Security:
             - ap:organization:read
@@ -164,7 +164,7 @@ paths:
       description: |
         Returns the current organization subscription view with resource quota usage.
         The organization ID in the path must match the JWT token's organization claim.
-      operationId: GetOrganizationSubscription
+      operationId: getOrganizationSubscription
       security:
         - OAuth2Security:
             - ap:organization:subscription:read
@@ -195,7 +195,7 @@ paths:
       description: |
         Creates a new project within the organization specified in the JWT token.
         Organization ID is automatically extracted from the token and does not need to be provided.
-      operationId: CreateProject
+      operationId: createProject
       security:
         - OAuth2Security:
             - ap:project:create
@@ -233,7 +233,7 @@ paths:
       description: |
         Retrieves all projects belonging to the organization specified in the JWT token.
         Organization ID is automatically extracted from the token.
-      operationId: ListProjects
+      operationId: listProjects
       security:
         - OAuth2Security:
             - ap:project:read
@@ -260,7 +260,7 @@ paths:
       description: |
         Retrieves a specific project by its UUID. Access is validated against the organization 
         in the JWT token to ensure users can only access projects in their organization.
-      operationId: GetProject
+      operationId: getProject
       security:
         - OAuth2Security:
             - ap:project:read
@@ -290,7 +290,7 @@ paths:
       description: |
         Updates an existing project's name. Access is validated against the organization 
         in the JWT token.
-      operationId: UpdateProject
+      operationId: updateProject
       security:
         - OAuth2Security:
             - ap:project:update
@@ -330,7 +330,7 @@ paths:
       description: |
         Deletes a specific project by its UUID. Access is validated against the organization 
         in the JWT token.
-      operationId: DeleteProject
+      operationId: deleteProject
       security:
         - OAuth2Security:
             - ap:project:delete
@@ -360,7 +360,7 @@ paths:
         Validates an API project into the platform from a provided Git Repository URL.
         This endpoint checks the validity of the API project definitions and the overall validity of the API.
         Returns the metadata of the API and the resources if the API project is valid.
-      operationId: ValidateAPIProject
+      operationId: validateApiProject
       security:
         - OAuth2Security:
             - ap:rest_api:read
@@ -399,7 +399,7 @@ paths:
         Imports an API project into the platform from a provided Git Repository URL.
         A REST API is created from the imported API project and is associated with a specified project within the
         organization in the JWT token.
-      operationId: ImportAPIProject
+      operationId: importApiProject
       security:
         - OAuth2Security:
             - ap:rest_api:import
@@ -442,7 +442,7 @@ paths:
         Requires the projectId query parameter to filter APIs by project.
         Provide name and version together to check uniqueness (empty result = name/version combination is available).
         Access is validated against the organization in the JWT token.
-      operationId: ListRESTAPIs
+      operationId: listRestApis
       security:
         - OAuth2Security:
             - ap:rest_api:read
@@ -473,7 +473,7 @@ paths:
       description: |
         Creates a new REST API in the platform. The API is associated with a project, which must 
         belong to the organization specified in the JWT token.
-      operationId: CreateRESTAPI
+      operationId: createRestApi
       security:
         - OAuth2Security:
             - ap:rest_api:create
@@ -514,7 +514,7 @@ paths:
         Imports an OpenAPI definition into the platform from a provided URL or file upload.
         A REST API is created from the imported OpenAPI definition and is associated with a specified project within the
         organization in the JWT token.
-      operationId: ImportOpenAPI
+      operationId: importOpenApi
       security:
         - OAuth2Security:
             - ap:rest_api:import
@@ -566,7 +566,7 @@ paths:
         Validates an OpenAPI definition provided either via URL or as a file upload.
         Returns validation results including any errors found and extracted metadata
         such as name, and operations if the definition is valid.
-      operationId: ValidateOpenAPI
+      operationId: validateOpenApi
       security:
         - OAuth2Security:
             - ap:rest_api:read
@@ -600,7 +600,7 @@ paths:
       description: |
         Retrieves a specific API by its UUID. Access is validated against the organization 
         in the JWT token.
-      operationId: GetRESTAPI
+      operationId: getRestApi
       security:
         - OAuth2Security:
             - ap:rest_api:read
@@ -630,7 +630,7 @@ paths:
       description: |
         Updates an existing API's details. Access is validated against the organization 
         in the JWT token.
-      operationId: UpdateRESTAPI
+      operationId: updateRestApi
       security:
         - OAuth2Security:
             - ap:rest_api:update
@@ -671,7 +671,7 @@ paths:
       description: |
         Deletes a specific API by its UUID. Access is validated against the organization 
         in the JWT token.
-      operationId: DeleteRESTAPI
+      operationId: deleteRestApi
       security:
         - OAuth2Security:
             - ap:rest_api:delete
@@ -702,14 +702,12 @@ paths:
         Retrieves all gateways associated with the specified API, including deployment details.
         Returns gateway information along with association timestamps and deployment status.
         Access is validated against the organization in the JWT token.
-      operationId: GetRESTAPIGateways
+      operationId: getRestApiGateways
       security:
         - OAuth2Security:
             - ap:rest_api:gateway:read
             - ap:rest_api:gateway:manage
             - ap:rest_api:manage
-            - ap:gateway:read
-            - ap:gateway:manage
       tags:
         - REST APIs
         - Gateways
@@ -738,7 +736,7 @@ paths:
         updates the association timestamp. Returns all gateways associated with the API
         including deployment details. Access is validated against the organization 
         in the JWT token.
-      operationId: AddGatewaysToAPI
+      operationId: addGatewaysToApi
       security:
         - OAuth2Security:
             - ap:rest_api:gateway:create
@@ -782,7 +780,7 @@ paths:
         Creates a new API key for the specified API. The API key will be hashed before
         storage and broadcasted to all gateways where the API is deployed. This endpoint
         allows external platforms to inject API keys to hybrid gateways.
-      operationId: CreateAPIKey
+      operationId: createApiKey
       security:
         - OAuth2Security:
             - ap:rest_api:api_key:create
@@ -831,7 +829,7 @@ paths:
         Updates an existing API key for the specified API. The new API key value will
         be hashed before storage and broadcasted to all gateways where the API is deployed.
         This endpoint allows external platforms to rotate API keys on hybrid gateways.
-      operationId: UpdateAPIKey
+      operationId: updateApiKey
       security:
         - OAuth2Security:
             - ap:rest_api:api_key:update
@@ -886,7 +884,7 @@ paths:
         Revokes an API key for the specified API. The revocation will be broadcasted
         to all gateways where the API is deployed. This endpoint allows external platforms
         to revoke API keys on hybrid gateways.
-      operationId: RevokeAPIKey
+      operationId: revokeApiKey
       security:
         - OAuth2Security:
             - ap:rest_api:api_key:delete
@@ -929,7 +927,7 @@ paths:
       summary: Get REST API publications
       description: |
         Retrieves all DevPortals associated with an API including publication details.
-      operationId: GetRESTAPIPublications
+      operationId: getRestApiPublications
       security:
         - OAuth2Security:
             - ap:rest_api:publication:read
@@ -960,7 +958,7 @@ paths:
       summary: Publish REST API to DevPortal
       description: |
         Publishes an existing API from platform-api to the configured DevPortal.
-      operationId: PublishRESTAPIToDevPortal
+      operationId: publishRestApiToDevPortal
       security:
         - OAuth2Security:
             - ap:rest_api:publication:create
@@ -1039,7 +1037,7 @@ paths:
       summary: Unpublish REST API from DevPortal
       description: |
         Removes an API from the configured DevPortal.
-      operationId: UnpublishRESTAPIFromDevPortal
+      operationId: unpublishRestApiFromDevPortal
       security:
         - OAuth2Security:
             - ap:rest_api:publication:delete
@@ -1100,7 +1098,7 @@ paths:
         Each deployment targets a single gateway. The apiId parameter is the API handle (identifier),
         not the UUID. The operation returns a transitional DEPLOYING status. Final success or failure will be reported asynchronously via the deployment's status and statusReason once the gateway acknowledges. 
         Access is validated against the organization in the JWT token.
-      operationId: DeployAPI
+      operationId: deployApi
       security:
         - OAuth2Security:
             - ap:rest_api:deployment:create
@@ -1150,7 +1148,7 @@ paths:
         Retrieves all deployment artifacts for a specific API. The apiId parameter is the API handle (identifier),
         not the UUID. Supports filtering by gateway UUID and deployment status. 
         Access is validated against the organization in the JWT token.
-      operationId: GetDeployments
+      operationId: getDeployments
       security:
         - OAuth2Security:
             - ap:rest_api:deployment:read
@@ -1185,7 +1183,7 @@ paths:
       description: |
         Retrieves metadata for a specific deployment artifact including status, gateway association,
         and timestamps. Access is validated against the organization in the JWT token.
-      operationId: GetDeployment
+      operationId: getDeployment
       security:
         - OAuth2Security:
             - ap:rest_api:deployment:read
@@ -1215,7 +1213,7 @@ paths:
       description: |
         Deletes a deployment artifact. Deletion is only allowed when the deployment is in UNDEPLOYED status.
         Access is validated against the organization in the JWT token.
-      operationId: DeleteDeployment
+      operationId: deleteDeployment
       security:
         - OAuth2Security:
             - ap:rest_api:deployment:delete
@@ -1253,7 +1251,7 @@ paths:
 
         The gatewayId query parameter is validated against deployment's bound gateway to prevent unintended operations.
         Access is validated against the organization in the JWT token.
-      operationId: UndeployDeployment
+      operationId: undeployDeployment
       security:
         - OAuth2Security:
             - ap:rest_api:deployment:undeploy
@@ -1306,7 +1304,7 @@ paths:
 
         The gatewayId query parameter is validated against the deployment's bound gateway to prevent unintended operations.
         Access is validated against the organization in the JWT token.
-      operationId: RestoreDeployment
+      operationId: restoreDeployment
       security:
         - OAuth2Security:
             - ap:rest_api:deployment:restore
@@ -1356,7 +1354,7 @@ paths:
   /websub-apis:
     post:
       summary: Create a new WebSub API
-      operationId: createWebSubAPI
+      operationId: createWebSubApi
       security:
         - OAuth2Security:
             - ap:websub_api:create
@@ -1388,7 +1386,7 @@ paths:
           $ref: '#/components/responses/InternalServerError'
     get:
       summary: List WebSub APIs
-      operationId: listWebSubAPIs
+      operationId: listWebSubApis
       security:
         - OAuth2Security:
             - ap:websub_api:read
@@ -1428,7 +1426,7 @@ paths:
   /websub-apis/{apiId}:
     get:
       summary: Get WebSub API by ID
-      operationId: getWebSubAPI
+      operationId: getWebSubApi
       security:
         - OAuth2Security:
             - ap:websub_api:read
@@ -1456,7 +1454,7 @@ paths:
           $ref: '#/components/responses/InternalServerError'
     put:
       summary: Update WebSub API
-      operationId: updateWebSubAPI
+      operationId: updateWebSubApi
       security:
         - OAuth2Security:
             - ap:websub_api:update
@@ -1494,7 +1492,7 @@ paths:
           $ref: '#/components/responses/InternalServerError'
     delete:
       summary: Delete WebSub API
-      operationId: deleteWebSubAPI
+      operationId: deleteWebSubApi
       security:
         - OAuth2Security:
             - ap:websub_api:delete
@@ -1522,7 +1520,7 @@ paths:
   /websub-apis/{apiId}/api-keys:
     post:
       summary: Create an API key for WebSub API
-      operationId: createWebSubAPIKey
+      operationId: createWebSubApiKey
       security:
         - OAuth2Security:
             - ap:websub_api:api_key:create
@@ -1565,7 +1563,7 @@ paths:
         Updates an existing API key for the specified WebSub API. The new API key value will
         be hashed before storage and broadcasted to all gateways where the API is deployed.
         This endpoint allows external platforms to rotate API keys on hybrid gateways.
-      operationId: updateWebSubAPIKey
+      operationId: updateWebSubApiKey
       security:
         - OAuth2Security:
             - ap:websub_api:api_key:update
@@ -1614,7 +1612,7 @@ paths:
 
     delete:
       summary: Delete an API key for WebSub API
-      operationId: deleteWebSubAPIKey
+      operationId: deleteWebSubApiKey
       security:
         - OAuth2Security:
             - ap:websub_api:api_key:delete
@@ -1648,7 +1646,7 @@ paths:
       summary: Get WebSub API publications
       description: |
         Retrieves all DevPortals associated with a WebSub API including publication details.
-      operationId: GetWebSubAPIPublications
+      operationId: getWebSubApiPublications
       security:
         - OAuth2Security:
             - ap:websub_api:publication:read
@@ -1679,7 +1677,7 @@ paths:
       summary: Publish WebSub API to DevPortal
       description: |
         Publishes an existing WebSub API to the configured DevPortal.
-      operationId: PublishWebSubAPIToDevPortal
+      operationId: publishWebSubApiToDevPortal
       security:
         - OAuth2Security:
             - ap:websub_api:publication:create
@@ -1725,7 +1723,7 @@ paths:
       summary: Unpublish WebSub API from DevPortal
       description: |
         Removes a WebSub API from the configured DevPortal.
-      operationId: UnpublishWebSubAPIFromDevPortal
+      operationId: unpublishWebSubApiFromDevPortal
       security:
         - OAuth2Security:
             - ap:websub_api:publication:delete
@@ -1769,7 +1767,7 @@ paths:
   /websub-apis/{apiId}/deployments:
     post:
       summary: Deploy WebSub API to a gateway
-      operationId: deployWebSubAPI
+      operationId: deployWebSubApi
       security:
         - OAuth2Security:
             - ap:websub_api:deployment:create
@@ -1806,7 +1804,7 @@ paths:
           $ref: '#/components/responses/InternalServerError'
     get:
       summary: Get WebSub API deployments
-      operationId: getWebSubAPIDeployments
+      operationId: getWebSubApiDeployments
       security:
         - OAuth2Security:
             - ap:websub_api:deployment:read
@@ -1846,7 +1844,7 @@ paths:
   /websub-apis/{apiId}/deployments/{deploymentId}:
     get:
       summary: Get WebSub API deployment by ID
-      operationId: getWebSubAPIDeployment
+      operationId: getWebSubApiDeployment
       security:
         - OAuth2Security:
             - ap:websub_api:deployment:read
@@ -1880,7 +1878,7 @@ paths:
           $ref: '#/components/responses/InternalServerError'
     delete:
       summary: Delete WebSub API deployment
-      operationId: deleteWebSubAPIDeployment
+      operationId: deleteWebSubApiDeployment
       security:
         - OAuth2Security:
             - ap:websub_api:deployment:delete
@@ -1914,7 +1912,7 @@ paths:
   /websub-apis/{apiId}/deployments/{deploymentId}/undeploy:
     post:
       summary: Undeploy WebSub API from gateway
-      operationId: undeployWebSubAPI
+      operationId: undeployWebSubApi
       security:
         - OAuth2Security:
             - ap:websub_api:deployment:undeploy
@@ -1959,7 +1957,7 @@ paths:
   /websub-apis/{apiId}/deployments/{deploymentId}/restore:
     post:
       summary: Restore a previous WebSub API deployment
-      operationId: restoreWebSubAPIDeployment
+      operationId: restoreWebSubApiDeployment
       security:
         - OAuth2Security:
             - ap:websub_api:deployment:restore
@@ -2004,7 +2002,7 @@ paths:
   /webbroker-apis:
     post:
       summary: Create a new WebBroker API
-      operationId: createWebBrokerAPI
+      operationId: createWebBrokerApi
       security:
         - OAuth2Security:
             - ap:webbroker_api:create
@@ -2036,7 +2034,7 @@ paths:
           $ref: '#/components/responses/InternalServerError'
     get:
       summary: List WebBroker APIs
-      operationId: listWebBrokerAPIs
+      operationId: listWebBrokerApis
       security:
         - OAuth2Security:
             - ap:webbroker_api:read
@@ -2076,7 +2074,7 @@ paths:
   /webbroker-apis/{apiId}:
     get:
       summary: Get WebBroker API by ID
-      operationId: getWebBrokerAPI
+      operationId: getWebBrokerApi
       security:
         - OAuth2Security:
             - ap:webbroker_api:read
@@ -2104,7 +2102,7 @@ paths:
           $ref: '#/components/responses/InternalServerError'
     put:
       summary: Update WebBroker API
-      operationId: updateWebBrokerAPI
+      operationId: updateWebBrokerApi
       security:
         - OAuth2Security:
             - ap:webbroker_api:update
@@ -2142,7 +2140,7 @@ paths:
           $ref: '#/components/responses/InternalServerError'
     delete:
       summary: Delete WebBroker API
-      operationId: deleteWebBrokerAPI
+      operationId: deleteWebBrokerApi
       security:
         - OAuth2Security:
             - ap:webbroker_api:delete
@@ -2170,7 +2168,7 @@ paths:
   /webbroker-apis/{apiId}/api-keys:
     post:
       summary: Create an API key for WebBroker API
-      operationId: createWebBrokerAPIKey
+      operationId: createWebBrokerApiKey
       security:
         - OAuth2Security:
             - ap:webbroker_api:api_key:create
@@ -2213,7 +2211,7 @@ paths:
         Updates an existing API key for the specified WebBroker API. The new API key value will
         be hashed before storage and broadcasted to all gateways where the API is deployed.
         This endpoint allows external platforms to rotate API keys on hybrid gateways.
-      operationId: updateWebBrokerAPIKey
+      operationId: updateWebBrokerApiKey
       security:
         - OAuth2Security:
             - ap:webbroker_api:api_key:update
@@ -2262,7 +2260,7 @@ paths:
 
     delete:
       summary: Delete an API key for WebBroker API
-      operationId: deleteWebBrokerAPIKey
+      operationId: deleteWebBrokerApiKey
       security:
         - OAuth2Security:
             - ap:webbroker_api:api_key:delete
@@ -2296,7 +2294,7 @@ paths:
       summary: Get WebBroker API publications
       description: |
         Retrieves all DevPortals associated with a WebBroker API including publication details.
-      operationId: GetWebBrokerAPIPublications
+      operationId: getWebBrokerApiPublications
       security:
         - OAuth2Security:
             - ap:webbroker_api:publication:read
@@ -2327,7 +2325,7 @@ paths:
       summary: Publish WebBroker API to DevPortal
       description: |
         Publishes an existing WebBroker API to the configured DevPortal.
-      operationId: PublishWebBrokerAPIToDevPortal
+      operationId: publishWebBrokerApiToDevPortal
       security:
         - OAuth2Security:
             - ap:webbroker_api:publication:create
@@ -2373,7 +2371,7 @@ paths:
       summary: Unpublish WebBroker API from DevPortal
       description: |
         Removes a WebBroker API from the configured DevPortal.
-      operationId: UnpublishWebBrokerAPIFromDevPortal
+      operationId: unpublishWebBrokerApiFromDevPortal
       security:
         - OAuth2Security:
             - ap:webbroker_api:publication:delete
@@ -2417,7 +2415,7 @@ paths:
   /webbroker-apis/{apiId}/deployments:
     post:
       summary: Deploy WebBroker API to a gateway
-      operationId: deployWebBrokerAPI
+      operationId: deployWebBrokerApi
       security:
         - OAuth2Security:
             - ap:webbroker_api:deployment:create
@@ -2454,7 +2452,7 @@ paths:
           $ref: '#/components/responses/InternalServerError'
     get:
       summary: Get WebBroker API deployments
-      operationId: getWebBrokerAPIDeployments
+      operationId: getWebBrokerApiDeployments
       security:
         - OAuth2Security:
             - ap:webbroker_api:deployment:read
@@ -2494,7 +2492,7 @@ paths:
   /webbroker-apis/{apiId}/deployments/{deploymentId}:
     get:
       summary: Get WebBroker API deployment by ID
-      operationId: getWebBrokerAPIDeployment
+      operationId: getWebBrokerApiDeployment
       security:
         - OAuth2Security:
             - ap:webbroker_api:deployment:read
@@ -2528,7 +2526,7 @@ paths:
           $ref: '#/components/responses/InternalServerError'
     delete:
       summary: Delete WebBroker API deployment
-      operationId: deleteWebBrokerAPIDeployment
+      operationId: deleteWebBrokerApiDeployment
       security:
         - OAuth2Security:
             - ap:webbroker_api:deployment:delete
@@ -2562,7 +2560,7 @@ paths:
   /webbroker-apis/{apiId}/deployments/{deploymentId}/undeploy:
     post:
       summary: Undeploy WebBroker API from gateway
-      operationId: undeployWebBrokerAPI
+      operationId: undeployWebBrokerApi
       security:
         - OAuth2Security:
             - ap:webbroker_api:deployment:undeploy
@@ -2607,7 +2605,7 @@ paths:
   /webbroker-apis/{apiId}/deployments/{deploymentId}/restore:
     post:
       summary: Restore a previous WebBroker API deployment
-      operationId: restoreWebBrokerAPIDeployment
+      operationId: restoreWebBrokerApiDeployment
       security:
         - OAuth2Security:
             - ap:webbroker_api:deployment:restore
@@ -2655,7 +2653,7 @@ paths:
       description: |
         Creates a new LLM provider template within the organization.
         Organization is identified via the JWT token.
-      operationId: createLLMProviderTemplate
+      operationId: createLlmProviderTemplate
       security:
         - OAuth2Security:
             - ap:llm_template:create
@@ -2690,7 +2688,7 @@ paths:
       summary: List all LLM provider templates
       description: |
         Retrieve a list of all LLM provider templates for the organization.
-      operationId: listLLMProviderTemplates
+      operationId: listLlmProviderTemplates
       security:
         - OAuth2Security:
             - ap:llm_template:read
@@ -2729,7 +2727,7 @@ paths:
     get:
       summary: Get LLM provider template by id
       description: Retrieve the complete configuration for a specific LLM provider template.
-      operationId: getLLMProviderTemplate
+      operationId: getLlmProviderTemplate
       security:
         - OAuth2Security:
             - ap:llm_template:read
@@ -2761,7 +2759,7 @@ paths:
     put:
       summary: Update an existing LLM provider template
       description: Update an existing LLM provider template configuration.
-      operationId: updateLLMProviderTemplate
+      operationId: updateLlmProviderTemplate
       security:
         - OAuth2Security:
             - ap:llm_template:update
@@ -2803,7 +2801,7 @@ paths:
     delete:
       summary: Delete an LLM provider template
       description: Remove an LLM provider template.
-      operationId: deleteLLMProviderTemplate
+      operationId: deleteLlmProviderTemplate
       security:
         - OAuth2Security:
             - ap:llm_template:delete
@@ -2837,7 +2835,7 @@ paths:
       summary: Create a new LLM provider
       description: |
         Deploy a new LLM provider configuration.
-      operationId: createLLMProvider
+      operationId: createLlmProvider
       security:
         - OAuth2Security:
             - ap:llm_provider:create
@@ -2915,7 +2913,7 @@ paths:
     get:
       summary: List all LLM providers
       description: Retrieve a list of all LLM providers.
-      operationId: listLLMProviders
+      operationId: listLlmProviders
       security:
         - OAuth2Security:
             - ap:llm_provider:read
@@ -2954,7 +2952,7 @@ paths:
     get:
       summary: Get LLM provider by identifier
       description: Retrieve the complete configuration for a specific LLM provider.
-      operationId: getLLMProvider
+      operationId: getLlmProvider
       security:
         - OAuth2Security:
             - ap:llm_provider:read
@@ -2985,7 +2983,7 @@ paths:
     put:
       summary: Update an existing LLM provider
       description: Update the configuration of an existing LLM provider.
-      operationId: updateLLMProvider
+      operationId: updateLlmProvider
       security:
         - OAuth2Security:
             - ap:llm_provider:update
@@ -3026,7 +3024,7 @@ paths:
     delete:
       summary: Delete an LLM provider
       description: Remove an LLM provider.
-      operationId: deleteLLMProvider
+      operationId: deleteLlmProvider
       security:
         - OAuth2Security:
             - ap:llm_provider:delete
@@ -3062,7 +3060,7 @@ paths:
         Each deployment targets a single gateway. The providerId parameter is the LLM provider handle (identifier),
         not the UUID. The operation returns a transitional DEPLOYING status. Final success or failure will be reported asynchronously via the deployment's status and statusReason once the gateway acknowledges.
         Access is validated against the organization in the JWT token.
-      operationId: deployLLMProvider
+      operationId: deployLlmProvider
       security:
         - OAuth2Security:
             - ap:llm_provider:deployment:create
@@ -3117,7 +3115,7 @@ paths:
         Retrieves all deployment artifacts for a specific LLM provider. The providerId parameter is the
         LLM provider handle (identifier), not the UUID. Supports filtering by gateway UUID and deployment status.
         Access is validated against the organization in the JWT token.
-      operationId: getLLMProviderDeployments
+      operationId: getLlmProviderDeployments
       security:
         - OAuth2Security:
             - ap:llm_provider:deployment:read
@@ -3157,7 +3155,7 @@ paths:
       description: |
         Retrieves metadata for a specific LLM provider deployment artifact including status, gateway association,
         and timestamps. Access is validated against the organization in the JWT token.
-      operationId: getLLMProviderDeployment
+      operationId: getLlmProviderDeployment
       security:
         - OAuth2Security:
             - ap:llm_provider:deployment:read
@@ -3192,7 +3190,7 @@ paths:
       description: |
         Deletes a deployment artifact. Deletion is only allowed when the deployment is in UNDEPLOYED status.
         Access is validated against the organization in the JWT token.
-      operationId: deleteLLMProviderDeployment
+      operationId: deleteLlmProviderDeployment
       security:
         - OAuth2Security:
             - ap:llm_provider:deployment:delete
@@ -3235,7 +3233,7 @@ paths:
 
         The gatewayId query parameter is validated against the deployment's bound gateway to prevent unintended operations.
         Access is validated against the organization in the JWT token.
-      operationId: undeployLLMProviderDeployment
+      operationId: undeployLlmProviderDeployment
       security:
         - OAuth2Security:
             - ap:llm_provider:deployment:undeploy
@@ -3293,7 +3291,7 @@ paths:
 
         The gatewayId query parameter is validated against the deployment's bound gateway to prevent unintended operations.
         Access is validated against the organization in the JWT token.
-      operationId: restoreLLMProviderDeployment
+      operationId: restoreLlmProviderDeployment
       security:
         - OAuth2Security:
             - ap:llm_provider:deployment:restore
@@ -3349,11 +3347,10 @@ paths:
     get:
       summary: List LLM proxies by provider
       description: Retrieve a list of LLM proxies that use the specified LLM provider.
-      operationId: listLLMProxiesByProvider
+      operationId: listLlmProxiesByProvider
       security:
         - OAuth2Security:
-            - ap:llm_proxy:deployment:read
-            - ap:llm_proxy:deployment:manage
+            - ap:llm_proxy:read
             - ap:llm_proxy:manage
       tags:
         - LLM Providers
@@ -3402,7 +3399,7 @@ paths:
         Generates a new API key for the specified LLM provider. The generated key
         is broadcasted to all gateways in the organization and can be used to
         authenticate requests to the LLM provider when API key validation is enabled.
-      operationId: createLLMProviderAPIKey
+      operationId: createLlmProviderApiKey
       security:
         - OAuth2Security:
             - ap:llm_provider:api_key:create
@@ -3454,7 +3451,7 @@ paths:
     get:
       summary: List API keys for an LLM provider
       description: Returns all API keys associated with the specified LLM provider. The plain key value is never returned.
-      operationId: listLLMProviderAPIKeys
+      operationId: listLlmProviderApiKeys
       security:
         - OAuth2Security:
             - ap:llm_provider:api_key:read
@@ -3494,7 +3491,7 @@ paths:
       summary: Delete an API key for an LLM provider
       description: |
         Deletes the key from the database and broadcasts a revoke event to the allowed gateways.
-      operationId: deleteLLMProviderAPIKey
+      operationId: deleteLlmProviderApiKey
       security:
         - OAuth2Security:
             - ap:llm_provider:api_key:delete
@@ -3543,7 +3540,7 @@ paths:
       summary: Create a new LLM proxy
       description: |
         Deploy a new LLM proxy configuration.
-      operationId: createLLMProxy
+      operationId: createLlmProxy
       security:
         - OAuth2Security:
             - ap:llm_proxy:create
@@ -3577,7 +3574,7 @@ paths:
     get:
       summary: List all LLM proxies
       description: Retrieve a list of all LLM proxies for a project. Requires the projectId query parameter.
-      operationId: listLLMProxies
+      operationId: listLlmProxies
       security:
         - OAuth2Security:
             - ap:llm_proxy:read
@@ -3617,7 +3614,7 @@ paths:
     get:
       summary: Get LLM proxy by unique identifier
       description: Retrieve the complete configuration for a specific LLM proxy.
-      operationId: getLLMProxy
+      operationId: getLlmProxy
       security:
         - OAuth2Security:
             - ap:llm_proxy:read
@@ -3648,7 +3645,7 @@ paths:
     put:
       summary: Update an existing LLM proxy
       description: Update the configuration of an existing LLM proxy.
-      operationId: updateLLMProxy
+      operationId: updateLlmProxy
       security:
         - OAuth2Security:
             - ap:llm_proxy:update
@@ -3689,7 +3686,7 @@ paths:
     delete:
       summary: Delete an LLM proxy
       description: Remove an LLM proxy.
-      operationId: deleteLLMProxy
+      operationId: deleteLlmProxy
       security:
         - OAuth2Security:
             - ap:llm_proxy:delete
@@ -3725,7 +3722,7 @@ paths:
         Each deployment targets a single gateway. The proxyId parameter is the LLM proxy handle (identifier),
         not the UUID. The operation returns a transitional DEPLOYING status. Final success or failure will be reported asynchronously via the deployment's status and statusReason once the gateway acknowledges.
         Access is validated against the organization in the JWT token.
-      operationId: deployLLMProxy
+      operationId: deployLlmProxy
       security:
         - OAuth2Security:
             - ap:llm_proxy:deployment:create
@@ -3780,7 +3777,7 @@ paths:
         Retrieves all deployment artifacts for a specific LLM proxy. The proxyId parameter is the
         LLM proxy handle (identifier), not the UUID. Supports filtering by gateway UUID and deployment status.
         Access is validated against the organization in the JWT token.
-      operationId: getLLMProxyDeployments
+      operationId: getLlmProxyDeployments
       security:
         - OAuth2Security:
             - ap:llm_proxy:deployment:read
@@ -3820,7 +3817,7 @@ paths:
       description: |
         Retrieves metadata for a specific LLM proxy deployment artifact including status, gateway association,
         and timestamps. Access is validated against the organization in the JWT token.
-      operationId: getLLMProxyDeployment
+      operationId: getLlmProxyDeployment
       security:
         - OAuth2Security:
             - ap:llm_proxy:deployment:read
@@ -3855,7 +3852,7 @@ paths:
       description: |
         Deletes a deployment artifact. Deletion is only allowed when the deployment is in UNDEPLOYED status.
         Access is validated against the organization in the JWT token.
-      operationId: deleteLLMProxyDeployment
+      operationId: deleteLlmProxyDeployment
       security:
         - OAuth2Security:
             - ap:llm_proxy:deployment:delete
@@ -3898,7 +3895,7 @@ paths:
 
         The gatewayId query parameter is validated against the deployment's bound gateway to prevent unintended operations.
         Access is validated against the organization in the JWT token.
-      operationId: undeployLLMProxyDeployment
+      operationId: undeployLlmProxyDeployment
       security:
         - OAuth2Security:
             - ap:llm_proxy:deployment:undeploy
@@ -3956,7 +3953,7 @@ paths:
 
         The gatewayId query parameter is validated against the deployment's bound gateway to prevent unintended operations.
         Access is validated against the organization in the JWT token.
-      operationId: restoreLLMProxyDeployment
+      operationId: restoreLlmProxyDeployment
       security:
         - OAuth2Security:
             - ap:llm_proxy:deployment:restore
@@ -4015,7 +4012,7 @@ paths:
         Generates a new API key for the specified LLM proxy. The generated key
         is broadcasted to all gateways in the organization and can be used to
         authenticate requests to the LLM proxy when API key validation is enabled.
-      operationId: createLLMProxyAPIKey
+      operationId: createLlmProxyApiKey
       security:
         - OAuth2Security:
             - ap:llm_proxy:api_key:create
@@ -4066,7 +4063,7 @@ paths:
     get:
       summary: List API keys for an LLM proxy
       description: Returns all API keys associated with the specified LLM proxy. The plain key value is never returned.
-      operationId: listLLMProxyAPIKeys
+      operationId: listLlmProxyApiKeys
       security:
         - OAuth2Security:
             - ap:llm_proxy:api_key:read
@@ -4106,7 +4103,7 @@ paths:
       summary: Delete an API key for an LLM proxy
       description: |
         Deletes the key from the database and broadcasts a revoke event to the allowed gateways.
-      operationId: deleteLLMProxyAPIKey
+      operationId: deleteLlmProxyApiKey
       security:
         - OAuth2Security:
             - ap:llm_proxy:api_key:delete
@@ -4155,7 +4152,7 @@ paths:
       summary: Create a new MCP proxy
       description: |
         Deploy a new MCP proxy configuration.
-      operationId: createMCPProxy
+      operationId: createMcpProxy
       security:
         - OAuth2Security:
             - ap:mcp_proxy:create
@@ -4189,7 +4186,7 @@ paths:
     get:
       summary: List all MCP proxies
       description: Retrieve a list of all MCP proxies for a project. Requires the projectId query parameter.
-      operationId: listMCPProxies
+      operationId: listMcpProxies
       security:
         - OAuth2Security:
             - ap:mcp_proxy:read
@@ -4229,7 +4226,7 @@ paths:
     get:
       summary: Get MCP proxy by unique identifier
       description: Retrieve the complete configuration for a specific MCP proxy.
-      operationId: getMCPProxy
+      operationId: getMcpProxy
       security:
         - OAuth2Security:
             - ap:mcp_proxy:read
@@ -4260,7 +4257,7 @@ paths:
     put:
       summary: Update an existing MCP proxy
       description: Update the configuration of an existing MCP proxy.
-      operationId: updateMCPProxy
+      operationId: updateMcpProxy
       security:
         - OAuth2Security:
             - ap:mcp_proxy:update
@@ -4301,7 +4298,7 @@ paths:
     delete:
       summary: Delete an MCP proxy
       description: Remove an MCP proxy.
-      operationId: deleteMCPProxy
+      operationId: deleteMcpProxy
       security:
         - OAuth2Security:
             - ap:mcp_proxy:delete
@@ -4337,7 +4334,7 @@ paths:
         Each deployment targets a single gateway. The id parameter is the MCP proxy handle (identifier),
         not the UUID. The operation returns a transitional DEPLOYING status. Final success or failure will be reported asynchronously via the deployment's status and statusReason once the gateway acknowledges. 
         Access is validated against the organization in the JWT token.
-      operationId: DeployMCPProxy
+      operationId: deployMcpProxy
       security:
         - OAuth2Security:
             - ap:mcp_proxy:deployment:create
@@ -4390,7 +4387,7 @@ paths:
         Retrieves all deployment artifacts for a specific MCP proxy. The id parameter is the MCP proxy handle (identifier),
         not the UUID. Supports filtering by gateway UUID and deployment status. 
         Access is validated against the organization in the JWT token.
-      operationId: GetMCPProxyDeployments
+      operationId: getMcpProxyDeployments
       security:
         - OAuth2Security:
             - ap:mcp_proxy:deployment:read
@@ -4430,7 +4427,7 @@ paths:
       description: |
         Retrieves metadata for a specific deployment artifact including status, gateway association,
         and timestamps. Access is validated against the organization in the JWT token.
-      operationId: GetMCPProxyDeployment
+      operationId: getMcpProxyDeployment
       security:
         - OAuth2Security:
             - ap:mcp_proxy:deployment:read
@@ -4465,7 +4462,7 @@ paths:
       description: |
         Deletes a deployment artifact. Deletion is only allowed when the deployment is in UNDEPLOYED status.
         Access is validated against the organization in the JWT token.
-      operationId: DeleteMCPProxyDeployment
+      operationId: deleteMcpProxyDeployment
       security:
         - OAuth2Security:
             - ap:mcp_proxy:deployment:delete
@@ -4506,7 +4503,7 @@ paths:
 
         The gatewayId query parameter is validated against the deployment's bound gateway to prevent unintended operations.
         Access is validated against the organization in the JWT token.
-      operationId: UndeployMCPProxyDeployment
+      operationId: undeployMcpProxyDeployment
       security:
         - OAuth2Security:
             - ap:mcp_proxy:deployment:undeploy
@@ -4562,7 +4559,7 @@ paths:
 
         The gatewayId query parameter is validated against the deployment's bound gateway to prevent unintended operations.
         Access is validated against the organization in the JWT token.
-      operationId: RestoreMCPProxyDeployment
+      operationId: restoreMcpProxyDeployment
       security:
         - OAuth2Security:
             - ap:mcp_proxy:deployment:restore
@@ -4618,7 +4615,7 @@ paths:
       description: |
         Fetches server information from the backend services of an MCP proxy. 
         This is used to validate connectivity and retrieve metadata about the backend services.
-      operationId: fetchMCPProxyServerInfo
+      operationId: fetchMcpProxyServerInfo
       security:
         - OAuth2Security:
             - ap:mcp_proxy:read
@@ -4654,7 +4651,7 @@ paths:
       description: |
         Creates a new gateway within the organization specified in the JWT token.
         Organization ID is automatically extracted from the token and does not need to be provided.
-      operationId: CreateGateway
+      operationId: createGateway
       security:
         - OAuth2Security:
             - ap:gateway:create
@@ -4701,7 +4698,7 @@ paths:
       description: |
         Retrieves a list of all registered gateways for the organization specified in the JWT token.
         Organization ID is automatically extracted from the token.
-      operationId: ListGateways
+      operationId: listGateways
       security:
         - OAuth2Security:
             - ap:gateway:read
@@ -4728,7 +4725,7 @@ paths:
       description: |
         Retrieves a specific gateway by its UUID. Access is validated against the organization 
         in the JWT token.
-      operationId: GetGateway
+      operationId: getGateway
       security:
         - OAuth2Security:
             - ap:gateway:read
@@ -4758,7 +4755,7 @@ paths:
       description: |
         Updates an existing gateway's mutable fields (description).
         Access is validated against the organization in the JWT token.
-      operationId: UpdateGateway
+      operationId: updateGateway
       security:
         - OAuth2Security:
             - ap:gateway:update
@@ -4798,7 +4795,7 @@ paths:
         Permanently deletes a gateway and all associated tokens (CASCADE).
         Deletion is blocked if the gateway has active API deployments or WebSocket connections.
         Access is validated against the organization in the JWT token.
-      operationId: DeleteGateway
+      operationId: deleteGateway
       security:
         - OAuth2Security:
             - ap:gateway:delete
@@ -4956,7 +4953,7 @@ paths:
         Retrieves all artifacts (APIs, MCPs, API Products) deployed to a specific gateway with pagination support.
         Currently, only APIs are supported as artifacts. Future versions will include MCPs and API Products.
         Access is validated against the organization in the JWT token.
-      operationId: GetGatewayArtifacts
+      operationId: getGatewayArtifacts
       security:
         - OAuth2Security:
             - ap:gateway:artifact:read
@@ -4990,7 +4987,7 @@ paths:
         Returns the policy manifest for the specified gateway. The manifest is populated by the gateway
         controller when it connects to the platform API, and contains all installed policies. Custom
         policies additionally include their full policy definition schema.
-      operationId: GetGatewayManifest
+      operationId: getGatewayManifest
       security:
         - OAuth2Security:
             - ap:gateway:manifest:read
@@ -5018,7 +5015,7 @@ paths:
       summary: Get synced custom policies for the current organization
       description: |
         Returns all custom policies synced to the current organization (from the JWT `organization` claim).
-      operationId: ListGatewayCustomPolicies
+      operationId: listGatewayCustomPolicies
       security:
         - OAuth2Security:
             - ap:gateway_custom_policy:read
@@ -5051,7 +5048,7 @@ paths:
         - **Downgrade**: not allowed.
         Policy names are case-insensitive.
         After syncing, the policy can be applied to APIs in the organization.
-      operationId: SyncCustomPolicy
+      operationId: syncCustomPolicy
       security:
         - OAuth2Security:
             - ap:gateway_custom_policy:create
@@ -5115,7 +5112,7 @@ paths:
     get:
       summary: Get a specific custom policy version
       description: Returns a custom policy by its UUID and version for the current organization.
-      operationId: GetGatewayCustomPolicy
+      operationId: getGatewayCustomPolicy
       security:
         - OAuth2Security:
             - ap:gateway_custom_policy:read
@@ -5155,7 +5152,7 @@ paths:
       summary: Delete a specific custom policy version
       description: |
         Deletes a custom policy by its UUID and version. The policy must not be in use by any APIs.
-      operationId: DeleteGatewayCustomPolicy
+      operationId: deleteGatewayCustomPolicy
       security:
         - OAuth2Security:
             - ap:gateway_custom_policy:delete
@@ -5201,7 +5198,7 @@ paths:
       summary: Create a new application
       description: |
         Creates a new application within the organization specified in the JWT token.
-      operationId: CreateApplication
+      operationId: createApplication
       security:
         - OAuth2Security:
             - ap:application:create
@@ -5239,7 +5236,7 @@ paths:
       description: |
         Retrieves applications belonging to the organization specified in the JWT token.
         Filters by project using the required `projectId` query parameter.
-      operationId: ListApplications
+      operationId: listApplications
       security:
         - OAuth2Security:
             - ap:application:read
@@ -5283,7 +5280,7 @@ paths:
       description: |
         Retrieves a specific application by handle. Access is validated against
         the organization in the JWT token.
-      operationId: GetApplication
+      operationId: getApplication
       security:
         - OAuth2Security:
             - ap:application:read
@@ -5312,7 +5309,7 @@ paths:
       summary: Update application
       description: |
         Updates an existing application by handle.
-      operationId: UpdateApplication
+      operationId: updateApplication
       security:
         - OAuth2Security:
             - ap:application:update
@@ -5351,7 +5348,7 @@ paths:
       summary: Delete application
       description: |
         Deletes an existing application by handle.
-      operationId: DeleteApplication
+      operationId: deleteApplication
       security:
         - OAuth2Security:
             - ap:application:delete
@@ -5379,7 +5376,7 @@ paths:
       summary: List application API key mappings
       description: |
         Lists all API keys mapped to the specified application.
-      operationId: ListApplicationAPIKeys
+      operationId: listApplicationApiKeys
       security:
         - OAuth2Security:
             - ap:application:api_key:read
@@ -5427,7 +5424,7 @@ paths:
       summary: Add application API key mappings
       description: |
         Adds API key mappings to the specified application.
-      operationId: AddApplicationAPIKeys
+      operationId: addApplicationApiKeys
       security:
         - OAuth2Security:
             - ap:application:api_key:create
@@ -5467,7 +5464,7 @@ paths:
       summary: Remove application API key mapping
       description: |
         Removes a mapped API key from the specified application.
-      operationId: RemoveApplicationAPIKey
+      operationId: removeApplicationApiKey
       security:
         - OAuth2Security:
             - ap:application:api_key:delete
@@ -5499,7 +5496,7 @@ paths:
       summary: List application associations
       description: |
         Lists association targets mapped to the specified application.
-      operationId: ListApplicationAssociations
+      operationId: listApplicationAssociations
       security:
         - OAuth2Security:
             - ap:application:association:read
@@ -5544,7 +5541,7 @@ paths:
       summary: Add application associations
       description: |
         Adds association targets to the specified application.
-      operationId: AddApplicationAssociations
+      operationId: addApplicationAssociations
       security:
         - OAuth2Security:
             - ap:application:association:create
@@ -5583,7 +5580,7 @@ paths:
       summary: Remove application association
       description: |
         Removes an association target from the specified application.
-      operationId: RemoveApplicationAssociation
+      operationId: removeApplicationAssociation
       security:
         - OAuth2Security:
             - ap:application:association:delete
@@ -5613,7 +5610,7 @@ paths:
       summary: List application API key mappings for an association
       description: |
         Lists API keys mapped to the specified application for the given associated target.
-      operationId: ListApplicationAssociationAPIKeys
+      operationId: listApplicationAssociationApiKeys
       security:
         - OAuth2Security:
             - ap:application:association:api_key:read
@@ -5660,7 +5657,7 @@ paths:
     post:
       summary: Create subscription plan
       description: Creates an organization-scoped subscription plan.
-      operationId: CreateSubscriptionPlan
+      operationId: createSubscriptionPlan
       security:
         - OAuth2Security:
             - ap:subscription_plan:create
@@ -5693,7 +5690,7 @@ paths:
     get:
       summary: List subscription plans
       description: Returns subscription plans for the organization.
-      operationId: ListSubscriptionPlans
+      operationId: listSubscriptionPlans
       security:
         - OAuth2Security:
             - ap:subscription_plan:read
@@ -5715,7 +5712,7 @@ paths:
   /subscription-plans/{planId}:
     get:
       summary: Get subscription plan by ID
-      operationId: GetSubscriptionPlan
+      operationId: getSubscriptionPlan
       security:
         - OAuth2Security:
             - ap:subscription_plan:read
@@ -5744,7 +5741,7 @@ paths:
           $ref: '#/components/responses/InternalServerError'
     put:
       summary: Update subscription plan
-      operationId: UpdateSubscriptionPlan
+      operationId: updateSubscriptionPlan
       security:
         - OAuth2Security:
             - ap:subscription_plan:update
@@ -5785,7 +5782,7 @@ paths:
           $ref: '#/components/responses/InternalServerError'
     delete:
       summary: Delete subscription plan
-      operationId: DeleteSubscriptionPlan
+      operationId: deleteSubscriptionPlan
       security:
         - OAuth2Security:
             - ap:subscription_plan:delete
@@ -5817,7 +5814,7 @@ paths:
       description: |
         Creates a subscription for the specified API.
         `subscriberId` identifies the unique subscriber for this API, allowing multiple subscribers to create subscriptions for the same API.
-      operationId: CreateSubscription
+      operationId: createSubscription
       security:
         - OAuth2Security:
             - ap:subscription:create
@@ -5855,7 +5852,7 @@ paths:
         Returns subscriptions filtered by API and/or application.
         Optional query parameters apiId, subscriberId, applicationId and status filter the list.
         Supports pagination via limit and offset.
-      operationId: ListSubscriptions
+      operationId: listSubscriptions
       security:
         - OAuth2Security:
             - ap:subscription:read
@@ -5924,7 +5921,7 @@ paths:
       description: |
         Returns a single subscription by ID (scoped to organization).
         Query parameter `subscriberId` is required and must match the subscription's subscriber for access control.
-      operationId: GetSubscription
+      operationId: getSubscription
       security:
         - OAuth2Security:
             - ap:subscription:read
@@ -5968,7 +5965,7 @@ paths:
       description: |
         Updates a subscription (e.g. status).
         Query parameter `subscriberId` is required and must match the subscription's subscriber for access control.
-      operationId: UpdateSubscription
+      operationId: updateSubscription
       security:
         - OAuth2Security:
             - ap:subscription:update
@@ -6018,7 +6015,7 @@ paths:
       description: |
         Removes the subscription for the API.
         Query parameter `subscriberId` is required and must match the subscription's subscriber for access control.
-      operationId: DeleteSubscription
+      operationId: deleteSubscription
       security:
         - OAuth2Security:
             - ap:subscription:delete
@@ -6060,7 +6057,7 @@ paths:
       description: |
         Creates a new DevPortal within the organization specified in the JWT token.
         Organization ID is automatically extracted from the token and does not need to be provided.
-      operationId: CreateDevPortal
+      operationId: createDevPortal
       security:
         - OAuth2Security:
             - ap:devportal:create
@@ -6101,7 +6098,7 @@ paths:
       description: |
         Retrieves a list of all registered DevPortals for the organization specified in the JWT token.
         Organization ID is automatically extracted from the token.
-      operationId: ListDevPortals
+      operationId: listDevPortals
       security:
         - OAuth2Security:
             - ap:devportal:read
@@ -6154,7 +6151,7 @@ paths:
       description: |
         Retrieves a specific DevPortal by its UUID. Access is validated against the organization 
         in the JWT token.
-      operationId: GetDevPortal
+      operationId: getDevPortal
       security:
         - OAuth2Security:
             - ap:devportal:read
@@ -6184,7 +6181,7 @@ paths:
       description: |
         Updates an existing DevPortal's mutable fields.
         Access is validated against the organization in the JWT token.
-      operationId: UpdateDevPortal
+      operationId: updateDevPortal
       security:
         - OAuth2Security:
             - ap:devportal:update
@@ -6230,7 +6227,7 @@ paths:
         Permanently deletes a DevPortal.
         Deletion is blocked if the DevPortal has active API publications.
         Access is validated against the organization in the JWT token.
-      operationId: DeleteDevPortal
+      operationId: deleteDevPortal
       security:
         - OAuth2Security:
             - ap:devportal:delete
@@ -6265,7 +6262,7 @@ paths:
       description: |
         Activates a DevPortal, making it available for API publishing.
         Access is validated against the organization in the JWT token.
-      operationId: ActivateDevPortal
+      operationId: activateDevPortal
       security:
         - OAuth2Security:
             - ap:devportal:update
@@ -6298,7 +6295,7 @@ paths:
       description: |
         Deactivates a DevPortal, preventing new API publications.
         Access is validated against the organization in the JWT token.
-      operationId: DeactivateDevPortal
+      operationId: deactivateDevPortal
       security:
         - OAuth2Security:
             - ap:devportal:update
@@ -6331,7 +6328,7 @@ paths:
       description: |
         Sets a DevPortal as the default for the organization.
         Access is validated against the organization in the JWT token.
-      operationId: SetDevPortalAsDefault
+      operationId: setDevPortalAsDefault
       security:
         - OAuth2Security:
             - ap:devportal:update
@@ -6375,7 +6372,7 @@ paths:
         The provider can be specified explicitly or will be auto-detected from the repository URL.
         This endpoint is used to verify repository accessibility and display branch options in the API Platform UI
         for API import functionality. Only public repositories are supported.
-      operationId: FetchGitRepoBranches
+      operationId: fetchGitRepoBranches
       security:
         - OAuth2Security:
             - ap:git:read
@@ -6445,7 +6442,7 @@ paths:
         
         This endpoint is used to verify repository accessibility and display its structure in the API Platform UI
         for API import functionality. Only public repositories are supported.
-      operationId: FetchGitRepoContent
+      operationId: fetchGitRepoContent
       security:
         - OAuth2Security:
             - ap:git:read
@@ -6505,7 +6502,7 @@ paths:
         Returns API keys created by the caller within the organization.
         Optionally filter by one or more artifact types using a comma-separated `type` query parameter.
         The plain key value is never returned.
-      operationId: listUserAPIKeys
+      operationId: listUserApiKeys
       security:
         - OAuth2Security:
             - ap:api_key:read
@@ -6538,6 +6535,225 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /secrets:
+    post:
+      summary: Create a secret
+      description: |
+        Create a new encrypted secret scoped to the organization. The plaintext value is
+        returned **once only** in this response and never again in any subsequent read.
+      operationId: createSecret
+      security:
+        - OAuth2Security:
+            - ap:secret:create
+            - ap:secret:manage
+      tags:
+        - Secrets
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SecretCreateRequest'
+            example:
+              name: wso2-openai-key
+              displayName: WSO2 OpenAI API Key
+              description: API key for WSO2 OpenAI integration
+              value: sk-xxx
+              type: API_KEY
+      responses:
+        '201':
+          description: Secret created. Value returned once only — store it securely.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SecretCreateResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    get:
+      summary: List secrets
+      description: |
+        Returns metadata for all secrets in the organization. The plaintext value is
+        never included in list or get responses.
+      operationId: listSecrets
+      security:
+        - OAuth2Security:
+            - ap:secret:read
+            - ap:secret:manage
+      tags:
+        - Secrets
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 25
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: projectId
+          in: query
+          description: Filter secrets by project scope. Omit to list all org-wide secrets.
+          schema:
+            type: string
+        - name: updatedAfter
+          in: query
+          description: RFC3339 timestamp — return only secrets updated after this time. Used by GW controller for incremental polling.
+          schema:
+            type: string
+            format: date-time
+            example: "2026-01-01T00:00:00Z"
+      responses:
+        '200':
+          description: List of secret metadata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SecretListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /secrets/{id}:
+    get:
+      summary: Get a secret by name
+      description: Returns metadata for a single secret. The plaintext value is never returned.
+      operationId: getSecret
+      security:
+        - OAuth2Security:
+            - ap:secret:read
+            - ap:secret:manage
+      tags:
+        - Secrets
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The secret handle (name)
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Secret metadata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SecretSummary'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    put:
+      summary: Rotate a secret value
+      description: |
+        Re-encrypts and stores a new value for an existing secret. The name and ID remain
+        unchanged so all `{{ secret "name" }}` placeholder references stay valid. The new
+        plaintext value is returned once only in this response.
+      operationId: rotateSecret
+      security:
+        - OAuth2Security:
+            - ap:secret:update
+            - ap:secret:manage
+      tags:
+        - Secrets
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The secret handle (name)
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SecretUpdateRequest'
+            example:
+              value: sk-new-rotated-value
+              displayName: WSO2 OpenAI API Key (rotated)
+      responses:
+        '200':
+          description: Secret rotated. New value returned once only.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SecretCreateResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      summary: Delete a secret
+      description: |
+        Soft-deletes a secret by marking it as DEPRECATED. Returns 409 if the secret is
+        still referenced by any LLM provider or API configuration.
+      operationId: deleteSecret
+      security:
+        - OAuth2Security:
+            - ap:secret:delete
+            - ap:secret:manage
+      tags:
+        - Secrets
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The secret handle (name)
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Secret deleted successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Secret is referenced by active resources
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SecretDeleteConflict'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
 components:
   securitySchemes:
     OAuth2Security:
