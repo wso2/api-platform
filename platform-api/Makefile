@@ -76,13 +76,13 @@ it-all-dbs: ## Run integration tests across SQLite, PostgreSQL and SQL Server
 	@$(MAKE) it-postgres
 	@$(MAKE) it-sqlserver
 
-e2e: ## Run the combined platform-api + gateway live-traffic e2e (E2E_DB=postgres|sqlite|sqlserver)
-	@cd ../tests/integration-e2e && E2E_DB=$${E2E_DB:-postgres} ./run-e2e.sh
+e2e: ## Run the combined platform-api + gateway Cucumber e2e (E2E_DB=postgres|sqlite|sqlserver)
+	@cd ../tests/integration-e2e && E2E_DB=$${E2E_DB:-postgres} go test -run TestFeatures -count=1 -v -timeout 25m ./...
 
-e2e-all-dbs: ## Run the combined e2e across all three databases
-	@cd ../tests/integration-e2e && E2E_DB=sqlite ./run-e2e.sh
-	@cd ../tests/integration-e2e && E2E_DB=postgres ./run-e2e.sh
-	@cd ../tests/integration-e2e && E2E_DB=sqlserver ./run-e2e.sh
+e2e-all-dbs: ## Run the combined Cucumber e2e across all three databases
+	@cd ../tests/integration-e2e && E2E_DB=sqlite go test -run TestFeatures -count=1 -v -timeout 25m ./...
+	@cd ../tests/integration-e2e && E2E_DB=postgres go test -run TestFeatures -count=1 -v -timeout 25m ./...
+	@cd ../tests/integration-e2e && E2E_DB=sqlserver go test -run TestFeatures -count=1 -v -timeout 25m ./...
 
 build: ## Build Docker image
 	@echo "Building Docker image ($(IMAGE_NAME):$(VERSION))..."

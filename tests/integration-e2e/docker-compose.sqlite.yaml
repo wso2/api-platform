@@ -1,6 +1,6 @@
 # SQLite variant of the combined e2e stack. platform-api and gateway-controller
 # each use their own SQLite file (no shared DB server). Same scenario as the
-# PostgreSQL stack; see run-e2e.sh and README.md.
+# PostgreSQL stack; see the godog suite and README.md.
 services:
   platform-api:
     image: ${PLATFORM_API_IMAGE:-platform-api:it-e2e}
@@ -20,7 +20,7 @@ services:
     volumes:
       - ./platform-api-config.toml:/etc/platform-api/config.toml:ro
     ports:
-      - "9243:9243"
+      - "${PA_HOST_PORT:-9243}:9243"
     networks: [e2e]
 
   gateway-controller:

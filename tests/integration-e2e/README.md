@@ -34,60 +34,65 @@ variant uses one server with two databases (`init-db.sql`).
   `…/api/internal/v1/subscription-plans` and posts its manifest to
   `…/api/internal/v1/gateways/{id}/manifest`.
 
-## Bootstrap (solves the token chicken-and-egg)
+## Cucumber suite (godog)
 
-The gateway-controller needs a valid registration token at start-up, but the
-token is minted by platform-api at run time. `run-e2e.sh` therefore runs in two
-phases:
+The suite is written in Gherkin and run by [godog](https://github.com/cucumber/godog),
+consistent with `gateway/it`:
 
-1. **Phase 1** – start the database + `platform-api` + `sample-backend`,
-   authenticate (`admin`/`admin`), then via the platform-api REST API create a
-   project, the REST API, a gateway and a registration token, attach the gateway
-   and deploy the API.
-2. **Phase 2** – start `gateway-controller` (with
-   `GATEWAY_REGISTRATION_TOKEN=<minted token>`) + `gateway-runtime`. The
-   controller connects to platform-api and syncs the deployment.
+| File | Purpose |
+|------|---------|
+| `features/api-deployment.feature` | The scenarios (Gherkin). |
+| `suite_test.go` | godog runner + `BeforeSuite`/`AfterSuite` (compose orchestration, bootstrap) + platform-api REST helpers. |
+| `steps_test.go` | step definitions + ingress polling. |
+| `docker-compose*.yaml` | the stack per database engine. |
 
-See "What the scenario does" below for the exact endpoints and assertions used
-by the script.
+### How the harness works
+
+`BeforeSuite` brings the whole stack up once and solves the registration-token
+chicken-and-egg: it starts the control plane, authenticates (`admin`/`admin`),
+creates a project and one (or two) gateway(s) with their registration tokens,
+then starts the gateway controllers with those tokens. Each scenario then creates
+its own API and deploys it to a pre-registered gateway, so scenarios are
+independent. The `I deploy the API to the gateway` step bounces that gateway's
+controller, because the controller runs its full deployment sync only once on
+connect (`c.syncOnce` in `pkg/controlplane/client.go`); the restart re-runs that
+sync so the new deployment is picked up.
 
 ## Running
 
-Build the component images once (tagged `it-e2e`), then run `run-e2e.sh`:
+Build the component images once (tagged `it-e2e`), then run the suite:
 
 ```bash
-cd platform-api && make build VERSION=it-e2e PLATFORM_API_IMAGE=platform-api:it-e2e   # or: docker build -t platform-api:it-e2e ...
-cd gateway      && make build VERSION=it-e2e                                            # gateway-controller / gateway-runtime :it-e2e
+cd platform-api && docker build -t platform-api:it-e2e --build-context common=../common .
+cd gateway      && make build VERSION=it-e2e   # gateway-controller / gateway-runtime :it-e2e
 
 cd tests/integration-e2e
-./run-e2e.sh                 # PostgreSQL (default)
-E2E_DB=sqlite ./run-e2e.sh   # SQLite
-MSSQL_IMAGE=mcr.microsoft.com/azure-sql-edge:latest E2E_DB=sqlserver ./run-e2e.sh  # SQL Server (azure-sql-edge on Apple Silicon)
+go test -run TestFeatures -v ./...                                  # PostgreSQL (default)
+E2E_DB=sqlite go test -run TestFeatures -v ./...                    # SQLite
+MSSQL_IMAGE=mcr.microsoft.com/azure-sql-edge:latest E2E_DB=sqlserver \
+  go test -run TestFeatures -v ./...                                # SQL Server (azure-sql-edge on Apple Silicon)
 ```
 
 Or via make (from `platform-api/`): `make e2e`, `make e2e-all-dbs`.
 
-`E2E_KEEP=1` leaves the stack up for inspection; `./run-e2e.sh down` tears it down.
-The gateway ingress is published on host port `18080` (override with `GW_HTTP_PORT`)
-to avoid clashing with other local services on 8080.
+- `E2E_DB` = `postgres` (default) | `sqlite` | `sqlserver`.
+- `E2E_KEEP=1` leaves the stack up after the run for inspection.
+- `E2E_TAGS=@smoke` runs a tag subset. The `@multigateway` scenario runs only on
+  the postgres stack (the only one wired with a second gateway) and is otherwise
+  skipped automatically.
+- `PA_HOST_PORT` / `GW_HTTP_PORT` / `GW2_HTTP_PORT` override the published host
+  ports to avoid clashing with other local stacks (defaults 9243 / 18080 / 18081).
 
-### What the scenario does
+### Scenarios
 
-1. **Phase 1** – start the DB + platform-api + sample-backend. Log in (admin/admin),
-   then via the platform-api REST API create a project, a REST API (upstream →
-   sample-backend), a gateway, a registration token, attach the gateway and
-   **deploy** the API. (Deploying before the controller starts means its initial
-   sync-on-connect picks up the deployment — no race.)
-2. **Phase 2** – start the gateway-controller (with the registration token) +
-   gateway-runtime. The controller connects to platform-api, syncs the deployment
-   and programs the runtime.
-3. **Assert** – a request to the gateway ingress (`:18080/e2e/`) returns the
-   sample-backend response (HTTP 200 via Envoy).
-4. **Lifecycle** – a path outside the API context returns 404; undeploy → the
-   data plane stops serving (404); redeploy → it serves again (200).
-5. **Multi-gateway** (PostgreSQL stack only — it is DB-independent) – the same
-   API is deployed to a second gateway; both ingresses serve it (fan-out), and
-   undeploying from one gateway leaves the other serving (per-gateway isolation).
+1. **An API deployed to a gateway is served by the data plane** — deploy, then a
+   request to the ingress returns 200 via Envoy; a path outside the API context
+   returns 404.
+2. **Undeploy / redeploy** — undeploying stops the data plane serving the API
+   (404); redeploying restores it (200).
+3. **Multi-gateway** (`@multigateway`, postgres) — the same API deployed to two
+   gateways is served by both (fan-out), and undeploying from one leaves the
+   other serving (per-gateway isolation).
 
 ## Status — passing on all three databases
 

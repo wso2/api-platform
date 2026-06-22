@@ -57,5 +57,5 @@ jobs:
         working-directory: samples/sample-service
 
       - name: Run combined e2e (${{ matrix.db }})
-        run: E2E_DB=${{ matrix.db }} ./run-e2e.sh
+        run: E2E_DB=${{ matrix.db }} go test -run TestFeatures -count=1 -v -timeout 25m ./...
         working-directory: tests/integration-e2e

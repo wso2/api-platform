@@ -1,10 +1,10 @@
 # SQL Server variant of the combined e2e stack. One SQL Server instance holds
 # two databases (platform_api, gateway_test). Same scenario as the other
-# backends; see run-e2e.sh and README.md.
+# backends; see the godog suite and README.md.
 #
 # CI (amd64) uses the default mcr.microsoft.com/mssql/server image. On Apple
 # Silicon that image fails under emulation, so override with Azure SQL Edge:
-#   MSSQL_IMAGE=mcr.microsoft.com/azure-sql-edge:latest E2E_DB=sqlserver ./run-e2e.sh
+#   MSSQL_IMAGE=mcr.microsoft.com/azure-sql-edge:latest E2E_DB=sqlserver go test -run TestFeatures ./...
 services:
   sqlserver:
     image: ${MSSQL_IMAGE:-mcr.microsoft.com/mssql/server:2022-latest}
@@ -59,7 +59,7 @@ services:
     volumes:
       - ./platform-api-config.toml:/etc/platform-api/config.toml:ro
     ports:
-      - "9243:9243"
+      - "${PA_HOST_PORT:-9243}:9243"
     depends_on:
       mssql-init:
         condition: service_completed_successfully

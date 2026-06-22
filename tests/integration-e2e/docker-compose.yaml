@@ -56,7 +56,7 @@ services:
     volumes:
       - ./platform-api-config.toml:/etc/platform-api/config.toml:ro
     ports:
-      - "9243:9243"
+      - "${PA_HOST_PORT:-9243}:9243"
     depends_on:
       postgres:
         condition: service_healthy
@@ -121,7 +121,7 @@ services:
 
   # Second gateway (own controller + runtime + DB) for the multi-gateway
   # scenario: the same API is deployed to both gateways, and undeploying from one
-  # must not affect the other. Started on demand by run-e2e.sh.
+  # must not affect the other. Started on demand by the godog suite.
   gateway-controller-2:
     image: ${GATEWAY_CONTROLLER_IMAGE:-ghcr.io/wso2/api-platform/gateway-controller:it-e2e}
     command: ["-config", "/etc/gateway-controller/config.toml"]
