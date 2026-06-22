@@ -5928,6 +5928,7 @@ components:
         version:
           type: string
           example: v1
+          pattern: '^v\d+$'
         executionCondition:
           type: string
           description: Expression controlling conditional execution of the policy
@@ -5950,6 +5951,7 @@ components:
           type: array
           items:
             type: string
+            enum: [ GET, POST, PUT, DELETE, PATCH, OPTIONS, HEAD, "*" ]
             description: "HTTP method: GET, POST, PUT, DELETE, PATCH, OPTIONS, HEAD, or * for all"
         params:
           type: object

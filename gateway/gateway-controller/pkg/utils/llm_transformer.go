@@ -820,14 +820,17 @@ func legacyToOperationPolicy(p api.LLMPolicy) api.OperationPolicy {
 // so that advanced-ratelimit in globalPolicies uses one shared API-level
 // counter rather than the default per-route (routename) bucket.
 func withGlobalAdvancedRatelimitKeyExtraction(p api.Policy) api.Policy {
-	if p.Params == nil {
-		return p
+	// Treat nil params as an empty map so the apiname key-extraction default is
+	// injected even when the policy carried no params.
+	var existing map[string]interface{}
+	if p.Params != nil {
+		if _, ok := (*p.Params)["keyExtraction"]; ok {
+			return p
+		}
+		existing = *p.Params
 	}
-	if _, ok := (*p.Params)["keyExtraction"]; ok {
-		return p
-	}
-	newParams := make(map[string]interface{}, len(*p.Params)+1)
-	for k, v := range *p.Params {
+	newParams := make(map[string]interface{}, len(existing)+1)
+	for k, v := range existing {
 		newParams[k] = v
 	}
 	newParams["keyExtraction"] = []map[string]interface{}{{"type": "apiname"}}
