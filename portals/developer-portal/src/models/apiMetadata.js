@@ -43,7 +43,7 @@ const APIMetadata = sequelize.define('DP_API_METADATA', {
   },
   API_DESCRIPTION: {
     type: DataTypes.STRING,
-    allowNull: false,
+    allowNull: true,
   },
   API_VERSION: {
     type: DataTypes.STRING,
@@ -127,6 +127,11 @@ const APIMetadata = sequelize.define('DP_API_METADATA', {
           name: 'UQ_API_METADATA_ORG_REFERENCE_ID',
           unique: true,
           fields: ['ORG_ID', 'REFERENCE_ID']
+      },
+      {
+          name: 'UQ_API_METADATA_HANDLE_ORG',
+          unique: true,
+          fields: ['API_HANDLE', 'ORG_ID']
       }
   ]
 });

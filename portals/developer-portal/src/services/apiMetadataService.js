@@ -898,7 +898,7 @@ const getAPIFile = async (req, res) => {
         const fileExtension = path.extname(apiFileName).toLowerCase();
         apiFileResponse = await apiFileDao.get(apiFileName, type, orgId, apiId);
         if (apiFileResponse) {
-            apiFile = apiFileResponse.API_FILE;
+            apiFile = apiFileResponse.FILE_CONTENT;
             //convert to text to check if link
             const textContent = new TextDecoder().decode(apiFile);
             if (textContent.startsWith("http") || textContent.startsWith("https")) {

@@ -170,7 +170,7 @@ const loadAPISubscriptions = async (req, res) => {
         if (metaData?.apiInfo?.apiType !== constants.API_TYPE.GRAPHQL && metaData?.apiInfo?.apiType !== constants.API_TYPE.MCP) {
             try {
                 const apiFile = await apiFileDao.getDoc(constants.DOC_TYPES.API_DEFINITION, orgID, apiID);
-                apiDefinitionForNav = apiFile?.API_FILE?.toString(constants.CHARSET_UTF8) || null;
+                apiDefinitionForNav = apiFile?.FILE_CONTENT?.toString(constants.CHARSET_UTF8) || null;
             } catch (definitionErr) {
                 logger.debug('Could not load API definition for API keys nav check', {
                     orgID,

@@ -510,7 +510,7 @@ const getSpecs = async (orgID, apiIDs) => {
             attributes: [
                 'API_ID',
                 'FILE_NAME',
-                'API_FILE'
+                'FILE_CONTENT'
             ],
             where: {
                 API_ID: {
@@ -535,7 +535,7 @@ const getSpecs = async (orgID, apiIDs) => {
             return {
                 apiID: spec.API_ID,
                 fileName: spec.FILE_NAME,
-                apiSpec: spec.API_FILE ? spec.API_FILE.toString('utf8') : null
+                apiSpec: spec.FILE_CONTENT ? spec.FILE_CONTENT.toString('utf8') : null
             };
         }).filter(spec => spec !== null);
     } catch (error) {

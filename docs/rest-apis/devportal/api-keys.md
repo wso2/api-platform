@@ -53,7 +53,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 {
   "keyId": "key-12345",
   "name": "weather_prod_key",
-  "apiId": "api-7f4c2a6b",
   "key": "ak_dGhpcyBpcyBub3QgYSByZWFsIGtleQ",
   "expiresAt": "2026-12-31T23:59:59Z",
   "status": "ACTIVE"
@@ -342,7 +341,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 {
   "keyId": "key-12345",
   "name": "weather_prod_key",
-  "apiId": "api-7f4c2a6b",
   "key": "ak_dGhpcyBpcyBub3QgYSByZWFsIGtleQ",
   "expiresAt": "2026-12-31T23:59:59Z",
   "status": "ACTIVE"

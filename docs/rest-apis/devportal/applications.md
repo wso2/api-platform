@@ -39,21 +39,29 @@ This operation requires <strong>Basic Auth</strong> authentication.
 > 200 Response
 
 ```json
-[
-  {
-    "id": "app-12345",
-    "name": "Weather App",
-    "description": "Application used to call Weather APIs.",
-    "type": "WEB",
-    "appMap": [
-      {
-        "appRefID": "cp-app-98765",
-        "token": "OAUTH",
-        "shared": true
-      }
-    ]
+{
+  "list": [
+    {
+      "id": "app-12345",
+      "name": "Weather App",
+      "description": "Application used to call Weather APIs.",
+      "type": "WEB",
+      "appMap": [
+        {
+          "appRefID": "asgardeo-client-abc123",
+          "kmID": "km-uuid-12345",
+          "keyType": "PRODUCTION",
+          "additionalProperties": {}
+        }
+      ]
+    }
+  ],
+  "pagination": {
+    "total": 1,
+    "limit": 20,
+    "offset": 0
   }
-]
+}
 ```
 
 > 500 Response
@@ -84,14 +92,22 @@ Status Code **200**
 |»» name|string|false|none|none|
 |»» description|string|false|none|none|
 |»» type|string|false|none|none|
-|»» appMap|[[ApplicationKeyMappingSummary](schemas.md#schemaapplicationkeymappingsummary)]|false|none|none|
-|»»» appRefID|string|false|none|none|
-|»»» token|string|false|none|none|
-|»»» shared|boolean|false|none|none|
+|»» appMap|[[ApplicationKeyMappingSummary](schemas.md#schemaapplicationkeymappingsummary)]|false|none|[OAuth key mapping entry attached to an application.]|
+|»»» appRefID|string|false|none|Authorization Server client ID registered via DCR.|
+|»»» kmID|string|false|none|UUID of the key manager that issued credentials for this mapping.|
+|»»» keyType|string|false|none|Key type for this mapping.|
+|»»» additionalProperties|object|false|none|AS-specific extra properties returned during DCR.|
 |» pagination|[Pagination](schemas.md#schemapagination)|false|none|Standard pagination metadata returned with collection responses.|
 |»» total|integer|true|none|Total number of records matching the query.|
 |»» limit|integer|true|none|Maximum number of records returned in this response.|
 |»» offset|integer|true|none|Number of records skipped before this page.|
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|keyType|PRODUCTION|
+|keyType|SANDBOX|
 
 ## Create an application
 
@@ -154,7 +170,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "id": "app-12345",
   "name": "Weather App",
   "description": "Application used to call Weather APIs.",
-  "type": "WEB"
+  "type": "WEB",
+  "appMap": []
 }
 ```
 
@@ -296,7 +313,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "id": "app-12345",
   "name": "Weather App",
   "description": "Application used to call Weather APIs.",
-  "type": "WEB"
+  "type": "WEB",
+  "appMap": []
 }
 ```
 

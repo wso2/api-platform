@@ -903,12 +903,7 @@ function resolveApiType(apiType) {
 }
 
 function filterAllowedAPIs(searchResults, allowedAPIs) {
-
     searchResults = searchResults.filter(api => {
-        const gatewayVendor = api?.apiInfo?.gatewayVendor || 'wso2';
-        if (constants.FEDERATED_GATEWAY_VENDORS.includes(gatewayVendor)) {
-            return true;
-        }
         // MCP servers published via the registry have no referenceID
         if (api?.apiInfo?.apiType === constants.API_TYPE.MCP && !api.apiReferenceID) {
             return true;

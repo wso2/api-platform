@@ -395,12 +395,11 @@ xor
       {}
     ],
     "apiVersion": "string",
+    "apiStatus": "PUBLISHED",
     "apiDescription": "string",
     "apiType": "string",
     "visibility": "string",
     "agentVisibility": "string",
-    "gatewayVendor": "string",
-    "tokenBasedSubscriptionEnabled": true,
     "gatewayType": "string",
     "addedLabels": [
       "string"
@@ -439,6 +438,7 @@ xor
       "displayName": "string",
       "description": "string",
       "requestCount": 0,
+      "refId": "string",
       "orgID": "string"
     }
   ]
@@ -481,12 +481,11 @@ xor
       {}
     ],
     "apiVersion": "string",
+    "apiStatus": "PUBLISHED",
     "apiDescription": "string",
     "apiType": "string",
     "visibility": "string",
     "agentVisibility": "string",
-    "gatewayVendor": "string",
-    "tokenBasedSubscriptionEnabled": true,
     "gatewayType": "string",
     "addedLabels": [
       "string"
@@ -525,6 +524,7 @@ xor
       "displayName": "string",
       "description": "string",
       "requestCount": 0,
+      "refId": "string",
       "orgID": "string"
     }
   ]
@@ -561,12 +561,11 @@ xor
     {}
   ],
   "apiVersion": "string",
+  "apiStatus": "PUBLISHED",
   "apiDescription": "string",
   "apiType": "string",
   "visibility": "string",
   "agentVisibility": "string",
-  "gatewayVendor": "string",
-  "tokenBasedSubscriptionEnabled": true,
   "gatewayType": "string",
   "addedLabels": [
     "string"
@@ -605,12 +604,11 @@ xor
 |apiTitle|string¦null|false|none|none|
 |remotes|[object]|false|none|none|
 |apiVersion|string|false|none|none|
+|apiStatus|string|false|none|API lifecycle status (e.g. PUBLISHED, UNPUBLISHED).|
 |apiDescription|string|false|none|none|
 |apiType|string|false|none|none|
 |visibility|string|false|none|none|
 |agentVisibility|string|false|none|none|
-|gatewayVendor|string|false|none|none|
-|tokenBasedSubscriptionEnabled|boolean|false|none|none|
 |gatewayType|string¦null|false|none|none|
 |addedLabels|[string]|false|none|none|
 |removedLabels|[string]|false|none|none|
@@ -703,6 +701,7 @@ xor
   "displayName": "string",
   "description": "string",
   "requestCount": 0,
+  "refId": "string",
   "orgID": "string"
 }
 
@@ -734,6 +733,7 @@ continued
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
+|refId|string¦null|false|none|Platform API subscription plan UUID associated with this plan.|
 |orgID|string|false|none|none|
 
 <h2 id="tocS_LabelResponse">LabelResponse</h2>
@@ -773,9 +773,15 @@ continued
   "type": "WEB",
   "appMap": [
     {
-      "appRefID": "cp-app-98765",
-      "token": "OAUTH",
-      "shared": true
+      "appRefID": "asgardeo-client-abc123",
+      "kmID": "km-uuid-12345",
+      "keyType": "PRODUCTION",
+      "additionalProperties": {
+        "client_name": "my-app",
+        "grant_types": [
+          "client_credentials"
+        ]
+      }
     }
   ]
 }
@@ -790,7 +796,7 @@ continued
 |name|string|false|none|none|
 |description|string|false|none|none|
 |type|string|false|none|none|
-|appMap|[[ApplicationKeyMappingSummary](#schemaapplicationkeymappingsummary)]|false|none|none|
+|appMap|[[ApplicationKeyMappingSummary](#schemaapplicationkeymappingsummary)]|false|none|[OAuth key mapping entry attached to an application.]|
 
 <h2 id="tocS_ApplicationKeyMappingSummary">ApplicationKeyMappingSummary</h2>
 
@@ -801,20 +807,36 @@ continued
 
 ```json
 {
-  "appRefID": "cp-app-98765",
-  "token": "OAUTH",
-  "shared": true
+  "appRefID": "asgardeo-client-abc123",
+  "kmID": "km-uuid-12345",
+  "keyType": "PRODUCTION",
+  "additionalProperties": {
+    "client_name": "my-app",
+    "grant_types": [
+      "client_credentials"
+    ]
+  }
 }
 
 ```
+
+OAuth key mapping entry attached to an application.
 
 ### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|appRefID|string|false|none|none|
-|token|string|false|none|none|
-|shared|boolean|false|none|none|
+|appRefID|string|false|none|Authorization Server client ID registered via DCR.|
+|kmID|string|false|none|UUID of the key manager that issued credentials for this mapping.|
+|keyType|string|false|none|Key type for this mapping.|
+|additionalProperties|object|false|none|AS-specific extra properties returned during DCR.|
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|keyType|PRODUCTION|
+|keyType|SANDBOX|
 
 <h2 id="tocS_ViewResponse">ViewResponse</h2>
 
@@ -1252,34 +1274,6 @@ and
 |*anonymous*|object|false|none|API key response returned by generate/regenerate. The plaintext secret is returned exactly once and never persisted — store it securely.|
 |» key|string|false|none|One-time plaintext API key secret.|
 
-<h2 id="tocS_SubscriptionRequest">SubscriptionRequest</h2>
-
-<a id="schemasubscriptionrequest"></a>
-<a id="schema_SubscriptionRequest"></a>
-<a id="tocSsubscriptionrequest"></a>
-<a id="tocssubscriptionrequest"></a>
-
-```json
-{
-  "applicationID": "app-12345",
-  "apiId": "api-7f4c2a6b",
-  "apiReferenceID": "cp-api-12345",
-  "planId": "plan-gold",
-  "planName": "Gold"
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|applicationID|string|true|none|Developer Portal application ID.|
-|apiId|string|true|none|Developer Portal API ID.|
-|apiReferenceID|string|false|none|Control-plane API reference ID, used when a CP subscription is created or updated.|
-|planId|string|true|none|Developer Portal subscription plan ID.|
-|planName|string|false|none|Subscription plan name used as the throttling policy.|
-
 <h2 id="tocS_KeyManagerRequest">KeyManagerRequest</h2>
 
 <a id="schemakeymanagerrequest"></a>
@@ -1640,143 +1634,6 @@ Webhook subscriber configuration. The secret is never included.
 |keyType|PRODUCTION|
 |keyType|SANDBOX|
 
-<h2 id="tocS_AppKeyMappingCreateResponse">AppKeyMappingCreateResponse</h2>
-
-<a id="schemaappkeymappingcreateresponse"></a>
-<a id="schema_AppKeyMappingCreateResponse"></a>
-<a id="tocSappkeymappingcreateresponse"></a>
-<a id="tocsappkeymappingcreateresponse"></a>
-
-```json
-{
-  "keyMappingId": "km-12345",
-  "keyManager": "Resident Key Manager",
-  "keyType": "PRODUCTION",
-  "consumerKey": "consumer-key-123",
-  "consumerSecret": "consumer-secret-abc",
-  "supportedGrantTypes": [
-    "client_credentials",
-    "refresh_token"
-  ],
-  "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token",
-  "appRefId": "cp-app-98765",
-  "subscriptionScopes": [
-    "weather.read",
-    "weather.write"
-  ]
-}
-
-```
-
-Control-plane OAuth key generation or mapped-key response. Exact fields can vary by key manager; the Developer Portal always adds `appRefId` and normalized `subscriptionScopes`.
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|keyMappingId|string|false|none|none|
-|keyManager|string|false|none|none|
-|keyType|string|false|none|none|
-|consumerKey|string|false|none|none|
-|consumerSecret|string|false|none|none|
-|supportedGrantTypes|[string]|false|none|none|
-|tokenEndpoint|string(uri)|false|none|Token endpoint of the key manager. Populated in decoupled mode.|
-|appRefId|string|false|none|Control-plane application reference ID.|
-|subscriptionScopes|[string]|false|none|Scope keys available through the application's subscriptions.|
-
-<h2 id="tocS_AppKeyMappingListResponse">AppKeyMappingListResponse</h2>
-
-<a id="schemaappkeymappinglistresponse"></a>
-<a id="schema_AppKeyMappingListResponse"></a>
-<a id="tocSappkeymappinglistresponse"></a>
-<a id="tocsappkeymappinglistresponse"></a>
-
-```json
-{
-  "APP_ID": "app-12345",
-  "ORG_ID": "org-12345",
-  "CREATED_BY": "user-12345",
-  "NAME": "Weather App",
-  "DESCRIPTION": "Application used to call Weather APIs.",
-  "TYPE": "WEB",
-  "DP_APP_KEY_MAPPINGs": [
-    {
-      "MAPPING_ID": "map-12345",
-      "APP_ID": "app-12345",
-      "ORG_ID": "org-12345",
-      "KM_ID": "3f6c1b2a-4d5e-4f7a-8b9c-0d1e2f3a4b5c",
-      "AS_CLIENT_ID": "asgardeo-client-abc123",
-      "KEY_TYPE": "PRODUCTION",
-      "ADDITIONAL_PROPERTIES": {
-        "client_name": "my-app",
-        "grant_types": [
-          "client_credentials"
-        ]
-      }
-    }
-  ]
-}
-
-```
-
-Application row with included key mapping rows as returned by Sequelize.
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|APP_ID|string|false|none|none|
-|ORG_ID|string|false|none|none|
-|CREATED_BY|string|false|none|none|
-|NAME|string|false|none|none|
-|DESCRIPTION|string|false|none|none|
-|TYPE|string|false|none|none|
-|DP_APP_KEY_MAPPINGs|[[AppKeyMappingRowResponse](#schemaappkeymappingrowresponse)]|false|none|none|
-
-<h2 id="tocS_AppKeyMappingRowResponse">AppKeyMappingRowResponse</h2>
-
-<a id="schemaappkeymappingrowresponse"></a>
-<a id="schema_AppKeyMappingRowResponse"></a>
-<a id="tocSappkeymappingrowresponse"></a>
-<a id="tocsappkeymappingrowresponse"></a>
-
-```json
-{
-  "MAPPING_ID": "map-12345",
-  "APP_ID": "app-12345",
-  "ORG_ID": "org-12345",
-  "KM_ID": "3f6c1b2a-4d5e-4f7a-8b9c-0d1e2f3a4b5c",
-  "AS_CLIENT_ID": "asgardeo-client-abc123",
-  "KEY_TYPE": "PRODUCTION",
-  "ADDITIONAL_PROPERTIES": {
-    "client_name": "my-app",
-    "grant_types": [
-      "client_credentials"
-    ]
-  }
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|MAPPING_ID|string|false|none|none|
-|APP_ID|string|false|none|none|
-|ORG_ID|string|false|none|none|
-|KM_ID|string(uuid)¦null|false|none|UUID of the key manager that issued credentials for this mapping.|
-|AS_CLIENT_ID|string¦null|false|none|Authorization Server client ID registered via DCR.|
-|KEY_TYPE|string|false|none|Key type for this mapping. Used to separate production and sandbox keys in the UI.|
-|ADDITIONAL_PROPERTIES|object¦null|false|none|AS-specific extra properties returned during DCR (e.g. token endpoint, grant types).|
-
-#### Enumerated Values
-
-|Property|Value|
-|---|---|
-|KEY_TYPE|PRODUCTION|
-|KEY_TYPE|SANDBOX|
-
 <h2 id="tocS_ViewCreateRequest">ViewCreateRequest</h2>
 
 <a id="schemaviewcreaterequest"></a>
@@ -1831,97 +1688,6 @@ Application row with included key mapping rows as returned by Sequelize.
 |displayName|string|false|none|none|
 |addedLabels|[string]|false|none|Label names to attach to the view.|
 |removedLabels|[string]|false|none|Label names to detach from the view.|
-
-<h2 id="tocS_ApiKeyGenerateRequest">ApiKeyGenerateRequest</h2>
-
-<a id="schemaapikeygeneraterequest"></a>
-<a id="schema_ApiKeyGenerateRequest"></a>
-<a id="tocSapikeygeneraterequest"></a>
-<a id="tocsapikeygeneraterequest"></a>
-
-```json
-{
-  "apiId": "cp-api-12345",
-  "applicationId": "cp-app-98765",
-  "devportalAppId": "app-12345",
-  "projectID": "project-12345",
-  "keyType": "PRODUCTION",
-  "name": "weather-prod-key",
-  "subscriptionPlan": "string"
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|apiId|string|true|none|API reference ID.|
-|applicationId|string|false|none|Existing application ID, if one already exists.|
-|devportalAppId|string|true|none|Developer Portal application ID.|
-|projectID|string|true|none|Project ID used to resolve environment templates.|
-|keyType|string|true|none|none|
-|name|string|false|none|Optional API key name. When omitted, the service generates a name from API handle, application reference, and key type.|
-|subscriptionPlan|any|false|none|Subscription plan details for the subscription.|
-
-oneOf
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|» *anonymous*|string|false|none|none|
-
-xor
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|» *anonymous*|[GenericObject](#schemagenericobject)|false|none|none|
-
-#### Enumerated Values
-
-|Property|Value|
-|---|---|
-|keyType|PRODUCTION|
-|keyType|SANDBOX|
-
-<h2 id="tocS_ApplicationKeysGenerateRequest">ApplicationKeysGenerateRequest</h2>
-
-<a id="schemaapplicationkeysgeneraterequest"></a>
-<a id="schema_ApplicationKeysGenerateRequest"></a>
-<a id="tocSapplicationkeysgeneraterequest"></a>
-<a id="tocsapplicationkeysgeneraterequest"></a>
-
-```json
-{
-  "keyType": "PRODUCTION",
-  "keyManager": "Resident Key Manager",
-  "grantTypesToBeSupported": [
-    "client_credentials",
-    "refresh_token"
-  ],
-  "callbackUrl": "https://app.example.com/callback",
-  "additionalProperties": {}
-}
-
-```
-
-OAuth key generation payload accepted by the key manager endpoint.
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|keyType|string|false|none|none|
-|keyManager|string|false|none|none|
-|grantTypesToBeSupported|[string]|false|none|none|
-|callbackUrl|string(uri)|false|none|none|
-|additionalProperties|object|false|none|none|
-
-#### Enumerated Values
-
-|Property|Value|
-|---|---|
-|keyType|PRODUCTION|
-|keyType|SANDBOX|
 
 <h2 id="tocS_OAuthGenerateTokenRequest">OAuthGenerateTokenRequest</h2>
 
@@ -2011,51 +1777,6 @@ OAuth cleanup payload.
 |keyType|PRODUCTION|
 |keyType|SANDBOX|
 
-<h2 id="tocS_ApplicationApiKeyResponse">ApplicationApiKeyResponse</h2>
-
-<a id="schemaapplicationapikeyresponse"></a>
-<a id="schema_ApplicationApiKeyResponse"></a>
-<a id="tocSapplicationapikeyresponse"></a>
-<a id="tocsapplicationapikeyresponse"></a>
-
-```json
-{
-  "id": "api-key-12345",
-  "apiKeyId": "api-key-12345",
-  "name": "weather-prod-key",
-  "keyType": "PRODUCTION",
-  "apiId": "cp-api-12345",
-  "applicationId": "cp-app-98765",
-  "apiKey": "generated-api-key-value",
-  "token": "generated-api-key-value",
-  "appRefId": "cp-app-98765"
-}
-
-```
-
-API key payload. The Developer Portal adds `appRefId` for generation responses.
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|id|string|false|none|none|
-|apiKeyId|string|false|none|none|
-|name|string|false|none|none|
-|keyType|string|false|none|none|
-|apiId|string|false|none|none|
-|applicationId|string|false|none|none|
-|apiKey|string|false|none|Generated API key secret.|
-|token|string|false|none|Alternative generated key field.|
-|appRefId|string|false|none|Control-plane application reference ID added by Developer Portal generation flow.|
-
-#### Enumerated Values
-
-|Property|Value|
-|---|---|
-|keyType|PRODUCTION|
-|keyType|SANDBOX|
-
 <h2 id="tocS_ApplicationOAuthKeyResponse">ApplicationOAuthKeyResponse</h2>
 
 <a id="schemaapplicationoauthkeyresponse"></a>
@@ -2118,30 +1839,6 @@ OAuth key payload.
 |token_type|string|false|none|none|
 |expires_in|integer|false|none|none|
 |scope|string|false|none|none|
-
-<h2 id="tocS_ControllerErrorResponse">ControllerErrorResponse</h2>
-
-<a id="schemacontrollererrorresponse"></a>
-<a id="schema_ControllerErrorResponse"></a>
-<a id="tocScontrollererrorresponse"></a>
-<a id="tocscontrollererrorresponse"></a>
-
-```json
-{
-  "error": "InternalServerError",
-  "message": "An unexpected error occurred",
-  "description": "string"
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|error|string|false|none|none|
-|message|string|false|none|none|
-|description|string|false|none|none|
 
 <h2 id="tocS_APIFlowCreateResponse">APIFlowCreateResponse</h2>
 

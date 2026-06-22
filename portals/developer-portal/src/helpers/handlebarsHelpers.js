@@ -107,7 +107,6 @@ const helpers = {
 
     // Display / formatting helpers
     isMiddle: (index, length) => index === Math.floor(length / 2),
-    isFederatedAPI: (gatewayVendor) => typeof gatewayVendor === 'string' && constants.FEDERATED_GATEWAY_VENDORS.includes(gatewayVendor),
     maskToken: (token) => (!token || token.length <= 4) ? '****' : '****' + token.slice(-4),
     isCurrentPlan: (planName, subs) => Array.isArray(subs) && !!planName && subs.some(s => s.subscriptionPlanName === planName),
     currentYear: () => new Date().getFullYear(),

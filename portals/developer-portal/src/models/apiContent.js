@@ -24,7 +24,7 @@ const APIContent = sequelize.define('DP_API_CONTENT', {
         allowNull: false,
         primaryKey: true
     },
-    API_FILE: {
+    FILE_CONTENT: {
         type: DataTypes.BLOB,
         allowNull: false,
     },

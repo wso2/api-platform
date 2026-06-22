@@ -98,7 +98,6 @@ function parseApiYaml(apiHandle, samplesDir) {
             visibleGroups: spec.visibleGroups || [],
             tags: spec.tags || [],
             labels: spec.labels || [],
-            gatewayVendor: 'wso2',
             gatewayType: spec.gatewayType || null,
             owners: spec.businessInformation ? {
                 businessOwner: spec.businessInformation.businessOwner,

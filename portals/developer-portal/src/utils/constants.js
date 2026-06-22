@@ -319,7 +319,6 @@ module.exports = {
         'api-landing-md',
         'llms-txt',
     ],
-    FEDERATED_GATEWAY_VENDORS: ['aws'],
     DEFAULT_PROFILE_IMAGE_URL: 'https://raw.githubusercontent.com/wso2/docs-bijira/refs/heads/main/en/devportal-theming/profile.svg',
     WSO2_DEFAULT_URL: 'https://localhost:9443',
 }

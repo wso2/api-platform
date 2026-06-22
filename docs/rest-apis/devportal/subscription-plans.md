@@ -46,6 +46,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
       "displayName": "string",
       "description": "string",
       "requestCount": 0,
+      "refId": "string",
       "orgID": "string"
     }
   ],
@@ -136,6 +137,7 @@ Status Code **200**
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
+|»» refId|string¦null|false|none|Platform API subscription plan UUID associated with this plan.|
 |»» orgID|string|false|none|none|
 |» pagination|[Pagination](schemas.md#schemapagination)|false|none|Standard pagination metadata returned with collection responses.|
 |»» total|integer|true|none|Total number of records matching the query.|
@@ -369,6 +371,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "displayName": "string",
   "description": "string",
   "requestCount": 0,
+  "refId": "string",
   "orgID": "string"
 }
 ```
@@ -499,6 +502,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "displayName": "string",
   "description": "string",
   "requestCount": 0,
+  "refId": "string",
   "orgID": "string"
 }
 ```

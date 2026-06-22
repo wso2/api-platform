@@ -20,6 +20,7 @@ curl -X POST https://devportal.api-platform.io/o/{orgId}/devportal/v1/apis \
 ```
 
 Creates Developer Portal API metadata from either a full API artifact ZIP, an API metadata YAML file (`api.yaml` / `devportal.yaml` / `mcp.yaml`), or an `apiMetadata` JSON string. An API definition file is required unless supplied by the artifact ZIP. The YAML `spec` block accepts: `displayName`, `version`, `description`, `type`, `status`, `visibility`, `agentVisibility`, `visibleGroups`, `tags`, `labels`, `gatewayType`, `provider`, `referenceID`, `endpoints` (sandboxUrl, productionUrl), `businessInformation` (owners), and `subscriptionPlans`. The service also stores labels, subscription plan mappings, image metadata, and schema definitions for MCP or GraphQL APIs when provided.
+`subscriptionPlans` links existing org-level plans to this API by name — it does not create plans. In YAML it is a string array (`["Gold", "Silver"]`). In the JSON `apiMetadata` field it is an object array where only `planName` is used (`[{"planName":"Gold"}]`); extra fields such as `planID`, `displayName`, or `requestCount` are ignored.
 
 > Payload
 
@@ -53,7 +54,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |» apiDefinition|body|string(binary)|false|API definition file.|
 |» artifact|body|string(binary)|false|Full API ZIP artifact containing metadata and definition files.|
 |» schemaDefinition|body|string(binary)|false|Schema definition file, used by MCP APIs.|
-|» apiMetadata|body|string|false|JSON string accepted by the service when the `api` YAML file is not supplied. Accepted top-level fields mirror the YAML spec: `apiInfo` (apiName, apiVersion, apiDescription, apiType, visibility, agentVisibility, apiStatus, provider, referenceID, apiHandle, tags, labels, visibleGroups, gatewayType, owners), `endPoints` (productionURL, sandboxURL), and `subscriptionPlans`.|
+|» apiMetadata|body|string|false|JSON string accepted by the service when the `api` YAML file is not supplied. Accepted top-level fields mirror the YAML spec: `apiInfo` (apiName, apiVersion, apiDescription, apiType, visibility, agentVisibility, apiStatus, provider, referenceID, apiHandle, tags, labels, visibleGroups, gatewayType, owners), `endPoints` (productionURL, sandboxURL), and `subscriptionPlans` (array of `{ planName }` objects — only `planName` is read; the plan must already exist in the organization).|
 |orgId|path|string|true|none|
 
 > Example responses
@@ -71,12 +72,11 @@ This operation requires <strong>Basic Auth</strong> authentication.
     "apiName": "Weather API",
     "apiTitle": "Weather Forecast API",
     "apiVersion": "v1",
+    "apiStatus": "PUBLISHED",
     "apiDescription": "Weather forecast API.",
     "apiType": "REST",
     "visibility": "PUBLIC",
     "agentVisibility": "VISIBLE",
-    "gatewayVendor": "wso2",
-    "tokenBasedSubscriptionEnabled": false,
     "gatewayType": null,
     "tags": [
       "weather"
@@ -91,10 +91,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
   },
   "subscriptionPlans": [
     {
-      "planID": "plan-gold",
-      "planName": "Gold",
-      "displayName": "Gold",
-      "requestCount": 10000
+      "planName": "Gold"
     }
   ]
 }
@@ -232,33 +229,39 @@ This operation requires <strong>Basic Auth</strong> authentication.
 > 200 Response
 
 ```json
-[
-  {
-    "apiID": "api-7f4c2a6b",
-    "apiReferenceID": "cp-api-12345",
-    "apiHandle": "weather-api-v1",
-    "provider": "WSO2",
-    "dataSource": "DEVPORTAL",
-    "apiInfo": {
-      "apiName": "Weather API",
-      "apiVersion": "v1",
-      "apiDescription": "Weather forecast API.",
-      "apiType": "REST",
-      "visibility": "PUBLIC",
-      "agentVisibility": "VISIBLE",
-      "gatewayVendor": "wso2",
-      "tokenBasedSubscriptionEnabled": false,
-      "gatewayType": null,
-      "labels": [
-        "default"
-      ]
-    },
-    "endPoints": {
-      "sandboxURL": "https://sandbox.example.com/weather",
-      "productionURL": "https://api.example.com/weather"
+{
+  "list": [
+    {
+      "apiID": "api-7f4c2a6b",
+      "apiReferenceID": "cp-api-12345",
+      "apiHandle": "weather-api-v1",
+      "provider": "WSO2",
+      "dataSource": "DEVPORTAL",
+      "apiInfo": {
+        "apiName": "Weather API",
+        "apiVersion": "v1",
+        "apiStatus": "PUBLISHED",
+        "apiDescription": "Weather forecast API.",
+        "apiType": "REST",
+        "visibility": "PUBLIC",
+        "agentVisibility": "VISIBLE",
+        "gatewayType": null,
+        "labels": [
+          "default"
+        ]
+      },
+      "endPoints": {
+        "sandboxURL": "https://sandbox.example.com/weather",
+        "productionURL": "https://api.example.com/weather"
+      }
     }
+  ],
+  "pagination": {
+    "total": 1,
+    "limit": 20,
+    "offset": 0
   }
-]
+}
 ```
 
 > Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.
@@ -329,12 +332,11 @@ Status Code **200**
 |»»» apiTitle|string¦null|false|none|none|
 |»»» remotes|[object]|false|none|none|
 |»»» apiVersion|string|false|none|none|
+|»»» apiStatus|string|false|none|API lifecycle status (e.g. PUBLISHED, UNPUBLISHED).|
 |»»» apiDescription|string|false|none|none|
 |»»» apiType|string|false|none|none|
 |»»» visibility|string|false|none|none|
 |»»» agentVisibility|string|false|none|none|
-|»»» gatewayVendor|string|false|none|none|
-|»»» tokenBasedSubscriptionEnabled|boolean|false|none|none|
 |»»» gatewayType|string¦null|false|none|none|
 |»»» addedLabels|[string]|false|none|none|
 |»»» removedLabels|[string]|false|none|none|
@@ -374,6 +376,7 @@ Status Code **200**
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
+|»»» refId|string¦null|false|none|Platform API subscription plan UUID associated with this plan.|
 |»»» orgID|string|false|none|none|
 |» pagination|[Pagination](schemas.md#schemapagination)|false|none|Standard pagination metadata returned with collection responses.|
 |»» total|integer|true|none|Total number of records matching the query.|
@@ -436,12 +439,11 @@ This operation requires <strong>Basic Auth</strong> authentication.
     "apiTitle": "Weather Forecast API",
     "remotes": [],
     "apiVersion": "v1",
+    "apiStatus": "PUBLISHED",
     "apiDescription": "Weather forecast API.",
     "apiType": "REST",
     "visibility": "PUBLIC",
     "agentVisibility": "VISIBLE",
-    "gatewayVendor": "wso2",
-    "tokenBasedSubscriptionEnabled": false,
     "gatewayType": null,
     "labels": [
       "default"
@@ -453,10 +455,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
   },
   "subscriptionPlans": [
     {
-      "planID": "plan-gold",
-      "planName": "Gold",
-      "displayName": "Gold",
-      "requestCount": 10000
+      "planName": "Gold"
     }
   ]
 }
@@ -581,7 +580,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |» apiDefinition|body|string(binary)|false|API definition file.|
 |» artifact|body|string(binary)|false|Full API ZIP artifact containing metadata and definition files.|
 |» schemaDefinition|body|string(binary)|false|Schema definition file, used by MCP APIs.|
-|» apiMetadata|body|string|false|JSON string accepted by the service when the `api` YAML file is not supplied. Accepted top-level fields mirror the YAML spec: `apiInfo` (apiName, apiVersion, apiDescription, apiType, visibility, agentVisibility, apiStatus, provider, referenceID, apiHandle, tags, labels, visibleGroups, gatewayType, owners), `endPoints` (productionURL, sandboxURL), and `subscriptionPlans`.|
+|» apiMetadata|body|string|false|JSON string accepted by the service when the `api` YAML file is not supplied. Accepted top-level fields mirror the YAML spec: `apiInfo` (apiName, apiVersion, apiDescription, apiType, visibility, agentVisibility, apiStatus, provider, referenceID, apiHandle, tags, labels, visibleGroups, gatewayType, owners), `endPoints` (productionURL, sandboxURL), and `subscriptionPlans` (array of `{ planName }` objects — only `planName` is read; the plan must already exist in the organization).|
 |orgId|path|string|true|none|
 |apiId|path|string|true|none|
 
@@ -601,12 +600,11 @@ This operation requires <strong>Basic Auth</strong> authentication.
     "apiTitle": "Weather Forecast API",
     "remotes": [],
     "apiVersion": "v1",
+    "apiStatus": "PUBLISHED",
     "apiDescription": "Weather forecast API.",
     "apiType": "REST",
     "visibility": "PUBLIC",
     "agentVisibility": "VISIBLE",
-    "gatewayVendor": "wso2",
-    "tokenBasedSubscriptionEnabled": false,
     "gatewayType": null,
     "labels": [
       "default"
@@ -618,10 +616,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
   },
   "subscriptionPlans": [
     {
-      "planID": "plan-gold",
-      "planName": "Gold",
-      "displayName": "Gold",
-      "requestCount": 10000
+      "planName": "Gold"
     }
   ]
 }

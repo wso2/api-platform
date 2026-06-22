@@ -233,9 +233,6 @@ const loadAPIContent = async (req, res) => {
                 apiID: apiID,
             });
             
-            const gatewayVendor = metaData?.apiInfo?.gatewayVendor ? metaData?.apiInfo?.gatewayVendor: 'wso2';
-            const isFederatedAPI = constants.FEDERATED_GATEWAY_VENDORS.includes(gatewayVendor);
-            
             let subscriptionPlans = await util.appendSubscriptionPlanDetails(orgID, metaData.subscriptionPlans);
             let providerUrl;
             if (metaData.provider === "WSO2") {
@@ -287,7 +284,7 @@ const loadAPIContent = async (req, res) => {
                     if (metaData.apiInfo.apiType === constants.API_TYPE.GRAPHQL) {
                         apiDefinition = "";
                         apiDefinition = await apiFileDao.get(constants.FILE_NAME.API_DEFINITION_GRAPHQL, constants.DOC_TYPES.API_DEFINITION, orgID, apiID);
-                        apiDefinition = apiDefinition.API_FILE.toString(constants.CHARSET_UTF8);
+                        apiDefinition = apiDefinition.FILE_CONTENT.toString(constants.CHARSET_UTF8);
                         apiDetails = {
                             title: metaData.apiInfo.apiName || "No title",
                             description: metaData.apiInfo.apiDescription || "No description",
@@ -311,7 +308,7 @@ const loadAPIContent = async (req, res) => {
                                 apiID
                             );
                             if (rawSchema) {
-                                const schemaString = rawSchema.API_FILE.toString(constants.CHARSET_UTF8);
+                                const schemaString = rawSchema.FILE_CONTENT.toString(constants.CHARSET_UTF8);
                                 const schemaFileName = String(rawSchema.FILE_NAME || '').toLowerCase();
                                 let parsed;
                                 if (schemaFileName.endsWith('.yaml') || schemaFileName.endsWith('.yml')) {
@@ -405,7 +402,6 @@ const loadAPIContent = async (req, res) => {
                 devportalMode: devportalMode,
                 profile: req.isAuthenticated() ? profile : null,
                 isReadOnlyMode: config.readOnlyMode,
-                isFederatedAPI: isFederatedAPI,
             };
             templateContent.showApiKeysNav = apiUsesApiKeySecurity(metaData, apiDefinitionForNav);
             templateContent.showSubscriptionsNav = (metaData?.subscriptionPlans || []).length > 0;
@@ -469,15 +465,15 @@ const getAPIDefinition = async (orgName, viewName, apiHandle) => {
             // Load MCP schema so loadAPIDefinitionRaw can serve it via SPEC_FORMAT_MAP field:'schema'
             try {
                 const rawSchema = await apiFileDao.getByType(constants.DOC_TYPES.SCHEMA_DEFINITION, orgID, apiID);
-                if (rawSchema?.API_FILE) {
-                    templateContent.schema = rawSchema.API_FILE.toString(constants.CHARSET_UTF8);
+                if (rawSchema?.FILE_CONTENT) {
+                    templateContent.schema = rawSchema.FILE_CONTENT.toString(constants.CHARSET_UTF8);
                 }
             } catch (schemaErr) {
                 logger.warn('Could not load MCP schema definition for raw spec', { orgID, apiID, error: schemaErr.message });
             }
         } else if (metaData.apiInfo.apiType === constants.API_TYPE.GRAPHQL) {
             apiDefinition = await apiFileDao.get(constants.FILE_NAME.API_DEFINITION_GRAPHQL, constants.DOC_TYPES.API_DEFINITION, orgID, apiID);
-            templateContent.graphql = apiDefinition.API_FILE.toString(constants.CHARSET_UTF8);
+            templateContent.graphql = apiDefinition.FILE_CONTENT.toString(constants.CHARSET_UTF8);
         } else {
             apiDefinition = await getApiDefinitionFileContent(orgID, apiID);
             if (apiType === constants.API_TYPE.WS || apiType === constants.API_TYPE.WEBSUB) {
@@ -888,8 +884,8 @@ function resolveSamplesPath(apiHandle) {
 
 async function getApiDefinitionFileContent(orgID, apiID) {
     const apiDefinition = await apiFileDao.getDoc(constants.DOC_TYPES.API_DEFINITION, orgID, apiID);
-    if (apiDefinition?.API_FILE) {
-        return apiDefinition.API_FILE.toString(constants.CHARSET_UTF8);
+    if (apiDefinition?.FILE_CONTENT) {
+        return apiDefinition.FILE_CONTENT.toString(constants.CHARSET_UTF8);
     }
 
     throw new Error('API definition file not found');
@@ -1109,16 +1105,16 @@ const loadAPIContentMd = async (req, res) => {
             if (apiType === constants.API_TYPE.GRAPHQL) {
                 specHeading = 'GraphQL Schema';
                 const raw = await apiFileDao.get(constants.FILE_NAME.API_DEFINITION_GRAPHQL, constants.DOC_TYPES.API_DEFINITION, orgID, apiID);
-                if (raw) apiDefinition = raw.API_FILE.toString(constants.CHARSET_UTF8);
+                if (raw) apiDefinition = raw.FILE_CONTENT.toString(constants.CHARSET_UTF8);
             } else if (apiType === constants.API_TYPE.MCP) {
                 specHeading = 'Tool Schema';
                 const raw = await apiFileDao.getDoc(constants.DOC_TYPES.SCHEMA_DEFINITION, orgID, apiID, null);
-                if (raw) apiDefinition = raw.API_FILE.toString(constants.CHARSET_UTF8);
+                if (raw) apiDefinition = raw.FILE_CONTENT.toString(constants.CHARSET_UTF8);
             } else {
                 if (apiType === constants.API_TYPE.WS || apiType === constants.API_TYPE.WEBSUB) specHeading = 'AsyncAPI Specification';
                 else if (apiType === 'SOAP') specHeading = 'WSDL';
                 const raw = await apiFileDao.get(constants.FILE_NAME.API_DEFINITION_FILE_NAME, constants.DOC_TYPES.API_DEFINITION, orgID, apiID);
-                if (raw) apiDefinition = raw.API_FILE.toString(constants.CHARSET_UTF8);
+                if (raw) apiDefinition = raw.FILE_CONTENT.toString(constants.CHARSET_UTF8);
             }
         } catch (defErr) {
             logger.warn('Could not load API definition for markdown', { orgID, apiID, error: defErr.message });
@@ -1491,7 +1487,7 @@ const loadDocumentMd = async (req, res) => {
         if (!docContentResponse) {
             return res.status(404).send('# Not Found\n\nDocument not found.');
         }
-        const content = docContentResponse.API_FILE.toString(constants.CHARSET_UTF8);
+        const content = docContentResponse.FILE_CONTENT.toString(constants.CHARSET_UTF8);
         res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
         res.send(content);
     } catch (error) {
