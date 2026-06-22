@@ -850,3 +850,24 @@ func TestSecretService_ValidateSecretRefs_DeprecatedHandleRejected(t *testing.T)
 		t.Errorf("expected ErrSecretRefMissing, got %v", err)
 	}
 }
+
+// TestSecretHandler_List_LimitCappedAt100 verifies that requesting limit=999 is
+// silently capped to 100 (scenario 89).
+func TestSecretHandler_List_LimitCappedAt100(t *testing.T) {
+	r, cleanup := setupSecretTestEnv(t)
+	defer cleanup()
+
+	w := doRequest(r, http.MethodGet, "/api/v1/secrets?limit=999", "", true)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	resp := parseBody(w)
+	pagination, ok := resp["pagination"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("pagination field missing or wrong type: %v", resp["pagination"])
+	}
+	if int(pagination["limit"].(float64)) != 100 {
+		t.Errorf("expected limit capped at 100, got %v", pagination["limit"])
+	}
+}

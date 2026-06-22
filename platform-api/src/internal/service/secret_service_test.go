@@ -67,8 +67,8 @@ type mockSecretRepo struct {
 	existsFn      func(orgID, handle string) (bool, error)
 	getByHandleFn func(orgID, handle string) (*model.Secret, error)
 	updateFn      func(*model.Secret) error
-	softDeleteFn  func(orgID, handle, by string) error
-	findRefsFn    func(orgID, handle string) ([]model.SecretReference, error)
+	findRefsAndSoftDeleteFn func(orgID, handle, by string) ([]model.SecretReference, error)
+	findRefsFn              func(orgID, handle string) ([]model.SecretReference, error)
 	listFn        func(orgID string, limit, offset int, after *time.Time) ([]*model.Secret, error)
 	countFn       func(orgID string) (int, error)
 }
@@ -121,16 +121,22 @@ func (m *mockSecretRepo) Update(s *model.Secret) error {
 	return nil
 }
 
-func (m *mockSecretRepo) SoftDelete(orgID, handle, by string) error {
-	if m.softDeleteFn != nil {
-		return m.softDeleteFn(orgID, handle, by)
+func (m *mockSecretRepo) FindRefsAndSoftDelete(orgID, handle, by string) ([]model.SecretReference, error) {
+	if m.findRefsAndSoftDeleteFn != nil {
+		return m.findRefsAndSoftDeleteFn(orgID, handle, by)
+	}
+	if m.findRefsFn != nil {
+		refs, err := m.findRefsFn(orgID, handle)
+		if err != nil || len(refs) > 0 {
+			return refs, err
+		}
 	}
 	s, ok := m.secrets[handle]
 	if !ok {
-		return constants.ErrSecretNotFound
+		return nil, constants.ErrSecretNotFound
 	}
 	s.Status = model.SecretStatusDeprecated
-	return nil
+	return nil, nil
 }
 
 func (m *mockSecretRepo) FindRefs(orgID, handle string) ([]model.SecretReference, error) {
