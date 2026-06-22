@@ -70,7 +70,7 @@ const listApplications = async (req, res) => {
     const userID = req.auth?.userId || req.user?.sub;
     try {
         const applications = await appDao.list(orgID, userID);
-        return res.status(200).json(applications.map(a => new ApplicationDTO(a.dataValues)));
+        return res.status(200).json(util.toPaginatedList(applications.map(a => new ApplicationDTO(a.dataValues)), req));
     } catch (error) {
         logger.error('Error occurred while listing applications', { orgId: orgID, error: error.message, stack: error.stack });
         util.handleError(res, error);

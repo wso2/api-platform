@@ -72,6 +72,12 @@ paths:
       responses:
         "201":
           description: Organization created successfully.
+          headers:
+            Location:
+              description: URL of the created organization.
+              schema:
+                type: string
+                format: uri
           content:
             application/json:
               schema:
@@ -88,7 +94,7 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:org_write
+            - dp:org_create
             - dp:org_manage
     get:
       tags:
@@ -107,7 +113,7 @@ paths:
             - dp:org_manage
   /organizations/{orgId}:
     parameters:
-      - $ref: "#/components/parameters/OrgId"
+      - $ref: "#/components/parameters/orgId"
     put:
       tags:
         - Organizations
@@ -129,7 +135,7 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:org_write
+            - dp:org_update
             - dp:org_manage
     get:
       tags:
@@ -171,8 +177,8 @@ paths:
             - dp:org_manage
   /o/{orgId}/devportal/v1/views/{viewName}/layout:
     parameters:
-      - $ref: "#/components/parameters/OrgId"
-      - $ref: "#/components/parameters/ViewName"
+      - $ref: "#/components/parameters/orgId"
+      - $ref: "#/components/parameters/viewName"
     post:
       tags:
         - Organization Content
@@ -196,7 +202,7 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:org_content_write
+            - dp:org_content_create
             - dp:org_content_manage
             - dp:org_manage
     put:
@@ -222,7 +228,7 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:org_content_write
+            - dp:org_content_update
             - dp:org_content_manage
             - dp:org_manage
     get:
@@ -234,9 +240,9 @@ paths:
         parameters. The response content type is derived from the stored file type and extension.
       operationId: getOrgLayoutContent
       parameters:
-        - $ref: "#/components/parameters/OrgContentFileTypeQuery"
-        - $ref: "#/components/parameters/OrgContentFileNameQuery"
-        - $ref: "#/components/parameters/FilePathQuery"
+        - $ref: "#/components/parameters/orgContentFileTypeQuery"
+        - $ref: "#/components/parameters/orgContentFileNameQuery"
+        - $ref: "#/components/parameters/filePathQuery"
       responses:
         "200":
           $ref: "#/components/responses/OrganizationContentAssetResponse"
@@ -254,7 +260,7 @@ paths:
         `fileName` is supplied as a query parameter.
       operationId: deleteOrgContent
       parameters:
-        - $ref: "#/components/parameters/FileNameQuery"
+        - $ref: "#/components/parameters/fileNameQuery"
       responses:
         "204":
           description: Organization content deleted successfully.
@@ -271,9 +277,9 @@ paths:
             - dp:org_manage
   /o/{orgId}/devportal/v1/views/{viewName}/layout/{fileType}:
     parameters:
-      - $ref: "#/components/parameters/OrgId"
-      - $ref: "#/components/parameters/ViewName"
-      - $ref: "#/components/parameters/FileType"
+      - $ref: "#/components/parameters/orgId"
+      - $ref: "#/components/parameters/viewName"
+      - $ref: "#/components/parameters/fileType"
     get:
       tags:
         - Organization Content
@@ -290,7 +296,7 @@ paths:
           $ref: "#/components/responses/TextMessageResponse"
   /o/{orgId}/devportal/v1/provider:
     parameters:
-      - $ref: "#/components/parameters/OrgId"
+      - $ref: "#/components/parameters/orgId"
     post:
       tags:
         - Providers
@@ -313,7 +319,7 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:provider_write
+            - dp:provider_create
             - dp:provider_manage
     put:
       tags:
@@ -336,7 +342,7 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:provider_write
+            - dp:provider_update
             - dp:provider_manage
     get:
       tags:
@@ -347,7 +353,7 @@ paths:
         provider configuration.
       operationId: getProviders
       parameters:
-        - $ref: "#/components/parameters/ProviderNameQueryOptional"
+        - $ref: "#/components/parameters/providerNameQueryOptional"
       responses:
         "200":
           $ref: "#/components/responses/ProviderLookupResponse"
@@ -368,8 +374,8 @@ paths:
         provider property.
       operationId: deleteProvider
       parameters:
-        - $ref: "#/components/parameters/ProviderNameQueryRequired"
-        - $ref: "#/components/parameters/ProviderPropertyQuery"
+        - $ref: "#/components/parameters/providerNameQueryRequired"
+        - $ref: "#/components/parameters/providerPropertyQuery"
       responses:
         "204":
           description: Provider or provider property deleted successfully.
@@ -385,7 +391,7 @@ paths:
             - dp:provider_manage
   /o/{orgId}/devportal/v1/apis:
     parameters:
-      - $ref: "#/components/parameters/OrgId"
+      - $ref: "#/components/parameters/orgId"
     post:
       tags:
         - APIs
@@ -411,7 +417,7 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:api_write
+            - dp:api_create
             - dp:api_manage
     get:
       tags:
@@ -423,12 +429,14 @@ paths:
         parameters are rejected.
       operationId: getAllApiMetadataForOrganization
       parameters:
-        - $ref: "#/components/parameters/ApiSearchQuery"
-        - $ref: "#/components/parameters/ApiNameQuery"
-        - $ref: "#/components/parameters/ApiVersionQuery"
-        - $ref: "#/components/parameters/ApiTagsQuery"
-        - $ref: "#/components/parameters/ApiGroupsQuery"
-        - $ref: "#/components/parameters/ApiViewQuery"
+        - $ref: "#/components/parameters/apiSearchQuery"
+        - $ref: "#/components/parameters/apiNameQuery"
+        - $ref: "#/components/parameters/apiVersionQuery"
+        - $ref: "#/components/parameters/apiTagsQuery"
+        - $ref: "#/components/parameters/apiGroupsQuery"
+        - $ref: "#/components/parameters/apiViewQuery"
+        - $ref: "#/components/parameters/limit"
+        - $ref: "#/components/parameters/offset"
       responses:
         "200":
           $ref: "#/components/responses/ApiMetadataListResponse"
@@ -442,8 +450,8 @@ paths:
             - dp:api_manage
   /o/{orgId}/devportal/v1/apis/{apiId}:
     parameters:
-      - $ref: "#/components/parameters/OrgId"
-      - $ref: "#/components/parameters/ApiId"
+      - $ref: "#/components/parameters/orgId"
+      - $ref: "#/components/parameters/apiId"
     get:
       tags:
         - APIs
@@ -487,7 +495,7 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:api_write
+            - dp:api_update
             - dp:api_manage
     delete:
       tags:
@@ -512,7 +520,7 @@ paths:
             - dp:api_manage
   /o/{orgId}/devportal/v1/subscription-plans:
     parameters:
-      - $ref: "#/components/parameters/OrgId"
+      - $ref: "#/components/parameters/orgId"
     get:
       tags:
         - Subscription Plans
@@ -563,7 +571,7 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:sub_plan_write
+            - dp:sub_plan_create
             - dp:sub_plan_manage
     put:
       tags:
@@ -592,12 +600,12 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:sub_plan_write
+            - dp:sub_plan_update
             - dp:sub_plan_manage
   /o/{orgId}/devportal/v1/subscription-plans/{planId}:
     parameters:
-      - $ref: "#/components/parameters/OrgId"
-      - $ref: "#/components/parameters/PlanId"
+      - $ref: "#/components/parameters/orgId"
+      - $ref: "#/components/parameters/planId"
     get:
       tags:
         - Subscription Plans
@@ -638,8 +646,8 @@ paths:
             - dp:sub_plan_manage
   /o/{orgId}/devportal/v1/apis/{apiId}/content:
     parameters:
-      - $ref: "#/components/parameters/OrgId"
-      - $ref: "#/components/parameters/ApiId"
+      - $ref: "#/components/parameters/orgId"
+      - $ref: "#/components/parameters/apiId"
     post:
       tags:
         - API Content
@@ -667,7 +675,7 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:api_content_write
+            - dp:api_content_create
             - dp:api_content_manage
     put:
       tags:
@@ -693,7 +701,7 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:api_content_write
+            - dp:api_content_update
             - dp:api_content_manage
     get:
       tags:
@@ -711,8 +719,8 @@ paths:
             - dp:api_content_read
             - dp:api_content_manage
       parameters:
-        - $ref: "#/components/parameters/ApiContentTypeQuery"
-        - $ref: "#/components/parameters/ApiContentFileNameQuery"
+        - $ref: "#/components/parameters/apiContentTypeQuery"
+        - $ref: "#/components/parameters/apiContentFileNameQuery"
       responses:
         "200":
           $ref: "#/components/responses/APIContentAssetResponse"
@@ -733,8 +741,8 @@ paths:
         files matching that content category for the API.
       operationId: deleteApiContentFile
       parameters:
-        - $ref: "#/components/parameters/ApiContentTypeQuery"
-        - $ref: "#/components/parameters/FileNameQuery"
+        - $ref: "#/components/parameters/apiContentTypeQuery"
+        - $ref: "#/components/parameters/fileNameQuery"
       responses:
         "204":
           description: API content deleted successfully.
@@ -750,7 +758,7 @@ paths:
             - dp:api_content_manage
   /o/{orgId}/devportal/v1/labels:
     parameters:
-      - $ref: "#/components/parameters/OrgId"
+      - $ref: "#/components/parameters/orgId"
     post:
       tags:
         - Labels
@@ -761,7 +769,24 @@ paths:
         $ref: "#/components/requestBodies/LabelsBody"
       responses:
         "201":
-          $ref: "#/components/responses/LabelsResponse"
+          description: List of label DTOs.
+          headers:
+            Location:
+              description: URL of the label collection for this organization.
+              schema:
+                type: string
+                format: uri
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  list:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/LabelResponse"
+                  pagination:
+                    $ref: "#/components/schemas/Pagination"
         "400":
           $ref: "#/components/responses/BadRequest"
         "409":
@@ -770,7 +795,7 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:label_write
+            - dp:label_create
             - dp:label_manage
     put:
       tags:
@@ -793,7 +818,7 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:label_write
+            - dp:label_update
             - dp:label_manage
     get:
       tags:
@@ -819,7 +844,7 @@ paths:
       description: Deletes one or more labels by comma-separated label names.
       operationId: deleteLabels
       parameters:
-        - $ref: "#/components/parameters/LabelNamesQuery"
+        - $ref: "#/components/parameters/labelNamesQuery"
       responses:
         "204":
           description: Labels deleted successfully.
@@ -833,13 +858,16 @@ paths:
             - dp:label_manage
   /o/{orgId}/devportal/v1/applications:
     parameters:
-      - $ref: "#/components/parameters/OrgId"
+      - $ref: "#/components/parameters/orgId"
     get:
       tags:
         - Applications
       summary: List applications for the authenticated user
       description: Returns all applications owned by the authenticated user in the specified organization.
       operationId: listApplications
+      parameters:
+        - $ref: "#/components/parameters/limit"
+        - $ref: "#/components/parameters/offset"
       responses:
         "200":
           $ref: "#/components/responses/ApplicationListResponse"
@@ -862,7 +890,22 @@ paths:
         $ref: "#/components/requestBodies/ApplicationMultipartBody"
       responses:
         "201":
-          $ref: "#/components/responses/ApplicationResponse"
+          description: Application DTO.
+          headers:
+            Location:
+              description: URL of the created application.
+              schema:
+                type: string
+                format: uri
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApplicationResponse"
+              example:
+                id: app-12345
+                name: Weather App
+                description: Application used to call Weather APIs.
+                type: WEB
         "400":
           $ref: "#/components/responses/BadRequest"
         "409":
@@ -871,12 +914,12 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:app_write
+            - dp:app_create
             - dp:app_manage
   /o/{orgId}/devportal/v1/applications/{applicationId}:
     parameters:
-      - $ref: "#/components/parameters/OrgId"
-      - $ref: "#/components/parameters/ApplicationId"
+      - $ref: "#/components/parameters/orgId"
+      - $ref: "#/components/parameters/applicationId"
     put:
       tags:
         - Applications
@@ -901,7 +944,7 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:app_write
+            - dp:app_update
             - dp:app_manage
     delete:
       tags:
@@ -925,7 +968,7 @@ paths:
             - dp:app_manage
   /o/{orgId}/devportal/v1/subscriptions:
     parameters:
-      - $ref: "#/components/parameters/OrgId"
+      - $ref: "#/components/parameters/orgId"
     post:
       tags:
         - Subscriptions
@@ -938,7 +981,26 @@ paths:
         $ref: "#/components/requestBodies/SubscriptionCreateBody"
       responses:
         "201":
-          $ref: "#/components/responses/SubscriptionResponse"
+          description: Subscription DTO.
+          headers:
+            Location:
+              description: URL of the created subscription.
+              schema:
+                type: string
+                format: uri
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubscriptionResponse"
+              example:
+                subscriptionId: sub-12345
+                apiId: api-7f4c2a6b
+                subscriptionToken: a3f1e8b2...
+                subscriptionPlanName: Gold
+                gatewayType: wso2/api-platform
+                status: ACTIVE
+                createdBy: alice@example.com
+                createdAt: "2026-05-07T08:30:00Z"
         "400":
           $ref: "#/components/responses/BadRequest"
         "404":
@@ -947,7 +1009,7 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:subscription_write
+            - dp:subscription_create
             - dp:subscription_manage
     get:
       tags:
@@ -958,7 +1020,9 @@ paths:
         Lists subscriptions owned by the authenticated user. When `apiId` is provided,
         results are additionally filtered by the Developer Portal API ID.
       parameters:
-        - $ref: "#/components/parameters/ApiIdQueryOptional"
+        - $ref: "#/components/parameters/apiIdQueryOptional"
+        - $ref: "#/components/parameters/limit"
+        - $ref: "#/components/parameters/offset"
       responses:
         "200":
           $ref: "#/components/responses/SubscriptionListResponse"
@@ -974,8 +1038,8 @@ paths:
             - dp:subscription_manage
   /o/{orgId}/devportal/v1/subscriptions/{subId}:
     parameters:
-      - $ref: "#/components/parameters/OrgId"
-      - $ref: "#/components/parameters/SubId"
+      - $ref: "#/components/parameters/orgId"
+      - $ref: "#/components/parameters/subId"
     get:
       tags:
         - Subscriptions
@@ -1012,7 +1076,7 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:subscription_write
+            - dp:subscription_update
             - dp:subscription_manage
     delete:
       tags:
@@ -1033,7 +1097,7 @@ paths:
             - dp:subscription_manage
   /o/{orgId}/devportal/v1/api-keys/generate:
     parameters:
-      - $ref: "#/components/parameters/OrgId"
+      - $ref: "#/components/parameters/orgId"
     post:
       tags:
         - API Keys
@@ -1049,7 +1113,24 @@ paths:
         $ref: "#/components/requestBodies/ApiKeyBody"
       responses:
         "201":
-          $ref: "#/components/responses/ApiKeyGenerateResponse"
+          description: "Generated API key. The plaintext `key` is returned exactly once."
+          headers:
+            Location:
+              description: URL of the generated API key resource.
+              schema:
+                type: string
+                format: uri
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiKeyResponse"
+              example:
+                keyId: key-12345
+                name: weather_prod_key
+                apiId: api-7f4c2a6b
+                key: ak_dGhpcyBpcyBub3QgYSByZWFsIGtleQ
+                expiresAt: "2026-12-31T23:59:59Z"
+                status: ACTIVE
         "400":
           $ref: "#/components/responses/BadRequest"
         "403":
@@ -1060,11 +1141,11 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:api_key_write
+            - dp:api_key_create
             - dp:api_key_manage
   /o/{orgId}/devportal/v1/api-keys:
     parameters:
-      - $ref: "#/components/parameters/OrgId"
+      - $ref: "#/components/parameters/orgId"
     get:
       tags:
         - API Keys
@@ -1072,7 +1153,9 @@ paths:
       summary: List API keys
       description: Lists API keys for an API. The `apiId` query parameter is required.
       parameters:
-        - $ref: "#/components/parameters/ApiIdQueryRequired"
+        - $ref: "#/components/parameters/apiIdQueryRequired"
+        - $ref: "#/components/parameters/limit"
+        - $ref: "#/components/parameters/offset"
       responses:
         "200":
           $ref: "#/components/responses/ApiKeyListResponse"
@@ -1088,8 +1171,8 @@ paths:
             - dp:api_key_manage
   /o/{orgId}/devportal/v1/api-keys/{apiKeyId}/regenerate:
     parameters:
-      - $ref: "#/components/parameters/OrgId"
-      - $ref: "#/components/parameters/ApiKeyId"
+      - $ref: "#/components/parameters/orgId"
+      - $ref: "#/components/parameters/apiKeyId"
     post:
       tags:
         - API Keys
@@ -1112,12 +1195,12 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:api_key_write
+            - dp:api_key_update
             - dp:api_key_manage
   /o/{orgId}/devportal/v1/api-keys/{apiKeyId}/revoke:
     parameters:
-      - $ref: "#/components/parameters/OrgId"
-      - $ref: "#/components/parameters/ApiKeyId"
+      - $ref: "#/components/parameters/orgId"
+      - $ref: "#/components/parameters/apiKeyId"
     post:
       tags:
         - API Keys
@@ -1143,7 +1226,7 @@ paths:
             - dp:api_key_manage
   /o/{orgId}/devportal/v1/views:
     parameters:
-      - $ref: "#/components/parameters/OrgId"
+      - $ref: "#/components/parameters/orgId"
     post:
       tags:
         - Views
@@ -1165,7 +1248,7 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:view_write
+            - dp:view_create
             - dp:view_manage
     get:
       tags:
@@ -1173,6 +1256,9 @@ paths:
       operationId: getAllViews
       summary: List views
       description: Lists all views configured for the organization. Each view includes the label names attached to it.
+      parameters:
+        - $ref: "#/components/parameters/limit"
+        - $ref: "#/components/parameters/offset"
       responses:
         "200":
           $ref: "#/components/responses/ViewsResponse"
@@ -1186,8 +1272,8 @@ paths:
             - dp:view_manage
   /o/{orgId}/devportal/v1/views/{viewName}:
     parameters:
-      - $ref: "#/components/parameters/OrgId"
-      - $ref: "#/components/parameters/ViewName"
+      - $ref: "#/components/parameters/orgId"
+      - $ref: "#/components/parameters/viewName"
     put:
       tags:
         - Views
@@ -1211,7 +1297,7 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:view_write
+            - dp:view_update
             - dp:view_manage
     get:
       tags:
@@ -1253,8 +1339,8 @@ paths:
             - dp:view_manage
   /o/{orgId}/devportal/v1/applications/{applicationId}/generate-keys:
     parameters:
-      - $ref: "#/components/parameters/OrgId"
-      - $ref: "#/components/parameters/ApplicationId"
+      - $ref: "#/components/parameters/orgId"
+      - $ref: "#/components/parameters/applicationId"
     post:
       tags:
         - Application Keys
@@ -1279,13 +1365,13 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:app_key_write
+            - dp:app_key_create
             - dp:app_key_manage
   /o/{orgId}/devportal/v1/applications/{applicationId}/oauth-keys/{keyMappingId}/generate-token:
     parameters:
-      - $ref: "#/components/parameters/OrgId"
-      - $ref: "#/components/parameters/ApplicationId"
-      - $ref: "#/components/parameters/KeyMappingId"
+      - $ref: "#/components/parameters/orgId"
+      - $ref: "#/components/parameters/applicationId"
+      - $ref: "#/components/parameters/keyMappingId"
     post:
       tags:
         - Application Keys
@@ -1307,13 +1393,13 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:app_key_write
+            - dp:app_key_create
             - dp:app_key_manage
   /o/{orgId}/devportal/v1/applications/{applicationId}/oauth-keys/{keyMappingId}:
     parameters:
-      - $ref: "#/components/parameters/OrgId"
-      - $ref: "#/components/parameters/ApplicationId"
-      - $ref: "#/components/parameters/KeyMappingId"
+      - $ref: "#/components/parameters/orgId"
+      - $ref: "#/components/parameters/applicationId"
+      - $ref: "#/components/parameters/keyMappingId"
     delete:
       tags:
         - Application Keys
@@ -1350,13 +1436,13 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:app_key_write
+            - dp:app_key_update
             - dp:app_key_manage
   /o/{orgId}/devportal/v1/applications/{applicationId}/oauth-keys/{keyMappingId}/clean-up:
     parameters:
-      - $ref: "#/components/parameters/OrgId"
-      - $ref: "#/components/parameters/ApplicationId"
-      - $ref: "#/components/parameters/KeyMappingId"
+      - $ref: "#/components/parameters/orgId"
+      - $ref: "#/components/parameters/applicationId"
+      - $ref: "#/components/parameters/keyMappingId"
     post:
       tags:
         - Application Keys
@@ -1378,12 +1464,12 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:app_key_write
+            - dp:app_key_create
             - dp:app_key_manage
   /o/{orgId}/devportal/v1/views/{viewName}/api-flows:
     parameters:
-      - $ref: "#/components/parameters/OrgId"
-      - $ref: "#/components/parameters/ViewName"
+      - $ref: "#/components/parameters/orgId"
+      - $ref: "#/components/parameters/viewName"
     post:
       tags:
         - API Flows
@@ -1405,7 +1491,7 @@ paths:
           $ref: "#/components/responses/MessageResponse"
       security:
         - OAuth2Security:
-            - dp:api_flow_write
+            - dp:api_flow_create
             - dp:api_flow_manage
     get:
       tags:
@@ -1413,6 +1499,9 @@ paths:
       operationId: getAllApiFlows
       summary: List API flows
       description: Lists all API flows for the selected organization view.
+      parameters:
+        - $ref: "#/components/parameters/limit"
+        - $ref: "#/components/parameters/offset"
       responses:
         "200":
           $ref: "#/components/responses/APIFlowListResponse"
@@ -1424,9 +1513,9 @@ paths:
             - dp:api_flow_manage
   /o/{orgId}/devportal/v1/views/{viewName}/api-flows/{apiFlowId}:
     parameters:
-      - $ref: "#/components/parameters/OrgId"
-      - $ref: "#/components/parameters/ViewName"
-      - $ref: "#/components/parameters/ApiFlowId"
+      - $ref: "#/components/parameters/orgId"
+      - $ref: "#/components/parameters/viewName"
+      - $ref: "#/components/parameters/apiFlowId"
     get:
       tags:
         - API Flows
@@ -1465,7 +1554,7 @@ paths:
           $ref: "#/components/responses/MessageResponse"
       security:
         - OAuth2Security:
-            - dp:api_flow_write
+            - dp:api_flow_update
             - dp:api_flow_manage
     delete:
       tags:
@@ -1486,8 +1575,8 @@ paths:
             - dp:api_flow_manage
   /o/{orgId}/devportal/v1/views/{viewName}/api-flows/generate-prompt:
     parameters:
-      - $ref: "#/components/parameters/OrgId"
-      - $ref: "#/components/parameters/ViewName"
+      - $ref: "#/components/parameters/orgId"
+      - $ref: "#/components/parameters/viewName"
     post:
       tags:
         - API Flows
@@ -1503,7 +1592,7 @@ paths:
           $ref: "#/components/responses/MessageResponse"
       security:
         - OAuth2Security:
-            - dp:api_flow_write
+            - dp:api_flow_create
             - dp:api_flow_manage
   /temp-arazzo-file:
     post:
@@ -1527,11 +1616,11 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:utility_write
+            - dp:utility_create
             - dp:utility_manage
   /o/{orgId}/devportal/v1/key-managers:
     parameters:
-      - $ref: "#/components/parameters/OrgId"
+      - $ref: "#/components/parameters/orgId"
     post:
       tags:
         - Key Managers
@@ -1545,7 +1634,17 @@ paths:
         $ref: "#/components/requestBodies/KeyManagerBody"
       responses:
         "201":
-          $ref: "#/components/responses/KeyManagerResponse"
+          description: Key manager configuration response.
+          headers:
+            Location:
+              description: URL of the created key manager.
+              schema:
+                type: string
+                format: uri
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KeyManagerResponseSchema"
         "400":
           $ref: "#/components/responses/BadRequest"
         "409":
@@ -1554,14 +1653,17 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:km_write
+            - dp:km_create
             - dp:km_manage
     get:
       tags:
         - Key Managers
       summary: List key managers
-      description: Returns all key manager configurations for the organization. Admin credentials are never included in the response.
       operationId: getKeyManagers
+      description: "Returns all key manager configurations for the organization, including admin credentials (encrypted). Admin use only."
+      parameters:
+        - $ref: "#/components/parameters/limit"
+        - $ref: "#/components/parameters/offset"
       responses:
         "200":
           $ref: "#/components/responses/KeyManagerListResponse"
@@ -1570,19 +1672,18 @@ paths:
       security:
         - OAuth2Security:
             - dp:km_read
-            - dp:km_manage
   /o/{orgId}/devportal/v1/key-managers/discover:
     parameters:
-      - $ref: "#/components/parameters/OrgId"
+      - $ref: "#/components/parameters/orgId"
     get:
       tags:
         - Key Managers
-      summary: List available key managers for developers
-      description: >-
-        Returns the minimal public view of enabled key managers. This is the developer-facing
-        endpoint used when generating application keys — no admin credentials or internal endpoints
-        are exposed.
-      operationId: getAvailableKeyManagers
+      summary: Discover available key managers
+      operationId: discoverKeyManagers
+      description: "Returns the minimal public view of enabled key managers for developer use. Does not include admin credentials or internal endpoints."
+      parameters:
+        - $ref: "#/components/parameters/limit"
+        - $ref: "#/components/parameters/offset"
       responses:
         "200":
           $ref: "#/components/responses/KeyManagerPublicListResponse"
@@ -1593,8 +1694,8 @@ paths:
             - dp:km_read
   /o/{orgId}/devportal/v1/key-managers/{kmId}:
     parameters:
-      - $ref: "#/components/parameters/OrgId"
-      - $ref: "#/components/parameters/KmId"
+      - $ref: "#/components/parameters/orgId"
+      - $ref: "#/components/parameters/kmId"
     get:
       tags:
         - Key Managers
@@ -1636,7 +1737,7 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:km_write
+            - dp:km_update
             - dp:km_manage
     delete:
       tags:
@@ -1657,7 +1758,7 @@ paths:
             - dp:km_manage
   /o/{orgId}/devportal/v1/webhook-subscribers:
     parameters:
-      - $ref: "#/components/parameters/OrgId"
+      - $ref: "#/components/parameters/orgId"
     post:
       tags:
         - Webhook Subscribers
@@ -1671,7 +1772,17 @@ paths:
         $ref: "#/components/requestBodies/WebhookSubscriberBody"
       responses:
         "201":
-          $ref: "#/components/responses/WebhookSubscriberResponse"
+          description: Webhook subscriber configuration response.
+          headers:
+            Location:
+              description: URL of the created webhook subscriber.
+              schema:
+                type: string
+                format: uri
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookSubscriberResponseSchema"
         "400":
           $ref: "#/components/responses/BadRequest"
         "409":
@@ -1680,7 +1791,7 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:webhook_subscriber_write
+            - dp:webhook_subscriber_create
             - dp:webhook_subscriber_manage
     get:
       tags:
@@ -1688,6 +1799,9 @@ paths:
       summary: List webhook subscribers
       description: Returns all webhook subscriber configurations for the organization. Secrets are never included in the response.
       operationId: getWebhookSubscribers
+      parameters:
+        - $ref: "#/components/parameters/limit"
+        - $ref: "#/components/parameters/offset"
       responses:
         "200":
           $ref: "#/components/responses/WebhookSubscriberListResponse"
@@ -1699,8 +1813,8 @@ paths:
             - dp:webhook_subscriber_manage
   /o/{orgId}/devportal/v1/webhook-subscribers/{subscriberId}:
     parameters:
-      - $ref: "#/components/parameters/OrgId"
-      - $ref: "#/components/parameters/SubscriberId"
+      - $ref: "#/components/parameters/orgId"
+      - $ref: "#/components/parameters/subscriberId"
     get:
       tags:
         - Webhook Subscribers
@@ -1741,7 +1855,7 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:webhook_subscriber_write
+            - dp:webhook_subscriber_update
             - dp:webhook_subscriber_manage
     delete:
       tags:
@@ -1773,7 +1887,7 @@ paths:
           $ref: "#/components/responses/DefaultResponse"
   /o/{orgId}/devportal/v1/webhook-events:
     parameters:
-      - $ref: "#/components/parameters/OrgId"
+      - $ref: "#/components/parameters/orgId"
     get:
       tags:
         - Webhook Events
@@ -1790,21 +1904,8 @@ paths:
             type: string
             enum: [PENDING, DISPATCHED, ALL_DELIVERED, FAILED]
           description: Filter events by status.
-        - name: limit
-          in: query
-          required: false
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 200
-            default: 50
-        - name: offset
-          in: query
-          required: false
-          schema:
-            type: integer
-            minimum: 0
-            default: 0
+        - $ref: "#/components/parameters/limit"
+        - $ref: "#/components/parameters/offset"
       responses:
         "200":
           $ref: "#/components/responses/WebhookEventListResponse"
@@ -1817,8 +1918,8 @@ paths:
             - dp:event_read
   /o/{orgId}/devportal/v1/webhook-events/{eventId}:
     parameters:
-      - $ref: "#/components/parameters/OrgId"
-      - $ref: "#/components/parameters/EventId"
+      - $ref: "#/components/parameters/orgId"
+      - $ref: "#/components/parameters/eventId"
     get:
       tags:
         - Webhook Events
@@ -1841,8 +1942,8 @@ paths:
             - dp:event_read
   /o/{orgId}/devportal/v1/webhook-deliveries/{deliveryId}/retry:
     parameters:
-      - $ref: "#/components/parameters/OrgId"
-      - $ref: "#/components/parameters/DeliveryId"
+      - $ref: "#/components/parameters/orgId"
+      - $ref: "#/components/parameters/deliveryId"
     post:
       tags:
         - Webhook Events
@@ -1884,69 +1985,84 @@ components:
           tokenUrl: https://localhost:9443/oauth2/token
           scopes:
             dp:org_read: Read organizations.
-            dp:org_write: Create or update organizations.
+            dp:org_create: Create organizations.
+            dp:org_update: Update organizations.
             dp:org_delete: Delete organizations.
             dp:org_manage: Manage organizations (including creating, updating, and deleting).
             dp:provider_read: Read providers.
-            dp:provider_write: Create or update providers.
+            dp:provider_create: Create providers.
+            dp:provider_update: Update providers.
             dp:provider_delete: Delete providers.
             dp:provider_manage: Manage providers (including creating, updating, and deleting).
             dp:org_content_read: Read organization layout or content.
-            dp:org_content_write: Create or update organization layout or content.
+            dp:org_content_create: Create organization layout or content.
+            dp:org_content_update: Update organization layout or content.
             dp:org_content_delete: Delete organization layout or content.
             dp:org_content_manage: Manage organization layout or content.
             dp:api_read: Read API metadata.
-            dp:api_write: Create or update API metadata.
+            dp:api_create: Create API metadata.
+            dp:api_update: Update API metadata.
             dp:api_delete: Delete API metadata.
             dp:api_manage: Manage API metadata.
             dp:api_content_read: Read API content.
-            dp:api_content_write: Create or update API content.
+            dp:api_content_create: Create API content.
+            dp:api_content_update: Update API content.
             dp:api_content_delete: Delete API content.
             dp:api_content_manage: Manage API content.
             dp:sub_plan_read: Read subscription plans.
-            dp:sub_plan_write: Create or update subscription plans.
+            dp:sub_plan_create: Create subscription plans.
+            dp:sub_plan_update: Update subscription plans.
             dp:sub_plan_delete: Delete subscription plans.
             dp:sub_plan_manage: Manage subscription plans.
             dp:label_read: Read labels.
-            dp:label_write: Create or update labels.
+            dp:label_create: Create labels.
+            dp:label_update: Update labels.
             dp:label_delete: Delete labels.
             dp:label_manage: Manage labels.
             dp:app_read: Read applications.
-            dp:app_write: Create or update applications.
+            dp:app_create: Create applications.
+            dp:app_update: Update applications.
             dp:app_delete: Delete applications.
             dp:app_manage: Manage applications.
             dp:subscription_read: Read subscriptions.
-            dp:subscription_write: Create or update subscriptions.
+            dp:subscription_create: Create subscriptions.
+            dp:subscription_update: Update subscriptions.
             dp:subscription_delete: Delete subscriptions.
             dp:subscription_manage: Manage subscriptions.
             dp:api_key_read: Read API keys.
-            dp:api_key_write: Generate or regenerate API keys.
+            dp:api_key_create: Generate API keys.
+            dp:api_key_update: Regenerate API keys.
             dp:api_key_revoke: Revoke API keys.
             dp:api_key_manage: Manage API keys.
             dp:app_key_mapping_read: Read application key mappings.
-            dp:app_key_mapping_write: Create application key mappings.
+            dp:app_key_mapping_create: Create application key mappings.
             dp:app_key_mapping_manage: Manage application key mappings.
             dp:view_read: Read views.
-            dp:view_write: Create or update views.
+            dp:view_create: Create views.
+            dp:view_update: Update views.
             dp:view_delete: Delete views.
             dp:view_manage: Manage views.
-            dp:app_key_write: Generate, update, regenerate, or clean up application keys.
+            dp:app_key_create: Generate and create application keys.
+            dp:app_key_update: Update application keys.
             dp:app_key_revoke: Revoke application keys.
             dp:app_key_manage: Manage application keys.
             dp:api_flow_read: Read API flows.
-            dp:api_flow_write: Create, update, or generate API flows.
+            dp:api_flow_create: Create or generate API flows.
+            dp:api_flow_update: Update API flows.
             dp:api_flow_delete: Delete API flows.
             dp:api_flow_manage: Manage API flows.
             dp:event_read: Read webhook events and delivery details.
             dp:delivery_manage: Retry failed webhook deliveries.
-            dp:utility_write: Create temporary utility files.
+            dp:utility_create: Create temporary utility files.
             dp:utility_manage: Manage utility operations.
             dp:km_read: Read key manager configurations.
-            dp:km_write: Create or update key manager configurations.
+            dp:km_create: Create key manager configurations.
+            dp:km_update: Update key manager configurations.
             dp:km_delete: Delete key manager configurations.
             dp:km_manage: Manage key manager configurations (including creating, updating, and deleting).
             dp:webhook_subscriber_read: Read webhook subscriber configurations.
-            dp:webhook_subscriber_write: Create or update webhook subscriber configurations.
+            dp:webhook_subscriber_create: Create webhook subscriber configurations.
+            dp:webhook_subscriber_update: Update webhook subscriber configurations.
             dp:webhook_subscriber_delete: Delete webhook subscriber configurations.
             dp:webhook_subscriber_manage: Manage webhook subscriber configurations (including creating, updating, and deleting).
     apiKeyAuth:
@@ -1957,78 +2073,78 @@ components:
         API key authentication. Server-side authorization should bind each key to the same fine-grained permissions used
         by OAuth2 scopes.
   parameters:
-    OrgId:
+    orgId:
       name: orgId
       in: path
       required: true
       schema:
         type: string
-    FileType:
+    fileType:
       name: fileType
       in: path
       required: true
       schema:
         type: string
-    ApiId:
+    apiId:
       name: apiId
       in: path
       required: true
       schema:
         type: string
         example: api-7f4c2a6b
-    PlanId:
+    planId:
       name: planId
       in: path
       required: true
       schema:
         type: string
-    AppId:
+    appId:
       name: appId
       in: path
       required: true
       schema:
         type: string
         example: app-12345
-    SubId:
+    subId:
       name: subId
       in: path
       required: true
       schema:
         type: string
-    ApiKeyId:
+    apiKeyId:
       name: apiKeyId
       in: path
       required: true
       schema:
         type: string
-    EventId:
+    eventId:
       name: eventId
       in: path
       required: true
       schema:
         type: string
       description: Webhook event identifier.
-    DeliveryId:
+    deliveryId:
       name: deliveryId
       in: path
       required: true
       schema:
         type: string
       description: Webhook delivery identifier.
-    ApplicationId:
+    applicationId:
       name: applicationId
       in: path
       required: true
       schema:
         type: string
         example: app-12345
-    KeyMappingId:
+    keyMappingId:
       name: keyMappingId
       in: path
       required: true
       schema:
         type: string
-    KmId:
+    kmId:
       name: kmId
       in: path
       required: true
@@ -2036,7 +2152,7 @@ components:
         type: string
         example: km-uuid-12345
       description: Key manager ID (UUID).
-    SubscriberId:
+    subscriberId:
       name: subscriberId
       in: path
       required: true
@@ -2044,27 +2160,21 @@ components:
         type: string
         example: sub-uuid-12345
       description: Webhook subscriber ID (UUID).
-    ApiKeyID:
-      name: apiKeyID
-      in: path
-      required: true
-      schema:
-        type: string
-    ViewName:
+    viewName:
       name: viewName
       in: path
       required: true
       schema:
         type: string
         example: default
-    ApiFlowId:
+    apiFlowId:
       name: apiFlowId
       in: path
       required: true
       schema:
         type: string
         example: flow-12345
-    UsageFromQuery:
+    usageFromQuery:
       name: usageFrom
       in: query
       required: false
@@ -2073,7 +2183,7 @@ components:
         format: date-time
         example: "2026-04-07T00:00:00Z"
       description: Usage start timestamp. Defaults to 30 days before the request time.
-    UsageToQuery:
+    usageToQuery:
       name: usageTo
       in: query
       required: false
@@ -2082,14 +2192,14 @@ components:
         format: date-time
         example: "2026-05-07T00:00:00Z"
       description: Usage end timestamp. Defaults to the request time.
-    ContentTypeQuery:
+    contentTypeQuery:
       name: type
       in: query
       required: false
       schema:
         type: string
       description: Content type selector used by API file retrieval.
-    ApiContentTypeQuery:
+    apiContentTypeQuery:
       name: type
       in: query
       required: true
@@ -2099,7 +2209,7 @@ components:
       description: >-
         Stored API content type selector. Common values are `web`, `document`, `image`, and `link`,
         depending on how the uploaded ZIP content was classified.
-    ApiContentFileNameQuery:
+    apiContentFileNameQuery:
       name: fileName
       in: query
       required: true
@@ -2107,7 +2217,7 @@ components:
         type: string
         example: getting-started.md
       description: Stored API content file name to retrieve.
-    FileNameQuery:
+    fileNameQuery:
       name: fileName
       in: query
       required: false
@@ -2115,49 +2225,49 @@ components:
         type: string
         example: getting-started.md
       description: File name selector used by file retrieval and organization content deletion.
-    OrgContentFileNameQuery:
+    orgContentFileNameQuery:
       name: fileName
       in: query
       required: true
       schema:
         type: string
       description: Stored organization content file name.
-    OrgContentFileTypeQuery:
+    orgContentFileTypeQuery:
       name: fileType
       in: query
       required: true
       schema:
         type: string
       description: Organization content file type, such as style, image, text, template, or partial.
-    FilePathQuery:
+    filePathQuery:
       name: filePath
       in: query
       required: false
       schema:
         type: string
       description: Optional relative content path used together with `fileType` and `fileName`.
-    ProviderNameQueryOptional:
+    providerNameQueryOptional:
       name: name
       in: query
       required: false
       schema:
         type: string
       description: Optional provider name selector. When omitted, all providers are returned.
-    ProviderNameQueryRequired:
+    providerNameQueryRequired:
       name: name
       in: query
       required: true
       schema:
         type: string
       description: Provider name.
-    ProviderPropertyQuery:
+    providerPropertyQuery:
       name: property
       in: query
       required: false
       schema:
         type: string
       description: Optional provider property name to delete instead of deleting the whole provider.
-    ApiSearchQuery:
+    apiSearchQuery:
       name: query
       in: query
       required: false
@@ -2165,7 +2275,7 @@ components:
         type: string
         example: weather
       description: Free-text API metadata search term.
-    ApiNameQuery:
+    apiNameQuery:
       name: apiName
       in: query
       required: false
@@ -2173,7 +2283,7 @@ components:
         type: string
         example: Weather API
       description: Exact API name filter.
-    ApiVersionQuery:
+    apiVersionQuery:
       name: version
       in: query
       required: false
@@ -2181,7 +2291,7 @@ components:
         type: string
         example: v1
       description: Exact API version filter.
-    ApiTagsQuery:
+    apiTagsQuery:
       name: tags
       in: query
       required: false
@@ -2189,7 +2299,7 @@ components:
         type: string
         example: weather public
       description: Exact API tags filter used by the metadata DAO.
-    ApiGroupsQuery:
+    apiGroupsQuery:
       name: groups
       in: query
       required: false
@@ -2197,7 +2307,7 @@ components:
         type: string
         example: subscriber admin
       description: Space-separated visible groups used for API visibility filtering.
-    ApiViewQuery:
+    apiViewQuery:
       name: view
       in: query
       required: false
@@ -2205,7 +2315,7 @@ components:
         type: string
         example: default
       description: Developer Portal view name used to filter visible APIs.
-    ApiIdQueryRequired:
+    apiIdQueryRequired:
       name: apiId
       in: query
       required: true
@@ -2213,7 +2323,7 @@ components:
         type: string
         example: api-7f4c2a6b
       description: Developer Portal API ID.
-    ApiIdQueryOptional:
+    apiIdQueryOptional:
       name: apiId
       in: query
       required: false
@@ -2221,7 +2331,7 @@ components:
         type: string
         example: api-7f4c2a6b
       description: Optional Developer Portal API ID used to filter results.
-    LabelNamesQuery:
+    labelNamesQuery:
       name: names
       in: query
       required: true
@@ -2229,30 +2339,49 @@ components:
         type: string
         example: default,premium
       description: Comma-separated label names to delete.
-    AppIDQuery:
-      name: appID
+    appIdQuery:
+      name: appId
       in: query
       required: true
       schema:
         type: string
         example: app-12345
       description: Developer Portal application ID.
-    ApiReferenceIDQuery:
-      name: apiReferenceID
+    apiReferenceIdQuery:
+      name: apiReferenceId
       in: query
       required: true
       schema:
         type: string
         example: cp-api-12345
       description: Control-plane API reference ID used to remove matching application key mappings.
-    SubscriptionIDQuery:
-      name: subscriptionID
+    subscriptionIdQuery:
+      name: subscriptionId
       in: query
       required: true
       schema:
         type: string
         example: sub-12345
       description: Developer Portal subscription ID to remove.
+    limit:
+      name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+      description: Maximum number of records to return.
+    offset:
+      name: offset
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 0
+        default: 0
+      description: Number of records to skip before returning results.
   requestBodies:
     JsonObjectBody:
       required: false
@@ -2869,9 +2998,14 @@ components:
       content:
         application/json:
           schema:
-            type: array
-            items:
-              $ref: "#/components/schemas/OrganizationListItemResponse"
+            type: object
+            properties:
+              list:
+                type: array
+                items:
+                  $ref: "#/components/schemas/OrganizationListItemResponse"
+              pagination:
+                $ref: "#/components/schemas/Pagination"
     OrganizationContentUploadResponse:
       description: Organization content upload accepted and stored successfully.
       content:
@@ -2962,9 +3096,14 @@ components:
       content:
         application/json:
           schema:
-            type: array
-            items:
-              $ref: "#/components/schemas/OrganizationContentListItemResponse"
+            type: object
+            properties:
+              list:
+                type: array
+                items:
+                  $ref: "#/components/schemas/OrganizationContentListItemResponse"
+              pagination:
+                $ref: "#/components/schemas/Pagination"
     ProviderResponse:
       description: Provider DTO returned by create and update operations.
       content:
@@ -2996,15 +3135,18 @@ components:
             validationError:
               summary: Validation failure
               value:
-                - code: "400"
-                  message: input validation failed
-                  description: Invalid value
+                - status: error
+                  code: COMMON_VALIDATION_ERROR
+                  message: Input validation failed.
+                  errors:
+                    - field: orgName
+                      message: orgName is required.
             badRequest:
               summary: Bad request error
               value:
-                code: "400"
-                message: Bad Request
-                description: "Missing required parameter: 'orgId'"
+                status: error
+                code: MISSING_REQUIRED_PARAMETER
+                message: Missing required parameter.
             messageOnly:
               summary: Message-only bad request
               value:
@@ -3016,9 +3158,9 @@ components:
           schema:
             $ref: "#/components/schemas/ErrorResponse"
           example:
-            code: "404"
-            message: Resource Not Found
-            description: Organization not found
+            status: error
+            code: ORG_NOT_FOUND
+            message: Organization not found.
     Conflict:
       description: Duplicate organization data conflicts with an existing record.
       content:
@@ -3026,9 +3168,9 @@ components:
           schema:
             $ref: "#/components/schemas/ErrorResponse"
           example:
-            code: "409"
-            message: Conflict
-            description: Organization already exists
+            status: error
+            code: ORG_ALREADY_EXISTS
+            message: Organization already exists.
     UnsupportedMediaType:
       description: Unsupported request media type.
       content:
@@ -3036,9 +3178,9 @@ components:
           schema:
             $ref: "#/components/schemas/ErrorResponse"
           example:
-            code: "415"
-            message: Unsupported Media Type
-            description: Content-Type must be application/json
+            status: error
+            code: UNSUPPORTED_MEDIA_TYPE
+            message: "Content-Type must be application/json."
     InternalServerError:
       description: Internal server error.
       content:
@@ -3046,9 +3188,9 @@ components:
           schema:
             $ref: "#/components/schemas/ErrorResponse"
           example:
-            code: "500"
-            message: Internal Server Error
-            description: Internal Server Error
+            status: error
+            code: INTERNAL_SERVER_ERROR
+            message: An unexpected error occurred.
     MessageResponse:
       description: JSON message response.
       content:
@@ -3070,11 +3212,17 @@ components:
           schema:
             $ref: "#/components/schemas/ErrorResponse"
           example:
-            code: "403"
-            message: Forbidden
-            description: Write operations are disabled in read-only mode
+            status: error
+            code: FORBIDDEN
+            message: "Write operations are disabled in read-only mode."
     ApiMetadataCreateResponse:
       description: Created API metadata payload returned by the service.
+      headers:
+        Location:
+          description: URL of the created API metadata resource.
+          schema:
+            type: string
+            format: uri
       content:
         application/json:
           schema:
@@ -3147,9 +3295,14 @@ components:
       content:
         application/json:
           schema:
-            type: array
-            items:
-              $ref: "#/components/schemas/ApiMetadataResponse"
+            type: object
+            properties:
+              list:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ApiMetadataResponse"
+              pagination:
+                $ref: "#/components/schemas/Pagination"
           example:
             - apiID: api-7f4c2a6b
               apiReferenceID: cp-api-12345
@@ -3182,9 +3335,14 @@ components:
       content:
         application/json:
           schema:
-            type: array
-            items:
-              $ref: "#/components/schemas/SubscriptionPlanResponse"
+            type: object
+            properties:
+              list:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SubscriptionPlanResponse"
+              pagination:
+                $ref: "#/components/schemas/Pagination"
     SubscriptionPlanMutationResponse:
       description: Subscription plan create/update response for single or bulk operations.
       content:
@@ -3211,14 +3369,14 @@ components:
       content:
         application/json:
           schema:
-            type: array
-            items:
-              $ref: "#/components/schemas/LabelResponse"
-          example:
-            - name: default
-              displayName: default
-            - name: premium
-              displayName: Premium APIs
+            type: object
+            properties:
+              list:
+                type: array
+                items:
+                  $ref: "#/components/schemas/LabelResponse"
+              pagination:
+                $ref: "#/components/schemas/Pagination"
     ApplicationResponse:
       description: Application DTO.
       content:
@@ -3235,9 +3393,14 @@ components:
       content:
         application/json:
           schema:
-            type: array
-            items:
-              $ref: "#/components/schemas/ApplicationResponse"
+            type: object
+            properties:
+              list:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ApplicationResponse"
+              pagination:
+                $ref: "#/components/schemas/Pagination"
           example:
             - id: app-12345
               name: Weather App
@@ -3269,21 +3432,12 @@ components:
           schema:
             type: object
             properties:
-              count:
-                type: integer
               list:
                 type: array
                 items:
                   $ref: "#/components/schemas/SubscriptionResponse"
-          example:
-            count: 1
-            list:
-              - subscriptionId: sub-12345
-                apiId: api-7f4c2a6b
-                subscriptionPlanName: Gold
-                gatewayType: wso2/api-platform
-                status: ACTIVE
-                createdBy: alice@example.com
+              pagination:
+                $ref: "#/components/schemas/Pagination"
     ApiKeyGenerateResponse:
       description: Generated or regenerated API key. The plaintext `key` is returned exactly once.
       content:
@@ -3302,9 +3456,14 @@ components:
       content:
         application/json:
           schema:
-            type: array
-            items:
-              $ref: "#/components/schemas/ApiKeyMetadataResponse"
+            type: object
+            properties:
+              list:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ApiKeyMetadataResponse"
+              pagination:
+                $ref: "#/components/schemas/Pagination"
     AppKeyMappingCreateResponse:
       description: Key generation or key mapping response, enriched with the application reference and subscription scope keys.
       content:
@@ -3357,17 +3516,27 @@ components:
       content:
         application/json:
           schema:
-            type: array
-            items:
-              $ref: "#/components/schemas/KeyManagerResponseSchema"
+            type: object
+            properties:
+              list:
+                type: array
+                items:
+                  $ref: "#/components/schemas/KeyManagerResponseSchema"
+              pagination:
+                $ref: "#/components/schemas/Pagination"
     KeyManagerPublicListResponse:
       description: List of enabled key managers (developer-facing, minimal view).
       content:
         application/json:
           schema:
-            type: array
-            items:
-              $ref: "#/components/schemas/KeyManagerPublicResponseSchema"
+            type: object
+            properties:
+              list:
+                type: array
+                items:
+                  $ref: "#/components/schemas/KeyManagerPublicResponseSchema"
+              pagination:
+                $ref: "#/components/schemas/Pagination"
     WebhookSubscriberResponse:
       description: Webhook subscriber configuration response.
       content:
@@ -3379,9 +3548,14 @@ components:
       content:
         application/json:
           schema:
-            type: array
-            items:
-              $ref: "#/components/schemas/WebhookSubscriberResponseSchema"
+            type: object
+            properties:
+              list:
+                type: array
+                items:
+                  $ref: "#/components/schemas/WebhookSubscriberResponseSchema"
+              pagination:
+                $ref: "#/components/schemas/Pagination"
     ApplicationApiKeyGenerateResponse:
       description: API key generation or regeneration response.
       content:
@@ -3468,9 +3642,14 @@ components:
       content:
         application/json:
           schema:
-            type: array
-            items:
-              $ref: "#/components/schemas/APIFlowResponse"
+            type: object
+            properties:
+              list:
+                type: array
+                items:
+                  $ref: "#/components/schemas/APIFlowResponse"
+              pagination:
+                $ref: "#/components/schemas/Pagination"
     APIFlowPromptResponse:
       description: Generated API flow agent prompt.
       content:
@@ -3504,19 +3683,14 @@ components:
       content:
         application/json:
           schema:
-            type: array
-            items:
-              $ref: "#/components/schemas/ViewResponse"
-          example:
-            - name: default
-              displayName: Default
-              labels:
-                - default
-            - name: partner-apis
-              displayName: Partner APIs
-              labels:
-                - partner
-                - public
+            type: object
+            properties:
+              list:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ViewResponse"
+              pagination:
+                $ref: "#/components/schemas/Pagination"
     ViewUpdateEchoResponse:
       description: Echo of the accepted view update payload.
       content:
@@ -3536,13 +3710,12 @@ components:
           schema:
             type: object
             properties:
-              total:
-                type: integer
-                description: Total number of events matching the query.
-              events:
+              list:
                 type: array
                 items:
                   $ref: "#/components/schemas/WebhookEvent"
+              pagination:
+                $ref: "#/components/schemas/Pagination"
     WebhookEventResponse:
       description: Single webhook event with full delivery details.
       content:
@@ -3550,6 +3723,27 @@ components:
           schema:
             $ref: "#/components/schemas/WebhookEvent"
   schemas:
+    Pagination:
+      type: object
+      description: Standard pagination metadata returned with collection responses.
+      required:
+        - total
+        - limit
+        - offset
+      properties:
+        total:
+          type: integer
+          description: Total number of records matching the query.
+          example: 42
+        limit:
+          type: integer
+          description: Maximum number of records returned in this response.
+          example: 20
+        offset:
+          type: integer
+          description: Number of records skipped before this page.
+          example: 0
+      additionalProperties: false
     MessageResponse:
       type: object
       required:
@@ -3573,19 +3767,37 @@ components:
     ErrorResponse:
       type: object
       required:
+        - status
         - code
         - message
-        - description
       properties:
+        status:
+          type: string
+          enum:
+            - error
+          description: Always "error" for error responses.
         code:
-          oneOf:
-            - type: string
-            - type: integer
-          description: HTTP status code returned by the error handler.
+          type: string
+          pattern: '^[A-Z][A-Z0-9_]*$'
+          description: Machine-readable SCREAMING_SNAKE_CASE catalog code.
+          example: ORG_NOT_FOUND
         message:
           type: string
-        description:
-          type: string
+          description: Human-readable error message.
+        errors:
+          type: array
+          description: Optional per-field validation errors.
+          items:
+            type: object
+            required:
+              - field
+              - message
+            properties:
+              field:
+                type: string
+              message:
+                type: string
+            additionalProperties: false
       additionalProperties: false
     ValidationErrorList:
       type: array
@@ -3594,18 +3806,36 @@ components:
     ValidationError:
       type: object
       required:
+        - status
         - code
         - message
-        - description
       properties:
+        status:
+          type: string
+          enum:
+            - error
         code:
           type: string
-          example: "400"
+          pattern: '^[A-Z][A-Z0-9_]*$'
+          description: Machine-readable catalog code.
+          example: COMMON_VALIDATION_ERROR
         message:
           type: string
-          example: input validation failed
-        description:
-          type: string
+          example: Input validation failed.
+        errors:
+          type: array
+          description: Per-field validation errors.
+          items:
+            type: object
+            required:
+              - field
+              - message
+            properties:
+              field:
+                type: string
+              message:
+                type: string
+            additionalProperties: false
       additionalProperties: false
     OrganizationResponse:
       type: object

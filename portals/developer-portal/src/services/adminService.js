@@ -205,7 +205,7 @@ const createOrganization = async (req, res) => {
 const getOrganizations = async (req, res) => {
     try {
         const orgList = await getAllOrganizations();
-        res.status(200).send(orgList);
+        res.status(200).json(util.toPaginatedList(orgList, req));
     } catch (error) {
         util.handleError(res, error);
     }

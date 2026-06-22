@@ -54,14 +54,19 @@ function formatEvent(row) {
 async function listEvents(req, res) {
     try {
         const { orgId } = req.params;
-        const { status, limit = '50', offset = '0' } = req.query;
+        const { status, limit = '20', offset = '0' } = req.query;
+        const parsedLimit = Math.min(parseInt(limit, 10) || 20, 100);
+        const parsedOffset = parseInt(offset, 10) || 0;
         const result = await eventDao.list({
             orgId,
             status: status || undefined,
-            limit: Math.min(parseInt(limit, 10) || 50, 200),
-            offset: parseInt(offset, 10) || 0
+            limit: parsedLimit,
+            offset: parsedOffset,
         });
-        res.json({ total: result.count, events: result.rows.map(formatEvent) });
+        res.json({
+            list: result.rows.map(formatEvent),
+            pagination: { total: result.count, limit: parsedLimit, offset: parsedOffset },
+        });
     } catch (err) {
         logger.error('[webhookAdmin] listEvents error', { error: err.message });
         res.status(500).json({ message: err.message });

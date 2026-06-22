@@ -31,8 +31,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |status|query|string|false|Filter events by status.|
-|limit|query|integer|false|none|
-|offset|query|integer|false|none|
+|limit|query|integer|false|Maximum number of records to return.|
+|offset|query|integer|false|Number of records to skip before returning results.|
 |orgId|path|string|true|none|
 
 #### Enumerated Values
@@ -50,8 +50,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "total": 0,
-  "events": [
+  "list": [
     {
       "eventId": "evt-abc123",
       "eventType": "apikey.generated",
@@ -75,7 +74,12 @@ This operation requires <strong>Basic Auth</strong> authentication.
         }
       ]
     }
-  ]
+  ],
+  "pagination": {
+    "total": 42,
+    "limit": 20,
+    "offset": 0
+  }
 }
 ```
 
@@ -83,9 +87,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "403",
-  "message": "Forbidden",
-  "description": "Write operations are disabled in read-only mode"
+  "status": "error",
+  "code": "FORBIDDEN",
+  "message": "Write operations are disabled in read-only mode."
 }
 ```
 
@@ -93,9 +97,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "500",
-  "message": "Internal Server Error",
-  "description": "Internal Server Error"
+  "status": "error",
+  "code": "INTERNAL_SERVER_ERROR",
+  "message": "An unexpected error occurred."
 }
 ```
 
@@ -113,8 +117,7 @@ Status Code **200**
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|» total|integer|false|none|Total number of events matching the query.|
-|» events|[[WebhookEvent](schemas.md#schemawebhookevent)]|false|none|[A webhook event with its delivery rows.]|
+|» list|[[WebhookEvent](schemas.md#schemawebhookevent)]|false|none|[A webhook event with its delivery rows.]|
 |»» eventId|string|false|none|none|
 |»» eventType|string|false|none|none|
 |»» orgId|string|false|none|none|
@@ -133,6 +136,10 @@ Status Code **200**
 |»»» lastError|string¦null|false|none|none|
 |»»» lastAttemptAt|string(date-time)¦null|false|none|none|
 |»»» deliveredAt|string(date-time)¦null|false|none|none|
+|» pagination|[Pagination](schemas.md#schemapagination)|false|none|Standard pagination metadata returned with collection responses.|
+|»» total|integer|true|none|Total number of records matching the query.|
+|»» limit|integer|true|none|Maximum number of records returned in this response.|
+|»» offset|integer|true|none|Number of records skipped before this page.|
 
 #### Enumerated Values
 
@@ -215,9 +222,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "403",
-  "message": "Forbidden",
-  "description": "Write operations are disabled in read-only mode"
+  "status": "error",
+  "code": "FORBIDDEN",
+  "message": "Write operations are disabled in read-only mode."
 }
 ```
 
@@ -225,9 +232,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "404",
-  "message": "Resource Not Found",
-  "description": "Organization not found"
+  "status": "error",
+  "code": "ORG_NOT_FOUND",
+  "message": "Organization not found."
 }
 ```
 
@@ -235,9 +242,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "500",
-  "message": "Internal Server Error",
-  "description": "Internal Server Error"
+  "status": "error",
+  "code": "INTERNAL_SERVER_ERROR",
+  "message": "An unexpected error occurred."
 }
 ```
 
@@ -297,9 +304,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "403",
-  "message": "Forbidden",
-  "description": "Write operations are disabled in read-only mode"
+  "status": "error",
+  "code": "FORBIDDEN",
+  "message": "Write operations are disabled in read-only mode."
 }
 ```
 
@@ -307,9 +314,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "404",
-  "message": "Resource Not Found",
-  "description": "Organization not found"
+  "status": "error",
+  "code": "ORG_NOT_FOUND",
+  "message": "Organization not found."
 }
 ```
 
@@ -317,9 +324,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "500",
-  "message": "Internal Server Error",
-  "description": "Internal Server Error"
+  "status": "error",
+  "code": "INTERNAL_SERVER_ERROR",
+  "message": "An unexpected error occurred."
 }
 ```
 

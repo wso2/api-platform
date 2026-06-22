@@ -1,5 +1,31 @@
 # Schemas
 
+<h2 id="tocS_Pagination">Pagination</h2>
+
+<a id="schemapagination"></a>
+<a id="schema_Pagination"></a>
+<a id="tocSpagination"></a>
+<a id="tocspagination"></a>
+
+```json
+{
+  "total": 42,
+  "limit": 20,
+  "offset": 0
+}
+
+```
+
+Standard pagination metadata returned with collection responses.
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|total|integer|true|none|Total number of records matching the query.|
+|limit|integer|true|none|Maximum number of records returned in this response.|
+|offset|integer|true|none|Number of records skipped before this page.|
+
 <h2 id="tocS_MessageResponse">MessageResponse</h2>
 
 <a id="schemamessageresponse"></a>
@@ -89,9 +115,15 @@ xor
 
 ```json
 {
-  "code": "string",
+  "status": "error",
+  "code": "ORG_NOT_FOUND",
   "message": "string",
-  "description": "string"
+  "errors": [
+    {
+      "field": "string",
+      "message": "string"
+    }
+  ]
 }
 
 ```
@@ -100,26 +132,18 @@ xor
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|code|any|true|none|HTTP status code returned by the error handler.|
+|status|string|true|none|Always "error" for error responses.|
+|code|string|true|none|Machine-readable SCREAMING_SNAKE_CASE catalog code.|
+|message|string|true|none|Human-readable error message.|
+|errors|[object]|false|none|Optional per-field validation errors.|
+|» field|string|true|none|none|
+|» message|string|true|none|none|
 
-oneOf
+#### Enumerated Values
 
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|» *anonymous*|string|false|none|none|
-
-xor
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|» *anonymous*|integer|false|none|none|
-
-continued
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|message|string|true|none|none|
-|description|string|true|none|none|
+|Property|Value|
+|---|---|
+|status|error|
 
 <h2 id="tocS_ValidationErrorList">ValidationErrorList</h2>
 
@@ -131,9 +155,15 @@ continued
 ```json
 [
   {
-    "code": "400",
-    "message": "input validation failed",
-    "description": "string"
+    "status": "error",
+    "code": "COMMON_VALIDATION_ERROR",
+    "message": "Input validation failed.",
+    "errors": [
+      {
+        "field": "string",
+        "message": "string"
+      }
+    ]
   }
 ]
 
@@ -154,9 +184,15 @@ continued
 
 ```json
 {
-  "code": "400",
-  "message": "input validation failed",
-  "description": "string"
+  "status": "error",
+  "code": "COMMON_VALIDATION_ERROR",
+  "message": "Input validation failed.",
+  "errors": [
+    {
+      "field": "string",
+      "message": "string"
+    }
+  ]
 }
 
 ```
@@ -165,9 +201,18 @@ continued
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|code|string|true|none|none|
+|status|string|true|none|none|
+|code|string|true|none|Machine-readable catalog code.|
 |message|string|true|none|none|
-|description|string|true|none|none|
+|errors|[object]|false|none|Per-field validation errors.|
+|» field|string|true|none|none|
+|» message|string|true|none|none|
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|status|error|
 
 <h2 id="tocS_OrganizationResponse">OrganizationResponse</h2>
 

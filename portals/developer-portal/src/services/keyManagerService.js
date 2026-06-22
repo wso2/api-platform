@@ -20,6 +20,7 @@ const { Sequelize } = require('sequelize');
 const kmDao = require('../dao/keyManagerDao');
 const { KeyManagerDTO, KeyManagerPublicDTO } = require('../dto/keyManagerDto');
 const constants = require('../utils/constants');
+const util = require('../utils/util');
 const logger = require('../config/logger');
 
 // ---------------------------------------------------------------------------
@@ -163,7 +164,7 @@ const getKeyManagers = async (req, res) => {
         const orgId = req.params.orgId;
         const records = await kmDao.list(orgId);
         const dtos = records.map(r => new KeyManagerDTO(r));
-        return res.status(200).json(dtos);
+        return res.status(200).json(util.toPaginatedList(dtos, req));
     } catch (error) {
         logger.error(constants.ERROR_MESSAGE.KEY_MANAGER_RETRIEVE_ERROR, { error });
         return res.status(500).json({ error: constants.ERROR_MESSAGE.KEY_MANAGER_RETRIEVE_ERROR });
@@ -207,7 +208,7 @@ const getAvailableKeyManagers = async (req, res) => {
         const orgId = req.params.orgId;
         const records = await kmDao.listEnabled(orgId);
         const dtos = records.map(r => new KeyManagerPublicDTO(r));
-        return res.status(200).json(dtos);
+        return res.status(200).json(util.toPaginatedList(dtos, req));
     } catch (error) {
         logger.error(constants.ERROR_MESSAGE.KEY_MANAGER_RETRIEVE_ERROR, { error });
         return res.status(500).json({ error: constants.ERROR_MESSAGE.KEY_MANAGER_RETRIEVE_ERROR });

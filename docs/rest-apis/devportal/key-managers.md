@@ -126,18 +126,24 @@ This operation requires <strong>Basic Auth</strong> authentication.
 ```json
 [
   {
-    "code": "400",
-    "message": "input validation failed",
-    "description": "Invalid value"
+    "status": "error",
+    "code": "COMMON_VALIDATION_ERROR",
+    "message": "Input validation failed.",
+    "errors": [
+      {
+        "field": "orgName",
+        "message": "orgName is required."
+      }
+    ]
   }
 ]
 ```
 
 ```json
 {
-  "code": "400",
-  "message": "Bad Request",
-  "description": "Missing required parameter: 'orgId'"
+  "status": "error",
+  "code": "MISSING_REQUIRED_PARAMETER",
+  "message": "Missing required parameter."
 }
 ```
 
@@ -151,9 +157,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "409",
-  "message": "Conflict",
-  "description": "Organization already exists"
+  "status": "error",
+  "code": "ORG_ALREADY_EXISTS",
+  "message": "Organization already exists."
 }
 ```
 
@@ -161,9 +167,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "500",
-  "message": "Internal Server Error",
-  "description": "Internal Server Error"
+  "status": "error",
+  "code": "INTERNAL_SERVER_ERROR",
+  "message": "An unexpected error occurred."
 }
 ```
 
@@ -177,6 +183,19 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
 <h3 id="create-a-key-manager-responseschema">Response Schema</h3>
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|status|error|
+|status|error|
+
+### Response Headers
+
+|Status|Header|Type|Format|Description|
+|---|---|---|---|---|
+|201|Location|string|uri|URL of the created key manager.|
 
 ## List key managers
 
@@ -195,7 +214,7 @@ curl -X GET https://devportal.api-platform.io/o/{orgId}/devportal/v1/key-manager
 
 ```
 
-Returns all key manager configurations for the organization. Admin credentials are never included in the response.
+Returns key manager configurations for the organization. When `role=developer`, returns only the minimal public view of enabled key managers (no admin credentials or internal endpoints). Without `role`, returns full configurations. Admin credentials are never included in any response.
 
 ### Authentication
 
@@ -208,7 +227,16 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
+|role|query|string|false|When `role=developer`, returns the minimal public view of enabled key managers.|
+|limit|query|integer|false|Maximum number of records to return.|
+|offset|query|integer|false|Number of records to skip before returning results.|
 |orgId|path|string|true|none|
+
+#### Enumerated Values
+
+|Parameter|Value|
+|---|---|
+|role|developer|
 
 > Example responses
 
@@ -248,9 +276,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "500",
-  "message": "Internal Server Error",
-  "description": "Internal Server Error"
+  "status": "error",
+  "code": "INTERNAL_SERVER_ERROR",
+  "message": "An unexpected error occurred."
 }
 ```
 
@@ -263,24 +291,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <h3 id="list-key-managers-responseschema">Response Schema</h3>
 
-Status Code **200**
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|*anonymous*|[[KeyManagerResponseSchema](schemas.md#schemakeymanagerresponseschema)]|false|none|[Key manager configuration. Admin credentials are never included.]|
-|» id|string|false|none|Key manager UUID.|
-|» orgId|string|false|none|none|
-|» name|string|false|none|none|
-|» type|string|false|none|none|
-|» enabled|boolean|false|none|none|
-|» tokenEndpoint|string(uri)|false|none|none|
-|» clientRegistrationEndpoint|string(uri)|false|none|none|
-|» issuer|string(uri)¦null|false|none|none|
-|» jwksURL|string(uri)¦null|false|none|none|
-|» supportedGrantTypes|[string]|false|none|none|
-|» supportedScopes|[string]|false|none|none|
-|» additionalProperties|object|false|none|none|
-
 #### Enumerated Values
 
 |Property|Value|
@@ -289,97 +299,6 @@ Status Code **200**
 |type|WSO2IS|
 |type|KEYCLOAK|
 |type|GENERIC_OIDC|
-
-## List available key managers for developers
-
-<a id="opIdgetAvailableKeyManagers"></a>
-
-`GET /o/{orgId}/devportal/v1/key-managers/discover`
-
-> Code samples
-
-```shell
-
-curl -X GET https://devportal.api-platform.io/o/{orgId}/devportal/v1/key-managers/discover \
-  -u {username}:{password} \
-  -H 'Accept: application/json' \
-  -H 'Authorization: Bearer {access-token}'
-
-```
-
-Returns the minimal public view of enabled key managers. This is the developer-facing endpoint used when generating application keys — no admin credentials or internal endpoints are exposed.
-
-### Authentication
-
-<aside class="warning">
-This operation requires <strong>Basic Auth</strong> authentication.
-
-</aside>
-
-<h3 id="list-available-key-managers-for-developers-parameters">Parameters</h3>
-
-|Name|In|Type|Required|Description|
-|---|---|---|---|---|
-|orgId|path|string|true|none|
-
-> Example responses
-
-> 200 Response
-
-```json
-[
-  {
-    "id": "km-uuid-12345",
-    "name": "Asgardeo",
-    "type": "ASGARDEO",
-    "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token",
-    "supportedGrantTypes": [
-      "client_credentials",
-      "authorization_code"
-    ],
-    "supportedScopes": [
-      "openid",
-      "profile"
-    ]
-  }
-]
-```
-
-> 500 Response
-
-```json
-{
-  "code": "500",
-  "message": "Internal Server Error",
-  "description": "Internal Server Error"
-}
-```
-
-<h3 id="list-available-key-managers-for-developers-responses">Responses</h3>
-
-|Status|Meaning|Description|Schema|
-|---|---|---|---|
-|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|List of enabled key managers (developer-facing, minimal view).|Inline|
-|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
-
-<h3 id="list-available-key-managers-for-developers-responseschema">Response Schema</h3>
-
-Status Code **200**
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|*anonymous*|[[KeyManagerPublicResponseSchema](schemas.md#schemakeymanagerpublicresponseschema)]|false|none|[Minimal developer-facing key manager view. No admin credentials or DCR endpoints.]|
-|» id|string|false|none|none|
-|» name|string|false|none|none|
-|» type|string|false|none|none|
-|» tokenEndpoint|string(uri)|false|none|none|
-|» supportedGrantTypes|[string]|false|none|none|
-|» supportedScopes|[string]|false|none|none|
-
-#### Enumerated Values
-
-|Property|Value|
-|---|---|
 |type|ASGARDEO|
 |type|WSO2IS|
 |type|KEYCLOAK|
@@ -454,9 +373,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "404",
-  "message": "Resource Not Found",
-  "description": "Organization not found"
+  "status": "error",
+  "code": "ORG_NOT_FOUND",
+  "message": "Organization not found."
 }
 ```
 
@@ -464,9 +383,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "500",
-  "message": "Internal Server Error",
-  "description": "Internal Server Error"
+  "status": "error",
+  "code": "INTERNAL_SERVER_ERROR",
+  "message": "An unexpected error occurred."
 }
 ```
 
@@ -605,18 +524,24 @@ This operation requires <strong>Basic Auth</strong> authentication.
 ```json
 [
   {
-    "code": "400",
-    "message": "input validation failed",
-    "description": "Invalid value"
+    "status": "error",
+    "code": "COMMON_VALIDATION_ERROR",
+    "message": "Input validation failed.",
+    "errors": [
+      {
+        "field": "orgName",
+        "message": "orgName is required."
+      }
+    ]
   }
 ]
 ```
 
 ```json
 {
-  "code": "400",
-  "message": "Bad Request",
-  "description": "Missing required parameter: 'orgId'"
+  "status": "error",
+  "code": "MISSING_REQUIRED_PARAMETER",
+  "message": "Missing required parameter."
 }
 ```
 
@@ -630,9 +555,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "404",
-  "message": "Resource Not Found",
-  "description": "Organization not found"
+  "status": "error",
+  "code": "ORG_NOT_FOUND",
+  "message": "Organization not found."
 }
 ```
 
@@ -640,9 +565,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "409",
-  "message": "Conflict",
-  "description": "Organization already exists"
+  "status": "error",
+  "code": "ORG_ALREADY_EXISTS",
+  "message": "Organization already exists."
 }
 ```
 
@@ -650,9 +575,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "500",
-  "message": "Internal Server Error",
-  "description": "Internal Server Error"
+  "status": "error",
+  "code": "INTERNAL_SERVER_ERROR",
+  "message": "An unexpected error occurred."
 }
 ```
 
@@ -667,6 +592,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
 <h3 id="update-a-key-manager-responseschema">Response Schema</h3>
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|status|error|
+|status|error|
 
 ## Delete a key manager
 
@@ -707,9 +639,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "404",
-  "message": "Resource Not Found",
-  "description": "Organization not found"
+  "status": "error",
+  "code": "ORG_NOT_FOUND",
+  "message": "Organization not found."
 }
 ```
 
@@ -717,9 +649,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "500",
-  "message": "Internal Server Error",
-  "description": "Internal Server Error"
+  "status": "error",
+  "code": "INTERNAL_SERVER_ERROR",
+  "message": "An unexpected error occurred."
 }
 ```
 

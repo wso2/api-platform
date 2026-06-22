@@ -23,6 +23,7 @@ const { UniqueConstraintError } = require('sequelize');
 const logger = require('../config/logger');
 const { config } = require('../config/configLoader');
 const constants = require('../utils/constants');
+const util = require('../utils/util');
 const yaml = require('js-yaml');
 
 const resolveViewId = async (orgID, viewName) => {
@@ -304,7 +305,7 @@ const getAllAPIFlows = async (req, res) => {
     try {
         const viewId = await resolveViewId(orgId, viewName);
         const apiFlows = await apiFlowDao.list(orgId, viewId);
-        res.status(200).json(apiFlows.map(toAPIFlowDTO));
+        res.status(200).json(util.toPaginatedList(apiFlows.map(toAPIFlowDTO), req));
     } catch (error) {
         logger.error('Error fetching APIFlows', { error: error.message, stack: error.stack });
         res.status(500).json({ message: constants.ERROR_MESSAGE.API_FLOW_RETRIEVE_ERROR });

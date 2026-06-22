@@ -299,7 +299,7 @@ const getAllAPIMetadata = async (req, res) => {
             groupList.push(req.query.groups.split(" "));
         }
         const retrievedAPIs = await getMetadataListFromDB(orgID, groupList, searchTerm, tags, apiName, apiVersion, view);
-        res.status(200).send(retrievedAPIs);
+        res.status(200).json(util.toPaginatedList(retrievedAPIs, req));
     } catch (error) {
         logger.error('API metadata list retrieval failed', {
             error: error.message,
@@ -1260,7 +1260,7 @@ const listSubscriptionPlans = async (req, res) => {
         } else {
             plans = await subscriptionPlanDao.list(orgId);
         }
-        res.status(200).send(plans.map((plan) => new subscriptionPlanDTO(plan)));
+        res.status(200).json(util.toPaginatedList(plans.map((plan) => new subscriptionPlanDTO(plan)), req));
     } catch (error) {
         logger.error('subscription plan list failed', {
             error: error.message,
@@ -1330,7 +1330,7 @@ const retrieveLabels = async (req, res) => {
     const orgId = req.params.orgId;
     try {
         const labels = await getOrgLabels(orgId);
-        res.status(200).send(labels);
+        res.status(200).json(util.toPaginatedList(labels, req));
     } catch (error) {
         logger.error('label retrieve error failed', {
             error: error.message,
@@ -1471,11 +1471,7 @@ const getAllViews = async (req, res) => {
     const orgId = req.params.orgId;
     try {
         const views = await getViewsFromDB(orgId);
-        if (views.length > 0) {
-            return res.status(200).send(views);;
-        } else {
-            res.status(404).send("No views found");
-        }
+        return res.status(200).json(util.toPaginatedList(views, req));
     } catch (error) {
         logger.error('view retrieve error failed', {
             error: error.message,

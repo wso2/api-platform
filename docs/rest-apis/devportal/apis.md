@@ -104,18 +104,24 @@ This operation requires <strong>Basic Auth</strong> authentication.
 ```json
 [
   {
-    "code": "400",
-    "message": "input validation failed",
-    "description": "Invalid value"
+    "status": "error",
+    "code": "COMMON_VALIDATION_ERROR",
+    "message": "Input validation failed.",
+    "errors": [
+      {
+        "field": "orgName",
+        "message": "orgName is required."
+      }
+    ]
   }
 ]
 ```
 
 ```json
 {
-  "code": "400",
-  "message": "Bad Request",
-  "description": "Missing required parameter: 'orgId'"
+  "status": "error",
+  "code": "MISSING_REQUIRED_PARAMETER",
+  "message": "Missing required parameter."
 }
 ```
 
@@ -129,9 +135,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "404",
-  "message": "Resource Not Found",
-  "description": "Organization not found"
+  "status": "error",
+  "code": "ORG_NOT_FOUND",
+  "message": "Organization not found."
 }
 ```
 
@@ -139,9 +145,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "409",
-  "message": "Conflict",
-  "description": "Organization already exists"
+  "status": "error",
+  "code": "ORG_ALREADY_EXISTS",
+  "message": "Organization already exists."
 }
 ```
 
@@ -149,9 +155,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "500",
-  "message": "Internal Server Error",
-  "description": "Internal Server Error"
+  "status": "error",
+  "code": "INTERNAL_SERVER_ERROR",
+  "message": "An unexpected error occurred."
 }
 ```
 
@@ -166,6 +172,19 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
 <h3 id="create-api-metadata-responseschema">Response Schema</h3>
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|status|error|
+|status|error|
+
+### Response Headers
+
+|Status|Header|Type|Format|Description|
+|---|---|---|---|---|
+|201|Location|string|uri|URL of the created API metadata resource.|
 
 ## List API metadata
 
@@ -203,6 +222,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |tags|query|string|false|Exact API tags filter used by the metadata DAO.|
 |groups|query|string|false|Space-separated visible groups used for API visibility filtering.|
 |view|query|string|false|Developer Portal view name used to filter visible APIs.|
+|limit|query|integer|false|Maximum number of records to return.|
+|offset|query|integer|false|Number of records to skip before returning results.|
 |orgId|path|string|true|none|
 
 > Example responses
@@ -244,18 +265,24 @@ This operation requires <strong>Basic Auth</strong> authentication.
 ```json
 [
   {
-    "code": "400",
-    "message": "input validation failed",
-    "description": "Invalid value"
+    "status": "error",
+    "code": "COMMON_VALIDATION_ERROR",
+    "message": "Input validation failed.",
+    "errors": [
+      {
+        "field": "orgName",
+        "message": "orgName is required."
+      }
+    ]
   }
 ]
 ```
 
 ```json
 {
-  "code": "400",
-  "message": "Bad Request",
-  "description": "Missing required parameter: 'orgId'"
+  "status": "error",
+  "code": "MISSING_REQUIRED_PARAMETER",
+  "message": "Missing required parameter."
 }
 ```
 
@@ -269,9 +296,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "500",
-  "message": "Internal Server Error",
-  "description": "Internal Server Error"
+  "status": "error",
+  "code": "INTERNAL_SERVER_ERROR",
+  "message": "An unexpected error occurred."
 }
 ```
 
@@ -289,64 +316,75 @@ Status Code **200**
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|*anonymous*|[[ApiMetadataResponse](schemas.md#schemaapimetadataresponse)]|false|none|none|
-|» apiID|string|false|none|none|
-|» apiReferenceID|string|false|none|none|
-|» apiHandle|string|false|none|none|
-|» provider|string|false|none|none|
-|» dataSource|string|false|none|none|
-|» planID|string|false|none|none|
-|» apiInfo|[ApiInfoResponse](schemas.md#schemaapiinforesponse)|false|none|none|
-|»» apiName|string|false|none|none|
-|»» apiTitle|string¦null|false|none|none|
-|»» remotes|[object]|false|none|none|
-|»» apiVersion|string|false|none|none|
-|»» apiDescription|string|false|none|none|
-|»» apiType|string|false|none|none|
-|»» visibility|string|false|none|none|
-|»» agentVisibility|string|false|none|none|
-|»» gatewayVendor|string|false|none|none|
-|»» tokenBasedSubscriptionEnabled|boolean|false|none|none|
-|»» gatewayType|string¦null|false|none|none|
-|»» addedLabels|[string]|false|none|none|
-|»» removedLabels|[string]|false|none|none|
-|»» visibleGroups|[string]|false|none|none|
-|»» owners|[ApiOwnersResponse](schemas.md#schemaapiownersresponse)|false|none|none|
-|»»» technicalOwner|string|false|none|none|
-|»»» businessOwner|string|false|none|none|
-|»»» businessOwnerEmail|string|false|none|none|
-|»»» technicalOwnerEmail|string|false|none|none|
-|»» apiImageMetadata|[ApiImageMetadataResponse](schemas.md#schemaapiimagemetadataresponse)|false|none|none|
-|»»» **additionalProperties**|string|false|none|none|
-|»» tags|[string]|false|none|none|
-|»» labels|[string]|false|none|none|
-|» endPoints|[ApiEndpointsResponse](schemas.md#schemaapiendpointsresponse)|false|none|none|
-|»» sandboxURL|string|false|none|none|
-|»» productionURL|string|false|none|none|
-|» subscriptionPlans|[[SubscriptionPlanResponse](schemas.md#schemasubscriptionplanresponse)]|false|none|none|
+|» list|[[ApiMetadataResponse](schemas.md#schemaapimetadataresponse)]|false|none|none|
+|»» apiID|string|false|none|none|
+|»» apiReferenceID|string|false|none|none|
+|»» apiHandle|string|false|none|none|
+|»» provider|string|false|none|none|
+|»» dataSource|string|false|none|none|
 |»» planID|string|false|none|none|
-|»» planName|string|false|none|none|
-|»» displayName|string|false|none|none|
-|»» description|string|false|none|none|
-|»» requestCount|any|false|none|none|
+|»» apiInfo|[ApiInfoResponse](schemas.md#schemaapiinforesponse)|false|none|none|
+|»»» apiName|string|false|none|none|
+|»»» apiTitle|string¦null|false|none|none|
+|»»» remotes|[object]|false|none|none|
+|»»» apiVersion|string|false|none|none|
+|»»» apiDescription|string|false|none|none|
+|»»» apiType|string|false|none|none|
+|»»» visibility|string|false|none|none|
+|»»» agentVisibility|string|false|none|none|
+|»»» gatewayVendor|string|false|none|none|
+|»»» tokenBasedSubscriptionEnabled|boolean|false|none|none|
+|»»» gatewayType|string¦null|false|none|none|
+|»»» addedLabels|[string]|false|none|none|
+|»»» removedLabels|[string]|false|none|none|
+|»»» visibleGroups|[string]|false|none|none|
+|»»» owners|[ApiOwnersResponse](schemas.md#schemaapiownersresponse)|false|none|none|
+|»»»» technicalOwner|string|false|none|none|
+|»»»» businessOwner|string|false|none|none|
+|»»»» businessOwnerEmail|string|false|none|none|
+|»»»» technicalOwnerEmail|string|false|none|none|
+|»»» apiImageMetadata|[ApiImageMetadataResponse](schemas.md#schemaapiimagemetadataresponse)|false|none|none|
+|»»»» **additionalProperties**|string|false|none|none|
+|»»» tags|[string]|false|none|none|
+|»»» labels|[string]|false|none|none|
+|»» endPoints|[ApiEndpointsResponse](schemas.md#schemaapiendpointsresponse)|false|none|none|
+|»»» sandboxURL|string|false|none|none|
+|»»» productionURL|string|false|none|none|
+|»» subscriptionPlans|[[SubscriptionPlanResponse](schemas.md#schemasubscriptionplanresponse)]|false|none|none|
+|»»» planID|string|false|none|none|
+|»»» planName|string|false|none|none|
+|»»» displayName|string|false|none|none|
+|»»» description|string|false|none|none|
+|»»» requestCount|any|false|none|none|
 
 *oneOf*
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|»»» *anonymous*|integer|false|none|none|
+|»»»» *anonymous*|integer|false|none|none|
 
 *xor*
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|»»» *anonymous*|string|false|none|none|
+|»»»» *anonymous*|string|false|none|none|
 
 *continued*
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|»» orgID|string|false|none|none|
+|»»» orgID|string|false|none|none|
+|» pagination|[Pagination](schemas.md#schemapagination)|false|none|Standard pagination metadata returned with collection responses.|
+|»» total|integer|true|none|Total number of records matching the query.|
+|»» limit|integer|true|none|Maximum number of records returned in this response.|
+|»» offset|integer|true|none|Number of records skipped before this page.|
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|status|error|
+|status|error|
 
 ## Get API metadata
 
@@ -428,18 +466,24 @@ This operation requires <strong>Basic Auth</strong> authentication.
 ```json
 [
   {
-    "code": "400",
-    "message": "input validation failed",
-    "description": "Invalid value"
+    "status": "error",
+    "code": "COMMON_VALIDATION_ERROR",
+    "message": "Input validation failed.",
+    "errors": [
+      {
+        "field": "orgName",
+        "message": "orgName is required."
+      }
+    ]
   }
 ]
 ```
 
 ```json
 {
-  "code": "400",
-  "message": "Bad Request",
-  "description": "Missing required parameter: 'orgId'"
+  "status": "error",
+  "code": "MISSING_REQUIRED_PARAMETER",
+  "message": "Missing required parameter."
 }
 ```
 
@@ -459,9 +503,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "500",
-  "message": "Internal Server Error",
-  "description": "Internal Server Error"
+  "status": "error",
+  "code": "INTERNAL_SERVER_ERROR",
+  "message": "An unexpected error occurred."
 }
 ```
 
@@ -475,6 +519,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
 <h3 id="get-api-metadata-responseschema">Response Schema</h3>
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|status|error|
+|status|error|
 
 ## Update API metadata
 
@@ -579,18 +630,24 @@ This operation requires <strong>Basic Auth</strong> authentication.
 ```json
 [
   {
-    "code": "400",
-    "message": "input validation failed",
-    "description": "Invalid value"
+    "status": "error",
+    "code": "COMMON_VALIDATION_ERROR",
+    "message": "Input validation failed.",
+    "errors": [
+      {
+        "field": "orgName",
+        "message": "orgName is required."
+      }
+    ]
   }
 ]
 ```
 
 ```json
 {
-  "code": "400",
-  "message": "Bad Request",
-  "description": "Missing required parameter: 'orgId'"
+  "status": "error",
+  "code": "MISSING_REQUIRED_PARAMETER",
+  "message": "Missing required parameter."
 }
 ```
 
@@ -604,9 +661,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "404",
-  "message": "Resource Not Found",
-  "description": "Organization not found"
+  "status": "error",
+  "code": "ORG_NOT_FOUND",
+  "message": "Organization not found."
 }
 ```
 
@@ -614,9 +671,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "409",
-  "message": "Conflict",
-  "description": "Organization already exists"
+  "status": "error",
+  "code": "ORG_ALREADY_EXISTS",
+  "message": "Organization already exists."
 }
 ```
 
@@ -624,9 +681,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "500",
-  "message": "Internal Server Error",
-  "description": "Internal Server Error"
+  "status": "error",
+  "code": "INTERNAL_SERVER_ERROR",
+  "message": "An unexpected error occurred."
 }
 ```
 
@@ -641,6 +698,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
 <h3 id="update-api-metadata-responseschema">Response Schema</h3>
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|status|error|
+|status|error|
 
 ## Delete API metadata
 
@@ -688,18 +752,24 @@ This operation requires <strong>Basic Auth</strong> authentication.
 ```json
 [
   {
-    "code": "400",
-    "message": "input validation failed",
-    "description": "Invalid value"
+    "status": "error",
+    "code": "COMMON_VALIDATION_ERROR",
+    "message": "Input validation failed.",
+    "errors": [
+      {
+        "field": "orgName",
+        "message": "orgName is required."
+      }
+    ]
   }
 ]
 ```
 
 ```json
 {
-  "code": "400",
-  "message": "Bad Request",
-  "description": "Missing required parameter: 'orgId'"
+  "status": "error",
+  "code": "MISSING_REQUIRED_PARAMETER",
+  "message": "Missing required parameter."
 }
 ```
 
@@ -713,9 +783,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "404",
-  "message": "Resource Not Found",
-  "description": "Organization not found"
+  "status": "error",
+  "code": "ORG_NOT_FOUND",
+  "message": "Organization not found."
 }
 ```
 
@@ -723,9 +793,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "409",
-  "message": "Conflict",
-  "description": "Organization already exists"
+  "status": "error",
+  "code": "ORG_ALREADY_EXISTS",
+  "message": "Organization already exists."
 }
 ```
 
@@ -733,9 +803,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "500",
-  "message": "Internal Server Error",
-  "description": "Internal Server Error"
+  "status": "error",
+  "code": "INTERNAL_SERVER_ERROR",
+  "message": "An unexpected error occurred."
 }
 ```
 
@@ -750,3 +820,10 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
 <h3 id="delete-api-metadata-responseschema">Response Schema</h3>
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|status|error|
+|status|error|

@@ -114,6 +114,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
+|limit|query|integer|false|Maximum number of records to return.|
+|offset|query|integer|false|Number of records to skip before returning results.|
 |orgId|path|string|true|none|
 |viewName|path|string|true|none|
 
@@ -122,23 +124,30 @@ This operation requires <strong>Basic Auth</strong> authentication.
 > 200 Response
 
 ```json
-[
-  {
-    "apiFlowId": "flow-12345",
-    "name": "Weather onboarding",
-    "handle": "weather-onboarding",
-    "description": "string",
-    "agentPrompt": "string",
-    "status": "PUBLISHED",
-    "visibility": "PUBLIC",
-    "agentVisibility": "VISIBLE",
-    "contentType": "ARAZZO",
-    "apiFlowDefinition": "string",
-    "markdownContent": "string",
-    "createdAt": "May 7, 2026",
-    "updatedAt": "string"
+{
+  "list": [
+    {
+      "apiFlowId": "flow-12345",
+      "name": "Weather onboarding",
+      "handle": "weather-onboarding",
+      "description": "string",
+      "agentPrompt": "string",
+      "status": "PUBLISHED",
+      "visibility": "PUBLIC",
+      "agentVisibility": "VISIBLE",
+      "contentType": "ARAZZO",
+      "apiFlowDefinition": "string",
+      "markdownContent": "string",
+      "createdAt": "May 7, 2026",
+      "updatedAt": "string"
+    }
+  ],
+  "pagination": {
+    "total": 42,
+    "limit": 20,
+    "offset": 0
   }
-]
+}
 ```
 
 <h3 id="list-api-flows-responses">Responses</h3>
@@ -154,20 +163,24 @@ Status Code **200**
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|*anonymous*|[[APIFlowResponse](schemas.md#schemaapiflowresponse)]|false|none|none|
-|» apiFlowId|string|false|none|none|
-|» name|string|false|none|none|
-|» handle|string|false|none|none|
-|» description|string|false|none|none|
-|» agentPrompt|string|false|none|none|
-|» status|string|false|none|none|
-|» visibility|string|false|none|none|
-|» agentVisibility|string|false|none|none|
-|» contentType|string|false|none|none|
-|» apiFlowDefinition|string¦null|false|none|none|
-|» markdownContent|string¦null|false|none|none|
-|» createdAt|string|false|none|none|
-|» updatedAt|string¦null|false|none|none|
+|» list|[[APIFlowResponse](schemas.md#schemaapiflowresponse)]|false|none|none|
+|»» apiFlowId|string|false|none|none|
+|»» name|string|false|none|none|
+|»» handle|string|false|none|none|
+|»» description|string|false|none|none|
+|»» agentPrompt|string|false|none|none|
+|»» status|string|false|none|none|
+|»» visibility|string|false|none|none|
+|»» agentVisibility|string|false|none|none|
+|»» contentType|string|false|none|none|
+|»» apiFlowDefinition|string¦null|false|none|none|
+|»» markdownContent|string¦null|false|none|none|
+|»» createdAt|string|false|none|none|
+|»» updatedAt|string¦null|false|none|none|
+|» pagination|[Pagination](schemas.md#schemapagination)|false|none|Standard pagination metadata returned with collection responses.|
+|»» total|integer|true|none|Total number of records matching the query.|
+|»» limit|integer|true|none|Maximum number of records returned in this response.|
+|»» offset|integer|true|none|Number of records skipped before this page.|
 
 #### Enumerated Values
 

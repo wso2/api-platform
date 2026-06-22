@@ -19,6 +19,7 @@ const { Sequelize } = require('sequelize');
 const whDao = require('../dao/webhookSubscriberDao');
 const { WebhookSubscriberDTO } = require('../dto/webhookSubscriberDto');
 const constants = require('../utils/constants');
+const util = require('../utils/util');
 const logger = require('../config/logger');
 
 function _validateRequiredFields(payload) {
@@ -80,7 +81,7 @@ const getWebhookSubscribers = async (req, res) => {
         const orgId = req.params.orgId;
         const records = await whDao.list(orgId);
         const dtos = records.map(r => new WebhookSubscriberDTO(r));
-        return res.status(200).json(dtos);
+        return res.status(200).json(util.toPaginatedList(dtos, req));
     } catch (error) {
         logger.error(constants.ERROR_MESSAGE.WEBHOOK_SUBSCRIBER_RETRIEVE_ERROR, { error });
         return res.status(500).json({ error: constants.ERROR_MESSAGE.WEBHOOK_SUBSCRIBER_RETRIEVE_ERROR });

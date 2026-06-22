@@ -161,7 +161,7 @@ const listSubscriptions = async (req, res) => {
         }
 
         const subs = await subDao.list(orgID, { apiId, createdBy: req.user.sub });
-        return res.status(200).json({ count: subs.length, list: subs.map(formatSubscriptionResponse) });
+        return res.status(200).json(util.toPaginatedList(subs.map(formatSubscriptionResponse), req));
     } catch (error) {
         logger.error('Error listing subscriptions', {
             error: error.message, orgID,
