@@ -567,7 +567,7 @@ func (h *APIHandler) GetAPIPublications(c *gin.Context) {
 	c.JSON(http.StatusOK, response)
 }
 
-// ImportAPIProject handles POST /api/v1alpha2/import/api-project
+// ImportAPIProject handles POST /api/v1alpha2/api-projects/import
 func (h *APIHandler) ImportAPIProject(c *gin.Context) {
 	orgId, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {

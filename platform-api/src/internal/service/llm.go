@@ -1181,7 +1181,7 @@ func hasGlobalPolicyByName(policies []model.GlobalPolicy, name string) bool {
 // name+version, or appends a new OperationPolicy if none exists.
 func appendLegacyOperationPath(policies *[]model.OperationPolicy, name, version string, path model.OperationPolicyPath) {
 	for i := range *policies {
-		if (*policies)[i].Name == name {
+		if (*policies)[i].Name == name && (*policies)[i].Version == version {
 			(*policies)[i].Paths = append((*policies)[i].Paths, path)
 			return
 		}

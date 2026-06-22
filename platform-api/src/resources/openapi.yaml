@@ -10038,6 +10038,7 @@ components:
           type: array
           items:
             type: string
+            enum: [ GET, POST, PUT, DELETE, PATCH, OPTIONS, HEAD, "*" ]
             description: "HTTP method: GET, POST, PUT, DELETE, PATCH, OPTIONS, HEAD, or * for all"
         params:
           type: object
