@@ -68,7 +68,9 @@ func setupGatewaySecretTestEnv(t *testing.T) (*gatewaySecretTestEnv, func()) {
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
-	sqlDB.Exec("PRAGMA foreign_keys = ON")
+	if _, err = sqlDB.Exec("PRAGMA foreign_keys = ON"); err != nil {
+		t.Fatalf("enable foreign keys: %v", err)
+	}
 	db := &database.DB{DB: sqlDB}
 
 	schemaPath := filepath.Join("..", "database", "schema.sqlite.sql")
@@ -84,17 +86,23 @@ func setupGatewaySecretTestEnv(t *testing.T) (*gatewaySecretTestEnv, func()) {
 	const gatewayID = "gw-001"
 	const plainToken = "super-secret-token"
 
-	db.Exec(`INSERT INTO organizations (uuid, handle, name, region, created_at, updated_at)
-		VALUES (?, 'gw-org', 'GW Org', 'default', datetime('now'), datetime('now'))`, orgID)
+	if _, err = db.Exec(`INSERT INTO organizations (uuid, handle, name, region, created_at, updated_at)
+		VALUES (?, 'gw-org', 'GW Org', 'default', datetime('now'), datetime('now'))`, orgID); err != nil {
+		t.Fatalf("insert organization: %v", err)
+	}
 
 	// Insert gateway (description must be non-NULL — repo scans it into string)
-	db.Exec(`INSERT INTO gateways (uuid, organization_uuid, name, display_name, description, vhost, version, is_active, created_at, updated_at)
-		VALUES (?, ?, 'test-gw', 'Test GW', '', 'localhost', '1.0', 1, datetime('now'), datetime('now'))`, gatewayID, orgID)
+	if _, err = db.Exec(`INSERT INTO gateways (uuid, organization_uuid, name, display_name, description, vhost, version, is_active, created_at, updated_at)
+		VALUES (?, ?, 'test-gw', 'Test GW', '', 'localhost', '1.0', 1, datetime('now'), datetime('now'))`, gatewayID, orgID); err != nil {
+		t.Fatalf("insert gateway: %v", err)
+	}
 
 	// Insert gateway token
 	tokenHash := testHashToken(plainToken)
-	db.Exec(`INSERT INTO gateway_tokens (uuid, gateway_uuid, token_hash, salt, status, created_at)
-		VALUES ('tok-001', ?, ?, 'dummy-salt', 'active', datetime('now'))`, gatewayID, tokenHash)
+	if _, err = db.Exec(`INSERT INTO gateway_tokens (uuid, gateway_uuid, token_hash, salt, status, created_at)
+		VALUES ('tok-001', ?, ?, 'dummy-salt', 'active', datetime('now'))`, gatewayID, tokenHash); err != nil {
+		t.Fatalf("insert gateway token: %v", err)
+	}
 
 	v, err := vault.NewInHouseVault([]byte("12345678901234567890123456789012"))
 	if err != nil {
@@ -392,11 +400,15 @@ func TestGatewaySecretHandler_SecretNotReturnedForOtherGateway(t *testing.T) {
 	// Create a second gateway
 	gwBID := "gw-002"
 	plainTokenB := "token-for-gw-b"
-	env.db.Exec(`INSERT INTO gateways (uuid, organization_uuid, name, display_name, description, vhost, version, is_active, created_at, updated_at)
-		VALUES (?, ?, 'test-gw-b', 'Test GW B', '', 'localhost2', '1.0', 1, datetime('now'), datetime('now'))`, gwBID, env.orgID)
+	if _, err := env.db.Exec(`INSERT INTO gateways (uuid, organization_uuid, name, display_name, description, vhost, version, is_active, created_at, updated_at)
+		VALUES (?, ?, 'test-gw-b', 'Test GW B', '', 'localhost2', '1.0', 1, datetime('now'), datetime('now'))`, gwBID, env.orgID); err != nil {
+		t.Fatalf("insert second gateway: %v", err)
+	}
 	hashB := testHashToken(plainTokenB)
-	env.db.Exec(`INSERT INTO gateway_tokens (uuid, gateway_uuid, token_hash, salt, status, created_at)
-		VALUES ('tok-002', ?, ?, 'dummy-salt', 'active', datetime('now'))`, gwBID, hashB)
+	if _, err := env.db.Exec(`INSERT INTO gateway_tokens (uuid, gateway_uuid, token_hash, salt, status, created_at)
+		VALUES ('tok-002', ?, ?, 'dummy-salt', 'active', datetime('now'))`, gwBID, hashB); err != nil {
+		t.Fatalf("insert second gateway token: %v", err)
+	}
 
 	// Deploy secret only to GW-A
 	createSecretDirect(t, env.svc, env.orgID, "gwa-only", "val")
@@ -425,11 +437,15 @@ func TestGatewaySecretHandler_SharedSecretReturnedForBothGateways(t *testing.T) 
 	// Second gateway
 	gwBID := "gw-003"
 	plainTokenB := "token-shared-gw-b"
-	env.db.Exec(`INSERT INTO gateways (uuid, organization_uuid, name, display_name, description, vhost, version, is_active, created_at, updated_at)
-		VALUES (?, ?, 'test-gw-shared', 'Test GW Shared', '', 'localhost3', '1.0', 1, datetime('now'), datetime('now'))`, gwBID, env.orgID)
+	if _, err := env.db.Exec(`INSERT INTO gateways (uuid, organization_uuid, name, display_name, description, vhost, version, is_active, created_at, updated_at)
+		VALUES (?, ?, 'test-gw-shared', 'Test GW Shared', '', 'localhost3', '1.0', 1, datetime('now'), datetime('now'))`, gwBID, env.orgID); err != nil {
+		t.Fatalf("insert shared gateway: %v", err)
+	}
 	hashB := testHashToken(plainTokenB)
-	env.db.Exec(`INSERT INTO gateway_tokens (uuid, gateway_uuid, token_hash, salt, status, created_at)
-		VALUES ('tok-003', ?, ?, 'dummy-salt', 'active', datetime('now'))`, gwBID, hashB)
+	if _, err := env.db.Exec(`INSERT INTO gateway_tokens (uuid, gateway_uuid, token_hash, salt, status, created_at)
+		VALUES ('tok-003', ?, ?, 'dummy-salt', 'active', datetime('now'))`, gwBID, hashB); err != nil {
+		t.Fatalf("insert shared gateway token: %v", err)
+	}
 
 	createSecretDirect(t, env.svc, env.orgID, "shared-secret", "shared-val")
 	insertArtifact(t, env.db, env.orgID, "art-31-a", "api-31-a")
@@ -477,8 +493,10 @@ func TestGatewaySecretHandler_SecretGoneAfterUndeploy(t *testing.T) {
 	}
 
 	// Remove the ref row
-	env.db.Exec(`DELETE FROM artifact_secret_refs WHERE organization_id = ? AND artifact_uuid = ?`,
-		env.orgID, "art-32")
+	if _, err := env.db.Exec(`DELETE FROM artifact_secret_refs WHERE organization_id = ? AND artifact_uuid = ?`,
+		env.orgID, "art-32"); err != nil {
+		t.Fatalf("delete artifact secret ref: %v", err)
+	}
 
 	// Now it must be absent
 	w2 := doGWRequest(env.router, http.MethodGet, "/api/internal/v1/secrets", env.plainToken)
@@ -542,7 +560,7 @@ func TestGatewaySecretHandler_IncludeValues_ActiveSecretHasValue(t *testing.T) {
 }
 
 // TC-64: DEPRECATED secret with ?includeValues=true → item has no "value" field.
-func TestGatewaySecretHandler_IncludeValues_DeprecatedSecretNoValue(t *testing.T) {
+func TestGatewaySecretHandler_IncludeValues_DeprecatedSecretFails(t *testing.T) {
 	env, cleanup := setupGatewaySecretTestEnv(t)
 	defer cleanup()
 
@@ -556,26 +574,12 @@ func TestGatewaySecretHandler_IncludeValues_DeprecatedSecretNoValue(t *testing.T
 		t.Fatalf("deprecate secret: %v", err)
 	}
 
-	// Note: ListByHandles returns all statuses (no status filter), so the DEPRECATED
-	// secret still appears in the list but Decrypt should fail → no value field.
-	// However, the repository query filters by value_scope (ORG_SHARED) but NOT by status,
-	// so the item appears but Decrypt returns an error for DEPRECATED.
+	// Decrypting a DEPRECATED secret returns an error, so the whole bulk request
+	// must fail with 500 so the caller can retry rather than receiving a partial response.
 	w := doGWRequest(env.router, http.MethodGet, "/api/internal/v1/secrets?includeValues=true", env.plainToken)
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500 when deprecated secret in list, got %d: %s", w.Code, w.Body.String())
 	}
-
-	list := listFromBody(t, w)
-	for _, raw := range list {
-		item := raw.(map[string]interface{})
-		if item["name"] == "dep-iv" {
-			if _, hasVal := item["value"]; hasVal {
-				t.Errorf("DEPRECATED secret should NOT have value field, got: %v", item)
-			}
-			return
-		}
-	}
-	// If item not in list (possible since it was deprecated), test passes.
 }
 
 // TC-65: No deployments with ?includeValues=true → {"list":[],"count":0}.

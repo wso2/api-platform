@@ -92,6 +92,9 @@ func (h *SecretHandler) ListSecrets(c *gin.Context) {
 	offset := 0
 	if l := c.Query("limit"); l != "" {
 		if v, err := strconv.Atoi(l); err == nil && v > 0 {
+			if v > 100 {
+				v = 100
+			}
 			limit = v
 		}
 	}
@@ -223,7 +226,7 @@ func (h *SecretHandler) DeleteSecret(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusNoContent, nil)
+	c.Status(http.StatusNoContent)
 }
 
 // GetSecretValue is an internal endpoint for the GW controller only.

@@ -349,7 +349,10 @@ func (s *LLMProviderService) Create(orgUUID, createdBy string, req *api.LLMProvi
 
 	// Validate {{ secret "..." }} placeholders in the upstream config
 	if s.secretService != nil {
-		configJSON, _ := marshalUpstreamForValidation(req.Upstream)
+		configJSON, err := marshalUpstreamForValidation(req.Upstream)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal upstream config for secret validation: %w", err)
+		}
 		if err := s.secretService.ValidateSecretRefs(orgUUID, configJSON); err != nil {
 			return nil, err
 		}
@@ -522,7 +525,10 @@ func (s *LLMProviderService) Update(orgUUID, handle, updatedBy string, req *api.
 
 	// Validate {{ secret "..." }} placeholders in the upstream config
 	if s.secretService != nil {
-		configJSON, _ := marshalUpstreamForValidation(req.Upstream)
+		configJSON, err := marshalUpstreamForValidation(req.Upstream)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal upstream config for secret validation: %w", err)
+		}
 		if err := s.secretService.ValidateSecretRefs(orgUUID, configJSON); err != nil {
 			return nil, err
 		}

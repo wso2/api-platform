@@ -268,7 +268,7 @@ func (r *SecretRepo) SoftDelete(orgID, handle, updatedBy string) error {
 
 func (r *SecretRepo) FindRefs(orgID, handle string) ([]model.SecretReference, error) {
 	query := r.db.Rebind(`
-		SELECT art.handle, art.name, art.kind
+		SELECT DISTINCT art.handle, art.name, art.kind
 		FROM artifact_secret_refs asr
 		JOIN artifacts art ON art.uuid = asr.artifact_uuid
 		WHERE asr.organization_id = ? AND asr.secret_handle = ?

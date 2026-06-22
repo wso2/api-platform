@@ -346,25 +346,26 @@ func (s *SecretService) UpsertFromPlatform(handle, displayName, plaintext string
 	}
 	ciphertext := encryption.MarshalPayload(payload)
 
-	exists, err := s.storage.SecretExists(handle)
-	if err != nil {
-		return fmt.Errorf("failed to check secret existence: %w", err)
+	secret := &models.Secret{
+		Handle:      handle,
+		DisplayName: displayName,
+		Ciphertext:  []byte(ciphertext),
 	}
 
-	if exists {
-		_, err = s.storage.UpdateSecret(&models.Secret{
-			Handle:      handle,
-			DisplayName: displayName,
-			Ciphertext:  []byte(ciphertext),
-		})
-	} else {
-		err = s.storage.SaveSecret(&models.Secret{
-			Handle:      handle,
-			DisplayName: displayName,
-			Ciphertext:  []byte(ciphertext),
-		})
+	_, err = s.storage.UpdateSecret(secret)
+	if err == nil {
+		return nil
 	}
-	return err
+	if !storage.IsNotFoundError(err) {
+		return err
+	}
+	if err := s.storage.SaveSecret(secret); err != nil {
+		if storage.IsConflictError(err) {
+			return nil
+		}
+		return err
+	}
+	return nil
 }
 
 // Delete permanently removes a secret
