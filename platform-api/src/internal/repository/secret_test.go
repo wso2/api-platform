@@ -557,6 +557,18 @@ func TestExtractSecretHandles(t *testing.T) {
 			content: `{{secret "k"}} {{  secret  "k2"  }}`,
 			want:    []string{"k", "k2"},
 		},
+		{
+			// JSON-encoding wraps string values in double-quotes and escapes inner quotes
+			// as \". The regex must match both {{ secret "key" }} and {{ secret \"key\" }}.
+			name:    "json-escaped quotes",
+			content: `{{ secret \"my-key\" }}`,
+			want:    []string{"my-key"},
+		},
+		{
+			name:    "json-escaped and raw-quote mixed",
+			content: `{{ secret \"key-a\" }} {{ secret "key-b" }}`,
+			want:    []string{"key-a", "key-b"},
+		},
 	}
 
 	for _, tc := range tests {
