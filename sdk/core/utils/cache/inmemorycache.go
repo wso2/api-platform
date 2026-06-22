@@ -22,6 +22,8 @@ import (
 	"container/heap"
 	"container/list"
 	"context"
+	"io"
+	"log/slog"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -101,14 +103,20 @@ type InMemoryCache[T any] struct {
 	hitCount       atomic.Int64
 	missCount      atomic.Int64
 	evictCount     atomic.Int64
+	logger         *slog.Logger
 }
 
 // NewInMemoryCache creates an enabled InMemoryCache.
 // ttl=0 means entries never expire. An unrecognised policy defaults to LRU.
-func NewInMemoryCache[T any](name string, size int, ttl time.Duration, policy string) *InMemoryCache[T] {
+// Pass a nil logger to silence all debug output.
+func NewInMemoryCache[T any](name string, size int, ttl time.Duration, policy string, logger *slog.Logger) *InMemoryCache[T] {
 	ep := evictionPolicyLRU
 	if policy == string(evictionPolicyLFU) {
 		ep = evictionPolicyLFU
+	}
+
+	if logger == nil {
+		logger = slog.New(slog.NewTextHandler(io.Discard, nil))
 	}
 
 	h := &lfuHeap{}
@@ -123,6 +131,7 @@ func NewInMemoryCache[T any](name string, size int, ttl time.Duration, policy st
 		size:           size,
 		ttl:            ttl,
 		evictionPolicy: ep,
+		logger:         logger.With(slog.String("cache", name)),
 	}
 }
 
@@ -161,6 +170,7 @@ func (c *InMemoryCache[T]) Set(_ context.Context, key CacheKey, value T) error {
 			existing.heapItem.lastAccess = existing.lastAccess
 			heap.Fix(c.lfuHeap, existing.heapItem.index)
 		}
+		c.logger.Debug("cache entry updated", slog.String("key", key.Key))
 		return nil
 	}
 
@@ -193,6 +203,7 @@ func (c *InMemoryCache[T]) Set(_ context.Context, key CacheKey, value T) error {
 		lastAccess:  now,
 		accessCount: 1,
 	}
+	c.logger.Debug("cache entry added", slog.String("key", key.Key), slog.Int("size", len(c.cache)))
 
 	return nil
 }
@@ -210,6 +221,7 @@ func (c *InMemoryCache[T]) Get(_ context.Context, key CacheKey) (T, bool) {
 	entry, exists := c.cache[key]
 	if !exists {
 		c.missCount.Add(1)
+		c.logger.Debug("cache miss", slog.String("key", key.Key))
 		var zero T
 		return zero, false
 	}
@@ -217,6 +229,7 @@ func (c *InMemoryCache[T]) Get(_ context.Context, key CacheKey) (T, bool) {
 	if !entry.ExpiryTime.IsZero() && time.Now().After(entry.ExpiryTime) {
 		c.deleteEntry(key, entry)
 		c.missCount.Add(1)
+		c.logger.Debug("cache miss: entry expired", slog.String("key", key.Key))
 		var zero T
 		return zero, false
 	}
@@ -227,6 +240,7 @@ func (c *InMemoryCache[T]) Get(_ context.Context, key CacheKey) (T, bool) {
 		c.accessOrder.MoveToFront(entry.listElement)
 	}
 	c.hitCount.Add(1)
+	c.logger.Debug("cache hit", slog.String("key", key.Key))
 
 	if c.evictionPolicy == evictionPolicyLFU && entry.heapItem != nil {
 		entry.heapItem.accessCount = entry.accessCount
@@ -248,6 +262,7 @@ func (c *InMemoryCache[T]) Delete(_ context.Context, key CacheKey) error {
 
 	if entry, exists := c.cache[key]; exists {
 		c.deleteEntry(key, entry)
+		c.logger.Debug("cache entry deleted", slog.String("key", key.Key))
 	}
 	return nil
 }
@@ -268,6 +283,7 @@ func (c *InMemoryCache[T]) Clear(_ context.Context) error {
 	c.hitCount.Store(0)
 	c.missCount.Store(0)
 	c.evictCount.Store(0)
+	c.logger.Debug("cache cleared")
 	return nil
 }
 
@@ -311,10 +327,15 @@ func (c *InMemoryCache[T]) CleanupExpired() {
 	defer c.mu.Unlock()
 
 	now := time.Now()
+	removed := 0
 	for key, entry := range c.cache {
 		if !entry.ExpiryTime.IsZero() && now.After(entry.ExpiryTime) {
 			c.deleteEntry(key, entry)
+			removed++
 		}
+	}
+	if removed > 0 {
+		c.logger.Debug("expired entries removed", slog.Int("count", removed), slog.Int("remaining", len(c.cache)))
 	}
 }
 
@@ -338,6 +359,7 @@ func (c *InMemoryCache[T]) evictOldest() {
 	if entry, exists := c.cache[key]; exists {
 		c.deleteEntry(key, entry)
 		c.evictCount.Add(1)
+		c.logger.Debug("evicted entry", slog.String("key", key.Key), slog.String("policy", "LRU"))
 	}
 }
 
@@ -350,6 +372,7 @@ func (c *InMemoryCache[T]) evictLeastFrequent() {
 	if entry, exists := c.cache[item.key]; exists {
 		c.deleteEntry(item.key, entry)
 		c.evictCount.Add(1)
+		c.logger.Debug("evicted entry", slog.String("key", item.key.Key), slog.String("policy", "LFU"), slog.Int64("accessCount", item.accessCount))
 	}
 }
 

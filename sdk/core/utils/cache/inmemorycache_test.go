@@ -44,7 +44,7 @@ func TestNewInMemoryCache(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			c := NewInMemoryCache[string](tc.name, tc.size, tc.ttl, tc.policy)
+			c := NewInMemoryCache[string](tc.name, tc.size, tc.ttl, tc.policy, nil)
 			if c == nil {
 				t.Fatal("expected non-nil cache")
 			}
@@ -71,7 +71,7 @@ func TestNewInMemoryCache(t *testing.T) {
 func TestSetAndGet(t *testing.T) {
 	for _, policy := range []string{LRUEvictionPolicy, LFUEvictionPolicy} {
 		t.Run(policy, func(t *testing.T) {
-			c := NewInMemoryCache[string](policy, 100, 60*time.Second, policy)
+			c := NewInMemoryCache[string](policy, 100, 60*time.Second, policy, nil)
 			ctx := context.Background()
 			key := CacheKey{Key: "testKey"}
 
@@ -115,7 +115,7 @@ func TestSetAndGet(t *testing.T) {
 }
 
 func TestUpdateExistingEntry(t *testing.T) {
-	c := NewInMemoryCache[string]("cache", 100, 60*time.Second, LRUEvictionPolicy)
+	c := NewInMemoryCache[string]("cache", 100, 60*time.Second, LRUEvictionPolicy, nil)
 	ctx := context.Background()
 	key := CacheKey{Key: "k"}
 
@@ -135,7 +135,7 @@ func TestUpdateExistingEntry(t *testing.T) {
 }
 
 func TestDelete(t *testing.T) {
-	c := NewInMemoryCache[string]("cache", 100, 60*time.Second, LRUEvictionPolicy)
+	c := NewInMemoryCache[string]("cache", 100, 60*time.Second, LRUEvictionPolicy, nil)
 	ctx := context.Background()
 	key := CacheKey{Key: "testKey"}
 
@@ -155,14 +155,14 @@ func TestDelete(t *testing.T) {
 }
 
 func TestDeleteMissingKey(t *testing.T) {
-	c := NewInMemoryCache[string]("cache", 100, 60*time.Second, LRUEvictionPolicy)
+	c := NewInMemoryCache[string]("cache", 100, 60*time.Second, LRUEvictionPolicy, nil)
 	if err := c.Delete(context.Background(), CacheKey{Key: "ghost"}); err != nil {
 		t.Errorf("expected no error deleting missing key, got %v", err)
 	}
 }
 
 func TestClear(t *testing.T) {
-	c := NewInMemoryCache[string]("cache", 100, 60*time.Second, LRUEvictionPolicy)
+	c := NewInMemoryCache[string]("cache", 100, 60*time.Second, LRUEvictionPolicy, nil)
 	ctx := context.Background()
 
 	for i := 0; i < 5; i++ {
@@ -185,7 +185,7 @@ func TestClear(t *testing.T) {
 }
 
 func TestExpiry(t *testing.T) {
-	c := NewInMemoryCache[string]("cache", 100, 50*time.Millisecond, LRUEvictionPolicy)
+	c := NewInMemoryCache[string]("cache", 100, 50*time.Millisecond, LRUEvictionPolicy, nil)
 	ctx := context.Background()
 	key := CacheKey{Key: "k"}
 
@@ -205,7 +205,7 @@ func TestExpiry(t *testing.T) {
 }
 
 func TestZeroTTLNeverExpires(t *testing.T) {
-	c := NewInMemoryCache[string]("cache", 100, 0, LRUEvictionPolicy)
+	c := NewInMemoryCache[string]("cache", 100, 0, LRUEvictionPolicy, nil)
 	ctx := context.Background()
 	key := CacheKey{Key: "k"}
 
@@ -221,7 +221,7 @@ func TestZeroTTLNeverExpires(t *testing.T) {
 }
 
 func TestCleanupExpired(t *testing.T) {
-	c := NewInMemoryCache[string]("cache", 100, 50*time.Millisecond, LRUEvictionPolicy)
+	c := NewInMemoryCache[string]("cache", 100, 50*time.Millisecond, LRUEvictionPolicy, nil)
 	ctx := context.Background()
 
 	for i := 0; i < 5; i++ {
@@ -240,7 +240,7 @@ func TestCleanupExpired(t *testing.T) {
 }
 
 func TestCleanupExpiredPreservesNonExpired(t *testing.T) {
-	c := NewInMemoryCache[string]("cache", 100, 50*time.Millisecond, LRUEvictionPolicy)
+	c := NewInMemoryCache[string]("cache", 100, 50*time.Millisecond, LRUEvictionPolicy, nil)
 	ctx := context.Background()
 
 	// Insert entries that will expire.
@@ -277,7 +277,7 @@ func TestCleanupExpiredPreservesNonExpired(t *testing.T) {
 func TestLRUEviction(t *testing.T) {
 	// Cache of size 3. After filling, access key0 so key1 becomes LRU.
 	// Adding key3 should evict key1.
-	c := NewInMemoryCache[string]("lru", 3, 60*time.Second, LRUEvictionPolicy)
+	c := NewInMemoryCache[string]("lru", 3, 60*time.Second, LRUEvictionPolicy, nil)
 	ctx := context.Background()
 
 	for i := 0; i < 3; i++ {
@@ -316,7 +316,7 @@ func TestLFUNewEntryNotSelfEvicted(t *testing.T) {
 	// Regression: before the fix, Set inserted the entry then evicted under LFU.
 	// The new entry (accessCount=1) was always the cheapest victim when existing
 	// entries had been accessed more, causing immediate self-eviction.
-	c := NewInMemoryCache[string]("lfu", 2, 60*time.Second, LFUEvictionPolicy)
+	c := NewInMemoryCache[string]("lfu", 2, 60*time.Second, LFUEvictionPolicy, nil)
 	ctx := context.Background()
 
 	_ = c.Set(ctx, CacheKey{Key: "k0"}, "v0")
@@ -339,7 +339,7 @@ func TestLFUNewEntryNotSelfEvicted(t *testing.T) {
 func TestLFUEviction(t *testing.T) {
 	// Cache of size 3. Access key0 multiple times so key1/key2 are the least frequent.
 	// Adding key3 should evict the least-frequent entry (key1 or key2).
-	c := NewInMemoryCache[string]("lfu", 3, 60*time.Second, LFUEvictionPolicy)
+	c := NewInMemoryCache[string]("lfu", 3, 60*time.Second, LFUEvictionPolicy, nil)
 	ctx := context.Background()
 
 	for i := 0; i < 3; i++ {
@@ -369,7 +369,7 @@ func TestLFUEviction(t *testing.T) {
 }
 
 func TestGetStats(t *testing.T) {
-	c := NewInMemoryCache[string]("stats", 100, 60*time.Second, LRUEvictionPolicy)
+	c := NewInMemoryCache[string]("stats", 100, 60*time.Second, LRUEvictionPolicy, nil)
 	ctx := context.Background()
 
 	initial := c.GetStats()
@@ -415,7 +415,7 @@ func TestGetName(t *testing.T) {
 		{"cache-name_123:special"},
 	}
 	for _, tc := range testCases {
-		c := NewInMemoryCache[string](tc.name, 10, time.Second, LRUEvictionPolicy)
+		c := NewInMemoryCache[string](tc.name, 10, time.Second, LRUEvictionPolicy, nil)
 		if c.GetName() != tc.name {
 			t.Errorf("expected name %q, got %q", tc.name, c.GetName())
 		}
@@ -423,7 +423,7 @@ func TestGetName(t *testing.T) {
 }
 
 func TestZeroSizeCache(t *testing.T) {
-	c := NewInMemoryCache[string]("zero", 0, 60*time.Second, LRUEvictionPolicy)
+	c := NewInMemoryCache[string]("zero", 0, 60*time.Second, LRUEvictionPolicy, nil)
 	ctx := context.Background()
 	key := CacheKey{Key: "k"}
 
@@ -440,7 +440,7 @@ func TestZeroSizeCache(t *testing.T) {
 }
 
 func TestConcurrentAccess(t *testing.T) {
-	c := NewInMemoryCache[int]("concurrent", 50, 60*time.Second, LRUEvictionPolicy)
+	c := NewInMemoryCache[int]("concurrent", 50, 60*time.Second, LRUEvictionPolicy, nil)
 	ctx := context.Background()
 	var wg sync.WaitGroup
 
