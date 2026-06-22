@@ -77,6 +77,7 @@ func (s *LLMTemplateSeeder) SeedForOrg(orgUUID string) error {
 			if current != nil {
 				current.Name = tpl.Name
 				current.Description = tpl.Description
+				current.Provider = tpl.Provider
 				current.Metadata = tpl.Metadata
 				current.PromptTokens = tpl.PromptTokens
 				current.CompletionTokens = tpl.CompletionTokens
@@ -98,6 +99,7 @@ func (s *LLMTemplateSeeder) SeedForOrg(orgUUID string) error {
 			ID:               tpl.ID,
 			Name:             tpl.Name,
 			Description:      tpl.Description,
+			Provider:         tpl.Provider,
 			CreatedBy:        tpl.CreatedBy,
 			Metadata:         tpl.Metadata,
 			PromptTokens:     tpl.PromptTokens,

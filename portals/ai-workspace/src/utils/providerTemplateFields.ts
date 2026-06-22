@@ -70,9 +70,9 @@ export const DEFAULT_TOKEN_CONFIG: TokenConfig = {
  * by most OpenAI-compatible providers. Pre-filled on the create form and shown
  * as the fallback on the Connection tab when a template specifies no auth. */
 export const DEFAULT_AUTH_CONFIG = {
-  type: 'bearer',
+  type: 'api-key',
   header: 'Authorization',
-  valuePrefix: 'Bearer',
+  valuePrefix: 'Bearer ',
 } as const;
 
 /** True if the value is a syntactically valid http(s) URL. Empty strings are

@@ -149,6 +149,7 @@ export default function ProviderTemplateOverview() {
   );
 
   const [endpointUrl, setEndpointUrl] = useState('');
+  const [provider, setProvider] = useState('');
   const [openapiSpecUrl, setOpenapiSpecUrl] = useState('');
   const [logoUrlField, setLogoUrlField] = useState('');
   const [authType, setAuthType] = useState('');
@@ -262,6 +263,10 @@ export default function ProviderTemplateOverview() {
   // Seed (and reset) the editable drafts whenever the loaded template changes.
   const seedDrafts = React.useCallback((t: ProviderTemplate) => {
     setEndpointUrl(t.metadata?.endpointUrl ?? '');
+    setProvider(
+      t.provider?.trim() ||
+        (isBuiltInProviderTemplate(t.id) ? 'wso2' : 'other')
+    );
     setOpenapiSpecUrl(t.metadata?.openapiSpecUrl ?? '');
     setLogoUrlField(t.metadata?.logoUrl ?? '');
     setAuthType(t.metadata?.auth?.type ?? DEFAULT_AUTH_CONFIG.type);
@@ -403,6 +408,7 @@ export default function ProviderTemplateOverview() {
     const payload: UpdateProviderTemplateRequest = {
       id: template.id,
       name: template.name,
+      provider: provider.trim() || 'other',
       description: template.description,
       ...fromTokenConfig(defaultTokens),
       metadata: Object.keys(metadata).length ? metadata : undefined,
@@ -900,6 +906,25 @@ export default function ProviderTemplateOverview() {
                           : !isValidHttpUrl(endpointUrl)
                             ? 'Enter a valid URL.'
                             : ''
+                      }
+                    />
+                  </FormControl>
+                </Grid>
+                <Grid size={{ xs: 12, sm: 6 }}>
+                  <FormControl fullWidth>
+                    <FormLabel>Provider</FormLabel>
+                    <TextField
+                      fullWidth
+                      value={provider}
+                      onChange={(e) => {
+                        setProvider(e.target.value);
+                        setIsDirty(true);
+                      }}
+                      placeholder="other"
+                      helperText={
+                        isBuiltIn
+                          ? "Built-in templates are owned by 'wso2'."
+                          : "Identifies who owns this template. Defaults to 'other'."
                       }
                     />
                   </FormControl>

@@ -10082,6 +10082,13 @@ components:
           minLength: 1
           maxLength: 253
           example: OpenAI
+        provider:
+          type: string
+          description: |
+            Identifies the origin of the template. Built-in templates use 'wso2';
+            custom templates default to 'other' and may be set to any value.
+          maxLength: 253
+          example: wso2
         description:
           type: string
           description: Description of the LLM provider template
@@ -10162,6 +10169,10 @@ components:
         name:
           type: string
           example: OpenAI
+        provider:
+          type: string
+          description: Origin of the template ('wso2' for built-in, otherwise custom-defined).
+          example: wso2
         description:
           type: string
           example: Default OpenAI template

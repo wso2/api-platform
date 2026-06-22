@@ -98,10 +98,15 @@ function TemplateBasedFormFieldsContainer({
       valuePrefix: template?.metadata?.auth?.valuePrefix || '',
     }));
 
-    // Fetch OpenAPI spec
+    // Resolve OpenAPI spec. Prefer the inline spec stored on the template
+    // (e.g. templates created by uploading an OpenAPI spec); otherwise fall
+    // back to fetching it from the template's openapiSpecUrl.
     if (templateChanged) {
+      const inlineSpec = template?.openapi;
       const specUrl = template?.metadata?.openapiSpecUrl;
-      if (specUrl) {
+      if (inlineSpec) {
+        setOpenapiSpec(inlineSpec);
+      } else if (specUrl) {
         fetch(specUrl)
           .then((res) => res.text())
           .then((text) => {

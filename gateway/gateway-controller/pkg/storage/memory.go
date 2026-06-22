@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
@@ -37,8 +38,13 @@ type ConfigStore struct {
 	TopicManager *TopicManager
 
 	// LLM Provider Templates
-	templates          map[string]*models.StoredLLMProviderTemplate // Key: template ID
+	templates map[string]*models.StoredLLMProviderTemplate // Key: template ID
+	// templateIdByHandle maps a handle to the UUID of its LATEST (most recently
+	// created) version, so handle-based lookups resolve to the newest template.
 	templateIdByHandle map[string]string
+	// templateIdByHandleVersion maps "handle@version" to a UUID, allowing
+	// multiple versions of the same handle to coexist.
+	templateIdByHandleVersion map[string]string
 
 	// API Keys storage
 	apiKeysByAPI map[string]map[string]*models.APIKey // Key: configID → Value: map[keyID]*APIKey
@@ -55,8 +61,9 @@ func NewConfigStore() *ConfigStore {
 		handle:             make(map[string]string),
 		snapVersion:        0,
 		TopicManager:       NewTopicManager(),
-		templates:          make(map[string]*models.StoredLLMProviderTemplate),
-		templateIdByHandle: make(map[string]string),
+		templates:                 make(map[string]*models.StoredLLMProviderTemplate),
+		templateIdByHandle:         make(map[string]string),
+		templateIdByHandleVersion: make(map[string]string),
 		apiKeysByAPI:       make(map[string]map[string]*models.APIKey),
 		labelsByAPI:        make(map[string]map[string]string),
 	}
@@ -345,7 +352,36 @@ func (cs *ConfigStore) SetSnapshotVersion(version int64) {
 // LLM Provider Template Methods
 // ========================================
 
-// AddTemplate adds a new LLM provider template. ID must be unique and immutable; name must be unique.
+// handleVersionKey builds the composite "handle@version" index key.
+func handleVersionKey(handle, version string) string {
+	return handle + "@" + version
+}
+
+// recomputeLatestLocked re-evaluates which version of a handle is the latest
+// (most recently created) and refreshes templateIdByHandle accordingly. The
+// caller must hold cs.mu.
+func (cs *ConfigStore) recomputeLatestLocked(handle string) {
+	var latestID string
+	var latestAt time.Time
+	for id, t := range cs.templates {
+		if strings.TrimSpace(t.GetHandle()) != handle {
+			continue
+		}
+		if latestID == "" || !t.CreatedAt.Before(latestAt) {
+			latestID = id
+			latestAt = t.CreatedAt
+		}
+	}
+	if latestID == "" {
+		delete(cs.templateIdByHandle, handle)
+		return
+	}
+	cs.templateIdByHandle[handle] = latestID
+}
+
+// AddTemplate adds a new LLM provider template version. UUID must be unique and
+// immutable; (handle, version) must be unique. Multiple versions of the same
+// handle may coexist; the most recently created one resolves as the latest.
 func (cs *ConfigStore) AddTemplate(template *models.StoredLLMProviderTemplate) error {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
@@ -353,6 +389,7 @@ func (cs *ConfigStore) AddTemplate(template *models.StoredLLMProviderTemplate) e
 	// Normalize inputs
 	uuid := strings.TrimSpace(template.UUID)
 	handle := strings.TrimSpace(template.GetHandle())
+	version := template.GetVersion()
 
 	if uuid == "" || handle == "" {
 		return fmt.Errorf("template UUID and handle is required")
@@ -363,18 +400,22 @@ func (cs *ConfigStore) AddTemplate(template *models.StoredLLMProviderTemplate) e
 		return fmt.Errorf("template with uuid '%s' already exists", uuid)
 	}
 
-	// Enforce unique handle: cannot add if handle already mapped to a different UUID
-	if _, exists := cs.templateIdByHandle[handle]; exists {
-		return fmt.Errorf("template with handle '%s' already exists", handle)
+	// Enforce unique (handle, version): a given version of a handle is immutable
+	hvKey := handleVersionKey(handle, version)
+	if _, exists := cs.templateIdByHandleVersion[hvKey]; exists {
+		return fmt.Errorf("template with handle '%s' and version '%s' already exists", handle, version)
 	}
 
 	// Store
 	cs.templates[uuid] = template
-	cs.templateIdByHandle[handle] = uuid
+	cs.templateIdByHandleVersion[hvKey] = uuid
+	cs.recomputeLatestLocked(handle)
 	return nil
 }
 
-// UpdateTemplate updates an existing LLM provider template's metadata. ID cannot change; only name can change.
+// UpdateTemplate updates an existing LLM provider template version in place. The
+// UUID is immutable; the handle and version may change as long as the resulting
+// (handle, version) does not collide with a different template.
 func (cs *ConfigStore) UpdateTemplate(template *models.StoredLLMProviderTemplate) error {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
@@ -393,26 +434,29 @@ func (cs *ConfigStore) UpdateTemplate(template *models.StoredLLMProviderTemplate
 		return fmt.Errorf("template with uuid '%s' not found", uuid)
 	}
 
-	oldName := strings.TrimSpace(existing.GetHandle())
+	oldHandle := strings.TrimSpace(existing.GetHandle())
+	oldKey := handleVersionKey(oldHandle, existing.GetVersion())
+	newKey := handleVersionKey(newHandle, template.GetVersion())
 
-	// If name is changing, ensure no collision with another template
-	if newHandle != oldName {
-		if mappedID, exists := cs.templateIdByHandle[newHandle]; exists && mappedID != uuid {
-			return fmt.Errorf("template with given handle '%s' already exists", newHandle)
+	// Ensure the new (handle, version) does not collide with a different template
+	if newKey != oldKey {
+		if mappedID, exists := cs.templateIdByHandleVersion[newKey]; exists && mappedID != uuid {
+			return fmt.Errorf("template with given handle '%s' and version '%s' already exists", newHandle, template.GetVersion())
 		}
-		// Remove old handle mapping if it points to this ID
-		if mappedID, ok := cs.templateIdByHandle[oldName]; ok && mappedID == uuid {
-			delete(cs.templateIdByHandle, oldName)
-		}
+		delete(cs.templateIdByHandleVersion, oldKey)
 	}
 
-	// Update stored template and refresh name mapping
+	// Update stored template and refresh indexes
 	cs.templates[uuid] = template
-	cs.templateIdByHandle[newHandle] = uuid
+	cs.templateIdByHandleVersion[newKey] = uuid
+	if oldHandle != newHandle {
+		cs.recomputeLatestLocked(oldHandle)
+	}
+	cs.recomputeLatestLocked(newHandle)
 	return nil
 }
 
-// DeleteTemplate removes an LLM provider template from the store by ID
+// DeleteTemplate removes an LLM provider template version from the store by ID
 func (cs *ConfigStore) DeleteTemplate(id string) error {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
@@ -422,8 +466,10 @@ func (cs *ConfigStore) DeleteTemplate(id string) error {
 		return fmt.Errorf("template with ID '%s' not found", id)
 	}
 
+	handle := template.GetHandle()
 	delete(cs.templates, id)
-	delete(cs.templateIdByHandle, template.GetHandle())
+	delete(cs.templateIdByHandleVersion, handleVersionKey(handle, template.GetVersion()))
+	cs.recomputeLatestLocked(handle)
 	return nil
 }
 

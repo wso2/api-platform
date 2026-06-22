@@ -22,6 +22,7 @@ metadata:
   name: mistralai
 spec:
   displayName: Mistral
+  provider: wso2
   metadata:
     endpointUrl: https://api.mistral.ai
     auth:

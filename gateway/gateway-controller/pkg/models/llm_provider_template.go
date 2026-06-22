@@ -19,10 +19,17 @@
 package models
 
 import (
+	"strings"
 	"time"
 
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 )
+
+// DefaultTemplateVersion is used when a template does not declare a version.
+const DefaultTemplateVersion = "v1.0"
+
+// DefaultTemplateProvider is used when a template does not declare a provider.
+const DefaultTemplateProvider = "other"
 
 // StoredLLMProviderTemplate represents the LLM provider template stored in the database and in-memory
 type StoredLLMProviderTemplate struct {
@@ -35,4 +42,24 @@ type StoredLLMProviderTemplate struct {
 // GetHandle returns the template handle
 func (t *StoredLLMProviderTemplate) GetHandle() string {
 	return t.Configuration.Metadata.Name
+}
+
+// GetVersion returns the template content version, defaulting to v1.0 when unset.
+func (t *StoredLLMProviderTemplate) GetVersion() string {
+	if t.Configuration.Spec.Version != nil {
+		if v := strings.TrimSpace(*t.Configuration.Spec.Version); v != "" {
+			return v
+		}
+	}
+	return DefaultTemplateVersion
+}
+
+// GetProvider returns the template provider, defaulting to "other" when unset.
+func (t *StoredLLMProviderTemplate) GetProvider() string {
+	if t.Configuration.Spec.Provider != nil {
+		if p := strings.TrimSpace(*t.Configuration.Spec.Provider); p != "" {
+			return p
+		}
+	}
+	return DefaultTemplateProvider
 }

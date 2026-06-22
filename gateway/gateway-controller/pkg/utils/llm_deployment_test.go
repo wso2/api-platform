@@ -650,7 +650,70 @@ func TestLLMDeploymentService_CreateLLMProviderTemplate_HandleConflict(t *testin
 
 	require.Error(t, err)
 	assert.ErrorIs(t, err, storage.ErrConflict)
-	assert.Contains(t, err.Error(), "template with handle 'openai' already exists")
+	assert.Contains(t, err.Error(), "template with handle 'openai' and version 'v1.0' already exists")
+}
+
+// templateYAMLWithProviderVersion builds a template manifest carrying explicit
+// provider and version fields (as produced by the AI workspace download).
+func templateYAMLWithProviderVersion(handle, displayName, provider, version string) []byte {
+	return []byte(fmt.Sprintf(`
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: LlmProviderTemplate
+metadata:
+  name: %s
+spec:
+  displayName: %s
+  provider: %s
+  version: %s
+`, handle, displayName, provider, version))
+}
+
+func TestLLMDeploymentService_CreateLLMProviderTemplate_VersionWise(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	store := storage.NewConfigStore()
+	db := newTestSQLiteStorage(t, logger)
+	routerConfig := &config.RouterConfig{ListenerPort: 8080}
+	apiDeploymentService := newTestAPIDeploymentService(store, db, nil, nil, nil)
+	service := NewLLMDeploymentService(store, db, nil, nil, nil, apiDeploymentService, routerConfig, nil, nil)
+
+	// Deploy v1.0 of a custom template and confirm provider/version round-trip.
+	v1, err := service.CreateLLMProviderTemplate(LLMTemplateParams{
+		Spec:        templateYAMLWithProviderVersion("deep-seek", "deep seek", "other", "v1.0"),
+		ContentType: "application/yaml",
+		Logger:      logger,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, v1.Configuration.Spec.Provider)
+	assert.Equal(t, "other", *v1.Configuration.Spec.Provider)
+	require.NotNil(t, v1.Configuration.Spec.Version)
+	assert.Equal(t, "v1.0", *v1.Configuration.Spec.Version)
+
+	// Deploy v2.0 of the SAME handle — versions coexist, no conflict.
+	v2, err := service.CreateLLMProviderTemplate(LLMTemplateParams{
+		Spec:        templateYAMLWithProviderVersion("deep-seek", "deep seek", "deepseek", "v2.0"),
+		ContentType: "application/yaml",
+		Logger:      logger,
+	})
+	require.NoError(t, err)
+	assert.NotEqual(t, v1.UUID, v2.UUID)
+
+	// Handle-based lookup resolves to the latest (most recently created) version,
+	// and provider/version are persisted (read back from the DB, not in-memory).
+	latest, err := db.GetLLMProviderTemplateByHandle("deep-seek")
+	require.NoError(t, err)
+	assert.Equal(t, v2.UUID, latest.UUID)
+	assert.Equal(t, "v2.0", latest.GetVersion())
+	require.NotNil(t, latest.Configuration.Spec.Provider)
+	assert.Equal(t, "deepseek", *latest.Configuration.Spec.Provider)
+
+	// Re-deploying an existing (handle, version) is rejected.
+	_, err = service.CreateLLMProviderTemplate(LLMTemplateParams{
+		Spec:        templateYAMLWithProviderVersion("deep-seek", "deep seek", "deepseek", "v2.0"),
+		ContentType: "application/yaml",
+		Logger:      logger,
+	})
+	require.Error(t, err)
+	assert.ErrorIs(t, err, storage.ErrConflict)
 }
 
 func TestLLMDeploymentService_UpdateLLMProviderTemplate_WithDBAndEventHubPublishesUpdate(t *testing.T) {

@@ -5566,6 +5566,19 @@ components:
           minLength: 1
           maxLength: 253
           example: OpenAI
+        provider:
+          type: string
+          description: |
+            Origin of the template. Built-in templates use 'wso2'; custom
+            templates default to 'other' and may be set to any value.
+          maxLength: 253
+          example: wso2
+        version:
+          type: string
+          description: |
+            Template content version (e.g. v1.0). Multiple versions of the same
+            handle can coexist; defaults to v1.0 when omitted.
+          example: v1.0
         promptTokens:
           $ref: '#/components/schemas/ExtractionIdentifier'
         completionTokens:

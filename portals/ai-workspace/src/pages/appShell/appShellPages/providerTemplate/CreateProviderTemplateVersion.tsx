@@ -220,6 +220,7 @@ function CreateProviderTemplateVersionForm({
     const payload: ProviderTemplate = {
       id: templateId,
       name: template.name,
+      provider: template.provider,
       version: version.trim(),
       description: description.trim() || undefined,
       resourceMappings: template.resourceMappings,

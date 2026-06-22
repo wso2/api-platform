@@ -22,6 +22,7 @@ metadata:
   name: azure-openai
 spec:
   displayName: Azure OpenAI
+  provider: wso2
   metadata:
     auth:
       type: apiKey

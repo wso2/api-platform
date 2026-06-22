@@ -479,10 +479,10 @@ export interface TemplateMetadata {
 export interface ProviderTemplate {
   id?: string;
   name: string;
+  provider?: string;
   description?: string;
   version?: string;
   isLatest?: boolean;
-  /** Whether this version is offered when creating providers (disabled = hidden from the picker). */
   enabled?: boolean;
   promptTokens?: TokenLocation;
   completionTokens?: TokenLocation;

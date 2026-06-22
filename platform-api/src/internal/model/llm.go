@@ -164,6 +164,7 @@ type LLMProviderTemplate struct {
 	ID               string                               `json:"id" db:"handle"`
 	Name             string                               `json:"name" db:"name"`
 	Description      string                               `json:"description,omitempty" db:"description"`
+	Provider         string                               `json:"provider,omitempty" db:"-"`
 	CreatedBy        string                               `json:"createdBy,omitempty" db:"created_by"`
 	Version  		 string 							  `json:"version" db:"version"`
 	IsLatest 		 bool    							  `json:"isLatest" db:"is_latest"`

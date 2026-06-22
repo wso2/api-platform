@@ -130,6 +130,7 @@ func (s *LLMProviderTemplateService) Create(orgUUID, createdBy string, req *api.
 		ID:               req.Id,
 		Name:             req.Name,
 		Description:      utils.ValueOrEmpty(req.Description),
+		Provider:         defaultTemplateProvider(req.Provider),
 		CreatedBy:        createdBy,
 		OpenAPISpec:      utils.ValueOrEmpty(req.Openapi),
 		Metadata:         mapTemplateMetadataAPI(req.Metadata),
@@ -216,6 +217,7 @@ func (s *LLMProviderTemplateService) Update(orgUUID, handle string, req *api.LLM
 		ID:               handle,
 		Name:             req.Name,
 		Description:      utils.ValueOrEmpty(req.Description),
+		Provider:         defaultTemplateProvider(req.Provider),
 		OpenAPISpec:      utils.ValueOrEmpty(req.Openapi),
 		Metadata:         mapTemplateMetadataAPI(req.Metadata),
 		PromptTokens:     mapExtractionIdentifierAPI(req.PromptTokens),
@@ -279,6 +281,7 @@ func (s *LLMProviderTemplateService) CreateVersion(orgUUID, handle string, req *
 		ID:               handle,
 		Name:             req.Name,
 		Description:      utils.ValueOrEmpty(req.Description),
+		Provider:         defaultTemplateProvider(req.Provider),
 		Version:          version,
 		OpenAPISpec:      utils.ValueOrEmpty(req.Openapi),
 		Metadata:         mapTemplateMetadataAPI(req.Metadata),
@@ -473,6 +476,10 @@ func (s *LLMProviderService) Create(orgUUID, createdBy string, req *api.LLMProvi
 	if err := validateLLMResourceLimit(providerCount, constants.MaxLLMProvidersPerOrganization, constants.ErrLLMProviderLimitReached); err != nil {
 		return nil, err
 	}
+	openapiSpec := utils.ValueOrEmpty(req.Openapi)
+	if openapiSpec == "" {
+		openapiSpec = tpl.OpenAPISpec
+	}
 
 	contextValue := utils.DefaultStringPtr(req.Context, "/")
 	m := &model.LLMProvider{
@@ -483,7 +490,7 @@ func (s *LLMProviderService) Create(orgUUID, createdBy string, req *api.LLMProvi
 		CreatedBy:        createdBy,
 		Version:          req.Version,
 		TemplateUUID:     tpl.UUID,
-		OpenAPISpec:      utils.ValueOrEmpty(req.Openapi),
+		OpenAPISpec:      openapiSpec,
 		ModelProviders:   mapModelProvidersAPI(req.ModelProviders),
 		Status:           llmStatusPending,
 		Configuration: model.LLMProviderConfig{
@@ -1667,6 +1674,7 @@ func templateListItem(t *model.LLMProviderTemplate) api.LLMProviderTemplateListI
 		Id:          &id,
 		Name:        &name,
 		Description: utils.StringPtrIfNotEmpty(t.Description),
+		Provider:    utils.StringPtrIfNotEmpty(t.Provider),
 		CreatedBy:   utils.StringPtrIfNotEmpty(t.CreatedBy),
 		Version:     &version,
 		IsLatest:    &isLatest,
@@ -1687,6 +1695,7 @@ func mapTemplateModelToAPI(m *model.LLMProviderTemplate) *api.LLMProviderTemplat
 		Id:               m.ID,
 		Name:             m.Name,
 		Description:      utils.StringPtrIfNotEmpty(m.Description),
+		Provider:         utils.StringPtrIfNotEmpty(m.Provider),
 		CreatedBy:        utils.StringPtrIfNotEmpty(m.CreatedBy),
 		Version:          &version,
 		IsLatest:         &isLatest,
@@ -1784,6 +1793,17 @@ func mapTemplateResourceMappingModelToAPI(in *model.LLMProviderTemplateResourceM
 		RequestModel:     mapExtractionIdentifierModelToAPI(in.RequestModel),
 		ResponseModel:    mapExtractionIdentifierModelToAPI(in.ResponseModel),
 	}
+}
+
+// defaultTemplateProvider normalizes the provider label supplied on a custom
+// template. An empty value defaults to "other"; built-in templates are seeded
+// with "wso2" by the template seeder/loader.
+func defaultTemplateProvider(in *string) string {
+	v := strings.TrimSpace(utils.ValueOrEmpty(in))
+	if v == "" {
+		return "other"
+	}
+	return v
 }
 
 func mapTemplateMetadataAPI(in *api.LLMProviderTemplateMetadata) *model.LLMProviderTemplateMetadata {

@@ -131,13 +131,17 @@ func (s *LLMDeploymentService) publishLLMProxyEvent(action, entityID, correlatio
 	s.deploymentService.publishEvent(eventhub.EventTypeLLMProxy, action, entityID, correlationID, logger)
 }
 
-func (s *LLMDeploymentService) validateTemplateHandleConflict(handle string) error {
-	existing, err := s.db.GetLLMProviderTemplateByHandle(handle)
-	if err == nil && existing != nil {
-		return fmt.Errorf("%w: template with handle '%s' already exists", storage.ErrConflict, handle)
-	}
-	if err != nil && !storage.IsNotFoundError(err) {
+// validateTemplateConflict rejects only an exact (handle, version) duplicate.
+// Different versions of the same handle are allowed to coexist.
+func (s *LLMDeploymentService) validateTemplateConflict(handle, version string) error {
+	templates, err := s.db.GetAllLLMProviderTemplates()
+	if err != nil {
 		return err
+	}
+	for _, t := range templates {
+		if t.GetHandle() == handle && t.GetVersion() == version {
+			return fmt.Errorf("%w: template with handle '%s' and version '%s' already exists", storage.ErrConflict, handle, version)
+		}
 	}
 	return nil
 }
@@ -606,6 +610,17 @@ func (s *LLMDeploymentService) parseAndValidateLLMTemplate(params LLMTemplatePar
 		}
 		return nil, fmt.Errorf("%w: %d error(s): %s", ErrLLMTemplateValidation, len(validationErrors), strings.Join(errs, "; "))
 	}
+
+	// Normalize version/provider so the persisted config and API responses are
+	// explicit even when the spec omitted them.
+	if tmpl.Spec.Version == nil || strings.TrimSpace(*tmpl.Spec.Version) == "" {
+		v := models.DefaultTemplateVersion
+		tmpl.Spec.Version = &v
+	}
+	if tmpl.Spec.Provider == nil || strings.TrimSpace(*tmpl.Spec.Provider) == "" {
+		p := models.DefaultTemplateProvider
+		tmpl.Spec.Provider = &p
+	}
 	return &tmpl, nil
 }
 
@@ -621,15 +636,15 @@ func (s *LLMDeploymentService) CreateLLMProviderTemplate(params LLMTemplateParam
 		return nil, fmt.Errorf("failed to generate template ID: %w", err)
 	}
 
-	if err := s.validateTemplateHandleConflict(tmpl.Metadata.Name); err != nil {
-		return nil, err
-	}
-
 	stored := &models.StoredLLMProviderTemplate{
 		UUID:          id,
 		Configuration: *tmpl,
 		CreatedAt:     time.Now(),
 		UpdatedAt:     time.Now(),
+	}
+
+	if err := s.validateTemplateConflict(stored.GetHandle(), stored.GetVersion()); err != nil {
+		return nil, err
 	}
 
 	// Persist to DB

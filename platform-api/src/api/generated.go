@@ -515,6 +515,12 @@ const (
 	GetGatewayArtifactsParamsArtifactTypeRESTAPI    GetGatewayArtifactsParamsArtifactType = "REST_API"
 )
 
+// Defines values for ListLLMProviderTemplatesParamsVersions.
+const (
+	All    ListLLMProviderTemplatesParamsVersions = "all"
+	Latest ListLLMProviderTemplatesParamsVersions = "latest"
+)
+
 // Defines values for GetLLMProviderDeploymentsParamsStatus.
 const (
 	GetLLMProviderDeploymentsParamsStatusARCHIVED    GetLLMProviderDeploymentsParamsStatus = "ARCHIVED"
@@ -1761,7 +1767,9 @@ type LLMProviderTemplate struct {
 	// Description Description of the LLM provider template
 	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
 
-	// Enabled Whether this version is offered when creating providers (disabled versions stay in the catalog but are hidden from the picker).
+	// Enabled Whether this version is offered when creating providers. Disabled
+	// versions stay in the catalog but are hidden from the provider picker.
+	// Toggle via PATCH /llm-provider-templates/{id}/versions/{version}.
 	Enabled *bool `json:"enabled,omitempty" yaml:"enabled,omitempty"`
 
 	// Id Unique handle for the template
@@ -1774,9 +1782,15 @@ type LLMProviderTemplate struct {
 	// Name Human-readable LLM Template name
 	Name string `binding:"required" json:"name" yaml:"name"`
 
-	// Openapi OpenAPI specification (JSON or YAML) content stored on the template
-	Openapi          *string                              `json:"openapi,omitempty" yaml:"openapi,omitempty"`
-	PromptTokens     *ExtractionIdentifier                `json:"promptTokens,omitempty" yaml:"promptTokens,omitempty"`
+	// Openapi OpenAPI specification content (JSON or YAML) for the provider, when
+	// uploaded/pasted. Use metadata.openapiSpecUrl instead to reference the
+	// spec by URL.
+	Openapi      *string               `json:"openapi,omitempty" yaml:"openapi,omitempty"`
+	PromptTokens *ExtractionIdentifier `json:"promptTokens,omitempty" yaml:"promptTokens,omitempty"`
+
+	// Provider Identifies the origin of the template. Built-in templates use 'wso2';
+	// custom templates default to 'other' and may be set to any value.
+	Provider         *string                              `json:"provider,omitempty" yaml:"provider,omitempty"`
 	RemainingTokens  *ExtractionIdentifier                `json:"remainingTokens,omitempty" yaml:"remainingTokens,omitempty"`
 	RequestModel     *ExtractionIdentifier                `json:"requestModel,omitempty" yaml:"requestModel,omitempty"`
 	ResourceMappings *LLMProviderTemplateResourceMappings `json:"resourceMappings,omitempty" yaml:"resourceMappings,omitempty"`
@@ -1786,7 +1800,9 @@ type LLMProviderTemplate struct {
 	// UpdatedAt Timestamp when the resource was last updated
 	UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
 
-	// Version Content version, e.g. v1.0. Defaults to v1.0 on create. Editing a template updates it in place; supply a new unique version only when creating a new version via POST /llm-provider-templates/{id}/versions.
+	// Version Content version, e.g. v1.0. Defaults to v1.0 on create. Editing a
+	// template updates it in place; supply a new unique version only when
+	// creating a new version via POST /llm-provider-templates/{id}/versions.
 	Version *string `json:"version,omitempty" yaml:"version,omitempty"`
 }
 
@@ -1816,9 +1832,12 @@ type LLMProviderTemplateListItem struct {
 	IsLatest *bool   `json:"isLatest,omitempty" yaml:"isLatest,omitempty"`
 	Name     *string `json:"name,omitempty" yaml:"name,omitempty"`
 
-	// Version Content version, matching the v<major>.<minor> pattern (e.g. v1.0, v2.0).
-	Version   *string    `json:"version,omitempty" yaml:"version,omitempty"`
+	// Provider Origin of the template ('wso2' for built-in, otherwise custom-defined).
+	Provider  *string    `json:"provider,omitempty" yaml:"provider,omitempty"`
 	UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+
+	// Version Content version, matching the v<major>.<minor> pattern (e.g. v1.0, v2.0).
+	Version *string `json:"version,omitempty" yaml:"version,omitempty"`
 }
 
 // LLMProviderTemplateListResponse defines model for LLMProviderTemplateListResponse.
@@ -3764,6 +3783,28 @@ type ListLLMProviderTemplatesParams struct {
 
 	// Offset Number of LLM provider templates to skip
 	Offset *int `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
+
+	// Versions Which versions to include. The default ("latest") returns one entry
+	// per template — its latest version, for the catalog. Use "all" to
+	// return every version row across all templates.
+	Versions *ListLLMProviderTemplatesParamsVersions `form:"versions,omitempty" json:"versions,omitempty" yaml:"versions,omitempty"`
+}
+
+// ListLLMProviderTemplatesParamsVersions defines parameters for ListLLMProviderTemplates.
+type ListLLMProviderTemplatesParamsVersions string
+
+// ListLLMProviderTemplateVersionsParams defines parameters for ListLLMProviderTemplateVersions.
+type ListLLMProviderTemplateVersionsParams struct {
+	// Limit Maximum number of versions to return
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
+
+	// Offset Number of versions to skip
+	Offset *int `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
+}
+
+// SetLLMProviderTemplateVersionEnabledJSONBody defines parameters for SetLLMProviderTemplateVersionEnabled.
+type SetLLMProviderTemplateVersionEnabledJSONBody struct {
+	Enabled bool `json:"enabled" yaml:"enabled"`
 }
 
 // ListLLMProvidersParams defines parameters for ListLLMProviders.
@@ -4132,6 +4173,12 @@ type CreateLLMProviderTemplateJSONRequestBody = LLMProviderTemplate
 
 // UpdateLLMProviderTemplateJSONRequestBody defines body for UpdateLLMProviderTemplate for application/json ContentType.
 type UpdateLLMProviderTemplateJSONRequestBody = LLMProviderTemplate
+
+// CreateLLMProviderTemplateVersionJSONRequestBody defines body for CreateLLMProviderTemplateVersion for application/json ContentType.
+type CreateLLMProviderTemplateVersionJSONRequestBody = LLMProviderTemplate
+
+// SetLLMProviderTemplateVersionEnabledJSONRequestBody defines body for SetLLMProviderTemplateVersionEnabled for application/json ContentType.
+type SetLLMProviderTemplateVersionEnabledJSONRequestBody SetLLMProviderTemplateVersionEnabledJSONBody
 
 // CreateLLMProviderJSONRequestBody defines body for CreateLLMProvider for application/json ContentType.
 type CreateLLMProviderJSONRequestBody = LLMProvider

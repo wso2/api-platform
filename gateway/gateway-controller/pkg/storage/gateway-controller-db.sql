@@ -121,8 +121,11 @@ CREATE TABLE IF NOT EXISTS llm_provider_templates (
     -- Gateway identifier
     gateway_id TEXT NOT NULL,
 
-    -- Template handle (must be unique within a gateway)
+    -- Template handle (a handle may have multiple versions within a gateway)
     handle TEXT NOT NULL,
+
+    -- Template content version (e.g. v1.0); defaults to v1.0 when omitted
+    version TEXT NOT NULL DEFAULT 'v1.0',
 
     -- Full template configuration as JSON
     configuration TEXT NOT NULL,
@@ -131,9 +134,9 @@ CREATE TABLE IF NOT EXISTS llm_provider_templates (
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
-    -- Template handles must be unique per gateway
+    -- Each (handle, version) pair is unique per gateway; versions coexist
     PRIMARY KEY (gateway_id, uuid),
-    UNIQUE(gateway_id, handle)
+    UNIQUE(gateway_id, handle, version)
 );
 
 -- Table for API keys

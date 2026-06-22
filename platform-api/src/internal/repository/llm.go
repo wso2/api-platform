@@ -36,6 +36,7 @@ type LLMProviderTemplateRepo struct {
 }
 
 type llmProviderTemplateConfig struct {
+	Provider         string                             `json:"provider,omitempty"`
 	Metadata         *model.LLMProviderTemplateMetadata `json:"metadata,omitempty"`
 	PromptTokens     *model.ExtractionIdentifier        `json:"promptTokens,omitempty"`
 	CompletionTokens *model.ExtractionIdentifier        `json:"completionTokens,omitempty"`
@@ -60,6 +61,7 @@ func (r *LLMProviderTemplateRepo) Create(t *model.LLMProviderTemplate) error {
 	t.UpdatedAt = time.Now()
 
 	configJSON, err := json.Marshal(&llmProviderTemplateConfig{
+		Provider:         t.Provider,
 		Metadata:         t.Metadata,
 		PromptTokens:     t.PromptTokens,
 		CompletionTokens: t.CompletionTokens,
@@ -96,6 +98,7 @@ func (r *LLMProviderTemplateRepo) Create(t *model.LLMProviderTemplate) error {
 
 func (r *LLMProviderTemplateRepo) CreateNewVersion(t *model.LLMProviderTemplate) error {
 	configJSON, err := json.Marshal(&llmProviderTemplateConfig{
+		Provider:         t.Provider,
 		Metadata:         t.Metadata,
 		PromptTokens:     t.PromptTokens,
 		CompletionTokens: t.CompletionTokens,
@@ -195,6 +198,7 @@ func (r *LLMProviderTemplateRepo) GetByID(templateID, orgUUID string) (*model.LL
 		if err := json.Unmarshal([]byte(configJSON.String), &cfg); err != nil {
 			return nil, err
 		}
+		t.Provider = cfg.Provider
 		t.Metadata = cfg.Metadata
 		t.PromptTokens = cfg.PromptTokens
 		t.CompletionTokens = cfg.CompletionTokens
@@ -275,6 +279,7 @@ func scanTemplate(s rowScanner) (*model.LLMProviderTemplate, error) {
 		if err := json.Unmarshal([]byte(configJSON.String), &cfg); err != nil {
 			return nil, err
 		}
+		t.Provider = cfg.Provider
 		t.Metadata = cfg.Metadata
 		t.PromptTokens = cfg.PromptTokens
 		t.CompletionTokens = cfg.CompletionTokens
@@ -360,6 +365,7 @@ func (r *LLMProviderTemplateRepo) Update(t *model.LLMProviderTemplate) error {
 	t.UpdatedAt = time.Now()
 
 	configJSON, err := json.Marshal(&llmProviderTemplateConfig{
+		Provider:         t.Provider,
 		Metadata:         t.Metadata,
 		PromptTokens:     t.PromptTokens,
 		CompletionTokens: t.CompletionTokens,

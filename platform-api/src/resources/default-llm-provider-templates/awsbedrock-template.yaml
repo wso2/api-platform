@@ -22,6 +22,7 @@ metadata:
   name: awsbedrock
 spec:
   displayName: AWS Bedrock
+  provider: wso2
   metadata:
     logoUrl: https://raw.githubusercontent.com/nomadxd/openapi-connectors/main/openapi/aws.bedrock/icon.png
     openapiSpecUrl: https://raw.githubusercontent.com/nomadxd/openapi-connectors/main/openapi/aws.bedrock/openapi.yaml

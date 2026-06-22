@@ -22,6 +22,7 @@ import type { ProviderTemplate } from './types';
 export function buildTemplateManifestYaml(t: ProviderTemplate): string {
   const spec: Record<string, unknown> = { displayName: t.name };
 
+  if (t.provider?.trim()) spec.provider = t.provider.trim();
   if (t.version) spec.version = t.version;
 
   const md = t.metadata;

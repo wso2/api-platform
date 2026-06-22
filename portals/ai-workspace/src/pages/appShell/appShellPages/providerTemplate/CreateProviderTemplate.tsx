@@ -448,6 +448,7 @@ export default function CreateProviderTemplate() {
                 />
               </FormControl>
             </Grid>
+
           </Grid>
 
           {/* Advanced: token & model extraction mapping (collapsed by default,

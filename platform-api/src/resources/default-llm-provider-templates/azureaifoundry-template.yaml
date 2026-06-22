@@ -22,6 +22,7 @@ metadata:
   name: azureai-foundry
 spec:
   displayName: Azure AI Foundry
+  provider: wso2
   metadata:
     auth:
       type: apiKey
