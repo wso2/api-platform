@@ -33,7 +33,7 @@ Feature: Sentence Count Guardrail
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: sentence-count-max-test-api
@@ -84,7 +84,7 @@ Feature: Sentence Count Guardrail
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: sentence-count-min-test-api
@@ -139,7 +139,7 @@ Feature: Sentence Count Guardrail
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: sentence-count-jsonpath-api
@@ -198,7 +198,7 @@ Feature: Sentence Count Guardrail
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: sentence-count-nested-jsonpath-api
@@ -262,7 +262,7 @@ Feature: Sentence Count Guardrail
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: sentence-count-invalid-path-api
@@ -315,7 +315,7 @@ Feature: Sentence Count Guardrail
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: sentence-count-invert-api
@@ -378,7 +378,7 @@ Feature: Sentence Count Guardrail
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: sentence-count-assessment-api
@@ -429,7 +429,7 @@ Feature: Sentence Count Guardrail
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: sentence-count-empty-api
@@ -472,7 +472,7 @@ Feature: Sentence Count Guardrail
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: sentence-count-boundary-api
@@ -541,7 +541,7 @@ Feature: Sentence Count Guardrail
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: sentence-count-combined-api
@@ -600,7 +600,7 @@ Feature: Sentence Count Guardrail
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: sentence-count-punctuation-api
@@ -651,7 +651,7 @@ Feature: Sentence Count Guardrail
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: sentence-count-plaintext-api
@@ -708,7 +708,7 @@ Feature: Sentence Count Guardrail
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: sentence-count-error-structure-api

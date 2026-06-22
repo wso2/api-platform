@@ -33,7 +33,7 @@ Feature: Prompt Decorator
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: prompt-decorator-prepend-api
@@ -85,7 +85,7 @@ Feature: Prompt Decorator
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: prompt-decorator-append-api
@@ -138,7 +138,7 @@ Feature: Prompt Decorator
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: prompt-decorator-multi-api
@@ -196,7 +196,7 @@ Feature: Prompt Decorator
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: prompt-decorator-text-prepend-api
@@ -244,7 +244,7 @@ Feature: Prompt Decorator
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: prompt-decorator-text-append-api
@@ -296,7 +296,7 @@ Feature: Prompt Decorator
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: prompt-decorator-last-msg-api
@@ -347,7 +347,7 @@ Feature: Prompt Decorator
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: prompt-decorator-last-string-api
@@ -401,7 +401,7 @@ Feature: Prompt Decorator
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: prompt-decorator-nested-api
@@ -456,7 +456,7 @@ Feature: Prompt Decorator
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: prompt-decorator-empty-api
@@ -503,7 +503,7 @@ Feature: Prompt Decorator
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: prompt-decorator-invalid-path-api
@@ -556,7 +556,7 @@ Feature: Prompt Decorator
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: prompt-decorator-invalid-json-api
@@ -609,7 +609,7 @@ Feature: Prompt Decorator
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: prompt-decorator-safety-api
@@ -660,7 +660,7 @@ Feature: Prompt Decorator
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: prompt-decorator-json-format-api
@@ -711,7 +711,7 @@ Feature: Prompt Decorator
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: prompt-decorator-context-api

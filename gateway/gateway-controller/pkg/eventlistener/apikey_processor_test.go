@@ -180,7 +180,7 @@ func TestHandleEvent_APIKeyCreate_SyncsMemoryAndXDS_ForLLMProxy(t *testing.T) {
 		DisplayName: "Test LLM Proxy",
 		Version:     "v1.0.0",
 		SourceConfiguration: api.LLMProxyConfiguration{
-			ApiVersion: api.LLMProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+			ApiVersion: api.LLMProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha2,
 			Kind:       api.LLMProxyConfigurationKindLlmProxy,
 			Metadata: api.Metadata{
 				Name: "test-llm-proxy",

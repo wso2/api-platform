@@ -30,7 +30,7 @@ Feature: Backend timeout
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: timeout-api-v1.0
@@ -67,7 +67,7 @@ Feature: Backend timeout
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: timeout-api-global-v1.0

@@ -33,7 +33,7 @@ Feature: Prompt Template
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: prompt-template-simple-api
@@ -78,7 +78,7 @@ Feature: Prompt Template
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: prompt-template-no-params-api
@@ -127,7 +127,7 @@ Feature: Prompt Template
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: prompt-template-multi-config-api
@@ -181,7 +181,7 @@ Feature: Prompt Template
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: prompt-template-multi-ref-api
@@ -234,7 +234,7 @@ Feature: Prompt Template
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: prompt-template-encoded-api
@@ -279,7 +279,7 @@ Feature: Prompt Template
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: prompt-template-special-chars-api
@@ -327,7 +327,7 @@ Feature: Prompt Template
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: prompt-template-prompt-field-api
@@ -371,7 +371,7 @@ Feature: Prompt Template
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: prompt-template-message-api
@@ -421,7 +421,7 @@ Feature: Prompt Template
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: prompt-template-not-found-api
@@ -468,7 +468,7 @@ Feature: Prompt Template
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: prompt-template-empty-api
@@ -508,7 +508,7 @@ Feature: Prompt Template
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: prompt-template-no-ref-api
@@ -556,7 +556,7 @@ Feature: Prompt Template
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: prompt-template-translation-api
@@ -600,7 +600,7 @@ Feature: Prompt Template
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: prompt-template-code-review-api
@@ -644,7 +644,7 @@ Feature: Prompt Template
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: prompt-template-sentiment-api

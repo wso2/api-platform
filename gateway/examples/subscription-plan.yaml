@@ -12,7 +12,7 @@
 # subscriptions. The gateway-controller assigns a UUID id on first POST
 # which the operator persists to .status.id and uses for subsequent
 # update/delete calls.
-apiVersion: gateway.api-platform.wso2.com/v1alpha1
+apiVersion: gateway.api-platform.wso2.com/v1alpha2
 kind: SubscriptionPlan
 metadata:
   name: bronze-1k-per-min

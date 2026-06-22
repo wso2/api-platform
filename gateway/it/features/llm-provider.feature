@@ -33,7 +33,7 @@ Feature: LLM Provider Management
     Given I authenticate using basic auth as "admin"
     When I create this LLM provider:
         """
-        apiVersion: gateway.api-platform.wso2.com/v1alpha1
+        apiVersion: gateway.api-platform.wso2.com/v1alpha2
         kind: LlmProvider
         metadata:
           name: openai-provider
@@ -72,7 +72,7 @@ Feature: LLM Provider Management
     Given I authenticate using basic auth as "admin"
     When I update the LLM provider "openai-provider" with:
         """
-        apiVersion: gateway.api-platform.wso2.com/v1alpha1
+        apiVersion: gateway.api-platform.wso2.com/v1alpha2
         kind: LlmProvider
         metadata:
           name: openai-provider
@@ -128,7 +128,7 @@ Feature: LLM Provider Management
     Given I authenticate using basic auth as "admin"
     When I create this LLM provider:
         """
-        apiVersion: gateway.api-platform.wso2.com/v1alpha1
+        apiVersion: gateway.api-platform.wso2.com/v1alpha2
         kind: LlmProvider
         metadata:
           name: provider-1
@@ -146,7 +146,7 @@ Feature: LLM Provider Management
     Given I authenticate using basic auth as "admin"
     When I create this LLM provider:
         """
-        apiVersion: gateway.api-platform.wso2.com/v1alpha1
+        apiVersion: gateway.api-platform.wso2.com/v1alpha2
         kind: LlmProvider
         metadata:
           name: provider-2
@@ -203,7 +203,7 @@ Feature: LLM Provider Management
     Given I authenticate using basic auth as "admin"
     When I create this LLM provider:
         """
-        apiVersion: gateway.api-platform.wso2.com/v1alpha1
+        apiVersion: gateway.api-platform.wso2.com/v1alpha2
         kind: LlmProvider
         metadata:
           name: filter-test-1
@@ -233,7 +233,7 @@ Feature: LLM Provider Management
     Given I authenticate using basic auth as "admin"
     When I create this LLM provider:
         """
-        apiVersion: gateway.api-platform.wso2.com/v1alpha1
+        apiVersion: gateway.api-platform.wso2.com/v1alpha2
         kind: LlmProvider
         metadata:
           name: version-test
@@ -267,7 +267,7 @@ Feature: LLM Provider Management
     Given I authenticate using basic auth as "admin"
     When I create this LLM provider:
         """
-        apiVersion: gateway.api-platform.wso2.com/v1alpha1
+        apiVersion: gateway.api-platform.wso2.com/v1alpha2
         kind: LlmProvider
         metadata:
           name: vhost-provider
@@ -307,7 +307,7 @@ Feature: LLM Provider Management
     Given I authenticate using basic auth as "admin"
     When I create this LLM provider:
         """
-        apiVersion: gateway.api-platform.wso2.com/v1alpha1
+        apiVersion: gateway.api-platform.wso2.com/v1alpha2
         kind: LlmProvider
         metadata:
           name: openai-template-test
@@ -345,7 +345,7 @@ Feature: LLM Provider Management
     Given I authenticate using basic auth as "admin"
     When I create this LLM provider:
         """
-        apiVersion: gateway.api-platform.wso2.com/v1alpha1
+        apiVersion: gateway.api-platform.wso2.com/v1alpha2
         kind: LlmProvider
         metadata:
           name: policy-provider
@@ -395,7 +395,7 @@ Feature: LLM Provider Management
     Given I authenticate using basic auth as "admin"
     When I create this LLM provider:
         """
-        apiVersion: gateway.api-platform.wso2.com/v1alpha1
+        apiVersion: gateway.api-platform.wso2.com/v1alpha2
         kind: LlmProvider
         metadata:
           name: invalid-provider
@@ -444,7 +444,7 @@ Feature: LLM Provider Management
     Given I authenticate using basic auth as "admin"
     When I create this LLM provider:
         """
-        apiVersion: gateway.api-platform.wso2.com/v1alpha1
+        apiVersion: gateway.api-platform.wso2.com/v1alpha2
         kind: LlmProvider
         metadata:
           name: minimal-provider
@@ -478,7 +478,7 @@ Feature: LLM Provider Management
     Given I authenticate using basic auth as "admin"
     When I create this LLM provider:
         """
-        apiVersion: gateway.api-platform.wso2.com/v1alpha1
+        apiVersion: gateway.api-platform.wso2.com/v1alpha2
         kind: LlmProvider
         metadata:
           name: invoke-context-provider
@@ -525,7 +525,7 @@ Feature: LLM Provider Management
     Given I authenticate using basic auth as "admin"
     When I create this LLM provider:
         """
-        apiVersion: gateway.api-platform.wso2.com/v1alpha1
+        apiVersion: gateway.api-platform.wso2.com/v1alpha2
         kind: LlmProvider
         metadata:
           name: invoke-acl-provider
@@ -571,7 +571,7 @@ Feature: LLM Provider Management
     Given I authenticate using basic auth as "admin"
     When I create this LLM provider:
         """
-        apiVersion: gateway.api-platform.wso2.com/v1alpha1
+        apiVersion: gateway.api-platform.wso2.com/v1alpha2
         kind: LlmProvider
         metadata:
           name: invoke-auth-provider

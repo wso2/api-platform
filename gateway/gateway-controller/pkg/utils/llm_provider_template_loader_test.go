@@ -89,7 +89,7 @@ func TestLLMTemplateLoader_LoadTemplatesFromDirectory_JSONFile(t *testing.T) {
 
 	// Create a valid JSON template
 	jsonTemplate := `{
-		"apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+		"apiVersion": "gateway.api-platform.wso2.com/v1alpha2",
 		"kind": "LlmProviderTemplate",
 		"metadata": {
 			"name": "test-template"
@@ -118,7 +118,7 @@ func TestLLMTemplateLoader_LoadTemplatesFromDirectory_YAMLFile(t *testing.T) {
 
 	// Create a valid YAML template
 	yamlTemplate := `
-apiVersion: gateway.api-platform.wso2.com/v1alpha1
+apiVersion: gateway.api-platform.wso2.com/v1alpha2
 kind: LlmProviderTemplate
 metadata:
   name: yaml-template
@@ -145,7 +145,7 @@ func TestLLMTemplateLoader_LoadTemplatesFromDirectory_YMLFile(t *testing.T) {
 
 	// Create a valid YML template
 	ymlTemplate := `
-apiVersion: gateway.api-platform.wso2.com/v1alpha1
+apiVersion: gateway.api-platform.wso2.com/v1alpha2
 kind: LlmProviderTemplate
 metadata:
   name: yml-template
@@ -172,13 +172,13 @@ func TestLLMTemplateLoader_LoadTemplatesFromDirectory_MultipleFiles(t *testing.T
 
 	// Create multiple templates
 	jsonTemplate := `{
-		"apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+		"apiVersion": "gateway.api-platform.wso2.com/v1alpha2",
 		"kind": "LlmProviderTemplate",
 		"metadata": {"name": "template-1"},
 		"spec": {"displayName": "Template 1"}
 	}`
 	yamlTemplate := `
-apiVersion: gateway.api-platform.wso2.com/v1alpha1
+apiVersion: gateway.api-platform.wso2.com/v1alpha2
 kind: LlmProviderTemplate
 metadata:
   name: template-2
@@ -208,13 +208,13 @@ func TestLLMTemplateLoader_LoadTemplatesFromDirectory_DuplicateHandle(t *testing
 
 	// Create two templates with the same handle
 	template1 := `{
-		"apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+		"apiVersion": "gateway.api-platform.wso2.com/v1alpha2",
 		"kind": "LlmProviderTemplate",
 		"metadata": {"name": "duplicate-template"},
 		"spec": {"displayName": "Template 1"}
 	}`
 	template2 := `{
-		"apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+		"apiVersion": "gateway.api-platform.wso2.com/v1alpha2",
 		"kind": "LlmProviderTemplate",
 		"metadata": {"name": "duplicate-template"},
 		"spec": {"displayName": "Template 2"}
@@ -278,13 +278,13 @@ func TestLLMTemplateLoader_LoadTemplatesFromDirectory_Subdirectories(t *testing.
 
 	// Create templates in root and subdirectory
 	rootTemplate := `{
-		"apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+		"apiVersion": "gateway.api-platform.wso2.com/v1alpha2",
 		"kind": "LlmProviderTemplate",
 		"metadata": {"name": "root-template"},
 		"spec": {"displayName": "Root Template"}
 	}`
 	subTemplate := `{
-		"apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+		"apiVersion": "gateway.api-platform.wso2.com/v1alpha2",
 		"kind": "LlmProviderTemplate",
 		"metadata": {"name": "sub-template"},
 		"spec": {"displayName": "Sub Template"}
@@ -319,7 +319,7 @@ func TestLLMTemplateLoader_loadTemplateFile_ValidJSON(t *testing.T) {
 	defer os.Remove(tmpFile.Name())
 
 	jsonTemplate := `{
-		"apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+		"apiVersion": "gateway.api-platform.wso2.com/v1alpha2",
 		"kind": "LlmProviderTemplate",
 		"metadata": {"name": "test-template"},
 		"spec": {"displayName": "Test Template"}
@@ -344,7 +344,7 @@ func TestLLMTemplateLoader_loadTemplateFile_ValidYAML(t *testing.T) {
 	defer os.Remove(tmpFile.Name())
 
 	yamlTemplate := `
-apiVersion: gateway.api-platform.wso2.com/v1alpha1
+apiVersion: gateway.api-platform.wso2.com/v1alpha2
 kind: LlmProviderTemplate
 metadata:
   name: yaml-template
@@ -371,7 +371,7 @@ func TestLLMTemplateLoader_loadTemplateFile_CompleteTemplate(t *testing.T) {
 	defer os.Remove(tmpFile.Name())
 
 	jsonTemplate := `{
-		"apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+		"apiVersion": "gateway.api-platform.wso2.com/v1alpha2",
 		"kind": "LlmProviderTemplate",
 		"metadata": {"name": "complete-template"},
 		"spec": {

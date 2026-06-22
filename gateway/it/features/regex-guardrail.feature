@@ -33,7 +33,7 @@ Feature: Regex Guardrail
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: regex-match-pass-api
@@ -85,7 +85,7 @@ Feature: Regex Guardrail
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: regex-profanity-api
@@ -136,7 +136,7 @@ Feature: Regex Guardrail
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: regex-email-api
@@ -190,7 +190,7 @@ Feature: Regex Guardrail
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: regex-invert-api
@@ -241,7 +241,7 @@ Feature: Regex Guardrail
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: regex-creditcard-api
@@ -296,7 +296,7 @@ Feature: Regex Guardrail
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: regex-jsonpath-api
@@ -354,7 +354,7 @@ Feature: Regex Guardrail
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: regex-nested-jsonpath-api
@@ -416,7 +416,7 @@ Feature: Regex Guardrail
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: regex-invalid-jsonpath-api
@@ -468,7 +468,7 @@ Feature: Regex Guardrail
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: regex-assessment-api
@@ -519,7 +519,7 @@ Feature: Regex Guardrail
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: regex-empty-api
@@ -561,7 +561,7 @@ Feature: Regex Guardrail
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: regex-complex-api
@@ -618,7 +618,7 @@ Feature: Regex Guardrail
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: regex-case-sensitive-api
@@ -668,7 +668,7 @@ Feature: Regex Guardrail
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: regex-case-insensitive-api
@@ -729,7 +729,7 @@ Feature: Regex Guardrail
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: regex-combined-api
@@ -787,7 +787,7 @@ Feature: Regex Guardrail
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: regex-phone-api
@@ -841,7 +841,7 @@ Feature: Regex Guardrail
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: regex-error-structure-api
@@ -895,7 +895,7 @@ Feature: Regex Guardrail
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: regex-response-json-api
@@ -939,7 +939,7 @@ Feature: Regex Guardrail
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: regex-response-block-api
@@ -980,7 +980,7 @@ Feature: Regex Guardrail
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: regex-response-format-api
@@ -1027,7 +1027,7 @@ Feature: Regex Guardrail
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: regex-unicode-api
@@ -1077,7 +1077,7 @@ Feature: Regex Guardrail
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: regex-international-api
@@ -1134,7 +1134,7 @@ Feature: Regex Guardrail
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: regex-emoji-api
@@ -1185,7 +1185,7 @@ Feature: Regex Guardrail
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: regex-diacritics-api

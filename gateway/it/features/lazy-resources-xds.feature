@@ -33,7 +33,7 @@ Feature: Lazy Resources xDS Synchronization
     Given I authenticate using basic auth as "admin"
     When I create this LLM provider template:
         """
-        apiVersion: gateway.api-platform.wso2.com/v1alpha1
+        apiVersion: gateway.api-platform.wso2.com/v1alpha2
         kind: LlmProviderTemplate
         metadata:
           name: xds-test-template
@@ -92,7 +92,7 @@ Feature: Lazy Resources xDS Synchronization
     Given I authenticate using basic auth as "admin"
     When I create this LLM provider template:
         """
-        apiVersion: gateway.api-platform.wso2.com/v1alpha1
+        apiVersion: gateway.api-platform.wso2.com/v1alpha2
         kind: LlmProviderTemplate
         metadata:
           name: update-test-template
@@ -117,7 +117,7 @@ Feature: Lazy Resources xDS Synchronization
     Given I authenticate using basic auth as "admin"
     When I update the LLM provider template "update-test-template" with:
         """
-        apiVersion: gateway.api-platform.wso2.com/v1alpha1
+        apiVersion: gateway.api-platform.wso2.com/v1alpha2
         kind: LlmProviderTemplate
         metadata:
           name: update-test-template
@@ -148,7 +148,7 @@ Feature: Lazy Resources xDS Synchronization
     Given I authenticate using basic auth as "admin"
     When I create this LLM provider template:
         """
-        apiVersion: gateway.api-platform.wso2.com/v1alpha1
+        apiVersion: gateway.api-platform.wso2.com/v1alpha2
         kind: LlmProviderTemplate
         metadata:
           name: delete-test-template
@@ -191,7 +191,7 @@ Feature: Lazy Resources xDS Synchronization
     Given I authenticate using basic auth as "admin"
     When I create this LLM provider:
         """
-        apiVersion: gateway.api-platform.wso2.com/v1alpha1
+        apiVersion: gateway.api-platform.wso2.com/v1alpha2
         kind: LlmProvider
         metadata:
           name: test-openai-provider
@@ -228,7 +228,7 @@ Feature: Lazy Resources xDS Synchronization
     Given I authenticate using basic auth as "admin"
     When I create this LLM provider template:
         """
-        apiVersion: gateway.api-platform.wso2.com/v1alpha1
+        apiVersion: gateway.api-platform.wso2.com/v1alpha2
         kind: LlmProviderTemplate
         metadata:
           name: custom-template-for-update
@@ -244,7 +244,7 @@ Feature: Lazy Resources xDS Synchronization
     Given I authenticate using basic auth as "admin"
     When I create this LLM provider:
         """
-        apiVersion: gateway.api-platform.wso2.com/v1alpha1
+        apiVersion: gateway.api-platform.wso2.com/v1alpha2
         kind: LlmProvider
         metadata:
           name: update-mapping-provider
@@ -272,7 +272,7 @@ Feature: Lazy Resources xDS Synchronization
     Given I authenticate using basic auth as "admin"
     When I update the LLM provider "update-mapping-provider" with:
         """
-        apiVersion: gateway.api-platform.wso2.com/v1alpha1
+        apiVersion: gateway.api-platform.wso2.com/v1alpha2
         kind: LlmProvider
         metadata:
           name: update-mapping-provider
@@ -310,7 +310,7 @@ Feature: Lazy Resources xDS Synchronization
     Given I authenticate using basic auth as "admin"
     When I create this LLM provider:
         """
-        apiVersion: gateway.api-platform.wso2.com/v1alpha1
+        apiVersion: gateway.api-platform.wso2.com/v1alpha2
         kind: LlmProvider
         metadata:
           name: delete-mapping-provider
@@ -357,7 +357,7 @@ Feature: Lazy Resources xDS Synchronization
     Given I authenticate using basic auth as "admin"
     When I create this LLM provider:
         """
-        apiVersion: gateway.api-platform.wso2.com/v1alpha1
+        apiVersion: gateway.api-platform.wso2.com/v1alpha2
         kind: LlmProvider
         metadata:
           name: route-metadata-test-provider
@@ -398,7 +398,7 @@ Feature: Lazy Resources xDS Synchronization
     Given I authenticate using basic auth as "admin"
     When I create this LLM provider template:
         """
-        apiVersion: gateway.api-platform.wso2.com/v1alpha1
+        apiVersion: gateway.api-platform.wso2.com/v1alpha2
         kind: LlmProviderTemplate
         metadata:
           name: collision-test
@@ -428,7 +428,7 @@ Feature: Lazy Resources xDS Synchronization
     Given I authenticate using basic auth as "admin"
     When I create this LLM provider:
         """
-        apiVersion: gateway.api-platform.wso2.com/v1alpha1
+        apiVersion: gateway.api-platform.wso2.com/v1alpha2
         kind: LlmProvider
         metadata:
           name: collision-test

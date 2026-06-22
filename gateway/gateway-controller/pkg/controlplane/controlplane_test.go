@@ -593,7 +593,7 @@ func TestClient_handleMCPProxyUndeploymentEvent_PublishesReplicaSyncUpdate(t *te
 			},
 		},
 		SourceConfiguration: api.MCPProxyConfiguration{
-			ApiVersion: api.MCPProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+			ApiVersion: api.MCPProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha2,
 			Kind:       api.MCPProxyConfigurationKindMcp,
 			Metadata:   api.Metadata{Name: "test-mcp"},
 			Spec: api.MCPProxyConfigData{

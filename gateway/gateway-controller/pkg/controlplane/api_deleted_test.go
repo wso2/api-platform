@@ -90,7 +90,7 @@ func newMockStorageForDeletion() *mockStorageForDeletion {
 		secrets:        make(map[string]*models.Secret),
 		webhookSecrets: make(map[string]*models.WebhookSecret),
 		subscriptions:  make(map[string]*models.Subscription),
-		apiKeysByUUID: make(map[string]*models.APIKey),
+		apiKeysByUUID:  make(map[string]*models.APIKey),
 	}
 }
 
@@ -647,7 +647,7 @@ func createTestAPIConfigForDeletion(apiID string) *models.StoredConfig {
 		Origin:       models.OriginGatewayAPI,
 		Kind:         "API",
 		Configuration: api.RestAPI{
-			ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
+			ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha2,
 			Kind:       api.RestAPIKindRestApi,
 			Metadata: api.Metadata{
 				Name: apiID,

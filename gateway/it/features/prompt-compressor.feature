@@ -33,7 +33,7 @@ Feature: Prompt Compressor Policy
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: pc-deploy-test-api
@@ -70,7 +70,7 @@ Feature: Prompt Compressor Policy
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: pc-deterministic-api
@@ -125,7 +125,7 @@ Feature: Prompt Compressor Policy
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: pc-ratio-api
@@ -179,7 +179,7 @@ Feature: Prompt Compressor Policy
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: pc-ratio-short-api
@@ -226,7 +226,7 @@ Feature: Prompt Compressor Policy
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: pc-ratio-one-api
@@ -282,7 +282,7 @@ Feature: Prompt Compressor Policy
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: pc-token-api
@@ -334,7 +334,7 @@ Feature: Prompt Compressor Policy
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: pc-token-skip-api
@@ -385,7 +385,7 @@ Feature: Prompt Compressor Policy
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: pc-jsonpath-flat-api
@@ -435,7 +435,7 @@ Feature: Prompt Compressor Policy
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: pc-jsonpath-nested-api
@@ -489,7 +489,7 @@ Feature: Prompt Compressor Policy
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: pc-jsonpath-neg-api
@@ -542,7 +542,7 @@ Feature: Prompt Compressor Policy
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: pc-jsonpath-nonstring-api
@@ -589,7 +589,7 @@ Feature: Prompt Compressor Policy
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: pc-jsonpath-missing-api
@@ -640,7 +640,7 @@ Feature: Prompt Compressor Policy
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: pc-tags-api
@@ -695,7 +695,7 @@ Feature: Prompt Compressor Policy
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: pc-multi-tags-api
@@ -750,7 +750,7 @@ Feature: Prompt Compressor Policy
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: pc-orphan-tag-api
@@ -801,7 +801,7 @@ Feature: Prompt Compressor Policy
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: pc-multi-rule-api
@@ -859,7 +859,7 @@ Feature: Prompt Compressor Policy
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: pc-multi-rule-fallback-api
@@ -920,7 +920,7 @@ Feature: Prompt Compressor Policy
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: pc-invalid-rules-api
@@ -982,7 +982,7 @@ Feature: Prompt Compressor Policy
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: pc-empty-body-api
@@ -1025,7 +1025,7 @@ Feature: Prompt Compressor Policy
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: pc-non-json-api
@@ -1069,7 +1069,7 @@ Feature: Prompt Compressor Policy
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: pc-invalid-json-api
@@ -1117,7 +1117,7 @@ Feature: Prompt Compressor Policy
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: pc-metadata-api
@@ -1164,7 +1164,7 @@ Feature: Prompt Compressor Policy
     # Phase 1: Deploy without policy
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: pc-lifecycle-api
@@ -1201,7 +1201,7 @@ Feature: Prompt Compressor Policy
     # Phase 2: Add policy (aggressive ratio 0.3)
     When I update the API "pc-lifecycle-api" with this configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: pc-lifecycle-api
@@ -1248,7 +1248,7 @@ Feature: Prompt Compressor Policy
     # Phase 3: Update policy (high ratio 0.95 -> skip compression)
     When I update the API "pc-lifecycle-api" with this configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: pc-lifecycle-api
@@ -1296,7 +1296,7 @@ Feature: Prompt Compressor Policy
     # Phase 4: Remove policy entirely
     When I update the API "pc-lifecycle-api" with this configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: pc-lifecycle-api

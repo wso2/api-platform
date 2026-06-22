@@ -77,7 +77,7 @@ func TestLLMProviderTransformer_TransformProvider_ReadsTemplateFromDB(t *testing
 	template := &models.StoredLLMProviderTemplate{
 		UUID: "0000-db-template-id-0000-000000000000",
 		Configuration: api.LLMProviderTemplate{
-			ApiVersion: api.LLMProviderTemplateApiVersionGatewayApiPlatformWso2Comv1alpha1,
+			ApiVersion: api.LLMProviderTemplateApiVersionGatewayApiPlatformWso2Comv1alpha2,
 			Kind:       api.LLMProviderTemplateKindLlmProviderTemplate,
 			Metadata:   api.Metadata{Name: "openai"},
 			Spec: api.LLMProviderTemplateData{
@@ -93,7 +93,7 @@ func TestLLMProviderTransformer_TransformProvider_ReadsTemplateFromDB(t *testing
 	transformer := NewLLMProviderTransformer(store, db, routerConfig, newTestPolicyVersionResolver())
 
 	provider := &api.LLMProviderConfiguration{
-		ApiVersion: api.LLMProviderConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		ApiVersion: api.LLMProviderConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha2,
 		Kind:       api.LLMProviderConfigurationKindLlmProvider,
 		Metadata:   api.Metadata{Name: "db-backed-provider"},
 		Spec: api.LLMProviderConfigData{
@@ -120,7 +120,7 @@ func TestLLMProviderTransformer_TransformProxy_ReadsProviderAndTemplateFromDB(t 
 	template := &models.StoredLLMProviderTemplate{
 		UUID: "0000-db-template-id-0000-000000000001",
 		Configuration: api.LLMProviderTemplate{
-			ApiVersion: api.LLMProviderTemplateApiVersionGatewayApiPlatformWso2Comv1alpha1,
+			ApiVersion: api.LLMProviderTemplateApiVersionGatewayApiPlatformWso2Comv1alpha2,
 			Kind:       api.LLMProviderTemplateKindLlmProviderTemplate,
 			Metadata:   api.Metadata{Name: "openai"},
 			Spec: api.LLMProviderTemplateData{
@@ -132,7 +132,7 @@ func TestLLMProviderTransformer_TransformProxy_ReadsProviderAndTemplateFromDB(t 
 
 	now := time.Now()
 	providerSourceConfig := api.LLMProviderConfiguration{
-		ApiVersion: api.LLMProviderConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		ApiVersion: api.LLMProviderConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha2,
 		Kind:       api.LLMProviderConfigurationKindLlmProvider,
 		Metadata:   api.Metadata{Name: "db-provider"},
 		Spec: api.LLMProviderConfigData{
@@ -147,7 +147,7 @@ func TestLLMProviderTransformer_TransformProxy_ReadsProviderAndTemplateFromDB(t 
 		},
 	}
 	providerRuntimeConfig := api.RestAPI{
-		ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha2,
 		Kind:       api.RestAPIKindRestApi,
 		Metadata:   api.Metadata{Name: "db-provider"},
 		Spec: api.APIConfigData{
@@ -182,7 +182,7 @@ func TestLLMProviderTransformer_TransformProxy_ReadsProviderAndTemplateFromDB(t 
 	transformer := NewLLMProviderTransformer(store, db, routerConfig, newTestPolicyVersionResolver())
 
 	proxy := &api.LLMProxyConfiguration{
-		ApiVersion: api.LLMProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		ApiVersion: api.LLMProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha2,
 		Kind:       api.LLMProxyConfigurationKindLlmProxy,
 		Metadata:   api.Metadata{Name: "db-proxy"},
 		Spec: api.LLMProxyConfigData{
@@ -677,12 +677,8 @@ func TestMoreSpecificPolicyAttachmentCovers(t *testing.T) {
 	// these cases construct the block (and the current entry within it) directly. It returns
 	// true iff some OTHER entry in the same block both covers (targetPath, method) and is
 	// strictly more specific than the current entry.
-	mk := func(path string, methods ...string) api.LLMPolicyPath {
-		ms := make([]api.LLMPolicyPathMethods, len(methods))
-		for i, m := range methods {
-			ms[i] = api.LLMPolicyPathMethods(m)
-		}
-		return api.LLMPolicyPath{Path: path, Methods: ms}
+	mk := func(path string, methods ...string) api.OperationPolicyPath {
+		return api.OperationPolicyPath{Path: path, Methods: methods}
 	}
 	ccAll := mk("/chat/completions", "*")
 	ccGet := mk("/chat/completions", "GET")
@@ -694,45 +690,45 @@ func TestMoreSpecificPolicyAttachmentCovers(t *testing.T) {
 
 	tests := []struct {
 		name       string
-		block      []api.LLMPolicyPath
-		current    api.LLMPolicyPath
+		block      []api.OperationPolicyPath
+		current    api.OperationPolicyPath
 		targetPath string
 		method     string
 		want       bool
 	}{
 		// --- nothing more specific present ---
-		{"only the current entry in the block", []api.LLMPolicyPath{root}, root, "/chat/completions", "POST", false},
-		{"current is the most specific entry", []api.LLMPolicyPath{ccAll, chatWild, root}, ccAll, "/chat/completions", "POST", false},
-		{"only a less specific sibling", []api.LLMPolicyPath{ccAll, root}, ccAll, "/chat/completions", "POST", false},
+		{"only the current entry in the block", []api.OperationPolicyPath{root}, root, "/chat/completions", "POST", false},
+		{"current is the most specific entry", []api.OperationPolicyPath{ccAll, chatWild, root}, ccAll, "/chat/completions", "POST", false},
+		{"only a less specific sibling", []api.OperationPolicyPath{ccAll, root}, ccAll, "/chat/completions", "POST", false},
 
 		// --- more specific by PATH ---
-		{"more specific concrete sibling covers target", []api.LLMPolicyPath{ccAll, root}, root, "/chat/completions", "POST", true},
-		{"more specific nested-wildcard sibling covers target", []api.LLMPolicyPath{chatWild, root}, root, "/chat/foo", "POST", true},
-		{"more specific sibling does not cover target", []api.LLMPolicyPath{ccAll, root}, root, "/models", "POST", false},
+		{"more specific concrete sibling covers target", []api.OperationPolicyPath{ccAll, root}, root, "/chat/completions", "POST", true},
+		{"more specific nested-wildcard sibling covers target", []api.OperationPolicyPath{chatWild, root}, root, "/chat/foo", "POST", true},
+		{"more specific sibling does not cover target", []api.OperationPolicyPath{ccAll, root}, root, "/models", "POST", false},
 
 		// --- method gating of the more specific sibling ---
-		{"more specific sibling does not apply to method", []api.LLMPolicyPath{ccGet, root}, root, "/chat/completions", "POST", false},
-		{"more specific sibling applies to method", []api.LLMPolicyPath{ccGet, root}, root, "/chat/completions", "GET", true},
+		{"more specific sibling does not apply to method", []api.OperationPolicyPath{ccGet, root}, root, "/chat/completions", "POST", false},
+		{"more specific sibling applies to method", []api.OperationPolicyPath{ccGet, root}, root, "/chat/completions", "GET", true},
 
 		// --- method specificity on the SAME path ---
-		{"concrete method beats wildcard method", []api.LLMPolicyPath{ccAll, ccGet}, ccAll, "/chat/completions", "GET", true},
-		{"wildcard method not suppressed for uncovered method", []api.LLMPolicyPath{ccAll, ccGet}, ccAll, "/chat/completions", "POST", false},
-		{"concrete-method current not suppressed by wildcard-method sibling", []api.LLMPolicyPath{ccAll, ccGet}, ccGet, "/chat/completions", "GET", false},
-		{"narrower method set beats broader", []api.LLMPolicyPath{ccGetPost, ccPost}, ccGetPost, "/chat/completions", "POST", true},
-		{"broader method set does not suppress narrower", []api.LLMPolicyPath{ccGetPost, ccPost}, ccPost, "/chat/completions", "POST", false},
+		{"concrete method beats wildcard method", []api.OperationPolicyPath{ccAll, ccGet}, ccAll, "/chat/completions", "GET", true},
+		{"wildcard method not suppressed for uncovered method", []api.OperationPolicyPath{ccAll, ccGet}, ccAll, "/chat/completions", "POST", false},
+		{"concrete-method current not suppressed by wildcard-method sibling", []api.OperationPolicyPath{ccAll, ccGet}, ccGet, "/chat/completions", "GET", false},
+		{"narrower method set beats broader", []api.OperationPolicyPath{ccGetPost, ccPost}, ccGetPost, "/chat/completions", "POST", true},
+		{"broader method set does not suppress narrower", []api.OperationPolicyPath{ccGetPost, ccPost}, ccPost, "/chat/completions", "POST", false},
 
 		// --- ties ---
-		{"equal-specificity duplicate is a tie", []api.LLMPolicyPath{ccPost, mk("/chat/completions", "POST")}, ccPost, "/chat/completions", "POST", false},
+		{"equal-specificity duplicate is a tie", []api.OperationPolicyPath{ccPost, mk("/chat/completions", "POST")}, ccPost, "/chat/completions", "POST", false},
 
 		// --- path dominates method ---
-		{"specific path beats method-specific wildcard path", []api.LLMPolicyPath{chatWildPost, ccAll}, chatWildPost, "/chat/completions", "POST", true},
-		{"method-specific wildcard path does not beat specific path", []api.LLMPolicyPath{chatWildPost, ccAll}, ccAll, "/chat/completions", "POST", false},
+		{"specific path beats method-specific wildcard path", []api.OperationPolicyPath{chatWildPost, ccAll}, chatWildPost, "/chat/completions", "POST", true},
+		{"method-specific wildcard path does not beat specific path", []api.OperationPolicyPath{chatWildPost, ccAll}, ccAll, "/chat/completions", "POST", false},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			att := llmPolicyAttachment{
-				policy:    api.LLMPolicy{Name: "advanced-ratelimit", Version: "v1", Paths: tc.block},
+				policy:    api.OperationPolicy{Name: "advanced-ratelimit", Version: "v1", Paths: tc.block},
 				pathEntry: tc.current,
 			}
 			assert.Equal(t, tc.want, moreSpecificPolicyAttachmentCovers(tc.targetPath, tc.method, att))
@@ -741,13 +737,7 @@ func TestMoreSpecificPolicyAttachmentCovers(t *testing.T) {
 }
 
 func TestMethodSet(t *testing.T) {
-	mm := func(methods ...string) []api.LLMPolicyPathMethods {
-		out := make([]api.LLMPolicyPathMethods, len(methods))
-		for i, m := range methods {
-			out[i] = api.LLMPolicyPathMethods(m)
-		}
-		return out
-	}
+	mm := func(methods ...string) []string { return methods }
 
 	t.Run("single concrete method", func(t *testing.T) {
 		assert.Equal(t, map[string]bool{"GET": true}, methodSet(mm("GET")))
@@ -777,16 +767,10 @@ func TestMethodSet(t *testing.T) {
 }
 
 func TestIsStrictMethodSubset(t *testing.T) {
-	mm := func(methods ...string) []api.LLMPolicyPathMethods {
-		out := make([]api.LLMPolicyPathMethods, len(methods))
-		for i, m := range methods {
-			out[i] = api.LLMPolicyPathMethods(m)
-		}
-		return out
-	}
+	mm := func(methods ...string) []string { return methods }
 	tests := []struct {
 		name string
-		a, b []api.LLMPolicyPathMethods
+		a, b []string
 		want bool
 	}{
 		{"strict subset", mm("POST"), mm("GET", "POST"), true},
@@ -812,16 +796,12 @@ func TestIsStrictMethodSubset(t *testing.T) {
 }
 
 func TestIsMoreSpecificAttachment(t *testing.T) {
-	mk := func(path string, methods ...string) api.LLMPolicyPath {
-		ms := make([]api.LLMPolicyPathMethods, len(methods))
-		for i, m := range methods {
-			ms[i] = api.LLMPolicyPathMethods(m)
-		}
-		return api.LLMPolicyPath{Path: path, Methods: ms}
+	mk := func(path string, methods ...string) api.OperationPolicyPath {
+		return api.OperationPolicyPath{Path: path, Methods: methods}
 	}
 	tests := []struct {
 		name string
-		a, b api.LLMPolicyPath
+		a, b api.OperationPolicyPath
 		want bool
 	}{
 		// Path specificity dominates, regardless of methods.

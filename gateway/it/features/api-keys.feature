@@ -31,7 +31,7 @@ Feature: API Key Management Operations
     # First create an API
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: apikey-lifecycle-api
@@ -99,7 +99,7 @@ Feature: API Key Management Operations
   Scenario: Generate multiple API keys for same API
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: multi-key-api
@@ -151,7 +151,7 @@ Feature: API Key Management Operations
   Scenario: List API keys for API with no keys returns empty list
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: no-keys-api
@@ -191,7 +191,7 @@ Feature: API Key Management Operations
   Scenario: Generate API key without name auto-generates name
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: key-validation-api
@@ -242,7 +242,7 @@ Feature: API Key Management Operations
   Scenario: Revoke non-existent API key returns success (idempotent)
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: revoke-error-api
@@ -280,7 +280,7 @@ Feature: API Key Management Operations
   Scenario: Regenerate non-existent API key returns 404
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: test-regenerate-api
@@ -318,7 +318,7 @@ Feature: API Key Management Operations
   Scenario: Generate API key with invalid JSON body returns error
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: invalid-json-key-api
@@ -347,7 +347,7 @@ Feature: API Key Management Operations
   Scenario: API key with special characters in name
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: special-char-key-api
@@ -382,7 +382,7 @@ Feature: API Key Management Operations
   Scenario: List API keys with pagination parameters
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1alpha2
       kind: RestApi
       metadata:
         name: paginated-keys-api

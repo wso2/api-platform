@@ -94,7 +94,7 @@ func (a *llmProviderTemplateAdapter) GatewaySelectionKey(obj client.Object) (str
 
 func (a *llmProviderTemplateAdapter) Deploy(ctx context.Context, _ client.Client, gatewayEndpoint string, obj client.Object, authFn gatewayclient.AuthHeaderFunc) (DeployResult, error) {
 	cr := obj.(*apiv1.LlmProviderTemplate)
-	body, err := gatewayclient.BuildEnvelopeYAML(apiv1.GroupVersion.String(), "LlmProviderTemplate",
+	body, err := gatewayclient.BuildEnvelopeYAML(gatewayclient.ManagementArtifactAPIVersion, "LlmProviderTemplate",
 		gatewayclient.EnvelopeMetadata{
 			Name:        cr.Name,
 			Labels:      cr.Labels,
