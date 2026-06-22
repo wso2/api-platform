@@ -22,6 +22,7 @@ const { APIMetadata } = require('./apiMetadata');
 const constants = require('../utils/constants');
 const SubscriptionPlan = require('./subscriptionPlan');
 const APISubscriptionPlan = require('./apiSubscriptionPlan');
+const { KeyManager } = require('./keyManager');
 
 
 const Application = sequelize.define('DP_APPLICATION', {
@@ -33,7 +34,7 @@ const Application = sequelize.define('DP_APPLICATION', {
     },
     ORG_ID: {
         type: DataTypes.UUID,
-        defaultValue: Sequelize.UUIDV4
+        allowNull: false
     },
     CREATED_BY: {
         type: DataTypes.STRING,
@@ -89,22 +90,14 @@ const ApplicationKeyMapping = sequelize.define('DP_APP_KEY_MAPPING', {
         defaultValue: 'PRODUCTION'
     },
     ADDITIONAL_PROPERTIES: {
-        type: DataTypes.TEXT,
-        allowNull: true,
-        get() {
-            const raw = this.getDataValue('ADDITIONAL_PROPERTIES');
-            return raw ? JSON.parse(raw) : null;
-        },
-        set(val) {
-            this.setDataValue('ADDITIONAL_PROPERTIES', val ? JSON.stringify(val) : null);
-        }
+        type: DataTypes.JSON,
+        allowNull: true
     }
 }, {
     timestamps: false,
     tableName: 'DP_APP_KEY_MAPPING',
     returning: true
-},
-);
+});
 
 const SubscriptionMapping = sequelize.define('DP_API_SUBSCRIPTION', {
 
@@ -138,7 +131,7 @@ const SubscriptionMapping = sequelize.define('DP_API_SUBSCRIPTION', {
         allowNull: false
     },
     SUB_TOKEN:   { type: DataTypes.STRING(512), allowNull: true, unique: true },
-    STATUS:      { type: DataTypes.STRING(32), allowNull: false, defaultValue: 'ACTIVE' },
+    STATUS:      { type: DataTypes.ENUM('ACTIVE', 'INACTIVE'), allowNull: false, defaultValue: 'ACTIVE' },
     CREATED_AT:  { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW },
 }, {
     timestamps: false,
@@ -188,6 +181,12 @@ ApplicationKeyMapping.belongsTo(Application, {
 })
 Application.hasMany(ApplicationKeyMapping, {
     foreignKey: 'APP_ID'
+})
+ApplicationKeyMapping.belongsTo(KeyManager, {
+    foreignKey: 'KM_ID'
+})
+KeyManager.hasMany(ApplicationKeyMapping, {
+    foreignKey: 'KM_ID'
 })
 
 module.exports = {

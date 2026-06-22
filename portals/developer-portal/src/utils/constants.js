@@ -56,7 +56,7 @@ module.exports = {
     },
     API_STATUS: {
         PUBLISHED: "PUBLISHED",
-        UNPUBLISHED: "CREATED"
+        CREATED: "CREATED"
     },
     API_TYPE: {
         REST: "REST",
@@ -133,12 +133,6 @@ module.exports = {
         INTERNAL_KEY_MANAGER: '_internal_key_manager',
         RESIDENT_KEY_MANAGER: 'Resident Key Manager',
         APP_DEV_STS_KEY_MANAGER: '_appdev_sts_key_manager_',
-    },
-    KEY_MANAGER_TYPES: {
-        ASGARDEO: 'ASGARDEO',
-        WSO2IS: 'WSO2IS',
-        KEYCLOAK: 'KEYCLOAK',
-        GENERIC_OIDC: 'GENERIC_OIDC',
     },
     TOKEN_TYPES: {
         API_KEY: 'API_KEY',

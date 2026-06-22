@@ -15,13 +15,12 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-const { Sequelize, DataTypes } = require('sequelize');
+const { DataTypes } = require('sequelize');
 const sequelize = require('../db/sequelizeConfig');
 
 const Provider = sequelize.define('DP_PROVIDER', {
     ORG_ID: {
         type: DataTypes.UUID,
-        defaultValue: Sequelize.UUIDV4,
         primaryKey: true
     },
     NAME: {

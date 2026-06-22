@@ -15,17 +15,14 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-const constants = require('../../utils/constants');
 const { decryptCredentials } = require('../../dao/keyManagerDao');
 const AsgardeoAdapter = require('./asgardeoAdapter');
-// Other adapters (WSO2IS, Keycloak, GenericOIDC) are kept but not yet wired up.
-// Uncomment the relevant entries in ADAPTER_MAP when they are ready to use.
 
 const ADAPTER_MAP = {
-    [constants.KEY_MANAGER_TYPES.ASGARDEO]: AsgardeoAdapter,
-    // [constants.KEY_MANAGER_TYPES.WSO2IS]: require('./wso2isAdapter'),
-    // [constants.KEY_MANAGER_TYPES.KEYCLOAK]: require('./keycloakAdapter'),
-    // [constants.KEY_MANAGER_TYPES.GENERIC_OIDC]: require('./genericOIDCAdapter'),
+    ASGARDEO: AsgardeoAdapter,
+    // WSO2IS: require('./wso2isAdapter'),
+    // KEYCLOAK: require('./keycloakAdapter'),
+    // GENERIC_OIDC: require('./genericOIDCAdapter'),
 };
 
 /**

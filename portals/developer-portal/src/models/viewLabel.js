@@ -30,10 +30,11 @@ const ViewLabels = sequelize.define('DP_VIEW_LABELS', {
     },
     ORG_ID: {
         type: DataTypes.UUID,
-        defaultValue: Sequelize.UUIDV4
+        allowNull: false
     },
     VIEW_ID: {
         type: DataTypes.UUID,
+        allowNull: false,
         references: {
             model: View,
             key: 'VIEW_ID',
@@ -41,6 +42,7 @@ const ViewLabels = sequelize.define('DP_VIEW_LABELS', {
     },
     LABEL_ID: {
         type: DataTypes.UUID,
+        allowNull: false,
         references: {
             model: Labels,
             key: 'LABEL_ID',

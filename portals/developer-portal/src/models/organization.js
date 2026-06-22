@@ -119,12 +119,12 @@ const OrgContent = sequelize.define('DP_ORGANIZATION_ASSETS', {
     }
 }, {
     timestamps: false,
-    tableName: 'DP_ORGANIZATION_ASSETS'
-}, {
+    tableName: 'DP_ORGANIZATION_ASSETS',
     indexes: [
         {
+            name: 'UQ_ORGANIZATION_ASSETS_TYPE_NAME_PATH_ORG_VIEW',
             unique: true,
-            fields: ['FILE_TYPE', 'FILE_NAME', 'FILE_PATH', 'ORG_ID']
+            fields: ['FILE_TYPE', 'FILE_NAME', 'FILE_PATH', 'ORG_ID', 'VIEW_ID']
         }
     ]
 });
@@ -143,6 +143,15 @@ Provider.belongsTo(Organization, {
 });
 
 Organization.hasMany(Provider, {
+    foreignKey: 'ORG_ID',
+    onDelete: 'CASCADE',
+});
+
+View.belongsTo(Organization, {
+    foreignKey: 'ORG_ID',
+});
+
+Organization.hasMany(View, {
     foreignKey: 'ORG_ID',
     onDelete: 'CASCADE',
 });

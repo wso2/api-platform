@@ -30,8 +30,7 @@ const APIImageMetadata = sequelize.define('DP_API_IMAGEDATA', {
     },
     IMAGE_NAME: {
         type: DataTypes.STRING,
-        allowNull: false,
-        primaryKey: true
+        allowNull: false
     }
 }, {
     timestamps: false,

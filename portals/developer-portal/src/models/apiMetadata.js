@@ -30,15 +30,15 @@ const APIMetadata = sequelize.define('DP_API_METADATA', {
   },
   REFERENCE_ID: {
     type: DataTypes.UUID,
-    allowNull: true,
-    unique: true
+    allowNull: true
   },
   API_NAME: {
     type: DataTypes.STRING,
     allowNull: false
   },
   STATUS: {
-    type: DataTypes.STRING,
+    type: DataTypes.ENUM,
+    values: ['CREATED', 'PUBLISHED'],
     allowNull: false
   },
   API_DESCRIPTION: {
@@ -116,13 +116,17 @@ const APIMetadata = sequelize.define('DP_API_METADATA', {
 }, {
   timestamps: false,
   tableName: 'DP_API_METADATA',
-  returning: true
-},
-{
+  returning: true,
   indexes: [
       {
+          name: 'UQ_API_METADATA_NAME_VERSION_ORG',
           unique: true,
           fields: ['API_NAME', 'API_VERSION', 'ORG_ID']
+      },
+      {
+          name: 'UQ_API_METADATA_ORG_REFERENCE_ID',
+          unique: true,
+          fields: ['ORG_ID', 'REFERENCE_ID']
       }
   ]
 });
@@ -136,10 +140,11 @@ const APILabels = sequelize.define('DP_API_LABELS', {
   },
   ORG_ID: {
       type: DataTypes.UUID,
-      defaultValue: Sequelize.UUIDV4
+      allowNull: false
   },
   API_ID: {
       type: DataTypes.UUID,
+      allowNull: false,
       references: {
           model: APIMetadata,
           key: 'API_ID',
@@ -147,6 +152,7 @@ const APILabels = sequelize.define('DP_API_LABELS', {
   },
   LABEL_ID: {
       type: DataTypes.UUID,
+      allowNull: false,
       references: {
           model: Labels,
           key: 'LABEL_ID',

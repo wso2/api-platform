@@ -239,7 +239,7 @@ function normalizeGraphQLEndpoints(apiMetadata) {
 
 async function allowAPIStatusChange(apiStatus, orgId, apiId) {
     
-    if (apiStatus === constants.API_STATUS.UNPUBLISHED) {
+    if (apiStatus === constants.API_STATUS.CREATED) {
 
         const subApis = await subDao.listByApi(orgId, apiId);
         if (subApis.length > 0) {

@@ -99,10 +99,6 @@ function _validateRequiredFields(payload) {
     if (missing.length) {
         return `Missing required fields: ${missing.join(', ')}`;
     }
-    if (!Object.values(constants.KEY_MANAGER_TYPES).includes(payload.type)) {
-        return `Invalid key manager type: ${payload.type}. `
-            + `Supported: ${Object.values(constants.KEY_MANAGER_TYPES).join(', ')}`;
-    }
     return null;
 }
 
@@ -141,12 +137,6 @@ const updateKeyManager = async (req, res) => {
     try {
         const { kmId } = req.params;
         const payload = _resolvePayload(req);
-
-        if (payload.type && !Object.values(constants.KEY_MANAGER_TYPES).includes(payload.type)) {
-            return res.status(400).json({
-                error: `Invalid key manager type: ${payload.type}.`
-            });
-        }
 
         const [, updatedRows] = await kmDao.update(kmId, payload);
         const dto = new KeyManagerDTO(updatedRows[0]);
