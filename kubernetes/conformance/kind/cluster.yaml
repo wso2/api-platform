@@ -1,0 +1,15 @@
+# Single-node KinD cluster used to run the Gateway API conformance suite against
+# the WSO2 API Platform gateway. Intentionally vanilla — the only moving parts are
+# the pinned node image (Kubernetes version) and MetalLB (added by setup-kind.sh),
+# which gives the operator-provisioned gateway-runtime LoadBalancer Service a
+# routable address the conformance suite can dial. Mirrors the layout the other
+# Envoy-based implementations (kgateway, gloo) use for their published reports.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+# One node, control-plane + worker combined. Conformance does not need multiple
+# nodes, and a single node keeps the MetalLB L2 address pool trivial to reason about.
+nodes:
+  - role: control-plane
+# Defaults everywhere else: kindnet CNI, iptables kube-proxy, IPv4, default
+# pod/service subnets. No extraPortMappings — the suite reaches the gateway via the
+# MetalLB-assigned LoadBalancer IP on the "kind" docker bridge, not via host ports.
