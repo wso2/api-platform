@@ -31,6 +31,17 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// Standard names every devportal artifact takes inside the archive, regardless
+// of the source paths configured in .api-platform/config.yaml. Standardizing
+// here gives the published zip a predictable layout for the devportal to
+// unpack, while letting authors keep arbitrary on-disk filenames.
+const (
+	archiveMetadataFileName   = "devportal.yaml"
+	archiveDefinitionFileName = "definition.yaml"
+	archiveDocsDirName        = "docs"
+	archiveContentDirName     = "content"
+)
+
 const (
 	BuildCmdLiteral = "build"
 	BuildCmdExample = `# Build the project in the current directory for devportal
@@ -461,22 +472,22 @@ func createDevPortalArchiveStagingDir(projectRoot, buildDir string, portalConfig
 	}{
 		{
 			source: resolvePortalConfigPath(projectRoot, portalConfig, portalConfig.FilePaths.MetadataFile),
-			target: filepath.Join(stagingRoot, archiveRelativePath(portalConfig.FilePaths.MetadataFile)),
+			target: filepath.Join(stagingRoot, archiveMetadataFileName),
 			isDir:  false,
 		},
 		{
 			source: resolvePortalConfigPath(projectRoot, portalConfig, portalConfig.FilePaths.Definition),
-			target: filepath.Join(stagingRoot, archiveRelativePath(portalConfig.FilePaths.Definition)),
+			target: filepath.Join(stagingRoot, archiveDefinitionFileName),
 			isDir:  false,
 		},
 		{
 			source: resolvePortalConfigPath(projectRoot, portalConfig, portalConfig.FilePaths.Docs),
-			target: filepath.Join(stagingRoot, archiveRelativePath(portalConfig.FilePaths.Docs)),
+			target: filepath.Join(stagingRoot, archiveDocsDirName),
 			isDir:  true,
 		},
 		{
 			source: resolvePortalConfigPath(projectRoot, portalConfig, portalConfig.FilePaths.Content),
-			target: filepath.Join(stagingRoot, archiveRelativePath(portalConfig.FilePaths.Content)),
+			target: filepath.Join(stagingRoot, archiveContentDirName),
 			isDir:  true,
 		},
 	}
@@ -506,27 +517,6 @@ func resolvePortalConfigPath(projectRoot string, portalConfig *project.PortalCon
 	}
 
 	return filepath.Clean(filepath.Join(portalRoot, trimmed))
-}
-
-func archiveRelativePath(pathValue string) string {
-	cleanPath := filepath.Clean(strings.TrimSpace(pathValue))
-	cleanPath = strings.TrimPrefix(cleanPath, "."+string(os.PathSeparator))
-	cleanPath = strings.TrimPrefix(cleanPath, "."+"/")
-
-	for strings.HasPrefix(cleanPath, ".."+string(os.PathSeparator)) || cleanPath == ".." {
-		cleanPath = strings.TrimPrefix(cleanPath, ".."+string(os.PathSeparator))
-		if cleanPath == ".." {
-			cleanPath = ""
-		}
-	}
-
-	cleanPath = strings.TrimPrefix(cleanPath, string(os.PathSeparator))
-	cleanPath = strings.TrimPrefix(cleanPath, "/")
-	if cleanPath == "" || cleanPath == "." {
-		return "content"
-	}
-
-	return cleanPath
 }
 
 // ensureUniqueDevPortalZipNames fails fast when two devportal configs sanitize
