@@ -31,7 +31,7 @@ Feature: WebSub API Webhook Secret Management
     When I create a WebSub API with the following configuration:
       """
       {
-        "apiVersion": "gateway.api-platform.wso2.com/v1alpha2",
+        "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
         "kind": "WebSubApi",
         "metadata": { "name": "secret-create-v1-0" },
         "spec": {
@@ -65,7 +65,7 @@ Feature: WebSub API Webhook Secret Management
     When I create a WebSub API with the following configuration:
       """
       {
-        "apiVersion": "gateway.api-platform.wso2.com/v1alpha2",
+        "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
         "kind": "WebSubApi",
         "metadata": { "name": "secret-list-v1-0" },
         "spec": {
@@ -102,7 +102,7 @@ Feature: WebSub API Webhook Secret Management
     When I create a WebSub API with the following configuration:
       """
       {
-        "apiVersion": "gateway.api-platform.wso2.com/v1alpha2",
+        "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
         "kind": "WebSubApi",
         "metadata": { "name": "secret-regen-v1-0" },
         "spec": {
@@ -139,7 +139,7 @@ Feature: WebSub API Webhook Secret Management
     When I create a WebSub API with the following configuration:
       """
       {
-        "apiVersion": "gateway.api-platform.wso2.com/v1alpha2",
+        "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
         "kind": "WebSubApi",
         "metadata": { "name": "secret-del-v1-0" },
         "spec": {
@@ -183,7 +183,7 @@ Feature: WebSub API Webhook Secret Management
     When I create a WebSub API with the following configuration:
       """
       {
-        "apiVersion": "gateway.api-platform.wso2.com/v1alpha2",
+        "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
         "kind": "WebSubApi",
         "metadata": { "name": "secret-dup-v1-0" },
         "spec": {
@@ -215,7 +215,7 @@ Feature: WebSub API Webhook Secret Management
     When I create a WebSub API with the following configuration:
       """
       {
-        "apiVersion": "gateway.api-platform.wso2.com/v1alpha2",
+        "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
         "kind": "WebSubApi",
         "metadata": { "name": "secret-regen-404-v1-0" },
         "spec": {
@@ -243,7 +243,7 @@ Feature: WebSub API Webhook Secret Management
     When I create a WebSub API with the following configuration:
       """
       {
-        "apiVersion": "gateway.api-platform.wso2.com/v1alpha2",
+        "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
         "kind": "WebSubApi",
         "metadata": { "name": "secret-del-404-v1-0" },
         "spec": {
@@ -273,7 +273,7 @@ Feature: WebSub API Webhook Secret Management
     When I create a WebSub API with the following configuration:
       """
       {
-        "apiVersion": "gateway.api-platform.wso2.com/v1alpha2",
+        "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
         "kind": "WebSubApi",
         "metadata": { "name": "hmac-valid-v1-0" },
         "spec": {
@@ -320,7 +320,7 @@ Feature: WebSub API Webhook Secret Management
     When I create a WebSub API with the following configuration:
       """
       {
-        "apiVersion": "gateway.api-platform.wso2.com/v1alpha2",
+        "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
         "kind": "WebSubApi",
         "metadata": { "name": "hmac-reject-v1-0" },
         "spec": {
@@ -367,7 +367,7 @@ Feature: WebSub API Webhook Secret Management
     When I create a WebSub API with the following configuration:
       """
       {
-        "apiVersion": "gateway.api-platform.wso2.com/v1alpha2",
+        "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
         "kind": "WebSubApi",
         "metadata": { "name": "hmac-regen-v1-0" },
         "spec": {
@@ -421,7 +421,7 @@ Feature: WebSub API Webhook Secret Management
     When I create a WebSub API with the following configuration:
       """
       {
-        "apiVersion": "gateway.api-platform.wso2.com/v1alpha2",
+        "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
         "kind": "WebSubApi",
         "metadata": { "name": "hmac-deleted-v1-0" },
         "spec": {

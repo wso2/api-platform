@@ -31,7 +31,7 @@ Feature: WebSub API Management
     When I create a WebSub API with the following configuration:
       """
       {
-        "apiVersion": "gateway.api-platform.wso2.com/v1alpha2",
+        "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
         "kind": "WebSubApi",
         "metadata": {
           "name": "repo-watcher-v1-0"
@@ -62,7 +62,7 @@ Feature: WebSub API Management
     When I create a WebSub API with the following configuration:
       """
       {
-        "apiVersion": "gateway.api-platform.wso2.com/v1alpha2",
+        "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
         "kind": "WebSubApi",
         "metadata": {
           "name": "secure-events-v1-0"
@@ -107,7 +107,7 @@ Feature: WebSub API Management
     When I create a WebSub API with the following configuration:
       """
       {
-        "apiVersion": "gateway.api-platform.wso2.com/v1alpha2",
+        "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
         "kind": "WebSubApi",
         "metadata": { "name": "list-test-v1-0" },
         "spec": {
@@ -137,7 +137,7 @@ Feature: WebSub API Management
     When I create a WebSub API with the following configuration:
       """
       {
-        "apiVersion": "gateway.api-platform.wso2.com/v1alpha2",
+        "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
         "kind": "WebSubApi",
         "metadata": { "name": "get-test-v1-0" },
         "spec": {
@@ -174,7 +174,7 @@ Feature: WebSub API Management
     When I create a WebSub API with the following configuration:
       """
       {
-        "apiVersion": "gateway.api-platform.wso2.com/v1alpha2",
+        "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
         "kind": "WebSubApi",
         "metadata": { "name": "update-test-v1-0" },
         "spec": {
@@ -192,7 +192,7 @@ Feature: WebSub API Management
     When I update the WebSub API "update-test-v1-0" with the following configuration:
       """
       {
-        "apiVersion": "gateway.api-platform.wso2.com/v1alpha2",
+        "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
         "kind": "WebSubApi",
         "metadata": { "name": "update-test-v1-0" },
         "spec": {
@@ -228,7 +228,7 @@ Feature: WebSub API Management
     When I create a WebSub API with the following configuration:
       """
       {
-        "apiVersion": "gateway.api-platform.wso2.com/v1alpha2",
+        "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
         "kind": "WebSubApi",
         "metadata": { "name": "delete-test-v1-0" },
         "spec": {

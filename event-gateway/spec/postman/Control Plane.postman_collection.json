@@ -29,7 +29,7 @@
         "header": [],
         "body": {
           "mode": "raw",
-          "raw": "{\r\n    \"apiVersion\": \"gateway.api-platform.wso2.com/v1alpha2\",\r\n    \"kind\": \"WebSubApi\",\r\n    \"metadata\": {\r\n        \"name\": \"repo-watcher-v1-0\"\r\n    },\r\n    \"spec\": {\r\n        \"displayName\": \"repo-watcher\",\r\n        \"version\": \"v1.0\",\r\n        \"context\": \"/repos\",\r\n        \"allChannelPolicies\": {\r\n            \"on_subscription\": [\r\n                {\r\n                    \"name\": \"api-key-auth\",\r\n                    \"version\": \"v1\",\r\n                    \"params\": {\r\n                        \"in\": \"header\",\r\n                        \"name\": \"X-API-Key\"\r\n                    }\r\n                }\r\n            ],\r\n            \"on_unsubscription\": [\r\n                {\r\n                    \"name\": \"api-key-auth\",\r\n                    \"version\": \"v1\",\r\n                    \"params\": {\r\n                        \"in\": \"header\",\r\n                        \"name\": \"X-API-Key\"\r\n                    }\r\n                }\r\n            ],\r\n            \"on_message_received\": [\r\n                {\r\n                    \"name\": \"hmac-signature-validation\",\r\n                    \"version\": \"v1\",\r\n                    \"params\": {\r\n                        \"header\": \"X-Hub-Signature-256\",\r\n                        \"secret\": \"your-publisher-webhook-secret\",\r\n                        \"algorithm\": \"sha256\"\r\n                    }\r\n                }\r\n            ],\r\n            \"on_message_delivery\": [\r\n                {\r\n                    \"name\": \"hmac-sign-messages\",\r\n                    \"version\": \"v1\",\r\n                    \"params\": {\r\n                        \"header\": \"X-Hub-Signature-256\",\r\n                        \"secret\": \"your-publisher-webhook-secret\",\r\n                        \"algorithm\": \"sha256\"\r\n                    }\r\n                }\r\n            ]\r\n        },\r\n        \"channelPolicies\": {\r\n            \"issues\": {\r\n                \"on_subscription\": [\r\n                    {\r\n                        \"name\": \"rbac\",\r\n                        \"version\": \"v1\",\r\n                        \"params\": {\r\n                            \"allowedRoles\": [\r\n                                \"admin\",\r\n                                \"issue-manager\"\r\n                            ]\r\n                        }\r\n                    }\r\n                ],\r\n                \"on_message_received\": [],\r\n                \"on_message_delivery\": []\r\n            },\r\n            \"pull-requests\": {\r\n                \"on_subscription\": [\r\n                    {\r\n                        \"name\": \"rbac\",\r\n                        \"version\": \"v1\",\r\n                        \"params\": {\r\n                            \"allowedRoles\": [\r\n                                \"admin\",\r\n                                \"developer\"\r\n                            ]\r\n                        }\r\n                    }\r\n                ],\r\n                \"on_message_received\": [],\r\n                \"on_message_delivery\": []\r\n            }\r\n        },\r\n        \"deploymentState\": \"deployed\"\r\n    }\r\n}\r\n",
+          "raw": "{\r\n    \"apiVersion\": \"gateway.api-platform.wso2.com/v1alpha1\",\r\n    \"kind\": \"WebSubApi\",\r\n    \"metadata\": {\r\n        \"name\": \"repo-watcher-v1-0\"\r\n    },\r\n    \"spec\": {\r\n        \"displayName\": \"repo-watcher\",\r\n        \"version\": \"v1.0\",\r\n        \"context\": \"/repos\",\r\n        \"allChannelPolicies\": {\r\n            \"on_subscription\": [\r\n                {\r\n                    \"name\": \"api-key-auth\",\r\n                    \"version\": \"v1\",\r\n                    \"params\": {\r\n                        \"in\": \"header\",\r\n                        \"name\": \"X-API-Key\"\r\n                    }\r\n                }\r\n            ],\r\n            \"on_unsubscription\": [\r\n                {\r\n                    \"name\": \"api-key-auth\",\r\n                    \"version\": \"v1\",\r\n                    \"params\": {\r\n                        \"in\": \"header\",\r\n                        \"name\": \"X-API-Key\"\r\n                    }\r\n                }\r\n            ],\r\n            \"on_message_received\": [\r\n                {\r\n                    \"name\": \"hmac-signature-validation\",\r\n                    \"version\": \"v1\",\r\n                    \"params\": {\r\n                        \"header\": \"X-Hub-Signature-256\",\r\n                        \"secret\": \"your-publisher-webhook-secret\",\r\n                        \"algorithm\": \"sha256\"\r\n                    }\r\n                }\r\n            ],\r\n            \"on_message_delivery\": [\r\n                {\r\n                    \"name\": \"hmac-sign-messages\",\r\n                    \"version\": \"v1\",\r\n                    \"params\": {\r\n                        \"header\": \"X-Hub-Signature-256\",\r\n                        \"secret\": \"your-publisher-webhook-secret\",\r\n                        \"algorithm\": \"sha256\"\r\n                    }\r\n                }\r\n            ]\r\n        },\r\n        \"channelPolicies\": {\r\n            \"issues\": {\r\n                \"on_subscription\": [\r\n                    {\r\n                        \"name\": \"rbac\",\r\n                        \"version\": \"v1\",\r\n                        \"params\": {\r\n                            \"allowedRoles\": [\r\n                                \"admin\",\r\n                                \"issue-manager\"\r\n                            ]\r\n                        }\r\n                    }\r\n                ],\r\n                \"on_message_received\": [],\r\n                \"on_message_delivery\": []\r\n            },\r\n            \"pull-requests\": {\r\n                \"on_subscription\": [\r\n                    {\r\n                        \"name\": \"rbac\",\r\n                        \"version\": \"v1\",\r\n                        \"params\": {\r\n                            \"allowedRoles\": [\r\n                                \"admin\",\r\n                                \"developer\"\r\n                            ]\r\n                        }\r\n                    }\r\n                ],\r\n                \"on_message_received\": [],\r\n                \"on_message_delivery\": []\r\n            }\r\n        },\r\n        \"deploymentState\": \"deployed\"\r\n    }\r\n}\r\n",
           "options": {
             "raw": {
               "language": "json"
@@ -37,7 +37,7 @@
           }
         },
         "url": {
-          "raw": "http://{{host}}/api/management/v1alpha2/websub-apis",
+          "raw": "http://{{host}}/api/management/v0.9/websub-apis",
           "protocol": "http",
           "host": [
             "{{host}}"
@@ -45,7 +45,7 @@
           "path": [
             "api",
             "management",
-            "v1alpha2",
+            "v0.9",
             "websub-apis"
           ]
         }
@@ -73,7 +73,7 @@
         "method": "GET",
         "header": [],
         "url": {
-          "raw": "http://{{host}}/api/management/v1alpha2/websub-apis/repo-watcher-v1-0",
+          "raw": "http://{{host}}/api/management/v0.9/websub-apis/repo-watcher-v1-0",
           "protocol": "http",
           "host": [
             "{{host}}"
@@ -81,7 +81,7 @@
           "path": [
             "api",
             "management",
-            "v1alpha2",
+            "v0.9",
             "websub-apis",
             "repo-watcher-v1-0"
           ]
@@ -111,7 +111,7 @@
         "header": [],
         "body": {
           "mode": "raw",
-          "raw": "{\r\n    \"apiVersion\": \"gateway.api-platform.wso2.com/v1alpha2\",\r\n    \"kind\": \"WebSubApi\",\r\n    \"metadata\": {\r\n        \"name\": \"repo-watcher-v1-0\"\r\n    },\r\n    \"spec\": {\r\n        \"displayName\": \"repo-watcher\",\r\n        \"version\": \"v1.0\",\r\n        \"context\": \"/repos\",\r\n        \"receiver\": {\r\n            \"policies\": [\r\n                {\r\n                    \"name\": \"hmac-signature-validation\",\r\n                    \"version\": \"v1\",\r\n                    \"params\": {\r\n                        \"header\": \"X-Hub-Signature-256\",\r\n                        \"secret\": \"your-publisher-webhook-secret\",\r\n                        \"algorithm\": \"sha256\"\r\n                    }\r\n                }\r\n            ]\r\n        },\r\n        \"hub\": {\r\n            \"policies\": [\r\n                {\r\n                    \"name\": \"api-key-auth\",\r\n                    \"version\": \"v1\",\r\n                    \"params\": {\r\n                        \"in\": \"header\",\r\n                        \"name\": \"X-API-Key\"\r\n                    }\r\n                }\r\n            ],\r\n            \"channels\": [\r\n                {\r\n                    \"name\": \"issues\",\r\n                    \"policies\": [\r\n                        {\r\n                            \"name\": \"rbac\",\r\n                            \"version\": \"v1\",\r\n                            \"params\": {\r\n                                \"allowedRoles\": [\r\n                                    \"admin\",\r\n                                    \"issue-manager\"\r\n                                ]\r\n                            }\r\n                        }\r\n                    ]\r\n                },\r\n                {\r\n                    \"name\": \"pull-requests\",\r\n                    \"policies\": [\r\n                        {\r\n                            \"name\": \"rbac\",\r\n                            \"version\": \"v1\",\r\n                            \"params\": {\r\n                                \"allowedRoles\": [\r\n                                    \"admin\",\r\n                                    \"developer\"\r\n                                ]\r\n                            }\r\n                        }\r\n                    ]\r\n                },\r\n                {\r\n                    \"name\": \"releases\",\r\n                    \"policies\": [\r\n                        {\r\n                            \"name\": \"rbac\",\r\n                            \"version\": \"v1\",\r\n                            \"params\": {\r\n                                \"allowedRoles\": [\r\n                                    \"admin\"\r\n                                ]\r\n                            }\r\n                        }\r\n                    ]\r\n                }\r\n            ]\r\n        },\r\n        \"deploymentState\": \"deployed\"\r\n    }\r\n}\r\n",
+          "raw": "{\r\n    \"apiVersion\": \"gateway.api-platform.wso2.com/v1alpha1\",\r\n    \"kind\": \"WebSubApi\",\r\n    \"metadata\": {\r\n        \"name\": \"repo-watcher-v1-0\"\r\n    },\r\n    \"spec\": {\r\n        \"displayName\": \"repo-watcher\",\r\n        \"version\": \"v1.0\",\r\n        \"context\": \"/repos\",\r\n        \"receiver\": {\r\n            \"policies\": [\r\n                {\r\n                    \"name\": \"hmac-signature-validation\",\r\n                    \"version\": \"v1\",\r\n                    \"params\": {\r\n                        \"header\": \"X-Hub-Signature-256\",\r\n                        \"secret\": \"your-publisher-webhook-secret\",\r\n                        \"algorithm\": \"sha256\"\r\n                    }\r\n                }\r\n            ]\r\n        },\r\n        \"hub\": {\r\n            \"policies\": [\r\n                {\r\n                    \"name\": \"api-key-auth\",\r\n                    \"version\": \"v1\",\r\n                    \"params\": {\r\n                        \"in\": \"header\",\r\n                        \"name\": \"X-API-Key\"\r\n                    }\r\n                }\r\n            ],\r\n            \"channels\": [\r\n                {\r\n                    \"name\": \"issues\",\r\n                    \"policies\": [\r\n                        {\r\n                            \"name\": \"rbac\",\r\n                            \"version\": \"v1\",\r\n                            \"params\": {\r\n                                \"allowedRoles\": [\r\n                                    \"admin\",\r\n                                    \"issue-manager\"\r\n                                ]\r\n                            }\r\n                        }\r\n                    ]\r\n                },\r\n                {\r\n                    \"name\": \"pull-requests\",\r\n                    \"policies\": [\r\n                        {\r\n                            \"name\": \"rbac\",\r\n                            \"version\": \"v1\",\r\n                            \"params\": {\r\n                                \"allowedRoles\": [\r\n                                    \"admin\",\r\n                                    \"developer\"\r\n                                ]\r\n                            }\r\n                        }\r\n                    ]\r\n                },\r\n                {\r\n                    \"name\": \"releases\",\r\n                    \"policies\": [\r\n                        {\r\n                            \"name\": \"rbac\",\r\n                            \"version\": \"v1\",\r\n                            \"params\": {\r\n                                \"allowedRoles\": [\r\n                                    \"admin\"\r\n                                ]\r\n                            }\r\n                        }\r\n                    ]\r\n                }\r\n            ]\r\n        },\r\n        \"deploymentState\": \"deployed\"\r\n    }\r\n}\r\n",
           "options": {
             "raw": {
               "language": "json"
@@ -119,7 +119,7 @@
           }
         },
         "url": {
-          "raw": "http://{{host}}/api/management/v1alpha2/websub-apis/repo-watcher-v1-0",
+          "raw": "http://{{host}}/api/management/v0.9/websub-apis/repo-watcher-v1-0",
           "protocol": "http",
           "host": [
             "{{host}}"
@@ -127,7 +127,7 @@
           "path": [
             "api",
             "management",
-            "v1alpha2",
+            "v0.9",
             "websub-apis",
             "repo-watcher-v1-0"
           ]
@@ -156,7 +156,7 @@
         "method": "DELETE",
         "header": [],
         "url": {
-          "raw": "http://{{host}}/api/management/v1alpha2/websub-apis/repo-watcher-v1-0",
+          "raw": "http://{{host}}/api/management/v0.9/websub-apis/repo-watcher-v1-0",
           "protocol": "http",
           "host": [
             "{{host}}"
@@ -164,7 +164,7 @@
           "path": [
             "api",
             "management",
-            "v1alpha2",
+            "v0.9",
             "websub-apis",
             "repo-watcher-v1-0"
           ]
@@ -193,7 +193,7 @@
         "method": "GET",
         "header": [],
         "url": {
-          "raw": "http://{{host}}/api/management/v1alpha2/websub-apis",
+          "raw": "http://{{host}}/api/management/v0.9/websub-apis",
           "protocol": "http",
           "host": [
             "{{host}}"
@@ -201,7 +201,7 @@
           "path": [
             "api",
             "management",
-            "v1alpha2",
+            "v0.9",
             "websub-apis"
           ]
         }
