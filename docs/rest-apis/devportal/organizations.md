@@ -30,13 +30,7 @@ Creates a Developer Portal organization and initializes its default portal confi
   "businessOwnerContact": "string",
   "businessOwnerEmail": "user@example.com",
   "orgHandle": "string",
-  "roleClaimName": "string",
-  "groupsClaimName": "string",
-  "organizationClaimName": "string",
-  "organizationIdentifier": "string",
-  "adminRole": "string",
-  "subscriberRole": "string",
-  "superAdminRole": "string"
+  "organizationIdentifier": "string"
 }
 ```
 
@@ -46,13 +40,7 @@ businessOwner: string
 businessOwnerContact: string
 businessOwnerEmail: user@example.com
 orgHandle: string
-roleClaimName: string
-groupsClaimName: string
-organizationClaimName: string
 organizationIdentifier: string
-adminRole: string
-subscriberRole: string
-superAdminRole: string
 
 ```
 
@@ -81,14 +69,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "businessOwnerContact": "string",
   "businessOwnerEmail": "user@example.com",
   "orgHandle": "string",
-  "roleClaimName": "string",
-  "groupsClaimName": "string",
-  "organizationClaimName": "string",
   "organizationIdentifier": "string",
-  "adminRole": "string",
-  "subscriberRole": "string",
-  "superAdminRole": "string",
-  "groupClaimName": "string",
   "orgConfiguration": {}
 }
 ```
@@ -231,13 +212,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
       "businessOwnerContact": "string",
       "businessOwnerEmail": "user@example.com",
       "orgHandle": "string",
-      "roleClaimName": "string",
-      "groupsClaimName": "string",
-      "organizationClaimName": "string",
       "organizationIdentifier": "string",
-      "adminRole": "string",
-      "subscriberRole": "string",
-      "superAdminRole": "string",
       "orgConfiguration": {}
     }
   ],
@@ -279,13 +254,7 @@ Status Code **200**
 |»» businessOwnerContact|string¦null|false|none|none|
 |»» businessOwnerEmail|string(email)¦null|false|none|none|
 |»» orgHandle|string|false|none|none|
-|»» roleClaimName|string|false|none|none|
-|»» groupsClaimName|string|false|none|none|
-|»» organizationClaimName|string|false|none|none|
 |»» organizationIdentifier|string|false|none|none|
-|»» adminRole|string|false|none|none|
-|»» subscriberRole|string|false|none|none|
-|»» superAdminRole|string¦null|false|none|none|
 |»» orgConfiguration|[GenericObject](schemas.md#schemagenericobject)|false|none|none|
 |» pagination|[Pagination](schemas.md#schemapagination)|false|none|Standard pagination metadata returned with collection responses.|
 |»» total|integer|true|none|Total number of records matching the query.|
@@ -322,13 +291,7 @@ Updates organization metadata, claim mappings, role mappings, and portal configu
   "businessOwnerContact": "string",
   "businessOwnerEmail": "user@example.com",
   "orgHandle": "string",
-  "roleClaimName": "string",
-  "groupsClaimName": "string",
-  "organizationClaimName": "string",
   "organizationIdentifier": "string",
-  "adminRole": "string",
-  "subscriberRole": "string",
-  "superAdminRole": "string",
   "orgConfiguration": {}
 }
 ```
@@ -339,13 +302,7 @@ businessOwner: string
 businessOwnerContact: string
 businessOwnerEmail: user@example.com
 orgHandle: string
-roleClaimName: string
-groupsClaimName: string
-organizationClaimName: string
 organizationIdentifier: string
-adminRole: string
-subscriberRole: string
-superAdminRole: string
 orgConfiguration: {}
 
 ```
@@ -376,14 +333,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "businessOwnerContact": "string",
   "businessOwnerEmail": "user@example.com",
   "orgHandle": "string",
-  "roleClaimName": "string",
-  "groupsClaimName": "string",
-  "organizationClaimName": "string",
   "organizationIdentifier": "string",
-  "adminRole": "string",
-  "subscriberRole": "string",
-  "superAdminRole": "string",
-  "groupClaimName": "string",
   "orgConfiguration": {}
 }
 ```
@@ -513,14 +463,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "businessOwnerContact": "string",
   "businessOwnerEmail": "user@example.com",
   "orgHandle": "string",
-  "roleClaimName": "string",
-  "groupsClaimName": "string",
-  "organizationClaimName": "string",
   "organizationIdentifier": "string",
-  "adminRole": "string",
-  "subscriberRole": "string",
-  "superAdminRole": "string",
-  "groupClaimName": "string",
   "orgConfiguration": {}
 }
 ```

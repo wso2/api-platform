@@ -48,34 +48,10 @@ const Organization = sequelize.define('DP_ORGANIZATION', {
         allowNull: false,
         unique: true
     },
-    ROLE_CLAIM_NAME: {
-        type: DataTypes.STRING,
-        allowNull: true
-    },
-    ORGANIZATION_CLAIM_NAME: {
-        type: DataTypes.STRING,
-        allowNull: true
-    },
     ORGANIZATION_IDENTIFIER: {
         type: DataTypes.STRING,
         allowNull: false
     },
-    ADMIN_ROLE: {
-        type: DataTypes.STRING,
-        allowNull: true
-    },
-    SUPER_ADMIN_ROLE: {
-        type: DataTypes.STRING,
-        allowNull: true
-    },
-    SUBSCRIBER_ROLE: {
-        type: DataTypes.STRING,
-        allowNull: true
-    },
-    GROUPS_CLAIM_NAME: {
-        type: DataTypes.STRING,
-        allowNull: true
-    },   
     ORG_CONFIG: {
         type: DataTypes.JSON,
         allowNull: false

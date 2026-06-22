@@ -2405,13 +2405,7 @@ components:
             businessOwnerContact: +1-202-555-0147
             businessOwnerEmail: jane.doe@acme.example
             orgHandle: acme
-            roleClaimName: roles
-            groupsClaimName: groups
-            organizationClaimName: organizationIdentifier
             organizationIdentifier: ACME
-            adminRole: admin
-            subscriberRole: subscriber
-            superAdminRole: superAdmin
         multipart/form-data:
           schema:
             type: object
@@ -3856,24 +3850,8 @@ components:
           nullable: true
         orgHandle:
           type: string
-        roleClaimName:
-          type: string
-        groupsClaimName:
-          type: string
-        organizationClaimName:
-          type: string
         organizationIdentifier:
           type: string
-        adminRole:
-          type: string
-        subscriberRole:
-          type: string
-        superAdminRole:
-          type: string
-          nullable: true
-        groupClaimName:
-          type: string
-          nullable: true
         orgConfiguration:
           $ref: "#/components/schemas/GenericObject"
       additionalProperties: false
@@ -3896,21 +3874,8 @@ components:
           nullable: true
         orgHandle:
           type: string
-        roleClaimName:
-          type: string
-        groupsClaimName:
-          type: string
-        organizationClaimName:
-          type: string
         organizationIdentifier:
           type: string
-        adminRole:
-          type: string
-        subscriberRole:
-          type: string
-        superAdminRole:
-          type: string
-          nullable: true
         orgConfiguration:
           $ref: "#/components/schemas/GenericObject"
       additionalProperties: false
@@ -4177,13 +4142,7 @@ components:
       required:
         - orgName
         - orgHandle
-        - roleClaimName
-        - groupsClaimName
-        - organizationClaimName
         - organizationIdentifier
-        - adminRole
-        - subscriberRole
-        - superAdminRole
       properties:
         orgName:
           type: string
@@ -4197,19 +4156,7 @@ components:
         orgHandle:
           type: string
           description: Public organization handle used in portal URLs.
-        roleClaimName:
-          type: string
-        groupsClaimName:
-          type: string
-        organizationClaimName:
-          type: string
         organizationIdentifier:
-          type: string
-        adminRole:
-          type: string
-        subscriberRole:
-          type: string
-        superAdminRole:
           type: string
       additionalProperties: false
     OrganizationUpdateRequest:
@@ -4217,13 +4164,7 @@ components:
       required:
         - orgName
         - orgHandle
-        - roleClaimName
-        - groupsClaimName
-        - organizationClaimName
         - organizationIdentifier
-        - adminRole
-        - subscriberRole
-        - superAdminRole
       properties:
         orgName:
           type: string
@@ -4236,19 +4177,7 @@ components:
           format: email
         orgHandle:
           type: string
-        roleClaimName:
-          type: string
-        groupsClaimName:
-          type: string
-        organizationClaimName:
-          type: string
         organizationIdentifier:
-          type: string
-        adminRole:
-          type: string
-        subscriberRole:
-          type: string
-        superAdminRole:
           type: string
         orgConfiguration:
           $ref: "#/components/schemas/GenericObject"

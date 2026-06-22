@@ -125,9 +125,6 @@ const ensureAuthenticated = async (req, res, next) => {
         let orgDetails;
         if (orgID !== undefined) {
             orgDetails = await orgDao.get(orgID);
-            adminRole = orgDetails?.ADMIN_ROLE || adminRole;
-            superAdminRole = orgDetails?.SUPER_ADMIN_ROLE || superAdminRole;
-            subscriberRole = orgDetails?.SUBSCRIBER_ROLE || subscriberRole;
         }
         let role;
         logger.debug("Request authentication status", { isAuthenticated: req.isAuthenticated() });

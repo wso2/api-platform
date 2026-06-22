@@ -37,13 +37,7 @@ const createOrganization = async (orgData, t) => {
         BUSINESS_OWNER_CONTACT: orgData.businessOwnerContact,
         BUSINESS_OWNER_EMAIL: orgData.businessOwnerEmail,
         ORG_HANDLE: devPortalID,
-        ROLE_CLAIM_NAME: orgData.roleClaimName,
-        GROUPS_CLAIM_NAME: orgData.groupsClaimName,
-        ORGANIZATION_CLAIM_NAME: orgData.organizationClaimName,
         ORGANIZATION_IDENTIFIER: orgData.organizationIdentifier,
-        ADMIN_ROLE: orgData.adminRole,
-        SUBSCRIBER_ROLE: orgData.subscriberRole,
-        SUPER_ADMIN_ROLE: orgData.superAdminRole,
         ORG_CONFIG: orgData.orgConfig
     };
     try {
@@ -135,13 +129,7 @@ const updateOrganization = async (orgData, t) => {
                 BUSINESS_OWNER_CONTACT: orgData.businessOwnerContact,
                 BUSINESS_OWNER_EMAIL: orgData.businessOwnerEmail,
                 ORG_HANDLE: devPortalID,
-                ROLE_CLAIM_NAME: orgData.roleClaimName,
-                GROUPS_CLAIM_NAME: orgData.groupsClaimName,
-                ORGANIZATION_CLAIM_NAME: orgData.organizationClaimName,
                 ORGANIZATION_IDENTIFIER: orgData.organizationIdentifier,
-                ADMIN_ROLE: orgData.adminRole,
-                SUBSCRIBER_ROLE: orgData.subscriberRole,
-                SUPER_ADMIN_ROLE: orgData.superAdminRole,
                 ORG_CONFIG: orgData.orgConfiguration
             },
             {

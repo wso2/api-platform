@@ -229,14 +229,7 @@ xor
   "businessOwnerContact": "string",
   "businessOwnerEmail": "user@example.com",
   "orgHandle": "string",
-  "roleClaimName": "string",
-  "groupsClaimName": "string",
-  "organizationClaimName": "string",
   "organizationIdentifier": "string",
-  "adminRole": "string",
-  "subscriberRole": "string",
-  "superAdminRole": "string",
-  "groupClaimName": "string",
   "orgConfiguration": {}
 }
 
@@ -252,14 +245,7 @@ xor
 |businessOwnerContact|string¦null|false|none|none|
 |businessOwnerEmail|string(email)¦null|false|none|none|
 |orgHandle|string|false|none|none|
-|roleClaimName|string|false|none|none|
-|groupsClaimName|string|false|none|none|
-|organizationClaimName|string|false|none|none|
 |organizationIdentifier|string|false|none|none|
-|adminRole|string|false|none|none|
-|subscriberRole|string|false|none|none|
-|superAdminRole|string¦null|false|none|none|
-|groupClaimName|string¦null|false|none|none|
 |orgConfiguration|[GenericObject](#schemagenericobject)|false|none|none|
 
 <h2 id="tocS_OrganizationListItemResponse">OrganizationListItemResponse</h2>
@@ -277,13 +263,7 @@ xor
   "businessOwnerContact": "string",
   "businessOwnerEmail": "user@example.com",
   "orgHandle": "string",
-  "roleClaimName": "string",
-  "groupsClaimName": "string",
-  "organizationClaimName": "string",
   "organizationIdentifier": "string",
-  "adminRole": "string",
-  "subscriberRole": "string",
-  "superAdminRole": "string",
   "orgConfiguration": {}
 }
 
@@ -299,13 +279,7 @@ xor
 |businessOwnerContact|string¦null|false|none|none|
 |businessOwnerEmail|string(email)¦null|false|none|none|
 |orgHandle|string|false|none|none|
-|roleClaimName|string|false|none|none|
-|groupsClaimName|string|false|none|none|
-|organizationClaimName|string|false|none|none|
 |organizationIdentifier|string|false|none|none|
-|adminRole|string|false|none|none|
-|subscriberRole|string|false|none|none|
-|superAdminRole|string¦null|false|none|none|
 |orgConfiguration|[GenericObject](#schemagenericobject)|false|none|none|
 
 <h2 id="tocS_OrganizationContentUploadResponse">OrganizationContentUploadResponse</h2>
@@ -883,13 +857,7 @@ continued
   "businessOwnerContact": "string",
   "businessOwnerEmail": "user@example.com",
   "orgHandle": "string",
-  "roleClaimName": "string",
-  "groupsClaimName": "string",
-  "organizationClaimName": "string",
-  "organizationIdentifier": "string",
-  "adminRole": "string",
-  "subscriberRole": "string",
-  "superAdminRole": "string"
+  "organizationIdentifier": "string"
 }
 
 ```
@@ -903,13 +871,7 @@ continued
 |businessOwnerContact|string|false|none|none|
 |businessOwnerEmail|string(email)|false|none|none|
 |orgHandle|string|true|none|Public organization handle used in portal URLs.|
-|roleClaimName|string|true|none|none|
-|groupsClaimName|string|true|none|none|
-|organizationClaimName|string|true|none|none|
 |organizationIdentifier|string|true|none|none|
-|adminRole|string|true|none|none|
-|subscriberRole|string|true|none|none|
-|superAdminRole|string|true|none|none|
 
 <h2 id="tocS_OrganizationUpdateRequest">OrganizationUpdateRequest</h2>
 
@@ -925,13 +887,7 @@ continued
   "businessOwnerContact": "string",
   "businessOwnerEmail": "user@example.com",
   "orgHandle": "string",
-  "roleClaimName": "string",
-  "groupsClaimName": "string",
-  "organizationClaimName": "string",
   "organizationIdentifier": "string",
-  "adminRole": "string",
-  "subscriberRole": "string",
-  "superAdminRole": "string",
   "orgConfiguration": {}
 }
 
@@ -946,13 +902,7 @@ continued
 |businessOwnerContact|string|false|none|none|
 |businessOwnerEmail|string(email)|false|none|none|
 |orgHandle|string|true|none|none|
-|roleClaimName|string|true|none|none|
-|groupsClaimName|string|true|none|none|
-|organizationClaimName|string|true|none|none|
 |organizationIdentifier|string|true|none|none|
-|adminRole|string|true|none|none|
-|subscriberRole|string|true|none|none|
-|superAdminRole|string|true|none|none|
 |orgConfiguration|[GenericObject](#schemagenericobject)|false|none|none|
 
 <h2 id="tocS_ProviderRequest">ProviderRequest</h2>

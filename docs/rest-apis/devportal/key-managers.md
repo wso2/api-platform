@@ -214,7 +214,7 @@ curl -X GET https://devportal.api-platform.io/o/{orgId}/devportal/v1/key-manager
 
 ```
 
-Returns key manager configurations for the organization. When `role=developer`, returns only the minimal public view of enabled key managers (no admin credentials or internal endpoints). Without `role`, returns full configurations. Admin credentials are never included in any response.
+Returns all key manager configurations for the organization, including admin credentials (encrypted). Admin use only.
 
 ### Authentication
 
@@ -227,49 +227,49 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|role|query|string|false|When `role=developer`, returns the minimal public view of enabled key managers.|
 |limit|query|integer|false|Maximum number of records to return.|
 |offset|query|integer|false|Number of records to skip before returning results.|
 |orgId|path|string|true|none|
-
-#### Enumerated Values
-
-|Parameter|Value|
-|---|---|
-|role|developer|
 
 > Example responses
 
 > 200 Response
 
 ```json
-[
-  {
-    "id": "km-uuid-12345",
-    "orgId": "org-12345",
-    "name": "Asgardeo",
-    "type": "ASGARDEO",
-    "enabled": true,
-    "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token",
-    "clientRegistrationEndpoint": "https://api.asgardeo.io/t/myorg/api/identity/oauth2/dcr/v1.1/register",
-    "issuer": "https://api.asgardeo.io/t/myorg/oauth2/token",
-    "jwksURL": "https://api.asgardeo.io/t/myorg/oauth2/jwks",
-    "supportedGrantTypes": [
-      "client_credentials",
-      "authorization_code",
-      "refresh_token"
-    ],
-    "supportedScopes": [
-      "openid",
-      "profile"
-    ],
-    "additionalProperties": {
-      "authorizeEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/authorize",
-      "revokeEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/revoke",
-      "logoutEndpoint": "https://api.asgardeo.io/t/myorg/oidc/logout"
+{
+  "list": [
+    {
+      "id": "km-uuid-12345",
+      "orgId": "org-12345",
+      "name": "Asgardeo",
+      "type": "ASGARDEO",
+      "enabled": true,
+      "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token",
+      "clientRegistrationEndpoint": "https://api.asgardeo.io/t/myorg/api/identity/oauth2/dcr/v1.1/register",
+      "issuer": "https://api.asgardeo.io/t/myorg/oauth2/token",
+      "jwksURL": "https://api.asgardeo.io/t/myorg/oauth2/jwks",
+      "supportedGrantTypes": [
+        "client_credentials",
+        "authorization_code",
+        "refresh_token"
+      ],
+      "supportedScopes": [
+        "openid",
+        "profile"
+      ],
+      "additionalProperties": {
+        "authorizeEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/authorize",
+        "revokeEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/revoke",
+        "logoutEndpoint": "https://api.asgardeo.io/t/myorg/oidc/logout"
+      }
     }
+  ],
+  "pagination": {
+    "total": 42,
+    "limit": 20,
+    "offset": 0
   }
-]
+}
 ```
 
 > 500 Response
@@ -291,6 +291,28 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <h3 id="list-key-managers-responseschema">Response Schema</h3>
 
+Status Code **200**
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|» list|[[KeyManagerResponseSchema](schemas.md#schemakeymanagerresponseschema)]|false|none|[Key manager configuration. Admin credentials are never included.]|
+|»» id|string|false|none|Key manager UUID.|
+|»» orgId|string|false|none|none|
+|»» name|string|false|none|none|
+|»» type|string|false|none|none|
+|»» enabled|boolean|false|none|none|
+|»» tokenEndpoint|string(uri)|false|none|none|
+|»» clientRegistrationEndpoint|string(uri)|false|none|none|
+|»» issuer|string(uri)¦null|false|none|none|
+|»» jwksURL|string(uri)¦null|false|none|none|
+|»» supportedGrantTypes|[string]|false|none|none|
+|»» supportedScopes|[string]|false|none|none|
+|»» additionalProperties|object|false|none|none|
+|» pagination|[Pagination](schemas.md#schemapagination)|false|none|Standard pagination metadata returned with collection responses.|
+|»» total|integer|true|none|Total number of records matching the query.|
+|»» limit|integer|true|none|Maximum number of records returned in this response.|
+|»» offset|integer|true|none|Number of records skipped before this page.|
+
 #### Enumerated Values
 
 |Property|Value|
@@ -299,6 +321,110 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |type|WSO2IS|
 |type|KEYCLOAK|
 |type|GENERIC_OIDC|
+
+## Discover available key managers
+
+<a id="opIddiscoverKeyManagers"></a>
+
+`GET /o/{orgId}/devportal/v1/key-managers/discover`
+
+> Code samples
+
+```shell
+
+curl -X GET https://devportal.api-platform.io/o/{orgId}/devportal/v1/key-managers/discover \
+  -u {username}:{password} \
+  -H 'Accept: application/json' \
+  -H 'Authorization: Bearer {access-token}'
+
+```
+
+Returns the minimal public view of enabled key managers for developer use. Does not include admin credentials or internal endpoints.
+
+### Authentication
+
+<aside class="warning">
+This operation requires <strong>Basic Auth</strong> authentication.
+
+</aside>
+
+<h3 id="discover-available-key-managers-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|limit|query|integer|false|Maximum number of records to return.|
+|offset|query|integer|false|Number of records to skip before returning results.|
+|orgId|path|string|true|none|
+
+> Example responses
+
+> 200 Response
+
+```json
+{
+  "list": [
+    {
+      "id": "km-uuid-12345",
+      "name": "Asgardeo",
+      "type": "ASGARDEO",
+      "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token",
+      "supportedGrantTypes": [
+        "client_credentials",
+        "authorization_code"
+      ],
+      "supportedScopes": [
+        "openid",
+        "profile"
+      ]
+    }
+  ],
+  "pagination": {
+    "total": 42,
+    "limit": 20,
+    "offset": 0
+  }
+}
+```
+
+> 500 Response
+
+```json
+{
+  "status": "error",
+  "code": "INTERNAL_SERVER_ERROR",
+  "message": "An unexpected error occurred."
+}
+```
+
+<h3 id="discover-available-key-managers-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|List of enabled key managers (developer-facing, minimal view).|Inline|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
+
+<h3 id="discover-available-key-managers-responseschema">Response Schema</h3>
+
+Status Code **200**
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|» list|[[KeyManagerPublicResponseSchema](schemas.md#schemakeymanagerpublicresponseschema)]|false|none|[Minimal developer-facing key manager view. No admin credentials or DCR endpoints.]|
+|»» id|string|false|none|none|
+|»» name|string|false|none|none|
+|»» type|string|false|none|none|
+|»» tokenEndpoint|string(uri)|false|none|none|
+|»» supportedGrantTypes|[string]|false|none|none|
+|»» supportedScopes|[string]|false|none|none|
+|» pagination|[Pagination](schemas.md#schemapagination)|false|none|Standard pagination metadata returned with collection responses.|
+|»» total|integer|true|none|Total number of records matching the query.|
+|»» limit|integer|true|none|Maximum number of records returned in this response.|
+|»» offset|integer|true|none|Number of records skipped before this page.|
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
 |type|ASGARDEO|
 |type|WSO2IS|
 |type|KEYCLOAK|
