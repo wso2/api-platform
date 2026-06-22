@@ -1702,6 +1702,7 @@ function mapDevportalYamlToApiMetadata(parsedYaml) {
             apiStatus,
             visibility: spec.visibility || constants.API_VISIBILITY.PUBLIC,
             visibleGroups: visibleGroups.length > 0 ? visibleGroups : null,
+            agentVisibility: spec.agentVisibility || 'VISIBLE',
             tags: util.normalizeStringArray(spec.tags),
             labels: util.normalizeStringArray(spec.labels),
             gatewayType: spec.gatewayType || null,

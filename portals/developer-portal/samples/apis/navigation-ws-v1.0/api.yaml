@@ -26,6 +26,7 @@ spec:
     - Silver
 
   visibility: PUBLIC
+  agentVisibility: VISIBLE
   visibleGroups: []
 
   businessInformation:

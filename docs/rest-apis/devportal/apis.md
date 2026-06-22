@@ -19,7 +19,7 @@ curl -X POST https://devportal.api-platform.io/o/{orgId}/devportal/v1/apis \
 
 ```
 
-Creates Developer Portal API metadata from either a full API artifact ZIP, an API metadata YAML file, or an `apiMetadata` JSON string. An API definition file is required unless supplied by the artifact ZIP. The service also stores labels, subscription plan mappings, image metadata, and schema definitions for MCP or GraphQL APIs when provided.
+Creates Developer Portal API metadata from either a full API artifact ZIP, an API metadata YAML file (`api.yaml` / `devportal.yaml` / `mcp.yaml`), or an `apiMetadata` JSON string. An API definition file is required unless supplied by the artifact ZIP. The YAML `spec` block accepts: `displayName`, `version`, `description`, `type`, `status`, `visibility`, `agentVisibility`, `visibleGroups`, `tags`, `labels`, `gatewayType`, `provider`, `referenceID`, `endpoints` (sandboxUrl, productionUrl), `businessInformation` (owners), and `subscriptionPlans`. The service also stores labels, subscription plan mappings, image metadata, and schema definitions for MCP or GraphQL APIs when provided.
 
 > Payload
 
@@ -30,8 +30,9 @@ artifact: string
 schemaDefinition: string
 apiMetadata: '{"apiInfo":{"apiName":"Weather
   API","apiVersion":"v1","apiDescription":"Weather forecast
-  API","apiType":"REST","visibility":"PUBLIC","provider":"WSO2","apiStatus":"PUBLISHED","tags":["weather"],
-  "labels":["default"]},"endPoints":{"productionURL":"https://api.example.com/weather",
+  API","apiType":"REST","visibility":"PUBLIC","agentVisibility":"VISIBLE","provider":"WSO2",
+  "apiStatus":"PUBLISHED","tags":["weather"],"labels":["default"]},"endPoints":{
+  "productionURL":"https://api.example.com/weather",
   "sandboxURL":"https://sandbox.example.com/weather"},"subscriptionPlans":[{"planName":"Gold"}]}'
 
 ```
@@ -52,7 +53,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |» apiDefinition|body|string(binary)|false|API definition file.|
 |» artifact|body|string(binary)|false|Full API ZIP artifact containing metadata and definition files.|
 |» schemaDefinition|body|string(binary)|false|Schema definition file, used by MCP APIs.|
-|» apiMetadata|body|string|false|JSON string accepted by the service when the `api` YAML file is not supplied.|
+|» apiMetadata|body|string|false|JSON string accepted by the service when the `api` YAML file is not supplied. Accepted top-level fields mirror the YAML spec: `apiInfo` (apiName, apiVersion, apiDescription, apiType, visibility, agentVisibility, apiStatus, provider, referenceID, apiHandle, tags, labels, visibleGroups, gatewayType, owners), `endPoints` (productionURL, sandboxURL), and `subscriptionPlans`.|
 |orgId|path|string|true|none|
 
 > Example responses
@@ -546,7 +547,7 @@ curl -X PUT https://devportal.api-platform.io/o/{orgId}/devportal/v1/apis/{apiId
 
 ```
 
-Updates Developer Portal API metadata and its stored definition. The update flow can also adjust label mappings, subscription plan mappings, schema definitions, and image metadata. Status changes to unpublished are rejected when active subscriptions exist.
+Updates Developer Portal API metadata and its stored definition. Accepts the same YAML spec fields and `apiMetadata` JSON format as the create operation. The update flow can also adjust label mappings, subscription plan mappings, schema definitions, and image metadata. Status changes to unpublished are rejected when active subscriptions exist.
 
 > Payload
 
@@ -557,8 +558,9 @@ artifact: string
 schemaDefinition: string
 apiMetadata: '{"apiInfo":{"apiName":"Weather
   API","apiVersion":"v1","apiDescription":"Weather forecast
-  API","apiType":"REST","visibility":"PUBLIC","provider":"WSO2","apiStatus":"PUBLISHED","tags":["weather"],
-  "labels":["default"]},"endPoints":{"productionURL":"https://api.example.com/weather",
+  API","apiType":"REST","visibility":"PUBLIC","agentVisibility":"VISIBLE","provider":"WSO2",
+  "apiStatus":"PUBLISHED","tags":["weather"],"labels":["default"]},"endPoints":{
+  "productionURL":"https://api.example.com/weather",
   "sandboxURL":"https://sandbox.example.com/weather"},"subscriptionPlans":[{"planName":"Gold"}]}'
 
 ```
@@ -579,7 +581,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |» apiDefinition|body|string(binary)|false|API definition file.|
 |» artifact|body|string(binary)|false|Full API ZIP artifact containing metadata and definition files.|
 |» schemaDefinition|body|string(binary)|false|Schema definition file, used by MCP APIs.|
-|» apiMetadata|body|string|false|JSON string accepted by the service when the `api` YAML file is not supplied.|
+|» apiMetadata|body|string|false|JSON string accepted by the service when the `api` YAML file is not supplied. Accepted top-level fields mirror the YAML spec: `apiInfo` (apiName, apiVersion, apiDescription, apiType, visibility, agentVisibility, apiStatus, provider, referenceID, apiHandle, tags, labels, visibleGroups, gatewayType, owners), `endPoints` (productionURL, sandboxURL), and `subscriptionPlans`.|
 |orgId|path|string|true|none|
 |apiId|path|string|true|none|
 

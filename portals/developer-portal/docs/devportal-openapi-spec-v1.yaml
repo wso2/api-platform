@@ -398,9 +398,13 @@ paths:
       summary: Create API metadata
       description: >-
         Creates Developer Portal API metadata from either a full API artifact ZIP, an API metadata YAML
-        file, or an `apiMetadata` JSON string. An API definition file is required unless supplied by the
-        artifact ZIP. The service also stores labels, subscription plan mappings, image metadata, and
-        schema definitions for MCP or GraphQL APIs when provided.
+        file (`api.yaml` / `devportal.yaml` / `mcp.yaml`), or an `apiMetadata` JSON string. An API
+        definition file is required unless supplied by the artifact ZIP. The YAML `spec` block accepts:
+        `displayName`, `version`, `description`, `type`, `status`, `visibility`, `agentVisibility`,
+        `visibleGroups`, `tags`, `labels`, `gatewayType`, `provider`, `referenceID`, `endpoints`
+        (sandboxUrl, productionUrl), `businessInformation` (owners), and `subscriptionPlans`. The
+        service also stores labels, subscription plan mappings, image metadata, and schema definitions
+        for MCP or GraphQL APIs when provided.
       operationId: createApiMetadata
       requestBody:
         $ref: "#/components/requestBodies/ApiMetadataMultipartBody"
@@ -476,7 +480,8 @@ paths:
         - APIs
       summary: Update API metadata
       description: >-
-        Updates Developer Portal API metadata and its stored definition. The update flow can also adjust
+        Updates Developer Portal API metadata and its stored definition. Accepts the same YAML spec
+        fields and `apiMetadata` JSON format as the create operation. The update flow can also adjust
         label mappings, subscription plan mappings, schema definitions, and image metadata. Status
         changes to unpublished are rejected when active subscriptions exist.
       operationId: updateApiMetadata
@@ -2881,11 +2886,17 @@ components:
                 description: Schema definition file, used by MCP APIs.
               apiMetadata:
                 type: string
-                description: JSON string accepted by the service when the `api` YAML file is not supplied.
+                description: >-
+                  JSON string accepted by the service when the `api` YAML file is not supplied.
+                  Accepted top-level fields mirror the YAML spec: `apiInfo` (apiName, apiVersion,
+                  apiDescription, apiType, visibility, agentVisibility, apiStatus, provider,
+                  referenceID, apiHandle, tags, labels, visibleGroups, gatewayType, owners),
+                  `endPoints` (productionURL, sandboxURL), and `subscriptionPlans`.
                 example: >-
                   {"apiInfo":{"apiName":"Weather API","apiVersion":"v1","apiDescription":"Weather forecast
-                  API","apiType":"REST","visibility":"PUBLIC","provider":"WSO2","apiStatus":"PUBLISHED","tags":["weather"],
-                  "labels":["default"]},"endPoints":{"productionURL":"https://api.example.com/weather",
+                  API","apiType":"REST","visibility":"PUBLIC","agentVisibility":"VISIBLE","provider":"WSO2",
+                  "apiStatus":"PUBLISHED","tags":["weather"],"labels":["default"]},"endPoints":{
+                  "productionURL":"https://api.example.com/weather",
                   "sandboxURL":"https://sandbox.example.com/weather"},"subscriptionPlans":[{"planName":"Gold"}]}
     ApiContentZipMultipartBody:
       required: true

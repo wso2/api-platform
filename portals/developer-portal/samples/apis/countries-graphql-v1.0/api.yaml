@@ -23,6 +23,7 @@ spec:
   subscriptionPlans: []
 
   visibility: PUBLIC
+  agentVisibility: VISIBLE
   visibleGroups: []
 
   businessInformation:
