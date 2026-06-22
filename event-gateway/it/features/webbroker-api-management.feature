@@ -31,7 +31,7 @@ Feature: WebBroker API Management
     When I create a WebBroker API with the following configuration:
       """
       {
-        "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+        "apiVersion": "gateway.api-platform.wso2.com/v1alpha2",
         "kind": "WebBrokerApi",
         "metadata": { "name": "wb-create-test-v1.0" },
         "spec": {
@@ -76,7 +76,7 @@ Feature: WebBroker API Management
     When I create a WebBroker API with the following configuration:
       """
       {
-        "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+        "apiVersion": "gateway.api-platform.wso2.com/v1alpha2",
         "kind": "WebBrokerApi",
         "metadata": { "name": "wb-auth-test-v1.0" },
         "spec": {
@@ -127,7 +127,7 @@ Feature: WebBroker API Management
     When I create a WebBroker API with the following configuration:
       """
       {
-        "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+        "apiVersion": "gateway.api-platform.wso2.com/v1alpha2",
         "kind": "WebBrokerApi",
         "metadata": { "name": "wb-list-test-v1.0" },
         "spec": {
@@ -173,7 +173,7 @@ Feature: WebBroker API Management
     When I create a WebBroker API with the following configuration:
       """
       {
-        "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+        "apiVersion": "gateway.api-platform.wso2.com/v1alpha2",
         "kind": "WebBrokerApi",
         "metadata": { "name": "wb-get-test-v1.0" },
         "spec": {
@@ -225,7 +225,7 @@ Feature: WebBroker API Management
     When I create a WebBroker API with the following configuration:
       """
       {
-        "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+        "apiVersion": "gateway.api-platform.wso2.com/v1alpha2",
         "kind": "WebBrokerApi",
         "metadata": { "name": "wb-delete-test-v1.0" },
         "spec": {
