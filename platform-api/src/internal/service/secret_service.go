@@ -32,7 +32,7 @@ import (
 	"platform-api/src/internal/vault"
 )
 
-var secretPlaceholderRegex = regexp.MustCompile(`\{\{\s*secret\s+"([^"]+)"\s*\}\}`)
+var secretPlaceholderRegex = regexp.MustCompile(`\{\{\s*secret\s+\\?"([^"\\]+)\\?"\s*\}\}`)
 
 type SecretInUseError struct {
 	References []model.SecretReference

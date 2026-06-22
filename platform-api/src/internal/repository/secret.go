@@ -261,6 +261,23 @@ func (r *SecretRepo) FindRefsAndSoftDelete(orgID, handle, updatedBy string) ([]m
 	}
 	defer tx.Rollback() //nolint:errcheck
 
+	// Lock the secret row before checking references to close the TOCTOU window
+	// where a concurrent deploy could insert a ref between the check and the deprecation.
+	// PostgreSQL uses SELECT FOR UPDATE; SQLite serialises writes at the transaction level.
+	var lockQuery string
+	if r.db.Driver() == "postgres" || r.db.Driver() == "postgresql" {
+		lockQuery = `SELECT uuid FROM secrets WHERE organization_id = $1 AND handle = $2 LIMIT 1 FOR UPDATE`
+	} else {
+		lockQuery = r.db.Rebind(`SELECT uuid FROM secrets WHERE organization_id = ? AND handle = ? LIMIT 1`)
+	}
+	var lockedID string
+	if err := tx.QueryRow(lockQuery, orgID, handle).Scan(&lockedID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, constants.ErrSecretNotFound
+		}
+		return nil, fmt.Errorf("failed to lock secret row: %w", err)
+	}
+
 	refsQuery := r.db.Rebind(`
 		SELECT DISTINCT art.handle, art.name, art.kind
 		FROM artifact_secret_refs asr
