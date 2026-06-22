@@ -1,0 +1,86 @@
+name: openai-to-gemini
+version: v1.0.0
+description: |
+  Translates an incoming OpenAI Chat Completions request into the Gemini
+  generateContent API format and forwards it to a Gemini-compatible
+  upstream.
+
+  Request transformations:
+  - system/developer messages are lifted into the top-level
+    "systemInstruction" field.
+  - messages[] is converted to Gemini contents[] with role/parts blocks;
+    assistant tool_calls become functionCall parts and tool-role messages
+    become functionResponse parts.
+  - tools[] are converted to functionDeclarations and tool_choice to a
+    functionCallingConfig.
+  - sampling fields (temperature, top_p, max_tokens, stop, etc.) are mapped
+    into generationConfig; image_url parts become inlineData/fileData.
+  - The request path is rewritten to
+    /{apiVersion}/models/{model}:generateContent.
+
+  Response transformations:
+  - The Gemini generateContent response body is rewritten into the OpenAI
+    ChatCompletion shape (id, object, created, model, choices, usage).
+  - text parts become choice.message.content; functionCall parts become
+    choice.message.tool_calls; finishReason is mapped to finish_reason and
+    usageMetadata token counts are carried in usage.
+  - Streaming (Server-Sent Events) responses are passed through untouched
+    in this policy version; clients that need true streaming should request
+    non-streaming (omit "stream": true) until a streaming variant ships.
+
+  Execution modes:
+
+  1. Routed (multi-provider proxies): set the "provider" parameter to the
+     provider id this translator is bound to. The policy only runs when an
+     upstream setter (e.g. openai-header-router) publishes the same id into
+     SharedContext.Metadata["selected_provider"]. Non-matching requests
+     pass through untouched.
+
+  2. Unconditional (single-provider proxies): omit "provider". The
+     translator runs on every request.
+
+  The upstream host and Gemini API key must be configured on the upstream
+  LlmProvider — this policy does not inject credentials.
+
+parameters:
+  type: object
+  additionalProperties: false
+  properties:
+    provider:
+      type: string
+      x-wso2-policy-advanced-param: false
+      description: |
+        Provider id this translator is bound to. When set, the policy runs
+        only if SharedContext.Metadata["selected_provider"] equals this
+        value. Omit for single-provider proxies.
+      minLength: 1
+    model:
+      type: string
+      x-wso2-policy-advanced-param: false
+      description: |
+        Gemini model name used in the translated request (for example
+        gemini-2.5-pro). Overrides the OpenAI "model" field and is used in
+        the rewritten path.
+      minLength: 1
+    upstreamName:
+      type: string
+      x-wso2-policy-advanced-param: false
+      description: |
+        Name of the upstream cluster declared in the LlmProxy
+        additionalProviders list. When omitted, routing is left to whatever
+        the route's default upstream resolves to.
+      minLength: 1
+    apiVersion:
+      type: string
+      x-wso2-policy-advanced-param: true
+      description: |
+        Gemini API version segment used in the rewritten path
+        (/{apiVersion}/models/{model}:generateContent).
+      default: "v1beta"
+      minLength: 1
+  required:
+    - model
+
+systemParameters:
+  type: object
+  properties: {}
