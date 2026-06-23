@@ -958,7 +958,6 @@ OAuth key mapping entry attached to an application.
 
 ```json
 {
-  "planId": "string",
   "planID": "string",
   "refId": "string",
   "planName": "string",
@@ -975,8 +974,7 @@ OAuth key mapping entry attached to an application.
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|planId|string|false|none|Optional external/APIM-assigned plan UUID.|
-|planID|string|false|none|Alternative casing accepted by the DAO.|
+|planID|string|false|none|Optional external/APIM-assigned plan UUID.|
 |refId|string|false|none|Platform API subscription plan UUID to associate with this plan.|
 |planName|string|true|none|none|
 |displayName|string|true|none|none|

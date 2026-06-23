@@ -103,8 +103,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
 ```json
 {
   "status": "error",
-  "code": "ORG_ALREADY_EXISTS",
-  "message": "Organization already exists."
+  "code": "CONFLICT",
+  "message": "Conflict"
 }
 ```
 
@@ -124,7 +124,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |---|---|---|---|
 |201|[Created](https://tools.ietf.org/html/rfc7231#section-6.3.2)|List of label DTOs.|Inline|
 |400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.|Inline|
-|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Duplicate organization data conflicts with an existing record.|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|The request conflicts with an existing resource.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
 <h3 id="create-labels-responseschema">Response Schema</h3>
@@ -257,8 +257,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
 ```json
 {
   "status": "error",
-  "code": "ORG_ALREADY_EXISTS",
-  "message": "Organization already exists."
+  "code": "CONFLICT",
+  "message": "Conflict"
 }
 ```
 
@@ -278,7 +278,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |---|---|---|---|
 |201|[Created](https://tools.ietf.org/html/rfc7231#section-6.3.2)|List of label DTOs.|Inline|
 |400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.|Inline|
-|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Duplicate organization data conflicts with an existing record.|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|The request conflicts with an existing resource.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
 <h3 id="upsert-labels-responseschema">Response Schema</h3>

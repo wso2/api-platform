@@ -1662,7 +1662,7 @@ paths:
       summary: List key managers
       operationId: getKeyManagers
       description: >-
-        Returns all key manager configurations for the organization, including admin credentials (encrypted). Admin use
+        Returns all key manager configurations for the organization. Admin credentials are never included in the response. Admin use
         only.
       parameters:
         - $ref: "#/components/parameters/limit"
@@ -2632,6 +2632,7 @@ components:
                 description: KeyManager YAML file.
     WebhookSubscriberBody:
       description: Webhook subscriber configuration payload.
+      required: true
       content:
         application/json:
           schema:
@@ -3044,15 +3045,15 @@ components:
             code: ORG_NOT_FOUND
             message: Organization not found.
     Conflict:
-      description: Duplicate organization data conflicts with an existing record.
+      description: The request conflicts with an existing resource.
       content:
         application/json:
           schema:
             $ref: "#/components/schemas/ErrorResponse"
           example:
             status: error
-            code: ORG_ALREADY_EXISTS
-            message: Organization already exists.
+            code: CONFLICT
+            message: Conflict
     UnsupportedMediaType:
       description: Unsupported request media type.
       content:
@@ -4052,12 +4053,9 @@ components:
         - displayName
         - type
       properties:
-        planId:
-          type: string
-          description: Optional external/APIM-assigned plan UUID.
         planID:
           type: string
-          description: Alternative casing accepted by the DAO.
+          description: Optional external/APIM-assigned plan UUID.
         refId:
           type: string
           description: Platform API subscription plan UUID to associate with this plan.
