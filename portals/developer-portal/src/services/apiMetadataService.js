@@ -1089,6 +1089,8 @@ const createSubscriptionPlans = async (req, res) => {
                             );
                         }
                         createdPlans.push(new subscriptionPlanDTO(created));
+                    } else {
+                        throw new CustomError(400, constants.ERROR_CODE[400], `Unsupported plan type: ${plan.type}`);
                     }
                 }
             });
@@ -1179,6 +1181,8 @@ const updateSubscriptionPlans = async (req, res) => {
                             );
                         }
                         updatedPlans.push(new subscriptionPlanDTO(created.subscriptionPlanResponse));
+                    } else {
+                        throw new CustomError(400, constants.ERROR_CODE[400], `Unsupported plan type: ${plan.type}`);
                     }
                 }
             });
