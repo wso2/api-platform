@@ -190,4 +190,49 @@ func TestCascade_DeleteProjectRemovesApplications(t *testing.T) {
 	}
 }
 
+// TestCascade_DeleteWebSubAPIRemovesHmacSecrets verifies that deleting the
+// artifacts row that backs a WebSub API cascade-removes both the websub_apis row
+// and all associated websub_api_hmac_secrets rows (two independent CASCADE edges
+// from artifacts). This catches regressions if either FK is changed to NO ACTION.
+func TestCascade_DeleteWebSubAPIRemovesHmacSecrets(t *testing.T) {
+	it := openITDB(t)
+	defer it.db.Close()
+
+	orgUUID := id()
+	projectUUID := id()
+	artifactUUID := id()
+
+	it.exec(t, `INSERT INTO organizations (uuid, handle, name, region) VALUES (?, ?, ?, ?)`,
+		orgUUID, "wsc-"+orgUUID[:8], "cascade org", "us")
+	it.exec(t, `INSERT INTO projects (uuid, name, organization_uuid) VALUES (?, ?, ?)`,
+		projectUUID, "cascade-proj", orgUUID)
+	it.exec(t, `INSERT INTO artifacts (uuid, handle, name, version, kind, organization_uuid) VALUES (?, ?, ?, ?, ?, ?)`,
+		artifactUUID, "ws-api-"+artifactUUID[:8], "ws-api", "v1.0", "WebSubApi", orgUUID)
+	it.exec(t, `INSERT INTO websub_apis (uuid, project_uuid, lifecycle_status, transport, configuration) VALUES (?, ?, ?, ?, ?)`,
+		artifactUUID, projectUUID, "CREATED", "[]", "{}")
+
+	secret1 := id()
+	secret2 := id()
+	it.exec(t, `INSERT INTO websub_api_hmac_secrets (uuid, artifact_uuid, name, encrypted_secret, status) VALUES (?, ?, ?, ?, ?)`,
+		secret1, artifactUUID, "github-secret", "enc1", "active")
+	it.exec(t, `INSERT INTO websub_api_hmac_secrets (uuid, artifact_uuid, name, encrypted_secret, status) VALUES (?, ?, ?, ?, ?)`,
+		secret2, artifactUUID, "gitlab-secret", "enc2", "active")
+
+	if got := it.count(t, "websub_api_hmac_secrets", "artifact_uuid", artifactUUID); got != 2 {
+		t.Fatalf("precondition: want 2 hmac secrets, got %d", got)
+	}
+	if got := it.count(t, "websub_apis", "uuid", artifactUUID); got != 1 {
+		t.Fatalf("precondition: want 1 websub_api row, got %d", got)
+	}
+
+	it.exec(t, `DELETE FROM artifacts WHERE uuid = ?`, artifactUUID)
+
+	if got := it.count(t, "websub_api_hmac_secrets", "artifact_uuid", artifactUUID); got != 0 {
+		t.Fatalf("[%s] hmac secrets not cascade-deleted after artifact delete: %d remain", it.driver, got)
+	}
+	if got := it.count(t, "websub_apis", "uuid", artifactUUID); got != 0 {
+		t.Fatalf("[%s] websub_api not cascade-deleted after artifact delete: %d remain", it.driver, got)
+	}
+}
+
 func id() string { return uuid.NewString() }
