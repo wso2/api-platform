@@ -1178,7 +1178,7 @@ const updateSubscriptionPlans = async (req, res) => {
                                 `Failed to create plan: ${plan.planName || "unknown"}`
                             );
                         }
-                        updatedPlans.push(new subscriptionPlanDTO(created));
+                        updatedPlans.push(new subscriptionPlanDTO(created.subscriptionPlanResponse));
                     }
                 }
             });

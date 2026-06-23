@@ -55,8 +55,8 @@ async function listEvents(req, res) {
     try {
         const { orgId } = req.params;
         const { status, limit = '20', offset = '0' } = req.query;
-        const parsedLimit = Math.min(parseInt(limit, 10) || 20, 100);
-        const parsedOffset = parseInt(offset, 10) || 0;
+        const parsedLimit = Math.max(1, Math.min(parseInt(limit, 10) || 20, 100));
+        const parsedOffset = Math.max(0, parseInt(offset, 10) || 0);
         const result = await eventDao.list({
             orgId,
             status: status || undefined,

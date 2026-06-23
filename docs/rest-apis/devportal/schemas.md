@@ -1539,8 +1539,8 @@ Minimal developer-facing key manager view. No admin credentials or DCR endpoints
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|name|string|false|none|Unique name within the organization.|
-|url|string(uri)|false|none|Target URL events are POSTed to.|
+|name|string|true|none|Unique name within the organization.|
+|url|string(uri)|true|none|Target URL events are POSTed to.|
 |secret|string|false|none|Shared secret used to sign outgoing payloads (HMAC). Stored encrypted; never returned in responses.|
 |publicKey|string|false|none|PEM-encoded public key. When set, secret event payloads (apikey.*, subscription.*) are additionally encrypted to this key so only the subscriber can read the plaintext key.|
 |gatewayType|string|false|none|Restricts delivery to events with a matching DP_EVENT.GATEWAY_TYPE. Use "*" (default) to match any.|

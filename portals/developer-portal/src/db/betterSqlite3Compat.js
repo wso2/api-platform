@@ -36,6 +36,7 @@ const BetterSqlite3 = require('better-sqlite3');
 // plain objects/arrays (used for Sequelize BOOLEAN and JSON column types).
 function coerceBindValue(value) {
     if (typeof value === 'boolean') return value ? 1 : 0;
+    if (value instanceof Date) return value.toISOString();
     if (value !== null && typeof value === 'object' && !Buffer.isBuffer(value)) {
         return JSON.stringify(value);
     }

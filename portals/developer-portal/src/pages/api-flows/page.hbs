@@ -855,7 +855,7 @@
       agentVis = api.agentVisibility || 'Visible';
       document.getElementById('wz-vis-visible').classList.toggle('active', agentVis !== 'Hidden');
       document.getElementById('wz-vis-hidden').classList.toggle('active',  agentVis === 'Hidden');
-      setSelectedPlans(api.subscriptionPlans || []);
+      setSelectedPlans((api.subscriptionPlans || []).map(function(p){ return typeof p === 'string' ? p : p.planName; }));
     } else {
       /* add mode */
       editingId = null;
@@ -1205,7 +1205,7 @@
       row('Production URL', api.productionUrl, true),
       row('Sandbox URL', api.sandboxUrl, true),
       row('Tags', api.tags),
-      row('Plans', (api.subscriptionPlans||[]).join(', ')),
+      row('Plans', (api.subscriptionPlans||[]).map(function(p){ return typeof p === 'string' ? p : p.planName; }).join(', ')),
     ].join('');
     document.getElementById('cfg-drawer-edit-btn').onclick = function() {
       document.getElementById('cfg-detail-drawer').classList.remove('open');

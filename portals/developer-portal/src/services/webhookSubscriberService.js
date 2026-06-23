@@ -56,10 +56,10 @@ const createWebhookSubscriber = async (req, res) => {
 
 const updateWebhookSubscriber = async (req, res) => {
     try {
-        const { subscriberId } = req.params;
+        const { orgId, subscriberId } = req.params;
         const payload = req.body;
 
-        const [, updatedRows] = await whDao.update(subscriberId, payload);
+        const [, updatedRows] = await whDao.update(orgId, subscriberId, payload);
         const dto = new WebhookSubscriberDTO(updatedRows[0]);
         return res.status(200).json(dto);
     } catch (error) {
@@ -90,8 +90,8 @@ const getWebhookSubscribers = async (req, res) => {
 
 const getWebhookSubscriber = async (req, res) => {
     try {
-        const { subscriberId } = req.params;
-        const record = await whDao.get(subscriberId);
+        const { orgId, subscriberId } = req.params;
+        const record = await whDao.get(orgId, subscriberId);
         const dto = new WebhookSubscriberDTO(record);
         return res.status(200).json(dto);
     } catch (error) {
@@ -105,8 +105,8 @@ const getWebhookSubscriber = async (req, res) => {
 
 const deleteWebhookSubscriber = async (req, res) => {
     try {
-        const { subscriberId } = req.params;
-        await whDao.delete(subscriberId);
+        const { orgId, subscriberId } = req.params;
+        await whDao.delete(orgId, subscriberId);
         return res.status(204).send();
     } catch (error) {
         if (error instanceof Sequelize.EmptyResultError) {

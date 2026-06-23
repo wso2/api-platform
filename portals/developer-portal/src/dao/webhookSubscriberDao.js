@@ -58,7 +58,7 @@ const create = async (orgId, subData) => {
  * Update an existing webhook subscriber.
  * Re-encrypts the secret if it is provided.
  */
-const update = async (subscriberId, subData) => {
+const update = async (orgId, subscriberId, subData) => {
     try {
         const updatePayload = {
             ...(subData.name && { NAME: subData.name }),
@@ -78,7 +78,7 @@ const update = async (subscriberId, subData) => {
         }
 
         const [updatedRowsCount] = await WebhookSubscriber.update(updatePayload, {
-            where: { SUBSCRIBER_ID: subscriberId }
+            where: { SUBSCRIBER_ID: subscriberId, ORG_ID: orgId }
         });
         if (updatedRowsCount < 1) {
             throw new Sequelize.EmptyResultError('Webhook subscriber not found');
@@ -144,9 +144,9 @@ const matchSubscribers = async (orgId, eventType, gatewayType) => {
 /**
  * Get a single webhook subscriber by ID.
  */
-const get = async (subscriberId) => {
+const get = async (orgId, subscriberId) => {
     try {
-        const sub = await WebhookSubscriber.findByPk(subscriberId);
+        const sub = await WebhookSubscriber.findOne({ where: { SUBSCRIBER_ID: subscriberId, ORG_ID: orgId } });
         if (!sub) {
             throw new Sequelize.EmptyResultError('Webhook subscriber not found');
         }
@@ -163,10 +163,10 @@ const get = async (subscriberId) => {
 /**
  * Delete a webhook subscriber.
  */
-const deleteSubscriber = async (subscriberId) => {
+const deleteSubscriber = async (orgId, subscriberId) => {
     try {
         const deleted = await WebhookSubscriber.destroy({
-            where: { SUBSCRIBER_ID: subscriberId }
+            where: { SUBSCRIBER_ID: subscriberId, ORG_ID: orgId }
         });
         if (deleted < 1) {
             throw new Sequelize.EmptyResultError('Webhook subscriber not found');

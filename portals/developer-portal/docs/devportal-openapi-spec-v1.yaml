@@ -4519,6 +4519,9 @@ components:
       additionalProperties: false
     WebhookSubscriberRequest:
       type: object
+      required:
+        - name
+        - url
       properties:
         name:
           type: string

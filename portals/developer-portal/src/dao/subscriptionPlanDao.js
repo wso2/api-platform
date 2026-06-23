@@ -26,9 +26,11 @@ const computeRequestCount = (plan) => {
   const type = (plan.type || "").toLowerCase();
 
   if (type === "requestcount") {
+    if (plan.requestCount === undefined || plan.requestCount === null) return null;
     return plan.requestCount === -1 ? "Unlimited" : String(plan.requestCount);
   }
   if (type === "eventcount") {
+    if (plan.eventCount === undefined || plan.eventCount === null) return null;
     return plan.eventCount === -1 ? "Unlimited" : String(plan.eventCount);
   }
   return null;
@@ -256,17 +258,16 @@ const updateApiMapping = async (subscriptionPlans, apiID, t) => {
                 API_ID: apiID,
             })
         }
+        await APISubscriptionPlan.destroy({
+            where: {
+                API_ID: apiID
+            },
+            transaction: t
+        });
         if (plansToCreate.length > 0) {
-            await APISubscriptionPlan.destroy({
-                where: {
-                    API_ID: apiID
-                },
-                transaction: t
-            });
             return await APISubscriptionPlan.bulkCreate(plansToCreate, { transaction: t });
-        } else {
-            return plansToCreate;
         }
+        return plansToCreate;
     } catch (error) {
         if (error instanceof Sequelize.UniqueConstraintError) {
             throw error;

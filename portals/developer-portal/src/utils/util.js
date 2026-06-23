@@ -272,12 +272,11 @@ function handleError(res, error) {
             errors: error.description ? [{ message: error.description }] : [],
         });
     } else {
-        const message = error instanceof Sequelize.DatabaseError ? 'Internal Server Error' : error.message;
         return res.status(500).json({
             status: 'error',
             code: 'INTERNAL_SERVER_ERROR',
             message: 'Internal Server Error',
-            errors: message !== 'Internal Server Error' ? [{ message }] : [],
+            errors: [],
         });
     }
 }
