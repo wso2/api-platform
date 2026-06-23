@@ -125,13 +125,13 @@ func (r *OrganizationRepo) DeleteOrganization(orgId string) error {
 }
 
 func (r *OrganizationRepo) ListOrganizations(limit, offset int) ([]*model.Organization, error) {
+	pageClause, pageArgs := r.db.PaginationClause(limit, offset)
 	query := `
 		SELECT uuid, handle, name, region, created_at, updated_at
 		FROM organizations
 		ORDER BY created_at DESC
-		LIMIT ? OFFSET ?
-	`
-	rows, err := r.db.Query(r.db.Rebind(query), limit, offset)
+		` + pageClause
+	rows, err := r.db.Query(r.db.Rebind(query), pageArgs...)
 	if err != nil {
 		return nil, err
 	}

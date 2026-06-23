@@ -1,0 +1,175 @@
+# Combined platform-api + gateway end-to-end stack for cross-database
+# integration testing. The real platform-api (control plane) and the real
+# gateway (gateway-controller + gateway-runtime data plane) run against the same
+# database engine, so a single scenario exercises both products together.
+#
+# This is the PostgreSQL variant (one server, two logical databases). SQLite and
+# SQL Server variants follow the same shape; see README.md.
+#
+# Images (override via env to use locally built tags):
+#   PLATFORM_API_IMAGE       (build: cd platform-api && make build, or the it-e2e tag)
+#   GATEWAY_CONTROLLER_IMAGE  GATEWAY_RUNTIME_IMAGE
+#
+# The gateway-controller's control-plane token is injected at run time after the
+# scenario creates a gateway + registration token in platform-api (see README,
+# "Bootstrap"). Until then the gateway-controller stays in its reconnect loop.
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_USER=apip
+      - POSTGRES_PASSWORD=apip
+      - POSTGRES_DB=postgres
+    volumes:
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+    ports:
+      - "55433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U apip -d gateway_test"]
+      interval: 2s
+      timeout: 3s
+      retries: 40
+    networks: [e2e]
+
+  platform-api:
+    image: ${PLATFORM_API_IMAGE:-platform-api:it-e2e}
+    command: ["./platform-api", "-config", "/etc/platform-api/config.toml"]
+    environment:
+      - DATABASE_DRIVER=postgres
+      - DATABASE_HOST=postgres
+      - DATABASE_PORT=5432
+      - DATABASE_NAME=platform_api
+      - DATABASE_USER=apip
+      - DATABASE_PASSWORD=apip
+      - DATABASE_SSL_MODE=disable
+      - DB_SCHEMA_PATH=./schema.postgres.sql
+      - DATABASE_EXECUTE_SCHEMA_DDL=true
+      - DATABASE_SUBSCRIPTION_TOKEN_ENCRYPTION_KEY=0123456789abcdef0123456789abcdef
+      # Force file-based auth + a stable org so the scenario can log in and the
+      # org is seeded (env overrides the mounted config file).
+      - AUTH_FILE_BASED_ENABLED=true
+      - AUTH_FILE_BASED_ORGANIZATION_ID=99089a17-72e0-4dd8-a2f4-c8dfbb085295
+      - AUTH_FILE_BASED_ORGANIZATION_HANDLE=ap-org
+      - AUTH_FILE_BASED_ORGANIZATION_NAME=AP Organization
+      - AUTH_FILE_BASED_ORGANIZATION_REGION=us
+      - AUTH_JWT_SECRET_KEY=e2e-integration-secret-key-0123456789
+    volumes:
+      - ./platform-api-config.toml:/etc/platform-api/config.toml:ro
+    ports:
+      - "${PA_HOST_PORT:-9243}:9243"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [e2e]
+
+  gateway-controller:
+    image: ${GATEWAY_CONTROLLER_IMAGE:-ghcr.io/wso2/api-platform/gateway-controller:it-e2e}
+    command: ["-config", "/etc/gateway-controller/config.toml"]
+    environment:
+      - APIP_GW_CONTROLLER_STORAGE_TYPE=postgres
+      - APIP_GW_CONTROLLER_STORAGE_POSTGRES_HOST=postgres
+      - APIP_GW_CONTROLLER_STORAGE_POSTGRES_PORT=5432
+      - APIP_GW_CONTROLLER_STORAGE_POSTGRES_DATABASE=gateway_test
+      - APIP_GW_CONTROLLER_STORAGE_POSTGRES_USER=apip
+      - APIP_GW_CONTROLLER_STORAGE_POSTGRES_PASSWORD=apip
+      - APIP_GW_CONTROLLER_STORAGE_POSTGRES_SSLMODE=disable
+      - APIP_GW_CONTROLLER_LOGGING_LEVEL=debug
+      # Control plane = the real platform-api. The token is created by the
+      # scenario and injected via GATEWAY_REGISTRATION_TOKEN before this starts.
+      - APIP_GW_CONTROLLER_CONTROLPLANE_HOST=platform-api:9243
+      - APIP_GW_CONTROLLER_CONTROLPLANE_TOKEN=${GATEWAY_REGISTRATION_TOKEN:-}
+      - APIP_GW_CONTROLLER_CONTROLPLANE_INSECURE_SKIP_VERIFY=true
+    ports:
+      - "9090:9090"   # REST API
+      - "9092:9092"   # Admin API
+      - "18000:18000" # xDS gRPC
+    volumes:
+      - ../../gateway/it/test-config.toml:/etc/gateway-controller/config.toml:ro
+      - ../../gateway/it/it-aesgcm-keys/default-aesgcm256-v1.bin:/app/data/aesgcm-keys/default-aesgcm256-v1.bin:ro
+      - ../../gateway/gateway-controller/certificates:/app/certificates
+      - ../../gateway/gateway-controller/listener-certs:/app/listener-certs:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      platform-api:
+        condition: service_started
+    networks: [e2e]
+
+  gateway-runtime:
+    image: ${GATEWAY_RUNTIME_IMAGE:-ghcr.io/wso2/api-platform/gateway-runtime:it-e2e}
+    command: ["--pol.config", "/etc/policy-engine/config.toml"]
+    environment:
+      - GATEWAY_CONTROLLER_HOST=gateway-controller
+      - LOG_LEVEL=info
+    ports:
+      - "${GW_HTTP_PORT:-18080}:8080"   # HTTP ingress (data plane)
+      - "${GW_HTTPS_PORT:-18443}:8443"  # HTTPS ingress
+      - "9002:9002"                     # Policy engine admin
+    volumes:
+      - ../../gateway/it/test-config.toml:/etc/policy-engine/config.toml:ro
+    depends_on:
+      gateway-controller:
+        condition: service_started
+    networks: [e2e]
+
+  sample-backend:
+    image: ghcr.io/wso2/api-platform/sample-service:latest
+    command: ["-addr", ":9080", "-pretty"]
+    ports:
+      - "9080:9080"
+    networks: [e2e]
+
+  # Second gateway (own controller + runtime + DB) for the multi-gateway
+  # scenario: the same API is deployed to both gateways, and undeploying from one
+  # must not affect the other. Started on demand by the godog suite.
+  gateway-controller-2:
+    image: ${GATEWAY_CONTROLLER_IMAGE:-ghcr.io/wso2/api-platform/gateway-controller:it-e2e}
+    command: ["-config", "/etc/gateway-controller/config.toml"]
+    environment:
+      - APIP_GW_CONTROLLER_STORAGE_TYPE=postgres
+      - APIP_GW_CONTROLLER_STORAGE_POSTGRES_HOST=postgres
+      - APIP_GW_CONTROLLER_STORAGE_POSTGRES_PORT=5432
+      - APIP_GW_CONTROLLER_STORAGE_POSTGRES_DATABASE=gateway_test2
+      - APIP_GW_CONTROLLER_STORAGE_POSTGRES_USER=apip
+      - APIP_GW_CONTROLLER_STORAGE_POSTGRES_PASSWORD=apip
+      - APIP_GW_CONTROLLER_STORAGE_POSTGRES_SSLMODE=disable
+      - APIP_GW_CONTROLLER_LOGGING_LEVEL=debug
+      - APIP_GW_CONTROLLER_CONTROLPLANE_HOST=platform-api:9243
+      - APIP_GW_CONTROLLER_CONTROLPLANE_TOKEN=${GATEWAY_REGISTRATION_TOKEN_2:-}
+      - APIP_GW_CONTROLLER_CONTROLPLANE_INSECURE_SKIP_VERIFY=true
+    ports:
+      - "9190:9090"
+      - "9192:9092"
+      - "18100:18000"
+    volumes:
+      - ../../gateway/it/test-config.toml:/etc/gateway-controller/config.toml:ro
+      - ../../gateway/it/it-aesgcm-keys/default-aesgcm256-v1.bin:/app/data/aesgcm-keys/default-aesgcm256-v1.bin:ro
+      - ../../gateway/gateway-controller/certificates:/app/certificates
+      - ../../gateway/gateway-controller/listener-certs:/app/listener-certs:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      platform-api:
+        condition: service_started
+    networks: [e2e]
+
+  gateway-runtime-2:
+    image: ${GATEWAY_RUNTIME_IMAGE:-ghcr.io/wso2/api-platform/gateway-runtime:it-e2e}
+    command: ["--pol.config", "/etc/policy-engine/config.toml"]
+    environment:
+      - GATEWAY_CONTROLLER_HOST=gateway-controller-2
+      - LOG_LEVEL=info
+    ports:
+      - "${GW2_HTTP_PORT:-18081}:8080"
+      - "${GW2_HTTPS_PORT:-18444}:8443"
+      - "9102:9002"
+    volumes:
+      - ../../gateway/it/test-config.toml:/etc/policy-engine/config.toml:ro
+    depends_on:
+      gateway-controller-2:
+        condition: service_started
+    networks: [e2e]
+
+networks:
+  e2e:
+    driver: bridge

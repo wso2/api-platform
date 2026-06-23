@@ -202,8 +202,9 @@ func (r *SubscriptionRepo) ListByFilters(orgUUID string, apiUUID *string, subscr
 		query += ` AND status = ?`
 		args = append(args, *status)
 	}
-	query += ` ORDER BY created_at DESC LIMIT ? OFFSET ?`
-	args = append(args, limit, offset)
+	pageClause, pageArgs := r.db.PaginationClause(limit, offset)
+	query += ` ORDER BY created_at DESC ` + pageClause
+	args = append(args, pageArgs...)
 
 	rows, err := r.db.Query(r.db.Rebind(query), args...)
 	if err != nil {
@@ -314,8 +315,8 @@ func (r *SubscriptionRepo) ExistsByAPIAndSubscriber(apiUUID, subscriberID, orgUU
 		SELECT 1 FROM subscriptions
 		WHERE api_uuid = ? AND organization_uuid = ?
 		  AND subscriber_id = ?
-		LIMIT 1
-	`
+		ORDER BY (SELECT NULL)
+		` + r.db.FetchFirstClause(1)
 	var exists int
 	err := r.db.QueryRow(r.db.Rebind(query), apiUUID, orgUUID, subscriberID).Scan(&exists)
 	if err == sql.ErrNoRows {

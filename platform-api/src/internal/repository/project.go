@@ -143,14 +143,14 @@ func (r *ProjectRepo) DeleteProject(projectId string) error {
 
 // ListProjects retrieves projects with pagination
 func (r *ProjectRepo) ListProjects(orgID string, limit, offset int) ([]*model.Project, error) {
+	pageClause, pageArgs := r.db.PaginationClause(limit, offset)
 	query := `
 		SELECT uuid, name, organization_uuid, description, created_at, updated_at
 		FROM projects
 		WHERE organization_uuid = ?
 		ORDER BY created_at DESC
-		LIMIT ? OFFSET ?
-	`
-	rows, err := r.db.Query(r.db.Rebind(query), orgID, limit, offset)
+		` + pageClause
+	rows, err := r.db.Query(r.db.Rebind(query), append([]any{orgID}, pageArgs...)...)
 	if err != nil {
 		return nil, err
 	}

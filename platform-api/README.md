@@ -20,6 +20,24 @@ cd platform-api/src
 go run ./cmd/main.go
 ```
 
+### Database Configuration
+
+Platform API supports `sqlite3` (default), `postgres`, and `sqlserver`.
+
+```bash
+# SQL Server example
+export DATABASE_DRIVER=sqlserver
+export DATABASE_HOST=sqlserver.example.internal
+export DATABASE_PORT=1433
+export DATABASE_NAME=platform_api
+export DATABASE_USER=sa
+export DATABASE_PASSWORD='<strong-password>'
+export DATABASE_SSL_MODE=disable
+
+cd platform-api/src
+go run ./cmd/main.go
+```
+
 ### Step-by-Step Workflow
 
 **1. Register an Organization**

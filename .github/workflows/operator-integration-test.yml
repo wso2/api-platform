@@ -323,9 +323,10 @@ jobs:
 
                     # Storage configuration
                     storage:
-                      # Storage type: "sqlite", "postgres" (future), or "memory"
+                      # Storage type: "sqlite", "postgres", "sqlserver", or "memory"
                       # - sqlite: Use SQLite embedded database for persistence
-                      # - postgres: Use PostgreSQL database for persistence (future support)
+                      # - postgres: Use PostgreSQL database for persistence
+                      # - sqlserver: Use SQL Server database for persistence
                       # - memory: No persistent storage, all configs lost on restart (useful for testing)
                       type: sqlite
 

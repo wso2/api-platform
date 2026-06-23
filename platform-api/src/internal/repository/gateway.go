@@ -322,8 +322,8 @@ func (r *GatewayRepo) GetActiveTokenByHash(tokenHash string) (*model.GatewayToke
 		SELECT uuid, gateway_uuid, token_hash, salt, status, created_at, revoked_at
 		FROM gateway_tokens
 		WHERE token_hash = ? AND status = 'active'
-		LIMIT 1
-	`
+		ORDER BY (SELECT NULL)
+		` + r.db.FetchFirstClause(1)
 	err := r.db.QueryRow(r.db.Rebind(query), tokenHash).Scan(
 		&token.ID, &token.GatewayID, &token.TokenHash, &token.Salt, &token.Status, &token.CreatedAt, &token.RevokedAt,
 	)
