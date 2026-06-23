@@ -32,6 +32,11 @@ spec:
           params:
             key: X-API-Key
             in: header
+        - path: /v1beta/models/{model}:streamGenerateContent
+          methods: [POST]
+          params:
+            key: X-API-Key
+            in: header
   accessControl:
     mode: deny_all
     exceptions:

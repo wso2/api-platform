@@ -26,6 +26,10 @@ spec:
   context: /azure-openai
   provider:
     id: azure-openai-provider
+    auth:
+      type: api-key
+      header: X-API-Key
+      value: azure_openai_provider_loopback_key_1234567890abcdef
   policies:
     - name: openai-to-azure-openai
       version: v1
