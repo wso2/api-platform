@@ -38,7 +38,6 @@ servers:
         default: "9443"
 tags:
   - name: Organizations
-  - name: Identity Providers
   - name: Organization Content
   - name: Providers
   - name: APIs
