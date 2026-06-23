@@ -930,11 +930,11 @@ func (h *GatewayInternalAPIHandler) GetGatewaySecretValue(c *gin.Context) {
 		return
 	}
 
+	// Only serve secrets that are referenced by artifacts deployed on this gateway.
 	deployed, err := h.gatewayInternalService.IsSecretDeployedOnGateway(orgID, gatewayID, handle)
 	if err != nil {
-		h.slogger.Error("Failed to check secret deployment", "orgID", orgID, "gatewayID", gatewayID, "handle", handle, "error", err)
-		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
-			"Failed to validate secret access"))
+		h.slogger.Error("Failed to check secret deployment scope", "orgID", orgID, "gatewayID", gatewayID, "handle", handle, "error", err)
+		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to verify secret access"))
 		return
 	}
 	if !deployed {

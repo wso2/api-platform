@@ -667,3 +667,59 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_artifact_gateway_map
 CREATE INDEX idx_artifact_gateway_mappings_gateway ON dbo.artifact_gateway_mappings(gateway_uuid);
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_audit_org' AND object_id = OBJECT_ID(N'dbo.audit'))
 CREATE INDEX idx_audit_org ON dbo.audit(organization_uuid);
+
+-- Secrets table for encrypted secret management
+IF OBJECT_ID(N'dbo.secrets', N'U') IS NULL
+CREATE TABLE dbo.secrets (
+    uuid            NVARCHAR(40)   NOT NULL PRIMARY KEY,
+    organization_id NVARCHAR(40)   NOT NULL,
+    handle          NVARCHAR(40)   NOT NULL,
+    name            NVARCHAR(255)  NOT NULL,
+    description     NVARCHAR(1023),
+    ciphertext      VARBINARY(MAX) NOT NULL,
+    hash            NVARCHAR(255)  NOT NULL,
+    data_version    NVARCHAR(20)   NOT NULL DEFAULT '1.0',
+    type            NVARCHAR(20)   NOT NULL DEFAULT 'GENERIC',
+    provider        NVARCHAR(20)   NOT NULL DEFAULT 'IN_HOUSE',
+    status          NVARCHAR(20)   NOT NULL DEFAULT 'ACTIVE',
+    created_at      DATETIME2(7)   NOT NULL DEFAULT SYSUTCDATETIME(),
+    created_by      NVARCHAR(255),
+    updated_at      DATETIME2(7)   NOT NULL DEFAULT SYSUTCDATETIME(),
+    updated_by      NVARCHAR(255),
+    CONSTRAINT uq_secrets_org_handle UNIQUE (organization_id, handle),
+    CONSTRAINT fk_secrets_org FOREIGN KEY (organization_id) REFERENCES dbo.organizations(uuid) ON DELETE CASCADE
+);
+
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_secrets_updated_at' AND object_id = OBJECT_ID(N'dbo.secrets'))
+CREATE INDEX idx_secrets_updated_at ON dbo.secrets(updated_at);
+
+IF OBJECT_ID(N'dbo.secret_scopes', N'U') IS NULL
+CREATE TABLE dbo.secret_scopes (
+    secret_uuid NVARCHAR(40) NOT NULL,
+    scope       NVARCHAR(30) NOT NULL,
+    scope_value NVARCHAR(40) NOT NULL,
+    CONSTRAINT pk_secret_scopes PRIMARY KEY (secret_uuid, scope, scope_value),
+    CONSTRAINT fk_secret_scopes_secret FOREIGN KEY (secret_uuid) REFERENCES dbo.secrets(uuid) ON DELETE CASCADE
+);
+
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_secret_scopes_scope' AND object_id = OBJECT_ID(N'dbo.secret_scopes'))
+CREATE INDEX idx_secret_scopes_scope ON dbo.secret_scopes(scope, scope_value);
+
+-- Pre-computed secret handle references per deployed artifact per gateway.
+IF OBJECT_ID(N'dbo.artifact_secret_refs', N'U') IS NULL
+CREATE TABLE dbo.artifact_secret_refs (
+    organization_id NVARCHAR(40)  NOT NULL,
+    artifact_uuid   NVARCHAR(40)  NOT NULL,
+    secret_handle   NVARCHAR(40)  NOT NULL,
+    gateway_id      NVARCHAR(40)  NOT NULL DEFAULT '',
+    created_at      DATETIME2(7)  NOT NULL DEFAULT SYSUTCDATETIME(),
+    CONSTRAINT pk_artifact_secret_refs PRIMARY KEY (organization_id, artifact_uuid, secret_handle, gateway_id),
+    CONSTRAINT fk_asr_org     FOREIGN KEY (organization_id) REFERENCES dbo.organizations(uuid) ON DELETE NO ACTION,
+    CONSTRAINT fk_asr_artifact FOREIGN KEY (artifact_uuid)  REFERENCES dbo.artifacts(uuid)     ON DELETE NO ACTION
+);
+
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_asr_org_handle' AND object_id = OBJECT_ID(N'dbo.artifact_secret_refs'))
+CREATE INDEX idx_asr_org_handle ON dbo.artifact_secret_refs(organization_id, secret_handle);
+
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_asr_org_gateway' AND object_id = OBJECT_ID(N'dbo.artifact_secret_refs'))
+CREATE INDEX idx_asr_org_gateway ON dbo.artifact_secret_refs(organization_id, gateway_id);
