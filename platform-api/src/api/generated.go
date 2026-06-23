@@ -1769,7 +1769,8 @@ type LLMProviderTemplate struct {
 
 	// Enabled Whether this version is offered when creating providers. Disabled
 	// versions stay in the catalog but are hidden from the provider picker.
-	// Toggle via PATCH /llm-provider-templates/{id}/versions/{version}.
+	// Response-only: create/update default new versions to enabled; toggle
+	// via PATCH /llm-provider-templates/{id}/versions/{version}.
 	Enabled *bool `json:"enabled,omitempty" yaml:"enabled,omitempty"`
 
 	// Id Unique handle for the template
@@ -1790,6 +1791,8 @@ type LLMProviderTemplate struct {
 
 	// Provider Identifies the origin of the template. Built-in templates use 'wso2';
 	// custom templates default to 'other' and may be set to any value.
+	// Optional on create/update — the server defaults it to 'other' when
+	// omitted, so a request/YAML without a provider is accepted.
 	Provider         *string                              `json:"provider,omitempty" yaml:"provider,omitempty"`
 	RemainingTokens  *ExtractionIdentifier                `json:"remainingTokens,omitempty" yaml:"remainingTokens,omitempty"`
 	RequestModel     *ExtractionIdentifier                `json:"requestModel,omitempty" yaml:"requestModel,omitempty"`
@@ -1800,10 +1803,11 @@ type LLMProviderTemplate struct {
 	// UpdatedAt Timestamp when the resource was last updated
 	UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
 
-	// Version Content version, e.g. v1.0. Defaults to v1.0 on create. Editing a
-	// template updates it in place; supply a new unique version only when
-	// creating a new version via POST /llm-provider-templates/{id}/versions.
-	Version *string `json:"version,omitempty" yaml:"version,omitempty"`
+	// Version Content version, e.g. v1.0. Required. A new template starts at v1.0;
+	// editing updates that version in place. Supply a new unique version
+	// only when creating a new version via
+	// POST /llm-provider-templates/{id}/versions.
+	Version string `binding:"required" json:"version" yaml:"version"`
 }
 
 // LLMProviderTemplateAuth defines model for LLMProviderTemplateAuth.
@@ -1829,8 +1833,11 @@ type LLMProviderTemplateListItem struct {
 	Id      *string `json:"id,omitempty" yaml:"id,omitempty"`
 
 	// IsLatest Whether this is the latest version of the template.
-	IsLatest *bool   `json:"isLatest,omitempty" yaml:"isLatest,omitempty"`
-	Name     *string `json:"name,omitempty" yaml:"name,omitempty"`
+	IsLatest *bool `json:"isLatest,omitempty" yaml:"isLatest,omitempty"`
+
+	// LogoUrl URL of the provider logo
+	LogoUrl *string `json:"logoUrl,omitempty" yaml:"logoUrl,omitempty"`
+	Name    *string `json:"name,omitempty" yaml:"name,omitempty"`
 
 	// Provider Origin of the template ('wso2' for built-in, otherwise custom-defined).
 	Provider  *string    `json:"provider,omitempty" yaml:"provider,omitempty"`
@@ -3828,18 +3835,6 @@ type GetLLMProviderDeploymentsParams struct {
 // GetLLMProviderDeploymentsParamsStatus defines parameters for GetLLMProviderDeployments.
 type GetLLMProviderDeploymentsParamsStatus string
 
-// RestoreLLMProviderDeploymentDeprecatedParams defines parameters for RestoreLLMProviderDeploymentDeprecated.
-type RestoreLLMProviderDeploymentDeprecatedParams struct {
-	DeploymentId string `form:"deploymentId" json:"deploymentId" yaml:"deploymentId"`
-	GatewayId    string `form:"gatewayId" json:"gatewayId" yaml:"gatewayId"`
-}
-
-// UndeployLLMProviderDeploymentDeprecatedParams defines parameters for UndeployLLMProviderDeploymentDeprecated.
-type UndeployLLMProviderDeploymentDeprecatedParams struct {
-	DeploymentId string `form:"deploymentId" json:"deploymentId" yaml:"deploymentId"`
-	GatewayId    string `form:"gatewayId" json:"gatewayId" yaml:"gatewayId"`
-}
-
 // RestoreLLMProviderDeploymentParams defines parameters for RestoreLLMProviderDeployment.
 type RestoreLLMProviderDeploymentParams struct {
 	// GatewayId UUID of the gateway (validated against deployment's bound gateway)
@@ -3885,18 +3880,6 @@ type GetLLMProxyDeploymentsParams struct {
 // GetLLMProxyDeploymentsParamsStatus defines parameters for GetLLMProxyDeployments.
 type GetLLMProxyDeploymentsParamsStatus string
 
-// RestoreLLMProxyDeploymentDeprecatedParams defines parameters for RestoreLLMProxyDeploymentDeprecated.
-type RestoreLLMProxyDeploymentDeprecatedParams struct {
-	DeploymentId string `form:"deploymentId" json:"deploymentId" yaml:"deploymentId"`
-	GatewayId    string `form:"gatewayId" json:"gatewayId" yaml:"gatewayId"`
-}
-
-// UndeployLLMProxyDeploymentDeprecatedParams defines parameters for UndeployLLMProxyDeploymentDeprecated.
-type UndeployLLMProxyDeploymentDeprecatedParams struct {
-	DeploymentId string `form:"deploymentId" json:"deploymentId" yaml:"deploymentId"`
-	GatewayId    string `form:"gatewayId" json:"gatewayId" yaml:"gatewayId"`
-}
-
 // RestoreLLMProxyDeploymentParams defines parameters for RestoreLLMProxyDeployment.
 type RestoreLLMProxyDeploymentParams struct {
 	// GatewayId UUID of the gateway (validated against deployment's bound gateway)
@@ -3932,18 +3915,6 @@ type GetMCPProxyDeploymentsParams struct {
 
 // GetMCPProxyDeploymentsParamsStatus defines parameters for GetMCPProxyDeployments.
 type GetMCPProxyDeploymentsParamsStatus string
-
-// RestoreMCPProxyDeploymentDeprecatedParams defines parameters for RestoreMCPProxyDeploymentDeprecated.
-type RestoreMCPProxyDeploymentDeprecatedParams struct {
-	DeploymentId string `form:"deploymentId" json:"deploymentId" yaml:"deploymentId"`
-	GatewayId    string `form:"gatewayId" json:"gatewayId" yaml:"gatewayId"`
-}
-
-// UndeployMCPProxyDeploymentDeprecatedParams defines parameters for UndeployMCPProxyDeploymentDeprecated.
-type UndeployMCPProxyDeploymentDeprecatedParams struct {
-	DeploymentId string `form:"deploymentId" json:"deploymentId" yaml:"deploymentId"`
-	GatewayId    string `form:"gatewayId" json:"gatewayId" yaml:"gatewayId"`
-}
 
 // RestoreMCPProxyDeploymentParams defines parameters for RestoreMCPProxyDeployment.
 type RestoreMCPProxyDeploymentParams struct {
@@ -3992,18 +3963,6 @@ type GetDeploymentsParams struct {
 
 // GetDeploymentsParamsStatus defines parameters for GetDeployments.
 type GetDeploymentsParamsStatus string
-
-// RestoreDeploymentDeprecatedParams defines parameters for RestoreDeploymentDeprecated.
-type RestoreDeploymentDeprecatedParams struct {
-	DeploymentId string `form:"deploymentId" json:"deploymentId" yaml:"deploymentId"`
-	GatewayId    string `form:"gatewayId" json:"gatewayId" yaml:"gatewayId"`
-}
-
-// UndeployDeploymentDeprecatedParams defines parameters for UndeployDeploymentDeprecated.
-type UndeployDeploymentDeprecatedParams struct {
-	DeploymentId string `form:"deploymentId" json:"deploymentId" yaml:"deploymentId"`
-	GatewayId    string `form:"gatewayId" json:"gatewayId" yaml:"gatewayId"`
-}
 
 // RestoreDeploymentParams defines parameters for RestoreDeployment.
 type RestoreDeploymentParams struct {
@@ -4075,18 +4034,6 @@ type GetWebBrokerAPIDeploymentsParams struct {
 	Status    *string             `form:"status,omitempty" json:"status,omitempty" yaml:"status,omitempty"`
 }
 
-// RestoreWebBrokerAPIDeploymentDeprecatedParams defines parameters for RestoreWebBrokerAPIDeploymentDeprecated.
-type RestoreWebBrokerAPIDeploymentDeprecatedParams struct {
-	DeploymentId string `form:"deploymentId" json:"deploymentId" yaml:"deploymentId"`
-	GatewayId    string `form:"gatewayId" json:"gatewayId" yaml:"gatewayId"`
-}
-
-// UndeployWebBrokerAPIDeprecatedParams defines parameters for UndeployWebBrokerAPIDeprecated.
-type UndeployWebBrokerAPIDeprecatedParams struct {
-	DeploymentId string `form:"deploymentId" json:"deploymentId" yaml:"deploymentId"`
-	GatewayId    string `form:"gatewayId" json:"gatewayId" yaml:"gatewayId"`
-}
-
 // RestoreWebBrokerAPIDeploymentParams defines parameters for RestoreWebBrokerAPIDeployment.
 type RestoreWebBrokerAPIDeploymentParams struct {
 	GatewayId string `form:"gatewayId" json:"gatewayId" yaml:"gatewayId"`
@@ -4108,18 +4055,6 @@ type ListWebSubAPIsParams struct {
 type GetWebSubAPIDeploymentsParams struct {
 	GatewayId *openapi_types.UUID `form:"gatewayId,omitempty" json:"gatewayId,omitempty" yaml:"gatewayId,omitempty"`
 	Status    *string             `form:"status,omitempty" json:"status,omitempty" yaml:"status,omitempty"`
-}
-
-// RestoreWebSubAPIDeploymentDeprecatedParams defines parameters for RestoreWebSubAPIDeploymentDeprecated.
-type RestoreWebSubAPIDeploymentDeprecatedParams struct {
-	DeploymentId string `form:"deploymentId" json:"deploymentId" yaml:"deploymentId"`
-	GatewayId    string `form:"gatewayId" json:"gatewayId" yaml:"gatewayId"`
-}
-
-// UndeployWebSubAPIDeprecatedParams defines parameters for UndeployWebSubAPIDeprecated.
-type UndeployWebSubAPIDeprecatedParams struct {
-	DeploymentId string `form:"deploymentId" json:"deploymentId" yaml:"deploymentId"`
-	GatewayId    string `form:"gatewayId" json:"gatewayId" yaml:"gatewayId"`
 }
 
 // RestoreWebSubAPIDeploymentParams defines parameters for RestoreWebSubAPIDeployment.

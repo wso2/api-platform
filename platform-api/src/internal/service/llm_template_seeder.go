@@ -97,6 +97,8 @@ func (s *LLMTemplateSeeder) SeedForOrg(orgUUID string) error {
 		toCreate := &model.LLMProviderTemplate{
 			OrganizationUUID: orgUUID,
 			ID:               tpl.ID,
+			BaseHandle:       tpl.BaseHandle,
+			Version:          tpl.Version,
 			Name:             tpl.Name,
 			Description:      tpl.Description,
 			Provider:         tpl.Provider,

@@ -238,10 +238,13 @@ type LLMProviderTemplateRepository interface {
 	ListAllVersions(orgUUID string, limit, offset int) ([]*model.LLMProviderTemplate, error)
 	CountAllVersions(orgUUID string) (int, error)
 	Update(t *model.LLMProviderTemplate) error
+	RenameFamily(baseHandle, orgUUID, name string) error
 	SetEnabled(templateID, orgUUID, version string, enabled bool) error
 	DeleteVersion(templateID, orgUUID, version string) error
 	Delete(templateID, orgUUID string) error
 	Exists(templateID, orgUUID string) (bool, error)
+	GetBaseHandle(handle, orgUUID string) (string, error)
+	ProviderForHandle(handle, orgUUID string) (string, error)
 	CountProvidersUsingTemplate(templateID, orgUUID, version string) (int, error)
 }
 

@@ -23,7 +23,6 @@ import {
   Accordion,
   AccordionDetails,
   AccordionSummary,
-  Alert,
   Box,
   Button,
   CircularProgress,
@@ -31,7 +30,6 @@ import {
   FormControl,
   FormLabel,
   Grid,
-  InputAdornment,
   MenuItem,
   PageContent,
   PageTitle,
@@ -40,12 +38,7 @@ import {
   TextField,
   Typography,
 } from '@wso2/oxygen-ui';
-import {
-  ChevronDown,
-  ChevronLeft,
-  GitBranch,
-  Tag,
-} from '@wso2/oxygen-ui-icons-react';
+import { ChevronDown, ChevronLeft } from '@wso2/oxygen-ui-icons-react';
 import { FormattedMessage } from 'react-intl';
 import { useProviderTemplates } from '../../../../contexts/llmProvider/providerTemplate';
 import { useAppShell } from '../../../../contexts/AppShellContext';
@@ -59,6 +52,7 @@ import type {
 } from '../../../../utils/types';
 import {
   fromTokenConfig,
+  isValidHttpUrl,
   toTokenConfig,
   TOKEN_FIELDS,
   TOKEN_LOCATIONS,
@@ -68,17 +62,21 @@ import {
 
 const MAX_DESCRIPTION_LENGTH = 200;
 
-// Versions follow the v<major>.<minor> pattern (e.g. v1.0).
 const VERSION_PATTERN = /^[vV]\d+\.\d+$/;
 
-// Suggest the next version by bumping the major of the current version
-// (v1.0 -> v2.0). Falls back to v2.0 when the current can't be parsed. The
-// suggestion is only a default — the field is editable.
 function suggestNextVersion(current?: string): string {
   const match = /^[vV](\d+)\.\d+$/.exec((current ?? '').trim());
   if (!match) return 'v2.0';
   const major = parseInt(match[1], 10);
   return `v${major + 1}.0`;
+}
+
+function toTemplateId(value: string): string {
+  return value
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
 }
 
 // Parse an OpenAPI spec (JSON or YAML) and return its first server URL.
@@ -135,13 +133,10 @@ function CreateProviderTemplateVersionForm({
     '/settings/llm-provider-templates'
   )}/${templateId}`;
 
-  // The current latest version; the new version is user-entered (prefilled with
-  // a suggested bump) and must be unique.
   const currentVersion = template.version ?? 'v1.0';
   const [version, setVersion] = useState(() => suggestNextVersion(template.version));
 
-  // Description and the OpenAPI spec are the things a new version typically
-  // changes; pre-fill from the source version.
+// Description is user-entered (prefilled from the source version) and optional,
   const [description, setDescription] = useState(template.description ?? '');
   const [openapiSpecUrl, setOpenapiSpecUrl] = useState(
     template.metadata?.openapiSpecUrl ?? ''
@@ -152,7 +147,9 @@ function CreateProviderTemplateVersionForm({
   const [isFetchingSpec, setIsFetchingSpec] = useState(false);
   const [specFileName, setSpecFileName] = useState('');
   const [specContent, setSpecContent] = useState(template.openapi ?? '');
-  // Token & model mappings copied from the source version (adjust as needed).
+  const [endpointUrlTouched, setEndpointUrlTouched] = useState(false);
+  const [specUrlTouched, setSpecUrlTouched] = useState(false);
+  const hasInheritedSpec = !specFileName && Boolean(template.openapi?.trim());
   const [tokenConfig, setTokenConfig] = useState<TokenConfig>(() =>
     toTokenConfig(template)
   );
@@ -187,12 +184,12 @@ function CreateProviderTemplateVersionForm({
       setSpecContent('');
       if (serverUrl) {
         setEndpointUrl(serverUrl);
-        showSnackbar('Specification fetched. Endpoint URL filled from servers.', 'success');
+        showSnackbar('Specification fetched and endpoint URL added.', 'success');
       } else {
-        showSnackbar('Fetched the spec, but no server URL was found — enter the endpoint manually.', 'info');
+        showSnackbar('Specification fetched. Add the endpoint URL manually.', 'info');
       }
     } catch {
-      showSnackbar('Failed to fetch specification from that URL.', 'error');
+      showSnackbar('Could not fetch a specification from that URL.', 'error');
     } finally {
       setIsFetchingSpec(false);
     }
@@ -213,21 +210,28 @@ function CreateProviderTemplateVersionForm({
       setOpenapiSpecUrl('');
       if (serverUrl) {
         setEndpointUrl(serverUrl);
-        showSnackbar('Specification uploaded. Endpoint URL filled from servers.', 'success');
+        showSnackbar('Specification uploaded and endpoint URL added.', 'success');
       } else {
-        showSnackbar('Read the spec, but no server URL was found — enter the endpoint manually.', 'info');
+        showSnackbar('Specification uploaded. Add the endpoint URL manually.', 'info');
       }
     } catch {
-      showSnackbar('Failed to read the specification file.', 'error');
+      showSnackbar('Could not read that specification file.', 'error');
     } finally {
       e.target.value = '';
     }
   };
 
   const isDescriptionValid = description.length <= MAX_DESCRIPTION_LENGTH;
-  const isEndpointValid = endpointUrl.trim().length > 0;
+  const isEndpointValid =
+    endpointUrl.trim().length > 0 && isValidHttpUrl(endpointUrl);
+  const specUrlEntered = openapiSpecUrl.trim().length > 0;
+  const isSpecUrlValid = isValidHttpUrl(openapiSpecUrl);
   const isVersionValid = VERSION_PATTERN.test(version.trim());
-  const isFormValid = isDescriptionValid && isEndpointValid && isVersionValid;
+  const isFormValid =
+    isDescriptionValid &&
+    isEndpointValid &&
+    isVersionValid &&
+    (!specUrlEntered || isSpecUrlValid);
 
   const handleSubmit = async (event?: React.FormEvent) => {
     if (event) event.preventDefault();
@@ -236,18 +240,14 @@ function CreateProviderTemplateVersionForm({
 
     const tokenFields = fromTokenConfig(tokenConfig);
 
-    // Preserve connection metadata (endpoint + spec URL); the new version keeps
-    // the source's auth/logo and updates endpoint/spec from this form.
     const metadata: TemplateMetadata = { ...(template.metadata ?? {}) };
     if (endpointUrl.trim()) metadata.endpointUrl = endpointUrl.trim();
     else delete metadata.endpointUrl;
     if (openapiSpecUrl.trim()) metadata.openapiSpecUrl = openapiSpecUrl.trim();
     else delete metadata.openapiSpecUrl;
 
-    // POST /{id}/versions creates a NEW version with the supplied version
-    // string. Carry forward resource mappings; override the fields edited here.
     const payload: ProviderTemplate = {
-      id: templateId,
+      id: toTemplateId(`${template.name ?? ''} ${version.trim()}`),
       name: template.name,
       provider: template.provider,
       version: version.trim(),
@@ -260,7 +260,7 @@ function CreateProviderTemplateVersionForm({
 
     setIsSubmitting(true);
     try {
-      await providerTemplateApis.createProviderTemplateVersion(
+      const created = await providerTemplateApis.createProviderTemplateVersion(
         templateId,
         payload,
         organizationId,
@@ -268,7 +268,10 @@ function CreateProviderTemplateVersionForm({
       );
       await refreshTemplates();
       showSnackbar(`New version ${version.trim()} created successfully.`, 'success');
-      navigate(overviewPath);
+      const newVersionPath = created.id
+        ? `${buildOrgPath(currentOrganization, '/settings/llm-provider-templates')}/${created.id}`
+        : overviewPath;
+      navigate(newVersionPath);
     } catch (err) {
       showSnackbar(
         err instanceof Error ? err.message : 'Failed to create new version.',
@@ -305,7 +308,7 @@ function CreateProviderTemplateVersionForm({
             <FormattedMessage
               id="aiWorkspace.pages.appShell.appShellPages.providerTemplate.CreateProviderTemplateVersion.subtitle"
               defaultMessage={
-                'Spin a new version with an updated OpenAPI spec. Token & resource mappings are copied from the source version — adjust as needed.'
+                'Create a new version using an updated OpenAPI specification'
               }
             />
           </PageTitle.SubHeader>
@@ -313,16 +316,6 @@ function CreateProviderTemplateVersionForm({
       </Stack>
 
       <Box sx={{ mt: 2, maxWidth: 820 }}>
-        <Alert severity="info" icon={<GitBranch size={18} />} sx={{ mb: 2 }}>
-          <FormattedMessage
-            id="aiWorkspace.pages.appShell.appShellPages.providerTemplate.CreateProviderTemplateVersion.info"
-            defaultMessage={
-              'The new version is added to {name} and becomes the latest. Older versions stay available in the version switcher and listing.'
-            }
-            values={{ name: <strong>{template.name}</strong> }}
-          />
-        </Alert>
-
         <Box component="form" onSubmit={handleSubmit} noValidate>
           <Grid container spacing={2}>
             {/* Name is fixed — a version belongs to the same template. */}
@@ -354,19 +347,10 @@ function CreateProviderTemplateVersionForm({
                   onChange={(e) => setVersion(e.target.value)}
                   placeholder="v2.0"
                   error={version.trim().length > 0 && !isVersionValid}
-                  slotProps={{
-                    input: {
-                      startAdornment: (
-                        <InputAdornment position="start">
-                          <Tag size={16} />
-                        </InputAdornment>
-                      ),
-                    },
-                  }}
                   helperText={
                     version.trim().length > 0 && !isVersionValid
-                      ? 'Use the v<major>.<minor> format, e.g. v2.0'
-                      : `Latest is ${currentVersion}`
+                      ? 'Use the format v<major>.<minor>, e.g. v2.0'
+                      : ''
                   }
                 />
               </FormControl>
@@ -405,44 +389,46 @@ function CreateProviderTemplateVersionForm({
                     defaultMessage={'OpenAPI Specification'}
                   />
                 </FormLabel>
-                <Stack
-                  direction="row"
-                  spacing={1.5}
-                  alignItems="center"
-                  sx={{ mt: 1 }}
-                >
-                  <TextField
-                    size="small"
+                <Stack spacing={1.5} sx={{ mt: 1 }}>
+                  <Stack direction="row" spacing={1.5} alignItems="center">
+                    <TextField
+                      size="small"
+                      fullWidth
+                      value={openapiSpecUrl}
+                      onChange={(e) => {
+                        setOpenapiSpecUrl(e.target.value);
+                        setSpecUrlTouched(false);
+                      }}
+                      onBlur={() => setSpecUrlTouched(true)}
+                      placeholder="https://api.openai.com/openapi.json"
+                      error={specUrlTouched && specUrlEntered && !isSpecUrlValid}
+                      helperText={
+                        specUrlTouched && specUrlEntered && !isSpecUrlValid
+                          ? 'Enter a valid URL.'
+                          : ''
+                      }
+                    />
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      disabled={isFetchingSpec || !openapiSpecUrl.trim()}
+                      onClick={() => void fetchSpecFromUrl()}
+                      sx={{ whiteSpace: 'nowrap', flexShrink: 0 }}
+                    >
+                      {isFetchingSpec ? 'Fetching…' : 'Fetch specification'}
+                    </Button>
+                  </Stack>
+                  <Divider>Or</Divider>
+                  <Button
+                    variant="outlined"
                     fullWidth
-                    value={openapiSpecUrl}
-                    onChange={(e) => {
-                      setOpenapiSpecUrl(e.target.value);
-                      setSpecFileName('');
-                      setSpecContent('');
-                    }}
-                    placeholder="https://api.openai.com/openapi.json"
-                  />
-                  <Button
-                    variant="outlined"
-                    size="small"
-                    disabled={isFetchingSpec || !openapiSpecUrl.trim()}
-                    onClick={() => void fetchSpecFromUrl()}
-                    sx={{ whiteSpace: 'nowrap', flexShrink: 0 }}
-                  >
-                    {isFetchingSpec ? 'Fetching…' : 'Fetch specification'}
-                  </Button>
-                  <Divider orientation="vertical" flexItem>
-                    Or
-                  </Divider>
-                  <Button
-                    variant="outlined"
-                    size="small"
                     onClick={() => fileInputRef.current?.click()}
-                    sx={{ whiteSpace: 'nowrap', flexShrink: 0 }}
                   >
                     {specFileName
                       ? `Uploaded: ${specFileName}`
-                      : 'Upload Your Specification'}
+                      : specContent.trim()
+                        ? 'Uploaded Specification'
+                        : 'Upload Your Specification'}
                   </Button>
                 </Stack>
                 <input
@@ -467,8 +453,24 @@ function CreateProviderTemplateVersionForm({
                   fullWidth
                   required
                   value={endpointUrl}
-                  onChange={(e) => setEndpointUrl(e.target.value)}
+                  onChange={(e) => {
+                    setEndpointUrl(e.target.value);
+                    setEndpointUrlTouched(false);
+                  }}
+                  onBlur={() => setEndpointUrlTouched(true)}
                   placeholder="https://api.openai.com"
+                  error={
+                    endpointUrlTouched &&
+                    endpointUrl.trim().length > 0 &&
+                    !isValidHttpUrl(endpointUrl)
+                  }
+                  helperText={
+                    endpointUrlTouched &&
+                    endpointUrl.trim().length > 0 &&
+                    !isValidHttpUrl(endpointUrl)
+                      ? 'Enter a valid URL.'
+                      : ''
+                  }
                 />
               </FormControl>
             </Grid>
@@ -484,8 +486,7 @@ function CreateProviderTemplateVersionForm({
               <Box>
                 <Typography variant="subtitle2">Advanced</Typography>
                 <Typography variant="caption" color="text.secondary">
-                  Token &amp; model mapping — copied from {currentVersion}; change
-                  if this version differs.
+                  Token and model mapping, copied from {currentVersion}.
                 </Typography>
               </Box>
             </AccordionSummary>

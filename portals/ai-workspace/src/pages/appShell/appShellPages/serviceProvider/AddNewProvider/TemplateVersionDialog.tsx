@@ -44,7 +44,7 @@ interface TemplateVersionDialogProps {
   templateId: string;
   templateName: string;
   onClose: () => void;
-  onConfirm: (version: string) => void;
+  onConfirm: (versionTemplate: ProviderTemplate) => void;
 }
 
 export default function TemplateVersionDialog({
@@ -156,7 +156,10 @@ export default function TemplateVersionDialog({
           Cancel
         </Button>
         <Button
-          onClick={() => onConfirm(selected)}
+          onClick={() => {
+            const vt = versions.find((v) => v.version === selected) ?? versions[0];
+            if (vt) onConfirm(vt);
+          }}
           variant="contained"
           disabled={!selected || isLoading || Boolean(error) || versions.length === 0}
         >

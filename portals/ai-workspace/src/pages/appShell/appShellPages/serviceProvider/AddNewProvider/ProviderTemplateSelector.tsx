@@ -44,7 +44,10 @@ import googleGeminiLogo from '../../../../../assets/brands/googlegemini.png';
 import mistralAiLogo from '../../../../../assets/brands/mistralai.png';
 import { FormattedMessage } from 'react-intl';
 import ErrorAlert from '../../../../../Components/common/ErrorAlert';
-import { truncateProviderDisplayName } from '../../../../../utils/providerTemplateDisplay';
+import {
+  familyHandle,
+  truncateProviderDisplayName,
+} from '../../../../../utils/providerTemplateDisplay';
 
 // Logo mapping for provider templates by name (case-insensitive partial match)
 const getLogoForTemplate = (templateName: string): string | null => {
@@ -92,18 +95,26 @@ export default function ProviderTemplateSelector({
   onSelectTemplate,
   onRetryTemplates,
 }: ProviderTemplateSelectorProps) {
-  // Collapse the grid to two rows (8 cards) with a See more / Show less toggle.
   const COLLAPSED_COUNT = 8;
   const [showAll, setShowAll] = React.useState(false);
   const enabledTemplates = (templatesResponse?.list ?? []).filter(
     (template) => template.enabled !== false
   );
-  const hasMore = enabledTemplates.length > COLLAPSED_COUNT;
-  const hiddenCount = enabledTemplates.length - COLLAPSED_COUNT;
+
+  const familyMap = new Map<string, (typeof enabledTemplates)[0]>();
+  for (const t of enabledTemplates) {
+    const key = t.name.toLowerCase();
+    const existing = familyMap.get(key);
+    if (!existing || t.isLatest) familyMap.set(key, t);
+  }
+  const deduplicatedTemplates = Array.from(familyMap.values());
+
+  const hasMore = deduplicatedTemplates.length > COLLAPSED_COUNT;
+  const hiddenCount = deduplicatedTemplates.length - COLLAPSED_COUNT;
   const visibleTemplates =
     hasMore && !showAll
-      ? enabledTemplates.slice(0, COLLAPSED_COUNT)
-      : enabledTemplates;
+      ? deduplicatedTemplates.slice(0, COLLAPSED_COUNT)
+      : deduplicatedTemplates;
 
   return (
     <Grid size={{ xs: 12 }}>
@@ -145,7 +156,9 @@ export default function ProviderTemplateSelector({
           >
             {visibleTemplates.map((template) => {
               const templateId = (template.id ?? '').toLowerCase();
-              const isComingSoon = COMING_SOON_TEMPLATE_IDS.has(templateId);
+              const isComingSoon = COMING_SOON_TEMPLATE_IDS.has(
+                familyHandle(templateId)
+              );
               const isSelected = !isComingSoon && selectedTemplateId === template.id;
               const logo = getLogoForTemplate(template.name);
               const shortName = getShortNameForTemplate(template.name);

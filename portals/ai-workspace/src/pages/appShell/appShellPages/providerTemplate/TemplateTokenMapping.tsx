@@ -46,12 +46,11 @@ import {
 } from '../../../../utils/providerTemplateFields';
 
 interface DiscoveredResource {
-  methods: string[];
+  method: string;
   path: string;
   summary?: string;
 }
 
-// Extract path/methods/summary entries from a parsed OpenAPI spec, one per path.
 function extractResources(spec: Record<string, unknown> | null): DiscoveredResource[] {
   const paths = (spec?.paths ?? null) as Record<
     string,
@@ -63,18 +62,16 @@ function extractResources(spec: Record<string, unknown> | null): DiscoveredResou
   Object.keys(paths).forEach((path) => {
     const ops = paths[path];
     if (!ops || typeof ops !== 'object') return;
-    const methods: string[] = [];
-    let summary: string | undefined;
     Object.keys(ops).forEach((m) => {
       if (!METHODS.has(m.toLowerCase())) return;
-      methods.push(m.toUpperCase());
-      if (!summary) summary = ops[m]?.summary || ops[m]?.description || undefined;
+      out.push({
+        method: m.toUpperCase(),
+        path,
+        summary: ops[m]?.summary || ops[m]?.description || undefined,
+      });
     });
-    if (methods.length === 0) return;
-    methods.sort();
-    out.push({ methods, path, summary });
   });
-  out.sort((a, b) => a.path.localeCompare(b.path));
+  out.sort((a, b) => a.path.localeCompare(b.path) || a.method.localeCompare(b.method));
   return out;
 }
 
@@ -132,6 +129,7 @@ interface TemplateTokenMappingProps {
   resourceMappings: ResourceMapping[];
   onChangeResourceMappings: (next: ResourceMapping[]) => void;
   spec: Record<string, unknown> | null;
+  hidePerResource?: boolean;
 }
 
 export default function TemplateTokenMapping({
@@ -140,6 +138,7 @@ export default function TemplateTokenMapping({
   resourceMappings,
   onChangeResourceMappings,
   spec,
+  hidePerResource = false,
 }: TemplateTokenMappingProps) {
   const [scope, setScope] = useState<'default' | 'resource'>('default');
   const [search, setSearch] = useState('');
@@ -150,7 +149,7 @@ export default function TemplateTokenMapping({
     const q = search.trim().toLowerCase();
     if (!q) return resources;
     return resources.filter((r) =>
-      `${r.methods.join(' ')} ${r.path} ${r.summary ?? ''}`.toLowerCase().includes(q)
+      `${r.method} ${r.path} ${r.summary ?? ''}`.toLowerCase().includes(q)
     );
   }, [resources, search]);
 
@@ -191,26 +190,29 @@ export default function TemplateTokenMapping({
     );
   };
 
+  const effectiveScope = hidePerResource ? 'default' : scope;
+
   return (
     <Box>
-      <ToggleButtonGroup
-        exclusive
-        size="small"
-        value={scope}
-        onChange={(_, v) => v && setScope(v)}
-        sx={{ mb: 2 }}
-      >
-        <ToggleButton value="default">Default</ToggleButton>
-        <ToggleButton value="resource">Per Resource</ToggleButton>
-      </ToggleButtonGroup>
+      {!hidePerResource && (
+        <ToggleButtonGroup
+          exclusive
+          size="small"
+          value={effectiveScope}
+          onChange={(_, v) => v && setScope(v)}
+          sx={{ mb: 2 }}
+        >
+          <ToggleButton value="default">Global</ToggleButton>
+          <ToggleButton value="resource">Per Resource</ToggleButton>
+        </ToggleButtonGroup>
+      )}
 
-      {scope === 'default' ? (
+      {effectiveScope === 'default' ? (
         <>
           <Stack direction="row" spacing={1} alignItems="flex-start" sx={{ mb: 2.5 }}>
             <Info size={16} style={{ marginTop: 2, flexShrink: 0, opacity: 0.7 }} />
             <Typography variant="body2" color="text.secondary">
-              Default token &amp; model extraction applied to all resources unless
-              overridden under Per Resource. Defaults follow OpenAI.
+              Applies to all resources unless overridden per resource.
             </Typography>
           </Stack>
           <TokenFieldsEditor tokens={defaultTokens} onChange={onChangeDefaultToken} />
@@ -220,8 +222,8 @@ export default function TemplateTokenMapping({
           <Stack direction="row" spacing={1} alignItems="flex-start">
             <Info size={16} style={{ marginTop: 2, flexShrink: 0, opacity: 0.7 }} />
             <Typography variant="body2" color="text.secondary">
-              Toggle a resource on to override its token &amp; model extraction.
-              Resources left off inherit the default mapping.
+              Turn on a resource to give it its own mapping. The rest use the
+              default.
             </Typography>
           </Stack>
 
@@ -242,17 +244,13 @@ export default function TemplateTokenMapping({
           ) : (
             <Box sx={{ maxHeight: 460, overflowY: 'auto', pr: 0.5 }}>
               {filtered.map((r) => {
-                const key = r.path;
+                const key = `${r.method}-${r.path}`;
                 const overridden = isOverridden(r.path);
                 const isOpen = openKey === key;
                 return (
                   <Box key={key} sx={{ mb: 0.8 }}>
                     <ResourceRow
-                      resource={{
-                        method: r.methods.join('/'),
-                        path: r.path,
-                        summary: r.summary,
-                      }}
+                      resource={r}
                       selected={overridden}
                       onClick={() => setOpenKey(isOpen ? null : key)}
                       trailing={
@@ -304,9 +302,8 @@ export default function TemplateTokenMapping({
                           />
                         ) : (
                           <Typography variant="body2" color="text.secondary">
-                            Inherits the default token mapping. Turn on{' '}
-                            <strong>Override</strong> to customize it for this
-                            resource.
+                            Uses the default mapping. Turn on{' '}
+                            <strong>Override</strong> to change it.
                           </Typography>
                         )}
                       </Box>

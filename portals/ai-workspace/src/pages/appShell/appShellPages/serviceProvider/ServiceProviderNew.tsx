@@ -54,6 +54,7 @@ import type {
   GuardrailSelection,
 } from './AddNewProvider/serviceProviderTypes';
 import type { ProviderTemplate } from '../../../../utils/types';
+import { familyHandle } from '../../../../utils/providerTemplateDisplay';
 import TemplateVersionDialog from './AddNewProvider/TemplateVersionDialog';
 import { FormattedMessage } from 'react-intl';
 
@@ -156,9 +157,12 @@ export default function ServiceProviderNew() {
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(
     null
   );
-  // The specific template version the provider is based on (chosen in the
-  // version dialog after picking a template).
+
   const [selectedTemplateVersion, setSelectedTemplateVersion] = useState<
+    string | null
+  >(null);
+
+  const [selectedVersionTemplateId, setSelectedVersionTemplateId] = useState<
     string | null
   >(null);
   // Template just clicked, pending version selection in the dialog.
@@ -318,25 +322,16 @@ export default function ServiceProviderNew() {
     if (!isFormValid || !selectedTemplateId) return;
 
     try {
-      const selectedTemplate = templatesResponse?.list?.find(
-        (t) => t.id === selectedTemplateId
-      );
       const providerId = toProviderId(formState.name);
 
       const upstream = {
         main: {
-          url: selectedTemplate?.metadata?.endpointUrl || formState.upstreamUrl,
+          url: formState.upstreamUrl,
           ref: '',
           auth: {
-            type:
-              selectedTemplate?.metadata?.auth?.type ||
-              formState.upstreamAuthType,
-            header:
-              selectedTemplate?.metadata?.auth?.header ||
-              formState.upstreamAuthHeader,
-            // Join the prefix and value with a single space (e.g. "Bearer <key>").
-            // trimEnd() so a template prefix that already carries a trailing
-            // space (e.g. "Bearer ") doesn't produce a double space.
+            type: formState.upstreamAuthType,
+            header: formState.upstreamAuthHeader,
+
             value: formState.valuePrefix
               ? `${formState.valuePrefix.trimEnd()} ${formState.upstreamAuthValue}`
               : formState.upstreamAuthValue,
@@ -350,12 +345,12 @@ export default function ServiceProviderNew() {
         description: formState.description.trim(),
         version: formState.version.trim(),
         context: formState.context.trim() || '/',
-        template: selectedTemplateId,
+        template: selectedVersionTemplateId ?? selectedTemplateId,
         openapi: openapiSpec,
         upstream,
         globalPolicies: [
-          ...(selectedTemplateId !== 'azure-openai' &&
-          selectedTemplateId !== 'azureai-foundry'
+          ...(familyHandle(selectedTemplateId) !== 'azure-openai' &&
+          familyHandle(selectedTemplateId) !== 'azureai-foundry'
             ? [{ name: 'llm-cost', version: 'v1', params: {} }]
             : []),
           ...guardrails.map((guardrail) => ({
@@ -399,21 +394,20 @@ export default function ServiceProviderNew() {
     }
   };
 
-  // Apply a chosen template + version to the form.
   const applyTemplateSelection = (
-    template: ProviderTemplate,
-    version: string
+    baseTemplate: ProviderTemplate,
+    version: string,
+    versionTemplateId: string | null
   ) => {
-    setSelectedTemplateId(template.id ?? null);
+    setSelectedTemplateId(baseTemplate.id ?? null);
+    setSelectedVersionTemplateId(versionTemplateId);
     setSelectedTemplateVersion(version);
-    setFormState((prev) => ({ ...prev, providerType: template.name }));
+    setFormState((prev) => ({ ...prev, providerType: baseTemplate.name }));
     setOpenapiSpec('');
     setVersionDialogOpen(false);
     setPendingTemplate(null);
   };
 
-  // When a template is picked, only prompt for a version if more than one
-  // enabled version exists — otherwise auto-select the single version.
   const handleSelectTemplate = async (template: ProviderTemplate) => {
     const organizationId = currentOrganization?.uuid;
     if (!template.id || !organizationId) return;
@@ -436,7 +430,8 @@ export default function ServiceProviderNew() {
         const only = enabledVersions[0];
         applyTemplateSelection(
           template,
-          only?.version ?? template.version ?? 'v1.0'
+          only?.version ?? template.version ?? 'v1.0',
+          only?.id ?? null
         );
         return;
       }
@@ -494,8 +489,8 @@ export default function ServiceProviderNew() {
                 setVersionDialogOpen(false);
                 setPendingTemplate(null);
               }}
-              onConfirm={(version) =>
-                applyTemplateSelection(pendingTemplate, version)
+              onConfirm={(vt) =>
+                applyTemplateSelection(pendingTemplate, vt.version ?? '', vt.id ?? null)
               }
             />
           )}

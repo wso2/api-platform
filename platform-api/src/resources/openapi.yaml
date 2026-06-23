@@ -2894,8 +2894,8 @@ paths:
         must be supplied in the body, match the v<major>.<minor> pattern, and be
         unique for the template. The new version becomes the latest.
 
-        The template handle is taken from the path; the body's `id` is optional
-        and defaults to the path value (a mismatching id is rejected).
+        The template handle is taken from the path; the body's `id` must match it
+        (a mismatching id is rejected).
       operationId: createLLMProviderTemplateVersion
       security:
         - OAuth2Security:
@@ -10075,6 +10075,7 @@ components:
       required:
         - id
         - name
+        - version
       properties:
         id:
           type: string
@@ -10091,6 +10092,9 @@ components:
           description: |
             Identifies the origin of the template. Built-in templates use 'wso2';
             custom templates default to 'other' and may be set to any value.
+            Optional on create/update — the server defaults it to 'other' when
+            omitted, so a request/YAML without a provider is accepted.
+          default: other
           maxLength: 253
           example: wso2
         description:
@@ -10106,9 +10110,10 @@ components:
         version:
           type: string
           description: |
-            Content version, e.g. v1.0. Defaults to v1.0 on create. Editing a
-            template updates it in place; supply a new unique version only when
-            creating a new version via POST /llm-provider-templates/{id}/versions.
+            Content version, e.g. v1.0. Required. A new template starts at v1.0;
+            editing updates that version in place. Supply a new unique version
+            only when creating a new version via
+            POST /llm-provider-templates/{id}/versions.
           pattern: '^[vV]\d+\.\d+$'
           example: v1.0
         isLatest:
@@ -10121,7 +10126,9 @@ components:
           description: |
             Whether this version is offered when creating providers. Disabled
             versions stay in the catalog but are hidden from the provider picker.
-            Toggle via PATCH /llm-provider-templates/{id}/versions/{version}.
+            Response-only: create/update default new versions to enabled; toggle
+            via PATCH /llm-provider-templates/{id}/versions/{version}.
+          readOnly: true
           example: true
         openapi:
           type: string
@@ -10195,6 +10202,11 @@ components:
           type: boolean
           description: Whether this version is offered when creating providers.
           example: true
+        logoUrl:
+          type: string
+          format: uri
+          description: URL of the provider logo
+          example: https://cdn.example.com/logos/openai.svg
         createdAt:
           type: string
           format: date-time

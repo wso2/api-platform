@@ -29,7 +29,6 @@ import {
   FormControl,
   FormLabel,
   Grid,
-  InputAdornment,
   MenuItem,
   PageContent,
   PageTitle,
@@ -38,7 +37,7 @@ import {
   TextField,
   Typography,
 } from '@wso2/oxygen-ui';
-import { ChevronDown, ChevronLeft, Tag } from '@wso2/oxygen-ui-icons-react';
+import { ChevronDown, ChevronLeft } from '@wso2/oxygen-ui-icons-react';
 import { FormattedMessage } from 'react-intl';
 import { useProviderTemplates } from '../../../../contexts/llmProvider/providerTemplate';
 import { useAppShell } from '../../../../contexts/AppShellContext';
@@ -79,8 +78,6 @@ function parseSpecServerUrl(text: string): string | null {
   return typeof url === 'string' && url.trim() ? url.trim() : null;
 }
 
-// True if the text parses (JSON or YAML) into a plausible OpenAPI document.
-// Used to reject obviously-invalid specs on upload/fetch.
 function isParseableSpec(text: string): boolean {
   if (!text.trim()) return false;
   let spec: unknown = null;
@@ -113,13 +110,14 @@ export default function CreateProviderTemplate() {
   const [isFetchingSpec, setIsFetchingSpec] = useState(false);
   const [specFileName, setSpecFileName] = useState('');
   const [specContent, setSpecContent] = useState('');
-  // Whether the entered spec URL has been fetched (and validated). Required
-  // before create so a URL can't be saved without confirming it resolves.
   const [specFetched, setSpecFetched] = useState(false);
 
   const [tokenConfig, setTokenConfig] = useState<TokenConfig>(() => ({
     ...DEFAULT_TOKEN_CONFIG,
   }));
+  const [nameTouched, setNameTouched] = useState(false);
+  const [specUrlTouched, setSpecUrlTouched] = useState(false);
+  const [endpointUrlTouched, setEndpointUrlTouched] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -154,12 +152,12 @@ export default function CreateProviderTemplate() {
       setSpecFetched(true);
       if (serverUrl) {
         setEndpointUrl(serverUrl);
-        showSnackbar('Specification fetched. Endpoint URL filled from servers.', 'success');
+        showSnackbar('Specification fetched and endpoint URL added.', 'success');
       } else {
-        showSnackbar('Fetched the spec, but no server URL was found — enter the endpoint manually.', 'info');
+        showSnackbar('Specification fetched. Add the endpoint URL manually.', 'info');
       }
     } catch {
-      showSnackbar('Failed to fetch specification from that URL.', 'error');
+      showSnackbar('Could not fetch a specification from that URL.', 'error');
     } finally {
       setIsFetchingSpec(false);
     }
@@ -181,9 +179,9 @@ export default function CreateProviderTemplate() {
       setSpecFetched(true);
       if (serverUrl) {
         setEndpointUrl(serverUrl);
-        showSnackbar('Specification uploaded. Endpoint URL filled from servers.', 'success');
+        showSnackbar('Specification uploaded and endpoint URL added.', 'success');
       } else {
-        showSnackbar('Read the spec, but no server URL was found — enter the endpoint manually.', 'info');
+        showSnackbar('Specification uploaded. Add the endpoint URL manually.', 'info');
       }
     } catch {
       showSnackbar('Failed to read the specification file.', 'error');
@@ -199,14 +197,13 @@ export default function CreateProviderTemplate() {
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/^-+|-+$/g, '');
 
-  const normalizedTemplateId = toTemplateId(name);
+  const normalizedTemplateId = toTemplateId(`${name} ${INITIAL_VERSION}`);
   const isNameValid = name.trim().length > 0 && name.length <= MAX_NAME_LENGTH;
   const isDescriptionValid = description.length <= MAX_DESCRIPTION_LENGTH;
   const isEndpointValid =
     endpointUrl.trim().length > 0 && isValidHttpUrl(endpointUrl);
   const specUrlEntered = openapiSpecUrl.trim().length > 0;
   const isSpecUrlValid = isValidHttpUrl(openapiSpecUrl);
-  // A spec URL, if provided, must be a valid URL AND fetched before creating.
   const isSpecReady = !specUrlEntered || (isSpecUrlValid && specFetched);
   const isFormValid =
     isNameValid &&
@@ -230,10 +227,11 @@ export default function CreateProviderTemplate() {
     const payload: CreateProviderTemplateRequest = {
       id: normalizedTemplateId,
       name: name.trim(),
+      version: INITIAL_VERSION,
       description: description.trim() || undefined,
       ...tokenFields,
       metadata: Object.keys(metadata).length ? metadata : undefined,
-      // Uploaded spec content (empty when a spec URL is used instead).
+
       openapi: specContent.trim() ? specContent : undefined,
     };
 
@@ -291,12 +289,18 @@ export default function CreateProviderTemplate() {
                   required
                   value={name}
                   onChange={(e) => setName(e.target.value)}
+                  onBlur={() => setNameTouched(true)}
                   placeholder="Enter template name"
-                  error={name.length > MAX_NAME_LENGTH}
-                  helperText={
+                  error={
+                    (nameTouched && name.trim().length === 0) ||
                     name.length > MAX_NAME_LENGTH
-                      ? `Name must not exceed ${MAX_NAME_LENGTH} characters (${name.length}/${MAX_NAME_LENGTH})`
-                      : ''
+                  }
+                  helperText={
+                    nameTouched && name.trim().length === 0
+                      ? 'Name is required.'
+                      : name.length > MAX_NAME_LENGTH
+                        ? `Name must not exceed ${MAX_NAME_LENGTH} characters (${name.length}/${MAX_NAME_LENGTH})`
+                        : ''
                   }
                 />
               </FormControl>
@@ -315,16 +319,6 @@ export default function CreateProviderTemplate() {
                   fullWidth
                   value={INITIAL_VERSION}
                   disabled
-                  slotProps={{
-                    input: {
-                      startAdornment: (
-                        <InputAdornment position="start">
-                          <Tag size={16} />
-                        </InputAdornment>
-                      ),
-                    },
-                  }}
-                  helperText="Initial version"
                 />
               </FormControl>
             </Grid>
@@ -362,64 +356,51 @@ export default function CreateProviderTemplate() {
                     defaultMessage={'OpenAPI Specification'}
                   />
                 </FormLabel>
-                <Stack
-                  direction="row"
-                  spacing={1.5}
-                  alignItems="center"
-                  sx={{ mt: 1 }}
-                >
-                  <TextField
-                    size="small"
+                <Stack spacing={1.5} sx={{ mt: 1 }}>
+                  <Stack direction="row" spacing={1.5} alignItems="center">
+                    <TextField
+                      size="small"
+                      fullWidth
+                      value={openapiSpecUrl}
+                      onChange={(e) => {
+                        setOpenapiSpecUrl(e.target.value);
+                        setSpecFetched(false);
+                        setSpecUrlTouched(false);
+                      }}
+                      onBlur={() => setSpecUrlTouched(true)}
+                      placeholder="https://api.openai.com/openapi.json"
+                      error={specUrlTouched && specUrlEntered && (!isSpecUrlValid || !specFetched)}
+                      helperText={
+                        specUrlTouched && specUrlEntered && !isSpecUrlValid
+                          ? 'Enter a valid URL.'
+                          : specUrlTouched && specUrlEntered && !specFetched
+                            ? 'Fetch the specification to validate the URL.'
+                            : ''
+                      }
+                    />
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      disabled={
+                        isFetchingSpec || !openapiSpecUrl.trim() || !isSpecUrlValid
+                      }
+                      onClick={() => void fetchSpecFromUrl()}
+                      sx={{ whiteSpace: 'nowrap', flexShrink: 0 }}
+                    >
+                      {isFetchingSpec ? 'Fetching…' : 'Fetch specification'}
+                    </Button>
+                  </Stack>
+                  <Divider>Or</Divider>
+                  <Button
+                    variant="outlined"
                     fullWidth
-                    value={openapiSpecUrl}
-                    onChange={(e) => {
-                      setOpenapiSpecUrl(e.target.value);
-                      setSpecFileName('');
-                      setSpecContent('');
-                      setSpecFetched(false);
-                    }}
-                    placeholder="https://api.openai.com/openapi.json"
-                    error={specUrlEntered && (!isSpecUrlValid || !specFetched)}
-                  />
-                  <Button
-                    variant="outlined"
-                    size="small"
-                    disabled={
-                      isFetchingSpec || !openapiSpecUrl.trim() || !isSpecUrlValid
-                    }
-                    onClick={() => void fetchSpecFromUrl()}
-                    sx={{ whiteSpace: 'nowrap', flexShrink: 0 }}
-                  >
-                    {isFetchingSpec ? 'Fetching…' : 'Fetch specification'}
-                  </Button>
-                  <Divider orientation="vertical" flexItem>
-                    Or
-                  </Divider>
-                  <Button
-                    variant="outlined"
-                    size="small"
                     onClick={() => fileInputRef.current?.click()}
-                    sx={{ whiteSpace: 'nowrap', flexShrink: 0 }}
                   >
                     {specFileName
                       ? `Uploaded: ${specFileName}`
                       : 'Upload Your Specification'}
                   </Button>
                 </Stack>
-                {/* Reserved fixed-height line so the message doesn't shift the
-                    row above it. Shown in red since fetching is mandatory. */}
-                <Box sx={{ minHeight: 20, mt: 0.5 }}>
-                  {specUrlEntered && !isSpecUrlValid ? (
-                    <Typography variant="caption" color="error">
-                      Enter a valid URL.
-                    </Typography>
-                  ) : specUrlEntered && !specFetched ? (
-                    <Typography variant="caption" color="error">
-                      Click &apos;Fetch specification&apos; to validate the URL
-                      before creating.
-                    </Typography>
-                  ) : null}
-                </Box>
                 <input
                   ref={fileInputRef}
                   type="file"
@@ -442,12 +423,16 @@ export default function CreateProviderTemplate() {
                   fullWidth
                   required
                   value={endpointUrl}
-                  onChange={(e) => setEndpointUrl(e.target.value)}
+                  onChange={(e) => {
+                    setEndpointUrl(e.target.value);
+                    setEndpointUrlTouched(false);
+                  }}
+                  onBlur={() => setEndpointUrlTouched(true)}
                   placeholder="https://api.openai.com"
-                  error={endpointUrl.trim().length > 0 && !isValidHttpUrl(endpointUrl)}
+                  error={endpointUrlTouched && endpointUrl.trim().length > 0 && !isValidHttpUrl(endpointUrl)}
                   helperText={
-                    endpointUrl.trim().length > 0 && !isValidHttpUrl(endpointUrl)
-                      ? 'Enter a valid http(s) URL.'
+                    endpointUrlTouched && endpointUrl.trim().length > 0 && !isValidHttpUrl(endpointUrl)
+                      ? 'Enter a valid URL.'
                       : ''
                   }
                 />
@@ -466,8 +451,7 @@ export default function CreateProviderTemplate() {
               <Box>
                 <Typography variant="subtitle2">Advanced</Typography>
                 <Typography variant="caption" color="text.secondary">
-                  Token &amp; model mapping — defaults to OpenAI values; change if
-                  your provider differs.
+                  Token and model mapping. Defaults to OpenAI.
                 </Typography>
               </Box>
             </AccordionSummary>

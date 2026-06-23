@@ -496,6 +496,8 @@ export interface ProviderTemplate {
   createdBy?: string;
   createdAt?: string;
   updatedAt?: string;
+  /** Flat logo URL, present on list responses (LLMProviderTemplateListItem). */
+  logoUrl?: string;
 }
 
 /**

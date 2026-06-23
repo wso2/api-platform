@@ -69,10 +69,9 @@ export function buildTemplateManifestYaml(t: ProviderTemplate): string {
   return YAML.stringify(manifest);
 }
 
-// File name for the downloaded manifest, e.g. "openai-v2-template.yaml".
+// Generate a filename for the template's manifest YAML.
 export function templateManifestFileName(t: ProviderTemplate): string {
-  const versionPart = t.version ? `-${t.version}` : '';
-  return `${t.id}${versionPart}-template.yaml`;
+  return `${t.id}-template.yaml`;
 }
 
 // Trigger a browser download of the template's manifest YAML.

@@ -24,7 +24,6 @@ import {
   Box,
   Button,
   Card,
-  Chip,
   CircularProgress,
   Dialog,
   DialogActions,
@@ -170,6 +169,9 @@ export default function ProviderTemplateOverview() {
   const [specFileName, setSpecFileName] = useState('');
   const [isFetchingSpec, setIsFetchingSpec] = useState(false);
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
+  const [endpointUrlTouched, setEndpointUrlTouched] = useState(false);
+  const [openapiSpecUrlTouched, setOpenapiSpecUrlTouched] = useState(false);
+  const [logoUrlTouched, setLogoUrlTouched] = useState(false);
   const [isTogglingEnabled, setIsTogglingEnabled] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -212,9 +214,6 @@ export default function ProviderTemplateOverview() {
       .then((list) => {
         if (isMounted && list.length) {
           setVersions(list);
-          // Default the switcher to the latest version.
-          const latest = list.find((v) => v.isLatest) ?? list[0];
-          if (latest?.version) setSelectedVersion(latest.version);
         }
       })
       .catch(() => {
@@ -235,21 +234,17 @@ export default function ProviderTemplateOverview() {
     if (!templateId || !organizationId || version === selectedVersion) return;
     setIsLoading(true);
     try {
-      const isLatest = versions.find((v) => v.version === version)?.isLatest;
-      const full = isLatest
-        ? await providerTemplateApis.getProviderTemplate(
-            templateId,
-            organizationId,
-            PLATFORM_API_BASE_URL
-          )
-        : await providerTemplateApis.getProviderTemplateVersion(
-            templateId,
-            version,
-            organizationId,
-            PLATFORM_API_BASE_URL
-          );
+      const full = await providerTemplateApis.getProviderTemplateVersion(
+        templateId,
+        version,
+        organizationId,
+        PLATFORM_API_BASE_URL
+      );
       setSelectedVersion(version);
       setTemplate(full);
+      if (full.id && full.id !== templateId) {
+        navigate(`${listPath}/${full.id}`, { replace: true });
+      }
     } catch (err) {
       showSnackbar(
         err instanceof Error ? err.message : 'Failed to load version.',
@@ -260,7 +255,6 @@ export default function ProviderTemplateOverview() {
     }
   };
 
-  // Seed (and reset) the editable drafts whenever the loaded template changes.
   const seedDrafts = React.useCallback((t: ProviderTemplate) => {
     setEndpointUrl(t.metadata?.endpointUrl ?? '');
     setProvider(
@@ -277,10 +271,11 @@ export default function ProviderTemplateOverview() {
     setSpecContent(t.openapi ?? '');
     setSpecFileName('');
     setIsDirty(false);
+    setEndpointUrlTouched(false);
+    setOpenapiSpecUrlTouched(false);
+    setLogoUrlTouched(false);
   }, []);
 
-  // Fetch & validate a spec from the entered URL; fills the endpoint from its
-  // servers. URL mode references the spec by link (clears inline content).
   const fetchSpecFromUrl = async () => {
     const url = openapiSpecUrl.trim();
     if (!url) return;
@@ -299,12 +294,12 @@ export default function ProviderTemplateOverview() {
       const server = specServerUrl(text);
       if (server) {
         setEndpointUrl(server);
-        showSnackbar('Specification fetched. Endpoint URL filled from servers.', 'success');
+        showSnackbar('Specification fetched and endpoint URL added.', 'success');
       } else {
-        showSnackbar('Fetched the spec, but no server URL was found — enter the endpoint manually.', 'info');
+        showSnackbar('Specification fetched. Add the endpoint URL manually.', 'info');
       }
     } catch {
-      showSnackbar('Failed to fetch specification from that URL.', 'error');
+      showSnackbar('Could not fetch a specification from that URL.', 'error');
     } finally {
       setIsFetchingSpec(false);
     }
@@ -327,9 +322,9 @@ export default function ProviderTemplateOverview() {
       const server = specServerUrl(text);
       if (server) {
         setEndpointUrl(server);
-        showSnackbar('Specification uploaded. Endpoint URL filled from servers.', 'success');
+        showSnackbar('Specification uploaded and endpoint URL added.', 'success');
       } else {
-        showSnackbar('Read the spec, but no server URL was found — enter the endpoint manually.', 'info');
+        showSnackbar('Specification uploaded. Add the endpoint URL manually.', 'info');
       }
     } catch {
       showSnackbar('Failed to read the specification file.', 'error');
@@ -408,6 +403,7 @@ export default function ProviderTemplateOverview() {
     const payload: UpdateProviderTemplateRequest = {
       id: template.id,
       name: template.name,
+      version: currentVersion,
       provider: provider.trim() || 'other',
       description: template.description,
       ...fromTokenConfig(defaultTokens),
@@ -516,14 +512,12 @@ export default function ProviderTemplateOverview() {
   const lastUpdated = template.updatedAt ?? template.createdAt;
 
   const currentVersion = selectedVersion || template.version || 'v1.0';
-  const isBuiltIn = isBuiltInProviderTemplate(template.id);
-  // The seeded built-in version (v1.0) is read-only; user-created versions
-  // (v2.0+) of a built-in template can still be edited.
-  const isBaseVersion = currentVersion === 'v1.0' || currentVersion === 'v1';
-  const isReadOnly = isBuiltIn && isBaseVersion;
+  const activeProvider =
+    versions.find((v) => v.version === currentVersion)?.provider ??
+    template.provider;
+  const isBuiltIn = activeProvider === 'wso2';
+  const isReadOnly = isBuiltIn;
   const canEdit = !isReadOnly;
-  // Built-in v1.0 is read-only (toggle only); every other version (built-in
-  // v2.0+ and all custom versions) can be deleted, one version at a time.
   const canDelete = !isReadOnly;
   const isEnabled = template.enabled !== false;
 
@@ -694,52 +688,59 @@ export default function ProviderTemplateOverview() {
                     onClose={() => setVersionMenuAnchor(null)}
                     slotProps={{ paper: { sx: { minWidth: 260 } } }}
                   >
-                    <Typography
-                      variant="overline"
-                      sx={{
-                        px: 2,
-                        py: 0.5,
-                        display: 'block',
-                        color: 'text.secondary',
-                      }}
-                    >
-                      Versions
-                    </Typography>
-                    {(versions.length ? versions : [template]).map((v) => {
-                      const ver = v.version || 'v1';
-                      const isSelected =
-                        ver === (selectedVersion || template.version || 'v1');
+                    {(() => {
+                      const allVersions = versions.length ? versions : [template];
+                      const visibleVersions = isBuiltIn
+                        ? allVersions.filter((v) => v.provider === 'wso2')
+                        : allVersions.filter((v) => v.provider !== 'wso2');
+                      const sectionLabel = isBuiltIn ? 'Built-in Versions' : 'Custom Versions';
+
                       return (
-                        <MenuItem
-                          key={ver}
-                          selected={isSelected}
-                          onClick={() => {
-                            setVersionMenuAnchor(null);
-                            void handleSwitchVersion(ver);
-                          }}
-                        >
-                          <Stack sx={{ flexGrow: 1 }}>
-                            <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                              {ver}
-                            </Typography>
-                            <Typography variant="caption" color="text.secondary">
-                              {formatRelativeTime(v.createdAt ?? v.updatedAt)}
-                            </Typography>
-                          </Stack>
-                          {isSelected ? <Check size={16} /> : null}
-                        </MenuItem>
+                        <>
+                          <Typography
+                            variant="overline"
+                            sx={{ px: 2, py: 0.5, display: 'block', color: 'text.secondary' }}
+                          >
+                            {sectionLabel}
+                          </Typography>
+                          {visibleVersions.map((v) => {
+                            const ver = v.version || 'v1';
+                            const isSelected =
+                              ver === (selectedVersion || template.version || 'v1');
+                            return (
+                              <MenuItem
+                                key={ver}
+                                selected={isSelected}
+                                onClick={() => {
+                                  setVersionMenuAnchor(null);
+                                  void handleSwitchVersion(ver);
+                                }}
+                              >
+                                <Stack sx={{ flexGrow: 1 }}>
+                                  <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                                    {ver}
+                                  </Typography>
+                                  <Typography variant="caption" color="text.secondary">
+                                    {formatRelativeTime(v.createdAt ?? v.updatedAt)}
+                                  </Typography>
+                                </Stack>
+                                {isSelected ? <Check size={16} /> : null}
+                              </MenuItem>
+                            );
+                          })}
+                          <Divider />
+                          <MenuItem
+                            component={RouterLink}
+                            to="new-version"
+                            onClick={() => setVersionMenuAnchor(null)}
+                            sx={{ color: 'primary.main', gap: 1 }}
+                          >
+                            <GitBranch size={16} />
+                            Create new version
+                          </MenuItem>
+                        </>
                       );
-                    })}
-                    <Divider />
-                    <MenuItem
-                      component={RouterLink}
-                      to="new-version"
-                      onClick={() => setVersionMenuAnchor(null)}
-                      sx={{ color: 'primary.main', gap: 1 }}
-                    >
-                      <GitBranch size={16} />
-                      Create new version
-                    </MenuItem>
+                    })()}
                   </Menu>
                 </Stack>
                 <Typography
@@ -766,31 +767,27 @@ export default function ProviderTemplateOverview() {
               </Stack>
             </Box>
 
-            <Stack direction="row" spacing={1.5} alignItems="center">
-              <Button
-                variant="contained"
-                onClick={() => {
-                  const name = downloadTemplateYaml(template);
-                  showSnackbar(`${name} downloaded`, 'success');
-                }}
-                startIcon={<Download size={16} />}
-              >
-                <FormattedMessage
-                  id="aiWorkspace.pages.appShell.appShellPages.providerTemplate.ProviderTemplateOverview.downloadYaml"
-                  defaultMessage={'Download YAML'}
-                />
-              </Button>
-              {/* Only the read-only built-in v1.0 gets the enable/disable toggle
-                  (it can't be deleted). New versions behave like custom
-                  templates: editable + deletable, no toggle. */}
+            <Stack direction="column" spacing={1.5} alignItems="flex-end">
+              {!isBuiltIn && (
+                <Button
+                  variant="contained"
+                  onClick={() => {
+                    const name = downloadTemplateYaml(template);
+                    showSnackbar(`${name} downloaded`, 'success');
+                  }}
+                  startIcon={<Download size={16} />}
+                >
+                  <FormattedMessage
+                    id="aiWorkspace.pages.appShell.appShellPages.providerTemplate.ProviderTemplateOverview.downloadYaml"
+                    defaultMessage={'Download YAML'}
+                  />
+                </Button>
+              )}
               {isReadOnly && (
                 <Stack direction="row" spacing={1} alignItems="center">
-                  <Chip
-                    size="small"
-                    label={isEnabled ? 'Enabled' : 'Disabled'}
-                    color={isEnabled ? 'success' : 'default'}
-                    variant="outlined"
-                  />
+                  <Typography variant="body2" color="text.primary">
+                    {isEnabled ? 'Enabled' : 'Disabled'}
+                  </Typography>
                   <Switch
                     checked={isEnabled}
                     disabled={isTogglingEnabled}
@@ -804,10 +801,10 @@ export default function ProviderTemplateOverview() {
                 <Button
                   variant="outlined"
                   color="error"
-                  startIcon={<Trash2 size={16} />}
                   onClick={() => setDeleteOpen(true)}
+                  sx={{ minWidth: 'auto', p: '6px' }}
                 >
-                  Delete
+                  <Trash2 size={16} />
                 </Button>
               )}
             </Stack>
@@ -820,8 +817,7 @@ export default function ProviderTemplateOverview() {
             <Stack direction="row" spacing={1.5} alignItems="center" sx={{ p: 2 }}>
               <Lock size={18} />
               <Typography variant="body2">
-                <strong>Built-in version — read-only.</strong> You can enable or
-                disable it, but its configuration can&apos;t be edited or deleted.
+                <strong>Built-in version. You can only enable or disable it.</strong>
               </Typography>
             </Stack>
           </Card>
@@ -844,14 +840,107 @@ export default function ProviderTemplateOverview() {
             {/* Overview */}
             <TabPanel value={tabIndex} index={0}>
               <Box>
+                {!isReadOnly && (
+                  <>
+                    {/* Logo URL */}
+                    <Box sx={{ mb: 3 }}>
+                      <FormControl fullWidth>
+                        <FormLabel>Logo URL</FormLabel>
+                        <TextField
+                          fullWidth
+                          value={logoUrlField}
+                          onChange={(e) => {
+                            setLogoUrlField(e.target.value);
+                            setIsDirty(true);
+                            setLogoUrlTouched(false);
+                          }}
+                          onBlur={() => setLogoUrlTouched(true)}
+                          placeholder="https://cdn.example.com/logos/openai.svg"
+                          error={logoUrlTouched && !isValidHttpUrl(logoUrlField)}
+                          helperText={
+                            logoUrlTouched && !isValidHttpUrl(logoUrlField)
+                              ? 'Enter a valid URL.'
+                              : ''
+                          }
+                        />
+                      </FormControl>
+                    </Box>
+
+                    {/* OpenAPI Specification source */}
+                    <Box sx={{ mb: 3 }}>
+                      <Typography variant="h6" sx={{ mb: 1, fontWeight: 600 }}>
+                        OpenAPI Specification
+                      </Typography>
+                      <FormControl fullWidth>
+                        <Stack spacing={1.5}>
+                          <Stack direction="row" spacing={1.5} alignItems="center">
+                            <TextField
+                              size="small"
+                              fullWidth
+                              value={openapiSpecUrl}
+                              onChange={(e) => {
+                                // Typing a URL must NOT discard an uploaded spec;
+                                // only a successful fetch replaces it.
+                                setOpenapiSpecUrl(e.target.value);
+                                setIsDirty(true);
+                                setOpenapiSpecUrlTouched(false);
+                              }}
+                              onBlur={() => setOpenapiSpecUrlTouched(true)}
+                              placeholder="https://api.openai.com/openapi.json"
+                              error={openapiSpecUrlTouched && !isValidHttpUrl(openapiSpecUrl)}
+                              helperText={
+                                openapiSpecUrlTouched && !isValidHttpUrl(openapiSpecUrl)
+                                  ? 'Enter a valid URL.'
+                                  : ''
+                              }
+                            />
+                            <Button
+                              variant="outlined"
+                              size="small"
+                              disabled={
+                                isFetchingSpec ||
+                                !openapiSpecUrl.trim() ||
+                                !isValidHttpUrl(openapiSpecUrl)
+                              }
+                              onClick={() => void fetchSpecFromUrl()}
+                              sx={{ whiteSpace: 'nowrap', flexShrink: 0 }}
+                            >
+                              {isFetchingSpec ? 'Fetching…' : 'Fetch specification'}
+                            </Button>
+                          </Stack>
+                          <Divider>Or</Divider>
+                          <Button
+                            variant="outlined"
+                            fullWidth
+                            onClick={() => fileInputRef.current?.click()}
+                          >
+                            {specFileName
+                              ? `Uploaded: ${specFileName}`
+                              : specContent.trim()
+                                ? 'Uploaded Specification'
+                                : 'Upload Your Specification'}
+                          </Button>
+                        </Stack>
+                        <input
+                          ref={fileInputRef}
+                          type="file"
+                          hidden
+                          accept=".json,.yaml,.yml"
+                          onChange={handleSpecFileChange}
+                        />
+                      </FormControl>
+                    </Box>
+                  </>
+                )}
+
+                {/* OpenAPI Resources viewer */}
                 <Typography variant="h6" sx={{ mb: 1, fontWeight: 600 }}>
                   OpenAPI Resources
                 </Typography>
                 {!template.openapi?.trim() &&
                 !template.metadata?.openapiSpecUrl?.trim() ? (
                   <Typography variant="body2" color="text.secondary" sx={{ py: 2 }}>
-                    No available resources. Add an OpenAPI specification (content
-                    or URL) on the Connection tab to see resources.
+                    No available resources. Add an OpenAPI specification above to see resources.
                   </Typography>
                 ) : isSpecLoading ? (
                   <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}>
@@ -894,7 +983,6 @@ export default function ProviderTemplateOverview() {
             </TabPanel>
 
             <TabPanel value={tabIndex} index={1}>
-              {/* Built-in v1.0 is read-only — block all edits on this tab. */}
               <Box
                 sx={
                   isReadOnly
@@ -913,130 +1001,17 @@ export default function ProviderTemplateOverview() {
                       onChange={(e) => {
                         setEndpointUrl(e.target.value);
                         setIsDirty(true);
+                        setEndpointUrlTouched(false);
                       }}
+                      onBlur={() => setEndpointUrlTouched(true)}
                       placeholder="https://api.openai.com"
-                      error={!endpointUrl.trim() || !isValidHttpUrl(endpointUrl)}
+                      error={endpointUrlTouched && (!endpointUrl.trim() || !isValidHttpUrl(endpointUrl))}
                       helperText={
-                        !endpointUrl.trim()
+                        endpointUrlTouched && !endpointUrl.trim()
                           ? 'Endpoint URL is required.'
-                          : !isValidHttpUrl(endpointUrl)
+                          : endpointUrlTouched && !isValidHttpUrl(endpointUrl)
                             ? 'Enter a valid URL.'
                             : ''
-                      }
-                    />
-                  </FormControl>
-                </Grid>
-                <Grid size={{ xs: 12, sm: 6 }}>
-                  <FormControl fullWidth>
-                    <FormLabel>Provider</FormLabel>
-                    <TextField
-                      fullWidth
-                      value={provider}
-                      onChange={(e) => {
-                        setProvider(e.target.value);
-                        setIsDirty(true);
-                      }}
-                      placeholder="other"
-                      helperText={
-                        isBuiltIn
-                          ? "Built-in templates are owned by 'wso2'."
-                          : "Identifies who owns this template. Defaults to 'other'."
-                      }
-                    />
-                  </FormControl>
-                </Grid>
-                <Grid size={{ xs: 12 }}>
-                  <FormControl fullWidth>
-                    <FormLabel>OpenAPI Specification</FormLabel>
-                    <Stack
-                      direction="row"
-                      spacing={1.5}
-                      alignItems="center"
-                      sx={{ mt: 1 }}
-                    >
-                      <TextField
-                        size="small"
-                        fullWidth
-                        value={openapiSpecUrl}
-                        onChange={(e) => {
-                          setOpenapiSpecUrl(e.target.value);
-                          setSpecContent('');
-                          setSpecFileName('');
-                          setIsDirty(true);
-                        }}
-                        placeholder="https://api.openai.com/openapi.json"
-                        error={!isValidHttpUrl(openapiSpecUrl)}
-                        helperText={
-                          !isValidHttpUrl(openapiSpecUrl)
-                            ? 'Enter a valid URL.'
-                            : ''
-                        }
-                      />
-                      <Button
-                        variant="outlined"
-                        size="small"
-                        disabled={
-                          isFetchingSpec ||
-                          !openapiSpecUrl.trim() ||
-                          !isValidHttpUrl(openapiSpecUrl)
-                        }
-                        onClick={() => void fetchSpecFromUrl()}
-                        sx={{ whiteSpace: 'nowrap', flexShrink: 0 }}
-                      >
-                        {isFetchingSpec ? 'Fetching…' : 'Fetch specification'}
-                      </Button>
-                      <Divider orientation="vertical" flexItem>
-                        Or
-                      </Divider>
-                      <Button
-                        variant="outlined"
-                        size="small"
-                        onClick={() => fileInputRef.current?.click()}
-                        sx={{ whiteSpace: 'nowrap', flexShrink: 0 }}
-                      >
-                        {specFileName
-                          ? `Uploaded: ${specFileName}`
-                          : 'Upload Your Specification'}
-                      </Button>
-                    </Stack>
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      hidden
-                      accept=".json,.yaml,.yml"
-                      onChange={handleSpecFileChange}
-                    />
-                    {specContent.trim() ? (
-                      <Typography
-                        variant="caption"
-                        color="text.secondary"
-                        sx={{ mt: 0.5 }}
-                      >
-                        An OpenAPI spec is stored inline
-                        {specFileName ? ` (${specFileName})` : ''} —{' '}
-                        {(specContent.length / 1024).toFixed(1)} KB. It powers the
-                        resources on the Overview tab. Setting a URL here references
-                        a spec by link instead.
-                      </Typography>
-                    ) : null}
-                  </FormControl>
-                </Grid>
-                <Grid size={{ xs: 12 }}>
-                  <FormControl fullWidth>
-                    <FormLabel>Logo URL</FormLabel>
-                    <TextField
-                      fullWidth
-                      value={logoUrlField}
-                      onChange={(e) => {
-                        setLogoUrlField(e.target.value);
-                        setIsDirty(true);
-                      }}
-                      placeholder="https://cdn.example.com/logos/openai.svg"
-                      error={!isValidHttpUrl(logoUrlField)}
-                      helperText={
-                        !isValidHttpUrl(logoUrlField)
-                          ? 'Enter a valid URL.'
-                          : ''
                       }
                     />
                   </FormControl>
@@ -1104,6 +1079,7 @@ export default function ProviderTemplateOverview() {
                     setIsDirty(true);
                   }}
                   spec={parsedSpec}
+                  hidePerResource={isReadOnly}
                 />
               </Box>
             </TabPanel>

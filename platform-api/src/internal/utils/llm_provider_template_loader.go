@@ -55,6 +55,7 @@ type llmProviderTemplateYAML struct {
 	Spec struct {
 		DisplayName      string                                   `yaml:"displayName"`
 		Provider         string                                   `yaml:"provider"`
+		Version          string                                   `yaml:"version"`
 		Metadata         *llmProviderTemplateMetadataYAML         `yaml:"metadata"`
 		PromptTokens     *extractionIdentifierYAML                `yaml:"promptTokens"`
 		CompletionTokens *extractionIdentifierYAML                `yaml:"completionTokens"`
@@ -124,8 +125,17 @@ func LoadLLMProviderTemplatesFromDirectory(dirPath string) ([]*model.LLMProvider
 			provider = "wso2"
 		}
 
+		seedVersion := strings.TrimSpace(doc.Spec.Version)
+		if seedVersion == "" {
+			seedVersion = "v1.0"
+		}
+		baseHandle := strings.TrimSpace(doc.Metadata.Name)
+		handle := baseHandle + "-" + strings.ReplaceAll(strings.ToLower(seedVersion), ".", "-")
+
 		res = append(res, &model.LLMProviderTemplate{
-			ID:               doc.Metadata.Name,
+			ID:               handle,
+			BaseHandle:       baseHandle,
+			Version:          seedVersion,
 			Name:             doc.Spec.DisplayName,
 			Provider:         provider,
 			Metadata:         mapTemplateMetadata(doc.Spec.Metadata),

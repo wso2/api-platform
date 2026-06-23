@@ -34,17 +34,14 @@ import {
   TextField,
   Typography,
 } from '@wso2/oxygen-ui';
-import { ChevronLeft, ChevronRight, Clock, Plus, Search } from '@wso2/oxygen-ui-icons-react';
+import { ChevronLeft, ChevronRight, Clock, Cpu, Plus, Search } from '@wso2/oxygen-ui-icons-react';
 import { FormattedMessage } from 'react-intl';
 import { formatRelativeTime } from '../../../../contexts/llmProvider';
 import { useProviderTemplates } from '../../../../contexts/llmProvider/providerTemplate';
 import { useAppShell } from '../../../../contexts/AppShellContext';
 import { buildOrgPath } from '../../../../utils/projectRouting';
 import ErrorAlert from '../../../../Components/common/ErrorAlert';
-import {
-  isBuiltInProviderTemplate,
-  truncateProviderDisplayName,
-} from '../../../../utils/providerTemplateDisplay';
+import { truncateProviderDisplayName } from '../../../../utils/providerTemplateDisplay';
 import type { ProviderTemplate } from '../../../../utils/types';
 import AnthropicLogo from '../../../../assets/brands/Anthropic.jpg';
 import AWSBedrockLogo from '../../../../assets/brands/AWSBedrock.webp';
@@ -68,10 +65,14 @@ const PROVIDER_LOGO_MAP: Record<string, string> = {
 };
 
 function resolveTemplateLogo(template: ProviderTemplate): string | undefined {
-  const fromMeta = template.metadata?.logoUrl?.trim();
+  const fromMeta = template.metadata?.logoUrl?.trim() || template.logoUrl?.trim();
   if (fromMeta) return fromMeta;
   const id = (template.id ?? '').toLowerCase();
-  return PROVIDER_LOGO_MAP[id];
+  if (PROVIDER_LOGO_MAP[id]) return PROVIDER_LOGO_MAP[id];
+  const matchedKey = Object.keys(PROVIDER_LOGO_MAP)
+    .sort((a, b) => b.length - a.length)
+    .find((key) => id.startsWith(key));
+  return matchedKey ? PROVIDER_LOGO_MAP[matchedKey] : undefined;
 }
 
 function getInitials(name: string): string {
@@ -96,9 +97,7 @@ export default function ProviderTemplatesList({
 
   const templates = useMemo(
     () =>
-      templatesResponse.list.filter(
-        (template) => !isBuiltInProviderTemplate(template.id)
-      ),
+      templatesResponse.list.filter((template) => template.provider !== 'wso2'),
     [templatesResponse.list]
   );
 
@@ -133,8 +132,8 @@ export default function ProviderTemplatesList({
 
   const builtInTemplates = useMemo(
     () =>
-      templatesResponse.list.filter((template) =>
-        isBuiltInProviderTemplate(template.id)
+      templatesResponse.list.filter(
+        (template) => template.provider === 'wso2'
       ),
     [templatesResponse.list]
   );
@@ -290,7 +289,7 @@ export default function ProviderTemplatesList({
           </PageTitle.SubHeader>
         </PageTitle>
 
-        {(templates.length > 0 || builtInTemplates.length > 0) && (
+        {templates.length > 0 && (
           <Button
             variant="contained"
             color="primary"
@@ -354,7 +353,7 @@ export default function ProviderTemplatesList({
                 <FormattedMessage
                   id="aiWorkspace.pages.appShell.appShellPages.providerTemplate.ProviderTemplatesList.empty.subtitle"
                   defaultMessage={
-                    'A template stores the endpoint and auth details so you can connect a custom LLM provider quickly.'
+                    'A template holds the endpoint and auth details for connecting a custom LLM provider.'
                   }
                 />
               </Typography>
@@ -377,29 +376,34 @@ export default function ProviderTemplatesList({
         !error &&
         (templates.length > 0 || builtInTemplates.length > 0) && (
           <>
-            <Box sx={{ my: 3 }}>
-              <TextField
-                fullWidth
-                placeholder="Search templates..."
-                value={searchQuery}
-                onChange={(event) => {
-                  setSearchQuery(event.target.value);
-                  setCustomPage(1);
-                }}
-                data-cyid="provider-template-search-input"
-                slotProps={{
-                  input: {
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <Search size={20} />
-                      </InputAdornment>
-                    ),
-                  },
-                }}
-              />
-            </Box>
+            {templates.length > 0 && (
+              <Box sx={{ my: 3 }}>
+                <TextField
+                  fullWidth
+                  placeholder="Search templates..."
+                  value={searchQuery}
+                  onChange={(event) => {
+                    setSearchQuery(event.target.value);
+                    setCustomPage(1);
+                  }}
+                  data-cyid="provider-template-search-input"
+                  slotProps={{
+                    input: {
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <Search size={20} />
+                        </InputAdornment>
+                      ),
+                    },
+                  }}
+                />
+              </Box>
+            )}
 
-            <Typography variant="h6" sx={{ fontWeight: 700, mb: 0.5 }}>
+            <Typography
+              variant="h6"
+              sx={{ fontWeight: 700, mb: 0.5, mt: 0 }}
+            >
               Custom LLM Providers
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -443,11 +447,79 @@ export default function ProviderTemplatesList({
                   </Stack>
                 )}
               </>
+            ) : templates.length === 0 ? (
+              <Box
+                sx={{
+                  border: '1px dashed',
+                  borderColor: 'divider',
+                  borderRadius: 2,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  px: 3,
+                  py: 8,
+                }}
+              >
+                <Stack
+                  spacing={2}
+                  alignItems="center"
+                  justifyContent="center"
+                  sx={{ textAlign: 'center', width: '100%' }}
+                >
+                  <Box
+                    sx={{
+                      width: 72,
+                      height: 72,
+                      borderRadius: 2,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: 'primary.main',
+                      bgcolor: (theme) =>
+                        `color-mix(in srgb, ${theme.palette.primary.main} 12%, transparent)`,
+                      border: '1px solid',
+                      borderColor: (theme) =>
+                        `color-mix(in srgb, ${theme.palette.primary.main} 30%, transparent)`,
+                    }}
+                  >
+                    <Cpu size={32} />
+                  </Box>
+                  <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                    <FormattedMessage
+                      id="aiWorkspace.pages.appShell.appShellPages.providerTemplate.ProviderTemplatesList.empty.title"
+                      defaultMessage={
+                        'Create your first LLM Provider Template'
+                      }
+                    />
+                  </Typography>
+                  <Typography
+                    variant="body2"
+                    color="text.secondary"
+                    sx={{ maxWidth: 460 }}
+                  >
+                    <FormattedMessage
+                      id="aiWorkspace.pages.appShell.appShellPages.providerTemplate.ProviderTemplatesList.empty.subtitle"
+                      defaultMessage={
+                        'A template holds the endpoint and auth details for connecting a custom LLM provider.'
+                      }
+                    />
+                  </Typography>
+                  <Button
+                    variant="contained"
+                    onClick={() => navigate(newTemplatePath)}
+                    startIcon={<Plus size={18} />}
+                    data-cyid="add-provider-template-button"
+                  >
+                    <FormattedMessage
+                      id="aiWorkspace.pages.appShell.appShellPages.providerTemplate.ProviderTemplatesList.create"
+                      defaultMessage={'Create'}
+                    />
+                  </Button>
+                </Stack>
+              </Box>
             ) : (
               <Typography variant="body2" color="text.secondary" sx={{ py: 1 }}>
-                {templates.length === 0
-                  ? 'No custom templates yet.'
-                  : 'No custom templates match your search.'}
+                No custom templates match your search.
               </Typography>
             )}
 
@@ -455,11 +527,10 @@ export default function ProviderTemplatesList({
               <>
                 <Divider sx={{ my: 4 }} />
                 <Typography variant="h6" sx={{ fontWeight: 700, mb: 0.5 }}>
-                  Built-in templates
+                  Built-in Templates
                 </Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                  Ready-made templates for popular LLM providers, included by
-                  default.
+                  Built-in LLM providers, included by default.
                 </Typography>
                 {filteredBuiltIn.length > 0 ? (
                   <Box sx={cardGridSx}>

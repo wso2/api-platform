@@ -299,7 +299,9 @@ CREATE TABLE IF NOT EXISTS llm_provider_templates (
     uuid VARCHAR(40) PRIMARY KEY,
     organization_uuid VARCHAR(40) NOT NULL,
     handle VARCHAR(255) NOT NULL,
+    base_handle VARCHAR(255) NOT NULL,
     name VARCHAR(253) NOT NULL,
+    provider VARCHAR(253) NOT NULL DEFAULT 'other',
     description VARCHAR(1023),
     created_by VARCHAR(255),
     configuration TEXT NOT NULL,
@@ -310,7 +312,7 @@ CREATE TABLE IF NOT EXISTS llm_provider_templates (
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
-    UNIQUE(organization_uuid, handle, version)
+    UNIQUE(organization_uuid, base_handle, version)
 );
 
 -- LLM Providers table

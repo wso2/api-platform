@@ -117,7 +117,6 @@ function EditProviderTemplateForm({ template }: { template: ProviderTemplate }) 
               defaultMessage={'Edit LLM Provider Template'}
             />
           </PageTitle.Header>
-          <PageTitle.SubHeader>{template.id}</PageTitle.SubHeader>
         </PageTitle>
       </Stack>
 
@@ -141,7 +140,7 @@ function EditProviderTemplateForm({ template }: { template: ProviderTemplate }) 
                     helperText={
                       name.length > MAX_NAME_LENGTH
                         ? `Name must not exceed ${MAX_NAME_LENGTH} characters (${name.length}/${MAX_NAME_LENGTH})`
-                        : ''
+                        : 'Renaming updates every version of this template.'
                     }
                   />
                 </FormControl>
