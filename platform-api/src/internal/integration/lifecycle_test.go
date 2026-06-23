@@ -300,6 +300,68 @@ func TestLifecycle_ApplicationByIDOrHandle(t *testing.T) {
 	}
 }
 
+// TestLifecycle_WebSubAPICreateAndList exercises WebSubAPIRepo.Create and List
+// (with pagination) through the real repository layer, verifying the two-table
+// write (artifacts + websub_apis) and the LIMIT/OFFSET query across all engines.
+func TestLifecycle_WebSubAPICreateAndList(t *testing.T) {
+	it := openITDB(t)
+	defer it.db.Close()
+	orgRepo := repository.NewOrganizationRepo(it.db)
+	projectRepo := repository.NewProjectRepo(it.db)
+	websubRepo := repository.NewWebSubAPIRepo(it.db)
+
+	org := &model.Organization{ID: id(), Handle: "wsub-" + id()[:8], Name: "wsub org", Region: "us"}
+	if err := orgRepo.CreateOrganization(org); err != nil {
+		t.Fatalf("[%s] create org failed: %v", it.driver, err)
+	}
+	proj := &model.Project{ID: id(), Name: "wsub-proj-" + id()[:6], OrganizationID: org.ID}
+	if err := projectRepo.CreateProject(proj); err != nil {
+		t.Fatalf("[%s] create project failed: %v", it.driver, err)
+	}
+
+	const n = 4
+	for i := range n {
+		api := &model.WebSubAPI{
+			Handle:           fmt.Sprintf("ws-api-%d-%s", i, id()[:6]),
+			Name:             fmt.Sprintf("ws api %d", i),
+			Version:          "v1.0",
+			OrganizationUUID: org.ID,
+			ProjectUUID:      proj.ID,
+		}
+		if err := websubRepo.Create(api); err != nil {
+			t.Fatalf("[%s] create websub api %d failed: %v", it.driver, i, err)
+		}
+	}
+
+	page1, err := websubRepo.List(org.ID, "", 2, 0)
+	if err != nil {
+		t.Fatalf("[%s] List(2,0) failed: %v", it.driver, err)
+	}
+	if len(page1) != 2 {
+		t.Fatalf("[%s] List(2,0): want 2, got %d", it.driver, len(page1))
+	}
+
+	page2, err := websubRepo.List(org.ID, "", 2, 2)
+	if err != nil {
+		t.Fatalf("[%s] List(2,2) failed: %v", it.driver, err)
+	}
+	if len(page2) != 2 {
+		t.Fatalf("[%s] List(2,2): want 2, got %d", it.driver, len(page2))
+	}
+
+	// Verify full coverage with no overlap.
+	seen := map[string]bool{}
+	for _, a := range append(page1, page2...) {
+		if seen[a.UUID] {
+			t.Fatalf("[%s] pagination overlap: UUID %s seen twice", it.driver, a.UUID)
+		}
+		seen[a.UUID] = true
+	}
+	if len(seen) != n {
+		t.Fatalf("[%s] paging covered %d rows, want %d", it.driver, len(seen), n)
+	}
+}
+
 func newDevPortal(orgID, name string, isDefault bool) *model.DevPortal {
 	u := id()
 	return &model.DevPortal{
