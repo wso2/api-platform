@@ -38,6 +38,18 @@ export const getEnvOrDefault = <T>(envKey: string, defaultValue: T): T => {
       return (isNaN(num) ? defaultValue : num) as T;
     }
 
+    // Handle array/object conversion
+    if (Array.isArray(defaultValue) || (typeof defaultValue === 'object' && defaultValue !== null)) {
+      try {
+        const parsed = JSON.parse(runtimeValue);
+        if (Array.isArray(defaultValue) && !Array.isArray(parsed)) return defaultValue;
+        if (!Array.isArray(defaultValue) && (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed))) return defaultValue;
+        return parsed as T;
+      } catch {
+        return defaultValue;
+      }
+    }
+
     return runtimeValue as T;
   }
 
@@ -54,6 +66,18 @@ export const getEnvOrDefault = <T>(envKey: string, defaultValue: T): T => {
     if (typeof defaultValue === 'number') {
       const num = Number(envValue);
       return (isNaN(num) ? defaultValue : num) as T;
+    }
+
+    // Handle array/object conversion
+    if (Array.isArray(defaultValue) || (typeof defaultValue === 'object' && defaultValue !== null)) {
+      try {
+        const parsed = JSON.parse(envValue);
+        if (Array.isArray(defaultValue) && !Array.isArray(parsed)) return defaultValue;
+        if (!Array.isArray(defaultValue) && (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed))) return defaultValue;
+        return parsed as T;
+      } catch {
+        return defaultValue;
+      }
     }
 
     return envValue as T;
