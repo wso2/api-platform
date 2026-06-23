@@ -71,6 +71,10 @@ const (
 	// Configuration Validation Constants
 	MaxReasonableTimeoutMs       = uint32(3600000) // 1 hour in milliseconds
 	MaxReasonablePolicyTimeoutMs = uint32(60000)   // 60 seconds in milliseconds
+	
+	// MaxReasonableConnectionTimeoutMs caps connection-level timeouts (request, request-headers,etc.), 
+	// allowing higher values than MaxReasonableTimeoutMs to support long-lived idle connections.
+	MaxReasonableConnectionTimeoutMs = uint32(86400000) // 24 hours in milliseconds
 
 	// Cipher Suite Validation
 	CipherInvalidChars1 = ";"

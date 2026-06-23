@@ -1086,6 +1086,13 @@ func (t *Translator) createListener(virtualHosts []*route.VirtualHost, isHTTPS b
 		HttpFilters:                httpFilters,
 		ServerHeaderTransformation: convertServerHeaderTransformation(t.routerConfig.HTTPListener.ServerHeaderTransformation),
 		ServerName:                 t.routerConfig.HTTPListener.ServerHeaderValue,
+		// HCM-level (downstream) timeouts. Defaults match Envoy's documented defaults.
+		RequestTimeout:        durationpb.New(t.routerConfig.HTTPListener.Timeouts.RequestTimeout),
+		RequestHeadersTimeout: durationpb.New(t.routerConfig.HTTPListener.Timeouts.RequestHeadersTimeout),
+		StreamIdleTimeout:     durationpb.New(t.routerConfig.HTTPListener.Timeouts.StreamIdleTimeout),
+		CommonHttpProtocolOptions: &core.HttpProtocolOptions{
+			IdleTimeout: durationpb.New(t.routerConfig.HTTPListener.Timeouts.IdleTimeout),
+		},
 	}
 
 	// Add access logs if enabled

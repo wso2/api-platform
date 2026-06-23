@@ -32,6 +32,7 @@ import (
 	core "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	listener "github.com/envoyproxy/go-control-plane/envoy/config/listener/v3"
 	route "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
+	hcm "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/http_connection_manager/v3"
 	tlsv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/transport_sockets/tls/v3"
 	resource "github.com/envoyproxy/go-control-plane/pkg/resource/v3"
 	"github.com/stretchr/testify/assert"
@@ -1105,6 +1106,55 @@ func TestTranslator_ExtractProviderName_NilSourceConfig(t *testing.T) {
 
 	result := translator.extractProviderName(storedCfg, nil)
 	assert.Equal(t, "", result)
+}
+
+// extractHCM pulls the HttpConnectionManager out of the listener's first filter chain.
+func extractHCM(t *testing.T, lis *listener.Listener) *hcm.HttpConnectionManager {
+	t.Helper()
+	require.NotEmpty(t, lis.GetFilterChains())
+	require.NotEmpty(t, lis.GetFilterChains()[0].GetFilters())
+	typedConfig := lis.GetFilterChains()[0].GetFilters()[0].GetTypedConfig()
+	require.NotNil(t, typedConfig)
+	manager := &hcm.HttpConnectionManager{}
+	require.NoError(t, typedConfig.UnmarshalTo(manager))
+	return manager
+}
+
+func TestTranslator_CreateListener_HCMTimeouts(t *testing.T) {
+	tests := []struct {
+		name     string
+		timeouts config.HCMTimeouts
+	}{
+		{
+			name:     "configured values",
+			timeouts: config.HCMTimeouts{RequestTimeout: 30 * time.Second, RequestHeadersTimeout: 10 * time.Second, StreamIdleTimeout: 2 * time.Minute, IdleTimeout: 30 * time.Minute},
+		},
+		{
+			name:     "envoy defaults flow through unchanged",
+			timeouts: config.HCMTimeouts{RequestTimeout: 0, RequestHeadersTimeout: 0, StreamIdleTimeout: 5 * time.Minute, IdleTimeout: time.Hour},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			logger := createTestLogger()
+			routerCfg := testRouterConfig()
+			routerCfg.HTTPListener.Timeouts = tt.timeouts
+			cfg := testConfig()
+			cfg.Router = *routerCfg
+			translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+			lis, _, err := translator.createListener(nil, false)
+			require.NoError(t, err)
+
+			manager := extractHCM(t, lis)
+			assert.Equal(t, tt.timeouts.RequestTimeout, manager.GetRequestTimeout().AsDuration(), "request_timeout")
+			assert.Equal(t, tt.timeouts.RequestHeadersTimeout, manager.GetRequestHeadersTimeout().AsDuration(), "request_headers_timeout")
+			assert.Equal(t, tt.timeouts.StreamIdleTimeout, manager.GetStreamIdleTimeout().AsDuration(), "stream_idle_timeout")
+			require.NotNil(t, manager.GetCommonHttpProtocolOptions(), "common_http_protocol_options must be set")
+			assert.Equal(t, tt.timeouts.IdleTimeout, manager.GetCommonHttpProtocolOptions().GetIdleTimeout().AsDuration(), "idle_timeout")
+		})
+	}
 }
 
 func TestTranslator_CreateAccessLogConfig_Disabled(t *testing.T) {
