@@ -2500,6 +2500,7 @@ func (c *Client) syncHmacSecretsForArtifact(artifactID string) {
 		c.logger.Warn("Failed to clear existing HMAC secrets for WebSub API",
 			slog.String("artifact_id", artifactID),
 			slog.Any("error", err))
+		return
 	}
 
 	for _, s := range secrets {

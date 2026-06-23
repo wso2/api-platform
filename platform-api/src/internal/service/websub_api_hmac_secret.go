@@ -94,6 +94,9 @@ func (s *WebSubAPIHmacSecretService) Generate(orgUUID, apiHandle, displayName, e
 	}
 	if name == "" {
 		name = "secret-" + apiHandle
+		if len(name) > 63 {
+			name = name[:63]
+		}
 	}
 
 	var plaintext string
