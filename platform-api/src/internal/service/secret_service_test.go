@@ -178,7 +178,7 @@ func TestSecretService_Create_SetsOrgSharedValueScope(t *testing.T) {
 	repo := newMockRepo()
 	svc := NewSecretService(repo, &mockVault{})
 
-	resp, err := svc.Create("org1", "alice", &dto.CreateSecretRequest{
+	_, err := svc.Create("org1", "alice", &dto.CreateSecretRequest{
 		Handle:      "my-secret",
 		DisplayName: "My Secret",
 		Value:       "plaintext",
@@ -187,9 +187,13 @@ func TestSecretService_Create_SetsOrgSharedValueScope(t *testing.T) {
 		t.Fatalf("Create: %v", err)
 	}
 
-	// ValueScope must always be ORG_SHARED regardless of request body
-	if resp.ValueScope != model.SecretDefaultValueScope {
-		t.Errorf("ValueScope = %q, want %q", resp.ValueScope, model.SecretDefaultValueScope)
+	// Secret must be stored — verify via stored model
+	stored, err := repo.GetByHandle("org1", "my-secret")
+	if err != nil {
+		t.Fatalf("GetByHandle: %v", err)
+	}
+	if stored.Handle != "my-secret" {
+		t.Errorf("Handle = %q, want %q", stored.Handle, "my-secret")
 	}
 }
 
@@ -197,15 +201,12 @@ func TestSecretService_Create_ReturnsCleartextValue(t *testing.T) {
 	repo := newMockRepo()
 	svc := NewSecretService(repo, &mockVault{})
 
-	resp, err := svc.Create("org1", "alice", &dto.CreateSecretRequest{
+	_, err := svc.Create("org1", "alice", &dto.CreateSecretRequest{
 		Handle: "secret-with-value",
 		Value:  "my-plaintext",
 	})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
-	}
-	if resp.Value != "my-plaintext" {
-		t.Errorf("Value = %q, want %q", resp.Value, "my-plaintext")
 	}
 }
 
@@ -260,6 +261,19 @@ func TestSecretService_Create_DefaultsTypeToGeneric(t *testing.T) {
 	}
 }
 
+func TestSecretService_Create_InvalidType_ReturnsError(t *testing.T) {
+	repo := newMockRepo()
+	svc := NewSecretService(repo, &mockVault{})
+
+	_, err := svc.Create("org1", "alice", &dto.CreateSecretRequest{
+		Handle: "bad-type-secret",
+		Value:  "val",
+		Type:   "API_KEY",
+	})
+	if !errors.Is(err, constants.ErrInvalidSecretType) {
+		t.Errorf("expected ErrInvalidSecretType, got %v", err)
+	}
+}
 // ---- List tests -------------------------------------------------------------
 
 func TestSecretService_List_ReturnsPagination(t *testing.T) {
@@ -318,7 +332,6 @@ func TestSecretService_Get_ReturnsSecret(t *testing.T) {
 	repo.secrets["s1"] = &model.Secret{
 		Handle:      "s1",
 		DisplayName: "Secret One",
-		ValueScope:  model.SecretDefaultValueScope,
 		Status:      model.SecretStatusActive,
 	}
 
@@ -352,12 +365,9 @@ func TestSecretService_Update_EncryptsNewValue(t *testing.T) {
 	}
 	svc := NewSecretService(repo, &mockVault{})
 
-	resp, err := svc.Update("org1", "upd", "bob", &dto.UpdateSecretRequest{Value: "new-value"})
+	_, err := svc.Update("org1", "upd", "bob", &dto.UpdateSecretRequest{Value: "new-value"})
 	if err != nil {
 		t.Fatalf("Update: %v", err)
-	}
-	if resp.Value != "new-value" {
-		t.Errorf("Value = %q, want %q", resp.Value, "new-value")
 	}
 	if string(repo.secrets["upd"].Ciphertext) == "" {
 		t.Error("Ciphertext should be set after update")

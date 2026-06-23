@@ -62,7 +62,7 @@ func (h *SecretHandler) CreateSecret(c *gin.Context) {
 	username, _ := middleware.GetUsernameFromContext(c)
 
 	var req dto.CreateSecretRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := c.ShouldBind(&req); err != nil {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))
 		return
 	}
@@ -71,6 +71,10 @@ func (h *SecretHandler) CreateSecret(c *gin.Context) {
 	if err != nil {
 		if errors.Is(err, constants.ErrSecretAlreadyExists) {
 			c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict", "A secret with this name already exists in this scope"))
+			return
+		}
+		if errors.Is(err, constants.ErrInvalidSecretType) {
+			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))
 			return
 		}
 		h.slogger.Error("failed to create secret", "error", err)
@@ -167,7 +171,7 @@ func (h *SecretHandler) UpdateSecret(c *gin.Context) {
 	username, _ := middleware.GetUsernameFromContext(c)
 
 	var req dto.UpdateSecretRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := c.ShouldBind(&req); err != nil {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))
 		return
 	}

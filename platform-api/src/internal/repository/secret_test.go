@@ -42,7 +42,6 @@ func insertSecret(t *testing.T, repo SecretRepository, orgID, handle string) *mo
 		Type:           model.SecretTypeGeneric,
 		Provider:       model.SecretProviderInHouse,
 		Status:         model.SecretStatusActive,
-		ValueScope:     model.SecretDefaultValueScope,
 		CreatedBy:      "test-user",
 		UpdatedBy:      "test-user",
 	}
@@ -78,7 +77,6 @@ func TestSecretRepo_CreateAndGetByHandle(t *testing.T) {
 		Type:           model.SecretTypeGeneric,
 		Provider:       model.SecretProviderInHouse,
 		Status:         model.SecretStatusActive,
-		ValueScope:     model.SecretDefaultValueScope,
 		CreatedBy:      "alice",
 		UpdatedBy:      "alice",
 	}
@@ -97,9 +95,6 @@ func TestSecretRepo_CreateAndGetByHandle(t *testing.T) {
 	if got.Handle != "my-secret" {
 		t.Errorf("handle = %q, want %q", got.Handle, "my-secret")
 	}
-	if got.ValueScope != model.SecretDefaultValueScope {
-		t.Errorf("value_scope = %q, want %q", got.ValueScope, model.SecretDefaultValueScope)
-	}
 }
 
 func TestSecretRepo_GetByHandle_NotFound(t *testing.T) {
@@ -116,7 +111,7 @@ func TestSecretRepo_GetByHandle_NotFound(t *testing.T) {
 	}
 }
 
-func TestSecretRepo_ValueScopeDefaultsToOrgShared(t *testing.T) {
+func TestSecretRepo_CreateStoresScopes(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	t.Cleanup(cleanup)
 
@@ -131,18 +126,23 @@ func TestSecretRepo_ValueScopeDefaultsToOrgShared(t *testing.T) {
 		Hash:           "h",
 		CreatedBy:      "u",
 		UpdatedBy:      "u",
-		// ValueScope intentionally empty — should be defaulted
+		Scopes: []model.SecretScope{
+			{Scope: model.SecretScopeTypeOrg, ScopeValue: orgID},
+		},
 	}
 	if err := repo.Create(s); err != nil {
 		t.Fatalf("Create: %v", err)
+	}
+	if s.UUID == "" {
+		t.Error("UUID should be auto-generated")
 	}
 
 	got, err := repo.GetByHandle(orgID, "scope-test")
 	if err != nil {
 		t.Fatalf("GetByHandle: %v", err)
 	}
-	if got.ValueScope != model.SecretDefaultValueScope {
-		t.Errorf("expected ValueScope %q, got %q", model.SecretDefaultValueScope, got.ValueScope)
+	if got.Handle != "scope-test" {
+		t.Errorf("handle = %q, want %q", got.Handle, "scope-test")
 	}
 }
 
@@ -323,7 +323,6 @@ func TestSecretRepo_ListByHandles(t *testing.T) {
 			Handle:         h,
 			Ciphertext:     []byte("ct"),
 			Hash:           "hash",
-			ValueScope:     model.SecretValueScopeOrgShared,
 			CreatedBy:      "u",
 			UpdatedBy:      "u",
 		}
@@ -332,7 +331,7 @@ func TestSecretRepo_ListByHandles(t *testing.T) {
 		}
 	}
 
-	got, err := repo.ListByHandles(orgID, []string{"s1", "s3"}, nil, nil)
+	got, err := repo.ListByHandles(orgID, []string{"s1", "s3"}, nil)
 	if err != nil {
 		t.Fatalf("ListByHandles: %v", err)
 	}
@@ -341,7 +340,7 @@ func TestSecretRepo_ListByHandles(t *testing.T) {
 	}
 }
 
-func TestSecretRepo_ListByHandles_ScopeFilter(t *testing.T) {
+func TestSecretRepo_ListByHandles_UpdatedAfterFilter(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	t.Cleanup(cleanup)
 
@@ -354,7 +353,6 @@ func TestSecretRepo_ListByHandles_ScopeFilter(t *testing.T) {
 		Handle:         "shared-secret",
 		Ciphertext:     []byte("ct"),
 		Hash:           "h",
-		ValueScope:     model.SecretValueScopeOrgShared,
 		CreatedBy:      "u",
 		UpdatedBy:      "u",
 	}
@@ -362,22 +360,12 @@ func TestSecretRepo_ListByHandles_ScopeFilter(t *testing.T) {
 		t.Fatalf("Create: %v", err)
 	}
 
-	// Filter matching scope returns result
-	got, err := repo.ListByHandles(orgID, []string{"shared-secret"}, nil, []string{model.SecretValueScopeOrgShared})
+	got, err := repo.ListByHandles(orgID, []string{"shared-secret"}, nil)
 	if err != nil {
-		t.Fatalf("ListByHandles (matching scope): %v", err)
+		t.Fatalf("ListByHandles: %v", err)
 	}
 	if len(got) != 1 {
 		t.Errorf("expected 1 result, got %d", len(got))
-	}
-
-	// Filter non-matching scope returns empty
-	got, err = repo.ListByHandles(orgID, []string{"shared-secret"}, nil, []string{"PROJECT"})
-	if err != nil {
-		t.Fatalf("ListByHandles (non-matching scope): %v", err)
-	}
-	if len(got) != 0 {
-		t.Errorf("expected 0 results with wrong scope, got %d", len(got))
 	}
 }
 
@@ -389,7 +377,7 @@ func TestSecretRepo_ListByHandles_EmptyHandles(t *testing.T) {
 	createTestOrganizationAndProject(t, db, orgID, "proj-sec-010")
 
 	repo := NewSecretRepo(db)
-	got, err := repo.ListByHandles(orgID, nil, nil, nil)
+	got, err := repo.ListByHandles(orgID, nil, nil)
 	if err != nil {
 		t.Fatalf("ListByHandles(nil): %v", err)
 	}
@@ -843,7 +831,6 @@ func TestSecretRepo_Create_UniqueConstraint_409(t *testing.T) {
 		Type:           model.SecretTypeGeneric,
 		Provider:       model.SecretProviderInHouse,
 		Status:         model.SecretStatusActive,
-		ValueScope:     model.SecretDefaultValueScope,
 		CreatedBy:      "u",
 		UpdatedBy:      "u",
 	}
@@ -861,7 +848,6 @@ func TestSecretRepo_Create_UniqueConstraint_409(t *testing.T) {
 		Type:           model.SecretTypeGeneric,
 		Provider:       model.SecretProviderInHouse,
 		Status:         model.SecretStatusActive,
-		ValueScope:     model.SecretDefaultValueScope,
 		CreatedBy:      "u",
 		UpdatedBy:      "u",
 	}
@@ -894,7 +880,6 @@ func TestSecretRepo_FindRefsAndSoftDelete_Transactional(t *testing.T) {
 		Type:           model.SecretTypeGeneric,
 		Provider:       model.SecretProviderInHouse,
 		Status:         model.SecretStatusActive,
-		ValueScope:     model.SecretDefaultValueScope,
 		CreatedBy:      "u",
 		UpdatedBy:      "u",
 	}
