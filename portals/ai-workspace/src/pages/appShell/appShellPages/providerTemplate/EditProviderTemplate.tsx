@@ -49,7 +49,7 @@ const MAX_NAME_LENGTH = 80;
 const MAX_DESCRIPTION_LENGTH = 200;
 
 function EditProviderTemplateForm({ template }: { template: ProviderTemplate }) {
-  const templateId = template.id ?? '';
+  const templateId = template.id;
   const navigate = useNavigate();
   const { currentOrganization } = useAppShell();
   const { updateTemplate } = useProviderTemplates();

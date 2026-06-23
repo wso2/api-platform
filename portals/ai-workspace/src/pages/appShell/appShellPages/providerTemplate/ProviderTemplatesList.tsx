@@ -67,7 +67,7 @@ const PROVIDER_LOGO_MAP: Record<string, string> = {
 function resolveTemplateLogo(template: ProviderTemplate): string | undefined {
   const fromMeta = template.metadata?.logoUrl?.trim() || template.logoUrl?.trim();
   if (fromMeta) return fromMeta;
-  const id = (template.id ?? '').toLowerCase();
+  const id = template.id.toLowerCase();
   if (PROVIDER_LOGO_MAP[id]) return PROVIDER_LOGO_MAP[id];
   const matchedKey = Object.keys(PROVIDER_LOGO_MAP)
     .sort((a, b) => b.length - a.length)
@@ -148,7 +148,7 @@ export default function ProviderTemplatesList({
   }, [builtInTemplates, searchQuery]);
 
   const renderCard = (template: ProviderTemplate) => {
-    const templateId = template.id ?? template.name;
+    const templateId = template.id;
     const overviewPath = `${templatesBase}/${templateId}`;
     const logoSrc = resolveTemplateLogo(template);
     const hasLogo = Boolean(logoSrc);

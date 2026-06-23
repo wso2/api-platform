@@ -122,7 +122,7 @@ function CreateProviderTemplateVersionForm({
 }: {
   template: ProviderTemplate;
 }) {
-  const templateId = template.id ?? '';
+  const templateId = template.id;
   const navigate = useNavigate();
   const { currentOrganization } = useAppShell();
   const { refreshTemplates } = useProviderTemplates();
@@ -133,7 +133,7 @@ function CreateProviderTemplateVersionForm({
     '/settings/llm-provider-templates'
   )}/${templateId}`;
 
-  const currentVersion = template.version ?? 'v1.0';
+  const currentVersion = template.version;
   const [version, setVersion] = useState(() => suggestNextVersion(template.version));
 
 // Description is user-entered (prefilled from the source version) and optional,

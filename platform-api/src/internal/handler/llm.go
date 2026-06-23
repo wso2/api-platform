@@ -223,13 +223,10 @@ func (h *LLMHandler) CreateLLMProviderTemplateVersion(c *gin.Context) {
 	}
 	id := c.Param("id")
 
-	var req api.LLMProviderTemplate
+	var req api.CreateLLMProviderTemplateVersionRequest
 	if err := json.NewDecoder(c.Request.Body).Decode(&req); err != nil {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid request body"))
 		return
-	}
-	if req.Id == "" {
-		req.Id = id
 	}
 
 	created, err := h.templateService.CreateVersion(orgID, id, &req)

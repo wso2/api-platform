@@ -945,6 +945,35 @@ type CreateLLMProviderAPIKeyResponse struct {
 	Status string `binding:"required" json:"status" yaml:"status"`
 }
 
+// CreateLLMProviderTemplateVersionRequest defines model for CreateLLMProviderTemplateVersionRequest.
+type CreateLLMProviderTemplateVersionRequest struct {
+	CompletionTokens *ExtractionIdentifier `json:"completionTokens,omitempty" yaml:"completionTokens,omitempty"`
+
+	// Description Description of the LLM provider template
+	Description *string                      `json:"description,omitempty" yaml:"description,omitempty"`
+	Metadata    *LLMProviderTemplateMetadata `json:"metadata,omitempty" yaml:"metadata,omitempty"`
+
+	// Name Human-readable LLM Template name
+	Name string `binding:"required" json:"name" yaml:"name"`
+
+	// Openapi OpenAPI specification content (JSON or YAML) for the provider, when
+	// uploaded/pasted. Use metadata.openapiSpecUrl instead to reference the
+	// spec by URL.
+	Openapi      *string               `json:"openapi,omitempty" yaml:"openapi,omitempty"`
+	PromptTokens *ExtractionIdentifier `json:"promptTokens,omitempty" yaml:"promptTokens,omitempty"`
+
+	// Provider Identifies the origin of the template. Custom templates default to 'other'.
+	Provider         *string                              `json:"provider,omitempty" yaml:"provider,omitempty"`
+	RemainingTokens  *ExtractionIdentifier                `json:"remainingTokens,omitempty" yaml:"remainingTokens,omitempty"`
+	RequestModel     *ExtractionIdentifier                `json:"requestModel,omitempty" yaml:"requestModel,omitempty"`
+	ResourceMappings *LLMProviderTemplateResourceMappings `json:"resourceMappings,omitempty" yaml:"resourceMappings,omitempty"`
+	ResponseModel    *ExtractionIdentifier                `json:"responseModel,omitempty" yaml:"responseModel,omitempty"`
+	TotalTokens      *ExtractionIdentifier                `json:"totalTokens,omitempty" yaml:"totalTokens,omitempty"`
+
+	// Version New version identifier, e.g. v2.0. Must be unique for this template.
+	Version string `binding:"required" json:"version" yaml:"version"`
+}
+
 // CreateLLMProxyAPIKeyRequest defines model for CreateLLMProxyAPIKeyRequest.
 type CreateLLMProxyAPIKeyRequest struct {
 	// AllowedTargets Comma-separated list of gateways this key is valid for.
@@ -4110,7 +4139,7 @@ type CreateLLMProviderTemplateJSONRequestBody = LLMProviderTemplate
 type UpdateLLMProviderTemplateJSONRequestBody = LLMProviderTemplate
 
 // CreateLLMProviderTemplateVersionJSONRequestBody defines body for CreateLLMProviderTemplateVersion for application/json ContentType.
-type CreateLLMProviderTemplateVersionJSONRequestBody = LLMProviderTemplate
+type CreateLLMProviderTemplateVersionJSONRequestBody = CreateLLMProviderTemplateVersionRequest
 
 // SetLLMProviderTemplateVersionEnabledJSONRequestBody defines body for SetLLMProviderTemplateVersionEnabled for application/json ContentType.
 type SetLLMProviderTemplateVersionEnabledJSONRequestBody SetLLMProviderTemplateVersionEnabledJSONBody

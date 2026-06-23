@@ -2894,8 +2894,8 @@ paths:
         must be supplied in the body, match the v<major>.<minor> pattern, and be
         unique for the template. The new version becomes the latest.
 
-        The template handle is taken from the path; the body's `id` must match it
-        (a mismatching id is rejected).
+        The template family is identified by the path parameter; the new version's
+        handle is computed server-side from the family handle and the supplied version.
       operationId: createLLMProviderTemplateVersion
       security:
         - OAuth2Security:
@@ -2916,7 +2916,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/LLMProviderTemplate'
+              $ref: '#/components/schemas/CreateLLMProviderTemplateVersionRequest'
       responses:
         '201':
           description: New version created
@@ -10170,6 +10170,58 @@ components:
           description: Timestamp when the resource was last updated
           readOnly: true
           example: "2023-10-12T10:30:00Z"
+
+    CreateLLMProviderTemplateVersionRequest:
+      type: object
+      required:
+        - name
+        - version
+      properties:
+        name:
+          type: string
+          description: Human-readable LLM Template name
+          minLength: 1
+          maxLength: 253
+          example: OpenAI
+        version:
+          type: string
+          description: New version identifier, e.g. v2.0. Must be unique for this template.
+          pattern: '^[vV]\d+\.\d+$'
+          example: v2.0
+        provider:
+          type: string
+          description: |
+            Identifies the origin of the template. Custom templates default to 'other'.
+          default: other
+          maxLength: 255
+          example: other
+        description:
+          type: string
+          description: Description of the LLM provider template
+          maxLength: 1023
+          example: Default OpenAI template
+        openapi:
+          type: string
+          description: |
+            OpenAPI specification content (JSON or YAML) for the provider, when
+            uploaded/pasted. Use metadata.openapiSpecUrl instead to reference the
+            spec by URL.
+        metadata:
+          $ref: '#/components/schemas/LLMProviderTemplateMetadata'
+        promptTokens:
+          $ref: '#/components/schemas/ExtractionIdentifier'
+        completionTokens:
+          $ref: '#/components/schemas/ExtractionIdentifier'
+        totalTokens:
+          $ref: '#/components/schemas/ExtractionIdentifier'
+        remainingTokens:
+          $ref: '#/components/schemas/ExtractionIdentifier'
+        requestModel:
+          $ref: '#/components/schemas/ExtractionIdentifier'
+        responseModel:
+          $ref: '#/components/schemas/ExtractionIdentifier'
+        resourceMappings:
+          $ref: '#/components/schemas/LLMProviderTemplateResourceMappings'
 
     LLMProviderTemplateListItem:
       type: object

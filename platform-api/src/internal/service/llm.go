@@ -296,7 +296,7 @@ func makeTemplateHandle(baseHandle, version string) string {
 	return baseHandle + "-" + strings.ReplaceAll(strings.ToLower(strings.TrimSpace(version)), ".", "-")
 }
 
-func (s *LLMProviderTemplateService) CreateVersion(orgUUID, handle string, req *api.LLMProviderTemplate) (*api.LLMProviderTemplate, error) {
+func (s *LLMProviderTemplateService) CreateVersion(orgUUID, handle string, req *api.CreateLLMProviderTemplateVersionRequest) (*api.LLMProviderTemplate, error) {
 	if handle == "" || req == nil {
 		return nil, constants.ErrInvalidInput
 	}

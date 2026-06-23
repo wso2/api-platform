@@ -477,11 +477,11 @@ export interface TemplateMetadata {
  * Read-only fields (createdAt, updatedAt) excluded
  */
 export interface ProviderTemplate {
-  id?: string;
+  id: string;
   name: string;
   provider?: string;
   description?: string;
-  version?: string;
+  version: string;
   isLatest?: boolean;
   enabled?: boolean;
   promptTokens?: TokenLocation;
