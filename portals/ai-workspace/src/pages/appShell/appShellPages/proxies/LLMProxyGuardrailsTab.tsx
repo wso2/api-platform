@@ -61,6 +61,7 @@ import type {
 import { parsePolicyYaml } from '../../PolicyParameterEditor/yamlParser';
 import { FormattedMessage } from 'react-intl';
 import ErrorAlert from '../../../../Components/common/ErrorAlert';
+import { DisabledActionTooltip } from '../../../../utils/readOnlyArtifacts';
 
 // ─── Shared helpers ──────────────────────────────────────────────────────────
 
@@ -143,6 +144,7 @@ const parseOpenApiText = (text: string): ResourceItem[] => {
  */
 export default function LLMProxyGuardrailsTab() {
   const { proxy, setLocalProxy } = useProxy();
+  const isReadOnlyProxy = Boolean(proxy?.readOnly);
   const {
     guardrails: availableGuardrails = [],
     isLoading: isLoadingGuardrails,
@@ -280,12 +282,14 @@ export default function LLMProxyGuardrailsTab() {
   // ── Drawer openers ──────────────────────────────────────────────────────
 
   const openAddDrawerForGlobal = () => {
+    if (isReadOnlyProxy) return;
     setEditingTarget(null);
     setDrawerContext({ scope: 'global' });
     setDrawerOpen(true);
   };
 
   const openAddDrawerForResource = (method: string, path: string) => {
+    if (isReadOnlyProxy) return;
     setEditingTarget(null);
     setDrawerContext({ scope: 'resource', method, path });
     setDrawerOpen(true);
@@ -296,6 +300,7 @@ export default function LLMProxyGuardrailsTab() {
     pathIndex: number | null,
     scope: DrawerContext
   ) => {
+    if (isReadOnlyProxy) return;
     const policy = policies[policyIndex];
     if (!policy) return;
 
@@ -340,6 +345,7 @@ export default function LLMProxyGuardrailsTab() {
     name: string;
     version?: string;
   }) => {
+    if (isReadOnlyProxy) return;
     setSelectedGuardrail(guardrail.name);
     setIsDetailView(true);
     setPolicyDefinition(null);
@@ -389,7 +395,7 @@ export default function LLMProxyGuardrailsTab() {
   };
 
   const handlePolicySubmit = async (params: ParameterValues) => {
-    if (!proxy || !selectedGuardrailPolicy) return;
+    if (isReadOnlyProxy || !proxy || !selectedGuardrailPolicy) return;
 
     const updatedPolicies = (() => {
       // Edit mode: update existing policy path params
@@ -457,6 +463,7 @@ export default function LLMProxyGuardrailsTab() {
     policyIndex: number,
     pathIndex: number | null
   ) => {
+    if (isReadOnlyProxy) return;
     setLocalProxy((prev) => {
       if (!prev) return prev;
       const existingPolicies = prev.policies ?? [];
@@ -508,15 +515,20 @@ export default function LLMProxyGuardrailsTab() {
             </Grid>
 
             <Grid size={{ xs: 12, sm: 'auto' }}>
-              <Button
-                size="small"
-                variant="outlined"
-                startIcon={<Plus size={16} />}
-                onClick={openAddDrawerForGlobal}
-                sx={{ whiteSpace: 'nowrap' }}
-              >
-                Add
-              </Button>
+              <DisabledActionTooltip disabled={isReadOnlyProxy}>
+                <span>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    startIcon={<Plus size={16} />}
+                    onClick={openAddDrawerForGlobal}
+                    disabled={isReadOnlyProxy}
+                    sx={{ whiteSpace: 'nowrap' }}
+                  >
+                    Add
+                  </Button>
+                </span>
+              </DisabledActionTooltip>
             </Grid>
           </Grid>
 
@@ -534,13 +546,22 @@ export default function LLMProxyGuardrailsTab() {
               <GuardrailPill
                 key={g.id}
                 label={`${g.displayName} (${g.version.replace(/^v/, '')})`}
-                onClick={() =>
-                  handleEditGuardrailPill(g.policyIndex, g.pathIndex, {
-                    scope: 'global',
-                  })
+                onClick={
+                  isReadOnlyProxy
+                    ? undefined
+                    : () =>
+                        handleEditGuardrailPill(g.policyIndex, g.pathIndex, {
+                          scope: 'global',
+                        })
                 }
-                onRemove={() =>
-                  void handleRemoveAppliedGuardrail(g.policyIndex, g.pathIndex)
+                onRemove={
+                  isReadOnlyProxy
+                    ? undefined
+                    : () =>
+                        void handleRemoveAppliedGuardrail(
+                          g.policyIndex,
+                          g.pathIndex
+                        )
                 }
               />
             ))}
@@ -782,19 +803,26 @@ export default function LLMProxyGuardrailsTab() {
                                   </Typography>
                                 </Grid>
                                 <Grid size={{ xs: 12, sm: 'auto' }}>
-                                  <Button
-                                    size="small"
-                                    variant="outlined"
-                                    startIcon={<Plus size={16} />}
-                                    onClick={() =>
-                                      openAddDrawerForResource(
-                                        method,
-                                        resource.path
-                                      )
-                                    }
+                                  <DisabledActionTooltip
+                                    disabled={isReadOnlyProxy}
                                   >
-                                    Add Guardrail
-                                  </Button>
+                                    <span>
+                                      <Button
+                                        size="small"
+                                        variant="outlined"
+                                        startIcon={<Plus size={16} />}
+                                        onClick={() =>
+                                          openAddDrawerForResource(
+                                            method,
+                                            resource.path
+                                          )
+                                        }
+                                        disabled={isReadOnlyProxy}
+                                      >
+                                        Add Guardrail
+                                      </Button>
+                                    </span>
+                                  </DisabledActionTooltip>
                                 </Grid>
                                 <Grid size={{ xs: 12 }}>
                                   <Stack
@@ -810,22 +838,28 @@ export default function LLMProxyGuardrailsTab() {
                                           label={`${
                                             g.displayName
                                           } (${g.version.replace(/^v/, '')})`}
-                                          onClick={() =>
-                                            handleEditGuardrailPill(
-                                              g.policyIndex,
-                                              g.pathIndex,
-                                              {
-                                                scope: 'resource',
-                                                method,
-                                                path: resource.path,
-                                              }
-                                            )
+                                          onClick={
+                                            isReadOnlyProxy
+                                              ? undefined
+                                              : () =>
+                                                  handleEditGuardrailPill(
+                                                    g.policyIndex,
+                                                    g.pathIndex,
+                                                    {
+                                                      scope: 'resource',
+                                                      method,
+                                                      path: resource.path,
+                                                    }
+                                                  )
                                           }
-                                          onRemove={() =>
-                                            void handleRemoveAppliedGuardrail(
-                                              g.policyIndex,
-                                              g.pathIndex
-                                            )
+                                          onRemove={
+                                            isReadOnlyProxy
+                                              ? undefined
+                                              : () =>
+                                                  void handleRemoveAppliedGuardrail(
+                                                    g.policyIndex,
+                                                    g.pathIndex
+                                                  )
                                           }
                                         />
                                       ))

@@ -41,6 +41,7 @@ import { mcpProxiesApis } from '../../../../apis/MCP/mcpProxiesApis';
 import useAIWorkspaceSnackbar from '../../../../hooks/aiWorkspaceSnackbar';
 import type { MCPServer } from '../../../../utils/types';
 import { useMemo } from 'react';
+import { DisabledActionTooltip } from '../../../../utils/readOnlyArtifacts';
 
 const MAX_NAME_LENGTH = 255;
 const MAX_DESCRIPTION_LENGTH = 1023;
@@ -112,6 +113,7 @@ export default function EditExternalServer() {
   const [version, setVersion] = useState('');
   const [context, setContext] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const isReadOnlyServer = Boolean(server?.readOnly);
 
   useEffect(() => {
     if (!serverId || !organizationId) return;
@@ -159,7 +161,7 @@ export default function EditExternalServer() {
   };
 
   const handleSubmit = async () => {
-    if (!serverId || !server) return;
+    if (!serverId || !server || isReadOnlyServer) return;
 
     setIsSubmitting(true);
     try {
@@ -258,6 +260,12 @@ export default function EditExternalServer() {
 
         <Box sx={{ mb: 4 }}>
           <Stack spacing={3}>
+            {isReadOnlyServer ? (
+              <Alert severity="info">
+                This MCP proxy was created from a gateway. Editing is
+                unavailable in AI Workspace.
+              </Alert>
+            ) : null}
             {isContextOrVersionChanged && (
               <Alert severity="warning">
                 You have modified the context or version of this MCP Proxy.
@@ -272,6 +280,7 @@ export default function EditExternalServer() {
                   fullWidth
                   required
                   value={name}
+                  disabled={isReadOnlyServer}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="Enter server name"
                   error={name.length > MAX_NAME_LENGTH}
@@ -288,6 +297,7 @@ export default function EditExternalServer() {
                 <TextField
                   fullWidth
                   value={version}
+                  disabled={isReadOnlyServer}
                   onChange={(e) => setVersion(e.target.value)}
                   placeholder="e.g., 1.0"
                   error={version.length > MAX_VERSION_LENGTH}
@@ -305,6 +315,7 @@ export default function EditExternalServer() {
               <TextField
                 fullWidth
                 value={description}
+                disabled={isReadOnlyServer}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="Enter description"
                 multiline
@@ -323,6 +334,7 @@ export default function EditExternalServer() {
               <TextField
                 fullWidth
                 value={context}
+                disabled={isReadOnlyServer}
                 onChange={(e) => setContext(e.target.value)}
                 placeholder="Enter context path"
                 error={context.length > MAX_CONTEXT_LENGTH}
@@ -340,13 +352,17 @@ export default function EditExternalServer() {
           <Button variant="outlined" onClick={handleCancel}>
             Cancel
           </Button>
-          <Button
-            variant="contained"
-            onClick={handleSubmit}
-            disabled={isSubmitting || !isFormValid()}
-          >
-            {isSubmitting ? 'Updating...' : 'Update'}
-          </Button>
+          <DisabledActionTooltip disabled={isReadOnlyServer}>
+            <span>
+              <Button
+                variant="contained"
+                onClick={handleSubmit}
+                disabled={isReadOnlyServer || isSubmitting || !isFormValid()}
+              >
+                {isSubmitting ? 'Updating...' : 'Update'}
+              </Button>
+            </span>
+          </DisabledActionTooltip>
         </Box>
       </Box>
     </PageContent>

@@ -42,6 +42,7 @@ import useAIWorkspaceSnackbar from '../../../../hooks/aiWorkspaceSnackbar';
 import NoData from '../../../../assets/images/NoData.svg';
 import { logger } from '../../../../utils/logger';
 import SwaggerSpecViewer from '../../../../Components/SwaggerSpecViewer';
+import { DisabledActionTooltip } from '../../../../utils/readOnlyArtifacts';
 
 type OpenApiSpec = Record<string, unknown>;
 
@@ -156,6 +157,7 @@ export default function LLMProxyDefinitionTab() {
   const [isFetchingSpec, setIsFetchingSpec] = useState(false);
   const [updateSpecModalOpen, setUpdateSpecModalOpen] = useState(false);
   const showSnackbar = useAIWorkspaceSnackbar();
+  const isReadOnlyProxy = Boolean(proxy?.readOnly);
 
   useEffect(() => {
     setEditorText(proxy?.openapi || '');
@@ -178,15 +180,18 @@ export default function LLMProxyDefinitionTab() {
   const hasDefinition = editorText.trim().length > 0;
 
   const updateEditorText = (nextText: string) => {
+    if (isReadOnlyProxy) return;
     setEditorText(nextText);
     setLocalProxy((prev) => (prev ? { ...prev, openapi: nextText } : prev));
   };
 
   const handleUploadClick = () => {
+    if (isReadOnlyProxy) return;
     fileInputRef.current?.click();
   };
 
   const applySpecificationFromText = (text: string, sourceName?: string) => {
+    if (isReadOnlyProxy) return;
     const parsed = parseOpenApiSpec(text);
     const nextValidationError = validateOpenApiText(text, parsed);
     if (nextValidationError) {
@@ -202,6 +207,7 @@ export default function LLMProxyDefinitionTab() {
   };
 
   const handleFetchAndClose = async (url: string) => {
+    if (isReadOnlyProxy) return;
     const nextUrl = url.trim();
     if (!nextUrl) {
       showSnackbar('Enter a valid OpenAPI URL first.', 'error');
@@ -227,6 +233,7 @@ export default function LLMProxyDefinitionTab() {
   };
 
   const handleFileChange: React.ChangeEventHandler<HTMLInputElement> = (e) => {
+    if (isReadOnlyProxy) return;
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -248,17 +255,22 @@ export default function LLMProxyDefinitionTab() {
   return (
     <Stack spacing={2}>
       <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
-        <Button
-          variant="outlined"
-          size="small"
-          startIcon={<PenLine size={16} />}
-          onClick={() => setUpdateSpecModalOpen(true)}
-        >
-          <FormattedMessage
-            id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyDefinitionTab.update.openapi.definition"
-            defaultMessage={'Update OpenAPI Definition'}
-          />
-        </Button>
+        <DisabledActionTooltip disabled={isReadOnlyProxy}>
+          <span>
+            <Button
+              variant="outlined"
+              size="small"
+              startIcon={<PenLine size={16} />}
+              onClick={() => setUpdateSpecModalOpen(true)}
+              disabled={isReadOnlyProxy}
+            >
+              <FormattedMessage
+                id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyDefinitionTab.update.openapi.definition"
+                defaultMessage={'Update OpenAPI Definition'}
+              />
+            </Button>
+          </span>
+        </DisabledActionTooltip>
       </Box>
 
       <Dialog
@@ -285,6 +297,7 @@ export default function LLMProxyDefinitionTab() {
                   size="small"
                   fullWidth
                   value={specUrl}
+                  disabled={isReadOnlyProxy}
                   onChange={(e) => {
                     setSpecUrl(e.target.value);
                   }}
@@ -294,7 +307,7 @@ export default function LLMProxyDefinitionTab() {
                   <Button
                     variant="outlined"
                     size="small"
-                    disabled={isFetchingSpec}
+                    disabled={isReadOnlyProxy || isFetchingSpec}
                     onClick={() => {
                       void handleFetchAndClose(specUrl);
                     }}
@@ -305,7 +318,12 @@ export default function LLMProxyDefinitionTab() {
               </Stack>
             </FormControl>
             <Divider sx={{ my: 2 }}>Or</Divider>
-            <Button variant="outlined" fullWidth onClick={handleUploadClick}>
+            <Button
+              variant="outlined"
+              fullWidth
+              onClick={handleUploadClick}
+              disabled={isReadOnlyProxy}
+            >
               Upload Your Specification
             </Button>
             <input
@@ -389,6 +407,7 @@ export default function LLMProxyDefinitionTab() {
                   lineHeight: 20,
                   wordWrap: 'on',
                   automaticLayout: true,
+                  readOnly: isReadOnlyProxy,
                 }}
                 theme="vs-dark"
                 loading={<Box sx={{ p: 2 }}>Loading editor...</Box>}

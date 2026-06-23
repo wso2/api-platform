@@ -31,6 +31,7 @@ import {
   useParams,
 } from 'react-router-dom';
 import {
+  Alert,
   Avatar,
   Box,
   Button,
@@ -95,6 +96,10 @@ import {
   AIEntityProvider,
   useAIEntity,
 } from '../../../../contexts/AIEntitiesContext';
+import {
+  DisabledActionTooltip,
+  GATEWAY_MANAGED_ARTIFACT_TOOLTIP,
+} from '../../../../utils/readOnlyArtifacts';
 
 import AnthropicLogo from '../../../../assets/brands/Anthropic.jpg';
 import AWSBedrockLogo from '../../../../assets/brands/AWSBedrock.webp';
@@ -406,6 +411,10 @@ function ServiceProviderOverviewContent() {
   };
 
   const handleDeployNavigation = () => {
+    if (isReadOnlyProvider) {
+      showSnackbar(GATEWAY_MANAGED_ARTIFACT_TOOLTIP, 'warning');
+      return;
+    }
     if (hasUnsavedChanges) {
       showSnackbar(UNSAVED_CHANGES_MESSAGE, 'error');
       return;
@@ -465,6 +474,8 @@ function ServiceProviderOverviewContent() {
   const isProxyQuotaReached = orgProxyCount >= MAX_LLM_PROXIES_PER_ORG;
   const proxyQuotaTooltip =
     'You cannot create more App LLM Proxies because your organization has reached the maximum limit of 5 proxies.';
+  const isReadOnlyProvider = Boolean(provider?.readOnly);
+  const createProxyTooltip = isProxyQuotaReached ? proxyQuotaTooltip : '';
 
   const handleCreateProxyClick = () => {
     if (!provider?.id || isProxyQuotaReached) {
@@ -519,6 +530,10 @@ function ServiceProviderOverviewContent() {
     if (stepId === 'add-guardrails') {
       setTabIndex(5);
     } else if (stepId === 'deploy-to-gateway') {
+      if (isReadOnlyProvider) {
+        showSnackbar(GATEWAY_MANAGED_ARTIFACT_TOOLTIP, 'warning');
+        return;
+      }
       if (!provider?.id) return;
       const deployPath = isProjectLevel
         ? buildProjectPath(
@@ -1041,20 +1056,21 @@ function ServiceProviderOverviewContent() {
               </Box>
 
               <Stack spacing={2} p={2}>
-                <Tooltip title={isProxyQuotaReached ? proxyQuotaTooltip : ''}>
-                  <Box component="span">
-                    <Button
-                      variant="outlined"
-                      onClick={handleCreateProxyClick}
-                      disabled={!provider.id || isProxyQuotaReached}
-                    >
-                      <FormattedMessage
-                        id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ServiceProviderOverview.create.llm.proxy"
-                        defaultMessage="Create App LLM Proxy"
-                      />
-                    </Button>
-                  </Box>
-                </Tooltip>
+                <DisabledActionTooltip
+                  disabled={isProxyQuotaReached}
+                  title={createProxyTooltip}
+                >
+                  <Button
+                    variant="outlined"
+                    onClick={handleCreateProxyClick}
+                    disabled={!provider.id || isProxyQuotaReached}
+                  >
+                    <FormattedMessage
+                      id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ServiceProviderOverview.create.llm.proxy"
+                      defaultMessage="Create App LLM Proxy"
+                    />
+                  </Button>
+                </DisabledActionTooltip>
               </Stack>
             </Box>
           </Box>
@@ -1189,6 +1205,12 @@ function ServiceProviderOverviewContent() {
           defaultMessage={'Back to list'}
         />
       </Button>
+      {isReadOnlyProvider ? (
+        <Alert severity="info" sx={{ mt: 2 }}>
+          This provider was created from a gateway. Configuration changes are
+          unavailable in AI Workspace,
+        </Alert>
+      ) : null}
       <Box mt={1}>
         <LLLMStepBanner
           providerName={provider.name}
@@ -1271,11 +1293,16 @@ function ServiceProviderOverviewContent() {
                     variant="outlined"
                     color="primary"
                   />
-                  <Tooltip title="Edit Service Provider">
-                    <IconButton component={RouterLink} to="edit" size="small">
+                  <DisabledActionTooltip disabled={isReadOnlyProvider}>
+                    <IconButton
+                      component={isReadOnlyProvider ? 'button' : RouterLink}
+                      to={isReadOnlyProvider ? undefined : 'edit'}
+                      size="small"
+                      disabled={isReadOnlyProvider}
+                    >
                       <Edit size={16} />
                     </IconButton>
-                  </Tooltip>
+                  </DisabledActionTooltip>
                 </Stack>
                 <Typography variant="body2" color="text.secondary">
                   {truncatedDescription}
@@ -1313,33 +1340,41 @@ function ServiceProviderOverviewContent() {
                 width: { xs: '100%', sm: 200 },
               }}
             >
-              <Button
-                variant="contained"
-                component={RouterLink}
-                to="deploy"
-                onClick={handleBlockedNavigation}
+              <DisabledActionTooltip
+                disabled={isReadOnlyProvider}
                 fullWidth
               >
-                <FormattedMessage
-                  id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ServiceProviderOverview.deploy.to.gateway"
-                  defaultMessage={'Deploy to Gateway'}
-                />
-              </Button>
-              <Tooltip title={isProxyQuotaReached ? proxyQuotaTooltip : ''}>
-                <Box component="span" sx={{ width: '100%' }}>
-                  <Button
-                    variant="outlined"
-                    onClick={handleCreateProxyClick}
-                    disabled={!provider.id || isProxyQuotaReached}
-                    fullWidth
-                  >
-                    <FormattedMessage
-                      id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ServiceProviderOverview.create.llm.proxy"
-                      defaultMessage="Create App LLM Proxy"
-                    />
-                  </Button>
-                </Box>
-              </Tooltip>
+                <Button
+                  variant="contained"
+                  component={isReadOnlyProvider ? 'button' : RouterLink}
+                  to={isReadOnlyProvider ? undefined : 'deploy'}
+                  onClick={isReadOnlyProvider ? undefined : handleBlockedNavigation}
+                  disabled={isReadOnlyProvider}
+                  fullWidth
+                >
+                  <FormattedMessage
+                    id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ServiceProviderOverview.deploy.to.gateway"
+                    defaultMessage={'Deploy to Gateway'}
+                  />
+                </Button>
+              </DisabledActionTooltip>
+              <DisabledActionTooltip
+                disabled={isProxyQuotaReached}
+                title={createProxyTooltip}
+                fullWidth
+              >
+                <Button
+                  variant="outlined"
+                  onClick={handleCreateProxyClick}
+                  disabled={!provider.id || isProxyQuotaReached}
+                  fullWidth
+                >
+                  <FormattedMessage
+                    id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ServiceProviderOverview.create.llm.proxy"
+                    defaultMessage="Create App LLM Proxy"
+                  />
+                </Button>
+              </DisabledActionTooltip>
             </Stack>
           </Box>
         </Card>

@@ -42,8 +42,9 @@ export default function ServiceProviderSecurityTab() {
   const [keyValue, setKeyValue] = useState('');
   const [keyIn, setKeyIn] = useState<'header' | 'query'>('header');
   const showSnackbar = useAIWorkspaceSnackbar();
+  const isReadOnlyProvider = Boolean(provider?.readOnly);
   const isSecurityFormDisabled =
-    !apiKeyEnabled || isLoading || Boolean(error);
+    !apiKeyEnabled || isLoading || Boolean(error) || isReadOnlyProvider;
 
   useEffect(() => {
     if (!provider) return;
@@ -61,7 +62,7 @@ export default function ServiceProviderSecurityTab() {
     nextIn: 'header' | 'query',
     nextEnabled: boolean
   ) => {
-    if (!provider || isLoading || error) return;
+    if (!provider || isLoading || error || isReadOnlyProvider) return;
     const {
       status,
       createdAt,
@@ -162,7 +163,7 @@ export default function ServiceProviderSecurityTab() {
                   <Switch
                     size="small"
                     checked={apiKeyEnabled}
-                    disabled={isLoading || Boolean(error)}
+                    disabled={isLoading || Boolean(error) || isReadOnlyProvider}
                     onChange={handleApiKeyEnabledChange}
                   />
                 </Tooltip>

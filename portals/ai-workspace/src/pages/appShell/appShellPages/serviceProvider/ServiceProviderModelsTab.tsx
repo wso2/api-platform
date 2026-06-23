@@ -38,6 +38,7 @@ import { useLLMProvider } from '../../../../contexts/llmProvider';
 import useAIWorkspaceSnackbar from '../../../../hooks/aiWorkspaceSnackbar';
 import { FormattedMessage } from 'react-intl';
 import NoModelsImage from '../../../../assets/images/NoModels.svg';
+import { DisabledActionTooltip } from '../../../../utils/readOnlyArtifacts';
 
 type ProviderOption = {
   id: string;
@@ -153,6 +154,7 @@ function ModelPill({
 export default function ServiceProviderModelsTab() {
   const { provider, isLoading, error, updateProvider, isDraftMode } =
     useLLMProvider();
+  const isReadOnlyProvider = Boolean(provider?.readOnly);
   const modelCatalog = useMemo<Record<string, string[]>>(
     () => ({
       meta: [
@@ -215,7 +217,9 @@ export default function ServiceProviderModelsTab() {
     errorMessage: string,
     nextSelectedProviderId = selectedProviderId
   ) => {
-    if (!provider || isLoading || error || isSaving) return false;
+    if (!provider || isLoading || error || isSaving || isReadOnlyProvider) {
+      return false;
+    }
 
     const {
       status,
@@ -418,9 +422,9 @@ export default function ServiceProviderModelsTab() {
                         name={p.name}
                         selected={p.id === selectedProviderId}
                         onClick={() => setSelectedProviderId(p.id)}
-                        removeDisabled={isSaving}
+                        removeDisabled={isSaving || isReadOnlyProvider}
                         onRemove={
-                          p.id === 'azureai-foundry'
+                          p.id === 'azureai-foundry' && !isReadOnlyProvider
                             ? () => {
                                 void removeProvider(p.id);
                               }
@@ -431,36 +435,38 @@ export default function ServiceProviderModelsTab() {
                     ))}
                   </Stack>
 
-                  <Tooltip
-                    placement="top"
-                    title={
-                      disableAddProviderButton ? (
-                        <FormattedMessage
-                          id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ServiceProviderModelsTab.single.provider.support.tooltip"
-                          defaultMessage={
-                            'Only one model provider is supported for this service provider.'
-                          }
-                        />
-                      ) : (
-                        ''
-                      )
-                    }
-                  >
-                    <Box component="span">
-                      <Button
-                        size="small"
-                        variant="outlined"
-                        startIcon={<Plus size={16} />}
-                        disabled={disableAddProviderButton}
-                        onClick={() => setDrawerOpen(true)}
-                      >
-                        <FormattedMessage
-                          id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ServiceProviderModelsTab.add.model.provider.2"
-                          defaultMessage={'Add Model Provider'}
-                        />
-                      </Button>
-                    </Box>
-                  </Tooltip>
+                  <DisabledActionTooltip disabled={isReadOnlyProvider}>
+                    <Tooltip
+                      placement="top"
+                      title={
+                        disableAddProviderButton ? (
+                          <FormattedMessage
+                            id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ServiceProviderModelsTab.single.provider.support.tooltip"
+                            defaultMessage={
+                              'Only one model provider is supported for this service provider.'
+                            }
+                          />
+                        ) : (
+                          ''
+                        )
+                      }
+                    >
+                      <Box component="span">
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          startIcon={<Plus size={16} />}
+                          disabled={disableAddProviderButton || isReadOnlyProvider}
+                          onClick={() => setDrawerOpen(true)}
+                        >
+                          <FormattedMessage
+                            id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ServiceProviderModelsTab.add.model.provider.2"
+                            defaultMessage={'Add Model Provider'}
+                          />
+                        </Button>
+                      </Box>
+                    </Tooltip>
+                  </DisabledActionTooltip>
                 </Stack>
               ) : (
                 <Box
@@ -488,18 +494,20 @@ export default function ServiceProviderModelsTab() {
                         defaultMessage={'No providers added yet.'}
                       />
                     </Typography>
-                    <Button
-                      size="small"
-                      variant="outlined"
-                      startIcon={<Plus size={16} />}
-                      disabled={isSaving}
-                      onClick={() => setDrawerOpen(true)}
-                    >
-                      <FormattedMessage
-                        id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ServiceProviderModelsTab.add.model.provider.2"
-                        defaultMessage={'Add Model Provider'}
-                      />
-                    </Button>
+                    <DisabledActionTooltip disabled={isReadOnlyProvider}>
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        startIcon={<Plus size={16} />}
+                        disabled={isSaving || isReadOnlyProvider}
+                        onClick={() => setDrawerOpen(true)}
+                      >
+                        <FormattedMessage
+                          id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ServiceProviderModelsTab.add.model.provider.2"
+                          defaultMessage={'Add Model Provider'}
+                        />
+                      </Button>
+                    </DisabledActionTooltip>
                   </Stack>
                 </Box>
               )}
@@ -533,7 +541,7 @@ export default function ServiceProviderModelsTab() {
                     size="small"
                     fullWidth
                     value={newModelName}
-                    disabled={isSaving}
+                    disabled={isSaving || isReadOnlyProvider}
                     onChange={(event) => setNewModelName(event.target.value)}
                     onKeyDown={(event) => {
                       if (event.key === 'Enter') {
@@ -564,9 +572,11 @@ export default function ServiceProviderModelsTab() {
                       <ModelPill
                         key={m.id}
                         label={m.name}
-                        removeDisabled={isSaving}
+                        removeDisabled={isSaving || isReadOnlyProvider}
                         onRemove={() => {
-                          void removeModel(m.id);
+                          if (!isReadOnlyProvider) {
+                            void removeModel(m.id);
+                          }
                         }}
                         removeAriaLabel={`Remove model ${m.name}`}
                       />
@@ -704,7 +714,7 @@ export default function ServiceProviderModelsTab() {
             <Button
               variant="contained"
               onClick={addProvider}
-              disabled={!selectedOption || isSaving}
+              disabled={!selectedOption || isSaving || isReadOnlyProvider}
             >
               <FormattedMessage
                 id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ServiceProviderModelsTab.add"

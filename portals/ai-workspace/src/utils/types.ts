@@ -377,6 +377,7 @@ export interface LLMProvider {
   policies?: Policy[];
   security?: SecurityConfig;
   status?: 'Active' | 'Degraded' | 'Paused' | string;
+  readOnly?: boolean;
   createdAt?: string;
   createdBy?: string;
   updatedAt?: string;
@@ -552,6 +553,7 @@ export interface Proxy {
   openapi?: string;
   policies?: Policy[];
   security?: ProxySecurityConfig;
+  readOnly?: boolean;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -729,6 +731,7 @@ export interface MCPServer {
   kind?: string;
   policies?: unknown[];
   capabilities?: MCPServerCapabilities;
+  readOnly?: boolean;
   createdAt?: string;
   updatedAt?: string;
 }

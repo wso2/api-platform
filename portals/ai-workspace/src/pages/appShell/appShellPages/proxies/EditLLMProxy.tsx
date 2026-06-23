@@ -38,6 +38,7 @@ import {
   buildProjectPath,
 } from '../../../../utils/projectRouting';
 import useAIWorkspaceSnackbar from '../../../../hooks/aiWorkspaceSnackbar';
+import { DisabledActionTooltip } from '../../../../utils/readOnlyArtifacts';
 
 const MAX_NAME_LENGTH = 255;
 const MAX_DESCRIPTION_LENGTH = 1023;
@@ -50,6 +51,7 @@ function EditLLMProxyForm() {
   const { currentOrganization, currentProject } = useAppShell();
   const { proxy, isLoading, error, updateProxy } = useProxy();
   const showSnackbar = useAIWorkspaceSnackbar();
+  const isReadOnlyProxy = Boolean(proxy?.readOnly);
 
   const isProjectLevel = Boolean(currentProject?.id);
   const proxiesPath = isProjectLevel
@@ -85,7 +87,7 @@ function EditLLMProxyForm() {
   };
 
   const handleSubmit = async () => {
-    if (!proxyId) return;
+    if (!proxyId || isReadOnlyProxy) return;
 
     setIsSubmitting(true);
     try {
@@ -177,6 +179,12 @@ function EditLLMProxyForm() {
 
         <Box sx={{ mb: 4 }}>
           <Stack spacing={3}>
+            {isReadOnlyProxy ? (
+              <Alert severity="info">
+                This proxy was created from a gateway. Editing is unavailable
+                in AI Workspace.
+              </Alert>
+            ) : null}
             {isContextOrVersionChanged && (
               <Alert severity="warning">
                 You have modified the context or version of this proxy. After
@@ -191,6 +199,7 @@ function EditLLMProxyForm() {
                   fullWidth
                   required
                   value={name}
+                  disabled={isReadOnlyProxy}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="Enter proxy name"
                   error={name.length > MAX_NAME_LENGTH}
@@ -207,6 +216,7 @@ function EditLLMProxyForm() {
                 <TextField
                   fullWidth
                   value={version}
+                  disabled={isReadOnlyProxy}
                   onChange={(e) => setVersion(e.target.value)}
                   placeholder="e.g., 1.0"
                   error={version.length > MAX_VERSION_LENGTH}
@@ -224,6 +234,7 @@ function EditLLMProxyForm() {
               <TextField
                 fullWidth
                 value={description}
+                disabled={isReadOnlyProxy}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="Enter description"
                 multiline
@@ -242,6 +253,7 @@ function EditLLMProxyForm() {
               <TextField
                 fullWidth
                 value={context}
+                disabled={isReadOnlyProxy}
                 onChange={(e) => setContext(e.target.value)}
                 placeholder="Enter context path"
                 error={context.length > MAX_CONTEXT_LENGTH}
@@ -259,13 +271,17 @@ function EditLLMProxyForm() {
           <Button variant="outlined" color="secondary" onClick={handleCancel}>
             Cancel
           </Button>
-          <Button
-            variant="contained"
-            onClick={handleSubmit}
-            disabled={isSubmitting || !isFormValid()}
-          >
-            {isSubmitting ? 'Updating...' : 'Update'}
-          </Button>
+          <DisabledActionTooltip disabled={isReadOnlyProxy}>
+            <span>
+              <Button
+                variant="contained"
+                onClick={handleSubmit}
+                disabled={isReadOnlyProxy || isSubmitting || !isFormValid()}
+              >
+                {isSubmitting ? 'Updating...' : 'Update'}
+              </Button>
+            </span>
+          </DisabledActionTooltip>
         </Box>
       </Box>
     </PageContent>

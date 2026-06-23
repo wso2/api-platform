@@ -69,6 +69,10 @@ import type {
   Proxy as LLMProxy,
   UpdateProxyRequest,
 } from '../../../../utils/types';
+import {
+  DisabledActionTooltip,
+  GATEWAY_MANAGED_ARTIFACT_TOOLTIP,
+} from '../../../../utils/readOnlyArtifacts';
 
 type TabPanelProps = {
   value: number;
@@ -151,6 +155,7 @@ function ProxyOverviewContent() {
   const [updateError, setUpdateError] = useState<string | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const isReadOnlyProxy = Boolean(proxy?.readOnly);
 
   const getProviderId = (providerValue?: LLMProxy['provider']): string => {
     if (!providerValue) return '';
@@ -208,7 +213,9 @@ function ProxyOverviewContent() {
   };
 
   const handleSaveChanges = async () => {
-    if (!proxy || !hasUnsavedChanges || isSavingChanges) return;
+    if (!proxy || !hasUnsavedChanges || isSavingChanges || isReadOnlyProxy) {
+      return;
+    }
     try {
       setIsSavingChanges(true);
       setUpdateError(null);
@@ -300,6 +307,12 @@ function ProxyOverviewContent() {
             {updateError}
           </Alert>
         )}
+        {isReadOnlyProxy ? (
+          <Alert severity="info">
+            This proxy was created from a gateway. Editing and deployment
+            actions are unavailable in AI Workspace.
+          </Alert>
+        ) : null}
 
         {/* Header card with editable fields */}
         <Card>
@@ -349,15 +362,31 @@ function ProxyOverviewContent() {
                       variant="outlined"
                       color="primary"
                     />
-                    <Tooltip title="Edit Proxy">
-                      <IconButton
-                        component={RouterLink}
-                        to={`${proxiesPath}/${proxy.id}/edit`}
-                        size="small"
-                      >
-                        <Edit size={16} />
-                      </IconButton>
-                    </Tooltip>
+                    <DisabledActionTooltip
+                      disabled={isReadOnlyProxy}
+                      title={GATEWAY_MANAGED_ARTIFACT_TOOLTIP}
+                    >
+                      <span>
+                        <Tooltip
+                          title={
+                            isReadOnlyProxy ? '' : 'Edit Proxy'
+                          }
+                        >
+                          <IconButton
+                            component={isReadOnlyProxy ? 'button' : RouterLink}
+                            to={
+                              isReadOnlyProxy
+                                ? undefined
+                                : `${proxiesPath}/${proxy.id}/edit`
+                            }
+                            size="small"
+                            disabled={isReadOnlyProxy}
+                          >
+                            <Edit size={16} />
+                          </IconButton>
+                        </Tooltip>
+                      </span>
+                    </DisabledActionTooltip>
                   </Stack>
                   <Stack spacing={0.1} sx={{ mt: 1 }}>
                     <Stack direction="row" alignItems="center" gap={2}>
@@ -403,13 +432,25 @@ function ProxyOverviewContent() {
                 alignItems="flex-end"
                 sx={{ alignSelf: 'stretch' }}
               >
-                <Button
-                  variant="contained"
-                  component={RouterLink}
-                  to={`${proxiesPath}/${proxy.id}/deploy`}
+                <DisabledActionTooltip
+                  disabled={isReadOnlyProxy}
+                  title={GATEWAY_MANAGED_ARTIFACT_TOOLTIP}
                 >
-                  Deploy to Gateway
-                </Button>
+                  <span>
+                    <Button
+                      variant="contained"
+                      component={isReadOnlyProxy ? 'button' : RouterLink}
+                      to={
+                        isReadOnlyProxy
+                          ? undefined
+                          : `${proxiesPath}/${proxy.id}/deploy`
+                      }
+                      disabled={isReadOnlyProxy}
+                    >
+                      Deploy to Gateway
+                    </Button>
+                  </span>
+                </DisabledActionTooltip>
                 <IconButton
                   color="error"
                   onClick={() => setDeleteDialogOpen(true)}
@@ -489,14 +530,18 @@ function ProxyOverviewContent() {
                 <Button
                   variant="outlined"
                   color="secondary"
-                  disabled={!hasUnsavedChanges || isSavingChanges}
+                  disabled={
+                    isReadOnlyProxy || !hasUnsavedChanges || isSavingChanges
+                  }
                   onClick={handleCancelChanges}
                 >
                   Cancel
                 </Button>
                 <Button
                   variant="contained"
-                  disabled={!hasUnsavedChanges || isSavingChanges}
+                  disabled={
+                    isReadOnlyProxy || !hasUnsavedChanges || isSavingChanges
+                  }
                   onClick={() => void handleSaveChanges()}
                 >
                   {isSavingChanges ? <CircularProgress size={20} /> : 'Save'}

@@ -19,6 +19,7 @@
 import React, { useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
+  Alert,
   Box,
   Button,
   Grid,
@@ -123,7 +124,14 @@ function ServiceProviderDeployLayout({ providerId }: ServiceProviderDeployLayout
       </Grid>
 
       <Stack spacing={2} sx={{ mt: 2 }}>
-        <GatewayDeployMainSection />
+        {provider?.readOnly ? (
+          <Alert severity="info">
+            This provider was created from a gateway. Deployment actions are
+            unavailable in AI Workspace.
+          </Alert>
+        ) : (
+          <GatewayDeployMainSection />
+        )}
       </Stack>
     </PageContent>
   );

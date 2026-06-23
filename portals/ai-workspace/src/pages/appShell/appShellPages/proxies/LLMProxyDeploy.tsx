@@ -18,15 +18,17 @@
 
 import React from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Button, PageContent, Stack, Typography } from '@wso2/oxygen-ui';
+import { Alert, Button, PageContent, Stack, Typography } from '@wso2/oxygen-ui';
 import { ChevronLeft } from '@wso2/oxygen-ui-icons-react';
 import { GatewayDeployProvider } from '../../../../contexts/GatewayDeployContext';
 import { GatewayDeployMainSection } from '../../../../Components/GatewayDeploy';
 import { FormattedMessage } from 'react-intl';
+import { ProxyProvider, useProxy } from '../../../../contexts/proxy';
 
 function LLMProxyDeployContent() {
   const { proxyId } = useParams<{ proxyId: string }>();
   const navigate = useNavigate();
+  const { proxy } = useProxy();
 
   if (!proxyId) {
     return (
@@ -65,7 +67,14 @@ function LLMProxyDeployContent() {
               defaultMessage={'Deploy App LLM Proxy to your Gateways'}
             />
           </Typography>
-          <GatewayDeployMainSection showConfigureOption={false} />
+          {proxy?.readOnly ? (
+            <Alert severity="info">
+              This proxy was created from a gateway. Deployment actions are
+              unavailable in AI Workspace.
+            </Alert>
+          ) : (
+            <GatewayDeployMainSection showConfigureOption={false} />
+          )}
         </Stack>
       </GatewayDeployProvider>
     </PageContent>
@@ -88,5 +97,9 @@ export default function LLMProxyDeploy() {
     );
   }
 
-  return <LLMProxyDeployContent />;
+  return (
+    <ProxyProvider proxyId={proxyId}>
+      <LLMProxyDeployContent />
+    </ProxyProvider>
+  );
 }

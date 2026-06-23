@@ -38,6 +38,9 @@ import {
 import { useAppShell } from '../../../../contexts/AppShellContext';
 import { buildOrgPath } from '../../../../utils/projectRouting';
 import useAIWorkspaceSnackbar from '../../../../hooks/aiWorkspaceSnackbar';
+import {
+  DisabledActionTooltip,
+} from '../../../../utils/readOnlyArtifacts';
 
 const MAX_NAME_LENGTH = 255;
 const MAX_DESCRIPTION_LENGTH = 1023;
@@ -50,6 +53,7 @@ function EditServiceProviderForm() {
   const { currentOrganization } = useAppShell();
   const { provider, isLoading, error, updateProvider } = useLLMProvider();
   const showSnackbar = useAIWorkspaceSnackbar();
+  const isReadOnlyProvider = Boolean(provider?.readOnly);
 
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -81,7 +85,7 @@ function EditServiceProviderForm() {
   };
 
   const handleSubmit = async () => {
-    if (!providerId) return;
+    if (!providerId || isReadOnlyProvider) return;
 
     setIsSubmitting(true);
     try {
@@ -187,6 +191,12 @@ function EditServiceProviderForm() {
 
         <Box sx={{ mb: 4 }}>
           <Stack spacing={3}>
+            {isReadOnlyProvider ? (
+              <Alert severity="info">
+                This provider was created from a gateway. Editing is
+                unavailable in AI Workspace.
+              </Alert>
+            ) : null}
             {isContextOrVersionChanged && (
               <Alert severity="warning">
                 You have modified the context or version of this service
@@ -201,6 +211,7 @@ function EditServiceProviderForm() {
                   fullWidth
                   required
                   value={name}
+                  disabled={isReadOnlyProvider}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="Enter service provider name"
                   error={name.length > MAX_NAME_LENGTH}
@@ -217,6 +228,7 @@ function EditServiceProviderForm() {
                 <TextField
                   fullWidth
                   value={version}
+                  disabled={isReadOnlyProvider}
                   onChange={(e) => setVersion(e.target.value)}
                   placeholder="e.g., 1.0"
                   error={version.length > MAX_VERSION_LENGTH}
@@ -234,6 +246,7 @@ function EditServiceProviderForm() {
               <TextField
                 fullWidth
                 value={description}
+                disabled={isReadOnlyProvider}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="Enter description"
                 multiline
@@ -252,6 +265,7 @@ function EditServiceProviderForm() {
               <TextField
                 fullWidth
                 value={context}
+                disabled={isReadOnlyProvider}
                 onChange={(e) => setContext(e.target.value)}
                 placeholder="Enter context path"
                 error={context.length > MAX_CONTEXT_LENGTH}
@@ -269,13 +283,15 @@ function EditServiceProviderForm() {
           <Button variant="outlined" color="secondary" onClick={handleCancel}>
             Cancel
           </Button>
-          <Button
-            variant="contained"
-            onClick={handleSubmit}
-            disabled={isSubmitting || !isFormValid()}
-          >
-            {isSubmitting ? 'Updating...' : 'Update'}
-          </Button>
+          <DisabledActionTooltip disabled={isReadOnlyProvider}>
+            <Button
+              variant="contained"
+              onClick={handleSubmit}
+              disabled={isReadOnlyProvider || isSubmitting || !isFormValid()}
+            >
+              {isSubmitting ? 'Updating...' : 'Update'}
+            </Button>
+          </DisabledActionTooltip>
         </Box>
       </Box>
     </PageContent>

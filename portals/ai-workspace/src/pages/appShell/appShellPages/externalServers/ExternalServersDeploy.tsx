@@ -19,6 +19,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
+  Alert,
   Button,
   PageContent,
   Stack,
@@ -99,7 +100,14 @@ function ExternalServersDeployLayout({ serverId }: ExternalServersDeployLayoutPr
             defaultMessage="Deploy MCP Proxy to your Gateways"
           />
         </Typography>
-        <GatewayDeployMainSection showConfigureOption={false} />
+        {server?.readOnly ? (
+          <Alert severity="info">
+            This MCP proxy was created from a gateway. Deployment actions are
+            unavailable in AI Workspace.
+          </Alert>
+        ) : (
+          <GatewayDeployMainSection showConfigureOption={false} />
+        )}
       </Stack>
     </PageContent>
   );
