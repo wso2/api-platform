@@ -208,6 +208,42 @@ func TestRunGetCommand_MissingPolicyID(t *testing.T) {
 	}
 }
 
+func TestRunListCommand_ListsPlans(t *testing.T) {
+	testutil.WithTempHome(t)
+
+	server := testutil.NewDevPortalServer(t, func(w http.ResponseWriter, req *http.Request) {
+		if req.Method != http.MethodGet {
+			t.Fatalf("expected GET request, got %s", req.Method)
+		}
+		if req.URL.Path != "/o/org-1/devportal/v1/subscription-policies" {
+			t.Fatalf("unexpected request path %s", req.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`[{"policyId":"plan-1","policyName":"Gold"}]`))
+	})
+
+	writeSubPlanConfig(t, server.URL)
+
+	listOrgID = "org-1"
+	listName = ""
+	listPlatform = ""
+	listInsecure = false
+
+	if err := runListCommand(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestRunListCommand_MissingOrgID(t *testing.T) {
+	testutil.WithTempHome(t)
+
+	listOrgID = ""
+
+	if err := runListCommand(); err == nil || !strings.Contains(err.Error(), "organization ID is required") {
+		t.Fatalf("expected organization ID validation error, got %v", err)
+	}
+}
+
 func TestRunDeleteCommand_DeletesPlanByPolicyID(t *testing.T) {
 	testutil.WithTempHome(t)
 

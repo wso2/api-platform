@@ -283,6 +283,14 @@ The scoping query parameter differs by resource:
 - **LLM providers** are scoped by `organizationId` (`--org`).
 - **LLM/MCP proxies** are scoped by `projectId` (`--project-id`) when listing; fetching a single proxy by `--id` takes only the id path parameter (no org/project query).
 
+### `ap ai-ws llm-provider list`
+
+Lists all LLM providers in an organization (`GET /llm-providers?organizationId={org}`, operationId `listLLMProviders`).
+
+```shell
+ap ai-ws llm-provider list --org <org-id> [--limit <n>] [--offset <n>] [--display-name <name>] [--platform <platform>] [--insecure]
+```
+
 ### `ap ai-ws llm-provider get`
 
 ```shell
@@ -315,6 +323,7 @@ ap ai-ws mcp-proxy get --id <proxy-id>
 
 Notes:
 
+- `llm-provider list` and `llm-provider get` both list providers when no `--id` is given; `list` is the dedicated list-all command (`--org` required), while `get` additionally fetches a single provider with `--id`.
 - For `llm-provider get`, `--org` is required. For `llm-proxy`/`mcp-proxy get`, `--project-id` is required only when listing; fetching a single proxy needs just `--id`.
 - `--limit` and `--offset` apply only when listing.
 - `--insecure` skips TLS verification for local or self-signed HTTPS endpoints.
