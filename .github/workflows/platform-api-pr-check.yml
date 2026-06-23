@@ -123,9 +123,35 @@ jobs:
         run: go build ./cmd/main.go
         working-directory: platform-api/src
 
-      # The harness waits for the server and creates the test database itself,
-      # then exercises the real schema, pagination and delete cascades against
-      # SQL Server (the previous `make test` step here only ran SQLite).
+      - name: Wait for SQL Server to be ready
+        run: |
+          set -euo pipefail
+          echo "Waiting for SQL Server to accept connections (up to 3 minutes)..."
+          for i in $(seq 1 36); do
+            if docker exec sqlserver /opt/mssql-tools18/bin/sqlcmd \
+                 -C -S localhost -U sa -P "$IT_DB_PASSWORD" \
+                 -Q "SELECT 1" -b 2>/dev/null; then
+              echo "SQL Server ready after $((i * 5))s"
+              exit 0
+            fi
+            echo "Not ready yet (${i}/36), waiting 5s..."
+            sleep 5
+          done
+          echo "=== SQL Server container logs ==="
+          docker logs sqlserver 2>&1 || true
+          echo "ERROR: SQL Server did not start within 3 minutes"
+          exit 1
+
+      # The harness creates the test database itself, then exercises the real
+      # schema, pagination and delete cascades against SQL Server.
       - name: Cross-database integration tests (SQL Server)
         run: go test -tags integration -count=1 -v ./internal/integration/...
         working-directory: platform-api/src
+
+      - name: Debug on failure
+        if: failure()
+        run: |
+          echo "=== Docker containers ==="
+          docker ps -a
+          echo "=== SQL Server logs ==="
+          docker logs sqlserver 2>&1 || echo "(container not found)"
