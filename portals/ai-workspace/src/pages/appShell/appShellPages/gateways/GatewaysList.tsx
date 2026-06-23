@@ -259,6 +259,12 @@ export default function GatewaysList() {
                         </TableCell>
                         <TableCell>
                           <FormattedMessage
+                            id="aiWorkspace.pages.appShell.appShellPages.gateways.GatewaysList.table.version"
+                            defaultMessage="Version"
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <FormattedMessage
                             id="aiWorkspace.pages.appShell.appShellPages.gateways.GatewaysList.table.status"
                             defaultMessage="Status"
                           />
@@ -306,6 +312,9 @@ export default function GatewaysList() {
                           </TableCell>
                           <TableCell>
                             <Skeleton variant="text" width="80%" height={20} />
+                          </TableCell>
+                          <TableCell>
+                            <Skeleton variant="rounded" width={90} height={24} />
                           </TableCell>
                           <TableCell>
                             <Skeleton
@@ -445,6 +454,12 @@ export default function GatewaysList() {
                         </TableCell>
                         <TableCell>
                           <FormattedMessage
+                            id="aiWorkspace.pages.appShell.appShellPages.gateways.GatewaysList.table.version"
+                            defaultMessage="Version"
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <FormattedMessage
                             id="aiWorkspace.pages.appShell.appShellPages.gateways.GatewaysList.table.status"
                             defaultMessage="Status"
                           />
@@ -472,7 +487,7 @@ export default function GatewaysList() {
                     <TableBody>
                       {filteredGateways.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={isAdmin ? 5 : 4}>
+                          <TableCell colSpan={isAdmin ? 6 : 5}>
                             <Typography variant="body2" color="text.secondary">
                               <FormattedMessage
                                 id="aiWorkspace.pages.appShell.appShellPages.gateways.GatewaysList.no.ai.gateways.found"
@@ -548,6 +563,19 @@ export default function GatewaysList() {
                               >
                                 {gateway.description || '—'}
                               </Typography>
+                            </TableCell>
+                            <TableCell>
+                              {gateway.version ? (
+                                <Chip
+                                  label={`AI-Gateway v${gateway.version}`}
+                                  size="small"
+                                  variant="outlined"
+                                />
+                              ) : (
+                                <Typography variant="body2" color="text.secondary">
+                                  —
+                                </Typography>
+                              )}
                             </TableCell>
                             <TableCell>{getStatusChip(gateway)}</TableCell>
                             <TableCell>

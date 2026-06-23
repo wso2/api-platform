@@ -129,11 +129,21 @@ export const MOESIF_APP_API_KEY = getEnvOrDefault(
   'eyJhcHAiOiI5Mjo1NjYiLCJ2ZXIiOiIyLjEiLCJvcmciOiI2Mjg6NDE3IiwicHViIjp0cnVlLCJpYXQiOjE3Njk5MDQwMDB9.gxcZJ7eybasZ5JY_JJj2ARuTiWZNnYIeAtL8oQbhfxk'
 );
 
-// Platform Gateway Version
-export const PLATFORM_GATEWAY_VERSION = getEnvOrDefault(
-  'VITE_PLATFORM_GATEWAY_VERSION',
-  'v1.0.0'
+export interface GatewayVersionEntry {
+  version: string;
+  latestVersion?: string;
+  channel: 'STS' | 'LTS';
+}
+
+export const PLATFORM_GATEWAY_VERSIONS = getEnvOrDefault<GatewayVersionEntry[]>(
+  'VITE_PLATFORM_GATEWAY_VERSIONS',
+  [
+    { version: '2026.05.13', channel: 'STS' },
+    { version: '1.1', latestVersion: 'v1.1.0', channel: 'LTS' },
+    { version: '1.0', latestVersion: 'v1.0.0', channel: 'LTS' },
+  ]
 );
+
 
 // Policy Hub web URL
 export const POLICY_HUB_WEB_URL = getEnvOrDefault(
