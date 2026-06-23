@@ -228,4 +228,5 @@ var (
 	ErrSecretInUse          = errors.New("secret is referenced by one or more resources")
 	ErrSecretRefMissing     = errors.New("one or more referenced secrets do not exist")
 	ErrSecretEncryptionKey  = errors.New("PLATFORM_SECRET_ENCRYPTION_KEY is required for secrets management")
+	ErrInvalidSecretType    = errors.New("invalid secret type: must be GENERIC or CERTIFICATE")
 )

@@ -55,6 +55,8 @@ func (s *SecretService) Create(orgID, createdBy string, req *dto.CreateSecretReq
 	secretType := req.Type
 	if secretType == "" {
 		secretType = model.SecretTypeGeneric
+	} else if secretType != model.SecretTypeGeneric && secretType != model.SecretTypeCertificate {
+		return nil, constants.ErrInvalidSecretType
 	}
 
 	exists, err := s.repo.Exists(orgID, req.Handle)
@@ -80,18 +82,18 @@ func (s *SecretService) Create(orgID, createdBy string, req *dto.CreateSecretReq
 		Type:           secretType,
 		Provider:       s.vault.ProviderName(),
 		Status:         model.SecretStatusActive,
-		ValueScope:     model.SecretDefaultValueScope,
 		CreatedBy:      createdBy,
 		UpdatedBy:      createdBy,
+		Scopes: []model.SecretScope{
+			{Scope: model.SecretScopeTypeOrg, ScopeValue: orgID},
+		},
 	}
 
 	if err := s.repo.Create(secret); err != nil {
 		return nil, fmt.Errorf("failed to persist secret: %w", err)
 	}
 
-	resp := secretToResponse(secret)
-	resp.Value = req.Value
-	return resp, nil
+	return secretToResponse(secret), nil
 }
 
 func (s *SecretService) List(orgID string, limit, offset int, updatedAfter *time.Time) (*dto.SecretListResponse, error) {
@@ -153,9 +155,7 @@ func (s *SecretService) Update(orgID, handle, updatedBy string, req *dto.UpdateS
 		return nil, fmt.Errorf("failed to update secret: %w", err)
 	}
 
-	resp := secretToResponse(existing)
-	resp.Value = req.Value
-	return resp, nil
+	return secretToResponse(existing), nil
 }
 
 func (s *SecretService) Delete(orgID, handle, updatedBy string) error {
@@ -221,19 +221,11 @@ func hashSecret(plaintext string) string {
 
 func secretToResponse(s *model.Secret) *dto.SecretResponse {
 	return &dto.SecretResponse{
-		ID:          s.UUID,
+		UUID:        s.UUID,
 		Handle:      s.Handle,
 		DisplayName: s.DisplayName,
-		Description: s.Description,
-		Type:        s.Type,
-		Provider:    s.Provider,
-		Status:      s.Status,
-		Hash:        s.Hash,
-		ValueScope: s.ValueScope,
 		CreatedAt:   s.CreatedAt,
-		CreatedBy:   s.CreatedBy,
 		UpdatedAt:   s.UpdatedAt,
-		UpdatedBy:   s.UpdatedBy,
 	}
 }
 
@@ -247,7 +239,6 @@ func secretToSummary(s *model.Secret) *dto.SecretSummary {
 		Provider:    s.Provider,
 		Status:      s.Status,
 		Hash:        s.Hash,
-		ValueScope: s.ValueScope,
 		CreatedAt:   s.CreatedAt,
 		UpdatedAt:   s.UpdatedAt,
 	}
