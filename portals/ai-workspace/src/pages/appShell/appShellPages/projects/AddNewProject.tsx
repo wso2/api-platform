@@ -100,6 +100,7 @@ function AddNewProjectForm() {
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 autoFocus
+                data-cyid="project-name-input"
               />
             </FormControl>
           </Grid>
@@ -114,6 +115,7 @@ function AddNewProjectForm() {
                 placeholder="Short description of the project."
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
+                data-cyid="project-description-input"
               />
             </FormControl>
           </Grid>
@@ -132,6 +134,7 @@ function AddNewProjectForm() {
             variant="contained"
             onClick={handleCreate}
             disabled={!name.trim() || isSubmitting}
+            data-cyid="create-project-button"
           >
             {isSubmitting ? (
               <CircularProgress size={18} sx={{ color: 'inherit', mr: 1 }} />

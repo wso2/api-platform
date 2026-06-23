@@ -23,7 +23,7 @@ GIT_COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 DOCKER_REGISTRY ?= ghcr.io/wso2/api-platform
 IMAGE_NAME := $(DOCKER_REGISTRY)/ai-workspace
 
-.PHONY: help run build push build-and-push-multiarch version-set version-bump-patch version-bump-minor version-bump-major version-bump-next-dev version-get-release
+.PHONY: help run build push build-and-push-multiarch version-set version-bump-patch version-bump-minor version-bump-major version-bump-next-dev version-get-release e2e-deps e2e-test e2e-open
 
 help: ## Show this help message
 	@echo 'AI Workspace Build System (Version: $(VERSION))'
@@ -37,6 +37,15 @@ run: ## Start AI Workspace dev server locally (installs deps if needed)
 		npm install; \
 	fi
 	npm run dev
+
+e2e-deps: ## Install Cypress dependencies for local E2E runs
+	npm install
+
+e2e-test: ## Run Cypress headlessly against a locally running docker compose stack
+	CYPRESS_BASE_URL=https://host.docker.internal:5380 docker run --rm --add-host=host.docker.internal:host-gateway -v "$$(pwd):/e2e" -w /e2e -e CYPRESS_BASE_URL cypress/included:13.17.0 cypress run --headless --browser electron --config-file cypress.config.js
+
+e2e-open: ## Open Cypress UI against a locally running docker compose stack
+	CYPRESS_BASE_URL=https://localhost:5380 npx cypress open --e2e --config-file cypress.config.js
 
 build: ## Build Docker image
 	@echo "Building Docker image ($(IMAGE_NAME):$(VERSION))..."

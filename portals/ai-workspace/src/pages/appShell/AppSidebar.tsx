@@ -181,7 +181,11 @@ export default function AppSidebar({
               </Sidebar.Item>
             </NavLink>
             {!currentProject && (
-              <NavLink to={orgProjectsListPath} style={navLinkStyle}>
+              <NavLink
+                to={orgProjectsListPath}
+                style={navLinkStyle}
+                data-cyid="nav-projects"
+              >
                 <Sidebar.Item id="projects">
                   <Sidebar.ItemIcon>
                     <Layers size={20} />
@@ -222,7 +226,11 @@ export default function AppSidebar({
                   </NavLink>
                 )}
                 {hasPermission(SCOPES.LLM_PROXY_READ) && (
-                  <NavLink to={proxiesPath} style={navLinkStyle}>
+                  <NavLink
+                    to={proxiesPath}
+                    style={navLinkStyle}
+                    data-cyid="nav-proxies"
+                  >
                     <Sidebar.Item id="proxies">
                       <Sidebar.ItemIcon>
                         <Workflow size={20} />
