@@ -27,7 +27,7 @@ platform_api_base_url = "https://localhost:9243/api/v1"
 controlplane_host = "host.docker.internal:9243"
 
 default_org_region = "us"
-platform_gateway_versions = '[{"version":"2026.05.13","channel":"STS"},{"version":"1.1","latestVersion":"v1.1.0","channel":"LTS"},{"version":"1.0","latestVersion":"v1.0.0","channel":"LTS"}]'
+platform_gateway_versions = '[{"version":"1.1","latestVersion":"v1.1.0","channel":"LTS"},{"version":"1.0","latestVersion":"v1.0.0","channel":"LTS"}]'
 
 # OIDC — disabled in quickstart mode. Uncomment and set auth_mode = "oidc" to use.
 # oidc_authority    = "https://api.asgardeo.io/t/<YOUR_ORG>/oauth2/token"

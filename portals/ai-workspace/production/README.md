@@ -154,7 +154,7 @@ controlplane_host = "<platform-api-host>"
 default_org_region = "us"
 
 # Available gateway versions shown in the create-gateway version selector (JSON array string).
-platform_gateway_versions = '[{"version":"2026.05.13","channel":"STS"},{"version":"1.1","latestVersion":"v1.1.0","channel":"LTS"},{"version":"1.0","latestVersion":"v1.0.0","channel":"LTS"}]'
+platform_gateway_versions = '[{"version":"1.1","latestVersion":"v1.1.0","channel":"LTS"},{"version":"1.0","latestVersion":"v1.0.0","channel":"LTS"}]'
 ```
 
 > **Redirect URIs** are derived automatically from `domain`:
