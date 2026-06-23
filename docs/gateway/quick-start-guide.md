@@ -36,7 +36,7 @@ docker compose up -d
 curl http://localhost:9094/api/admin/v0.9/health
 
 # Deploy an API configuration
-curl -X POST http://localhost:9090/api/management/v0.9/rest-apis \
+curl -X POST http://localhost:9090/api/management/v1alpha2/rest-apis \
   -u admin:admin \
   -H "Content-Type: application/yaml" \
   --data-binary @- <<'EOF'
