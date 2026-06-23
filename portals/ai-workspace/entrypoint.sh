@@ -50,7 +50,7 @@ if [ -f "$CONFIG_FILE" ]; then
 
     # Split on first '='
     key=$(echo "$line" | sed 's/[[:space:]]*=.*//' | tr -d '[:space:]')
-    value=$(echo "$line" | sed 's/^[^=]*=[[:space:]]*//' | sed 's/^"//' | sed 's/"[[:space:]]*$//')
+    value=$(echo "$line" | sed 's/^[^=]*=[[:space:]]*//' | sed "s/^['\"]//;s/['\"][[:space:]]*\$//")
 
     # Map config.toml key → VITE_* env var name
     case "$key" in

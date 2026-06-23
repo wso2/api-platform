@@ -100,8 +100,8 @@ export default function AddGateway() {
   const [vhost, setVhost] = useState(() =>
     normalizeVhost("https://localhost:8443"),
   );
-  const [selectedVersion, setSelectedVersion] = useState<GatewayVersionEntry>(
-    () => PLATFORM_GATEWAY_VERSIONS[0] ?? { version: "1.0", channel: "LTS" },
+  const [selectedVersion, setSelectedVersion] = useState<GatewayVersionEntry | null>(
+    () => PLATFORM_GATEWAY_VERSIONS[0] ?? null,
   );
 
   // Always use AI gateway type
@@ -113,6 +113,7 @@ export default function AddGateway() {
   }, [displayName]);
 
   const isFormValid = (): boolean => {
+    if (!selectedVersion) return false;
     if (!displayName || displayName.trim().length === 0) return false;
     if (displayName.length > MAX_NAME_LENGTH) return false;
     if (description.length > MAX_DESCRIPTION_LENGTH) return false;
@@ -135,7 +136,7 @@ export default function AddGateway() {
         vhost: normalizeVhost(vhost),
         functionalityType,
         description: description || undefined,
-        version: selectedVersion.version,
+        version: selectedVersion!.version,
       });
 
       showSnackbar("AI Gateway registered successfully", "success");
@@ -188,7 +189,7 @@ export default function AddGateway() {
               <FormControl fullWidth>
                 <FormLabel required>Gateway Version</FormLabel>
                 <Select
-                  value={selectedVersion.version}
+                  value={selectedVersion?.version ?? ""}
                   onChange={(e) => {
                     const entry = PLATFORM_GATEWAY_VERSIONS.find(
                       (v) => v.version === e.target.value,

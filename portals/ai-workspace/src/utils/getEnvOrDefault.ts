@@ -41,7 +41,10 @@ export const getEnvOrDefault = <T>(envKey: string, defaultValue: T): T => {
     // Handle array/object conversion
     if (Array.isArray(defaultValue) || (typeof defaultValue === 'object' && defaultValue !== null)) {
       try {
-        return JSON.parse(runtimeValue) as T;
+        const parsed = JSON.parse(runtimeValue);
+        if (Array.isArray(defaultValue) && !Array.isArray(parsed)) return defaultValue;
+        if (!Array.isArray(defaultValue) && (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed))) return defaultValue;
+        return parsed as T;
       } catch {
         return defaultValue;
       }
@@ -68,7 +71,10 @@ export const getEnvOrDefault = <T>(envKey: string, defaultValue: T): T => {
     // Handle array/object conversion
     if (Array.isArray(defaultValue) || (typeof defaultValue === 'object' && defaultValue !== null)) {
       try {
-        return JSON.parse(envValue) as T;
+        const parsed = JSON.parse(envValue);
+        if (Array.isArray(defaultValue) && !Array.isArray(parsed)) return defaultValue;
+        if (!Array.isArray(defaultValue) && (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed))) return defaultValue;
+        return parsed as T;
       } catch {
         return defaultValue;
       }
