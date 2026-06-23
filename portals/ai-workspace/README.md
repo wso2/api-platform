@@ -125,6 +125,38 @@ Ensure both services are running before accessing the application.
 
 > **Browser trust warning?** Both services use a self-signed TLS certificate by default. Click **Advanced → Proceed** to continue, then return to the workspace. See [Custom TLS certificates](#custom-tls-certificates) to remove the warning permanently.
 
+## Cypress E2E tests
+
+The repository includes Cypress E2E coverage for the local quickstart stack, including the basic login flow and AI Workspace UI CRUD flows.
+
+```bash
+cd portals/ai-workspace
+docker compose up -d
+npm install
+```
+
+Use the following commands after the stack is up:
+
+- Headless run in the official Cypress Docker image:
+  ```bash
+  npm run test:e2e
+  ```
+- Interactive Cypress UI against `https://localhost:5380`:
+  ```bash
+  npm run test:e2e:open
+  ```
+- Alternative interactive command:
+  ```bash
+  make e2e-open
+  ```
+
+`npm run test:e2e` runs against `https://host.docker.internal:5380`, which maps back to your local quickstart stack from inside the Cypress container. The command adds an explicit `host-gateway` mapping so it also works on Linux Docker hosts. `npm run test:e2e:open` runs locally against `https://localhost:5380`.
+
+The quickstart login used by the tests is:
+
+- Username: `admin`
+- Password: `admin`
+
 ---
 
 ## Custom TLS certificates (optional)

@@ -877,6 +877,7 @@ function ServiceProviderOverviewContent() {
                 setSelectedProjectIdForProxy(event.target.value as string)
               }
               disabled={isProjectsLoading}
+              data-cyid="proxy-project-select"
             >
               {isProjectsLoading ? (
                 <MenuItem value="__loading__" disabled>
@@ -915,6 +916,7 @@ function ServiceProviderOverviewContent() {
           variant="contained"
           onClick={handleConfirmProjectForProxy}
           disabled={!selectedProjectForProxy || isProjectsLoading}
+          data-cyid="proxy-project-continue-button"
         >
           <FormattedMessage
             id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ServiceProviderOverview.projectPicker.continue"
@@ -1056,21 +1058,21 @@ function ServiceProviderOverviewContent() {
               </Box>
 
               <Stack spacing={2} p={2}>
-                <DisabledActionTooltip
-                  disabled={isProxyQuotaReached}
-                  title={createProxyTooltip}
-                >
-                  <Button
-                    variant="outlined"
-                    onClick={handleCreateProxyClick}
-                    disabled={!provider.id || isProxyQuotaReached}
-                  >
-                    <FormattedMessage
-                      id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ServiceProviderOverview.create.llm.proxy"
-                      defaultMessage="Create App LLM Proxy"
-                    />
-                  </Button>
-                </DisabledActionTooltip>
+                <Tooltip title={isProxyQuotaReached ? proxyQuotaTooltip : ''}>
+                  <Box component="span">
+                    <Button
+                      variant="outlined"
+                      onClick={handleCreateProxyClick}
+                      disabled={!provider.id || isProxyQuotaReached}
+                      data-cyid="create-app-llm-proxy-button"
+                    >
+                      <FormattedMessage
+                        id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ServiceProviderOverview.create.llm.proxy"
+                        defaultMessage="Create App LLM Proxy"
+                      />
+                    </Button>
+                  </Box>
+                </Tooltip>
               </Stack>
             </Box>
           </Box>
