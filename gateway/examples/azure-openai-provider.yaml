@@ -23,7 +23,7 @@ spec:
   version: v1.0
   template: azure-openai
   upstream:
-    url: #endpoint url
+    url: https://REPLACE_WITH_AZURE_OPENAI_ENDPOINT
     auth:
       type: api-key
       header: api-key
