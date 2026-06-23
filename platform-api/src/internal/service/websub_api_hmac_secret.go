@@ -41,16 +41,17 @@ const (
 
 // WebSubAPIHmacSecretService manages platform-side HMAC secrets for WebSub APIs.
 type WebSubAPIHmacSecretService struct {
-	repo             repository.WebSubAPIHmacSecretRepository
-	websubRepo       repository.WebSubAPIRepository
-	encryptionKey    []byte
+	repo                 repository.WebSubAPIHmacSecretRepository
+	websubRepo           repository.WebSubAPIRepository
+	encryptionKey        []byte
 	gatewayEventsService *GatewayEventsService
-	gatewayRepo      repository.GatewayRepository
-	slogger          *slog.Logger
+	gatewayRepo          repository.GatewayRepository
+	slogger              *slog.Logger
 }
 
 // NewWebSubAPIHmacSecretService creates a new WebSubAPIHmacSecretService.
-// encryptionKeyStr must be a 32-byte key encoded as 64 hex chars or base64.
+// encryptionKeyStr must be a 32-byte key encoded as 64 hex chars or base64
+// (set via DATABASE_ENCRYPTION_KEY).
 func NewWebSubAPIHmacSecretService(
 	repo repository.WebSubAPIHmacSecretRepository,
 	websubRepo repository.WebSubAPIRepository,

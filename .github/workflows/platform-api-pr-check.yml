@@ -131,7 +131,7 @@ jobs:
             if docker exec sqlserver /opt/mssql-tools18/bin/sqlcmd \
                  -C -S localhost -U sa -P "$IT_DB_PASSWORD" \
                  -Q "SELECT 1" -b 2>/dev/null; then
-              echo "SQL Server ready after $((i * 5))s"
+              echo "SQL Server ready after $(((i - 1) * 5))s"
               exit 0
             fi
             echo "Not ready yet (${i}/36), waiting 5s..."

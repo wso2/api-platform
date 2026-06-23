@@ -176,6 +176,7 @@ type Database struct {
 	ConnMaxLifetime int    `koanf:"conn_max_lifetime"`
 
 	ExecuteSchemaDDL               bool   `koanf:"execute_schema_ddl"`
+	EncryptionKey                  string `koanf:"encryption_key"`
 	SubscriptionTokenEncryptionKey string `koanf:"subscription_token_encryption_key"`
 }
 
@@ -360,6 +361,8 @@ func envToKoanfKey(s string) string {
 		return "database.conn_max_lifetime"
 	case "database_execute_schema_ddl":
 		return "database.execute_schema_ddl"
+	case "database_encryption_key":
+		return "database.encryption_key"
 	case "database_subscription_token_encryption_key":
 		return "database.subscription_token_encryption_key"
 

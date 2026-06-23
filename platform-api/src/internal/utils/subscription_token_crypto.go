@@ -27,11 +27,11 @@ import (
 	"io"
 )
 
-// EncryptSubscriptionToken encrypts a plaintext subscription token using AES-256-GCM.
+// EncryptSubscriptionToken encrypts a plaintext string using AES-256-GCM.
 // The key must be 32 bytes (64 hex chars or 44 base64 chars). Returns base64-encoded ciphertext.
 func EncryptSubscriptionToken(key []byte, plaintext string) (string, error) {
 	if len(key) != 32 {
-		return "", errors.New("subscription token encryption key must be 32 bytes")
+		return "", errors.New("encryption key must be 32 bytes")
 	}
 	if plaintext == "" {
 		return "", errors.New("plaintext cannot be empty")
@@ -61,7 +61,7 @@ func EncryptSubscriptionToken(key []byte, plaintext string) (string, error) {
 // DecryptSubscriptionToken decrypts a base64-encoded ciphertext produced by EncryptSubscriptionToken.
 func DecryptSubscriptionToken(key []byte, ciphertextB64 string) (string, error) {
 	if len(key) != 32 {
-		return "", errors.New("subscription token encryption key must be 32 bytes")
+		return "", errors.New("encryption key must be 32 bytes")
 	}
 	if ciphertextB64 == "" {
 		return "", errors.New("ciphertext cannot be empty")
@@ -100,7 +100,7 @@ func DecryptSubscriptionToken(key []byte, ciphertextB64 string) (string, error) 
 // Does not truncate or pad; returns an error for invalid lengths.
 func DeriveEncryptionKey(keyStr string) ([]byte, error) {
 	if keyStr == "" {
-		return nil, errors.New("subscription token encryption key is required")
+		return nil, errors.New("encryption key is required")
 	}
 	if len(keyStr) == 64 {
 		key, err := hex.DecodeString(keyStr)
@@ -112,5 +112,5 @@ func DeriveEncryptionKey(keyStr string) ([]byte, error) {
 	if err == nil && len(key) == 32 {
 		return key, nil
 	}
-	return nil, errors.New("subscription token encryption key must be a 32-byte value encoded as 64 hex chars or base64")
+	return nil, errors.New("encryption key must be a 32-byte value encoded as 64 hex chars or base64")
 }
