@@ -16,32 +16,28 @@
  * under the License.
  */
 
-import { post } from '../clients/choreoApiClient';
+import { postForm } from '../clients/choreoApiClient';
 
 // ============================================================================
 // Types
 // ============================================================================
 
-export type SecretType = 'API_KEY' | 'CERTIFICATE' | 'PRIVATE_KEY' | 'GENERIC';
+export type SecretType = 'GENERIC' | 'CERTIFICATE';
 
 export interface CreateSecretRequest {
+  handle: string;
   name: string;
-  displayName: string;
   description?: string;
   value: string;
-  type: SecretType;
-  projectId?: string;
+  type?: SecretType;
 }
 
 export interface CreateSecretResponse {
-  id: string;
+  uuid: string;
+  handle: string;
   name: string;
-  displayName: string;
-  type: SecretType;
-  provider: string;
-  value: string;
   createdAt: string;
-  createdBy: string;
+  updatedAt: string;
 }
 
 // ============================================================================
@@ -50,17 +46,23 @@ export interface CreateSecretResponse {
 
 /**
  * Creates an encrypted secret in the Platform API.
- * The plaintext value is returned once in the response and never again.
+ * Sent as multipart/form-data; the API never returns the plaintext value.
  *
  * @param request - Secret creation payload
  * @param baseUrl - Platform API base URL
- * @returns The created secret (includes plaintext value — store or discard immediately)
+ * @returns The created secret metadata
  */
 export async function createSecret(
   request: CreateSecretRequest,
   baseUrl: string
 ): Promise<CreateSecretResponse> {
-  return post<CreateSecretResponse>('/secrets', request, baseUrl);
+  const form = new FormData();
+  form.append('handle', request.handle);
+  form.append('name', request.name);
+  if (request.description) form.append('description', request.description);
+  form.append('value', request.value);
+  if (request.type) form.append('type', request.type);
+  return postForm<CreateSecretResponse>('/secrets', form, baseUrl);
 }
 
 /**

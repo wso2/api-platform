@@ -874,7 +874,7 @@ func (h *GatewayInternalAPIHandler) GetGatewaySecrets(c *gin.Context) {
 // only when the secret's hash has changed, minimising decryption calls.
 // Authenticated via gateway api-key — no JWT required.
 func (h *GatewayInternalAPIHandler) GetGatewaySecretValue(c *gin.Context) {
-	orgID, _, ok := h.authenticateRequest(c)
+	orgID, gatewayID, ok := h.authenticateRequest(c)
 	if !ok {
 		return
 	}
@@ -882,6 +882,18 @@ func (h *GatewayInternalAPIHandler) GetGatewaySecretValue(c *gin.Context) {
 	handle := c.Param("id")
 	if handle == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Secret id is required"))
+		return
+	}
+
+	// Only serve secrets that are referenced by artifacts deployed on this gateway.
+	deployed, err := h.gatewayInternalService.IsSecretDeployedOnGateway(orgID, gatewayID, handle)
+	if err != nil {
+		h.slogger.Error("Failed to check secret deployment scope", "orgID", orgID, "gatewayID", gatewayID, "handle", handle, "error", err)
+		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to verify secret access"))
+		return
+	}
+	if !deployed {
+		c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "Secret not found"))
 		return
 	}
 

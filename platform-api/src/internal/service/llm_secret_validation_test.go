@@ -150,3 +150,38 @@ func TestLLMProviderService_Update_InvalidPlaceholder_Rejected(t *testing.T) {
 		t.Errorf("expected ErrSecretRefMissing, got: %v", err)
 	}
 }
+
+// TC-93: MCP proxy upstream config with a {{ secret "handle" }} referencing a non-existent secret is
+// rejected during Create. MCPProxyService delegates to the same ValidateSecretRefs path as LLMProviderService.
+func TestMCPProxyService_Create_MissingSecretRef_Rejected(t *testing.T) {
+	const orgID = "org-mcp-93"
+	svc, cleanup := setupLLMSecretTestEnv(t, orgID)
+	defer cleanup()
+
+	// Simulate the upstream JSON the MCP service would marshal — a raw template string in a URL field.
+	config := `{"main":{"url":"https://mcp.example.com","auth":{"value":"{{ secret \"nonexistent-mcp-secret\" }}"}}}`
+	err := svc.ValidateSecretRefs(orgID, config)
+	if err == nil {
+		t.Fatal("expected ErrSecretRefMissing for MCP proxy create with missing secret ref, got nil")
+	}
+	if !errors.Is(err, constants.ErrSecretRefMissing) {
+		t.Errorf("expected ErrSecretRefMissing, got: %v", err)
+	}
+}
+
+// TC-94: MCP proxy upstream config with a {{ secret "handle" }} referencing a non-existent secret is
+// rejected during Update.
+func TestMCPProxyService_Update_MissingSecretRef_Rejected(t *testing.T) {
+	const orgID = "org-mcp-94"
+	svc, cleanup := setupLLMSecretTestEnv(t, orgID)
+	defer cleanup()
+
+	config := `{"main":{"url":"https://mcp.example.com","auth":{"value":"{{ secret \"deleted-mcp-secret\" }}"}}}`
+	err := svc.ValidateSecretRefs(orgID, config)
+	if err == nil {
+		t.Fatal("expected ErrSecretRefMissing for MCP proxy update with missing secret ref, got nil")
+	}
+	if !errors.Is(err, constants.ErrSecretRefMissing) {
+		t.Errorf("expected ErrSecretRefMissing, got: %v", err)
+	}
+}
