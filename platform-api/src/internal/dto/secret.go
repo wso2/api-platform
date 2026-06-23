@@ -20,50 +20,42 @@ package dto
 import "time"
 
 // CreateSecretRequest is the request body for POST /api/v1/secrets.
+// Accepts multipart/form-data to support file-based secret values in future.
 type CreateSecretRequest struct {
-	Handle      string `json:"name" binding:"required"`
-	DisplayName string `json:"displayName" binding:"required"`
-	Description string `json:"description"`
-	Value       string `json:"value" binding:"required"`
-	Type        string `json:"type"`
+	Handle      string `form:"handle" binding:"required"`
+	DisplayName string `form:"name"   binding:"required"`
+	Description string `form:"description"`
+	Value       string `form:"value"  binding:"required"`
+	Type        string `form:"type"`
 }
 
 // UpdateSecretRequest is the request body for PUT /api/v1/secrets/:id.
+// Accepts multipart/form-data to support file-based secret values in future.
 type UpdateSecretRequest struct {
-	DisplayName string `json:"displayName"`
-	Description string `json:"description"`
-	Value       string `json:"value" binding:"required"`
+	DisplayName string `form:"name"`
+	Description string `form:"description"`
+	Value       string `form:"value" binding:"required"`
 }
 
-// SecretResponse is returned on POST and PUT — includes the plaintext value once.
+// SecretResponse is returned on POST and PUT.
 type SecretResponse struct {
-	ID          string    `json:"id"`
-	Handle      string    `json:"name"`
-	DisplayName string    `json:"displayName"`
-	Description string    `json:"description,omitempty"`
-	Value       string    `json:"value"`
-	Type        string    `json:"type"`
-	Provider    string    `json:"provider"`
-	Status      string    `json:"status"`
-	Hash        string    `json:"hash"`
-	ValueScope  string    `json:"valueScope"`
+	UUID        string    `json:"uuid"`
+	Handle      string    `json:"handle"`
+	DisplayName string    `json:"name"`
 	CreatedAt   time.Time `json:"createdAt"`
-	CreatedBy   string    `json:"createdBy,omitempty"`
 	UpdatedAt   time.Time `json:"updatedAt"`
-	UpdatedBy   string    `json:"updatedBy,omitempty"`
 }
 
 // SecretSummary is returned on GET list and GET by ID — no value field.
 type SecretSummary struct {
-	ID          string    `json:"id"`
-	Handle      string    `json:"name"`
-	DisplayName string    `json:"displayName"`
+	ID          string    `json:"uuid"`
+	Handle      string    `json:"handle"`
+	DisplayName string    `json:"name"`
 	Description string    `json:"description,omitempty"`
 	Type        string    `json:"type"`
 	Provider    string    `json:"provider"`
 	Status      string    `json:"status"`
 	Hash        string    `json:"hash"`
-	ValueScope  string    `json:"valueScope"`
 	CreatedAt   time.Time `json:"createdAt"`
 	UpdatedAt   time.Time `json:"updatedAt"`
 }
@@ -77,14 +69,13 @@ type SecretListResponse struct {
 // SecretSyncItem is returned by the internal GW sync endpoint.
 // Value is only populated when the caller requests includeValues=true (startup bulk fetch).
 type SecretSyncItem struct {
-	ID          string    `json:"id"`
-	Handle      string    `json:"name"`
-	DisplayName string    `json:"displayName"`
+	ID          string    `json:"uuid"`
+	Handle      string    `json:"handle"`
+	DisplayName string    `json:"name"`
 	Type        string    `json:"type"`
 	Provider    string    `json:"provider"`
 	Status      string    `json:"status"`
 	Hash        string    `json:"hash"`
-	ValueScope  string    `json:"valueScope"`
 	CreatedAt   time.Time `json:"createdAt"`
 	UpdatedAt   time.Time `json:"updatedAt"`
 	Value       *string   `json:"value,omitempty"`

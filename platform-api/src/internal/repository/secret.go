@@ -53,9 +53,6 @@ func (r *SecretRepo) Create(s *model.Secret) error {
 		}
 		s.UUID = id
 	}
-	if s.ValueScope == "" {
-		s.ValueScope = model.SecretDefaultValueScope
-	}
 	if s.Type == "" {
 		s.Type = model.SecretTypeGeneric
 	}
@@ -66,17 +63,22 @@ func (r *SecretRepo) Create(s *model.Secret) error {
 		s.Status = model.SecretStatusActive
 	}
 
+	tx, err := r.db.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback() //nolint:errcheck
+
 	query := r.db.Rebind(`
 		INSERT INTO secrets (
-			uuid, organization_id, handle, project_id, display_name, description,
-			ciphertext, hash, type, provider, status, value_scope,
+			uuid, organization_id, handle, name, description,
+			ciphertext, hash, type, provider, status,
 			created_at, created_by, updated_at, updated_by
-		) VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`)
-
-	_, err := r.db.Exec(query,
+	_, err = tx.Exec(query,
 		s.UUID, s.OrganizationID, s.Handle, s.DisplayName, s.Description,
-		s.Ciphertext, s.Hash, s.Type, s.Provider, s.Status, s.ValueScope,
+		s.Ciphertext, s.Hash, s.Type, s.Provider, s.Status,
 		s.CreatedAt, s.CreatedBy, s.UpdatedAt, s.UpdatedBy,
 	)
 	if err != nil {
@@ -85,24 +87,41 @@ func (r *SecretRepo) Create(s *model.Secret) error {
 		}
 		return fmt.Errorf("failed to create secret: %w", err)
 	}
-	return nil
+
+	scopeQuery := r.db.Rebind(`
+		INSERT INTO secret_scopes (secret_uuid, scope, scope_value)
+		VALUES (?, ?, ?)
+	`)
+	for _, sc := range s.Scopes {
+		if _, err := tx.Exec(scopeQuery, s.UUID, sc.Scope, sc.ScopeValue); err != nil {
+			return fmt.Errorf("failed to create secret scope: %w", err)
+		}
+	}
+
+	return tx.Commit()
+}
+
+const secretCols = `SELECT uuid, organization_id, handle, name, description,
+	       ciphertext, hash, type, provider, status,
+	       created_at, created_by, updated_at, updated_by FROM secrets`
+
+func scanSecret(row interface {
+	Scan(...interface{}) error
+}) (*model.Secret, error) {
+	s := &model.Secret{}
+	err := row.Scan(
+		&s.UUID, &s.OrganizationID, &s.Handle, &s.DisplayName, &s.Description,
+		&s.Ciphertext, &s.Hash, &s.Type, &s.Provider, &s.Status,
+		&s.CreatedAt, &s.CreatedBy, &s.UpdatedAt, &s.UpdatedBy,
+	)
+	return s, err
 }
 
 func (r *SecretRepo) GetByHandle(orgID, handle string) (*model.Secret, error) {
-	query := r.db.Rebind(`
-		SELECT uuid, organization_id, handle, project_id, display_name, description,
-		       ciphertext, hash, type, provider, status, value_scope,
-		       created_at, created_by, updated_at, updated_by
-		FROM secrets
-		WHERE organization_id = ? AND handle = ? AND project_id IS NULL
+	query := r.db.Rebind(secretCols + `
+		WHERE organization_id = ? AND handle = ?
 	`)
-
-	s := &model.Secret{}
-	err := r.db.QueryRow(query, orgID, handle).Scan(
-		&s.UUID, &s.OrganizationID, &s.Handle, &s.ProjectID, &s.DisplayName, &s.Description,
-		&s.Ciphertext, &s.Hash, &s.Type, &s.Provider, &s.Status, &s.ValueScope,
-		&s.CreatedAt, &s.CreatedBy, &s.UpdatedAt, &s.UpdatedBy,
-	)
+	s, err := scanSecret(r.db.QueryRow(query, orgID, handle))
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, constants.ErrSecretNotFound
@@ -117,94 +136,54 @@ func (r *SecretRepo) List(orgID string, limit, offset int, updatedAfter *time.Ti
 		query string
 		args  []interface{}
 	)
-
-	const cols = `SELECT uuid, organization_id, handle, project_id, display_name, description,
-		       ciphertext, hash, type, provider, status, value_scope,
-		       created_at, created_by, updated_at, updated_by FROM secrets`
-
 	if updatedAfter != nil {
-		query = r.db.Rebind(cols + ` WHERE organization_id = ? AND project_id IS NULL AND updated_at > ? ORDER BY updated_at DESC LIMIT ? OFFSET ?`)
+		query = r.db.Rebind(secretCols + ` WHERE organization_id = ? AND updated_at > ? ORDER BY updated_at DESC LIMIT ? OFFSET ?`)
 		args = []interface{}{orgID, *updatedAfter, limit, offset}
 	} else {
-		query = r.db.Rebind(cols + ` WHERE organization_id = ? AND project_id IS NULL ORDER BY created_at DESC LIMIT ? OFFSET ?`)
+		query = r.db.Rebind(secretCols + ` WHERE organization_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?`)
 		args = []interface{}{orgID, limit, offset}
 	}
-
-	rows, err := r.db.Query(query, args...)
-	if err != nil {
-		return nil, fmt.Errorf("failed to list secrets: %w", err)
-	}
-	defer rows.Close()
-
-	var secrets []*model.Secret
-	for rows.Next() {
-		s := &model.Secret{}
-		if err := rows.Scan(
-			&s.UUID, &s.OrganizationID, &s.Handle, &s.ProjectID, &s.DisplayName, &s.Description,
-			&s.Ciphertext, &s.Hash, &s.Type, &s.Provider, &s.Status, &s.ValueScope,
-			&s.CreatedAt, &s.CreatedBy, &s.UpdatedAt, &s.UpdatedBy,
-		); err != nil {
-			return nil, fmt.Errorf("failed to scan secret row: %w", err)
-		}
-		secrets = append(secrets, s)
-	}
-	return secrets, rows.Err()
+	return r.querySecrets(query, args...)
 }
 
 // ListByHandles returns secrets for the given org whose handle is in the provided list.
 // If updatedAfter is set, only secrets updated after that time are returned.
-// Returns an empty slice (not an error) when handles is empty.
-func (r *SecretRepo) ListByHandles(orgID string, handles []string, updatedAfter *time.Time, valueScopes []string) ([]*model.Secret, error) {
+// Returns nil (not an error) when handles is empty.
+func (r *SecretRepo) ListByHandles(orgID string, handles []string, updatedAfter *time.Time) ([]*model.Secret, error) {
 	if len(handles) == 0 {
 		return nil, nil
 	}
 
-	const cols = `SELECT uuid, organization_id, handle, project_id, display_name, description,
-		       ciphertext, hash, type, provider, status, value_scope,
-		       created_at, created_by, updated_at, updated_by FROM secrets`
-
-	args := make([]interface{}, 0, len(handles)+len(valueScopes)+3)
+	placeholders := make([]string, len(handles))
+	args := make([]interface{}, 0, len(handles)+2)
 	args = append(args, orgID)
-
-	handlePlaceholders := make([]string, len(handles))
 	for i, h := range handles {
-		handlePlaceholders[i] = "?"
+		placeholders[i] = "?"
 		args = append(args, h)
 	}
-	inClause := `handle IN (` + strings.Join(handlePlaceholders, ",") + `)`
-
-	scopeClause := ""
-	if len(valueScopes) > 0 {
-		scopePlaceholders := make([]string, len(valueScopes))
-		for i, s := range valueScopes {
-			scopePlaceholders[i] = "?"
-			args = append(args, s)
-		}
-		scopeClause = ` AND value_scope IN (` + strings.Join(scopePlaceholders, ",") + `)`
-	}
+	inClause := `handle IN (` + strings.Join(placeholders, ",") + `)`
 
 	var query string
 	if updatedAfter != nil {
-		query = r.db.Rebind(cols + ` WHERE organization_id = ? AND project_id IS NULL AND ` + inClause + scopeClause + ` AND updated_at > ? ORDER BY updated_at DESC`)
+		query = r.db.Rebind(secretCols + ` WHERE organization_id = ? AND ` + inClause + ` AND updated_at > ? ORDER BY updated_at DESC`)
 		args = append(args, *updatedAfter)
 	} else {
-		query = r.db.Rebind(cols + ` WHERE organization_id = ? AND project_id IS NULL AND ` + inClause + scopeClause + ` ORDER BY created_at DESC`)
+		query = r.db.Rebind(secretCols + ` WHERE organization_id = ? AND ` + inClause + ` ORDER BY created_at DESC`)
 	}
+	return r.querySecrets(query, args...)
+}
 
+func (r *SecretRepo) querySecrets(query string, args ...interface{}) ([]*model.Secret, error) {
 	rows, err := r.db.Query(query, args...)
 	if err != nil {
-		return nil, fmt.Errorf("failed to list secrets by handles: %w", err)
+		return nil, fmt.Errorf("failed to query secrets: %w", err)
 	}
 	defer rows.Close()
 
 	var secrets []*model.Secret
 	for rows.Next() {
-		s := &model.Secret{}
-		if err := rows.Scan(
-			&s.UUID, &s.OrganizationID, &s.Handle, &s.ProjectID, &s.DisplayName, &s.Description,
-			&s.Ciphertext, &s.Hash, &s.Type, &s.Provider, &s.Status, &s.ValueScope,
-			&s.CreatedAt, &s.CreatedBy, &s.UpdatedAt, &s.UpdatedBy,
-		); err != nil {
+		s, err := scanSecret(rows)
+		if err != nil {
 			return nil, fmt.Errorf("failed to scan secret row: %w", err)
 		}
 		secrets = append(secrets, s)
@@ -214,7 +193,7 @@ func (r *SecretRepo) ListByHandles(orgID string, handles []string, updatedAfter 
 
 func (r *SecretRepo) Count(orgID string) (int, error) {
 	var count int
-	query := r.db.Rebind(`SELECT COUNT(*) FROM secrets WHERE organization_id = ? AND project_id IS NULL`)
+	query := r.db.Rebind(`SELECT COUNT(*) FROM secrets WHERE organization_id = ?`)
 	if err := r.db.QueryRow(query, orgID).Scan(&count); err != nil {
 		return 0, fmt.Errorf("failed to count secrets: %w", err)
 	}
@@ -226,7 +205,7 @@ func (r *SecretRepo) Update(s *model.Secret) error {
 
 	query := r.db.Rebind(`
 		UPDATE secrets
-		SET display_name = ?, description = ?, ciphertext = ?, hash = ?,
+		SET name = ?, description = ?, ciphertext = ?, hash = ?,
 		    updated_at = ?, updated_by = ?
 		WHERE organization_id = ? AND handle = ?
 	`)
@@ -251,8 +230,7 @@ func (r *SecretRepo) Update(s *model.Secret) error {
 }
 
 // FindRefsAndSoftDelete checks for active artifact references and deprecates the
-// secret in a single transaction, eliminating the TOCTOU window that exists
-// when replicas run FindRefs and SoftDelete as separate operations.
+// secret in a single transaction, eliminating the TOCTOU window.
 // Returns the references without deprecating if any are found.
 func (r *SecretRepo) FindRefsAndSoftDelete(orgID, handle, updatedBy string) ([]model.SecretReference, error) {
 	tx, err := r.db.Begin()
@@ -261,9 +239,6 @@ func (r *SecretRepo) FindRefsAndSoftDelete(orgID, handle, updatedBy string) ([]m
 	}
 	defer tx.Rollback() //nolint:errcheck
 
-	// Lock the secret row before checking references to close the TOCTOU window
-	// where a concurrent deploy could insert a ref between the check and the deprecation.
-	// PostgreSQL uses SELECT FOR UPDATE; SQLite serialises writes at the transaction level.
 	var lockQuery string
 	if r.db.Driver() == "postgres" || r.db.Driver() == "postgresql" {
 		lockQuery = `SELECT uuid FROM secrets WHERE organization_id = $1 AND handle = $2 LIMIT 1 FOR UPDATE`
@@ -376,7 +351,7 @@ func (r *SecretRepo) Exists(orgID, handle string) (bool, error) {
 	var count int
 	query := r.db.Rebind(`
 		SELECT COUNT(*) FROM secrets
-		WHERE organization_id = ? AND project_id IS NULL AND handle = ? AND status = 'ACTIVE'
+		WHERE organization_id = ? AND handle = ? AND status = 'ACTIVE'
 	`)
 	if err := r.db.QueryRow(query, orgID, handle).Scan(&count); err != nil {
 		return false, fmt.Errorf("failed to check secret existence: %w", err)

@@ -555,11 +555,10 @@ CREATE INDEX IF NOT EXISTS idx_audit_org ON audit(organization_uuid);
 
 -- Secrets table for encrypted secret management
 CREATE TABLE IF NOT EXISTS secrets (
-    uuid            VARCHAR(40)   NOT NULL UNIQUE,
+    uuid            VARCHAR(40)   PRIMARY KEY,
     organization_id VARCHAR(40)   NOT NULL,
     handle          VARCHAR(40)   NOT NULL,
-    project_id      VARCHAR(40),
-    display_name    VARCHAR(255)  NOT NULL,
+    name            VARCHAR(255)  NOT NULL,
     description     VARCHAR(1023),
     ciphertext      BLOB          NOT NULL,
     hash            VARCHAR(255)  NOT NULL,
@@ -567,21 +566,25 @@ CREATE TABLE IF NOT EXISTS secrets (
     type            VARCHAR(20)   NOT NULL DEFAULT 'GENERIC',
     provider        VARCHAR(20)   NOT NULL DEFAULT 'IN_HOUSE',
     status          VARCHAR(20)   NOT NULL DEFAULT 'ACTIVE',
-    environment     VARCHAR(50)   NOT NULL DEFAULT '__ALL_ENV',
     created_at      DATETIME      NOT NULL,
     created_by      VARCHAR(255),
     updated_at      DATETIME      NOT NULL,
     updated_by      VARCHAR(255),
-    PRIMARY KEY (organization_id, handle),
-    FOREIGN KEY (organization_id) REFERENCES organizations(uuid) ON DELETE CASCADE,
-    FOREIGN KEY (project_id) REFERENCES projects(uuid) ON DELETE CASCADE
+    UNIQUE (organization_id, handle),
+    FOREIGN KEY (organization_id) REFERENCES organizations(uuid) ON DELETE CASCADE
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_secrets_scope_handle
-    ON secrets(organization_id, COALESCE(project_id, ''), handle);
-
 CREATE INDEX IF NOT EXISTS idx_secrets_updated_at ON secrets(updated_at);
-CREATE INDEX IF NOT EXISTS idx_secrets_project_id ON secrets(project_id);
+
+CREATE TABLE IF NOT EXISTS secret_scopes (
+    secret_uuid VARCHAR(40)  NOT NULL,
+    scope       VARCHAR(30)  NOT NULL, -- 'org' | 'project' | 'artifact'
+    scope_value VARCHAR(40)  NOT NULL, -- org_id / project_uuid / artifact_uuid
+    PRIMARY KEY (secret_uuid, scope, scope_value),
+    FOREIGN KEY (secret_uuid) REFERENCES secrets(uuid) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_secret_scopes_scope ON secret_scopes(scope, scope_value);
 
 -- Pre-computed secret handle references per deployed artifact per gateway.
 -- Populated at deploy time (status→DEPLOYED) and cleared at undeploy time.

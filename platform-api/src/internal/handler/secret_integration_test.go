@@ -24,11 +24,11 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"platform-api/src/internal/constants"
@@ -108,18 +108,32 @@ func setupSecretTestEnv(t *testing.T) (*gin.Engine, func()) {
 	return r, cleanup
 }
 
+// multipartForm encodes fields as multipart/form-data and returns the body buffer
+// and the Content-Type header value (which includes the boundary).
+func multipartForm(fields map[string]string) (*bytes.Buffer, string) {
+	buf := &bytes.Buffer{}
+	w := multipart.NewWriter(buf)
+	for k, v := range fields {
+		_ = w.WriteField(k, v)
+	}
+	w.Close()
+	return buf, w.FormDataContentType()
+}
+
 // doRequest is a helper that creates a request, sets common test headers, and returns the response.
-func doRequest(r *gin.Engine, method, path, body string, withAuth bool) *httptest.ResponseRecorder {
-	var reqBody *strings.Reader
-	if body != "" {
-		reqBody = strings.NewReader(body)
+// Pass a non-nil fields map to send a multipart/form-data body; pass nil for requests with no body.
+func doRequest(r *gin.Engine, method, path string, fields map[string]string, withAuth bool) *httptest.ResponseRecorder {
+	var body *bytes.Buffer
+	contentType := ""
+	if fields != nil {
+		body, contentType = multipartForm(fields)
 	} else {
-		reqBody = strings.NewReader("")
+		body = &bytes.Buffer{}
 	}
 
-	req, _ := http.NewRequest(method, path, reqBody)
-	if body != "" {
-		req.Header.Set("Content-Type", "application/json")
+	req, _ := http.NewRequest(method, path, body)
+	if contentType != "" {
+		req.Header.Set("Content-Type", contentType)
 	}
 	if withAuth {
 		req.Header.Set("X-Test-Org", "org-it-001")
@@ -131,10 +145,13 @@ func doRequest(r *gin.Engine, method, path, body string, withAuth bool) *httptes
 	return w
 }
 
-// createSecret is a helper that POSTs a secret and returns the recorder.
+// createSecret is a helper that POSTs a secret via multipart/form-data.
 func createSecret(r *gin.Engine, handle, displayName, value string) *httptest.ResponseRecorder {
-	body := fmt.Sprintf(`{"name":%q,"displayName":%q,"value":%q}`, handle, displayName, value)
-	return doRequest(r, http.MethodPost, "/api/v1/secrets", body, true)
+	return doRequest(r, http.MethodPost, "/api/v1/secrets", map[string]string{
+		"handle":      handle,
+		"name":        displayName,
+		"value":       value,
+	}, true)
 }
 
 func parseBody(w *httptest.ResponseRecorder) map[string]interface{} {
@@ -143,7 +160,7 @@ func parseBody(w *httptest.ResponseRecorder) map[string]interface{} {
 	return m
 }
 
-// TC-IT-01: Create returns 201 with handle, valueScope, and value fields.
+// TC-IT-01: Create returns 201 with handle and value fields.
 func TestSecretHandler_Create_201(t *testing.T) {
 	r, cleanup := setupSecretTestEnv(t)
 	defer cleanup()
@@ -154,18 +171,11 @@ func TestSecretHandler_Create_201(t *testing.T) {
 	}
 
 	resp := parseBody(w)
-	if resp["name"] != "it-key" {
-		t.Errorf("expected name=it-key, got %v", resp["name"])
+	if resp["handle"] != "it-key" {
+		t.Errorf("expected handle=it-key, got %v", resp["handle"])
 	}
-	if resp["valueScope"] != "ORG_SHARED" {
-		t.Errorf("expected valueScope=ORG_SHARED, got %v", resp["valueScope"])
-	}
-	if resp["value"] != "plaintext" {
-		t.Errorf("expected value=plaintext, got %v", resp["value"])
-	}
-
 	// Subsequent GET should not have value field.
-	wGet := doRequest(r, http.MethodGet, "/api/v1/secrets/it-key", "", true)
+	wGet := doRequest(r, http.MethodGet, "/api/v1/secrets/it-key", nil, true)
 	if wGet.Code != http.StatusOK {
 		t.Fatalf("expected 200 on GET, got %d", wGet.Code)
 	}
@@ -194,9 +204,9 @@ func TestSecretHandler_Create_401_NoOrg(t *testing.T) {
 	r, cleanup := setupSecretTestEnv(t)
 	defer cleanup()
 
-	body := `{"name":"no-org-key","displayName":"No Org Key","value":"val"}`
-	req, _ := http.NewRequest(http.MethodPost, "/api/v1/secrets", bytes.NewBufferString(body))
-	req.Header.Set("Content-Type", "application/json")
+	body, ct := multipartForm(map[string]string{"handle": "no-org-key", "name": "No Org Key", "value": "val"})
+	req, _ := http.NewRequest(http.MethodPost, "/api/v1/secrets", body)
+	req.Header.Set("Content-Type", ct)
 	// Intentionally NOT setting X-Test-Org
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
@@ -215,7 +225,7 @@ func TestSecretHandler_List_ReturnsPaginationObject(t *testing.T) {
 		createSecret(r, fmt.Sprintf("key-%d", i), fmt.Sprintf("Key %d", i), "val")
 	}
 
-	w := doRequest(r, http.MethodGet, "/api/v1/secrets", "", true)
+	w := doRequest(r, http.MethodGet, "/api/v1/secrets", nil, true)
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
@@ -253,7 +263,7 @@ func TestSecretHandler_List_LimitOffset(t *testing.T) {
 		createSecret(r, fmt.Sprintf("page-key-%d", i), fmt.Sprintf("Page Key %d", i), "val")
 	}
 
-	w1 := doRequest(r, http.MethodGet, "/api/v1/secrets?limit=2&offset=0", "", true)
+	w1 := doRequest(r, http.MethodGet, "/api/v1/secrets?limit=2&offset=0", nil, true)
 	if w1.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", w1.Code)
 	}
@@ -270,7 +280,7 @@ func TestSecretHandler_List_LimitOffset(t *testing.T) {
 		t.Errorf("expected limit=2, got %v", pagination1["limit"])
 	}
 
-	w2 := doRequest(r, http.MethodGet, "/api/v1/secrets?limit=2&offset=2", "", true)
+	w2 := doRequest(r, http.MethodGet, "/api/v1/secrets?limit=2&offset=2", nil, true)
 	if w2.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", w2.Code)
 	}
@@ -288,7 +298,7 @@ func TestSecretHandler_List_UpdatedAfter(t *testing.T) {
 
 	createSecret(r, "future-key", "Future Key", "val")
 
-	w := doRequest(r, http.MethodGet, "/api/v1/secrets?updatedAfter=2099-01-01T00:00:00Z", "", true)
+	w := doRequest(r, http.MethodGet, "/api/v1/secrets?updatedAfter=2099-01-01T00:00:00Z", nil, true)
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
@@ -305,7 +315,7 @@ func TestSecretHandler_List_InvalidUpdatedAfter_400(t *testing.T) {
 	r, cleanup := setupSecretTestEnv(t)
 	defer cleanup()
 
-	w := doRequest(r, http.MethodGet, "/api/v1/secrets?updatedAfter=not-a-date", "", true)
+	w := doRequest(r, http.MethodGet, "/api/v1/secrets?updatedAfter=not-a-date", nil, true)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", w.Code)
 	}
@@ -318,14 +328,14 @@ func TestSecretHandler_Get_200(t *testing.T) {
 
 	createSecret(r, "get-key", "Get Key", "secret-val")
 
-	w := doRequest(r, http.MethodGet, "/api/v1/secrets/get-key", "", true)
+	w := doRequest(r, http.MethodGet, "/api/v1/secrets/get-key", nil, true)
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
 
 	resp := parseBody(w)
-	if resp["name"] != "get-key" {
-		t.Errorf("expected name=get-key, got %v", resp["name"])
+	if resp["handle"] != "get-key" {
+		t.Errorf("expected handle=get-key, got %v", resp["handle"])
 	}
 	if _, hasValue := resp["value"]; hasValue {
 		t.Errorf("GET by handle should NOT contain value field")
@@ -337,7 +347,7 @@ func TestSecretHandler_Get_404_NotFound(t *testing.T) {
 	r, cleanup := setupSecretTestEnv(t)
 	defer cleanup()
 
-	w := doRequest(r, http.MethodGet, "/api/v1/secrets/ghost", "", true)
+	w := doRequest(r, http.MethodGet, "/api/v1/secrets/ghost", nil, true)
 	if w.Code != http.StatusNotFound {
 		t.Fatalf("expected 404, got %d", w.Code)
 	}
@@ -350,16 +360,11 @@ func TestSecretHandler_Update_200(t *testing.T) {
 
 	createSecret(r, "update-key", "Update Key", "old-value")
 
-	updateBody := `{"value":"new-value"}`
-	w := doRequest(r, http.MethodPut, "/api/v1/secrets/update-key", updateBody, true)
+	w := doRequest(r, http.MethodPut, "/api/v1/secrets/update-key", map[string]string{"value": "new-value"}, true)
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
 
-	resp := parseBody(w)
-	if resp["value"] != "new-value" {
-		t.Errorf("expected value=new-value, got %v", resp["value"])
-	}
 }
 
 // TC-IT-11: Delete unreferenced secret returns 204.
@@ -369,7 +374,7 @@ func TestSecretHandler_Delete_204_Unreferenced(t *testing.T) {
 
 	createSecret(r, "del-key", "Del Key", "val")
 
-	w := doRequest(r, http.MethodDelete, "/api/v1/secrets/del-key", "", true)
+	w := doRequest(r, http.MethodDelete, "/api/v1/secrets/del-key", nil, true)
 	if w.Code != http.StatusNoContent {
 		t.Fatalf("expected 204, got %d: %s", w.Code, w.Body.String())
 	}
@@ -433,7 +438,7 @@ func TestSecretHandler_Delete_409_ReferencedByArtifact(t *testing.T) {
 	}
 
 	// Now delete should return 409
-	wDel := doRequest(r2, http.MethodDelete, "/api/v1/secrets/ref-key", "", true)
+	wDel := doRequest(r2, http.MethodDelete, "/api/v1/secrets/ref-key", nil, true)
 	if wDel.Code != http.StatusConflict {
 		t.Fatalf("expected 409, got %d: %s", wDel.Code, wDel.Body.String())
 	}
@@ -445,18 +450,9 @@ func TestSecretHandler_Delete_409_ReferencedByArtifact(t *testing.T) {
 	}
 }
 
-// doRequestAs is like doRequest but sends as a specific org.
-func doRequestAs(r *gin.Engine, method, path, body, orgID string) *httptest.ResponseRecorder {
-	var reqBody *strings.Reader
-	if body != "" {
-		reqBody = strings.NewReader(body)
-	} else {
-		reqBody = strings.NewReader("")
-	}
-	req, _ := http.NewRequest(method, path, reqBody)
-	if body != "" {
-		req.Header.Set("Content-Type", "application/json")
-	}
+// doRequestAs is like doRequest but targets a specific org with no body.
+func doRequestAs(r *gin.Engine, method, path, orgID string) *httptest.ResponseRecorder {
+	req, _ := http.NewRequest(method, path, &bytes.Buffer{})
 	req.Header.Set("X-Test-Org", orgID)
 	req.Header.Set("X-Test-User", "alice")
 	w := httptest.NewRecorder()
@@ -466,9 +462,13 @@ func doRequestAs(r *gin.Engine, method, path, body, orgID string) *httptest.Resp
 
 // createSecretOnRouter is like createSecret but uses a provided router.
 func createSecretOnRouter(r *gin.Engine, handle, displayName, value string) *httptest.ResponseRecorder {
-	body := fmt.Sprintf(`{"name":%q,"displayName":%q,"value":%q}`, handle, displayName, value)
-	req, _ := http.NewRequest(http.MethodPost, "/api/v1/secrets", strings.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
+	body, ct := multipartForm(map[string]string{
+		"handle":      handle,
+		"name":        displayName,
+		"value":       value,
+	})
+	req, _ := http.NewRequest(http.MethodPost, "/api/v1/secrets", body)
+	req.Header.Set("Content-Type", ct)
 	req.Header.Set("X-Test-Org", "org-it-001")
 	req.Header.Set("X-Test-User", "alice")
 	w := httptest.NewRecorder()
@@ -481,7 +481,7 @@ func TestSecretHandler_Delete_404_NotFound(t *testing.T) {
 	r, cleanup := setupSecretTestEnv(t)
 	defer cleanup()
 
-	w := doRequest(r, http.MethodDelete, "/api/v1/secrets/ghost", "", true)
+	w := doRequest(r, http.MethodDelete, "/api/v1/secrets/ghost", nil, true)
 	if w.Code != http.StatusNotFound {
 		t.Fatalf("expected 404, got %d", w.Code)
 	}
@@ -499,7 +499,7 @@ func TestSecretHandler_List_DifferentOrg_Empty(t *testing.T) {
 	}
 
 	// List as org B — must return empty list, not org A's secret
-	w = doRequestAs(r, http.MethodGet, "/api/v1/secrets", "", "org-it-002")
+	w = doRequestAs(r, http.MethodGet, "/api/v1/secrets", "org-it-002")
 	if w.Code != http.StatusOK {
 		t.Fatalf("list: expected 200, got %d", w.Code)
 	}
@@ -534,7 +534,7 @@ func TestSecretHandler_Get_DifferentOrg_404(t *testing.T) {
 	}
 
 	// Attempt to GET that secret as org B — must get 404, not 403
-	w = doRequestAs(r, http.MethodGet, "/api/v1/secrets/org-a-only", "", "org-it-002")
+	w = doRequestAs(r, http.MethodGet, "/api/v1/secrets/org-a-only", "org-it-002")
 	if w.Code != http.StatusNotFound {
 		t.Errorf("expected 404 (no existence leak), got %d: %s", w.Code, w.Body.String())
 	}
@@ -547,7 +547,7 @@ func TestSecretHandler_Create_ValueNotInListResponse(t *testing.T) {
 
 	createSecret(r, "no-val-key", "No Val Key", "secret123")
 
-	w := doRequest(r, http.MethodGet, "/api/v1/secrets", "", true)
+	w := doRequest(r, http.MethodGet, "/api/v1/secrets", nil, true)
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", w.Code)
 	}
@@ -604,9 +604,11 @@ func TestSecretHandler_Delete_SoftDeletesRow(t *testing.T) {
 	NewSecretHandler(svc, slog.Default()).RegisterRoutes(r)
 
 	// (a) Create and DELETE → 204
-	createReq, _ := http.NewRequest(http.MethodPost, "/api/v1/secrets",
-		strings.NewReader(`{"name":"soft-del-key","displayName":"Soft Del Key","value":"plaintext"}`))
-	createReq.Header.Set("Content-Type", "application/json")
+	createBody, createCT := multipartForm(map[string]string{
+		"handle": "soft-del-key", "name": "Soft Del Key", "value": "plaintext",
+	})
+	createReq, _ := http.NewRequest(http.MethodPost, "/api/v1/secrets", createBody)
+	createReq.Header.Set("Content-Type", createCT)
 	wCreate := httptest.NewRecorder()
 	r.ServeHTTP(wCreate, createReq)
 	if wCreate.Code != http.StatusCreated {
@@ -857,7 +859,7 @@ func TestSecretHandler_List_LimitCappedAt100(t *testing.T) {
 	r, cleanup := setupSecretTestEnv(t)
 	defer cleanup()
 
-	w := doRequest(r, http.MethodGet, "/api/v1/secrets?limit=999", "", true)
+	w := doRequest(r, http.MethodGet, "/api/v1/secrets?limit=999", nil, true)
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}

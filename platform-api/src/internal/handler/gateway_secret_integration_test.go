@@ -254,8 +254,8 @@ func TestGatewaySecretHandler_ListOnlyGatewaySecrets(t *testing.T) {
 		t.Fatalf("expected 1 secret, got %d: %v", len(list), list)
 	}
 	item := list[0].(map[string]interface{})
-	if item["name"] != "gw-secret" {
-		t.Errorf("expected name=gw-secret, got %v", item["name"])
+	if item["handle"] != "gw-secret" {
+		t.Errorf("expected handle=gw-secret, got %v", item["handle"])
 	}
 }
 
