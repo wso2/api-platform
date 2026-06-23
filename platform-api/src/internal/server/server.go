@@ -231,13 +231,10 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	websubAPIService := service.NewWebSubAPIService(websubAPIRepo, projectRepo, gatewayRepo, devPortalService, gatewayEventsService, apiUtil, slogger)
 	webbrokerAPIService := service.NewWebBrokerAPIService(webbrokerAPIRepo, projectRepo, gatewayRepo, devPortalService, gatewayEventsService, apiUtil, slogger)
 
-	// Initialize HMAC secret service with fallback key chain.
+	// Initialize HMAC secret service using the shared subscription token encryption key.
 	// DeriveEncryptionKey requires 64-char hex or base64-to-32-bytes; when falling back to
 	// the raw JWT secret (arbitrary length), hash it to a valid 64-char hex key.
-	hmacEncryptionKey := cfg.Database.HMACSecretEncryptionKey
-	if hmacEncryptionKey == "" {
-		hmacEncryptionKey = cfg.Database.SubscriptionTokenEncryptionKey
-	}
+	hmacEncryptionKey := cfg.Database.SubscriptionTokenEncryptionKey
 	if hmacEncryptionKey == "" {
 		h := sha256.Sum256([]byte(cfg.Auth.JWT.SecretKey))
 		hmacEncryptionKey = hex.EncodeToString(h[:])

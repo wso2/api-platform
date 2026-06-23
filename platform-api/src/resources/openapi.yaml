@@ -5806,7 +5806,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/WebSubAPIHmacSecretRequest'
+              $ref: '#/components/schemas/WebSubAPIHmacSecretRegenerateRequest'
       responses:
         '200':
           description: HMAC secret regenerated — new plaintext returned once
@@ -11052,6 +11052,17 @@ components:
           type: string
           description: |
             Optional. If provided, this value is used as the HMAC secret instead of auto-generating one.
+            Must be at least 32 characters long.
+          minLength: 32
+          example: my-external-secret-value-that-is-at-least-32-chars
+
+    WebSubAPIHmacSecretRegenerateRequest:
+      type: object
+      properties:
+        secret:
+          type: string
+          description: |
+            Optional. If provided, this value is used as the new HMAC secret instead of auto-generating one.
             Must be at least 32 characters long.
           minLength: 32
           example: my-external-secret-value-that-is-at-least-32-chars

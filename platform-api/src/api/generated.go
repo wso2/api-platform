@@ -3445,6 +3445,13 @@ type WebSubAPIHmacSecretListResponse struct {
 	Secrets []WebSubAPIHmacSecretInfo `binding:"required" json:"secrets" yaml:"secrets"`
 }
 
+// WebSubAPIHmacSecretRegenerateRequest defines model for WebSubAPIHmacSecretRegenerateRequest.
+type WebSubAPIHmacSecretRegenerateRequest struct {
+	// Secret Optional. If provided, this value is used as the new HMAC secret instead of auto-generating one.
+	// Must be at least 32 characters long.
+	Secret *string `json:"secret,omitempty" yaml:"secret,omitempty"`
+}
+
 // WebSubAPIHmacSecretRequest defines model for WebSubAPIHmacSecretRequest.
 type WebSubAPIHmacSecretRequest struct {
 	// DisplayName Human-readable label for the HMAC secret (used to derive the URL-safe name/slug).
@@ -4197,7 +4204,7 @@ type PublishWebSubAPIToDevPortalJSONRequestBody = PublishToDevPortalRequest
 type CreateWebSubAPISecretJSONRequestBody = WebSubAPIHmacSecretRequest
 
 // RegenerateWebSubAPISecretJSONRequestBody defines body for RegenerateWebSubAPISecret for application/json ContentType.
-type RegenerateWebSubAPISecretJSONRequestBody = WebSubAPIHmacSecretRequest
+type RegenerateWebSubAPISecretJSONRequestBody = WebSubAPIHmacSecretRegenerateRequest
 
 // AsImportOpenAPIRequest0 returns the union data inside the ImportOpenAPIRequest as a ImportOpenAPIRequest0
 func (t ImportOpenAPIRequest) AsImportOpenAPIRequest0() (ImportOpenAPIRequest0, error) {

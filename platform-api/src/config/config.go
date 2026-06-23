@@ -177,11 +177,6 @@ type Database struct {
 
 	ExecuteSchemaDDL               bool   `koanf:"execute_schema_ddl"`
 	SubscriptionTokenEncryptionKey string `koanf:"subscription_token_encryption_key"`
-
-	// HMACSecretEncryptionKey is the 32-byte key for AES-256-GCM encryption of WebSub API HMAC secrets.
-	// Provide as 64 hex chars or 44 base64 chars.
-	// Env: DATABASE_HMAC_SECRET_ENCRYPTION_KEY. If empty, falls back to SubscriptionTokenEncryptionKey then JWT_SECRET_KEY.
-	HMACSecretEncryptionKey string `envconfig:"HMAC_SECRET_ENCRYPTION_KEY" default:""`
 }
 
 // DefaultDevPortal holds default DevPortal configuration for new organizations.

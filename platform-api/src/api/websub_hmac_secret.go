@@ -18,7 +18,8 @@
  */
 
 // Package api contains API types for WebSub HMAC secrets.
-// The structs WebSubAPIHmacSecretRequest, WebSubAPIHmacSecretInfo,
-// WebSubAPIHmacSecretCreationResponse, and WebSubAPIHmacSecretListResponse
-// are generated into generated.go from openapi.yaml — do not re-declare them here.
+// The structs WebSubAPIHmacSecretRequest, WebSubAPIHmacSecretRegenerateRequest,
+// WebSubAPIHmacSecretInfo, WebSubAPIHmacSecretCreationResponse, and
+// WebSubAPIHmacSecretListResponse are generated into generated.go from
+// openapi.yaml — do not re-declare them here.
 package api

@@ -193,7 +193,7 @@ func (h *WebSubAPIHmacSecretHandler) RegenerateHmacSecret(c *gin.Context) {
 		return
 	}
 
-	var req api.WebSubAPIHmacSecretRequest
+	var req api.WebSubAPIHmacSecretRegenerateRequest
 	if err := c.ShouldBindJSON(&req); err != nil && !errors.Is(err, io.EOF) {
 		c.AbortWithStatusJSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid request body"))
 		return
@@ -238,7 +238,7 @@ func (h *WebSubAPIHmacSecretHandler) handleServiceError(c *gin.Context, err erro
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Secret value must be at least 32 characters"))
 	case errors.Is(err, constants.ErrHmacSecretEncryptionKeyMissing):
 		h.slogger.Error("HMAC secret encryption key is not configured")
-		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "HMAC secret management is not configured"))
+		c.JSON(http.StatusServiceUnavailable, utils.NewErrorResponse(503, "Service Unavailable", "HMAC secret management is not configured on this server"))
 	default:
 		h.slogger.Error("HMAC secret service error", "error", err)
 		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "An unexpected error occurred"))
