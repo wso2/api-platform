@@ -420,6 +420,23 @@ CREATE TABLE dbo.websub_apis (
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_websub_apis_project' AND object_id = OBJECT_ID(N'dbo.websub_apis'))
 CREATE INDEX idx_websub_apis_project ON dbo.websub_apis(project_uuid);
 
+-- WebSub API HMAC secrets table (for inbound webhook event verification)
+IF OBJECT_ID(N'dbo.websub_api_hmac_secrets', N'U') IS NULL
+CREATE TABLE dbo.websub_api_hmac_secrets (
+    uuid VARCHAR(40) PRIMARY KEY,
+    artifact_uuid VARCHAR(40) NOT NULL,
+    name VARCHAR(63) NOT NULL,
+    display_name VARCHAR(255),
+    encrypted_secret NVARCHAR(MAX) NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'active',
+    created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
+    updated_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
+    FOREIGN KEY (artifact_uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
+    CONSTRAINT uq_websub_api_hmac_secrets_artifact_name UNIQUE (artifact_uuid, name)
+);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_websub_api_hmac_secrets_artifact' AND object_id = OBJECT_ID(N'dbo.websub_api_hmac_secrets'))
+CREATE INDEX idx_websub_api_hmac_secrets_artifact ON dbo.websub_api_hmac_secrets(artifact_uuid);
+
 -- WEBBROKER APIs table
 IF OBJECT_ID(N'dbo.webbroker_apis', N'U') IS NULL
 CREATE TABLE dbo.webbroker_apis (
