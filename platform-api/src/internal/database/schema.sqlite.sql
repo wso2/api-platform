@@ -530,10 +530,10 @@ CREATE INDEX IF NOT EXISTS idx_secret_scopes_scope ON secret_scopes(scope, scope
 -- Populated at deploy time (status→DEPLOYED) and cleared at undeploy time.
 -- Eliminates the 6-table JOIN + application-level regex on every GW secret sync.
 CREATE TABLE IF NOT EXISTS artifact_secret_refs (
-    organization_id TEXT NOT NULL,
-    artifact_uuid   TEXT NOT NULL,
-    secret_handle   TEXT NOT NULL,
-    gateway_id      TEXT NOT NULL DEFAULT '', -- '' = artifact-level (current config); gateway UUID = deployed
+    organization_id VARCHAR(40) NOT NULL,
+    artifact_uuid   VARCHAR(40) NOT NULL,
+    secret_handle   VARCHAR(100) NOT NULL,
+    gateway_id      VARCHAR(40) NOT NULL DEFAULT '', -- '' = artifact-level (current config); gateway UUID = deployed
     created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (organization_id, artifact_uuid, secret_handle, gateway_id),
     FOREIGN KEY (organization_id) REFERENCES organizations(uuid) ON DELETE CASCADE,

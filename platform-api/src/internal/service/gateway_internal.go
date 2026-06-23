@@ -99,6 +99,21 @@ func (s *GatewayInternalAPIService) GetSecretsByGateway(orgID, gatewayID string,
 	return s.secretRepo.ListByHandles(orgID, handles, updatedAfter)
 }
 
+// IsSecretDeployedOnGateway reports whether a secret handle is referenced by any
+// artifact currently deployed on the given gateway.
+func (s *GatewayInternalAPIService) IsSecretDeployedOnGateway(orgID, gatewayID, handle string) (bool, error) {
+	handles, err := s.deploymentRepo.GetSecretHandlesByGateway(gatewayID, orgID)
+	if err != nil {
+		return false, fmt.Errorf("failed to get secret handles for gateway: %w", err)
+	}
+	for _, h := range handles {
+		if h == handle {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 // GetAPIByUUID retrieves an API by its ID
 func (s *GatewayInternalAPIService) GetAPIByUUID(apiId, orgId string) (map[string]string, error) {
 	apiModel, err := s.apiRepo.GetAPIByUUID(apiId, orgId)

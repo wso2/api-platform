@@ -153,16 +153,16 @@ export function LLMProvidersProvider({ children }: LLMProvidersProviderProps) {
           const secretHandle = generateSecretHandle(provider.id, 'api-key');
           const secretResponse = await createSecret(
             {
-              name: secretHandle,
-              displayName: `${provider.name} API Key`,
+              handle: secretHandle,
+              name: `${provider.name} API Key`,
               description: `Auto-generated secret for LLM provider ${provider.name}`,
               value: authValue,
-              type: 'API_KEY',
+              type: 'GENERIC',
             },
             PLATFORM_API_BASE_URL
           );
           logger.info('Created secret for LLM provider', {
-            secretName: secretResponse.name,
+            secretHandle: secretResponse.handle,
             providerId: provider.id,
           });
 
@@ -174,7 +174,7 @@ export function LLMProvidersProvider({ children }: LLMProvidersProviderProps) {
                 ...provider.upstream.main,
                 auth: {
                   ...provider.upstream.main.auth,
-                  value: buildSecretPlaceholder(secretResponse.name),
+                  value: buildSecretPlaceholder(secretResponse.handle),
                 },
               },
             },
@@ -230,16 +230,16 @@ export function LLMProvidersProvider({ children }: LLMProvidersProviderProps) {
           const secretHandle = generateSecretHandle(providerId, 'api-key');
           const secretResponse = await createSecret(
             {
-              name: secretHandle,
-              displayName: `${providerId} API Key`,
+              handle: secretHandle,
+              name: `${providerId} API Key`,
               description: `Auto-generated secret for LLM provider ${providerId}`,
               value: authValue,
-              type: 'API_KEY',
+              type: 'GENERIC',
             },
             PLATFORM_API_BASE_URL
           );
           logger.info('Rotated/created secret for LLM provider update', {
-            secretName: secretResponse.name,
+            secretHandle: secretResponse.handle,
             providerId,
           });
 
@@ -255,7 +255,7 @@ export function LLMProvidersProvider({ children }: LLMProvidersProviderProps) {
                 url: updates.upstream?.main?.url ?? currentProvider?.upstream?.main?.url ?? '',
                 auth: {
                   ...updates.upstream?.main?.auth,
-                  value: buildSecretPlaceholder(secretResponse.name),
+                  value: buildSecretPlaceholder(secretResponse.handle),
                 },
               },
             },

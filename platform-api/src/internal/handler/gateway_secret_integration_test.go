@@ -341,12 +341,14 @@ func TestGatewaySecretHandler_NoValueByDefault(t *testing.T) {
 	}
 }
 
-// TC-27: GET /api/internal/v1/secrets/:id/value returns {"value":"plaintext"}.
+// TC-27: GET /api/internal/v1/secrets/:handle/value returns {"value":"plaintext"}.
 func TestGatewaySecretHandler_GetSecretValue(t *testing.T) {
 	env, cleanup := setupGatewaySecretTestEnv(t)
 	defer cleanup()
 
 	createSecretDirect(t, env.svc, env.orgID, "val-secret", "my-plaintext")
+	insertArtifact(t, env.db, env.orgID, "art-27", "api-27")
+	insertArtifactSecretRef(t, env.db, env.orgID, "art-27", "val-secret", env.gatewayID)
 
 	w := doGWRequest(env.router, http.MethodGet, "/api/internal/v1/secrets/val-secret/value", env.plainToken)
 	if w.Code != http.StatusOK {
@@ -369,6 +371,8 @@ func TestGatewaySecretHandler_GetSecretValue_AfterRotation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("update: %v", err)
 	}
+	insertArtifact(t, env.db, env.orgID, "art-28", "api-28")
+	insertArtifactSecretRef(t, env.db, env.orgID, "art-28", "rot-secret", env.gatewayID)
 
 	w := doGWRequest(env.router, http.MethodGet, "/api/internal/v1/secrets/rot-secret/value", env.plainToken)
 	if w.Code != http.StatusOK {
@@ -389,6 +393,20 @@ func TestGatewaySecretHandler_GetSecretValue_NotFound(t *testing.T) {
 	w := doGWRequest(env.router, http.MethodGet, "/api/internal/v1/secrets/ghost-handle/value", env.plainToken)
 	if w.Code != http.StatusNotFound {
 		t.Errorf("expected 404, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+// TC-95: GET /value for a secret that exists in the org but is not deployed on this gateway returns 404.
+func TestGatewaySecretHandler_GetSecretValue_NotDeployedOnGateway(t *testing.T) {
+	env, cleanup := setupGatewaySecretTestEnv(t)
+	defer cleanup()
+
+	// Secret exists in the org but has no artifact_secret_refs row for this gateway.
+	createSecretDirect(t, env.svc, env.orgID, "org-only-secret", "sensitive-value")
+
+	w := doGWRequest(env.router, http.MethodGet, "/api/internal/v1/secrets/org-only-secret/value", env.plainToken)
+	if w.Code != http.StatusNotFound {
+		t.Errorf("expected 404 for secret not deployed on gateway, got %d: %s", w.Code, w.Body.String())
 	}
 }
 

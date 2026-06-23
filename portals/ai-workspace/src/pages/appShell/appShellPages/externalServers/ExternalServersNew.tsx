@@ -247,16 +247,15 @@ export default function ExternalServersNew(): JSX.Element {
         const secretHandle = generateSecretHandle(serverId, 'auth');
         const secretResponse = await createSecret(
           {
-            name: secretHandle,
-            displayName: `${serverName.trim()} upstream auth`,
+            handle: secretHandle,
+            name: `${serverName.trim()} upstream auth`,
             description: `Auto-generated secret for MCP server ${serverName.trim()}`,
             value: resolvedAuthValue,
-            type: 'API_KEY',
-            projectId: effectiveProject.id,
+            type: 'GENERIC',
           },
           PLATFORM_API_BASE_URL
         );
-        resolvedAuthValue = buildSecretPlaceholder(secretResponse.name);
+        resolvedAuthValue = buildSecretPlaceholder(secretResponse.handle);
       } catch (err) {
         showSnackbar('Failed to encrypt upstream auth credential', 'error');
         return;
