@@ -35,6 +35,26 @@ spec:
           params:
             key: X-API-Key
             in: header
+        - path: /completions
+          methods: [POST]
+          params:
+            key: X-API-Key
+            in: header
+        - path: /embeddings
+          methods: [POST]
+          params:
+            key: X-API-Key
+            in: header
+        - path: /models
+          methods: [GET]
+          params:
+            key: X-API-Key
+            in: header
+        - path: /models/{modelId}
+          methods: [GET]
+          params:
+            key: X-API-Key
+            in: header
   accessControl:
     mode: deny_all
     exceptions:

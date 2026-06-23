@@ -37,6 +37,21 @@ spec:
           params:
             key: X-API-Key
             in: header
+        - path: /openai/deployments/{deployment}/completions
+          methods: [POST]
+          params:
+            key: X-API-Key
+            in: header
+        - path: /openai/deployments/{deployment}/embeddings
+          methods: [POST]
+          params:
+            key: X-API-Key
+            in: header
+        - path: /openai/models
+          methods: [GET]
+          params:
+            key: X-API-Key
+            in: header
   accessControl:
     mode: deny_all
     exceptions:
