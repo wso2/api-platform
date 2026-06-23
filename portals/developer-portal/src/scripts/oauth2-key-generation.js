@@ -80,7 +80,7 @@ async function generateApplicationKey(formId, appId, keyType, keyManager, client
         "keyManager": keyManager,
         "keyType": keyType,
         "grantTypesToBeSupported": grantTypes,
-        "callbackUrl": jsonObject.callbackURL,
+        ...(jsonObject.callbackURL ? { "callbackUrl": jsonObject.callbackURL } : {}),
         "scopes": ["default"],
         "additionalProperties": jsonObject.additionalProperties,
     })
@@ -410,7 +410,6 @@ async function selectKmAndGenerate(keyType, appId, appName, orgID, itemEl) {
         keyManager: kmName,
         keyType,
         grantTypesToBeSupported: ['client_credentials'],
-        callbackUrl: '',
         scopes: ['default'],
         additionalProperties: {},
     });
