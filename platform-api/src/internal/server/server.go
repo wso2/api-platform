@@ -231,17 +231,19 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	websubAPIService := service.NewWebSubAPIService(websubAPIRepo, projectRepo, gatewayRepo, devPortalService, gatewayEventsService, apiUtil, slogger)
 	webbrokerAPIService := service.NewWebBrokerAPIService(webbrokerAPIRepo, projectRepo, gatewayRepo, devPortalService, gatewayEventsService, apiUtil, slogger)
 
-	// Initialize HMAC secret service using the shared subscription token encryption key.
+	// Initialize the shared database encryption key used for all encrypted DB columns.
+	// DATABASE_SUBSCRIPTION_TOKEN_ENCRYPTION_KEY is accepted as a legacy alias.
 	// DeriveEncryptionKey requires 64-char hex or base64-to-32-bytes; when falling back to
 	// the raw JWT secret (arbitrary length), hash it to a valid 64-char hex key.
-	hmacEncryptionKey := cfg.Database.SubscriptionTokenEncryptionKey
-	if hmacEncryptionKey == "" {
+	dbEncryptionKey := cfg.Database.EncryptionKey
+	if dbEncryptionKey == "" && cfg.Auth.JWT.SecretKey != "" {
 		h := sha256.Sum256([]byte(cfg.Auth.JWT.SecretKey))
-		hmacEncryptionKey = hex.EncodeToString(h[:])
+		dbEncryptionKey = hex.EncodeToString(h[:])
 	}
 	hmacSecretRepo := repository.NewWebSubAPIHmacSecretRepo(db)
 	hmacSecretService, hmacErr := service.NewWebSubAPIHmacSecretService(
-		hmacSecretRepo, websubAPIRepo, gatewayEventsService, gatewayRepo, hmacEncryptionKey, slogger,
+		hmacSecretRepo, websubAPIRepo, gatewayEventsService, gatewayRepo,
+		dbEncryptionKey, slogger,
 	)
 	if hmacErr != nil {
 		slogger.Warn("WebSub HMAC secret service disabled — no valid encryption key configured", "error", hmacErr)

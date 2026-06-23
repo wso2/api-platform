@@ -48,15 +48,19 @@ func hashSubscriptionToken(token string) string {
 	return HashSubscriptionToken(token)
 }
 
-// getSubscriptionTokenEncryptionKey returns the 32-byte key for token encryption, or nil if not configured.
+// getSubscriptionTokenEncryptionKey returns the 32-byte key for subscription token encryption.
+// Precedence: DATABASE_SUBSCRIPTION_TOKEN_ENCRYPTION_KEY → DATABASE_ENCRYPTION_KEY → AUTH_JWT_SECRET_KEY.
 func getSubscriptionTokenEncryptionKey() ([]byte, error) {
 	cfg := config.GetConfig()
 	keyStr := cfg.Database.SubscriptionTokenEncryptionKey
 	if keyStr == "" {
+		keyStr = cfg.Database.EncryptionKey
+	}
+	if keyStr == "" {
 		keyStr = cfg.Auth.JWT.SecretKey
 	}
 	if keyStr == "" {
-		return nil, fmt.Errorf("subscription token encryption requires DATABASE_SUBSCRIPTION_TOKEN_ENCRYPTION_KEY or AUTH_JWT_SECRET_KEY")
+		return nil, fmt.Errorf("subscription token encryption requires DATABASE_SUBSCRIPTION_TOKEN_ENCRYPTION_KEY, DATABASE_ENCRYPTION_KEY, or AUTH_JWT_SECRET_KEY")
 	}
 	return utils.DeriveEncryptionKey(keyStr)
 }
@@ -229,20 +233,42 @@ func (r *SubscriptionRepo) ListByFilters(orgUUID string, apiUUID *string, subscr
 	return list, rows.Err()
 }
 
+// decryptionKeyCandidates returns all derived keys to try during decryption, in precedence order.
+// Tokens may have been encrypted with any of the three key sources across different deployments,
+// so decryption must attempt all of them: SubscriptionTokenEncryptionKey → EncryptionKey → SecretKey.
+func decryptionKeyCandidates() [][]byte {
+	cfg := config.GetConfig()
+	sources := []string{
+		cfg.Database.SubscriptionTokenEncryptionKey,
+		cfg.Database.EncryptionKey,
+		cfg.Auth.JWT.SecretKey,
+	}
+	seen := map[string]bool{}
+	var keys [][]byte
+	for _, s := range sources {
+		if s == "" || seen[s] {
+			continue
+		}
+		seen[s] = true
+		if k, err := utils.DeriveEncryptionKey(s); err == nil {
+			keys = append(keys, k)
+		}
+	}
+	return keys
+}
+
 // decryptSubscriptionToken decrypts stored token for API response.
+// Tries all key candidates in precedence order to handle tokens encrypted under a previous key source.
 func (r *SubscriptionRepo) decryptSubscriptionToken(stored string) string {
 	if stored == "" {
 		return ""
 	}
-	key, err := getSubscriptionTokenEncryptionKey()
-	if err != nil {
-		return ""
+	for _, key := range decryptionKeyCandidates() {
+		if plain, err := utils.DecryptSubscriptionToken(key, stored); err == nil {
+			return plain
+		}
 	}
-	plain, err := utils.DecryptSubscriptionToken(key, stored)
-	if err != nil {
-		return ""
-	}
-	return plain
+	return ""
 }
 
 // CountByFilters returns the total count of subscriptions matching the same filters as ListByFilters.
