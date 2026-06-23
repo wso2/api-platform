@@ -104,7 +104,7 @@ func TestLLMTemplateLoader_LoadTemplatesFromDirectory_JSONFile(t *testing.T) {
 	templates, err := loader.LoadTemplatesFromDirectory(tmpDir)
 	assert.NoError(t, err)
 	assert.Len(t, templates, 1)
-	assert.Contains(t, templates, "test-template")
+	assert.Contains(t, templates, "test-template-v1-0")
 }
 
 func TestLLMTemplateLoader_LoadTemplatesFromDirectory_YAMLFile(t *testing.T) {
@@ -131,7 +131,7 @@ spec:
 	templates, err := loader.LoadTemplatesFromDirectory(tmpDir)
 	assert.NoError(t, err)
 	assert.Len(t, templates, 1)
-	assert.Contains(t, templates, "yaml-template")
+	assert.Contains(t, templates, "yaml-template-v1-0")
 }
 
 func TestLLMTemplateLoader_LoadTemplatesFromDirectory_YMLFile(t *testing.T) {
@@ -158,7 +158,7 @@ spec:
 	templates, err := loader.LoadTemplatesFromDirectory(tmpDir)
 	assert.NoError(t, err)
 	assert.Len(t, templates, 1)
-	assert.Contains(t, templates, "yml-template")
+	assert.Contains(t, templates, "yml-template-v1-0")
 }
 
 func TestLLMTemplateLoader_LoadTemplatesFromDirectory_MultipleFiles(t *testing.T) {
@@ -193,8 +193,8 @@ spec:
 	templates, err := loader.LoadTemplatesFromDirectory(tmpDir)
 	assert.NoError(t, err)
 	assert.Len(t, templates, 2)
-	assert.Contains(t, templates, "template-1")
-	assert.Contains(t, templates, "template-2")
+	assert.Contains(t, templates, "template-1-v1-0")
+	assert.Contains(t, templates, "template-2-v1-0")
 }
 
 func TestLLMTemplateLoader_LoadTemplatesFromDirectory_DuplicateHandle(t *testing.T) {
@@ -226,7 +226,39 @@ func TestLLMTemplateLoader_LoadTemplatesFromDirectory_DuplicateHandle(t *testing
 
 	_, err = loader.LoadTemplatesFromDirectory(tmpDir)
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "duplicate template handle")
+	assert.Contains(t, err.Error(), "duplicate template id")
+}
+
+func TestLLMTemplateLoader_LoadTemplatesFromDirectory_SameHandleDifferentVersions(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	loader := NewLLMTemplateLoader(logger)
+
+	tmpDir, err := os.MkdirTemp("", "llm-templates-test-*")
+	require.NoError(t, err)
+	defer os.RemoveAll(tmpDir)
+
+	v1 := `{
+		"apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+		"kind": "LlmProviderTemplate",
+		"metadata": {"name": "versioned-template"},
+		"spec": {"displayName": "Versioned Template", "version": "v1.0"}
+	}`
+	v2 := `{
+		"apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+		"kind": "LlmProviderTemplate",
+		"metadata": {"name": "versioned-template"},
+		"spec": {"displayName": "Versioned Template", "version": "v2.0"}
+	}`
+	err = os.WriteFile(filepath.Join(tmpDir, "versioned-v1.json"), []byte(v1), 0644)
+	require.NoError(t, err)
+	err = os.WriteFile(filepath.Join(tmpDir, "versioned-v2.json"), []byte(v2), 0644)
+	require.NoError(t, err)
+
+	templates, err := loader.LoadTemplatesFromDirectory(tmpDir)
+	assert.NoError(t, err)
+	assert.Len(t, templates, 2)
+	assert.Contains(t, templates, "versioned-template-v1-0")
+	assert.Contains(t, templates, "versioned-template-v2-0")
 }
 
 func TestLLMTemplateLoader_LoadTemplatesFromDirectory_InvalidJSON(t *testing.T) {
@@ -297,8 +329,8 @@ func TestLLMTemplateLoader_LoadTemplatesFromDirectory_Subdirectories(t *testing.
 	templates, err := loader.LoadTemplatesFromDirectory(tmpDir)
 	assert.NoError(t, err)
 	assert.Len(t, templates, 2)
-	assert.Contains(t, templates, "root-template")
-	assert.Contains(t, templates, "sub-template")
+	assert.Contains(t, templates, "root-template-v1-0")
+	assert.Contains(t, templates, "sub-template-v1-0")
 }
 
 func TestLLMTemplateLoader_loadTemplateFile_NonExistent(t *testing.T) {

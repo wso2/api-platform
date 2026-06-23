@@ -23,6 +23,7 @@ metadata:
 spec:
   displayName: Azure OpenAI
   provider: wso2
+  version: v1.0
   promptTokens:
     location: payload
     identifier: $.usage.prompt_tokens

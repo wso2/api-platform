@@ -149,7 +149,7 @@ func buildTemplateResourceResponse(template *models.StoredLLMProviderTemplate) a
 	if template == nil {
 		return nil
 	}
-	id := template.GetHandle()
+	id := template.GetID()
 	createdAt := template.CreatedAt
 	updatedAt := template.UpdatedAt
 	status := api.ResourceStatus{

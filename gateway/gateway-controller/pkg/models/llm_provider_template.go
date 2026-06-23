@@ -39,9 +39,23 @@ type StoredLLMProviderTemplate struct {
 	UpdatedAt     time.Time               `json:"updatedAt"`
 }
 
-// GetHandle returns the template handle
+// GetHandle returns the template handle (the version-independent family
+// identifier, e.g. "openai").
 func (t *StoredLLMProviderTemplate) GetHandle() string {
 	return t.Configuration.Metadata.Name
+}
+
+func (t *StoredLLMProviderTemplate) GetID() string {
+	return MakeTemplateID(t.GetHandle(), t.GetVersion())
+}
+
+func MakeTemplateID(handle, version string) string {
+	h := strings.TrimSpace(handle)
+	v := strings.ToLower(strings.TrimSpace(version))
+	if v == "" {
+		v = strings.ToLower(DefaultTemplateVersion)
+	}
+	return h + "-" + strings.ReplaceAll(v, ".", "-")
 }
 
 // GetVersion returns the template content version, defaulting to v1.0 when unset.

@@ -23,6 +23,7 @@ metadata:
 spec:
   displayName: AWS Bedrock
   provider: wso2
+  version: v1.0
   promptTokens:
     location: payload
     identifier: $.usage.inputTokens

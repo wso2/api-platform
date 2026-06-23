@@ -507,6 +507,41 @@ func (cs *ConfigStore) GetTemplateByHandle(handle string) (*models.StoredLLMProv
 	return cs.templates[templateId], nil
 }
 
+// GetTemplateByHandleAndVersion retrieves the specific (handle, version) template.
+func (cs *ConfigStore) GetTemplateByHandleAndVersion(handle, version string) (*models.StoredLLMProviderTemplate, error) {
+	cs.mu.RLock()
+	defer cs.mu.RUnlock()
+
+	templateId, exists := cs.templateIdByHandleVersion[handleVersionKey(strings.TrimSpace(handle), version)]
+	if !exists {
+		return nil, fmt.Errorf("template with handle '%s' and version '%s' not found", handle, version)
+	}
+
+	return cs.templates[templateId], nil
+}
+
+// GetTemplateByID resolves a template by its version-specific id
+// ("<handle>-<sanitized-version>", e.g. "openai-v1-0"). For backward
+// compatibility it falls back to a base-handle lookup (returning the latest
+// version) when the id does not match any versioned template.
+func (cs *ConfigStore) GetTemplateByID(id string) (*models.StoredLLMProviderTemplate, error) {
+	cs.mu.RLock()
+	defer cs.mu.RUnlock()
+
+	for _, template := range cs.templates {
+		if template.GetID() == id {
+			return template, nil
+		}
+	}
+
+	// Fallback: treat the id as a base handle and resolve the latest version.
+	if templateId, exists := cs.templateIdByHandle[id]; exists {
+		return cs.templates[templateId], nil
+	}
+
+	return nil, fmt.Errorf("template with id '%s' not found", id)
+}
+
 // GetAllTemplates retrieves all LLM provider templates
 func (cs *ConfigStore) GetAllTemplates() []*models.StoredLLMProviderTemplate {
 	cs.mu.RLock()

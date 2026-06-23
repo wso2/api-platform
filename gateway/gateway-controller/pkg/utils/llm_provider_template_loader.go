@@ -27,6 +27,7 @@ import (
 	"strings"
 
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"gopkg.in/yaml.v3"
 )
 
@@ -80,15 +81,23 @@ func (tl *LLMTemplateLoader) LoadTemplatesFromDirectory(dirPath string) (map[str
 			return err
 		}
 
-		// Check for duplicates
+		// Key by version-specific id so distinct versions of the same handle can
+		// coexist as separate files instead of colliding on the handle alone.
 		templateHandle := template.Metadata.Name
-		if _, exists := templates[templateHandle]; exists {
-			return fmt.Errorf("duplicate template handle: %s", templateHandle)
+		templateVersion := ""
+		if template.Spec.Version != nil {
+			templateVersion = *template.Spec.Version
+		}
+		templateID := models.MakeTemplateID(templateHandle, templateVersion)
+		if _, exists := templates[templateID]; exists {
+			return fmt.Errorf("duplicate template id (handle+version): %s", templateID)
 		}
 
-		templates[templateHandle] = template
+		templates[templateID] = template
 		tl.logger.Info("Loaded LLM provider template",
+			slog.String("id", templateID),
 			slog.String("handle", templateHandle),
+			slog.String("version", templateVersion),
 			slog.String("apiVersion", string(template.ApiVersion)),
 			slog.String("file", path))
 

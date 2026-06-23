@@ -659,7 +659,7 @@ func (s *APIServer) getLLMProviderTemplate(sourceConfig any) (*api.LLMProviderTe
 		return nil, fmt.Errorf("template name is empty")
 	}
 
-	storedTemplate, err := s.store.GetTemplateByHandle(templateNameStr)
+	storedTemplate, err := s.store.GetTemplateByID(templateNameStr)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get template '%s' from store: %w", templateNameStr, err)
 	}

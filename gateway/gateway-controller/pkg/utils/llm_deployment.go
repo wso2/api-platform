@@ -666,7 +666,8 @@ func (s *LLMDeploymentService) InitializeOOBTemplates(templateDefinitions map[st
 	}
 
 	var allErrors []string
-	processedHandles := make(map[string]bool) // Track which templates were processed from files
+	// Track which templates were processed from files
+	processedTemplates := make(map[string]bool)
 
 	for _, tmpl := range templateDefinitions {
 		// Render template expressions into a separate copy so the validator sees resolved values.
@@ -701,8 +702,14 @@ func (s *LLMDeploymentService) InitializeOOBTemplates(templateDefinitions map[st
 			continue
 		}
 
-		// Check if template already exists
-		existing, err := s.store.GetTemplateByHandle(tmpl.Metadata.Name)
+		tmplVersion := models.DefaultTemplateVersion
+		if tmpl.Spec.Version != nil && strings.TrimSpace(*tmpl.Spec.Version) != "" {
+			tmplVersion = strings.TrimSpace(*tmpl.Spec.Version)
+		}
+		templateID := models.MakeTemplateID(tmpl.Metadata.Name, tmplVersion)
+
+		// Check if this specific (handle, version) already exists
+		existing, err := s.store.GetTemplateByHandleAndVersion(tmpl.Metadata.Name, tmplVersion)
 		if err == nil && existing != nil {
 			// ---------------------------
 			// UPDATE existing template
@@ -737,7 +744,7 @@ func (s *LLMDeploymentService) InitializeOOBTemplates(templateDefinitions map[st
 				continue
 			}
 
-			processedHandles[tmpl.Metadata.Name] = true
+			processedTemplates[templateID] = true
 			continue
 		}
 
@@ -786,14 +793,14 @@ func (s *LLMDeploymentService) InitializeOOBTemplates(templateDefinitions map[st
 			continue
 		}
 
-		processedHandles[tmpl.Metadata.Name] = true
+		processedTemplates[templateID] = true
 	}
 
 	// Publish all templates from store that weren't processed from files (DB-only templates)
 	allTemplates := s.store.GetAllTemplates()
 	for _, stored := range allTemplates {
 		handle := stored.GetHandle()
-		if !processedHandles[handle] {
+		if !processedTemplates[stored.GetID()] {
 			// Render the stored (unresolved) configuration before publishing so the
 			// policy engine receives actual resolved values, not raw template expressions.
 			renderHolder := &models.StoredConfig{Configuration: stored.Configuration}
@@ -915,6 +922,24 @@ func (s *LLMDeploymentService) GetLLMProviderTemplateByHandle(handle string) (*m
 	}
 
 	return s.store.GetTemplateByHandle(handle)
+}
+
+func (s *LLMDeploymentService) GetLLMProviderTemplateByID(id string) (*models.StoredLLMProviderTemplate, error) {
+	templates, err := s.db.GetAllLLMProviderTemplates()
+	if err != nil {
+		if !storage.IsDatabaseUnavailableError(err) {
+			return nil, err
+		}
+		templates = s.store.GetAllTemplates()
+	}
+
+	for _, t := range templates {
+		if t.GetID() == id {
+			return t, nil
+		}
+	}
+
+	return s.GetLLMProviderTemplateByHandle(id)
 }
 
 func (s *LLMDeploymentService) publishTemplateAsLazyResource(tmpl *api.LLMProviderTemplate, correlationID string) error {

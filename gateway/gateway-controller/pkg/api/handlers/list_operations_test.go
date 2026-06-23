@@ -199,14 +199,16 @@ func TestGetLLMProviderTemplateByIdSuccess(t *testing.T) {
 	server := createTestServerWithLLM()
 
 	now := time.Now()
+	version := "v1.0"
 	template := &models.StoredLLMProviderTemplate{
 		UUID: "0000-template1-0000-000000000000",
 		Configuration: api.LLMProviderTemplate{
 			Metadata: api.Metadata{
-				Name: "0000-template1-0000-000000000000",
+				Name: "openai",
 			},
 			Spec: api.LLMProviderTemplateData{
 				DisplayName: "OpenAI Template",
+				Version:     &version,
 			},
 		},
 		CreatedAt: now,
@@ -216,8 +218,9 @@ func TestGetLLMProviderTemplateByIdSuccess(t *testing.T) {
 	require.NoError(t, server.db.SaveLLMProviderTemplate(template))
 	require.NoError(t, server.store.AddTemplate(template))
 
-	c, w := createTestContext("GET", "/llm-provider-templates/template1", nil)
-	server.GetLLMProviderTemplateById(c, "0000-template1-0000-000000000000")
+	// The template is fetched by its version-specific id (handle + version).
+	c, w := createTestContext("GET", "/llm-provider-templates/openai-v1-0", nil)
+	server.GetLLMProviderTemplateById(c, "openai-v1-0")
 
 	assert.Equal(t, http.StatusOK, w.Code)
 
@@ -225,14 +228,15 @@ func TestGetLLMProviderTemplateByIdSuccess(t *testing.T) {
 	err := json.Unmarshal(w.Body.Bytes(), &response)
 	require.NoError(t, err)
 
-	// GET returns the k8s-shaped resource body directly. The server-managed
-	// status block carries the handle (name) as `id`.
+	// GET returns the k8s-shaped resource body directly. metadata.name is the
+	// version-independent handle, while the server-managed status block carries
+	// the version-specific id (handle + sanitized version).
 	metadata, ok := response["metadata"].(map[string]interface{})
 	require.True(t, ok, "metadata should be a map, got %T", response["metadata"])
-	assert.Equal(t, "0000-template1-0000-000000000000", metadata["name"])
+	assert.Equal(t, "openai", metadata["name"])
 	status, ok := response["status"].(map[string]interface{})
 	require.True(t, ok, "status should be a map, got %T", response["status"])
-	assert.Equal(t, "0000-template1-0000-000000000000", status["id"])
+	assert.Equal(t, "openai-v1-0", status["id"])
 }
 
 // TestListLLMProvidersEmpty tests listing with no providers

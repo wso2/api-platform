@@ -109,10 +109,10 @@ func (s *APIServer) ListLLMProviderTemplates(c *gin.Context, params api.ListLLMP
 func (s *APIServer) GetLLMProviderTemplateById(c *gin.Context, id string) {
 	log := middleware.GetLogger(c, s.logger)
 
-	template, err := s.llmDeploymentService.GetLLMProviderTemplateByHandle(id)
+	template, err := s.llmDeploymentService.GetLLMProviderTemplateByID(id)
 	if err != nil {
 		if storage.IsNotFoundError(err) {
-			log.Warn("LLM provider template not found", slog.String("handle", id))
+			log.Warn("LLM provider template not found", slog.String("id", id))
 			c.JSON(http.StatusNotFound, api.ErrorResponse{
 				Status:  "error",
 				Message: fmt.Sprintf("Template with id '%s' not found", id),
