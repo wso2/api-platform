@@ -25,7 +25,7 @@ spec:
     auth:
       type: api-key
       header: Authorization
-      value: $dxxxd
+      value: Bearer REPLACE_WITH_MISTRAL_API_KEY
   policies:
     - name: api-key-auth
       version: v1
