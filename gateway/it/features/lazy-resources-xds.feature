@@ -59,7 +59,7 @@ Feature: Lazy Resources xDS Synchronization
             identifier: $.model
         """
     Then the response status code should be 201
-    And the JSON response field "status.id" should be "xds-test-template"
+    And the JSON response field "status.id" should be "xds-test-template-v1-0"
 
     # Wait for xDS propagation
     When I wait for 3 seconds
@@ -412,7 +412,7 @@ Feature: Lazy Resources xDS Synchronization
             identifier: $.usage.completion_tokens
         """
     Then the response status code should be 201
-    And the JSON response field "status.id" should be "collision-test"
+    And the JSON response field "status.id" should be "collision-test-v1-0"
 
     # Wait for xDS propagation
     When I wait for 3 seconds

@@ -303,7 +303,7 @@ func (m *MockStorage) GetLLMProviderTemplate(id string) (*models.StoredLLMProvid
 	if tmpl, ok := m.templates[id]; ok {
 		return tmpl, nil
 	}
-	return nil, errors.New("template not found")
+	return nil, fmt.Errorf("%w: uuid=%s", storage.ErrNotFound, id)
 }
 
 func (m *MockStorage) GetAllLLMProviderTemplates() ([]*models.StoredLLMProviderTemplate, error) {
@@ -322,7 +322,7 @@ func (m *MockStorage) GetLLMProviderTemplateByHandle(handle string) (*models.Sto
 		return nil, m.getErr
 	}
 	for _, tmpl := range m.templates {
-		if tmpl.GetHandle() == handle {
+		if tmpl.GetGroupVersionID() == handle {
 			return tmpl, nil
 		}
 	}
@@ -1898,7 +1898,7 @@ func TestCreateLLMProviderTemplateWithDBAndEventHub(t *testing.T) {
 	}
 	require.NotNil(t, storedTemplate)
 
-	assert.Equal(t, "openai", storedTemplate.GetHandle())
+	assert.Equal(t, "openai", storedTemplate.GetGroupVersionID())
 	assert.Equal(t, "test-gateway", mockHub.publishedEvents[0].gatewayID)
 	assert.Equal(t, eventhub.EventTypeLLMTemplate, mockHub.publishedEvents[0].event.EventType)
 	assert.Equal(t, "CREATE", mockHub.publishedEvents[0].event.Action)

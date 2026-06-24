@@ -60,7 +60,7 @@ Feature: LLM Provider Template Management
     Then the response status code should be 201
     And the response should be valid JSON
     And the JSON response field "status" should be "success"
-    And the JSON response field "status.id" should be "openai-test"
+    And the JSON response field "status.id" should be "openai-test-v1-0"
     And the JSON response field "metadata.name" should be "openai-test"
 
     Given I authenticate using basic auth as "admin"
@@ -68,7 +68,7 @@ Feature: LLM Provider Template Management
     Then the response status code should be 200
     And the response should be valid JSON
     And the JSON response field "status" should be "success"
-    And the JSON response field "status.id" should be "openai-test"
+    And the JSON response field "status.id" should be "openai-test-v1-0"
     And the JSON response field "spec.displayName" should be "OpenAI"
     And the JSON response field "spec.promptTokens.location" should be "payload"
     And the JSON response field "spec.promptTokens.identifier" should be "$.usage.prompt_tokens"
@@ -104,7 +104,7 @@ Feature: LLM Provider Template Management
     Then the response status code should be 200
     And the response should be valid JSON
     And the JSON response field "status" should be "success"
-    And the JSON response field "status.id" should be "openai-test"
+    And the JSON response field "status.id" should be "openai-test-v1-0"
     And the JSON response field "metadata.name" should be "openai-test"
 
     Given I authenticate using basic auth as "admin"
@@ -139,7 +139,7 @@ Feature: LLM Provider Template Management
         """
     Then the response status code should be 201
     And the response should be valid JSON
-    And the JSON response field "status.id" should be "minimal-template"
+    And the JSON response field "status.id" should be "minimal-template-v1-0"
 
     Given I authenticate using basic auth as "admin"
     When I retrieve the LLM provider template "minimal-template"

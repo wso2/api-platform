@@ -19,9 +19,10 @@
 apiVersion: gateway.api-platform.wso2.com/v1
 kind: LlmProviderTemplate
 metadata:
-  name: anthropic
+  name: anthropic-v1-0
 spec:
   displayName: Anthropic
+  groupVersionId: anthropic
   provider: wso2
   version: v1.0
   promptTokens:

@@ -1126,7 +1126,7 @@ func TestLLMProviderServiceCreateAllowsAggregatorTemplate(t *testing.T) {
 	}
 	templateRepo := &mockLLMTemplateRepo{
 		getByIDFunc: func(templateID, orgUUID string) (*model.LLMProviderTemplate, error) {
-			return &model.LLMProviderTemplate{UUID: "tpl-agg", ID: "awsbedrock", CreatedAt: now, UpdatedAt: now}, nil
+			return &model.LLMProviderTemplate{UUID: "tpl-agg", ID: "awsbedrock", Enabled: true, CreatedAt: now, UpdatedAt: now}, nil
 		},
 	}
 	orgRepo := &mockOrganizationRepo{org: &model.Organization{ID: "org-1"}}

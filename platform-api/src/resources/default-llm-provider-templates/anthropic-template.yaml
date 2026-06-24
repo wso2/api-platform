@@ -22,7 +22,7 @@ metadata:
   name: anthropic
 spec:
   displayName: Anthropic
-  provider: wso2
+  managedBy: wso2
   version: v1.0
   metadata:
     endpointUrl: https://api.anthropic.com

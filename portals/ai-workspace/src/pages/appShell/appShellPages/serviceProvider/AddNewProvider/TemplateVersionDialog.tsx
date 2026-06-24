@@ -96,7 +96,13 @@ export default function TemplateVersionDialog({
   }, [open, templateId, currentOrganization?.uuid]);
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="xs" fullWidth>
+    <Dialog
+      open={open}
+      onClose={onClose}
+      maxWidth="xs"
+      fullWidth
+      data-cyid="template-version-dialog"
+    >
       <DialogTitle>Select a version of {templateName}</DialogTitle>
       <DialogContent dividers>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
@@ -124,6 +130,7 @@ export default function TemplateVersionDialog({
                   key={ver}
                   selected={ver === selected}
                   onClick={() => setSelected(ver)}
+                  data-cyid={`template-version-option-${ver}`}
                   sx={{
                     borderRadius: 1,
                     mb: 0.5,
@@ -152,7 +159,12 @@ export default function TemplateVersionDialog({
         )}
       </DialogContent>
       <DialogActions>
-        <Button onClick={onClose} color="secondary" variant="outlined">
+        <Button
+          onClick={onClose}
+          color="secondary"
+          variant="outlined"
+          data-cyid="template-version-cancel-button"
+        >
           Cancel
         </Button>
         <Button
@@ -162,6 +174,7 @@ export default function TemplateVersionDialog({
           }}
           variant="contained"
           disabled={!selected || isLoading || Boolean(error) || versions.length === 0}
+          data-cyid="template-version-continue-button"
         >
           Continue
         </Button>

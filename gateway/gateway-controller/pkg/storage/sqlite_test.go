@@ -78,7 +78,7 @@ func TestSQLiteStorage_SchemaInitialization(t *testing.T) {
 	var version int
 	err = storage.db.QueryRow("PRAGMA user_version").Scan(&version)
 	assert.NilError(t, err)
-	assert.Equal(t, version, 3) // Current schema version
+	assert.Equal(t, version, 4) // Current schema version
 
 	// Verify tables exist
 	tables := []string{
@@ -128,7 +128,7 @@ func TestSQLiteStorage_RejectsUnsupportedSchemaVersion(t *testing.T) {
 	// Reopen — should fail with unsupported version error
 	_, err = NewStorage(BackendConfig{Type: "sqlite", SQLitePath: dbPath}, logger)
 	assert.Assert(t, err != nil)
-	assert.ErrorContains(t, err, "failed to initialize schema: unsupported schema version 5, expected 3; delete the database to recreate")
+	assert.ErrorContains(t, err, "failed to initialize schema: unsupported schema version 5, expected 4; delete the database to recreate")
 }
 
 func TestSQLiteStorage_DeleteConfig_NotFound(t *testing.T) {
@@ -475,7 +475,7 @@ func TestLoadLLMProviderTemplatesFromDatabase_Success(t *testing.T) {
 	// Verify template is loaded
 	loadedTemplate, err := cache.GetTemplate(template.UUID)
 	assert.NilError(t, err)
-	assert.Equal(t, loadedTemplate.GetHandle(), template.GetHandle())
+	assert.Equal(t, loadedTemplate.GetGroupVersionID(), template.GetGroupVersionID())
 }
 
 func TestLoadLLMProviderTemplatesFromDatabase_GetAllError(t *testing.T) {
@@ -532,7 +532,7 @@ func TestSQLiteStorage_GetLLMProviderTemplate_Success(t *testing.T) {
 	retrieved, err := storage.GetLLMProviderTemplate(template.UUID)
 	assert.NilError(t, err)
 	assert.Equal(t, retrieved.UUID, template.UUID)
-	assert.Equal(t, retrieved.GetHandle(), template.GetHandle())
+	assert.Equal(t, retrieved.GetGroupVersionID(), template.GetGroupVersionID())
 }
 
 func TestSQLiteStorage_GetLLMProviderTemplate_JSONUnmarshalError(t *testing.T) {
@@ -541,7 +541,7 @@ func TestSQLiteStorage_GetLLMProviderTemplate_JSONUnmarshalError(t *testing.T) {
 
 	// Insert template with invalid JSON
 	_, err := storage.db.Exec(`
-		INSERT INTO llm_provider_templates (uuid, gateway_id, handle, configuration, created_at, updated_at) 
+		INSERT INTO llm_provider_templates (uuid, gateway_id, group_version_id, configuration, created_at, updated_at) 
 		VALUES (?, ?, ?, ?, ?, ?)`,
 		"invalid-template", "platform-gateway-id", "0000-test-handle-0000-000000000000", "invalid-json", time.Now(), time.Now())
 	assert.NilError(t, err)
@@ -588,7 +588,7 @@ func TestSQLiteStorage_GetAllLLMProviderTemplates_JSONError(t *testing.T) {
 
 	// Insert template with invalid JSON
 	_, err := storage.db.Exec(`
-		INSERT INTO llm_provider_templates (uuid, gateway_id, handle, configuration, created_at, updated_at) 
+		INSERT INTO llm_provider_templates (uuid, gateway_id, group_version_id, configuration, created_at, updated_at) 
 		VALUES (?, ?, ?, ?, ?, ?)`,
 		"invalid-template", "platform-gateway-id", "0000-test-handle-0000-000000000000", "invalid-json", time.Now(), time.Now())
 	assert.NilError(t, err)
@@ -605,7 +605,7 @@ func TestSQLiteStorage_GetLLMProviderTemplateByHandle(t *testing.T) {
 	err := storage.SaveLLMProviderTemplate(template)
 	assert.NilError(t, err)
 
-	found, err := storage.GetLLMProviderTemplateByHandle(template.GetHandle())
+	found, err := storage.GetLLMProviderTemplateByHandle(template.GetGroupVersionID())
 	assert.NilError(t, err)
 	assert.Equal(t, found.UUID, template.UUID)
 

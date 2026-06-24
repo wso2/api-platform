@@ -585,6 +585,20 @@ export default function ProviderTemplateOverview() {
         setDeleteOpen(false);
         return;
       }
+
+      let allVersions = versions;
+      if (allVersions.length === 0) {
+        try {
+          allVersions = await providerTemplateApis.getProviderTemplateVersions(
+            template.id,
+            organizationId,
+            PLATFORM_API_BASE_URL
+          );
+        } catch {
+          // keep empty; navigate to list as fallback
+        }
+      }
+
       await providerTemplateApis.deleteProviderTemplateVersion(
         template.id,
         currentVersion,
@@ -594,30 +608,17 @@ export default function ProviderTemplateOverview() {
       await refreshTemplates();
       showSnackbar(`Version ${currentVersion} deleted.`, 'success');
 
-      // If that was the only version the template is gone; otherwise reload the
-      // remaining versions and switch to the new latest.
-      const remaining = versions.filter((v) => v.version !== currentVersion);
+      // If that was the only version the template is gone; navigate to list.
+      // Otherwise navigate to a remaining version — using the deleted handle
+      // for data fetches would return 404.
+      const remaining = allVersions.filter((v) => v.version !== currentVersion);
+      setDeleteOpen(false);
       if (remaining.length === 0) {
         navigate(listPath);
         return;
       }
-      const [full, list] = await Promise.all([
-        providerTemplateApis.getProviderTemplate(
-          template.id,
-          organizationId,
-          PLATFORM_API_BASE_URL
-        ),
-        providerTemplateApis.getProviderTemplateVersions(
-          template.id,
-          organizationId,
-          PLATFORM_API_BASE_URL
-        ),
-      ]);
-      setTemplate(full);
-      setVersions(list);
-      const latest = list.find((v) => v.isLatest) ?? list[0];
-      setSelectedVersion(latest?.version ?? '');
-      setDeleteOpen(false);
+      const nextVersion = remaining.find((v) => v.isLatest) ?? remaining[0];
+      navigate(nextVersion?.id ? `${listPath}/${nextVersion.id}` : listPath, { replace: true });
     } catch {
       showSnackbar('Failed to delete the version.', 'error');
     } finally {
@@ -803,6 +804,8 @@ export default function ProviderTemplateOverview() {
                   color="error"
                   onClick={() => setDeleteOpen(true)}
                   sx={{ minWidth: 'auto', p: '6px' }}
+                  aria-label="Delete template version"
+                  data-cyid="provider-template-delete-button"
                 >
                   <Trash2 size={16} />
                 </Button>

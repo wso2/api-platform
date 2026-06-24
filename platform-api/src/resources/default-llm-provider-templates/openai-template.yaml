@@ -22,7 +22,7 @@ metadata:
   name: openai
 spec:
   displayName: OpenAI
-  provider: wso2
+  managedBy: wso2
   version: v1.0
   metadata:
     endpointUrl: https://api.openai.com/v1

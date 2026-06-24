@@ -139,7 +139,7 @@ func (s *LLMDeploymentService) validateTemplateConflict(handle, version string) 
 		return err
 	}
 	for _, t := range templates {
-		if t.GetHandle() == handle && t.GetVersion() == version {
+		if t.GetGroupVersionID() == handle && t.GetVersion() == version {
 			return fmt.Errorf("%w: template with handle '%s' and version '%s' already exists", storage.ErrConflict, handle, version)
 		}
 	}
@@ -643,7 +643,7 @@ func (s *LLMDeploymentService) CreateLLMProviderTemplate(params LLMTemplateParam
 		UpdatedAt:     time.Now(),
 	}
 
-	if err := s.validateTemplateConflict(stored.GetHandle(), stored.GetVersion()); err != nil {
+	if err := s.validateTemplateConflict(stored.GetGroupVersionID(), stored.GetVersion()); err != nil {
 		return nil, err
 	}
 
@@ -706,10 +706,14 @@ func (s *LLMDeploymentService) InitializeOOBTemplates(templateDefinitions map[st
 		if tmpl.Spec.Version != nil && strings.TrimSpace(*tmpl.Spec.Version) != "" {
 			tmplVersion = strings.TrimSpace(*tmpl.Spec.Version)
 		}
-		templateID := models.MakeTemplateID(tmpl.Metadata.Name, tmplVersion)
+		groupVersionID := tmpl.Metadata.Name
+		if tmpl.Spec.GroupVersionId != nil && strings.TrimSpace(*tmpl.Spec.GroupVersionId) != "" {
+			groupVersionID = strings.TrimSpace(*tmpl.Spec.GroupVersionId)
+		}
+		templateID := models.MakeTemplateID(groupVersionID, tmplVersion)
 
-		// Check if this specific (handle, version) already exists
-		existing, err := s.store.GetTemplateByHandleAndVersion(tmpl.Metadata.Name, tmplVersion)
+		// Check if this specific (group_version_id, version) already exists
+		existing, err := s.store.GetTemplateByGroupVersionIDAndVersion(groupVersionID, tmplVersion)
 		if err == nil && existing != nil {
 			// ---------------------------
 			// UPDATE existing template
@@ -799,7 +803,7 @@ func (s *LLMDeploymentService) InitializeOOBTemplates(templateDefinitions map[st
 	// Publish all templates from store that weren't processed from files (DB-only templates)
 	allTemplates := s.store.GetAllTemplates()
 	for _, stored := range allTemplates {
-		handle := stored.GetHandle()
+		handle := stored.GetGroupVersionID()
 		if !processedTemplates[stored.GetID()] {
 			// Render the stored (unresolved) configuration before publishing so the
 			// policy engine receives actual resolved values, not raw template expressions.
@@ -846,10 +850,13 @@ func (s *LLMDeploymentService) UpdateLLMProviderTemplate(handle string, params L
 		return nil, err
 	}
 
-	// Validate that handle doesn't change unexpectedly
-	// If the new template has a different handle, that's a different template
-	oldHandle := existing.GetHandle()
+	// Validate that group_version_id doesn't change unexpectedly
+	// If the new template has a different group_version_id, that's a different template
+	oldHandle := existing.GetGroupVersionID()
 	newHandle := tmpl.Metadata.Name
+	if tmpl.Spec.GroupVersionId != nil && strings.TrimSpace(*tmpl.Spec.GroupVersionId) != "" {
+		newHandle = strings.TrimSpace(*tmpl.Spec.GroupVersionId)
+	}
 	if oldHandle != newHandle {
 		return nil, fmt.Errorf("%w: cannot change template handle from '%s' to '%s'; use create/delete instead", ErrLLMTemplateValidation, oldHandle, newHandle)
 	}
@@ -921,7 +928,7 @@ func (s *LLMDeploymentService) GetLLMProviderTemplateByHandle(handle string) (*m
 		return nil, err
 	}
 
-	return s.store.GetTemplateByHandle(handle)
+	return s.store.GetTemplateByGroupVersionID(handle)
 }
 
 func (s *LLMDeploymentService) GetLLMProviderTemplateByID(id string) (*models.StoredLLMProviderTemplate, error) {
@@ -938,7 +945,19 @@ func (s *LLMDeploymentService) GetLLMProviderTemplateByID(id string) (*models.St
 		}
 	}
 
-	return s.GetLLMProviderTemplateByHandle(id)
+	if byHandle, handleErr := s.GetLLMProviderTemplateByHandle(id); handleErr == nil {
+		return byHandle, nil
+	}
+
+	if templates, allErr := s.db.GetAllLLMProviderTemplates(); allErr == nil {
+		for _, candidate := range templates {
+			if candidate.GetID() == id {
+				return candidate, nil
+			}
+		}
+	}
+
+	return nil, fmt.Errorf("%w: id=%s", storage.ErrNotFound, id)
 }
 
 func (s *LLMDeploymentService) publishTemplateAsLazyResource(tmpl *api.LLMProviderTemplate, correlationID string) error {
@@ -948,8 +967,12 @@ func (s *LLMDeploymentService) publishTemplateAsLazyResource(tmpl *api.LLMProvid
 	if tmpl == nil {
 		return fmt.Errorf("template is nil")
 	}
-	if tmpl.Metadata.Name == "" {
-		return fmt.Errorf("template handle (metadata.name) is empty")
+	groupVersionID := tmpl.Metadata.Name
+	if tmpl.Spec.GroupVersionId != nil && strings.TrimSpace(*tmpl.Spec.GroupVersionId) != "" {
+		groupVersionID = strings.TrimSpace(*tmpl.Spec.GroupVersionId)
+	}
+	if groupVersionID == "" {
+		return fmt.Errorf("template group_version_id (metadata.name) is empty")
 	}
 
 	// Convert typed template to map[string]interface{} for the generic lazy resource payload.
@@ -963,7 +986,7 @@ func (s *LLMDeploymentService) publishTemplateAsLazyResource(tmpl *api.LLMProvid
 	}
 
 	return s.lazyResourceManager.StoreResource(&storage.LazyResource{
-		ID:           tmpl.Metadata.Name,
+		ID:           groupVersionID,
 		ResourceType: LazyResourceTypeLLMProviderTemplate,
 		Resource:     m,
 	}, correlationID)

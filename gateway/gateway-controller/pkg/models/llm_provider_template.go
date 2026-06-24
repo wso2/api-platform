@@ -39,18 +39,26 @@ type StoredLLMProviderTemplate struct {
 	UpdatedAt     time.Time               `json:"updatedAt"`
 }
 
-// GetHandle returns the template handle (the version-independent family
-// identifier, e.g. "openai").
-func (t *StoredLLMProviderTemplate) GetHandle() string {
+// GetGroupVersionID returns the template's stable family-grouping identifier
+// (the version-independent identifier shared by every version of this
+// template, e.g. "openai"). Falls back to metadata.name when the explicit
+// spec.groupVersionId field is unset, for templates created before that
+// field existed.
+func (t *StoredLLMProviderTemplate) GetGroupVersionID() string {
+	if t.Configuration.Spec.GroupVersionId != nil {
+		if v := strings.TrimSpace(*t.Configuration.Spec.GroupVersionId); v != "" {
+			return v
+		}
+	}
 	return t.Configuration.Metadata.Name
 }
 
 func (t *StoredLLMProviderTemplate) GetID() string {
-	return MakeTemplateID(t.GetHandle(), t.GetVersion())
+	return MakeTemplateID(t.GetGroupVersionID(), t.GetVersion())
 }
 
-func MakeTemplateID(handle, version string) string {
-	h := strings.TrimSpace(handle)
+func MakeTemplateID(groupVersionID, version string) string {
+	h := strings.TrimSpace(groupVersionID)
 	v := strings.ToLower(strings.TrimSpace(version))
 	if v == "" {
 		v = strings.ToLower(DefaultTemplateVersion)

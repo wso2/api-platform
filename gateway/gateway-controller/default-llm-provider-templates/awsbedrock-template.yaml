@@ -19,9 +19,10 @@
 apiVersion: gateway.api-platform.wso2.com/v1
 kind: LlmProviderTemplate
 metadata:
-  name: awsbedrock
+  name: awsbedrock-v1-0
 spec:
   displayName: AWS Bedrock
+  groupVersionId: awsbedrock
   provider: wso2
   version: v1.0
   promptTokens:

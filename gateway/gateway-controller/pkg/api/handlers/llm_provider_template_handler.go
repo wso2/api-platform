@@ -82,7 +82,7 @@ func (s *APIServer) CreateLLMProviderTemplate(c *gin.Context) {
 
 	log.Info("LLM provider template created successfully",
 		slog.String("uuid", storedTemplate.UUID),
-		slog.String("handle", storedTemplate.GetHandle()))
+		slog.String("handle", storedTemplate.GetGroupVersionID()))
 
 	c.JSON(http.StatusCreated, buildTemplateResourceResponse(storedTemplate))
 }
@@ -179,7 +179,7 @@ func (s *APIServer) UpdateLLMProviderTemplate(c *gin.Context, id string) {
 
 	log.Info("LLM provider template updated successfully",
 		slog.String("uuid", updated.UUID),
-		slog.String("handle", updated.GetHandle()))
+		slog.String("handle", updated.GetGroupVersionID()))
 
 	c.JSON(http.StatusOK, buildTemplateResourceResponse(updated))
 }
@@ -210,11 +210,11 @@ func (s *APIServer) DeleteLLMProviderTemplate(c *gin.Context, id string) {
 
 	log.Info("LLM provider template deleted successfully",
 		slog.String("uuid", deleted.UUID),
-		slog.String("handle", deleted.GetHandle()))
+		slog.String("handle", deleted.GetGroupVersionID()))
 
 	c.JSON(http.StatusOK, gin.H{
 		"status":  "success",
 		"message": "LLM provider template deleted successfully",
-		"id":      deleted.GetHandle(),
+		"id":      deleted.GetGroupVersionID(),
 	})
 }

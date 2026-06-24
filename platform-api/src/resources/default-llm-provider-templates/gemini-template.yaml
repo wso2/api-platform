@@ -22,7 +22,7 @@ metadata:
   name: gemini
 spec:
   displayName: Gemini
-  provider: wso2
+  managedBy: wso2
   version: v1.0
   metadata:
     endpointUrl: https://generativelanguage.googleapis.com

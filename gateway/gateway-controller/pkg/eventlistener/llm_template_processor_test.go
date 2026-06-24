@@ -55,7 +55,7 @@ func TestHandleEvent_LLMTemplateCreate_LoadsTemplateFromDBAndPublishesLazyResour
 
 	stored, err := store.GetTemplate(template.UUID)
 	require.NoError(t, err)
-	assert.Equal(t, "openai", stored.GetHandle())
+	assert.Equal(t, "openai", stored.GetGroupVersionID())
 
 	resource, exists := lazyManager.GetResourceByIDAndType("openai", utils.LazyResourceTypeLLMProviderTemplate)
 	require.True(t, exists)
@@ -119,7 +119,7 @@ func TestHandleEvent_LLMTemplateDelete_RemovesLocalState(t *testing.T) {
 		logger:              newTestLogger(),
 	}
 
-	resource, err := listener.buildLLMTemplateLazyResource(template.Configuration)
+	resource, err := listener.buildLLMTemplateLazyResource(template)
 	require.NoError(t, err)
 	require.NoError(t, lazyManager.StoreResource(resource, ""))
 

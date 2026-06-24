@@ -90,7 +90,7 @@ func TestPostgresStorage_TemplateAndAPIKeyCRUD(t *testing.T) {
 	loadedTemplate, err := pg.GetLLMProviderTemplate(tmpl.UUID)
 	assert.NilError(t, err)
 	assert.Equal(t, loadedTemplate.UUID, tmpl.UUID)
-	assert.Equal(t, loadedTemplate.GetHandle(), tmpl.GetHandle())
+	assert.Equal(t, loadedTemplate.GetGroupVersionID(), tmpl.GetGroupVersionID())
 
 	cfg := createTestStoredConfig()
 	assert.NilError(t, pg.SaveConfig(cfg))

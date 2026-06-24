@@ -42,14 +42,14 @@ func TestLLMProviderTemplateRepo_GetByID_ExactVersion(t *testing.T) {
 	createTestOrganizationAndProject(t, db, orgUUID, projectUUID)
 
 	now := time.Now()
-	// Built-in v1.0 — seeded with handle == base_handle (no version suffix), as
-	// the template loader does (provider "wso2").
+	// Built-in v1.0 — seeded with handle == group_version_id (no version suffix), as
+	// the template loader does (managedBy "wso2").
 	v1 := &model.LLMProviderTemplate{
 		OrganizationUUID: orgUUID,
 		ID:               "mistralai",
-		BaseHandle:       "mistralai",
+		GroupVersionID:   "mistralai",
 		Name:             "Mistral",
-		Provider:         "wso2",
+		ManagedBy:        "wso2",
 		Version:          "v1.0",
 		CreatedAt:        now,
 		UpdatedAt:        now,
@@ -59,14 +59,14 @@ func TestLLMProviderTemplateRepo_GetByID_ExactVersion(t *testing.T) {
 	}
 	v1UUID := v1.UUID
 
-	// Custom v2.0 spun off the built-in — version-suffixed handle, provider
-	// "other"; this demotes v1.0 and becomes the family's latest.
+	// Custom v2.0 spun off the built-in — version-suffixed handle, managedBy
+	// "customer"; this demotes v1.0 and becomes the family's latest.
 	v2 := &model.LLMProviderTemplate{
 		OrganizationUUID: orgUUID,
 		ID:               "mistralai-v2-0",
-		BaseHandle:       "mistralai",
+		GroupVersionID:   "mistralai",
 		Name:             "Mistral",
-		Provider:         "other",
+		ManagedBy:        "customer",
 		Version:          "v2.0",
 	}
 	if err := repo.CreateNewVersion(v2); err != nil {
@@ -82,8 +82,8 @@ func TestLLMProviderTemplateRepo_GetByID_ExactVersion(t *testing.T) {
 	if got == nil || got.Version != "v1.0" || got.UUID != v1UUID {
 		t.Fatalf("GetByID(builtin) = %+v, want version v1.0 (uuid %s)", got, v1UUID)
 	}
-	if got.Provider != "wso2" {
-		t.Errorf("GetByID(builtin).Provider = %q, want wso2", got.Provider)
+	if got.ManagedBy != "wso2" {
+		t.Errorf("GetByID(builtin).ManagedBy = %q, want wso2", got.ManagedBy)
 	}
 
 	// The version-specific custom handle must return v2.0.
@@ -91,8 +91,8 @@ func TestLLMProviderTemplateRepo_GetByID_ExactVersion(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetByID(v2) error: %v", err)
 	}
-	if got == nil || got.Version != "v2.0" || got.Provider != "other" {
-		t.Fatalf("GetByID(v2) = %+v, want version v2.0 (other)", got)
+	if got == nil || got.Version != "v2.0" || got.ManagedBy != "customer" {
+		t.Fatalf("GetByID(v2) = %+v, want version v2.0 (managedBy customer)", got)
 	}
 
 	// An unknown handle resolves to nothing (no spurious latest match).

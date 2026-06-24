@@ -223,13 +223,15 @@ func (h *LLMHandler) CreateLLMProviderTemplateVersion(c *gin.Context) {
 	}
 	id := c.Param("id")
 
+	createdBy, _ := middleware.GetUsernameFromContext(c)
+
 	var req api.CreateLLMProviderTemplateVersionRequest
 	if err := json.NewDecoder(c.Request.Body).Decode(&req); err != nil {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid request body"))
 		return
 	}
 
-	created, err := h.templateService.CreateVersion(orgID, id, &req)
+	created, err := h.templateService.CreateVersion(orgID, id, createdBy, &req)
 	if err != nil {
 		switch {
 		case errors.Is(err, constants.ErrLLMProviderTemplateNotFound):

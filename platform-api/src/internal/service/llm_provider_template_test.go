@@ -40,14 +40,14 @@ type mockLLMProviderTemplateCRUDRepo struct {
 	createErr    error
 	created      *model.LLMProviderTemplate
 
-	providerForHandleResult string
-	providerForHandleErr    error
+	managedByForHandleResult string
+	managedByForHandleErr    error
 
 	updateErr error
 	updated   *model.LLMProviderTemplate
 
-	getBaseHandleResult string
-	getBaseHandleErr    error
+	getGroupVersionIDResult string
+	getGroupVersionIDErr    error
 
 	renameFamilyCalled bool
 	renameFamilyBase   string
@@ -96,8 +96,8 @@ func (m *mockLLMProviderTemplateCRUDRepo) Create(t *model.LLMProviderTemplate) e
 	return nil
 }
 
-func (m *mockLLMProviderTemplateCRUDRepo) ProviderForHandle(handle, orgUUID string) (string, error) {
-	return m.providerForHandleResult, m.providerForHandleErr
+func (m *mockLLMProviderTemplateCRUDRepo) ManagedByForHandle(handle, orgUUID string) (string, error) {
+	return m.managedByForHandleResult, m.managedByForHandleErr
 }
 
 func (m *mockLLMProviderTemplateCRUDRepo) Update(t *model.LLMProviderTemplate) error {
@@ -108,8 +108,8 @@ func (m *mockLLMProviderTemplateCRUDRepo) Update(t *model.LLMProviderTemplate) e
 	return nil
 }
 
-func (m *mockLLMProviderTemplateCRUDRepo) GetBaseHandle(handle, orgUUID string) (string, error) {
-	return m.getBaseHandleResult, m.getBaseHandleErr
+func (m *mockLLMProviderTemplateCRUDRepo) GetGroupVersionID(handle, orgUUID string) (string, error) {
+	return m.getGroupVersionIDResult, m.getGroupVersionIDErr
 }
 
 func (m *mockLLMProviderTemplateCRUDRepo) RenameFamily(baseHandle, orgUUID, name string) error {
@@ -196,8 +196,8 @@ func TestLLMProviderTemplateServiceCreate_Success(t *testing.T) {
 	if repo.created == nil || repo.created.CreatedBy != "alice" {
 		t.Fatalf("expected repo.Create to be called with createdBy, got: %#v", repo.created)
 	}
-	if repo.created.Provider != "other" {
-		t.Fatalf("expected default provider 'other', got: %q", repo.created.Provider)
+	if repo.created.ManagedBy != "customer" {
+		t.Fatalf("expected default managedBy 'customer', got: %q", repo.created.ManagedBy)
 	}
 }
 
@@ -246,7 +246,10 @@ func TestLLMProviderTemplateServiceCreate_ReturnsConflictForDuplicateHandle(t *t
 // ---- Update ----
 
 func TestLLMProviderTemplateServiceUpdate_RejectsReadOnlyBuiltin(t *testing.T) {
-	repo := &mockLLMProviderTemplateCRUDRepo{providerForHandleResult: "wso2"}
+	repo := &mockLLMProviderTemplateCRUDRepo{}
+	repo.getByIDFunc = func(templateID, orgUUID string) (*model.LLMProviderTemplate, error) {
+		return &model.LLMProviderTemplate{ID: templateID, OrganizationUUID: orgUUID, ManagedBy: "wso2"}, nil
+	}
 	svc := NewLLMProviderTemplateService(repo)
 
 	_, err := svc.Update("org-1", "openai", validTemplateRequest("OpenAI"))
@@ -259,7 +262,7 @@ func TestLLMProviderTemplateServiceUpdate_RejectsReadOnlyBuiltin(t *testing.T) {
 }
 
 func TestLLMProviderTemplateServiceUpdate_ReturnsNotFoundWhenTemplateMissing(t *testing.T) {
-	repo := &mockLLMProviderTemplateCRUDRepo{providerForHandleResult: ""}
+	repo := &mockLLMProviderTemplateCRUDRepo{}
 	svc := NewLLMProviderTemplateService(repo)
 
 	_, err := svc.Update("org-1", "does-not-exist", validTemplateRequest("Name"))
@@ -268,10 +271,37 @@ func TestLLMProviderTemplateServiceUpdate_ReturnsNotFoundWhenTemplateMissing(t *
 	}
 }
 
+func TestLLMProviderTemplateServiceUpdate_PreservesOpenAPISpecWhenOmitted(t *testing.T) {
+	repo := &mockLLMProviderTemplateCRUDRepo{}
+	repo.getByIDFunc = func(templateID, orgUUID string) (*model.LLMProviderTemplate, error) {
+		return &model.LLMProviderTemplate{
+			ID:               templateID,
+			OrganizationUUID: orgUUID,
+			ManagedBy:        "customer",
+			OpenAPISpec:      "openapi: 3.0.0",
+			Version:          "v1.0",
+		}, nil
+	}
+	svc := NewLLMProviderTemplateService(repo)
+
+	req := validTemplateRequest("Renamed")
+	req.Openapi = nil
+	req.Provider = nil
+	if _, err := svc.Update("org-1", "mistralai", req); err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+	if repo.updated == nil || repo.updated.OpenAPISpec != "openapi: 3.0.0" {
+		t.Fatalf("expected existing OpenAPI spec to be preserved, got: %#v", repo.updated)
+	}
+	if repo.updated.ManagedBy != "customer" {
+		t.Fatalf("expected existing managedBy to be preserved, got: %q", repo.updated.ManagedBy)
+	}
+}
+
 func TestLLMProviderTemplateServiceUpdate_PropagatesNameToFamily(t *testing.T) {
 	repo := &mockLLMProviderTemplateCRUDRepo{
-		providerForHandleResult: "other",
-		getBaseHandleResult:     "mistralai",
+		managedByForHandleResult: "customer",
+		getGroupVersionIDResult:     "mistralai",
 	}
 	repo.getByIDFunc = func(templateID, orgUUID string) (*model.LLMProviderTemplate, error) {
 		return &model.LLMProviderTemplate{ID: templateID, OrganizationUUID: orgUUID, Name: "Mistral Updated", Version: "v1.0"}, nil
@@ -293,7 +323,7 @@ func TestLLMProviderTemplateServiceUpdate_PropagatesNameToFamily(t *testing.T) {
 }
 
 func TestLLMProviderTemplateServiceUpdate_RejectsMismatchedID(t *testing.T) {
-	repo := &mockLLMProviderTemplateCRUDRepo{providerForHandleResult: "other"}
+	repo := &mockLLMProviderTemplateCRUDRepo{managedByForHandleResult: "customer"}
 	svc := NewLLMProviderTemplateService(repo)
 
 	req := validTemplateRequest("Name")
@@ -307,31 +337,31 @@ func TestLLMProviderTemplateServiceUpdate_RejectsMismatchedID(t *testing.T) {
 // ---- CreateVersion ----
 
 func TestLLMProviderTemplateServiceCreateVersion_Success(t *testing.T) {
-	repo := &mockLLMProviderTemplateCRUDRepo{getBaseHandleResult: "mistralai"}
+	repo := &mockLLMProviderTemplateCRUDRepo{getGroupVersionIDResult: "mistralai"}
 	svc := NewLLMProviderTemplateService(repo)
 
 	req := &api.CreateLLMProviderTemplateVersionRequest{Name: "Mistral", Version: "v2.0"}
-	resp, err := svc.CreateVersion("org-1", "mistralai", req)
+	resp, err := svc.CreateVersion("org-1", "mistralai", "test-user", req)
 	if err != nil {
 		t.Fatalf("expected no error, got: %v", err)
 	}
 	if resp == nil || resp.Version != "v2.0" {
 		t.Fatalf("expected new version v2.0, got: %#v", resp)
 	}
-	if repo.createdVersion == nil || repo.createdVersion.BaseHandle != "mistralai" {
+	if repo.createdVersion == nil || repo.createdVersion.GroupVersionID != "mistralai" {
 		t.Fatalf("expected created version to carry the family base handle, got: %#v", repo.createdVersion)
 	}
-	if repo.createdVersion.Provider != "other" {
-		t.Fatalf("expected new custom versions to default to provider 'other', got: %q", repo.createdVersion.Provider)
+	if repo.createdVersion.ManagedBy != "customer" {
+		t.Fatalf("expected new custom versions to default to managedBy 'customer', got: %q", repo.createdVersion.ManagedBy)
 	}
 }
 
 func TestLLMProviderTemplateServiceCreateVersion_NotFoundWhenFamilyMissing(t *testing.T) {
-	repo := &mockLLMProviderTemplateCRUDRepo{getBaseHandleResult: ""}
+	repo := &mockLLMProviderTemplateCRUDRepo{getGroupVersionIDResult: ""}
 	svc := NewLLMProviderTemplateService(repo)
 
 	req := &api.CreateLLMProviderTemplateVersionRequest{Name: "Mistral", Version: "v2.0"}
-	_, err := svc.CreateVersion("org-1", "does-not-exist", req)
+	_, err := svc.CreateVersion("org-1", "does-not-exist", "test-user", req)
 	if err != constants.ErrLLMProviderTemplateNotFound {
 		t.Fatalf("expected ErrLLMProviderTemplateNotFound, got: %v", err)
 	}
@@ -339,24 +369,24 @@ func TestLLMProviderTemplateServiceCreateVersion_NotFoundWhenFamilyMissing(t *te
 
 func TestLLMProviderTemplateServiceCreateVersion_ConflictWhenVersionExists(t *testing.T) {
 	repo := &mockLLMProviderTemplateCRUDRepo{
-		getBaseHandleResult: "mistralai",
+		getGroupVersionIDResult: "mistralai",
 		createNewVersionErr: constants.ErrLLMProviderTemplateVersionExists,
 	}
 	svc := NewLLMProviderTemplateService(repo)
 
 	req := &api.CreateLLMProviderTemplateVersionRequest{Name: "Mistral", Version: "v1.0"}
-	_, err := svc.CreateVersion("org-1", "mistralai", req)
+	_, err := svc.CreateVersion("org-1", "mistralai", "test-user", req)
 	if err != constants.ErrLLMProviderTemplateVersionExists {
 		t.Fatalf("expected ErrLLMProviderTemplateVersionExists, got: %v", err)
 	}
 }
 
 func TestLLMProviderTemplateServiceCreateVersion_RejectsInvalidVersionFormat(t *testing.T) {
-	repo := &mockLLMProviderTemplateCRUDRepo{getBaseHandleResult: "mistralai"}
+	repo := &mockLLMProviderTemplateCRUDRepo{getGroupVersionIDResult: "mistralai"}
 	svc := NewLLMProviderTemplateService(repo)
 
 	req := &api.CreateLLMProviderTemplateVersionRequest{Name: "Mistral", Version: "2.0"}
-	_, err := svc.CreateVersion("org-1", "mistralai", req)
+	_, err := svc.CreateVersion("org-1", "mistralai", "test-user", req)
 	if err != constants.ErrInvalidInput {
 		t.Fatalf("expected ErrInvalidInput, got: %v", err)
 	}
@@ -467,7 +497,7 @@ func TestLLMProviderTemplateServiceSetVersionEnabled_NotFound(t *testing.T) {
 // ---- Delete (whole template family) ----
 
 func TestLLMProviderTemplateServiceDelete_BlocksReadOnlyBuiltin(t *testing.T) {
-	repo := &mockLLMProviderTemplateCRUDRepo{providerForHandleResult: "wso2"}
+	repo := &mockLLMProviderTemplateCRUDRepo{managedByForHandleResult: "wso2"}
 	svc := NewLLMProviderTemplateService(repo)
 
 	err := svc.Delete("org-1", "openai")
@@ -480,7 +510,7 @@ func TestLLMProviderTemplateServiceDelete_BlocksReadOnlyBuiltin(t *testing.T) {
 }
 
 func TestLLMProviderTemplateServiceDelete_NotFound(t *testing.T) {
-	repo := &mockLLMProviderTemplateCRUDRepo{providerForHandleResult: ""}
+	repo := &mockLLMProviderTemplateCRUDRepo{managedByForHandleResult: ""}
 	svc := NewLLMProviderTemplateService(repo)
 
 	err := svc.Delete("org-1", "does-not-exist")
@@ -491,7 +521,7 @@ func TestLLMProviderTemplateServiceDelete_NotFound(t *testing.T) {
 
 func TestLLMProviderTemplateServiceDelete_BlocksWhenInUse(t *testing.T) {
 	repo := &mockLLMProviderTemplateCRUDRepo{
-		providerForHandleResult:           "other",
+		managedByForHandleResult:           "customer",
 		countProvidersUsingTemplateResult: 2,
 	}
 	svc := NewLLMProviderTemplateService(repo)
@@ -510,7 +540,7 @@ func TestLLMProviderTemplateServiceDelete_BlocksWhenInUse(t *testing.T) {
 
 func TestLLMProviderTemplateServiceDelete_Success(t *testing.T) {
 	repo := &mockLLMProviderTemplateCRUDRepo{
-		providerForHandleResult:           "other",
+		managedByForHandleResult:           "customer",
 		countProvidersUsingTemplateResult: 0,
 	}
 	svc := NewLLMProviderTemplateService(repo)
@@ -542,7 +572,7 @@ func TestLLMProviderTemplateServiceDeleteVersion_NotFoundWhenVersionMissing(t *t
 func TestLLMProviderTemplateServiceDeleteVersion_BlocksReadOnlyBuiltin(t *testing.T) {
 	repo := &mockLLMProviderTemplateCRUDRepo{
 		getByVersionFunc: func(templateID, orgUUID, version string) (*model.LLMProviderTemplate, error) {
-			return &model.LLMProviderTemplate{ID: templateID, Version: version, Provider: "wso2"}, nil
+			return &model.LLMProviderTemplate{ID: templateID, Version: version, ManagedBy: "wso2"}, nil
 		},
 	}
 	svc := NewLLMProviderTemplateService(repo)
@@ -559,7 +589,7 @@ func TestLLMProviderTemplateServiceDeleteVersion_BlocksReadOnlyBuiltin(t *testin
 func TestLLMProviderTemplateServiceDeleteVersion_BlocksWhenInUse(t *testing.T) {
 	repo := &mockLLMProviderTemplateCRUDRepo{
 		getByVersionFunc: func(templateID, orgUUID, version string) (*model.LLMProviderTemplate, error) {
-			return &model.LLMProviderTemplate{ID: templateID, Version: version, Provider: "other"}, nil
+			return &model.LLMProviderTemplate{ID: templateID, Version: version, ManagedBy: "customer"}, nil
 		},
 		countProvidersUsingTemplateResult: 1,
 	}
@@ -580,7 +610,7 @@ func TestLLMProviderTemplateServiceDeleteVersion_BlocksWhenInUse(t *testing.T) {
 func TestLLMProviderTemplateServiceDeleteVersion_Success(t *testing.T) {
 	repo := &mockLLMProviderTemplateCRUDRepo{
 		getByVersionFunc: func(templateID, orgUUID, version string) (*model.LLMProviderTemplate, error) {
-			return &model.LLMProviderTemplate{ID: templateID, Version: version, Provider: "other"}, nil
+			return &model.LLMProviderTemplate{ID: templateID, Version: version, ManagedBy: "customer"}, nil
 		},
 		countProvidersUsingTemplateResult: 0,
 	}

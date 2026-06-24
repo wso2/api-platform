@@ -121,8 +121,9 @@ CREATE TABLE IF NOT EXISTS llm_provider_templates (
     -- Gateway identifier
     gateway_id TEXT NOT NULL,
 
-    -- Template handle (a handle may have multiple versions within a gateway)
-    handle TEXT NOT NULL,
+    -- Stable family-grouping identifier; a group_version_id may have multiple
+    -- versions within a gateway
+    group_version_id TEXT NOT NULL,
 
     -- Template content version (e.g. v1.0); defaults to v1.0 when omitted
     version TEXT NOT NULL DEFAULT 'v1.0',
@@ -134,9 +135,9 @@ CREATE TABLE IF NOT EXISTS llm_provider_templates (
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
-    -- Each (handle, version) pair is unique per gateway; versions coexist
+    -- Each (group_version_id, version) pair is unique per gateway; versions coexist
     PRIMARY KEY (gateway_id, uuid),
-    UNIQUE(gateway_id, handle, version)
+    UNIQUE(gateway_id, group_version_id, version)
 );
 
 -- Table for API keys
@@ -310,4 +311,4 @@ CREATE TABLE IF NOT EXISTS webhook_secrets (
 
 CREATE INDEX IF NOT EXISTS idx_webhook_secrets_artifact ON webhook_secrets(gateway_id, artifact_uuid);
 
-PRAGMA user_version = 3;
+PRAGMA user_version = 4;

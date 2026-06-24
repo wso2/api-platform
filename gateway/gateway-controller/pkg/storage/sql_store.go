@@ -1507,12 +1507,12 @@ func (s *sqlStore) SaveLLMProviderTemplate(template *models.StoredLLMProviderTem
 		return fmt.Errorf("failed to marshal template configuration: %w", err)
 	}
 
-	handle := template.GetHandle()
+	groupVersionID := template.GetGroupVersionID()
 	version := template.GetVersion()
 
 	query := `
 		INSERT INTO llm_provider_templates (
-			uuid, gateway_id, handle, version, configuration, created_at, updated_at
+			uuid, gateway_id, group_version_id, version, configuration, created_at, updated_at
 		) VALUES (?, ?, ?, ?, ?, ?, ?)
 	`
 
@@ -1520,7 +1520,7 @@ func (s *sqlStore) SaveLLMProviderTemplate(template *models.StoredLLMProviderTem
 	_, err = s.exec(query,
 		template.UUID,
 		s.gatewayId,
-		handle,
+		groupVersionID,
 		version,
 		string(configJSON),
 		now,
@@ -1530,14 +1530,14 @@ func (s *sqlStore) SaveLLMProviderTemplate(template *models.StoredLLMProviderTem
 	if err != nil {
 		// Check for unique constraint violation
 		if s.isUniqueViolation(err) {
-			return fmt.Errorf("%w: template with handle '%s' and version '%s' already exists", ErrConflict, handle, version)
+			return fmt.Errorf("%w: template with group_version_id '%s' and version '%s' already exists", ErrConflict, groupVersionID, version)
 		}
 		return fmt.Errorf("failed to insert template: %w", err)
 	}
 
 	s.logger.Info("LLM provider template saved",
 		slog.String("uuid", template.UUID),
-		slog.String("handle", handle))
+		slog.String("group_version_id", groupVersionID))
 
 	return nil
 }
@@ -1559,17 +1559,17 @@ func (s *sqlStore) UpdateLLMProviderTemplate(template *models.StoredLLMProviderT
 		return fmt.Errorf("failed to marshal template configuration: %w", err)
 	}
 
-	handle := template.GetHandle()
+	groupVersionID := template.GetGroupVersionID()
 
 	version := template.GetVersion()
 	query := `
 		UPDATE llm_provider_templates
-		SET handle = ?, version = ?, configuration = ?, updated_at = ?
+		SET group_version_id = ?, version = ?, configuration = ?, updated_at = ?
 		WHERE uuid = ? AND gateway_id = ?
 	`
 
 	result, err := s.exec(query,
-		handle,
+		groupVersionID,
 		version,
 		string(configJSON),
 		time.Now(),
@@ -1579,7 +1579,7 @@ func (s *sqlStore) UpdateLLMProviderTemplate(template *models.StoredLLMProviderT
 
 	if err != nil {
 		if s.isUniqueViolation(err) {
-			return fmt.Errorf("%w: template with handle '%s' and version '%s' already exists", ErrConflict, handle, version)
+			return fmt.Errorf("%w: template with group_version_id '%s' and version '%s' already exists", ErrConflict, groupVersionID, version)
 		}
 		return fmt.Errorf("failed to update template: %w", err)
 	}
@@ -1595,7 +1595,7 @@ func (s *sqlStore) UpdateLLMProviderTemplate(template *models.StoredLLMProviderT
 
 	s.logger.Info("LLM provider template updated",
 		slog.String("uuid", template.UUID),
-		slog.String("handle", handle))
+		slog.String("group_version_id", groupVersionID))
 
 	return nil
 }
@@ -1704,12 +1704,12 @@ func (s *sqlStore) GetAllLLMProviderTemplates() ([]*models.StoredLLMProviderTemp
 }
 
 // GetLLMProviderTemplateByHandle retrieves the latest (most recently created)
-// version of an LLM provider template by handle.
-func (s *sqlStore) GetLLMProviderTemplateByHandle(handle string) (*models.StoredLLMProviderTemplate, error) {
+// version of an LLM provider template by group_version_id.
+func (s *sqlStore) GetLLMProviderTemplateByHandle(groupVersionID string) (*models.StoredLLMProviderTemplate, error) {
 	query := `
 		SELECT uuid, configuration, created_at, updated_at
 		FROM llm_provider_templates
-		WHERE gateway_id = ? AND handle = ?
+		WHERE gateway_id = ? AND group_version_id = ?
 		ORDER BY created_at DESC
 		LIMIT 1
 	`
@@ -1717,7 +1717,7 @@ func (s *sqlStore) GetLLMProviderTemplateByHandle(handle string) (*models.Stored
 	var template models.StoredLLMProviderTemplate
 	var configJSON string
 
-	err := s.queryRow(query, s.gatewayId, handle).Scan(
+	err := s.queryRow(query, s.gatewayId, groupVersionID).Scan(
 		&template.UUID,
 		&configJSON,
 		&template.CreatedAt,
@@ -1725,7 +1725,7 @@ func (s *sqlStore) GetLLMProviderTemplateByHandle(handle string) (*models.Stored
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, fmt.Errorf("%w: handle=%s", ErrNotFound, handle)
+			return nil, fmt.Errorf("%w: group_version_id=%s", ErrNotFound, groupVersionID)
 		}
 		return nil, fmt.Errorf("failed to query template: %w", err)
 	}

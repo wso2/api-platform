@@ -892,8 +892,12 @@ type LLMProviderTemplateData struct {
 	CompletionTokens *ExtractionIdentifier `json:"completionTokens,omitempty" yaml:"completionTokens,omitempty"`
 
 	// DisplayName Human-readable LLM Template name
-	DisplayName  string                `json:"displayName" yaml:"displayName"`
-	PromptTokens *ExtractionIdentifier `json:"promptTokens,omitempty" yaml:"promptTokens,omitempty"`
+	DisplayName string `json:"displayName" yaml:"displayName"`
+
+	// GroupVersionId Stable family-grouping identifier shared by every version of this
+	// template. Defaults to metadata.name when omitted.
+	GroupVersionId *string               `json:"groupVersionId,omitempty" yaml:"groupVersionId,omitempty"`
+	PromptTokens   *ExtractionIdentifier `json:"promptTokens,omitempty" yaml:"promptTokens,omitempty"`
 
 	// Provider Origin of the template. Built-in templates use 'wso2'; custom
 	// templates default to 'other' and may be set to any value.
@@ -905,7 +909,7 @@ type LLMProviderTemplateData struct {
 	TotalTokens      *ExtractionIdentifier                `json:"totalTokens,omitempty" yaml:"totalTokens,omitempty"`
 
 	// Version Template content version (e.g. v1.0). Multiple versions of the same
-	// handle can coexist; defaults to v1.0 when omitted.
+	// group_version_id can coexist; defaults to v1.0 when omitted.
 	Version *string `json:"version,omitempty" yaml:"version,omitempty"`
 }
 

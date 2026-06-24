@@ -25,7 +25,6 @@ import (
 	"strings"
 
 	"github.com/wso2/api-platform/common/eventhub"
-	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
@@ -118,10 +117,10 @@ func (l *EventListener) handleLLMTemplateDelete(event eventhub.Event) {
 	}
 
 	if existingTemplate != nil {
-		if err := l.removeLLMTemplate(existingTemplate.GetHandle(), event.EventID); err != nil {
+		if err := l.removeLLMTemplate(existingTemplate.GetGroupVersionID(), event.EventID); err != nil {
 			l.logger.Warn("Failed to remove LLM template lazy resource",
 				slog.String("template_id", entityID),
-				slog.String("template_handle", existingTemplate.GetHandle()),
+				slog.String("template_handle", existingTemplate.GetGroupVersionID()),
 				slog.Any("error", err))
 		}
 	}
@@ -136,7 +135,7 @@ func (l *EventListener) syncLLMTemplate(template *models.StoredLLMProviderTempla
 		return nil
 	}
 
-	resource, err := l.buildLLMTemplateLazyResource(template.Configuration)
+	resource, err := l.buildLLMTemplateLazyResource(template)
 	if err != nil {
 		return err
 	}
@@ -144,24 +143,25 @@ func (l *EventListener) syncLLMTemplate(template *models.StoredLLMProviderTempla
 	return l.lazyResourceManager.StoreResource(resource, correlationID)
 }
 
-func (l *EventListener) removeLLMTemplate(handle, correlationID string) error {
-	if l.lazyResourceManager == nil || handle == "" {
+func (l *EventListener) removeLLMTemplate(groupVersionID, correlationID string) error {
+	if l.lazyResourceManager == nil || groupVersionID == "" {
 		return nil
 	}
 
 	return l.lazyResourceManager.RemoveResourceByIDAndType(
-		handle,
+		groupVersionID,
 		utils.LazyResourceTypeLLMProviderTemplate,
 		correlationID,
 	)
 }
 
-func (l *EventListener) buildLLMTemplateLazyResource(template api.LLMProviderTemplate) (*storage.LazyResource, error) {
-	if template.Metadata.Name == "" {
-		return nil, fmt.Errorf("template handle (metadata.name) is empty")
+func (l *EventListener) buildLLMTemplateLazyResource(template *models.StoredLLMProviderTemplate) (*storage.LazyResource, error) {
+	groupVersionID := template.GetGroupVersionID()
+	if groupVersionID == "" {
+		return nil, fmt.Errorf("template group_version_id (metadata.name) is empty")
 	}
 
-	payload, err := json.Marshal(template)
+	payload, err := json.Marshal(template.Configuration)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal template as JSON: %w", err)
 	}
@@ -172,7 +172,7 @@ func (l *EventListener) buildLLMTemplateLazyResource(template api.LLMProviderTem
 	}
 
 	return &storage.LazyResource{
-		ID:           template.Metadata.Name,
+		ID:           groupVersionID,
 		ResourceType: utils.LazyResourceTypeLLMProviderTemplate,
 		Resource:     resource,
 	}, nil

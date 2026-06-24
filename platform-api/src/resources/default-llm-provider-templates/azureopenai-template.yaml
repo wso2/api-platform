@@ -22,7 +22,7 @@ metadata:
   name: azure-openai
 spec:
   displayName: Azure OpenAI
-  provider: wso2
+  managedBy: wso2
   version: v1.0
   metadata:
     auth:

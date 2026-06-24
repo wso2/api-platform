@@ -162,10 +162,10 @@ type LLMProviderTemplate struct {
 	UUID             string                               `json:"uuid" db:"uuid"`
 	OrganizationUUID string                               `json:"organizationId" db:"organization_uuid"`
 	ID               string                               `json:"id" db:"handle"`
-	BaseHandle       string                       		  `json:"baseHandle,omitempty" db:"base_handle"`
+	GroupVersionID   string                       		  `json:"groupVersionId,omitempty" db:"group_version_id"`
 	Name             string                               `json:"name" db:"name"`
 	Description      string                               `json:"description,omitempty" db:"description"`
-	Provider         string                               `json:"provider,omitempty" db:"-"`
+	ManagedBy        string                               `json:"managedBy,omitempty" db:"managed_by"`
 	CreatedBy        string                               `json:"createdBy,omitempty" db:"created_by"`
 	Version  		 string 							  `json:"version" db:"version"`
 	IsLatest 		 bool    							  `json:"isLatest" db:"is_latest"`

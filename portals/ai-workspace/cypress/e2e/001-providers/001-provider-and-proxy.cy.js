@@ -102,9 +102,21 @@ describe('AI Workspace - OpenAI provider and proxy lifecycle', () => {
       .should('be.visible')
       .click();
 
-    cy.get('[data-cyid="provider-template-openai-card"]', {
+    cy.get('[data-cyid^="provider-template-openai"]', {
       timeout: 30000,
     }).should('be.visible').click();
+
+    cy.get('body', { timeout: 45000 }).should(($body) => {
+      expect(
+        $body.find('[data-cyid="provider-name-input"] input:visible').length > 0 ||
+          $body.find('[data-cyid="template-version-continue-button"]').length > 0
+      ).to.eq(true);
+    });
+    cy.get('body').then(($body) => {
+      if ($body.find('[data-cyid="template-version-continue-button"]').length) {
+        selectTemplateVersionAndContinue();
+      }
+    });
 
     cy.get('[data-cyid="provider-name-input"] input:visible')
       .should('be.visible')
@@ -288,4 +300,15 @@ function toSlug(value) {
     .trim()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
+}
+
+function selectTemplateVersionAndContinue() {
+  // Wait for the dialog's own version fetch to resolve and explicitly pick a
+  // version rather than relying on its auto-selected default.
+  cy.get('[data-cyid^="template-version-option-"]', { timeout: 45000 })
+    .first()
+    .click();
+  cy.get('[data-cyid="template-version-continue-button"]', { timeout: 45000 })
+    .should('not.be.disabled')
+    .click();
 }

@@ -77,7 +77,7 @@ func (s *LLMTemplateSeeder) SeedForOrg(orgUUID string) error {
 			if current != nil {
 				current.Name = tpl.Name
 				current.Description = tpl.Description
-				current.Provider = tpl.Provider
+				current.ManagedBy = tpl.ManagedBy
 				current.Metadata = tpl.Metadata
 				current.PromptTokens = tpl.PromptTokens
 				current.CompletionTokens = tpl.CompletionTokens
@@ -97,11 +97,11 @@ func (s *LLMTemplateSeeder) SeedForOrg(orgUUID string) error {
 		toCreate := &model.LLMProviderTemplate{
 			OrganizationUUID: orgUUID,
 			ID:               tpl.ID,
-			BaseHandle:       tpl.BaseHandle,
+			GroupVersionID:   tpl.GroupVersionID,
 			Version:          tpl.Version,
 			Name:             tpl.Name,
 			Description:      tpl.Description,
-			Provider:         tpl.Provider,
+			ManagedBy:        tpl.ManagedBy,
 			CreatedBy:        tpl.CreatedBy,
 			Metadata:         tpl.Metadata,
 			PromptTokens:     tpl.PromptTokens,

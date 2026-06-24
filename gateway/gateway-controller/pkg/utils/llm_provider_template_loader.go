@@ -81,22 +81,28 @@ func (tl *LLMTemplateLoader) LoadTemplatesFromDirectory(dirPath string) (map[str
 			return err
 		}
 
-		// Key by version-specific id so distinct versions of the same handle can
-		// coexist as separate files instead of colliding on the handle alone.
-		templateHandle := template.Metadata.Name
+		// Key by version-specific id so distinct versions of the same
+		// group_version_id can coexist as separate files instead of colliding
+		// on the group_version_id alone.
+		groupVersionID := template.Metadata.Name
+		if template.Spec.GroupVersionId != nil {
+			if v := strings.TrimSpace(*template.Spec.GroupVersionId); v != "" {
+				groupVersionID = v
+			}
+		}
 		templateVersion := ""
 		if template.Spec.Version != nil {
 			templateVersion = *template.Spec.Version
 		}
-		templateID := models.MakeTemplateID(templateHandle, templateVersion)
+		templateID := models.MakeTemplateID(groupVersionID, templateVersion)
 		if _, exists := templates[templateID]; exists {
-			return fmt.Errorf("duplicate template id (handle+version): %s", templateID)
+			return fmt.Errorf("duplicate template id (group_version_id+version): %s", templateID)
 		}
 
 		templates[templateID] = template
 		tl.logger.Info("Loaded LLM provider template",
 			slog.String("id", templateID),
-			slog.String("handle", templateHandle),
+			slog.String("group_version_id", groupVersionID),
 			slog.String("version", templateVersion),
 			slog.String("apiVersion", string(template.ApiVersion)),
 			slog.String("file", path))
@@ -150,7 +156,7 @@ func (tl *LLMTemplateLoader) loadTemplateFile(filePath string) (*api.LLMProvider
 
 		tl.logger.Debug("Parsed template from YAML",
 			slog.String("file", filePath),
-			slog.String("handle", templateConfig.Metadata.Name),
+			slog.String("name", templateConfig.Metadata.Name),
 			slog.String("apiVersion", string(templateConfig.ApiVersion)))
 	}
 

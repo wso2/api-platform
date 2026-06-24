@@ -1372,7 +1372,7 @@ func TestLLMDeploymentService_InitializeOOBTemplates_ValidTemplates(t *testing.T
 	assert.NoError(t, err)
 
 	// Verify template was added
-	found, err := store.GetTemplateByHandle("openai")
+	found, err := store.GetTemplateByGroupVersionID("openai")
 	assert.NoError(t, err)
 	assert.NotNil(t, found)
 }
@@ -1413,7 +1413,7 @@ func TestLLMDeploymentService_InitializeOOBTemplates_UpdateExisting(t *testing.T
 	assert.NoError(t, err)
 
 	// Verify template was updated
-	found, err := store.GetTemplateByHandle("existing")
+	found, err := store.GetTemplateByGroupVersionID("existing")
 	assert.NoError(t, err)
 	assert.Equal(t, "Updated Template", found.Configuration.Spec.DisplayName)
 }

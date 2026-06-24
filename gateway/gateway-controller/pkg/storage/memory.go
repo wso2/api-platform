@@ -39,14 +39,14 @@ type ConfigStore struct {
 
 	// LLM Provider Templates
 	templates map[string]*models.StoredLLMProviderTemplate // Key: template ID
-	// templateIdByHandle maps a handle to the UUID of its LATEST (most recently
+	// templateIdByGroupVersionID maps a handle to the UUID of its LATEST (most recently
 	// created) version, so handle-based lookups resolve to the newest template.
-	templateIdByHandle map[string]string
-	// templateIdByHandleVersion maps a (handle, version) pair to a UUID, allowing
+	templateIdByGroupVersionID map[string]string
+	// templateIdByGroupVersionIDAndVersion maps a (handle, version) pair to a UUID, allowing
 	// multiple versions of the same handle to coexist. A typed composite key is
 	// used instead of a delimiter-joined string so distinct pairs can never
 	// collide on the same map key.
-	templateIdByHandleVersion map[templateVersionKey]string
+	templateIdByGroupVersionIDAndVersion map[templateVersionKey]string
 
 	// API Keys storage
 	apiKeysByAPI map[string]map[string]*models.APIKey // Key: configID → Value: map[keyID]*APIKey
@@ -64,8 +64,8 @@ func NewConfigStore() *ConfigStore {
 		snapVersion:        0,
 		TopicManager:       NewTopicManager(),
 		templates:                 make(map[string]*models.StoredLLMProviderTemplate),
-		templateIdByHandle:         make(map[string]string),
-		templateIdByHandleVersion: make(map[templateVersionKey]string),
+		templateIdByGroupVersionID:         make(map[string]string),
+		templateIdByGroupVersionIDAndVersion: make(map[templateVersionKey]string),
 		apiKeysByAPI:       make(map[string]map[string]*models.APIKey),
 		labelsByAPI:        make(map[string]map[string]string),
 	}
@@ -360,19 +360,19 @@ type templateVersionKey struct {
 	version string
 }
 
-// handleVersionKey builds the composite (handle, version) index key.
-func handleVersionKey(handle, version string) templateVersionKey {
+// groupVersionIDAndVersionKey builds the composite (handle, version) index key.
+func groupVersionIDAndVersionKey(handle, version string) templateVersionKey {
 	return templateVersionKey{handle: handle, version: version}
 }
 
 // recomputeLatestLocked re-evaluates which version of a handle is the latest
-// (most recently created) and refreshes templateIdByHandle accordingly. The
+// (most recently created) and refreshes templateIdByGroupVersionID accordingly. The
 // caller must hold cs.mu.
 func (cs *ConfigStore) recomputeLatestLocked(handle string) {
 	var latestID string
 	var latestAt time.Time
 	for id, t := range cs.templates {
-		if strings.TrimSpace(t.GetHandle()) != handle {
+		if strings.TrimSpace(t.GetGroupVersionID()) != handle {
 			continue
 		}
 		if latestID == "" || !t.CreatedAt.Before(latestAt) {
@@ -381,10 +381,10 @@ func (cs *ConfigStore) recomputeLatestLocked(handle string) {
 		}
 	}
 	if latestID == "" {
-		delete(cs.templateIdByHandle, handle)
+		delete(cs.templateIdByGroupVersionID, handle)
 		return
 	}
-	cs.templateIdByHandle[handle] = latestID
+	cs.templateIdByGroupVersionID[handle] = latestID
 }
 
 // AddTemplate adds a new LLM provider template version. UUID must be unique and
@@ -396,7 +396,7 @@ func (cs *ConfigStore) AddTemplate(template *models.StoredLLMProviderTemplate) e
 
 	// Normalize inputs
 	uuid := strings.TrimSpace(template.UUID)
-	handle := strings.TrimSpace(template.GetHandle())
+	handle := strings.TrimSpace(template.GetGroupVersionID())
 	version := template.GetVersion()
 
 	if uuid == "" || handle == "" {
@@ -409,14 +409,14 @@ func (cs *ConfigStore) AddTemplate(template *models.StoredLLMProviderTemplate) e
 	}
 
 	// Enforce unique (handle, version): a given version of a handle is immutable
-	hvKey := handleVersionKey(handle, version)
-	if _, exists := cs.templateIdByHandleVersion[hvKey]; exists {
+	hvKey := groupVersionIDAndVersionKey(handle, version)
+	if _, exists := cs.templateIdByGroupVersionIDAndVersion[hvKey]; exists {
 		return fmt.Errorf("template with handle '%s' and version '%s' already exists", handle, version)
 	}
 
 	// Store
 	cs.templates[uuid] = template
-	cs.templateIdByHandleVersion[hvKey] = uuid
+	cs.templateIdByGroupVersionIDAndVersion[hvKey] = uuid
 	cs.recomputeLatestLocked(handle)
 	return nil
 }
@@ -430,7 +430,7 @@ func (cs *ConfigStore) UpdateTemplate(template *models.StoredLLMProviderTemplate
 
 	// Normalize inputs
 	uuid := strings.TrimSpace(template.UUID)
-	newHandle := strings.TrimSpace(template.GetHandle())
+	newHandle := strings.TrimSpace(template.GetGroupVersionID())
 
 	if uuid == "" || newHandle == "" {
 		return fmt.Errorf("template uuid and handle is required")
@@ -442,21 +442,21 @@ func (cs *ConfigStore) UpdateTemplate(template *models.StoredLLMProviderTemplate
 		return fmt.Errorf("template with uuid '%s' not found", uuid)
 	}
 
-	oldHandle := strings.TrimSpace(existing.GetHandle())
-	oldKey := handleVersionKey(oldHandle, existing.GetVersion())
-	newKey := handleVersionKey(newHandle, template.GetVersion())
+	oldHandle := strings.TrimSpace(existing.GetGroupVersionID())
+	oldKey := groupVersionIDAndVersionKey(oldHandle, existing.GetVersion())
+	newKey := groupVersionIDAndVersionKey(newHandle, template.GetVersion())
 
 	// Ensure the new (handle, version) does not collide with a different template
 	if newKey != oldKey {
-		if mappedID, exists := cs.templateIdByHandleVersion[newKey]; exists && mappedID != uuid {
+		if mappedID, exists := cs.templateIdByGroupVersionIDAndVersion[newKey]; exists && mappedID != uuid {
 			return fmt.Errorf("template with given handle '%s' and version '%s' already exists", newHandle, template.GetVersion())
 		}
-		delete(cs.templateIdByHandleVersion, oldKey)
+		delete(cs.templateIdByGroupVersionIDAndVersion, oldKey)
 	}
 
 	// Update stored template and refresh indexes
 	cs.templates[uuid] = template
-	cs.templateIdByHandleVersion[newKey] = uuid
+	cs.templateIdByGroupVersionIDAndVersion[newKey] = uuid
 	if oldHandle != newHandle {
 		cs.recomputeLatestLocked(oldHandle)
 	}
@@ -474,9 +474,9 @@ func (cs *ConfigStore) DeleteTemplate(id string) error {
 		return fmt.Errorf("template with ID '%s' not found", id)
 	}
 
-	handle := template.GetHandle()
+	handle := template.GetGroupVersionID()
 	delete(cs.templates, id)
-	delete(cs.templateIdByHandleVersion, handleVersionKey(handle, template.GetVersion()))
+	delete(cs.templateIdByGroupVersionIDAndVersion, groupVersionIDAndVersionKey(handle, template.GetVersion()))
 	cs.recomputeLatestLocked(handle)
 	return nil
 }
@@ -494,12 +494,12 @@ func (cs *ConfigStore) GetTemplate(id string) (*models.StoredLLMProviderTemplate
 	return template, nil
 }
 
-// GetTemplateByHandle retrieves an LLM provider template by handle identifier
-func (cs *ConfigStore) GetTemplateByHandle(handle string) (*models.StoredLLMProviderTemplate, error) {
+// GetTemplateByGroupVersionID retrieves an LLM provider template by handle identifier
+func (cs *ConfigStore) GetTemplateByGroupVersionID(handle string) (*models.StoredLLMProviderTemplate, error) {
 	cs.mu.RLock()
 	defer cs.mu.RUnlock()
 
-	templateId, exists := cs.templateIdByHandle[handle]
+	templateId, exists := cs.templateIdByGroupVersionID[handle]
 	if !exists {
 		return nil, fmt.Errorf("template with handle '%s' not found", handle)
 	}
@@ -507,12 +507,12 @@ func (cs *ConfigStore) GetTemplateByHandle(handle string) (*models.StoredLLMProv
 	return cs.templates[templateId], nil
 }
 
-// GetTemplateByHandleAndVersion retrieves the specific (handle, version) template.
-func (cs *ConfigStore) GetTemplateByHandleAndVersion(handle, version string) (*models.StoredLLMProviderTemplate, error) {
+// GetTemplateByGroupVersionIDAndVersion retrieves the specific (handle, version) template.
+func (cs *ConfigStore) GetTemplateByGroupVersionIDAndVersion(handle, version string) (*models.StoredLLMProviderTemplate, error) {
 	cs.mu.RLock()
 	defer cs.mu.RUnlock()
 
-	templateId, exists := cs.templateIdByHandleVersion[handleVersionKey(strings.TrimSpace(handle), version)]
+	templateId, exists := cs.templateIdByGroupVersionIDAndVersion[groupVersionIDAndVersionKey(strings.TrimSpace(handle), version)]
 	if !exists {
 		return nil, fmt.Errorf("template with handle '%s' and version '%s' not found", handle, version)
 	}
@@ -535,7 +535,7 @@ func (cs *ConfigStore) GetTemplateByID(id string) (*models.StoredLLMProviderTemp
 	}
 
 	// Fallback: treat the id as a base handle and resolve the latest version.
-	if templateId, exists := cs.templateIdByHandle[id]; exists {
+	if templateId, exists := cs.templateIdByGroupVersionID[id]; exists {
 		return cs.templates[templateId], nil
 	}
 
