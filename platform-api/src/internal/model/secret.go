@@ -39,7 +39,7 @@ const (
 // Secret represents an encrypted secret stored in the platform.
 type Secret struct {
 	UUID           string        `db:"uuid"`
-	OrganizationID string        `db:"organization_id"`
+	OrganizationID string        `db:"organization_uuid"`
 	Handle         string        `db:"handle"`
 	DisplayName    string        `db:"name"`
 	Description    string        `db:"description"`

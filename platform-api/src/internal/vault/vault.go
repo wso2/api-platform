@@ -33,6 +33,9 @@ type SecretVault interface {
 	Encrypt(ctx context.Context, plaintext string) (ciphertext []byte, err error)
 	Decrypt(ctx context.Context, ciphertext []byte) (plaintext string, err error)
 	ProviderName() string
+	// HashKey returns the key used for HMAC-based change-detection hashes.
+	// The returned slice must not be modified by the caller.
+	HashKey() []byte
 }
 
 // InHouseVault encrypts secrets using AES-GCM-256 with a locally injected key.
@@ -100,4 +103,8 @@ func (v *InHouseVault) Decrypt(_ context.Context, ciphertext []byte) (string, er
 
 func (v *InHouseVault) ProviderName() string {
 	return model.SecretProviderInHouse
+}
+
+func (v *InHouseVault) HashKey() []byte {
+	return v.key
 }
