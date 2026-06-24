@@ -122,7 +122,6 @@ const createSubscription = async (req, res) => {
                 await safePublish('subscription.created', buildWebhookPayload(newSub, apiMetadata, matchedPlan), {
                     transaction: t,
                     orgId: orgID,
-                    gatewayType: apiMetadata.GATEWAY_TYPE,
                     aggregateType: 'subscription',
                     aggregateId: newSub.SUB_ID,
                     plaintextKey: newSub.SUB_TOKEN,
@@ -278,7 +277,6 @@ const deleteSubscription = async (req, res) => {
                 await safePublish('subscription.deleted', buildWebhookPayload(existing, apiMetadata, plan), {
                     transaction: t,
                     orgId: orgID,
-                    gatewayType: apiMetadata ? apiMetadata.GATEWAY_TYPE : null,
                     aggregateType: 'subscription',
                     aggregateId: subscriptionId,
                 });

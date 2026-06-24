@@ -123,19 +123,10 @@ identityProvider:
     email: "LOCAL"
 
 # ─── Platform API ─────────────────────────────────────────────────────────────
-# Used for two purposes:
-#
-# 1. Local auth — when identityProvider.clientId is empty, the built-in login
-#    form authenticates against Platform API and receives a signed JWT.
-#    Users and their scopes are defined in configs/config-platform-api.toml.
-#
-# 2. Direct gateway integration — when an API has GATEWAY_TYPE = "wso2/api-platform"
-#    and baseUrl is set, subscription and API key operations are forwarded to the
-#    Platform API instead of publishing webhook events. The Platform API is then
-#    responsible for propagating state to the gateway.
-#    If baseUrl is unset, the webhook path is used as a fallback for all gateway types.
-#
-# Leave baseUrl empty (or unset) to disable both features.
+# Used for local auth only — when identityProvider.clientId is empty, the
+# built-in login form authenticates against Platform API and receives a
+# signed JWT. Users and their scopes are defined in configs/config-platform-api.toml.
+# Leave baseUrl empty (or unset) to disable local auth.
 
 platformApi:
   baseUrl: ""           # e.g. https://platform-api:9243  — env: DP_PLATFORMAPI_BASEURL

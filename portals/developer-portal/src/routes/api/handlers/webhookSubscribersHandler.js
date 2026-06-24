@@ -27,5 +27,6 @@ module.exports = {
     getWebhookSubscribers: webhookSubscriberService.getWebhookSubscribers,
     getWebhookSubscriber: webhookSubscriberService.getWebhookSubscriber,
     updateWebhookSubscriber: webhookSubscriberService.updateWebhookSubscriber,
+    getWebhookSubscriberDeliveries: webhookSubscriberService.getWebhookSubscriberDeliveries,
     deleteWebhookSubscriber: webhookSubscriberService.deleteWebhookSubscriber,
 };

@@ -27,9 +27,9 @@ class WebhookSubscriberDTO {
         this.name = sub.NAME;
         this.url = sub.TARGET_URL;
         this.enabled = sub.ENABLED;
-        this.gatewayType = sub.GATEWAY_TYPE || '*';
         this.events = sub.EVENT_PATTERNS || [];
         this.timeoutMs = sub.TIMEOUT_MS;
+        this.hasSecret = !!sub.SECRET_ENC;
         this.hasPublicKey = !!sub.PUBLIC_KEY;
     }
 }

@@ -19,6 +19,7 @@
 <!-- Server-side data for JS -->
 <script type="application/json" id="cfg-org-apis-data">{{{ json orgAPIs }}}</script>
 <script type="application/json" id="cfg-plans-data">{{{ json orgPlans }}}</script>
+<script type="application/json" id="cfg-webhooks-data">{{{ json webhookSubscribers }}}</script>
 
 <div class="cfg-page">
 
@@ -52,6 +53,9 @@
         </a>
         <a href="#cfg-plans" class="cfg-nav-item" data-panel="cfg-plans">
           <i class="bi bi-speedometer2"></i><span>Subscription Plans</span>
+        </a>
+        <a href="#cfg-webhooks" class="cfg-nav-item" data-panel="cfg-webhooks">
+          <i class="bi bi-broadcast"></i><span>Webhooks</span>
         </a>
         <a href="#cfg-orgs" class="cfg-nav-item" data-panel="cfg-orgs">
           <i class="bi bi-building"></i><span>Organizations</span>
@@ -551,6 +555,73 @@
         </div>
       </div><!-- /#cfg-plans -->
 
+      <!-- ══ Webhooks ══ -->
+      <div class="cfg-panel" id="cfg-webhooks">
+        <div class="cfg-panel-header">
+          <div>
+            <h2 class="cfg-panel-title">Webhooks</h2>
+            <p class="cfg-panel-desc">Send a notification to your own endpoint when API keys or subscriptions change in this organization.</p>
+          </div>
+          <button class="cfg-btn-primary" id="cfg-add-webhook-btn" type="button">
+            <i class="bi bi-plus"></i> Add webhook
+          </button>
+        </div>
+
+        <div class="cfg-table-wrap">
+          <table class="cfg-table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Target URL</th>
+                <th>Events</th>
+                <th>Secret</th>
+                <th>Public key</th>
+                <th>Enabled</th>
+                <th style="width:90px;"></th>
+              </tr>
+            </thead>
+            <tbody id="cfg-webhooks-tbody">
+              {{#webhookSubscribers}}
+              <tr id="cfg-webhook-row-{{id}}" data-id="{{id}}">
+                <td>
+                  <button type="button" class="cfg-webhook-edit-btn" data-id="{{id}}"
+                    style="border:none;background:none;padding:0;cursor:pointer;font-size:.875rem;font-weight:600;color:#1a2433;text-decoration:none;">{{name}}</button>
+                </td>
+                <td>
+                  <span class="cfg-name-chip" title="{{url}}"
+                    style="display:inline-block;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{url}}</span>
+                </td>
+                <td>
+                  {{#if events.length}}
+                  {{#each events}}<span class="cfg-name-chip" style="margin-right:4px;">{{this}}</span>{{/each}}
+                  {{else}}
+                  <span style="font-size:.813rem;color:#637282;">All events</span>
+                  {{/if}}
+                </td>
+                <td>{{#if hasSecret}}••••••••{{else}}—{{/if}}</td>
+                <td>{{#if hasPublicKey}}Configured{{else}}—{{/if}}</td>
+                <td>{{#if enabled}}Yes{{else}}No{{/if}}</td>
+                <td>
+                  <div class="cfg-row-actions">
+                    <button class="cfg-icon-btn cfg-webhook-edit-btn" type="button" data-id="{{id}}" title="Edit">
+                      <i class="bi bi-pencil"></i>
+                    </button>
+                    <button class="cfg-icon-btn cfg-icon-btn--danger cfg-webhook-delete-btn" type="button"
+                      data-id="{{id}}" data-name="{{name}}" title="Delete">
+                      <i class="bi bi-trash"></i>
+                    </button>
+                  </div>
+                </td>
+              </tr>
+              {{/webhookSubscribers}}
+              {{#unless webhookSubscribers.length}}
+              <tr><td colspan="7" class="cfg-tbl-empty">No webhooks yet. Add one to get started.</td></tr>
+              {{/unless}}
+            </tbody>
+          </table>
+        </div>
+      </div><!-- /#cfg-webhooks -->
+
       <!-- ══ Manage Organizations ══ -->
       <div class="cfg-panel" id="cfg-orgs">
         <div class="cfg-panel-header">
@@ -618,6 +689,21 @@
     <div class="cfg-modal-actions">
       <button type="button" class="cfg-btn-secondary" id="cfg-del-plan-cancel">Cancel</button>
       <button type="button" class="cfg-btn-danger" id="cfg-del-plan-confirm">Delete plan</button>
+    </div>
+  </div>
+</div>
+
+<!-- Delete Webhook modal -->
+<div class="cfg-modal-overlay" id="cfg-delete-webhook-modal" style="display:none;">
+  <div class="cfg-modal">
+    <div class="cfg-modal-header">
+      <span class="cfg-modal-icon"><i class="bi bi-trash"></i></span>
+      <h2 class="cfg-modal-title">Delete Webhook</h2>
+    </div>
+    <p class="cfg-modal-body">Are you sure you want to delete <strong id="cfg-del-webhook-name-txt"></strong>? This action can't be undone.</p>
+    <div class="cfg-modal-actions">
+      <button type="button" class="cfg-btn-secondary" id="cfg-del-webhook-cancel">Cancel</button>
+      <button type="button" class="cfg-btn-danger" id="cfg-del-webhook-confirm">Delete webhook</button>
     </div>
   </div>
 </div>
@@ -691,6 +777,88 @@
   </div>
 </div>
 
+<style>
+  .wh-toggle { position: relative; display: inline-block; width: 38px; height: 22px; flex: none; }
+  .wh-toggle input { opacity: 0; width: 0; height: 0; }
+  .wh-toggle-slider { position: absolute; inset: 0; background-color: #d0d7de; border-radius: 34px; cursor: pointer; transition: .2s; }
+  .wh-toggle-slider:before { position: absolute; content: ""; height: 16px; width: 16px; left: 3px; bottom: 3px; background-color: #fff; border-radius: 50%; transition: .2s; }
+  .wh-toggle input:checked + .wh-toggle-slider { background-color: #1f6feb; }
+  .wh-toggle input:checked + .wh-toggle-slider:before { transform: translateX(16px); }
+</style>
+
+<!-- Add / Edit Webhook modal -->
+<div class="cfg-modal-overlay" id="cfg-webhook-modal" style="display:none;">
+  <div class="cfg-form-modal cfg-form-modal--wide">
+    <div class="cfg-modal-titlerow">
+      <h2 class="cfg-modal-form-title" id="cfg-webhook-modal-title">Add webhook</h2>
+      <button type="button" class="cfg-modal-close" id="cfg-webhook-modal-close"><i class="bi bi-x-lg"></i></button>
+    </div>
+    <div class="cfg-form-group" style="margin-bottom:16px;">
+      <label for="wh-name">Name <span class="required">*</span></label>
+      <input type="text" id="wh-name" class="cfg-form-input" placeholder="e.g. Production listener" />
+    </div>
+    <div class="cfg-form-group" style="margin-bottom:16px;">
+      <label for="wh-url">Target URL <span class="required">*</span></label>
+      <input type="text" id="wh-url" class="cfg-form-input cfg-form-input--mono" placeholder="https://example.com/webhook" />
+    </div>
+    <div class="cfg-form-grid" style="margin-bottom:16px;">
+      <div class="cfg-form-group">
+        <label for="wh-secret">Secret <span style="color:#9aa3af;font-weight:400;">(optional)</span></label>
+        <input type="password" id="wh-secret" class="cfg-form-input" autocomplete="new-password"
+          placeholder="Used to sign payloads (HMAC)" />
+        <p class="cfg-field-hint" id="wh-secret-hint" style="display:none;">
+          A secret is already set. Leave blank to keep it, or enter a new value to replace it.
+        </p>
+      </div>
+      <div class="cfg-form-group">
+        <label for="wh-timeout">Timeout (ms)</label>
+        <input type="number" id="wh-timeout" class="cfg-form-input" min="1" value="5000" />
+      </div>
+    </div>
+    <div class="cfg-form-group" style="margin-bottom:16px;">
+      <label for="wh-publickey">Public key <span style="color:#9aa3af;font-weight:400;">(optional)</span></label>
+      <textarea id="wh-publickey" class="cfg-form-input cfg-form-input--mono" rows="3" placeholder="PEM-encoded RSA public key"></textarea>
+      <p class="cfg-field-hint">
+        Used to encrypt the plaintext API key delivered with apikey.* / subscription.created events, so only you can read it.
+      </p>
+      <p class="cfg-field-hint" id="wh-publickey-hint" style="display:none;">
+        A public key is already set. Leave blank to keep it, or enter a new value to replace it.
+      </p>
+    </div>
+    <div class="cfg-form-group" style="margin-bottom:16px;">
+      <label>Events</label>
+      <div class="cfg-vis-toggle" style="margin-bottom:12px;">
+        <button type="button" class="cfg-vis-btn active" id="wh-events-all-btn">
+          <i class="bi bi-broadcast"></i> All events
+        </button>
+        <button type="button" class="cfg-vis-btn" id="wh-events-select-btn">
+          <i class="bi bi-check2-square"></i> Select events
+        </button>
+      </div>
+      <div id="wh-event-list" style="display:none;flex-wrap:wrap;gap:10px 16px;">
+        {{#each webhookEventTypes}}
+        <label style="display:flex;align-items:center;gap:6px;font-size:.813rem;color:#1a2433;cursor:pointer;">
+          <input type="checkbox" class="wh-event-check" value="{{this}}" /> {{this}}
+        </label>
+        {{/each}}
+      </div>
+    </div>
+    <div class="cfg-form-group" style="margin-bottom:24px;">
+      <label style="display:flex;align-items:center;gap:10px;font-size:.844rem;color:#1a2433;font-weight:500;cursor:pointer;">
+        <span class="wh-toggle">
+          <input type="checkbox" id="wh-enabled" checked />
+          <span class="wh-toggle-slider"></span>
+        </span>
+        Enabled
+      </label>
+    </div>
+    <div class="cfg-modal-actions">
+      <button type="button" class="cfg-btn-secondary" id="cfg-webhook-modal-cancel">Cancel</button>
+      <button type="button" class="cfg-btn-primary" id="cfg-webhook-modal-save">Add webhook</button>
+    </div>
+  </div>
+</div>
+
 <!-- API Detail Drawer -->
 <div class="cfg-drawer-overlay" id="cfg-detail-drawer">
   <div class="cfg-drawer">
@@ -721,7 +889,7 @@
 <!-- ══ Panel navigation ══ -->
 <script>
 (function () {
-  var PANELS   = ['cfg-llm', 'cfg-workflows', 'cfg-apis', 'cfg-labels', 'cfg-plans', 'cfg-orgs'];
+  var PANELS   = ['cfg-llm', 'cfg-workflows', 'cfg-apis', 'cfg-labels', 'cfg-plans', 'cfg-webhooks', 'cfg-orgs'];
   var navItems = document.querySelectorAll('.cfg-nav-item');
   var panels   = document.querySelectorAll('.cfg-panel');
 
@@ -1445,6 +1613,161 @@
       }
     } catch(e) { await showAlert('Error: '+e.message, 'error'); }
     pendingDelPlanId = null;
+  });
+}());
+</script>
+
+<!-- ══ Webhooks JS ══ -->
+<script>
+(function () {
+  var ORG_ID = '{{orgID}}';
+  var editWebhookId = null;
+
+  function v(id) { var e=document.getElementById(id); return e?e.value.trim():''; }
+
+  /* build id→webhook lookup from server-rendered data blob */
+  var webhookMap = {};
+  (function() {
+    try {
+      var el = document.getElementById('cfg-webhooks-data');
+      if (el) {
+        var list = JSON.parse(el.textContent || '[]');
+        list.forEach(function(wh) { webhookMap[wh.id] = wh; });
+      }
+    } catch(e) {}
+  }());
+
+  /* ── all events / select events segmented control ── */
+  var allEventsBtn = document.getElementById('wh-events-all-btn');
+  var selectEventsBtn = document.getElementById('wh-events-select-btn');
+
+  function setEventsMode(allEvents) {
+    allEventsBtn.classList.toggle('active', allEvents);
+    selectEventsBtn.classList.toggle('active', !allEvents);
+    document.getElementById('wh-event-list').style.display = allEvents ? 'none' : 'flex';
+  }
+  allEventsBtn.addEventListener('click', function() { setEventsMode(true); });
+  selectEventsBtn.addEventListener('click', function() { setEventsMode(false); });
+
+  function selectedEvents() {
+    if (allEventsBtn.classList.contains('active')) return [];
+    return Array.prototype.slice.call(document.querySelectorAll('.wh-event-check:checked')).map(function(c){ return c.value; });
+  }
+  function setSelectedEvents(events) {
+    document.querySelectorAll('.wh-event-check').forEach(function(c) { c.checked = false; });
+    var everything = !events || events.length === 0;
+    setEventsMode(everything);
+    if (!everything) {
+      events.forEach(function(name) {
+        var cb = document.querySelector('.wh-event-check[value="'+name+'"]');
+        if (cb) cb.checked = true;
+      });
+    }
+  }
+
+  /* ── open modal ── */
+  function openWebhookModal(mode, data) {
+    editWebhookId = mode === 'edit' ? data.id : null;
+    document.getElementById('cfg-webhook-modal-title').textContent = mode === 'edit' ? 'Edit webhook' : 'Add webhook';
+    document.getElementById('cfg-webhook-modal-save').textContent  = mode === 'edit' ? 'Save changes' : 'Add webhook';
+    document.getElementById('wh-name').value      = mode === 'edit' ? (data.name || '')      : '';
+    document.getElementById('wh-url').value       = mode === 'edit' ? (data.url || '')       : '';
+    document.getElementById('wh-secret').value    = '';
+    document.getElementById('wh-publickey').value = '';
+    document.getElementById('wh-timeout').value   = mode === 'edit' ? (data.timeoutMs || 5000) : 5000;
+    document.getElementById('wh-enabled').checked = mode === 'edit' ? !!data.enabled : true;
+    document.getElementById('wh-secret-hint').style.display    = mode === 'edit' && data.hasSecret ? 'block' : 'none';
+    document.getElementById('wh-publickey-hint').style.display = mode === 'edit' && data.hasPublicKey ? 'block' : 'none';
+    setSelectedEvents(mode === 'edit' ? data.events : []);
+    document.getElementById('cfg-webhook-modal').style.display = 'flex';
+    document.getElementById('wh-name').focus();
+  }
+  function closeWebhookModal() { document.getElementById('cfg-webhook-modal').style.display = 'none'; editWebhookId = null; }
+
+  /* ── save ── */
+  document.getElementById('cfg-webhook-modal-save').addEventListener('click', async function() {
+    var name = v('wh-name');
+    var url  = v('wh-url');
+    if (!name || !url) { await showAlert('Name and target URL are required.', 'error'); return; }
+
+    var body = {
+      name: name,
+      url: url,
+      events: selectedEvents(),
+      enabled: document.getElementById('wh-enabled').checked,
+      timeoutMs: parseInt(v('wh-timeout'), 10) || 5000,
+    };
+    var secret = v('wh-secret');
+    if (secret) body.secret = secret;
+    var publicKey = v('wh-publickey');
+    if (publicKey) body.publicKey = publicKey;
+
+    var url2   = editWebhookId
+      ? window.devportalApi.org(ORG_ID, '/webhook-subscribers/' + encodeURIComponent(editWebhookId))
+      : window.devportalApi.org(ORG_ID, '/webhook-subscribers');
+    var method = editWebhookId ? 'PUT' : 'POST';
+
+    try {
+      var res = await fetch(url2, {
+        method: method,
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() },
+        body: JSON.stringify(body),
+      });
+      if (res.ok) {
+        await showAlert(editWebhookId ? 'Webhook updated.' : 'Webhook created.', 'success');
+        window.location.reload();
+      } else {
+        var err = await res.json().catch(function(){ return {}; });
+        await showAlert('Failed: ' + (err.error || err.description || err.message || res.statusText), 'error');
+      }
+    } catch(e) { await showAlert('Error: ' + e.message, 'error'); }
+  });
+
+  document.getElementById('cfg-webhook-modal-close').addEventListener('click', closeWebhookModal);
+  document.getElementById('cfg-webhook-modal-cancel').addEventListener('click', closeWebhookModal);
+  document.getElementById('cfg-webhook-modal').addEventListener('click', function(e){ if(e.target===this) closeWebhookModal(); });
+
+  document.getElementById('cfg-add-webhook-btn').addEventListener('click', function() { openWebhookModal('add'); });
+
+  /* ── edit / delete via event delegation ── */
+  var pendingDelWebhookId = null;
+  document.addEventListener('click', function(e) {
+    if (e.target.closest('.cfg-webhook-edit-btn')) {
+      var btn = e.target.closest('.cfg-webhook-edit-btn');
+      var data = webhookMap[btn.dataset.id];
+      if (data) openWebhookModal('edit', data);
+      return;
+    }
+    if (e.target.closest('.cfg-webhook-delete-btn')) {
+      var btn = e.target.closest('.cfg-webhook-delete-btn');
+      pendingDelWebhookId = btn.dataset.id;
+      document.getElementById('cfg-del-webhook-name-txt').textContent = btn.dataset.name;
+      document.getElementById('cfg-delete-webhook-modal').style.display = 'flex';
+      return;
+    }
+  });
+
+  document.getElementById('cfg-del-webhook-cancel').addEventListener('click', function() {
+    document.getElementById('cfg-delete-webhook-modal').style.display = 'none';
+  });
+  document.getElementById('cfg-delete-webhook-modal').addEventListener('click', function(e){ if(e.target===this) this.style.display='none'; });
+  document.getElementById('cfg-del-webhook-confirm').addEventListener('click', async function() {
+    if (!pendingDelWebhookId) return;
+    document.getElementById('cfg-delete-webhook-modal').style.display = 'none';
+    try {
+      var res = await fetch(window.devportalApi.org(ORG_ID, '/webhook-subscribers/' + encodeURIComponent(pendingDelWebhookId)), {
+        method: 'DELETE',
+        headers: { 'X-CSRF-Token': window.devportalApi.csrfToken() },
+      });
+      if (res.ok || res.status === 204) {
+        await showAlert('Webhook deleted.', 'success');
+        window.location.reload();
+      } else {
+        var err = await res.json().catch(function(){ return {}; });
+        await showAlert('Delete failed: ' + (err.error || err.description || err.message || res.statusText), 'error');
+      }
+    } catch(e) { await showAlert('Error: ' + e.message, 'error'); }
+    pendingDelWebhookId = null;
   });
 }());
 </script>

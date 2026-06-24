@@ -57,7 +57,7 @@ platformApi:
 
 ## Webhook Mode
 
-The Developer Portal integrates with the API Gateway by delivering real-time webhook events whenever API key or subscription state changes. This allows the gateway to enforce access immediately — for example, revoking a key at the gateway the moment a developer revokes it in the portal.
+The Developer Portal publishes real-time webhook events to your configured endpoint(s) whenever API key or subscription state changes. The portal itself does not talk to a gateway — it only delivers a signed HTTP POST to whatever URL you register as a webhook subscriber. What happens next is up to the receiving system: typically that's a small handler you run which reacts to the event by updating the actual API Gateway (or cache, key store, etc.) so access is enforced immediately — for example, rejecting a key the moment a developer revokes it in the portal.
 
 ## How It Works
 
@@ -66,14 +66,15 @@ Developer Portal
        │
        │  POST (signed + optionally encrypted)
        ▼
-API Gateway webhook endpoint
+Your webhook subscriber endpoint
        │
-       │  updates internal routing / key store
+       │  your handler decides what to do —
+       │  e.g. update the API Gateway's routing / key store
        ▼
-  Enforces new state on next request
+  Gateway enforces new state on next request
 ```
 
-The portal fires events in the background via a delivery worker with automatic retries. The gateway never needs a reverse connection into the portal.
+The portal fires events in the background via a delivery worker with automatic retries. Your subscriber endpoint never needs a reverse connection into the portal — it just needs to be a reachable HTTPS endpoint that accepts the POST and does whatever is appropriate on your side (e.g. registering the change with your gateway).
 
 ## Webhook Events
 
@@ -90,7 +91,7 @@ For events that carry a sensitive field (`apikey.generated`, `apikey.regenerated
 
 ## Configure a Webhook Subscriber
 
-Webhook subscribers are **per-organization** and managed through the Webhook Subscribers API — not through `config.yaml`. Each organization registers its own gateway endpoint(s); secrets and public keys are stored encrypted at rest (AES-256-GCM) in the devportal database, keyed to the organization.
+Webhook subscribers are **per-organization** and managed through the Webhook Subscribers API — not through `config.yaml`. Each organization registers its own endpoint(s); secrets and public keys are stored encrypted at rest (AES-256-GCM) in the devportal database, keyed to the organization.
 
 Only delivery (retry/backoff) tuning, which applies globally across all organizations, remains in `config.yaml`:
 
@@ -111,8 +112,8 @@ curl -X POST "http://localhost:3000/o/{orgId}/devportal/v1/webhook-subscribers" 
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "Production Gateway",
-    "url": "https://gateway.example.com/devportal/events",
+    "name": "Production Listener",
+    "url": "https://your-service.example.com/devportal/events",
     "secret": "change-me-minimum-32-chars",
     "gatewayType": "wso2/api-platform",
     "events": ["apikey.*", "subscription.*"],
@@ -127,8 +128,8 @@ The response never includes the secret. To set a public key for envelope-encrypt
 | Field | Required | Description |
 |---|---|---|
 | `name` | Yes | Unique within the organization |
-| `url` | Yes | HTTPS endpoint on your gateway that receives webhook POSTs |
-| `secret` | Yes | Minimum 32-character string used to sign each event with HMAC-SHA256. Stored encrypted; never returned in API responses |
+| `url` | Yes | HTTPS endpoint that receives webhook POSTs (e.g. a handler in front of your gateway). Must be unique within the organization |
+| `secret` | No | Minimum 32-character string used to sign each event with HMAC-SHA256. Stored encrypted; never returned in API responses. If omitted, deliveries are sent unsigned (no `X-Devportal-Signature` header) |
 | `publicKey` | Recommended | PEM-encoded RSA-2048 public key for envelope-encrypting sensitive fields in `apikey.generated`, `apikey.regenerated`, and `subscription.created` events |
 | `gatewayType` | No | Filter events to APIs with this gateway type. Use `"*"` (default) to match all |
 | `events` | No | Event type allowlist. Wildcards supported (`apikey.*`). Omit to receive all |
@@ -256,7 +257,7 @@ Fired when a developer rotates an existing key. The `key_id` is unchanged; the o
 
 ### `apikey.revoked`
 
-Fired when a developer revokes a key. The gateway should reject any request presenting this `key_id`.
+Fired when a developer revokes a key. Your subscriber should reject any request presenting this `key_id` (typically by propagating the revocation to your gateway).
 
 ```json
 {
@@ -279,7 +280,7 @@ Fired when a developer revokes a key. The gateway should reject any request pres
 ```
 
 - `subscription` is present only when the key was bound to a subscription
-- No `encrypted_key` is included — the gateway only needs the `key_id` to revoke access.
+- No `encrypted_key` is included — your subscriber only needs the `key_id` to revoke access.
 
 ### `subscription.created`
 
@@ -334,11 +335,11 @@ Fired when a subscription's plan changes.
 }
 ```
 
-The gateway identifies the affected subscription via the `aggregateId` in the event. No token is included.
+Your subscriber identifies the affected subscription via the `aggregateId` in the event. No token is included.
 
 ### `subscription.deleted`
 
-Fired when a developer unsubscribes. The gateway should revoke access for the corresponding subscription.
+Fired when a developer unsubscribes. Your subscriber should revoke access for the corresponding subscription.
 
 ```json
 {
@@ -358,7 +359,7 @@ Fired when a developer unsubscribes. The gateway should revoke access for the co
 }
 ```
 
-The gateway identifies the affected subscription via `subscription_id`. No token is included.
+Your subscriber identifies the affected subscription via `subscription_id`. No token is included.
 
 ---
 
@@ -447,7 +448,7 @@ If no `publicKeyPath` is configured for the subscriber, `encrypted_key` is omitt
 
 ## Delivery Retry
 
-If the gateway endpoint is unavailable or returns a non-2xx response, the portal retries delivery according to this schedule:
+If your subscriber endpoint is unavailable or returns a non-2xx response, the portal retries delivery according to this schedule:
 
 | Attempt | Delay |
 |---|---|

@@ -1522,7 +1522,6 @@ Minimal developer-facing key manager view. No admin credentials or DCR endpoints
   "url": "https://gateway.example.com/devportal-webhook",
   "secret": "<shared-secret>",
   "publicKey": "string",
-  "gatewayType": "*",
   "events": [
     "apikey.*",
     "subscription.*"
@@ -1538,10 +1537,9 @@ Minimal developer-facing key manager view. No admin credentials or DCR endpoints
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |name|string|true|none|Unique name within the organization.|
-|url|string(uri)|true|none|Target URL events are POSTed to.|
+|url|string(uri)|true|none|Target URL events are POSTed to. Must be unique within the organization.|
 |secret|string|false|none|Shared secret used to sign outgoing payloads (HMAC). Stored encrypted; never returned in responses.|
 |publicKey|string|false|none|PEM-encoded public key. When set, secret event payloads (apikey.*, subscription.*) are additionally encrypted to this key so only the subscriber can read the plaintext key.|
-|gatewayType|string|false|none|Restricts delivery to events with a matching DP_EVENT.GATEWAY_TYPE. Use "*" (default) to match any.|
 |events|[string]|false|none|Glob-style event type allowlist (only a trailing `*` wildcard is supported, e.g. `apikey.*`). Omit or leave empty to receive all event types.|
 |enabled|boolean|false|none|none|
 |timeoutMs|integer|false|none|none|
@@ -1560,12 +1558,12 @@ Minimal developer-facing key manager view. No admin credentials or DCR endpoints
   "name": "Production Gateway",
   "url": "https://gateway.example.com/devportal-webhook",
   "enabled": true,
-  "gatewayType": "*",
   "events": [
     "apikey.*",
     "subscription.*"
   ],
   "timeoutMs": 5000,
+  "hasSecret": true,
   "hasPublicKey": false
 }
 
@@ -1582,10 +1580,58 @@ Webhook subscriber configuration. The secret is never included.
 |name|string|false|none|none|
 |url|string(uri)|false|none|none|
 |enabled|boolean|false|none|none|
-|gatewayType|string|false|none|none|
 |events|[string]|false|none|none|
 |timeoutMs|integer|false|none|none|
+|hasSecret|boolean|false|none|Whether a secret is configured for HMAC-signing outgoing payloads.|
 |hasPublicKey|boolean|false|none|Whether a public key is configured for envelope-encrypting secret event payloads.|
+
+<h2 id="tocS_WebhookSubscriberDeliverySummary">WebhookSubscriberDeliverySummary</h2>
+
+<a id="schemawebhooksubscriberdeliverysummary"></a>
+<a id="schema_WebhookSubscriberDeliverySummary"></a>
+<a id="tocSwebhooksubscriberdeliverysummary"></a>
+<a id="tocswebhooksubscriberdeliverysummary"></a>
+
+```json
+{
+  "deliveryId": "del-abc123",
+  "eventType": "apikey.generated",
+  "occurredAt": "2019-08-24T14:15:22Z",
+  "status": "DELIVERED",
+  "attemptCount": 1,
+  "lastHttpStatus": 200,
+  "lastError": "string",
+  "lastAttemptAt": "2019-08-24T14:15:22Z",
+  "deliveredAt": "2019-08-24T14:15:22Z"
+}
+
+```
+
+A single delivery attempt made to a webhook subscriber.
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|deliveryId|string|false|none|none|
+|eventType|string¦null|false|none|none|
+|occurredAt|string(date-time)¦null|false|none|none|
+|status|string|false|none|none|
+|attemptCount|integer|false|none|none|
+|lastHttpStatus|integer¦null|false|none|none|
+|lastError|string¦null|false|none|none|
+|lastAttemptAt|string(date-time)¦null|false|none|none|
+|deliveredAt|string(date-time)¦null|false|none|none|
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|status|PENDING|
+|status|IN_FLIGHT|
+|status|DELIVERED|
+|status|FAILED|
+|status|DEAD_LETTERED|
 
 <h2 id="tocS_AppKeyMappingRequest">AppKeyMappingRequest</h2>
 
@@ -2213,7 +2259,6 @@ A single webhook delivery attempt.
   "eventId": "evt-abc123",
   "eventType": "apikey.generated",
   "orgId": "org-default",
-  "gatewayType": "default",
   "aggregateType": "apikey",
   "aggregateId": "key-12345",
   "status": "ALL_DELIVERED",
@@ -2244,7 +2289,6 @@ A webhook event with its delivery rows.
 |eventId|string|false|none|none|
 |eventType|string|false|none|none|
 |orgId|string|false|none|none|
-|gatewayType|string¦null|false|none|none|
 |aggregateType|string|false|none|none|
 |aggregateId|string|false|none|none|
 |status|string|false|none|none|

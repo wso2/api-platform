@@ -79,7 +79,7 @@ API keys can be:
 - **Regenerated** — rotate the key (invalidates the old key)
 - **Revoked** — permanently invalidate the key
 
-Key lifecycle events (generate, regenerate, revoke) are delivered in real-time to the API Gateway via [webhooks](../administer/gateway-integration.md) so the gateway can enforce access immediately.
+Key lifecycle events (generate, regenerate, revoke) are published in real-time as [webhooks](../administer/webhook-integration.md) to your configured subscriber endpoint(s), so whatever system you have listening — typically a handler in front of your API Gateway — can enforce access immediately.
 
 ## OAuth2 Credentials
 
@@ -97,6 +97,6 @@ Workflows appear in the **API Workflows** section of the portal and are also exp
 
 ## Webhook Subscriber
 
-A **webhook subscriber** is an external system — typically the API Gateway — that receives real-time event notifications from the portal. When a developer generates an API key or changes a subscription, the portal fires a signed HTTP POST to all configured subscribers.
+A **webhook subscriber** is an HTTPS endpoint you register to receive real-time event notifications from the portal. When a developer generates an API key or changes a subscription, the portal fires a signed HTTP POST to all matching subscribers; what the subscriber does with that event — e.g. propagating the change to an API Gateway — is entirely up to whatever you run behind that endpoint.
 
 See [Gateway Integration](../administer/gateway-integration.md) for configuration details.

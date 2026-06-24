@@ -165,7 +165,7 @@ async function generate({ orgId, apiId, subscriptionId, name, expiresAt, actor, 
                         api: { name: api.apiName, version: api.apiVersion, ref_id: api.apiRefId },
                         ...(subscription && { subscription })
                     },
-                    { transaction: t, orgId, gatewayType: api.gatewayType,
+                    { transaction: t, orgId,
                       aggregateType: 'apikey', aggregateId: keyId, plaintextKey: plaintext }
                 );
             });
@@ -181,7 +181,7 @@ async function generate({ orgId, apiId, subscriptionId, name, expiresAt, actor, 
 
 /**
  * Regenerate an existing key: same keyId, new secret, status stays ACTIVE.
- * The old secret is silently invalidated at the gateway side via the event.
+ * The old secret is silently invalidated by whatever consumes the webhook event.
  */
 async function regenerate({ orgId, keyId, actor, userToken }) {
     if (config.readOnlyMode) throw Object.assign(new Error('Read-only mode'), { status: 403 });
@@ -217,7 +217,7 @@ async function regenerate({ orgId, keyId, actor, userToken }) {
                         api: { name: apiInfo ? apiInfo.apiName : null, version: apiInfo ? apiInfo.apiVersion : null, ref_id: apiInfo ? apiInfo.apiRefId : '' },
                         ...(subscription && { subscription })
                     },
-                    { transaction: t, orgId, gatewayType,
+                    { transaction: t, orgId,
                       aggregateType: 'apikey', aggregateId: keyId, plaintextKey: plaintext }
                 );
             });
@@ -232,7 +232,7 @@ async function regenerate({ orgId, keyId, actor, userToken }) {
 }
 
 /**
- * Revoke a key. Fires apikey.revoked so gateways can reject it immediately.
+ * Revoke a key. Fires apikey.revoked so webhook subscribers can reject it immediately.
  */
 async function revoke({ orgId, keyId, actor, userToken }) {
     if (config.readOnlyMode) throw Object.assign(new Error('Read-only mode'), { status: 403 });
@@ -265,7 +265,7 @@ async function revoke({ orgId, keyId, actor, userToken }) {
                     api: { name: revokeApiInfo ? revokeApiInfo.apiName : null, version: revokeApiInfo ? revokeApiInfo.apiVersion : null, ref_id: revokeApiInfo ? revokeApiInfo.apiRefId : '' },
                     ...(subscription && { subscription })
                 },
-                { transaction: t, orgId, gatewayType,
+                { transaction: t, orgId,
                   aggregateType: 'apikey', aggregateId: keyId }
             );
         });

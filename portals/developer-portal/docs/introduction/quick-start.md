@@ -211,4 +211,4 @@ Refresh the portal — the Ping API now appears in the catalog. Click it to view
 | Register and publish your first API | [Publish APIs](../publish-apis/publishing-apis.md) |
 | Set up subscription plans | [Subscription Plans](../administer/subscription-plans.md) |
 | Customize the portal look and feel | [Theming](../administer/theming/org-level-theming.md) |
-| Connect to the API Gateway | [Gateway Integration](../administer/gateway-integration.md) |
+| Notify your gateway of key/subscription changes | [Webhook Integration](../administer/webhook-integration.md) |

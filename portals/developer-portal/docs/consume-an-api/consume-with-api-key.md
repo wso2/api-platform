@@ -67,7 +67,7 @@ Revoked keys cannot be recovered. Generate a new key if you need access again.
 
 ## Key Lifecycle Events
 
-When you generate, regenerate, or revoke an API key, the portal sends a real-time webhook event to the API Gateway. The gateway enforces the change immediately — there is no propagation delay.
+When you generate, regenerate, or revoke an API key, the portal publishes a real-time webhook event to the organization's configured webhook subscriber(s). If the organization has a subscriber wired up to its API Gateway, the change is enforced immediately — there is no propagation delay.
 
 ## Related
 

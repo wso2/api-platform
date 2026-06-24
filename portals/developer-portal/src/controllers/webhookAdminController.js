@@ -38,7 +38,6 @@ function formatEvent(row) {
         eventId: row.EVENT_ID,
         eventType: row.EVENT_TYPE,
         orgId: row.ORG_ID,
-        gatewayType: row.GATEWAY_TYPE || null,
         aggregateType: row.AGGREGATE_TYPE,
         aggregateId: row.AGGREGATE_ID,
         status: row.STATUS,

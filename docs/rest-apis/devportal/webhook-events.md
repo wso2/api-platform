@@ -55,7 +55,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
       "eventId": "evt-abc123",
       "eventType": "apikey.generated",
       "orgId": "org-default",
-      "gatewayType": "default",
       "aggregateType": "apikey",
       "aggregateId": "key-12345",
       "status": "ALL_DELIVERED",
@@ -121,7 +120,6 @@ Status Code **200**
 |»» eventId|string|false|none|none|
 |»» eventType|string|false|none|none|
 |»» orgId|string|false|none|none|
-|»» gatewayType|string¦null|false|none|none|
 |»» aggregateType|string|false|none|none|
 |»» aggregateId|string|false|none|none|
 |»» status|string|false|none|none|
@@ -197,7 +195,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "eventId": "evt-abc123",
   "eventType": "apikey.generated",
   "orgId": "org-default",
-  "gatewayType": "default",
   "aggregateType": "apikey",
   "aggregateId": "key-12345",
   "status": "ALL_DELIVERED",

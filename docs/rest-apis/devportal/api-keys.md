@@ -19,7 +19,7 @@ curl -X POST https://devportal.api-platform.io/o/{orgId}/devportal/v1/api-keys/g
 
 ```
 
-Generates an API key stored in the Developer Portal (devportal is source of truth). The plaintext secret is returned once in the response and never persisted. A `apikey.generated` webhook event is published so gateways can register the key. Key names must match `^[a-z0-9][a-z0-9_-]{0,127}$`, and `expiresAt` must include a timezone when sent as an ISO-8601 string.
+Generates an API key stored in the Developer Portal (devportal is source of truth). The plaintext secret is returned once in the response and never persisted. A `apikey.generated` webhook event is published to the organization's configured webhook subscribers so they can register the key (e.g. with a gateway). Key names must match `^[a-z0-9][a-z0-9_-]{0,127}$`, and `expiresAt` must include a timezone when sent as an ISO-8601 string.
 
 > Payload
 
@@ -317,7 +317,7 @@ curl -X POST https://devportal.api-platform.io/o/{orgId}/devportal/v1/api-keys/{
 
 ```
 
-Regenerates the secret for an existing API key identified by `apiKeyId`. The old secret is invalidated at connected gateways via an `apikey.regenerated` webhook event. The new plaintext secret is returned once and never persisted.
+Regenerates the secret for an existing API key identified by `apiKeyId`. An `apikey.regenerated` webhook event is published to the organization's configured webhook subscribers so they can invalidate the old secret (e.g. at a gateway). The new plaintext secret is returned once and never persisted.
 
 ### Authentication
 
@@ -445,7 +445,7 @@ curl -X POST https://devportal.api-platform.io/o/{orgId}/devportal/v1/api-keys/{
 
 ```
 
-Revokes an existing API key. An `apikey.revoked` webhook event is published so connected gateways can immediately reject requests carrying the key.
+Revokes an existing API key. An `apikey.revoked` webhook event is published to the organization's configured webhook subscribers so they can immediately reject requests carrying the key (e.g. at a gateway).
 
 ### Authentication
 
