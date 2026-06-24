@@ -126,7 +126,7 @@ func setupGatewaySecretTestEnv(t *testing.T) (*gatewaySecretTestEnv, func()) {
 		cfg, slog.Default(),
 	)
 
-	h := NewGatewayInternalAPIHandler(gatewaySvc, gwInternalSvc, secretSvc, slog.Default())
+	h := NewGatewayInternalAPIHandler(gatewaySvc, gwInternalSvc, nil, secretSvc, slog.Default())
 
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
