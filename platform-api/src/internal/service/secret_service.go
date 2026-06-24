@@ -19,10 +19,10 @@ package service
 
 import (
 	"context"
+	"crypto/hmac"
 	"crypto/sha256"
 	"errors"
 	"fmt"
-	"regexp"
 	"time"
 
 	"platform-api/src/internal/constants"
@@ -32,7 +32,6 @@ import (
 	"platform-api/src/internal/vault"
 )
 
-var secretPlaceholderRegex = regexp.MustCompile(`\{\{\s*secret\s+\\?"([^"\\]+)\\?"\s*\}\}`)
 
 type SecretInUseError struct {
 	References []model.SecretReference
@@ -78,7 +77,7 @@ func (s *SecretService) Create(orgID, createdBy string, req *dto.CreateSecretReq
 		DisplayName:    req.DisplayName,
 		Description:    req.Description,
 		Ciphertext:     ciphertext,
-		Hash:           hashSecret(req.Value),
+		Hash:           hashSecret(s.vault.HashKey(), req.Value),
 		Type:           secretType,
 		Provider:       s.vault.ProviderName(),
 		Status:         model.SecretStatusActive,
@@ -148,8 +147,10 @@ func (s *SecretService) Update(orgID, handle, updatedBy string, req *dto.UpdateS
 		existing.Description = req.Description
 	}
 	existing.Ciphertext = ciphertext
-	existing.Hash = hashSecret(req.Value)
+	existing.Hash = hashSecret(s.vault.HashKey(), req.Value)
 	existing.UpdatedBy = updatedBy
+	// Rotation is an explicit intent to put the secret back into service.
+	existing.Status = model.SecretStatusActive
 
 	if err := s.repo.Update(existing); err != nil {
 		return nil, fmt.Errorf("failed to update secret: %w", err)
@@ -172,7 +173,7 @@ func (s *SecretService) Delete(orgID, handle, updatedBy string) error {
 // ValidateSecretRefs checks that every {{ secret "handle" }} placeholder in configText
 // resolves to an active org-scoped secret.
 func (s *SecretService) ValidateSecretRefs(orgID, configText string) error {
-	matches := secretPlaceholderRegex.FindAllStringSubmatch(configText, -1)
+	matches := constants.SecretPlaceholderRe.FindAllStringSubmatch(configText, -1)
 	if len(matches) == 0 {
 		return nil
 	}
@@ -214,9 +215,20 @@ func (s *SecretService) Decrypt(orgID, handle string) (string, error) {
 	return s.vault.Decrypt(context.Background(), secret.Ciphertext)
 }
 
-func hashSecret(plaintext string) string {
-	sum := sha256.Sum256([]byte(plaintext))
-	return fmt.Sprintf("sha256:%x", sum)
+// DecryptCiphertext decrypts an already-fetched ciphertext blob directly, without a
+// database round-trip. Used in the bulk includeValues=true loop where the caller
+// already holds the model.Secret rows.
+func (s *SecretService) DecryptCiphertext(ciphertext []byte) (string, error) {
+	return s.vault.Decrypt(context.Background(), ciphertext)
+}
+
+// hashSecret returns a keyed HMAC-SHA256 digest of plaintext, prefixed with "hmac-sha256:".
+// Using HMAC instead of bare SHA-256 prevents offline dictionary attacks against the hash
+// values returned in list/get/sync responses.
+func hashSecret(key []byte, plaintext string) string {
+	mac := hmac.New(sha256.New, key)
+	mac.Write([]byte(plaintext))
+	return fmt.Sprintf("hmac-sha256:%x", mac.Sum(nil))
 }
 
 func secretToResponse(s *model.Secret) *dto.SecretResponse {

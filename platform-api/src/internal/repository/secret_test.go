@@ -426,7 +426,7 @@ func TestSecretRepo_FindRefs_WithArtifactLevelRef(t *testing.T) {
 	}
 
 	// Insert artifact-level ref (gateway_id='')
-	_, err = db.Exec(`INSERT INTO artifact_secret_refs (organization_id, artifact_uuid, secret_handle, gateway_id)
+	_, err = db.Exec(`INSERT INTO artifact_secret_refs (organization_uuid, artifact_uuid, secret_handle, gateway_id)
 		VALUES ('org-ref-002', 'art-uuid-001', 'db-password', '')`)
 	if err != nil {
 		t.Fatalf("insert ref: %v", err)
@@ -460,7 +460,7 @@ func TestSecretRepo_FindRefs_WithDeploymentLevelRef(t *testing.T) {
 
 	// Insert gateway-level ref (gateway_id=<uuid>)
 	gatewayID := "gw-uuid-001"
-	_, err = db.Exec(`INSERT INTO artifact_secret_refs (organization_id, artifact_uuid, secret_handle, gateway_id)
+	_, err = db.Exec(`INSERT INTO artifact_secret_refs (organization_uuid, artifact_uuid, secret_handle, gateway_id)
 		VALUES ('org-ref-003', 'art-uuid-002', 'api-key', ?)`, gatewayID)
 	if err != nil {
 		t.Fatalf("insert ref: %v", err)
@@ -492,7 +492,7 @@ func TestSecretRepo_FindRefs_DeduplicatesAcrossGateways(t *testing.T) {
 
 	// Artifact-level row + two gateway rows for same artifact & secret
 	for _, gw := range []string{"", "gw-001", "gw-002"} {
-		_, err = db.Exec(`INSERT INTO artifact_secret_refs (organization_id, artifact_uuid, secret_handle, gateway_id)
+		_, err = db.Exec(`INSERT INTO artifact_secret_refs (organization_uuid, artifact_uuid, secret_handle, gateway_id)
 			VALUES ('org-ref-004', 'art-uuid-003', 'shared-key', ?)`, gw)
 		if err != nil {
 			t.Fatalf("insert ref gw=%q: %v", gw, err)
@@ -605,7 +605,7 @@ func TestUpsertArtifactSecretRefs_InsertsOnCreate(t *testing.T) {
 	}
 
 	var count int
-	db.QueryRow(`SELECT COUNT(*) FROM artifact_secret_refs WHERE organization_id = ? AND artifact_uuid = ? AND gateway_id = ''`,
+	db.QueryRow(`SELECT COUNT(*) FROM artifact_secret_refs WHERE organization_uuid = ? AND artifact_uuid = ? AND gateway_id = ''`,
 		orgID, "art-upsert-001").Scan(&count)
 	if count != 2 {
 		t.Errorf("expected 2 artifact-level refs, got %d", count)
@@ -654,7 +654,7 @@ func TestUpsertArtifactSecretRefs_ReplacesOnUpdate(t *testing.T) {
 	}
 
 	var handles []string
-	rows, err := db.Query(`SELECT secret_handle FROM artifact_secret_refs WHERE organization_id = ? AND artifact_uuid = ? AND gateway_id = ''`,
+	rows, err := db.Query(`SELECT secret_handle FROM artifact_secret_refs WHERE organization_uuid = ? AND artifact_uuid = ? AND gateway_id = ''`,
 		orgID, "art-upsert-002")
 	if err != nil {
 		t.Fatalf("query refs: %v", err)
@@ -712,7 +712,7 @@ func TestUpsertArtifactSecretRefs_ClearsWhenNoSecrets(t *testing.T) {
 	}
 
 	var count int
-	if err = db.QueryRow(`SELECT COUNT(*) FROM artifact_secret_refs WHERE organization_id = ? AND artifact_uuid = ? AND gateway_id = ''`,
+	if err = db.QueryRow(`SELECT COUNT(*) FROM artifact_secret_refs WHERE organization_uuid = ? AND artifact_uuid = ? AND gateway_id = ''`,
 		orgID, "art-upsert-003").Scan(&count); err != nil {
 		t.Fatalf("count refs: %v", err)
 	}
@@ -752,7 +752,7 @@ func TestUpsertDeploymentSecretRefs_OnDeploy(t *testing.T) {
 	}
 
 	var count int
-	if err = db.QueryRow(`SELECT COUNT(*) FROM artifact_secret_refs WHERE organization_id = ? AND artifact_uuid = ? AND gateway_id = ?`,
+	if err = db.QueryRow(`SELECT COUNT(*) FROM artifact_secret_refs WHERE organization_uuid = ? AND artifact_uuid = ? AND gateway_id = ?`,
 		orgID, "art-dep-001", gatewayID).Scan(&count); err != nil {
 		t.Fatalf("count refs: %v", err)
 	}
@@ -803,7 +803,7 @@ func TestUpsertDeploymentSecretRefs_OnUndeploy_ClearsRows(t *testing.T) {
 	}
 
 	var count int
-	if err = db.QueryRow(`SELECT COUNT(*) FROM artifact_secret_refs WHERE organization_id = ? AND artifact_uuid = ? AND gateway_id = ?`,
+	if err = db.QueryRow(`SELECT COUNT(*) FROM artifact_secret_refs WHERE organization_uuid = ? AND artifact_uuid = ? AND gateway_id = ?`,
 		orgID, "art-dep-002", gatewayID).Scan(&count); err != nil {
 		t.Fatalf("count refs: %v", err)
 	}
@@ -893,7 +893,7 @@ func TestSecretRepo_FindRefsAndSoftDelete_Transactional(t *testing.T) {
 	if err != nil {
 		t.Fatalf("insert artifact: %v", err)
 	}
-	_, err = db.Exec(`INSERT INTO artifact_secret_refs (organization_id, artifact_uuid, secret_handle, gateway_id)
+	_, err = db.Exec(`INSERT INTO artifact_secret_refs (organization_uuid, artifact_uuid, secret_handle, gateway_id)
 		VALUES (?, 'art-txn-001', 'txn-secret', '')`, orgID)
 	if err != nil {
 		t.Fatalf("insert ref: %v", err)
@@ -918,7 +918,7 @@ func TestSecretRepo_FindRefsAndSoftDelete_Transactional(t *testing.T) {
 	}
 
 	// (b) Remove the ref, then FindRefsAndSoftDelete must deprecate the secret.
-	_, err = db.Exec(`DELETE FROM artifact_secret_refs WHERE organization_id = ? AND artifact_uuid = 'art-txn-001'`, orgID)
+	_, err = db.Exec(`DELETE FROM artifact_secret_refs WHERE organization_uuid = ? AND artifact_uuid = 'art-txn-001'`, orgID)
 	if err != nil {
 		t.Fatalf("delete ref: %v", err)
 	}
@@ -955,7 +955,7 @@ func TestUpsertDeploymentSecretRefs_DoesNotAffectArtifactLevelRows(t *testing.T)
 	}
 
 	// Insert artifact-level row
-	_, err = db.Exec(`INSERT INTO artifact_secret_refs (organization_id, artifact_uuid, secret_handle, gateway_id)
+	_, err = db.Exec(`INSERT INTO artifact_secret_refs (organization_uuid, artifact_uuid, secret_handle, gateway_id)
 		VALUES ('org-dep-003', 'art-dep-003', 'my-key', '')`)
 	if err != nil {
 		t.Fatalf("insert artifact-level ref: %v", err)
@@ -976,7 +976,7 @@ func TestUpsertDeploymentSecretRefs_DoesNotAffectArtifactLevelRows(t *testing.T)
 	}
 
 	var count int
-	if err = db.QueryRow(`SELECT COUNT(*) FROM artifact_secret_refs WHERE organization_id = ? AND artifact_uuid = ? AND gateway_id = ''`,
+	if err = db.QueryRow(`SELECT COUNT(*) FROM artifact_secret_refs WHERE organization_uuid = ? AND artifact_uuid = ? AND gateway_id = ''`,
 		orgID, "art-dep-003").Scan(&count); err != nil {
 		t.Fatalf("count refs: %v", err)
 	}

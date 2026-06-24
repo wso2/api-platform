@@ -160,7 +160,7 @@ func doGWRequest(r *gin.Engine, method, path, apiKey string) *httptest.ResponseR
 func insertArtifactSecretRef(t *testing.T, db *database.DB, orgID, artifactUUID, secretHandle, gatewayID string) {
 	t.Helper()
 	_, err := db.Exec(
-		`INSERT OR IGNORE INTO artifact_secret_refs (organization_id, artifact_uuid, secret_handle, gateway_id, created_at)
+		`INSERT OR IGNORE INTO artifact_secret_refs (organization_uuid, artifact_uuid, secret_handle, gateway_id, created_at)
 		 VALUES (?, ?, ?, ?, datetime('now'))`,
 		orgID, artifactUUID, secretHandle, gatewayID,
 	)
@@ -511,7 +511,7 @@ func TestGatewaySecretHandler_SecretGoneAfterUndeploy(t *testing.T) {
 	}
 
 	// Remove the ref row
-	if _, err := env.db.Exec(`DELETE FROM artifact_secret_refs WHERE organization_id = ? AND artifact_uuid = ?`,
+	if _, err := env.db.Exec(`DELETE FROM artifact_secret_refs WHERE organization_uuid = ? AND artifact_uuid = ?`,
 		env.orgID, "art-32"); err != nil {
 		t.Fatalf("delete artifact secret ref: %v", err)
 	}
@@ -578,7 +578,10 @@ func TestGatewaySecretHandler_IncludeValues_ActiveSecretHasValue(t *testing.T) {
 }
 
 // TC-64: DEPRECATED secret with ?includeValues=true → item has no "value" field.
-func TestGatewaySecretHandler_IncludeValues_DeprecatedSecretFails(t *testing.T) {
+// TC-64: ?includeValues=true — DEPRECATED secret appears in the list but without a value field.
+// The bulk fetch must not 500 on a deprecated item; it skips the decryption and omits the value,
+// allowing the gateway to continue syncing all remaining active secrets.
+func TestGatewaySecretHandler_IncludeValues_DeprecatedSecretOmitsValue(t *testing.T) {
 	env, cleanup := setupGatewaySecretTestEnv(t)
 	defer cleanup()
 
@@ -592,11 +595,25 @@ func TestGatewaySecretHandler_IncludeValues_DeprecatedSecretFails(t *testing.T) 
 		t.Fatalf("deprecate secret: %v", err)
 	}
 
-	// Decrypting a DEPRECATED secret returns an error, so the whole bulk request
-	// must fail with 500 so the caller can retry rather than receiving a partial response.
 	w := doGWRequest(env.router, http.MethodGet, "/api/internal/v1/secrets?includeValues=true", env.plainToken)
-	if w.Code != http.StatusInternalServerError {
-		t.Fatalf("expected 500 when deprecated secret in list, got %d: %s", w.Code, w.Body.String())
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 for bulk fetch containing deprecated secret, got %d: %s", w.Code, w.Body.String())
+	}
+
+	body := parseGWBody(w)
+	list, _ := body["list"].([]interface{})
+	if len(list) != 1 {
+		t.Fatalf("expected 1 item in list, got %d", len(list))
+	}
+	item, _ := list[0].(map[string]interface{})
+	if item["handle"] != "dep-iv" {
+		t.Errorf("unexpected handle %v", item["handle"])
+	}
+	if item["status"] != "DEPRECATED" {
+		t.Errorf("expected status=DEPRECATED, got %v", item["status"])
+	}
+	if _, hasValue := item["value"]; hasValue {
+		t.Errorf("expected no value field for deprecated secret, got one")
 	}
 }
 

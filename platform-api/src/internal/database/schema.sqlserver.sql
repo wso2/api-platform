@@ -598,22 +598,22 @@ CREATE INDEX idx_events_gateway_id_processed_timestamp ON dbo.events(gateway_id,
 -- Secrets table for encrypted secret management
 IF OBJECT_ID(N'dbo.secrets', N'U') IS NULL
 CREATE TABLE dbo.secrets (
-    uuid            NVARCHAR(40)   NOT NULL PRIMARY KEY,
-    organization_id NVARCHAR(40)   NOT NULL,
-    handle          NVARCHAR(100)  NOT NULL,
-    name            NVARCHAR(255)  NOT NULL,
-    description     NVARCHAR(1023),
-    ciphertext      VARBINARY(MAX) NOT NULL,
-    hash            NVARCHAR(80)   NOT NULL,
-    type            NVARCHAR(20)   NOT NULL DEFAULT 'GENERIC', -- GENERIC | CERTIFICATE
-    provider        NVARCHAR(20)   NOT NULL DEFAULT 'IN_BUILT',
-    status          NVARCHAR(20)   NOT NULL DEFAULT 'ACTIVE',
-    created_at      DATETIME2(7)   DEFAULT SYSUTCDATETIME(),
-    created_by      NVARCHAR(255),
-    updated_at      DATETIME2(7)   DEFAULT SYSUTCDATETIME(),
-    updated_by      NVARCHAR(255),
-    CONSTRAINT uq_secrets_org_handle UNIQUE (organization_id, handle),
-    CONSTRAINT fk_secrets_org FOREIGN KEY (organization_id) REFERENCES dbo.organizations(uuid) ON DELETE CASCADE
+    uuid              NVARCHAR(40)   NOT NULL PRIMARY KEY,
+    organization_uuid NVARCHAR(40)   NOT NULL,
+    handle            NVARCHAR(100)  NOT NULL,
+    name              NVARCHAR(255)  NOT NULL,
+    description       NVARCHAR(1023),
+    ciphertext        VARBINARY(MAX) NOT NULL,
+    hash              NVARCHAR(80)   NOT NULL,
+    type              NVARCHAR(20)   NOT NULL DEFAULT 'GENERIC', -- GENERIC | CERTIFICATE
+    provider          NVARCHAR(20)   NOT NULL DEFAULT 'IN_BUILT',
+    status            NVARCHAR(20)   NOT NULL DEFAULT 'ACTIVE',
+    created_at        DATETIME2(7)   DEFAULT SYSUTCDATETIME(),
+    created_by        NVARCHAR(255),
+    updated_at        DATETIME2(7)   DEFAULT SYSUTCDATETIME(),
+    updated_by        NVARCHAR(255),
+    CONSTRAINT uq_secrets_org_handle UNIQUE (organization_uuid, handle),
+    CONSTRAINT fk_secrets_org FOREIGN KEY (organization_uuid) REFERENCES dbo.organizations(uuid) ON DELETE CASCADE
 );
 
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_secrets_updated_at' AND object_id = OBJECT_ID(N'dbo.secrets'))
@@ -636,20 +636,20 @@ CREATE INDEX idx_secret_scopes_scope ON dbo.secret_scopes(scope, scope_value);
 -- Eliminates the 6-table JOIN + application-level regex on every GW secret sync.
 IF OBJECT_ID(N'dbo.artifact_secret_refs', N'U') IS NULL
 CREATE TABLE dbo.artifact_secret_refs (
-    organization_id NVARCHAR(40)  NOT NULL,
-    artifact_uuid   NVARCHAR(40)  NOT NULL,
-    secret_handle   NVARCHAR(100) NOT NULL,
-    gateway_id      NVARCHAR(40)  NOT NULL DEFAULT '', -- '' = artifact-level (current config); gateway UUID = deployed
-    created_at      DATETIME2(7)  NOT NULL DEFAULT SYSUTCDATETIME(),
-    CONSTRAINT pk_artifact_secret_refs PRIMARY KEY (organization_id, artifact_uuid, secret_handle, gateway_id),
-    CONSTRAINT fk_asr_org     FOREIGN KEY (organization_id) REFERENCES dbo.organizations(uuid) ON DELETE NO ACTION,
-    CONSTRAINT fk_asr_artifact FOREIGN KEY (artifact_uuid)  REFERENCES dbo.artifacts(uuid)     ON DELETE NO ACTION
+    organization_uuid NVARCHAR(40)  NOT NULL,
+    artifact_uuid     NVARCHAR(40)  NOT NULL,
+    secret_handle     NVARCHAR(100) NOT NULL,
+    gateway_id        NVARCHAR(40)  NOT NULL DEFAULT '', -- '' = artifact-level (current config); gateway UUID = deployed
+    created_at        DATETIME2(7)  NOT NULL DEFAULT SYSUTCDATETIME(),
+    CONSTRAINT pk_artifact_secret_refs PRIMARY KEY (organization_uuid, artifact_uuid, secret_handle, gateway_id),
+    CONSTRAINT fk_asr_org     FOREIGN KEY (organization_uuid) REFERENCES dbo.organizations(uuid) ON DELETE NO ACTION,
+    CONSTRAINT fk_asr_artifact FOREIGN KEY (artifact_uuid)    REFERENCES dbo.artifacts(uuid)     ON DELETE NO ACTION
 );
 
 -- Fast delete-protection lookups: does any row reference this secret?
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_asr_org_handle' AND object_id = OBJECT_ID(N'dbo.artifact_secret_refs'))
-CREATE INDEX idx_asr_org_handle ON dbo.artifact_secret_refs(organization_id, secret_handle);
+CREATE INDEX idx_asr_org_handle ON dbo.artifact_secret_refs(organization_uuid, secret_handle);
 
 -- Fast gateway sync lookups: which handles does this gateway need?
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_asr_org_gateway' AND object_id = OBJECT_ID(N'dbo.artifact_secret_refs'))
-CREATE INDEX idx_asr_org_gateway ON dbo.artifact_secret_refs(organization_id, gateway_id);
+CREATE INDEX idx_asr_org_gateway ON dbo.artifact_secret_refs(organization_uuid, gateway_id);

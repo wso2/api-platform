@@ -55,6 +55,7 @@ func (m *mockVault) Decrypt(_ context.Context, ct []byte) (string, error) {
 }
 
 func (m *mockVault) ProviderName() string { return "mock" }
+func (m *mockVault) HashKey() []byte      { return make([]byte, 32) }
 
 // ---- mock repo --------------------------------------------------------------
 

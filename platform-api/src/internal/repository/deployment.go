@@ -935,7 +935,7 @@ func (r *DeploymentRepo) GetSecretHandlesByGateway(gatewayID, orgUUID string) ([
 	query := r.db.Rebind(`
 		SELECT DISTINCT secret_handle
 		FROM artifact_secret_refs
-		WHERE organization_id = ? AND gateway_id = ?
+		WHERE organization_uuid = ? AND gateway_id = ?
 	`)
 
 	rows, err := r.db.Query(query, orgUUID, gatewayID)

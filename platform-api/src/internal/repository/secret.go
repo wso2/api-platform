@@ -71,7 +71,7 @@ func (r *SecretRepo) Create(s *model.Secret) error {
 
 	query := r.db.Rebind(`
 		INSERT INTO secrets (
-			uuid, organization_id, handle, name, description,
+			uuid, organization_uuid, handle, name, description,
 			ciphertext, hash, type, provider, status,
 			created_at, created_by, updated_at, updated_by
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -101,7 +101,7 @@ func (r *SecretRepo) Create(s *model.Secret) error {
 	return tx.Commit()
 }
 
-const secretCols = `SELECT uuid, organization_id, handle, name, description,
+const secretCols = `SELECT uuid, organization_uuid, handle, name, description,
 	       ciphertext, hash, type, provider, status,
 	       created_at, created_by, updated_at, updated_by FROM secrets`
 
@@ -119,7 +119,7 @@ func scanSecret(row interface {
 
 func (r *SecretRepo) GetByHandle(orgID, handle string) (*model.Secret, error) {
 	query := r.db.Rebind(secretCols + `
-		WHERE organization_id = ? AND handle = ?
+		WHERE organization_uuid = ? AND handle = ?
 	`)
 	s, err := scanSecret(r.db.QueryRow(query, orgID, handle))
 	if err != nil {
@@ -137,10 +137,10 @@ func (r *SecretRepo) List(orgID string, limit, offset int, updatedAfter *time.Ti
 		args  []interface{}
 	)
 	if updatedAfter != nil {
-		query = r.db.Rebind(secretCols + ` WHERE organization_id = ? AND updated_at > ? ORDER BY updated_at DESC LIMIT ? OFFSET ?`)
+		query = r.db.Rebind(secretCols + ` WHERE organization_uuid = ? AND updated_at > ? ORDER BY updated_at DESC LIMIT ? OFFSET ?`)
 		args = []interface{}{orgID, *updatedAfter, limit, offset}
 	} else {
-		query = r.db.Rebind(secretCols + ` WHERE organization_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?`)
+		query = r.db.Rebind(secretCols + ` WHERE organization_uuid = ? ORDER BY created_at DESC LIMIT ? OFFSET ?`)
 		args = []interface{}{orgID, limit, offset}
 	}
 	return r.querySecrets(query, args...)
@@ -165,10 +165,10 @@ func (r *SecretRepo) ListByHandles(orgID string, handles []string, updatedAfter 
 
 	var query string
 	if updatedAfter != nil {
-		query = r.db.Rebind(secretCols + ` WHERE organization_id = ? AND ` + inClause + ` AND updated_at > ? ORDER BY updated_at DESC`)
+		query = r.db.Rebind(secretCols + ` WHERE organization_uuid = ? AND ` + inClause + ` AND updated_at > ? ORDER BY updated_at DESC`)
 		args = append(args, *updatedAfter)
 	} else {
-		query = r.db.Rebind(secretCols + ` WHERE organization_id = ? AND ` + inClause + ` ORDER BY created_at DESC`)
+		query = r.db.Rebind(secretCols + ` WHERE organization_uuid = ? AND ` + inClause + ` ORDER BY created_at DESC`)
 	}
 	return r.querySecrets(query, args...)
 }
@@ -193,7 +193,7 @@ func (r *SecretRepo) querySecrets(query string, args ...interface{}) ([]*model.S
 
 func (r *SecretRepo) Count(orgID string) (int, error) {
 	var count int
-	query := r.db.Rebind(`SELECT COUNT(*) FROM secrets WHERE organization_id = ?`)
+	query := r.db.Rebind(`SELECT COUNT(*) FROM secrets WHERE organization_uuid = ?`)
 	if err := r.db.QueryRow(query, orgID).Scan(&count); err != nil {
 		return 0, fmt.Errorf("failed to count secrets: %w", err)
 	}
@@ -206,13 +206,13 @@ func (r *SecretRepo) Update(s *model.Secret) error {
 	query := r.db.Rebind(`
 		UPDATE secrets
 		SET name = ?, description = ?, ciphertext = ?, hash = ?,
-		    updated_at = ?, updated_by = ?
-		WHERE organization_id = ? AND handle = ?
+		    status = ?, updated_at = ?, updated_by = ?
+		WHERE organization_uuid = ? AND handle = ?
 	`)
 
 	result, err := r.db.Exec(query,
 		s.DisplayName, s.Description, s.Ciphertext, s.Hash,
-		s.UpdatedAt, s.UpdatedBy,
+		s.Status, s.UpdatedAt, s.UpdatedBy,
 		s.OrganizationID, s.Handle,
 	)
 	if err != nil {
@@ -241,9 +241,9 @@ func (r *SecretRepo) FindRefsAndSoftDelete(orgID, handle, updatedBy string) ([]m
 
 	var lockQuery string
 	if r.db.Driver() == "postgres" || r.db.Driver() == "postgresql" {
-		lockQuery = `SELECT uuid FROM secrets WHERE organization_id = $1 AND handle = $2 LIMIT 1 FOR UPDATE`
+		lockQuery = `SELECT uuid FROM secrets WHERE organization_uuid = $1 AND handle = $2 LIMIT 1 FOR UPDATE`
 	} else {
-		lockQuery = r.db.Rebind(`SELECT uuid FROM secrets WHERE organization_id = ? AND handle = ? LIMIT 1`)
+		lockQuery = r.db.Rebind(`SELECT uuid FROM secrets WHERE organization_uuid = ? AND handle = ? LIMIT 1`)
 	}
 	var lockedID string
 	if err := tx.QueryRow(lockQuery, orgID, handle).Scan(&lockedID); err != nil {
@@ -257,7 +257,7 @@ func (r *SecretRepo) FindRefsAndSoftDelete(orgID, handle, updatedBy string) ([]m
 		SELECT DISTINCT art.handle, art.name, art.kind
 		FROM artifact_secret_refs asr
 		JOIN artifacts art ON art.uuid = asr.artifact_uuid
-		WHERE asr.organization_id = ? AND asr.secret_handle = ?
+		WHERE asr.organization_uuid = ? AND asr.secret_handle = ?
 	`)
 	rows, err := tx.Query(refsQuery, orgID, handle)
 	if err != nil {
@@ -284,7 +284,7 @@ func (r *SecretRepo) FindRefsAndSoftDelete(orgID, handle, updatedBy string) ([]m
 	deleteQuery := r.db.Rebind(`
 		UPDATE secrets
 		SET status = 'DEPRECATED', updated_at = ?, updated_by = ?
-		WHERE organization_id = ? AND handle = ?
+		WHERE organization_uuid = ? AND handle = ?
 	`)
 	result, err := tx.Exec(deleteQuery, time.Now(), updatedBy, orgID, handle)
 	if err != nil {
@@ -309,7 +309,7 @@ func (r *SecretRepo) FindRefs(orgID, handle string) ([]model.SecretReference, er
 		SELECT DISTINCT art.handle, art.name, art.kind
 		FROM artifact_secret_refs asr
 		JOIN artifacts art ON art.uuid = asr.artifact_uuid
-		WHERE asr.organization_id = ? AND asr.secret_handle = ?
+		WHERE asr.organization_uuid = ? AND asr.secret_handle = ?
 	`)
 
 	rows, err := r.db.Query(query, orgID, handle)
@@ -351,7 +351,7 @@ func (r *SecretRepo) Exists(orgID, handle string) (bool, error) {
 	var count int
 	query := r.db.Rebind(`
 		SELECT COUNT(*) FROM secrets
-		WHERE organization_id = ? AND handle = ? AND status = 'ACTIVE'
+		WHERE organization_uuid = ? AND handle = ? AND status = 'ACTIVE'
 	`)
 	if err := r.db.QueryRow(query, orgID, handle).Scan(&count); err != nil {
 		return false, fmt.Errorf("failed to check secret existence: %w", err)

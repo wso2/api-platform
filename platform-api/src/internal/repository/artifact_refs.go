@@ -19,8 +19,8 @@ package repository
 
 import (
 	"database/sql"
-	"regexp"
 
+	"platform-api/src/internal/constants"
 	"platform-api/src/internal/database"
 )
 
@@ -28,11 +28,9 @@ import (
 // These rows represent the current artifact config and are used for delete protection.
 const artifactLevelGatewayID = ""
 
-var secretPlaceholderRe = regexp.MustCompile(`\{\{\s*secret\s+\\?"([^"\\]+)\\?"\s*\}\}`)
-
 // extractSecretHandles returns unique secret handles found in the given content blob.
 func extractSecretHandles(content []byte) []string {
-	matches := secretPlaceholderRe.FindAllSubmatch(content, -1)
+	matches := constants.SecretPlaceholderRe.FindAllSubmatch(content, -1)
 	seen := make(map[string]struct{}, len(matches))
 	handles := make([]string, 0, len(matches))
 	for _, m := range matches {
@@ -50,14 +48,14 @@ func extractSecretHandles(content []byte) []string {
 func upsertArtifactSecretRefs(tx *sql.Tx, db *database.DB, orgID, artifactUUID string, configJSON []byte) error {
 	_, err := tx.Exec(db.Rebind(`
 		DELETE FROM artifact_secret_refs
-		WHERE organization_id = ? AND artifact_uuid = ? AND gateway_id = ?
+		WHERE organization_uuid = ? AND artifact_uuid = ? AND gateway_id = ?
 	`), orgID, artifactUUID, artifactLevelGatewayID)
 	if err != nil {
 		return err
 	}
 	for _, handle := range extractSecretHandles(configJSON) {
 		_, err = tx.Exec(db.Rebind(`
-			INSERT INTO artifact_secret_refs (organization_id, artifact_uuid, secret_handle, gateway_id)
+			INSERT INTO artifact_secret_refs (organization_uuid, artifact_uuid, secret_handle, gateway_id)
 			VALUES (?, ?, ?, ?)
 		`), orgID, artifactUUID, handle, artifactLevelGatewayID)
 		if err != nil {
@@ -72,14 +70,14 @@ func upsertArtifactSecretRefs(tx *sql.Tx, db *database.DB, orgID, artifactUUID s
 func upsertDeploymentSecretRefs(tx *sql.Tx, db *database.DB, orgID, artifactUUID, gatewayID string, content []byte) error {
 	_, err := tx.Exec(db.Rebind(`
 		DELETE FROM artifact_secret_refs
-		WHERE organization_id = ? AND artifact_uuid = ? AND gateway_id = ?
+		WHERE organization_uuid = ? AND artifact_uuid = ? AND gateway_id = ?
 	`), orgID, artifactUUID, gatewayID)
 	if err != nil {
 		return err
 	}
 	for _, handle := range extractSecretHandles(content) {
 		_, err = tx.Exec(db.Rebind(`
-			INSERT INTO artifact_secret_refs (organization_id, artifact_uuid, secret_handle, gateway_id)
+			INSERT INTO artifact_secret_refs (organization_uuid, artifact_uuid, secret_handle, gateway_id)
 			VALUES (?, ?, ?, ?)
 		`), orgID, artifactUUID, handle, gatewayID)
 		if err != nil {

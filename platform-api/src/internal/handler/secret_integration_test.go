@@ -367,6 +367,85 @@ func TestSecretHandler_Update_200(t *testing.T) {
 
 }
 
+// TC-IT-10b: PUT on a DEPRECATED secret reactivates it (status → ACTIVE) and re-encrypts the value.
+func TestSecretHandler_Update_ReactivatesDeprecatedSecret(t *testing.T) {
+	tmpDir := t.TempDir()
+	sqlDB, err := sql.Open("sqlite3", filepath.Join(tmpDir, "test-reactivate.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer sqlDB.Close()
+	sqlDB.Exec("PRAGMA foreign_keys = ON")
+	db := &database.DB{DB: sqlDB}
+
+	schema, _ := os.ReadFile(filepath.Join("..", "database", "schema.sqlite.sql"))
+	db.Exec(string(schema))
+	db.Exec(`INSERT INTO organizations (uuid, handle, name, region, created_at, updated_at)
+		VALUES ('org-react-it', 'org-react', 'Org React', 'default', datetime('now'), datetime('now'))`)
+
+	v, _ := vault.NewInHouseVault([]byte("12345678901234567890123456789012"))
+	repo := repository.NewSecretRepo(db)
+	svc := service.NewSecretService(repo, v)
+
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.Use(func(c *gin.Context) {
+		c.Set("organization", "org-react-it")
+		c.Set("username", "alice")
+		c.Next()
+	})
+	NewSecretHandler(svc, slog.Default()).RegisterRoutes(r)
+
+	// Create then soft-delete (deprecate) the secret.
+	body, ct := multipartForm(map[string]string{"handle": "react-key", "name": "React Key", "value": "old-val"})
+	req, _ := http.NewRequest(http.MethodPost, "/api/v1/secrets", body)
+	req.Header.Set("Content-Type", ct)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create: expected 201, got %d", w.Code)
+	}
+
+	delReq, _ := http.NewRequest(http.MethodDelete, "/api/v1/secrets/react-key", nil)
+	wDel := httptest.NewRecorder()
+	r.ServeHTTP(wDel, delReq)
+	if wDel.Code != http.StatusNoContent {
+		t.Fatalf("delete: expected 204, got %d", wDel.Code)
+	}
+
+	// Confirm it is DEPRECATED before rotation.
+	var statusBefore string
+	sqlDB.QueryRow(`SELECT status FROM secrets WHERE handle = 'react-key'`).Scan(&statusBefore)
+	if statusBefore != "DEPRECATED" {
+		t.Fatalf("expected DEPRECATED before rotation, got %s", statusBefore)
+	}
+
+	// Rotate — PUT should reactivate.
+	putBody, putCT := multipartForm(map[string]string{"value": "new-val"})
+	putReq, _ := http.NewRequest(http.MethodPut, "/api/v1/secrets/react-key", putBody)
+	putReq.Header.Set("Content-Type", putCT)
+	wPut := httptest.NewRecorder()
+	r.ServeHTTP(wPut, putReq)
+	if wPut.Code != http.StatusOK {
+		t.Fatalf("rotate: expected 200, got %d: %s", wPut.Code, wPut.Body.String())
+	}
+
+	// Status must be ACTIVE and value must decrypt to the new plaintext.
+	var statusAfter string
+	sqlDB.QueryRow(`SELECT status FROM secrets WHERE handle = 'react-key'`).Scan(&statusAfter)
+	if statusAfter != "ACTIVE" {
+		t.Errorf("expected ACTIVE after rotation, got %s", statusAfter)
+	}
+
+	plaintext, err := svc.Decrypt("org-react-it", "react-key")
+	if err != nil {
+		t.Fatalf("Decrypt after reactivation: %v", err)
+	}
+	if plaintext != "new-val" {
+		t.Errorf("expected plaintext=new-val, got %s", plaintext)
+	}
+}
+
 // TC-IT-11: Delete unreferenced secret returns 204.
 func TestSecretHandler_Delete_204_Unreferenced(t *testing.T) {
 	r, cleanup := setupSecretTestEnv(t)
@@ -431,7 +510,7 @@ func TestSecretHandler_Delete_409_ReferencedByArtifact(t *testing.T) {
 	}
 
 	// Insert the artifact_secret_ref row
-	_, err = db.Exec(`INSERT INTO artifact_secret_refs (organization_id, artifact_uuid, secret_handle, gateway_id)
+	_, err = db.Exec(`INSERT INTO artifact_secret_refs (organization_uuid, artifact_uuid, secret_handle, gateway_id)
 		VALUES ('org-it-001', 'art-001', 'ref-key', '')`)
 	if err != nil {
 		t.Fatalf("failed to insert artifact_secret_ref: %v", err)
@@ -634,7 +713,7 @@ func TestSecretHandler_Delete_SoftDeletesRow(t *testing.T) {
 	// (c) Physical row still present with status=DEPRECATED
 	var status string
 	err = sqlDB.QueryRow(
-		`SELECT status FROM secrets WHERE organization_id = ? AND handle = ?`,
+		`SELECT status FROM secrets WHERE organization_uuid = ? AND handle = ?`,
 		"org-sd-it", "soft-del-key",
 	).Scan(&status)
 	if err != nil {
