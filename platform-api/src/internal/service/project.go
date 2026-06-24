@@ -110,6 +110,8 @@ func (s *ProjectService) CreateProject(req *api.CreateProjectRequest, organizati
 	}
 
 	projectModel := s.apiToModel(project)
+	projectModel.CreatedBy = actor
+	projectModel.UpdatedBy = actor
 	err = s.projectRepo.CreateProject(projectModel)
 	if err != nil {
 		return nil, err
@@ -195,6 +197,7 @@ func (s *ProjectService) UpdateProject(projectId string, req *api.UpdateProjectR
 		project.Description = *req.Description
 	}
 	project.UpdatedAt = time.Now()
+	project.UpdatedBy = actor
 
 	err = s.projectRepo.UpdateProject(project)
 	if err != nil {

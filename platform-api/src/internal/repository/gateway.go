@@ -335,7 +335,8 @@ func (r *GatewayRepo) GetActiveTokenByHash(tokenHash string) (*model.GatewayToke
 		ORDER BY (SELECT NULL)
 		` + r.db.FetchFirstClause(1)
 	err := r.db.QueryRow(r.db.Rebind(query), tokenHash).Scan(
-		&token.ID, &token.GatewayID, &token.TokenHash, &token.Salt, &token.Status, &token.CreatedAt, &token.RevokedAt,
+		&token.ID, &token.GatewayID, &token.TokenHash, &token.Salt, &token.Status,
+		&createdBy, &token.CreatedAt, &revokedBy, &token.RevokedAt,
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {

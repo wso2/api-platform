@@ -386,16 +386,20 @@ CREATE INDEX IF NOT EXISTS idx_websub_apis_project ON websub_apis(project_uuid);
 CREATE TABLE IF NOT EXISTS websub_api_hmac_secrets (
     uuid VARCHAR(40) PRIMARY KEY,
     artifact_uuid VARCHAR(40) NOT NULL,
-    name VARCHAR(63) NOT NULL,
+    name VARCHAR(255) NOT NULL,
     display_name VARCHAR(255),
-    encrypted_secret TEXT NOT NULL,
+    encrypted_secret BYTEA NOT NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'active',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    data_version VARCHAR(20) NOT NULL DEFAULT 'v1.0',
+    created_by VARCHAR(200),
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_by VARCHAR(200),
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (artifact_uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
     UNIQUE(artifact_uuid, name)
 );
 CREATE INDEX IF NOT EXISTS idx_websub_api_hmac_secrets_artifact ON websub_api_hmac_secrets(artifact_uuid);
+CREATE INDEX IF NOT EXISTS idx_websub_api_hmac_secrets_status ON websub_api_hmac_secrets(status);
 
 -- WEBBROKER APIs table
 CREATE TABLE IF NOT EXISTS webbroker_apis (

@@ -246,7 +246,7 @@ func (r *APIRepo) GetAPIsByOrganizationUUID(orgUUID string, projectUUID string) 
 	if projectUUID != "" {
 		// Filter by specific project within the organization
 		query = `
-			SELECT a.uuid, a.handle, a.name, art.type, a.description, a.version, a.created_by,
+			SELECT a.uuid, a.handle, a.name, art.type, a.description, a.version, a.created_by, a.updated_by,
 				a.project_uuid, art.organization_uuid, a.lifecycle_status,
 				a.configuration, a.created_at, a.updated_at
 			FROM rest_apis a INNER JOIN artifacts art
@@ -258,7 +258,7 @@ func (r *APIRepo) GetAPIsByOrganizationUUID(orgUUID string, projectUUID string) 
 	} else {
 		// Get all APIs for the organization
 		query = `
-			SELECT a.uuid, a.handle, a.name, art.type, a.description, a.version, a.created_by,
+			SELECT a.uuid, a.handle, a.name, art.type, a.description, a.version, a.created_by, a.updated_by,
 				a.project_uuid, art.organization_uuid, a.lifecycle_status,
 				a.configuration, a.created_at, a.updated_at
 			FROM rest_apis a INNER JOIN artifacts art
@@ -279,12 +279,16 @@ func (r *APIRepo) GetAPIsByOrganizationUUID(orgUUID string, projectUUID string) 
 	for rows.Next() {
 		api := &model.API{}
 		var configJSON sql.NullString
+		var updatedBy sql.NullString
 		err := rows.Scan(&api.ID, &api.Handle, &api.Name, &api.Kind, &api.Description,
-			&api.Version, &api.CreatedBy, &api.ProjectID, &api.OrganizationID,
+			&api.Version, &api.CreatedBy, &updatedBy, &api.ProjectID, &api.OrganizationID,
 			&api.LifeCycleStatus,
 			&configJSON, &api.CreatedAt, &api.UpdatedAt)
 		if err != nil {
 			return nil, err
+		}
+		if updatedBy.Valid {
+			api.UpdatedBy = updatedBy.String
 		}
 
 		if config, err := deserializeAPIConfigurations(configJSON); err != nil {
@@ -537,7 +541,7 @@ func (r *APIRepo) CreateAPIAssociation(association *model.APIAssociation) error 
 		INSERT INTO gateway_association_mappings (artifact_uuid, organization_uuid, gateway_uuid, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?)
 	`
-	_, err := r.db.Exec(query,
+	_, err := r.db.Exec(r.db.Rebind(query),
 		association.ArtifactID, association.OrganizationID, association.GatewayID,
 		association.CreatedAt, association.UpdatedAt)
 	return err
