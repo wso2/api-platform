@@ -102,7 +102,8 @@ func (h *WebSubAPIHmacSecretHandler) CreateHmacSecret(c *gin.Context) {
 		externalSecret = *req.Secret
 	}
 
-	secret, plaintext, err := h.secretService.Generate(orgID, apiHandle, req.DisplayName, externalSecret)
+	userID, _ := middleware.GetUserIDFromContext(c)
+	secret, plaintext, err := h.secretService.Generate(orgID, apiHandle, req.DisplayName, externalSecret, userID)
 	if err != nil {
 		h.handleServiceError(c, err)
 		return
@@ -209,7 +210,8 @@ func (h *WebSubAPIHmacSecretHandler) RegenerateHmacSecret(c *gin.Context) {
 		externalSecret = *req.Secret
 	}
 
-	secret, plaintext, err := h.secretService.Regenerate(orgID, apiHandle, secretName, externalSecret)
+	userID, _ := middleware.GetUserIDFromContext(c)
+	secret, plaintext, err := h.secretService.Regenerate(orgID, apiHandle, secretName, externalSecret, userID)
 	if err != nil {
 		h.handleServiceError(c, err)
 		return

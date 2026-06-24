@@ -80,7 +80,7 @@ func NewWebSubAPIHmacSecretService(
 // Generate creates a new HMAC secret for the given WebSub API.
 // externalSecret is an optional caller-supplied value; if empty, one is auto-generated.
 // Returns the metadata and the plaintext value (returned once, never stored).
-func (s *WebSubAPIHmacSecretService) Generate(orgUUID, apiHandle, displayName, externalSecret string) (*model.WebSubAPIHmacSecret, string, error) {
+func (s *WebSubAPIHmacSecretService) Generate(orgUUID, apiHandle, displayName, externalSecret, userID string) (*model.WebSubAPIHmacSecret, string, error) {
 	api, err := s.websubRepo.GetByHandle(apiHandle, orgUUID)
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to look up WebSub API: %w", err)
@@ -90,13 +90,13 @@ func (s *WebSubAPIHmacSecretService) Generate(orgUUID, apiHandle, displayName, e
 	}
 
 	name := slugifyHmacSecret(displayName)
-	if len(name) > 63 {
-		name = name[:63]
+	if len(name) > 255 {
+		name = name[:255]
 	}
 	if name == "" {
 		name = "secret-" + apiHandle
-		if len(name) > 63 {
-			name = name[:63]
+		if len(name) > 255 {
+			name = name[:255]
 		}
 	}
 
@@ -130,6 +130,8 @@ func (s *WebSubAPIHmacSecretService) Generate(orgUUID, apiHandle, displayName, e
 		DisplayName:     displayName,
 		EncryptedSecret: ciphertext,
 		Status:          "active",
+		CreatedBy:       userID,
+		UpdatedBy:       userID,
 	}
 
 	if err := s.repo.Create(secret); err != nil {
@@ -158,7 +160,7 @@ func (s *WebSubAPIHmacSecretService) List(orgUUID, apiHandle string) ([]*model.W
 // Regenerate replaces the secret value for an existing named secret.
 // externalSecret is an optional caller-supplied value; if empty, a new value is auto-generated.
 // Returns the metadata and new plaintext (returned once, never stored).
-func (s *WebSubAPIHmacSecretService) Regenerate(orgUUID, apiHandle, secretName, externalSecret string) (*model.WebSubAPIHmacSecret, string, error) {
+func (s *WebSubAPIHmacSecretService) Regenerate(orgUUID, apiHandle, secretName, externalSecret, userID string) (*model.WebSubAPIHmacSecret, string, error) {
 	api, err := s.websubRepo.GetByHandle(apiHandle, orgUUID)
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to look up WebSub API: %w", err)
@@ -194,6 +196,7 @@ func (s *WebSubAPIHmacSecretService) Regenerate(orgUUID, apiHandle, secretName, 
 	}
 
 	existing.EncryptedSecret = ciphertext
+	existing.UpdatedBy = userID
 	if err := s.repo.Update(existing); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, "", constants.ErrHmacSecretNotFound

@@ -30,7 +30,9 @@ type WebSubAPIHmacSecret struct {
 	DisplayName     string    `json:"displayName"`
 	EncryptedSecret string    `json:"-"`
 	Status          string    `json:"status"`
+	CreatedBy       string    `json:"createdBy,omitempty"`
 	CreatedAt       time.Time `json:"createdAt"`
+	UpdatedBy       string    `json:"updatedBy,omitempty"`
 	UpdatedAt       time.Time `json:"updatedAt"`
 }
 
