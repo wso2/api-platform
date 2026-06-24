@@ -45,7 +45,7 @@ func NewLLMProxyAPIKeyHandler(apiKeyService *service.LLMProxyAPIKeyService, slog
 	}
 }
 
-// ListAPIKeys handles GET /api/v1alpha2/llm-proxies/{id}/api-keys
+// ListAPIKeys handles GET /api/v0.9/llm-proxies/{id}/api-keys
 func (h *LLMProxyAPIKeyHandler) ListAPIKeys(c *gin.Context) {
 	orgID, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {
@@ -79,7 +79,7 @@ func (h *LLMProxyAPIKeyHandler) ListAPIKeys(c *gin.Context) {
 	c.JSON(http.StatusOK, response)
 }
 
-// DeleteAPIKey handles DELETE /api/v1alpha2/llm-proxies/{id}/api-keys/{keyName}
+// DeleteAPIKey handles DELETE /api/v0.9/llm-proxies/{id}/api-keys/{keyName}
 func (h *LLMProxyAPIKeyHandler) DeleteAPIKey(c *gin.Context) {
 	orgID, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {
@@ -131,7 +131,7 @@ func (h *LLMProxyAPIKeyHandler) DeleteAPIKey(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
-// CreateAPIKey handles POST /api/v1alpha2/llm-proxies/{id}/api-keys
+// CreateAPIKey handles POST /api/v0.9/llm-proxies/{id}/api-keys
 func (h *LLMProxyAPIKeyHandler) CreateAPIKey(c *gin.Context) {
 	orgID, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {

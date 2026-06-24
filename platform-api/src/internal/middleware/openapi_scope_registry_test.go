@@ -8,7 +8,7 @@ import (
 const testSpec = `
 openapi: 3.1.1
 servers:
-  - url: https://localhost:9243/api/v1alpha2
+  - url: https://localhost:9243/api/v0.9
 paths:
   /projects:
     post:
@@ -57,9 +57,9 @@ func TestLoadScopeRegistry(t *testing.T) {
 		wantFound  bool
 		wantScopes []string
 	}{
-		{"POST", "/api/v1alpha2/projects", true, []string{"ap:project:create", "ap:project:manage"}},
-		{"GET", "/api/v1alpha2/projects/:projectId", true, []string{"ap:project:read", "ap:project:manage"}},
-		{"POST", "/api/v1alpha2/organizations", false, nil},
+		{"POST", "/api/v0.9/projects", true, []string{"ap:project:create", "ap:project:manage"}},
+		{"GET", "/api/v0.9/projects/:projectId", true, []string{"ap:project:read", "ap:project:manage"}},
+		{"POST", "/api/v0.9/organizations", false, nil},
 	}
 	for _, tc := range tests {
 		scopes, found := reg.Lookup(tc.method, tc.path)

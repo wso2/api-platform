@@ -25,7 +25,7 @@ info:
     Authorization is enforced via OAuth2 scopes carried in the JWT. Both read (GET) and write
     operations require specific scopes declared in the `security` field of each operation.
 
-  version: v1alpha2
+  version: 0.9.0
   contact:
     name: WSO2 API Platform Team
   license:
@@ -33,9 +33,9 @@ info:
     url: https://www.apache.org/licenses/LICENSE-2.0.html
 
 servers:
-  - url: https://localhost:9243/api/v1alpha2
+  - url: https://localhost:9243/api/v0.9
     description: Development server (HTTPS)
-  - url: https://api.platform.com/api/v1alpha2
+  - url: https://api.platform.com/api/v0.9
     description: Production server
 
 security:

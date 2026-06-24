@@ -16,7 +16,7 @@
 # under the License.
 # --------------------------------------------------------------------
 
-apiVersion: gateway.api-platform.wso2.com/v1alpha2
+apiVersion: gateway.api-platform.wso2.com/v1
 kind: LlmProviderTemplate
 metadata:
   name: anthropic

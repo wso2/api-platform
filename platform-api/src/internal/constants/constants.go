@@ -146,15 +146,15 @@ const (
 // consumable by old gateways. New code should use GatewayApiVersion.
 const (
 	GatewayApiVersionV1Alpha1 = "gateway.api-platform.wso2.com/v1alpha1"
-	GatewayApiVersion         = "gateway.api-platform.wso2.com/v1alpha2"
+	GatewayApiVersion         = "gateway.api-platform.wso2.com/v1"
 )
 
 // Platform-api resource URL version. APIBasePath is the single source of truth for
 // the prefix every handler route group is mounted under. NOTE: this is a DIFFERENT
-// axis from GatewayApiVersion* (the gateway artifact apiVersion) — they share the
-// value "v1alpha2" but are governed independently.
+// axis from GatewayApiVersion* (the gateway artifact apiVersion) — the two are
+// governed independently and currently hold different values ("v0.9" vs "v1").
 const (
-    APIVersion  = "v1alpha2"
+    APIVersion  = "v0.9"
     APIBasePath = "/api/" + APIVersion
 )
 

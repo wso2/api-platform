@@ -44,7 +44,7 @@ func NewDeploymentHandler(deploymentService *service.DeploymentService, slogger 
 	}
 }
 
-// DeployAPI handles POST /api/v1alpha2/rest-apis/:apiId/deployments
+// DeployAPI handles POST /api/v0.9/rest-apis/:apiId/deployments
 // Creates a new immutable deployment artifact and deploys it to a gateway
 func (h *DeploymentHandler) DeployAPI(c *gin.Context) {
 	orgId, exists := middleware.GetOrganizationFromContext(c)
@@ -130,7 +130,7 @@ func (h *DeploymentHandler) DeployAPI(c *gin.Context) {
 	c.JSON(http.StatusCreated, deployment)
 }
 
-// UndeployDeployment handles POST /api/v1alpha2/rest-apis/:apiId/deployments/:deploymentId/undeploy
+// UndeployDeployment handles POST /api/v0.9/rest-apis/:apiId/deployments/:deploymentId/undeploy
 func (h *DeploymentHandler) UndeployDeployment(c *gin.Context) {
 	orgId, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {
@@ -198,7 +198,7 @@ func (h *DeploymentHandler) UndeployDeployment(c *gin.Context) {
 	c.JSON(http.StatusOK, deployment)
 }
 
-// RestoreDeployment handles POST /api/v1alpha2/rest-apis/:apiId/deployments/:deploymentId/restore
+// RestoreDeployment handles POST /api/v0.9/rest-apis/:apiId/deployments/:deploymentId/restore
 func (h *DeploymentHandler) RestoreDeployment(c *gin.Context) {
 	orgId, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {
@@ -256,7 +256,7 @@ func (h *DeploymentHandler) RestoreDeployment(c *gin.Context) {
 	c.JSON(http.StatusOK, deployment)
 }
 
-// DeleteDeployment handles DELETE /api/v1alpha2/rest-apis/:apiId/deployments/:deploymentId
+// DeleteDeployment handles DELETE /api/v0.9/rest-apis/:apiId/deployments/:deploymentId
 // Permanently deletes an undeployed deployment artifact
 func (h *DeploymentHandler) DeleteDeployment(c *gin.Context) {
 	orgId, exists := middleware.GetOrganizationFromContext(c)
@@ -305,7 +305,7 @@ func (h *DeploymentHandler) DeleteDeployment(c *gin.Context) {
 	c.JSON(http.StatusNoContent, nil)
 }
 
-// GetDeployment handles GET /api/v1alpha2/rest-apis/:apiId/deployments/:deploymentId
+// GetDeployment handles GET /api/v0.9/rest-apis/:apiId/deployments/:deploymentId
 // Retrieves metadata for a specific deployment artifact
 func (h *DeploymentHandler) GetDeployment(c *gin.Context) {
 	orgId, exists := middleware.GetOrganizationFromContext(c)
@@ -350,7 +350,7 @@ func (h *DeploymentHandler) GetDeployment(c *gin.Context) {
 	c.JSON(http.StatusOK, deployment)
 }
 
-// GetDeployments handles GET /api/v1alpha2/rest-apis/:apiId/deployments
+// GetDeployments handles GET /api/v0.9/rest-apis/:apiId/deployments
 // Retrieves all deployment records for an API with optional filters
 func (h *DeploymentHandler) GetDeployments(c *gin.Context) {
 	orgId, exists := middleware.GetOrganizationFromContext(c)

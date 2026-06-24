@@ -57,7 +57,7 @@ func (h *MCPProxyHandler) RegisterRoutes(r *gin.Engine) {
 	}
 }
 
-// CreateMCPProxy handles POST /api/v1alpha2/mcp-proxies
+// CreateMCPProxy handles POST /api/v0.9/mcp-proxies
 func (h *MCPProxyHandler) CreateMCPProxy(c *gin.Context) {
 	orgID, ok := middleware.GetOrganizationFromContext(c)
 	if !ok {
@@ -88,7 +88,7 @@ func (h *MCPProxyHandler) CreateMCPProxy(c *gin.Context) {
 	c.JSON(http.StatusCreated, resp)
 }
 
-// ListMCPProxies handles GET /api/v1alpha2/mcp-proxies
+// ListMCPProxies handles GET /api/v0.9/mcp-proxies
 func (h *MCPProxyHandler) ListMCPProxies(c *gin.Context) {
 	orgID, ok := middleware.GetOrganizationFromContext(c)
 	if !ok {
@@ -130,7 +130,7 @@ func (h *MCPProxyHandler) ListMCPProxies(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
-// GetMCPProxy handles GET /api/v1alpha2/mcp-proxies/:id
+// GetMCPProxy handles GET /api/v0.9/mcp-proxies/:id
 func (h *MCPProxyHandler) GetMCPProxy(c *gin.Context) {
 	orgID, ok := middleware.GetOrganizationFromContext(c)
 	if !ok {
@@ -149,7 +149,7 @@ func (h *MCPProxyHandler) GetMCPProxy(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
-// UpdateMCPProxy handles PUT /api/v1alpha2/mcp-proxies/:id
+// UpdateMCPProxy handles PUT /api/v0.9/mcp-proxies/:id
 func (h *MCPProxyHandler) UpdateMCPProxy(c *gin.Context) {
 	orgID, ok := middleware.GetOrganizationFromContext(c)
 	if !ok {
@@ -175,7 +175,7 @@ func (h *MCPProxyHandler) UpdateMCPProxy(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
-// DeleteMCPProxy handles DELETE /api/v1alpha2/mcp-proxies/:id
+// DeleteMCPProxy handles DELETE /api/v0.9/mcp-proxies/:id
 func (h *MCPProxyHandler) DeleteMCPProxy(c *gin.Context) {
 	orgID, ok := middleware.GetOrganizationFromContext(c)
 	if !ok {
@@ -193,7 +193,7 @@ func (h *MCPProxyHandler) DeleteMCPProxy(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
-// FetchMCPProxyServerInfo handles POST /api/v1alpha2/mcp-proxies/fetch-server-info
+// FetchMCPProxyServerInfo handles POST /api/v0.9/mcp-proxies/fetch-server-info
 func (h *MCPProxyHandler) FetchMCPProxyServerInfo(c *gin.Context) {
 	orgID, ok := middleware.GetOrganizationFromContext(c)
 	if !ok {

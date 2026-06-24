@@ -1873,7 +1873,7 @@ func TestApplyStructOverrides(t *testing.T) {
 }
 
 func TestApplyDeploymentOverrides(t *testing.T) {
-	baseYAML := `apiVersion: gateway.api-platform.wso2.com/v1alpha2
+	baseYAML := `apiVersion: gateway.api-platform.wso2.com/v1
 kind: RestApi
 metadata:
   name: test-api
