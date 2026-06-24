@@ -74,12 +74,12 @@ func NewWebSubAPIDeploymentService(
 }
 
 // DeployWebSubAPIByHandle creates a new immutable deployment using WebSub API handle
-func (s *WebSubAPIDeploymentService) DeployWebSubAPIByHandle(apiHandle string, req *api.DeployRequest, orgUUID string) (*api.DeploymentResponse, error) {
+func (s *WebSubAPIDeploymentService) DeployWebSubAPIByHandle(apiHandle string, req *api.DeployRequest, orgUUID, createdBy string) (*api.DeploymentResponse, error) {
 	apiUUID, err := s.getWebSubAPIUUIDByHandle(apiHandle, orgUUID)
 	if err != nil {
 		return nil, err
 	}
-	return s.deployWebSubAPI(apiUUID, req, orgUUID)
+	return s.deployWebSubAPI(apiUUID, req, orgUUID, createdBy)
 }
 
 // RestoreWebSubAPIDeploymentByHandle restores a previous deployment using WebSub API handle
@@ -138,7 +138,7 @@ func (s *WebSubAPIDeploymentService) GetWebSubAPIDeploymentsByHandle(apiHandle, 
 }
 
 // deployWebSubAPI deploys a WebSub API to a gateway
-func (s *WebSubAPIDeploymentService) deployWebSubAPI(apiUUID string, req *api.DeployRequest, orgID string) (*api.DeploymentResponse, error) {
+func (s *WebSubAPIDeploymentService) deployWebSubAPI(apiUUID string, req *api.DeployRequest, orgID, createdBy string) (*api.DeploymentResponse, error) {
 	if req == nil {
 		return nil, constants.ErrInvalidInput
 	}
@@ -204,6 +204,7 @@ func (s *WebSubAPIDeploymentService) deployWebSubAPI(apiUUID string, req *api.De
 		BaseDeploymentID: baseDeploymentID,
 		Content:          contentBytes,
 		Metadata:         metadata,
+		CreatedBy:        createdBy,
 	}
 
 	if s.cfg.Deployments.MaxPerAPIGateway < 1 {

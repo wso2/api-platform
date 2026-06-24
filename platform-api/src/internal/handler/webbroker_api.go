@@ -160,7 +160,8 @@ func (h *WebBrokerAPIHandler) UpdateWebBrokerAPI(c *gin.Context) {
 		return
 	}
 
-	resp, err := h.webbrokerAPIService.Update(orgID, id, &req)
+	updatedBy, _ := middleware.GetUsernameFromContext(c)
+	resp, err := h.webbrokerAPIService.Update(orgID, id, updatedBy, &req)
 	if err != nil {
 		h.handleServiceError(c, err)
 		return
@@ -178,8 +179,9 @@ func (h *WebBrokerAPIHandler) DeleteWebBrokerAPI(c *gin.Context) {
 	}
 
 	id := c.Param("apiId")
+	deletedBy, _ := middleware.GetUsernameFromContext(c)
 
-	if err := h.webbrokerAPIService.Delete(orgID, id); err != nil {
+	if err := h.webbrokerAPIService.Delete(orgID, id, deletedBy); err != nil {
 		h.handleServiceError(c, err)
 		return
 	}
@@ -238,9 +240,6 @@ func (h *WebBrokerAPIHandler) handleServiceError(c *gin.Context, err error) {
 		c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict", "WebBroker API limit reached for the organization"))
 	case errors.Is(err, constants.ErrProjectNotFound):
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Project not found"))
-	// devportals table removed
-	// case errors.Is(err, constants.ErrDevPortalNotFound):
-	// 	c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "DevPortal not found"))
 	default:
 		h.slogger.Error("WebBroker API service error", "error", err)
 		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "An unexpected error occurred"))

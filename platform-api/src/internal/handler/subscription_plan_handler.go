@@ -145,7 +145,8 @@ func (h *SubscriptionPlanHandler) CreateSubscriptionPlan(c *gin.Context) {
 		plan.ExpiryTime = &t
 	}
 
-	created, err := h.planService.CreatePlan(orgId, plan)
+	actor, _ := middleware.GetUsernameFromContext(c)
+	created, err := h.planService.CreatePlan(orgId, actor, plan)
 	if err != nil {
 		if errors.Is(err, constants.ErrSubscriptionPlanAlreadyExists) {
 			c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict", err.Error()))
@@ -278,7 +279,8 @@ func (h *SubscriptionPlanHandler) UpdateSubscriptionPlan(c *gin.Context) {
 		update.ExpiryTime = &t
 	}
 
-	updated, err := h.planService.UpdatePlan(planId, orgId, update)
+	actor, _ := middleware.GetUsernameFromContext(c)
+	updated, err := h.planService.UpdatePlan(planId, orgId, actor, update)
 	if err != nil {
 		if errors.Is(err, constants.ErrSubscriptionPlanNotFound) {
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "Subscription plan not found"))
@@ -309,7 +311,8 @@ func (h *SubscriptionPlanHandler) DeleteSubscriptionPlan(c *gin.Context) {
 		return
 	}
 
-	err := h.planService.DeletePlan(planId, orgId)
+	actor, _ := middleware.GetUsernameFromContext(c)
+	err := h.planService.DeletePlan(planId, orgId, actor)
 	if err != nil {
 		if errors.Is(err, constants.ErrSubscriptionPlanNotFound) {
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "Subscription plan not found"))

@@ -229,7 +229,7 @@ func (s *GatewayInternalAPIService) ListSubscriptionsForAPI(apiID, orgID string)
 	for i, sub := range subs {
 		items[i] = dto.GatewaySubscriptionInfo{
 			ID:                 sub.UUID,
-			APIID:              sub.APIUUID,
+			APIID:              sub.ArtifactUUID,
 			ApplicationID:      sub.ApplicationID,
 			SubscriptionToken:  sub.SubscriptionToken,
 			SubscriptionPlanID: sub.SubscriptionPlanID,
@@ -391,7 +391,7 @@ func (s *GatewayInternalAPIService) CreateGatewayDeployment(apiHandle, orgID, ga
 	projectID := project.ID
 
 	// Check if API already exists by getting metadata
-	existingAPIMetadata, err := s.apiRepo.GetAPIMetadataByHandle(apiHandle, orgID)
+	existingAPIMetadata, err := s.artifactRepo.GetAPIMetadataByHandle(apiHandle, orgID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to check existing API: %w", err)
 	}
@@ -424,8 +424,8 @@ func (s *GatewayInternalAPIService) CreateGatewayDeployment(apiHandle, orgID, ga
 			CreatedBy:       "admin", // Default provider
 			LifeCycleStatus: "CREATED",
 			Kind:            notification.Configuration.Kind,
-			Transport:       []string{"http", "https"},
 			Configuration: model.RestAPIConfig{
+				Transport: []string{"http", "https"},
 				Context:    &notification.Configuration.Spec.Context,
 				Operations: operations,
 			},
@@ -555,7 +555,7 @@ func (s *GatewayInternalAPIService) GetDeploymentsByGateway(orgID, gatewayID str
 		items[i] = dto.GatewayDeploymentInfo{
 			ArtifactID:   dep.ArtifactID,
 			DeploymentID: dep.DeploymentID,
-			Kind:         dep.Kind,
+			Kind:         dep.Type,
 			State:        string(dep.Status),
 			DeployedAt:   deployedAt,
 			Etag:         utils.GenerateDeterministicUUIDv7(dep.DeploymentID, deployedAt),

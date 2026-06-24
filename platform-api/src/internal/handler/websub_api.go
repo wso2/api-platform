@@ -58,9 +58,6 @@ func (h *WebSubAPIHandler) RegisterRoutes(r *gin.Engine) {
 		v1.GET("/websub-apis/:apiId", h.GetWebSubAPI)
 		v1.PUT("/websub-apis/:apiId", h.UpdateWebSubAPI)
 		v1.DELETE("/websub-apis/:apiId", h.DeleteWebSubAPI)
-		// publication_mappings / devportals tables removed — routes disabled
-		// v1.POST("/websub-apis/:apiId/publications", h.PublishToDevPortal)
-		// v1.DELETE("/websub-apis/:apiId/publications/:devportalId", h.UnpublishFromDevPortal)
 	}
 }
 
@@ -160,7 +157,8 @@ func (h *WebSubAPIHandler) UpdateWebSubAPI(c *gin.Context) {
 		return
 	}
 
-	resp, err := h.websubAPIService.Update(orgID, id, &req)
+	updatedBy, _ := middleware.GetUsernameFromContext(c)
+	resp, err := h.websubAPIService.Update(orgID, id, updatedBy, &req)
 	if err != nil {
 		h.handleServiceError(c, err)
 		return
@@ -178,51 +176,14 @@ func (h *WebSubAPIHandler) DeleteWebSubAPI(c *gin.Context) {
 	}
 
 	id := c.Param("apiId")
+	deletedBy, _ := middleware.GetUsernameFromContext(c)
 
-	if err := h.websubAPIService.Delete(orgID, id); err != nil {
+	if err := h.websubAPIService.Delete(orgID, id, deletedBy); err != nil {
 		h.handleServiceError(c, err)
 		return
 	}
 
 	c.Status(http.StatusNoContent)
-}
-
-// PublishToDevPortal publishes a WebSub API to a DevPortal.
-func (h *WebSubAPIHandler) PublishToDevPortal(c *gin.Context) {
-	// publication_mappings / devportals tables removed — handler disabled
-	// orgID, ok := middleware.GetOrganizationFromContext(c)
-	// if !ok {
-	// 	c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
-	// 	return
-	// }
-	// apiHandle := c.Param("apiId")
-	// var req api.PublishToDevPortalRequest
-	// if err := c.ShouldBindJSON(&req); err != nil {
-	// 	c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid request body"))
-	// 	return
-	// }
-	// if err := h.websubAPIService.PublishToDevPortal(orgID, apiHandle, &req); err != nil {
-	// 	h.handleServiceError(c, err)
-	// 	return
-	// }
-	// c.JSON(http.StatusOK, gin.H{"message": "WebSub API published successfully to DevPortal"})
-}
-
-// UnpublishFromDevPortal unpublishes a WebSub API from a DevPortal.
-func (h *WebSubAPIHandler) UnpublishFromDevPortal(c *gin.Context) {
-	// publication_mappings / devportals tables removed — handler disabled
-	// orgID, ok := middleware.GetOrganizationFromContext(c)
-	// if !ok {
-	// 	c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
-	// 	return
-	// }
-	// apiHandle := c.Param("apiId")
-	// devPortalID := c.Param("devportalId")
-	// if err := h.websubAPIService.UnpublishFromDevPortal(orgID, apiHandle, devPortalID); err != nil {
-	// 	h.handleServiceError(c, err)
-	// 	return
-	// }
-	// c.JSON(http.StatusOK, gin.H{"message": "WebSub API unpublished successfully from DevPortal"})
 }
 
 // handleServiceError maps service errors to HTTP responses
@@ -238,9 +199,6 @@ func (h *WebSubAPIHandler) handleServiceError(c *gin.Context, err error) {
 		c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict", "WebSub API limit reached for the organization"))
 	case errors.Is(err, constants.ErrProjectNotFound):
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Project not found"))
-	// devportals table removed
-	// case errors.Is(err, constants.ErrDevPortalNotFound):
-	// 	c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "DevPortal not found"))
 	default:
 		h.slogger.Error("WebSub API service error", "error", err)
 		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "An unexpected error occurred"))

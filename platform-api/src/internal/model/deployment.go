@@ -33,6 +33,7 @@ type Deployment struct {
 	BaseDeploymentID *string        `json:"baseDeploymentId,omitempty" db:"base_deployment_id"`
 	Content          []byte         `json:"-" db:"content"`
 	Metadata         map[string]any `json:"metadata,omitempty" db:"metadata"`
+	CreatedBy        string         `json:"createdBy,omitempty" db:"created_by"`
 	CreatedAt        time.Time      `json:"createdAt" db:"created_at"`
 
 	// Lifecycle state fields (from deployment_status table via JOIN)
@@ -52,7 +53,7 @@ func (Deployment) TableName() string {
 type DeploymentContent struct {
 	DeploymentID string
 	ArtifactID   string
-	Kind         string
+	Type         string
 	Content      []byte
 }
 
@@ -75,7 +76,7 @@ type DeploymentInfo struct {
 	DeploymentID string           `json:"deploymentId" db:"deployment_id"`
 	ArtifactID   string           `json:"artifactId" db:"artifact_uuid"`
 	Handle       string           `json:"handle" db:"handle"` // Artifact handle (apiId)
-	Kind         string           `json:"kind" db:"kind"`     // Artifact kind: RestAPI, LLMProvider, LLMProxy, MCPProxy
+	Type         string           `json:"type" db:"type"`     // Artifact type: RestAPI, LLMProvider, LLMProxy, MCPProxy
 	Status       DeploymentStatus `json:"status" db:"status"`
 	PerformedAt  time.Time        `json:"performedAt" db:"performed_at"` // When the deploy/undeploy action was initiated
 }

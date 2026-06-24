@@ -52,8 +52,10 @@ var (
 // APIKeyService handles API key management operations for external API key injection
 type APIKeyService struct {
 	apiRepo              repository.APIRepository
+	artifactRepo         repository.ArtifactRepository
 	apiKeyRepo           repository.APIKeyRepository
 	gatewayEventsService *GatewayEventsService
+	auditRepo            repository.AuditRepository
 	hashingAlgorithms    []string
 	slogger              *slog.Logger
 }
@@ -61,14 +63,16 @@ type APIKeyService struct {
 // NewAPIKeyService creates a new API key service instance.
 // hashingAlgorithms specifies the algorithms used to hash API keys before storage and broadcast.
 // If empty, defaults to [sha256].
-func NewAPIKeyService(apiRepo repository.APIRepository, apiKeyRepo repository.APIKeyRepository, gatewayEventsService *GatewayEventsService, hashingAlgorithms []string, slogger *slog.Logger) *APIKeyService {
+func NewAPIKeyService(apiRepo repository.APIRepository, artifactRepo repository.ArtifactRepository, apiKeyRepo repository.APIKeyRepository, gatewayEventsService *GatewayEventsService, auditRepo repository.AuditRepository, hashingAlgorithms []string, slogger *slog.Logger) *APIKeyService {
 	if len(hashingAlgorithms) == 0 {
 		hashingAlgorithms = []string{defaultHashingAlgorithm}
 	}
 	return &APIKeyService{
 		apiRepo:              apiRepo,
+		artifactRepo:         artifactRepo,
 		apiKeyRepo:           apiKeyRepo,
 		gatewayEventsService: gatewayEventsService,
+		auditRepo:            auditRepo,
 		hashingAlgorithms:    hashingAlgorithms,
 		slogger:              slogger,
 	}
@@ -273,7 +277,7 @@ func (s *APIKeyService) resolveUniqueKeyName(artifactUUID string, req *api.Creat
 // This method is used when external platforms inject API keys to hybrid gateways.
 func (s *APIKeyService) CreateAPIKey(ctx context.Context, apiHandle, orgId, userId string, req *api.CreateAPIKeyRequest) error {
 	// Resolve API handle to UUID
-	apiMetadata, err := s.apiRepo.GetAPIMetadataByHandle(apiHandle, orgId)
+	apiMetadata, err := s.artifactRepo.GetAPIMetadataByHandle(apiHandle, orgId)
 	if err != nil {
 		s.slogger.Error("Failed to get API metadata for API key creation", "apiHandle", apiHandle, "error", err)
 		return fmt.Errorf("failed to get API by handle: %w", err)
@@ -334,7 +338,7 @@ func (s *APIKeyService) CreateAPIKey(ctx context.Context, apiHandle, orgId, user
 		Name:           keyName,
 		MaskedAPIKey:   maskedAPIKey,
 		APIKeyHashes:   apiKeyHashesJSON,
-		Status:         "active",
+		Status:         constants.APIKeyStatusActive,
 		CreatedBy:      userId,
 		ExpiresAt:      expiresAt,
 		Issuer:         issuer,
@@ -344,6 +348,7 @@ func (s *APIKeyService) CreateAPIKey(ctx context.Context, apiHandle, orgId, user
 		s.slogger.Error("Failed to persist API key to database", "apiHandle", apiHandle, "keyName", keyName, "error", err)
 		return fmt.Errorf("failed to persist API key: %w", err)
 	}
+	_ = s.auditRepo.Record("CREATE", apiKeyUUID, "api_key", orgId, userId)
 
 	// Build the API key created event — send the hash JSON and masked key, not the plain key
 	event := &model.APIKeyCreatedEvent{
@@ -391,7 +396,7 @@ func (s *APIKeyService) CreateAPIKey(ctx context.Context, apiHandle, orgId, user
 // This method is used when external platforms rotates/regenerates API keys on hybrid gateways.
 func (s *APIKeyService) UpdateAPIKey(ctx context.Context, apiHandle, orgId, keyName, userId string, req *api.UpdateAPIKeyRequest) error {
 	// Resolve API handle to UUID
-	apiMetadata, err := s.apiRepo.GetAPIMetadataByHandle(apiHandle, orgId)
+	apiMetadata, err := s.artifactRepo.GetAPIMetadataByHandle(apiHandle, orgId)
 	if err != nil {
 		s.slogger.Error("Failed to get API metadata for API key update", "apiHandle", apiHandle, "error", err)
 		return fmt.Errorf("failed to get API by handle: %w", err)
@@ -432,7 +437,7 @@ func (s *APIKeyService) UpdateAPIKey(ctx context.Context, apiHandle, orgId, keyN
 		Name:         keyName,
 		MaskedAPIKey: maskedAPIKey,
 		APIKeyHashes: apiKeyHashesJSON,
-		Status:       "active",
+		Status:       constants.APIKeyStatusActive,
 		ExpiresAt:    expiresAt,
 		Issuer:       req.Issuer,
 	}
@@ -440,6 +445,7 @@ func (s *APIKeyService) UpdateAPIKey(ctx context.Context, apiHandle, orgId, keyN
 		s.slogger.Error("Failed to update API key in database", "apiHandle", apiHandle, "keyName", keyName, "error", err)
 		return fmt.Errorf("failed to update API key in database: %w", err)
 	}
+	_ = s.auditRepo.Record("UPDATE", keyName, "api_key", orgId, userId)
 
 	// Build the API key updated event — send the hash JSON and masked key, not the plain key
 	event := &model.APIKeyUpdatedEvent{
@@ -491,7 +497,7 @@ func (s *APIKeyService) UpdateAPIKey(ctx context.Context, apiHandle, orgId, keyN
 // RevokeAPIKey broadcasts API key revocation to all gateways where the API is deployed
 func (s *APIKeyService) RevokeAPIKey(ctx context.Context, apiHandle, orgId, keyName, userId string) error {
 	// Resolve API handle to UUID
-	apiMetadata, err := s.apiRepo.GetAPIMetadataByHandle(apiHandle, orgId)
+	apiMetadata, err := s.artifactRepo.GetAPIMetadataByHandle(apiHandle, orgId)
 	if err != nil {
 		s.slogger.Error("Failed to get API metadata for API key revocation", "apiHandle", apiHandle, "error", err)
 		return fmt.Errorf("failed to get API by handle: %w", err)
@@ -516,6 +522,7 @@ func (s *APIKeyService) RevokeAPIKey(ctx context.Context, apiHandle, orgId, keyN
 		s.slogger.Error("Failed to revoke API key in database", "apiHandle", apiHandle, "keyName", keyName, "error", err)
 		return fmt.Errorf("failed to revoke API key in database: %w", err)
 	}
+	_ = s.auditRepo.Record("REVOKE", keyName, "api_key", orgId, userId)
 
 	// Build the API key revoked event
 	event := &model.APIKeyRevokedEvent{

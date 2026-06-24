@@ -41,8 +41,8 @@ type OrganizationService struct {
 	llmProxyRepo      repository.LLMProxyRepository
 	mcpProxyRepo      repository.MCPProxyRepository
 	websubAPIRepo     repository.WebSubAPIRepository
-	devPortalService  *DevPortalService
 	llmTemplateSeeder *LLMTemplateSeeder
+	auditRepo         repository.AuditRepository
 	config            *config.Server
 	slogger           *slog.Logger
 }
@@ -56,14 +56,14 @@ func NewOrganizationService(orgRepo repository.OrganizationRepository,
 	llmProxyRepo repository.LLMProxyRepository,
 	mcpProxyRepo repository.MCPProxyRepository,
 	websubAPIRepo repository.WebSubAPIRepository,
-	devPortalService *DevPortalService,
 	llmTemplateSeeder *LLMTemplateSeeder,
+	auditRepo repository.AuditRepository,
 	cfg *config.Server,
 	slogger *slog.Logger,
 ) *OrganizationService {
 	return &OrganizationService{
-		orgRepo:     orgRepo,
-		projectRepo: projectRepo,
+		orgRepo:           orgRepo,
+		projectRepo:       projectRepo,
 		applicationRepo:   applicationRepo,
 		apiRepo:           apiRepo,
 		gatewayRepo:       gatewayRepo,
@@ -71,8 +71,8 @@ func NewOrganizationService(orgRepo repository.OrganizationRepository,
 		llmProxyRepo:      llmProxyRepo,
 		mcpProxyRepo:      mcpProxyRepo,
 		websubAPIRepo:     websubAPIRepo,
-		devPortalService:  devPortalService,
 		llmTemplateSeeder: llmTemplateSeeder,
+		auditRepo:         auditRepo,
 		config:            cfg,
 		slogger:           slogger,
 	}
@@ -168,7 +168,7 @@ func (s *OrganizationService) GetOrganizationSubscription(orgID string) (*api.Or
 	return res, nil
 }
 
-func (s *OrganizationService) RegisterOrganization(id string, handle string, name string, region string) (*api.Organization, error) {
+func (s *OrganizationService) RegisterOrganization(id string, handle string, name string, region string, performedBy string) (*api.Organization, error) {
 	// Auto-generate handle from name if not provided; otherwise validate the explicit handle.
 	if handle == "" {
 		generated, genErr := utils.GenerateHandle(name, func(h string) bool {
@@ -221,6 +221,7 @@ func (s *OrganizationService) RegisterOrganization(id string, handle string, nam
 	if err != nil {
 		return nil, err
 	}
+	_ = s.auditRepo.Record("CREATE", orgModel.ID, "organization", orgModel.ID, performedBy)
 
 	// Seed default LLM provider templates for the new organization (best-effort)
 	if s.llmTemplateSeeder != nil {
@@ -228,17 +229,6 @@ func (s *OrganizationService) RegisterOrganization(id string, handle string, nam
 			s.slogger.Warn("Failed to seed default LLM templates for organization", "organization", name, "error", seedErr)
 		}
 	}
-
-	// Create default DevPortal if enabled
-	// devportals table removed — disabled
-	// if s.devPortalService != nil && s.config != nil && s.config.DefaultDevPortal.Enabled {
-	// 	defaultDevPortal, devPortalErr := s.devPortalService.CreateDefaultDevPortal(id)
-	// 	if devPortalErr != nil {
-	// 		s.slogger.Warn("Failed to create default DevPortal for organization", "organization", name, "error", devPortalErr)
-	// 	} else if defaultDevPortal != nil {
-	// 		s.slogger.Info("Created default DevPortal for organization", "devPortal", defaultDevPortal.Name, "organization", name)
-	// 	}
-	// }
 
 	// Create default project for the organization
 	defaultProject := &model.Project{

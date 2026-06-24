@@ -172,8 +172,8 @@ func (h *SubscriptionHandler) ListSubscriptions(c *gin.Context) {
 	apiUUIDSet := make(map[string]struct{})
 	planIDSet := make(map[string]struct{})
 	for _, sub := range list {
-		if sub.APIUUID != "" {
-			apiUUIDSet[sub.APIUUID] = struct{}{}
+		if sub.ArtifactUUID != "" {
+			apiUUIDSet[sub.ArtifactUUID] = struct{}{}
 		}
 		if sub.SubscriptionPlanID != nil && *sub.SubscriptionPlanID != "" {
 			planIDSet[*sub.SubscriptionPlanID] = struct{}{}
@@ -342,9 +342,9 @@ func (h *SubscriptionHandler) RegisterRoutes(r *gin.Engine) {
 
 func (h *SubscriptionHandler) toSubscriptionResponse(sub *model.Subscription, orgId string) gin.H {
 	// apiId in response should be the handle (e.g. "samp1"), not the internal UUID
-	apiIdForResponse := h.subscriptionService.ResolveAPIHandle(sub.APIUUID, orgId)
+	apiIdForResponse := h.subscriptionService.ResolveAPIHandle(sub.ArtifactUUID, orgId)
 	if apiIdForResponse == "" {
-		apiIdForResponse = sub.APIUUID // fallback to UUID
+		apiIdForResponse = sub.ArtifactUUID // fallback to UUID
 	}
 	resp := gin.H{
 		"id":             sub.UUID,
@@ -378,9 +378,9 @@ func (h *SubscriptionHandler) toSubscriptionResponse(sub *model.Subscription, or
 // toSubscriptionResponseWithMaps builds a subscription response using pre-fetched lookup maps.
 // Used by ListSubscriptions to avoid N+1 queries.
 func (h *SubscriptionHandler) toSubscriptionResponseWithMaps(sub *model.Subscription, orgId string, apiHandleMap, planNameMap map[string]string) gin.H {
-	apiIdForResponse := apiHandleMap[sub.APIUUID]
+	apiIdForResponse := apiHandleMap[sub.ArtifactUUID]
 	if apiIdForResponse == "" {
-		apiIdForResponse = sub.APIUUID // fallback to UUID
+		apiIdForResponse = sub.ArtifactUUID // fallback to UUID
 	}
 	resp := gin.H{
 		"id":             sub.UUID,

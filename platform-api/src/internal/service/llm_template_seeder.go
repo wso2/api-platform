@@ -20,6 +20,7 @@ package service
 import (
 	"fmt"
 
+	"platform-api/src/internal/constants"
 	"platform-api/src/internal/model"
 	"platform-api/src/internal/repository"
 )
@@ -98,6 +99,7 @@ func (s *LLMTemplateSeeder) SeedForOrg(orgUUID string) error {
 			ID:               tpl.ID,
 			Name:             tpl.Name,
 			Description:      tpl.Description,
+			ManagedBy:        constants.PolicyManagedByWSO2,
 			CreatedBy:        tpl.CreatedBy,
 			Metadata:         tpl.Metadata,
 			PromptTokens:     tpl.PromptTokens,

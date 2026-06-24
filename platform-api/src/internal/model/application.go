@@ -26,6 +26,7 @@ type Application struct {
 	ProjectUUID      string    `json:"projectId" db:"project_uuid"`
 	OrganizationUUID string    `json:"organizationId" db:"organization_uuid"`
 	CreatedBy        string    `json:"createdBy,omitempty" db:"created_by"`
+	UpdatedBy        string    `json:"updatedBy,omitempty" db:"updated_by"`
 	Name             string    `json:"name" db:"name"`
 	Description      string    `json:"description,omitempty" db:"description"`
 	Type             string    `json:"type" db:"type"`
@@ -44,7 +45,7 @@ type ApplicationAPIKey struct {
 	Name           string     `json:"name" db:"name"`
 	ArtifactID     string     `json:"artifactId" db:"artifact_uuid"`
 	ArtifactHandle string     `json:"-" db:"handle"`
-	ArtifactKind   string     `json:"-" db:"kind"`
+	ArtifactType   string     `json:"-" db:"type"`
 	Status         string     `json:"status,omitempty" db:"status"`
 	CreatedBy      string     `json:"createdBy,omitempty" db:"created_by"`
 	CreatedAt      time.Time  `json:"createdAt,omitempty" db:"created_at"`
@@ -58,7 +59,7 @@ type ApplicationAssociationTarget struct {
 	TargetHandle  string    `json:"-" db:"handle"`
 	TargetName    string    `json:"-" db:"name"`
 	TargetVersion string    `json:"-" db:"version"`
-	Kind          string    `json:"-" db:"kind"`
+	Type          string    `json:"-" db:"type"`
 	CreatedAt     time.Time `json:"-" db:"created_at"`
 	UpdatedAt     time.Time `json:"-" db:"updated_at"`
 }

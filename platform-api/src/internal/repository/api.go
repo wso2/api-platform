@@ -62,12 +62,6 @@ func (r *APIRepo) CreateAPI(api *model.API) error {
 	api.CreatedAt = time.Now()
 	api.UpdatedAt = time.Now()
 
-	// Convert transport slice to JSON
-	transportJSON, err := json.Marshal(api.Transport)
-	if err != nil {
-		return fmt.Errorf("failed to marshal transport: %w", err)
-	}
-
 	configurationJSON, err := serializeAPIConfigurations(api.Configuration)
 	if err != nil {
 		return err
@@ -80,25 +74,20 @@ func (r *APIRepo) CreateAPI(api *model.API) error {
 
 	if err := r.artifactRepo.Create(tx, &model.Artifact{
 		UUID:             api.ID,
-		Handle:           api.Handle,
-		Name:             api.Name,
-		Version:          api.Version,
-		Kind:             kind,
+		Type:             kind,
 		OrganizationUUID: api.OrganizationID,
-		CreatedAt:        api.CreatedAt,
-		UpdatedAt:        api.UpdatedAt,
 	}); err != nil {
 		return err
 	}
 
 	apiQuery := `
-		INSERT INTO rest_apis (uuid, description, created_by, project_uuid, lifecycle_status, transport, configuration)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO rest_apis (uuid, organization_uuid, handle, name, version, description, created_by, project_uuid, lifecycle_status, configuration, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
-	_, err = tx.Exec(r.db.Rebind(apiQuery), api.ID, api.Description,
-		api.CreatedBy, api.ProjectID, api.LifeCycleStatus,
-		string(transportJSON), configurationJSON)
+	_, err = tx.Exec(r.db.Rebind(apiQuery), api.ID, api.OrganizationID, api.Handle, api.Name, api.Version,
+		api.Description, api.CreatedBy, api.ProjectID, api.LifeCycleStatus,
+		configurationJSON, api.CreatedAt, api.UpdatedAt)
 	if err != nil {
 		return err
 	}
@@ -111,21 +100,24 @@ func (r *APIRepo) GetAPIByUUID(apiUUID, orgUUID string) (*model.API, error) {
 	api := &model.API{}
 
 	query := `
-		SELECT art.uuid, art.handle, art.name, art.kind, a.description, art.version, a.created_by,
+		SELECT a.uuid, a.handle, a.name, art.type, a.description, a.version, a.created_by, a.updated_by,
 			a.project_uuid, art.organization_uuid, a.lifecycle_status,
-			a.transport, a.configuration, art.created_at, art.updated_at
+			a.configuration, a.created_at, a.updated_at
 		FROM rest_apis a INNER JOIN artifacts art
 		ON a.uuid = art.uuid
 		WHERE a.uuid = ? AND art.organization_uuid = ?
 	`
 
-	var transportJSON string
 	var configJSON sql.NullString
+	var updatedBy sql.NullString
 	err := r.db.QueryRow(r.db.Rebind(query), apiUUID, orgUUID).Scan(
 		&api.ID, &api.Handle, &api.Name, &api.Kind, &api.Description,
-		&api.Version, &api.CreatedBy, &api.ProjectID, &api.OrganizationID, &api.LifeCycleStatus,
-		&transportJSON, &configJSON,
+		&api.Version, &api.CreatedBy, &updatedBy, &api.ProjectID, &api.OrganizationID, &api.LifeCycleStatus,
+		&configJSON,
 		&api.CreatedAt, &api.UpdatedAt)
+	if updatedBy.Valid {
+		api.UpdatedBy = updatedBy.String
+	}
 
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -134,10 +126,6 @@ func (r *APIRepo) GetAPIByUUID(apiUUID, orgUUID string) (*model.API, error) {
 		return nil, err
 	}
 
-	// Parse transport JSON
-	if transportJSON != "" {
-		json.Unmarshal([]byte(transportJSON), &api.Transport)
-	}
 	if config, err := deserializeAPIConfigurations(configJSON); err != nil {
 		return nil, err
 	} else if config != nil {
@@ -161,9 +149,9 @@ func (r *APIRepo) GetAPIsByUUIDs(uuids []string, orgUUID string) (map[string]str
 	}
 	args = append(args, orgUUID)
 	query := fmt.Sprintf(`
-		SELECT art.uuid, art.handle
-		FROM rest_apis r INNER JOIN artifacts art ON r.uuid = art.uuid
-		WHERE art.uuid IN (%s) AND art.organization_uuid = ?
+		SELECT a.uuid, a.handle
+		FROM rest_apis a INNER JOIN artifacts art ON a.uuid = art.uuid
+		WHERE a.uuid IN (%s) AND art.organization_uuid = ?
 	`, strings.Join(placeholders, ","))
 	rows, err := r.db.Query(r.db.Rebind(query), args...)
 	if err != nil {
@@ -185,7 +173,11 @@ func (r *APIRepo) GetAPIsByUUIDs(uuids []string, orgUUID string) (map[string]str
 func (r *APIRepo) GetAPIMetadataByHandle(handle, orgUUID string) (*model.APIMetadata, error) {
 	metadata := &model.APIMetadata{}
 
-	query := `SELECT uuid, handle, name, version, kind, organization_uuid FROM artifacts WHERE handle = ? AND organization_uuid = ?`
+	query := `
+		SELECT a.uuid, a.handle, a.name, a.version, art.type, art.organization_uuid
+		FROM rest_apis a JOIN artifacts art ON a.uuid = art.uuid
+		WHERE a.handle = ? AND art.organization_uuid = ?
+	`
 
 	err := r.db.QueryRow(r.db.Rebind(query), handle, orgUUID).Scan(
 		&metadata.ID, &metadata.Handle, &metadata.Name, &metadata.Version, &metadata.Kind, &metadata.OrganizationID)
@@ -203,13 +195,13 @@ func (r *APIRepo) GetAPIMetadataByHandle(handle, orgUUID string) (*model.APIMeta
 // GetAPIsByProjectUUID retrieves all APIs for a project
 func (r *APIRepo) GetAPIsByProjectUUID(projectUUID, orgUUID string) ([]*model.API, error) {
 	query := `
-		SELECT art.uuid, art.handle, art.name, art.kind, a.description, art.version, a.created_by,
+		SELECT a.uuid, a.handle, a.name, art.type, a.description, a.version, a.created_by, a.updated_by,
 			a.project_uuid, art.organization_uuid, a.lifecycle_status,
-			a.transport, a.configuration, art.created_at, art.updated_at
+			a.configuration, a.created_at, a.updated_at
 		FROM rest_apis a INNER JOIN artifacts art
 		ON a.uuid = art.uuid
 		WHERE a.project_uuid = ? AND art.organization_uuid = ?
-		ORDER BY art.created_at DESC
+		ORDER BY a.created_at DESC
 	`
 
 	rows, err := r.db.Query(r.db.Rebind(query), projectUUID, orgUUID)
@@ -221,20 +213,19 @@ func (r *APIRepo) GetAPIsByProjectUUID(projectUUID, orgUUID string) ([]*model.AP
 	var apis []*model.API
 	for rows.Next() {
 		api := &model.API{}
-		var transportJSON string
 		var configJSON sql.NullString
+		var updatedBy sql.NullString
 		err := rows.Scan(&api.ID, &api.Handle, &api.Name, &api.Kind, &api.Description,
-			&api.Version, &api.CreatedBy, &api.ProjectID, &api.OrganizationID,
+			&api.Version, &api.CreatedBy, &updatedBy, &api.ProjectID, &api.OrganizationID,
 			&api.LifeCycleStatus,
-			&transportJSON, &configJSON, &api.CreatedAt, &api.UpdatedAt)
+			&configJSON, &api.CreatedAt, &api.UpdatedAt)
 		if err != nil {
 			return nil, err
 		}
-
-		// Parse transport JSON
-		if transportJSON != "" {
-			json.Unmarshal([]byte(transportJSON), &api.Transport)
+		if updatedBy.Valid {
+			api.UpdatedBy = updatedBy.String
 		}
+
 		if config, err := deserializeAPIConfigurations(configJSON); err != nil {
 			return nil, err
 		} else if config != nil {
@@ -255,25 +246,25 @@ func (r *APIRepo) GetAPIsByOrganizationUUID(orgUUID string, projectUUID string) 
 	if projectUUID != "" {
 		// Filter by specific project within the organization
 		query = `
-			SELECT art.uuid, art.handle, art.name, art.kind, a.description, art.version, a.created_by,
+			SELECT a.uuid, a.handle, a.name, art.type, a.description, a.version, a.created_by,
 				a.project_uuid, art.organization_uuid, a.lifecycle_status,
-				a.transport, a.configuration, art.created_at, art.updated_at
+				a.configuration, a.created_at, a.updated_at
 			FROM rest_apis a INNER JOIN artifacts art
 			ON a.uuid = art.uuid
 			WHERE art.organization_uuid = ? AND a.project_uuid = ?
-			ORDER BY art.created_at DESC
+			ORDER BY a.created_at DESC
 		`
 		args = []interface{}{orgUUID, projectUUID}
 	} else {
 		// Get all APIs for the organization
 		query = `
-			SELECT art.uuid, art.handle, art.name, art.kind, a.description, art.version, a.created_by,
+			SELECT a.uuid, a.handle, a.name, art.type, a.description, a.version, a.created_by,
 				a.project_uuid, art.organization_uuid, a.lifecycle_status,
-				a.transport, a.configuration, art.created_at, art.updated_at
+				a.configuration, a.created_at, a.updated_at
 			FROM rest_apis a INNER JOIN artifacts art
 			ON a.uuid = art.uuid
 			WHERE art.organization_uuid = ?
-			ORDER BY art.created_at DESC
+			ORDER BY a.created_at DESC
 		`
 		args = []interface{}{orgUUID}
 	}
@@ -287,20 +278,15 @@ func (r *APIRepo) GetAPIsByOrganizationUUID(orgUUID string, projectUUID string) 
 	var apis []*model.API
 	for rows.Next() {
 		api := &model.API{}
-		var transportJSON string
 		var configJSON sql.NullString
 		err := rows.Scan(&api.ID, &api.Handle, &api.Name, &api.Kind, &api.Description,
 			&api.Version, &api.CreatedBy, &api.ProjectID, &api.OrganizationID,
 			&api.LifeCycleStatus,
-			&transportJSON, &configJSON, &api.CreatedAt, &api.UpdatedAt)
+			&configJSON, &api.CreatedAt, &api.UpdatedAt)
 		if err != nil {
 			return nil, err
 		}
 
-		// Parse transport JSON
-		if transportJSON != "" {
-			json.Unmarshal([]byte(transportJSON), &api.Transport)
-		}
 		if config, err := deserializeAPIConfigurations(configJSON); err != nil {
 			return nil, err
 		} else if config != nil {
@@ -316,12 +302,12 @@ func (r *APIRepo) GetAPIsByOrganizationUUID(orgUUID string, projectUUID string) 
 // GetDeployedAPIsByGatewayUUID retrieves all APIs deployed to a specific gateway
 func (r *APIRepo) GetDeployedAPIsByGatewayUUID(gatewayUUID, orgUUID string) ([]*model.API, error) {
 	query := `
-		SELECT a.uuid, art.name, a.description, art.version, a.created_by,
-		       a.project_uuid, art.organization_uuid, art.kind, art.created_at, art.updated_at
+		SELECT a.uuid, a.name, a.description, a.version, a.created_by,
+		       a.project_uuid, art.organization_uuid, art.type, a.created_at, a.updated_at
 		FROM rest_apis a INNER JOIN artifacts art ON a.uuid = art.uuid
 		INNER JOIN deployment_status ad ON art.uuid = ad.artifact_uuid
 		WHERE ad.gateway_uuid = ? AND art.organization_uuid = ? AND ad.status = ?
-		ORDER BY art.created_at DESC
+		ORDER BY a.created_at DESC
 	`
 
 	rows, err := r.db.Query(r.db.Rebind(query), gatewayUUID, orgUUID, string(model.DeploymentStatusDeployed))
@@ -348,13 +334,13 @@ func (r *APIRepo) GetDeployedAPIsByGatewayUUID(gatewayUUID, orgUUID string) ([]*
 // GetAPIsByGatewayUUID retrieves all APIs associated with a specific gateway
 func (r *APIRepo) GetAPIsByGatewayUUID(gatewayUUID, orgUUID string) ([]*model.API, error) {
 	query := `
-		SELECT a.uuid, art.name, a.description, art.version, a.created_by,
-			a.project_uuid, art.organization_uuid, art.kind, art.created_at, art.updated_at
+		SELECT a.uuid, a.name, a.description, a.version, a.created_by,
+			a.project_uuid, art.organization_uuid, art.type, a.created_at, a.updated_at
 		FROM rest_apis a
 		INNER JOIN artifacts art ON a.uuid = art.uuid
 		INNER JOIN gateway_association_mappings aa ON a.uuid = aa.artifact_uuid
 		WHERE aa.gateway_uuid = ? AND art.organization_uuid = ?
-		ORDER BY art.created_at DESC
+		ORDER BY a.created_at DESC
 	`
 
 	rows, err := r.db.Query(r.db.Rebind(query), gatewayUUID, orgUUID)
@@ -388,36 +374,21 @@ func (r *APIRepo) UpdateAPI(api *model.API) error {
 
 	api.UpdatedAt = time.Now()
 
-	// Convert transport slice to JSON
-	transportJSON, err := json.Marshal(api.Transport)
-	if err != nil {
-		return fmt.Errorf("failed to marshal transport: %w", err)
-	}
-
 	configurationJSON, err := serializeAPIConfigurations(api.Configuration)
 	if err != nil {
 		return err
 	}
-	// Update artifact record
-	if err := r.artifactRepo.Update(tx, &model.Artifact{
-		UUID:             api.ID,
-		Name:             api.Name,
-		Version:          api.Version,
-		OrganizationUUID: api.OrganizationID,
-		UpdatedAt:        api.UpdatedAt,
-	}); err != nil {
-		return err
-	}
-	// Update main API record
+
+	// Update main API record (name and version now live in rest_apis)
 	query := `
-		UPDATE rest_apis SET description = ?,
-			created_by = ?, lifecycle_status = ?,
-			transport = ?, configuration = ?
+		UPDATE rest_apis SET name = ?, version = ?, description = ?,
+			updated_by = ?, lifecycle_status = ?,
+			configuration = ?, updated_at = ?
 		WHERE uuid = ?
 	`
-	_, err = tx.Exec(r.db.Rebind(query), api.Description,
-		api.CreatedBy, api.LifeCycleStatus,
-		string(transportJSON), configurationJSON,
+	_, err = tx.Exec(r.db.Rebind(query), api.Name, api.Version, api.Description,
+		api.UpdatedBy, api.LifeCycleStatus,
+		configurationJSON, api.UpdatedAt,
 		api.ID)
 	if err != nil {
 		return err
@@ -442,8 +413,6 @@ func (r *APIRepo) DeleteAPI(apiUUID, orgUUID string) error {
 
 	// Delete in order of dependencies (children first, parent last)
 	deleteQueries := []string{
-		// publication_mappings table removed — disabled
-		// `DELETE FROM publication_mappings WHERE api_uuid = ? AND organization_uuid = ?`,
 		// Delete API deployments
 		`DELETE FROM deployments WHERE artifact_uuid = ? AND organization_uuid = ?`,
 		// Delete from rest_apis table first, then artifacts
@@ -474,7 +443,16 @@ func (r *APIRepo) DeleteAPI(apiUUID, orgUUID string) error {
 
 // CheckAPIExistsByHandleInOrganization checks if an API with the given handle exists within a specific organization
 func (r *APIRepo) CheckAPIExistsByHandleInOrganization(handle, orgUUID string) (bool, error) {
-	return r.artifactRepo.Exists(constants.RestApi, handle, orgUUID)
+	query := `
+		SELECT COUNT(*) FROM rest_apis r JOIN artifacts a ON r.uuid = a.uuid
+		WHERE r.handle = ? AND a.organization_uuid = ?
+	`
+	var count int
+	err := r.db.QueryRow(r.db.Rebind(query), handle, orgUUID).Scan(&count)
+	if err != nil {
+		return false, err
+	}
+	return count > 0, nil
 }
 
 func serializePolicies(policies []model.Policy) (any, error) {
@@ -532,14 +510,14 @@ func (r *APIRepo) CheckAPIExistsByNameAndVersionInOrganization(name, version, or
 
 	if excludeHandle != "" {
 		query = `
-			SELECT COUNT(*) FROM artifacts
-			WHERE name = ? AND version = ? AND organization_uuid = ? AND handle != ?
+			SELECT COUNT(*) FROM rest_apis r JOIN artifacts a ON r.uuid = a.uuid
+			WHERE r.name = ? AND r.version = ? AND a.organization_uuid = ? AND r.handle != ?
 		`
 		args = []interface{}{name, version, orgUUID, excludeHandle}
 	} else {
 		query = `
-			SELECT COUNT(*) FROM artifacts
-			WHERE name = ? AND version = ? AND organization_uuid = ?
+			SELECT COUNT(*) FROM rest_apis r JOIN artifacts a ON r.uuid = a.uuid
+			WHERE r.name = ? AND r.version = ? AND a.organization_uuid = ?
 		`
 		args = []interface{}{name, version, orgUUID}
 	}
@@ -621,7 +599,7 @@ func (r *APIRepo) GetAPIGatewaysWithDetails(apiUUID, orgUUID string) ([]*model.A
 			g.uuid as id,
 			g.organization_uuid as organization_id,
 			g.name,
-			g.display_name,
+			g.handle,
 			g.description,
 			g.properties,
 			g.vhost,
@@ -659,7 +637,7 @@ func (r *APIRepo) GetAPIGatewaysWithDetails(apiUUID, orgUUID string) ([]*model.A
 			&gateway.ID,
 			&gateway.OrganizationID,
 			&gateway.Name,
-			&gateway.DisplayName,
+			&gateway.Handle,
 			&gateway.Description,
 			&propertiesJSON,
 			&gateway.Vhost,

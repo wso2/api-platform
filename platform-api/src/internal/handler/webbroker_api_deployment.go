@@ -94,7 +94,8 @@ func (h *WebBrokerAPIDeploymentHandler) DeployWebBrokerAPI(c *gin.Context) {
 		return
 	}
 
-	deployment, err := h.webbrokerAPIDeploymentService.DeployWebBrokerAPIByHandle(apiId, &req, orgId)
+	createdBy, _ := middleware.GetUsernameFromContext(c)
+	deployment, err := h.webbrokerAPIDeploymentService.DeployWebBrokerAPIByHandle(apiId, &req, orgId, createdBy)
 	if err != nil {
 		h.handleDeploymentError(c, err, apiId)
 		return

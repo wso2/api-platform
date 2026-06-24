@@ -151,7 +151,7 @@ func (r *APIKeyRepo) ListByGatewayAndKind(gatewayID, orgID, kind, issuer string)
 		INNER JOIN deployment_status s ON s.artifact_uuid = a.uuid
 		WHERE s.gateway_uuid = ?
 		  AND s.organization_uuid = ?
-		  AND a.kind = ?
+		  AND a.type = ?
 		  AND s.status_desired IN ('DEPLOYED', 'UNDEPLOYED')`
 
 	args := []any{gatewayID, orgID, kind}
@@ -221,12 +221,12 @@ func (r *APIKeyRepo) ListAPIKeysByUser(orgUUID, username string, kinds []string)
 		SELECT ak.uuid, ak.artifact_uuid, ak.name, ak.masked_api_key, ak.api_key_hashes,
 		       ak.status, ak.created_at, ak.created_by, ak.updated_at, ak.expires_at,
 		       ak.issuer, ak.allowed_targets,
-		       a.handle, a.kind
+		       a.handle, a.type
 		FROM api_keys ak
 		JOIN artifacts a ON a.uuid = ak.artifact_uuid
 		WHERE ak.created_by = ?
 		  AND a.organization_uuid = ?
-		  AND a.kind IN (%s)
+		  AND a.type IN (%s)
 		ORDER BY ak.created_at DESC
 	`, strings.Join(placeholders, ", "))
 
@@ -244,7 +244,7 @@ func (r *APIKeyRepo) ListAPIKeysByUser(orgUUID, username string, kinds []string)
 			&key.UUID, &key.ArtifactUUID, &key.Name, &key.MaskedAPIKey, &key.APIKeyHashes,
 			&key.Status, &key.CreatedAt, &key.CreatedBy, &key.UpdatedAt, &key.ExpiresAt,
 			&issuer, &key.AllowedTargets,
-			&key.ArtifactHandle, &key.ArtifactKind,
+			&key.ArtifactHandle, &key.ArtifactType,
 		); err != nil {
 			return nil, err
 		}

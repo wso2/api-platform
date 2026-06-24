@@ -59,11 +59,6 @@ func (r *WebBrokerAPIRepo) Create(a *model.WebBrokerAPI) error {
 		return fmt.Errorf("failed to serialize configuration: %w", err)
 	}
 
-	transportJSON, err := json.Marshal(a.Transport)
-	if err != nil {
-		return fmt.Errorf("failed to marshal transport: %w", err)
-	}
-
 	tx, err := r.db.Begin()
 	if err != nil {
 		return err
@@ -73,10 +68,7 @@ func (r *WebBrokerAPIRepo) Create(a *model.WebBrokerAPI) error {
 	// Insert into artifacts table first
 	if err := r.artifactRepo.Create(tx, &model.Artifact{
 		UUID:             a.UUID,
-		Handle:           a.Handle,
-		Name:             a.Name,
-		Version:          a.Version,
-		Kind:             constants.WebBrokerApi,
+		Type:             constants.WebBrokerApi,
 		OrganizationUUID: a.OrganizationUUID,
 	}); err != nil {
 		return fmt.Errorf("failed to create artifact: %w", err)
@@ -85,12 +77,12 @@ func (r *WebBrokerAPIRepo) Create(a *model.WebBrokerAPI) error {
 	// Insert into webbroker_apis table
 	query := `
 		INSERT INTO webbroker_apis (
-			uuid, project_uuid, description, created_by, lifecycle_status, transport, configuration
+			uuid, organization_uuid, handle, name, version, project_uuid, description, created_by, lifecycle_status, configuration, created_at, updated_at
 		)
-		VALUES (?, ?, ?, ?, ?, ?, ?)`
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 	_, err = tx.Exec(r.db.Rebind(query),
-		a.UUID, a.ProjectUUID, a.Description, a.CreatedBy, a.LifeCycleStatus,
-		string(transportJSON), configurationJSON,
+		a.UUID, a.OrganizationUUID, a.Handle, a.Name, a.Version, a.ProjectUUID, a.Description, a.CreatedBy, a.LifeCycleStatus,
+		configurationJSON, a.CreatedAt, a.UpdatedAt,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to create WebBroker API: %w", err)
@@ -106,11 +98,11 @@ func (r *WebBrokerAPIRepo) Create(a *model.WebBrokerAPI) error {
 func (r *WebBrokerAPIRepo) GetByHandle(handle, orgUUID string) (*model.WebBrokerAPI, error) {
 	query := `
 		SELECT
-			a.uuid, a.handle, a.name, a.version, a.organization_uuid, a.created_at, a.updated_at,
-			p.project_uuid, p.description, p.created_by, p.lifecycle_status, p.transport, p.configuration
-		FROM artifacts a
-		JOIN webbroker_apis p ON a.uuid = p.uuid
-		WHERE a.handle = ? AND a.organization_uuid = ? AND a.kind = ?`
+			p.uuid, p.handle, p.name, p.version, a.organization_uuid, p.created_at, p.updated_at,
+			p.project_uuid, p.description, p.created_by, p.updated_by, p.lifecycle_status, p.configuration
+		FROM webbroker_apis p
+		JOIN artifacts a ON a.uuid = p.uuid
+		WHERE p.handle = ? AND a.organization_uuid = ? AND a.type = ?`
 	row := r.db.QueryRow(r.db.Rebind(query), handle, orgUUID, constants.WebBrokerApi)
 	return r.scanWebBrokerAPI(row)
 }
@@ -119,11 +111,11 @@ func (r *WebBrokerAPIRepo) GetByHandle(handle, orgUUID string) (*model.WebBroker
 func (r *WebBrokerAPIRepo) GetByUUID(uuid, orgUUID string) (*model.WebBrokerAPI, error) {
 	query := `
 		SELECT
-			a.uuid, a.handle, a.name, a.version, a.organization_uuid, a.created_at, a.updated_at,
-			p.project_uuid, p.description, p.created_by, p.lifecycle_status, p.transport, p.configuration
-		FROM artifacts a
-		JOIN webbroker_apis p ON a.uuid = p.uuid
-		WHERE a.uuid = ? AND a.organization_uuid = ? AND a.kind = ?`
+			p.uuid, p.handle, p.name, p.version, a.organization_uuid, p.created_at, p.updated_at,
+			p.project_uuid, p.description, p.created_by, p.updated_by, p.lifecycle_status, p.configuration
+		FROM webbroker_apis p
+		JOIN artifacts a ON a.uuid = p.uuid
+		WHERE p.uuid = ? AND a.organization_uuid = ? AND a.type = ?`
 	row := r.db.QueryRow(r.db.Rebind(query), uuid, orgUUID, constants.WebBrokerApi)
 	return r.scanWebBrokerAPI(row)
 }
@@ -136,23 +128,23 @@ func (r *WebBrokerAPIRepo) List(orgUUID, projectUUID string, limit, offset int) 
 	if projectUUID != "" {
 		query = `
 			SELECT
-				a.uuid, a.handle, a.name, a.version, a.organization_uuid, a.created_at, a.updated_at,
-				p.project_uuid, p.description, p.created_by, p.lifecycle_status, p.transport, p.configuration
-			FROM artifacts a
-			JOIN webbroker_apis p ON a.uuid = p.uuid
-			WHERE a.organization_uuid = ? AND a.kind = ? AND p.project_uuid = ?
-			ORDER BY a.created_at DESC
+				p.uuid, p.handle, p.name, p.version, a.organization_uuid, p.created_at, p.updated_at,
+				p.project_uuid, p.description, p.created_by, p.updated_by, p.lifecycle_status, p.configuration
+			FROM webbroker_apis p
+			JOIN artifacts a ON a.uuid = p.uuid
+			WHERE a.organization_uuid = ? AND a.type = ? AND p.project_uuid = ?
+			ORDER BY p.created_at DESC
 			LIMIT ? OFFSET ?`
 		args = []interface{}{orgUUID, constants.WebBrokerApi, projectUUID, limit, offset}
 	} else {
 		query = `
 			SELECT
-				a.uuid, a.handle, a.name, a.version, a.organization_uuid, a.created_at, a.updated_at,
-				p.project_uuid, p.description, p.created_by, p.lifecycle_status, p.transport, p.configuration
-			FROM artifacts a
-			JOIN webbroker_apis p ON a.uuid = p.uuid
-			WHERE a.organization_uuid = ? AND a.kind = ?
-			ORDER BY a.created_at DESC
+				p.uuid, p.handle, p.name, p.version, a.organization_uuid, p.created_at, p.updated_at,
+				p.project_uuid, p.description, p.created_by, p.updated_by, p.lifecycle_status, p.configuration
+			FROM webbroker_apis p
+			JOIN artifacts a ON a.uuid = p.uuid
+			WHERE a.organization_uuid = ? AND a.type = ?
+			ORDER BY p.created_at DESC
 			LIMIT ? OFFSET ?`
 		args = []interface{}{orgUUID, constants.WebBrokerApi, limit, offset}
 	}
@@ -185,7 +177,7 @@ func (r *WebBrokerAPIRepo) CountByProject(orgUUID, projectUUID string) (int, err
 	query := `
 		SELECT COUNT(*) FROM artifacts a
 		JOIN webbroker_apis p ON a.uuid = p.uuid
-		WHERE a.organization_uuid = ? AND a.kind = ? AND p.project_uuid = ?`
+		WHERE a.organization_uuid = ? AND a.type = ? AND p.project_uuid = ?`
 	if err := r.db.QueryRow(r.db.Rebind(query), orgUUID, constants.WebBrokerApi, projectUUID).Scan(&count); err != nil {
 		return 0, err
 	}
@@ -202,22 +194,18 @@ func (r *WebBrokerAPIRepo) Update(a *model.WebBrokerAPI) error {
 		return fmt.Errorf("failed to serialize configuration: %w", err)
 	}
 
-	transportJSON, err := json.Marshal(a.Transport)
-	if err != nil {
-		return fmt.Errorf("failed to marshal transport: %w", err)
-	}
-
 	tx, err := r.db.Begin()
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
 
-	// Get the UUID from handle
+	// Get the UUID from handle via webbroker_apis + artifacts join
 	var apiUUID string
 	query := `
-		SELECT uuid FROM artifacts
-		WHERE handle = ? AND organization_uuid = ? AND kind = ?`
+		SELECT p.uuid FROM webbroker_apis p
+		JOIN artifacts a ON a.uuid = p.uuid
+		WHERE p.handle = ? AND a.organization_uuid = ? AND a.type = ?`
 	err = tx.QueryRow(r.db.Rebind(query), a.Handle, a.OrganizationUUID, constants.WebBrokerApi).Scan(&apiUUID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -226,24 +214,13 @@ func (r *WebBrokerAPIRepo) Update(a *model.WebBrokerAPI) error {
 		return err
 	}
 
-	// Update artifacts table
-	if err := r.artifactRepo.Update(tx, &model.Artifact{
-		UUID:             apiUUID,
-		Name:             a.Name,
-		Version:          a.Version,
-		OrganizationUUID: a.OrganizationUUID,
-		UpdatedAt:        now,
-	}); err != nil {
-		return fmt.Errorf("failed to update artifact: %w", err)
-	}
-
-	// Update webbroker_apis table
+	// Update webbroker_apis table (name/version/updated_at now live here)
 	query = `
 		UPDATE webbroker_apis
-		SET description = ?, lifecycle_status = ?, transport = ?, configuration = ?
+		SET name = ?, version = ?, description = ?, lifecycle_status = ?, configuration = ?, updated_by = ?, updated_at = ?
 		WHERE uuid = ?`
 	result, err := tx.Exec(r.db.Rebind(query),
-		a.Description, a.LifeCycleStatus, string(transportJSON), configurationJSON,
+		a.Name, a.Version, a.Description, a.LifeCycleStatus, configurationJSON, a.UpdatedBy, now,
 		apiUUID,
 	)
 	if err != nil {
@@ -270,11 +247,12 @@ func (r *WebBrokerAPIRepo) Delete(handle, orgUUID string) error {
 	}
 	defer tx.Rollback()
 
-	// Get the UUID from handle
+	// Get the UUID from handle via webbroker_apis + artifacts join
 	var apiUUID string
 	query := `
-		SELECT uuid FROM artifacts
-		WHERE handle = ? AND organization_uuid = ? AND kind = ?`
+		SELECT p.uuid FROM webbroker_apis p
+		JOIN artifacts a ON a.uuid = p.uuid
+		WHERE p.handle = ? AND a.organization_uuid = ? AND a.type = ?`
 	err = tx.QueryRow(r.db.Rebind(query), handle, orgUUID, constants.WebBrokerApi).Scan(&apiUUID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -308,20 +286,14 @@ func (r *WebBrokerAPIRepo) Exists(handle, orgUUID string) (bool, error) {
 func (r *WebBrokerAPIRepo) scanWebBrokerAPI(row *sql.Row) (*model.WebBrokerAPI, error) {
 	var a model.WebBrokerAPI
 	var configurationJSON sql.NullString
-	var transportJSON sql.NullString
 	if err := row.Scan(
 		&a.UUID, &a.Handle, &a.Name, &a.Version, &a.OrganizationUUID, &a.CreatedAt, &a.UpdatedAt,
-		&a.ProjectUUID, &a.Description, &a.CreatedBy, &a.LifeCycleStatus, &transportJSON, &configurationJSON,
+		&a.ProjectUUID, &a.Description, &a.CreatedBy, &a.UpdatedBy, &a.LifeCycleStatus, &configurationJSON,
 	); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
 		}
 		return nil, err
-	}
-	if transportJSON.Valid && transportJSON.String != "" {
-		if err := json.Unmarshal([]byte(transportJSON.String), &a.Transport); err != nil {
-			return nil, fmt.Errorf("unmarshal transport for WebBroker API %s: %w", a.Handle, err)
-		}
 	}
 	if configurationJSON.Valid && configurationJSON.String != "" {
 		if config, err := deserializeWebBrokerAPIConfiguration(configurationJSON); err != nil {
@@ -337,17 +309,11 @@ func (r *WebBrokerAPIRepo) scanWebBrokerAPI(row *sql.Row) (*model.WebBrokerAPI, 
 func (r *WebBrokerAPIRepo) scanWebBrokerAPIFromRows(rows *sql.Rows) (*model.WebBrokerAPI, error) {
 	var a model.WebBrokerAPI
 	var configurationJSON sql.NullString
-	var transportJSON sql.NullString
 	if err := rows.Scan(
 		&a.UUID, &a.Handle, &a.Name, &a.Version, &a.OrganizationUUID, &a.CreatedAt, &a.UpdatedAt,
-		&a.ProjectUUID, &a.Description, &a.CreatedBy, &a.LifeCycleStatus, &transportJSON, &configurationJSON,
+		&a.ProjectUUID, &a.Description, &a.CreatedBy, &a.UpdatedBy, &a.LifeCycleStatus, &configurationJSON,
 	); err != nil {
 		return nil, err
-	}
-	if transportJSON.Valid && transportJSON.String != "" {
-		if err := json.Unmarshal([]byte(transportJSON.String), &a.Transport); err != nil {
-			return nil, fmt.Errorf("unmarshal transport for WebBroker API %s: %w", a.Handle, err)
-		}
 	}
 	if configurationJSON.Valid && configurationJSON.String != "" {
 		if config, err := deserializeWebBrokerAPIConfiguration(configurationJSON); err != nil {

@@ -33,6 +33,7 @@ type SubscriptionPlanService struct {
 	planRepo      repository.SubscriptionPlanRepository
 	gatewayRepo   repository.GatewayRepository
 	gatewayEvents *GatewayEventsService
+	auditRepo     repository.AuditRepository
 	slogger       *slog.Logger
 }
 
@@ -41,6 +42,7 @@ func NewSubscriptionPlanService(
 	planRepo repository.SubscriptionPlanRepository,
 	gatewayRepo repository.GatewayRepository,
 	gatewayEvents *GatewayEventsService,
+	auditRepo repository.AuditRepository,
 	slogger *slog.Logger,
 ) *SubscriptionPlanService {
 	if slogger == nil {
@@ -50,12 +52,13 @@ func NewSubscriptionPlanService(
 		planRepo:      planRepo,
 		gatewayRepo:   gatewayRepo,
 		gatewayEvents: gatewayEvents,
+		auditRepo:     auditRepo,
 		slogger:       slogger,
 	}
 }
 
 // CreatePlan creates a new subscription plan
-func (s *SubscriptionPlanService) CreatePlan(orgUUID string, plan *model.SubscriptionPlan) (*model.SubscriptionPlan, error) {
+func (s *SubscriptionPlanService) CreatePlan(orgUUID, actor string, plan *model.SubscriptionPlan) (*model.SubscriptionPlan, error) {
 	if plan.PlanName == "" {
 		return nil, fmt.Errorf("planName is required")
 	}
@@ -72,10 +75,14 @@ func (s *SubscriptionPlanService) CreatePlan(orgUUID string, plan *model.Subscri
 	if plan.Status == "" {
 		plan.Status = model.SubscriptionPlanStatusActive
 	}
+	if plan.ThrottleLimitUnit != "" && !constants.ValidThrottleLimitUnits[plan.ThrottleLimitUnit] {
+		return nil, constants.ErrInvalidThrottleLimitUnit
+	}
 
 	if err := s.planRepo.Create(plan); err != nil {
 		return nil, err
 	}
+	_ = s.auditRepo.Record("CREATE", plan.UUID, "subscription_plan", orgUUID, actor)
 
 	s.broadcastPlanEvent(orgUUID, "created", &model.SubscriptionPlanCreatedEvent{
 		PlanId:             plan.UUID,
@@ -117,7 +124,7 @@ func (s *SubscriptionPlanService) ListPlans(orgUUID string, limit, offset int) (
 }
 
 // UpdatePlan updates a subscription plan
-func (s *SubscriptionPlanService) UpdatePlan(planID, orgUUID string, update *model.SubscriptionPlanUpdate) (*model.SubscriptionPlan, error) {
+func (s *SubscriptionPlanService) UpdatePlan(planID, orgUUID, actor string, update *model.SubscriptionPlanUpdate) (*model.SubscriptionPlan, error) {
 	existing, err := s.planRepo.GetByID(planID, orgUUID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -149,6 +156,9 @@ func (s *SubscriptionPlanService) UpdatePlan(planID, orgUUID string, update *mod
 		existing.ThrottleLimitCount = update.ThrottleLimitCount
 	}
 	if update.ThrottleLimitUnit != nil {
+		if !constants.ValidThrottleLimitUnits[*update.ThrottleLimitUnit] {
+			return nil, constants.ErrInvalidThrottleLimitUnit
+		}
 		existing.ThrottleLimitUnit = *update.ThrottleLimitUnit
 	}
 	if update.ExpiryTime != nil {
@@ -166,6 +176,7 @@ func (s *SubscriptionPlanService) UpdatePlan(planID, orgUUID string, update *mod
 	if err := s.planRepo.Update(existing); err != nil {
 		return nil, err
 	}
+	_ = s.auditRepo.Record("UPDATE", planID, "subscription_plan", orgUUID, actor)
 
 	s.broadcastPlanEvent(orgUUID, "updated", &model.SubscriptionPlanUpdatedEvent{
 		PlanId:             existing.UUID,
@@ -182,7 +193,7 @@ func (s *SubscriptionPlanService) UpdatePlan(planID, orgUUID string, update *mod
 }
 
 // DeletePlan removes a subscription plan
-func (s *SubscriptionPlanService) DeletePlan(planID, orgUUID string) error {
+func (s *SubscriptionPlanService) DeletePlan(planID, orgUUID, actor string) error {
 	existing, err := s.planRepo.GetByID(planID, orgUUID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -197,6 +208,7 @@ func (s *SubscriptionPlanService) DeletePlan(planID, orgUUID string) error {
 	if err := s.planRepo.Delete(planID, orgUUID); err != nil {
 		return err
 	}
+	_ = s.auditRepo.Record("DELETE", planID, "subscription_plan", orgUUID, actor)
 
 	s.broadcastPlanEvent(orgUUID, "deleted", &model.SubscriptionPlanDeletedEvent{
 		PlanId:   existing.UUID,

@@ -68,7 +68,8 @@ func (h *ApplicationHandler) CreateApplication(c *gin.Context) {
 		return
 	}
 
-	app, err := h.applicationService.CreateApplication(&req, orgID)
+	createdBy := h.resolveRequesterUserID(c)
+	app, err := h.applicationService.CreateApplication(&req, orgID, createdBy)
 	if err != nil {
 		h.writeApplicationError(c, err, "Failed to create application")
 		return
@@ -177,8 +178,9 @@ func (h *ApplicationHandler) DeleteApplication(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Application ID is required"))
 		return
 	}
+	userID := h.resolveRequesterUserID(c)
 
-	if err := h.applicationService.DeleteApplication(appID, orgID); err != nil {
+	if err := h.applicationService.DeleteApplication(appID, orgID, userID); err != nil {
 		h.writeApplicationError(c, err, "Failed to delete application")
 		return
 	}

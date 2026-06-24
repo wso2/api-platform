@@ -94,7 +94,8 @@ func (h *WebSubAPIDeploymentHandler) DeployWebSubAPI(c *gin.Context) {
 		return
 	}
 
-	deployment, err := h.websubAPIDeploymentService.DeployWebSubAPIByHandle(apiId, &req, orgId)
+	createdBy, _ := middleware.GetUsernameFromContext(c)
+	deployment, err := h.websubAPIDeploymentService.DeployWebSubAPIByHandle(apiId, &req, orgId, createdBy)
 	if err != nil {
 		h.handleDeploymentError(c, err, apiId)
 		return

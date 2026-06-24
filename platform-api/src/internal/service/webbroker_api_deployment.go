@@ -74,12 +74,12 @@ func NewWebBrokerAPIDeploymentService(
 }
 
 // DeployWebBrokerAPIByHandle creates a new immutable deployment using WebBroker API handle
-func (s *WebBrokerAPIDeploymentService) DeployWebBrokerAPIByHandle(apiHandle string, req *api.DeployRequest, orgUUID string) (*api.DeploymentResponse, error) {
+func (s *WebBrokerAPIDeploymentService) DeployWebBrokerAPIByHandle(apiHandle string, req *api.DeployRequest, orgUUID, createdBy string) (*api.DeploymentResponse, error) {
 	apiUUID, err := s.getWebBrokerAPIUUIDByHandle(apiHandle, orgUUID)
 	if err != nil {
 		return nil, err
 	}
-	return s.deployWebBrokerAPI(apiUUID, req, orgUUID)
+	return s.deployWebBrokerAPI(apiUUID, req, orgUUID, createdBy)
 }
 
 // RestoreWebBrokerAPIDeploymentByHandle restores a previous deployment using WebBroker API handle
@@ -138,7 +138,7 @@ func (s *WebBrokerAPIDeploymentService) GetWebBrokerAPIDeploymentsByHandle(apiHa
 }
 
 // deployWebBrokerAPI deploys a WebBroker API to a gateway
-func (s *WebBrokerAPIDeploymentService) deployWebBrokerAPI(apiUUID string, req *api.DeployRequest, orgID string) (*api.DeploymentResponse, error) {
+func (s *WebBrokerAPIDeploymentService) deployWebBrokerAPI(apiUUID string, req *api.DeployRequest, orgID, createdBy string) (*api.DeploymentResponse, error) {
 	if req == nil {
 		return nil, constants.ErrInvalidInput
 	}
@@ -204,6 +204,7 @@ func (s *WebBrokerAPIDeploymentService) deployWebBrokerAPI(apiUUID string, req *
 		BaseDeploymentID: baseDeploymentID,
 		Content:          contentBytes,
 		Metadata:         metadata,
+		CreatedBy:        createdBy,
 	}
 
 	if s.cfg.Deployments.MaxPerAPIGateway < 1 {

@@ -23,7 +23,6 @@ import (
 	"net/http"
 	"strings"
 
-	"platform-api/src/internal/client/devportal_client"
 	"platform-api/src/internal/constants"
 
 	"github.com/go-playground/validator/v10"
@@ -32,30 +31,6 @@ import (
 // makeError creates a standardized error response tuple
 func makeError(status int, message string) (int, interface{}) {
 	return status, NewErrorResponse(status, http.StatusText(status), message)
-}
-
-// WrapDevPortalClientError wraps devportal_client errors into domain constants errors with added context
-func WrapDevPortalClientError(err error) error {
-	if err == nil {
-		return nil
-	}
-	switch {
-	case errors.Is(err, devportal_client.ErrDevPortalBackendUnreachable):
-		return fmt.Errorf("DevPortal backend unreachable: %w", constants.ErrDevPortalBackendUnreachable)
-	case errors.Is(err, devportal_client.ErrDevPortalAuthenticationFailed):
-		return fmt.Errorf("DevPortal authentication failed: %w", constants.ErrDevPortalAuthenticationFailed)
-	case errors.Is(err, devportal_client.ErrDevPortalForbidden):
-		return fmt.Errorf("DevPortal access forbidden: %w", constants.ErrDevPortalForbidden)
-	case errors.Is(err, devportal_client.ErrAPINotFound):
-		return fmt.Errorf("API not found in DevPortal: %w", constants.ErrAPINotFound)
-	case errors.Is(err, devportal_client.ErrDevPortalEndpointInvalid):
-		return fmt.Errorf("DevPortal endpoint invalid: %w", constants.ErrDevPortalConnectivityFailed)
-	case errors.Is(err, devportal_client.ErrOrganizationAlreadyExists):
-		return fmt.Errorf("organization already exists in DevPortal: %w", constants.ErrDevPortalOrganizationConflict)
-	default:
-		// For unknown devportal_client errors, wrap with context
-		return fmt.Errorf("DevPortal client error: %w", err)
-	}
 }
 
 // FormatValidationError converts validator errors to user-friendly messages (public API)
@@ -82,13 +57,7 @@ func formatValidationError(validationErrors validator.ValidationErrors) string {
 func getUserFriendlyFieldName(fieldName string) string {
 	fieldMap := map[string]string{
 		"Name":           "name",
-		"APIUrl":         "API URL",
-		"Hostname":       "hostname",
-		"APIKey":         "API key",
-		"HeaderKeyName":  "header key name",
-		"Visibility":     "visibility",
 		"Description":    "description",
-		"Identifier":     "identifier",
 		"APIID":          "API ID",
 		"Provider":       "provider",
 		"APIName":        "API name",
@@ -98,7 +67,6 @@ func getUserFriendlyFieldName(fieldName string) string {
 		"APIType":        "API type",
 		"APIStatus":      "API status",
 		"ProductionURL":  "production URL",
-		"DevPortalUUID":  "DevPortal UUID",
 	}
 
 	if friendly, exists := fieldMap[fieldName]; exists {
@@ -138,46 +106,6 @@ func GetErrorResponse(err error) (int, interface{}) {
 
 	// Handle domain/business logic errors
 	switch {
-	// DevPortal errors
-	case errors.Is(err, constants.ErrDevPortalNotFound):
-		return makeError(http.StatusNotFound, "DevPortal not found")
-	case errors.Is(err, constants.ErrDevPortalIdentifierExists):
-		return makeError(http.StatusConflict, "DevPortal with this identifier already exists for this organization")
-	case errors.Is(err, constants.ErrDevPortalAPIUrlExists):
-		return makeError(http.StatusConflict, "DevPortal with this API URL already exists for this organization")
-	case errors.Is(err, constants.ErrDevPortalHostnameExists):
-		return makeError(http.StatusConflict, "DevPortal with this hostname already exists for this organization")
-	case errors.Is(err, constants.ErrDevPortalDefaultAlreadyExists):
-		return makeError(http.StatusConflict, "Default DevPortal already exists for this organization")
-	case errors.Is(err, constants.ErrDevPortalCannotDeleteDefault):
-		return makeError(http.StatusBadRequest, "Cannot delete default DevPortal")
-	case errors.Is(err, constants.ErrDevPortalCannotDeactivateDefault):
-		return makeError(http.StatusBadRequest, "Cannot deactivate default DevPortal")
-	case errors.Is(err, constants.ErrDevPortalBackendUnreachable):
-		return makeError(http.StatusServiceUnavailable, "DevPortal backend is currently unreachable. Please try again later or contact administrator.")
-	case errors.Is(err, constants.ErrDevPortalSyncFailed):
-		return makeError(http.StatusBadGateway, "Failed to sync organization to DevPortal. Please check DevPortal configuration.")
-	case errors.Is(err, constants.ErrDevPortalAuthenticationFailed):
-		return makeError(http.StatusUnauthorized, "DevPortal authentication failed. Please check API key and try again.")
-	case errors.Is(err, constants.ErrDevPortalForbidden):
-		return makeError(http.StatusForbidden, "DevPortal access forbidden. Please check permissions.")
-	case errors.Is(err, constants.ErrDevPortalConnectivityFailed):
-		return makeError(http.StatusBadRequest, "DevPortal endpoint is not valid or reachable. Please check the API URL and try again.")
-	case errors.Is(err, constants.ErrDevPortalNameRequired):
-		return makeError(http.StatusBadRequest, "DevPortal name is required")
-	case errors.Is(err, constants.ErrDevPortalIdentifierRequired):
-		return makeError(http.StatusBadRequest, "DevPortal identifier is required")
-	case errors.Is(err, constants.ErrDevPortalAPIUrlRequired):
-		return makeError(http.StatusBadRequest, "DevPortal API URL is required")
-	case errors.Is(err, constants.ErrDevPortalHostnameRequired):
-		return makeError(http.StatusBadRequest, "DevPortal hostname is required")
-	case errors.Is(err, constants.ErrDevPortalAPIKeyRequired):
-		return makeError(http.StatusBadRequest, "DevPortal API key is required")
-	case errors.Is(err, constants.ErrDevPortalHeaderKeyNameRequired):
-		return makeError(http.StatusBadRequest, "DevPortal header key name is required")
-	case errors.Is(err, constants.ErrDevPortalOrganizationConflict):
-		return makeError(http.StatusConflict, "Organization conflict in DevPortal: an organization with the same organization ID exists in devportal, but differs from the one being synced")
-
 	// Organization errors
 	case errors.Is(err, constants.ErrOrganizationNotFound):
 		return makeError(http.StatusNotFound, "Organization not found")
@@ -233,22 +161,6 @@ func GetErrorResponse(err error) (int, interface{}) {
 	// Gateway errors
 	case errors.Is(err, constants.ErrGatewayNotFound):
 		return makeError(http.StatusNotFound, "Gateway not found")
-
-	// DevPortal sync errors
-	case errors.Is(err, constants.ErrApiPortalSync):
-		return makeError(http.StatusServiceUnavailable, "Failed to sync with DevPortal. DevPortal may be unavailable.")
-
-	// API Publication errors
-	case errors.Is(err, constants.ErrAPIPublicationNotFound):
-		return makeError(http.StatusNotFound, "API publication not found")
-	case errors.Is(err, constants.ErrAPIAlreadyPublished):
-		return makeError(http.StatusConflict, "API is already published to this DevPortal")
-
-	// API Publication Compensation errors
-	case errors.Is(err, constants.ErrAPIPublicationSaveFailed):
-		return makeError(http.StatusInternalServerError, "API publication failed: database save error occurred after successful DevPortal publication. The API may be published in DevPortal but not recorded locally.")
-	case errors.Is(err, constants.ErrAPIPublicationSplitBrain):
-		return makeError(http.StatusInternalServerError, "Critical system error: API was published to DevPortal but both local recording and automatic cleanup failed. Manual intervention required to maintain consistency.")
 
 	// Default case for unknown errors
 	default:

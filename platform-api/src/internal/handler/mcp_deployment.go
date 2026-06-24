@@ -99,7 +99,8 @@ func (h *MCPProxyDeploymentHandler) DeployMCPProxy(c *gin.Context) {
 		return
 	}
 
-	deployment, err := h.deploymentService.DeployMCPProxyByHandle(proxyId, &req, orgId)
+	createdBy, _ := middleware.GetUsernameFromContext(c)
+	deployment, err := h.deploymentService.DeployMCPProxyByHandle(proxyId, &req, orgId, createdBy)
 	if err != nil {
 		switch {
 		case errors.Is(err, constants.ErrMCPProxyNotFound):

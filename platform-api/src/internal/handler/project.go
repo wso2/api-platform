@@ -64,7 +64,8 @@ func (h *ProjectHandler) CreateProject(c *gin.Context) {
 		return
 	}
 
-	project, err := h.projectService.CreateProject(&req, organizationID)
+	actor, _ := middleware.GetUsernameFromContext(c)
+	project, err := h.projectService.CreateProject(&req, organizationID, actor)
 	if err != nil {
 		if errors.Is(err, constants.ErrProjectExists) {
 			c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict",
@@ -178,7 +179,8 @@ func (h *ProjectHandler) UpdateProject(c *gin.Context) {
 		return
 	}
 
-	project, err := h.projectService.UpdateProject(projectId, &req, orgID)
+	actor, _ := middleware.GetUsernameFromContext(c)
+	project, err := h.projectService.UpdateProject(projectId, &req, orgID, actor)
 	if err != nil {
 		if errors.Is(err, constants.ErrProjectNotFound) {
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
@@ -215,7 +217,8 @@ func (h *ProjectHandler) DeleteProject(c *gin.Context) {
 		return
 	}
 
-	err := h.projectService.DeleteProject(projectId, orgID)
+	actor, _ := middleware.GetUsernameFromContext(c)
+	err := h.projectService.DeleteProject(projectId, orgID, actor)
 	if err != nil {
 		if errors.Is(err, constants.ErrProjectNotFound) {
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
