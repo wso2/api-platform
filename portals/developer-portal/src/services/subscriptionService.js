@@ -34,12 +34,12 @@ async function safePublish(eventType, payload, opts) {
     }
 }
 
-function buildWebhookPayload(sub, apiMetadata, policy) {
+function buildWebhookPayload(sub, apiMetadata, plan) {
     return {
         subscription_id: sub.SUB_ID,
         subscription_plan: {
-            ref_id: policy ? (policy.REF_ID || null) : null,
-            name: policy ? (policy.POLICY_NAME || policy.DISPLAY_NAME || null) : null,
+            ref_id: plan ? (plan.REF_ID || null) : null,
+            name: plan ? (plan.PLAN_NAME || plan.DISPLAY_NAME || null) : null,
         },
         api: {
             name: apiMetadata ? apiMetadata.API_NAME : null,
@@ -51,14 +51,14 @@ function buildWebhookPayload(sub, apiMetadata, policy) {
 
 function formatSubscriptionResponse(sub) {
     const api = sub.DP_API_METADATA || {};
-    const policy = sub.DP_SUBSCRIPTION_POLICY || {};
+    const plan = sub.DP_SUBSCRIPTION_PLAN || {};
     return {
         subscriptionId: sub.SUB_ID,
         subscriptionToken: sub.SUB_TOKEN,
         status: sub.STATUS,
         gatewayType: api.GATEWAY_TYPE || null,
         apiId: sub.API_ID,
-        subscriptionPlanName: policy.POLICY_NAME || null,
+        subscriptionPlanName: plan.PLAN_NAME || null,
         createdBy: sub.CREATED_BY || null,
         createdAt: sub.CREATED_AT || null,
     };
@@ -79,7 +79,7 @@ const createSubscription = async (req, res) => {
 
         const apiMetadata = apiMetadataResponse[0];
 
-        const plans = apiMetadata.DP_SUBSCRIPTION_POLICies || [];
+        const plans = apiMetadata.DP_SUBSCRIPTION_PLANs || [];
         if (plans.length === 0) {
             return res.status(400).json({
                 code: '400', message: 'Bad Request',
@@ -87,37 +87,37 @@ const createSubscription = async (req, res) => {
             });
         }
 
-        let policyId = null;
+        let planId = null;
         let matchedPlan = null;
 
         if (reqPlanId) {
-            matchedPlan = plans.find(p => p.POLICY_ID === reqPlanId);
+            matchedPlan = plans.find(p => p.PLAN_ID === reqPlanId);
             if (!matchedPlan) {
                 return res.status(400).json({
                     code: '400', message: 'Bad Request',
                     description: `Subscription plan not found for this API`,
                 });
             }
-            policyId = matchedPlan.POLICY_ID;
+            planId = matchedPlan.PLAN_ID;
         }
 
         let newSub;
         if (isPlatformApiPath(apiMetadata.GATEWAY_TYPE)) {
-            const subscriptionPlanId = matchedPlan ? (matchedPlan.REF_ID || matchedPlan.POLICY_NAME) : null;
+            const subscriptionPlanId = matchedPlan ? (matchedPlan.REF_ID || matchedPlan.PLAN_NAME) : null;
             const platformResp = await platformClient.createSubscription(req.user.accessToken, {
                 apiId: apiMetadata.REFERENCE_ID,
                 subscriberId: req.user.sub,
                 subscriptionPlanId,
             });
             await sequelize.transaction(async (t) => {
-                newSub = await subDao.create(orgID, apiId, policyId, createdBy, t, {
+                newSub = await subDao.create(orgID, apiId, planId, createdBy, t, {
                     subToken: platformResp.subscriptionToken,
                 });
             });
         } else {
             await sequelize.transaction(async (t) => {
                 newSub = await subDao.create(
-                    orgID, apiId, policyId, createdBy, t
+                    orgID, apiId, planId, createdBy, t
                 );
                 await safePublish('subscription.created', buildWebhookPayload(newSub, apiMetadata, matchedPlan), {
                     transaction: t,
@@ -161,7 +161,7 @@ const listSubscriptions = async (req, res) => {
         }
 
         const subs = await subDao.list(orgID, { apiId, createdBy: req.user.sub });
-        return res.status(200).json({ count: subs.length, list: subs.map(formatSubscriptionResponse) });
+        return res.status(200).json(util.toPaginatedList(subs.map(formatSubscriptionResponse), req));
     } catch (error) {
         logger.error('Error listing subscriptions', {
             error: error.message, orgID,
@@ -254,7 +254,7 @@ const deleteSubscription = async (req, res) => {
         }
 
         const apiMetadata = existing.DP_API_METADATA;
-        const policy = existing.DP_SUBSCRIPTION_POLICY;
+        const plan = existing.DP_SUBSCRIPTION_PLAN;
 
         if (isPlatformApiPath(apiMetadata?.GATEWAY_TYPE)) {
             const platformSub = await platformClient.findSubscription(req.user.accessToken, {
@@ -275,7 +275,7 @@ const deleteSubscription = async (req, res) => {
             await sequelize.transaction(async (t) => {
                 const deleted = await subDao.delete(orgID, subscriptionId, req.user.sub, t);
                 if (!deleted) throw Object.assign(new Error('Not found'), { statusCode: 404 });
-                await safePublish('subscription.deleted', buildWebhookPayload(existing, apiMetadata, policy), {
+                await safePublish('subscription.deleted', buildWebhookPayload(existing, apiMetadata, plan), {
                     transaction: t,
                     orgId: orgID,
                     gatewayType: apiMetadata ? apiMetadata.GATEWAY_TYPE : null,

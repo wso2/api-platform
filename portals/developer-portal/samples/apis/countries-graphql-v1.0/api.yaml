@@ -20,9 +20,10 @@ spec:
   labels:
     - default
 
-  subscriptionPolicies: []
+  subscriptionPlans: []
 
   visibility: PUBLIC
+  agentVisibility: VISIBLE
   visibleGroups: []
 
   businessInformation:

@@ -80,6 +80,13 @@ function enforceSecurity(scope) {
     }
 }
 
+// Checks whether a role claim value (string or array) contains an exact role name.
+function hasRole(roleClaimValue, roleName) {
+    if (!roleClaimValue || !roleName) return false;
+    if (Array.isArray(roleClaimValue)) return roleClaimValue.includes(roleName);
+    return String(roleClaimValue).split(/[\s,]+/).includes(roleName);
+}
+
 const ensurePermission = (currentPage, role, req) => {
     let adminRole, superAdminRole, subscriberRole;
     if (req.user) {
@@ -87,11 +94,11 @@ const ensurePermission = (currentPage, role, req) => {
         superAdminRole = req.user[constants.ROLES.SUPER_ADMIN];
         subscriberRole = req.user[constants.ROLES.SUBSCRIBER];
         if (constants.ROUTE.DEVPORTAL_CONFIGURE.some(pattern => minimatch.minimatch(currentPage, pattern))) {
-            return role.includes(superAdminRole) || role.includes(adminRole);
+            return hasRole(role, superAdminRole) || hasRole(role, adminRole);
         } else if (constants.ROUTE.DEVPORTAL_ROOT.some(pattern => minimatch.minimatch(req.originalUrl, pattern))) {
-            return role.includes(superAdminRole);
+            return hasRole(role, superAdminRole);
         } else if (config.authorizedPages.some(pattern => minimatch.minimatch(currentPage, pattern))) {
-            return role.includes(subscriberRole) || role.includes(adminRole) || role.includes(superAdminRole);
+            return hasRole(role, subscriberRole) || hasRole(role, adminRole) || hasRole(role, superAdminRole);
         }
     }
     return false;
@@ -125,9 +132,6 @@ const ensureAuthenticated = async (req, res, next) => {
         let orgDetails;
         if (orgID !== undefined) {
             orgDetails = await orgDao.get(orgID);
-            adminRole = orgDetails?.ADMIN_ROLE || adminRole;
-            superAdminRole = orgDetails?.SUPER_ADMIN_ROLE || superAdminRole;
-            subscriberRole = orgDetails?.SUBSCRIBER_ROLE || subscriberRole;
         }
         let role;
         logger.debug("Request authentication status", { isAuthenticated: req.isAuthenticated() });

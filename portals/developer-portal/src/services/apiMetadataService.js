@@ -22,7 +22,7 @@ const apiDao = require("../dao/apiDao");
 const subDao = require('../dao/subscriptionDao');
 const labelDao = require('../dao/labelDao');
 const viewDao = require('../dao/viewDao');
-const subscriptionPolicyDao = require('../dao/subscriptionPolicyDao');
+const subscriptionPlanDao = require('../dao/subscriptionPlanDao');
 const apiFileDao = require('../dao/apiFileDao');
 const apiImageDao = require('../dao/apiImageDao');
 const apiKeyDao = require("../dao/apiKeyDao");
@@ -37,7 +37,7 @@ const APIDTO = require("../dto/apiDto");
 const ViewDTO = require("../dto/viewsDto");
 const APIDocDTO = require("../dto/apiDocDto");
 const constants = require("../utils/constants");
-const subscriptionPolicyDTO = require("../dto/subscriptionPolicyDto");
+const subscriptionPlanDTO = require("../dto/subscriptionPlanDto");
 const { CustomError } = require("../utils/errors/customErrors");
 const LabelDTO = require("../dto/labelDto");
 
@@ -105,24 +105,24 @@ const createAPIMetadata = async (req, res) => {
             // Create apimetadata record
             const createdAPI = await apiDao.create(orgId, apiMetadata, t);
             const apiID = createdAPI.dataValues.API_ID;
-            if (apiMetadata.subscriptionPolicies) {
-                const subscriptionPolicies = [];
-                const apiSubscriptionPolicies = apiMetadata.subscriptionPolicies;
-                if (!Array.isArray(apiSubscriptionPolicies)) {
+            if (apiMetadata.subscriptionPlans) {
+                const subscriptionPlans = [];
+                const apiSubscriptionPlans = apiMetadata.subscriptionPlans;
+                if (!Array.isArray(apiSubscriptionPlans)) {
                     throw new Sequelize.ValidationError(
                         "Missing or Invalid fields in the request payload"
                     );
                 } else {
-                    for (const policy of apiSubscriptionPolicies) {
-                        const subscriptionPolicy = await subscriptionPolicyDao.getByName(orgId, policy.policyName);
-                        if (!subscriptionPolicy) {
-                            throw new Sequelize.EmptyResultError("Subscription policy not found");
+                    for (const plan of apiSubscriptionPlans) {
+                        const subscriptionPlan = await subscriptionPlanDao.getByName(orgId, plan.planName);
+                        if (!subscriptionPlan) {
+                            throw new Sequelize.EmptyResultError("Subscription plan not found");
                         } else {
-                            subscriptionPolicies.push({ apiID: apiID, policyID: subscriptionPolicy.POLICY_ID });
+                            subscriptionPlans.push({ apiID: apiID, planID: subscriptionPlan.PLAN_ID });
                         }
                     };
                 }
-                await subscriptionPolicyDao.createApiMapping(subscriptionPolicies, apiID, t);
+                await subscriptionPlanDao.createApiMapping(subscriptionPlans, apiID, t);
             }
             //store api labels
             if (apiMetadata.apiInfo.labels) {
@@ -239,7 +239,7 @@ function normalizeGraphQLEndpoints(apiMetadata) {
 
 async function allowAPIStatusChange(apiStatus, orgId, apiId) {
     
-    if (apiStatus === constants.API_STATUS.UNPUBLISHED) {
+    if (apiStatus === constants.API_STATUS.CREATED) {
 
         const subApis = await subDao.listByApi(orgId, apiId);
         if (subApis.length > 0) {
@@ -299,7 +299,7 @@ const getAllAPIMetadata = async (req, res) => {
             groupList.push(req.query.groups.split(" "));
         }
         const retrievedAPIs = await getMetadataListFromDB(orgID, groupList, searchTerm, tags, apiName, apiVersion, view);
-        res.status(200).send(retrievedAPIs);
+        res.status(200).json(util.toPaginatedList(retrievedAPIs, req));
     } catch (error) {
         logger.error('API metadata list retrieval failed', {
             error: error.message,
@@ -450,26 +450,26 @@ const updateAPIMetadata = async (req, res) => {
                 }
                 updatedAPI[0].dataValues.removedLabels = apiMetadata.apiInfo.removedLabels;
             }
-            if (apiMetadata.subscriptionPolicies) {
-                const subscriptionPolicies = [];
-                const apiSubscriptionPolicies = apiMetadata.subscriptionPolicies;
-                if (!Array.isArray(apiSubscriptionPolicies)) {
+            if (apiMetadata.subscriptionPlans) {
+                const subscriptionPlans = [];
+                const apiSubscriptionPlans = apiMetadata.subscriptionPlans;
+                if (!Array.isArray(apiSubscriptionPlans)) {
                     throw new Sequelize.ValidationError(
                         "Missing or Invalid fields in the request payload"
                     );
                 } else {
-                    for (const policy of apiSubscriptionPolicies) {
-                        const subscriptionPolicy = await subscriptionPolicyDao.getByName(orgId, policy.policyName);
-                        if (!subscriptionPolicy) {
-                            throw new Sequelize.EmptyResultError("Subscription policy not found");
+                    for (const plan of apiSubscriptionPlans) {
+                        const subscriptionPlan = await subscriptionPlanDao.getByName(orgId, plan.planName);
+                        if (!subscriptionPlan) {
+                            throw new Sequelize.EmptyResultError("Subscription plan not found");
                         } else {
-                            subscriptionPolicies.push({ apiID: apiId, policyID: subscriptionPolicy.POLICY_ID });
+                            subscriptionPlans.push({ apiID: apiId, planID: subscriptionPlan.PLAN_ID });
                         }
                     };
                 }
-                // Get subscription policy IDs and fail if any policy is not found
-                await subscriptionPolicyDao.updateApiMapping(subscriptionPolicies, apiId, t);
-                updatedAPI[0].dataValues["DP_SUBSCRIPTION_POLICies"] = await subscriptionPolicyDao.listByApi(apiId, t);
+                // Get subscription plan IDs and fail if any plan is not found
+                await subscriptionPlanDao.updateApiMapping(subscriptionPlans, apiId, t);
+                updatedAPI[0].dataValues["DP_SUBSCRIPTION_PLANs"] = await subscriptionPlanDao.listByApi(apiId, t);
             }
             // update api definition file
             const updatedFileCount = await apiFileDao.update(apiDefinitionFile, apiFileName, apiId, orgId,
@@ -898,7 +898,7 @@ const getAPIFile = async (req, res) => {
         const fileExtension = path.extname(apiFileName).toLowerCase();
         apiFileResponse = await apiFileDao.get(apiFileName, type, orgId, apiId);
         if (apiFileResponse) {
-            apiFile = apiFileResponse.API_FILE;
+            apiFile = apiFileResponse.FILE_CONTENT;
             //convert to text to check if link
             const textContent = new TextDecoder().decode(apiFile);
             if (textContent.startsWith("http") || textContent.startsWith("https")) {
@@ -981,70 +981,70 @@ const deleteAPIFile = async (req, res) => {
     }
 };
 
-const addSubscriptionPolicies = async (req, res) => {
-    if (req.files?.subscriptionPolicy?.[0]) {
+const addSubscriptionPlans = async (req, res) => {
+    if (req.files?.subscriptionPlan?.[0]) {
         try {
-            const policies = parseSubscriptionPoliciesFromYamlFile(req.files.subscriptionPolicy[0].buffer);
-            req.body = policies.length === 1 ? policies[0] : policies;
+            const plans = parseSubscriptionPlansFromYamlFile(req.files.subscriptionPlan[0].buffer);
+            req.body = plans.length === 1 ? plans[0] : plans;
         } catch (error) {
             return util.handleError(res, error);
         }
     }
     if (Array.isArray(req.body)) {
-        await createSubscriptionPolicies(req, res);
+        await createSubscriptionPlans(req, res);
     } else {
-        await createSubscriptionPolicy(req, res);
+        await createSubscriptionPlan(req, res);
     }
 }
 
-const putSubscriptionPolicies = async (req, res) => {
-    if (req.files?.subscriptionPolicy?.[0]) {
+const putSubscriptionPlans = async (req, res) => {
+    if (req.files?.subscriptionPlan?.[0]) {
         try {
-            const policies = parseSubscriptionPoliciesFromYamlFile(req.files.subscriptionPolicy[0].buffer);
-            req.body = policies.length === 1 ? policies[0] : policies;
+            const plans = parseSubscriptionPlansFromYamlFile(req.files.subscriptionPlan[0].buffer);
+            req.body = plans.length === 1 ? plans[0] : plans;
         } catch (error) {
             return util.handleError(res, error);
         }
     }
     if (Array.isArray(req.body)) {
-        await updateSubscriptionPolicies(req, res);
+        await updateSubscriptionPlans(req, res);
     } else {
-        await updateSubscriptionPolicy(req, res);
+        await updateSubscriptionPlan(req, res);
     }
 }
 
-const createSubscriptionPolicy = async (req, res) => {
+const createSubscriptionPlan = async (req, res) => {
     const { orgId } = req.params;
-    const subscriptionPolicy = req.body;
-    logger.info('Creating subscription policy...', {
+    const subscriptionPlan = req.body;
+    logger.info('Creating subscription plan...', {
         orgId
     });
 
-    if (!subscriptionPolicy || typeof subscriptionPolicy !== "object") {
+    if (!subscriptionPlan || typeof subscriptionPlan !== "object") {
         return res.status(400).json({ message: "Request body is missing or invalid" });
     }
 
     const validTypes = ["requestcount", "eventcount"];
-    if (!subscriptionPolicy.type || typeof subscriptionPolicy.type !== 'string' || !validTypes.includes(subscriptionPolicy.type.toLowerCase())) {
-        return res.status(400).json({ message: "Invalid or missing subscription policy type" });
+    if (!subscriptionPlan.type || typeof subscriptionPlan.type !== 'string' || !validTypes.includes(subscriptionPlan.type.toLowerCase())) {
+        return res.status(400).json({ message: "Invalid or missing subscription plan type" });
     }
 
     try {
         await sequelize.transaction({
             timeout: 60000,
         }, async (t) => {
-            const subscriptionPolicyResponse = await subscriptionPolicyDao.create(orgId, subscriptionPolicy, t);
-            if (subscriptionPolicyResponse) {
-                logger.info('Created subscription policy', {
+            const subscriptionPlanResponse = await subscriptionPlanDao.create(orgId, subscriptionPlan, t);
+            if (subscriptionPlanResponse) {
+                logger.info('Created subscription plan', {
                     orgId
                 });
-                res.status(201).send(new subscriptionPolicyDTO(subscriptionPolicyResponse));
+                res.status(201).send(new subscriptionPlanDTO(subscriptionPlanResponse));
             } else {
-                throw new CustomError(500, constants.ERROR_CODE[500], constants.ERROR_MESSAGE.SUBSCRIPTION_POLICY_CREATE_ERROR);
+                throw new CustomError(500, constants.ERROR_CODE[500], constants.ERROR_MESSAGE.SUBSCRIPTION_PLAN_CREATE_ERROR);
             }
         });
     } catch (error) {
-        logger.error('subscription policy create error failed', {
+        logger.error('subscription plan create error failed', {
             error: error.message,
             stack: error.stack,
             orgId
@@ -1053,52 +1053,54 @@ const createSubscriptionPolicy = async (req, res) => {
     }
 };
 
-const createSubscriptionPolicies = async (req, res) => {
+const createSubscriptionPlans = async (req, res) => {
     try {
-        if (config.generateDefaultSubPolicies) {
-            const msg = "Bulk creation of subscription policies is not allowed because 'generateDefaultSubPolicies' is enabled in the Developer Portal.";
+        if (config.generateDefaultSubPlans) {
+            const msg = "Bulk creation of subscription plans is not allowed because 'generateDefaultSubPlans' is enabled in the Developer Portal.";
             logger.info(msg, {
                 orgId: req.params?.orgId
             });
             res.status(200).json({ message: msg });
         } else {
             const { orgId } = req.params;
-            const subscriptionPolicies = req.body;
+            const subscriptionPlans = req.body;
 
-            if (!Array.isArray(subscriptionPolicies) || subscriptionPolicies.length === 0) {
+            if (!Array.isArray(subscriptionPlans) || subscriptionPlans.length === 0) {
                 return res.status(400).json({ message: "Missing or invalid fields in the request payload" });
             }
 
-            const createdPolicies = [];
+            const createdPlans = [];
 
             await sequelize.transaction({
                 timeout: 60000,
             }, async (t) => {
-                // TODO: Try using SubscriptionPolicy.bulkCreate() once Table is finalised and manipulating each data is not needed
-                for (const policy of subscriptionPolicies) {
-                    if (typeof policy.type !== 'string') {
-                        throw new CustomError(400, constants.ERROR_CODE[400], 'subscriptionPolicy.type must be a string');
+                // TODO: Try using SubscriptionPlan.bulkCreate() once Table is finalised and manipulating each data is not needed
+                for (const plan of subscriptionPlans) {
+                    if (typeof plan.type !== 'string') {
+                        throw new CustomError(400, constants.ERROR_CODE[400], 'subscriptionPlan.type must be a string');
                     }
-                    if (policy.type.toLowerCase() == "requestcount" || policy.type.toLowerCase() == "eventcount") {
-                        const created = await subscriptionPolicyDao.create(orgId, policy, t);
+                    if (plan.type.toLowerCase() == "requestcount" || plan.type.toLowerCase() == "eventcount") {
+                        const created = await subscriptionPlanDao.create(orgId, plan, t);
                         if (!created) {
                             throw new CustomError(
                                 500,
                                 constants.ERROR_CODE[500],
-                                `Failed to create policy: ${policy.policyName || "unknown"}`
+                                `Failed to create plan: ${plan.planName || "unknown"}`
                             );
                         }
-                        createdPolicies.push(new subscriptionPolicyDTO(created));
+                        createdPlans.push(new subscriptionPlanDTO(created));
+                    } else {
+                        throw new CustomError(400, constants.ERROR_CODE[400], `Unsupported plan type: ${plan.type}`);
                     }
                 }
             });
-            logger.info('Created subscription policies', {
+            logger.info('Created subscription plans', {
                 orgId
             });
-            res.status(201).send(createdPolicies);
+            res.status(201).send(createdPlans);
         }
     } catch (error) {
-        logger.error('subscription policy create error failed', {
+        logger.error('subscription plan create error failed', {
             error: error.message,
             stack: error.stack,
             orgId: req.params?.orgId
@@ -1107,35 +1109,35 @@ const createSubscriptionPolicies = async (req, res) => {
     }
 };
 
-const updateSubscriptionPolicy = async (req, res) => {
+const updateSubscriptionPlan = async (req, res) => {
     const { orgId } = req.params;
-    logger.info('Updating subscription policy...', {
+    logger.info('Updating subscription plan...', {
         orgId
     });
-    const subscriptionPolicy = req.body;
+    const subscriptionPlan = req.body;
 
-    if (!subscriptionPolicy || typeof subscriptionPolicy !== "object") {
+    if (!subscriptionPlan || typeof subscriptionPlan !== "object") {
         return res.status(400).json({ message: "Request body is missing or invalid" });
     }
 
     const validTypes = ["requestcount", "eventcount"];
-    if (!subscriptionPolicy.type || typeof subscriptionPolicy.type !== 'string' || !validTypes.includes(subscriptionPolicy.type.toLowerCase())) {
-        return res.status(400).json({ message: "Invalid or missing subscription policy type" });
+    if (!subscriptionPlan.type || typeof subscriptionPlan.type !== 'string' || !validTypes.includes(subscriptionPlan.type.toLowerCase())) {
+        return res.status(400).json({ message: "Invalid or missing subscription plan type" });
     }
     
     try {
         await sequelize.transaction({
             timeout: 60000,
         }, async (t) => {
-            const { subscriptionPolicyResponse, statusCode } =  await subscriptionPolicyDao.put(orgId, subscriptionPolicy, t);
-            if (subscriptionPolicyResponse) {
-                res.status(statusCode).send(new subscriptionPolicyDTO(subscriptionPolicyResponse));
+            const { subscriptionPlanResponse, statusCode } =  await subscriptionPlanDao.put(orgId, subscriptionPlan, t);
+            if (subscriptionPlanResponse) {
+                res.status(statusCode).send(new subscriptionPlanDTO(subscriptionPlanResponse));
             } else {
-                throw new CustomError(404, constants.ERROR_CODE[404], constants.ERROR_MESSAGE.SUBSCRIPTION_POLICY_NOT_FOUND);
+                throw new CustomError(404, constants.ERROR_CODE[404], constants.ERROR_MESSAGE.SUBSCRIPTION_PLAN_NOT_FOUND);
             }
         });
     } catch (error) {
-        logger.error('subscription policy not found failed', {
+        logger.error('subscription plan not found failed', {
             error: error.message,
             stack: error.stack,
             orgId: req.params?.orgId
@@ -1144,49 +1146,51 @@ const updateSubscriptionPolicy = async (req, res) => {
     }
 };
 
-const updateSubscriptionPolicies = async (req, res) => {
+const updateSubscriptionPlans = async (req, res) => {
     try {
-        if (config.generateDefaultSubPolicies) {
-            const msg = "Bulk updating of subscription policies is not allowed because 'generateDefaultSubPolicies' is enabled in the Developer Portal.";
+        if (config.generateDefaultSubPlans) {
+            const msg = "Bulk updating of subscription plans is not allowed because 'generateDefaultSubPlans' is enabled in the Developer Portal.";
             logger.info(msg, {
                 orgId: req.params?.orgId
             });
             res.status(200).json({ message: msg });
         } else {
             const { orgId } = req.params;
-            const subscriptionPolicies = req.body;
+            const subscriptionPlans = req.body;
 
-            if (!Array.isArray(subscriptionPolicies) || subscriptionPolicies.length === 0) {
+            if (!Array.isArray(subscriptionPlans) || subscriptionPlans.length === 0) {
                 return res.status(400).json({ message: "Missing or invalid fields in the request payload" });
             }
 
-            const updatedPolicies = [];
+            const updatedPlans = [];
 
             await sequelize.transaction({
                 timeout: 60000,
             }, async (t) => {
-                for (const policy of subscriptionPolicies) {
-                    if (typeof policy.type !== 'string') {
-                        throw new CustomError(400, constants.ERROR_CODE[400], 'subscriptionPolicy.type must be a string');
+                for (const plan of subscriptionPlans) {
+                    if (typeof plan.type !== 'string') {
+                        throw new CustomError(400, constants.ERROR_CODE[400], 'subscriptionPlan.type must be a string');
                     }
-                    if (policy.type.toLowerCase() == "requestcount" || policy.type.toLowerCase() == "eventcount") {
-                        const created = await subscriptionPolicyDao.put(orgId, policy, t);
+                    if (plan.type.toLowerCase() == "requestcount" || plan.type.toLowerCase() == "eventcount") {
+                        const created = await subscriptionPlanDao.put(orgId, plan, t);
                         if (!created) {
                             throw new CustomError(
                                 500,
                                 constants.ERROR_CODE[500],
-                                `Failed to create policy: ${policy.policyName || "unknown"}`
+                                `Failed to create plan: ${plan.planName || "unknown"}`
                             );
                         }
-                        updatedPolicies.push(new subscriptionPolicyDTO(created));
+                        updatedPlans.push(new subscriptionPlanDTO(created.subscriptionPlanResponse));
+                    } else {
+                        throw new CustomError(400, constants.ERROR_CODE[400], `Unsupported plan type: ${plan.type}`);
                     }
                 }
             });
 
-            res.status(201).send(updatedPolicies);
+            res.status(201).send(updatedPlans);
         }
     } catch (error) {
-        logger.error('subscription policy create error failed', {
+        logger.error('subscription plan create error failed', {
             error: error.message,
             stack: error.stack,
             orgId: req.params?.orgId
@@ -1195,47 +1199,47 @@ const updateSubscriptionPolicies = async (req, res) => {
     }
 };
 
-const deleteSubscriptionPolicy = async (req, res) => {
-    const { orgId, policyId } = req.params;
-    logger.info('Deleting subscription policy...', {
+const deleteSubscriptionPlan = async (req, res) => {
+    const { orgId, planId } = req.params;
+    logger.info('Deleting subscription plan...', {
         orgId,
-        policyId
+        planId
     });
     try {
         await sequelize.transaction({
             timeout: 60000,
         }, async (t) => {
-            const deleteCount = await subscriptionPolicyDao.deleteById(orgId, policyId, t);
+            const deleteCount = await subscriptionPlanDao.deleteById(orgId, planId, t);
             if (deleteCount === 0) {
-                throw new CustomError(404, constants.ERROR_CODE[404], constants.ERROR_MESSAGE.SUBSCRIPTION_POLICY_NOT_FOUND);
+                throw new CustomError(404, constants.ERROR_CODE[404], constants.ERROR_MESSAGE.SUBSCRIPTION_PLAN_NOT_FOUND);
             } else {
                 res.status(204).send();
             }
         });
     } catch (error) {
-        logger.error('subscription policy delete error failed', {
+        logger.error('subscription plan delete error failed', {
             error: error.message,
             stack: error.stack,
             orgId,
-            policyId
+            planId
         });
         util.handleError(res, error);
     }
 };
 
-const getSubscriptionPolicy = async (req, res) => {
+const getSubscriptionPlan = async (req, res) => {
 
-    const { orgId, policyId } = req.params;
+    const { orgId, planId } = req.params;
 
     try {
-        const subscriptionPolicyResponse = await subscriptionPolicyDao.get(policyId, orgId);
-        if (subscriptionPolicyResponse) {
-            res.status(200).send(new subscriptionPolicyDTO(subscriptionPolicyResponse));
+        const subscriptionPlanResponse = await subscriptionPlanDao.get(planId, orgId);
+        if (subscriptionPlanResponse) {
+            res.status(200).send(new subscriptionPlanDTO(subscriptionPlanResponse));
         } else {
-            throw new CustomError(404, constants.ERROR_CODE[404], constants.ERROR_MESSAGE.SUBSCRIPTION_POLICY_NOT_FOUND);
+            throw new CustomError(404, constants.ERROR_CODE[404], constants.ERROR_MESSAGE.SUBSCRIPTION_PLAN_NOT_FOUND);
         }
     } catch (error) {
-        logger.error('subscription policy not found failed', {
+        logger.error('subscription plan not found failed', {
             error: error.message,
             stack: error.stack,
             orgId
@@ -1244,25 +1248,25 @@ const getSubscriptionPolicy = async (req, res) => {
     }
 };
 
-// Lists subscription policies for an org. With ?name=<exact>, returns an array
-// containing the single matching policy (or empty array) — name is unique per
-// org. Without it, returns all policies for the org.
-const listSubscriptionPolicies = async (req, res) => {
+// Lists subscription plans for an org. With ?name=<exact>, returns an array
+// containing the single matching plan (or empty array) — name is unique per
+// org. Without it, returns all plans for the org.
+const listSubscriptionPlans = async (req, res) => {
 
     const { orgId } = req.params;
     const { name } = req.query;
 
     try {
-        let policies;
+        let plans;
         if (name) {
-            const policy = await subscriptionPolicyDao.getByName(orgId, name);
-            policies = policy ? [policy] : [];
+            const plan = await subscriptionPlanDao.getByName(orgId, name);
+            plans = plan ? [plan] : [];
         } else {
-            policies = await subscriptionPolicyDao.list(orgId);
+            plans = await subscriptionPlanDao.list(orgId);
         }
-        res.status(200).send(policies.map((policy) => new subscriptionPolicyDTO(policy)));
+        res.status(200).json(util.toPaginatedList(plans.map((plan) => new subscriptionPlanDTO(plan)), req));
     } catch (error) {
-        logger.error('subscription policy list failed', {
+        logger.error('subscription plan list failed', {
             error: error.message,
             stack: error.stack,
             orgId
@@ -1330,7 +1334,7 @@ const retrieveLabels = async (req, res) => {
     const orgId = req.params.orgId;
     try {
         const labels = await getOrgLabels(orgId);
-        res.status(200).send(labels);
+        res.status(200).json(util.toPaginatedList(labels, req));
     } catch (error) {
         logger.error('label retrieve error failed', {
             error: error.message,
@@ -1471,11 +1475,7 @@ const getAllViews = async (req, res) => {
     const orgId = req.params.orgId;
     try {
         const views = await getViewsFromDB(orgId);
-        if (views.length > 0) {
-            return res.status(200).send(views);;
-        } else {
-            res.status(404).send("No views found");
-        }
+        return res.status(200).json(util.toPaginatedList(views, req));
     } catch (error) {
         logger.error('view retrieve error failed', {
             error: error.message,
@@ -1690,8 +1690,8 @@ function mapDevportalYamlToApiMetadata(parsedYaml) {
     const endpoints = spec.endpoints || {};
     const businessInformation = spec.businessInformation || {};
 
-    const subscriptionPolicies = util.normalizeStringArray(spec.subscriptionPolicies)
-        .map(policyName => ({ policyName }));
+    const subscriptionPlans = util.normalizeStringArray(spec.subscriptionPlans)
+        .map(planName => ({ planName }));
     const visibleGroups = util.normalizeStringArray(spec.visibleGroups);
 
     return {
@@ -1706,6 +1706,7 @@ function mapDevportalYamlToApiMetadata(parsedYaml) {
             apiStatus,
             visibility: spec.visibility || constants.API_VISIBILITY.PUBLIC,
             visibleGroups: visibleGroups.length > 0 ? visibleGroups : null,
+            agentVisibility: spec.agentVisibility || 'VISIBLE',
             tags: util.normalizeStringArray(spec.tags),
             labels: util.normalizeStringArray(spec.labels),
             gatewayType: spec.gatewayType || null,
@@ -1720,7 +1721,7 @@ function mapDevportalYamlToApiMetadata(parsedYaml) {
             sandboxURL: endpoints.sandboxUrl,
             productionURL: endpoints.productionUrl,
         },
-        subscriptionPolicies,
+        subscriptionPlans,
     };
 }
 
@@ -1751,10 +1752,10 @@ function parseApiMetadataFromYamlRequest(req) {
     return parseApiMetadataFromYamlFile(apiFile.originalname, apiFile.buffer);
 }
 
-function mapYamlToSubscriptionPolicy(item) {
+function mapYamlToSubscriptionPlan(item) {
     const { metadata = {}, spec = {} } = item;
     return {
-        policyName: metadata.name,
+        planName: metadata.name,
         displayName: spec.displayName,
         description: spec.description,
         refId: spec.refId,
@@ -1764,29 +1765,29 @@ function mapYamlToSubscriptionPolicy(item) {
     };
 }
 
-function parseSubscriptionPoliciesFromYamlFile(fileBuffer) {
+function parseSubscriptionPlansFromYamlFile(fileBuffer) {
     let parsed;
     try {
         parsed = yaml.load(fileBuffer.toString(constants.CHARSET_UTF8));
     } catch (e) {
-        throw new Sequelize.ValidationError(`Invalid subscription policy YAML file: ${e.message}`);
+        throw new Sequelize.ValidationError(`Invalid subscription plan YAML file: ${e.message}`);
     }
 
     if (!parsed || typeof parsed !== 'object') {
-        throw new Sequelize.ValidationError('Subscription policy YAML file is empty or invalid');
+        throw new Sequelize.ValidationError('Subscription plan YAML file is empty or invalid');
     }
 
     const kind = parsed.kind;
-    if (kind === 'SubscriptionPolicy') {
-        return [mapYamlToSubscriptionPolicy(parsed)];
-    } else if (kind === 'SubscriptionPolicyList') {
+    if (kind === 'SubscriptionPlan') {
+        return [mapYamlToSubscriptionPlan(parsed)];
+    } else if (kind === 'SubscriptionPlanList') {
         if (!Array.isArray(parsed.items) || parsed.items.length === 0) {
-            throw new Sequelize.ValidationError("SubscriptionPolicyList must have a non-empty 'items' array");
+            throw new Sequelize.ValidationError("SubscriptionPlanList must have a non-empty 'items' array");
         }
-        return parsed.items.map(mapYamlToSubscriptionPolicy);
+        return parsed.items.map(mapYamlToSubscriptionPlan);
     } else {
         throw new Sequelize.ValidationError(
-            `Unknown subscription policy YAML kind '${kind}'. Expected 'SubscriptionPolicy' or 'SubscriptionPolicyList'`
+            `Unknown subscription plan YAML kind '${kind}'. Expected 'SubscriptionPlan' or 'SubscriptionPlanList'`
         );
     }
 }
@@ -1884,11 +1885,11 @@ module.exports = {
     deleteAPIFile,
     getMetadataListFromDB,
     getMetadataFromDB,
-    addSubscriptionPolicies,
-    putSubscriptionPolicies,
-    deleteSubscriptionPolicy,
-    getSubscriptionPolicy,
-    listSubscriptionPolicies,
+    addSubscriptionPlans,
+    putSubscriptionPlans,
+    deleteSubscriptionPlan,
+    getSubscriptionPlan,
+    listSubscriptionPlans,
     createLabels,
     deleteLabels,
     retrieveLabels,

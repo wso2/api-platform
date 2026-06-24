@@ -25,7 +25,7 @@ const store = async (apiFile, fileName, apiID, type, t) => {
 
     try {
         const apiFileResponse = await APIContent.create({
-            API_FILE: apiFile,
+            FILE_CONTENT: apiFile,
             FILE_NAME: fileName,
             API_ID: apiID,
             TYPE: type
@@ -46,7 +46,7 @@ const storeMany = async (files, apiID, t) => {
     try {
         files.forEach(file => {
             apiContent.push({
-                API_FILE: file.content,
+                FILE_CONTENT: file.content,
                 FILE_NAME: file.fileName,
                 TYPE: file.type,
                 API_ID: apiID
@@ -70,7 +70,7 @@ const upsertMany = async (files, apiID, orgID, t) => {
             const apiFileResponse = await get(file.fileName, file.type, orgID, apiID, t);
             if (apiFileResponse == null || apiFileResponse == undefined) {
                 filesToCreate.push({
-                    API_FILE: file.content,
+                    FILE_CONTENT: file.content,
                     FILE_NAME: file.fileName,
                     API_ID: apiID,
                     TYPE: file.type,
@@ -78,7 +78,7 @@ const upsertMany = async (files, apiID, orgID, t) => {
             } else {
                 const updateResponse = await APIContent.update(
                     {
-                        API_FILE: file.content,
+                        FILE_CONTENT: file.content,
                     },
                     {
                         where: {
@@ -172,14 +172,14 @@ const upsert = async (apiFile, fileName, apiID, orgID, type, t) => {
         let fileUpdateResponse;
         if (apiFileResponse == null || apiFileResponse == undefined) {
             fileUpdateResponse = await APIContent.create({
-                API_FILE: apiFile,
+                FILE_CONTENT: apiFile,
                 FILE_NAME: fileName,
                 API_ID: apiID,
                 TYPE: type
             }, { transaction: t });
         } else {
             fileUpdateResponse = await APIContent.update({
-                API_FILE: apiFile,
+                FILE_CONTENT: apiFile,
                 FILE_NAME: fileName
             },
                 {
@@ -215,14 +215,14 @@ const update = async (apiFile, fileName, apiID, orgID, type, t) => {
         let fileUpdateResponse;
         if (apiFileResponse == null || apiFileResponse == undefined) {
             fileUpdateResponse = await APIContent.create({
-                API_FILE: apiFile,
+                FILE_CONTENT: apiFile,
                 FILE_NAME: fileName,
                 API_ID: apiID,
                 TYPE: type
             }, { transaction: t });
         } else {
             fileUpdateResponse = await APIContent.update({
-                API_FILE: apiFile,
+                FILE_CONTENT: apiFile,
                 FILE_NAME: fileName
             },
                 {
@@ -450,7 +450,7 @@ const getDocs = async (orgID, apiID) => {
                 attributes: [
                     "TYPE",
                     [Sequelize.fn("ARRAY_AGG", Sequelize.col("DP_API_CONTENT.FILE_NAME")), "FILE_NAMES"],
-                    [Sequelize.fn("ARRAY_AGG", Sequelize.col("DP_API_CONTENT.API_FILE")), "API_FILES"]
+                    [Sequelize.fn("ARRAY_AGG", Sequelize.col("DP_API_CONTENT.FILE_CONTENT")), "API_FILES"]
                 ],
                 where,
                 group: ["DP_API_CONTENT.TYPE"],
@@ -458,13 +458,13 @@ const getDocs = async (orgID, apiID) => {
             });
         }
 
-        const rows = await APIContent.findAll({ attributes: ["TYPE", "FILE_NAME", "API_FILE"], where, include });
+        const rows = await APIContent.findAll({ attributes: ["TYPE", "FILE_NAME", "FILE_CONTENT"], where, include });
         const typeMap = new Map();
         for (const row of rows) {
-            const { TYPE, FILE_NAME, API_FILE } = row.dataValues;
+            const { TYPE, FILE_NAME, FILE_CONTENT } = row.dataValues;
             if (!typeMap.has(TYPE)) typeMap.set(TYPE, { TYPE, FILE_NAMES: [], API_FILES: [] });
             typeMap.get(TYPE).FILE_NAMES.push(FILE_NAME);
-            typeMap.get(TYPE).API_FILES.push(API_FILE);
+            typeMap.get(TYPE).API_FILES.push(FILE_CONTENT);
         }
         return Array.from(typeMap.values()).map(g => ({ dataValues: g }));
     } catch (error) {
@@ -494,7 +494,7 @@ const getDocLinks = async (orgID, apiID) => {
                 attributes: [
                     "TYPE",
                     [Sequelize.fn("ARRAY_AGG", Sequelize.col("DP_API_CONTENT.FILE_NAME")), "FILE_NAMES"],
-                    [Sequelize.fn("ARRAY_AGG", Sequelize.col("DP_API_CONTENT.API_FILE")), "API_FILES"]
+                    [Sequelize.fn("ARRAY_AGG", Sequelize.col("DP_API_CONTENT.FILE_CONTENT")), "API_FILES"]
                 ],
                 where,
                 group: ["DP_API_CONTENT.TYPE"],
@@ -502,13 +502,13 @@ const getDocLinks = async (orgID, apiID) => {
             });
         }
 
-        const rows = await APIContent.findAll({ attributes: ["TYPE", "FILE_NAME", "API_FILE"], where, include });
+        const rows = await APIContent.findAll({ attributes: ["TYPE", "FILE_NAME", "FILE_CONTENT"], where, include });
         const typeMap = new Map();
         for (const row of rows) {
-            const { TYPE, FILE_NAME, API_FILE } = row.dataValues;
+            const { TYPE, FILE_NAME, FILE_CONTENT } = row.dataValues;
             if (!typeMap.has(TYPE)) typeMap.set(TYPE, { TYPE, FILE_NAMES: [], API_FILES: [] });
             typeMap.get(TYPE).FILE_NAMES.push(FILE_NAME);
-            typeMap.get(TYPE).API_FILES.push(API_FILE);
+            typeMap.get(TYPE).API_FILES.push(FILE_CONTENT);
         }
         return Array.from(typeMap.values()).map(g => ({ dataValues: g }));
     } catch (error) {

@@ -18,15 +18,14 @@
  */
 
 /*
- * Tag: Key Managers
+ * Tag: Webhook Subscribers
  */
-const keyManagerService = require('../../../services/keyManagerService');
+const webhookSubscriberService = require('../../../services/webhookSubscriberService');
 
 module.exports = {
-    createKeyManager: keyManagerService.createKeyManager,
-    getKeyManagers: keyManagerService.getKeyManagers,
-    discoverKeyManagers: keyManagerService.getAvailableKeyManagers,
-    getKeyManager: keyManagerService.getKeyManager,
-    updateKeyManager: keyManagerService.updateKeyManager,
-    deleteKeyManager: keyManagerService.deleteKeyManager,
+    createWebhookSubscriber: webhookSubscriberService.createWebhookSubscriber,
+    getWebhookSubscribers: webhookSubscriberService.getWebhookSubscribers,
+    getWebhookSubscriber: webhookSubscriberService.getWebhookSubscriber,
+    updateWebhookSubscriber: webhookSubscriberService.updateWebhookSubscriber,
+    deleteWebhookSubscriber: webhookSubscriberService.deleteWebhookSubscriber,
 };

@@ -77,7 +77,7 @@ spec:
   labels:
     - default
 
-  subscriptionPolicies: []
+  subscriptionPlans: []
 
   visibility: PUBLIC
   visibleGroups: []

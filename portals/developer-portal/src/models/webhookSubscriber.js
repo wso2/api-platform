@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, WSO2 LLC. (http://www.wso2.com) All Rights Reserved.
+ * Copyright (c) 2026, WSO2 LLC. (http://www.wso2.com) All Rights Reserved.
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -19,42 +19,70 @@ const { Sequelize, DataTypes } = require('sequelize');
 const sequelize = require('../db/sequelizeConfig');
 const { Organization } = require('./organization');
 
-
-const Labels = sequelize.define('DP_LABELS', {
-
-    LABEL_ID: {
+const WebhookSubscriber = sequelize.define('DP_WEBHOOK_SUBSCRIBER', {
+    SUBSCRIBER_ID: {
         type: DataTypes.UUID,
         defaultValue: Sequelize.UUIDV4,
         primaryKey: true
     },
     ORG_ID: {
         type: DataTypes.UUID,
-        allowNull: false,
+        allowNull: false
     },
     NAME: {
         type: DataTypes.STRING,
         allowNull: false
     },
-    DISPLAY_NAME: {
-        type: DataTypes.STRING,
+    TARGET_URL: {
+        type: DataTypes.TEXT,
         allowNull: false
     },
+    SECRET_ENC: {
+        type: DataTypes.TEXT,
+        allowNull: false
+    },
+    PUBLIC_KEY: {
+        type: DataTypes.TEXT,
+        allowNull: true
+    },
+    GATEWAY_TYPE: {
+        type: DataTypes.STRING,
+        allowNull: true
+    },
+    EVENT_PATTERNS: {
+        type: DataTypes.JSON,
+        allowNull: true,
+        defaultValue: []
+    },
+    ENABLED: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: true
+    },
+    TIMEOUT_MS: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        defaultValue: 5000
+    }
 }, {
     timestamps: false,
-    tableName: 'DP_LABELS',
+    tableName: 'DP_WEBHOOK_SUBSCRIBER',
     returning: true,
     indexes: [
         {
-            name: 'UQ_LABELS_NAME_ORG_ID',
+            name: 'UQ_WEBHOOK_SUBSCRIBER_ORG_NAME',
             unique: true,
-            fields: ['NAME', 'ORG_ID'],
+            fields: ['ORG_ID', 'NAME']
         }
-    ],
+    ]
 });
 
-Labels.belongsTo(Organization, {
+WebhookSubscriber.belongsTo(Organization, {
     foreignKey: 'ORG_ID'
-})
+});
+Organization.hasMany(WebhookSubscriber, {
+    foreignKey: 'ORG_ID',
+    onDelete: 'CASCADE'
+});
 
-module.exports = Labels;
-
+module.exports = { WebhookSubscriber };

@@ -1,16 +1,16 @@
-<h1 id="wso2-api-developer-portal-core-devportal-routes-subscriptions">Subscriptions</h1>
+<h1 id="wso2-api-developer-portal-core-devportal-routes-webhook-subscribers">Webhook Subscribers</h1>
 
-## Create a subscription
+## Create a webhook subscriber
 
-<a id="opIdcreateSubscription"></a>
+<a id="opIdcreateWebhookSubscriber"></a>
 
-`POST /o/{orgId}/devportal/v1/subscriptions`
+`POST /o/{orgId}/devportal/v1/webhook-subscribers`
 
 > Code samples
 
 ```shell
 
-curl -X POST https://devportal.api-platform.io/o/{orgId}/devportal/v1/subscriptions \
+curl -X POST https://devportal.api-platform.io/o/{orgId}/devportal/v1/webhook-subscribers \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -19,13 +19,23 @@ curl -X POST https://devportal.api-platform.io/o/{orgId}/devportal/v1/subscripti
 
 ```
 
-Creates a subscription for an API. The API must exist in the Developer Portal and have subscription plans enabled. The subscription is owned by the authenticated user.
+Registers a webhook subscriber for the organization. Gateway event deliveries (apikey.*, subscription.*, etc.) matching the subscriber's gatewayType/events filters are fanned out to its target URL. The `secret` is encrypted at rest using AES-256-GCM.
 
 > Payload
 
 ```json
 {
-  "apiId": "api-7f4c2a6b"
+  "name": "Production Gateway",
+  "url": "https://gateway.example.com/devportal-webhook",
+  "secret": "<shared-secret>",
+  "publicKey": "string",
+  "gatewayType": "*",
+  "events": [
+    "apikey.*",
+    "subscription.*"
+  ],
+  "enabled": true,
+  "timeoutMs": 5000
 }
 ```
 
@@ -36,11 +46,11 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 </aside>
 
-<h3 id="create-a-subscription-parameters">Parameters</h3>
+<h3 id="create-a-webhook-subscriber-parameters">Parameters</h3>
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|body|body|[SubscriptionCreateRequest](schemas.md#schemasubscriptioncreaterequest)|true|Subscription creation payload. `apiId` is the Developer Portal API ID.|
+|body|body|[WebhookSubscriberRequest](schemas.md#schemawebhooksubscriberrequest)|true|Webhook subscriber configuration payload.|
 |orgId|path|string|true|none|
 
 > Example responses
@@ -49,14 +59,18 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "subscriptionId": "sub-12345",
-  "apiId": "api-7f4c2a6b",
-  "subscriptionToken": "a3f1e8b2...",
-  "subscriptionPlanName": "Gold",
-  "gatewayType": "wso2/api-platform",
-  "status": "ACTIVE",
-  "createdBy": "alice@example.com",
-  "createdAt": "2026-05-07T08:30:00Z"
+  "id": "sub-uuid-12345",
+  "orgId": "org-12345",
+  "name": "Production Gateway",
+  "url": "https://gateway.example.com/devportal-webhook",
+  "enabled": true,
+  "gatewayType": "*",
+  "events": [
+    "apikey.*",
+    "subscription.*"
+  ],
+  "timeoutMs": 5000,
+  "hasPublicKey": false
 }
 ```
 
@@ -92,13 +106,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 }
 ```
 
-> 404 Response
+> 409 Response
 
 ```json
 {
   "status": "error",
-  "code": "ORG_NOT_FOUND",
-  "message": "Organization not found."
+  "code": "CONFLICT",
+  "message": "Conflict"
 }
 ```
 
@@ -112,16 +126,16 @@ This operation requires <strong>Basic Auth</strong> authentication.
 }
 ```
 
-<h3 id="create-a-subscription-responses">Responses</h3>
+<h3 id="create-a-webhook-subscriber-responses">Responses</h3>
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|201|[Created](https://tools.ietf.org/html/rfc7231#section-6.3.2)|Subscription DTO.|[SubscriptionResponse](schemas.md#schemasubscriptionresponse)|
+|201|[Created](https://tools.ietf.org/html/rfc7231#section-6.3.2)|Webhook subscriber configuration response.|[WebhookSubscriberResponseSchema](schemas.md#schemawebhooksubscriberresponseschema)|
 |400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.|Inline|
-|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|The request conflicts with an existing resource.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
-<h3 id="create-a-subscription-responseschema">Response Schema</h3>
+<h3 id="create-a-webhook-subscriber-responseschema">Response Schema</h3>
 
 #### Enumerated Values
 
@@ -134,26 +148,26 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Status|Header|Type|Format|Description|
 |---|---|---|---|---|
-|201|Location|string|uri|URL of the created subscription.|
+|201|Location|string|uri|URL of the created webhook subscriber.|
 
-## List subscriptions
+## List webhook subscribers
 
-<a id="opIdlistSubscriptions"></a>
+<a id="opIdgetWebhookSubscribers"></a>
 
-`GET /o/{orgId}/devportal/v1/subscriptions`
+`GET /o/{orgId}/devportal/v1/webhook-subscribers`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://devportal.api-platform.io/o/{orgId}/devportal/v1/subscriptions \
+curl -X GET https://devportal.api-platform.io/o/{orgId}/devportal/v1/webhook-subscribers \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
 
 ```
 
-Lists subscriptions owned by the authenticated user. When `apiId` is provided, results are additionally filtered by the Developer Portal API ID.
+Returns all webhook subscriber configurations for the organization. Secrets are never included in the response.
 
 ### Authentication
 
@@ -162,11 +176,10 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 </aside>
 
-<h3 id="list-subscriptions-parameters">Parameters</h3>
+<h3 id="list-webhook-subscribers-parameters">Parameters</h3>
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|apiId|query|string|false|Optional Developer Portal API ID used to filter results.|
 |limit|query|integer|false|Maximum number of records to return.|
 |offset|query|integer|false|Number of records to skip before returning results.|
 |orgId|path|string|true|none|
@@ -179,14 +192,18 @@ This operation requires <strong>Basic Auth</strong> authentication.
 {
   "list": [
     {
-      "subscriptionId": "sub-12345",
-      "apiId": "api-7f4c2a6b",
-      "subscriptionToken": "a3f1...",
-      "subscriptionPlanName": "Gold",
-      "gatewayType": "wso2/api-platform",
-      "status": "ACTIVE",
-      "createdBy": "alice@example.com",
-      "createdAt": "2019-08-24T14:15:22Z"
+      "id": "sub-uuid-12345",
+      "orgId": "org-12345",
+      "name": "Production Gateway",
+      "url": "https://gateway.example.com/devportal-webhook",
+      "enabled": true,
+      "gatewayType": "*",
+      "events": [
+        "apikey.*",
+        "subscription.*"
+      ],
+      "timeoutMs": 5000,
+      "hasPublicKey": false
     }
   ],
   "pagination": {
@@ -197,48 +214,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 }
 ```
 
-> Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.
-
-```json
-[
-  {
-    "status": "error",
-    "code": "COMMON_VALIDATION_ERROR",
-    "message": "Input validation failed.",
-    "errors": [
-      {
-        "field": "orgName",
-        "message": "orgName is required."
-      }
-    ]
-  }
-]
-```
-
-```json
-{
-  "status": "error",
-  "code": "MISSING_REQUIRED_PARAMETER",
-  "message": "Missing required parameter."
-}
-```
-
-```json
-{
-  "message": "Missing or invalid fields in the request payload"
-}
-```
-
-> 404 Response
-
-```json
-{
-  "status": "error",
-  "code": "ORG_NOT_FOUND",
-  "message": "Organization not found."
-}
-```
-
 > 500 Response
 
 ```json
@@ -249,67 +224,52 @@ This operation requires <strong>Basic Auth</strong> authentication.
 }
 ```
 
-<h3 id="list-subscriptions-responses">Responses</h3>
+<h3 id="list-webhook-subscribers-responses">Responses</h3>
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|List of subscription DTOs.|Inline|
-|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.|Inline|
-|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|List of webhook subscriber configurations.|Inline|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
-<h3 id="list-subscriptions-responseschema">Response Schema</h3>
+<h3 id="list-webhook-subscribers-responseschema">Response Schema</h3>
 
 Status Code **200**
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|» list|[[SubscriptionResponse](schemas.md#schemasubscriptionresponse)]|false|none|[Subscription payload.]|
-|»» subscriptionId|string|false|none|none|
-|»» apiId|string|false|none|Developer Portal API ID.|
-|»» subscriptionToken|string|false|none|Plaintext subscription token. Present on create and when the token has not been encrypted at rest.|
-|»» subscriptionPlanName|string|false|none|none|
+|» list|[[WebhookSubscriberResponseSchema](schemas.md#schemawebhooksubscriberresponseschema)]|false|none|[Webhook subscriber configuration. The secret is never included.]|
+|»» id|string|false|none|Webhook subscriber UUID.|
+|»» orgId|string|false|none|none|
+|»» name|string|false|none|none|
+|»» url|string(uri)|false|none|none|
+|»» enabled|boolean|false|none|none|
 |»» gatewayType|string|false|none|none|
-|»» status|string|false|none|none|
-|»» createdBy|string|false|none|Identity (sub claim) of the user who created the subscription.|
-|»» createdAt|string(date-time)|false|none|none|
+|»» events|[string]|false|none|none|
+|»» timeoutMs|integer|false|none|none|
+|»» hasPublicKey|boolean|false|none|Whether a public key is configured for envelope-encrypting secret event payloads.|
 |» pagination|[Pagination](schemas.md#schemapagination)|false|none|Standard pagination metadata returned with collection responses.|
 |»» total|integer|true|none|Total number of records matching the query.|
 |»» limit|integer|true|none|Maximum number of records returned in this response.|
 |»» offset|integer|true|none|Number of records skipped before this page.|
 
-#### Enumerated Values
+## Get a webhook subscriber
 
-|Property|Value|
-|---|---|
-|status|ACTIVE|
-|status|INACTIVE|
+<a id="opIdgetWebhookSubscriber"></a>
 
-#### Enumerated Values
-
-|Property|Value|
-|---|---|
-|status|error|
-|status|error|
-
-## Get a subscription
-
-<a id="opIdgetSubscription"></a>
-
-`GET /o/{orgId}/devportal/v1/subscriptions/{subId}`
+`GET /o/{orgId}/devportal/v1/webhook-subscribers/{subscriberId}`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://devportal.api-platform.io/o/{orgId}/devportal/v1/subscriptions/{subId} \
+curl -X GET https://devportal.api-platform.io/o/{orgId}/devportal/v1/webhook-subscribers/{subscriberId} \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
 
 ```
 
-Retrieves a single subscription by subscription ID.
+Retrieves a single webhook subscriber configuration by ID.
 
 ### Authentication
 
@@ -318,12 +278,12 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 </aside>
 
-<h3 id="get-a-subscription-parameters">Parameters</h3>
+<h3 id="get-a-webhook-subscriber-parameters">Parameters</h3>
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |orgId|path|string|true|none|
-|subId|path|string|true|none|
+|subscriberId|path|string|true|Webhook subscriber ID (UUID).|
 
 > Example responses
 
@@ -331,14 +291,18 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "subscriptionId": "sub-12345",
-  "apiId": "api-7f4c2a6b",
-  "subscriptionToken": "a3f1e8b2...",
-  "subscriptionPlanName": "Gold",
-  "gatewayType": "wso2/api-platform",
-  "status": "ACTIVE",
-  "createdBy": "alice@example.com",
-  "createdAt": "2026-05-07T08:30:00Z"
+  "id": "sub-uuid-12345",
+  "orgId": "org-12345",
+  "name": "Production Gateway",
+  "url": "https://gateway.example.com/devportal-webhook",
+  "enabled": true,
+  "gatewayType": "*",
+  "events": [
+    "apikey.*",
+    "subscription.*"
+  ],
+  "timeoutMs": 5000,
+  "hasPublicKey": false
 }
 ```
 
@@ -362,25 +326,25 @@ This operation requires <strong>Basic Auth</strong> authentication.
 }
 ```
 
-<h3 id="get-a-subscription-responses">Responses</h3>
+<h3 id="get-a-webhook-subscriber-responses">Responses</h3>
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Subscription DTO.|[SubscriptionResponse](schemas.md#schemasubscriptionresponse)|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Webhook subscriber configuration response.|[WebhookSubscriberResponseSchema](schemas.md#schemawebhooksubscriberresponseschema)|
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
-## Update a subscription
+## Update a webhook subscriber
 
-<a id="opIdupdateSubscription"></a>
+<a id="opIdupdateWebhookSubscriber"></a>
 
-`PUT /o/{orgId}/devportal/v1/subscriptions/{subId}`
+`PUT /o/{orgId}/devportal/v1/webhook-subscribers/{subscriberId}`
 
 > Code samples
 
 ```shell
 
-curl -X PUT https://devportal.api-platform.io/o/{orgId}/devportal/v1/subscriptions/{subId} \
+curl -X PUT https://devportal.api-platform.io/o/{orgId}/devportal/v1/webhook-subscribers/{subscriberId} \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -389,13 +353,23 @@ curl -X PUT https://devportal.api-platform.io/o/{orgId}/devportal/v1/subscriptio
 
 ```
 
-Updates the subscription status. Accepts only `ACTIVE` or `INACTIVE`.
+Updates an existing webhook subscriber configuration. Only supplied fields are updated; omitted fields retain their stored values.
 
 > Payload
 
 ```json
 {
-  "status": "ACTIVE"
+  "name": "Production Gateway",
+  "url": "https://gateway.example.com/devportal-webhook",
+  "secret": "<shared-secret>",
+  "publicKey": "string",
+  "gatewayType": "*",
+  "events": [
+    "apikey.*",
+    "subscription.*"
+  ],
+  "enabled": true,
+  "timeoutMs": 5000
 }
 ```
 
@@ -406,13 +380,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 </aside>
 
-<h3 id="update-a-subscription-parameters">Parameters</h3>
+<h3 id="update-a-webhook-subscriber-parameters">Parameters</h3>
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|body|body|[SubscriptionUpdateRequest](schemas.md#schemasubscriptionupdaterequest)|true|Subscription status update payload.|
+|body|body|[WebhookSubscriberRequest](schemas.md#schemawebhooksubscriberrequest)|false|Webhook subscriber update payload. All fields are optional; only supplied fields are updated.|
 |orgId|path|string|true|none|
-|subId|path|string|true|none|
+|subscriberId|path|string|true|Webhook subscriber ID (UUID).|
 
 > Example responses
 
@@ -420,14 +394,18 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "subscriptionId": "sub-12345",
-  "apiId": "api-7f4c2a6b",
-  "subscriptionToken": "a3f1e8b2...",
-  "subscriptionPlanName": "Gold",
-  "gatewayType": "wso2/api-platform",
-  "status": "ACTIVE",
-  "createdBy": "alice@example.com",
-  "createdAt": "2026-05-07T08:30:00Z"
+  "id": "sub-uuid-12345",
+  "orgId": "org-12345",
+  "name": "Production Gateway",
+  "url": "https://gateway.example.com/devportal-webhook",
+  "enabled": true,
+  "gatewayType": "*",
+  "events": [
+    "apikey.*",
+    "subscription.*"
+  ],
+  "timeoutMs": 5000,
+  "hasPublicKey": false
 }
 ```
 
@@ -473,6 +451,16 @@ This operation requires <strong>Basic Auth</strong> authentication.
 }
 ```
 
+> 409 Response
+
+```json
+{
+  "status": "error",
+  "code": "CONFLICT",
+  "message": "Conflict"
+}
+```
+
 > 500 Response
 
 ```json
@@ -483,16 +471,17 @@ This operation requires <strong>Basic Auth</strong> authentication.
 }
 ```
 
-<h3 id="update-a-subscription-responses">Responses</h3>
+<h3 id="update-a-webhook-subscriber-responses">Responses</h3>
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Subscription DTO.|[SubscriptionResponse](schemas.md#schemasubscriptionresponse)|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Webhook subscriber configuration response.|[WebhookSubscriberResponseSchema](schemas.md#schemawebhooksubscriberresponseschema)|
 |400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.|Inline|
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|The request conflicts with an existing resource.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
-<h3 id="update-a-subscription-responseschema">Response Schema</h3>
+<h3 id="update-a-webhook-subscriber-responseschema">Response Schema</h3>
 
 #### Enumerated Values
 
@@ -501,24 +490,24 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |status|error|
 |status|error|
 
-## Delete a subscription
+## Delete a webhook subscriber
 
-<a id="opIddeleteSubscription"></a>
+<a id="opIddeleteWebhookSubscriber"></a>
 
-`DELETE /o/{orgId}/devportal/v1/subscriptions/{subId}`
+`DELETE /o/{orgId}/devportal/v1/webhook-subscribers/{subscriberId}`
 
 > Code samples
 
 ```shell
 
-curl -X DELETE https://devportal.api-platform.io/o/{orgId}/devportal/v1/subscriptions/{subId} \
+curl -X DELETE https://devportal.api-platform.io/o/{orgId}/devportal/v1/webhook-subscribers/{subscriberId} \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
 
 ```
 
-Deletes the subscription and returns a success message.
+Deletes a webhook subscriber configuration by ID.
 
 ### Authentication
 
@@ -527,22 +516,14 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 </aside>
 
-<h3 id="delete-a-subscription-parameters">Parameters</h3>
+<h3 id="delete-a-webhook-subscriber-parameters">Parameters</h3>
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |orgId|path|string|true|none|
-|subId|path|string|true|none|
+|subscriberId|path|string|true|Webhook subscriber ID (UUID).|
 
 > Example responses
-
-> 200 Response
-
-```json
-{
-  "message": "string"
-}
-```
 
 > 404 Response
 
@@ -564,10 +545,10 @@ This operation requires <strong>Basic Auth</strong> authentication.
 }
 ```
 
-<h3 id="delete-a-subscription-responses">Responses</h3>
+<h3 id="delete-a-webhook-subscriber-responses">Responses</h3>
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|JSON message response.|[MessageResponse](schemas.md#schemamessageresponse)|
+|204|[No Content](https://tools.ietf.org/html/rfc7231#section-6.3.5)|Webhook subscriber deleted successfully.|None|
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|

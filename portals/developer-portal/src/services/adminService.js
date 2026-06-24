@@ -23,7 +23,7 @@ const appDao = require('../dao/applicationDao');
 const apiDao = require('../dao/apiDao');
 const labelDao = require('../dao/labelDao');
 const viewDao = require('../dao/viewDao');
-const subscriptionPolicyDao = require('../dao/subscriptionPolicyDao');
+const subscriptionPlanDao = require('../dao/subscriptionPlanDao');
 const util = require('../utils/util');
 const fs = require('fs');
 const path = require('path');
@@ -48,12 +48,6 @@ function mapYamlToOrganization(parsed) {
         businessOwner: spec.businessOwner,
         businessOwnerContact: spec.businessOwnerContact,
         businessOwnerEmail: spec.businessOwnerEmail,
-        roleClaimName: spec.roleClaimName,
-        organizationClaimName: spec.organizationClaimName,
-        groupsClaimName: spec.groupsClaimName,
-        adminRole: spec.adminRole,
-        subscriberRole: spec.subscriberRole,
-        superAdminRole: spec.superAdminRole,
         labels: spec.labels || null,
         views: spec.views || null,
     };
@@ -90,8 +84,7 @@ function parseOrganizationFromYamlFile(fileBuffer) {
     // checks that the multipart file field is present; it cannot inspect the file's
     // contents, so the required fields from OrganizationCreate/UpdateRequest are
     // enforced here. Keep this list in sync with those spec schemas.
-    const requiredFields = ['orgName', 'orgHandle', 'roleClaimName', 'groupsClaimName',
-        'organizationClaimName', 'organizationIdentifier', 'adminRole', 'subscriberRole', 'superAdminRole'];
+    const requiredFields = ['orgName', 'orgHandle', 'organizationIdentifier'];
     const missingFields = requiredFields.filter((field) => !organization[field]);
     if (missingFields.length > 0) {
         throw new Sequelize.ValidationError(
@@ -162,11 +155,11 @@ const createOrganization = async (req, res) => {
                 orgId
             });
 
-            //store default subscription policies
-            if (config.generateDefaultSubPolicies) {
-                await subscriptionPolicyDao.createMany(orgId, constants.DEFAULT_SUBSCRIPTION_PLANS, t);
+            //store default subscription plans
+            if (config.generateDefaultSubPlans) {
+                await subscriptionPlanDao.createMany(orgId, constants.DEFAULT_SUBSCRIPTION_PLANS, t);
             }
-            logger.info('Default subscription policies created successfully', {
+            logger.info('Default subscription plans created successfully', {
                 orgId
             });
 
@@ -179,13 +172,7 @@ const createOrganization = async (req, res) => {
             businessOwnerContact: organization.BUSINESS_OWNER_CONTACT,
             businessOwnerEmail: organization.BUSINESS_OWNER_EMAIL,
             orgHandle: organization.ORG_HANDLE,
-            roleClaimName: organization.ROLE_CLAIM_NAME,
-            groupsClaimName: organization.GROUPS_CLAIM_NAME,
-            organizationClaimName: organization.ORGANIZATION_CLAIM_NAME,
             organizationIdentifier: organization.ORGANIZATION_IDENTIFIER,
-            adminRole: organization.ADMIN_ROLE,
-            subscriberRole: organization.SUBSCRIBER_ROLE,
-            groupClaimName: organization.GROUP_CLAIM_NAME,
             orgConfiguration: organization.dataValues.ORG_CONFIG
         };
         logger.info('Organization creation flow completed successfully', {
@@ -205,7 +192,7 @@ const createOrganization = async (req, res) => {
 const getOrganizations = async (req, res) => {
     try {
         const orgList = await getAllOrganizations();
-        res.status(200).send(orgList);
+        res.status(200).json(util.toPaginatedList(orgList, req));
     } catch (error) {
         util.handleError(res, error);
     }
@@ -223,13 +210,7 @@ const getAllOrganizations = async () => {
                 businessOwnerContact: organization.dataValues.BUSINESS_OWNER_CONTACT,
                 businessOwnerEmail: organization.dataValues.BUSINESS_OWNER_EMAIL,
                 orgHandle: organization.ORG_HANDLE,
-                roleClaimName: organization.ROLE_CLAIM_NAME,
-                groupsClaimName: organization.GROUPS_CLAIM_NAME,
-                organizationClaimName: organization.ORGANIZATION_CLAIM_NAME,
                 organizationIdentifier: organization.ORGANIZATION_IDENTIFIER,
-                adminRole: organization.ADMIN_ROLE,
-                subscriberRole: organization.SUBSCRIBER_ROLE,
-                superAdminRole: organization.SUPER_ADMIN_ROLE,
                 orgConfiguration: organization.dataValues.ORG_CONFIG
             });
         }
@@ -286,13 +267,7 @@ const updateOrganization = async (req, res) => {
             businessOwnerContact: updatedOrg[0].dataValues.BUSINESS_OWNER_CONTACT,
             businessOwnerEmail: updatedOrg[0].dataValues.BUSINESS_OWNER_EMAIL,
             orgHandle: updatedOrg[0].dataValues.ORG_HANDLE,
-            roleClaimName: updatedOrg[0].dataValues.ROLE_CLAIM_NAME,
-            groupsClaimName: updatedOrg[0].dataValues.GROUPS_CLAIM_NAME,
-            organizationClaimName: updatedOrg[0].dataValues.ORGANIZATION_CLAIM_NAME,
             organizationIdentifier: updatedOrg[0].dataValues.ORGANIZATION_IDENTIFIER,
-            adminRole: updatedOrg[0].dataValues.ADMIN_ROLE,
-            subscriberRole: updatedOrg[0].dataValues.SUBSCRIBER_ROLE,
-            superAdminRole: updatedOrg[0].dataValues.SUPER_ADMIN_ROLE,
             orgConfiguration: updatedOrg[0].dataValues.ORG_CONFIG
         });
     } catch (error) {

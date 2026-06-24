@@ -17,6 +17,7 @@
  */
 const apiKeyService = require('../services/apiKeyService');
 const logger = require('../config/logger');
+const util = require('../utils/util');
 
 function errorStatus(err) {
     return err.status || 500;
@@ -55,7 +56,10 @@ async function listApiKeys(req, res) {
     const { apiId, subscriptionId, status } = req.query;
 
     if (!apiId || typeof apiId !== 'string' || !apiId.trim()) {
-        return res.status(400).json({ code: '400', message: 'Bad Request', description: 'apiId is required' });
+        return res.status(400).json({
+            status: 'error', code: 'COMMON_VALIDATION_ERROR', message: 'Bad Request',
+            errors: [{ field: 'apiId', message: 'apiId is required' }],
+        });
     }
 
     try {
@@ -64,7 +68,7 @@ async function listApiKeys(req, res) {
             subscriptionId: subscriptionId || undefined,
             status: status || undefined
         });
-        return res.status(200).json(keys.map(k => ({
+        const mapped = keys.map(k => ({
             keyId: k.KEY_ID,
             name: k.NAME,
             status: k.STATUS,
@@ -72,10 +76,16 @@ async function listApiKeys(req, res) {
             createdAt: k.CREATED_AT,
             revokedAt: k.REVOKED_AT || undefined,
             apiId: k.API_ID
-        })));
+        }));
+        return res.status(200).json(util.toPaginatedList(mapped, req));
     } catch (err) {
         logger.error('[apiKeyController] list failed', { error: err.message, orgId });
-        return res.status(errorStatus(err)).json({ code: String(errorStatus(err)), message: err.message });
+        return res.status(errorStatus(err)).json({
+            status: 'error',
+            code: 'INTERNAL_SERVER_ERROR',
+            message: err.message,
+            errors: [],
+        });
     }
 }
 

@@ -1,5 +1,6 @@
+
 /*
- * Copyright (c) 2026, WSO2 LLC. (http://www.wso2.com) All Rights Reserved.
+ * Copyright (c) 2024, WSO2 LLC. (http://www.wso2.com) All Rights Reserved.
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -14,19 +15,17 @@
  * KIND, either express or implied. See the License for the
  * specific language governing permissions and limitations
  * under the License.
- *
  */
+class SubscriptionPlan {
+    constructor(subscriptionPlan) {
+        this.planID = subscriptionPlan.PLAN_ID;
+        this.planName = subscriptionPlan.PLAN_NAME;
+        this.displayName = subscriptionPlan.DISPLAY_NAME;
+        this.description = subscriptionPlan.DESCRIPTION;
+        this.requestCount = subscriptionPlan.REQUEST_COUNT;
+        this.refId = subscriptionPlan.REF_ID;
+        this.orgID = subscriptionPlan.ORG_ID;
+    }
+}
 
-/*
- * Tag: Key Managers
- */
-const keyManagerService = require('../../../services/keyManagerService');
-
-module.exports = {
-    createKeyManager: keyManagerService.createKeyManager,
-    getKeyManagers: keyManagerService.getKeyManagers,
-    discoverKeyManagers: keyManagerService.getAvailableKeyManagers,
-    getKeyManager: keyManagerService.getKeyManager,
-    updateKeyManager: keyManagerService.updateKeyManager,
-    deleteKeyManager: keyManagerService.deleteKeyManager,
-};
+module.exports = SubscriptionPlan;

@@ -97,13 +97,13 @@
               </div>
             </div>
           </div>
-          {{#if subscriptionPolicies.length}}
+          {{#if subscriptionPlans.length}}
           <hr class="card-separator" />
           {{/if}}
           <div class="api-card-footer">
             <div id="btnSection" class="d-flex align-items-center gap-2 w-100">
               <div id="subscriptionBox" class="subscription-container w-100">
-                {{#if subscriptionPolicies.length}}
+                {{#if subscriptionPlans.length}}
                 <a type="button" class="common-btn-primary w-100 {{#if @root.isReadOnlyMode}}disabled{{/if}}"
                   {{#unless @root.isReadOnlyMode}}href="{{../baseUrl}}/mcp/{{apiHandle}}#subscriptionPlans"{{/unless}}
                   {{#if @root.isReadOnlyMode}}aria-disabled="true"{{/if}}>Subscribe</a>

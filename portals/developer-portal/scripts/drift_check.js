@@ -177,14 +177,14 @@ const SAMPLES = [
     // createLabels echoes req.body — clients send LabelRequest[]
     ['createLabels', 201, [{ name: 'premium', displayName: 'Premium APIs' }]],
 
-    // Subscription Policies — single-create returns DTO; bulk-disabled returns {message}
-    ['addSubscriptionPolicies', 201, {
-        policyID: 'p1', policyName: 'Bronze', displayName: 'Bronze',
+    // Subscription Plans — single-create returns DTO; bulk-disabled returns {message}
+    ['addSubscriptionPlans', 201, {
+        planID: 'p1', planName: 'Bronze', displayName: 'Bronze',
         billingPlan: 'FREE', description: 'desc', requestCount: 100,
         orgID: 'org-1', pricingModel: 'flat', currency: 'usd',
         billingPeriod: 'month', flatAmount: 0, unitAmount: 0, pricingMetadata: {},
     }],
-    ['addSubscriptionPolicies', 200, { message: 'Bulk creation disabled' }],
+    ['addSubscriptionPlans', 200, { message: 'Bulk creation disabled' }],
 
     // API Flows — apiFlowService.createAPIFlow L207 emits {apiFlowId, name, status}
     ['createAPIFlow', 201, { apiFlowId: 'f1', name: 'flow1', status: 'PUBLISHED' }],

@@ -39,9 +39,9 @@ function isNotRetryable(status) {
  * POST a single delivery. Returns { ok, status, error }.
  */
 async function post(delivery, event) {
-    const sub = getSubscriber(delivery.SUBSCRIBER_ID);
+    const sub = await getSubscriber(delivery.SUBSCRIBER_ID);
     if (!sub) {
-        return { ok: false, error: `Subscriber '${delivery.SUBSCRIBER_ID}' not found in config` };
+        return { ok: false, error: `Subscriber '${delivery.SUBSCRIBER_ID}' not found` };
     }
 
     const deliveryId = delivery.DELIVERY_ID;

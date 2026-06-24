@@ -32,8 +32,8 @@ const { config } = require('../config/configLoader');
 const { body, param, query } = require('express-validator');
 const { Sequelize } = require('sequelize');
 const apiDao = require('../dao/apiDao');
-const subscriptionPolicyDao = require('../dao/subscriptionPolicyDao');
-const subscriptionPolicyDTO = require('../dto/subscriptionPolicyDto');
+const subscriptionPlanDao = require('../dao/subscriptionPlanDao');
+const subscriptionPlanDTO = require('../dto/subscriptionPlanDto');
 const jwt = require('jsonwebtoken');
 const filePrefix = '/src/defaultContent/';
 
@@ -223,56 +223,72 @@ async function renderGivenTemplate(templatePage, layoutPage, templateContent) {
     });
 }
 
-function getErrors(errors) {
+const HTTP_CODE_TO_CATALOG = {
+    400: 'COMMON_VALIDATION_ERROR',
+    401: 'UNAUTHORIZED',
+    403: 'FORBIDDEN',
+    404: 'RESOURCE_NOT_FOUND',
+    409: 'CONFLICT',
+    500: 'INTERNAL_SERVER_ERROR',
+};
 
+function getErrors(errors) {
     const errorList = [];
     errors.errors.forEach(element => {
-        errorList.push({
-            code: '400',
-            message: 'input validation failed',
-            description: element.msg
-        })
+        errorList.push({ field: element.path || element.param || undefined, message: element.msg });
     });
     return errorList;
 }
 
 function handleError(res, error) {
     if (error instanceof Sequelize.UniqueConstraintError) {
+        const msg = error.errors ? error.errors[0].message : error.message.replaceAll('"', '');
         return res.status(409).json({
-            code: "409",
-            message: "Conflict",
-            description: error.errors ? error.errors[0].message : error.message.replaceAll('"', ''),
+            status: 'error',
+            code: 'CONFLICT',
+            message: 'Conflict',
+            errors: [{ message: msg }],
         });
     } else if (error instanceof Sequelize.ValidationError) {
         return res.status(400).json({
-            code: "400",
-            message: "Bad Request",
-            description: error.message
+            status: 'error',
+            code: 'COMMON_VALIDATION_ERROR',
+            message: 'Bad Request',
+            errors: [{ message: error.message }],
         });
     } else if (error instanceof Sequelize.EmptyResultError) {
         return res.status(404).json({
-            code: "404",
-            message: "Resource Not Found",
-            description: error.message
+            status: 'error',
+            code: 'RESOURCE_NOT_FOUND',
+            message: 'Resource Not Found',
+            errors: [],
         });
     } else if (error instanceof CustomError) {
+        const code = HTTP_CODE_TO_CATALOG[error.statusCode] || 'INTERNAL_SERVER_ERROR';
         return res.status(error.statusCode).json({
-            code: error.statusCode,
+            status: 'error',
+            code,
             message: error.message,
-            description: error.description
+            errors: error.description ? [{ message: error.description }] : [],
         });
     } else {
-        let errorDescription = error.message;
-        if (error instanceof Sequelize.DatabaseError) {
-            errorDescription = "Internal Server Error";
-        }
         return res.status(500).json({
-            "code": "500",
-            "message": "Internal Server Error",
-            "description": errorDescription
+            status: 'error',
+            code: 'INTERNAL_SERVER_ERROR',
+            message: 'Internal Server Error',
+            errors: [],
         });
     }
-};
+}
+
+function toPaginatedList(list, req) {
+    const limit = Math.min(parseInt((req.query && req.query.limit) || '20', 10) || 20, 100);
+    const offset = parseInt((req.query && req.query.offset) || '0', 10) || 0;
+    return {
+        list,
+        pagination: { total: list.length, limit, offset },
+    };
+}
 
 const unzipDirectory = async (zipPath, extractPath) => {
     if (typeof zipPath !== 'string' || typeof extractPath !== 'string' || !zipPath || !extractPath) {
@@ -773,43 +789,43 @@ function appendAPIImageURL(subList, req, orgID) {
     });
 }
 
-async function appendSubscriptionPlanDetails(orgID, subscriptionPolicies) {
-    let subscriptionPlans = [];
-    if (subscriptionPolicies) {
-        for (const policy of subscriptionPolicies) {
-            const subscriptionPlan = await loadSubscriptionPlan(orgID, policy.policyName);
+async function appendSubscriptionPlanDetails(orgID, subscriptionPlans) {
+    const enrichedPlans = [];
+    if (subscriptionPlans) {
+        for (const plan of subscriptionPlans) {
+            const subscriptionPlan = await loadSubscriptionPlan(orgID, plan.planName);
             if (!subscriptionPlan) {
                 logger.warn('[appendSubscriptionPlanDetails] Plan not found, skipping', {
                     orgID,
-                    policyName: policy.policyName
+                    planName: plan.planName
                 });
                 continue;
             }
-            subscriptionPlans.push({
-                policyID: subscriptionPlan.policyID,
+            enrichedPlans.push({
+                planID: subscriptionPlan.planID,
                 displayName: subscriptionPlan.displayName,
-                policyName: subscriptionPlan.policyName,
+                planName: subscriptionPlan.planName,
                 description: subscriptionPlan.description,
                 requestCount: subscriptionPlan.requestCount,
             });
         }
     }
-    return subscriptionPlans;
+    return enrichedPlans;
 }
 
-const loadSubscriptionPlan = async (orgID, policyName) => {
+const loadSubscriptionPlan = async (orgID, planName) => {
 
     try {
-        const policyData = await subscriptionPolicyDao.getByName(orgID, policyName);
-        if (policyData) {
-            return new subscriptionPolicyDTO(policyData);
+        const planData = await subscriptionPlanDao.getByName(orgID, planName);
+        if (planData) {
+            return new subscriptionPlanDTO(planData);
         } else {
-            throw new CustomError(404, constants.ERROR_CODE[404], constants.ERROR_MESSAGE.SUBSCRIPTION_POLICY_NOT_FOUND);
+            throw new CustomError(404, constants.ERROR_CODE[404], constants.ERROR_MESSAGE.SUBSCRIPTION_PLAN_NOT_FOUND);
         }
     } catch (error) {
         logger.error("Error occurred while loading subscription plans", {
             orgID: orgID,
-            policyName: policyName,
+            planName: planName,
             error: error.message,
             stack: error.stack
         });
@@ -886,12 +902,7 @@ function resolveApiType(apiType) {
 }
 
 function filterAllowedAPIs(searchResults, allowedAPIs) {
-
     searchResults = searchResults.filter(api => {
-        const gatewayVendor = api?.apiInfo?.gatewayVendor || 'wso2';
-        if (constants.FEDERATED_GATEWAY_VENDORS.includes(gatewayVendor)) {
-            return true;
-        }
         // MCP servers published via the registry have no referenceID
         if (api?.apiInfo?.apiType === constants.API_TYPE.MCP && !api.apiReferenceID) {
             return true;
@@ -966,5 +977,6 @@ module.exports = {
     isAiDisabledForPortal,
     isImageFile,
     normalizeStringArray,
-    resolveApiType
+    resolveApiType,
+    toPaginatedList,
 }

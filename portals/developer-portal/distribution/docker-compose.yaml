@@ -143,7 +143,7 @@ services:
       DP_DEFAULTORGNAME: "default"
 
       # Auto-generate default subscription plans for every new org
-      DP_GENERATEDEFAULTSUBPOLICIES: "true"
+      DP_GENERATEDEFAULTSUBPLANS: "true"
 
       # Log to console only (no rotating log files)
       DP_LOGGING_CONSOLEONLY: "true"

@@ -19,17 +19,17 @@ const { Sequelize, DataTypes } = require('sequelize');
 const sequelize = require('../db/sequelizeConfig');
 const { Organization } = require('./organization');
 
-const SubscriptionPolicy = sequelize.define('DP_SUBSCRIPTION_POLICY', {
-    POLICY_ID: {
+const SubscriptionPlan = sequelize.define('DP_SUBSCRIPTION_PLAN', {
+    PLAN_ID: {
         type: DataTypes.UUID,
         defaultValue: Sequelize.UUIDV4,
         allowNull: false,
         primaryKey: true
     },
-    POLICY_NAME: {
+    PLAN_NAME: {
         type: DataTypes.STRING,
         allowNull: false,
-        unique: 'unique_org_policy_name'
+        unique: 'unique_org_plan_name'
     },
     DISPLAY_NAME: {
         type: DataTypes.STRING,
@@ -49,18 +49,18 @@ const SubscriptionPolicy = sequelize.define('DP_SUBSCRIPTION_POLICY', {
     }
 }, {
     timestamps: false,
-    tableName: 'DP_SUBSCRIPTION_POLICY',
+    tableName: 'DP_SUBSCRIPTION_PLAN',
     returning: true,
     indexes: [
-        { name: 'IDX_SUB_POLICY_ORG_NAME', unique: true, fields: ['ORG_ID', 'POLICY_NAME'] }
+        { name: 'IDX_SUB_PLAN_ORG_NAME', unique: true, fields: ['ORG_ID', 'PLAN_NAME'] }
     ]
 });
 
-SubscriptionPolicy.belongsTo(Organization, {
+SubscriptionPlan.belongsTo(Organization, {
     foreignKey: {
         name: 'ORG_ID',
-        unique: 'unique_org_policy_name'
+        unique: 'unique_org_plan_name'
     }
 });
 
-module.exports = SubscriptionPolicy;
+module.exports = SubscriptionPlan;

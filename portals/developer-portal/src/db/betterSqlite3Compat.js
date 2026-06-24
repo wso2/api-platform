@@ -31,6 +31,18 @@
 'use strict';
 const BetterSqlite3 = require('better-sqlite3');
 
+// better-sqlite3 only accepts numbers, strings, bigints, buffers, and null as bind
+// values — unlike the sqlite3 package, it does not coerce booleans or serialize
+// plain objects/arrays (used for Sequelize BOOLEAN and JSON column types).
+function coerceBindValue(value) {
+    if (typeof value === 'boolean') return value ? 1 : 0;
+    if (value instanceof Date) return value.toISOString();
+    if (value !== null && typeof value === 'object' && !Buffer.isBuffer(value)) {
+        return JSON.stringify(value);
+    }
+    return value;
+}
+
 function normalizeParams(params) {
     if (params === null || params === undefined) return [];
     // better-sqlite3 strips the $/@/: prefix from SQL param names when doing lookups,
@@ -38,11 +50,11 @@ function normalizeParams(params) {
     if (!Array.isArray(params) && typeof params === 'object') {
         const out = {};
         for (const key of Object.keys(params)) {
-            out[key.replace(/^[$@:]/, '')] = params[key];
+            out[key.replace(/^[$@:]/, '')] = coerceBindValue(params[key]);
         }
         return out;
     }
-    return params;
+    return params.map(coerceBindValue);
 }
 
 function Database(path, _flags, callback) {

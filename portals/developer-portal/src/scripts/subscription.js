@@ -16,9 +16,9 @@
  * under the License.
  */
 
-async function subscribe(orgID, apiId, planName, policyId) {
+async function subscribe(orgID, apiId, planName, planId) {
     try {
-        const body = { apiId, subscriptionPlanId: policyId };
+        const body = { apiId, subscriptionPlanId: planId };
 
         const response = await fetch(devportalApi.org(orgID, '/subscriptions'), {
             method: 'POST',
@@ -64,8 +64,8 @@ async function subscribe(orgID, apiId, planName, policyId) {
 async function handlePlanSubscription(btnElement) {
     const orgID = btnElement.dataset.orgId;
     const apiId = btnElement.dataset.apiId;
-    const planName = btnElement.dataset.policyName;
-    const policyId = btnElement.dataset.policyId;
+    const planName = btnElement.dataset.planName;
+    const planId = btnElement.dataset.planId;
     const displayName = btnElement.dataset.displayName;
 
     // If a modal exists for this API and the button is NOT inside it, open the modal.
@@ -81,7 +81,7 @@ async function handlePlanSubscription(btnElement) {
 
     if (existingSubs.length === 0) {
         showSubscribeButtonLoading(btnElement);
-        await subscribe(orgID, apiId, planName, policyId);
+        await subscribe(orgID, apiId, planName, planId);
         return;
     }
 
@@ -155,7 +155,7 @@ async function executeDeleteSubscription(orgID, subscriptionId) {
 
 async function runPendingPlanSwitch(orgID, apiId, planName, displayName, subscriptionId) {
     const btnElement = window.__pendingPlanSwitchBtn;
-    const policyId = btnElement ? btnElement.dataset.policyId : undefined;
+    const planId = btnElement ? btnElement.dataset.planId : undefined;
     window.__pendingPlanSwitchBtn = null;
 
     if (btnElement && typeof showSubscribeButtonLoading === 'function') {
@@ -174,7 +174,7 @@ async function runPendingPlanSwitch(orgID, apiId, planName, displayName, subscri
             return;
         }
 
-        await subscribe(orgID, apiId, planName, policyId);
+        await subscribe(orgID, apiId, planName, planId);
     } catch (error) {
         await showAlert(`Error during plan change: ${error.message}`, 'error');
     }
@@ -327,8 +327,8 @@ async function refreshLandingPageSubscriptions() {
         planCards.forEach(function(card) {
             var btn = card.querySelector('.subscription-plan-subscribe-btn, .subscribe-btn, .current-plan-btn');
             if (!btn) return;
-            var policyName = (btn.dataset.policyName || '').toLowerCase();
-            if (activePlanNames.indexOf(policyName) !== -1) {
+            var planName = (btn.dataset.planName || '').toLowerCase();
+            if (activePlanNames.indexOf(planName) !== -1) {
                 btn.textContent = 'Current Plan';
                 btn.disabled = true;
                 btn.classList.add('disabled', 'current-plan-btn');
