@@ -26,7 +26,6 @@ roles:
       - ap:gateway:manage
       - ap:gateway_custom_policy:manage
       - ap:rest_api:manage
-      - ap:devportal:manage
       - ap:application:manage
       - ap:subscription:manage
       - ap:subscription_plan:manage
@@ -46,12 +45,10 @@ roles:
       - ap:git:read
       - ap:gateway:manage
       - ap:gateway_custom_policy:manage
-      - ap:devportal:manage
       - ap:subscription_plan:manage
       - ap:llm_template:manage
       - ap:rest_api:read
       - ap:rest_api:deployment:read
-      - ap:rest_api:publication:read
       - ap:application:read
       - ap:application:api_key:read
       - ap:application:association:read
@@ -67,10 +64,8 @@ roles:
       - ap:mcp_proxy:deployment:read
       - ap:websub_api:read
       - ap:websub_api:deployment:read
-      - ap:websub_api:publication:read
       - ap:webbroker_api:read
       - ap:webbroker_api:deployment:read
-      - ap:webbroker_api:publication:read
 
   - name: platform-developer
     scopes:
@@ -83,7 +78,6 @@ roles:
       - ap:gateway:artifact:read
       - ap:gateway:manifest:read
       - ap:gateway_custom_policy:read
-      - ap:devportal:read
       - ap:rest_api:manage
       - ap:application:manage
       - ap:subscription:manage
@@ -105,10 +99,8 @@ roles:
       - ap:gateway:artifact:read
       - ap:gateway:manifest:read
       - ap:gateway_custom_policy:read
-      - ap:devportal:read
       - ap:rest_api:read
       - ap:rest_api:deployment:read
-      - ap:rest_api:publication:read
       - ap:application:read
       - ap:application:api_key:read
       - ap:application:association:read
@@ -126,7 +118,5 @@ roles:
       - ap:mcp_proxy:deployment:read
       - ap:websub_api:read
       - ap:websub_api:deployment:read
-      - ap:websub_api:publication:read
       - ap:webbroker_api:read
       - ap:webbroker_api:deployment:read
-      - ap:webbroker_api:publication:read

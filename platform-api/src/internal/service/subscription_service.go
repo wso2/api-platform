@@ -146,15 +146,21 @@ func (s *SubscriptionService) CreateSubscription(apiId, orgUUID string, subscrib
 	if s.gatewayEvents != nil {
 		gateways, err := s.apiRepo.GetAPIGatewaysWithDetails(apiUUID, orgUUID)
 		if err != nil {
-			s.slogger.Warn("Failed to load gateways for subscription.created broadcast",
-				"apiId", apiUUID, "subscriptionId", sub.UUID, "error", err)
+			s.slogger.Warn("Failed to load gateways for subscription.created broadcast", "apiUUID", apiUUID, "error", err)
 		} else {
+			var planID, appID string
+			if sub.SubscriptionPlanID != nil {
+				planID = *sub.SubscriptionPlanID
+			}
+			if sub.ApplicationID != nil {
+				appID = *sub.ApplicationID
+			}
 			event := &model.SubscriptionCreatedEvent{
-				ApiId:              apiUUID,
+				ApiId:              sub.APIUUID,
 				SubscriptionId:     sub.UUID,
-				ApplicationId:      derefString(sub.ApplicationID),
+				ApplicationId:      appID,
 				SubscriptionToken:  sub.SubscriptionToken,
-				SubscriptionPlanId: derefString(sub.SubscriptionPlanID),
+				SubscriptionPlanId: planID,
 				Status:             string(sub.Status),
 			}
 			for _, gw := range gateways {
@@ -240,15 +246,21 @@ func (s *SubscriptionService) UpdateSubscription(subscriptionId, orgUUID, subscr
 	if s.gatewayEvents != nil {
 		gateways, err := s.apiRepo.GetAPIGatewaysWithDetails(sub.APIUUID, orgUUID)
 		if err != nil {
-			s.slogger.Warn("Failed to load gateways for subscription.updated broadcast",
-				"apiId", sub.APIUUID, "subscriptionId", sub.UUID, "error", err)
+			s.slogger.Warn("Failed to load gateways for subscription.updated broadcast", "apiUUID", sub.APIUUID, "error", err)
 		} else {
+			var planID, appID string
+			if sub.SubscriptionPlanID != nil {
+				planID = *sub.SubscriptionPlanID
+			}
+			if sub.ApplicationID != nil {
+				appID = *sub.ApplicationID
+			}
 			event := &model.SubscriptionUpdatedEvent{
 				ApiId:              sub.APIUUID,
 				SubscriptionId:     sub.UUID,
-				ApplicationId:      derefString(sub.ApplicationID),
+				ApplicationId:      appID,
 				SubscriptionToken:  sub.SubscriptionToken,
-				SubscriptionPlanId: derefString(sub.SubscriptionPlanID),
+				SubscriptionPlanId: planID,
 				Status:             string(sub.Status),
 			}
 			for _, gw := range gateways {

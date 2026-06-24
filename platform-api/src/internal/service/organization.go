@@ -230,16 +230,15 @@ func (s *OrganizationService) RegisterOrganization(id string, handle string, nam
 	}
 
 	// Create default DevPortal if enabled
-	if s.devPortalService != nil && s.config != nil && s.config.DefaultDevPortal.Enabled {
-		defaultDevPortal, devPortalErr := s.devPortalService.CreateDefaultDevPortal(id)
-		if devPortalErr != nil {
-			s.slogger.Warn("Failed to create default DevPortal for organization", "organization", name, "error", devPortalErr)
-			// Don't fail organization creation, but log the error
-		} else if defaultDevPortal != nil {
-			s.slogger.Info("Created default DevPortal for organization", "devPortal", defaultDevPortal.Name, "organization", name)
-		}
-		// No organization sync during creation - sync happens during DevPortal activation
-	}
+	// devportals table removed — disabled
+	// if s.devPortalService != nil && s.config != nil && s.config.DefaultDevPortal.Enabled {
+	// 	defaultDevPortal, devPortalErr := s.devPortalService.CreateDefaultDevPortal(id)
+	// 	if devPortalErr != nil {
+	// 		s.slogger.Warn("Failed to create default DevPortal for organization", "organization", name, "error", devPortalErr)
+	// 	} else if defaultDevPortal != nil {
+	// 		s.slogger.Info("Created default DevPortal for organization", "devPortal", defaultDevPortal.Name, "organization", name)
+	// 	}
+	// }
 
 	// Create default project for the organization
 	defaultProject := &model.Project{

@@ -17,13 +17,15 @@
 
 package repository
 
+// publication_mappings and association_mappings tables removed — all functions in this file are disabled.
+
 import (
-	"database/sql"
-	"fmt"
-	"platform-api/src/internal/constants"
+	// "database/sql"   // publication_mappings table removed
+	// "fmt"            // publication_mappings table removed
+	// "platform-api/src/internal/constants" // publication_mappings table removed
 	"platform-api/src/internal/database"
 	"platform-api/src/internal/model"
-	"time"
+	// "time"           // publication_mappings table removed
 )
 
 // APIPublicationRepo implements the APIPublicationRepository interface
@@ -38,357 +40,70 @@ func NewAPIPublicationRepository(db *database.DB) APIPublicationRepository {
 
 // UpsertPublication creates or updates a publication record in a single query
 func (r *APIPublicationRepo) UpsertPublication(publication *model.APIPublication) error {
-	publication.UpdatedAt = time.Now()
-	if publication.CreatedAt.IsZero() {
-		publication.CreatedAt = time.Now()
-	}
-
-	// Validate the publication
-	if err := publication.Validate(); err != nil {
-		return fmt.Errorf("validation error: %w", err)
-	}
-
-	// Start transaction
-	tx, err := r.db.Begin()
-	if err != nil {
-		return fmt.Errorf("failed to begin transaction: %w", err)
-	}
-	defer tx.Rollback()
-
-	// Check if the record exists within the transaction
-	var exists bool
-	checkQuery := `SELECT 1 FROM publication_mappings WHERE api_uuid = ? AND devportal_uuid = ? AND organization_uuid = ?`
-	err = tx.QueryRow(r.db.Rebind(checkQuery), publication.APIUUID, publication.DevPortalUUID, publication.OrganizationUUID).Scan(&exists)
-	if err != nil && err != sql.ErrNoRows {
-		return fmt.Errorf("failed to check existence: %w", err)
-	}
-	exists = (err != sql.ErrNoRows)
-
-	if !exists {
-		// Record does not exist, insert it
-		insertQuery := `
-			INSERT INTO publication_mappings (
-				api_uuid, devportal_uuid, organization_uuid,
-				status, api_version, devportal_ref_id,
-				sandbox_endpoint_url, production_endpoint_url,
-				created_at, updated_at
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-		_, err = tx.Exec(r.db.Rebind(insertQuery),
-			publication.APIUUID, publication.DevPortalUUID, publication.OrganizationUUID,
-			publication.Status, publication.APIVersion, publication.DevPortalRefID,
-			publication.SandboxEndpointURL, publication.ProductionEndpointURL,
-			publication.CreatedAt, publication.UpdatedAt,
-		)
-		if err != nil {
-			return fmt.Errorf("failed to create API publication: %w", err)
-		}
-	} else {
-		// Record exists, update it
-		updateQuery := `
-			UPDATE publication_mappings 
-			SET status = ?, api_version = ?, devportal_ref_id = ?, 
-			    sandbox_endpoint_url = ?, production_endpoint_url = ?, updated_at = ?
-			WHERE api_uuid = ? AND devportal_uuid = ? AND organization_uuid = ?`
-		result, err := tx.Exec(r.db.Rebind(updateQuery),
-			publication.Status, publication.APIVersion, publication.DevPortalRefID,
-			publication.SandboxEndpointURL, publication.ProductionEndpointURL, publication.UpdatedAt,
-			publication.APIUUID, publication.DevPortalUUID, publication.OrganizationUUID,
-		)
-		if err != nil {
-			return fmt.Errorf("failed to update API publication: %w", err)
-		}
-		rowsAffected, err := result.RowsAffected()
-		if err != nil {
-			return fmt.Errorf("failed to get affected rows: %w", err)
-		}
-		if rowsAffected == 0 {
-			// Verify if the row still exists (RowsAffected can be 0 for no-op updates)
-			var stillExists bool
-			err = tx.QueryRow(r.db.Rebind(checkQuery), publication.APIUUID, publication.DevPortalUUID, publication.OrganizationUUID).Scan(&stillExists)
-			if err == sql.ErrNoRows {
-				return constants.ErrAPIPublicationNotFound
-			}
-			if err != nil {
-				return fmt.Errorf("failed to verify API publication existence: %w", err)
-			}
-			// Row exists but no changes were made - this is OK (idempotent update)
-		}
-	}
-
-	// Commit transaction
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("failed to commit transaction: %w", err)
-	}
-
+	// publication_mappings table removed — disabled
+	// publication.UpdatedAt = time.Now()
+	// if publication.CreatedAt.IsZero() { publication.CreatedAt = time.Now() }
+	// if err := publication.Validate(); err != nil { return fmt.Errorf("validation error: %w", err) }
+	// tx, err := r.db.Begin()
+	// ...
 	return nil
 }
 
 // Create creates a new API publication record
 func (r *APIPublicationRepo) Create(publication *model.APIPublication) error {
-	publication.CreatedAt = time.Now()
-	publication.UpdatedAt = time.Now()
-
-	// Validate the publication
-	if err := publication.Validate(); err != nil {
-		return fmt.Errorf("validation error: %w", err)
-	}
-
-	query := `
-		INSERT INTO publication_mappings (
-			api_uuid, devportal_uuid, organization_uuid,
-			status, api_version, devportal_ref_id,
-			sandbox_endpoint_url, production_endpoint_url,
-			created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-
-	_, err := r.db.Exec(r.db.Rebind(query),
-		publication.APIUUID, publication.DevPortalUUID, publication.OrganizationUUID,
-		publication.Status, publication.APIVersion, publication.DevPortalRefID,
-		publication.SandboxEndpointURL, publication.ProductionEndpointURL,
-		publication.CreatedAt, publication.UpdatedAt,
-	)
-
-	if err != nil {
-		return fmt.Errorf("failed to create API publication: %w", err)
-	}
-
+	// publication_mappings table removed — disabled
+	// publication.CreatedAt = time.Now()
+	// publication.UpdatedAt = time.Now()
+	// if err := publication.Validate(); err != nil { return fmt.Errorf("validation error: %w", err) }
+	// query := `INSERT INTO publication_mappings (...) VALUES (...)`
+	// _, err := r.db.Exec(...)
+	// ...
 	return nil
 }
 
 // GetByAPIAndDevPortal retrieves an API publication by API and DevPortal UUIDs
 func (r *APIPublicationRepo) GetByAPIAndDevPortal(apiUUID, devPortalUUID, orgUUID string) (*model.APIPublication, error) {
-	query := `
-		SELECT api_uuid, devportal_uuid, organization_uuid,
-			   status, api_version, devportal_ref_id,
-			   sandbox_endpoint_url, production_endpoint_url,
-			   created_at, updated_at
-		FROM publication_mappings
-		WHERE api_uuid = ? AND devportal_uuid = ? AND organization_uuid = ?`
-
-	row := r.db.QueryRow(r.db.Rebind(query), apiUUID, devPortalUUID, orgUUID)
-
-	publication := &model.APIPublication{}
-	err := row.Scan(
-		&publication.APIUUID, &publication.DevPortalUUID, &publication.OrganizationUUID,
-		&publication.Status, &publication.APIVersion, &publication.DevPortalRefID,
-		&publication.SandboxEndpointURL, &publication.ProductionEndpointURL,
-		&publication.CreatedAt, &publication.UpdatedAt,
-	)
-
-	if err != nil {
-		if err == sql.ErrNoRows {
-			return nil, constants.ErrAPIPublicationNotFound
-		}
-		return nil, fmt.Errorf("failed to get API publication: %w", err)
-	}
-
-	return publication, nil
+	// publication_mappings table removed — disabled
+	// query := `SELECT ... FROM publication_mappings WHERE api_uuid = ? AND devportal_uuid = ? AND organization_uuid = ?`
+	// row := r.db.QueryRow(...)
+	// ...
+	return nil, nil
 }
 
 // GetByAPIUUID retrieves all API publications for a specific API and organization
 func (r *APIPublicationRepo) GetByAPIUUID(apiUUID, orgUUID string) ([]*model.APIPublication, error) {
-	query := `
-		SELECT api_uuid, devportal_uuid, organization_uuid,
-			   status, api_version, devportal_ref_id,
-			   sandbox_endpoint_url, production_endpoint_url,
-			   created_at, updated_at
-		FROM publication_mappings
-		WHERE api_uuid = ? AND organization_uuid = ?
-		ORDER BY created_at DESC`
-
-	rows, err := r.db.Query(r.db.Rebind(query), apiUUID, orgUUID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to query API publications: %w", err)
-	}
-	defer rows.Close()
-
-	var publications []*model.APIPublication
-	for rows.Next() {
-		publication := &model.APIPublication{}
-		err := rows.Scan(
-			&publication.APIUUID, &publication.DevPortalUUID, &publication.OrganizationUUID,
-			&publication.Status, &publication.APIVersion, &publication.DevPortalRefID,
-			&publication.SandboxEndpointURL, &publication.ProductionEndpointURL,
-			&publication.CreatedAt, &publication.UpdatedAt,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("failed to scan API publication: %w", err)
-		}
-		publications = append(publications, publication)
-	}
-
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("error iterating over API publications: %w", err)
-	}
-
-	return publications, nil
+	// publication_mappings table removed — disabled
+	// query := `SELECT ... FROM publication_mappings WHERE api_uuid = ? AND organization_uuid = ?`
+	// rows, err := r.db.Query(...)
+	// ...
+	return nil, nil
 }
 
 // Update updates an existing API publication
 func (r *APIPublicationRepo) Update(publication *model.APIPublication) error {
-	publication.UpdatedAt = time.Now()
-
-	// Validate the publication
-	if err := publication.Validate(); err != nil {
-		return fmt.Errorf("validation error: %w", err)
-	}
-
-	query := `
-		UPDATE publication_mappings 
-		SET status = ?, api_version = ?, devportal_ref_id = ?, 
-		    sandbox_endpoint_url = ?, production_endpoint_url = ?, updated_at = ?
-		WHERE api_uuid = ? AND devportal_uuid = ? AND organization_uuid = ?`
-
-	result, err := r.db.Exec(r.db.Rebind(query),
-		publication.Status, publication.APIVersion, publication.DevPortalRefID,
-		publication.SandboxEndpointURL, publication.ProductionEndpointURL, publication.UpdatedAt,
-		publication.APIUUID, publication.DevPortalUUID, publication.OrganizationUUID,
-	)
-
-	if err != nil {
-		return fmt.Errorf("failed to update API publication: %w", err)
-	}
-
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("failed to get affected rows: %w", err)
-	}
-
-	if rowsAffected == 0 {
-		// Verify if the row still exists (RowsAffected can be 0 for no-op updates)
-		var stillExists bool
-		err = r.db.QueryRow(r.db.Rebind(`
-			SELECT 1 FROM publication_mappings 
-			WHERE api_uuid = ? AND devportal_uuid = ? AND organization_uuid = ?`),
-			publication.APIUUID, publication.DevPortalUUID, publication.OrganizationUUID).Scan(&stillExists)
-		if err == sql.ErrNoRows {
-			return constants.ErrAPIPublicationNotFound
-		}
-		if err != nil {
-			return fmt.Errorf("failed to verify API publication existence: %w", err)
-		}
-		// Row exists but no changes were made - this is OK (idempotent update)
-	}
-
+	// publication_mappings table removed — disabled
+	// publication.UpdatedAt = time.Now()
+	// if err := publication.Validate(); err != nil { return fmt.Errorf("validation error: %w", err) }
+	// query := `UPDATE publication_mappings SET ... WHERE api_uuid = ? AND devportal_uuid = ? AND organization_uuid = ?`
+	// result, err := r.db.Exec(...)
+	// ...
 	return nil
 }
 
 // Delete removes a publication record
 func (r *APIPublicationRepo) Delete(apiUUID, devPortalUUID, orgUUID string) error {
-	query := `
-		DELETE FROM publication_mappings 
-		WHERE api_uuid = ? AND devportal_uuid = ? AND organization_uuid = ?`
-
-	result, err := r.db.Exec(r.db.Rebind(query), apiUUID, devPortalUUID, orgUUID)
-	if err != nil {
-		return fmt.Errorf("failed to delete API publication: %w", err)
-	}
-
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("failed to get affected rows: %w", err)
-	}
-
-	if rowsAffected == 0 {
-		return constants.ErrAPIPublicationNotFound
-	}
-
+	// publication_mappings table removed — disabled
+	// query := `DELETE FROM publication_mappings WHERE api_uuid = ? AND devportal_uuid = ? AND organization_uuid = ?`
+	// result, err := r.db.Exec(...)
+	// ...
 	return nil
 }
 
 // GetAPIDevPortalsWithDetails retrieves all DevPortals associated with an API including publication details
-// This mirrors the GetAPIGatewaysWithDetails pattern for consistency
 func (r *APIPublicationRepo) GetAPIDevPortalsWithDetails(apiUUID, orgUUID string) ([]*model.APIDevPortalWithDetails, error) {
-	query := `
-		SELECT 
-			-- DevPortal information
-			d.uuid,
-			d.organization_uuid,
-			d.name,
-			d.identifier,
-			d.api_url,
-			d.hostname,
-			d.is_active,
-			d.is_enabled,
-			d.is_default,
-			d.visibility,
-			d.description,
-			d.created_at,
-			d.updated_at,
-			
-			-- Association information
-			aa.created_at as associated_at,
-			aa.updated_at as association_updated_at,
-			
-			-- Publication information (NULL if not published)
-			CASE WHEN ap.api_uuid IS NOT NULL THEN 1 ELSE 0 END as is_published,
-			ap.status as publication_status,
-			ap.api_version,
-			ap.devportal_ref_id,
-			ap.sandbox_endpoint_url,
-			ap.production_endpoint_url,
-			ap.created_at as published_at,
-			ap.updated_at as publication_updated_at
-			
-		FROM association_mappings aa
-		INNER JOIN devportals d 
-			ON aa.resource_uuid = d.uuid
-		LEFT JOIN publication_mappings ap 
-			ON ap.api_uuid = aa.artifact_uuid 
-			AND ap.devportal_uuid = aa.resource_uuid 
-			AND ap.organization_uuid = aa.organization_uuid
-			
-		WHERE aa.artifact_uuid = ? 
-		  AND aa.organization_uuid = ?
-		  AND aa.association_type = 'dev_portal'
-		ORDER BY aa.created_at DESC`
-
-	rows, err := r.db.Query(r.db.Rebind(query), apiUUID, orgUUID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to query API-DevPortal associations: %w", err)
-	}
-	defer rows.Close()
-
-	var devPortals []*model.APIDevPortalWithDetails
-	for rows.Next() {
-		var dp model.APIDevPortalWithDetails
-		err := rows.Scan(
-			// DevPortal information
-			&dp.UUID,
-			&dp.OrganizationUUID,
-			&dp.Name,
-			&dp.Identifier,
-			&dp.APIUrl,
-			&dp.Hostname,
-			&dp.IsActive,
-			&dp.IsEnabled,
-			&dp.IsDefault,
-			&dp.Visibility,
-			&dp.Description,
-			&dp.CreatedAt,
-			&dp.UpdatedAt,
-			// Association information
-			&dp.AssociatedAt,
-			&dp.AssociationUpdatedAt,
-			// Publication information (nullable)
-			&dp.IsPublished,
-			&dp.PublicationStatus,
-			&dp.APIVersion,
-			&dp.DevPortalRefID,
-			&dp.SandboxEndpointURL,
-			&dp.ProductionEndpointURL,
-			&dp.PublishedAt,
-			&dp.PublicationUpdatedAt,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("failed to scan DevPortal row: %w", err)
-		}
-		devPortals = append(devPortals, &dp)
-	}
-
-	if err = rows.Err(); err != nil {
-		return nil, fmt.Errorf("error iterating DevPortal rows: %w", err)
-	}
-
-	return devPortals, nil
+	// publication_mappings and association_mappings tables removed — disabled
+	// query := `SELECT ... FROM association_mappings aa INNER JOIN devportals d ... LEFT JOIN publication_mappings ap ...`
+	// rows, err := r.db.Query(...)
+	// ...
+	return nil, nil
 }

@@ -58,8 +58,9 @@ func (h *WebBrokerAPIHandler) RegisterRoutes(r *gin.Engine) {
 		v1.GET("/webbroker-apis/:apiId", h.GetWebBrokerAPI)
 		v1.PUT("/webbroker-apis/:apiId", h.UpdateWebBrokerAPI)
 		v1.DELETE("/webbroker-apis/:apiId", h.DeleteWebBrokerAPI)
-		v1.POST("/webbroker-apis/:apiId/publications", h.PublishToDevPortal)
-		v1.DELETE("/webbroker-apis/:apiId/publications/:devportalId", h.UnpublishFromDevPortal)
+		// publication_mappings / devportals tables removed — routes disabled
+		// v1.POST("/webbroker-apis/:apiId/publications", h.PublishToDevPortal)
+		// v1.DELETE("/webbroker-apis/:apiId/publications/:devportalId", h.UnpublishFromDevPortal)
 	}
 }
 
@@ -188,45 +189,40 @@ func (h *WebBrokerAPIHandler) DeleteWebBrokerAPI(c *gin.Context) {
 
 // PublishToDevPortal publishes a WebBroker API to a DevPortal.
 func (h *WebBrokerAPIHandler) PublishToDevPortal(c *gin.Context) {
-	orgID, ok := middleware.GetOrganizationFromContext(c)
-	if !ok {
-		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
-		return
-	}
-
-	apiHandle := c.Param("apiId")
-
-	var req api.PublishToDevPortalRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid request body"))
-		return
-	}
-
-	if err := h.webbrokerAPIService.PublishToDevPortal(orgID, apiHandle, &req); err != nil {
-		h.handleServiceError(c, err)
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"message": "WebBroker API published successfully to DevPortal"})
+	// publication_mappings / devportals tables removed — handler disabled
+	// orgID, ok := middleware.GetOrganizationFromContext(c)
+	// if !ok {
+	// 	c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
+	// 	return
+	// }
+	// apiHandle := c.Param("apiId")
+	// var req api.PublishToDevPortalRequest
+	// if err := c.ShouldBindJSON(&req); err != nil {
+	// 	c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid request body"))
+	// 	return
+	// }
+	// if err := h.webbrokerAPIService.PublishToDevPortal(orgID, apiHandle, &req); err != nil {
+	// 	h.handleServiceError(c, err)
+	// 	return
+	// }
+	// c.JSON(http.StatusOK, gin.H{"message": "WebBroker API published successfully to DevPortal"})
 }
 
 // UnpublishFromDevPortal unpublishes a WebBroker API from a DevPortal.
 func (h *WebBrokerAPIHandler) UnpublishFromDevPortal(c *gin.Context) {
-	orgID, ok := middleware.GetOrganizationFromContext(c)
-	if !ok {
-		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
-		return
-	}
-
-	apiHandle := c.Param("apiId")
-	devPortalID := c.Param("devportalId")
-
-	if err := h.webbrokerAPIService.UnpublishFromDevPortal(orgID, apiHandle, devPortalID); err != nil {
-		h.handleServiceError(c, err)
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"message": "WebBroker API unpublished successfully from DevPortal"})
+	// publication_mappings / devportals tables removed — handler disabled
+	// orgID, ok := middleware.GetOrganizationFromContext(c)
+	// if !ok {
+	// 	c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
+	// 	return
+	// }
+	// apiHandle := c.Param("apiId")
+	// devPortalID := c.Param("devportalId")
+	// if err := h.webbrokerAPIService.UnpublishFromDevPortal(orgID, apiHandle, devPortalID); err != nil {
+	// 	h.handleServiceError(c, err)
+	// 	return
+	// }
+	// c.JSON(http.StatusOK, gin.H{"message": "WebBroker API unpublished successfully from DevPortal"})
 }
 
 // handleServiceError maps service errors to HTTP responses
@@ -242,8 +238,9 @@ func (h *WebBrokerAPIHandler) handleServiceError(c *gin.Context, err error) {
 		c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict", "WebBroker API limit reached for the organization"))
 	case errors.Is(err, constants.ErrProjectNotFound):
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Project not found"))
-	case errors.Is(err, constants.ErrDevPortalNotFound):
-		c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "DevPortal not found"))
+	// devportals table removed
+	// case errors.Is(err, constants.ErrDevPortalNotFound):
+	// 	c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "DevPortal not found"))
 	default:
 		h.slogger.Error("WebBroker API service error", "error", err)
 		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "An unexpected error occurred"))

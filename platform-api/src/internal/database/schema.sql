@@ -83,7 +83,7 @@ CREATE TABLE IF NOT EXISTS rest_apis (
     project_uuid VARCHAR(40) NOT NULL,
     description VARCHAR(1023),
     lifecycle_status VARCHAR(20) NOT NULL DEFAULT 'CREATED',
-    transport TEXT,
+    transport VARCHAR(255),
     configuration TEXT NOT NULL,
     -- origin VARCHAR(20) NOT NULL DEFAULT 'CP',
     created_by VARCHAR(200),
@@ -170,6 +170,19 @@ CREATE TABLE IF NOT EXISTS gateways (
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
     UNIQUE(organization_uuid, handle),
     CHECK (gateway_functionality_type IN ('regular', 'ai', 'event'))
+);
+
+-- Gateway Association Mappings table (links artifacts to gateways)
+CREATE TABLE IF NOT EXISTS gateway_association_mappings (
+    artifact_uuid VARCHAR(40) NOT NULL,
+    organization_uuid VARCHAR(40) NOT NULL,
+    gateway_uuid VARCHAR(40) NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (artifact_uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (gateway_uuid) REFERENCES gateways(uuid) ON DELETE CASCADE,
+    UNIQUE(organization_uuid, artifact_uuid, gateway_uuid)
 );
 
 -- Gateway Custom Policies table (org-scoped custom policies synced from gateway manifests)

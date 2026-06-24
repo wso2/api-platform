@@ -817,7 +817,7 @@ func (s *DeploymentService) ensureAPIGatewayAssociation(apiUUID, gatewayID, orgU
 	}
 
 	for _, assoc := range associations {
-		if assoc.ResourceID == gatewayID {
+		if assoc.GatewayID == gatewayID {
 			// Association already exists
 			return nil
 		}
@@ -825,12 +825,11 @@ func (s *DeploymentService) ensureAPIGatewayAssociation(apiUUID, gatewayID, orgU
 
 	// Create new association
 	association := &model.APIAssociation{
-		ArtifactID:      apiUUID,
-		OrganizationID:  orgUUID,
-		ResourceID:      gatewayID,
-		AssociationType: constants.AssociationTypeGateway,
-		CreatedAt:       time.Now(),
-		UpdatedAt:       time.Now(),
+		ArtifactID:     apiUUID,
+		OrganizationID: orgUUID,
+		GatewayID:      gatewayID,
+		CreatedAt:      time.Now(),
+		UpdatedAt:      time.Now(),
 	}
 
 	return s.apiRepo.CreateAPIAssociation(association)

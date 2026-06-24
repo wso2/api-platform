@@ -480,7 +480,7 @@ func (s *GatewayInternalAPIService) CreateGatewayDeployment(apiHandle, orgID, ga
 	// Check if gateway is already associated with the API
 	isAssociated := false
 	for _, assoc := range existingAssociations {
-		if assoc.ResourceID == gatewayID {
+		if assoc.GatewayID == gatewayID {
 			isAssociated = true
 			break
 		}
@@ -489,12 +489,11 @@ func (s *GatewayInternalAPIService) CreateGatewayDeployment(apiHandle, orgID, ga
 	// If gateway is not associated with the API, create the association
 	if !isAssociated {
 		association := &model.APIAssociation{
-			ArtifactID:      apiUUID,
-			OrganizationID:  orgID,
-			ResourceID:      gatewayID,
-			AssociationType: constants.AssociationTypeGateway,
-			CreatedAt:       now,
-			UpdatedAt:       now,
+			ArtifactID:     apiUUID,
+			OrganizationID: orgID,
+			GatewayID:      gatewayID,
+			CreatedAt:      now,
+			UpdatedAt:      now,
 		}
 		if err := s.apiRepo.CreateAPIAssociation(association); err != nil {
 			return nil, fmt.Errorf("failed to create API-gateway association: %w", err)

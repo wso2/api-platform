@@ -325,30 +325,23 @@ func (s *WebSubAPIService) Delete(orgUUID, handle string) error {
 
 // PublishToDevPortal publishes a WebSub API to a DevPortal
 func (s *WebSubAPIService) PublishToDevPortal(orgUUID, handle string, req *api.PublishToDevPortalRequest) error {
-	websubAPI, err := s.repo.GetByHandle(handle, orgUUID)
-	if err != nil {
-		return fmt.Errorf("failed to get WebSub API: %w", err)
-	}
-	if websubAPI == nil {
-		return constants.ErrWebSubAPINotFound
-	}
-
-	// Build a RESTAPI adapter for the devportal service
-	restAPIAdapter := websubAPIModelToRESTAPIAdapter(websubAPI)
-	return s.devPortalService.PublishAPIToDevPortal(websubAPI.UUID, restAPIAdapter, req, orgUUID)
+	// publication_mappings / devportals tables removed — disabled
+	// websubAPI, err := s.repo.GetByHandle(handle, orgUUID)
+	// if err != nil { return fmt.Errorf("failed to get WebSub API: %w", err) }
+	// if websubAPI == nil { return constants.ErrWebSubAPINotFound }
+	// restAPIAdapter := websubAPIModelToRESTAPIAdapter(websubAPI)
+	// return s.devPortalService.PublishAPIToDevPortal(websubAPI.UUID, restAPIAdapter, req, orgUUID)
+	return nil
 }
 
 // UnpublishFromDevPortal unpublishes a WebSub API from a DevPortal
 func (s *WebSubAPIService) UnpublishFromDevPortal(orgUUID, handle, devPortalUUID string) error {
-	websubAPI, err := s.repo.GetByHandle(handle, orgUUID)
-	if err != nil {
-		return fmt.Errorf("failed to get WebSub API: %w", err)
-	}
-	if websubAPI == nil {
-		return constants.ErrWebSubAPINotFound
-	}
-
-	return s.devPortalService.UnpublishAPIFromDevPortal(devPortalUUID, orgUUID, websubAPI.UUID)
+	// publication_mappings / devportals tables removed — disabled
+	// websubAPI, err := s.repo.GetByHandle(handle, orgUUID)
+	// if err != nil { return fmt.Errorf("failed to get WebSub API: %w", err) }
+	// if websubAPI == nil { return constants.ErrWebSubAPINotFound }
+	// return s.devPortalService.UnpublishAPIFromDevPortal(devPortalUUID, orgUUID, websubAPI.UUID)
+	return nil
 }
 
 // Count returns the total number of WebSub APIs for an organization

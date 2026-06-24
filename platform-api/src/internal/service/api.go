@@ -29,16 +29,14 @@ import (
 	"strings"
 	"time"
 
+	openapi_types "github.com/oapi-codegen/runtime/types"
+	"gopkg.in/yaml.v3"
 	"platform-api/src/api"
 	"platform-api/src/internal/constants"
 	"platform-api/src/internal/dto"
 	"platform-api/src/internal/model"
 	"platform-api/src/internal/repository"
 	"platform-api/src/internal/utils"
-
-	"github.com/google/uuid"
-	openapi_types "github.com/oapi-codegen/runtime/types"
-	"gopkg.in/yaml.v3"
 )
 
 // APIService handles business logic for API operations
@@ -389,34 +387,33 @@ func (s *APIService) GetAPIGatewaysByHandle(handle, orgId string) (*api.RESTAPIG
 
 // PublishAPIToDevPortalByHandle publishes an API identified by handle to a DevPortal
 func (s *APIService) PublishAPIToDevPortalByHandle(handle string, req *api.PublishToDevPortalRequest, orgID string) error {
-	apiUUID, err := s.getAPIUUIDByHandle(handle, orgID)
-	if err != nil {
-		return err
-	}
-	return s.PublishAPIToDevPortal(apiUUID, req, orgID)
+	// publication_mappings / devportals tables removed — disabled
+	// apiUUID, err := s.getAPIUUIDByHandle(handle, orgID)
+	// if err != nil { return err }
+	// return s.PublishAPIToDevPortal(apiUUID, req, orgID)
+	return nil
 }
 
 // UnpublishAPIFromDevPortalByHandle unpublishes an API identified by handle from a DevPortal
 func (s *APIService) UnpublishAPIFromDevPortalByHandle(handle, devPortalUUID, orgID string) error {
-	apiUUID, err := s.getAPIUUIDByHandle(handle, orgID)
-	if err != nil {
-		return err
-	}
-	return s.UnpublishAPIFromDevPortal(apiUUID, devPortalUUID, orgID)
+	// publication_mappings / devportals tables removed — disabled
+	// apiUUID, err := s.getAPIUUIDByHandle(handle, orgID)
+	// if err != nil { return err }
+	// return s.UnpublishAPIFromDevPortal(apiUUID, devPortalUUID, orgID)
+	return nil
 }
 
 // GetAPIPublicationsByHandle retrieves all DevPortals associated with an API identified by handle
 func (s *APIService) GetAPIPublicationsByHandle(handle, orgID string) (*api.RESTAPIDevPortalListResponse, error) {
-	apiUUID, err := s.getAPIUUIDByHandle(handle, orgID)
-	if err != nil {
-		return nil, err
-	}
-	return s.GetAPIPublications(apiUUID, orgID)
+	// publication_mappings / devportals tables removed — disabled
+	// apiUUID, err := s.getAPIUUIDByHandle(handle, orgID)
+	// if err != nil { return nil, err }
+	// return s.GetAPIPublications(apiUUID, orgID)
+	return nil, nil
 }
 
 // AddGatewaysToAPI associates multiple gateways with an API
 func (s *APIService) AddGatewaysToAPI(apiUUID string, gatewayIds []string, orgUUID string) (*api.RESTAPIGatewayListResponse, error) {
-	// Validate that the API exists and belongs to the organization
 	apiModel, err := s.apiRepo.GetAPIByUUID(apiUUID, orgUUID)
 	if err != nil {
 		return nil, err
@@ -427,8 +424,6 @@ func (s *APIService) AddGatewaysToAPI(apiUUID string, gatewayIds []string, orgUU
 	if apiModel.OrganizationID != orgUUID {
 		return nil, constants.ErrAPINotFound
 	}
-
-	// Validate that all gateways exist and belong to the same organization
 	var validGateways []*model.Gateway
 	for _, gatewayId := range gatewayIds {
 		gateway, err := s.gatewayRepo.GetByUUID(gatewayId)
@@ -443,34 +438,26 @@ func (s *APIService) AddGatewaysToAPI(apiUUID string, gatewayIds []string, orgUU
 		}
 		validGateways = append(validGateways, gateway)
 	}
-
-	// Get existing associations to determine which are new vs existing
 	existingAssociations, err := s.apiRepo.GetAPIAssociations(apiUUID, constants.AssociationTypeGateway, orgUUID)
 	if err != nil {
 		return nil, err
 	}
-
 	existingGatewayIds := make(map[string]bool)
 	for _, assoc := range existingAssociations {
-		existingGatewayIds[assoc.ResourceID] = true
+		existingGatewayIds[assoc.GatewayID] = true
 	}
-
-	// Process each gateway: create new associations or update existing ones
 	for _, gateway := range validGateways {
 		if existingGatewayIds[gateway.ID] {
-			// Update existing association timestamp
 			if err := s.apiRepo.UpdateAPIAssociation(apiUUID, gateway.ID, constants.AssociationTypeGateway, orgUUID); err != nil {
 				return nil, err
 			}
 		} else {
-			// Create new association
 			association := &model.APIAssociation{
-				ArtifactID:      apiUUID,
-				OrganizationID:  orgUUID,
-				ResourceID:      gateway.ID,
-				AssociationType: constants.AssociationTypeGateway,
-				CreatedAt:       time.Now(),
-				UpdatedAt:       time.Now(),
+				ArtifactID:     apiUUID,
+				OrganizationID: orgUUID,
+				GatewayID:      gateway.ID,
+				CreatedAt:      time.Now(),
+				UpdatedAt:      time.Now(),
 			}
 			if err := s.apiRepo.CreateAPIAssociation(association); err != nil {
 				return nil, err
@@ -478,14 +465,11 @@ func (s *APIService) AddGatewaysToAPI(apiUUID string, gatewayIds []string, orgUU
 			existingGatewayIds[gateway.ID] = true
 		}
 	}
-
-	// Return all gateways currently associated with the API including deployment details
 	return s.GetAPIGateways(apiUUID, orgUUID)
 }
 
 // GetAPIGateways retrieves all gateways associated with an API including deployment details
 func (s *APIService) GetAPIGateways(apiUUID, orgUUID string) (*api.RESTAPIGatewayListResponse, error) {
-	// Validate that the API exists and belongs to the organization
 	apiModel, err := s.apiRepo.GetAPIByUUID(apiUUID, orgUUID)
 	if err != nil {
 		return nil, err
@@ -496,55 +480,37 @@ func (s *APIService) GetAPIGateways(apiUUID, orgUUID string) (*api.RESTAPIGatewa
 	if apiModel.OrganizationID != orgUUID {
 		return nil, constants.ErrAPINotFound
 	}
-
-	// Get all gateways associated with this API including deployment details
 	gatewayDetails, err := s.apiRepo.GetAPIGatewaysWithDetails(apiUUID, orgUUID)
 	if err != nil {
 		return nil, err
 	}
-
 	response, err := apiGatewayDetailsToAPIList(gatewayDetails)
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert API gateway details: %w", err)
 	}
-
 	return response, nil
 }
 
 // createDefaultDevPortalAssociation creates an association between the API and the default DevPortal
 func (s *APIService) createDefaultDevPortalAssociation(apiId, orgId string) error {
-	// Get default DevPortal for the organization
-	defaultDevPortal, err := s.devPortalRepo.GetDefaultByOrganizationUUID(orgId)
-	if err != nil {
-		// If no default DevPortal exists, skip association (not an error)
-		if errors.Is(err, constants.ErrDevPortalNotFound) {
-			s.slogger.Info("No default DevPortal found for organization, skipping association", "orgId", orgId)
-			return nil
-		}
-		return fmt.Errorf("failed to get default DevPortal: %w", err)
-	}
-
-	// Create API-DevPortal association
-	association := &model.APIAssociation{
-		ArtifactID:      apiId,
-		OrganizationID:  orgId,
-		ResourceID:      defaultDevPortal.UUID,
-		AssociationType: constants.AssociationTypeDevPortal,
-		CreatedAt:       time.Now(),
-		UpdatedAt:       time.Now(),
-	}
-
-	if err := s.apiRepo.CreateAPIAssociation(association); err != nil {
-		// Check if association already exists (shouldn't happen, but handle gracefully)
-		if strings.Contains(err.Error(), "UNIQUE constraint failed") ||
-			strings.Contains(err.Error(), "duplicate key") {
-			s.slogger.Info("API association with default DevPortal already exists", "apiId", apiId)
-			return nil
-		}
-		return fmt.Errorf("failed to create API-DevPortal association: %w", err)
-	}
-
-	s.slogger.Info("Successfully created association between API and default DevPortal", "apiId", apiId, "devPortalUUID", defaultDevPortal.UUID)
+	// association_mappings / devportals tables removed — disabled
+	// defaultDevPortal, err := s.devPortalRepo.GetDefaultByOrganizationUUID(orgId)
+	// if err != nil {
+	// 	if errors.Is(err, constants.ErrDevPortalNotFound) {
+	// 		s.slogger.Info("No default DevPortal found for organization, skipping association", "orgId", orgId)
+	// 		return nil
+	// 	}
+	// 	return fmt.Errorf("failed to get default DevPortal: %w", err)
+	// }
+	// association := &model.APIAssociation{ArtifactID: apiId, OrganizationID: orgId, ResourceID: defaultDevPortal.UUID, AssociationType: constants.AssociationTypeDevPortal, CreatedAt: time.Now(), UpdatedAt: time.Now()}
+	// if err := s.apiRepo.CreateAPIAssociation(association); err != nil {
+	// 	if strings.Contains(err.Error(), "UNIQUE constraint failed") || strings.Contains(err.Error(), "duplicate key") {
+	// 		s.slogger.Info("API association with default DevPortal already exists", "apiId", apiId)
+	// 		return nil
+	// 	}
+	// 	return fmt.Errorf("failed to create API-DevPortal association: %w", err)
+	// }
+	// s.slogger.Info("Successfully created association between API and default DevPortal", "apiId", apiId, "devPortalUUID", defaultDevPortal.UUID)
 	return nil
 }
 
@@ -1006,129 +972,49 @@ func (s *APIService) ValidateAndRetrieveAPIProject(req *api.ValidateAPIProjectRe
 
 // PublishAPIToDevPortal publishes an API to a specific DevPortal
 func (s *APIService) PublishAPIToDevPortal(apiID string, req *api.PublishToDevPortalRequest, orgID string) error {
-	// Get the API
-	apiREST, err := s.GetAPIByUUID(apiID, orgID)
-	if err != nil {
-		return err
-	}
-
-	// Publish API to DevPortal
-	return s.devPortalService.PublishAPIToDevPortal(apiID, apiREST, req, orgID)
+	// publication_mappings / devportals tables removed — disabled
+	// apiREST, err := s.GetAPIByUUID(apiID, orgID)
+	// if err != nil { return err }
+	// return s.devPortalService.PublishAPIToDevPortal(apiID, apiREST, req, orgID)
+	return nil
 }
 
 // UnpublishAPIFromDevPortal unpublishes an API from a specific DevPortal
 func (s *APIService) UnpublishAPIFromDevPortal(apiID, devPortalUUID, orgID string) error {
-	// Unpublish API from DevPortal
-	return s.devPortalService.UnpublishAPIFromDevPortal(devPortalUUID, orgID, apiID)
+	// publication_mappings / devportals tables removed — disabled
+	// return s.devPortalService.UnpublishAPIFromDevPortal(devPortalUUID, orgID, apiID)
+	return nil
 }
 
 // GetAPIPublications retrieves all DevPortals associated with an API including publication details
-// This mirrors the GetAPIGateways implementation for consistency
 func (s *APIService) GetAPIPublications(apiUUID, orgUUID string) (*api.RESTAPIDevPortalListResponse, error) {
-	// Validate that the API exists and belongs to the organization
-	apiModel, err := s.apiRepo.GetAPIByUUID(apiUUID, orgUUID)
-	if err != nil {
-		return nil, err
-	}
-	if apiModel == nil {
-		return nil, constants.ErrAPINotFound
-	}
-	if apiModel.OrganizationID != orgUUID {
-		return nil, constants.ErrAPINotFound
-	}
-
-	// Get all DevPortals associated with this API including publication details
-	devPortalDetails, err := s.publicationRepo.GetAPIDevPortalsWithDetails(apiUUID, orgUUID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get API-DevPortal associations: %w", err)
-	}
-
-	// Convert models to API types with publication details
-	responses := make([]api.RESTAPIDevPortalResponse, 0, len(devPortalDetails))
-	for _, dpd := range devPortalDetails {
-		response, err := s.convertToAPIDevPortalResponse(dpd)
-		if err != nil {
-			return nil, fmt.Errorf("failed to convert API DevPortal response: %w", err)
-		}
-		responses = append(responses, response)
-	}
-
-	// Create paginated response
-	listResponse := &api.RESTAPIDevPortalListResponse{
-		Count: len(responses),
-		List:  responses,
-		Pagination: api.Pagination{
-			Total:  len(responses),
-			Offset: 0,
-			Limit:  len(responses),
-		},
-	}
-
-	return listResponse, nil
+	// publication_mappings / devportals tables removed — disabled
+	// apiModel, err := s.apiRepo.GetAPIByUUID(apiUUID, orgUUID)
+	// if err != nil { return nil, err }
+	// if apiModel == nil { return nil, constants.ErrAPINotFound }
+	// if apiModel.OrganizationID != orgUUID { return nil, constants.ErrAPINotFound }
+	// devPortalDetails, err := s.publicationRepo.GetAPIDevPortalsWithDetails(apiUUID, orgUUID)
+	// if err != nil { return nil, fmt.Errorf("failed to get API-DevPortal associations: %w", err) }
+	// responses := make([]api.RESTAPIDevPortalResponse, 0, len(devPortalDetails))
+	// for _, dpd := range devPortalDetails {
+	// 	response, err := s.convertToAPIDevPortalResponse(dpd)
+	// 	if err != nil { return nil, fmt.Errorf("failed to convert API DevPortal response: %w", err) }
+	// 	responses = append(responses, response)
+	// }
+	// listResponse := &api.RESTAPIDevPortalListResponse{Count: len(responses), List: responses, Pagination: api.Pagination{Total: len(responses), Offset: 0, Limit: len(responses)}}
+	// return listResponse, nil
+	return nil, nil
 }
 
 // convertToAPIDevPortalResponse converts APIDevPortalWithDetails to RESTAPIDevPortalResponse
 func (s *APIService) convertToAPIDevPortalResponse(dpd *model.APIDevPortalWithDetails) (api.RESTAPIDevPortalResponse, error) {
-	// Parse UUIDs
-	orgUUID, err := uuid.Parse(dpd.OrganizationUUID)
-	if err != nil {
-		return api.RESTAPIDevPortalResponse{}, fmt.Errorf("failed to parse OrganizationUUID: %w", err)
-	}
-	portalUUID, err := uuid.Parse(dpd.UUID)
-	if err != nil {
-		return api.RESTAPIDevPortalResponse{}, fmt.Errorf("failed to parse UUID: %w", err)
-	}
-	visibility := api.RESTAPIDevPortalResponseVisibility(dpd.Visibility)
-
-	// Create the API DevPortal response
-	apiDevPortalResponse := api.RESTAPIDevPortalResponse{
-		ApiUrl:           dpd.APIUrl,
-		AssociatedAt:     dpd.AssociatedAt,
-		CreatedAt:        dpd.CreatedAt,
-		Description:      utils.StringPtrIfNotEmpty(dpd.Description),
-		Hostname:         dpd.Hostname,
-		Identifier:       dpd.Identifier,
-		IsActive:         dpd.IsActive,
-		IsDefault:        dpd.IsDefault,
-		IsEnabled:        dpd.IsEnabled,
-		IsPublished:      dpd.IsPublished,
-		Name:             dpd.Name,
-		OrganizationUuid: orgUUID,
-		UiUrl:            fmt.Sprintf("%s/%s/views/default/apis", dpd.APIUrl, dpd.Identifier),
-		UpdatedAt:        dpd.UpdatedAt,
-		Uuid:             portalUUID,
-		Visibility:       visibility,
-	}
-
-	// Add publication details if published
-	if dpd.IsPublished && dpd.PublishedAt != nil {
-		status := api.RESTAPIPublicationDetailsStatusPublished
-		if dpd.PublicationStatus != nil && *dpd.PublicationStatus != "" {
-			status = api.RESTAPIPublicationDetailsStatus(*dpd.PublicationStatus)
-		}
-
-		publicationDetails := api.RESTAPIPublicationDetails{
-			Status:      status,
-			PublishedAt: *dpd.PublishedAt,
-		}
-
-		if dpd.APIVersion != nil {
-			publicationDetails.ApiVersion = dpd.APIVersion
-		}
-		if dpd.DevPortalRefID != nil {
-			publicationDetails.DevPortalRefId = dpd.DevPortalRefID
-		}
-		if dpd.SandboxEndpointURL != nil {
-			publicationDetails.SandboxEndpoint = dpd.SandboxEndpointURL
-		}
-		if dpd.ProductionEndpointURL != nil {
-			publicationDetails.ProductionEndpoint = dpd.ProductionEndpointURL
-		}
-
-		apiDevPortalResponse.Publication = &publicationDetails
-	}
-
-	return apiDevPortalResponse, nil
+	// publication_mappings / devportals tables removed — disabled
+	// orgUUID, err := uuid.Parse(dpd.OrganizationUUID)
+	// if err != nil { return api.RESTAPIDevPortalResponse{}, fmt.Errorf("failed to parse OrganizationUUID: %w", err) }
+	// portalUUID, err := uuid.Parse(dpd.UUID)
+	// if err != nil { return api.RESTAPIDevPortalResponse{}, fmt.Errorf("failed to parse UUID: %w", err) }
+	// ...
+	return api.RESTAPIDevPortalResponse{}, nil
 }
 
 // ValidateOpenAPIDefinition validates an OpenAPI definition from multipart form data

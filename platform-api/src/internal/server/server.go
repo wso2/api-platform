@@ -94,8 +94,9 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	gatewayRepo := repository.NewGatewayRepo(db)
 	customPolicyRepo := repository.NewCustomPolicyRepo(db)
 	artifactRepo := repository.NewArtifactRepo(db)
-	devPortalRepo := repository.NewDevPortalRepository(db)
-	publicationRepo := repository.NewAPIPublicationRepository(db)
+	// devportals / publication_mappings tables removed — disabled
+	// devPortalRepo := repository.NewDevPortalRepository(db)
+	// publicationRepo := repository.NewAPIPublicationRepository(db)
 	deploymentRepo := repository.NewDeploymentRepo(db)
 	subscriptionRepo := repository.NewSubscriptionRepo(db)
 	subscriptionPlanRepo := repository.NewSubscriptionPlanRepo(db)
@@ -192,7 +193,9 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	apiUtil := &utils.APIUtil{}
 
 	// Initialize DevPortal service
-	devPortalService := service.NewDevPortalService(devPortalRepo, orgRepo, publicationRepo, apiRepo, apiUtil, cfg, slogger)
+	// devportals / publication_mappings tables removed — disabled
+	// devPortalService := service.NewDevPortalService(devPortalRepo, orgRepo, publicationRepo, apiRepo, apiUtil, cfg, slogger)
+	var devPortalService *service.DevPortalService
 
 	// Initialize services
 	orgService := service.NewOrganizationService(
@@ -213,7 +216,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	projectService := service.NewProjectService(projectRepo, orgRepo, apiRepo, mcpProxyRepo, websubAPIRepo, slogger)
 	gatewayEventsService := service.NewGatewayEventsService(eventHub, slogger)
 	appService := service.NewApplicationService(appRepo, projectRepo, orgRepo, apiRepo, gatewayEventsService, slogger)
-	apiService := service.NewAPIService(apiRepo, projectRepo, orgRepo, gatewayRepo, deploymentRepo, devPortalRepo, publicationRepo,
+	apiService := service.NewAPIService(apiRepo, projectRepo, orgRepo, gatewayRepo, deploymentRepo, nil, nil,
 		subscriptionPlanRepo, customPolicyRepo, gatewayEventsService, devPortalService, apiUtil, slogger)
 	gatewayService := service.NewGatewayService(gatewayRepo, orgRepo, apiRepo, customPolicyRepo, gatewayEventsService, slogger, cfg.Gateway.EnableVersionVerification, cfg.Gateway.EnableFunctionalityTypeVerification)
 	subscriptionService := service.NewSubscriptionService(apiRepo, subscriptionRepo, gatewayEventsService, slogger)
@@ -287,7 +290,8 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	orgHandler := handler.NewOrganizationHandler(orgService, cfg.OrgCreationRequiresAuth, slogger)
 	projectHandler := handler.NewProjectHandler(projectService, slogger)
 	apiHandler := handler.NewAPIHandler(apiService, slogger)
-	devPortalHandler := handler.NewDevPortalHandler(devPortalService, slogger)
+	// devportals table removed — disabled
+	// devPortalHandler := handler.NewDevPortalHandler(devPortalService, slogger)
 	gatewayHandler := handler.NewGatewayHandler(gatewayService, slogger)
 	subscriptionHandler := handler.NewSubscriptionHandler(subscriptionService, subscriptionPlanService, slogger)
 	subscriptionPlanHandler := handler.NewSubscriptionPlanHandler(subscriptionPlanService, slogger)
@@ -399,7 +403,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	projectHandler.RegisterRoutes(router)
 	appHandler.RegisterRoutes(router)
 	apiHandler.RegisterRoutes(router)
-	devPortalHandler.RegisterRoutes(router)
+	// devPortalHandler.RegisterRoutes(router) // devportals table removed — disabled
 	gatewayHandler.RegisterRoutes(router)
 	subscriptionHandler.RegisterRoutes(router)
 	subscriptionPlanHandler.RegisterRoutes(router)

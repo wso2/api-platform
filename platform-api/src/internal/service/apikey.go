@@ -289,11 +289,10 @@ func (s *APIKeyService) CreateAPIKey(ctx context.Context, apiHandle, orgId, user
 	if err != nil {
 		return fmt.Errorf("failed to get API deployments for API handle: %s: %w", apiHandle, err)
 	}
-
 	if len(gateways) == 0 {
 		return constants.ErrGatewayUnavailable
 	}
-	
+
 	// Resolve key name (required for DB uniqueness; derive from request or generate)
 	keyName, err := s.resolveUniqueKeyName(apiId, req, apiHandle)
 	if err != nil {
@@ -363,31 +362,22 @@ func (s *APIKeyService) CreateAPIKey(ctx context.Context, apiHandle, orgId, user
 		event.ExpiresAt = &expiresAtStr
 	}
 
-	// Track delivery statistics
 	successCount := 0
 	failureCount := 0
 	var lastError error
-
-	// Broadcast event to all gateways where API is deployed
 	for _, gateway := range gateways {
-		gatewayID := gateway.ID
-
-		s.slogger.Info("Broadcasting API key created event", "apiHandle", apiHandle, "gatewayId", gatewayID, "keyName", keyName)
-
-		// Broadcast with retries
-		err := s.gatewayEventsService.BroadcastAPIKeyCreatedEvent(gatewayID, userId, event)
+		s.slogger.Info("Broadcasting API key created event", "apiHandle", apiHandle, "gatewayId", gateway.ID, "keyName", keyName)
+		err := s.gatewayEventsService.BroadcastAPIKeyCreatedEvent(gateway.ID, userId, event)
 		if err != nil {
 			failureCount++
 			lastError = err
-			s.slogger.Error("Failed to broadcast API key created event", "apiHandle", apiHandle, "gatewayId", gatewayID, "keyName", keyName, "error", err)
+			s.slogger.Error("Failed to broadcast API key created event", "apiHandle", apiHandle, "gatewayId", gateway.ID, "keyName", keyName, "error", err)
 		} else {
 			successCount++
-			s.slogger.Info("Successfully broadcast API key created event", "apiHandle", apiHandle, "gatewayId", gatewayID, "keyName", keyName)
+			s.slogger.Info("Successfully broadcast API key created event", "apiHandle", apiHandle, "gatewayId", gateway.ID, "keyName", keyName)
 		}
 	}
-
-	// Log summary — API key is persisted to DB regardless of broadcast outcome
-	s.slogger.Info("API key creation broadcast summary", "apiHandle", apiHandle, "keyName", keyName, "total", len(gateways), "success", successCount, "failed", failureCount)
+	s.slogger.Info("API key creation broadcast summary", "total", len(gateways), "success", successCount, "failed", failureCount)
 	if successCount == 0 {
 		s.slogger.Error("API key created event was not broadcast to any gateway", "apiHandle", apiHandle, "keyName", keyName, "lastError", lastError)
 	} else if failureCount > 0 {
@@ -418,7 +408,6 @@ func (s *APIKeyService) UpdateAPIKey(ctx context.Context, apiHandle, orgId, keyN
 		s.slogger.Error("Failed to get deployments for API key update", "apiHandle", apiHandle, "error", err)
 		return fmt.Errorf("failed to get API deployments: %w", err)
 	}
-
 	if len(gateways) == 0 {
 		s.slogger.Warn("No gateway deployments found for API", "apiHandle", apiHandle)
 		return constants.ErrGatewayUnavailable
@@ -469,12 +458,9 @@ func (s *APIKeyService) UpdateAPIKey(ctx context.Context, apiHandle, orgId, keyN
 		event.ExpiresAt = &expiresAtStr
 	}
 
-	// Track delivery statistics
 	successCount := 0
 	failureCount := 0
 	var lastError error
-
-	// Broadcast event to all gateways where API is deployed
 	for _, gateway := range gateways {
 		gatewayID := gateway.ID
 
@@ -521,7 +507,6 @@ func (s *APIKeyService) RevokeAPIKey(ctx context.Context, apiHandle, orgId, keyN
 	if err != nil {
 		return fmt.Errorf("failed to get API deployments: %w", err)
 	}
-
 	if len(gateways) == 0 {
 		return constants.ErrGatewayUnavailable
 	}
@@ -542,8 +527,6 @@ func (s *APIKeyService) RevokeAPIKey(ctx context.Context, apiHandle, orgId, keyN
 	successCount := 0
 	failureCount := 0
 	var lastError error
-
-	// Broadcast event to all gateways where API is deployed
 	for _, gateway := range gateways {
 		gatewayID := gateway.ID
 

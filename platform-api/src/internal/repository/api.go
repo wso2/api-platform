@@ -352,8 +352,8 @@ func (r *APIRepo) GetAPIsByGatewayUUID(gatewayUUID, orgUUID string) ([]*model.AP
 			a.project_uuid, art.organization_uuid, art.kind, art.created_at, art.updated_at
 		FROM rest_apis a
 		INNER JOIN artifacts art ON a.uuid = art.uuid
-		INNER JOIN association_mappings aa ON a.uuid = aa.artifact_uuid
-		WHERE aa.resource_uuid = ? AND aa.association_type = 'gateway' AND art.organization_uuid = ?
+		INNER JOIN gateway_association_mappings aa ON a.uuid = aa.artifact_uuid
+		WHERE aa.gateway_uuid = ? AND art.organization_uuid = ?
 		ORDER BY art.created_at DESC
 	`
 
@@ -435,12 +435,15 @@ func (r *APIRepo) DeleteAPI(apiUUID, orgUUID string) error {
 	}
 	defer tx.Rollback()
 
+	// Delete gateway associations
+	if _, err := tx.Exec(r.db.Rebind(`DELETE FROM gateway_association_mappings WHERE artifact_uuid = ? AND organization_uuid = ?`), apiUUID, orgUUID); err != nil {
+		return err
+	}
+
 	// Delete in order of dependencies (children first, parent last)
 	deleteQueries := []string{
-		// Delete API associations first
-		`DELETE FROM association_mappings WHERE artifact_uuid = ? AND organization_uuid = ?`,
-		// Delete API publications
-		`DELETE FROM publication_mappings WHERE api_uuid = ? AND organization_uuid = ?`,
+		// publication_mappings table removed — disabled
+		// `DELETE FROM publication_mappings WHERE api_uuid = ? AND organization_uuid = ?`,
 		// Delete API deployments
 		`DELETE FROM deployments WHERE artifact_uuid = ? AND organization_uuid = ?`,
 		// Delete from rest_apis table first, then artifacts
@@ -450,7 +453,7 @@ func (r *APIRepo) DeleteAPI(apiUUID, orgUUID string) error {
 	// Execute all delete statements
 	for i, query := range deleteQueries {
 		switch i {
-		case 0, 1, 2:
+		case 0:
 			if _, err := tx.Exec(r.db.Rebind(query), apiUUID, orgUUID); err != nil {
 				return err
 			}
@@ -550,60 +553,49 @@ func (r *APIRepo) CheckAPIExistsByNameAndVersionInOrganization(name, version, or
 	return count > 0, nil
 }
 
-// CreateAPIAssociation creates an association between an API and resource (e.g., gateway or dev portal)
+// CreateAPIAssociation creates a gateway-API association in gateway_association_mappings.
 func (r *APIRepo) CreateAPIAssociation(association *model.APIAssociation) error {
 	if r.db.Driver() == "postgres" || r.db.Driver() == "postgresql" {
-		// PostgreSQL: use RETURNING to get the generated ID
 		query := `
-			INSERT INTO association_mappings (artifact_uuid, organization_uuid, resource_uuid, association_type, created_at, updated_at)
-			VALUES (?, ?, ?, ?, ?, ?)
-			RETURNING id
+			INSERT INTO gateway_association_mappings (artifact_uuid, organization_uuid, gateway_uuid, created_at, updated_at)
+			VALUES (?, ?, ?, ?, ?)
+			ON CONFLICT (organization_uuid, artifact_uuid, gateway_uuid) DO UPDATE SET updated_at = EXCLUDED.updated_at
 		`
-		if err := r.db.QueryRow(r.db.Rebind(query), association.ArtifactID, association.OrganizationID, association.ResourceID,
-			association.AssociationType, association.CreatedAt, association.UpdatedAt).Scan(&association.ID); err != nil {
-			return err
-		}
-	} else {
-		// SQLite: use LastInsertId
-		query := `
-			INSERT INTO association_mappings (artifact_uuid, organization_uuid, resource_uuid, association_type, created_at, updated_at)
-			VALUES (?, ?, ?, ?, ?, ?)
-		`
-		result, err := r.db.Exec(r.db.Rebind(query), association.ArtifactID, association.OrganizationID, association.ResourceID,
-			association.AssociationType, association.CreatedAt, association.UpdatedAt)
-		if err != nil {
-			return err
-		}
-
-		lastID, err := result.LastInsertId()
-		if err != nil {
-			return err
-		}
-		association.ID = lastID
+		_, err := r.db.Exec(r.db.Rebind(query),
+			association.ArtifactID, association.OrganizationID, association.GatewayID,
+			association.CreatedAt, association.UpdatedAt)
+		return err
 	}
-
-	return nil
-}
-
-// UpdateAPIAssociation updates the updated_at timestamp for an existing API resource association
-func (r *APIRepo) UpdateAPIAssociation(apiUUID, resourceId, associationType, orgUUID string) error {
 	query := `
-		UPDATE association_mappings
-		SET updated_at = ?
-		WHERE artifact_uuid = ? AND resource_uuid = ? AND association_type = ? AND organization_uuid = ?
+		INSERT OR REPLACE INTO gateway_association_mappings (artifact_uuid, organization_uuid, gateway_uuid, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?)
 	`
-	_, err := r.db.Exec(r.db.Rebind(query), time.Now(), apiUUID, resourceId, associationType, orgUUID)
+	_, err := r.db.Exec(r.db.Rebind(query),
+		association.ArtifactID, association.OrganizationID, association.GatewayID,
+		association.CreatedAt, association.UpdatedAt)
 	return err
 }
 
-// GetAPIAssociations retrieves all resource associations for an API of a specific type
+// UpdateAPIAssociation updates the updated_at timestamp for a gateway-API association.
+func (r *APIRepo) UpdateAPIAssociation(apiUUID, resourceId, associationType, orgUUID string) error {
+	query := `
+		UPDATE gateway_association_mappings
+		SET updated_at = ?
+		WHERE artifact_uuid = ? AND gateway_uuid = ? AND organization_uuid = ?
+	`
+	_, err := r.db.Exec(r.db.Rebind(query), time.Now(), apiUUID, resourceId, orgUUID)
+	return err
+}
+
+// GetAPIAssociations retrieves all gateway associations for an API.
+// associationType is accepted for interface compatibility but only 'gateway' associations are stored.
 func (r *APIRepo) GetAPIAssociations(apiUUID, associationType, orgUUID string) ([]*model.APIAssociation, error) {
 	query := `
-		SELECT id, artifact_uuid, organization_uuid, resource_uuid, association_type, created_at, updated_at
-		FROM association_mappings
-		WHERE artifact_uuid = ? AND association_type = ? AND organization_uuid = ?
+		SELECT artifact_uuid, organization_uuid, gateway_uuid, created_at, updated_at
+		FROM gateway_association_mappings
+		WHERE artifact_uuid = ? AND organization_uuid = ?
 	`
-	rows, err := r.db.Query(r.db.Rebind(query), apiUUID, associationType, orgUUID)
+	rows, err := r.db.Query(r.db.Rebind(query), apiUUID, orgUUID)
 	if err != nil {
 		return nil, err
 	}
@@ -611,19 +603,18 @@ func (r *APIRepo) GetAPIAssociations(apiUUID, associationType, orgUUID string) (
 
 	var associations []*model.APIAssociation
 	for rows.Next() {
-		var association model.APIAssociation
-		err := rows.Scan(&association.ID, &association.ArtifactID, &association.OrganizationID,
-			&association.ResourceID, &association.AssociationType, &association.CreatedAt, &association.UpdatedAt)
+		assoc := &model.APIAssociation{}
+		err := rows.Scan(&assoc.ArtifactID, &assoc.OrganizationID, &assoc.GatewayID, &assoc.CreatedAt, &assoc.UpdatedAt)
 		if err != nil {
 			return nil, err
 		}
-		associations = append(associations, &association)
+		associations = append(associations, assoc)
 	}
 
 	return associations, rows.Err()
 }
 
-// GetAPIGatewaysWithDetails retrieves all gateways associated with an API including deployment details
+// GetAPIGatewaysWithDetails retrieves all gateways associated with an API including deployment details.
 func (r *APIRepo) GetAPIGatewaysWithDetails(apiUUID, orgUUID string) ([]*model.APIGatewayWithDetails, error) {
 	query := `
 		SELECT
@@ -645,7 +636,7 @@ func (r *APIRepo) GetAPIGatewaysWithDetails(apiUUID, orgUUID string) ([]*model.A
 			ad.deployment_id,
 			ad.updated_at as deployed_at
 		FROM gateways g
-		INNER JOIN association_mappings aa ON g.uuid = aa.resource_uuid AND aa.association_type = 'gateway'
+		INNER JOIN gateway_association_mappings aa ON g.uuid = aa.gateway_uuid
 		LEFT JOIN deployment_status ad ON g.uuid = ad.gateway_uuid AND ad.artifact_uuid = ? AND ad.status = ?
 		WHERE aa.artifact_uuid = ? AND g.organization_uuid = ?
 		ORDER BY aa.created_at DESC
@@ -692,7 +683,6 @@ func (r *APIRepo) GetAPIGatewaysWithDetails(apiUUID, orgUUID string) ([]*model.A
 				return nil, fmt.Errorf("failed to unmarshal gateway properties: %w", err)
 			}
 		}
-
 		if deploymentId.Valid {
 			gateway.DeploymentID = &deploymentId.String
 		}

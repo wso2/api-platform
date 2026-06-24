@@ -327,30 +327,23 @@ func (s *WebBrokerAPIService) Delete(orgUUID, handle string) error {
 
 // PublishToDevPortal publishes a WebBroker API to a DevPortal
 func (s *WebBrokerAPIService) PublishToDevPortal(orgUUID, handle string, req *api.PublishToDevPortalRequest) error {
-	webbrokerAPI, err := s.repo.GetByHandle(handle, orgUUID)
-	if err != nil {
-		return fmt.Errorf("failed to get WebBroker API: %w", err)
-	}
-	if webbrokerAPI == nil {
-		return constants.ErrWebBrokerAPINotFound
-	}
-
-	// Build a RESTAPI adapter for the devportal service
-	restAPIAdapter := webbrokerAPIModelToRESTAPIAdapter(webbrokerAPI)
-	return s.devPortalService.PublishAPIToDevPortal(webbrokerAPI.UUID, restAPIAdapter, req, orgUUID)
+	// publication_mappings / devportals tables removed — disabled
+	// webbrokerAPI, err := s.repo.GetByHandle(handle, orgUUID)
+	// if err != nil { return fmt.Errorf("failed to get WebBroker API: %w", err) }
+	// if webbrokerAPI == nil { return constants.ErrWebBrokerAPINotFound }
+	// restAPIAdapter := webbrokerAPIModelToRESTAPIAdapter(webbrokerAPI)
+	// return s.devPortalService.PublishAPIToDevPortal(webbrokerAPI.UUID, restAPIAdapter, req, orgUUID)
+	return nil
 }
 
 // UnpublishFromDevPortal unpublishes a WebBroker API from a DevPortal
 func (s *WebBrokerAPIService) UnpublishFromDevPortal(orgUUID, handle, devPortalUUID string) error {
-	webbrokerAPI, err := s.repo.GetByHandle(handle, orgUUID)
-	if err != nil {
-		return fmt.Errorf("failed to get WebBroker API: %w", err)
-	}
-	if webbrokerAPI == nil {
-		return constants.ErrWebBrokerAPINotFound
-	}
-
-	return s.devPortalService.UnpublishAPIFromDevPortal(devPortalUUID, orgUUID, webbrokerAPI.UUID)
+	// publication_mappings / devportals tables removed — disabled
+	// webbrokerAPI, err := s.repo.GetByHandle(handle, orgUUID)
+	// if err != nil { return fmt.Errorf("failed to get WebBroker API: %w", err) }
+	// if webbrokerAPI == nil { return constants.ErrWebBrokerAPINotFound }
+	// return s.devPortalService.UnpublishAPIFromDevPortal(devPortalUUID, orgUUID, webbrokerAPI.UUID)
+	return nil
 }
 
 // Count returns the total number of WebBroker APIs for an organization

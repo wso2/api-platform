@@ -211,9 +211,7 @@ func (r *GatewayRepo) Delete(gatewayID, organizationID string) error {
 	}
 	defer tx.Rollback()
 
-	// Delete API associations for this gateway
-	deleteAssocQuery := `DELETE FROM association_mappings 
-	                     WHERE resource_uuid = ? AND association_type = 'gateway' AND organization_uuid = ?`
+	deleteAssocQuery := `DELETE FROM gateway_association_mappings WHERE gateway_uuid = ? AND organization_uuid = ?`
 	_, err = tx.Exec(r.db.Rebind(deleteAssocQuery), gatewayID, organizationID)
 	if err != nil {
 		return err
@@ -395,29 +393,24 @@ func (r *GatewayRepo) HasGatewayDeployments(gatewayID, organizationID string) (b
 
 // HasGatewayAssociations checks if a gateway has any associations
 func (r *GatewayRepo) HasGatewayAssociations(gatewayID, organizationID string) (bool, error) {
-	var associationCount int
-	associationQuery := `SELECT COUNT(*) FROM association_mappings WHERE resource_uuid = ? AND association_type = 'gateway' AND organization_uuid = ?`
-	err := r.db.QueryRow(r.db.Rebind(associationQuery), gatewayID, organizationID).Scan(&associationCount)
+	var count int
+	query := `SELECT COUNT(*) FROM gateway_association_mappings WHERE gateway_uuid = ? AND organization_uuid = ?`
+	err := r.db.QueryRow(r.db.Rebind(query), gatewayID, organizationID).Scan(&count)
 	if err != nil {
 		return false, err
 	}
-
-	return associationCount > 0, nil
+	return count > 0, nil
 }
 
 // HasGatewayAssociationsOrDeployments checks if a gateway has any associations (deployments or associations)
 func (r *GatewayRepo) HasGatewayAssociationsOrDeployments(gatewayID, organizationID string) (bool, error) {
-	// Check deployments first
 	hasDeployments, err := r.HasGatewayDeployments(gatewayID, organizationID)
 	if err != nil {
 		return false, err
 	}
-
 	if hasDeployments {
 		return true, nil
 	}
-
-	// Check associations
 	return r.HasGatewayAssociations(gatewayID, organizationID)
 }
 
