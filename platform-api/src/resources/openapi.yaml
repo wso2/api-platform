@@ -2474,10 +2474,10 @@ paths:
                         unit: month
               associatedGateways:
                 - name: prod-eu
-                  configuration:
+                  configurations:
                     host: prod-eu.platform-gw.local
                 - name: prod-us
-                  configuration:
+                  configurations:
                     host: prod-us.platform-gw.local
       responses:
         '201':
@@ -9350,7 +9350,7 @@ components:
             $ref: "#/components/schemas/LLMPolicy"
         security:
           $ref: '#/components/schemas/SecurityConfig'
-        AssociatedGateways:
+        associatedGateways:
           type: array
           description: >
             Optional list of gateways this LLM provider can be deployed to, along with
@@ -9385,14 +9385,16 @@ components:
       properties:
         name:
           type: string
+          pattern: '^[a-z0-9-]+$'
+          minLength: 3
+          maxLength: 64
           description: Name of the gateway this artifact can be deployed to
           example: prod-eu
         configurations:
           type: object
           description: >
             Per-gateway configuration overrides for this artifact. This is a
-            free-form object; the supported keys depend on the gateway and the
-            artifact type.
+            free-form object; the supported keys depend on the deployed artifact type.
           additionalProperties: true
           example:
             someKey: someValue
@@ -9574,7 +9576,7 @@ components:
             $ref: "#/components/schemas/LLMPolicy"
         security:
           $ref: '#/components/schemas/SecurityConfig'
-        AssociatedGateways:
+        associatedGateways:
           type: array
           description: >
             Optional list of gateways this LLM proxy can be deployed to, along with
@@ -9863,7 +9865,7 @@ components:
             List of capabilities supported by this proxy. This will be stored as-is and can be used in the future if we need
             this for governance purposes
           $ref: '#/components/schemas/MCPProxyCapabilities'
-        AssociatedGateways:
+        associatedGateways:
           type: array
           description: >
             Optional list of gateways this MCP proxy can be deployed to, along with
