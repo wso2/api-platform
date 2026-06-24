@@ -273,13 +273,24 @@ func splitSQLStatements(sql string) []string {
 	var statements []string
 	current := strings.Builder{}
 	inString := false
+	inLineComment := false
 	escapeNext := false
+	prevChar := rune(0)
 
 	// Process character by character to properly handle strings and comments
 	for _, r := range sql {
 		if escapeNext {
 			current.WriteRune(r)
 			escapeNext = false
+			prevChar = r
+			continue
+		}
+
+		// Line comments end at a newline
+		if r == '\n' {
+			inLineComment = false
+			current.WriteRune(r)
+			prevChar = r
 			continue
 		}
 
@@ -287,18 +298,28 @@ func splitSQLStatements(sql string) []string {
 		if r == '\\' {
 			escapeNext = true
 			current.WriteRune(r)
+			prevChar = r
+			continue
+		}
+
+		// Detect start of line comment (--)
+		if !inString && !inLineComment && r == '-' && prevChar == '-' {
+			inLineComment = true
+			current.WriteRune(r)
+			prevChar = r
 			continue
 		}
 
 		// Track string literals - everything inside single quotes is literal
-		if r == '\'' {
+		if !inLineComment && r == '\'' {
 			inString = !inString
 			current.WriteRune(r)
+			prevChar = r
 			continue
 		}
 
-		// Only split on semicolons that are outside of string literals
-		if !inString && r == ';' {
+		// Only split on semicolons that are outside of string literals and line comments
+		if !inString && !inLineComment && r == ';' {
 			stmt := strings.TrimSpace(current.String())
 			// Only add non-empty statements that aren't pure comments
 			if stmt != "" {
@@ -309,10 +330,12 @@ func splitSQLStatements(sql string) []string {
 				}
 			}
 			current.Reset()
+			prevChar = 0
 			continue
 		}
 
 		current.WriteRune(r)
+		prevChar = r
 	}
 
 	// Handle remaining statement (if any)
