@@ -268,7 +268,71 @@ CREATE TABLE IF NOT EXISTS deployment_status (
     FOREIGN KEY (artifact_uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
     FOREIGN KEY (gateway_uuid) REFERENCES gateways(uuid) ON DELETE CASCADE,
-    FOREIGN KEY (deployment_uuid) REFERENCES deployments(uuid) ON DELETE CASCADE
+    FOREIGN KEY (deployment_id) REFERENCES deployments(deployment_id) ON DELETE CASCADE
+);
+
+-- Artifact Associations table (for gateways)
+CREATE TABLE IF NOT EXISTS gateway_associations (
+    id SERIAL PRIMARY KEY,
+    artifact_uuid VARCHAR(40) NOT NULL,
+    organization_uuid VARCHAR(40) NOT NULL,
+    gateway_uuid VARCHAR(40) NOT NULL,
+    metadata TEXT, -- JSON object as TEXT
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (artifact_uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (gateway_uuid) REFERENCES gateways(uuid) ON DELETE CASCADE,
+    UNIQUE(artifact_uuid, gateway_uuid, organization_uuid)
+);
+
+-- DevPortals table
+CREATE TABLE IF NOT EXISTS devportals (
+    uuid VARCHAR(40) PRIMARY KEY,
+    organization_uuid VARCHAR(40) NOT NULL,
+    name VARCHAR(100) NOT NULL,
+    identifier VARCHAR(100) NOT NULL,
+    api_url VARCHAR(255) NOT NULL,
+    hostname VARCHAR(255) NOT NULL,
+    api_key VARCHAR(255) NOT NULL,
+    header_key_name VARCHAR(100) DEFAULT 'x-wso2-api-key',
+    is_active BOOLEAN DEFAULT FALSE,
+    is_enabled BOOLEAN DEFAULT FALSE,
+    is_default BOOLEAN DEFAULT FALSE,
+    visibility VARCHAR(20) NOT NULL DEFAULT 'private',
+    description VARCHAR(500),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
+    UNIQUE(organization_uuid, api_url),
+    UNIQUE(organization_uuid, hostname)
+);
+
+-- API-DevPortal Publication Tracking Table
+-- This table tracks which APIs are published to which DevPortals
+
+CREATE TABLE IF NOT EXISTS publication_mappings (
+    api_uuid VARCHAR(40) NOT NULL,
+    devportal_uuid VARCHAR(40) NOT NULL,
+    organization_uuid VARCHAR(40) NOT NULL,
+    status VARCHAR(20) NOT NULL CHECK (status IN ('published', 'failed', 'publishing')),
+    api_version VARCHAR(50),
+    devportal_ref_id VARCHAR(100),
+
+    -- Gateway endpoints for sandbox and production
+    sandbox_endpoint_url VARCHAR(500) NOT NULL,
+    production_endpoint_url VARCHAR(500) NOT NULL,
+
+    -- Timestamps
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    -- Foreign key constraints
+    PRIMARY KEY (api_uuid, devportal_uuid, organization_uuid),
+    FOREIGN KEY (api_uuid) REFERENCES rest_apis(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (devportal_uuid) REFERENCES devportals(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
+    UNIQUE (api_uuid, devportal_uuid, organization_uuid)
 );
 
 -- LLM Provider Templates table
