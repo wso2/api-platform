@@ -168,6 +168,7 @@
 .api-icon--graphql { background: #fce4ef; color: #d6336c; }
 .api-icon--soap    { background: #ece9fb; color: #6741d9; }
 .api-icon--ws      { background: #fff1e6; color: #e65100; }
+.api-icon--mcp     { background: #e0f5f2; color: #0d9488; }
 
 .api-card-meta {
   flex: 1;

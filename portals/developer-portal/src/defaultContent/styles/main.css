@@ -10,6 +10,7 @@
 @import "/styles/side-bar.css";
 @import "/styles/default-api.css";
 @import "/styles/api-flows.css";
+@import "/styles/mcp-landing.css";
 
 :root {
   --main-bg-color: #ffffff;

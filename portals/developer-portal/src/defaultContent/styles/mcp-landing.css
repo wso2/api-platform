@@ -1,0 +1,147 @@
+/* MCP server overview page — mc-* prefix */
+
+/* ── Accordion card (Tools / Resources / Prompts) ────────────── */
+.mc-accordion {
+  border: 1px solid #e6eaf0;
+  border-radius: 0.75rem;
+  overflow: hidden;
+  margin-bottom: 0.75rem;
+}
+.mc-accordion:last-child { margin-bottom: 0; }
+
+.mc-accordion-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.625rem;
+  background: #fcefe0;
+  border-bottom: 1px solid transparent;
+  padding: 0.8125rem 1rem;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s;
+  list-style: none;
+}
+.mc-accordion-head:hover { background: #f8e8d2; }
+.mc-accordion-head.open { border-bottom-color: #f3ddc4; }
+
+.mc-accordion-head-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5625rem;
+  font-family: var(--font-family-mono, monospace);
+  font-size: 0.84375rem;
+  font-weight: 700;
+  color: #7a4a12;
+}
+
+.mc-accordion-chevron {
+  color: #a87a44;
+  transition: transform 0.2s;
+  transform: rotate(180deg); /* closed by default — points down */
+}
+.mc-accordion-head.open .mc-accordion-chevron {
+  transform: rotate(0deg); /* open — points up */
+}
+
+.mc-accordion-body {
+  display: none;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1rem;
+}
+.mc-accordion-head.open + .mc-accordion-body {
+  display: flex;
+}
+
+.mc-accordion-desc {
+  margin: 0;
+  font-size: 0.84375rem;
+  line-height: 1.5;
+  color: #52607a;
+}
+
+/* ── Resource meta rows (URI, MIME Type) ─────────────────────── */
+.mc-accordion-meta {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  font-size: 0.8125rem;
+  line-height: 1.9;
+}
+.mc-accordion-meta-key {
+  font-weight: 700;
+  color: #1a2433;
+  white-space: nowrap;
+}
+.mc-accordion-meta-val {
+  font-family: var(--font-family-mono, monospace);
+  font-size: 0.78125rem;
+  color: #52607a;
+}
+
+/* ── JSON schema block inside accordion ─────────────────────── */
+.mc-json-block {
+  background: #f6f8fb;
+  border: 1px solid #eef1f5;
+  border-radius: 0.5625rem;
+  padding: 0.875rem 1rem;
+  overflow-x: auto;
+}
+.mc-json-block pre {
+  margin: 0;
+  font-size: 0.75rem;
+  line-height: 1.55;
+  white-space: pre;
+  overflow-x: auto;
+  max-height: 25rem;
+}
+.mc-json-block pre code.hljs {
+  background: transparent;
+  padding: 0;
+  font-family: var(--font-family-mono, monospace);
+  font-size: 0.75rem;
+  line-height: 1.55;
+}
+
+/* ── Config panel (right sidebar) ───────────────────────────── */
+.mc-config-panel {
+  position: sticky;
+  top: 1.25rem;
+}
+
+.mc-config-block {
+  position: relative;
+  border: 1px solid #e6eaf0;
+  border-radius: 0.75rem;
+  background: #f6f8fb;
+  padding: 1rem;
+}
+
+.mc-config-copy {
+  position: absolute;
+  top: 0.625rem;
+  right: 0.625rem;
+}
+
+.mc-config-pre {
+  margin: 0;
+  font-size: 0.75rem;
+  line-height: 1.55;
+  white-space: pre;
+  overflow-x: auto;
+}
+.mc-config-pre code.hljs {
+  background: transparent;
+  padding: 0;
+  font-family: var(--font-family-mono, monospace);
+  font-size: 0.75rem;
+  line-height: 1.55;
+}
+
+.mc-config-note {
+  margin: 0.75rem 0.125rem 0;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: #8a93a0;
+}

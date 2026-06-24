@@ -1,0 +1,45 @@
+<div class="mc-config-panel">
+  <h2 class="aov-section-title" style="margin-bottom:0.875rem;">MCP Server Configuration</h2>
+  <div class="mc-config-block">
+    <button type="button" class="dp-btn-icon mc-config-copy" onclick="copyMcpConfig(this, '{{apiID}}')" title="Copy configuration">
+      <i class="bi bi-copy"></i>
+    </button>
+    <pre id="mcp-cfg-{{apiID}}" class="mc-config-pre"><code class="language-json">{
+  "servers": {
+    "{{apiMetadata.apiInfo.apiName}}": {
+      "url": "{{resources.serverDetails.productionURL}}",
+      "type": "http",
+      "headers": {
+        "Authorization": "Bearer ${token}"
+      }
+    }
+  }
+}</code></pre>
+  </div>
+  <p class="mc-config-note">Generate a token using a subscribed application and replace the placeholder.</p>
+
+  {{#if subscriptionPlans.length}}
+  <div style="margin-top:1.5rem;">
+    {{> api-subscription-plans}}
+  </div>
+  {{/if}}
+</div>
+
+<script>
+(function() {
+  function copyMcpConfig(btn, id) {
+    var el = document.getElementById('mcp-cfg-' + id);
+    if (!el) return;
+    var text = el.textContent || el.innerText || '';
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).catch(function() {});
+    }
+    var icon = btn.querySelector('i');
+    if (icon) {
+      icon.className = 'bi bi-check2';
+      setTimeout(function() { icon.className = 'bi bi-copy'; }, 1500);
+    }
+  }
+  window.copyMcpConfig = copyMcpConfig;
+}());
+</script>

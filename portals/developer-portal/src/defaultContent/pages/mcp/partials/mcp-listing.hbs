@@ -19,105 +19,106 @@
 
 <section class="apis-section">
   <div class="container-fluid">
+    <!-- Hero -->
     <div class="apilist-hero-container">
       <div class="apilist-hero-content">
-        <div class="apilist-hero-header">
-          <h1 class="apilist-hero-title">
-            Discover, integrate, and innovate with MCP-powered tools for your agents.
-          </h1>
-          <div class="apilist-hero-description">
-            Explore our extensive MCP catalog and discover how to integrate them seamlessly into your application.
-          </div>
-        </div>
+        <h1 class="apilist-hero-title">Discover, integrate, and innovate with MCP-powered tools for your agents</h1>
+        <p class="apilist-hero-description">Explore our extensive MCP catalog and discover how to integrate them seamlessly into your application.</p>
       </div>
-      <div class="col-lg-6 col-md-12 apilist-hero-image">
-        <img
-          src="https://raw.githubusercontent.com/wso2/docs-bijira/refs/heads/main/en/devportal-theming/mcphero.svg"
-          alt="Hero Image" class="img-fluid" style="max-width: 65%;"/>
+      <div class="apilist-hero-image">
+        <svg width="180" height="150" viewBox="0 0 180 180" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M18 84.8528L85.8822 16.9706C95.2548 7.59798 110.451 7.59798 119.823 16.9706C129.196 26.3431 129.196 41.5391 119.823 50.9117L68.5581 102.177" stroke="#5b7fb9" stroke-width="12" stroke-linecap="round"/>
+          <path d="M69.2652 101.47L119.823 50.9117C129.196 41.5391 144.392 41.5391 153.765 50.9117L154.118 51.2652C163.491 60.6378 163.491 75.8338 154.118 85.2063L92.7248 146.6C89.6006 149.724 89.6006 154.789 92.7248 157.913L105.331 170.52" stroke="#5b7fb9" stroke-width="12" stroke-linecap="round"/>
+          <path d="M102.853 33.9411L52.6482 84.1457C43.2756 93.5183 43.2756 108.714 52.6482 118.087C62.0208 127.459 77.2167 127.459 86.5893 118.087L136.794 67.8822" stroke="#5b7fb9" stroke-width="12" stroke-linecap="round"/>
+        </svg>
       </div>
     </div>
   </div>
+
   <div class="container-fluid apilist-container">
+    <!-- Search -->
     <div class="search-container">
       <div class="search-input">
-        <img src="https://raw.githubusercontent.com/wso2/docs-bijira/refs/heads/main/en/devportal-theming/search.svg"
-          alt="search" class="search-icon" />
+        <i class="bi bi-search search-icon"></i>
         <input type="text" id="query" placeholder="Search MCP Servers" autocomplete="off" />
       </div>
     </div>
-    <div class="row row-gap-4">
-      {{#if (eq apiMetadata.length 0)}}
-      <div class="ps-3" id="no-subscription">
-        <div class="api-info-box">
-          <div class="api-info-content">
-            <div class="api-info-title">
-              No MCP Servers available.
-            </div>
-          </div>
-        </div>
+
+    {{#if (eq apiMetadata.length 0)}}
+    <!-- Empty state -->
+    <div class="apilist-empty" id="no-subscription">
+      <div class="apilist-empty-icon">
+        <i class="bi bi-info-circle"></i>
       </div>
-      {{/if}}
+      <div class="apilist-empty-body">
+        <div class="apilist-empty-title">No MCP servers available yet</div>
+        <p class="apilist-empty-desc">There are no published MCP servers in this developer portal right now. Once MCP servers are published, they'll appear here for you to explore and subscribe to.</p>
+      </div>
+    </div>
+    {{else}}
+    <!-- Results bar -->
+    <div class="apilist-results-bar">
+      <h2 class="apilist-results-heading">MCP Servers <span class="apilist-results-count">{{apiMetadata.length}}</span></h2>
+    </div>
+    {{/if}}
+
+    <!-- Grid -->
+    <div class="row row-gap-4">
       {{#apiMetadata}}
       {{#if (eq apiInfo.apiType "MCP")}}
       <div class="col-lg-4 col-md-6 col-sm-12" id="apiCard-{{apiID}}">
-        <div class="card api-card d-flex flex-column">
-          <div class="api-card-header d-flex align-items-center gap-3 position-relative overflow-hidden" 
-               onclick="window.location.href='{{../baseUrl}}/mcp/{{apiHandle}}'" style="cursor: pointer;">
-               {{#if apiInfo.apiImageMetadata.api-icon}}
-                  <img src="{{apiInfo.apiImageMetadata.api-icon}}" class="api-card-img" alt="..." />
-                {{else}}
-                  <div class="image-icon">{{firstTwoLetters (or apiInfo.apiTitle apiInfo.apiName)}}</div>
-                {{/if}}
-            <div class="flex-grow-1">
-              <h5 class="api-card-title mb-0">{{or apiInfo.apiTitle apiInfo.apiName}}</h5>
-              <div class="d-flex align-items-center gap-2">
-                <p class="mb-0 mt-1" style="font-size: 16px;">{{apiInfo.apiVersion}}</p>
-                  <div class="type-badge badge-custom2" style="display: flex; flex-direction: row; align-items: center;">
-                  <div style="margin-right: 8px; display: flex;">
-                    <img
-                      src="https://raw.githubusercontent.com/wso2/docs-bijira/refs/heads/main/en/devportal-theming/MCP.svg"
-                      style="height: 16px; object-fit: contain;"
-                    />
-                  </div>
-                  <span>{{apiInfo.apiType}}</span>
-                </div>
+        <div class="api-card d-flex flex-column">
+
+          <!-- Top: icon + name + version + type badge -->
+          <div class="api-card-top" data-href="{{../baseUrl}}/mcp/{{apiHandle}}" style="cursor:pointer;">
+            {{#if apiInfo.apiImageMetadata.api-icon}}
+            <img src="{{apiInfo.apiImageMetadata.api-icon}}" class="api-card-img" alt="{{or apiInfo.apiTitle apiInfo.apiName}}" />
+            {{else}}
+            <span class="api-icon api-icon--mcp">{{firstTwoLetters (or apiInfo.apiTitle apiInfo.apiName)}}</span>
+            {{/if}}
+            <div class="api-card-meta">
+              <h5 class="api-card-title">{{or apiInfo.apiTitle apiInfo.apiName}}</h5>
+              <div class="api-card-meta-row">
+                <span class="api-version">{{apiInfo.apiVersion}}</span>
+                <span class="dp-badge dp-badge--mcp"><i class="bi bi-cpu"></i> MCP</span>
+                <span class="dp-badge dp-badge--ai"><i class="bi bi-robot"></i> AI Ready</span>
               </div>
             </div>
             {{#if ../isAuthenticated}}
-            <div class="subscription-flag fw-bold" style="display: {{#if hasSubscription}}block{{else}}none{{/if}};">Subscribed</div>
+            <div class="subscription-flag fw-bold" style="display:{{#if hasSubscription}}block{{else}}none{{/if}};">Subscribed</div>
             {{/if}}
           </div>
-          <div class="api-card-body flex-grow-1" onclick="window.location.href='{{../baseUrl}}/mcp/{{apiHandle}}'" style="cursor: pointer;">
-            <div class="truncate-text fw-light apilisting-api-description small mb-3">{{apiInfo.apiDescription}}</div>
-            <div class="row">
-              <div class="apilisting-tags">
-                {{#apiInfo.tags}}
-                <span class="badge badge-custom2">{{this}}</span>
-                {{/apiInfo.tags}}
-              </div>
-            </div>
-          </div>
-          {{#if subscriptionPolicies.length}}
-          <hr class="card-separator" />
-          {{/if}}
-          <div class="api-card-footer">
-            <div id="btnSection" class="d-flex align-items-center gap-2 w-100">
-              <div id="subscriptionBox" class="subscription-container w-100">
-                {{#if subscriptionPolicies.length}}
-                <a type="button" class="common-btn-primary w-100 {{#if @root.isReadOnlyMode}}disabled{{/if}}"
-                  {{#unless @root.isReadOnlyMode}}href="{{../baseUrl}}/mcp/{{apiHandle}}#subscriptionPlans"{{/unless}}
-                  {{#if @root.isReadOnlyMode}}aria-disabled="true"{{/if}}>Subscribe</a>
-                {{/if}}
-              </div>
-            </div>
 
-            <div class="message-overlay hidden">
-              <div class="message-content">
-                <i class="bi message-icon"></i>
-                <p class="message-text"></p>
-              </div>
-              <button type="button" class="close-message" aria-label="Close message">&times;</button>
+          <!-- Description -->
+          <p class="api-card-desc clamp2" data-href="{{../baseUrl}}/mcp/{{apiHandle}}" style="cursor:pointer;">{{apiInfo.apiDescription}}</p>
+
+          <!-- Tags -->
+          <div class="api-card-tags">
+            {{#apiInfo.tags}}
+            <span class="dp-tag">{{this}}</span>
+            {{/apiInfo.tags}}
+          </div>
+
+          <!-- Footer -->
+          {{#if subscriptionPolicies.length}}
+          <div class="api-card-footer">
+            <div class="api-card-footer-left">
+              <a href="{{../baseUrl}}/mcp/{{apiHandle}}#subscriptionPlans" class="api-plans-link">
+                <i class="bi bi-tag"></i> {{subscriptionPolicies.length}} plans
+              </a>
             </div>
+            <a href="{{../baseUrl}}/mcp/{{apiHandle}}#subscriptionPlans"
+               class="dp-btn dp-btn--primary {{#if @root.isReadOnlyMode}}disabled{{/if}}"
+               {{#if @root.isReadOnlyMode}}aria-disabled="true" tabindex="-1"{{/if}}>Subscribe</a>
+          </div>
+          {{/if}}
+
+          <div class="message-overlay hidden">
+            <div class="message-content">
+              <i class="bi message-icon"></i>
+              <p class="message-text"></p>
+            </div>
+            <button type="button" class="close-message" aria-label="Close message">&times;</button>
           </div>
         </div>
       </div>
@@ -125,4 +126,23 @@
       {{/apiMetadata}}
     </div>
   </div>
+
+  <script>
+    (function(){
+      function findClosest(el, selector){
+        while(el && el !== document){
+          if(el.matches && el.matches(selector)) return el;
+          el = el.parentNode;
+        }
+        return null;
+      }
+      document.addEventListener('click', function(e){
+        var nav = findClosest(e.target, '[data-href]');
+        if(nav){
+          var href = nav.getAttribute('data-href');
+          if(href){ window.location.href = href; }
+        }
+      }, false);
+    })();
+  </script>
 </section>
