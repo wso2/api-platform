@@ -125,19 +125,27 @@ func (r *LLMProviderTemplateRepo) CreateNewVersion(t *model.LLMProviderTemplate)
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	var total, sameVersion int
+	// Lock the current latest row to serialize concurrent CreateNewVersion calls for
+	// the same template family. FOR UPDATE is Postgres-only; SQLite serializes writes
+	// at the connection level so no explicit lock is needed there.
+	lockSQL := `SELECT created_by FROM llm_provider_templates WHERE base_handle = ? AND organization_uuid = ? AND is_latest = ?`
+	if r.db.Driver() == database.DriverPostgres || r.db.Driver() == database.DriverPostgreSQL {
+		lockSQL += " FOR UPDATE"
+	}
 	var createdBy sql.NullString
-	err = tx.QueryRow(r.db.Rebind(`
-		SELECT
-			(SELECT COUNT(*) FROM llm_provider_templates WHERE base_handle = ? AND organization_uuid = ?),
-			(SELECT COUNT(*) FROM llm_provider_templates WHERE base_handle = ? AND organization_uuid = ? AND version = ?),
-			(SELECT created_by FROM llm_provider_templates WHERE base_handle = ? AND organization_uuid = ? AND is_latest = ? LIMIT 1)
-	`), t.BaseHandle, t.OrganizationUUID, t.BaseHandle, t.OrganizationUUID, t.Version, t.BaseHandle, t.OrganizationUUID, true).Scan(&total, &sameVersion, &createdBy)
+	err = tx.QueryRow(r.db.Rebind(lockSQL), t.BaseHandle, t.OrganizationUUID, true).Scan(&createdBy)
+	if errors.Is(err, sql.ErrNoRows) {
+		return sql.ErrNoRows
+	}
 	if err != nil {
 		return err
 	}
-	if total == 0 {
-		return sql.ErrNoRows
+
+	var sameVersion int
+	if err = tx.QueryRow(r.db.Rebind(`
+		SELECT COUNT(*) FROM llm_provider_templates WHERE base_handle = ? AND organization_uuid = ? AND version = ?
+	`), t.BaseHandle, t.OrganizationUUID, t.Version).Scan(&sameVersion); err != nil {
+		return err
 	}
 	if sameVersion > 0 {
 		return constants.ErrLLMProviderTemplateVersionExists

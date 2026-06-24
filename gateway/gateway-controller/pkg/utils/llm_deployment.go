@@ -925,16 +925,15 @@ func (s *LLMDeploymentService) GetLLMProviderTemplateByHandle(handle string) (*m
 }
 
 func (s *LLMDeploymentService) GetLLMProviderTemplateByID(id string) (*models.StoredLLMProviderTemplate, error) {
-	templates, err := s.db.GetAllLLMProviderTemplates()
-	if err != nil {
-		if !storage.IsDatabaseUnavailableError(err) {
-			return nil, err
-		}
-		templates = s.store.GetAllTemplates()
+	t, err := s.db.GetLLMProviderTemplate(id)
+	if err == nil {
+		return t, nil
 	}
-
-	for _, t := range templates {
-		if t.GetID() == id {
+	if !storage.IsNotFoundError(err) && !storage.IsDatabaseUnavailableError(err) {
+		return nil, err
+	}
+	if storage.IsDatabaseUnavailableError(err) {
+		if t, err := s.store.GetTemplate(id); err == nil {
 			return t, nil
 		}
 	}

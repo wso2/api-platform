@@ -71,7 +71,7 @@ export function buildTemplateManifestYaml(t: ProviderTemplate): string {
 
 // Generate a filename for the template's manifest YAML.
 export function templateManifestFileName(t: ProviderTemplate): string {
-  return `${t.id}-template.yaml`;
+  return `${t.id ?? 'template'}-template.yaml`;
 }
 
 // Trigger a browser download of the template's manifest YAML.
