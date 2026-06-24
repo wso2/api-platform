@@ -29,7 +29,7 @@ Feature: Rate Limiting
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: ratelimit-test-api
@@ -69,7 +69,7 @@ Feature: Rate Limiting
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: ratelimit-multi-quota-headers-api
@@ -121,7 +121,7 @@ Feature: Rate Limiting
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: ratelimit-multi-quota-429-api
@@ -173,7 +173,7 @@ Feature: Rate Limiting
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: ratelimit-headers-api
@@ -210,7 +210,7 @@ Feature: Rate Limiting
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: ratelimit-custom-api
@@ -252,7 +252,7 @@ Feature: Rate Limiting
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: ratelimit-basic-api
@@ -291,7 +291,7 @@ Feature: Rate Limiting
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: ratelimit-cost-extraction-api
@@ -357,7 +357,7 @@ Feature: Rate Limiting
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: ratelimit-response-clamp-api
@@ -413,7 +413,7 @@ Feature: Rate Limiting
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: ratelimit-api-level-api
@@ -484,7 +484,7 @@ Feature: Rate Limiting
     # Deploy initial API with rate limit
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: ratelimit-update-test-api
@@ -524,7 +524,7 @@ Feature: Rate Limiting
     # Update the API by adding a new unrelated route (PUT /handle)
     When I update the API "ratelimit-update-test-api" with this configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: ratelimit-update-test-api
@@ -564,7 +564,7 @@ Feature: Rate Limiting
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: ratelimit-quotas-api
@@ -646,7 +646,7 @@ Feature: Rate Limiting
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: ratelimit-quota-cost-api
@@ -711,7 +711,7 @@ Feature: Rate Limiting
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: ratelimit-peruser-api
@@ -761,7 +761,7 @@ Feature: Rate Limiting
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: ratelimit-multilimits-api
@@ -811,7 +811,7 @@ Feature: Rate Limiting
     # New limits: 12/1h and 10000/24h - the 1h limit should be hit first
     When I update the API "ratelimit-multilimits-api" with this configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: ratelimit-multilimits-api
@@ -858,7 +858,7 @@ Feature: Rate Limiting
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: ratelimit-request-body-cost-api
@@ -924,7 +924,7 @@ Feature: Rate Limiting
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: ratelimit-prompt-tokens-api
@@ -1037,7 +1037,7 @@ Feature: Rate Limiting
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: ratelimit-ip-based-api
@@ -1086,7 +1086,7 @@ Feature: Rate Limiting
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: ratelimit-request-header-cost-api
@@ -1151,7 +1151,7 @@ Feature: Rate Limiting
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: ratelimit-composite-key-api
@@ -1202,7 +1202,7 @@ Feature: Rate Limiting
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: ratelimit-default-cost-api
@@ -1273,7 +1273,7 @@ Feature: Rate Limiting
     # Deploy first API with apiname-based rate limiting
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: ratelimit-apiname-isolation-api-a
@@ -1307,7 +1307,7 @@ Feature: Rate Limiting
     # Deploy second API with the same rate limit configuration but different API name
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: ratelimit-apiname-isolation-api-b
@@ -1365,7 +1365,7 @@ Feature: Rate Limiting
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: ratelimit-constant-key-api
@@ -1455,7 +1455,7 @@ Feature: Rate Limiting
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: ratelimit-cel-key-api
@@ -1505,7 +1505,7 @@ Feature: Rate Limiting
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: ratelimit-cel-composite-key-api
@@ -1551,7 +1551,7 @@ Feature: Rate Limiting
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: ratelimit-cel-cost-api
@@ -1616,7 +1616,7 @@ Feature: Rate Limiting
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: ratelimit-global-key-inherited-api
@@ -1666,7 +1666,7 @@ Feature: Rate Limiting
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: ratelimit-quota-key-override-api
@@ -1716,7 +1716,7 @@ Feature: Rate Limiting
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: ratelimit-cost-sum-api
@@ -1773,7 +1773,7 @@ Feature: Rate Limiting
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: ratelimit-custom-plain-status-api
@@ -1819,7 +1819,7 @@ Feature: Rate Limiting
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: ratelimit-missing-header-key-api
@@ -1864,7 +1864,7 @@ Feature: Rate Limiting
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: ratelimit-empty-global-key-api
@@ -1922,7 +1922,7 @@ Feature: Rate Limiting
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: ratelimit-partial-cost-source-api
@@ -1987,7 +1987,7 @@ Feature: Rate Limiting
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: ratelimit-response-cel-cost-api
@@ -2041,7 +2041,7 @@ Feature: Rate Limiting
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: ratelimit-response-header-cost-api
@@ -2090,7 +2090,7 @@ Feature: Rate Limiting
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: ratelimit-fractional-multiplier-api
@@ -2154,7 +2154,7 @@ Feature: Rate Limiting
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: ratelimit-zero-cost-api
@@ -2208,7 +2208,7 @@ Feature: Rate Limiting
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: ratelimit-mixed-key-strategy-api
@@ -2264,7 +2264,7 @@ Feature: Rate Limiting
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: ratelimit-apiversion-key-api
@@ -2329,7 +2329,7 @@ Feature: Rate Limiting
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: ratelimit-ip-precedence-api
@@ -2375,7 +2375,7 @@ Feature: Rate Limiting
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: ratelimit-missing-composite-component-api
@@ -2419,7 +2419,7 @@ Feature: Rate Limiting
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: ratelimit-custom-json-status-api
@@ -2467,7 +2467,7 @@ Feature: Rate Limiting
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: ratelimit-malformed-json-default-cost-api
@@ -2531,7 +2531,7 @@ Feature: Rate Limiting
   #   # Deploy initial API with two routes sharing an API-scoped quota
   #   When I deploy this API configuration:
   #     """
-  #     apiVersion: gateway.api-platform.wso2.com/v1alpha2
+  #     apiVersion: gateway.api-platform.wso2.com/v1
   #     kind: RestApi
   #     metadata:
   #       name: ratelimit-shared-quota-api
@@ -2594,7 +2594,7 @@ Feature: Rate Limiting
   #   # FIX (after fix): Ref count goes from 2->1, limiter preserved for route2
   #   When I update the API "ratelimit-shared-quota-api" with this configuration:
   #     """
-  #     apiVersion: gateway.api-platform.wso2.com/v1alpha2
+  #     apiVersion: gateway.api-platform.wso2.com/v1
   #     kind: RestApi
   #     metadata:
   #       name: ratelimit-shared-quota-api

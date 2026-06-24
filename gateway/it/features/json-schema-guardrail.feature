@@ -14,7 +14,7 @@ Feature: JSON Schema Guardrail Policy
   Scenario: Valid request passes schema validation
     When I deploy an API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: test-jsg-valid-request
@@ -53,7 +53,7 @@ Feature: JSON Schema Guardrail Policy
   Scenario: Invalid request fails schema validation
     When I deploy an API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: test-jsg-invalid-request
@@ -93,7 +93,7 @@ Feature: JSON Schema Guardrail Policy
   Scenario: Missing required field fails validation
     When I deploy an API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: test-jsg-missing-field
@@ -133,7 +133,7 @@ Feature: JSON Schema Guardrail Policy
   Scenario: Wrong type fails validation
     When I deploy an API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: test-jsg-wrong-type
@@ -176,7 +176,7 @@ Feature: JSON Schema Guardrail Policy
   Scenario: Valid response passes schema validation
     When I deploy an API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: test-jsg-valid-response
@@ -215,7 +215,7 @@ Feature: JSON Schema Guardrail Policy
   Scenario: Validate both request and response
     When I deploy an API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: test-jsg-both-validation
@@ -261,7 +261,7 @@ Feature: JSON Schema Guardrail Policy
   Scenario: Validate specific field with JSONPath
     When I deploy an API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: test-jsg-jsonpath
@@ -300,7 +300,7 @@ Feature: JSON Schema Guardrail Policy
   Scenario: JSONPath extraction with invalid data
     When I deploy an API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: test-jsg-jsonpath-invalid
@@ -339,7 +339,7 @@ Feature: JSON Schema Guardrail Policy
   Scenario: Validate nested object with JSONPath
     When I deploy an API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: test-jsg-nested-jsonpath
@@ -382,7 +382,7 @@ Feature: JSON Schema Guardrail Policy
   Scenario: Invert logic passes when schema validation fails
     When I deploy an API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: test-jsg-invert-pass
@@ -422,7 +422,7 @@ Feature: JSON Schema Guardrail Policy
   Scenario: Invert logic blocks when schema validation succeeds
     When I deploy an API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: test-jsg-invert-block
@@ -462,7 +462,7 @@ Feature: JSON Schema Guardrail Policy
   Scenario: Block requests matching malicious pattern with invert
     When I deploy an API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: test-jsg-block-malicious
@@ -506,7 +506,7 @@ Feature: JSON Schema Guardrail Policy
   Scenario: Show detailed assessment on validation failure
     When I deploy an API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: test-jsg-show-assessment
@@ -547,7 +547,7 @@ Feature: JSON Schema Guardrail Policy
   Scenario: Hide assessment details when showAssessment is false
     When I deploy an API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: test-jsg-hide-assessment
@@ -592,7 +592,7 @@ Feature: JSON Schema Guardrail Policy
   Scenario: Validate string length constraints
     When I deploy an API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: test-jsg-string-length
@@ -631,7 +631,7 @@ Feature: JSON Schema Guardrail Policy
   Scenario: Validate numeric range constraints
     When I deploy an API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: test-jsg-numeric-range
@@ -670,7 +670,7 @@ Feature: JSON Schema Guardrail Policy
   Scenario: Validate array constraints
     When I deploy an API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: test-jsg-array-constraints
@@ -709,7 +709,7 @@ Feature: JSON Schema Guardrail Policy
   Scenario: Validate enum constraints
     When I deploy an API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: test-jsg-enum-constraints
@@ -748,7 +748,7 @@ Feature: JSON Schema Guardrail Policy
   Scenario: Validate pattern constraints
     When I deploy an API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: test-jsg-pattern-constraints
@@ -791,7 +791,7 @@ Feature: JSON Schema Guardrail Policy
   Scenario: Validate nested object schema
     When I deploy an API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: test-jsg-nested-object
@@ -830,7 +830,7 @@ Feature: JSON Schema Guardrail Policy
   Scenario: Validate array of objects
     When I deploy an API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: test-jsg-array-objects
@@ -873,7 +873,7 @@ Feature: JSON Schema Guardrail Policy
   Scenario: Handle empty request body
     When I deploy an API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: test-jsg-empty-body
@@ -911,7 +911,7 @@ Feature: JSON Schema Guardrail Policy
   Scenario: Handle invalid JSON
     When I deploy an API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: test-jsg-invalid-json
@@ -950,7 +950,7 @@ Feature: JSON Schema Guardrail Policy
   Scenario: Handle invalid JSONPath
     When I deploy an API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: test-jsg-invalid-jsonpath
@@ -993,7 +993,7 @@ Feature: JSON Schema Guardrail Policy
   Scenario: User registration with comprehensive validation
     When I deploy an API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: test-jsg-registration
@@ -1033,7 +1033,7 @@ Feature: JSON Schema Guardrail Policy
   Scenario: Block SQL injection patterns
     When I deploy an API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: test-jsg-sql-injection
@@ -1073,7 +1073,7 @@ Feature: JSON Schema Guardrail Policy
   Scenario: E-commerce order validation
     When I deploy an API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: test-jsg-ecommerce-order
@@ -1113,7 +1113,7 @@ Feature: JSON Schema Guardrail Policy
   Scenario: API response contract enforcement
     When I deploy an API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: test-jsg-response-contract

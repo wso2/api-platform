@@ -91,10 +91,10 @@ func (v *LLMValidator) validateLLMProviderTemplate(template *api.LLMProviderTemp
 	}
 
 	// Validate version
-	if template.ApiVersion != api.LLMProviderTemplateApiVersionGatewayApiPlatformWso2Comv1alpha2 {
+	if template.ApiVersion != api.LLMProviderTemplateApiVersionGatewayApiPlatformWso2Comv1 {
 		errors = append(errors, ValidationError{
 			Field:   "version",
-			Message: "Version must be 'gateway.api-platform.wso2.com/v1alpha2'",
+			Message: "Version must be 'gateway.api-platform.wso2.com/v1'",
 		})
 	}
 
@@ -293,10 +293,10 @@ func (v *LLMValidator) validateLLMProvider(provider *api.LLMProviderConfiguratio
 	}
 
 	// Validate version
-	if provider.ApiVersion != api.LLMProviderConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha2 {
+	if provider.ApiVersion != api.LLMProviderConfigurationApiVersionGatewayApiPlatformWso2Comv1 {
 		errors = append(errors, ValidationError{
 			Field:   "version",
-			Message: "Version must be 'gateway.api-platform.wso2.com/v1alpha2'",
+			Message: "Version must be 'gateway.api-platform.wso2.com/v1'",
 		})
 	}
 
@@ -500,10 +500,10 @@ func (v *LLMValidator) validateLLMProxy(proxy *api.LLMProxyConfiguration) []Vali
 	}
 
 	// Validate version
-	if proxy.ApiVersion != api.LLMProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha2 {
+	if proxy.ApiVersion != api.LLMProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1 {
 		errors = append(errors, ValidationError{
 			Field:   "version",
-			Message: "Version must be 'gateway.api-platform.wso2.com/v1alpha2'",
+			Message: "Version must be 'gateway.api-platform.wso2.com/v1'",
 		})
 	}
 

@@ -8,7 +8,7 @@ Feature: Interceptor Service Policy Integration Tests
   Scenario: Request interceptor mutates path, headers, and body before upstream call
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: interceptor-request-mutation-api
@@ -50,7 +50,7 @@ Feature: Interceptor Service Policy Integration Tests
   Scenario: Request interceptor short-circuits with direct response
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: interceptor-direct-respond-api
@@ -88,7 +88,7 @@ Feature: Interceptor Service Policy Integration Tests
   Scenario: Response interceptor rewrites status, headers, and body
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: interceptor-response-mutation-api

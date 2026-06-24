@@ -12,7 +12,7 @@ func TestLLMValidator_ValidateValueTypes(t *testing.T) {
 
 	t.Run("LLMProviderTemplate as value", func(t *testing.T) {
 		template := api.LLMProviderTemplate{
-			ApiVersion: api.LLMProviderTemplateApiVersionGatewayApiPlatformWso2Comv1alpha2,
+			ApiVersion: api.LLMProviderTemplateApiVersionGatewayApiPlatformWso2Comv1,
 			Kind:       api.LLMProviderTemplateKindLlmProviderTemplate,
 			Metadata:   api.Metadata{Name: "test-template"},
 			Spec:       api.LLMProviderTemplateData{DisplayName: "Test Template"},
@@ -28,7 +28,7 @@ func TestLLMValidator_ValidateValueTypes(t *testing.T) {
 
 	t.Run("LLMProviderConfiguration as value", func(t *testing.T) {
 		provider := api.LLMProviderConfiguration{
-			ApiVersion: api.LLMProviderConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha2,
+			ApiVersion: api.LLMProviderConfigurationApiVersionGatewayApiPlatformWso2Comv1,
 			Kind:       api.LLMProviderConfigurationKindLlmProvider,
 			Metadata:   api.Metadata{Name: "test-provider"},
 		}
@@ -42,7 +42,7 @@ func TestLLMValidator_ValidateValueTypes(t *testing.T) {
 
 	t.Run("LLMProxyConfiguration as value", func(t *testing.T) {
 		proxy := api.LLMProxyConfiguration{
-			ApiVersion: api.LLMProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha2,
+			ApiVersion: api.LLMProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1,
 			Kind:       api.LLMProxyConfigurationKindLlmProxy,
 			Metadata:   api.Metadata{Name: "test-proxy"},
 		}
@@ -78,7 +78,7 @@ func TestLLMValidator_MetadataNameValidation(t *testing.T) {
 
 	t.Run("Empty metadata name", func(t *testing.T) {
 		template := &api.LLMProviderTemplate{
-			ApiVersion: api.LLMProviderTemplateApiVersionGatewayApiPlatformWso2Comv1alpha2,
+			ApiVersion: api.LLMProviderTemplateApiVersionGatewayApiPlatformWso2Comv1,
 			Kind:       api.LLMProviderTemplateKindLlmProviderTemplate,
 			Metadata:   api.Metadata{Name: ""},
 			Spec:       api.LLMProviderTemplateData{DisplayName: "Test"},
@@ -105,7 +105,7 @@ func TestLLMValidator_MetadataNameValidation(t *testing.T) {
 		}
 
 		template := &api.LLMProviderTemplate{
-			ApiVersion: api.LLMProviderTemplateApiVersionGatewayApiPlatformWso2Comv1alpha2,
+			ApiVersion: api.LLMProviderTemplateApiVersionGatewayApiPlatformWso2Comv1,
 			Kind:       api.LLMProviderTemplateKindLlmProviderTemplate,
 			Metadata:   api.Metadata{Name: longName},
 			Spec:       api.LLMProviderTemplateData{DisplayName: "Test"},
@@ -127,7 +127,7 @@ func TestLLMValidator_MetadataNameValidation(t *testing.T) {
 
 	t.Run("Invalid metadata name format", func(t *testing.T) {
 		template := &api.LLMProviderTemplate{
-			ApiVersion: api.LLMProviderTemplateApiVersionGatewayApiPlatformWso2Comv1alpha2,
+			ApiVersion: api.LLMProviderTemplateApiVersionGatewayApiPlatformWso2Comv1,
 			Kind:       api.LLMProviderTemplateKindLlmProviderTemplate,
 			Metadata:   api.Metadata{Name: "Invalid_Name_With_Underscore"},
 			Spec:       api.LLMProviderTemplateData{DisplayName: "Test"},
@@ -194,7 +194,7 @@ func TestLLMValidator_ProviderMetadataValidation(t *testing.T) {
 
 		url := "https://api.openai.com"
 		provider := &api.LLMProviderConfiguration{
-			ApiVersion: api.LLMProviderConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha2,
+			ApiVersion: api.LLMProviderConfigurationApiVersionGatewayApiPlatformWso2Comv1,
 			Kind:       api.LLMProviderConfigurationKindLlmProvider,
 			Metadata:   api.Metadata{Name: longName},
 			Spec: api.LLMProviderConfigData{
@@ -355,7 +355,7 @@ func TestLLMValidator_ValidateLLMProxy_NilAndMetadata(t *testing.T) {
 		}
 
 		proxy := &api.LLMProxyConfiguration{
-			ApiVersion: api.LLMProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha2,
+			ApiVersion: api.LLMProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1,
 			Kind:       api.LLMProxyConfigurationKindLlmProxy,
 			Metadata:   api.Metadata{Name: longName},
 			Spec: api.LLMProxyConfigData{

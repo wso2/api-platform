@@ -78,12 +78,12 @@ const RedisPort = "6379"
 // GatewayManagementAPIBasePath is the URL prefix under which the gateway-controller
 // management API is served. Must stay in sync with `servers.url` in
 // gateway/gateway-controller/api/management-openapi.yaml.
-const GatewayManagementAPIBasePath = "/api/management/v1alpha2"
+const GatewayManagementAPIBasePath = "/api/management/v1"
 
 // GatewayAdminAPIBasePath is the URL prefix under which the gateway-controller
 // admin API is served. Must stay in sync with `servers.url` in
 // gateway/gateway-controller/api/admin-openapi.yaml.
-const GatewayAdminAPIBasePath = "/api/admin/v0.9"
+const GatewayAdminAPIBasePath = "/api/admin/v1"
 
 // DefaultConfig returns the default test configuration
 func DefaultConfig() *Config {

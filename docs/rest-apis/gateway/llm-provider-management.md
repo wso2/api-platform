@@ -12,7 +12,7 @@ CRUD operations for LLM Provider configurations
 
 ```shell
 
-curl -X POST http://localhost:9090/api/management/v0.9/llm-providers \
+curl -X POST http://localhost:9090/api/management/v1/llm-providers \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -26,7 +26,7 @@ Add a new LLM provider to the Gateway. A provider defines how to interact with a
 
 ```json
 {
-  "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+  "apiVersion": "gateway.api-platform.wso2.com/v1",
   "kind": "LlmProvider",
   "metadata": {
     "name": "wso2-openai-provider"
@@ -92,7 +92,7 @@ Required roles: `admin`
 
 ```json
 {
-  "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+  "apiVersion": "gateway.api-platform.wso2.com/v1",
   "kind": "LlmProvider",
   "metadata": {
     "name": "wso2-openai-provider"
@@ -163,7 +163,7 @@ Required roles: `admin`
 
 ```shell
 
-curl -X GET http://localhost:9090/api/management/v0.9/llm-providers \
+curl -X GET http://localhost:9090/api/management/v1/llm-providers \
   -u {username}:{password} \
   -H 'Accept: application/json'
 
@@ -207,7 +207,7 @@ Required roles: `admin`, `developer`
   "count": 2,
   "providers": [
     {
-      "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+      "apiVersion": "gateway.api-platform.wso2.com/v1",
       "kind": "LlmProvider",
       "metadata": {
         "name": "wso2-openai-provider"
@@ -339,7 +339,20 @@ Status Code **200**
 |»»»»» exceptions|[[RouteException](schemas.md#schemarouteexception)]|false|none|Path exceptions to the access control mode|
 |»»»»»» path|string|true|none|Path pattern|
 |»»»»»» methods|[string]|true|none|HTTP methods|
-|»»»» policies|[[LLMPolicy](schemas.md#schemallmpolicy)]|false|none|List of policies applied only to this operation (overrides or adds to API-level policies)|
+|»»»» globalPolicies|[[Policy](schemas.md#schemapolicy)]|false|none|Global (api-level) policies applied across ALL operations as one shared scope, evaluated before operation-level policies.|
+|»»»»» name|string|true|none|Name of the policy|
+|»»»»» version|string|true|none|Version of the policy. Only major-only version is allowed (e.g., v0, v1). Full semantic version (e.g., v1.0.0) is not accepted and will be rejected. The Gateway Controller resolves the major version to the single matching full version installed in the gateway image.|
+|»»»»» executionCondition|string|false|none|Expression controlling conditional execution of the policy|
+|»»»»» params|object|false|none|Arbitrary parameters for the policy (free-form key/value structure)|
+|»»»» operationPolicies|[[OperationPolicy](schemas.md#schemaoperationpolicy)]|false|none|Operation-level policies scoped to specific paths/methods, evaluated after global policies.|
+|»»»»» name|string|true|none|none|
+|»»»»» version|string|true|none|none|
+|»»»»» executionCondition|string|false|none|Expression controlling conditional execution of the policy|
+|»»»»» paths|[[OperationPolicyPath](schemas.md#schemaoperationpolicypath)]|true|none|none|
+|»»»»»» path|string|true|none|none|
+|»»»»»» methods|[string]|true|none|none|
+|»»»»»» params|object|true|none|JSON Schema describing the parameters accepted by this policy. This itself is a JSON Schema document.|
+|»»»» policies|[[LLMPolicy](schemas.md#schemallmpolicy)]|false|none|DEPRECATED - use operationPolicies. Still honoured (treated identically to operationPolicies).|
 |»»»»» name|string|true|none|none|
 |»»»»» version|string|true|none|none|
 |»»»»» paths|[[LLMPolicyPath](schemas.md#schemallmpolicypath)]|true|none|none|
@@ -364,7 +377,7 @@ Status Code **200**
 
 |Property|Value|
 |---|---|
-|apiVersion|gateway.api-platform.wso2.com/v1alpha1|
+|apiVersion|gateway.api-platform.wso2.com/v1|
 |kind|LlmProvider|
 |hostRewrite|auto|
 |hostRewrite|manual|
@@ -386,7 +399,7 @@ Status Code **200**
 
 ```shell
 
-curl -X GET http://localhost:9090/api/management/v0.9/llm-providers/{id} \
+curl -X GET http://localhost:9090/api/management/v1/llm-providers/{id} \
   -u {username}:{password} \
   -H 'Accept: application/json'
 
@@ -415,7 +428,7 @@ Required roles: `admin`, `developer`
 
 ```json
 {
-  "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+  "apiVersion": "gateway.api-platform.wso2.com/v1",
   "kind": "LlmProvider",
   "metadata": {
     "name": "wso2-openai-provider"
@@ -485,7 +498,7 @@ Required roles: `admin`, `developer`
 
 ```shell
 
-curl -X PUT http://localhost:9090/api/management/v0.9/llm-providers/{id} \
+curl -X PUT http://localhost:9090/api/management/v1/llm-providers/{id} \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -499,7 +512,7 @@ Update an existing LLM provider in the Gateway.
 
 ```json
 {
-  "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+  "apiVersion": "gateway.api-platform.wso2.com/v1",
   "kind": "LlmProvider",
   "metadata": {
     "name": "wso2-openai-provider"
@@ -566,7 +579,7 @@ Required roles: `admin`
 
 ```json
 {
-  "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+  "apiVersion": "gateway.api-platform.wso2.com/v1",
   "kind": "LlmProvider",
   "metadata": {
     "name": "wso2-openai-provider"
@@ -637,7 +650,7 @@ Required roles: `admin`
 
 ```shell
 
-curl -X DELETE http://localhost:9090/api/management/v0.9/llm-providers/{id} \
+curl -X DELETE http://localhost:9090/api/management/v1/llm-providers/{id} \
   -u {username}:{password} \
   -H 'Accept: application/json'
 
@@ -700,7 +713,7 @@ Status Code **200**
 
 ```shell
 
-curl -X POST http://localhost:9090/api/management/v0.9/llm-providers/{id}/api-keys \
+curl -X POST http://localhost:9090/api/management/v1/llm-providers/{id}/api-keys \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -777,7 +790,7 @@ Required roles: `admin`, `consumer`
 
 ```shell
 
-curl -X GET http://localhost:9090/api/management/v0.9/llm-providers/{id}/api-keys \
+curl -X GET http://localhost:9090/api/management/v1/llm-providers/{id}/api-keys \
   -u {username}:{password} \
   -H 'Accept: application/json'
 
@@ -842,7 +855,7 @@ Required roles: `admin`, `consumer`
 
 ```shell
 
-curl -X POST http://localhost:9090/api/management/v0.9/llm-providers/{id}/api-keys/{apiKeyName}/regenerate \
+curl -X POST http://localhost:9090/api/management/v1/llm-providers/{id}/api-keys/{apiKeyName}/regenerate \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -917,7 +930,7 @@ Required roles: `admin`, `consumer`
 
 ```shell
 
-curl -X PUT http://localhost:9090/api/management/v0.9/llm-providers/{id}/api-keys/{apiKeyName} \
+curl -X PUT http://localhost:9090/api/management/v1/llm-providers/{id}/api-keys/{apiKeyName} \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -995,7 +1008,7 @@ Required roles: `admin`, `consumer`
 
 ```shell
 
-curl -X DELETE http://localhost:9090/api/management/v0.9/llm-providers/{id}/api-keys/{apiKeyName} \
+curl -X DELETE http://localhost:9090/api/management/v1/llm-providers/{id}/api-keys/{apiKeyName} \
   -u {username}:{password} \
   -H 'Accept: application/json'
 

@@ -35,7 +35,7 @@ Feature: Subscription Analytics - Monetized Subscription Billing Metadata
     # Step 2: Deploy API with subscription-validation policy
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: subscription-analytics-test-api

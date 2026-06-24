@@ -70,7 +70,7 @@ Feature: Policy Engine Admin API
   Scenario: Config dump reflects deployed API routes
     Given I deploy a test API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: admin-test-api-v1
@@ -105,7 +105,7 @@ Feature: Policy Engine Admin API
   Scenario: Config dump reflects API deletion
     Given I deploy a test API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: admin-delete-test-api-v1
@@ -134,7 +134,7 @@ Feature: Policy Engine Admin API
   Scenario: Config dump shows policy parameters
     Given I deploy a test API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: admin-policy-params-api-v1
@@ -180,7 +180,7 @@ Feature: Policy Engine Admin API
   Scenario: Multiple APIs sync correctly via xDS
     Given I deploy a test API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: xds-sync-api-1-v1
@@ -199,7 +199,7 @@ Feature: Policy Engine Admin API
       """
     And I deploy a test API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: xds-sync-api-2-v1
@@ -228,7 +228,7 @@ Feature: Policy Engine Admin API
   Scenario: API update syncs via xDS
     Given I deploy a test API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: xds-update-api-v1
@@ -251,7 +251,7 @@ Feature: Policy Engine Admin API
     # Update the API with a new operation
     When I deploy a test API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: xds-update-api-v1

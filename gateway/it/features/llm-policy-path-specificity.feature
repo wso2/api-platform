@@ -52,7 +52,7 @@ Feature: LLM policy path and method specificity
   Scenario: Overlapping specific and wildcard advanced-ratelimit paths apply only the most specific match
     When I create this LLM provider template:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProviderTemplate
       metadata:
         name: advrl-path-template
@@ -63,7 +63,7 @@ Feature: LLM policy path and method specificity
 
     When I create this LLM provider:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProvider
       metadata:
         name: advrl-path-provider
@@ -186,7 +186,7 @@ Feature: LLM policy path and method specificity
   Scenario: Overlapping nested paths each apply only their most specific advanced-ratelimit
     When I create this LLM provider template:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProviderTemplate
       metadata:
         name: nestedrl-template
@@ -197,7 +197,7 @@ Feature: LLM policy path and method specificity
 
     When I create this LLM provider:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProvider
       metadata:
         name: nestedrl-provider
@@ -333,7 +333,7 @@ Feature: LLM policy path and method specificity
   Scenario: Per-method limits on the same path win over wildcards regardless of declaration order
     When I create this LLM provider template:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProviderTemplate
       metadata:
         name: methodrl-template
@@ -344,7 +344,7 @@ Feature: LLM policy path and method specificity
 
     When I create this LLM provider:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProvider
       metadata:
         name: methodrl-provider
@@ -506,7 +506,7 @@ Feature: LLM policy path and method specificity
   Scenario: A concrete method beats the wildcard method on the same path
     When I create this LLM provider template:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProviderTemplate
       metadata:
         name: methodspec-template
@@ -517,7 +517,7 @@ Feature: LLM policy path and method specificity
 
     When I create this LLM provider:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProvider
       metadata:
         name: methodspec-provider
@@ -673,7 +673,7 @@ Feature: LLM policy path and method specificity
   Scenario: A narrower method set wins over a broader one on the same path
     When I create this LLM provider template:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProviderTemplate
       metadata:
         name: narrowrl-template
@@ -684,7 +684,7 @@ Feature: LLM policy path and method specificity
 
     When I create this LLM provider:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProvider
       metadata:
         name: narrowrl-provider
@@ -787,7 +787,7 @@ Feature: LLM policy path and method specificity
     # Backing provider (no policies, just forwards to the echo backend)
     When I create this LLM provider template:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProviderTemplate
       metadata:
         name: proxyspec-template
@@ -797,7 +797,7 @@ Feature: LLM policy path and method specificity
     Then the response status code should be 201
     When I create this LLM provider:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProvider
       metadata:
         name: proxyspec-provider
@@ -820,7 +820,7 @@ Feature: LLM policy path and method specificity
     # Proxy carrying the overlapping-path advanced-ratelimit policy
     When I deploy this LLM proxy configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProxy
       metadata:
         name: proxyspec-proxy
@@ -923,7 +923,7 @@ Feature: LLM policy path and method specificity
   Scenario: Two policy blocks of the same name both apply, each most-specific within itself
     When I create this LLM provider template:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProviderTemplate
       metadata:
         name: twoblocks-template
@@ -934,7 +934,7 @@ Feature: LLM policy path and method specificity
 
     When I create this LLM provider:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProvider
       metadata:
         name: twoblocks-provider

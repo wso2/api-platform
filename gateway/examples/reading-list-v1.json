@@ -1,5 +1,5 @@
 {
-  "apiVersion": "gateway.api-platform.wso2.com/v1alpha2",
+  "apiVersion": "gateway.api-platform.wso2.com/v1",
   "kind": "RestApi",
   "metadata": {
     "name": "reading-list-v1"

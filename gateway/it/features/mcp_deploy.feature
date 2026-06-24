@@ -28,7 +28,7 @@ Feature: Test MCP CRUD and connectivity
         Given I authenticate using basic auth as "admin"
         When I deploy this MCP configuration:
             """
-            apiVersion: gateway.api-platform.wso2.com/v1alpha2
+            apiVersion: gateway.api-platform.wso2.com/v1
             kind: Mcp
             metadata:
               name: everything-mcp-v1.0
@@ -66,7 +66,7 @@ Feature: Test MCP CRUD and connectivity
         Given I authenticate using basic auth as "admin"
         When I update the MCP proxy "everything-mcp-v1.0" with:
             """
-            apiVersion: gateway.api-platform.wso2.com/v1alpha2
+            apiVersion: gateway.api-platform.wso2.com/v1
             kind: Mcp
             metadata:
               name: everything-mcp-v1.0
@@ -100,7 +100,7 @@ Feature: Test MCP CRUD and connectivity
         Given I authenticate using basic auth as "admin"
         When I deploy this MCP configuration:
             """
-            apiVersion: gateway.api-platform.wso2.com/v1alpha2
+            apiVersion: gateway.api-platform.wso2.com/v1
             kind: Mcp
             metadata:
               name: invalid-tools-mcp-v1.0
@@ -169,7 +169,7 @@ Feature: Test MCP CRUD and connectivity
         Given I authenticate using basic auth as "admin"
         When I update the MCP proxy "non-existent-mcp-update" with:
             """
-            apiVersion: gateway.api-platform.wso2.com/v1alpha2
+            apiVersion: gateway.api-platform.wso2.com/v1
             kind: Mcp
             metadata:
               name: non-existent-mcp-update
@@ -186,7 +186,7 @@ Feature: Test MCP CRUD and connectivity
         Given I authenticate using basic auth as "admin"
         When I deploy this MCP configuration:
             """
-            apiVersion: gateway.api-platform.wso2.com/v1alpha2
+            apiVersion: gateway.api-platform.wso2.com/v1
             kind: Mcp
             metadata:
               name: labeled-mcp-v1.0
@@ -228,7 +228,7 @@ Feature: Test MCP CRUD and connectivity
         Given I authenticate using basic auth as "admin"
         When I deploy this MCP configuration:
             """
-            apiVersion: gateway.api-platform.wso2.com/v1alpha2
+            apiVersion: gateway.api-platform.wso2.com/v1
             kind: Mcp
             metadata:
               name: invalid-mcp-labels-v1.0
@@ -265,7 +265,7 @@ Feature: Test MCP CRUD and connectivity
         Given I authenticate using basic auth as "admin"
         When I deploy this MCP configuration:
             """
-            apiVersion: gateway.api-platform.wso2.com/v1alpha2
+            apiVersion: gateway.api-platform.wso2.com/v1
             kind: Mcp
             metadata:
               name: incomplete-mcp-v1.0
@@ -280,7 +280,7 @@ Feature: Test MCP CRUD and connectivity
         Given I authenticate using basic auth as "admin"
         When I deploy this MCP configuration:
             """
-            apiVersion: gateway.api-platform.wso2.com/v1alpha2
+            apiVersion: gateway.api-platform.wso2.com/v1
             kind: Mcp
             metadata:
               name: invalid-spec-version-mcp-v1.0
@@ -301,7 +301,7 @@ Feature: Test MCP CRUD and connectivity
         Given I authenticate using basic auth as "admin"
         When I deploy this MCP configuration:
             """
-            apiVersion: gateway.api-platform.wso2.com/v1alpha2
+            apiVersion: gateway.api-platform.wso2.com/v1
             kind: Mcp
             metadata:
               name: missing-upstream-mcp-v1.0
@@ -322,7 +322,7 @@ Feature: Test MCP CRUD and connectivity
         Given I authenticate using basic auth as "admin"
         When I deploy this MCP configuration:
             """
-            apiVersion: gateway.api-platform.wso2.com/v1alpha2
+            apiVersion: gateway.api-platform.wso2.com/v1
             kind: Mcp
             metadata:
               name: duplicate-mcp-v1.0
@@ -342,7 +342,7 @@ Feature: Test MCP CRUD and connectivity
         Given I authenticate using basic auth as "admin"
         When I deploy this MCP configuration:
             """
-            apiVersion: gateway.api-platform.wso2.com/v1alpha2
+            apiVersion: gateway.api-platform.wso2.com/v1
             kind: Mcp
             metadata:
               name: duplicate-mcp-v1.0
@@ -380,7 +380,7 @@ Feature: Test MCP CRUD and connectivity
         Given I authenticate using basic auth as "admin"
         When I deploy this MCP configuration:
             """
-            apiVersion: gateway.api-platform.wso2.com/v1alpha2
+            apiVersion: gateway.api-platform.wso2.com/v1
             kind: Mcp
             metadata:
               name: filter-test-mcp-v1.0
@@ -410,7 +410,7 @@ Feature: Test MCP CRUD and connectivity
         Given I authenticate using basic auth as "admin"
         When I deploy this MCP configuration:
             """
-            apiVersion: gateway.api-platform.wso2.com/v1alpha2
+            apiVersion: gateway.api-platform.wso2.com/v1
             kind: Mcp
             metadata:
               name: version-test-mcp-v99.0

@@ -62,7 +62,7 @@ func sampleLegacyPolicies() *[]api.LLMPolicy {
 
 func providerWithPolicies(global *[]api.Policy, operation *[]api.OperationPolicy, legacy *[]api.LLMPolicy) *api.LLMProviderConfiguration {
 	return &api.LLMProviderConfiguration{
-		ApiVersion: api.LLMProviderConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha2,
+		ApiVersion: api.LLMProviderConfigurationApiVersionGatewayApiPlatformWso2Comv1,
 		Kind:       api.LLMProviderConfigurationKindLlmProvider,
 		Metadata:   api.Metadata{Name: "openai"},
 		Spec: api.LLMProviderConfigData{
@@ -82,7 +82,7 @@ func providerWithPolicies(global *[]api.Policy, operation *[]api.OperationPolicy
 
 func proxyWithPolicies(global *[]api.Policy, operation *[]api.OperationPolicy, legacy *[]api.LLMPolicy) *api.LLMProxyConfiguration {
 	return &api.LLMProxyConfiguration{
-		ApiVersion: api.LLMProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha2,
+		ApiVersion: api.LLMProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1,
 		Kind:       api.LLMProxyConfigurationKindLlmProxy,
 		Metadata:   api.Metadata{Name: "openai-proxy"},
 		Spec: api.LLMProxyConfigData{

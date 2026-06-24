@@ -33,7 +33,7 @@ Feature: Provider-wide rate limiting for LLM providers
     Given I authenticate using basic auth as "admin"
     When I create this LLM provider template:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProviderTemplate
       metadata:
         name: global-rl-template
@@ -54,7 +54,7 @@ Feature: Provider-wide rate limiting for LLM providers
     Given I authenticate using basic auth as "admin"
     When I create this LLM provider:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProvider
       metadata:
         name: global-rl-provider
@@ -104,7 +104,7 @@ Feature: Provider-wide rate limiting for LLM providers
     Given I authenticate using basic auth as "admin"
     When I create this LLM provider template:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProviderTemplate
       metadata:
         name: op-rl-template
@@ -125,7 +125,7 @@ Feature: Provider-wide rate limiting for LLM providers
     Given I authenticate using basic auth as "admin"
     When I create this LLM provider:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProvider
       metadata:
         name: op-rl-provider
@@ -182,7 +182,7 @@ Feature: Provider-wide rate limiting for LLM providers
     Given I authenticate using basic auth as "admin"
     When I create this LLM provider template:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProviderTemplate
       metadata:
         name: combined-rl-template
@@ -203,7 +203,7 @@ Feature: Provider-wide rate limiting for LLM providers
     Given I authenticate using basic auth as "admin"
     When I create this LLM provider:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProvider
       metadata:
         name: combined-rl-provider
@@ -266,7 +266,7 @@ Feature: Provider-wide rate limiting for LLM providers
     Given I authenticate using basic auth as "admin"
     When I create this LLM provider template:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProviderTemplate
       metadata:
         name: legacy-rl-template
@@ -287,7 +287,7 @@ Feature: Provider-wide rate limiting for LLM providers
     Given I authenticate using basic auth as "admin"
     When I create this LLM provider:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProvider
       metadata:
         name: legacy-rl-provider
@@ -347,7 +347,7 @@ Feature: Provider-wide rate limiting for LLM providers
     Given I authenticate using basic auth as "admin"
     When I create this LLM provider template:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProviderTemplate
       metadata:
         name: adv-gl-prov-tpl
@@ -368,7 +368,7 @@ Feature: Provider-wide rate limiting for LLM providers
     Given I authenticate using basic auth as "admin"
     When I create this LLM provider:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProvider
       metadata:
         name: adv-gl-provider
@@ -421,7 +421,7 @@ Feature: Provider-wide rate limiting for LLM providers
     Given I authenticate using basic auth as "admin"
     When I create this LLM provider template:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProviderTemplate
       metadata:
         name: adv-op-prov-tpl
@@ -442,7 +442,7 @@ Feature: Provider-wide rate limiting for LLM providers
     Given I authenticate using basic auth as "admin"
     When I create this LLM provider:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProvider
       metadata:
         name: adv-op-provider
@@ -505,7 +505,7 @@ Feature: Provider-wide rate limiting for LLM providers
     Given I authenticate using basic auth as "admin"
     When I create this LLM provider template:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProviderTemplate
       metadata:
         name: adv-gl-proxy-tpl
@@ -525,7 +525,7 @@ Feature: Provider-wide rate limiting for LLM providers
 
     When I create this LLM provider:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProvider
       metadata:
         name: adv-gl-proxy-backend
@@ -547,7 +547,7 @@ Feature: Provider-wide rate limiting for LLM providers
 
     When I deploy this LLM proxy configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProxy
       metadata:
         name: adv-gl-proxy
@@ -588,7 +588,7 @@ Feature: Provider-wide rate limiting for LLM providers
     Given I authenticate using basic auth as "admin"
     When I create this LLM provider template:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProviderTemplate
       metadata:
         name: adv-op-proxy-tpl
@@ -608,7 +608,7 @@ Feature: Provider-wide rate limiting for LLM providers
 
     When I create this LLM provider:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProvider
       metadata:
         name: adv-op-proxy-backend
@@ -630,7 +630,7 @@ Feature: Provider-wide rate limiting for LLM providers
 
     When I deploy this LLM proxy configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProxy
       metadata:
         name: adv-op-proxy
@@ -680,7 +680,7 @@ Feature: Provider-wide rate limiting for LLM providers
     Given I authenticate using basic auth as "admin"
     When I create this LLM provider template:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProviderTemplate
       metadata:
         name: mix-prov-tpl
@@ -701,7 +701,7 @@ Feature: Provider-wide rate limiting for LLM providers
     Given I authenticate using basic auth as "admin"
     When I create this LLM provider:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProvider
       metadata:
         name: mix-provider
@@ -766,7 +766,7 @@ Feature: Provider-wide rate limiting for LLM providers
     Given I authenticate using basic auth as "admin"
     When I create this LLM provider template:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProviderTemplate
       metadata:
         name: mix-proxy-tpl
@@ -786,7 +786,7 @@ Feature: Provider-wide rate limiting for LLM providers
 
     When I create this LLM provider:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProvider
       metadata:
         name: mix-proxy-backend
@@ -808,7 +808,7 @@ Feature: Provider-wide rate limiting for LLM providers
 
     When I deploy this LLM proxy configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProxy
       metadata:
         name: mix-proxy

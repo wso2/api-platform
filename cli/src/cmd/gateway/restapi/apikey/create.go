@@ -47,7 +47,7 @@ ap gateway rest-api api-key create --file api-key.yaml
 ap gateway rest-api api-key create -f api-key.json
 
 # The file is an ApiKey custom resource, e.g.:
-#   apiVersion: gateway.api-platform.wso2.com/v1alpha1
+#   apiVersion: gateway.api-platform.wso2.com/v1
 #   kind: ApiKey
 #   metadata:
 #     name: petstore-key-acme

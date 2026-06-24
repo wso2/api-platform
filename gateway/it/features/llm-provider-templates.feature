@@ -32,7 +32,7 @@ Feature: LLM Provider Template Management
     Given I authenticate using basic auth as "admin"
     When I create this LLM provider template:
         """
-        apiVersion: gateway.api-platform.wso2.com/v1alpha2
+        apiVersion: gateway.api-platform.wso2.com/v1
         kind: LlmProviderTemplate
         metadata:
           name: openai-test
@@ -76,7 +76,7 @@ Feature: LLM Provider Template Management
     Given I authenticate using basic auth as "admin"
     When I update the LLM provider template "openai-test" with:
         """
-        apiVersion: gateway.api-platform.wso2.com/v1alpha2
+        apiVersion: gateway.api-platform.wso2.com/v1
         kind: LlmProviderTemplate
         metadata:
           name: openai-test
@@ -130,7 +130,7 @@ Feature: LLM Provider Template Management
     Given I authenticate using basic auth as "admin"
     When I create this LLM provider template:
         """
-        apiVersion: gateway.api-platform.wso2.com/v1alpha2
+        apiVersion: gateway.api-platform.wso2.com/v1
         kind: LlmProviderTemplate
         metadata:
           name: minimal-template
@@ -173,7 +173,7 @@ Feature: LLM Provider Template Management
     Given I authenticate using basic auth as "admin"
     When I update the LLM provider template "non-existent-update-template" with:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProviderTemplate
       metadata:
         name: non-existent-update-template
@@ -228,7 +228,7 @@ Feature: LLM Provider Template Management
     Given I authenticate using basic auth as "admin"
     When I create this LLM provider template:
         """
-        apiVersion: gateway.api-platform.wso2.com/v1alpha2
+        apiVersion: gateway.api-platform.wso2.com/v1
         kind: LlmProviderTemplate
         metadata:
           name: header-tokens-template

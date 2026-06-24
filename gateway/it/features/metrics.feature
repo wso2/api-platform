@@ -38,7 +38,7 @@ Feature: Gateway Metrics
     Given I authenticate using basic auth as "admin"
     When I deploy an API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: metrics-test-api-v1.0
@@ -68,7 +68,7 @@ Feature: Gateway Metrics
     Given I authenticate using basic auth as "admin"
     And I deploy an API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: metrics-api-v1.0
@@ -124,7 +124,7 @@ Feature: Gateway Metrics
     Given I authenticate using basic auth as "admin"
     And I deploy an API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: policy-metrics-api-v1.0
@@ -158,7 +158,7 @@ Feature: Gateway Metrics
     Given I authenticate using basic auth as "admin"
     And I deploy an API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: chain-metrics-api-v1.0

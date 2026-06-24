@@ -31,7 +31,7 @@ Feature: Token-Based Rate Limiting
     # Create LLM provider template with token extraction paths
     When I create this LLM provider template:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProviderTemplate
       metadata:
         name: test-openai-template
@@ -61,7 +61,7 @@ Feature: Token-Based Rate Limiting
     Given I authenticate using basic auth as "admin"
     When I create this LLM provider:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProvider
       metadata:
         name: test-openai-provider
@@ -165,7 +165,7 @@ Feature: Token-Based Rate Limiting
     # Create LLM provider template
     When I create this LLM provider template:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProviderTemplate
       metadata:
         name: multi-quota-template
@@ -193,7 +193,7 @@ Feature: Token-Based Rate Limiting
     Given I authenticate using basic auth as "admin"
     When I create this LLM provider:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProvider
       metadata:
         name: multi-quota-provider
@@ -277,7 +277,7 @@ Feature: Token-Based Rate Limiting
 
     When I create this LLM provider template:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProviderTemplate
       metadata:
         name: gzip-response-template
@@ -298,7 +298,7 @@ Feature: Token-Based Rate Limiting
     Given I authenticate using basic auth as "admin"
     When I create this LLM provider:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProvider
       metadata:
         name: gzip-response-provider
@@ -383,7 +383,7 @@ Feature: Token-Based Rate Limiting
     # Create LLM provider template
     When I create this LLM provider template:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProviderTemplate
       metadata:
         name: headers-test-template
@@ -408,7 +408,7 @@ Feature: Token-Based Rate Limiting
     Given I authenticate using basic auth as "admin"
     When I create this LLM provider:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProvider
       metadata:
         name: headers-test-provider
@@ -476,7 +476,7 @@ Feature: Token-Based Rate Limiting
     # Create two LLM provider templates
     When I create this LLM provider template:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProviderTemplate
       metadata:
         name: provider-a-template
@@ -500,7 +500,7 @@ Feature: Token-Based Rate Limiting
     Given I authenticate using basic auth as "admin"
     When I create this LLM provider template:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProviderTemplate
       metadata:
         name: provider-b-template
@@ -525,7 +525,7 @@ Feature: Token-Based Rate Limiting
     Given I authenticate using basic auth as "admin"
     When I create this LLM provider:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProvider
       metadata:
         name: provider-a
@@ -563,7 +563,7 @@ Feature: Token-Based Rate Limiting
     Given I authenticate using basic auth as "admin"
     When I create this LLM provider:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProvider
       metadata:
         name: provider-b
@@ -673,7 +673,7 @@ Feature: Token-Based Rate Limiting
     # Create template with all three token types
     When I create this LLM provider template:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProviderTemplate
       metadata:
         name: multi-quota-detailed-template
@@ -700,7 +700,7 @@ Feature: Token-Based Rate Limiting
     Given I authenticate using basic auth as "admin"
     When I create this LLM provider:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProvider
       metadata:
         name: multi-quota-detailed-provider
@@ -811,7 +811,7 @@ Feature: Token-Based Rate Limiting
     # Create provider with short 10-second window for testing
     When I create this LLM provider template:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProviderTemplate
       metadata:
         name: window-test-template
@@ -832,7 +832,7 @@ Feature: Token-Based Rate Limiting
     Given I authenticate using basic auth as "admin"
     When I create this LLM provider:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProvider
       metadata:
         name: window-test-provider
@@ -915,7 +915,7 @@ Feature: Token-Based Rate Limiting
     
     When I create this LLM provider template:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProviderTemplate
       metadata:
         name: zero-token-template
@@ -936,7 +936,7 @@ Feature: Token-Based Rate Limiting
     Given I authenticate using basic auth as "admin"
     When I create this LLM provider:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProvider
       metadata:
         name: zero-token-provider
@@ -1025,7 +1025,7 @@ Feature: Token-Based Rate Limiting
     
     When I create this LLM provider template:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProviderTemplate
       metadata:
         name: header-cost-template
@@ -1046,7 +1046,7 @@ Feature: Token-Based Rate Limiting
     Given I authenticate using basic auth as "admin"
     When I create this LLM provider:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProvider
       metadata:
         name: header-cost-provider
@@ -1114,7 +1114,7 @@ Feature: Token-Based Rate Limiting
     # Create initial template
     When I create this LLM provider template:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProviderTemplate
       metadata:
         name: change-test-template
@@ -1136,7 +1136,7 @@ Feature: Token-Based Rate Limiting
     Given I authenticate using basic auth as "admin"
     When I create this LLM provider:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProvider
       metadata:
         name: change-test-provider
@@ -1200,7 +1200,7 @@ Feature: Token-Based Rate Limiting
     # Recreate provider with limit of 10 (should get fresh quota)
     When I create this LLM provider:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProvider
       metadata:
         name: change-test-provider
@@ -1258,7 +1258,7 @@ Feature: Token-Based Rate Limiting
     
     When I create this LLM provider template:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProviderTemplate
       metadata:
         name: shared-template
@@ -1280,7 +1280,7 @@ Feature: Token-Based Rate Limiting
     Given I authenticate using basic auth as "admin"
     When I create this LLM provider:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProvider
       metadata:
         name: provider-alpha
@@ -1319,7 +1319,7 @@ Feature: Token-Based Rate Limiting
     Given I authenticate using basic auth as "admin"
     When I create this LLM provider:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProvider
       metadata:
         name: provider-beta
@@ -1396,7 +1396,7 @@ Feature: Token-Based Rate Limiting
     # Create template with all token extraction paths
     When I create this LLM provider template:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProviderTemplate
       metadata:
         name: empty-limits-template
@@ -1424,7 +1424,7 @@ Feature: Token-Based Rate Limiting
     Given I authenticate using basic auth as "admin"
     When I create this LLM provider:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProvider
       metadata:
         name: empty-limits-provider
@@ -1506,7 +1506,7 @@ Feature: Token-Based Rate Limiting
     # Create template with all token extraction paths
     When I create this LLM provider template:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProviderTemplate
       metadata:
         name: prompt-only-empty-limits-template
@@ -1534,7 +1534,7 @@ Feature: Token-Based Rate Limiting
     Given I authenticate using basic auth as "admin"
     When I create this LLM provider:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProvider
       metadata:
         name: prompt-only-empty-limits-provider
@@ -1615,7 +1615,7 @@ Feature: Token-Based Rate Limiting
     # Create template with all token extraction paths
     When I create this LLM provider template:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProviderTemplate
       metadata:
         name: completion-only-empty-limits-template
@@ -1643,7 +1643,7 @@ Feature: Token-Based Rate Limiting
     Given I authenticate using basic auth as "admin"
     When I create this LLM provider:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProvider
       metadata:
         name: completion-only-empty-limits-provider

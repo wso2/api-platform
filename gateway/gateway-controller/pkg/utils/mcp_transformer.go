@@ -102,7 +102,7 @@ func (t *MCPTransformer) Transform(input any, output *api.RestAPI) (*api.RestAPI
 	if !ok || mcpConfig == nil {
 		return nil, fmt.Errorf("invalid input type: expected *api.MCPProxyConfiguration")
 	}
-	output.ApiVersion = api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha2
+	output.ApiVersion = api.RestAPIApiVersionGatewayApiPlatformWso2Comv1
 	output.Kind = api.RestAPIKindRestApi
 
 	// Build APIConfigData and set it directly on the RestAPI spec

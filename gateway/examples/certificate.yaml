@@ -11,7 +11,7 @@
 # A Certificate uploads a PEM-encoded TLS certificate to the gateway. The
 # gateway-controller assigns a UUID id on first upload that the operator
 # persists to .status.id; the CR then becomes immutable on the gateway side.
-apiVersion: gateway.api-platform.wso2.com/v1alpha2
+apiVersion: gateway.api-platform.wso2.com/v1
 kind: Certificate
 metadata:
   name: example-upstream-ca

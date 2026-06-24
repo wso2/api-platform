@@ -1144,7 +1144,7 @@ func createTestContextWithHeader(method, path string, body []byte, headers map[s
 // createTestStoredConfig creates a test stored config
 func createTestStoredConfig(id, name, version, context string) *models.StoredConfig {
 	apiConfig := api.RestAPI{
-		ApiVersion: api.RestAPIApiVersion(api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha2),
+		ApiVersion: api.RestAPIApiVersion(api.RestAPIApiVersionGatewayApiPlatformWso2Comv1),
 		Kind:       api.RestAPIKindRestApi,
 		Metadata: api.Metadata{
 			Name: id,
@@ -1188,7 +1188,7 @@ func createLLMTemplateBody(t *testing.T, handle, displayName string) []byte {
 	t.Helper()
 
 	template := api.LLMProviderTemplate{
-		ApiVersion: api.LLMProviderTemplateApiVersionGatewayApiPlatformWso2Comv1alpha2,
+		ApiVersion: api.LLMProviderTemplateApiVersionGatewayApiPlatformWso2Comv1,
 		Kind:       api.LLMProviderTemplateKindLlmProviderTemplate,
 		Metadata: api.Metadata{
 			Name: handle,
@@ -1207,7 +1207,7 @@ func createTestRestAPIRequestBody(t *testing.T, handle, displayName, version, co
 	t.Helper()
 
 	apiConfig := api.RestAPI{
-		ApiVersion: api.RestAPIApiVersion(api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha2),
+		ApiVersion: api.RestAPIApiVersion(api.RestAPIApiVersionGatewayApiPlatformWso2Comv1),
 		Kind:       api.RestAPIKindRestApi,
 		Metadata: api.Metadata{
 			Name: handle,
@@ -1243,7 +1243,7 @@ func createTestMCPRequestBody(t *testing.T, handle, displayName, version, contex
 	upstreamURL := "http://backend.example.com"
 
 	mcpConfig := api.MCPProxyConfiguration{
-		ApiVersion: api.MCPProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha2,
+		ApiVersion: api.MCPProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1,
 		Kind:       api.MCPProxyConfigurationKindMcp,
 		Metadata: api.Metadata{
 			Name: handle,
@@ -1274,7 +1274,7 @@ func createTestMCPStoredConfig(t *testing.T, id, handle, displayName, version, c
 		DisplayName: displayName,
 		Version:     version,
 		SourceConfiguration: api.MCPProxyConfiguration{
-			ApiVersion: api.MCPProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha2,
+			ApiVersion: api.MCPProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1,
 			Kind:       api.MCPProxyConfigurationKindMcp,
 			Metadata: api.Metadata{
 				Name: handle,
@@ -1773,7 +1773,7 @@ func TestUpdateRestAPINotFound(t *testing.T) {
 	server := createTestAPIServer()
 
 	body := []byte(`{
-		"apiVersion": "gateway.api-platform.wso2.com/v1alpha2",
+		"apiVersion": "gateway.api-platform.wso2.com/v1",
 		"kind": "RestApi",
 		"metadata": {"name": "nonexistent"},
 		"spec": {
@@ -1918,7 +1918,7 @@ func TestUpdateLLMProviderTemplateWithDBAndEventHub(t *testing.T) {
 	template := &models.StoredLLMProviderTemplate{
 		UUID: "template-update-id",
 		Configuration: api.LLMProviderTemplate{
-			ApiVersion: api.LLMProviderTemplateApiVersionGatewayApiPlatformWso2Comv1alpha2,
+			ApiVersion: api.LLMProviderTemplateApiVersionGatewayApiPlatformWso2Comv1,
 			Kind:       api.LLMProviderTemplateKindLlmProviderTemplate,
 			Metadata: api.Metadata{
 				Name: "openai",
@@ -1967,7 +1967,7 @@ func TestDeleteLLMProviderTemplateWithDBAndEventHub(t *testing.T) {
 	template := &models.StoredLLMProviderTemplate{
 		UUID: "template-delete-id",
 		Configuration: api.LLMProviderTemplate{
-			ApiVersion: api.LLMProviderTemplateApiVersionGatewayApiPlatformWso2Comv1alpha2,
+			ApiVersion: api.LLMProviderTemplateApiVersionGatewayApiPlatformWso2Comv1,
 			Kind:       api.LLMProviderTemplateKindLlmProviderTemplate,
 			Metadata: api.Metadata{
 				Name: "openai",
@@ -2889,7 +2889,7 @@ func TestGetLLMProviderByIdFound(t *testing.T) {
 	mockDB := server.db.(*MockStorage)
 
 	providerConfig := api.LLMProviderConfiguration{
-		ApiVersion: api.LLMProviderConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha2,
+		ApiVersion: api.LLMProviderConfigurationApiVersionGatewayApiPlatformWso2Comv1,
 		Kind:       api.LLMProviderConfigurationKindLlmProvider,
 		Metadata: api.Metadata{
 			Name: "test-llm-provider",
@@ -2929,7 +2929,7 @@ func TestGetLLMProviderByIdFoundInDBWithoutStore(t *testing.T) {
 	mockDB := server.db.(*MockStorage)
 
 	providerConfig := api.LLMProviderConfiguration{
-		ApiVersion: api.LLMProviderConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha2,
+		ApiVersion: api.LLMProviderConfigurationApiVersionGatewayApiPlatformWso2Comv1,
 		Kind:       api.LLMProviderConfigurationKindLlmProvider,
 		Metadata: api.Metadata{
 			Name: "test-llm-provider",
@@ -2969,7 +2969,7 @@ func TestGetLLMProxyByIdFound(t *testing.T) {
 	mockDB := server.db.(*MockStorage)
 
 	proxyConfig := api.LLMProxyConfiguration{
-		ApiVersion: api.LLMProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha2,
+		ApiVersion: api.LLMProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1,
 		Kind:       api.LLMProxyConfigurationKindLlmProxy,
 		Metadata: api.Metadata{
 			Name: "test-llm-proxy-handle",
@@ -3009,7 +3009,7 @@ func TestGetLLMProviderByIdWithDeployedAt(t *testing.T) {
 
 	deployedAt := time.Now()
 	providerConfig := api.LLMProviderConfiguration{
-		ApiVersion: api.LLMProviderConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha2,
+		ApiVersion: api.LLMProviderConfigurationApiVersionGatewayApiPlatformWso2Comv1,
 		Kind:       api.LLMProviderConfigurationKindLlmProvider,
 		Metadata: api.Metadata{
 			Name: "test-llm-provider",
@@ -3059,7 +3059,7 @@ func TestGetLLMProxyByIdWithDeployedAt(t *testing.T) {
 
 	deployedAt := time.Now()
 	proxyConfig := api.LLMProxyConfiguration{
-		ApiVersion: api.LLMProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha2,
+		ApiVersion: api.LLMProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1,
 		Kind:       api.LLMProxyConfigurationKindLlmProxy,
 		Metadata: api.Metadata{
 			Name: "test-llm-proxy-handle",
@@ -3138,7 +3138,7 @@ func TestDeleteLLMProviderWithDBAndEventHub(t *testing.T) {
 		DisplayName: "test-llm",
 		Version:     "v1.0.0",
 		SourceConfiguration: api.LLMProviderConfiguration{
-			ApiVersion: api.LLMProviderConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha2,
+			ApiVersion: api.LLMProviderConfigurationApiVersionGatewayApiPlatformWso2Comv1,
 			Kind:       api.LLMProviderConfigurationKindLlmProvider,
 			Metadata: api.Metadata{
 				Name: "test-llm-provider",
@@ -3209,7 +3209,7 @@ func TestDeleteLLMProxyWithDBAndEventHub(t *testing.T) {
 		DisplayName: "test-llm-proxy",
 		Version:     "v1.0.0",
 		SourceConfiguration: api.LLMProxyConfiguration{
-			ApiVersion: api.LLMProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha2,
+			ApiVersion: api.LLMProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1,
 			Kind:       api.LLMProxyConfigurationKindLlmProxy,
 			Metadata: api.Metadata{
 				Name: "test-llm-proxy",

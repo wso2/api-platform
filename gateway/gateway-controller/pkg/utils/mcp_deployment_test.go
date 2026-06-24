@@ -45,7 +45,7 @@ func newUnhydratedTestMCPStoredConfig(id, handle, displayName, version, contextP
 		DisplayName: displayName,
 		Version:     version,
 		SourceConfiguration: api.MCPProxyConfiguration{
-			ApiVersion: api.MCPProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha2,
+			ApiVersion: api.MCPProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1,
 			Kind:       api.MCPProxyConfigurationKindMcp,
 			Metadata:   api.Metadata{Name: handle},
 			Spec: api.MCPProxyConfigData{
@@ -231,7 +231,7 @@ func TestMCPDeploymentService_GetMCPProxyByHandle(t *testing.T) {
 		DisplayName: "Test MCP",
 		Version:     "1.0.0",
 		SourceConfiguration: api.MCPProxyConfiguration{
-			ApiVersion: api.MCPProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha2,
+			ApiVersion: api.MCPProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1,
 			Kind:       api.MCPProxyConfigurationKindMcp,
 			Metadata:   api.Metadata{Name: "test-mcp"},
 			Spec: api.MCPProxyConfigData{
@@ -280,7 +280,7 @@ func TestMCPDeploymentService_CreateMCPProxy_ValidationError(t *testing.T) {
 
 	// Invalid MCP config that will fail validation
 	yamlData := `
-apiVersion: gateway.api-platform.wso2.com/v1alpha2
+apiVersion: gateway.api-platform.wso2.com/v1
 kind: Mcp
 metadata:
   name: test-mcp
@@ -333,7 +333,7 @@ func TestMCPDeploymentService_CreateMCPProxy_ConflictError(t *testing.T) {
 	// Try to create another with the same name/version
 	upstreamURL := "http://localhost:8080"
 	yamlData := `
-apiVersion: gateway.api-platform.wso2.com/v1alpha2
+apiVersion: gateway.api-platform.wso2.com/v1
 kind: Mcp
 metadata:
   name: test-mcp
@@ -536,7 +536,7 @@ func TestMCPDeploymentService_ParseValidateAndTransform(t *testing.T) {
 
 	t.Run("Valid MCP config", func(t *testing.T) {
 		yamlData := `
-apiVersion: gateway.api-platform.wso2.com/v1alpha2
+apiVersion: gateway.api-platform.wso2.com/v1
 kind: Mcp
 metadata:
   name: test-mcp
@@ -596,7 +596,7 @@ func TestMCPDeploymentService_CreateMCPProxy_WithDBAndEventHubPublishesCreate(t 
 	service := newTestMCPDeploymentServiceWithHub(store, db, nil, nil, nil, mockHub, "test-gateway")
 
 	yamlData := `
-apiVersion: gateway.api-platform.wso2.com/v1alpha2
+apiVersion: gateway.api-platform.wso2.com/v1
 kind: Mcp
 metadata:
   name: test-mcp
@@ -650,7 +650,7 @@ func TestMCPDeploymentService_UndeployMCPProxy_WithDBAndEventHubPublishesUpdate(
 		DeploymentID: "rev-1",
 		Origin:       models.OriginControlPlane,
 		SourceConfiguration: api.MCPProxyConfiguration{
-			ApiVersion: api.MCPProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha2,
+			ApiVersion: api.MCPProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1,
 			Kind:       api.MCPProxyConfigurationKindMcp,
 			Metadata:   api.Metadata{Name: "test-mcp"},
 			Spec: api.MCPProxyConfigData{

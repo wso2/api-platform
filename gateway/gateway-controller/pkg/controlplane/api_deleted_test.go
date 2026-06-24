@@ -647,7 +647,7 @@ func createTestAPIConfigForDeletion(apiID string) *models.StoredConfig {
 		Origin:       models.OriginGatewayAPI,
 		Kind:         "API",
 		Configuration: api.RestAPI{
-			ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha2,
+			ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1,
 			Kind:       api.RestAPIKindRestApi,
 			Metadata: api.Metadata{
 				Name: apiID,

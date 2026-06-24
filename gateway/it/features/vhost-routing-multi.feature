@@ -29,7 +29,7 @@ Feature: Gateway vhost routing with multi-domain defaults
   Scenario: Route requests across all configured main and sandbox domains
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: vhost-multi-domains-v1.0
@@ -91,7 +91,7 @@ Feature: Gateway vhost routing with multi-domain defaults
   Scenario: API vhost override should bypass multi-domain gateway defaults
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: vhost-multi-override-v1.0
@@ -156,7 +156,7 @@ Feature: Gateway vhost routing with multi-domain defaults
   Scenario: Sentinel vhost resolves to all configured gateway domains
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha2
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: vhost-multi-sentinel-v1.0
