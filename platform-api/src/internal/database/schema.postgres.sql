@@ -65,24 +65,23 @@ CREATE TABLE IF NOT EXISTS applications (
 CREATE TABLE IF NOT EXISTS artifacts (
     uuid VARCHAR(40) PRIMARY KEY,
     kind VARCHAR(20) NOT NULL,
-    kind_version VARCHAR(20) NOT NULL,
     organization_uuid VARCHAR(40) NOT NULL,
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE RESTRICT,
     -- Ensure (uuid, organization_uuid) pairs are unique so they can be safely
     -- referenced from subscriptions to enforce API–organization consistency.
-    UNIQUE(uuid, organization_uuid)
+    UNIQUE(organization_uuid, uuid)
 );
 
 -- REST APIs table
 CREATE TABLE IF NOT EXISTS rest_apis (
     uuid VARCHAR(40) PRIMARY KEY,
+    organization_uuid VARCHAR(40) NOT NULL,
     handle VARCHAR(255) NOT NULL,
     name VARCHAR(255) NOT NULL,
     version VARCHAR(30) NOT NULL,
     project_uuid VARCHAR(40) NOT NULL,
     description VARCHAR(1023),
     lifecycle_status VARCHAR(20) NOT NULL DEFAULT 'CREATED',
-    transport VARCHAR(255),
     configuration JSONB NOT NULL,
     created_by VARCHAR(200),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -90,6 +89,7 @@ CREATE TABLE IF NOT EXISTS rest_apis (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
     FOREIGN KEY (project_uuid) REFERENCES projects(uuid) ON DELETE CASCADE,
+    UNIQUE(organization_uuid, handle),
     CHECK (lifecycle_status IN ('CREATED','STAGED','PUBLISHED','DEPRECATED','RETIRED','BLOCKED'))
 );
 
@@ -110,7 +110,7 @@ CREATE TABLE IF NOT EXISTS subscription_plans (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
     UNIQUE(organization_uuid, plan_name),
-    UNIQUE(uuid, organization_uuid),
+    UNIQUE(organization_uuid, uuid),
     CHECK (status IN ('ACTIVE', 'INACTIVE')),
     CONSTRAINT chk_plan_throttle_pair CHECK (
       (throttle_limit_count IS NULL AND throttle_limit_unit IS NULL) OR
@@ -135,6 +135,7 @@ CREATE TABLE IF NOT EXISTS subscriptions (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_by VARCHAR(200),
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (artifact_uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
     FOREIGN KEY (subscription_plan_uuid, organization_uuid)
       REFERENCES subscription_plans(uuid, organization_uuid) ON DELETE RESTRICT,
@@ -190,12 +191,14 @@ CREATE TABLE IF NOT EXISTS gateway_association_mappings (
 CREATE TABLE IF NOT EXISTS gateway_custom_policies (
     uuid VARCHAR(40) PRIMARY KEY,
     organization_uuid VARCHAR(40) NOT NULL,
-    handle VARCHAR(255) NOT NULL,
-    name VARCHAR(255),
+    name VARCHAR(255) NOT NULL,
+    display_name VARCHAR(255),
     version VARCHAR(30) NOT NULL,
-    description TEXT,
+    description VARCHAR(1023),
     policy_definition TEXT,
+    created_by VARCHAR(200),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_by VARCHAR(200),
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
     UNIQUE(organization_uuid, name, version)
@@ -253,8 +256,8 @@ CREATE TABLE IF NOT EXISTS deployment_status (
     status VARCHAR(20) NOT NULL DEFAULT 'DEPLOYED',
     status_desired VARCHAR(20),
     performed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    performed_by VARCHAR(200),
     status_reason VARCHAR(50),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (artifact_uuid, organization_uuid, gateway_uuid),
     FOREIGN KEY (artifact_uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
@@ -279,7 +282,7 @@ CREATE TABLE IF NOT EXISTS llm_provider_templates (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     organization_uuid VARCHAR(40) NOT NULL,
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
-    UNIQUE(organization_uuid, handle, version)
+    UNIQUE(organization_uuid, handle)
 );
 
 -- LLM Providers table
@@ -292,15 +295,15 @@ CREATE TABLE IF NOT EXISTS llm_providers (
     template_uuid VARCHAR(40) NOT NULL,
     openapi_spec JSONB,
     model_list TEXT,
-    status VARCHAR(20) NOT NULL DEFAULT 'pending',
     configuration JSONB NOT NULL,
     created_by VARCHAR(200),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_by VARCHAR(200),
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    organization_uuid VARCHAR(40) NOT NULL,
     FOREIGN KEY (uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
     FOREIGN KEY (template_uuid) REFERENCES llm_provider_templates(uuid) ON DELETE RESTRICT,
-    CHECK (status IN ('pending', 'deployed', 'failed'))
+    UNIQUE(organization_uuid, handle)
 );
 
 -- LLM Proxies table
@@ -313,16 +316,16 @@ CREATE TABLE IF NOT EXISTS llm_proxies (
     description VARCHAR(1023),
     provider_uuid VARCHAR(40) NOT NULL,
     openapi_spec JSONB,
-    status VARCHAR(20) NOT NULL DEFAULT 'pending',
     configuration JSONB NOT NULL,
     created_by VARCHAR(200),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_by VARCHAR(200),
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    organization_uuid VARCHAR(40) NOT NULL,
     FOREIGN KEY (uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
     FOREIGN KEY (project_uuid) REFERENCES projects(uuid) ON DELETE CASCADE,
     FOREIGN KEY (provider_uuid) REFERENCES llm_providers(uuid) ON DELETE RESTRICT,
-    CHECK (status IN ('pending', 'deployed', 'failed'))
+    UNIQUE(organization_uuid, handle)
 );
 
 -- MCP Proxies table
@@ -333,27 +336,27 @@ CREATE TABLE IF NOT EXISTS mcp_proxies (
     version VARCHAR(30) NOT NULL,
     project_uuid VARCHAR(40),
     description VARCHAR(1023),
-    status VARCHAR(20) NOT NULL DEFAULT 'pending',
     configuration JSONB NOT NULL,
     created_by VARCHAR(200),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_by VARCHAR(200),
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    organization_uuid VARCHAR(40) NOT NULL,
     FOREIGN KEY (uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
     FOREIGN KEY (project_uuid) REFERENCES projects(uuid) ON DELETE CASCADE,
-    CHECK (status IN ('pending', 'deployed', 'failed'))
+    UNIQUE(organization_uuid, handle)
 );
 
 -- WEBSUB APIs table
 CREATE TABLE IF NOT EXISTS websub_apis (
     uuid VARCHAR(40) PRIMARY KEY,
+    organization_uuid VARCHAR(40) NOT NULL,
     handle VARCHAR(255) NOT NULL,
     name VARCHAR(255) NOT NULL,
     version VARCHAR(30) NOT NULL,
     project_uuid VARCHAR(40) NOT NULL,
     description VARCHAR(1023),
     lifecycle_status VARCHAR(20) NOT NULL DEFAULT 'CREATED',
-    transport VARCHAR(255),
     configuration JSONB NOT NULL,
     created_by VARCHAR(200),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -361,6 +364,7 @@ CREATE TABLE IF NOT EXISTS websub_apis (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
     FOREIGN KEY (project_uuid) REFERENCES projects(uuid) ON DELETE CASCADE,
+    UNIQUE(organization_uuid, handle),
     CHECK (lifecycle_status IN ('CREATED','STAGED','PUBLISHED','DEPRECATED','RETIRED','BLOCKED'))
 );
 CREATE INDEX IF NOT EXISTS idx_websub_apis_project ON websub_apis(project_uuid);
@@ -368,13 +372,13 @@ CREATE INDEX IF NOT EXISTS idx_websub_apis_project ON websub_apis(project_uuid);
 -- WEBBROKER APIs table
 CREATE TABLE IF NOT EXISTS webbroker_apis (
     uuid VARCHAR(40) PRIMARY KEY,
+    organization_uuid VARCHAR(40) NOT NULL,
     handle VARCHAR(255) NOT NULL,
     name VARCHAR(255) NOT NULL,
     version VARCHAR(30) NOT NULL,
     project_uuid VARCHAR(40) NOT NULL,
     description VARCHAR(1023),
     lifecycle_status VARCHAR(20) NOT NULL DEFAULT 'CREATED',
-    transport VARCHAR(255),
     configuration JSONB NOT NULL,
     created_by VARCHAR(200),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -382,6 +386,7 @@ CREATE TABLE IF NOT EXISTS webbroker_apis (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
     FOREIGN KEY (project_uuid) REFERENCES projects(uuid) ON DELETE CASCADE,
+    UNIQUE(organization_uuid, handle),
     CHECK (lifecycle_status IN ('CREATED','STAGED','PUBLISHED','DEPRECATED','RETIRED','BLOCKED'))
 );
 CREATE INDEX IF NOT EXISTS idx_webbroker_apis_project ON webbroker_apis(project_uuid);
@@ -412,8 +417,6 @@ CREATE TABLE IF NOT EXISTS application_api_keys (
     api_key_id VARCHAR(40) NOT NULL,
     created_by VARCHAR(200),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_by VARCHAR(200),
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (application_uuid, api_key_id),
     FOREIGN KEY (application_uuid) REFERENCES applications(uuid) ON DELETE CASCADE,
     FOREIGN KEY (api_key_id) REFERENCES api_keys(uuid) ON DELETE CASCADE
@@ -425,8 +428,6 @@ CREATE TABLE IF NOT EXISTS application_artifacts (
     artifact_uuid VARCHAR(40) NOT NULL,
     created_by VARCHAR(200),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_by VARCHAR(200),
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (application_uuid, artifact_uuid),
     FOREIGN KEY (application_uuid) REFERENCES applications(uuid) ON DELETE CASCADE,
     FOREIGN KEY (artifact_uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE
@@ -454,12 +455,12 @@ CREATE INDEX IF NOT EXISTS idx_gateway_custom_policies_org ON gateway_custom_pol
 CREATE INDEX IF NOT EXISTS idx_gateway_custom_policy_usages_artifact ON gateway_custom_policy_usages(artifact_uuid);
 CREATE INDEX IF NOT EXISTS idx_llm_provider_templates_org ON llm_provider_templates(organization_uuid);
 CREATE INDEX IF NOT EXISTS idx_llm_providers_template ON llm_providers(template_uuid);
-CREATE INDEX IF NOT EXISTS idx_llm_providers_status ON llm_providers(status);
+CREATE INDEX IF NOT EXISTS idx_llm_providers_org ON llm_providers(organization_uuid);
 CREATE INDEX IF NOT EXISTS idx_llm_proxies_project ON llm_proxies(project_uuid);
 CREATE INDEX IF NOT EXISTS idx_llm_proxies_provider_uuid ON llm_proxies(provider_uuid);
-CREATE INDEX IF NOT EXISTS idx_llm_proxies_status ON llm_proxies(status);
+CREATE INDEX IF NOT EXISTS idx_llm_proxies_org ON llm_proxies(organization_uuid);
 CREATE INDEX IF NOT EXISTS idx_mcp_proxies_project ON mcp_proxies(project_uuid);
-CREATE INDEX IF NOT EXISTS idx_mcp_proxies_status ON mcp_proxies(status);
+CREATE INDEX IF NOT EXISTS idx_mcp_proxies_org ON mcp_proxies(organization_uuid);
 CREATE INDEX IF NOT EXISTS idx_api_keys_artifact ON api_keys(artifact_uuid);
 CREATE INDEX IF NOT EXISTS idx_applications_project_id ON applications(project_uuid, organization_uuid);
 CREATE INDEX IF NOT EXISTS idx_applications_name_project ON applications(name, project_uuid, organization_uuid);
@@ -501,11 +502,11 @@ CREATE INDEX IF NOT EXISTS idx_events_entity ON events(entity_type, entity_id);
 
 CREATE TABLE IF NOT EXISTS audit (
    uuid VARCHAR(40) PRIMARY KEY,
-   action VARCHAR(50) NOT NULL CHECK(action IN ('CREATE', 'UPDATE', 'DELETE')),
+   action VARCHAR(50) NOT NULL,
    resource_uuid VARCHAR(40) NOT NULL,
    resource_type VARCHAR(50),
    organization_uuid VARCHAR(40) NOT NULL,
-   updated_by VARCHAR(200),
-   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+   performed_by VARCHAR(200),
+   performed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE
 );
