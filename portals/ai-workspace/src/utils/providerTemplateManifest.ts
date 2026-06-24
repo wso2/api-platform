@@ -18,29 +18,23 @@
 
 import YAML from 'yaml';
 import type { ProviderTemplate } from './types';
+import { familyHandle } from './providerTemplateDisplay';
 
 export function buildTemplateManifestYaml(t: ProviderTemplate): string {
   const spec: Record<string, unknown> = { displayName: t.name };
 
-  if (t.provider?.trim()) spec.provider = t.provider.trim();
+  const groupVersionId = t.groupVersionId?.trim() || familyHandle(t.id);
+  if (groupVersionId) spec.groupVersionId = groupVersionId;
+
+  const managedBy = (t.managedBy ?? t.provider)?.trim();
+  if (managedBy) spec.managedBy = managedBy;
+
   if (t.version) spec.version = t.version;
 
-  const md = t.metadata;
-  if (md) {
-    const m: Record<string, unknown> = {};
-    if (md.endpointUrl?.trim()) m.endpointUrl = md.endpointUrl.trim();
-    if (md.auth) {
-      const a: Record<string, unknown> = {};
-      if (md.auth.type?.trim()) a.type = md.auth.type.trim();
-      if (md.auth.header?.trim()) a.header = md.auth.header.trim();
-      if (md.auth.valuePrefix?.trim()) a.valuePrefix = md.auth.valuePrefix.trim();
-      if (Object.keys(a).length) m.auth = a;
-    }
-    if (md.logoUrl?.trim()) m.logoUrl = md.logoUrl.trim();
-    if (md.openapiSpecUrl?.trim()) m.openapiSpecUrl = md.openapiSpecUrl.trim();
-    if (Object.keys(m).length) spec.metadata = m;
-  }
-
+  // The manifest mirrors the gateway's LlmProviderTemplate deployment format,
+  // which carries only identity and token-extraction fields. UI-only details
+  // (logo URL, endpoint, auth, OpenAPI spec, resource mappings) are deliberately
+  // omitted so the downloaded YAML matches the built-in gateway templates.
   const tokenKeys = [
     'promptTokens',
     'completionTokens',
@@ -54,10 +48,6 @@ export function buildTemplateManifestYaml(t: ProviderTemplate): string {
     if (v && v.identifier?.trim()) {
       spec[key] = { location: v.location, identifier: v.identifier };
     }
-  }
-
-  if (t.resourceMappings?.resources?.length) {
-    spec.resourceMappings = t.resourceMappings;
   }
 
   const manifest = {

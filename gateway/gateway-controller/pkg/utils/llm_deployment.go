@@ -611,15 +611,15 @@ func (s *LLMDeploymentService) parseAndValidateLLMTemplate(params LLMTemplatePar
 		return nil, fmt.Errorf("%w: %d error(s): %s", ErrLLMTemplateValidation, len(validationErrors), strings.Join(errs, "; "))
 	}
 
-	// Normalize version/provider so the persisted config and API responses are
+	// Normalize version/managedBy so the persisted config and API responses are
 	// explicit even when the spec omitted them.
 	if tmpl.Spec.Version == nil || strings.TrimSpace(*tmpl.Spec.Version) == "" {
 		v := models.DefaultTemplateVersion
 		tmpl.Spec.Version = &v
 	}
-	if tmpl.Spec.Provider == nil || strings.TrimSpace(*tmpl.Spec.Provider) == "" {
-		p := models.DefaultTemplateProvider
-		tmpl.Spec.Provider = &p
+	if tmpl.Spec.ManagedBy == nil || strings.TrimSpace(*tmpl.Spec.ManagedBy) == "" {
+		p := models.DefaultTemplateManagedBy
+		tmpl.Spec.ManagedBy = &p
 	}
 	return &tmpl, nil
 }

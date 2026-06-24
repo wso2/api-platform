@@ -104,6 +104,9 @@ func (h *LLMHandler) CreateLLMProviderTemplate(c *gin.Context) {
 		case errors.Is(err, constants.ErrLLMProviderTemplateExists):
 			c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict", "LLM provider template already exists"))
 			return
+		case errors.Is(err, constants.ErrLLMProviderTemplateManagedByReserved):
+			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "'wso2' is reserved and cannot be used as managedBy on custom templates"))
+			return
 		case errors.Is(err, constants.ErrInvalidInput):
 			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid input"))
 			return
@@ -240,6 +243,9 @@ func (h *LLMHandler) CreateLLMProviderTemplateVersion(c *gin.Context) {
 		case errors.Is(err, constants.ErrLLMProviderTemplateVersionExists):
 			c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict", "A version with this number already exists"))
 			return
+		case errors.Is(err, constants.ErrLLMProviderTemplateManagedByReserved):
+			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "'wso2' is reserved and cannot be used as managedBy on custom templates"))
+			return
 		case errors.Is(err, constants.ErrInvalidInput):
 			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid input. Version must match the v<major>.<minor> pattern (e.g. v1.0)"))
 			return
@@ -279,8 +285,7 @@ func (h *LLMHandler) GetLLMProviderTemplateVersion(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
-// SetLLMProviderTemplateVersionEnabled enables/disables a specific template
-// version. Body: {"enabled": true|false}.
+// SetLLMProviderTemplateVersionEnabled enables or disables a specific version of a template.
 func (h *LLMHandler) SetLLMProviderTemplateVersionEnabled(c *gin.Context) {
 	orgID, ok := middleware.GetOrganizationFromContext(c)
 	if !ok {
@@ -306,6 +311,9 @@ func (h *LLMHandler) SetLLMProviderTemplateVersionEnabled(c *gin.Context) {
 			return
 		case errors.Is(err, constants.ErrInvalidInput):
 			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid template id or version"))
+			return
+		case errors.Is(err, constants.ErrLLMProviderTemplateInUse):
+			c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict", "Cannot disable template version while providers are using it"))
 			return
 		default:
 			h.slogger.Error("Failed to set LLM provider template version enabled", "organizationId", orgID, "templateId", id, "version", version, "error", err)
@@ -338,6 +346,9 @@ func (h *LLMHandler) UpdateLLMProviderTemplate(c *gin.Context) {
 			return
 		case errors.Is(err, constants.ErrLLMProviderTemplateReadOnly):
 			c.JSON(http.StatusForbidden, utils.NewErrorResponse(403, "Forbidden", "Built-in templates are read-only and cannot be edited"))
+			return
+		case errors.Is(err, constants.ErrLLMProviderTemplateManagedByReserved):
+			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "'wso2' is reserved and cannot be used as managedBy on custom templates"))
 			return
 		case errors.Is(err, constants.ErrInvalidInput):
 			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid input"))

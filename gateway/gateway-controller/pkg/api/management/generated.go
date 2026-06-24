@@ -896,12 +896,12 @@ type LLMProviderTemplateData struct {
 
 	// GroupVersionId Stable family-grouping identifier shared by every version of this
 	// template. Defaults to metadata.name when omitted.
-	GroupVersionId *string               `json:"groupVersionId,omitempty" yaml:"groupVersionId,omitempty"`
-	PromptTokens   *ExtractionIdentifier `json:"promptTokens,omitempty" yaml:"promptTokens,omitempty"`
+	GroupVersionId *string `json:"groupVersionId,omitempty" yaml:"groupVersionId,omitempty"`
 
-	// Provider Origin of the template. Built-in templates use 'wso2'; custom
-	// templates default to 'other' and may be set to any value.
-	Provider         *string                              `json:"provider,omitempty" yaml:"provider,omitempty"`
+	// ManagedBy Origin of the template. Built-in templates use 'wso2'; custom
+	// templates default to 'customer' and may be set to any value.
+	ManagedBy        *string                              `json:"managedBy,omitempty" yaml:"managedBy,omitempty"`
+	PromptTokens     *ExtractionIdentifier                `json:"promptTokens,omitempty" yaml:"promptTokens,omitempty"`
 	RemainingTokens  *ExtractionIdentifier                `json:"remainingTokens,omitempty" yaml:"remainingTokens,omitempty"`
 	RequestModel     *ExtractionIdentifier                `json:"requestModel,omitempty" yaml:"requestModel,omitempty"`
 	ResourceMappings *LLMProviderTemplateResourceMappings `json:"resourceMappings,omitempty" yaml:"resourceMappings,omitempty"`

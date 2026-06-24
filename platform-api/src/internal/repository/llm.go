@@ -52,6 +52,13 @@ func NewLLMProviderTemplateRepo(db *database.DB) LLMProviderTemplateRepository {
 	return &LLMProviderTemplateRepo{db: db}
 }
 
+func boolToInt(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
+}
+
 func (r *LLMProviderTemplateRepo) Create(t *model.LLMProviderTemplate) error {
 	uuidStr, err := utils.GenerateUUID()
 	if err != nil {
@@ -97,7 +104,7 @@ func (r *LLMProviderTemplateRepo) Create(t *model.LLMProviderTemplate) error {
 	`
 	_, err = r.db.Exec(r.db.Rebind(query),
 		t.UUID, t.OrganizationUUID, t.ID, t.GroupVersionID, t.Name, t.ManagedBy, t.Description, t.CreatedBy,
-		string(configJSON), t.OpenAPISpec, t.Version, t.IsLatest, t.Enabled,
+		string(configJSON), t.OpenAPISpec, t.Version, boolToInt(t.IsLatest), boolToInt(t.Enabled),
 		t.CreatedAt, t.UpdatedAt,
 	)
 	return err
@@ -125,15 +132,12 @@ func (r *LLMProviderTemplateRepo) CreateNewVersion(t *model.LLMProviderTemplate)
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	// Lock the current latest row to serialize concurrent CreateNewVersion calls for
-	// the same template family. FOR UPDATE is Postgres-only; SQLite serializes writes
-	// at the connection level so no explicit lock is needed there.
 	lockSQL := `SELECT created_by FROM llm_provider_templates WHERE group_version_id = ? AND organization_uuid = ? AND is_latest = ?`
 	if r.db.Driver() == database.DriverPostgres || r.db.Driver() == database.DriverPostgreSQL {
 		lockSQL += " FOR UPDATE"
 	}
 	var createdBy sql.NullString
-	err = tx.QueryRow(r.db.Rebind(lockSQL), t.GroupVersionID, t.OrganizationUUID, true).Scan(&createdBy)
+	err = tx.QueryRow(r.db.Rebind(lockSQL), t.GroupVersionID, t.OrganizationUUID, 1).Scan(&createdBy)
 	if errors.Is(err, sql.ErrNoRows) {
 		return sql.ErrNoRows
 	}
@@ -154,7 +158,7 @@ func (r *LLMProviderTemplateRepo) CreateNewVersion(t *model.LLMProviderTemplate)
 	// Demote the current latest within this family (same group_version_id).
 	if _, err = tx.Exec(r.db.Rebind(`
 		UPDATE llm_provider_templates SET is_latest = ? WHERE group_version_id = ? AND organization_uuid = ? AND is_latest = ?
-	`), false, t.GroupVersionID, t.OrganizationUUID, true); err != nil {
+	`), 0, t.GroupVersionID, t.OrganizationUUID, 1); err != nil {
 		return err
 	}
 
@@ -177,7 +181,7 @@ func (r *LLMProviderTemplateRepo) CreateNewVersion(t *model.LLMProviderTemplate)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`),
 		t.UUID, t.OrganizationUUID, t.ID, t.GroupVersionID, t.Name, t.ManagedBy, t.Description, t.CreatedBy,
-		string(configJSON), t.OpenAPISpec, t.Version, t.IsLatest, t.Enabled,
+		string(configJSON), t.OpenAPISpec, t.Version, boolToInt(t.IsLatest), boolToInt(t.Enabled),
 		t.CreatedAt, t.UpdatedAt,
 	); err != nil {
 		return err
@@ -186,11 +190,6 @@ func (r *LLMProviderTemplateRepo) CreateNewVersion(t *model.LLMProviderTemplate)
 	return tx.Commit()
 }
 
-// familyGroupVersionID resolves the template family (grouping) key — its group_version_id
-// — from any version handle in that family. Handles are version-specific, but all
-// versions of a template share one immutable group_version_id, so it is the stable key
-// used to list, count, promote, and delete across a template's versions. Returns
-// "" if no template with the given handle exists in the organization.
 func (r *LLMProviderTemplateRepo) familyGroupVersionID(handle, orgUUID string) (string, error) {
 	var base string
 	err := r.db.QueryRow(r.db.Rebind(`
@@ -205,8 +204,6 @@ func (r *LLMProviderTemplateRepo) familyGroupVersionID(handle, orgUUID string) (
 	return base, nil
 }
 
-// GetGroupVersionID exposes the family group_version_id for a given (possibly non-latest)
-// version handle, so callers can derive sibling-version handles and group a family.
 func (r *LLMProviderTemplateRepo) GetGroupVersionID(handle, orgUUID string) (string, error) {
 	return r.familyGroupVersionID(handle, orgUUID)
 }
@@ -346,7 +343,6 @@ func scanTemplateRow(row *sql.Row) (*model.LLMProviderTemplate, error) {
 }
 
 func (r *LLMProviderTemplateRepo) List(orgUUID string, limit, offset int) ([]*model.LLMProviderTemplate, error) {
-	// Catalog lists one entry per template — the latest version only.
 	pageClause, pageArgs := r.db.PaginationClause(limit, offset)
 	query := `
 		SELECT uuid, organization_uuid, handle, group_version_id, name, managed_by, description, created_by, configuration, openapi_spec, version, is_latest, enabled, created_at, updated_at
@@ -355,7 +351,7 @@ func (r *LLMProviderTemplateRepo) List(orgUUID string, limit, offset int) ([]*mo
 		  AND (managed_by = 'wso2' OR (managed_by != 'wso2' AND is_latest = ?))
 		ORDER BY created_at DESC
 		` + pageClause
-	rows, err := r.db.Query(r.db.Rebind(query), append([]any{orgUUID, true}, pageArgs...)...)
+	rows, err := r.db.Query(r.db.Rebind(query), append([]any{orgUUID, 1}, pageArgs...)...)
 	if err != nil {
 		return nil, err
 	}
@@ -484,7 +480,7 @@ func (r *LLMProviderTemplateRepo) Delete(templateID, orgUUID string) error {
 
 	var remaining, latestCount int
 	if err := tx.QueryRow(r.db.Rebind(`
-		SELECT COUNT(*), COALESCE(SUM(CASE WHEN is_latest THEN 1 ELSE 0 END), 0)
+		SELECT COUNT(*), COALESCE(SUM(CASE WHEN is_latest = 1 THEN 1 ELSE 0 END), 0)
 		FROM llm_provider_templates WHERE group_version_id = ? AND organization_uuid = ?
 	`), base, orgUUID).Scan(&remaining, &latestCount); err != nil {
 		return err
@@ -497,7 +493,7 @@ func (r *LLMProviderTemplateRepo) Delete(templateID, orgUUID string) error {
 				WHERE group_version_id = ? AND organization_uuid = ?
 				ORDER BY created_at DESC LIMIT 1
 			)
-		`), true, base, orgUUID); err != nil {
+		`), 1, base, orgUUID); err != nil {
 			return err
 		}
 	}
@@ -561,7 +557,7 @@ func (r *LLMProviderTemplateRepo) DeleteVersion(templateID, orgUUID, version str
 
 	var remaining, latestCount int
 	if err := tx.QueryRow(r.db.Rebind(`
-		SELECT COUNT(*), COALESCE(SUM(CASE WHEN is_latest THEN 1 ELSE 0 END), 0)
+		SELECT COUNT(*), COALESCE(SUM(CASE WHEN is_latest = 1 THEN 1 ELSE 0 END), 0)
 		FROM llm_provider_templates WHERE group_version_id = ? AND organization_uuid = ?
 	`), base, orgUUID).Scan(&remaining, &latestCount); err != nil {
 		return err
@@ -574,7 +570,7 @@ func (r *LLMProviderTemplateRepo) DeleteVersion(templateID, orgUUID, version str
 				WHERE group_version_id = ? AND organization_uuid = ?
 				ORDER BY created_at DESC LIMIT 1
 			)
-		`), true, base, orgUUID); err != nil {
+		`), 1, base, orgUUID); err != nil {
 			return err
 		}
 	}
@@ -596,7 +592,7 @@ func (r *LLMProviderTemplateRepo) Count(orgUUID string) (int, error) {
 		SELECT COUNT(*) FROM llm_provider_templates
 		WHERE organization_uuid = ?
 		  AND (managed_by = 'wso2' OR (managed_by != 'wso2' AND is_latest = ?))
-	`), orgUUID, true).Scan(&count); err != nil {
+	`), orgUUID, 1).Scan(&count); err != nil {
 		return 0, err
 	}
 	return count, nil

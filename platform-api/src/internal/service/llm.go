@@ -131,6 +131,10 @@ func (s *LLMProviderTemplateService) Create(orgUUID, createdBy string, req *api.
 	}
 	handle := makeTemplateHandle(baseHandle, version)
 
+	if req.Provider != nil && strings.TrimSpace(*req.Provider) == constants.PolicyManagedByWSO2 {
+		return nil, constants.ErrLLMProviderTemplateManagedByReserved
+	}
+
 	exists, err := s.repo.Exists(handle, orgUUID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to check template exists: %w", err)
@@ -226,6 +230,9 @@ func (s *LLMProviderTemplateService) Update(orgUUID, handle string, req *api.LLM
 	}
 	if req.Name == "" {
 		return nil, constants.ErrInvalidInput
+	}
+	if req.Provider != nil && strings.TrimSpace(*req.Provider) == constants.PolicyManagedByWSO2 {
+		return nil, constants.ErrLLMProviderTemplateManagedByReserved
 	}
 
 	existing, err := s.repo.GetByID(handle, orgUUID)
@@ -331,7 +338,7 @@ func (s *LLMProviderTemplateService) CreateVersion(orgUUID, handle, createdBy st
 		GroupVersionID:   baseHandle,
 		Name:             req.Name,
 		Description:      utils.ValueOrEmpty(req.Description),
-		ManagedBy:        defaultTemplateManagedBy(req.Provider),
+		ManagedBy:        constants.PolicyManagedByCustomer,
 		CreatedBy:        createdBy,
 		Version:          version,
 		OpenAPISpec:      utils.ValueOrEmpty(req.Openapi),
@@ -412,6 +419,7 @@ func (s *LLMProviderTemplateService) GetVersion(orgUUID, handle, version string)
 }
 
 // SetVersionEnabled enables or disables a specific version of a template.
+// Disabling is blocked when any provider was created from this specific version.
 func (s *LLMProviderTemplateService) SetVersionEnabled(orgUUID, handle, version string, enabled bool) (*api.LLMProviderTemplate, error) {
 	v := strings.TrimSpace(version)
 	if handle == "" || v == "" {
@@ -419,6 +427,15 @@ func (s *LLMProviderTemplateService) SetVersionEnabled(orgUUID, handle, version 
 	}
 	if normalized, ok := normalizeTemplateVersion(v); ok {
 		v = normalized
+	}
+	if !enabled {
+		inUse, err := s.repo.CountProvidersUsingTemplate(handle, orgUUID, v)
+		if err != nil {
+			return nil, fmt.Errorf("failed to check template version usage: %w", err)
+		}
+		if inUse > 0 {
+			return nil, constants.ErrLLMProviderTemplateInUse
+		}
 	}
 	if err := s.repo.SetEnabled(handle, orgUUID, v, enabled); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {

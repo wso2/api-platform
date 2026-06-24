@@ -58,21 +58,27 @@ function extractResources(spec: Record<string, unknown> | null): DiscoveredResou
   > | null;
   if (!paths || typeof paths !== 'object') return [];
   const METHODS = new Set(['get', 'post', 'put', 'patch', 'delete', 'head', 'options']);
-  const out: DiscoveredResource[] = [];
+  const all: DiscoveredResource[] = [];
   Object.keys(paths).forEach((path) => {
     const ops = paths[path];
     if (!ops || typeof ops !== 'object') return;
     Object.keys(ops).forEach((m) => {
       if (!METHODS.has(m.toLowerCase())) return;
-      out.push({
+      all.push({
         method: m.toUpperCase(),
         path,
         summary: ops[m]?.summary || ops[m]?.description || undefined,
       });
     });
   });
-  out.sort((a, b) => a.path.localeCompare(b.path) || a.method.localeCompare(b.method));
-  return out;
+  all.sort((a, b) => a.path.localeCompare(b.path) || a.method.localeCompare(b.method));
+  // Resource overrides are path-scoped on the backend; deduplicate to one row per path.
+  const seen = new Set<string>();
+  return all.filter((r) => {
+    if (seen.has(r.path)) return false;
+    seen.add(r.path);
+    return true;
+  });
 }
 
 function TokenFieldsEditor({
@@ -158,17 +164,19 @@ export default function TemplateTokenMapping({
 
   const isOverridden = (path: string) => Boolean(mappingFor(path));
 
-  const toggleOverride = (path: string, enabled: boolean) => {
+  const toggleOverride = (path: string, rowKey: string, enabled: boolean) => {
     if (enabled) {
-      if (isOverridden(path)) return;
-      const seeded: ResourceMapping = {
-        resource: path,
-        ...fromTokenConfig(defaultTokens),
-      };
-      onChangeResourceMappings([...resourceMappings, seeded]);
-      setOpenKey(path);
+      if (!isOverridden(path)) {
+        const seeded: ResourceMapping = {
+          resource: path,
+          ...fromTokenConfig(defaultTokens),
+        };
+        onChangeResourceMappings([...resourceMappings, seeded]);
+      }
+      setOpenKey(rowKey);
     } else {
       onChangeResourceMappings(resourceMappings.filter((m) => m.resource !== path));
+      setOpenKey((prev) => (prev === rowKey ? null : prev));
     }
   };
 
@@ -222,8 +230,7 @@ export default function TemplateTokenMapping({
           <Stack direction="row" spacing={1} alignItems="flex-start">
             <Info size={16} style={{ marginTop: 2, flexShrink: 0, opacity: 0.7 }} />
             <Typography variant="body2" color="text.secondary">
-              Turn on a resource to give it its own mapping. The rest use the
-              default.
+              Turn on a resource to give it its own mapping.
             </Typography>
           </Stack>
 
@@ -264,7 +271,7 @@ export default function TemplateTokenMapping({
                                 size="small"
                                 checked={overridden}
                                 onChange={(e) =>
-                                  toggleOverride(r.path, e.target.checked)
+                                  toggleOverride(r.path, key, e.target.checked)
                                 }
                               />
                             }

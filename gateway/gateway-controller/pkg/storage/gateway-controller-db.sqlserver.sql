@@ -120,11 +120,12 @@ CREATE TABLE dbo.llm_provider_templates (
     uuid NVARCHAR(64) NOT NULL,
     gateway_id NVARCHAR(64) NOT NULL,
     group_version_id NVARCHAR(255) NOT NULL,
+    version NVARCHAR(64) NOT NULL DEFAULT 'v1.0',
     configuration NVARCHAR(MAX) NOT NULL,
     created_at DATETIME2(7) NOT NULL DEFAULT SYSUTCDATETIME(),
     updated_at DATETIME2(7) NOT NULL DEFAULT SYSUTCDATETIME(),
     PRIMARY KEY (gateway_id, uuid),
-    UNIQUE(gateway_id, group_version_id)
+    UNIQUE(gateway_id, group_version_id, version)
 );
 
 -- Table for API keys

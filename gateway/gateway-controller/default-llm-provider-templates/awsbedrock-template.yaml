@@ -23,7 +23,7 @@ metadata:
 spec:
   displayName: AWS Bedrock
   groupVersionId: awsbedrock
-  provider: wso2
+  managedBy: wso2
   version: v1.0
   promptTokens:
     location: payload

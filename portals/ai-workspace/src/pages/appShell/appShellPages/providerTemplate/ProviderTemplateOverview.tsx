@@ -207,17 +207,18 @@ export default function ProviderTemplateOverview() {
   useEffect(() => {
     const organizationId = currentOrganization?.uuid;
     if (!templateId || !organizationId) return;
+    setVersions([]);
 
     let isMounted = true;
     providerTemplateApis
       .getProviderTemplateVersions(templateId, organizationId, PLATFORM_API_BASE_URL)
       .then((list) => {
-        if (isMounted && list.length) {
+        if (isMounted) {
           setVersions(list);
         }
       })
       .catch(() => {
-        /* switcher gracefully degrades to the single current version */
+        if (isMounted) setVersions([]);
       });
 
     return () => {
@@ -290,6 +291,7 @@ export default function ProviderTemplateOverview() {
       }
       setSpecFileName('');
       setSpecContent('');
+      setUrlSpecText(text);
       setIsDirty(true);
       const server = specServerUrl(text);
       if (server) {
@@ -438,9 +440,13 @@ export default function ProviderTemplateOverview() {
   const parsedSpec = useMemo(
     () =>
       parseOpenApiSpec(
-        template?.openapi?.trim() ? template.openapi : urlSpecText
+        specContent.trim()
+          ? specContent
+          : template?.openapi?.trim()
+            ? template.openapi
+            : urlSpecText
       ),
-    [template?.openapi, urlSpecText]
+    [specContent, template?.openapi, urlSpecText]
   );
 
   const backButton = (
@@ -557,8 +563,19 @@ export default function ProviderTemplateOverview() {
       );
       await refreshTemplates();
       showSnackbar(next ? 'Version enabled.' : 'Version disabled.', 'success');
-    } catch {
-      showSnackbar('Failed to update the version.', 'error');
+    } catch (err: unknown) {
+      const status =
+        err instanceof Error && 'status' in err
+          ? (err as { status?: number }).status
+          : (err as { response?: { status?: number } })?.response?.status;
+      if (status === 409) {
+        showSnackbar(
+          'Cannot disable: one or more providers were created from this template version.',
+          'error'
+        );
+      } else {
+        showSnackbar('Failed to update the version.', 'error');
+      }
     } finally {
       setIsTogglingEnabled(false);
     }
@@ -691,9 +708,14 @@ export default function ProviderTemplateOverview() {
                   >
                     {(() => {
                       const allVersions = versions.length ? versions : [template];
-                      const visibleVersions = isBuiltIn
+                      const parseVerNum = (s: string) => {
+                        const [maj = 0, min = 0] = (s || 'v0').replace(/^v/i, '').split('.').map(Number);
+                        return maj * 1000 + min;
+                      };
+                      const visibleVersions = (isBuiltIn
                         ? allVersions.filter((v) => v.provider === 'wso2')
-                        : allVersions.filter((v) => v.provider !== 'wso2');
+                        : allVersions.filter((v) => v.provider !== 'wso2')
+                      ).sort((a, b) => parseVerNum(b.version || 'v0') - parseVerNum(a.version || 'v0'));
                       const sectionLabel = isBuiltIn ? 'Built-in Versions' : 'Custom Versions';
 
                       return (
@@ -940,12 +962,14 @@ export default function ProviderTemplateOverview() {
                 <Typography variant="h6" sx={{ mb: 1, fontWeight: 600 }}>
                   OpenAPI Resources
                 </Typography>
-                {!template.openapi?.trim() &&
+                {!specContent.trim() &&
+                !urlSpecText &&
+                !template.openapi?.trim() &&
                 !template.metadata?.openapiSpecUrl?.trim() ? (
                   <Typography variant="body2" color="text.secondary" sx={{ py: 2 }}>
                     No available resources. Add an OpenAPI specification above to see resources.
                   </Typography>
-                ) : isSpecLoading ? (
+                ) : isSpecLoading && !specContent.trim() ? (
                   <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}>
                     <CircularProgress size={24} />
                   </Box>

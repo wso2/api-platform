@@ -137,6 +137,10 @@ export default function CreateProviderTemplate() {
   const fetchSpecFromUrl = async () => {
     const url = openapiSpecUrl.trim();
     if (!url) return;
+    if (!isValidHttpUrl(url)) {
+      showSnackbar('Enter a valid http or https URL.', 'error');
+      return;
+    }
     setIsFetchingSpec(true);
     try {
       const res = await fetch(url);

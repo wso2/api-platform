@@ -480,6 +480,8 @@ export interface ProviderTemplate {
   id: string;
   name: string;
   provider?: string;
+  managedBy?: string;
+  groupVersionId?: string;
   description?: string;
   version: string;
   isLatest?: boolean;

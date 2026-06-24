@@ -215,6 +215,6 @@ func (s *APIServer) DeleteLLMProviderTemplate(c *gin.Context, id string) {
 	c.JSON(http.StatusOK, gin.H{
 		"status":  "success",
 		"message": "LLM provider template deleted successfully",
-		"id":      deleted.GetGroupVersionID(),
+		"id":      deleted.GetID(),
 	})
 }

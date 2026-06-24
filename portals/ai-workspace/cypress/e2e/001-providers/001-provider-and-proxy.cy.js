@@ -31,6 +31,10 @@ describe('AI Workspace - OpenAI provider and proxy lifecycle', () => {
   let authToken = '';
   let organizationId = '';
 
+  before(() => {
+    cy.sweepE2EProviders();
+  });
+
   beforeEach(() => {
     cy.login();
     cy.request({
@@ -62,13 +66,13 @@ describe('AI Workspace - OpenAI provider and proxy lifecycle', () => {
   });
 
   afterEach(() => {
-    if (!authToken || !organizationId) {
-      return;
-    }
+    const targeted = (authToken && organizationId)
+      ? deleteLinkedProxies(authToken, organizationId, createdProviderId)
+          .then(() => deleteProjectByName(authToken, projectName, cleanupProjectName))
+          .then(() => deleteProvider(authToken, organizationId, createdProviderId))
+      : cy.wrap(null);
 
-    return deleteLinkedProxies(authToken, organizationId, createdProviderId)
-      .then(() => deleteProjectByName(authToken, projectName, cleanupProjectName))
-      .then(() => deleteProvider(authToken, organizationId, createdProviderId));
+    return targeted.then(() => cy.sweepE2EProviders(authToken, organizationId));
   });
 
   it('creates and deletes an OpenAI provider and app llm proxy using only the UI', () => {
@@ -106,7 +110,7 @@ describe('AI Workspace - OpenAI provider and proxy lifecycle', () => {
       timeout: 30000,
     }).should('be.visible').click();
 
-    cy.get('body', { timeout: 45000 }).should(($body) => {
+    cy.get('body', { timeout: 30000 }).should(($body) => {
       expect(
         $body.find('[data-cyid="provider-name-input"] input:visible').length > 0 ||
           $body.find('[data-cyid="template-version-continue-button"]').length > 0
@@ -305,10 +309,10 @@ function toSlug(value) {
 function selectTemplateVersionAndContinue() {
   // Wait for the dialog's own version fetch to resolve and explicitly pick a
   // version rather than relying on its auto-selected default.
-  cy.get('[data-cyid^="template-version-option-"]', { timeout: 45000 })
+  cy.get('[data-cyid^="template-version-option-"]', { timeout: 30000 })
     .first()
     .click();
-  cy.get('[data-cyid="template-version-continue-button"]', { timeout: 45000 })
+  cy.get('[data-cyid="template-version-continue-button"]', { timeout: 30000 })
     .should('not.be.disabled')
     .click();
 }

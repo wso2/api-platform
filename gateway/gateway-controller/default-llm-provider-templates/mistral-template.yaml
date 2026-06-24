@@ -23,7 +23,7 @@ metadata:
 spec:
   displayName: MistralAI
   groupVersionId: mistralai
-  provider: wso2
+  managedBy: wso2
   version: v1.0
   promptTokens:
     location: payload

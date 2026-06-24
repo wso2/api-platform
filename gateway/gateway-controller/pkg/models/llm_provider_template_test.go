@@ -107,26 +107,26 @@ func TestStoredLLMProviderTemplate_GetVersion(t *testing.T) {
 	}
 }
 
-func TestStoredLLMProviderTemplate_GetProvider(t *testing.T) {
+func TestStoredLLMProviderTemplate_GetManagedBy(t *testing.T) {
 	tests := []struct {
-		name     string
-		provider *string
-		expected string
+		name      string
+		managedBy *string
+		expected  string
 	}{
-		{name: "explicit provider", provider: strPtr("wso2"), expected: "wso2"},
-		{name: "provider with surrounding whitespace", provider: strPtr("  custom  "), expected: "custom"},
-		{name: "nil provider defaults to other", provider: nil, expected: DefaultTemplateProvider},
-		{name: "blank provider defaults to other", provider: strPtr("  "), expected: DefaultTemplateProvider},
+		{name: "explicit managedBy", managedBy: strPtr("wso2"), expected: "wso2"},
+		{name: "managedBy with surrounding whitespace", managedBy: strPtr("  custom  "), expected: "custom"},
+		{name: "nil managedBy defaults to customer", managedBy: nil, expected: DefaultTemplateManagedBy},
+		{name: "blank managedBy defaults to customer", managedBy: strPtr("  "), expected: DefaultTemplateManagedBy},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			template := &StoredLLMProviderTemplate{
 				Configuration: api.LLMProviderTemplate{
-					Spec: api.LLMProviderTemplateData{Provider: tt.provider},
+					Spec: api.LLMProviderTemplateData{ManagedBy: tt.managedBy},
 				},
 			}
-			assert.Equal(t, tt.expected, template.GetProvider())
+			assert.Equal(t, tt.expected, template.GetManagedBy())
 		})
 	}
 }

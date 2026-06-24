@@ -312,7 +312,7 @@ CREATE TABLE IF NOT EXISTS llm_provider_templates (
     configuration TEXT NOT NULL,
     openapi_spec TEXT,
     version VARCHAR(40) NOT NULL DEFAULT 'v1.0',
-    is_latest BOOLEAN NOT NULL DEFAULT TRUE,
+    is_latest SMALLINT NOT NULL DEFAULT 1,
     enabled BOOLEAN NOT NULL DEFAULT TRUE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -469,7 +469,7 @@ CREATE INDEX IF NOT EXISTS idx_association_mappings_resource ON association_mapp
 CREATE INDEX IF NOT EXISTS idx_association_mappings_org ON association_mappings(organization_uuid);
 CREATE INDEX IF NOT EXISTS idx_artifacts_org ON artifacts(organization_uuid);
 CREATE INDEX IF NOT EXISTS idx_llm_provider_templates_org ON llm_provider_templates(organization_uuid);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_llm_provider_templates_single_latest ON llm_provider_templates(organization_uuid, group_version_id) WHERE is_latest = TRUE;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_llm_provider_templates_single_latest ON llm_provider_templates(organization_uuid, group_version_id) WHERE is_latest = 1;
 CREATE INDEX IF NOT EXISTS idx_llm_providers_template ON llm_providers(template_uuid);
 CREATE INDEX IF NOT EXISTS idx_llm_proxies_project ON llm_proxies(project_uuid);
 CREATE INDEX IF NOT EXISTS idx_llm_proxies_provider_uuid ON llm_proxies(provider_uuid);

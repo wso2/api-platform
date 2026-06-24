@@ -28,8 +28,8 @@ import (
 // DefaultTemplateVersion is used when a template does not declare a version.
 const DefaultTemplateVersion = "v1.0"
 
-// DefaultTemplateProvider is used when a template does not declare a provider.
-const DefaultTemplateProvider = "other"
+// DefaultTemplateManagedBy is used when a template does not declare managedBy.
+const DefaultTemplateManagedBy = "customer"
 
 // StoredLLMProviderTemplate represents the LLM provider template stored in the database and in-memory
 type StoredLLMProviderTemplate struct {
@@ -76,12 +76,12 @@ func (t *StoredLLMProviderTemplate) GetVersion() string {
 	return DefaultTemplateVersion
 }
 
-// GetProvider returns the template provider, defaulting to "other" when unset.
-func (t *StoredLLMProviderTemplate) GetProvider() string {
-	if t.Configuration.Spec.Provider != nil {
-		if p := strings.TrimSpace(*t.Configuration.Spec.Provider); p != "" {
+// GetManagedBy returns the template's managedBy origin, defaulting to "customer" when unset.
+func (t *StoredLLMProviderTemplate) GetManagedBy() string {
+	if t.Configuration.Spec.ManagedBy != nil {
+		if p := strings.TrimSpace(*t.Configuration.Spec.ManagedBy); p != "" {
 			return p
 		}
 	}
-	return DefaultTemplateProvider
+	return DefaultTemplateManagedBy
 }

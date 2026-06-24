@@ -170,6 +170,10 @@ function CreateProviderTemplateVersionForm({
   const fetchSpecFromUrl = async () => {
     const url = openapiSpecUrl.trim();
     if (!url) return;
+    if (!isValidHttpUrl(url)) {
+      showSnackbar('Enter a valid http or https URL.', 'error');
+      return;
+    }
     setIsFetchingSpec(true);
     try {
       const res = await fetch(url);
@@ -249,7 +253,6 @@ function CreateProviderTemplateVersionForm({
     const payload: ProviderTemplate = {
       id: toTemplateId(`${template.name ?? ''} ${version.trim()}`),
       name: template.name,
-      provider: template.provider,
       version: version.trim(),
       description: description.trim() || undefined,
       resourceMappings: template.resourceMappings,
@@ -349,7 +352,7 @@ function CreateProviderTemplateVersionForm({
                   error={version.trim().length > 0 && !isVersionValid}
                   helperText={
                     version.trim().length > 0 && !isVersionValid
-                      ? 'Use the format v<major>.<minor>, e.g. v2.0'
+                      ? 'Expected: v<major>.<minor>'
                       : ''
                   }
                 />
@@ -411,7 +414,7 @@ function CreateProviderTemplateVersionForm({
                     <Button
                       variant="outlined"
                       size="small"
-                      disabled={isFetchingSpec || !openapiSpecUrl.trim()}
+                      disabled={isFetchingSpec || !openapiSpecUrl.trim() || !isSpecUrlValid}
                       onClick={() => void fetchSpecFromUrl()}
                       sx={{ whiteSpace: 'nowrap', flexShrink: 0 }}
                     >

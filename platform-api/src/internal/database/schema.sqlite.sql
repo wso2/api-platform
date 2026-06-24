@@ -310,7 +310,7 @@ CREATE TABLE IF NOT EXISTS llm_provider_templates (
     configuration TEXT NOT NULL,
     openapi_spec TEXT,
     version VARCHAR(40) NOT NULL DEFAULT 'v1.0',
-    is_latest BOOLEAN NOT NULL DEFAULT 1,
+    is_latest INTEGER NOT NULL DEFAULT 1,
     enabled BOOLEAN NOT NULL DEFAULT 1,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,

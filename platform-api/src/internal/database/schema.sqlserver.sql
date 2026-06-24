@@ -350,15 +350,23 @@ CREATE TABLE dbo.llm_provider_templates (
     uuid VARCHAR(40) PRIMARY KEY,
     organization_uuid VARCHAR(40) NOT NULL,
     handle VARCHAR(255) NOT NULL,
+    group_version_id VARCHAR(255) NOT NULL,
     name VARCHAR(253) NOT NULL,
+    managed_by VARCHAR(255) NOT NULL DEFAULT 'customer',
     description VARCHAR(1023),
     created_by VARCHAR(255),
     configuration NVARCHAR(MAX) NOT NULL,
+    openapi_spec NVARCHAR(MAX),
+    version VARCHAR(40) NOT NULL DEFAULT 'v1.0',
+    is_latest BIT NOT NULL DEFAULT 1,
+    enabled BIT NOT NULL DEFAULT 1,
     created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     updated_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
-    UNIQUE(organization_uuid, handle)
+    UNIQUE(organization_uuid, group_version_id, version)
 );
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_llm_provider_templates_single_latest' AND object_id = OBJECT_ID(N'dbo.llm_provider_templates'))
+CREATE UNIQUE INDEX idx_llm_provider_templates_single_latest ON dbo.llm_provider_templates(organization_uuid, group_version_id) WHERE is_latest = 1;
 
 -- LLM Providers table
 IF OBJECT_ID(N'dbo.llm_providers', N'U') IS NULL

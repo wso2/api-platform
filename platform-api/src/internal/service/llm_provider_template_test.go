@@ -230,6 +230,22 @@ func TestLLMProviderTemplateServiceCreate_RejectsInvalidVersion(t *testing.T) {
 	}
 }
 
+func TestLLMProviderTemplateServiceCreate_RejectsReservedManagedBy(t *testing.T) {
+	repo := &mockLLMProviderTemplateCRUDRepo{}
+	svc := NewLLMProviderTemplateService(repo)
+
+	wso2 := "wso2"
+	req := validTemplateRequest("My Provider")
+	req.Provider = &wso2
+	_, err := svc.Create("org-1", "alice", req)
+	if err != constants.ErrLLMProviderTemplateManagedByReserved {
+		t.Fatalf("expected ErrLLMProviderTemplateManagedByReserved, got: %v", err)
+	}
+	if repo.created != nil {
+		t.Fatalf("did not expect repository create to be called")
+	}
+}
+
 func TestLLMProviderTemplateServiceCreate_ReturnsConflictForDuplicateHandle(t *testing.T) {
 	repo := &mockLLMProviderTemplateCRUDRepo{existsResult: true}
 	svc := NewLLMProviderTemplateService(repo)
@@ -244,6 +260,22 @@ func TestLLMProviderTemplateServiceCreate_ReturnsConflictForDuplicateHandle(t *t
 }
 
 // ---- Update ----
+
+func TestLLMProviderTemplateServiceUpdate_RejectsReservedManagedBy(t *testing.T) {
+	repo := &mockLLMProviderTemplateCRUDRepo{}
+	svc := NewLLMProviderTemplateService(repo)
+
+	wso2 := "wso2"
+	req := validTemplateRequest("My Provider")
+	req.Provider = &wso2
+	_, err := svc.Update("org-1", "my-provider", req)
+	if err != constants.ErrLLMProviderTemplateManagedByReserved {
+		t.Fatalf("expected ErrLLMProviderTemplateManagedByReserved, got: %v", err)
+	}
+	if repo.updated != nil {
+		t.Fatalf("did not expect repository update to be called")
+	}
+}
 
 func TestLLMProviderTemplateServiceUpdate_RejectsReadOnlyBuiltin(t *testing.T) {
 	repo := &mockLLMProviderTemplateCRUDRepo{}
@@ -353,6 +385,27 @@ func TestLLMProviderTemplateServiceCreateVersion_Success(t *testing.T) {
 	}
 	if repo.createdVersion.ManagedBy != "customer" {
 		t.Fatalf("expected new custom versions to default to managedBy 'customer', got: %q", repo.createdVersion.ManagedBy)
+	}
+}
+
+func TestLLMProviderTemplateServiceCreateVersion_ForkFromBuiltinSetsCustomerManagedBy(t *testing.T) {
+	repo := &mockLLMProviderTemplateCRUDRepo{getGroupVersionIDResult: "mistralai"}
+	svc := NewLLMProviderTemplateService(repo)
+
+	wso2 := "wso2"
+	req := &api.CreateLLMProviderTemplateVersionRequest{Name: "Mistral", Version: "v2.0", Provider: &wso2}
+	resp, err := svc.CreateVersion("org-1", "mistralai", "test-user", req)
+	if err != nil {
+		t.Fatalf("expected no error when forking a built-in, got: %v", err)
+	}
+	if resp == nil {
+		t.Fatal("expected a response, got nil")
+	}
+	if repo.createdVersion == nil {
+		t.Fatal("expected CreateNewVersion to be called")
+	}
+	if repo.createdVersion.ManagedBy != constants.PolicyManagedByCustomer {
+		t.Fatalf("expected forked version to have managedBy='customer', got: %q", repo.createdVersion.ManagedBy)
 	}
 }
 
@@ -491,6 +544,45 @@ func TestLLMProviderTemplateServiceSetVersionEnabled_NotFound(t *testing.T) {
 	_, err := svc.SetVersionEnabled("org-1", "does-not-exist", "v1.0", true)
 	if err != constants.ErrLLMProviderTemplateNotFound {
 		t.Fatalf("expected ErrLLMProviderTemplateNotFound, got: %v", err)
+	}
+}
+
+func TestLLMProviderTemplateServiceSetVersionEnabled_DisableBlocksWhenInUse(t *testing.T) {
+	repo := &mockLLMProviderTemplateCRUDRepo{
+		countProvidersUsingTemplateResult: 1,
+	}
+	svc := NewLLMProviderTemplateService(repo)
+
+	_, err := svc.SetVersionEnabled("org-1", "mistralai", "v1.0", false)
+	if err != constants.ErrLLMProviderTemplateInUse {
+		t.Fatalf("expected ErrLLMProviderTemplateInUse, got: %v", err)
+	}
+	if repo.countProvidersUsingTemplateVersion != "v1.0" {
+		t.Fatalf("expected usage check scoped to the specific version, got: %q", repo.countProvidersUsingTemplateVersion)
+	}
+	if repo.setEnabledCalled {
+		t.Fatalf("did not expect SetEnabled to be called while version is in use")
+	}
+}
+
+func TestLLMProviderTemplateServiceSetVersionEnabled_EnableIgnoresUsage(t *testing.T) {
+	repo := &mockLLMProviderTemplateCRUDRepo{
+		countProvidersUsingTemplateResult: 5,
+		getByVersionFunc: func(templateID, orgUUID, version string) (*model.LLMProviderTemplate, error) {
+			return &model.LLMProviderTemplate{ID: templateID, Version: version, Enabled: true}, nil
+		},
+	}
+	svc := NewLLMProviderTemplateService(repo)
+
+	resp, err := svc.SetVersionEnabled("org-1", "mistralai", "v1.0", true)
+	if err != nil {
+		t.Fatalf("expected no error on enable regardless of usage, got: %v", err)
+	}
+	if repo.countProvidersUsingTemplateCalled {
+		t.Fatalf("did not expect usage check to be called when enabling")
+	}
+	if resp == nil || resp.Enabled == nil || !*resp.Enabled {
+		t.Fatalf("expected response to reflect enabled state, got: %#v", resp)
 	}
 }
 
