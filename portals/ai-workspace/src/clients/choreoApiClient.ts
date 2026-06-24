@@ -150,6 +150,35 @@ export const post = <T>(
   baseUrl?: string,
 ): Promise<T> => request<T>({ path, method: 'POST', data, baseUrl });
 
+/**
+ * POST with multipart/form-data body (e.g. for the secrets endpoint).
+ * Omits Content-Type so the browser sets it with the correct boundary.
+ */
+export const postForm = async <T>(
+  path: string,
+  form: FormData,
+  baseUrl?: string,
+): Promise<T> => {
+  const resolvedBase = baseUrl || PLATFORM_API_BASE_URL;
+  const url = buildUrl(path, resolvedBase);
+  const token = getStoredToken();
+  const headers: Record<string, string> = { Accept: 'application/json' };
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  const res = await fetch(url, { method: 'POST', headers, body: form });
+
+  if (!res.ok) {
+    let message = `HTTP ${res.status}`;
+    try {
+      const body = await res.json();
+      message = body?.description ?? body?.message ?? body?.error ?? message;
+    } catch { /* body not JSON */ }
+    throw new Error(message);
+  }
+
+  return res.json() as Promise<T>;
+};
+
 export const put = <T>(
   path: string,
   data?: unknown,

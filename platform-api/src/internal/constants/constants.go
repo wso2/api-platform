@@ -17,6 +17,13 @@
 
 package constants
 
+import "regexp"
+
+// SecretPlaceholderRe matches {{ secret "handle" }} (and the escaped-quote variant
+// {{ secret \"handle\" }}) in artifact config blobs.  A single definition here ensures
+// ref-extraction (repository) and ref-validation (service) always match the same set.
+var SecretPlaceholderRe = regexp.MustCompile(`\{\{\s*secret\s+\\?"([^"\\]+)\\?"\s*\}\}`)
+
 // ValidLifecycleStates Valid lifecycle states
 var ValidLifecycleStates = map[string]bool{
 	"STAGED":     true,

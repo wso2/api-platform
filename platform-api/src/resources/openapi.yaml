@@ -6538,6 +6538,221 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /secrets:
+    post:
+      summary: Create a secret
+      description: |
+        Create a new encrypted secret scoped to the organization. The plaintext value is never returned.
+      operationId: createSecret
+      security:
+        - OAuth2Security:
+            - ap:secret:create
+            - ap:secret:manage
+      tags:
+        - Secrets
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/SecretCreateRequest'
+            example:
+              handle: wso2-openai-key
+              name: WSO2 OpenAI API Key
+              description: API key for WSO2 OpenAI integration
+              value: sk-xxx
+              type: GENERIC
+      responses:
+        '201':
+          description: Secret created successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SecretResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    get:
+      summary: List secrets
+      description: |
+        Returns metadata for all secrets in the organization. The plaintext value is
+        never included in list or get responses.
+      operationId: listSecrets
+      security:
+        - OAuth2Security:
+            - ap:secret:read
+            - ap:secret:manage
+      tags:
+        - Secrets
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 25
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: updatedAfter
+          in: query
+          description: RFC3339 timestamp — return only secrets updated after this time. Used by GW controller for incremental polling.
+          schema:
+            type: string
+            format: date-time
+            example: "2026-01-01T00:00:00Z"
+      responses:
+        '200':
+          description: List of secret metadata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SecretListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /secrets/{id}:
+    get:
+      summary: Get a secret by name
+      description: Returns metadata for a single secret. The plaintext value is never returned.
+      operationId: getSecret
+      security:
+        - OAuth2Security:
+            - ap:secret:read
+            - ap:secret:manage
+      tags:
+        - Secrets
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The secret handle (name)
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Secret metadata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SecretSummary'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    put:
+      summary: Rotate a secret value
+      description: |
+        Re-encrypts and stores a new value for an existing secret. The handle is immutable
+        so all `{{ secret "handle" }}` placeholder references across resources remain valid
+        without modification.
+      operationId: rotateSecret
+      security:
+        - OAuth2Security:
+            - ap:secret:update
+            - ap:secret:manage
+      tags:
+        - Secrets
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The secret handle (name)
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/SecretUpdateRequest'
+            example:
+              value: sk-new-rotated-value
+              name: WSO2 OpenAI API Key (rotated)
+      responses:
+        '200':
+          description: Secret rotated successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SecretResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      summary: Delete a secret
+      description: |
+        Soft-deletes a secret by marking it as DEPRECATED. Returns 409 if the secret is
+        still referenced by any LLM provider or API configuration.
+      operationId: deleteSecret
+      security:
+        - OAuth2Security:
+            - ap:secret:delete
+            - ap:secret:manage
+      tags:
+        - Secrets
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The secret handle (name)
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Secret deleted successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Secret is referenced by active resources
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SecretDeleteConflict'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
 components:
   securitySchemes:
     OAuth2Security:
@@ -11094,6 +11309,137 @@ components:
         on_consume:
           $ref: '#/components/schemas/WebBrokerEventPolicies'
 
+    SecretCreateRequest:
+      type: object
+      required:
+        - handle
+        - name
+        - value
+      properties:
+        handle:
+          type: string
+          description: Unique identifier used in {{ secret "handle" }} placeholders. Immutable after creation.
+          example: wso2-openai-key
+        name:
+          type: string
+          description: Human-readable display name for list views
+          example: WSO2 OpenAI API Key
+        description:
+          type: string
+          example: Primary API key for WSO2 OpenAI integration
+        value:
+          type: string
+          description: Plaintext secret value — encrypted at rest, never returned in any response
+          example: sk-xxx
+        type:
+          type: string
+          enum: [GENERIC, CERTIFICATE]
+          default: GENERIC
+
+    SecretUpdateRequest:
+      type: object
+      required:
+        - value
+      properties:
+        name:
+          type: string
+          description: Updated display name
+        description:
+          type: string
+        value:
+          type: string
+          description: New plaintext secret value — re-encrypted at rest
+
+    SecretResponse:
+      type: object
+      description: Returned on create (201) and rotate (200). The plaintext value is never included.
+      properties:
+        uuid:
+          type: string
+          description: UUID of the secret
+          example: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+        handle:
+          type: string
+          example: wso2-openai-key
+        name:
+          type: string
+          example: WSO2 OpenAI API Key
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    SecretSummary:
+      type: object
+      description: Secret metadata — never includes the plaintext value.
+      properties:
+        uuid:
+          type: string
+          description: UUID of the secret
+          example: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+        handle:
+          type: string
+          example: wso2-openai-key
+        name:
+          type: string
+          example: WSO2 OpenAI API Key
+        description:
+          type: string
+        type:
+          type: string
+          enum: [GENERIC, CERTIFICATE]
+        provider:
+          type: string
+          enum: [IN_BUILT]
+        status:
+          type: string
+          enum: [ACTIVE, DEPRECATED]
+        hash:
+          type: string
+          example: hmac-sha256:b94d27b9934d3e08a52e52d7da7dabfac484efe04294e576d4b3d4c57e3f428a
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    SecretListResponse:
+      type: object
+      required:
+        - list
+        - pagination
+      properties:
+        list:
+          type: array
+          items:
+            $ref: '#/components/schemas/SecretSummary'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+    SecretDeleteConflict:
+      type: object
+      properties:
+        error:
+          type: string
+          example: secret is referenced by active resources
+        references:
+          type: array
+          items:
+            type: object
+            properties:
+              type:
+                type: string
+                example: llm_provider
+              handle:
+                type: string
+                example: wso2-openai-provider
+              name:
+                type: string
+                example: WSO2 OpenAI Provider
+
   responses:
     Unauthorized:
       description: Unauthorized. Authentication credentials are missing or invalid.
@@ -11157,6 +11503,16 @@ components:
             message: Internal Server Error
             description: The server encountered an internal error. Please contact
               administrator.
+    ServiceUnavailable:
+      description: Service Unavailable. The secrets management feature is not configured.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: 503
+            message: Service Unavailable
+            description: Secrets management is not configured — set PLATFORM_SECRET_ENCRYPTION_KEY
   parameters:
     organizationId:
       name: organizationId
@@ -11429,3 +11785,5 @@ tags:
     description: MCP proxy deployment operations
   - name: Deployments
     description: Deployment operations for various artifact types
+  - name: Secrets
+    description: Encrypted secret management — create, rotate, and delete organization-scoped secrets referenced via {{ secret "name" }} placeholders
