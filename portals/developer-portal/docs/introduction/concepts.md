@@ -99,4 +99,4 @@ Workflows appear in the **API Workflows** section of the portal and are also exp
 
 A **webhook subscriber** is an HTTPS endpoint you register to receive real-time event notifications from the portal. When a developer generates an API key or changes a subscription, the portal fires a signed HTTP POST to all matching subscribers; what the subscriber does with that event — e.g. propagating the change to an API Gateway — is entirely up to whatever you run behind that endpoint.
 
-See [Gateway Integration](../administer/gateway-integration.md) for configuration details.
+See [Webhook Integration](../administer/webhook-integration.md) for configuration details.

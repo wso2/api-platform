@@ -395,7 +395,7 @@ paths:
         Creates Developer Portal API metadata from either a full API artifact ZIP, an API metadata YAML file (`api.yaml`
         / `devportal.yaml` / `mcp.yaml`), or an `apiMetadata` JSON string. An API definition file is required unless
         supplied by the artifact ZIP. The YAML `spec` block accepts: `displayName`, `version`, `description`, `type`,
-        `status`, `visibility`, `agentVisibility`, `visibleGroups`, `tags`, `labels`, `gatewayType`, `provider`,
+        `status`, `visibility`, `agentVisibility`, `visibleGroups`, `tags`, `labels`, `provider`,
         `referenceID`, `endpoints` (sandboxUrl, productionUrl), `businessInformation` (owners), and `subscriptionPlans`.
         The service also stores labels, subscription plan mappings, image metadata, and schema definitions for MCP or
         GraphQL APIs when provided.
@@ -998,7 +998,6 @@ paths:
                 apiId: api-7f4c2a6b
                 subscriptionToken: a3f1e8b2...
                 subscriptionPlanName: Gold
-                gatewayType: wso2/api-platform
                 status: ACTIVE
                 createdBy: alice@example.com
                 createdAt: "2026-05-07T08:30:00Z"
@@ -2814,7 +2813,7 @@ components:
                   JSON string accepted by the service when the `api` YAML file is not supplied. Accepted top-level
                   fields mirror the YAML spec: `apiInfo` (apiName, apiVersion, apiDescription, apiType, visibility,
                   agentVisibility, apiStatus, provider, referenceID, apiHandle, tags, labels, visibleGroups,
-                  gatewayType, owners), `endPoints` (productionURL, sandboxURL), and `subscriptionPlans` (array of `{
+                  owners), `endPoints` (productionURL, sandboxURL), and `subscriptionPlans` (array of `{
                   planName }` objects — only `planName` is read; the plan must already exist in the organization).
                 example: >-
                   {"apiInfo":{"apiName":"Weather API","apiVersion":"v1","apiDescription":"Weather forecast
@@ -3153,7 +3152,6 @@ components:
               apiType: REST
               visibility: PUBLIC
               agentVisibility: VISIBLE
-              gatewayType: null
               tags:
                 - weather
               labels:
@@ -3185,7 +3183,6 @@ components:
               apiType: REST
               visibility: PUBLIC
               agentVisibility: VISIBLE
-              gatewayType: null
               labels:
                 - default
             endPoints:
@@ -3221,7 +3218,6 @@ components:
                   apiType: REST
                   visibility: PUBLIC
                   agentVisibility: VISIBLE
-                  gatewayType: null
                   labels:
                     - default
                 endPoints:
@@ -3335,7 +3331,6 @@ components:
             apiId: api-7f4c2a6b
             subscriptionToken: a3f1e8b2...
             subscriptionPlanName: Gold
-            gatewayType: wso2/api-platform
             status: ACTIVE
             createdBy: alice@example.com
             createdAt: "2026-05-07T08:30:00Z"
@@ -3867,9 +3862,6 @@ components:
           type: string
         agentVisibility:
           type: string
-        gatewayType:
-          type: string
-          nullable: true
         addedLabels:
           type: array
           items:
@@ -4184,9 +4176,6 @@ components:
         subscriptionPlanName:
           type: string
           example: Gold
-        gatewayType:
-          type: string
-          example: wso2/api-platform
         status:
           type: string
           enum:

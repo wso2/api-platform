@@ -158,13 +158,13 @@ const SAMPLES = [
     // Subscriptions — subscriptionService.formatSubscriptionResponse shape
     ['createSubscription', 201, {
         subscriptionId: 'sub-12345', subscriptionToken: 'tok-abc123',
-        status: 'ACTIVE', gatewayType: 'wso2/api-platform',
+        status: 'ACTIVE',
         apiId: 'api-7f4c2a6b', subscriptionPlanName: 'Gold',
         createdAt: '2026-05-07T08:30:00.000Z',
     }],
     ['updateSubscription', 200, {
         subscriptionId: 'sub-12345', subscriptionToken: 'tok-abc123',
-        status: 'INACTIVE', gatewayType: 'wso2/api-platform',
+        status: 'INACTIVE',
         apiId: 'api-7f4c2a6b', subscriptionPlanName: 'Gold',
         createdAt: '2026-05-07T08:30:00.000Z',
     }],
@@ -231,7 +231,7 @@ const SAMPLES = [
         total: 1,
         events: [{
             eventId: 'evt-abc123', eventType: 'apikey.generated',
-            orgId: 'org-default', gatewayType: 'default',
+            orgId: 'org-default',
             aggregateType: 'apikey', aggregateId: 'key-12345',
             status: 'ALL_DELIVERED', occurredAt: '2026-05-07T08:30:00.000Z',
             deliveries: [{
@@ -245,7 +245,7 @@ const SAMPLES = [
     }],
     ['getWebhookEvent', 200, {
         eventId: 'evt-abc123', eventType: 'apikey.generated',
-        orgId: 'org-default', gatewayType: 'default',
+        orgId: 'org-default',
         aggregateType: 'apikey', aggregateId: 'key-12345',
         status: 'ALL_DELIVERED', occurredAt: '2026-05-07T08:30:00.000Z',
         deliveries: [{

@@ -247,15 +247,6 @@
                   </select>
                 </div>
                 <div class="cfg-form-group">
-                  <label for="wz-gateway">Gateway type</label>
-                  <select id="wz-gateway" class="cfg-form-input">
-                    <option value="Default">Default</option>
-                    <option value="Production and Sandbox">Production and Sandbox</option>
-                    <option value="Production only">Production only</option>
-                    <option value="Sandbox only">Sandbox only</option>
-                  </select>
-                </div>
-                <div class="cfg-form-group">
                   <label for="wz-provider">Provider</label>
                   <input type="text" id="wz-provider" class="cfg-form-input" placeholder="admin" />
                 </div>
@@ -396,7 +387,6 @@
                   <span class="cfg-review-label">Status</span>        <span class="cfg-review-value" id="rv-status">—</span>
                   <span class="cfg-review-label">Provider</span>      <span class="cfg-review-value" id="rv-provider">—</span>
                   <span class="cfg-review-label">Agent visibility</span><span class="cfg-review-value" id="rv-agentvis">—</span>
-                  <span class="cfg-review-label">Gateway type</span>  <span class="cfg-review-value" id="rv-gateway">—</span>
                   <span class="cfg-review-label">Production URL</span><span class="cfg-review-value cfg-review-value--mono" id="rv-prod">—</span>
                   <span class="cfg-review-label">Sandbox URL</span>   <span class="cfg-review-value cfg-review-value--mono" id="rv-sandbox">—</span>
                   <span class="cfg-review-label">Tech owner</span>    <span class="cfg-review-value" id="rv-tech-owner">—</span>
@@ -1014,7 +1004,6 @@
       sv('wz-version',    api.apiVersion);
       sel('wz-type',      api.apiType);
       sel('wz-status',    api.apiStatus);
-      sel('wz-gateway',   api.gatewayType || 'Default');
       sv('wz-provider',   api.provider || 'admin');
       sv('wz-desc',       api.apiDescription);
       sv('wz-tags',       api.tags);
@@ -1029,7 +1018,7 @@
       editingId = null;
       document.getElementById('cfg-wizard-title').textContent = 'Add API';
       ['wz-name','wz-version','wz-handle','wz-provider','wz-desc','wz-tags','wz-prod','wz-sandbox','wz-tech-owner','wz-tech-email','wz-biz-owner','wz-biz-email'].forEach(function(id){ sv(id,''); });
-      sel('wz-type','REST'); sel('wz-status','CREATED'); sel('wz-gateway','Default');
+      sel('wz-type','REST'); sel('wz-status','CREATED');
       agentVis = 'Visible';
       document.getElementById('wz-vis-visible').classList.add('active');
       document.getElementById('wz-vis-hidden').classList.remove('active');
@@ -1088,7 +1077,6 @@
     set('rv-status',    v('wz-status') === 'PUBLISHED' ? 'Published' : 'Created');
     set('rv-provider',  v('wz-provider'));
     set('rv-agentvis',  agentVis);
-    set('rv-gateway',   v('wz-gateway'));
     set('rv-prod',      v('wz-prod'));
     set('rv-sandbox',   v('wz-sandbox'));
     set('rv-tech-owner',v('wz-tech-owner'));
@@ -1114,7 +1102,6 @@
         apiHandle:      v('wz-handle') || undefined,
         apiType:        document.getElementById('wz-type').value,
         apiStatus:      document.getElementById('wz-status').value,
-        gatewayType:    v('wz-gateway') || undefined,
         provider:       v('wz-provider') || undefined,
         apiDescription: v('wz-desc') || undefined,
         tags:           v('wz-tags') ? v('wz-tags').split(',').map(function(t){return t.trim();}).filter(Boolean) : [],
@@ -1369,7 +1356,6 @@
       row('Version', api.apiVersion),
       row('Provider', api.provider),
       row('Agent visibility', api.agentVisibility),
-      row('Gateway type', api.gatewayType),
       row('Production URL', api.productionUrl, true),
       row('Sandbox URL', api.sandboxUrl, true),
       row('Tags', api.tags),

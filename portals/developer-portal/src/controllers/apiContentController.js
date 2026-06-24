@@ -496,7 +496,7 @@ const loadDocsPage = async (req, res) => {
         const apiMetadata = await loadAPIMetaDataFromFile(apiHandle);
         const docNames = apiMetadata.docTypes;
         const metaForNav = {
-            apiInfo: { gatewayType: apiMetadata.apiInfo?.gatewayType },
+            apiInfo: {},
             apiReferenceID: apiMetadata.apiReferenceID,
         };
         const templateContent = {
@@ -532,9 +532,8 @@ const loadDocsPage = async (req, res) => {
 
             const apiMetadata = await apiDao.get(orgID, apiID);
             let apiType = apiMetadata[0].dataValues.API_TYPE;
-            const gatewayType = apiMetadata[0].dataValues.GATEWAY_TYPE;
             const metaForNav = {
-                apiInfo: { gatewayType },
+                apiInfo: {},
                 apiReferenceID: apiMetadata[0].dataValues.REFERENCE_ID,
             };
 
@@ -627,7 +626,7 @@ const loadDocument = async (req, res) => {
         templateContent.currentDocName = docName || null;
         templateContent.currentDocType = docType || null;
         templateContent.apiName = metaData.apiInfo?.apiName || '';
-        const metaForNav = { apiInfo: { gatewayType: metaData.apiInfo?.gatewayType }, apiReferenceID: metaData.apiReferenceID };
+        const metaForNav = { apiInfo: {}, apiReferenceID: metaData.apiReferenceID };
         templateContent.showApiKeysNav = apiUsesApiKeySecurity(metaForNav);
         const html = renderTemplate(layoutPath + 'pages/docs/page.hbs', layoutPath + 'layout/main.hbs', templateContent, false);
         res.send(html);
@@ -772,7 +771,7 @@ const loadDocument = async (req, res) => {
             templateContent.devportalMode = devportalMode;
             const row = apiMetadata[0].dataValues;
             const metaForNav = {
-                apiInfo: { gatewayType: row.GATEWAY_TYPE },
+                apiInfo: {},
                 apiReferenceID: row.REFERENCE_ID,
             };
             templateContent.showApiKeysNav = apiUsesApiKeySecurity(metaForNav);

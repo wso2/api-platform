@@ -53,7 +53,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "apiId": "api-7f4c2a6b",
   "subscriptionToken": "a3f1e8b2...",
   "subscriptionPlanName": "Gold",
-  "gatewayType": "wso2/api-platform",
   "status": "ACTIVE",
   "createdBy": "alice@example.com",
   "createdAt": "2026-05-07T08:30:00Z"
@@ -183,7 +182,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
       "apiId": "api-7f4c2a6b",
       "subscriptionToken": "a3f1...",
       "subscriptionPlanName": "Gold",
-      "gatewayType": "wso2/api-platform",
       "status": "ACTIVE",
       "createdBy": "alice@example.com",
       "createdAt": "2019-08-24T14:15:22Z"
@@ -269,7 +267,6 @@ Status Code **200**
 |»» apiId|string|false|none|Developer Portal API ID.|
 |»» subscriptionToken|string|false|none|Plaintext subscription token. Present on create and when the token has not been encrypted at rest.|
 |»» subscriptionPlanName|string|false|none|none|
-|»» gatewayType|string|false|none|none|
 |»» status|string|false|none|none|
 |»» createdBy|string|false|none|Identity (sub claim) of the user who created the subscription.|
 |»» createdAt|string(date-time)|false|none|none|
@@ -335,7 +332,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "apiId": "api-7f4c2a6b",
   "subscriptionToken": "a3f1e8b2...",
   "subscriptionPlanName": "Gold",
-  "gatewayType": "wso2/api-platform",
   "status": "ACTIVE",
   "createdBy": "alice@example.com",
   "createdAt": "2026-05-07T08:30:00Z"
@@ -424,7 +420,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "apiId": "api-7f4c2a6b",
   "subscriptionToken": "a3f1e8b2...",
   "subscriptionPlanName": "Gold",
-  "gatewayType": "wso2/api-platform",
   "status": "ACTIVE",
   "createdBy": "alice@example.com",
   "createdAt": "2026-05-07T08:30:00Z"

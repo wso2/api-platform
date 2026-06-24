@@ -30,7 +30,7 @@ async function create({ apiId, subscriptionId, orgId, name, expiresAt, createdBy
 async function get(orgId, keyId, transaction) {
     return APIKey.findOne({
         where: { KEY_ID: keyId, ORG_ID: orgId },
-        include: [{ model: APIMetadata, attributes: ['API_ID', 'GATEWAY_TYPE', 'API_NAME'] }],
+        include: [{ model: APIMetadata, attributes: ['API_ID', 'API_NAME'] }],
         transaction
     });
 }
@@ -43,7 +43,7 @@ async function list(orgId, { apiId, subscriptionId, status } = {}) {
     return APIKey.findAll({
         where,
         order: [['CREATED_AT', 'DESC']],
-        include: [{ model: APIMetadata, attributes: ['API_ID', 'GATEWAY_TYPE', 'API_NAME'] }]
+        include: [{ model: APIMetadata, attributes: ['API_ID', 'API_NAME'] }]
     });
 }
 

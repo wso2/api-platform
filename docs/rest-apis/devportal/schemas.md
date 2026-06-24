@@ -400,7 +400,6 @@ xor
     "apiType": "string",
     "visibility": "string",
     "agentVisibility": "string",
-    "gatewayType": "string",
     "addedLabels": [
       "string"
     ],
@@ -486,7 +485,6 @@ xor
     "apiType": "string",
     "visibility": "string",
     "agentVisibility": "string",
-    "gatewayType": "string",
     "addedLabels": [
       "string"
     ],
@@ -566,7 +564,6 @@ xor
   "apiType": "string",
   "visibility": "string",
   "agentVisibility": "string",
-  "gatewayType": "string",
   "addedLabels": [
     "string"
   ],
@@ -609,7 +606,6 @@ xor
 |apiType|string|false|none|none|
 |visibility|string|false|none|none|
 |agentVisibility|string|false|none|none|
-|gatewayType|string¦null|false|none|none|
 |addedLabels|[string]|false|none|none|
 |removedLabels|[string]|false|none|none|
 |visibleGroups|[string]|false|none|none|
@@ -1127,7 +1123,6 @@ xor
   "apiId": "api-7f4c2a6b",
   "subscriptionToken": "a3f1...",
   "subscriptionPlanName": "Gold",
-  "gatewayType": "wso2/api-platform",
   "status": "ACTIVE",
   "createdBy": "alice@example.com",
   "createdAt": "2019-08-24T14:15:22Z"
@@ -1145,7 +1140,6 @@ Subscription payload.
 |apiId|string|false|none|Developer Portal API ID.|
 |subscriptionToken|string|false|none|Plaintext subscription token. Present on create and when the token has not been encrypted at rest.|
 |subscriptionPlanName|string|false|none|none|
-|gatewayType|string|false|none|none|
 |status|string|false|none|none|
 |createdBy|string|false|none|Identity (sub claim) of the user who created the subscription.|
 |createdAt|string(date-time)|false|none|none|
