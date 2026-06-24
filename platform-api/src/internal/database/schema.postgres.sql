@@ -272,17 +272,23 @@ CREATE TABLE IF NOT EXISTS deployment_status (
 CREATE TABLE IF NOT EXISTS llm_provider_templates (
     uuid VARCHAR(40) PRIMARY KEY,
     handle VARCHAR(255) NOT NULL,
+    group_version_id VARCHAR(255) NOT NULL, -- RENAME to group_version_id
     name VARCHAR(255) NOT NULL,
+    managed_by VARCHAR(255) NOT NULL DEFAULT 'customer', --wso2/ other
     version VARCHAR(30) NOT NULL DEFAULT '1.0',
     description VARCHAR(1023),
     configuration JSONB NOT NULL,
+    openapi_spec TEXT,
+    is_latest BOOLEAN NOT NULL DEFAULT TRUE,
+    enabled BOOLEAN NOT NULL DEFAULT TRUE,
     created_by VARCHAR(200),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_by VARCHAR(200),
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     organization_uuid VARCHAR(40) NOT NULL,
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
-    UNIQUE(organization_uuid, handle)
+    UNIQUE(organization_uuid, group_version_id,  version)
+    UNIQUE(organization_uuid,  handle)
 );
 
 -- LLM Providers table
