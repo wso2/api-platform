@@ -313,6 +313,78 @@ CREATE TABLE dbo.deployment_status (
     FOREIGN KEY (deployment_id) REFERENCES deployments(deployment_id) ON DELETE CASCADE
 );
 
+-- Artifact Associations table (for gateways)
+IF OBJECT_ID(N'dbo.gateway_associations', N'U') IS NULL
+CREATE TABLE dbo.gateway_associations (
+    id INT IDENTITY(1,1) PRIMARY KEY,
+    artifact_uuid VARCHAR(40) NOT NULL,
+    organization_uuid VARCHAR(40) NOT NULL,
+    gateway_uuid VARCHAR(40) NOT NULL,
+    metadata NVARCHAR(MAX),
+    created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
+    updated_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
+    FOREIGN KEY (artifact_uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (gateway_uuid) REFERENCES gateways(uuid) ON DELETE CASCADE,
+    UNIQUE(artifact_uuid, gateway_uuid, organization_uuid)
+);
+
+-- DevPortals table
+IF OBJECT_ID(N'dbo.devportals', N'U') IS NULL
+CREATE TABLE dbo.devportals (
+    uuid VARCHAR(40) PRIMARY KEY,
+    organization_uuid VARCHAR(40) NOT NULL,
+    name VARCHAR(100) NOT NULL,
+    identifier VARCHAR(100) NOT NULL,
+    api_url VARCHAR(255) NOT NULL,
+    hostname VARCHAR(255) NOT NULL,
+    api_key VARCHAR(255) NOT NULL,
+    header_key_name VARCHAR(100) DEFAULT 'x-wso2-api-key',
+    is_active BIT DEFAULT 0,
+    is_enabled BIT DEFAULT 0,
+    is_default BIT DEFAULT 0,
+    visibility VARCHAR(20) NOT NULL DEFAULT 'private',
+    description VARCHAR(500),
+    created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
+    updated_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
+    UNIQUE(organization_uuid, api_url),
+    UNIQUE(organization_uuid, hostname)
+);
+
+-- API-DevPortal Publication Tracking Table
+-- This table tracks which APIs are published to which DevPortals
+
+IF OBJECT_ID(N'dbo.publication_mappings', N'U') IS NULL
+CREATE TABLE dbo.publication_mappings (
+    api_uuid VARCHAR(40) NOT NULL,
+    devportal_uuid VARCHAR(40) NOT NULL,
+    organization_uuid VARCHAR(40) NOT NULL,
+    status VARCHAR(20) NOT NULL CHECK (status IN ('published', 'failed', 'publishing')),
+    api_version VARCHAR(50),
+    devportal_ref_id VARCHAR(100),
+
+    -- Gateway endpoints for sandbox and production
+    sandbox_endpoint_url VARCHAR(500) NOT NULL,
+    production_endpoint_url VARCHAR(500) NOT NULL,
+
+    -- Timestamps
+    created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
+    updated_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
+
+    -- Foreign key constraints
+    PRIMARY KEY (api_uuid, devportal_uuid, organization_uuid),
+    -- Only the devportal edge cascades. The api and organization edges are
+    -- NO ACTION to avoid the SQL Server multiple-cascade-paths restriction
+    -- (error 1785). API deletion removes publication rows explicitly in
+    -- application code (APIRepo.DeleteAPI), and organization deletes reach them
+    -- through organizations -> devportals -> publication_mappings.
+    FOREIGN KEY (api_uuid) REFERENCES rest_apis(uuid) ON DELETE NO ACTION,
+    FOREIGN KEY (devportal_uuid) REFERENCES devportals(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE NO ACTION,
+    UNIQUE (api_uuid, devportal_uuid, organization_uuid)
+);
+
 -- LLM Provider Templates table
 IF OBJECT_ID(N'dbo.llm_provider_templates', N'U') IS NULL
 CREATE TABLE dbo.llm_provider_templates (
