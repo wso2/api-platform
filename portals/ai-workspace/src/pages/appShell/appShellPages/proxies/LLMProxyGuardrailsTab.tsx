@@ -173,6 +173,7 @@ export default function LLMProxyGuardrailsTab() {
   const [editingTarget, setEditingTarget] = useState<{
     policyIndex: number;
     pathIndex: number | null;
+    source: 'global' | 'operation' | 'legacy';
   } | null>(null);
   const [selectedCategories, setSelectedCategories] = useState<string[]>(['AI']);
   const [drawerGuardrails, setDrawerGuardrails] = useState<typeof availableGuardrails>([]);
@@ -227,43 +228,68 @@ export default function LLMProxyGuardrailsTab() {
   const getDisplayName = (policyName: string): string =>
     displayNameMap[policyName] || policyName;
 
-  const globalGuardrails = useMemo(
-    () =>
-      policies.flatMap((policy, policyIndex) => {
-        const version = policy.version
-          ? `v${policy.version.split('.')[0]}`
-          : 'v0';
-        const displayName = getDisplayName(policy.name);
-        if (!policy.paths || policy.paths.length === 0) {
-          return [
-            {
-              id: `${policy.name}-${version}-${policyIndex}-default`,
+  const globalGuardrails = useMemo(() => {
+    const items: Array<{
+      id: string;
+      name: string;
+      displayName: string;
+      version: string;
+      source: 'global' | 'legacy';
+      policyIndex: number;
+      pathIndex: number | null;
+    }> = [];
+
+    // New globalPolicies list
+    (proxy?.globalPolicies ?? []).forEach((policy, policyIndex) => {
+      const version = policy.version
+        ? `v${policy.version.replace(/^v/, '').split('.')[0]}`
+        : 'v0';
+      items.push({
+        id: `global-${policy.name}-${version}-${policyIndex}`,
+        name: policy.name,
+        displayName: getDisplayName(policy.name),
+        version,
+        source: 'global',
+        policyIndex,
+        pathIndex: null,
+      });
+    });
+
+    // Legacy policies with path === '/*'
+    policies.forEach((policy, policyIndex) => {
+      const version = policy.version
+        ? `v${policy.version.split('.')[0]}`
+        : 'v0';
+      const displayName = getDisplayName(policy.name);
+      if (!policy.paths || policy.paths.length === 0) {
+        items.push({
+          id: `legacy-${policy.name}-${version}-${policyIndex}-default`,
+          name: policy.name,
+          displayName,
+          version,
+          source: 'legacy',
+          policyIndex,
+          pathIndex: null,
+        });
+      } else {
+        policy.paths.forEach((pathConfig, pathIndex) => {
+          if (pathConfig.path === '/*') {
+            items.push({
+              id: `legacy-${policy.name}-${version}-${policyIndex}-${pathIndex}`,
               name: policy.name,
               displayName,
               version,
+              source: 'legacy',
               policyIndex,
-              pathIndex: null as number | null,
-            },
-          ];
-        }
+              pathIndex,
+            });
+          }
+        });
+      }
+    });
 
-        return policy.paths.flatMap((pathConfig, pathIndex) =>
-          pathConfig.path === '/*'
-            ? [
-                {
-                  id: `${policy.name}-${version}-${policyIndex}-${pathIndex}`,
-                  name: policy.name,
-                  displayName,
-                  version,
-                  policyIndex,
-                  pathIndex,
-                },
-              ]
-            : []
-        );
-      }),
-    [policies, displayNameMap]
-  );
+    return items;
+  }, [proxy?.globalPolicies, policies, displayNameMap]);
 
   const resources = useMemo(
     () => parseOpenApiText(proxy?.openapi || ''),
@@ -294,17 +320,38 @@ export default function LLMProxyGuardrailsTab() {
   const handleEditGuardrailPill = (
     policyIndex: number,
     pathIndex: number | null,
-    scope: DrawerContext
+    scope: DrawerContext,
+    source: 'global' | 'operation' | 'legacy'
   ) => {
-    const policy = policies[policyIndex];
-    if (!policy) return;
+    let policyName: string;
+    let existingParams: ParameterValues = {};
 
-    const existingParams =
-      pathIndex !== null ? policy.paths?.[pathIndex]?.params ?? {} : {};
+    if (source === 'global') {
+      const policy = (proxy?.globalPolicies ?? [])[policyIndex];
+      if (!policy) return;
+      policyName = policy.name;
+      existingParams = (policy.params as ParameterValues) ?? {};
+    } else if (source === 'operation') {
+      const policy = (proxy?.operationPolicies ?? [])[policyIndex];
+      if (!policy) return;
+      policyName = policy.name;
+      existingParams =
+        pathIndex !== null
+          ? ((policy.paths[pathIndex]?.params as ParameterValues) ?? {})
+          : {};
+    } else {
+      const policy = policies[policyIndex];
+      if (!policy) return;
+      policyName = policy.name;
+      existingParams =
+        pathIndex !== null
+          ? ((policy.paths?.[pathIndex]?.params as ParameterValues) ?? {})
+          : {};
+    }
 
-    setEditingTarget({ policyIndex, pathIndex });
+    setEditingTarget({ policyIndex, pathIndex, source });
     setDrawerContext(scope);
-    setSelectedGuardrail(policy.name);
+    setSelectedGuardrail(policyName);
     setGuardrailSettings(existingParams);
     setIsDetailView(true);
     setPolicyDefinition(null);
@@ -312,7 +359,7 @@ export default function LLMProxyGuardrailsTab() {
     setDrawerOpen(true);
 
     const guardrailMeta = availableGuardrails.find(
-      (g) => g.name === policy.name
+      (g) => g.name === policyName
     );
     if (!guardrailMeta?.version) {
       setDefinitionError('No version available for this guardrail.');
@@ -391,63 +438,105 @@ export default function LLMProxyGuardrailsTab() {
   const handlePolicySubmit = async (params: ParameterValues) => {
     if (!proxy || !selectedGuardrailPolicy) return;
 
-    const updatedPolicies = (() => {
-      // Edit mode: update existing policy path params
-      if (editingTarget) {
-        const { policyIndex, pathIndex } = editingTarget;
-        const updated = [...policies];
-        const existing = updated[policyIndex];
-        if (!existing) return policies;
-
-        if (pathIndex !== null) {
-          const existingPaths = [...(existing.paths ?? [])];
-          existingPaths[pathIndex] = {
-            ...existingPaths[pathIndex],
-            params,
-          };
-          updated[policyIndex] = { ...existing, paths: existingPaths };
-        }
-        return updated;
+    if (editingTarget) {
+      const { policyIndex, pathIndex, source } = editingTarget;
+      if (source === 'global') {
+        setLocalProxy((prev) => {
+          if (!prev) return prev;
+          const globalPolicies = [...(prev.globalPolicies ?? [])];
+          globalPolicies[policyIndex] = { ...globalPolicies[policyIndex], params };
+          return { ...prev, globalPolicies };
+        });
+      } else if (source === 'operation') {
+        setLocalProxy((prev) => {
+          if (!prev) return prev;
+          const operationPolicies = [...(prev.operationPolicies ?? [])];
+          const existing = operationPolicies[policyIndex];
+          const paths = [...existing.paths];
+          if (pathIndex !== null) {
+            paths[pathIndex] = { ...paths[pathIndex], params };
+          }
+          operationPolicies[policyIndex] = { ...existing, paths };
+          return { ...prev, operationPolicies };
+        });
+      } else {
+        // legacy
+        setLocalProxy((prev) => {
+          if (!prev) return prev;
+          const updated = [...(prev.policies ?? [])];
+          const existing = updated[policyIndex];
+          if (!existing) return prev;
+          if (pathIndex !== null) {
+            const existingPaths = [...(existing.paths ?? [])];
+            existingPaths[pathIndex] = { ...existingPaths[pathIndex], params };
+            updated[policyIndex] = { ...existing, paths: existingPaths };
+          }
+          return { ...prev, policies: updated };
+        });
       }
-
-      // Add mode: add new policy path
-      const nextPath = buildPolicyPath(params);
-      const existingIndex = policies.findIndex(
-        (p) =>
-          p.name === selectedGuardrailPolicy.name &&
-          p.version === selectedGuardrailVersion
-      );
-
-      if (existingIndex === -1) {
-        return [
-          ...policies,
-          {
+    } else if (drawerContext.scope === 'global') {
+      // Add mode — global scope → globalPolicies
+      setLocalProxy((prev) => {
+        if (!prev) return prev;
+        const globalPolicies = [...(prev.globalPolicies ?? [])];
+        const existingIndex = globalPolicies.findIndex(
+          (p) =>
+            p.name === selectedGuardrailPolicy.name &&
+            p.version === selectedGuardrailVersion
+        );
+        if (existingIndex === -1) {
+          globalPolicies.push({
             name: selectedGuardrailPolicy.name,
             version: selectedGuardrailVersion,
-            paths: [nextPath],
-          },
-        ];
-      }
-
-      const existing = policies[existingIndex];
-      const existingPaths = existing.paths ?? [];
-
-      const updated = [...policies];
-      updated[existingIndex] = {
-        ...existing,
-        paths: [...existingPaths, nextPath],
-      };
-      return updated;
-    })();
-
-    setLocalProxy((prev) =>
-      prev
-        ? {
-            ...prev,
-            policies: updatedPolicies,
+            params,
+          });
+        } else {
+          globalPolicies[existingIndex] = {
+            ...globalPolicies[existingIndex],
+            params,
+          };
+        }
+        return { ...prev, globalPolicies };
+      });
+    } else {
+      // Add mode — resource scope → operationPolicies
+      const resourcePath = drawerContext.path;
+      const resourceMethod = drawerContext.method;
+      const newPathEntry = { path: resourcePath, methods: [resourceMethod], params };
+      setLocalProxy((prev) => {
+        if (!prev) return prev;
+        const operationPolicies = [...(prev.operationPolicies ?? [])];
+        const existingPolicyIndex = operationPolicies.findIndex(
+          (p) =>
+            p.name === selectedGuardrailPolicy.name &&
+            p.version === selectedGuardrailVersion
+        );
+        if (existingPolicyIndex === -1) {
+          operationPolicies.push({
+            name: selectedGuardrailPolicy.name,
+            version: selectedGuardrailVersion,
+            paths: [newPathEntry],
+          });
+        } else {
+          const existing = operationPolicies[existingPolicyIndex];
+          const alreadyHasPath = existing.paths.some(
+            (p) =>
+              p.path === resourcePath &&
+              p.methods
+                .map((m) => m.toUpperCase())
+                .includes(resourceMethod.toUpperCase())
+          );
+          if (!alreadyHasPath) {
+            operationPolicies[existingPolicyIndex] = {
+              ...existing,
+              paths: [...existing.paths, newPathEntry],
+            };
           }
-        : prev
-    );
+        }
+        return { ...prev, operationPolicies };
+      });
+    }
+
     setGuardrailSettings(params);
     setDrawerOpen(false);
     setIsDetailView(false);
@@ -455,33 +544,52 @@ export default function LLMProxyGuardrailsTab() {
 
   const handleRemoveAppliedGuardrail = (
     policyIndex: number,
-    pathIndex: number | null
+    pathIndex: number | null,
+    source: 'global' | 'operation' | 'legacy'
   ) => {
-    setLocalProxy((prev) => {
-      if (!prev) return prev;
-      const existingPolicies = prev.policies ?? [];
-
-      const updatedPolicies = existingPolicies.flatMap((policy, index) => {
-        if (index !== policyIndex) return [policy];
-
-        if (pathIndex === null) {
-          return [];
-        }
-
-        const existingPaths = policy.paths ?? [];
-        const nextPaths = existingPaths.filter((_, idx) => idx !== pathIndex);
-        if (nextPaths.length === 0) {
-          return [];
-        }
-
-        return [{ ...policy, paths: nextPaths }];
+    if (source === 'global') {
+      setLocalProxy((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          globalPolicies: (prev.globalPolicies ?? []).filter(
+            (_, idx) => idx !== policyIndex
+          ),
+        };
       });
-
-      return {
-        ...prev,
-        policies: updatedPolicies,
-      };
-    });
+    } else if (source === 'operation') {
+      setLocalProxy((prev) => {
+        if (!prev) return prev;
+        const operationPolicies = [...(prev.operationPolicies ?? [])];
+        const existing = operationPolicies[policyIndex];
+        if (pathIndex !== null) {
+          const paths = existing.paths.filter((_, idx) => idx !== pathIndex);
+          if (paths.length === 0) {
+            operationPolicies.splice(policyIndex, 1);
+          } else {
+            operationPolicies[policyIndex] = { ...existing, paths };
+          }
+        } else {
+          operationPolicies.splice(policyIndex, 1);
+        }
+        return { ...prev, operationPolicies };
+      });
+    } else {
+      // legacy
+      setLocalProxy((prev) => {
+        if (!prev) return prev;
+        const existingPolicies = prev.policies ?? [];
+        const updatedPolicies = existingPolicies.flatMap((policy, index) => {
+          if (index !== policyIndex) return [policy];
+          if (pathIndex === null) return [];
+          const existingPaths = policy.paths ?? [];
+          const nextPaths = existingPaths.filter((_, idx) => idx !== pathIndex);
+          if (nextPaths.length === 0) return [];
+          return [{ ...policy, paths: nextPaths }];
+        });
+        return { ...prev, policies: updatedPolicies };
+      });
+    }
   };
 
   // ── Render ──────────────────────────────────────────────────────────────
@@ -537,10 +645,10 @@ export default function LLMProxyGuardrailsTab() {
                 onClick={() =>
                   handleEditGuardrailPill(g.policyIndex, g.pathIndex, {
                     scope: 'global',
-                  })
+                  }, g.source)
                 }
                 onRemove={() =>
-                  void handleRemoveAppliedGuardrail(g.policyIndex, g.pathIndex)
+                  void handleRemoveAppliedGuardrail(g.policyIndex, g.pathIndex, g.source)
                 }
               />
             ))}
@@ -637,6 +745,9 @@ export default function LLMProxyGuardrailsTab() {
               <Stack spacing={1.25}>
                 {(() => {
                   const hasResourcePolicy = (resource: ResourceItem) =>
+                    (proxy?.operationPolicies ?? []).some((policy) =>
+                      policy.paths.some((pc) => matchesResource(pc, resource))
+                    ) ||
                     policies.some((policy) =>
                       (policy.paths ?? []).some(
                         (pc) =>
@@ -692,9 +803,31 @@ export default function LLMProxyGuardrailsTab() {
                         name: string;
                         displayName: string;
                         version: string;
+                        source: 'operation' | 'legacy';
                         policyIndex: number;
                         pathIndex: number;
                       }> = [];
+                      // New operationPolicies
+                      (proxy?.operationPolicies ?? []).forEach(
+                        (policy, policyIndex) => {
+                          policy.paths.forEach((pc, pathIndex) => {
+                            if (!matchesResource(pc, resource)) return;
+                            const version = policy.version
+                              ? `v${policy.version.replace(/^v/, '').split('.')[0]}`
+                              : 'v0';
+                            items.push({
+                              id: `op-${policy.name}-${version}-${policyIndex}-${pathIndex}`,
+                              name: policy.name,
+                              displayName: getDisplayName(policy.name),
+                              version,
+                              source: 'operation',
+                              policyIndex,
+                              pathIndex,
+                            });
+                          });
+                        }
+                      );
+                      // Legacy policies
                       policies.forEach((policy, policyIndex) => {
                         (policy.paths ?? []).forEach((pc, pathIndex) => {
                           if (pc.path === '/*') return;
@@ -702,12 +835,12 @@ export default function LLMProxyGuardrailsTab() {
                           const version = policy.version
                             ? `v${policy.version.split('.')[0]}`
                             : 'v0';
-                          const displayName = getDisplayName(policy.name);
                           items.push({
-                            id: `${policy.name}-${version}-${policyIndex}-${pathIndex}`,
+                            id: `legacy-${policy.name}-${version}-${policyIndex}-${pathIndex}`,
                             name: policy.name,
-                            displayName,
+                            displayName: getDisplayName(policy.name),
                             version,
+                            source: 'legacy',
                             policyIndex,
                             pathIndex,
                           });
@@ -818,13 +951,15 @@ export default function LLMProxyGuardrailsTab() {
                                                 scope: 'resource',
                                                 method,
                                                 path: resource.path,
-                                              }
+                                              },
+                                              g.source
                                             )
                                           }
                                           onRemove={() =>
                                             void handleRemoveAppliedGuardrail(
                                               g.policyIndex,
-                                              g.pathIndex
+                                              g.pathIndex,
+                                              g.source
                                             )
                                           }
                                         />
