@@ -533,22 +533,11 @@ func (r *APIRepo) CheckAPIExistsByNameAndVersionInOrganization(name, version, or
 
 // CreateAPIAssociation creates a gateway-API association in gateway_association_mappings.
 func (r *APIRepo) CreateAPIAssociation(association *model.APIAssociation) error {
-	if r.db.Driver() == "postgres" || r.db.Driver() == "postgresql" {
-		query := `
-			INSERT INTO gateway_association_mappings (artifact_uuid, organization_uuid, gateway_uuid, created_at, updated_at)
-			VALUES (?, ?, ?, ?, ?)
-			ON CONFLICT (organization_uuid, artifact_uuid, gateway_uuid) DO UPDATE SET updated_at = EXCLUDED.updated_at
-		`
-		_, err := r.db.Exec(r.db.Rebind(query),
-			association.ArtifactID, association.OrganizationID, association.GatewayID,
-			association.CreatedAt, association.UpdatedAt)
-		return err
-	}
 	query := `
-		INSERT OR REPLACE INTO gateway_association_mappings (artifact_uuid, organization_uuid, gateway_uuid, created_at, updated_at)
+		INSERT INTO gateway_association_mappings (artifact_uuid, organization_uuid, gateway_uuid, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?)
 	`
-	_, err := r.db.Exec(r.db.Rebind(query),
+	_, err := r.db.Exec(query,
 		association.ArtifactID, association.OrganizationID, association.GatewayID,
 		association.CreatedAt, association.UpdatedAt)
 	return err

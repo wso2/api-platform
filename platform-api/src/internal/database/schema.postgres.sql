@@ -382,6 +382,21 @@ CREATE TABLE IF NOT EXISTS websub_apis (
 );
 CREATE INDEX IF NOT EXISTS idx_websub_apis_project ON websub_apis(project_uuid);
 
+-- WebSub API HMAC secrets table (for inbound webhook event verification)
+CREATE TABLE IF NOT EXISTS websub_api_hmac_secrets (
+    uuid VARCHAR(40) PRIMARY KEY,
+    artifact_uuid VARCHAR(40) NOT NULL,
+    name VARCHAR(63) NOT NULL,
+    display_name VARCHAR(255),
+    encrypted_secret TEXT NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'active',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (artifact_uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
+    UNIQUE(artifact_uuid, name)
+);
+CREATE INDEX IF NOT EXISTS idx_websub_api_hmac_secrets_artifact ON websub_api_hmac_secrets(artifact_uuid);
+
 -- WEBBROKER APIs table
 CREATE TABLE IF NOT EXISTS webbroker_apis (
     uuid VARCHAR(40) PRIMARY KEY,

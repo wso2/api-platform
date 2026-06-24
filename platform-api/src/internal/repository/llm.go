@@ -163,13 +163,14 @@ func (r *LLMProviderTemplateRepo) GetByUUID(uuid, orgUUID string) (*model.LLMPro
 }
 
 func (r *LLMProviderTemplateRepo) List(orgUUID string, limit, offset int) ([]*model.LLMProviderTemplate, error) {
-	rows, err := r.db.Query(r.db.Rebind(`
+	pageClause, pageArgs := r.db.PaginationClause(limit, offset)
+	query := `
 		SELECT uuid, organization_uuid, handle, name, description, managed_by, created_by, configuration, created_at, updated_at
 		FROM llm_provider_templates
 		WHERE organization_uuid = ?
 		ORDER BY created_at DESC
-		LIMIT ? OFFSET ?
-	`), orgUUID, limit, offset)
+		` + pageClause
+	rows, err := r.db.Query(r.db.Rebind(query), append([]any{orgUUID}, pageArgs...)...)
 	if err != nil {
 		return nil, err
 	}
@@ -390,16 +391,18 @@ func (r *LLMProviderRepo) GetByID(providerID, orgUUID string) (*model.LLMProvide
 }
 
 func (r *LLMProviderRepo) List(orgUUID string, limit, offset int) ([]*model.LLMProvider, error) {
+	pageClause, pageArgs := r.db.PaginationClause(limit, offset)
+	args := append([]any{orgUUID, constants.LLMProvider}, pageArgs...)
 	query := `
 		SELECT
-			p.uuid, p.handle, p.name, p.version, p.organization_uuid, p.created_at, p.updated_at,
-			p.description, p.created_by, p.template_uuid, p.openapi_spec, p.model_list, p.configuration
-		FROM llm_providers p
-		JOIN artifacts a ON a.uuid = p.uuid
-		WHERE p.organization_uuid = ? AND a.type = ?
-		ORDER BY p.created_at DESC
-		LIMIT ? OFFSET ?`
-	rows, err := r.db.Query(r.db.Rebind(query), orgUUID, constants.LLMProvider, limit, offset)
+			a.uuid, a.handle, a.name, a.version, a.organization_uuid, a.created_at, a.updated_at,
+			p.description, p.created_by, p.template_uuid, p.openapi_spec, p.model_list, p.status, p.configuration
+		FROM artifacts a
+		JOIN llm_providers p ON a.uuid = p.uuid
+		WHERE a.organization_uuid = ? AND a.kind = ?
+		ORDER BY a.created_at DESC
+		` + pageClause
+	rows, err := r.db.Query(r.db.Rebind(query), args...)
 	if err != nil {
 		return nil, err
 	}
@@ -640,17 +643,19 @@ func (r *LLMProxyRepo) GetByID(proxyID, orgUUID string) (*model.LLMProxy, error)
 }
 
 func (r *LLMProxyRepo) List(orgUUID string, limit, offset int) ([]*model.LLMProxy, error) {
+	pageClause, pageArgs := r.db.PaginationClause(limit, offset)
+	args := append([]any{orgUUID, constants.LLMProxy}, pageArgs...)
 	query := `
 		SELECT
 			p.uuid, p.handle, p.name, p.version, p.organization_uuid, p.created_at, p.updated_at,
 			p.project_uuid, p.description, p.created_by, p.provider_uuid,
-			p.openapi_spec, p.configuration
-		FROM llm_proxies p
-		JOIN artifacts a ON a.uuid = p.uuid
-		WHERE p.organization_uuid = ? AND a.type = ?
-		ORDER BY p.created_at DESC
-		LIMIT ? OFFSET ?`
-	rows, err := r.db.Query(r.db.Rebind(query), orgUUID, constants.LLMProxy, limit, offset)
+			p.openapi_spec, p.status, p.configuration
+		FROM artifacts a
+		JOIN llm_proxies p ON a.uuid = p.uuid
+		WHERE a.organization_uuid = ? AND a.kind = ?
+		ORDER BY a.created_at DESC
+		` + pageClause
+	rows, err := r.db.Query(r.db.Rebind(query), args...)
 	if err != nil {
 		return nil, err
 	}
@@ -684,17 +689,19 @@ func (r *LLMProxyRepo) List(orgUUID string, limit, offset int) ([]*model.LLMProx
 }
 
 func (r *LLMProxyRepo) ListByProject(orgUUID, projectUUID string, limit, offset int) ([]*model.LLMProxy, error) {
+	pageClause, pageArgs := r.db.PaginationClause(limit, offset)
+	args := append([]any{orgUUID, projectUUID, constants.LLMProxy}, pageArgs...)
 	query := `
 		SELECT
 			p.uuid, p.handle, p.name, p.version, p.organization_uuid, p.created_at, p.updated_at,
 			p.project_uuid, p.description, p.created_by, p.provider_uuid,
-			p.openapi_spec, p.configuration
-		FROM llm_proxies p
-		JOIN artifacts a ON a.uuid = p.uuid
-		WHERE p.organization_uuid = ? AND p.project_uuid = ? AND a.type = ?
-		ORDER BY p.created_at DESC
-		LIMIT ? OFFSET ?`
-	rows, err := r.db.Query(r.db.Rebind(query), orgUUID, projectUUID, constants.LLMProxy, limit, offset)
+			p.openapi_spec, p.status, p.configuration
+		FROM artifacts a
+		JOIN llm_proxies p ON a.uuid = p.uuid
+		WHERE a.organization_uuid = ? AND p.project_uuid = ? AND a.kind = ?
+		ORDER BY a.created_at DESC
+		` + pageClause
+	rows, err := r.db.Query(r.db.Rebind(query), args...)
 	if err != nil {
 		return nil, err
 	}
@@ -728,17 +735,19 @@ func (r *LLMProxyRepo) ListByProject(orgUUID, projectUUID string, limit, offset 
 }
 
 func (r *LLMProxyRepo) ListByProvider(orgUUID, providerUUID string, limit, offset int) ([]*model.LLMProxy, error) {
+	pageClause, pageArgs := r.db.PaginationClause(limit, offset)
+	args := append([]any{orgUUID, providerUUID, constants.LLMProxy}, pageArgs...)
 	query := `
 		SELECT
 			p.uuid, p.handle, p.name, p.version, p.organization_uuid, p.created_at, p.updated_at,
 			p.project_uuid, p.description, p.created_by, p.provider_uuid,
-			p.openapi_spec, p.configuration
-		FROM llm_proxies p
-		JOIN artifacts a ON a.uuid = p.uuid
-		WHERE p.organization_uuid = ? AND p.provider_uuid = ? AND a.type = ?
-		ORDER BY p.created_at DESC
-		LIMIT ? OFFSET ?`
-	rows, err := r.db.Query(r.db.Rebind(query), orgUUID, providerUUID, constants.LLMProxy, limit, offset)
+			p.openapi_spec, p.status, p.configuration
+		FROM artifacts a
+		JOIN llm_proxies p ON a.uuid = p.uuid
+		WHERE a.organization_uuid = ? AND p.provider_uuid = ? AND a.kind = ?
+		ORDER BY a.created_at DESC
+		` + pageClause
+	rows, err := r.db.Query(r.db.Rebind(query), args...)
 	if err != nil {
 		return nil, err
 	}

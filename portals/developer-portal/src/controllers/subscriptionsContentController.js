@@ -52,7 +52,7 @@ const loadSubscriptions = async (req, res) => {
                 apiName: sub.DP_API_METADATA?.API_NAME || '',
                 apiVersion: sub.DP_API_METADATA?.API_VERSION || '',
                 apiHandle: sub.DP_API_METADATA?.API_HANDLE || '#',
-                planName: sub.DP_SUBSCRIPTION_POLICY?.POLICY_NAME || '',
+                planName: sub.DP_SUBSCRIPTION_PLAN?.PLAN_NAME || '',
                 status: sub.STATUS,
                 subscriptionToken: sub.SUB_TOKEN,
                 createdAt: sub.CREATED_AT || null,
@@ -147,7 +147,7 @@ const loadAPISubscriptions = async (req, res) => {
                 apiVersion: sub.DP_API_METADATA?.API_VERSION || metaData?.apiInfo?.apiVersion || '',
                 apiHandle: sub.DP_API_METADATA?.API_HANDLE || apiHandle,
                 apiRefId: sub.API_ID,
-                planName: sub.DP_SUBSCRIPTION_POLICY?.POLICY_NAME || '',
+                planName: sub.DP_SUBSCRIPTION_PLAN?.PLAN_NAME || '',
                 status: sub.STATUS,
                 subscriptionToken: sub.SUB_TOKEN,
                 createdAt: sub.CREATED_AT || null,
@@ -170,7 +170,7 @@ const loadAPISubscriptions = async (req, res) => {
         if (metaData?.apiInfo?.apiType !== constants.API_TYPE.GRAPHQL && metaData?.apiInfo?.apiType !== constants.API_TYPE.MCP) {
             try {
                 const apiFile = await apiFileDao.getDoc(constants.DOC_TYPES.API_DEFINITION, orgID, apiID);
-                apiDefinitionForNav = apiFile?.API_FILE?.toString(constants.CHARSET_UTF8) || null;
+                apiDefinitionForNav = apiFile?.FILE_CONTENT?.toString(constants.CHARSET_UTF8) || null;
             } catch (definitionErr) {
                 logger.debug('Could not load API definition for API keys nav check', {
                     orgID,
@@ -190,7 +190,7 @@ const loadAPISubscriptions = async (req, res) => {
             apiHandle: apiHandle,
             isReadOnlyMode: config.readOnlyMode,
             showApiKeysNav: apiUsesApiKeySecurity(metaData, apiDefinitionForNav),
-            showSubscriptionsNav: (metaData?.subscriptionPolicies || []).length > 0,
+            showSubscriptionsNav: (metaData?.subscriptionPlans || []).length > 0,
         };
 
         html = await renderTemplateFromAPI(templateContent, orgID, orgName, 'pages/api-subscriptions', viewName);

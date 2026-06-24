@@ -99,11 +99,11 @@ async function resolveSubscription(orgId, subscriptionId) {
     if (!subscriptionId) return null;
     const sub = await subDao.getById(orgId, subscriptionId);
     if (!sub) return null;
-    const policy = sub.DP_SUBSCRIPTION_POLICY;
+    const plan = sub.DP_SUBSCRIPTION_PLAN;
     return {
         ref_id: sub.SUB_ID,
-        plan_ref_id: policy ? (policy.REF_ID || null) : null,
-        plan_name: policy ? (policy.POLICY_NAME || policy.DISPLAY_NAME || null) : null
+        plan_ref_id: plan ? (plan.REF_ID || null) : null,
+        plan_name: plan ? (plan.PLAN_NAME || plan.DISPLAY_NAME || null) : null
     };
 }
 

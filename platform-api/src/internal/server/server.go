@@ -21,9 +21,11 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/hex"
 	"encoding/pem"
 	"fmt"
 	"log/slog"
@@ -224,6 +226,24 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	mcpProxyService := service.NewMCPProxyService(mcpProxyRepo, projectRepo, deploymentRepo, gatewayRepo, gatewayEventsService, slogger, auditRepo)
 	websubAPIService := service.NewWebSubAPIService(websubAPIRepo, projectRepo, gatewayRepo, gatewayEventsService, apiUtil, slogger, auditRepo)
 	webbrokerAPIService := service.NewWebBrokerAPIService(webbrokerAPIRepo, projectRepo, gatewayRepo, gatewayEventsService, apiUtil, slogger, auditRepo)
+
+	// Initialize the shared database encryption key used for all encrypted DB columns.
+	// DATABASE_SUBSCRIPTION_TOKEN_ENCRYPTION_KEY is accepted as a legacy alias.
+	// DeriveEncryptionKey requires 64-char hex or base64-to-32-bytes; when falling back to
+	// the raw JWT secret (arbitrary length), hash it to a valid 64-char hex key.
+	dbEncryptionKey := cfg.Database.EncryptionKey
+	if dbEncryptionKey == "" && cfg.Auth.JWT.SecretKey != "" {
+		h := sha256.Sum256([]byte(cfg.Auth.JWT.SecretKey))
+		dbEncryptionKey = hex.EncodeToString(h[:])
+	}
+	hmacSecretRepo := repository.NewWebSubAPIHmacSecretRepo(db)
+	hmacSecretService, hmacErr := service.NewWebSubAPIHmacSecretService(
+		hmacSecretRepo, websubAPIRepo, gatewayEventsService, gatewayRepo,
+		dbEncryptionKey, slogger,
+	)
+	if hmacErr != nil {
+		slogger.Warn("WebSub HMAC secret service disabled — no valid encryption key configured", "error", hmacErr)
+	}
 	llmProviderDeploymentService := service.NewLLMProviderDeploymentService(
 		llmProviderRepo,
 		llmTemplateRepo,
@@ -288,7 +308,8 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	subscriptionPlanHandler := handler.NewSubscriptionPlanHandler(subscriptionPlanService, slogger)
 	appHandler := handler.NewApplicationHandler(appService, slogger)
 	wsHandler := handler.NewWebSocketHandler(wsManager, gatewayService, deploymentService, cfg.WebSocket.RateLimitPerMin, slogger)
-	internalGatewayHandler := handler.NewGatewayInternalAPIHandler(gatewayService, internalGatewayService, slogger)
+	internalGatewayHandler := handler.NewGatewayInternalAPIHandler(gatewayService, internalGatewayService, hmacSecretService, slogger)
+	hmacSecretHandler := handler.NewWebSubAPIHmacSecretHandler(hmacSecretService, slogger)
 	apiKeyHandler := handler.NewAPIKeyHandler(apiKeyService, slogger)
 	gitHandler := handler.NewGitHandler(gitService, slogger)
 	deploymentHandler := handler.NewDeploymentHandler(deploymentService, slogger)
@@ -413,6 +434,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	websubAPIHandler.RegisterRoutes(router)
 	websubAPIKeyHandler.RegisterRoutes(router)
 	websubAPIDeploymentHandler.RegisterRoutes(router)
+	hmacSecretHandler.RegisterRoutes(router)
 	webbrokerAPIHandler.RegisterRoutes(router)
 	webbrokerAPIKeyHandler.RegisterRoutes(router)
 	webbrokerAPIDeploymentHandler.RegisterRoutes(router)

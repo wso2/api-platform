@@ -54,14 +54,10 @@ const update = async (apiImages, orgID, apiID, t) => {
                 })
             } else {
                 const apiImageDataUpdate = await APIImageMetadata.update({
-                    IMAGE_NAME: apiImages[propertyKey],
-                    IMAGE_TAG: propertyKey
+                    IMAGE_NAME: apiImages[propertyKey]
                 }, {
                     where: {
-                        [Op.or]: [
-                            { IMAGE_TAG: apiImageResponse.IMAGE_TAG },
-                            { IMAGE_NAME: apiImageResponse.IMAGE_NAME }
-                        ],
+                        IMAGE_TAG: propertyKey,
                         API_ID: apiID
                     },
                     include: [
@@ -95,10 +91,7 @@ const getMetadata = async (imageTag, imageName, orgID, apiID, t) => {
     try {
         const apiImageData = await APIImageMetadata.findOne({
             where: {
-                [Op.or]: [
-                    { IMAGE_TAG: imageTag },
-                    { IMAGE_NAME: imageName }
-                ],
+                IMAGE_TAG: imageTag,
                 API_ID: apiID
             },
             include: [

@@ -45,9 +45,9 @@
                     <input type="hidden" id="modal-selected-app-{{apiID}}" value="" />
 
                     <div class="row row-gap-4 pt-3">
-                        {{#each subscriptionPolicyDetails}}
+                        {{#each subscriptionPlanDetails}}
                         <div class="col-12 col-md-6 col-lg-4">
-                            <div id="subscriptionCard-{{policyID}}" class="card dev-card subscription-card">
+                            <div id="subscriptionCard-{{planID}}" class="card dev-card subscription-card">
                                 <div class="card-body align-items-center text-center p-0">
                                     <span class="subscription-plans-card-title">{{displayName}}</span>
                                     <div class="mb-3 w-100">
@@ -56,12 +56,12 @@
                                             <span class="fw-bold d-inline" style="color: #0f172a; font-size: 25px;">{{requestCount}}<small class="text-muted d-inline" style="font-size: 11px;">&nbsp;req/min</small></span>
                                         </div>
                                     </div>
-                                    <button id="subscribe-btn-{{policyID}}" type="button"
+                                    <button id="subscribe-btn-{{planID}}" type="button"
                                         class="common-btn-primary p-1 ps-2 pe-2 w-100 subscription-plan-subscribe-btn {{#if @root.isReadOnlyMode}}disabled{{/if}}"
                                         data-org-id="{{@root.orgID}}"
                                         data-api-id="{{#if apiID}}{{apiID}}{{else}}{{../apiID}}{{/if}}"
-                                        data-policy-id="{{policyID}}"
-                                        data-policy-name="{{policyName}}"
+                                        data-plan-id="{{planID}}"
+                                        data-plan-name="{{planName}}"
                                         data-display-name="{{displayName}}"
                                         {{#unless @root.isReadOnlyMode}}onclick="handlePlanSubscription(this)"{{/unless}}
                                         {{#if @root.isReadOnlyMode}}disabled aria-disabled="true"{{/if}}>Subscribe</button>

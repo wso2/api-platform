@@ -215,12 +215,12 @@ function buildApiMetadataPayload(name, version, description, remotes, title, pub
 }
 
 /**
- * Parses schema content from a DP_API_CONTENT row's API_FILE buffer.
+ * Parses schema content from a DP_API_CONTENT row's FILE_CONTENT buffer.
  */
 function parseSchema(contentRow) {
     if (!contentRow) return null;
     try {
-        const raw = contentRow.API_FILE;
+        const raw = contentRow.FILE_CONTENT;
         const str = Buffer.isBuffer(raw) ? raw.toString('utf-8') : String(raw);
         return JSON.parse(str);
     } catch (e) {

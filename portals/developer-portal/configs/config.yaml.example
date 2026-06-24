@@ -194,6 +194,25 @@ defaultOrgName: "default"
 
 generateDefaultSubPolicies: true
 
+# ─── Features ──────────────────────────────────────────────────────────────────
+
+features:
+  apiWorkflows:
+    enabled: false   # Show the "API Workflows" page in the portal sidebar
+
+# ─── Design Mode ───────────────────────────────────────────────────────────────
+# Enables local design/preview mode: APIs and layouts are loaded from the
+# filesystem instead of the database. Intended for content authoring and theming
+# workflows — do NOT enable in a production environment.
+
+# designMode:
+#   enabled: false
+#   pathToLayout: "./resources/default-layout/"   # Layout directory to load templates from
+#   apiSamplesPath: "./samples/apis/"             # Directory containing sample api.yaml files
+#   mcpSamplesPath: "./samples/mcps/"             # Directory containing sample MCP api.yaml files
+#   subscriptionPlansPath: "./samples/subscription-plans.yaml"
+#   applicationsPath: "./samples/applications.yaml"
+
 # ─────────────────────────────────────────────────────────
 # Outbound webhooks (gateway event delivery)
 # ─────────────────────────────────────────────────────────

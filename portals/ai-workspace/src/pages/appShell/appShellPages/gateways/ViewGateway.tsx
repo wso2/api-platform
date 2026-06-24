@@ -62,7 +62,7 @@ import { useAppShell } from "../../../../contexts/AppShellContext";
 import { buildOrgPath } from "../../../../utils/projectRouting";
 import { useAIWorkspaceSnackbar } from "../../../../hooks/aiWorkspaceSnackbar";
 import {
-  PLATFORM_GATEWAY_VERSION,
+  PLATFORM_GATEWAY_VERSIONS,
   PLATFORM_API_BASE_URL,
   CONTROLPLANE_HOST,
 } from "../../../../config.env";
@@ -90,16 +90,13 @@ import type { ColorScheme } from "../../../../utils/colorScheme";
 import AIGatewayStepBanner from "../quickStart/AIGatewayStepBanner";
 import ErrorAlert from "../../../../Components/common/ErrorAlert";
 
-// Constants for gateway setup
-const GATEWAY_VERSION = PLATFORM_GATEWAY_VERSION;
-const GATEWAY_VERSION_HELM = GATEWAY_VERSION.startsWith("v")
-  ? GATEWAY_VERSION.slice(1)
-  : GATEWAY_VERSION;
-
-const GATEWAY_BASE_VERSION = GATEWAY_VERSION_HELM.replace(/-.*$/, "");
-const GATEWAY_ZIP_NAME = `wso2apip-ai-gateway-${GATEWAY_VERSION_HELM}`;
-const GATEWAY_FOLDER_NAME = `wso2apip-ai-gateway-${GATEWAY_BASE_VERSION}`;
-const GATEWAY_ENV_FILE = `${GATEWAY_FOLDER_NAME}/configs/keys.env`;
+const resolveGatewayVersion = (gatewayVersion?: string): string => {
+  const entry = gatewayVersion
+    ? PLATFORM_GATEWAY_VERSIONS.find((v) => v.version === gatewayVersion)
+    : PLATFORM_GATEWAY_VERSIONS[0];
+  if (!entry) return gatewayVersion ? `v${gatewayVersion}` : 'v1.0.0';
+  return entry.latestVersion ?? `v${entry.version}`;
+};
 
 const getPlatformApiBaseUrl = (): string => {
   return PLATFORM_API_BASE_URL;
@@ -118,91 +115,6 @@ function getInitials(name: string): string {
   if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
   return `${words[0][0]}${words[1][0]}`.toUpperCase();
 }
-// Helper functions for generating setup commands
-const getSetupGatewayDisplayCommand = () =>
-  `curl -sLO https://github.com/wso2/api-platform/releases/download/ai-gateway/${GATEWAY_VERSION}/${GATEWAY_ZIP_NAME}.zip && \\
-unzip ${GATEWAY_ZIP_NAME}.zip`;
-
-const getSetupGatewayCopyCommand = () => getSetupGatewayDisplayCommand();
-
-const getConfigureGatewayDisplayCommand = (moesifKey: string | null) => {
-  const controlPlaneHost = CONTROLPLANE_HOST;
-  const moesifLine = moesifKey ? `MOESIF_KEY=<your-moesif-key>\n` : "";
-  return `cat > ${GATEWAY_ENV_FILE} << 'ENVFILE'
-${moesifLine}GATEWAY_CONTROLPLANE_HOST=${controlPlaneHost}
-GATEWAY_REGISTRATION_TOKEN=<your-gateway-token>
-ENVFILE`;
-};
-
-const getConfigureGatewayCopyCommand = (
-  registrationToken: string | null,
-  moesifKey: string | null,
-) => {
-  const controlPlaneHost = CONTROLPLANE_HOST;
-  const tokenValue = registrationToken || "<your-gateway-token>";
-  const moesifLine = moesifKey ? `MOESIF_KEY=${moesifKey}\n` : "";
-  return `cat > ${GATEWAY_ENV_FILE} << 'ENVFILE'
-${moesifLine}GATEWAY_CONTROLPLANE_HOST=${controlPlaneHost}
-GATEWAY_REGISTRATION_TOKEN=${tokenValue}
-ENVFILE`;
-};
-
-const getStep3NavigateCommand = () => `cd ${GATEWAY_FOLDER_NAME}`;
-
-const getStartGatewayDisplayCommand = () =>
-  `docker compose --env-file configs/keys.env up`;
-
-const getStartGatewayCopyCommand = () => getStartGatewayDisplayCommand();
-
-const getK8sCustomHelmDisplayCommand = (moesifKey: string | null) => {
-  const controlPlaneHost = CONTROLPLANE_HOST;
-  const lines = [
-    `helm install gateway oci://ghcr.io/wso2/api-platform/helm-charts/gateway --version ${GATEWAY_VERSION_HELM} \\`,
-    `  --set gateway.controller.controlPlane.host="${controlPlaneHost}" \\`,
-    "  --set gateway.controller.controlPlane.port=443 \\",
-    '  --set gateway.controller.controlPlane.token.value="your-gateway-token"',
-  ];
-
-  if (moesifKey) {
-    lines[lines.length - 1] += " \\";
-    lines.push(
-      "  --set gateway.config.analytics.publishers.moesif.application_id=<your-moesif-key>",
-    );
-    lines[lines.length - 1] += " \\";
-  } else {
-    lines[lines.length - 1] += " \\";
-  }
-
-  lines.push("  --set gateway.config.analytics.enabled=true");
-  return lines.join("\n");
-};
-
-const getK8sCustomHelmCopyCommand = (
-  registrationToken: string | null,
-  moesifKey: string | null,
-) => {
-  const tokenValue = registrationToken || "your-gateway-token";
-  const controlPlaneHost = CONTROLPLANE_HOST;
-  const lines = [
-    `helm install gateway oci://ghcr.io/wso2/api-platform/helm-charts/gateway --version ${GATEWAY_VERSION_HELM} \\`,
-    `  --set gateway.controller.controlPlane.host="${controlPlaneHost}" \\`,
-    "  --set gateway.controller.controlPlane.port=443 \\",
-    `  --set gateway.controller.controlPlane.token.value="${tokenValue}"`,
-  ];
-
-  if (moesifKey) {
-    lines[lines.length - 1] += " \\";
-    lines.push(
-      `  --set gateway.config.analytics.publishers.moesif.application_id="${moesifKey}"`,
-    );
-    lines[lines.length - 1] += " \\";
-  } else {
-    lines[lines.length - 1] += " \\";
-  }
-
-  lines.push("  --set gateway.config.analytics.enabled=true");
-  return lines.join("\n");
-};
 
 type TabPanelProps = {
   value: number;
@@ -317,6 +229,97 @@ export default function ViewGateway() {
   const [registrationToken, setRegistrationTokenState] = useState<
     string | null
   >(() => getRegistrationToken());
+
+  // Version vars derived from the gateway's stored version
+  const gatewayVersion = resolveGatewayVersion(gateway?.version);
+  const gatewayVersionHelm = gatewayVersion.startsWith("v")
+    ? gatewayVersion.slice(1)
+    : gatewayVersion;
+  const gatewayBaseVersion = gatewayVersionHelm.replace(/-.*$/, "");
+  const gatewayZipName = `wso2apip-ai-gateway-${gatewayVersionHelm}`;
+  const gatewayFolderName = `wso2apip-ai-gateway-${gatewayBaseVersion}`;
+  const gatewayEnvFile = `${gatewayFolderName}/configs/keys.env`;
+
+  const getSetupGatewayDisplayCommand = () =>
+    `curl -sLO https://github.com/wso2/api-platform/releases/download/ai-gateway/${gatewayVersion}/${gatewayZipName}.zip && \\
+unzip ${gatewayZipName}.zip`;
+
+  const getSetupGatewayCopyCommand = () => getSetupGatewayDisplayCommand();
+
+  const getConfigureGatewayDisplayCommand = (moesifKey: string | null) => {
+    const controlPlaneHost = CONTROLPLANE_HOST;
+    const moesifLine = moesifKey ? `MOESIF_KEY=<your-moesif-key>\n` : "";
+    return `cat > ${gatewayEnvFile} << 'ENVFILE'
+${moesifLine}GATEWAY_CONTROLPLANE_HOST=${controlPlaneHost}
+GATEWAY_REGISTRATION_TOKEN=<your-gateway-token>
+ENVFILE`;
+  };
+
+  const getConfigureGatewayCopyCommand = (
+    token: string | null,
+    moesifKey: string | null,
+  ) => {
+    const controlPlaneHost = CONTROLPLANE_HOST;
+    const tokenValue = token || "<your-gateway-token>";
+    const moesifLine = moesifKey ? `MOESIF_KEY=${moesifKey}\n` : "";
+    return `cat > ${gatewayEnvFile} << 'ENVFILE'
+${moesifLine}GATEWAY_CONTROLPLANE_HOST=${controlPlaneHost}
+GATEWAY_REGISTRATION_TOKEN=${tokenValue}
+ENVFILE`;
+  };
+
+  const getStep3NavigateCommand = () => `cd ${gatewayFolderName}`;
+
+  const getStartGatewayDisplayCommand = () =>
+    `docker compose --env-file configs/keys.env up`;
+
+  const getStartGatewayCopyCommand = () => getStartGatewayDisplayCommand();
+
+  const getK8sCustomHelmDisplayCommand = (moesifKey: string | null) => {
+    const controlPlaneHost = CONTROLPLANE_HOST;
+    const lines = [
+      `helm install gateway oci://ghcr.io/wso2/api-platform/helm-charts/gateway --version ${gatewayVersionHelm} \\`,
+      `  --set gateway.controller.controlPlane.host="${controlPlaneHost}" \\`,
+      "  --set gateway.controller.controlPlane.port=443 \\",
+      '  --set gateway.controller.controlPlane.token.value="your-gateway-token"',
+    ];
+    if (moesifKey) {
+      lines[lines.length - 1] += " \\";
+      lines.push(
+        "  --set gateway.config.analytics.publishers.moesif.application_id=<your-moesif-key>",
+      );
+      lines[lines.length - 1] += " \\";
+    } else {
+      lines[lines.length - 1] += " \\";
+    }
+    lines.push("  --set gateway.config.analytics.enabled=true");
+    return lines.join("\n");
+  };
+
+  const getK8sCustomHelmCopyCommand = (
+    token: string | null,
+    moesifKey: string | null,
+  ) => {
+    const tokenValue = token || "your-gateway-token";
+    const controlPlaneHost = CONTROLPLANE_HOST;
+    const lines = [
+      `helm install gateway oci://ghcr.io/wso2/api-platform/helm-charts/gateway --version ${gatewayVersionHelm} \\`,
+      `  --set gateway.controller.controlPlane.host="${controlPlaneHost}" \\`,
+      "  --set gateway.controller.controlPlane.port=443 \\",
+      `  --set gateway.controller.controlPlane.token.value="${tokenValue}"`,
+    ];
+    if (moesifKey) {
+      lines[lines.length - 1] += " \\";
+      lines.push(
+        `  --set gateway.config.analytics.publishers.moesif.application_id="${moesifKey}"`,
+      );
+      lines[lines.length - 1] += " \\";
+    } else {
+      lines[lines.length - 1] += " \\";
+    }
+    lines.push("  --set gateway.config.analytics.enabled=true");
+    return lines.join("\n");
+  };
 
   // Clear the token when leaving the page
   useEffect(() => {
@@ -687,6 +690,13 @@ GATEWAY_REGISTRATION_TOKEN=${registrationToken || ""}`;
                 <Typography variant="h3">
                   {gateway?.displayName || gateway?.name}
                 </Typography>
+                {gateway?.version && (
+                  <Chip
+                    label={`AI-Gateway v${gateway.version}`}
+                    size="small"
+                    variant="outlined"
+                  />
+                )}
                 <Chip
                   label={gateway?.isActive ? "Active" : "Inactive"}
                   size="small"
@@ -940,7 +950,7 @@ GATEWAY_REGISTRATION_TOKEN=${registrationToken || ""}`;
                       color="text.secondary"
                       sx={{ mb: 2 }}
                     >
-                      Run this command to create {GATEWAY_ENV_FILE} with the
+                      Run this command to create {gatewayEnvFile} with the
                       required environment variables:
                     </Typography>
                     <TextField
@@ -1234,7 +1244,7 @@ GATEWAY_REGISTRATION_TOKEN=${registrationToken || ""}`;
                       color="text.secondary"
                       sx={{ mb: 2 }}
                     >
-                      Run this command to create {GATEWAY_ENV_FILE} with the
+                      Run this command to create {gatewayEnvFile} with the
                       required environment variables:
                     </Typography>
                     <TextField
@@ -1459,7 +1469,7 @@ GATEWAY_REGISTRATION_TOKEN=${registrationToken || ""}`;
                       color="text.secondary"
                       sx={{ mb: 2 }}
                     >
-                      Run this command to create {GATEWAY_ENV_FILE} with the
+                      Run this command to create {gatewayEnvFile} with the
                       required environment variables:
                     </Typography>
                     <TextField

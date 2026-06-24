@@ -26,7 +26,7 @@ const View = sequelize.define('DP_VIEWS', {
     },
     ORG_ID: {
         type: DataTypes.UUID,
-        defaultValue: Sequelize.UUIDV4,
+        allowNull: false,
     },
     NAME: {
         type: DataTypes.STRING,

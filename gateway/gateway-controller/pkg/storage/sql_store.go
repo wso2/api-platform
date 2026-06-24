@@ -19,6 +19,7 @@
 package storage
 
 import (
+	"context"
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
@@ -54,14 +55,24 @@ type sqlStore struct {
 	isUniqueViolation func(error) bool
 
 	backendName string
+
+	// ctx is the store lifecycle context passed to every DB call. It is
+	// cancelled by Close(), so in-flight queries are interrupted on shutdown
+	// rather than blocking db.Close(). Request-scoped cancellation would
+	// require threading a context through the Storage interface methods.
+	ctx    context.Context
+	cancel context.CancelFunc
 }
 
 func newSQLStore(db *sql.DB, logger *slog.Logger, backendName string, gatewayId string) *sqlStore {
+	ctx, cancel := context.WithCancel(context.Background())
 	return &sqlStore{
 		db:          db,
 		logger:      logger,
 		gatewayId:   gatewayId,
 		backendName: backendName,
+		ctx:         ctx,
+		cancel:      cancel,
 		// Defaults are identity/false; backends can override.
 		rebindQuery:       func(query string) string { return query },
 		isUniqueViolation: func(error) bool { return false },
@@ -76,23 +87,154 @@ func (s *sqlStore) bind(query string) string {
 }
 
 func (s *sqlStore) exec(query string, args ...interface{}) (sql.Result, error) {
-	return s.db.Exec(s.bind(query), args...)
+	return s.db.ExecContext(s.ctx, s.bind(query), args...)
 }
 
 func (s *sqlStore) queryRow(query string, args ...interface{}) *sql.Row {
-	return s.db.QueryRow(s.bind(query), args...)
+	return s.db.QueryRowContext(s.ctx, s.bind(query), args...)
 }
 
 func (s *sqlStore) query(query string, args ...interface{}) (*sql.Rows, error) {
-	return s.db.Query(s.bind(query), args...)
+	return s.db.QueryContext(s.ctx, s.bind(query), args...)
 }
 
 func (s *sqlStore) prepare(query string) (*sql.Stmt, error) {
-	return s.db.Prepare(s.bind(query))
+	return s.db.PrepareContext(s.ctx, s.bind(query))
+}
+
+// ExecQ / QueryRowQ let *sqlStore satisfy rowExecer so the same helpers
+// (e.g. upsert) work both standalone and inside a transaction (*sqlStoreTx).
+func (s *sqlStore) ExecQ(query string, args ...interface{}) (sql.Result, error) {
+	return s.exec(query, args...)
+}
+
+func (s *sqlStore) QueryRowQ(query string, args ...interface{}) *sql.Row {
+	return s.queryRow(query, args...)
+}
+
+// rowExecer is implemented by both *sqlStore and *sqlStoreTx, letting query
+// helpers run either standalone or within a transaction.
+type rowExecer interface {
+	ExecQ(query string, args ...interface{}) (sql.Result, error)
+	QueryRowQ(query string, args ...interface{}) *sql.Row
+}
+
+// upsertSpec describes a portable INSERT-or-UPDATE. All SQL it generates is
+// plain ANSI (INSERT / UPDATE / SELECT with `?` placeholders), so it runs
+// unchanged on SQLite, PostgreSQL and SQL Server — no ON CONFLICT / MERGE /
+// RETURNING. Where the previous ON CONFLICT clauses referenced excluded.<col>
+// (the incoming row), callers pass that value as a bound parameter instead;
+// references to the existing row stay as bare column names.
+type upsertSpec struct {
+	table        string        // target table
+	columns      []string      // INSERT column list
+	insertValues []interface{} // values for the INSERT (len == len(columns))
+	keyColumns   []string      // unique/conflict key columns (UPDATE & SELECT WHERE)
+	keyValues    []interface{} // values for keyColumns
+	setClauses   []string      // UPDATE assignments, e.g. "display_name = ?"
+	setValues    []interface{} // values for the `?` in setClauses (in order)
+	guard        string        // optional extra UPDATE predicate, e.g. "(deployed_at IS NULL OR deployed_at < ?)"
+	guardValues  []interface{} // values for the `?` in guard
+}
+
+// upsert performs a portable insert-or-update. It first runs a guarded UPDATE;
+// if no row matches it checks existence and INSERTs only when absent. This
+// preserves the previous ON CONFLICT ... WHERE <guard> semantics:
+// didWrite is false only when the row already exists and the guard rejected the
+// update (e.g. a newer row is already stored).
+func (s *sqlStore) upsert(e rowExecer, spec upsertSpec) (didWrite bool, err error) {
+	whereSQL := equalityPredicate(spec.keyColumns)
+
+	update := fmt.Sprintf("UPDATE %s SET %s WHERE %s",
+		spec.table, strings.Join(spec.setClauses, ", "), whereSQL)
+	updateArgs := make([]interface{}, 0, len(spec.setValues)+len(spec.keyValues)+len(spec.guardValues))
+	updateArgs = append(updateArgs, spec.setValues...)
+	updateArgs = append(updateArgs, spec.keyValues...)
+	if spec.guard != "" {
+		update += " AND " + spec.guard
+		updateArgs = append(updateArgs, spec.guardValues...)
+	}
+
+	res, err := e.ExecQ(update, updateArgs...)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	if n > 0 {
+		return true, nil
+	}
+
+	// No row updated: either the row is absent, or it exists but the guard
+	// rejected the update. Only INSERT when it is genuinely absent.
+	exists, err := s.rowExists(e, spec.table, whereSQL, spec.keyValues)
+	if err != nil {
+		return false, err
+	}
+	if exists {
+		return false, nil // guard rejected; keep the existing row
+	}
+
+	insert := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)",
+		spec.table, strings.Join(spec.columns, ", "), repeatPlaceholders(len(spec.columns)))
+	if _, ierr := e.ExecQ(insert, spec.insertValues...); ierr != nil {
+		if !s.isUniqueViolation(ierr) {
+			return false, ierr
+		}
+		// Lost a race with a concurrent insert, or a different unique
+		// constraint collided. Retry the guarded UPDATE against the key.
+		res2, uerr := e.ExecQ(update, updateArgs...)
+		if uerr != nil {
+			return false, uerr
+		}
+		if n2, _ := res2.RowsAffected(); n2 > 0 {
+			return true, nil
+		}
+		// Key row now exists but the guard rejected it → keep existing.
+		// Otherwise the violation came from another unique constraint → surface it.
+		if again, _ := s.rowExists(e, spec.table, whereSQL, spec.keyValues); again {
+			return false, nil
+		}
+		return false, ierr
+	}
+	return true, nil
+}
+
+// rowExists reports whether a row matching whereSQL (built from key columns)
+// exists, using portable SELECT 1.
+func (s *sqlStore) rowExists(e rowExecer, table, whereSQL string, keyValues []interface{}) (bool, error) {
+	var one int
+	err := e.QueryRowQ(fmt.Sprintf("SELECT 1 FROM %s WHERE %s", table, whereSQL), keyValues...).Scan(&one)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
+}
+
+// equalityPredicate joins columns into "c1 = ? AND c2 = ?".
+func equalityPredicate(columns []string) string {
+	parts := make([]string, len(columns))
+	for i, c := range columns {
+		parts[i] = c + " = ?"
+	}
+	return strings.Join(parts, " AND ")
+}
+
+// repeatPlaceholders returns "?, ?, ..." with n placeholders.
+func repeatPlaceholders(n int) string {
+	if n <= 0 {
+		return ""
+	}
+	return strings.TrimSuffix(strings.Repeat("?, ", n), ", ")
 }
 
 func (s *sqlStore) begin() (*sqlStoreTx, error) {
-	tx, err := s.db.Begin()
+	tx, err := s.db.BeginTx(s.ctx, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -105,15 +247,15 @@ type sqlStoreTx struct {
 }
 
 func (t *sqlStoreTx) ExecQ(query string, args ...interface{}) (sql.Result, error) {
-	return t.tx.Exec(t.store.bind(query), args...)
+	return t.tx.ExecContext(t.store.ctx, t.store.bind(query), args...)
 }
 
 func (t *sqlStoreTx) QueryRowQ(query string, args ...interface{}) *sql.Row {
-	return t.tx.QueryRow(t.store.bind(query), args...)
+	return t.tx.QueryRowContext(t.store.ctx, t.store.bind(query), args...)
 }
 
 func (t *sqlStoreTx) QueryQ(query string, args ...interface{}) (*sql.Rows, error) {
-	return t.tx.Query(t.store.bind(query), args...)
+	return t.tx.QueryContext(t.store.ctx, t.store.bind(query), args...)
 }
 
 func (t *sqlStoreTx) Commit() error {
@@ -230,7 +372,7 @@ func (s *sqlStore) SaveConfig(cfg *models.StoredConfig) error {
 		}
 	}()
 
-	stmt, err := tx.tx.Prepare(s.bind(query))
+	stmt, err := tx.tx.PrepareContext(s.ctx, s.bind(query))
 	if err != nil {
 		return fmt.Errorf("failed to prepare statement: %w", err)
 	}
@@ -257,7 +399,8 @@ func (s *sqlStore) SaveConfig(cfg *models.StoredConfig) error {
 	if cfg.CPArtifactID != "" {
 		cpArtifactID = cfg.CPArtifactID
 	}
-	_, err = stmt.Exec(
+	_, err = stmt.ExecContext(
+		s.ctx,
 		cfg.UUID,
 		s.gatewayId,
 		cfg.DisplayName,
@@ -346,7 +489,7 @@ func (s *sqlStore) UpdateConfig(cfg *models.StoredConfig) error {
 		}
 	}()
 
-	stmt, err := tx.tx.Prepare(s.bind(query))
+	stmt, err := tx.tx.PrepareContext(s.ctx, s.bind(query))
 	if err != nil {
 		metrics.DatabaseOperationsTotal.WithLabelValues("update", table, "error").Inc()
 		metrics.StorageErrorsTotal.WithLabelValues("update", "prepare_error").Inc()
@@ -374,7 +517,8 @@ func (s *sqlStore) UpdateConfig(cfg *models.StoredConfig) error {
 	if cfg.CPArtifactID != "" {
 		updateCPArtifactID = cfg.CPArtifactID
 	}
-	result, err := stmt.Exec(
+	result, err := stmt.ExecContext(
+		s.ctx,
 		cfg.DisplayName,
 		cfg.Version,
 		cfg.Kind,
@@ -448,29 +592,6 @@ func (s *sqlStore) UpsertConfig(cfg *models.StoredConfig) (bool, error) {
 		return false, fmt.Errorf("handle (metadata.name) is required and cannot be empty")
 	}
 
-	// INSERT ... ON CONFLICT upsert with deployed_at guard.
-	// The WHERE clause ensures we only overwrite when the incoming deployed_at
-	// is strictly newer than the stored value (or the stored value is NULL).
-	query := `
-		INSERT INTO artifacts (
-			uuid, gateway_id, display_name, version, kind, handle,
-			desired_state, deployment_id, origin, created_at, updated_at, deployed_at,
-			cp_sync_status, cp_sync_info, cp_artifact_id
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(gateway_id, uuid) DO UPDATE SET
-			display_name  = excluded.display_name,
-			version       = excluded.version,
-			kind          = excluded.kind,
-			handle        = excluded.handle,
-			desired_state = excluded.desired_state,
-			deployment_id = excluded.deployment_id,
-			origin        = excluded.origin,
-			updated_at    = excluded.updated_at,
-			deployed_at   = excluded.deployed_at
-		WHERE artifacts.deployed_at IS NULL
-		   OR artifacts.deployed_at < excluded.deployed_at
-	`
-
 	tx, err := s.begin()
 	if err != nil {
 		metrics.DatabaseOperationsTotal.WithLabelValues("upsert", table, "error").Inc()
@@ -482,13 +603,6 @@ func (s *sqlStore) UpsertConfig(cfg *models.StoredConfig) (bool, error) {
 			_ = tx.Rollback()
 		}
 	}()
-
-	stmt, err := tx.tx.Prepare(s.bind(query))
-	if err != nil {
-		metrics.DatabaseOperationsTotal.WithLabelValues("upsert", table, "error").Inc()
-		return false, fmt.Errorf("failed to prepare statement: %w", err)
-	}
-	defer stmt.Close()
 
 	now := time.Now()
 	var deploymentID interface{}
@@ -508,35 +622,42 @@ func (s *sqlStore) UpsertConfig(cfg *models.StoredConfig) (bool, error) {
 	if cfg.CPArtifactID != "" {
 		upsertCPArtifactID = cfg.CPArtifactID
 	}
-	result, err := stmt.Exec(
-		cfg.UUID,
-		s.gatewayId,
-		cfg.DisplayName,
-		cfg.Version,
-		cfg.Kind,
-		cfg.Handle,
-		cfg.DesiredState,
-		deploymentID,
-		cfg.Origin,
-		now,
-		now,
-		cfg.DeployedAt,
-		upsertCPSyncStatus,
-		upsertCPSyncInfo,
-		upsertCPArtifactID,
-	)
+
+	// Portable insert-or-update guarded by deployed_at: only overwrite when the
+	// incoming deployed_at is strictly newer (or the stored value is NULL).
+	// cp_sync_* and created_at are written on INSERT only — preserved on update.
+	didWrite, err := s.upsert(tx, upsertSpec{
+		table: "artifacts",
+		columns: []string{
+			"uuid", "gateway_id", "display_name", "version", "kind", "handle",
+			"desired_state", "deployment_id", "origin", "created_at", "updated_at", "deployed_at",
+			"cp_sync_status", "cp_sync_info", "cp_artifact_id",
+		},
+		insertValues: []interface{}{
+			cfg.UUID, s.gatewayId, cfg.DisplayName, cfg.Version, cfg.Kind, cfg.Handle,
+			cfg.DesiredState, deploymentID, cfg.Origin, now, now, cfg.DeployedAt,
+			upsertCPSyncStatus, upsertCPSyncInfo, upsertCPArtifactID,
+		},
+		keyColumns: []string{"gateway_id", "uuid"},
+		keyValues:  []interface{}{s.gatewayId, cfg.UUID},
+		setClauses: []string{
+			"display_name = ?", "version = ?", "kind = ?", "handle = ?",
+			"desired_state = ?", "deployment_id = ?", "origin = ?",
+			"updated_at = ?", "deployed_at = ?",
+		},
+		setValues: []interface{}{
+			cfg.DisplayName, cfg.Version, cfg.Kind, cfg.Handle,
+			cfg.DesiredState, deploymentID, cfg.Origin, now, cfg.DeployedAt,
+		},
+		guard:       "(deployed_at IS NULL OR deployed_at < ?)",
+		guardValues: []interface{}{cfg.DeployedAt},
+	})
 	if err != nil {
 		metrics.DatabaseOperationsTotal.WithLabelValues("upsert", table, "error").Inc()
 		return false, fmt.Errorf("failed to upsert artifact: %w", err)
 	}
 
-	rows, err := result.RowsAffected()
-	if err != nil {
-		metrics.DatabaseOperationsTotal.WithLabelValues("upsert", table, "error").Inc()
-		return false, fmt.Errorf("failed to get rows affected: %w", err)
-	}
-
-	if rows == 0 {
+	if !didWrite {
 		// Stale event — existing row has a newer deployed_at. No-op.
 		_ = tx.Rollback()
 		committed = true // prevent double-rollback in defer
@@ -1248,13 +1369,13 @@ func (s *sqlStore) addResourceConfigTx(tx *sqlStoreTx, cfg *models.StoredConfig)
 		args = []interface{}{cfg.UUID, s.gatewayId, string(configJSON)}
 	}
 
-	stmt, err := tx.tx.Prepare(s.bind(query))
+	stmt, err := tx.tx.PrepareContext(s.ctx, s.bind(query))
 	if err != nil {
 		return false, fmt.Errorf("failed to prepare statement: %w", err)
 	}
 	defer stmt.Close()
 
-	_, err = stmt.Exec(args...)
+	_, err = stmt.ExecContext(s.ctx, args...)
 	if err != nil {
 		return false, fmt.Errorf("failed to insert resource configuration: %w", err)
 	}
@@ -1295,13 +1416,13 @@ func (s *sqlStore) updateResourceConfigTx(tx *sqlStoreTx, cfg *models.StoredConf
 		args = []interface{}{string(configJSON), cfg.UUID, s.gatewayId}
 	}
 
-	stmt, err := tx.tx.Prepare(s.bind(query))
+	stmt, err := tx.tx.PrepareContext(s.ctx, s.bind(query))
 	if err != nil {
 		return false, fmt.Errorf("failed to prepare statement: %w", err)
 	}
 	defer stmt.Close()
 
-	result, err := stmt.Exec(args...)
+	result, err := stmt.ExecContext(s.ctx, args...)
 	if err != nil {
 		return false, fmt.Errorf("failed to update resource configuration: %w", err)
 	}
@@ -1317,9 +1438,9 @@ func (s *sqlStore) updateResourceConfigTx(tx *sqlStoreTx, cfg *models.StoredConf
 	return true, nil
 }
 
-// upsertResourceConfigTx performs INSERT ... ON CONFLICT(gateway_id, uuid)
-// DO UPDATE for the per-resource-type table. Works identically on SQLite
-// (3.24+) and PostgreSQL.
+// upsertResourceConfigTx performs a portable insert-or-update for the
+// per-resource-type table. Uses the shared upsert helper so it runs unchanged
+// on SQLite, PostgreSQL and SQL Server.
 func (s *sqlStore) upsertResourceConfigTx(tx *sqlStoreTx, cfg *models.StoredConfig) error {
 	resourceTable, err := kindToResourceTable(cfg.Kind)
 	if err != nil {
@@ -1331,8 +1452,15 @@ func (s *sqlStore) upsertResourceConfigTx(tx *sqlStoreTx, cfg *models.StoredConf
 		return fmt.Errorf("failed to marshal configuration: %w", err)
 	}
 
-	var query string
-	var args []interface{}
+	spec := upsertSpec{
+		table:        resourceTable,
+		columns:      []string{"uuid", "gateway_id", "configuration"},
+		insertValues: []interface{}{cfg.UUID, s.gatewayId, string(configJSON)},
+		keyColumns:   []string{"gateway_id", "uuid"},
+		keyValues:    []interface{}{s.gatewayId, cfg.UUID},
+		setClauses:   []string{"configuration = ?"},
+		setValues:    []interface{}{string(configJSON)},
+	}
 
 	if cfg.Kind == "LlmProxy" {
 		proxyConfig, ok := cfg.SourceConfiguration.(api.LLMProxyConfiguration)
@@ -1343,29 +1471,13 @@ func (s *sqlStore) upsertResourceConfigTx(tx *sqlStoreTx, cfg *models.StoredConf
 		if err != nil {
 			return fmt.Errorf("failed to resolve provider: %w", err)
 		}
-		query = fmt.Sprintf(`
-			INSERT INTO %s (uuid, gateway_id, configuration, provider_uuid) VALUES (?, ?, ?, ?)
-			ON CONFLICT(gateway_id, uuid) DO UPDATE SET
-				configuration  = excluded.configuration,
-				provider_uuid  = excluded.provider_uuid
-		`, resourceTable)
-		args = []interface{}{cfg.UUID, s.gatewayId, string(configJSON), providerUUID}
-	} else {
-		query = fmt.Sprintf(`
-			INSERT INTO %s (uuid, gateway_id, configuration) VALUES (?, ?, ?)
-			ON CONFLICT(gateway_id, uuid) DO UPDATE SET
-				configuration = excluded.configuration
-		`, resourceTable)
-		args = []interface{}{cfg.UUID, s.gatewayId, string(configJSON)}
+		spec.columns = []string{"uuid", "gateway_id", "configuration", "provider_uuid"}
+		spec.insertValues = []interface{}{cfg.UUID, s.gatewayId, string(configJSON), providerUUID}
+		spec.setClauses = []string{"configuration = ?", "provider_uuid = ?"}
+		spec.setValues = []interface{}{string(configJSON), providerUUID}
 	}
 
-	stmt, err := tx.tx.Prepare(s.bind(query))
-	if err != nil {
-		return fmt.Errorf("failed to prepare statement: %w", err)
-	}
-	defer stmt.Close()
-
-	if _, err = stmt.Exec(args...); err != nil {
+	if _, err := s.upsert(tx, spec); err != nil {
 		return fmt.Errorf("failed to upsert resource configuration: %w", err)
 	}
 
@@ -1377,7 +1489,7 @@ func (s *sqlStore) upsertResourceConfigTx(tx *sqlStoreTx, cfg *models.StoredConf
 func (s *sqlStore) resolveProviderUUID(tx *sqlStoreTx, providerHandle string) (string, error) {
 	var uuid string
 	query := s.bind(`SELECT a.uuid FROM artifacts a WHERE a.handle = ? AND a.gateway_id = ? AND a.kind = 'LlmProvider'`)
-	err := tx.tx.QueryRow(query, providerHandle, s.gatewayId).Scan(&uuid)
+	err := tx.tx.QueryRowContext(s.ctx, query, providerHandle, s.gatewayId).Scan(&uuid)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return "", fmt.Errorf("provider '%s' not found for gateway '%s'", providerHandle, s.gatewayId)
@@ -1881,41 +1993,42 @@ func (s *sqlStore) SaveAPIKey(apiKey *models.APIKey) error {
 // source is preserved from the existing row when it is already set.
 // external_ref_id falls back to the existing value when the incoming one is NULL.
 func (s *sqlStore) UpsertAPIKey(apiKey *models.APIKey) error {
-	query := `
-		INSERT INTO api_keys (
-			uuid, gateway_id, name, api_key, masked_api_key, artifact_uuid, status,
-			created_at, created_by, updated_at, expires_at,
-			source, external_ref_id, issuer
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(gateway_id, artifact_uuid, name) DO UPDATE SET
-			uuid            = excluded.uuid,
-			api_key         = excluded.api_key,
-			masked_api_key  = excluded.masked_api_key,
-			status          = excluded.status,
-			updated_at      = excluded.updated_at,
-			expires_at      = excluded.expires_at,
-			source          = CASE WHEN api_keys.source != '' THEN api_keys.source ELSE excluded.source END,
-			external_ref_id = COALESCE(excluded.external_ref_id, api_keys.external_ref_id),
-			issuer          = CASE WHEN api_keys.issuer != '' THEN api_keys.issuer ELSE excluded.issuer END
-		WHERE api_keys.updated_at < excluded.updated_at
-	`
-
-	_, err := s.exec(query,
-		apiKey.UUID,
-		s.gatewayId,
-		apiKey.Name,
-		apiKey.APIKey,
-		apiKey.MaskedAPIKey,
-		apiKey.ArtifactUUID,
-		apiKey.Status,
-		apiKey.CreatedAt,
-		apiKey.CreatedBy,
-		apiKey.UpdatedAt,
-		apiKey.ExpiresAt,
-		apiKey.Source,
-		apiKey.ExternalRefId,
-		apiKey.Issuer,
-	)
+	// Portable upsert keyed on (gateway_id, artifact_uuid, name), guarded so a
+	// racing event that already wrote a newer record is never overwritten.
+	// On update: source/issuer keep the existing value when already set, and
+	// external_ref_id falls back to the existing value when the incoming is NULL.
+	_, err := s.upsert(s, upsertSpec{
+		table: "api_keys",
+		columns: []string{
+			"uuid", "gateway_id", "name", "api_key", "masked_api_key", "artifact_uuid", "status",
+			"created_at", "created_by", "updated_at", "expires_at",
+			"source", "external_ref_id", "issuer",
+		},
+		insertValues: []interface{}{
+			apiKey.UUID, s.gatewayId, apiKey.Name, apiKey.APIKey, apiKey.MaskedAPIKey, apiKey.ArtifactUUID, apiKey.Status,
+			apiKey.CreatedAt, apiKey.CreatedBy, apiKey.UpdatedAt, apiKey.ExpiresAt,
+			apiKey.Source, apiKey.ExternalRefId, apiKey.Issuer,
+		},
+		keyColumns: []string{"gateway_id", "artifact_uuid", "name"},
+		keyValues:  []interface{}{s.gatewayId, apiKey.ArtifactUUID, apiKey.Name},
+		setClauses: []string{
+			"uuid = ?",
+			"api_key = ?",
+			"masked_api_key = ?",
+			"status = ?",
+			"updated_at = ?",
+			"expires_at = ?",
+			"source = CASE WHEN source != '' THEN source ELSE ? END",
+			"external_ref_id = COALESCE(?, external_ref_id)",
+			"issuer = CASE WHEN issuer != '' THEN issuer ELSE ? END",
+		},
+		setValues: []interface{}{
+			apiKey.UUID, apiKey.APIKey, apiKey.MaskedAPIKey, apiKey.Status, apiKey.UpdatedAt, apiKey.ExpiresAt,
+			apiKey.Source, apiKey.ExternalRefId, apiKey.Issuer,
+		},
+		guard:       "updated_at < ?",
+		guardValues: []interface{}{apiKey.UpdatedAt},
+	})
 	if err != nil {
 		if s.isUniqueViolation(err) {
 			return fmt.Errorf("%w: API key value already exists", ErrConflict)
@@ -1942,7 +2055,6 @@ func (s *sqlStore) GetAPIKeyByID(id string) (*models.APIKey, error) {
 		LEFT JOIN applications app
 		  ON app.application_uuid = aak.application_uuid AND app.gateway_id = aak.gateway_id
 		WHERE ak.uuid = ? AND ak.gateway_id = ?
-		LIMIT 1
 	`
 
 	var apiKey models.APIKey
@@ -2004,7 +2116,6 @@ func (s *sqlStore) GetAPIKeyByUUID(uuid string) (*models.APIKey, error) {
 		       issuer
 		FROM api_keys
 		WHERE uuid = ? AND gateway_id = ?
-		LIMIT 1
 	`
 
 	var apiKey models.APIKey
@@ -2156,7 +2267,6 @@ func (s *sqlStore) GetAPIKeysByAPIAndName(apiId, name string) (*models.APIKey, e
 		       issuer
 		FROM api_keys
 		WHERE artifact_uuid = ? AND name = ? AND gateway_id = ?
-		LIMIT 1
 	`
 
 	var apiKey models.APIKey
@@ -2377,17 +2487,15 @@ func (s *sqlStore) ReplaceApplicationAPIKeyMappings(application *models.StoredAp
 	}
 	rows.Close()
 
-	if _, err = tx.ExecQ(`
-		INSERT INTO applications (
-			application_uuid, gateway_id, application_id, application_name, application_type, created_at, updated_at
-		)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(gateway_id, application_uuid) DO UPDATE SET
-			application_id = excluded.application_id,
-			application_name = excluded.application_name,
-			application_type = excluded.application_type,
-			updated_at = excluded.updated_at
-	`, application.ApplicationUUID, s.gatewayId, application.ApplicationID, application.ApplicationName, application.ApplicationType, now, now); err != nil {
+	if _, err = s.upsert(tx, upsertSpec{
+		table:        "applications",
+		columns:      []string{"application_uuid", "gateway_id", "application_id", "application_name", "application_type", "created_at", "updated_at"},
+		insertValues: []interface{}{application.ApplicationUUID, s.gatewayId, application.ApplicationID, application.ApplicationName, application.ApplicationType, now, now},
+		keyColumns:   []string{"gateway_id", "application_uuid"},
+		keyValues:    []interface{}{s.gatewayId, application.ApplicationUUID},
+		setClauses:   []string{"application_id = ?", "application_name = ?", "application_type = ?", "updated_at = ?"},
+		setValues:    []interface{}{application.ApplicationID, application.ApplicationName, application.ApplicationType, now},
+	}); err != nil {
 		_ = tx.Rollback()
 		return nil, fmt.Errorf("failed to upsert application metadata: %w", err)
 	}
@@ -2457,6 +2565,11 @@ func (s *sqlStore) Close() error {
 		backend = "SQL"
 	}
 	s.logger.Info("Closing storage", slog.String("backend", backend))
+	// Cancel the lifecycle context first so any in-flight queries are
+	// interrupted instead of blocking the underlying db.Close().
+	if s.cancel != nil {
+		s.cancel()
+	}
 	if err := s.db.Close(); err != nil {
 		return fmt.Errorf("failed to close database: %w", err)
 	}
@@ -3084,15 +3197,34 @@ func (s *sqlStore) UpdateSecret(secret *models.Secret) (*models.Secret, error) {
 	startTime := time.Now()
 	table := "secrets"
 
-	query := `
-	UPDATE secrets
-	SET display_name = ?, description = ?, ciphertext = ?, updated_at = ?
-	WHERE gateway_id = ? AND handle = ?
-	RETURNING handle, display_name, description, ciphertext, created_at, updated_at
-	`
-
+	// Portable update-then-read (no RETURNING): UPDATE, confirm a row matched,
+	// then SELECT the stored row to read back its timestamps. Both run in one
+	// transaction so the row read back is exactly the one written here, rather
+	// than a value a concurrent writer may have stored between the two statements.
 	now := time.Now().UTC()
-	row := s.queryRow(query,
+
+	tx, err := s.begin()
+	if err != nil {
+		metrics.DatabaseOperationsTotal.WithLabelValues("update", table, "error").Inc()
+		metrics.StorageErrorsTotal.WithLabelValues("update", "exec_error").Inc()
+		s.logger.Error("Failed to begin transaction to update secret",
+			slog.String("secret_handle", secret.Handle),
+			slog.Any("error", err),
+		)
+		return nil, fmt.Errorf("failed to update secret: %w", err)
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+
+	res, err := tx.ExecQ(`
+		UPDATE secrets
+		SET display_name = ?, description = ?, ciphertext = ?, updated_at = ?
+		WHERE gateway_id = ? AND handle = ?
+	`,
 		secret.DisplayName,
 		secret.Description,
 		secret.Ciphertext,
@@ -3100,9 +3232,21 @@ func (s *sqlStore) UpdateSecret(secret *models.Secret) (*models.Secret, error) {
 		s.gatewayId,
 		secret.Handle,
 	)
+	if err == nil {
+		var n int64
+		if n, err = res.RowsAffected(); err == nil && n == 0 {
+			err = sql.ErrNoRows
+		}
+	}
 
 	var updated models.Secret
-	err := row.Scan(&updated.Handle, &updated.DisplayName, &updated.Description, &updated.Ciphertext, &updated.CreatedAt, &updated.UpdatedAt)
+	if err == nil {
+		row := tx.QueryRowQ(`
+			SELECT handle, display_name, description, ciphertext, created_at, updated_at
+			FROM secrets WHERE gateway_id = ? AND handle = ?
+		`, s.gatewayId, secret.Handle)
+		err = row.Scan(&updated.Handle, &updated.DisplayName, &updated.Description, &updated.Ciphertext, &updated.CreatedAt, &updated.UpdatedAt)
+	}
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			metrics.DatabaseOperationsTotal.WithLabelValues("update", table, "error").Inc()
@@ -3117,6 +3261,17 @@ func (s *sqlStore) UpdateSecret(secret *models.Secret) (*models.Secret, error) {
 		)
 		return nil, fmt.Errorf("failed to update secret: %w", err)
 	}
+
+	if err = tx.Commit(); err != nil {
+		metrics.DatabaseOperationsTotal.WithLabelValues("update", table, "error").Inc()
+		metrics.StorageErrorsTotal.WithLabelValues("update", "exec_error").Inc()
+		s.logger.Error("Failed to commit secret update",
+			slog.String("secret_handle", secret.Handle),
+			slog.Any("error", err),
+		)
+		return nil, fmt.Errorf("failed to update secret: %w", err)
+	}
+	committed = true
 
 	metrics.DatabaseOperationsTotal.WithLabelValues("update", table, "success").Inc()
 	metrics.DatabaseOperationDurationSeconds.WithLabelValues("update", table).Observe(time.Since(startTime).Seconds())
@@ -3171,7 +3326,7 @@ func (s *sqlStore) DeleteSecret(handle string) error {
 
 // SecretExists checks if a secret with the given handle exists
 func (s *sqlStore) SecretExists(handle string) (bool, error) {
-	query := `SELECT EXISTS(SELECT 1 FROM secrets WHERE gateway_id = ? AND handle = ?)`
+	query := `SELECT CASE WHEN EXISTS(SELECT 1 FROM secrets WHERE gateway_id = ? AND handle = ?) THEN CAST(1 AS bit) ELSE CAST(0 AS bit) END`
 
 	var exists bool
 	err := s.queryRow(query, s.gatewayId, handle).Scan(&exists)

@@ -1,6 +1,5 @@
-
 /*
- * Copyright (c) 2024, WSO2 LLC. (http://www.wso2.com) All Rights Reserved.
+ * Copyright (c) 2026, WSO2 LLC. (http://www.wso2.com) All Rights Reserved.
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -15,17 +14,18 @@
  * KIND, either express or implied. See the License for the
  * specific language governing permissions and limitations
  * under the License.
+ *
  */
-class SubscriptionPolicy {
-    constructor(subscriptionPolicy) {
-        this.policyID = subscriptionPolicy.POLICY_ID;
-        this.policyName = subscriptionPolicy.POLICY_NAME;
-        this.displayName = subscriptionPolicy.DISPLAY_NAME;
-        this.description = subscriptionPolicy.DESCRIPTION;
-        this.requestCount = subscriptionPolicy.REQUEST_COUNT;
-        this.refId = subscriptionPolicy.REF_ID;
-        this.orgID = subscriptionPolicy.ORG_ID;
-    }
-}
 
-module.exports = SubscriptionPolicy;
+/*
+ * Tag: Subscription Plans
+ */
+const apiMetadataService = require('../../../services/apiMetadataService');
+
+module.exports = {
+    listSubscriptionPlans: apiMetadataService.listSubscriptionPlans,
+    addSubscriptionPlans: apiMetadataService.addSubscriptionPlans,
+    putSubscriptionPlans: apiMetadataService.putSubscriptionPlans,
+    getSubscriptionPlan: apiMetadataService.getSubscriptionPlan,
+    deleteSubscriptionPlan: apiMetadataService.deleteSubscriptionPlan,
+};

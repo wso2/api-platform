@@ -143,15 +143,15 @@ func (r *SubscriptionPlanRepo) GetByIDs(planIDs []string, orgUUID string) (map[s
 
 // ListByOrganization returns subscription plans for an organization with pagination
 func (r *SubscriptionPlanRepo) ListByOrganization(orgUUID string, limit, offset int) ([]*model.SubscriptionPlan, error) {
+	pageClause, pageArgs := r.db.PaginationClause(limit, offset)
 	query := `
 		SELECT uuid, plan_name, billing_plan, stop_on_quota_reach, throttle_limit_count,
 			throttle_limit_unit, expiry_time, organization_uuid, status, created_at, updated_at
 		FROM subscription_plans
 		WHERE organization_uuid = ?
 		ORDER BY created_at DESC
-		LIMIT ? OFFSET ?
-	`
-	rows, err := r.db.Query(r.db.Rebind(query), orgUUID, limit, offset)
+		` + pageClause
+	rows, err := r.db.Query(r.db.Rebind(query), append([]any{orgUUID}, pageArgs...)...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list subscription plans: %w", err)
 	}
@@ -219,8 +219,8 @@ func (r *SubscriptionPlanRepo) ExistsByNameAndOrg(planName, orgUUID string) (boo
 	query := `
 		SELECT 1 FROM subscription_plans
 		WHERE plan_name = ? AND organization_uuid = ?
-		LIMIT 1
-	`
+		ORDER BY (SELECT NULL)
+		` + r.db.FetchFirstClause(1)
 	var exists int
 	err := r.db.QueryRow(r.db.Rebind(query), planName, orgUUID).Scan(&exists)
 	if err == sql.ErrNoRows {

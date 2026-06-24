@@ -124,6 +124,13 @@ spec:
                   name: {{ $controller.postgres.passwordSecretRef.name }}
                   key: {{ $controller.postgres.passwordSecretRef.key | default "password" }}
             {{- end }}
+            {{- if and (eq .Values.gateway.config.controller.storage.type "sqlserver") $controller.sqlserver.passwordSecretRef.name }}
+            - name: APIP_GW_CONTROLLER_STORAGE_DATABASE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $controller.sqlserver.passwordSecretRef.name }}
+                  key: {{ $controller.sqlserver.passwordSecretRef.key | default "password" }}
+            {{- end }}
             {{- range $deployment.extraEnv }}
             - {{- toYaml . | nindent 14 }}
             {{- end }}

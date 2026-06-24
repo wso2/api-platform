@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -257,9 +258,29 @@ type LLMConfig struct {
 
 // StorageConfig holds storage-related configuration
 type StorageConfig struct {
-	Type     string         `koanf:"type"`     // "sqlite", "postgres", or "memory"
-	SQLite   SQLiteConfig   `koanf:"sqlite"`   // SQLite-specific configuration
-	Postgres PostgresConfig `koanf:"postgres"` // PostgreSQL-specific configuration
+	Type     string          `koanf:"type"`     // "sqlite", "postgres", or "sqlserver"
+	Database *DatabaseConfig `koanf:"database"` // Global database configuration
+	SQLite   SQLiteConfig    `koanf:"sqlite"`   // Legacy SQLite configuration (backward compatibility)
+	Postgres PostgresConfig  `koanf:"postgres"` // Legacy PostgreSQL configuration (backward compatibility)
+}
+
+// DatabaseConfig holds unified database configuration for all SQL backends.
+type DatabaseConfig struct {
+	Driver          string            `koanf:"driver"`
+	DSN             string            `koanf:"dsn"`
+	Path            string            `koanf:"path"`
+	Host            string            `koanf:"host"`
+	Port            int               `koanf:"port"`
+	Database        string            `koanf:"database"`
+	User            string            `koanf:"user"`
+	Password        string            `koanf:"password"`
+	ConnectTimeout  time.Duration     `koanf:"connect_timeout"`
+	MaxOpenConns    int               `koanf:"max_open_conns"`
+	MaxIdleConns    int               `koanf:"max_idle_conns"`
+	ConnMaxLifetime time.Duration     `koanf:"conn_max_lifetime"`
+	ConnMaxIdleTime time.Duration     `koanf:"conn_max_idle_time"`
+	ApplicationName string            `koanf:"application_name"`
+	Options         map[string]string `koanf:"options"`
 }
 
 // SQLiteConfig holds SQLite-specific configuration
@@ -282,6 +303,132 @@ type PostgresConfig struct {
 	ConnMaxLifetime time.Duration `koanf:"conn_max_lifetime"`
 	ConnMaxIdleTime time.Duration `koanf:"conn_max_idle_time"`
 	ApplicationName string        `koanf:"application_name"`
+}
+
+// EffectiveSQLitePath resolves SQLite path with precedence:
+// storage.database.path > storage.sqlite.path.
+func (s StorageConfig) EffectiveSQLitePath() string {
+	if s.Database != nil && strings.TrimSpace(s.Database.Path) != "" {
+		return s.Database.Path
+	}
+	return s.SQLite.Path
+}
+
+// EffectivePostgresConfig resolves PostgreSQL config with precedence:
+// storage.database.* > storage.postgres.*.
+func (s StorageConfig) EffectivePostgresConfig() PostgresConfig {
+	pg := s.Postgres
+	if s.Database == nil {
+		return pg
+	}
+	db := s.Database
+	if db.DSN != "" {
+		pg.DSN = db.DSN
+	}
+	if db.Host != "" {
+		pg.Host = db.Host
+	}
+	if db.Port != 0 {
+		pg.Port = db.Port
+	}
+	if db.Database != "" {
+		pg.Database = db.Database
+	}
+	if db.User != "" {
+		pg.User = db.User
+	}
+	if db.Password != "" {
+		pg.Password = db.Password
+	}
+	if db.ConnectTimeout != 0 {
+		pg.ConnectTimeout = db.ConnectTimeout
+	}
+	if db.MaxOpenConns != 0 {
+		pg.MaxOpenConns = db.MaxOpenConns
+	}
+	if db.MaxIdleConns != 0 {
+		pg.MaxIdleConns = db.MaxIdleConns
+	}
+	if db.ConnMaxLifetime != 0 {
+		pg.ConnMaxLifetime = db.ConnMaxLifetime
+	}
+	if db.ConnMaxIdleTime != 0 {
+		pg.ConnMaxIdleTime = db.ConnMaxIdleTime
+	}
+	if db.ApplicationName != "" {
+		pg.ApplicationName = db.ApplicationName
+	}
+	if sslMode := getDatabaseOption(db.Options, "sslmode"); sslMode != "" {
+		pg.SSLMode = sslMode
+	}
+	return pg
+}
+
+// EffectiveSQLServerConfig resolves SQL Server config from the global database section.
+func (s StorageConfig) EffectiveSQLServerConfig() DatabaseConfig {
+	if s.Database == nil {
+		return DatabaseConfig{}
+	}
+	return *s.Database
+}
+
+// SQL Server "encrypt" option: single source of truth for the default and the
+// accepted values, shared by SQLServerEncrypt() and validateStorage so the
+// default and the allowed set are never duplicated.
+const defaultSQLServerEncrypt = "true"
+
+var validSQLServerEncryptModes = []string{"disable", "false", "true", "strict"}
+
+// SQLServerEncrypt resolves sqlserver encrypt option from storage.database.options.
+func (s StorageConfig) SQLServerEncrypt() string {
+	if s.Database == nil {
+		return ""
+	}
+	if encrypt := getDatabaseOption(s.Database.Options, "encrypt"); encrypt != "" {
+		return encrypt
+	}
+	return defaultSQLServerEncrypt
+}
+
+// SQLServerTrustServerCertificate resolves sqlserver trust flag from storage.database.options.
+func (s StorageConfig) SQLServerTrustServerCertificate() bool {
+	if s.Database == nil {
+		return false
+	}
+	raw := getDatabaseOption(s.Database.Options, "trust_server_certificate")
+	if raw == "" {
+		return false
+	}
+	parsed, err := strconv.ParseBool(raw)
+	if err != nil {
+		return false
+	}
+	return parsed
+}
+
+func getDatabaseOption(options map[string]string, key string) string {
+	if options == nil {
+		return ""
+	}
+	for k, v := range options {
+		if strings.EqualFold(k, key) {
+			return strings.TrimSpace(v)
+		}
+	}
+	return ""
+}
+
+func setDatabaseOption(options map[string]string, key, value string) {
+	if options == nil {
+		return
+	}
+	for k := range options {
+		if strings.EqualFold(k, key) {
+			options[k] = value
+			return
+		}
+	}
+	options[key] = value
 }
 
 // RouterConfig holds router (Envoy) related configuration
@@ -379,12 +526,12 @@ type HTTPListenerConfig struct {
 
 // PolicyEngineConfig holds policy engine ext_proc filter configuration
 type PolicyEngineConfig struct {
-	Mode              string          `koanf:"mode"` // Connection mode: "uds" (default) or "tcp"
-	Host              string          `koanf:"host"` // Policy engine hostname/IP (TCP mode only)
-	Port              uint32          `koanf:"port"` // Policy engine ext_proc port (TCP mode only)
-	TimeoutMs         uint32          `koanf:"timeout_ms"`
-	MessageTimeoutMs  uint32          `koanf:"message_timeout_ms"`
-	TLS               PolicyEngineTLS `koanf:"tls"` // TLS configuration (TCP mode only)
+	Mode             string          `koanf:"mode"` // Connection mode: "uds" (default) or "tcp"
+	Host             string          `koanf:"host"` // Policy engine hostname/IP (TCP mode only)
+	Port             uint32          `koanf:"port"` // Policy engine ext_proc port (TCP mode only)
+	TimeoutMs        uint32          `koanf:"timeout_ms"`
+	MessageTimeoutMs uint32          `koanf:"message_timeout_ms"`
+	TLS              PolicyEngineTLS `koanf:"tls"` // TLS configuration (TCP mode only)
 }
 
 // PolicyEngineTLS holds policy engine TLS configuration
@@ -724,11 +871,11 @@ func defaultConfig() *Config {
 				},
 			},
 			PolicyEngine: PolicyEngineConfig{
-				Mode:              "uds",           // UDS mode by default
-				Host:              "policy-engine", // Only used in TCP mode
-				Port:              9001,            // Only used in TCP mode
-				TimeoutMs:         60000,
-				MessageTimeoutMs:  60000,
+				Mode:             "uds",           // UDS mode by default
+				Host:             "policy-engine", // Only used in TCP mode
+				Port:             9001,            // Only used in TCP mode
+				TimeoutMs:        60000,
+				MessageTimeoutMs: 60000,
 				TLS: PolicyEngineTLS{
 					Enabled:    false,
 					CertPath:   "",
@@ -811,7 +958,7 @@ func (c *Config) Validate() error {
 	}
 
 	// Validate storage type
-	validStorageTypes := []string{"sqlite", "postgres"}
+	validStorageTypes := []string{"sqlite", "postgres", "sqlserver"}
 	isValidType := false
 	for _, t := range validStorageTypes {
 		if c.Controller.Storage.Type == t {
@@ -820,17 +967,23 @@ func (c *Config) Validate() error {
 		}
 	}
 	if !isValidType {
-		return fmt.Errorf("storage.type must be one of: sqlite, postgres, got: %s", c.Controller.Storage.Type)
+		return fmt.Errorf("storage.type must be one of: sqlite, postgres, sqlserver, got: %s", c.Controller.Storage.Type)
 	}
 
 	// Validate SQLite configuration
-	if c.Controller.Storage.Type == "sqlite" && c.Controller.Storage.SQLite.Path == "" {
+	if c.Controller.Storage.Type == "sqlite" && c.Controller.Storage.EffectiveSQLitePath() == "" {
 		return fmt.Errorf("storage.sqlite.path is required when storage.type is 'sqlite'")
 	}
 
 	// Validate PostgreSQL configuration
 	if c.Controller.Storage.Type == "postgres" {
-		pg := &c.Controller.Storage.Postgres
+		pg := c.Controller.Storage.EffectivePostgresConfig()
+		if c.Controller.Storage.Database != nil {
+			driver := strings.TrimSpace(c.Controller.Storage.Database.Driver)
+			if driver != "" && !strings.EqualFold(driver, "postgres") {
+				return fmt.Errorf("storage.database.driver must be 'postgres' when storage.type is 'postgres', got: %s", driver)
+			}
+		}
 
 		if pg.DSN == "" {
 			if pg.Host == "" {
@@ -904,6 +1057,105 @@ func (c *Config) Validate() error {
 
 		if pg.ApplicationName == "" {
 			pg.ApplicationName = "gateway-controller"
+		}
+
+		c.Controller.Storage.Postgres = pg
+	}
+
+	// Validate SQL Server configuration
+	if c.Controller.Storage.Type == "sqlserver" {
+		if c.Controller.Storage.Database == nil {
+			return fmt.Errorf("storage.database is required when storage.type is 'sqlserver'")
+		}
+		ms := c.Controller.Storage.Database
+
+		if ms.Driver == "" {
+			ms.Driver = "sqlserver"
+		}
+		if !strings.EqualFold(ms.Driver, "sqlserver") && !strings.EqualFold(ms.Driver, "mssql") {
+			return fmt.Errorf("storage.database.driver must be one of: sqlserver, mssql, got: %s", ms.Driver)
+		}
+
+		if ms.DSN == "" {
+			if ms.Host == "" {
+				return fmt.Errorf("storage.database.host is required when storage.type is 'sqlserver' and storage.database.dsn is empty")
+			}
+			if ms.Database == "" {
+				return fmt.Errorf("storage.database.database is required when storage.type is 'sqlserver' and storage.database.dsn is empty")
+			}
+			if ms.User == "" {
+				return fmt.Errorf("storage.database.user is required when storage.type is 'sqlserver' and storage.database.dsn is empty")
+			}
+		}
+
+		if ms.Port <= 0 {
+			ms.Port = 1433
+		}
+		if ms.Port > 65535 {
+			return fmt.Errorf("storage.database.port must be between 1 and 65535, got: %d", ms.Port)
+		}
+
+		encrypt := getDatabaseOption(ms.Options, "encrypt")
+		if encrypt == "" {
+			encrypt = defaultSQLServerEncrypt
+		}
+		isValidEncrypt := false
+		for _, e := range validSQLServerEncryptModes {
+			if strings.EqualFold(encrypt, e) {
+				encrypt = e
+				isValidEncrypt = true
+				break
+			}
+		}
+		if !isValidEncrypt {
+			return fmt.Errorf("storage.database.options.encrypt must be one of: %s, got: %s",
+				strings.Join(validSQLServerEncryptModes, ", "), encrypt)
+		}
+		setDatabaseOption(ms.Options, "encrypt", encrypt)
+
+		if trustServerCertificate := getDatabaseOption(ms.Options, "trust_server_certificate"); trustServerCertificate != "" {
+			if _, err := strconv.ParseBool(trustServerCertificate); err != nil {
+				return fmt.Errorf("storage.database.options.trust_server_certificate must be boolean, got: %s", trustServerCertificate)
+			}
+		}
+
+		if ms.ConnectTimeout <= 0 {
+			ms.ConnectTimeout = 5 * time.Second
+		}
+
+		if ms.MaxOpenConns == 0 {
+			ms.MaxOpenConns = 25
+		}
+		if ms.MaxOpenConns < 1 {
+			return fmt.Errorf("storage.database.max_open_conns must be >= 1, got: %d", ms.MaxOpenConns)
+		}
+
+		if ms.MaxIdleConns == 0 {
+			ms.MaxIdleConns = 5
+		}
+		if ms.MaxIdleConns < 0 {
+			return fmt.Errorf("storage.database.max_idle_conns must be >= 0, got: %d", ms.MaxIdleConns)
+		}
+		if ms.MaxIdleConns > ms.MaxOpenConns {
+			ms.MaxIdleConns = ms.MaxOpenConns
+		}
+
+		if ms.ConnMaxLifetime == 0 {
+			ms.ConnMaxLifetime = 30 * time.Minute
+		}
+		if ms.ConnMaxLifetime < 0 {
+			return fmt.Errorf("storage.database.conn_max_lifetime must be >= 0, got: %s", ms.ConnMaxLifetime)
+		}
+
+		if ms.ConnMaxIdleTime == 0 {
+			ms.ConnMaxIdleTime = 5 * time.Minute
+		}
+		if ms.ConnMaxIdleTime < 0 {
+			return fmt.Errorf("storage.database.conn_max_idle_time must be >= 0, got: %s", ms.ConnMaxIdleTime)
+		}
+
+		if ms.ApplicationName == "" {
+			ms.ApplicationName = "gateway-controller"
 		}
 	}
 

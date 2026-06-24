@@ -37,13 +37,13 @@ async function runBatch() {
     if (events.length === 0) return;
 
     for (const event of events) {
-        const subscribers = matchSubscribers(event.EVENT_TYPE, event.GATEWAY_TYPE);
-        if (subscribers.length === 0) {
-            // No matching subscribers — mark as delivered immediately.
-            await DPEvent.update({ STATUS: 'ALL_DELIVERED' }, { where: { EVENT_ID: event.EVENT_ID } });
-            continue;
-        }
         try {
+            const subscribers = await matchSubscribers(event.ORG_ID, event.EVENT_TYPE, event.GATEWAY_TYPE);
+            if (subscribers.length === 0) {
+                // No matching subscribers — mark as delivered immediately.
+                await DPEvent.update({ STATUS: 'ALL_DELIVERED' }, { where: { EVENT_ID: event.EVENT_ID } });
+                continue;
+            }
             await eventDao.createDeliveries(event.EVENT_ID, subscribers, null, null);
         } catch (err) {
             logger.error('[dispatcher] failed to create deliveries for event', {

@@ -14,18 +14,24 @@
  * KIND, either express or implied. See the License for the
  * specific language governing permissions and limitations
  * under the License.
- *
  */
 
-/*
- * Tag: Subscription Policies
+/**
+ * DTO for webhook subscriber responses.
+ * Never exposes the subscriber's secret in API responses.
  */
-const apiMetadataService = require('../../../services/apiMetadataService');
+class WebhookSubscriberDTO {
+    constructor(sub) {
+        this.id = sub.SUBSCRIBER_ID;
+        this.orgId = sub.ORG_ID;
+        this.name = sub.NAME;
+        this.url = sub.TARGET_URL;
+        this.enabled = sub.ENABLED;
+        this.gatewayType = sub.GATEWAY_TYPE || '*';
+        this.events = sub.EVENT_PATTERNS || [];
+        this.timeoutMs = sub.TIMEOUT_MS;
+        this.hasPublicKey = !!sub.PUBLIC_KEY;
+    }
+}
 
-module.exports = {
-    listSubscriptionPolicies: apiMetadataService.listSubscriptionPolicies,
-    addSubscriptionPolicies: apiMetadataService.addSubscriptionPolicies,
-    putSubscriptionPolicies: apiMetadataService.putSubscriptionPolicies,
-    getSubscriptionPolicy: apiMetadataService.getSubscriptionPolicy,
-    deleteSubscriptionPolicy: apiMetadataService.deleteSubscriptionPolicy,
-};
+module.exports = { WebhookSubscriberDTO };

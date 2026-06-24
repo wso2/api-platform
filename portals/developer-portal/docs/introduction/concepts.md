@@ -45,7 +45,7 @@ Each API can have its own landing page content, documentation sections, icon, an
 
 ## Subscription Plan
 
-A **subscription plan** (also called a subscription policy) is a named usage tier that controls how much of an API a developer can consume. Plans are attached to APIs during publishing, and developers choose a plan when subscribing.
+A **subscription plan** (also called a subscription plan) is a named usage tier that controls how much of an API a developer can consume. Plans are attached to APIs during publishing, and developers choose a plan when subscribing.
 
 Plans can define:
 - Rate limits (requests per minute/hour)
@@ -53,7 +53,7 @@ Plans can define:
 
 Example plans: `Free`, `Basic`, `Gold`, `Enterprise`.
 
-> **Note:** When `generateDefaultSubPolicies: true` is set in the config (the default), four standard plans (`Bronze`, `Silver`, `Gold`, `Unlimited`) are automatically created for every new organization.
+> **Note:** When `generateDefaultSubPlans: true` is set in the config (the default), four standard plans (`Bronze`, `Silver`, `Gold`, `Unlimited`) are automatically created for every new organization.
 
 ## Application
 

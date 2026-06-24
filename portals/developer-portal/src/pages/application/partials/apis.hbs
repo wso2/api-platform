@@ -36,7 +36,7 @@
                             </td>
                             <td onclick="window.location.href='{{@root.baseUrl}}/api/{{apiHandle}}'" class="app-td" style="width: 20%; cursor: pointer;">{{version}}</td>
                             {{!-- <td onclick="window.location.href='{{@root.baseUrl}}/api/{{apiHandle}}'" class="app-td" style="cursor: pointer;">{{apiType}}</td> --}}
-                            <td onclick="window.location.href='{{@root.baseUrl}}/api/{{apiHandle}}'" id="policy_{{subID}}" class="app-td" style="width: 20%; cursor: pointer;">{{policyName}}</td>
+                            <td onclick="window.location.href='{{@root.baseUrl}}/api/{{apiHandle}}'" id="plan_{{subID}}" class="app-td" style="width: 20%; cursor: pointer;">{{planName}}</td>
                             <td class="app-td action-column" style="width: 30%;">
                                 <div class="action-buttons-container">
                                     {{> warning }}
@@ -57,7 +57,7 @@
             </div>
             {{#each subAPIs}}
             {{#in apiType values="REST, WS, WEBSUB, GRAPHQL"}}
-            {{> update-plan subscriptionPolicyDetails=subscriptionPolicyDetails selectedPlan=policyName appID=../applicationMetadata.id subID=subID}}
+            {{> update-plan subscriptionPlanDetails=subscriptionPlanDetails selectedPlan=planName appID=../applicationMetadata.id subID=subID}}
             {{/in}}
             {{/each}}
             {{/if}}
@@ -104,7 +104,7 @@
                                     class="text-truncate d-block" style="cursor: pointer;">{{name}}</span>
                             </td>
                             <td class="app-td" style="width: 25%;">{{version}}</td>
-                            <td id="policy_{{subID}}" class="app-td" style="width: 25%;">{{policyName}}</td>
+                            <td id="plan_{{subID}}" class="app-td" style="width: 25%;">{{planName}}</td>
                             <td class="app-td action-column" style="width: 30%;">
                                 <div class="action-buttons-container">
                                     {{> warning }}
@@ -124,7 +124,7 @@
                 </table>
                 {{#each subAPIs}}
                 {{#if (eq apiType "MCP")}}
-                {{> update-plan subscriptionPolicyDetails=subscriptionPolicyDetails selectedPlan=policyName appID=../applicationMetadata.id subID=subID}}
+                {{> update-plan subscriptionPlanDetails=subscriptionPlanDetails selectedPlan=planName appID=../applicationMetadata.id subID=subID}}
                 {{/if}}
                 {{/each}}
                 {{/if}}

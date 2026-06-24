@@ -90,49 +90,71 @@ For events that carry a sensitive field (`apikey.generated`, `apikey.regenerated
 
 ## Configure a Webhook Subscriber
 
-Add subscriber configuration to `config.yaml` under the `webhooks` block:
+Webhook subscribers are **per-organization** and managed through the Webhook Subscribers API — not through `config.yaml`. Each organization registers its own gateway endpoint(s); secrets and public keys are stored encrypted at rest (AES-256-GCM) in the devportal database, keyed to the organization.
+
+Only delivery (retry/backoff) tuning, which applies globally across all organizations, remains in `config.yaml`:
 
 ```yaml
 webhooks:
-  subscribers:
-    - id: my-gateway                           # stable identifier — used in logs and the DB
-      gatewayType: "wso2/api-platform"         # matches the API's gateway type; use "*" for all
-      url: "https://gateway.example.com/devportal/events"
-      secret: "change-me-minimum-32-chars"     # HMAC-SHA256 signing key
-      publicKeyPath: "/run/secrets/gateway-pubkey.pem"  # RSA-2048 PEM file — for encrypting sensitive fields
-      events:                                  # event type filter (omit to receive all events)
-        - apikey.*
-        - subscription.*
-      timeoutMs: 5000
-
   delivery:
     maxAttempts: 8
     backoff: [60, 300, 900, 1800, 3600, 7200, 14400, 28800]  # seconds: 1m 5m 15m 30m 1h 2h 4h 8h
     pollIntervalMs: 2000
     batchSize: 50
+    signatureToleranceSec: 300
 ```
+
+### Create a subscriber
+
+```bash
+curl -X POST "http://localhost:3000/o/{orgId}/devportal/v1/webhook-subscribers" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Production Gateway",
+    "url": "https://gateway.example.com/devportal/events",
+    "secret": "change-me-minimum-32-chars",
+    "gatewayType": "wso2/api-platform",
+    "events": ["apikey.*", "subscription.*"],
+    "timeoutMs": 5000
+  }'
+```
+
+The response never includes the secret. To set a public key for envelope-encrypting sensitive fields (see [Envelope Encryption](#envelope-encryption)), pass its PEM contents in `publicKey`.
 
 ### Subscriber fields
 
 | Field | Required | Description |
 |---|---|---|
-| `id` | Yes | Stable identifier used in logs and the database |
-| `gatewayType` | No | Filter events to APIs with this gateway type. Use `"*"` to match all |
+| `name` | Yes | Unique within the organization |
 | `url` | Yes | HTTPS endpoint on your gateway that receives webhook POSTs |
-| `secret` | Yes | Minimum 32-character string used to sign each event with HMAC-SHA256 |
-| `publicKeyPath` | Recommended | Path to an RSA-2048 public key PEM file for envelope-encrypting sensitive fields in `apikey.generated`, `apikey.regenerated`, and `subscription.created` events |
+| `secret` | Yes | Minimum 32-character string used to sign each event with HMAC-SHA256. Stored encrypted; never returned in API responses |
+| `publicKey` | Recommended | PEM-encoded RSA-2048 public key for envelope-encrypting sensitive fields in `apikey.generated`, `apikey.regenerated`, and `subscription.created` events |
+| `gatewayType` | No | Filter events to APIs with this gateway type. Use `"*"` (default) to match all |
 | `events` | No | Event type allowlist. Wildcards supported (`apikey.*`). Omit to receive all |
+| `enabled` | No | Defaults to `true`. Disable a subscriber without deleting it |
 | `timeoutMs` | No | HTTP request timeout in milliseconds (default: 5000) |
 
-### Providing secrets via environment variables
-
-To avoid storing secrets in `config.yaml`, use environment variables. The ID is uppercased and non-alphanumeric characters are replaced with `_`:
+### List, update, and delete subscribers
 
 ```bash
-# For subscriber id: my-gateway
-export DP_WEBHOOK_SECRET_MY_GATEWAY="your-hmac-secret"
-export DP_WEBHOOK_PUBLIC_KEY_PATH_MY_GATEWAY="/run/secrets/gateway-pubkey.pem"
+# List
+curl "http://localhost:3000/o/{orgId}/devportal/v1/webhook-subscribers" -H "Authorization: Bearer $TOKEN"
+
+# Get one
+curl "http://localhost:3000/o/{orgId}/devportal/v1/webhook-subscribers/{subscriberId}" -H "Authorization: Bearer $TOKEN"
+
+# Update (only supplied fields are changed; omitted fields keep their stored values)
+curl -X PUT "http://localhost:3000/o/{orgId}/devportal/v1/webhook-subscribers/{subscriberId}" \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"enabled": false}'
+
+# Delete
+curl -X DELETE "http://localhost:3000/o/{orgId}/devportal/v1/webhook-subscribers/{subscriberId}" \
+  -H "Authorization: Bearer $TOKEN"
 ```
+
+These endpoints require the `dp:webhook_subscriber_read`, `dp:webhook_subscriber_write`, `dp:webhook_subscriber_delete`, or `dp:webhook_subscriber_manage` OAuth2 scopes (see the OpenAPI spec for the exact scope per operation).
 
 ## Webhook Request Format
 
@@ -189,7 +211,7 @@ Fired when a developer generates a new API key for an API.
     },
     "subscription": {
       "ref_id": "sub-uuid",
-      "plan_ref_id": "policy-uuid",
+      "plan_ref_id": "plan-uuid",
       "plan_name": "Gold"
     },
     "encrypted_key": {
@@ -224,7 +246,7 @@ Fired when a developer rotates an existing key. The `key_id` is unchanged; the o
     },
     "subscription": {
       "ref_id": "sub-uuid",
-      "plan_ref_id": "policy-uuid",
+      "plan_ref_id": "plan-uuid",
       "plan_name": "Gold"
     },
     "encrypted_key": { "wrappedKey": "...", "iv": "...", "tag": "...", "ciphertext": "..." }
@@ -249,7 +271,7 @@ Fired when a developer revokes a key. The gateway should reject any request pres
     },
     "subscription": {
       "ref_id": "sub-uuid",
-      "plan_ref_id": "policy-uuid",
+      "plan_ref_id": "plan-uuid",
       "plan_name": "Gold"
     }
   }
@@ -269,7 +291,7 @@ Fired when a developer subscribes to an API. The subscription token is delivered
   "data": {
     "subscription_id": "sub-uuid",
     "subscription_plan": {
-      "ref_id": "policy-uuid",
+      "ref_id": "plan-uuid",
       "name": "Gold"
     },
     "api": {
@@ -300,7 +322,7 @@ Fired when a subscription's plan changes.
   "data": {
     "subscription": {
       "plan_name": "Bronze",
-      "plan_ref_id": "policy-uuid",
+      "plan_ref_id": "plan-uuid",
       "status": "ACTIVE"
     },
     "api": {
@@ -324,7 +346,7 @@ Fired when a developer unsubscribes. The gateway should revoke access for the co
   "data": {
     "subscription_id": "sub-uuid",
     "subscription_plan": {
-      "ref_id": "policy-uuid",
+      "ref_id": "plan-uuid",
       "name": "Gold"
     },
     "api": {
@@ -451,13 +473,13 @@ After all attempts are exhausted, the delivery is marked as failed. You can trig
 ### List recent events
 
 ```bash
-curl http://localhost:3000/o/{orgId}/devportal/v1/events -H "Authorization: Bearer $TOKEN"
+curl http://localhost:3000/o/{orgId}/devportal/v1/webhook-events -H "Authorization: Bearer $TOKEN"
 ```
 
 ### Get event details
 
 ```bash
-curl http://localhost:3000/o/{orgId}/devportal/v1/events/{eventId} -H "Authorization: Bearer $TOKEN"
+curl http://localhost:3000/o/{orgId}/devportal/v1/webhook-events/{eventId} -H "Authorization: Bearer $TOKEN"
 ```
 
 ### Retry a failed delivery

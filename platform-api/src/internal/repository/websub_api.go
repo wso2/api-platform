@@ -124,29 +124,30 @@ func (r *WebSubAPIRepo) GetByUUID(uuid, orgUUID string) (*model.WebSubAPI, error
 func (r *WebSubAPIRepo) List(orgUUID, projectUUID string, limit, offset int) ([]*model.WebSubAPI, error) {
 	var query string
 	var args []interface{}
+	pageClause, pageArgs := r.db.PaginationClause(limit, offset)
 
 	if projectUUID != "" {
 		query = `
 			SELECT
-				p.uuid, p.handle, p.name, p.version, a.organization_uuid, p.created_at, p.updated_at,
-				p.project_uuid, p.description, p.created_by, p.updated_by, p.lifecycle_status, p.configuration
-			FROM websub_apis p
-			JOIN artifacts a ON a.uuid = p.uuid
-			WHERE a.organization_uuid = ? AND a.type = ? AND p.project_uuid = ?
-			ORDER BY p.created_at DESC
-			LIMIT ? OFFSET ?`
-		args = []interface{}{orgUUID, constants.WebSubApi, projectUUID, limit, offset}
+				a.uuid, a.handle, a.name, a.version, a.organization_uuid, a.created_at, a.updated_at,
+				p.project_uuid, p.description, p.created_by, p.lifecycle_status, p.transport, p.configuration
+			FROM artifacts a
+			JOIN websub_apis p ON a.uuid = p.uuid
+			WHERE a.organization_uuid = ? AND a.kind = ? AND p.project_uuid = ?
+			ORDER BY a.created_at DESC
+			` + pageClause
+		args = append([]interface{}{orgUUID, constants.WebSubApi, projectUUID}, pageArgs...)
 	} else {
 		query = `
 			SELECT
-				p.uuid, p.handle, p.name, p.version, a.organization_uuid, p.created_at, p.updated_at,
-				p.project_uuid, p.description, p.created_by, p.updated_by, p.lifecycle_status, p.configuration
-			FROM websub_apis p
-			JOIN artifacts a ON a.uuid = p.uuid
-			WHERE a.organization_uuid = ? AND a.type = ?
-			ORDER BY p.created_at DESC
-			LIMIT ? OFFSET ?`
-		args = []interface{}{orgUUID, constants.WebSubApi, limit, offset}
+				a.uuid, a.handle, a.name, a.version, a.organization_uuid, a.created_at, a.updated_at,
+				p.project_uuid, p.description, p.created_by, p.lifecycle_status, p.transport, p.configuration
+			FROM artifacts a
+			JOIN websub_apis p ON a.uuid = p.uuid
+			WHERE a.organization_uuid = ? AND a.kind = ?
+			ORDER BY a.created_at DESC
+			` + pageClause
+		args = append([]interface{}{orgUUID, constants.WebSubApi}, pageArgs...)
 	}
 
 	rows, err := r.db.Query(r.db.Rebind(query), args...)

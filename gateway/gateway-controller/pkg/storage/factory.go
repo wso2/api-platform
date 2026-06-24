@@ -28,10 +28,11 @@ import (
 
 // BackendConfig contains the minimal storage backend configuration required by NewStorage.
 type BackendConfig struct {
-	Type        string
-	SQLitePath  string
-	Postgres    PostgresConnectionConfig
-	GatewayID   string
+	Type       string
+	SQLitePath string
+	Postgres   PostgresConnectionConfig
+	SQLServer  SQLServerConnectionConfig
+	GatewayID  string
 }
 
 // NewStorage creates the configured persistent storage backend.
@@ -60,6 +61,17 @@ func NewStorage(cfg BackendConfig, logger *slog.Logger) (Storage, error) {
 		store := newSQLStore(backend.db, backend.logger, "postgres", cfg.GatewayID)
 		store.rebindQuery = func(query string) string { return sqlx.Rebind(sqlx.DOLLAR, query) }
 		store.isUniqueViolation = isPostgresUniqueConstraintError
+		return store, nil
+
+	case "sqlserver":
+		backend, err := newSQLServerStorage(cfg.SQLServer, logger)
+		if err != nil {
+			return nil, err
+		}
+
+		store := newSQLStore(backend.db, backend.logger, "sqlserver", cfg.GatewayID)
+		store.rebindQuery = func(query string) string { return sqlx.Rebind(sqlx.AT, query) }
+		store.isUniqueViolation = isSQLServerUniqueConstraintError
 		return store, nil
 
 	default:

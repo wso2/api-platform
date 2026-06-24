@@ -91,14 +91,16 @@ const update = async (kmId, kmData) => {
             updatePayload.ADMIN_CLIENT_SECRET_ENC = kmCrypto.encrypt(kmData.adminClientSecret);
         }
 
-        const [updatedRowsCount, updatedRows] = await KeyManager.update(updatePayload, {
-            where: { KM_ID: kmId },
-            returning: true
+        const [updatedRowsCount] = await KeyManager.update(updatePayload, {
+            where: { KM_ID: kmId }
         });
         if (updatedRowsCount < 1) {
             throw new Sequelize.EmptyResultError('Key manager not found');
         }
-        return [updatedRowsCount, updatedRows];
+        // `returning: true` only yields row instances on Postgres; re-fetch
+        // explicitly so the result is reliable on SQLite too.
+        const updated = await KeyManager.findByPk(kmId);
+        return [updatedRowsCount, [updated]];
     } catch (error) {
         if (error instanceof Sequelize.UniqueConstraintError || error instanceof Sequelize.EmptyResultError) {
             throw error;

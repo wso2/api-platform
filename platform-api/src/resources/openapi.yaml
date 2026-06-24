@@ -5242,6 +5242,173 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /websub-apis/{apiId}/secrets:
+    post:
+      summary: Generate an HMAC secret for a WebSub API
+      description: |
+        Generates (or stores an externally supplied) HMAC secret for the specified WebSub API.
+        The plaintext secret value is returned **once** in the response and never stored unencrypted —
+        save it immediately. Subsequent calls to this endpoint create additional named secrets;
+        all active secrets are accepted during HMAC signature verification to support zero-downtime rotation.
+      operationId: createWebSubAPISecret
+      security:
+        - OAuth2Security:
+            - ap:websub_api:secret:create
+            - ap:websub_api:secret:manage
+            - ap:websub_api:manage
+      tags:
+        - WebSubAPIs
+      parameters:
+        - name: apiId
+          in: path
+          required: true
+          description: Unique handle of the WebSub API
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WebSubAPIHmacSecretRequest'
+      responses:
+        '201':
+          description: HMAC secret created — plaintext returned once
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebSubAPIHmacSecretCreationResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          description: Service Unavailable — HMAC secret management not configured on this server
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    get:
+      summary: List HMAC secrets for a WebSub API
+      description: Returns metadata for all HMAC secrets belonging to the WebSub API. Plaintext values are never returned.
+      operationId: listWebSubAPISecrets
+      security:
+        - OAuth2Security:
+            - ap:websub_api:secret:read
+            - ap:websub_api:secret:manage
+            - ap:websub_api:manage
+      tags:
+        - WebSubAPIs
+      parameters:
+        - name: apiId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of HMAC secret metadata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebSubAPIHmacSecretListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /websub-apis/{apiId}/secrets/{secretName}:
+    delete:
+      summary: Delete an HMAC secret for a WebSub API
+      description: Permanently removes the named HMAC secret. The secret will no longer be accepted for signature verification.
+      operationId: deleteWebSubAPISecret
+      security:
+        - OAuth2Security:
+            - ap:websub_api:secret:delete
+            - ap:websub_api:secret:manage
+            - ap:websub_api:manage
+      tags:
+        - WebSubAPIs
+      parameters:
+        - name: apiId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: secretName
+          in: path
+          required: true
+          description: Name (slug) of the HMAC secret
+          schema:
+            type: string
+      responses:
+        '204':
+          description: HMAC secret deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /websub-apis/{apiId}/secrets/{secretName}/regenerate:
+    post:
+      summary: Regenerate an HMAC secret value
+      description: |
+        Replaces the value of an existing HMAC secret with a newly generated (or caller-supplied) value.
+        The new plaintext is returned **once** in the response. All gateways where the API is deployed
+        are notified to reload their secret stores.
+      operationId: regenerateWebSubAPISecret
+      security:
+        - OAuth2Security:
+            - ap:websub_api:secret:update
+            - ap:websub_api:secret:manage
+            - ap:websub_api:manage
+      tags:
+        - WebSubAPIs
+      parameters:
+        - name: apiId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: secretName
+          in: path
+          required: true
+          description: Name (slug) of the HMAC secret to regenerate
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WebSubAPIHmacSecretRegenerateRequest'
+      responses:
+        '200':
+          description: HMAC secret regenerated — new plaintext returned once
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebSubAPIHmacSecretCreationResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /subscription-plans:
     post:
       summary: Create subscription plan
@@ -9684,6 +9851,95 @@ components:
           $ref: '#/components/schemas/WebSubEventPolicies'
         on_message_delivery:
           $ref: '#/components/schemas/WebSubEventPolicies'
+
+    WebSubAPIHmacSecretRequest:
+      type: object
+      required:
+        - displayName
+      properties:
+        displayName:
+          type: string
+          description: Human-readable label for the HMAC secret (used to derive the URL-safe name/slug).
+          example: GitHub Webhook
+        secret:
+          type: string
+          description: |
+            Optional. If provided, this value is used as the HMAC secret instead of auto-generating one.
+            Must be at least 32 characters long.
+          minLength: 32
+          example: my-external-secret-value-that-is-at-least-32-chars
+
+    WebSubAPIHmacSecretRegenerateRequest:
+      type: object
+      properties:
+        secret:
+          type: string
+          description: |
+            Optional. If provided, this value is used as the new HMAC secret instead of auto-generating one.
+            Must be at least 32 characters long.
+          minLength: 32
+          example: my-external-secret-value-that-is-at-least-32-chars
+
+    WebSubAPIHmacSecretInfo:
+      type: object
+      required:
+        - uuid
+        - name
+        - displayName
+        - status
+        - createdAt
+        - updatedAt
+      properties:
+        uuid:
+          type: string
+          description: Unique identifier for the HMAC secret.
+        name:
+          type: string
+          description: URL-safe slug derived from the display name.
+          example: github-webhook
+        displayName:
+          type: string
+          description: Human-readable label.
+          example: GitHub Webhook
+        status:
+          type: string
+          description: Status of the HMAC secret.
+          example: active
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    WebSubAPIHmacSecretCreationResponse:
+      type: object
+      required:
+        - secret
+        - message
+      properties:
+        secret:
+          type: string
+          description: |
+            The plaintext HMAC secret value. This is returned **once** at creation/regeneration time
+            and is never stored unencrypted — save it immediately.
+          example: whsec_a3f2c1e4b5d6789012345678901234567890abcdef1234567890abcdef12345678
+        webhookSecret:
+          $ref: '#/components/schemas/WebSubAPIHmacSecretInfo'
+        message:
+          type: string
+          description: Human-readable confirmation message.
+          example: HMAC secret created successfully
+
+    WebSubAPIHmacSecretListResponse:
+      type: object
+      required:
+        - secrets
+      properties:
+        secrets:
+          type: array
+          items:
+            $ref: '#/components/schemas/WebSubAPIHmacSecretInfo'
 
     WebBrokerAPI:
       type: object

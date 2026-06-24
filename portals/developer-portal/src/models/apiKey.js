@@ -76,5 +76,7 @@ const APIKey = sequelize.define('DP_API_KEY', {
 APIKey.belongsTo(Organization, { foreignKey: 'ORG_ID' });
 Organization.hasMany(APIKey, { foreignKey: 'ORG_ID' });
 APIKey.belongsTo(APIMetadata, { foreignKey: 'API_ID' });
+APIKey.belongsTo(SubscriptionMapping, { foreignKey: 'SUBSCRIPTION_ID', onDelete: 'SET NULL' });
+SubscriptionMapping.hasMany(APIKey, { foreignKey: 'SUBSCRIPTION_ID', onDelete: 'SET NULL' });
 
 module.exports = APIKey;

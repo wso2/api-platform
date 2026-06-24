@@ -17,36 +17,36 @@
  */
 const { DataTypes } = require('sequelize');
 const sequelize = require('../db/sequelizeConfig');
-const SubscriptionPolicy = require('./subscriptionPolicy');
+const SubscriptionPlan = require('./subscriptionPlan');
 const { APIMetadata } = require('./apiMetadata');
 
-const APISubscriptionPolicy = sequelize.define('DP_API_SUBSCRIPTION_POLICY', {
+const APISubscriptionPlan = sequelize.define('DP_API_SUBSCRIPTION_PLAN', {
     API_ID: {
         type: DataTypes.UUID,
         allowNull: false,
         primaryKey: true
     },
-    POLICY_ID: {
+    PLAN_ID: {
         type: DataTypes.UUID,
         allowNull: false,
         primaryKey: true
     },
 }, {
     timestamps: false,
-    tableName: 'DP_API_SUBSCRIPTION_POLICY',
+    tableName: 'DP_API_SUBSCRIPTION_PLAN',
     returning: true
 });
 
-APIMetadata.belongsToMany(SubscriptionPolicy, {
+APIMetadata.belongsToMany(SubscriptionPlan, {
     foreignKey: 'API_ID',
-    otherKey: 'POLICY_ID',
-    through: APISubscriptionPolicy
+    otherKey: 'PLAN_ID',
+    through: APISubscriptionPlan
 });
 
-SubscriptionPolicy.belongsToMany(APIMetadata, {
-    foreignKey: 'POLICY_ID',
+SubscriptionPlan.belongsToMany(APIMetadata, {
+    foreignKey: 'PLAN_ID',
     otherKey: 'API_ID',
-    through: APISubscriptionPolicy
+    through: APISubscriptionPlan
 });
 
-module.exports = APISubscriptionPolicy;
+module.exports = APISubscriptionPlan;
