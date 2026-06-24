@@ -254,7 +254,7 @@ Fired when a developer subscribes to an API. The subscription token is delivered
 
 ### `subscription.plan_changed`
 
-Fired when a subscription's plan changes.
+> **Not yet emitted.** This event type is reserved in the event-type registry but no code path currently publishes it — plan changes don't fire a webhook event today. The shape below is illustrative and subject to change once it's implemented.
 
 ```json
 {
@@ -273,8 +273,6 @@ Fired when a subscription's plan changes.
   }
 }
 ```
-
-Your subscriber identifies the affected subscription via the `aggregateId` in the event. No token is included.
 
 ### `subscription.deleted`
 

@@ -1676,12 +1676,32 @@
     var url  = v('wh-url');
     if (!name || !url) { await showAlert('Name and target URL are required.', 'error'); return; }
 
+    var parsedUrl;
+    try { parsedUrl = new URL(url); } catch (e) { parsedUrl = null; }
+    if (!parsedUrl || (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:')) {
+      await showAlert('Target URL must be a valid http:// or https:// URL.', 'error');
+      return;
+    }
+
+    var timeoutRaw = v('wh-timeout');
+    var timeoutMs = parseInt(timeoutRaw, 10);
+    if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+      await showAlert('Timeout (ms) must be a positive number.', 'error');
+      return;
+    }
+
+    var events = selectedEvents();
+    if (!allEventsBtn.classList.contains('active') && events.length === 0) {
+      await showAlert('Select at least one event, or choose "All events".', 'error');
+      return;
+    }
+
     var body = {
       name: name,
       url: url,
-      events: selectedEvents(),
+      events: events,
       enabled: document.getElementById('wh-enabled').checked,
-      timeoutMs: parseInt(v('wh-timeout'), 10) || 5000,
+      timeoutMs: timeoutMs,
     };
     var secret = v('wh-secret');
     if (secret) body.secret = secret;

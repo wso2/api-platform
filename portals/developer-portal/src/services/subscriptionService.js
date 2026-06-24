@@ -22,13 +22,16 @@ const { publish: publishWebhookEvent } = require('./webhooks/eventPublisher');
 const util = require('../utils/util');
 const logger = require('../config/logger');
 
+// Logs context before rethrowing so the caller's transaction rolls back instead of
+// silently committing the subscription change without its webhook event.
 async function safePublish(eventType, payload, opts) {
     try {
         await publishWebhookEvent(eventType, payload, opts);
     } catch (err) {
-        logger.warn('[subscriptionService] webhook publish failed (non-fatal)', {
+        logger.error('[subscriptionService] webhook publish failed', {
             eventType, error: err.message,
         });
+        throw err;
     }
 }
 
