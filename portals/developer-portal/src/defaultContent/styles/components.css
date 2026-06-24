@@ -393,6 +393,9 @@
 .dp-btn--outline { background: #fff; border: 1px solid #cdd8e6; color: #1f3d5c; }
 .dp-btn--outline:hover { background: #f3f7fc; color: #1f3d5c; text-decoration: none; }
 
+.dp-btn--ai { background: linear-gradient(135deg, #7c3aed, #a855f7); color: #fff; border: none; }
+.dp-btn--ai:hover { opacity: 0.9; color: #fff; text-decoration: none; }
+
 .dp-btn--lg { padding: 0.8125rem 1.75rem; font-size: 0.90625rem; }
 
 .dp-btn--block {
@@ -545,3 +548,19 @@
 .page-container {
   padding: 1rem 0;
 }
+
+/* ── Error box (inline validation/not-found message) ─────── */
+.dp-error-box {
+  display: none;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.6875rem 0.875rem;
+  background: #fff5f5;
+  border: 1px solid #fca5a5;
+  border-radius: 0.5rem;
+  font-size: 0.8125rem;
+  color: #b91c1c;
+  line-height: 1.5;
+}
+.dp-error-box--visible { display: flex; }
+.dp-error-box i { font-size: 0.875rem; flex: none; margin-top: 0.1em; }

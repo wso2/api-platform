@@ -90,6 +90,9 @@ const registerPartials = async (req, res, next) => {
         orgName: req.params.orgName,
         operation: 'registerPartials'
       });
+      if (error.message === "Organization not found") {
+        return res.redirect('/?error=org_not_found&org=' + encodeURIComponent(req.params.orgName));
+      }
       if (error.message === "API not found") {
         let templateContent = {
           errorMessage: constants.ERROR_MESSAGE.API_NOT_FOUND,

@@ -92,10 +92,21 @@
             </button>
           </div>
 
+          <div class="cfg-bulk-bar" id="cfg-bulk-bar" style="display:none;" role="region" aria-label="Bulk actions">
+            <span class="cfg-bulk-bar-count" id="cfg-bulk-bar-count"></span>
+            <button type="button" class="cfg-btn-danger cfg-btn-sm" id="cfg-bulk-delete-btn">
+              <i class="bi bi-trash"></i> Delete selected
+            </button>
+            <button type="button" class="cfg-bulk-bar-clear" id="cfg-bulk-bar-clear" aria-label="Clear selection">
+              <i class="bi bi-x-lg"></i>
+            </button>
+          </div>
+
           <div class="cfg-table-wrap">
             <table class="cfg-table">
               <thead>
                 <tr>
+                  <th class="cfg-th-check"><input type="checkbox" id="cfg-select-all" aria-label="Select all APIs"></th>
                   <th>API</th>
                   <th>Type</th>
                   <th>Version</th>
@@ -106,6 +117,11 @@
               <tbody id="cfg-apis-tbody">
                 {{#orgAPIs}}
                 <tr id="cfg-api-row-{{apiId}}">
+                  <td class="cfg-td-check">
+                    <input type="checkbox" class="cfg-row-check"
+                      data-id="{{apiId}}" data-name="{{apiName}}"
+                      aria-label="Select {{apiName}}">
+                  </td>
                   <td>
                     <div class="cfg-api-cell">
                       <span class="cfg-api-avatar
@@ -179,7 +195,7 @@
                 </tr>
                 {{/orgAPIs}}
                 {{#unless orgAPIs.length}}
-                <tr><td colspan="5" class="cfg-empty-row">No APIs found. Click <strong>Add API</strong> to get started.</td></tr>
+                <tr><td colspan="6" class="cfg-empty-row">No APIs found. Click <strong>Add API</strong> to get started.</td></tr>
                 {{/unless}}
               </tbody>
             </table>
@@ -993,6 +1009,54 @@
     }
   }
 
+  /* ── bulk selection ── */
+  var pendingBulkIds = null;
+
+  function selectedChecks() {
+    return Array.prototype.slice.call(document.querySelectorAll('.cfg-row-check:checked'));
+  }
+
+  function syncBulkBar() {
+    var checks = selectedChecks();
+    var bar = document.getElementById('cfg-bulk-bar');
+    var countEl = document.getElementById('cfg-bulk-bar-count');
+    bar.style.display = checks.length > 0 ? 'flex' : 'none';
+    countEl.textContent = checks.length + (checks.length === 1 ? ' API selected' : ' APIs selected');
+    var allChecks = document.querySelectorAll('.cfg-row-check');
+    var selectAll = document.getElementById('cfg-select-all');
+    if (selectAll) {
+      selectAll.checked = allChecks.length > 0 && checks.length === allChecks.length;
+      selectAll.indeterminate = checks.length > 0 && checks.length < allChecks.length;
+    }
+  }
+
+  document.getElementById('cfg-select-all').addEventListener('change', function() {
+    var checked = this.checked;
+    document.querySelectorAll('.cfg-row-check').forEach(function(c) { c.checked = checked; });
+    syncBulkBar();
+  });
+
+  document.getElementById('cfg-apis-tbody').addEventListener('change', function(e) {
+    if (e.target.classList.contains('cfg-row-check')) syncBulkBar();
+  });
+
+  document.getElementById('cfg-bulk-bar-clear').addEventListener('click', function() {
+    document.querySelectorAll('.cfg-row-check').forEach(function(c) { c.checked = false; });
+    var sa = document.getElementById('cfg-select-all');
+    if (sa) { sa.checked = false; sa.indeterminate = false; }
+    document.getElementById('cfg-bulk-bar').style.display = 'none';
+  });
+
+  document.getElementById('cfg-bulk-delete-btn').addEventListener('click', function() {
+    var checks = selectedChecks();
+    if (!checks.length) return;
+    pendingBulkIds = checks.map(function(c) { return { id: c.dataset.id, name: c.dataset.name }; });
+    pendingDelId = null;
+    var label = checks.length + (checks.length === 1 ? ' selected API' : ' selected APIs');
+    document.getElementById('cfg-del-api-name-txt').textContent = label;
+    document.getElementById('cfg-delete-api-modal').style.display = 'flex';
+  });
+
   /* ── delete ── */
   var pendingDelId = null;
   document.getElementById('cfg-del-api-cancel').addEventListener('click', function() {
@@ -1002,8 +1066,36 @@
     if (e.target===this) this.style.display='none';
   });
   document.getElementById('cfg-del-api-confirm').addEventListener('click', async function() {
-    if (!pendingDelId) return;
     document.getElementById('cfg-delete-api-modal').style.display = 'none';
+
+    if (pendingBulkIds && pendingBulkIds.length) {
+      var ids = pendingBulkIds.slice();
+      pendingBulkIds = null;
+      var failCount = 0;
+      await Promise.all(ids.map(async function(item) {
+        try {
+          var r = await fetch(window.devportalApi.org(ORG_ID, '/apis/'+encodeURIComponent(item.id)), {
+            method: 'DELETE',
+            headers: { 'X-CSRF-Token': window.devportalApi.csrfToken() },
+          });
+          if (r.ok || r.status===204) {
+            var row = document.getElementById('cfg-api-row-'+item.id);
+            if (row) row.remove();
+          } else { failCount++; }
+        } catch(e) { failCount++; }
+      }));
+      document.querySelectorAll('.cfg-row-check').forEach(function(c){ c.checked = false; });
+      var sa = document.getElementById('cfg-select-all');
+      if (sa) { sa.checked = false; sa.indeterminate = false; }
+      document.getElementById('cfg-bulk-bar').style.display = 'none';
+      await showAlert(
+        failCount > 0 ? failCount + ' API(s) could not be deleted.' : 'APIs deleted.',
+        failCount > 0 ? 'error' : 'success'
+      );
+      return;
+    }
+
+    if (!pendingDelId) return;
     try {
       var res = await fetch(window.devportalApi.org(ORG_ID, '/apis/'+encodeURIComponent(pendingDelId)), {
         method: 'DELETE',

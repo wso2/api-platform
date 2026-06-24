@@ -35,7 +35,7 @@ const apiMetadataService = require('../services/apiMetadataService');
 const { apiUsesApiKeySecurity, findSubscriptionTokenHeader } = require('../utils/apiDefinitionUtil');
 const sampleApiLoader = require('../utils/sampleApiLoader');
 const adminService = require('../services/adminService');
-const { seedSampleAPIs } = require('../services/sampleSeederService');
+const { seedSampleAPIs, seedSampleMCPs } = require('../services/sampleSeederService');
 const apiFlowService = require('../services/apiFlowService');
 const { buildSchema, getIntrospectionQuery, graphql: executeGraphQL } = require('graphql');
 const yaml = require('js-yaml');
@@ -1511,7 +1511,9 @@ const seedSamples = async (req, res) => {
     }
     try {
         const orgDetails = await orgDao.get(orgName);
-        const results = await seedSampleAPIs(orgDetails.ORG_ID);
+        const apiResults = await seedSampleAPIs(orgDetails.ORG_ID);
+        const mcpResults = await seedSampleMCPs(orgDetails.ORG_ID);
+        const results  = [...apiResults, ...mcpResults];
         const deployed = results.filter(r => r.status === 'ok').length;
         const skipped  = results.filter(r => r.status === 'exists').length;
         const failed   = results.filter(r => r.status === 'failed').length;

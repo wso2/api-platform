@@ -551,6 +551,14 @@ const getSpecs = async (orgID, apiIDs) => {
     }
 }
 
+const existsByNameVersion = async (orgId, apiName, apiVersion) => {
+    const row = await APIMetadata.findOne({
+        attributes: ['API_ID'],
+        where: { ORG_ID: orgId, API_NAME: apiName, API_VERSION: apiVersion },
+    });
+    return !!row;
+};
+
 module.exports = {
     create,
     update,
@@ -565,4 +573,5 @@ module.exports = {
     getHandle,
     getIdByRef,
     getSpecs,
+    existsByNameVersion,
 };

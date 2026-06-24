@@ -8,11 +8,16 @@
   border-radius: 1rem;
   padding: 2rem 2.125rem;
   display: flex;
-  justify-content: space-between;
-  gap: 1.75rem;
+  flex-direction: column;
+  gap: 1.25rem;
 }
-.aov-hero-left { flex: 1; min-width: 0; }
-.aov-hero-title-row { display: flex; flex-direction: column; gap: 0.625rem; }
+.aov-hero-top {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+}
+.aov-hero-thumb { flex: none; }
+.aov-hero-title-row { display: flex; flex-direction: column; gap: 0.5rem; min-width: 0; }
 .aov-hero-badges { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
 .aov-hero-name {
   margin: 0;
@@ -22,42 +27,37 @@
   letter-spacing: -0.01em;
   line-height: 1.1;
 }
-.aov-hero-tags { margin-top: 0.75rem; display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.aov-hero-body { display: flex; flex-direction: column; gap: 0.75rem; }
+.aov-hero-tags { display: flex; flex-wrap: wrap; gap: 0.5rem; }
 .aov-hero-desc {
-  margin: 1rem 0 0;
-  max-width: 38.75rem;
+  margin: 0;
+  max-width: 48rem;
   font-size: 0.90625rem;
   line-height: 1.6;
   color: #4a5a6a;
 }
 
-.aov-hero-actions { margin-top: 1.5rem; display: flex; flex-wrap: wrap; gap: 0.6875rem; }
-.aov-hero-right {
-  flex: none;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
+.aov-hero-actions { display: flex; flex-wrap: wrap; gap: 0.6875rem; }
 .aov-api-avatar {
-  width: 8rem;
-  height: 8rem;
-  border-radius: 1.75rem;
+  width: 5rem;
+  height: 5rem;
+  border-radius: 1rem;
   background: linear-gradient(135deg, #1f6feb 0%, #0b4ea8 100%);
   display: flex;
   align-items: center;
   justify-content: center;
   color: #fff;
-  font-size: 2.75rem;
+  font-size: 1.625rem;
   font-weight: 700;
   letter-spacing: 0.02em;
-  box-shadow: 0 10px 28px rgba(31,111,235,.32);
+  box-shadow: 0 6px 18px rgba(31,111,235,.28);
 }
 .aov-api-img {
-  width: 8rem;
-  height: 8rem;
-  border-radius: 1.75rem;
+  width: 5rem;
+  height: 5rem;
+  border-radius: 1rem;
   object-fit: cover;
-  box-shadow: 0 10px 28px rgba(31,111,235,.18);
+  box-shadow: 0 6px 18px rgba(31,111,235,.15);
 }
 
 /* ── Two-column body ──────────────────────────────────────────── */
@@ -320,8 +320,7 @@
   .aov-body-sidebar { width: 100%; }
 }
 @media (max-width: 768px) {
-  .aov-hero { flex-direction: column-reverse; }
-  .aov-hero-right { align-items: flex-start; }
   .aov-hero-name { font-size: 1.375rem; }
-  .aov-api-avatar { width: 5.25rem; height: 5.25rem; font-size: 1.75rem; }
+  .aov-api-avatar { width: 3.75rem; height: 3.75rem; font-size: 1.25rem; }
+  .aov-api-img { width: 3.75rem; height: 3.75rem; }
 }

@@ -6,6 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="icon" href="/images/favicon.ico" type="image/x-icon">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+  <link rel="stylesheet" href="/styles/components.css">
   <link rel="stylesheet" href="/styles/os.css">
 </head>
 <body>
@@ -59,6 +60,11 @@
           <!-- dropdown -->
           <div class="os-dropdown" id="os-dropdown" role="listbox" aria-label="Organizations"></div>
         </div>
+      </div>
+
+      <div id="os-error" class="dp-error-box" style="margin-top:0.875rem;" role="alert" aria-live="polite">
+        <i class="bi bi-exclamation-circle" aria-hidden="true"></i>
+        <span id="os-error-text"></span>
       </div>
 
       <button id="os-continue-btn" class="os-continue-btn" onclick="osNavigate()">Continue</button>
@@ -164,6 +170,7 @@
   /* ── input events ── */
   input.addEventListener('input', function () {
     syncBtn();
+    document.getElementById('os-error').classList.remove('dp-error-box--visible');
     var q = input.value.trim().toLowerCase();
     if (!ORG_DATA.length) { closeDropdown(); return; }
     var matches = q
@@ -196,6 +203,25 @@
     if (!org) return;
     window.location.href = '/' + encodeURIComponent(org) + '/views/default';
   };
+
+  /* ── error from redirect ── */
+  (function () {
+    var params  = new URLSearchParams(window.location.search);
+    var errType = params.get('error');
+    var orgName = params.get('org');
+    if (errType === 'org_not_found') {
+      var errEl  = document.getElementById('os-error');
+      var errTxt = document.getElementById('os-error-text');
+      errTxt.textContent = orgName
+        ? 'No organization found for “' + orgName + '”. Check the name and try again.'
+        : 'Organization not found. Check the name and try again.';
+      errEl.classList.add('dp-error-box--visible');
+      if (orgName) input.value = orgName;
+      syncBtn();
+      // clean up the URL without reloading
+      history.replaceState(null, '', window.location.pathname);
+    }
+  })();
 
   /* ── init ── */
   syncBtn();

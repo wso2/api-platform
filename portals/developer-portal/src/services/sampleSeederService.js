@@ -20,7 +20,6 @@
 
 const fs = require('fs');
 const path = require('path');
-const { Sequelize } = require('sequelize');
 const sequelize = require('../db/sequelizeConfig');
 const apiDao = require('../dao/apiDao');
 const apiFileDao = require('../dao/apiFileDao');
@@ -32,6 +31,8 @@ const { parseApiMetadataFromYamlFile, prepareApiDefinitionForStorage } = require
 
 const DEFINITION_CANDIDATES = ['definition.yaml', 'definition.yml', 'definition.json', 'definition.graphql', 'definition.wsdl'];
 const SAMPLES_DIR = path.join(process.cwd(), 'samples', 'apis');
+const MCP_SAMPLES_DIR = path.join(process.cwd(), 'samples', 'mcps');
+const SCHEMA_DEFINITION_FILE = constants.FILE_NAME.SCHEMA_DEFINITION_YAML_FILE_NAME;
 
 function findDefinitionPath(apiDir) {
     for (const name of DEFINITION_CANDIDATES) {
@@ -96,6 +97,11 @@ async function seedSampleAPIs(orgId) {
             const apiMetadata = parseApiMetadataFromYamlFile('api.yaml', yamlBuffer);
             apiName = apiMetadata.apiInfo.apiName || entry;
 
+            if (await apiDao.existsByNameVersion(orgId, apiName, apiMetadata.apiInfo.apiVersion)) {
+                results.push({ name: apiName, status: 'exists' });
+                continue;
+            }
+
             // Load definition file if present
             let apiDefinitionFile = null;
             let apiFileName = '';
@@ -153,16 +159,101 @@ async function seedSampleAPIs(orgId) {
             logger.info('Seeded sample API', { orgId, apiName, apiId });
 
         } catch (err) {
-            if (err instanceof Sequelize.UniqueConstraintError) {
-                results.push({ name: apiName, status: 'exists' });
-            } else {
-                results.push({ name: apiName, status: 'failed', error: err.message });
-                logger.error('Failed to seed sample API', { orgId, entry, error: err.message });
-            }
+            results.push({ name: apiName, status: 'failed', error: err.message });
+            logger.error('Failed to seed sample API', { orgId, entry, error: err.message });
         }
     }
 
     return results;
 }
 
-module.exports = { seedSampleAPIs };
+/**
+ * Deploy all sample MCP servers from samples/mcps/ into the given org.
+ * Each subdirectory must contain api.yaml and optionally schemaDefinition.yaml and docs/.
+ * Returns an array of { name, status ('ok'|'exists'|'failed'), apiId?, error? }.
+ */
+async function seedSampleMCPs(orgId) {
+    if (!fs.existsSync(MCP_SAMPLES_DIR)) {
+        logger.warn('samples/mcps directory not found — skipping MCP seeding', { MCP_SAMPLES_DIR });
+        return [];
+    }
+
+    const entries = fs.readdirSync(MCP_SAMPLES_DIR)
+        .filter(e => {
+            const p = path.join(MCP_SAMPLES_DIR, e);
+            return fs.statSync(p).isDirectory() && fs.existsSync(path.join(p, 'api.yaml'));
+        });
+
+    const results = [];
+
+    for (const entry of entries) {
+        const mcpDir = path.join(MCP_SAMPLES_DIR, entry);
+        let apiName = entry;
+        let apiId;
+
+        try {
+            const yamlBuffer = Buffer.from(fs.readFileSync(path.join(mcpDir, 'api.yaml')));
+            const apiMetadata = parseApiMetadataFromYamlFile('api.yaml', yamlBuffer);
+            apiName = apiMetadata.apiInfo.apiName || entry;
+
+            if (await apiDao.existsByNameVersion(orgId, apiName, apiMetadata.apiInfo.apiVersion)) {
+                results.push({ name: apiName, status: 'exists' });
+                continue;
+            }
+
+            const schemaPath = path.join(mcpDir, SCHEMA_DEFINITION_FILE);
+            const schemaBuffer = fs.existsSync(schemaPath)
+                ? Buffer.from(fs.readFileSync(schemaPath))
+                : null;
+
+            await sequelize.transaction(async (t) => {
+                const created = await apiDao.create(orgId, apiMetadata, t);
+                apiId = created.dataValues.API_ID;
+
+                // Subscription policy mappings
+                if (Array.isArray(apiMetadata.subscriptionPolicies) && apiMetadata.subscriptionPolicies.length) {
+                    const mappings = [];
+                    for (const p of apiMetadata.subscriptionPolicies) {
+                        const policy = await subscriptionPolicyDao.getByName(orgId, p.policyName);
+                        if (policy) mappings.push({ apiID: apiId, policyID: policy.POLICY_ID });
+                    }
+                    if (mappings.length) await subscriptionPolicyDao.createApiMapping(mappings, apiId, t);
+                }
+
+                // Label mappings
+                const labels = Array.isArray(apiMetadata.apiInfo.labels) && apiMetadata.apiInfo.labels.length
+                    ? apiMetadata.apiInfo.labels
+                    : ['default'];
+                await labelDao.createApiMapping(orgId, apiId, labels, t);
+
+                // Schema definition (tools/resources/prompts)
+                if (schemaBuffer) {
+                    await apiFileDao.store(
+                        schemaBuffer,
+                        constants.FILE_NAME.SCHEMA_DEFINITION_YAML_FILE_NAME,
+                        apiId,
+                        constants.DOC_TYPES.SCHEMA_DEFINITION,
+                        t
+                    );
+                }
+
+                // Documentation files from docs/
+                const docs = readDocFiles(path.join(mcpDir, 'docs'), '');
+                if (docs.length) {
+                    await apiFileDao.storeMany(docs, apiId, t);
+                }
+            });
+
+            results.push({ name: apiName, handle: apiMetadata.apiInfo.apiHandle, status: 'ok', apiId });
+            logger.info('Seeded sample MCP', { orgId, apiName, apiId });
+
+        } catch (err) {
+            results.push({ name: apiName, status: 'failed', error: err.message });
+            logger.error('Failed to seed sample MCP', { orgId, entry, error: err.message });
+        }
+    }
+
+    return results;
+}
+
+module.exports = { seedSampleAPIs, seedSampleMCPs };
