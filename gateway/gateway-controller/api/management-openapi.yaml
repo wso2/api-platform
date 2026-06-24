@@ -4194,6 +4194,8 @@ components:
           description: List of API-level policies applied to all operations unless overridden
           items:
             $ref: "#/components/schemas/Policy"
+        resilience:
+          $ref: "#/components/schemas/Resilience"
         operations:
           type: array
           description: List of HTTP operations/routes
@@ -4258,6 +4260,25 @@ components:
           pattern: '^\d+(\.\d+)?(ms|s|m|h)$'
           example: 5s
 
+    Resilience:
+      type: object
+      description: >
+        Backend/route timeout configuration. Maps to Envoy RouteAction timeouts.
+        Can be set at the API level (applies to all routes) and/or the operation level
+        (applies to that operation's route). When set at both levels, the operation-level
+        value takes precedence. When unset, the gateway's global route timeout defaults apply.
+      properties:
+        timeout:
+          type: string
+          description: Maximum time for the entire route (request to upstream response). "0s" disables the timeout.
+          pattern: '^\d+(\.\d+)?(ms|s|m|h)$'
+          example: 15s
+        idleTimeout:
+          type: string
+          description: Per-route stream idle timeout (overrides the listener stream idle timeout for this route). "0s" disables the timeout.
+          pattern: '^\d+(\.\d+)?(ms|s|m|h)$'
+          example: 0s
+
     Upstream:
       type: object
       oneOf:
@@ -4313,6 +4334,8 @@ components:
           description: List of policies applied only to this operation (overrides or adds to API-level policies)
           items:
             $ref: "#/components/schemas/Policy"
+        resilience:
+          $ref: "#/components/schemas/Resilience"
 
     Policy:
       type: object

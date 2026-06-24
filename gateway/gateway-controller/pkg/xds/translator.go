@@ -97,9 +97,11 @@ type Translator struct {
 }
 
 // resolvedTimeout represents parsed timeout values for an upstream.
-// Currently only connect timeout is supported at the upstream definition level.
+// Route and Idle come from the resilience block.
 type resolvedTimeout struct {
 	Connect *time.Duration
+	Route *time.Duration
+	Idle  *time.Duration
 }
 
 // NewTranslator creates a new translator
@@ -223,6 +225,16 @@ func (t *Translator) translateRuntimeConfig(rdc *models.RuntimeDeployConfig) ([]
 	return routes, clusters, nil
 }
 
+// routeTimeoutOrDefault returns the per-route timeout when configured (including an
+// explicit zero, which disables the timeout in Envoy), otherwise the global default
+// expressed in milliseconds.
+func (t *Translator) routeTimeoutOrDefault(v *time.Duration, defaultMs uint32) *durationpb.Duration {
+	if v != nil {
+		return durationpb.New(*v)
+	}
+	return durationpb.New(time.Duration(defaultMs) * time.Millisecond)
+}
+
 // createRouteFromRDC creates an Envoy route from a RuntimeDeployConfig Route.
 func (t *Translator) createRouteFromRDC(routeKey string, rdcRoute *models.Route, rdc *models.RuntimeDeployConfig) *route.Route {
 	fullPath := rdcRoute.Path
@@ -267,15 +279,17 @@ func (t *Translator) createRouteFromRDC(routeKey string, rdcRoute *models.Route,
 		}
 	}
 
-	// Build route action with timeouts
+	// Build route action with timeouts. Per-route resilience values (from the API/operation
+	// resilience block) take precedence; otherwise fall back to the global route defaults.
+	var routeResilienceTimeout, routeResilienceIdle *time.Duration
+	if rdcRoute.Timeout != nil {
+		routeResilienceTimeout = rdcRoute.Timeout.Timeout
+		routeResilienceIdle = rdcRoute.Timeout.IdleTimeout
+	}
 	routeAction := &route.Route_Route{
 		Route: &route.RouteAction{
-			Timeout: durationpb.New(
-				time.Duration(t.routerConfig.Upstream.Timeouts.RouteTimeoutMs) * time.Millisecond,
-			),
-			IdleTimeout: durationpb.New(
-				time.Duration(t.routerConfig.Upstream.Timeouts.RouteIdleTimeoutMs) * time.Millisecond,
-			),
+			Timeout:     t.routeTimeoutOrDefault(routeResilienceTimeout, t.routerConfig.Upstream.Timeouts.RouteTimeoutMs),
+			IdleTimeout: t.routeTimeoutOrDefault(routeResilienceIdle, t.routerConfig.Upstream.Timeouts.RouteIdleTimeoutMs),
 		},
 	}
 
@@ -862,13 +876,25 @@ func (t *Translator) translateAPIConfig(cfg *models.StoredConfig, allConfigs []*
 		}
 	}
 
+	// Resolve API-level resilience timeouts once; operation-level values override per field.
+	apiTimeout, apiIdleTimeout, err := ResolveResilience(apiData.Resilience)
+	if err != nil {
+		return nil, nil, fmt.Errorf("invalid API-level resilience: %w", err)
+	}
+
 	for _, op := range apiData.Operations {
 		// Determine if dynamic cluster selection should be used
 		// When upstreamDefinitions exist, use cluster_header routing so policies can select the upstream
 		useClusterHeader := apiData.UpstreamDefinitions != nil && len(*apiData.UpstreamDefinitions) > 0
 
+		opTimeout, opIdleTimeout, err := ResolveResilience(op.Resilience)
+		if err != nil {
+			return nil, nil, fmt.Errorf("invalid resilience for operation %s %s: %w", op.Method, op.Path, err)
+		}
+		opTimeoutCfg := combineRouteResilience(mainTimeout, apiTimeout, apiIdleTimeout, opTimeout, opIdleTimeout)
+
 		r := t.createRoute(cfg.UUID, apiData.DisplayName, apiData.Version, apiData.Context, string(op.Method), op.Path,
-			mainClusterName, parsedMainURL.Path, effectiveMainVHost, cfg.Kind, templateHandle, providerName, apiData.Upstream.Main.HostRewrite, apiProjectID, mainTimeout, useClusterHeader, upstreamDefPaths)
+			mainClusterName, parsedMainURL.Path, effectiveMainVHost, cfg.Kind, templateHandle, providerName, apiData.Upstream.Main.HostRewrite, apiProjectID, opTimeoutCfg, useClusterHeader, upstreamDefPaths)
 		mainRoutesList = append(mainRoutesList, r)
 	}
 	routesList = append(routesList, mainRoutesList...)
@@ -894,8 +920,14 @@ func (t *Translator) translateAPIConfig(cfg *models.StoredConfig, allConfigs []*
 		sbRoutesList := make([]*route.Route, 0)
 		sbUseClusterHeader := apiData.UpstreamDefinitions != nil && len(*apiData.UpstreamDefinitions) > 0
 		for _, op := range apiData.Operations {
+			opTimeout, opIdleTimeout, err := ResolveResilience(op.Resilience)
+			if err != nil {
+				return nil, nil, fmt.Errorf("invalid resilience for operation %s %s: %w", op.Method, op.Path, err)
+			}
+			opTimeoutCfg := combineRouteResilience(sbTimeout, apiTimeout, apiIdleTimeout, opTimeout, opIdleTimeout)
+
 			r := t.createRoute(cfg.UUID, apiData.DisplayName, apiData.Version, apiData.Context, string(op.Method), op.Path,
-				sbClusterName, parsedSbURL.Path, effectiveSandboxVHost, cfg.Kind, templateHandle, providerName, apiData.Upstream.Sandbox.HostRewrite, apiProjectID, sbTimeout, sbUseClusterHeader, upstreamDefPaths)
+				sbClusterName, parsedSbURL.Path, effectiveSandboxVHost, cfg.Kind, templateHandle, providerName, apiData.Upstream.Sandbox.HostRewrite, apiProjectID, opTimeoutCfg, sbUseClusterHeader, upstreamDefPaths)
 			sbRoutesList = append(sbRoutesList, r)
 		}
 		routesList = append(routesList, sbRoutesList...)
@@ -1857,15 +1889,17 @@ func (t *Translator) createRoute(apiId, apiName, apiVersion, context, method, pa
 		}
 	}
 
-	// Currently the route level timeouts are configurable using the global configuration.
+	// Route-level timeouts: per-route resilience values (resilience block) take precedence,
+	// otherwise fall back to the global configuration defaults.
+	var routeTimeout, routeIdleTimeout *time.Duration
+	if timeoutCfg != nil {
+		routeTimeout = timeoutCfg.Route
+		routeIdleTimeout = timeoutCfg.Idle
+	}
 	routeAction := &route.Route_Route{
 		Route: &route.RouteAction{
-			Timeout: durationpb.New(
-				time.Duration(t.routerConfig.Upstream.Timeouts.RouteTimeoutMs) * time.Millisecond,
-			),
-			IdleTimeout: durationpb.New(
-				time.Duration(t.routerConfig.Upstream.Timeouts.RouteIdleTimeoutMs) * time.Millisecond,
-			),
+			Timeout:     t.routeTimeoutOrDefault(routeTimeout, t.routerConfig.Upstream.Timeouts.RouteTimeoutMs),
+			IdleTimeout: t.routeTimeoutOrDefault(routeIdleTimeout, t.routerConfig.Upstream.Timeouts.RouteIdleTimeoutMs),
 		},
 	}
 
@@ -3209,6 +3243,65 @@ func parseTimeout(timeoutStr *string) (*time.Duration, error) {
 	}
 
 	return &duration, nil
+}
+
+// parseDurationAllowZero parses a duration string (e.g. "15s", "0s") into a *time.Duration.
+// Unlike parseTimeout it accepts zero ("0s" means the timeout is explicitly disabled),
+// rejecting only malformed and negative values. Returns nil for nil/empty input.
+func parseDurationAllowZero(timeoutStr *string) (*time.Duration, error) {
+	if timeoutStr == nil || strings.TrimSpace(*timeoutStr) == "" {
+		return nil, nil
+	}
+
+	duration, err := time.ParseDuration(strings.TrimSpace(*timeoutStr))
+	if err != nil {
+		return nil, fmt.Errorf("invalid timeout format: %w", err)
+	}
+
+	if duration < 0 {
+		return nil, fmt.Errorf("timeout must not be negative, got: %v", duration)
+	}
+
+	return &duration, nil
+}
+
+// ResolveResilience parses a resilience block into route timeout and idle-timeout durations.
+// A nil block, or unset fields, yield nil durations (meaning "use the global default").
+// "0s" yields a non-nil zero duration (meaning "explicitly disabled").
+func ResolveResilience(r *api.Resilience) (timeout *time.Duration, idleTimeout *time.Duration, err error) {
+	if r == nil {
+		return nil, nil, nil
+	}
+	if timeout, err = parseDurationAllowZero(r.Timeout); err != nil {
+		return nil, nil, fmt.Errorf("invalid resilience.timeout: %w", err)
+	}
+	if idleTimeout, err = parseDurationAllowZero(r.IdleTimeout); err != nil {
+		return nil, nil, fmt.Errorf("invalid resilience.idleTimeout: %w", err)
+	}
+	return timeout, idleTimeout, nil
+}
+
+// combineRouteResilience returns a resolvedTimeout for a single route, preserving the
+// upstream connect timeout from base and applying the effective route/idle timeouts
+// (operation-level overriding API-level, per field). It returns base unchanged when no
+// resilience is configured at either level.
+func combineRouteResilience(base *resolvedTimeout, apiTimeout, apiIdle, opTimeout, opIdle *time.Duration) *resolvedTimeout {
+	effTimeout := opTimeout
+	if effTimeout == nil {
+		effTimeout = apiTimeout
+	}
+	effIdle := opIdle
+	if effIdle == nil {
+		effIdle = apiIdle
+	}
+	if effTimeout == nil && effIdle == nil {
+		return base
+	}
+	rt := resolvedTimeout{Route: effTimeout, Idle: effIdle}
+	if base != nil {
+		rt.Connect = base.Connect
+	}
+	return &rt
 }
 
 // resolveTimeoutFromDefinition converts an UpstreamDefinition's timeout block into a resolvedTimeout.

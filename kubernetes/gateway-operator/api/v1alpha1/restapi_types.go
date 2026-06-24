@@ -74,6 +74,11 @@ type APIConfigData struct {
 	// +optional
 	Policies []Policy `json:"policies,omitempty"`
 
+	// Resilience API-level backend/route timeout configuration applied to all operations
+	// unless overridden at the operation level
+	// +optional
+	Resilience *Resilience `json:"resilience,omitempty"`
+
 	// Upstream API-level upstream configuration
 	// +kubebuilder:validation:Required
 	Upstream UpstreamConfig `json:"upstream"`
@@ -125,6 +130,26 @@ type Operation struct {
 	// Policies List of policies applied only to this operation (overrides or adds to API-level policies)
 	// +optional
 	Policies []Policy `json:"policies,omitempty"`
+
+	// Resilience Operation-level backend/route timeout configuration (overrides API-level)
+	// +optional
+	Resilience *Resilience `json:"resilience,omitempty"`
+}
+
+// Resilience defines backend/route timeout configuration (maps to Envoy RouteAction
+// timeouts). Settable at the API level (applies to all routes) and/or the operation level
+// (overrides the API level). "0s" disables a timeout; unset falls back to the gateway's
+// global route timeout defaults.
+type Resilience struct {
+	// Timeout Maximum time for the entire route (request to upstream response). "0s" disables.
+	// +optional
+	// +kubebuilder:validation:Pattern=`^\d+(\.\d+)?(ms|s|m|h)$`
+	Timeout *string `json:"timeout,omitempty"`
+
+	// IdleTimeout Per-route stream idle timeout. "0s" disables.
+	// +optional
+	// +kubebuilder:validation:Pattern=`^\d+(\.\d+)?(ms|s|m|h)$`
+	IdleTimeout *string `json:"idleTimeout,omitempty"`
 }
 
 // OperationMethod HTTP method

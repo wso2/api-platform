@@ -21,11 +21,18 @@ spec:
   #     params:
   #       issuers:
   #         - WSO2KeyManager1
+  # API-level resilience applies to all operations unless overridden per operation.
+  resilience:
+    timeout: 15s
+    idleTimeout: 0s
   operations:
     - method: GET
       path: /info
     - method: POST
       path: /submit
+      # Operation-level resilience overrides the API-level values for this route.
+      resilience:
+        timeout: 5s
     - method: GET
       path: /helloworld
     - method: GET

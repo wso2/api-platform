@@ -436,9 +436,51 @@ func (v *APIValidator) validateRestData(spec *api.APIConfigData) []ValidationErr
 		errors = append(errors, v.validateUpstream("sandbox", spec.Upstream.Sandbox, spec.UpstreamDefinitions)...)
 	}
 
+	// Validate API-level resilience block
+	errors = append(errors, v.validateResilience("spec.resilience", spec.Resilience)...)
+
 	// Validate operations
 	errors = append(errors, v.validateOperations(spec.Operations)...)
 
+	return errors
+}
+
+// validateResilience validates a resilience block (timeout / idleTimeout). Both fields
+// are optional duration strings; "0s" is allowed (disables the timeout), negative and
+// malformed values are rejected. fieldPrefix is the path to the block (e.g.
+// "spec.resilience" or "spec.operations[2].resilience").
+func (v *APIValidator) validateResilience(fieldPrefix string, r *api.Resilience) []ValidationError {
+	var errors []ValidationError
+	if r == nil {
+		return errors
+	}
+
+	validate := func(field string, value *string) {
+		if value == nil {
+			return
+		}
+		s := strings.TrimSpace(*value)
+		if s == "" {
+			return
+		}
+		d, err := time.ParseDuration(s)
+		if err != nil {
+			errors = append(errors, ValidationError{
+				Field:   field,
+				Message: fmt.Sprintf("Invalid timeout format: %v (expected format: '30s', '1m', '500ms', or '0s' to disable)", err),
+			})
+			return
+		}
+		if d < 0 {
+			errors = append(errors, ValidationError{
+				Field:   field,
+				Message: "Timeout must not be negative",
+			})
+		}
+	}
+
+	validate(fieldPrefix+".timeout", r.Timeout)
+	validate(fieldPrefix+".idleTimeout", r.IdleTimeout)
 	return errors
 }
 
@@ -621,6 +663,9 @@ func (v *APIValidator) validateOperations(operations []api.Operation) []Validati
 				Message: "Operation path has unbalanced braces in parameters",
 			})
 		}
+
+		// Validate operation-level resilience block
+		errors = append(errors, v.validateResilience(fmt.Sprintf("spec.operations[%d].resilience", i), op.Resilience)...)
 	}
 
 	return errors

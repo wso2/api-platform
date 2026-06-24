@@ -790,6 +790,53 @@ func TestTranslator_WildcardUpstreamRewriteFromRDC(t *testing.T) {
 	}
 }
 
+// TestTranslator_RouteResilienceTimeoutsFromRDC verifies that per-route resilience
+// timeouts on a models.Route flow into the Envoy RouteAction, with fallback to the
+// global defaults (60s / 300s from testRouterConfig) when unset, and that an explicit
+// 0s is preserved (disables the timeout).
+func TestTranslator_RouteResilienceTimeoutsFromRDC(t *testing.T) {
+	logger := createTestLogger()
+	routerCfg := testRouterConfig()
+	cfg := testConfig()
+	translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+	dur := func(d time.Duration) *time.Duration { return &d }
+
+	tests := []struct {
+		name        string
+		timeout     *models.RouteTimeout
+		wantTimeout time.Duration
+		wantIdle    time.Duration
+	}{
+		{name: "nil timeout uses global defaults", timeout: nil, wantTimeout: 60 * time.Second, wantIdle: 300 * time.Second},
+		{name: "configured values applied", timeout: &models.RouteTimeout{Timeout: dur(2 * time.Second), IdleTimeout: dur(10 * time.Second)}, wantTimeout: 2 * time.Second, wantIdle: 10 * time.Second},
+		{name: "timeout set, idle falls back", timeout: &models.RouteTimeout{Timeout: dur(3 * time.Second)}, wantTimeout: 3 * time.Second, wantIdle: 300 * time.Second},
+		{name: "explicit 0s disables route timeout", timeout: &models.RouteTimeout{Timeout: dur(0)}, wantTimeout: 0, wantIdle: 300 * time.Second},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rdc := &models.RuntimeDeployConfig{
+				UpstreamClusters: map[string]*models.UpstreamCluster{
+					"main": {Endpoints: []models.Endpoint{{Host: "echo", Port: 80}}},
+				},
+			}
+			rdcRoute := &models.Route{
+				Method:          "GET",
+				Path:            "/api/v1.0/items",
+				OperationPath:   "/items",
+				AutoHostRewrite: true,
+				Timeout:         tt.timeout,
+				Upstream:        models.RouteUpstream{ClusterKey: "main"},
+			}
+			r := translator.createRouteFromRDC("GET|/api/v1.0/items|", rdcRoute, rdc)
+			require.NotNil(t, r)
+			assert.Equal(t, tt.wantTimeout, r.GetRoute().GetTimeout().AsDuration(), "route timeout")
+			assert.Equal(t, tt.wantIdle, r.GetRoute().GetIdleTimeout().AsDuration(), "route idle timeout")
+		})
+	}
+}
+
 // TestTranslator_MCPUpstreamRewriteFromRDC verifies the MCP "/mcp"-not-appended behavior on the
 // RuntimeDeployConfig path (createRouteFromRDC), which the policy/runtime xDS pipeline uses.
 func TestTranslator_MCPUpstreamRewriteFromRDC(t *testing.T) {
