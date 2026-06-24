@@ -211,6 +211,116 @@ func TestConfigStore_TemplateErrors(t *testing.T) {
 	assert.Error(t, err)
 }
 
+// TestConfigStore_TemplateMultiVersion verifies that multiple versions of the same
+// handle can coexist, that the most recently added one resolves as "latest" via
+// GetTemplateByHandle, and that GetTemplateByHandleAndVersion/GetTemplateByID can
+// still reach a specific, non-latest version.
+func TestConfigStore_TemplateMultiVersion(t *testing.T) {
+	cs := NewConfigStore()
+
+	v1 := &models.StoredLLMProviderTemplate{
+		UUID: "0000-template-v1-0000-000000000000",
+		Configuration: api.LLMProviderTemplate{
+			Metadata: api.Metadata{Name: "mistralai"},
+			Spec:     api.LLMProviderTemplateData{Version: strPtr("v1.0")},
+		},
+		CreatedAt: time.Now(),
+	}
+	require.NoError(t, cs.AddTemplate(v1))
+
+	v2 := &models.StoredLLMProviderTemplate{
+		UUID: "0000-template-v2-0000-000000000000",
+		Configuration: api.LLMProviderTemplate{
+			Metadata: api.Metadata{Name: "mistralai"},
+			Spec:     api.LLMProviderTemplateData{Version: strPtr("v2.0")},
+		},
+		CreatedAt: time.Now().Add(time.Minute),
+	}
+	require.NoError(t, cs.AddTemplate(v2))
+
+	// GetTemplateByHandle resolves to the most recently created version (v2.0).
+	latest, err := cs.GetTemplateByHandle("mistralai")
+	require.NoError(t, err)
+	assert.Equal(t, "0000-template-v2-0000-000000000000", latest.UUID)
+
+	// GetTemplateByHandleAndVersion reaches the specific, non-latest version (v1.0).
+	v1Retrieved, err := cs.GetTemplateByHandleAndVersion("mistralai", "v1.0")
+	require.NoError(t, err)
+	assert.Equal(t, "0000-template-v1-0000-000000000000", v1Retrieved.UUID)
+
+	v2Retrieved, err := cs.GetTemplateByHandleAndVersion("mistralai", "v2.0")
+	require.NoError(t, err)
+	assert.Equal(t, "0000-template-v2-0000-000000000000", v2Retrieved.UUID)
+
+	_, err = cs.GetTemplateByHandleAndVersion("mistralai", "v9.0")
+	assert.Error(t, err)
+
+	// GetTemplateByID resolves the version-specific id for each version...
+	byID, err := cs.GetTemplateByID("mistralai-v1-0")
+	require.NoError(t, err)
+	assert.Equal(t, "0000-template-v1-0000-000000000000", byID.UUID)
+
+	byID, err = cs.GetTemplateByID("mistralai-v2-0")
+	require.NoError(t, err)
+	assert.Equal(t, "0000-template-v2-0000-000000000000", byID.UUID)
+
+	// ...and falls back to resolving the latest version when given the bare handle.
+	byID, err = cs.GetTemplateByID("mistralai")
+	require.NoError(t, err)
+	assert.Equal(t, "0000-template-v2-0000-000000000000", byID.UUID)
+
+	_, err = cs.GetTemplateByID("does-not-exist")
+	assert.Error(t, err)
+
+	// Deleting the latest version demotes the remaining version back to latest.
+	require.NoError(t, cs.DeleteTemplate("0000-template-v2-0000-000000000000"))
+	latest, err = cs.GetTemplateByHandle("mistralai")
+	require.NoError(t, err)
+	assert.Equal(t, "0000-template-v1-0000-000000000000", latest.UUID)
+}
+
+// TestConfigStore_AddTemplate_DuplicateHandleVersionRejected verifies that adding a
+// second template with the same (handle, version) pair is rejected, while a
+// different version of the same handle is accepted (multi-version support).
+func TestConfigStore_AddTemplate_DuplicateHandleVersionRejected(t *testing.T) {
+	cs := NewConfigStore()
+
+	v1 := &models.StoredLLMProviderTemplate{
+		UUID: "0000-template-a-0000-000000000000",
+		Configuration: api.LLMProviderTemplate{
+			Metadata: api.Metadata{Name: "openai"},
+			Spec:     api.LLMProviderTemplateData{Version: strPtr("v1.0")},
+		},
+	}
+	require.NoError(t, cs.AddTemplate(v1))
+
+	// Same handle and version, different UUID -> rejected.
+	dup := &models.StoredLLMProviderTemplate{
+		UUID: "0000-template-b-0000-000000000000",
+		Configuration: api.LLMProviderTemplate{
+			Metadata: api.Metadata{Name: "openai"},
+			Spec:     api.LLMProviderTemplateData{Version: strPtr("v1.0")},
+		},
+	}
+	err := cs.AddTemplate(dup)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "already exists")
+
+	// Same handle, different version -> accepted.
+	newVersion := &models.StoredLLMProviderTemplate{
+		UUID: "0000-template-c-0000-000000000000",
+		Configuration: api.LLMProviderTemplate{
+			Metadata: api.Metadata{Name: "openai"},
+			Spec:     api.LLMProviderTemplateData{Version: strPtr("v2.0")},
+		},
+	}
+	assert.NoError(t, cs.AddTemplate(newVersion))
+}
+
+func strPtr(s string) *string {
+	return &s
+}
+
 func TestConfigStore_APIKeyOperations(t *testing.T) {
 	cs := NewConfigStore()
 

@@ -78,3 +78,94 @@ func TestStoredLLMProviderTemplate_GetHandle(t *testing.T) {
 		})
 	}
 }
+
+func strPtr(s string) *string {
+	return &s
+}
+
+func TestStoredLLMProviderTemplate_GetVersion(t *testing.T) {
+	tests := []struct {
+		name     string
+		version  *string
+		expected string
+	}{
+		{name: "explicit version", version: strPtr("v2.0"), expected: "v2.0"},
+		{name: "version with surrounding whitespace", version: strPtr("  v3.0  "), expected: "v3.0"},
+		{name: "nil version defaults to v1.0", version: nil, expected: DefaultTemplateVersion},
+		{name: "blank version defaults to v1.0", version: strPtr("   "), expected: DefaultTemplateVersion},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			template := &StoredLLMProviderTemplate{
+				Configuration: api.LLMProviderTemplate{
+					Spec: api.LLMProviderTemplateData{Version: tt.version},
+				},
+			}
+			assert.Equal(t, tt.expected, template.GetVersion())
+		})
+	}
+}
+
+func TestStoredLLMProviderTemplate_GetProvider(t *testing.T) {
+	tests := []struct {
+		name     string
+		provider *string
+		expected string
+	}{
+		{name: "explicit provider", provider: strPtr("wso2"), expected: "wso2"},
+		{name: "provider with surrounding whitespace", provider: strPtr("  custom  "), expected: "custom"},
+		{name: "nil provider defaults to other", provider: nil, expected: DefaultTemplateProvider},
+		{name: "blank provider defaults to other", provider: strPtr("  "), expected: DefaultTemplateProvider},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			template := &StoredLLMProviderTemplate{
+				Configuration: api.LLMProviderTemplate{
+					Spec: api.LLMProviderTemplateData{Provider: tt.provider},
+				},
+			}
+			assert.Equal(t, tt.expected, template.GetProvider())
+		})
+	}
+}
+
+func TestStoredLLMProviderTemplate_GetID(t *testing.T) {
+	template := &StoredLLMProviderTemplate{
+		Configuration: api.LLMProviderTemplate{
+			Metadata: api.Metadata{Name: "mistralai"},
+			Spec:     api.LLMProviderTemplateData{Version: strPtr("v2.0")},
+		},
+	}
+	assert.Equal(t, "mistralai-v2-0", template.GetID())
+}
+
+func TestStoredLLMProviderTemplate_GetID_DefaultsVersionWhenUnset(t *testing.T) {
+	template := &StoredLLMProviderTemplate{
+		Configuration: api.LLMProviderTemplate{
+			Metadata: api.Metadata{Name: "openai"},
+		},
+	}
+	assert.Equal(t, "openai-v1-0", template.GetID())
+}
+
+func TestMakeTemplateID(t *testing.T) {
+	tests := []struct {
+		name     string
+		handle   string
+		version  string
+		expected string
+	}{
+		{name: "standard handle and version", handle: "openai", version: "v1.0", expected: "openai-v1-0"},
+		{name: "uppercase version is lowercased", handle: "openai", version: "V2.0", expected: "openai-v2-0"},
+		{name: "blank version defaults to v1.0", handle: "openai", version: "", expected: "openai-v1-0"},
+		{name: "handle with surrounding whitespace is trimmed", handle: "  openai  ", version: "v1.0", expected: "openai-v1-0"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, MakeTemplateID(tt.handle, tt.version))
+		})
+	}
+}
