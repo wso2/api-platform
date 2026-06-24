@@ -533,7 +533,7 @@ CREATE TABLE IF NOT EXISTS artifact_secret_refs (
     organization_uuid VARCHAR(40)  NOT NULL,
     artifact_uuid     VARCHAR(40)  NOT NULL,
     secret_handle     VARCHAR(100) NOT NULL,
-    gateway_id        VARCHAR(40)  NOT NULL DEFAULT '', -- '' = artifact-level (current config); gateway UUID = deployed
+    gateway_id        VARCHAR(40)  NOT NULL DEFAULT '', -- empty string = artifact-level (current config), gateway UUID = deployed
     created_at        DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (organization_uuid, artifact_uuid, secret_handle, gateway_id),
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,

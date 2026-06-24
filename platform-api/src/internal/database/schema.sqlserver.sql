@@ -639,7 +639,7 @@ CREATE TABLE dbo.artifact_secret_refs (
     organization_uuid NVARCHAR(40)  NOT NULL,
     artifact_uuid     NVARCHAR(40)  NOT NULL,
     secret_handle     NVARCHAR(100) NOT NULL,
-    gateway_id        NVARCHAR(40)  NOT NULL DEFAULT '', -- '' = artifact-level (current config); gateway UUID = deployed
+    gateway_id        NVARCHAR(40)  NOT NULL DEFAULT '', -- empty string = artifact-level (current config), gateway UUID = deployed
     created_at        DATETIME2(7)  NOT NULL DEFAULT SYSUTCDATETIME(),
     CONSTRAINT pk_artifact_secret_refs PRIMARY KEY (organization_uuid, artifact_uuid, secret_handle, gateway_id),
     CONSTRAINT fk_asr_org     FOREIGN KEY (organization_uuid) REFERENCES dbo.organizations(uuid) ON DELETE NO ACTION,
