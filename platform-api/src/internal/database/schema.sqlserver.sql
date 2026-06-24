@@ -603,7 +603,7 @@ CREATE TABLE dbo.secrets (
     handle            NVARCHAR(100)  NOT NULL,
     name              NVARCHAR(255)  NOT NULL,
     description       NVARCHAR(1023),
-    ciphertext        VARBINARY(MAX) NOT NULL,
+    ciphertext        VARBINARY(8000) NOT NULL,
     hash              NVARCHAR(80)   NOT NULL,
     type              NVARCHAR(20)   NOT NULL DEFAULT 'GENERIC', -- GENERIC | CERTIFICATE
     provider          NVARCHAR(20)   NOT NULL DEFAULT 'IN_BUILT',
