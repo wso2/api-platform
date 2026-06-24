@@ -47,7 +47,6 @@ services:
     container_name: platform-api
     restart: unless-stopped
     command: ["-config", "/etc/platform-api/config-platform-api.toml"]
-    # entrypoint: ["sleep", "infinity"]
     environment:
       # Secrets — set these in your shell or in a .env file next to this file.
       - AUTH_JWT_SECRET_KEY=${AUTH_JWT_SECRET_KEY:-}

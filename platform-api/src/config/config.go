@@ -23,6 +23,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"os"
 	"reflect"
 	"strings"
 	"sync"
@@ -305,12 +306,21 @@ func LoadConfig(configPath string) (*Server, error) {
 	}
 
 	if cfg.Database.SecretEncryptionKey == "" {
+		demoMode := strings.ToLower(strings.TrimSpace(os.Getenv("APIP_DEMO_MODE")))
+		if demoMode != "true" && demoMode != "1" {
+			return nil, fmt.Errorf("database.secret_encryption_key is not set. " +
+				"All replicas must share a stable key (PLATFORM_SECRET_ENCRYPTION_KEY or database.secret_encryption_key). " +
+				"Generate one with: openssl rand -hex 32. " +
+				"To allow an ephemeral key in a single-node dev environment, set APIP_DEMO_MODE=true")
+		}
 		key, err := generateRandomSecret()
 		if err != nil {
 			return nil, fmt.Errorf("failed to generate secret encryption key: %w", err)
 		}
 		cfg.Database.SecretEncryptionKey = key
-		slog.Warn("database.secret_encryption_key is not set — generated an ephemeral random key; all encrypted secrets will be unreadable on restart")
+		slog.Warn("APIP_DEMO_MODE: database.secret_encryption_key is not set — using an ephemeral random key. " +
+			"Encrypted secrets will be unreadable after restart and WILL NOT be shared across replicas. " +
+			"Set PLATFORM_SECRET_ENCRYPTION_KEY for any persistent or multi-replica deployment.")
 	}
 
 	return cfg, nil

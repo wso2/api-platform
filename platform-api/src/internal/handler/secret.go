@@ -233,32 +233,3 @@ func (h *SecretHandler) DeleteSecret(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
-// GetSecretValue is an internal endpoint for the GW controller only.
-// Returns the decrypted plaintext value of a secret by handle.
-// Must be protected by GW service account JWT at the middleware level.
-func (h *SecretHandler) GetSecretValue(c *gin.Context) {
-	orgID, exists := middleware.GetOrganizationFromContext(c)
-	if !exists {
-		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
-		return
-	}
-
-	handle := c.Param("id")
-	if handle == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Secret name is required"))
-		return
-	}
-
-	plaintext, err := h.secretService.Decrypt(orgID, handle)
-	if err != nil {
-		if errors.Is(err, constants.ErrSecretNotFound) {
-			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "Secret not found"))
-			return
-		}
-		h.slogger.Error("failed to decrypt secret", "orgID", orgID, "handle", handle, "error", err)
-		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to decrypt secret"))
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"value": plaintext})
-}
