@@ -523,12 +523,10 @@ func TestGetDeploymentsWithState_MultipleGateways(t *testing.T) {
 }
 
 func TestMain(m *testing.M) {
-	// Setup
+	// Allow GetConfig() to generate an ephemeral secret_encryption_key without failing.
+	os.Setenv("APIP_DEMO_MODE", "true")
+
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
-
-	// Run tests
 	code := m.Run()
-
-	// Teardown
 	os.Exit(code)
 }
