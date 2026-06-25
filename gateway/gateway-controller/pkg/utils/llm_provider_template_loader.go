@@ -82,11 +82,11 @@ func (tl *LLMTemplateLoader) LoadTemplatesFromDirectory(dirPath string) (map[str
 		}
 
 		// Key by version-specific id so distinct versions of the same
-		// group_version_id can coexist as separate files instead of colliding
-		// on the group_version_id alone.
+		// group_id can coexist as separate files instead of colliding
+		// on the group_id alone.
 		groupVersionID := template.Metadata.Name
-		if template.Spec.GroupVersionId != nil {
-			if v := strings.TrimSpace(*template.Spec.GroupVersionId); v != "" {
+		if template.Spec.GroupId != nil {
+			if v := strings.TrimSpace(*template.Spec.GroupId); v != "" {
 				groupVersionID = v
 			}
 		}
@@ -96,13 +96,13 @@ func (tl *LLMTemplateLoader) LoadTemplatesFromDirectory(dirPath string) (map[str
 		}
 		templateID := models.MakeTemplateID(groupVersionID, templateVersion)
 		if _, exists := templates[templateID]; exists {
-			return fmt.Errorf("duplicate template id (group_version_id+version): %s", templateID)
+			return fmt.Errorf("duplicate template id (group_id+version): %s", templateID)
 		}
 
 		templates[templateID] = template
 		tl.logger.Info("Loaded LLM provider template",
 			slog.String("id", templateID),
-			slog.String("group_version_id", groupVersionID),
+			slog.String("group_id", groupVersionID),
 			slog.String("version", templateVersion),
 			slog.String("apiVersion", string(template.ApiVersion)),
 			slog.String("file", path))

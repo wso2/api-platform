@@ -19,10 +19,10 @@
 apiVersion: gateway.api-platform.wso2.com/v1
 kind: LlmProviderTemplate
 metadata:
-  name: gemini-v1-0
+  name: gemini
 spec:
   displayName: Gemini
-  groupVersionId: gemini
+  groupId: gemini
   managedBy: wso2
   version: v1.0
   promptTokens:

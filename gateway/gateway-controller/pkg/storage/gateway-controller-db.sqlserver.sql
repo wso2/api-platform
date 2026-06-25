@@ -119,13 +119,15 @@ IF OBJECT_ID(N'dbo.llm_provider_templates', N'U') IS NULL
 CREATE TABLE dbo.llm_provider_templates (
     uuid NVARCHAR(64) NOT NULL,
     gateway_id NVARCHAR(64) NOT NULL,
-    group_version_id NVARCHAR(255) NOT NULL,
+    group_id NVARCHAR(255) NOT NULL,
+    handle NVARCHAR(255) NOT NULL,
     version NVARCHAR(64) NOT NULL DEFAULT 'v1.0',
     configuration NVARCHAR(MAX) NOT NULL,
     created_at DATETIME2(7) NOT NULL DEFAULT SYSUTCDATETIME(),
     updated_at DATETIME2(7) NOT NULL DEFAULT SYSUTCDATETIME(),
     PRIMARY KEY (gateway_id, uuid),
-    UNIQUE(gateway_id, group_version_id, version)
+    UNIQUE(gateway_id, group_id, version),
+    UNIQUE(gateway_id, handle)
 );
 
 -- Table for API keys

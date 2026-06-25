@@ -19,10 +19,10 @@
 apiVersion: gateway.api-platform.wso2.com/v1
 kind: LlmProviderTemplate
 metadata:
-  name: azure-openai-v1-0
+  name: azure-openai
 spec:
   displayName: Azure OpenAI
-  groupVersionId: azure-openai
+  groupId: azure-openai
   managedBy: wso2
   version: v1.0
   promptTokens:

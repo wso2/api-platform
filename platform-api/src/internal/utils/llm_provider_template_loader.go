@@ -134,7 +134,7 @@ func LoadLLMProviderTemplatesFromDirectory(dirPath string) ([]*model.LLMProvider
 
 		res = append(res, &model.LLMProviderTemplate{
 			ID:             handle,
-			GroupVersionID: baseHandle,
+			GroupID: baseHandle,
 			Version:        seedVersion,
 			Name:           doc.Spec.DisplayName,
 			ManagedBy:      managedBy,

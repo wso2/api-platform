@@ -39,7 +39,7 @@ Feature: Custom LLM Provider Template deploy and invoke
         name: ecustom-v1-0
       spec:
         displayName: E2E Custom v1
-        groupVersionId: ecustom
+        groupId: ecustom
         managedBy: customer
         version: v1.0
         promptTokens:
@@ -72,7 +72,7 @@ Feature: Custom LLM Provider Template deploy and invoke
         name: ecustom-v2-0
       spec:
         displayName: E2E Custom v2
-        groupVersionId: ecustom
+        groupId: ecustom
         managedBy: customer
         version: v2.0
         promptTokens:

@@ -10080,12 +10080,21 @@ components:
         id:
           type: string
           description: Unique handle for the template
+          maxLength: 40
+          example: openai
+        groupId:
+          type: string
+          description: |
+            Stable identifier shared by every version of a template family
+            (defaults to the first version's handle). Read-only.
+          readOnly: true
+          maxLength: 40
           example: openai
         name:
           type: string
           description: Human-readable LLM Template name
           minLength: 1
-          maxLength: 253
+          maxLength: 255
           example: OpenAI
         managedBy:
           type: string
@@ -10095,7 +10104,7 @@ components:
             Optional on create/update — the server defaults it to 'customer' when
             omitted, so a request/YAML without a managedBy is accepted.
           default: customer
-          maxLength: 253
+          maxLength: 255
           example: wso2
         description:
           type: string
@@ -10106,6 +10115,13 @@ components:
           type: string
           description: Username of the creator
           readOnly: true
+          maxLength: 200
+          example: jane.doe
+        updatedBy:
+          type: string
+          description: Username of the last user to update the template
+          readOnly: true
+          maxLength: 200
           example: jane.doe
         version:
           type: string
@@ -10115,6 +10131,7 @@ components:
             only when creating a new version via
             POST /llm-provider-templates/{id}/versions.
           pattern: '^[vV]\d+\.\d+$'
+          maxLength: 30
           example: v1.0
         isLatest:
           type: boolean
@@ -10181,12 +10198,13 @@ components:
           type: string
           description: Human-readable LLM Template name
           minLength: 1
-          maxLength: 253
+          maxLength: 255
           example: OpenAI
         version:
           type: string
           description: New version identifier, e.g. v2.0. Must be unique for this template.
           pattern: '^[vV]\d+\.\d+$'
+          maxLength: 30
           example: v2.0
         managedBy:
           type: string
@@ -10228,6 +10246,14 @@ components:
       properties:
         id:
           type: string
+          example: openai
+        groupId:
+          type: string
+          description: |
+            Stable identifier shared by every version of a template family
+            (defaults to the first version's handle). Read-only.
+          readOnly: true
+          maxLength: 40
           example: openai
         name:
           type: string

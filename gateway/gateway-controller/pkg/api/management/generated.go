@@ -894,9 +894,9 @@ type LLMProviderTemplateData struct {
 	// DisplayName Human-readable LLM Template name
 	DisplayName string `json:"displayName" yaml:"displayName"`
 
-	// GroupVersionId Stable family-grouping identifier shared by every version of this
+	// GroupId Stable family-grouping identifier shared by every version of this
 	// template. Defaults to metadata.name when omitted.
-	GroupVersionId *string `json:"groupVersionId,omitempty" yaml:"groupVersionId,omitempty"`
+	GroupId *string `json:"groupId,omitempty" yaml:"groupId,omitempty"`
 
 	// ManagedBy Origin of the template. Built-in templates use 'wso2'; custom
 	// templates default to 'customer' and may be set to any value.
@@ -909,7 +909,7 @@ type LLMProviderTemplateData struct {
 	TotalTokens      *ExtractionIdentifier                `json:"totalTokens,omitempty" yaml:"totalTokens,omitempty"`
 
 	// Version Template content version (e.g. v1.0). Multiple versions of the same
-	// group_version_id can coexist; defaults to v1.0 when omitted.
+	// group_id can coexist; defaults to v1.0 when omitted.
 	Version *string `json:"version,omitempty" yaml:"version,omitempty"`
 }
 

@@ -1507,13 +1507,14 @@ func (s *sqlStore) SaveLLMProviderTemplate(template *models.StoredLLMProviderTem
 		return fmt.Errorf("failed to marshal template configuration: %w", err)
 	}
 
-	groupVersionID := template.GetGroupVersionID()
+	groupVersionID := template.GetGroupID()
+	handle := template.GetHandle()
 	version := template.GetVersion()
 
 	query := `
 		INSERT INTO llm_provider_templates (
-			uuid, gateway_id, group_version_id, version, configuration, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?)
+			uuid, gateway_id, group_id, handle, version, configuration, created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	now := time.Now()
@@ -1521,6 +1522,7 @@ func (s *sqlStore) SaveLLMProviderTemplate(template *models.StoredLLMProviderTem
 		template.UUID,
 		s.gatewayId,
 		groupVersionID,
+		handle,
 		version,
 		string(configJSON),
 		now,
@@ -1530,14 +1532,14 @@ func (s *sqlStore) SaveLLMProviderTemplate(template *models.StoredLLMProviderTem
 	if err != nil {
 		// Check for unique constraint violation
 		if s.isUniqueViolation(err) {
-			return fmt.Errorf("%w: template with group_version_id '%s' and version '%s' already exists", ErrConflict, groupVersionID, version)
+			return fmt.Errorf("%w: template conflicts with an existing row on (group_id '%s', version '%s') or handle '%s'", ErrConflict, groupVersionID, version, handle)
 		}
 		return fmt.Errorf("failed to insert template: %w", err)
 	}
 
 	s.logger.Info("LLM provider template saved",
 		slog.String("uuid", template.UUID),
-		slog.String("group_version_id", groupVersionID))
+		slog.String("group_id", groupVersionID))
 
 	return nil
 }
@@ -1559,17 +1561,19 @@ func (s *sqlStore) UpdateLLMProviderTemplate(template *models.StoredLLMProviderT
 		return fmt.Errorf("failed to marshal template configuration: %w", err)
 	}
 
-	groupVersionID := template.GetGroupVersionID()
+	groupVersionID := template.GetGroupID()
+	handle := template.GetHandle()
 
 	version := template.GetVersion()
 	query := `
 		UPDATE llm_provider_templates
-		SET group_version_id = ?, version = ?, configuration = ?, updated_at = ?
+		SET group_id = ?, handle = ?, version = ?, configuration = ?, updated_at = ?
 		WHERE uuid = ? AND gateway_id = ?
 	`
 
 	result, err := s.exec(query,
 		groupVersionID,
+		handle,
 		version,
 		string(configJSON),
 		time.Now(),
@@ -1579,7 +1583,7 @@ func (s *sqlStore) UpdateLLMProviderTemplate(template *models.StoredLLMProviderT
 
 	if err != nil {
 		if s.isUniqueViolation(err) {
-			return fmt.Errorf("%w: template with group_version_id '%s' and version '%s' already exists", ErrConflict, groupVersionID, version)
+			return fmt.Errorf("%w: template conflicts with an existing row on (group_id '%s', version '%s') or handle '%s'", ErrConflict, groupVersionID, version, handle)
 		}
 		return fmt.Errorf("failed to update template: %w", err)
 	}
@@ -1595,7 +1599,7 @@ func (s *sqlStore) UpdateLLMProviderTemplate(template *models.StoredLLMProviderT
 
 	s.logger.Info("LLM provider template updated",
 		slog.String("uuid", template.UUID),
-		slog.String("group_version_id", groupVersionID))
+		slog.String("group_id", groupVersionID))
 
 	return nil
 }
@@ -1704,7 +1708,7 @@ func (s *sqlStore) GetAllLLMProviderTemplates() ([]*models.StoredLLMProviderTemp
 }
 
 // GetLLMProviderTemplateByHandle retrieves the latest (most recently created)
-// version of an LLM provider template by group_version_id.
+// version of an LLM provider template by group_id.
 func (s *sqlStore) GetLLMProviderTemplateByHandle(groupVersionID string) (*models.StoredLLMProviderTemplate, error) {
 	limitClause := "LIMIT 1"
 	if s.backendName == "sqlserver" {
@@ -1713,7 +1717,7 @@ func (s *sqlStore) GetLLMProviderTemplateByHandle(groupVersionID string) (*model
 	query := `
 		SELECT uuid, configuration, created_at, updated_at
 		FROM llm_provider_templates
-		WHERE gateway_id = ? AND group_version_id = ?
+		WHERE gateway_id = ? AND group_id = ?
 		ORDER BY created_at DESC
 		` + limitClause
 
@@ -1728,7 +1732,7 @@ func (s *sqlStore) GetLLMProviderTemplateByHandle(groupVersionID string) (*model
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, fmt.Errorf("%w: group_version_id=%s", ErrNotFound, groupVersionID)
+			return nil, fmt.Errorf("%w: group_id=%s", ErrNotFound, groupVersionID)
 		}
 		return nil, fmt.Errorf("failed to query template: %w", err)
 	}

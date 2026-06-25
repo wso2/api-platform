@@ -121,9 +121,14 @@ CREATE TABLE IF NOT EXISTS llm_provider_templates (
     -- Gateway identifier
     gateway_id TEXT NOT NULL,
 
-    -- Stable family-grouping identifier; a group_version_id may have multiple
+    -- Stable family-grouping identifier; a group_id may have multiple
     -- versions within a gateway
-    group_version_id TEXT NOT NULL,
+    group_id TEXT NOT NULL,
+
+    -- Verbatim handle from the template YAML (metadata.name). Built-in
+    -- templates use the unversioned family name (e.g. openai); custom
+    -- templates carry the version (e.g. mistralai-v2-0). Stored as-is.
+    handle TEXT NOT NULL,
 
     -- Template content version (e.g. v1.0); defaults to v1.0 when omitted
     version TEXT NOT NULL DEFAULT 'v1.0',
@@ -135,9 +140,11 @@ CREATE TABLE IF NOT EXISTS llm_provider_templates (
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
-    -- Each (group_version_id, version) pair is unique per gateway; versions coexist
+    -- Each (group_id, version) pair is unique per gateway; versions coexist.
+    -- The handle (metadata.name) is unique per gateway.
     PRIMARY KEY (gateway_id, uuid),
-    UNIQUE(gateway_id, group_version_id, version)
+    UNIQUE(gateway_id, group_id, version),
+    UNIQUE(gateway_id, handle)
 );
 
 -- Table for API keys

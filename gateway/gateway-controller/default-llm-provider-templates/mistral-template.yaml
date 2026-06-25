@@ -19,10 +19,10 @@
 apiVersion: gateway.api-platform.wso2.com/v1
 kind: LlmProviderTemplate
 metadata:
-  name: mistralai-v1-0
+  name: mistralai
 spec:
   displayName: MistralAI
-  groupVersionId: mistralai
+  groupId: mistralai
   managedBy: wso2
   version: v1.0
   promptTokens:

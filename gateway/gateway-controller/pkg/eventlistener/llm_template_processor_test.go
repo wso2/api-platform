@@ -55,7 +55,7 @@ func TestHandleEvent_LLMTemplateCreate_LoadsTemplateFromDBAndPublishesLazyResour
 
 	stored, err := store.GetTemplate(template.UUID)
 	require.NoError(t, err)
-	assert.Equal(t, "openai", stored.GetGroupVersionID())
+	assert.Equal(t, "openai", stored.GetGroupID())
 
 	resource, exists := lazyManager.GetResourceByIDAndType("openai", utils.LazyResourceTypeLLMProviderTemplate)
 	require.True(t, exists)

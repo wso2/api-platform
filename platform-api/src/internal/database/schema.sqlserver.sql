@@ -348,22 +348,25 @@ CREATE TABLE dbo.publication_mappings (
 IF OBJECT_ID(N'dbo.llm_provider_templates', N'U') IS NULL
 CREATE TABLE dbo.llm_provider_templates (
     uuid VARCHAR(40) PRIMARY KEY,
-    organization_uuid VARCHAR(40) NOT NULL,
-    handle VARCHAR(255) NOT NULL,
-    group_version_id VARCHAR(255) NOT NULL,
-    name VARCHAR(253) NOT NULL,
+    handle VARCHAR(40) NOT NULL,
+    group_id VARCHAR(40) NOT NULL,
+    name VARCHAR(255) NOT NULL,
     managed_by VARCHAR(255) NOT NULL DEFAULT 'customer',
+    version VARCHAR(30) NOT NULL DEFAULT 'v1.0',
     description VARCHAR(1023),
-    created_by VARCHAR(255),
-    configuration NVARCHAR(MAX) NOT NULL,
-    openapi_spec NVARCHAR(MAX),
-    version VARCHAR(40) NOT NULL DEFAULT 'v1.0',
-    is_latest BIT NOT NULL DEFAULT 1,
-    enabled BIT NOT NULL DEFAULT 1,
+    configuration VARBINARY(MAX) NOT NULL,
+    openapi_spec VARBINARY(MAX),
+    is_latest SMALLINT NOT NULL DEFAULT 1,
+    enabled SMALLINT NOT NULL DEFAULT 1,
+    data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
+    created_by VARCHAR(200),
     created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
+    updated_by VARCHAR(200),
     updated_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
+    organization_uuid VARCHAR(40) NOT NULL,
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
-    UNIQUE(organization_uuid, group_version_id, version)
+    UNIQUE(organization_uuid, group_id, version),
+    UNIQUE(organization_uuid, handle)
 );
 
 -- LLM Providers table
@@ -551,8 +554,10 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_artifacts_org' AND o
 CREATE INDEX idx_artifacts_org ON dbo.artifacts(organization_uuid);
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_llm_provider_templates_org' AND object_id = OBJECT_ID(N'dbo.llm_provider_templates'))
 CREATE INDEX idx_llm_provider_templates_org ON dbo.llm_provider_templates(organization_uuid);
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_llm_provider_templates_single_latest' AND object_id = OBJECT_ID(N'dbo.llm_provider_templates'))
-CREATE UNIQUE INDEX idx_llm_provider_templates_single_latest ON dbo.llm_provider_templates(organization_uuid, group_version_id) WHERE is_latest = 1;
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_llm_provider_templates_group' AND object_id = OBJECT_ID(N'dbo.llm_provider_templates'))
+CREATE INDEX idx_llm_provider_templates_group ON dbo.llm_provider_templates(organization_uuid, group_id);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_llm_provider_templates_latest' AND object_id = OBJECT_ID(N'dbo.llm_provider_templates'))
+CREATE UNIQUE INDEX idx_llm_provider_templates_latest ON dbo.llm_provider_templates(organization_uuid, group_id) WHERE is_latest = 1;
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_llm_providers_template' AND object_id = OBJECT_ID(N'dbo.llm_providers'))
 CREATE INDEX idx_llm_providers_template ON dbo.llm_providers(template_uuid);
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_llm_proxies_project' AND object_id = OBJECT_ID(N'dbo.llm_proxies'))

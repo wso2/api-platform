@@ -162,11 +162,12 @@ type LLMProviderTemplate struct {
 	UUID             string                               `json:"uuid" db:"uuid"`
 	OrganizationUUID string                               `json:"organizationId" db:"organization_uuid"`
 	ID               string                               `json:"id" db:"handle"`
-	GroupVersionID   string                       		  `json:"groupVersionId,omitempty" db:"group_version_id"`
+	GroupID   string                       		          `json:"groupId,omitempty" db:"group_id"`
 	Name             string                               `json:"name" db:"name"`
 	Description      string                               `json:"description,omitempty" db:"description"`
 	ManagedBy        string                               `json:"managedBy,omitempty" db:"managed_by"`
 	CreatedBy        string                               `json:"createdBy,omitempty" db:"created_by"`
+	UpdatedBy        string                               `json:"updatedBy,omitempty" db:"updated_by"`
 	Version  		 string 							  `json:"version" db:"version"`
 	IsLatest 		 bool    							  `json:"isLatest" db:"is_latest"`
 	Enabled 		 bool 								  `json:"enabled" db:"enabled"`

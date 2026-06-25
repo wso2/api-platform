@@ -301,21 +301,24 @@ CREATE TABLE IF NOT EXISTS publication_mappings (
 CREATE TABLE IF NOT EXISTS llm_provider_templates (
     uuid VARCHAR(40) PRIMARY KEY,
     organization_uuid VARCHAR(40) NOT NULL,
-    handle VARCHAR(255) NOT NULL,
-    group_version_id VARCHAR(255) NOT NULL,
-    name VARCHAR(253) NOT NULL,
+    handle VARCHAR(40) NOT NULL,
+    group_id VARCHAR(40) NOT NULL,
+    name VARCHAR(255) NOT NULL,
     managed_by VARCHAR(255) NOT NULL DEFAULT 'customer',
+    version VARCHAR(30) NOT NULL DEFAULT 'v1.0',
     description VARCHAR(1023),
-    created_by VARCHAR(255),
-    configuration TEXT NOT NULL,
-    openapi_spec TEXT,
-    version VARCHAR(40) NOT NULL DEFAULT 'v1.0',
+    configuration BLOB NOT NULL,
+    openapi_spec BLOB,
     is_latest INTEGER NOT NULL DEFAULT 1,
-    enabled BOOLEAN NOT NULL DEFAULT 1,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
+    created_by VARCHAR(200),
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_by VARCHAR(200),
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
-    UNIQUE(organization_uuid, group_version_id, version)
+    UNIQUE(organization_uuid, group_id, version),
+    UNIQUE(organization_uuid, handle)
 );
 
 -- LLM Providers table
@@ -467,7 +470,8 @@ CREATE INDEX IF NOT EXISTS idx_association_mappings_resource ON association_mapp
 CREATE INDEX IF NOT EXISTS idx_association_mappings_org ON association_mappings(organization_uuid);
 CREATE INDEX IF NOT EXISTS idx_artifacts_org ON artifacts(organization_uuid);
 CREATE INDEX IF NOT EXISTS idx_llm_provider_templates_org ON llm_provider_templates(organization_uuid);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_llm_provider_templates_single_latest ON llm_provider_templates(organization_uuid, group_version_id) WHERE is_latest = 1;
+CREATE INDEX IF NOT EXISTS idx_llm_provider_templates_group ON llm_provider_templates(organization_uuid, group_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_llm_provider_templates_latest ON llm_provider_templates(organization_uuid, group_id) WHERE is_latest = 1;
 CREATE INDEX IF NOT EXISTS idx_llm_providers_template ON llm_providers(template_uuid);
 CREATE INDEX IF NOT EXISTS idx_llm_proxies_project ON llm_proxies(project_uuid);
 CREATE INDEX IF NOT EXISTS idx_llm_proxies_provider_uuid ON llm_proxies(provider_uuid);

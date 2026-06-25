@@ -139,7 +139,7 @@ func (s *LLMDeploymentService) validateTemplateConflict(handle, version string) 
 		return err
 	}
 	for _, t := range templates {
-		if t.GetGroupVersionID() == handle && t.GetVersion() == version {
+		if t.GetGroupID() == handle && t.GetVersion() == version {
 			return fmt.Errorf("%w: template with handle '%s' and version '%s' already exists", storage.ErrConflict, handle, version)
 		}
 	}
@@ -643,7 +643,7 @@ func (s *LLMDeploymentService) CreateLLMProviderTemplate(params LLMTemplateParam
 		UpdatedAt:     time.Now(),
 	}
 
-	if err := s.validateTemplateConflict(stored.GetGroupVersionID(), stored.GetVersion()); err != nil {
+	if err := s.validateTemplateConflict(stored.GetGroupID(), stored.GetVersion()); err != nil {
 		return nil, err
 	}
 
@@ -707,13 +707,13 @@ func (s *LLMDeploymentService) InitializeOOBTemplates(templateDefinitions map[st
 			tmplVersion = strings.TrimSpace(*tmpl.Spec.Version)
 		}
 		groupVersionID := tmpl.Metadata.Name
-		if tmpl.Spec.GroupVersionId != nil && strings.TrimSpace(*tmpl.Spec.GroupVersionId) != "" {
-			groupVersionID = strings.TrimSpace(*tmpl.Spec.GroupVersionId)
+		if tmpl.Spec.GroupId != nil && strings.TrimSpace(*tmpl.Spec.GroupId) != "" {
+			groupVersionID = strings.TrimSpace(*tmpl.Spec.GroupId)
 		}
 		templateID := models.MakeTemplateID(groupVersionID, tmplVersion)
 
-		// Check if this specific (group_version_id, version) already exists
-		existing, err := s.store.GetTemplateByGroupVersionIDAndVersion(groupVersionID, tmplVersion)
+		// Check if this specific (group_id, version) already exists
+		existing, err := s.store.GetTemplateByGroupIDAndVersion(groupVersionID, tmplVersion)
 		if err == nil && existing != nil {
 			// ---------------------------
 			// UPDATE existing template
@@ -803,7 +803,7 @@ func (s *LLMDeploymentService) InitializeOOBTemplates(templateDefinitions map[st
 	// Publish all templates from store that weren't processed from files (DB-only templates)
 	allTemplates := s.store.GetAllTemplates()
 	for _, stored := range allTemplates {
-		handle := stored.GetGroupVersionID()
+		handle := stored.GetGroupID()
 		if !processedTemplates[stored.GetID()] {
 			// Render the stored (unresolved) configuration before publishing so the
 			// policy engine receives actual resolved values, not raw template expressions.
@@ -850,12 +850,10 @@ func (s *LLMDeploymentService) UpdateLLMProviderTemplate(handle string, params L
 		return nil, err
 	}
 
-	// Validate that group_version_id doesn't change unexpectedly
-	// If the new template has a different group_version_id, that's a different template
-	oldHandle := existing.GetGroupVersionID()
+	oldHandle := existing.GetGroupID()
 	newHandle := tmpl.Metadata.Name
-	if tmpl.Spec.GroupVersionId != nil && strings.TrimSpace(*tmpl.Spec.GroupVersionId) != "" {
-		newHandle = strings.TrimSpace(*tmpl.Spec.GroupVersionId)
+	if tmpl.Spec.GroupId != nil && strings.TrimSpace(*tmpl.Spec.GroupId) != "" {
+		newHandle = strings.TrimSpace(*tmpl.Spec.GroupId)
 	}
 	if oldHandle != newHandle {
 		return nil, fmt.Errorf("%w: cannot change template handle from '%s' to '%s'; use create/delete instead", ErrLLMTemplateValidation, oldHandle, newHandle)
@@ -928,7 +926,7 @@ func (s *LLMDeploymentService) GetLLMProviderTemplateByHandle(handle string) (*m
 		return nil, err
 	}
 
-	return s.store.GetTemplateByGroupVersionID(handle)
+	return s.store.GetTemplateByGroupID(handle)
 }
 
 func (s *LLMDeploymentService) GetLLMProviderTemplateByID(id string) (*models.StoredLLMProviderTemplate, error) {
@@ -968,11 +966,11 @@ func (s *LLMDeploymentService) publishTemplateAsLazyResource(tmpl *api.LLMProvid
 		return fmt.Errorf("template is nil")
 	}
 	groupVersionID := tmpl.Metadata.Name
-	if tmpl.Spec.GroupVersionId != nil && strings.TrimSpace(*tmpl.Spec.GroupVersionId) != "" {
-		groupVersionID = strings.TrimSpace(*tmpl.Spec.GroupVersionId)
+	if tmpl.Spec.GroupId != nil && strings.TrimSpace(*tmpl.Spec.GroupId) != "" {
+		groupVersionID = strings.TrimSpace(*tmpl.Spec.GroupId)
 	}
 	if groupVersionID == "" {
-		return fmt.Errorf("template group_version_id (metadata.name) is empty")
+		return fmt.Errorf("template group_id (metadata.name) is empty")
 	}
 
 	// Convert typed template to map[string]interface{} for the generic lazy resource payload.

@@ -475,7 +475,7 @@ func TestLoadLLMProviderTemplatesFromDatabase_Success(t *testing.T) {
 	// Verify template is loaded
 	loadedTemplate, err := cache.GetTemplate(template.UUID)
 	assert.NilError(t, err)
-	assert.Equal(t, loadedTemplate.GetGroupVersionID(), template.GetGroupVersionID())
+	assert.Equal(t, loadedTemplate.GetGroupID(), template.GetGroupID())
 }
 
 func TestLoadLLMProviderTemplatesFromDatabase_GetAllError(t *testing.T) {
@@ -532,7 +532,7 @@ func TestSQLiteStorage_GetLLMProviderTemplate_Success(t *testing.T) {
 	retrieved, err := storage.GetLLMProviderTemplate(template.UUID)
 	assert.NilError(t, err)
 	assert.Equal(t, retrieved.UUID, template.UUID)
-	assert.Equal(t, retrieved.GetGroupVersionID(), template.GetGroupVersionID())
+	assert.Equal(t, retrieved.GetGroupID(), template.GetGroupID())
 }
 
 func TestSQLiteStorage_GetLLMProviderTemplate_JSONUnmarshalError(t *testing.T) {
@@ -541,9 +541,9 @@ func TestSQLiteStorage_GetLLMProviderTemplate_JSONUnmarshalError(t *testing.T) {
 
 	// Insert template with invalid JSON
 	_, err := storage.db.Exec(`
-		INSERT INTO llm_provider_templates (uuid, gateway_id, group_version_id, configuration, created_at, updated_at) 
-		VALUES (?, ?, ?, ?, ?, ?)`,
-		"invalid-template", "platform-gateway-id", "0000-test-handle-0000-000000000000", "invalid-json", time.Now(), time.Now())
+		INSERT INTO llm_provider_templates (uuid, gateway_id, group_id, handle, configuration, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		"invalid-template", "platform-gateway-id", "0000-test-handle-0000-000000000000", "invalid-handle", "invalid-json", time.Now(), time.Now())
 	assert.NilError(t, err)
 
 	_, err = storage.GetLLMProviderTemplate("invalid-template")
@@ -588,9 +588,9 @@ func TestSQLiteStorage_GetAllLLMProviderTemplates_JSONError(t *testing.T) {
 
 	// Insert template with invalid JSON
 	_, err := storage.db.Exec(`
-		INSERT INTO llm_provider_templates (uuid, gateway_id, group_version_id, configuration, created_at, updated_at) 
-		VALUES (?, ?, ?, ?, ?, ?)`,
-		"invalid-template", "platform-gateway-id", "0000-test-handle-0000-000000000000", "invalid-json", time.Now(), time.Now())
+		INSERT INTO llm_provider_templates (uuid, gateway_id, group_id, handle, configuration, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		"invalid-template", "platform-gateway-id", "0000-test-handle-0000-000000000000", "invalid-handle", "invalid-json", time.Now(), time.Now())
 	assert.NilError(t, err)
 
 	_, err = storage.GetAllLLMProviderTemplates()
@@ -605,7 +605,7 @@ func TestSQLiteStorage_GetLLMProviderTemplateByHandle(t *testing.T) {
 	err := storage.SaveLLMProviderTemplate(template)
 	assert.NilError(t, err)
 
-	found, err := storage.GetLLMProviderTemplateByHandle(template.GetGroupVersionID())
+	found, err := storage.GetLLMProviderTemplateByHandle(template.GetGroupID())
 	assert.NilError(t, err)
 	assert.Equal(t, found.UUID, template.UUID)
 

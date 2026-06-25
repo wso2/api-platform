@@ -481,7 +481,7 @@ export interface ProviderTemplate {
   name: string;
   provider?: string;
   managedBy?: string;
-  groupVersionId?: string;
+  groupId?: string;
   description?: string;
   version: string;
   isLatest?: boolean;

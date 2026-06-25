@@ -42,12 +42,12 @@ func TestLLMProviderTemplateRepo_GetByID_ExactVersion(t *testing.T) {
 	createTestOrganizationAndProject(t, db, orgUUID, projectUUID)
 
 	now := time.Now()
-	// Built-in v1.0 — seeded with handle == group_version_id (no version suffix), as
+	// Built-in v1.0 — seeded with handle == group_id (no version suffix), as
 	// the template loader does (managedBy "wso2").
 	v1 := &model.LLMProviderTemplate{
 		OrganizationUUID: orgUUID,
 		ID:               "mistralai",
-		GroupVersionID:   "mistralai",
+		GroupID:   "mistralai",
 		Name:             "Mistral",
 		ManagedBy:        "wso2",
 		Version:          "v1.0",
@@ -64,7 +64,7 @@ func TestLLMProviderTemplateRepo_GetByID_ExactVersion(t *testing.T) {
 	v2 := &model.LLMProviderTemplate{
 		OrganizationUUID: orgUUID,
 		ID:               "mistralai-v2-0",
-		GroupVersionID:   "mistralai",
+		GroupID:   "mistralai",
 		Name:             "Mistral",
 		ManagedBy:        "customer",
 		Version:          "v2.0",

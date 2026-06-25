@@ -243,7 +243,7 @@ type LLMProviderTemplateRepository interface {
 	DeleteVersion(templateID, orgUUID, version string) error
 	Delete(templateID, orgUUID string) error
 	Exists(templateID, orgUUID string) (bool, error)
-	GetGroupVersionID(handle, orgUUID string) (string, error)
+	GetGroupID(handle, orgUUID string) (string, error)
 	ManagedByForHandle(handle, orgUUID string) (string, error)
 	CountProvidersUsingTemplate(templateID, orgUUID, version string) (int, error)
 }

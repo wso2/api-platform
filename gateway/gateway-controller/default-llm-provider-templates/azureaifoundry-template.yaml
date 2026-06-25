@@ -19,10 +19,10 @@
 apiVersion: gateway.api-platform.wso2.com/v1
 kind: LlmProviderTemplate
 metadata:
-  name: azureai-foundry-v1-0
+  name: azureai-foundry
 spec:
   displayName: Azure AI Foundry
-  groupVersionId: azureai-foundry
+  groupId: azureai-foundry
   managedBy: wso2
   version: v1.0
   promptTokens:

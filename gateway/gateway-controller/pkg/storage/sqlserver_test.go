@@ -93,7 +93,7 @@ func TestSQLServerStorage_TemplateAndAPIKeyCRUD(t *testing.T) {
 	loadedTemplate, err := ms.GetLLMProviderTemplate(tmpl.UUID)
 	assert.NilError(t, err)
 	assert.Equal(t, loadedTemplate.UUID, tmpl.UUID)
-	assert.Equal(t, loadedTemplate.GetGroupVersionID(), tmpl.GetGroupVersionID())
+	assert.Equal(t, loadedTemplate.GetGroupID(), tmpl.GetGroupID())
 
 	cfg := createTestStoredConfig()
 	assert.NilError(t, ms.SaveConfig(cfg))

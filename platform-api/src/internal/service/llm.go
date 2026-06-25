@@ -146,7 +146,7 @@ func (s *LLMProviderTemplateService) Create(orgUUID, createdBy string, req *api.
 	m := &model.LLMProviderTemplate{
 		OrganizationUUID: orgUUID,
 		ID:               handle,
-		GroupVersionID:   baseHandle,
+		GroupID:   baseHandle,
 		Version:          version,
 		Name:             req.Name,
 		Description:      utils.ValueOrEmpty(req.Description),
@@ -283,7 +283,7 @@ func (s *LLMProviderTemplateService) Update(orgUUID, handle string, req *api.LLM
 		return nil, fmt.Errorf("failed to update template: %w", err)
 	}
 
-	if base, baseErr := s.repo.GetGroupVersionID(handle, orgUUID); baseErr == nil && base != "" {
+	if base, baseErr := s.repo.GetGroupID(handle, orgUUID); baseErr == nil && base != "" {
 		if err := s.repo.RenameFamily(base, orgUUID, req.Name); err != nil {
 			return nil, fmt.Errorf("failed to propagate template name: %w", err)
 		}
@@ -324,7 +324,7 @@ func (s *LLMProviderTemplateService) CreateVersion(orgUUID, handle, createdBy st
 		return nil, constants.ErrInvalidInput
 	}
 
-	baseHandle, err := s.repo.GetGroupVersionID(handle, orgUUID)
+	baseHandle, err := s.repo.GetGroupID(handle, orgUUID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve template family: %w", err)
 	}
@@ -335,7 +335,7 @@ func (s *LLMProviderTemplateService) CreateVersion(orgUUID, handle, createdBy st
 	m := &model.LLMProviderTemplate{
 		OrganizationUUID: orgUUID,
 		ID:               makeTemplateHandle(baseHandle, version),
-		GroupVersionID:   baseHandle,
+		GroupID:   baseHandle,
 		Name:             req.Name,
 		Description:      utils.ValueOrEmpty(req.Description),
 		ManagedBy:        constants.PolicyManagedByCustomer,
@@ -1805,10 +1805,12 @@ func mapTemplateModelToAPI(m *model.LLMProviderTemplate) *api.LLMProviderTemplat
 	enabled := m.Enabled
 	return &api.LLMProviderTemplate{
 		Id:               m.ID,
+		GroupId:          utils.StringPtrIfNotEmpty(m.GroupID),
 		Name:             m.Name,
 		Description:      utils.StringPtrIfNotEmpty(m.Description),
 		ManagedBy:        utils.StringPtrIfNotEmpty(m.ManagedBy),
 		CreatedBy:        utils.StringPtrIfNotEmpty(m.CreatedBy),
+		UpdatedBy:        utils.StringPtrIfNotEmpty(m.UpdatedBy),
 		Version:          m.Version,
 		IsLatest:         &isLatest,
 		Enabled:          &enabled,

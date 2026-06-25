@@ -1802,6 +1802,10 @@ type LLMProviderTemplate struct {
 	// via PATCH /llm-provider-templates/{id}/versions/{version}.
 	Enabled *bool `json:"enabled,omitempty" yaml:"enabled,omitempty"`
 
+	// GroupId Stable identifier shared by every version of a template family
+	// (defaults to the first version's handle). Read-only.
+	GroupId *string `json:"groupId,omitempty" yaml:"groupId,omitempty"`
+
 	// Id Unique handle for the template
 	Id string `binding:"required" json:"id" yaml:"id"`
 
@@ -1831,6 +1835,9 @@ type LLMProviderTemplate struct {
 
 	// UpdatedAt Timestamp when the resource was last updated
 	UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+
+	// UpdatedBy Username of the last user to update the template
+	UpdatedBy *string `json:"updatedBy,omitempty" yaml:"updatedBy,omitempty"`
 
 	// Version Content version, e.g. v1.0. Required. A new template starts at v1.0;
 	// editing updates that version in place. Supply a new unique version

@@ -46,8 +46,8 @@ type mockLLMProviderTemplateCRUDRepo struct {
 	updateErr error
 	updated   *model.LLMProviderTemplate
 
-	getGroupVersionIDResult string
-	getGroupVersionIDErr    error
+	getGroupIDResult string
+	getGroupIDErr    error
 
 	renameFamilyCalled bool
 	renameFamilyBase   string
@@ -108,8 +108,8 @@ func (m *mockLLMProviderTemplateCRUDRepo) Update(t *model.LLMProviderTemplate) e
 	return nil
 }
 
-func (m *mockLLMProviderTemplateCRUDRepo) GetGroupVersionID(handle, orgUUID string) (string, error) {
-	return m.getGroupVersionIDResult, m.getGroupVersionIDErr
+func (m *mockLLMProviderTemplateCRUDRepo) GetGroupID(handle, orgUUID string) (string, error) {
+	return m.getGroupIDResult, m.getGroupIDErr
 }
 
 func (m *mockLLMProviderTemplateCRUDRepo) RenameFamily(baseHandle, orgUUID, name string) error {
@@ -333,7 +333,7 @@ func TestLLMProviderTemplateServiceUpdate_PreservesOpenAPISpecWhenOmitted(t *tes
 func TestLLMProviderTemplateServiceUpdate_PropagatesNameToFamily(t *testing.T) {
 	repo := &mockLLMProviderTemplateCRUDRepo{
 		managedByForHandleResult: "customer",
-		getGroupVersionIDResult:     "mistralai",
+		getGroupIDResult:     "mistralai",
 	}
 	repo.getByIDFunc = func(templateID, orgUUID string) (*model.LLMProviderTemplate, error) {
 		return &model.LLMProviderTemplate{ID: templateID, OrganizationUUID: orgUUID, Name: "Mistral Updated", Version: "v1.0"}, nil
@@ -369,7 +369,7 @@ func TestLLMProviderTemplateServiceUpdate_RejectsMismatchedID(t *testing.T) {
 // ---- CreateVersion ----
 
 func TestLLMProviderTemplateServiceCreateVersion_Success(t *testing.T) {
-	repo := &mockLLMProviderTemplateCRUDRepo{getGroupVersionIDResult: "mistralai"}
+	repo := &mockLLMProviderTemplateCRUDRepo{getGroupIDResult: "mistralai"}
 	svc := NewLLMProviderTemplateService(repo)
 
 	req := &api.CreateLLMProviderTemplateVersionRequest{Name: "Mistral", Version: "v2.0"}
@@ -380,7 +380,7 @@ func TestLLMProviderTemplateServiceCreateVersion_Success(t *testing.T) {
 	if resp == nil || resp.Version != "v2.0" {
 		t.Fatalf("expected new version v2.0, got: %#v", resp)
 	}
-	if repo.createdVersion == nil || repo.createdVersion.GroupVersionID != "mistralai" {
+	if repo.createdVersion == nil || repo.createdVersion.GroupID != "mistralai" {
 		t.Fatalf("expected created version to carry the family base handle, got: %#v", repo.createdVersion)
 	}
 	if repo.createdVersion.ManagedBy != "customer" {
@@ -389,7 +389,7 @@ func TestLLMProviderTemplateServiceCreateVersion_Success(t *testing.T) {
 }
 
 func TestLLMProviderTemplateServiceCreateVersion_ForkFromBuiltinSetsCustomerManagedBy(t *testing.T) {
-	repo := &mockLLMProviderTemplateCRUDRepo{getGroupVersionIDResult: "mistralai"}
+	repo := &mockLLMProviderTemplateCRUDRepo{getGroupIDResult: "mistralai"}
 	svc := NewLLMProviderTemplateService(repo)
 
 	wso2 := "wso2"
@@ -410,7 +410,7 @@ func TestLLMProviderTemplateServiceCreateVersion_ForkFromBuiltinSetsCustomerMana
 }
 
 func TestLLMProviderTemplateServiceCreateVersion_NotFoundWhenFamilyMissing(t *testing.T) {
-	repo := &mockLLMProviderTemplateCRUDRepo{getGroupVersionIDResult: ""}
+	repo := &mockLLMProviderTemplateCRUDRepo{getGroupIDResult: ""}
 	svc := NewLLMProviderTemplateService(repo)
 
 	req := &api.CreateLLMProviderTemplateVersionRequest{Name: "Mistral", Version: "v2.0"}
@@ -422,7 +422,7 @@ func TestLLMProviderTemplateServiceCreateVersion_NotFoundWhenFamilyMissing(t *te
 
 func TestLLMProviderTemplateServiceCreateVersion_ConflictWhenVersionExists(t *testing.T) {
 	repo := &mockLLMProviderTemplateCRUDRepo{
-		getGroupVersionIDResult: "mistralai",
+		getGroupIDResult: "mistralai",
 		createNewVersionErr: constants.ErrLLMProviderTemplateVersionExists,
 	}
 	svc := NewLLMProviderTemplateService(repo)
@@ -435,7 +435,7 @@ func TestLLMProviderTemplateServiceCreateVersion_ConflictWhenVersionExists(t *te
 }
 
 func TestLLMProviderTemplateServiceCreateVersion_RejectsInvalidVersionFormat(t *testing.T) {
-	repo := &mockLLMProviderTemplateCRUDRepo{getGroupVersionIDResult: "mistralai"}
+	repo := &mockLLMProviderTemplateCRUDRepo{getGroupIDResult: "mistralai"}
 	svc := NewLLMProviderTemplateService(repo)
 
 	req := &api.CreateLLMProviderTemplateVersionRequest{Name: "Mistral", Version: "2.0"}

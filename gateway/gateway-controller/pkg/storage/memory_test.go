@@ -36,7 +36,7 @@ func TestNewConfigStore(t *testing.T) {
 	assert.NotNil(t, cs.nameVersion)
 	assert.NotNil(t, cs.handle)
 	assert.NotNil(t, cs.templates)
-	assert.NotNil(t, cs.templateIdByGroupVersionID)
+	assert.NotNil(t, cs.templateIdByGroupID)
 	assert.NotNil(t, cs.apiKeysByAPI)
 	assert.NotNil(t, cs.labelsByAPI)
 	assert.NotNil(t, cs.TopicManager)
@@ -85,10 +85,10 @@ func TestConfigStore_TemplateOperations(t *testing.T) {
 	// Get by ID
 	retrieved, err := cs.GetTemplate("0000-template-1-0000-000000000000")
 	require.NoError(t, err)
-	assert.Equal(t, "openai-template", retrieved.GetGroupVersionID())
+	assert.Equal(t, "openai-template", retrieved.GetGroupID())
 
 	// Get by handle
-	retrieved, err = cs.GetTemplateByGroupVersionID("openai-template")
+	retrieved, err = cs.GetTemplateByGroupID("openai-template")
 	require.NoError(t, err)
 	assert.Equal(t, "0000-template-1-0000-000000000000", retrieved.UUID)
 
@@ -111,12 +111,12 @@ func TestConfigStore_TemplateOperations(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify update
-	retrieved, err = cs.GetTemplateByGroupVersionID("updated-template")
+	retrieved, err = cs.GetTemplateByGroupID("updated-template")
 	require.NoError(t, err)
 	assert.Equal(t, "0000-template-1-0000-000000000000", retrieved.UUID)
 
 	// Old handle should not work
-	_, err = cs.GetTemplateByGroupVersionID("openai-template")
+	_, err = cs.GetTemplateByGroupID("openai-template")
 	assert.Error(t, err)
 
 	// Delete template
@@ -207,13 +207,13 @@ func TestConfigStore_TemplateErrors(t *testing.T) {
 	_, err = cs.GetTemplate("0000-non-existent-0000-000000000000")
 	assert.Error(t, err)
 
-	_, err = cs.GetTemplateByGroupVersionID("0000-non-existent-0000-000000000000")
+	_, err = cs.GetTemplateByGroupID("0000-non-existent-0000-000000000000")
 	assert.Error(t, err)
 }
 
 // TestConfigStore_TemplateMultiVersion verifies that multiple versions of the same
 // handle can coexist, that the most recently added one resolves as "latest" via
-// GetTemplateByGroupVersionID, and that GetTemplateByGroupVersionIDAndVersion/GetTemplateByID can
+// GetTemplateByGroupID, and that GetTemplateByGroupIDAndVersion/GetTemplateByID can
 // still reach a specific, non-latest version.
 func TestConfigStore_TemplateMultiVersion(t *testing.T) {
 	cs := NewConfigStore()
@@ -238,21 +238,21 @@ func TestConfigStore_TemplateMultiVersion(t *testing.T) {
 	}
 	require.NoError(t, cs.AddTemplate(v2))
 
-	// GetTemplateByGroupVersionID resolves to the most recently created version (v2.0).
-	latest, err := cs.GetTemplateByGroupVersionID("mistralai")
+	// GetTemplateByGroupID resolves to the most recently created version (v2.0).
+	latest, err := cs.GetTemplateByGroupID("mistralai")
 	require.NoError(t, err)
 	assert.Equal(t, "0000-template-v2-0000-000000000000", latest.UUID)
 
-	// GetTemplateByGroupVersionIDAndVersion reaches the specific, non-latest version (v1.0).
-	v1Retrieved, err := cs.GetTemplateByGroupVersionIDAndVersion("mistralai", "v1.0")
+	// GetTemplateByGroupIDAndVersion reaches the specific, non-latest version (v1.0).
+	v1Retrieved, err := cs.GetTemplateByGroupIDAndVersion("mistralai", "v1.0")
 	require.NoError(t, err)
 	assert.Equal(t, "0000-template-v1-0000-000000000000", v1Retrieved.UUID)
 
-	v2Retrieved, err := cs.GetTemplateByGroupVersionIDAndVersion("mistralai", "v2.0")
+	v2Retrieved, err := cs.GetTemplateByGroupIDAndVersion("mistralai", "v2.0")
 	require.NoError(t, err)
 	assert.Equal(t, "0000-template-v2-0000-000000000000", v2Retrieved.UUID)
 
-	_, err = cs.GetTemplateByGroupVersionIDAndVersion("mistralai", "v9.0")
+	_, err = cs.GetTemplateByGroupIDAndVersion("mistralai", "v9.0")
 	assert.Error(t, err)
 
 	// GetTemplateByID resolves the version-specific id for each version...
@@ -274,7 +274,7 @@ func TestConfigStore_TemplateMultiVersion(t *testing.T) {
 
 	// Deleting the latest version demotes the remaining version back to latest.
 	require.NoError(t, cs.DeleteTemplate("0000-template-v2-0000-000000000000"))
-	latest, err = cs.GetTemplateByGroupVersionID("mistralai")
+	latest, err = cs.GetTemplateByGroupID("mistralai")
 	require.NoError(t, err)
 	assert.Equal(t, "0000-template-v1-0000-000000000000", latest.UUID)
 }

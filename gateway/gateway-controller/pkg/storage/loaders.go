@@ -55,7 +55,7 @@ func LoadLLMProviderTemplatesFromDatabase(storage Storage, cache *ConfigStore) e
 
 	for _, template := range templates {
 		if err := cache.AddTemplate(template); err != nil {
-			return fmt.Errorf("failed to load llm provider template %s into cache: %w", template.GetGroupVersionID(), err)
+			return fmt.Errorf("failed to load llm provider template %s into cache: %w", template.GetGroupID(), err)
 		}
 	}
 

@@ -140,7 +140,7 @@ func (m *testMockDB) GetAllLLMProviderTemplates() ([]*models.StoredLLMProviderTe
 
 func (m *testMockDB) GetLLMProviderTemplateByHandle(handle string) (*models.StoredLLMProviderTemplate, error) {
 	for _, t := range m.templates {
-		if t.GetGroupVersionID() == handle {
+		if t.GetGroupID() == handle {
 			return t, nil
 		}
 	}

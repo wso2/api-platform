@@ -570,8 +570,30 @@ func (t *LLMProviderTransformer) transformProvider(provider *api.LLMProviderConf
 			}
 		}
 
-		// Phase 2: Build Operation Registry - create base operations
+		denyPolicyVersion, err := t.resolvePolicyVersion(constants.ACCESS_CONTROL_DENY_POLICY_NAME)
+		if err != nil {
+			return nil, err
+		}
+
 		operationRegistry := make(map[pathMethodKey]*api.Operation)
+		for _, method := range constants.WILDCARD_HTTP_METHODS {
+			var policyParams map[string]interface{}
+			if err := yaml.Unmarshal([]byte(constants.ACCESS_CONTROL_DENY_POLICY_PARAMS), &policyParams); err != nil {
+				return nil, err
+			}
+			denyPolicy := api.Policy{
+				Name:    constants.ACCESS_CONTROL_DENY_POLICY_NAME,
+				Version: denyPolicyVersion,
+				Params:  &policyParams,
+			}
+			key := pathMethodKey{path: constants.BASE_PATH + constants.WILD_CARD, method: method}
+			operationRegistry[key] = &api.Operation{
+				Path:     key.path,
+				Method:   api.OperationMethod(method),
+				Policies: &[]api.Policy{denyPolicy},
+			}
+		}
+
 		for key := range normalizedExceptions {
 			op := &api.Operation{
 				Path:   key.path,
@@ -595,6 +617,11 @@ func (t *LLMProviderTransformer) transformProvider(provider *api.LLMProviderConf
 					methodOperations := getOperationsForMethod(operationRegistry, policyMethod)
 
 					for _, op := range methodOperations {
+						// Never attach operation policies to the catch-all deny routes;
+						// they only enforce access control for non-exception paths.
+						if hasDenyPolicy(op, denyPolicyVersion) {
+							continue
+						}
 						if pathsMatch(op.Path, attachment.pathEntry.Path) {
 							for _, targetPath := range expandPolicyTargetPaths(op.Path, &tmpl.Configuration.Spec) {
 								if attachedPolicyPaths[targetPath] {

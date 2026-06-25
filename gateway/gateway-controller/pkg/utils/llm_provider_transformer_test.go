@@ -290,7 +290,7 @@ func TestTransform_ProviderReferencesVersionedTemplateId(t *testing.T) {
 			Metadata:   api.Metadata{Name: "ecustom-v1-0"},
 			Spec: api.LLMProviderTemplateData{
 				DisplayName:    "E2E Custom v1",
-				GroupVersionId: stringPtr("ecustom"),
+				GroupId: stringPtr("ecustom"),
 				ManagedBy:      stringPtr("customer"),
 				Version:        stringPtr("v1.0"),
 				PromptTokens: &api.ExtractionIdentifier{
@@ -302,7 +302,7 @@ func TestTransform_ProviderReferencesVersionedTemplateId(t *testing.T) {
 	}
 	// Sanity: the versioned id differs from the group-version handle.
 	require.Equal(t, "ecustom-v1-0", customTemplate.GetID())
-	require.Equal(t, "ecustom", customTemplate.GetGroupVersionID())
+	require.Equal(t, "ecustom", customTemplate.GetGroupID())
 
 	require.NoError(t, store.AddTemplate(customTemplate))
 	db := newTestMockDB()

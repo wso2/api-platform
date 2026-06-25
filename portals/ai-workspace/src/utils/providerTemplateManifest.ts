@@ -23,8 +23,8 @@ import { familyHandle } from './providerTemplateDisplay';
 export function buildTemplateManifestYaml(t: ProviderTemplate): string {
   const spec: Record<string, unknown> = { displayName: t.name };
 
-  const groupVersionId = t.groupVersionId?.trim() || familyHandle(t.id);
-  if (groupVersionId) spec.groupVersionId = groupVersionId;
+  const groupId = t.groupId?.trim() || familyHandle(t.id);
+  if (groupId) spec.groupId = groupId;
 
   const managedBy = (t.managedBy ?? t.provider)?.trim();
   if (managedBy) spec.managedBy = managedBy;

@@ -117,10 +117,10 @@ func (l *EventListener) handleLLMTemplateDelete(event eventhub.Event) {
 	}
 
 	if existingTemplate != nil {
-		if err := l.removeLLMTemplate(existingTemplate.GetGroupVersionID(), event.EventID); err != nil {
+		if err := l.removeLLMTemplate(existingTemplate.GetGroupID(), event.EventID); err != nil {
 			l.logger.Warn("Failed to remove LLM template lazy resource",
 				slog.String("template_id", entityID),
-				slog.String("template_handle", existingTemplate.GetGroupVersionID()),
+				slog.String("template_handle", existingTemplate.GetGroupID()),
 				slog.Any("error", err))
 		}
 	}
@@ -156,9 +156,9 @@ func (l *EventListener) removeLLMTemplate(groupVersionID, correlationID string) 
 }
 
 func (l *EventListener) buildLLMTemplateLazyResource(template *models.StoredLLMProviderTemplate) (*storage.LazyResource, error) {
-	groupVersionID := template.GetGroupVersionID()
+	groupVersionID := template.GetGroupID()
 	if groupVersionID == "" {
-		return nil, fmt.Errorf("template group_version_id (metadata.name) is empty")
+		return nil, fmt.Errorf("template group_id (metadata.name) is empty")
 	}
 
 	payload, err := json.Marshal(template.Configuration)
