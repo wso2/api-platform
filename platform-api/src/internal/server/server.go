@@ -88,7 +88,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 			return nil, err
 		}
 	} else {
-		slogger.Info("Skipping schema DDL execution — set APIP_DEMO_MODE=true or DATABASE_EXECUTE_SCHEMA_DDL=true to enable", "driver", cfg.Database.Driver)
+		slogger.Debug("Skipping schema DDL execution — set APIP_DEMO_MODE=true or DATABASE_EXECUTE_SCHEMA_DDL=true to enable", "driver", cfg.Database.Driver)
 	}
 
 	// Initialize repositories
