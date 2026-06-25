@@ -159,22 +159,22 @@ type LLMProviderTemplateResourceMappings struct {
 }
 
 type LLMProviderTemplate struct {
-	UUID             string                       `json:"uuid" db:"uuid"`
-	OrganizationUUID string                       `json:"organizationId" db:"organization_uuid"`
-	ID               string                       `json:"id" db:"handle"`
-	Name             string                       `json:"name" db:"name"`
-	Description      string                       `json:"description,omitempty" db:"description"`
-	CreatedBy        string                       `json:"createdBy,omitempty" db:"created_by"`
-	Metadata         *LLMProviderTemplateMetadata `json:"metadata,omitempty" db:"-"`
-	PromptTokens     *ExtractionIdentifier        `json:"promptTokens,omitempty" db:"-"`
-	CompletionTokens *ExtractionIdentifier        `json:"completionTokens,omitempty" db:"-"`
-	TotalTokens      *ExtractionIdentifier        `json:"totalTokens,omitempty" db:"-"`
-	RemainingTokens  *ExtractionIdentifier        `json:"remainingTokens,omitempty" db:"-"`
-	RequestModel     *ExtractionIdentifier        `json:"requestModel,omitempty" db:"-"`
-	ResponseModel    *ExtractionIdentifier        `json:"responseModel,omitempty" db:"-"`
+	UUID             string                               `json:"uuid" db:"uuid"`
+	OrganizationUUID string                               `json:"organizationId" db:"organization_uuid"`
+	ID               string                               `json:"id" db:"handle"`
+	Name             string                               `json:"name" db:"name"`
+	Description      string                               `json:"description,omitempty" db:"description"`
+	CreatedBy        string                               `json:"createdBy,omitempty" db:"created_by"`
+	Metadata         *LLMProviderTemplateMetadata         `json:"metadata,omitempty" db:"-"`
+	PromptTokens     *ExtractionIdentifier                `json:"promptTokens,omitempty" db:"-"`
+	CompletionTokens *ExtractionIdentifier                `json:"completionTokens,omitempty" db:"-"`
+	TotalTokens      *ExtractionIdentifier                `json:"totalTokens,omitempty" db:"-"`
+	RemainingTokens  *ExtractionIdentifier                `json:"remainingTokens,omitempty" db:"-"`
+	RequestModel     *ExtractionIdentifier                `json:"requestModel,omitempty" db:"-"`
+	ResponseModel    *ExtractionIdentifier                `json:"responseModel,omitempty" db:"-"`
 	ResourceMappings *LLMProviderTemplateResourceMappings `json:"resourceMappings,omitempty" db:"-"`
-	CreatedAt        time.Time                    `json:"createdAt" db:"created_at"`
-	UpdatedAt        time.Time                    `json:"updatedAt" db:"updated_at"`
+	CreatedAt        time.Time                            `json:"createdAt" db:"created_at"`
+	UpdatedAt        time.Time                            `json:"updatedAt" db:"updated_at"`
 }
 
 // LLMProvider represents an LLM provider entity
@@ -196,18 +196,18 @@ type LLMProvider struct {
 }
 
 type LLMProviderConfig struct {
-	Name          string                 `json:"name,omitempty" db:"-"`
-	Version       string                 `json:"version,omitempty" db:"-"`
-	Context       *string                `json:"context,omitempty" db:"-"`
-	VHost         *string                `json:"vhost,omitempty" db:"-"`
-	Template      string                 `json:"template,omitempty" db:"-"`
-	Upstream      *UpstreamConfig        `json:"upstream,omitempty" db:"-"`
-	AccessControl *LLMAccessControl      `json:"accessControl,omitempty" db:"-"`
-	RateLimiting  *LLMRateLimitingConfig `json:"rateLimiting,omitempty" db:"-"`
-	GlobalPolicies    []GlobalPolicy    `json:"globalPolicies,omitempty" db:"-"`
-	OperationPolicies []OperationPolicy `json:"operationPolicies,omitempty" db:"-"`
-	Policies          []LLMPolicy       `json:"policies,omitempty" db:"-"`
-	Security          *SecurityConfig   `json:"security,omitempty" db:"-"`
+	Name              string                 `json:"name,omitempty" db:"-"`
+	Version           string                 `json:"version,omitempty" db:"-"`
+	Context           *string                `json:"context,omitempty" db:"-"`
+	VHost             *string                `json:"vhost,omitempty" db:"-"`
+	Template          string                 `json:"template,omitempty" db:"-"`
+	Upstream          *UpstreamConfig        `json:"upstream,omitempty" db:"-"`
+	AccessControl     *LLMAccessControl      `json:"accessControl,omitempty" db:"-"`
+	RateLimiting      *LLMRateLimitingConfig `json:"rateLimiting,omitempty" db:"-"`
+	GlobalPolicies    []GlobalPolicy         `json:"globalPolicies,omitempty" db:"-"`
+	OperationPolicies []OperationPolicy      `json:"operationPolicies,omitempty" db:"-"`
+	Policies          []LLMPolicy            `json:"policies,omitempty" db:"-"`
+	Security          *SecurityConfig        `json:"security,omitempty" db:"-"`
 }
 
 // LLMProxy represents an LLM proxy entity
@@ -229,12 +229,12 @@ type LLMProxy struct {
 }
 
 type LLMProxyConfig struct {
-	Name         string          `json:"name,omitempty" db:"-"`
-	Version      string          `json:"version,omitempty" db:"-"`
-	Context      *string         `json:"context,omitempty" db:"-"`
-	Vhost        *string         `json:"vhost,omitempty" db:"-"`
-	Provider     string          `json:"provider,omitempty" db:"-"`
-	UpstreamAuth *UpstreamAuth   `json:"upstreamAuth,omitempty" db:"-"`
+	Name              string            `json:"name,omitempty" db:"-"`
+	Version           string            `json:"version,omitempty" db:"-"`
+	Context           *string           `json:"context,omitempty" db:"-"`
+	Vhost             *string           `json:"vhost,omitempty" db:"-"`
+	Provider          string            `json:"provider,omitempty" db:"-"`
+	UpstreamAuth      *UpstreamAuth     `json:"upstreamAuth,omitempty" db:"-"`
 	GlobalPolicies    []GlobalPolicy    `json:"globalPolicies,omitempty" db:"-"`
 	OperationPolicies []OperationPolicy `json:"operationPolicies,omitempty" db:"-"`
 	Policies          []LLMPolicy       `json:"policies,omitempty" db:"-"`
