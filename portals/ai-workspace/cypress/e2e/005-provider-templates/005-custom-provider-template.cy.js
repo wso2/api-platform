@@ -63,8 +63,10 @@ describe('AI Workspace - Custom LLM provider template lifecycle', () => {
   });
 
   afterEach(() => {
+    const targetProviderId = createdProviderId || providerId;
     const targeted = (authToken && organizationId)
-      ? deleteProvider(authToken, organizationId, createdProviderId || providerId)
+      ? deleteProvider(authToken, organizationId, targetProviderId)
+          .then(() => waitForProviderGone(authToken, organizationId, targetProviderId))
           .then(() => deleteProviderTemplate(authToken, organizationId, templateV2Id))
           .then(() => deleteProviderTemplate(authToken, organizationId, templateV1Id))
       : cy.wrap(null);
@@ -199,11 +201,12 @@ describe('AI Workspace - Custom LLM provider template lifecycle', () => {
     cy.get('[role="dialog"]').within(() => {
       cy.contains('button', 'Delete').click();
     });
-    cy.get('[data-cyid="provider-template-delete-button"]', { timeout: 30000 }).scrollIntoView();
-    // v1.0 remains, so the template stays — now showing the new latest version.
-    cy.contains('button', 'v1.0', { timeout: 30000 }).should('be.visible');
+    cy.contains('button', 'v1.0', { timeout: 30000 })
+      .scrollIntoView()
+      .should('be.visible');
 
     cy.get('[data-cyid="provider-template-delete-button"]', { timeout: 30000 })
+      .scrollIntoView()
       .should('be.visible')
       .click();
     cy.get('[role="dialog"]').within(() => {

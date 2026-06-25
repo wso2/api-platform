@@ -133,8 +133,11 @@ func (r *LLMProviderTemplateRepo) CreateNewVersion(t *model.LLMProviderTemplate)
 	defer func() { _ = tx.Rollback() }()
 
 	lockSQL := `SELECT created_by FROM llm_provider_templates WHERE group_version_id = ? AND organization_uuid = ? AND is_latest = ?`
-	if r.db.Driver() == database.DriverPostgres || r.db.Driver() == database.DriverPostgreSQL {
+	switch r.db.Driver() {
+	case database.DriverPostgres, database.DriverPostgreSQL, database.DriverPGX:
 		lockSQL += " FOR UPDATE"
+	case database.DriverSQLServer, database.DriverMSSQL:
+		lockSQL = `SELECT created_by FROM llm_provider_templates WITH (UPDLOCK, HOLDLOCK) WHERE group_version_id = ? AND organization_uuid = ? AND is_latest = ?`
 	}
 	var createdBy sql.NullString
 	err = tx.QueryRow(r.db.Rebind(lockSQL), t.GroupVersionID, t.OrganizationUUID, 1).Scan(&createdBy)
@@ -193,8 +196,8 @@ func (r *LLMProviderTemplateRepo) CreateNewVersion(t *model.LLMProviderTemplate)
 func (r *LLMProviderTemplateRepo) familyGroupVersionID(handle, orgUUID string) (string, error) {
 	var base string
 	err := r.db.QueryRow(r.db.Rebind(`
-		SELECT group_version_id FROM llm_provider_templates WHERE handle = ? AND organization_uuid = ? LIMIT 1
-	`), handle, orgUUID).Scan(&base)
+		SELECT group_version_id FROM llm_provider_templates WHERE handle = ? AND organization_uuid = ?
+		ORDER BY (SELECT NULL) `+r.db.FetchFirstClause(1)), handle, orgUUID).Scan(&base)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", nil
 	}
@@ -211,8 +214,8 @@ func (r *LLMProviderTemplateRepo) GetGroupVersionID(handle, orgUUID string) (str
 func (r *LLMProviderTemplateRepo) ManagedByForHandle(handle, orgUUID string) (string, error) {
 	var managedBy string
 	err := r.db.QueryRow(r.db.Rebind(`
-		SELECT managed_by FROM llm_provider_templates WHERE handle = ? AND organization_uuid = ? LIMIT 1
-	`), handle, orgUUID).Scan(&managedBy)
+		SELECT managed_by FROM llm_provider_templates WHERE handle = ? AND organization_uuid = ?
+		ORDER BY (SELECT NULL) `+r.db.FetchFirstClause(1)), handle, orgUUID).Scan(&managedBy)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", nil
 	}
@@ -264,13 +267,14 @@ func (r *LLMProviderTemplateRepo) ListVersions(templateID, orgUUID string, limit
 	if base == "" {
 		return nil, nil
 	}
-	rows, err := r.db.Query(r.db.Rebind(`
+	pageClause, pageArgs := r.db.PaginationClause(limit, offset)
+	query := `
 		SELECT uuid, organization_uuid, handle, group_version_id, name, managed_by, description, created_by, configuration, openapi_spec, version, is_latest, enabled, created_at, updated_at
 		FROM llm_provider_templates
 		WHERE group_version_id = ? AND organization_uuid = ?
 		ORDER BY created_at DESC
-		LIMIT ? OFFSET ?
-	`), base, orgUUID, limit, offset)
+		` + pageClause
+	rows, err := r.db.Query(r.db.Rebind(query), append([]any{base, orgUUID}, pageArgs...)...)
 	if err != nil {
 		return nil, err
 	}
@@ -369,13 +373,14 @@ func (r *LLMProviderTemplateRepo) List(orgUUID string, limit, offset int) ([]*mo
 }
 
 func (r *LLMProviderTemplateRepo) ListAllVersions(orgUUID string, limit, offset int) ([]*model.LLMProviderTemplate, error) {
-	rows, err := r.db.Query(r.db.Rebind(`
+	pageClause, pageArgs := r.db.PaginationClause(limit, offset)
+	query := `
 		SELECT uuid, organization_uuid, handle, group_version_id, name, managed_by, description, created_by, configuration, openapi_spec, version, is_latest, enabled, created_at, updated_at
 		FROM llm_provider_templates
 		WHERE organization_uuid = ?
 		ORDER BY name ASC, created_at DESC
-		LIMIT ? OFFSET ?
-	`), orgUUID, limit, offset)
+		` + pageClause
+	rows, err := r.db.Query(r.db.Rebind(query), append([]any{orgUUID}, pageArgs...)...)
 	if err != nil {
 		return nil, err
 	}
@@ -491,7 +496,7 @@ func (r *LLMProviderTemplateRepo) Delete(templateID, orgUUID string) error {
 			WHERE uuid = (
 				SELECT uuid FROM llm_provider_templates
 				WHERE group_version_id = ? AND organization_uuid = ?
-				ORDER BY created_at DESC LIMIT 1
+				ORDER BY created_at DESC `+r.db.FetchFirstClause(1)+`
 			)
 		`), 1, base, orgUUID); err != nil {
 			return err
@@ -568,7 +573,7 @@ func (r *LLMProviderTemplateRepo) DeleteVersion(templateID, orgUUID, version str
 			WHERE uuid = (
 				SELECT uuid FROM llm_provider_templates
 				WHERE group_version_id = ? AND organization_uuid = ?
-				ORDER BY created_at DESC LIMIT 1
+				ORDER BY created_at DESC `+r.db.FetchFirstClause(1)+`
 			)
 		`), 1, base, orgUUID); err != nil {
 			return err

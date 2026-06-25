@@ -368,6 +368,73 @@ CREATE TABLE dbo.llm_provider_templates (
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_llm_provider_templates_single_latest' AND object_id = OBJECT_ID(N'dbo.llm_provider_templates'))
 CREATE UNIQUE INDEX idx_llm_provider_templates_single_latest ON dbo.llm_provider_templates(organization_uuid, group_version_id) WHERE is_latest = 1;
 
+-- Rename the legacy 'provider' column to 'managed_by' if it is still present.
+IF OBJECT_ID(N'dbo.llm_provider_templates', N'U') IS NOT NULL
+EXEC('
+    IF COL_LENGTH(''dbo.llm_provider_templates'', ''provider'') IS NOT NULL
+       AND COL_LENGTH(''dbo.llm_provider_templates'', ''managed_by'') IS NULL
+        EXEC sp_rename ''dbo.llm_provider_templates.provider'', ''managed_by'', ''COLUMN'';
+');
+
+-- Add the columns introduced by the multi-version model; existing rows take the defaults.
+IF OBJECT_ID(N'dbo.llm_provider_templates', N'U') IS NOT NULL
+EXEC('
+    IF COL_LENGTH(''dbo.llm_provider_templates'', ''group_version_id'') IS NULL
+        ALTER TABLE dbo.llm_provider_templates ADD group_version_id VARCHAR(255) NULL;
+    IF COL_LENGTH(''dbo.llm_provider_templates'', ''managed_by'') IS NULL
+        ALTER TABLE dbo.llm_provider_templates ADD managed_by VARCHAR(255) NOT NULL CONSTRAINT DF_llm_provider_templates_managed_by DEFAULT ''customer'';
+    IF COL_LENGTH(''dbo.llm_provider_templates'', ''openapi_spec'') IS NULL
+        ALTER TABLE dbo.llm_provider_templates ADD openapi_spec NVARCHAR(MAX) NULL;
+    IF COL_LENGTH(''dbo.llm_provider_templates'', ''version'') IS NULL
+        ALTER TABLE dbo.llm_provider_templates ADD version VARCHAR(40) NOT NULL CONSTRAINT DF_llm_provider_templates_version DEFAULT ''v1.0'';
+    IF COL_LENGTH(''dbo.llm_provider_templates'', ''is_latest'') IS NULL
+        ALTER TABLE dbo.llm_provider_templates ADD is_latest BIT NOT NULL CONSTRAINT DF_llm_provider_templates_is_latest DEFAULT 1;
+    IF COL_LENGTH(''dbo.llm_provider_templates'', ''enabled'') IS NULL
+        ALTER TABLE dbo.llm_provider_templates ADD enabled BIT NOT NULL CONSTRAINT DF_llm_provider_templates_enabled DEFAULT 1;
+');
+
+-- Backfill group_version_id for existing rows (default to the handle) and enforce NOT NULL.
+IF OBJECT_ID(N'dbo.llm_provider_templates', N'U') IS NOT NULL
+EXEC('
+    UPDATE dbo.llm_provider_templates SET group_version_id = handle WHERE group_version_id IS NULL;
+    IF EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N''dbo.llm_provider_templates'') AND name = ''group_version_id'' AND is_nullable = 1)
+        ALTER TABLE dbo.llm_provider_templates ALTER COLUMN group_version_id VARCHAR(255) NOT NULL;
+');
+
+-- Drop the legacy UNIQUE(organization_uuid, handle) constraint, which conflicts with versioning.
+IF OBJECT_ID(N'dbo.llm_provider_templates', N'U') IS NOT NULL
+EXEC('
+    DECLARE @legacy SYSNAME;
+    SELECT @legacy = kc.name
+    FROM sys.key_constraints kc
+    JOIN sys.index_columns ic ON ic.object_id = kc.parent_object_id AND ic.index_id = kc.unique_index_id
+    JOIN sys.columns c ON c.object_id = ic.object_id AND c.column_id = ic.column_id
+    WHERE kc.parent_object_id = OBJECT_ID(N''dbo.llm_provider_templates'') AND kc.type = ''UQ''
+    GROUP BY kc.name
+    HAVING COUNT(*) = 2
+       AND MAX(CASE WHEN c.name = ''organization_uuid'' THEN 1 ELSE 0 END) = 1
+       AND MAX(CASE WHEN c.name = ''handle'' THEN 1 ELSE 0 END) = 1;
+    IF @legacy IS NOT NULL
+        EXEC(''ALTER TABLE dbo.llm_provider_templates DROP CONSTRAINT '' + QUOTENAME(@legacy));
+');
+
+-- Add the multi-version UNIQUE(organization_uuid, group_version_id, version) constraint if missing.
+IF OBJECT_ID(N'dbo.llm_provider_templates', N'U') IS NOT NULL
+EXEC('
+    IF NOT EXISTS (
+        SELECT 1
+        FROM sys.key_constraints kc
+        JOIN sys.index_columns ic ON ic.object_id = kc.parent_object_id AND ic.index_id = kc.unique_index_id
+        JOIN sys.columns c ON c.object_id = ic.object_id AND c.column_id = ic.column_id
+        WHERE kc.parent_object_id = OBJECT_ID(N''dbo.llm_provider_templates'') AND kc.type = ''UQ''
+          AND c.name IN (''organization_uuid'', ''group_version_id'', ''version'')
+        GROUP BY kc.name
+        HAVING COUNT(*) = 3
+    )
+        ALTER TABLE dbo.llm_provider_templates ADD CONSTRAINT UQ_llm_provider_templates_group_version
+            UNIQUE (organization_uuid, group_version_id, version);
+');
+
 -- LLM Providers table
 IF OBJECT_ID(N'dbo.llm_providers', N'U') IS NULL
 CREATE TABLE dbo.llm_providers (

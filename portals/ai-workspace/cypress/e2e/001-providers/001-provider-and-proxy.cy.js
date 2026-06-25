@@ -200,6 +200,9 @@ describe('AI Workspace - OpenAI provider and proxy lifecycle', () => {
 });
 
 function deleteLinkedProxies(authToken, organizationId, providerId) {
+  if (!providerId) {
+    return cy.wrap(null);
+  }
   return requestWithAuth(authToken, {
     url: `/api-proxy/api/v0.9/llm-providers/${encodeURIComponent(providerId)}/llm-proxies?organizationId=${encodeURIComponent(organizationId)}`,
     failOnStatusCode: false,
@@ -277,6 +280,9 @@ function deleteProject(authToken, projectId) {
 }
 
 function deleteProvider(authToken, organizationId, providerId) {
+  if (!providerId) {
+    return cy.wrap(null);
+  }
   return requestWithAuth(authToken, {
     method: 'DELETE',
     url: `/api-proxy/api/v0.9/llm-providers/${encodeURIComponent(providerId)}?organizationId=${encodeURIComponent(organizationId)}`,

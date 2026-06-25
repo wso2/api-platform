@@ -45,30 +45,80 @@ Cypress.Commands.add('login', (username, password) => {
 });
 
 Cypress.Commands.add('sweepE2EProviders', (authToken, organizationId) => {
-  const doSweep = (token, orgId) => {
-    return cy
+  const PAGE_SIZE = 100;
+  const headersFor = (token) => ({ Authorization: `Bearer ${token}` });
+
+  // Collect every stale `E2E ` provider, paging until the API returns a short
+  // page. Collection finishes before any deletes so the offset window stays
+  // consistent.
+  const collectE2EProviders = (token, orgId, offset = 0, acc = []) =>
+    cy
       .request({
         method: 'GET',
-        url: `/api-proxy/api/v1/llm-providers?organizationId=${encodeURIComponent(orgId)}&limit=100`,
-        headers: { Authorization: `Bearer ${token}` },
+        url: `/api-proxy/api/v1/llm-providers?organizationId=${encodeURIComponent(orgId)}&limit=${PAGE_SIZE}&offset=${offset}`,
+        headers: headersFor(token),
         failOnStatusCode: false,
       })
       .then((response) => {
-        if (response.status !== 200) return;
-        const e2eProviders = (response.body?.list ?? []).filter(
-          (p) => typeof p.name === 'string' && p.name.startsWith('E2E ')
+        if (response.status !== 200) return acc;
+        const page = response.body?.list ?? [];
+        const next = acc.concat(
+          page.filter(
+            (p) => typeof p.name === 'string' && p.name.startsWith('E2E ')
+          )
         );
-        if (!e2eProviders.length) return;
-        return cy.wrap(e2eProviders).each((provider) =>
-          cy.request({
-            method: 'DELETE',
-            url: `/api-proxy/api/v1/llm-providers/${encodeURIComponent(provider.id)}?organizationId=${encodeURIComponent(orgId)}`,
-            headers: { Authorization: `Bearer ${token}` },
-            failOnStatusCode: false,
-          })
+        if (page.length < PAGE_SIZE) return next;
+        return collectE2EProviders(token, orgId, offset + PAGE_SIZE, next);
+      });
+
+  // A provider with linked proxies cannot be deleted directly, so clear those
+  // first to keep the sweep from silently leaving stale state behind.
+  const deleteLinkedProxies = (token, orgId, providerId) =>
+    cy
+      .request({
+        method: 'GET',
+        url: `/api-proxy/api/v1/llm-providers/${encodeURIComponent(providerId)}/llm-proxies?organizationId=${encodeURIComponent(orgId)}`,
+        headers: headersFor(token),
+        failOnStatusCode: false,
+      })
+      .then((response) => {
+        if (response.status === 404) return;
+        const proxies = response.body?.list ?? [];
+        if (!proxies.length) return;
+        return cy.wrap(proxies).each((proxy) =>
+          cy
+            .request({
+              method: 'DELETE',
+              url: `/api-proxy/api/v1/llm-proxies/${encodeURIComponent(proxy.id)}?organizationId=${encodeURIComponent(orgId)}`,
+              headers: headersFor(token),
+              failOnStatusCode: false,
+            })
+            .then((deleteResponse) => {
+              expect(deleteResponse.status).to.be.oneOf([200, 204, 404]);
+            })
         );
       });
-  };
+
+  const doSweep = (token, orgId) =>
+    collectE2EProviders(token, orgId).then((e2eProviders) => {
+      if (!e2eProviders.length) return;
+      return cy.wrap(e2eProviders).each((provider) =>
+        deleteLinkedProxies(token, orgId, provider.id).then(() =>
+          cy
+            .request({
+              method: 'DELETE',
+              url: `/api-proxy/api/v1/llm-providers/${encodeURIComponent(provider.id)}?organizationId=${encodeURIComponent(orgId)}`,
+              headers: headersFor(token),
+              failOnStatusCode: false,
+            })
+            .then((deleteResponse) => {
+              // Surface a failed delete so the sweep does not pass while leaving
+              // the next suite to start from dirty state.
+              expect(deleteResponse.status).to.be.oneOf([200, 204, 404]);
+            })
+        )
+      );
+    });
 
   if (authToken && organizationId) {
     return doSweep(authToken, organizationId);
