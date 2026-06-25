@@ -70,8 +70,9 @@ type FileBased struct {
 
 // Server holds the configuration parameters for the application.
 type Server struct {
-	LogLevel string `koanf:"log_level"`
-	Port     string `koanf:"port"`
+	LogLevel  string `koanf:"log_level"`
+	LogFormat string `koanf:"log_format"`
+	Port      string `koanf:"port"`
 
 	DBSchemaPath               string `koanf:"db_schema_path"`
 	OpenAPISpecPath            string `koanf:"openapi_spec_path"`
@@ -335,6 +336,8 @@ func envToKoanfKey(s string) string {
 	// Server-level
 	case "log_level":
 		return "log_level"
+	case "log_format":
+		return "log_format"
 	case "port":
 		return "port"
 	case "db_schema_path":

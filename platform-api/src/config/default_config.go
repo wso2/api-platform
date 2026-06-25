@@ -23,6 +23,7 @@ import "time"
 func defaultConfig() *Server {
 	return &Server{
 		LogLevel:                   "INFO",
+		LogFormat:                  "text",
 		Port:                       "9243",
 		DBSchemaPath:               "./internal/database/schema.sql",
 		OpenAPISpecPath:            "./resources/openapi.yaml",
