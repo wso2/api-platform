@@ -36,6 +36,11 @@ spec:
         type: api-key
         header: X-API-Key
         value: anthropic_provider_loopback_key_1234567890abcdef
+      transformer:
+        type: openai-to-anthropic
+        version: v1
+        params:
+          model: claude-sonnet-4-5-20250929
     - id: azure-openai-provider
       auth:
         type: api-key
@@ -47,11 +52,11 @@ spec:
         header: X-API-Key
         value: mistral_provider_loopback_key_1234567890abcdef
         #mistral_provider_loopback_key_1234567890abcdef
-    # - id: gemini-provider
-    #   auth:
-    #     type: api-key
-    #     header: X-API-Key
-    #     value: gemini_provider_loopback_key_1234567890abcdef
+    - id: gemini-provider
+      auth:
+        type: api-key
+        header: X-API-Key
+        value: gemini_provider_loopback_key_1234567890abcdef
 
   policies:
     - name: api-key-auth
@@ -79,8 +84,8 @@ spec:
                 provider: azure-openai-provider
               - headerValue: mistral
                 provider: mistral-provider
-              # - headerValue: gemini
-              #   provider: gemini-provider
+              - headerValue: gemini
+                provider: gemini-provider
 
     # - name: token-based-ratelimit
     #   version: v1
@@ -95,6 +100,7 @@ spec:
     #         backend: memory
 
     - name: openai-to-anthropic
+      executionCondition: metadata["selected_provider"] == "anthropic-provider"
       version: v1
       paths:
         - path: /chat/completions
@@ -122,15 +128,15 @@ spec:
             model: mistral-large-latest
             id: mistral-provider
 
-    # - name: openai-to-gemini
-    #   version: v1
-    #   paths:
-    #     - path: /chat/completions
-    #       methods: [POST]
-    #       params:
-    #         model: gemini-2.5-flash
-    #         id: gemini-provider
-    #         apiVersion: v1beta
+    - name: openai-to-gemini
+      version: v1
+      paths:
+        - path: /chat/completions
+          methods: [POST]
+          params:
+            model: gemini-2.5-flash
+            id: gemini-provider
+            apiVersion: v1beta
 
 ---
 # Client API key for this proxy. The api-key-auth policy above validates
