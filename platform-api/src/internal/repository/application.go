@@ -135,8 +135,9 @@ func (r *ApplicationRepo) GetAssociationTargetByIDOrHandle(targetIDOrHandle, org
 			UNION ALL SELECT uuid, handle, name, version, created_at, updated_at FROM mcp_proxies
 		) src ON src.uuid = a.uuid
 		WHERE a.organization_uuid = ? AND (a.uuid = ? OR src.handle = ?)
-		LIMIT 1
-	`), orgID, targetIDOrHandle, targetIDOrHandle)
+		ORDER BY CASE WHEN a.uuid = ? THEN 0 ELSE 1 END
+		`+r.db.FetchFirstClause(1)),
+		orgID, targetIDOrHandle, targetIDOrHandle, targetIDOrHandle)
 
 	target := &model.Artifact{}
 	err := row.Scan(
@@ -172,8 +173,9 @@ func (r *ApplicationRepo) GetAssociationTargetByIDOrHandleAndKind(targetIDOrHand
 			UNION ALL SELECT uuid, handle, name, version, created_at, updated_at FROM mcp_proxies
 		) src ON src.uuid = a.uuid
 		WHERE a.organization_uuid = ? AND a.type = ? AND (a.uuid = ? OR src.handle = ?)
-		LIMIT 1
-	`), orgID, kind, targetIDOrHandle, targetIDOrHandle)
+		ORDER BY CASE WHEN a.uuid = ? THEN 0 ELSE 1 END
+		`+r.db.FetchFirstClause(1)),
+		orgID, kind, targetIDOrHandle, targetIDOrHandle, targetIDOrHandle)
 
 	target := &model.Artifact{}
 	err := row.Scan(

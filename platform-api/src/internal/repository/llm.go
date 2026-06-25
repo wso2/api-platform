@@ -99,9 +99,10 @@ func (r *LLMProviderTemplateRepo) GetByID(templateID, orgUUID string) (*model.LL
 	`), templateID, orgUUID)
 
 	var t model.LLMProviderTemplate
-	var configJSON sql.NullString
+	var createdBy sql.NullString
+	var configJSON []byte
 	if err := row.Scan(
-		&t.UUID, &t.OrganizationUUID, &t.ID, &t.GroupID, &t.Name, &t.Description, &t.ManagedBy, &t.CreatedBy, &configJSON,
+		&t.UUID, &t.OrganizationUUID, &t.ID, &t.GroupID, &t.Name, &t.Description, &t.ManagedBy, &createdBy, &configJSON,
 		&t.CreatedAt, &t.UpdatedAt,
 	); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -109,10 +110,11 @@ func (r *LLMProviderTemplateRepo) GetByID(templateID, orgUUID string) (*model.LL
 		}
 		return nil, err
 	}
+	t.CreatedBy = createdBy.String
 
-	if configJSON.Valid && configJSON.String != "" {
+	if len(configJSON) > 0 {
 		var cfg llmProviderTemplateConfig
-		if err := json.Unmarshal([]byte(configJSON.String), &cfg); err != nil {
+		if err := json.Unmarshal(configJSON, &cfg); err != nil {
 			return nil, err
 		}
 		t.Metadata = cfg.Metadata
@@ -136,9 +138,10 @@ func (r *LLMProviderTemplateRepo) GetByUUID(uuid, orgUUID string) (*model.LLMPro
 	`), uuid, orgUUID)
 
 	var t model.LLMProviderTemplate
-	var configJSON sql.NullString
+	var createdBy sql.NullString
+	var configJSON []byte
 	if err := row.Scan(
-		&t.UUID, &t.OrganizationUUID, &t.ID, &t.GroupID, &t.Name, &t.Description, &t.ManagedBy, &t.CreatedBy, &configJSON,
+		&t.UUID, &t.OrganizationUUID, &t.ID, &t.GroupID, &t.Name, &t.Description, &t.ManagedBy, &createdBy, &configJSON,
 		&t.CreatedAt, &t.UpdatedAt,
 	); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -146,10 +149,11 @@ func (r *LLMProviderTemplateRepo) GetByUUID(uuid, orgUUID string) (*model.LLMPro
 		}
 		return nil, err
 	}
+	t.CreatedBy = createdBy.String
 
-	if configJSON.Valid && configJSON.String != "" {
+	if len(configJSON) > 0 {
 		var cfg llmProviderTemplateConfig
-		if err := json.Unmarshal([]byte(configJSON.String), &cfg); err != nil {
+		if err := json.Unmarshal(configJSON, &cfg); err != nil {
 			return nil, err
 		}
 		t.Metadata = cfg.Metadata
@@ -182,17 +186,19 @@ func (r *LLMProviderTemplateRepo) List(orgUUID string, limit, offset int) ([]*mo
 	var res []*model.LLMProviderTemplate
 	for rows.Next() {
 		var t model.LLMProviderTemplate
-		var configJSON sql.NullString
+		var createdBy sql.NullString
+	var configJSON []byte
 		err := rows.Scan(
-			&t.UUID, &t.OrganizationUUID, &t.ID, &t.GroupID, &t.Name, &t.Description, &t.ManagedBy, &t.CreatedBy, &configJSON,
+			&t.UUID, &t.OrganizationUUID, &t.ID, &t.GroupID, &t.Name, &t.Description, &t.ManagedBy, &createdBy, &configJSON,
 			&t.CreatedAt, &t.UpdatedAt,
 		)
 		if err != nil {
 			return nil, err
 		}
-		if configJSON.Valid && configJSON.String != "" {
+		t.CreatedBy = createdBy.String
+		if len(configJSON) > 0 {
 			var cfg llmProviderTemplateConfig
-			if err := json.Unmarshal([]byte(configJSON.String), &cfg); err != nil {
+			if err := json.Unmarshal(configJSON, &cfg); err != nil {
 				return nil, err
 			}
 			t.Metadata = cfg.Metadata
@@ -337,7 +343,7 @@ func (r *LLMProviderRepo) Create(p *model.LLMProvider) error {
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 	_, err = tx.Exec(r.db.Rebind(query),
 		p.UUID, p.ID, p.Name, p.Version, p.Description, p.CreatedBy, p.TemplateUUID,
-		p.OpenAPISpec, string(modelProvidersJSON), configurationJSON, p.CreatedAt, p.UpdatedAt,
+		[]byte(p.OpenAPISpec), modelProvidersJSON, configurationJSON, p.CreatedAt, p.UpdatedAt,
 		p.OrganizationUUID,
 	)
 	if err != nil {
@@ -360,19 +366,21 @@ func (r *LLMProviderRepo) GetByID(providerID, orgUUID string) (*model.LLMProvide
 	row := r.db.QueryRow(r.db.Rebind(query), providerID, orgUUID)
 
 	var p model.LLMProvider
-	var openAPISpec, modelProvidersRaw sql.NullString
-	var configurationJSON sql.NullString
+	var createdBy sql.NullString
+	var openAPISpec, modelProvidersRaw []byte
+	var configurationJSON []byte
 	if err := row.Scan(
 		&p.UUID, &p.ID, &p.Name, &p.Version, &p.OrganizationUUID, &p.CreatedAt, &p.UpdatedAt,
-		&p.Description, &p.CreatedBy, &p.TemplateUUID, &openAPISpec, &modelProvidersRaw, &configurationJSON,
+		&p.Description, &createdBy, &p.TemplateUUID, &openAPISpec, &modelProvidersRaw, &configurationJSON,
 	); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
 		}
 		return nil, err
 	}
+	p.CreatedBy = createdBy.String
 
-	if configurationJSON.Valid && configurationJSON.String != "" {
+	if len(configurationJSON) > 0 {
 		if config, err := deserializeLLMProviderConfiguration(configurationJSON); err != nil {
 			return nil, fmt.Errorf("unmarshal configuration for provider %s: %w", p.ID, err)
 		} else if config != nil {
@@ -380,11 +388,11 @@ func (r *LLMProviderRepo) GetByID(providerID, orgUUID string) (*model.LLMProvide
 		}
 	}
 
-	if openAPISpec.Valid {
-		p.OpenAPISpec = openAPISpec.String
+	if len(openAPISpec) > 0 {
+		p.OpenAPISpec = string(openAPISpec)
 	}
-	if modelProvidersRaw.Valid && modelProvidersRaw.String != "" {
-		if err := json.Unmarshal([]byte(modelProvidersRaw.String), &p.ModelProviders); err != nil {
+	if len(modelProvidersRaw) > 0 {
+		if err := json.Unmarshal(modelProvidersRaw, &p.ModelProviders); err != nil {
 			return nil, fmt.Errorf("unmarshal modelProviders for provider %s: %w", p.ID, err)
 		}
 	}
@@ -412,24 +420,26 @@ func (r *LLMProviderRepo) List(orgUUID string, limit, offset int) ([]*model.LLMP
 	var res []*model.LLMProvider
 	for rows.Next() {
 		var p model.LLMProvider
-		var openAPISpec, modelProvidersRaw sql.NullString
-		var configurationJSON sql.NullString
+		var createdBy sql.NullString
+		var openAPISpec, modelProvidersRaw []byte
+		var configurationJSON []byte
 		err := rows.Scan(
 			&p.UUID, &p.ID, &p.Name, &p.Version, &p.OrganizationUUID, &p.CreatedAt, &p.UpdatedAt,
-			&p.Description, &p.CreatedBy, &p.TemplateUUID, &openAPISpec, &modelProvidersRaw, &configurationJSON,
+			&p.Description, &createdBy, &p.TemplateUUID, &openAPISpec, &modelProvidersRaw, &configurationJSON,
 		)
 		if err != nil {
 			return nil, err
 		}
-		if openAPISpec.Valid {
-			p.OpenAPISpec = openAPISpec.String
+		p.CreatedBy = createdBy.String
+		if len(openAPISpec) > 0 {
+			p.OpenAPISpec = string(openAPISpec)
 		}
-		if modelProvidersRaw.Valid && modelProvidersRaw.String != "" {
-			if err := json.Unmarshal([]byte(modelProvidersRaw.String), &p.ModelProviders); err != nil {
+		if len(modelProvidersRaw) > 0 {
+			if err := json.Unmarshal(modelProvidersRaw, &p.ModelProviders); err != nil {
 				return nil, fmt.Errorf("unmarshal modelProviders for provider %s: %w", p.ID, err)
 			}
 		}
-		if configurationJSON.Valid && configurationJSON.String != "" {
+		if len(configurationJSON) > 0 {
 			if config, err := deserializeLLMProviderConfiguration(configurationJSON); err != nil {
 				return nil, fmt.Errorf("unmarshal configuration for provider %s: %w", p.ID, err)
 			} else if config != nil {
@@ -483,7 +493,7 @@ func (r *LLMProviderRepo) Update(p *model.LLMProvider) error {
 		SET name = ?, version = ?, description = ?, template_uuid = ?, openapi_spec = ?, model_list = ?, configuration = ?, updated_by = ?, updated_at = ?
 		WHERE uuid = ?`
 	result, err := tx.Exec(r.db.Rebind(query),
-		p.Name, p.Version, p.Description, p.TemplateUUID, p.OpenAPISpec, string(modelProvidersJSON), configurationJSON, p.UpdatedBy, now,
+		p.Name, p.Version, p.Description, p.TemplateUUID, []byte(p.OpenAPISpec), modelProvidersJSON, configurationJSON, p.UpdatedBy, now,
 		providerUUID,
 	)
 	if err != nil {
@@ -591,7 +601,7 @@ func (r *LLMProxyRepo) Create(p *model.LLMProxy) error {
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 	_, err = tx.Exec(r.db.Rebind(query),
 		p.UUID, p.ID, p.Name, p.Version, p.ProjectUUID, p.Description, p.CreatedBy, p.ProviderUUID,
-		p.OpenAPISpec, configurationJSON, p.CreatedAt, p.UpdatedAt,
+		[]byte(p.OpenAPISpec), configurationJSON, p.CreatedAt, p.UpdatedAt,
 		p.OrganizationUUID,
 	)
 	if err != nil {
@@ -614,10 +624,11 @@ func (r *LLMProxyRepo) GetByID(proxyID, orgUUID string) (*model.LLMProxy, error)
 	row := r.db.QueryRow(r.db.Rebind(query), proxyID, orgUUID)
 
 	var p model.LLMProxy
-	var openAPISpec, configurationJSON sql.NullString
+	var createdBy sql.NullString
+	var openAPISpec, configurationJSON []byte
 	if err := row.Scan(
 		&p.UUID, &p.ID, &p.Name, &p.Version, &p.OrganizationUUID, &p.CreatedAt, &p.UpdatedAt,
-		&p.ProjectUUID, &p.Description, &p.CreatedBy, &p.ProviderUUID,
+		&p.ProjectUUID, &p.Description, &createdBy, &p.ProviderUUID,
 		&openAPISpec, &configurationJSON,
 	); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -625,11 +636,12 @@ func (r *LLMProxyRepo) GetByID(proxyID, orgUUID string) (*model.LLMProxy, error)
 		}
 		return nil, err
 	}
+	p.CreatedBy = createdBy.String
 
-	if openAPISpec.Valid {
-		p.OpenAPISpec = openAPISpec.String
+	if len(openAPISpec) > 0 {
+		p.OpenAPISpec = string(openAPISpec)
 	}
-	if configurationJSON.Valid && configurationJSON.String != "" {
+	if len(configurationJSON) > 0 {
 		if config, err := deserializeLLMProxyConfiguration(configurationJSON); err != nil {
 			return nil, fmt.Errorf("unmarshal configuration for proxy %s: %w", p.ID, err)
 		} else if config != nil {
@@ -661,19 +673,21 @@ func (r *LLMProxyRepo) List(orgUUID string, limit, offset int) ([]*model.LLMProx
 	var res []*model.LLMProxy
 	for rows.Next() {
 		var p model.LLMProxy
-		var openAPISpec, configurationJSON sql.NullString
+		var createdBy sql.NullString
+		var openAPISpec, configurationJSON []byte
 		err := rows.Scan(
 			&p.UUID, &p.ID, &p.Name, &p.Version, &p.OrganizationUUID, &p.CreatedAt, &p.UpdatedAt,
-			&p.ProjectUUID, &p.Description, &p.CreatedBy, &p.ProviderUUID,
+			&p.ProjectUUID, &p.Description, &createdBy, &p.ProviderUUID,
 			&openAPISpec, &configurationJSON,
 		)
 		if err != nil {
 			return nil, err
 		}
-		if openAPISpec.Valid {
-			p.OpenAPISpec = openAPISpec.String
+		p.CreatedBy = createdBy.String
+		if len(openAPISpec) > 0 {
+			p.OpenAPISpec = string(openAPISpec)
 		}
-		if configurationJSON.Valid && configurationJSON.String != "" {
+		if len(configurationJSON) > 0 {
 			if config, err := deserializeLLMProxyConfiguration(configurationJSON); err != nil {
 				return nil, fmt.Errorf("unmarshal configuration for proxy %s: %w", p.ID, err)
 			} else if config != nil {
@@ -706,19 +720,21 @@ func (r *LLMProxyRepo) ListByProject(orgUUID, projectUUID string, limit, offset 
 	var res []*model.LLMProxy
 	for rows.Next() {
 		var p model.LLMProxy
-		var openAPISpec, configurationJSON sql.NullString
+		var createdBy sql.NullString
+		var openAPISpec, configurationJSON []byte
 		err := rows.Scan(
 			&p.UUID, &p.ID, &p.Name, &p.Version, &p.OrganizationUUID, &p.CreatedAt, &p.UpdatedAt,
-			&p.ProjectUUID, &p.Description, &p.CreatedBy, &p.ProviderUUID,
+			&p.ProjectUUID, &p.Description, &createdBy, &p.ProviderUUID,
 			&openAPISpec, &configurationJSON,
 		)
 		if err != nil {
 			return nil, err
 		}
-		if openAPISpec.Valid {
-			p.OpenAPISpec = openAPISpec.String
+		p.CreatedBy = createdBy.String
+		if len(openAPISpec) > 0 {
+			p.OpenAPISpec = string(openAPISpec)
 		}
-		if configurationJSON.Valid && configurationJSON.String != "" {
+		if len(configurationJSON) > 0 {
 			if config, err := deserializeLLMProxyConfiguration(configurationJSON); err != nil {
 				return nil, fmt.Errorf("unmarshal configuration for proxy %s: %w", p.ID, err)
 			} else if config != nil {
@@ -751,19 +767,21 @@ func (r *LLMProxyRepo) ListByProvider(orgUUID, providerUUID string, limit, offse
 	var res []*model.LLMProxy
 	for rows.Next() {
 		var p model.LLMProxy
-		var openAPISpec, configurationJSON sql.NullString
+		var createdBy sql.NullString
+		var openAPISpec, configurationJSON []byte
 		err := rows.Scan(
 			&p.UUID, &p.ID, &p.Name, &p.Version, &p.OrganizationUUID, &p.CreatedAt, &p.UpdatedAt,
-			&p.ProjectUUID, &p.Description, &p.CreatedBy, &p.ProviderUUID,
+			&p.ProjectUUID, &p.Description, &createdBy, &p.ProviderUUID,
 			&openAPISpec, &configurationJSON,
 		)
 		if err != nil {
 			return nil, err
 		}
-		if openAPISpec.Valid {
-			p.OpenAPISpec = openAPISpec.String
+		p.CreatedBy = createdBy.String
+		if len(openAPISpec) > 0 {
+			p.OpenAPISpec = string(openAPISpec)
 		}
-		if configurationJSON.Valid && configurationJSON.String != "" {
+		if len(configurationJSON) > 0 {
 			if config, err := deserializeLLMProxyConfiguration(configurationJSON); err != nil {
 				return nil, fmt.Errorf("unmarshal configuration for proxy %s: %w", p.ID, err)
 			} else if config != nil {
@@ -838,7 +856,7 @@ func (r *LLMProxyRepo) Update(p *model.LLMProxy) error {
 		WHERE uuid = ?`
 	result, err := tx.Exec(r.db.Rebind(query),
 		p.Name, p.Version, p.Description, p.ProviderUUID,
-		p.OpenAPISpec, configurationJSON, p.UpdatedBy, now,
+		[]byte(p.OpenAPISpec), configurationJSON, p.UpdatedBy, now,
 		proxyUUID,
 	)
 	if err != nil {
@@ -919,39 +937,31 @@ func unmarshalPolicies(policiesJSON sql.NullString) ([]model.LLMPolicy, error) {
 	return policies, nil
 }
 
-func serializeLLMProviderConfiguration(config model.LLMProviderConfig) (string, error) {
-	configJSON, err := json.Marshal(config)
-	if err != nil {
-		return "", err
-	}
-	return string(configJSON), nil
+func serializeLLMProviderConfiguration(config model.LLMProviderConfig) ([]byte, error) {
+	return json.Marshal(config)
 }
 
-func deserializeLLMProviderConfiguration(configJSON sql.NullString) (*model.LLMProviderConfig, error) {
-	if !configJSON.Valid || configJSON.String == "" {
+func deserializeLLMProviderConfiguration(configJSON []byte) (*model.LLMProviderConfig, error) {
+	if len(configJSON) == 0 {
 		return nil, fmt.Errorf("null configuration")
 	}
 	var config model.LLMProviderConfig
-	if err := json.Unmarshal([]byte(configJSON.String), &config); err != nil {
+	if err := json.Unmarshal(configJSON, &config); err != nil {
 		return nil, err
 	}
 	return &config, nil
 }
 
-func serializeLLMProxyConfiguration(config model.LLMProxyConfig) (string, error) {
-	configJSON, err := json.Marshal(config)
-	if err != nil {
-		return "", err
-	}
-	return string(configJSON), nil
+func serializeLLMProxyConfiguration(config model.LLMProxyConfig) ([]byte, error) {
+	return json.Marshal(config)
 }
 
-func deserializeLLMProxyConfiguration(configJSON sql.NullString) (*model.LLMProxyConfig, error) {
-	if !configJSON.Valid || configJSON.String == "" {
+func deserializeLLMProxyConfiguration(configJSON []byte) (*model.LLMProxyConfig, error) {
+	if len(configJSON) == 0 {
 		return nil, fmt.Errorf("null configuration")
 	}
 	var config model.LLMProxyConfig
-	if err := json.Unmarshal([]byte(configJSON.String), &config); err != nil {
+	if err := json.Unmarshal(configJSON, &config); err != nil {
 		return nil, err
 	}
 	return &config, nil

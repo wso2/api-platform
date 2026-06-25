@@ -32,7 +32,7 @@ CREATE TABLE IF NOT EXISTS organizations (
 -- Projects table
 CREATE TABLE IF NOT EXISTS projects (
     uuid VARCHAR(40) PRIMARY KEY,
-    handle VARCHAR(255) NOT NULL,
+    handle VARCHAR(40) NOT NULL,
     name VARCHAR(255) NOT NULL,
     organization_uuid VARCHAR(40) NOT NULL,
     description VARCHAR(1023),
@@ -143,8 +143,7 @@ CREATE TABLE IF NOT EXISTS subscriptions (
       REFERENCES subscription_plans(uuid, organization_uuid) ON DELETE RESTRICT,
     FOREIGN KEY (artifact_uuid, organization_uuid)
       REFERENCES artifacts(uuid, organization_uuid) ON DELETE CASCADE,
-    UNIQUE(artifact_uuid, subscription_token_hash),
-    UNIQUE(organization_uuid, artifact_uuid, application_id)
+    UNIQUE(artifact_uuid, subscription_token_hash)
 );
 
 -- Gateways table (scoped to organizations)
@@ -386,7 +385,7 @@ CREATE TABLE IF NOT EXISTS websub_api_hmac_secrets (
     artifact_uuid VARCHAR(40) NOT NULL,
     handle VARCHAR(40) NOT NULL,
     name VARCHAR(255),
-    encrypted_secret TEXT NOT NULL,
+    encrypted_secret BLOB NOT NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'active',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -470,6 +469,9 @@ CREATE INDEX IF NOT EXISTS idx_subscriptions_status ON subscriptions(status);
 CREATE INDEX IF NOT EXISTS idx_subscriptions_plan ON subscriptions(subscription_plan_uuid);
 CREATE INDEX IF NOT EXISTS idx_subscriptions_token ON subscriptions(subscription_token_hash);
 CREATE INDEX IF NOT EXISTS idx_subscriptions_org_subscriber ON subscriptions(organization_uuid, subscriber_id);
+-- Enforce one subscription per application per artifact per org. MySQL allows multiple NULLs in a unique
+-- index, so this correctly permits multiple token-based (NULL application_id) subscriptions on the same artifact.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_subscriptions_org_artifact_app ON subscriptions(organization_uuid, artifact_uuid, application_id);
 CREATE INDEX IF NOT EXISTS idx_gateways_org ON gateways(organization_uuid);
 CREATE INDEX IF NOT EXISTS idx_gateway_tokens_status ON gateway_tokens(gateway_uuid, status);
 CREATE INDEX IF NOT EXISTS idx_gateway_tokens_hash ON gateway_tokens(token_hash);

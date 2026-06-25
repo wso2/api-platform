@@ -85,14 +85,17 @@ func (r *GatewayRepo) scanGateway(row interface {
 	gateway := &model.Gateway{}
 	var propertiesBytes []byte
 	var isCritical, isActive int
+	var createdBy, updatedBy sql.NullString
 	if err := row.Scan(
 		&gateway.ID, &gateway.OrganizationID, &gateway.Handle, &gateway.Name, &gateway.Description, &propertiesBytes, &gateway.Vhost,
-		&isCritical, &gateway.FunctionalityType, &gateway.Version, &isActive, &gateway.CreatedBy, &gateway.UpdatedBy, &gateway.CreatedAt, &gateway.UpdatedAt,
+		&isCritical, &gateway.FunctionalityType, &gateway.Version, &isActive, &createdBy, &updatedBy, &gateway.CreatedAt, &gateway.UpdatedAt,
 	); err != nil {
 		return nil, err
 	}
 	gateway.IsCritical = isCritical != 0
 	gateway.IsActive = isActive != 0
+	gateway.CreatedBy = createdBy.String
+	gateway.UpdatedBy = updatedBy.String
 	if len(propertiesBytes) > 0 && string(propertiesBytes) != "{}" {
 		if err := json.Unmarshal(propertiesBytes, &gateway.Properties); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal properties: %w", err)
@@ -324,10 +327,10 @@ func (r *GatewayRepo) GetActiveTokenByHash(tokenHash string) (*model.GatewayToke
 	query := `
 		SELECT uuid, gateway_uuid, token_hash, salt, status, created_by, created_at, revoked_by, revoked_at
 		FROM gateway_tokens
-		WHERE token_hash = ? AND status = 'active'
+		WHERE token_hash = ? AND status = ?
 		ORDER BY (SELECT NULL)
 		` + r.db.FetchFirstClause(1)
-	err := r.db.QueryRow(r.db.Rebind(query), tokenHash).Scan(
+	err := r.db.QueryRow(r.db.Rebind(query), tokenHash, constants.GatewayTokenStatusActive).Scan(
 		&token.ID, &token.GatewayID, &token.TokenHash, &token.Salt, &token.Status,
 		&createdBy, &token.CreatedAt, &revokedBy, &token.RevokedAt,
 	)

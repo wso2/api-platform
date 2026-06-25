@@ -33,7 +33,7 @@ CREATE TABLE dbo.organizations (
 IF OBJECT_ID(N'dbo.projects', N'U') IS NULL
 CREATE TABLE dbo.projects (
     uuid VARCHAR(40) PRIMARY KEY,
-    handle VARCHAR(255) NOT NULL,
+    handle VARCHAR(40) NOT NULL,
     name VARCHAR(255) NOT NULL,
     organization_uuid VARCHAR(40) NOT NULL,
     description VARCHAR(1023),
@@ -127,7 +127,8 @@ CREATE TABLE dbo.subscription_plans (
     updated_by VARCHAR(200),
     updated_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
-    UNIQUE(organization_uuid, handle)
+    UNIQUE(organization_uuid, handle),
+    UNIQUE(organization_uuid, uuid)
 );
 
 -- Subscriptions table (application-level subscriptions for any artifact type)
@@ -159,16 +160,19 @@ CREATE TABLE dbo.subscriptions (
         REFERENCES subscription_plans(uuid, organization_uuid) ON DELETE NO ACTION,
     FOREIGN KEY (artifact_uuid, organization_uuid)
         REFERENCES artifacts(uuid, organization_uuid) ON DELETE NO ACTION,
-    UNIQUE(artifact_uuid, subscription_token_hash),
-    UNIQUE(organization_uuid, artifact_uuid, application_id),
-    CHECK (status IN ('ACTIVE', 'INACTIVE', 'REVOKED'))
+    UNIQUE(artifact_uuid, subscription_token_hash)
 );
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_subscriptions_token' AND object_id = OBJECT_ID(N'dbo.subscriptions'))
 CREATE INDEX idx_subscriptions_token ON dbo.subscriptions(subscription_token_hash);
 -- Supports list/count filters: WHERE organization_uuid = ? AND subscriber_id = ? (no artifact_uuid).
--- The unique constraint on (artifact_uuid, application_id, organization_uuid) is not ordered for this access path.
+-- The unique constraint on (organization_uuid, artifact_uuid, application_id) is not ordered for this access path.
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_subscriptions_org_subscriber' AND object_id = OBJECT_ID(N'dbo.subscriptions'))
 CREATE INDEX idx_subscriptions_org_subscriber ON dbo.subscriptions(organization_uuid, subscriber_id);
+-- Enforce one subscription per application per artifact per org. Filtered to exclude NULL application_id
+-- (token-based subscriptions) so all backends behave identically — SQL Server treats NULLs as equal
+-- in a plain UNIQUE constraint, which would block multiple token-based subscriptions on the same artifact.
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'uq_subscriptions_org_artifact_app' AND object_id = OBJECT_ID(N'dbo.subscriptions'))
+CREATE UNIQUE INDEX uq_subscriptions_org_artifact_app ON dbo.subscriptions(organization_uuid, artifact_uuid, application_id) WHERE application_id IS NOT NULL;
 
 -- Gateways table (scoped to organizations)
 -- Must be created before deployments which references it
@@ -192,8 +196,7 @@ CREATE TABLE dbo.gateways (
     updated_by VARCHAR(200),
     updated_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
-    UNIQUE(organization_uuid, handle),
-    CHECK (gateway_functionality_type IN ('regular', 'ai', 'event'))
+    UNIQUE(organization_uuid, handle)
 );
 
 -- Gateway Association Mappings table (links artifacts to gateways)
@@ -254,9 +257,7 @@ CREATE TABLE dbo.gateway_tokens (
     created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     revoked_by VARCHAR(200),
     revoked_at DATETIME2(7),
-    FOREIGN KEY (gateway_uuid) REFERENCES gateways(uuid) ON DELETE CASCADE,
-    CHECK (status IN ('active', 'revoked')),
-    CHECK (revoked_at IS NULL OR status = 'revoked')
+    FOREIGN KEY (gateway_uuid) REFERENCES gateways(uuid) ON DELETE CASCADE
 );
 
 -- Artifact Deployments table (immutable deployment artifacts)

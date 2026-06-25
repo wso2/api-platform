@@ -166,10 +166,11 @@ func (r *SubscriptionRepo) GetByID(subscriptionID, orgUUID string) (*model.Subsc
 	`
 	sub := &model.Subscription{}
 	var storedToken string
+	var createdBy, updatedBy sql.NullString
 	err := r.db.QueryRow(r.db.Rebind(query), subscriptionID, orgUUID).Scan(
 		&sub.UUID, &sub.ArtifactUUID, &sub.SubscriberID, &sub.ApplicationID, &storedToken,
 		&sub.SubscriptionPlanID, &sub.OrganizationUUID, &sub.Status,
-		&sub.CreatedBy, &sub.UpdatedBy,
+		&createdBy, &updatedBy,
 		&sub.CreatedAt, &sub.UpdatedAt,
 	)
 	if err != nil {
@@ -178,6 +179,8 @@ func (r *SubscriptionRepo) GetByID(subscriptionID, orgUUID string) (*model.Subsc
 		}
 		return nil, err
 	}
+	sub.CreatedBy = createdBy.String
+	sub.UpdatedBy = updatedBy.String
 	sub.SubscriptionToken = r.decryptSubscriptionToken(storedToken)
 	return sub, nil
 }

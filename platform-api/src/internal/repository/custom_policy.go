@@ -61,9 +61,10 @@ func (r *CustomPolicyRepo) GetCustomPolicyByNameAndVersion(orgUUID, name, versio
 		WHERE organization_uuid = ? AND name = ? AND version = ?
 	`
 	p := &model.CustomPolicy{}
+	var createdBy, updatedBy sql.NullString
 	err := r.db.QueryRow(r.db.Rebind(query), orgUUID, name, version).Scan(
 		&p.UUID, &p.OrganizationUUID, &p.Name, &p.DisplayName, &p.Version,
-		&p.Description, &p.PolicyDefinition, &p.CreatedBy, &p.UpdatedBy, &p.CreatedAt, &p.UpdatedAt,
+		&p.Description, &p.PolicyDefinition, &createdBy, &updatedBy, &p.CreatedAt, &p.UpdatedAt,
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -71,6 +72,8 @@ func (r *CustomPolicyRepo) GetCustomPolicyByNameAndVersion(orgUUID, name, versio
 		}
 		return nil, err
 	}
+	p.CreatedBy = createdBy.String
+	p.UpdatedBy = updatedBy.String
 	return p, nil
 }
 
@@ -91,12 +94,15 @@ func (r *CustomPolicyRepo) ListCustomPolicyByOrganization(orgUUID string) ([]*mo
 	var policies []*model.CustomPolicy
 	for rows.Next() {
 		p := &model.CustomPolicy{}
+		var createdBy, updatedBy sql.NullString
 		if err := rows.Scan(
 			&p.UUID, &p.OrganizationUUID, &p.Name, &p.DisplayName, &p.Version,
-			&p.Description, &p.PolicyDefinition, &p.CreatedBy, &p.UpdatedBy, &p.CreatedAt, &p.UpdatedAt,
+			&p.Description, &p.PolicyDefinition, &createdBy, &updatedBy, &p.CreatedAt, &p.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
+		p.CreatedBy = createdBy.String
+		p.UpdatedBy = updatedBy.String
 		policies = append(policies, p)
 	}
 	if err := rows.Err(); err != nil {
@@ -128,9 +134,10 @@ func (r *CustomPolicyRepo) GetCustomPolicyByUUID(orgUUID, policyUUID string) (*m
 		WHERE organization_uuid = ? AND uuid = ?
 	`
 	p := &model.CustomPolicy{}
+	var createdBy, updatedBy sql.NullString
 	err := r.db.QueryRow(r.db.Rebind(query), orgUUID, policyUUID).Scan(
 		&p.UUID, &p.OrganizationUUID, &p.Name, &p.DisplayName, &p.Version,
-		&p.Description, &p.PolicyDefinition, &p.CreatedBy, &p.UpdatedBy, &p.CreatedAt, &p.UpdatedAt,
+		&p.Description, &p.PolicyDefinition, &createdBy, &updatedBy, &p.CreatedAt, &p.UpdatedAt,
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -138,6 +145,8 @@ func (r *CustomPolicyRepo) GetCustomPolicyByUUID(orgUUID, policyUUID string) (*m
 		}
 		return nil, err
 	}
+	p.CreatedBy = createdBy.String
+	p.UpdatedBy = updatedBy.String
 	return p, nil
 }
 
@@ -158,12 +167,15 @@ func (r *CustomPolicyRepo) GetCustomPoliciesByName(orgUUID, name string) ([]*mod
 	var policies []*model.CustomPolicy
 	for rows.Next() {
 		p := &model.CustomPolicy{}
+		var createdBy, updatedBy sql.NullString
 		if err := rows.Scan(
 			&p.UUID, &p.OrganizationUUID, &p.Name, &p.DisplayName, &p.Version,
-			&p.Description, &p.PolicyDefinition, &p.CreatedBy, &p.UpdatedBy, &p.CreatedAt, &p.UpdatedAt,
+			&p.Description, &p.PolicyDefinition, &createdBy, &updatedBy, &p.CreatedAt, &p.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
+		p.CreatedBy = createdBy.String
+		p.UpdatedBy = updatedBy.String
 		policies = append(policies, p)
 	}
 	if err := rows.Err(); err != nil {

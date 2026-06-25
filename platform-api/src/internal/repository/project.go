@@ -62,9 +62,10 @@ func (r *ProjectRepo) GetProjectByUUID(projectId string) (*model.Project, error)
 		FROM projects
 		WHERE uuid = ?
 	`
+	var createdBy, updatedBy sql.NullString
 	err := r.db.QueryRow(r.db.Rebind(query), projectId).Scan(
 		&project.ID, &project.Name, &project.OrganizationID, &project.Description,
-		&project.CreatedBy, &project.CreatedAt, &project.UpdatedBy, &project.UpdatedAt,
+		&createdBy, &project.CreatedAt, &updatedBy, &project.UpdatedAt,
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -72,6 +73,8 @@ func (r *ProjectRepo) GetProjectByUUID(projectId string) (*model.Project, error)
 		}
 		return nil, err
 	}
+	project.CreatedBy = createdBy.String
+	project.UpdatedBy = updatedBy.String
 	return project, nil
 }
 
@@ -83,9 +86,10 @@ func (r *ProjectRepo) GetProjectByNameAndOrgID(name, orgID string) (*model.Proje
 		FROM projects
 		WHERE name = ? AND organization_uuid = ?
 	`
+	var createdBy, updatedBy sql.NullString
 	err := r.db.QueryRow(r.db.Rebind(query), name, orgID).Scan(
 		&project.ID, &project.Name, &project.OrganizationID, &project.Description,
-		&project.CreatedBy, &project.CreatedAt, &project.UpdatedBy, &project.UpdatedAt,
+		&createdBy, &project.CreatedAt, &updatedBy, &project.UpdatedAt,
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -93,6 +97,8 @@ func (r *ProjectRepo) GetProjectByNameAndOrgID(name, orgID string) (*model.Proje
 		}
 		return nil, err
 	}
+	project.CreatedBy = createdBy.String
+	project.UpdatedBy = updatedBy.String
 	return project, nil
 }
 
@@ -113,11 +119,14 @@ func (r *ProjectRepo) GetProjectsByOrganizationID(orgID string) ([]*model.Projec
 	var projects []*model.Project
 	for rows.Next() {
 		project := &model.Project{}
+		var createdBy, updatedBy sql.NullString
 		err := rows.Scan(&project.ID, &project.Name, &project.OrganizationID, &project.Description,
-			&project.CreatedBy, &project.CreatedAt, &project.UpdatedBy, &project.UpdatedAt)
+			&createdBy, &project.CreatedAt, &updatedBy, &project.UpdatedAt)
 		if err != nil {
 			return nil, err
 		}
+		project.CreatedBy = createdBy.String
+		project.UpdatedBy = updatedBy.String
 		projects = append(projects, project)
 	}
 

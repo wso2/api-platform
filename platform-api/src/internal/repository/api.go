@@ -102,12 +102,13 @@ func (r *APIRepo) GetAPIByUUID(apiUUID, orgUUID string) (*model.API, error) {
 	`
 
 	var configJSON sql.NullString
-	var updatedBy sql.NullString
+	var createdBy, updatedBy sql.NullString
 	err := r.db.QueryRow(r.db.Rebind(query), apiUUID, orgUUID).Scan(
 		&api.ID, &api.Handle, &api.Name, &api.Description,
-		&api.Version, &api.CreatedBy, &updatedBy, &api.ProjectID, &api.OrganizationID, &api.LifeCycleStatus,
+		&api.Version, &createdBy, &updatedBy, &api.ProjectID, &api.OrganizationID, &api.LifeCycleStatus,
 		&configJSON, &api.CreatedAt, &api.UpdatedAt)
 	api.Kind = constants.RestApi
+	api.CreatedBy = createdBy.String
 	if updatedBy.Valid {
 		api.UpdatedBy = updatedBy.String
 	}
@@ -217,14 +218,15 @@ func (r *APIRepo) GetAPIsByProjectUUID(projectUUID, orgUUID string) ([]*model.AP
 func (r *APIRepo) scanAPI(rows *sql.Rows) (*model.API, error) {
 	api := &model.API{Kind: constants.RestApi}
 	var configJSON sql.NullString
-	var updatedBy sql.NullString
+	var createdBy, updatedBy sql.NullString
 	if err := rows.Scan(
 		&api.ID, &api.Handle, &api.Name, &api.Description,
-		&api.Version, &api.CreatedBy, &updatedBy, &api.ProjectID, &api.OrganizationID,
+		&api.Version, &createdBy, &updatedBy, &api.ProjectID, &api.OrganizationID,
 		&api.LifeCycleStatus, &configJSON, &api.CreatedAt, &api.UpdatedAt,
 	); err != nil {
 		return nil, err
 	}
+	api.CreatedBy = createdBy.String
 	if updatedBy.Valid {
 		api.UpdatedBy = updatedBy.String
 	}
@@ -292,11 +294,13 @@ func (r *APIRepo) GetDeployedAPIsByGatewayUUID(gatewayUUID, orgUUID string) ([]*
 	var apis []*model.API
 	for rows.Next() {
 		api := &model.API{Kind: constants.RestApi}
+		var createdBy sql.NullString
 		if err := rows.Scan(&api.ID, &api.Name, &api.Description,
-			&api.Version, &api.CreatedBy, &api.ProjectID, &api.OrganizationID,
+			&api.Version, &createdBy, &api.ProjectID, &api.OrganizationID,
 			&api.CreatedAt, &api.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("failed to scan API row: %w", err)
 		}
+		api.CreatedBy = createdBy.String
 		apis = append(apis, api)
 	}
 
@@ -323,11 +327,13 @@ func (r *APIRepo) GetAPIsByGatewayUUID(gatewayUUID, orgUUID string) ([]*model.AP
 	var apis []*model.API
 	for rows.Next() {
 		api := &model.API{Kind: constants.RestApi}
+		var createdBy sql.NullString
 		if err := rows.Scan(&api.ID, &api.Name, &api.Description,
-			&api.Version, &api.CreatedBy, &api.ProjectID, &api.OrganizationID,
+			&api.Version, &createdBy, &api.ProjectID, &api.OrganizationID,
 			&api.CreatedAt, &api.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("failed to scan API row: %w", err)
 		}
+		api.CreatedBy = createdBy.String
 		apis = append(apis, api)
 	}
 

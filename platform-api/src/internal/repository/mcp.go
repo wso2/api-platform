@@ -105,18 +105,20 @@ func (r *MCPProxyRepo) GetByHandle(handle, orgUUID string) (*model.MCPProxy, err
 	row := r.db.QueryRow(r.db.Rebind(query), handle, orgUUID)
 
 	var p model.MCPProxy
-	var configurationJSON sql.NullString
+	var createdBy sql.NullString
+	var configurationJSON []byte
 	if err := row.Scan(
 		&p.UUID, &p.Handle, &p.Name, &p.Version, &p.OrganizationUUID, &p.CreatedAt, &p.UpdatedAt,
-		&p.ProjectUUID, &p.Description, &p.CreatedBy, &configurationJSON,
+		&p.ProjectUUID, &p.Description, &createdBy, &configurationJSON,
 	); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
 		}
 		return nil, err
 	}
+	p.CreatedBy = createdBy.String
 
-	if configurationJSON.Valid && configurationJSON.String != "" {
+	if len(configurationJSON) > 0 {
 		if config, err := deserializeMCPProxyConfiguration(configurationJSON); err != nil {
 			return nil, fmt.Errorf("unmarshal configuration for MCP proxy %s: %w", p.Handle, err)
 		} else if config != nil {
@@ -138,18 +140,20 @@ func (r *MCPProxyRepo) GetByUUID(uuid, orgUUID string) (*model.MCPProxy, error) 
 	row := r.db.QueryRow(r.db.Rebind(query), uuid, orgUUID)
 
 	var p model.MCPProxy
-	var configurationJSON sql.NullString
+	var createdBy sql.NullString
+	var configurationJSON []byte
 	if err := row.Scan(
 		&p.UUID, &p.Handle, &p.Name, &p.Version, &p.OrganizationUUID, &p.CreatedAt, &p.UpdatedAt,
-		&p.ProjectUUID, &p.Description, &p.CreatedBy, &configurationJSON,
+		&p.ProjectUUID, &p.Description, &createdBy, &configurationJSON,
 	); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
 		}
 		return nil, err
 	}
+	p.CreatedBy = createdBy.String
 
-	if configurationJSON.Valid && configurationJSON.String != "" {
+	if len(configurationJSON) > 0 {
 		if config, err := deserializeMCPProxyConfiguration(configurationJSON); err != nil {
 			return nil, fmt.Errorf("unmarshal configuration for MCP proxy %s: %w", p.Handle, err)
 		} else if config != nil {
@@ -179,15 +183,17 @@ func (r *MCPProxyRepo) List(orgUUID string, limit, offset int) ([]*model.MCPProx
 	var res []*model.MCPProxy
 	for rows.Next() {
 		var p model.MCPProxy
-		var configurationJSON sql.NullString
+		var createdBy sql.NullString
+		var configurationJSON []byte
 		err := rows.Scan(
 			&p.UUID, &p.Handle, &p.Name, &p.Version, &p.OrganizationUUID, &p.CreatedAt, &p.UpdatedAt,
-			&p.ProjectUUID, &p.Description, &p.CreatedBy, &configurationJSON,
+			&p.ProjectUUID, &p.Description, &createdBy, &configurationJSON,
 		)
 		if err != nil {
 			return nil, err
 		}
-		if configurationJSON.Valid && configurationJSON.String != "" {
+		p.CreatedBy = createdBy.String
+		if len(configurationJSON) > 0 {
 			if config, err := deserializeMCPProxyConfiguration(configurationJSON); err != nil {
 				return nil, fmt.Errorf("unmarshal configuration for MCP proxy %s: %w", p.Handle, err)
 			} else if config != nil {
@@ -223,15 +229,17 @@ func (r *MCPProxyRepo) ListByProject(orgUUID, projectUUID string) ([]*model.MCPP
 	var res []*model.MCPProxy
 	for rows.Next() {
 		var p model.MCPProxy
-		var configurationJSON sql.NullString
+		var createdBy sql.NullString
+		var configurationJSON []byte
 		err := rows.Scan(
 			&p.UUID, &p.Handle, &p.Name, &p.Version, &p.OrganizationUUID, &p.CreatedAt, &p.UpdatedAt,
-			&p.ProjectUUID, &p.Description, &p.CreatedBy, &configurationJSON,
+			&p.ProjectUUID, &p.Description, &createdBy, &configurationJSON,
 		)
 		if err != nil {
 			return nil, err
 		}
-		if configurationJSON.Valid && configurationJSON.String != "" {
+		p.CreatedBy = createdBy.String
+		if len(configurationJSON) > 0 {
 			if config, err := deserializeMCPProxyConfiguration(configurationJSON); err != nil {
 				return nil, fmt.Errorf("unmarshal configuration for MCP proxy %s: %w", p.Handle, err)
 			} else if config != nil {
@@ -351,22 +359,16 @@ func (r *MCPProxyRepo) Exists(handle, orgUUID string) (bool, error) {
 	return r.artifactRepo.Exists(constants.MCPProxy, handle, orgUUID)
 }
 
-// serializeMCPProxyConfiguration serializes the MCP proxy configuration to JSON string
-func serializeMCPProxyConfiguration(config model.MCPProxyConfiguration) (string, error) {
-	configJSON, err := json.Marshal(config)
-	if err != nil {
-		return "", err
-	}
-	return string(configJSON), nil
+func serializeMCPProxyConfiguration(config model.MCPProxyConfiguration) ([]byte, error) {
+	return json.Marshal(config)
 }
 
-// deserializeMCPProxyConfiguration deserializes the JSON string to MCP proxy configuration
-func deserializeMCPProxyConfiguration(configJSON sql.NullString) (*model.MCPProxyConfiguration, error) {
-	if !configJSON.Valid || configJSON.String == "" {
+func deserializeMCPProxyConfiguration(configJSON []byte) (*model.MCPProxyConfiguration, error) {
+	if len(configJSON) == 0 {
 		return nil, fmt.Errorf("null configuration")
 	}
 	var config model.MCPProxyConfiguration
-	if err := json.Unmarshal([]byte(configJSON.String), &config); err != nil {
+	if err := json.Unmarshal(configJSON, &config); err != nil {
 		return nil, err
 	}
 	return &config, nil

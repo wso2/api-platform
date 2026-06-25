@@ -279,17 +279,20 @@ func (r *WebBrokerAPIRepo) Exists(handle, orgUUID string) (bool, error) {
 // scanWebBrokerAPI scans a single Row into a WebBrokerAPI
 func (r *WebBrokerAPIRepo) scanWebBrokerAPI(row *sql.Row) (*model.WebBrokerAPI, error) {
 	var a model.WebBrokerAPI
-	var configurationJSON sql.NullString
+	var createdBy, updatedBy sql.NullString
+	var configurationJSON []byte
 	if err := row.Scan(
 		&a.UUID, &a.Handle, &a.Name, &a.Version, &a.OrganizationUUID, &a.CreatedAt, &a.UpdatedAt,
-		&a.ProjectUUID, &a.Description, &a.CreatedBy, &a.UpdatedBy, &a.LifeCycleStatus, &configurationJSON,
+		&a.ProjectUUID, &a.Description, &createdBy, &updatedBy, &a.LifeCycleStatus, &configurationJSON,
 	); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
 		}
 		return nil, err
 	}
-	if configurationJSON.Valid && configurationJSON.String != "" {
+	a.CreatedBy = createdBy.String
+	a.UpdatedBy = updatedBy.String
+	if len(configurationJSON) > 0 {
 		if config, err := deserializeWebBrokerAPIConfiguration(configurationJSON); err != nil {
 			return nil, fmt.Errorf("unmarshal configuration for WebBroker API %s: %w", a.Handle, err)
 		} else if config != nil {
@@ -302,14 +305,17 @@ func (r *WebBrokerAPIRepo) scanWebBrokerAPI(row *sql.Row) (*model.WebBrokerAPI, 
 // scanWebBrokerAPIFromRows scans a Rows row into a WebBrokerAPI
 func (r *WebBrokerAPIRepo) scanWebBrokerAPIFromRows(rows *sql.Rows) (*model.WebBrokerAPI, error) {
 	var a model.WebBrokerAPI
-	var configurationJSON sql.NullString
+	var createdBy, updatedBy sql.NullString
+	var configurationJSON []byte
 	if err := rows.Scan(
 		&a.UUID, &a.Handle, &a.Name, &a.Version, &a.OrganizationUUID, &a.CreatedAt, &a.UpdatedAt,
-		&a.ProjectUUID, &a.Description, &a.CreatedBy, &a.UpdatedBy, &a.LifeCycleStatus, &configurationJSON,
+		&a.ProjectUUID, &a.Description, &createdBy, &updatedBy, &a.LifeCycleStatus, &configurationJSON,
 	); err != nil {
 		return nil, err
 	}
-	if configurationJSON.Valid && configurationJSON.String != "" {
+	a.CreatedBy = createdBy.String
+	a.UpdatedBy = updatedBy.String
+	if len(configurationJSON) > 0 {
 		if config, err := deserializeWebBrokerAPIConfiguration(configurationJSON); err != nil {
 			return nil, fmt.Errorf("unmarshal configuration for WebBroker API %s: %w", a.Handle, err)
 		} else if config != nil {
@@ -319,20 +325,16 @@ func (r *WebBrokerAPIRepo) scanWebBrokerAPIFromRows(rows *sql.Rows) (*model.WebB
 	return &a, nil
 }
 
-func serializeWebBrokerAPIConfiguration(config model.WebBrokerAPIConfiguration) (string, error) {
-	configJSON, err := json.Marshal(config)
-	if err != nil {
-		return "", err
-	}
-	return string(configJSON), nil
+func serializeWebBrokerAPIConfiguration(config model.WebBrokerAPIConfiguration) ([]byte, error) {
+	return json.Marshal(config)
 }
 
-func deserializeWebBrokerAPIConfiguration(configJSON sql.NullString) (*model.WebBrokerAPIConfiguration, error) {
-	if !configJSON.Valid || configJSON.String == "" {
+func deserializeWebBrokerAPIConfiguration(configJSON []byte) (*model.WebBrokerAPIConfiguration, error) {
+	if len(configJSON) == 0 {
 		return nil, fmt.Errorf("null configuration")
 	}
 	var config model.WebBrokerAPIConfiguration
-	if err := json.Unmarshal([]byte(configJSON.String), &config); err != nil {
+	if err := json.Unmarshal(configJSON, &config); err != nil {
 		return nil, err
 	}
 	return &config, nil
