@@ -204,51 +204,6 @@ func TestLifecycle_SubscriptionListByFilters(t *testing.T) {
 	}
 }
 
-// TestLifecycle_DevPortalDefault exercises the devportal default-flag queries
-// (GetDefaultByOrganizationUUID + SetAsDefault). These used the `is_default =
-// TRUE`/`FALSE` boolean literals that are invalid on SQL Server; the fix binds a
-// Go bool instead, which this verifies works on every engine.
-func TestLifecycle_DevPortalDefault(t *testing.T) {
-	it := openITDB(t)
-	defer it.db.Close()
-	orgRepo := repository.NewOrganizationRepo(it.db)
-	dpRepo := repository.NewDevPortalRepository(it.db)
-
-	org := &model.Organization{ID: id(), Handle: "dp-" + id()[:8], Name: "dp org", Region: "us"}
-	if err := orgRepo.CreateOrganization(org); err != nil {
-		t.Fatalf("[%s] create org failed: %v", it.driver, err)
-	}
-
-	dp1 := newDevPortal(org.ID, "dp1", true)
-	dp2 := newDevPortal(org.ID, "dp2", false)
-	if err := dpRepo.Create(dp1); err != nil {
-		t.Fatalf("[%s] create dp1 failed: %v", it.driver, err)
-	}
-	if err := dpRepo.Create(dp2); err != nil {
-		t.Fatalf("[%s] create dp2 failed: %v", it.driver, err)
-	}
-
-	def, err := dpRepo.GetDefaultByOrganizationUUID(org.ID)
-	if err != nil {
-		t.Fatalf("[%s] GetDefaultByOrganizationUUID failed: %v", it.driver, err)
-	}
-	if def == nil || def.UUID != dp1.UUID {
-		t.Fatalf("[%s] default devportal: want dp1, got %+v", it.driver, def)
-	}
-
-	// Switch the default to dp2 (unsets dp1, sets dp2 — the boolean UPDATE path).
-	if err := dpRepo.SetAsDefault(dp2.UUID, org.ID); err != nil {
-		t.Fatalf("[%s] SetAsDefault(dp2) failed: %v", it.driver, err)
-	}
-	def, err = dpRepo.GetDefaultByOrganizationUUID(org.ID)
-	if err != nil {
-		t.Fatalf("[%s] GetDefaultByOrganizationUUID (after switch) failed: %v", it.driver, err)
-	}
-	if def == nil || def.UUID != dp2.UUID {
-		t.Fatalf("[%s] default devportal after switch: want dp2, got %+v", it.driver, def)
-	}
-}
-
 // TestLifecycle_ApplicationByIDOrHandle exercises GetApplicationByIDOrHandle,
 // whose `ORDER BY CASE … FetchFirstClause(1)` query was part of the LIMIT-1 fix
 // (a single-row lookup that resolves by UUID or handle). Verified on every engine.
@@ -362,14 +317,3 @@ func TestLifecycle_WebSubAPICreateAndList(t *testing.T) {
 	}
 }
 
-func newDevPortal(orgID, name string, isDefault bool) *model.DevPortal {
-	u := id()
-	return &model.DevPortal{
-		UUID: u, OrganizationUUID: orgID, Name: name,
-		Identifier: name + "-" + u[:8],
-		APIUrl:     "http://" + name + "-" + u[:8],
-		Hostname:   name + "-" + u[:8] + ".local",
-		APIKey:     "k", HeaderKeyName: "x-wso2-api-key",
-		IsDefault: isDefault, Visibility: "private",
-	}
-}

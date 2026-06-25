@@ -31,7 +31,7 @@ type graph struct {
 	org, project, app          string
 	apiArtifact, depArtifact   string
 	plan, sub, gateway, deploy string
-	devportal, apiKey          string
+	apiKey                     string
 }
 
 // seedOrgGraph inserts a representative object graph for one organization that
@@ -44,7 +44,7 @@ func seedOrgGraph(t *testing.T, it *itDB) graph {
 		org: id(), project: id(), app: id(),
 		apiArtifact: id(), depArtifact: id(),
 		plan: id(), sub: id(), gateway: id(), deploy: id(),
-		devportal: id(), apiKey: id(),
+		apiKey: id(),
 	}
 
 	it.exec(t, `INSERT INTO organizations (uuid, handle, name, region) VALUES (?, ?, ?, ?)`,
@@ -76,13 +76,6 @@ func seedOrgGraph(t *testing.T, it *itDB) graph {
 	it.exec(t, `INSERT INTO deployment_status (artifact_uuid, organization_uuid, gateway_uuid, deployment_id) VALUES (?, ?, ?, ?)`,
 		g.depArtifact, g.org, g.gateway, g.deploy)
 
-	// DevPortal + a publication of the API to it.
-	it.exec(t, `INSERT INTO devportals (uuid, organization_uuid, name, identifier, api_url, hostname, api_key) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		g.devportal, g.org, "dp", "dp-"+g.devportal[:8], "http://dp", "dp.local", "k")
-	it.exec(t, `INSERT INTO publication_mappings (api_uuid, devportal_uuid, organization_uuid, status, sandbox_endpoint_url, production_endpoint_url)
-		VALUES (?, ?, ?, ?, ?, ?)`,
-		g.apiArtifact, g.devportal, g.org, "published", "http://sb", "http://prod")
-
 	// An API key on the deployment artifact + its application mapping.
 	it.exec(t, `INSERT INTO api_keys (uuid, artifact_uuid, name, masked_api_key) VALUES (?, ?, ?, ?)`,
 		g.apiKey, g.depArtifact, "key", "ab12")
@@ -103,9 +96,8 @@ func TestCascade_DeleteRestAPIRemovesSubscriptions(t *testing.T) {
 	if got := it.count(t, "subscriptions", "uuid", g.sub); got != 1 {
 		t.Fatalf("precondition: want 1 subscription, got %d", got)
 	}
-	// Mirrors APIRepo.DeleteAPI ordering: publications/deployments are removed
-	// explicitly, rest_apis + artifacts cascade the rest.
-	it.exec(t, `DELETE FROM publication_mappings WHERE api_uuid = ? AND organization_uuid = ?`, g.apiArtifact, g.org)
+	// Mirrors APIRepo.DeleteAPI ordering: deployments are removed explicitly,
+	// rest_apis + artifacts cascade the rest.
 	it.exec(t, `DELETE FROM rest_apis WHERE uuid = ?`, g.apiArtifact)
 	it.exec(t, `DELETE FROM artifacts WHERE uuid = ?`, g.apiArtifact)
 
@@ -132,24 +124,6 @@ func TestCascade_DeleteGatewayRemovesDeployments(t *testing.T) {
 	}
 	if got := it.count(t, "deployment_status", "deployment_id", g.deploy); got != 0 {
 		t.Fatalf("[%s] deployment_status not removed after gateway delete: %d remain", it.driver, got)
-	}
-}
-
-// TestCascade_DeleteDevPortalRemovesPublications verifies the devportal edge of
-// publication_mappings still cascades. (For SQL Server we kept devportals ->
-// publication_mappings as CASCADE and relaxed the api_uuid / organization
-// edges, so this confirms we kept the load-bearing edge.)
-func TestCascade_DeleteDevPortalRemovesPublications(t *testing.T) {
-	it := openITDB(t)
-	defer it.db.Close()
-	g := seedOrgGraph(t, it)
-
-	if got := it.count(t, "publication_mappings", "devportal_uuid", g.devportal); got != 1 {
-		t.Fatalf("precondition: want 1 publication, got %d", got)
-	}
-	it.exec(t, `DELETE FROM devportals WHERE uuid = ? AND organization_uuid = ?`, g.devportal, g.org)
-	if got := it.count(t, "publication_mappings", "devportal_uuid", g.devportal); got != 0 {
-		t.Fatalf("[%s] publication not removed after devportal delete: %d remain", it.driver, got)
 	}
 }
 
@@ -181,7 +155,6 @@ func TestCascade_DeleteProjectRemovesApplications(t *testing.T) {
 	g := seedOrgGraph(t, it)
 
 	// Remove API-side rows first (as the service guard requires no APIs).
-	it.exec(t, `DELETE FROM publication_mappings WHERE api_uuid = ?`, g.apiArtifact)
 	it.exec(t, `DELETE FROM artifacts WHERE uuid = ?`, g.apiArtifact)
 
 	it.exec(t, `DELETE FROM projects WHERE uuid = ?`, g.project)
