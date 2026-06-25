@@ -24,24 +24,28 @@ function prepareDeleteSubscription(orgID, subID) {
     pendingDeleteSubID = subID;
 
     if (typeof openWarningModal === 'function') {
-        openWarningModal('DeleteTokenBasedSubscription', '', '', '', '', '', '');
+        openWarningModal('DeleteSubscription', orgID, subID, '', '', '', '');
         return;
     }
 
     // openWarningModal unavailable — execute directly (should not happen in normal usage)
-    executeDeleteSubscription();
+    executeDeleteSubscription(orgID, subID);
 }
 
-async function executeDeleteSubscription() {
+async function executeDeleteSubscription(orgID, subscriptionId) {
+    // Fall back to pending vars when called with no args (e.g. from warning.js no-param path)
+    const resolvedOrgID = orgID || pendingDeleteOrgID;
+    const resolvedSubID = subscriptionId || pendingDeleteSubID;
+
     try {
         const response = await fetch(
-            devportalApi.org(pendingDeleteOrgID, `/subscriptions/${encodeURIComponent(pendingDeleteSubID)}`),
+            devportalApi.org(resolvedOrgID, `/subscriptions/${encodeURIComponent(resolvedSubID)}`),
             { method: 'DELETE', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() } }
         );
 
         if (response.ok) {
             await showAlert('Subscription removed successfully!', 'success');
-            const row = document.getElementById('sub-row-' + pendingDeleteSubID);
+            const row = document.getElementById('sub-row-' + resolvedSubID);
             if (row) {
                 row.remove();
             }
