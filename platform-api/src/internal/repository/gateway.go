@@ -78,35 +78,44 @@ func (r *GatewayRepo) Create(gateway *model.Gateway) error {
 	return err
 }
 
-// GetByUUID retrieves a gateway by ID
-func (r *GatewayRepo) GetByUUID(gatewayId string) (*model.Gateway, error) {
+// scanGateway scans a single gateway row and handles SMALLINT bool columns and JSON properties.
+func (r *GatewayRepo) scanGateway(row interface {
+	Scan(...any) error
+}) (*model.Gateway, error) {
 	gateway := &model.Gateway{}
 	var propertiesBytes []byte
 	var isCritical, isActive int
+	if err := row.Scan(
+		&gateway.ID, &gateway.OrganizationID, &gateway.Handle, &gateway.Name, &gateway.Description, &propertiesBytes, &gateway.Vhost,
+		&isCritical, &gateway.FunctionalityType, &gateway.Version, &isActive, &gateway.CreatedBy, &gateway.UpdatedBy, &gateway.CreatedAt, &gateway.UpdatedAt,
+	); err != nil {
+		return nil, err
+	}
+	gateway.IsCritical = isCritical != 0
+	gateway.IsActive = isActive != 0
+	if len(propertiesBytes) > 0 && string(propertiesBytes) != "{}" {
+		if err := json.Unmarshal(propertiesBytes, &gateway.Properties); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal properties: %w", err)
+		}
+	}
+	return gateway, nil
+}
+
+// GetByUUID retrieves a gateway by ID
+func (r *GatewayRepo) GetByUUID(gatewayId string) (*model.Gateway, error) {
 	query := `
 		SELECT uuid, organization_uuid, handle, name, description, properties, vhost, is_critical, gateway_functionality_type, version, is_active,
 		       created_by, updated_by, created_at, updated_at
 		FROM gateways
 		WHERE uuid = ?
 	`
-	err := r.db.QueryRow(r.db.Rebind(query), gatewayId).Scan(
-		&gateway.ID, &gateway.OrganizationID, &gateway.Handle, &gateway.Name, &gateway.Description, &propertiesBytes, &gateway.Vhost,
-		&isCritical, &gateway.FunctionalityType, &gateway.Version, &isActive, &gateway.CreatedBy, &gateway.UpdatedBy, &gateway.CreatedAt, &gateway.UpdatedAt)
+	gateway, err := r.scanGateway(r.db.QueryRow(r.db.Rebind(query), gatewayId))
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
 		}
 		return nil, err
 	}
-	gateway.IsCritical = isCritical != 0
-	gateway.IsActive = isActive != 0
-
-	if len(propertiesBytes) > 0 && string(propertiesBytes) != "{}" {
-		if err := json.Unmarshal(propertiesBytes, &gateway.Properties); err != nil {
-			return nil, fmt.Errorf("failed to unmarshal properties: %w", err)
-		}
-	}
-
 	return gateway, nil
 }
 
@@ -127,58 +136,30 @@ func (r *GatewayRepo) GetByOrganizationID(orgID string) ([]*model.Gateway, error
 
 	var gateways []*model.Gateway
 	for rows.Next() {
-		gateway := &model.Gateway{}
-		var propertiesBytes []byte
-		var isCritical, isActive int
-		err := rows.Scan(
-			&gateway.ID, &gateway.OrganizationID, &gateway.Handle, &gateway.Name, &gateway.Description, &propertiesBytes, &gateway.Vhost,
-			&isCritical, &gateway.FunctionalityType, &gateway.Version, &isActive, &gateway.CreatedBy, &gateway.UpdatedBy, &gateway.CreatedAt, &gateway.UpdatedAt)
+		gateway, err := r.scanGateway(rows)
 		if err != nil {
 			return nil, err
 		}
-		gateway.IsCritical = isCritical != 0
-		gateway.IsActive = isActive != 0
-
-		if len(propertiesBytes) > 0 && string(propertiesBytes) != "{}" {
-			if err := json.Unmarshal(propertiesBytes, &gateway.Properties); err != nil {
-				return nil, fmt.Errorf("failed to unmarshal properties: %w", err)
-			}
-		}
-
 		gateways = append(gateways, gateway)
 	}
-	return gateways, nil
+	return gateways, rows.Err()
 }
 
 // GetByHandleAndOrgID checks if a gateway with the given handle exists within an organization
 func (r *GatewayRepo) GetByHandleAndOrgID(handle, orgID string) (*model.Gateway, error) {
-	gateway := &model.Gateway{}
-	var propertiesBytes []byte
-	var isCritical, isActive int
 	query := `
 		SELECT uuid, organization_uuid, handle, name, description, properties, vhost, is_critical, gateway_functionality_type, version, is_active,
 		       created_by, updated_by, created_at, updated_at
 		FROM gateways
 		WHERE handle = ? AND organization_uuid = ?
 	`
-	err := r.db.QueryRow(r.db.Rebind(query), handle, orgID).Scan(
-		&gateway.ID, &gateway.OrganizationID, &gateway.Handle, &gateway.Name, &gateway.Description, &propertiesBytes, &gateway.Vhost,
-		&isCritical, &gateway.FunctionalityType, &gateway.Version, &isActive, &gateway.CreatedBy, &gateway.UpdatedBy, &gateway.CreatedAt, &gateway.UpdatedAt)
+	gateway, err := r.scanGateway(r.db.QueryRow(r.db.Rebind(query), handle, orgID))
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
 		}
 		return nil, err
 	}
-	gateway.IsCritical = isCritical != 0
-	gateway.IsActive = isActive != 0
-
-	if len(propertiesBytes) > 0 && string(propertiesBytes) != "{}" {
-		if err := json.Unmarshal(propertiesBytes, &gateway.Properties); err != nil {
-			return nil, fmt.Errorf("failed to unmarshal properties: %w", err)
-		}
-	}
-
 	return gateway, nil
 }
 
@@ -198,27 +179,13 @@ func (r *GatewayRepo) List() ([]*model.Gateway, error) {
 
 	var gateways []*model.Gateway
 	for rows.Next() {
-		gateway := &model.Gateway{}
-		var propertiesBytes []byte
-		var isCritical, isActive int
-		err := rows.Scan(
-			&gateway.ID, &gateway.OrganizationID, &gateway.Handle, &gateway.Name, &gateway.Description, &propertiesBytes, &gateway.Vhost,
-			&isCritical, &gateway.FunctionalityType, &gateway.Version, &isActive, &gateway.CreatedBy, &gateway.UpdatedBy, &gateway.CreatedAt, &gateway.UpdatedAt)
+		gateway, err := r.scanGateway(rows)
 		if err != nil {
 			return nil, err
 		}
-		gateway.IsCritical = isCritical != 0
-		gateway.IsActive = isActive != 0
-
-		if len(propertiesBytes) > 0 && string(propertiesBytes) != "{}" {
-			if err := json.Unmarshal(propertiesBytes, &gateway.Properties); err != nil {
-				return nil, fmt.Errorf("failed to unmarshal properties: %w", err)
-			}
-		}
-
 		gateways = append(gateways, gateway)
 	}
-	return gateways, nil
+	return gateways, rows.Err()
 }
 
 // Delete removes a gateway with organization isolation and cleans up all associations
@@ -462,14 +429,17 @@ func (r *GatewayRepo) HasGatewayAssociations(gatewayID, organizationID string) (
 
 // HasGatewayAssociationsOrDeployments checks if a gateway has any associations (deployments or associations)
 func (r *GatewayRepo) HasGatewayAssociationsOrDeployments(gatewayID, organizationID string) (bool, error) {
-	hasDeployments, err := r.HasGatewayDeployments(gatewayID, organizationID)
-	if err != nil {
-		return false, err
-	}
-	if hasDeployments {
-		return true, nil
-	}
-	return r.HasGatewayAssociations(gatewayID, organizationID)
+	var count int
+	query := `
+		SELECT COUNT(*) FROM (
+			SELECT 1 FROM deployment_status
+			WHERE gateway_uuid = ? AND organization_uuid = ? AND status = ?
+			UNION ALL
+			SELECT 1 FROM gateway_association_mappings
+			WHERE gateway_uuid = ? AND organization_uuid = ?
+		) combined`
+	err := r.db.QueryRow(r.db.Rebind(query), gatewayID, organizationID, string(model.DeploymentStatusDeployed), gatewayID, organizationID).Scan(&count)
+	return count > 0, err
 }
 
 // UpdateGatewayManifest persists the gateway manifest JSON to the gateway row.

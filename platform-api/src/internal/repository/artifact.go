@@ -90,10 +90,7 @@ func (r *ArtifactRepo) Exists(kind, handle, orgUUID string) (bool, error) {
 		return false, nil
 	}
 
-	query := fmt.Sprintf(
-		`SELECT COUNT(*) FROM %s t JOIN artifacts a ON t.uuid = a.uuid WHERE t.handle = ? AND a.organization_uuid = ?`,
-		table,
-	)
+	query := fmt.Sprintf(`SELECT COUNT(*) FROM %s WHERE handle = ? AND organization_uuid = ?`, table)
 	var count int
 	err := r.db.QueryRow(r.db.Rebind(query), handle, orgUUID).Scan(&count)
 	if err != nil {
@@ -105,19 +102,18 @@ func (r *ArtifactRepo) Exists(kind, handle, orgUUID string) (bool, error) {
 // GetAPIMetadataByHandle retrieves minimal API metadata by handle across all API type tables.
 func (r *ArtifactRepo) GetAPIMetadataByHandle(handle, orgUUID string) (*model.APIMetadata, error) {
 	query := `
-		SELECT a.uuid, a.handle, a.name, a.version, art.type, art.organization_uuid
+		SELECT uuid, handle, name, version, type, organization_uuid
 		FROM (
-			SELECT uuid, handle, name, version, organization_uuid FROM rest_apis      WHERE handle = ? AND organization_uuid = ?
+			SELECT uuid, handle, name, version, 'RestApi'      AS type, organization_uuid FROM rest_apis      WHERE handle = ? AND organization_uuid = ?
 			UNION ALL
-			SELECT uuid, handle, name, version, organization_uuid FROM llm_proxies    WHERE handle = ? AND organization_uuid = ?
+			SELECT uuid, handle, name, version, 'LlmProxy'     AS type, organization_uuid FROM llm_proxies    WHERE handle = ? AND organization_uuid = ?
 			UNION ALL
-			SELECT uuid, handle, name, version, organization_uuid FROM mcp_proxies    WHERE handle = ? AND organization_uuid = ?
+			SELECT uuid, handle, name, version, 'Mcp'          AS type, organization_uuid FROM mcp_proxies    WHERE handle = ? AND organization_uuid = ?
 			UNION ALL
-			SELECT uuid, handle, name, version, organization_uuid FROM websub_apis    WHERE handle = ? AND organization_uuid = ?
+			SELECT uuid, handle, name, version, 'WebSubApi'    AS type, organization_uuid FROM websub_apis    WHERE handle = ? AND organization_uuid = ?
 			UNION ALL
-			SELECT uuid, handle, name, version, organization_uuid FROM webbroker_apis WHERE handle = ? AND organization_uuid = ?
-		) a
-		JOIN artifacts art ON a.uuid = art.uuid
+			SELECT uuid, handle, name, version, 'WebBrokerApi' AS type, organization_uuid FROM webbroker_apis WHERE handle = ? AND organization_uuid = ?
+		) combined
 	`
 	metadata := &model.APIMetadata{}
 	err := r.db.QueryRow(r.db.Rebind(query),
@@ -136,30 +132,27 @@ func (r *ArtifactRepo) GetAPIMetadataByHandle(handle, orgUUID string) (*model.AP
 // Returns a minimal Artifact (uuid, type, organization_uuid).
 func (r *ArtifactRepo) GetByHandle(handle, orgUUID string) (*model.Artifact, error) {
 	query := `
-		SELECT a.uuid, a.type, a.organization_uuid
-		FROM artifacts a
-		WHERE a.organization_uuid = ?
-		  AND a.uuid IN (
-			SELECT uuid FROM rest_apis      WHERE handle = ?
+		SELECT uuid, type, organization_uuid FROM (
+			SELECT uuid, 'RestApi'      AS type, organization_uuid FROM rest_apis      WHERE handle = ? AND organization_uuid = ?
 			UNION ALL
-			SELECT uuid FROM websub_apis    WHERE handle = ?
+			SELECT uuid, 'WebSubApi'    AS type, organization_uuid FROM websub_apis    WHERE handle = ? AND organization_uuid = ?
 			UNION ALL
-			SELECT uuid FROM webbroker_apis WHERE handle = ?
+			SELECT uuid, 'WebBrokerApi' AS type, organization_uuid FROM webbroker_apis WHERE handle = ? AND organization_uuid = ?
 			UNION ALL
-			SELECT uuid FROM llm_providers  WHERE handle = ?
+			SELECT uuid, 'LlmProvider'  AS type, organization_uuid FROM llm_providers  WHERE handle = ? AND organization_uuid = ?
 			UNION ALL
-			SELECT uuid FROM llm_proxies    WHERE handle = ?
+			SELECT uuid, 'LlmProxy'     AS type, organization_uuid FROM llm_proxies    WHERE handle = ? AND organization_uuid = ?
 			UNION ALL
-			SELECT uuid FROM mcp_proxies    WHERE handle = ?
-		  )
+			SELECT uuid, 'Mcp'          AS type, organization_uuid FROM mcp_proxies    WHERE handle = ? AND organization_uuid = ?
+		) combined
 		LIMIT 1
 	`
 	artifact := &model.Artifact{}
 	err := r.db.QueryRow(r.db.Rebind(query),
-		orgUUID, handle, handle, handle, handle, handle, handle,
+		handle, orgUUID, handle, orgUUID, handle, orgUUID, handle, orgUUID, handle, orgUUID, handle, orgUUID,
 	).Scan(&artifact.UUID, &artifact.Type, &artifact.OrganizationUUID)
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
 		}
 		return nil, err

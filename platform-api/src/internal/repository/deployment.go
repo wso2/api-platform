@@ -22,6 +22,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"platform-api/src/internal/constants"
@@ -184,6 +185,42 @@ func (r *DeploymentRepo) CreateWithLimitEnforcement(deployment *model.Deployment
 	return tx.Commit()
 }
 
+// applyDeploymentBase populates the nullable base fields shared by all deployment scan paths.
+func applyDeploymentBase(d *model.Deployment, baseID sql.NullString, createdBy sql.NullString, metadataBytes []byte) error {
+	if baseID.Valid {
+		d.BaseDeploymentID = &baseID.String
+	}
+	if createdBy.Valid {
+		d.CreatedBy = createdBy.String
+	}
+	if len(metadataBytes) > 0 {
+		var metadata map[string]interface{}
+		if err := json.Unmarshal(metadataBytes, &metadata); err != nil {
+			return fmt.Errorf("failed to unmarshal deployment metadata: %w", err)
+		}
+		d.Metadata = metadata
+	}
+	return nil
+}
+
+// applyDeploymentStatus maps the LEFT-JOIN status columns onto the deployment model.
+// A NULL statusStr means the deployment is ARCHIVED (no active status row).
+func applyDeploymentStatus(d *model.Deployment, statusStr sql.NullString, updatedAt sql.NullTime, statusReason sql.NullString) {
+	if statusStr.Valid {
+		st := model.DeploymentStatus(statusStr.String)
+		d.Status = &st
+		if updatedAt.Valid {
+			d.UpdatedAt = &updatedAt.Time
+		}
+		if statusReason.Valid && statusReason.String != "" {
+			d.StatusReason = &statusReason.String
+		}
+	} else {
+		archived := model.DeploymentStatusArchived
+		d.Status = &archived
+	}
+}
+
 // GetWithContent retrieves a deployment including its content (for rollback/base deployment scenarios)
 func (r *DeploymentRepo) GetWithContent(deploymentID, artifactUUID, orgUUID string) (*model.Deployment, error) {
 	deployment := &model.Deployment{}
@@ -209,21 +246,9 @@ func (r *DeploymentRepo) GetWithContent(deploymentID, artifactUUID, orgUUID stri
 		return nil, err
 	}
 
-	if baseDeploymentID.Valid {
-		deployment.BaseDeploymentID = &baseDeploymentID.String
+	if err := applyDeploymentBase(deployment, baseDeploymentID, createdBy, metadataBytes); err != nil {
+		return nil, err
 	}
-	if createdBy.Valid {
-		deployment.CreatedBy = createdBy.String
-	}
-
-	if len(metadataBytes) > 0 {
-		var metadata map[string]interface{}
-		if err := json.Unmarshal(metadataBytes, &metadata); err != nil {
-			return nil, fmt.Errorf("failed to unmarshal deployment metadata: %w", err)
-		}
-		deployment.Metadata = metadata
-	}
-
 	return deployment, nil
 }
 
@@ -272,13 +297,13 @@ func (r *DeploymentRepo) GetCurrentByGateway(artifactUUID, gatewayID, orgUUID st
 
 	var baseDeploymentID sql.NullString
 	var metadataBytes []byte
-	var createdByGCBG sql.NullString
+	var createdBy sql.NullString
 	var statusStr string
 	var updatedAt time.Time
 
 	err := r.db.QueryRow(r.db.Rebind(query), artifactUUID, gatewayID, orgUUID).Scan(
 		&deployment.DeploymentID, &deployment.Name, &deployment.ArtifactID, &deployment.OrganizationID,
-		&deployment.GatewayID, &baseDeploymentID, &deployment.Content, &metadataBytes, &createdByGCBG, &deployment.CreatedAt,
+		&deployment.GatewayID, &baseDeploymentID, &deployment.Content, &metadataBytes, &createdBy, &deployment.CreatedAt,
 		&statusStr, &updatedAt)
 
 	if err != nil {
@@ -288,22 +313,9 @@ func (r *DeploymentRepo) GetCurrentByGateway(artifactUUID, gatewayID, orgUUID st
 		return nil, err
 	}
 
-	if baseDeploymentID.Valid {
-		deployment.BaseDeploymentID = &baseDeploymentID.String
+	if err := applyDeploymentBase(deployment, baseDeploymentID, createdBy, metadataBytes); err != nil {
+		return nil, err
 	}
-	if createdByGCBG.Valid {
-		deployment.CreatedBy = createdByGCBG.String
-	}
-
-	if len(metadataBytes) > 0 {
-		var metadata map[string]interface{}
-		if err := json.Unmarshal(metadataBytes, &metadata); err != nil {
-			return nil, fmt.Errorf("failed to unmarshal deployment metadata: %w", err)
-		}
-		deployment.Metadata = metadata
-	}
-
-	// Populate status fields
 	status := model.DeploymentStatus(statusStr)
 	deployment.Status = &status
 	deployment.UpdatedAt = &updatedAt
@@ -415,14 +427,10 @@ func (r *DeploymentRepo) UpdateStatusWithPerformedAtGuard(artifactUUID, orgUUID,
 	updatedAt := time.Now()
 
 	if len(requireCurrentStatus) > 0 {
-		// Build placeholders for the IN clause
-		placeholders := ""
+		placeholders := make([]string, len(requireCurrentStatus))
 		args := []interface{}{newStatus, reasonVal, updatedAt}
 		for i, s := range requireCurrentStatus {
-			if i > 0 {
-				placeholders += ", "
-			}
-			placeholders += "?"
+			placeholders[i] = "?"
 			args = append(args, s)
 		}
 		args = append(args, artifactUUID, orgUUID, gatewayID, performedAt)
@@ -433,7 +441,7 @@ func (r *DeploymentRepo) UpdateStatusWithPerformedAtGuard(artifactUUID, orgUUID,
 			WHERE status IN (%s)
 			  AND artifact_uuid = ? AND organization_uuid = ? AND gateway_uuid = ?
 			  AND performed_at = ?
-		`, placeholders)
+		`, strings.Join(placeholders, ", "))
 
 		result, err := r.db.Exec(r.db.Rebind(query), args...)
 		if err != nil {
@@ -544,14 +552,14 @@ func (r *DeploymentRepo) GetWithState(deploymentID, artifactUUID, orgUUID string
 
 	var baseDeploymentID sql.NullString
 	var metadataBytes []byte
-	var createdByGWS sql.NullString
+	var createdBy sql.NullString
 	var statusStr sql.NullString
 	var updatedAtVal sql.NullTime
 	var statusReasonStr sql.NullString
 
 	err := r.db.QueryRow(r.db.Rebind(query), deploymentID, artifactUUID, orgUUID).Scan(
 		&deployment.DeploymentID, &deployment.Name, &deployment.ArtifactID, &deployment.OrganizationID, &deployment.GatewayID,
-		&baseDeploymentID, &metadataBytes, &createdByGWS, &deployment.CreatedAt,
+		&baseDeploymentID, &metadataBytes, &createdBy, &deployment.CreatedAt,
 		&statusStr, &updatedAtVal, &statusReasonStr)
 
 	if err != nil {
@@ -561,38 +569,10 @@ func (r *DeploymentRepo) GetWithState(deploymentID, artifactUUID, orgUUID string
 		return nil, err
 	}
 
-	// Set nullable fields
-	if baseDeploymentID.Valid {
-		deployment.BaseDeploymentID = &baseDeploymentID.String
+	if err := applyDeploymentBase(deployment, baseDeploymentID, createdBy, metadataBytes); err != nil {
+		return nil, err
 	}
-	if createdByGWS.Valid {
-		deployment.CreatedBy = createdByGWS.String
-	}
-
-	if len(metadataBytes) > 0 {
-		var metadata map[string]interface{}
-		if err := json.Unmarshal(metadataBytes, &metadata); err != nil {
-			return nil, fmt.Errorf("failed to unmarshal deployment metadata: %w", err)
-		}
-		deployment.Metadata = metadata
-	}
-
-	// Populate status fields from JOIN (nil if ARCHIVED)
-	if statusStr.Valid {
-		st := model.DeploymentStatus(statusStr.String)
-		deployment.Status = &st
-		if updatedAtVal.Valid {
-			deployment.UpdatedAt = &updatedAtVal.Time
-		}
-		if statusReasonStr.Valid && statusReasonStr.String != "" {
-			deployment.StatusReason = &statusReasonStr.String
-		}
-	} else {
-		// ARCHIVED state - Status and UpdatedAt remain nil
-		archived := model.DeploymentStatusArchived
-		deployment.Status = &archived
-	}
-
+	applyDeploymentStatus(deployment, statusStr, updatedAtVal, statusReasonStr)
 	return deployment, nil
 }
 
@@ -691,55 +671,23 @@ func (r *DeploymentRepo) GetDeploymentsWithState(artifactUUID, orgUUID string, g
 		deployment := &model.Deployment{}
 		var baseDeploymentID sql.NullString
 		var metadataBytes []byte
-		var createdByGDS sql.NullString
+		var createdBy sql.NullString
 		var statusStr sql.NullString
 		var updatedAtVal sql.NullTime
 		var statusReasonStr sql.NullString
 
-		err := rows.Scan(
+		if err := rows.Scan(
 			&deployment.DeploymentID, &deployment.Name, &deployment.ArtifactID,
 			&deployment.OrganizationID, &deployment.GatewayID,
-			&baseDeploymentID, &metadataBytes, &createdByGDS, &deployment.CreatedAt,
-			&statusStr, &updatedAtVal, &statusReasonStr)
-
-		if err != nil {
+			&baseDeploymentID, &metadataBytes, &createdBy, &deployment.CreatedAt,
+			&statusStr, &updatedAtVal, &statusReasonStr); err != nil {
 			return nil, err
 		}
 
-		// Handle Nullable BaseDeploymentID
-		if baseDeploymentID.Valid {
-			deployment.BaseDeploymentID = &baseDeploymentID.String
+		if err := applyDeploymentBase(deployment, baseDeploymentID, createdBy, metadataBytes); err != nil {
+			return nil, err
 		}
-		if createdByGDS.Valid {
-			deployment.CreatedBy = createdByGDS.String
-		}
-
-		// Handle Metadata
-		if len(metadataBytes) > 0 {
-			var metadata map[string]interface{}
-			if err := json.Unmarshal(metadataBytes, &metadata); err != nil {
-				return nil, fmt.Errorf("failed to unmarshal deployment metadata: %w", err)
-			}
-			deployment.Metadata = metadata
-		}
-
-		// Map Database Status to Model Status
-		if statusStr.Valid {
-			st := model.DeploymentStatus(statusStr.String)
-			deployment.Status = &st
-			if updatedAtVal.Valid {
-				deployment.UpdatedAt = &updatedAtVal.Time
-			}
-			if statusReasonStr.Valid && statusReasonStr.String != "" {
-				deployment.StatusReason = &statusReasonStr.String
-			}
-		} else {
-			// If the JOIN resulted in NULL, the record is ARCHIVED
-			archived := model.DeploymentStatusArchived
-			deployment.Status = &archived
-			// For Archived, UpdatedAt usually defaults to nil
-		}
-
+		applyDeploymentStatus(deployment, statusStr, updatedAtVal, statusReasonStr)
 		deployments = append(deployments, deployment)
 	}
 
@@ -786,72 +734,42 @@ func (r *DeploymentRepo) GetDeployedGatewayIDs(artifactUUID, orgUUID string) ([]
 // dependencies are processed in correct order (LLM Proxies depend on LLM Providers)
 // If since is provided, only returns deployments updated after that timestamp
 func (r *DeploymentRepo) GetAllDeploymentsByGateway(gatewayID, orgUUID string, since *time.Time) ([]*model.DeploymentInfo, error) {
-	var query string
-	var args []interface{}
+	query := `
+		SELECT
+			s.deployment_id,
+			s.artifact_uuid,
+			src.handle,
+			a.type,
+			s.status,
+			s.performed_at
+		FROM deployment_status s
+		INNER JOIN artifacts a ON s.artifact_uuid = a.uuid
+		INNER JOIN (
+			SELECT uuid, handle FROM rest_apis
+			UNION ALL SELECT uuid, handle FROM websub_apis
+			UNION ALL SELECT uuid, handle FROM webbroker_apis
+			UNION ALL SELECT uuid, handle FROM llm_providers
+			UNION ALL SELECT uuid, handle FROM llm_proxies
+			UNION ALL SELECT uuid, handle FROM mcp_proxies
+		) src ON src.uuid = s.artifact_uuid
+		WHERE s.gateway_uuid = ? AND s.organization_uuid = ?`
+	args := []interface{}{gatewayID, orgUUID}
 
 	if since != nil {
-		query = `
-			SELECT
-				s.deployment_id,
-				s.artifact_uuid,
-				src.handle,
-				a.type,
-				s.status,
-				s.performed_at
-			FROM deployment_status s
-			INNER JOIN artifacts a ON s.artifact_uuid = a.uuid
-			INNER JOIN (
-				SELECT uuid, handle FROM rest_apis
-				UNION ALL SELECT uuid, handle FROM websub_apis
-				UNION ALL SELECT uuid, handle FROM webbroker_apis
-				UNION ALL SELECT uuid, handle FROM llm_providers
-				UNION ALL SELECT uuid, handle FROM llm_proxies
-				UNION ALL SELECT uuid, handle FROM mcp_proxies
-			) src ON src.uuid = s.artifact_uuid
-			WHERE s.gateway_uuid = ? AND s.organization_uuid = ? AND s.performed_at > ?
-			ORDER BY
-				CASE a.type
-					WHEN 'RestApi' THEN 1
-					WHEN 'LlmProvider' THEN 2
-					WHEN 'LlmProxy' THEN 3
-					WHEN 'Mcp' THEN 4
-					ELSE 5
-				END,
-				s.performed_at DESC
-		`
-		args = []interface{}{gatewayID, orgUUID, *since}
-	} else {
-		query = `
-			SELECT
-				s.deployment_id,
-				s.artifact_uuid,
-				src.handle,
-				a.type,
-				s.status,
-				s.performed_at
-			FROM deployment_status s
-			INNER JOIN artifacts a ON s.artifact_uuid = a.uuid
-			INNER JOIN (
-				SELECT uuid, handle FROM rest_apis
-				UNION ALL SELECT uuid, handle FROM websub_apis
-				UNION ALL SELECT uuid, handle FROM webbroker_apis
-				UNION ALL SELECT uuid, handle FROM llm_providers
-				UNION ALL SELECT uuid, handle FROM llm_proxies
-				UNION ALL SELECT uuid, handle FROM mcp_proxies
-			) src ON src.uuid = s.artifact_uuid
-			WHERE s.gateway_uuid = ? AND s.organization_uuid = ?
-			ORDER BY
-				CASE a.type
-					WHEN 'RestApi' THEN 1
-					WHEN 'LlmProvider' THEN 2
-					WHEN 'LlmProxy' THEN 3
-					WHEN 'Mcp' THEN 4
-					ELSE 5
-				END,
-				s.performed_at DESC
-		`
-		args = []interface{}{gatewayID, orgUUID}
+		query += " AND s.performed_at > ?"
+		args = append(args, *since)
 	}
+
+	query += `
+		ORDER BY
+			CASE a.type
+				WHEN 'RestApi' THEN 1
+				WHEN 'LlmProvider' THEN 2
+				WHEN 'LlmProxy' THEN 3
+				WHEN 'Mcp' THEN 4
+				ELSE 5
+			END,
+			s.performed_at DESC`
 
 	rows, err := r.db.Query(r.db.Rebind(query), args...)
 	if err != nil {
@@ -910,7 +828,7 @@ func (r *DeploymentRepo) GetDeploymentContentByIDs(deploymentIDs []string, orgUU
 		FROM deployments d
 		INNER JOIN artifacts a ON d.artifact_uuid = a.uuid
 		WHERE d.deployment_id IN (%s) AND d.organization_uuid = ? AND d.gateway_uuid = ?
-	`, joinStrings(placeholders, ","))
+	`, strings.Join(placeholders, ","))
 
 	rows, err := r.db.Query(r.db.Rebind(query), args...)
 	if err != nil {
@@ -934,14 +852,3 @@ func (r *DeploymentRepo) GetDeploymentContentByIDs(deploymentIDs []string, orgUU
 	return result, nil
 }
 
-// joinStrings joins strings with a separator (helper for building IN clauses)
-func joinStrings(strs []string, sep string) string {
-	if len(strs) == 0 {
-		return ""
-	}
-	result := strs[0]
-	for i := 1; i < len(strs); i++ {
-		result += sep + strs[i]
-	}
-	return result
-}

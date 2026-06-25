@@ -98,12 +98,11 @@ func (r *WebSubAPIRepo) Create(a *model.WebSubAPI) error {
 func (r *WebSubAPIRepo) GetByHandle(handle, orgUUID string) (*model.WebSubAPI, error) {
 	query := `
 		SELECT
-			p.uuid, p.handle, p.name, p.version, a.organization_uuid, p.created_at, p.updated_at,
-			p.project_uuid, p.description, p.created_by, p.updated_by, p.lifecycle_status, p.configuration
-		FROM websub_apis p
-		JOIN artifacts a ON a.uuid = p.uuid
-		WHERE p.handle = ? AND a.organization_uuid = ? AND a.type = ?`
-	row := r.db.QueryRow(r.db.Rebind(query), handle, orgUUID, constants.WebSubApi)
+			uuid, handle, name, version, organization_uuid, created_at, updated_at,
+			project_uuid, description, created_by, updated_by, lifecycle_status, configuration
+		FROM websub_apis
+		WHERE handle = ? AND organization_uuid = ?`
+	row := r.db.QueryRow(r.db.Rebind(query), handle, orgUUID)
 	return r.scanWebSubAPI(row)
 }
 
@@ -111,12 +110,11 @@ func (r *WebSubAPIRepo) GetByHandle(handle, orgUUID string) (*model.WebSubAPI, e
 func (r *WebSubAPIRepo) GetByUUID(uuid, orgUUID string) (*model.WebSubAPI, error) {
 	query := `
 		SELECT
-			p.uuid, p.handle, p.name, p.version, a.organization_uuid, p.created_at, p.updated_at,
-			p.project_uuid, p.description, p.created_by, p.updated_by, p.lifecycle_status, p.configuration
-		FROM websub_apis p
-		JOIN artifacts a ON a.uuid = p.uuid
-		WHERE p.uuid = ? AND a.organization_uuid = ? AND a.type = ?`
-	row := r.db.QueryRow(r.db.Rebind(query), uuid, orgUUID, constants.WebSubApi)
+			uuid, handle, name, version, organization_uuid, created_at, updated_at,
+			project_uuid, description, created_by, updated_by, lifecycle_status, configuration
+		FROM websub_apis
+		WHERE uuid = ? AND organization_uuid = ?`
+	row := r.db.QueryRow(r.db.Rebind(query), uuid, orgUUID)
 	return r.scanWebSubAPI(row)
 }
 
@@ -129,25 +127,23 @@ func (r *WebSubAPIRepo) List(orgUUID, projectUUID string, limit, offset int) ([]
 	if projectUUID != "" {
 		query = `
 			SELECT
-				p.uuid, p.handle, p.name, p.version, a.organization_uuid, p.created_at, p.updated_at,
-				p.project_uuid, p.description, p.created_by, p.updated_by, p.lifecycle_status, p.configuration
-			FROM websub_apis p
-			JOIN artifacts a ON a.uuid = p.uuid
-			WHERE a.organization_uuid = ? AND a.type = ? AND p.project_uuid = ?
-			ORDER BY p.created_at DESC
+				uuid, handle, name, version, organization_uuid, created_at, updated_at,
+				project_uuid, description, created_by, updated_by, lifecycle_status, configuration
+			FROM websub_apis
+			WHERE organization_uuid = ? AND project_uuid = ?
+			ORDER BY created_at DESC
 			` + pageClause
-		args = append([]interface{}{orgUUID, constants.WebSubApi, projectUUID}, pageArgs...)
+		args = append([]interface{}{orgUUID, projectUUID}, pageArgs...)
 	} else {
 		query = `
 			SELECT
-				p.uuid, p.handle, p.name, p.version, a.organization_uuid, p.created_at, p.updated_at,
-				p.project_uuid, p.description, p.created_by, p.updated_by, p.lifecycle_status, p.configuration
-			FROM websub_apis p
-			JOIN artifacts a ON a.uuid = p.uuid
-			WHERE a.organization_uuid = ? AND a.type = ?
-			ORDER BY p.created_at DESC
+				uuid, handle, name, version, organization_uuid, created_at, updated_at,
+				project_uuid, description, created_by, updated_by, lifecycle_status, configuration
+			FROM websub_apis
+			WHERE organization_uuid = ?
+			ORDER BY created_at DESC
 			` + pageClause
-		args = append([]interface{}{orgUUID, constants.WebSubApi}, pageArgs...)
+		args = append([]interface{}{orgUUID}, pageArgs...)
 	}
 
 	rows, err := r.db.Query(r.db.Rebind(query), args...)
@@ -176,10 +172,9 @@ func (r *WebSubAPIRepo) Count(orgUUID string) (int, error) {
 func (r *WebSubAPIRepo) CountByProject(orgUUID, projectUUID string) (int, error) {
 	var count int
 	query := `
-		SELECT COUNT(*) FROM artifacts a
-		JOIN websub_apis p ON a.uuid = p.uuid
-		WHERE a.organization_uuid = ? AND a.type = ? AND p.project_uuid = ?`
-	if err := r.db.QueryRow(r.db.Rebind(query), orgUUID, constants.WebSubApi, projectUUID).Scan(&count); err != nil {
+		SELECT COUNT(*) FROM websub_apis
+		WHERE organization_uuid = ? AND project_uuid = ?`
+	if err := r.db.QueryRow(r.db.Rebind(query), orgUUID, projectUUID).Scan(&count); err != nil {
 		return 0, err
 	}
 	return count, nil
@@ -201,13 +196,12 @@ func (r *WebSubAPIRepo) Update(a *model.WebSubAPI) error {
 	}
 	defer tx.Rollback()
 
-	// Get the UUID from handle via websub_apis + artifacts join
+	// Get the UUID from handle
 	var apiUUID string
 	query := `
-		SELECT p.uuid FROM websub_apis p
-		JOIN artifacts a ON a.uuid = p.uuid
-		WHERE p.handle = ? AND a.organization_uuid = ? AND a.type = ?`
-	err = tx.QueryRow(r.db.Rebind(query), a.Handle, a.OrganizationUUID, constants.WebSubApi).Scan(&apiUUID)
+		SELECT uuid FROM websub_apis
+		WHERE handle = ? AND organization_uuid = ?`
+	err = tx.QueryRow(r.db.Rebind(query), a.Handle, a.OrganizationUUID).Scan(&apiUUID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return sql.ErrNoRows
@@ -248,13 +242,12 @@ func (r *WebSubAPIRepo) Delete(handle, orgUUID string) error {
 	}
 	defer tx.Rollback()
 
-	// Get the UUID from handle via websub_apis + artifacts join
+	// Get the UUID from handle
 	var apiUUID string
 	query := `
-		SELECT p.uuid FROM websub_apis p
-		JOIN artifacts a ON a.uuid = p.uuid
-		WHERE p.handle = ? AND a.organization_uuid = ? AND a.type = ?`
-	err = tx.QueryRow(r.db.Rebind(query), handle, orgUUID, constants.WebSubApi).Scan(&apiUUID)
+		SELECT uuid FROM websub_apis
+		WHERE handle = ? AND organization_uuid = ?`
+	err = tx.QueryRow(r.db.Rebind(query), handle, orgUUID).Scan(&apiUUID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return sql.ErrNoRows

@@ -98,12 +98,11 @@ func (r *WebBrokerAPIRepo) Create(a *model.WebBrokerAPI) error {
 func (r *WebBrokerAPIRepo) GetByHandle(handle, orgUUID string) (*model.WebBrokerAPI, error) {
 	query := `
 		SELECT
-			p.uuid, p.handle, p.name, p.version, a.organization_uuid, p.created_at, p.updated_at,
-			p.project_uuid, p.description, p.created_by, p.updated_by, p.lifecycle_status, p.configuration
-		FROM webbroker_apis p
-		JOIN artifacts a ON a.uuid = p.uuid
-		WHERE p.handle = ? AND a.organization_uuid = ? AND a.type = ?`
-	row := r.db.QueryRow(r.db.Rebind(query), handle, orgUUID, constants.WebBrokerApi)
+			uuid, handle, name, version, organization_uuid, created_at, updated_at,
+			project_uuid, description, created_by, updated_by, lifecycle_status, configuration
+		FROM webbroker_apis
+		WHERE handle = ? AND organization_uuid = ?`
+	row := r.db.QueryRow(r.db.Rebind(query), handle, orgUUID)
 	return r.scanWebBrokerAPI(row)
 }
 
@@ -111,12 +110,11 @@ func (r *WebBrokerAPIRepo) GetByHandle(handle, orgUUID string) (*model.WebBroker
 func (r *WebBrokerAPIRepo) GetByUUID(uuid, orgUUID string) (*model.WebBrokerAPI, error) {
 	query := `
 		SELECT
-			p.uuid, p.handle, p.name, p.version, a.organization_uuid, p.created_at, p.updated_at,
-			p.project_uuid, p.description, p.created_by, p.updated_by, p.lifecycle_status, p.configuration
-		FROM webbroker_apis p
-		JOIN artifacts a ON a.uuid = p.uuid
-		WHERE p.uuid = ? AND a.organization_uuid = ? AND a.type = ?`
-	row := r.db.QueryRow(r.db.Rebind(query), uuid, orgUUID, constants.WebBrokerApi)
+			uuid, handle, name, version, organization_uuid, created_at, updated_at,
+			project_uuid, description, created_by, updated_by, lifecycle_status, configuration
+		FROM webbroker_apis
+		WHERE uuid = ? AND organization_uuid = ?`
+	row := r.db.QueryRow(r.db.Rebind(query), uuid, orgUUID)
 	return r.scanWebBrokerAPI(row)
 }
 
@@ -129,25 +127,23 @@ func (r *WebBrokerAPIRepo) List(orgUUID, projectUUID string, limit, offset int) 
 	if projectUUID != "" {
 		query = `
 			SELECT
-				p.uuid, p.handle, p.name, p.version, p.organization_uuid, p.created_at, p.updated_at,
-				p.project_uuid, p.description, p.created_by, p.updated_by, p.lifecycle_status, p.configuration
-			FROM webbroker_apis p
-			JOIN artifacts a ON a.uuid = p.uuid
-			WHERE p.organization_uuid = ? AND a.type = ? AND p.project_uuid = ?
-			ORDER BY p.created_at DESC
+				uuid, handle, name, version, organization_uuid, created_at, updated_at,
+				project_uuid, description, created_by, updated_by, lifecycle_status, configuration
+			FROM webbroker_apis
+			WHERE organization_uuid = ? AND project_uuid = ?
+			ORDER BY created_at DESC
 			` + pageClause
-		args = append([]interface{}{orgUUID, constants.WebBrokerApi, projectUUID}, pageArgs...)
+		args = append([]interface{}{orgUUID, projectUUID}, pageArgs...)
 	} else {
 		query = `
 			SELECT
-				p.uuid, p.handle, p.name, p.version, p.organization_uuid, p.created_at, p.updated_at,
-				p.project_uuid, p.description, p.created_by, p.updated_by, p.lifecycle_status, p.configuration
-			FROM webbroker_apis p
-			JOIN artifacts a ON a.uuid = p.uuid
-			WHERE p.organization_uuid = ? AND a.type = ?
-			ORDER BY p.created_at DESC
+				uuid, handle, name, version, organization_uuid, created_at, updated_at,
+				project_uuid, description, created_by, updated_by, lifecycle_status, configuration
+			FROM webbroker_apis
+			WHERE organization_uuid = ?
+			ORDER BY created_at DESC
 			` + pageClause
-		args = append([]interface{}{orgUUID, constants.WebBrokerApi}, pageArgs...)
+		args = append([]interface{}{orgUUID}, pageArgs...)
 	}
 
 	rows, err := r.db.Query(r.db.Rebind(query), args...)
@@ -176,10 +172,9 @@ func (r *WebBrokerAPIRepo) Count(orgUUID string) (int, error) {
 func (r *WebBrokerAPIRepo) CountByProject(orgUUID, projectUUID string) (int, error) {
 	var count int
 	query := `
-		SELECT COUNT(*) FROM artifacts a
-		JOIN webbroker_apis p ON a.uuid = p.uuid
-		WHERE a.organization_uuid = ? AND a.type = ? AND p.project_uuid = ?`
-	if err := r.db.QueryRow(r.db.Rebind(query), orgUUID, constants.WebBrokerApi, projectUUID).Scan(&count); err != nil {
+		SELECT COUNT(*) FROM webbroker_apis
+		WHERE organization_uuid = ? AND project_uuid = ?`
+	if err := r.db.QueryRow(r.db.Rebind(query), orgUUID, projectUUID).Scan(&count); err != nil {
 		return 0, err
 	}
 	return count, nil
@@ -201,13 +196,12 @@ func (r *WebBrokerAPIRepo) Update(a *model.WebBrokerAPI) error {
 	}
 	defer tx.Rollback()
 
-	// Get the UUID from handle via webbroker_apis + artifacts join
+	// Get the UUID from handle
 	var apiUUID string
 	query := `
-		SELECT p.uuid FROM webbroker_apis p
-		JOIN artifacts a ON a.uuid = p.uuid
-		WHERE p.handle = ? AND a.organization_uuid = ? AND a.type = ?`
-	err = tx.QueryRow(r.db.Rebind(query), a.Handle, a.OrganizationUUID, constants.WebBrokerApi).Scan(&apiUUID)
+		SELECT uuid FROM webbroker_apis
+		WHERE handle = ? AND organization_uuid = ?`
+	err = tx.QueryRow(r.db.Rebind(query), a.Handle, a.OrganizationUUID).Scan(&apiUUID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return sql.ErrNoRows
@@ -248,13 +242,12 @@ func (r *WebBrokerAPIRepo) Delete(handle, orgUUID string) error {
 	}
 	defer tx.Rollback()
 
-	// Get the UUID from handle via webbroker_apis + artifacts join
+	// Get the UUID from handle
 	var apiUUID string
 	query := `
-		SELECT p.uuid FROM webbroker_apis p
-		JOIN artifacts a ON a.uuid = p.uuid
-		WHERE p.handle = ? AND a.organization_uuid = ? AND a.type = ?`
-	err = tx.QueryRow(r.db.Rebind(query), handle, orgUUID, constants.WebBrokerApi).Scan(&apiUUID)
+		SELECT uuid FROM webbroker_apis
+		WHERE handle = ? AND organization_uuid = ?`
+	err = tx.QueryRow(r.db.Rebind(query), handle, orgUUID).Scan(&apiUUID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return sql.ErrNoRows
