@@ -99,6 +99,9 @@ func RegisterLLMSteps(ctx *godog.ScenarioContext, state *TestState, httpSteps *s
 				Metadata struct {
 					Name string `json:"name"`
 				} `json:"metadata"`
+				Spec struct {
+					GroupVersionId string `json:"groupVersionId"`
+				} `json:"spec"`
 			} `json:"templates"`
 		}
 
@@ -127,11 +130,13 @@ func RegisterLLMSteps(ctx *godog.ScenarioContext, state *TestState, httpSteps *s
 			)
 		}
 
-		// 3️⃣ Collect actual template IDs (k8s-shaped list uses metadata.name)
+		// 3️⃣ Collect actual template IDs. OOB templates now carry a versioned
+		// metadata.name (e.g. openai-v1-0); the bare family id lives in
+		// spec.groupVersionId, which is what expectedIDs matches against.
 		actualIDs := make(map[string]bool)
 		for _, t := range response.Templates {
-			if t.Metadata.Name != "" {
-				actualIDs[t.Metadata.Name] = true
+			if t.Spec.GroupVersionId != "" {
+				actualIDs[t.Spec.GroupVersionId] = true
 			}
 		}
 

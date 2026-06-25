@@ -1706,13 +1706,16 @@ func (s *sqlStore) GetAllLLMProviderTemplates() ([]*models.StoredLLMProviderTemp
 // GetLLMProviderTemplateByHandle retrieves the latest (most recently created)
 // version of an LLM provider template by group_version_id.
 func (s *sqlStore) GetLLMProviderTemplateByHandle(groupVersionID string) (*models.StoredLLMProviderTemplate, error) {
+	limitClause := "LIMIT 1"
+	if s.backendName == "sqlserver" {
+		limitClause = "OFFSET 0 ROWS FETCH NEXT 1 ROWS ONLY"
+	}
 	query := `
 		SELECT uuid, configuration, created_at, updated_at
 		FROM llm_provider_templates
 		WHERE gateway_id = ? AND group_version_id = ?
 		ORDER BY created_at DESC
-		LIMIT 1
-	`
+		` + limitClause
 
 	var template models.StoredLLMProviderTemplate
 	var configJSON string
