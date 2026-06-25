@@ -18,7 +18,6 @@
 /* eslint-disable no-undef */
 const { CustomError } = require('../utils/errors/customErrors');
 const orgDao = require('../dao/organizationDao');
-const providerDao = require('../dao/providerDao');
 const appDao = require('../dao/applicationDao');
 const apiDao = require('../dao/apiDao');
 const labelDao = require('../dao/labelDao');
@@ -149,11 +148,6 @@ const createOrganization = async (req, res) => {
                 }
             }
             logger.info('Views created successfully', { orgId });
-            //create default provider
-            await providerDao.create(organization.ORG_ID, { name: 'WSO2', providerURL: constants.WSO2_DEFAULT_URL }, t);
-            logger.info('Default provider created successfully', {
-                orgId
-            });
 
             //store default subscription plans
             if (config.generateDefaultSubPlans) {
@@ -519,134 +513,6 @@ const deleteAllOrgContent = async (req, res) => {
     }
 };
 
-const createProvider = async (req, res) => {
-    const orgID = req.params.orgId;
-    const payload = req.body;
-    try {
-        const provider = await providerDao.create(orgID, payload);
-        let providerData = {
-            orgId: provider[0].dataValues.ORG_ID,
-            name: provider[0].dataValues.NAME,
-        };
-        for (const prop of provider) {
-            providerData[prop.dataValues.PROPERTY] = prop.dataValues.VALUE;
-        }
-        res.status(201).send(providerData);
-    } catch (error) {
-        logger.error('Provider creation failed', {
-            error: error.message,
-            stack: error.stack,
-            orgId: orgID,
-            providerName: payload?.name
-        });
-        util.handleError(res, error);
-    }
-}
-
-const updateProvider = async (req, res) => {
-    try {
-        const orgId = req.params.orgId;
-        const payload = req.body;
-        const provider = await providerDao.update(orgId, payload);
-        let providerData = {
-            orgId: provider[0][0].dataValues.ORG_ID,
-            name: provider[0][0].dataValues.NAME,
-        };
-        for (const prop of provider) {
-            providerData[prop[0].dataValues.PROPERTY] = prop[0].dataValues.VALUE;
-        }
-        res.status(200).json(providerData);
-    } catch (error) {
-        logger.error('Provider update failed', {
-            error: error.message,
-            stack: error.stack,
-            orgId: req.params.orgId
-        });
-        util.handleError(res, error);
-    }
-}
-
-const getProviders = async (req, res) => {
-    const orgId = req.params.orgId;
-    try {
-
-        if (req.query.name) {
-            const providerName = req.query.name;
-            return res.status(200).send(await getProvidetByName(orgId, providerName));
-        } else {
-            const providerList = await getAllProviders(orgId);
-            return res.status(200).send(providerList);
-        }
-    } catch (error) {
-        logger.error('Provider fetch failed', {
-            error: error.message,
-            stack: error.stack,
-            orgId,
-            providerName: req.query?.name
-        });
-        util.handleError(res, error);
-    }
-}
-
-const getProvidetByName = async (orgID, name) => {
-
-    const providerData = await providerDao.get(orgID, name);
-    if (providerData.length > 0) {
-        const providerResponse = {
-            name: providerData[0].dataValues.NAME,
-        };
-        for (const provider of providerData) {
-            providerResponse[provider.dataValues.PROPERTY] = provider.dataValues.VALUE;
-        }
-        return providerResponse;
-    }
-
-}
-
-const getAllProviders = async (orgID) => {
-
-    const providers = await providerDao.list(orgID);
-    const providerList = [];
-    if (providers.length > 0) {
-        for (const provider of providers) {
-            const providerData = {
-                name: provider.dataValues.NAME,
-            };
-            for (const [key, value] of Object.entries(provider.dataValues.properties)) {
-                providerData[key] = value;
-            }
-            providerList.push(providerData);
-        }
-    }
-    return providerList;
-}
-
-const deleteProvider = async (req, res) => {
-    const orgId = req.params.orgId;
-    try {
-        const providerName = req.query.name;
-        let property, deletedRowsCount;
-        if (req.query.property) {
-            property = req.query.property;
-            deletedRowsCount = await providerDao.deleteProperty(orgId, property, providerName);
-        } else {
-            deletedRowsCount = await providerDao.delete(orgId, providerName);
-        }
-        if (deletedRowsCount > 0) {
-            res.status(204).send();
-        } else {
-            throw new CustomError(404, "Records Not Found", 'Provider property not found');
-        }
-    } catch (error) {
-        logger.error('Provider deletion failed', {
-            error: error.message,
-            stack: error.stack,
-            orgId
-        });
-        util.handleError(res, error);
-    }
-}
-
 function checkAdditionalValues(additionalValues) {
 
     let defaultConfigs = ["application_access_token_expiry_time", "user_access_token_expiry_time", "id_token_expiry_time", "refresh_token_expiry_time"];
@@ -688,12 +554,6 @@ module.exports = {
     deleteAllOrgContent,
     getOrganizations,
     getAllOrganizations,
-    createProvider,
-    updateProvider,
-    getProviders,
-    getAllProviders,
-    deleteProvider,
-    getProvidetByName,
     getApplicationKeyMap,
     checkAdditionalValues
 };

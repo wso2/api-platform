@@ -1699,7 +1699,6 @@ function mapDevportalYamlToApiMetadata(parsedYaml) {
             apiName: spec.displayName,
             apiVersion: spec.version,
             apiDescription: spec.description,
-            provider: spec.provider,
             referenceID: spec.referenceID,
             apiHandle: metadata.name,
             apiType,

@@ -150,11 +150,6 @@ const SAMPLES = [
         { orgId: 'org-1', fileName: 'main.css', fileContent: 'body{}' },
     ]],
 
-    // Providers — adminService.createProvider L599 emits providerData object
-    ['createProvider', 201, { orgId: 'org-1', name: 'WSO2', providerURL: 'https://wso2.com' }],
-    ['updateProvider', 200, { orgId: 'org-1', name: 'WSO2', providerURL: 'https://wso2.com' }],
-    ['getProviders', 200, [{ name: 'WSO2', providerURL: 'https://wso2.com' }]],
-
     // Subscriptions — subscriptionService.formatSubscriptionResponse shape
     ['createSubscription', 201, {
         subscriptionId: 'sub-12345', subscriptionToken: 'tok-abc123',

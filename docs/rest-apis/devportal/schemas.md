@@ -328,52 +328,6 @@ xor
 |fileName|string|false|none|none|
 |fileContent|string¦null|false|none|UTF-8 content string returned for stored organization content records.|
 
-<h2 id="tocS_ProviderResponse">ProviderResponse</h2>
-
-<a id="schemaproviderresponse"></a>
-<a id="schema_ProviderResponse"></a>
-<a id="tocSproviderresponse"></a>
-<a id="tocsproviderresponse"></a>
-
-```json
-{
-  "orgId": "string",
-  "name": "string",
-  "providerURL": "http://example.com"
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|orgId|string|true|none|none|
-|name|string|true|none|none|
-|providerURL|string(uri)|true|none|none|
-
-<h2 id="tocS_ProviderLookupItemResponse">ProviderLookupItemResponse</h2>
-
-<a id="schemaproviderlookupitemresponse"></a>
-<a id="schema_ProviderLookupItemResponse"></a>
-<a id="tocSproviderlookupitemresponse"></a>
-<a id="tocsproviderlookupitemresponse"></a>
-
-```json
-{
-  "name": "string",
-  "providerURL": "http://example.com"
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|name|string|true|none|none|
-|providerURL|string(uri)|true|none|none|
-
 <h2 id="tocS_ApiMetadataCreateResponse">ApiMetadataCreateResponse</h2>
 
 <a id="schemaapimetadatacreateresponse"></a>
@@ -386,7 +340,6 @@ xor
   "apiID": "string",
   "apiReferenceID": "string",
   "apiHandle": "string",
-  "provider": "string",
   "dataSource": "string",
   "apiInfo": {
     "apiName": "string",
@@ -452,7 +405,6 @@ xor
 |apiID|string|false|none|none|
 |apiReferenceID|string|false|none|none|
 |apiHandle|string|false|none|none|
-|provider|string|false|none|none|
 |dataSource|string|false|none|none|
 |apiInfo|[ApiInfoResponse](#schemaapiinforesponse)|false|none|none|
 |endPoints|[ApiEndpointsResponse](#schemaapiendpointsresponse)|false|none|none|
@@ -470,7 +422,6 @@ xor
   "apiID": "string",
   "apiReferenceID": "string",
   "apiHandle": "string",
-  "provider": "string",
   "dataSource": "string",
   "planID": "string",
   "apiInfo": {
@@ -537,7 +488,6 @@ xor
 |apiID|string|false|none|none|
 |apiReferenceID|string|false|none|none|
 |apiHandle|string|false|none|none|
-|provider|string|false|none|none|
 |dataSource|string|false|none|none|
 |planID|string|false|none|none|
 |apiInfo|[ApiInfoResponse](#schemaapiinforesponse)|false|none|none|
@@ -922,28 +872,6 @@ OAuth key mapping entry attached to an application.
 |orgHandle|string|true|none|none|
 |organizationIdentifier|string|true|none|none|
 |orgConfiguration|[GenericObject](#schemagenericobject)|false|none|none|
-
-<h2 id="tocS_ProviderRequest">ProviderRequest</h2>
-
-<a id="schemaproviderrequest"></a>
-<a id="schema_ProviderRequest"></a>
-<a id="tocSproviderrequest"></a>
-<a id="tocsproviderrequest"></a>
-
-```json
-{
-  "name": "string",
-  "providerURL": "http://example.com"
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|name|string|true|none|none|
-|providerURL|string(uri)|true|none|none|
 
 <h2 id="tocS_SubscriptionPlanRequest">SubscriptionPlanRequest</h2>
 
