@@ -129,23 +129,23 @@ func (r *WebBrokerAPIRepo) List(orgUUID, projectUUID string, limit, offset int) 
 	if projectUUID != "" {
 		query = `
 			SELECT
-				a.uuid, a.handle, a.name, a.version, a.organization_uuid, a.created_at, a.updated_at,
-				p.project_uuid, p.description, p.created_by, p.lifecycle_status, p.transport, p.configuration
-			FROM artifacts a
-			JOIN webbroker_apis p ON a.uuid = p.uuid
-			WHERE a.organization_uuid = ? AND a.kind = ? AND p.project_uuid = ?
-			ORDER BY a.created_at DESC
+				p.uuid, p.handle, p.name, p.version, p.organization_uuid, p.created_at, p.updated_at,
+				p.project_uuid, p.description, p.created_by, p.updated_by, p.lifecycle_status, p.configuration
+			FROM webbroker_apis p
+			JOIN artifacts a ON a.uuid = p.uuid
+			WHERE p.organization_uuid = ? AND a.type = ? AND p.project_uuid = ?
+			ORDER BY p.created_at DESC
 			` + pageClause
 		args = append([]interface{}{orgUUID, constants.WebBrokerApi, projectUUID}, pageArgs...)
 	} else {
 		query = `
 			SELECT
-				a.uuid, a.handle, a.name, a.version, a.organization_uuid, a.created_at, a.updated_at,
-				p.project_uuid, p.description, p.created_by, p.lifecycle_status, p.transport, p.configuration
-			FROM artifacts a
-			JOIN webbroker_apis p ON a.uuid = p.uuid
-			WHERE a.organization_uuid = ? AND a.kind = ?
-			ORDER BY a.created_at DESC
+				p.uuid, p.handle, p.name, p.version, p.organization_uuid, p.created_at, p.updated_at,
+				p.project_uuid, p.description, p.created_by, p.updated_by, p.lifecycle_status, p.configuration
+			FROM webbroker_apis p
+			JOIN artifacts a ON a.uuid = p.uuid
+			WHERE p.organization_uuid = ? AND a.type = ?
+			ORDER BY p.created_at DESC
 			` + pageClause
 		args = append([]interface{}{orgUUID, constants.WebBrokerApi}, pageArgs...)
 	}
