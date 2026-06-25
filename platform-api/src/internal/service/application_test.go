@@ -707,13 +707,12 @@ func TestAddApplicationAssociations_RejectsCrossProjectProxy(t *testing.T) {
 
 func TestListApplicationAssociations_AppliesPagination(t *testing.T) {
 	createdAt := time.Now().Add(-time.Hour)
-	updatedAt := time.Now()
 
 	appRepo := &mockApplicationRepository{
 		app: &model.Application{UUID: "app-uuid", OrganizationUUID: "org-1"},
 		mappedAssociations: []*model.ApplicationAssociationTarget{
-			{TargetUUID: "artifact-1", TargetHandle: "provider-1", TargetName: "Provider 1", TargetVersion: "v1", Type: constants.LLMProvider, CreatedAt: createdAt, UpdatedAt: updatedAt},
-			{TargetUUID: "artifact-2", TargetHandle: "proxy-1", TargetName: "Proxy 1", TargetVersion: "v1", Type: constants.LLMProxy, CreatedAt: createdAt, UpdatedAt: updatedAt},
+			{TargetUUID: "artifact-1", TargetHandle: "provider-1", TargetName: "Provider 1", TargetVersion: "v1", Type: constants.LLMProvider, CreatedAt: createdAt},
+			{TargetUUID: "artifact-2", TargetHandle: "proxy-1", TargetName: "Proxy 1", TargetVersion: "v1", Type: constants.LLMProxy, CreatedAt: createdAt},
 		},
 	}
 
