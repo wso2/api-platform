@@ -143,8 +143,7 @@ CREATE TABLE IF NOT EXISTS llm_provider_templates (
     -- Each (group_id, version) pair is unique per gateway; versions coexist.
     -- The handle (metadata.name) is unique per gateway.
     PRIMARY KEY (gateway_id, uuid),
-    UNIQUE(gateway_id, group_id, version),
-    UNIQUE(gateway_id, handle)
+    UNIQUE(gateway_id, group_id, version)
 );
 
 -- Table for API keys

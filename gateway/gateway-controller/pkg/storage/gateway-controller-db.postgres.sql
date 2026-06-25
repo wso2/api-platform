@@ -106,8 +106,7 @@ CREATE TABLE IF NOT EXISTS llm_provider_templates (
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (gateway_id, uuid),
-    UNIQUE(gateway_id, group_id, version),
-    UNIQUE(gateway_id, handle)
+    UNIQUE(gateway_id, group_id, version)
 );
 
 -- Table for API keys
