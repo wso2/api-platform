@@ -343,6 +343,10 @@ func (r *LLMProviderRepo) Create(p *model.LLMProvider) error {
 		return fmt.Errorf("failed to create provider: %w", err)
 	}
 
+	if err := upsertArtifactSecretRefs(tx, r.db, p.OrganizationUUID, p.UUID, []byte(configurationJSON)); err != nil {
+		return fmt.Errorf("failed to upsert artifact secret refs: %w", err)
+	}
+
 	if err := tx.Commit(); err != nil {
 		return err
 	}
@@ -508,6 +512,11 @@ func (r *LLMProviderRepo) Update(p *model.LLMProvider) error {
 	if affected == 0 {
 		return sql.ErrNoRows
 	}
+
+	if err := upsertArtifactSecretRefs(tx, r.db, p.OrganizationUUID, providerUUID, []byte(configurationJSON)); err != nil {
+		return fmt.Errorf("failed to upsert artifact secret refs: %w", err)
+	}
+
 	if err := tx.Commit(); err != nil {
 		return err
 	}
@@ -610,6 +619,10 @@ func (r *LLMProxyRepo) Create(p *model.LLMProxy) error {
 	)
 	if err != nil {
 		return fmt.Errorf("failed to create proxy: %w", err)
+	}
+
+	if err := upsertArtifactSecretRefs(tx, r.db, p.OrganizationUUID, p.UUID, []byte(configurationJSON)); err != nil {
+		return fmt.Errorf("failed to upsert artifact secret refs: %w", err)
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -890,6 +903,11 @@ func (r *LLMProxyRepo) Update(p *model.LLMProxy) error {
 	if affected == 0 {
 		return sql.ErrNoRows
 	}
+
+	if err := upsertArtifactSecretRefs(tx, r.db, p.OrganizationUUID, proxyUUID, []byte(configurationJSON)); err != nil {
+		return fmt.Errorf("failed to upsert artifact secret refs: %w", err)
+	}
+
 	if err := tx.Commit(); err != nil {
 		return err
 	}

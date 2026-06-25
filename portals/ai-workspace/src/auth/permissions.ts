@@ -179,6 +179,13 @@ export const SCOPES = {
   WEBBROKER_API_DEPLOYMENT_MANAGE: 'ap:webbroker_api:deployment:manage',
   WEBBROKER_API_PUBLICATION_READ:  'ap:webbroker_api:publication:read',
 
+  // Secrets
+  SECRET_READ:   'ap:secret:read',
+  SECRET_CREATE: 'ap:secret:create',
+  SECRET_UPDATE: 'ap:secret:update',
+  SECRET_DELETE: 'ap:secret:delete',
+  SECRET_MANAGE: 'ap:secret:manage',
+
   // Git
   GIT_READ: 'ap:git:read',
 } as const;

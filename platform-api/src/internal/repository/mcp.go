@@ -90,6 +90,10 @@ func (r *MCPProxyRepo) Create(p *model.MCPProxy) error {
 		return fmt.Errorf("failed to create MCP proxy: %w", err)
 	}
 
+	if err := upsertArtifactSecretRefs(tx, r.db, p.OrganizationUUID, p.UUID, []byte(configurationJSON)); err != nil {
+		return fmt.Errorf("failed to upsert artifact secret refs: %w", err)
+	}
+
 	if err := tx.Commit(); err != nil {
 		return err
 	}
@@ -321,6 +325,11 @@ func (r *MCPProxyRepo) Update(p *model.MCPProxy) error {
 	if affected == 0 {
 		return sql.ErrNoRows
 	}
+
+	if err := upsertArtifactSecretRefs(tx, r.db, p.OrganizationUUID, proxyUUID, []byte(configurationJSON)); err != nil {
+		return fmt.Errorf("failed to upsert artifact secret refs: %w", err)
+	}
+
 	if err := tx.Commit(); err != nil {
 		return err
 	}

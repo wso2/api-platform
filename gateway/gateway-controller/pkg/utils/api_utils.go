@@ -1170,3 +1170,114 @@ func (s *APIUtilsService) CheckArtifactsExist(artifactIDs []string) ([]string, e
 
 	return existingIDs, nil
 }
+
+// PlatformSecretMeta holds the metadata returned by GET /api/internal/v1/secrets.
+// Value is non-nil only when the request included ?includeValues=true (startup bulk fetch).
+type PlatformSecretMeta struct {
+	ID          string  `json:"id"`
+	Handle      string  `json:"name"`
+	DisplayName string  `json:"displayName"`
+	Hash        string  `json:"hash"`
+	Status      string  `json:"status"`
+	Value       *string `json:"value,omitempty"`
+}
+
+type platformSecretsListResponse struct {
+	List  []PlatformSecretMeta `json:"list"`
+	Count int                  `json:"count"`
+}
+
+type platformSecretValueResponse struct {
+	Value string `json:"value"`
+}
+
+// FetchPlatformSecrets retrieves secrets from the Platform API internal endpoint.
+// If updatedAfter is non-nil, only secrets modified after that time are returned.
+// If includeValues is true, decrypted plaintext values are included in the response
+// (used on startup for a single bulk fetch instead of N per-secret round trips).
+func (s *APIUtilsService) FetchPlatformSecrets(updatedAfter *time.Time, includeValues bool) ([]PlatformSecretMeta, error) {
+	secretsURL := s.getBaseURL() + "/secrets"
+
+	params := url.Values{}
+	if updatedAfter != nil {
+		params.Set("updatedAfter", updatedAfter.UTC().Format(time.RFC3339))
+	}
+	if includeValues {
+		params.Set("includeValues", "true")
+	}
+	if len(params) > 0 {
+		secretsURL += "?" + params.Encode()
+	}
+
+	s.logger.Info("Fetching platform secrets",
+		slog.String("url", secretsURL),
+		slog.Bool("includeValues", includeValues),
+	)
+
+	req, err := http.NewRequest(http.MethodGet, secretsURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create secrets request: %w", err)
+	}
+	req.Header.Add("api-key", s.config.Token)
+	req.Header.Add("Accept", "application/json")
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch platform secrets: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("platform secrets request failed with status %d: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	var listResp platformSecretsListResponse
+	if err := json.NewDecoder(resp.Body).Decode(&listResp); err != nil {
+		return nil, fmt.Errorf("failed to decode platform secrets response: %w", err)
+	}
+
+	s.logger.Info("Successfully fetched platform secrets",
+		slog.Int("count", len(listResp.List)),
+		slog.Bool("includeValues", includeValues),
+	)
+
+	return listResp.List, nil
+}
+
+// FetchPlatformSecretValue fetches the decrypted plaintext value of a secret from the
+// Platform API internal endpoint GET /internal/v1/secrets/:id/value.
+// The Gateway authenticates using the same api-key header used for all Platform API calls.
+func (s *APIUtilsService) FetchPlatformSecretValue(secretID string) (string, error) {
+	valueURL := s.getBaseURL() + "/secrets/" + secretID + "/value"
+
+	s.logger.Debug("Fetching platform secret value",
+		slog.String("secret_id", secretID),
+		slog.String("url", valueURL),
+	)
+
+	req, err := http.NewRequest(http.MethodGet, valueURL, nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to create secret value request: %w", err)
+	}
+	req.Header.Add("api-key", s.config.Token)
+	req.Header.Add("Accept", "application/json")
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("failed to fetch platform secret value: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("platform secret value request failed with status %d: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	var valueResp platformSecretValueResponse
+	if err := json.NewDecoder(resp.Body).Decode(&valueResp); err != nil {
+		return "", fmt.Errorf("failed to decode platform secret value response: %w", err)
+	}
+
+	return valueResp.Value, nil
+}

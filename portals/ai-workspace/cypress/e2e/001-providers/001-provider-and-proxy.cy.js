@@ -48,7 +48,7 @@ describe('AI Workspace - OpenAI provider and proxy lifecycle', () => {
         expect(authToken).to.not.equal('');
 
         return cy.request({
-          url: '/api-proxy/api/v0.9/organizations',
+          url: '/api-proxy/api/v1/organizations',
           headers: {
             Authorization: `Bearer ${authToken}`,
           },
@@ -72,6 +72,11 @@ describe('AI Workspace - OpenAI provider and proxy lifecycle', () => {
   });
 
   it('creates and deletes an OpenAI provider and app llm proxy using only the UI', () => {
+    cy.intercept('POST', '**/projects').as('createProject');
+    cy.intercept('POST', /\/llm-providers(\?|$)/).as('createProvider');
+    cy.intercept('POST', /\/llm-proxies(\?|$)/).as('createProxy');
+    cy.intercept('DELETE', '**/llm-proxies/**').as('deleteProxy');
+
     cy.contains('Projects', { timeout: 30000 })
       .should('be.visible')
       .click();
@@ -91,6 +96,7 @@ describe('AI Workspace - OpenAI provider and proxy lifecycle', () => {
     cy.contains('button', 'Create')
       .should('not.be.disabled')
       .click();
+    cy.wait('@createProject').its('response.statusCode').should('be.oneOf', [200, 201]);
 
     cy.contains(projectName, { timeout: 30000 }).should('be.visible');
 
@@ -123,6 +129,7 @@ describe('AI Workspace - OpenAI provider and proxy lifecycle', () => {
     cy.get('[data-cyid="add-provider-button"]')
       .should('not.be.disabled')
       .click();
+    cy.wait('@createProvider').its('response.statusCode').should('be.oneOf', [200, 201]);
 
     cy.location('pathname', { timeout: 30000 })
       .should(
@@ -163,11 +170,9 @@ describe('AI Workspace - OpenAI provider and proxy lifecycle', () => {
     cy.contains('button', 'Create Proxy', { timeout: 30000 })
       .should('not.be.disabled')
       .click();
+    cy.wait('@createProxy').its('response.statusCode').should('be.oneOf', [200, 201]);
 
-    cy.location('pathname', { timeout: 30000 }).should(
-      'include',
-      `/proxies/${proxyId}`
-    );
+    cy.location('pathname', { timeout: 30000 }).should('match', /\/proxies\/[^/]+$/);
     cy.contains(proxyName, { timeout: 30000 }).should('be.visible');
 
     cy.get('button[aria-label="Delete proxy"]', { timeout: 30000 })
@@ -177,15 +182,16 @@ describe('AI Workspace - OpenAI provider and proxy lifecycle', () => {
     cy.get('[role="dialog"]').within(() => {
       cy.contains('button', 'Delete').click();
     });
+    cy.wait('@deleteProxy').its('response.statusCode').should('be.oneOf', [200, 204]);
 
-    cy.location('pathname', { timeout: 30000 }).should('include', '/proxies');
-    cy.contains(proxyName).should('not.exist');
+    cy.location('pathname', { timeout: 30000 }).should('match', /\/proxies\/?$/);
+    cy.contains(proxyName, { timeout: 30000 }).should('not.exist');
   });
 });
 
 function deleteLinkedProxies(authToken, organizationId, providerId) {
   return requestWithAuth(authToken, {
-    url: `/api-proxy/api/v0.9/llm-providers/${encodeURIComponent(providerId)}/llm-proxies?organizationId=${encodeURIComponent(organizationId)}`,
+    url: `/api-proxy/api/v1/llm-providers/${encodeURIComponent(providerId)}/llm-proxies?organizationId=${encodeURIComponent(organizationId)}`,
     failOnStatusCode: false,
   }).then((response) => {
     expect(response.status).to.be.oneOf([200, 404]);
@@ -202,7 +208,7 @@ function deleteLinkedProxies(authToken, organizationId, providerId) {
     return cy.wrap(proxies).each((proxy) =>
       requestWithAuth(authToken, {
         method: 'DELETE',
-        url: `/api-proxy/api/v0.9/llm-proxies/${encodeURIComponent(proxy.id)}?organizationId=${encodeURIComponent(organizationId)}`,
+        url: `/api-proxy/api/v1/llm-proxies/${encodeURIComponent(proxy.id)}?organizationId=${encodeURIComponent(organizationId)}`,
         failOnStatusCode: false,
       }).then((deleteResponse) => {
         expect(deleteResponse.status).to.be.oneOf([200, 204, 404]);
@@ -213,7 +219,7 @@ function deleteLinkedProxies(authToken, organizationId, providerId) {
 
 function deleteProjectByName(authToken, targetProjectName, fallbackProjectName) {
   return requestWithAuth(authToken, {
-    url: '/api-proxy/api/v0.9/projects',
+    url: '/api-proxy/api/v1/projects',
   }).then((response) => {
     expect(response.status).to.eq(200);
 
@@ -239,7 +245,7 @@ function deleteProjectByName(authToken, targetProjectName, fallbackProjectName) 
 function ensureFallbackProject(authToken, fallbackProjectName) {
   return requestWithAuth(authToken, {
     method: 'POST',
-    url: '/api-proxy/api/v0.9/projects',
+    url: '/api-proxy/api/v1/projects',
     body: {
       name: fallbackProjectName,
       description: 'Reserved project to satisfy E2E cleanup invariants.',
@@ -253,7 +259,7 @@ function ensureFallbackProject(authToken, fallbackProjectName) {
 function deleteProject(authToken, projectId) {
   return requestWithAuth(authToken, {
     method: 'DELETE',
-    url: `/api-proxy/api/v0.9/projects/${encodeURIComponent(projectId)}`,
+    url: `/api-proxy/api/v1/projects/${encodeURIComponent(projectId)}`,
     failOnStatusCode: false,
   }).then((response) => {
     expect(response.status).to.be.oneOf([200, 204, 404]);
@@ -263,7 +269,7 @@ function deleteProject(authToken, projectId) {
 function deleteProvider(authToken, organizationId, providerId) {
   return requestWithAuth(authToken, {
     method: 'DELETE',
-    url: `/api-proxy/api/v0.9/llm-providers/${encodeURIComponent(providerId)}?organizationId=${encodeURIComponent(organizationId)}`,
+    url: `/api-proxy/api/v1/llm-providers/${encodeURIComponent(providerId)}?organizationId=${encodeURIComponent(organizationId)}`,
     failOnStatusCode: false,
   }).then((response) => {
     expect(response.status).to.be.oneOf([200, 204, 404]);
