@@ -314,8 +314,8 @@ CREATE TABLE dbo.deployment_status (
 );
 
 -- Artifact Associations table (for gateways)
-IF OBJECT_ID(N'dbo.gateway_associations', N'U') IS NULL
-CREATE TABLE dbo.gateway_associations (
+IF OBJECT_ID(N'dbo.gateway_association_mappings', N'U') IS NULL
+CREATE TABLE dbo.gateway_association_mappings (
     id INT IDENTITY(1,1) PRIMARY KEY,
     artifact_uuid VARCHAR(40) NOT NULL,
     organization_uuid VARCHAR(40) NOT NULL,
