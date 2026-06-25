@@ -100,10 +100,10 @@ func createTestAPI(t *testing.T, db *database.DB, apiUUID, orgUUID string) {
 
 	// Create project directly
 	projectQuery := `
-		INSERT INTO projects (uuid, name, organization_uuid, created_at, updated_at)
-		VALUES (?, ?, ?, datetime('now'), datetime('now'))
+		INSERT INTO projects (uuid, handle, name, organization_uuid, created_at, updated_at)
+		VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))
 	`
-	_, err = db.Exec(projectQuery, "project-001", "Test Project", orgUUID)
+	_, err = db.Exec(projectQuery, "project-001", "test-project-001", "Test Project", orgUUID)
 	if err != nil {
 		t.Fatalf("Failed to create test project: %v", err)
 	}

@@ -42,10 +42,10 @@ func createTestOrganizationAndProject(t *testing.T, db *database.DB, orgUUID, pr
 	}
 
 	projectQuery := `
-		INSERT INTO projects (uuid, name, organization_uuid, created_at, updated_at)
-		VALUES (?, ?, ?, datetime('now'), datetime('now'))
+		INSERT INTO projects (uuid, handle, name, organization_uuid, created_at, updated_at)
+		VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))
 	`
-	_, err = db.Exec(projectQuery, projectUUID, "Test Project", orgUUID)
+	_, err = db.Exec(projectQuery, projectUUID, "test-project-"+projectUUID, "Test Project", orgUUID)
 	if err != nil {
 		t.Fatalf("Failed to create test project: %v", err)
 	}

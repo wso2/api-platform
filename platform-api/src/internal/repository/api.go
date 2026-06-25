@@ -622,7 +622,8 @@ func (r *APIRepo) GetAPIGatewaysWithDetails(apiUUID, orgUUID string) ([]*model.A
 	var gateways []*model.APIGatewayWithDetails
 	for rows.Next() {
 		gateway := &model.APIGatewayWithDetails{}
-		var propertiesJSON string
+		var propertiesBytes []byte
+		var isCritical, isActive int
 		var deployedAt sql.NullTime
 		var deploymentId sql.NullString
 
@@ -632,11 +633,11 @@ func (r *APIRepo) GetAPIGatewaysWithDetails(apiUUID, orgUUID string) ([]*model.A
 			&gateway.Name,
 			&gateway.Handle,
 			&gateway.Description,
-			&propertiesJSON,
+			&propertiesBytes,
 			&gateway.Vhost,
-			&gateway.IsCritical,
+			&isCritical,
 			&gateway.FunctionalityType,
-			&gateway.IsActive,
+			&isActive,
 			&gateway.CreatedAt,
 			&gateway.UpdatedAt,
 			&gateway.AssociatedAt,
@@ -648,9 +649,11 @@ func (r *APIRepo) GetAPIGatewaysWithDetails(apiUUID, orgUUID string) ([]*model.A
 		if err != nil {
 			return nil, err
 		}
+		gateway.IsCritical = isCritical != 0
+		gateway.IsActive = isActive != 0
 
-		if propertiesJSON != "" && propertiesJSON != "{}" {
-			if err := json.Unmarshal([]byte(propertiesJSON), &gateway.Properties); err != nil {
+		if len(propertiesBytes) > 0 && string(propertiesBytes) != "{}" {
+			if err := json.Unmarshal(propertiesBytes, &gateway.Properties); err != nil {
 				return nil, fmt.Errorf("failed to unmarshal gateway properties: %w", err)
 			}
 		}

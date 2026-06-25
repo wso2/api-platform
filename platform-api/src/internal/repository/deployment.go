@@ -142,17 +142,17 @@ func (r *DeploymentRepo) CreateWithLimitEnforcement(deployment *model.Deployment
 		baseDeploymentID = *deployment.BaseDeploymentID
 	}
 
-	var metadataJSON string
+	var metadataBytes []byte
 	if len(deployment.Metadata) > 0 {
-		metadataBytes, err := json.Marshal(deployment.Metadata)
+		var err error
+		metadataBytes, err = json.Marshal(deployment.Metadata)
 		if err != nil {
 			return fmt.Errorf("failed to marshal deployment metadata: %w", err)
 		}
-		metadataJSON = string(metadataBytes)
 	}
 
 	_, err = tx.Exec(r.db.Rebind(deploymentQuery), deployment.DeploymentID, deployment.Name, deployment.ArtifactID, deployment.OrganizationID,
-		deployment.GatewayID, baseDeploymentID, deployment.Content, metadataJSON, deployment.CreatedBy, deployment.CreatedAt)
+		deployment.GatewayID, baseDeploymentID, deployment.Content, metadataBytes, deployment.CreatedBy, deployment.CreatedAt)
 	if err != nil {
 		return err
 	}
@@ -195,12 +195,12 @@ func (r *DeploymentRepo) GetWithContent(deploymentID, artifactUUID, orgUUID stri
 	`
 
 	var baseDeploymentID sql.NullString
-	var metadataJSON string
+	var metadataBytes []byte
 	var createdBy sql.NullString
 
 	err := r.db.QueryRow(r.db.Rebind(query), deploymentID, artifactUUID, orgUUID).Scan(
 		&deployment.DeploymentID, &deployment.Name, &deployment.ArtifactID, &deployment.OrganizationID,
-		&deployment.GatewayID, &baseDeploymentID, &deployment.Content, &metadataJSON, &createdBy, &deployment.CreatedAt)
+		&deployment.GatewayID, &baseDeploymentID, &deployment.Content, &metadataBytes, &createdBy, &deployment.CreatedAt)
 
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -216,13 +216,12 @@ func (r *DeploymentRepo) GetWithContent(deploymentID, artifactUUID, orgUUID stri
 		deployment.CreatedBy = createdBy.String
 	}
 
-	if metadataJSON != "" {
+	if len(metadataBytes) > 0 {
 		var metadata map[string]interface{}
-		if err := json.Unmarshal([]byte(metadataJSON), &metadata); err == nil {
-			deployment.Metadata = metadata
-		} else {
+		if err := json.Unmarshal(metadataBytes, &metadata); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal deployment metadata: %w", err)
 		}
+		deployment.Metadata = metadata
 	}
 
 	return deployment, nil
@@ -272,14 +271,14 @@ func (r *DeploymentRepo) GetCurrentByGateway(artifactUUID, gatewayID, orgUUID st
 	`
 
 	var baseDeploymentID sql.NullString
-	var metadataJSON string
+	var metadataBytes []byte
 	var createdByGCBG sql.NullString
 	var statusStr string
 	var updatedAt time.Time
 
 	err := r.db.QueryRow(r.db.Rebind(query), artifactUUID, gatewayID, orgUUID).Scan(
 		&deployment.DeploymentID, &deployment.Name, &deployment.ArtifactID, &deployment.OrganizationID,
-		&deployment.GatewayID, &baseDeploymentID, &deployment.Content, &metadataJSON, &createdByGCBG, &deployment.CreatedAt,
+		&deployment.GatewayID, &baseDeploymentID, &deployment.Content, &metadataBytes, &createdByGCBG, &deployment.CreatedAt,
 		&statusStr, &updatedAt)
 
 	if err != nil {
@@ -296,13 +295,12 @@ func (r *DeploymentRepo) GetCurrentByGateway(artifactUUID, gatewayID, orgUUID st
 		deployment.CreatedBy = createdByGCBG.String
 	}
 
-	if metadataJSON != "" {
+	if len(metadataBytes) > 0 {
 		var metadata map[string]interface{}
-		if err := json.Unmarshal([]byte(metadataJSON), &metadata); err == nil {
-			deployment.Metadata = metadata
-		} else {
+		if err := json.Unmarshal(metadataBytes, &metadata); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal deployment metadata: %w", err)
 		}
+		deployment.Metadata = metadata
 	}
 
 	// Populate status fields
@@ -545,7 +543,7 @@ func (r *DeploymentRepo) GetWithState(deploymentID, artifactUUID, orgUUID string
 	`
 
 	var baseDeploymentID sql.NullString
-	var metadataJSON string
+	var metadataBytes []byte
 	var createdByGWS sql.NullString
 	var statusStr sql.NullString
 	var updatedAtVal sql.NullTime
@@ -553,7 +551,7 @@ func (r *DeploymentRepo) GetWithState(deploymentID, artifactUUID, orgUUID string
 
 	err := r.db.QueryRow(r.db.Rebind(query), deploymentID, artifactUUID, orgUUID).Scan(
 		&deployment.DeploymentID, &deployment.Name, &deployment.ArtifactID, &deployment.OrganizationID, &deployment.GatewayID,
-		&baseDeploymentID, &metadataJSON, &createdByGWS, &deployment.CreatedAt,
+		&baseDeploymentID, &metadataBytes, &createdByGWS, &deployment.CreatedAt,
 		&statusStr, &updatedAtVal, &statusReasonStr)
 
 	if err != nil {
@@ -571,13 +569,12 @@ func (r *DeploymentRepo) GetWithState(deploymentID, artifactUUID, orgUUID string
 		deployment.CreatedBy = createdByGWS.String
 	}
 
-	if metadataJSON != "" {
+	if len(metadataBytes) > 0 {
 		var metadata map[string]interface{}
-		if err := json.Unmarshal([]byte(metadataJSON), &metadata); err == nil {
-			deployment.Metadata = metadata
-		} else {
+		if err := json.Unmarshal(metadataBytes, &metadata); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal deployment metadata: %w", err)
 		}
+		deployment.Metadata = metadata
 	}
 
 	// Populate status fields from JOIN (nil if ARCHIVED)
@@ -693,7 +690,7 @@ func (r *DeploymentRepo) GetDeploymentsWithState(artifactUUID, orgUUID string, g
 	for rows.Next() {
 		deployment := &model.Deployment{}
 		var baseDeploymentID sql.NullString
-		var metadataJSON string
+		var metadataBytes []byte
 		var createdByGDS sql.NullString
 		var statusStr sql.NullString
 		var updatedAtVal sql.NullTime
@@ -702,7 +699,7 @@ func (r *DeploymentRepo) GetDeploymentsWithState(artifactUUID, orgUUID string, g
 		err := rows.Scan(
 			&deployment.DeploymentID, &deployment.Name, &deployment.ArtifactID,
 			&deployment.OrganizationID, &deployment.GatewayID,
-			&baseDeploymentID, &metadataJSON, &createdByGDS, &deployment.CreatedAt,
+			&baseDeploymentID, &metadataBytes, &createdByGDS, &deployment.CreatedAt,
 			&statusStr, &updatedAtVal, &statusReasonStr)
 
 		if err != nil {
@@ -718,13 +715,12 @@ func (r *DeploymentRepo) GetDeploymentsWithState(artifactUUID, orgUUID string, g
 		}
 
 		// Handle Metadata
-		if metadataJSON != "" {
+		if len(metadataBytes) > 0 {
 			var metadata map[string]interface{}
-			if err := json.Unmarshal([]byte(metadataJSON), &metadata); err == nil {
-				deployment.Metadata = metadata
-			} else {
+			if err := json.Unmarshal(metadataBytes, &metadata); err != nil {
 				return nil, fmt.Errorf("failed to unmarshal deployment metadata: %w", err)
 			}
+			deployment.Metadata = metadata
 		}
 
 		// Map Database Status to Model Status
