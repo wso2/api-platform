@@ -42,7 +42,7 @@ async function get(orgId, keyId, transaction) {
     });
 }
 
-async function list(orgId, { apiId, subscriptionId, appId, status } = {}, transaction) {
+async function list(orgId, { apiId, subscriptionId, appId, status, limit } = {}, transaction) {
     const where = { ORG_ID: orgId };
     if (apiId) where.API_ID = apiId;
     if (subscriptionId) where.SUBSCRIPTION_ID = subscriptionId;
@@ -52,6 +52,7 @@ async function list(orgId, { apiId, subscriptionId, appId, status } = {}, transa
         where,
         order: [['CREATED_AT', 'DESC']],
         include: [API_METADATA_INCLUDE, APPLICATION_INCLUDE],
+        ...(limit && { limit }),
         transaction
     });
 }
@@ -64,10 +65,12 @@ async function revoke(orgId, keyId, transaction) {
     return count > 0;
 }
 
-async function setApplication(orgId, keyId, appId, transaction) {
+async function setApplication(orgId, keyId, appId, transaction, { activeOnly = false } = {}) {
+    const where = { KEY_ID: keyId, ORG_ID: orgId };
+    if (activeOnly) where.STATUS = 'ACTIVE';
     const [count] = await APIKey.update(
         { APP_ID: appId || null },
-        { where: { KEY_ID: keyId, ORG_ID: orgId }, transaction }
+        { where, transaction }
     );
     return count > 0;
 }

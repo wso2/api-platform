@@ -590,7 +590,7 @@ curl -X PUT https://devportal.api-platform.io/o/{orgId}/devportal/v1/api-keys/{a
 
 ```
 
-Associates (or re-associates) an existing API key with an application, for analytics attribution only — it has no effect on the key's validity or authorization. An `apikey.application_updated` webhook event is published with the full, current list of keys associated with the application.
+Associates (or re-associates) an existing API key with an application, for analytics attribution only — it has no effect on the key's validity or authorization. An `apikey.application_updated` webhook event is published once for this key, with a payload of `{ key_id, application }`.
 
 > Payload
 
@@ -739,7 +739,7 @@ curl -X DELETE https://devportal.api-platform.io/o/{orgId}/devportal/v1/api-keys
 
 ```
 
-Removes the application association from an API key, if any. An `apikey.application_updated` webhook event is published for the application the key was previously associated with.
+Removes the application association from an API key, if any. An `apikey.application_updated` webhook event is published once for this key, with `application` set to `null`.
 
 ### Authentication
 

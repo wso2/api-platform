@@ -24,6 +24,16 @@ function errorStatus(err) {
     return err.status || 500;
 }
 
+/**
+ * Normalizes an optional id-like field the same way apiId is handled: absent/empty is
+ * fine (no filter/association), but if present it must be a non-empty string.
+ */
+function normalizeOptionalId(value) {
+    if (value === undefined || value === null || value === '') return { ok: true, value: undefined };
+    if (typeof value !== 'string' || !value.trim()) return { ok: false };
+    return { ok: true, value: value.trim() };
+}
+
 function mapKey(k) {
     const app = k.DP_APPLICATION;
     return {
@@ -50,10 +60,14 @@ async function generateApiKey(req, res) {
     if (!apiId || typeof apiId !== 'string' || !apiId.trim()) {
         return res.status(400).json({ code: '400', message: 'Bad Request', description: 'apiId is required' });
     }
+    const appIdResult = normalizeOptionalId(appId);
+    if (!appIdResult.ok) {
+        return res.status(400).json({ code: '400', message: 'Bad Request', description: 'appId must be a non-empty string' });
+    }
 
     try {
         const result = await apiKeyService.generate({
-            orgId, apiId: apiId.trim(), subscriptionId, appId, name, expiresAt,
+            orgId, apiId: apiId.trim(), subscriptionId, appId: appIdResult.value, name, expiresAt,
             actor: req.user.sub, userToken: req.user.accessToken,
         });
         return res.status(201).json(result);
@@ -77,12 +91,19 @@ async function listApiKeys(req, res) {
             errors: [{ field: 'apiId', message: 'apiId is required' }],
         });
     }
+    const appIdResult = normalizeOptionalId(appId);
+    if (!appIdResult.ok) {
+        return res.status(400).json({
+            status: 'error', code: 'COMMON_VALIDATION_ERROR', message: 'Bad Request',
+            errors: [{ field: 'appId', message: 'appId must be a non-empty string' }],
+        });
+    }
 
     try {
         const keys = await apiKeyService.list(orgId, {
             apiId: apiId.trim(),
             subscriptionId: subscriptionId || undefined,
-            appId: appId || undefined,
+            appId: appIdResult.value,
             status: status || undefined
         });
         return res.status(200).json(util.toPaginatedList(keys.map(mapKey), req));

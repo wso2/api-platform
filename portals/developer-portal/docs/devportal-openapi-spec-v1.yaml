@@ -1245,7 +1245,7 @@ paths:
       description: >-
         Associates (or re-associates) an existing API key with an application, for analytics attribution only — it
         has no effect on the key's validity or authorization. An `apikey.application_updated` webhook event is
-        published with the full, current list of keys associated with the application.
+        published once for this key, with a payload of `{ key_id, application }`.
       requestBody:
         $ref: "#/components/requestBodies/ApiKeyApplicationBody"
       responses:
@@ -1276,7 +1276,7 @@ paths:
       summary: Remove an API key's application association
       description: >-
         Removes the application association from an API key, if any. An `apikey.application_updated` webhook event
-        is published for the application the key was previously associated with.
+        is published once for this key, with `application` set to `null`.
       responses:
         "204":
           description: Association removed (or none existed).

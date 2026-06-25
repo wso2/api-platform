@@ -293,7 +293,7 @@ async function associateApplication({ orgId, keyId, appId, actor }) {
     if (!application) throw Object.assign(new Error('appId is required'), { status: 400 });
 
     await sequelize.transaction(async (t) => {
-        const updated = await apiKeyDao.setApplication(orgId, keyId, application.id, t);
+        const updated = await apiKeyDao.setApplication(orgId, keyId, application.id, t, { activeOnly: true });
         if (!updated) throw Object.assign(new Error('API key not found'), { status: 404 });
 
         await publishKeyApplicationUpdated(orgId, keyId, application, t);
@@ -326,5 +326,6 @@ async function removeApplicationAssociation({ orgId, keyId, actor }) {
 
 module.exports = {
     generate, regenerate, revoke, list,
-    associateApplication, removeApplicationAssociation, notifyApplicationKeysChanged
+    associateApplication, removeApplicationAssociation, notifyApplicationKeysChanged,
+    publishKeyApplicationUpdated
 };

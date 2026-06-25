@@ -174,25 +174,47 @@ const revokeAppKeyMappings = async (orgID, appID) => {
     }
 };
 
+/**
+ * Publishes application.deleted + a per-key apikey.application_updated(null) for each
+ * previously-associated key. Must be called only after the application row (and its
+ * APP_ID references) have actually been deleted — best-effort, never throws.
+ */
+const publishApplicationDeletedEvents = async (orgID, applicationId, appToDelete, affectedKeyIds) => {
+    try {
+        await sequelize.transaction(async (t) => {
+            if (appToDelete) {
+                await publish('application.deleted',
+                    { application_id: applicationId, name: appToDelete.NAME },
+                    { transaction: t, orgId: orgID, aggregateType: 'application', aggregateId: applicationId }
+                );
+            }
+            for (const keyId of affectedKeyIds) {
+                await apiKeyService.publishKeyApplicationUpdated(orgID, keyId, null, t);
+            }
+        });
+    } catch (pubErr) {
+        logger.warn('Failed to publish webhook events after app deletion', { orgId: orgID, appId: applicationId, error: pubErr.message });
+    }
+};
+
 const deleteApplication = async (req, res) => {
     const userID = req.auth?.userId || req.user?.sub;
     const applicationId = req.params.applicationId;
     const orgID = String(req.params.orgId || '').replace(/[\r\n]/g, '');
+
+    // Captured before deletion: once the application row is deleted, the ON DELETE SET NULL
+    // FK cascade clears APP_ID on these keys, so they can no longer be looked up by appId.
+    let appToDelete = null;
+    let affectedKeyIds = [];
     try {
-        try {
-            const appToDelete = await appDao.get(orgID, applicationId, userID);
-            await sequelize.transaction(async (t) => {
-                if (appToDelete) {
-                    await publish('application.deleted',
-                        { application_id: applicationId, name: appToDelete.NAME },
-                        { transaction: t, orgId: orgID, aggregateType: 'application', aggregateId: applicationId }
-                    );
-                }
-                await apiKeyService.notifyApplicationKeysChanged(orgID, applicationId, null, t);
-            });
-        } catch (pubErr) {
-            logger.warn('Failed to publish webhook events before app deletion', { orgId: orgID, appId: applicationId, error: pubErr.message });
-        }
+        appToDelete = await appDao.get(orgID, applicationId, userID);
+        const associatedKeys = await apiKeyService.list(orgID, { appId: applicationId });
+        affectedKeyIds = associatedKeys.map((k) => k.KEY_ID);
+    } catch (lookupErr) {
+        logger.warn('Failed to look up application/keys before deletion', { orgId: orgID, appId: applicationId, error: lookupErr.message });
+    }
+
+    try {
         try {
             await revokeAppKeyMappings(orgID, applicationId);
             const appDeleteResponse = await appDao.delete(orgID, applicationId, userID);
@@ -200,6 +222,7 @@ const deleteApplication = async (req, res) => {
                 throw new Sequelize.EmptyResultError("Resource not found to delete");
             } else {
                 trackAppDeletion({ orgId: orgID, appId: applicationId, idpId: userID }, req);
+                await publishApplicationDeletedEvents(orgID, applicationId, appToDelete, affectedKeyIds);
                 res.status(200).send("Resource Deleted Successfully");
             }
         } catch (error) {
@@ -210,6 +233,7 @@ const deleteApplication = async (req, res) => {
                     throw new Sequelize.EmptyResultError("Resource not found to delete");
                 } else {
                     trackAppDeletion({ orgId: orgID, appId: applicationId, idpId: userID }, req);
+                    await publishApplicationDeletedEvents(orgID, applicationId, appToDelete, affectedKeyIds);
                     return res.status(200).send("Resource Deleted Successfully");
                 }
             }

@@ -75,6 +75,7 @@ const APIKey = sequelize.define('DP_API_KEY', {
     returning: true,
     indexes: [
         { name: 'IDX_API_KEY_ORG_API_ID', fields: ['ORG_ID', 'API_ID'] },
+        { name: 'IDX_API_KEY_ORG_APP_ID', fields: ['ORG_ID', 'APP_ID'] },
     ],
 });
 
