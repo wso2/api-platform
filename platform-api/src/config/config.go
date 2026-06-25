@@ -88,8 +88,7 @@ type Server struct {
 	Gateway          Gateway          `koanf:"gateway"`
 	EventHub         EventHub         `koanf:"event_hub"`
 
-	EnableScopeValidation   bool `koanf:"enable_scope_validation"`
-	OrgCreationRequiresAuth bool `koanf:"org_creation_requires_auth"`
+	EnableScopeValidation bool `koanf:"enable_scope_validation"`
 }
 
 // Auth groups all authentication-related configuration.
@@ -336,8 +335,6 @@ func envToKoanfKey(s string) string {
 		return "llm_template_definitions_path"
 	case "enable_scope_validation":
 		return "enable_scope_validation"
-	case "org_creation_requires_auth":
-		return "org_creation_requires_auth"
 
 	// Database
 	case "database_driver":
