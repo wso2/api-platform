@@ -432,6 +432,9 @@ func (s *APIKeyService) UpdateAPIKey(ctx context.Context, apiHandle, orgId, keyN
 		s.slogger.Error("Invalid expiration for API key update", "apiHandle", apiHandle, "keyName", keyName, "error", err)
 		return fmt.Errorf("invalid expiration: %w", err)
 	}
+	// Fetch UUID before update for consistent audit record (CREATE uses UUID, not name)
+	existingKey, existingKeyErr := s.apiKeyRepo.GetByArtifactAndName(apiId, keyName)
+
 	dbKey := &model.APIKey{
 		ArtifactUUID: apiId,
 		Name:         keyName,
@@ -445,7 +448,13 @@ func (s *APIKeyService) UpdateAPIKey(ctx context.Context, apiHandle, orgId, keyN
 		s.slogger.Error("Failed to update API key in database", "apiHandle", apiHandle, "keyName", keyName, "error", err)
 		return fmt.Errorf("failed to update API key in database: %w", err)
 	}
-	_ = s.auditRepo.Record("UPDATE", keyName, "api_key", orgId, userId)
+	if s.auditRepo != nil {
+		auditUUID := keyName
+		if existingKeyErr == nil && existingKey != nil {
+			auditUUID = existingKey.UUID
+		}
+		_ = s.auditRepo.Record("UPDATE", auditUUID, "api_key", orgId, userId)
+	}
 
 	// Build the API key updated event — send the hash JSON and masked key, not the plain key
 	event := &model.APIKeyUpdatedEvent{
@@ -517,12 +526,21 @@ func (s *APIKeyService) RevokeAPIKey(ctx context.Context, apiHandle, orgId, keyN
 		return constants.ErrGatewayUnavailable
 	}
 
+	// Fetch UUID before revoke for consistent audit record (CREATE uses UUID, not name)
+	revokeKey, revokeKeyErr := s.apiKeyRepo.GetByArtifactAndName(apiId, keyName)
+
 	// Revoke the API key in the database before broadcasting
 	if err := s.apiKeyRepo.Revoke(apiId, keyName); err != nil {
 		s.slogger.Error("Failed to revoke API key in database", "apiHandle", apiHandle, "keyName", keyName, "error", err)
 		return fmt.Errorf("failed to revoke API key in database: %w", err)
 	}
-	_ = s.auditRepo.Record("REVOKE", keyName, "api_key", orgId, userId)
+	if s.auditRepo != nil {
+		auditUUID := keyName
+		if revokeKeyErr == nil && revokeKey != nil {
+			auditUUID = revokeKey.UUID
+		}
+		_ = s.auditRepo.Record("REVOKE", auditUUID, "api_key", orgId, userId)
+	}
 
 	// Build the API key revoked event
 	event := &model.APIKeyRevokedEvent{

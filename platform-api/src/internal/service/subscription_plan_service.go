@@ -82,7 +82,9 @@ func (s *SubscriptionPlanService) CreatePlan(orgUUID, actor string, plan *model.
 	if err := s.planRepo.Create(plan); err != nil {
 		return nil, err
 	}
-	_ = s.auditRepo.Record("CREATE", plan.UUID, "subscription_plan", orgUUID, actor)
+	if s.auditRepo != nil {
+		_ = s.auditRepo.Record("CREATE", plan.UUID, "subscription_plan", orgUUID, actor)
+	}
 
 	s.broadcastPlanEvent(orgUUID, "created", &model.SubscriptionPlanCreatedEvent{
 		PlanId:             plan.UUID,
@@ -176,7 +178,9 @@ func (s *SubscriptionPlanService) UpdatePlan(planID, orgUUID, actor string, upda
 	if err := s.planRepo.Update(existing); err != nil {
 		return nil, err
 	}
-	_ = s.auditRepo.Record("UPDATE", planID, "subscription_plan", orgUUID, actor)
+	if s.auditRepo != nil {
+		_ = s.auditRepo.Record("UPDATE", planID, "subscription_plan", orgUUID, actor)
+	}
 
 	s.broadcastPlanEvent(orgUUID, "updated", &model.SubscriptionPlanUpdatedEvent{
 		PlanId:             existing.UUID,
@@ -208,7 +212,9 @@ func (s *SubscriptionPlanService) DeletePlan(planID, orgUUID, actor string) erro
 	if err := s.planRepo.Delete(planID, orgUUID); err != nil {
 		return err
 	}
-	_ = s.auditRepo.Record("DELETE", planID, "subscription_plan", orgUUID, actor)
+	if s.auditRepo != nil {
+		_ = s.auditRepo.Record("DELETE", planID, "subscription_plan", orgUUID, actor)
+	}
 
 	s.broadcastPlanEvent(orgUUID, "deleted", &model.SubscriptionPlanDeletedEvent{
 		PlanId:   existing.UUID,

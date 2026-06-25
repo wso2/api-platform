@@ -147,7 +147,7 @@ const (
 	PolicyManagedByWSO2     = "wso2"
 )
 
-// ValidPolicyManagedBy holds accepted values for llm_provider_templates.managed_by
+// ValidPolicyManagedBy holds accepted values for the managed_by field on gateway custom policies
 var ValidPolicyManagedBy = map[string]bool{
 	PolicyManagedByCustomer: true,
 	PolicyManagedByWSO2:     true,

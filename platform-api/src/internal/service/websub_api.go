@@ -156,7 +156,9 @@ func (s *WebSubAPIService) Create(orgUUID, createdBy string, req *api.WebSubAPI)
 		return nil, fmt.Errorf("failed to create WebSub API: %w", err)
 	}
 
-	_ = s.auditRepo.Record("CREATE", m.UUID, "websub_api", orgUUID, createdBy)
+	if s.auditRepo != nil {
+		_ = s.auditRepo.Record("CREATE", m.UUID, "websub_api", orgUUID, createdBy)
+	}
 	return s.Get(orgUUID, handle)
 }
 
@@ -272,7 +274,9 @@ func (s *WebSubAPIService) Update(orgUUID, handle, updatedBy string, req *api.We
 		return nil, fmt.Errorf("failed to update WebSub API: %w", err)
 	}
 
-	_ = s.auditRepo.Record("UPDATE", existing.UUID, "websub_api", orgUUID, updatedBy)
+	if s.auditRepo != nil {
+		_ = s.auditRepo.Record("UPDATE", existing.UUID, "websub_api", orgUUID, updatedBy)
+	}
 	return s.Get(orgUUID, handle)
 }
 
@@ -309,7 +313,9 @@ func (s *WebSubAPIService) Delete(orgUUID, handle, deletedBy string) error {
 		return fmt.Errorf("failed to delete WebSub API: %w", err)
 	}
 
-	_ = s.auditRepo.Record("DELETE", websubAPI.UUID, "websub_api", orgUUID, deletedBy)
+	if s.auditRepo != nil {
+		_ = s.auditRepo.Record("DELETE", websubAPI.UUID, "websub_api", orgUUID, deletedBy)
+	}
 	// Send deletion events to all gateways in the organization
 	if s.gatewayEventsService != nil && len(gateways) > 0 {
 		for _, gateway := range gateways {

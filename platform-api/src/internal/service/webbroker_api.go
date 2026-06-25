@@ -157,7 +157,9 @@ func (s *WebBrokerAPIService) Create(orgUUID, createdBy string, req *api.WebBrok
 		return nil, fmt.Errorf("failed to create WebBroker API: %w", err)
 	}
 
-	_ = s.auditRepo.Record("CREATE", m.UUID, "webbroker_api", orgUUID, createdBy)
+	if s.auditRepo != nil {
+		_ = s.auditRepo.Record("CREATE", m.UUID, "webbroker_api", orgUUID, createdBy)
+	}
 	return s.Get(orgUUID, handle)
 }
 
@@ -274,7 +276,9 @@ func (s *WebBrokerAPIService) Update(orgUUID, handle, updatedBy string, req *api
 		return nil, fmt.Errorf("failed to update WebBroker API: %w", err)
 	}
 
-	_ = s.auditRepo.Record("UPDATE", existing.UUID, "webbroker_api", orgUUID, updatedBy)
+	if s.auditRepo != nil {
+		_ = s.auditRepo.Record("UPDATE", existing.UUID, "webbroker_api", orgUUID, updatedBy)
+	}
 	return s.Get(orgUUID, handle)
 }
 
@@ -311,7 +315,9 @@ func (s *WebBrokerAPIService) Delete(orgUUID, handle, deletedBy string) error {
 		return fmt.Errorf("failed to delete WebBroker API: %w", err)
 	}
 
-	_ = s.auditRepo.Record("DELETE", webbrokerAPI.UUID, "webbroker_api", orgUUID, deletedBy)
+	if s.auditRepo != nil {
+		_ = s.auditRepo.Record("DELETE", webbrokerAPI.UUID, "webbroker_api", orgUUID, deletedBy)
+	}
 	// Send deletion events to all gateways in the organization
 	if s.gatewayEventsService != nil && len(gateways) > 0 {
 		for _, gateway := range gateways {
