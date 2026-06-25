@@ -637,6 +637,7 @@
 }
 .aov-plan-card--featured    { border-color: #f3c98a; background: #fffbf4; }
 .aov-plan-card--subscribed  { border-color: #bfe3c6; background: #f5fbf6; }
+.aov-plan-card--suspended   { border-color: #f3d2a8; background: #fffaf3; }
 
 .aov-plan-ribbon {
   display: none;
@@ -645,7 +646,8 @@
   width: 7.25rem; height: 7.25rem;
   pointer-events: none;
 }
-.aov-plan-card--subscribed .aov-plan-ribbon { display: block; }
+.aov-plan-card--subscribed .aov-plan-ribbon,
+.aov-plan-card--suspended  .aov-plan-ribbon { display: block; }
 .aov-plan-ribbon-label {
   position: absolute;
   top: 1.25rem; right: -2.25rem;
@@ -660,6 +662,9 @@
   padding: 0.3125rem 0;
   box-shadow: 0 2px 6px rgba(0,0,0,.18);
 }
+.aov-plan-card--suspended .mcp-ribbon-label { background: #e65100; }
+.aov-plan-card--suspended .api-ribbon-label  { background: #e65100; }
+.api-view-sub-btn { display: flex !important; align-items: center; justify-content: center; gap: 0.4375rem; }
 .aov-plan-card-head { display: flex; align-items: center; justify-content: space-between; }
 .aov-plan-name-row { display: flex; align-items: center; gap: 0.5625rem; }
 .aov-plan-icon {

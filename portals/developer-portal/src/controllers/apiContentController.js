@@ -356,9 +356,13 @@ const loadAPIContent = async (req, res) => {
                     const localSubs = await subDao.list(orgID, { apiId: apiID, createdBy });
                     subscriptions = (localSubs || []).map(sub => ({
                         subscriptionId: sub.SUB_ID,
+                        // policyName (raw POLICY_NAME) is what isCurrentPlan compares against in the template.
+                        // subscriptionPlanName keeps the human-readable label (DISPLAY_NAME when set).
+                        policyName: sub.DP_SUBSCRIPTION_POLICY?.POLICY_NAME || '',
                         subscriptionPlanName: sub.DP_SUBSCRIPTION_POLICY?.DISPLAY_NAME || sub.DP_SUBSCRIPTION_POLICY?.POLICY_NAME || '',
                         status: sub.STATUS,
                         subscriptionToken: sub.SUB_TOKEN,
+                        maskedToken: sub.SUB_TOKEN ? sub.SUB_TOKEN.slice(0, 4) + '****' + sub.SUB_TOKEN.slice(-4) : '',
                         customerName: null
                     }));
                 } catch (err) {

@@ -66,7 +66,9 @@
     <div class="row row-gap-4">
       {{#apiMetadata}}
       <div class="col-lg-4 col-md-6 col-sm-12" id="apiCard-{{apiID}}">
-        <div class="api-card d-flex flex-column">
+        <div class="api-card d-flex flex-column{{#if hasSubscription}} api-card--subscribed{{/if}}">
+
+          {{#if hasSubscription}}<div class="api-card-ribbon-wrap"><div class="api-card-ribbon-label">Subscribed</div></div>{{/if}}
 
           <!-- Top: icon + name + version + type badge -->
           <div class="api-card-top" data-href="{{../baseUrl}}/mcp/{{apiHandle}}" style="cursor:pointer;">
@@ -86,9 +88,6 @@
                 {{/if}}
               </div>
             </div>
-            {{#if ../isAuthenticated}}
-            <div class="subscription-flag fw-bold" style="display:{{#if hasSubscription}}block{{else}}none{{/if}};">Subscribed</div>
-            {{/if}}
           </div>
 
           <!-- Description -->
@@ -109,9 +108,15 @@
                 <i class="bi bi-tag"></i> {{subscriptionPolicies.length}} plans
               </a>
             </div>
+            {{#if hasSubscription}}
+            <a href="{{../baseUrl}}/mcp/{{apiHandle}}#subscriptionPlans" class="api-card-view-sub-btn">
+              <i class="bi bi-check-circle"></i> View subscription
+            </a>
+            {{else}}
             <a href="{{../baseUrl}}/mcp/{{apiHandle}}#subscriptionPlans"
                class="dp-btn dp-btn--primary {{#if @root.isReadOnlyMode}}disabled{{/if}}"
                {{#if @root.isReadOnlyMode}}aria-disabled="true" tabindex="-1"{{/if}}>Subscribe</a>
+            {{/if}}
           </div>
           {{/if}}
 
