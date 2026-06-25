@@ -92,7 +92,11 @@ identityProvider:
   audience: ""               # JWT aud claim to verify (usually the clientId); leave empty to skip
                              # env: DP_IDENTITYPROVIDER_AUDIENCE
   callbackURL: "http://localhost:3000/default/callback"
-  scope: "openid profile email"  # Space-separated OIDC scopes to request
+  scope: "openid profile email"    # Space-separated OIDC scopes to request for browser login.
+                                  # dp:* scopes are not needed here — browser sessions are
+                                  # preauthorized so per-operation scope checks are skipped.
+                                  # Machine API clients that call /devportal/v1/* directly with
+                                  # a Bearer token still need the dp:* scopes in their tokens.
                                   # env: DP_IDENTITYPROVIDER_SCOPE
   signUpURL: ""
   logoutURL: "https://localhost:9443/oidc/logout"
@@ -104,7 +108,7 @@ identityProvider:
   # ── Claim name mappings — adjust to match what your IDP puts in the JWT ──────
   # Dot-notation is supported for nested claims (e.g. "realm_access.roles" for Keycloak)
   roleClaim: "roles"                # env: DP_IDENTITYPROVIDER_ROLECLAIM
-  orgIDClaim: "organization.uuid"   # Asgardeo B2B uses "org_id" — env: DP_IDENTITYPROVIDER_ORGIDCLAIM
+  orgIDClaim: "org_name"             # Asgardeo B2B: "org_name" matches ORGANIZATION_IDENTIFIER (the sub-org display name/handle) — env: DP_IDENTITYPROVIDER_ORGIDCLAIM
   groupsClaim: "groups"             # env: DP_IDENTITYPROVIDER_GROUPSCLAIM
   adminRole: "admin"                # env: DP_IDENTITYPROVIDER_ADMINROLE
   subscriberRole: "Internal/subscriber"  # env: DP_IDENTITYPROVIDER_SUBSCRIBERROLE
@@ -119,19 +123,10 @@ identityProvider:
     email: "LOCAL"
 
 # ─── Platform API ─────────────────────────────────────────────────────────────
-# Used for two purposes:
-#
-# 1. Local auth — when identityProvider.clientId is empty, the built-in login
-#    form authenticates against Platform API and receives a signed JWT.
-#    Users and their scopes are defined in configs/config-platform-api.toml.
-#
-# 2. Direct gateway integration — when an API has GATEWAY_TYPE = "wso2/api-platform"
-#    and baseUrl is set, subscription and API key operations are forwarded to the
-#    Platform API instead of publishing webhook events. The Platform API is then
-#    responsible for propagating state to the gateway.
-#    If baseUrl is unset, the webhook path is used as a fallback for all gateway types.
-#
-# Leave baseUrl empty (or unset) to disable both features.
+# Used for local auth only — when identityProvider.clientId is empty, the
+# built-in login form authenticates against Platform API and receives a
+# signed JWT. Users and their scopes are defined in configs/config-platform-api.toml.
+# Leave baseUrl empty (or unset) to disable local auth.
 
 platformApi:
   baseUrl: ""           # e.g. https://platform-api:9243  — env: DP_PLATFORMAPI_BASEURL
@@ -190,33 +185,41 @@ defaultOrgName: "default"
 
 generateDefaultSubPolicies: true
 
+# ─── Features ──────────────────────────────────────────────────────────────────
+
+features:
+  apiWorkflows:
+    enabled: false   # Show the "API Workflows" page in the portal sidebar
+
+# ─── Design Mode ───────────────────────────────────────────────────────────────
+# Enables local design/preview mode: APIs and layouts are loaded from the
+# filesystem instead of the database. Intended for content authoring and theming
+# workflows — do NOT enable in a production environment.
+
+# designMode:
+#   enabled: false
+#   pathToLayout: "./resources/default-layout/"   # Layout directory to load templates from
+#   apiSamplesPath: "./samples/apis/"             # Directory containing sample api.yaml files
+#   mcpSamplesPath: "./samples/mcps/"             # Directory containing sample MCP api.yaml files
+#   subscriptionPlansPath: "./samples/subscription-plans.yaml"
+#   applicationsPath: "./samples/applications.yaml"
+
 # ─────────────────────────────────────────────────────────
 # Outbound webhooks (gateway event delivery)
 # ─────────────────────────────────────────────────────────
 # When a user generates an API key, subscribes, etc., the devportal fires signed
-# HTTP POST events to every matching subscriber below.  Gateways implement their
-# own handler and never need a reverse connection into the devportal.
+# HTTP POST events to every matching subscriber. Gateways implement their own
+# handler and never need a reverse connection into the devportal.
 #
-# Per-subscriber secrets / public keys can also be supplied via env vars:
-#   DP_WEBHOOK_SECRET_<ID_UPPERCASED>   — HMAC signing secret
-#   DP_WEBHOOK_PUBKEY_<ID_UPPERCASED>   — RSA public key (PEM) for key encryption
-# where the ID is the subscriber `id` with non-alphanumeric chars replaced by _.
+# Subscribers are NOT configured here — they're per-organization and managed
+# through the Webhook Subscribers API (POST/GET/PUT/DELETE
+# /o/{orgId}/devportal/v1/webhook-subscribers). Secrets and public keys are
+# stored encrypted at rest in the devportal database. See
+# docs/administer/webhook-integration.md for the full API and payload reference.
 #
+# Only delivery (retry/backoff) tuning, which applies globally across all
+# organizations, lives in this file:
 webhooks:
-  subscribers: []
-  # Example subscriber:
-  #
-  # subscribers:
-  #   - id: my-gateway                         # stable identifier, used in DB + logs
-  #     gatewayType: "my-gateway-type"          # matches API.GATEWAY_TYPE; use "*" for all
-  #     url: "https://gateway.example.com/devportal/events"
-  #     secret: "change-me-32-chars-minimum"   # env: DP_WEBHOOK_SECRET_MY_GATEWAY
-  #     publicKeyPath: "/run/secrets/gateway-pubkey.pem"  # RSA-2048+ PEM file; env: DP_WEBHOOK_PUBLIC_KEY_PATH_MY_GATEWAY
-  #     events:                                 # allowlist — omit to receive all event types
-  #       - apikey.*
-  #       - subscription.*
-  #     timeoutMs: 5000
-
   delivery:
     maxAttempts: 8
     # Retry delays in seconds: 1 min, 5 min, 15 min, 30 min, 1 h, 2 h, 4 h, 8 h

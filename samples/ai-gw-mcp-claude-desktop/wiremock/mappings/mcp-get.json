@@ -1,0 +1,14 @@
+{
+  "request": {
+    "method": "GET",
+    "url": "/mcp"
+  },
+  "response": {
+    "status": 405,
+    "headers": {
+      "Content-Type": "application/json",
+      "Allow": "POST"
+    },
+    "body": "{\"error\":\"SSE not supported, use POST\"}"
+  }
+}

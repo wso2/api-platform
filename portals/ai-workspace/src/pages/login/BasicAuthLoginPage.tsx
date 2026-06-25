@@ -184,6 +184,8 @@ export default function BasicAuthLoginPage({ onSuccess }: Props) {
                   <FormControl fullWidth required disabled={loading}>
                     <FormLabel sx={{ mb: 0.5, fontWeight: 500 }}>Username</FormLabel>
                     <TextField
+                      id="username"
+                      inputProps={{ 'data-cy': 'login-username' }}
                       placeholder="username"
                       value={username}
                       onChange={(e) => setUsername(e.target.value)}
@@ -194,6 +196,8 @@ export default function BasicAuthLoginPage({ onSuccess }: Props) {
                   <FormControl fullWidth required disabled={loading}>
                     <FormLabel sx={{ mb: 0.5, fontWeight: 500 }}>Password</FormLabel>
                     <TextField
+                      id="password"
+                      inputProps={{ 'data-cy': 'login-password' }}
                       type={showPassword ? 'text' : 'password'}
                       placeholder="••••••••"
                       value={password}
@@ -216,6 +220,7 @@ export default function BasicAuthLoginPage({ onSuccess }: Props) {
                   </FormControl>
 
                   <Button
+                    data-cy="login-submit"
                     type="submit"
                     variant="contained"
                     size="large"

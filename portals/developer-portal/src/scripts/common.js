@@ -6,6 +6,8 @@
 (function () {
     var cfg = window.__DEVPORTAL_API__ || { base: 'devportal', version: 'v1' };
     window.devportalApi = {
+        // Current page's org UUID, injected by the layout (window.__DEVPORTAL_API__.orgId).
+        orgId: cfg.orgId || '',
         // Org-scoped resource: org('abc', '/subscriptions') => '/o/abc/devportal/v1/subscriptions'
         org: function (orgId, path) {
             return '/o/' + encodeURIComponent(orgId) + '/' + cfg.base + '/' + cfg.version + (path || '');
@@ -480,7 +482,7 @@ document.addEventListener("DOMContentLoaded", function () {
             // Function to create application directly via API
             async function createApplicationDirectly(name, description = '') {
                 try {
-                    const response = await fetch(devportalApi.root('/applications'), {
+                    const response = await fetch(devportalApi.org(devportalApi.orgId, '/applications'), {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
@@ -775,7 +777,7 @@ document.addEventListener("DOMContentLoaded", function () {
             // Function to create application directly via API
             async function createApplicationDirectly(name, description = '') {
                 try {
-                    const response = await fetch(devportalApi.root('/applications'), {
+                    const response = await fetch(devportalApi.org(devportalApi.orgId, '/applications'), {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',

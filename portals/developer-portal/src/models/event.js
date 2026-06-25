@@ -17,6 +17,7 @@
  */
 const { Sequelize, DataTypes } = require('sequelize');
 const sequelize = require('../db/sequelizeConfig');
+const { Organization } = require('./organization');
 
 // Outbox table — one row per domain event. Payload never contains plaintext key secrets.
 const DPEvent = sequelize.define('DP_EVENT', {
@@ -32,10 +33,6 @@ const DPEvent = sequelize.define('DP_EVENT', {
     ORG_ID: {
         type: DataTypes.UUID,
         allowNull: false
-    },
-    GATEWAY_TYPE: {
-        type: DataTypes.STRING(128),
-        allowNull: true
     },
     AGGREGATE_TYPE: {
         type: DataTypes.STRING(64),
@@ -56,7 +53,10 @@ const DPEvent = sequelize.define('DP_EVENT', {
         defaultValue: DataTypes.NOW
     },
     STATUS: {
-        type: DataTypes.ENUM('PENDING', 'DISPATCHED', 'ALL_DELIVERED', 'FAILED'),
+        // REJECTED: a secret event type (apikey.*, subscription.created) was published
+        // without a plaintextKey — see eventPublisher.js. Must stay in this enum or that
+        // guard path throws instead of recording the rejection.
+        type: DataTypes.ENUM('PENDING', 'DISPATCHED', 'ALL_DELIVERED', 'FAILED', 'REJECTED'),
         allowNull: false,
         defaultValue: 'PENDING'
     }
@@ -68,5 +68,8 @@ const DPEvent = sequelize.define('DP_EVENT', {
         { name: 'IDX_EVENT_STATUS_OCCURRED_AT', fields: ['STATUS', 'OCCURRED_AT'] }
     ]
 });
+
+DPEvent.belongsTo(Organization, { foreignKey: 'ORG_ID' });
+Organization.hasMany(DPEvent, { foreignKey: 'ORG_ID', onDelete: 'CASCADE' });
 
 module.exports = DPEvent;

@@ -124,6 +124,7 @@
   gap: 0.625rem;
 }
 
+.ak-btn-app,
 .ak-btn-regen,
 .ak-btn-revoke {
   display: inline-flex;
@@ -140,12 +141,15 @@
   background: #fff;
 }
 
+.ak-btn-app    { border: 1px solid #d7dce3; color: #52607a; }
 .ak-btn-regen  { border: 1px solid #c2d3ea; color: #1f6feb; }
 .ak-btn-revoke { border: 1px solid #f0c4c4; color: #c62828; }
 
+.ak-btn-app:hover:not(:disabled)    { background: #f5f6f8; }
 .ak-btn-regen:hover:not(:disabled)  { background: #f3f8fe; }
 .ak-btn-revoke:hover:not(:disabled) { background: #fdeaea; }
 
+.ak-btn-app:disabled,
 .ak-btn-regen:disabled,
 .ak-btn-revoke:disabled { opacity: 0.5; cursor: not-allowed; pointer-events: none; }
 

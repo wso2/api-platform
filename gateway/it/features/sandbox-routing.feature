@@ -29,7 +29,7 @@ Feature: Sandbox Routing
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: env-routing-api-v1.0
@@ -75,7 +75,7 @@ Feature: Sandbox Routing
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: env-routing-main-ref-v1.0
@@ -125,7 +125,7 @@ Feature: Sandbox Routing
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: env-routing-sandbox-ref-v1.0
@@ -176,7 +176,7 @@ Feature: Sandbox Routing
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: env-routing-missing-ref-v1.0
@@ -200,7 +200,7 @@ Feature: Sandbox Routing
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: env-routing-invalid-upstream-def-v1.0
@@ -231,7 +231,7 @@ Feature: Sandbox Routing
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: env-routing-sandbox-ref-policy-v1.0
@@ -287,7 +287,7 @@ Feature: Sandbox Routing
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: env-routing-both-ref-v1.0
@@ -338,7 +338,7 @@ Feature: Sandbox Routing
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: env-routing-sandbox-manual-host-v1.0
@@ -382,7 +382,7 @@ Feature: Sandbox Routing
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: env-routing-sandbox-timeout-ref-v1.0
@@ -424,7 +424,7 @@ Feature: Sandbox Routing
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: env-routing-sandbox-https-ref-v1.0
@@ -481,7 +481,7 @@ Feature: Sandbox Routing
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: env-routing-sandbox-multi-url-ref-v1.0
@@ -510,7 +510,7 @@ Feature: Sandbox Routing
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: env-routing-sandbox-params-ref-v1.0
@@ -558,7 +558,7 @@ Feature: Sandbox Routing
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: env-routing-sandbox-wildcard-ref-v1.0
@@ -600,7 +600,7 @@ Feature: Sandbox Routing
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: env-routing-missing-sandbox-ref-v1.0
@@ -626,7 +626,7 @@ Feature: Sandbox Routing
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: env-routing-duplicate-upstream-def-v1.0
@@ -659,7 +659,7 @@ Feature: Sandbox Routing
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: env-routing-both-ref-policy-v1.0
@@ -720,7 +720,7 @@ Feature: Sandbox Routing
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: env-routing-main-ref-policy-v1.0
@@ -778,7 +778,7 @@ Feature: Sandbox Routing
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: env-routing-no-sandbox-v1.0
@@ -821,7 +821,7 @@ Feature: Sandbox Routing
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: env-routing-invalid-sandbox-url-v1.0
@@ -849,7 +849,7 @@ Feature: Sandbox Routing
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: env-routing-both-url-policy-v1.0
@@ -902,7 +902,7 @@ Feature: Sandbox Routing
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: env-routing-redeploy-sandbox-v1.0
@@ -937,7 +937,7 @@ Feature: Sandbox Routing
     Given I authenticate using basic auth as "admin"
     When I update the API "env-routing-redeploy-sandbox-v1.0" with this configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: env-routing-redeploy-sandbox-v1.0
@@ -978,7 +978,7 @@ Feature: Sandbox Routing
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: env-routing-sandbox-vhost-fallback-v1.0
@@ -1026,7 +1026,7 @@ Feature: Sandbox Routing
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: env-routing-no-sandbox-global-vhost-v1.0

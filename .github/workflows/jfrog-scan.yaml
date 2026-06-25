@@ -7,6 +7,27 @@ on:
 jobs:
   scan-images:
     runs-on: ubuntu-latest
+    # One job per image so a stall/failure on one image never aborts the others.
+    # fail-fast: false => every image is still built and scanned even if a sibling fails.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: gateway-runtime, make_dir: gateway/gateway-runtime }
+          # gateway-controller embeds the compiled policy YAMLs, so it needs the policy
+          # export from the gateway-runtime build first (needs_policies).
+          - { name: gateway-controller, make_dir: gateway/gateway-controller, needs_policies: true }
+          - { name: gateway-builder, make_dir: gateway/gateway-builder }
+          - { name: platform-api, make_dir: platform-api }
+          - { name: ai-workspace, make_dir: portals/ai-workspace }
+          - { name: event-gateway-runtime, make_dir: event-gateway/gateway-runtime }
+          # event-gateway-controller is built from the gateway-controller Makefile target,
+          # tagged under its own image name; it needs the same policy export.
+          - { name: event-gateway-controller, make_dir: gateway/gateway-controller, needs_policies: true }
+
+    # Hard ceiling for the whole job. The scan step has its own per-attempt timeout below,
+    # so this only guards against an unexpected hang in build/setup.
+    timeout-minutes: 60
 
     services:
       registry:
@@ -43,108 +64,55 @@ jobs:
           JF_URL: ${{ secrets.JF_URL }}
           JF_ACCESS_TOKEN: ${{ secrets.JF_ACCESS_TOKEN }}
 
-      # -------------------------
-      # Gateway Runtime (Router + Policy Engine)
-      # -------------------------
-      - name: Build & push gateway-runtime to temp registry
+      # The gateway-controller / event-gateway-controller images COPY in the compiled
+      # policy definitions, which are produced by the gateway-runtime "policy-export"
+      # Dockerfile stage into gateway/target/build/gateway-controller/policies. The old
+      # single-job workflow got these for free because gateway-runtime built first; with one
+      # job per image we extract them explicitly before building the controller image.
+      - name: Extract controller policy definitions
+        if: ${{ matrix.needs_policies }}
         run: |
-          make -C gateway/gateway-runtime build-and-push-multiarch \
-            IMAGE_NAME=localhost:5000/gateway-runtime \
+          make -C gateway/gateway-runtime extract-policies VERSION=trivy
+
+      - name: Build & push ${{ matrix.name }} to temp registry
+        run: |
+          make -C ${{ matrix.make_dir }} build-and-push-multiarch \
+            IMAGE_NAME=localhost:5000/${{ matrix.name }} \
             VERSION=trivy
 
-      - name: JFrog scan gateway-runtime
+      # The JFrog Xray SaaS backend periodically stalls on the SCA ("Get Dependencies
+      # Scan results") stage for large images. The client-side poll limit is hardcoded in
+      # jfrog-client-go at 45 min (540 attempts x 5s) with no flag/env override, so a stall
+      # otherwise burns ~46 min before failing. We cap each attempt with `timeout` so a stall
+      # fails fast, then retry a few times to absorb transient backend slowness.
+      - name: JFrog scan ${{ matrix.name }}
+        timeout-minutes: 45
         run: |
-          docker pull localhost:5000/gateway-runtime:trivy
-          jf docker scan localhost:5000/gateway-runtime:trivy
+          IMAGE="localhost:5000/${{ matrix.name }}:trivy"
+          docker pull "$IMAGE"
 
-      # -------------------------
-      # Gateway Controller
-      # -------------------------
-      - name: Build & push gateway-controller to temp registry
-        run: |
-          make -C gateway/gateway-controller build-and-push-multiarch \
-            IMAGE_NAME=localhost:5000/gateway-controller \
-            VERSION=trivy
+          max_attempts=3
+          per_attempt_timeout=12m
+          attempt=1
+          while [ "$attempt" -le "$max_attempts" ]; do
+            echo "::group::jf docker scan attempt ${attempt}/${max_attempts} ($IMAGE)"
+            # `|| rc=$?` captures the real exit code (a bare `if` with no else resets $? to 0
+            # under set -e) without tripping set -e.
+            rc=0
+            timeout --kill-after=1m "$per_attempt_timeout" jf docker scan "$IMAGE" || rc=$?
+            echo "::endgroup::"
+            if [ "$rc" -eq 0 ]; then
+              echo "Scan succeeded on attempt ${attempt}"
+              exit 0
+            fi
+            if [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; then
+              echo "Attempt ${attempt} hit the ${per_attempt_timeout} per-attempt timeout (backend stall)."
+            else
+              echo "Attempt ${attempt} failed with exit code ${rc}."
+            fi
+            attempt=$((attempt + 1))
+            [ "$attempt" -le "$max_attempts" ] && { echo "Retrying after 30s backoff..."; sleep 30; }
+          done
 
-      - name: JFrog scan gateway-controller
-        run: |
-          docker pull localhost:5000/gateway-controller:trivy
-          jf docker scan localhost:5000/gateway-controller:trivy
-
-      # -------------------------
-      # Gateway Builder
-      # -------------------------
-      - name: Build & push gateway-builder to temp registry
-        run: |
-          make -C gateway/gateway-builder build-and-push-multiarch \
-            IMAGE_NAME=localhost:5000/gateway-builder \
-            VERSION=trivy
-
-      - name: JFrog scan gateway-builder
-        run: |
-          docker pull localhost:5000/gateway-builder:trivy
-          jf docker scan localhost:5000/gateway-builder:trivy
-      # -------------------------
-      # Platform API
-      # -------------------------
-      - name: Build & push platform-api to temp registry
-        run: |
-          make -C platform-api build-and-push-multiarch \
-            IMAGE_NAME=localhost:5000/platform-api \
-            VERSION=trivy
-
-      - name: JFrog scan platform-api
-        run: |
-          docker pull localhost:5000/platform-api:trivy
-          jf docker scan localhost:5000/platform-api:trivy
-
-      # -------------------------
-      # AI Workspace
-      # -------------------------
-      - name: Build & push ai-workspace to temp registry
-        run: |
-          make -C portals/ai-workspace build-and-push-multiarch \
-            IMAGE_NAME=localhost:5000/ai-workspace \
-            VERSION=trivy
-
-      - name: JFrog scan ai-workspace
-        run: |
-          docker pull localhost:5000/ai-workspace:trivy
-          jf docker scan localhost:5000/ai-workspace:trivy
-
-      # -------------------------
-      # Event Gateway Runtime
-      # -------------------------
-      - name: Build & push event-gateway-runtime to temp registry
-        run: |
-          make -C event-gateway/gateway-runtime build-and-push-multiarch \
-            IMAGE_NAME=localhost:5000/event-gateway-runtime \
-            VERSION=trivy
-
-      - name: JFrog scan event-gateway-runtime
-        run: |
-          docker pull localhost:5000/event-gateway-runtime:trivy
-          jf docker scan localhost:5000/event-gateway-runtime:trivy
-
-      # -------------------------
-      # Event Gateway Controller
-      # -------------------------
-      - name: Build & push event-gateway-controller to temp registry
-        run: |
-          cd gateway/gateway-controller && \
-          docker buildx build -f Dockerfile \
-            --build-context sdk=../../sdk \
-            --build-context sdk-core=../../sdk/core \
-            --build-context common=../../common \
-            --build-context build-manifest=.. \
-            --platform linux/amd64,linux/arm64 \
-            --build-arg VERSION=trivy \
-            --target production \
-            -t localhost:5000/event-gateway-controller:trivy \
-            --push \
-            .
-
-      - name: JFrog scan event-gateway-controller
-        run: |
-          docker pull localhost:5000/event-gateway-controller:trivy
-          jf docker scan localhost:5000/event-gateway-controller:trivy
+          echo "jf docker scan failed after ${max_attempts} attempts for $IMAGE"
+          exit 1

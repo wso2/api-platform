@@ -31,7 +31,7 @@ Feature: Content Length Guardrail Policy
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: clg-valid-content-api
@@ -73,7 +73,7 @@ Feature: Content Length Guardrail Policy
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: clg-below-min-api
@@ -117,7 +117,7 @@ Feature: Content Length Guardrail Policy
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: clg-above-max-api
@@ -160,7 +160,7 @@ Feature: Content Length Guardrail Policy
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: clg-empty-body-api
@@ -202,7 +202,7 @@ Feature: Content Length Guardrail Policy
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: clg-min-boundary-api
@@ -244,7 +244,7 @@ Feature: Content Length Guardrail Policy
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: clg-max-boundary-api
@@ -288,7 +288,7 @@ Feature: Content Length Guardrail Policy
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: clg-jsonpath-valid-api
@@ -330,7 +330,7 @@ Feature: Content Length Guardrail Policy
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: clg-jsonpath-invalid-api
@@ -373,7 +373,7 @@ Feature: Content Length Guardrail Policy
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: clg-nested-jsonpath-api
@@ -415,7 +415,7 @@ Feature: Content Length Guardrail Policy
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: clg-missing-field-api
@@ -460,7 +460,7 @@ Feature: Content Length Guardrail Policy
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: clg-inverted-excluded-api
@@ -506,7 +506,7 @@ Feature: Content Length Guardrail Policy
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: clg-inverted-allowed-api
@@ -551,7 +551,7 @@ Feature: Content Length Guardrail Policy
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: clg-show-assessment-api
@@ -597,7 +597,7 @@ Feature: Content Length Guardrail Policy
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: clg-no-assessment-api

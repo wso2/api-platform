@@ -31,7 +31,7 @@ Feature: Search Deployments API
     # First deploy some APIs
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: search-api-1
@@ -49,7 +49,7 @@ Feature: Search Deployments API
     Then the response should be successful
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: search-api-2
@@ -79,7 +79,7 @@ Feature: Search Deployments API
   Scenario: Search APIs by displayName filter
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: displayname-search-api
@@ -108,7 +108,7 @@ Feature: Search Deployments API
   Scenario: Search APIs by version filter
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: version-search-api
@@ -136,7 +136,7 @@ Feature: Search Deployments API
   Scenario: Search APIs by context filter
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: context-search-api
@@ -164,7 +164,7 @@ Feature: Search Deployments API
   Scenario: Search APIs by status filter
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: status-search-api
@@ -193,7 +193,7 @@ Feature: Search Deployments API
   Scenario: Search APIs with multiple filters
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: multi-filter-api
@@ -231,7 +231,7 @@ Feature: Search Deployments API
     # Deploy an MCP proxy first
     When I deploy this MCP configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: Mcp
       metadata:
         name: search-mcp-v1.0
@@ -260,7 +260,7 @@ Feature: Search Deployments API
   Scenario: Search MCP proxies by displayName filter
     When I deploy this MCP configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: Mcp
       metadata:
         name: displayname-mcp-v1.0
@@ -289,7 +289,7 @@ Feature: Search Deployments API
   Scenario: Search MCP proxies by version filter
     When I deploy this MCP configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: Mcp
       metadata:
         name: version-mcp-v2.0

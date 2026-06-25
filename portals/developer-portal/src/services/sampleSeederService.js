@@ -24,7 +24,7 @@ const sequelize = require('../db/sequelizeConfig');
 const apiDao = require('../dao/apiDao');
 const apiFileDao = require('../dao/apiFileDao');
 const labelDao = require('../dao/labelDao');
-const subscriptionPolicyDao = require('../dao/subscriptionPolicyDao');
+const subscriptionPlanDao = require('../dao/subscriptionPlanDao');
 const constants = require('../utils/constants');
 const logger = require('../config/logger');
 const { parseApiMetadataFromYamlFile, prepareApiDefinitionForStorage } = require('./apiMetadataService');
@@ -125,14 +125,14 @@ async function seedSampleAPIs(orgId) {
                 const created = await apiDao.create(orgId, apiMetadata, t);
                 apiId = created.dataValues.API_ID;
 
-                // Subscription policy mappings (skip unknown policies — don't fail the whole deployment)
-                if (Array.isArray(apiMetadata.subscriptionPolicies) && apiMetadata.subscriptionPolicies.length) {
+                // Subscription plan mappings (skip unknown plans — don't fail the whole deployment)
+                if (Array.isArray(apiMetadata.subscriptionPlans) && apiMetadata.subscriptionPlans.length) {
                     const mappings = [];
-                    for (const p of apiMetadata.subscriptionPolicies) {
-                        const policy = await subscriptionPolicyDao.getByName(orgId, p.policyName);
-                        if (policy) mappings.push({ apiID: apiId, policyID: policy.POLICY_ID });
+                    for (const p of apiMetadata.subscriptionPlans) {
+                        const plan = await subscriptionPlanDao.getByName(orgId, p.planName);
+                        if (plan) mappings.push({ apiID: apiId, planID: plan.PLAN_ID });
                     }
-                    if (mappings.length) await subscriptionPolicyDao.createApiMapping(mappings, apiId, t);
+                    if (mappings.length) await subscriptionPlanDao.createApiMapping(mappings, apiId, t);
                 }
 
                 // Label mappings
@@ -210,14 +210,14 @@ async function seedSampleMCPs(orgId) {
                 const created = await apiDao.create(orgId, apiMetadata, t);
                 apiId = created.dataValues.API_ID;
 
-                // Subscription policy mappings
-                if (Array.isArray(apiMetadata.subscriptionPolicies) && apiMetadata.subscriptionPolicies.length) {
+                // Subscription plan mappings (skip unknown plans — don't fail the whole deployment)
+                if (Array.isArray(apiMetadata.subscriptionPlans) && apiMetadata.subscriptionPlans.length) {
                     const mappings = [];
-                    for (const p of apiMetadata.subscriptionPolicies) {
-                        const policy = await subscriptionPolicyDao.getByName(orgId, p.policyName);
-                        if (policy) mappings.push({ apiID: apiId, policyID: policy.POLICY_ID });
+                    for (const p of apiMetadata.subscriptionPlans) {
+                        const plan = await subscriptionPlanDao.getByName(orgId, p.planName);
+                        if (plan) mappings.push({ apiID: apiId, planID: plan.PLAN_ID });
                     }
-                    if (mappings.length) await subscriptionPolicyDao.createApiMapping(mappings, apiId, t);
+                    if (mappings.length) await subscriptionPlanDao.createApiMapping(mappings, apiId, t);
                 }
 
                 // Label mappings

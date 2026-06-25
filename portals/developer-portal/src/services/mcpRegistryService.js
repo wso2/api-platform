@@ -192,7 +192,6 @@ function buildApiMetadataPayload(name, version, description, remotes, title, pub
     return {
         apiInfo: {
             referenceID: null,
-            provider: 'WSO2',
             apiName: name,
             apiHandle,
             apiTitle: title || null,
@@ -201,7 +200,6 @@ function buildApiMetadataPayload(name, version, description, remotes, title, pub
             apiType: constants.API_TYPE.MCP,
             apiStatus: 'PUBLISHED',
             visibility: 'PUBLIC',
-            gatewayType: null,
             remotes: normalizedRemotes,
             publishedAt: publishedAt || null,
             updatedAt: updatedAt || null,
@@ -215,12 +213,12 @@ function buildApiMetadataPayload(name, version, description, remotes, title, pub
 }
 
 /**
- * Parses schema content from a DP_API_CONTENT row's API_FILE buffer.
+ * Parses schema content from a DP_API_CONTENT row's FILE_CONTENT buffer.
  */
 function parseSchema(contentRow) {
     if (!contentRow) return null;
     try {
-        const raw = contentRow.API_FILE;
+        const raw = contentRow.FILE_CONTENT;
         const str = Buffer.isBuffer(raw) ? raw.toString('utf-8') : String(raw);
         return JSON.parse(str);
     } catch (e) {

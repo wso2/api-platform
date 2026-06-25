@@ -1,0 +1,16 @@
+# SQL Server backend for platform-api cross-database integration tests.
+# The tests run on the host and connect to the published port; see
+# `make it-sqlserver` in platform-api/Makefile.
+#
+# CI (amd64) uses the default mcr.microsoft.com/mssql/server image. On Apple
+# Silicon that image fails under emulation, so override with Azure SQL Edge:
+#   MSSQL_IMAGE=mcr.microsoft.com/azure-sql-edge:latest make it-sqlserver
+services:
+  sqlserver:
+    image: ${MSSQL_IMAGE:-mcr.microsoft.com/mssql/server:2022-latest}
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "${MSSQL_PASSWORD:-Strong!Passw0rd}"
+      MSSQL_PID: "Developer"
+    ports:
+      - "14333:1433"

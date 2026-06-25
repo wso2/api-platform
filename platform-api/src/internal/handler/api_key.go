@@ -288,7 +288,7 @@ func (h *APIKeyHandler) RevokeAPIKey(c *gin.Context) {
 // RegisterRoutes registers API key routes with the router
 func (h *APIKeyHandler) RegisterRoutes(r *gin.Engine) {
 	h.slogger.Debug("Registering API key routes")
-	apiKeyGroup := r.Group("/api/v1/rest-apis/:apiId/api-keys")
+	apiKeyGroup := r.Group(constants.APIBasePath + "/rest-apis/:apiId/api-keys")
 	{
 		apiKeyGroup.POST("", h.CreateAPIKey)
 		apiKeyGroup.PUT("/:keyName", h.UpdateAPIKey)

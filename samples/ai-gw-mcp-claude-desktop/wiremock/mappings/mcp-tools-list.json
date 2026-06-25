@@ -1,0 +1,22 @@
+{
+  "request": {
+    "method": "POST",
+    "url": "/mcp",
+    "bodyPatterns": [
+      {
+        "matchesJsonPath": {
+          "expression": "$.method",
+          "equalTo": "tools/list"
+        }
+      }
+    ]
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "body": "{\"jsonrpc\":\"2.0\",\"id\":{{jsonPath request.body '$.id'}},\"result\":{\"tools\":[{\"name\":\"listBooks\",\"description\":\"Get all books currently on the reading list\",\"inputSchema\":{\"type\":\"object\",\"properties\":{}}},{\"name\":\"addBook\",\"description\":\"Add a new book to the reading list by providing the title, author, and status\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"title\":{\"type\":\"string\"},\"author\":{\"type\":\"string\"},\"status\":{\"type\":\"string\",\"enum\":[\"to_read\",\"reading\",\"read\"]}},\"required\":[\"title\",\"author\",\"status\"]}},{\"name\":\"deleteBook\",\"description\":\"Remove a book from the reading list by its ID\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\"}},\"required\":[\"id\"]}}]}}",
+    "transformers": ["response-template"]
+  }
+}

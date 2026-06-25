@@ -51,7 +51,7 @@ func NewWebBrokerAPIHandler(webbrokerAPIService *service.WebBrokerAPIService, sl
 
 // RegisterRoutes registers WebBroker API routes
 func (h *WebBrokerAPIHandler) RegisterRoutes(r *gin.Engine) {
-	v1 := r.Group("/api/v1")
+	v1 := r.Group(constants.APIBasePath)
 	{
 		v1.POST("/webbroker-apis", h.CreateWebBrokerAPI)
 		v1.GET("/webbroker-apis", h.ListWebBrokerAPIs)
@@ -63,7 +63,7 @@ func (h *WebBrokerAPIHandler) RegisterRoutes(r *gin.Engine) {
 	}
 }
 
-// CreateWebBrokerAPI handles POST /api/v1/webbroker-apis
+// CreateWebBrokerAPI handles POST /api/v0.9/webbroker-apis
 func (h *WebBrokerAPIHandler) CreateWebBrokerAPI(c *gin.Context) {
 	orgID, ok := middleware.GetOrganizationFromContext(c)
 	if !ok {
@@ -89,7 +89,7 @@ func (h *WebBrokerAPIHandler) CreateWebBrokerAPI(c *gin.Context) {
 	c.JSON(http.StatusCreated, resp)
 }
 
-// ListWebBrokerAPIs handles GET /api/v1/webbroker-apis
+// ListWebBrokerAPIs handles GET /api/v0.9/webbroker-apis
 func (h *WebBrokerAPIHandler) ListWebBrokerAPIs(c *gin.Context) {
 	orgID, ok := middleware.GetOrganizationFromContext(c)
 	if !ok {
@@ -124,7 +124,7 @@ func (h *WebBrokerAPIHandler) ListWebBrokerAPIs(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
-// GetWebBrokerAPI handles GET /api/v1/webbroker-apis/:apiId
+// GetWebBrokerAPI handles GET /api/v0.9/webbroker-apis/:apiId
 func (h *WebBrokerAPIHandler) GetWebBrokerAPI(c *gin.Context) {
 	orgID, ok := middleware.GetOrganizationFromContext(c)
 	if !ok {
@@ -142,7 +142,7 @@ func (h *WebBrokerAPIHandler) GetWebBrokerAPI(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
-// UpdateWebBrokerAPI handles PUT /api/v1/webbroker-apis/:apiId
+// UpdateWebBrokerAPI handles PUT /api/v0.9/webbroker-apis/:apiId
 func (h *WebBrokerAPIHandler) UpdateWebBrokerAPI(c *gin.Context) {
 	orgID, ok := middleware.GetOrganizationFromContext(c)
 	if !ok {
@@ -168,7 +168,7 @@ func (h *WebBrokerAPIHandler) UpdateWebBrokerAPI(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
-// DeleteWebBrokerAPI handles DELETE /api/v1/webbroker-apis/:apiId
+// DeleteWebBrokerAPI handles DELETE /api/v0.9/webbroker-apis/:apiId
 func (h *WebBrokerAPIHandler) DeleteWebBrokerAPI(c *gin.Context) {
 	orgID, ok := middleware.GetOrganizationFromContext(c)
 	if !ok {

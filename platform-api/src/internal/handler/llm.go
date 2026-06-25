@@ -50,7 +50,7 @@ func NewLLMHandler(
 }
 
 func (h *LLMHandler) RegisterRoutes(r *gin.Engine) {
-	v1 := r.Group("/api/v1")
+	v1 := r.Group(constants.APIBasePath)
 	{
 		// LLM Provider Templates
 		v1.POST("/llm-provider-templates", h.CreateLLMProviderTemplate)

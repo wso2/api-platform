@@ -31,7 +31,7 @@ Feature: Dynamic Endpoint policy
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: dynamic-endpoint-api-v1.0
@@ -87,7 +87,7 @@ Feature: Dynamic Endpoint policy
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: dynamic-endpoint-routes-v1.0
@@ -166,7 +166,7 @@ Feature: Dynamic Endpoint policy
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: dynamic-endpoint-missing-param-v1.0
@@ -196,7 +196,7 @@ Feature: Dynamic Endpoint policy
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: dynamic-endpoint-sandbox-v1.0
@@ -256,7 +256,7 @@ Feature: Dynamic Endpoint policy
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: dynamic-endpoint-api-sandbox-v1.0
@@ -317,7 +317,7 @@ Feature: Dynamic Endpoint policy
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: dynamic-endpoint-sandbox-mixed-v1.0
@@ -380,7 +380,7 @@ Feature: Dynamic Endpoint policy
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: dynamic-endpoint-rewrite-v1.0
@@ -433,7 +433,7 @@ Feature: Dynamic Endpoint policy
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: dynamic-endpoint-rewrite-sandbox-v1.0

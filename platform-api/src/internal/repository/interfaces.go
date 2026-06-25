@@ -165,6 +165,9 @@ type GatewayRepository interface {
 	// Manifest operations
 	UpdateGatewayManifest(gatewayID string, manifest []byte) error
 	GetGatewayManifest(gatewayID string) ([]byte, error)
+
+	// Version update — persists the version reported by the gateway controller on connect.
+	UpdateGatewayVersion(gatewayID, version string) error
 }
 
 // DevPortalRepository interface for DevPortal-related database operations
@@ -283,6 +286,15 @@ type MCPProxyRepository interface {
 	Update(p *model.MCPProxy) error
 	Delete(handle, orgUUID string) error
 	Exists(handle, orgUUID string) (bool, error)
+}
+
+// WebSubAPIHmacSecretRepository defines the interface for WebSub API HMAC secret persistence
+type WebSubAPIHmacSecretRepository interface {
+	Create(secret *model.WebSubAPIHmacSecret) error
+	GetByArtifactAndName(artifactUUID, name string) (*model.WebSubAPIHmacSecret, error)
+	ListByArtifact(artifactUUID string) ([]*model.WebSubAPIHmacSecret, error)
+	Update(secret *model.WebSubAPIHmacSecret) error
+	Delete(artifactUUID, name string) error
 }
 
 // WebSubAPIRepository defines the interface for WebSub API persistence

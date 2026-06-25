@@ -197,13 +197,12 @@ spec:
   displayName: My API
   version: v1.0
   description: A short description shown on the API card.
-  provider: WSO2
   status: PUBLISHED
 
   tags:
     - payments
 
-  subscriptionPolicies:       # leave empty [] if no subscription plans
+  subscriptionPlans:       # leave empty [] if no subscription plans
     - Gold
     - Silver
 
@@ -226,13 +225,12 @@ spec:
   displayName: My MCP Server
   version: 1.0.0
   description: MCP server exposing tools for AI agents.
-  provider: WSO2
   status: PUBLISHED
 
   tags:
     - mcp
 
-  subscriptionPolicies:
+  subscriptionPlans:
     - Gold
 
   endpoints:

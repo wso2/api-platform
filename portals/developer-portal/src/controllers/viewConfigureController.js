@@ -22,7 +22,10 @@ const orgDao = require('../dao/organizationDao');
 const apiDao = require('../dao/apiDao');
 const viewDao = require('../dao/viewDao');
 const labelDao = require('../dao/labelDao');
-const subscriptionPolicyDao = require('../dao/subscriptionPolicyDao');
+const subscriptionPlanDao = require('../dao/subscriptionPlanDao');
+const whDao = require('../dao/webhookSubscriberDao');
+const { WebhookSubscriberDTO } = require('../dto/webhookSubscriberDto');
+const { VALID_EVENT_TYPES } = require('../services/webhooks/eventPublisher');
 const apiFlowService = require('../services/apiFlowService');
 const { renderGivenTemplate, loadLayoutFromAPI } = require('../utils/util');
 const { getSessionCsrfToken } = require('../middlewares/csrfProtection');
@@ -67,11 +70,9 @@ const loadViewSettingsPage = async (req, res) => {
             apiStatus: api.STATUS,
             productionUrl: api.PRODUCTION_URL,
             sandboxUrl: api.SANDBOX_URL,
-            provider: api.PROVIDER,
-            gatewayType: api.GATEWAY_TYPE,
             tags: api.TAGS || '',
             agentVisibility: api.AGENT_VISIBILITY,
-            subscriptionPolicies: (api.DP_SUBSCRIPTION_POLICies || []).map(p => p.POLICY_NAME),
+            subscriptionPlans: (api.SubscriptionPlans || []).map(p => p.PLAN_NAME),
         }));
 
         let orgLabels = [];
@@ -83,21 +84,31 @@ const loadViewSettingsPage = async (req, res) => {
         }
         templateContent.orgLabels = orgLabels;
 
-        let orgPolicies = [];
+        let orgPlans = [];
         try {
-            const policiesRaw = await subscriptionPolicyDao.list(orgID);
-            orgPolicies = policiesRaw.map(p => ({
-                policyId: p.POLICY_ID,
-                policyName: p.POLICY_NAME,
+            const plansRaw = await subscriptionPlanDao.list(orgID);
+            orgPlans = plansRaw.map(p => ({
+                planId: p.PLAN_ID,
+                planName: p.PLAN_NAME,
                 displayName: p.DISPLAY_NAME,
                 description: p.DESCRIPTION || '',
                 requestCount: p.REQUEST_COUNT,
                 refId: p.REF_ID || '',
             }));
         } catch (err) {
-            logger.warn('Failed to load subscription policies for settings page', { error: err.message });
+            logger.warn('Failed to load subscription plans for settings page', { error: err.message });
         }
-        templateContent.orgPolicies = orgPolicies;
+        templateContent.orgPlans = orgPlans;
+
+        let webhookSubscribers = [];
+        try {
+            const webhookSubscriberRecords = await whDao.list(orgID);
+            webhookSubscribers = webhookSubscriberRecords.map(r => new WebhookSubscriberDTO(r));
+        } catch (err) {
+            logger.warn('Failed to load webhook subscribers for settings page', { error: err.message });
+        }
+        templateContent.webhookSubscribers = webhookSubscribers;
+        templateContent.webhookEventTypes = [...VALID_EVENT_TYPES];
 
         const configAsset = await orgDao.getContent({
             orgId: orgID, fileType: constants.FILE_TYPE.LLMS_CONFIG, viewName, fileName: constants.FILE_NAME.LLMS_CONFIG

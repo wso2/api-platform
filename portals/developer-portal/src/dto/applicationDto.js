@@ -41,7 +41,7 @@ class SubscriptionDTO {
         this.id = sub.SUB_ID;
         this.appId = sub.APP_ID;
         this.apiId = sub.REFERENCE_ID;
-        this.policyId = sub.POLICY_ID;
+        this.planId = sub.PLAN_ID;
     }
 
     setResponseData(data) {

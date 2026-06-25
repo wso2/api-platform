@@ -53,7 +53,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "apiId": "api-7f4c2a6b",
   "subscriptionToken": "a3f1e8b2...",
   "subscriptionPlanName": "Gold",
-  "gatewayType": "wso2/api-platform",
   "status": "ACTIVE",
   "createdBy": "alice@example.com",
   "createdAt": "2026-05-07T08:30:00Z"
@@ -65,18 +64,24 @@ This operation requires <strong>Basic Auth</strong> authentication.
 ```json
 [
   {
-    "code": "400",
-    "message": "input validation failed",
-    "description": "Invalid value"
+    "status": "error",
+    "code": "COMMON_VALIDATION_ERROR",
+    "message": "Input validation failed.",
+    "errors": [
+      {
+        "field": "orgName",
+        "message": "orgName is required."
+      }
+    ]
   }
 ]
 ```
 
 ```json
 {
-  "code": "400",
-  "message": "Bad Request",
-  "description": "Missing required parameter: 'orgId'"
+  "status": "error",
+  "code": "MISSING_REQUIRED_PARAMETER",
+  "message": "Missing required parameter."
 }
 ```
 
@@ -90,9 +95,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "404",
-  "message": "Resource Not Found",
-  "description": "Organization not found"
+  "status": "error",
+  "code": "ORG_NOT_FOUND",
+  "message": "Organization not found."
 }
 ```
 
@@ -100,9 +105,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "500",
-  "message": "Internal Server Error",
-  "description": "Internal Server Error"
+  "status": "error",
+  "code": "INTERNAL_SERVER_ERROR",
+  "message": "An unexpected error occurred."
 }
 ```
 
@@ -116,6 +121,19 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
 <h3 id="create-a-subscription-responseschema">Response Schema</h3>
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|status|error|
+|status|error|
+
+### Response Headers
+
+|Status|Header|Type|Format|Description|
+|---|---|---|---|---|
+|201|Location|string|uri|URL of the created subscription.|
 
 ## List subscriptions
 
@@ -148,6 +166,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |apiId|query|string|false|Optional Developer Portal API ID used to filter results.|
+|limit|query|integer|false|Maximum number of records to return.|
+|offset|query|integer|false|Number of records to skip before returning results.|
 |orgId|path|string|true|none|
 
 > Example responses
@@ -156,17 +176,22 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "count": 1,
   "list": [
     {
       "subscriptionId": "sub-12345",
       "apiId": "api-7f4c2a6b",
+      "subscriptionToken": "a3f1...",
       "subscriptionPlanName": "Gold",
-      "gatewayType": "wso2/api-platform",
       "status": "ACTIVE",
-      "createdBy": "alice@example.com"
+      "createdBy": "alice@example.com",
+      "createdAt": "2019-08-24T14:15:22Z"
     }
-  ]
+  ],
+  "pagination": {
+    "total": 42,
+    "limit": 20,
+    "offset": 0
+  }
 }
 ```
 
@@ -175,18 +200,24 @@ This operation requires <strong>Basic Auth</strong> authentication.
 ```json
 [
   {
-    "code": "400",
-    "message": "input validation failed",
-    "description": "Invalid value"
+    "status": "error",
+    "code": "COMMON_VALIDATION_ERROR",
+    "message": "Input validation failed.",
+    "errors": [
+      {
+        "field": "orgName",
+        "message": "orgName is required."
+      }
+    ]
   }
 ]
 ```
 
 ```json
 {
-  "code": "400",
-  "message": "Bad Request",
-  "description": "Missing required parameter: 'orgId'"
+  "status": "error",
+  "code": "MISSING_REQUIRED_PARAMETER",
+  "message": "Missing required parameter."
 }
 ```
 
@@ -200,9 +231,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "404",
-  "message": "Resource Not Found",
-  "description": "Organization not found"
+  "status": "error",
+  "code": "ORG_NOT_FOUND",
+  "message": "Organization not found."
 }
 ```
 
@@ -210,9 +241,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "500",
-  "message": "Internal Server Error",
-  "description": "Internal Server Error"
+  "status": "error",
+  "code": "INTERNAL_SERVER_ERROR",
+  "message": "An unexpected error occurred."
 }
 ```
 
@@ -231,16 +262,18 @@ Status Code **200**
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|» count|integer|false|none|none|
 |» list|[[SubscriptionResponse](schemas.md#schemasubscriptionresponse)]|false|none|[Subscription payload.]|
 |»» subscriptionId|string|false|none|none|
 |»» apiId|string|false|none|Developer Portal API ID.|
 |»» subscriptionToken|string|false|none|Plaintext subscription token. Present on create and when the token has not been encrypted at rest.|
 |»» subscriptionPlanName|string|false|none|none|
-|»» gatewayType|string|false|none|none|
 |»» status|string|false|none|none|
 |»» createdBy|string|false|none|Identity (sub claim) of the user who created the subscription.|
 |»» createdAt|string(date-time)|false|none|none|
+|» pagination|[Pagination](schemas.md#schemapagination)|false|none|Standard pagination metadata returned with collection responses.|
+|»» total|integer|true|none|Total number of records matching the query.|
+|»» limit|integer|true|none|Maximum number of records returned in this response.|
+|»» offset|integer|true|none|Number of records skipped before this page.|
 
 #### Enumerated Values
 
@@ -248,6 +281,13 @@ Status Code **200**
 |---|---|
 |status|ACTIVE|
 |status|INACTIVE|
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|status|error|
+|status|error|
 
 ## Get a subscription
 
@@ -292,7 +332,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "apiId": "api-7f4c2a6b",
   "subscriptionToken": "a3f1e8b2...",
   "subscriptionPlanName": "Gold",
-  "gatewayType": "wso2/api-platform",
   "status": "ACTIVE",
   "createdBy": "alice@example.com",
   "createdAt": "2026-05-07T08:30:00Z"
@@ -303,9 +342,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "404",
-  "message": "Resource Not Found",
-  "description": "Organization not found"
+  "status": "error",
+  "code": "ORG_NOT_FOUND",
+  "message": "Organization not found."
 }
 ```
 
@@ -313,9 +352,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "500",
-  "message": "Internal Server Error",
-  "description": "Internal Server Error"
+  "status": "error",
+  "code": "INTERNAL_SERVER_ERROR",
+  "message": "An unexpected error occurred."
 }
 ```
 
@@ -381,7 +420,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "apiId": "api-7f4c2a6b",
   "subscriptionToken": "a3f1e8b2...",
   "subscriptionPlanName": "Gold",
-  "gatewayType": "wso2/api-platform",
   "status": "ACTIVE",
   "createdBy": "alice@example.com",
   "createdAt": "2026-05-07T08:30:00Z"
@@ -393,18 +431,24 @@ This operation requires <strong>Basic Auth</strong> authentication.
 ```json
 [
   {
-    "code": "400",
-    "message": "input validation failed",
-    "description": "Invalid value"
+    "status": "error",
+    "code": "COMMON_VALIDATION_ERROR",
+    "message": "Input validation failed.",
+    "errors": [
+      {
+        "field": "orgName",
+        "message": "orgName is required."
+      }
+    ]
   }
 ]
 ```
 
 ```json
 {
-  "code": "400",
-  "message": "Bad Request",
-  "description": "Missing required parameter: 'orgId'"
+  "status": "error",
+  "code": "MISSING_REQUIRED_PARAMETER",
+  "message": "Missing required parameter."
 }
 ```
 
@@ -418,9 +462,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "404",
-  "message": "Resource Not Found",
-  "description": "Organization not found"
+  "status": "error",
+  "code": "ORG_NOT_FOUND",
+  "message": "Organization not found."
 }
 ```
 
@@ -428,9 +472,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "500",
-  "message": "Internal Server Error",
-  "description": "Internal Server Error"
+  "status": "error",
+  "code": "INTERNAL_SERVER_ERROR",
+  "message": "An unexpected error occurred."
 }
 ```
 
@@ -444,6 +488,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
 <h3 id="update-a-subscription-responseschema">Response Schema</h3>
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|status|error|
+|status|error|
 
 ## Delete a subscription
 
@@ -492,9 +543,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "404",
-  "message": "Resource Not Found",
-  "description": "Organization not found"
+  "status": "error",
+  "code": "ORG_NOT_FOUND",
+  "message": "Organization not found."
 }
 ```
 
@@ -502,9 +553,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "500",
-  "message": "Internal Server Error",
-  "description": "Internal Server Error"
+  "status": "error",
+  "code": "INTERNAL_SERVER_ERROR",
+  "message": "An unexpected error occurred."
 }
 ```
 

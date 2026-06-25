@@ -18,11 +18,10 @@
 const { Organization, OrgContent } = require('../models/organization');
 const { Sequelize } = require('sequelize');
 const { Application, ApplicationKeyMapping, SubscriptionMapping } = require('../models/application');
-const Provider = require('../models/provider');
 const apiDao = require('./apiMetadata');
 const { APIMetadata } = require('../models/apiMetadata');
 const APIImageMetadata = require('../models/apiImages');
-const SubscriptionPolicy = require('../models/subscriptionPolicy');
+const SubscriptionPlan = require('../models/subscriptionPlan');
 const logger = require('../config/logger');
 const sequelize = require('../db/sequelize');
 
@@ -37,13 +36,7 @@ const createOrganization = async (orgData, t) => {
         BUSINESS_OWNER_CONTACT: orgData.businessOwnerContact,
         BUSINESS_OWNER_EMAIL: orgData.businessOwnerEmail,
         ORG_HANDLE: devPortalID,
-        ROLE_CLAIM_NAME: orgData.roleClaimName,
-        GROUPS_CLAIM_NAME: orgData.groupsClaimName,
-        ORGANIZATION_CLAIM_NAME: orgData.organizationClaimName,
         ORGANIZATION_IDENTIFIER: orgData.organizationIdentifier,
-        ADMIN_ROLE: orgData.adminRole,
-        SUBSCRIBER_ROLE: orgData.subscriberRole,
-        SUPER_ADMIN_ROLE: orgData.superAdminRole,
         ORG_CONFIG: orgData.orgConfig
     };
     try {
@@ -135,13 +128,7 @@ const updateOrganization = async (orgData, t) => {
                 BUSINESS_OWNER_CONTACT: orgData.businessOwnerContact,
                 BUSINESS_OWNER_EMAIL: orgData.businessOwnerEmail,
                 ORG_HANDLE: devPortalID,
-                ROLE_CLAIM_NAME: orgData.roleClaimName,
-                GROUPS_CLAIM_NAME: orgData.groupsClaimName,
-                ORGANIZATION_CLAIM_NAME: orgData.organizationClaimName,
                 ORGANIZATION_IDENTIFIER: orgData.organizationIdentifier,
-                ADMIN_ROLE: orgData.adminRole,
-                SUBSCRIBER_ROLE: orgData.subscriberRole,
-                SUPER_ADMIN_ROLE: orgData.superAdminRole,
                 ORG_CONFIG: orgData.orgConfiguration
             },
             {
@@ -309,153 +296,6 @@ const deleteAllOrgContent = async (orgId, viewName) => {
     }
 };
 
-const createProvider = async (orgID, provider, t) => {
-    let providerDataList = [];
-    for (const [key, value] of Object.entries(provider)) {
-        if (key !== 'name') {
-            const providerData = {
-                ORG_ID: orgID,
-                NAME: provider.name,
-                PROPERTY: key,
-                VALUE: value
-            };
-            providerDataList.push(providerData);
-        }
-    }
-    try {
-        const provider = await Provider.bulkCreate(providerDataList, { transaction: t });
-        return provider;
-    } catch (error) {
-        if (error instanceof Sequelize.UniqueConstraintError) {
-            throw error;
-        }
-        throw new Sequelize.DatabaseError(error);
-    }
-}
-
-const updateProvider = async (orgID, provider) => {
-    try {
-        let updatedProviders = [];
-        for (const [key, value] of Object.entries(provider)) {
-            if (key !== 'name') {
-                const [updatedRowsCount, providerContent] = await Provider.update(
-                    {
-                        VALUE: value
-                    },
-                    {
-                        where: {
-                            ORG_ID: orgID,
-                            PROPERTY: key,
-                            NAME: provider.name
-                        },
-                        returning: true
-                    }
-                );
-                updatedProviders.push(providerContent)
-                if (updatedRowsCount < 1) {
-                    throw new Sequelize.EmptyResultError('API Provider not found');
-                }
-            }
-        }
-        return updatedProviders;
-    } catch (error) {
-        if (error instanceof Sequelize.UniqueConstraintError) {
-            throw error;
-        }
-        throw new Sequelize.DatabaseError(error);
-    }
-}
-
-const deleteProviderProperty = async (orgID, property, name) => {
-    try {
-        const deletedRowsCount = await Provider.destroy({
-            where: {
-                ORG_ID: orgID,
-                PROPERTY: property,
-                NAME: name
-            }
-        });
-        if (deletedRowsCount < 1) {
-            throw Object.assign(new Sequelize.EmptyResultError('Organization not found'));
-        }
-        return deletedRowsCount;
-    } catch (error) {
-        if (error instanceof Sequelize.EmptyResultError) {
-            throw error;
-        }
-        throw new Sequelize.DatabaseError(error);
-    }
-}
-
-const deleteProvider = async (orgID, name) => {
-    try {
-        const deletedRowsCount = await Provider.destroy({
-            where: {
-                ORG_ID: orgID,
-                NAME: name
-            }
-        });
-        if (deletedRowsCount < 1) {
-            throw Object.assign(new Sequelize.EmptyResultError('Organization not found'));
-        }
-        return deletedRowsCount;
-    } catch (error) {
-        if (error instanceof Sequelize.EmptyResultError) {
-            throw error;
-        }
-        throw new Sequelize.DatabaseError(error);
-    }
-}
-
-const getProviders = async (orgID) => {
-    try {
-        const jsonObjectFn = sequelize.getDialect() === 'sqlite' ? 'json_group_object' : 'JSON_OBJECT_AGG';
-        const providers = await Provider.findAll(
-            {
-                attributes: [
-                    'NAME',
-                    [
-                        Sequelize.fn(
-                            jsonObjectFn,
-                            Sequelize.col('PROPERTY'),
-                            Sequelize.col('VALUE')
-                        ),
-                        'properties'
-                    ]
-                ],
-                where: { ORG_ID: orgID },
-                group: ['NAME']
-            }
-        );
-        if (providers.length === 0) {
-            return [];
-        }
-        return providers;
-    } catch (error) {
-        if (error instanceof Sequelize.EmptyResultError) {
-            throw error;
-        }
-        throw new Sequelize.DatabaseError(error);
-    }
-};
-
-const getProvider = async (orgID, name) => {
-    try {
-        return await Provider.findAll(
-            {
-                where: {
-                    ORG_ID: orgID,
-                    NAME: name
-                }
-            });
-    } catch (error) {
-        if (error instanceof Sequelize.EmptyResultError) {
-            throw error;
-        }
-        throw new Sequelize.DatabaseError(error);
-    }
-}
-
 const createApplication = async (orgID, userID, appData) => {
     const createAppData = {
         NAME: appData.name,
@@ -582,7 +422,7 @@ const createSubscription = async (orgID, subscription, t) => {
         const subMapping = await SubscriptionMapping.create({
             CREATED_BY: subscription.createdBy,
             API_ID: subscription.apiId,
-            POLICY_ID: subscription.policyId,
+            PLAN_ID: subscription.planId,
             ORG_ID: orgID,
         }, { transaction: t });
         return subMapping;
@@ -597,7 +437,7 @@ const createSubscription = async (orgID, subscription, t) => {
 const updateSubscription = async (orgID, subscription, t) => {
     try {
         const subMapping = await SubscriptionMapping.update({
-            POLICY_ID: subscription.policyId
+            PLAN_ID: subscription.planId
         }, {
             where: {
                 ORG_ID: orgID,
@@ -802,12 +642,12 @@ const upsertApplicationKeyMapping = async (mappingData, t) => {
 
 
 /**
- * Find subscription by unique key (app, api, policy)
+ * Find subscription by unique key (app, api, plan)
  */
-const findSubscriptionByUniqueKey = async (orgID, apiID, policyID, t) => {
+const findSubscriptionByUniqueKey = async (orgID, apiID, planID, t) => {
     try {
         return await SubscriptionMapping.findOne({
-            where: { ORG_ID: orgID, API_ID: apiID, POLICY_ID: policyID },
+            where: { ORG_ID: orgID, API_ID: apiID, PLAN_ID: planID },
             transaction: t,
         });
     } catch (error) {
@@ -855,12 +695,6 @@ module.exports = {
     deleteAllOrgContent,
     getOrgId,
     getOrganizations,
-    createProvider,
-    deleteProviderProperty,
-    deleteProvider,
-    updateProvider,
-    getProviders,
-    getProvider,
     createApplication,
     updateApplication,
     getApplication,

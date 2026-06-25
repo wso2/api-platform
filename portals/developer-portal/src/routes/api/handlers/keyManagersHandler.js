@@ -25,7 +25,7 @@ const keyManagerService = require('../../../services/keyManagerService');
 module.exports = {
     createKeyManager: keyManagerService.createKeyManager,
     getKeyManagers: keyManagerService.getKeyManagers,
-    getAvailableKeyManagers: keyManagerService.getAvailableKeyManagers,
+    discoverKeyManagers: keyManagerService.getAvailableKeyManagers,
     getKeyManager: keyManagerService.getKeyManager,
     updateKeyManager: keyManagerService.updateKeyManager,
     deleteKeyManager: keyManagerService.deleteKeyManager,

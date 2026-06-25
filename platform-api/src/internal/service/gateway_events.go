@@ -68,6 +68,10 @@ const (
 	EventTypeAPIKeyRevoked = "apikey.revoked"
 	EventTypeAPIKeyUpdated = "apikey.updated"
 
+	EventTypeWebSubAPIHmacSecretCreated = "websub.hmacsecret.created"
+	EventTypeWebSubAPIHmacSecretUpdated = "websub.hmacsecret.updated"
+	EventTypeWebSubAPIHmacSecretDeleted = "websub.hmacsecret.deleted"
+
 	EventTypeSubscriptionCreated = "subscription.created"
 	EventTypeSubscriptionUpdated = "subscription.updated"
 	EventTypeSubscriptionDeleted = "subscription.deleted"
@@ -181,6 +185,23 @@ func (s *GatewayEventsService) BroadcastLLMProviderDeletionEvent(gatewayID strin
 // BroadcastLLMProxyDeletionEvent sends an LLM proxy deletion event to target gateway.
 func (s *GatewayEventsService) BroadcastLLMProxyDeletionEvent(gatewayID string, deletion *model.LLMProxyDeletionEvent) error {
 	return s.broadcastEvent(gatewayID, EventTypeLLMProxyDeleted, deletion)
+}
+
+// BroadcastWebSubAPIHmacSecretEvent sends a WebSub API HMAC secret lifecycle event to target gateway.
+// action should be "CREATED", "UPDATED", or "DELETED".
+func (s *GatewayEventsService) BroadcastWebSubAPIHmacSecretEvent(gatewayID, action string, event *model.WebSubAPIHmacSecretEvent) error {
+	var eventType string
+	switch action {
+	case "CREATED":
+		eventType = EventTypeWebSubAPIHmacSecretCreated
+	case "UPDATED":
+		eventType = EventTypeWebSubAPIHmacSecretUpdated
+	case "DELETED":
+		eventType = EventTypeWebSubAPIHmacSecretDeleted
+	default:
+		eventType = EventTypeWebSubAPIHmacSecretUpdated
+	}
+	return s.broadcastEvent(gatewayID, eventType, event)
 }
 
 // BroadcastAPIKeyCreatedEvent sends an API key created event to target gateway.

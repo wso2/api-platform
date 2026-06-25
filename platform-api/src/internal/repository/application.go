@@ -20,11 +20,7 @@ package repository
 import (
 	"database/sql"
 	"errors"
-	"strings"
 	"time"
-
-	"github.com/jackc/pgx/v5/pgconn"
-	sqlite3 "github.com/mattn/go-sqlite3"
 
 	"platform-api/src/internal/constants"
 	"platform-api/src/internal/database"
@@ -80,8 +76,8 @@ func (r *ApplicationRepo) GetApplicationByIDOrHandle(appIDOrHandle, orgID string
 		FROM applications
 		WHERE organization_uuid = ? AND (uuid = ? OR handle = ?)
 		ORDER BY CASE WHEN uuid = ? THEN 0 ELSE 1 END
-		LIMIT 1
-	`), orgID, appIDOrHandle, appIDOrHandle, appIDOrHandle)
+		`+r.db.FetchFirstClause(1)),
+		orgID, appIDOrHandle, appIDOrHandle, appIDOrHandle)
 
 	app, err := scanApplication(row)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -124,8 +120,8 @@ func (r *ApplicationRepo) GetAssociationTargetByIDOrHandle(targetIDOrHandle, org
 		FROM artifacts
 		WHERE organization_uuid = ? AND (uuid = ? OR handle = ?)
 		ORDER BY CASE WHEN uuid = ? THEN 0 ELSE 1 END
-		LIMIT 1
-	`), orgID, targetIDOrHandle, targetIDOrHandle, targetIDOrHandle)
+		`+r.db.FetchFirstClause(1)),
+		orgID, targetIDOrHandle, targetIDOrHandle, targetIDOrHandle)
 
 	target := &model.Artifact{}
 	err := row.Scan(
@@ -154,8 +150,8 @@ func (r *ApplicationRepo) GetAssociationTargetByIDOrHandleAndKind(targetIDOrHand
 		FROM artifacts
 		WHERE organization_uuid = ? AND kind = ? AND (uuid = ? OR handle = ?)
 		ORDER BY CASE WHEN uuid = ? THEN 0 ELSE 1 END
-		LIMIT 1
-	`), orgID, kind, targetIDOrHandle, targetIDOrHandle, targetIDOrHandle)
+		`+r.db.FetchFirstClause(1)),
+		orgID, kind, targetIDOrHandle, targetIDOrHandle, targetIDOrHandle)
 
 	target := &model.Artifact{}
 	err := row.Scan(
@@ -484,7 +480,7 @@ func (r *ApplicationRepo) AddApplicationAssociations(applicationUUID string, tar
 			INSERT INTO application_artifacts (application_uuid, artifact_uuid, created_at, updated_at)
 			VALUES (?, ?, ?, ?)
 		`), applicationUUID, targetUUID, now, now); err != nil {
-			if isDuplicateKeyError(err) {
+			if r.db.IsDuplicateKeyError(err) {
 				continue
 			}
 			return err
@@ -494,26 +490,6 @@ func (r *ApplicationRepo) AddApplicationAssociations(applicationUUID string, tar
 	return tx.Commit()
 }
 
-func isDuplicateKeyError(err error) bool {
-	if err == nil {
-		return false
-	}
-
-	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-		return true
-	}
-
-	var sqliteErr sqlite3.Error
-	if errors.As(err, &sqliteErr) {
-		return sqliteErr.ExtendedCode == sqlite3.ErrConstraintPrimaryKey ||
-			sqliteErr.ExtendedCode == sqlite3.ErrConstraintUnique
-	}
-
-	lowerMsg := strings.ToLower(err.Error())
-	return strings.Contains(lowerMsg, "duplicate key") ||
-		strings.Contains(lowerMsg, "unique constraint failed")
-}
 
 func (r *ApplicationRepo) RemoveApplicationAPIKey(applicationUUID, apiKeyID string) error {
 	_, err := r.db.Exec(r.db.Rebind(`

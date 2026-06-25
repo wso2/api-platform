@@ -493,7 +493,7 @@ func (m *Manager) startMetricsLogger() {
 			if err != nil {
 				m.slogger.Error("Failed to marshal WS metrics", "error", err)
 			} else {
-				m.slogger.Info("WS Metrics", "payload", string(data))
+				m.slogger.Debug("WS Metrics", "payload", string(data))
 			}
 
 			from = to

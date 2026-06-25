@@ -12,7 +12,7 @@ Feature: Log Message Policy Integration Tests
   Scenario: Log request payload and headers
     When I deploy an API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: test-log-message-request
@@ -48,7 +48,7 @@ Feature: Log Message Policy Integration Tests
   Scenario: Log response payload and headers
     When I deploy an API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: test-log-message-response
@@ -79,7 +79,7 @@ Feature: Log Message Policy Integration Tests
   Scenario: Log both request and response
     When I deploy an API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: test-log-message-both
@@ -123,7 +123,7 @@ Feature: Log Message Policy Integration Tests
   Scenario: Log only request headers without payload
     When I deploy an API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: test-log-message-req-headers-only
@@ -153,7 +153,7 @@ Feature: Log Message Policy Integration Tests
   Scenario: Log only response headers without payload
     When I deploy an API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: test-log-message-resp-headers-only
@@ -187,7 +187,7 @@ Feature: Log Message Policy Integration Tests
   Scenario: Log only request payload without headers
     When I deploy an API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: test-log-message-req-payload-only
@@ -223,7 +223,7 @@ Feature: Log Message Policy Integration Tests
   Scenario: Log only response payload without headers
     When I deploy an API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: test-log-message-resp-payload-only
@@ -257,7 +257,7 @@ Feature: Log Message Policy Integration Tests
   Scenario: Log request headers with exclusions
     When I deploy an API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: test-log-message-req-exclude
@@ -289,7 +289,7 @@ Feature: Log Message Policy Integration Tests
   Scenario: Log response headers with exclusions
     When I deploy an API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: test-log-message-resp-exclude
@@ -325,7 +325,7 @@ Feature: Log Message Policy Integration Tests
   Scenario: Log message policy combined with set-headers
     When I deploy an API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: test-log-message-combined
@@ -367,7 +367,7 @@ Feature: Log Message Policy Integration Tests
   Scenario: Log message with different HTTP methods
     When I deploy an API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: test-log-message-methods
@@ -443,7 +443,7 @@ Feature: Log Message Policy Integration Tests
   Scenario: Log message with large request payload
     When I deploy an API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: test-log-message-large-payload

@@ -130,8 +130,8 @@ func (r *devPortalRepository) checkForConflictsTx(tx *sql.Tx, devPortal *model.D
 	if devPortal.IsDefault {
 		err = tx.QueryRow(r.db.Rebind(`
 			SELECT COUNT(*) FROM devportals
-			WHERE organization_uuid = ? AND is_default = TRUE`),
-			devPortal.OrganizationUUID).Scan(&count)
+			WHERE organization_uuid = ? AND is_default = ?`),
+			devPortal.OrganizationUUID, true).Scan(&count)
 		if err != nil {
 			return fmt.Errorf("failed to check for existing default devportal: %w", err)
 		}
@@ -218,8 +218,9 @@ func (r *devPortalRepository) GetByOrganizationUUID(orgUUID string, isDefault, i
 		args = append(args, *isActive)
 	}
 
-	query += " ORDER BY is_default DESC, created_at ASC LIMIT ? OFFSET ?"
-	args = append(args, limit, offset)
+	pageClause, pageArgs := r.db.PaginationClause(limit, offset)
+	query += " ORDER BY is_default DESC, created_at ASC " + pageClause
+	args = append(args, pageArgs...)
 
 	rows, err := r.db.Query(r.db.Rebind(query), args...)
 	if err != nil {
@@ -331,9 +332,9 @@ func (r *devPortalRepository) GetDefaultByOrganizationUUID(orgUUID string) (*mod
 	var devPortal model.DevPortal
 	query := `SELECT uuid, organization_uuid, name, identifier, api_url, 
 		hostname, is_active, is_enabled, api_key, header_key_name, is_default, visibility, description, created_at, updated_at 
-		FROM devportals WHERE organization_uuid = ? AND is_default = TRUE`
+		FROM devportals WHERE organization_uuid = ? AND is_default = ?`
 
-	err := r.db.QueryRow(r.db.Rebind(query), orgUUID).Scan(
+	err := r.db.QueryRow(r.db.Rebind(query), orgUUID, true).Scan(
 		&devPortal.UUID, &devPortal.OrganizationUUID, &devPortal.Name, &devPortal.Identifier,
 		&devPortal.APIUrl, &devPortal.Hostname,
 		&devPortal.IsActive, &devPortal.IsEnabled, &devPortal.APIKey, &devPortal.HeaderKeyName,
@@ -411,15 +412,15 @@ func (r *devPortalRepository) SetAsDefault(uuid, orgUUID string) error {
 	}
 	defer tx.Rollback()
 
-	_, err = tx.Exec(r.db.Rebind(`UPDATE devportals SET is_default = FALSE WHERE organization_uuid = ? AND is_default = TRUE`),
-		devPortal.OrganizationUUID)
+	_, err = tx.Exec(r.db.Rebind(`UPDATE devportals SET is_default = ? WHERE organization_uuid = ? AND is_default = ?`),
+		false, devPortal.OrganizationUUID, true)
 	if err != nil {
 		return fmt.Errorf("failed to unset previous default devportal for organization %s: %w", devPortal.OrganizationUUID, err)
 	}
 
 	// Set the new default
-	result, err := tx.Exec(r.db.Rebind(`UPDATE devportals SET is_default = TRUE, updated_at = ? WHERE uuid = ? AND organization_uuid = ?`),
-		time.Now(), uuid, orgUUID)
+	result, err := tx.Exec(r.db.Rebind(`UPDATE devportals SET is_default = ?, updated_at = ? WHERE uuid = ? AND organization_uuid = ?`),
+		true, time.Now(), uuid, orgUUID)
 	if err != nil {
 		return fmt.Errorf("failed to set devportal %s as default for organization %s: %w", uuid, orgUUID, err)
 	}

@@ -62,10 +62,6 @@ const loadOrgSettingsPage = async (req, res) => {
         }
         const orgLabels = await apiMetadataService.getOrgLabels(orgID);
         templateContent.orgLabels = orgLabels;
-        const apiProviders = await getAPIProviders(orgID);
-        if (apiProviders.length > 0) {
-            templateContent.apiProviders = apiProviders;
-        }
 
         templateContent.profile = req.user;
         layoutResponse = fs.readFileSync(layoutPath, constants.CHARSET_UTF8);
@@ -79,13 +75,6 @@ const loadOrgSettingsPage = async (req, res) => {
         });
         res.status(500).send('Error loading configuration page');
     }
-}
-
-
-async function getAPIProviders(orgID) {
-
-    const apiProviders = await adminService.getAllProviders(orgID);
-    return apiProviders;
 }
 
 

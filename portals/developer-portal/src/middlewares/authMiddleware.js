@@ -38,17 +38,7 @@ const constants = require('../utils/constants');
 const logger = require('../config/logger');
 const { extractPlatformJwtClaims } = require('../utils/platformJwt');
 const { accessTokenPresent, refreshAccessToken, verifyWithCertificate, resolveOrgIdp } = require('../utils/tokenUtil');
-
-const DEFAULT_TOKEN_REFRESH_TIMEOUT_MS = 10000;
-
-function resolveTokenRefreshTimeoutMs() {
-    const timeout = Number(config.identityProvider?.tokenRefreshTimeoutMs);
-    if (Number.isFinite(timeout) && timeout > 0) {
-        return timeout;
-    }
-    return DEFAULT_TOKEN_REFRESH_TIMEOUT_MS;
-}
-
+const orgDao = require('../dao/organizationDao');
 
 async function verifyJwksWithRefresh(token, jwksURL, req) {
     try {
@@ -86,7 +76,7 @@ async function verifyJwksWithRefresh(token, jwksURL, req) {
 }
 
 async function verifyBearerToken(token, req) {
-    const idp = await resolveOrgIdp(req);
+    const idp = resolveOrgIdp();
     if (!idp || !idp.clientId) {
         // Local auth mode: verify Platform API JWT with shared secret when configured.
         const jwtSecret = config.platformApi?.jwtSecret;
@@ -103,13 +93,49 @@ async function verifyBearerToken(token, req) {
     return { valid: false, scopes: '' };
 }
 
-function checkOrgMembership(req) {
-    if (!req.user) return true;
-    const tokenOrg = req.user[constants.ROLES.ORGANIZATION_CLAIM];
-    const targetOrg = req.user[constants.ORG_IDENTIFIER];
-    if (!targetOrg || tokenOrg === targetOrg) return true;
-    const authorizedOrgs = req.user.authorizedOrgs;
-    return Array.isArray(authorizedOrgs) && authorizedOrgs.includes(targetOrg);
+/**
+ * Verifies that `orgClaim` (from the token or session) matches the
+ * ORGANIZATION_IDENTIFIER of the org identified by `pathOrgId`.
+ * Returns an Error (with .status set) on failure, null on success.
+ */
+const ORG_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+async function checkOrgIsolation(pathOrgId, orgClaim) {
+    if (!ORG_UUID_RE.test(pathOrgId)) {
+        const err = new Error('Invalid organization ID: must be a UUID');
+        err.status = 400;
+        return err;
+    }
+    if (!orgClaim) {
+        const err = new Error('Token org does not match requested organization');
+        err.status = 403;
+        return err;
+    }
+    let orgDetails;
+    try {
+        orgDetails = await orgDao.get(pathOrgId);
+    } catch (e) {
+        if (e.name === 'SequelizeEmptyResultError') {
+            const err = new Error('Organization not found');
+            err.status = 404;
+            return err;
+        }
+        logger.error('Org lookup failed during isolation check', { error: e.message, pathOrgId });
+        const err = new Error('Internal Server Error');
+        err.status = 500;
+        return err;
+    }
+    if (orgClaim !== orgDetails.ORGANIZATION_IDENTIFIER) {
+        logger.warn('Org isolation mismatch', {
+            pathOrgId,
+            orgIdentifier: orgDetails.ORGANIZATION_IDENTIFIER,
+            orgClaim,
+        });
+        const err = new Error('Token org does not match requested organization');
+        err.status = 403;
+        return err;
+    }
+    return null;
 }
 
 /**
@@ -132,10 +158,23 @@ async function authResolver(req, res, next) {
             return next();
         }
 
-        // 2. Session fast-path: scopes captured at login — skip JWKS re-validation
+        // 2. Session fast-path: browser login via IDP — role check is done by ensureAuthenticated
+        // on page routes, so scope enforcement here is redundant and would require listing all
+        // dp:* scopes in the OIDC scope config. Set preauthorized to bypass the per-operation
+        // scope check for session users (same as API key and mTLS paths).
         if (req.isAuthenticated && req.isAuthenticated() && req.user?.grantedScopes !== undefined && config.identityProvider?.clientId) {
+            const pathOrgMatch = req.path.match(/^\/o\/([^/]+)\//);
+            const pathOrgId = pathOrgMatch ? pathOrgMatch[1] : null;
+            const orgIDClaim = config.identityProvider?.orgIDClaim;
+            if (pathOrgId && orgIDClaim) {
+                const sessionOrgClaim = req.user[constants.ROLES.ORGANIZATION_CLAIM];
+                const isolationErr = await checkOrgIsolation(pathOrgId, sessionOrgClaim);
+                if (isolationErr) return next(isolationErr);
+            }
+            req[constants.USER_ID] = req.user[constants.USER_ID];
             req.auth = {
                 mode: 'oauth2',
+                preauthorized: true,
                 scopes: String(req.user.grantedScopes || '').split(' ').filter(Boolean),
                 userId: req.user[constants.USER_ID],
             };
@@ -145,11 +184,6 @@ async function authResolver(req, res, next) {
         // 3. Bearer token (session-attached or Authorization header)
         const token = accessTokenPresent(req);
         if (token) {
-            if (!checkOrgMembership(req)) {
-                const err = new Error('Authentication required');
-                err.status = 401;
-                return next(err);
-            }
             const { valid, scopes } = await verifyBearerToken(token, req);
             if (!valid) {
                 const err = new Error('Authentication required');
@@ -157,6 +191,18 @@ async function authResolver(req, res, next) {
                 return next(err);
             }
             const decoded = jwt.decode(req.user?.[constants.ACCESS_TOKEN] || token) || {};
+            // Org isolation: verify the token's org claim matches the org in the URL path.
+            // Only enforced in IDP mode — local-auth and platform-JWT tokens have no org claim.
+            // req.params is not yet populated here (authResolver runs before route matching),
+            // so extract orgId directly from the path: /o/<orgId>/devportal/v1/...
+            const pathOrgMatch = req.path.match(/^\/o\/([^/]+)\//);
+            const pathOrgId = pathOrgMatch ? pathOrgMatch[1] : null;
+            const orgIDClaim = config.identityProvider?.orgIDClaim;
+            if (pathOrgId && config.identityProvider?.clientId && orgIDClaim) {
+                const tokenOrgClaim = decoded[orgIDClaim];
+                const isolationErr = await checkOrgIsolation(pathOrgId, tokenOrgClaim);
+                if (isolationErr) return next(isolationErr);
+            }
             req[constants.USER_ID] = decoded[constants.USER_ID];
             req.auth = {
                 mode: 'oauth2',

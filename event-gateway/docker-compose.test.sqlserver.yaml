@@ -1,0 +1,215 @@
+# --------------------------------------------------------------------
+# Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+#
+# WSO2 LLC. licenses this file to you under the Apache License,
+# Version 2.0 (the "License"); you may not use this file except
+# in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+# --------------------------------------------------------------------
+
+# Integration test Docker Compose configuration for Event Gateway
+# backed by SQL Server instead of the default SQLite.
+#
+# This is the SQL Server twin of docker-compose.dev.yaml. Run with:
+#   IT_COMPOSE_FILE=../docker-compose.test.sqlserver.yaml make -C event-gateway/it test
+#
+# Image note: this uses the official mcr.microsoft.com/mssql/server image, which
+# is amd64-only and runs fine on the amd64 CI runners. On Apple Silicon it dies
+# under emulation — for local runs override the sqlserver/mssql-init images with
+# mcr.microsoft.com/azure-sql-edge (arm64-native) via an extra -f overlay.
+#
+# NOTE: gateway-controller and event-gateway are kept in sync with docker-compose.dev.yaml — keep in sync.
+
+services:
+  sqlserver:
+    container_name: egw-it-sqlserver
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    environment:
+      - ACCEPT_EULA=Y
+      - MSSQL_SA_PASSWORD=${MSSQL_SA_PASSWORD:-EGW_Strong!Pass123}
+      - MSSQL_PID=Developer
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -Q 'SELECT 1' || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 20s
+    networks:
+      - egw-network
+
+  # One-shot: SQL Server does not auto-create an application database, so create
+  # gateway_test once the server is healthy. The controller auto-creates its schema.
+  mssql-init:
+    container_name: egw-it-mssql-init
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+    environment:
+      - MSSQL_SA_PASSWORD=${MSSQL_SA_PASSWORD:-EGW_Strong!Pass123}
+      - MSSQL_DB=gateway_test
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - >
+        /opt/mssql-tools18/bin/sqlcmd -C -S sqlserver -U sa -P "$$MSSQL_SA_PASSWORD"
+        -Q "IF DB_ID('$$MSSQL_DB') IS NULL CREATE DATABASE [$$MSSQL_DB]"
+    restart: "no"
+    networks:
+      - egw-network
+
+  gateway-controller:
+    container_name: egw-it-gateway-controller
+    image: ghcr.io/wso2/api-platform/event-gateway-controller:latest
+    command: ["-config", "/etc/gateway-controller/config.toml"]
+    ports:
+      - "9090:9090"    # Management API
+      - "18001:18001"  # Policy xDS (EventChannelConfig)
+    environment:
+      - APIP_GW_CONTROLLER_STORAGE_TYPE=sqlserver
+      - APIP_GW_CONTROLLER_STORAGE_DATABASE_DSN=sqlserver://sa:${MSSQL_SA_PASSWORD:-EGW_Strong!Pass123}@sqlserver:1433?database=gateway_test&encrypt=disable&TrustServerCertificate=true&app+name=gateway-controller
+      - APIP_GW_CONTROLLER_LOGGING_LEVEL=info
+      - APIP_GW_DEVELOPMENT_MODE=true
+      - APIP_GW_ROUTER_EVENT__GATEWAY_ENABLED=true
+      - APIP_GW_ROUTER_EVENT__GATEWAY_WEBSUB__HUB_URL=http://event-gateway:8080
+      - APIP_GW_ROUTER_EVENT__GATEWAY_WEBSUB__HUB_PORT=8080
+      - APIP_GW_ROUTER_EVENT__GATEWAY_WEBSUB__HUB__LISTENER__PORT=8080
+      - APIP_GW_ROUTER_EVENT__GATEWAY_TIMEOUT__SECONDS=30
+      - APIP_GW_GATEWAY_REGISTRATION_TOKEN=${GATEWAY_REGISTRATION_TOKEN:-}
+      - APIP_GW_CONTROLPLANE_HOST=${GATEWAY_CONTROLPLANE_HOST:-}
+    volumes:
+      - controller-data:/app/data
+      - ../gateway/configs/config.toml:/etc/gateway-controller/config.toml:ro
+      - ../gateway/gateway-controller/certificates:/app/certificates
+      - ../gateway/gateway-controller/listener-certs:/app/listener-certs:ro
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+      mssql-init:
+        condition: service_completed_successfully
+    networks:
+      - egw-network
+
+  event-gateway:
+    container_name: egw-it-event-gateway
+    image: ghcr.io/wso2/api-platform/event-gateway-runtime:latest
+    ports:
+      - "8080:8080"   # WebSub HTTP
+      - "8443:8443"   # WebSub HTTPS
+      - "8081:8081"   # WebSocket
+      - "9002:9002"   # Admin API
+      - "9003:9003"   # Metrics
+    environment:
+      - APIP_EGW_KAFKA_BROKERS=kafka:29092
+      - APIP_EGW_KAFKA_TLS=true
+      - APIP_EGW_KAFKA_TLS_CA_FILE=/etc/event-gateway/kafka/ca.crt
+      - APIP_EGW_KAFKA_SASL_MECHANISM=plain
+      - APIP_EGW_KAFKA_SASL_USERNAME=${KAFKA_CLIENT_USERNAME:-egw}
+      - APIP_EGW_KAFKA_SASL_PASSWORD=${KAFKA_CLIENT_PASSWORD:-egw-pass}
+      - APIP_EGW_SERVER_WEBSUB_ENABLED=true
+      - APIP_EGW_SERVER_WEBSUB_HTTP_PORT=8080
+      - APIP_EGW_SERVER_WEBSUB_HTTPS_PORT=8443
+      - APIP_EGW_SERVER_WEBSUB_TLS_ENABLED=true
+      - APIP_EGW_SERVER_WEBSUB_TLS_CERT_FILE=/etc/event-gateway/tls/default-listener.crt
+      - APIP_EGW_SERVER_WEBSUB_TLS_KEY_FILE=/etc/event-gateway/tls/default-listener.key
+      - APIP_EGW_SERVER_WEBSOCKET_PORT=8081
+      - APIP_EGW_CONTROLPLANE_ENABLED=true
+      - APIP_EGW_LOGGING_LEVEL=debug
+      - APIP_EGW_CONTROLPLANE_XDS_ADDRESS=gateway-controller:18001
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ../gateway/gateway-controller/listener-certs:/etc/event-gateway/tls:ro
+      - ./gateway-runtime/configs/config.toml:/etc/event-gateway/config.toml:ro
+      - ./gateway-runtime/configs/channels.yaml:/etc/event-gateway/channels.yaml:ro
+      - kafka-certs:/etc/event-gateway/kafka:ro
+    depends_on:
+      gateway-controller:
+        condition: service_started
+      kafka:
+        condition: service_started
+    networks:
+      - egw-network
+
+  kafka-cert-init:
+    container_name: egw-it-kafka-cert-init
+    image: bitnamilegacy/kafka:4.0.0-debian-12-r10
+    user: "0:0"
+    command: ["bash", "/scripts/generate-certs.sh"]
+    environment:
+      KAFKA_CERT_PASSWORD: ${KAFKA_CERT_PASSWORD:-changeit}
+      KAFKA_BROKER_HOST: kafka
+    volumes:
+      - ./docker/kafka/generate-certs.sh:/scripts/generate-certs.sh:ro
+      - kafka-certs:/certs
+    networks:
+      - egw-network
+
+  kafka:
+    container_name: egw-it-kafka
+    image: bitnamilegacy/kafka:4.0.0-debian-12-r10
+    hostname: kafka
+    ports:
+      - "29092:29092"
+    environment:
+      KAFKA_CFG_NODE_ID: 1
+      KAFKA_CFG_PROCESS_ROLES: broker,controller
+      KAFKA_CFG_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CFG_LISTENERS: SASL_SSL://:29092,CONTROLLER://:29093
+      KAFKA_CFG_ADVERTISED_LISTENERS: SASL_SSL://kafka:29092
+      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:SASL_PLAINTEXT,SASL_SSL:SASL_SSL
+      KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: 1@kafka:29093
+      KAFKA_CFG_SASL_ENABLED_MECHANISMS: PLAIN
+      KAFKA_CFG_SASL_MECHANISM_CONTROLLER_PROTOCOL: PLAIN
+      KAFKA_CFG_SASL_MECHANISM_INTER_BROKER_PROTOCOL: PLAIN
+      KAFKA_CFG_INTER_BROKER_LISTENER_NAME: SASL_SSL
+      KAFKA_CLIENT_LISTENER_NAME: SASL_SSL
+      KAFKA_CLIENT_USERS: ${KAFKA_CLIENT_USERNAME:-egw}
+      KAFKA_CLIENT_PASSWORDS: ${KAFKA_CLIENT_PASSWORD:-egw-pass}
+      KAFKA_CONTROLLER_USER: controller_user
+      KAFKA_CONTROLLER_PASSWORD: ${KAFKA_CONTROLLER_PASSWORD:-controller-pass}
+      KAFKA_INTER_BROKER_USER: broker
+      KAFKA_INTER_BROKER_PASSWORD: ${KAFKA_INTER_BROKER_PASSWORD:-broker-pass}
+      KAFKA_TLS_TYPE: JKS
+      KAFKA_TLS_CLIENT_AUTH: none
+      KAFKA_CERTIFICATE_PASSWORD: ${KAFKA_CERT_PASSWORD:-changeit}
+      KAFKA_CFG_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_CFG_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_CFG_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_CFG_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+    volumes:
+      - kafka-certs:/opt/bitnami/kafka/config/certs:ro
+      - kafka-data:/bitnami/kafka
+    depends_on:
+      kafka-cert-init:
+        condition: service_completed_successfully
+    networks:
+      - egw-network
+
+  wh-listener:
+    container_name: egw-it-wh-listener
+    image: event-gateway/webhook-listener:local
+    build:
+      context: webhook-listener
+      dockerfile: Dockerfile
+    ports:
+      - "8090:8090"
+    networks:
+      - egw-network
+
+networks:
+  egw-network:
+    driver: bridge
+
+volumes:
+  controller-data:
+  kafka-certs:
+  kafka-data:

@@ -16,7 +16,7 @@
  * under the License.
  */
 const { APIMetadata, APILabels } = require('../models/apiMetadata');
-const SubscriptionPolicy = require('../models/subscriptionPolicy');
+const SubscriptionPlan = require('../models/subscriptionPlan');
 const APIImageMetadata = require('../models/apiImage');
 const Labels = require('../models/label');
 const { Sequelize } = require('sequelize');
@@ -42,7 +42,6 @@ const create = async (orgID, apiMetadata, t) => {
         const apiMetadataResponse = await APIMetadata.create({
             REFERENCE_ID: apiInfo.referenceID,
             STATUS: apiInfo.apiStatus,
-            PROVIDER: apiInfo.provider,
             API_NAME: apiInfo.apiName,
             API_HANDLE: apiInfo.apiHandle ? apiInfo.apiHandle : `${apiInfo.apiName.toLowerCase().replace(/\s+/g, '')}-v${apiInfo.apiVersion}`,
             API_DESCRIPTION: apiInfo.apiDescription,
@@ -59,7 +58,6 @@ const create = async (orgID, apiMetadata, t) => {
             SANDBOX_URL: apiMetadata.endPoints.sandboxURL,
             PRODUCTION_URL: apiMetadata.endPoints.productionURL,
             METADATA_SEARCH: apiMetadata,
-            GATEWAY_TYPE: apiMetadata.apiInfo.gatewayType || null,
             ORG_ID: orgID
         },
             { transaction: t }
@@ -84,7 +82,6 @@ const update = async (orgID, apiID, apiMetadata, t) => {
         const [updateCount] = await APIMetadata.update({
             REFERENCE_ID: apiInfo.referenceID,
             STATUS: apiInfo.apiStatus,
-            PROVIDER: apiInfo.provider,
             API_NAME: apiInfo.apiName,
             API_HANDLE: apiInfo.apiHandle ? apiInfo.apiHandle : `${apiInfo.apiName.toLowerCase().replace(/\s+/g, '')}-v${apiInfo.apiVersion}`,
             API_DESCRIPTION: apiInfo.apiDescription,
@@ -101,7 +98,6 @@ const update = async (orgID, apiID, apiMetadata, t) => {
             SANDBOX_URL: apiMetadata.endPoints.sandboxURL,
             PRODUCTION_URL: apiMetadata.endPoints.productionURL,
             METADATA_SEARCH: apiMetadata,
-            GATEWAY_TYPE: apiMetadata.apiInfo.gatewayType || null,
         }, {
             where: {
                 API_ID: apiID,
@@ -156,7 +152,7 @@ const get = async (orgID, apiID, t) => {
                 },
                 required: false
             }, {
-                model: SubscriptionPolicy,
+                model: SubscriptionPlan,
                 through: { attributes: [] },
                 required: false
             },
@@ -212,7 +208,7 @@ const getByCondition = async (condition, t) => {
                 model: APIImageMetadata,
                 required: false
             }, {
-                model: SubscriptionPolicy,
+                model: SubscriptionPlan,
                 through: { attributes: [] },
                 required: false
             }
@@ -248,7 +244,7 @@ const list = async (orgID, groups, viewName, t) => {
                     model: APIImageMetadata,
                     required: false
                 }, {
-                    model: SubscriptionPolicy,
+                    model: SubscriptionPlan,
                     through: { attributes: [] },
                     required: false
                 },
@@ -289,7 +285,7 @@ const list = async (orgID, groups, viewName, t) => {
                 model: APIImageMetadata,
                 required: false
             }, {
-                model: SubscriptionPolicy,
+                model: SubscriptionPlan,
                 through: { attributes: [] },
                 required: false
             },
@@ -336,7 +332,7 @@ const listFromAllViews = async (orgID, groups, t) => {
                     model: APIImageMetadata,
                     required: false
                 }, {
-                    model: SubscriptionPolicy,
+                    model: SubscriptionPlan,
                     through: { attributes: [] },
                     required: false
                 },
@@ -372,7 +368,7 @@ const listFromAllViews = async (orgID, groups, t) => {
                 model: APIImageMetadata,
                 required: false
             }, {
-                model: SubscriptionPolicy,
+                model: SubscriptionPlan,
                 through: { attributes: [] },
                 required: false
             },
@@ -418,7 +414,7 @@ const searchFallback = async (orgID, searchTerm, viewName, t) => {
         },
         include: [
             { model: APIImageMetadata, required: false },
-            { model: SubscriptionPolicy, through: { attributes: [] }, required: false },
+            { model: SubscriptionPlan, through: { attributes: [] }, required: false },
             {
                 model: Labels,
                 attributes: ['NAME'],
@@ -516,7 +512,7 @@ const getSpecs = async (orgID, apiIDs) => {
             attributes: [
                 'API_ID',
                 'FILE_NAME',
-                'API_FILE'
+                'FILE_CONTENT'
             ],
             where: {
                 API_ID: {
@@ -541,7 +537,7 @@ const getSpecs = async (orgID, apiIDs) => {
             return {
                 apiID: spec.API_ID,
                 fileName: spec.FILE_NAME,
-                apiSpec: spec.API_FILE ? spec.API_FILE.toString('utf8') : null
+                apiSpec: spec.FILE_CONTENT ? spec.FILE_CONTENT.toString('utf8') : null
             };
         }).filter(spec => spec !== null);
     } catch (error) {

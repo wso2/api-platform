@@ -29,7 +29,7 @@ const Labels = sequelize.define('DP_LABELS', {
     },
     ORG_ID: {
         type: DataTypes.UUID,
-        defaultValue: Sequelize.UUIDV4,
+        allowNull: false,
     },
     NAME: {
         type: DataTypes.STRING,

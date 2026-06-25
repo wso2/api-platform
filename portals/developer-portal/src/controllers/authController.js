@@ -25,9 +25,7 @@ const { config } = require('../config/configLoader');
 const constants = require('../utils/constants');
 const util = require('../utils/util');
 const orgDao = require('../dao/organizationDao');
-const minimatch = require('minimatch');
 const { validationResult } = require('express-validator');
-const { renderGivenTemplate } = require('../utils/util');
 const { trackLoginTrigger, trackLogoutTrigger } = require('../utils/telemetryUtil');
 const { extractPlatformJwtClaims } = require('../utils/platformJwt');
 
@@ -74,23 +72,13 @@ const login = async (req, res, next) => {
 const handleCallback = async (req, res, next) => {
     if (!config.identityProvider?.clientId) return next();
     const rules = util.validateRequestParameters();
-    const validationPromises = rules.map(validation => validation.run(req));
-    Promise.all(validationPromises)
-        .then(() => {
-            const errors = validationResult(req);
-            if (!errors.isEmpty()) {
-                return res.status(400).json(util.getErrors(errors));
-            }
-        })
-        .catch(error => {
-            logger.error("Error validating request parameters", {
-                error: error.message,
-                path: req.path,
-                method: req.method,
-                params: req.params
-            });
-            return res.status(500).json({ message: 'Internal Server Error' });
-        });
+    for (const validation of rules) {
+        await validation.run(req);
+    }
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+        return res.status(400).json(util.getErrors(errors));
+    }
     await passport.authenticate(
         'oauth2',
         {
@@ -98,7 +86,7 @@ const handleCallback = async (req, res, next) => {
         },
         (err, user) => {
             if (err || !user) {
-                if (err.name === 'AuthorizationError' && err.code === 'login_required') {
+                if (err?.name === 'AuthorizationError' && err?.code === 'login_required') {
                     return res.redirect(req.session.returnTo);
                 } else {
                     return next(err || new Error('Authentication failed'));
@@ -110,14 +98,18 @@ const handleCallback = async (req, res, next) => {
                 }
                 res.set('Cache-Control', 'no-store');
                 let returnTo = req.user.returnTo;
-                    if (!config.advanced.disableOrgCallback && returnTo == null) {
-                        returnTo = `/${req.params.orgName}`;
+                if (!config.advanced?.disableOrgCallback && returnTo == null) {
+                    returnTo = `/${req.params.orgName}`;
+                }
+                returnTo = returnTo || `/${req.params.orgName}`;
+                delete req.session.returnTo;
+                // todo: track login success
+                req.session.save((saveErr) => {
+                    if (saveErr) {
+                        logger.error('Session save failed after login', { error: saveErr.message });
                     }
-                    delete req.session.returnTo;
-                    // todo: track login success
-                    req.session.save(() => {
-                        res.redirect(returnTo);
-                    })
+                    res.redirect(returnTo);
+                });
             });
         })(req, res, next);
 };
@@ -132,7 +124,7 @@ const handleSignUp = async (req, res) => {
         return res.status(400).json(util.getErrors(errors));
     }
     const authJsonContent = config.identityProvider;
-    if (authJsonContent.signUpURL) {
+    if (authJsonContent?.signUpURL) {
         res.redirect(authJsonContent.signUpURL);
     } else {
         const returnTo = req.session.returnTo || `/${req.params.orgName}`;
@@ -168,15 +160,17 @@ const handleLogOut = async (req, res) => {
                 });
             }
             logUserAction('USER_LOGOUT', req, { orgName: req.params.orgName });
-            req.session.destroy(() => {
-                res.set('Cache-Control', 'no-store');
+            req.session.destroy((destroyErr) => {
+                if (destroyErr) {
+                    logger.error('Session destroy failed on local-auth logout', { error: destroyErr.message });
+                }
                 res.redirect(req.originalUrl.replace('/logout', '/login'));
             });
         });
     } else if (req.user && req.user.accessToken) {
         const referer = req.get('referer');
         const regex = /(.+\/views\/[^\/]+)\/?/;
-        const match = referer.match(regex);
+        const match = referer ? referer.match(regex) : null;
         const logoutURL = match ? match[1] : null;
         req.logout((err) => {
             if (err) {
@@ -193,7 +187,12 @@ const handleLogOut = async (req, res) => {
             });
             trackLogoutTrigger({ orgName: req.params.orgName }, req);
             req.session.currentPathURI = currentPathURI;
-            res.redirect(`${authJsonContent.logoutURL}?post_logout_redirect_uri=${authJsonContent.logoutRedirectURI}&id_token_hint=${idToken}`);
+            req.session.save((saveErr) => {
+                if (saveErr) {
+                    logger.error('Session save failed before IDP logout redirect', { error: saveErr.message });
+                }
+                res.redirect(`${authJsonContent.logoutURL}?post_logout_redirect_uri=${authJsonContent.logoutRedirectURI}&id_token_hint=${idToken}`);
+            });
         });
     } else {
         // Unauthenticated or session already gone — original behaviour
@@ -202,25 +201,31 @@ const handleLogOut = async (req, res) => {
 };
 
 const handleLogOutLanding = async (req, res) => {
-    const currentPathURI = req.session.currentPathURI;
-    req.session.destroy();
-    res.redirect(currentPathURI);
+    const currentPathURI = req.session.currentPathURI || '/';
+    req.session.destroy((err) => {
+        if (err) {
+            logger.error('Session destroy failed on logout landing', { error: err.message });
+        }
+        res.redirect(currentPathURI);
+    });
 }
 
 const handleSilentSSO = async (req, res, next) => {
-
     // Skip if no IDP configured or silent SSO is disabled
     if (!config.identityProvider?.clientId || config.advanced?.disableSilentSSO) return next();
 
-    await req.session.save((err) => {
-        req.session.returnTo = req.originalUrl;
+    if (req.isAuthenticated() || req.session.silentAuthRedirected) {
+        return next();
+    }
 
-        if (req.isAuthenticated() || req.session.silentAuthRedirected) {
+    req.session.returnTo = req.originalUrl;
+    req.session.silentAuthRedirected = true;
+    req.session.save((err) => {
+        if (err) {
+            logger.error('Session save failed during silent SSO', { error: err.message });
             return next();
-        } else {
-            passport.authenticate('oauth2', { prompt: 'none' })(req, res, () => { });
-            req.session.silentAuthRedirected = true;
         }
+        passport.authenticate('oauth2', { prompt: 'none' })(req, res, next);
     });
 };
 
@@ -271,9 +276,9 @@ const handleLocalLogin = async (req, res) => {
         return res.redirect(`${baseUrl}/login?error=Login+failed%2C+please+try+again`);
     }
 
-    const adminRole = config.identityProvider.adminRole || 'admin';
-    const superAdminRole = config.identityProvider.superAdminRole || 'superAdmin';
-    const subscriberRole = config.identityProvider.subscriberRole || 'Internal/subscriber';
+    const adminRole = config.identityProvider?.adminRole || 'admin';
+    const superAdminRole = config.identityProvider?.superAdminRole || 'superAdmin';
+    const subscriberRole = config.identityProvider?.subscriberRole || 'Internal/subscriber';
     // Users with any _manage scope are treated as admins in the devportal
     const isAdmin = claims.scopes.some(s => s.endsWith('_manage'));
     const roles = isAdmin ? [adminRole] : [subscriberRole];
@@ -321,7 +326,12 @@ const handleLocalLogin = async (req, res) => {
             }
             res.set('Cache-Control', 'no-store');
             const redirectTo = returnTo || baseUrl;
-            req.session.save(() => res.redirect(redirectTo));
+            req.session.save((saveErr) => {
+                if (saveErr) {
+                    logger.error('Session save failed after local login', { error: saveErr.message });
+                }
+                res.redirect(redirectTo);
+            });
         });
     });
 };

@@ -34,7 +34,7 @@ func writeTempCR(t *testing.T, name, content string) string {
 }
 
 func TestParseResourceCR_ValidYAML(t *testing.T) {
-	path := writeTempCR(t, "plan.yaml", `apiVersion: gateway.api-platform.wso2.com/v1alpha1
+	path := writeTempCR(t, "plan.yaml", `apiVersion: gateway.api-platform.wso2.com/v1
 kind: SubscriptionPlan
 metadata:
   name: bronze-1k-per-min

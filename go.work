@@ -19,5 +19,6 @@ use (
 	./samples/sample-service
 	./sdk/ai
 	./sdk/core
+	./tests/integration-e2e
 	./tests/mock-servers/mock-platform-api
 )

@@ -34,6 +34,7 @@ import (
 	"github.com/gorilla/websocket"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	_ "github.com/mattn/go-sqlite3"
+	_ "github.com/microsoft/go-mssqldb"
 )
 
 const (
@@ -66,6 +67,16 @@ func main() {
 			getEnv("DB_SSLMODE", "disable"),
 		)
 		log.Printf("Mock platform-api using Postgres at %s", getEnv("DB_HOST", "localhost"))
+	} else if dbType == "sqlserver" {
+		dbDSN = fmt.Sprintf("sqlserver://%s:%s@%s:%s?database=%s&encrypt=%s&TrustServerCertificate=true",
+			getEnv("DB_USER", "sa"),
+			getEnv("DB_PASSWORD", "gateway"),
+			getEnv("DB_HOST", "localhost"),
+			getEnv("DB_PORT", "1433"),
+			getEnv("DB_NAME", "gateway_test"),
+			getEnv("DB_ENCRYPT", "disable"),
+		)
+		log.Printf("Mock platform-api using SQL Server at %s", getEnv("DB_HOST", "localhost"))
 	} else {
 		dbPath = os.Getenv("GATEWAY_DB_PATH")
 		if dbPath == "" {
@@ -240,9 +251,12 @@ func getEnv(key, def string) string {
 func getDeploymentUUID(handle string) (string, error) {
 	var db *sql.DB
 	var err error
-	if dbType == "postgres" {
+	switch dbType {
+	case "postgres":
 		db, err = sql.Open("pgx", dbDSN)
-	} else {
+	case "sqlserver":
+		db, err = sql.Open("sqlserver", dbDSN)
+	default:
 		db, err = sql.Open("sqlite3", dbPath)
 	}
 	if err != nil {
@@ -251,12 +265,18 @@ func getDeploymentUUID(handle string) (string, error) {
 	defer db.Close()
 
 	var uuid string
-	if dbType == "postgres" {
+	switch dbType {
+	case "postgres":
 		err = db.QueryRow(
 			"SELECT uuid FROM artifacts WHERE handle = $1 AND kind = 'RestApi' LIMIT 1",
 			handle,
 		).Scan(&uuid)
-	} else {
+	case "sqlserver":
+		err = db.QueryRow(
+			"SELECT TOP 1 uuid FROM artifacts WHERE handle = @p1 AND kind = 'RestApi'",
+			handle,
+		).Scan(&uuid)
+	default:
 		err = db.QueryRow(
 			"SELECT uuid FROM artifacts WHERE handle = ? AND kind = 'RestApi' LIMIT 1",
 			handle,

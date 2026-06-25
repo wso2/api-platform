@@ -1010,16 +1010,16 @@
   font-weight: 600;
 }
 
-/* ── Subscription policy checkbox cards ─────────────────── */
+/* ── Subscription plan checkbox cards ─────────────────── */
 
-.cfg-policy-list {
+.cfg-plan-list {
   display: flex;
   flex-direction: column;
   gap: 8px;
   margin-top: 4px;
 }
 
-.cfg-policy-card {
+.cfg-plan-card {
   display: flex;
   align-items: center;
   gap: 13px;
@@ -1030,14 +1030,14 @@
   transition: border-color 0.15s, background 0.15s;
 }
 
-.cfg-policy-card:hover { border-color: #c3d0de; background: #f8fafc; }
+.cfg-plan-card:hover { border-color: #c3d0de; background: #f8fafc; }
 
-.cfg-policy-card.selected {
+.cfg-plan-card.selected {
   border-color: #1f6feb;
   background: #f5f9ff;
 }
 
-.cfg-policy-card input[type=checkbox] {
+.cfg-plan-card input[type=checkbox] {
   accent-color: #1f6feb;
   width: 15px;
   height: 15px;
@@ -1045,13 +1045,13 @@
   cursor: pointer;
 }
 
-.cfg-policy-card-name {
+.cfg-plan-card-name {
   font-size: 0.844rem;
   font-weight: 600;
   color: #1a2433;
 }
 
-.cfg-policy-card-sub {
+.cfg-plan-card-sub {
   font-size: 0.75rem;
   color: #637282;
   margin-top: 1px;
@@ -1126,7 +1126,7 @@
 .cfg-icon-btn--danger { color: #c62828; border-color: #f3c6c6; }
 .cfg-icon-btn--danger:hover { background: #fdecec; border-color: #e88; }
 
-/* ── Subscription policies table extras ──────────────────── */
+/* ── Subscription plans table extras ──────────────────── */
 
 .cfg-count-chip {
   font-family: monospace;
@@ -1135,7 +1135,7 @@
   font-weight: 600;
 }
 
-.cfg-policy-type-badge {
+.cfg-plan-type-badge {
   display: inline-flex;
   align-items: center;
   border-radius: 6px;
@@ -1144,10 +1144,10 @@
   font-weight: 600;
 }
 
-.cfg-policy-type--request { background: #e6f2fb; color: #0277bd; }
-.cfg-policy-type--event   { background: #e6f4ea; color: #2e7d32; }
+.cfg-plan-type--request { background: #e6f2fb; color: #0277bd; }
+.cfg-plan-type--event   { background: #e6f4ea; color: #2e7d32; }
 
-/* ── Add / Edit modal (labels, policies) ─────────────────── */
+/* ── Add / Edit modal (labels, plans) ─────────────────── */
 
 .cfg-form-modal {
   width: 460px;
@@ -1332,7 +1332,7 @@
   margin: 5px 6px;
 }
 
-/* ── Empty state (labels / policies) ────────────────────── */
+/* ── Empty state (labels / plans) ────────────────────── */
 
 .cfg-tbl-empty {
   text-align: center;

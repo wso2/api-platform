@@ -127,7 +127,7 @@ func TestLLMTemplateParams(t *testing.T) {
 
 func testLLMTemplateYAML(handle, displayName string) []byte {
 	return []byte(fmt.Sprintf(`
-apiVersion: gateway.api-platform.wso2.com/v1alpha1
+apiVersion: gateway.api-platform.wso2.com/v1
 kind: LlmProviderTemplate
 metadata:
   name: %s
@@ -140,7 +140,7 @@ func testLLMProviderYAML(t *testing.T, handle, displayName, template string) []b
 	t.Helper()
 
 	cfg := api.LLMProviderConfiguration{
-		ApiVersion: api.LLMProviderConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		ApiVersion: api.LLMProviderConfigurationApiVersionGatewayApiPlatformWso2Comv1,
 		Kind:       api.LLMProviderConfigurationKindLlmProvider,
 		Metadata: api.Metadata{
 			Name: handle,
@@ -168,7 +168,7 @@ func testLLMProxyYAML(t *testing.T, handle, displayName, providerHandle string) 
 	t.Helper()
 
 	cfg := api.LLMProxyConfiguration{
-		ApiVersion: api.LLMProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		ApiVersion: api.LLMProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1,
 		Kind:       api.LLMProxyConfigurationKindLlmProxy,
 		Metadata: api.Metadata{
 			Name: handle,
@@ -194,7 +194,7 @@ func testStoredLLMTemplate(uuid, handle, displayName string) *models.StoredLLMPr
 	return &models.StoredLLMProviderTemplate{
 		UUID: uuid,
 		Configuration: api.LLMProviderTemplate{
-			ApiVersion: api.LLMProviderTemplateApiVersionGatewayApiPlatformWso2Comv1alpha1,
+			ApiVersion: api.LLMProviderTemplateApiVersionGatewayApiPlatformWso2Comv1,
 			Kind:       api.LLMProviderTemplateKindLlmProviderTemplate,
 			Metadata: api.Metadata{
 				Name: handle,
@@ -481,7 +481,7 @@ func TestLLMDeploymentService_CreateLLMProviderTemplate_ValidationError(t *testi
 
 	// Template with empty metadata name
 	yamlData := `
-apiVersion: gateway.api-platform.wso2.com/v1alpha1
+apiVersion: gateway.api-platform.wso2.com/v1
 kind: LlmProviderTemplate
 metadata:
   name: ""
@@ -539,7 +539,7 @@ func TestLLMDeploymentService_UpdateLLMProviderTemplate_HandleChange(t *testing.
 
 	// Try to update with different handle
 	yamlData := `
-apiVersion: gateway.api-platform.wso2.com/v1alpha1
+apiVersion: gateway.api-platform.wso2.com/v1
 kind: LlmProviderTemplate
 metadata:
   name: different-handle
@@ -871,7 +871,7 @@ func TestLLMDeploymentService_DeployLLMProxyConfiguration_ConflictValidation(t *
 		DisplayName: "Provider A",
 		Version:     "1.0.0",
 		SourceConfiguration: api.LLMProviderConfiguration{
-			ApiVersion: api.LLMProviderConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+			ApiVersion: api.LLMProviderConfigurationApiVersionGatewayApiPlatformWso2Comv1,
 			Kind:       api.LLMProviderConfigurationKindLlmProvider,
 			Metadata: api.Metadata{
 				Name: "provider-a",
@@ -1018,7 +1018,7 @@ func TestLLMDeploymentService_DeleteLLMProvider_WithDBAndEventHubPublishesDelete
 		DisplayName: "LLM Provider Delete",
 		Version:     "v1.0.0",
 		SourceConfiguration: api.LLMProviderConfiguration{
-			ApiVersion: api.LLMProviderConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+			ApiVersion: api.LLMProviderConfigurationApiVersionGatewayApiPlatformWso2Comv1,
 			Kind:       api.LLMProviderConfigurationKindLlmProvider,
 			Metadata: api.Metadata{
 				Name: "llm-provider-delete",
@@ -1094,7 +1094,7 @@ func TestLLMDeploymentService_DeleteLLMProxy_WithDBAndEventHubPublishesDeleteAnd
 		DisplayName: "Provider A",
 		Version:     "v1.0.0",
 		SourceConfiguration: api.LLMProviderConfiguration{
-			ApiVersion: api.LLMProviderConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+			ApiVersion: api.LLMProviderConfigurationApiVersionGatewayApiPlatformWso2Comv1,
 			Kind:       api.LLMProviderConfigurationKindLlmProvider,
 			Metadata: api.Metadata{
 				Name: "provider-a",
@@ -1120,7 +1120,7 @@ func TestLLMDeploymentService_DeleteLLMProxy_WithDBAndEventHubPublishesDeleteAnd
 		DisplayName: "LLM Proxy Delete",
 		Version:     "v1.0.0",
 		SourceConfiguration: api.LLMProxyConfiguration{
-			ApiVersion: api.LLMProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+			ApiVersion: api.LLMProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1,
 			Kind:       api.LLMProxyConfigurationKindLlmProxy,
 			Metadata: api.Metadata{
 				Name: "llm-proxy-delete",
@@ -1296,7 +1296,7 @@ func TestLLMDeploymentService_InitializeOOBTemplates_ValidTemplates(t *testing.T
 
 	templates := map[string]*api.LLMProviderTemplate{
 		"openai": {
-			ApiVersion: api.LLMProviderTemplateApiVersionGatewayApiPlatformWso2Comv1alpha1,
+			ApiVersion: api.LLMProviderTemplateApiVersionGatewayApiPlatformWso2Comv1,
 			Kind:       api.LLMProviderTemplateKindLlmProviderTemplate,
 			Metadata:   api.Metadata{Name: "openai"},
 			Spec: api.LLMProviderTemplateData{
@@ -1337,7 +1337,7 @@ func TestLLMDeploymentService_InitializeOOBTemplates_UpdateExisting(t *testing.T
 	// Initialize with updated template
 	templates := map[string]*api.LLMProviderTemplate{
 		"existing": {
-			ApiVersion: api.LLMProviderTemplateApiVersionGatewayApiPlatformWso2Comv1alpha1,
+			ApiVersion: api.LLMProviderTemplateApiVersionGatewayApiPlatformWso2Comv1,
 			Kind:       api.LLMProviderTemplateKindLlmProviderTemplate,
 			Metadata:   api.Metadata{Name: "existing"},
 			Spec: api.LLMProviderTemplateData{

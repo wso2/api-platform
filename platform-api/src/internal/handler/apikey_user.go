@@ -22,6 +22,7 @@ import (
 	"net/http"
 	"strings"
 
+	"platform-api/src/internal/constants"
 	"platform-api/src/internal/middleware"
 	"platform-api/src/internal/service"
 	"platform-api/src/internal/utils"
@@ -43,7 +44,7 @@ func NewAPIKeyUserHandler(apiKeyUserService *service.APIKeyUserService, slogger 
 	}
 }
 
-// ListUserAPIKeys handles GET /api/v1/me/api-keys
+// ListUserAPIKeys handles GET /api/v0.9/me/api-keys
 func (h *APIKeyUserHandler) ListUserAPIKeys(c *gin.Context) {
 	orgID, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {
@@ -72,5 +73,5 @@ func (h *APIKeyUserHandler) ListUserAPIKeys(c *gin.Context) {
 
 // RegisterRoutes registers the user API key routes.
 func (h *APIKeyUserHandler) RegisterRoutes(r *gin.Engine) {
-	r.GET("/api/v1/me/api-keys", h.ListUserAPIKeys)
+	r.GET(constants.APIBasePath + "/me/api-keys", h.ListUserAPIKeys)
 }

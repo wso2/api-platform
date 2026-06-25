@@ -9,9 +9,7 @@ spec:
   displayName: Catalog API
   version: v1.0
   description: Sample product catalog API. Requires API key authentication. Subscribe to a Gold or Bronze plan — no subscription token header required in requests.
-  provider: WSO2
   status: PUBLISHED
-  gatewayType: wso2/api-platform
   referenceID: catalog-api-v1.0
 
   tags:
@@ -22,11 +20,12 @@ spec:
   labels:
     - default
 
-  subscriptionPolicies:
+  subscriptionPlans:
     - Gold
     - Bronze
 
   visibility: PUBLIC
+  agentVisibility: VISIBLE
   visibleGroups: []
 
   businessInformation:

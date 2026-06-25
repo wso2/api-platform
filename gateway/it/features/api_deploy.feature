@@ -28,7 +28,7 @@ Feature: API Deployment and Invocation
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: weather-api-v1.0
@@ -66,7 +66,7 @@ Feature: API Deployment and Invocation
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: labeled-api-v1.0
@@ -106,7 +106,7 @@ Feature: API Deployment and Invocation
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: invalid-labels-api-v1.0
@@ -133,7 +133,7 @@ Feature: API Deployment and Invocation
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: invalid-upstream-query-api-v1.0
@@ -165,7 +165,7 @@ Feature: API Deployment and Invocation
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: invalid-upstream-bare-query-api-v1.0
@@ -197,7 +197,7 @@ Feature: API Deployment and Invocation
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: invalid-upstream-fragment-api-v1.0
@@ -229,7 +229,7 @@ Feature: API Deployment and Invocation
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: invalid-upstream-query-fragment-api-v1.0

@@ -383,6 +383,10 @@ func (s *RestAPIService) Delete(params DeleteParams) (*DeleteResult, error) {
 		return nil, ErrNotFound
 	}
 
+	// For gateway-originated APIs that were successfully synced to on-prem APIM,
+	// undeploy the revision from APIM before removing the local record.
+	s.undeployFromAPIMBeforeDelete(cfg, log)
+
 	// Delete from database
 	if err := s.db.DeleteConfig(cfg.UUID); err != nil {
 		log.Error("Failed to delete config from database", slog.Any("error", err))
@@ -412,6 +416,47 @@ func (s *RestAPIService) Delete(params DeleteParams) (*DeleteResult, error) {
 		slog.String("handle", params.Handle))
 
 	return &DeleteResult{Handle: params.Handle}, nil
+}
+
+// undeployFromAPIMBeforeDelete undeploys a gateway-originated API from on-prem APIM
+// synchronously before the local record is deleted. This will be skipped when:
+//   - the API was not created on the gateway (origin != gateway_api)
+//   - the API was never successfully synced to APIM (CPSyncInfo is empty)
+//   - the control plane client is not available or not in on-prem mode
+//
+// Failures are logged as warnings — the local delete proceeds regardless.
+func (s *RestAPIService) undeployFromAPIMBeforeDelete(cfg *models.StoredConfig, log *slog.Logger) {
+	if cfg.Origin != models.OriginGatewayAPI || cfg.CPSyncInfo == "" {
+		return
+	}
+	if s.controlPlaneClient == nil || !s.controlPlaneClient.IsOnPrem() {
+		return
+	}
+	apimCfg := s.controlPlaneClient.GetAPIMConfig()
+	if apimCfg == nil {
+		return
+	}
+
+	// Mark the record as pending undeploy. SyncArtifactsToOnPremAPIM will handle the undeployment.
+	cfg.DesiredState = models.StateUndeployed
+	if err := s.db.UpdateConfig(cfg); err != nil {
+		log.Warn("Failed to set desired_state=undeployed before APIM undeploy",
+			slog.String("uuid", cfg.UUID), slog.Any("error", err))
+		return
+	}
+	// Preserve CPSyncInfo so the undeploy sync can extract the APIM API ID and revision.
+	if err := s.db.UpdateCPSyncStatus(cfg.UUID, cfg.CPArtifactID, models.CPSyncStatusPending, cfg.CPSyncInfo); err != nil {
+		log.Warn("Failed to set cp_sync_status=pending before APIM undeploy",
+			slog.String("uuid", cfg.UUID), slog.Any("error", err))
+		return
+	}
+
+	if err := s.controlPlaneClient.SyncArtifactsToOnPremAPIM(apimCfg); err != nil {
+		log.Error("Failed to undeploy API from on-prem APIM before deletion",
+			slog.String("uuid", cfg.UUID),
+			slog.String("handle", cfg.Handle),
+			slog.Any("error", err))
+	}
 }
 
 // updatePolicyForConfig upserts the runtime config for an API into the policy engine.

@@ -21,9 +21,9 @@
   <h2 class="aov-plans-title" style="margin-bottom:0.875rem;">Subscription plans</h2>
 
   {{#each subscriptionPlans}}
-  <div class="aov-plan-card subscription-card{{#if (isCurrentPlan policyName @root.subscriptions)}} aov-plan-card--subscribed{{/if}}"
-    id="subscriptionCard-{{policyID}}"
-    data-policy-name="{{policyName}}">
+  <div class="aov-plan-card subscription-card{{#if (isCurrentPlan planName @root.subscriptions)}} aov-plan-card--subscribed{{/if}}"
+    id="subscriptionCard-{{planID}}"
+    data-policy-name="{{planName}}">
     <div class="aov-plan-ribbon" aria-hidden="true">
       <div class="aov-plan-ribbon-label mcp-ribbon-label">SUBSCRIBED</div>
     </div>
@@ -32,9 +32,9 @@
         <span class="aov-plan-icon" style="background:#eef1f5;color:#3a4f6a;">
           <i class="bi bi-lightning-charge-fill"></i>
         </span>
-        <span class="aov-plan-name">{{#if displayName}}{{displayName}}{{else}}{{policyName}}{{/if}}</span>
+        <span class="aov-plan-name">{{#if displayName}}{{displayName}}{{else}}{{planName}}{{/if}}</span>
       </div>
-      {{#unless (isCurrentPlan policyName @root.subscriptions)}}
+      {{#unless (isCurrentPlan planName @root.subscriptions)}}
       <span class="aov-recommended-badge mcp-recommended-badge" style="display:none;">RECOMMENDED</span>
       {{/unless}}
     </div>
@@ -44,19 +44,21 @@
     </div>
     <div class="position-relative">
       {{#if ../isAuthenticated}}
-        {{#if (isCurrentPlan policyName @root.subscriptions)}}
+        {{#if (isCurrentPlan planName @root.subscriptions)}}
         <button type="button"
           class="dp-btn dp-btn--outline dp-btn--block mcp-view-sub-btn"
-          data-policy-name="{{policyName}}">
+          data-policy-name="{{planName}}">
           <i class="bi bi-eye"></i> View subscription
         </button>
         {{else}}
-        <button id="subscribe-btn-{{policyID}}" type="button"
+        <button id="subscribe-btn-{{planID}}" type="button"
           class="dp-btn dp-btn--outline dp-btn--block subscribe-btn {{#if @root.isReadOnlyMode}}disabled{{/if}}"
           data-org-id="{{@root.orgID}}"
           data-api-id="{{../apiMetadata.apiID}}"
-          data-policy-id="{{policyID}}"
-          data-policy-name="{{policyName}}"
+          data-plan-id="{{planID}}"
+          data-plan-name="{{planName}}"
+          data-policy-id="{{planID}}"
+          data-policy-name="{{planName}}"
           data-display-name="{{displayName}}"
           onclick="handlePlanSubscription(this)"
           {{#if @root.isReadOnlyMode}}disabled{{/if}}><span class="aov-plan-spinner"></span>Subscribe</button>

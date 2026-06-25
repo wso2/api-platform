@@ -9,7 +9,6 @@ spec:
   displayName: TravelAssistantMCP
   version: 1.0.0
   description: MCP server for travel planning tools.
-  provider: WSO2
   status: PUBLISHED
 
   tags:
@@ -20,11 +19,12 @@ spec:
   labels:
     - default
 
-  subscriptionPolicies:
+  subscriptionPlans:
     - Gold
     - Bronze
 
   visibility: PUBLIC
+  agentVisibility: VISIBLE
   visibleGroups: []
 
   businessInformation:

@@ -192,7 +192,7 @@ async function registerAPILandingContent(req, orgID, partialObject) {
   }
   //fetch markdown content for API if exists
   const markdownResponse = await apiFileDao.get(constants.FILE_NAME.API_MD_CONTENT_FILE_NAME, constants.DOC_TYPES.API_LANDING, orgID, apiID);
-  const markdownContent = markdownResponse !== null ? markdownResponse.API_FILE.toString("utf8") : "";
+  const markdownContent = markdownResponse !== null ? markdownResponse.FILE_CONTENT.toString("utf8") : "";
   const markdownHtml = markdownContent ? markdown.parse(markdownContent) : "";
 
   let metaData = await apiMetadataService.getMetadataFromDB(orgID, apiID);
@@ -210,7 +210,7 @@ async function registerAPILandingContent(req, orgID, partialObject) {
   //if hbs content available for API, render the hbs page
   let additionalAPIContentResponse = await apiFileDao.get(constants.FILE_NAME.API_HBS_CONTENT_FILE_NAME, constants.DOC_TYPES.API_LANDING, orgID, apiID);
   if (additionalAPIContentResponse !== null) {
-    let additionalAPIContent = additionalAPIContentResponse.API_FILE.toString("utf8");
+    let additionalAPIContent = additionalAPIContentResponse.FILE_CONTENT.toString("utf8");
     partialObject[constants.FILE_NAME.API_CONTENT_PARTIAL_NAME] = additionalAPIContent ? additionalAPIContent : "";
     hbs.handlebars.partials[constants.FILE_NAME.API_CONTENT_PARTIAL_NAME] = hbs.handlebars.compile(
       partialObject[constants.FILE_NAME.API_CONTENT_PARTIAL_NAME])({
@@ -228,7 +228,7 @@ async function registerDocsPageContent(req, orgID, partialObject) {
   let markdownHtml = "";
   const docContentResponse = await apiFileDao.getDocByName(constants.DOC_TYPES.DOC_ID + docType, docName + ".md", orgID, apiID);
   if (docContentResponse !== null) {
-    const markdownContent = docContentResponse.API_FILE.toString("utf8");
+    const markdownContent = docContentResponse.FILE_CONTENT.toString("utf8");
     markdownHtml = markdownContent ? markdown.parse(markdownContent) : "";
     partialObject[constants.FILE_NAME.API_DOC_PARTIAL_NAME] = hbs.handlebars.partials[constants.FILE_NAME.API_DOC_PARTIAL_NAME];
   }

@@ -68,12 +68,18 @@ function configurePassport(SERVER_ID) {
             const firstName = decodedJWT['given_name'] || decodedJWT['nickname'];
             const lastName = decodedJWT['family_name'];
             const organizationID = getNestedClaim(decodedJWT, config.identityProvider.orgIDClaim) ?? '';
-            const roles = getNestedClaim(decodedJWT, config.identityProvider.roleClaim) ?? '';
-            const groups = getNestedClaim(decodedJWT, config.identityProvider.groupsClaim) ?? '';
-            if (roles.includes(constants.ROLES.SUPER_ADMIN) || roles.includes(constants.ROLES.ADMIN)) {
+            const rawRoles = getNestedClaim(decodedJWT, config.identityProvider.roleClaim) ?? '';
+            const roles = Array.isArray(rawRoles)
+                ? rawRoles
+                : String(rawRoles).split(/[\s,]+/).filter(Boolean);
+            const rawGroups = getNestedClaim(decodedJWT, config.identityProvider.groupsClaim) ?? '';
+            const groups = Array.isArray(rawGroups)
+                ? rawGroups
+                : String(rawGroups).split(/[\s,]+/).filter(Boolean);
+            if (roles.includes(config.identityProvider.superAdminRole) || roles.includes(config.identityProvider.adminRole)) {
                 isAdmin = true;
             }
-            if (roles.includes(constants.ROLES.SUPER_ADMIN)) {
+            if (roles.includes(config.identityProvider.superAdminRole)) {
                 isSuperAdmin = true;
             }
             const returnTo = req.session.returnTo;
@@ -104,7 +110,7 @@ function configurePassport(SERVER_ID) {
                 [constants.ROLES.GROUP_CLAIM]: groups,
                 isAdmin,
                 isSuperAdmin,
-                [constants.USER_ID]: decodedAccessToken[constants.USER_ID],
+                [constants.USER_ID]: decodedAccessToken?.[constants.USER_ID],
                 serverId: SERVER_ID,
                 imageURL,
             };
@@ -126,7 +132,6 @@ function configurePassport(SERVER_ID) {
                         });
                         return done(err);
                     }
-                    logger.debug('Returning profile', { userId: profile[constants.USER_ID] });
                     return done(null, profile);
                 });
             });

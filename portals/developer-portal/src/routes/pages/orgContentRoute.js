@@ -22,21 +22,21 @@ const registerPartials = require('../../middlewares/registerPartials');
 const authController = require('../../controllers/authController');
 
 router.get('/:orgName/views/:viewName', (req, res, next) => {
-    if (req.params.orgName === 'favicon.ico' || req.params.orgName === 'images' || req.params.orgName === 'portal') {
+    if (req.params.orgName === 'favicon.ico' || req.params.orgName === 'images' || req.params.orgName === 'portal' || req.params.orgName === '__dev_reload') {
         return res.status(404).send('Not Found');
     }
     next();
 }, authController.handleSilentSSO, registerPartials, orgController.loadOrganizationContent);
 
 router.get('/:orgName', (req, res, next) => {
-    if (req.params.orgName === 'favicon.ico' || req.params.orgName === 'images' || req.params.orgName === 'portal') {
+    if (req.params.orgName === 'favicon.ico' || req.params.orgName === 'images' || req.params.orgName === 'portal' || req.params.orgName === '__dev_reload') {
         return res.status(404).send('Not Found');
     }
     return res.redirect(`${req.params.orgName}/views/default`);
 }, authController.handleSilentSSO, registerPartials, orgController.loadOrganizationContent);
 
 router.get('/', (req, res, next) => {
-    if (req.params.orgName === 'favicon.ico' || req.params.orgName === 'images' || req.params.orgName === 'portal') {
+    if (req.params.orgName === 'favicon.ico' || req.params.orgName === 'images' || req.params.orgName === 'portal' || req.params.orgName === '__dev_reload') {
         return res.status(404).send('Not Found');
     }
     next();

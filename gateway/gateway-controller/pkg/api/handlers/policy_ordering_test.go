@@ -199,7 +199,7 @@ func TestPolicyOrderingDeterministic(t *testing.T) {
 			}
 
 			apiCfg := api.RestAPI{
-				ApiVersion: api.RestAPIApiVersion(api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1),
+				ApiVersion: api.RestAPIApiVersion(api.RestAPIApiVersionGatewayApiPlatformWso2Comv1),
 				Kind:       api.RestAPIKindRestApi,
 				Spec:       specData,
 			}
@@ -278,7 +278,7 @@ func TestMultipleOperationsIndependentPolicies(t *testing.T) {
 	}
 
 	apiCfg := api.RestAPI{
-		ApiVersion: api.RestAPIApiVersion(api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1),
+		ApiVersion: api.RestAPIApiVersion(api.RestAPIApiVersionGatewayApiPlatformWso2Comv1),
 		Kind:       api.RestAPIKindRestApi,
 		Spec: api.APIConfigData{
 			DisplayName: "test-api",
@@ -424,7 +424,7 @@ func TestPolicyOrderingConsistency(t *testing.T) {
 	}
 
 	apiCfg := api.RestAPI{
-		ApiVersion: api.RestAPIApiVersion(api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1),
+		ApiVersion: api.RestAPIApiVersion(api.RestAPIApiVersionGatewayApiPlatformWso2Comv1),
 		Kind:       api.RestAPIKindRestApi,
 		Spec: api.APIConfigData{
 			DisplayName: "test-api",

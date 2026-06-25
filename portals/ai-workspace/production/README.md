@@ -152,6 +152,9 @@ controlplane_host = "<platform-api-host>"
 
 # Default region assigned to new organizations on first login.
 default_org_region = "us"
+
+# Available gateway versions shown in the create-gateway version selector (JSON array string).
+platform_gateway_versions = '[{"version":"1.1","latestVersion":"v1.1.0","channel":"LTS"},{"version":"1.0","latestVersion":"v1.0.0","channel":"LTS"}]'
 ```
 
 > **Redirect URIs** are derived automatically from `domain`:
@@ -160,19 +163,20 @@ default_org_region = "us"
 
 ### config.toml → environment variable mapping
 
-| config.toml key        | Environment variable           |
-|------------------------|-------------------------------|
-| `domain`               | `VITE_DOMAIN`                 |
-| `auth_mode`            | `VITE_AUTH_MODE`              |
-| `oidc_authority`       | `VITE_OIDC_AUTHORITY`         |
-| `oidc_client_id`       | `VITE_OIDC_CLIENT_ID`         |
-| `oidc_org_id_claim`    | `VITE_OIDC_ORG_ID_CLAIM`      |
-| `oidc_org_name_claim`  | `VITE_OIDC_ORG_NAME_CLAIM`    |
-| `oidc_org_handle_claim`| `VITE_OIDC_ORG_HANDLE_CLAIM`  |
-| `oidc_scope`           | `VITE_OIDC_SCOPE`             |
-| `platform_api_base_url`| `VITE_PLATFORM_API_BASE_URL`  |
-| `controlplane_host`    | `VITE_CONTROLPLANE_HOST`      |
-| `default_org_region`   | `VITE_DEFAULT_ORG_REGION`     |
+| config.toml key              | Environment variable              |
+|------------------------------|-----------------------------------|
+| `domain`                     | `VITE_DOMAIN`                     |
+| `auth_mode`                  | `VITE_AUTH_MODE`                  |
+| `oidc_authority`             | `VITE_OIDC_AUTHORITY`             |
+| `oidc_client_id`             | `VITE_OIDC_CLIENT_ID`             |
+| `oidc_org_id_claim`          | `VITE_OIDC_ORG_ID_CLAIM`          |
+| `oidc_org_name_claim`        | `VITE_OIDC_ORG_NAME_CLAIM`        |
+| `oidc_org_handle_claim`      | `VITE_OIDC_ORG_HANDLE_CLAIM`      |
+| `oidc_scope`                 | `VITE_OIDC_SCOPE`                 |
+| `platform_api_base_url`      | `VITE_PLATFORM_API_BASE_URL`      |
+| `controlplane_host`          | `VITE_CONTROLPLANE_HOST`          |
+| `default_org_region`         | `VITE_DEFAULT_ORG_REGION`         |
+| `platform_gateway_versions`  | `VITE_PLATFORM_GATEWAY_VERSIONS`  |
 
 Environment variables (e.g. passed via `docker run -e` or a Kubernetes `env:` block) always
 override the corresponding `config.toml` value.

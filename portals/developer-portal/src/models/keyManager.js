@@ -18,7 +18,6 @@
 const { Sequelize, DataTypes } = require('sequelize');
 const sequelize = require('../db/sequelizeConfig');
 const { Organization } = require('./organization');
-const constants = require('../utils/constants');
 
 const KeyManager = sequelize.define('DP_KEY_MANAGER', {
     KM_ID: {
@@ -35,13 +34,7 @@ const KeyManager = sequelize.define('DP_KEY_MANAGER', {
         allowNull: false
     },
     TYPE: {
-        type: DataTypes.ENUM,
-        values: [
-            constants.KEY_MANAGER_TYPES.ASGARDEO,
-            constants.KEY_MANAGER_TYPES.WSO2IS,
-            constants.KEY_MANAGER_TYPES.KEYCLOAK,
-            constants.KEY_MANAGER_TYPES.GENERIC_OIDC
-        ],
+        type: DataTypes.STRING,
         allowNull: false
     },
     ENABLED: {

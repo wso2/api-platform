@@ -35,7 +35,7 @@ Feature: Subscription Validation
     # Step 2: Deploy API with subscription plan and subscription-validation policy
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: subscription-validation-test-api

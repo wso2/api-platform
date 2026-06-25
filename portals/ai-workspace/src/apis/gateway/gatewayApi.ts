@@ -50,6 +50,10 @@ function transformRequestToApiFormat(
     description: request.description,
   };
 
+  if ('version' in request && request.version) {
+    payload.version = request.version;
+  }
+
   if ('environment' in request && request.environment) {
     payload.properties = {
       environment: request.environment,

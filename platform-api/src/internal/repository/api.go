@@ -552,36 +552,17 @@ func (r *APIRepo) CheckAPIExistsByNameAndVersionInOrganization(name, version, or
 
 // CreateAPIAssociation creates an association between an API and resource (e.g., gateway or dev portal)
 func (r *APIRepo) CreateAPIAssociation(association *model.APIAssociation) error {
-	if r.db.Driver() == "postgres" || r.db.Driver() == "postgresql" {
-		// PostgreSQL: use RETURNING to get the generated ID
-		query := `
-			INSERT INTO association_mappings (artifact_uuid, organization_uuid, resource_uuid, association_type, created_at, updated_at)
-			VALUES (?, ?, ?, ?, ?, ?)
-			RETURNING id
-		`
-		if err := r.db.QueryRow(r.db.Rebind(query), association.ArtifactID, association.OrganizationID, association.ResourceID,
-			association.AssociationType, association.CreatedAt, association.UpdatedAt).Scan(&association.ID); err != nil {
-			return err
-		}
-	} else {
-		// SQLite: use LastInsertId
-		query := `
-			INSERT INTO association_mappings (artifact_uuid, organization_uuid, resource_uuid, association_type, created_at, updated_at)
-			VALUES (?, ?, ?, ?, ?, ?)
-		`
-		result, err := r.db.Exec(r.db.Rebind(query), association.ArtifactID, association.OrganizationID, association.ResourceID,
-			association.AssociationType, association.CreatedAt, association.UpdatedAt)
-		if err != nil {
-			return err
-		}
-
-		lastID, err := result.LastInsertId()
-		if err != nil {
-			return err
-		}
-		association.ID = lastID
+	query := `
+		INSERT INTO association_mappings (artifact_uuid, organization_uuid, resource_uuid, association_type, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?)
+	`
+	id, err := r.db.InsertAndReturnID(query,
+		association.ArtifactID, association.OrganizationID, association.ResourceID,
+		association.AssociationType, association.CreatedAt, association.UpdatedAt)
+	if err != nil {
+		return err
 	}
-
+	association.ID = id
 	return nil
 }
 

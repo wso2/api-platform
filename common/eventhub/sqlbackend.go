@@ -30,6 +30,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/jmoiron/sqlx"
+	mssql "github.com/microsoft/go-mssqldb"
 )
 
 const (
@@ -107,6 +108,8 @@ func bindTypeForDB(db *sql.DB) int {
 	switch db.Driver().(type) {
 	case *stdlib.Driver:
 		return sqlx.DOLLAR
+	case *mssql.Driver:
+		return sqlx.AT
 	default:
 		return sqlx.QUESTION
 	}
@@ -114,6 +117,30 @@ func bindTypeForDB(db *sql.DB) int {
 
 func (b *SQLBackend) rebind(query string) string {
 	return sqlx.Rebind(b.bindType, query)
+}
+
+// limitClause returns a portable row-limit clause. SQL Server does not support
+// LIMIT and instead uses ANSI OFFSET/FETCH (which requires an ORDER BY — every
+// call site here is already ordered). The single `?` is rebound like any other.
+func (b *SQLBackend) limitClause() string {
+	if b.bindType == sqlx.AT {
+		return "OFFSET 0 ROWS FETCH NEXT ? ROWS ONLY"
+	}
+	return "LIMIT ?"
+}
+
+// ensureGatewayInsertSQL returns a portable "insert if absent" for gateway_states.
+// SQL Server has no INSERT ... ON CONFLICT; it uses a guarded IF NOT EXISTS with a
+// key-range lock (UPDLOCK, SERIALIZABLE) to stay race-safe under concurrent
+// publishes. Both forms take the gateway id as a single bind parameter — the
+// SQL Server form references @p1 twice (one argument), and is left untouched by
+// rebind (it contains no `?`).
+func (b *SQLBackend) ensureGatewayInsertSQL() string {
+	if b.bindType == sqlx.AT {
+		return `IF NOT EXISTS (SELECT 1 FROM gateway_states WITH (UPDLOCK, SERIALIZABLE) WHERE gateway_id = @p1)
+			INSERT INTO gateway_states (gateway_id, version_id) VALUES (@p1, '')`
+	}
+	return `INSERT INTO gateway_states (gateway_id, version_id) VALUES (?, '') ON CONFLICT (gateway_id) DO NOTHING`
 }
 
 // Initialize prepares statements and starts background goroutines
@@ -181,12 +208,10 @@ func (b *SQLBackend) prepareStatements() (err error) {
 		return fmt.Errorf("failed to prepare update gateway version statement: %w", err)
 	}
 
-	// Idempotent upsert — creates the gateway_states row when publishing for a gateway
+	// Idempotent insert — creates the gateway_states row when publishing for a gateway
 	// that has not yet established a WebSocket connection (and therefore has not been
-	// explicitly registered).  ON CONFLICT DO NOTHING leaves an existing row unchanged.
-	b.ensureGatewayStmt, err = b.db.Prepare(b.rebind(`
-		INSERT INTO gateway_states (gateway_id, version_id) VALUES (?, '') ON CONFLICT (gateway_id) DO NOTHING
-	`))
+	// explicitly registered). Leaves an existing row unchanged.
+	b.ensureGatewayStmt, err = b.db.Prepare(b.rebind(b.ensureGatewayInsertSQL()))
 	if err != nil {
 		return fmt.Errorf("failed to prepare ensure gateway statement: %w", err)
 	}
@@ -203,7 +228,7 @@ func (b *SQLBackend) prepareStatements() (err error) {
 		FROM gateway_states
 		WHERE gateway_id > ?
 		ORDER BY gateway_id ASC
-		LIMIT ?
+		` + b.limitClause() + `
 	`))
 	if err != nil {
 		return fmt.Errorf("failed to prepare get gateway states page statement: %w", err)
@@ -220,7 +245,7 @@ func (b *SQLBackend) prepareStatements() (err error) {
 	}
 
 	b.getEventByIDStmt, err = b.db.Prepare(b.rebind(`
-		SELECT event_id FROM events WHERE event_id = ?
+		SELECT event_id FROM events WHERE gateway_id = ? AND event_id = ?
 	`))
 	if err != nil {
 		return fmt.Errorf("failed to prepare get event by ID statement: %w", err)
@@ -324,7 +349,7 @@ func (b *SQLBackend) Publish(gatewayID string, event Event) error {
 		}
 		err = nil
 
-		eventExists, checkErr := b.eventExists(eventID)
+		eventExists, checkErr := b.eventExists(gatewayID, eventID)
 		if checkErr != nil {
 			return fmt.Errorf("failed to check event existence after insert failure: %w", checkErr)
 		}
@@ -360,9 +385,9 @@ func (b *SQLBackend) Publish(gatewayID string, event Event) error {
 	return nil
 }
 
-func (b *SQLBackend) eventExists(eventID string) (bool, error) {
+func (b *SQLBackend) eventExists(gatewayID, eventID string) (bool, error) {
 	var existingEventID string
-	err := b.getEventByIDStmt.QueryRow(eventID).Scan(&existingEventID)
+	err := b.getEventByIDStmt.QueryRow(gatewayID, eventID).Scan(&existingEventID)
 	if err == nil {
 		return true, nil
 	}
