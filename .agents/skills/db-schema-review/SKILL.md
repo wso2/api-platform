@@ -8,7 +8,7 @@ description: |
   - Writing or evaluating a migration plan
   - Asking "is this table well designed?" or "what indexes does this table need?"
 
-  Applies house conventions: UUID primary keys (VARCHAR(40)), handle/name/version identity triple for named resources, org-scoping, JSONB only when JSON operators are used (Postgres) — otherwise VARCHAR or BLOB/BYTEA, audit columns (created_by/at, updated_by/at), data_version for on-the-fly migrations, and standard indexing patterns. Enum/status validation belongs in application code — do NOT add CHECK constraints for enum values at the DB layer.
+  Applies house conventions: UUID primary keys (VARCHAR(40)) for entity tables, composite PRIMARY KEY for junction/mapping tables (never UNIQUE-only — breaks Postgres logical replication), handle/name/version identity triple for named resources, org-scoping, JSONB only when JSON operators are used (Postgres) — otherwise VARCHAR or BLOB/BYTEA, audit columns (created_by/at, updated_by/at), data_version for on-the-fly migrations, and standard indexing patterns. Enum/status validation belongs in application code — do NOT add CHECK constraints for enum values at the DB layer.
 
   When the project uses Postgres, SQLite, and/or SQL Server schemas, all files must be kept in sync — every change to one must be reflected in the others unless it is an intentional type-level divergence (JSONB/TEXT/NVARCHAR(MAX), BYTEA/BLOB/VARBINARY(MAX), TIMESTAMPTZ/DATETIME/DATETIME2).
 allowed-tools: Bash, Read, Edit, Write, Grep, Glob
@@ -68,6 +68,8 @@ Before writing the final DDL to disk, confirm each item passes:
 
 ```
 [ ] R1  Every entity table has uuid VARCHAR(40) PRIMARY KEY
+[ ] R1  Junction/mapping tables use a composite PRIMARY KEY — not a surrogate UUID, not UNIQUE-only
+[ ] R1  Non-leading FK columns of a composite PK have their own indexes
 [ ] R1  Named resource tables carry handle + name + version (NOT NULL)
 [ ] R2  organization_uuid FK present and UNIQUE constraints include it (if org-scoped)
 [ ] R3  No TEXT columns — use VARCHAR(N), JSONB (Postgres, query-only), or BYTEA/BLOB
@@ -86,9 +88,25 @@ Before writing the final DDL to disk, confirm each item passes:
 [ ] R6  organization_uuid has an index (if org-scoped)
 [ ] R6  status has an index if the column is used as a filter
 [ ] R8  Change applied to all schema files (or divergence is intentional)
+[ ] R9  All DDL is idempotent — CREATE TABLE uses IF NOT EXISTS (Postgres/SQLite) or IF OBJECT_ID(...) IS NULL (SQL Server); CREATE INDEX uses IF NOT EXISTS
 ```
 
 #### A5 · Write the DDL
+
+All DDL must be idempotent — safe to re-run without errors. Use the engine-specific guard for each statement:
+
+```sql
+-- PostgreSQL / SQLite
+CREATE TABLE IF NOT EXISTS <table> (...);
+CREATE INDEX IF NOT EXISTS idx_... ON ...;
+
+-- SQL Server
+IF OBJECT_ID(N'dbo.<table>', N'U') IS NULL
+CREATE TABLE dbo.<table> (...);
+
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_...' AND object_id = OBJECT_ID(N'dbo.<table>'))
+CREATE INDEX idx_... ON dbo.<table>(...);
+```
 
 Keep `CREATE INDEX` statements in a dedicated indexes block after all `CREATE TABLE` statements, not inline in table definitions.
 
@@ -133,7 +151,40 @@ These rules apply in both Workflow A (making changes) and Workflow B (reviewing)
 
 Every table must have a single UUID primary key and, where it is a named resource, the standard identity triple.
 
-**R1-UUID** — Primary key must be `uuid VARCHAR(40) PRIMARY KEY`. Do not use `SERIAL`, `BIGINT`, or `INTEGER` as a primary key for domain entities. Junction/mapping tables may use a composite PK.
+**R1-UUID** — Primary key must be `uuid VARCHAR(40) PRIMARY KEY`. Do not use `SERIAL`, `BIGINT`, or `INTEGER` as a primary key for domain entities. Junction/mapping tables must use a composite PK (see R1-COMPOSITE-PK).
+
+**R1-COMPOSITE-PK** — Pure junction/mapping tables (those whose only purpose is to link two or more entities) must use a composite `PRIMARY KEY` over their FK columns — not a surrogate UUID, and not a bare `UNIQUE` constraint.
+
+Use a composite PK when **all** of the following are true:
+- Every query hits the table via the composite key (no query looks up a row by a single generated ID)
+- No other table holds a FK reference to a row in this table by a surrogate ID
+- The table has no independent lifecycle (rows are inserted or deleted, never updated in place by identity)
+
+Do **not** use a composite PK (use a UUID PK instead) when:
+- Another table references individual rows by ID (e.g. an audit log or event stream that stores a FK to this table's row)
+- The table is exposed as a standalone resource in an API with its own URL (e.g. `/associations/{id}`)
+
+**Why composite PK over UNIQUE-only** — A bare `UNIQUE` constraint without a `PRIMARY KEY` breaks Postgres logical replication for `UPDATE` and `DELETE` operations. Postgres `REPLICA IDENTITY DEFAULT` uses the PK to identify rows in the WAL stream; without a PK it falls back to `REPLICA IDENTITY FULL` (logs entire old row on every write — high WAL volume) or replication fails entirely. CDC tools (Debezium, AWS DMS) have the same requirement. Distributed SQL engines (CockroachDB, YugabyteDB) silently add a hidden PK if you omit one, with unpredictable sharding consequences.
+
+**Column order** — Put the most common filter/scope column first (typically `organization_uuid`), then the remaining FKs. The leading column is covered by the PK index; add separate indexes only for the non-leading FK columns.
+
+```sql
+-- Correct composite PK pattern
+CREATE TABLE IF NOT EXISTS <junction_table> (
+    organization_uuid  VARCHAR(40) NOT NULL,
+    entity_a_uuid      VARCHAR(40) NOT NULL,
+    entity_b_uuid      VARCHAR(40) NOT NULL,
+    created_at         TIMESTAMPTZ DEFAULT NOW(),
+    PRIMARY KEY (organization_uuid, entity_a_uuid, entity_b_uuid),
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (entity_a_uuid)     REFERENCES entity_a(uuid)      ON DELETE CASCADE,
+    FOREIGN KEY (entity_b_uuid)     REFERENCES entity_b(uuid)      ON DELETE CASCADE
+);
+
+-- Indexes for non-leading FK columns only (leading column covered by PK)
+CREATE INDEX IF NOT EXISTS idx_<junction_table>_entity_a_uuid ON <junction_table>(entity_a_uuid);
+CREATE INDEX IF NOT EXISTS idx_<junction_table>_entity_b_uuid ON <junction_table>(entity_b_uuid);
+```
 
 **R1-IDENTITY** — Tables representing named resources (APIs, gateways, providers, applications, subscriptions, or any domain entity with a stable slug and a display name) must carry the full identity triple directly:
 
@@ -446,6 +497,36 @@ When the project maintains schema files for multiple database engines (e.g. Post
 - Same index definitions
 
 **R8-SQLITE-NO-JSONB** — SQLite does not support `JSONB`. Any `JSONB` appearing in a SQLite schema file is a bug — all JSON columns must be `TEXT`.
+
+---
+
+### R9 · Idempotent DDL
+
+Every `CREATE TABLE` and `CREATE INDEX` statement must be safe to re-run. This allows schema files to be applied repeatedly (CI, fresh environments, disaster recovery) without errors.
+
+**R9-TABLE** — Use the engine-specific existence guard:
+
+```sql
+-- PostgreSQL / SQLite
+CREATE TABLE IF NOT EXISTS <table> (...);
+
+-- SQL Server
+IF OBJECT_ID(N'dbo.<table>', N'U') IS NULL
+CREATE TABLE dbo.<table> (...);
+```
+
+**R9-INDEX** — Use `IF NOT EXISTS` (Postgres/SQLite) or a `sys.indexes` check (SQL Server):
+
+```sql
+-- PostgreSQL / SQLite
+CREATE INDEX IF NOT EXISTS idx_... ON <table>(...);
+
+-- SQL Server
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_...' AND object_id = OBJECT_ID(N'dbo.<table>'))
+CREATE INDEX idx_... ON dbo.<table>(...);
+```
+
+A `CREATE TABLE` or `CREATE INDEX` without an existence guard is always a finding at MEDIUM severity.
 
 ---
 

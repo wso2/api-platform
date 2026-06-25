@@ -184,10 +184,10 @@ CREATE TABLE IF NOT EXISTS gateway_association_mappings (
     gateway_uuid VARCHAR(40) NOT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (organization_uuid, artifact_uuid, gateway_uuid),
     FOREIGN KEY (artifact_uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
-    FOREIGN KEY (gateway_uuid) REFERENCES gateways(uuid) ON DELETE CASCADE,
-    UNIQUE(organization_uuid, artifact_uuid, gateway_uuid)
+    FOREIGN KEY (gateway_uuid) REFERENCES gateways(uuid) ON DELETE CASCADE
 );
 
 -- Gateway Custom Policies table (org-scoped custom policies synced from gateway manifests)
@@ -532,6 +532,8 @@ CREATE TABLE IF NOT EXISTS events (
 
 CREATE INDEX IF NOT EXISTS idx_events_gateway_id_processed_timestamp ON events(gateway_id, processed_timestamp);
 CREATE INDEX IF NOT EXISTS idx_events_entity ON events(entity_type, entity_id);
+CREATE INDEX IF NOT EXISTS idx_gateway_association_mappings_artifact_uuid ON gateway_association_mappings(artifact_uuid);
+CREATE INDEX IF NOT EXISTS idx_gateway_association_mappings_gateway_uuid ON gateway_association_mappings(gateway_uuid);
 
 CREATE TABLE IF NOT EXISTS audit (
    uuid VARCHAR(40) PRIMARY KEY,
