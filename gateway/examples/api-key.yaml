@@ -16,7 +16,7 @@
 #
 # The optional spec.apiKey lets clients ship pre-generated keys; omit the
 # field to let the gateway-controller generate the value on POST.
-apiVersion: gateway.api-platform.wso2.com/v1alpha1
+apiVersion: gateway.api-platform.wso2.com/v1
 kind: ApiKey
 metadata:
   name: petstore-key-acme

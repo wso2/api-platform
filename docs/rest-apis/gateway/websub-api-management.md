@@ -10,7 +10,7 @@
 
 ```shell
 
-curl -X POST http://localhost:9090/api/management/v0.9/websub-apis \
+curl -X POST http://localhost:9090/api/management/v1/websub-apis \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -24,7 +24,7 @@ Add a new WebSubAPI to the Gateway.
 
 ```json
 {
-  "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+  "apiVersion": "gateway.api-platform.wso2.com/v1",
   "kind": "WebSubApi",
   "metadata": {
     "name": "github-events-v1.0"
@@ -68,7 +68,7 @@ Required roles: `admin`, `developer`
 
 ```json
 {
-  "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+  "apiVersion": "gateway.api-platform.wso2.com/v1",
   "kind": "WebSubApi",
   "metadata": {
     "name": "github-events-v1.0"
@@ -117,7 +117,7 @@ Required roles: `admin`, `developer`
 
 ```shell
 
-curl -X GET http://localhost:9090/api/management/v0.9/websub-apis \
+curl -X GET http://localhost:9090/api/management/v1/websub-apis \
   -u {username}:{password} \
   -H 'Accept: application/json'
 
@@ -160,7 +160,7 @@ Required roles: `admin`, `developer`
   "count": 5,
   "apis": [
     {
-      "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+      "apiVersion": "gateway.api-platform.wso2.com/v1",
       "kind": "WebSubApi",
       "metadata": {
         "name": "github-events-v1.0"
@@ -263,7 +263,7 @@ Status Code **200**
 
 |Property|Value|
 |---|---|
-|apiVersion|gateway.api-platform.wso2.com/v1alpha1|
+|apiVersion|gateway.api-platform.wso2.com/v1|
 |kind|WebSubApi|
 |deploymentState|deployed|
 |deploymentState|undeployed|
@@ -280,7 +280,7 @@ Status Code **200**
 
 ```shell
 
-curl -X POST http://localhost:9090/api/management/v0.9/websub-apis/{id}/api-keys \
+curl -X POST http://localhost:9090/api/management/v1/websub-apis/{id}/api-keys \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -357,7 +357,7 @@ Required roles: `admin`, `consumer`
 
 ```shell
 
-curl -X GET http://localhost:9090/api/management/v0.9/websub-apis/{id}/api-keys \
+curl -X GET http://localhost:9090/api/management/v1/websub-apis/{id}/api-keys \
   -u {username}:{password} \
   -H 'Accept: application/json'
 
@@ -422,7 +422,7 @@ Required roles: `admin`, `consumer`
 
 ```shell
 
-curl -X POST http://localhost:9090/api/management/v0.9/websub-apis/{id}/api-keys/{apiKeyName}/regenerate \
+curl -X POST http://localhost:9090/api/management/v1/websub-apis/{id}/api-keys/{apiKeyName}/regenerate \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -497,7 +497,7 @@ Required roles: `admin`, `consumer`
 
 ```shell
 
-curl -X PUT http://localhost:9090/api/management/v0.9/websub-apis/{id}/api-keys/{apiKeyName} \
+curl -X PUT http://localhost:9090/api/management/v1/websub-apis/{id}/api-keys/{apiKeyName} \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -575,7 +575,7 @@ Required roles: `admin`, `consumer`
 
 ```shell
 
-curl -X DELETE http://localhost:9090/api/management/v0.9/websub-apis/{id}/api-keys/{apiKeyName} \
+curl -X DELETE http://localhost:9090/api/management/v1/websub-apis/{id}/api-keys/{apiKeyName} \
   -u {username}:{password} \
   -H 'Accept: application/json'
 
@@ -619,6 +619,265 @@ Required roles: `admin`, `consumer`
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|WebSub API or API key not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
+## Generate a new HMAC secret for a WebSub API
+
+<a id="opIdcreateWebSubAPISecret"></a>
+
+`POST /websub-apis/{id}/secrets`
+
+> Code samples
+
+```shell
+
+curl -X POST http://localhost:9090/api/management/v1/websub-apis/{id}/secrets \
+  -u {username}:{password} \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json' \
+  -d @payload.json
+
+```
+
+Generates a cryptographically secure HMAC shared secret (format: `whsec_` + 64 hex chars)
+for the given WebSub API. The plaintext value is returned **once** in the response and
+never stored in plaintext. Use the secret as the `secret` parameter value in the
+`websub-hmac-auth` policy to validate incoming webhook event signatures.
+
+> Payload
+
+```json
+{
+  "displayName": "GitHub Webhook"
+}
+```
+
+### Authentication
+
+<aside class="warning">
+This operation requires <strong>Basic Auth</strong> authentication.
+
+Required roles: `admin`, `developer`
+
+</aside>
+
+<h3 id="generate-a-new-hmac-secret-for-a-websub-api-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|id|path|string|true|Unique public identifier of the WebSub API|
+|body|body|[WebhookSecretCreationRequest](schemas.md#schemawebhooksecretcreationrequest)|true|none|
+
+> Example responses
+
+> 201 Response
+
+```json
+{
+  "status": "success",
+  "message": "Webhook secret generated successfully",
+  "secret": "whsec_1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b",
+  "webhookSecret": {
+    "name": "github-webhook",
+    "displayName": "GitHub Webhook",
+    "status": "active",
+    "createdAt": "2026-06-01T10:00:00Z",
+    "updatedAt": "2026-06-01T10:00:00Z"
+  }
+}
+```
+
+<h3 id="generate-a-new-hmac-secret-for-a-websub-api-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|201|[Created](https://tools.ietf.org/html/rfc7231#section-6.3.2)|Secret generated successfully. The `secret` field will not appear in any future list or get response.|[WebhookSecretCreationResponse](schemas.md#schemawebhooksecretcreationresponse)|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Invalid request|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|WebSub API not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|A secret with the same name already exists for this API|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
+
+## List HMAC secrets for a WebSub API
+
+<a id="opIdlistWebSubAPISecrets"></a>
+
+`GET /websub-apis/{id}/secrets`
+
+> Code samples
+
+```shell
+
+curl -X GET http://localhost:9090/api/management/v1/websub-apis/{id}/secrets \
+  -u {username}:{password} \
+  -H 'Accept: application/json'
+
+```
+
+Returns metadata for all active HMAC secrets. Plaintext values are never included.
+
+### Authentication
+
+<aside class="warning">
+This operation requires <strong>Basic Auth</strong> authentication.
+
+Required roles: `admin`, `developer`
+
+</aside>
+
+<h3 id="list-hmac-secrets-for-a-websub-api-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|id|path|string|true|Unique public identifier of the WebSub API|
+
+> Example responses
+
+> 200 Response
+
+```json
+{
+  "status": "success",
+  "totalCount": 2,
+  "secrets": [
+    {
+      "name": "github-webhook",
+      "displayName": "GitHub Webhook",
+      "status": "active",
+      "createdAt": "2026-06-01T10:00:00Z",
+      "updatedAt": "2026-06-01T10:00:00Z"
+    }
+  ]
+}
+```
+
+<h3 id="list-hmac-secrets-for-a-websub-api-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|List of secrets (no plaintext)|[WebhookSecretListResponse](schemas.md#schemawebhooksecretlistresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|WebSub API not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
+
+## Regenerate (rotate) a WebSub API HMAC secret
+
+<a id="opIdregenerateWebSubAPISecret"></a>
+
+`POST /websub-apis/{id}/secrets/{secretName}/regenerate`
+
+> Code samples
+
+```shell
+
+curl -X POST http://localhost:9090/api/management/v1/websub-apis/{id}/secrets/{secretName}/regenerate \
+  -u {username}:{password} \
+  -H 'Accept: application/json'
+
+```
+
+Replaces the secret value with a newly generated one. The old secret stops
+validating signatures immediately. The new plaintext is returned once and
+never stored unencrypted.
+
+### Authentication
+
+<aside class="warning">
+This operation requires <strong>Basic Auth</strong> authentication.
+
+Required roles: `admin`, `developer`
+
+</aside>
+
+<h3 id="regenerate-(rotate)-a-websub-api-hmac-secret-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|id|path|string|true|Unique public identifier of the WebSub API|
+|secretName|path|string|true|Name of the secret to regenerate|
+
+> Example responses
+
+> 200 Response
+
+```json
+{
+  "status": "success",
+  "message": "Webhook secret generated successfully",
+  "secret": "whsec_1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b",
+  "webhookSecret": {
+    "name": "github-webhook",
+    "displayName": "GitHub Webhook",
+    "status": "active",
+    "createdAt": "2026-06-01T10:00:00Z",
+    "updatedAt": "2026-06-01T10:00:00Z"
+  }
+}
+```
+
+<h3 id="regenerate-(rotate)-a-websub-api-hmac-secret-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Secret rotated successfully. The new `secret` value will not appear again.|[WebhookSecretCreationResponse](schemas.md#schemawebhooksecretcreationresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|WebSub API or secret not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
+
+## Delete a WebSub API HMAC secret
+
+<a id="opIddeleteWebSubAPISecret"></a>
+
+`DELETE /websub-apis/{id}/secrets/{secretName}`
+
+> Code samples
+
+```shell
+
+curl -X DELETE http://localhost:9090/api/management/v1/websub-apis/{id}/secrets/{secretName} \
+  -u {username}:{password} \
+  -H 'Accept: application/json'
+
+```
+
+Permanently removes the secret. Existing webhook deliveries that used this secret will immediately fail signature validation.
+
+### Authentication
+
+<aside class="warning">
+This operation requires <strong>Basic Auth</strong> authentication.
+
+Required roles: `admin`, `developer`
+
+</aside>
+
+<h3 id="delete-a-websub-api-hmac-secret-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|id|path|string|true|Unique public identifier of the WebSub API|
+|secretName|path|string|true|Name of the secret to delete|
+
+> Example responses
+
+> 404 Response
+
+```json
+{
+  "status": "error",
+  "message": "Configuration validation failed",
+  "errors": [
+    {
+      "field": "spec.context",
+      "message": "Context must start with / and cannot end with /"
+    }
+  ]
+}
+```
+
+<h3 id="delete-a-websub-api-hmac-secret-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|204|[No Content](https://tools.ietf.org/html/rfc7231#section-6.3.5)|Secret deleted successfully|None|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|WebSub API or secret not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
+
 ## Get WebSubAPI by id
 
 <a id="opIdgetWebSubAPIById"></a>
@@ -629,7 +888,7 @@ Required roles: `admin`, `consumer`
 
 ```shell
 
-curl -X GET http://localhost:9090/api/management/v0.9/websub-apis/{id} \
+curl -X GET http://localhost:9090/api/management/v1/websub-apis/{id} \
   -u {username}:{password} \
   -H 'Accept: application/json'
 
@@ -662,7 +921,7 @@ Required roles: `admin`, `developer`
 
 ```json
 {
-  "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+  "apiVersion": "gateway.api-platform.wso2.com/v1",
   "kind": "WebSubApi",
   "metadata": {
     "name": "github-events-v1.0"
@@ -710,7 +969,7 @@ Required roles: `admin`, `developer`
 
 ```shell
 
-curl -X PUT http://localhost:9090/api/management/v0.9/websub-apis/{id} \
+curl -X PUT http://localhost:9090/api/management/v1/websub-apis/{id} \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -724,7 +983,7 @@ Update an existing WebSubAPI in the Gateway.
 
 ```json
 {
-  "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+  "apiVersion": "gateway.api-platform.wso2.com/v1",
   "kind": "WebSubApi",
   "metadata": {
     "name": "github-events-v1.0"
@@ -773,7 +1032,7 @@ Required roles: `admin`, `developer`
 
 ```json
 {
-  "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+  "apiVersion": "gateway.api-platform.wso2.com/v1",
   "kind": "WebSubApi",
   "metadata": {
     "name": "github-events-v1.0"
@@ -822,7 +1081,7 @@ Required roles: `admin`, `developer`
 
 ```shell
 
-curl -X DELETE http://localhost:9090/api/management/v0.9/websub-apis/{id} \
+curl -X DELETE http://localhost:9090/api/management/v1/websub-apis/{id} \
   -u {username}:{password} \
   -H 'Accept: application/json'
 

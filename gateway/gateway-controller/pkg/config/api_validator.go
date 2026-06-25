@@ -96,10 +96,10 @@ func (v *APIValidator) validateRestAPIConfiguration(config *api.RestAPI) []Valid
 	}
 
 	// Validate version
-	if config.ApiVersion != api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1 {
+	if config.ApiVersion != api.RestAPIApiVersionGatewayApiPlatformWso2Comv1 {
 		errors = append(errors, ValidationError{
 			Field:   "version",
-			Message: "Unsupported API version (must be 'gateway.api-platform.wso2.com/v1alpha1')",
+			Message: "Unsupported API version (must be 'gateway.api-platform.wso2.com/v1')",
 		})
 	}
 
@@ -131,10 +131,10 @@ func (v *APIValidator) validateWebSubAPIConfiguration(config *api.WebSubAPI) []V
 	}
 
 	// Validate version
-	if config.ApiVersion != api.WebSubAPIApiVersionGatewayApiPlatformWso2Comv1alpha1 {
+	if config.ApiVersion != api.WebSubAPIApiVersionGatewayApiPlatformWso2Comv1 {
 		errors = append(errors, ValidationError{
 			Field:   "version",
-			Message: "Unsupported API version (must be 'gateway.api-platform.wso2.com/v1alpha1')",
+			Message: "Unsupported API version (must be 'gateway.api-platform.wso2.com/v1')",
 		})
 	}
 

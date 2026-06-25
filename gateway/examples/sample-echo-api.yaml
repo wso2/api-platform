@@ -20,7 +20,7 @@
 # Used by the `gateway-debug` agent skill to reproduce issues with
 # minimal moving parts.
 
-apiVersion: gateway.api-platform.wso2.com/v1alpha1
+apiVersion: gateway.api-platform.wso2.com/v1
 kind: RestApi
 metadata:
   name: sample-echo-v1

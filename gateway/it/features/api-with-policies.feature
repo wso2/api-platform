@@ -28,7 +28,7 @@ Feature: API Configuration with Policies
   Scenario: Deploy API without any policies
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: no-policy-api
@@ -53,7 +53,7 @@ Feature: API Configuration with Policies
   Scenario: Deploy API with operation-level policy
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: operation-policy-api
@@ -88,7 +88,7 @@ Feature: API Configuration with Policies
   Scenario: Deploy API with API-level policy
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: api-level-policy-api
@@ -122,7 +122,7 @@ Feature: API Configuration with Policies
   Scenario: Update API to add policies
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: update-add-policy-api
@@ -140,7 +140,7 @@ Feature: API Configuration with Policies
     Then the response should be successful
     When I update the API "update-add-policy-api" with this configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: update-add-policy-api
@@ -173,7 +173,7 @@ Feature: API Configuration with Policies
   Scenario: Update API to remove policies
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: update-remove-policy-api
@@ -201,7 +201,7 @@ Feature: API Configuration with Policies
     Then the response should be successful
     When I update the API "update-remove-policy-api" with this configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: update-remove-policy-api
@@ -224,7 +224,7 @@ Feature: API Configuration with Policies
   Scenario: Deploy API with API-level policy using empty version resolves to latest
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: empty-version-api-level-api
@@ -264,7 +264,7 @@ Feature: API Configuration with Policies
   Scenario: Deploy API with operation-level policy using empty version resolves to latest
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: empty-version-op-level-api
@@ -304,7 +304,7 @@ Feature: API Configuration with Policies
   Scenario: Deploy API with different HTTP methods
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: http-methods-api

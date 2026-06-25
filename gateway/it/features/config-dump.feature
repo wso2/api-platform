@@ -43,7 +43,7 @@ Feature: Configuration Dump Endpoint
   Scenario: Get config dump after deploying a simple API
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: config-dump-test-api
@@ -75,7 +75,7 @@ Feature: Configuration Dump Endpoint
   Scenario: Config dump includes multiple deployed APIs
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: config-dump-api-1
@@ -93,7 +93,7 @@ Feature: Configuration Dump Endpoint
     Then the response should be successful
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: config-dump-api-2
@@ -127,7 +127,7 @@ Feature: Configuration Dump Endpoint
   Scenario: Config dump includes API with CORS policy
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: config-dump-cors-api
@@ -183,7 +183,7 @@ Feature: Configuration Dump Endpoint
   Scenario: Config dump statistics reflect deployed resources
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: stats-test-api
@@ -212,7 +212,7 @@ Feature: Configuration Dump Endpoint
   Scenario: Config dump includes deployed MCP proxy
     When I deploy this MCP configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: Mcp
       metadata:
         name: config-dump-mcp-v1.0
@@ -241,7 +241,7 @@ Feature: Configuration Dump Endpoint
   Scenario: Config dump includes deployed LLM provider
     When I create this LLM provider:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProvider
       metadata:
         name: config-dump-llm-provider
@@ -273,7 +273,7 @@ Feature: Configuration Dump Endpoint
     # Deploy API
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: mixed-resources-api
@@ -292,7 +292,7 @@ Feature: Configuration Dump Endpoint
     # Deploy MCP
     When I deploy this MCP configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: Mcp
       metadata:
         name: mixed-resources-mcp-v1.0
@@ -311,7 +311,7 @@ Feature: Configuration Dump Endpoint
     # Deploy LLM Provider
     When I create this LLM provider:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProvider
       metadata:
         name: mixed-resources-llm
@@ -344,7 +344,7 @@ Feature: Configuration Dump Endpoint
   Scenario: Config dump reflects removed API after deletion
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: deletion-test-api

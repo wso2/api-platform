@@ -43,17 +43,17 @@ func protocolVersionComparator(base, current string) bool {
 func addMCPSpecificOperations(mcpConfig *api.MCPProxyConfiguration, optionsRequired bool) []api.Operation {
 	operations := []api.Operation{
 		{
-			Method:   api.OperationMethod(api.GET),
+			Method:   api.OperationMethodGET,
 			Path:     constants.MCP_RESOURCE_PATH,
 			Policies: nil,
 		},
 		{
-			Method:   api.OperationMethod(api.POST),
+			Method:   api.OperationMethodPOST,
 			Path:     constants.MCP_RESOURCE_PATH,
 			Policies: nil,
 		},
 		{
-			Method:   api.OperationMethod(api.DELETE),
+			Method:   api.OperationMethodDELETE,
 			Path:     constants.MCP_RESOURCE_PATH,
 			Policies: nil,
 		},
@@ -61,7 +61,7 @@ func addMCPSpecificOperations(mcpConfig *api.MCPProxyConfiguration, optionsRequi
 	if optionsRequired {
 		operations = append(operations,
 			api.Operation{
-				Method:   api.OperationMethod(api.OperationMethodOPTIONS),
+				Method:   api.OperationMethodOPTIONS,
 				Path:     constants.MCP_RESOURCE_PATH,
 				Policies: nil,
 			},
@@ -77,7 +77,7 @@ func addMCPSpecificOperations(mcpConfig *api.MCPProxyConfiguration, optionsRequi
 	if protocolVersionComparator(constants.SPEC_VERSION_2025_JUNE, mcpSpecVersion) {
 		operations = append(operations,
 			api.Operation{
-				Method:   api.OperationMethod(api.GET),
+				Method:   api.OperationMethodGET,
 				Path:     constants.MCP_PRM_RESOURCE_PATH,
 				Policies: nil,
 			},
@@ -85,7 +85,7 @@ func addMCPSpecificOperations(mcpConfig *api.MCPProxyConfiguration, optionsRequi
 		if optionsRequired {
 			operations = append(operations,
 				api.Operation{
-					Method:   api.OperationMethod(api.OperationMethodOPTIONS),
+					Method:   api.OperationMethodOPTIONS,
 					Path:     constants.MCP_PRM_RESOURCE_PATH,
 					Policies: nil,
 				},
@@ -102,7 +102,7 @@ func (t *MCPTransformer) Transform(input any, output *api.RestAPI) (*api.RestAPI
 	if !ok || mcpConfig == nil {
 		return nil, fmt.Errorf("invalid input type: expected *api.MCPProxyConfiguration")
 	}
-	output.ApiVersion = api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1
+	output.ApiVersion = api.RestAPIApiVersionGatewayApiPlatformWso2Comv1
 	output.Kind = api.RestAPIKindRestApi
 
 	// Build APIConfigData and set it directly on the RestAPI spec
@@ -148,8 +148,8 @@ func (t *MCPTransformer) Transform(input any, output *api.RestAPI) (*api.RestAPI
 			return nil, fmt.Errorf("failed to build upstream auth params: %w", err)
 		}
 		pol := api.Policy{
-			Name:    constants.SET_HEADERS_POLICY_NAME,
-			Params:  &params,
+			Name:   constants.SET_HEADERS_POLICY_NAME,
+			Params: &params,
 		}
 		policies = append(policies, pol)
 	}

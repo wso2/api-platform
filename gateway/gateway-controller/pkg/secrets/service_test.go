@@ -320,7 +320,7 @@ func TestSecretService_CreateSecret(t *testing.T) {
 		{
 			name: "successful creation",
 			yamlData: `
-apiVersion: gateway.api-platform.wso2.com/v1alpha1
+apiVersion: gateway.api-platform.wso2.com/v1
 kind: Secret
 metadata:
   name: my-secret
@@ -359,7 +359,7 @@ spec:
 		{
 			name: "validation error - missing name",
 			yamlData: `
-apiVersion: gateway.api-platform.wso2.com/v1alpha1
+apiVersion: gateway.api-platform.wso2.com/v1
 kind: Secret
 metadata:
   name: ""
@@ -379,7 +379,7 @@ spec:
 		{
 			name: "secret value exceeds max size",
 			yamlData: `
-apiVersion: gateway.api-platform.wso2.com/v1alpha1
+apiVersion: gateway.api-platform.wso2.com/v1
 kind: Secret
 metadata:
   name: large-secret
@@ -398,7 +398,7 @@ spec:
 		{
 			name: "encryption failure",
 			yamlData: `
-apiVersion: gateway.api-platform.wso2.com/v1alpha1
+apiVersion: gateway.api-platform.wso2.com/v1
 kind: Secret
 metadata:
   name: my-secret
@@ -421,7 +421,7 @@ spec:
 		{
 			name: "storage save failure",
 			yamlData: `
-apiVersion: gateway.api-platform.wso2.com/v1alpha1
+apiVersion: gateway.api-platform.wso2.com/v1
 kind: Secret
 metadata:
   name: my-secret
@@ -688,7 +688,7 @@ func TestSecretService_UpdateSecret(t *testing.T) {
 			name:   "successful update",
 			handle: "my-secret",
 			yamlData: `
-apiVersion: gateway.api-platform.wso2.com/v1alpha1
+apiVersion: gateway.api-platform.wso2.com/v1
 kind: Secret
 metadata:
   name: my-secret
@@ -733,7 +733,7 @@ spec:
 			name:   "handle mismatch",
 			handle: "my-secret",
 			yamlData: `
-apiVersion: gateway.api-platform.wso2.com/v1alpha1
+apiVersion: gateway.api-platform.wso2.com/v1
 kind: Secret
 metadata:
   name: different-name
@@ -756,7 +756,7 @@ spec:
 			name:   "value exceeds max size",
 			handle: "my-secret",
 			yamlData: `
-apiVersion: gateway.api-platform.wso2.com/v1alpha1
+apiVersion: gateway.api-platform.wso2.com/v1
 kind: Secret
 metadata:
   name: my-secret
@@ -776,7 +776,7 @@ spec:
 			name:   "encryption failure",
 			handle: "my-secret",
 			yamlData: `
-apiVersion: gateway.api-platform.wso2.com/v1alpha1
+apiVersion: gateway.api-platform.wso2.com/v1
 kind: Secret
 metadata:
   name: my-secret
@@ -802,7 +802,7 @@ spec:
 			name:   "secret not found",
 			handle: "nonexistent",
 			yamlData: `
-apiVersion: gateway.api-platform.wso2.com/v1alpha1
+apiVersion: gateway.api-platform.wso2.com/v1
 kind: Secret
 metadata:
   name: nonexistent
@@ -830,7 +830,7 @@ spec:
 			name:   "storage update failure",
 			handle: "my-secret",
 			yamlData: `
-apiVersion: gateway.api-platform.wso2.com/v1alpha1
+apiVersion: gateway.api-platform.wso2.com/v1
 kind: Secret
 metadata:
   name: my-secret

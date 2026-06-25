@@ -41,7 +41,7 @@ ap gateway subscription create --file subscription.yaml
 ap gateway subscription create -f subscription.json
 
 # The file is a Subscription custom resource, e.g.:
-#   apiVersion: gateway.api-platform.wso2.com/v1alpha1
+#   apiVersion: gateway.api-platform.wso2.com/v1
 #   kind: Subscription
 #   metadata:
 #     name: petstore-acme-bronze
