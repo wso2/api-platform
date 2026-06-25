@@ -38,7 +38,7 @@ func main() {
 	// Initialize logger
 	logConfig := logger.Config{
 		Level:  cfg.LogLevel,
-		Format: "json",
+		Format: cfg.LogFormat,
 	}
 	slogger := logger.NewLogger(logConfig)
 
