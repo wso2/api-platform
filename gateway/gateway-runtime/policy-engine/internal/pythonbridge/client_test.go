@@ -164,7 +164,7 @@ func TestStreamManagerExecuteCancellationSuppressesLateResponses(t *testing.T) {
 		}
 
 		go func(requestID string) {
-			time.Sleep(50 * time.Millisecond)
+			time.Sleep(200 * time.Millisecond)
 			responses <- &proto.StreamResponse{
 				RequestId: requestID,
 				Payload: &proto.StreamResponse_NeedsMoreDecision{
@@ -182,7 +182,7 @@ func TestStreamManagerExecuteCancellationSuppressesLateResponses(t *testing.T) {
 		_ = sm.Close()
 	})
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
 
 	_, err := sm.Execute(ctx, newNeedsMoreRequest("slow-request"))
