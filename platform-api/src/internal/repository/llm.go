@@ -76,15 +76,20 @@ func (r *LLMProviderTemplateRepo) Create(t *model.LLMProviderTemplate) error {
 		return err
 	}
 
+	// group_id is the stable identifier shared across versions of a template.
+	// For seeded/default templates there is a single version, so group_id mirrors
+	// the handle, satisfying both UNIQUE(org, group_id, version) and UNIQUE(org, handle).
 	query := `
 		INSERT INTO llm_provider_templates (
+			uuid, organization_uuid, handle, group_id, name, description, managed_by, created_by,
 			uuid, organization_uuid, handle, group_id, name, description, managed_by, created_by,
 			configuration, created_at, updated_at
 		)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 	_, err = r.db.Exec(r.db.Rebind(query),
-		t.UUID, t.OrganizationUUID, t.ID, t.GroupID, t.Name, t.Description, t.ManagedBy, t.CreatedBy,
+		t.UUID, t.OrganizationUUID, t.ID, t.ID, t.Name, t.Description, t.ManagedBy, t.CreatedBy,
 		string(configJSON),
 		t.CreatedAt, t.UpdatedAt,
 	)
@@ -343,7 +348,7 @@ func (r *LLMProviderRepo) Create(p *model.LLMProvider) error {
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 	_, err = tx.Exec(r.db.Rebind(query),
 		p.UUID, p.ID, p.Name, p.Version, p.Description, p.CreatedBy, p.TemplateUUID,
-		[]byte(p.OpenAPISpec), modelProvidersJSON, configurationJSON, p.CreatedAt, p.UpdatedAt,
+		[]byte(p.OpenAPISpec), modelProvidersJSON, []byte(configurationJSON), p.CreatedAt, p.UpdatedAt,
 		p.OrganizationUUID,
 	)
 	if err != nil {
@@ -547,7 +552,7 @@ func (r *LLMProviderRepo) Update(p *model.LLMProvider) error {
 		SET name = ?, version = ?, description = ?, template_uuid = ?, openapi_spec = ?, model_list = ?, configuration = ?, updated_by = ?, updated_at = ?
 		WHERE uuid = ?`
 	result, err := tx.Exec(r.db.Rebind(query),
-		p.Name, p.Version, p.Description, p.TemplateUUID, []byte(p.OpenAPISpec), modelProvidersJSON, configurationJSON, p.UpdatedBy, now,
+		p.Name, p.Version, p.Description, p.TemplateUUID, []byte(p.OpenAPISpec), modelProvidersJSON, []byte(configurationJSON), p.UpdatedBy, now,
 		providerUUID,
 	)
 	if err != nil {
@@ -655,7 +660,7 @@ func (r *LLMProxyRepo) Create(p *model.LLMProxy) error {
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 	_, err = tx.Exec(r.db.Rebind(query),
 		p.UUID, p.ID, p.Name, p.Version, p.ProjectUUID, p.Description, p.CreatedBy, p.ProviderUUID,
-		[]byte(p.OpenAPISpec), configurationJSON, p.CreatedAt, p.UpdatedAt,
+		[]byte(p.OpenAPISpec), []byte(configurationJSON), p.CreatedAt, p.UpdatedAt,
 		p.OrganizationUUID,
 	)
 	if err != nil {
@@ -910,7 +915,7 @@ func (r *LLMProxyRepo) Update(p *model.LLMProxy) error {
 		WHERE uuid = ?`
 	result, err := tx.Exec(r.db.Rebind(query),
 		p.Name, p.Version, p.Description, p.ProviderUUID,
-		[]byte(p.OpenAPISpec), configurationJSON, p.UpdatedBy, now,
+		[]byte(p.OpenAPISpec), []byte(configurationJSON), p.UpdatedBy, now,
 		proxyUUID,
 	)
 	if err != nil {
