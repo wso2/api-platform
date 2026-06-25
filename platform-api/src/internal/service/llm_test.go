@@ -1169,7 +1169,7 @@ func TestLLMProviderServiceCreateMigratesLegacyPolicies(t *testing.T) {
 	}
 	templateRepo := &mockLLMTemplateRepo{
 		getByIDFunc: func(templateID, orgUUID string) (*model.LLMProviderTemplate, error) {
-			return &model.LLMProviderTemplate{UUID: "tpl-openai", ID: "openai", CreatedAt: now, UpdatedAt: now}, nil
+			return &model.LLMProviderTemplate{UUID: "tpl-openai", ID: "openai", Enabled: true, CreatedAt: now, UpdatedAt: now}, nil
 		},
 	}
 	orgRepo := &mockOrganizationRepo{org: &model.Organization{ID: "org-1"}}

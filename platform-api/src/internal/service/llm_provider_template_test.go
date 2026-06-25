@@ -236,7 +236,7 @@ func TestLLMProviderTemplateServiceCreate_RejectsReservedManagedBy(t *testing.T)
 
 	wso2 := "wso2"
 	req := validTemplateRequest("My Provider")
-	req.Provider = &wso2
+	req.ManagedBy = &wso2
 	_, err := svc.Create("org-1", "alice", req)
 	if err != constants.ErrLLMProviderTemplateManagedByReserved {
 		t.Fatalf("expected ErrLLMProviderTemplateManagedByReserved, got: %v", err)
@@ -267,7 +267,7 @@ func TestLLMProviderTemplateServiceUpdate_RejectsReservedManagedBy(t *testing.T)
 
 	wso2 := "wso2"
 	req := validTemplateRequest("My Provider")
-	req.Provider = &wso2
+	req.ManagedBy = &wso2
 	_, err := svc.Update("org-1", "my-provider", req)
 	if err != constants.ErrLLMProviderTemplateManagedByReserved {
 		t.Fatalf("expected ErrLLMProviderTemplateManagedByReserved, got: %v", err)
@@ -318,7 +318,7 @@ func TestLLMProviderTemplateServiceUpdate_PreservesOpenAPISpecWhenOmitted(t *tes
 
 	req := validTemplateRequest("Renamed")
 	req.Openapi = nil
-	req.Provider = nil
+	req.ManagedBy = nil
 	if _, err := svc.Update("org-1", "mistralai", req); err != nil {
 		t.Fatalf("expected no error, got: %v", err)
 	}
@@ -393,7 +393,7 @@ func TestLLMProviderTemplateServiceCreateVersion_ForkFromBuiltinSetsCustomerMana
 	svc := NewLLMProviderTemplateService(repo)
 
 	wso2 := "wso2"
-	req := &api.CreateLLMProviderTemplateVersionRequest{Name: "Mistral", Version: "v2.0", Provider: &wso2}
+	req := &api.CreateLLMProviderTemplateVersionRequest{Name: "Mistral", Version: "v2.0", ManagedBy: &wso2}
 	resp, err := svc.CreateVersion("org-1", "mistralai", "test-user", req)
 	if err != nil {
 		t.Fatalf("expected no error when forking a built-in, got: %v", err)

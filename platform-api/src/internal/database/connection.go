@@ -273,10 +273,21 @@ func splitSQLStatements(sql string) []string {
 	var statements []string
 	current := strings.Builder{}
 	inString := false
+	inLineComment := false
 	escapeNext := false
 
-	// Process character by character to properly handle strings and comments
-	for _, r := range sql {
+	runes := []rune(sql)
+	for i := 0; i < len(runes); i++ {
+		r := runes[i]
+
+		if inLineComment {
+			current.WriteRune(r)
+			if r == '\n' {
+				inLineComment = false
+			}
+			continue
+		}
+
 		if escapeNext {
 			current.WriteRune(r)
 			escapeNext = false
@@ -286,6 +297,13 @@ func splitSQLStatements(sql string) []string {
 		// Handle escape sequences
 		if r == '\\' {
 			escapeNext = true
+			current.WriteRune(r)
+			continue
+		}
+
+		// Start of a -- line comment (only when not inside a string literal)
+		if !inString && r == '-' && i+1 < len(runes) && runes[i+1] == '-' {
+			inLineComment = true
 			current.WriteRune(r)
 			continue
 		}

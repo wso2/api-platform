@@ -60,7 +60,7 @@ Cypress.Commands.add('sweepE2EProviders', (authToken, organizationId) => {
         failOnStatusCode: false,
       })
       .then((response) => {
-        if (response.status !== 200) return acc;
+        expect(response.status).to.eq(200);
         const page = response.body?.list ?? [];
         const next = acc.concat(
           page.filter(

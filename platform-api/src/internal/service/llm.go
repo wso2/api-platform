@@ -131,7 +131,7 @@ func (s *LLMProviderTemplateService) Create(orgUUID, createdBy string, req *api.
 	}
 	handle := makeTemplateHandle(baseHandle, version)
 
-	if req.Provider != nil && strings.TrimSpace(*req.Provider) == constants.PolicyManagedByWSO2 {
+	if req.ManagedBy != nil && strings.TrimSpace(*req.ManagedBy) == constants.PolicyManagedByWSO2 {
 		return nil, constants.ErrLLMProviderTemplateManagedByReserved
 	}
 
@@ -150,7 +150,7 @@ func (s *LLMProviderTemplateService) Create(orgUUID, createdBy string, req *api.
 		Version:          version,
 		Name:             req.Name,
 		Description:      utils.ValueOrEmpty(req.Description),
-		ManagedBy:        defaultTemplateManagedBy(req.Provider),
+		ManagedBy:        defaultTemplateManagedBy(req.ManagedBy),
 		CreatedBy:        createdBy,
 		OpenAPISpec:      utils.ValueOrEmpty(req.Openapi),
 		Metadata:         mapTemplateMetadataAPI(req.Metadata),
@@ -231,7 +231,7 @@ func (s *LLMProviderTemplateService) Update(orgUUID, handle string, req *api.LLM
 	if req.Name == "" {
 		return nil, constants.ErrInvalidInput
 	}
-	if req.Provider != nil && strings.TrimSpace(*req.Provider) == constants.PolicyManagedByWSO2 {
+	if req.ManagedBy != nil && strings.TrimSpace(*req.ManagedBy) == constants.PolicyManagedByWSO2 {
 		return nil, constants.ErrLLMProviderTemplateManagedByReserved
 	}
 
@@ -247,8 +247,8 @@ func (s *LLMProviderTemplateService) Update(orgUUID, handle string, req *api.LLM
 	}
 
 	managedBy := existing.ManagedBy
-	if req.Provider != nil {
-		managedBy = defaultTemplateManagedBy(req.Provider)
+	if req.ManagedBy != nil {
+		managedBy = defaultTemplateManagedBy(req.ManagedBy)
 	}
 	openapiSpec := existing.OpenAPISpec
 	if req.Openapi != nil {
@@ -1786,7 +1786,7 @@ func templateListItem(t *model.LLMProviderTemplate) api.LLMProviderTemplateListI
 		Id:          &id,
 		Name:        &name,
 		Description: utils.StringPtrIfNotEmpty(t.Description),
-		Provider:    utils.StringPtrIfNotEmpty(t.ManagedBy),
+		ManagedBy:   utils.StringPtrIfNotEmpty(t.ManagedBy),
 		CreatedBy:   utils.StringPtrIfNotEmpty(t.CreatedBy),
 		Version:     &version,
 		IsLatest:    &isLatest,
@@ -1807,7 +1807,7 @@ func mapTemplateModelToAPI(m *model.LLMProviderTemplate) *api.LLMProviderTemplat
 		Id:               m.ID,
 		Name:             m.Name,
 		Description:      utils.StringPtrIfNotEmpty(m.Description),
-		Provider:         utils.StringPtrIfNotEmpty(m.ManagedBy),
+		ManagedBy:        utils.StringPtrIfNotEmpty(m.ManagedBy),
 		CreatedBy:        utils.StringPtrIfNotEmpty(m.CreatedBy),
 		Version:          m.Version,
 		IsLatest:         &isLatest,

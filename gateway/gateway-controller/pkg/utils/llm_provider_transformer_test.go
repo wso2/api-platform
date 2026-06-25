@@ -279,6 +279,59 @@ func TestTransform_NonExistentTemplate(t *testing.T) {
 	assert.Contains(t, err.Error(), "nonexistent-template")
 }
 
+func TestTransform_ProviderReferencesVersionedTemplateId(t *testing.T) {
+	store := storage.NewConfigStore()
+
+	customTemplate := &models.StoredLLMProviderTemplate{
+		UUID: "0000-ecustom-v1-template-0000-000000000000",
+		Configuration: api.LLMProviderTemplate{
+			ApiVersion: "gateway.api-platform.wso2.com/v1alpha1",
+			Kind:       "LlmProviderTemplate",
+			Metadata:   api.Metadata{Name: "ecustom-v1-0"},
+			Spec: api.LLMProviderTemplateData{
+				DisplayName:    "E2E Custom v1",
+				GroupVersionId: stringPtr("ecustom"),
+				ManagedBy:      stringPtr("customer"),
+				Version:        stringPtr("v1.0"),
+				PromptTokens: &api.ExtractionIdentifier{
+					Location:   api.Payload,
+					Identifier: "$.usage.prompt_tokens",
+				},
+			},
+		},
+	}
+	// Sanity: the versioned id differs from the group-version handle.
+	require.Equal(t, "ecustom-v1-0", customTemplate.GetID())
+	require.Equal(t, "ecustom", customTemplate.GetGroupVersionID())
+
+	require.NoError(t, store.AddTemplate(customTemplate))
+	db := newTestMockDB()
+	require.NoError(t, db.SaveLLMProviderTemplate(customTemplate))
+	cfg := loadDummyConfig()
+	transformer := NewLLMProviderTransformer(store, db, &cfg, newTestPolicyVersionResolver())
+
+	provider := &api.LLMProviderConfiguration{
+		ApiVersion: "gateway.api-platform.wso2.com/v1alpha1",
+		Kind:       "LlmProvider",
+		Metadata:   api.Metadata{Name: "ecustom-provider-v1"},
+		Spec: api.LLMProviderConfigData{
+			DisplayName: "E2E Custom Provider v1",
+			Version:     "v1.0",
+			Template:    "ecustom-v1-0", // versioned id, exactly as platform-api deploys it
+			Upstream: api.LLMProviderConfigData_Upstream{
+				Url: stringPtr("https://api.example.com"),
+			},
+			AccessControl: api.LLMAccessControl{
+				Mode: api.AllowAll,
+			},
+		},
+	}
+
+	output := &api.RestAPI{}
+	_, err := transformer.Transform(provider, output)
+	require.NoError(t, err, "Transform should resolve a provider that references a template by its versioned id")
+}
+
 // ============================================================================
 // Context Handling Tests
 // ============================================================================

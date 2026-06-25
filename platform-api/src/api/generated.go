@@ -950,8 +950,11 @@ type CreateLLMProviderTemplateVersionRequest struct {
 	CompletionTokens *ExtractionIdentifier `json:"completionTokens,omitempty" yaml:"completionTokens,omitempty"`
 
 	// Description Description of the LLM provider template
-	Description *string                      `json:"description,omitempty" yaml:"description,omitempty"`
-	Metadata    *LLMProviderTemplateMetadata `json:"metadata,omitempty" yaml:"metadata,omitempty"`
+	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
+
+	// ManagedBy Identifies who manages the template. Custom templates default to 'customer'.
+	ManagedBy *string                      `json:"managedBy,omitempty" yaml:"managedBy,omitempty"`
+	Metadata  *LLMProviderTemplateMetadata `json:"metadata,omitempty" yaml:"metadata,omitempty"`
 
 	// Name Human-readable LLM Template name
 	Name string `binding:"required" json:"name" yaml:"name"`
@@ -959,11 +962,8 @@ type CreateLLMProviderTemplateVersionRequest struct {
 	// Openapi OpenAPI specification content (JSON or YAML) for the provider, when
 	// uploaded/pasted. Use metadata.openapiSpecUrl instead to reference the
 	// spec by URL.
-	Openapi      *string               `json:"openapi,omitempty" yaml:"openapi,omitempty"`
-	PromptTokens *ExtractionIdentifier `json:"promptTokens,omitempty" yaml:"promptTokens,omitempty"`
-
-	// Provider Identifies the origin of the template. Custom templates default to 'other'.
-	Provider         *string                              `json:"provider,omitempty" yaml:"provider,omitempty"`
+	Openapi          *string                              `json:"openapi,omitempty" yaml:"openapi,omitempty"`
+	PromptTokens     *ExtractionIdentifier                `json:"promptTokens,omitempty" yaml:"promptTokens,omitempty"`
 	RemainingTokens  *ExtractionIdentifier                `json:"remainingTokens,omitempty" yaml:"remainingTokens,omitempty"`
 	RequestModel     *ExtractionIdentifier                `json:"requestModel,omitempty" yaml:"requestModel,omitempty"`
 	ResourceMappings *LLMProviderTemplateResourceMappings `json:"resourceMappings,omitempty" yaml:"resourceMappings,omitempty"`
@@ -1806,8 +1806,14 @@ type LLMProviderTemplate struct {
 	Id string `binding:"required" json:"id" yaml:"id"`
 
 	// IsLatest Whether this is the latest version of the template.
-	IsLatest *bool                        `json:"isLatest,omitempty" yaml:"isLatest,omitempty"`
-	Metadata *LLMProviderTemplateMetadata `json:"metadata,omitempty" yaml:"metadata,omitempty"`
+	IsLatest *bool `json:"isLatest,omitempty" yaml:"isLatest,omitempty"`
+
+	// ManagedBy Identifies who manages the template. Built-in templates use 'wso2';
+	// custom templates default to 'customer' and may be set to any value.
+	// Optional on create/update — the server defaults it to 'customer' when
+	// omitted, so a request/YAML without a managedBy is accepted.
+	ManagedBy *string                      `json:"managedBy,omitempty" yaml:"managedBy,omitempty"`
+	Metadata  *LLMProviderTemplateMetadata `json:"metadata,omitempty" yaml:"metadata,omitempty"`
 
 	// Name Human-readable LLM Template name
 	Name string `binding:"required" json:"name" yaml:"name"`
@@ -1815,14 +1821,8 @@ type LLMProviderTemplate struct {
 	// Openapi OpenAPI specification content (JSON or YAML) for the provider, when
 	// uploaded/pasted. Use metadata.openapiSpecUrl instead to reference the
 	// spec by URL.
-	Openapi      *string               `json:"openapi,omitempty" yaml:"openapi,omitempty"`
-	PromptTokens *ExtractionIdentifier `json:"promptTokens,omitempty" yaml:"promptTokens,omitempty"`
-
-	// Provider Identifies the origin of the template. Built-in templates use 'wso2';
-	// custom templates default to 'other' and may be set to any value.
-	// Optional on create/update — the server defaults it to 'other' when
-	// omitted, so a request/YAML without a provider is accepted.
-	Provider         *string                              `json:"provider,omitempty" yaml:"provider,omitempty"`
+	Openapi          *string                              `json:"openapi,omitempty" yaml:"openapi,omitempty"`
+	PromptTokens     *ExtractionIdentifier                `json:"promptTokens,omitempty" yaml:"promptTokens,omitempty"`
 	RemainingTokens  *ExtractionIdentifier                `json:"remainingTokens,omitempty" yaml:"remainingTokens,omitempty"`
 	RequestModel     *ExtractionIdentifier                `json:"requestModel,omitempty" yaml:"requestModel,omitempty"`
 	ResourceMappings *LLMProviderTemplateResourceMappings `json:"resourceMappings,omitempty" yaml:"resourceMappings,omitempty"`
@@ -1866,10 +1866,10 @@ type LLMProviderTemplateListItem struct {
 
 	// LogoUrl URL of the provider logo
 	LogoUrl *string `json:"logoUrl,omitempty" yaml:"logoUrl,omitempty"`
-	Name    *string `json:"name,omitempty" yaml:"name,omitempty"`
 
-	// Provider Origin of the template ('wso2' for built-in, otherwise custom-defined).
-	Provider  *string    `json:"provider,omitempty" yaml:"provider,omitempty"`
+	// ManagedBy Who manages the template ('wso2' for built-in, otherwise custom-defined).
+	ManagedBy *string    `json:"managedBy,omitempty" yaml:"managedBy,omitempty"`
+	Name      *string    `json:"name,omitempty" yaml:"name,omitempty"`
 	UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
 
 	// Version Content version, matching the v<major>.<minor> pattern (e.g. v1.0, v2.0).

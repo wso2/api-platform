@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -95,7 +96,25 @@ func (t *LLMProviderTransformer) resolvePolicyVersion(name string) (string, erro
 }
 
 func (t *LLMProviderTransformer) getTemplateByHandle(handle string) (*models.StoredLLMProviderTemplate, error) {
+	if tmpl, err := t.getTemplateByVersionedID(handle); err == nil {
+		return tmpl, nil
+	} else if !errors.Is(err, storage.ErrNotFound) {
+		return nil, err
+	}
 	return t.db.GetLLMProviderTemplateByHandle(handle)
+}
+
+func (t *LLMProviderTransformer) getTemplateByVersionedID(id string) (*models.StoredLLMProviderTemplate, error) {
+	templates, err := t.db.GetAllLLMProviderTemplates()
+	if err != nil {
+		return nil, err
+	}
+	for _, tmpl := range templates {
+		if tmpl.GetID() == id {
+			return tmpl, nil
+		}
+	}
+	return nil, fmt.Errorf("%w: versioned template id %q", storage.ErrNotFound, id)
 }
 
 func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration,

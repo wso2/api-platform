@@ -31,7 +31,11 @@ services:
       context: ../../tests/mock-servers/mock-platform-api
       dockerfile: Dockerfile
     ports:
-      - "9243:9243"   # HTTPS/WebSocket (gateway connects)
+      # Host publish of 9243 dropped: the controller reaches this mock over the
+      # compose network (it-mock-platform-api:9243) and the suite only uses the
+      # 9244 inject endpoint from the host, so publishing 9243 is unnecessary and
+      # collides with a locally-running platform-api on :9243.
+      # - "9243:9243"   # HTTPS/WebSocket (gateway connects)
       - "9244:9244"   # HTTP inject endpoint (IT triggers subscription.created)
     environment:
       - GATEWAY_DB_PATH=/app/data/gateway.db

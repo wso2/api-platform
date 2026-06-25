@@ -259,8 +259,8 @@ export default function ProviderTemplateOverview() {
   const seedDrafts = React.useCallback((t: ProviderTemplate) => {
     setEndpointUrl(t.metadata?.endpointUrl ?? '');
     setProvider(
-      t.provider?.trim() ||
-        (isBuiltInProviderTemplate(t.id) ? 'wso2' : 'other')
+      (t.managedBy ?? t.provider)?.trim() ||
+        (isBuiltInProviderTemplate(t.id) ? 'wso2' : 'customer')
     );
     setOpenapiSpecUrl(t.metadata?.openapiSpecUrl ?? '');
     setLogoUrlField(t.metadata?.logoUrl ?? '');
@@ -406,7 +406,7 @@ export default function ProviderTemplateOverview() {
       id: template.id,
       name: template.name,
       version: currentVersion,
-      provider: provider.trim() || 'other',
+      managedBy: provider.trim() || 'customer',
       description: template.description,
       ...fromTokenConfig(defaultTokens),
       metadata: Object.keys(metadata).length ? metadata : undefined,
@@ -519,8 +519,10 @@ export default function ProviderTemplateOverview() {
 
   const currentVersion = selectedVersion || template.version || 'v1.0';
   const activeProvider =
-    versions.find((v) => v.version === currentVersion)?.provider ??
-    template.provider;
+    (() => {
+      const v = versions.find((vv) => vv.version === currentVersion);
+      return (v?.managedBy ?? v?.provider) ?? (template.managedBy ?? template.provider);
+    })();
   const isBuiltIn = activeProvider === 'wso2';
   const isReadOnly = isBuiltIn;
   const canEdit = !isReadOnly;
@@ -713,8 +715,8 @@ export default function ProviderTemplateOverview() {
                         return maj * 1000 + min;
                       };
                       const visibleVersions = (isBuiltIn
-                        ? allVersions.filter((v) => v.provider === 'wso2')
-                        : allVersions.filter((v) => v.provider !== 'wso2')
+                        ? allVersions.filter((v) => (v.managedBy ?? v.provider) === 'wso2')
+                        : allVersions.filter((v) => (v.managedBy ?? v.provider) !== 'wso2')
                       ).sort((a, b) => parseVerNum(b.version || 'v0') - parseVerNum(a.version || 'v0'));
                       const sectionLabel = isBuiltIn ? 'Built-in Versions' : 'Custom Versions';
 

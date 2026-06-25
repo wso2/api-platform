@@ -97,7 +97,9 @@ export default function ProviderTemplatesList({
 
   const templates = useMemo(
     () =>
-      templatesResponse.list.filter((template) => template.provider !== 'wso2'),
+      templatesResponse.list.filter(
+        (template) => (template.managedBy ?? template.provider) !== 'wso2'
+      ),
     [templatesResponse.list]
   );
 
@@ -133,7 +135,7 @@ export default function ProviderTemplatesList({
   const builtInTemplates = useMemo(
     () =>
       templatesResponse.list.filter(
-        (template) => template.provider === 'wso2'
+        (template) => (template.managedBy ?? template.provider) === 'wso2'
       ),
     [templatesResponse.list]
   );

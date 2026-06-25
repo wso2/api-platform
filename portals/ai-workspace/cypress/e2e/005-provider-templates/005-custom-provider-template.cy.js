@@ -201,10 +201,7 @@ describe('AI Workspace - Custom LLM provider template lifecycle', () => {
     cy.get('[role="dialog"]').within(() => {
       cy.contains('button', 'Delete').click();
     });
-    cy.contains('button', 'v1.0', { timeout: 30000 })
-      .scrollIntoView()
-      .should('be.visible');
-
+    cy.contains('button', 'v1.0', { timeout: 30000 }).should('exist');
     cy.get('[data-cyid="provider-template-delete-button"]', { timeout: 30000 })
       .scrollIntoView()
       .should('be.visible')

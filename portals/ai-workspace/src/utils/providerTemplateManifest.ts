@@ -31,10 +31,6 @@ export function buildTemplateManifestYaml(t: ProviderTemplate): string {
 
   if (t.version) spec.version = t.version;
 
-  // The manifest mirrors the gateway's LlmProviderTemplate deployment format,
-  // which carries only identity and token-extraction fields. UI-only details
-  // (logo URL, endpoint, auth, OpenAPI spec, resource mappings) are deliberately
-  // omitted so the downloaded YAML matches the built-in gateway templates.
   const tokenKeys = [
     'promptTokens',
     'completionTokens',

@@ -10087,14 +10087,14 @@ components:
           minLength: 1
           maxLength: 253
           example: OpenAI
-        provider:
+        managedBy:
           type: string
           description: |
-            Identifies the origin of the template. Built-in templates use 'wso2';
-            custom templates default to 'other' and may be set to any value.
-            Optional on create/update — the server defaults it to 'other' when
-            omitted, so a request/YAML without a provider is accepted.
-          default: other
+            Identifies who manages the template. Built-in templates use 'wso2';
+            custom templates default to 'customer' and may be set to any value.
+            Optional on create/update — the server defaults it to 'customer' when
+            omitted, so a request/YAML without a managedBy is accepted.
+          default: customer
           maxLength: 253
           example: wso2
         description:
@@ -10188,13 +10188,13 @@ components:
           description: New version identifier, e.g. v2.0. Must be unique for this template.
           pattern: '^[vV]\d+\.\d+$'
           example: v2.0
-        provider:
+        managedBy:
           type: string
           description: |
-            Identifies the origin of the template. Custom templates default to 'other'.
-          default: other
+            Identifies who manages the template. Custom templates default to 'customer'.
+          default: customer
           maxLength: 255
-          example: other
+          example: customer
         description:
           type: string
           description: Description of the LLM provider template
@@ -10232,9 +10232,9 @@ components:
         name:
           type: string
           example: OpenAI
-        provider:
+        managedBy:
           type: string
-          description: Origin of the template ('wso2' for built-in, otherwise custom-defined).
+          description: Who manages the template ('wso2' for built-in, otherwise custom-defined).
           example: wso2
         description:
           type: string

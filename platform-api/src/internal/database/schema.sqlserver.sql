@@ -376,7 +376,7 @@ EXEC('
         EXEC sp_rename ''dbo.llm_provider_templates.provider'', ''managed_by'', ''COLUMN'';
 ');
 
--- Add the columns introduced by the multi-version model; existing rows take the defaults.
+-- Add the columns introduced by the multi-version model. Existing rows take the defaults.
 IF OBJECT_ID(N'dbo.llm_provider_templates', N'U') IS NOT NULL
 EXEC('
     IF COL_LENGTH(''dbo.llm_provider_templates'', ''group_version_id'') IS NULL
@@ -427,9 +427,11 @@ EXEC('
         JOIN sys.index_columns ic ON ic.object_id = kc.parent_object_id AND ic.index_id = kc.unique_index_id
         JOIN sys.columns c ON c.object_id = ic.object_id AND c.column_id = ic.column_id
         WHERE kc.parent_object_id = OBJECT_ID(N''dbo.llm_provider_templates'') AND kc.type = ''UQ''
-          AND c.name IN (''organization_uuid'', ''group_version_id'', ''version'')
         GROUP BY kc.name
         HAVING COUNT(*) = 3
+           AND MAX(CASE WHEN c.name = ''organization_uuid'' THEN 1 ELSE 0 END) = 1
+           AND MAX(CASE WHEN c.name = ''group_version_id'' THEN 1 ELSE 0 END) = 1
+           AND MAX(CASE WHEN c.name = ''version'' THEN 1 ELSE 0 END) = 1
     )
         ALTER TABLE dbo.llm_provider_templates ADD CONSTRAINT UQ_llm_provider_templates_group_version
             UNIQUE (organization_uuid, group_version_id, version);
