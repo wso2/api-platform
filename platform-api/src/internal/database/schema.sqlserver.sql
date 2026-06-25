@@ -627,7 +627,7 @@ CREATE TABLE dbo.events (
     action NVARCHAR(20) NOT NULL CHECK(action IN ('CREATE', 'UPDATE', 'DELETE')),
     entity_id NVARCHAR(255) NOT NULL,
     event_id NVARCHAR(64) NOT NULL,
-    event_data NVARCHAR(MAX) NOT NULL,
+    event_data VARBINARY(MAX) NOT NULL,
     PRIMARY KEY (gateway_id, event_id),
     FOREIGN KEY (gateway_id) REFERENCES dbo.gateway_states(gateway_id) ON DELETE CASCADE
 );

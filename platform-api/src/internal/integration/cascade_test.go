@@ -187,9 +187,9 @@ func TestCascade_DeleteWebSubAPIRemovesHmacSecrets(t *testing.T) {
 	secret1 := id()
 	secret2 := id()
 	it.exec(t, `INSERT INTO websub_api_hmac_secrets (uuid, artifact_uuid, name, encrypted_secret, status) VALUES (?, ?, ?, ?, ?)`,
-		secret1, artifactUUID, "github-secret", "enc1", "active")
+		secret1, artifactUUID, "github-secret", []byte("enc1"), "active")
 	it.exec(t, `INSERT INTO websub_api_hmac_secrets (uuid, artifact_uuid, name, encrypted_secret, status) VALUES (?, ?, ?, ?, ?)`,
-		secret2, artifactUUID, "gitlab-secret", "enc2", "active")
+		secret2, artifactUUID, "gitlab-secret", []byte("enc2"), "active")
 
 	if got := it.count(t, "websub_api_hmac_secrets", "artifact_uuid", artifactUUID); got != 2 {
 		t.Fatalf("precondition: want 2 hmac secrets, got %d", got)

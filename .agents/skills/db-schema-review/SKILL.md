@@ -8,9 +8,9 @@ description: |
   - Writing or evaluating a migration plan
   - Asking "is this table well designed?" or "what indexes does this table need?"
 
-  Applies house conventions: UUID primary keys (VARCHAR(40)), handle/name/version identity triple for named resources, org-scoping, JSONB for JSON columns (Postgres), audit columns (created_by/at, updated_by/at), data_version for on-the-fly migrations, and standard indexing patterns. Enum/status validation belongs in application code — do NOT add CHECK constraints for enum values at the DB layer.
+  Applies house conventions: UUID primary keys (VARCHAR(40)), handle/name/version identity triple for named resources, org-scoping, JSONB only when JSON operators are used (Postgres) — otherwise VARCHAR or BLOB/BYTEA, audit columns (created_by/at, updated_by/at), data_version for on-the-fly migrations, and standard indexing patterns. Enum/status validation belongs in application code — do NOT add CHECK constraints for enum values at the DB layer.
 
-  When the project uses both a Postgres and a SQLite schema, both files must be kept in sync — every change to one must be reflected in the other unless it is an intentional type-level divergence (JSONB/TEXT, BYTEA/BLOB, TIMESTAMPTZ/TIMESTAMP).
+  When the project uses Postgres, SQLite, and/or SQL Server schemas, all files must be kept in sync — every change to one must be reflected in the others unless it is an intentional type-level divergence (JSONB/TEXT/NVARCHAR(MAX), BYTEA/BLOB/VARBINARY(MAX), TIMESTAMPTZ/DATETIME/DATETIME2).
 allowed-tools: Bash, Read, Edit, Write, Grep, Glob
 ---
 
@@ -72,7 +72,7 @@ Before writing the final DDL to disk, confirm each item passes:
 [ ] R2  organization_uuid FK present and UNIQUE constraints include it (if org-scoped)
 [ ] R3  No TEXT columns — use VARCHAR(N), JSONB (Postgres, query-only), or BYTEA/BLOB
 [ ] R3  Any payload that can grow large uses BYTEA/BLOB — not wide VARCHAR (configuration, properties, manifest, policy_definition, metadata, api_key_hashes, openapi_spec, model_list, content)
-[ ] R3  Small opaque JSON stored as a string uses VARCHAR(4096) max (e.g. event_data); JSONB only when queried with JSON operators inside Postgres
+[ ] R3  Opaque JSON stored as a string uses BYTEA/BLOB (e.g. event_data) — not VARCHAR; JSONB only when queried with JSON operators inside Postgres
 [ ] R3  Boolean flags use SMALLINT/INTEGER (not BOOLEAN), with DEFAULT 1/0
 [ ] R3  VARCHAR widths match the standard table — no width above VARCHAR(1023) for plain storage, VARCHAR(255) max for any indexed/unique column
 [ ] R3  Engine limits checked: Oracle VARCHAR2 ≤ 4,000 bytes; MySQL indexed VARCHAR ≤ 191 chars (utf8mb4 default) or ≤ 768 (large prefix); Postgres UNIQUE index entry ≤ 8,191 bytes (see R3-VARCHAR-ENGINE-LIMITS)
@@ -429,7 +429,8 @@ When the project maintains schema files for multiple database engines (e.g. Post
 
 | Feature | SQLite | PostgreSQL | SQL Server |
 |---|---|---|---|
-| JSON-valued columns | `TEXT` | `JSONB` | `NVARCHAR(MAX)` |
+| JSON-valued columns (queried with JSON operators) | `TEXT` | `JSONB` | `NVARCHAR(MAX)` |
+| JSON-valued columns (opaque storage only) | `TEXT` | `VARCHAR(N)` or `BYTEA` | `VARCHAR(N)` or `NVARCHAR(MAX)` |
 | Binary columns | `BLOB` | `BYTEA` | `VARBINARY(MAX)` |
 | Large text payloads | `TEXT` | `BYTEA` | `NVARCHAR(MAX)` |
 | All timestamps | `DATETIME` | `TIMESTAMPTZ` | `DATETIME2(7) DEFAULT SYSUTCDATETIME()` |
@@ -462,11 +463,9 @@ VARCHAR(512)  — tokens (encrypted values)
 VARCHAR(1023) — description, reason
               — UPPER BOUND for plain-storage VARCHAR; anything wider belongs in BYTEA/BLOB
 
--- VARCHAR(4096) is retained only for legacy event_data (not indexed). Do not add new columns at this width.
--- VARCHAR(8192) is REMOVED — wide VARCHAR is not safe across Oracle and MySQL (see R3-VARCHAR-ENGINE-LIMITS).
 -- TEXT is BANNED: use VARCHAR(N), JSONB, or BYTEA/BLOB instead.
 
-JSONB         — (Postgres only) JSON columns actively queried with JSON operators
+JSONB         — (Postgres only) JSON columns actively queried with JSON operators; plain opaque JSON storage uses VARCHAR(N) or BYTEA instead
 BYTEA / BLOB  — all large or variable-length payloads: openapi_spec, model_list, content, configuration,
                 properties, manifest, policy_definition, metadata, api_key_hashes, and any future column
                 whose value can exceed a few hundred bytes.

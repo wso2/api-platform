@@ -519,7 +519,7 @@ CREATE TABLE IF NOT EXISTS events (
     action TEXT NOT NULL,
     entity_id TEXT NOT NULL,
     event_id TEXT NOT NULL,
-    event_data VARCHAR(8192) NOT NULL,
+    event_data BLOB NOT NULL,
     PRIMARY KEY (gateway_id, event_id),
     FOREIGN KEY (gateway_id) REFERENCES gateway_states(gateway_id) ON DELETE CASCADE
 );
