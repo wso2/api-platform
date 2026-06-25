@@ -89,7 +89,8 @@ type Server struct {
 	Gateway          Gateway          `koanf:"gateway"`
 	EventHub         EventHub         `koanf:"event_hub"`
 
-	EnableScopeValidation bool `koanf:"enable_scope_validation"`
+	EnableScopeValidation   bool `koanf:"enable_scope_validation"`
+	OrgCreationRequiresAuth bool `koanf:"org_creation_requires_auth"`
 }
 
 // Auth groups all authentication-related configuration.
