@@ -28,6 +28,7 @@ const { ApplicationDTO } = require('../dto/applicationDto');
 const sampleApiLoader = require('../utils/sampleApiLoader');
 const kmDao = require('../dao/keyManagerDao');
 const adminService = require('../services/adminService');
+const apiKeyService = require('../services/apiKeyService');
 
 const orgIDValue = async (orgName) => {
     const organization = await orgDao.get(orgName);
@@ -274,6 +275,7 @@ const loadApplication = async (req, res) => {
         const data = await loadApplicationData(req, orgName, applicationId, viewName);
         metaData = data.applicationList;
         kMmetaData = data.keyManagersMetadata;
+        const { associatedApiKeys, availableKeysByApi } = await loadApplicationApiKeysData(data.orgID, applicationId);
 
         templateContent = {
             orgID: data.orgID,
@@ -296,7 +298,9 @@ const loadApplication = async (req, res) => {
             subscriptionScopes: data.subscriptionScopes,
             profile: req.isAuthenticated() ? data.profile : null,
             devportalMode: devportalMode,
-            isReadOnlyMode: config.readOnlyMode
+            isReadOnlyMode: config.readOnlyMode,
+            associatedApiKeys,
+            availableKeysByApi
         }
         const templateResponse = await templateResponseValue('application');
         const layoutResponse = await loadLayoutFromAPI(data.orgID, viewName);
@@ -390,6 +394,48 @@ const loadApplicationKeys = async (req, res) => {
         }
     }
     res.send(html);
+}
+
+/**
+ * Loads the keys currently associated with this app, plus a by-API grouping of keys
+ * that could be associated instead (anything not already associated with this app).
+ */
+function formatApiDisplayName(apiMetadata, fallbackId) {
+    if (!apiMetadata) return fallbackId;
+    const namePart = [apiMetadata.API_NAME, apiMetadata.API_VERSION].filter(Boolean).join(' ');
+    return apiMetadata.API_HANDLE ? `${namePart} (${apiMetadata.API_HANDLE})` : namePart;
+}
+
+async function loadApplicationApiKeysData(orgID, applicationId) {
+    let associatedApiKeys = [];
+    let availableKeysByApi = [];
+    try {
+        const associated = await apiKeyService.list(orgID, { appId: applicationId });
+        associatedApiKeys = associated.map((k) => ({
+            keyId: k.KEY_ID,
+            name: k.NAME,
+            status: String(k.STATUS || 'ACTIVE').toLowerCase(),
+            apiId: k.API_ID,
+            apiName: formatApiDisplayName(k.DP_API_METADATA, k.API_ID)
+        }));
+
+        // Capped — this just populates a UI picker, not a full export of the org's keys.
+        const allKeys = await apiKeyService.list(orgID, { status: 'ACTIVE', limit: 200 });
+        const byApi = new Map();
+        allKeys.forEach((k) => {
+            if (k.APP_ID === applicationId) return;
+            const apiId = k.API_ID;
+            const apiName = formatApiDisplayName(k.DP_API_METADATA, apiId);
+            if (!byApi.has(apiId)) byApi.set(apiId, { apiId, apiName, keys: [] });
+            byApi.get(apiId).keys.push({ keyId: k.KEY_ID, name: k.NAME });
+        });
+        availableKeysByApi = Array.from(byApi.values());
+    } catch (error) {
+        logger.warn('Failed to load API keys for application API keys section', {
+            orgID, applicationId, error: error.message
+        });
+    }
+    return { associatedApiKeys, availableKeysByApi };
 }
 
 async function mapGrants(grantTypes) {

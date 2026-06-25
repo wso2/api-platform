@@ -792,7 +792,8 @@ paths:
       summary: Create an application
       description: >-
         Creates a Developer Portal application in the specified organization. The request may be JSON, multipart form
-        fields, or an application YAML file in the `application` multipart field.
+        fields, or an application YAML file in the `application` multipart field. An `application.created` webhook
+        event is published to the organization's configured webhook subscribers.
       operationId: saveApplication
       requestBody:
         $ref: "#/components/requestBodies/ApplicationMultipartBody"
@@ -835,7 +836,9 @@ paths:
       summary: Update an application
       description: >-
         Updates an application owned by the authenticated user in the specified organization. The request may be JSON,
-        multipart form fields, or an application YAML file in the `application` multipart field.
+        multipart form fields, or an application YAML file in the `application` multipart field. An `application.updated`
+        webhook event is published, plus one `apikey.application_updated` event per API key currently associated with
+        the application.
       operationId: updateApplication
       requestBody:
         $ref: "#/components/requestBodies/ApplicationMultipartBody"
@@ -861,7 +864,9 @@ paths:
       description: >-
         Deletes an application owned by the authenticated user. Before removing the application record the service will
         make a best-effort attempt to revoke registered OAuth clients with their respective key managers and deletes all
-        stored key mappings; failures are logged as warnings and do not abort deletion.
+        stored key mappings; failures are logged as warnings and do not abort deletion. An `application.deleted`
+        webhook event is published, plus one `apikey.application_updated` event (with a cleared association) per API
+        key that was associated with the application.
       operationId: deleteApplication
       responses:
         "200":
@@ -1060,6 +1065,7 @@ paths:
       description: Lists API keys for an API. The `apiId` query parameter is required.
       parameters:
         - $ref: "#/components/parameters/apiIdQueryRequired"
+        - $ref: "#/components/parameters/appIdQueryOptional"
         - $ref: "#/components/parameters/limit"
         - $ref: "#/components/parameters/offset"
       responses:
@@ -1097,6 +1103,8 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
         "500":
           $ref: "#/components/responses/InternalServerError"
       security:
@@ -1124,11 +1132,96 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
         "500":
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
             - dp:api_key_revoke
+            - dp:api_key_manage
+  /o/{orgId}/devportal/v1/api-keys/{apiKeyId}/application:
+    parameters:
+      - $ref: "#/components/parameters/orgId"
+      - $ref: "#/components/parameters/apiKeyId"
+    put:
+      tags:
+        - API Keys
+      operationId: associateApiKeyApplication
+      summary: Associate an API key with an application
+      description: >-
+        Associates (or re-associates) an existing API key with an application, for analytics attribution only — it
+        has no effect on the key's validity or authorization. An `apikey.application_updated` webhook event is
+        published once for this key, with a payload of `{ key_id, application }`.
+      requestBody:
+        $ref: "#/components/requestBodies/ApiKeyApplicationBody"
+      responses:
+        "200":
+          description: Association updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiKeyApplicationResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      security:
+        - OAuth2Security:
+            - dp:api_key_update
+            - dp:api_key_manage
+    delete:
+      tags:
+        - API Keys
+      operationId: removeApiKeyApplication
+      summary: Remove an API key's application association
+      description: >-
+        Removes the application association from an API key, if any. An `apikey.application_updated` webhook event
+        is published once for this key, with `application` set to `null`.
+      responses:
+        "204":
+          description: Association removed (or none existed).
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      security:
+        - OAuth2Security:
+            - dp:api_key_update
+            - dp:api_key_manage
+  /o/{orgId}/devportal/v1/applications/{applicationId}/api-keys:
+    parameters:
+      - $ref: "#/components/parameters/orgId"
+      - $ref: "#/components/parameters/applicationId"
+    get:
+      tags:
+        - API Keys
+      operationId: listApplicationApiKeys
+      summary: List API keys associated with an application
+      description: >-
+        Lists all API keys (across every API) currently associated with the given application. Unlike
+        `listApiKeys`, no `apiId` filter is required.
+      parameters:
+        - $ref: "#/components/parameters/limit"
+        - $ref: "#/components/parameters/offset"
+      responses:
+        "200":
+          $ref: "#/components/responses/ApiKeyListResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      security:
+        - OAuth2Security:
+            - dp:api_key_read
             - dp:api_key_manage
   /o/{orgId}/devportal/v1/views:
     parameters:
@@ -2217,6 +2310,14 @@ components:
         type: string
         example: api-7f4c2a6b
       description: Optional Developer Portal API ID used to filter results.
+    appIdQueryOptional:
+      name: appId
+      in: query
+      required: false
+      schema:
+        type: string
+        example: app-12345
+      description: Optional application ID used to filter API keys associated with that application.
     labelNamesQuery:
       name: names
       in: query
@@ -2400,6 +2501,22 @@ components:
               value:
                 apiId: api-7f4c2a6b
                 name: weather_sandbox_key
+    ApiKeyApplicationBody:
+      required: true
+      description: Associates an API key with an application, identified by `appId`.
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+              - appId
+            properties:
+              appId:
+                type: string
+                example: app-12345
+            additionalProperties: false
+          example:
+            appId: app-12345
     AppKeyMappingBody:
       required: true
       description: OAuth key generation payload. The application is identified by the `applicationId` path parameter.
@@ -4021,6 +4138,12 @@ components:
           type: string
           description: Optional subscription ID to associate the key with.
           example: sub-abc123
+        appId:
+          type: string
+          description: >-
+            Optional application ID to associate the key with, for analytics attribution only — it has no effect on
+            the key's validity or authorization. Must belong to the same organization and be owned by the caller.
+          example: app-12345
         expiresAt:
           oneOf:
             - type: string
@@ -4044,6 +4167,16 @@ components:
           type: string
           description: Developer Portal API ID the key belongs to.
           example: api-7f4c2a6b
+        appId:
+          type: string
+          nullable: true
+          description: ID of the application this key is associated with, if any. Analytics attribution only.
+          example: app-12345
+        appName:
+          type: string
+          nullable: true
+          description: Name of the associated application, if any.
+          example: My Mobile App
         status:
           type: string
           enum:
@@ -4075,6 +4208,21 @@ components:
               type: string
               description: One-time plaintext API key secret.
               example: ak_dGhpcyBpcyBub3QgYSByZWFsIGtleQ
+    ApiKeyApplicationResponse:
+      type: object
+      properties:
+        keyId:
+          type: string
+          example: key-12345
+        application:
+          type: object
+          properties:
+            id:
+              type: string
+              example: app-12345
+            name:
+              type: string
+              example: My Mobile App
     KeyManagerRequest:
       type: object
       required:

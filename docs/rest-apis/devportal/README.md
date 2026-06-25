@@ -84,6 +84,9 @@ Base URLs:
 - [List API keys](api-keys.md#list-api-keys)
 - [Regenerate an API key](api-keys.md#regenerate-an-api-key)
 - [Revoke an API key](api-keys.md#revoke-an-api-key)
+- [Associate an API key with an application](api-keys.md#associate-an-api-key-with-an-application)
+- [Remove an API key's application association](api-keys.md#remove-an-api-keys-application-association)
+- [List API keys associated with an application](api-keys.md#list-api-keys-associated-with-an-application)
 
 ### [Views](views.md)
 

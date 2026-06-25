@@ -26,9 +26,13 @@ The portal fires events in the background via a delivery worker with automatic r
 | `apikey.generated` | A new API key was generated for a subscription | API key secret (`encrypted_key`) |
 | `apikey.regenerated` | An existing API key was rotated | New API key secret (`encrypted_key`) |
 | `apikey.revoked` | An API key was revoked | — |
+| `apikey.application_updated` | A key's application association changed | — |
 | `subscription.created` | A developer subscribed to an API | Subscription token (`encrypted_key`) |
 | `subscription.plan_changed` | A subscription's plan changed | — |
 | `subscription.deleted` | A developer unsubscribed | — |
+| `application.created` | A developer created an application | — |
+| `application.updated` | An application was renamed or its details changed | — |
+| `application.deleted` | An application was deleted | — |
 
 For events that carry a sensitive field (`apikey.generated`, `apikey.regenerated`, `subscription.created`), the value is **envelope-encrypted** with the subscriber's RSA-2048 public key and delivered in `data.encrypted_key`. It is never included in plaintext.
 
@@ -154,6 +158,10 @@ Fired when a developer generates a new API key for an API.
       "plan_ref_id": "plan-uuid",
       "plan_name": "Gold"
     },
+    "application": {
+      "id": "app-uuid",
+      "name": "My Mobile App"
+    },
     "encrypted_key": {
       "wrappedKey": "<base64>",
       "iv": "<base64>",
@@ -165,6 +173,7 @@ Fired when a developer generates a new API key for an API.
 ```
 
 - `subscription` is present only when the key is bound to a subscription
+- `application` is present only when the key is associated with an application (see [`apikey.application_updated`](#apikeyapplication_updated) below) — for analytics attribution only, it has no bearing on the key's validity
 - `encrypted_key` is present only when a public key is configured for the subscriber (see [Envelope Encryption](#envelope-encryption))
 - `expires_at` is `null` for non-expiring keys
 
@@ -189,10 +198,16 @@ Fired when a developer rotates an existing key. The `key_id` is unchanged; the o
       "plan_ref_id": "plan-uuid",
       "plan_name": "Gold"
     },
+    "application": {
+      "id": "app-uuid",
+      "name": "My Mobile App"
+    },
     "encrypted_key": { "wrappedKey": "...", "iv": "...", "tag": "...", "ciphertext": "..." }
   }
 }
 ```
+
+- `application` is present only when the key is currently associated with an application
 
 ### `apikey.revoked`
 
@@ -220,6 +235,28 @@ Fired when a developer revokes a key. Your subscriber should reject any request 
 
 - `subscription` is present only when the key was bound to a subscription
 - No `encrypted_key` is included — your subscriber only needs the `key_id` to revoke access.
+
+### `apikey.application_updated`
+
+Fired whenever a single key's application association changes: the key is associated with an app, dissociated, or its app is renamed or deleted. This is a **per-key** event — like `apikey.generated`/`apikey.regenerated`/`apikey.revoked`, `key_id` identifies the one key affected. The association is optional and exists for analytics attribution only — it has no effect on key validity or authorization.
+
+```json
+{
+  "event_type": "apikey.application_updated",
+  "data": {
+    "key_id": "key-uuid",
+    "application": {
+      "id": "app-uuid",
+      "name": "My App"
+    }
+  }
+}
+```
+
+- `application` is `null` when the key's association was removed, or when the key's app was deleted
+- Renaming an app fires this event once per key currently associated with it, each with the app's new `name`
+- Deleting an app fires this event once per key currently associated with it, each with `application: null` — there is no separate "deleted" variant
+- No `encrypted_key` is included — no secret material is involved
 
 ### `subscription.created`
 
@@ -297,6 +334,56 @@ Fired when a developer unsubscribes. Your subscriber should revoke access for th
 ```
 
 Your subscriber identifies the affected subscription via `subscription_id`. No token is included.
+
+### `application.created`
+
+Fired when a developer creates an application.
+
+```json
+{
+  "event_type": "application.created",
+  "data": {
+    "application_id": "app-uuid",
+    "name": "My Mobile App",
+    "description": "Application used to call Weather APIs.",
+    "type": "WEB"
+  }
+}
+```
+
+### `application.updated`
+
+Fired when a developer renames an application or changes its details. `data` carries the full current representation (not a delta).
+
+```json
+{
+  "event_type": "application.updated",
+  "data": {
+    "application_id": "app-uuid",
+    "name": "My Mobile App (renamed)",
+    "description": "Application used to call Weather APIs.",
+    "type": "WEB"
+  }
+}
+```
+
+If the application has API keys associated with it (see [`apikey.application_updated`](#apikeyapplication_updated)), one such event is fired per associated key with the new name, alongside this event.
+
+### `application.deleted`
+
+Fired when a developer deletes an application, after the application has been removed.
+
+```json
+{
+  "event_type": "application.deleted",
+  "data": {
+    "application_id": "app-uuid",
+    "name": "My Mobile App"
+  }
+}
+```
+
+Your subscriber identifies the affected application via `application_id`. If the application had API keys associated with it, one [`apikey.application_updated`](#apikeyapplication_updated) event (with `application: null`) is fired per associated key alongside this event.
 
 ---
 
