@@ -1076,7 +1076,11 @@ func mapOperationPoliciesAPIToModel(in *[]api.OperationPolicy) []model.Operation
 		}
 		paths := make([]model.OperationPolicyPath, 0, len(p.Paths))
 		for _, pp := range p.Paths {
-			paths = append(paths, model.OperationPolicyPath{Path: pp.Path, Methods: pp.Methods, Params: pp.Params})
+			methods := make([]string, len(pp.Methods))
+			for i, m := range pp.Methods {
+				methods[i] = string(m)
+			}
+			paths = append(paths, model.OperationPolicyPath{Path: pp.Path, Methods: methods, Params: pp.Params})
 		}
 		out = append(out, model.OperationPolicy{Name: p.Name, Version: p.Version, ExecutionCondition: ec, Paths: paths})
 	}
@@ -1110,7 +1114,11 @@ func mapOperationPoliciesModelToAPI(in []model.OperationPolicy) *[]api.Operation
 	for _, p := range in {
 		paths := make([]api.OperationPolicyPath, 0, len(p.Paths))
 		for _, pp := range p.Paths {
-			paths = append(paths, api.OperationPolicyPath{Path: pp.Path, Methods: pp.Methods, Params: pp.Params})
+			methods := make([]api.OperationPolicyPathMethods, len(pp.Methods))
+			for i, m := range pp.Methods {
+				methods[i] = api.OperationPolicyPathMethods(m)
+			}
+			paths = append(paths, api.OperationPolicyPath{Path: pp.Path, Methods: methods, Params: pp.Params})
 		}
 		entry := api.OperationPolicy{Name: p.Name, Version: p.Version, Paths: paths}
 		if p.ExecutionCondition != "" {

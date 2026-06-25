@@ -685,7 +685,7 @@ func generateLLMProviderDeploymentYAML(provider *model.LLMProvider, templateHand
 					}
 					addOrAppendOperationPolicyPath(&operationPolicies, tokenBasedRateLimitPolicyName, "", api.OperationPolicyPath{
 						Path:    "/*",
-						Methods: []string{"*"},
+						Methods: []api.OperationPolicyPathMethods{"*"},
 						Params: map[string]interface{}{
 							"totalTokenLimits": []map[string]interface{}{
 								{"count": tokenLimit.Count, "duration": duration},
@@ -701,7 +701,7 @@ func generateLLMProviderDeploymentYAML(provider *model.LLMProvider, templateHand
 					}
 					addOrAppendOperationPolicyPath(&operationPolicies, advancedRateLimitPolicyName, "", api.OperationPolicyPath{
 						Path:    "/*",
-						Methods: []string{"*"},
+						Methods: []api.OperationPolicyPathMethods{"*"},
 						Params: map[string]interface{}{
 							"quotas": []map[string]interface{}{
 								{
@@ -722,7 +722,7 @@ func generateLLMProviderDeploymentYAML(provider *model.LLMProvider, templateHand
 					}
 					addOrAppendOperationPolicyPath(&operationPolicies, llmCostBasedRateLimitPolicyName, "", api.OperationPolicyPath{
 						Path:    "/*",
-						Methods: []string{"*"},
+						Methods: []api.OperationPolicyPathMethods{"*"},
 						Params: map[string]interface{}{
 							"budgetLimits": []map[string]interface{}{
 								{"amount": costLimit.Amount, "duration": duration},
@@ -732,7 +732,7 @@ func generateLLMProviderDeploymentYAML(provider *model.LLMProvider, templateHand
 					if !hasOperationPolicy(operationPolicies, llmCostPolicyName) {
 						operationPolicies = append(operationPolicies, api.OperationPolicy{
 							Name:  llmCostPolicyName,
-							Paths: []api.OperationPolicyPath{{Path: "/*", Methods: []string{"*"}, Params: map[string]interface{}{}}},
+							Paths: []api.OperationPolicyPath{{Path: "/*", Methods: []api.OperationPolicyPathMethods{"*"}, Params: map[string]interface{}{}}},
 						})
 					}
 				}
@@ -747,7 +747,7 @@ func generateLLMProviderDeploymentYAML(provider *model.LLMProvider, templateHand
 						}
 						addOrAppendOperationPolicyPath(&operationPolicies, tokenBasedRateLimitPolicyName, "", api.OperationPolicyPath{
 							Path:    r.Resource,
-							Methods: []string{"*"},
+							Methods: []api.OperationPolicyPathMethods{"*"},
 							Params: map[string]interface{}{
 								"totalTokenLimits": []map[string]interface{}{
 									{"count": tokenLimit.Count, "duration": duration},
@@ -763,7 +763,7 @@ func generateLLMProviderDeploymentYAML(provider *model.LLMProvider, templateHand
 						}
 						addOrAppendOperationPolicyPath(&operationPolicies, advancedRateLimitPolicyName, "", api.OperationPolicyPath{
 							Path:    r.Resource,
-							Methods: []string{"*"},
+							Methods: []api.OperationPolicyPathMethods{"*"},
 							Params: map[string]interface{}{
 								"quotas": []map[string]interface{}{
 									{
@@ -784,7 +784,7 @@ func generateLLMProviderDeploymentYAML(provider *model.LLMProvider, templateHand
 						}
 						addOrAppendOperationPolicyPath(&operationPolicies, llmCostBasedRateLimitPolicyName, "", api.OperationPolicyPath{
 							Path:    r.Resource,
-							Methods: []string{"*"},
+							Methods: []api.OperationPolicyPathMethods{"*"},
 							Params: map[string]interface{}{
 								"budgetLimits": []map[string]interface{}{
 									{"amount": costLimit.Amount, "duration": duration},
@@ -794,7 +794,7 @@ func generateLLMProviderDeploymentYAML(provider *model.LLMProvider, templateHand
 						if !hasOperationPolicy(operationPolicies, llmCostPolicyName) {
 							operationPolicies = append(operationPolicies, api.OperationPolicy{
 								Name:  llmCostPolicyName,
-								Paths: []api.OperationPolicyPath{{Path: "/*", Methods: []string{"*"}, Params: map[string]interface{}{}}},
+								Paths: []api.OperationPolicyPath{{Path: "/*", Methods: []api.OperationPolicyPathMethods{"*"}, Params: map[string]interface{}{}}},
 							})
 						}
 					}
@@ -1010,7 +1010,11 @@ func generateLLMProviderDeploymentYAML(provider *model.LLMProvider, templateHand
 	for _, p := range provider.Configuration.OperationPolicies {
 		paths := make([]api.OperationPolicyPath, 0, len(p.Paths))
 		for _, pp := range p.Paths {
-			paths = append(paths, api.OperationPolicyPath{Path: pp.Path, Methods: pp.Methods, Params: pp.Params})
+			methods := make([]api.OperationPolicyPathMethods, len(pp.Methods))
+			for i, m := range pp.Methods {
+				methods[i] = api.OperationPolicyPathMethods(m)
+			}
+			paths = append(paths, api.OperationPolicyPath{Path: pp.Path, Methods: methods, Params: pp.Params})
 		}
 		entry := api.OperationPolicy{Name: p.Name, Version: normalizePolicyVersionToMajor(p.Version), Paths: paths}
 		if p.ExecutionCondition != "" {
@@ -1072,9 +1076,9 @@ func generateLLMProviderDeploymentYAML(provider *model.LLMProvider, templateHand
 	for _, p := range providerDeployment.Spec.Policies {
 		paths := make([]api.OperationPolicyPath, 0, len(p.Paths))
 		for _, pp := range p.Paths {
-			methods := make([]string, 0, len(pp.Methods))
-			for _, m := range pp.Methods {
-				methods = append(methods, string(m))
+			methods := make([]api.OperationPolicyPathMethods, len(pp.Methods))
+			for i, m := range pp.Methods {
+				methods[i] = api.OperationPolicyPathMethods(m)
 			}
 			paths = append(paths, api.OperationPolicyPath{Path: pp.Path, Methods: methods, Params: pp.Params})
 		}
@@ -1663,7 +1667,11 @@ func generateLLMProxyDeploymentYAML(proxy *model.LLMProxy) (dto.LLMProxyDeployme
 	for _, p := range proxy.Configuration.OperationPolicies {
 		paths := make([]api.OperationPolicyPath, 0, len(p.Paths))
 		for _, pp := range p.Paths {
-			paths = append(paths, api.OperationPolicyPath{Path: pp.Path, Methods: pp.Methods, Params: pp.Params})
+			methods := make([]api.OperationPolicyPathMethods, len(pp.Methods))
+			for i, m := range pp.Methods {
+				methods[i] = api.OperationPolicyPathMethods(m)
+			}
+			paths = append(paths, api.OperationPolicyPath{Path: pp.Path, Methods: methods, Params: pp.Params})
 		}
 		entry := api.OperationPolicy{Name: p.Name, Version: normalizePolicyVersionToMajor(p.Version), Paths: paths}
 		if p.ExecutionCondition != "" {
@@ -1715,9 +1723,9 @@ func generateLLMProxyDeploymentYAML(proxy *model.LLMProxy) (dto.LLMProxyDeployme
 	for _, p := range proxyDeployment.Spec.Policies {
 		paths := make([]api.OperationPolicyPath, 0, len(p.Paths))
 		for _, pp := range p.Paths {
-			methods := make([]string, 0, len(pp.Methods))
-			for _, m := range pp.Methods {
-				methods = append(methods, string(m))
+			methods := make([]api.OperationPolicyPathMethods, len(pp.Methods))
+			for i, m := range pp.Methods {
+				methods[i] = api.OperationPolicyPathMethods(m)
 			}
 			paths = append(paths, api.OperationPolicyPath{Path: pp.Path, Methods: methods, Params: pp.Params})
 		}

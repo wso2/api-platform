@@ -235,6 +235,18 @@ const (
 	OpenAPIValidationResponseApiLifeCycleStatusSTAGED     OpenAPIValidationResponseApiLifeCycleStatus = "STAGED"
 )
 
+// Defines values for OperationPolicyPathMethods.
+const (
+	OperationPolicyPathMethodsAsterisk OperationPolicyPathMethods = "*"
+	OperationPolicyPathMethodsDELETE   OperationPolicyPathMethods = "DELETE"
+	OperationPolicyPathMethodsGET      OperationPolicyPathMethods = "GET"
+	OperationPolicyPathMethodsHEAD     OperationPolicyPathMethods = "HEAD"
+	OperationPolicyPathMethodsOPTIONS  OperationPolicyPathMethods = "OPTIONS"
+	OperationPolicyPathMethodsPATCH    OperationPolicyPathMethods = "PATCH"
+	OperationPolicyPathMethodsPOST     OperationPolicyPathMethods = "POST"
+	OperationPolicyPathMethodsPUT      OperationPolicyPathMethods = "PUT"
+)
+
 // Defines values for OperationRequestMethod.
 const (
 	OperationRequestMethodDELETE  OperationRequestMethod = "DELETE"
@@ -311,14 +323,14 @@ const (
 
 // Defines values for RouteExceptionMethods.
 const (
-	Asterisk RouteExceptionMethods = "*"
-	DELETE   RouteExceptionMethods = "DELETE"
-	GET      RouteExceptionMethods = "GET"
-	HEAD     RouteExceptionMethods = "HEAD"
-	OPTIONS  RouteExceptionMethods = "OPTIONS"
-	PATCH    RouteExceptionMethods = "PATCH"
-	POST     RouteExceptionMethods = "POST"
-	PUT      RouteExceptionMethods = "PUT"
+	RouteExceptionMethodsAsterisk RouteExceptionMethods = "*"
+	RouteExceptionMethodsDELETE   RouteExceptionMethods = "DELETE"
+	RouteExceptionMethodsGET      RouteExceptionMethods = "GET"
+	RouteExceptionMethodsHEAD     RouteExceptionMethods = "HEAD"
+	RouteExceptionMethodsOPTIONS  RouteExceptionMethods = "OPTIONS"
+	RouteExceptionMethodsPATCH    RouteExceptionMethods = "PATCH"
+	RouteExceptionMethodsPOST     RouteExceptionMethods = "POST"
+	RouteExceptionMethodsPUT      RouteExceptionMethods = "PUT"
 )
 
 // Defines values for SubscriptionStatus.
@@ -1637,26 +1649,6 @@ type LLMPolicyPath struct {
 // LLMPolicyPathMethods defines model for LLMPolicyPath.Methods.
 type LLMPolicyPathMethods string
 
-// OperationPolicy defines model for OperationPolicy.
-type OperationPolicy struct {
-	// ExecutionCondition Condition under which the policy is executed
-	ExecutionCondition *string `json:"executionCondition,omitempty" yaml:"executionCondition,omitempty"`
-
-	Name  string                `binding:"required" json:"name" yaml:"name"`
-	Paths []OperationPolicyPath `binding:"required" json:"paths" yaml:"paths"`
-
-	Version string `binding:"required" json:"version" yaml:"version"`
-}
-
-// OperationPolicyPath defines model for OperationPolicyPath.
-type OperationPolicyPath struct {
-	Methods []string `binding:"required" json:"methods" yaml:"methods"`
-
-	// Params Policy parameters (key-value pairs specific to the policy)
-	Params map[string]interface{} `binding:"required" json:"params" yaml:"params"`
-	Path   string                 `binding:"required" json:"path" yaml:"path"`
-}
-
 // LLMProvider defines model for LLMProvider.
 type LLMProvider struct {
 	AccessControl LLMAccessControl `json:"accessControl" yaml:"accessControl"`
@@ -1673,6 +1665,9 @@ type LLMProvider struct {
 	// Description Description of the LLM provider
 	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
 
+	// GlobalPolicies Global (api-level) policies applied across ALL operations as one shared scope, evaluated before operation-level policies.
+	GlobalPolicies *[]Policy `json:"globalPolicies,omitempty" yaml:"globalPolicies,omitempty"`
+
 	// Id Unique handle for the provider
 	Id string `binding:"required" json:"id" yaml:"id"`
 
@@ -1685,13 +1680,11 @@ type LLMProvider struct {
 	// Openapi OpenAPI specification (JSON or YAML) for the provider endpoint
 	Openapi *string `json:"openapi,omitempty" yaml:"openapi,omitempty"`
 
-	// GlobalPolicies List of policies applied at the API level (shared rate-limit bucket across all operations)
-	GlobalPolicies *[]Policy `json:"globalPolicies,omitempty" yaml:"globalPolicies,omitempty"`
-
-	// OperationPolicies List of policies applied per operation (independent rate-limit bucket per resource)
+	// OperationPolicies Operation-level policies scoped to specific paths/methods, evaluated after global policies.
 	OperationPolicies *[]OperationPolicy `json:"operationPolicies,omitempty" yaml:"operationPolicies,omitempty"`
 
-	// Policies Deprecated: use operationPolicies instead. List of policies applied only to this operation (overrides or adds to API-level policies)
+	// Policies DEPRECATED - use operationPolicies. Still honoured (treated identically to operationPolicies).
+	// Deprecated: this property has been marked as deprecated upstream, but no `x-deprecated-reason` was set
 	Policies *[]LLMPolicy `json:"policies,omitempty" yaml:"policies,omitempty"`
 
 	// RateLimiting Rate limiting configuration for an LLM provider at provider and consumer levels.
@@ -1853,22 +1846,23 @@ type LLMProxy struct {
 	// Description Description of the LLM proxy
 	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
 
+	// GlobalPolicies Global (api-level) policies applied across ALL operations as one shared scope, evaluated before operation-level policies.
+	GlobalPolicies *[]Policy `json:"globalPolicies,omitempty" yaml:"globalPolicies,omitempty"`
+
 	// Id Unique handle for the proxy
 	Id string `binding:"required" json:"id" yaml:"id"`
 
 	// Name Human-readable LLM proxy name (must be URL-friendly - only letters, numbers, spaces, hyphens, underscores, and dots allowed)
 	Name string `binding:"required" json:"name" yaml:"name"`
 
-	// GlobalPolicies List of policies applied at the API level (shared rate-limit bucket across all operations)
-	GlobalPolicies *[]Policy `json:"globalPolicies,omitempty" yaml:"globalPolicies,omitempty"`
-
-	// OperationPolicies List of policies applied per operation (independent rate-limit bucket per resource)
-	OperationPolicies *[]OperationPolicy `json:"operationPolicies,omitempty" yaml:"operationPolicies,omitempty"`
-
 	// Openapi OpenAPI specification (JSON or YAML) for the proxy endpoint
 	Openapi *string `json:"openapi,omitempty" yaml:"openapi,omitempty"`
 
-	// Policies Deprecated: use operationPolicies instead. List of policies applied only to this operation (overrides or adds to API-level policies)
+	// OperationPolicies Operation-level policies scoped to specific paths/methods, evaluated after global policies.
+	OperationPolicies *[]OperationPolicy `json:"operationPolicies,omitempty" yaml:"operationPolicies,omitempty"`
+
+	// Policies DEPRECATED - use operationPolicies. Still honoured (treated identically to operationPolicies).
+	// Deprecated: this property has been marked as deprecated upstream, but no `x-deprecated-reason` was set
 	Policies *[]LLMPolicy `json:"policies,omitempty" yaml:"policies,omitempty"`
 
 	// ProjectId UUID of the project this proxy belongs to
@@ -2168,6 +2162,27 @@ type Operation struct {
 	// Request Request details for an API operation
 	Request OperationRequest `json:"request" yaml:"request"`
 }
+
+// OperationPolicy defines model for OperationPolicy.
+type OperationPolicy struct {
+	// ExecutionCondition Optional per-request CEL expression controlling whether the policy runs
+	ExecutionCondition *string               `json:"executionCondition,omitempty" yaml:"executionCondition,omitempty"`
+	Name               string                `binding:"required" json:"name" yaml:"name"`
+	Paths              []OperationPolicyPath `binding:"required" json:"paths" yaml:"paths"`
+	Version            string                `binding:"required" json:"version" yaml:"version"`
+}
+
+// OperationPolicyPath defines model for OperationPolicyPath.
+type OperationPolicyPath struct {
+	Methods []OperationPolicyPathMethods `binding:"required" json:"methods" yaml:"methods"`
+
+	// Params Policy parameters
+	Params map[string]interface{} `binding:"required" json:"params" yaml:"params"`
+	Path   string                 `binding:"required" json:"path" yaml:"path"`
+}
+
+// OperationPolicyPathMethods HTTP method: GET, POST, PUT, DELETE, PATCH, OPTIONS, HEAD, or * for all
+type OperationPolicyPathMethods string
 
 // OperationRequest Request details for an API operation
 type OperationRequest struct {
@@ -3573,32 +3588,20 @@ type WebSubEventPolicies struct {
 	Policies *[]Policy `json:"policies,omitempty" yaml:"policies,omitempty"`
 }
 
-// ArtifactTypeQ defines model for ArtifactType-Q.
-type ArtifactTypeQ string
-
-// DevPortalID defines model for DevPortalID.
-type DevPortalID = openapi_types.UUID
-
-// GatewayID defines model for GatewayID.
-type GatewayID = openapi_types.UUID
-
-// ProjectID defines model for ProjectID.
-type ProjectID = openapi_types.UUID
-
-// TokenID defines model for TokenID.
-type TokenID = openapi_types.UUID
-
-// ApiNameQ defines model for api-name-Q.
-type ApiNameQ = string
-
-// ApiVersionQ defines model for api-version-Q.
-type ApiVersionQ = string
-
 // ApiId defines model for apiId.
 type ApiId = string
 
+// ApiNameQ defines model for apiName-Q.
+type ApiNameQ = string
+
+// ApiVersionQ defines model for apiVersion-Q.
+type ApiVersionQ = string
+
 // AppId defines model for appId.
 type AppId = string
+
+// ArtifactTypeQ defines model for artifactType-Q.
+type ArtifactTypeQ string
 
 // AssociationId defines model for associationId.
 type AssociationId = string
@@ -3612,8 +3615,14 @@ type DeploymentStatusQ string
 // DepthQ defines model for depth-Q.
 type DepthQ = int
 
-// EntityIDQ defines model for entityID-Q.
-type EntityIDQ = string
+// DevPortalId defines model for devPortalId.
+type DevPortalId = openapi_types.UUID
+
+// EntityIdQ defines model for entityId-Q.
+type EntityIdQ = string
+
+// GatewayId defines model for gatewayId.
+type GatewayId = openapi_types.UUID
 
 // GatewayIdQ defines model for gatewayId-Q.
 type GatewayIdQ = string
@@ -3624,8 +3633,14 @@ type MappedKeyId = string
 // OrganizationId defines model for organizationId.
 type OrganizationId = openapi_types.UUID
 
+// ProjectId defines model for projectId.
+type ProjectId = openapi_types.UUID
+
 // ProjectIdQ defines model for projectId-Q.
 type ProjectIdQ = openapi_types.UUID
+
+// TokenId defines model for tokenId.
+type TokenId = openapi_types.UUID
 
 // BadRequest defines model for BadRequest.
 type BadRequest = Error
@@ -3669,7 +3684,7 @@ type ListApplicationAPIKeysParams struct {
 // RemoveApplicationAPIKeyParams defines parameters for RemoveApplicationAPIKey.
 type RemoveApplicationAPIKeyParams struct {
 	// EntityID **Entity ID** of the artifact associated with the API key mapping.
-	EntityID EntityIDQ `form:"entityID" json:"entityID" yaml:"entityID"`
+	EntityID EntityIdQ `form:"entityID" json:"entityID" yaml:"entityID"`
 }
 
 // ListApplicationAssociationsParams defines parameters for ListApplicationAssociations.
@@ -3766,18 +3781,6 @@ type GetLLMProviderDeploymentsParams struct {
 // GetLLMProviderDeploymentsParamsStatus defines parameters for GetLLMProviderDeployments.
 type GetLLMProviderDeploymentsParamsStatus string
 
-// RestoreLLMProviderDeploymentDeprecatedParams defines parameters for RestoreLLMProviderDeploymentDeprecated.
-type RestoreLLMProviderDeploymentDeprecatedParams struct {
-	DeploymentId string `form:"deploymentId" json:"deploymentId" yaml:"deploymentId"`
-	GatewayId    string `form:"gatewayId" json:"gatewayId" yaml:"gatewayId"`
-}
-
-// UndeployLLMProviderDeploymentDeprecatedParams defines parameters for UndeployLLMProviderDeploymentDeprecated.
-type UndeployLLMProviderDeploymentDeprecatedParams struct {
-	DeploymentId string `form:"deploymentId" json:"deploymentId" yaml:"deploymentId"`
-	GatewayId    string `form:"gatewayId" json:"gatewayId" yaml:"gatewayId"`
-}
-
 // RestoreLLMProviderDeploymentParams defines parameters for RestoreLLMProviderDeployment.
 type RestoreLLMProviderDeploymentParams struct {
 	// GatewayId UUID of the gateway (validated against deployment's bound gateway)
@@ -3823,18 +3826,6 @@ type GetLLMProxyDeploymentsParams struct {
 // GetLLMProxyDeploymentsParamsStatus defines parameters for GetLLMProxyDeployments.
 type GetLLMProxyDeploymentsParamsStatus string
 
-// RestoreLLMProxyDeploymentDeprecatedParams defines parameters for RestoreLLMProxyDeploymentDeprecated.
-type RestoreLLMProxyDeploymentDeprecatedParams struct {
-	DeploymentId string `form:"deploymentId" json:"deploymentId" yaml:"deploymentId"`
-	GatewayId    string `form:"gatewayId" json:"gatewayId" yaml:"gatewayId"`
-}
-
-// UndeployLLMProxyDeploymentDeprecatedParams defines parameters for UndeployLLMProxyDeploymentDeprecated.
-type UndeployLLMProxyDeploymentDeprecatedParams struct {
-	DeploymentId string `form:"deploymentId" json:"deploymentId" yaml:"deploymentId"`
-	GatewayId    string `form:"gatewayId" json:"gatewayId" yaml:"gatewayId"`
-}
-
 // RestoreLLMProxyDeploymentParams defines parameters for RestoreLLMProxyDeployment.
 type RestoreLLMProxyDeploymentParams struct {
 	// GatewayId UUID of the gateway (validated against deployment's bound gateway)
@@ -3870,18 +3861,6 @@ type GetMCPProxyDeploymentsParams struct {
 
 // GetMCPProxyDeploymentsParamsStatus defines parameters for GetMCPProxyDeployments.
 type GetMCPProxyDeploymentsParamsStatus string
-
-// RestoreMCPProxyDeploymentDeprecatedParams defines parameters for RestoreMCPProxyDeploymentDeprecated.
-type RestoreMCPProxyDeploymentDeprecatedParams struct {
-	DeploymentId string `form:"deploymentId" json:"deploymentId" yaml:"deploymentId"`
-	GatewayId    string `form:"gatewayId" json:"gatewayId" yaml:"gatewayId"`
-}
-
-// UndeployMCPProxyDeploymentDeprecatedParams defines parameters for UndeployMCPProxyDeploymentDeprecated.
-type UndeployMCPProxyDeploymentDeprecatedParams struct {
-	DeploymentId string `form:"deploymentId" json:"deploymentId" yaml:"deploymentId"`
-	GatewayId    string `form:"gatewayId" json:"gatewayId" yaml:"gatewayId"`
-}
 
 // RestoreMCPProxyDeploymentParams defines parameters for RestoreMCPProxyDeployment.
 type RestoreMCPProxyDeploymentParams struct {
@@ -3930,18 +3909,6 @@ type GetDeploymentsParams struct {
 
 // GetDeploymentsParamsStatus defines parameters for GetDeployments.
 type GetDeploymentsParamsStatus string
-
-// RestoreDeploymentDeprecatedParams defines parameters for RestoreDeploymentDeprecated.
-type RestoreDeploymentDeprecatedParams struct {
-	DeploymentId string `form:"deploymentId" json:"deploymentId" yaml:"deploymentId"`
-	GatewayId    string `form:"gatewayId" json:"gatewayId" yaml:"gatewayId"`
-}
-
-// UndeployDeploymentDeprecatedParams defines parameters for UndeployDeploymentDeprecated.
-type UndeployDeploymentDeprecatedParams struct {
-	DeploymentId string `form:"deploymentId" json:"deploymentId" yaml:"deploymentId"`
-	GatewayId    string `form:"gatewayId" json:"gatewayId" yaml:"gatewayId"`
-}
 
 // RestoreDeploymentParams defines parameters for RestoreDeployment.
 type RestoreDeploymentParams struct {
@@ -4002,71 +3969,67 @@ type UpdateSubscriptionParams struct {
 
 // ListWebBrokerAPIsParams defines parameters for ListWebBrokerAPIs.
 type ListWebBrokerAPIsParams struct {
+	// ProjectId UUID of the project to filter results to.
 	ProjectId string `form:"projectId" json:"projectId" yaml:"projectId"`
-	Limit     *int   `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
-	Offset    *int   `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
+
+	// Limit Maximum number of results to return per page.
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
+
+	// Offset Zero-based index of the first result to return.
+	Offset *int `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
 }
 
 // GetWebBrokerAPIDeploymentsParams defines parameters for GetWebBrokerAPIDeployments.
 type GetWebBrokerAPIDeploymentsParams struct {
+	// GatewayId UUID of the gateway to filter results by.
 	GatewayId *openapi_types.UUID `form:"gatewayId,omitempty" json:"gatewayId,omitempty" yaml:"gatewayId,omitempty"`
-	Status    *string             `form:"status,omitempty" json:"status,omitempty" yaml:"status,omitempty"`
-}
 
-// RestoreWebBrokerAPIDeploymentDeprecatedParams defines parameters for RestoreWebBrokerAPIDeploymentDeprecated.
-type RestoreWebBrokerAPIDeploymentDeprecatedParams struct {
-	DeploymentId string `form:"deploymentId" json:"deploymentId" yaml:"deploymentId"`
-	GatewayId    string `form:"gatewayId" json:"gatewayId" yaml:"gatewayId"`
-}
-
-// UndeployWebBrokerAPIDeprecatedParams defines parameters for UndeployWebBrokerAPIDeprecated.
-type UndeployWebBrokerAPIDeprecatedParams struct {
-	DeploymentId string `form:"deploymentId" json:"deploymentId" yaml:"deploymentId"`
-	GatewayId    string `form:"gatewayId" json:"gatewayId" yaml:"gatewayId"`
+	// Status Deployment status to filter by (e.g. ACTIVE, FAILED).
+	Status *string `form:"status,omitempty" json:"status,omitempty" yaml:"status,omitempty"`
 }
 
 // RestoreWebBrokerAPIDeploymentParams defines parameters for RestoreWebBrokerAPIDeployment.
 type RestoreWebBrokerAPIDeploymentParams struct {
+	// GatewayId UUID of the gateway to filter results by.
 	GatewayId string `form:"gatewayId" json:"gatewayId" yaml:"gatewayId"`
 }
 
 // UndeployWebBrokerAPIParams defines parameters for UndeployWebBrokerAPI.
 type UndeployWebBrokerAPIParams struct {
+	// GatewayId UUID of the gateway to filter results by.
 	GatewayId string `form:"gatewayId" json:"gatewayId" yaml:"gatewayId"`
 }
 
 // ListWebSubAPIsParams defines parameters for ListWebSubAPIs.
 type ListWebSubAPIsParams struct {
+	// ProjectId UUID of the project to filter results to.
 	ProjectId string `form:"projectId" json:"projectId" yaml:"projectId"`
-	Limit     *int   `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
-	Offset    *int   `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
+
+	// Limit Maximum number of results to return per page.
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
+
+	// Offset Zero-based index of the first result to return.
+	Offset *int `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
 }
 
 // GetWebSubAPIDeploymentsParams defines parameters for GetWebSubAPIDeployments.
 type GetWebSubAPIDeploymentsParams struct {
+	// GatewayId UUID of the gateway to filter results by.
 	GatewayId *openapi_types.UUID `form:"gatewayId,omitempty" json:"gatewayId,omitempty" yaml:"gatewayId,omitempty"`
-	Status    *string             `form:"status,omitempty" json:"status,omitempty" yaml:"status,omitempty"`
-}
 
-// RestoreWebSubAPIDeploymentDeprecatedParams defines parameters for RestoreWebSubAPIDeploymentDeprecated.
-type RestoreWebSubAPIDeploymentDeprecatedParams struct {
-	DeploymentId string `form:"deploymentId" json:"deploymentId" yaml:"deploymentId"`
-	GatewayId    string `form:"gatewayId" json:"gatewayId" yaml:"gatewayId"`
-}
-
-// UndeployWebSubAPIDeprecatedParams defines parameters for UndeployWebSubAPIDeprecated.
-type UndeployWebSubAPIDeprecatedParams struct {
-	DeploymentId string `form:"deploymentId" json:"deploymentId" yaml:"deploymentId"`
-	GatewayId    string `form:"gatewayId" json:"gatewayId" yaml:"gatewayId"`
+	// Status Deployment status to filter by (e.g. ACTIVE, FAILED).
+	Status *string `form:"status,omitempty" json:"status,omitempty" yaml:"status,omitempty"`
 }
 
 // RestoreWebSubAPIDeploymentParams defines parameters for RestoreWebSubAPIDeployment.
 type RestoreWebSubAPIDeploymentParams struct {
+	// GatewayId UUID of the gateway to filter results by.
 	GatewayId string `form:"gatewayId" json:"gatewayId" yaml:"gatewayId"`
 }
 
 // UndeployWebSubAPIParams defines parameters for UndeployWebSubAPI.
 type UndeployWebSubAPIParams struct {
+	// GatewayId UUID of the gateway to filter results by.
 	GatewayId string `form:"gatewayId" json:"gatewayId" yaml:"gatewayId"`
 }
 
