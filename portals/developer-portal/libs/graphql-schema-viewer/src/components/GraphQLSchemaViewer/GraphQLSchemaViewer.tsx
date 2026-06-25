@@ -26,7 +26,6 @@ interface GraphQLSchemaViewerProps {
       productionURL?: string;
       sandboxURL?: string;
     };
-    provider?: string;
   };
 }
 

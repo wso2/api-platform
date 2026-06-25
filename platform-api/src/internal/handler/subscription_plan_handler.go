@@ -69,7 +69,7 @@ func validateThrottleLimitPair(count *int, unit *string) string {
 	return ""
 }
 
-// CreateSubscriptionPlanRequest is the body for POST /api/v1/subscription-plans
+// CreateSubscriptionPlanRequest is the body for POST /api/v0.9/subscription-plans
 type CreateSubscriptionPlanRequest struct {
 	Handle             string  `json:"handle" binding:"required"`
 	Name               string  `json:"name" binding:"required"`
@@ -81,7 +81,7 @@ type CreateSubscriptionPlanRequest struct {
 	Status             string  `json:"status,omitempty"`
 }
 
-// UpdateSubscriptionPlanRequest is the body for PUT /api/v1/subscription-plans/:planId
+// UpdateSubscriptionPlanRequest is the body for PUT /api/v0.9/subscription-plans/:planId
 // All fields use pointers for patch semantics: nil = omitted, non-nil = set (including clear-to-empty).
 type UpdateSubscriptionPlanRequest struct {
 	Handle             *string `json:"handle,omitempty"`
@@ -94,7 +94,7 @@ type UpdateSubscriptionPlanRequest struct {
 	Status             *string `json:"status,omitempty"`
 }
 
-// CreateSubscriptionPlan handles POST /api/v1/subscription-plans
+// CreateSubscriptionPlan handles POST /api/v0.9/subscription-plans
 func (h *SubscriptionPlanHandler) CreateSubscriptionPlan(c *gin.Context) {
 	orgId, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {
@@ -166,7 +166,7 @@ func (h *SubscriptionPlanHandler) CreateSubscriptionPlan(c *gin.Context) {
 	c.JSON(http.StatusCreated, toSubscriptionPlanResponse(created))
 }
 
-// ListSubscriptionPlans handles GET /api/v1/subscription-plans
+// ListSubscriptionPlans handles GET /api/v0.9/subscription-plans
 func (h *SubscriptionPlanHandler) ListSubscriptionPlans(c *gin.Context) {
 	orgId, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {
@@ -201,7 +201,7 @@ func (h *SubscriptionPlanHandler) ListSubscriptionPlans(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"subscriptionPlans": items, "count": len(items)})
 }
 
-// GetSubscriptionPlan handles GET /api/v1/subscription-plans/:planId
+// GetSubscriptionPlan handles GET /api/v0.9/subscription-plans/:planId
 func (h *SubscriptionPlanHandler) GetSubscriptionPlan(c *gin.Context) {
 	orgId, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {
@@ -228,7 +228,7 @@ func (h *SubscriptionPlanHandler) GetSubscriptionPlan(c *gin.Context) {
 	c.JSON(http.StatusOK, toSubscriptionPlanResponse(plan))
 }
 
-// UpdateSubscriptionPlan handles PUT /api/v1/subscription-plans/:planId
+// UpdateSubscriptionPlan handles PUT /api/v0.9/subscription-plans/:planId
 func (h *SubscriptionPlanHandler) UpdateSubscriptionPlan(c *gin.Context) {
 	orgId, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {
@@ -311,7 +311,7 @@ func (h *SubscriptionPlanHandler) UpdateSubscriptionPlan(c *gin.Context) {
 	c.JSON(http.StatusOK, toSubscriptionPlanResponse(updated))
 }
 
-// DeleteSubscriptionPlan handles DELETE /api/v1/subscription-plans/:planId
+// DeleteSubscriptionPlan handles DELETE /api/v0.9/subscription-plans/:planId
 func (h *SubscriptionPlanHandler) DeleteSubscriptionPlan(c *gin.Context) {
 	orgId, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {
@@ -345,7 +345,7 @@ func (h *SubscriptionPlanHandler) DeleteSubscriptionPlan(c *gin.Context) {
 
 // RegisterRoutes registers subscription plan routes
 func (h *SubscriptionPlanHandler) RegisterRoutes(r *gin.Engine) {
-	group := r.Group("/api/v1/subscription-plans")
+	group := r.Group(constants.APIBasePath + "/subscription-plans")
 	{
 		group.POST("", h.CreateSubscriptionPlan)
 		group.GET("", h.ListSubscriptionPlans)

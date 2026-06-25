@@ -19,7 +19,7 @@ curl -X POST https://devportal.api-platform.io/o/{orgId}/devportal/v1/webhook-su
 
 ```
 
-Registers a webhook subscriber for the organization. Gateway event deliveries (apikey.*, subscription.*, etc.) matching the subscriber's gatewayType/events filters are fanned out to its target URL. The `secret` is encrypted at rest using AES-256-GCM.
+Registers a webhook subscriber for the organization. Event deliveries (apikey.*, subscription.*, etc.) matching the subscriber's events filter are fanned out to its target URL. The `secret`, if provided, is encrypted at rest using AES-256-GCM.
 
 > Payload
 
@@ -29,7 +29,6 @@ Registers a webhook subscriber for the organization. Gateway event deliveries (a
   "url": "https://gateway.example.com/devportal-webhook",
   "secret": "<shared-secret>",
   "publicKey": "string",
-  "gatewayType": "*",
   "events": [
     "apikey.*",
     "subscription.*"
@@ -64,12 +63,12 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "name": "Production Gateway",
   "url": "https://gateway.example.com/devportal-webhook",
   "enabled": true,
-  "gatewayType": "*",
   "events": [
     "apikey.*",
     "subscription.*"
   ],
   "timeoutMs": 5000,
+  "hasSecret": true,
   "hasPublicKey": false
 }
 ```
@@ -197,12 +196,12 @@ This operation requires <strong>Basic Auth</strong> authentication.
       "name": "Production Gateway",
       "url": "https://gateway.example.com/devportal-webhook",
       "enabled": true,
-      "gatewayType": "*",
       "events": [
         "apikey.*",
         "subscription.*"
       ],
       "timeoutMs": 5000,
+      "hasSecret": true,
       "hasPublicKey": false
     }
   ],
@@ -243,9 +242,9 @@ Status Code **200**
 |»» name|string|false|none|none|
 |»» url|string(uri)|false|none|none|
 |»» enabled|boolean|false|none|none|
-|»» gatewayType|string|false|none|none|
 |»» events|[string]|false|none|none|
 |»» timeoutMs|integer|false|none|none|
+|»» hasSecret|boolean|false|none|Whether a secret is configured for HMAC-signing outgoing payloads.|
 |»» hasPublicKey|boolean|false|none|Whether a public key is configured for envelope-encrypting secret event payloads.|
 |» pagination|[Pagination](schemas.md#schemapagination)|false|none|Standard pagination metadata returned with collection responses.|
 |»» total|integer|true|none|Total number of records matching the query.|
@@ -296,12 +295,12 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "name": "Production Gateway",
   "url": "https://gateway.example.com/devportal-webhook",
   "enabled": true,
-  "gatewayType": "*",
   "events": [
     "apikey.*",
     "subscription.*"
   ],
   "timeoutMs": 5000,
+  "hasSecret": true,
   "hasPublicKey": false
 }
 ```
@@ -363,7 +362,6 @@ Updates an existing webhook subscriber configuration. Only supplied fields are u
   "url": "https://gateway.example.com/devportal-webhook",
   "secret": "<shared-secret>",
   "publicKey": "string",
-  "gatewayType": "*",
   "events": [
     "apikey.*",
     "subscription.*"
@@ -399,12 +397,12 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "name": "Production Gateway",
   "url": "https://gateway.example.com/devportal-webhook",
   "enabled": true,
-  "gatewayType": "*",
   "events": [
     "apikey.*",
     "subscription.*"
   ],
   "timeoutMs": 5000,
+  "hasSecret": true,
   "hasPublicKey": false
 }
 ```
@@ -552,3 +550,113 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |204|[No Content](https://tools.ietf.org/html/rfc7231#section-6.3.5)|Webhook subscriber deleted successfully.|None|
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
+
+## List recent deliveries for a webhook subscriber
+
+<a id="opIdgetWebhookSubscriberDeliveries"></a>
+
+`GET /o/{orgId}/devportal/v1/webhook-subscribers/{subscriberId}/deliveries`
+
+> Code samples
+
+```shell
+
+curl -X GET https://devportal.api-platform.io/o/{orgId}/devportal/v1/webhook-subscribers/{subscriberId}/deliveries \
+  -u {username}:{password} \
+  -H 'Accept: application/json' \
+  -H 'Authorization: Bearer {access-token}'
+
+```
+
+Returns the most recent webhook delivery attempts for a single subscriber, newest first.
+
+### Authentication
+
+<aside class="warning">
+This operation requires <strong>Basic Auth</strong> authentication.
+
+</aside>
+
+<h3 id="list-recent-deliveries-for-a-webhook-subscriber-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|orgId|path|string|true|none|
+|subscriberId|path|string|true|Webhook subscriber ID (UUID).|
+
+> Example responses
+
+> 200 Response
+
+```json
+{
+  "list": [
+    {
+      "deliveryId": "del-abc123",
+      "eventType": "apikey.generated",
+      "occurredAt": "2019-08-24T14:15:22Z",
+      "status": "DELIVERED",
+      "attemptCount": 1,
+      "lastHttpStatus": 200,
+      "lastError": "string",
+      "lastAttemptAt": "2019-08-24T14:15:22Z",
+      "deliveredAt": "2019-08-24T14:15:22Z"
+    }
+  ]
+}
+```
+
+> 404 Response
+
+```json
+{
+  "status": "error",
+  "code": "ORG_NOT_FOUND",
+  "message": "Organization not found."
+}
+```
+
+> 500 Response
+
+```json
+{
+  "status": "error",
+  "code": "INTERNAL_SERVER_ERROR",
+  "message": "An unexpected error occurred."
+}
+```
+
+<h3 id="list-recent-deliveries-for-a-webhook-subscriber-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Recent delivery attempts for this webhook subscriber.|Inline|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
+
+<h3 id="list-recent-deliveries-for-a-webhook-subscriber-responseschema">Response Schema</h3>
+
+Status Code **200**
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|» list|[[WebhookSubscriberDeliverySummary](schemas.md#schemawebhooksubscriberdeliverysummary)]|false|none|[A single delivery attempt made to a webhook subscriber.]|
+|»» deliveryId|string|false|none|none|
+|»» eventType|string¦null|false|none|none|
+|»» occurredAt|string(date-time)¦null|false|none|none|
+|»» status|string|false|none|none|
+|»» attemptCount|integer|false|none|none|
+|»» lastHttpStatus|integer¦null|false|none|none|
+|»» lastError|string¦null|false|none|none|
+|»» lastAttemptAt|string(date-time)¦null|false|none|none|
+|»» deliveredAt|string(date-time)¦null|false|none|none|
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|status|PENDING|
+|status|IN_FLIGHT|
+|status|DELIVERED|
+|status|FAILED|
+|status|DEAD_LETTERED|

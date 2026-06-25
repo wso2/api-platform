@@ -29,7 +29,7 @@ Feature: Basic Rate Limiting
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: basic-ratelimit-test-api
@@ -67,7 +67,7 @@ Feature: Basic Rate Limiting
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: basic-ratelimit-headers-api
@@ -102,7 +102,7 @@ Feature: Basic Rate Limiting
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: basic-ratelimit-multi-limits-api
@@ -145,7 +145,7 @@ Feature: Basic Rate Limiting
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: basic-ratelimit-per-route-api
@@ -202,7 +202,7 @@ Feature: Basic Rate Limiting
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: basic-ratelimit-retry-after-api
@@ -242,7 +242,7 @@ Feature: Basic Rate Limiting
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: basic-ratelimit-scope-api
@@ -319,7 +319,7 @@ Feature: Basic Rate Limiting
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: basic-ratelimit-api-shared-api
@@ -363,7 +363,7 @@ Feature: Basic Rate Limiting
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: basic-ratelimit-route-isolation-api
@@ -406,7 +406,7 @@ Feature: Basic Rate Limiting
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: basic-ratelimit-additive-limit-api
@@ -458,7 +458,7 @@ Feature: Basic Rate Limiting
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: basic-ratelimit-mixed-headers-api
@@ -517,7 +517,7 @@ Feature: Basic Rate Limiting
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: basic-ratelimit-update-route-policy-api
@@ -551,7 +551,7 @@ Feature: Basic Rate Limiting
     # Add route-level basic-ratelimit policy on /resource
     When I update the API "basic-ratelimit-update-route-policy-api" with this configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: basic-ratelimit-update-route-policy-api
@@ -594,7 +594,7 @@ Feature: Basic Rate Limiting
     # Remove route-level basic-ratelimit policy from /resource
     When I update the API "basic-ratelimit-update-route-policy-api" with this configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: basic-ratelimit-update-route-policy-api
@@ -628,7 +628,7 @@ Feature: Basic Rate Limiting
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: basic-ratelimit-reading-list-mixed-api
@@ -695,7 +695,7 @@ Feature: Basic Rate Limiting
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         labels:

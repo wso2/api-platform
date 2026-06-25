@@ -28,6 +28,8 @@
     data-api-id="{{apiMetadata.apiID}}"
     data-read-only="{{#if isReadOnlyMode}}true{{else}}false{{/if}}"
     data-load-error="{{#if apiKeysLoadError}}true{{else}}false{{/if}}"
+    data-applications="{{json applications}}"
+    data-selected-app-id="{{selectedAppId}}"
     data-csrf-token="{{csrfToken}}">
 </div>
 

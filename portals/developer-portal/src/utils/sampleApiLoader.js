@@ -87,7 +87,6 @@ function parseApiYaml(apiHandle, samplesDir) {
     return {
         apiID: name,
         apiHandle: name,
-        provider: spec.provider || 'WSO2',
         apiInfo: {
             apiName: spec.displayName || name,
             apiVersion: spec.version || '',
@@ -98,7 +97,6 @@ function parseApiYaml(apiHandle, samplesDir) {
             visibleGroups: spec.visibleGroups || [],
             tags: spec.tags || [],
             labels: spec.labels || [],
-            gatewayType: spec.gatewayType || null,
             owners: spec.businessInformation ? {
                 businessOwner: spec.businessInformation.businessOwner,
                 businessOwnerEmail: spec.businessInformation.businessOwnerEmail,

@@ -63,8 +63,8 @@ func TestAddMCPSpecificOperations_DefaultVersion(t *testing.T) {
 		t.Fatalf("expected %d operations, got %d", want, len(ops))
 	}
 	// verify paths/methods contain the MCP base ops
-	baseMethods := map[api.OperationMethod]bool{api.OperationMethod(api.GET): true,
-		api.OperationMethod(api.POST): true, api.OperationMethod(api.DELETE): true}
+	baseMethods := map[api.OperationMethod]bool{api.OperationMethodGET: true,
+		api.OperationMethodPOST: true, api.OperationMethodDELETE: true}
 	basePath := constants.MCP_RESOURCE_PATH
 	foundBase := 0
 	foundPRM := false
@@ -72,7 +72,7 @@ func TestAddMCPSpecificOperations_DefaultVersion(t *testing.T) {
 		if op.Path == basePath && baseMethods[op.Method] {
 			foundBase++
 		}
-		if op.Path == constants.MCP_PRM_RESOURCE_PATH && op.Method == api.OperationMethod(api.GET) {
+		if op.Path == constants.MCP_PRM_RESOURCE_PATH && op.Method == api.OperationMethodGET {
 			foundPRM = true
 		}
 	}
@@ -98,7 +98,7 @@ func TestAddMCPSpecificOperations_SpecifiedVersion(t *testing.T) {
 	}
 	foundPRM := false
 	for _, op := range ops {
-		if op.Path == constants.MCP_PRM_RESOURCE_PATH && op.Method == api.OperationMethod(api.GET) {
+		if op.Path == constants.MCP_PRM_RESOURCE_PATH && op.Method == api.OperationMethodGET {
 			foundPRM = true
 		}
 	}
@@ -152,7 +152,7 @@ func TestMCPTransformer_Transform(t *testing.T) {
 	if res.Kind != api.RestAPIKindRestApi {
 		t.Fatalf("expected Kind Httprest, got %s", res.Kind)
 	}
-	if res.ApiVersion != api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1 {
+	if res.ApiVersion != api.RestAPIApiVersionGatewayApiPlatformWso2Comv1 {
 		t.Fatalf("expected Version ApiPlatformWso2Comv1, got %s", res.ApiVersion)
 	}
 }

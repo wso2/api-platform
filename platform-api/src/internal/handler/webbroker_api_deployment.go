@@ -50,7 +50,7 @@ func NewWebBrokerAPIDeploymentHandler(webbrokerAPIDeploymentService *service.Web
 
 // RegisterRoutes registers WebBroker API deployment routes
 func (h *WebBrokerAPIDeploymentHandler) RegisterRoutes(r *gin.Engine) {
-	g := r.Group("/api/v1/webbroker-apis/:apiId")
+	g := r.Group(constants.APIBasePath + "/webbroker-apis/:apiId")
 	{
 		g.POST("/deployments", h.DeployWebBrokerAPI)
 		g.POST("/deployments/:deploymentId/undeploy", h.UndeployDeployment)
@@ -61,7 +61,7 @@ func (h *WebBrokerAPIDeploymentHandler) RegisterRoutes(r *gin.Engine) {
 	}
 }
 
-// DeployWebBrokerAPI handles POST /api/v1/webbroker-apis/:apiId/deployments
+// DeployWebBrokerAPI handles POST /api/v0.9/webbroker-apis/:apiId/deployments
 func (h *WebBrokerAPIDeploymentHandler) DeployWebBrokerAPI(c *gin.Context) {
 	orgId, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {
@@ -104,7 +104,7 @@ func (h *WebBrokerAPIDeploymentHandler) DeployWebBrokerAPI(c *gin.Context) {
 	c.JSON(http.StatusCreated, deployment)
 }
 
-// UndeployDeployment handles POST /api/v1/webbroker-apis/:apiId/deployments/:deploymentId/undeploy
+// UndeployDeployment handles POST /api/v0.9/webbroker-apis/:apiId/deployments/:deploymentId/undeploy
 func (h *WebBrokerAPIDeploymentHandler) UndeployDeployment(c *gin.Context) {
 	orgId, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {
@@ -133,7 +133,7 @@ func (h *WebBrokerAPIDeploymentHandler) UndeployDeployment(c *gin.Context) {
 	c.JSON(http.StatusOK, deployment)
 }
 
-// RestoreDeployment handles POST /api/v1/webbroker-apis/:apiId/deployments/:deploymentId/restore
+// RestoreDeployment handles POST /api/v0.9/webbroker-apis/:apiId/deployments/:deploymentId/restore
 func (h *WebBrokerAPIDeploymentHandler) RestoreDeployment(c *gin.Context) {
 	orgId, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {
@@ -162,7 +162,7 @@ func (h *WebBrokerAPIDeploymentHandler) RestoreDeployment(c *gin.Context) {
 	c.JSON(http.StatusOK, deployment)
 }
 
-// GetDeployments handles GET /api/v1/webbroker-apis/:apiId/deployments
+// GetDeployments handles GET /api/v0.9/webbroker-apis/:apiId/deployments
 func (h *WebBrokerAPIDeploymentHandler) GetDeployments(c *gin.Context) {
 	orgId, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {
@@ -199,7 +199,7 @@ func (h *WebBrokerAPIDeploymentHandler) GetDeployments(c *gin.Context) {
 	c.JSON(http.StatusOK, deployments)
 }
 
-// GetDeployment handles GET /api/v1/webbroker-apis/:apiId/deployments/:deploymentId
+// GetDeployment handles GET /api/v0.9/webbroker-apis/:apiId/deployments/:deploymentId
 func (h *WebBrokerAPIDeploymentHandler) GetDeployment(c *gin.Context) {
 	orgId, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {
@@ -219,7 +219,7 @@ func (h *WebBrokerAPIDeploymentHandler) GetDeployment(c *gin.Context) {
 	c.JSON(http.StatusOK, deployment)
 }
 
-// DeleteDeployment handles DELETE /api/v1/webbroker-apis/:apiId/deployments/:deploymentId
+// DeleteDeployment handles DELETE /api/v0.9/webbroker-apis/:apiId/deployments/:deploymentId
 func (h *WebBrokerAPIDeploymentHandler) DeleteDeployment(c *gin.Context) {
 	orgId, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {

@@ -9,9 +9,7 @@ spec:
   displayName: Booking API
   version: v1.0
   description: Sample hotel/event booking API. Requires API key authentication and a per-request subscription token. Choose a Gold, Silver, or Bronze plan when subscribing.
-  provider: WSO2
   status: PUBLISHED
-  gatewayType: wso2/api-platform
   referenceID: booking-api-v1.0
 
   tags:

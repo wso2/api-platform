@@ -29,7 +29,7 @@ Feature: Semantic Tool Filtering policy
     Given I authenticate using basic auth as "admin"
     When I create this LLM provider:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProvider
       metadata:
         name: semantic-tool-filtering-rank-provider
@@ -111,7 +111,7 @@ Feature: Semantic Tool Filtering policy
     Given I authenticate using basic auth as "admin"
     When I create this LLM provider:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProvider
       metadata:
         name: semantic-tool-filtering-mistral-provider

@@ -598,8 +598,8 @@ gateway:
       priorityClassName: ""
       livenessProbe:
         httpGet:
-          # Admin API is served under /api/admin/v0.9 (see gateway-controller admin OpenAPI spec).
-          path: /api/admin/v0.9/health
+          # Admin API is served under /api/admin/v1 (see gateway-controller admin OpenAPI spec).
+          path: /api/admin/v1/health
           port: admin
         initialDelaySeconds: 10
         periodSeconds: 10
@@ -607,7 +607,7 @@ gateway:
         failureThreshold: 3
       readinessProbe:
         httpGet:
-          path: /api/admin/v0.9/health
+          path: /api/admin/v1/health
           port: admin
         initialDelaySeconds: 5
         periodSeconds: 5
@@ -616,7 +616,7 @@ gateway:
       # Optional startup probe for slow-starting environments. Uncomment to enable.
       # startupProbe:
       #   httpGet:
-      #     path: /api/admin/v0.9/health
+      #     path: /api/admin/v1/health
       #     port: admin
       #   periodSeconds: 5
       #   failureThreshold: 30

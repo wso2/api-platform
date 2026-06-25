@@ -166,6 +166,9 @@ type GatewayRepository interface {
 	// Manifest operations
 	UpdateGatewayManifest(gatewayID string, manifest []byte) error
 	GetGatewayManifest(gatewayID string) ([]byte, error)
+
+	// Version update — persists the version reported by the gateway controller on connect.
+	UpdateGatewayVersion(gatewayID, version string) error
 }
 
 // SubscriptionPlanRepository defines the interface for subscription plan data operations

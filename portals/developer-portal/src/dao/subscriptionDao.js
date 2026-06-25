@@ -46,7 +46,7 @@ const INCLUDE_API_AND_PLAN = [
     {
         model: APIMetadata,
         as: 'DP_API_METADATA',
-        attributes: ['API_ID', 'API_NAME', 'API_VERSION', 'API_HANDLE', 'REFERENCE_ID', 'GATEWAY_TYPE'],
+        attributes: ['API_ID', 'API_NAME', 'API_VERSION', 'API_HANDLE', 'REFERENCE_ID'],
         required: false,
     },
     {

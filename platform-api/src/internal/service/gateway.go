@@ -268,6 +268,12 @@ func (s *GatewayService) ReceiveGatewayManifest(orgID, gatewayID, gatewayVersion
 		return fmt.Errorf("failed to store gateway manifest: %w", err)
 	}
 
+	// Persist the version the controller reported so the deploy transform uses the
+	// live gateway version rather than the stale value stored at registration time.
+	if err := s.gatewayRepo.UpdateGatewayVersion(gatewayID, reported); err != nil {
+		return fmt.Errorf("failed to update gateway version: %w", err)
+	}
+
 	customerCount := 0
 	for _, p := range policies {
 		if p.ManagedBy == constants.PolicyManagedByCustomer {

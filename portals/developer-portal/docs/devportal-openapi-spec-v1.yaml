@@ -21,7 +21,7 @@ info:
   title: WSO2 API Developer Portal Core - Devportal Routes
   version: 1.0.0
   description: |
-    Fine-grained Developer Portal API for managing organizations, providers,
+    Fine-grained Developer Portal API for managing organizations,
     API metadata and content, applications, subscriptions, application credentials, and API flows.
 
     Organization-scoped resources are served under `/o/{orgId}/devportal/v1`. Operations declare
@@ -39,7 +39,6 @@ servers:
 tags:
   - name: Organizations
   - name: Organization Content
-  - name: Providers
   - name: APIs
   - name: API Content
   - name: Subscription Plans
@@ -63,7 +62,7 @@ paths:
       summary: Create an organization
       description: >-
         Creates a Developer Portal organization and initializes its default portal configuration, default label, default
-        view, default WSO2 provider, and default subscription plans when configured.
+        view, and default subscription plans when configured.
       operationId: createOrganization
       requestBody:
         $ref: "#/components/requestBodies/OrganizationCreateBody"
@@ -292,98 +291,6 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "404":
           $ref: "#/components/responses/TextMessageResponse"
-  /o/{orgId}/devportal/v1/provider:
-    parameters:
-      - $ref: "#/components/parameters/orgId"
-    post:
-      tags:
-        - Providers
-      summary: Create a provider
-      description: >-
-        Creates an API provider configuration for the organization. The current service contract accepts a provider
-        `name` and `providerURL`, rejects unexpected properties, and stores the provider URL as a provider property.
-      operationId: createProvider
-      requestBody:
-        $ref: "#/components/requestBodies/ProviderBody"
-      responses:
-        "201":
-          $ref: "#/components/responses/ProviderResponse"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "409":
-          $ref: "#/components/responses/Conflict"
-        "500":
-          $ref: "#/components/responses/InternalServerError"
-      security:
-        - OAuth2Security:
-            - dp:provider_create
-            - dp:provider_manage
-    put:
-      tags:
-        - Providers
-      summary: Update a provider
-      description: Updates the provider URL for an existing organization provider.
-      operationId: updateProvider
-      requestBody:
-        $ref: "#/components/requestBodies/ProviderBody"
-      responses:
-        "200":
-          $ref: "#/components/responses/ProviderResponse"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "409":
-          $ref: "#/components/responses/Conflict"
-        "500":
-          $ref: "#/components/responses/InternalServerError"
-      security:
-        - OAuth2Security:
-            - dp:provider_update
-            - dp:provider_manage
-    get:
-      tags:
-        - Providers
-      summary: Get providers
-      description: >-
-        Returns all providers for the organization. When `name` is supplied, returns the matching provider
-        configuration.
-      operationId: getProviders
-      parameters:
-        - $ref: "#/components/parameters/providerNameQueryOptional"
-      responses:
-        "200":
-          $ref: "#/components/responses/ProviderLookupResponse"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "500":
-          $ref: "#/components/responses/InternalServerError"
-      security:
-        - OAuth2Security:
-            - dp:provider_read
-            - dp:provider_manage
-    delete:
-      tags:
-        - Providers
-      summary: Delete a provider
-      description: Deletes an organization provider by `name`. When `property` is supplied, deletes only that provider property.
-      operationId: deleteProvider
-      parameters:
-        - $ref: "#/components/parameters/providerNameQueryRequired"
-        - $ref: "#/components/parameters/providerPropertyQuery"
-      responses:
-        "204":
-          description: Provider or provider property deleted successfully.
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "500":
-          $ref: "#/components/responses/InternalServerError"
-      security:
-        - OAuth2Security:
-            - dp:provider_delete
-            - dp:provider_manage
   /o/{orgId}/devportal/v1/apis:
     parameters:
       - $ref: "#/components/parameters/orgId"
@@ -395,7 +302,7 @@ paths:
         Creates Developer Portal API metadata from either a full API artifact ZIP, an API metadata YAML file (`api.yaml`
         / `devportal.yaml` / `mcp.yaml`), or an `apiMetadata` JSON string. An API definition file is required unless
         supplied by the artifact ZIP. The YAML `spec` block accepts: `displayName`, `version`, `description`, `type`,
-        `status`, `visibility`, `agentVisibility`, `visibleGroups`, `tags`, `labels`, `gatewayType`, `provider`,
+        `status`, `visibility`, `agentVisibility`, `visibleGroups`, `tags`, `labels`,
         `referenceID`, `endpoints` (sandboxUrl, productionUrl), `businessInformation` (owners), and `subscriptionPlans`.
         The service also stores labels, subscription plan mappings, image metadata, and schema definitions for MCP or
         GraphQL APIs when provided.
@@ -885,7 +792,8 @@ paths:
       summary: Create an application
       description: >-
         Creates a Developer Portal application in the specified organization. The request may be JSON, multipart form
-        fields, or an application YAML file in the `application` multipart field.
+        fields, or an application YAML file in the `application` multipart field. An `application.created` webhook
+        event is published to the organization's configured webhook subscribers.
       operationId: saveApplication
       requestBody:
         $ref: "#/components/requestBodies/ApplicationMultipartBody"
@@ -928,7 +836,9 @@ paths:
       summary: Update an application
       description: >-
         Updates an application owned by the authenticated user in the specified organization. The request may be JSON,
-        multipart form fields, or an application YAML file in the `application` multipart field.
+        multipart form fields, or an application YAML file in the `application` multipart field. An `application.updated`
+        webhook event is published, plus one `apikey.application_updated` event per API key currently associated with
+        the application.
       operationId: updateApplication
       requestBody:
         $ref: "#/components/requestBodies/ApplicationMultipartBody"
@@ -954,7 +864,9 @@ paths:
       description: >-
         Deletes an application owned by the authenticated user. Before removing the application record the service will
         make a best-effort attempt to revoke registered OAuth clients with their respective key managers and deletes all
-        stored key mappings; failures are logged as warnings and do not abort deletion.
+        stored key mappings; failures are logged as warnings and do not abort deletion. An `application.deleted`
+        webhook event is published, plus one `apikey.application_updated` event (with a cleared association) per API
+        key that was associated with the application.
       operationId: deleteApplication
       responses:
         "200":
@@ -998,7 +910,6 @@ paths:
                 apiId: api-7f4c2a6b
                 subscriptionToken: a3f1e8b2...
                 subscriptionPlanName: Gold
-                gatewayType: wso2/api-platform
                 status: ACTIVE
                 createdBy: alice@example.com
                 createdAt: "2026-05-07T08:30:00Z"
@@ -1106,9 +1017,10 @@ paths:
       summary: Generate an API key
       description: >-
         Generates an API key stored in the Developer Portal (devportal is source of truth). The plaintext secret is
-        returned once in the response and never persisted. A `apikey.generated` webhook event is published so gateways
-        can register the key. Key names must match `^[a-z0-9][a-z0-9_-]{0,127}$`, and `expiresAt` must include a
-        timezone when sent as an ISO-8601 string.
+        returned once in the response and never persisted. A `apikey.generated` webhook event is published to the
+        organization's configured webhook subscribers so they can register the key (e.g. with a gateway). Key names
+        must match `^[a-z0-9][a-z0-9_-]{0,127}$`, and `expiresAt` must include a timezone when sent as an ISO-8601
+        string.
       requestBody:
         $ref: "#/components/requestBodies/ApiKeyBody"
       responses:
@@ -1153,6 +1065,7 @@ paths:
       description: Lists API keys for an API. The `apiId` query parameter is required.
       parameters:
         - $ref: "#/components/parameters/apiIdQueryRequired"
+        - $ref: "#/components/parameters/appIdQueryOptional"
         - $ref: "#/components/parameters/limit"
         - $ref: "#/components/parameters/offset"
       responses:
@@ -1178,9 +1091,9 @@ paths:
       operationId: regenerateApiKey
       summary: Regenerate an API key
       description: >-
-        Regenerates the secret for an existing API key identified by `apiKeyId`. The old secret is invalidated at
-        connected gateways via an `apikey.regenerated` webhook event. The new plaintext secret is returned once and
-        never persisted.
+        Regenerates the secret for an existing API key identified by `apiKeyId`. An `apikey.regenerated` webhook
+        event is published to the organization's configured webhook subscribers so they can invalidate the old
+        secret (e.g. at a gateway). The new plaintext secret is returned once and never persisted.
       responses:
         "200":
           $ref: "#/components/responses/ApiKeyGenerateResponse"
@@ -1190,6 +1103,8 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
         "500":
           $ref: "#/components/responses/InternalServerError"
       security:
@@ -1206,8 +1121,8 @@ paths:
       operationId: revokeApiKey
       summary: Revoke an API key
       description: >-
-        Revokes an existing API key. An `apikey.revoked` webhook event is published so connected gateways can
-        immediately reject requests carrying the key.
+        Revokes an existing API key. An `apikey.revoked` webhook event is published to the organization's
+        configured webhook subscribers so they can immediately reject requests carrying the key (e.g. at a gateway).
       responses:
         "204":
           description: API key revoked successfully.
@@ -1217,11 +1132,96 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
         "500":
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
             - dp:api_key_revoke
+            - dp:api_key_manage
+  /o/{orgId}/devportal/v1/api-keys/{apiKeyId}/application:
+    parameters:
+      - $ref: "#/components/parameters/orgId"
+      - $ref: "#/components/parameters/apiKeyId"
+    put:
+      tags:
+        - API Keys
+      operationId: associateApiKeyApplication
+      summary: Associate an API key with an application
+      description: >-
+        Associates (or re-associates) an existing API key with an application, for analytics attribution only — it
+        has no effect on the key's validity or authorization. An `apikey.application_updated` webhook event is
+        published once for this key, with a payload of `{ key_id, application }`.
+      requestBody:
+        $ref: "#/components/requestBodies/ApiKeyApplicationBody"
+      responses:
+        "200":
+          description: Association updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiKeyApplicationResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      security:
+        - OAuth2Security:
+            - dp:api_key_update
+            - dp:api_key_manage
+    delete:
+      tags:
+        - API Keys
+      operationId: removeApiKeyApplication
+      summary: Remove an API key's application association
+      description: >-
+        Removes the application association from an API key, if any. An `apikey.application_updated` webhook event
+        is published once for this key, with `application` set to `null`.
+      responses:
+        "204":
+          description: Association removed (or none existed).
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      security:
+        - OAuth2Security:
+            - dp:api_key_update
+            - dp:api_key_manage
+  /o/{orgId}/devportal/v1/applications/{applicationId}/api-keys:
+    parameters:
+      - $ref: "#/components/parameters/orgId"
+      - $ref: "#/components/parameters/applicationId"
+    get:
+      tags:
+        - API Keys
+      operationId: listApplicationApiKeys
+      summary: List API keys associated with an application
+      description: >-
+        Lists all API keys (across every API) currently associated with the given application. Unlike
+        `listApiKeys`, no `apiId` filter is required.
+      parameters:
+        - $ref: "#/components/parameters/limit"
+        - $ref: "#/components/parameters/offset"
+      responses:
+        "200":
+          $ref: "#/components/responses/ApiKeyListResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      security:
+        - OAuth2Security:
+            - dp:api_key_read
             - dp:api_key_manage
   /o/{orgId}/devportal/v1/views:
     parameters:
@@ -1769,9 +1769,9 @@ paths:
         - Webhook Subscribers
       summary: Create a webhook subscriber
       description: >-
-        Registers a webhook subscriber for the organization. Gateway event deliveries (apikey.*, subscription.*, etc.)
-        matching the subscriber's gatewayType/events filters are fanned out to its target URL. The `secret` is encrypted
-        at rest using AES-256-GCM.
+        Registers a webhook subscriber for the organization. Event deliveries (apikey.*, subscription.*, etc.)
+        matching the subscriber's events filter are fanned out to its target URL. The `secret`, if provided, is
+        encrypted at rest using AES-256-GCM.
       operationId: createWebhookSubscriber
       requestBody:
         $ref: "#/components/requestBodies/WebhookSubscriberBody"
@@ -1878,6 +1878,36 @@ paths:
       security:
         - OAuth2Security:
             - dp:webhook_subscriber_delete
+            - dp:webhook_subscriber_manage
+  /o/{orgId}/devportal/v1/webhook-subscribers/{subscriberId}/deliveries:
+    parameters:
+      - $ref: "#/components/parameters/orgId"
+      - $ref: "#/components/parameters/subscriberId"
+    get:
+      tags:
+        - Webhook Subscribers
+      summary: List recent deliveries for a webhook subscriber
+      description: Returns the most recent webhook delivery attempts for a single subscriber, newest first.
+      operationId: getWebhookSubscriberDeliveries
+      responses:
+        "200":
+          description: Recent delivery attempts for this webhook subscriber.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  list:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/WebhookSubscriberDeliverySummary"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      security:
+        - OAuth2Security:
+            - dp:webhook_subscriber_read
             - dp:webhook_subscriber_manage
   /login:
     post:
@@ -1996,11 +2026,6 @@ components:
             dp:org_update: Update organizations.
             dp:org_delete: Delete organizations.
             dp:org_manage: Manage organizations (including creating, updating, and deleting).
-            dp:provider_read: Read providers.
-            dp:provider_create: Create providers.
-            dp:provider_update: Update providers.
-            dp:provider_delete: Delete providers.
-            dp:provider_manage: Manage providers (including creating, updating, and deleting).
             dp:org_content_read: Read organization layout or content.
             dp:org_content_create: Create organization layout or content.
             dp:org_content_update: Update organization layout or content.
@@ -2221,27 +2246,6 @@ components:
       schema:
         type: string
       description: Optional relative content path used together with `fileType` and `fileName`.
-    providerNameQueryOptional:
-      name: name
-      in: query
-      required: false
-      schema:
-        type: string
-      description: Optional provider name selector. When omitted, all providers are returned.
-    providerNameQueryRequired:
-      name: name
-      in: query
-      required: true
-      schema:
-        type: string
-      description: Provider name.
-    providerPropertyQuery:
-      name: property
-      in: query
-      required: false
-      schema:
-        type: string
-      description: Optional provider property name to delete instead of deleting the whole provider.
     apiSearchQuery:
       name: query
       in: query
@@ -2306,6 +2310,14 @@ components:
         type: string
         example: api-7f4c2a6b
       description: Optional Developer Portal API ID used to filter results.
+    appIdQueryOptional:
+      name: appId
+      in: query
+      required: false
+      schema:
+        type: string
+        example: app-12345
+      description: Optional application ID used to filter API keys associated with that application.
     labelNamesQuery:
       name: names
       in: query
@@ -2391,12 +2403,6 @@ components:
               summary: Organization YAML upload
               value:
                 organization: org.yaml
-    ProviderBody:
-      required: true
-      content:
-        application/json:
-          schema:
-            $ref: "#/components/schemas/ProviderRequest"
     SubscriptionPlanBody:
       required: true
       description: >-
@@ -2495,6 +2501,22 @@ components:
               value:
                 apiId: api-7f4c2a6b
                 name: weather_sandbox_key
+    ApiKeyApplicationBody:
+      required: true
+      description: Associates an API key with an application, identified by `appId`.
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+              - appId
+            properties:
+              appId:
+                type: string
+                example: app-12345
+            additionalProperties: false
+          example:
+            appId: app-12345
     AppKeyMappingBody:
       required: true
       description: OAuth key generation payload. The application is identified by the `applicationId` path parameter.
@@ -2641,7 +2663,6 @@ components:
             name: Production Gateway
             url: https://gateway.example.com/devportal-webhook
             secret: <shared-secret>
-            gatewayType: "*"
             events:
               - apikey.*
               - subscription.*
@@ -2783,12 +2804,12 @@ components:
                 description: >-
                   JSON string accepted by the service when the `api` YAML file is not supplied. Accepted top-level
                   fields mirror the YAML spec: `apiInfo` (apiName, apiVersion, apiDescription, apiType, visibility,
-                  agentVisibility, apiStatus, provider, referenceID, apiHandle, tags, labels, visibleGroups,
-                  gatewayType, owners), `endPoints` (productionURL, sandboxURL), and `subscriptionPlans` (array of `{
+                  agentVisibility, apiStatus, referenceID, apiHandle, tags, labels, visibleGroups,
+                  owners), `endPoints` (productionURL, sandboxURL), and `subscriptionPlans` (array of `{
                   planName }` objects — only `planName` is read; the plan must already exist in the organization).
                 example: >-
                   {"apiInfo":{"apiName":"Weather API","apiVersion":"v1","apiDescription":"Weather forecast
-                  API","apiType":"REST","visibility":"PUBLIC","agentVisibility":"VISIBLE","provider":"WSO2",
+                  API","apiType":"REST","visibility":"PUBLIC","agentVisibility":"VISIBLE",
                   "apiStatus":"PUBLISHED","tags":["weather"],"labels":["default"]},"endPoints":{
                   "productionURL":"https://api.example.com/weather",
                   "sandboxURL":"https://sandbox.example.com/weather"},"subscriptionPlans":[{"planName":"Gold"}]}
@@ -2987,22 +3008,6 @@ components:
                   $ref: "#/components/schemas/OrganizationContentListItemResponse"
               pagination:
                 $ref: "#/components/schemas/Pagination"
-    ProviderResponse:
-      description: Provider DTO returned by create and update operations.
-      content:
-        application/json:
-          schema:
-            $ref: "#/components/schemas/ProviderResponse"
-    ProviderLookupResponse:
-      description: Provider DTO or list of provider DTOs.
-      content:
-        application/json:
-          schema:
-            oneOf:
-              - $ref: "#/components/schemas/ProviderLookupItemResponse"
-              - type: array
-                items:
-                  $ref: "#/components/schemas/ProviderLookupItemResponse"
     BadRequest:
       description: >-
         Bad request. Input validation failures are returned as an array; other bad request errors are returned as a
@@ -3112,7 +3117,6 @@ components:
             apiID: api-7f4c2a6b
             apiReferenceID: cp-api-12345
             apiHandle: weather-api-v1
-            provider: WSO2
             dataSource: DEVPORTAL
             apiInfo:
               apiName: Weather API
@@ -3123,7 +3127,6 @@ components:
               apiType: REST
               visibility: PUBLIC
               agentVisibility: VISIBLE
-              gatewayType: null
               tags:
                 - weather
               labels:
@@ -3143,7 +3146,6 @@ components:
             apiID: api-7f4c2a6b
             apiReferenceID: cp-api-12345
             apiHandle: weather-api-v1
-            provider: WSO2
             dataSource: DEVPORTAL
             apiInfo:
               apiName: Weather API
@@ -3155,7 +3157,6 @@ components:
               apiType: REST
               visibility: PUBLIC
               agentVisibility: VISIBLE
-              gatewayType: null
               labels:
                 - default
             endPoints:
@@ -3181,7 +3182,6 @@ components:
               - apiID: api-7f4c2a6b
                 apiReferenceID: cp-api-12345
                 apiHandle: weather-api-v1
-                provider: WSO2
                 dataSource: DEVPORTAL
                 apiInfo:
                   apiName: Weather API
@@ -3191,7 +3191,6 @@ components:
                   apiType: REST
                   visibility: PUBLIC
                   agentVisibility: VISIBLE
-                  gatewayType: null
                   labels:
                     - default
                 endPoints:
@@ -3305,7 +3304,6 @@ components:
             apiId: api-7f4c2a6b
             subscriptionToken: a3f1e8b2...
             subscriptionPlanName: Gold
-            gatewayType: wso2/api-platform
             status: ACTIVE
             createdBy: alice@example.com
             createdAt: "2026-05-07T08:30:00Z"
@@ -3737,33 +3735,6 @@ components:
           nullable: true
           description: UTF-8 content string returned for stored organization content records.
       additionalProperties: false
-    ProviderResponse:
-      type: object
-      required:
-        - orgId
-        - name
-        - providerURL
-      properties:
-        orgId:
-          type: string
-        name:
-          type: string
-        providerURL:
-          type: string
-          format: uri
-      additionalProperties: false
-    ProviderLookupItemResponse:
-      type: object
-      required:
-        - name
-        - providerURL
-      properties:
-        name:
-          type: string
-        providerURL:
-          type: string
-          format: uri
-      additionalProperties: false
     ApiMetadataCreateResponse:
       type: object
       properties:
@@ -3772,8 +3743,6 @@ components:
         apiReferenceID:
           type: string
         apiHandle:
-          type: string
-        provider:
           type: string
         dataSource:
           type: string
@@ -3794,8 +3763,6 @@ components:
         apiReferenceID:
           type: string
         apiHandle:
-          type: string
-        provider:
           type: string
         dataSource:
           type: string
@@ -3837,9 +3804,6 @@ components:
           type: string
         agentVisibility:
           type: string
-        gatewayType:
-          type: string
-          nullable: true
         addedLabels:
           type: array
           items:
@@ -4034,18 +3998,6 @@ components:
           type: string
         orgConfiguration:
           $ref: "#/components/schemas/GenericObject"
-    ProviderRequest:
-      type: object
-      required:
-        - name
-        - providerURL
-      properties:
-        name:
-          type: string
-        providerURL:
-          type: string
-          format: uri
-      additionalProperties: false
     SubscriptionPlanRequest:
       type: object
       required:
@@ -4154,9 +4106,6 @@ components:
         subscriptionPlanName:
           type: string
           example: Gold
-        gatewayType:
-          type: string
-          example: wso2/api-platform
         status:
           type: string
           enum:
@@ -4189,6 +4138,12 @@ components:
           type: string
           description: Optional subscription ID to associate the key with.
           example: sub-abc123
+        appId:
+          type: string
+          description: >-
+            Optional application ID to associate the key with, for analytics attribution only — it has no effect on
+            the key's validity or authorization. Must belong to the same organization and be owned by the caller.
+          example: app-12345
         expiresAt:
           oneOf:
             - type: string
@@ -4212,6 +4167,16 @@ components:
           type: string
           description: Developer Portal API ID the key belongs to.
           example: api-7f4c2a6b
+        appId:
+          type: string
+          nullable: true
+          description: ID of the application this key is associated with, if any. Analytics attribution only.
+          example: app-12345
+        appName:
+          type: string
+          nullable: true
+          description: Name of the associated application, if any.
+          example: My Mobile App
         status:
           type: string
           enum:
@@ -4243,6 +4208,21 @@ components:
               type: string
               description: One-time plaintext API key secret.
               example: ak_dGhpcyBpcyBub3QgYSByZWFsIGtleQ
+    ApiKeyApplicationResponse:
+      type: object
+      properties:
+        keyId:
+          type: string
+          example: key-12345
+        application:
+          type: object
+          properties:
+            id:
+              type: string
+              example: app-12345
+            name:
+              type: string
+              example: My Mobile App
     KeyManagerRequest:
       type: object
       required:
@@ -4527,7 +4507,7 @@ components:
         url:
           type: string
           format: uri
-          description: Target URL events are POSTed to.
+          description: Target URL events are POSTed to. Must be unique within the organization.
           example: https://gateway.example.com/devportal-webhook
         secret:
           type: string
@@ -4538,11 +4518,6 @@ components:
           description: >-
             PEM-encoded public key. When set, secret event payloads (apikey.*, subscription.*) are additionally
             encrypted to this key so only the subscriber can read the plaintext key.
-        gatewayType:
-          type: string
-          description: Restricts delivery to events with a matching DP_EVENT.GATEWAY_TYPE. Use "*" (default) to match any.
-          default: "*"
-          example: "*"
         events:
           type: array
           items:
@@ -4583,9 +4558,6 @@ components:
         enabled:
           type: boolean
           example: true
-        gatewayType:
-          type: string
-          example: "*"
         events:
           type: array
           items:
@@ -4596,10 +4568,56 @@ components:
         timeoutMs:
           type: integer
           example: 5000
+        hasSecret:
+          type: boolean
+          description: Whether a secret is configured for HMAC-signing outgoing payloads.
+          example: true
         hasPublicKey:
           type: boolean
           description: Whether a public key is configured for envelope-encrypting secret event payloads.
           example: false
+    WebhookSubscriberDeliverySummary:
+      type: object
+      description: A single delivery attempt made to a webhook subscriber.
+      properties:
+        deliveryId:
+          type: string
+          example: del-abc123
+        eventType:
+          type: string
+          nullable: true
+          example: apikey.generated
+        occurredAt:
+          type: string
+          format: date-time
+          nullable: true
+        status:
+          type: string
+          enum:
+            - PENDING
+            - IN_FLIGHT
+            - DELIVERED
+            - FAILED
+            - DEAD_LETTERED
+          example: DELIVERED
+        attemptCount:
+          type: integer
+          example: 1
+        lastHttpStatus:
+          type: integer
+          nullable: true
+          example: 200
+        lastError:
+          type: string
+          nullable: true
+        lastAttemptAt:
+          type: string
+          format: date-time
+          nullable: true
+        deliveredAt:
+          type: string
+          format: date-time
+          nullable: true
     AppKeyMappingRequest:
       type: object
       required:
@@ -5045,10 +5063,6 @@ components:
         orgId:
           type: string
           example: org-default
-        gatewayType:
-          type: string
-          nullable: true
-          example: default
         aggregateType:
           type: string
           example: apikey

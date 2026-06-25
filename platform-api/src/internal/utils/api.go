@@ -541,7 +541,7 @@ func (u *APIUtil) BuildAPIDeploymentYAML(apiModel *model.API) (*dto.APIDeploymen
 	}
 
 	return &dto.APIDeploymentYAML{
-		ApiVersion: "gateway.api-platform.wso2.com/v1alpha1",
+		ApiVersion: constants.GatewayApiVersion,
 		Kind:       apiType,
 		Metadata: dto.DeploymentMetadata{
 			Name: apiModel.Handle,

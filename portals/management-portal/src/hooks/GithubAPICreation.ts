@@ -114,7 +114,7 @@ export const useGithubAPICreation = () => {
       provider: GitProvider = "github",
       opts?: { signal?: AbortSignal }
     ): Promise<GitBranch[]> => {
-      const res = await authedFetch(`/api/v1/git/repo/fetch-branches`, {
+      const res = await authedFetch(`/api/v0.9/git/repo/fetch-branches`, {
         method: "POST",
         body: JSON.stringify({ repoUrl, provider }),
         signal: opts?.signal,
@@ -136,7 +136,7 @@ export const useGithubAPICreation = () => {
       branch: string,
       opts?: { signal?: AbortSignal }
     ): Promise<GitFetchContentResponse> => {
-      const res = await authedFetch(`/api/v1/git/repo/branch/fetch-content`, {
+      const res = await authedFetch(`/api/v0.9/git/repo/branch/fetch-content`, {
         method: "POST",
         body: JSON.stringify({ repoUrl, provider, branch }),
         signal: opts?.signal,
@@ -152,13 +152,13 @@ export const useGithubAPICreation = () => {
     []
   );
 
-  /** POST: /api/v1/api-projects/import */
+  /** POST: /api/v0.9/api-projects/import */
   const importApiProject = useCallback(
     async (
       payload: ImportApiProjectRequest,
       opts?: { signal?: AbortSignal }
     ): Promise<ApiSummary> => {
-      const res = await authedFetch(`/api/v1/api-projects/import`, {
+      const res = await authedFetch(`/api/v0.9/api-projects/import`, {
         method: "POST",
         body: JSON.stringify(payload),
         signal: opts?.signal,

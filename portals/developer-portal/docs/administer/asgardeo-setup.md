@@ -140,46 +140,6 @@ On every authenticated request, the portal verifies that the token's `org_id` ma
 
 ---
 
-## 7. Platform API Configuration
-
-When the devportal forwards subscription and API key operations to the Platform API, it sends the user's Asgardeo access token as `Authorization: Bearer <token>`. The Platform API must be configured to validate these IDP-issued tokens via JWKS rather than its own local HMAC JWTs.
-
-Add the following to your `config-platform-api.toml`:
-
-```toml
-[auth.idp]
-enabled  = true
-jwks_url = "https://api.asgardeo.io/t/<your-tenant>/oauth2/jwks"
-issuer   = ["https://api.asgardeo.io/t/<your-tenant>/oauth2/token"]
-audience = ["<devportal-app-client-id>"]
-
-[auth.idp.claim_mappings]
-organization_claim_name = "org_id"  # Asgardeo B2B sub-org UUID
-org_handle_claim_name   = "org_id"  # Asgardeo does not emit "org_handle"; use org_id
-user_id_claim_name      = "sub"
-```
-
-Or via environment variables:
-
-```bash
-AUTH_IDP_ENABLED=true
-AUTH_IDP_JWKS_URL=https://api.asgardeo.io/t/<your-tenant>/oauth2/jwks
-AUTH_IDP_ISSUER=https://api.asgardeo.io/t/<your-tenant>/oauth2/token
-AUTH_IDP_AUDIENCE=<devportal-app-client-id>
-AUTH_IDP_CLAIM_MAPPINGS_ORGANIZATION_CLAIM_NAME=org_id
-AUTH_IDP_CLAIM_MAPPINGS_ORG_HANDLE_CLAIM_NAME=org_id
-```
-
-**Scope validation:** The Platform API's subscription and API key endpoints require `ap:*` scopes, but a devportal user's Asgardeo token carries `dp:*` scopes — not `ap:*`. With the default `enable_scope_validation: true`, these calls will be rejected with 403. Disable scope validation for the devportal integration path:
-
-```toml
-enable_scope_validation = false
-```
-
-> The devportal's `platformApi.jwtSecret` setting is only used in local auth mode (to verify Platform API-issued HMAC tokens on the devportal side). It has no effect when an external IDP is configured — leave it empty.
-
----
-
 ## Claim Flow Summary
 
 ```

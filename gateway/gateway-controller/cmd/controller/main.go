@@ -49,8 +49,8 @@ import (
 // These must stay in sync with the `servers.url` values in the OpenAPI specs
 // (api/management-openapi.yaml and api/admin-openapi.yaml).
 const (
-	managementAPIBasePath = "/api/management/v0.9"
-	adminAPIBasePath      = "/api/admin/v0.9"
+	managementAPIBasePath = "/api/management/v1"
+	adminAPIBasePath      = "/api/admin/v1"
 )
 
 func toBackendConfig(cfg *config.Config) storage.BackendConfig {

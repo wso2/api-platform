@@ -2,6 +2,7 @@
   <link rel='stylesheet' href='/technical-styles/application.css' />
   <link rel="stylesheet" href="/technical-styles/oauth2-key-generation.css" />
   <link rel="stylesheet" href="/technical-styles/subscriptions.css" />
+  <link rel="stylesheet" href="/styles/api-keys.css" />
 {{/pageHead}}
 {{#pageScripts}}
   <script src='/technical-scripts/subscription.js' defer></script>
@@ -10,6 +11,7 @@
   <script src="/technical-scripts/edit-application-form.js" defer></script>
   <script src="/technical-scripts/api-key-generation.js" defer></script>
   <script src="/technical-scripts/subscription-modal.js" defer></script>
+  <script src="/technical-scripts/application-api-keys.js" defer></script>
 {{/pageScripts}}
 <div class="page-container">
 {{> overview }}
@@ -20,5 +22,6 @@
 {{> keys-token }}
 {{> keys-instructions }}
 {{> keys-generate-token-prompt }}
+{{> api-keys }}
 {{> alert }}
 </div>

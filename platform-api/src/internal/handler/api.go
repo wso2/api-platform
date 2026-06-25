@@ -46,7 +46,7 @@ func NewAPIHandler(apiService *service.APIService, slogger *slog.Logger) *APIHan
 	}
 }
 
-// CreateAPI handles POST /api/v1/rest-apis and creates a new API
+// CreateAPI handles POST /api/v0.9/rest-apis and creates a new API
 func (h *APIHandler) CreateAPI(c *gin.Context) {
 	orgId, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {
@@ -167,7 +167,7 @@ func (h *APIHandler) CreateAPI(c *gin.Context) {
 	c.JSON(http.StatusCreated, apiResponse)
 }
 
-// GetAPI handles GET /api/v1/rest-apis/:apiId and retrieves an API by its handle
+// GetAPI handles GET /api/v0.9/rest-apis/:apiId and retrieves an API by its handle
 func (h *APIHandler) GetAPI(c *gin.Context) {
 	orgId, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {
@@ -200,7 +200,7 @@ func (h *APIHandler) GetAPI(c *gin.Context) {
 	c.JSON(http.StatusOK, apiResponse)
 }
 
-// ListAPIs handles GET /api/v1/rest-apis and lists APIs for an organization filtered by project
+// ListAPIs handles GET /api/v0.9/rest-apis and lists APIs for an organization filtered by project
 func (h *APIHandler) ListAPIs(c *gin.Context) {
 	// Get organization from JWT token
 	orgId, exists := middleware.GetOrganizationFromContext(c)
@@ -319,7 +319,7 @@ func (h *APIHandler) UpdateAPI(c *gin.Context) {
 	c.JSON(http.StatusOK, apiResponse)
 }
 
-// DeleteAPI handles DELETE /api/v1/rest-apis/:apiId and deletes an API by its handle
+// DeleteAPI handles DELETE /api/v0.9/rest-apis/:apiId and deletes an API by its handle
 func (h *APIHandler) DeleteAPI(c *gin.Context) {
 	orgId, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {
@@ -353,7 +353,7 @@ func (h *APIHandler) DeleteAPI(c *gin.Context) {
 	c.JSON(http.StatusNoContent, nil)
 }
 
-// AddGatewaysToAPI handles POST /api/v1/rest-apis/:apiId/gateways to associate gateways with an API
+// AddGatewaysToAPI handles POST /api/v0.9/rest-apis/:apiId/gateways to associate gateways with an API
 func (h *APIHandler) AddGatewaysToAPI(c *gin.Context) {
 	orgId, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {
@@ -410,7 +410,7 @@ func (h *APIHandler) AddGatewaysToAPI(c *gin.Context) {
 	c.JSON(http.StatusOK, gatewaysResponse)
 }
 
-// GetAPIGateways handles GET /api/v1/rest-apis/:apiId/gateways to get gateways associated with an API including deployment details
+// GetAPIGateways handles GET /api/v0.9/rest-apis/:apiId/gateways to get gateways associated with an API including deployment details
 func (h *APIHandler) GetAPIGateways(c *gin.Context) {
 	orgId, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {
@@ -802,7 +802,7 @@ func (h *APIHandler) ImportOpenAPI(c *gin.Context) {
 	c.JSON(http.StatusCreated, apiResponse)
 }
 
-// ValidateAPI handles GET /api/v1/rest-apis?name=&version=
+// ValidateAPI handles GET /api/v0.9/rest-apis?name=&version=
 func (h *APIHandler) ValidateAPI(c *gin.Context) {
 	orgId, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {
@@ -853,7 +853,7 @@ func (h *APIHandler) ValidateAPI(c *gin.Context) {
 // RegisterRoutes registers all API routes
 func (h *APIHandler) RegisterRoutes(r *gin.Engine) {
 	h.slogger.Debug("Registering REST API routes")
-	apiGroup := r.Group("/api/v1/rest-apis")
+	apiGroup := r.Group(constants.APIBasePath + "/rest-apis")
 	{
 		apiGroup.POST("", h.CreateAPI)
 		apiGroup.GET("", h.ListAPIs)
@@ -865,7 +865,7 @@ func (h *APIHandler) RegisterRoutes(r *gin.Engine) {
 		apiGroup.GET("/:apiId/gateways", h.GetAPIGateways)
 		apiGroup.POST("/:apiId/gateways", h.AddGatewaysToAPI)
 	}
-	apiProjectsGroup := r.Group("/api/v1/api-projects")
+	apiProjectsGroup := r.Group(constants.APIBasePath + "/api-projects")
 	{
 		apiProjectsGroup.POST("/import", h.ImportAPIProject)
 		apiProjectsGroup.POST("/validate", h.ValidateAPIProject)

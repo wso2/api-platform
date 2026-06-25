@@ -359,15 +359,18 @@ func (s *LLMProviderService) Create(orgUUID, createdBy string, req *api.LLMProvi
 		OpenAPISpec:      utils.ValueOrEmpty(req.Openapi),
 		ModelProviders:   mapModelProvidersAPI(req.ModelProviders),
 		Configuration: model.LLMProviderConfig{
-			Context:       &contextValue,
-			VHost:         req.Vhost,
-			Upstream:      mapUpstreamAPIToModel(req.Upstream),
-			AccessControl: mapAccessControlAPI(&req.AccessControl),
-			RateLimiting:  mapRateLimitingAPIToModel(req.RateLimiting),
-			Policies:      mapPoliciesAPIToModel(req.Policies),
-			Security:      mapSecurityAPIToModel(req.Security),
+			Context:           &contextValue,
+			VHost:             req.Vhost,
+			Upstream:          mapUpstreamAPIToModel(req.Upstream),
+			AccessControl:     mapAccessControlAPI(&req.AccessControl),
+			RateLimiting:      mapRateLimitingAPIToModel(req.RateLimiting),
+			GlobalPolicies:    mapGlobalPoliciesAPIToModel(req.GlobalPolicies),
+			OperationPolicies: mapOperationPoliciesAPIToModel(req.OperationPolicies),
+			Policies:          mapPoliciesAPIToModel(req.Policies),
+			Security:          mapSecurityAPIToModel(req.Security),
 		},
 	}
+	migrateLegacyProviderPoliciesInPlace(&m.Configuration)
 
 	if err := s.repo.Create(m); err != nil {
 		if isSQLiteUniqueConstraint(err) {
@@ -513,15 +516,18 @@ func (s *LLMProviderService) Update(orgUUID, handle, updatedBy string, req *api.
 		OpenAPISpec:      utils.ValueOrEmpty(req.Openapi),
 		ModelProviders:   mapModelProvidersAPI(req.ModelProviders),
 		Configuration: model.LLMProviderConfig{
-			Context:       &contextValue,
-			VHost:         req.Vhost,
-			Upstream:      mapUpstreamAPIToModel(req.Upstream),
-			AccessControl: mapAccessControlAPI(&req.AccessControl),
-			RateLimiting:  mapRateLimitingAPIToModel(req.RateLimiting),
-			Policies:      mapPoliciesAPIToModel(req.Policies),
-			Security:      mapSecurityAPIToModel(req.Security),
+			Context:           &contextValue,
+			VHost:             req.Vhost,
+			Upstream:          mapUpstreamAPIToModel(req.Upstream),
+			AccessControl:     mapAccessControlAPI(&req.AccessControl),
+			RateLimiting:      mapRateLimitingAPIToModel(req.RateLimiting),
+			GlobalPolicies:    mapGlobalPoliciesAPIToModel(req.GlobalPolicies),
+			OperationPolicies: mapOperationPoliciesAPIToModel(req.OperationPolicies),
+			Policies:          mapPoliciesAPIToModel(req.Policies),
+			Security:          mapSecurityAPIToModel(req.Security),
 		},
 	}
+	migrateLegacyProviderPoliciesInPlace(&m.Configuration)
 
 	// Preserve stored upstream auth credential only when auth object is provided with an empty value.
 	// If auth object is omitted, treat it as explicit removal and clear stored auth.
@@ -656,14 +662,17 @@ func (s *LLMProxyService) Create(orgUUID, createdBy string, req *api.LLMProxy) (
 		ProviderUUID:     prov.UUID,
 		OpenAPISpec:      utils.ValueOrEmpty(req.Openapi),
 		Configuration: model.LLMProxyConfig{
-			Context:      &contextValue,
-			Vhost:        req.Vhost,
-			Provider:     req.Provider.Id,
-			UpstreamAuth: mapUpstreamAuthAPIToModel(req.Provider.Auth),
-			Policies:     mapPoliciesAPIToModel(req.Policies),
-			Security:     mapSecurityAPIToModel(req.Security),
+			Context:           &contextValue,
+			Vhost:             req.Vhost,
+			Provider:          req.Provider.Id,
+			UpstreamAuth:      mapUpstreamAuthAPIToModel(req.Provider.Auth),
+			GlobalPolicies:    mapGlobalPoliciesAPIToModel(req.GlobalPolicies),
+			OperationPolicies: mapOperationPoliciesAPIToModel(req.OperationPolicies),
+			Policies:          mapPoliciesAPIToModel(req.Policies),
+			Security:          mapSecurityAPIToModel(req.Security),
 		},
 	}
+	migrateLegacyProxyPoliciesInPlace(&m.Configuration)
 
 	if err := s.repo.Create(m); err != nil {
 		if isSQLiteUniqueConstraint(err) {
@@ -865,14 +874,17 @@ func (s *LLMProxyService) Update(orgUUID, handle, updatedBy string, req *api.LLM
 		ProviderUUID:     prov.UUID,
 		OpenAPISpec:      utils.ValueOrEmpty(req.Openapi),
 		Configuration: model.LLMProxyConfig{
-			Context:      &contextValue,
-			Vhost:        req.Vhost,
-			Provider:     req.Provider.Id,
-			UpstreamAuth: mapUpstreamAuthAPIToModel(req.Provider.Auth),
-			Policies:     mapPoliciesAPIToModel(req.Policies),
-			Security:     mapSecurityAPIToModel(req.Security),
+			Context:           &contextValue,
+			Vhost:             req.Vhost,
+			Provider:          req.Provider.Id,
+			UpstreamAuth:      mapUpstreamAuthAPIToModel(req.Provider.Auth),
+			GlobalPolicies:    mapGlobalPoliciesAPIToModel(req.GlobalPolicies),
+			OperationPolicies: mapOperationPoliciesAPIToModel(req.OperationPolicies),
+			Policies:          mapPoliciesAPIToModel(req.Policies),
+			Security:          mapSecurityAPIToModel(req.Security),
 		},
 	}
+	migrateLegacyProxyPoliciesInPlace(&m.Configuration)
 
 	// Preserve stored upstream auth credential when not supplied in update payload
 	m.Configuration.UpstreamAuth = preserveUpstreamAuthCredential(existing.Configuration.UpstreamAuth, m.Configuration.UpstreamAuth)
@@ -1056,6 +1068,185 @@ func mapPoliciesAPIToModel(in *[]api.LLMPolicy) []model.LLMPolicy {
 		out = append(out, model.LLMPolicy{Name: p.Name, Version: p.Version, Paths: paths})
 	}
 	return out
+}
+
+func mapGlobalPoliciesAPIToModel(in *[]api.Policy) []model.GlobalPolicy {
+	if in == nil || len(*in) == 0 {
+		return nil
+	}
+	out := make([]model.GlobalPolicy, 0, len(*in))
+	for _, p := range *in {
+		ec := ""
+		if p.ExecutionCondition != nil {
+			ec = *p.ExecutionCondition
+		}
+		var params map[string]interface{}
+		if p.Params != nil {
+			params = *p.Params
+		}
+		out = append(out, model.GlobalPolicy{Name: p.Name, Version: p.Version, ExecutionCondition: ec, Params: params})
+	}
+	return out
+}
+
+func mapOperationPoliciesAPIToModel(in *[]api.OperationPolicy) []model.OperationPolicy {
+	if in == nil || len(*in) == 0 {
+		return nil
+	}
+	out := make([]model.OperationPolicy, 0, len(*in))
+	for _, p := range *in {
+		ec := ""
+		if p.ExecutionCondition != nil {
+			ec = *p.ExecutionCondition
+		}
+		paths := make([]model.OperationPolicyPath, 0, len(p.Paths))
+		for _, pp := range p.Paths {
+			paths = append(paths, model.OperationPolicyPath{Path: pp.Path, Methods: pp.Methods, Params: pp.Params})
+		}
+		out = append(out, model.OperationPolicy{Name: p.Name, Version: p.Version, ExecutionCondition: ec, Paths: paths})
+	}
+	return out
+}
+
+func mapGlobalPoliciesModelToAPI(in []model.GlobalPolicy) *[]api.Policy {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]api.Policy, 0, len(in))
+	for _, p := range in {
+		entry := api.Policy{Name: p.Name, Version: p.Version}
+		if p.ExecutionCondition != "" {
+			entry.ExecutionCondition = &p.ExecutionCondition
+		}
+		if p.Params != nil {
+			params := p.Params
+			entry.Params = &params
+		}
+		out = append(out, entry)
+	}
+	return &out
+}
+
+func mapOperationPoliciesModelToAPI(in []model.OperationPolicy) *[]api.OperationPolicy {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]api.OperationPolicy, 0, len(in))
+	for _, p := range in {
+		paths := make([]api.OperationPolicyPath, 0, len(p.Paths))
+		for _, pp := range p.Paths {
+			paths = append(paths, api.OperationPolicyPath{Path: pp.Path, Methods: pp.Methods, Params: pp.Params})
+		}
+		entry := api.OperationPolicy{Name: p.Name, Version: p.Version, Paths: paths}
+		if p.ExecutionCondition != "" {
+			entry.ExecutionCondition = &p.ExecutionCondition
+		}
+		out = append(out, entry)
+	}
+	return &out
+}
+
+// migrateLegacyProviderPoliciesInPlace folds any legacy `policies` entries into
+// globalPolicies / operationPolicies, then clears `policies`.
+// Rules:
+//   - a path entry with path == "/*" AND methods == ["*"] → GlobalPolicy (deduped by name)
+//   - any other path entry                                → OperationPolicy path (merged by name)
+//
+// Empty or nil Policies → no-op.
+func migrateLegacyProviderPoliciesInPlace(cfg *model.LLMProviderConfig) {
+	migrateLegacyPolicies(&cfg.GlobalPolicies, &cfg.OperationPolicies, cfg.Policies)
+	cfg.Policies = nil
+}
+
+// migrateLegacyProxyPoliciesInPlace is the proxy-config counterpart.
+func migrateLegacyProxyPoliciesInPlace(cfg *model.LLMProxyConfig) {
+	migrateLegacyPolicies(&cfg.GlobalPolicies, &cfg.OperationPolicies, cfg.Policies)
+	cfg.Policies = nil
+}
+
+// migrateLegacyPolicies is the shared migration kernel.
+func migrateLegacyPolicies(globalPolicies *[]model.GlobalPolicy, operationPolicies *[]model.OperationPolicy, legacyPolicies []model.LLMPolicy) {
+	for _, p := range legacyPolicies {
+		for _, pe := range p.Paths {
+			if pe.Path == "/*" && isWildcardOnlyMethods(pe.Methods) {
+				if !hasGlobalPolicyByName(*globalPolicies, p.Name) {
+					*globalPolicies = append(*globalPolicies, model.GlobalPolicy{
+						Name:    p.Name,
+						Version: p.Version,
+						Params:  pe.Params,
+					})
+				}
+			} else {
+				appendLegacyOperationPath(operationPolicies, p.Name, p.Version, model.OperationPolicyPath{
+					Path:    pe.Path,
+					Methods: pe.Methods,
+					Params:  pe.Params,
+				})
+			}
+		}
+	}
+}
+
+// isWildcardOnlyMethods reports whether methods is exactly ["*"].
+func isWildcardOnlyMethods(methods []string) bool {
+	return len(methods) == 1 && methods[0] == "*"
+}
+
+// hasGlobalPolicyByName reports whether a GlobalPolicy with the given name already exists.
+func hasGlobalPolicyByName(policies []model.GlobalPolicy, name string) bool {
+	for _, p := range policies {
+		if p.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+// appendLegacyOperationPath merges a path entry into an existing OperationPolicy of the same
+// name+version, or appends a new OperationPolicy if none exists.
+func appendLegacyOperationPath(policies *[]model.OperationPolicy, name, version string, path model.OperationPolicyPath) {
+	for i := range *policies {
+		if (*policies)[i].Name == name && (*policies)[i].Version == version {
+			(*policies)[i].Paths = append((*policies)[i].Paths, path)
+			return
+		}
+	}
+	*policies = append(*policies, model.OperationPolicy{
+		Name:    name,
+		Version: version,
+		Paths:   []model.OperationPolicyPath{path},
+	})
+}
+
+// splitLegacyPoliciesForRead converts a stored legacy policies list into the two
+// canonical lists for read responses, using the same rule as the save-time migration:
+//   - path "/*" + methods ["*"] → GlobalPolicy (shared api-level bucket)
+//   - any other path            → OperationPolicy (per-path bucket)
+//
+// Called only when both new lists are empty and the legacy list is non-empty.
+func splitLegacyPoliciesForRead(legacy []model.LLMPolicy) ([]model.GlobalPolicy, []model.OperationPolicy) {
+	var global []model.GlobalPolicy
+	var operation []model.OperationPolicy
+	for _, p := range legacy {
+		for _, pe := range p.Paths {
+			if pe.Path == "/*" && isWildcardOnlyMethods(pe.Methods) {
+				if !hasGlobalPolicyByName(global, p.Name) {
+					global = append(global, model.GlobalPolicy{
+						Name:    p.Name,
+						Version: p.Version,
+						Params:  pe.Params,
+					})
+				}
+			} else {
+				appendLegacyOperationPath(&operation, p.Name, p.Version, model.OperationPolicyPath{
+					Path:    pe.Path,
+					Methods: pe.Methods,
+					Params:  pe.Params,
+				})
+			}
+		}
+	}
+	return global, operation
 }
 
 func mapUpstreamAuthAPIToModel(in *api.UpstreamAuth) *model.UpstreamAuth {
@@ -1527,10 +1718,21 @@ func mapProviderModelToAPI(m *model.LLMProvider, templateHandle string) *api.LLM
 		ac.Exceptions = &exc
 	}
 
-	policies := mapPoliciesModelToAPI(m.Configuration.Policies)
-	if policies == nil {
-		empty := []api.LLMPolicy{}
-		policies = &empty
+	globalPolicyCfg := m.Configuration.GlobalPolicies
+	operationPolicyCfg := m.Configuration.OperationPolicies
+	// For legacy rows stored before v1alpha2 migration: split policies on read.
+	if len(globalPolicyCfg) == 0 && len(operationPolicyCfg) == 0 && len(m.Configuration.Policies) > 0 {
+		globalPolicyCfg, operationPolicyCfg = splitLegacyPoliciesForRead(m.Configuration.Policies)
+	}
+	globalPolicies := mapGlobalPoliciesModelToAPI(globalPolicyCfg)
+	if globalPolicies == nil {
+		empty := []api.Policy{}
+		globalPolicies = &empty
+	}
+	operationPolicies := mapOperationPoliciesModelToAPI(operationPolicyCfg)
+	if operationPolicies == nil {
+		empty := []api.OperationPolicy{}
+		operationPolicies = &empty
 	}
 
 	modelProviders := mapModelProvidersModelToAPI(m.ModelProviders)
@@ -1550,11 +1752,13 @@ func mapProviderModelToAPI(m *model.LLMProvider, templateHandle string) *api.LLM
 		Template:       templateHandle,
 		Openapi:        utils.StringPtrIfNotEmpty(m.OpenAPISpec),
 		ModelProviders: modelProviders,
-		RateLimiting:   mapRateLimitingModelToAPI(m.Configuration.RateLimiting),
-		Upstream:       upstream,
-		AccessControl:  ac,
-		Policies:       policies,
-		Security:       mapSecurityModelToAPI(m.Configuration.Security),
+		RateLimiting:      mapRateLimitingModelToAPI(m.Configuration.RateLimiting),
+		Upstream:          upstream,
+		AccessControl:     ac,
+		GlobalPolicies:    globalPolicies,
+		OperationPolicies: operationPolicies,
+		Policies:          nil,
+		Security:          mapSecurityModelToAPI(m.Configuration.Security),
 		CreatedAt:      utils.TimePtr(m.CreatedAt),
 		UpdatedAt:      utils.TimePtr(m.UpdatedAt),
 	}
@@ -1845,10 +2049,21 @@ func mapProxyModelToAPI(m *model.LLMProxy) *api.LLMProxy {
 		v := *m.Configuration.Vhost
 		vhostValue = &v
 	}
-	policies := mapPoliciesModelToAPI(m.Configuration.Policies)
-	if policies == nil {
-		empty := []api.LLMPolicy{}
-		policies = &empty
+	globalPolicyCfgProxy := m.Configuration.GlobalPolicies
+	operationPolicyCfgProxy := m.Configuration.OperationPolicies
+	// For legacy rows stored before v1alpha2 migration: split policies on read.
+	if len(globalPolicyCfgProxy) == 0 && len(operationPolicyCfgProxy) == 0 && len(m.Configuration.Policies) > 0 {
+		globalPolicyCfgProxy, operationPolicyCfgProxy = splitLegacyPoliciesForRead(m.Configuration.Policies)
+	}
+	globalPoliciesProxy := mapGlobalPoliciesModelToAPI(globalPolicyCfgProxy)
+	if globalPoliciesProxy == nil {
+		empty := []api.Policy{}
+		globalPoliciesProxy = &empty
+	}
+	operationPoliciesProxy := mapOperationPoliciesModelToAPI(operationPolicyCfgProxy)
+	if operationPoliciesProxy == nil {
+		empty := []api.OperationPolicy{}
+		operationPoliciesProxy = &empty
 	}
 	createdAt := utils.TimePtr(m.CreatedAt)
 	updatedAt := utils.TimePtr(m.UpdatedAt)
@@ -1882,25 +2097,9 @@ func mapProxyModelToAPI(m *model.LLMProxy) *api.LLMProxy {
 			Value:  nil, // Redact auth credential value
 		}
 	}
-	if len(m.Configuration.Policies) > 0 {
-		policyList := make([]api.LLMPolicy, 0, len(m.Configuration.Policies))
-		for _, p := range m.Configuration.Policies {
-			paths := make([]api.LLMPolicyPath, 0, len(p.Paths))
-			for _, pp := range p.Paths {
-				methods := make([]api.LLMPolicyPathMethods, 0, len(pp.Methods))
-				for _, m := range pp.Methods {
-					methods = append(methods, api.LLMPolicyPathMethods(m))
-				}
-				paths = append(paths, api.LLMPolicyPath{Path: pp.Path, Methods: methods, Params: pp.Params})
-			}
-			policyList = append(policyList, api.LLMPolicy{Name: p.Name, Version: p.Version, Paths: paths})
-		}
-		out.Policies = &policyList
-	}
-	if out.Policies == nil {
-		empty := []api.LLMPolicy{}
-		out.Policies = &empty
-	}
+	out.GlobalPolicies = globalPoliciesProxy
+	out.OperationPolicies = operationPoliciesProxy
+	out.Policies = nil
 	return out
 }
 

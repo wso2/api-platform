@@ -19,18 +19,19 @@ const apiDao = require('../dao/apiDao');
 const subDao = require('../dao/subscriptionDao');
 const sequelize = require('../db/sequelizeConfig');
 const { publish: publishWebhookEvent } = require('./webhooks/eventPublisher');
-const platformClient = require('./platformApiClient');
-const { isPlatformApiPath } = platformClient;
 const util = require('../utils/util');
 const logger = require('../config/logger');
 
+// Logs context before rethrowing so the caller's transaction rolls back instead of
+// silently committing the subscription change without its webhook event.
 async function safePublish(eventType, payload, opts) {
     try {
         await publishWebhookEvent(eventType, payload, opts);
     } catch (err) {
-        logger.warn('[subscriptionService] webhook publish failed (non-fatal)', {
+        logger.error('[subscriptionService] webhook publish failed', {
             eventType, error: err.message,
         });
+        throw err;
     }
 }
 
@@ -50,13 +51,11 @@ function buildWebhookPayload(sub, apiMetadata, plan) {
 }
 
 function formatSubscriptionResponse(sub) {
-    const api = sub.DP_API_METADATA || {};
     const plan = sub.DP_SUBSCRIPTION_PLAN || {};
     return {
         subscriptionId: sub.SUB_ID,
         subscriptionToken: sub.SUB_TOKEN,
         status: sub.STATUS,
-        gatewayType: api.GATEWAY_TYPE || null,
         apiId: sub.API_ID,
         subscriptionPlanName: plan.PLAN_NAME || null,
         createdBy: sub.CREATED_BY || null,
@@ -102,33 +101,18 @@ const createSubscription = async (req, res) => {
         }
 
         let newSub;
-        if (isPlatformApiPath(apiMetadata.GATEWAY_TYPE)) {
-            const subscriptionPlanId = matchedPlan ? (matchedPlan.REF_ID || matchedPlan.PLAN_NAME) : null;
-            const platformResp = await platformClient.createSubscription(req.user.accessToken, {
-                apiId: apiMetadata.REFERENCE_ID,
-                subscriberId: req.user.sub,
-                subscriptionPlanId,
+        await sequelize.transaction(async (t) => {
+            newSub = await subDao.create(
+                orgID, apiId, planId, createdBy, t
+            );
+            await safePublish('subscription.created', buildWebhookPayload(newSub, apiMetadata, matchedPlan), {
+                transaction: t,
+                orgId: orgID,
+                aggregateType: 'subscription',
+                aggregateId: newSub.SUB_ID,
+                plaintextKey: newSub.SUB_TOKEN,
             });
-            await sequelize.transaction(async (t) => {
-                newSub = await subDao.create(orgID, apiId, planId, createdBy, t, {
-                    subToken: platformResp.subscriptionToken,
-                });
-            });
-        } else {
-            await sequelize.transaction(async (t) => {
-                newSub = await subDao.create(
-                    orgID, apiId, planId, createdBy, t
-                );
-                await safePublish('subscription.created', buildWebhookPayload(newSub, apiMetadata, matchedPlan), {
-                    transaction: t,
-                    orgId: orgID,
-                    gatewayType: apiMetadata.GATEWAY_TYPE,
-                    aggregateType: 'subscription',
-                    aggregateId: newSub.SUB_ID,
-                    plaintextKey: newSub.SUB_TOKEN,
-                });
-            });
-        }
+        });
 
         const created = await subDao.get(orgID, newSub.SUB_ID, createdBy);
         return res.status(201).json(formatSubscriptionResponse(created));
@@ -203,33 +187,13 @@ const updateSubscription = async (req, res) => {
             });
         }
 
-        const apiMetadata = existing.DP_API_METADATA;
-        if (isPlatformApiPath(apiMetadata?.GATEWAY_TYPE)) {
-            const platformSub = await platformClient.findSubscription(req.user.accessToken, {
-                apiId: apiMetadata.REFERENCE_ID,
-                subscriberId: req.user.sub,
+        const updated = await subDao.updateStatus(
+            orgID, subscriptionId, status, req.user.sub
+        );
+        if (!updated) {
+            return res.status(404).json({
+                code: '404', message: 'Not Found', description: 'Subscription not found',
             });
-            if (platformSub) {
-                await platformClient.updateSubscription(req.user.accessToken, {
-                    platformSubId: platformSub.id,
-                    subscriberId: req.user.sub,
-                    status,
-                });
-            } else {
-                logger.warn('[subscriptionService] platform-api subscription not found, updating local DB only', {
-                    subscriptionId, apiRefId: apiMetadata.REFERENCE_ID,
-                });
-            }
-            await subDao.updateStatus(orgID, subscriptionId, status, req.user.sub);
-        } else {
-            const updated = await subDao.updateStatus(
-                orgID, subscriptionId, status, req.user.sub
-            );
-            if (!updated) {
-                return res.status(404).json({
-                    code: '404', message: 'Not Found', description: 'Subscription not found',
-                });
-            }
         }
         const sub = await subDao.get(orgID, subscriptionId, req.user.sub);
         return res.status(200).json(formatSubscriptionResponse(sub));
@@ -256,34 +220,16 @@ const deleteSubscription = async (req, res) => {
         const apiMetadata = existing.DP_API_METADATA;
         const plan = existing.DP_SUBSCRIPTION_PLAN;
 
-        if (isPlatformApiPath(apiMetadata?.GATEWAY_TYPE)) {
-            const platformSub = await platformClient.findSubscription(req.user.accessToken, {
-                apiId: apiMetadata.REFERENCE_ID,
-                subscriberId: req.user.sub,
+        await sequelize.transaction(async (t) => {
+            const deleted = await subDao.delete(orgID, subscriptionId, req.user.sub, t);
+            if (!deleted) throw Object.assign(new Error('Not found'), { statusCode: 404 });
+            await safePublish('subscription.deleted', buildWebhookPayload(existing, apiMetadata, plan), {
+                transaction: t,
+                orgId: orgID,
+                aggregateType: 'subscription',
+                aggregateId: subscriptionId,
             });
-            if (platformSub) {
-                await platformClient.deleteSubscription(req.user.accessToken, {
-                    platformSubId: platformSub.id,
-                    subscriberId: req.user.sub,
-                });
-            }
-            await sequelize.transaction(async (t) => {
-                const deleted = await subDao.delete(orgID, subscriptionId, req.user.sub, t);
-                if (!deleted) throw Object.assign(new Error('Not found'), { statusCode: 404 });
-            });
-        } else {
-            await sequelize.transaction(async (t) => {
-                const deleted = await subDao.delete(orgID, subscriptionId, req.user.sub, t);
-                if (!deleted) throw Object.assign(new Error('Not found'), { statusCode: 404 });
-                await safePublish('subscription.deleted', buildWebhookPayload(existing, apiMetadata, plan), {
-                    transaction: t,
-                    orgId: orgID,
-                    gatewayType: apiMetadata ? apiMetadata.GATEWAY_TYPE : null,
-                    aggregateType: 'subscription',
-                    aggregateId: subscriptionId,
-                });
-            });
-        }
+        });
 
         return res.status(200).json({ message: 'Subscription deleted successfully' });
     } catch (error) {

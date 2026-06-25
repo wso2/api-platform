@@ -195,7 +195,7 @@ func buildSecretResourceResponse(secret *models.Secret, includeValue bool) any {
 		status["updatedAt"] = secret.UpdatedAt
 	}
 	return map[string]any{
-		"apiVersion": string(api.SecretConfigurationRequestApiVersionGatewayApiPlatformWso2Comv1alpha1),
+		"apiVersion": string(api.SecretConfigurationRequestApiVersionGatewayApiPlatformWso2Comv1),
 		"kind":       string(api.SecretConfigurationRequestKindSecret),
 		"metadata":   map[string]any{"name": secret.Handle},
 		"spec":       spec,
@@ -217,7 +217,7 @@ func buildSecretMetaResourceResponse(meta models.SecretMeta) any {
 		status["updatedAt"] = meta.UpdatedAt
 	}
 	return map[string]any{
-		"apiVersion": string(api.SecretConfigurationRequestApiVersionGatewayApiPlatformWso2Comv1alpha1),
+		"apiVersion": string(api.SecretConfigurationRequestApiVersionGatewayApiPlatformWso2Comv1),
 		"kind":       string(api.SecretConfigurationRequestKindSecret),
 		"metadata":   map[string]any{"name": meta.Handle},
 		"spec":       map[string]any{"displayName": meta.DisplayName},

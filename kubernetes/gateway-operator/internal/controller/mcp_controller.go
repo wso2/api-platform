@@ -172,7 +172,7 @@ func (a *mcpAdapter) Deploy(ctx context.Context, k8sClient client.Client, gatewa
 		specPayload = m
 	}
 
-	body, err := gatewayclient.BuildEnvelopeYAML(apiv1.GroupVersion.String(), "Mcp",
+	body, err := gatewayclient.BuildEnvelopeYAML(gatewayclient.ManagementArtifactAPIVersion, "Mcp",
 		gatewayclient.EnvelopeMetadata{
 			Name:        cr.Name,
 			Labels:      cr.Labels,

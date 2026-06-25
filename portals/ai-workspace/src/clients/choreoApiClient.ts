@@ -20,7 +20,7 @@
 // Platform API Client
 // ----------------------------------------------------------------------------
 // Replaces the Asgardeo-backed httpRequest with native fetch.
-// All calls go to PLATFORM_API_BASE_URL (default: https://localhost:9243/api/v1).
+// All calls go to PLATFORM_API_BASE_URL (default: https://localhost:9243/api/v0.9).
 //
 // Token storage:
 //   localStorage.setItem('platform_auth_token', '<your-token>')

@@ -9,7 +9,6 @@ spec:
   displayName: Leisure Activities API
   version: v1.0
   description: Search and book leisure activities — sports, wellness, entertainment, and outdoor experiences — via a SOAP/WSDL interface.
-  provider: WSO2
   status: PUBLISHED
 
   tags:

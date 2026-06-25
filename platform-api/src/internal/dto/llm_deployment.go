@@ -30,14 +30,16 @@ type LLMProviderDeploymentYAML struct {
 
 // LLMProviderDeploymentSpec represents the spec section for LLM provider deployments
 type LLMProviderDeploymentSpec struct {
-	DisplayName   string           `yaml:"displayName"`
-	Version       string           `yaml:"version"`
-	Context       string           `yaml:"context,omitempty"`
-	VHost         string           `yaml:"vhost,omitempty"`
-	Template      string           `yaml:"template"`
-	Upstream      LLMUpstreamYAML  `yaml:"upstream"`
-	AccessControl api.LLMAccessControl `yaml:"accessControl"`
-	Policies      []api.LLMPolicy  `yaml:"policies,omitempty"`
+	DisplayName       string                `yaml:"displayName"`
+	Version           string                `yaml:"version"`
+	Context           string                `yaml:"context,omitempty"`
+	VHost             string                `yaml:"vhost,omitempty"`
+	Template          string                `yaml:"template"`
+	Upstream          LLMUpstreamYAML       `yaml:"upstream"`
+	AccessControl     api.LLMAccessControl  `yaml:"accessControl"`
+	GlobalPolicies    []api.Policy          `yaml:"globalPolicies,omitempty"`
+	OperationPolicies []api.OperationPolicy `yaml:"operationPolicies,omitempty"`
+	Policies          []api.LLMPolicy       `yaml:"policies,omitempty"`
 }
 
 // LLMUpstreamYAML represents the upstream configuration for LLM provider deployments
@@ -59,12 +61,14 @@ type LLMProxyDeploymentYAML struct {
 
 // LLMProxyDeploymentSpec represents the spec section for LLM proxy deployments
 type LLMProxyDeploymentSpec struct {
-	DisplayName string                     `yaml:"displayName"`
-	Version     string                     `yaml:"version"`
-	Context     string                     `yaml:"context,omitempty"`
-	VHost       string                     `yaml:"vhost,omitempty"`
-	Provider    LLMProxyDeploymentProvider `yaml:"provider"`
-	Policies    []api.LLMPolicy            `yaml:"policies,omitempty"`
+	DisplayName       string                     `yaml:"displayName"`
+	Version           string                     `yaml:"version"`
+	Context           string                     `yaml:"context,omitempty"`
+	VHost             string                     `yaml:"vhost,omitempty"`
+	Provider          LLMProxyDeploymentProvider `yaml:"provider"`
+	GlobalPolicies    []api.Policy               `yaml:"globalPolicies,omitempty"`
+	OperationPolicies []api.OperationPolicy      `yaml:"operationPolicies,omitempty"`
+	Policies          []api.LLMPolicy            `yaml:"policies,omitempty"`
 }
 
 type LLMProxyDeploymentProvider struct {

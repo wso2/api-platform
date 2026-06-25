@@ -198,7 +198,7 @@ func (r *HTTPRouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	handle := DefaultHTTPRouteAPIHandle(route)
 	apiYAML, err := gatewayclient.BuildRestAPIYAML(
-		apiv1.GroupVersion.String(),
+		gatewayclient.ManagementArtifactAPIVersion,
 		"RestApi",
 		payloadMetadataForHTTPRoute(route, handle),
 		*spec,

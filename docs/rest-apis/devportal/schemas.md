@@ -328,52 +328,6 @@ xor
 |fileName|string|false|none|none|
 |fileContent|string¦null|false|none|UTF-8 content string returned for stored organization content records.|
 
-<h2 id="tocS_ProviderResponse">ProviderResponse</h2>
-
-<a id="schemaproviderresponse"></a>
-<a id="schema_ProviderResponse"></a>
-<a id="tocSproviderresponse"></a>
-<a id="tocsproviderresponse"></a>
-
-```json
-{
-  "orgId": "string",
-  "name": "string",
-  "providerURL": "http://example.com"
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|orgId|string|true|none|none|
-|name|string|true|none|none|
-|providerURL|string(uri)|true|none|none|
-
-<h2 id="tocS_ProviderLookupItemResponse">ProviderLookupItemResponse</h2>
-
-<a id="schemaproviderlookupitemresponse"></a>
-<a id="schema_ProviderLookupItemResponse"></a>
-<a id="tocSproviderlookupitemresponse"></a>
-<a id="tocsproviderlookupitemresponse"></a>
-
-```json
-{
-  "name": "string",
-  "providerURL": "http://example.com"
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|name|string|true|none|none|
-|providerURL|string(uri)|true|none|none|
-
 <h2 id="tocS_ApiMetadataCreateResponse">ApiMetadataCreateResponse</h2>
 
 <a id="schemaapimetadatacreateresponse"></a>
@@ -386,7 +340,6 @@ xor
   "apiID": "string",
   "apiReferenceID": "string",
   "apiHandle": "string",
-  "provider": "string",
   "dataSource": "string",
   "apiInfo": {
     "apiName": "string",
@@ -400,7 +353,6 @@ xor
     "apiType": "string",
     "visibility": "string",
     "agentVisibility": "string",
-    "gatewayType": "string",
     "addedLabels": [
       "string"
     ],
@@ -453,7 +405,6 @@ xor
 |apiID|string|false|none|none|
 |apiReferenceID|string|false|none|none|
 |apiHandle|string|false|none|none|
-|provider|string|false|none|none|
 |dataSource|string|false|none|none|
 |apiInfo|[ApiInfoResponse](#schemaapiinforesponse)|false|none|none|
 |endPoints|[ApiEndpointsResponse](#schemaapiendpointsresponse)|false|none|none|
@@ -471,7 +422,6 @@ xor
   "apiID": "string",
   "apiReferenceID": "string",
   "apiHandle": "string",
-  "provider": "string",
   "dataSource": "string",
   "planID": "string",
   "apiInfo": {
@@ -486,7 +436,6 @@ xor
     "apiType": "string",
     "visibility": "string",
     "agentVisibility": "string",
-    "gatewayType": "string",
     "addedLabels": [
       "string"
     ],
@@ -539,7 +488,6 @@ xor
 |apiID|string|false|none|none|
 |apiReferenceID|string|false|none|none|
 |apiHandle|string|false|none|none|
-|provider|string|false|none|none|
 |dataSource|string|false|none|none|
 |planID|string|false|none|none|
 |apiInfo|[ApiInfoResponse](#schemaapiinforesponse)|false|none|none|
@@ -566,7 +514,6 @@ xor
   "apiType": "string",
   "visibility": "string",
   "agentVisibility": "string",
-  "gatewayType": "string",
   "addedLabels": [
     "string"
   ],
@@ -609,7 +556,6 @@ xor
 |apiType|string|false|none|none|
 |visibility|string|false|none|none|
 |agentVisibility|string|false|none|none|
-|gatewayType|string¦null|false|none|none|
 |addedLabels|[string]|false|none|none|
 |removedLabels|[string]|false|none|none|
 |visibleGroups|[string]|false|none|none|
@@ -927,28 +873,6 @@ OAuth key mapping entry attached to an application.
 |organizationIdentifier|string|true|none|none|
 |orgConfiguration|[GenericObject](#schemagenericobject)|false|none|none|
 
-<h2 id="tocS_ProviderRequest">ProviderRequest</h2>
-
-<a id="schemaproviderrequest"></a>
-<a id="schema_ProviderRequest"></a>
-<a id="tocSproviderrequest"></a>
-<a id="tocsproviderrequest"></a>
-
-```json
-{
-  "name": "string",
-  "providerURL": "http://example.com"
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|name|string|true|none|none|
-|providerURL|string(uri)|true|none|none|
-
 <h2 id="tocS_SubscriptionPlanRequest">SubscriptionPlanRequest</h2>
 
 <a id="schemasubscriptionplanrequest"></a>
@@ -1127,7 +1051,6 @@ xor
   "apiId": "api-7f4c2a6b",
   "subscriptionToken": "a3f1...",
   "subscriptionPlanName": "Gold",
-  "gatewayType": "wso2/api-platform",
   "status": "ACTIVE",
   "createdBy": "alice@example.com",
   "createdAt": "2019-08-24T14:15:22Z"
@@ -1145,7 +1068,6 @@ Subscription payload.
 |apiId|string|false|none|Developer Portal API ID.|
 |subscriptionToken|string|false|none|Plaintext subscription token. Present on create and when the token has not been encrypted at rest.|
 |subscriptionPlanName|string|false|none|none|
-|gatewayType|string|false|none|none|
 |status|string|false|none|none|
 |createdBy|string|false|none|Identity (sub claim) of the user who created the subscription.|
 |createdAt|string(date-time)|false|none|none|
@@ -1169,6 +1091,7 @@ Subscription payload.
   "apiId": "api-7f4c2a6b",
   "name": "weather_prod_key",
   "subscriptionId": "sub-abc123",
+  "appId": "app-12345",
   "expiresAt": "2026-12-31T23:59:59Z"
 }
 
@@ -1181,6 +1104,7 @@ Subscription payload.
 |apiId|string|true|none|Developer Portal API ID.|
 |name|string|true|none|none|
 |subscriptionId|string|false|none|Optional subscription ID to associate the key with.|
+|appId|string|false|none|Optional application ID to associate the key with, for analytics attribution only — it has no effect on the key's validity or authorization. Must belong to the same organization and be owned by the caller.|
 |expiresAt|any|false|none|Optional ISO-8601 datetime with timezone, epoch seconds, or epoch milliseconds.|
 
 oneOf
@@ -1207,6 +1131,8 @@ xor
   "keyId": "key-12345",
   "name": "weather_prod_key",
   "apiId": "api-7f4c2a6b",
+  "appId": "app-12345",
+  "appName": "My Mobile App",
   "status": "ACTIVE",
   "expiresAt": "2026-12-31T23:59:59Z",
   "createdAt": "2019-08-24T14:15:22Z",
@@ -1224,6 +1150,8 @@ API key metadata returned by list operations. Secret material is omitted.
 |keyId|string|false|none|Developer Portal key identifier.|
 |name|string|false|none|none|
 |apiId|string|false|none|Developer Portal API ID the key belongs to.|
+|appId|string¦null|false|none|ID of the application this key is associated with, if any. Analytics attribution only.|
+|appName|string¦null|false|none|Name of the associated application, if any.|
 |status|string|false|none|none|
 |expiresAt|string(date-time)¦null|false|none|none|
 |createdAt|string(date-time)|false|none|none|
@@ -1248,6 +1176,8 @@ API key metadata returned by list operations. Secret material is omitted.
   "keyId": "key-12345",
   "name": "weather_prod_key",
   "apiId": "api-7f4c2a6b",
+  "appId": "app-12345",
+  "appName": "My Mobile App",
   "status": "ACTIVE",
   "expiresAt": "2026-12-31T23:59:59Z",
   "createdAt": "2019-08-24T14:15:22Z",
@@ -1271,6 +1201,33 @@ and
 |---|---|---|---|---|
 |*anonymous*|object|false|none|API key response returned by generate/regenerate. The plaintext secret is returned exactly once and never persisted — store it securely.|
 |» key|string|false|none|One-time plaintext API key secret.|
+
+<h2 id="tocS_ApiKeyApplicationResponse">ApiKeyApplicationResponse</h2>
+
+<a id="schemaapikeyapplicationresponse"></a>
+<a id="schema_ApiKeyApplicationResponse"></a>
+<a id="tocSapikeyapplicationresponse"></a>
+<a id="tocsapikeyapplicationresponse"></a>
+
+```json
+{
+  "keyId": "key-12345",
+  "application": {
+    "id": "app-12345",
+    "name": "My Mobile App"
+  }
+}
+
+```
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|keyId|string|false|none|none|
+|application|object|false|none|none|
+|» id|string|false|none|none|
+|» name|string|false|none|none|
 
 <h2 id="tocS_KeyManagerRequest">KeyManagerRequest</h2>
 
@@ -1522,7 +1479,6 @@ Minimal developer-facing key manager view. No admin credentials or DCR endpoints
   "url": "https://gateway.example.com/devportal-webhook",
   "secret": "<shared-secret>",
   "publicKey": "string",
-  "gatewayType": "*",
   "events": [
     "apikey.*",
     "subscription.*"
@@ -1538,10 +1494,9 @@ Minimal developer-facing key manager view. No admin credentials or DCR endpoints
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |name|string|true|none|Unique name within the organization.|
-|url|string(uri)|true|none|Target URL events are POSTed to.|
+|url|string(uri)|true|none|Target URL events are POSTed to. Must be unique within the organization.|
 |secret|string|false|none|Shared secret used to sign outgoing payloads (HMAC). Stored encrypted; never returned in responses.|
 |publicKey|string|false|none|PEM-encoded public key. When set, secret event payloads (apikey.*, subscription.*) are additionally encrypted to this key so only the subscriber can read the plaintext key.|
-|gatewayType|string|false|none|Restricts delivery to events with a matching DP_EVENT.GATEWAY_TYPE. Use "*" (default) to match any.|
 |events|[string]|false|none|Glob-style event type allowlist (only a trailing `*` wildcard is supported, e.g. `apikey.*`). Omit or leave empty to receive all event types.|
 |enabled|boolean|false|none|none|
 |timeoutMs|integer|false|none|none|
@@ -1560,12 +1515,12 @@ Minimal developer-facing key manager view. No admin credentials or DCR endpoints
   "name": "Production Gateway",
   "url": "https://gateway.example.com/devportal-webhook",
   "enabled": true,
-  "gatewayType": "*",
   "events": [
     "apikey.*",
     "subscription.*"
   ],
   "timeoutMs": 5000,
+  "hasSecret": true,
   "hasPublicKey": false
 }
 
@@ -1582,10 +1537,58 @@ Webhook subscriber configuration. The secret is never included.
 |name|string|false|none|none|
 |url|string(uri)|false|none|none|
 |enabled|boolean|false|none|none|
-|gatewayType|string|false|none|none|
 |events|[string]|false|none|none|
 |timeoutMs|integer|false|none|none|
+|hasSecret|boolean|false|none|Whether a secret is configured for HMAC-signing outgoing payloads.|
 |hasPublicKey|boolean|false|none|Whether a public key is configured for envelope-encrypting secret event payloads.|
+
+<h2 id="tocS_WebhookSubscriberDeliverySummary">WebhookSubscriberDeliverySummary</h2>
+
+<a id="schemawebhooksubscriberdeliverysummary"></a>
+<a id="schema_WebhookSubscriberDeliverySummary"></a>
+<a id="tocSwebhooksubscriberdeliverysummary"></a>
+<a id="tocswebhooksubscriberdeliverysummary"></a>
+
+```json
+{
+  "deliveryId": "del-abc123",
+  "eventType": "apikey.generated",
+  "occurredAt": "2019-08-24T14:15:22Z",
+  "status": "DELIVERED",
+  "attemptCount": 1,
+  "lastHttpStatus": 200,
+  "lastError": "string",
+  "lastAttemptAt": "2019-08-24T14:15:22Z",
+  "deliveredAt": "2019-08-24T14:15:22Z"
+}
+
+```
+
+A single delivery attempt made to a webhook subscriber.
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|deliveryId|string|false|none|none|
+|eventType|string¦null|false|none|none|
+|occurredAt|string(date-time)¦null|false|none|none|
+|status|string|false|none|none|
+|attemptCount|integer|false|none|none|
+|lastHttpStatus|integer¦null|false|none|none|
+|lastError|string¦null|false|none|none|
+|lastAttemptAt|string(date-time)¦null|false|none|none|
+|deliveredAt|string(date-time)¦null|false|none|none|
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|status|PENDING|
+|status|IN_FLIGHT|
+|status|DELIVERED|
+|status|FAILED|
+|status|DEAD_LETTERED|
 
 <h2 id="tocS_AppKeyMappingRequest">AppKeyMappingRequest</h2>
 
@@ -2213,7 +2216,6 @@ A single webhook delivery attempt.
   "eventId": "evt-abc123",
   "eventType": "apikey.generated",
   "orgId": "org-default",
-  "gatewayType": "default",
   "aggregateType": "apikey",
   "aggregateId": "key-12345",
   "status": "ALL_DELIVERED",
@@ -2244,7 +2246,6 @@ A webhook event with its delivery rows.
 |eventId|string|false|none|none|
 |eventType|string|false|none|none|
 |orgId|string|false|none|none|
-|gatewayType|string¦null|false|none|none|
 |aggregateType|string|false|none|none|
 |aggregateId|string|false|none|none|
 |status|string|false|none|none|

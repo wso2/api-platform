@@ -50,7 +50,7 @@ func NewMCPProxyDeploymentHandler(deploymentService *service.MCPDeploymentServic
 
 // RegisterRoutes registers all MCP proxy deployment-related routes
 func (h *MCPProxyDeploymentHandler) RegisterRoutes(r *gin.Engine) {
-	proxyGroup := r.Group("/api/v1/mcp-proxies/:id")
+	proxyGroup := r.Group(constants.APIBasePath + "/mcp-proxies/:id")
 	{
 		proxyGroup.POST("/deployments", h.DeployMCPProxy)
 		proxyGroup.POST("/deployments/:deploymentId/undeploy", h.UndeployMCPProxyDeployment)
@@ -61,7 +61,7 @@ func (h *MCPProxyDeploymentHandler) RegisterRoutes(r *gin.Engine) {
 	}
 }
 
-// DeployMCPProxy handles POST /api/v1/mcp-proxies/:id/deployments
+// DeployMCPProxy handles POST /api/v0.9/mcp-proxies/:id/deployments
 func (h *MCPProxyDeploymentHandler) DeployMCPProxy(c *gin.Context) {
 	orgId, ok := middleware.GetOrganizationFromContext(c)
 	if !ok {
@@ -142,7 +142,7 @@ func (h *MCPProxyDeploymentHandler) DeployMCPProxy(c *gin.Context) {
 	c.JSON(http.StatusCreated, deployment)
 }
 
-// UndeployMCPProxyDeployment handles POST /api/v1/mcp-proxies/:id/deployments/:deploymentId/undeploy
+// UndeployMCPProxyDeployment handles POST /api/v0.9/mcp-proxies/:id/deployments/:deploymentId/undeploy
 func (h *MCPProxyDeploymentHandler) UndeployMCPProxyDeployment(c *gin.Context) {
 	orgId, ok := middleware.GetOrganizationFromContext(c)
 	if !ok {
@@ -204,7 +204,7 @@ func (h *MCPProxyDeploymentHandler) UndeployMCPProxyDeployment(c *gin.Context) {
 	c.JSON(http.StatusOK, deployment)
 }
 
-// RestoreMCPProxyDeployment handles POST /api/v1/mcp-proxies/:id/deployments/:deploymentId/restore
+// RestoreMCPProxyDeployment handles POST /api/v0.9/mcp-proxies/:id/deployments/:deploymentId/restore
 func (h *MCPProxyDeploymentHandler) RestoreMCPProxyDeployment(c *gin.Context) {
 	orgId, ok := middleware.GetOrganizationFromContext(c)
 	if !ok {
@@ -266,7 +266,7 @@ func (h *MCPProxyDeploymentHandler) RestoreMCPProxyDeployment(c *gin.Context) {
 	c.JSON(http.StatusOK, deployment)
 }
 
-// DeleteMCPProxyDeployment handles DELETE /api/v1/mcp-proxies/:id/deployments/:deploymentId
+// DeleteMCPProxyDeployment handles DELETE /api/v0.9/mcp-proxies/:id/deployments/:deploymentId
 func (h *MCPProxyDeploymentHandler) DeleteMCPProxyDeployment(c *gin.Context) {
 	orgId, ok := middleware.GetOrganizationFromContext(c)
 	if !ok {
@@ -314,7 +314,7 @@ func (h *MCPProxyDeploymentHandler) DeleteMCPProxyDeployment(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
-// GetMCPProxyDeployment handles GET /api/v1/mcp-proxies/:id/deployments/:deploymentId
+// GetMCPProxyDeployment handles GET /api/v0.9/mcp-proxies/:id/deployments/:deploymentId
 func (h *MCPProxyDeploymentHandler) GetMCPProxyDeployment(c *gin.Context) {
 	orgId, ok := middleware.GetOrganizationFromContext(c)
 	if !ok {
@@ -359,7 +359,7 @@ func (h *MCPProxyDeploymentHandler) GetMCPProxyDeployment(c *gin.Context) {
 	c.JSON(http.StatusOK, deployment)
 }
 
-// GetMCPProxyDeployments handles GET /api/v1/mcp-proxies/:id/deployments
+// GetMCPProxyDeployments handles GET /api/v0.9/mcp-proxies/:id/deployments
 func (h *MCPProxyDeploymentHandler) GetMCPProxyDeployments(c *gin.Context) {
 	orgId, ok := middleware.GetOrganizationFromContext(c)
 	if !ok {

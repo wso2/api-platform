@@ -1699,7 +1699,6 @@ function mapDevportalYamlToApiMetadata(parsedYaml) {
             apiName: spec.displayName,
             apiVersion: spec.version,
             apiDescription: spec.description,
-            provider: spec.provider,
             referenceID: spec.referenceID,
             apiHandle: metadata.name,
             apiType,
@@ -1709,7 +1708,6 @@ function mapDevportalYamlToApiMetadata(parsedYaml) {
             agentVisibility: spec.agentVisibility || 'VISIBLE',
             tags: util.normalizeStringArray(spec.tags),
             labels: util.normalizeStringArray(spec.labels),
-            gatewayType: spec.gatewayType || null,
             owners: {
                 businessOwner: businessInformation.businessOwner,
                 businessOwnerEmail: businessInformation.businessOwnerEmail,

@@ -37,6 +37,20 @@ jobs:
         run: make build
         working-directory: portals/ai-workspace
 
+      # AI Workspace E2E depends on platform-api changes that ship in this PR but
+      # are not yet published to the registry. Build the platform-api image from
+      # source and pin the compose file to that freshly built snapshot so the
+      # stack runs the PR's code instead of the last published image.
+      - name: Build Platform API image (PR changes)
+        run: |
+          PLATFORM_API_VERSION="$(tr -d '[:space:]' < platform-api/VERSION)"
+          echo "Building platform-api:${PLATFORM_API_VERSION} from source"
+          make -C platform-api build VERSION="${PLATFORM_API_VERSION}"
+          echo "Pinning ai-workspace compose to platform-api:${PLATFORM_API_VERSION}"
+          sed -i.bak -E "s#image: .*/platform-api:.*#image: ghcr.io/wso2/api-platform/platform-api:${PLATFORM_API_VERSION}#" \
+            portals/ai-workspace/docker-compose.yaml
+          rm -f portals/ai-workspace/docker-compose.yaml.bak
+
       - name: Start quickstart stack
         run: docker compose up -d --wait
         working-directory: portals/ai-workspace

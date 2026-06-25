@@ -34,7 +34,6 @@ const subDao = require('../dao/subscriptionDao');
 const apiMetadataService = require('../services/apiMetadataService');
 const { apiUsesApiKeySecurity, findSubscriptionTokenHeader } = require('../utils/apiDefinitionUtil');
 const sampleApiLoader = require('../utils/sampleApiLoader');
-const adminService = require('../services/adminService');
 const { seedSampleAPIs } = require('../services/sampleSeederService');
 const apiFlowService = require('../services/apiFlowService');
 const { buildSchema, getIntrospectionQuery, graphql: executeGraphQL } = require('graphql');
@@ -202,7 +201,6 @@ const loadAPIContent = async (req, res) => {
 
         const templateContent = {
             devMode: true,
-            providerUrl: '#subscriptionPlans',
             apiContent: '',
             loadDefault,
             resources: apiDetails,
@@ -234,13 +232,6 @@ const loadAPIContent = async (req, res) => {
             });
             
             let subscriptionPlans = await util.appendSubscriptionPlanDetails(orgID, metaData.subscriptionPlans);
-            let providerUrl;
-            if (metaData.provider === "WSO2") {
-                providerUrl = '#subscriptionPlans';
-            } else {
-                const providerList = await adminService.getAllProviders(orgID);
-                providerUrl = providerList.find(provider => provider.name === metaData.provider)?.providerURL || '#subscriptionPlans';
-            }
             //check whether api content exists
             let loadDefault = false
             let apiDetails = "";
@@ -387,8 +378,6 @@ const loadAPIContent = async (req, res) => {
 
             templateContent = {
                 isAuthenticated: req.isAuthenticated(),
-                provider: metaData.provider,
-                providerUrl: providerUrl,
                 apiMetadata: metaData,
                 subscriptionPlans: subscriptionPlans,
                 subscriptions: subscriptions,
@@ -496,7 +485,7 @@ const loadDocsPage = async (req, res) => {
         const apiMetadata = await loadAPIMetaDataFromFile(apiHandle);
         const docNames = apiMetadata.docTypes;
         const metaForNav = {
-            apiInfo: { gatewayType: apiMetadata.apiInfo?.gatewayType },
+            apiInfo: {},
             apiReferenceID: apiMetadata.apiReferenceID,
         };
         const templateContent = {
@@ -532,9 +521,8 @@ const loadDocsPage = async (req, res) => {
 
             const apiMetadata = await apiDao.get(orgID, apiID);
             let apiType = apiMetadata[0].dataValues.API_TYPE;
-            const gatewayType = apiMetadata[0].dataValues.GATEWAY_TYPE;
             const metaForNav = {
-                apiInfo: { gatewayType },
+                apiInfo: {},
                 apiReferenceID: apiMetadata[0].dataValues.REFERENCE_ID,
             };
 
@@ -627,7 +615,7 @@ const loadDocument = async (req, res) => {
         templateContent.currentDocName = docName || null;
         templateContent.currentDocType = docType || null;
         templateContent.apiName = metaData.apiInfo?.apiName || '';
-        const metaForNav = { apiInfo: { gatewayType: metaData.apiInfo?.gatewayType }, apiReferenceID: metaData.apiReferenceID };
+        const metaForNav = { apiInfo: {}, apiReferenceID: metaData.apiReferenceID };
         templateContent.showApiKeysNav = apiUsesApiKeySecurity(metaForNav);
         const html = renderTemplate(layoutPath + 'pages/docs/page.hbs', layoutPath + 'layout/main.hbs', templateContent, false);
         res.send(html);
@@ -772,7 +760,7 @@ const loadDocument = async (req, res) => {
             templateContent.devportalMode = devportalMode;
             const row = apiMetadata[0].dataValues;
             const metaForNav = {
-                apiInfo: { gatewayType: row.GATEWAY_TYPE },
+                apiInfo: {},
                 apiReferenceID: row.REFERENCE_ID,
             };
             templateContent.showApiKeysNav = apiUsesApiKeySecurity(metaForNav);

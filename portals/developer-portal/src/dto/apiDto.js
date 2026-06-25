@@ -22,7 +22,6 @@ class APIDTO {
         this.apiID = api.API_ID;
         this.apiReferenceID = api.REFERENCE_ID;
         this.apiHandle = api.API_HANDLE;
-        this.provider = api.PROVIDER;
         this.dataSource = api.DATA_SOURCE;
         this.apiInfo = new APIInfo(api);
         this.endPoints = new Endpoints(api);
@@ -55,7 +54,6 @@ class APIInfo {
         this.apiStatus = apiInfo.STATUS;
         this.visibility = apiInfo.VISIBILITY;
         this.agentVisibility = apiInfo.AGENT_VISIBILITY || 'VISIBLE';
-        this.gatewayType = apiInfo.GATEWAY_TYPE || null;
         if (apiInfo.addedLabels) {
             this.addedLabels = apiInfo.addedLabels;
         }
