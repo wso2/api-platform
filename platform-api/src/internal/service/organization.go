@@ -233,6 +233,7 @@ func (s *OrganizationService) RegisterOrganization(id string, handle string, nam
 	// Create default project for the organization
 	defaultProject := &model.Project{
 		ID:             projectID,
+		Handle:         "default",
 		Name:           "default",
 		OrganizationID: id,
 		Description:    "Default project",

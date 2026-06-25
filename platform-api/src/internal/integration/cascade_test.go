@@ -49,8 +49,8 @@ func seedOrgGraph(t *testing.T, it *itDB) graph {
 
 	it.exec(t, `INSERT INTO organizations (uuid, handle, name, region) VALUES (?, ?, ?, ?)`,
 		g.org, "h-"+g.org[:8], "it org", "us")
-	it.exec(t, `INSERT INTO projects (uuid, name, organization_uuid) VALUES (?, ?, ?)`,
-		g.project, "proj", g.org)
+	it.exec(t, `INSERT INTO projects (uuid, handle, name, organization_uuid) VALUES (?, ?, ?, ?)`,
+		g.project, "proj", "proj", g.org)
 	it.exec(t, `INSERT INTO applications (uuid, handle, project_uuid, organization_uuid, name, type) VALUES (?, ?, ?, ?, ?, ?)`,
 		g.app, "app-"+g.app[:8], g.project, g.org, "app", "standard")
 
@@ -177,8 +177,8 @@ func TestCascade_DeleteWebSubAPIRemovesHmacSecrets(t *testing.T) {
 
 	it.exec(t, `INSERT INTO organizations (uuid, handle, name, region) VALUES (?, ?, ?, ?)`,
 		orgUUID, "wsc-"+orgUUID[:8], "cascade org", "us")
-	it.exec(t, `INSERT INTO projects (uuid, name, organization_uuid) VALUES (?, ?, ?)`,
-		projectUUID, "cascade-proj", orgUUID)
+	it.exec(t, `INSERT INTO projects (uuid, handle, name, organization_uuid) VALUES (?, ?, ?, ?)`,
+		projectUUID, "cascade-proj", "cascade-proj", orgUUID)
 	it.exec(t, `INSERT INTO artifacts (uuid, type, organization_uuid) VALUES (?, ?, ?)`,
 		artifactUUID, "WebSubApi", orgUUID)
 	it.exec(t, `INSERT INTO websub_apis (uuid, organization_uuid, handle, name, version, project_uuid, lifecycle_status, configuration) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,

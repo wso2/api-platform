@@ -138,7 +138,9 @@ func TestLifecycle_ProjectPagination(t *testing.T) {
 
 	const n = 5
 	for i := range n {
-		p := &model.Project{ID: id(), Name: fmt.Sprintf("proj-%d-%s", i, id()[:6]), OrganizationID: org.ID, Description: "p"}
+		pid := id()
+		pName := fmt.Sprintf("proj-%d-%s", i, pid[:6])
+		p := &model.Project{ID: pid, Handle: pName, Name: pName, OrganizationID: org.ID, Description: "p"}
 		if err := projectRepo.CreateProject(p); err != nil {
 			t.Fatalf("[%s] create project failed: %v", it.driver, err)
 		}
@@ -219,7 +221,9 @@ func TestLifecycle_ApplicationByIDOrHandle(t *testing.T) {
 	if err := orgRepo.CreateOrganization(org); err != nil {
 		t.Fatalf("[%s] create org failed: %v", it.driver, err)
 	}
-	proj := &model.Project{ID: id(), Name: "p-" + id()[:6], OrganizationID: org.ID}
+	projID := id()
+	projName := "p-" + projID[:6]
+	proj := &model.Project{ID: projID, Handle: projName, Name: projName, OrganizationID: org.ID}
 	if err := projectRepo.CreateProject(proj); err != nil {
 		t.Fatalf("[%s] create project failed: %v", it.driver, err)
 	}
@@ -270,7 +274,9 @@ func TestLifecycle_WebSubAPICreateAndList(t *testing.T) {
 	if err := orgRepo.CreateOrganization(org); err != nil {
 		t.Fatalf("[%s] create org failed: %v", it.driver, err)
 	}
-	proj := &model.Project{ID: id(), Name: "wsub-proj-" + id()[:6], OrganizationID: org.ID}
+	wsubProjID := id()
+	wsubProjName := "wsub-proj-" + wsubProjID[:6]
+	proj := &model.Project{ID: wsubProjID, Handle: wsubProjName, Name: wsubProjName, OrganizationID: org.ID}
 	if err := projectRepo.CreateProject(proj); err != nil {
 		t.Fatalf("[%s] create project failed: %v", it.driver, err)
 	}

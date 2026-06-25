@@ -42,10 +42,10 @@ func (r *ProjectRepo) CreateProject(project *model.Project) error {
 	project.UpdatedAt = time.Now()
 
 	query := `
-		INSERT INTO projects (uuid, name, organization_uuid, description, created_by, created_at, updated_by, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO projects (uuid, handle, name, organization_uuid, description, created_by, created_at, updated_by, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
-	_, err := r.db.Exec(r.db.Rebind(query), project.ID, project.Name, project.OrganizationID, project.Description,
+	_, err := r.db.Exec(r.db.Rebind(query), project.ID, project.Handle, project.Name, project.OrganizationID, project.Description,
 		project.CreatedBy, project.CreatedAt, project.UpdatedBy, project.UpdatedAt)
 	if err != nil {
 		return err
@@ -58,13 +58,13 @@ func (r *ProjectRepo) CreateProject(project *model.Project) error {
 func (r *ProjectRepo) GetProjectByUUID(projectId string) (*model.Project, error) {
 	project := &model.Project{}
 	query := `
-		SELECT uuid, name, organization_uuid, description, created_by, created_at, updated_by, updated_at
+		SELECT uuid, handle, name, organization_uuid, description, created_by, created_at, updated_by, updated_at
 		FROM projects
 		WHERE uuid = ?
 	`
 	var createdBy, updatedBy sql.NullString
 	err := r.db.QueryRow(r.db.Rebind(query), projectId).Scan(
-		&project.ID, &project.Name, &project.OrganizationID, &project.Description,
+		&project.ID, &project.Handle, &project.Name, &project.OrganizationID, &project.Description,
 		&createdBy, &project.CreatedAt, &updatedBy, &project.UpdatedAt,
 	)
 	if err != nil {
@@ -82,13 +82,37 @@ func (r *ProjectRepo) GetProjectByUUID(projectId string) (*model.Project, error)
 func (r *ProjectRepo) GetProjectByNameAndOrgID(name, orgID string) (*model.Project, error) {
 	project := &model.Project{}
 	query := `
-		SELECT uuid, name, organization_uuid, description, created_by, created_at, updated_by, updated_at
+		SELECT uuid, handle, name, organization_uuid, description, created_by, created_at, updated_by, updated_at
 		FROM projects
 		WHERE name = ? AND organization_uuid = ?
 	`
 	var createdBy, updatedBy sql.NullString
 	err := r.db.QueryRow(r.db.Rebind(query), name, orgID).Scan(
-		&project.ID, &project.Name, &project.OrganizationID, &project.Description,
+		&project.ID, &project.Handle, &project.Name, &project.OrganizationID, &project.Description,
+		&createdBy, &project.CreatedAt, &updatedBy, &project.UpdatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	project.CreatedBy = createdBy.String
+	project.UpdatedBy = updatedBy.String
+	return project, nil
+}
+
+// GetProjectByHandleAndOrgID retrieves a project by handle within an organization
+func (r *ProjectRepo) GetProjectByHandleAndOrgID(handle, orgID string) (*model.Project, error) {
+	project := &model.Project{}
+	query := `
+		SELECT uuid, handle, name, organization_uuid, description, created_by, created_at, updated_by, updated_at
+		FROM projects
+		WHERE handle = ? AND organization_uuid = ?
+	`
+	var createdBy, updatedBy sql.NullString
+	err := r.db.QueryRow(r.db.Rebind(query), handle, orgID).Scan(
+		&project.ID, &project.Handle, &project.Name, &project.OrganizationID, &project.Description,
 		&createdBy, &project.CreatedAt, &updatedBy, &project.UpdatedAt,
 	)
 	if err != nil {
@@ -105,7 +129,7 @@ func (r *ProjectRepo) GetProjectByNameAndOrgID(name, orgID string) (*model.Proje
 // GetProjectsByOrganizationID retrieves all projects for an organization
 func (r *ProjectRepo) GetProjectsByOrganizationID(orgID string) ([]*model.Project, error) {
 	query := `
-		SELECT uuid, name, organization_uuid, description, created_by, created_at, updated_by, updated_at
+		SELECT uuid, handle, name, organization_uuid, description, created_by, created_at, updated_by, updated_at
 		FROM projects
 		WHERE organization_uuid = ?
 		ORDER BY created_at DESC
@@ -120,7 +144,7 @@ func (r *ProjectRepo) GetProjectsByOrganizationID(orgID string) ([]*model.Projec
 	for rows.Next() {
 		project := &model.Project{}
 		var createdBy, updatedBy sql.NullString
-		err := rows.Scan(&project.ID, &project.Name, &project.OrganizationID, &project.Description,
+		err := rows.Scan(&project.ID, &project.Handle, &project.Name, &project.OrganizationID, &project.Description,
 			&createdBy, &project.CreatedAt, &updatedBy, &project.UpdatedAt)
 		if err != nil {
 			return nil, err
@@ -156,7 +180,7 @@ func (r *ProjectRepo) DeleteProject(projectId string) error {
 func (r *ProjectRepo) ListProjects(orgID string, limit, offset int) ([]*model.Project, error) {
 	pageClause, pageArgs := r.db.PaginationClause(limit, offset)
 	query := `
-		SELECT uuid, name, organization_uuid, description, created_at, updated_at
+		SELECT uuid, handle, name, organization_uuid, description, created_at, updated_at
 		FROM projects
 		WHERE organization_uuid = ?
 		ORDER BY created_at DESC
@@ -170,7 +194,7 @@ func (r *ProjectRepo) ListProjects(orgID string, limit, offset int) ([]*model.Pr
 	var projects []*model.Project
 	for rows.Next() {
 		project := &model.Project{}
-		err := rows.Scan(&project.ID, &project.Name, &project.OrganizationID, &project.Description,
+		err := rows.Scan(&project.ID, &project.Handle, &project.Name, &project.OrganizationID, &project.Description,
 			&project.CreatedAt, &project.UpdatedAt)
 		if err != nil {
 			return nil, err

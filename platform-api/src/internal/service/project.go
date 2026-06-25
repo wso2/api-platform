@@ -112,6 +112,16 @@ func (s *ProjectService) CreateProject(req *api.CreateProjectRequest, organizati
 	projectModel := s.apiToModel(project)
 	projectModel.CreatedBy = actor
 	projectModel.UpdatedBy = actor
+
+	handle, err := utils.GenerateHandle(req.Name, func(h string) bool {
+		existing, _ := s.projectRepo.GetProjectByHandleAndOrgID(h, organizationID)
+		return existing != nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate project handle: %w", err)
+	}
+	projectModel.Handle = handle
+
 	err = s.projectRepo.CreateProject(projectModel)
 	if err != nil {
 		return nil, err
