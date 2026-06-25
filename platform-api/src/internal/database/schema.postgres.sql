@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS organizations (
 -- Projects table
 CREATE TABLE IF NOT EXISTS projects (
     uuid VARCHAR(40) PRIMARY KEY,
+    handle VARCHAR(255) NOT NULL,
     name VARCHAR(255) NOT NULL,
     organization_uuid VARCHAR(40) NOT NULL,
     description VARCHAR(1023),
@@ -41,6 +42,7 @@ CREATE TABLE IF NOT EXISTS projects (
     updated_by VARCHAR(200),
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
+    UNIQUE(organization_uuid, handle),
     UNIQUE(name, organization_uuid)
 );
 
@@ -92,6 +94,7 @@ CREATE TABLE IF NOT EXISTS rest_apis (
     updated_by VARCHAR(200),
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
     FOREIGN KEY (project_uuid) REFERENCES projects(uuid) ON DELETE CASCADE,
     UNIQUE(organization_uuid, handle)
 );
@@ -99,7 +102,7 @@ CREATE TABLE IF NOT EXISTS rest_apis (
 -- Subscription plans table (organization-scoped rate/billing plans)
 CREATE TABLE IF NOT EXISTS subscription_plans (
     uuid VARCHAR(40) PRIMARY KEY,
-    plan_name VARCHAR(40) NOT NULL,
+    plan_name VARCHAR(255) NOT NULL,
     billing_plan VARCHAR(255),
     stop_on_quota_reach SMALLINT DEFAULT 1,
     throttle_limit_count INTEGER,
@@ -161,7 +164,7 @@ CREATE TABLE IF NOT EXISTS gateways (
     handle VARCHAR(255) NOT NULL,
     name VARCHAR(255) NOT NULL,
     description VARCHAR(1023),
-    version VARCHAR(64) NOT NULL DEFAULT 'v1.0',
+    version VARCHAR(30) NOT NULL DEFAULT 'v1.0',
     vhost VARCHAR(255) NOT NULL,
     gateway_functionality_type VARCHAR(20) DEFAULT 'regular' NOT NULL,
     properties BYTEA NOT NULL,
@@ -313,6 +316,7 @@ CREATE TABLE IF NOT EXISTS llm_providers (
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     organization_uuid VARCHAR(40) NOT NULL,
     FOREIGN KEY (uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
     FOREIGN KEY (template_uuid) REFERENCES llm_provider_templates(uuid) ON DELETE RESTRICT,
     UNIQUE(organization_uuid, handle)
 );
@@ -335,6 +339,7 @@ CREATE TABLE IF NOT EXISTS llm_proxies (
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     organization_uuid VARCHAR(40) NOT NULL,
     FOREIGN KEY (uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
     FOREIGN KEY (project_uuid) REFERENCES projects(uuid) ON DELETE CASCADE,
     FOREIGN KEY (provider_uuid) REFERENCES llm_providers(uuid) ON DELETE RESTRICT,
     UNIQUE(organization_uuid, handle)
@@ -356,6 +361,7 @@ CREATE TABLE IF NOT EXISTS mcp_proxies (
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     organization_uuid VARCHAR(40) NOT NULL,
     FOREIGN KEY (uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
     FOREIGN KEY (project_uuid) REFERENCES projects(uuid) ON DELETE CASCADE,
     UNIQUE(organization_uuid, handle)
 );
@@ -377,6 +383,7 @@ CREATE TABLE IF NOT EXISTS websub_apis (
     updated_by VARCHAR(200),
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
     FOREIGN KEY (project_uuid) REFERENCES projects(uuid) ON DELETE CASCADE,
     UNIQUE(organization_uuid, handle)
 );
@@ -418,6 +425,7 @@ CREATE TABLE IF NOT EXISTS webbroker_apis (
     updated_by VARCHAR(200),
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
     FOREIGN KEY (project_uuid) REFERENCES projects(uuid) ON DELETE CASCADE,
     UNIQUE(organization_uuid, handle)
 );
@@ -437,8 +445,8 @@ CREATE TABLE IF NOT EXISTS api_keys (
     updated_by VARCHAR(200),
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     expires_at TIMESTAMPTZ,
-    issuer TEXT NULL DEFAULT NULL,
-    allowed_targets TEXT NOT NULL DEFAULT 'ALL',
+    issuer VARCHAR(255) NULL DEFAULT NULL,
+    allowed_targets VARCHAR(255) NOT NULL DEFAULT 'ALL',
     FOREIGN KEY (artifact_uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
     UNIQUE(artifact_uuid, name)
 );
@@ -467,6 +475,7 @@ CREATE TABLE IF NOT EXISTS application_artifacts (
 
 -- Indexes for better performance
 CREATE INDEX IF NOT EXISTS idx_projects_organization_id ON projects(organization_uuid);
+CREATE INDEX IF NOT EXISTS idx_rest_apis_org ON rest_apis(organization_uuid);
 CREATE INDEX IF NOT EXISTS idx_rest_apis_project_id ON rest_apis(project_uuid);
 CREATE INDEX IF NOT EXISTS idx_subscriptions_artifact_uuid ON subscriptions(artifact_uuid);
 CREATE INDEX IF NOT EXISTS idx_subscriptions_application_id ON subscriptions(application_id);
@@ -495,6 +504,7 @@ CREATE INDEX IF NOT EXISTS idx_llm_proxies_org ON llm_proxies(organization_uuid)
 CREATE INDEX IF NOT EXISTS idx_mcp_proxies_project ON mcp_proxies(project_uuid);
 CREATE INDEX IF NOT EXISTS idx_mcp_proxies_org ON mcp_proxies(organization_uuid);
 CREATE INDEX IF NOT EXISTS idx_api_keys_artifact ON api_keys(artifact_uuid);
+CREATE INDEX IF NOT EXISTS idx_applications_org ON applications(organization_uuid);
 CREATE INDEX IF NOT EXISTS idx_applications_project_id ON applications(project_uuid, organization_uuid);
 CREATE INDEX IF NOT EXISTS idx_applications_name_project ON applications(name, project_uuid, organization_uuid);
 CREATE INDEX IF NOT EXISTS idx_applications_handle_org ON applications(handle, organization_uuid);
@@ -545,3 +555,4 @@ CREATE TABLE IF NOT EXISTS audit (
    performed_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE
 );
+CREATE INDEX IF NOT EXISTS idx_audit_org ON audit(organization_uuid);
