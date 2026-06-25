@@ -81,14 +81,13 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	// Schema DDL is only executed in demo mode. In non-demo (production) deployments
 	// the schema must be pre-provisioned by the operator; auto-running DDL against an
 	// external database at startup is a security risk.
-	executeDDL := cfg.Database.ExecuteSchemaDDL && demoMode()
-	if executeDDL {
+	if cfg.Database.ExecuteSchemaDDL {
 		if err := db.InitSchema(cfg.DBSchemaPath, slogger); err != nil {
 			slogger.Error("Failed to initialize database schema", "error", err)
 			return nil, err
 		}
 	} else {
-		slogger.Debug("Skipping schema DDL execution — set APIP_DEMO_MODE=true or DATABASE_EXECUTE_SCHEMA_DDL=true to enable", "driver", cfg.Database.Driver)
+		slogger.Debug("Skipping schema DDL execution — set DATABASE_EXECUTE_SCHEMA_DDL=true to enable", "driver", cfg.Database.Driver)
 	}
 
 	// Initialize repositories
