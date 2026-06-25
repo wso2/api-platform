@@ -58,6 +58,9 @@ func (r *LLMProviderTemplateRepo) Create(t *model.LLMProviderTemplate) error {
 	t.UUID = uuidStr
 	t.CreatedAt = time.Now()
 	t.UpdatedAt = time.Now()
+	if t.GroupID == "" {
+		t.GroupID = t.ID
+	}
 
 	configJSON, err := json.Marshal(&llmProviderTemplateConfig{
 		Metadata:         t.Metadata,
@@ -75,13 +78,13 @@ func (r *LLMProviderTemplateRepo) Create(t *model.LLMProviderTemplate) error {
 
 	query := `
 		INSERT INTO llm_provider_templates (
-			uuid, organization_uuid, handle, name, description, managed_by, created_by,
+			uuid, organization_uuid, handle, group_id, name, description, managed_by, created_by,
 			configuration, created_at, updated_at
 		)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 	_, err = r.db.Exec(r.db.Rebind(query),
-		t.UUID, t.OrganizationUUID, t.ID, t.Name, t.Description, t.ManagedBy, t.CreatedBy,
+		t.UUID, t.OrganizationUUID, t.ID, t.GroupID, t.Name, t.Description, t.ManagedBy, t.CreatedBy,
 		string(configJSON),
 		t.CreatedAt, t.UpdatedAt,
 	)
@@ -90,7 +93,7 @@ func (r *LLMProviderTemplateRepo) Create(t *model.LLMProviderTemplate) error {
 
 func (r *LLMProviderTemplateRepo) GetByID(templateID, orgUUID string) (*model.LLMProviderTemplate, error) {
 	row := r.db.QueryRow(r.db.Rebind(`
-		SELECT uuid, organization_uuid, handle, name, description, managed_by, created_by, configuration, created_at, updated_at
+		SELECT uuid, organization_uuid, handle, group_id, name, description, managed_by, created_by, configuration, created_at, updated_at
 		FROM llm_provider_templates
 		WHERE handle = ? AND organization_uuid = ?
 	`), templateID, orgUUID)
@@ -98,7 +101,7 @@ func (r *LLMProviderTemplateRepo) GetByID(templateID, orgUUID string) (*model.LL
 	var t model.LLMProviderTemplate
 	var configJSON sql.NullString
 	if err := row.Scan(
-		&t.UUID, &t.OrganizationUUID, &t.ID, &t.Name, &t.Description, &t.ManagedBy, &t.CreatedBy, &configJSON,
+		&t.UUID, &t.OrganizationUUID, &t.ID, &t.GroupID, &t.Name, &t.Description, &t.ManagedBy, &t.CreatedBy, &configJSON,
 		&t.CreatedAt, &t.UpdatedAt,
 	); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -127,7 +130,7 @@ func (r *LLMProviderTemplateRepo) GetByID(templateID, orgUUID string) (*model.LL
 
 func (r *LLMProviderTemplateRepo) GetByUUID(uuid, orgUUID string) (*model.LLMProviderTemplate, error) {
 	row := r.db.QueryRow(r.db.Rebind(`
-		SELECT uuid, organization_uuid, handle, name, description, managed_by, created_by, configuration, created_at, updated_at
+		SELECT uuid, organization_uuid, handle, group_id, name, description, managed_by, created_by, configuration, created_at, updated_at
 		FROM llm_provider_templates
 		WHERE uuid = ? AND organization_uuid = ?
 	`), uuid, orgUUID)
@@ -135,7 +138,7 @@ func (r *LLMProviderTemplateRepo) GetByUUID(uuid, orgUUID string) (*model.LLMPro
 	var t model.LLMProviderTemplate
 	var configJSON sql.NullString
 	if err := row.Scan(
-		&t.UUID, &t.OrganizationUUID, &t.ID, &t.Name, &t.Description, &t.ManagedBy, &t.CreatedBy, &configJSON,
+		&t.UUID, &t.OrganizationUUID, &t.ID, &t.GroupID, &t.Name, &t.Description, &t.ManagedBy, &t.CreatedBy, &configJSON,
 		&t.CreatedAt, &t.UpdatedAt,
 	); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -165,7 +168,7 @@ func (r *LLMProviderTemplateRepo) GetByUUID(uuid, orgUUID string) (*model.LLMPro
 func (r *LLMProviderTemplateRepo) List(orgUUID string, limit, offset int) ([]*model.LLMProviderTemplate, error) {
 	pageClause, pageArgs := r.db.PaginationClause(limit, offset)
 	query := `
-		SELECT uuid, organization_uuid, handle, name, description, managed_by, created_by, configuration, created_at, updated_at
+		SELECT uuid, organization_uuid, handle, group_id, name, description, managed_by, created_by, configuration, created_at, updated_at
 		FROM llm_provider_templates
 		WHERE organization_uuid = ?
 		ORDER BY created_at DESC
@@ -181,7 +184,7 @@ func (r *LLMProviderTemplateRepo) List(orgUUID string, limit, offset int) ([]*mo
 		var t model.LLMProviderTemplate
 		var configJSON sql.NullString
 		err := rows.Scan(
-			&t.UUID, &t.OrganizationUUID, &t.ID, &t.Name, &t.Description, &t.ManagedBy, &t.CreatedBy, &configJSON,
+			&t.UUID, &t.OrganizationUUID, &t.ID, &t.GroupID, &t.Name, &t.Description, &t.ManagedBy, &t.CreatedBy, &configJSON,
 			&t.CreatedAt, &t.UpdatedAt,
 		)
 		if err != nil {
