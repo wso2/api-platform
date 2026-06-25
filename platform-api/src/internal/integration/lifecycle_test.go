@@ -121,8 +121,9 @@ func TestLifecycle_SubscriptionPlanExistsAndList(t *testing.T) {
 	if len(plans) != 2 {
 		t.Fatalf("[%s] ListByOrganization(2,0): want 2, got %d", it.driver, len(plans))
 	}
-	// The throttle triple is now stored in subscription_plan_limits and hydrated back
-	// on read; confirm it round-trips through both the list and single-get paths.
+	// The throttle triple (count/unit + stop_on_quota_reach) is stored as inline
+	// columns on subscription_plans; confirm it round-trips through both the list
+	// and single-get paths.
 	for _, p := range plans {
 		if p.ThrottleLimitCount == nil || *p.ThrottleLimitCount != count {
 			t.Fatalf("[%s] list hydrate: ThrottleLimitCount = %v, want %d", it.driver, p.ThrottleLimitCount, count)
@@ -139,8 +140,8 @@ func TestLifecycle_SubscriptionPlanExistsAndList(t *testing.T) {
 		t.Fatalf("[%s] GetByID hydrate: count=%v unit=%q, want %d/min", it.driver, got.ThrottleLimitCount, got.ThrottleLimitUnit, count)
 	}
 
-	// Update clearing the throttle should remove the limit row; reads then report no throttle
-	// with the default stop_on_quota_reach.
+	// Update clearing the throttle should null out the inline columns; reads then
+	// report no throttle with the default stop_on_quota_reach.
 	got.ThrottleLimitCount = nil
 	got.ThrottleLimitUnit = ""
 	got.StopOnQuotaReach = 1

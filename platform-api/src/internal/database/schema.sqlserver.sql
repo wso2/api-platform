@@ -127,7 +127,7 @@ CREATE TABLE dbo.subscription_plans (
     updated_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
     UNIQUE(organization_uuid, handle),
-    UNIQUE(organization_uuid, uuid)
+    UNIQUE(uuid, organization_uuid)
 );
 
 -- Subscriptions table (application-level subscriptions for any artifact type)
