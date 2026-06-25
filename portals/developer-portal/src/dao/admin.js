@@ -60,7 +60,7 @@ const getOrganization = async (param) => {
             { ORGANIZATION_IDENTIFIER: param },
         ];
         if (typeof param === 'string' && UUID_RE.test(param)) {
-            conditions.push({ ORG_ID: param });
+            conditions.push({ ID: param });
         }
         const organization = await Organization.findOne({
             where: { [Sequelize.Op.or]: conditions }
@@ -91,7 +91,7 @@ const getOrgId = async (orgName) => {
         if (!organization) {
             throw new Sequelize.EmptyResultError('Organization not found');
         }
-        return organization.ORG_ID;
+        return organization.ID;
     } catch (error) {
         if (error instanceof Sequelize.EmptyResultError) {
             throw error;
@@ -132,7 +132,7 @@ const updateOrganization = async (orgData, t) => {
                 ORG_CONFIG: orgData.orgConfiguration
             },
             {
-                where: { ORG_ID: orgData.orgId },
+                where: { ID: orgData.orgId },
                 returning: true,
                 transaction: t,
             }
@@ -152,7 +152,7 @@ const updateOrganization = async (orgData, t) => {
 const deleteOrganization = async (orgId) => {
     try {
         const deletedRowsCount = await Organization.destroy({
-            where: { ORG_ID: orgId }
+            where: { ID: orgId }
         });
         if (deletedRowsCount < 1) {
             throw Object.assign(new Sequelize.EmptyResultError('Organization not found'));
@@ -326,7 +326,7 @@ const updateApplication = async (orgID, appID, userID, appData) => {
             {
                 where: {
                     ORG_ID: orgID,
-                    APP_ID: appID,
+                    ID: appID,
                     CREATED_BY: userID
                 },
                 returning: true
@@ -347,7 +347,7 @@ const getApplication = async (orgID, appID, userID) => {
             {
                 where: {
                     ORG_ID: orgID,
-                    APP_ID: appID,
+                    ID: appID,
                     CREATED_BY: userID
                 }
             });
@@ -364,7 +364,7 @@ const getApplicationID = async (orgID, userID, appName) => {
     try {
         return await Application.findOne(
             {
-                attributes: ['APP_ID'],
+                attributes: ['ID'],
                 where: {
                     ORG_ID: orgID,
                     CREATED_BY: userID,
@@ -401,7 +401,7 @@ const deleteApplication = async (orgID, appID, userID) => {
         const deletedRowsCount = await Application.destroy({
             where: {
                 ORG_ID: orgID,
-                APP_ID: appID,
+                ID: appID,
                 CREATED_BY: userID
             }
         });
@@ -441,7 +441,7 @@ const updateSubscription = async (orgID, subscription, t) => {
         }, {
             where: {
                 ORG_ID: orgID,
-                SUB_ID: subscription.subId
+                ID: subscription.subId
             },
             transaction: t,
         });
@@ -457,7 +457,7 @@ const updateSubscription = async (orgID, subscription, t) => {
 const getSubscription = async (orgID, subID, t) => {
     try {
         return await SubscriptionMapping.findOne({
-            where: { ORG_ID: orgID, SUB_ID: subID },
+            where: { ORG_ID: orgID, ID: subID },
             transaction: t,
         });
     } catch (error) {
@@ -489,7 +489,7 @@ const deleteSubscription = async (orgID, subID, t) => {
 
     try {
         const deletedRowsCount = await SubscriptionMapping.destroy({
-            where: { ORG_ID: orgID, SUB_ID: subID },
+            where: { ORG_ID: orgID, ID: subID },
             transaction: t,
         });
         if (deletedRowsCount < 1) {
@@ -509,7 +509,7 @@ const deleteAppMappingsByIds = async (orgID, mappingIds, t) => {
     if (!mappingIds || mappingIds.length === 0) return 0;
     try {
         return await ApplicationKeyMapping.destroy({
-            where: { MAPPING_ID: mappingIds, ORG_ID: orgID },
+            where: { ID: mappingIds, ORG_ID: orgID },
             transaction: t,
         });
     } catch (error) {
@@ -550,7 +550,7 @@ const getKeyMapping = async (orgID, appID, t) => {
             {
                 where: {
                     ORG_ID: orgID,
-                    APP_ID: appID
+                    ID: appID
                 },
                 include: [
                     {

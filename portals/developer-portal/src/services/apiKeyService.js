@@ -74,20 +74,20 @@ async function resolveApi(orgId, apiId) {
     const row = rows[0];
     const dv = row.dataValues || row;
     return {
-        apiId: dv.API_ID,
-        apiName: dv.API_NAME || null,
-        apiVersion: dv.API_VERSION || null,
+        apiId: dv.ID,
+        apiName: dv.NAME || null,
+        apiVersion: dv.VERSION || null,
         apiRefId: dv.REFERENCE_ID || ''
     };
 }
 
 async function resolveApiDirect(orgId, apiId) {
-    const rows = await apiDao.getByCondition({ API_ID: apiId, ORG_ID: orgId });
+    const rows = await apiDao.getByCondition({ ID: apiId, ORG_ID: orgId });
     if (!rows || rows.length === 0) return null;
     const dv = rows[0].dataValues || rows[0];
     return {
-        apiName: dv.API_NAME || null,
-        apiVersion: dv.API_VERSION || null,
+        apiName: dv.NAME || null,
+        apiVersion: dv.VERSION || null,
         apiRefId: dv.REFERENCE_ID || ''
     };
 }
@@ -98,9 +98,9 @@ async function resolveSubscription(orgId, subscriptionId) {
     if (!sub) return null;
     const plan = sub.DP_SUBSCRIPTION_PLAN;
     return {
-        ref_id: sub.SUB_ID,
+        ref_id: sub.ID,
         plan_ref_id: plan ? (plan.REF_ID || null) : null,
-        plan_name: plan ? (plan.PLAN_NAME || plan.DISPLAY_NAME || null) : null
+        plan_name: plan ? (plan.NAME || plan.DISPLAY_NAME || null) : null
     };
 }
 
@@ -112,12 +112,12 @@ async function resolveApp(orgId, appId, actor) {
     if (!appId) return null;
     const app = await applicationDao.get(orgId, appId, actor);
     if (!app) throw Object.assign(new Error('Application not found'), { status: 404 });
-    return { id: app.APP_ID, name: app.NAME };
+    return { id: app.ID, name: app.NAME };
 }
 
 function applicationOf(key) {
     const app = key.DP_APPLICATION;
-    return app ? { id: app.APP_ID, name: app.NAME } : null;
+    return app ? { id: app.ID, name: app.NAME } : null;
 }
 
 /**
@@ -140,7 +140,7 @@ async function notifyApplicationKeysChanged(orgId, appId, application, transacti
     if (!appId) return;
     const keys = await apiKeyDao.list(orgId, { appId }, transaction);
     for (const key of keys) {
-        await publishKeyApplicationUpdated(orgId, key.KEY_ID, application, transaction);
+        await publishKeyApplicationUpdated(orgId, key.ID, application, transaction);
     }
 }
 
@@ -173,7 +173,7 @@ async function generate({ orgId, apiId, subscriptionId, appId, name, expiresAt, 
                   name: normalizedName, expiresAt: expiry.date, createdBy: actor },
                 t
             );
-            keyId = key.KEY_ID;
+            keyId = key.ID;
 
             await publish('apikey.generated',
                 {

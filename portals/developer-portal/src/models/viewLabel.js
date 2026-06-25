@@ -22,7 +22,7 @@ const View = require('./view');
 const Labels = require('./label');
 
 
-const ViewLabels = sequelize.define('DP_VIEW_LABELS', {
+const ViewLabels = sequelize.define('DP_VIEW_LABEL', {
     ID: {
         type: DataTypes.UUID,
         defaultValue: Sequelize.UUIDV4,
@@ -37,7 +37,7 @@ const ViewLabels = sequelize.define('DP_VIEW_LABELS', {
         allowNull: false,
         references: {
             model: View,
-            key: 'VIEW_ID',
+            key: 'ID',
         },
     },
     LABEL_ID: {
@@ -45,16 +45,16 @@ const ViewLabels = sequelize.define('DP_VIEW_LABELS', {
         allowNull: false,
         references: {
             model: Labels,
-            key: 'LABEL_ID',
+            key: 'ID',
         }
     }
 }, {
     timestamps: false,
-    tableName: 'DP_VIEW_LABELS',
+    tableName: 'DP_VIEW_LABEL',
     returning: true,
     indexes: [
         {
-            name: 'UQ_VIEW_LABELS_LABEL_VIEW_ORG',
+            name: 'UQ_VIEW_LABEL_LABEL_VIEW_ORG',
             unique: true,
             fields: ['LABEL_ID', 'VIEW_ID', 'ORG_ID']
         }

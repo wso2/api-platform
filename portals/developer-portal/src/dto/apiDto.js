@@ -19,9 +19,9 @@
 
 class APIDTO {
     constructor(api) {
-        this.apiID = api.API_ID;
+        this.apiID = api.ID;
         this.apiReferenceID = api.REFERENCE_ID;
-        this.apiHandle = api.API_HANDLE;
+        this.apiHandle = api.HANDLE;
         this.dataSource = api.DATA_SOURCE;
         this.apiInfo = new APIInfo(api);
         this.endPoints = new Endpoints(api);
@@ -45,12 +45,12 @@ class APIDTO {
 
 class APIInfo {
     constructor(apiInfo) {
-        this.apiName = apiInfo.API_NAME;
+        this.apiName = apiInfo.NAME;
         this.apiTitle = apiInfo.METADATA_SEARCH?.apiInfo?.apiTitle || null;
         this.remotes = apiInfo.METADATA_SEARCH?.apiInfo?.remotes || [];
-        this.apiVersion = apiInfo.API_VERSION;
-        this.apiDescription = apiInfo.API_DESCRIPTION;
-        this.apiType = apiInfo.API_TYPE;
+        this.apiVersion = apiInfo.VERSION;
+        this.apiDescription = apiInfo.DESCRIPTION;
+        this.apiType = apiInfo.TYPE;
         this.apiStatus = apiInfo.STATUS;
         this.visibility = apiInfo.VISIBILITY;
         this.agentVisibility = apiInfo.AGENT_VISIBILITY || 'VISIBLE';
@@ -83,10 +83,10 @@ class APIInfo {
 
 class APISubscriptionPlan {
     constructor(apiSubscriptionPlan) {
-        this.planName = apiSubscriptionPlan.PLAN_NAME;
+        this.planName = apiSubscriptionPlan.NAME;
         this.displayName = apiSubscriptionPlan.DISPLAY_NAME;
         this.requestCount = apiSubscriptionPlan.REQUEST_COUNT;
-        this.planID = apiSubscriptionPlan.PLAN_ID;
+        this.planID = apiSubscriptionPlan.ID;
         this.description = apiSubscriptionPlan.DESCRIPTION;
     }
 }

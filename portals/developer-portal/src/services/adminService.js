@@ -115,7 +115,7 @@ const createOrganization = async (req, res) => {
             timeout: 60000,
         }, async (t) => {
             organization = await orgDao.create(payload, t);
-            const orgId = organization.ORG_ID;
+            const orgId = organization.ID;
             logger.info('Organization created successfully', {
                 orgId,
                 orgName: organization.ORG_NAME
@@ -131,7 +131,7 @@ const createOrganization = async (req, res) => {
 
             // Build name→ID map for view→label linking
             const labelMap = {};
-            createdLabels.forEach(l => { labelMap[l.dataValues.NAME] = l.dataValues.LABEL_ID; });
+            createdLabels.forEach(l => { labelMap[l.dataValues.NAME] = l.dataValues.ID; });
 
             // Views: use YAML-defined if provided, else fall back to default
             const viewDefs = payload.views?.length
@@ -140,7 +140,7 @@ const createOrganization = async (req, res) => {
 
             for (const viewDef of viewDefs) {
                 const viewResponse = await viewDao.create(orgId, viewDef, t);
-                const viewID = viewResponse.dataValues.VIEW_ID;
+                const viewID = viewResponse.dataValues.ID;
                 for (const lName of (viewDef.labels || [])) {
                     const labelId = labelMap[lName];
                     if (labelId) {
@@ -161,7 +161,7 @@ const createOrganization = async (req, res) => {
         });
 
         const orgCreationResponse = {
-            orgId: organization.ORG_ID,
+            orgId: organization.ID,
             orgName: organization.ORG_NAME,
             businessOwner: organization.BUSINESS_OWNER,
             businessOwnerContact: organization.BUSINESS_OWNER_CONTACT,
@@ -201,7 +201,7 @@ const getAllOrganizations = async () => {
         for (const organization of organizations) {
             orgList.push({
                 orgName: organization.dataValues.ORG_NAME,
-                orgID: organization.dataValues.ORG_ID,
+                orgID: organization.dataValues.ID,
                 businessOwner: organization.dataValues.BUSINESS_OWNER,
                 businessOwnerContact: organization.dataValues.BUSINESS_OWNER_CONTACT,
                 businessOwnerEmail: organization.dataValues.BUSINESS_OWNER_EMAIL,
@@ -249,7 +249,7 @@ const updateOrganization = async (req, res) => {
                 for (const viewDef of payload.views) {
                     const view = await viewDao.update(orgId, viewDef.name, viewDef.displayName, t);
                     if (viewDef.labels?.length) {
-                        await viewDao.replaceLabels(orgId, view.dataValues.VIEW_ID, viewDef.labels, t);
+                        await viewDao.replaceLabels(orgId, view.dataValues.ID, viewDef.labels, t);
                     }
                 }
                 logger.info('Views upserted successfully', { orgId });
@@ -257,7 +257,7 @@ const updateOrganization = async (req, res) => {
         });
 
         res.status(200).json({
-            orgId: updatedOrg[0].dataValues.ORG_ID,
+            orgId: updatedOrg[0].dataValues.ID,
             orgName: updatedOrg[0].dataValues.ORG_NAME,
             businessOwner: updatedOrg[0].dataValues.BUSINESS_OWNER,
             businessOwnerContact: updatedOrg[0].dataValues.BUSINESS_OWNER_CONTACT,

@@ -35,7 +35,7 @@ const loadAPIApiKeys = async (req, res, next) => {
 
     try {
         const orgDetails = await orgDao.get(orgName);
-        const orgID = orgDetails.ORG_ID;
+        const orgID = orgDetails.ID;
 
         if (!req.user) {
             return res.redirect(`/${orgName}${constants.ROUTE.VIEWS_PATH}${viewName}/login`);
@@ -90,21 +90,18 @@ const loadAPIApiKeys = async (req, res, next) => {
 
         try {
             const keys = await apiKeyService.list(orgID, { apiId: apiID, appId: selectedAppId || undefined });
-            apiKeys = (keys || []).map((k) => {
-                const app = k.DP_APPLICATION;
-                return {
-                    keyId: k.KEY_ID,
-                    name: k.NAME,
-                    status: String(k.STATUS || 'ACTIVE').toLowerCase(),
-                    expiresAt: k.EXPIRES_AT,
-                    createdAt: k.CREATED_AT,
-                    revokedAt: k.REVOKED_AT || undefined,
-                    apiId: k.API_ID,
-                    appId: app ? app.APP_ID : null,
-                    appName: app ? app.NAME : null,
-                    maskedApiKey: '••••••••'
-                };
-            });
+            apiKeys = (keys || []).map((k) => ({
+                keyId: k.ID,
+                name: k.NAME,
+                status: String(k.STATUS || 'ACTIVE').toLowerCase(),
+                expiresAt: k.EXPIRES_AT,
+                createdAt: k.CREATED_AT,
+                revokedAt: k.REVOKED_AT || undefined,
+                apiId: k.API_ID,
+                appId: k.APP_ID || null,
+                appName: k.APP_NAME || null,
+                maskedApiKey: '••••••••'
+            }));
             apiKeysCount = apiKeys.length;
         } catch (dbError) {
             apiKeysLoadError = true;
@@ -117,7 +114,7 @@ const loadAPIApiKeys = async (req, res, next) => {
 
         try {
             const apps = await applicationDao.list(orgID, req.user.sub);
-            applications = (apps || []).map((a) => ({ appId: a.APP_ID, name: a.NAME }));
+            applications = (apps || []).map((a) => ({ appId: a.ID, name: a.NAME }));
         } catch (dbError) {
             logger.warn('Failed to load applications for API key association', {
                 error: dbError.message,

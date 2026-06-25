@@ -20,7 +20,7 @@ const sequelize = require('../db/sequelizeConfig');
 const { Organization } = require('./organization');
 
 const KeyManager = sequelize.define('DP_KEY_MANAGER', {
-    KM_ID: {
+    ID: {
         type: DataTypes.UUID,
         defaultValue: Sequelize.UUIDV4,
         primaryKey: true

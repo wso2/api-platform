@@ -20,7 +20,7 @@ const sequelize = require('../db/sequelizeConfig');
 const View = require('./view');
 
 const Organization = sequelize.define('DP_ORGANIZATION', {
-    ORG_ID: {
+    ID: {
         type: DataTypes.UUID,
         defaultValue: Sequelize.UUIDV4,
         primaryKey: true
@@ -61,8 +61,8 @@ const Organization = sequelize.define('DP_ORGANIZATION', {
     returning: true
 });
 
-const OrgContent = sequelize.define('DP_ORGANIZATION_ASSETS', {
-    ASSET_ID: {
+const OrgContent = sequelize.define('DP_ORGANIZATION_ASSET', {
+    ID: {
         type: DataTypes.UUID,
         defaultValue: Sequelize.UUIDV4,
         primaryKey: true
@@ -94,10 +94,10 @@ const OrgContent = sequelize.define('DP_ORGANIZATION_ASSETS', {
     }
 }, {
     timestamps: false,
-    tableName: 'DP_ORGANIZATION_ASSETS',
+    tableName: 'DP_ORGANIZATION_ASSET',
     indexes: [
         {
-            name: 'UQ_ORGANIZATION_ASSETS_TYPE_NAME_PATH_ORG_VIEW',
+            name: 'UQ_ORGANIZATION_ASSET_TYPE_NAME_PATH_ORG_VIEW',
             unique: true,
             fields: ['FILE_TYPE', 'FILE_NAME', 'FILE_PATH', 'ORG_ID', 'VIEW_ID']
         }

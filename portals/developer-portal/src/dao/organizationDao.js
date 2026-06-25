@@ -54,7 +54,7 @@ const get = async (param) => {
             { ORGANIZATION_IDENTIFIER: param },
         ];
         if (typeof param === 'string' && UUID_RE.test(param)) {
-            conditions.push({ ORG_ID: param });
+            conditions.push({ ID: param });
         }
         const organization = await Organization.findOne({
             where: { [Sequelize.Op.or]: conditions }
@@ -85,7 +85,7 @@ const getId = async (orgName) => {
         if (!organization) {
             throw new Sequelize.EmptyResultError('Organization not found');
         }
-        return organization.ORG_ID;
+        return organization.ID;
     } catch (error) {
         if (error instanceof Sequelize.EmptyResultError) {
             throw error;
@@ -126,7 +126,7 @@ const update = async (orgData, t) => {
                 ORG_CONFIG: orgData.orgConfiguration
             },
             {
-                where: { ORG_ID: orgData.orgId },
+                where: { ID: orgData.orgId },
                 returning: true,
                 transaction: t,
             }
@@ -146,7 +146,7 @@ const update = async (orgData, t) => {
 const deleteOrg = async (orgId) => {
     try {
         const deletedRowsCount = await Organization.destroy({
-            where: { ORG_ID: orgId }
+            where: { ID: orgId }
         });
         if (deletedRowsCount < 1) {
             throw Object.assign(new Sequelize.EmptyResultError('Organization not found'));

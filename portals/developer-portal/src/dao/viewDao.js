@@ -126,7 +126,7 @@ const getId = async (orgID, viewName) => {
         if (!viewResponse) {
             throw new CustomError(404, constants.ERROR_CODE[404], "View not found")
         }
-        return viewResponse.dataValues.VIEW_ID;
+        return viewResponse.dataValues.ID;
     } catch (error) {
         if (error instanceof Sequelize.UniqueConstraintError) {
             throw error;

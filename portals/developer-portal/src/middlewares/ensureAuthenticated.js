@@ -145,7 +145,7 @@ const ensureAuthenticated = async (req, res, next) => {
                         req.user[constants.ROLES.SUPER_ADMIN] = superAdminRole;
                         req.user[constants.ROLES.SUBSCRIBER] = subscriberRole;
                         if (orgDetails) {
-                            req.user[constants.ORG_ID] = orgDetails.ORG_ID;
+                            req.user[constants.ORG_ID] = orgDetails.ID;
                             req.user[constants.ORG_IDENTIFIER] = orgDetails.ORGANIZATION_IDENTIFIER;
                         }
                     }
@@ -174,7 +174,7 @@ const ensureAuthenticated = async (req, res, next) => {
                     req.user[constants.ROLES.SUPER_ADMIN] = superAdminRole;
                     req.user[constants.ROLES.SUBSCRIBER] = subscriberRole;
                     if (orgDetails) {
-                        req.user[constants.ORG_ID] = orgDetails.ORG_ID;
+                        req.user[constants.ORG_ID] = orgDetails.ID;
                         req.user[constants.ORG_IDENTIFIER] = orgDetails.ORGANIZATION_IDENTIFIER;
                     }
                 }

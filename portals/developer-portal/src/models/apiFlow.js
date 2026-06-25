@@ -20,7 +20,7 @@ const sequelize = require('../db/sequelizeConfig');
 const { Organization } = require('./organization');
 
 const APIFlow = sequelize.define('DP_API_FLOW', {
-    API_FLOW_ID: {
+    ID: {
         type: DataTypes.UUID,
         defaultValue: Sequelize.UUIDV4,
         primaryKey: true

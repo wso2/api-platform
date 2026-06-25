@@ -51,13 +51,13 @@ const INCLUDE_API_AND_PLAN = [
     {
         model: APIMetadata,
         as: 'DP_API_METADATA',
-        attributes: ['API_ID', 'API_NAME', 'API_VERSION', 'API_HANDLE', 'REFERENCE_ID'],
+        attributes: ['ID', 'NAME', 'VERSION', 'HANDLE', 'REFERENCE_ID'],
         required: false,
     },
     {
         model: SubscriptionPlan,
         as: 'DP_SUBSCRIPTION_PLAN',
-        attributes: ['PLAN_ID', 'PLAN_NAME', 'DISPLAY_NAME', 'REF_ID'],
+        attributes: ['ID', 'NAME', 'DISPLAY_NAME', 'REF_ID'],
         required: false,
     },
 ];
@@ -120,13 +120,13 @@ async function list(orgId, { apiId, createdBy } = {}) {
     const rows = await SubscriptionMapping.findAll({
         where,
         include: INCLUDE_API_AND_PLAN,
-        order: [['SUB_ID', 'ASC']],
+        order: [['ID', 'ASC']],
     });
     return rows.map(decryptSubRecord);
 }
 
 async function get(orgId, subId, createdBy) {
-    const where = { SUB_ID: subId, ORG_ID: orgId };
+    const where = { ID: subId, ORG_ID: orgId };
     if (createdBy) where.CREATED_BY = createdBy;
     return decryptSubRecord(await SubscriptionMapping.findOne({
         where,
@@ -135,7 +135,7 @@ async function get(orgId, subId, createdBy) {
 }
 
 async function updateStatus(orgId, subId, status, createdBy, transaction) {
-    const where = { SUB_ID: subId, ORG_ID: orgId };
+    const where = { ID: subId, ORG_ID: orgId };
     if (createdBy) where.CREATED_BY = createdBy;
     const [count] = await SubscriptionMapping.update(
         { STATUS: status },
@@ -145,7 +145,7 @@ async function updateStatus(orgId, subId, status, createdBy, transaction) {
 }
 
 async function deleteSubscription(orgId, subId, createdBy, transaction) {
-    const where = { SUB_ID: subId, ORG_ID: orgId };
+    const where = { ID: subId, ORG_ID: orgId };
     if (createdBy) where.CREATED_BY = createdBy;
     const count = await SubscriptionMapping.destroy({ where, transaction });
     return count > 0;
@@ -153,7 +153,7 @@ async function deleteSubscription(orgId, subId, createdBy, transaction) {
 
 async function getById(orgId, subId) {
     return decryptSubRecord(await SubscriptionMapping.findOne({
-        where: { SUB_ID: subId, ORG_ID: orgId },
+        where: { ID: subId, ORG_ID: orgId },
         include: INCLUDE_API_AND_PLAN,
     }));
 }

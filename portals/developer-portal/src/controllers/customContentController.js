@@ -82,7 +82,7 @@ const loadCustomContent = async (req, res, next) => {
                 throw new Error(`Content page not found at ${resolvedPagePath}`);
             }
             const orgDetails = await orgDao.get(orgName);
-            const orgId = orgDetails.ORG_ID;
+            const orgId = orgDetails.ID;
             devportalMode = orgDetails.ORG_CONFIG?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
             let markDownFiles = await orgDao.getContent({
                 orgId: orgId,

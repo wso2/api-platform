@@ -35,7 +35,7 @@ const getOrganization = async (req, res) => {
 const getOrganizationDetails = async (orgId) => {
     const organization = await orgDao.get(orgId);
     return {
-        orgId: organization.ORG_ID,
+        orgId: organization.ID,
         orgName: organization.ORG_NAME,
         businessOwner: organization.BUSINESS_OWNER,
         businessOwnerContact: organization.BUSINESS_OWNER_CONTACT,

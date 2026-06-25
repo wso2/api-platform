@@ -59,7 +59,7 @@ const update = async (orgID, viewId, apiFlowId, apiFlowData, t) => {
     if (apiFlowData.contentType !== undefined) updateFields.CONTENT_TYPE = apiFlowData.contentType;
 
     const [count, rows] = await APIFlow.update(updateFields, {
-        where: { API_FLOW_ID: apiFlowId, ORG_ID: orgID, VIEW_ID: viewId },
+        where: { ID: apiFlowId, ORG_ID: orgID, VIEW_ID: viewId },
         returning: true,
         transaction: t
     });
@@ -68,14 +68,14 @@ const update = async (orgID, viewId, apiFlowId, apiFlowData, t) => {
 
 const deleteFlow = async (orgID, viewId, apiFlowId, t) => {
     return await APIFlow.destroy({
-        where: { API_FLOW_ID: apiFlowId, ORG_ID: orgID, VIEW_ID: viewId },
+        where: { ID: apiFlowId, ORG_ID: orgID, VIEW_ID: viewId },
         transaction: t
     });
 };
 
 const get = async (orgID, viewId, apiFlowId) => {
     return await APIFlow.findOne({
-        where: { API_FLOW_ID: apiFlowId, ORG_ID: orgID, VIEW_ID: viewId }
+        where: { ID: apiFlowId, ORG_ID: orgID, VIEW_ID: viewId }
     });
 };
 

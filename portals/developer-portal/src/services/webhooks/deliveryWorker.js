@@ -44,12 +44,12 @@ async function post(delivery, event) {
         return { ok: false, error: `Subscriber '${delivery.SUBSCRIBER_ID}' not found` };
     }
 
-    const deliveryId = delivery.DELIVERY_ID;
+    const deliveryId = delivery.ID;
     const timeoutMs = (sub && sub.timeoutMs) || 5000;
 
     // Build the outgoing payload: base event payload + per-subscriber encrypted fields.
     const outgoing = {
-        event_id: event.EVENT_ID,
+        event_id: event.ID,
         event_type: event.EVENT_TYPE,
         occurred_at: event.OCCURRED_AT,
         org_id: event.ORG_ID,
@@ -65,7 +65,7 @@ async function post(delivery, event) {
         'Content-Type': 'application/json',
         'Content-Length': Buffer.byteLength(body),
         'X-Devportal-Event': event.EVENT_TYPE,
-        'X-Devportal-Event-Id': event.EVENT_ID,
+        'X-Devportal-Event-Id': event.ID,
         'X-Devportal-Delivery-Id': deliveryId,
     };
     if (sub.secret) {
@@ -104,13 +104,13 @@ async function runBatch() {
     if (deliveries.length === 0) return;
 
     const eventIds = [...new Set(deliveries.map(d => d.EVENT_ID))];
-    const events = await DPEvent.findAll({ where: { EVENT_ID: eventIds } });
-    const eventMap = Object.fromEntries(events.map(e => [e.EVENT_ID, e]));
+    const events = await DPEvent.findAll({ where: { ID: eventIds } });
+    const eventMap = Object.fromEntries(events.map(e => [e.ID, e]));
 
     for (const delivery of deliveries) {
         const event = eventMap[delivery.EVENT_ID];
         if (!event) {
-            logger.warn('Event not found for delivery', { deliveryId: delivery.DELIVERY_ID });
+            logger.warn('Event not found for delivery', { deliveryId: delivery.ID });
             continue;
         }
 
@@ -121,7 +121,7 @@ async function runBatch() {
             const newAttemptCount = delivery.ATTEMPT_COUNT + 1;
             const deadLetter = newAttemptCount >= getMaxAttempts();
             const nextAt = deadLetter ? new Date() : nextAttemptAt(newAttemptCount - 1);
-            await eventDao.markFailed(delivery.DELIVERY_ID, {
+            await eventDao.markFailed(delivery.ID, {
                 httpStatus: 0,
                 error: postErr.message,
                 attemptCount: newAttemptCount,
@@ -129,7 +129,7 @@ async function runBatch() {
                 deadLetter
             });
             logger.error('Post threw unexpectedly', {
-                deliveryId: delivery.DELIVERY_ID, error: postErr.message
+                deliveryId: delivery.ID, error: postErr.message
             });
             continue;
         }
@@ -137,16 +137,16 @@ async function runBatch() {
         const newAttemptCount = delivery.ATTEMPT_COUNT + 1;
 
         if (result.ok) {
-            await eventDao.markDelivered(delivery.DELIVERY_ID, result.status);
+            await eventDao.markDelivered(delivery.ID, result.status);
             logger.info('Delivered', {
-                deliveryId: delivery.DELIVERY_ID, subscriberId: delivery.SUBSCRIBER_ID,
+                deliveryId: delivery.ID, subscriberId: delivery.SUBSCRIBER_ID,
                 eventType: event.EVENT_TYPE, status: result.status
             });
         } else {
             const deadLetter = isNotRetryable(result.status) || newAttemptCount >= getMaxAttempts();
             const nextAt = deadLetter ? new Date() : nextAttemptAt(newAttemptCount - 1);
 
-            await eventDao.markFailed(delivery.DELIVERY_ID, {
+            await eventDao.markFailed(delivery.ID, {
                 httpStatus: result.status,
                 error: result.error,
                 attemptCount: newAttemptCount,
@@ -156,13 +156,13 @@ async function runBatch() {
 
             if (deadLetter) {
                 logger.error('Dead-lettered', {
-                    deliveryId: delivery.DELIVERY_ID, subscriberId: delivery.SUBSCRIBER_ID,
+                    deliveryId: delivery.ID, subscriberId: delivery.SUBSCRIBER_ID,
                     eventType: event.EVENT_TYPE, attempts: newAttemptCount,
                     status: result.status, error: result.error
                 });
             } else {
                 logger.warn('Will retry', {
-                    deliveryId: delivery.DELIVERY_ID, subscriberId: delivery.SUBSCRIBER_ID,
+                    deliveryId: delivery.ID, subscriberId: delivery.SUBSCRIBER_ID,
                     eventType: event.EVENT_TYPE, attempts: newAttemptCount,
                     nextAttemptAt: nextAt, error: result.error || result.status
                 });

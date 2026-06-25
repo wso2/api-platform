@@ -20,7 +20,7 @@ const logger = require('../config/logger');
 
 function formatDelivery(d) {
     return {
-        deliveryId: d.DELIVERY_ID,
+        deliveryId: d.ID,
         subscriberId: d.SUBSCRIBER_ID,
         targetUrl: d.TARGET_URL || null,
         status: d.STATUS,
@@ -35,7 +35,7 @@ function formatDelivery(d) {
 function formatEvent(row) {
     const deliveries = (row.DP_EVENT_DELIVERIES || []).map(formatDelivery);
     return {
-        eventId: row.EVENT_ID,
+        eventId: row.ID,
         eventType: row.EVENT_TYPE,
         orgId: row.ORG_ID,
         aggregateType: row.AGGREGATE_TYPE,

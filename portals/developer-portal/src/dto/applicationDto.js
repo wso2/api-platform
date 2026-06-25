@@ -18,7 +18,7 @@
  */
 class ApplicationDTO {
     constructor(app) {
-        this.id = app.APP_ID;
+        this.id = app.ID;
         this.name = app.NAME;
         this.description = app.DESCRIPTION;
         this.type = app.TYPE;
@@ -38,7 +38,7 @@ class ApplicationDTO {
 
 class SubscriptionDTO {
     constructor(sub) {
-        this.id = sub.SUB_ID;
+        this.id = sub.ID;
         this.appId = sub.APP_ID;
         this.apiId = sub.REFERENCE_ID;
         this.planId = sub.PLAN_ID;

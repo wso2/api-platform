@@ -92,7 +92,7 @@ const update = async (kmId, kmData) => {
         }
 
         const [updatedRowsCount] = await KeyManager.update(updatePayload, {
-            where: { KM_ID: kmId }
+            where: { ID: kmId }
         });
         if (updatedRowsCount < 1) {
             throw new Sequelize.EmptyResultError('Key manager not found');
@@ -185,7 +185,7 @@ const getByName = async (orgId, name) => {
 const deleteKm = async (kmId) => {
     try {
         const deleted = await KeyManager.destroy({
-            where: { KM_ID: kmId }
+            where: { ID: kmId }
         });
         if (deleted < 1) {
             throw new Sequelize.EmptyResultError('Key manager not found');

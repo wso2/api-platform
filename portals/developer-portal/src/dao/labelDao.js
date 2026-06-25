@@ -120,7 +120,7 @@ const getIdList = async (orgID, label, t) => {
     if (!labelResponse) {
         throw new CustomError(404, constants.ERROR_CODE[404], "Label not found")
     }
-    return labelResponse.dataValues.LABEL_ID;
+    return labelResponse.dataValues.ID;
 }
 
 const deleteLabel = async (orgID, labelNames) => {

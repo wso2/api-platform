@@ -91,11 +91,11 @@ const saveApplication = async (req, res) => {
         const createdApp = application.dataValues;
         try {
             await sequelize.transaction((t) => publish('application.created',
-                { application_id: createdApp.APP_ID, name: createdApp.NAME, description: createdApp.DESCRIPTION, type: createdApp.TYPE },
-                { transaction: t, orgId: orgID, aggregateType: 'application', aggregateId: createdApp.APP_ID }
+                { application_id: createdApp.ID, name: createdApp.NAME, description: createdApp.DESCRIPTION, type: createdApp.TYPE },
+                { transaction: t, orgId: orgID, aggregateType: 'application', aggregateId: createdApp.ID }
             ));
         } catch (pubErr) {
-            logger.warn('Failed to publish application.created', { orgId: orgID, appId: createdApp.APP_ID, error: pubErr.message });
+            logger.warn('Failed to publish application.created', { orgId: orgID, appId: createdApp.ID, error: pubErr.message });
         }
         return res.status(201).json(new ApplicationDTO(createdApp));
     } catch (error) {
@@ -150,7 +150,7 @@ const revokeAppKeyMappings = async (orgID, appID) => {
                 const kmRecord = await kmDao.get(mapping.KM_ID);
                 const adapter = getKeyManagerAdapter(kmRecord);
                 await adapter.deleteOAuthClient(mapping.AS_CLIENT_ID);
-                succeededMappingIds.push(mapping.MAPPING_ID);
+                succeededMappingIds.push(mapping.ID);
             } catch (err) {
                 logger.warn('Failed to revoke OAuth client during application deletion', {
                     appId: appID,
@@ -158,11 +158,11 @@ const revokeAppKeyMappings = async (orgID, appID) => {
                     kmId: mapping.KM_ID,
                     errorMessage: err.message,
                 });
-                failedMappingIds.push(mapping.MAPPING_ID);
+                failedMappingIds.push(mapping.ID);
             }
         } else {
             // No OAuth client to revoke — safe to remove the local mapping.
-            succeededMappingIds.push(mapping.MAPPING_ID);
+            succeededMappingIds.push(mapping.ID);
         }
     }
     await appDao.deleteMappingsByIds(orgID, succeededMappingIds);
@@ -208,7 +208,7 @@ const deleteApplicationAndSnapshotKeys = async (orgID, applicationId, userID) =>
     await sequelize.transaction(async (t) => {
         appToDelete = await appDao.get(orgID, applicationId, userID, t);
         const associatedKeys = await apiKeyService.list(orgID, { appId: applicationId }, t);
-        affectedKeyIds = associatedKeys.map((k) => k.KEY_ID);
+        affectedKeyIds = associatedKeys.map((k) => k.ID);
         await appDao.delete(orgID, applicationId, userID, t);
     });
     return { appToDelete, affectedKeyIds };
@@ -285,7 +285,7 @@ const generateKeys = async (req, res) => {
         const appKeyMapping = {
             orgID,
             appID,
-            kmID: kmRecord.KM_ID,
+            kmID: kmRecord.ID,
             asClientID: responseData.consumerKey,
             keyType: rawKeyType || 'PRODUCTION',
             additionalProperties: responseData.additionalProperties || {},
@@ -305,7 +305,7 @@ const generateKeys = async (req, res) => {
             throw dbError;
         }
 
-        responseData.keyMappingId = keyMappingRecord?.dataValues?.MAPPING_ID;
+        responseData.keyMappingId = keyMappingRecord?.dataValues?.ID;
 
         trackGenerateCredentials({
             orgId: orgID,
@@ -331,7 +331,7 @@ const generateOAuthKeys = async (req, res) => {
 
         const { ApplicationKeyMapping } = require('../models/application');
         const keyMapping = await ApplicationKeyMapping.findOne({
-            where: { MAPPING_ID: keyMappingId, APP_ID: applicationId },
+            where: { ID: keyMappingId, APP_ID: applicationId },
         });
         if (!keyMapping || !keyMapping.KM_ID) {
             return util.handleError(res, { statusCode: 404, message: 'Key mapping not found or missing key manager reference' });
@@ -374,7 +374,7 @@ const revokeOAuthKeys = async (req, res) => {
 
         const { ApplicationKeyMapping } = require('../models/application');
         const keyMapping = await ApplicationKeyMapping.findOne({
-            where: { MAPPING_ID: keyMappingId, APP_ID: applicationId },
+            where: { ID: keyMappingId, APP_ID: applicationId },
         });
         if (!keyMapping || !keyMapping.KM_ID) {
             return util.handleError(res, { statusCode: 404, message: 'Key mapping not found or missing key manager reference' });
@@ -384,7 +384,7 @@ const revokeOAuthKeys = async (req, res) => {
         await adapter.deleteOAuthClient(keyMapping.AS_CLIENT_ID);
         await ApplicationKeyMapping.update(
             { AS_CLIENT_ID: null, KM_ID: null },
-            { where: { MAPPING_ID: keyMappingId, APP_ID: applicationId } }
+            { where: { ID: keyMappingId, APP_ID: applicationId } }
         );
         res.status(200).json({ message: 'OAuth client revoked successfully' });
     } catch (error) {
@@ -404,14 +404,14 @@ const cleanUp = async (req, res) => {
 
         const { ApplicationKeyMapping } = require('../models/application');
         const keyMapping = await ApplicationKeyMapping.findOne({
-            where: { MAPPING_ID: keyMappingId, APP_ID: applicationId },
+            where: { ID: keyMappingId, APP_ID: applicationId },
         });
         if (keyMapping && keyMapping.KM_ID && keyMapping.AS_CLIENT_ID) {
             const kmRecord = await kmDao.get(keyMapping.KM_ID);
             const adapter = getKeyManagerAdapter(kmRecord);
             await adapter.deleteOAuthClient(keyMapping.AS_CLIENT_ID);
         }
-        await ApplicationKeyMapping.destroy({ where: { MAPPING_ID: keyMappingId, APP_ID: applicationId } });
+        await ApplicationKeyMapping.destroy({ where: { ID: keyMappingId, APP_ID: applicationId } });
         res.status(200).json({ message: 'OAuth client cleaned up successfully' });
     } catch (error) {
         logger.error("Error occurred while cleaning up the OAuth keys", {
@@ -431,7 +431,7 @@ const updateOAuthKeys = async (req, res) => {
 
         const { ApplicationKeyMapping } = require('../models/application');
         const keyMapping = await ApplicationKeyMapping.findOne({
-            where: { MAPPING_ID: keyMappingId, APP_ID: applicationId },
+            where: { ID: keyMappingId, APP_ID: applicationId },
         });
         if (!keyMapping || !keyMapping.KM_ID) {
             return util.handleError(res, { statusCode: 404, message: 'Key mapping not found or missing key manager reference' });
@@ -450,7 +450,7 @@ const updateOAuthKeys = async (req, res) => {
         if (result?.additionalProperties) {
             await ApplicationKeyMapping.update(
                 { ADDITIONAL_PROPERTIES: result.additionalProperties },
-                { where: { MAPPING_ID: keyMappingId, APP_ID: applicationId } }
+                { where: { ID: keyMappingId, APP_ID: applicationId } }
             );
         }
 

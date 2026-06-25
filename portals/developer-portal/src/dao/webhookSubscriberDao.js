@@ -76,7 +76,7 @@ const update = async (orgId, subscriberId, subData) => {
         }
 
         const [updatedRowsCount] = await WebhookSubscriber.update(updatePayload, {
-            where: { SUBSCRIBER_ID: subscriberId, ORG_ID: orgId }
+            where: { ID: subscriberId, ORG_ID: orgId }
         });
         if (updatedRowsCount < 1) {
             throw new Sequelize.EmptyResultError('Webhook subscriber not found');
@@ -141,7 +141,7 @@ const matchSubscribers = async (orgId, eventType) => {
  */
 const get = async (orgId, subscriberId) => {
     try {
-        const sub = await WebhookSubscriber.findOne({ where: { SUBSCRIBER_ID: subscriberId, ORG_ID: orgId } });
+        const sub = await WebhookSubscriber.findOne({ where: { ID: subscriberId, ORG_ID: orgId } });
         if (!sub) {
             throw new Sequelize.EmptyResultError('Webhook subscriber not found');
         }
@@ -157,13 +157,13 @@ const get = async (orgId, subscriberId) => {
 
 /**
  * Get a single webhook subscriber by ID only, without scoping to an org.
- * SUBSCRIBER_ID is a globally unique UUID primary key, so this is safe.
+ * ID is a globally unique UUID primary key, so this is safe.
  * Used by the delivery worker, which only has the subscriber ID (from the
  * delivery row) and not the org ID in scope.
  */
 const getById = async (subscriberId) => {
     try {
-        const sub = await WebhookSubscriber.findOne({ where: { SUBSCRIBER_ID: subscriberId } });
+        const sub = await WebhookSubscriber.findOne({ where: { ID: subscriberId } });
         if (!sub) {
             throw new Sequelize.EmptyResultError('Webhook subscriber not found');
         }
@@ -183,7 +183,7 @@ const getById = async (subscriberId) => {
 const deleteSubscriber = async (orgId, subscriberId) => {
     try {
         const deleted = await WebhookSubscriber.destroy({
-            where: { SUBSCRIBER_ID: subscriberId, ORG_ID: orgId }
+            where: { ID: subscriberId, ORG_ID: orgId }
         });
         if (deleted < 1) {
             throw new Sequelize.EmptyResultError('Webhook subscriber not found');

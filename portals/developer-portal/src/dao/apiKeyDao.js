@@ -20,10 +20,10 @@ const APIKey = require('../models/apiKey');
 const { APIMetadata } = require('../models/apiMetadata');
 const { Application } = require('../models/application');
 
-const APPLICATION_INCLUDE = { model: Application, attributes: ['APP_ID', 'NAME'] };
+const APPLICATION_INCLUDE = { model: Application, attributes: ['ID', 'NAME'] };
 const API_METADATA_INCLUDE = {
     model: APIMetadata, as: 'DP_API_METADATA',
-    attributes: ['API_ID', 'API_NAME', 'API_VERSION', 'API_HANDLE']
+    attributes: ['ID', 'NAME', 'VERSION', 'HANDLE']
 };
 
 async function create({ apiId, subscriptionId, appId, orgId, name, expiresAt, createdBy }, transaction) {
@@ -36,7 +36,7 @@ async function create({ apiId, subscriptionId, appId, orgId, name, expiresAt, cr
 
 async function get(orgId, keyId, transaction) {
     return APIKey.findOne({
-        where: { KEY_ID: keyId, ORG_ID: orgId },
+        where: { ID: keyId, ORG_ID: orgId },
         include: [API_METADATA_INCLUDE, APPLICATION_INCLUDE],
         transaction
     });
@@ -60,13 +60,13 @@ async function list(orgId, { apiId, subscriptionId, appId, status, limit } = {},
 async function revoke(orgId, keyId, transaction) {
     const [count] = await APIKey.update(
         { STATUS: 'REVOKED', REVOKED_AT: new Date() },
-        { where: { KEY_ID: keyId, ORG_ID: orgId, STATUS: 'ACTIVE' }, transaction }
+        { where: { ID: keyId, ORG_ID: orgId, STATUS: 'ACTIVE' }, transaction }
     );
     return count > 0;
 }
 
 async function setApplication(orgId, keyId, appId, transaction, { activeOnly = false } = {}) {
-    const where = { KEY_ID: keyId, ORG_ID: orgId };
+    const where = { ID: keyId, ORG_ID: orgId };
     if (activeOnly) where.STATUS = 'ACTIVE';
     const [count] = await APIKey.update(
         { APP_ID: appId || null },

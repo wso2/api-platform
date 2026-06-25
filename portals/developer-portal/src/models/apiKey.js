@@ -22,7 +22,7 @@ const { APIMetadata } = require('./apiMetadata');
 const { Application, SubscriptionMapping } = require('./application');
 
 const APIKey = sequelize.define('DP_API_KEY', {
-    KEY_ID: {
+    ID: {
         type: DataTypes.UUID,
         defaultValue: Sequelize.UUIDV4,
         primaryKey: true
@@ -30,17 +30,17 @@ const APIKey = sequelize.define('DP_API_KEY', {
     API_ID: {
         type: DataTypes.UUID,
         allowNull: false,
-        references: { model: APIMetadata, key: 'API_ID' }
+        references: { model: APIMetadata, key: 'ID' }
     },
     SUBSCRIPTION_ID: {
         type: DataTypes.UUID,
         allowNull: true,
-        references: { model: SubscriptionMapping, key: 'SUB_ID' }
+        references: { model: SubscriptionMapping, key: 'ID' }
     },
     APP_ID: {
         type: DataTypes.UUID,
         allowNull: true,
-        references: { model: Application, key: 'APP_ID' }
+        references: { model: Application, key: 'ID' }
     },
     ORG_ID: {
         type: DataTypes.UUID,

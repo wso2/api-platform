@@ -18,8 +18,8 @@
 const { Sequelize, DataTypes } = require('sequelize');
 const sequelize = require('../db/sequelizeConfig');
 
-const View = sequelize.define('DP_VIEWS', {
-    VIEW_ID: {
+const View = sequelize.define('DP_VIEW', {
+    ID: {
         type: DataTypes.UUID,
         defaultValue: Sequelize.UUIDV4,
         primaryKey: true
@@ -38,11 +38,11 @@ const View = sequelize.define('DP_VIEWS', {
     }
 }, {
     timestamps: false,
-    tableName: 'DP_VIEWS',
+    tableName: 'DP_VIEW',
     returning: true,
     indexes: [
         {
-            name: 'UQ_VIEWS_NAME_ORG_ID',
+            name: 'UQ_VIEW_NAME_ORG_ID',
             unique: true,
             fields: ['NAME', 'ORG_ID'],
         }

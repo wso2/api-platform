@@ -20,9 +20,9 @@ const sequelize = require('../db/sequelizeConfig');
 const { Organization } = require('./organization');
 
 
-const Labels = sequelize.define('DP_LABELS', {
+const Labels = sequelize.define('DP_LABEL', {
 
-    LABEL_ID: {
+    ID: {
         type: DataTypes.UUID,
         defaultValue: Sequelize.UUIDV4,
         primaryKey: true
@@ -41,11 +41,11 @@ const Labels = sequelize.define('DP_LABELS', {
     },
 }, {
     timestamps: false,
-    tableName: 'DP_LABELS',
+    tableName: 'DP_LABEL',
     returning: true,
     indexes: [
         {
-            name: 'UQ_LABELS_NAME_ORG_ID',
+            name: 'UQ_LABEL_NAME_ORG_ID',
             unique: true,
             fields: ['NAME', 'ORG_ID'],
         }

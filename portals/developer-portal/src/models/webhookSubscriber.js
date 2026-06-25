@@ -20,7 +20,7 @@ const sequelize = require('../db/sequelizeConfig');
 const { Organization } = require('./organization');
 
 const WebhookSubscriber = sequelize.define('DP_WEBHOOK_SUBSCRIBER', {
-    SUBSCRIBER_ID: {
+    ID: {
         type: DataTypes.UUID,
         defaultValue: Sequelize.UUIDV4,
         primaryKey: true

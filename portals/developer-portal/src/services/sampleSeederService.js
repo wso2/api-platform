@@ -123,14 +123,14 @@ async function seedSampleAPIs(orgId) {
 
             await sequelize.transaction(async (t) => {
                 const created = await apiDao.create(orgId, apiMetadata, t);
-                apiId = created.dataValues.API_ID;
+                apiId = created.dataValues.ID;
 
                 // Subscription plan mappings (skip unknown plans — don't fail the whole deployment)
                 if (Array.isArray(apiMetadata.subscriptionPlans) && apiMetadata.subscriptionPlans.length) {
                     const mappings = [];
                     for (const p of apiMetadata.subscriptionPlans) {
                         const plan = await subscriptionPlanDao.getByName(orgId, p.planName);
-                        if (plan) mappings.push({ apiID: apiId, planID: plan.PLAN_ID });
+                        if (plan) mappings.push({ apiID: apiId, planID: plan.ID });
                     }
                     if (mappings.length) await subscriptionPlanDao.createApiMapping(mappings, apiId, t);
                 }

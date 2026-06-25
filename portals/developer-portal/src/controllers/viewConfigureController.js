@@ -61,24 +61,24 @@ const loadViewSettingsPage = async (req, res) => {
 
         const allAPIs = await apiDao.getByCondition({ ORG_ID: orgID });
         templateContent.orgAPIs = allAPIs.map(api => ({
-            apiId: api.API_ID,
-            apiName: api.API_NAME,
-            apiHandle: api.API_HANDLE,
-            apiDescription: api.API_DESCRIPTION,
-            apiType: api.API_TYPE,
-            apiVersion: api.API_VERSION,
+            apiId: api.ID,
+            apiName: api.NAME,
+            apiHandle: api.HANDLE,
+            apiDescription: api.DESCRIPTION,
+            apiType: api.TYPE,
+            apiVersion: api.VERSION,
             apiStatus: api.STATUS,
             productionUrl: api.PRODUCTION_URL,
             sandboxUrl: api.SANDBOX_URL,
             tags: api.TAGS || '',
             agentVisibility: api.AGENT_VISIBILITY,
-            subscriptionPlans: (api.SubscriptionPlans || []).map(p => p.PLAN_NAME),
+            subscriptionPlans: (api.SubscriptionPlans || []).map(p => p.NAME),
         }));
 
         let orgLabels = [];
         try {
             const labelsRaw = await labelDao.list(orgID);
-            orgLabels = labelsRaw.map(l => ({ labelId: l.LABEL_ID, name: l.NAME, displayName: l.DISPLAY_NAME }));
+            orgLabels = labelsRaw.map(l => ({ labelId: l.ID, name: l.NAME, displayName: l.DISPLAY_NAME }));
         } catch (err) {
             logger.warn('Failed to load labels for settings page', { error: err.message });
         }
@@ -88,8 +88,8 @@ const loadViewSettingsPage = async (req, res) => {
         try {
             const plansRaw = await subscriptionPlanDao.list(orgID);
             orgPlans = plansRaw.map(p => ({
-                planId: p.PLAN_ID,
-                planName: p.PLAN_NAME,
+                planId: p.ID,
+                planName: p.NAME,
                 displayName: p.DISPLAY_NAME,
                 description: p.DESCRIPTION || '',
                 requestCount: p.REQUEST_COUNT,

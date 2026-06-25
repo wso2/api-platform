@@ -42,11 +42,11 @@ const create = async (orgID, apiMetadata, t) => {
         const apiMetadataResponse = await APIMetadata.create({
             REFERENCE_ID: apiInfo.referenceID,
             STATUS: apiInfo.apiStatus,
-            API_NAME: apiInfo.apiName,
-            API_HANDLE: apiInfo.apiHandle ? apiInfo.apiHandle : `${apiInfo.apiName.toLowerCase().replace(/\s+/g, '')}-v${apiInfo.apiVersion}`,
-            API_DESCRIPTION: apiInfo.apiDescription,
-            API_VERSION: apiInfo.apiVersion,
-            API_TYPE: apiInfo.apiType,
+            NAME: apiInfo.apiName,
+            HANDLE: apiInfo.apiHandle ? apiInfo.apiHandle : `${apiInfo.apiName.toLowerCase().replace(/\s+/g, '')}-v${apiInfo.apiVersion}`,
+            DESCRIPTION: apiInfo.apiDescription,
+            VERSION: apiInfo.apiVersion,
+            TYPE: apiInfo.apiType,
             VISIBILITY: apiInfo.visibility,
             VISIBLE_GROUPS: apiInfo.visibleGroups ? apiInfo.visibleGroups.join(' ') : null,
             AGENT_VISIBILITY: (apiMetadata.agentVisibility || apiInfo.agentVisibility || 'VISIBLE').toUpperCase(),
@@ -82,11 +82,11 @@ const update = async (orgID, apiID, apiMetadata, t) => {
         const [updateCount] = await APIMetadata.update({
             REFERENCE_ID: apiInfo.referenceID,
             STATUS: apiInfo.apiStatus,
-            API_NAME: apiInfo.apiName,
-            API_HANDLE: apiInfo.apiHandle ? apiInfo.apiHandle : `${apiInfo.apiName.toLowerCase().replace(/\s+/g, '')}-v${apiInfo.apiVersion}`,
-            API_DESCRIPTION: apiInfo.apiDescription,
-            API_VERSION: apiInfo.apiVersion,
-            API_TYPE: apiInfo.apiType,
+            NAME: apiInfo.apiName,
+            HANDLE: apiInfo.apiHandle ? apiInfo.apiHandle : `${apiInfo.apiName.toLowerCase().replace(/\s+/g, '')}-v${apiInfo.apiVersion}`,
+            DESCRIPTION: apiInfo.apiDescription,
+            VERSION: apiInfo.apiVersion,
+            TYPE: apiInfo.apiType,
             TAGS: apiInfo.tags ? apiInfo.tags.join(' ') : null,
             VISIBILITY: apiInfo.visibility,
             VISIBLE_GROUPS: apiInfo.visibleGroups ? apiInfo.visibleGroups.join(' ') : null,
@@ -100,7 +100,7 @@ const update = async (orgID, apiID, apiMetadata, t) => {
             METADATA_SEARCH: apiMetadata,
         }, {
             where: {
-                API_ID: apiID,
+                ID: apiID,
                 ORG_ID: orgID,
             },
             returning: false,
@@ -127,7 +127,7 @@ const deleteApi = async (orgID, apiID, t) => {
     try {
         const apiMetadataResponse = await APIMetadata.destroy({
             where: {
-                API_ID: apiID,
+                ID: apiID,
                 ORG_ID: orgID
             },
             transaction: t
@@ -164,7 +164,7 @@ const get = async (orgID, apiID, t) => {
             ],
             where: {
                 ORG_ID: orgID,
-                API_ID: apiID,
+                ID: apiID,
                 STATUS: { [Op.in]: [constants.API_STATUS.PUBLISHED, constants.API_STATUS.DEPRECATED] }
             },
             transaction: t
@@ -254,8 +254,8 @@ const list = async (orgID, groups, viewName, t) => {
                     required: true,
                     through: { attributes: [] },
                     where: {
-                        LABEL_ID: {
-                            [Op.in]: Sequelize.literal(`(SELECT "LABEL_ID" FROM "DP_VIEW_LABELS" WHERE "VIEW_ID" = '${viewID}')`)
+                        ID: {
+                            [Op.in]: Sequelize.literal(`(SELECT "LABEL_ID" FROM "DP_VIEW_LABEL" WHERE "VIEW_ID" = '${viewID}')`)
                         }
                     }
                 }
@@ -295,8 +295,8 @@ const list = async (orgID, groups, viewName, t) => {
                 required: true,
                 through: { attributes: [] },
                 where: {
-                    LABEL_ID: {
-                        [Op.in]: Sequelize.literal(`(SELECT "LABEL_ID" FROM "DP_VIEW_LABELS" WHERE "VIEW_ID" = '${viewID}')`)
+                    ID: {
+                        [Op.in]: Sequelize.literal(`(SELECT "LABEL_ID" FROM "DP_VIEW_LABEL" WHERE "VIEW_ID" = '${viewID}')`)
                     }
                 }
             }
@@ -421,8 +421,8 @@ const searchFallback = async (orgID, searchTerm, viewName, t) => {
                 required: true,
                 through: { attributes: [] },
                 where: {
-                    LABEL_ID: {
-                        [Op.in]: Sequelize.literal(`(SELECT "LABEL_ID" FROM "DP_VIEW_LABELS" WHERE "VIEW_ID" = '${viewID}')`)
+                    ID: {
+                        [Op.in]: Sequelize.literal(`(SELECT "LABEL_ID" FROM "DP_VIEW_LABEL" WHERE "VIEW_ID" = '${viewID}')`)
                     }
                 }
             },
@@ -453,13 +453,13 @@ const getId = async (orgID, apiHandle) => {
 
     try {
         const api = await APIMetadata.findOne({
-            attributes: ['API_ID'],
+            attributes: ['ID'],
             where: {
-                API_HANDLE: apiHandle,
+                HANDLE: apiHandle,
                 ORG_ID: orgID
             }
         })
-        return api?.API_ID;
+        return api?.ID;
     } catch (error) {
         if (error instanceof Sequelize.EmptyResultError) {
             throw error;
@@ -471,13 +471,13 @@ const getId = async (orgID, apiHandle) => {
 const getHandle = async (orgID, apiRefID) => {
     try {
         const api = await APIMetadata.findOne({
-            attributes: ['API_HANDLE'],
+            attributes: ['HANDLE'],
             where: {
                 REFERENCE_ID: apiRefID,
                 ORG_ID: orgID
             }
         })
-        return api.API_HANDLE;
+        return api.HANDLE;
     } catch (error) {
         if (error instanceof Sequelize.EmptyResultError) {
             throw error;
@@ -489,14 +489,14 @@ const getHandle = async (orgID, apiRefID) => {
 const getIdByRef = async (orgID, referenceId, t) => {
     try {
         const api = await APIMetadata.findOne({
-            attributes: ['API_ID'],
+            attributes: ['ID'],
             where: {
                 REFERENCE_ID: referenceId,
                 ORG_ID: orgID
             },
             transaction: t
         });
-        return api?.API_ID;
+        return api?.ID;
     } catch (error) {
         if (error instanceof Sequelize.EmptyResultError) {
             throw error;
@@ -524,7 +524,7 @@ const getSpecs = async (orgID, apiIDs) => {
                 {
                     model: APIMetadata,
                     required: true,
-                    attributes: ['API_NAME', 'API_VERSION', 'API_HANDLE'],
+                    attributes: ['NAME', 'VERSION', 'HANDLE'],
                     where: {
                         ORG_ID: orgID
                     }

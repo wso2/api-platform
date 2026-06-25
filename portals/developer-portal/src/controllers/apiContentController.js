@@ -64,7 +64,7 @@ const loadAPIs = async (req, res, next) => {
         const orgDetails = await orgDao.get(orgName);
         const devportalMode = orgDetails.ORG_CONFIG?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
         try {
-            const orgID = orgDetails.ORG_ID;
+            const orgID = orgDetails.ID;
             const searchTerm = req.query.query;
             const tags = req.query.tags;
             let metaDataList = await loadAPIMetaDataListFromAPI(req, orgID, orgName, searchTerm, tags, viewName);
@@ -228,7 +228,7 @@ const loadAPIContent = async (req, res, next) => {
         const devportalMode = orgDetails.ORG_CONFIG?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
         try {
             const orgDetails = await orgDao.get(orgName);
-            const orgID = orgDetails.ORG_ID;
+            const orgID = orgDetails.ID;
             const apiID = await apiDao.getId(orgID, apiHandle);
             const metaData = await loadAPIMetaData(req, orgID, apiID);
             
@@ -344,11 +344,11 @@ const loadAPIContent = async (req, res, next) => {
                     const createdBy = req.user && req.user.sub;
                     const localSubs = await subDao.list(orgID, { apiId: apiID, createdBy });
                     subscriptions = (localSubs || []).map(sub => ({
-                        subscriptionId: sub.SUB_ID,
+                        subscriptionId: sub.ID,
                         // policyName (raw POLICY_NAME) is what isCurrentPlan compares against in the template.
                         // subscriptionPlanName keeps the human-readable label (DISPLAY_NAME when set).
-                        policyName: sub.DP_SUBSCRIPTION_PLAN?.PLAN_NAME || '',
-                        subscriptionPlanName: sub.DP_SUBSCRIPTION_PLAN?.DISPLAY_NAME || sub.DP_SUBSCRIPTION_PLAN?.PLAN_NAME || '',
+                        policyName: sub.DP_SUBSCRIPTION_PLAN?.NAME || '',
+                        subscriptionPlanName: sub.DP_SUBSCRIPTION_PLAN?.DISPLAY_NAME || sub.DP_SUBSCRIPTION_PLAN?.NAME || '',
                         status: sub.STATUS,
                         subscriptionToken: sub.SUB_TOKEN,
                         maskedToken: sub.SUB_TOKEN ? sub.SUB_TOKEN.slice(0, 4) + '****' + sub.SUB_TOKEN.slice(-4) : '',
@@ -527,7 +527,7 @@ const loadDocsPage = async (req, res, next) => {
             }
 
             const apiMetadata = await apiDao.get(orgID, apiID);
-            let apiType = apiMetadata[0].dataValues.API_TYPE;
+            let apiType = apiMetadata[0].dataValues.TYPE;
             const metaForNav = {
                 apiInfo: {},
                 apiReferenceID: apiMetadata[0].dataValues.REFERENCE_ID,
@@ -551,7 +551,7 @@ const loadDocsPage = async (req, res, next) => {
                 baseDocUrl: '/' + orgName + '/views/' + viewName + "/api/" + apiHandle,
                 docTypes: docNames,
                 apiType: apiType,
-                apiName: apiMetadata[0].dataValues.API_NAME || '',
+                apiName: apiMetadata[0].dataValues.NAME || '',
                 profile: req.isAuthenticated() ? profile : null,
                 devportalMode: devportalMode,
                 showApiKeysNav: apiUsesApiKeySecurity(metaForNav, apiDefinitionForNav),
@@ -736,7 +736,7 @@ const loadDocument = async (req, res, next) => {
             const viewName = req.params.viewName;
             let docNames = await apiMetadataService.getAPIDocTypes(orgID, apiID);
             const apiMetadata = await apiDao.get(orgID, apiID);
-            let apiType = apiMetadata[0].dataValues.API_TYPE;
+            let apiType = apiMetadata[0].dataValues.TYPE;
             const referenceID = apiMetadata[0].dataValues.REFERENCE_ID;
             // All MCPs (registry and CP) need a Specification entry in the sidebar
             if (apiType === constants.API_TYPE.MCP && !docNames.some(d => d.type === constants.DOC_TYPES.DOCS.API_DEFINITION)) {
@@ -747,7 +747,7 @@ const loadDocument = async (req, res, next) => {
             templateContent.docTypes = docNames;
             templateContent.currentDocName = docName || null;
             templateContent.currentDocType = docType || null;
-            templateContent.apiName = apiMetadata[0].dataValues.API_NAME || '';
+            templateContent.apiName = apiMetadata[0].dataValues.NAME || '';
             let profile = null;
             if (req.user) {
                 profile = {
@@ -1054,7 +1054,7 @@ const loadAPIContentMd = async (req, res) => {
 
     try {
         const orgDetails = await orgDao.get(orgName);
-        const orgID = orgDetails.ORG_ID;
+        const orgID = orgDetails.ID;
 
         if (await isAiDisabledForPortal(orgID, viewName)) {
             return res.status(404).send('# Not Found\n\nThis resource is not available for agents.');
@@ -1217,7 +1217,7 @@ const loadLlmsTxt = async (req, res) => {
     const { orgName, viewName } = req.params;
     try {
         const orgDetails = await orgDao.get(orgName);
-        const orgID = orgDetails.ORG_ID;
+        const orgID = orgDetails.ID;
 
         const configAsset = await orgDao.getContent({
             orgId: orgID, fileType: constants.FILE_TYPE.LLMS_CONFIG, viewName, fileName: constants.FILE_NAME.LLMS_CONFIG
@@ -1252,7 +1252,7 @@ const previewLlmsTxt = async (req, res) => {
     const { orgName, viewName } = req.params;
     try {
         const orgDetails = await orgDao.get(orgName);
-        const orgID = orgDetails.ORG_ID;
+        const orgID = orgDetails.ID;
         const { portalName, portalDescription } = req.body;
 
         const templateContent = await buildLlmsTxtTemplateContent(req, orgID, orgName, viewName, {
@@ -1278,7 +1278,7 @@ const loadAPIsMd = async (req, res) => {
 
     try {
         const orgDetails = await orgDao.get(orgName);
-        const orgID = orgDetails.ORG_ID;
+        const orgID = orgDetails.ID;
 
         if (await isAiDisabledForPortal(orgID, viewName)) {
             return res.status(404).send('# Not Found\n\nThis resource is not available for agents.');
@@ -1327,7 +1327,7 @@ const loadMCPsMd = async (req, res) => {
 
     try {
         const orgDetails = await orgDao.get(orgName);
-        const orgID = orgDetails.ORG_ID;
+        const orgID = orgDetails.ID;
 
         if (await isAiDisabledForPortal(orgID, viewName)) {
             return res.status(404).send('# Not Found\n\nThis resource is not available for agents.');
@@ -1376,7 +1376,7 @@ const loadAPIDefinitionRaw = async (req, res) => {
     const { orgName, apiHandle, viewName, format } = req.params;
     try {
         const orgDetails = await orgDao.get(orgName);
-        const orgID = orgDetails.ORG_ID;
+        const orgID = orgDetails.ID;
 
         if (await isAiDisabledForPortal(orgID, viewName)) {
             return res.status(404).json({ message: 'Not Found' });
@@ -1442,7 +1442,7 @@ const loadDocumentMd = async (req, res) => {
 
     try {
         const orgDetails = await orgDao.get(orgName);
-        const orgID = orgDetails.ORG_ID;
+        const orgID = orgDetails.ID;
 
         if (await isAiDisabledForPortal(orgID, viewName)) {
             return res.status(404).send('# Not Found\n\nThis resource is not available for agents.');
@@ -1484,8 +1484,8 @@ const seedSamples = async (req, res) => {
     }
     try {
         const orgDetails = await orgDao.get(orgName);
-        const apiResults = await seedSampleAPIs(orgDetails.ORG_ID);
-        const mcpResults = await seedSampleMCPs(orgDetails.ORG_ID);
+        const apiResults = await seedSampleAPIs(orgDetails.ID);
+        const mcpResults = await seedSampleMCPs(orgDetails.ID);
         const results  = [...apiResults, ...mcpResults];
         const deployed = results.filter(r => r.status === 'ok').length;
         const skipped  = results.filter(r => r.status === 'exists').length;

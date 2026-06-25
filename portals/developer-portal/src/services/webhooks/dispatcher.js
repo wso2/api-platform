@@ -41,22 +41,22 @@ async function runBatch() {
             const subscribers = await matchSubscribers(event.ORG_ID, event.EVENT_TYPE);
             if (subscribers.length === 0) {
                 // No matching subscribers — mark as delivered immediately.
-                await DPEvent.update({ STATUS: 'ALL_DELIVERED' }, { where: { EVENT_ID: event.EVENT_ID } });
+                await DPEvent.update({ STATUS: 'ALL_DELIVERED' }, { where: { ID: event.ID } });
                 continue;
             }
-            await eventDao.createDeliveries(event.EVENT_ID, subscribers, null, null);
+            await eventDao.createDeliveries(event.ID, subscribers, null, null);
         } catch (err) {
             logger.error('Failed to create deliveries for event', {
-                eventId: event.EVENT_ID, error: err.message
+                eventId: event.ID, error: err.message
             });
             try {
-                await DPEvent.update({ STATUS: 'PENDING' }, { where: { EVENT_ID: event.EVENT_ID } });
+                await DPEvent.update({ STATUS: 'PENDING' }, { where: { ID: event.ID } });
                 logger.info('Restored event eligibility after delivery creation failure', {
-                    eventId: event.EVENT_ID
+                    eventId: event.ID
                 });
             } catch (restoreErr) {
                 logger.error('Failed to restore event eligibility', {
-                    eventId: event.EVENT_ID, error: restoreErr.message
+                    eventId: event.ID, error: restoreErr.message
                 });
             }
         }

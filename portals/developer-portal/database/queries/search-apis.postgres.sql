@@ -36,7 +36,7 @@ SELECT
         '[]'
     ) AS "DP_API_SUBSCRIPTION_PLAN",
     COALESCE(
-        ARRAY_AGG(DISTINCT "DP_LABELS"."NAME") FILTER (WHERE "DP_LABELS"."NAME" IS NOT NULL),
+        ARRAY_AGG(DISTINCT "DP_LABEL"."NAME") FILTER (WHERE "DP_LABEL"."NAME" IS NOT NULL),
         '{}'
     ) AS "DP_LABELs",
     ts_rank(
@@ -55,7 +55,7 @@ FROM
     "DP_API_METADATA" metadata
 LEFT JOIN
     "DP_API_CONTENT" content
-    ON metadata."API_ID" = content."API_ID"
+    ON metadata."ID" = content."API_ID"
     AND (
         content."FILE_NAME" LIKE '%.hbs'
         OR content."FILE_NAME" LIKE '%.md%'
@@ -65,16 +65,16 @@ LEFT JOIN
     )
 LEFT OUTER JOIN
     "DP_API_IMAGEDATA"
-    ON metadata."API_ID" = "DP_API_IMAGEDATA"."API_ID"
+    ON metadata."ID" = "DP_API_IMAGEDATA"."API_ID"
 LEFT OUTER JOIN
     "DP_API_SUBSCRIPTION_PLAN"
-    ON metadata."API_ID" = "DP_API_SUBSCRIPTION_PLAN"."API_ID"
+    ON metadata."ID" = "DP_API_SUBSCRIPTION_PLAN"."API_ID"
 LEFT OUTER JOIN
-    "DP_API_LABELS"
-    ON metadata."API_ID" = "DP_API_LABELS"."API_ID"
+    "DP_API_LABEL"
+    ON metadata."ID" = "DP_API_LABEL"."API_ID"
 LEFT OUTER JOIN
-    "DP_LABELS"
-    ON "DP_API_LABELS"."LABEL_ID" = "DP_LABELS"."LABEL_ID"
+    "DP_LABEL"
+    ON "DP_API_LABEL"."LABEL_ID" = "DP_LABEL"."LABEL_ID"
 WHERE
     (
         to_tsvector('english', metadata."METADATA_SEARCH"::text) @@ plainto_tsquery('english', COALESCE(:searchTerm, ''))
@@ -85,6 +85,6 @@ WHERE
     )
     AND metadata."ORG_ID" = :orgID
 GROUP BY
-    metadata."API_ID"
+    metadata."ID"
 ORDER BY
     rank_metadata DESC;

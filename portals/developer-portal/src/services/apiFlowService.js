@@ -206,9 +206,9 @@ const createAPIFlow = async (req, res) => {
         }, t);
 
         await t.commit();
-        logger.info('APIFlow created', { apiFlowId: apiFlow.API_FLOW_ID, orgID, viewId });
+        logger.info('APIFlow created', { apiFlowId: apiFlow.ID, orgID, viewId });
         res.status(201).json({
-            apiFlowId: apiFlow.API_FLOW_ID,
+            apiFlowId: apiFlow.ID,
             name: apiFlow.NAME,
             status: apiFlow.STATUS
         });
@@ -339,7 +339,7 @@ const parseFileContent = (raw) => {
 const toAPIFlowDTO = (apiFlow) => {
     const fileContent = parseFileContent(apiFlow.FILE_CONTENT);
     return {
-    apiFlowId: apiFlow.API_FLOW_ID,
+    apiFlowId: apiFlow.ID,
     name: apiFlow.NAME,
     handle: apiFlow.HANDLE,
     description: apiFlow.DESCRIPTION,

@@ -69,8 +69,8 @@ async function claimPending(batchSize) {
         }
         const events = await DPEvent.findAll(findOpts);
         if (events.length === 0) return [];
-        const ids = events.map(e => e.EVENT_ID);
-        await DPEvent.update({ STATUS: 'DISPATCHED' }, { where: { EVENT_ID: { [Op.in]: ids } }, transaction: t });
+        const ids = events.map(e => e.ID);
+        await DPEvent.update({ STATUS: 'DISPATCHED' }, { where: { ID: { [Op.in]: ids } }, transaction: t });
         return events;
     });
 }
@@ -94,10 +94,10 @@ async function claimDueDeliveries(batchSize) {
         }
         const rows = await DPEventDelivery.findAll(findOpts);
         if (rows.length === 0) return [];
-        const ids = rows.map(r => r.DELIVERY_ID);
+        const ids = rows.map(r => r.ID);
         await DPEventDelivery.update(
             { STATUS: 'IN_FLIGHT', LAST_ATTEMPT_AT: new Date() },
-            { where: { DELIVERY_ID: { [Op.in]: ids } }, transaction: t }
+            { where: { ID: { [Op.in]: ids } }, transaction: t }
         );
         return rows;
     });
@@ -109,7 +109,7 @@ async function claimDueDeliveries(batchSize) {
 async function markDelivered(deliveryId, httpStatus) {
     await DPEventDelivery.update(
         { STATUS: 'DELIVERED', LAST_HTTP_STATUS: httpStatus, DELIVERED_AT: new Date() },
-        { where: { DELIVERY_ID: deliveryId } }
+        { where: { ID: deliveryId } }
     );
     await reconcile(await DPEventDelivery.findByPk(deliveryId));
 }
@@ -125,7 +125,7 @@ async function markFailed(deliveryId, { httpStatus, error, attemptCount, nextAtt
         LAST_ERROR: error ? String(error).slice(0, 1000) : null,
         NEXT_ATTEMPT_AT: deadLetter ? new Date() : nextAttemptAt
     };
-    await DPEventDelivery.update(update, { where: { DELIVERY_ID: deliveryId } });
+    await DPEventDelivery.update(update, { where: { ID: deliveryId } });
     if (deadLetter) {
         await reconcile(await DPEventDelivery.findByPk(deliveryId));
     }
@@ -144,7 +144,7 @@ async function reconcile(delivery) {
     const allDelivered = all.every(d => d.STATUS === 'DELIVERED');
     await DPEvent.update(
         { STATUS: allDelivered ? 'ALL_DELIVERED' : 'FAILED' },
-        { where: { EVENT_ID: delivery.EVENT_ID } }
+        { where: { ID: delivery.EVENT_ID } }
     );
 }
 
@@ -160,7 +160,7 @@ async function list({ orgId, status, limit = 50, offset = 0 }) {
         order: [['OCCURRED_AT', 'DESC']],
         limit,
         offset,
-        include: [{ model: DPEventDelivery, attributes: ['DELIVERY_ID', 'SUBSCRIBER_ID', 'STATUS', 'ATTEMPT_COUNT', 'DELIVERED_AT'] }]
+        include: [{ model: DPEventDelivery, attributes: ['ID', 'SUBSCRIBER_ID', 'STATUS', 'ATTEMPT_COUNT', 'DELIVERED_AT'] }]
     });
 }
 
@@ -194,11 +194,11 @@ async function retryDelivery(deliveryId, orgId) {
         { STATUS: 'PENDING', NEXT_ATTEMPT_AT: new Date(), LAST_ERROR: null },
         {
             where: {
-                DELIVERY_ID: deliveryId,
+                ID: deliveryId,
                 STATUS: { [Op.in]: ['DEAD_LETTERED', 'FAILED', 'IN_FLIGHT'] },
                 EVENT_ID: {
                     [Op.in]: sequelize.literal(
-                        `(SELECT EVENT_ID FROM DP_EVENT WHERE ORG_ID = ${sequelize.escape(orgId)})`
+                        `(SELECT ID FROM DP_EVENT WHERE ORG_ID = ${sequelize.escape(orgId)})`
                     )
                 }
             }

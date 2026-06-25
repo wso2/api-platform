@@ -23,7 +23,7 @@ const { Organization } = require('./organization')
 const Labels = require('./label');
 
 const APIMetadata = sequelize.define('DP_API_METADATA', {
-  API_ID: {
+  ID: {
     type: DataTypes.UUID,
     defaultValue: Sequelize.UUIDV4,
     primaryKey: true
@@ -32,7 +32,7 @@ const APIMetadata = sequelize.define('DP_API_METADATA', {
     type: DataTypes.STRING,
     allowNull: true
   },
-  API_NAME: {
+  NAME: {
     type: DataTypes.STRING,
     allowNull: false
   },
@@ -41,15 +41,15 @@ const APIMetadata = sequelize.define('DP_API_METADATA', {
     values: ['CREATED', 'PUBLISHED'],
     allowNull: false
   },
-  API_DESCRIPTION: {
+  DESCRIPTION: {
     type: DataTypes.STRING,
     allowNull: true,
   },
-  API_VERSION: {
+  VERSION: {
     type: DataTypes.STRING,
     allowNull: false,
   },
-  API_TYPE: {
+  TYPE: {
     type: DataTypes.ENUM,
     values: ['REST', 'WS', 'GRAPHQL', 'SOAP', 'WEBSUB', 'MCP'],
     allowNull: false
@@ -101,7 +101,7 @@ const APIMetadata = sequelize.define('DP_API_METADATA', {
     type: DataTypes.STRING,
     allowNull: true
   },
-  API_HANDLE: {
+  HANDLE: {
     type: DataTypes.STRING,
     allowNull: true
   },
@@ -113,7 +113,7 @@ const APIMetadata = sequelize.define('DP_API_METADATA', {
       {
           name: 'UQ_API_METADATA_NAME_VERSION_ORG',
           unique: true,
-          fields: ['API_NAME', 'API_VERSION', 'ORG_ID']
+          fields: ['NAME', 'VERSION', 'ORG_ID']
       },
       {
           name: 'UQ_API_METADATA_ORG_REFERENCE_ID',
@@ -123,12 +123,12 @@ const APIMetadata = sequelize.define('DP_API_METADATA', {
       {
           name: 'UQ_API_METADATA_HANDLE_ORG',
           unique: true,
-          fields: ['API_HANDLE', 'ORG_ID']
+          fields: ['HANDLE', 'ORG_ID']
       }
   ]
 });
 
-const APILabels = sequelize.define('DP_API_LABELS', {
+const APILabels = sequelize.define('DP_API_LABEL', {
 
   ID: {
       type: DataTypes.UUID,
@@ -144,7 +144,7 @@ const APILabels = sequelize.define('DP_API_LABELS', {
       allowNull: false,
       references: {
           model: APIMetadata,
-          key: 'API_ID',
+          key: 'ID',
       }
   },
   LABEL_ID: {
@@ -152,16 +152,16 @@ const APILabels = sequelize.define('DP_API_LABELS', {
       allowNull: false,
       references: {
           model: Labels,
-          key: 'LABEL_ID',
+          key: 'ID',
       }
   }
 }, {
   timestamps: false,
-  tableName: 'DP_API_LABELS',
+  tableName: 'DP_API_LABEL',
   returning: true,
   indexes: [
       {
-          name: 'UQ_API_LABELS_LABEL_API_ORG',
+          name: 'UQ_API_LABEL_LABEL_API_ORG',
           unique: true,
           fields: ['LABEL_ID', 'API_ID', 'ORG_ID']
       }

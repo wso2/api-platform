@@ -22,7 +22,7 @@
  */
 class KeyManagerDTO {
     constructor(km) {
-        this.id = km.KM_ID;
+        this.id = km.ID;
         this.orgId = km.ORG_ID;
         this.name = km.NAME;
         this.type = km.TYPE;
@@ -47,7 +47,7 @@ class KeyManagerDTO {
  */
 class KeyManagerPublicDTO {
     constructor(km) {
-        this.id = km.KM_ID;
+        this.id = km.ID;
         this.name = km.NAME;
         this.type = km.TYPE;
         this.tokenEndpoint = km.TOKEN_ENDPOINT;

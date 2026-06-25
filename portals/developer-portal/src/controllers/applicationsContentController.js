@@ -32,7 +32,7 @@ const apiKeyService = require('../services/apiKeyService');
 
 const orgIDValue = async (orgName) => {
     const organization = await orgDao.get(orgName);
-    return organization.ORG_ID;
+    return organization.ID;
 }
 
 const templateResponseValue = async (pageName) => {
@@ -82,7 +82,7 @@ const loadApplicationData = async (req, orgName, applicationId, viewName) => {
                             keyManager: km.NAME,
                             consumerKey: mapping.AS_CLIENT_ID,
                             consumerSecret: '',
-                            keyMappingId: mapping.MAPPING_ID,
+                            keyMappingId: mapping.ID,
                             keyType: mapping.KEY_TYPE || constants.KEY_TYPE.PRODUCTION,
                             supportedGrantTypes: storedProps.grant_types || km.SUPPORTED_GRANT_TYPES || ['client_credentials'],
                             additionalProperties: storedProps,
@@ -90,7 +90,7 @@ const loadApplicationData = async (req, orgName, applicationId, viewName) => {
                         });
                     } catch (mappingErr) {
                         logger.warn('Skipping key mapping due to error', {
-                            mappingId: mapping.MAPPING_ID, error: mappingErr.message
+                            mappingId: mapping.ID, error: mappingErr.message
                         });
                     }
                 }
@@ -111,7 +111,7 @@ const loadApplicationData = async (req, orgName, applicationId, viewName) => {
         for (const km of dbKeyManagers) {
             const grantTypes = km.SUPPORTED_GRANT_TYPES || ['client_credentials'];
             kMmetaData.push({
-                id: km.KM_ID,
+                id: km.ID,
                 name: km.NAME,
                 type: km.TYPE,
                 enabled: true,
@@ -388,8 +388,8 @@ const loadApplicationKeys = async (req, res, next) => {
  */
 function formatApiDisplayName(apiMetadata, fallbackId) {
     if (!apiMetadata) return fallbackId;
-    const namePart = [apiMetadata.API_NAME, apiMetadata.API_VERSION].filter(Boolean).join(' ');
-    return apiMetadata.API_HANDLE ? `${namePart} (${apiMetadata.API_HANDLE})` : namePart;
+    const namePart = [apiMetadata.NAME, apiMetadata.VERSION].filter(Boolean).join(' ');
+    return apiMetadata.HANDLE ? `${namePart} (${apiMetadata.HANDLE})` : namePart;
 }
 
 async function loadApplicationApiKeysData(orgID, applicationId) {
@@ -398,7 +398,7 @@ async function loadApplicationApiKeysData(orgID, applicationId) {
     try {
         const associated = await apiKeyService.list(orgID, { appId: applicationId });
         associatedApiKeys = associated.map((k) => ({
-            keyId: k.KEY_ID,
+            keyId: k.ID,
             name: k.NAME,
             status: String(k.STATUS || 'ACTIVE').toLowerCase(),
             apiId: k.API_ID,
@@ -413,7 +413,7 @@ async function loadApplicationApiKeysData(orgID, applicationId) {
             const apiId = k.API_ID;
             const apiName = formatApiDisplayName(k.DP_API_METADATA, apiId);
             if (!byApi.has(apiId)) byApi.set(apiId, { apiId, apiName, keys: [] });
-            byApi.get(apiId).keys.push({ keyId: k.KEY_ID, name: k.NAME });
+            byApi.get(apiId).keys.push({ keyId: k.ID, name: k.NAME });
         });
         availableKeysByApi = Array.from(byApi.values());
     } catch (error) {

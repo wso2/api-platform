@@ -104,7 +104,7 @@ const createAPIMetadata = async (req, res) => {
         }, async (t) => {
             // Create apimetadata record
             const createdAPI = await apiDao.create(orgId, apiMetadata, t);
-            const apiID = createdAPI.dataValues.API_ID;
+            const apiID = createdAPI.dataValues.ID;
             if (apiMetadata.subscriptionPlans) {
                 const subscriptionPlans = [];
                 const apiSubscriptionPlans = apiMetadata.subscriptionPlans;
@@ -118,7 +118,7 @@ const createAPIMetadata = async (req, res) => {
                         if (!subscriptionPlan) {
                             throw new Sequelize.EmptyResultError("Subscription plan not found");
                         } else {
-                            subscriptionPlans.push({ apiID: apiID, planID: subscriptionPlan.PLAN_ID });
+                            subscriptionPlans.push({ apiID: apiID, planID: subscriptionPlan.ID });
                         }
                     };
                 }
@@ -328,8 +328,8 @@ const getMetadataListFromDB = async (orgID, groups, searchTerm, tags, apiName, a
         let retrievedAPIs;
         if (apiName || apiVersion || tags) {
             const condition = {};
-            if (apiName) condition.API_NAME = apiName;
-            if (apiVersion) condition.API_VERSION = apiVersion;
+            if (apiName) condition.NAME = apiName;
+            if (apiVersion) condition.VERSION = apiVersion;
             if (tags) condition.TAGS = tags;
             condition.ORG_ID = orgID;
             retrievedAPIs = await apiDao.getByCondition(condition);
@@ -467,7 +467,7 @@ const updateAPIMetadata = async (req, res) => {
                         if (!subscriptionPlan) {
                             throw new Sequelize.EmptyResultError("Subscription plan not found");
                         } else {
-                            subscriptionPlans.push({ apiID: apiId, planID: subscriptionPlan.PLAN_ID });
+                            subscriptionPlans.push({ apiID: apiId, planID: subscriptionPlan.ID });
                         }
                     };
                 }
@@ -1398,7 +1398,7 @@ const addView = async (req, res) => {
     }, async (t) => {
         try {
             const viewResponse = await viewDao.create(orgId, req.body, t);
-            const viewID = viewResponse.dataValues.VIEW_ID;
+            const viewID = viewResponse.dataValues.ID;
             await viewDao.addLabels(orgId, viewID, labels, t);
             res.status(201).send({ message: "View added successfully" });
         } catch (error) {
@@ -1426,7 +1426,7 @@ const updateView = async (req, res) => {
             let viewID = "";
             if (req.body.displayName) {
                 let viewResponse = await viewDao.update(orgId, viewName, req.body.displayName, t);
-                viewID = viewResponse.dataValues.VIEW_ID;
+                viewID = viewResponse.dataValues.ID;
             }
             if (removedLabels.length !== 0) {
                 await viewDao.deleteLabels(orgId, viewID, removedLabels, t);

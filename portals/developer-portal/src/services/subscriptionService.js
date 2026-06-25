@@ -38,14 +38,14 @@ async function safePublish(eventType, payload, opts) {
 
 function buildWebhookPayload(sub, apiMetadata, plan) {
     return {
-        subscription_id: sub.SUB_ID,
+        subscription_id: sub.ID,
         subscription_plan: {
             ref_id: plan ? (plan.REF_ID || null) : null,
-            name: plan ? (plan.PLAN_NAME || plan.DISPLAY_NAME || null) : null,
+            name: plan ? (plan.NAME || plan.DISPLAY_NAME || null) : null,
         },
         api: {
-            name: apiMetadata ? apiMetadata.API_NAME : null,
-            version: apiMetadata ? apiMetadata.API_VERSION : null,
+            name: apiMetadata ? apiMetadata.NAME : null,
+            version: apiMetadata ? apiMetadata.VERSION : null,
             ref_id: apiMetadata ? (apiMetadata.REFERENCE_ID || '') : '',
         },
     };
@@ -54,11 +54,11 @@ function buildWebhookPayload(sub, apiMetadata, plan) {
 function formatSubscriptionResponse(sub) {
     const plan = sub.DP_SUBSCRIPTION_PLAN || {};
     return {
-        subscriptionId: sub.SUB_ID,
+        subscriptionId: sub.ID,
         subscriptionToken: sub.SUB_TOKEN,
         status: sub.STATUS,
         apiId: sub.API_ID,
-        subscriptionPlanName: plan.PLAN_NAME || null,
+        subscriptionPlanName: plan.NAME || null,
         createdBy: sub.CREATED_BY || null,
         createdAt: sub.CREATED_AT || null,
     };
@@ -91,14 +91,14 @@ const createSubscription = async (req, res) => {
         let matchedPlan = null;
 
         if (reqPlanId) {
-            matchedPlan = plans.find(p => p.PLAN_ID === reqPlanId);
+            matchedPlan = plans.find(p => p.ID === reqPlanId);
             if (!matchedPlan) {
                 return res.status(400).json({
                     code: '400', message: 'Bad Request',
                     description: `Subscription plan not found for this API`,
                 });
             }
-            planId = matchedPlan.PLAN_ID;
+            planId = matchedPlan.ID;
         }
 
         let newSub;
@@ -110,13 +110,13 @@ const createSubscription = async (req, res) => {
                 transaction: t,
                 orgId: orgID,
                 aggregateType: 'subscription',
-                aggregateId: newSub.SUB_ID,
+                aggregateId: newSub.ID,
                 plaintextKey: newSub.SUB_TOKEN,
             });
         });
 
-        const created = await subDao.get(orgID, newSub.SUB_ID, createdBy);
-        logUserAction('SUBSCRIPTION_CREATED', req, { orgId: orgID, apiId, subscriptionId: newSub.SUB_ID });
+        const created = await subDao.get(orgID, newSub.ID, createdBy);
+        logUserAction('SUBSCRIPTION_CREATED', req, { orgId: orgID, apiId, subscriptionId: newSub.ID });
         return res.status(201).json(formatSubscriptionResponse(created));
     } catch (error) {
         if (error.name === 'SequelizeUniqueConstraintError') {

@@ -27,7 +27,7 @@ const { KeyManager } = require('./keyManager');
 
 const Application = sequelize.define('DP_APPLICATION', {
 
-    APP_ID: {
+    ID: {
         type: DataTypes.UUID,
         defaultValue: Sequelize.UUIDV4,
         primaryKey: true
@@ -63,7 +63,7 @@ const Application = sequelize.define('DP_APPLICATION', {
 
 const ApplicationKeyMapping = sequelize.define('DP_APP_KEY_MAPPING', {
 
-    MAPPING_ID: {
+    ID: {
         type: DataTypes.UUID,
         defaultValue: Sequelize.UUIDV4,
         primaryKey: true
@@ -101,7 +101,7 @@ const ApplicationKeyMapping = sequelize.define('DP_APP_KEY_MAPPING', {
 
 const SubscriptionMapping = sequelize.define('DP_API_SUBSCRIPTION', {
 
-    SUB_ID: {
+    ID: {
         type: DataTypes.UUID,
         defaultValue: Sequelize.UUIDV4,
         primaryKey: true
@@ -115,7 +115,7 @@ const SubscriptionMapping = sequelize.define('DP_API_SUBSCRIPTION', {
         allowNull: false,
         references: {
             model: APIMetadata,
-            key: 'API_ID',
+            key: 'ID',
         },
     },
     PLAN_ID: {
@@ -123,7 +123,7 @@ const SubscriptionMapping = sequelize.define('DP_API_SUBSCRIPTION', {
         allowNull: true,
         references: {
             model: SubscriptionPlan,
-            key: 'PLAN_ID',
+            key: 'ID',
         },
     },
     ORG_ID: {
