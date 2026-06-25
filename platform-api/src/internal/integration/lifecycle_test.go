@@ -91,12 +91,12 @@ func TestLifecycle_SubscriptionPlanExistsAndList(t *testing.T) {
 		t.Fatalf("[%s] create org failed: %v", it.driver, err)
 	}
 
-	exists, err := planRepo.ExistsByNameAndOrg("nope-"+id(), org.ID)
+	exists, err := planRepo.ExistsByHandleAndOrg("nope-"+id(), org.ID)
 	if err != nil {
-		t.Fatalf("[%s] ExistsByNameAndOrg failed: %v", it.driver, err)
+		t.Fatalf("[%s] ExistsByHandleAndOrg failed: %v", it.driver, err)
 	}
 	if exists {
-		t.Fatalf("[%s] ExistsByNameAndOrg: want false for missing plan", it.driver)
+		t.Fatalf("[%s] ExistsByHandleAndOrg: want false for missing plan", it.driver)
 	}
 
 	count := 5

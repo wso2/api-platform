@@ -1179,7 +1179,7 @@ func TestLLMProviderServiceCreateMigratesLegacyPolicies(t *testing.T) {
 		},
 	}
 	orgRepo := &mockOrganizationRepo{org: &model.Organization{ID: "org-1"}}
-	service := NewLLMProviderService(providerRepo, templateRepo, orgRepo, nil, nil, nil, nil, slog.Default())
+	service := NewLLMProviderService(providerRepo, templateRepo, orgRepo, nil, nil, nil, nil, slog.Default(), &noopAuditRepo{})
 
 	request := validProviderRequest("openai")
 	request.Policies = &[]api.LLMPolicy{
