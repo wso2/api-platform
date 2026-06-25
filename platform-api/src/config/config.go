@@ -278,6 +278,14 @@ func LoadConfig(configPath string) (*Server, error) {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
 	}
 
+	// For server databases (non-SQLite), auto-provisioning DDL at startup is a
+	// security risk: it requires DDL privileges and mutates an externally managed
+	// schema. Default execute_schema_ddl to false unless the operator explicitly
+	// opted in. The default (true) is kept only for the local SQLite file case.
+	if !k.Exists("database.execute_schema_ddl") && strings.ToLower(cfg.Database.Driver) != "sqlite3" {
+		cfg.Database.ExecuteSchemaDDL = false
+	}
+
 	if err := validateDefaultDevPortalConfig(&cfg.DefaultDevPortal); err != nil {
 		return nil, err
 	}
