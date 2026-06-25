@@ -241,7 +241,7 @@ func (h *LLMHandler) CreateLLMProviderTemplateVersion(c *gin.Context) {
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "LLM provider template not found"))
 			return
 		case errors.Is(err, constants.ErrLLMProviderTemplateVersionExists):
-			c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict", "A version with this number already exists"))
+			c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict", "The version already exists"))
 			return
 		case errors.Is(err, constants.ErrLLMProviderTemplateManagedByReserved):
 			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "'wso2' is reserved and cannot be used as managedBy on custom templates"))

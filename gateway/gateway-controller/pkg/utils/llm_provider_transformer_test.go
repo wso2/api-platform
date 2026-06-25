@@ -285,7 +285,7 @@ func TestTransform_ProviderReferencesVersionedTemplateId(t *testing.T) {
 	customTemplate := &models.StoredLLMProviderTemplate{
 		UUID: "0000-ecustom-v1-template-0000-000000000000",
 		Configuration: api.LLMProviderTemplate{
-			ApiVersion: "gateway.api-platform.wso2.com/v1alpha1",
+			ApiVersion: "gateway.api-platform.wso2.com/v1",
 			Kind:       "LlmProviderTemplate",
 			Metadata:   api.Metadata{Name: "ecustom-v1-0"},
 			Spec: api.LLMProviderTemplateData{
@@ -311,7 +311,7 @@ func TestTransform_ProviderReferencesVersionedTemplateId(t *testing.T) {
 	transformer := NewLLMProviderTransformer(store, db, &cfg, newTestPolicyVersionResolver())
 
 	provider := &api.LLMProviderConfiguration{
-		ApiVersion: "gateway.api-platform.wso2.com/v1alpha1",
+		ApiVersion: "gateway.api-platform.wso2.com/v1",
 		Kind:       "LlmProvider",
 		Metadata:   api.Metadata{Name: "ecustom-provider-v1"},
 		Spec: api.LLMProviderConfigData{

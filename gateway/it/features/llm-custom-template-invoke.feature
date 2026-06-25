@@ -33,7 +33,7 @@ Feature: Custom LLM Provider Template deploy and invoke
     Given I authenticate using basic auth as "admin"
     When I create this LLM provider template:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProviderTemplate
       metadata:
         name: ecustom-v1-0
@@ -66,7 +66,7 @@ Feature: Custom LLM Provider Template deploy and invoke
     Given I authenticate using basic auth as "admin"
     When I create this LLM provider template:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProviderTemplate
       metadata:
         name: ecustom-v2-0
@@ -98,7 +98,7 @@ Feature: Custom LLM Provider Template deploy and invoke
     Given I authenticate using basic auth as "admin"
     When I create this LLM provider:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProvider
       metadata:
         name: ecustom-provider-v1
@@ -122,7 +122,7 @@ Feature: Custom LLM Provider Template deploy and invoke
     Given I authenticate using basic auth as "admin"
     When I create this LLM provider:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProvider
       metadata:
         name: ecustom-provider-v2

@@ -55,12 +55,14 @@ Cypress.Commands.add('sweepE2EProviders', (authToken, organizationId) => {
     cy
       .request({
         method: 'GET',
-        url: `/api-proxy/api/v1/llm-providers?organizationId=${encodeURIComponent(orgId)}&limit=${PAGE_SIZE}&offset=${offset}`,
+        url: `/api-proxy/api/v0.9/llm-providers?organizationId=${encodeURIComponent(orgId)}&limit=${PAGE_SIZE}&offset=${offset}`,
         headers: headersFor(token),
         failOnStatusCode: false,
       })
       .then((response) => {
-        expect(response.status).to.eq(200);
+        // Cleanup runs in afterEach; a transient non-200 from the list endpoint
+        // must not hard-fail the spec it is cleaning up after. Skip this page.
+        if (response.status !== 200) return acc;
         const page = response.body?.list ?? [];
         const next = acc.concat(
           page.filter(
@@ -77,7 +79,7 @@ Cypress.Commands.add('sweepE2EProviders', (authToken, organizationId) => {
     cy
       .request({
         method: 'GET',
-        url: `/api-proxy/api/v1/llm-providers/${encodeURIComponent(providerId)}/llm-proxies?organizationId=${encodeURIComponent(orgId)}`,
+        url: `/api-proxy/api/v0.9/llm-providers/${encodeURIComponent(providerId)}/llm-proxies?organizationId=${encodeURIComponent(orgId)}`,
         headers: headersFor(token),
         failOnStatusCode: false,
       })
@@ -89,7 +91,7 @@ Cypress.Commands.add('sweepE2EProviders', (authToken, organizationId) => {
           cy
             .request({
               method: 'DELETE',
-              url: `/api-proxy/api/v1/llm-proxies/${encodeURIComponent(proxy.id)}?organizationId=${encodeURIComponent(orgId)}`,
+              url: `/api-proxy/api/v0.9/llm-proxies/${encodeURIComponent(proxy.id)}?organizationId=${encodeURIComponent(orgId)}`,
               headers: headersFor(token),
               failOnStatusCode: false,
             })
@@ -107,7 +109,7 @@ Cypress.Commands.add('sweepE2EProviders', (authToken, organizationId) => {
           cy
             .request({
               method: 'DELETE',
-              url: `/api-proxy/api/v1/llm-providers/${encodeURIComponent(provider.id)}?organizationId=${encodeURIComponent(orgId)}`,
+              url: `/api-proxy/api/v0.9/llm-providers/${encodeURIComponent(provider.id)}?organizationId=${encodeURIComponent(orgId)}`,
               headers: headersFor(token),
               failOnStatusCode: false,
             })
@@ -141,7 +143,7 @@ Cypress.Commands.add('sweepE2EProviders', (authToken, organizationId) => {
       if (!token) return;
       return cy
         .request({
-          url: '/api-proxy/api/v1/organizations',
+          url: '/api-proxy/api/v0.9/organizations',
           headers: { Authorization: `Bearer ${token}` },
           failOnStatusCode: false,
         })

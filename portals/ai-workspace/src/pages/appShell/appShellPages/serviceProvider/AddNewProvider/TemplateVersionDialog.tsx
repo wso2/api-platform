@@ -73,8 +73,13 @@ export default function TemplateVersionDialog({
       .getProviderTemplateVersions(templateId, organizationId, PLATFORM_API_BASE_URL)
       .then((list) => {
         if (!isMounted) return;
-        // Only offer enabled versions (disabled ones are hidden everywhere).
-        const enabled = list.filter((v) => v.enabled !== false);
+        const parseVerNum = (s: string) => {
+          const [maj = 0, min = 0] = (s || 'v0').replace(/^v/i, '').split('.').map(Number);
+          return maj * 1000 + min;
+        };
+        const enabled = list
+          .filter((v) => v.enabled !== false)
+          .sort((a, b) => parseVerNum(b.version || 'v0') - parseVerNum(a.version || 'v0'));
         setVersions(enabled);
         // Default to the latest version, else the first returned.
         const latest = enabled.find((v) => v.isLatest) ?? enabled[0];

@@ -47,7 +47,7 @@ export function buildTemplateManifestYaml(t: ProviderTemplate): string {
   }
 
   const manifest = {
-    apiVersion: 'gateway.api-platform.wso2.com/v1alpha1',
+    apiVersion: 'gateway.api-platform.wso2.com/v1',
     kind: 'LlmProviderTemplate',
     metadata: { name: t.id },
     spec,

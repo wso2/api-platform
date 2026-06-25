@@ -49,7 +49,7 @@ describe('AI Workspace - Custom LLM provider template lifecycle', () => {
         expect(authToken).to.not.equal('');
 
         return cy.request({
-          url: '/api-proxy/api/v1/organizations',
+          url: '/api-proxy/api/v0.9/organizations',
           headers: {
             Authorization: `Bearer ${authToken}`,
           },
@@ -218,7 +218,7 @@ describe('AI Workspace - Custom LLM provider template lifecycle', () => {
 
 function waitForProviderGone(authToken, organizationId, providerId) {
   return requestWithAuth(authToken, {
-    url: `/api-proxy/api/v1/llm-providers?organizationId=${encodeURIComponent(organizationId)}`,
+    url: `/api-proxy/api/v0.9/llm-providers?organizationId=${encodeURIComponent(organizationId)}`,
   }).then((res) => {
     const stillThere = (res.body?.list ?? []).some((p) => p.id === providerId);
     if (stillThere) {
@@ -235,7 +235,7 @@ function deleteProvider(authToken, organizationId, targetProviderId) {
   }
   return requestWithAuth(authToken, {
     method: 'DELETE',
-    url: `/api-proxy/api/v1/llm-providers/${encodeURIComponent(targetProviderId)}?organizationId=${encodeURIComponent(organizationId)}`,
+    url: `/api-proxy/api/v0.9/llm-providers/${encodeURIComponent(targetProviderId)}?organizationId=${encodeURIComponent(organizationId)}`,
     failOnStatusCode: false,
   }).then((response) => {
     expect(response.status).to.be.oneOf([200, 204, 404]);
@@ -245,7 +245,7 @@ function deleteProvider(authToken, organizationId, targetProviderId) {
 function deleteProviderTemplate(authToken, organizationId, templateId) {
   return requestWithAuth(authToken, {
     method: 'DELETE',
-    url: `/api-proxy/api/v1/llm-provider-templates/${encodeURIComponent(templateId)}?organizationId=${encodeURIComponent(organizationId)}`,
+    url: `/api-proxy/api/v0.9/llm-provider-templates/${encodeURIComponent(templateId)}?organizationId=${encodeURIComponent(organizationId)}`,
     failOnStatusCode: false,
   }).then((response) => {
     expect(response.status).to.be.oneOf([200, 204, 404, 409]);

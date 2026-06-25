@@ -657,7 +657,7 @@ func TestLLMDeploymentService_CreateLLMProviderTemplate_HandleConflict(t *testin
 // managedBy and version fields (as produced by the AI workspace download).
 func templateYAMLWithManagedByVersion(handle, displayName, managedBy, version string) []byte {
 	return []byte(fmt.Sprintf(`
-apiVersion: gateway.api-platform.wso2.com/v1alpha1
+apiVersion: gateway.api-platform.wso2.com/v1
 kind: LlmProviderTemplate
 metadata:
   name: %s
