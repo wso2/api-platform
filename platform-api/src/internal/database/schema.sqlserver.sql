@@ -19,10 +19,10 @@
 IF OBJECT_ID(N'dbo.organizations', N'U') IS NULL
 CREATE TABLE dbo.organizations (
     uuid VARCHAR(40) PRIMARY KEY,
-    handle VARCHAR(255) UNIQUE NOT NULL,
+    handle VARCHAR(40) UNIQUE NOT NULL,
     name VARCHAR(255) NOT NULL,
     region VARCHAR(63) NOT NULL,
-    data_version VARCHAR(20) NOT NULL DEFAULT 'v1.0',
+    data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
     created_by VARCHAR(200),
     created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     updated_by VARCHAR(200),
@@ -33,29 +33,31 @@ CREATE TABLE dbo.organizations (
 IF OBJECT_ID(N'dbo.projects', N'U') IS NULL
 CREATE TABLE dbo.projects (
     uuid VARCHAR(40) PRIMARY KEY,
+    handle VARCHAR(255) NOT NULL,
     name VARCHAR(255) NOT NULL,
     organization_uuid VARCHAR(40) NOT NULL,
     description VARCHAR(1023),
-    data_version VARCHAR(20) NOT NULL DEFAULT 'v1.0',
+    data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
     created_by VARCHAR(200),
     created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     updated_by VARCHAR(200),
     updated_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
-    UNIQUE(name, organization_uuid)
+    UNIQUE(organization_uuid, handle),
+    UNIQUE(organization_uuid, name)
 );
 
 -- Applications table
 IF OBJECT_ID(N'dbo.applications', N'U') IS NULL
 CREATE TABLE dbo.applications (
     uuid VARCHAR(40) PRIMARY KEY,
-    handle VARCHAR(255) NOT NULL,
+    handle VARCHAR(40) NOT NULL,
     project_uuid VARCHAR(40) NOT NULL,
     organization_uuid VARCHAR(40) NOT NULL,
     name VARCHAR(255) NOT NULL,
     description VARCHAR(1023),
     type VARCHAR(50) NOT NULL,
-    data_version VARCHAR(20) NOT NULL DEFAULT 'v1.0',
+    data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
     created_by VARCHAR(200),
     created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     updated_by VARCHAR(200),
@@ -66,8 +68,8 @@ CREATE TABLE dbo.applications (
     -- applications via organizations -> projects -> applications, so no
     -- cleanup behavior is lost relative to the Postgres schema.
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE NO ACTION,
-    UNIQUE(project_uuid, organization_uuid, name),
-    UNIQUE(handle, organization_uuid)
+    UNIQUE(organization_uuid, project_uuid, name),
+    UNIQUE(organization_uuid, handle)
 );
 
 -- Artifacts table
@@ -87,19 +89,22 @@ IF OBJECT_ID(N'dbo.rest_apis', N'U') IS NULL
 CREATE TABLE dbo.rest_apis (
     uuid VARCHAR(40) PRIMARY KEY,
     organization_uuid VARCHAR(40) NOT NULL,
-    handle VARCHAR(255) NOT NULL,
+    handle VARCHAR(40) NOT NULL,
     name VARCHAR(255) NOT NULL,
-    version VARCHAR(30) NOT NULL DEFAULT 'v1.0',
+    version VARCHAR(30) NOT NULL DEFAULT '1.0',
     project_uuid VARCHAR(40) NOT NULL,
     description VARCHAR(1023),
     lifecycle_status VARCHAR(20) NOT NULL DEFAULT 'CREATED',
     configuration VARBINARY(MAX) NOT NULL,
-    data_version VARCHAR(20) NOT NULL DEFAULT 'v1.0',
+    data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
     created_by VARCHAR(200),
     created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     updated_by VARCHAR(200),
     updated_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     FOREIGN KEY (uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
+    -- NO ACTION to avoid SQL Server multiple-cascade-paths restriction (error 1785).
+    -- Rows are removed via the artifact CASCADE edge.
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE NO ACTION,
     FOREIGN KEY (project_uuid) REFERENCES projects(uuid) ON DELETE CASCADE,
     UNIQUE(organization_uuid, handle)
 );
@@ -108,7 +113,7 @@ CREATE TABLE dbo.rest_apis (
 IF OBJECT_ID(N'dbo.subscription_plans', N'U') IS NULL
 CREATE TABLE dbo.subscription_plans (
     uuid VARCHAR(40) PRIMARY KEY,
-    plan_name VARCHAR(40) NOT NULL,
+    plan_name VARCHAR(255) NOT NULL,
     billing_plan VARCHAR(255),
     stop_on_quota_reach SMALLINT DEFAULT 1,
     throttle_limit_count INT,
@@ -116,7 +121,7 @@ CREATE TABLE dbo.subscription_plans (
     expiry_time DATETIME2(7),
     organization_uuid VARCHAR(40) NOT NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
-    data_version VARCHAR(20) NOT NULL DEFAULT 'v1.0',
+    data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
     created_by VARCHAR(200),
     created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     updated_by VARCHAR(200),
@@ -145,7 +150,7 @@ CREATE TABLE dbo.subscriptions (
     subscription_plan_uuid VARCHAR(40),
     organization_uuid VARCHAR(40) NOT NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
-    data_version VARCHAR(20) NOT NULL DEFAULT 'v1.0',
+    data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
     created_by VARCHAR(200),
     created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     updated_by VARCHAR(200),
@@ -161,7 +166,7 @@ CREATE TABLE dbo.subscriptions (
     FOREIGN KEY (artifact_uuid, organization_uuid)
         REFERENCES artifacts(uuid, organization_uuid) ON DELETE NO ACTION,
     UNIQUE(artifact_uuid, subscription_token_hash),
-    UNIQUE(artifact_uuid, application_id, organization_uuid),
+    UNIQUE(organization_uuid, artifact_uuid, application_id),
     CHECK (status IN ('ACTIVE', 'INACTIVE', 'REVOKED'))
 );
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_subscriptions_token' AND object_id = OBJECT_ID(N'dbo.subscriptions'))
@@ -177,17 +182,17 @@ IF OBJECT_ID(N'dbo.gateways', N'U') IS NULL
 CREATE TABLE dbo.gateways (
     uuid VARCHAR(40) PRIMARY KEY,
     organization_uuid VARCHAR(40) NOT NULL,
-    handle VARCHAR(255) NOT NULL,
+    handle VARCHAR(40) NOT NULL,
     name VARCHAR(255) NOT NULL,
     description VARCHAR(1023),
-    version VARCHAR(64) NOT NULL DEFAULT 'v1.0',
+    version VARCHAR(30) NOT NULL DEFAULT '1.0',
     vhost VARCHAR(255) NOT NULL,
     gateway_functionality_type VARCHAR(20) DEFAULT 'regular' NOT NULL,
     properties VARBINARY(MAX) NOT NULL,
     manifest VARBINARY(MAX),
     is_active SMALLINT DEFAULT 0,
     is_critical SMALLINT DEFAULT 0,
-    data_version VARCHAR(20) NOT NULL DEFAULT 'v1.0',
+    data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
     created_by VARCHAR(200),
     created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     updated_by VARCHAR(200),
@@ -220,10 +225,10 @@ CREATE TABLE dbo.gateway_custom_policies (
     organization_uuid VARCHAR(40) NOT NULL,
     name VARCHAR(255) NOT NULL,
     display_name VARCHAR(255),
-    version VARCHAR(30) NOT NULL DEFAULT 'v1.0',
+    version VARCHAR(30) NOT NULL DEFAULT '1.0',
     description VARCHAR(1023),
     policy_definition VARBINARY(MAX),
-    data_version VARCHAR(20) NOT NULL DEFAULT 'v1.0',
+    data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
     created_by VARCHAR(200),
     created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     updated_by VARCHAR(200),
@@ -250,7 +255,7 @@ CREATE TABLE dbo.gateway_tokens (
     token_hash VARCHAR(255) NOT NULL,
     salt VARCHAR(255) NOT NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'active',
-    data_version VARCHAR(20) NOT NULL DEFAULT 'v1.0',
+    data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
     created_by VARCHAR(200),
     created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     revoked_by VARCHAR(200),
@@ -271,7 +276,7 @@ CREATE TABLE dbo.deployments (
     base_deployment_id VARCHAR(40),
     content VARBINARY(MAX) NOT NULL,
     metadata VARBINARY(MAX),
-    data_version VARCHAR(20) NOT NULL DEFAULT 'v1.0',
+    data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
     created_by VARCHAR(200),
     created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     FOREIGN KEY (artifact_uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
@@ -301,7 +306,7 @@ CREATE TABLE dbo.deployment_status (
     performed_by VARCHAR(200),
     status_reason VARCHAR(50),
     updated_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
-    PRIMARY KEY (artifact_uuid, organization_uuid, gateway_uuid),
+    PRIMARY KEY (organization_uuid, artifact_uuid, gateway_uuid),
     -- Only the deployment_id edge cascades. The artifact/organization/gateway
     -- edges are NO ACTION to avoid the SQL Server multiple-cascade-paths
     -- restriction (error 1785). A status row is always removed when its
@@ -318,17 +323,17 @@ CREATE TABLE dbo.deployment_status (
 IF OBJECT_ID(N'dbo.llm_provider_templates', N'U') IS NULL
 CREATE TABLE dbo.llm_provider_templates (
     uuid VARCHAR(40) PRIMARY KEY,
-    handle VARCHAR(255) NOT NULL,
+    handle VARCHAR(40) NOT NULL,
     group_id VARCHAR(255) NOT NULL,
     name VARCHAR(255) NOT NULL,
     managed_by VARCHAR(20) NOT NULL DEFAULT 'customer',
-    version VARCHAR(30) NOT NULL DEFAULT 'v1.0',
+    version VARCHAR(30) NOT NULL DEFAULT '1.0',
     description VARCHAR(1023),
     configuration VARBINARY(MAX) NOT NULL,
     openapi_spec VARBINARY(MAX),
     is_latest SMALLINT NOT NULL DEFAULT 1,
     enabled SMALLINT NOT NULL DEFAULT 1,
-    data_version VARCHAR(20) NOT NULL DEFAULT 'v1.0',
+    data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
     created_by VARCHAR(200),
     created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     updated_by VARCHAR(200),
@@ -343,21 +348,23 @@ CREATE TABLE dbo.llm_provider_templates (
 IF OBJECT_ID(N'dbo.llm_providers', N'U') IS NULL
 CREATE TABLE dbo.llm_providers (
     uuid VARCHAR(40) PRIMARY KEY,
-    handle VARCHAR(255) NOT NULL,
+    handle VARCHAR(40) NOT NULL,
     name VARCHAR(255) NOT NULL,
-    version VARCHAR(30) NOT NULL DEFAULT 'v1.0',
+    version VARCHAR(30) NOT NULL DEFAULT '1.0',
     description VARCHAR(1023),
     template_uuid VARCHAR(40) NOT NULL,
     openapi_spec VARBINARY(MAX),
     model_list VARBINARY(MAX),
     configuration VARBINARY(MAX) NOT NULL,
-    data_version VARCHAR(20) NOT NULL DEFAULT 'v1.0',
+    data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
     created_by VARCHAR(200),
     created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     updated_by VARCHAR(200),
     updated_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     organization_uuid VARCHAR(40) NOT NULL,
     FOREIGN KEY (uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
+    -- NO ACTION to avoid SQL Server multiple-cascade-paths restriction (error 1785).
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE NO ACTION,
     FOREIGN KEY (template_uuid) REFERENCES llm_provider_templates(uuid) ON DELETE NO ACTION,
     UNIQUE(organization_uuid, handle)
 );
@@ -366,21 +373,23 @@ CREATE TABLE dbo.llm_providers (
 IF OBJECT_ID(N'dbo.llm_proxies', N'U') IS NULL
 CREATE TABLE dbo.llm_proxies (
     uuid VARCHAR(40) PRIMARY KEY,
-    handle VARCHAR(255) NOT NULL,
+    handle VARCHAR(40) NOT NULL,
     name VARCHAR(255) NOT NULL,
-    version VARCHAR(30) NOT NULL DEFAULT 'v1.0',
+    version VARCHAR(30) NOT NULL DEFAULT '1.0',
     project_uuid VARCHAR(40) NOT NULL,
     description VARCHAR(1023),
     provider_uuid VARCHAR(40) NOT NULL,
     openapi_spec VARBINARY(MAX),
     configuration VARBINARY(MAX) NOT NULL,
-    data_version VARCHAR(20) NOT NULL DEFAULT 'v1.0',
+    data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
     created_by VARCHAR(200),
     created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     updated_by VARCHAR(200),
     updated_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     organization_uuid VARCHAR(40) NOT NULL,
     FOREIGN KEY (uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
+    -- NO ACTION to avoid SQL Server multiple-cascade-paths restriction (error 1785).
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE NO ACTION,
     FOREIGN KEY (project_uuid) REFERENCES projects(uuid) ON DELETE CASCADE,
     FOREIGN KEY (provider_uuid) REFERENCES llm_providers(uuid) ON DELETE NO ACTION,
     UNIQUE(organization_uuid, handle)
@@ -390,19 +399,21 @@ CREATE TABLE dbo.llm_proxies (
 IF OBJECT_ID(N'dbo.mcp_proxies', N'U') IS NULL
 CREATE TABLE dbo.mcp_proxies (
     uuid VARCHAR(40) PRIMARY KEY,
-    handle VARCHAR(255) NOT NULL,
+    handle VARCHAR(40) NOT NULL,
     name VARCHAR(255) NOT NULL,
-    version VARCHAR(30) NOT NULL DEFAULT 'v1.0',
+    version VARCHAR(30) NOT NULL DEFAULT '1.0',
     project_uuid VARCHAR(40),
     description VARCHAR(1023),
     configuration VARBINARY(MAX) NOT NULL,
-    data_version VARCHAR(20) NOT NULL DEFAULT 'v1.0',
+    data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
     created_by VARCHAR(200),
     created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     updated_by VARCHAR(200),
     updated_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     organization_uuid VARCHAR(40) NOT NULL,
     FOREIGN KEY (uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
+    -- NO ACTION to avoid SQL Server multiple-cascade-paths restriction (error 1785).
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE NO ACTION,
     FOREIGN KEY (project_uuid) REFERENCES projects(uuid) ON DELETE CASCADE,
     UNIQUE(organization_uuid, handle)
 );
@@ -412,19 +423,21 @@ IF OBJECT_ID(N'dbo.websub_apis', N'U') IS NULL
 CREATE TABLE dbo.websub_apis (
     uuid VARCHAR(40) PRIMARY KEY,
     organization_uuid VARCHAR(40) NOT NULL,
-    handle VARCHAR(255) NOT NULL,
+    handle VARCHAR(40) NOT NULL,
     name VARCHAR(255) NOT NULL,
-    version VARCHAR(30) NOT NULL DEFAULT 'v1.0',
+    version VARCHAR(30) NOT NULL DEFAULT '1.0',
     project_uuid VARCHAR(40) NOT NULL,
     description VARCHAR(1023),
     lifecycle_status VARCHAR(20) NOT NULL DEFAULT 'CREATED',
     configuration VARBINARY(MAX) NOT NULL,
-    data_version VARCHAR(20) NOT NULL DEFAULT 'v1.0',
+    data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
     created_by VARCHAR(200),
     created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     updated_by VARCHAR(200),
     updated_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     FOREIGN KEY (uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
+    -- NO ACTION to avoid SQL Server multiple-cascade-paths restriction (error 1785).
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE NO ACTION,
     FOREIGN KEY (project_uuid) REFERENCES projects(uuid) ON DELETE CASCADE,
     UNIQUE(organization_uuid, handle)
 );
@@ -440,7 +453,7 @@ CREATE TABLE dbo.websub_api_hmac_secrets (
     display_name VARCHAR(255),
     encrypted_secret VARBINARY(MAX) NOT NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'active',
-    data_version VARCHAR(20) NOT NULL DEFAULT 'v1.0',
+    data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
     created_by VARCHAR(200),
     created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     updated_by VARCHAR(200),
@@ -458,19 +471,21 @@ IF OBJECT_ID(N'dbo.webbroker_apis', N'U') IS NULL
 CREATE TABLE dbo.webbroker_apis (
     uuid VARCHAR(40) PRIMARY KEY,
     organization_uuid VARCHAR(40) NOT NULL,
-    handle VARCHAR(255) NOT NULL,
+    handle VARCHAR(40) NOT NULL,
     name VARCHAR(255) NOT NULL,
-    version VARCHAR(30) NOT NULL DEFAULT 'v1.0',
+    version VARCHAR(30) NOT NULL DEFAULT '1.0',
     project_uuid VARCHAR(40) NOT NULL,
     description VARCHAR(1023),
     lifecycle_status VARCHAR(20) NOT NULL DEFAULT 'CREATED',
     configuration VARBINARY(MAX) NOT NULL,
-    data_version VARCHAR(20) NOT NULL DEFAULT 'v1.0',
+    data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
     created_by VARCHAR(200),
     created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     updated_by VARCHAR(200),
     updated_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     FOREIGN KEY (uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
+    -- NO ACTION to avoid SQL Server multiple-cascade-paths restriction (error 1785).
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE NO ACTION,
     FOREIGN KEY (project_uuid) REFERENCES projects(uuid) ON DELETE CASCADE,
     UNIQUE(organization_uuid, handle)
 );
@@ -486,14 +501,14 @@ CREATE TABLE dbo.api_keys (
     masked_api_key VARCHAR(8) NOT NULL,
     api_key_hashes VARBINARY(MAX) NOT NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'active',
-    data_version VARCHAR(20) NOT NULL DEFAULT 'v1.0',
+    data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
     created_by VARCHAR(200),
     created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     updated_by VARCHAR(200),
     updated_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     expires_at DATETIME2(7),
-    issuer NVARCHAR(MAX) NULL DEFAULT NULL,
-    allowed_targets NVARCHAR(MAX) NOT NULL DEFAULT 'ALL',
+    issuer VARCHAR(255) NULL DEFAULT NULL,
+    allowed_targets VARCHAR(255) NOT NULL DEFAULT 'ALL',
     FOREIGN KEY (artifact_uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
     UNIQUE(artifact_uuid, name)
 );
@@ -546,7 +561,7 @@ CREATE INDEX idx_gateway_tokens_hash ON dbo.gateway_tokens(token_hash);
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_artifact_deployments_created_at' AND object_id = OBJECT_ID(N'dbo.deployments'))
 CREATE INDEX idx_artifact_deployments_created_at ON dbo.deployments(artifact_uuid, gateway_uuid, created_at);
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_artifact_gw_created' AND object_id = OBJECT_ID(N'dbo.deployments'))
-CREATE INDEX idx_artifact_gw_created ON dbo.deployments(artifact_uuid, organization_uuid, gateway_uuid, created_at DESC);
+CREATE INDEX idx_artifact_gw_created ON dbo.deployments(organization_uuid, artifact_uuid, gateway_uuid, created_at DESC);
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_deployments_base_id' AND object_id = OBJECT_ID(N'dbo.deployments'))
 CREATE INDEX idx_deployments_base_id ON dbo.deployments(base_deployment_id) WHERE base_deployment_id IS NOT NULL;
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_deployment_status_deployment' AND object_id = OBJECT_ID(N'dbo.deployment_status'))
@@ -585,12 +600,14 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_api_keys_status' AND
 CREATE INDEX idx_api_keys_status ON dbo.api_keys(status);
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_api_keys_expires_at' AND object_id = OBJECT_ID(N'dbo.api_keys'))
 CREATE INDEX idx_api_keys_expires_at ON dbo.api_keys(expires_at) WHERE expires_at IS NOT NULL;
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_rest_apis_org' AND object_id = OBJECT_ID(N'dbo.rest_apis'))
+CREATE INDEX idx_rest_apis_org ON dbo.rest_apis(organization_uuid);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_applications_org' AND object_id = OBJECT_ID(N'dbo.applications'))
+CREATE INDEX idx_applications_org ON dbo.applications(organization_uuid);
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_applications_project_id' AND object_id = OBJECT_ID(N'dbo.applications'))
-CREATE INDEX idx_applications_project_id ON dbo.applications(project_uuid, organization_uuid);
+CREATE INDEX idx_applications_project_id ON dbo.applications(organization_uuid, project_uuid);
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_applications_name_project' AND object_id = OBJECT_ID(N'dbo.applications'))
-CREATE INDEX idx_applications_name_project ON dbo.applications(name, project_uuid, organization_uuid);
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_applications_handle_org' AND object_id = OBJECT_ID(N'dbo.applications'))
-CREATE INDEX idx_applications_handle_org ON dbo.applications(handle, organization_uuid);
+CREATE INDEX idx_applications_name_project ON dbo.applications(organization_uuid, project_uuid, name);
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_application_api_keys_app_id' AND object_id = OBJECT_ID(N'dbo.application_api_keys'))
 CREATE INDEX idx_application_api_keys_app_id ON dbo.application_api_keys(application_uuid);
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_application_api_keys_key_id' AND object_id = OBJECT_ID(N'dbo.application_api_keys'))
@@ -654,3 +671,5 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_gateway_association_
 CREATE INDEX idx_gateway_association_mappings_artifact ON dbo.gateway_association_mappings(artifact_uuid);
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_gateway_association_mappings_gateway' AND object_id = OBJECT_ID(N'dbo.gateway_association_mappings'))
 CREATE INDEX idx_gateway_association_mappings_gateway ON dbo.gateway_association_mappings(gateway_uuid);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_audit_org' AND object_id = OBJECT_ID(N'dbo.audit'))
+CREATE INDEX idx_audit_org ON dbo.audit(organization_uuid);

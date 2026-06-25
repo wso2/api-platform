@@ -50,9 +50,9 @@ CREATE INDEX IF NOT EXISTS idx_<junction_table>_entity_b_uuid ON <junction_table
 **R1-IDENTITY** — Tables representing named resources (APIs, gateways, providers, applications, subscriptions, or any domain entity with a stable slug and a display name) must carry the full identity triple directly:
 
 ```sql
-handle  VARCHAR(255) NOT NULL,                -- url-safe slug, immutable once set
+handle  VARCHAR(40)  UNIQUE NOT NULL,          -- url-safe slug, immutable once set
 name    VARCHAR(255) NOT NULL,                -- human-readable display name
-version VARCHAR(30)  NOT NULL DEFAULT 'v1.0', -- semver or opaque version string
+version VARCHAR(30)  NOT NULL DEFAULT '1.0', -- semver or opaque version string
 ```
 
 Identity must be denormalised onto the table itself so queries against a single table are self-contained. Do not rely on a parent record for identity fields.
@@ -168,7 +168,7 @@ Omitting `ON DELETE` means the DB default (`RESTRICT` in most engines) applies s
 Rule of thumb: ask "does a human-initiated request cause this row to be inserted or updated?" If yes → include the full audit set. If no → omit `created_by` and `updated_by`.
 
 ```sql
-data_version VARCHAR(20)  NOT NULL DEFAULT 'v1.0',
+data_version VARCHAR(20)  NOT NULL DEFAULT '1.0',
 created_by   VARCHAR(200),
 created_at   TIMESTAMPTZ  DEFAULT CURRENT_TIMESTAMP,  -- DATETIME on SQLite / DATETIME2 on SQL Server
 updated_by   VARCHAR(200),
@@ -185,7 +185,7 @@ revoked_at TIMESTAMPTZ,
 CHECK (revoked_at IS NULL OR status = 'revoked')
 ```
 
-**R5-DATA-VERSION** — Every domain entity table must include `data_version VARCHAR(20) NOT NULL DEFAULT 'v1.0'`. Place it immediately before `created_by`. Excluded tables: junction/mapping tables and pure system/event tables (e.g. `events`, `gateway_states`, `audit`, `deployment_status`, `gateway_custom_policy_usages`, `application_api_keys`, `application_artifacts`, `gateway_association_mappings`).
+**R5-DATA-VERSION** — Every domain entity table must include `data_version VARCHAR(20) NOT NULL DEFAULT '1.0'`. Place it immediately before `created_by`. Excluded tables: junction/mapping tables and pure system/event tables (e.g. `events`, `gateway_states`, `audit`, `deployment_status`, `gateway_custom_policy_usages`, `application_api_keys`, `application_artifacts`, `gateway_association_mappings`).
 
 ---
 

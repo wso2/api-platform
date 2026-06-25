@@ -107,7 +107,7 @@ Before writing DDL to disk, confirm each item passes:
 [ ] R4  Every FK has an explicit ON DELETE clause
 [ ] R5  User-initiated table → all four audit columns present (created_by/at, updated_by/at)
 [ ] R5  System-managed table → created_by and updated_by are ABSENT
-[ ] R5  Every domain entity table has data_version VARCHAR(20) NOT NULL DEFAULT 'v1.0'
+[ ] R5  Every domain entity table has data_version VARCHAR(20) NOT NULL DEFAULT '1.0'
 [ ] R6  FK columns have indexes
 [ ] R6  organization_uuid has an index (if org-scoped)
 [ ] R6  status column has an index if used as a filter
@@ -206,12 +206,12 @@ Produce a findings table sorted by severity. Include a "No issues" row for any r
 CREATE TABLE IF NOT EXISTS <table> (
     uuid                VARCHAR(40)  PRIMARY KEY,
     organization_uuid   VARCHAR(40)  NOT NULL,
-    handle              VARCHAR(255) NOT NULL,
+    handle              VARCHAR(40)  UNIQUE NOT NULL,
     name                VARCHAR(255) NOT NULL,
-    version             VARCHAR(30)  NOT NULL DEFAULT 'v1.0',
+    version             VARCHAR(30)  NOT NULL DEFAULT '1.0',
     status              VARCHAR(20)  NOT NULL DEFAULT 'CREATED',
     description         VARCHAR(1023),
-    data_version        VARCHAR(20)  NOT NULL DEFAULT 'v1.0',
+    data_version        VARCHAR(20)  NOT NULL DEFAULT '1.0',
     created_by          VARCHAR(200),
     created_at          TIMESTAMPTZ  DEFAULT CURRENT_TIMESTAMP,
     updated_by          VARCHAR(200),
@@ -251,7 +251,8 @@ VARCHAR(30)   — version strings (v1.0, v2.3)
 VARCHAR(40)   — uuid, all FK columns referencing UUIDs
 VARCHAR(64)   — hashes (SHA-256 hex)
 VARCHAR(200)  — created_by, updated_by, revoked_by (user email/subject)
-VARCHAR(255)  — handle, name, display strings
+VARCHAR(40)   — handle (url-safe slug, UNIQUE NOT NULL)
+VARCHAR(255)  — name, display strings
               — SAFE upper bound for indexed/unique columns across all engines
 VARCHAR(512)  — tokens (encrypted values)
 VARCHAR(1023) — description, reason
