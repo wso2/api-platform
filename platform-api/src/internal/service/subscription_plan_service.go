@@ -59,11 +59,14 @@ func NewSubscriptionPlanService(
 
 // CreatePlan creates a new subscription plan
 func (s *SubscriptionPlanService) CreatePlan(orgUUID, actor string, plan *model.SubscriptionPlan) (*model.SubscriptionPlan, error) {
-	if plan.PlanName == "" {
-		return nil, fmt.Errorf("planName is required")
+	if plan.Handle == "" {
+		return nil, fmt.Errorf("handle is required")
+	}
+	if plan.Name == "" {
+		return nil, fmt.Errorf("name is required")
 	}
 
-	exists, err := s.planRepo.ExistsByNameAndOrg(plan.PlanName, orgUUID)
+	exists, err := s.planRepo.ExistsByHandleAndOrg(plan.Handle, orgUUID)
 	if err != nil {
 		return nil, err
 	}
@@ -88,7 +91,8 @@ func (s *SubscriptionPlanService) CreatePlan(orgUUID, actor string, plan *model.
 
 	s.broadcastPlanEvent(orgUUID, "created", &model.SubscriptionPlanCreatedEvent{
 		PlanId:             plan.UUID,
-		PlanName:           plan.PlanName,
+		Handle:             plan.Handle,
+		Name:               plan.Name,
 		BillingPlan:        plan.BillingPlan,
 		StopOnQuotaReach:   plan.StopOnQuotaReach,
 		ThrottleLimitCount: plan.ThrottleLimitCount,
@@ -138,15 +142,18 @@ func (s *SubscriptionPlanService) UpdatePlan(planID, orgUUID, actor string, upda
 		return nil, constants.ErrSubscriptionPlanNotFound
 	}
 
-	if update.PlanName != nil && *update.PlanName != existing.PlanName {
-		nameExists, err := s.planRepo.ExistsByNameAndOrg(*update.PlanName, orgUUID)
+	if update.Handle != nil && *update.Handle != existing.Handle {
+		handleExists, err := s.planRepo.ExistsByHandleAndOrg(*update.Handle, orgUUID)
 		if err != nil {
 			return nil, err
 		}
-		if nameExists {
+		if handleExists {
 			return nil, constants.ErrSubscriptionPlanAlreadyExists
 		}
-		existing.PlanName = *update.PlanName
+		existing.Handle = *update.Handle
+	}
+	if update.Name != nil {
+		existing.Name = *update.Name
 	}
 	if update.BillingPlan != nil {
 		existing.BillingPlan = *update.BillingPlan
@@ -184,7 +191,8 @@ func (s *SubscriptionPlanService) UpdatePlan(planID, orgUUID, actor string, upda
 
 	s.broadcastPlanEvent(orgUUID, "updated", &model.SubscriptionPlanUpdatedEvent{
 		PlanId:             existing.UUID,
-		PlanName:           existing.PlanName,
+		Handle:             existing.Handle,
+		Name:               existing.Name,
 		BillingPlan:        existing.BillingPlan,
 		StopOnQuotaReach:   existing.StopOnQuotaReach,
 		ThrottleLimitCount: existing.ThrottleLimitCount,
@@ -217,8 +225,9 @@ func (s *SubscriptionPlanService) DeletePlan(planID, orgUUID, actor string) erro
 	}
 
 	s.broadcastPlanEvent(orgUUID, "deleted", &model.SubscriptionPlanDeletedEvent{
-		PlanId:   existing.UUID,
-		PlanName: existing.PlanName,
+		PlanId: existing.UUID,
+		Handle: existing.Handle,
+		Name:   existing.Name,
 	})
 
 	return nil

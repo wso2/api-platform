@@ -103,8 +103,9 @@ func TestLifecycle_SubscriptionPlanExistsAndList(t *testing.T) {
 	for i := range 3 {
 		// Fully populated: the list repository scans billing_plan / throttle
 		// columns into plain (non-nullable) fields (a pre-existing detail).
+		slug := fmt.Sprintf("plan-%d-%s", i, id()[:6])
 		plan := &model.SubscriptionPlan{
-			UUID: id(), PlanName: fmt.Sprintf("plan-%d-%s", i, id()[:6]),
+			UUID: id(), Handle: slug, Name: fmt.Sprintf("Plan %d", i),
 			BillingPlan: "free", StopOnQuotaReach: 1,
 			ThrottleLimitCount: &count, ThrottleLimitUnit: "min",
 			OrganizationUUID: org.ID, Status: model.SubscriptionPlanStatus("ACTIVE"),

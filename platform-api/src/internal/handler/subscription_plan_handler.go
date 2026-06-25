@@ -71,7 +71,8 @@ func validateThrottleLimitPair(count *int, unit *string) string {
 
 // CreateSubscriptionPlanRequest is the body for POST /api/v1/subscription-plans
 type CreateSubscriptionPlanRequest struct {
-	PlanName           string  `json:"planName" binding:"required"`
+	Handle             string  `json:"handle" binding:"required"`
+	Name               string  `json:"name" binding:"required"`
 	BillingPlan        string  `json:"billingPlan,omitempty"`
 	StopOnQuotaReach   *int    `json:"stopOnQuotaReach,omitempty"`
 	ThrottleLimitCount *int    `json:"throttleLimitCount,omitempty"`
@@ -83,7 +84,8 @@ type CreateSubscriptionPlanRequest struct {
 // UpdateSubscriptionPlanRequest is the body for PUT /api/v1/subscription-plans/:planId
 // All fields use pointers for patch semantics: nil = omitted, non-nil = set (including clear-to-empty).
 type UpdateSubscriptionPlanRequest struct {
-	PlanName           *string `json:"planName,omitempty"`
+	Handle             *string `json:"handle,omitempty"`
+	Name               *string `json:"name,omitempty"`
 	BillingPlan        *string `json:"billingPlan,omitempty"`
 	StopOnQuotaReach   *int    `json:"stopOnQuotaReach,omitempty"`
 	ThrottleLimitCount *int    `json:"throttleLimitCount,omitempty"`
@@ -126,7 +128,8 @@ func (h *SubscriptionPlanHandler) CreateSubscriptionPlan(c *gin.Context) {
 		throttleLimitUnit = *req.ThrottleLimitUnit
 	}
 	plan := &model.SubscriptionPlan{
-		PlanName:           req.PlanName,
+		Handle:             req.Handle,
+		Name:               req.Name,
 		BillingPlan:        req.BillingPlan,
 		StopOnQuotaReach:   1,
 		ThrottleLimitCount: req.ThrottleLimitCount,
@@ -145,7 +148,11 @@ func (h *SubscriptionPlanHandler) CreateSubscriptionPlan(c *gin.Context) {
 		plan.ExpiryTime = &t
 	}
 
-	actor, _ := middleware.GetUsernameFromContext(c)
+	actor, ok := middleware.GetUsernameFromContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Username claim not found in token"))
+		return
+	}
 	created, err := h.planService.CreatePlan(orgId, actor, plan)
 	if err != nil {
 		if errors.Is(err, constants.ErrSubscriptionPlanAlreadyExists) {
@@ -251,8 +258,11 @@ func (h *SubscriptionPlanHandler) UpdateSubscriptionPlan(c *gin.Context) {
 		StopOnQuotaReach:   req.StopOnQuotaReach,
 		ThrottleLimitCount: req.ThrottleLimitCount,
 	}
-	if req.PlanName != nil {
-		update.PlanName = req.PlanName
+	if req.Handle != nil {
+		update.Handle = req.Handle
+	}
+	if req.Name != nil {
+		update.Name = req.Name
 	}
 	if req.BillingPlan != nil {
 		update.BillingPlan = req.BillingPlan
@@ -279,7 +289,11 @@ func (h *SubscriptionPlanHandler) UpdateSubscriptionPlan(c *gin.Context) {
 		update.ExpiryTime = &t
 	}
 
-	actor, _ := middleware.GetUsernameFromContext(c)
+	actor, ok := middleware.GetUsernameFromContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Username claim not found in token"))
+		return
+	}
 	updated, err := h.planService.UpdatePlan(planId, orgId, actor, update)
 	if err != nil {
 		if errors.Is(err, constants.ErrSubscriptionPlanNotFound) {
@@ -311,7 +325,11 @@ func (h *SubscriptionPlanHandler) DeleteSubscriptionPlan(c *gin.Context) {
 		return
 	}
 
-	actor, _ := middleware.GetUsernameFromContext(c)
+	actor, ok := middleware.GetUsernameFromContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Username claim not found in token"))
+		return
+	}
 	err := h.planService.DeletePlan(planId, orgId, actor)
 	if err != nil {
 		if errors.Is(err, constants.ErrSubscriptionPlanNotFound) {
@@ -340,7 +358,8 @@ func (h *SubscriptionPlanHandler) RegisterRoutes(r *gin.Engine) {
 func toSubscriptionPlanResponse(plan *model.SubscriptionPlan) gin.H {
 	resp := gin.H{
 		"id":               plan.UUID,
-		"planName":         plan.PlanName,
+		"handle":           plan.Handle,
+		"name":             plan.Name,
 		"billingPlan":      plan.BillingPlan,
 		"stopOnQuotaReach": plan.StopOnQuotaReach,
 		"organizationId":   plan.OrganizationUUID,

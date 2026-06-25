@@ -102,7 +102,8 @@ CREATE TABLE IF NOT EXISTS rest_apis (
 -- Subscription plans table (organization-scoped rate/billing plans)
 CREATE TABLE IF NOT EXISTS subscription_plans (
     uuid VARCHAR(40) PRIMARY KEY,
-    plan_name VARCHAR(255) NOT NULL,
+    handle VARCHAR(40) NOT NULL,
+    name VARCHAR(255) NOT NULL,
     billing_plan VARCHAR(255),
     stop_on_quota_reach INTEGER DEFAULT 1,
     throttle_limit_count INTEGER,
@@ -116,12 +117,7 @@ CREATE TABLE IF NOT EXISTS subscription_plans (
     updated_by VARCHAR(200),
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
-    UNIQUE(organization_uuid, plan_name),
-    UNIQUE(organization_uuid, uuid),
-    CONSTRAINT chk_plan_throttle_pair CHECK (
-      (throttle_limit_count IS NULL AND throttle_limit_unit IS NULL) OR
-      (throttle_limit_count IS NOT NULL AND throttle_limit_unit IS NOT NULL)
-    )
+    UNIQUE(organization_uuid, handle)
 );
 
 -- Subscriptions table (application-level subscriptions for any artifact type)
@@ -508,6 +504,7 @@ CREATE INDEX IF NOT EXISTS idx_api_keys_expires_at ON api_keys(expires_at) WHERE
 CREATE INDEX IF NOT EXISTS idx_rest_apis_lifecycle_status ON rest_apis(lifecycle_status);
 CREATE INDEX IF NOT EXISTS idx_websub_apis_lifecycle_status ON websub_apis(lifecycle_status);
 CREATE INDEX IF NOT EXISTS idx_webbroker_apis_lifecycle_status ON webbroker_apis(lifecycle_status);
+CREATE INDEX IF NOT EXISTS idx_subscription_plans_org    ON subscription_plans(organization_uuid);
 CREATE INDEX IF NOT EXISTS idx_subscription_plans_status ON subscription_plans(status);
 
 -- EventHub tables for multi-replica HA sync

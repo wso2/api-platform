@@ -112,7 +112,8 @@ CREATE TABLE dbo.rest_apis (
 IF OBJECT_ID(N'dbo.subscription_plans', N'U') IS NULL
 CREATE TABLE dbo.subscription_plans (
     uuid VARCHAR(40) PRIMARY KEY,
-    plan_name VARCHAR(255) NOT NULL,
+    handle VARCHAR(40) NOT NULL,
+    name VARCHAR(255) NOT NULL,
     billing_plan VARCHAR(255),
     stop_on_quota_reach SMALLINT DEFAULT 1,
     throttle_limit_count INT,
@@ -126,13 +127,7 @@ CREATE TABLE dbo.subscription_plans (
     updated_by VARCHAR(200),
     updated_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
-    UNIQUE(organization_uuid, plan_name),
-    UNIQUE(uuid, organization_uuid),
-    CHECK (status IN ('ACTIVE', 'INACTIVE')),
-    CONSTRAINT chk_plan_throttle_pair CHECK (
-      (throttle_limit_count IS NULL AND throttle_limit_unit IS NULL) OR
-      (throttle_limit_count IS NOT NULL AND throttle_limit_unit IS NOT NULL)
-    )
+    UNIQUE(organization_uuid, handle)
 );
 
 -- Subscriptions table (application-level subscriptions for any artifact type)
@@ -619,6 +614,8 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_websub_apis_lifecycl
 CREATE INDEX idx_websub_apis_lifecycle_status ON dbo.websub_apis(lifecycle_status);
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_webbroker_apis_lifecycle_status' AND object_id = OBJECT_ID(N'dbo.webbroker_apis'))
 CREATE INDEX idx_webbroker_apis_lifecycle_status ON dbo.webbroker_apis(lifecycle_status);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_subscription_plans_org' AND object_id = OBJECT_ID(N'dbo.subscription_plans'))
+CREATE INDEX idx_subscription_plans_org    ON dbo.subscription_plans(organization_uuid);
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_subscription_plans_status' AND object_id = OBJECT_ID(N'dbo.subscription_plans'))
 CREATE INDEX idx_subscription_plans_status ON dbo.subscription_plans(status);
 

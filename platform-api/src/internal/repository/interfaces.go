@@ -173,11 +173,11 @@ type SubscriptionPlanRepository interface {
 	Create(plan *model.SubscriptionPlan) error
 	GetByID(planID, orgUUID string) (*model.SubscriptionPlan, error)
 	GetByIDs(planIDs []string, orgUUID string) (map[string]string, error)
-	GetByNameAndOrg(planName, orgUUID string) (*model.SubscriptionPlan, error)
+	GetByHandleAndOrg(handle, orgUUID string) (*model.SubscriptionPlan, error)
 	ListByOrganization(orgUUID string, limit, offset int) ([]*model.SubscriptionPlan, error)
 	Update(plan *model.SubscriptionPlan) error
 	Delete(planID, orgUUID string) error
-	ExistsByNameAndOrg(planName, orgUUID string) (bool, error)
+	ExistsByHandleAndOrg(handle, orgUUID string) (bool, error)
 }
 
 // SubscriptionRepository defines the interface for application-level subscription data operations

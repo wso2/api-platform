@@ -360,11 +360,10 @@ func (h *SubscriptionHandler) toSubscriptionResponse(sub *model.Subscription, or
 	}
 	if sub.SubscriptionPlanID != nil {
 		resp["subscriptionPlanId"] = *sub.SubscriptionPlanID
-		// Resolve plan name for display (subscription_plans.plan_name)
 		if h.subscriptionPlanService != nil {
 			plan, err := h.subscriptionPlanService.GetPlan(*sub.SubscriptionPlanID, orgId)
 			if err == nil && plan != nil {
-				resp["subscriptionPlanName"] = plan.PlanName
+				resp["subscriptionPlanName"] = plan.Name
 			}
 		}
 	}

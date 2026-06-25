@@ -30,7 +30,8 @@ const (
 // SubscriptionPlanUpdate holds fields for partial updates.
 // All pointer fields are only applied when non-nil (patch semantics).
 type SubscriptionPlanUpdate struct {
-	PlanName           *string
+	Handle             *string
+	Name               *string
 	BillingPlan        *string
 	StopOnQuotaReach   *int
 	ThrottleLimitCount *int
@@ -42,7 +43,8 @@ type SubscriptionPlanUpdate struct {
 // SubscriptionPlan represents an organization-scoped subscription plan
 type SubscriptionPlan struct {
 	UUID               string                 `json:"id" db:"uuid"`
-	PlanName           string                 `json:"planName" db:"plan_name"`
+	Handle             string                 `json:"handle" db:"handle"`
+	Name               string                 `json:"name" db:"name"`
 	BillingPlan        string                 `json:"billingPlan,omitempty" db:"billing_plan"`
 	StopOnQuotaReach   int                    `json:"stopOnQuotaReach" db:"stop_on_quota_reach"`
 	ThrottleLimitCount *int                   `json:"throttleLimitCount,omitempty" db:"throttle_limit_count"`

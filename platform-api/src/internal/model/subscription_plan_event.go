@@ -22,7 +22,8 @@ import "time"
 // SubscriptionPlanCreatedEvent represents the payload for a subscriptionPlan.created event.
 type SubscriptionPlanCreatedEvent struct {
 	PlanId             string     `json:"planId"`
-	PlanName           string     `json:"planName"`
+	Handle             string     `json:"handle"`
+	Name               string     `json:"name"`
 	BillingPlan        string     `json:"billingPlan,omitempty"`
 	StopOnQuotaReach   int        `json:"stopOnQuotaReach"`
 	ThrottleLimitCount *int       `json:"throttleLimitCount,omitempty"`
@@ -34,7 +35,8 @@ type SubscriptionPlanCreatedEvent struct {
 // SubscriptionPlanUpdatedEvent represents the payload for a subscriptionPlan.updated event.
 type SubscriptionPlanUpdatedEvent struct {
 	PlanId             string     `json:"planId"`
-	PlanName           string     `json:"planName"`
+	Handle             string     `json:"handle"`
+	Name               string     `json:"name"`
 	BillingPlan        string     `json:"billingPlan,omitempty"`
 	StopOnQuotaReach   int        `json:"stopOnQuotaReach"`
 	ThrottleLimitCount *int       `json:"throttleLimitCount,omitempty"`
@@ -45,6 +47,7 @@ type SubscriptionPlanUpdatedEvent struct {
 
 // SubscriptionPlanDeletedEvent represents the payload for a subscriptionPlan.deleted event.
 type SubscriptionPlanDeletedEvent struct {
-	PlanId   string `json:"planId"`
-	PlanName string `json:"planName"`
+	PlanId string `json:"planId"`
+	Handle string `json:"handle"`
+	Name   string `json:"name"`
 }

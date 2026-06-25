@@ -544,25 +544,25 @@ func (s *APIService) validateCreateAPIRequest(req *api.CreateRESTAPIRequest, org
 	return nil
 }
 
-// validateSubscriptionPlans ensures each plan name exists in the organization and is ACTIVE.
-// It normalizes planNames in place by trimming each element. Repository errors are returned
+// validateSubscriptionPlans ensures each plan handle exists in the organization and is ACTIVE.
+// It normalizes planHandles in place by trimming each element. Repository errors are returned
 // directly; ErrSubscriptionPlanNotFoundOrInactive is only returned when plan is nil or inactive.
-func (s *APIService) validateSubscriptionPlans(planNames *[]string, orgUUID string) error {
-	if planNames == nil || len(*planNames) == 0 {
+func (s *APIService) validateSubscriptionPlans(planHandles *[]string, orgUUID string) error {
+	if planHandles == nil || len(*planHandles) == 0 {
 		return nil
 	}
-	for i := range *planNames {
-		(*planNames)[i] = strings.TrimSpace((*planNames)[i])
-		name := (*planNames)[i]
-		if name == "" {
+	for i := range *planHandles {
+		(*planHandles)[i] = strings.TrimSpace((*planHandles)[i])
+		handle := (*planHandles)[i]
+		if handle == "" {
 			continue
 		}
-		plan, err := s.subscriptionPlanRepo.GetByNameAndOrg(name, orgUUID)
+		plan, err := s.subscriptionPlanRepo.GetByHandleAndOrg(handle, orgUUID)
 		if err != nil {
 			return err
 		}
 		if plan == nil || plan.Status != model.SubscriptionPlanStatusActive {
-			return fmt.Errorf("%w: plan %q", constants.ErrSubscriptionPlanNotFoundOrInactive, name)
+			return fmt.Errorf("%w: plan %q", constants.ErrSubscriptionPlanNotFoundOrInactive, handle)
 		}
 	}
 	return nil
