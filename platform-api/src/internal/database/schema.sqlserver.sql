@@ -68,7 +68,6 @@ CREATE TABLE dbo.applications (
     -- applications via organizations -> projects -> applications, so no
     -- cleanup behavior is lost relative to the Postgres schema.
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE NO ACTION,
-    UNIQUE(organization_uuid, project_uuid, name),
     UNIQUE(organization_uuid, handle)
 );
 
@@ -606,8 +605,6 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_applications_org' AN
 CREATE INDEX idx_applications_org ON dbo.applications(organization_uuid);
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_applications_project_id' AND object_id = OBJECT_ID(N'dbo.applications'))
 CREATE INDEX idx_applications_project_id ON dbo.applications(organization_uuid, project_uuid);
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_applications_name_project' AND object_id = OBJECT_ID(N'dbo.applications'))
-CREATE INDEX idx_applications_name_project ON dbo.applications(organization_uuid, project_uuid, name);
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_application_api_keys_app_id' AND object_id = OBJECT_ID(N'dbo.application_api_keys'))
 CREATE INDEX idx_application_api_keys_app_id ON dbo.application_api_keys(application_uuid);
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_application_api_keys_key_id' AND object_id = OBJECT_ID(N'dbo.application_api_keys'))

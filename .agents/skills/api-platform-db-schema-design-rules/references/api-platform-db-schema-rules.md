@@ -58,10 +58,10 @@ version VARCHAR(30)  NOT NULL DEFAULT '1.0', -- semver or opaque version string
 Identity must be denormalised onto the table itself so queries against a single table are self-contained. Do not rely on a parent record for identity fields.
 
 **R1-HANDLE-NAME** — `handle` and `name` are distinct:
-- `handle` is the URL-safe slug used in API paths (e.g. `/resources/{handle}`). It must be unique within its scope and treated as immutable after creation.
-- `name` is the human-readable display string. It may change.
+- `handle` is the URL-safe slug used in API paths (e.g. `/resources/{handle}`). It must be unique within its scope (always org-scoped) and treated as immutable after creation.
+- `name` is the human-readable display string. It may change and **is not required to be unique** — not even within a project.
 
-Conflating them (using `name` as the slug, or allowing `handle` to contain spaces) is a finding.
+Conflating them (using `name` as the slug, or allowing `handle` to contain spaces) is a finding. Adding a `UNIQUE` constraint on `name` (alone or combined with `project_uuid`) for API-type entities is also a finding — enforce only `UNIQUE(organization_uuid, handle)`.
 
 ---
 
@@ -73,14 +73,13 @@ Conflating them (using `name` as the slug, or allowing `handle` to contain space
 FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE
 ```
 
-**R2-ORG-UNIQUE** — Uniqueness constraints on named resources must include `organization_uuid`:
+**R2-ORG-UNIQUE** — The `handle` of a named resource must be unique within the organisation:
 
 ```sql
 UNIQUE(organization_uuid, handle)   -- not UNIQUE(handle) alone
-UNIQUE(organization_uuid, name)
 ```
 
-A `UNIQUE(name)` without the org scope is a critical data-isolation bug.
+A `UNIQUE(handle)` without the org scope is a critical data-isolation bug. `name` does **not** need a uniqueness constraint — two resources may share a display name within the same org or project.
 
 ---
 

@@ -62,7 +62,6 @@ CREATE TABLE IF NOT EXISTS applications (
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (project_uuid) REFERENCES projects(uuid) ON DELETE CASCADE,
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
-    UNIQUE(organization_uuid, project_uuid, name),
     UNIQUE(organization_uuid, handle)
 );
 
@@ -506,7 +505,6 @@ CREATE INDEX IF NOT EXISTS idx_api_keys_artifact ON api_keys(artifact_uuid);
 CREATE INDEX IF NOT EXISTS idx_rest_apis_org ON rest_apis(organization_uuid);
 CREATE INDEX IF NOT EXISTS idx_applications_org ON applications(organization_uuid);
 CREATE INDEX IF NOT EXISTS idx_applications_project_id ON applications(organization_uuid, project_uuid);
-CREATE INDEX IF NOT EXISTS idx_applications_name_project ON applications(organization_uuid, project_uuid, name);
 CREATE INDEX IF NOT EXISTS idx_application_api_keys_app_id ON application_api_keys(application_uuid);
 CREATE INDEX IF NOT EXISTS idx_application_api_keys_key_id ON application_api_keys(api_key_id);
 CREATE INDEX IF NOT EXISTS idx_application_artifacts_app_id ON application_artifacts(application_uuid);
