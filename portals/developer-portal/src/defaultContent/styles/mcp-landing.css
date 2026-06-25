@@ -431,7 +431,7 @@
   display: inline-block;
   width: 0.4375rem; height: 0.4375rem;
   border-radius: 50%;
-  background: currentColor;
+  background: currentcolor;
 }
 .mc-manage-status-badge--active    { background: #e6f4ea; color: #2e7d32; }
 .mc-manage-status-badge--suspended { background: #fff4e6; color: #e65100; }
