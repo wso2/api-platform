@@ -423,18 +423,19 @@ If 0 rows are affected, the caller lost the race and must retry.
 
 ### R8 · Multi-Engine Schema Alignment
 
-When the project maintains schema files for multiple database engines (e.g. Postgres + SQLite), the files must remain structurally in sync except for the known intentional type-level divergences listed below.
+When the project maintains schema files for multiple database engines (e.g. Postgres + SQLite + SQL Server), the files must remain structurally in sync except for the known intentional type-level divergences listed below.
 
 **Intentional divergences — not findings:**
 
-| Feature | SQLite | PostgreSQL |
-|---|---|---|
-| JSON-valued columns | `TEXT` | `JSONB` |
-| Binary columns | `BLOB` | `BYTEA` |
-| All timestamps | `DATETIME` | `TIMESTAMPTZ` |
-| Auto-increment keys | `INTEGER` | `SERIAL` |
-| Boolean flags | `INTEGER` (0/1) | `SMALLINT` (0/1) |
-| JSON literal defaults | `'{}'` | `'{}'::jsonb` |
+| Feature | SQLite | PostgreSQL | SQL Server |
+|---|---|---|---|
+| JSON-valued columns | `TEXT` | `JSONB` | `NVARCHAR(MAX)` |
+| Binary columns | `BLOB` | `BYTEA` | `VARBINARY(MAX)` |
+| Large text payloads | `TEXT` | `BYTEA` | `NVARCHAR(MAX)` |
+| All timestamps | `DATETIME` | `TIMESTAMPTZ` | `DATETIME2(7) DEFAULT SYSUTCDATETIME()` |
+| Auto-increment keys | `INTEGER` | `SERIAL` | `IDENTITY(1,1)` |
+| Boolean flags | `INTEGER` (0/1) | `SMALLINT` (0/1) | `SMALLINT` (0/1) |
+| JSON literal defaults | `'{}'` | `'{}'::jsonb` | `'{}'` |
 
 **R8-SYNC-STRUCTURE** — Table definitions (columns, order, constraints, CHECK values, FK targets) that are not in the intentional-divergence list must be identical across all schema files. Check:
 - Same columns, same order
