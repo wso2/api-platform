@@ -58,7 +58,7 @@ func seedOrgGraph(t *testing.T, it *itDB) graph {
 	it.exec(t, `INSERT INTO artifacts (uuid, type, organization_uuid) VALUES (?, ?, ?)`,
 		g.apiArtifact, "rest_api", g.org)
 	it.exec(t, `INSERT INTO rest_apis (uuid, organization_uuid, handle, name, version, project_uuid, lifecycle_status, configuration) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		g.apiArtifact, g.org, "api-"+g.apiArtifact[:8], "api", "v1.0", g.project, "CREATED", "{}")
+		g.apiArtifact, g.org, "api-"+g.apiArtifact[:8], "api", "v1.0", g.project, "CREATED", []byte("{}"))
 
 	it.exec(t, `INSERT INTO subscription_plans (uuid, plan_name, organization_uuid) VALUES (?, ?, ?)`,
 		g.plan, "plan-"+g.plan[:8], g.org)
@@ -182,7 +182,7 @@ func TestCascade_DeleteWebSubAPIRemovesHmacSecrets(t *testing.T) {
 	it.exec(t, `INSERT INTO artifacts (uuid, type, organization_uuid) VALUES (?, ?, ?)`,
 		artifactUUID, "WebSubApi", orgUUID)
 	it.exec(t, `INSERT INTO websub_apis (uuid, organization_uuid, handle, name, version, project_uuid, lifecycle_status, configuration) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		artifactUUID, orgUUID, "ws-api-"+artifactUUID[:8], "ws-api", "v1.0", projectUUID, "CREATED", "{}")
+		artifactUUID, orgUUID, "ws-api-"+artifactUUID[:8], "ws-api", "v1.0", projectUUID, "CREATED", []byte("{}"))
 
 	secret1 := id()
 	secret2 := id()

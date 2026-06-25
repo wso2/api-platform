@@ -328,12 +328,12 @@ func (r *WebSubAPIRepo) scanWebSubAPIFromRows(rows *sql.Rows) (*model.WebSubAPI,
 	return &a, nil
 }
 
-func serializeWebSubAPIConfiguration(config model.WebSubAPIConfiguration) (string, error) {
+func serializeWebSubAPIConfiguration(config model.WebSubAPIConfiguration) ([]byte, error) {
 	configJSON, err := json.Marshal(config)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	return string(configJSON), nil
+	return configJSON, nil
 }
 
 func deserializeWebSubAPIConfiguration(configJSON sql.NullString) (*model.WebSubAPIConfiguration, error) {

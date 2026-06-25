@@ -15,13 +15,6 @@
  *
  */
 
--- SQL Server schema derived from schema.postgres.sql
--- Type mappings from PostgreSQL:
---   BYTEA           -> VARBINARY(MAX)
---   TEXT / large    -> NVARCHAR(MAX)
---   TIMESTAMPTZ     -> DATETIME2(7) DEFAULT SYSUTCDATETIME()
---   SMALLINT / bool -> BIT
-
 -- Organizations table
 IF OBJECT_ID(N'dbo.organizations', N'U') IS NULL
 CREATE TABLE dbo.organizations (
@@ -117,7 +110,7 @@ CREATE TABLE dbo.subscription_plans (
     uuid VARCHAR(40) PRIMARY KEY,
     plan_name VARCHAR(40) NOT NULL,
     billing_plan VARCHAR(255),
-    stop_on_quota_reach BIT DEFAULT 1,
+    stop_on_quota_reach SMALLINT DEFAULT 1,
     throttle_limit_count INT,
     throttle_limit_unit VARCHAR(20),
     expiry_time DATETIME2(7),
@@ -192,8 +185,8 @@ CREATE TABLE dbo.gateways (
     gateway_functionality_type VARCHAR(20) DEFAULT 'regular' NOT NULL,
     properties VARBINARY(MAX) NOT NULL,
     manifest VARBINARY(MAX),
-    is_active BIT DEFAULT 0,
-    is_critical BIT DEFAULT 0,
+    is_active SMALLINT DEFAULT 0,
+    is_critical SMALLINT DEFAULT 0,
     data_version VARCHAR(20) NOT NULL DEFAULT 'v1.0',
     created_by VARCHAR(200),
     created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
@@ -333,8 +326,8 @@ CREATE TABLE dbo.llm_provider_templates (
     description VARCHAR(1023),
     configuration VARBINARY(MAX) NOT NULL,
     openapi_spec VARBINARY(MAX),
-    is_latest BIT NOT NULL DEFAULT 1,
-    enabled BIT NOT NULL DEFAULT 1,
+    is_latest SMALLINT NOT NULL DEFAULT 1,
+    enabled SMALLINT NOT NULL DEFAULT 1,
     data_version VARCHAR(20) NOT NULL DEFAULT 'v1.0',
     created_by VARCHAR(200),
     created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
@@ -688,9 +681,9 @@ CREATE TABLE dbo.devportals (
     hostname VARCHAR(255) NOT NULL,
     api_key VARCHAR(255) NOT NULL,
     header_key_name VARCHAR(100) DEFAULT 'x-wso2-api-key',
-    is_active BIT DEFAULT 0,
-    is_enabled BIT DEFAULT 0,
-    is_default BIT DEFAULT 0,
+    is_active SMALLINT DEFAULT 0,
+    is_enabled SMALLINT DEFAULT 0,
+    is_default SMALLINT DEFAULT 0,
     visibility VARCHAR(20) NOT NULL DEFAULT 'private',
     description VARCHAR(500),
     created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
