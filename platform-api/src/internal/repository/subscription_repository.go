@@ -222,13 +222,16 @@ func (r *SubscriptionRepo) ListByFilters(orgUUID string, apiUUID *string, subscr
 	for rows.Next() {
 		sub := &model.Subscription{}
 		var storedToken string
+		var createdBy, updatedBy sql.NullString
 		if err := rows.Scan(
 			&sub.UUID, &sub.ArtifactUUID, &sub.SubscriberID, &sub.ApplicationID, &storedToken,
 			&sub.SubscriptionPlanID, &sub.OrganizationUUID, &sub.Status,
-			&sub.CreatedAt, &sub.UpdatedAt,
+			&createdBy, &updatedBy, &sub.CreatedAt, &sub.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
+		sub.CreatedBy = createdBy.String
+		sub.UpdatedBy = updatedBy.String
 		sub.SubscriptionToken = r.decryptSubscriptionToken(storedToken)
 		list = append(list, sub)
 	}

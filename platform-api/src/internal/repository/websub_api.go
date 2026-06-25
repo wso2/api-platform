@@ -286,16 +286,17 @@ func (r *WebSubAPIRepo) Exists(handle, orgUUID string) (bool, error) {
 // scanWebSubAPI scans a single Row into a WebSubAPI
 func (r *WebSubAPIRepo) scanWebSubAPI(row *sql.Row) (*model.WebSubAPI, error) {
 	var a model.WebSubAPI
-	var configurationJSON sql.NullString
+	var updatedBy, configurationJSON sql.NullString
 	if err := row.Scan(
 		&a.UUID, &a.Handle, &a.Name, &a.Version, &a.OrganizationUUID, &a.CreatedAt, &a.UpdatedAt,
-		&a.ProjectUUID, &a.Description, &a.CreatedBy, &a.UpdatedBy, &a.LifeCycleStatus, &configurationJSON,
+		&a.ProjectUUID, &a.Description, &a.CreatedBy, &updatedBy, &a.LifeCycleStatus, &configurationJSON,
 	); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
 		}
 		return nil, err
 	}
+	a.UpdatedBy = updatedBy.String
 	if configurationJSON.Valid && configurationJSON.String != "" {
 		if config, err := deserializeWebSubAPIConfiguration(configurationJSON); err != nil {
 			return nil, fmt.Errorf("unmarshal configuration for WebSub API %s: %w", a.Handle, err)
@@ -309,13 +310,14 @@ func (r *WebSubAPIRepo) scanWebSubAPI(row *sql.Row) (*model.WebSubAPI, error) {
 // scanWebSubAPIFromRows scans a Rows row into a WebSubAPI
 func (r *WebSubAPIRepo) scanWebSubAPIFromRows(rows *sql.Rows) (*model.WebSubAPI, error) {
 	var a model.WebSubAPI
-	var configurationJSON sql.NullString
+	var updatedBy, configurationJSON sql.NullString
 	if err := rows.Scan(
 		&a.UUID, &a.Handle, &a.Name, &a.Version, &a.OrganizationUUID, &a.CreatedAt, &a.UpdatedAt,
-		&a.ProjectUUID, &a.Description, &a.CreatedBy, &a.UpdatedBy, &a.LifeCycleStatus, &configurationJSON,
+		&a.ProjectUUID, &a.Description, &a.CreatedBy, &updatedBy, &a.LifeCycleStatus, &configurationJSON,
 	); err != nil {
 		return nil, err
 	}
+	a.UpdatedBy = updatedBy.String
 	if configurationJSON.Valid && configurationJSON.String != "" {
 		if config, err := deserializeWebSubAPIConfiguration(configurationJSON); err != nil {
 			return nil, fmt.Errorf("unmarshal configuration for WebSub API %s: %w", a.Handle, err)
