@@ -44,7 +44,7 @@ func NewAPIKeyUserHandler(apiKeyUserService *service.APIKeyUserService, slogger 
 	}
 }
 
-// ListUserAPIKeys handles GET /api/v0.9/me/api-keys
+// ListUserAPIKeys handles GET /api/v1/me/api-keys
 func (h *APIKeyUserHandler) ListUserAPIKeys(c *gin.Context) {
 	orgID, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {

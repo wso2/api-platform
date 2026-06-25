@@ -20,7 +20,7 @@
 // ChoreoUserContext — Platform API (standalone) version
 // ----------------------------------------------------------------------------
 // Asgardeo authentication has been removed. All org data comes from the
-// Platform API (https://localhost:9243/api/v0.9).
+// Platform API (https://localhost:9243/api/v1).
 // Token exchange and IDP-specific logic are no-ops.
 // ============================================================================
 

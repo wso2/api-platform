@@ -60,7 +60,7 @@ type manifestSyncResponse struct {
 	Policies json.RawMessage `json:"policies,omitempty"`
 }
 
-// CreateGateway handles POST /api/v0.9/gateways
+// CreateGateway handles POST /api/v1/gateways
 func (h *GatewayHandler) CreateGateway(c *gin.Context) {
 	orgId, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {
@@ -141,7 +141,7 @@ func (h *GatewayHandler) CreateGateway(c *gin.Context) {
 	c.JSON(http.StatusCreated, gateway)
 }
 
-// ListGateways handles GET /api/v0.9/gateways with constitution-compliant response
+// ListGateways handles GET /api/v1/gateways with constitution-compliant response
 func (h *GatewayHandler) ListGateways(c *gin.Context) {
 	organizationID, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {
@@ -162,7 +162,7 @@ func (h *GatewayHandler) ListGateways(c *gin.Context) {
 	c.JSON(http.StatusOK, gateways)
 }
 
-// GetGateway handles GET /api/v0.9/gateways/:gatewayId
+// GetGateway handles GET /api/v1/gateways/:gatewayId
 func (h *GatewayHandler) GetGateway(c *gin.Context) {
 	orgId, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {
@@ -237,7 +237,7 @@ func (h *GatewayHandler) GetGatewayStatus(c *gin.Context) {
 	c.JSON(http.StatusOK, status)
 }
 
-// UpdateGateway handles PUT /api/v0.9/gateways/:gatewayId
+// UpdateGateway handles PUT /api/v1/gateways/:gatewayId
 func (h *GatewayHandler) UpdateGateway(c *gin.Context) {
 	orgId, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {
@@ -277,7 +277,7 @@ func (h *GatewayHandler) UpdateGateway(c *gin.Context) {
 	c.JSON(http.StatusOK, response)
 }
 
-// DeleteGateway handles DELETE /api/v0.9/gateways/:gatewayId
+// DeleteGateway handles DELETE /api/v1/gateways/:gatewayId
 func (h *GatewayHandler) DeleteGateway(c *gin.Context) {
 	orgId, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {
@@ -328,7 +328,7 @@ func (h *GatewayHandler) DeleteGateway(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
-// ListTokens handles GET /api/v0.9/gateways/:gatewayId/tokens
+// ListTokens handles GET /api/v1/gateways/:gatewayId/tokens
 func (h *GatewayHandler) ListTokens(c *gin.Context) {
 	orgId, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {
@@ -363,7 +363,7 @@ func (h *GatewayHandler) ListTokens(c *gin.Context) {
 	c.JSON(http.StatusOK, tokens)
 }
 
-// RotateToken handles POST /api/v0.9/gateways/:gatewayId/tokens
+// RotateToken handles POST /api/v1/gateways/:gatewayId/tokens
 func (h *GatewayHandler) RotateToken(c *gin.Context) {
 	orgId, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {
@@ -408,7 +408,7 @@ func (h *GatewayHandler) RotateToken(c *gin.Context) {
 	c.JSON(http.StatusCreated, response)
 }
 
-// RevokeToken handles DELETE /api/v0.9/gateways/:gatewayId/tokens/:tokenId
+// RevokeToken handles DELETE /api/v1/gateways/:gatewayId/tokens/:tokenId
 func (h *GatewayHandler) RevokeToken(c *gin.Context) {
 	orgId, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {
@@ -450,7 +450,7 @@ func (h *GatewayHandler) RevokeToken(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Token revoked successfully"})
 }
 
-// GetGatewayArtifacts handles GET /api/v0.9/gateways/{gatewayId}/live-proxy-artifacts
+// GetGatewayArtifacts handles GET /api/v1/gateways/{gatewayId}/live-proxy-artifacts
 func (h *GatewayHandler) GetGatewayArtifacts(c *gin.Context) {
 	orgId, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {
@@ -495,7 +495,7 @@ func (h *GatewayHandler) GetGatewayArtifacts(c *gin.Context) {
 	c.JSON(http.StatusOK, artifactListResponse)
 }
 
-// GetGatewayManifest handles GET /api/v0.9/gateways/{gatewayId}/manifest
+// GetGatewayManifest handles GET /api/v1/gateways/{gatewayId}/manifest
 // Called by APIM to retrieve the manifest pushed by the gateway controller on connect.
 func (h *GatewayHandler) GetGatewayManifest(c *gin.Context) {
 	orgId, exists := middleware.GetOrganizationFromContext(c)
@@ -534,7 +534,7 @@ func (h *GatewayHandler) GetGatewayManifest(c *gin.Context) {
 	})
 }
 
-// SyncCustomPolicy handles POST /api/v0.9/gateway-custom-policies/sync
+// SyncCustomPolicy handles POST /api/v1/gateway-custom-policies/sync
 // It upserts a custom policy from the gateway's stored manifest into the gateway_custom_policies table.
 func (h *GatewayHandler) SyncCustomPolicy(c *gin.Context) {
 	orgId, exists := middleware.GetOrganizationFromContext(c)
@@ -582,7 +582,7 @@ func (h *GatewayHandler) SyncCustomPolicy(c *gin.Context) {
 	c.JSON(http.StatusOK, policy)
 }
 
-// GetCustomPolicy handles GET /api/v0.9/gateway-custom-policies/:customPolicyUuid/versions/:version
+// GetCustomPolicy handles GET /api/v1/gateway-custom-policies/:customPolicyUuid/versions/:version
 func (h *GatewayHandler) GetCustomPolicy(c *gin.Context) {
 	orgId, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {
@@ -618,7 +618,7 @@ func (h *GatewayHandler) GetCustomPolicy(c *gin.Context) {
 	c.JSON(http.StatusOK, policy)
 }
 
-// DeleteCustomPolicy handles DELETE /api/v0.9/gateway-custom-policies/:customPolicyUuid/versions/:version
+// DeleteCustomPolicy handles DELETE /api/v1/gateway-custom-policies/:customPolicyUuid/versions/:version
 func (h *GatewayHandler) DeleteCustomPolicy(c *gin.Context) {
 	orgId, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {
@@ -659,7 +659,7 @@ func (h *GatewayHandler) DeleteCustomPolicy(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
-// ListCustomPolicies handles GET /api/v0.9/gateway-custom-policies
+// ListCustomPolicies handles GET /api/v1/gateway-custom-policies
 func (h *GatewayHandler) ListCustomPolicies(c *gin.Context) {
 	orgId, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {

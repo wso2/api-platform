@@ -60,7 +60,7 @@ func (h *WebBrokerAPIKeyHandler) RegisterRoutes(r *gin.Engine) {
 	}
 }
 
-// CreateAPIKey handles POST /api/v0.9/webbroker-apis/:apiId/api-keys
+// CreateAPIKey handles POST /api/v1/webbroker-apis/:apiId/api-keys
 func (h *WebBrokerAPIKeyHandler) CreateAPIKey(c *gin.Context) {
 	orgID, ok := middleware.GetOrganizationFromContext(c)
 	if !ok {
@@ -134,7 +134,7 @@ func (h *WebBrokerAPIKeyHandler) CreateAPIKey(c *gin.Context) {
 	})
 }
 
-// UpdateAPIKey handles PUT /api/v0.9/webbroker-apis/:apiId/api-keys/:keyName
+// UpdateAPIKey handles PUT /api/v1/webbroker-apis/:apiId/api-keys/:keyName
 func (h *WebBrokerAPIKeyHandler) UpdateAPIKey(c *gin.Context) {
 	orgID, ok := middleware.GetOrganizationFromContext(c)
 	if !ok {
@@ -204,7 +204,7 @@ func (h *WebBrokerAPIKeyHandler) UpdateAPIKey(c *gin.Context) {
 	})
 }
 
-// DeleteAPIKey handles DELETE /api/v0.9/webbroker-apis/:apiId/api-keys/:keyName
+// DeleteAPIKey handles DELETE /api/v1/webbroker-apis/:apiId/api-keys/:keyName
 func (h *WebBrokerAPIKeyHandler) DeleteAPIKey(c *gin.Context) {
 	orgID, ok := middleware.GetOrganizationFromContext(c)
 	if !ok {

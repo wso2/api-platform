@@ -159,9 +159,10 @@ const (
 // Platform-api resource URL version. APIBasePath is the single source of truth for
 // the prefix every handler route group is mounted under. NOTE: this is a DIFFERENT
 // axis from GatewayApiVersion* (the gateway artifact apiVersion) — the two are
-// governed independently and currently hold different values ("v0.9" vs "v1").
+// governed independently — GatewayApiVersion tracks the Kubernetes CRD API group,
+// while APIVersion tracks the Platform API REST version.
 const (
-    APIVersion  = "v0.9"
+    APIVersion  = "v1"
     APIBasePath = "/api/" + APIVersion
 )
 

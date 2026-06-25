@@ -88,7 +88,7 @@ services:
       # Route all Platform API calls through nginx (/api-proxy/ → platform-api:9243/).
       # Relative paths avoid direct browser-to-platform-api connections and
       # sidestep self-signed TLS certificate issues.
-      - VITE_PLATFORM_API_BASE_URL=/api-proxy/api/v0.9
+      - VITE_PLATFORM_API_BASE_URL=/api-proxy/api/v1
       - VITE_PORTAL_API_BASE_URL=/api-proxy/api/portal/v1
     volumes:
       - ./configs/config.toml:/etc/ai-workspace/config.toml:ro

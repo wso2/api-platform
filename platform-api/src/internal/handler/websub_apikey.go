@@ -60,7 +60,7 @@ func (h *WebSubAPIKeyHandler) RegisterRoutes(r *gin.Engine) {
 	}
 }
 
-// CreateAPIKey handles POST /api/v0.9/websub-apis/:apiId/api-keys
+// CreateAPIKey handles POST /api/v1/websub-apis/:apiId/api-keys
 func (h *WebSubAPIKeyHandler) CreateAPIKey(c *gin.Context) {
 	orgID, ok := middleware.GetOrganizationFromContext(c)
 	if !ok {
@@ -134,7 +134,7 @@ func (h *WebSubAPIKeyHandler) CreateAPIKey(c *gin.Context) {
 	})
 }
 
-// UpdateAPIKey handles PUT /api/v0.9/websub-apis/:apiId/api-keys/:keyName
+// UpdateAPIKey handles PUT /api/v1/websub-apis/:apiId/api-keys/:keyName
 func (h *WebSubAPIKeyHandler) UpdateAPIKey(c *gin.Context) {
 	orgID, ok := middleware.GetOrganizationFromContext(c)
 	if !ok {
@@ -205,7 +205,7 @@ func (h *WebSubAPIKeyHandler) UpdateAPIKey(c *gin.Context) {
 	})
 }
 
-// DeleteAPIKey handles DELETE /api/v0.9/websub-apis/:apiId/api-keys/:keyName
+// DeleteAPIKey handles DELETE /api/v1/websub-apis/:apiId/api-keys/:keyName
 func (h *WebSubAPIKeyHandler) DeleteAPIKey(c *gin.Context) {
 	orgID, ok := middleware.GetOrganizationFromContext(c)
 	if !ok {

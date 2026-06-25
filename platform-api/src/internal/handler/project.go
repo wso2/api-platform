@@ -42,7 +42,7 @@ func NewProjectHandler(projectService *service.ProjectService, slogger *slog.Log
 	}
 }
 
-// CreateProject handles POST /api/v0.9/projects
+// CreateProject handles POST /api/v1/projects
 func (h *ProjectHandler) CreateProject(c *gin.Context) {
 	organizationID, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {
@@ -90,7 +90,7 @@ func (h *ProjectHandler) CreateProject(c *gin.Context) {
 	c.JSON(http.StatusCreated, project)
 }
 
-// GetProject handles GET /api/v0.9/projects/:projectId
+// GetProject handles GET /api/v1/projects/:projectId
 func (h *ProjectHandler) GetProject(c *gin.Context) {
 	orgID, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {
@@ -122,7 +122,7 @@ func (h *ProjectHandler) GetProject(c *gin.Context) {
 	c.JSON(http.StatusOK, project)
 }
 
-// ListProjects handles GET /api/v0.9/projects
+// ListProjects handles GET /api/v1/projects
 func (h *ProjectHandler) ListProjects(c *gin.Context) {
 	orgID, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {
@@ -156,7 +156,7 @@ func (h *ProjectHandler) ListProjects(c *gin.Context) {
 	})
 }
 
-// UpdateProject handles PUT /api/v0.9/projects/:projectId
+// UpdateProject handles PUT /api/v1/projects/:projectId
 func (h *ProjectHandler) UpdateProject(c *gin.Context) {
 	orgID, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {
@@ -199,7 +199,7 @@ func (h *ProjectHandler) UpdateProject(c *gin.Context) {
 	c.JSON(http.StatusOK, project)
 }
 
-// DeleteProject handles DELETE /api/v0.9/projects/:projectId
+// DeleteProject handles DELETE /api/v1/projects/:projectId
 func (h *ProjectHandler) DeleteProject(c *gin.Context) {
 	orgID, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {
