@@ -65,7 +65,6 @@ spec:
   displayName: Ping API
   version: v1.0
   description: Sample HTTP echo/probe API. Requires API key authentication. No subscription plans.
-  provider: WSO2
   status: PUBLISHED
   referenceID: ping-api-v1.0
 

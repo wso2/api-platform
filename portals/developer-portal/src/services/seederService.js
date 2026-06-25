@@ -19,7 +19,6 @@
 
 const { Sequelize } = require('sequelize');
 const orgDao = require('../dao/organizationDao');
-const providerDao = require('../dao/providerDao');
 const apiDao = require('../dao/apiDao');
 const labelDao = require('../dao/labelDao');
 const viewDao = require('../dao/viewDao');
@@ -103,19 +102,6 @@ async function seedDefaultOrg() {
             });
             return;
         }
-    }
-
-    try {
-        const existingProvider = await providerDao.get(orgId, 'WSO2');
-        if (!existingProvider || existingProvider.length === 0) {
-            await providerDao.create(orgId, { name: 'WSO2', providerURL: 'https://wso2.com' });
-        }
-    } catch (error) {
-        logger.error('Failed to seed provider', {
-            error: error.message,
-            operation: 'seedDefaultOrg',
-        });
-        return;
     }
 
     if (config.generateDefaultSubPlans) {

@@ -9,7 +9,6 @@ spec:
   displayName: Countries GraphQL API
   version: v1.0
   description: Explore country data — continents, languages, currencies, and more — via a public GraphQL endpoint.
-  provider: Trevor Blades
   status: PUBLISHED
 
   tags:

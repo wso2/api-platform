@@ -174,24 +174,6 @@ async function uploadContent(orgID) {
     }
 }
 
-async function deleteProvider(orgID, name) {
-    try {
-        const response = await fetch(
-            `/devportal/organizations/${encodeURIComponent(orgID)}/provider?name=${encodeURIComponent(name)}`,
-            { method: 'DELETE', credentials: 'same-origin' }
-        );
-        if (response.ok || response.status === 204) {
-            await showAlert('Provider deleted successfully.', 'success');
-            window.location.href = 'configure';
-        } else {
-            const errorText = await response.text().catch(() => response.statusText || 'Unknown error');
-            showAlert(`Failed to delete provider: ${errorText}`, 'error');
-        }
-    } catch (e) {
-        showAlert(`Error deleting provider: ${e.message}`, 'error');
-    }
-}
-
 function addViewLabel(labelSelectID, labelsContainerID) {
 
     const select = document.getElementById(labelSelectID);

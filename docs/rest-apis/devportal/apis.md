@@ -19,7 +19,7 @@ curl -X POST https://devportal.api-platform.io/o/{orgId}/devportal/v1/apis \
 
 ```
 
-Creates Developer Portal API metadata from either a full API artifact ZIP, an API metadata YAML file (`api.yaml` / `devportal.yaml` / `mcp.yaml`), or an `apiMetadata` JSON string. An API definition file is required unless supplied by the artifact ZIP. The YAML `spec` block accepts: `displayName`, `version`, `description`, `type`, `status`, `visibility`, `agentVisibility`, `visibleGroups`, `tags`, `labels`, `provider`, `referenceID`, `endpoints` (sandboxUrl, productionUrl), `businessInformation` (owners), and `subscriptionPlans`. The service also stores labels, subscription plan mappings, image metadata, and schema definitions for MCP or GraphQL APIs when provided.
+Creates Developer Portal API metadata from either a full API artifact ZIP, an API metadata YAML file (`api.yaml` / `devportal.yaml` / `mcp.yaml`), or an `apiMetadata` JSON string. An API definition file is required unless supplied by the artifact ZIP. The YAML `spec` block accepts: `displayName`, `version`, `description`, `type`, `status`, `visibility`, `agentVisibility`, `visibleGroups`, `tags`, `labels`, `referenceID`, `endpoints` (sandboxUrl, productionUrl), `businessInformation` (owners), and `subscriptionPlans`. The service also stores labels, subscription plan mappings, image metadata, and schema definitions for MCP or GraphQL APIs when provided.
 `subscriptionPlans` links existing org-level plans to this API by name — it does not create plans. In YAML it is a string array (`["Gold", "Silver"]`). In the JSON `apiMetadata` field it is an object array where only `planName` is used (`[{"planName":"Gold"}]`); extra fields such as `planID`, `displayName`, or `requestCount` are ignored.
 
 > Payload
@@ -31,7 +31,7 @@ artifact: string
 schemaDefinition: string
 apiMetadata: '{"apiInfo":{"apiName":"Weather
   API","apiVersion":"v1","apiDescription":"Weather forecast
-  API","apiType":"REST","visibility":"PUBLIC","agentVisibility":"VISIBLE","provider":"WSO2",
+  API","apiType":"REST","visibility":"PUBLIC","agentVisibility":"VISIBLE",
   "apiStatus":"PUBLISHED","tags":["weather"],"labels":["default"]},"endPoints":{
   "productionURL":"https://api.example.com/weather",
   "sandboxURL":"https://sandbox.example.com/weather"},"subscriptionPlans":[{"planName":"Gold"}]}'
@@ -54,7 +54,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |» apiDefinition|body|string(binary)|false|API definition file.|
 |» artifact|body|string(binary)|false|Full API ZIP artifact containing metadata and definition files.|
 |» schemaDefinition|body|string(binary)|false|Schema definition file, used by MCP APIs.|
-|» apiMetadata|body|string|false|JSON string accepted by the service when the `api` YAML file is not supplied. Accepted top-level fields mirror the YAML spec: `apiInfo` (apiName, apiVersion, apiDescription, apiType, visibility, agentVisibility, apiStatus, provider, referenceID, apiHandle, tags, labels, visibleGroups, owners), `endPoints` (productionURL, sandboxURL), and `subscriptionPlans` (array of `{ planName }` objects — only `planName` is read; the plan must already exist in the organization).|
+|» apiMetadata|body|string|false|JSON string accepted by the service when the `api` YAML file is not supplied. Accepted top-level fields mirror the YAML spec: `apiInfo` (apiName, apiVersion, apiDescription, apiType, visibility, agentVisibility, apiStatus, referenceID, apiHandle, tags, labels, visibleGroups, owners), `endPoints` (productionURL, sandboxURL), and `subscriptionPlans` (array of `{ planName }` objects — only `planName` is read; the plan must already exist in the organization).|
 |orgId|path|string|true|none|
 
 > Example responses
@@ -66,7 +66,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "apiID": "api-7f4c2a6b",
   "apiReferenceID": "cp-api-12345",
   "apiHandle": "weather-api-v1",
-  "provider": "WSO2",
   "dataSource": "DEVPORTAL",
   "apiInfo": {
     "apiName": "Weather API",
@@ -234,7 +233,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
       "apiID": "api-7f4c2a6b",
       "apiReferenceID": "cp-api-12345",
       "apiHandle": "weather-api-v1",
-      "provider": "WSO2",
       "dataSource": "DEVPORTAL",
       "apiInfo": {
         "apiName": "Weather API",
@@ -322,7 +320,6 @@ Status Code **200**
 |»» apiID|string|false|none|none|
 |»» apiReferenceID|string|false|none|none|
 |»» apiHandle|string|false|none|none|
-|»» provider|string|false|none|none|
 |»» dataSource|string|false|none|none|
 |»» planID|string|false|none|none|
 |»» apiInfo|[ApiInfoResponse](schemas.md#schemaapiinforesponse)|false|none|none|
@@ -429,7 +426,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "apiID": "api-7f4c2a6b",
   "apiReferenceID": "cp-api-12345",
   "apiHandle": "weather-api-v1",
-  "provider": "WSO2",
   "dataSource": "DEVPORTAL",
   "apiInfo": {
     "apiName": "Weather API",
@@ -553,7 +549,7 @@ artifact: string
 schemaDefinition: string
 apiMetadata: '{"apiInfo":{"apiName":"Weather
   API","apiVersion":"v1","apiDescription":"Weather forecast
-  API","apiType":"REST","visibility":"PUBLIC","agentVisibility":"VISIBLE","provider":"WSO2",
+  API","apiType":"REST","visibility":"PUBLIC","agentVisibility":"VISIBLE",
   "apiStatus":"PUBLISHED","tags":["weather"],"labels":["default"]},"endPoints":{
   "productionURL":"https://api.example.com/weather",
   "sandboxURL":"https://sandbox.example.com/weather"},"subscriptionPlans":[{"planName":"Gold"}]}'
@@ -576,7 +572,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |» apiDefinition|body|string(binary)|false|API definition file.|
 |» artifact|body|string(binary)|false|Full API ZIP artifact containing metadata and definition files.|
 |» schemaDefinition|body|string(binary)|false|Schema definition file, used by MCP APIs.|
-|» apiMetadata|body|string|false|JSON string accepted by the service when the `api` YAML file is not supplied. Accepted top-level fields mirror the YAML spec: `apiInfo` (apiName, apiVersion, apiDescription, apiType, visibility, agentVisibility, apiStatus, provider, referenceID, apiHandle, tags, labels, visibleGroups, owners), `endPoints` (productionURL, sandboxURL), and `subscriptionPlans` (array of `{ planName }` objects — only `planName` is read; the plan must already exist in the organization).|
+|» apiMetadata|body|string|false|JSON string accepted by the service when the `api` YAML file is not supplied. Accepted top-level fields mirror the YAML spec: `apiInfo` (apiName, apiVersion, apiDescription, apiType, visibility, agentVisibility, apiStatus, referenceID, apiHandle, tags, labels, visibleGroups, owners), `endPoints` (productionURL, sandboxURL), and `subscriptionPlans` (array of `{ planName }` objects — only `planName` is read; the plan must already exist in the organization).|
 |orgId|path|string|true|none|
 |apiId|path|string|true|none|
 
@@ -589,7 +585,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "apiID": "api-7f4c2a6b",
   "apiReferenceID": "cp-api-12345",
   "apiHandle": "weather-api-v1",
-  "provider": "WSO2",
   "dataSource": "DEVPORTAL",
   "apiInfo": {
     "apiName": "Weather API",

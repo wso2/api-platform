@@ -34,7 +34,7 @@ const requireAdmin = (req, res, next) => {
     next();
 };
 
-// Org-level settings: Organizations, Views, Labels, IDP, API Provider
+// Org-level settings: Organizations, Views, Labels, IDP
 router.get('/:orgName/configure', noFavicon,
     authController.handleSilentSSO, registerPartials, ensureAuthenticated, requireAdmin, settingsController.loadOrgSettingsPage);
 

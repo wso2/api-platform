@@ -192,7 +192,6 @@ function buildApiMetadataPayload(name, version, description, remotes, title, pub
     return {
         apiInfo: {
             referenceID: null,
-            provider: 'WSO2',
             apiName: name,
             apiHandle,
             apiTitle: title || null,

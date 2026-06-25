@@ -87,7 +87,6 @@ function parseApiYaml(apiHandle, samplesDir) {
     return {
         apiID: name,
         apiHandle: name,
-        provider: spec.provider || 'WSO2',
         apiInfo: {
             apiName: spec.displayName || name,
             apiVersion: spec.version || '',

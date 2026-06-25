@@ -34,7 +34,6 @@ const subDao = require('../dao/subscriptionDao');
 const apiMetadataService = require('../services/apiMetadataService');
 const { apiUsesApiKeySecurity, findSubscriptionTokenHeader } = require('../utils/apiDefinitionUtil');
 const sampleApiLoader = require('../utils/sampleApiLoader');
-const adminService = require('../services/adminService');
 const { seedSampleAPIs } = require('../services/sampleSeederService');
 const apiFlowService = require('../services/apiFlowService');
 const { buildSchema, getIntrospectionQuery, graphql: executeGraphQL } = require('graphql');
@@ -202,7 +201,6 @@ const loadAPIContent = async (req, res) => {
 
         const templateContent = {
             devMode: true,
-            providerUrl: '#subscriptionPlans',
             apiContent: '',
             loadDefault,
             resources: apiDetails,
@@ -234,13 +232,6 @@ const loadAPIContent = async (req, res) => {
             });
             
             let subscriptionPlans = await util.appendSubscriptionPlanDetails(orgID, metaData.subscriptionPlans);
-            let providerUrl;
-            if (metaData.provider === "WSO2") {
-                providerUrl = '#subscriptionPlans';
-            } else {
-                const providerList = await adminService.getAllProviders(orgID);
-                providerUrl = providerList.find(provider => provider.name === metaData.provider)?.providerURL || '#subscriptionPlans';
-            }
             //check whether api content exists
             let loadDefault = false
             let apiDetails = "";
@@ -387,8 +378,6 @@ const loadAPIContent = async (req, res) => {
 
             templateContent = {
                 isAuthenticated: req.isAuthenticated(),
-                provider: metaData.provider,
-                providerUrl: providerUrl,
                 apiMetadata: metaData,
                 subscriptionPlans: subscriptionPlans,
                 subscriptions: subscriptions,

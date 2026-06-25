@@ -29,7 +29,7 @@ const APIMetadata = sequelize.define('DP_API_METADATA', {
     primaryKey: true
   },
   REFERENCE_ID: {
-    type: DataTypes.UUID,
+    type: DataTypes.STRING,
     allowNull: true
   },
   API_NAME: {
@@ -90,10 +90,6 @@ const APIMetadata = sequelize.define('DP_API_METADATA', {
     allowNull: true
   },
   PRODUCTION_URL: {
-    type: DataTypes.STRING,
-    allowNull: true
-  },
-  PROVIDER: {
     type: DataTypes.STRING,
     allowNull: true
   },

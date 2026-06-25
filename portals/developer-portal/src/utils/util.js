@@ -566,23 +566,6 @@ const validateOrganization = () => {
     return validations;
 }
 
-const validateProvider = () => {
-
-    const validations = [
-        body('name')
-            .notEmpty()
-            .escape()
-            .trim(),
-        body('providerURL')
-            .notEmpty()
-            .isURL({
-                protocols: ['http', 'https'], // Allow both http and https
-                require_tld: false
-            }).withMessage('providerUrl must be a valid URL')
-    ]
-    return validations;
-}
-
 const validateRequestParameters = () => {
 
     const validations = [
@@ -962,7 +945,6 @@ module.exports = {
     validateIDP,
     validateOrganization,
     getErrors,
-    validateProvider,
     validateRequestParameters,
     rejectExtraProperties,
     readFilesInDirectory,

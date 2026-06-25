@@ -247,10 +247,6 @@
                   </select>
                 </div>
                 <div class="cfg-form-group">
-                  <label for="wz-provider">Provider</label>
-                  <input type="text" id="wz-provider" class="cfg-form-input" placeholder="admin" />
-                </div>
-                <div class="cfg-form-group">
                   <label for="wz-status">Status</label>
                   <select id="wz-status" class="cfg-form-input">
                     <option value="CREATED">Created</option>
@@ -385,7 +381,6 @@
                   <span class="cfg-review-label">Version</span>       <span class="cfg-review-value" id="rv-version">—</span>
                   <span class="cfg-review-label">Type</span>          <span class="cfg-review-value" id="rv-type">—</span>
                   <span class="cfg-review-label">Status</span>        <span class="cfg-review-value" id="rv-status">—</span>
-                  <span class="cfg-review-label">Provider</span>      <span class="cfg-review-value" id="rv-provider">—</span>
                   <span class="cfg-review-label">Agent visibility</span><span class="cfg-review-value" id="rv-agentvis">—</span>
                   <span class="cfg-review-label">Production URL</span><span class="cfg-review-value cfg-review-value--mono" id="rv-prod">—</span>
                   <span class="cfg-review-label">Sandbox URL</span>   <span class="cfg-review-value cfg-review-value--mono" id="rv-sandbox">—</span>
@@ -624,7 +619,7 @@
           <div class="cfg-orgs-link-icon"><i class="bi bi-building"></i></div>
           <div class="cfg-orgs-link-body">
             <div class="cfg-orgs-link-title">Organization settings</div>
-            <p class="cfg-orgs-link-desc">Manage organizations, views, labels, and API providers from the organization settings page.</p>
+            <p class="cfg-orgs-link-desc">Manage organizations, views, and labels from the organization settings page.</p>
             <a href="/{{loggedOrg}}/configure" class="cfg-btn-primary cfg-orgs-link-btn">
               <i class="bi bi-box-arrow-up-right"></i> Open Organization Settings
             </a>
@@ -1004,7 +999,6 @@
       sv('wz-version',    api.apiVersion);
       sel('wz-type',      api.apiType);
       sel('wz-status',    api.apiStatus);
-      sv('wz-provider',   api.provider || 'admin');
       sv('wz-desc',       api.apiDescription);
       sv('wz-tags',       api.tags);
       sv('wz-prod',       api.productionUrl);
@@ -1017,7 +1011,7 @@
       /* add mode */
       editingId = null;
       document.getElementById('cfg-wizard-title').textContent = 'Add API';
-      ['wz-name','wz-version','wz-handle','wz-provider','wz-desc','wz-tags','wz-prod','wz-sandbox','wz-tech-owner','wz-tech-email','wz-biz-owner','wz-biz-email'].forEach(function(id){ sv(id,''); });
+      ['wz-name','wz-version','wz-handle','wz-desc','wz-tags','wz-prod','wz-sandbox','wz-tech-owner','wz-tech-email','wz-biz-owner','wz-biz-email'].forEach(function(id){ sv(id,''); });
       sel('wz-type','REST'); sel('wz-status','CREATED');
       agentVis = 'Visible';
       document.getElementById('wz-vis-visible').classList.add('active');
@@ -1075,7 +1069,6 @@
     set('rv-version',   v('wz-version'));
     set('rv-type',      document.getElementById('wz-type') ? document.getElementById('wz-type').value : '—');
     set('rv-status',    v('wz-status') === 'PUBLISHED' ? 'Published' : 'Created');
-    set('rv-provider',  v('wz-provider'));
     set('rv-agentvis',  agentVis);
     set('rv-prod',      v('wz-prod'));
     set('rv-sandbox',   v('wz-sandbox'));
@@ -1102,7 +1095,6 @@
         apiHandle:      v('wz-handle') || undefined,
         apiType:        document.getElementById('wz-type').value,
         apiStatus:      document.getElementById('wz-status').value,
-        provider:       v('wz-provider') || undefined,
         apiDescription: v('wz-desc') || undefined,
         tags:           v('wz-tags') ? v('wz-tags').split(',').map(function(t){return t.trim();}).filter(Boolean) : [],
         agentVisibility: agentVis,
@@ -1354,7 +1346,6 @@
     }
     grid.innerHTML = [
       row('Version', api.apiVersion),
-      row('Provider', api.provider),
       row('Agent visibility', api.agentVisibility),
       row('Production URL', api.productionUrl, true),
       row('Sandbox URL', api.sandboxUrl, true),
