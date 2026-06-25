@@ -197,45 +197,41 @@ const publishApplicationDeletedEvents = async (orgID, applicationId, appToDelete
     }
 };
 
+/**
+ * Snapshots the app name + currently-associated key IDs and deletes the application row,
+ * all inside one transaction — so the snapshot exactly matches what's actually deleted,
+ * with no race window for a concurrent associate/dissociate call to go unnoticed.
+ */
+const deleteApplicationAndSnapshotKeys = async (orgID, applicationId, userID) => {
+    let appToDelete = null;
+    let affectedKeyIds = [];
+    await sequelize.transaction(async (t) => {
+        appToDelete = await appDao.get(orgID, applicationId, userID, t);
+        const associatedKeys = await apiKeyService.list(orgID, { appId: applicationId }, t);
+        affectedKeyIds = associatedKeys.map((k) => k.KEY_ID);
+        await appDao.delete(orgID, applicationId, userID, t);
+    });
+    return { appToDelete, affectedKeyIds };
+};
+
 const deleteApplication = async (req, res) => {
     const userID = req.auth?.userId || req.user?.sub;
     const applicationId = req.params.applicationId;
     const orgID = String(req.params.orgId || '').replace(/[\r\n]/g, '');
-
-    // Captured before deletion: once the application row is deleted, the ON DELETE SET NULL
-    // FK cascade clears APP_ID on these keys, so they can no longer be looked up by appId.
-    let appToDelete = null;
-    let affectedKeyIds = [];
-    try {
-        appToDelete = await appDao.get(orgID, applicationId, userID);
-        const associatedKeys = await apiKeyService.list(orgID, { appId: applicationId });
-        affectedKeyIds = associatedKeys.map((k) => k.KEY_ID);
-    } catch (lookupErr) {
-        logger.warn('Failed to look up application/keys before deletion', { orgId: orgID, appId: applicationId, error: lookupErr.message });
-    }
-
     try {
         try {
             await revokeAppKeyMappings(orgID, applicationId);
-            const appDeleteResponse = await appDao.delete(orgID, applicationId, userID);
-            if (appDeleteResponse === 0) {
-                throw new Sequelize.EmptyResultError("Resource not found to delete");
-            } else {
-                trackAppDeletion({ orgId: orgID, appId: applicationId, idpId: userID }, req);
-                await publishApplicationDeletedEvents(orgID, applicationId, appToDelete, affectedKeyIds);
-                res.status(200).send("Resource Deleted Successfully");
-            }
+            const { appToDelete, affectedKeyIds } = await deleteApplicationAndSnapshotKeys(orgID, applicationId, userID);
+            trackAppDeletion({ orgId: orgID, appId: applicationId, idpId: userID }, req);
+            await publishApplicationDeletedEvents(orgID, applicationId, appToDelete, affectedKeyIds);
+            res.status(200).send("Resource Deleted Successfully");
         } catch (error) {
             if (error.statusCode === 404) {
                 await revokeAppKeyMappings(orgID, applicationId);
-                const appDeleteResponse = await appDao.delete(orgID, applicationId, userID);
-                if (appDeleteResponse === 0) {
-                    throw new Sequelize.EmptyResultError("Resource not found to delete");
-                } else {
-                    trackAppDeletion({ orgId: orgID, appId: applicationId, idpId: userID }, req);
-                    await publishApplicationDeletedEvents(orgID, applicationId, appToDelete, affectedKeyIds);
-                    return res.status(200).send("Resource Deleted Successfully");
-                }
+                const { appToDelete, affectedKeyIds } = await deleteApplicationAndSnapshotKeys(orgID, applicationId, userID);
+                trackAppDeletion({ orgId: orgID, appId: applicationId, idpId: userID }, req);
+                await publishApplicationDeletedEvents(orgID, applicationId, appToDelete, affectedKeyIds);
+                return res.status(200).send("Resource Deleted Successfully");
             }
             logger.error('Error occurred while deleting the application', { orgId: orgID, appId: applicationId, error: error.message, stack: error.stack });
             util.handleError(res, error);

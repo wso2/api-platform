@@ -272,8 +272,8 @@ async function revoke({ orgId, keyId, actor }) {
     logger.info('[apiKeyService] key revoked', { keyId, orgId, actor });
 }
 
-async function list(orgId, filters) {
-    return apiKeyDao.list(orgId, filters);
+async function list(orgId, filters, transaction) {
+    return apiKeyDao.list(orgId, filters, transaction);
 }
 
 /**

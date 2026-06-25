@@ -371,7 +371,7 @@ If the application has API keys associated with it (see [`apikey.application_upd
 
 ### `application.deleted`
 
-Fired when a developer deletes an application, immediately before the application and its associations are removed.
+Fired when a developer deletes an application, after the application has been removed.
 
 ```json
 {

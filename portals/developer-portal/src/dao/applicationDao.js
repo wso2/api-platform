@@ -67,7 +67,7 @@ const update = async (orgID, appID, userID, appData) => {
     }
 };
 
-const get = async (orgID, appID, userID) => {
+const get = async (orgID, appID, userID, t) => {
     try {
         const application = await Application.findOne(
             {
@@ -75,7 +75,8 @@ const get = async (orgID, appID, userID) => {
                     ORG_ID: orgID,
                     APP_ID: appID,
                     CREATED_BY: userID
-                }
+                },
+                ...(t && { transaction: t })
             });
         return application;
     } catch (error) {
@@ -122,14 +123,15 @@ const list = async (orgID, userID) => {
     }
 }
 
-const deleteApp = async (orgID, appID, userID) => {
+const deleteApp = async (orgID, appID, userID, t) => {
     try {
         const deletedRowsCount = await Application.destroy({
             where: {
                 ORG_ID: orgID,
                 APP_ID: appID,
                 CREATED_BY: userID
-            }
+            },
+            ...(t && { transaction: t })
         });
         if (deletedRowsCount < 1) {
             throw Object.assign(new Sequelize.EmptyResultError('Application not found'));
