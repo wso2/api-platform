@@ -61,5 +61,4 @@ type ApplicationAssociationTarget struct {
 	TargetVersion string    `json:"-" db:"version"`
 	Type          string    `json:"-" db:"type"`
 	CreatedAt     time.Time `json:"-" db:"created_at"`
-	UpdatedAt     time.Time `json:"-" db:"updated_at"`
 }

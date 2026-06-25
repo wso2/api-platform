@@ -435,7 +435,7 @@ func (r *ApplicationRepo) ListMappedAPIKeys(applicationUUID string) ([]*model.Ap
 
 func (r *ApplicationRepo) ListApplicationAssociations(applicationUUID string) ([]*model.ApplicationAssociationTarget, error) {
 	rows, err := r.db.Query(r.db.Rebind(`
-		SELECT art.uuid, src.handle, src.name, src.version, art.type, aa.created_at, aa.updated_at
+		SELECT art.uuid, src.handle, src.name, src.version, art.type, aa.created_at
 		FROM application_artifacts aa
 		INNER JOIN artifacts art ON art.uuid = aa.artifact_uuid
 		INNER JOIN (
@@ -505,9 +505,9 @@ func (r *ApplicationRepo) AddApplicationAPIKeys(applicationUUID string, apiKeyID
 		}
 		now := time.Now()
 		if _, err = tx.Exec(r.db.Rebind(`
-			INSERT INTO application_api_keys (application_uuid, api_key_id, created_at, updated_at)
-			VALUES (?, ?, ?, ?)
-		`), applicationUUID, apiKeyID, now, now); err != nil {
+			INSERT INTO application_api_keys (application_uuid, api_key_id, created_at)
+			VALUES (?, ?, ?)
+		`), applicationUUID, apiKeyID, now); err != nil {
 			return err
 		}
 	}
@@ -525,9 +525,9 @@ func (r *ApplicationRepo) AddApplicationAssociations(applicationUUID string, tar
 	for _, targetUUID := range uniqueStrings(targetUUIDs) {
 		now := time.Now()
 		if _, err = tx.Exec(r.db.Rebind(`
-			INSERT INTO application_artifacts (application_uuid, artifact_uuid, created_at, updated_at)
-			VALUES (?, ?, ?, ?)
-		`), applicationUUID, targetUUID, now, now); err != nil {
+			INSERT INTO application_artifacts (application_uuid, artifact_uuid, created_at)
+			VALUES (?, ?, ?)
+		`), applicationUUID, targetUUID, now); err != nil {
 			if r.db.IsDuplicateKeyError(err) {
 				continue
 			}
@@ -658,7 +658,6 @@ func scanApplicationAssociationTarget(scanner rowScanner) (*model.ApplicationAss
 		&association.TargetVersion,
 		&association.Type,
 		&association.CreatedAt,
-		&association.UpdatedAt,
 	)
 	if err != nil {
 		return nil, err

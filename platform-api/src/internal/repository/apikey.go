@@ -225,9 +225,17 @@ func (r *APIKeyRepo) ListAPIKeysByUser(orgUUID, username string, kinds []string)
 		SELECT ak.uuid, ak.artifact_uuid, ak.name, ak.masked_api_key, ak.api_key_hashes,
 		       ak.status, ak.created_at, ak.created_by, ak.updated_at, ak.expires_at,
 		       ak.issuer, ak.allowed_targets,
-		       a.handle, a.type
+		       src.handle, a.type
 		FROM api_keys ak
 		JOIN artifacts a ON a.uuid = ak.artifact_uuid
+		JOIN (
+			SELECT uuid, handle FROM rest_apis
+			UNION ALL SELECT uuid, handle FROM websub_apis
+			UNION ALL SELECT uuid, handle FROM webbroker_apis
+			UNION ALL SELECT uuid, handle FROM llm_providers
+			UNION ALL SELECT uuid, handle FROM llm_proxies
+			UNION ALL SELECT uuid, handle FROM mcp_proxies
+		) src ON src.uuid = ak.artifact_uuid
 		WHERE ak.created_by = ?
 		  AND a.organization_uuid = ?
 		  AND a.type IN (%s)

@@ -838,7 +838,6 @@ func (s *ApplicationService) modelToApplicationAssociation(association *model.Ap
 		Version:   association.TargetVersion,
 		Kind:      association.Type,
 		CreatedAt: utils.TimePtrIfNotZero(association.CreatedAt),
-		UpdatedAt: utils.TimePtrIfNotZero(association.UpdatedAt),
 	}
 }
 
