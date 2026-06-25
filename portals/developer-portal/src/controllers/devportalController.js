@@ -24,6 +24,7 @@ const util = require('../utils/util');
 const orgDao = require('../dao/organizationDao');
 const appDao = require('../dao/applicationDao');
 const apiKeyService = require('../services/apiKeyService');
+const { publish } = require('../services/webhooks/eventPublisher');
 const sequelize = require('../db/sequelizeConfig');
 const constants = require('../utils/constants');
 const { ApplicationDTO } = require('../dto/applicationDto');
@@ -87,7 +88,16 @@ const saveApplication = async (req, res) => {
         trackAppCreationStart({ orgId: orgID, appName: applicationData.name, idpId: userID }, req);
         const application = await appDao.create(orgID, userID, applicationData);
         trackAppCreationEnd({ orgId: orgID, appName: applicationData.name, idpId: userID }, req);
-        return res.status(201).json(new ApplicationDTO(application.dataValues));
+        const createdApp = application.dataValues;
+        try {
+            await sequelize.transaction((t) => publish('application.created',
+                { application_id: createdApp.APP_ID, name: createdApp.NAME, description: createdApp.DESCRIPTION, type: createdApp.TYPE },
+                { transaction: t, orgId: orgID, aggregateType: 'application', aggregateId: createdApp.APP_ID }
+            ));
+        } catch (pubErr) {
+            logger.warn('Failed to publish application.created', { orgId: orgID, appId: createdApp.APP_ID, error: pubErr.message });
+        }
+        return res.status(201).json(new ApplicationDTO(createdApp));
     } catch (error) {
         logger.error('Error occurred while creating the application', { orgId: orgID, error: error.message, stack: error.stack });
         util.handleError(res, error);
@@ -108,11 +118,15 @@ const updateApplication = async (req, res) => {
         }
         try {
             const renamedApp = updatedApp[0].dataValues;
-            await sequelize.transaction((t) => apiKeyService.notifyApplicationKeysChanged(
-                orgID, appID, { id: appID, name: renamedApp.NAME }, t
-            ));
+            await sequelize.transaction(async (t) => {
+                await publish('application.updated',
+                    { application_id: appID, name: renamedApp.NAME, description: renamedApp.DESCRIPTION, type: renamedApp.TYPE },
+                    { transaction: t, orgId: orgID, aggregateType: 'application', aggregateId: appID }
+                );
+                await apiKeyService.notifyApplicationKeysChanged(orgID, appID, { id: appID, name: renamedApp.NAME }, t);
+            });
         } catch (pubErr) {
-            logger.warn('Failed to publish apikey.application_updated after app update', { orgId: orgID, appId: appID, error: pubErr.message });
+            logger.warn('Failed to publish webhook events after app update', { orgId: orgID, appId: appID, error: pubErr.message });
         }
         res.status(200).send(new ApplicationDTO(updatedApp[0].dataValues));
     } catch (error) {
@@ -166,9 +180,18 @@ const deleteApplication = async (req, res) => {
     const orgID = String(req.params.orgId || '').replace(/[\r\n]/g, '');
     try {
         try {
-            await sequelize.transaction((t) => apiKeyService.notifyApplicationKeysChanged(orgID, applicationId, null, t));
+            const appToDelete = await appDao.get(orgID, applicationId, userID);
+            await sequelize.transaction(async (t) => {
+                if (appToDelete) {
+                    await publish('application.deleted',
+                        { application_id: applicationId, name: appToDelete.NAME },
+                        { transaction: t, orgId: orgID, aggregateType: 'application', aggregateId: applicationId }
+                    );
+                }
+                await apiKeyService.notifyApplicationKeysChanged(orgID, applicationId, null, t);
+            });
         } catch (pubErr) {
-            logger.warn('Failed to publish apikey.application_updated before app deletion', { orgId: orgID, appId: applicationId, error: pubErr.message });
+            logger.warn('Failed to publish webhook events before app deletion', { orgId: orgID, appId: applicationId, error: pubErr.message });
         }
         try {
             await revokeAppKeyMappings(orgID, applicationId);

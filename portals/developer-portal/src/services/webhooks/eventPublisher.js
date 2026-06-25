@@ -32,7 +32,10 @@ const VALID_EVENT_TYPES = new Set([
     'apikey.generated',
     'apikey.regenerated',
     'apikey.revoked',
-    'apikey.application_updated'
+    'apikey.application_updated',
+    'application.created',
+    'application.updated',
+    'application.deleted'
 ]);
 
 const SECRET_EVENT_TYPES = new Set([

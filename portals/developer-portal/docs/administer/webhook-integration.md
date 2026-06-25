@@ -30,6 +30,9 @@ The portal fires events in the background via a delivery worker with automatic r
 | `subscription.created` | A developer subscribed to an API | Subscription token (`encrypted_key`) |
 | `subscription.plan_changed` | A subscription's plan changed | — |
 | `subscription.deleted` | A developer unsubscribed | — |
+| `application.created` | A developer created an application | — |
+| `application.updated` | An application was renamed or its details changed | — |
+| `application.deleted` | An application was deleted | — |
 
 For events that carry a sensitive field (`apikey.generated`, `apikey.regenerated`, `subscription.created`), the value is **envelope-encrypted** with the subscriber's RSA-2048 public key and delivered in `data.encrypted_key`. It is never included in plaintext.
 
@@ -331,6 +334,56 @@ Fired when a developer unsubscribes. Your subscriber should revoke access for th
 ```
 
 Your subscriber identifies the affected subscription via `subscription_id`. No token is included.
+
+### `application.created`
+
+Fired when a developer creates an application.
+
+```json
+{
+  "event_type": "application.created",
+  "data": {
+    "application_id": "app-uuid",
+    "name": "My Mobile App",
+    "description": "Application used to call Weather APIs.",
+    "type": "WEB"
+  }
+}
+```
+
+### `application.updated`
+
+Fired when a developer renames an application or changes its details. `data` carries the full current representation (not a delta).
+
+```json
+{
+  "event_type": "application.updated",
+  "data": {
+    "application_id": "app-uuid",
+    "name": "My Mobile App (renamed)",
+    "description": "Application used to call Weather APIs.",
+    "type": "WEB"
+  }
+}
+```
+
+If the application has API keys associated with it (see [`apikey.application_updated`](#apikeyapplication_updated)), one such event is fired per associated key with the new name, alongside this event.
+
+### `application.deleted`
+
+Fired when a developer deletes an application, immediately before the application and its associations are removed.
+
+```json
+{
+  "event_type": "application.deleted",
+  "data": {
+    "application_id": "app-uuid",
+    "name": "My Mobile App"
+  }
+}
+```
+
+Your subscriber identifies the affected application via `application_id`. If the application had API keys associated with it, one [`apikey.application_updated`](#apikeyapplication_updated) event (with `application: null`) is fired per associated key alongside this event.
 
 ---
 
