@@ -43,13 +43,14 @@ func NewSecretHandler(secretService *service.SecretService, slogger *slog.Logger
 }
 
 func (h *SecretHandler) RegisterRoutes(r *gin.Engine) {
-	v1 := r.Group("/api/v1")
-	v1.POST("/secrets", h.CreateSecret)
-	v1.GET("/secrets", h.ListSecrets)
-	v1.GET("/secrets/:id", h.GetSecret)
-	v1.PUT("/secrets/:id", h.UpdateSecret)
-	v1.DELETE("/secrets/:id", h.DeleteSecret)
-
+	for _, version := range []string{"/api/v0.9", "/api/v1"} {
+		g := r.Group(version)
+		g.POST("/secrets", h.CreateSecret)
+		g.GET("/secrets", h.ListSecrets)
+		g.GET("/secrets/:id", h.GetSecret)
+		g.PUT("/secrets/:id", h.UpdateSecret)
+		g.DELETE("/secrets/:id", h.DeleteSecret)
+	}
 }
 
 func (h *SecretHandler) CreateSecret(c *gin.Context) {

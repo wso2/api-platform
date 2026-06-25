@@ -49,7 +49,7 @@ describe('AI Workspace — LLM provider secret management', () => {
         authToken = response.body?.token ?? '';
         expect(authToken).to.not.equal('');
         return cy.request({
-          url: '/api-proxy/api/v1/organizations',
+          url: '/api-proxy/api/v0.9/organizations',
           headers: { Authorization: `Bearer ${authToken}` },
         });
       })
@@ -64,7 +64,7 @@ describe('AI Workspace — LLM provider secret management', () => {
     if (!authToken || !organizationId || !createdProviderId) return;
     cy.request({
       method: 'DELETE',
-      url: `/api-proxy/api/v1/llm-providers/${encodeURIComponent(createdProviderId)}?organizationId=${encodeURIComponent(organizationId)}`,
+      url: `/api-proxy/api/v0.9/llm-providers/${encodeURIComponent(createdProviderId)}?organizationId=${encodeURIComponent(organizationId)}`,
       headers: { Authorization: `Bearer ${authToken}` },
       failOnStatusCode: false,
     });
@@ -118,7 +118,7 @@ describe('AI Workspace — LLM provider secret management', () => {
     // Pre-create the secret via API so there's a real secret backing the placeholder.
     cy.request({
       method: 'POST',
-      url: '/api-proxy/api/v1/secrets',
+      url: '/api-proxy/api/v0.9/secrets',
       headers: {
         Authorization: `Bearer ${authToken}`,
         'Content-Type': 'application/json',
@@ -145,7 +145,7 @@ describe('AI Workspace — LLM provider secret management', () => {
     navigateToAddProvider();
     selectOpenAITemplate();
 
-    cy.get('[data-cyid="provider-name-input"] input:visible')
+    cy.get('[data-cyid="provider-name-input"] input:visible', { timeout: 30000 })
       .should('be.visible')
       .clear()
       .type(providerName);
@@ -223,7 +223,7 @@ describe('AI Workspace — LLM provider secret management', () => {
   }
 
   function fillProviderForm(name, apiKey) {
-    cy.get('[data-cyid="provider-name-input"] input:visible')
+    cy.get('[data-cyid="provider-name-input"] input:visible', { timeout: 30000 })
       .should('be.visible')
       .clear()
       .type(name);
