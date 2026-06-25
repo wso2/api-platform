@@ -315,6 +315,26 @@ export interface Policy {
 }
 
 /**
+ * Global (api-level) policy — no path binding
+ */
+export interface GlobalPolicy {
+  name: string;
+  version: string;
+  executionCondition?: string;
+  params?: Record<string, unknown>;
+}
+
+/**
+ * Operation policy — path-bound
+ */
+export interface OperationPolicy {
+  name: string;
+  version: string;
+  executionCondition?: string;
+  paths: PolicyPath[];
+}
+
+/**
  * API Key security configuration
  */
 export interface ApiKeySecurity {
@@ -374,6 +394,8 @@ export interface LLMProvider {
   upstream?: Upstream;
   accessControl?: AccessControl;
   rateLimiting?: RateLimiting;
+  globalPolicies?: GlobalPolicy[];
+  operationPolicies?: OperationPolicy[];
   policies?: Policy[];
   security?: SecurityConfig;
   status?: 'Active' | 'Degraded' | 'Paused' | string;
@@ -397,6 +419,8 @@ export interface CreateLLMProviderRequest {
   modelProviders?: ModelProvider[];
   upstream: Upstream;
   accessControl: AccessControl;
+  globalPolicies?: GlobalPolicy[];
+  operationPolicies?: OperationPolicy[];
   policies?: Policy[];
   openapi?: string;
 }
@@ -550,6 +574,8 @@ export interface Proxy {
   vhost?: string;
   provider?: string | ProxyProviderConfig;
   openapi?: string;
+  globalPolicies?: GlobalPolicy[];
+  operationPolicies?: OperationPolicy[];
   policies?: Policy[];
   security?: ProxySecurityConfig;
   createdAt?: string;
@@ -591,6 +617,8 @@ export interface CreateProxyRequest {
   vhost?: string;
   provider: ProxyProviderConfig;
   openapi: string;
+  globalPolicies?: GlobalPolicy[];
+  operationPolicies?: OperationPolicy[];
   policies: Policy[];
   security: ProxySecurityConfig;
 }

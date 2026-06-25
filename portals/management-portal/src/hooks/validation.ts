@@ -98,13 +98,13 @@ const authedFetch = async (path: string, init?: RequestInit) => {
 /** ----- Hook ----- */
 
 export const useGithubProjectValidation = () => {
-  /** POST: /api/v1/api-projects/validate */
+  /** POST: /api/v0.9/api-projects/validate */
   const validateGithubApiProject = useCallback(
     async (
       payload: GithubProjectValidationRequest,
       opts?: { signal?: AbortSignal }
     ): Promise<GithubProjectValidationResponse> => {
-      const res = await authedFetch(`/api/v1/api-projects/validate`, {
+      const res = await authedFetch(`/api/v0.9/api-projects/validate`, {
         method: "POST",
         body: JSON.stringify(payload),
         signal: opts?.signal,
@@ -135,7 +135,7 @@ export const useOpenApiValidation = () => {
       const formData = new FormData();
       formData.append("url", url);
 
-      const res = await fetch(`${baseUrl}/api/v1/validate/open-api`, {
+      const res = await fetch(`${baseUrl}/api/v0.9/validate/open-api`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
         body: formData,
@@ -163,7 +163,7 @@ export const useOpenApiValidation = () => {
       const formData = new FormData();
       formData.append("definition", file);
 
-      const res = await fetch(`${baseUrl}/api/v1/validate/open-api`, {
+      const res = await fetch(`${baseUrl}/api/v0.9/validate/open-api`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
         body: formData,
@@ -186,7 +186,7 @@ export const useOpenApiValidation = () => {
 
 /** NEW: API uniqueness validation hook */
 export const useApiUniquenessValidation = () => {
-  /** GET: /api/v1/apis/validate?name=...&version=... */
+  /** GET: /api/v0.9/apis/validate?name=...&version=... */
   const validateApiNameVersion = useCallback(
     async (
       payload: ApiNameVersionValidationRequest,
@@ -197,7 +197,7 @@ export const useApiUniquenessValidation = () => {
         version: payload.version,
       }).toString();
 
-      const res = await authedFetch(`/api/v1/apis/validate?${qs}`, {
+      const res = await authedFetch(`/api/v0.9/apis/validate?${qs}`, {
         method: "GET",
         signal: opts?.signal,
       });
@@ -213,7 +213,7 @@ export const useApiUniquenessValidation = () => {
     []
   );
 
-  /** GET: /api/v1/apis/validate?identifier=... */
+  /** GET: /api/v0.9/apis/validate?identifier=... */
   const validateApiIdentifier = useCallback(
     async (
       identifier: string,
@@ -221,7 +221,7 @@ export const useApiUniquenessValidation = () => {
     ): Promise<ApiUniquenessValidationResponse> => {
       const qs = new URLSearchParams({ identifier }).toString();
 
-      const res = await authedFetch(`/api/v1/apis/validate?${qs}`, {
+      const res = await authedFetch(`/api/v0.9/apis/validate?${qs}`, {
         method: "GET",
         signal: opts?.signal,
       });

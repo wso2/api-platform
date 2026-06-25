@@ -428,6 +428,13 @@ func (r *GatewayRepo) UpdateGatewayManifest(gatewayID string, manifest []byte) e
 	return err
 }
 
+// UpdateGatewayVersion persists the version string reported by the gateway controller on manifest push.
+func (r *GatewayRepo) UpdateGatewayVersion(gatewayID, version string) error {
+	query := `UPDATE gateways SET version = ?, updated_at = ? WHERE uuid = ?`
+	_, err := r.db.Exec(r.db.Rebind(query), version, time.Now(), gatewayID)
+	return err
+}
+
 // GetGatewayManifest returns the raw manifest JSON stored for the gateway.
 // Returns nil data (no error) if the gateway exists but has no manifest yet.
 // Returns an error if the gateway row does not exist.

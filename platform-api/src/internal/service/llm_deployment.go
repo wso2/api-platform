@@ -28,6 +28,7 @@ import (
 	"platform-api/src/api"
 	"platform-api/src/config"
 	"platform-api/src/internal/constants"
+	"platform-api/src/internal/deploymenttransform"
 	"platform-api/src/internal/dto"
 	"platform-api/src/internal/model"
 	"platform-api/src/internal/repository"
@@ -37,7 +38,8 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// TODO: Temporary
+// Policy names referenced during LLM deployment artifact generation, migration,
+// and version-aware downconversion.
 const (
 	tokenBasedRateLimitPolicyName   = "token-based-ratelimit"
 	advancedRateLimitPolicyName     = "advanced-ratelimit"
@@ -165,11 +167,23 @@ func (s *LLMProviderDeploymentService) DeployLLMProvider(providerID string, req 
 		if err != nil {
 			return nil, err
 		}
-		providerYaml, err := generateLLMProviderDeploymentYAML(provider, tplHandle)
+		providerDeployment, err := generateLLMProviderDeploymentYAML(provider, tplHandle)
 		if err != nil {
 			return nil, fmt.Errorf("failed to generate LLM provider deployment YAML: %w", err)
 		}
-		contentBytes = []byte(providerYaml)
+		target := deploymenttransform.ParseVersion(gateway.Version)
+		if err := deploymenttransform.Default().Transform(
+			constants.LLMProvider,
+			target,
+			&providerDeployment,
+		); err != nil {
+			return nil, fmt.Errorf("failed to transform LLM provider deployment for gateway %s: %w", gateway.Version, err)
+		}
+		providerYamlBytes, marshalErr := yaml.Marshal(providerDeployment)
+		if marshalErr != nil {
+			return nil, fmt.Errorf("failed to marshal LLM provider deployment YAML: %w", marshalErr)
+		}
+		contentBytes = providerYamlBytes
 	} else {
 		// Use existing deployment as base
 		baseDeployment, err := s.deploymentRepo.GetWithContent(req.Base, provider.UUID, orgUUID)
@@ -531,19 +545,19 @@ func (s *LLMProviderDeploymentService) getTemplateHandle(templateUUID, orgUUID s
 	return tpl.ID, nil
 }
 
-func generateLLMProviderDeploymentYAML(provider *model.LLMProvider, templateHandle string) (string, error) {
+func generateLLMProviderDeploymentYAML(provider *model.LLMProvider, templateHandle string) (dto.LLMProviderDeploymentYAML, error) {
 	if provider == nil {
-		return "", errors.New("provider is required")
+		return dto.LLMProviderDeploymentYAML{}, errors.New("provider is required")
 	}
 	if templateHandle == "" {
-		return "", errors.New("template handle is required")
+		return dto.LLMProviderDeploymentYAML{}, errors.New("template handle is required")
 	}
 	if provider.Configuration.Upstream == nil || provider.Configuration.Upstream.Main == nil {
-		return "", constants.ErrInvalidInput
+		return dto.LLMProviderDeploymentYAML{}, constants.ErrInvalidInput
 	}
 	main := provider.Configuration.Upstream.Main
 	if main.URL == "" && main.Ref == "" {
-		return "", constants.ErrInvalidInput
+		return dto.LLMProviderDeploymentYAML{}, constants.ErrInvalidInput
 	}
 
 	contextValue := "/"
@@ -571,7 +585,9 @@ func generateLLMProviderDeploymentYAML(provider *model.LLMProvider, templateHand
 		}
 	}
 
-	policies := make([]api.LLMPolicy, 0, len(provider.Configuration.Policies))
+	var globalPolicies []api.Policy
+	var operationPolicies []api.OperationPolicy
+	policies := make([]api.LLMPolicy, 0)
 
 	// Transform security config
 	security := provider.Configuration.Security
@@ -579,21 +595,18 @@ func generateLLMProviderDeploymentYAML(provider *model.LLMProvider, templateHand
 		if security.APIKey != nil && isBoolTrue(security.APIKey.Enabled) {
 			key := strings.TrimSpace(security.APIKey.Key)
 			if key == "" {
-				return "", fmt.Errorf("invalid api key security configuration: key is required")
+				return dto.LLMProviderDeploymentYAML{}, fmt.Errorf("invalid api key security configuration: key is required")
 			}
 
 			in := strings.ToLower(strings.TrimSpace(security.APIKey.In))
 			if in != "header" && in != "query" {
-				return "", fmt.Errorf("invalid api key security configuration: in must be 'header' or 'query', got %q", security.APIKey.In)
+				return dto.LLMProviderDeploymentYAML{}, fmt.Errorf("invalid api key security configuration: in must be 'header' or 'query', got %q", security.APIKey.In)
 			}
 
-			addOrAppendPolicyPath(&policies, apiKeyAuthPolicyName, "", api.LLMPolicyPath{
-				Path:    "/*",
-				Methods: []api.LLMPolicyPathMethods{"*"},
-				Params: map[string]interface{}{
-					"key": key,
-					"in":  in,
-				},
+			params := map[string]interface{}{"key": key, "in": in}
+			globalPolicies = append(globalPolicies, api.Policy{
+				Name:   apiKeyAuthPolicyName,
+				Params: &params,
 			})
 		}
 	}
@@ -607,159 +620,94 @@ func generateLLMProviderDeploymentYAML(provider *model.LLMProvider, templateHand
 		if providerLevel != nil {
 			// Priority to global rate limit configuration if both global and resource-wise are present
 			if providerLevel.Global != nil {
-				// Step 2.1 Handle global rate limiting
-				// TODO: Confirm with gateway interpret this as a global policy
+				// Step 2.1 Handle global rate limiting — emits to globalPolicies (shared api-level bucket)
 				if providerLevel.Global.Token != nil && providerLevel.Global.Token.Enabled {
 					tokenLimit := providerLevel.Global.Token
 					duration, err := formatRateLimitDuration(tokenLimit.Reset.Duration, tokenLimit.Reset.Unit)
 					if err != nil {
-						return "", fmt.Errorf("invalid token reset window: %w", err)
+						return dto.LLMProviderDeploymentYAML{}, fmt.Errorf("invalid token reset window: %w", err)
 					}
-					policies = append(policies, api.LLMPolicy{
-						// TODO: This should be taken from config
-						Name:    tokenBasedRateLimitPolicyName,
-						Version: "",
-						Paths: []api.LLMPolicyPath{
-							{
-								Path:    "/*",
-								Methods: []api.LLMPolicyPathMethods{"*"},
-								Params: map[string]interface{}{
-									"totalTokenLimits": []map[string]interface{}{
-										{
-											"count":    tokenLimit.Count,
-											"duration": duration,
-										},
-									},
-								},
-							},
+					params := map[string]interface{}{
+						"totalTokenLimits": []map[string]interface{}{
+							{"count": tokenLimit.Count, "duration": duration},
 						},
-					})
+					}
+					globalPolicies = append(globalPolicies, api.Policy{Name: tokenBasedRateLimitPolicyName, Version: "", Params: &params})
 				}
 				if providerLevel.Global.Request != nil && providerLevel.Global.Request.Enabled {
 					requestLimit := providerLevel.Global.Request
 					duration, err := formatRateLimitDuration(requestLimit.Reset.Duration, requestLimit.Reset.Unit)
 					if err != nil {
-						return "", fmt.Errorf("invalid request reset window: %w", err)
+						return dto.LLMProviderDeploymentYAML{}, fmt.Errorf("invalid request reset window: %w", err)
 					}
-					policies = append(policies, api.LLMPolicy{
-						// TODO: This should be taken from config
-						Name:    advancedRateLimitPolicyName,
-						Version: "",
-						Paths: []api.LLMPolicyPath{
+					params := map[string]interface{}{
+						"quotas": []map[string]interface{}{
 							{
-								Path:    "/*",
-								Methods: []api.LLMPolicyPathMethods{"*"},
-								Params: map[string]interface{}{
-									// TODO: Is this correct?
-									// TODO: Is `algorithm` and `backend` not available?
-									"quotas": []map[string]interface{}{
-										{
-											"name": "request-limit",
-											"limits": []map[string]interface{}{
-												{
-													"limit":    requestLimit.Count,
-													"duration": duration,
-												},
-											},
-										},
-									},
+								"name": "request-limit",
+								"limits": []map[string]interface{}{
+									{"limit": requestLimit.Count, "duration": duration},
 								},
 							},
 						},
-					})
+						"keyExtraction": []map[string]interface{}{
+							{"type": "apiname"},
+						},
+					}
+					globalPolicies = append(globalPolicies, api.Policy{Name: advancedRateLimitPolicyName, Version: "", Params: &params})
 				}
 				if providerLevel.Global.Cost != nil && providerLevel.Global.Cost.Enabled {
 					costLimit := providerLevel.Global.Cost
 					duration, err := formatRateLimitDuration(costLimit.Reset.Duration, costLimit.Reset.Unit)
 					if err != nil {
-						return "", fmt.Errorf("invalid cost reset window: %w", err)
+						return dto.LLMProviderDeploymentYAML{}, fmt.Errorf("invalid cost reset window: %w", err)
 					}
-					policies = append(policies, api.LLMPolicy{
-						Name:    llmCostBasedRateLimitPolicyName,
-						Version: "",
-						Paths: []api.LLMPolicyPath{
-							{
-								Path:    "/*",
-								Methods: []api.LLMPolicyPathMethods{"*"},
-								Params: map[string]interface{}{
-									"budgetLimits": []map[string]interface{}{
-										{"amount": costLimit.Amount, "duration": duration},
-									},
-								},
-							},
+					costParams := map[string]interface{}{
+						"budgetLimits": []map[string]interface{}{
+							{"amount": costLimit.Amount, "duration": duration},
 						},
-					})
-					if !hasPolicy(policies, llmCostPolicyName) {
-						policies = append(policies, api.LLMPolicy{
-							Name:    llmCostPolicyName,
-							Version: "",
-							Paths: []api.LLMPolicyPath{
-								{
-									Path:    "/*",
-									Methods: []api.LLMPolicyPathMethods{"*"},
-									Params:  map[string]interface{}{},
-								},
-							},
-						})
+					}
+					globalPolicies = append(globalPolicies, api.Policy{Name: llmCostBasedRateLimitPolicyName, Version: "", Params: &costParams})
+					if !hasGlobalPolicy(globalPolicies, llmCostPolicyName) {
+						emptyParams := map[string]interface{}{}
+						globalPolicies = append(globalPolicies, api.Policy{Name: llmCostPolicyName, Version: "", Params: &emptyParams})
 					}
 				}
 			} else if providerLevel.ResourceWise != nil {
-				// Step 2.2 Handle resource-wise rate limiting
+				// Step 2.2 Handle resource-wise rate limiting — emits to operationPolicies (per-path buckets)
 				defaultLimit := &providerLevel.ResourceWise.Default
 
-				// Step 2.2.1 Default resource-wise rate limit
+				// Step 2.2.1 Default resource-wise rate limit (path: /* catches all unmatched paths)
 				if defaultLimit.Token != nil && defaultLimit.Token.Enabled {
 					tokenLimit := defaultLimit.Token
 					duration, err := formatRateLimitDuration(tokenLimit.Reset.Duration, tokenLimit.Reset.Unit)
 					if err != nil {
-						return "", fmt.Errorf("invalid token reset window: %w", err)
+						return dto.LLMProviderDeploymentYAML{}, fmt.Errorf("invalid token reset window: %w", err)
 					}
-					policies = append(policies, api.LLMPolicy{
-						// TODO: This should be taken from config
-						Name:    tokenBasedRateLimitPolicyName,
-						Version: "",
-						Paths: []api.LLMPolicyPath{
-							{
-								Path:    "/*",
-								Methods: []api.LLMPolicyPathMethods{"*"},
-								Params: map[string]interface{}{
-									"totalTokenLimits": []map[string]interface{}{
-										{
-											"count":    tokenLimit.Count,
-											"duration": duration,
-										},
-									},
-								},
+					addOrAppendOperationPolicyPath(&operationPolicies, tokenBasedRateLimitPolicyName, "", api.OperationPolicyPath{
+						Path:    "/*",
+						Methods: []string{"*"},
+						Params: map[string]interface{}{
+							"totalTokenLimits": []map[string]interface{}{
+								{"count": tokenLimit.Count, "duration": duration},
 							},
 						},
 					})
 				}
-
 				if defaultLimit.Request != nil && defaultLimit.Request.Enabled {
 					requestLimit := defaultLimit.Request
 					duration, err := formatRateLimitDuration(requestLimit.Reset.Duration, requestLimit.Reset.Unit)
 					if err != nil {
-						return "", fmt.Errorf("invalid request reset window: %w", err)
+						return dto.LLMProviderDeploymentYAML{}, fmt.Errorf("invalid request reset window: %w", err)
 					}
-					policies = append(policies, api.LLMPolicy{
-						// TODO: This should be taken from config
-						Name:    advancedRateLimitPolicyName,
-						Version: "",
-						Paths: []api.LLMPolicyPath{
-							{
-								Path:    "/*",
-								Methods: []api.LLMPolicyPathMethods{"*"},
-								Params: map[string]interface{}{
-									"quotas": []map[string]interface{}{
-										{
-											"name": "request-limit",
-											"limits": []map[string]interface{}{
-												{
-													"limit":    requestLimit.Count,
-													"duration": duration,
-												},
-											},
-										},
+					addOrAppendOperationPolicyPath(&operationPolicies, advancedRateLimitPolicyName, "", api.OperationPolicyPath{
+						Path:    "/*",
+						Methods: []string{"*"},
+						Params: map[string]interface{}{
+							"quotas": []map[string]interface{}{
+								{
+									"name": "request-limit",
+									"limits": []map[string]interface{}{
+										{"limit": requestLimit.Count, "duration": duration},
 									},
 								},
 							},
@@ -770,52 +718,39 @@ func generateLLMProviderDeploymentYAML(provider *model.LLMProvider, templateHand
 					costLimit := defaultLimit.Cost
 					duration, err := formatRateLimitDuration(costLimit.Reset.Duration, costLimit.Reset.Unit)
 					if err != nil {
-						return "", fmt.Errorf("invalid cost reset window: %w", err)
+						return dto.LLMProviderDeploymentYAML{}, fmt.Errorf("invalid cost reset window: %w", err)
 					}
-					policies = append(policies, api.LLMPolicy{
-						Name:    llmCostBasedRateLimitPolicyName,
-						Version: "",
-						Paths: []api.LLMPolicyPath{
-							{
-								Path:    "/*",
-								Methods: []api.LLMPolicyPathMethods{"*"},
-								Params: map[string]interface{}{
-									"budgetLimits": []map[string]interface{}{
-										{"amount": costLimit.Amount, "duration": duration},
-									},
-								},
+					addOrAppendOperationPolicyPath(&operationPolicies, llmCostBasedRateLimitPolicyName, "", api.OperationPolicyPath{
+						Path:    "/*",
+						Methods: []string{"*"},
+						Params: map[string]interface{}{
+							"budgetLimits": []map[string]interface{}{
+								{"amount": costLimit.Amount, "duration": duration},
 							},
 						},
 					})
-					if !hasPolicy(policies, llmCostPolicyName) {
-						policies = append(policies, api.LLMPolicy{
-							Name:    llmCostPolicyName,
-							Version: "",
-							Paths: []api.LLMPolicyPath{
-								{Path: "/*", Methods: []api.LLMPolicyPathMethods{"*"}, Params: map[string]interface{}{}},
-							},
+					if !hasOperationPolicy(operationPolicies, llmCostPolicyName) {
+						operationPolicies = append(operationPolicies, api.OperationPolicy{
+							Name:  llmCostPolicyName,
+							Paths: []api.OperationPolicyPath{{Path: "/*", Methods: []string{"*"}, Params: map[string]interface{}{}}},
 						})
 					}
 				}
 
-				// Step 2.2.2 Resource-wise rate limit
+				// Step 2.2.2 Resource-wise rate limit (per specific resource path)
 				for _, r := range providerLevel.ResourceWise.Resources {
 					if r.Limit.Token != nil && r.Limit.Token.Enabled {
 						tokenLimit := r.Limit.Token
 						duration, err := formatRateLimitDuration(tokenLimit.Reset.Duration, tokenLimit.Reset.Unit)
 						if err != nil {
-							return "", fmt.Errorf("invalid token reset window for resource %s: %w", r.Resource, err)
+							return dto.LLMProviderDeploymentYAML{}, fmt.Errorf("invalid token reset window for resource %s: %w", r.Resource, err)
 						}
-						// TODO: the methods should be coming as input
-						addOrAppendPolicyPath(&policies, tokenBasedRateLimitPolicyName, "", api.LLMPolicyPath{
+						addOrAppendOperationPolicyPath(&operationPolicies, tokenBasedRateLimitPolicyName, "", api.OperationPolicyPath{
 							Path:    r.Resource,
-							Methods: []api.LLMPolicyPathMethods{"*"},
+							Methods: []string{"*"},
 							Params: map[string]interface{}{
 								"totalTokenLimits": []map[string]interface{}{
-									{
-										"count":    tokenLimit.Count,
-										"duration": duration,
-									},
+									{"count": tokenLimit.Count, "duration": duration},
 								},
 							},
 						})
@@ -824,21 +759,17 @@ func generateLLMProviderDeploymentYAML(provider *model.LLMProvider, templateHand
 						requestLimit := r.Limit.Request
 						duration, err := formatRateLimitDuration(requestLimit.Reset.Duration, requestLimit.Reset.Unit)
 						if err != nil {
-							return "", fmt.Errorf("invalid request reset window for resource %s: %w", r.Resource, err)
+							return dto.LLMProviderDeploymentYAML{}, fmt.Errorf("invalid request reset window for resource %s: %w", r.Resource, err)
 						}
-						// TODO: the methods should be coming as input
-						addOrAppendPolicyPath(&policies, advancedRateLimitPolicyName, "", api.LLMPolicyPath{
+						addOrAppendOperationPolicyPath(&operationPolicies, advancedRateLimitPolicyName, "", api.OperationPolicyPath{
 							Path:    r.Resource,
-							Methods: []api.LLMPolicyPathMethods{"*"},
+							Methods: []string{"*"},
 							Params: map[string]interface{}{
 								"quotas": []map[string]interface{}{
 									{
 										"name": "request-limit",
 										"limits": []map[string]interface{}{
-											{
-												"limit":    requestLimit.Count,
-												"duration": duration,
-											},
+											{"limit": requestLimit.Count, "duration": duration},
 										},
 									},
 								},
@@ -849,28 +780,21 @@ func generateLLMProviderDeploymentYAML(provider *model.LLMProvider, templateHand
 						costLimit := r.Limit.Cost
 						duration, err := formatRateLimitDuration(costLimit.Reset.Duration, costLimit.Reset.Unit)
 						if err != nil {
-							return "", fmt.Errorf("invalid cost reset window for resource %s: %w", r.Resource, err)
+							return dto.LLMProviderDeploymentYAML{}, fmt.Errorf("invalid cost reset window for resource %s: %w", r.Resource, err)
 						}
-						addOrAppendPolicyPath(&policies, llmCostBasedRateLimitPolicyName, "", api.LLMPolicyPath{
+						addOrAppendOperationPolicyPath(&operationPolicies, llmCostBasedRateLimitPolicyName, "", api.OperationPolicyPath{
 							Path:    r.Resource,
-							Methods: []api.LLMPolicyPathMethods{"*"},
+							Methods: []string{"*"},
 							Params: map[string]interface{}{
 								"budgetLimits": []map[string]interface{}{
 									{"amount": costLimit.Amount, "duration": duration},
 								},
 							},
 						})
-						if !hasPolicy(policies, llmCostPolicyName) {
-							policies = append(policies, api.LLMPolicy{
-								Name:    llmCostPolicyName,
-								Version: "",
-								Paths: []api.LLMPolicyPath{
-									{
-										Path:    "/*",
-										Methods: []api.LLMPolicyPathMethods{"*"},
-										Params:  map[string]interface{}{},
-									},
-								},
+						if !hasOperationPolicy(operationPolicies, llmCostPolicyName) {
+							operationPolicies = append(operationPolicies, api.OperationPolicy{
+								Name:  llmCostPolicyName,
+								Paths: []api.OperationPolicyPath{{Path: "/*", Methods: []string{"*"}, Params: map[string]interface{}{}}},
 							})
 						}
 					}
@@ -886,7 +810,7 @@ func generateLLMProviderDeploymentYAML(provider *model.LLMProvider, templateHand
 					tokenLimit := consumerLevel.Global.Token
 					duration, err := formatRateLimitDuration(tokenLimit.Reset.Duration, tokenLimit.Reset.Unit)
 					if err != nil {
-						return "", fmt.Errorf("invalid consumer token reset window: %w", err)
+						return dto.LLMProviderDeploymentYAML{}, fmt.Errorf("invalid consumer token reset window: %w", err)
 					}
 					policies = append(policies, api.LLMPolicy{
 						Name:    tokenBasedRateLimitPolicyName,
@@ -912,7 +836,7 @@ func generateLLMProviderDeploymentYAML(provider *model.LLMProvider, templateHand
 					requestLimit := consumerLevel.Global.Request
 					duration, err := formatRateLimitDuration(requestLimit.Reset.Duration, requestLimit.Reset.Unit)
 					if err != nil {
-						return "", fmt.Errorf("invalid consumer request reset window: %w", err)
+						return dto.LLMProviderDeploymentYAML{}, fmt.Errorf("invalid consumer request reset window: %w", err)
 					}
 					policies = append(policies, api.LLMPolicy{
 						Name:    advancedRateLimitPolicyName,
@@ -946,7 +870,7 @@ func generateLLMProviderDeploymentYAML(provider *model.LLMProvider, templateHand
 					costLimit := consumerLevel.Global.Cost
 					duration, err := formatRateLimitDuration(costLimit.Reset.Duration, costLimit.Reset.Unit)
 					if err != nil {
-						return "", fmt.Errorf("invalid consumer cost reset window: %w", err)
+						return dto.LLMProviderDeploymentYAML{}, fmt.Errorf("invalid consumer cost reset window: %w", err)
 					}
 					policies = append(policies, api.LLMPolicy{
 						Name:    llmCostBasedRateLimitPolicyName,
@@ -964,7 +888,7 @@ func generateLLMProviderDeploymentYAML(provider *model.LLMProvider, templateHand
 							},
 						},
 					})
-					if !hasPolicy(policies, llmCostPolicyName) {
+					if !hasPolicy(policies, llmCostPolicyName) && !hasGlobalPolicy(globalPolicies, llmCostPolicyName) {
 						policies = append(policies, api.LLMPolicy{
 							Name:    llmCostPolicyName,
 							Version: "",
@@ -984,7 +908,7 @@ func generateLLMProviderDeploymentYAML(provider *model.LLMProvider, templateHand
 						tokenLimit := r.Limit.Token
 						duration, err := formatRateLimitDuration(tokenLimit.Reset.Duration, tokenLimit.Reset.Unit)
 						if err != nil {
-							return "", fmt.Errorf("invalid consumer token reset window for resource %s: %w", r.Resource, err)
+							return dto.LLMProviderDeploymentYAML{}, fmt.Errorf("invalid consumer token reset window for resource %s: %w", r.Resource, err)
 						}
 						addOrAppendPolicyPath(&policies, tokenBasedRateLimitPolicyName, "", api.LLMPolicyPath{
 							Path:    r.Resource,
@@ -1004,7 +928,7 @@ func generateLLMProviderDeploymentYAML(provider *model.LLMProvider, templateHand
 						requestLimit := r.Limit.Request
 						duration, err := formatRateLimitDuration(requestLimit.Reset.Duration, requestLimit.Reset.Unit)
 						if err != nil {
-							return "", fmt.Errorf("invalid consumer request reset window for resource %s: %w", r.Resource, err)
+							return dto.LLMProviderDeploymentYAML{}, fmt.Errorf("invalid consumer request reset window for resource %s: %w", r.Resource, err)
 						}
 						addOrAppendPolicyPath(&policies, advancedRateLimitPolicyName, "", api.LLMPolicyPath{
 							Path:    r.Resource,
@@ -1032,7 +956,7 @@ func generateLLMProviderDeploymentYAML(provider *model.LLMProvider, templateHand
 						costLimit := r.Limit.Cost
 						duration, err := formatRateLimitDuration(costLimit.Reset.Duration, costLimit.Reset.Unit)
 						if err != nil {
-							return "", fmt.Errorf("invalid consumer cost reset window for resource %s: %w", r.Resource, err)
+							return dto.LLMProviderDeploymentYAML{}, fmt.Errorf("invalid consumer cost reset window for resource %s: %w", r.Resource, err)
 						}
 						addOrAppendPolicyPath(&policies, llmCostBasedRateLimitPolicyName, "", api.LLMPolicyPath{
 							Path:    r.Resource,
@@ -1044,7 +968,7 @@ func generateLLMProviderDeploymentYAML(provider *model.LLMProvider, templateHand
 								"consumerBased": true,
 							},
 						})
-						if !hasPolicy(policies, llmCostPolicyName) {
+						if !hasPolicy(policies, llmCostPolicyName) && !hasGlobalPolicy(globalPolicies, llmCostPolicyName) {
 							policies = append(policies, api.LLMPolicy{
 								Name:    llmCostPolicyName,
 								Version: "",
@@ -1063,10 +987,43 @@ func generateLLMProviderDeploymentYAML(provider *model.LLMProvider, templateHand
 		}
 	}
 
+	// Carry through user-set globalPolicies from the model (e.g. guardrails set via UI/API)
+	for _, p := range provider.Configuration.GlobalPolicies {
+		if hasGlobalPolicy(globalPolicies, p.Name) {
+			continue
+		}
+		params := p.Params
+		if p.Name == advancedRateLimitPolicyName && params != nil {
+			params = withGlobalAdvancedRatelimitKeyExtraction(params)
+		}
+		entry := api.Policy{Name: p.Name, Version: normalizePolicyVersionToMajor(p.Version)}
+		if p.ExecutionCondition != "" {
+			entry.ExecutionCondition = &p.ExecutionCondition
+		}
+		if params != nil {
+			entry.Params = &params
+		}
+		globalPolicies = append(globalPolicies, entry)
+	}
+
+	// Carry through user-set operationPolicies from the model
+	for _, p := range provider.Configuration.OperationPolicies {
+		paths := make([]api.OperationPolicyPath, 0, len(p.Paths))
+		for _, pp := range p.Paths {
+			paths = append(paths, api.OperationPolicyPath{Path: pp.Path, Methods: pp.Methods, Params: pp.Params})
+		}
+		entry := api.OperationPolicy{Name: p.Name, Version: normalizePolicyVersionToMajor(p.Version), Paths: paths}
+		if p.ExecutionCondition != "" {
+			entry.ExecutionCondition = &p.ExecutionCondition
+		}
+		operationPolicies = append(operationPolicies, entry)
+	}
+
+	// Carry through deprecated policies field
 	for _, p := range provider.Configuration.Policies {
 		// llm-cost is a parameterless tracker policy that the frontend attaches by default.
 		// Skip it here if the rate limiting block already added it to avoid duplication.
-		if p.Name == llmCostPolicyName && hasPolicy(policies, llmCostPolicyName) {
+		if p.Name == llmCostPolicyName && (hasGlobalPolicy(globalPolicies, llmCostPolicyName) || hasPolicy(policies, llmCostPolicyName)) {
 			continue
 		}
 		paths := make([]api.LLMPolicyPath, 0, len(p.Paths))
@@ -1080,6 +1037,8 @@ func generateLLMProviderDeploymentYAML(provider *model.LLMProvider, templateHand
 		policies = append(policies, api.LLMPolicy{Name: p.Name, Version: normalizePolicyVersionToMajor(p.Version), Paths: paths})
 	}
 
+	globalPolicies = orderLLMGlobalPolicies(globalPolicies)
+	operationPolicies = orderLLMOperationPolicies(operationPolicies)
 	policies = orderLLMPolicies(policies)
 
 	upstream := dto.LLMUpstreamYAML{URL: main.URL, Ref: main.Ref}
@@ -1088,29 +1047,46 @@ func generateLLMProviderDeploymentYAML(provider *model.LLMProvider, templateHand
 	}
 
 	providerDeployment := dto.LLMProviderDeploymentYAML{
-		ApiVersion: "gateway.api-platform.wso2.com/v1alpha1",
+		ApiVersion: constants.GatewayApiVersion,
 		Kind:       constants.LLMProvider,
 		Metadata: dto.DeploymentMetadata{
 			Name: provider.ID,
 		},
 		Spec: dto.LLMProviderDeploymentSpec{
-			DisplayName:   provider.Name,
-			Version:       provider.Version,
-			Context:       contextValue,
-			VHost:         vhostValue,
-			Template:      templateHandle,
-			Upstream:      upstream,
-			AccessControl: accessControl,
-			Policies:      policies,
+			DisplayName:       provider.Name,
+			Version:           provider.Version,
+			Context:           contextValue,
+			VHost:             vhostValue,
+			Template:          templateHandle,
+			Upstream:          upstream,
+			AccessControl:     accessControl,
+			GlobalPolicies:    globalPolicies,
+			OperationPolicies: operationPolicies,
+			Policies:          policies,
 		},
 	}
 
-	yamlBytes, err := yaml.Marshal(providerDeployment)
-	if err != nil {
-		return "", fmt.Errorf("failed to marshal LLM provider to YAML: %w", err)
+	// Promote any legacy policies assembled by the generator (security api-key-auth,
+	// consumer-level rate limits) into operationPolicies — the canonical latest format.
+	// The deploy orchestration layer applies version-aware transformation afterward.
+	for _, p := range providerDeployment.Spec.Policies {
+		paths := make([]api.OperationPolicyPath, 0, len(p.Paths))
+		for _, pp := range p.Paths {
+			methods := make([]string, 0, len(pp.Methods))
+			for _, m := range pp.Methods {
+				methods = append(methods, string(m))
+			}
+			paths = append(paths, api.OperationPolicyPath{Path: pp.Path, Methods: methods, Params: pp.Params})
+		}
+		providerDeployment.Spec.OperationPolicies = append(providerDeployment.Spec.OperationPolicies, api.OperationPolicy{
+			Name:    p.Name,
+			Version: p.Version,
+			Paths:   paths,
+		})
 	}
+	providerDeployment.Spec.Policies = nil
 
-	return string(yamlBytes), nil
+	return providerDeployment, nil
 }
 
 func formatRateLimitDuration(duration int, unit string) (string, error) {
@@ -1257,11 +1233,23 @@ func (s *LLMProxyDeploymentService) DeployLLMProxy(proxyID string, req *api.Depl
 
 	// Determine the source: "current" or existing deployment
 	if req.Base == "current" {
-		proxyYaml, err := generateLLMProxyDeploymentYAML(proxy)
+		proxyDeployment, err := generateLLMProxyDeploymentYAML(proxy)
 		if err != nil {
 			return nil, fmt.Errorf("failed to generate LLM proxy deployment YAML: %w", err)
 		}
-		contentBytes = []byte(proxyYaml)
+		target := deploymenttransform.ParseVersion(gateway.Version)
+		if err := deploymenttransform.Default().Transform(
+			constants.LLMProxy,
+			target,
+			&proxyDeployment,
+		); err != nil {
+			return nil, fmt.Errorf("failed to transform LLM proxy deployment for gateway %s: %w", gateway.Version, err)
+		}
+		proxyYamlBytes, marshalErr := yaml.Marshal(proxyDeployment)
+		if marshalErr != nil {
+			return nil, fmt.Errorf("failed to marshal LLM proxy deployment YAML: %w", marshalErr)
+		}
+		contentBytes = proxyYamlBytes
 	} else {
 		// Use existing deployment as base
 		baseDeployment, err := s.deploymentRepo.GetWithContent(req.Base, proxy.UUID, orgUUID)
@@ -1313,7 +1301,7 @@ func (s *LLMProxyDeploymentService) DeployLLMProxy(proxyID string, req *api.Depl
 		initialStatus, string(model.DeploymentStatusDeployed),
 		&performedAt, "",
 	); err != nil {
-		s.slogger.Warn("Failed to set deployment status for LLM proxy", "error", err)
+		return nil, fmt.Errorf("failed to set deployment status for LLM proxy: %w", err)
 	}
 
 	// Broadcast LLM proxy deployment event to gateway
@@ -1609,12 +1597,12 @@ func (s *LLMProxyDeploymentService) GetLLMProxyDeployment(proxyID, deploymentID,
 	)
 }
 
-func generateLLMProxyDeploymentYAML(proxy *model.LLMProxy) (string, error) {
+func generateLLMProxyDeploymentYAML(proxy *model.LLMProxy) (dto.LLMProxyDeploymentYAML, error) {
 	if proxy == nil {
-		return "", errors.New("proxy is required")
+		return dto.LLMProxyDeploymentYAML{}, errors.New("proxy is required")
 	}
 	if proxy.Configuration.Provider == "" {
-		return "", constants.ErrInvalidInput
+		return dto.LLMProxyDeploymentYAML{}, constants.ErrInvalidInput
 	}
 
 	contextValue := "/"
@@ -1626,7 +1614,9 @@ func generateLLMProxyDeploymentYAML(proxy *model.LLMProxy) (string, error) {
 		vhostValue = *proxy.Configuration.Vhost
 	}
 
-	policies := make([]api.LLMPolicy, 0, len(proxy.Configuration.Policies))
+	var proxyGlobalPolicies []api.Policy
+	var proxyOperationPolicies []api.OperationPolicy
+	proxyPolicies := make([]api.LLMPolicy, 0)
 
 	// Transform security config
 	security := proxy.Configuration.Security
@@ -1634,25 +1624,55 @@ func generateLLMProxyDeploymentYAML(proxy *model.LLMProxy) (string, error) {
 		if security.APIKey != nil && isBoolTrue(security.APIKey.Enabled) {
 			key := strings.TrimSpace(security.APIKey.Key)
 			if key == "" {
-				return "", fmt.Errorf("invalid api key security configuration: key is required")
+				return dto.LLMProxyDeploymentYAML{}, fmt.Errorf("invalid api key security configuration: key is required")
 			}
 
 			in := strings.ToLower(strings.TrimSpace(security.APIKey.In))
 			if in != "header" && in != "query" {
-				return "", fmt.Errorf("invalid api key security configuration: in must be 'header' or 'query', got %q", security.APIKey.In)
+				return dto.LLMProxyDeploymentYAML{}, fmt.Errorf("invalid api key security configuration: in must be 'header' or 'query', got %q", security.APIKey.In)
 			}
 
-			addOrAppendPolicyPath(&policies, apiKeyAuthPolicyName, "", api.LLMPolicyPath{
-				Path:    "/*",
-				Methods: []api.LLMPolicyPathMethods{"*"},
-				Params: map[string]interface{}{
-					"key": key,
-					"in":  in,
-				},
+			params := map[string]interface{}{"key": key, "in": in}
+			proxyGlobalPolicies = append(proxyGlobalPolicies, api.Policy{
+				Name:   apiKeyAuthPolicyName,
+				Params: &params,
 			})
 		}
 	}
 
+	// Carry through user-set globalPolicies from the model
+	for _, p := range proxy.Configuration.GlobalPolicies {
+		if hasGlobalPolicy(proxyGlobalPolicies, p.Name) {
+			continue
+		}
+		params := p.Params
+		if p.Name == advancedRateLimitPolicyName && params != nil {
+			params = withGlobalAdvancedRatelimitKeyExtraction(params)
+		}
+		entry := api.Policy{Name: p.Name, Version: normalizePolicyVersionToMajor(p.Version)}
+		if p.ExecutionCondition != "" {
+			entry.ExecutionCondition = &p.ExecutionCondition
+		}
+		if params != nil {
+			entry.Params = &params
+		}
+		proxyGlobalPolicies = append(proxyGlobalPolicies, entry)
+	}
+
+	// Carry through user-set operationPolicies from the model
+	for _, p := range proxy.Configuration.OperationPolicies {
+		paths := make([]api.OperationPolicyPath, 0, len(p.Paths))
+		for _, pp := range p.Paths {
+			paths = append(paths, api.OperationPolicyPath{Path: pp.Path, Methods: pp.Methods, Params: pp.Params})
+		}
+		entry := api.OperationPolicy{Name: p.Name, Version: normalizePolicyVersionToMajor(p.Version), Paths: paths}
+		if p.ExecutionCondition != "" {
+			entry.ExecutionCondition = &p.ExecutionCondition
+		}
+		proxyOperationPolicies = append(proxyOperationPolicies, entry)
+	}
+
+	// Carry through deprecated policies field
 	for _, p := range proxy.Configuration.Policies {
 		paths := make([]api.LLMPolicyPath, 0, len(p.Paths))
 		for _, pp := range p.Paths {
@@ -1662,13 +1682,13 @@ func generateLLMProxyDeploymentYAML(proxy *model.LLMProxy) (string, error) {
 			}
 			paths = append(paths, api.LLMPolicyPath{Path: pp.Path, Methods: methods, Params: pp.Params})
 		}
-		policies = append(policies, api.LLMPolicy{Name: p.Name, Version: normalizePolicyVersionToMajor(p.Version), Paths: paths})
+		proxyPolicies = append(proxyPolicies, api.LLMPolicy{Name: p.Name, Version: normalizePolicyVersionToMajor(p.Version), Paths: paths})
 	}
 
-	policies = orderLLMPolicies(policies)
+	proxyPolicies = orderLLMPolicies(proxyPolicies)
 
 	proxyDeployment := dto.LLMProxyDeploymentYAML{
-		ApiVersion: "gateway.api-platform.wso2.com/v1alpha1",
+		ApiVersion: constants.GatewayApiVersion,
 		Kind:       constants.LLMProxy,
 		Metadata: dto.DeploymentMetadata{
 			Name: proxy.ID,
@@ -1681,7 +1701,9 @@ func generateLLMProxyDeploymentYAML(proxy *model.LLMProxy) (string, error) {
 			Provider: dto.LLMProxyDeploymentProvider{
 				ID: proxy.Configuration.Provider,
 			},
-			Policies: policies,
+			GlobalPolicies:    proxyGlobalPolicies,
+			OperationPolicies: proxyOperationPolicies,
+			Policies:          proxyPolicies,
 		},
 	}
 
@@ -1689,12 +1711,25 @@ func generateLLMProxyDeploymentYAML(proxy *model.LLMProxy) (string, error) {
 		proxyDeployment.Spec.Provider.Auth = mapModelUpstreamAuthToAPI(proxy.Configuration.UpstreamAuth)
 	}
 
-	yamlBytes, err := yaml.Marshal(proxyDeployment)
-	if err != nil {
-		return "", fmt.Errorf("failed to marshal LLM proxy to YAML: %w", err)
+	// Promote any legacy policies assembled by the generator into operationPolicies.
+	for _, p := range proxyDeployment.Spec.Policies {
+		paths := make([]api.OperationPolicyPath, 0, len(p.Paths))
+		for _, pp := range p.Paths {
+			methods := make([]string, 0, len(pp.Methods))
+			for _, m := range pp.Methods {
+				methods = append(methods, string(m))
+			}
+			paths = append(paths, api.OperationPolicyPath{Path: pp.Path, Methods: methods, Params: pp.Params})
+		}
+		proxyDeployment.Spec.OperationPolicies = append(proxyDeployment.Spec.OperationPolicies, api.OperationPolicy{
+			Name:    p.Name,
+			Version: p.Version,
+			Paths:   paths,
+		})
 	}
+	proxyDeployment.Spec.Policies = nil
 
-	return string(yamlBytes), nil
+	return proxyDeployment, nil
 }
 
 // mapModelAuthToAPI converts model.UpstreamAuth to api.UpstreamAuth with pointer fields
@@ -1736,4 +1771,96 @@ func orderLLMPolicies(policies []api.LLMPolicy) []api.LLMPolicy {
 		policies[costIdx], policies[rateLimitIdx] = policies[rateLimitIdx], policies[costIdx]
 	}
 	return policies
+}
+
+// withGlobalAdvancedRatelimitKeyExtraction returns a copy of params with
+// keyExtraction defaulted to [{type:"apiname"}] when the caller did not set one.
+// advanced-ratelimit defaults to a per-route (routename) key; in globalPolicies
+// that would create one bucket per operation, so an apiname key is injected to
+// give a single shared API-level counter.
+//
+// An explicit keyExtraction is intentionally preserved untouched: a user who sets
+// it (e.g. a per-consumer header key, or routename on purpose) has made a
+// deliberate choice that this default must not override.
+func withGlobalAdvancedRatelimitKeyExtraction(params map[string]interface{}) map[string]interface{} {
+	if _, ok := params["keyExtraction"]; ok {
+		return params
+	}
+	out := make(map[string]interface{}, len(params)+1)
+	for k, v := range params {
+		out[k] = v
+	}
+	out["keyExtraction"] = []map[string]interface{}{{"type": "apiname"}}
+	return out
+}
+
+// orderLLMGlobalPolicies ensures llm-cost-based-ratelimit precedes llm-cost in the global policy list.
+func orderLLMGlobalPolicies(policies []api.Policy) []api.Policy {
+	costIdx := -1
+	rateLimitIdx := -1
+	for i, p := range policies {
+		switch p.Name {
+		case llmCostPolicyName:
+			costIdx = i
+		case llmCostBasedRateLimitPolicyName:
+			rateLimitIdx = i
+		}
+	}
+	if costIdx != -1 && rateLimitIdx != -1 && costIdx < rateLimitIdx {
+		policies[costIdx], policies[rateLimitIdx] = policies[rateLimitIdx], policies[costIdx]
+	}
+	return policies
+}
+
+// orderLLMOperationPolicies ensures llm-cost-based-ratelimit precedes llm-cost in the operation policy list.
+func orderLLMOperationPolicies(policies []api.OperationPolicy) []api.OperationPolicy {
+	costIdx := -1
+	rateLimitIdx := -1
+	for i, p := range policies {
+		switch p.Name {
+		case llmCostPolicyName:
+			costIdx = i
+		case llmCostBasedRateLimitPolicyName:
+			rateLimitIdx = i
+		}
+	}
+	if costIdx != -1 && rateLimitIdx != -1 && costIdx < rateLimitIdx {
+		policies[costIdx], policies[rateLimitIdx] = policies[rateLimitIdx], policies[costIdx]
+	}
+	return policies
+}
+
+func hasGlobalPolicy(policies []api.Policy, name string) bool {
+	for _, p := range policies {
+		if p.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+func hasOperationPolicy(policies []api.OperationPolicy, name string) bool {
+	for _, p := range policies {
+		if p.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+// addOrAppendOperationPolicyPath adds a path to an existing OperationPolicy entry with the
+// given name, or appends a new entry if none exists.
+func addOrAppendOperationPolicyPath(policies *[]api.OperationPolicy, name, version string, path api.OperationPolicyPath) {
+	for i := range *policies {
+		if (*policies)[i].Name == name && (*policies)[i].Version == version {
+			for _, existing := range (*policies)[i].Paths {
+				if existing.Path == path.Path {
+					return // already present, skip
+				}
+			}
+			(*policies)[i].Paths = append((*policies)[i].Paths, path)
+			return
+		}
+	}
+	*policies = append(*policies, api.OperationPolicy{Name: name, Version: version, Paths: []api.OperationPolicyPath{path}})
 }
