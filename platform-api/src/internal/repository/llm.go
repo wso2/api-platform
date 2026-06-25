@@ -350,6 +350,24 @@ func (r *LLMProviderRepo) Create(p *model.LLMProvider) error {
 		return fmt.Errorf("failed to create provider: %w", err)
 	}
 
+	// Persist gateway associations (if any) within the same transaction.
+	assocQuery := `
+		INSERT INTO gateway_association_mappings (
+			artifact_uuid, organization_uuid, gateway_uuid, metadata, created_at, updated_at
+		)
+		VALUES (?, ?, ?, ?, ?, ?)`
+	for _, assoc := range p.AssociatedGateways {
+		var metadata sql.NullString
+		if assoc.Metadata != "" {
+			metadata = sql.NullString{String: assoc.Metadata, Valid: true}
+		}
+		if _, err := tx.Exec(r.db.Rebind(assocQuery),
+			p.UUID, p.OrganizationUUID, assoc.GatewayUUID, metadata, now, now,
+		); err != nil {
+			return fmt.Errorf("failed to create gateway association: %w", err)
+		}
+	}
+
 	if err := tx.Commit(); err != nil {
 		return err
 	}
@@ -397,7 +415,43 @@ func (r *LLMProviderRepo) GetByID(providerID, orgUUID string) (*model.LLMProvide
 		}
 	}
 
+	associations, err := r.getAssociatedGateways(p.UUID, orgUUID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load gateway associations for provider %s: %w", p.ID, err)
+	}
+	p.AssociatedGateways = associations
+
 	return &p, nil
+}
+
+// getAssociatedGateways returns the gateway associations for an artifact, joining
+// the gateways table to resolve each gateway handle.
+func (r *LLMProviderRepo) getAssociatedGateways(artifactUUID, orgUUID string) ([]model.AssociatedGatewayMapping, error) {
+	query := `
+		SELECT m.gateway_uuid, g.handle, m.metadata
+		FROM gateway_association_mappings m
+		JOIN gateways g ON g.uuid = m.gateway_uuid
+		WHERE m.artifact_uuid = ? AND m.organization_uuid = ?
+		ORDER BY m.created_at`
+	rows, err := r.db.Query(r.db.Rebind(query), artifactUUID, orgUUID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var associations []model.AssociatedGatewayMapping
+	for rows.Next() {
+		var assoc model.AssociatedGatewayMapping
+		var metadata sql.NullString
+		if err := rows.Scan(&assoc.GatewayUUID, &assoc.GatewayHandle, &metadata); err != nil {
+			return nil, err
+		}
+		if metadata.Valid {
+			assoc.Metadata = metadata.String
+		}
+		associations = append(associations, assoc)
+	}
+	return associations, rows.Err()
 }
 
 func (r *LLMProviderRepo) List(orgUUID string, limit, offset int) ([]*model.LLMProvider, error) {

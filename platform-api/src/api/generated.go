@@ -1657,6 +1657,11 @@ type OperationPolicyPath struct {
 	Path   string                 `binding:"required" json:"path" yaml:"path"`
 }
 
+type AssociatedGateway struct {
+	Name string `binding:"required" json:"name" yaml:"name"`
+	Configurations map[string]interface{} `binding:"required" json:"configurations" yaml:"configurations"`
+}
+
 // LLMProvider defines model for LLMProvider.
 type LLMProvider struct {
 	AccessControl LLMAccessControl `json:"accessControl" yaml:"accessControl"`
@@ -1714,6 +1719,8 @@ type LLMProvider struct {
 
 	// Vhost Virtual host name used for routing. Supports standard domain names, subdomains, or wildcard domains. Must follow RFC-compliant hostname rules. Wildcards are only allowed in the left-most label (e.g., *.example.com).
 	Vhost *string `json:"vhost,omitempty" yaml:"vhost,omitempty"`
+
+	AssociatedGateways *[]AssociatedGateway `json:"associatedGateways,omitempty" yaml:"associatedGateways,omitempty"`
 }
 
 // LLMProviderAPIKeyListResponse defines model for LLMProviderAPIKeyListResponse.

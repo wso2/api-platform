@@ -19,6 +19,7 @@ package service
 
 import (
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -347,6 +348,13 @@ func (s *LLMProviderService) Create(orgUUID, createdBy string, req *api.LLMProvi
 		return nil, err
 	}
 
+	// Resolve any associated gateways up-front so they can be persisted within the
+	// same transaction as the provider create.
+	associatedGateways, err := s.resolveAssociatedGateways(orgUUID, req.AssociatedGateways)
+	if err != nil {
+		return nil, err
+	}
+
 	contextValue := utils.DefaultStringPtr(req.Context, "/")
 	m := &model.LLMProvider{
 		OrganizationUUID: orgUUID,
@@ -369,6 +377,7 @@ func (s *LLMProviderService) Create(orgUUID, createdBy string, req *api.LLMProvi
 			Policies:          mapPoliciesAPIToModel(req.Policies),
 			Security:          mapSecurityAPIToModel(req.Security),
 		},
+		AssociatedGateways: associatedGateways,
 	}
 	migrateLegacyProviderPoliciesInPlace(&m.Configuration)
 
@@ -1762,7 +1771,31 @@ func mapProviderModelToAPI(m *model.LLMProvider, templateHandle string) *api.LLM
 		CreatedAt:      utils.TimePtr(m.CreatedAt),
 		UpdatedAt:      utils.TimePtr(m.UpdatedAt),
 	}
+	if associated := mapAssociatedGatewaysModelToAPI(m.AssociatedGateways); associated != nil {
+		out.AssociatedGateways = associated
+	}
 	return out
+}
+
+// mapAssociatedGatewaysModelToAPI maps persisted gateway associations back to the
+// API shape, deserializing each metadata payload into the configurations object.
+// Returns nil when there are no associations so the field is omitted from responses.
+func mapAssociatedGatewaysModelToAPI(in []model.AssociatedGatewayMapping) *[]api.AssociatedGateway {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]api.AssociatedGateway, 0, len(in))
+	for _, a := range in {
+		ag := api.AssociatedGateway{Name: a.GatewayHandle}
+		if a.Metadata != "" {
+			configurations := map[string]interface{}{}
+			if err := json.Unmarshal([]byte(a.Metadata), &configurations); err == nil {
+				ag.Configurations = configurations
+			}
+		}
+		out = append(out, ag)
+	}
+	return &out
 }
 
 func validateModelProviders(template string, providers *[]api.LLMModelProvider) error {
@@ -2133,4 +2166,49 @@ func mapSecurityModelToAPI(in *model.SecurityConfig) *api.SecurityConfig {
 		out.ApiKey = &api.APIKeySecurity{Enabled: in.APIKey.Enabled, Key: utils.StringPtrIfNotEmpty(in.APIKey.Key), In: inLoc}
 	}
 	return out
+}
+
+func isAssociatedGatewaysAvailable(associatedGateways *[]api.AssociatedGateway) bool {
+	if associatedGateways == nil || len(*associatedGateways) == 0 {
+		return false
+	}
+	return true
+}
+
+// resolveAssociatedGateways validates each requested gateway association, resolving
+// the gateway handle to its UUID and serializing any per-gateway configuration
+// overrides into the metadata column. Returns nil when no associations are requested.
+func (s *LLMProviderService) resolveAssociatedGateways(orgUUID string, associatedGateways *[]api.AssociatedGateway) ([]model.AssociatedGatewayMapping, error) {
+	if !isAssociatedGatewaysAvailable(associatedGateways) {
+		return nil, nil
+	}
+	if s.gatewayRepo == nil {
+		return nil, fmt.Errorf("could not initialize gateway repository")
+	}
+
+	resolved := make([]model.AssociatedGatewayMapping, 0, len(*associatedGateways))
+	for _, ag := range *associatedGateways {
+		gw, err := s.gatewayRepo.GetByHandleAndOrgID(ag.Name, orgUUID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to validate associated gateway %q: %w", ag.Name, err)
+		}
+		if gw == nil {
+			return nil, constants.ErrGatewayNotFound
+		}
+
+		metadata := ""
+		if len(ag.Configurations) > 0 {
+			metadataJSON, err := json.Marshal(ag.Configurations)
+			if err != nil {
+				return nil, fmt.Errorf("failed to serialize configurations for gateway %q: %w", ag.Name, err)
+			}
+			metadata = string(metadataJSON)
+		}
+
+		resolved = append(resolved, model.AssociatedGatewayMapping{
+			GatewayUUID: gw.ID,
+			Metadata:    metadata,
+		})
+	}
+	return resolved, nil
 }

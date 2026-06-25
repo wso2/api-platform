@@ -158,6 +158,16 @@ type LLMProviderTemplateResourceMappings struct {
 	Resources []LLMProviderTemplateResourceMapping `json:"resources,omitempty" db:"-"`
 }
 
+// AssociatedGatewayMapping is a resolved gateway association persisted in the
+// gateway_association_mappings table alongside an artifact (e.g. an LLM provider).
+// GatewayHandle is populated on reads (joined from the gateways table) and is what
+// callers reference by name; GatewayUUID is used for the foreign-key write.
+type AssociatedGatewayMapping struct {
+	GatewayUUID   string `json:"gatewayUuid" db:"gateway_uuid"`
+	GatewayHandle string `json:"gatewayHandle" db:"handle"`
+	Metadata      string `json:"metadata,omitempty" db:"metadata"`
+}
+
 type LLMProviderTemplate struct {
 	UUID             string                       `json:"uuid" db:"uuid"`
 	OrganizationUUID string                       `json:"organizationId" db:"organization_uuid"`
@@ -196,6 +206,9 @@ type LLMProvider struct {
 	CreatedAt        time.Time          `json:"createdAt" db:"created_at"`
 	UpdatedAt        time.Time          `json:"updatedAt" db:"updated_at"`
 	Configuration    LLMProviderConfig  `json:"configuration" db:"configuration"`
+	// AssociatedGateways carries resolved gateway associations to be persisted in
+	// the gateway_association_mappings table within the same create transaction.
+	AssociatedGateways []AssociatedGatewayMapping `json:"-" db:"-"`
 }
 
 type LLMProviderConfig struct {
