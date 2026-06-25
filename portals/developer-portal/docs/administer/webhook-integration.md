@@ -26,6 +26,7 @@ The portal fires events in the background via a delivery worker with automatic r
 | `apikey.generated` | A new API key was generated for a subscription | API key secret (`encrypted_key`) |
 | `apikey.regenerated` | An existing API key was rotated | New API key secret (`encrypted_key`) |
 | `apikey.revoked` | An API key was revoked | — |
+| `apikey.application_updated` | A key's application association changed | — |
 | `subscription.created` | A developer subscribed to an API | Subscription token (`encrypted_key`) |
 | `subscription.plan_changed` | A subscription's plan changed | — |
 | `subscription.deleted` | A developer unsubscribed | — |
@@ -154,6 +155,10 @@ Fired when a developer generates a new API key for an API.
       "plan_ref_id": "plan-uuid",
       "plan_name": "Gold"
     },
+    "application": {
+      "id": "app-uuid",
+      "name": "My Mobile App"
+    },
     "encrypted_key": {
       "wrappedKey": "<base64>",
       "iv": "<base64>",
@@ -165,6 +170,7 @@ Fired when a developer generates a new API key for an API.
 ```
 
 - `subscription` is present only when the key is bound to a subscription
+- `application` is present only when the key is associated with an application (see [`apikey.application_updated`](#apikeyapplication_updated) below) — for analytics attribution only, it has no bearing on the key's validity
 - `encrypted_key` is present only when a public key is configured for the subscriber (see [Envelope Encryption](#envelope-encryption))
 - `expires_at` is `null` for non-expiring keys
 
@@ -189,10 +195,16 @@ Fired when a developer rotates an existing key. The `key_id` is unchanged; the o
       "plan_ref_id": "plan-uuid",
       "plan_name": "Gold"
     },
+    "application": {
+      "id": "app-uuid",
+      "name": "My Mobile App"
+    },
     "encrypted_key": { "wrappedKey": "...", "iv": "...", "tag": "...", "ciphertext": "..." }
   }
 }
 ```
+
+- `application` is present only when the key is currently associated with an application
 
 ### `apikey.revoked`
 
@@ -220,6 +232,28 @@ Fired when a developer revokes a key. Your subscriber should reject any request 
 
 - `subscription` is present only when the key was bound to a subscription
 - No `encrypted_key` is included — your subscriber only needs the `key_id` to revoke access.
+
+### `apikey.application_updated`
+
+Fired whenever a single key's application association changes: the key is associated with an app, dissociated, or its app is renamed or deleted. This is a **per-key** event — like `apikey.generated`/`apikey.regenerated`/`apikey.revoked`, `key_id` identifies the one key affected. The association is optional and exists for analytics attribution only — it has no effect on key validity or authorization.
+
+```json
+{
+  "event_type": "apikey.application_updated",
+  "data": {
+    "key_id": "key-uuid",
+    "application": {
+      "id": "app-uuid",
+      "name": "My App"
+    }
+  }
+}
+```
+
+- `application` is `null` when the key's association was removed, or when the key's app was deleted
+- Renaming an app fires this event once per key currently associated with it, each with the app's new `name`
+- Deleting an app fires this event once per key currently associated with it, each with `application: null` — there is no separate "deleted" variant
+- No `encrypted_key` is included — no secret material is involved
 
 ### `subscription.created`
 

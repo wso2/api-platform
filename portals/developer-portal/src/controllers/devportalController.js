@@ -23,6 +23,8 @@ const logger = require('../config/logger');
 const util = require('../utils/util');
 const orgDao = require('../dao/organizationDao');
 const appDao = require('../dao/applicationDao');
+const apiKeyService = require('../services/apiKeyService');
+const sequelize = require('../db/sequelizeConfig');
 const constants = require('../utils/constants');
 const { ApplicationDTO } = require('../dto/applicationDto');
 const { Sequelize } = require("sequelize");
@@ -104,6 +106,14 @@ const updateApplication = async (req, res) => {
         if (!updatedRows) {
             throw new Sequelize.EmptyResultError("No record found to update");
         }
+        try {
+            const renamedApp = updatedApp[0].dataValues;
+            await sequelize.transaction((t) => apiKeyService.notifyApplicationKeysChanged(
+                orgID, appID, { id: appID, name: renamedApp.NAME }, t
+            ));
+        } catch (pubErr) {
+            logger.warn('Failed to publish apikey.application_updated after app update', { orgId: orgID, appId: appID, error: pubErr.message });
+        }
         res.status(200).send(new ApplicationDTO(updatedApp[0].dataValues));
     } catch (error) {
         logger.error("Error occurred while updating the application", { orgId: orgID, error: error.message, stack: error.stack });
@@ -155,6 +165,11 @@ const deleteApplication = async (req, res) => {
     const applicationId = req.params.applicationId;
     const orgID = String(req.params.orgId || '').replace(/[\r\n]/g, '');
     try {
+        try {
+            await sequelize.transaction((t) => apiKeyService.notifyApplicationKeysChanged(orgID, applicationId, null, t));
+        } catch (pubErr) {
+            logger.warn('Failed to publish apikey.application_updated before app deletion', { orgId: orgID, appId: applicationId, error: pubErr.message });
+        }
         try {
             await revokeAppKeyMappings(orgID, applicationId);
             const appDeleteResponse = await appDao.delete(orgID, applicationId, userID);

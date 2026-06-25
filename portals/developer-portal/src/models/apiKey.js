@@ -19,7 +19,7 @@ const { Sequelize, DataTypes } = require('sequelize');
 const sequelize = require('../db/sequelizeConfig');
 const { Organization } = require('./organization');
 const { APIMetadata } = require('./apiMetadata');
-const { SubscriptionMapping } = require('./application');
+const { Application, SubscriptionMapping } = require('./application');
 
 const APIKey = sequelize.define('DP_API_KEY', {
     KEY_ID: {
@@ -36,6 +36,11 @@ const APIKey = sequelize.define('DP_API_KEY', {
         type: DataTypes.UUID,
         allowNull: true,
         references: { model: SubscriptionMapping, key: 'SUB_ID' }
+    },
+    APP_ID: {
+        type: DataTypes.UUID,
+        allowNull: true,
+        references: { model: Application, key: 'APP_ID' }
     },
     ORG_ID: {
         type: DataTypes.UUID,
@@ -75,8 +80,10 @@ const APIKey = sequelize.define('DP_API_KEY', {
 
 APIKey.belongsTo(Organization, { foreignKey: 'ORG_ID' });
 Organization.hasMany(APIKey, { foreignKey: 'ORG_ID' });
-APIKey.belongsTo(APIMetadata, { foreignKey: 'API_ID' });
+APIKey.belongsTo(APIMetadata, { foreignKey: 'API_ID', as: 'DP_API_METADATA' });
 APIKey.belongsTo(SubscriptionMapping, { foreignKey: 'SUBSCRIPTION_ID', onDelete: 'SET NULL' });
 SubscriptionMapping.hasMany(APIKey, { foreignKey: 'SUBSCRIPTION_ID', onDelete: 'SET NULL' });
+APIKey.belongsTo(Application, { foreignKey: 'APP_ID', onDelete: 'SET NULL' });
+Application.hasMany(APIKey, { foreignKey: 'APP_ID', onDelete: 'SET NULL' });
 
 module.exports = APIKey;

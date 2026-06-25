@@ -31,7 +31,8 @@ const VALID_EVENT_TYPES = new Set([
     'subscription.plan_changed',
     'apikey.generated',
     'apikey.regenerated',
-    'apikey.revoked'
+    'apikey.revoked',
+    'apikey.application_updated'
 ]);
 
 const SECRET_EVENT_TYPES = new Set([

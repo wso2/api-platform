@@ -23,6 +23,7 @@ const constants = require('../utils/constants');
 const orgDao = require('../dao/organizationDao');
 const apiDao = require('../dao/apiDao');
 const apiFileDao = require('../dao/apiFileDao');
+const applicationDao = require('../dao/applicationDao');
 const apiMetadataService = require('../services/apiMetadataService');
 const apiKeyService = require('../services/apiKeyService');
 const { apiUsesApiKeySecurity } = require('../utils/apiDefinitionUtil');
@@ -95,19 +96,26 @@ const loadAPIApiKeys = async (req, res) => {
         let apiKeys = [];
         let apiKeysCount = 0;
         let apiKeysLoadError = false;
+        let applications = [];
+        const selectedAppId = typeof req.query.appId === 'string' ? req.query.appId.trim() : '';
 
         try {
-            const keys = await apiKeyService.list(orgID, { apiId: apiID });
-            apiKeys = (keys || []).map((k) => ({
-                keyId: k.KEY_ID,
-                name: k.NAME,
-                status: String(k.STATUS || 'ACTIVE').toLowerCase(),
-                expiresAt: k.EXPIRES_AT,
-                createdAt: k.CREATED_AT,
-                revokedAt: k.REVOKED_AT || undefined,
-                apiId: k.API_ID,
-                maskedApiKey: '••••••••'
-            }));
+            const keys = await apiKeyService.list(orgID, { apiId: apiID, appId: selectedAppId || undefined });
+            apiKeys = (keys || []).map((k) => {
+                const app = k.DP_APPLICATION;
+                return {
+                    keyId: k.KEY_ID,
+                    name: k.NAME,
+                    status: String(k.STATUS || 'ACTIVE').toLowerCase(),
+                    expiresAt: k.EXPIRES_AT,
+                    createdAt: k.CREATED_AT,
+                    revokedAt: k.REVOKED_AT || undefined,
+                    apiId: k.API_ID,
+                    appId: app ? app.APP_ID : null,
+                    appName: app ? app.NAME : null,
+                    maskedApiKey: '••••••••'
+                };
+            });
             apiKeysCount = apiKeys.length;
         } catch (dbError) {
             apiKeysLoadError = true;
@@ -115,6 +123,16 @@ const loadAPIApiKeys = async (req, res) => {
                 error: dbError.message,
                 orgID,
                 apiHandle
+            });
+        }
+
+        try {
+            const apps = await applicationDao.list(orgID, req.user.sub);
+            applications = (apps || []).map((a) => ({ appId: a.APP_ID, name: a.NAME }));
+        } catch (dbError) {
+            logger.warn('Failed to load applications for API key association', {
+                error: dbError.message,
+                orgID
             });
         }
 
@@ -134,6 +152,8 @@ const loadAPIApiKeys = async (req, res) => {
             apiKeys: apiKeys,
             apiKeysCount: apiKeysCount,
             apiKeysLoadError,
+            applications,
+            selectedAppId,
             apiMetadata: metaData,
             apiHandle: apiHandle,
             isReadOnlyMode: config.readOnlyMode,

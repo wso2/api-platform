@@ -1163,6 +1163,7 @@ Subscription payload.
   "apiId": "api-7f4c2a6b",
   "name": "weather_prod_key",
   "subscriptionId": "sub-abc123",
+  "appId": "app-12345",
   "expiresAt": "2026-12-31T23:59:59Z"
 }
 
@@ -1175,6 +1176,7 @@ Subscription payload.
 |apiId|string|true|none|Developer Portal API ID.|
 |name|string|true|none|none|
 |subscriptionId|string|false|none|Optional subscription ID to associate the key with.|
+|appId|string|false|none|Optional application ID to associate the key with, for analytics attribution only — it has no effect on the key's validity or authorization. Must belong to the same organization and be owned by the caller.|
 |expiresAt|any|false|none|Optional ISO-8601 datetime with timezone, epoch seconds, or epoch milliseconds.|
 
 oneOf
@@ -1201,6 +1203,8 @@ xor
   "keyId": "key-12345",
   "name": "weather_prod_key",
   "apiId": "api-7f4c2a6b",
+  "appId": "app-12345",
+  "appName": "My Mobile App",
   "status": "ACTIVE",
   "expiresAt": "2026-12-31T23:59:59Z",
   "createdAt": "2019-08-24T14:15:22Z",
@@ -1218,6 +1222,8 @@ API key metadata returned by list operations. Secret material is omitted.
 |keyId|string|false|none|Developer Portal key identifier.|
 |name|string|false|none|none|
 |apiId|string|false|none|Developer Portal API ID the key belongs to.|
+|appId|string¦null|false|none|ID of the application this key is associated with, if any. Analytics attribution only.|
+|appName|string¦null|false|none|Name of the associated application, if any.|
 |status|string|false|none|none|
 |expiresAt|string(date-time)¦null|false|none|none|
 |createdAt|string(date-time)|false|none|none|
@@ -1242,6 +1248,8 @@ API key metadata returned by list operations. Secret material is omitted.
   "keyId": "key-12345",
   "name": "weather_prod_key",
   "apiId": "api-7f4c2a6b",
+  "appId": "app-12345",
+  "appName": "My Mobile App",
   "status": "ACTIVE",
   "expiresAt": "2026-12-31T23:59:59Z",
   "createdAt": "2019-08-24T14:15:22Z",
@@ -1265,6 +1273,33 @@ and
 |---|---|---|---|---|
 |*anonymous*|object|false|none|API key response returned by generate/regenerate. The plaintext secret is returned exactly once and never persisted — store it securely.|
 |» key|string|false|none|One-time plaintext API key secret.|
+
+<h2 id="tocS_ApiKeyApplicationResponse">ApiKeyApplicationResponse</h2>
+
+<a id="schemaapikeyapplicationresponse"></a>
+<a id="schema_ApiKeyApplicationResponse"></a>
+<a id="tocSapikeyapplicationresponse"></a>
+<a id="tocsapikeyapplicationresponse"></a>
+
+```json
+{
+  "keyId": "key-12345",
+  "application": {
+    "id": "app-12345",
+    "name": "My Mobile App"
+  }
+}
+
+```
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|keyId|string|false|none|none|
+|application|object|false|none|none|
+|» id|string|false|none|none|
+|» name|string|false|none|none|
 
 <h2 id="tocS_KeyManagerRequest">KeyManagerRequest</h2>
 

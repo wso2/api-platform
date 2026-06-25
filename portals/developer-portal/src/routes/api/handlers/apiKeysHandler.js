@@ -31,4 +31,7 @@ module.exports = {
     listApiKeys: apiKeyController.listApiKeys,
     regenerateApiKey: compose(requireCsrfForMutatingApi, apiKeyController.regenerateApiKey),
     revokeApiKey: compose(requireCsrfForMutatingApi, apiKeyController.revokeApiKey),
+    associateApiKeyApplication: compose(requireCsrfForMutatingApi, apiKeyController.associateApiKeyApplication),
+    removeApiKeyApplication: compose(requireCsrfForMutatingApi, apiKeyController.removeApiKeyApplication),
+    listApplicationApiKeys: apiKeyController.listApplicationApiKeys,
 };
