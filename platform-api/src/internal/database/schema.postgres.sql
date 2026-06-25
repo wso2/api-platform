@@ -272,7 +272,7 @@ CREATE TABLE IF NOT EXISTS deployment_status (
 );
 
 -- Artifact Associations table (for gateways)
-CREATE TABLE IF NOT EXISTS gateway_associations (
+CREATE TABLE IF NOT EXISTS gateway_association_mappings (
     id SERIAL PRIMARY KEY,
     artifact_uuid VARCHAR(40) NOT NULL,
     organization_uuid VARCHAR(40) NOT NULL,
