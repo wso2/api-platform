@@ -253,8 +253,8 @@ func secretToInfo(s *model.WebSubAPIHmacSecret) *api.WebSubAPIHmacSecretInfo {
 	}
 	return &api.WebSubAPIHmacSecretInfo{
 		Uuid:        s.UUID,
-		Name:        s.Name,
-		DisplayName: s.DisplayName,
+		Name:        s.Handle,
+		DisplayName: s.Name,
 		Status:      s.Status,
 		CreatedAt:   s.CreatedAt,
 		UpdatedAt:   s.UpdatedAt,

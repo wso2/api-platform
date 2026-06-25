@@ -26,8 +26,8 @@ import "time"
 type WebSubAPIHmacSecret struct {
 	UUID            string    `json:"uuid"`
 	ArtifactUUID    string    `json:"artifactUuid"`
+	Handle          string    `json:"handle"`
 	Name            string    `json:"name"`
-	DisplayName     string    `json:"displayName"`
 	EncryptedSecret string    `json:"-"`
 	Status          string    `json:"status"`
 	CreatedBy       string    `json:"createdBy,omitempty"`
@@ -40,6 +40,6 @@ type WebSubAPIHmacSecret struct {
 type WebSubAPIHmacSecretEvent struct {
 	// ArtifactUUID is the UUID of the WebSub API artifact.
 	ArtifactUUID string `json:"artifactUuid"`
-	// SecretName is the slug name of the secret.
+	// SecretName is the handle (URL-safe slug) of the secret.
 	SecretName string `json:"secretName"`
 }

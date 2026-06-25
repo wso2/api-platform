@@ -80,7 +80,7 @@ func NewWebSubAPIHmacSecretService(
 // Generate creates a new HMAC secret for the given WebSub API.
 // externalSecret is an optional caller-supplied value; if empty, one is auto-generated.
 // Returns the metadata and the plaintext value (returned once, never stored).
-func (s *WebSubAPIHmacSecretService) Generate(orgUUID, apiHandle, displayName, externalSecret, userID string) (*model.WebSubAPIHmacSecret, string, error) {
+func (s *WebSubAPIHmacSecretService) Generate(orgUUID, apiHandle, name, externalSecret, userID string) (*model.WebSubAPIHmacSecret, string, error) {
 	api, err := s.websubRepo.GetByHandle(apiHandle, orgUUID)
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to look up WebSub API: %w", err)
@@ -89,14 +89,14 @@ func (s *WebSubAPIHmacSecretService) Generate(orgUUID, apiHandle, displayName, e
 		return nil, "", constants.ErrWebSubAPINotFound
 	}
 
-	name := slugifyHmacSecret(displayName)
-	if len(name) > 255 {
-		name = name[:255]
+	handle := slugifyHmacSecret(name)
+	if len(handle) > 40 {
+		handle = handle[:40]
 	}
-	if name == "" {
-		name = "secret-" + apiHandle
-		if len(name) > 255 {
-			name = name[:255]
+	if handle == "" {
+		handle = "secret-" + apiHandle
+		if len(handle) > 40 {
+			handle = handle[:40]
 		}
 	}
 
@@ -126,8 +126,8 @@ func (s *WebSubAPIHmacSecretService) Generate(orgUUID, apiHandle, displayName, e
 	secret := &model.WebSubAPIHmacSecret{
 		UUID:            id,
 		ArtifactUUID:    api.UUID,
+		Handle:          handle,
 		Name:            name,
-		DisplayName:     displayName,
 		EncryptedSecret: ciphertext,
 		Status:          "active",
 		CreatedBy:       userID,
@@ -141,7 +141,7 @@ func (s *WebSubAPIHmacSecretService) Generate(orgUUID, apiHandle, displayName, e
 		return nil, "", fmt.Errorf("failed to persist HMAC secret: %w", err)
 	}
 
-	s.broadcastSecretEvent(orgUUID, api.UUID, name, "CREATED")
+	s.broadcastSecretEvent(orgUUID, api.UUID, handle, "CREATED")
 	return secret, plaintext, nil
 }
 
@@ -291,9 +291,9 @@ func isUniqueConstraintError(err error) bool {
 		strings.Contains(msg, "duplicate key value")
 }
 
-// slugifyHmacSecret converts a display name to a URL-safe slug, e.g. "My GitHub Secret" → "my-github-secret".
-func slugifyHmacSecret(displayName string) string {
-	s := strings.ToLower(strings.TrimSpace(displayName))
+// slugifyHmacSecret converts a name to a URL-safe handle, e.g. "My GitHub Secret" → "my-github-secret".
+func slugifyHmacSecret(name string) string {
+	s := strings.ToLower(strings.TrimSpace(name))
 	var b strings.Builder
 	for _, r := range s {
 		switch {

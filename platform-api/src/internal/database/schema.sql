@@ -384,14 +384,14 @@ CREATE INDEX IF NOT EXISTS idx_websub_apis_project ON websub_apis(project_uuid);
 CREATE TABLE IF NOT EXISTS websub_api_hmac_secrets (
     uuid VARCHAR(40) PRIMARY KEY,
     artifact_uuid VARCHAR(40) NOT NULL,
-    name VARCHAR(63) NOT NULL,
-    display_name VARCHAR(255),
+    handle VARCHAR(40) NOT NULL,
+    name VARCHAR(255),
     encrypted_secret TEXT NOT NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'active',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (artifact_uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
-    UNIQUE(artifact_uuid, name)
+    UNIQUE(artifact_uuid, handle)
 );
 CREATE INDEX IF NOT EXISTS idx_websub_api_hmac_secrets_artifact ON websub_api_hmac_secrets(artifact_uuid);
 

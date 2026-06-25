@@ -443,8 +443,8 @@ IF OBJECT_ID(N'dbo.websub_api_hmac_secrets', N'U') IS NULL
 CREATE TABLE dbo.websub_api_hmac_secrets (
     uuid VARCHAR(40) PRIMARY KEY,
     artifact_uuid VARCHAR(40) NOT NULL,
-    name VARCHAR(255) NOT NULL,
-    display_name VARCHAR(255),
+    handle VARCHAR(40) NOT NULL,
+    name VARCHAR(255),
     encrypted_secret VARBINARY(MAX) NOT NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'active',
     data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
@@ -453,7 +453,7 @@ CREATE TABLE dbo.websub_api_hmac_secrets (
     updated_by VARCHAR(200),
     updated_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     FOREIGN KEY (artifact_uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
-    CONSTRAINT uq_websub_api_hmac_secrets_artifact_name UNIQUE (artifact_uuid, name)
+    CONSTRAINT uq_websub_api_hmac_secrets_artifact_handle UNIQUE (artifact_uuid, handle)
 );
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_websub_api_hmac_secrets_artifact' AND object_id = OBJECT_ID(N'dbo.websub_api_hmac_secrets'))
 CREATE INDEX idx_websub_api_hmac_secrets_artifact ON dbo.websub_api_hmac_secrets(artifact_uuid);

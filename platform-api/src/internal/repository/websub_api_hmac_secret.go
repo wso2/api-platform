@@ -44,31 +44,31 @@ func (r *WebSubAPIHmacSecretRepo) Create(secret *model.WebSubAPIHmacSecret) erro
 	secret.CreatedAt = now
 	secret.UpdatedAt = now
 	query := `
-		INSERT INTO websub_api_hmac_secrets (uuid, artifact_uuid, name, display_name, encrypted_secret, status, created_by, created_at, updated_by, updated_at)
+		INSERT INTO websub_api_hmac_secrets (uuid, artifact_uuid, handle, name, encrypted_secret, status, created_by, created_at, updated_by, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 	_, err := r.db.Exec(r.db.Rebind(query),
-		secret.UUID, secret.ArtifactUUID, secret.Name, secret.DisplayName,
+		secret.UUID, secret.ArtifactUUID, secret.Handle, secret.Name,
 		secret.EncryptedSecret, secret.Status, secret.CreatedBy, secret.CreatedAt, secret.UpdatedBy, secret.UpdatedAt,
 	)
 	return err
 }
 
-// GetByArtifactAndName fetches a specific HMAC secret by artifact UUID and name
-func (r *WebSubAPIHmacSecretRepo) GetByArtifactAndName(artifactUUID, name string) (*model.WebSubAPIHmacSecret, error) {
+// GetByArtifactAndName fetches a specific HMAC secret by artifact UUID and handle
+func (r *WebSubAPIHmacSecretRepo) GetByArtifactAndName(artifactUUID, handle string) (*model.WebSubAPIHmacSecret, error) {
 	query := `
-		SELECT uuid, artifact_uuid, name, display_name, encrypted_secret, status, created_by, created_at, updated_by, updated_at
+		SELECT uuid, artifact_uuid, handle, name, encrypted_secret, status, created_by, created_at, updated_by, updated_at
 		FROM websub_api_hmac_secrets
-		WHERE artifact_uuid = ? AND name = ?`
-	row := r.db.QueryRow(r.db.Rebind(query), artifactUUID, name)
+		WHERE artifact_uuid = ? AND handle = ?`
+	row := r.db.QueryRow(r.db.Rebind(query), artifactUUID, handle)
 	s := &model.WebSubAPIHmacSecret{}
-	var displayName, createdBy, updatedBy sql.NullString
-	if err := row.Scan(&s.UUID, &s.ArtifactUUID, &s.Name, &displayName, &s.EncryptedSecret, &s.Status, &createdBy, &s.CreatedAt, &updatedBy, &s.UpdatedAt); err != nil {
+	var nameVal, createdBy, updatedBy sql.NullString
+	if err := row.Scan(&s.UUID, &s.ArtifactUUID, &s.Handle, &nameVal, &s.EncryptedSecret, &s.Status, &createdBy, &s.CreatedAt, &updatedBy, &s.UpdatedAt); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
 		}
 		return nil, err
 	}
-	s.DisplayName = displayName.String
+	s.Name = nameVal.String
 	s.CreatedBy = createdBy.String
 	s.UpdatedBy = updatedBy.String
 	return s, nil
@@ -77,7 +77,7 @@ func (r *WebSubAPIHmacSecretRepo) GetByArtifactAndName(artifactUUID, name string
 // ListByArtifact returns all HMAC secrets for an artifact
 func (r *WebSubAPIHmacSecretRepo) ListByArtifact(artifactUUID string) ([]*model.WebSubAPIHmacSecret, error) {
 	query := `
-		SELECT uuid, artifact_uuid, name, display_name, encrypted_secret, status, created_by, created_at, updated_by, updated_at
+		SELECT uuid, artifact_uuid, handle, name, encrypted_secret, status, created_by, created_at, updated_by, updated_at
 		FROM websub_api_hmac_secrets
 		WHERE artifact_uuid = ?
 		ORDER BY created_at ASC`
@@ -90,11 +90,11 @@ func (r *WebSubAPIHmacSecretRepo) ListByArtifact(artifactUUID string) ([]*model.
 	var secrets []*model.WebSubAPIHmacSecret
 	for rows.Next() {
 		s := &model.WebSubAPIHmacSecret{}
-		var displayName, createdBy, updatedBy sql.NullString
-		if err := rows.Scan(&s.UUID, &s.ArtifactUUID, &s.Name, &displayName, &s.EncryptedSecret, &s.Status, &createdBy, &s.CreatedAt, &updatedBy, &s.UpdatedAt); err != nil {
+		var nameVal, createdBy, updatedBy sql.NullString
+		if err := rows.Scan(&s.UUID, &s.ArtifactUUID, &s.Handle, &nameVal, &s.EncryptedSecret, &s.Status, &createdBy, &s.CreatedAt, &updatedBy, &s.UpdatedAt); err != nil {
 			return nil, err
 		}
-		s.DisplayName = displayName.String
+		s.Name = nameVal.String
 		s.CreatedBy = createdBy.String
 		s.UpdatedBy = updatedBy.String
 		secrets = append(secrets, s)
@@ -108,9 +108,9 @@ func (r *WebSubAPIHmacSecretRepo) Update(secret *model.WebSubAPIHmacSecret) erro
 	query := `
 		UPDATE websub_api_hmac_secrets
 		SET encrypted_secret = ?, updated_by = ?, updated_at = ?
-		WHERE artifact_uuid = ? AND name = ?`
+		WHERE artifact_uuid = ? AND handle = ?`
 	result, err := r.db.Exec(r.db.Rebind(query),
-		secret.EncryptedSecret, secret.UpdatedBy, secret.UpdatedAt, secret.ArtifactUUID, secret.Name,
+		secret.EncryptedSecret, secret.UpdatedBy, secret.UpdatedAt, secret.ArtifactUUID, secret.Handle,
 	)
 	if err != nil {
 		return err
@@ -127,7 +127,7 @@ func (r *WebSubAPIHmacSecretRepo) Update(secret *model.WebSubAPIHmacSecret) erro
 
 // Delete permanently removes a secret
 func (r *WebSubAPIHmacSecretRepo) Delete(artifactUUID, name string) error {
-	query := `DELETE FROM websub_api_hmac_secrets WHERE artifact_uuid = ? AND name = ?`
+	query := `DELETE FROM websub_api_hmac_secrets WHERE artifact_uuid = ? AND handle = ?`
 	result, err := r.db.Exec(r.db.Rebind(query), artifactUUID, name)
 	if err != nil {
 		return err
