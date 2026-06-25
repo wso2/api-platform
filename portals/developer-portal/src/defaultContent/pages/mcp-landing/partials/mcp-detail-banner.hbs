@@ -14,6 +14,9 @@
         <span class="dp-badge dp-badge--version">{{apiMetadata.apiInfo.apiVersion}}</span>
         {{/if}}
         <span class="dp-badge dp-badge--mcp"><i class="bi bi-cpu"></i> MCP</span>
+        {{#if (eq apiMetadata.apiInfo.apiStatus "DEPRECATED")}}
+        <span class="dp-badge dp-badge--deprecated"><i class="bi bi-exclamation-circle"></i> Deprecated</span>
+        {{/if}}
       </div>
     </div>
   </div>

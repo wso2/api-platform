@@ -56,7 +56,8 @@ module.exports = {
     },
     API_STATUS: {
         PUBLISHED: "PUBLISHED",
-        UNPUBLISHED: "CREATED"
+        UNPUBLISHED: "CREATED",
+        DEPRECATED: "DEPRECATED"
     },
     API_TYPE: {
         REST: "REST",

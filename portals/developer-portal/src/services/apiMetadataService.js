@@ -140,6 +140,12 @@ const createAPIMetadata = async (req, res) => {
             if (apiDefinitionFile) {
                 await apiFileDao.store(apiDefinitionFile, apiFileName, apiID, constants.DOC_TYPES.API_DEFINITION, t);
             }
+            // store uploaded documentation files
+            if (req.files?.docs) {
+                for (const doc of req.files.docs) {
+                    await apiFileDao.store(doc.buffer, doc.originalname, apiID, constants.DOC_TYPES.DOC_ID + constants.DOC_TYPES.DOCS.OTHER, t);
+                }
+            }
             if (Object.keys(resolvedImageMetadata).length > 0) {
                 await apiImageDao.store(resolvedImageMetadata, apiID, t);
             }
@@ -276,7 +282,7 @@ const getMetadataFromDB = async (orgID, apiID) => {
     return await sequelize.transaction({
         timeout: 60000,
     }, async (t) => {
-        const retrievedAPI = await apiDao.get(orgID, apiID, t);
+        const retrievedAPI = await apiDao.getByCondition({ ORG_ID: orgID, API_ID: apiID }, t);
         if (retrievedAPI.length > 0) {
             return new APIDTO(retrievedAPI[0]);
         } else {
@@ -388,10 +394,8 @@ const updateAPIMetadata = async (req, res) => {
             }
         }
 
-        // Validate input
-        const hasGraphQLSchema = apiMetadata.apiInfo?.apiType === constants.API_TYPE.GRAPHQL &&
-            req.files?.schemaDefinition?.[0];
-        if (!apiMetadata.apiInfo || (!apiDefinitionFile && !hasGraphQLSchema) || !apiMetadata.endPoints) {
+        // Validate input — spec file is optional on update (already stored from create)
+        if (!apiMetadata.apiInfo || !apiMetadata.endPoints) {
             throw new Sequelize.ValidationError(
                 "Missing or Invalid fields in the request payload"
             );
@@ -472,11 +476,25 @@ const updateAPIMetadata = async (req, res) => {
                 await subscriptionPolicyDao.updateApiMapping(subscriptionPolicies, apiId, t);
                 updatedAPI[0].dataValues["DP_SUBSCRIPTION_POLICies"] = await subscriptionPolicyDao.listByApi(apiId, t);
             }
-            // update api definition file
-            const updatedFileCount = await apiFileDao.update(apiDefinitionFile, apiFileName, apiId, orgId,
-                constants.DOC_TYPES.API_DEFINITION, t);
-            if (!updatedFileCount) {
-                throw new Sequelize.EmptyResultError("No record found to update");
+            // update api definition file (only when a new file was uploaded)
+            if (apiDefinitionFile) {
+                const updatedFileCount = await apiFileDao.update(apiDefinitionFile, apiFileName, apiId, orgId,
+                    constants.DOC_TYPES.API_DEFINITION, t);
+                if (!updatedFileCount) {
+                    throw new Sequelize.EmptyResultError("No record found to update");
+                }
+            }
+            // remove docs the user deleted in the wizard
+            if (Array.isArray(apiMetadata.docsToRemove)) {
+                for (const fileName of apiMetadata.docsToRemove) {
+                    await apiFileDao.deleteByFileName(fileName, orgId, apiId, t);
+                }
+            }
+            // upsert newly uploaded documentation files
+            if (req.files?.docs) {
+                for (const doc of req.files.docs) {
+                    await apiFileDao.store(doc.buffer, doc.originalname, apiId, constants.DOC_TYPES.DOC_ID + constants.DOC_TYPES.DOCS.OTHER, t);
+                }
             }
             if (Object.keys(resolvedImageMetadata).length > 0) {
                 await apiImageDao.update(resolvedImageMetadata, orgId, apiId, t);
@@ -948,6 +966,17 @@ const getAPIDocTypes = async (orgID, apiID) => {
         throw error;
     }
 }
+
+const listApiDocs = async (req, res) => {
+    const { orgId, apiId } = req.params;
+    try {
+        const names = await apiFileDao.listDocNames(orgId, apiId);
+        res.status(200).json(names.map(fileName => ({ fileName })));
+    } catch (error) {
+        logger.error('API doc list failed', { error: error.message, orgId, apiId });
+        util.handleError(res, error);
+    }
+};
 
 const deleteAPIFile = async (req, res) => {
     logger.info('Deleting API file...', {
@@ -1882,6 +1911,7 @@ module.exports = {
     updateAPIContent,
     getAPIFile,
     getAPIDocTypes,
+    listApiDocs,
     deleteAPIFile,
     getMetadataListFromDB,
     getMetadataFromDB,

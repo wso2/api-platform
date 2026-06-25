@@ -71,7 +71,7 @@ const loadViewSettingsPage = async (req, res) => {
             gatewayType: api.GATEWAY_TYPE,
             tags: api.TAGS || '',
             agentVisibility: api.AGENT_VISIBILITY,
-            subscriptionPolicies: (api.SubscriptionPolicies || []).map(p => p.POLICY_NAME),
+            subscriptionPolicies: (api.DP_SUBSCRIPTION_POLICies || []).map(p => p.POLICY_NAME),
         }));
 
         let orgLabels = [];

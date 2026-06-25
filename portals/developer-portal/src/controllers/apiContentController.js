@@ -113,9 +113,16 @@ const loadAPIs = async (req, res) => {
                     isAdmin: req.user.isAdmin,
                 }
             }
+            const isMcpPage = req.originalUrl.includes("/mcps");
+            const filteredList = metaDataList.filter(api =>
+                isMcpPage
+                    ? api.apiInfo?.apiType === constants.API_TYPE.MCP
+                    : api.apiInfo?.apiType !== constants.API_TYPE.MCP
+            );
+
             const templateContent = {
                 isAuthenticated: req.isAuthenticated(),
-                apiMetadata: metaDataList,
+                apiMetadata: filteredList,
                 tags: apiTags,
                 baseUrl: '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName,
                 orgID: orgID,
@@ -125,7 +132,7 @@ const loadAPIs = async (req, res) => {
                 applications: []
             };
 
-            if (req.originalUrl.includes("/mcps")) {
+            if (isMcpPage) {
                 html = await renderTemplateFromAPI(templateContent, orgID, orgName, "pages/mcp", viewName);
             } else {
                 html = await renderTemplateFromAPI(templateContent, orgID, orgName, "pages/apis", viewName);

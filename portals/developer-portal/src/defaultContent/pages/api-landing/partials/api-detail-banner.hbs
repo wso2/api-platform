@@ -32,6 +32,9 @@
         </span>
         {{/unless}}
         {{/if}}
+        {{#if (eq apiMetadata.apiInfo.apiStatus "DEPRECATED")}}
+        <span class="dp-badge dp-badge--deprecated"><i class="bi bi-exclamation-circle"></i> Deprecated</span>
+        {{/if}}
       </div>
     </div>
   </div>

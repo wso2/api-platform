@@ -17,7 +17,8 @@
 .dp-badge--soap    { background: #ece9fb; color: #6741d9; }
 .dp-badge--ws      { background: #fff1e6; color: #e65100; }
 .dp-badge--mcp     { background: #e0f7fa; color: #006064; }
-.dp-badge--ai      { background: linear-gradient(135deg, #7c3aed, #a855f7); color: #fff; }
+.dp-badge--ai         { background: linear-gradient(135deg, #7c3aed, #a855f7); color: #fff; }
+.dp-badge--deprecated { background: #fff3e0; color: #e65100; }
 
 .dp-badge--version {
   background: #fff;

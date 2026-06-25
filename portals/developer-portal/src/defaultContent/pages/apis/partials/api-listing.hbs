@@ -75,7 +75,6 @@
     <div class="row row-gap-4">
 
       {{#apiMetadata}}
-      {{#unless (eq apiInfo.apiType "MCP")}}
       <div class="col-lg-4 col-md-6 col-sm-12" id="apiCard-{{apiID}}">
         <div class="api-card d-flex flex-column">
 
@@ -112,6 +111,9 @@
                   <i class="bi bi-robot"></i> AI Ready
                 </span>
                 {{/unless}}
+                {{/if}}
+                {{#if (eq apiInfo.apiStatus "DEPRECATED")}}
+                <span class="dp-badge dp-badge--deprecated"><i class="bi bi-exclamation-circle"></i> Deprecated</span>
                 {{/if}}
               </div>
             </div>
@@ -153,7 +155,6 @@
           </div>
         </div>
       </div>
-      {{/unless}}
       {{/apiMetadata}}
     </div>
   </div>

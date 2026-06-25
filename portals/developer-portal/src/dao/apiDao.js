@@ -50,7 +50,7 @@ const create = async (orgID, apiMetadata, t) => {
             API_TYPE: apiInfo.apiType,
             VISIBILITY: apiInfo.visibility,
             VISIBLE_GROUPS: apiInfo.visibleGroups ? apiInfo.visibleGroups.join(' ') : null,
-            AGENT_VISIBILITY: apiMetadata.agentVisibility || apiInfo.agentVisibility || 'VISIBLE',
+            AGENT_VISIBILITY: (apiMetadata.agentVisibility || apiInfo.agentVisibility || 'VISIBLE').toUpperCase(),
             TAGS: apiInfo.tags ? apiInfo.tags.join(' ') : null,
             TECHNICAL_OWNER: owners.technicalOwner,
             TECHNICAL_OWNER_EMAIL: owners.technicalOwnerEmail,
@@ -81,8 +81,7 @@ const update = async (orgID, apiID, apiMetadata, t) => {
         owners = apiInfo.owners;
     }
     try {
-        let updateCount, apiMetadataResponse;
-        [updateCount, apiMetadataResponse] = await APIMetadata.update({
+        const [updateCount] = await APIMetadata.update({
             REFERENCE_ID: apiInfo.referenceID,
             STATUS: apiInfo.apiStatus,
             PROVIDER: apiInfo.provider,
@@ -94,7 +93,7 @@ const update = async (orgID, apiID, apiMetadata, t) => {
             TAGS: apiInfo.tags ? apiInfo.tags.join(' ') : null,
             VISIBILITY: apiInfo.visibility,
             VISIBLE_GROUPS: apiInfo.visibleGroups ? apiInfo.visibleGroups.join(' ') : null,
-            AGENT_VISIBILITY: apiMetadata.agentVisibility || apiInfo.agentVisibility || 'VISIBLE',
+            AGENT_VISIBILITY: (apiMetadata.agentVisibility || apiInfo.agentVisibility || 'VISIBLE').toUpperCase(),
             TECHNICAL_OWNER: owners.technicalOwner,
             TECHNICAL_OWNER_EMAIL: owners.technicalOwnerEmail,
             BUSINESS_OWNER_EMAIL: owners.businessOwnerEmail,
@@ -108,10 +107,17 @@ const update = async (orgID, apiID, apiMetadata, t) => {
                 API_ID: apiID,
                 ORG_ID: orgID,
             },
-            returning: true,
+            returning: false,
             transaction: t
         });
-        return [updateCount, apiMetadataResponse];
+        if (!updateCount) {
+            return [0, null];
+        }
+        const updatedInstance = await APIMetadata.findOne({
+            where: { API_ID: apiID, ORG_ID: orgID },
+            transaction: t,
+        });
+        return [updateCount, [updatedInstance]];
     } catch (error) {
         if (error instanceof Sequelize.UniqueConstraintError) {
             throw error;
@@ -163,7 +169,7 @@ const get = async (orgID, apiID, t) => {
             where: {
                 ORG_ID: orgID,
                 API_ID: apiID,
-                STATUS: constants.API_STATUS.PUBLISHED
+                STATUS: { [Op.in]: [constants.API_STATUS.PUBLISHED, constants.API_STATUS.DEPRECATED] }
             },
             transaction: t
         });
@@ -236,7 +242,7 @@ const list = async (orgID, groups, viewName, t) => {
                     VISIBLE_GROUPS: {
                         [Op.like]: `%${group}%`
                     },
-                    STATUS: constants.API_STATUS.PUBLISHED
+                    STATUS: { [Op.in]: [constants.API_STATUS.PUBLISHED, constants.API_STATUS.DEPRECATED] }
                 },
                 include: [{
                     model: APIImageMetadata,
@@ -277,7 +283,7 @@ const list = async (orgID, groups, viewName, t) => {
         const publicAPIS = await APIMetadata.findAll({
             where: {
                 ORG_ID: orgID,
-                STATUS: constants.API_STATUS.PUBLISHED
+                STATUS: { [Op.in]: [constants.API_STATUS.PUBLISHED, constants.API_STATUS.DEPRECATED] }
             },
             include: [{
                 model: APIImageMetadata,
@@ -324,7 +330,7 @@ const listFromAllViews = async (orgID, groups, t) => {
                     VISIBLE_GROUPS: {
                         [Op.like]: `%${group}%`
                     },
-                    STATUS: constants.API_STATUS.PUBLISHED
+                    STATUS: { [Op.in]: [constants.API_STATUS.PUBLISHED, constants.API_STATUS.DEPRECATED] }
                 },
                 include: [{
                     model: APIImageMetadata,
@@ -360,7 +366,7 @@ const listFromAllViews = async (orgID, groups, t) => {
         const publicAPIS = await APIMetadata.findAll({
             where: {
                 ORG_ID: orgID,
-                STATUS: constants.API_STATUS.PUBLISHED
+                STATUS: { [Op.in]: [constants.API_STATUS.PUBLISHED, constants.API_STATUS.DEPRECATED] }
             },
             include: [{
                 model: APIImageMetadata,
@@ -398,7 +404,7 @@ const searchFallback = async (orgID, searchTerm, viewName, t) => {
     return APIMetadata.findAll({
         where: {
             ORG_ID: orgID,
-            STATUS: constants.API_STATUS.PUBLISHED,
+            STATUS: { [Op.in]: [constants.API_STATUS.PUBLISHED, constants.API_STATUS.DEPRECATED] },
             [Op.or]: [
                 Sequelize.where(
                     Sequelize.cast(Sequelize.col('DP_API_METADATA.METADATA_SEARCH'), 'TEXT'),

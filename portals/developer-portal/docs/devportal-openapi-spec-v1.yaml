@@ -747,6 +747,34 @@ paths:
         - OAuth2Security:
             - dp:api_content_delete
             - dp:api_content_manage
+  /o/{orgId}/devportal/v1/apis/{apiId}/docs:
+    parameters:
+      - $ref: "#/components/parameters/OrgId"
+      - $ref: "#/components/parameters/ApiId"
+    get:
+      tags:
+        - API Content
+      summary: List API document file names
+      description: Returns the file names of all documents uploaded for an API via the wizard.
+      operationId: listApiDocs
+      responses:
+        "200":
+          description: List of document file names
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    fileName:
+                      type: string
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      security:
+        - OAuth2Security:
+            - dp:api_content_read
+            - dp:api_content_manage
   /o/{orgId}/devportal/v1/labels:
     parameters:
       - $ref: "#/components/parameters/OrgId"

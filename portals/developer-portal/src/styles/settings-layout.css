@@ -610,7 +610,9 @@
   transition: border-color 0.15s, background 0.15s;
 }
 
-.cfg-upload-zone:hover { border-color: #1f6feb; background: #f1f6fd; }
+.cfg-upload-zone:hover,
+.cfg-upload-zone--active { border-color: #1f6feb; background: #eef5fd; }
+.cfg-upload-zone--active { border-style: solid; }
 .cfg-upload-zone input[type=file] { display: none; }
 
 .cfg-upload-icon {
@@ -690,7 +692,9 @@
   transition: border-color 0.15s, background 0.15s;
 }
 
-.cfg-upload-compact:hover { border-color: #1f6feb; background: #f1f6fd; }
+.cfg-upload-compact:hover,
+.cfg-upload-compact--active { border-color: #1f6feb; background: #eef5fd; }
+.cfg-upload-compact--active { border-style: solid; }
 .cfg-upload-compact input[type=file] { display: none; }
 
 .cfg-docs-empty {
@@ -1349,3 +1353,141 @@
 .cfg-form-group-full {
   grid-column: 1 / -1;
 }
+
+/* ── Subscription plan chip input ──────────────────────── */
+
+.cfg-chip-input-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  min-height: 40px;
+  border: 1.5px solid #d0d7de;
+  border-radius: 8px;
+  background: #fff;
+  cursor: text;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.cfg-chip-input-wrap:focus-within {
+  border-color: #1f6feb;
+  box-shadow: 0 0 0 3px rgba(31,111,235,.12);
+}
+
+.cfg-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #eef4fb;
+  color: #1f6feb;
+  border-radius: 6px;
+  padding: 3px 6px 3px 10px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.cfg-chip-remove {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #8a93a0;
+  padding: 0 1px;
+  line-height: 1;
+  font-size: 0.75rem;
+  display: flex;
+  align-items: center;
+}
+.cfg-chip-remove:hover { color: #c62828; }
+
+.cfg-chip-text-input {
+  flex: 1;
+  min-width: 120px;
+  border: none;
+  outline: none;
+  font-size: 0.844rem;
+  color: #1a2433;
+  background: transparent;
+  font-family: inherit;
+  padding: 2px 0;
+}
+.cfg-chip-text-input::placeholder { color: #9aa3af; font-weight: 400; }
+.cfg-chip-text-input:disabled { cursor: default; }
+
+.cfg-chip-dropdown {
+  position: absolute;
+  top: calc(100% + 3px);
+  left: 0;
+  right: 0;
+  background: #fff;
+  border: 1.5px solid #d0d7de;
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0,0,0,.10);
+  z-index: 200;
+  max-height: 260px;
+  overflow-y: auto;
+  display: none;
+}
+
+.cfg-chip-dd-item {
+  padding: 10px 14px;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.cfg-chip-dd-item:hover,
+.cfg-chip-dd-item:focus { background: #f5f9ff; outline: none; }
+.cfg-chip-dd-item + .cfg-chip-dd-item { border-top: 1px solid #f0f3f6; }
+
+.cfg-chip-dd-name {
+  font-size: 0.844rem;
+  font-weight: 600;
+  color: #1a2433;
+}
+
+.cfg-chip-dd-desc {
+  font-size: 0.75rem;
+  color: #637282;
+  margin-top: 2px;
+}
+
+.cfg-chip-dd-empty {
+  padding: 14px;
+  font-size: 0.844rem;
+  color: #9aa3af;
+  text-align: center;
+}
+
+/* ── Deprecated status badge ────────────────────────────── */
+
+.cfg-status-deprecated {
+  background: #fff8e6;
+  color: #b45309;
+}
+.cfg-status-deprecated .cfg-status-dot { background: #f59e0b; }
+
+/* ── Error state for form inputs ────────────────────────── */
+
+.cfg-form-input--error {
+  border-color: #c62828 !important;
+}
+.cfg-form-input--error:focus {
+  box-shadow: 0 0 0 3px rgba(198,40,40,.12) !important;
+}
+
+/* ── Spec-on-file indicator (edit mode) ─────────────────── */
+
+.cfg-spec-onfile {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: #eef4fb;
+  border: 1.5px solid #1f6feb;
+  border-radius: 8px;
+  margin-top: 8px;
+  font-size: .844rem;
+  color: #1f6feb;
+  font-weight: 500;
+}
+

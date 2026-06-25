@@ -1,4 +1,6 @@
 @import url("https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,100..900;1,100..900&family=Quicksand:wght@300..700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap");
+
 @import "/styles/components.css";
 @import "/styles/home.css";
 @import "/styles/footer.css";
@@ -38,7 +40,7 @@
   --wso2-gradient: linear-gradient(135deg, #ef4223 0%, #ff8636 100%);
   --primary-gradient: linear-gradient(135deg, #3d6b8a, #1c3b52);
 
-  --font-family-sans: "Montserrat", "Quicksand", "Noto Sans", "Poppins", sans-serif;
+  --font-family-sans: Inter, "Montserrat", "Quicksand", "Noto Sans", "Poppins", sans-serif;
   --font-family-mono: "Roboto", monospace;
 
   --border-radius: 0.5rem;

@@ -78,7 +78,9 @@ function Database(path, _flags, callback) {
                 const stmt = db.prepare(sql);
                 if (stmt.reader) {
                     const rows = Array.isArray(p) ? stmt.all(...p) : stmt.all(p);
-                    if (cb) process.nextTick(() => cb(null, rows));
+                    // Pass changes = rows.length so Sequelize gets the correct affected-rows
+                    // count for UPDATE…RETURNING queries (BULKUPDATE type reads metaData.changes).
+                    if (cb) process.nextTick(() => cb.call({ lastID: null, changes: rows.length }, null, rows));
                 } else {
                     // Sequelize occasionally routes DDL/DML through all() — handle it
                     const info = Array.isArray(p) ? stmt.run(...p) : stmt.run(p);

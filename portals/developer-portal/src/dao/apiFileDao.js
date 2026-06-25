@@ -519,6 +519,44 @@ const getDocLinks = async (orgID, apiID) => {
     }
 }
 
+const listDocNames = async (orgID, apiID) => {
+    try {
+        const rows = await APIContent.findAll({
+            attributes: ['FILE_NAME'],
+            where: {
+                API_ID: apiID,
+                TYPE: { [Op.like]: `${constants.DOC_TYPES.DOC_ID}%` },
+            },
+            include: [{
+                model: APIMetadata,
+                required: true,
+                attributes: [],
+                where: { ORG_ID: orgID }
+            }]
+        });
+        return rows.map(r => r.dataValues.FILE_NAME);
+    } catch (error) {
+        if (error instanceof Sequelize.UniqueConstraintError) throw error;
+        throw new Sequelize.DatabaseError(error);
+    }
+};
+
+const deleteByFileName = async (fileName, orgID, apiID, t) => {
+    try {
+        const contentsToDelete = await APIContent.findAll({
+            where: { FILE_NAME: fileName, API_ID: apiID },
+            include: [{ model: APIMetadata, required: true, attributes: [], where: { ORG_ID: orgID } }],
+            transaction: t
+        });
+        for (const content of contentsToDelete) {
+            await APIContent.destroy({ where: { FILE_NAME: content.dataValues.FILE_NAME, API_ID: apiID }, transaction: t });
+        }
+    } catch (error) {
+        if (error instanceof Sequelize.UniqueConstraintError) throw error;
+        throw new Sequelize.DatabaseError(error);
+    }
+};
+
 module.exports = {
     store,
     storeMany,
@@ -534,4 +572,6 @@ module.exports = {
     getDocTypes,
     getDocs,
     getDocLinks,
+    listDocNames,
+    deleteByFileName,
 };
