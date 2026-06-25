@@ -16,10 +16,10 @@
  * under the License.
  */
 const { config } = require('../../config/configLoader');
-const eventDao = require('../../dao/event');
+const eventDao = require('../../dao/eventDao');
 const { matchSubscribers } = require('./subscriberRegistry');
 const { onPublished } = require('./eventPublisher');
-const sequelize = require('../../db/sequelize');
+const sequelize = require('../../db/sequelizeConfig');
 const DPEvent = require('../../models/event');
 const logger = require('../../config/logger');
 
@@ -33,17 +33,17 @@ let intervalHandle = null;
 async function runBatch() {
     const delivery = config.webhooks && config.webhooks.delivery;
     const batchSize = (delivery && delivery.batchSize) || 50;
-    const events = await eventDao.claimPendingEvents(batchSize);
+    const events = await eventDao.claimPending(batchSize);
     if (events.length === 0) return;
 
     for (const event of events) {
-        const subscribers = matchSubscribers(event.EVENT_TYPE, event.GATEWAY_TYPE);
-        if (subscribers.length === 0) {
-            // No matching subscribers — mark as delivered immediately.
-            await DPEvent.update({ STATUS: 'ALL_DELIVERED' }, { where: { EVENT_ID: event.EVENT_ID } });
-            continue;
-        }
         try {
+            const subscribers = await matchSubscribers(event.ORG_ID, event.EVENT_TYPE);
+            if (subscribers.length === 0) {
+                // No matching subscribers — mark as delivered immediately.
+                await DPEvent.update({ STATUS: 'ALL_DELIVERED' }, { where: { EVENT_ID: event.EVENT_ID } });
+                continue;
+            }
             await eventDao.createDeliveries(event.EVENT_ID, subscribers, null, null);
         } catch (err) {
             logger.error('[dispatcher] failed to create deliveries for event', {

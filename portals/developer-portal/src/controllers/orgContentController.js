@@ -22,10 +22,10 @@ const Handlebars = require('handlebars');
 const logger = require('../config/logger');
 const { logUserAction } = require('../middlewares/auditLogger');
 const { renderTemplate, renderTemplateFromAPI } = require('../utils/util');
-const { trackHomePageVisit } = require('../utils/telemetry');
+const { trackHomePageVisit } = require('../utils/telemetryUtil');
 const { config } = require('../config/configLoader');
 const constants = require('../utils/constants');
-const adminDao = require('../dao/admin');
+const orgDao = require('../dao/organizationDao');
 
 
 const loadOrganizationContent = async (req, res) => {
@@ -72,10 +72,10 @@ const loadOrgContentFromFile = async (req, res) => {
 const loadOrgContentFromAPI = async (req, res) => {
     let html;
     const orgName = req.params.orgName;
-    const orgDetails = await adminDao.getOrganization(orgName);
+    const orgDetails = await orgDao.get(orgName);
     const devportalMode = orgDetails.ORG_CONFIG?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
     try {
-        const orgId = await adminDao.getOrgId(orgName);
+        const orgId = await orgDao.getId(orgName);
         let profile = null;
         if (req.user) {
             profile = {
@@ -89,7 +89,8 @@ const loadOrgContentFromAPI = async (req, res) => {
         templateContent = {
             devportalMode: devportalMode,
             baseUrl: '/' + orgName + constants.ROUTE.VIEWS_PATH + req.params.viewName,
-            profile: req.isAuthenticated() ? profile : null
+            profile: req.isAuthenticated() ? profile : null,
+            showOnboarding: !!(profile?.isAdmin),
         };
         html = await renderTemplateFromAPI(templateContent, orgId, orgName, 'pages/home', req.params.viewName);
         // Track home page visit telemetry

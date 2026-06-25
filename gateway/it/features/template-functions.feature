@@ -34,7 +34,7 @@ Feature: Template functions in RestApi spec
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: tpl-secret-api-v1.0
@@ -94,7 +94,7 @@ Feature: Template functions in RestApi spec
   Scenario: env template in upstream URL path resolves at runtime
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: tpl-env-api-v1.0
@@ -142,7 +142,7 @@ Feature: Template functions in RestApi spec
   Scenario: default function returns fallback when env is missing
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: tpl-default-api-v1.0
@@ -193,7 +193,7 @@ Feature: Template functions in RestApi spec
     Given I authenticate using basic auth as "admin"
     When I create this LLM provider:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProvider
       metadata:
         name: tpl-llm-provider
@@ -260,7 +260,7 @@ Feature: Template functions in RestApi spec
     Given I authenticate using basic auth as "admin"
     When I create this LLM provider:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProvider
       metadata:
         name: tpl-llm-proxy-provider
@@ -279,7 +279,7 @@ Feature: Template functions in RestApi spec
     Given I authenticate using basic auth as "admin"
     When I deploy this LLM proxy configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProxy
       metadata:
         name: tpl-llm-proxy
@@ -345,7 +345,7 @@ Feature: Template functions in RestApi spec
   Scenario: env template in McpProxy upstream URL resolves at runtime but is unrendered in response and DB
     When I deploy this MCP configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: Mcp
       metadata:
         name: tpl-mcp-v1.0
@@ -396,7 +396,7 @@ Feature: Template functions in RestApi spec
   Scenario: missing secret reference fails with 400 at deploy time
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: tpl-bad-secret-api-v1.0

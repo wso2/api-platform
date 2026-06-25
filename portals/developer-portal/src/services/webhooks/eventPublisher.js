@@ -16,7 +16,7 @@
  * under the License.
  */
 const EventEmitter = require('events');
-const eventDao = require('../../dao/event');
+const eventDao = require('../../dao/eventDao');
 const { matchSubscribers } = require('./subscriberRegistry');
 const { encryptToSubscriber } = require('./envelopeCrypto');
 const logger = require('../../config/logger');
@@ -51,7 +51,6 @@ const SECRET_EVENT_TYPES = new Set([
  * @param {object} opts
  * @param {import('sequelize').Transaction} opts.transaction — required; caller owns the TX
  * @param {string} opts.orgId
- * @param {string} [opts.gatewayType]
  * @param {string} [opts.aggregateType]
  * @param {string} opts.aggregateId  — PK of the primary entity (keyId, subId, etc.)
  * @param {string} [opts.plaintextKey] — required for SECRET_EVENT_TYPES; zeroized after use for apikey.* events
@@ -61,15 +60,14 @@ async function publish(eventType, payload, opts) {
     if (!VALID_EVENT_TYPES.has(eventType)) {
         throw new Error(`Unknown event type: ${eventType}`);
     }
-    const { transaction, orgId, gatewayType, aggregateType, aggregateId, plaintextKey } = opts;
+    const { transaction, orgId, aggregateType, aggregateId, plaintextKey } = opts;
     if (!transaction) throw new Error('publish() requires a Sequelize transaction');
     if (!orgId) throw new Error('publish() requires orgId');
     if (!aggregateId) throw new Error('publish() requires aggregateId');
 
-    const event = await eventDao.createEvent({
+    const event = await eventDao.create({
         eventType,
         orgId,
-        gatewayType: gatewayType || null,
         aggregateType: aggregateType || eventType.split('.')[0],
         aggregateId,
         payload
@@ -87,7 +85,7 @@ async function publish(eventType, payload, opts) {
     // For key events, encrypt the plaintext per subscriber and write delivery rows now
     // (inside the same TX) so the plaintext never leaves this call's stack.
     if (SECRET_EVENT_TYPES.has(eventType) && plaintextKey) {
-        const subscribers = matchSubscribers(eventType, gatewayType || null);
+        const subscribers = await matchSubscribers(orgId, eventType);
         const perSubscriberEncrypted = {};
 
         for (const sub of subscribers) {
@@ -119,7 +117,7 @@ async function publish(eventType, payload, opts) {
         bus.emit('event_published');
     }
     logger.info('[eventPublisher] publishing event', {
-        eventId: event.EVENT_ID, eventType, orgId, gatewayType, aggregateType, aggregateId,
+        eventId: event.EVENT_ID, eventType, orgId, aggregateType, aggregateId,
         hasPlaintextKey: !!plaintextKey
     });
 
@@ -132,4 +130,4 @@ function onPublished(listener) {
     bus.on('key_event_published', listener);
 }
 
-module.exports = { publish, onPublished };
+module.exports = { publish, onPublished, VALID_EVENT_TYPES };

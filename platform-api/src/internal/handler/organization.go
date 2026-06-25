@@ -33,20 +33,20 @@ import (
 )
 
 type OrganizationHandler struct {
-	orgService             *service.OrganizationService
+	orgService              *service.OrganizationService
 	orgCreationRequiresAuth bool
-	slogger                *slog.Logger
+	slogger                 *slog.Logger
 }
 
 func NewOrganizationHandler(orgService *service.OrganizationService, orgCreationRequiresAuth bool, slogger *slog.Logger) *OrganizationHandler {
 	return &OrganizationHandler{
-		orgService:             orgService,
+		orgService:              orgService,
 		orgCreationRequiresAuth: orgCreationRequiresAuth,
-		slogger:                slogger,
+		slogger:                 slogger,
 	}
 }
 
-// RegisterOrganization handles POST /api/v1/organizations
+// RegisterOrganization handles POST /api/v0.9/organizations
 func (h *OrganizationHandler) RegisterOrganization(c *gin.Context) {
 	var req api.Organization
 
@@ -101,7 +101,7 @@ func (h *OrganizationHandler) RegisterOrganization(c *gin.Context) {
 	c.JSON(http.StatusCreated, org)
 }
 
-// HeadOrganizationByUuid handles HEAD /api/v1/organizations/{organizationId}
+// HeadOrganizationByUuid handles HEAD /api/v0.9/organizations/{organizationId}
 func (h *OrganizationHandler) HeadOrganizationByUuid(c *gin.Context) {
 	organizationIdFromContext, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {
@@ -132,7 +132,7 @@ func (h *OrganizationHandler) HeadOrganizationByUuid(c *gin.Context) {
 	c.Status(http.StatusOK)
 }
 
-// GetOrganizationByUUID handles GET /api/v1/organizations/{organizationId}
+// GetOrganizationByUUID handles GET /api/v0.9/organizations/{organizationId}
 func (h *OrganizationHandler) GetOrganizationByUUID(c *gin.Context) {
 	orgID := c.Param("organizationId")
 
@@ -152,7 +152,7 @@ func (h *OrganizationHandler) GetOrganizationByUUID(c *gin.Context) {
 	c.JSON(http.StatusOK, org)
 }
 
-// GetOrganization handles GET /api/v1/organizations
+// GetOrganization handles GET /api/v0.9/organizations
 func (h *OrganizationHandler) GetOrganization(c *gin.Context) {
 	orgID, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {
@@ -182,7 +182,7 @@ func (h *OrganizationHandler) GetOrganization(c *gin.Context) {
 	c.JSON(http.StatusOK, org)
 }
 
-// GetOrganizationSubscription handles GET /api/v1/organizations/:organizationId/subscription
+// GetOrganizationSubscription handles GET /api/v0.9/organizations/:organizationId/subscription
 func (h *OrganizationHandler) GetOrganizationSubscription(c *gin.Context) {
 	organizationIdFromContext, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {
@@ -224,12 +224,12 @@ func (h *OrganizationHandler) GetOrganizationSubscription(c *gin.Context) {
 // The org creation POST is only registered here when OrgCreationRequiresAuth is false.
 func (h *OrganizationHandler) RegisterPublicRoutes(r *gin.Engine) {
 	if !h.orgCreationRequiresAuth {
-		r.POST("/api/v1/organizations", h.RegisterOrganization)
+		r.POST(constants.APIBasePath + "/organizations", h.RegisterOrganization)
 	}
 }
 
 func (h *OrganizationHandler) RegisterRoutes(r *gin.Engine) {
-	orgGroup := r.Group("/api/v1/organizations")
+	orgGroup := r.Group(constants.APIBasePath + "/organizations")
 	{
 		// When auth is required, POST is registered here — behind the auth middleware.
 		if h.orgCreationRequiresAuth {

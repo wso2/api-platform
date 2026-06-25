@@ -15,18 +15,19 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-const apiFlowDao = require('../dao/apiFlow');
-const adminDao = require('../dao/admin');
-const apiMetadataDao = require('../dao/apiMetadata');
-const sequelize = require('../db/sequelize');
+const apiFlowDao = require('../dao/apiFlowDao');
+const viewDao = require('../dao/viewDao');
+const orgDao = require('../dao/organizationDao');
+const sequelize = require('../db/sequelizeConfig');
 const { UniqueConstraintError } = require('sequelize');
 const logger = require('../config/logger');
 const { config } = require('../config/configLoader');
 const constants = require('../utils/constants');
+const util = require('../utils/util');
 const yaml = require('js-yaml');
 
 const resolveViewId = async (orgID, viewName) => {
-    return await apiMetadataDao.getViewID(orgID, viewName);
+    return await viewDao.getId(orgID, viewName);
 };
 
 /**
@@ -183,14 +184,16 @@ const createAPIFlow = async (req, res) => {
     if (resolvedContentType !== 'MD' && resolvedContent === null) {
         return res.status(400).json({ message: 'Invalid API flow definition: content could not be parsed as valid JSON or YAML.' });
     }
-    const t = await sequelize.transaction();
+    let t;
     try {
+        const orgDetails = await orgDao.get(orgID);
+        t = await sequelize.transaction();
         const viewId = await resolveViewId(orgID, viewName);
         const resolvedPrompt = agentPrompt && agentPrompt.trim()
             ? agentPrompt.trim()
-            : generateAgentPrompt(name, description, [], req.params.orgName, viewName, '', resolvedHandle);
+            : generateAgentPrompt(name, description, [], orgDetails.ORGANIZATION_IDENTIFIER || '', viewName, '', resolvedHandle);
 
-        const apiFlow = await apiFlowDao.createAPIFlow(orgID, viewId, {
+        const apiFlow = await apiFlowDao.create(orgID, viewId, {
             name,
             handle: resolvedHandle,
             description,
@@ -210,7 +213,7 @@ const createAPIFlow = async (req, res) => {
             status: apiFlow.STATUS
         });
     } catch (error) {
-        await t.rollback();
+        if (t) await t.rollback();
         if (error instanceof UniqueConstraintError) {
             return res.status(409).json({ message: 'An API workflow with this handle already exists. Please use a different handle.' });
         }
@@ -232,7 +235,7 @@ const updateAPIFlow = async (req, res) => {
     const t = await sequelize.transaction();
     try {
         const viewId = await resolveViewId(orgId, viewName);
-        const [count] = await apiFlowDao.updateAPIFlow(orgId, viewId, apiFlowId, {
+        const [count] = await apiFlowDao.update(orgId, viewId, apiFlowId, {
             name,
             handle,
             description,
@@ -267,7 +270,7 @@ const deleteAPIFlow = async (req, res) => {
     const t = await sequelize.transaction();
     try {
         const viewId = await resolveViewId(orgId, viewName);
-        const count = await apiFlowDao.deleteAPIFlow(orgId, viewId, apiFlowId, t);
+        const count = await apiFlowDao.delete(orgId, viewId, apiFlowId, t);
         if (count === 0) {
             await t.rollback();
             return res.status(404).json({ message: constants.ERROR_MESSAGE.API_FLOW_NOT_FOUND });
@@ -286,7 +289,7 @@ const getAPIFlow = async (req, res) => {
     const { orgId, apiFlowId, viewName } = req.params;
     try {
         const viewId = await resolveViewId(orgId, viewName);
-        const apiFlow = await apiFlowDao.getAPIFlow(orgId, viewId, apiFlowId);
+        const apiFlow = await apiFlowDao.get(orgId, viewId, apiFlowId);
         if (!apiFlow) {
             return res.status(404).json({ message: constants.ERROR_MESSAGE.API_FLOW_NOT_FOUND });
         }
@@ -301,8 +304,8 @@ const getAllAPIFlows = async (req, res) => {
     const { orgId, viewName } = req.params;
     try {
         const viewId = await resolveViewId(orgId, viewName);
-        const apiFlows = await apiFlowDao.getAllAPIFlows(orgId, viewId);
-        res.status(200).json(apiFlows.map(toAPIFlowDTO));
+        const apiFlows = await apiFlowDao.list(orgId, viewId);
+        res.status(200).json(util.toPaginatedList(apiFlows.map(toAPIFlowDTO), req));
     } catch (error) {
         logger.error('Error fetching APIFlows', { error: error.message, stack: error.stack });
         res.status(500).json({ message: constants.ERROR_MESSAGE.API_FLOW_RETRIEVE_ERROR });
@@ -323,7 +326,7 @@ const generatePrompt = async (req, res) => {
 
 // Internal utility used by settingsController
 const getAllAPIFlowsFromDB = async (orgID, viewId) => {
-    const apiFlows = await apiFlowDao.getAllAPIFlows(orgID, viewId);
+    const apiFlows = await apiFlowDao.list(orgID, viewId);
     return apiFlows.map(toAPIFlowDTO);
 };
 

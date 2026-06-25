@@ -163,13 +163,14 @@ func (r *LLMProviderTemplateRepo) GetByUUID(uuid, orgUUID string) (*model.LLMPro
 }
 
 func (r *LLMProviderTemplateRepo) List(orgUUID string, limit, offset int) ([]*model.LLMProviderTemplate, error) {
-	rows, err := r.db.Query(r.db.Rebind(`
+	pageClause, pageArgs := r.db.PaginationClause(limit, offset)
+	query := `
 		SELECT uuid, organization_uuid, handle, name, description, created_by, configuration, created_at, updated_at
 		FROM llm_provider_templates
 		WHERE organization_uuid = ?
 		ORDER BY created_at DESC
-		LIMIT ? OFFSET ?
-	`), orgUUID, limit, offset)
+		` + pageClause
+	rows, err := r.db.Query(r.db.Rebind(query), append([]any{orgUUID}, pageArgs...)...)
 	if err != nil {
 		return nil, err
 	}
@@ -392,6 +393,8 @@ func (r *LLMProviderRepo) GetByID(providerID, orgUUID string) (*model.LLMProvide
 }
 
 func (r *LLMProviderRepo) List(orgUUID string, limit, offset int) ([]*model.LLMProvider, error) {
+	pageClause, pageArgs := r.db.PaginationClause(limit, offset)
+	args := append([]any{orgUUID, constants.LLMProvider}, pageArgs...)
 	query := `
 		SELECT
 			a.uuid, a.handle, a.name, a.version, a.organization_uuid, a.created_at, a.updated_at,
@@ -400,8 +403,8 @@ func (r *LLMProviderRepo) List(orgUUID string, limit, offset int) ([]*model.LLMP
 		JOIN llm_providers p ON a.uuid = p.uuid
 		WHERE a.organization_uuid = ? AND a.kind = ?
 		ORDER BY a.created_at DESC
-		LIMIT ? OFFSET ?`
-	rows, err := r.db.Query(r.db.Rebind(query), orgUUID, constants.LLMProvider, limit, offset)
+		` + pageClause
+	rows, err := r.db.Query(r.db.Rebind(query), args...)
 	if err != nil {
 		return nil, err
 	}
@@ -653,6 +656,8 @@ func (r *LLMProxyRepo) GetByID(proxyID, orgUUID string) (*model.LLMProxy, error)
 }
 
 func (r *LLMProxyRepo) List(orgUUID string, limit, offset int) ([]*model.LLMProxy, error) {
+	pageClause, pageArgs := r.db.PaginationClause(limit, offset)
+	args := append([]any{orgUUID, constants.LLMProxy}, pageArgs...)
 	query := `
 		SELECT
 			a.uuid, a.handle, a.name, a.version, a.organization_uuid, a.created_at, a.updated_at,
@@ -662,8 +667,8 @@ func (r *LLMProxyRepo) List(orgUUID string, limit, offset int) ([]*model.LLMProx
 		JOIN llm_proxies p ON a.uuid = p.uuid
 		WHERE a.organization_uuid = ? AND a.kind = ?
 		ORDER BY a.created_at DESC
-		LIMIT ? OFFSET ?`
-	rows, err := r.db.Query(r.db.Rebind(query), orgUUID, constants.LLMProxy, limit, offset)
+		` + pageClause
+	rows, err := r.db.Query(r.db.Rebind(query), args...)
 	if err != nil {
 		return nil, err
 	}
@@ -697,6 +702,8 @@ func (r *LLMProxyRepo) List(orgUUID string, limit, offset int) ([]*model.LLMProx
 }
 
 func (r *LLMProxyRepo) ListByProject(orgUUID, projectUUID string, limit, offset int) ([]*model.LLMProxy, error) {
+	pageClause, pageArgs := r.db.PaginationClause(limit, offset)
+	args := append([]any{orgUUID, projectUUID, constants.LLMProxy}, pageArgs...)
 	query := `
 		SELECT
 			a.uuid, a.handle, a.name, a.version, a.organization_uuid, a.created_at, a.updated_at,
@@ -706,8 +713,8 @@ func (r *LLMProxyRepo) ListByProject(orgUUID, projectUUID string, limit, offset 
 		JOIN llm_proxies p ON a.uuid = p.uuid
 		WHERE a.organization_uuid = ? AND p.project_uuid = ? AND a.kind = ?
 		ORDER BY a.created_at DESC
-		LIMIT ? OFFSET ?`
-	rows, err := r.db.Query(r.db.Rebind(query), orgUUID, projectUUID, constants.LLMProxy, limit, offset)
+		` + pageClause
+	rows, err := r.db.Query(r.db.Rebind(query), args...)
 	if err != nil {
 		return nil, err
 	}
@@ -741,6 +748,8 @@ func (r *LLMProxyRepo) ListByProject(orgUUID, projectUUID string, limit, offset 
 }
 
 func (r *LLMProxyRepo) ListByProvider(orgUUID, providerUUID string, limit, offset int) ([]*model.LLMProxy, error) {
+	pageClause, pageArgs := r.db.PaginationClause(limit, offset)
+	args := append([]any{orgUUID, providerUUID, constants.LLMProxy}, pageArgs...)
 	query := `
 		SELECT
 			a.uuid, a.handle, a.name, a.version, a.organization_uuid, a.created_at, a.updated_at,
@@ -750,8 +759,8 @@ func (r *LLMProxyRepo) ListByProvider(orgUUID, providerUUID string, limit, offse
 		JOIN llm_proxies p ON a.uuid = p.uuid
 		WHERE a.organization_uuid = ? AND p.provider_uuid = ? AND a.kind = ?
 		ORDER BY a.created_at DESC
-		LIMIT ? OFFSET ?`
-	rows, err := r.db.Query(r.db.Rebind(query), orgUUID, providerUUID, constants.LLMProxy, limit, offset)
+		` + pageClause
+	rows, err := r.db.Query(r.db.Rebind(query), args...)
 	if err != nil {
 		return nil, err
 	}

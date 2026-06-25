@@ -19,7 +19,7 @@ const https = require('https');
 const http = require('http');
 const { URL } = require('url');
 const { config } = require('../../config/configLoader');
-const eventDao = require('../../dao/event');
+const eventDao = require('../../dao/eventDao');
 const DPEvent = require('../../models/event');
 const { getSubscriber } = require('./subscriberRegistry');
 const { sign } = require('./signer');
@@ -39,9 +39,9 @@ function isNotRetryable(status) {
  * POST a single delivery. Returns { ok, status, error }.
  */
 async function post(delivery, event) {
-    const sub = getSubscriber(delivery.SUBSCRIBER_ID);
+    const sub = await getSubscriber(delivery.SUBSCRIBER_ID);
     if (!sub) {
-        return { ok: false, error: `Subscriber '${delivery.SUBSCRIBER_ID}' not found in config` };
+        return { ok: false, error: `Subscriber '${delivery.SUBSCRIBER_ID}' not found` };
     }
 
     const deliveryId = delivery.DELIVERY_ID;
@@ -53,7 +53,6 @@ async function post(delivery, event) {
         event_type: event.EVENT_TYPE,
         occurred_at: event.OCCURRED_AT,
         org_id: event.ORG_ID,
-        gateway_type: event.GATEWAY_TYPE,
         data: { ...(event.PAYLOAD || {}) }
     };
     if (delivery.ENCRYPTED_FIELDS) {
@@ -61,7 +60,6 @@ async function post(delivery, event) {
     }
 
     const body = JSON.stringify(outgoing);
-    const { header: sigHeader } = sign(sub.secret, body);
 
     const headers = {
         'Content-Type': 'application/json',
@@ -69,8 +67,11 @@ async function post(delivery, event) {
         'X-Devportal-Event': event.EVENT_TYPE,
         'X-Devportal-Event-Id': event.EVENT_ID,
         'X-Devportal-Delivery-Id': deliveryId,
-        'X-Devportal-Signature': sigHeader
     };
+    if (sub.secret) {
+        const { header: sigHeader } = sign(sub.secret, body);
+        headers['X-Devportal-Signature'] = sigHeader;
+    }
 
     return new Promise((resolve) => {
         const parsedUrl = new URL(delivery.TARGET_URL);

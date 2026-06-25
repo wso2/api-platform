@@ -7,6 +7,10 @@ metadata:
   name: {{ include "gateway-operator.fullname" . }}-gateway-runtime
   labels:
     {{- include "gateway-operator.componentLabels" (list . "gateway-runtime" dict) | nindent 4 }}
+  {{- with (include "gateway-operator.annotations" (list . dict)) }}
+  annotations:
+    {{- . | nindent 4 }}
+  {{- end }}
 spec:
   scaleTargetRef:
     apiVersion: apps/v1

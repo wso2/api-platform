@@ -29,7 +29,7 @@ Feature: Gateway vhost routing with single-domain defaults
   Scenario: Route requests using single-domain gateway defaults
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: vhost-single-defaults-v1.0
@@ -76,7 +76,7 @@ Feature: Gateway vhost routing with single-domain defaults
   Scenario: API vhost override should take precedence over gateway defaults
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: vhost-single-override-v1.0
@@ -126,7 +126,7 @@ Feature: Gateway vhost routing with single-domain defaults
   Scenario: Sentinel vhost resolves to gateway defaults at deploy time
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: vhost-single-sentinel-v1.0

@@ -16,7 +16,7 @@
  * under the License.
  */
 const { Sequelize, DataTypes } = require('sequelize');
-const sequelize = require('../db/sequelize')
+const sequelize = require('../db/sequelizeConfig')
 
 const APIContent = sequelize.define('DP_API_CONTENT', {
     API_ID: {
@@ -24,7 +24,7 @@ const APIContent = sequelize.define('DP_API_CONTENT', {
         allowNull: false,
         primaryKey: true
     },
-    API_FILE: {
+    FILE_CONTENT: {
         type: DataTypes.BLOB,
         allowNull: false,
     },

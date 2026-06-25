@@ -19,8 +19,10 @@ package database
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -29,8 +31,10 @@ import (
 
 	"platform-api/src/config"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	_ "github.com/jackc/pgx/v5/stdlib" // PostgreSQL driver (pgx stdlib)
-	_ "github.com/mattn/go-sqlite3"    // SQLite3 driver
+	sqlite3 "github.com/mattn/go-sqlite3"
+	mssql "github.com/microsoft/go-mssqldb"
 )
 
 const (
@@ -42,6 +46,10 @@ const (
 	DriverPGX = "pgx"
 	// DriverPostgreSQL is an alternate name for PostgreSQL (accepted in config)
 	DriverPostgreSQL = "postgresql"
+	// DriverSQLServer is the canonical driver name for SQL Server
+	DriverSQLServer = "sqlserver"
+	// DriverMSSQL is an alternate SQL Server driver name (accepted in config)
+	DriverMSSQL = "mssql"
 )
 
 // DB holds the database connection
@@ -53,6 +61,11 @@ type DB struct {
 // isPostgresDriver returns true if the driver is PostgreSQL.
 func isPostgresDriver(driver string) bool {
 	return driver == DriverPostgres
+}
+
+// isSQLServerDriver returns true if the driver is SQL Server.
+func isSQLServerDriver(driver string) bool {
+	return driver == DriverSQLServer
 }
 
 // Driver returns the underlying database driver name (e.g., sqlite3, postgres).
@@ -97,6 +110,14 @@ func NewConnection(cfg *config.Database, slogger *slog.Logger) (*DB, error) {
 			return nil, fmt.Errorf("failed to open postgres database: %w", err)
 		}
 		slogger.Info("Successfully opened PostgreSQL database connection", "host", cfg.Host, "port", cfg.Port, "dbname", cfg.Name)
+	case DriverSQLServer, DriverMSSQL:
+		dsn := buildSQLServerDSN(cfg)
+
+		db, err = sql.Open(DriverSQLServer, dsn)
+		if err != nil {
+			return nil, fmt.Errorf("failed to open sqlserver database: %w", err)
+		}
+		slogger.Info("Successfully opened SQL Server database connection", "host", cfg.Host, "port", cfg.Port, "dbname", cfg.Name)
 	default:
 		return nil, fmt.Errorf("unsupported database driver: %s", cfg.Driver)
 	}
@@ -123,6 +144,9 @@ func NewConnection(cfg *config.Database, slogger *slog.Logger) (*DB, error) {
 	if normalizedDriver == DriverPGX || normalizedDriver == DriverPostgreSQL {
 		normalizedDriver = DriverPostgres
 	}
+	if normalizedDriver == DriverMSSQL {
+		normalizedDriver = DriverSQLServer
+	}
 
 	return &DB{DB: db, driver: normalizedDriver}, nil
 }
@@ -148,6 +172,8 @@ func (db *DB) InitSchema(dbSchemaPath string, slogger *slog.Logger) error {
 			schemaFile = "schema.sqlite.sql"
 		case DriverPostgres, DriverPostgreSQL:
 			schemaFile = "schema.postgres.sql"
+		case DriverSQLServer, DriverMSSQL:
+			schemaFile = "schema.sqlserver.sql"
 		default:
 			return fmt.Errorf("unsupported database driver for schema initialization: %s", db.driver)
 		}
@@ -160,6 +186,8 @@ func (db *DB) InitSchema(dbSchemaPath string, slogger *slog.Logger) error {
 			schemaPath = "./internal/database/schema.sqlite.sql"
 		case DriverPostgres, DriverPostgreSQL:
 			schemaPath = "./internal/database/schema.postgres.sql"
+		case DriverSQLServer, DriverMSSQL:
+			schemaPath = "./internal/database/schema.sqlserver.sql"
 		default:
 			return fmt.Errorf("unsupported database driver for schema initialization: %s", db.driver)
 		}
@@ -171,10 +199,10 @@ func (db *DB) InitSchema(dbSchemaPath string, slogger *slog.Logger) error {
 		return fmt.Errorf("failed to read schema file %s: %w", schemaPath, err)
 	}
 
-	// For PostgreSQL, we need to execute statements individually
-	// because PostgreSQL driver doesn't handle multi-statement Exec() well
-	if isPostgresDriver(db.driver) {
-		return db.initSchemaPostgres(string(schemaSQL))
+	// PostgreSQL and SQL Server drivers are more reliable when schema statements
+	// are executed one-by-one inside a transaction.
+	if isPostgresDriver(db.driver) || isSQLServerDriver(db.driver) {
+		return db.initSchemaTransactional(string(schemaSQL))
 	}
 
 	// For SQLite, execute as a single statement (it handles multi-statement well)
@@ -186,9 +214,9 @@ func (db *DB) InitSchema(dbSchemaPath string, slogger *slog.Logger) error {
 	return nil
 }
 
-// initSchemaPostgres splits SQL statements and executes them individually within a transaction
+// initSchemaTransactional splits SQL statements and executes them individually within a transaction
 // This ensures all tables are created before foreign key constraints are validated
-func (db *DB) initSchemaPostgres(schemaSQL string) error {
+func (db *DB) initSchemaTransactional(schemaSQL string) error {
 	// Split SQL statements by semicolon, but be careful with semicolons in strings/comments
 	statements := splitSQLStatements(schemaSQL)
 
@@ -370,6 +398,214 @@ func (db *DB) Rebind(query string) string {
 		}
 		return result.String()
 	}
+	if isSQLServerDriver(db.driver) {
+		// Convert ? placeholders to @p1, @p2, @p3, etc.
+		parts := strings.Split(query, "?")
+		if len(parts) == 1 {
+			return query // No placeholders
+		}
+
+		var result strings.Builder
+		for i, part := range parts {
+			if i > 0 {
+				result.WriteString(fmt.Sprintf("@p%d", i))
+			}
+			result.WriteString(part)
+		}
+		return result.String()
+	}
 	// For SQLite and other drivers, return as-is
 	return query
+}
+
+// PaginationClause returns a dialect-appropriate row-limiting clause to append
+// after an ORDER BY, together with its bind arguments in the order the clause
+// expects them. SQL Server has no LIMIT keyword and instead uses ANSI
+// OFFSET/FETCH, which (a) requires an ORDER BY in the statement and (b) lists
+// OFFSET before the row count — the reverse of "LIMIT ? OFFSET ?". The returned
+// clause uses ? placeholders; pass the assembled query through Rebind as usual.
+func (db *DB) PaginationClause(limit, offset int) (string, []any) {
+	if isSQLServerDriver(db.driver) {
+		return "OFFSET ? ROWS FETCH NEXT ? ROWS ONLY", []any{offset, limit}
+	}
+	return "LIMIT ? OFFSET ?", []any{limit, offset}
+}
+
+// FetchFirstClause returns a row-limiting clause for a fixed number of rows,
+// safe to embed directly into a query string (n is an integer constant, not
+// user input). As with PaginationClause, SQL Server requires the statement to
+// carry an ORDER BY; add "ORDER BY (SELECT NULL)" when ordering is irrelevant.
+func (db *DB) FetchFirstClause(n int) string {
+	if isSQLServerDriver(db.driver) {
+		return fmt.Sprintf("OFFSET 0 ROWS FETCH NEXT %d ROWS ONLY", n)
+	}
+	return fmt.Sprintf("LIMIT %d", n)
+}
+
+// BuildUpsertQuery generates a dialect-appropriate INSERT … ON CONFLICT … DO UPDATE query.
+// insertCols are all columns being inserted (each maps to one ? placeholder).
+// conflictCols are the columns that define uniqueness.
+// updateExprs control what happens on conflict: "col" → col = excluded.col, "col=NULL" → col = NULL.
+func (db *DB) BuildUpsertQuery(table string, insertCols []string, conflictCols []string, updateExprs []string) string {
+	if isSQLServerDriver(db.driver) {
+		return buildSQLServerUpsertQuery(table, insertCols, conflictCols, updateExprs)
+	}
+
+	placeholders := strings.TrimSuffix(strings.Repeat("?, ", len(insertCols)), ", ")
+
+	setClauses := make([]string, 0, len(updateExprs))
+	for _, expr := range updateExprs {
+		if idx := strings.Index(strings.ToUpper(expr), "=NULL"); idx >= 0 {
+			setClauses = append(setClauses, expr[:idx]+" = NULL")
+		} else {
+			setClauses = append(setClauses, expr+" = excluded."+expr)
+		}
+	}
+
+	return fmt.Sprintf(
+		"INSERT INTO %s (%s) VALUES (%s)\nON CONFLICT (%s)\nDO UPDATE SET %s",
+		table,
+		strings.Join(insertCols, ", "),
+		placeholders,
+		strings.Join(conflictCols, ", "),
+		strings.Join(setClauses, ", "),
+	)
+}
+
+// InsertAndReturnID executes an INSERT query and returns the generated row ID.
+func (db *DB) InsertAndReturnID(query string, args ...any) (int64, error) {
+	if isPostgresDriver(db.driver) {
+		var id int64
+		err := db.QueryRow(db.Rebind(query+" RETURNING id"), args...).Scan(&id)
+		return id, err
+	}
+	if isSQLServerDriver(db.driver) {
+		queryWithOutput, err := injectSQLOutputInsertedID(query)
+		if err != nil {
+			return 0, err
+		}
+
+		var id int64
+		err = db.QueryRow(db.Rebind(queryWithOutput), args...).Scan(&id)
+		return id, err
+	}
+	result, err := db.Exec(db.Rebind(query), args...)
+	if err != nil {
+		return 0, err
+	}
+	return result.LastInsertId()
+}
+
+// IsDuplicateKeyError reports whether err is a unique-constraint or duplicate-key
+// violation for the current database driver.
+func (db *DB) IsDuplicateKeyError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+		return true
+	}
+
+	var sqliteErr sqlite3.Error
+	if errors.As(err, &sqliteErr) {
+		return sqliteErr.ExtendedCode == sqlite3.ErrConstraintPrimaryKey ||
+			sqliteErr.ExtendedCode == sqlite3.ErrConstraintUnique
+	}
+
+	var msErr mssql.Error
+	if errors.As(err, &msErr) {
+		// 2601: Cannot insert duplicate key row in object with unique index
+		// 2627: Violation of PRIMARY KEY or UNIQUE KEY constraint
+		return msErr.Number == 2601 || msErr.Number == 2627
+	}
+
+	lowerMsg := strings.ToLower(err.Error())
+	return strings.Contains(lowerMsg, "duplicate key") ||
+		strings.Contains(lowerMsg, "unique constraint failed")
+}
+
+func buildSQLServerDSN(cfg *config.Database) string {
+	encrypt := "disable"
+	trustServerCertificate := "true"
+
+	switch strings.ToLower(cfg.SSLMode) {
+	case "", "disable", "false", "off":
+		encrypt = "disable"
+		trustServerCertificate = "true"
+	case "strict":
+		encrypt = "strict"
+		trustServerCertificate = "false"
+	default:
+		encrypt = "true"
+		trustServerCertificate = "false"
+	}
+
+	q := url.Values{}
+	q.Set("database", cfg.Name)
+	q.Set("encrypt", encrypt)
+	q.Set("TrustServerCertificate", trustServerCertificate)
+
+	host := cfg.Host
+	if host == "" {
+		host = "localhost"
+	}
+
+	u := &url.URL{
+		Scheme:   DriverSQLServer,
+		Host:     fmt.Sprintf("%s:%d", host, cfg.Port),
+		RawQuery: q.Encode(),
+	}
+	if cfg.User != "" {
+		u.User = url.UserPassword(cfg.User, cfg.Password)
+	}
+
+	return u.String()
+}
+
+func buildSQLServerUpsertQuery(table string, insertCols []string, conflictCols []string, updateExprs []string) string {
+	placeholders := strings.TrimSuffix(strings.Repeat("?, ", len(insertCols)), ", ")
+	sourceCols := strings.Join(insertCols, ", ")
+
+	onParts := make([]string, 0, len(conflictCols))
+	for _, col := range conflictCols {
+		onParts = append(onParts, fmt.Sprintf("target.%s = src.%s", col, col))
+	}
+
+	setClauses := make([]string, 0, len(updateExprs))
+	for _, expr := range updateExprs {
+		if idx := strings.Index(strings.ToUpper(expr), "=NULL"); idx >= 0 {
+			col := strings.TrimSpace(expr[:idx])
+			setClauses = append(setClauses, fmt.Sprintf("target.%s = NULL", col))
+		} else {
+			setClauses = append(setClauses, fmt.Sprintf("target.%s = src.%s", expr, expr))
+		}
+	}
+
+	insertValues := make([]string, 0, len(insertCols))
+	for _, col := range insertCols {
+		insertValues = append(insertValues, "src."+col)
+	}
+
+	return fmt.Sprintf(
+		"MERGE INTO %s AS target\nUSING (VALUES (%s)) AS src (%s)\nON %s\nWHEN MATCHED THEN UPDATE SET %s\nWHEN NOT MATCHED THEN INSERT (%s) VALUES (%s);",
+		table,
+		placeholders,
+		sourceCols,
+		strings.Join(onParts, " AND "),
+		strings.Join(setClauses, ", "),
+		sourceCols,
+		strings.Join(insertValues, ", "),
+	)
+}
+
+func injectSQLOutputInsertedID(query string) (string, error) {
+	matcher := regexp.MustCompile(`(?is)\)\s*VALUES`)
+	loc := matcher.FindStringIndex(query)
+	if loc == nil {
+		return "", fmt.Errorf("failed to inject OUTPUT inserted.id: expected INSERT query with VALUES")
+	}
+
+	return query[:loc[0]] + ") OUTPUT inserted.id VALUES" + query[loc[1]:], nil
 }

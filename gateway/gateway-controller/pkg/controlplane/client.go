@@ -40,12 +40,14 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/wso2/api-platform/common/eventhub"
+	"github.com/wso2/api-platform/common/webhooksecret"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/lazyresourcexds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/version"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/webhooksecretxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
 )
 
@@ -134,6 +136,8 @@ type Client struct {
 	gatewayPath                 string      // cached gateway path from well-known discovery
 	syncOnce                    sync.Once   // ensures deployment sync runs only on first connect
 	isFirstConnect              atomic.Bool // true on first connect, flipped to false after
+	webhookSecretStore          *webhooksecret.WebhookSecretStore
+	webhookSecretSnapshotManager *webhooksecretxds.SnapshotManager
 }
 
 // NewClient creates a new control plane client
@@ -156,6 +160,8 @@ func NewClient(
 	subSnapshotManager utils.SubscriptionSnapshotUpdater,
 	eventHubInstance eventhub.EventHub,
 	secretResolver funcs.SecretResolver,
+	webhookSecretStore *webhooksecret.WebhookSecretStore,
+	webhookSecretSnapshotManager *webhooksecretxds.SnapshotManager,
 ) *Client {
 	if db == nil {
 		panic("control plane client requires non-nil storage")
@@ -178,25 +184,27 @@ func NewClient(
 	subscriptionResourceService := utils.NewSubscriptionResourceService(db, subSnapshotManager, eventHubInstance, gatewayID)
 
 	client := &Client{
-		config:                      cfg,
-		logger:                      logger,
-		store:                       store,
-		db:                          db,
-		snapshotManager:             snapshotManager,
-		parser:                      config.NewParser(),
-		validator:                   validator,
-		deploymentService:           deploymentService,
-		apiKeyService:               apiKeyService,
-		apiKeyXDSManager:            apiKeyXDSManager,
-		apiKeyStore:                 apiKeyStore,
-		routerConfig:                routerConfig,
-		policyManager:               policyManager,
-		systemConfig:                systemConfig,
-		policyDefinitions:           policyDefinitions,
-		subscriptionSnapshotUpdater: subSnapshotManager,
-		subscriptionResourceService: subscriptionResourceService,
-		eventHub:                    eventHubInstance,
-		gatewayID:                   gatewayID,
+		config:                       cfg,
+		logger:                       logger,
+		store:                        store,
+		db:                           db,
+		snapshotManager:              snapshotManager,
+		parser:                       config.NewParser(),
+		validator:                    validator,
+		deploymentService:            deploymentService,
+		apiKeyService:                apiKeyService,
+		apiKeyXDSManager:             apiKeyXDSManager,
+		apiKeyStore:                  apiKeyStore,
+		routerConfig:                 routerConfig,
+		policyManager:                policyManager,
+		systemConfig:                 systemConfig,
+		policyDefinitions:            policyDefinitions,
+		subscriptionSnapshotUpdater:  subSnapshotManager,
+		subscriptionResourceService:  subscriptionResourceService,
+		eventHub:                     eventHubInstance,
+		gatewayID:                    gatewayID,
+		webhookSecretStore:           webhookSecretStore,
+		webhookSecretSnapshotManager: webhookSecretSnapshotManager,
 		state: &ConnectionState{
 			Current:        Disconnected,
 			Conn:           nil,
@@ -1309,6 +1317,8 @@ func (c *Client) handleMessage(messageType int, message []byte) {
 		c.handleWebSubAPIUndeployedEvent(event)
 	case "websub.deleted":
 		c.handleWebSubAPIDeletedEvent(event)
+	case "websub.hmacsecret.created", "websub.hmacsecret.updated", "websub.hmacsecret.deleted":
+		c.handleWebSubAPIHmacSecretEvent(event)
 	case "webbroker.deployed":
 		c.handleWebBrokerAPIDeployedEvent(event)
 	case "webbroker.undeployed":
@@ -2478,6 +2488,77 @@ func (c *Client) handleLLMProxyDeletedEvent(event map[string]interface{}) {
 	)
 }
 
+// syncHmacSecretsForArtifact fetches all platform-managed HMAC secrets for a WebSub API
+// artifact from platform-API and loads them into the in-memory webhook secret store.
+// It replaces any previously loaded secrets for this artifact atomically (clear then re-add).
+func (c *Client) syncHmacSecretsForArtifact(artifactID string) {
+	if c.webhookSecretStore == nil {
+		return
+	}
+
+	secrets, err := c.apiUtilsService.FetchWebSubAPIHmacSecrets(artifactID)
+	if err != nil {
+		c.logger.Warn("Failed to fetch platform HMAC secrets for WebSub API",
+			slog.String("artifact_id", artifactID),
+			slog.Any("error", err))
+		return
+	}
+
+	if err := c.webhookSecretStore.RemoveAllByAPI(artifactID); err != nil {
+		c.logger.Warn("Failed to clear existing HMAC secrets for WebSub API",
+			slog.String("artifact_id", artifactID),
+			slog.Any("error", err))
+		return
+	}
+
+	for _, s := range secrets {
+		if err := c.webhookSecretStore.Store(artifactID, s.Name, s.Plaintext); err != nil {
+			c.logger.Warn("Failed to store platform HMAC secret in memory",
+				slog.String("artifact_id", artifactID),
+				slog.String("secret_name", s.Name),
+				slog.Any("error", err))
+		}
+	}
+
+	if c.webhookSecretSnapshotManager != nil {
+		if err := c.webhookSecretSnapshotManager.RefreshSnapshot(); err != nil {
+			c.logger.Warn("Failed to refresh webhook secret xDS snapshot after platform sync",
+				slog.String("artifact_id", artifactID),
+				slog.Any("error", err))
+		}
+	}
+
+	c.logger.Info("Loaded platform HMAC secrets for WebSub API",
+		slog.String("artifact_id", artifactID),
+		slog.Int("count", len(secrets)))
+}
+
+// cleanupHmacSecretsForArtifact removes all in-memory HMAC secrets for an artifact and
+// refreshes the xDS snapshot. Called on WebSub API deletion (found and not-found paths).
+func (c *Client) cleanupHmacSecretsForArtifact(artifactID string) {
+	if c.webhookSecretStore == nil {
+		return
+	}
+	if err := c.webhookSecretStore.RemoveAllByAPI(artifactID); err != nil {
+		c.logger.Warn("Failed to remove HMAC secrets from store during WebSub API cleanup",
+			slog.String("artifact_id", artifactID),
+			slog.Any("error", err))
+	}
+	if c.webhookSecretSnapshotManager != nil {
+		if err := c.webhookSecretSnapshotManager.RefreshSnapshot(); err != nil {
+			c.logger.Warn("Failed to refresh webhook secret xDS snapshot after WebSub API cleanup",
+				slog.String("artifact_id", artifactID),
+				slog.Any("error", err))
+		}
+	}
+}
+
+// platformHmacSecretEventPayload is the payload for websub.hmacsecret.* events.
+type platformHmacSecretEventPayload struct {
+	ArtifactUUID string `json:"artifactUuid"`
+	SecretName   string `json:"secretName"`
+}
+
 func (c *Client) handleWebSubAPIDeployedEvent(event map[string]any) {
 	c.logger.Debug("WebSub API Deployment Event",
 		slog.Any("payload", event["payload"]),
@@ -2557,6 +2638,11 @@ func (c *Client) handleWebSubAPIDeployedEvent(event map[string]any) {
 			slog.String("deployment_id", deployedEvent.Payload.DeploymentID),
 		)
 		return
+	}
+
+	// Load platform-managed HMAC secrets into the webhook secret store.
+	if result.StoredConfig != nil {
+		c.syncHmacSecretsForArtifact(result.StoredConfig.UUID)
 	}
 
 	c.sendDeploymentAck(deployedEvent.Payload.DeploymentID, apiID, "websub", "deploy", "success",
@@ -2710,6 +2796,7 @@ func (c *Client) handleWebSubAPIDeletedEvent(event map[string]any) {
 			c.logger.Warn("WebSub API configuration not found for deletion",
 				slog.String("api_id", apiID),
 			)
+			c.cleanupHmacSecretsForArtifact(apiID)
 			return
 		}
 		c.logger.Error("Failed to fetch WebSub API configuration for deletion",
@@ -2721,6 +2808,7 @@ func (c *Client) handleWebSubAPIDeletedEvent(event map[string]any) {
 	}
 
 	c.performFullAPIDeletion(apiID, apiConfig, deletedEvent.CorrelationID)
+	c.cleanupHmacSecretsForArtifact(apiConfig.UUID)
 }
 
 func (c *Client) handleWebBrokerAPIDeployedEvent(event map[string]any) {
@@ -4243,4 +4331,30 @@ func (c *Client) pushGatewayManifestOnConnect(gatewayID string) {
 		slog.String("gateway_id", gatewayID),
 		slog.Int("policy_count", len(policies)),
 	)
+}
+
+// handleWebSubAPIHmacSecretEvent handles websub.hmacsecret.created/updated/deleted events
+// from platform-API. It re-syncs all platform-managed HMAC secrets for the affected artifact.
+func (c *Client) handleWebSubAPIHmacSecretEvent(event map[string]any) {
+	payloadRaw, _ := event["payload"]
+	payloadBytes, err := json.Marshal(payloadRaw)
+	if err != nil {
+		c.logger.Error("Failed to marshal HMAC secret event payload", slog.Any("error", err))
+		return
+	}
+	var payload platformHmacSecretEventPayload
+	if err := json.Unmarshal(payloadBytes, &payload); err != nil {
+		c.logger.Error("Failed to parse HMAC secret event payload", slog.Any("error", err))
+		return
+	}
+	if payload.ArtifactUUID == "" {
+		c.logger.Warn("HMAC secret event missing artifactUuid, skipping")
+		return
+	}
+	c.logger.Info("Processing platform HMAC secret event",
+		slog.Any("type", event["type"]),
+		slog.String("artifact_uuid", payload.ArtifactUUID),
+		slog.String("secret_name", payload.SecretName),
+	)
+	c.syncHmacSecretsForArtifact(payload.ArtifactUUID)
 }

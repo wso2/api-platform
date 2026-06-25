@@ -48,11 +48,11 @@ export const SCOPES = {
   APPLICATION_API_KEY_CREATE:          'ap:application:api_key:create',
   APPLICATION_API_KEY_DELETE:          'ap:application:api_key:delete',
   APPLICATION_API_KEY_MANAGE:          'ap:application:api_key:manage',
-  APPLICATION_ASSOCIATIONS_READ:       'ap:application:associations:read',
-  APPLICATION_ASSOCIATIONS_CREATE:     'ap:application:associations:create',
-  APPLICATION_ASSOCIATIONS_DELETE:     'ap:application:associations:delete',
-  APPLICATION_ASSOCIATIONS_MANAGE:     'ap:application:associations:manage',
-  APPLICATION_ASSOCIATIONS_API_KEY_READ: 'ap:application:associations:api_key:read',
+  APPLICATION_ASSOCIATIONS_READ:       'ap:application:association:read',
+  APPLICATION_ASSOCIATIONS_CREATE:     'ap:application:association:create',
+  APPLICATION_ASSOCIATIONS_DELETE:     'ap:application:association:delete',
+  APPLICATION_ASSOCIATIONS_MANAGE:     'ap:application:association:manage',
+  APPLICATION_ASSOCIATIONS_API_KEY_READ: 'ap:application:association:api_key:read',
 
   // AI Gateways
   GATEWAY_READ:           'ap:gateway:read',
@@ -68,7 +68,7 @@ export const SCOPES = {
   GATEWAY_CUSTOM_POLICY_CREATE:  'ap:gateway_custom_policy:create',
   GATEWAY_CUSTOM_POLICY_DELETE:  'ap:gateway_custom_policy:delete',
   GATEWAY_CUSTOM_POLICY_MANAGE:  'ap:gateway_custom_policy:manage',
-  GATEWAY_ARTIFACTS_READ: 'ap:gateway:artifacts:read',
+  GATEWAY_ARTIFACTS_READ: 'ap:gateway:artifact:read',
   GATEWAY_MANIFEST_READ:  'ap:gateway:manifest:read',
 
   // REST APIs

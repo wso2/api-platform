@@ -15,57 +15,46 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-const { config } = require('../../config/configLoader');
+const whDao = require('../../dao/webhookSubscriberDao');
 
 /**
- * Returns all configured subscribers that should receive an event of the given
- * type and gateway_type.
- *
- * Matching rules:
- *   - subscriber.gatewayType === "*"  → matches any event gateway_type
- *   - subscriber.gatewayType === eventGatewayType  → matches
- *   - subscriber.events is absent / empty → receives all event types
- *   - subscriber.events is an array of glob-style patterns (only * wildcard at end)
- *
- * @param {string} eventType      — e.g. "apikey.generated"
- * @param {string|null} gatewayType — value from DP_EVENT.GATEWAY_TYPE
- * @returns {Array<{id,url,secret,publicKeyPath,publicKey,timeoutMs}>}
+ * Maps a DP_WEBHOOK_SUBSCRIBER record to the shape consumed by the dispatcher
+ * and delivery worker: {id, url, secret, publicKey, events, timeoutMs}.
  */
-function matchSubscribers(eventType, gatewayType) {
-    const subscribers = config.webhooks && config.webhooks.subscribers;
-    if (!Array.isArray(subscribers) || subscribers.length === 0) return [];
+function toRuntimeSubscriber(record) {
+    return {
+        id: record.SUBSCRIBER_ID,
+        url: record.TARGET_URL,
+        secret: whDao.decryptSecret(record),
+        publicKey: record.PUBLIC_KEY || null,
+        events: record.EVENT_PATTERNS || [],
+        timeoutMs: record.TIMEOUT_MS,
+    };
+}
 
-    return subscribers.filter(sub => {
-        if (!sub.id || !sub.url || !sub.secret) return false;
-
-        // gateway_type filter
-        if (sub.gatewayType && sub.gatewayType !== '*') {
-            if (sub.gatewayType !== gatewayType) return false;
-        }
-
-        // event type allowlist
-        if (Array.isArray(sub.events) && sub.events.length > 0) {
-            const matches = sub.events.some(pattern => {
-                if (pattern.endsWith('.*')) {
-                    const prefix = pattern.slice(0, -1); // "apikey."
-                    return eventType.startsWith(prefix);
-                }
-                return pattern === eventType;
-            });
-            if (!matches) return false;
-        }
-
-        return true;
-    });
+/**
+ * Returns all enabled subscribers for the given org that should receive an
+ * event of the given type.
+ *
+ * @param {string} orgId
+ * @param {string} eventType      — e.g. "apikey.generated"
+ * @returns {Promise<Array<{id,url,secret,publicKey,events,timeoutMs}>>}
+ */
+async function matchSubscribers(orgId, eventType) {
+    const records = await whDao.matchSubscribers(orgId, eventType);
+    return records.map(toRuntimeSubscriber);
 }
 
 /**
  * Returns subscriber by id, or null.
  */
-function getSubscriber(id) {
-    const subscribers = config.webhooks && config.webhooks.subscribers;
-    if (!Array.isArray(subscribers)) return null;
-    return subscribers.find(s => s.id === id) || null;
+async function getSubscriber(id) {
+    try {
+        const record = await whDao.getById(id);
+        return toRuntimeSubscriber(record);
+    } catch (err) {
+        return null;
+    }
 }
 
 module.exports = { matchSubscribers, getSubscriber };

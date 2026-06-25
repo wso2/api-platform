@@ -132,6 +132,7 @@ func (r *WebBrokerAPIRepo) GetByUUID(uuid, orgUUID string) (*model.WebBrokerAPI,
 func (r *WebBrokerAPIRepo) List(orgUUID, projectUUID string, limit, offset int) ([]*model.WebBrokerAPI, error) {
 	var query string
 	var args []interface{}
+	pageClause, pageArgs := r.db.PaginationClause(limit, offset)
 
 	if projectUUID != "" {
 		query = `
@@ -142,8 +143,8 @@ func (r *WebBrokerAPIRepo) List(orgUUID, projectUUID string, limit, offset int) 
 			JOIN webbroker_apis p ON a.uuid = p.uuid
 			WHERE a.organization_uuid = ? AND a.kind = ? AND p.project_uuid = ?
 			ORDER BY a.created_at DESC
-			LIMIT ? OFFSET ?`
-		args = []interface{}{orgUUID, constants.WebBrokerApi, projectUUID, limit, offset}
+			` + pageClause
+		args = append([]interface{}{orgUUID, constants.WebBrokerApi, projectUUID}, pageArgs...)
 	} else {
 		query = `
 			SELECT
@@ -153,8 +154,8 @@ func (r *WebBrokerAPIRepo) List(orgUUID, projectUUID string, limit, offset int) 
 			JOIN webbroker_apis p ON a.uuid = p.uuid
 			WHERE a.organization_uuid = ? AND a.kind = ?
 			ORDER BY a.created_at DESC
-			LIMIT ? OFFSET ?`
-		args = []interface{}{orgUUID, constants.WebBrokerApi, limit, offset}
+			` + pageClause
+		args = append([]interface{}{orgUUID, constants.WebBrokerApi}, pageArgs...)
 	}
 
 	rows, err := r.db.Query(r.db.Rebind(query), args...)

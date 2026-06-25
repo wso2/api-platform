@@ -322,8 +322,8 @@ func (r *GatewayRepo) GetActiveTokenByHash(tokenHash string) (*model.GatewayToke
 		SELECT uuid, gateway_uuid, token_hash, salt, status, created_at, revoked_at
 		FROM gateway_tokens
 		WHERE token_hash = ? AND status = 'active'
-		LIMIT 1
-	`
+		ORDER BY (SELECT NULL)
+		` + r.db.FetchFirstClause(1)
 	err := r.db.QueryRow(r.db.Rebind(query), tokenHash).Scan(
 		&token.ID, &token.GatewayID, &token.TokenHash, &token.Salt, &token.Status, &token.CreatedAt, &token.RevokedAt,
 	)
@@ -425,6 +425,13 @@ func (r *GatewayRepo) HasGatewayAssociationsOrDeployments(gatewayID, organizatio
 func (r *GatewayRepo) UpdateGatewayManifest(gatewayID string, manifest []byte) error {
 	query := `UPDATE gateways SET manifest = ? WHERE uuid = ?`
 	_, err := r.db.Exec(r.db.Rebind(query), string(manifest), gatewayID)
+	return err
+}
+
+// UpdateGatewayVersion persists the version string reported by the gateway controller on manifest push.
+func (r *GatewayRepo) UpdateGatewayVersion(gatewayID, version string) error {
+	query := `UPDATE gateways SET version = ?, updated_at = ? WHERE uuid = ?`
+	_, err := r.db.Exec(r.db.Rebind(query), version, time.Now(), gatewayID)
 	return err
 }
 

@@ -101,7 +101,7 @@ func (s *SecretSteps) createSecret(body *godog.DocString) error {
 // createSecretWithValue creates a secret with a simple name and value
 func (s *SecretSteps) createSecretWithValue(name, value string) error {
 	config := fmt.Sprintf(`{
-  "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+  "apiVersion": "gateway.api-platform.wso2.com/v1",
   "kind": "Secret",
   "metadata": {
     "name": "%s"
@@ -154,7 +154,7 @@ func (s *SecretSteps) updateSecret(name string, body *godog.DocString) error {
 // updateSecretWithValue updates a secret with a simple value
 func (s *SecretSteps) updateSecretWithValue(name, value string) error {
 	config := fmt.Sprintf(`{
-  "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+  "apiVersion": "gateway.api-platform.wso2.com/v1",
   "kind": "Secret",
   "metadata": {
     "name": "%s"

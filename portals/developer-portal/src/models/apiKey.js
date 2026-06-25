@@ -16,7 +16,7 @@
  * under the License.
  */
 const { Sequelize, DataTypes } = require('sequelize');
-const sequelize = require('../db/sequelize');
+const sequelize = require('../db/sequelizeConfig');
 const { Organization } = require('./organization');
 const { APIMetadata } = require('./apiMetadata');
 const { SubscriptionMapping } = require('./application');
@@ -67,11 +67,16 @@ const APIKey = sequelize.define('DP_API_KEY', {
     createdAt: 'CREATED_AT',
     updatedAt: false,
     tableName: 'DP_API_KEY',
-    returning: true
+    returning: true,
+    indexes: [
+        { name: 'IDX_API_KEY_ORG_API_ID', fields: ['ORG_ID', 'API_ID'] },
+    ],
 });
 
 APIKey.belongsTo(Organization, { foreignKey: 'ORG_ID' });
 Organization.hasMany(APIKey, { foreignKey: 'ORG_ID' });
 APIKey.belongsTo(APIMetadata, { foreignKey: 'API_ID' });
+APIKey.belongsTo(SubscriptionMapping, { foreignKey: 'SUBSCRIPTION_ID', onDelete: 'SET NULL' });
+SubscriptionMapping.hasMany(APIKey, { foreignKey: 'SUBSCRIPTION_ID', onDelete: 'SET NULL' });
 
 module.exports = APIKey;

@@ -32,7 +32,7 @@ Feature: LLM Cost-Based Rate Limiting
     # Request 1: allowed (remaining $0.000118), request 2: allowed (remaining $0), request 3: blocked
     When I create this LLM provider template:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProviderTemplate
       metadata:
         name: cbl-enforce-template
@@ -42,7 +42,7 @@ Feature: LLM Cost-Based Rate Limiting
     Then the response status code should be 201
     When I create this LLM provider:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProvider
       metadata:
         name: cbl-enforce-provider
@@ -119,7 +119,7 @@ Feature: LLM Cost-Based Rate Limiting
     # The tighter per-minute window triggers the 429
     When I create this LLM provider template:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProviderTemplate
       metadata:
         name: cbl-multiwin-template
@@ -129,7 +129,7 @@ Feature: LLM Cost-Based Rate Limiting
     Then the response status code should be 201
     When I create this LLM provider:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProvider
       metadata:
         name: cbl-multiwin-provider
@@ -206,7 +206,7 @@ Feature: LLM Cost-Based Rate Limiting
     # Budget: $0.000280 = exactly 2 requests worth
     When I create this LLM provider template:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProviderTemplate
       metadata:
         name: cbl-anthropic-template
@@ -216,7 +216,7 @@ Feature: LLM Cost-Based Rate Limiting
     Then the response status code should be 201
     When I create this LLM provider:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProvider
       metadata:
         name: cbl-anthropic-provider
@@ -291,7 +291,7 @@ Feature: LLM Cost-Based Rate Limiting
     # are present in the response after the llm-cost policy stores cost in shared context
     When I create this LLM provider template:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProviderTemplate
       metadata:
         name: cbl-headers-template
@@ -301,7 +301,7 @@ Feature: LLM Cost-Based Rate Limiting
     Then the response status code should be 201
     When I create this LLM provider:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProvider
       metadata:
         name: cbl-headers-provider
@@ -362,7 +362,7 @@ Feature: LLM Cost-Based Rate Limiting
     # Exhausting Provider A's budget does not affect Provider B's budget
     When I create this LLM provider template:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProviderTemplate
       metadata:
         name: cbl-prov-a-template
@@ -372,7 +372,7 @@ Feature: LLM Cost-Based Rate Limiting
     Then the response status code should be 201
     When I create this LLM provider template:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProviderTemplate
       metadata:
         name: cbl-prov-b-template
@@ -383,7 +383,7 @@ Feature: LLM Cost-Based Rate Limiting
 
     When I create this LLM provider:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProvider
       metadata:
         name: cbl-prov-a
@@ -421,7 +421,7 @@ Feature: LLM Cost-Based Rate Limiting
     Then the response status code should be 201
     When I create this LLM provider:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProvider
       metadata:
         name: cbl-prov-b
@@ -508,7 +508,7 @@ Feature: LLM Cost-Based Rate Limiting
     # - 3rd OpenAI request → 429
     When I create this LLM provider template:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProviderTemplate
       metadata:
         name: cbl-zero-template
@@ -518,7 +518,7 @@ Feature: LLM Cost-Based Rate Limiting
     Then the response status code should be 201
     When I create this LLM provider:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProvider
       metadata:
         name: cbl-zero-provider
@@ -604,7 +604,7 @@ Feature: LLM Cost-Based Rate Limiting
     # After exhaustion and window expiry, new requests are allowed
     When I create this LLM provider template:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProviderTemplate
       metadata:
         name: cbl-reset-template
@@ -614,7 +614,7 @@ Feature: LLM Cost-Based Rate Limiting
     Then the response status code should be 201
     When I create this LLM provider:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProvider
       metadata:
         name: cbl-reset-provider
@@ -697,7 +697,7 @@ Feature: LLM Cost-Based Rate Limiting
     # Budget: $0.000075 = exactly 2 requests worth
     When I create this LLM provider template:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProviderTemplate
       metadata:
         name: cbl-gemini-template
@@ -707,7 +707,7 @@ Feature: LLM Cost-Based Rate Limiting
     Then the response status code should be 201
     When I create this LLM provider:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProvider
       metadata:
         name: cbl-gemini-provider
@@ -786,7 +786,7 @@ Feature: LLM Cost-Based Rate Limiting
     # Budget: $0.004620 = exactly 2 requests worth
     When I create this LLM provider template:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProviderTemplate
       metadata:
         name: cbl-anthropic-geo-speed-template
@@ -796,7 +796,7 @@ Feature: LLM Cost-Based Rate Limiting
     Then the response status code should be 201
     When I create this LLM provider:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProvider
       metadata:
         name: cbl-anthropic-geo-speed-provider
@@ -870,7 +870,7 @@ Feature: LLM Cost-Based Rate Limiting
     # Budget: $0.011600 = exactly 2 requests worth
     When I create this LLM provider template:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProviderTemplate
       metadata:
         name: cbl-anthropic-cache1hr-template
@@ -880,7 +880,7 @@ Feature: LLM Cost-Based Rate Limiting
     Then the response status code should be 201
     When I create this LLM provider:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProvider
       metadata:
         name: cbl-anthropic-cache1hr-provider
@@ -953,7 +953,7 @@ Feature: LLM Cost-Based Rate Limiting
     # Budget: $0.040280 = exactly 2 requests worth
     When I create this LLM provider template:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProviderTemplate
       metadata:
         name: cbl-anthropic-websearch-template
@@ -963,7 +963,7 @@ Feature: LLM Cost-Based Rate Limiting
     Then the response status code should be 201
     When I create this LLM provider:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProvider
       metadata:
         name: cbl-anthropic-websearch-provider
@@ -1037,7 +1037,7 @@ Feature: LLM Cost-Based Rate Limiting
     # Budget: $0.000150 = exactly 2 requests worth
     When I create this LLM provider template:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProviderTemplate
       metadata:
         name: cbl-gemini-cached-template
@@ -1047,7 +1047,7 @@ Feature: LLM Cost-Based Rate Limiting
     Then the response status code should be 201
     When I create this LLM provider:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProvider
       metadata:
         name: cbl-gemini-cached-provider
@@ -1121,7 +1121,7 @@ Feature: LLM Cost-Based Rate Limiting
     # Budget: $0.000300 = exactly 2 requests worth
     When I create this LLM provider template:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProviderTemplate
       metadata:
         name: cbl-gemini-thinking-template
@@ -1131,7 +1131,7 @@ Feature: LLM Cost-Based Rate Limiting
     Then the response status code should be 201
     When I create this LLM provider:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProvider
       metadata:
         name: cbl-gemini-thinking-provider
@@ -1205,7 +1205,7 @@ Feature: LLM Cost-Based Rate Limiting
     # Budget: $0.000312 = exactly 2 requests worth
     When I create this LLM provider template:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProviderTemplate
       metadata:
         name: cbl-anthropic-cache-read-template
@@ -1215,7 +1215,7 @@ Feature: LLM Cost-Based Rate Limiting
     Then the response status code should be 201
     When I create this LLM provider:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProvider
       metadata:
         name: cbl-anthropic-cache-read-provider
@@ -1289,7 +1289,7 @@ Feature: LLM Cost-Based Rate Limiting
     # Budget: $0.001300 = exactly 2 requests worth
     When I create this LLM provider template:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProviderTemplate
       metadata:
         name: cbl-openai-cached-template
@@ -1299,7 +1299,7 @@ Feature: LLM Cost-Based Rate Limiting
     Then the response status code should be 201
     When I create this LLM provider:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProvider
       metadata:
         name: cbl-openai-cached-provider
@@ -1372,7 +1372,7 @@ Feature: LLM Cost-Based Rate Limiting
     # Budget: $0.001000 = exactly 2 requests worth
     When I create this LLM provider template:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProviderTemplate
       metadata:
         name: cbl-openai-flex-template
@@ -1382,7 +1382,7 @@ Feature: LLM Cost-Based Rate Limiting
     Then the response status code should be 201
     When I create this LLM provider:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProvider
       metadata:
         name: cbl-openai-flex-provider
@@ -1455,7 +1455,7 @@ Feature: LLM Cost-Based Rate Limiting
     # Budget: $0.002100 = exactly 2 requests worth
     When I create this LLM provider template:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProviderTemplate
       metadata:
         name: cbl-openai-priority-template
@@ -1465,7 +1465,7 @@ Feature: LLM Cost-Based Rate Limiting
     Then the response status code should be 201
     When I create this LLM provider:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProvider
       metadata:
         name: cbl-openai-priority-provider
@@ -1538,7 +1538,7 @@ Feature: LLM Cost-Based Rate Limiting
     # Budget: $0.000600 = exactly 2 requests worth
     When I create this LLM provider template:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProviderTemplate
       metadata:
         name: cbl-openai-batch-template
@@ -1548,7 +1548,7 @@ Feature: LLM Cost-Based Rate Limiting
     Then the response status code should be 201
     When I create this LLM provider:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProvider
       metadata:
         name: cbl-openai-batch-provider
@@ -1621,7 +1621,7 @@ Feature: LLM Cost-Based Rate Limiting
     # Budget: $0.000924 = exactly 2 requests worth
     When I create this LLM provider template:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProviderTemplate
       metadata:
         name: cbl-openai-reasoning-template
@@ -1631,7 +1631,7 @@ Feature: LLM Cost-Based Rate Limiting
     Then the response status code should be 201
     When I create this LLM provider:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProvider
       metadata:
         name: cbl-openai-reasoning-provider
@@ -1704,7 +1704,7 @@ Feature: LLM Cost-Based Rate Limiting
     # Budget: $0.020600 = exactly 2 requests worth
     When I create this LLM provider template:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProviderTemplate
       metadata:
         name: cbl-openai-web-search-template
@@ -1714,7 +1714,7 @@ Feature: LLM Cost-Based Rate Limiting
     Then the response status code should be 201
     When I create this LLM provider:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProvider
       metadata:
         name: cbl-openai-web-search-provider
@@ -1786,7 +1786,7 @@ Feature: LLM Cost-Based Rate Limiting
     # Budget: $0.000050 = exactly 2 requests worth
     When I create this LLM provider template:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProviderTemplate
       metadata:
         name: cbl-mistral-template
@@ -1796,7 +1796,7 @@ Feature: LLM Cost-Based Rate Limiting
     Then the response status code should be 201
     When I create this LLM provider:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProvider
       metadata:
         name: cbl-mistral-provider
@@ -1867,7 +1867,7 @@ Feature: LLM Cost-Based Rate Limiting
     # With a very tight budget ($0.000001), 3 requests still all pass because cost=0
     When I create this LLM provider template:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProviderTemplate
       metadata:
         name: cbl-no-model-template
@@ -1877,7 +1877,7 @@ Feature: LLM Cost-Based Rate Limiting
     Then the response status code should be 201
     When I create this LLM provider:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProvider
       metadata:
         name: cbl-no-model-provider

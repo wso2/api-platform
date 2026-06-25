@@ -33,7 +33,7 @@ Feature: CEL Execution Conditions
   Scenario: Policy executes only on POST requests using method condition
     When I deploy an API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: cel-method-condition-api-v1.0.0
@@ -87,7 +87,7 @@ Feature: CEL Execution Conditions
   Scenario: Policy executes on multiple methods using IN operator
     When I deploy an API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: cel-multi-method-api-v1.0.0
@@ -163,7 +163,7 @@ Feature: CEL Execution Conditions
   Scenario: Policy executes only when specific header is present
     When I deploy an API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: cel-header-presence-api-v1.0.0
@@ -203,7 +203,7 @@ Feature: CEL Execution Conditions
   Scenario: Policy executes based on header value
     When I deploy an API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: cel-header-value-api-v1.0.0
@@ -247,7 +247,7 @@ Feature: CEL Execution Conditions
   Scenario: Policy executes based on path prefix
     When I deploy an API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: cel-path-prefix-api-v1.0.0
@@ -302,7 +302,7 @@ Feature: CEL Execution Conditions
   Scenario: Policy executes with combined method and header conditions
     When I deploy an API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: cel-combined-condition-api-v1.0.0

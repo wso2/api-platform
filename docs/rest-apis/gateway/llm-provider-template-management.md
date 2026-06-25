@@ -12,7 +12,7 @@ CRUD operations for LLM Provider Template configurations
 
 ```shell
 
-curl -X POST http://localhost:9090/api/management/v0.9/llm-provider-templates \
+curl -X POST http://localhost:9090/api/management/v1/llm-provider-templates \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -26,7 +26,7 @@ Add a new LLM provider template to the Gateway. A template defines token trackin
 
 ```json
 {
-  "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+  "apiVersion": "gateway.api-platform.wso2.com/v1",
   "kind": "LlmProviderTemplate",
   "metadata": {
     "name": "openai-template"
@@ -82,7 +82,7 @@ Required roles: `admin`
 
 ```json
 {
-  "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+  "apiVersion": "gateway.api-platform.wso2.com/v1",
   "kind": "LlmProviderTemplate",
   "metadata": {
     "name": "openai-template"
@@ -141,7 +141,7 @@ Required roles: `admin`
 
 ```shell
 
-curl -X GET http://localhost:9090/api/management/v0.9/llm-provider-templates \
+curl -X GET http://localhost:9090/api/management/v1/llm-provider-templates \
   -u {username}:{password} \
   -H 'Accept: application/json'
 
@@ -174,7 +174,7 @@ Required roles: `admin`
   "count": 3,
   "templates": [
     {
-      "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+      "apiVersion": "gateway.api-platform.wso2.com/v1",
       "kind": "LlmProviderTemplate",
       "metadata": {
         "name": "openai-template"
@@ -282,7 +282,7 @@ Status Code **200**
 
 |Property|Value|
 |---|---|
-|apiVersion|gateway.api-platform.wso2.com/v1alpha1|
+|apiVersion|gateway.api-platform.wso2.com/v1|
 |kind|LlmProviderTemplate|
 |location|payload|
 |location|header|
@@ -301,7 +301,7 @@ Status Code **200**
 
 ```shell
 
-curl -X GET http://localhost:9090/api/management/v0.9/llm-provider-templates/{id} \
+curl -X GET http://localhost:9090/api/management/v1/llm-provider-templates/{id} \
   -u {username}:{password} \
   -H 'Accept: application/json'
 
@@ -330,7 +330,7 @@ Required roles: `admin`
 
 ```json
 {
-  "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+  "apiVersion": "gateway.api-platform.wso2.com/v1",
   "kind": "LlmProviderTemplate",
   "metadata": {
     "name": "openai-template"
@@ -388,7 +388,7 @@ Required roles: `admin`
 
 ```shell
 
-curl -X PUT http://localhost:9090/api/management/v0.9/llm-provider-templates/{id} \
+curl -X PUT http://localhost:9090/api/management/v1/llm-provider-templates/{id} \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -402,7 +402,7 @@ Update an existing LLM provider template in the Gateway.
 
 ```json
 {
-  "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+  "apiVersion": "gateway.api-platform.wso2.com/v1",
   "kind": "LlmProviderTemplate",
   "metadata": {
     "name": "openai-template"
@@ -459,7 +459,7 @@ Required roles: `admin`
 
 ```json
 {
-  "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+  "apiVersion": "gateway.api-platform.wso2.com/v1",
   "kind": "LlmProviderTemplate",
   "metadata": {
     "name": "openai-template"
@@ -518,7 +518,7 @@ Required roles: `admin`
 
 ```shell
 
-curl -X DELETE http://localhost:9090/api/management/v0.9/llm-provider-templates/{id} \
+curl -X DELETE http://localhost:9090/api/management/v1/llm-provider-templates/{id} \
   -u {username}:{password} \
   -H 'Accept: application/json'
 

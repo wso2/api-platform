@@ -58,6 +58,23 @@ func TestNewStorage_Postgres(t *testing.T) {
 	defer s.Close()
 }
 
+func TestNewStorage_SQLServer(t *testing.T) {
+	dsn := os.Getenv("SQLSERVER_TEST_DSN")
+	if dsn == "" {
+		t.Skip("SQLSERVER_TEST_DSN is not set; skipping sqlserver factory test")
+	}
+
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	s, err := NewStorage(BackendConfig{Type: "sqlserver", SQLServer: SQLServerConnectionConfig{DSN: dsn}}, logger)
+	if err != nil {
+		t.Fatalf("expected sqlserver storage, got error: %v", err)
+	}
+	if s == nil {
+		t.Fatal("expected non-nil storage")
+	}
+	defer s.Close()
+}
+
 func TestNewStorage_UnsupportedType(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	_, err := NewStorage(BackendConfig{Type: "mysql"}, logger)

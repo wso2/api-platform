@@ -318,7 +318,6 @@ spec:
   description: Sample HTTP echo/probe API. Requires API key authentication. No subscription plans.
   provider: WSO2
   status: PUBLISHED
-  gatewayType: wso2/api-platform
   referenceID: ping-api-v1.0
 
   tags:
@@ -328,7 +327,7 @@ spec:
   labels:
     - default
 
-  subscriptionPolicies: []
+  subscriptionPlans: []
 
   visibility: PUBLIC
   visibleGroups: []

@@ -222,7 +222,7 @@ func createTestClientWithConfig(t *testing.T, cfg config.ControlPlaneConfig) *Cl
 		APIKey: *apiKeyConfig,
 	}
 
-	return NewClient(cfg, logger, store, db, nil, nil, routerConfig, nil, nil, apiKeyConfig, nil, systemConfig, nil, nil, nil, nil, mockHub, nil)
+	return NewClient(cfg, logger, store, db, nil, nil, routerConfig, nil, nil, apiKeyConfig, nil, systemConfig, nil, nil, nil, nil, mockHub, nil, nil, nil)
 }
 
 func createTestClientWithHost(t *testing.T, host string) *Client {
@@ -593,7 +593,7 @@ func TestClient_handleMCPProxyUndeploymentEvent_PublishesReplicaSyncUpdate(t *te
 			},
 		},
 		SourceConfiguration: api.MCPProxyConfiguration{
-			ApiVersion: api.MCPProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+			ApiVersion: api.MCPProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1,
 			Kind:       api.MCPProxyConfigurationKindMcp,
 			Metadata:   api.Metadata{Name: "test-mcp"},
 			Spec: api.MCPProxyConfigData{

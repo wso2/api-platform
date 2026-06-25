@@ -55,13 +55,13 @@ Base URLs:
 - [Get an API content file](api-content.md#get-an-api-content-file)
 - [Delete API content files](api-content.md#delete-api-content-files)
 
-### [Subscription Policies](subscription-policies.md)
+### [Subscription Plans](subscription-plans.md)
 
-- [List subscription policies](subscription-policies.md#list-subscription-policies)
-- [Create subscription policies](subscription-policies.md#create-subscription-policies)
-- [Upsert subscription policies](subscription-policies.md#upsert-subscription-policies)
-- [Get a subscription policy](subscription-policies.md#get-a-subscription-policy)
-- [Delete a subscription policy](subscription-policies.md#delete-a-subscription-policy)
+- [List subscription plans](subscription-plans.md#list-subscription-plans)
+- [Create subscription plans](subscription-plans.md#create-subscription-plans)
+- [Upsert subscription plans](subscription-plans.md#upsert-subscription-plans)
+- [Get a subscription plan](subscription-plans.md#get-a-subscription-plan)
+- [Delete a subscription plan](subscription-plans.md#delete-a-subscription-plan)
 
 ### [Labels](labels.md)
 
@@ -72,9 +72,10 @@ Base URLs:
 
 ### [Applications](applications.md)
 
-- [Create an application for the authenticated user's organization](applications.md#create-an-application-for-the-authenticated-users-organization)
-- [Update an application for the authenticated user](applications.md#update-an-application-for-the-authenticated-user)
-- [Delete an application for the authenticated user](applications.md#delete-an-application-for-the-authenticated-user)
+- [List applications for the authenticated user](applications.md#list-applications-for-the-authenticated-user)
+- [Create an application](applications.md#create-an-application)
+- [Update an application](applications.md#update-an-application)
+- [Delete an application](applications.md#delete-an-application)
 
 ### [Subscriptions](subscriptions.md)
 
@@ -126,7 +127,7 @@ Base URLs:
 
 - [Create a key manager](key-managers.md#create-a-key-manager)
 - [List key managers](key-managers.md#list-key-managers)
-- [List available key managers for developers](key-managers.md#list-available-key-managers-for-developers)
+- [Discover available key managers](key-managers.md#discover-available-key-managers)
 - [Get a key manager](key-managers.md#get-a-key-manager)
 - [Update a key manager](key-managers.md#update-a-key-manager)
 - [Delete a key manager](key-managers.md#delete-a-key-manager)
@@ -136,6 +137,15 @@ Base URLs:
 - [List webhook events](webhook-events.md#list-webhook-events)
 - [Get a webhook event](webhook-events.md#get-a-webhook-event)
 - [Retry a failed webhook delivery](webhook-events.md#retry-a-failed-webhook-delivery)
+
+### [Webhook Subscribers](webhook-subscribers.md)
+
+- [Create a webhook subscriber](webhook-subscribers.md#create-a-webhook-subscriber)
+- [List webhook subscribers](webhook-subscribers.md#list-webhook-subscribers)
+- [Get a webhook subscriber](webhook-subscribers.md#get-a-webhook-subscriber)
+- [Update a webhook subscriber](webhook-subscribers.md#update-a-webhook-subscriber)
+- [Delete a webhook subscriber](webhook-subscribers.md#delete-a-webhook-subscriber)
+- [List recent deliveries for a webhook subscriber](webhook-subscribers.md#list-recent-deliveries-for-a-webhook-subscriber)
 
 ### [Schemas](schemas.md)
 

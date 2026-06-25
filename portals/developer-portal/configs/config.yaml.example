@@ -59,8 +59,6 @@ advanced:
     enabled: true
     keyType: "x-wso2-api-key"
     keyValue: ""              # Secret key value — set via DP_ADVANCED_APIKEY_KEYVALUE in production
-  tokenExchanger:
-    enabled: false
   # OpenAPI-spec-driven /devportal router: request validation + fine-grained OAuth2
   # scope enforcement, dispatching by operationId to src/openapi/handlers.
   openApiValidator:
@@ -80,16 +78,26 @@ serverCerts:
 
 # ─── Identity Provider (OAuth2 / OIDC) ────────────────────────────────────────
 # Leave clientId empty to use local auth (Platform API sidecar) instead of OIDC.
+# For IDP-specific setup guides (Asgardeo, Keycloak) see docs/administer/authentication.md
 
 identityProvider:
-  name: "IS"
+  name: "IS"                 # IDP name used in logs — env: DP_IDENTITYPROVIDER_NAME
   issuer: "https://localhost:9443/oauth2/token"
   authorizationURL: "https://localhost:9443/oauth2/authorize"
   tokenURL: "https://localhost:9443/oauth2/token"
   userInfoURL: "https://localhost:9443/oauth2/userinfo"
-  clientId: ""
+  clientId: ""               # Set to enable OIDC — env: DP_IDENTITYPROVIDER_CLIENTID
+  clientSecret: ""           # Confidential client secret (Traditional Web App / Keycloak)
+                             # Leave empty for PKCE public client — env: DP_IDENTITYPROVIDER_CLIENTSECRET
+  audience: ""               # JWT aud claim to verify (usually the clientId); leave empty to skip
+                             # env: DP_IDENTITYPROVIDER_AUDIENCE
   callbackURL: "http://localhost:3000/default/callback"
-  scope: "openid profile"
+  scope: "openid profile email"    # Space-separated OIDC scopes to request for browser login.
+                                  # dp:* scopes are not needed here — browser sessions are
+                                  # preauthorized so per-operation scope checks are skipped.
+                                  # Machine API clients that call /devportal/v1/* directly with
+                                  # a Bearer token still need the dp:* scopes in their tokens.
+                                  # env: DP_IDENTITYPROVIDER_SCOPE
   signUpURL: ""
   logoutURL: "https://localhost:9443/oidc/logout"
   logoutRedirectURI: "http://localhost:3000/default"
@@ -97,11 +105,28 @@ identityProvider:
   jwksURL: "https://localhost:9443/oauth2/jwks"
   tokenRefreshTimeoutMs: 10000
 
-# ─── Platform API (local auth sidecar) ────────────────────────────────────────
-# Required when using the built-in username/password login form.
-# The Platform API validates credentials and issues signed JWTs.
-# Users and their dp:* scopes are defined in configs/config-platform-api.toml.
-# Leave baseUrl empty (or unset) to disable local auth entirely.
+  # ── Claim name mappings — adjust to match what your IDP puts in the JWT ──────
+  # Dot-notation is supported for nested claims (e.g. "realm_access.roles" for Keycloak)
+  roleClaim: "roles"                # env: DP_IDENTITYPROVIDER_ROLECLAIM
+  orgIDClaim: "org_name"             # Asgardeo B2B: "org_name" matches ORGANIZATION_IDENTIFIER (the sub-org display name/handle) — env: DP_IDENTITYPROVIDER_ORGIDCLAIM
+  groupsClaim: "groups"             # env: DP_IDENTITYPROVIDER_GROUPSCLAIM
+  adminRole: "admin"                # env: DP_IDENTITYPROVIDER_ADMINROLE
+  subscriberRole: "Internal/subscriber"  # env: DP_IDENTITYPROVIDER_SUBSCRIBERROLE
+  superAdminRole: "superAdmin"      # env: DP_IDENTITYPROVIDER_SUPERADMINROLE
+
+  # ── Federated IdP hints — maps ?fidp=<key> query param to IDP identifier ─────
+  fidp:
+    google: "google"
+    github: "github"
+    microsoft: "microsoft"
+    enterprise: "EnterpriseIDP"
+    email: "LOCAL"
+
+# ─── Platform API ─────────────────────────────────────────────────────────────
+# Used for local auth only — when identityProvider.clientId is empty, the
+# built-in login form authenticates against Platform API and receives a
+# signed JWT. Users and their scopes are defined in configs/config-platform-api.toml.
+# Leave baseUrl empty (or unset) to disable local auth.
 
 platformApi:
   baseUrl: ""           # e.g. https://platform-api:9243  — env: DP_PLATFORMAPI_BASEURL
@@ -110,25 +135,6 @@ platformApi:
                         # env: DP_PLATFORMAPI_JWTSECRET
   insecure: false       # Accept self-signed Platform API certs (dev only).
                         # env: DP_PLATFORMAPI_INSECURE
-
-# ─── Role & Claim Mapping ──────────────────────────────────────────────────────
-
-roleClaim: "roles"
-orgIDClaim: "organization.uuid"
-groupsClaim: "groups"
-adminRole: "admin"
-subscriberRole: "Internal/subscriber"
-superAdminRole: "superAdmin"
-tokenExchange: true
-
-# ─── Federated IdP Hints ──────────────────────────────────────────────────────
-
-fidp:
-  google: "google"
-  github: "github"
-  microsoft: "microsoft"
-  enterprise: "EnterpriseIDP"
-  email: "LOCAL"
 
 # ─── Page Access Rules ─────────────────────────────────────────────────────────
 
@@ -179,33 +185,41 @@ defaultOrgName: "default"
 
 generateDefaultSubPolicies: true
 
+# ─── Features ──────────────────────────────────────────────────────────────────
+
+features:
+  apiWorkflows:
+    enabled: false   # Show the "API Workflows" page in the portal sidebar
+
+# ─── Design Mode ───────────────────────────────────────────────────────────────
+# Enables local design/preview mode: APIs and layouts are loaded from the
+# filesystem instead of the database. Intended for content authoring and theming
+# workflows — do NOT enable in a production environment.
+
+# designMode:
+#   enabled: false
+#   pathToLayout: "./resources/default-layout/"   # Layout directory to load templates from
+#   apiSamplesPath: "./samples/apis/"             # Directory containing sample api.yaml files
+#   mcpSamplesPath: "./samples/mcps/"             # Directory containing sample MCP api.yaml files
+#   subscriptionPlansPath: "./samples/subscription-plans.yaml"
+#   applicationsPath: "./samples/applications.yaml"
+
 # ─────────────────────────────────────────────────────────
 # Outbound webhooks (gateway event delivery)
 # ─────────────────────────────────────────────────────────
 # When a user generates an API key, subscribes, etc., the devportal fires signed
-# HTTP POST events to every matching subscriber below.  Gateways implement their
-# own handler and never need a reverse connection into the devportal.
+# HTTP POST events to every matching subscriber. Gateways implement their own
+# handler and never need a reverse connection into the devportal.
 #
-# Per-subscriber secrets / public keys can also be supplied via env vars:
-#   DP_WEBHOOK_SECRET_<ID_UPPERCASED>   — HMAC signing secret
-#   DP_WEBHOOK_PUBKEY_<ID_UPPERCASED>   — RSA public key (PEM) for key encryption
-# where the ID is the subscriber `id` with non-alphanumeric chars replaced by _.
+# Subscribers are NOT configured here — they're per-organization and managed
+# through the Webhook Subscribers API (POST/GET/PUT/DELETE
+# /o/{orgId}/devportal/v1/webhook-subscribers). Secrets and public keys are
+# stored encrypted at rest in the devportal database. See
+# docs/administer/webhook-integration.md for the full API and payload reference.
 #
+# Only delivery (retry/backoff) tuning, which applies globally across all
+# organizations, lives in this file:
 webhooks:
-  subscribers: []
-  # Example subscriber:
-  #
-  # subscribers:
-  #   - id: my-gateway                         # stable identifier, used in DB + logs
-  #     gatewayType: "my-gateway-type"          # matches API.GATEWAY_TYPE; use "*" for all
-  #     url: "https://gateway.example.com/devportal/events"
-  #     secret: "change-me-32-chars-minimum"   # env: DP_WEBHOOK_SECRET_MY_GATEWAY
-  #     publicKeyPath: "/run/secrets/gateway-pubkey.pem"  # RSA-2048+ PEM file; env: DP_WEBHOOK_PUBLIC_KEY_PATH_MY_GATEWAY
-  #     events:                                 # allowlist — omit to receive all event types
-  #       - apikey.*
-  #       - subscription.*
-  #     timeoutMs: 5000
-
   delivery:
     maxAttempts: 8
     # Retry delays in seconds: 1 min, 5 min, 15 min, 30 min, 1 h, 2 h, 4 h, 8 h

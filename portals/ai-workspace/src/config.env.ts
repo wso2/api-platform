@@ -61,11 +61,11 @@ export const OIDC_SCOPE = getEnvOrDefault(
   ' ap:project:read ap:project:create ap:project:update ap:project:delete ap:project:manage' +
   ' ap:application:read ap:application:create ap:application:update ap:application:delete ap:application:manage' +
   ' ap:application:api_key:read ap:application:api_key:create ap:application:api_key:delete ap:application:api_key:manage' +
-  ' ap:application:associations:read ap:application:associations:create ap:application:associations:delete ap:application:associations:manage ap:application:associations:api_key:read' +
+  ' ap:application:association:read ap:application:association:create ap:application:association:delete ap:application:association:manage ap:application:association:api_key:read' +
   ' ap:gateway:read ap:gateway:create ap:gateway:update ap:gateway:delete ap:gateway:manage' +
   ' ap:gateway:token:read ap:gateway:token:create ap:gateway:token:delete ap:gateway:token:manage' +
   ' ap:gateway_custom_policy:read ap:gateway_custom_policy:create ap:gateway_custom_policy:delete ap:gateway_custom_policy:manage' +
-  ' ap:gateway:artifacts:read ap:gateway:manifest:read' +
+  ' ap:gateway:artifact:read ap:gateway:manifest:read' +
   ' ap:rest_api:read ap:rest_api:create ap:rest_api:update ap:rest_api:delete ap:rest_api:manage ap:rest_api:import' +
   ' ap:rest_api:gateway:read ap:rest_api:gateway:create ap:rest_api:gateway:manage' +
   ' ap:rest_api:deployment:read ap:rest_api:deployment:create ap:rest_api:deployment:delete ap:rest_api:deployment:manage ap:rest_api:deployment:undeploy ap:rest_api:deployment:restore' +
@@ -129,11 +129,20 @@ export const MOESIF_APP_API_KEY = getEnvOrDefault(
   'eyJhcHAiOiI5Mjo1NjYiLCJ2ZXIiOiIyLjEiLCJvcmciOiI2Mjg6NDE3IiwicHViIjp0cnVlLCJpYXQiOjE3Njk5MDQwMDB9.gxcZJ7eybasZ5JY_JJj2ARuTiWZNnYIeAtL8oQbhfxk'
 );
 
-// Platform Gateway Version
-export const PLATFORM_GATEWAY_VERSION = getEnvOrDefault(
-  'VITE_PLATFORM_GATEWAY_VERSION',
-  'v1.0.0'
+export interface GatewayVersionEntry {
+  version: string;
+  latestVersion?: string;
+  channel: 'STS' | 'LTS';
+}
+
+export const PLATFORM_GATEWAY_VERSIONS = getEnvOrDefault<GatewayVersionEntry[]>(
+  'VITE_PLATFORM_GATEWAY_VERSIONS',
+  [
+    { version: '1.1', latestVersion: 'v1.1.0', channel: 'LTS' },
+    { version: '1.0', latestVersion: 'v1.0.0', channel: 'LTS' },
+  ]
 );
+
 
 // Policy Hub web URL
 export const POLICY_HUB_WEB_URL = getEnvOrDefault(
@@ -147,7 +156,7 @@ export const POLICY_HUB_WEB_URL = getEnvOrDefault(
 // only if calling the platform API directly.
 export const PLATFORM_API_BASE_URL = getEnvOrDefault(
   'VITE_PLATFORM_API_BASE_URL',
-  '/api-proxy/api/v1'
+  '/api-proxy/api/v0.9'
 );
 
 // Control-plane host shown in gateway setup instructions (host:port).

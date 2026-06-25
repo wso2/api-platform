@@ -21,7 +21,8 @@ const fs = require('fs');
 const path = require('path');
 const logger = require('../config/logger');
 const { logUserAction } = require('../middlewares/auditLogger');
-const adminDao = require('../dao/admin');
+const orgDao = require('../dao/organizationDao');
+const { config } = require('../config/configLoader');
 const constants = require('../utils/constants');
 const adminService = require('../services/adminService');
 const apiMetadataService = require('../services/apiMetadataService');
@@ -44,7 +45,7 @@ const loadOrgSettingsPage = async (req, res) => {
     try {
         let orgName = req.params.orgName;
         templateContent.loggedOrg = orgName;
-        orgID = await adminDao.getOrgId(orgName);
+        orgID = await orgDao.getId(orgName);
         templateContent.orgID = orgID;
 
         const organizations = await adminService.getAllOrganizations();
@@ -124,7 +125,7 @@ const loadEditOrganizationPage = async (req, res) => {
     try {
         const orgName = req.params.orgName;
         if (req.params.orgId !== 'create') {
-            orgID = await adminDao.getOrgId(orgName);
+            orgID = await orgDao.getId(orgName);
 
             //orgID = req.params.orgId;
             const organization = await devPortalService.getOrganizationDetails(orgID);

@@ -16,7 +16,7 @@
  * under the License.
  */
 const { DataTypes } = require('sequelize');
-const sequelize = require('../db/sequelize');
+const sequelize = require('../db/sequelizeConfig');
 
 // Session table used by connect-pg-simple (PostgreSQL).
 // For SQLite, connect-session-sequelize manages its own 'sessions' table separately.

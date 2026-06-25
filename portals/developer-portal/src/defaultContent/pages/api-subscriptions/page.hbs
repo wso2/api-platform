@@ -16,22 +16,27 @@
  * under the License.
  -->
 
-<head>
+{{#pageHead}}
   <link rel='stylesheet' href='/technical-styles/subscriptions.css' />
+{{/pageHead}}
+{{#pageScripts}}
   <script src='/technical-scripts/subscriptions-page.js' defer></script>
   <script src='/technical-scripts/subscription.js' defer></script>
-</head>
-<main>
-    {{> header profile=profile baseUrl=baseUrl devportalMode=devportalMode showApiWorkflowsNav=showApiWorkflowsNav }}
-    {{> sidebar profile=profile baseUrl=baseUrl devportalMode=devportalMode showApiKeysNav=showApiKeysNav showApiWorkflowsNav=showApiWorkflowsNav showSubscriptionsNav=showSubscriptionsNav }}
-    <div class="content">
-        <div class="container-fluid subscriptions-container">
-            <div class="container-header mb-4">
-                <span>Subscriptions</span>
-            </div>
-            {{> api-subscription-list }}
-        </div>
+{{/pageScripts}}
+<div class="page-container">
+  <nav class="dp-breadcrumb">
+    <a class="dp-breadcrumb-item" href="{{baseUrl}}/apis">APIs</a>
+    <i class="bi bi-chevron-right dp-breadcrumb-sep"></i>
+    <a class="dp-breadcrumb-item" href="{{baseUrl}}/api/{{apiMetadata.apiHandle}}">{{or apiMetadata.apiInfo.apiTitle apiMetadata.apiInfo.apiName}}</a>
+    <i class="bi bi-chevron-right dp-breadcrumb-sep"></i>
+    <span class="dp-breadcrumb-current">Subscriptions</span>
+  </nav>
+  <div class="page-header">
+    <div>
+      <h1 class="page-title">Subscriptions</h1>
     </div>
-    {{> warning modalTitle="Confirm" modalMessage="" modalFunction="" }}
-    {{> alert }}
-</main>
+  </div>
+  {{> api-subscription-list }}
+</div>
+{{> warning modalTitle="Confirm" modalMessage="" modalFunction="" }}
+{{> alert }}

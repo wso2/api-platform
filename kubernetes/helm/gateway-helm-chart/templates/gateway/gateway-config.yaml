@@ -1,21 +1,19 @@
-{{- $annotations := merge (deepCopy (default (dict) .Values.commonAnnotations)) (default (dict) .Values.gateway.configMap.annotations) -}}
 {{- $gc := .Values.gateway.config.controller -}}
 {{- $router := .Values.gateway.config.router -}}
 {{- $pe := .Values.gateway.config.policy_engine -}}
 {{- $pg := $gc.storage.postgres -}}
+{{- $ss := $gc.storage.sqlserver -}}
+{{- $db := default (dict) $gc.storage.database -}}
 {{- $controllerHost := printf "%s-controller" (include "gateway-operator.fullname" .) -}}
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: {{ include "gateway-operator.fullname" . }}-config
   labels:
-    {{- include "gateway-operator.labels" . | nindent 4 }}
-    {{- with .Values.gateway.configMap.labels }}
-    {{- toYaml . | nindent 4 }}
-    {{- end }}
-  {{- if $annotations }}
+    {{- include "gateway-operator.resourceLabels" (list . .Values.gateway.configMap.labels) | nindent 4 }}
+  {{- with (include "gateway-operator.annotations" (list . .Values.gateway.configMap.annotations)) }}
   annotations:
-    {{- toYaml $annotations | nindent 4 }}
+    {{- . | nindent 4 }}
   {{- end }}
 data:
   config.toml: |
@@ -55,6 +53,29 @@ data:
     conn_max_lifetime = {{ $pg.conn_max_lifetime | default "30m" | quote }}
     conn_max_idle_time = {{ $pg.conn_max_idle_time | default "5m" | quote }}
     application_name = {{ $pg.application_name | default "gateway-controller" | quote }}
+    {{- end }}
+    {{- end }}
+
+    {{- if eq $gc.storage.type "sqlserver" }}
+    [controller.storage.database]
+    driver = {{ coalesce $db.driver "sqlserver" | quote }}
+    {{- $sqlDsn := coalesce $db.dsn $ss.dsn }}
+    {{- if $sqlDsn }}
+    dsn = {{ $sqlDsn | quote }}
+    {{- else }}
+    host = {{ required "gateway.config.controller.storage.database.host (or storage.sqlserver.host) is required when storage.type is \"sqlserver\" and dsn is unset" (coalesce $db.host $ss.host) | quote }}
+    port = {{ coalesce $db.port $ss.port 1433 | int }}
+    database = {{ required "gateway.config.controller.storage.database.database (or storage.sqlserver.database) is required when storage.type is \"sqlserver\" and dsn is unset" (coalesce $db.database $ss.database) | quote }}
+    user = {{ required "gateway.config.controller.storage.database.user (or storage.sqlserver.user) is required when storage.type is \"sqlserver\" and dsn is unset" (coalesce $db.user $ss.user) | quote }}
+    connect_timeout = {{ coalesce $db.connect_timeout $ss.connect_timeout "5s" | quote }}
+    max_open_conns = {{ coalesce $db.max_open_conns $ss.max_open_conns 25 | int }}
+    max_idle_conns = {{ coalesce $db.max_idle_conns $ss.max_idle_conns 5 | int }}
+    conn_max_lifetime = {{ coalesce $db.conn_max_lifetime $ss.conn_max_lifetime "30m" | quote }}
+    conn_max_idle_time = {{ coalesce $db.conn_max_idle_time $ss.conn_max_idle_time "5m" | quote }}
+    application_name = {{ coalesce $db.application_name $ss.application_name "gateway-controller" | quote }}
+    [controller.storage.database.options]
+    encrypt = {{ coalesce (index $db.options "encrypt") $ss.encrypt "disable" | quote }}
+    trust_server_certificate = {{ (coalesce (index $db.options "trust_server_certificate") (toString (default true $ss.trust_server_certificate))) | quote }}
     {{- end }}
     {{- end }}
 

@@ -102,7 +102,7 @@ func TestValidator_URLFriendlyName(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			config := &api.RestAPI{
-				ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
+				ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1,
 				Kind:       api.RestAPIKindRestApi,
 				Spec: api.APIConfigData{
 					DisplayName: tt.apiName,
@@ -353,7 +353,7 @@ func TestValidator_LabelsValidation(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			config := &api.RestAPI{
-				ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
+				ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1,
 				Kind:       api.RestAPIKindRestApi,
 				Metadata: api.Metadata{
 					Name:   "test-api-v1.0",
@@ -416,7 +416,7 @@ func TestValidator_LabelsWithAllAPITypes(t *testing.T) {
 	// Test RestApi
 	t.Run("RestApi with valid labels", func(t *testing.T) {
 		config := &api.RestAPI{
-			ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
+			ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1,
 			Kind:       api.RestAPIKindRestApi,
 			Metadata: api.Metadata{
 				Name:   "test-api-v1.0",
@@ -454,7 +454,7 @@ func TestValidator_LabelsWithAllAPITypes(t *testing.T) {
 	// Test WebSubApi
 	t.Run("WebSubApi with valid labels", func(t *testing.T) {
 		config := &api.WebSubAPI{
-			ApiVersion: api.WebSubAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
+			ApiVersion: api.WebSubAPIApiVersionGatewayApiPlatformWso2Comv1,
 			Kind:       api.WebSubAPIKindWebSubApi,
 			Metadata: api.Metadata{
 				Name:   "test-api-v1.0",
@@ -484,7 +484,7 @@ func TestValidator_LabelsWithAllAPITypes(t *testing.T) {
 
 	t.Run("RestApi with invalid labels", func(t *testing.T) {
 		config := &api.RestAPI{
-			ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
+			ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1,
 			Kind:       api.RestAPIKindRestApi,
 			Metadata: api.Metadata{
 				Name:   "test-api-v1.0",
@@ -521,7 +521,7 @@ func TestValidator_LabelsWithAllAPITypes(t *testing.T) {
 
 	t.Run("WebSubApi with invalid labels", func(t *testing.T) {
 		config := &api.WebSubAPI{
-			ApiVersion: api.WebSubAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
+			ApiVersion: api.WebSubAPIApiVersionGatewayApiPlatformWso2Comv1,
 			Kind:       api.WebSubAPIKindWebSubApi,
 			Metadata: api.Metadata{
 				Name:   "test-api-v1.0",
@@ -618,6 +618,97 @@ func TestValidateUpstreamDefinitions_URLWithPathRejected(t *testing.T) {
 	require.Len(t, errors, 1)
 	assert.Equal(t, "spec.upstreamDefinitions[0].upstreams[0].url", errors[0].Field)
 	assert.Contains(t, errors[0].Message, "basePath")
+}
+
+// upstreamDefinitions URLs must be host[:port] only; a query string is dropped.
+func TestValidateUpstreamDefinitions_URLWithQueryRejected(t *testing.T) {
+	validator := NewAPIValidator()
+
+	definitions := &[]api.UpstreamDefinition{
+		{
+			Name: "my-upstream-1",
+			Upstreams: []struct {
+				Url    string `json:"url" yaml:"url"`
+				Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
+			}{
+				{Url: "http://backend-1:8080?foo=bar"},
+			},
+		},
+	}
+
+	errors := validator.validateUpstreamDefinitions(definitions)
+	require.Len(t, errors, 1)
+	assert.Equal(t, "spec.upstreamDefinitions[0].upstreams[0].url", errors[0].Field)
+	assert.Contains(t, errors[0].Message, "query string")
+}
+
+// upstreamDefinitions URLs must be host[:port] only; a bare "?" query marker is dropped.
+func TestValidateUpstreamDefinitions_URLWithBareQueryRejected(t *testing.T) {
+	validator := NewAPIValidator()
+
+	definitions := &[]api.UpstreamDefinition{
+		{
+			Name: "my-upstream-1",
+			Upstreams: []struct {
+				Url    string `json:"url" yaml:"url"`
+				Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
+			}{
+				{Url: "http://backend-1:8080?"},
+			},
+		},
+	}
+
+	errors := validator.validateUpstreamDefinitions(definitions)
+	require.Len(t, errors, 1)
+	assert.Equal(t, "spec.upstreamDefinitions[0].upstreams[0].url", errors[0].Field)
+	assert.Contains(t, errors[0].Message, "query string")
+}
+
+// upstreamDefinitions URLs must be host[:port] only; a fragment is dropped.
+func TestValidateUpstreamDefinitions_URLWithFragmentRejected(t *testing.T) {
+	validator := NewAPIValidator()
+
+	definitions := &[]api.UpstreamDefinition{
+		{
+			Name: "my-upstream-1",
+			Upstreams: []struct {
+				Url    string `json:"url" yaml:"url"`
+				Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
+			}{
+				{Url: "http://backend-1:8080#section"},
+			},
+		},
+	}
+
+	errors := validator.validateUpstreamDefinitions(definitions)
+	require.Len(t, errors, 1)
+	assert.Equal(t, "spec.upstreamDefinitions[0].upstreams[0].url", errors[0].Field)
+	assert.Contains(t, errors[0].Message, "fragment")
+}
+
+// upstreamDefinitions URLs must be host[:port] only; a URL carrying both a query and a
+// fragment is rejected with a separate error for each.
+func TestValidateUpstreamDefinitions_URLWithQueryAndFragmentRejected(t *testing.T) {
+	validator := NewAPIValidator()
+
+	definitions := &[]api.UpstreamDefinition{
+		{
+			Name: "my-upstream-1",
+			Upstreams: []struct {
+				Url    string `json:"url" yaml:"url"`
+				Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
+			}{
+				{Url: "http://backend-1:8080?a=1#top"},
+			},
+		},
+	}
+
+	errors := validator.validateUpstreamDefinitions(definitions)
+	require.Len(t, errors, 2)
+	assert.Equal(t, "spec.upstreamDefinitions[0].upstreams[0].url", errors[0].Field)
+	assert.Contains(t, errors[0].Message, "query string")
+	assert.Equal(t, "spec.upstreamDefinitions[0].upstreams[0].url", errors[1].Field)
+	assert.Contains(t, errors[1].Message, "fragment")
 }
 
 func TestValidateUpstreamDefinitions_DuplicateNames(t *testing.T) {

@@ -40,7 +40,7 @@ spec:
   labels:
     - default
 
-  subscriptionPolicies:
+  subscriptionPlans:
     - Bronze
     - Gold
     - Unlimited
@@ -80,7 +80,7 @@ spec:
   labels:
     - default
 
-  subscriptionPolicies:
+  subscriptionPlans:
     - Gold
 
   visibility: PUBLIC
@@ -140,13 +140,12 @@ curl -X POST "http://localhost:3000/o/{orgId}/devportal/v1/apis" \
 | `spec.status` | No | `PUBLISHED` (default) or `PROTOTYPED` |
 | `spec.tags` | No | Tags for search and filtering |
 | `spec.labels` | No | Labels that control which views the API appears in |
-| `spec.subscriptionPolicies` | No | Names of subscription plans available for this API |
+| `spec.subscriptionPlans` | No | Names of subscription plans available for this API |
 | `spec.visibility` | No | `PUBLIC` (visible to all) or `PRIVATE` (restricted) |
 | `spec.visibleGroups` | No | Groups that can see a `PRIVATE` API |
 | `spec.endpoints.productionUrl` | No | Production gateway URL |
 | `spec.endpoints.sandboxUrl` | No | Sandbox gateway URL |
 | `spec.businessInformation` | No | Business and technical owner contact details |
-| `spec.gatewayType` | No | Gateway type identifier — used to route webhook events to the matching gateway subscriber |
 
 The response includes the `apiId` needed for subsequent steps.
 
@@ -178,7 +177,7 @@ Add landing page content and documentation sections to give developers context a
 
 ## Access Control Patterns
 
-The portal supports three distinct consumption patterns. The pattern is determined by the combination of `spec.subscriptionPolicies` in the API manifest and the `securitySchemes` (and optional extension headers) in the OpenAPI definition.
+The portal supports three distinct consumption patterns. The pattern is determined by the combination of `spec.subscriptionPlans` in the API manifest and the `securitySchemes` (and optional extension headers) in the OpenAPI definition.
 
 ---
 
@@ -190,8 +189,7 @@ The consumer generates an API key from the portal and uses it directly to invoke
 
 ```yaml
 spec:
-  gatewayType: wso2/api-platform
-  subscriptionPolicies: []   # no subscription required
+  subscriptionPlans: []   # no subscription required
 ```
 
 **`openapi.yaml`** (relevant excerpt)
@@ -217,8 +215,7 @@ The consumer subscribes to a plan and then generates an API key bound to that AP
 
 ```yaml
 spec:
-  gatewayType: wso2/api-platform
-  subscriptionPolicies:
+  subscriptionPlans:
     - Gold
     - Bronze
 ```
@@ -246,8 +243,7 @@ The consumer subscribes to a plan and generates an API key. They also receive a 
 
 ```yaml
 spec:
-  gatewayType: wso2/api-platform
-  subscriptionPolicies:
+  subscriptionPlans:
     - Gold
     - Silver
     - Bronze
@@ -278,7 +274,7 @@ Consumers subscribe to a plan (receiving a subscription token), generate an API 
 
 ### Summary
 
-| Pattern | `subscriptionPolicies` | `securitySchemes` | `x-header-type: subscription-token` |
+| Pattern | `subscriptionPlans` | `securitySchemes` | `x-header-type: subscription-token` |
 |---|---|---|---|
 | API key only | `[]` | `apiKey` | No |
 | API key + direct subscription | one or more plans | `apiKey` | No |
@@ -299,7 +295,7 @@ spec:
   labels:
     - default
     - ecommerce
-  subscriptionPolicies:
+  subscriptionPlans:
     - Bronze
     - Gold
 ```
@@ -334,7 +330,7 @@ curl http://localhost:3000/o/{orgId}/devportal/v1/apis/{apiId} -H "Authorization
 ## Related
 
 - [API Content and Docs](api-content-and-docs.md) — upload landing page content and documentation
-- [Subscription Plans](../administer/subscription-plans.md) — create the plans referenced in `spec.subscriptionPolicies`
+- [Subscription Plans](../administer/subscription-plans.md) — create the plans referenced in `spec.subscriptionPlans`
 - [Manage Views](../administer/manage-views.md) — configure labels and views
 - [API Workflows](manage-api-workflows.md) — publish multi-step workflows for this API
 - [Consume with API Key](../consume-an-api/consume-with-api-key.md) — developer view of generating API keys

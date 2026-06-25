@@ -203,7 +203,7 @@ spec:
   tags:
     - payments
 
-  subscriptionPolicies:       # leave empty [] if no subscription plans
+  subscriptionPlans:       # leave empty [] if no subscription plans
     - Gold
     - Silver
 
@@ -232,7 +232,7 @@ spec:
   tags:
     - mcp
 
-  subscriptionPolicies:
+  subscriptionPlans:
     - Gold
 
   endpoints:

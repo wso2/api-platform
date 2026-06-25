@@ -4,13 +4,13 @@
 
 <a id="opIdgenerateApplicationKeys"></a>
 
-`POST /applications/{applicationId}/generate-keys`
+`POST /o/{orgId}/devportal/v1/applications/{applicationId}/generate-keys`
 
 > Code samples
 
 ```shell
 
-curl -X POST https://devportal.api-platform.io/applications/{applicationId}/generate-keys \
+curl -X POST https://devportal.api-platform.io/o/{orgId}/devportal/v1/applications/{applicationId}/generate-keys \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -51,6 +51,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |body|body|[AppKeyMappingRequest](schemas.md#schemaappkeymappingrequest)|true|OAuth key generation payload. The application is identified by the `applicationId` path parameter.|
+|orgId|path|string|true|none|
 |applicationId|path|string|true|none|
 
 > Example responses
@@ -77,18 +78,24 @@ This operation requires <strong>Basic Auth</strong> authentication.
 ```json
 [
   {
-    "code": "400",
-    "message": "input validation failed",
-    "description": "Invalid value"
+    "status": "error",
+    "code": "COMMON_VALIDATION_ERROR",
+    "message": "Input validation failed.",
+    "errors": [
+      {
+        "field": "orgName",
+        "message": "orgName is required."
+      }
+    ]
   }
 ]
 ```
 
 ```json
 {
-  "code": "400",
-  "message": "Bad Request",
-  "description": "Missing required parameter: 'orgId'"
+  "status": "error",
+  "code": "MISSING_REQUIRED_PARAMETER",
+  "message": "Missing required parameter."
 }
 ```
 
@@ -102,9 +109,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "404",
-  "message": "Resource Not Found",
-  "description": "Organization not found"
+  "status": "error",
+  "code": "ORG_NOT_FOUND",
+  "message": "Organization not found."
 }
 ```
 
@@ -112,9 +119,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "409",
-  "message": "Conflict",
-  "description": "Organization already exists"
+  "status": "error",
+  "code": "CONFLICT",
+  "message": "Conflict"
 }
 ```
 
@@ -122,9 +129,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "500",
-  "message": "Internal Server Error",
-  "description": "Internal Server Error"
+  "status": "error",
+  "code": "INTERNAL_SERVER_ERROR",
+  "message": "An unexpected error occurred."
 }
 ```
 
@@ -135,22 +142,29 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Application OAuth key response.|[ApplicationOAuthKeyResponse](schemas.md#schemaapplicationoauthkeyresponse)|
 |400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.|Inline|
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Duplicate organization data conflicts with an existing record.|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|The request conflicts with an existing resource.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
 <h3 id="generate-oauth-keys-for-a-developer-portal-application-responseschema">Response Schema</h3>
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|status|error|
+|status|error|
 
 ## Generate an OAuth access token
 
 <a id="opIdgenerateOAuthKeys"></a>
 
-`POST /applications/{applicationId}/oauth-keys/{keyMappingId}/generate-token`
+`POST /o/{orgId}/devportal/v1/applications/{applicationId}/oauth-keys/{keyMappingId}/generate-token`
 
 > Code samples
 
 ```shell
 
-curl -X POST https://devportal.api-platform.io/applications/{applicationId}/oauth-keys/{keyMappingId}/generate-token \
+curl -X POST https://devportal.api-platform.io/o/{orgId}/devportal/v1/applications/{applicationId}/oauth-keys/{keyMappingId}/generate-token \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -185,6 +199,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |body|body|[OAuthGenerateTokenRequest](schemas.md#schemaoauthgeneratetokenrequest)|false|OAuth token generation payload. The portal calls the Authorization Server token endpoint directly.|
+|orgId|path|string|true|none|
 |applicationId|path|string|true|none|
 |keyMappingId|path|string|true|none|
 
@@ -206,18 +221,24 @@ This operation requires <strong>Basic Auth</strong> authentication.
 ```json
 [
   {
-    "code": "400",
-    "message": "input validation failed",
-    "description": "Invalid value"
+    "status": "error",
+    "code": "COMMON_VALIDATION_ERROR",
+    "message": "Input validation failed.",
+    "errors": [
+      {
+        "field": "orgName",
+        "message": "orgName is required."
+      }
+    ]
   }
 ]
 ```
 
 ```json
 {
-  "code": "400",
-  "message": "Bad Request",
-  "description": "Missing required parameter: 'orgId'"
+  "status": "error",
+  "code": "MISSING_REQUIRED_PARAMETER",
+  "message": "Missing required parameter."
 }
 ```
 
@@ -231,9 +252,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "404",
-  "message": "Resource Not Found",
-  "description": "Organization not found"
+  "status": "error",
+  "code": "ORG_NOT_FOUND",
+  "message": "Organization not found."
 }
 ```
 
@@ -241,9 +262,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "500",
-  "message": "Internal Server Error",
-  "description": "Internal Server Error"
+  "status": "error",
+  "code": "INTERNAL_SERVER_ERROR",
+  "message": "An unexpected error occurred."
 }
 ```
 
@@ -258,17 +279,24 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <h3 id="generate-an-oauth-access-token-responseschema">Response Schema</h3>
 
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|status|error|
+|status|error|
+
 ## Revoke OAuth keys
 
 <a id="opIdrevokeOAuthKeys"></a>
 
-`DELETE /applications/{applicationId}/oauth-keys/{keyMappingId}`
+`DELETE /o/{orgId}/devportal/v1/applications/{applicationId}/oauth-keys/{keyMappingId}`
 
 > Code samples
 
 ```shell
 
-curl -X DELETE https://devportal.api-platform.io/applications/{applicationId}/oauth-keys/{keyMappingId} \
+curl -X DELETE https://devportal.api-platform.io/o/{orgId}/devportal/v1/applications/{applicationId}/oauth-keys/{keyMappingId} \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -288,6 +316,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
+|orgId|path|string|true|none|
 |applicationId|path|string|true|none|
 |keyMappingId|path|string|true|none|
 
@@ -305,9 +334,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "404",
-  "message": "Resource Not Found",
-  "description": "Organization not found"
+  "status": "error",
+  "code": "ORG_NOT_FOUND",
+  "message": "Organization not found."
 }
 ```
 
@@ -315,9 +344,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "500",
-  "message": "Internal Server Error",
-  "description": "Internal Server Error"
+  "status": "error",
+  "code": "INTERNAL_SERVER_ERROR",
+  "message": "An unexpected error occurred."
 }
 ```
 
@@ -335,13 +364,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdupdateOAuthKeys"></a>
 
-`PUT /applications/{applicationId}/oauth-keys/{keyMappingId}`
+`PUT /o/{orgId}/devportal/v1/applications/{applicationId}/oauth-keys/{keyMappingId}`
 
 > Code samples
 
 ```shell
 
-curl -X PUT https://devportal.api-platform.io/applications/{applicationId}/oauth-keys/{keyMappingId} \
+curl -X PUT https://devportal.api-platform.io/o/{orgId}/devportal/v1/applications/{applicationId}/oauth-keys/{keyMappingId} \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -377,6 +406,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |body|body|[OAuthKeyUpdateRequest](schemas.md#schemaoauthkeyupdaterequest)|false|OAuth key update payload forwarded to the configured key manager.|
+|orgId|path|string|true|none|
 |applicationId|path|string|true|none|
 |keyMappingId|path|string|true|none|
 
@@ -404,18 +434,24 @@ This operation requires <strong>Basic Auth</strong> authentication.
 ```json
 [
   {
-    "code": "400",
-    "message": "input validation failed",
-    "description": "Invalid value"
+    "status": "error",
+    "code": "COMMON_VALIDATION_ERROR",
+    "message": "Input validation failed.",
+    "errors": [
+      {
+        "field": "orgName",
+        "message": "orgName is required."
+      }
+    ]
   }
 ]
 ```
 
 ```json
 {
-  "code": "400",
-  "message": "Bad Request",
-  "description": "Missing required parameter: 'orgId'"
+  "status": "error",
+  "code": "MISSING_REQUIRED_PARAMETER",
+  "message": "Missing required parameter."
 }
 ```
 
@@ -429,9 +465,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "404",
-  "message": "Resource Not Found",
-  "description": "Organization not found"
+  "status": "error",
+  "code": "ORG_NOT_FOUND",
+  "message": "Organization not found."
 }
 ```
 
@@ -439,9 +475,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "500",
-  "message": "Internal Server Error",
-  "description": "Internal Server Error"
+  "status": "error",
+  "code": "INTERNAL_SERVER_ERROR",
+  "message": "An unexpected error occurred."
 }
 ```
 
@@ -456,17 +492,24 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <h3 id="update-oauth-keys-responseschema">Response Schema</h3>
 
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|status|error|
+|status|error|
+
 ## Clean up OAuth key artifacts
 
 <a id="opIdcleanUpOAuthKeys"></a>
 
-`POST /applications/{applicationId}/oauth-keys/{keyMappingId}/clean-up`
+`POST /o/{orgId}/devportal/v1/applications/{applicationId}/oauth-keys/{keyMappingId}/clean-up`
 
 > Code samples
 
 ```shell
 
-curl -X POST https://devportal.api-platform.io/applications/{applicationId}/oauth-keys/{keyMappingId}/clean-up \
+curl -X POST https://devportal.api-platform.io/o/{orgId}/devportal/v1/applications/{applicationId}/oauth-keys/{keyMappingId}/clean-up \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -498,6 +541,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |body|body|[OAuthKeyCleanUpRequest](schemas.md#schemaoauthkeycleanuprequest)|false|OAuth cleanup payload forwarded to the configured key manager.|
+|orgId|path|string|true|none|
 |applicationId|path|string|true|none|
 |keyMappingId|path|string|true|none|
 
@@ -516,18 +560,24 @@ This operation requires <strong>Basic Auth</strong> authentication.
 ```json
 [
   {
-    "code": "400",
-    "message": "input validation failed",
-    "description": "Invalid value"
+    "status": "error",
+    "code": "COMMON_VALIDATION_ERROR",
+    "message": "Input validation failed.",
+    "errors": [
+      {
+        "field": "orgName",
+        "message": "orgName is required."
+      }
+    ]
   }
 ]
 ```
 
 ```json
 {
-  "code": "400",
-  "message": "Bad Request",
-  "description": "Missing required parameter: 'orgId'"
+  "status": "error",
+  "code": "MISSING_REQUIRED_PARAMETER",
+  "message": "Missing required parameter."
 }
 ```
 
@@ -541,9 +591,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "404",
-  "message": "Resource Not Found",
-  "description": "Organization not found"
+  "status": "error",
+  "code": "ORG_NOT_FOUND",
+  "message": "Organization not found."
 }
 ```
 
@@ -551,9 +601,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "500",
-  "message": "Internal Server Error",
-  "description": "Internal Server Error"
+  "status": "error",
+  "code": "INTERNAL_SERVER_ERROR",
+  "message": "An unexpected error occurred."
 }
 ```
 
@@ -567,3 +617,10 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
 <h3 id="clean-up-oauth-key-artifacts-responseschema">Response Schema</h3>
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|status|error|
+|status|error|

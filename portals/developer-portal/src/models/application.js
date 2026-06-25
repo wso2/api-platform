@@ -16,12 +16,13 @@
  * under the License.
  */
 const { Sequelize, DataTypes } = require('sequelize');
-const sequelize = require('../db/sequelize');
+const sequelize = require('../db/sequelizeConfig');
 const { Organization } = require('./organization');
 const { APIMetadata } = require('./apiMetadata');
 const constants = require('../utils/constants');
-const SubscriptionPolicy = require('./subscriptionPolicy');
-const APISubscriptionPolicy = require('./apiSubscriptionPolicy');
+const SubscriptionPlan = require('./subscriptionPlan');
+const APISubscriptionPlan = require('./apiSubscriptionPlan');
+const { KeyManager } = require('./keyManager');
 
 
 const Application = sequelize.define('DP_APPLICATION', {
@@ -33,7 +34,7 @@ const Application = sequelize.define('DP_APPLICATION', {
     },
     ORG_ID: {
         type: DataTypes.UUID,
-        defaultValue: Sequelize.UUIDV4
+        allowNull: false
     },
     CREATED_BY: {
         type: DataTypes.STRING,
@@ -55,6 +56,9 @@ const Application = sequelize.define('DP_APPLICATION', {
     timestamps: false,
     tableName: 'DP_APPLICATION',
     returning: true,
+    indexes: [
+        { name: 'IDX_APPLICATION_ORG_CREATED_BY', fields: ['ORG_ID', 'CREATED_BY'] },
+    ],
 });
 
 const ApplicationKeyMapping = sequelize.define('DP_APP_KEY_MAPPING', {
@@ -86,22 +90,14 @@ const ApplicationKeyMapping = sequelize.define('DP_APP_KEY_MAPPING', {
         defaultValue: 'PRODUCTION'
     },
     ADDITIONAL_PROPERTIES: {
-        type: DataTypes.TEXT,
-        allowNull: true,
-        get() {
-            const raw = this.getDataValue('ADDITIONAL_PROPERTIES');
-            return raw ? JSON.parse(raw) : null;
-        },
-        set(val) {
-            this.setDataValue('ADDITIONAL_PROPERTIES', val ? JSON.stringify(val) : null);
-        }
+        type: DataTypes.JSON,
+        allowNull: true
     }
 }, {
     timestamps: false,
     tableName: 'DP_APP_KEY_MAPPING',
     returning: true
-},
-);
+});
 
 const SubscriptionMapping = sequelize.define('DP_API_SUBSCRIPTION', {
 
@@ -110,13 +106,9 @@ const SubscriptionMapping = sequelize.define('DP_API_SUBSCRIPTION', {
         defaultValue: Sequelize.UUIDV4,
         primaryKey: true
     },
-    APP_ID: {
-        type: DataTypes.UUID,
-        allowNull: true,
-        references: {
-            model: Application,
-            key: 'APP_ID',
-        },
+    CREATED_BY: {
+        type: DataTypes.STRING,
+        allowNull: false,
     },
     API_ID: {
         type: DataTypes.UUID,
@@ -126,26 +118,30 @@ const SubscriptionMapping = sequelize.define('DP_API_SUBSCRIPTION', {
             key: 'API_ID',
         },
     },
-    POLICY_ID: {
+    PLAN_ID: {
         type: DataTypes.UUID,
         allowNull: true,
         references: {
-            model: SubscriptionPolicy,
-            key: 'POLICY_ID',
+            model: SubscriptionPlan,
+            key: 'PLAN_ID',
         },
     },
     ORG_ID: {
         type: DataTypes.UUID,
         allowNull: false
     },
-    SUB_TOKEN: { type: DataTypes.STRING(512), allowNull: true, unique: true },
-    STATUS:     { type: DataTypes.STRING(32), allowNull: false, defaultValue: 'ACTIVE' },
+    SUB_TOKEN:   { type: DataTypes.STRING(512), allowNull: true, unique: true },
+    STATUS:      { type: DataTypes.ENUM('ACTIVE', 'INACTIVE'), allowNull: false, defaultValue: 'ACTIVE' },
+    CREATED_AT:  { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW },
 }, {
     timestamps: false,
     tableName: 'DP_API_SUBSCRIPTION',
-    returning: true
-},
-);
+    returning: true,
+    indexes: [
+        { name: 'IDX_SUBSCRIPTION_ORG_CREATED_BY', fields: ['ORG_ID', 'CREATED_BY'] },
+        { name: 'IDX_SUBSCRIPTION_ORG_API_ID', fields: ['ORG_ID', 'API_ID'] },
+    ],
+});
 
 SubscriptionMapping.belongsTo(Organization, {
     foreignKey: 'ORG_ID'
@@ -153,31 +149,20 @@ SubscriptionMapping.belongsTo(Organization, {
 Organization.hasMany(SubscriptionMapping, {
     foreignKey: 'ORG_ID'
 })
-Application.belongsToMany(APIMetadata, {
-    through: SubscriptionMapping,
-    foreignKey: "APP_ID",
-    otherKey: "API_ID",
-});
-APIMetadata.belongsToMany(Application, {
-    through: SubscriptionMapping,
+APIMetadata.belongsToMany(SubscriptionPlan, {
+    through: APISubscriptionPlan,
     foreignKey: "API_ID",
-    otherKey: "APP_ID",
+    otherKey: "PLAN_ID",
 });
 
-APIMetadata.belongsToMany(SubscriptionPolicy, {
-    through: APISubscriptionPolicy,
-    foreignKey: "API_ID",
-    otherKey: "POLICY_ID",
-});
-
-SubscriptionPolicy.belongsToMany(APIMetadata, {
-    through: APISubscriptionPolicy,
-    foreignKey: "POLICY_ID",
+SubscriptionPlan.belongsToMany(APIMetadata, {
+    through: APISubscriptionPlan,
+    foreignKey: "PLAN_ID",
     otherKey: "API_ID",
 });
 
 SubscriptionMapping.belongsTo(APIMetadata, { foreignKey: 'API_ID', as: 'DP_API_METADATA' });
-SubscriptionMapping.belongsTo(SubscriptionPolicy, { foreignKey: 'POLICY_ID', as: 'DP_SUBSCRIPTION_POLICY' });
+SubscriptionMapping.belongsTo(SubscriptionPlan, { foreignKey: 'PLAN_ID', as: 'DP_SUBSCRIPTION_PLAN' });
 
 Application.belongsTo(Organization, {
     foreignKey: 'ORG_ID'
@@ -196,6 +181,12 @@ ApplicationKeyMapping.belongsTo(Application, {
 })
 Application.hasMany(ApplicationKeyMapping, {
     foreignKey: 'APP_ID'
+})
+ApplicationKeyMapping.belongsTo(KeyManager, {
+    foreignKey: 'KM_ID'
+})
+KeyManager.hasMany(ApplicationKeyMapping, {
+    foreignKey: 'KM_ID'
 })
 
 module.exports = {

@@ -16,22 +16,28 @@
  * under the License.
  -->
 
-<head>
-  <link rel='stylesheet' href='/technical-styles/subscriptions.css' />
-  <script src='/technical-scripts/subscriptions-page.js' defer></script>
-  <script src='/technical-scripts/subscription.js' defer></script>
-</head>
-<main>
-    {{> header profile=profile baseUrl=baseUrl devportalMode=devportalMode showApiWorkflowsNav=showApiWorkflowsNav }}
-    {{> sidebar profile=profile baseUrl=baseUrl devportalMode=devportalMode showApiWorkflowsNav=showApiWorkflowsNav }}
-    <div class="content">
-        <div class="container-fluid subscriptions-container">
-            <div class="container-header mb-4">
-                <span>Subscriptions</span>
-            </div>
-            {{> subscription-list }}
-        </div>
+{{#pageHead}}
+  <link rel="stylesheet" href="/styles/subscriptions.css">
+{{/pageHead}}
+{{#pageScripts}}
+  <script src="/technical-scripts/subscriptions-page.js" defer></script>
+  <script src="/technical-scripts/subscription.js" defer></script>
+{{/pageScripts}}
+<div class="page-container">
+  <div class="page-header">
+    <div>
+      <h1 class="page-title">Subscriptions</h1>
+      <p class="page-desc">APIs and MCP servers your applications are subscribed to.</p>
     </div>
-    {{> warning modalTitle="Confirm" modalMessage="" modalFunction="" }}
-    {{> alert }}
-</main>
+    {{#if subscriptions.length}}
+    <button class="dp-btn dp-btn--primary" disabled title="Backend not wired yet — UI preview only">
+      <i class="bi bi-plus"></i> New subscription
+    </button>
+    {{/if}}
+  </div>
+
+  {{> subscription-list }}
+
+  {{> warning modalTitle="Confirm" modalMessage="" modalFunction="" }}
+  {{> alert }}
+</div>

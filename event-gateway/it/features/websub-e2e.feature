@@ -31,7 +31,7 @@ Feature: WebSub End-to-End Flow
     When I create a WebSub API with the following configuration:
       """
       {
-        "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+        "apiVersion": "gateway.api-platform.wso2.com/v1",
         "kind": "WebSubApi",
         "metadata": { "name": "e2e-subscribe-v1-0" },
         "spec": {
@@ -59,7 +59,7 @@ Feature: WebSub End-to-End Flow
     When I create a WebSub API with the following configuration:
       """
       {
-        "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+        "apiVersion": "gateway.api-platform.wso2.com/v1",
         "kind": "WebSubApi",
         "metadata": { "name": "e2e-auth-v1-0" },
         "spec": {
@@ -99,7 +99,7 @@ Feature: WebSub End-to-End Flow
     When I create a WebSub API with the following configuration:
       """
       {
-        "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+        "apiVersion": "gateway.api-platform.wso2.com/v1",
         "kind": "WebSubApi",
         "metadata": { "name": "e2e-unknown-topic-v1-0" },
         "spec": {
@@ -129,7 +129,7 @@ Feature: WebSub End-to-End Flow
     When I create a WebSub API with the following configuration:
       """
       {
-        "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+        "apiVersion": "gateway.api-platform.wso2.com/v1",
         "kind": "WebSubApi",
         "metadata": { "name": "e2e-publish-v1-0" },
         "spec": {
@@ -157,7 +157,7 @@ Feature: WebSub End-to-End Flow
     When I create a WebSub API with the following configuration:
       """
       {
-        "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+        "apiVersion": "gateway.api-platform.wso2.com/v1",
         "kind": "WebSubApi",
         "metadata": { "name": "e2e-bad-topic-v1-0" },
         "spec": {
@@ -188,7 +188,7 @@ Feature: WebSub End-to-End Flow
     When I create a WebSub API with the following configuration:
       """
       {
-        "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+        "apiVersion": "gateway.api-platform.wso2.com/v1",
         "kind": "WebSubApi",
         "metadata": { "name": "e2e-full-v1-0" },
         "spec": {
@@ -235,7 +235,7 @@ Feature: WebSub End-to-End Flow
     When I create a WebSub API with the following configuration:
       """
       {
-        "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+        "apiVersion": "gateway.api-platform.wso2.com/v1",
         "kind": "WebSubApi",
         "metadata": { "name": "e2e-unsub-v1-0" },
         "spec": {

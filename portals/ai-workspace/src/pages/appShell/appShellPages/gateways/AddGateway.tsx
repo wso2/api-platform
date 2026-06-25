@@ -21,6 +21,7 @@ import { useNavigate, Link as RouterLink } from "react-router-dom";
 import {
   Box,
   Button,
+  Chip,
   TextField,
   Grid,
   PageContent,
@@ -28,6 +29,9 @@ import {
   Stack,
   FormControl,
   FormLabel,
+  Select,
+  MenuItem,
+  ListItemText,
 } from "@wso2/oxygen-ui";
 import { ChevronLeft } from "@wso2/oxygen-ui-icons-react";
 import { useGatewayList } from "../../../../hooks/useGateway";
@@ -35,6 +39,8 @@ import { useAppShell } from "../../../../contexts/AppShellContext";
 import { buildOrgPath } from "../../../../utils/projectRouting";
 import { setRegistrationToken } from "./registrationTokenStore";
 import { useAIWorkspaceSnackbar } from "../../../../hooks/aiWorkspaceSnackbar";
+import { PLATFORM_GATEWAY_VERSIONS } from "../../../../config.env";
+import type { GatewayVersionEntry } from "../../../../config.env";
 
 // Validation constants
 const MAX_NAME_LENGTH = 255;
@@ -94,6 +100,9 @@ export default function AddGateway() {
   const [vhost, setVhost] = useState(() =>
     normalizeVhost("https://localhost:8443"),
   );
+  const [selectedVersion, setSelectedVersion] = useState<GatewayVersionEntry | null>(
+    () => PLATFORM_GATEWAY_VERSIONS[0] ?? null,
+  );
 
   // Always use AI gateway type
   const functionalityType = "ai";
@@ -104,6 +113,7 @@ export default function AddGateway() {
   }, [displayName]);
 
   const isFormValid = (): boolean => {
+    if (!selectedVersion) return false;
     if (!displayName || displayName.trim().length === 0) return false;
     if (displayName.length > MAX_NAME_LENGTH) return false;
     if (description.length > MAX_DESCRIPTION_LENGTH) return false;
@@ -126,6 +136,7 @@ export default function AddGateway() {
         vhost: normalizeVhost(vhost),
         functionalityType,
         description: description || undefined,
+        version: selectedVersion!.version,
       });
 
       showSnackbar("AI Gateway registered successfully", "success");
@@ -174,6 +185,89 @@ export default function AddGateway() {
       <Box sx={{ mt: 2, maxWidth: 820 }}>
         <Box component="form" onSubmit={handleSubmit} noValidate>
           <Grid container spacing={2}>
+            <Grid size={{ xs: 12 }}>
+              <FormControl fullWidth>
+                <FormLabel required>Gateway Version</FormLabel>
+                <Select
+                  value={selectedVersion?.version ?? ""}
+                  onChange={(e) => {
+                    const entry = PLATFORM_GATEWAY_VERSIONS.find(
+                      (v) => v.version === e.target.value,
+                    );
+                    if (entry) setSelectedVersion(entry);
+                  }}
+                  renderValue={(value) => {
+                    const entry = PLATFORM_GATEWAY_VERSIONS.find(
+                      (v) => v.version === value,
+                    );
+                    if (!entry) return value;
+                    const isFirst =
+                      PLATFORM_GATEWAY_VERSIONS[0]?.version === entry.version;
+                    const isFirstLTS =
+                      entry.channel === "LTS" &&
+                      PLATFORM_GATEWAY_VERSIONS.find(
+                        (v) => v.channel === "LTS",
+                      )?.version === entry.version;
+                    const badge = isFirst
+                      ? "Latest"
+                      : isFirstLTS
+                        ? "LTS"
+                        : null;
+                    return (
+                      <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                        <span>{`AI-Gateway v${entry.version}`}</span>
+                        {badge && (
+                          <Chip
+                            label={badge}
+                            size="small"
+                            color={badge === "Latest" ? "success" : "primary"}
+                          />
+                        )}
+                      </Box>
+                    );
+                  }}
+                >
+                  {(() => {
+                    let firstLTSSeen = false;
+                    return PLATFORM_GATEWAY_VERSIONS.map((entry, index) => {
+                      const isFirst = index === 0;
+                      const isFirstLTS =
+                        !firstLTSSeen && entry.channel === "LTS";
+                      if (entry.channel === "LTS" && !firstLTSSeen)
+                        firstLTSSeen = true;
+                      const badge = isFirst
+                        ? "Latest"
+                        : isFirstLTS
+                          ? "LTS"
+                          : null;
+                      return (
+                        <MenuItem key={entry.version} value={entry.version}>
+                          <ListItemText
+                            primary={
+                              <Box
+                                sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%" }}
+                              >
+                                <span>{`AI-Gateway v${entry.version}`}</span>
+                                {badge && (
+                                  <Chip
+                                    label={badge}
+                                    size="small"
+                                    color={
+                                      badge === "Latest" ? "success" : "primary"
+                                    }
+                                  />
+                                )}
+                              </Box>
+                            }
+                          />
+                        </MenuItem>
+                      );
+                    });
+                  })()}
+                </Select>
+              </FormControl>
+            </Grid>
+
             <Grid size={{ xs: 12 }}>
               <FormControl fullWidth>
                 <FormLabel required>Name</FormLabel>

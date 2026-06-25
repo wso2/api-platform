@@ -48,7 +48,6 @@ module.exports = {
     ORG_HANDLE: 'orgHandle',
     ACCESS_TOKEN: 'accessToken',
     REFRESH_TOKEN: 'refreshToken',
-    EXCHANGE_TOKEN: 'exchangeToken',
     USER_ID: 'sub',
     BASIC_HEADER: 'basicAuthHeader',
     API_VISIBILITY: {
@@ -57,7 +56,7 @@ module.exports = {
     },
     API_STATUS: {
         PUBLISHED: "PUBLISHED",
-        UNPUBLISHED: "CREATED"
+        CREATED: "CREATED"
     },
     API_TYPE: {
         REST: "REST",
@@ -135,12 +134,6 @@ module.exports = {
         RESIDENT_KEY_MANAGER: 'Resident Key Manager',
         APP_DEV_STS_KEY_MANAGER: '_appdev_sts_key_manager_',
     },
-    KEY_MANAGER_TYPES: {
-        ASGARDEO: 'ASGARDEO',
-        WSO2IS: 'WSO2IS',
-        KEYCLOAK: 'KEYCLOAK',
-        GENERIC_OIDC: 'GENERIC_OIDC',
-    },
     TOKEN_TYPES: {
         API_KEY: 'API_KEY',
         OAUTH: 'OAUTH',
@@ -205,34 +198,39 @@ module.exports = {
     },
     DEFAULT_SUBSCRIPTION_PLANS: [
         {
-            "policyName": "Bronze",
+            "planName": "Bronze",
             "description": "Allows 1000 requests per minute",
             "requestCount": 1000,
             "displayName": "Bronze",
+            "type": "requestcount",
         },
         {
-            "policyName": "Gold",
+            "planName": "Gold",
             "description": "Allows 5000 requests per minute",
             "displayName": "Gold",
             "requestCount": 5000,
+            "type": "requestcount",
         },
         {
-            "policyName": "Silver",
+            "planName": "Silver",
             "description": "Allows 2000 requests per minute",
             "displayName": "Silver",
             "requestCount": 2000,
+            "type": "requestcount",
         },
         {
-            "policyName": "Unlimited",
+            "planName": "Unlimited",
             "description": "Allows unlimited requests",
             "displayName": "Unlimited",
-            "requestCount": "Unlimited",
+            "requestCount": -1,
+            "type": "requestcount",
         },
         {
-            "policyName": "AsyncUnlimited",
+            "planName": "AsyncUnlimited",
             "description": "Allows unlimited requests for Async APIs",
             "displayName": "AsyncUnlimited",
-            "requestCount": "Unlimited",
+            "requestCount": -1,
+            "type": "requestcount",
         }
     ],
     ERROR_MESSAGE: {
@@ -273,8 +271,8 @@ module.exports = {
         VIEW_UPDATE_ERROR: "Error while updating view",
         VIEW_DELETE_ERROR: "Error while deleting view",
         VIEW_RETRIEVE_ERROR: "Error while fetching view",
-        SUBSCRIPTION_POLICY_CREATE_ERROR: "Error while creating subscription policy",
-        SUBSCRIPTION_POLICY_NOT_FOUND: "Subscription policy not found",
+        SUBSCRIPTION_PLAN_CREATE_ERROR: "Error while creating subscription plan",
+        SUBSCRIPTION_PLAN_NOT_FOUND: "Subscription plan not found",
         APPLICATION_CREATE_ERROR: "Error while creating application",
         APPLICATION_UPDATE_ERROR: "Error while updating application",
         APPLICATION_DELETE_ERROR: "Error while deleting application",
@@ -291,7 +289,13 @@ module.exports = {
         KEY_MANAGER_RETRIEVE_ERROR: "Error while retrieving key manager",
         KEY_MANAGER_NOT_FOUND: "Key manager not found",
         KEY_MANAGER_ENCRYPTION_ERROR: "Key manager encryption key not configured",
+        WEBHOOK_SUBSCRIBER_CREATE_ERROR: "Error while creating webhook subscriber",
+        WEBHOOK_SUBSCRIBER_UPDATE_ERROR: "Error while updating webhook subscriber",
+        WEBHOOK_SUBSCRIBER_DELETE_ERROR: "Error while deleting webhook subscriber",
+        WEBHOOK_SUBSCRIBER_RETRIEVE_ERROR: "Error while retrieving webhook subscriber",
+        WEBHOOK_SUBSCRIBER_NOT_FOUND: "Webhook subscriber not found",
         ERR_SUB_EXIST: "ERR_SUB_EXIST",
+        ERR_KEY_EXIST: "ERR_KEY_EXIST",
         UNAUTHORIZED_ORG: "You are not authorized to access this organization",
         UNAUTHORIZED_API: "You are not authorized to access this API",
         API_NOT_FOUND: "Requested API not found",
@@ -315,7 +319,6 @@ module.exports = {
         'api-landing-md',
         'llms-txt',
     ],
-    FEDERATED_GATEWAY_VENDORS: ['aws'],
     DEFAULT_PROFILE_IMAGE_URL: 'https://raw.githubusercontent.com/wso2/docs-bijira/refs/heads/main/en/devportal-theming/profile.svg',
     WSO2_DEFAULT_URL: 'https://localhost:9443',
 }

@@ -89,6 +89,7 @@ COPY --from=builder /build/platform-api .
 # Schema files and LLM provider templates
 COPY src/internal/database/schema.sql            ./schema.sql
 COPY src/internal/database/schema.postgres.sql   ./schema.postgres.sql
+COPY src/internal/database/schema.sqlserver.sql ./schema.sqlserver.sql
 COPY src/internal/database/schema.sqlite.sql     ./schema.sqlite.sql
 COPY src/resources/default-llm-provider-templates ./default-llm-provider-templates
 COPY src/resources/openapi.yaml                  ./resources/openapi.yaml

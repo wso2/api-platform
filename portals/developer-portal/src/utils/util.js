@@ -22,7 +22,7 @@ const marked = require('marked');
 const Handlebars = require('handlebars');
 const logger = require('../config/logger');
 const { CustomError } = require('../utils/errors/customErrors');
-const adminDao = require('../dao/admin');
+const orgDao = require('../dao/organizationDao');
 const constants = require('../utils/constants');
 const unzipper = require('unzipper');
 const axios = require('axios');
@@ -31,8 +31,9 @@ const https = require('https');
 const { config } = require('../config/configLoader');
 const { body, param, query } = require('express-validator');
 const { Sequelize } = require('sequelize');
-const apiDao = require('../dao/apiMetadata');
-const subscriptionPolicyDTO = require('../dto/subscriptionPolicy');
+const apiDao = require('../dao/apiDao');
+const subscriptionPlanDao = require('../dao/subscriptionPlanDao');
+const subscriptionPlanDTO = require('../dto/subscriptionPlanDto');
 const jwt = require('jsonwebtoken');
 const filePrefix = '/src/defaultContent/';
 
@@ -84,23 +85,24 @@ function renderTemplate(templatePath, layoutPath, templateContent, isTechnical) 
     const template = Handlebars.compile(templateResponse.toString());
     const layout = Handlebars.compile(layoutResponse.toString());
 
+    const slots = {};
     const showApiWorkflowsNav = config.features?.apiWorkflows?.enabled === true;
-    const enrichedContent = { devportalMode: constants.DEVPORTAL_MODE.DEFAULT, ...templateContent, showApiWorkflowsNav };
+    const enrichedContent = { devportalMode: constants.DEVPORTAL_MODE.DEFAULT, ...templateContent, showApiWorkflowsNav, slots };
     return layout({
+        ...enrichedContent,
         body: template(enrichedContent),
         portalConfigs: config.portalConfigs,
         devportalApiConfig: {
             base: constants.DEVPORTAL_API.BASE_SEGMENT,
             version: constants.DEVPORTAL_API.VERSION,
         },
-        profile: templateContent.profile,
-        showApiWorkflowsNav,
+        devReloadEnabled: process.env.NODE_ENV === 'development',
     });
 }
 
 async function loadLayoutFromAPI(orgID, viewName) {
 
-    var layoutContent = await adminDao.getOrgContent({
+    var layoutContent = await orgDao.getContent({
         orgId: orgID,
         fileType: constants.FILE_TYPE.LAYOUT,
         fileName: constants.FILE_NAME.MAIN,
@@ -115,7 +117,7 @@ async function loadLayoutFromAPI(orgID, viewName) {
 
 async function loadTemplateFromAPI(orgID, filePath, viewName) {
 
-    var templateContent = await adminDao.getOrgContent({
+    var templateContent = await orgDao.getContent({
         orgId: orgID,
         filePath: filePath,
         fileType: constants.FILE_TYPE.TEMPLATE,
@@ -131,7 +133,7 @@ async function renderTemplateFromAPI(templateContent, orgID, orgName, filePath, 
     const completeLayoutPath = path.join(process.cwd(), filePrefix + 'layout/main.hbs');
 
     layoutResponse = fs.readFileSync(completeLayoutPath, constants.CHARSET_UTF8);
-    const styleContent = await adminDao.getOrgContent({ orgId: orgID, fileType: 'style', viewName: viewName, fileName: 'main.css' });
+    const styleContent = await orgDao.getContent({ orgId: orgID, fileType: 'style', viewName: viewName, fileName: 'main.css' });
     if (styleContent) {
         layoutResponse = layoutResponse.replace(/\/styles\//g, `${constants.DEVPORTAL_API.orgPath(orgID)}/views/${viewName}/layout?fileType=style&fileName=`);
     }
@@ -139,24 +141,25 @@ async function renderTemplateFromAPI(templateContent, orgID, orgName, filePath, 
     const template = Handlebars.compile(templateResponse.toString());
     const layout = Handlebars.compile(layoutResponse.toString());
 
+    const slots = {};
     const showApiWorkflowsNav = config.features?.apiWorkflows?.enabled === true;
-    const enrichedContent = { devportalMode: constants.DEVPORTAL_MODE.DEFAULT, ...templateContent, showApiWorkflowsNav };
+    const enrichedContent = { devportalMode: constants.DEVPORTAL_MODE.DEFAULT, ...templateContent, showApiWorkflowsNav, slots };
     return layout({
+        ...enrichedContent,
         body: template(enrichedContent),
         portalConfigs: config.portalConfigs,
         devportalApiConfig: {
             base: constants.DEVPORTAL_API.BASE_SEGMENT,
             version: constants.DEVPORTAL_API.VERSION,
         },
-        profile: templateContent.profile,
-        showApiWorkflowsNav,
+        devReloadEnabled: process.env.NODE_ENV === 'development',
     });
 
 }
 
 async function renderLlmsTxt(templateContent, orgID, viewName) {
 
-    const dbPartial = await adminDao.getOrgContent({
+    const dbPartial = await orgDao.getContent({
         orgId: orgID,
         fileType: 'partial',
         viewName: viewName,
@@ -180,7 +183,7 @@ async function renderLlmsTxt(templateContent, orgID, viewName) {
 async function renderMarkdownTemplateFromAPI(templateContent, orgID, filePath, viewName) {
 
     const partialName = path.basename(filePath) + '-md';
-    const dbPartial = await adminDao.getOrgContent({
+    const dbPartial = await orgDao.getContent({
         orgId: orgID,
         fileType: 'partial',
         viewName: viewName,
@@ -205,70 +208,87 @@ async function renderGivenTemplate(templatePage, layoutPage, templateContent) {
 
     const template = Handlebars.compile(templatePage.toString());
     const layout = Handlebars.compile(layoutPage.toString());
+    const slots = {};
     const showApiWorkflowsNav = config.features?.apiWorkflows?.enabled === true;
-    const enrichedContent = { devportalMode: constants.DEVPORTAL_MODE.DEFAULT, ...templateContent, showApiWorkflowsNav };
+    const enrichedContent = { devportalMode: constants.DEVPORTAL_MODE.DEFAULT, ...templateContent, showApiWorkflowsNav, slots };
     return layout({
+        ...enrichedContent,
         body: template(enrichedContent),
         portalConfigs: config.portalConfigs,
         devportalApiConfig: {
             base: constants.DEVPORTAL_API.BASE_SEGMENT,
             version: constants.DEVPORTAL_API.VERSION,
         },
-        profile: templateContent.profile,
-        showApiWorkflowsNav,
+        devReloadEnabled: process.env.NODE_ENV === 'development',
     });
 }
 
-function getErrors(errors) {
+const HTTP_CODE_TO_CATALOG = {
+    400: 'COMMON_VALIDATION_ERROR',
+    401: 'UNAUTHORIZED',
+    403: 'FORBIDDEN',
+    404: 'RESOURCE_NOT_FOUND',
+    409: 'CONFLICT',
+    500: 'INTERNAL_SERVER_ERROR',
+};
 
+function getErrors(errors) {
     const errorList = [];
     errors.errors.forEach(element => {
-        errorList.push({
-            code: '400',
-            message: 'input validation failed',
-            description: element.msg
-        })
+        errorList.push({ field: element.path || element.param || undefined, message: element.msg });
     });
     return errorList;
 }
 
 function handleError(res, error) {
     if (error instanceof Sequelize.UniqueConstraintError) {
+        const msg = error.errors ? error.errors[0].message : error.message.replaceAll('"', '');
         return res.status(409).json({
-            code: "409",
-            message: "Conflict",
-            description: error.errors ? error.errors[0].message : error.message.replaceAll('"', ''),
+            status: 'error',
+            code: 'CONFLICT',
+            message: 'Conflict',
+            errors: [{ message: msg }],
         });
     } else if (error instanceof Sequelize.ValidationError) {
         return res.status(400).json({
-            code: "400",
-            message: "Bad Request",
-            description: error.message
+            status: 'error',
+            code: 'COMMON_VALIDATION_ERROR',
+            message: 'Bad Request',
+            errors: [{ message: error.message }],
         });
     } else if (error instanceof Sequelize.EmptyResultError) {
         return res.status(404).json({
-            code: "404",
-            message: "Resource Not Found",
-            description: error.message
+            status: 'error',
+            code: 'RESOURCE_NOT_FOUND',
+            message: 'Resource Not Found',
+            errors: [],
         });
     } else if (error instanceof CustomError) {
+        const code = HTTP_CODE_TO_CATALOG[error.statusCode] || 'INTERNAL_SERVER_ERROR';
         return res.status(error.statusCode).json({
-            code: error.statusCode,
+            status: 'error',
+            code,
             message: error.message,
-            description: error.description
+            errors: error.description ? [{ message: error.description }] : [],
         });
     } else {
-        let errorDescription = error.message;
-        if (error instanceof Sequelize.DatabaseError) {
-            errorDescription = "Internal Server Error";
-        }
         return res.status(500).json({
-            "code": "500",
-            "message": "Internal Server Error",
-            "description": errorDescription
+            status: 'error',
+            code: 'INTERNAL_SERVER_ERROR',
+            message: 'Internal Server Error',
+            errors: [],
         });
     }
-};
+}
+
+function toPaginatedList(list, req) {
+    const limit = Math.min(parseInt((req.query && req.query.limit) || '20', 10) || 20, 100);
+    const offset = parseInt((req.query && req.query.offset) || '0', 10) || 0;
+    return {
+        list,
+        pagination: { total: list.length, limit, offset },
+    };
+}
 
 const unzipDirectory = async (zipPath, extractPath) => {
     if (typeof zipPath !== 'string' || typeof extractPath !== 'string' || !zipPath || !extractPath) {
@@ -618,8 +638,8 @@ async function readFilesInDirectory(directory, orgId, protocol, host, viewName, 
                         strContent = strContent.replace(/@import\s*['"]\/styles\/home\.css['"];/g, `@import url("${constants.DEVPORTAL_API.orgPath(orgId)}/views/${viewName}/layout?fileType=style&fileName=home.css");`);
                         strContent = strContent.replace(/@import\s*['"]\/styles\/main\.css['"];/g, `@import url("${constants.DEVPORTAL_API.orgPath(orgId)}/views/${viewName}/layout?fileType=style&fileName=main.css");`);
                     }
-                    strContent = strContent.replace(/"\/images\/(devportalLogo\.[^"]+)/g, `"${constants.DEVPORTAL_API.orgPath(orgId)}/views/${viewName}/layout?fileType=image&fileName=$1`);
-                    strContent = strContent.replace(/'\/images\/(devportalLogo\.[^']+)/g, `'${constants.DEVPORTAL_API.orgPath(orgId)}/views/${viewName}/layout?fileType=image&fileName=$1`);
+                    strContent = strContent.replace(/"\/images\/(devportal-logo\.[^"]+)/g, `"${constants.DEVPORTAL_API.orgPath(orgId)}/views/${viewName}/layout?fileType=image&fileName=$1`);
+                    strContent = strContent.replace(/'\/images\/(devportal-logo\.[^']+)/g, `'${constants.DEVPORTAL_API.orgPath(orgId)}/views/${viewName}/layout?fileType=image&fileName=$1`);
                     content = Buffer.from(strContent, constants.CHARSET_UTF8);
                 } else if (file.name.endsWith(".hbs") && dir.endsWith("layout")) {
                     fileType = "layout"
@@ -702,8 +722,6 @@ function validateScripts(strContent) {
             '<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.2.7/purify.min.js" integrity="sha512-78KH17QLT5e55GJqP76vutp1D2iAoy06WcYBXB6iBCsmO6wWzx0Qdg8EDpm8mKXv68BcvHOyeeP4wxAL0twJGQ==" crossorigin="anonymous"></script>',
         ]);
         const allowedInlineScripts = new Set([
-            // Reo analytics loader (src/defaultContent/layout/main.hbs)
-            "<script type=\"text/javascript\">\n      !function(){var e,t,n;e=\"{{portalConfigs.reoClientID}}\",t=function(){Reo.init({clientID:\"{{portalConfigs.reoClientID}}\"})},(n=document.createElement(\"script\")).src=\"https://static.reo.dev/\"+e+\"/reo.js\",n.defer=!0,n.onload=t,document.head.appendChild(n)}();\n    </script>",
             // Token-map JSON data island (api-landing/partials/api-subscription-plans.hbs)
             "<script id=\"token-map-data\" type=\"application/json\">{{{jsonSafeSubscriptions ../subscriptions}}}</script>",
             // Token-meta bootstrap (api-landing/partials/api-subscription-plans.hbs)
@@ -771,43 +789,43 @@ function appendAPIImageURL(subList, req, orgID) {
     });
 }
 
-async function appendSubscriptionPlanDetails(orgID, subscriptionPolicies) {
-    let subscriptionPlans = [];
-    if (subscriptionPolicies) {
-        for (const policy of subscriptionPolicies) {
-            const subscriptionPlan = await loadSubscriptionPlan(orgID, policy.policyName);
+async function appendSubscriptionPlanDetails(orgID, subscriptionPlans) {
+    const enrichedPlans = [];
+    if (subscriptionPlans) {
+        for (const plan of subscriptionPlans) {
+            const subscriptionPlan = await loadSubscriptionPlan(orgID, plan.planName);
             if (!subscriptionPlan) {
                 logger.warn('[appendSubscriptionPlanDetails] Plan not found, skipping', {
                     orgID,
-                    policyName: policy.policyName
+                    planName: plan.planName
                 });
                 continue;
             }
-            subscriptionPlans.push({
-                policyID: subscriptionPlan.policyID,
+            enrichedPlans.push({
+                planID: subscriptionPlan.planID,
                 displayName: subscriptionPlan.displayName,
-                policyName: subscriptionPlan.policyName,
+                planName: subscriptionPlan.planName,
                 description: subscriptionPlan.description,
                 requestCount: subscriptionPlan.requestCount,
             });
         }
     }
-    return subscriptionPlans;
+    return enrichedPlans;
 }
 
-const loadSubscriptionPlan = async (orgID, policyName) => {
+const loadSubscriptionPlan = async (orgID, planName) => {
 
     try {
-        const policyData = await apiDao.getSubscriptionPolicyByName(orgID, policyName);
-        if (policyData) {
-            return new subscriptionPolicyDTO(policyData);
+        const planData = await subscriptionPlanDao.getByName(orgID, planName);
+        if (planData) {
+            return new subscriptionPlanDTO(planData);
         } else {
-            throw new CustomError(404, constants.ERROR_CODE[404], constants.ERROR_MESSAGE.SUBSCRIPTION_POLICY_NOT_FOUND);
+            throw new CustomError(404, constants.ERROR_CODE[404], constants.ERROR_MESSAGE.SUBSCRIPTION_PLAN_NOT_FOUND);
         }
     } catch (error) {
         logger.error("Error occurred while loading subscription plans", {
             orgID: orgID,
-            policyName: policyName,
+            planName: planName,
             error: error.message,
             stack: error.stack
         });
@@ -815,64 +833,6 @@ const loadSubscriptionPlan = async (orgID, policyName) => {
     }
 }
 
-async function tokenExchanger(token, orgName) {
-    logger.info(`Exchanging token for organization: ${orgName}`, {
-        orgName: orgName,
-        action: 'token_exchange'
-    });
-    const url = config.advanced.tokenExchanger.url;
-    const maxRetries = 3;
-    let delay = 1000;
-    const orgDetails = await adminDao.getOrganization(orgName);
-    if (!orgDetails) {
-        throw new Error('Organization not found');
-    } else if (!orgDetails.ORGANIZATION_IDENTIFIER) {
-        throw new Error('Organization Identifier not found');
-    }
-
-    const data = qs.stringify({
-        client_id: config.advanced.tokenExchanger.client_id,
-        grant_type: config.advanced.tokenExchanger.grant_type,
-        subject_token_type: config.advanced.tokenExchanger.subject_token_type,
-        requested_token_type: config.advanced.tokenExchanger.requested_token_type,
-        scope: config.advanced.tokenExchanger.scope,
-        subject_token: token,
-        orgHandle: orgDetails.ORG_HANDLE
-    });
-
-    for (let attempt = 0; attempt <= maxRetries; attempt++) {
-        try {
-            const response = await axios.post(url, data, {
-                headers: {
-                    'Referer': '',
-                    'Accept': 'application/json',
-                    'Content-Type': 'application/x-www-form-urlencoded'
-                }
-            });
-
-            return response.data.access_token;
-        } catch (error) {
-            if (error.response?.status >= 500 && error.response?.status < 600 && attempt < maxRetries) {
-                logger.warn(`Token exchange failed. Retrying in ${delay}ms... (Attempt ${attempt + 1}/${maxRetries})`, {
-                    orgName: orgName,
-                    statusCode: error.response?.status,
-                    error: error.message
-                });
-                await new Promise(resolve => setTimeout(resolve, delay));
-                delay *= 2;
-            } else {
-                logger.error('Token exchange failed', {
-                    orgName: orgName,
-                    attempt: attempt + 1,
-                    error: error.message,
-                    statusCode: error.response?.status,
-                    responseData: error.response?.data
-                });
-                throw new Error('Failed to exchange token');
-            }
-        }
-    }
-}
 
 async function listFiles(path) {
 
@@ -942,12 +902,7 @@ function resolveApiType(apiType) {
 }
 
 function filterAllowedAPIs(searchResults, allowedAPIs) {
-
     searchResults = searchResults.filter(api => {
-        const gatewayVendor = api?.apiInfo?.gatewayVendor || 'wso2';
-        if (constants.FEDERATED_GATEWAY_VENDORS.includes(gatewayVendor)) {
-            return true;
-        }
         // MCP servers published via the registry have no referenceID
         if (api?.apiInfo?.apiType === constants.API_TYPE.MCP && !api.apiReferenceID) {
             return true;
@@ -958,7 +913,7 @@ function filterAllowedAPIs(searchResults, allowedAPIs) {
 }
 
 const enforcePortalMode = async (req, res, next) => {
-    const orgDetails = await adminDao.getOrganization(req.params.orgName);
+    const orgDetails = await orgDao.get(req.params.orgName);
     const portalMode = orgDetails.ORG_CONFIG?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
     const path = req.originalUrl.split('/')[4];
 
@@ -977,7 +932,7 @@ const enforcePortalMode = async (req, res, next) => {
 }
 
 async function isAiDisabledForPortal(orgID, viewName) {
-    const configAsset = await adminDao.getOrgContent({
+    const configAsset = await orgDao.getContent({
         orgId: orgID, fileType: constants.FILE_TYPE.LLMS_CONFIG, viewName, fileName: constants.FILE_NAME.LLMS_CONFIG
     });
     if (!configAsset) return false;
@@ -1013,7 +968,6 @@ module.exports = {
     readFilesInDirectory,
     appendAPIImageURL,
     appendSubscriptionPlanDetails,
-    tokenExchanger,
     listFiles,
     readDocFiles,
     findFileByNameRecursive,
@@ -1023,5 +977,6 @@ module.exports = {
     isAiDisabledForPortal,
     isImageFile,
     normalizeStringArray,
-    resolveApiType
+    resolveApiType,
+    toPaginatedList,
 }

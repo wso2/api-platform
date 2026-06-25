@@ -16,11 +16,11 @@
  * under the License.
  */
 const crypto = require('crypto');
-const sequelize = require('../db/sequelize');
-const apiKeyDao = require('../dao/apiKey');
-const apiMetadataDao = require('../dao/apiMetadata');
+const sequelize = require('../db/sequelizeConfig');
+const apiKeyDao = require('../dao/apiKeyDao');
+const apiDao = require('../dao/apiDao');
 const { publish } = require('./webhooks/eventPublisher');
-const subDao = require('../dao/subscription');
+const subDao = require('../dao/subscriptionDao');
 const logger = require('../config/logger');
 const { config } = require('../config/configLoader');
 
@@ -66,7 +66,7 @@ function parseExpiresAt(raw) {
 }
 
 async function resolveApi(orgId, apiId) {
-    const rows = await apiMetadataDao.getAPIMetadata(orgId, apiId);
+    const rows = await apiDao.get(orgId, apiId);
     if (!rows || rows.length === 0) {
         return { error: { status: 404, message: 'API not found' } };
     }
@@ -74,7 +74,6 @@ async function resolveApi(orgId, apiId) {
     const dv = row.dataValues || row;
     return {
         apiId: dv.API_ID,
-        gatewayType: dv.GATEWAY_TYPE || null,
         apiName: dv.API_NAME || null,
         apiVersion: dv.API_VERSION || null,
         apiRefId: dv.REFERENCE_ID || ''
@@ -82,11 +81,10 @@ async function resolveApi(orgId, apiId) {
 }
 
 async function resolveApiDirect(orgId, apiId) {
-    const rows = await apiMetadataDao.getAPIMetadataByCondition({ API_ID: apiId, ORG_ID: orgId });
+    const rows = await apiDao.getByCondition({ API_ID: apiId, ORG_ID: orgId });
     if (!rows || rows.length === 0) return null;
     const dv = rows[0].dataValues || rows[0];
     return {
-        gatewayType: dv.GATEWAY_TYPE || null,
         apiName: dv.API_NAME || null,
         apiVersion: dv.API_VERSION || null,
         apiRefId: dv.REFERENCE_ID || ''
@@ -95,13 +93,13 @@ async function resolveApiDirect(orgId, apiId) {
 
 async function resolveSubscription(orgId, subscriptionId) {
     if (!subscriptionId) return null;
-    const sub = await subDao.getSubscriptionById(orgId, subscriptionId);
+    const sub = await subDao.getById(orgId, subscriptionId);
     if (!sub) return null;
-    const policy = sub.DP_SUBSCRIPTION_POLICY;
+    const plan = sub.DP_SUBSCRIPTION_PLAN;
     return {
         ref_id: sub.SUB_ID,
-        plan_ref_id: policy ? (policy.REF_ID || null) : null,
-        plan_name: policy ? (policy.POLICY_NAME || policy.DISPLAY_NAME || null) : null
+        plan_ref_id: plan ? (plan.REF_ID || null) : null,
+        plan_name: plan ? (plan.PLAN_NAME || plan.DISPLAY_NAME || null) : null
     };
 }
 
@@ -127,7 +125,7 @@ async function generate({ orgId, apiId, subscriptionId, name, expiresAt, actor }
 
     try {
         await sequelize.transaction(async (t) => {
-            const key = await apiKeyDao.createKey(
+            const key = await apiKeyDao.create(
                 { apiId: api.apiId, subscriptionId, orgId, name: normalizedName,
                   expiresAt: expiry.date, createdBy: actor },
                 t
@@ -142,7 +140,7 @@ async function generate({ orgId, apiId, subscriptionId, name, expiresAt, actor }
                     api: { name: api.apiName, version: api.apiVersion, ref_id: api.apiRefId },
                     ...(subscription && { subscription })
                 },
-                { transaction: t, orgId, gatewayType: api.gatewayType,
+                { transaction: t, orgId,
                   aggregateType: 'apikey', aggregateId: keyId, plaintextKey: plaintext }
             );
         });
@@ -157,17 +155,16 @@ async function generate({ orgId, apiId, subscriptionId, name, expiresAt, actor }
 
 /**
  * Regenerate an existing key: same keyId, new secret, status stays ACTIVE.
- * The old secret is silently invalidated at the gateway side via the event.
+ * The old secret is silently invalidated by whatever consumes the webhook event.
  */
 async function regenerate({ orgId, keyId, actor }) {
     if (config.readOnlyMode) throw Object.assign(new Error('Read-only mode'), { status: 403 });
 
-    const existing = await apiKeyDao.getKey(orgId, keyId);
+    const existing = await apiKeyDao.get(orgId, keyId);
     if (!existing) throw Object.assign(new Error('API key not found'), { status: 404 });
     if (existing.STATUS === 'REVOKED') throw Object.assign(new Error('Cannot regenerate a revoked key'), { status: 409 });
 
     const apiInfo = await resolveApiDirect(orgId, existing.API_ID);
-    const gatewayType = apiInfo ? apiInfo.gatewayType : null;
     let plaintext = generateSecret();
     const subscription = await resolveSubscription(orgId, existing.SUBSCRIPTION_ID);
 
@@ -181,7 +178,7 @@ async function regenerate({ orgId, keyId, actor }) {
                     api: { name: apiInfo ? apiInfo.apiName : null, version: apiInfo ? apiInfo.apiVersion : null, ref_id: apiInfo ? apiInfo.apiRefId : '' },
                     ...(subscription && { subscription })
                 },
-                { transaction: t, orgId, gatewayType,
+                { transaction: t, orgId,
                   aggregateType: 'apikey', aggregateId: keyId, plaintextKey: plaintext }
             );
         });
@@ -195,20 +192,19 @@ async function regenerate({ orgId, keyId, actor }) {
 }
 
 /**
- * Revoke a key. Fires apikey.revoked so gateways can reject it immediately.
+ * Revoke a key. Fires apikey.revoked so webhook subscribers can reject it immediately.
  */
 async function revoke({ orgId, keyId, actor }) {
     if (config.readOnlyMode) throw Object.assign(new Error('Read-only mode'), { status: 403 });
 
-    const existing = await apiKeyDao.getKey(orgId, keyId);
+    const existing = await apiKeyDao.get(orgId, keyId);
     if (!existing) throw Object.assign(new Error('API key not found'), { status: 404 });
 
     const revokeApiInfo = await resolveApiDirect(orgId, existing.API_ID);
-    const gatewayType = revokeApiInfo ? revokeApiInfo.gatewayType : null;
     const subscription = await resolveSubscription(orgId, existing.SUBSCRIPTION_ID);
 
     await sequelize.transaction(async (t) => {
-        const revoked = await apiKeyDao.revokeKey(orgId, keyId, t);
+        const revoked = await apiKeyDao.revoke(orgId, keyId, t);
         if (!revoked) throw Object.assign(new Error('Key already revoked or not found'), { status: 409 });
 
         await publish('apikey.revoked',
@@ -218,7 +214,7 @@ async function revoke({ orgId, keyId, actor }) {
                 api: { name: revokeApiInfo ? revokeApiInfo.apiName : null, version: revokeApiInfo ? revokeApiInfo.apiVersion : null, ref_id: revokeApiInfo ? revokeApiInfo.apiRefId : '' },
                 ...(subscription && { subscription })
             },
-            { transaction: t, orgId, gatewayType,
+            { transaction: t, orgId,
               aggregateType: 'apikey', aggregateId: keyId }
         );
     });
@@ -227,7 +223,7 @@ async function revoke({ orgId, keyId, actor }) {
 }
 
 async function list(orgId, filters) {
-    return apiKeyDao.listKeys(orgId, filters);
+    return apiKeyDao.list(orgId, filters);
 }
 
 module.exports = { generate, regenerate, revoke, list };

@@ -72,8 +72,10 @@ Environment variables use `APIP_GW_` prefix:
 
 | Variable | Description |
 |----------|-------------|
-| `APIP_GW_CONTROLLER_STORAGE_TYPE` | `sqlite` or `memory` |
+| `APIP_GW_CONTROLLER_STORAGE_TYPE` | `sqlite`, `postgres`, `sqlserver`, or `memory` |
 | `APIP_GW_CONTROLLER_STORAGE_SQLITE_PATH` | Path to SQLite database |
+| `APIP_GW_CONTROLLER_STORAGE_POSTGRES_DSN` | PostgreSQL DSN (when storage type is `postgres`) |
+| `APIP_GW_CONTROLLER_STORAGE_DATABASE_DSN` | SQL Server DSN (when storage type is `sqlserver`) |
 | `APIP_GW_CONTROLLER_LOGGING_LEVEL` | `debug`, `info`, `warn`, `error` |
 | `APIP_GW_POLICY__ENGINE_METRICS_PORT` | Policy engine metrics port |
 

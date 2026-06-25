@@ -16,85 +16,73 @@
  * under the License.
  */
  -->
-<main>
-    {{> header profile=profile baseUrl=baseUrl devportalMode=devportalMode showApiWorkflowsNav=showApiWorkflowsNav }}
-    {{> sidebar profile=profile baseUrl=baseUrl devportalMode=devportalMode showApiKeysNav=showApiKeysNav showApiWorkflowsNav=showApiWorkflowsNav }}
-    <div class="doc-content me-4">
-        <div class="documents">
-            <aside class="documents-sidebar">
-                {{#docTypes}}
-                {{#if (eq type "Specification")}}
-                <div>
-                    <div class="doc-section-title">
-                        Specification
-                    </div>
-                    <div class="doc-links">
-                        <a href="{{../baseDocUrl}}/docs/specification" class="doc-link">
-                            <i class="bi bi-code"></i>
-                            <div class="doc-title">
-                                {{#if (eq ../apiType "MCP")}}
-                                    MCP Playground
-                                {{else}}
-                                    API Definition
-                                {{/if}}
-                            </div>
-                        </a>
-                    </div>
-                    {{#if (eq ../apiType "WS")}}
-                    <div class="doc-links">
-                        <a href="{{../baseDocUrl}}/docs/specification?tryout=true" class="doc-link">
-                            <i class="bi bi-code"></i>
-                            <div class="doc-title">
-                                Tryout
-                            </div>
-                        </a>
-                    </div>
-                    {{/if}}
-                    {{#if (eq ../apiType "WEBSUB")}}
-                    <div class="doc-links">
-                        <a href="{{../baseDocUrl}}/docs/specification?tryout=true" class="doc-link">
-                            <i class="bi bi-code"></i>
-                            <div class="doc-title">
-                                Tryout
-                            </div>
-                        </a>
-                    </div>
-                    {{/if}}
-                    {{#if (eq ../apiType "GRAPHQL")}}
-                    <div class="doc-links">
-                        <a href="{{../baseDocUrl}}/docs/specification?tryout=true" class="doc-link">
-                            <i class="bi bi-code"></i>
-                            <div class="doc-title">
-                                Tryout
-                            </div>
-                        </a>
-                    </div>
-                    {{/if}}
-                </div>
-                {{else}}
-                <div>
-                    <div class="doc-section-title">
-                        {{type}}
-                    </div>
-                    <div class="doc-links">
-                        {{#names}}
-                        <a href="{{../../baseDocUrl}}/docs/{{../type}}/{{stripMdExtension this}}" class="doc-link">
-                            <i class="bi bi-file-text"></i>
-                            <div class="doc-title">
-                                {{beforeSeparator this "."}}
-                            </div>
-                        </a>
-                        {{/names}}
-                    </div>
-                </div>
-                {{/if}}
-                {{/docTypes}}
-            </aside>
-            <div class="doc-content-wrapper">
-                <section class="doc-section">
-                    {{> api-doc}}
-                </section>
-            </div>
-        </div>
+ <div class="page-container">
+<nav class="dp-breadcrumb">
+  {{#if (eq apiType "MCP")}}
+    <a class="dp-breadcrumb-item" href="{{baseUrl}}/mcp">MCP Servers</a>
+  {{else}}
+    <a class="dp-breadcrumb-item" href="{{baseUrl}}/apis">APIs</a>
+  {{/if}}
+  <i class="bi bi-chevron-right dp-breadcrumb-sep"></i>
+  <a class="dp-breadcrumb-item" href="{{baseDocUrl}}">{{apiName}}</a>
+  <i class="bi bi-chevron-right dp-breadcrumb-sep"></i>
+  <span class="dp-breadcrumb-current">Documentation</span>
+</nav>
+<div class="page-header">
+  <h1 class="page-title">Documentation</h1>
+</div>
+
+<div class="adoc-wrap">
+  <aside class="adoc-nav">
+    {{#docTypes}}
+
+    {{#if (eq type "Specification")}}
+    <div class="adoc-nav-group">
+      <div class="adoc-nav-group-title">SPECIFICATION</div>
+      <div class="adoc-nav-items">
+        <a href="{{../baseDocUrl}}/docs/specification"
+          class="adoc-nav-item doc-link{{#if ../isAPIDefinition}} adoc-nav-item--active{{/if}}">
+          <i class="bi bi-code-slash"></i>
+          <span>{{#if (eq ../apiType "MCP")}}MCP Playground{{else}}API Definition{{/if}}</span>
+        </a>
+        {{#if (eq ../apiType "WS")}}
+        <a href="{{../baseDocUrl}}/docs/specification?tryout=true" class="adoc-nav-item doc-link">
+          <i class="bi bi-play-circle"></i><span>Tryout</span>
+        </a>
+        {{/if}}
+        {{#if (eq ../apiType "WEBSUB")}}
+        <a href="{{../baseDocUrl}}/docs/specification?tryout=true" class="adoc-nav-item doc-link">
+          <i class="bi bi-play-circle"></i><span>Tryout</span>
+        </a>
+        {{/if}}
+        {{#if (eq ../apiType "GRAPHQL")}}
+        <a href="{{../baseDocUrl}}/docs/specification?tryout=true" class="adoc-nav-item doc-link">
+          <i class="bi bi-play-circle"></i><span>Tryout</span>
+        </a>
+        {{/if}}
+      </div>
     </div>
-</main>
+
+    {{else}}
+    <div class="adoc-nav-group">
+      <div class="adoc-nav-group-title">{{type}}</div>
+      <div class="adoc-nav-items">
+        {{#names}}
+        <a href="{{../../baseDocUrl}}/docs/{{../type}}/{{stripMdExtension this}}"
+          class="adoc-nav-item doc-link{{#if (eq ../../currentDocName (stripMdExtension this))}} adoc-nav-item--active{{/if}}">
+          <i class="bi bi-file-text"></i>
+          <span>{{beforeSeparator this "."}}</span>
+        </a>
+        {{/names}}
+      </div>
+    </div>
+    {{/if}}
+
+    {{/docTypes}}
+  </aside>
+
+  <div class="adoc-content-card">
+    {{> api-doc}}
+  </div>
+
+</div></div>

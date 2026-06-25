@@ -398,7 +398,7 @@ func TestDeployAPIConfiguration_ValidationError(t *testing.T) {
 
 	// Invalid YAML that will pass parsing but fail validation
 	yamlData := `
-apiVersion: gateway.api-platform.wso2.com/v1alpha1
+apiVersion: gateway.api-platform.wso2.com/v1
 kind: RestApi
 metadata:
   name: test-api
@@ -439,7 +439,7 @@ func TestDeployAPIConfiguration_DBConflictValidation(t *testing.T) {
 
 		params := APIDeploymentParams{
 			Data: []byte(`
-apiVersion: gateway.api-platform.wso2.com/v1alpha1
+apiVersion: gateway.api-platform.wso2.com/v1
 kind: RestApi
 metadata:
   name: another-rest-api
@@ -481,7 +481,7 @@ spec:
 
 		params := APIDeploymentParams{
 			Data: []byte(`
-apiVersion: gateway.api-platform.wso2.com/v1alpha1
+apiVersion: gateway.api-platform.wso2.com/v1
 kind: RestApi
 metadata:
   name: existing-rest-api
@@ -539,7 +539,7 @@ func TestDeployAPIConfiguration_InferKindFromPayload(t *testing.T) {
 
 	t.Run("Infers RestApi kind from payload", func(t *testing.T) {
 		yamlData := `
-apiVersion: gateway.api-platform.wso2.com/v1alpha1
+apiVersion: gateway.api-platform.wso2.com/v1
 kind: RestApi
 metadata:
   name: inferred-api
@@ -567,7 +567,7 @@ spec:
 
 	t.Run("Infers WebSubApi kind from payload", func(t *testing.T) {
 		yamlData := `
-apiVersion: gateway.api-platform.wso2.com/v1alpha1
+apiVersion: gateway.api-platform.wso2.com/v1
 kind: WebSubApi
 metadata:
   name: inferred-websub
@@ -598,7 +598,7 @@ func TestDeployAPIConfiguration_EmptyKindInPayload(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	yamlData := `
-apiVersion: gateway.api-platform.wso2.com/v1alpha1
+apiVersion: gateway.api-platform.wso2.com/v1
 metadata:
   name: no-kind-api
 spec:
@@ -640,7 +640,7 @@ func TestDeployAPIConfiguration_WebSubParseError(t *testing.T) {
 
 	// Create a WebSub API with invalid spec structure
 	yamlData := `
-apiVersion: gateway.api-platform.wso2.com/v1alpha1
+apiVersion: gateway.api-platform.wso2.com/v1
 kind: WebSubApi
 metadata:
   name: test-websub

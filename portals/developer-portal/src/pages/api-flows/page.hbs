@@ -1,46 +1,1779 @@
-<head>
+{{#pageHead}}
     <link rel="stylesheet" href="/technical-styles/api-flows.css">
+    <link rel="stylesheet" href="/technical-styles/settings-layout.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css" integrity="sha512-uf06llspW44/LZpHzHT6qBOIVODjWtv4MxCricRxkzvopAlSWnTf6hpZTFxuuZcuNE9CBQhqE0Seu1CoRk84nQ==" crossorigin="anonymous">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js" integrity="sha512-OeZ4Yrb/W7d2W4rAMOO0HQ9Ro/aWLtpW9BUSR2UOWnSV2hprXLkkYnnCGc9NeLUxxE4ZG7zN16UuT1Elqq8Opg==" crossorigin="anonymous"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/yaml/yaml.min.js" integrity="sha512-Prlj899DsOyGWU8noS4ZqQ8Z4jy+215JiZPxt/cT3ds3VqbwwsjSYZ64zCWQ/Z7AUZvymKGRllUSLPW5RKylNQ==" crossorigin="anonymous"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/js-yaml/4.1.0/js-yaml.min.js" integrity="sha512-CSBhVREyzHAjAFfBlIBakjoRUKp5h7VSweP0InR/pAJyptH7peuhCsqAI/snV+TwZmXZqoUklpXp6R6wMnYf5Q==" crossorigin="anonymous"></script>
+{{/pageHead}}
+{{#pageScripts}}
     <script src='/technical-scripts/api-flows.js' defer></script>
-</head>
+{{/pageScripts}}
 
-{{> header profile=profile baseUrl=baseUrl showApiWorkflowsNav=showApiWorkflowsNav}}
-{{> sidebar profile=profile baseUrl=baseUrl devportalMode=devportalMode showApiWorkflowsNav=showApiWorkflowsNav}}
+<!-- Hidden tab buttons kept for api-flows.js compatibility -->
+<div style="display:none;" aria-hidden="true">
+  <button id="llms-tab-btn"      aria-controls="llmsTabContent"     type="button"></button>
+  <button id="workflows-tab-btn" aria-controls="workflowsTabContent" type="button"></button>
+</div>
 
-<div class="container mt-4 mb-4">
-    <div class="mb-3">
-        <a href="{{baseUrl}}/" class="d-inline-flex align-items-center text-muted"
-            style="text-decoration: none; font-size: 14px;">
-            <i class="fas fa-arrow-left me-2"></i>Home
+<!-- Server-side data for JS -->
+<script type="application/json" id="cfg-org-apis-data">{{{ json orgAPIs }}}</script>
+<script type="application/json" id="cfg-plans-data">{{{ json orgPlans }}}</script>
+<script type="application/json" id="cfg-webhooks-data">{{{ json webhookSubscribers }}}</script>
+
+<div class="cfg-page">
+
+  <a href="{{baseUrl}}/" class="cfg-back-link">
+    <i class="bi bi-arrow-left"></i> Home
+  </a>
+  <h1 class="cfg-heading">Settings</h1>
+
+  <div class="cfg-layout">
+
+    <!-- ── Left sub-nav ── -->
+    <nav class="cfg-nav" aria-label="Settings navigation">
+
+      <div class="cfg-nav-section">AI &amp; DISCOVERY</div>
+      <div class="cfg-nav-items">
+        <a href="#cfg-llm" class="cfg-nav-item" data-panel="cfg-llm">
+          <i class="bi bi-stars"></i><span>LLM Instructions</span>
         </a>
-    </div>
-    <ul class="nav configure-tabs mb-4" id="viewConfigureTabs" role="tablist">
-        <li class="nav-item" role="presentation">
-            <button class="nav-link active" id="llms-tab-btn" type="button" role="tab"
-                aria-selected="true" aria-controls="llmsTabContent"
-                onclick="activateTab(this); history.replaceState(null,'',location.pathname+'#llm-instruction')">
-                <img src="{{base}}/images/llm-instructions-icon.svg" width="18" height="18" class="me-2" style="vertical-align:-3px;flex-shrink:0;" alt="">LLM Instructions
-            </button>
-        </li>
-        <li class="nav-item" role="presentation">
-            <button class="nav-link" id="workflows-tab-btn" type="button" role="tab"
-                aria-selected="false" aria-controls="workflowsTabContent"
-                onclick="activateTab(this); history.replaceState(null,'',location.pathname+'#apiflows')">
-                <i class="bi bi-diagram-3 me-2"></i>API Workflows
-            </button>
-        </li>
-    </ul>
-    <div id="viewConfigureTabContent">
-        <div id="llmsTabContent" role="tabpanel" aria-labelledby="llms-tab-btn">
-            {{> llms-config}}
+        <a href="#cfg-workflows" class="cfg-nav-item" data-panel="cfg-workflows">
+          <i class="bi bi-diagram-3"></i><span>API Workflows</span>
+        </a>
+      </div>
+
+      <div class="cfg-nav-section">MANAGEMENT</div>
+      <div class="cfg-nav-items">
+        <a href="#cfg-apis" class="cfg-nav-item" data-panel="cfg-apis">
+          <i class="bi bi-boxes"></i><span>APIs</span>
+        </a>
+        <a href="#cfg-labels" class="cfg-nav-item" data-panel="cfg-labels">
+          <i class="bi bi-tags"></i><span>Labels</span>
+        </a>
+        <a href="#cfg-plans" class="cfg-nav-item" data-panel="cfg-plans">
+          <i class="bi bi-speedometer2"></i><span>Subscription Plans</span>
+        </a>
+        <a href="#cfg-webhooks" class="cfg-nav-item" data-panel="cfg-webhooks">
+          <i class="bi bi-broadcast"></i><span>Webhooks</span>
+        </a>
+        <a href="#cfg-orgs" class="cfg-nav-item" data-panel="cfg-orgs">
+          <i class="bi bi-building"></i><span>Organizations</span>
+        </a>
+      </div>
+
+    </nav>
+
+    <!-- ── Content panes ── -->
+    <div class="cfg-content">
+
+      <!-- ══ LLM Instructions ══ -->
+      <div class="cfg-panel" id="cfg-llm">
+        <div id="llmsTabContent">
+          {{> llms-config}}
         </div>
-        <div id="workflowsTabContent" role="tabpanel" aria-labelledby="workflows-tab-btn" style="display:none;">
-            {{> api-flows}}
+      </div>
+
+      <!-- ══ API Workflows ══ -->
+      <div class="cfg-panel" id="cfg-workflows">
+        <div id="workflowsTabContent">
+          {{> api-flows}}
         </div>
+      </div>
+
+      <!-- ══ Manage APIs ══ -->
+      <div class="cfg-panel" id="cfg-apis">
+
+        <!-- API list view -->
+        <div id="cfg-apis-list">
+          <div class="cfg-panel-header">
+            <div>
+              <h2 class="cfg-panel-title">Manage APIs</h2>
+              <p class="cfg-panel-desc">Add, edit, and remove the APIs visible in this developer portal.</p>
+            </div>
+            <button class="cfg-btn-primary" id="cfg-add-api-btn" type="button">
+              <i class="bi bi-plus"></i> Add API
+            </button>
+          </div>
+
+          <div class="cfg-table-wrap">
+            <table class="cfg-table">
+              <thead>
+                <tr>
+                  <th>API</th>
+                  <th>Type</th>
+                  <th>Version</th>
+                  <th>Status</th>
+                  <th style="width:52px;"></th>
+                </tr>
+              </thead>
+              <tbody id="cfg-apis-tbody">
+                {{#orgAPIs}}
+                <tr id="cfg-api-row-{{apiId}}">
+                  <td>
+                    <div class="cfg-api-cell">
+                      <span class="cfg-api-avatar
+                        {{#if (eq apiType "GRAPHQL")}}cfg-api-avatar--graphql
+                        {{else if (eq apiType "WS")}}cfg-api-avatar--ws
+                        {{else if (eq apiType "SOAP")}}cfg-api-avatar--soap
+                        {{else if (eq apiType "MCP")}}cfg-api-avatar--mcp
+                        {{else if (eq apiType "WEBSUB")}}cfg-api-avatar--websub
+                        {{else}}cfg-api-avatar--rest{{/if}}">{{firstTwoLetters apiName}}</span>
+                      <div>
+                        <div class="cfg-cell-name">{{apiName}}</div>
+                        <div class="cfg-cell-context">/{{apiHandle}}</div>
+                      </div>
+                    </div>
+                  </td>
+                  <td>
+                    <span class="cfg-type-badge
+                      {{#if (eq apiType "GRAPHQL")}}cfg-type-badge--graphql
+                      {{else if (eq apiType "WS")}}cfg-type-badge--ws
+                      {{else if (eq apiType "SOAP")}}cfg-type-badge--soap
+                      {{else if (eq apiType "MCP")}}cfg-type-badge--mcp
+                      {{else if (eq apiType "WEBSUB")}}cfg-type-badge--websub
+                      {{else}}cfg-type-badge--rest{{/if}}">
+                      {{#if (eq apiType "WS")}}WebSocket
+                      {{else if (eq apiType "GRAPHQL")}}GraphQL
+                      {{else if (eq apiType "SOAP")}}SOAP
+                      {{else if (eq apiType "WEBSUB")}}WebSub
+                      {{else if (eq apiType "MCP")}}MCP
+                      {{else}}REST{{/if}}
+                    </span>
+                  </td>
+                  <td class="cfg-cell-version">{{apiVersion}}</td>
+                  <td>
+                    {{#if (eq apiStatus "PUBLISHED")}}
+                    <span class="cfg-status-badge cfg-status-published">
+                      <span class="cfg-status-dot"></span>Published
+                    </span>
+                    {{else}}
+                    <span class="cfg-status-badge cfg-status-created">
+                      <span class="cfg-status-dot"></span>Created
+                    </span>
+                    {{/if}}
+                  </td>
+                  <td class="cfg-cell-actions">
+                    <button class="cfg-action-btn cfg-menu-trigger" type="button" aria-label="API actions">
+                      <i class="bi bi-three-dots-vertical"></i>
+                    </button>
+                    <div class="cfg-dropdown">
+                      <button class="cfg-dropdown-item cfg-view-trigger" type="button" data-id="{{apiId}}">
+                        <i class="bi bi-eye"></i> View details
+                      </button>
+                      <button class="cfg-dropdown-item cfg-edit-trigger" type="button" data-id="{{apiId}}">
+                        <i class="bi bi-pencil"></i> Edit
+                      </button>
+                      {{#if (eq apiStatus "PUBLISHED")}}
+                      <button class="cfg-dropdown-item cfg-unpublish-trigger" type="button" data-id="{{apiId}}" data-name="{{apiName}}">
+                        <i class="bi bi-cloud-slash"></i> Unpublish
+                      </button>
+                      {{else}}
+                      <button class="cfg-dropdown-item cfg-publish-trigger" type="button" data-id="{{apiId}}" data-name="{{apiName}}">
+                        <i class="bi bi-cloud-upload"></i> Publish
+                      </button>
+                      {{/if}}
+                      <div class="cfg-dropdown-divider"></div>
+                      <button class="cfg-dropdown-item cfg-dropdown-item--danger cfg-delete-trigger" type="button"
+                        data-id="{{apiId}}" data-name="{{apiName}}">
+                        <i class="bi bi-trash"></i> Delete
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+                {{/orgAPIs}}
+                {{#unless orgAPIs.length}}
+                <tr><td colspan="5" class="cfg-empty-row">No APIs found. Click <strong>Add API</strong> to get started.</td></tr>
+                {{/unless}}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- API wizard -->
+        <div id="cfg-apis-wizard" style="display:none;">
+          <a href="#" class="cfg-wizard-back" id="cfg-wizard-back-link">
+            <i class="bi bi-arrow-left"></i> Back to Manage APIs
+          </a>
+          <h2 class="cfg-panel-title" id="cfg-wizard-title" style="margin:14px 0 0;">Add API</h2>
+
+          <!-- Stepper -->
+          <div class="cfg-stepper">
+            <div class="cfg-step cfg-step--active" data-step="0">
+              <span class="cfg-step-circle">1</span><span class="cfg-step-label">Details</span>
+            </div>
+            <div class="cfg-step-connector"></div>
+            <div class="cfg-step" data-step="1">
+              <span class="cfg-step-circle">2</span><span class="cfg-step-label">Spec</span>
+            </div>
+            <div class="cfg-step-connector"></div>
+            <div class="cfg-step" data-step="2">
+              <span class="cfg-step-circle">3</span><span class="cfg-step-label">Documentation</span>
+            </div>
+            <div class="cfg-step-connector"></div>
+            <div class="cfg-step" data-step="3">
+              <span class="cfg-step-circle">4</span><span class="cfg-step-label">Review</span>
+            </div>
+          </div>
+
+          <!-- Step 0: Details -->
+          <div class="cfg-wizard-step" id="cfg-wstep-0" style="max-width:720px;">
+            <!-- GENERAL -->
+            <div class="cfg-form-section">
+              <p class="cfg-form-section-title">General</p>
+              <div class="cfg-form-grid">
+                <div class="cfg-form-group">
+                  <label for="wz-name">API name <span class="required">*</span></label>
+                  <input type="text" id="wz-name" class="cfg-form-input" placeholder="e.g. Booking API" />
+                </div>
+                <div class="cfg-form-group">
+                  <label for="wz-version">Version <span class="required">*</span></label>
+                  <input type="text" id="wz-version" class="cfg-form-input" placeholder="e.g. v1.0" />
+                </div>
+                <div class="cfg-form-group">
+                  <label for="wz-handle">Handle (URL slug)</label>
+                  <input type="text" id="wz-handle" class="cfg-form-input cfg-form-input--mono" placeholder="booking-api-v1.0" />
+                  <p class="cfg-field-hint">Auto-generated from name &amp; version. Edit to override.</p>
+                </div>
+                <div class="cfg-form-group">
+                  <label for="wz-type">API type</label>
+                  <select id="wz-type" class="cfg-form-input">
+                    <option value="REST">REST</option>
+                    <option value="WS">WebSocket</option>
+                    <option value="GRAPHQL">GraphQL</option>
+                    <option value="SOAP">SOAP</option>
+                    <option value="WEBSUB">WebSub</option>
+                    <option value="MCP">MCP</option>
+                  </select>
+                </div>
+                <div class="cfg-form-group">
+                  <label for="wz-provider">Provider</label>
+                  <input type="text" id="wz-provider" class="cfg-form-input" placeholder="admin" />
+                </div>
+                <div class="cfg-form-group">
+                  <label for="wz-status">Status</label>
+                  <select id="wz-status" class="cfg-form-input">
+                    <option value="CREATED">Created</option>
+                    <option value="PUBLISHED">Published</option>
+                  </select>
+                </div>
+                <div class="cfg-form-group">
+                  <label>Agent visibility</label>
+                  <div class="cfg-vis-toggle">
+                    <button type="button" class="cfg-vis-btn active" id="wz-vis-visible" data-val="Visible">
+                      <i class="bi bi-eye"></i> Visible
+                    </button>
+                    <button type="button" class="cfg-vis-btn" id="wz-vis-hidden" data-val="Hidden">
+                      <i class="bi bi-eye-slash"></i> Hidden
+                    </button>
+                  </div>
+                </div>
+                <div class="cfg-form-group cfg-form-group-full">
+                  <label for="wz-desc">Description</label>
+                  <textarea id="wz-desc" class="cfg-form-input" rows="3" placeholder="Describe what this API does in 1–2 sentences…"></textarea>
+                </div>
+                <div class="cfg-form-group cfg-form-group-full">
+                  <label for="wz-tags">Tags</label>
+                  <input type="text" id="wz-tags" class="cfg-form-input" placeholder="booking, travel  (comma separated)" />
+                </div>
+              </div>
+            </div>
+
+            <!-- ENDPOINTS -->
+            <div class="cfg-form-section">
+              <p class="cfg-form-section-title">Endpoints</p>
+              <div class="cfg-form-grid">
+                <div class="cfg-form-group">
+                  <label for="wz-prod">Production URL</label>
+                  <input type="text" id="wz-prod" class="cfg-form-input cfg-form-input--mono" placeholder="https://api.example.com/booking" />
+                </div>
+                <div class="cfg-form-group">
+                  <label for="wz-sandbox">Sandbox URL</label>
+                  <input type="text" id="wz-sandbox" class="cfg-form-input cfg-form-input--mono" placeholder="https://sandbox.example.com/booking" />
+                </div>
+              </div>
+            </div>
+
+            <!-- OWNERSHIP -->
+            <div class="cfg-form-section">
+              <p class="cfg-form-section-title">Ownership</p>
+              <div class="cfg-form-grid">
+                <div class="cfg-form-group">
+                  <label for="wz-tech-owner">Technical owner</label>
+                  <input type="text" id="wz-tech-owner" class="cfg-form-input" placeholder="e.g. Dilini Perera" />
+                </div>
+                <div class="cfg-form-group">
+                  <label for="wz-tech-email">Technical owner email</label>
+                  <input type="text" id="wz-tech-email" class="cfg-form-input cfg-form-input--mono" placeholder="dilini@example.com" />
+                </div>
+                <div class="cfg-form-group">
+                  <label for="wz-biz-owner">Business owner</label>
+                  <input type="text" id="wz-biz-owner" class="cfg-form-input" placeholder="e.g. Saman Silva" />
+                </div>
+                <div class="cfg-form-group">
+                  <label for="wz-biz-email">Business owner email</label>
+                  <input type="text" id="wz-biz-email" class="cfg-form-input cfg-form-input--mono" placeholder="saman@example.com" />
+                </div>
+              </div>
+            </div>
+
+            <!-- SUBSCRIPTION PLANS -->
+            <div class="cfg-form-section">
+              <p class="cfg-form-section-title">Applicable Subscription Plans</p>
+              <div class="cfg-plan-list" id="wz-plan-list">
+                {{#orgPlans}}
+                <label class="cfg-plan-card" data-name="{{planName}}">
+                  <input type="checkbox" class="wz-plan-check" value="{{planName}}" />
+                  <div>
+                    <div class="cfg-plan-card-name">{{displayName}}</div>
+                    <div class="cfg-plan-card-sub">{{planName}} · {{requestCount}} requests</div>
+                  </div>
+                </label>
+                {{/orgPlans}}
+                {{#unless orgPlans.length}}
+                <p style="font-size:.844rem;color:#9aa3af;margin:0;">No subscription plans yet. Create them under <strong>Subscription Plans</strong>.</p>
+                {{/unless}}
+              </div>
+            </div>
+          </div>
+
+          <!-- Step 1: Spec -->
+          <div class="cfg-wizard-step" id="cfg-wstep-1" style="display:none;">
+            <p class="cfg-wstep-desc">Upload the contract that defines this API. Accepted: OpenAPI (.json / .yaml), AsyncAPI, GraphQL SDL (.graphql), or WSDL (.wsdl / .xml).</p>
+            <label class="cfg-upload-zone">
+              <span class="cfg-upload-icon"><i class="bi bi-file-earmark-arrow-up"></i></span>
+              <span class="cfg-upload-label">Drag &amp; drop or <span>browse</span> to upload</span>
+              <span class="cfg-upload-hint">Single spec file · up to 10 MB</span>
+              <input type="file" id="wz-spec-input" accept=".json,.yaml,.yml,.graphql,.gql,.wsdl,.xml" />
+            </label>
+            <div class="cfg-spec-chip" id="wz-spec-chip">
+              <span class="cfg-spec-icon"><i class="bi bi-file-check"></i></span>
+              <div>
+                <div class="cfg-spec-name" id="wz-spec-name"></div>
+                <div class="cfg-spec-sub">Spec uploaded</div>
+              </div>
+              <button type="button" class="cfg-action-btn" id="wz-spec-remove" style="margin-left:auto;">
+                <i class="bi bi-x-lg"></i>
+              </button>
+            </div>
+          </div>
+
+          <!-- Step 2: Documentation -->
+          <div class="cfg-wizard-step" id="cfg-wstep-2" style="display:none;">
+            <p class="cfg-wstep-desc">Add guides, references, or PDFs to help developers use this API. You can upload multiple files (.md, .pdf).</p>
+            <label class="cfg-upload-compact">
+              <i class="bi bi-upload" style="color:#0277bd;font-size:1rem;flex:none;"></i>
+              <span style="font-size:.844rem;font-weight:600;color:#1a2433;">Upload documents <span style="color:#9aa3af;font-weight:400;">— .md, .pdf · multiple</span></span>
+              <input type="file" id="wz-docs-input" multiple accept=".md,.markdown,.pdf" />
+            </label>
+            <div id="wz-docs-empty" class="cfg-docs-empty">No documents added yet.</div>
+            <div id="wz-docs-list" class="cfg-docs-list"></div>
+          </div>
+
+          <!-- Step 3: Review -->
+          <div class="cfg-wizard-step" id="cfg-wstep-3" style="display:none; max-width:720px;">
+            <p class="cfg-wstep-desc">Confirm the details below, then save this API to your developer portal.</p>
+            <div class="cfg-review-section">
+              <div class="cfg-review-header">
+                <span class="cfg-review-header-title">API Details</span>
+                <button type="button" class="cfg-review-edit" data-goto="0">Edit</button>
+              </div>
+              <div class="cfg-review-body">
+                <div class="cfg-review-grid">
+                  <span class="cfg-review-label">Name</span>         <span class="cfg-review-value" id="rv-name">—</span>
+                  <span class="cfg-review-label">Handle</span>        <span class="cfg-review-value cfg-review-value--mono" id="rv-handle">—</span>
+                  <span class="cfg-review-label">Version</span>       <span class="cfg-review-value" id="rv-version">—</span>
+                  <span class="cfg-review-label">Type</span>          <span class="cfg-review-value" id="rv-type">—</span>
+                  <span class="cfg-review-label">Status</span>        <span class="cfg-review-value" id="rv-status">—</span>
+                  <span class="cfg-review-label">Provider</span>      <span class="cfg-review-value" id="rv-provider">—</span>
+                  <span class="cfg-review-label">Agent visibility</span><span class="cfg-review-value" id="rv-agentvis">—</span>
+                  <span class="cfg-review-label">Production URL</span><span class="cfg-review-value cfg-review-value--mono" id="rv-prod">—</span>
+                  <span class="cfg-review-label">Sandbox URL</span>   <span class="cfg-review-value cfg-review-value--mono" id="rv-sandbox">—</span>
+                  <span class="cfg-review-label">Tech owner</span>    <span class="cfg-review-value" id="rv-tech-owner">—</span>
+                  <span class="cfg-review-label">Biz owner</span>     <span class="cfg-review-value" id="rv-biz-owner">—</span>
+                  <span class="cfg-review-label">Plans</span>      <span class="cfg-review-value" id="rv-plans">—</span>
+                  <span class="cfg-review-label">Description</span>   <span class="cfg-review-value" id="rv-desc">—</span>
+                </div>
+              </div>
+              <div class="cfg-review-header" style="border-top:1px solid #eef1f5;">
+                <span class="cfg-review-header-title">Spec</span>
+                <button type="button" class="cfg-review-edit" data-goto="1">Edit</button>
+              </div>
+              <div class="cfg-review-body" style="padding:14px 18px;">
+                <span style="font-size:.844rem;color:#1a2433;" id="rv-spec">No spec uploaded</span>
+              </div>
+              <div class="cfg-review-header" style="border-top:1px solid #eef1f5;">
+                <span class="cfg-review-header-title">Documentation</span>
+                <button type="button" class="cfg-review-edit" data-goto="2">Edit</button>
+              </div>
+              <div class="cfg-review-body" style="padding:14px 18px;">
+                <span style="font-size:.844rem;color:#1a2433;" id="rv-docs">No documents added</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Wizard actions -->
+          <div class="cfg-wizard-actions">
+            <button type="button" class="cfg-btn-ghost" id="cfg-wizard-cancel">Cancel</button>
+            <div class="cfg-wizard-actions-right">
+              <button type="button" class="cfg-btn-secondary" id="cfg-wizard-back-step" style="display:none;">
+                <i class="bi bi-arrow-left"></i> Back
+              </button>
+              <button type="button" class="cfg-btn-primary" id="cfg-wizard-next">Continue</button>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- /#cfg-apis -->
+
+      <!-- ══ Manage Labels ══ -->
+      <div class="cfg-panel" id="cfg-labels">
+        <div class="cfg-panel-header">
+          <div>
+            <h2 class="cfg-panel-title">Manage Labels</h2>
+            <p class="cfg-panel-desc">Labels help categorize and group APIs across the developer portal.</p>
+          </div>
+          <button class="cfg-btn-primary" id="cfg-add-label-btn" type="button">
+            <i class="bi bi-plus"></i> Add label
+          </button>
+        </div>
+
+        <div class="cfg-table-wrap">
+          <table class="cfg-table">
+            <thead>
+              <tr>
+                <th>Display name</th>
+                <th>Name</th>
+                <th style="width:90px;"></th>
+              </tr>
+            </thead>
+            <tbody id="cfg-labels-tbody">
+              {{#orgLabels}}
+              <tr id="cfg-label-row-{{labelId}}" data-id="{{labelId}}" data-name="{{name}}" data-display="{{displayName}}">
+                <td>
+                  <div style="display:flex;align-items:center;gap:10px;">
+                    <span class="cfg-label-icon"><i class="bi bi-tag"></i></span>
+                    <span style="font-size:.875rem;font-weight:600;color:#1a2433;">{{displayName}}</span>
+                  </div>
+                </td>
+                <td><span class="cfg-name-chip">{{name}}</span></td>
+                <td>
+                  <div class="cfg-row-actions">
+                    <button class="cfg-icon-btn cfg-label-edit-btn" type="button" data-id="{{labelId}}" data-name="{{name}}" data-display="{{displayName}}" title="Edit">
+                      <i class="bi bi-pencil"></i>
+                    </button>
+                    <button class="cfg-icon-btn cfg-icon-btn--danger cfg-label-delete-btn" type="button" data-id="{{labelId}}" data-name="{{name}}" data-display="{{displayName}}" title="Delete">
+                      <i class="bi bi-trash"></i>
+                    </button>
+                  </div>
+                </td>
+              </tr>
+              {{/orgLabels}}
+              {{#unless orgLabels.length}}
+              <tr><td colspan="3" class="cfg-tbl-empty">No labels yet. Add one to get started.</td></tr>
+              {{/unless}}
+            </tbody>
+          </table>
+        </div>
+      </div><!-- /#cfg-labels -->
+
+      <!-- ══ Subscription Plans ══ -->
+      <div class="cfg-panel" id="cfg-plans">
+        <div class="cfg-panel-header">
+          <div>
+            <h2 class="cfg-panel-title">Subscription Plans</h2>
+            <p class="cfg-panel-desc">Define the rate and quota tiers applications can subscribe to.</p>
+          </div>
+          <button class="cfg-btn-primary" id="cfg-add-plan-btn" type="button">
+            <i class="bi bi-plus"></i> Add plan
+          </button>
+        </div>
+
+        <div class="cfg-table-wrap">
+          <table class="cfg-table">
+            <thead>
+              <tr>
+                <th>Plan</th>
+                <th>Name</th>
+                <th>Type</th>
+                <th>Limit</th>
+                <th style="width:90px;"></th>
+              </tr>
+            </thead>
+            <tbody id="cfg-plans-tbody">
+              {{#orgPlans}}
+              <tr id="cfg-plan-row-{{planId}}"
+                data-id="{{planId}}"
+                data-name="{{planName}}"
+                data-display="{{displayName}}"
+                data-desc="{{description}}"
+                data-count="{{requestCount}}"
+                data-refid="{{refId}}">
+                <td>
+                  <div style="font-size:.875rem;font-weight:600;color:#1a2433;">{{displayName}}</div>
+                  {{#if description}}<div style="font-size:.75rem;color:#637282;margin-top:2px;">{{description}}</div>{{/if}}
+                </td>
+                <td><span class="cfg-name-chip">{{planName}}</span></td>
+                <td>
+                  {{#if refId}}
+                  <span class="cfg-plan-type-badge cfg-plan-type--event">Event count</span>
+                  {{else}}
+                  <span class="cfg-plan-type-badge cfg-plan-type--request">Request count</span>
+                  {{/if}}
+                </td>
+                <td><span class="cfg-count-chip">{{requestCount}}</span></td>
+                <td>
+                  <div class="cfg-row-actions">
+                    <button class="cfg-icon-btn cfg-plan-edit-btn" type="button"
+                      data-id="{{planId}}" data-name="{{planName}}" data-display="{{displayName}}"
+                      data-desc="{{description}}" data-count="{{requestCount}}" data-refid="{{refId}}" title="Edit">
+                      <i class="bi bi-pencil"></i>
+                    </button>
+                    <button class="cfg-icon-btn cfg-icon-btn--danger cfg-plan-delete-btn" type="button"
+                      data-id="{{planId}}" data-name="{{planName}}" data-display="{{displayName}}" title="Delete">
+                      <i class="bi bi-trash"></i>
+                    </button>
+                  </div>
+                </td>
+              </tr>
+              {{/orgPlans}}
+              {{#unless orgPlans.length}}
+              <tr><td colspan="5" class="cfg-tbl-empty">No subscription plans yet. Add one to get started.</td></tr>
+              {{/unless}}
+            </tbody>
+          </table>
+        </div>
+      </div><!-- /#cfg-plans -->
+
+      <!-- ══ Webhooks ══ -->
+      <div class="cfg-panel" id="cfg-webhooks">
+        <div class="cfg-panel-header">
+          <div>
+            <h2 class="cfg-panel-title">Webhooks</h2>
+            <p class="cfg-panel-desc">Send a notification to your own endpoint when API keys or subscriptions change in this organization.</p>
+          </div>
+          <button class="cfg-btn-primary" id="cfg-add-webhook-btn" type="button">
+            <i class="bi bi-plus"></i> Add webhook
+          </button>
+        </div>
+
+        <div class="cfg-table-wrap">
+          <table class="cfg-table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Target URL</th>
+                <th>Events</th>
+                <th>Secret</th>
+                <th>Public key</th>
+                <th>Enabled</th>
+                <th style="width:90px;"></th>
+              </tr>
+            </thead>
+            <tbody id="cfg-webhooks-tbody">
+              {{#webhookSubscribers}}
+              <tr id="cfg-webhook-row-{{id}}" data-id="{{id}}">
+                <td>
+                  <button type="button" class="cfg-webhook-edit-btn" data-id="{{id}}"
+                    style="border:none;background:none;padding:0;cursor:pointer;font-size:.875rem;font-weight:600;color:#1a2433;text-decoration:none;">{{name}}</button>
+                </td>
+                <td>
+                  <span class="cfg-name-chip" title="{{url}}"
+                    style="display:inline-block;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{url}}</span>
+                </td>
+                <td>
+                  {{#if events.length}}
+                  {{#each events}}<span class="cfg-name-chip" style="margin-right:4px;">{{this}}</span>{{/each}}
+                  {{else}}
+                  <span style="font-size:.813rem;color:#637282;">All events</span>
+                  {{/if}}
+                </td>
+                <td>{{#if hasSecret}}••••••••{{else}}—{{/if}}</td>
+                <td>{{#if hasPublicKey}}Configured{{else}}—{{/if}}</td>
+                <td>{{#if enabled}}Yes{{else}}No{{/if}}</td>
+                <td>
+                  <div class="cfg-row-actions">
+                    <button class="cfg-icon-btn cfg-webhook-edit-btn" type="button" data-id="{{id}}" title="Edit">
+                      <i class="bi bi-pencil"></i>
+                    </button>
+                    <button class="cfg-icon-btn cfg-icon-btn--danger cfg-webhook-delete-btn" type="button"
+                      data-id="{{id}}" data-name="{{name}}" title="Delete">
+                      <i class="bi bi-trash"></i>
+                    </button>
+                  </div>
+                </td>
+              </tr>
+              {{/webhookSubscribers}}
+              {{#unless webhookSubscribers.length}}
+              <tr><td colspan="7" class="cfg-tbl-empty">No webhooks yet. Add one to get started.</td></tr>
+              {{/unless}}
+            </tbody>
+          </table>
+        </div>
+      </div><!-- /#cfg-webhooks -->
+
+      <!-- ══ Manage Organizations ══ -->
+      <div class="cfg-panel" id="cfg-orgs">
+        <div class="cfg-panel-header">
+          <div>
+            <h2 class="cfg-panel-title">Manage Organizations</h2>
+            <p class="cfg-panel-desc">Organizations group members and their access to this developer portal.</p>
+          </div>
+        </div>
+        <div class="cfg-orgs-link-panel">
+          <div class="cfg-orgs-link-icon"><i class="bi bi-building"></i></div>
+          <div class="cfg-orgs-link-body">
+            <div class="cfg-orgs-link-title">Organization settings</div>
+            <p class="cfg-orgs-link-desc">Manage organizations, views, labels, and API providers from the organization settings page.</p>
+            <a href="/{{loggedOrg}}/configure" class="cfg-btn-primary cfg-orgs-link-btn">
+              <i class="bi bi-box-arrow-up-right"></i> Open Organization Settings
+            </a>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /.cfg-content -->
+  </div><!-- /.cfg-layout -->
+</div><!-- /.cfg-page -->
+
+<!-- ══ Modals (position:fixed) ══ -->
+
+<!-- Delete API modal -->
+<div class="cfg-modal-overlay" id="cfg-delete-api-modal" style="display:none;">
+  <div class="cfg-modal">
+    <div class="cfg-modal-header">
+      <span class="cfg-modal-icon"><i class="bi bi-trash"></i></span>
+      <h2 class="cfg-modal-title">Delete API</h2>
     </div>
+    <p class="cfg-modal-body">Are you sure you want to delete <strong id="cfg-del-api-name-txt"></strong>? It will be removed from the developer portal along with its spec and documentation. This action can't be undone.</p>
+    <div class="cfg-modal-actions">
+      <button type="button" class="cfg-btn-secondary" id="cfg-del-api-cancel">Cancel</button>
+      <button type="button" class="cfg-btn-danger" id="cfg-del-api-confirm">Delete API</button>
+    </div>
+  </div>
+</div>
+
+<!-- Delete Label modal -->
+<div class="cfg-modal-overlay" id="cfg-delete-label-modal" style="display:none;">
+  <div class="cfg-modal">
+    <div class="cfg-modal-header">
+      <span class="cfg-modal-icon"><i class="bi bi-trash"></i></span>
+      <h2 class="cfg-modal-title">Delete Label</h2>
+    </div>
+    <p class="cfg-modal-body">Are you sure you want to delete <strong id="cfg-del-label-name-txt"></strong>? It will be removed from all APIs using it. This action can't be undone.</p>
+    <div class="cfg-modal-actions">
+      <button type="button" class="cfg-btn-secondary" id="cfg-del-label-cancel">Cancel</button>
+      <button type="button" class="cfg-btn-danger" id="cfg-del-label-confirm">Delete label</button>
+    </div>
+  </div>
+</div>
+
+<!-- Delete Plan modal -->
+<div class="cfg-modal-overlay" id="cfg-delete-plan-modal" style="display:none;">
+  <div class="cfg-modal">
+    <div class="cfg-modal-header">
+      <span class="cfg-modal-icon"><i class="bi bi-trash"></i></span>
+      <h2 class="cfg-modal-title">Delete Plan</h2>
+    </div>
+    <p class="cfg-modal-body">Are you sure you want to delete <strong id="cfg-del-plan-name-txt"></strong>? Applications subscribed under it will need a new plan. This action can't be undone.</p>
+    <div class="cfg-modal-actions">
+      <button type="button" class="cfg-btn-secondary" id="cfg-del-plan-cancel">Cancel</button>
+      <button type="button" class="cfg-btn-danger" id="cfg-del-plan-confirm">Delete plan</button>
+    </div>
+  </div>
+</div>
+
+<!-- Delete Webhook modal -->
+<div class="cfg-modal-overlay" id="cfg-delete-webhook-modal" style="display:none;">
+  <div class="cfg-modal">
+    <div class="cfg-modal-header">
+      <span class="cfg-modal-icon"><i class="bi bi-trash"></i></span>
+      <h2 class="cfg-modal-title">Delete Webhook</h2>
+    </div>
+    <p class="cfg-modal-body">Are you sure you want to delete <strong id="cfg-del-webhook-name-txt"></strong>? This action can't be undone.</p>
+    <div class="cfg-modal-actions">
+      <button type="button" class="cfg-btn-secondary" id="cfg-del-webhook-cancel">Cancel</button>
+      <button type="button" class="cfg-btn-danger" id="cfg-del-webhook-confirm">Delete webhook</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add / Edit Label modal -->
+<div class="cfg-modal-overlay" id="cfg-label-modal" style="display:none;">
+  <div class="cfg-form-modal">
+    <div class="cfg-modal-titlerow">
+      <h2 class="cfg-modal-form-title" id="cfg-label-modal-title">Add label</h2>
+      <button type="button" class="cfg-modal-close" id="cfg-label-modal-close"><i class="bi bi-x-lg"></i></button>
+    </div>
+    <div class="cfg-form-group" style="margin-bottom:16px;">
+      <label for="lbl-display">Display name <span class="required">*</span></label>
+      <input type="text" id="lbl-display" class="cfg-form-input" placeholder="e.g. Public" />
+    </div>
+    <div class="cfg-form-group" style="margin-bottom:24px;">
+      <label for="lbl-name">Name <span class="required">*</span></label>
+      <input type="text" id="lbl-name" class="cfg-form-input cfg-form-input--mono" placeholder="public" />
+      <p class="cfg-field-hint">Lowercase identifier used internally.</p>
+    </div>
+    <div class="cfg-modal-actions">
+      <button type="button" class="cfg-btn-secondary" id="cfg-label-modal-cancel">Cancel</button>
+      <button type="button" class="cfg-btn-primary" id="cfg-label-modal-save">Add label</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add / Edit Plan modal -->
+<div class="cfg-modal-overlay" id="cfg-plan-modal" style="display:none;">
+  <div class="cfg-form-modal cfg-form-modal--wide">
+    <div class="cfg-modal-titlerow">
+      <h2 class="cfg-modal-form-title" id="cfg-plan-modal-title">Add subscription plan</h2>
+      <button type="button" class="cfg-modal-close" id="cfg-plan-modal-close"><i class="bi bi-x-lg"></i></button>
+    </div>
+    <div class="cfg-form-grid" style="margin-bottom:16px;">
+      <div class="cfg-form-group">
+        <label for="pol-display">Display name <span class="required">*</span></label>
+        <input type="text" id="pol-display" class="cfg-form-input" placeholder="e.g. Gold" />
+      </div>
+      <div class="cfg-form-group">
+        <label for="pol-name">Name <span class="required">*</span></label>
+        <input type="text" id="pol-name" class="cfg-form-input cfg-form-input--mono" placeholder="Gold" />
+      </div>
+    </div>
+    <div class="cfg-form-group" style="margin-bottom:16px;">
+      <label for="pol-desc">Description</label>
+      <textarea id="pol-desc" class="cfg-form-input" rows="2" placeholder="Describe this tier…"></textarea>
+    </div>
+    <div class="cfg-form-grid" style="margin-bottom:16px;">
+      <div class="cfg-form-group">
+        <label for="pol-type">Type</label>
+        <select id="pol-type" class="cfg-form-input">
+          <option value="requestcount">Request count</option>
+          <option value="eventcount">Event count</option>
+        </select>
+      </div>
+      <div class="cfg-form-group">
+        <label for="pol-count" id="pol-count-label">Request count</label>
+        <input type="text" id="pol-count" class="cfg-form-input cfg-form-input--mono" placeholder="e.g. 10000" />
+      </div>
+    </div>
+    <div class="cfg-form-group" style="margin-bottom:24px;">
+      <label for="pol-refid">External reference ID <span style="color:#9aa3af;font-weight:400;">(optional)</span></label>
+      <input type="text" id="pol-refid" class="cfg-form-input cfg-form-input--mono" placeholder="e.g. 7c9e6679-7425-40de-944b-e07fc1f90ae7" />
+      <p class="cfg-field-hint">UUID linking this plan to an external billing or quota system.</p>
+    </div>
+    <div class="cfg-modal-actions">
+      <button type="button" class="cfg-btn-secondary" id="cfg-plan-modal-cancel">Cancel</button>
+      <button type="button" class="cfg-btn-primary" id="cfg-plan-modal-save">Add plan</button>
+    </div>
+  </div>
+</div>
+
+<style>
+  .wh-toggle { position: relative; display: inline-block; width: 38px; height: 22px; flex: none; }
+  .wh-toggle input { opacity: 0; width: 0; height: 0; }
+  .wh-toggle-slider { position: absolute; inset: 0; background-color: #d0d7de; border-radius: 34px; cursor: pointer; transition: .2s; }
+  .wh-toggle-slider:before { position: absolute; content: ""; height: 16px; width: 16px; left: 3px; bottom: 3px; background-color: #fff; border-radius: 50%; transition: .2s; }
+  .wh-toggle input:checked + .wh-toggle-slider { background-color: #1f6feb; }
+  .wh-toggle input:checked + .wh-toggle-slider:before { transform: translateX(16px); }
+</style>
+
+<!-- Add / Edit Webhook modal -->
+<div class="cfg-modal-overlay" id="cfg-webhook-modal" style="display:none;">
+  <div class="cfg-form-modal cfg-form-modal--wide">
+    <div class="cfg-modal-titlerow">
+      <h2 class="cfg-modal-form-title" id="cfg-webhook-modal-title">Add webhook</h2>
+      <button type="button" class="cfg-modal-close" id="cfg-webhook-modal-close"><i class="bi bi-x-lg"></i></button>
+    </div>
+    <div class="cfg-form-group" style="margin-bottom:16px;">
+      <label for="wh-name">Name <span class="required">*</span></label>
+      <input type="text" id="wh-name" class="cfg-form-input" placeholder="e.g. Production listener" />
+    </div>
+    <div class="cfg-form-group" style="margin-bottom:16px;">
+      <label for="wh-url">Target URL <span class="required">*</span></label>
+      <input type="text" id="wh-url" class="cfg-form-input cfg-form-input--mono" placeholder="https://example.com/webhook" />
+    </div>
+    <div class="cfg-form-grid" style="margin-bottom:16px;">
+      <div class="cfg-form-group">
+        <label for="wh-secret">Secret <span style="color:#9aa3af;font-weight:400;">(optional)</span></label>
+        <input type="password" id="wh-secret" class="cfg-form-input" autocomplete="new-password"
+          placeholder="Used to sign payloads (HMAC)" />
+        <p class="cfg-field-hint" id="wh-secret-hint" style="display:none;">
+          A secret is already set. Leave blank to keep it, or enter a new value to replace it.
+        </p>
+      </div>
+      <div class="cfg-form-group">
+        <label for="wh-timeout">Timeout (ms)</label>
+        <input type="number" id="wh-timeout" class="cfg-form-input" min="1" value="5000" />
+      </div>
+    </div>
+    <div class="cfg-form-group" style="margin-bottom:16px;">
+      <label for="wh-publickey">Public key <span style="color:#9aa3af;font-weight:400;">(optional)</span></label>
+      <textarea id="wh-publickey" class="cfg-form-input cfg-form-input--mono" rows="3" placeholder="PEM-encoded RSA public key"></textarea>
+      <p class="cfg-field-hint">
+        Used to encrypt the plaintext API key delivered with apikey.* / subscription.created events, so only you can read it.
+      </p>
+      <p class="cfg-field-hint" id="wh-publickey-hint" style="display:none;">
+        A public key is already set. Leave blank to keep it, or enter a new value to replace it.
+      </p>
+    </div>
+    <div class="cfg-form-group" style="margin-bottom:16px;">
+      <label>Events</label>
+      <div class="cfg-vis-toggle" style="margin-bottom:12px;">
+        <button type="button" class="cfg-vis-btn active" id="wh-events-all-btn">
+          <i class="bi bi-broadcast"></i> All events
+        </button>
+        <button type="button" class="cfg-vis-btn" id="wh-events-select-btn">
+          <i class="bi bi-check2-square"></i> Select events
+        </button>
+      </div>
+      <div id="wh-event-list" style="display:none;flex-wrap:wrap;gap:10px 16px;">
+        {{#each webhookEventTypes}}
+        <label style="display:flex;align-items:center;gap:6px;font-size:.813rem;color:#1a2433;cursor:pointer;">
+          <input type="checkbox" class="wh-event-check" value="{{this}}" /> {{this}}
+        </label>
+        {{/each}}
+      </div>
+    </div>
+    <div class="cfg-form-group" style="margin-bottom:24px;">
+      <label style="display:flex;align-items:center;gap:10px;font-size:.844rem;color:#1a2433;font-weight:500;cursor:pointer;">
+        <span class="wh-toggle">
+          <input type="checkbox" id="wh-enabled" checked />
+          <span class="wh-toggle-slider"></span>
+        </span>
+        Enabled
+      </label>
+    </div>
+    <div class="cfg-modal-actions">
+      <button type="button" class="cfg-btn-secondary" id="cfg-webhook-modal-cancel">Cancel</button>
+      <button type="button" class="cfg-btn-primary" id="cfg-webhook-modal-save">Add webhook</button>
+    </div>
+  </div>
+</div>
+
+<!-- API Detail Drawer -->
+<div class="cfg-drawer-overlay" id="cfg-detail-drawer">
+  <div class="cfg-drawer">
+    <div class="cfg-drawer-head">
+      <span class="cfg-drawer-avatar" id="drw-avatar"></span>
+      <div>
+        <div class="cfg-drawer-name" id="drw-name"></div>
+        <div class="cfg-drawer-handle" id="drw-handle"></div>
+      </div>
+      <button type="button" class="cfg-drawer-close" id="cfg-drawer-close"><i class="bi bi-x-lg"></i></button>
+    </div>
+    <div class="cfg-drawer-body">
+      <div class="cfg-drawer-meta-row" id="drw-meta-row"></div>
+      <p class="cfg-drawer-desc" id="drw-desc"></p>
+      <div class="cfg-drawer-grid" id="drw-grid"></div>
+    </div>
+    <div class="cfg-drawer-foot">
+      <button type="button" class="cfg-btn-secondary" id="cfg-drawer-close-foot">Close</button>
+      <button type="button" class="cfg-btn-primary" id="cfg-drawer-edit-btn">
+        <i class="bi bi-pencil"></i> Edit API
+      </button>
+    </div>
+  </div>
 </div>
 
 {{> alert}}
+
+<!-- ══ Panel navigation ══ -->
+<script>
+(function () {
+  var PANELS   = ['cfg-llm', 'cfg-workflows', 'cfg-apis', 'cfg-labels', 'cfg-plans', 'cfg-webhooks', 'cfg-orgs'];
+  var navItems = document.querySelectorAll('.cfg-nav-item');
+  var panels   = document.querySelectorAll('.cfg-panel');
+
+  function activate(id) {
+    if (!PANELS.includes(id)) id = 'cfg-llm';
+    navItems.forEach(function(a) { a.classList.toggle('active', a.dataset.panel === id); });
+    panels.forEach(function(p)   { p.style.display = p.id === id ? 'flex' : 'none'; });
+    if (id === 'cfg-llm') {
+      var el = document.getElementById('llmsTabContent');
+      if (el) el.style.display = 'block';
+    }
+    history.replaceState(null, '', location.pathname + '#' + id);
+  }
+
+  navItems.forEach(function(a) {
+    a.addEventListener('click', function(e) { e.preventDefault(); activate(a.dataset.panel); });
+  });
+
+  var hash = location.hash.replace('#', '');
+  var legacyMap = { 'apiflows': 'cfg-workflows', 'llm-instruction': 'cfg-llm' };
+  activate(legacyMap[hash] || hash);
+}());
+</script>
+
+<!-- ══ Manage APIs JS ══ -->
+<script>
+(function () {
+  var ORG_ID    = '{{orgID}}';
+  var currentStep = 0;
+  var specFile    = null;
+  var docFiles    = [];
+  var editingId   = null;
+  var agentVis    = 'Visible';
+
+  /* build id→api lookup from server-rendered data blob */
+  var apiMap = {};
+  (function() {
+    try {
+      var el = document.getElementById('cfg-org-apis-data');
+      if (el) {
+        var list = JSON.parse(el.textContent);
+        list.forEach(function(api) { apiMap[api.apiId] = api; });
+      }
+    } catch(e) {}
+  }());
+
+  /* ── helpers ── */
+  function esc(s) {
+    return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+  function v(id)   { var e=document.getElementById(id); return e?e.value.trim():''; }
+  function sv(id,val){ var e=document.getElementById(id); if(e) e.value=val||''; }
+  function sel(id,val){ var e=document.getElementById(id); if(e) e.value=val; }
+
+  /* type-color map */
+  var typeMap = {
+    REST:    { av:'cfg-api-avatar--rest',    tb:'cfg-type-badge--rest',    label:'REST' },
+    WS:      { av:'cfg-api-avatar--ws',      tb:'cfg-type-badge--ws',      label:'WebSocket' },
+    GRAPHQL: { av:'cfg-api-avatar--graphql', tb:'cfg-type-badge--graphql', label:'GraphQL' },
+    SOAP:    { av:'cfg-api-avatar--soap',    tb:'cfg-type-badge--soap',    label:'SOAP' },
+    WEBSUB:  { av:'cfg-api-avatar--websub',  tb:'cfg-type-badge--websub',  label:'WebSub' },
+    MCP:     { av:'cfg-api-avatar--mcp',     tb:'cfg-type-badge--mcp',     label:'MCP' },
+  };
+  function typeInfo(t) { return typeMap[t] || typeMap['REST']; }
+  function initials(name) { var w=String(name||'').trim().split(/\s+/); return (w[0]?w[0][0]:'') + (w[1]?w[1][0]:''); }
+
+  /* ── handle auto-generate ── */
+  var handleTouched = false;
+  document.getElementById('wz-handle').addEventListener('input', function() { handleTouched = true; });
+  function autoHandle() {
+    if (handleTouched) return;
+    var nm  = v('wz-name').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
+    var ver = v('wz-version').toLowerCase().replace(/[^a-z0-9.]+/g,'-').replace(/^-|-$/g,'');
+    sv('wz-handle', nm && ver ? nm + '-' + ver : nm || ver);
+  }
+  document.getElementById('wz-name').addEventListener('input', autoHandle);
+  document.getElementById('wz-version').addEventListener('input', autoHandle);
+
+  /* ── agent visibility toggle ── */
+  document.getElementById('wz-vis-visible').addEventListener('click', function() {
+    agentVis = 'Visible';
+    document.getElementById('wz-vis-visible').classList.add('active');
+    document.getElementById('wz-vis-hidden').classList.remove('active');
+  });
+  document.getElementById('wz-vis-hidden').addEventListener('click', function() {
+    agentVis = 'Hidden';
+    document.getElementById('wz-vis-hidden').classList.add('active');
+    document.getElementById('wz-vis-visible').classList.remove('active');
+  });
+
+  /* ── plan card selection ── */
+  document.querySelectorAll('.cfg-plan-card').forEach(function(card) {
+    var cb = card.querySelector('input[type=checkbox]');
+    cb.addEventListener('change', function() {
+      card.classList.toggle('selected', cb.checked);
+    });
+  });
+  function selectedPlans() {
+    return Array.prototype.slice.call(document.querySelectorAll('.wz-plan-check:checked')).map(function(c){ return c.value; });
+  }
+  function setSelectedPlans(names) {
+    document.querySelectorAll('.wz-plan-check').forEach(function(c) {
+      var checked = names && names.includes(c.value);
+      c.checked = checked;
+      var card = c.closest('.cfg-plan-card');
+      if (card) card.classList.toggle('selected', checked);
+    });
+  }
+
+  /* ── wizard show/hide ── */
+  function showWizard(api) {
+    document.getElementById('cfg-apis-list').style.display = 'none';
+    document.getElementById('cfg-apis-wizard').style.display = 'flex';
+    currentStep = 0; specFile = null; docFiles = []; handleTouched = false;
+
+    if (api) {
+      /* edit mode */
+      editingId = api.apiId;
+      document.getElementById('cfg-wizard-title').textContent = 'Edit API';
+      sv('wz-name',       api.apiName);
+      sv('wz-handle',     api.apiHandle);   handleTouched = true;
+      sv('wz-version',    api.apiVersion);
+      sel('wz-type',      api.apiType);
+      sel('wz-status',    api.apiStatus);
+      sv('wz-provider',   api.provider || 'admin');
+      sv('wz-desc',       api.apiDescription);
+      sv('wz-tags',       api.tags);
+      sv('wz-prod',       api.productionUrl);
+      sv('wz-sandbox',    api.sandboxUrl);
+      agentVis = api.agentVisibility || 'Visible';
+      document.getElementById('wz-vis-visible').classList.toggle('active', agentVis !== 'Hidden');
+      document.getElementById('wz-vis-hidden').classList.toggle('active',  agentVis === 'Hidden');
+      setSelectedPlans((api.subscriptionPlans || []).map(function(p){ return typeof p === 'string' ? p : p.planName; }));
+    } else {
+      /* add mode */
+      editingId = null;
+      document.getElementById('cfg-wizard-title').textContent = 'Add API';
+      ['wz-name','wz-version','wz-handle','wz-provider','wz-desc','wz-tags','wz-prod','wz-sandbox','wz-tech-owner','wz-tech-email','wz-biz-owner','wz-biz-email'].forEach(function(id){ sv(id,''); });
+      sel('wz-type','REST'); sel('wz-status','CREATED');
+      agentVis = 'Visible';
+      document.getElementById('wz-vis-visible').classList.add('active');
+      document.getElementById('wz-vis-hidden').classList.remove('active');
+      setSelectedPlans([]);
+    }
+
+    document.getElementById('wz-spec-chip').classList.remove('visible');
+    document.getElementById('wz-docs-list').innerHTML = '';
+    document.getElementById('wz-docs-empty').style.display = 'block';
+    updateWizardStep(0);
+  }
+
+  function hideWizard() {
+    document.getElementById('cfg-apis-list').style.display = '';
+    document.getElementById('cfg-apis-wizard').style.display = 'none';
+    editingId = null;
+  }
+
+  /* ── step navigation ── */
+  function updateWizardStep(step) {
+    currentStep = step;
+    for (var i=0; i<4; i++) {
+      var p = document.getElementById('cfg-wstep-'+i);
+      if (p) p.style.display = i===step ? 'flex' : 'none';
+    }
+    var stepEls = document.querySelectorAll('#cfg-apis-wizard .cfg-step');
+    var connEls = document.querySelectorAll('#cfg-apis-wizard .cfg-step-connector');
+    stepEls.forEach(function(el,i) {
+      el.classList.remove('cfg-step--active','cfg-step--done');
+      var circ = el.querySelector('.cfg-step-circle');
+      if (i < step) { el.classList.add('cfg-step--done'); circ.innerHTML='<i class="bi bi-check" style="font-size:.75rem;line-height:1;"></i>'; }
+      else          { if(i===step) el.classList.add('cfg-step--active'); circ.textContent=String(i+1); }
+    });
+    connEls.forEach(function(el,i) { el.classList.toggle('cfg-step-connector--done', i < step); });
+    var backBtn = document.getElementById('cfg-wizard-back-step');
+    var nextBtn = document.getElementById('cfg-wizard-next');
+    backBtn.style.display = step > 0 ? 'inline-flex' : 'none';
+    if (step === 3) {
+      nextBtn.textContent = editingId ? 'Save changes' : 'Save API';
+      nextBtn.disabled = false;
+      nextBtn.title = '';
+      populateReview();
+    } else {
+      nextBtn.textContent = 'Continue';
+      nextBtn.disabled = false;
+      nextBtn.title = '';
+    }
+  }
+
+  function populateReview() {
+    function set(id,val) { var e=document.getElementById(id); if(e) e.textContent=val||'—'; }
+    set('rv-name',      v('wz-name'));
+    set('rv-handle',    v('wz-handle'));
+    set('rv-version',   v('wz-version'));
+    set('rv-type',      document.getElementById('wz-type') ? document.getElementById('wz-type').value : '—');
+    set('rv-status',    v('wz-status') === 'PUBLISHED' ? 'Published' : 'Created');
+    set('rv-provider',  v('wz-provider'));
+    set('rv-agentvis',  agentVis);
+    set('rv-prod',      v('wz-prod'));
+    set('rv-sandbox',   v('wz-sandbox'));
+    set('rv-tech-owner',v('wz-tech-owner'));
+    set('rv-biz-owner', v('wz-biz-owner'));
+    var pols = selectedPlans();
+    set('rv-plans',  pols.length ? pols.join(', ') : '—');
+    set('rv-desc',      v('wz-desc'));
+    set('rv-spec',      specFile ? specFile.name : 'No spec uploaded');
+    var docsEl = document.getElementById('rv-docs');
+    if (docsEl) docsEl.textContent = docFiles.length ? docFiles.length+' file(s): '+docFiles.map(function(f){return f.name;}).join(', ') : 'No documents added';
+  }
+
+  /* ── save API (create / update) ── */
+  async function saveApi() {
+    var name    = v('wz-name');
+    var version = v('wz-version');
+    if (!name || !version) { await showAlert('API name and version are required.', 'error'); return; }
+
+    var meta = {
+      apiInfo: {
+        apiName:        name,
+        apiVersion:     version,
+        apiHandle:      v('wz-handle') || undefined,
+        apiType:        document.getElementById('wz-type').value,
+        apiStatus:      document.getElementById('wz-status').value,
+        provider:       v('wz-provider') || undefined,
+        apiDescription: v('wz-desc') || undefined,
+        tags:           v('wz-tags') ? v('wz-tags').split(',').map(function(t){return t.trim();}).filter(Boolean) : [],
+        agentVisibility: agentVis,
+        owners: {
+          technicalOwner:      v('wz-tech-owner') || undefined,
+          technicalOwnerEmail: v('wz-tech-email') || undefined,
+          businessOwner:       v('wz-biz-owner') || undefined,
+          businessOwnerEmail:  v('wz-biz-email') || undefined,
+        }
+      },
+      endPoints: {
+        productionURL: v('wz-prod') || undefined,
+        sandboxURL:    v('wz-sandbox') || undefined,
+      },
+      subscriptionPlans: selectedPlans().map(function(n){ return { planName: n }; }),
+    };
+
+    var fd = new FormData();
+    fd.append('apiMetadata', JSON.stringify(meta));
+    if (specFile) fd.append('apiDefinition', specFile);
+    docFiles.forEach(function(f) { fd.append('docs', f); });
+
+    var url    = editingId
+      ? window.devportalApi.org(ORG_ID, '/apis/' + encodeURIComponent(editingId))
+      : window.devportalApi.org(ORG_ID, '/apis');
+    var method = editingId ? 'PUT' : 'POST';
+
+    try {
+      var res = await fetch(url, {
+        method: method,
+        headers: { 'X-CSRF-Token': window.devportalApi.csrfToken() },
+        body: fd,
+      });
+      if (res.ok) {
+        await showAlert(editingId ? 'API updated successfully.' : 'API created successfully.', 'success');
+        window.location.reload();
+      } else {
+        var err = await res.json().catch(function(){ return {}; });
+        await showAlert('Failed: ' + (err.description || err.message || res.statusText), 'error');
+      }
+    } catch(e) {
+      await showAlert('Error: ' + e.message, 'error');
+    }
+  }
+
+  /* ── delete ── */
+  var pendingDelId = null;
+  document.getElementById('cfg-del-api-cancel').addEventListener('click', function() {
+    document.getElementById('cfg-delete-api-modal').style.display = 'none';
+  });
+  document.getElementById('cfg-delete-api-modal').addEventListener('click', function(e) {
+    if (e.target===this) this.style.display='none';
+  });
+  document.getElementById('cfg-del-api-confirm').addEventListener('click', async function() {
+    if (!pendingDelId) return;
+    document.getElementById('cfg-delete-api-modal').style.display = 'none';
+    try {
+      var res = await fetch(window.devportalApi.org(ORG_ID, '/apis/'+encodeURIComponent(pendingDelId)), {
+        method: 'DELETE',
+        headers: { 'X-CSRF-Token': window.devportalApi.csrfToken() },
+      });
+      if (res.ok || res.status===204) {
+        await showAlert('API deleted.', 'success');
+        var row = document.getElementById('cfg-api-row-'+pendingDelId);
+        if (row) row.remove();
+        pendingDelId = null;
+      } else {
+        var err = await res.json().catch(function(){ return {}; });
+        await showAlert('Delete failed: ' + (err.description || err.message || res.statusText), 'error');
+      }
+    } catch(e) { await showAlert('Error: ' + e.message, 'error'); }
+  });
+
+  /* ── publish/unpublish ── */
+  async function setApiStatus(apiId, apiName, newStatus) {
+    /* fetch current metadata, patch status, PUT back */
+    try {
+      var res = await fetch(window.devportalApi.org(ORG_ID, '/apis/'+encodeURIComponent(apiId)), {
+        headers: { 'Content-Type':'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() }
+      });
+      if (!res.ok) throw new Error(res.statusText);
+      var apiData = await res.json();
+      /* rebuild minimal meta with new status */
+      var meta = {
+        apiInfo: Object.assign({}, apiData.apiInfo || {}, { apiStatus: newStatus }),
+        endPoints: apiData.endPoints || {},
+        subscriptionPlans: apiData.subscriptionPlans || [],
+      };
+      var fd = new FormData();
+      fd.append('apiMetadata', JSON.stringify(meta));
+      var putRes = await fetch(window.devportalApi.org(ORG_ID, '/apis/'+encodeURIComponent(apiId)), {
+        method: 'PUT',
+        headers: { 'X-CSRF-Token': window.devportalApi.csrfToken() },
+        body: fd,
+      });
+      if (putRes.ok) {
+        await showAlert(newStatus === 'PUBLISHED' ? apiName+' published.' : apiName+' unpublished.', 'success');
+        window.location.reload();
+      } else {
+        var e2 = await putRes.json().catch(function(){ return {}; });
+        await showAlert('Failed: '+(e2.description||e2.message||putRes.statusText), 'error');
+      }
+    } catch(e) { await showAlert('Error: '+e.message, 'error'); }
+  }
+
+  /* ── load API data from pre-built map ── */
+  function apiDataFromRow(id) { return apiMap[id] || null; }
+
+  /* ── event delegation for table actions ── */
+  document.addEventListener('click', function(e) {
+    /* open dropdown */
+    if (e.target.closest('.cfg-menu-trigger')) {
+      e.stopPropagation();
+      var t  = e.target.closest('.cfg-menu-trigger');
+      var dd = t.parentElement.querySelector('.cfg-dropdown');
+      var open = dd.style.display === 'flex';
+      document.querySelectorAll('.cfg-dropdown').forEach(function(d){ d.style.display='none'; });
+      if (!open) dd.style.display = 'flex';
+      return;
+    }
+    if (!e.target.closest('.cfg-dropdown')) {
+      document.querySelectorAll('.cfg-dropdown').forEach(function(d){ d.style.display='none'; });
+    }
+
+    /* view details */
+    if (e.target.closest('.cfg-view-trigger')) {
+      var btn = e.target.closest('.cfg-view-trigger');
+      document.querySelectorAll('.cfg-dropdown').forEach(function(d){ d.style.display='none'; });
+      openDrawer(apiDataFromRow(btn.dataset.id));
+      return;
+    }
+
+    /* edit */
+    if (e.target.closest('.cfg-edit-trigger')) {
+      var btn = e.target.closest('.cfg-edit-trigger');
+      document.querySelectorAll('.cfg-dropdown').forEach(function(d){ d.style.display='none'; });
+      var api = apiDataFromRow(btn.dataset.id);
+      if (api) showWizard(api);
+      return;
+    }
+
+    /* publish */
+    if (e.target.closest('.cfg-publish-trigger')) {
+      var btn = e.target.closest('.cfg-publish-trigger');
+      document.querySelectorAll('.cfg-dropdown').forEach(function(d){ d.style.display='none'; });
+      setApiStatus(btn.dataset.id, btn.dataset.name, 'PUBLISHED');
+      return;
+    }
+
+    /* unpublish */
+    if (e.target.closest('.cfg-unpublish-trigger')) {
+      var btn = e.target.closest('.cfg-unpublish-trigger');
+      document.querySelectorAll('.cfg-dropdown').forEach(function(d){ d.style.display='none'; });
+      setApiStatus(btn.dataset.id, btn.dataset.name, 'CREATED');
+      return;
+    }
+
+    /* delete */
+    if (e.target.closest('.cfg-delete-trigger')) {
+      var btn = e.target.closest('.cfg-delete-trigger');
+      e.stopPropagation();
+      document.querySelectorAll('.cfg-dropdown').forEach(function(d){ d.style.display='none'; });
+      pendingDelId = btn.dataset.id;
+      document.getElementById('cfg-del-api-name-txt').textContent = btn.dataset.name;
+      document.getElementById('cfg-delete-api-modal').style.display = 'flex';
+      return;
+    }
+  });
+
+  /* ── Add API btn ── */
+  document.getElementById('cfg-add-api-btn').addEventListener('click', function() { showWizard(null); });
+  document.getElementById('cfg-wizard-back-link').addEventListener('click', function(e) { e.preventDefault(); hideWizard(); });
+  document.getElementById('cfg-wizard-cancel').addEventListener('click', function() { hideWizard(); });
+  document.getElementById('cfg-wizard-back-step').addEventListener('click', function() { if(currentStep>0) updateWizardStep(currentStep-1); });
+  document.getElementById('cfg-wizard-next').addEventListener('click', async function() {
+    if (currentStep < 3) { updateWizardStep(currentStep+1); }
+    else                 { await saveApi(); }
+  });
+
+  document.querySelectorAll('#cfg-apis-wizard .cfg-step').forEach(function(el) {
+    el.addEventListener('click', function() {
+      var s = parseInt(el.getAttribute('data-step'),10);
+      if (s < currentStep) updateWizardStep(s);
+    });
+  });
+  document.querySelectorAll('.cfg-review-edit').forEach(function(btn) {
+    btn.addEventListener('click', function() { updateWizardStep(parseInt(btn.getAttribute('data-goto'),10)); });
+  });
+
+  /* ── Spec ── */
+  document.getElementById('wz-spec-input').addEventListener('change', function(e) {
+    var f = e.target.files && e.target.files[0];
+    if (!f) return;
+    specFile = f;
+    document.getElementById('wz-spec-name').textContent = f.name;
+    document.getElementById('wz-spec-chip').classList.add('visible');
+  });
+  document.getElementById('wz-spec-remove').addEventListener('click', function() {
+    specFile = null;
+    document.getElementById('wz-spec-input').value = '';
+    document.getElementById('wz-spec-chip').classList.remove('visible');
+  });
+
+  /* ── Docs ── */
+  document.getElementById('wz-docs-input').addEventListener('change', function(e) {
+    Array.prototype.slice.call(e.target.files||[]).forEach(function(f) {
+      if (!docFiles.find(function(x){ return x.name===f.name; })) {
+        docFiles.push(f);
+        appendDocItem(f);
+      }
+    });
+    document.getElementById('wz-docs-empty').style.display = docFiles.length ? 'none' : 'block';
+    e.target.value = '';
+  });
+  function appendDocItem(f) {
+    var list = document.getElementById('wz-docs-list');
+    var item = document.createElement('div');
+    item.className = 'cfg-docs-item';
+    item.innerHTML = '<span class="cfg-docs-icon"><i class="bi bi-file-text"></i></span>' +
+      '<span class="cfg-docs-name">'+esc(f.name)+'</span>' +
+      '<button type="button" class="cfg-docs-remove" title="Remove"><i class="bi bi-trash"></i></button>';
+    item.querySelector('.cfg-docs-remove').addEventListener('click', function() {
+      docFiles = docFiles.filter(function(x){ return x.name!==f.name; });
+      item.remove();
+      document.getElementById('wz-docs-empty').style.display = docFiles.length ? 'none' : 'block';
+    });
+    list.appendChild(item);
+  }
+
+  /* ── API Detail Drawer ── */
+  function openDrawer(api) {
+    if (!api) return;
+    var ti = typeInfo(api.apiType);
+    var av = document.getElementById('drw-avatar');
+    av.className = 'cfg-drawer-avatar ' + ti.av;
+    av.textContent = initials(api.apiName).toUpperCase();
+    document.getElementById('drw-name').textContent   = api.apiName;
+    document.getElementById('drw-handle').textContent = '/' + api.apiHandle;
+    var metaRow = document.getElementById('drw-meta-row');
+    var statusClass = api.apiStatus === 'PUBLISHED' ? 'cfg-status-badge cfg-status-published' : 'cfg-status-badge cfg-status-created';
+    var statusLabel = api.apiStatus === 'PUBLISHED' ? '<span class="cfg-status-dot"></span>Published' : '<span class="cfg-status-dot"></span>Created';
+    metaRow.innerHTML =
+      '<span class="cfg-type-badge '+ti.tb+'">'+esc(ti.label)+'</span>' +
+      '<span class="'+statusClass+'">'+statusLabel+'</span>';
+    document.getElementById('drw-desc').textContent = api.apiDescription || '';
+    var grid = document.getElementById('drw-grid');
+    function row(lbl, val, mono) {
+      return '<span class="cfg-drawer-lbl">'+esc(lbl)+'</span><span class="cfg-drawer-val'+(mono?' cfg-drawer-val--mono':'')+'">'+esc(val||'—')+'</span>';
+    }
+    grid.innerHTML = [
+      row('Version', api.apiVersion),
+      row('Provider', api.provider),
+      row('Agent visibility', api.agentVisibility),
+      row('Production URL', api.productionUrl, true),
+      row('Sandbox URL', api.sandboxUrl, true),
+      row('Tags', api.tags),
+      row('Plans', (api.subscriptionPlans||[]).map(function(p){ return typeof p === 'string' ? p : p.planName; }).join(', ')),
+    ].join('');
+    document.getElementById('cfg-drawer-edit-btn').onclick = function() {
+      document.getElementById('cfg-detail-drawer').classList.remove('open');
+      showWizard(api);
+    };
+    document.getElementById('cfg-detail-drawer').classList.add('open');
+  }
+  document.getElementById('cfg-drawer-close').addEventListener('click', function() {
+    document.getElementById('cfg-detail-drawer').classList.remove('open');
+  });
+  document.getElementById('cfg-drawer-close-foot').addEventListener('click', function() {
+    document.getElementById('cfg-detail-drawer').classList.remove('open');
+  });
+  document.getElementById('cfg-detail-drawer').addEventListener('click', function(e) {
+    if (e.target === this) this.classList.remove('open');
+  });
+}());
+</script>
+
+<!-- ══ Manage Labels JS ══ -->
+<script>
+(function () {
+  var ORG_ID = '{{orgID}}';
+  var editLabelName = null;
+
+  function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  function v(id) { var e=document.getElementById(id); return e?e.value.trim():''; }
+
+  /* ── open modal ── */
+  function openLabelModal(mode, data) {
+    editLabelName = mode === 'edit' ? data.name : null;
+    document.getElementById('cfg-label-modal-title').textContent = mode === 'edit' ? 'Edit label' : 'Add label';
+    document.getElementById('cfg-label-modal-save').textContent  = mode === 'edit' ? 'Save changes' : 'Add label';
+    document.getElementById('lbl-display').value = mode === 'edit' ? data.displayName : '';
+    document.getElementById('lbl-name').value    = mode === 'edit' ? data.name        : '';
+    document.getElementById('cfg-label-modal').style.display = 'flex';
+    document.getElementById('lbl-display').focus();
+  }
+  function closeLabelModal() { document.getElementById('cfg-label-modal').style.display = 'none'; editLabelName = null; }
+
+  /* ── auto-slug display → name ── */
+  document.getElementById('lbl-display').addEventListener('input', function() {
+    if (editLabelName) return;
+    document.getElementById('lbl-name').value = this.value.toLowerCase().trim().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
+  });
+
+  /* ── save label ── */
+  document.getElementById('cfg-label-modal-save').addEventListener('click', async function() {
+    var displayName = v('lbl-display');
+    var name        = v('lbl-name');
+    if (!displayName || !name) { await showAlert('Display name and name are required.', 'error'); return; }
+
+    try {
+      if (editLabelName && editLabelName !== name) {
+        /* name changed — delete old first */
+        await fetch(window.devportalApi.org(ORG_ID, '/labels?names='+encodeURIComponent(editLabelName)), {
+          method: 'DELETE',
+          headers: { 'X-CSRF-Token': window.devportalApi.csrfToken() },
+        });
+      }
+      var res = await fetch(window.devportalApi.org(ORG_ID, '/labels'), {
+        method: 'PUT',
+        headers: { 'Content-Type':'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() },
+        body: JSON.stringify([{ name: name, displayName: displayName }]),
+      });
+      if (res.ok) {
+        await showAlert(editLabelName ? 'Label updated.' : 'Label created.', 'success');
+        window.location.reload();
+      } else {
+        var err = await res.json().catch(function(){ return {}; });
+        await showAlert('Failed: '+(err.description||err.message||res.statusText), 'error');
+      }
+    } catch(e) { await showAlert('Error: '+e.message, 'error'); }
+  });
+
+  document.getElementById('cfg-label-modal-close').addEventListener('click', closeLabelModal);
+  document.getElementById('cfg-label-modal-cancel').addEventListener('click', closeLabelModal);
+  document.getElementById('cfg-label-modal').addEventListener('click', function(e){ if(e.target===this) closeLabelModal(); });
+
+  /* ── Add btn ── */
+  document.getElementById('cfg-add-label-btn').addEventListener('click', function() { openLabelModal('add'); });
+
+  /* ── Edit / Delete via event delegation ── */
+  var pendingDelName = null;
+  document.addEventListener('click', function(e) {
+    if (e.target.closest('.cfg-label-edit-btn')) {
+      var btn = e.target.closest('.cfg-label-edit-btn');
+      openLabelModal('edit', { name: btn.dataset.name, displayName: btn.dataset.display });
+      return;
+    }
+    if (e.target.closest('.cfg-label-delete-btn')) {
+      var btn = e.target.closest('.cfg-label-delete-btn');
+      pendingDelName = btn.dataset.name;
+      document.getElementById('cfg-del-label-name-txt').textContent = btn.dataset.display || btn.dataset.name;
+      document.getElementById('cfg-delete-label-modal').style.display = 'flex';
+      return;
+    }
+  });
+
+  document.getElementById('cfg-del-label-cancel').addEventListener('click', function() {
+    document.getElementById('cfg-delete-label-modal').style.display = 'none';
+  });
+  document.getElementById('cfg-delete-label-modal').addEventListener('click', function(e){ if(e.target===this) this.style.display='none'; });
+  document.getElementById('cfg-del-label-confirm').addEventListener('click', async function() {
+    if (!pendingDelName) return;
+    document.getElementById('cfg-delete-label-modal').style.display = 'none';
+    try {
+      var res = await fetch(window.devportalApi.org(ORG_ID, '/labels?names='+encodeURIComponent(pendingDelName)), {
+        method: 'DELETE',
+        headers: { 'X-CSRF-Token': window.devportalApi.csrfToken() },
+      });
+      if (res.ok || res.status===204) {
+        await showAlert('Label deleted.', 'success');
+        window.location.reload();
+      } else {
+        var err = await res.json().catch(function(){ return {}; });
+        await showAlert('Delete failed: '+(err.description||err.message||res.statusText), 'error');
+      }
+    } catch(e) { await showAlert('Error: '+e.message, 'error'); }
+    pendingDelName = null;
+  });
+}());
+</script>
+
+<!-- ══ Subscription Plans JS ══ -->
+<script>
+(function () {
+  var ORG_ID = '{{orgID}}';
+  var editPlanId = null;
+
+  function v(id) { var e=document.getElementById(id); return e?e.value.trim():''; }
+
+  /* type label sync */
+  document.getElementById('pol-type').addEventListener('change', function() {
+    document.getElementById('pol-count-label').textContent = this.value === 'eventcount' ? 'Event count' : 'Request count';
+  });
+
+  /* open modal */
+  function openPlanModal(mode, data) {
+    editPlanId = mode === 'edit' ? data.planId : null;
+    document.getElementById('cfg-plan-modal-title').textContent = mode === 'edit' ? 'Edit subscription plan' : 'Add subscription plan';
+    document.getElementById('cfg-plan-modal-save').textContent  = mode === 'edit' ? 'Save changes' : 'Add plan';
+    document.getElementById('pol-display').value = mode === 'edit' ? (data.displayName||'') : '';
+    document.getElementById('pol-name').value    = mode === 'edit' ? (data.planName||'')  : '';
+    document.getElementById('pol-desc').value    = mode === 'edit' ? (data.description||'') : '';
+    document.getElementById('pol-count').value   = mode === 'edit' ? (data.requestCount||'') : '';
+    document.getElementById('pol-refid').value   = mode === 'edit' ? (data.refId||'')        : '';
+    var isEvent = mode === 'edit' && data.refId;
+    document.getElementById('pol-type').value = isEvent ? 'eventcount' : 'requestcount';
+    document.getElementById('pol-count-label').textContent = isEvent ? 'Event count' : 'Request count';
+    document.getElementById('cfg-plan-modal').style.display = 'flex';
+    document.getElementById('pol-display').focus();
+  }
+  function closePlanModal() { document.getElementById('cfg-plan-modal').style.display='none'; editPlanId=null; }
+
+  /* save */
+  document.getElementById('cfg-plan-modal-save').addEventListener('click', async function() {
+    var displayName = v('pol-display');
+    var planName  = v('pol-name');
+    if (!displayName || !planName) { await showAlert('Display name and name are required.', 'error'); return; }
+
+    var body = {
+      displayName:  displayName,
+      planName:   planName,
+      description:  v('pol-desc') || undefined,
+      type:         document.getElementById('pol-type').value,
+      requestCount: parseInt(v('pol-count'),10) || undefined,
+      refId:        v('pol-refid') || undefined,
+    };
+    if (editPlanId) body.planId = editPlanId;
+
+    try {
+      var method = editPlanId ? 'PUT' : 'POST';
+      var res = await fetch(window.devportalApi.org(ORG_ID, '/subscription-plans'), {
+        method: method,
+        headers: { 'Content-Type':'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() },
+        body: JSON.stringify(body),
+      });
+      if (res.ok) {
+        await showAlert(editPlanId ? 'Plan updated.' : 'Plan created.', 'success');
+        window.location.reload();
+      } else {
+        var err = await res.json().catch(function(){ return {}; });
+        await showAlert('Failed: '+(err.description||err.message||res.statusText), 'error');
+      }
+    } catch(e) { await showAlert('Error: '+e.message, 'error'); }
+  });
+
+  document.getElementById('cfg-plan-modal-close').addEventListener('click', closePlanModal);
+  document.getElementById('cfg-plan-modal-cancel').addEventListener('click', closePlanModal);
+  document.getElementById('cfg-plan-modal').addEventListener('click', function(e){ if(e.target===this) closePlanModal(); });
+
+  document.getElementById('cfg-add-plan-btn').addEventListener('click', function() { openPlanModal('add'); });
+
+  /* edit / delete delegation */
+  var pendingDelPlanId = null;
+  document.addEventListener('click', function(e) {
+    if (e.target.closest('.cfg-plan-edit-btn')) {
+      var btn = e.target.closest('.cfg-plan-edit-btn');
+      openPlanModal('edit', {
+        planId:    btn.dataset.id,
+        planName:  btn.dataset.name,
+        displayName: btn.dataset.display,
+        description: btn.dataset.desc,
+        requestCount:btn.dataset.count,
+        refId:       btn.dataset.refid,
+      });
+      return;
+    }
+    if (e.target.closest('.cfg-plan-delete-btn')) {
+      var btn = e.target.closest('.cfg-plan-delete-btn');
+      pendingDelPlanId = btn.dataset.id;
+      document.getElementById('cfg-del-plan-name-txt').textContent = btn.dataset.display || btn.dataset.name;
+      document.getElementById('cfg-delete-plan-modal').style.display = 'flex';
+      return;
+    }
+  });
+
+  document.getElementById('cfg-del-plan-cancel').addEventListener('click', function() {
+    document.getElementById('cfg-delete-plan-modal').style.display = 'none';
+  });
+  document.getElementById('cfg-delete-plan-modal').addEventListener('click', function(e){ if(e.target===this) this.style.display='none'; });
+  document.getElementById('cfg-del-plan-confirm').addEventListener('click', async function() {
+    if (!pendingDelPlanId) return;
+    document.getElementById('cfg-delete-plan-modal').style.display = 'none';
+    try {
+      var res = await fetch(window.devportalApi.org(ORG_ID, '/subscription-plans/'+encodeURIComponent(pendingDelPlanId)), {
+        method: 'DELETE',
+        headers: { 'X-CSRF-Token': window.devportalApi.csrfToken() },
+      });
+      if (res.ok || res.status===204) {
+        await showAlert('Plan deleted.', 'success');
+        window.location.reload();
+      } else {
+        var err = await res.json().catch(function(){ return {}; });
+        await showAlert('Delete failed: '+(err.description||err.message||res.statusText), 'error');
+      }
+    } catch(e) { await showAlert('Error: '+e.message, 'error'); }
+    pendingDelPlanId = null;
+  });
+}());
+</script>
+
+<!-- ══ Webhooks JS ══ -->
+<script>
+(function () {
+  var ORG_ID = '{{orgID}}';
+  var editWebhookId = null;
+
+  function v(id) { var e=document.getElementById(id); return e?e.value.trim():''; }
+
+  /* build id→webhook lookup from server-rendered data blob */
+  var webhookMap = {};
+  (function() {
+    try {
+      var el = document.getElementById('cfg-webhooks-data');
+      if (el) {
+        var list = JSON.parse(el.textContent || '[]');
+        list.forEach(function(wh) { webhookMap[wh.id] = wh; });
+      }
+    } catch(e) {}
+  }());
+
+  /* ── all events / select events segmented control ── */
+  var allEventsBtn = document.getElementById('wh-events-all-btn');
+  var selectEventsBtn = document.getElementById('wh-events-select-btn');
+
+  function setEventsMode(allEvents) {
+    allEventsBtn.classList.toggle('active', allEvents);
+    selectEventsBtn.classList.toggle('active', !allEvents);
+    document.getElementById('wh-event-list').style.display = allEvents ? 'none' : 'flex';
+  }
+  allEventsBtn.addEventListener('click', function() { setEventsMode(true); });
+  selectEventsBtn.addEventListener('click', function() { setEventsMode(false); });
+
+  function selectedEvents() {
+    if (allEventsBtn.classList.contains('active')) return [];
+    return Array.prototype.slice.call(document.querySelectorAll('.wh-event-check:checked')).map(function(c){ return c.value; });
+  }
+  function setSelectedEvents(events) {
+    document.querySelectorAll('.wh-event-check').forEach(function(c) { c.checked = false; });
+    var everything = !events || events.length === 0;
+    setEventsMode(everything);
+    if (!everything) {
+      events.forEach(function(name) {
+        var cb = document.querySelector('.wh-event-check[value="'+name+'"]');
+        if (cb) cb.checked = true;
+      });
+    }
+  }
+
+  /* ── open modal ── */
+  function openWebhookModal(mode, data) {
+    editWebhookId = mode === 'edit' ? data.id : null;
+    document.getElementById('cfg-webhook-modal-title').textContent = mode === 'edit' ? 'Edit webhook' : 'Add webhook';
+    document.getElementById('cfg-webhook-modal-save').textContent  = mode === 'edit' ? 'Save changes' : 'Add webhook';
+    document.getElementById('wh-name').value      = mode === 'edit' ? (data.name || '')      : '';
+    document.getElementById('wh-url').value       = mode === 'edit' ? (data.url || '')       : '';
+    document.getElementById('wh-secret').value    = '';
+    document.getElementById('wh-publickey').value = '';
+    document.getElementById('wh-timeout').value   = mode === 'edit' ? (data.timeoutMs || 5000) : 5000;
+    document.getElementById('wh-enabled').checked = mode === 'edit' ? !!data.enabled : true;
+    document.getElementById('wh-secret-hint').style.display    = mode === 'edit' && data.hasSecret ? 'block' : 'none';
+    document.getElementById('wh-publickey-hint').style.display = mode === 'edit' && data.hasPublicKey ? 'block' : 'none';
+    setSelectedEvents(mode === 'edit' ? data.events : []);
+    document.getElementById('cfg-webhook-modal').style.display = 'flex';
+    document.getElementById('wh-name').focus();
+  }
+  function closeWebhookModal() { document.getElementById('cfg-webhook-modal').style.display = 'none'; editWebhookId = null; }
+
+  /* ── save ── */
+  document.getElementById('cfg-webhook-modal-save').addEventListener('click', async function() {
+    var name = v('wh-name');
+    var url  = v('wh-url');
+    if (!name || !url) { await showAlert('Name and target URL are required.', 'error'); return; }
+
+    var parsedUrl;
+    try { parsedUrl = new URL(url); } catch (e) { parsedUrl = null; }
+    if (!parsedUrl || (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:')) {
+      await showAlert('Target URL must be a valid http:// or https:// URL.', 'error');
+      return;
+    }
+
+    var timeoutRaw = v('wh-timeout');
+    var timeoutMs = parseInt(timeoutRaw, 10);
+    if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+      await showAlert('Timeout (ms) must be a positive number.', 'error');
+      return;
+    }
+
+    var events = selectedEvents();
+    if (!allEventsBtn.classList.contains('active') && events.length === 0) {
+      await showAlert('Select at least one event, or choose "All events".', 'error');
+      return;
+    }
+
+    var body = {
+      name: name,
+      url: url,
+      events: events,
+      enabled: document.getElementById('wh-enabled').checked,
+      timeoutMs: timeoutMs,
+    };
+    var secret = v('wh-secret');
+    if (secret) body.secret = secret;
+    var publicKey = v('wh-publickey');
+    if (publicKey) body.publicKey = publicKey;
+
+    var url2   = editWebhookId
+      ? window.devportalApi.org(ORG_ID, '/webhook-subscribers/' + encodeURIComponent(editWebhookId))
+      : window.devportalApi.org(ORG_ID, '/webhook-subscribers');
+    var method = editWebhookId ? 'PUT' : 'POST';
+
+    try {
+      var res = await fetch(url2, {
+        method: method,
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() },
+        body: JSON.stringify(body),
+      });
+      if (res.ok) {
+        await showAlert(editWebhookId ? 'Webhook updated.' : 'Webhook created.', 'success');
+        window.location.reload();
+      } else {
+        var err = await res.json().catch(function(){ return {}; });
+        await showAlert('Failed: ' + (err.error || err.description || err.message || res.statusText), 'error');
+      }
+    } catch(e) { await showAlert('Error: ' + e.message, 'error'); }
+  });
+
+  document.getElementById('cfg-webhook-modal-close').addEventListener('click', closeWebhookModal);
+  document.getElementById('cfg-webhook-modal-cancel').addEventListener('click', closeWebhookModal);
+  document.getElementById('cfg-webhook-modal').addEventListener('click', function(e){ if(e.target===this) closeWebhookModal(); });
+
+  document.getElementById('cfg-add-webhook-btn').addEventListener('click', function() { openWebhookModal('add'); });
+
+  /* ── edit / delete via event delegation ── */
+  var pendingDelWebhookId = null;
+  document.addEventListener('click', function(e) {
+    if (e.target.closest('.cfg-webhook-edit-btn')) {
+      var btn = e.target.closest('.cfg-webhook-edit-btn');
+      var data = webhookMap[btn.dataset.id];
+      if (data) openWebhookModal('edit', data);
+      return;
+    }
+    if (e.target.closest('.cfg-webhook-delete-btn')) {
+      var btn = e.target.closest('.cfg-webhook-delete-btn');
+      pendingDelWebhookId = btn.dataset.id;
+      document.getElementById('cfg-del-webhook-name-txt').textContent = btn.dataset.name;
+      document.getElementById('cfg-delete-webhook-modal').style.display = 'flex';
+      return;
+    }
+  });
+
+  document.getElementById('cfg-del-webhook-cancel').addEventListener('click', function() {
+    document.getElementById('cfg-delete-webhook-modal').style.display = 'none';
+  });
+  document.getElementById('cfg-delete-webhook-modal').addEventListener('click', function(e){ if(e.target===this) this.style.display='none'; });
+  document.getElementById('cfg-del-webhook-confirm').addEventListener('click', async function() {
+    if (!pendingDelWebhookId) return;
+    document.getElementById('cfg-delete-webhook-modal').style.display = 'none';
+    try {
+      var res = await fetch(window.devportalApi.org(ORG_ID, '/webhook-subscribers/' + encodeURIComponent(pendingDelWebhookId)), {
+        method: 'DELETE',
+        headers: { 'X-CSRF-Token': window.devportalApi.csrfToken() },
+      });
+      if (res.ok || res.status === 204) {
+        await showAlert('Webhook deleted.', 'success');
+        window.location.reload();
+      } else {
+        var err = await res.json().catch(function(){ return {}; });
+        await showAlert('Delete failed: ' + (err.error || err.description || err.message || res.statusText), 'error');
+      }
+    } catch(e) { await showAlert('Error: ' + e.message, 'error'); }
+    pendingDelWebhookId = null;
+  });
+}());
+</script>

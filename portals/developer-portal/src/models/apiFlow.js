@@ -16,7 +16,7 @@
  * under the License.
  */
 const { Sequelize, DataTypes } = require('sequelize');
-const sequelize = require('../db/sequelize');
+const sequelize = require('../db/sequelizeConfig');
 const { Organization } = require('./organization');
 
 const APIFlow = sequelize.define('DP_API_FLOW', {
@@ -98,7 +98,7 @@ const APIFlow = sequelize.define('DP_API_FLOW', {
 APIFlow.belongsTo(Organization, { foreignKey: 'ORG_ID' });
 Organization.hasMany(APIFlow, { foreignKey: 'ORG_ID', onDelete: 'CASCADE' });
 
-const View = require('./views');
+const View = require('./view');
 APIFlow.belongsTo(View, { foreignKey: 'VIEW_ID' });
 View.hasMany(APIFlow, { foreignKey: 'VIEW_ID', onDelete: 'CASCADE' });
 

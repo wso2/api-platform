@@ -75,7 +75,7 @@ try {
 // 2. Inject into the module cache so all model files receive our
 //    dialect-specific instance instead of the config-driven singleton.
 // ------------------------------------------------------------------
-const seqCachePath = require.resolve('../src/db/sequelize');
+const seqCachePath = require.resolve('../src/db/sequelizeConfig');
 require.cache[seqCachePath] = {
     id: seqCachePath, filename: seqCachePath, loaded: true, exports: seq,
 };

@@ -1,56 +1,207 @@
 <!DOCTYPE html>
-<html>
-
+<html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <title>DevPortal</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <link rel="icon"
-        href="https://raw.githubusercontent.com/wso2/docs-bijira/refs/heads/main/en/devportal-theming/favicon.ico"
-        type="image/x-icon">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://getbootstrap.com/docs/5.3/assets/css/docs.css" rel="stylesheet">
-    <link rel="stylesheet" href="/styles/main.css">
-    <script src='https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js'></script>
-    <script src='/technical-scripts/common.js' defer></script>
+  <meta charset="UTF-8">
+  <title>Developer Portal — Select Organization</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="/images/favicon.ico" type="image/x-icon">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+  <link rel="stylesheet" href="/styles/os.css">
 </head>
+<body>
 
-<body style="background-color: var(--primary-lightest-color);"
-    class="min-vh-100 d-flex flex-column align-items-start justify-content-center p-3">
-    <div class="default-container">
-        <div class="left-side">
-            <div class="default-logo-container">
-                <div class="default-logo">
-                    <img src="/images/devportalLogo.png" alt="Logo" class="img-fluid align-items-start me-2"
-                        style="width: 40%;" />
-                </div>
-            </div>
-        </div>
-        <div class="default-card">
-            <div class="default-card-content">
-                <div class="default-form-group">
-                    <label class="default-form-label">Organization Name</label>
-                    <input type="text" id="organization-name" class="default-form-input"
-                        placeholder="Enter your organization name" required>
-                </div>
-                <button onclick="getOrgName()" class="common-btn-primary w-100">Continue</button>
-            </div>
-        </div>
+<div class="os-root">
+
+  <!-- ── LEFT: brand panel ─────────────────────────────────── -->
+  <div class="os-brand">
+    <!-- Logo -->
+    <div class="os-logo-row">
+      <svg class="os-logo-svg" viewBox="0 0 1012 200" fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="Developer Portal" role="img">
+        <path d="M115.541 148.951C115.541 148.951 115.332 148.951 115.227 148.951C112.768 148.794 110.727 147.12 110.099 144.767L91.6796 77.352L82.2604 108.784C81.5278 111.19 79.33 112.811 76.8182 112.811H41.4964C38.3567 112.811 35.7926 110.249 35.7926 107.111C35.7926 103.973 38.3567 101.41 41.4964 101.41H72.5796L86.499 54.9675C87.2316 52.5617 89.4294 50.9404 91.9412 50.9404C91.9412 50.9404 91.9412 50.9404 91.9936 50.9404C94.5053 50.9404 96.7555 52.6663 97.3834 55.1244L116.588 125.52L124.908 105.019C125.798 102.874 127.839 101.462 130.193 101.462H158.451C161.591 101.462 164.155 104.025 164.155 107.163C164.155 110.301 161.591 112.864 158.451 112.864H134.013L120.827 145.447C119.937 147.591 117.844 149.003 115.541 149.003V148.951Z" fill="white"/>
+        <path d="M100 199.891C44.8456 199.891 0 155.07 0 99.9455C0 44.8212 44.8456 0 100 0C155.154 0 200 44.8212 200 99.9455C200 155.07 155.154 199.891 100 199.891ZM100 11.3491C51.1251 11.3491 11.4076 51.0972 11.4076 99.8932C11.4076 148.689 51.1774 188.437 100 188.437C148.823 188.437 188.592 148.689 188.592 99.8932C188.592 51.0972 148.823 11.3491 100 11.3491Z" fill="white"/>
+        <path d="M273.078 60.2266V60.2734C282.969 60.2734 290.891 63.4141 296.797 69.6484C302.703 75.8828 305.656 83.9453 305.656 93.8359C305.656 103.68 302.703 111.742 296.844 118.023C290.984 124.305 283.062 127.445 273.078 127.445H245.703V60.2266H273.078ZM272.891 118.07V118.164C279.734 118.164 285.172 115.867 289.203 111.32C293.234 106.773 295.25 100.914 295.25 93.7422C295.25 86.7109 293.234 80.9453 289.203 76.4453C285.172 71.9453 279.734 69.6953 272.891 69.6953H256.109V118.07H272.891ZM338.984 128.711L339.078 128.805C331.438 128.805 325.25 126.461 320.469 121.773C315.688 117.086 313.297 110.945 313.297 103.398C313.297 96.1328 315.594 90.0859 320.188 85.2578C324.781 80.4297 330.781 77.9922 338.141 77.9922C345.781 77.9922 351.781 80.2891 356.188 84.9297C360.594 89.5703 362.797 95.3828 362.797 102.414C362.797 103.633 362.703 104.992 362.469 106.445H323.234C323.562 110.523 325.109 113.805 327.922 116.289C330.734 118.773 334.531 120.039 339.266 120.039C345.922 120.039 350.516 117.461 353 112.258L362.188 114.977C360.453 118.773 357.594 122.008 353.609 124.68C349.625 127.352 344.75 128.711 338.984 128.711ZM323.234 99.7891H352.906C352.578 95.9453 351.125 92.8047 348.547 90.3672C345.969 87.9297 342.5 86.7109 338.188 86.7109C334.016 86.7109 330.594 87.9766 327.875 90.5078C325.156 93.0391 323.609 96.1328 323.234 99.7891ZM405.828 79.1641H416.75L396.312 127.445H385.109L364.625 79.1641H375.594L390.641 116.523L405.828 79.1641ZM445.109 128.711L445.203 128.805C437.562 128.805 431.375 126.461 426.594 121.773C421.812 117.086 419.422 110.945 419.422 103.398C419.422 96.1328 421.719 90.0859 426.312 85.2578C430.906 80.4297 436.906 77.9922 444.266 77.9922C451.906 77.9922 457.906 80.2891 462.312 84.9297C466.719 89.5703 468.922 95.3828 468.922 102.414C468.922 103.633 468.828 104.992 468.594 106.445H429.359C429.688 110.523 431.234 113.805 434.047 116.289C436.859 118.773 440.656 120.039 445.391 120.039C452.047 120.039 456.641 117.461 459.125 112.258L468.312 114.977C466.578 118.773 463.719 122.008 459.734 124.68C455.75 127.352 450.875 128.711 445.109 128.711ZM429.359 99.7891H459.031C458.703 95.9453 457.25 92.8047 454.672 90.3672C452.094 87.9297 448.625 86.7109 444.312 86.7109C440.141 86.7109 436.719 87.9766 434 90.5078C431.281 93.0391 429.734 96.1328 429.359 99.7891ZM479.141 127.445V57.3672H489.219V127.445H479.141ZM525.312 128.711H525.266C517.906 128.711 511.812 126.273 506.938 121.445C502.062 116.617 499.625 110.57 499.625 103.305C499.625 96.0859 502.062 90.0391 506.938 85.2109C511.812 80.3828 517.906 77.9453 525.266 77.9453C532.625 77.9453 538.766 80.3359 543.641 85.1641C548.516 89.9922 550.953 96.0391 550.953 103.305C550.953 110.57 548.516 116.617 543.641 121.445C538.766 126.273 532.672 128.711 525.312 128.711ZM525.266 119.57C529.859 119.57 533.656 118.023 536.656 114.93C539.656 111.836 541.156 107.992 541.156 103.398C541.156 98.7109 539.656 94.8203 536.656 91.7266C533.656 88.6328 529.859 87.0859 525.266 87.0859C520.672 87.0859 516.875 88.6328 513.922 91.7266C510.969 94.8203 509.469 98.7109 509.469 103.398C509.469 107.992 510.969 111.836 513.922 114.93C516.875 118.023 520.672 119.57 525.266 119.57ZM588.734 77.8984V77.9453C595.578 77.9453 601.297 80.3359 605.891 85.1641C610.484 89.9922 612.781 96.0391 612.781 103.305C612.781 110.57 610.484 116.617 605.891 121.445C601.297 126.273 595.578 128.711 588.734 128.711C581.234 128.711 575.469 125.852 571.438 120.133V147.602H561.359V79.1641H571.438V86.4766C575.469 80.7578 581.234 77.8984 588.734 77.8984ZM587.094 119.711L587.047 119.664C591.641 119.664 595.438 118.117 598.391 115.023C601.344 111.93 602.844 107.992 602.844 103.258C602.844 98.5234 601.391 94.6328 598.438 91.5859C595.484 88.5391 591.688 86.9922 587.047 86.9922C582.594 86.9922 578.844 88.5391 575.75 91.6328C572.656 94.7266 571.109 98.6172 571.109 103.305C571.109 108.039 572.656 111.977 575.75 115.07C578.844 118.164 582.641 119.711 587.094 119.711ZM645.922 128.711L646.016 128.805C638.375 128.805 632.188 126.461 627.406 121.773C622.625 117.086 620.234 110.945 620.234 103.398C620.234 96.1328 622.531 90.0859 627.125 85.2578C631.719 80.4297 637.719 77.9922 645.078 77.9922C652.719 77.9922 658.719 80.2891 663.125 84.9297C667.531 89.5703 669.734 95.3828 669.734 102.414C669.734 103.633 669.641 104.992 669.406 106.445H630.172C630.5 110.523 632.047 113.805 634.859 116.289C637.672 118.773 641.469 120.039 646.203 120.039C652.859 120.039 657.453 117.461 659.938 112.258L669.125 114.977C667.391 118.773 664.531 122.008 660.547 124.68C656.562 127.352 651.688 128.711 645.922 128.711ZM630.172 99.7891H659.844C659.516 95.9453 658.062 92.8047 655.484 90.3672C652.906 87.9297 649.438 86.7109 645.125 86.7109C640.953 86.7109 637.531 87.9766 634.812 90.5078C632.094 93.0391 630.547 96.1328 630.172 99.7891ZM690.031 86.8516L689.984 86.8984C691.438 83.8984 693.594 81.6484 696.453 80.1484C699.312 78.6484 702.688 78.1328 706.531 78.6484V88.0234C701.234 87.2266 697.156 88.2578 694.297 91.1172C691.438 93.9766 690.031 98.8047 690.031 105.648V127.445H679.953V79.1641H690.031V86.8516ZM770.328 60.2266V60.1797C777.219 60.1797 782.75 62.4766 786.875 67.0703C791 71.6641 793.062 76.9141 793.062 82.8203C793.062 88.7266 790.953 93.9297 786.781 98.4766C782.609 103.023 776.938 105.273 769.812 105.273H750.172V127.445H739.766V60.2266H770.328ZM769.625 95.8047C773.656 95.8047 776.891 94.4922 779.328 91.9141C781.766 89.3359 782.984 86.2891 782.984 82.7734C782.984 79.2578 781.766 76.1641 779.328 73.5391C776.891 70.9141 773.844 69.6016 770.141 69.6016H750.172V95.8047H769.625ZM822.594 128.711H822.547C815.188 128.711 809.094 126.273 804.219 121.445C799.344 116.617 796.906 110.57 796.906 103.305C796.906 96.0859 799.344 90.0391 804.219 85.2109C809.094 80.3828 815.188 77.9453 822.547 77.9453C829.906 77.9453 836.047 80.3359 840.922 85.1641C845.797 89.9922 848.234 96.0391 848.234 103.305C848.234 110.57 845.797 116.617 840.922 121.445C836.047 126.273 829.953 128.711 822.594 128.711ZM822.547 119.57C827.141 119.57 830.938 118.023 833.938 114.93C836.938 111.836 838.438 107.992 838.438 103.398C838.438 98.7109 836.938 94.8203 833.938 91.7266C830.938 88.6328 827.141 87.0859 822.547 87.0859C817.953 87.0859 814.156 88.6328 811.203 91.7266C808.25 94.8203 806.75 98.7109 806.75 103.398C806.75 107.992 808.25 111.836 811.203 114.93C814.156 118.023 817.953 119.57 822.547 119.57ZM868.719 86.8516L868.672 86.8984C870.125 83.8984 872.281 81.6484 875.141 80.1484C878 78.6484 881.375 78.1328 885.219 78.6484V88.0234C879.922 87.2266 875.844 88.2578 872.984 91.1172C870.125 93.9766 868.719 98.8047 868.719 105.648V127.445H858.641V79.1641H868.719V86.8516ZM923.234 117.648L925.719 125.898C922.062 127.445 918.5 128.195 915.078 128.195C910.016 128.195 906.219 126.742 903.734 123.836C901.25 120.93 899.984 116.898 899.984 111.789V88.0703H891.172V79.1641H899.984V63.0391H909.969V79.1641H925.344V88.0703H909.969V111.789C909.969 116.711 912.266 119.195 916.906 119.195C919.016 119.195 921.125 118.68 923.234 117.648ZM953.938 128.711V128.664C947.094 128.664 941.375 126.227 936.781 121.398C932.188 116.57 929.891 110.523 929.891 103.258C929.891 96.0391 932.188 89.9922 936.781 85.1641C941.375 80.3359 947.094 77.8984 953.938 77.8984C961.484 77.8984 967.297 80.7578 971.328 86.4766V79.1641H981.312V127.445H971.328V120.133C967.297 125.852 961.484 128.711 953.938 128.711ZM955.578 119.617L955.438 119.664C959.891 119.664 963.688 118.117 966.781 115.023C969.875 111.93 971.422 107.992 971.422 103.258C971.422 98.5703 969.875 94.6797 966.781 91.5859C963.688 88.4922 959.938 86.9453 955.484 86.9453C950.891 86.9453 947.141 88.4922 944.188 91.5391C941.234 94.5859 939.781 98.4766 939.781 103.211C939.781 107.945 941.281 111.883 944.234 114.977C947.188 118.07 950.984 119.617 955.578 119.617ZM994.672 127.445V57.3672H1004.75V127.445H994.672Z" fill="white"/>
+      </svg>
     </div>
-    <footer class="footer-section">
-        <div class="footer-container">
-            <ul class="footer-links">
-                <li><a href="#">Terms of use</a></li>
-                <li><a href="#">Privacy Policy</a></li>
-                <li><a href="#">Support</a></li>
-            </ul>
-            <div class="footer-icons">
-                <a href="#">© {{currentYear}}, WSO2 LLC.</a>
-            </div>
-        </div>
-    </footer>
+
+    <!-- Spacer pushes headline to vertical center -->
+    <div class="os-brand-body">
+      <span class="os-tenant-pill">Multi-tenant workspace</span>
+      <h1 class="os-headline">Continue to your organization.</h1>
+      <p class="os-desc">Each organization has its own catalog of APIs, MCP servers, and workflows. Choose yours to pick up where you left off.</p>
     </div>
+
+    <!-- Desktop footer -->
+    <div class="os-foot-desktop">
+      <span id="os-year-d"></span>
+      <a href="#">Privacy</a>
+      <a href="#">Terms</a>
+    </div>
+  </div>
+
+  <!-- ── RIGHT: org selector ───────────────────────────────── -->
+  <div class="os-form">
+    <div class="os-form-inner">
+      <h2 class="os-form-title">Select your organization</h2>
+      <p class="os-form-sub">Type to search, or pick a recent organization below.</p>
+
+      <div class="os-field">
+        <label class="os-field-label" for="organization-name">Organization name</label>
+        <div class="os-input-wrap">
+          <i class="bi bi-building os-input-icon" aria-hidden="true"></i>
+          <input
+            id="organization-name"
+            class="os-input"
+            type="text"
+            placeholder="Enter your organization name"
+            autocomplete="off"
+            spellcheck="false"
+          >
+          <!-- dropdown -->
+          <div class="os-dropdown" id="os-dropdown" role="listbox" aria-label="Organizations"></div>
+        </div>
+      </div>
+
+      <button id="os-continue-btn" class="os-continue-btn" onclick="osNavigate()">Continue</button>
+
+      <p class="os-contact-hint">
+        Can't find your organization?
+        <a href="#" class="os-contact-link">Contact your admin</a>
+      </p>
+    </div>
+  </div>
+
+  <!-- Mobile-only footer (stacks below form) -->
+  <div class="os-foot-mobile">
+    <span id="os-year-m"></span>
+    <a href="#">Privacy</a>
+    <a href="#">Terms</a>
+  </div>
+
+</div>
+
+<script>
+(function () {
+  /* ── org list: injected by server when available ── */
+  var ORG_DATA = [];
+  try {
+    var raw = document.getElementById('os-org-json');
+    if (raw) ORG_DATA = JSON.parse(raw.textContent) || [];
+  } catch (_) {}
+
+  /* ── DOM refs ── */
+  var input    = document.getElementById('organization-name');
+  var dropdown = document.getElementById('os-dropdown');
+  var btn      = document.getElementById('os-continue-btn');
+
+  /* ── year ── */
+  var y = new Date().getFullYear();
+  ['os-year-d', 'os-year-m'].forEach(function (id) {
+    var el = document.getElementById(id);
+    if (el) el.textContent = '© ' + y + ' WSO2';
+  });
+
+  /* ── button state ── */
+  function syncBtn() {
+    var has = input.value.trim().length > 0;
+    btn.classList.toggle('os-continue-btn--active', has);
+    btn.disabled = !has;
+  }
+
+  /* ── dropdown rendering ── */
+  function initials(name) {
+    return name.split(/\s+/).slice(0, 2).map(function (w) { return w[0]; }).join('').toUpperCase();
+  }
+
+  var AVATAR_COLORS = [
+    'linear-gradient(135deg,#f47b20,#ef4223)',
+    'linear-gradient(135deg,#1f6feb,#0b3d91)',
+    'linear-gradient(135deg,#2e7d32,#1b5e20)',
+    'linear-gradient(135deg,#7c3aed,#a855f7)',
+    'linear-gradient(135deg,#0277bd,#5cd1ff)',
+  ];
+
+  function renderDropdown(list, label) {
+    if (!list.length) {
+      dropdown.innerHTML = '';
+      dropdown.classList.remove('os-dropdown--open');
+      return;
+    }
+    var html = '<div class="os-dropdown-label">' + escHtml(label) + '</div>';
+    list.forEach(function (org, i) {
+      var color = org.color || AVATAR_COLORS[i % AVATAR_COLORS.length];
+      var ini   = org.initials || initials(org.name);
+      html += '<div class="os-dropdown-item" data-name="' + escHtml(org.name) + '" role="option" tabindex="-1">'
+        + '<span class="os-org-avatar" style="background:' + color + '">' + escHtml(ini) + '</span>'
+        + '<span class="os-org-meta">'
+        + '<span class="os-org-name">' + escHtml(org.name) + '</span>'
+        + (org.domain ? '<span class="os-org-domain">' + escHtml(org.domain) + '</span>' : '')
+        + '</span>'
+        + '</div>';
+    });
+    dropdown.innerHTML = html;
+    dropdown.classList.add('os-dropdown--open');
+
+    dropdown.querySelectorAll('.os-dropdown-item').forEach(function (item) {
+      item.addEventListener('mousedown', function (e) {
+        e.preventDefault();
+        input.value = item.dataset.name;
+        closeDropdown();
+        syncBtn();
+        input.focus();
+      });
+    });
+  }
+
+  function closeDropdown() {
+    dropdown.innerHTML = '';
+    dropdown.classList.remove('os-dropdown--open');
+  }
+
+  function escHtml(str) {
+    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  /* ── input events ── */
+  input.addEventListener('input', function () {
+    syncBtn();
+    var q = input.value.trim().toLowerCase();
+    if (!ORG_DATA.length) { closeDropdown(); return; }
+    var matches = q
+      ? ORG_DATA.filter(function (o) { return o.name.toLowerCase().includes(q) || (o.domain || '').toLowerCase().includes(q); })
+      : ORG_DATA;
+    renderDropdown(matches, q ? 'Matching organizations' : 'Recent organizations');
+  });
+
+  input.addEventListener('focus', function () {
+    if (!ORG_DATA.length) return;
+    var q = input.value.trim().toLowerCase();
+    var matches = q
+      ? ORG_DATA.filter(function (o) { return o.name.toLowerCase().includes(q) || (o.domain || '').toLowerCase().includes(q); })
+      : ORG_DATA;
+    renderDropdown(matches, q ? 'Matching organizations' : 'Recent organizations');
+  });
+
+  input.addEventListener('blur', function () {
+    setTimeout(closeDropdown, 140);
+  });
+
+  input.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' && input.value.trim()) osNavigate();
+    if (e.key === 'Escape') closeDropdown();
+  });
+
+  /* ── navigation ── */
+  window.osNavigate = function () {
+    var org = input.value.trim();
+    if (!org) return;
+    window.location.href = '/' + encodeURIComponent(org) + '/views/default';
+  };
+
+  /* ── init ── */
+  syncBtn();
+})();
+</script>
+
+<!-- Server can inject: <script type="application/json" id="os-org-json">[...]</script> -->
 </body>
-
 </html>

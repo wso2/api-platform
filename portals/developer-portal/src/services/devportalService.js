@@ -17,7 +17,7 @@
  */
 /* eslint-disable no-undef */
 const adminService = require('../services/adminService');
-const adminDao = require('../dao/admin');
+const orgDao = require('../dao/organizationDao');
 const util = require('../utils/util');
 const logger = require('../config/logger');
 const constants = require('../utils/constants');
@@ -33,7 +33,7 @@ const getOrganization = async (req, res) => {
 };
 
 const getOrganizationDetails = async (orgId) => {
-    const organization = await adminDao.getOrganization(orgId);
+    const organization = await orgDao.get(orgId);
     return {
         orgId: organization.ORG_ID,
         orgName: organization.ORG_NAME,
@@ -41,14 +41,7 @@ const getOrganizationDetails = async (orgId) => {
         businessOwnerContact: organization.BUSINESS_OWNER_CONTACT,
         businessOwnerEmail: organization.BUSINESS_OWNER_EMAIL,
         orgHandle: organization.ORG_HANDLE,
-        roleClaimName: organization.ROLE_CLAIM_NAME,
-        groupsClaimName: organization.GROUPS_CLAIM_NAME,
-        organizationClaimName: organization.ORGANIZATION_CLAIM_NAME,
         organizationIdentifier: organization.ORGANIZATION_IDENTIFIER,
-        adminRole: organization.ADMIN_ROLE,
-        superAdminRole: organization.SUPER_ADMIN_ROLE,
-        subscriberRole: organization.SUBSCRIBER_ROLE,
-        groupClaimName: organization.GROUP_CLAIM_NAME,
         orgConfiguration: organization.ORG_CONFIG,
     };
 }

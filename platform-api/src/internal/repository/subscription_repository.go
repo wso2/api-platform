@@ -48,15 +48,19 @@ func hashSubscriptionToken(token string) string {
 	return HashSubscriptionToken(token)
 }
 
-// getSubscriptionTokenEncryptionKey returns the 32-byte key for token encryption, or nil if not configured.
+// getSubscriptionTokenEncryptionKey returns the 32-byte key for subscription token encryption.
+// Precedence: DATABASE_SUBSCRIPTION_TOKEN_ENCRYPTION_KEY → DATABASE_ENCRYPTION_KEY → AUTH_JWT_SECRET_KEY.
 func getSubscriptionTokenEncryptionKey() ([]byte, error) {
 	cfg := config.GetConfig()
 	keyStr := cfg.Database.SubscriptionTokenEncryptionKey
 	if keyStr == "" {
+		keyStr = cfg.Database.EncryptionKey
+	}
+	if keyStr == "" {
 		keyStr = cfg.Auth.JWT.SecretKey
 	}
 	if keyStr == "" {
-		return nil, fmt.Errorf("subscription token encryption requires DATABASE_SUBSCRIPTION_TOKEN_ENCRYPTION_KEY or AUTH_JWT_SECRET_KEY")
+		return nil, fmt.Errorf("subscription token encryption requires DATABASE_SUBSCRIPTION_TOKEN_ENCRYPTION_KEY, DATABASE_ENCRYPTION_KEY, or AUTH_JWT_SECRET_KEY")
 	}
 	return utils.DeriveEncryptionKey(keyStr)
 }
@@ -202,8 +206,9 @@ func (r *SubscriptionRepo) ListByFilters(orgUUID string, apiUUID *string, subscr
 		query += ` AND status = ?`
 		args = append(args, *status)
 	}
-	query += ` ORDER BY created_at DESC LIMIT ? OFFSET ?`
-	args = append(args, limit, offset)
+	pageClause, pageArgs := r.db.PaginationClause(limit, offset)
+	query += ` ORDER BY created_at DESC ` + pageClause
+	args = append(args, pageArgs...)
 
 	rows, err := r.db.Query(r.db.Rebind(query), args...)
 	if err != nil {
@@ -228,20 +233,42 @@ func (r *SubscriptionRepo) ListByFilters(orgUUID string, apiUUID *string, subscr
 	return list, rows.Err()
 }
 
+// decryptionKeyCandidates returns all derived keys to try during decryption, in precedence order.
+// Tokens may have been encrypted with any of the three key sources across different deployments,
+// so decryption must attempt all of them: SubscriptionTokenEncryptionKey → EncryptionKey → SecretKey.
+func decryptionKeyCandidates() [][]byte {
+	cfg := config.GetConfig()
+	sources := []string{
+		cfg.Database.SubscriptionTokenEncryptionKey,
+		cfg.Database.EncryptionKey,
+		cfg.Auth.JWT.SecretKey,
+	}
+	seen := map[string]bool{}
+	var keys [][]byte
+	for _, s := range sources {
+		if s == "" || seen[s] {
+			continue
+		}
+		seen[s] = true
+		if k, err := utils.DeriveEncryptionKey(s); err == nil {
+			keys = append(keys, k)
+		}
+	}
+	return keys
+}
+
 // decryptSubscriptionToken decrypts stored token for API response.
+// Tries all key candidates in precedence order to handle tokens encrypted under a previous key source.
 func (r *SubscriptionRepo) decryptSubscriptionToken(stored string) string {
 	if stored == "" {
 		return ""
 	}
-	key, err := getSubscriptionTokenEncryptionKey()
-	if err != nil {
-		return ""
+	for _, key := range decryptionKeyCandidates() {
+		if plain, err := utils.DecryptSubscriptionToken(key, stored); err == nil {
+			return plain
+		}
 	}
-	plain, err := utils.DecryptSubscriptionToken(key, stored)
-	if err != nil {
-		return ""
-	}
-	return plain
+	return ""
 }
 
 // CountByFilters returns the total count of subscriptions matching the same filters as ListByFilters.
@@ -314,8 +341,8 @@ func (r *SubscriptionRepo) ExistsByAPIAndSubscriber(apiUUID, subscriberID, orgUU
 		SELECT 1 FROM subscriptions
 		WHERE api_uuid = ? AND organization_uuid = ?
 		  AND subscriber_id = ?
-		LIMIT 1
-	`
+		ORDER BY (SELECT NULL)
+		` + r.db.FetchFirstClause(1)
 	var exists int
 	err := r.db.QueryRow(r.db.Rebind(query), apiUUID, orgUUID, subscriberID).Scan(&exists)
 	if err == sql.ErrNoRows {

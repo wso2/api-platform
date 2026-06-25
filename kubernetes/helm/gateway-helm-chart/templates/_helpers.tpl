@@ -20,14 +20,40 @@
 {{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" -}}
 {{- end -}}
 
+{{/*
+Render a string-keyed metadata map (labels/annotations) as YAML. Values are
+coerced to strings so numbers/bools from values.yaml render quoted (Kubernetes
+requires string values). Keys with null values are skipped.
+*/}}
+{{- define "gateway-operator.renderStringMap" -}}
+{{- $out := dict -}}
+{{- range $k, $v := . -}}
+{{- if not (kindIs "invalid" $v) -}}
+{{- $_ := set $out $k (toString $v) -}}
+{{- end -}}
+{{- end -}}
+{{- toYaml $out -}}
+{{- end -}}
+
 {{- define "gateway-operator.labels" -}}
-helm.sh/chart: {{ include "gateway-operator.chart" . }}
-app.kubernetes.io/managed-by: {{ .Release.Service }}
-app.kubernetes.io/instance: {{ .Release.Name }}
-app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
-{{- with .Values.commonLabels }}
-{{ toYaml . | indent 0 }}
-{{- end }}
+{{- $std := dict
+      "helm.sh/chart" (include "gateway-operator.chart" .)
+      "app.kubernetes.io/name" (include "gateway-operator.name" .)
+      "app.kubernetes.io/managed-by" .Release.Service
+      "app.kubernetes.io/instance" .Release.Name
+      "app.kubernetes.io/version" .Chart.AppVersion -}}
+{{- include "gateway-operator.renderStringMap" (merge (dict) (default (dict) .Values.commonLabels) $std) -}}
+{{- end -}}
+
+{{/*
+Standard labels plus extra per-resource labels merged in (extra wins).
+Args (list): root, extraLabels (may be nil)
+*/}}
+{{- define "gateway-operator.resourceLabels" -}}
+{{- $root := index . 0 -}}
+{{- $extra := default (dict) (index . 1) -}}
+{{- $base := fromYaml (include "gateway-operator.labels" $root) -}}
+{{- include "gateway-operator.renderStringMap" (merge (dict) $extra $base) -}}
 {{- end -}}
 
 {{- define "gateway-operator.selectorLabels" -}}
@@ -35,15 +61,49 @@ app.kubernetes.io/name: {{ include "gateway-operator.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end -}}
 
+{{/*
+Standard labels + component label + extra per-resource labels, merged with
+precedence: extra > component > commonLabels > standard.
+Args (list): root, component, extraLabels (may be nil)
+*/}}
 {{- define "gateway-operator.componentLabels" -}}
 {{- $root := index . 0 -}}
 {{- $component := index . 1 -}}
 {{- $extra := default (dict) (index . 2) -}}
-{{ include "gateway-operator.labels" $root }}
-app.kubernetes.io/component: {{ $component }}
-{{- with $extra }}
-{{ toYaml . | indent 0 }}
-{{- end }}
+{{- $base := fromYaml (include "gateway-operator.labels" $root) -}}
+{{- include "gateway-operator.renderStringMap" (merge (dict) $extra (dict "app.kubernetes.io/component" $component) $base) -}}
+{{- end -}}
+
+{{/*
+Pod-template labels: selector labels merged over podLabels and commonLabels.
+Selector keys always win — the Deployment selector is immutable and pods must
+keep matching it regardless of user-supplied labels.
+Args (list): root, component, podLabels (may be nil)
+*/}}
+{{- define "gateway-operator.componentPodLabels" -}}
+{{- $root := index . 0 -}}
+{{- $component := index . 1 -}}
+{{- $podLabels := default (dict) (index . 2) -}}
+{{- $selector := fromYaml (include "gateway-operator.componentSelectorLabels" (list $root $component)) -}}
+{{- include "gateway-operator.renderStringMap" (merge (dict) $selector $podLabels (default (dict) $root.Values.commonLabels)) -}}
+{{- end -}}
+
+{{/*
+Merge commonAnnotations with per-resource annotations (specific wins). Emits
+nothing when both are empty so callers can wrap with:
+  {{- with (include "gateway-operator.annotations" (list . $specific)) }}
+  annotations:
+    {{- . | nindent 4 }}
+  {{- end }}
+Args (list): root, specificAnnotations (may be nil)
+*/}}
+{{- define "gateway-operator.annotations" -}}
+{{- $root := index . 0 -}}
+{{- $specific := default (dict) (index . 1) -}}
+{{- $merged := merge (dict) $specific (default (dict) $root.Values.commonAnnotations) -}}
+{{- if $merged -}}
+{{- include "gateway-operator.renderStringMap" $merged -}}
+{{- end -}}
 {{- end -}}
 
 {{- define "gateway-operator.componentSelectorLabels" -}}

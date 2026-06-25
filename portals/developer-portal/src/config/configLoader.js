@@ -20,6 +20,7 @@
 
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 const yaml = require('js-yaml');
 
 // Load .env file if present (silently ignored if absent)
@@ -72,9 +73,6 @@ const CONFIG_DEFAULTS = {
             keyType: 'x-wso2-api-key',
             keyValue: '',
         },
-        tokenExchanger: {
-            enabled: false,
-        },
         openApiValidator: {
             validateResponses: 'off',
         },
@@ -101,6 +99,20 @@ const CONFIG_DEFAULTS = {
         baseUrl: '',
         jwtSecret: '',
         insecure: false,
+    },
+    identityProvider: {
+        name: '',
+        clientSecret: '',
+        audience: '',
+        scope: 'openid profile email',
+        tokenRefreshTimeoutMs: 10000,
+        roleClaim: 'roles',
+        orgIDClaim: 'organization.uuid',
+        groupsClaim: 'groups',
+        adminRole: 'admin',
+        subscriberRole: 'Internal/subscriber',
+        superAdminRole: 'superAdmin',
+        fidp: {},
     },
 };
 
@@ -196,27 +208,14 @@ const config = loadBaseConfig();
 mergeDefaults(config, CONFIG_DEFAULTS);
 applyEnvOverrides(config);
 
-// Webhook subscriber secrets/key paths can be supplied via env vars:
-// DP_WEBHOOK_SECRET_<SUBSCRIBER_ID_UPPERCASED_UNDERSCORED>=<secret>
-// DP_WEBHOOK_PUBLIC_KEY_PATH_<SUBSCRIBER_ID_UPPERCASED_UNDERSCORED>=<path-to-pem-file>
-const webhookSubscribers = config.webhooks && config.webhooks.subscribers;
-if (Array.isArray(webhookSubscribers)) {
-    for (const sub of webhookSubscribers) {
-        if (!sub.id) continue;
-        const envKey = 'DP_WEBHOOK_SECRET_' + sub.id.toUpperCase().replace(/[^A-Z0-9]/g, '_');
-        if (process.env[envKey]) sub.secret = process.env[envKey];
-        const pubKeyPathEnv = 'DP_WEBHOOK_PUBLIC_KEY_PATH_' + sub.id.toUpperCase().replace(/[^A-Z0-9]/g, '_');
-        if (process.env[pubKeyPathEnv]) sub.publicKeyPath = process.env[pubKeyPathEnv];
-    }
-
-    for (const sub of webhookSubscribers) {
-        if (!sub.publicKeyPath) continue;
-        try {
-            sub.publicKey = fs.readFileSync(sub.publicKeyPath, 'utf8');
-        } catch (err) {
-            throw new Error(`[configLoader] Failed to read webhook public key for subscriber '${sub.id}' from '${sub.publicKeyPath}': ${err.message}`);
-        }
-    }
+if (!config.advanced.encryptionKey || !/^[0-9a-fA-F]{64}$/.test(config.advanced.encryptionKey)) {
+    config.advanced.encryptionKey = crypto.randomBytes(32).toString('hex');
+    // Use process.stderr directly — logger is not yet initialised at this point
+    process.stderr.write(
+        '[WARN] advanced.encryptionKey is not set — generated an ephemeral key. ' +
+        'Encrypted data (subscription tokens, key manager credentials) will be unreadable after restart. ' +
+        'Set DP_ADVANCED_ENCRYPTIONKEY in your .env file to persist it.\n'
+    );
 }
 
 module.exports = { config };

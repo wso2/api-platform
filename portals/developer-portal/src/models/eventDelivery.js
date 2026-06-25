@@ -16,7 +16,7 @@
  * under the License.
  */
 const { Sequelize, DataTypes } = require('sequelize');
-const sequelize = require('../db/sequelize');
+const sequelize = require('../db/sequelizeConfig');
 const DPEvent = require('./event');
 
 // One delivery row per (event × subscriber). ENCRYPTED_FIELDS holds per-subscriber
@@ -82,7 +82,8 @@ const DPEventDelivery = sequelize.define('DP_EVENT_DELIVERY', {
     returning: true,
     indexes: [
         { name: 'IDX_EVENT_DELIVERY_STATUS_NEXT_ATTEMPT', fields: ['STATUS', 'NEXT_ATTEMPT_AT'] },
-        { name: 'IDX_EVENT_DELIVERY_EVENT_ID', fields: ['EVENT_ID'] }
+        { name: 'IDX_EVENT_DELIVERY_EVENT_ID', fields: ['EVENT_ID'] },
+        { name: 'UQ_EVENT_DELIVERY_EVENT_SUBSCRIBER', unique: true, fields: ['EVENT_ID', 'SUBSCRIBER_ID'] }
     ]
 });
 

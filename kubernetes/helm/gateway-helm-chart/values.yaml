@@ -31,6 +31,9 @@ serviceAccount:
   create: true
   annotations: {}
   name: ""
+  # Mount the service account token into pods by default (Kubernetes default: true).
+  # Individual pods can override via gateway.<component>.deployment.automountServiceAccountToken.
+  automountServiceAccountToken: true
 
 ## moved to each component's deployment block below
 
@@ -92,9 +95,10 @@ gateway:
 
       # Storage configuration
       storage:
-        # Storage type: "sqlite", "postgres", or "memory"
+        # Storage type: "sqlite", "postgres", "sqlserver", or "memory"
         # - sqlite: Single-instance embedded database backed by a PersistentVolumeClaim
         # - postgres: External PostgreSQL database; enables multi-replica controller deployments
+        # - sqlserver: External SQL Server database; enables multi-replica controller deployments
         # - memory: No persistence; all state is lost on restart (useful for testing only)
         type: sqlite
 
@@ -118,6 +122,49 @@ gateway:
           # Use "require" or stronger in production.
           sslmode: require
 
+          connect_timeout: 5s
+          max_open_conns: 25
+          max_idle_conns: 5
+          conn_max_lifetime: 30m
+          conn_max_idle_time: 5m
+          application_name: gateway-controller
+
+        # Global database configuration (used for type=sqlserver).
+        # Password is injected separately via gateway.controller.sqlserver.passwordSecretRef.
+        # This shape maps to [controller.storage.database] in config.toml.
+        database:
+          driver: sqlserver
+          # Full DSN takes precedence over individual fields when set.
+          # Example: "sqlserver://user:password@host:1433?database=gateway&encrypt=disable&TrustServerCertificate=true"
+          dsn: ""
+
+          host: ""
+          port: 1433
+          database: ""
+          user: ""
+
+          connect_timeout: 5s
+          max_open_conns: 25
+          max_idle_conns: 5
+          conn_max_lifetime: 30m
+          conn_max_idle_time: 5m
+          application_name: gateway-controller
+
+          options:
+            # Encryption mode: disable, false, true, strict
+            encrypt: disable
+            trust_server_certificate: "true"
+
+        # Legacy SQL Server configuration (backward compatible fallback).
+        # Prefer gateway.config.controller.storage.database for new deployments.
+        sqlserver:
+          dsn: ""
+          host: ""
+          port: 1433
+          database: ""
+          user: ""
+          encrypt: disable
+          trust_server_certificate: true
           connect_timeout: 5s
           max_open_conns: 25
           max_idle_conns: 5
@@ -404,6 +451,27 @@ gateway:
       # readiness probes are unaffected: they hit the container port directly, not the Service.
       expose:
         admin: false
+      # Static cluster IP (e.g. "None" for a headless Service). Empty = auto-assign.
+      clusterIP: ""
+      # External traffic policy: "Cluster" or "Local".
+      # Only rendered when type is LoadBalancer or NodePort.
+      externalTrafficPolicy: ""
+      # Load balancer implementation class. Only rendered when type is LoadBalancer.
+      loadBalancerClass: ""
+      # CIDR ranges allowed to reach the load balancer. Only rendered when type is LoadBalancer.
+      loadBalancerSourceRanges: []
+      # IP family policy: SingleStack, PreferDualStack or RequireDualStack. Empty = cluster default.
+      ipFamilyPolicy: ""
+      # IP families, e.g. ["IPv4"], ["IPv6"] or ["IPv4", "IPv6"]. Empty = cluster default.
+      ipFamilies: []
+      # Static nodePort per named service port. Only rendered when type is NodePort or
+      # LoadBalancer; empty = auto-allocate.
+      nodePorts:
+        rest: ""
+        xds: ""
+        policy: ""
+        admin: ""
+        metrics: ""
     controlPlane:
       # Control plane endpoint. Used directly as the HTTPS/WSS authority, so include
       # a non-default port here (e.g. "host.docker.internal:8443"); 443 is assumed if omitted.
@@ -487,6 +555,13 @@ gateway:
       passwordSecretRef:
         name: ""
         key: password
+    # SQL Server password secret reference (used when gateway.config.controller.storage.type=sqlserver).
+    # The password is injected as an env var from a Kubernetes secret rather than stored in the ConfigMap.
+    # Create with: kubectl create secret generic <name> --from-literal=password='<db-password>'
+    sqlserver:
+      passwordSecretRef:
+        name: ""
+        key: password
     metrics:
       port: 9091
     persistence:
@@ -496,6 +571,13 @@ gateway:
         - ReadWriteOnce
       size: 100Mi
       storageClass: ""
+      # Extra labels for the PersistentVolumeClaim.
+      labels: {}
+      # Extra annotations for the PersistentVolumeClaim (merged with commonAnnotations;
+      # these win on conflict). Example — keep the claim across helm uninstall:
+      #   annotations:
+      #     helm.sh/resource-policy: keep
+      annotations: {}
     deployment:
       enabled: true
       replicaCount: 1
@@ -516,8 +598,8 @@ gateway:
       priorityClassName: ""
       livenessProbe:
         httpGet:
-          # Admin API is served under /api/admin/v0.9 (see gateway-controller admin OpenAPI spec).
-          path: /api/admin/v0.9/health
+          # Admin API is served under /api/admin/v1 (see gateway-controller admin OpenAPI spec).
+          path: /api/admin/v1/health
           port: admin
         initialDelaySeconds: 10
         periodSeconds: 10
@@ -525,12 +607,19 @@ gateway:
         failureThreshold: 3
       readinessProbe:
         httpGet:
-          path: /api/admin/v0.9/health
+          path: /api/admin/v1/health
           port: admin
         initialDelaySeconds: 5
         periodSeconds: 5
         timeoutSeconds: 3
         failureThreshold: 3
+      # Optional startup probe for slow-starting environments. Uncomment to enable.
+      # startupProbe:
+      #   httpGet:
+      #     path: /api/admin/v1/health
+      #     port: admin
+      #   periodSeconds: 5
+      #   failureThreshold: 30
       # Resource limits and requests
       # Uncomment and adjust based on your workload
       resources: {}
@@ -545,6 +634,36 @@ gateway:
       nodeSelector: {}
       tolerations: []
       affinity: {}
+      # Topology spread constraints (list of topologySpreadConstraint objects).
+      # Example:
+      #   - maxSkew: 1
+      #     topologyKey: topology.kubernetes.io/zone
+      #     whenUnsatisfiable: ScheduleAnyway
+      #     labelSelector:
+      #       matchLabels:
+      #         app.kubernetes.io/component: controller
+      topologySpreadConstraints: []
+      # Deployment update strategy (full apps/v1 DeploymentStrategy object).
+      # Empty = Kubernetes default (RollingUpdate, 25% maxSurge / 25% maxUnavailable).
+      # Example:
+      #   type: RollingUpdate
+      #   rollingUpdate:
+      #     maxSurge: 1
+      #     maxUnavailable: 0
+      strategy: {}
+      # Seconds the pod is given to terminate gracefully. Uncomment to override the
+      # Kubernetes default (30).
+      # terminationGracePeriodSeconds: 30
+      # Additional /etc/hosts entries (list of hostAlias objects).
+      hostAliases: []
+      # Pod DNS policy: ClusterFirst, Default, ClusterFirstWithHostNet or None.
+      # Empty = Kubernetes default.
+      dnsPolicy: ""
+      # Pod DNS configuration (nameservers / searches / options); used with dnsPolicy.
+      dnsConfig: {}
+      # Override service account token automounting for this pod (takes precedence
+      # over serviceAccount.automountServiceAccountToken). Uncomment to set.
+      # automountServiceAccountToken: false
     # Horizontal Pod Autoscaler for the controller.
     # Requires gateway.config.controller.storage.type=postgres — SQLite does not support multiple replicas.
     # When enabled, replicaCount is managed by HPA and the Deployment's replicas field is omitted.
@@ -597,6 +716,27 @@ gateway:
         routerAdmin: false
         # Policy-engine admin: config_dump + health.
         policyEngineAdmin: false
+      # Static cluster IP (e.g. "None" for a headless Service). Empty = auto-assign.
+      clusterIP: ""
+      # External traffic policy: "Cluster" or "Local". "Local" preserves client source IPs.
+      # Only rendered when type is LoadBalancer or NodePort.
+      externalTrafficPolicy: ""
+      # Load balancer implementation class. Only rendered when type is LoadBalancer.
+      loadBalancerClass: ""
+      # CIDR ranges allowed to reach the load balancer. Only rendered when type is LoadBalancer.
+      loadBalancerSourceRanges: []
+      # IP family policy: SingleStack, PreferDualStack or RequireDualStack. Empty = cluster default.
+      ipFamilyPolicy: ""
+      # IP families, e.g. ["IPv4"], ["IPv6"] or ["IPv4", "IPv6"]. Empty = cluster default.
+      ipFamilies: []
+      # Static nodePort per named service port. Only rendered when type is NodePort or
+      # LoadBalancer; empty = auto-allocate.
+      nodePorts:
+        http: ""
+        https: ""
+        routerAdmin: ""
+        policyEngineAdmin: ""
+        policyEngineMetrics: ""
     # Policy-related file mounts for the gateway runtime
     policies:
       # LLM pricing data for the llm_cost_v1 policy.
@@ -642,6 +782,12 @@ gateway:
         periodSeconds: 5
         timeoutSeconds: 3
         failureThreshold: 6
+      # Optional startup probe for slow-starting environments. Uncomment to enable.
+      # startupProbe:
+      #   exec:
+      #     command: ["health-check.sh"]
+      #   periodSeconds: 5
+      #   failureThreshold: 30
       # Resource limits and requests
       # Uncomment and adjust based on your workload
       resources: {}
@@ -656,6 +802,36 @@ gateway:
       nodeSelector: {}
       tolerations: []
       affinity: {}
+      # Topology spread constraints (list of topologySpreadConstraint objects).
+      # Example:
+      #   - maxSkew: 1
+      #     topologyKey: topology.kubernetes.io/zone
+      #     whenUnsatisfiable: ScheduleAnyway
+      #     labelSelector:
+      #       matchLabels:
+      #         app.kubernetes.io/component: gateway-runtime
+      topologySpreadConstraints: []
+      # Deployment update strategy (full apps/v1 DeploymentStrategy object).
+      # Empty = Kubernetes default (RollingUpdate, 25% maxSurge / 25% maxUnavailable).
+      # Example:
+      #   type: RollingUpdate
+      #   rollingUpdate:
+      #     maxSurge: 1
+      #     maxUnavailable: 0
+      strategy: {}
+      # Seconds the pod is given to terminate gracefully — allow time for Envoy to
+      # drain in-flight connections. Uncomment to override the Kubernetes default (30).
+      # terminationGracePeriodSeconds: 30
+      # Additional /etc/hosts entries (list of hostAlias objects).
+      hostAliases: []
+      # Pod DNS policy: ClusterFirst, Default, ClusterFirstWithHostNet or None.
+      # Empty = Kubernetes default.
+      dnsPolicy: ""
+      # Pod DNS configuration (nameservers / searches / options); used with dnsPolicy.
+      dnsConfig: {}
+      # Override service account token automounting for this pod (takes precedence
+      # over serviceAccount.automountServiceAccountToken). Uncomment to set.
+      # automountServiceAccountToken: false
     # Horizontal Pod Autoscaler for the gateway runtime.
     # When enabled, replicaCount is managed by HPA and the Deployment's replicas field is omitted.
     hpa:
