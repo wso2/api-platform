@@ -5841,6 +5841,13 @@ components:
           enum: [deployed, undeployed]
           default: deployed
           example: deployed
+        resilience:
+          $ref: '#/components/schemas/Resilience'
+          description: >
+            API-level backend/route timeout configuration. Applies to all routes generated
+            for this LLM Provider (the routes that forward traffic upstream). Supported at the
+            API level only - LLM routes are synthesized by the gateway, so there is no
+            operation-level override.
 
     UpstreamAuth:
       type: object
@@ -6131,6 +6138,13 @@ components:
           enum: [deployed, undeployed]
           default: deployed
           example: deployed
+        resilience:
+          $ref: '#/components/schemas/Resilience'
+          description: >
+            API-level backend/route timeout configuration. Applies to all routes generated
+            for this LLM Proxy (the routes that forward traffic upstream). Supported at the
+            API level only - LLM routes are synthesized by the gateway, so there is no
+            operation-level override.
 
     SecretConfigurationRequest:
       type: object

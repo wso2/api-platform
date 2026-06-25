@@ -36,7 +36,7 @@ Feature: Backend route timeouts via the resilience block
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: backend-timeout-api-v1.0
@@ -72,7 +72,7 @@ Feature: Backend route timeouts via the resilience block
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: backend-timeout-override-v1.0
@@ -109,7 +109,7 @@ Feature: Backend route timeouts via the resilience block
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: backend-timeout-default-v1.0

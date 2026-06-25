@@ -387,6 +387,10 @@ func (v *LLMValidator) validateProviderSpec(spec *api.LLMProviderConfigData) []V
 	// The deprecated `policies` list must not coexist with the new policy lists
 	errors = append(errors, v.validatePolicyListExclusivity(spec.GlobalPolicies, spec.OperationPolicies, spec.Policies)...)
 
+	// Validate API-level resilience (timeout / idleTimeout). LLM kinds support resilience at
+	// the API level only.
+	errors = append(errors, validateResilienceTimeouts("spec.resilience", spec.Resilience)...)
+
 	return errors
 }
 
@@ -593,6 +597,10 @@ func (v *LLMValidator) validateProxyData(spec *api.LLMProxyConfigData) []Validat
 
 	// The deprecated `policies` list must not coexist with the new policy lists
 	errors = append(errors, v.validatePolicyListExclusivity(spec.GlobalPolicies, spec.OperationPolicies, spec.Policies)...)
+
+	// Validate API-level resilience (timeout / idleTimeout). LLM kinds support resilience at
+	// the API level only.
+	errors = append(errors, validateResilienceTimeouts("spec.resilience", spec.Resilience)...)
 
 	return errors
 }

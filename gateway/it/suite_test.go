@@ -145,6 +145,7 @@ func getFeaturePaths() []string {
 		"features/template-functions.feature",
 		"features/upstream-connect-timeout.feature",
 		"features/backend-timeout.feature",
+		"features/llm-backend-timeout.feature",
 		// Runs late: it restarts the gateway-controller (reject/reconnect scenario), so keep it
 		// after features that assume an uninterrupted controller. Verifies the DP->CP artifact push.
 		"features/dp-to-cp.feature",

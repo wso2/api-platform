@@ -153,6 +153,21 @@ spec:
                   - version
                   type: object
                 type: array
+              resilience:
+                description: |-
+                  Resilience configures API-level backend/route timeouts applied to all routes
+                  generated for this LLM provider. Supported at the API level only.
+                properties:
+                  idleTimeout:
+                    description: IdleTimeout Per-route stream idle timeout. "0s" disables.
+                    pattern: ^\d+(\.\d+)?(ms|s|m|h)$
+                    type: string
+                  timeout:
+                    description: Timeout Maximum time for the entire route (request
+                      to upstream response). "0s" disables.
+                    pattern: ^\d+(\.\d+)?(ms|s|m|h)$
+                    type: string
+                type: object
               template:
                 description: Template is the LlmProviderTemplate name to apply.
                 type: string

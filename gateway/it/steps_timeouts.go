@@ -64,6 +64,28 @@ func RegisterTimeoutSteps(ctx *godog.ScenarioContext, state *TestState) {
 		return nil
 	})
 
+	ctx.Step(`^the request should have taken at most "(\d+)" seconds since "([^"]*)"$`, func(expectedSecondsStr, key string) error {
+		expectedSeconds, err := strconv.Atoi(expectedSecondsStr)
+		if err != nil {
+			return fmt.Errorf("expected seconds must be a number, got: %s", expectedSecondsStr)
+		}
+		val, ok := state.GetContextValue(key)
+		if !ok {
+			return fmt.Errorf("no start time recorded; record the current time as \"request_start\" before sending the request")
+		}
+		start, ok := val.(time.Time)
+		if !ok {
+			return fmt.Errorf("no start time recorded; record the current time as %q before sending the request", key)
+		}
+		elapsed := time.Since(start)
+		maxElapsed := time.Duration(expectedSeconds+elapsedTimeToleranceSeconds) * time.Second
+		if elapsed > maxElapsed {
+			return fmt.Errorf("request should have taken at most %d seconds (with %ds tolerance), but elapsed time was %s",
+				expectedSeconds, elapsedTimeToleranceSeconds, elapsed.Round(time.Millisecond))
+		}
+		return nil
+	})
+
 	// Opens a raw TCP connection and sends a request line plus one header, but never
 	// terminates the header block (no final blank line). This forces the HCM
 	// request_headers_timeout to fire. The connection blocks until the gateway responds

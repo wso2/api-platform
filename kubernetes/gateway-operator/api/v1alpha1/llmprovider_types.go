@@ -128,6 +128,11 @@ type LLMProviderConfigData struct {
 	// Policies is the list of policies applied to this LLM provider.
 	// +optional
 	Policies []LLMPolicy `json:"policies,omitempty"`
+
+	// Resilience configures API-level backend/route timeouts applied to all routes
+	// generated for this LLM provider. Supported at the API level only.
+	// +optional
+	Resilience *Resilience `json:"resilience,omitempty"`
 }
 
 // LLMPolicyPath defines a path/methods combination together with policy

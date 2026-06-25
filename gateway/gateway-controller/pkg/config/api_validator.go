@@ -450,6 +450,11 @@ func (v *APIValidator) validateRestData(spec *api.APIConfigData) []ValidationErr
 // malformed values are rejected. fieldPrefix is the path to the block (e.g.
 // "spec.resilience" or "spec.operations[2].resilience").
 func (v *APIValidator) validateResilience(fieldPrefix string, r *api.Resilience) []ValidationError {
+	return validateResilienceTimeouts(fieldPrefix, r)
+}
+
+// validateResilienceTimeouts validates the timeout fields of a resilience block. 
+func validateResilienceTimeouts(fieldPrefix string, r *api.Resilience) []ValidationError {
 	var errors []ValidationError
 	if r == nil {
 		return errors

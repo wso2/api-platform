@@ -47,7 +47,7 @@ Feature: Timeouts
             timeout:
               connect: 6000ms
             upstreams:
-              - url: http://192.0.2.1:80
+              - url: 10.255.255.1:8080
         upstream:
           main:
             ref: my-timeout-upstream
@@ -82,7 +82,7 @@ Feature: Timeouts
         upstreamDefinitions:
           - name: my-timeout-upstream-global
             upstreams:
-              - url: http://192.0.2.1:80
+              - url: http://10.255.255.1:8080
         upstream:
           main:
             ref: my-timeout-upstream-global
@@ -108,7 +108,7 @@ Feature: Timeouts
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: headers-timeout-api-v1.0
