@@ -24,7 +24,7 @@ type SubscriptionPlanCreatedEvent struct {
 	PlanId             string     `json:"planId"`
 	PlanName           string     `json:"planName"`
 	BillingPlan        string     `json:"billingPlan,omitempty"`
-	StopOnQuotaReach   bool       `json:"stopOnQuotaReach"`
+	StopOnQuotaReach   int        `json:"stopOnQuotaReach"`
 	ThrottleLimitCount *int       `json:"throttleLimitCount,omitempty"`
 	ThrottleLimitUnit  string     `json:"throttleLimitUnit,omitempty"`
 	ExpiryTime         *time.Time `json:"expiryTime,omitempty"`
@@ -36,7 +36,7 @@ type SubscriptionPlanUpdatedEvent struct {
 	PlanId             string     `json:"planId"`
 	PlanName           string     `json:"planName"`
 	BillingPlan        string     `json:"billingPlan,omitempty"`
-	StopOnQuotaReach   bool       `json:"stopOnQuotaReach"`
+	StopOnQuotaReach   int        `json:"stopOnQuotaReach"`
 	ThrottleLimitCount *int       `json:"throttleLimitCount,omitempty"`
 	ThrottleLimitUnit  string     `json:"throttleLimitUnit,omitempty"`
 	ExpiryTime         *time.Time `json:"expiryTime,omitempty"`

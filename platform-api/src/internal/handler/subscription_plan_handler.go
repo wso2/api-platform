@@ -73,7 +73,7 @@ func validateThrottleLimitPair(count *int, unit *string) string {
 type CreateSubscriptionPlanRequest struct {
 	PlanName           string  `json:"planName" binding:"required"`
 	BillingPlan        string  `json:"billingPlan,omitempty"`
-	StopOnQuotaReach   *bool   `json:"stopOnQuotaReach,omitempty"`
+	StopOnQuotaReach   *int    `json:"stopOnQuotaReach,omitempty"`
 	ThrottleLimitCount *int    `json:"throttleLimitCount,omitempty"`
 	ThrottleLimitUnit  *string `json:"throttleLimitUnit,omitempty"`
 	ExpiryTime         *string `json:"expiryTime,omitempty"`
@@ -85,7 +85,7 @@ type CreateSubscriptionPlanRequest struct {
 type UpdateSubscriptionPlanRequest struct {
 	PlanName           *string `json:"planName,omitempty"`
 	BillingPlan        *string `json:"billingPlan,omitempty"`
-	StopOnQuotaReach   *bool   `json:"stopOnQuotaReach,omitempty"`
+	StopOnQuotaReach   *int    `json:"stopOnQuotaReach,omitempty"`
 	ThrottleLimitCount *int    `json:"throttleLimitCount,omitempty"`
 	ThrottleLimitUnit  *string `json:"throttleLimitUnit,omitempty"`
 	ExpiryTime         *string `json:"expiryTime,omitempty"`
@@ -128,7 +128,7 @@ func (h *SubscriptionPlanHandler) CreateSubscriptionPlan(c *gin.Context) {
 	plan := &model.SubscriptionPlan{
 		PlanName:           req.PlanName,
 		BillingPlan:        req.BillingPlan,
-		StopOnQuotaReach:   true,
+		StopOnQuotaReach:   1,
 		ThrottleLimitCount: req.ThrottleLimitCount,
 		ThrottleLimitUnit:  throttleLimitUnit,
 		Status:             model.SubscriptionPlanStatus(req.Status),

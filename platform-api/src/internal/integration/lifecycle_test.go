@@ -105,7 +105,7 @@ func TestLifecycle_SubscriptionPlanExistsAndList(t *testing.T) {
 		// columns into plain (non-nullable) fields (a pre-existing detail).
 		plan := &model.SubscriptionPlan{
 			UUID: id(), PlanName: fmt.Sprintf("plan-%d-%s", i, id()[:6]),
-			BillingPlan: "free", StopOnQuotaReach: true,
+			BillingPlan: "free", StopOnQuotaReach: 1,
 			ThrottleLimitCount: &count, ThrottleLimitUnit: "min",
 			OrganizationUUID: org.ID, Status: model.SubscriptionPlanStatus("ACTIVE"),
 		}

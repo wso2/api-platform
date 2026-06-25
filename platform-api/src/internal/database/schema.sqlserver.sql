@@ -619,7 +619,7 @@ CREATE INDEX idx_subscription_plans_status ON dbo.subscription_plans(status);
 -- Keyed columns are bounded NVARCHAR to stay within SQL Server index-key limits.
 IF OBJECT_ID(N'dbo.gateway_states', N'U') IS NULL
 CREATE TABLE dbo.gateway_states (
-    gateway_id NVARCHAR(64) PRIMARY KEY,
+    gateway_id VARCHAR(40) PRIMARY KEY,
     version_id NVARCHAR(255) NOT NULL DEFAULT '',
     updated_at DATETIME2(7) NOT NULL DEFAULT SYSUTCDATETIME(),
     FOREIGN KEY (gateway_id) REFERENCES dbo.gateways(uuid) ON DELETE CASCADE
@@ -627,7 +627,7 @@ CREATE TABLE dbo.gateway_states (
 
 IF OBJECT_ID(N'dbo.events', N'U') IS NULL
 CREATE TABLE dbo.events (
-    gateway_id NVARCHAR(64) NOT NULL,
+    gateway_id VARCHAR(40) NOT NULL,
     processed_timestamp DATETIME2(7) NOT NULL DEFAULT SYSUTCDATETIME(),
     originated_timestamp DATETIME2(7) NOT NULL,
     entity_type NVARCHAR(255) NOT NULL,
