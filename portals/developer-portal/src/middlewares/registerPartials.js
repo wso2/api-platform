@@ -152,9 +152,6 @@ const registerAllPartialsFromFile = async (baseURL, req, filePrefix) => {
   await registerPartialsFromFile(baseURL, base("pages", "mcp", "partials"), req);
   await registerPartialsFromFile(baseURL, base("pages", "mcp-landing", "partials"), req);
   await registerPartialsFromFile(baseURL, base("pages", "subscriptions", "partials"), req);
-  if (fs.existsSync(base("pages", "api-subscriptions", "partials"))) {
-    await registerPartialsFromFile(baseURL, base("pages", "api-subscriptions", "partials"), req);
-  }
   if (fs.existsSync(base("pages", "api-keys", "partials"))) {
     await registerPartialsFromFile(baseURL, base("pages", "api-keys", "partials"), req);
   }

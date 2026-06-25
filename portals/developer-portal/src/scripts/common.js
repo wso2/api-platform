@@ -149,16 +149,13 @@ document.addEventListener("DOMContentLoaded", function () {
                 // Update the submenu links with the correct API ID and base path
                 document.getElementById('api-overview').href = `${basePath}/api/${apiId}`;
                 document.getElementById('api-docs').href = `${basePath}/api/${apiId}/docs/specification`;
-                document.getElementById('api-subscriptions').href = `${basePath}/api/${apiId}/subscriptions`;
                 const apiKeysLink = document.getElementById('api-keys-nav');
                 if (apiKeysLink) {
                     apiKeysLink.href = `${basePath}/api/${apiId}/api-keys`;
                 }
 
                 // Set active submenu item
-                if (currentPath.includes('/subscriptions')) {
-                    document.getElementById('api-subscriptions')?.classList.add('active');
-                } else if (currentPath.includes('/api-keys')) {
+                if (currentPath.includes('/api-keys')) {
                     document.getElementById('api-keys-nav')?.classList.add('active');
                 } else if (currentPath.includes('/docs')) {
                     document.getElementById('api-docs')?.classList.add('active');
