@@ -166,6 +166,7 @@ func (r *MCPProxyRepo) GetByUUID(uuid, orgUUID string) (*model.MCPProxy, error) 
 
 // List retrieves all MCP proxies for an organization
 func (r *MCPProxyRepo) List(orgUUID string, limit, offset int) ([]*model.MCPProxy, error) {
+	pageClause, pageArgs := r.db.PaginationClause(limit, offset)
 	query := `
 		SELECT
 			uuid, handle, name, version, organization_uuid, created_at, updated_at,
@@ -173,8 +174,8 @@ func (r *MCPProxyRepo) List(orgUUID string, limit, offset int) ([]*model.MCPProx
 		FROM mcp_proxies
 		WHERE organization_uuid = ?
 		ORDER BY created_at DESC
-		`
-	rows, err := r.db.Query(r.db.Rebind(query), orgUUID)
+		` + pageClause
+	rows, err := r.db.Query(r.db.Rebind(query), append([]any{orgUUID}, pageArgs...)...)
 	if err != nil {
 		return nil, err
 	}

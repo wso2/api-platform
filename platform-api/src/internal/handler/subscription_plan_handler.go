@@ -109,6 +109,11 @@ func (h *SubscriptionPlanHandler) CreateSubscriptionPlan(c *gin.Context) {
 		return
 	}
 
+	if req.StopOnQuotaReach != nil && *req.StopOnQuotaReach != 0 && *req.StopOnQuotaReach != 1 {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "stopOnQuotaReach must be 0 or 1"))
+		return
+	}
+
 	if req.Status != "" {
 		switch req.Status {
 		case "ACTIVE", "INACTIVE":
@@ -246,6 +251,11 @@ func (h *SubscriptionPlanHandler) UpdateSubscriptionPlan(c *gin.Context) {
 	if err := c.ShouldBindJSON(&req); err != nil {
 		h.slogger.Error("Invalid update subscription plan request body", "planId", planId, "organizationId", orgId, "error", err)
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid request body"))
+		return
+	}
+
+	if req.StopOnQuotaReach != nil && *req.StopOnQuotaReach != 0 && *req.StopOnQuotaReach != 1 {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "stopOnQuotaReach must be 0 or 1"))
 		return
 	}
 

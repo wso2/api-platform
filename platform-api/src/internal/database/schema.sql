@@ -42,8 +42,7 @@ CREATE TABLE IF NOT EXISTS projects (
     updated_by VARCHAR(200),
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
-    UNIQUE(organization_uuid, handle),
-    UNIQUE(organization_uuid, name)
+    UNIQUE(organization_uuid, handle)
 );
 
 -- Applications table

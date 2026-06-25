@@ -43,8 +43,7 @@ CREATE TABLE dbo.projects (
     updated_by VARCHAR(200),
     updated_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
-    UNIQUE(organization_uuid, handle),
-    UNIQUE(organization_uuid, name)
+    UNIQUE(organization_uuid, handle)
 );
 
 -- Applications table

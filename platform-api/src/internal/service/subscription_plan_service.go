@@ -142,17 +142,25 @@ func (s *SubscriptionPlanService) UpdatePlan(planID, orgUUID, actor string, upda
 		return nil, constants.ErrSubscriptionPlanNotFound
 	}
 
-	if update.Handle != nil && *update.Handle != existing.Handle {
-		handleExists, err := s.planRepo.ExistsByHandleAndOrg(*update.Handle, orgUUID)
-		if err != nil {
-			return nil, err
+	if update.Handle != nil {
+		if *update.Handle == "" {
+			return nil, fmt.Errorf("handle is required")
 		}
-		if handleExists {
-			return nil, constants.ErrSubscriptionPlanAlreadyExists
+		if *update.Handle != existing.Handle {
+			handleExists, err := s.planRepo.ExistsByHandleAndOrg(*update.Handle, orgUUID)
+			if err != nil {
+				return nil, err
+			}
+			if handleExists {
+				return nil, constants.ErrSubscriptionPlanAlreadyExists
+			}
 		}
 		existing.Handle = *update.Handle
 	}
 	if update.Name != nil {
+		if *update.Name == "" {
+			return nil, fmt.Errorf("name is required")
+		}
 		existing.Name = *update.Name
 	}
 	if update.BillingPlan != nil {

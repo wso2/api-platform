@@ -18,6 +18,7 @@
 package service
 
 import (
+	"database/sql"
 	"errors"
 	"fmt"
 	"io"
@@ -559,6 +560,9 @@ func (s *APIService) validateSubscriptionPlans(planHandles *[]string, orgUUID st
 		}
 		plan, err := s.subscriptionPlanRepo.GetByHandleAndOrg(handle, orgUUID)
 		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return fmt.Errorf("%w: plan %q", constants.ErrSubscriptionPlanNotFoundOrInactive, handle)
+			}
 			return err
 		}
 		if plan == nil || plan.Status != model.SubscriptionPlanStatusActive {
