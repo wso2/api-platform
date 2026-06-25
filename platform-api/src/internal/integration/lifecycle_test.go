@@ -121,6 +121,39 @@ func TestLifecycle_SubscriptionPlanExistsAndList(t *testing.T) {
 	if len(plans) != 2 {
 		t.Fatalf("[%s] ListByOrganization(2,0): want 2, got %d", it.driver, len(plans))
 	}
+	// The throttle triple is now stored in subscription_plan_limits and hydrated back
+	// on read; confirm it round-trips through both the list and single-get paths.
+	for _, p := range plans {
+		if p.ThrottleLimitCount == nil || *p.ThrottleLimitCount != count {
+			t.Fatalf("[%s] list hydrate: ThrottleLimitCount = %v, want %d", it.driver, p.ThrottleLimitCount, count)
+		}
+		if p.ThrottleLimitUnit != "min" || p.StopOnQuotaReach != 1 {
+			t.Fatalf("[%s] list hydrate: unit=%q stop=%d, want unit=min stop=1", it.driver, p.ThrottleLimitUnit, p.StopOnQuotaReach)
+		}
+	}
+	got, err := planRepo.GetByID(plans[0].UUID, org.ID)
+	if err != nil {
+		t.Fatalf("[%s] GetByID failed: %v", it.driver, err)
+	}
+	if got.ThrottleLimitCount == nil || *got.ThrottleLimitCount != count || got.ThrottleLimitUnit != "min" {
+		t.Fatalf("[%s] GetByID hydrate: count=%v unit=%q, want %d/min", it.driver, got.ThrottleLimitCount, got.ThrottleLimitUnit, count)
+	}
+
+	// Update clearing the throttle should remove the limit row; reads then report no throttle
+	// with the default stop_on_quota_reach.
+	got.ThrottleLimitCount = nil
+	got.ThrottleLimitUnit = ""
+	got.StopOnQuotaReach = 1
+	if err := planRepo.Update(got); err != nil {
+		t.Fatalf("[%s] Update (clear throttle) failed: %v", it.driver, err)
+	}
+	cleared, err := planRepo.GetByID(got.UUID, org.ID)
+	if err != nil {
+		t.Fatalf("[%s] GetByID after clear failed: %v", it.driver, err)
+	}
+	if cleared.ThrottleLimitCount != nil || cleared.ThrottleLimitUnit != "" {
+		t.Fatalf("[%s] after clear: want no throttle, got count=%v unit=%q", it.driver, cleared.ThrottleLimitCount, cleared.ThrottleLimitUnit)
+	}
 }
 
 // TestLifecycle_ProjectPagination exercises ProjectRepo.ListProjects pagination
