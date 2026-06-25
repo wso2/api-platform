@@ -511,21 +511,21 @@ CREATE INDEX IF NOT EXISTS idx_subscription_plans_status ON subscription_plans(s
 
 -- EventHub tables for multi-replica HA sync
 CREATE TABLE IF NOT EXISTS gateway_states (
-    gateway_id TEXT PRIMARY KEY,
-    version_id TEXT NOT NULL DEFAULT '',
+    gateway_id VARCHAR(40) PRIMARY KEY,
+    version_id VARCHAR(255) NOT NULL DEFAULT '',
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (gateway_id) REFERENCES gateways(uuid) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS events (
-    gateway_id TEXT NOT NULL,
+    gateway_id VARCHAR(40) NOT NULL,
     processed_timestamp TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     originated_timestamp TIMESTAMPTZ NOT NULL,
-    entity_type TEXT NOT NULL,
-    action TEXT NOT NULL,
-    entity_id TEXT NOT NULL,
-    event_id TEXT NOT NULL,
-    event_data BYTEA NOT NULL,
+    entity_type VARCHAR(255) NOT NULL,
+    action VARCHAR(20) NOT NULL,
+    entity_id VARCHAR(255) NOT NULL,
+    event_id VARCHAR(64) NOT NULL,
+    event_data TEXT NOT NULL,
     PRIMARY KEY (gateway_id, event_id),
     FOREIGN KEY (gateway_id) REFERENCES gateway_states(gateway_id) ON DELETE CASCADE
 );

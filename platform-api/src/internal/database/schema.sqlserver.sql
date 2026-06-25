@@ -627,7 +627,7 @@ CREATE TABLE dbo.events (
     action NVARCHAR(20) NOT NULL CHECK(action IN ('CREATE', 'UPDATE', 'DELETE')),
     entity_id NVARCHAR(255) NOT NULL,
     event_id NVARCHAR(64) NOT NULL,
-    event_data VARBINARY(MAX) NOT NULL,
+    event_data NVARCHAR(MAX) NOT NULL,
     PRIMARY KEY (gateway_id, event_id),
     FOREIGN KEY (gateway_id) REFERENCES dbo.gateway_states(gateway_id) ON DELETE CASCADE
 );
@@ -650,90 +650,7 @@ CREATE TABLE dbo.audit (
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE
 );
 
--- ============================================================
--- SQL Server-only tables (not present in postgres/sqlite schemas)
--- ============================================================
-
--- Artifact Associations table (for both gateways and dev portals)
-IF OBJECT_ID(N'dbo.association_mappings', N'U') IS NULL
-CREATE TABLE dbo.association_mappings (
-    id INT IDENTITY(1,1) PRIMARY KEY,
-    artifact_uuid VARCHAR(40) NOT NULL,
-    organization_uuid VARCHAR(40) NOT NULL,
-    resource_uuid VARCHAR(40) NOT NULL,
-    association_type VARCHAR(20) NOT NULL,
-    created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
-    updated_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
-    FOREIGN KEY (artifact_uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
-    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
-    UNIQUE(artifact_uuid, resource_uuid, association_type, organization_uuid),
-    CHECK (association_type IN ('gateway', 'dev_portal'))
-);
-
--- DevPortals table
-IF OBJECT_ID(N'dbo.devportals', N'U') IS NULL
-CREATE TABLE dbo.devportals (
-    uuid VARCHAR(40) PRIMARY KEY,
-    organization_uuid VARCHAR(40) NOT NULL,
-    name VARCHAR(100) NOT NULL,
-    identifier VARCHAR(100) NOT NULL,
-    api_url VARCHAR(255) NOT NULL,
-    hostname VARCHAR(255) NOT NULL,
-    api_key VARCHAR(255) NOT NULL,
-    header_key_name VARCHAR(100) DEFAULT 'x-wso2-api-key',
-    is_active SMALLINT DEFAULT 0,
-    is_enabled SMALLINT DEFAULT 0,
-    is_default SMALLINT DEFAULT 0,
-    visibility VARCHAR(20) NOT NULL DEFAULT 'private',
-    description VARCHAR(500),
-    created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
-    updated_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
-    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
-    UNIQUE(organization_uuid, api_url),
-    UNIQUE(organization_uuid, hostname)
-);
-
--- API-DevPortal Publication Tracking Table
-IF OBJECT_ID(N'dbo.publication_mappings', N'U') IS NULL
-CREATE TABLE dbo.publication_mappings (
-    api_uuid VARCHAR(40) NOT NULL,
-    devportal_uuid VARCHAR(40) NOT NULL,
-    organization_uuid VARCHAR(40) NOT NULL,
-    status VARCHAR(20) NOT NULL CHECK (status IN ('published', 'failed', 'publishing')),
-    api_version VARCHAR(50),
-    devportal_ref_id VARCHAR(100),
-    sandbox_endpoint_url VARCHAR(500) NOT NULL,
-    production_endpoint_url VARCHAR(500) NOT NULL,
-    created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
-    updated_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
-    PRIMARY KEY (api_uuid, devportal_uuid, organization_uuid),
-    -- Only the devportal edge cascades. The api and organization edges are
-    -- NO ACTION to avoid the SQL Server multiple-cascade-paths restriction
-    -- (error 1785). API deletion removes publication rows explicitly in
-    -- application code (APIRepo.DeleteAPI), and organization deletes reach them
-    -- through organizations -> devportals -> publication_mappings.
-    FOREIGN KEY (api_uuid) REFERENCES rest_apis(uuid) ON DELETE NO ACTION,
-    FOREIGN KEY (devportal_uuid) REFERENCES devportals(uuid) ON DELETE CASCADE,
-    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE NO ACTION,
-    UNIQUE (api_uuid, devportal_uuid, organization_uuid)
-);
-
--- Indexes for SQL Server-only tables
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_devportals_org' AND object_id = OBJECT_ID(N'dbo.devportals'))
-CREATE INDEX idx_devportals_org ON dbo.devportals(organization_uuid);
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_devportals_active' AND object_id = OBJECT_ID(N'dbo.devportals'))
-CREATE INDEX idx_devportals_active ON dbo.devportals(organization_uuid, is_active);
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_devportals_default_per_org' AND object_id = OBJECT_ID(N'dbo.devportals'))
-CREATE UNIQUE INDEX idx_devportals_default_per_org ON dbo.devportals(organization_uuid) WHERE is_default = 1;
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_publication_mappings_api' AND object_id = OBJECT_ID(N'dbo.publication_mappings'))
-CREATE INDEX idx_publication_mappings_api ON dbo.publication_mappings(api_uuid);
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_publication_mappings_devportal' AND object_id = OBJECT_ID(N'dbo.publication_mappings'))
-CREATE INDEX idx_publication_mappings_devportal ON dbo.publication_mappings(devportal_uuid);
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_publication_mappings_org' AND object_id = OBJECT_ID(N'dbo.publication_mappings'))
-CREATE INDEX idx_publication_mappings_org ON dbo.publication_mappings(organization_uuid);
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_artifact_associations_artifact_resource_type' AND object_id = OBJECT_ID(N'dbo.association_mappings'))
-CREATE INDEX idx_artifact_associations_artifact_resource_type ON dbo.association_mappings(artifact_uuid, association_type, organization_uuid);
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_association_mappings_resource' AND object_id = OBJECT_ID(N'dbo.association_mappings'))
-CREATE INDEX idx_association_mappings_resource ON dbo.association_mappings(association_type, resource_uuid, organization_uuid);
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_association_mappings_org' AND object_id = OBJECT_ID(N'dbo.association_mappings'))
-CREATE INDEX idx_association_mappings_org ON dbo.association_mappings(organization_uuid);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_gateway_association_mappings_artifact' AND object_id = OBJECT_ID(N'dbo.gateway_association_mappings'))
+CREATE INDEX idx_gateway_association_mappings_artifact ON dbo.gateway_association_mappings(artifact_uuid);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_gateway_association_mappings_gateway' AND object_id = OBJECT_ID(N'dbo.gateway_association_mappings'))
+CREATE INDEX idx_gateway_association_mappings_gateway ON dbo.gateway_association_mappings(gateway_uuid);

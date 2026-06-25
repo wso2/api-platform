@@ -307,7 +307,6 @@ func (b *SQLBackend) Publish(gatewayID string, event Event) error {
 	if eventDataStr == "" {
 		eventDataStr = EmptyEventData
 	}
-	eventData := []byte(eventDataStr)
 	eventID := strings.TrimSpace(event.EventID)
 	if eventID == "" {
 		// TODO: (VirajSalaka) Make this UUID v7
@@ -341,7 +340,7 @@ func (b *SQLBackend) Publish(gatewayID string, event Event) error {
 		event.Action,
 		event.EntityID,
 		eventID,
-		eventData,
+		eventDataStr,
 	)
 	if err != nil {
 		insertErr := err
