@@ -59,7 +59,6 @@ const create = async (orgID, apiMetadata, t) => {
             SANDBOX_URL: apiMetadata.endPoints.sandboxURL,
             PRODUCTION_URL: apiMetadata.endPoints.productionURL,
             METADATA_SEARCH: apiMetadata,
-            GATEWAY_TYPE: apiMetadata.apiInfo.gatewayType || null,
             ORG_ID: orgID
         },
             { transaction: t }
@@ -102,7 +101,6 @@ const update = async (orgID, apiID, apiMetadata, t) => {
             SANDBOX_URL: apiMetadata.endPoints.sandboxURL,
             PRODUCTION_URL: apiMetadata.endPoints.productionURL,
             METADATA_SEARCH: apiMetadata,
-            GATEWAY_TYPE: apiMetadata.apiInfo.gatewayType || null,
         }, {
             where: {
                 API_ID: apiID,

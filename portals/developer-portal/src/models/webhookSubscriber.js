@@ -39,14 +39,10 @@ const WebhookSubscriber = sequelize.define('DP_WEBHOOK_SUBSCRIBER', {
     },
     SECRET_ENC: {
         type: DataTypes.TEXT,
-        allowNull: false
+        allowNull: true
     },
     PUBLIC_KEY: {
         type: DataTypes.TEXT,
-        allowNull: true
-    },
-    GATEWAY_TYPE: {
-        type: DataTypes.STRING,
         allowNull: true
     },
     EVENT_PATTERNS: {
@@ -73,6 +69,11 @@ const WebhookSubscriber = sequelize.define('DP_WEBHOOK_SUBSCRIBER', {
             name: 'UQ_WEBHOOK_SUBSCRIBER_ORG_NAME',
             unique: true,
             fields: ['ORG_ID', 'NAME']
+        },
+        {
+            name: 'UQ_WEBHOOK_SUBSCRIBER_ORG_URL',
+            unique: true,
+            fields: ['ORG_ID', 'TARGET_URL']
         }
     ]
 });

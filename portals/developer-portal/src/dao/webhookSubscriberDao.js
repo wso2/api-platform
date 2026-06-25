@@ -29,7 +29,7 @@ const whCrypto = createCryptoUtil(config.advanced.encryptionKey);
  */
 const create = async (orgId, subData) => {
     try {
-        if (!whCrypto.enabled) {
+        if (subData.secret && !whCrypto.enabled) {
             throw new Error('Webhook subscriber encryption key is not configured. ' +
                 'Set config.advanced.encryptionKey to a 64-char hex string.');
         }
@@ -37,9 +37,8 @@ const create = async (orgId, subData) => {
             ORG_ID: orgId,
             NAME: subData.name,
             TARGET_URL: subData.url,
-            SECRET_ENC: whCrypto.encrypt(subData.secret),
+            ...(subData.secret && { SECRET_ENC: whCrypto.encrypt(subData.secret) }),
             ...(subData.publicKey && { PUBLIC_KEY: subData.publicKey }),
-            ...(subData.gatewayType && { GATEWAY_TYPE: subData.gatewayType }),
             ...(subData.events && { EVENT_PATTERNS: subData.events }),
             ...(subData.enabled !== undefined && { ENABLED: subData.enabled }),
             ...(subData.timeoutMs && { TIMEOUT_MS: subData.timeoutMs }),
@@ -64,7 +63,6 @@ const update = async (orgId, subscriberId, subData) => {
             ...(subData.name && { NAME: subData.name }),
             ...(subData.url && { TARGET_URL: subData.url }),
             ...(subData.publicKey !== undefined && { PUBLIC_KEY: subData.publicKey }),
-            ...(subData.gatewayType !== undefined && { GATEWAY_TYPE: subData.gatewayType }),
             ...(subData.events && { EVENT_PATTERNS: subData.events }),
             ...(subData.enabled !== undefined && { ENABLED: subData.enabled }),
             ...(subData.timeoutMs && { TIMEOUT_MS: subData.timeoutMs }),
@@ -112,17 +110,14 @@ const list = async (orgId) => {
 
 /**
  * List enabled webhook subscribers across all organizations that match the
- * given event type and gateway type. Used by the dispatcher fan-out.
+ * given event type. Used by the dispatcher fan-out.
  */
-const matchSubscribers = async (orgId, eventType, gatewayType) => {
+const matchSubscribers = async (orgId, eventType) => {
     try {
         const subscribers = await WebhookSubscriber.findAll({
             where: { ORG_ID: orgId, ENABLED: true }
         });
         return subscribers.filter(sub => {
-            if (sub.GATEWAY_TYPE && sub.GATEWAY_TYPE !== '*') {
-                if (sub.GATEWAY_TYPE !== gatewayType) return false;
-            }
             const patterns = sub.EVENT_PATTERNS;
             if (Array.isArray(patterns) && patterns.length > 0) {
                 const matches = patterns.some(pattern => {
@@ -161,6 +156,28 @@ const get = async (orgId, subscriberId) => {
 };
 
 /**
+ * Get a single webhook subscriber by ID only, without scoping to an org.
+ * SUBSCRIBER_ID is a globally unique UUID primary key, so this is safe.
+ * Used by the delivery worker, which only has the subscriber ID (from the
+ * delivery row) and not the org ID in scope.
+ */
+const getById = async (subscriberId) => {
+    try {
+        const sub = await WebhookSubscriber.findOne({ where: { SUBSCRIBER_ID: subscriberId } });
+        if (!sub) {
+            throw new Sequelize.EmptyResultError('Webhook subscriber not found');
+        }
+        return sub;
+    } catch (error) {
+        if (error instanceof Sequelize.EmptyResultError) {
+            throw error;
+        }
+        logger.error('Error fetching webhook subscriber by id', { error });
+        throw new Sequelize.DatabaseError(error);
+    }
+};
+
+/**
  * Delete a webhook subscriber.
  */
 const deleteSubscriber = async (orgId, subscriberId) => {
@@ -186,6 +203,7 @@ const deleteSubscriber = async (orgId, subscriberId) => {
  * Used internally by the delivery worker to sign outgoing requests.
  */
 const decryptSecret = (subRecord) => {
+    if (!subRecord.SECRET_ENC) return null;
     if (!whCrypto.enabled) {
         throw new Error('Webhook subscriber encryption key is not configured.');
     }
@@ -198,6 +216,7 @@ module.exports = {
     list,
     matchSubscribers,
     get,
+    getById,
     delete: deleteSubscriber,
     decryptSecret,
 };

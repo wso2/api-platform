@@ -20,7 +20,7 @@ The Developer Portal is a self-hosted, multi-tenant web application where API pu
 2. [Manage Organizations](administer/manage-organizations.md)
 3. [Manage Views](administer/manage-views.md)
 4. [Subscription Plans](administer/subscription-plans.md)
-5. [Gateway Integration](administer/gateway-integration.md)
+5. [Webhook Integration](administer/webhook-integration.md)
 6. [Key Manager Integration](administer/key-manager-integration.md)
 7. [Publish APIs](publish-apis/publishing-apis.md)
 

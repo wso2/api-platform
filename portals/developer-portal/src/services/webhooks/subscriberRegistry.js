@@ -19,7 +19,7 @@ const whDao = require('../../dao/webhookSubscriberDao');
 
 /**
  * Maps a DP_WEBHOOK_SUBSCRIBER record to the shape consumed by the dispatcher
- * and delivery worker: {id, url, secret, publicKey, gatewayType, events, timeoutMs}.
+ * and delivery worker: {id, url, secret, publicKey, events, timeoutMs}.
  */
 function toRuntimeSubscriber(record) {
     return {
@@ -27,7 +27,6 @@ function toRuntimeSubscriber(record) {
         url: record.TARGET_URL,
         secret: whDao.decryptSecret(record),
         publicKey: record.PUBLIC_KEY || null,
-        gatewayType: record.GATEWAY_TYPE || null,
         events: record.EVENT_PATTERNS || [],
         timeoutMs: record.TIMEOUT_MS,
     };
@@ -35,15 +34,14 @@ function toRuntimeSubscriber(record) {
 
 /**
  * Returns all enabled subscribers for the given org that should receive an
- * event of the given type and gateway_type.
+ * event of the given type.
  *
  * @param {string} orgId
  * @param {string} eventType      — e.g. "apikey.generated"
- * @param {string|null} gatewayType — value from DP_EVENT.GATEWAY_TYPE
- * @returns {Promise<Array<{id,url,secret,publicKey,gatewayType,events,timeoutMs}>>}
+ * @returns {Promise<Array<{id,url,secret,publicKey,events,timeoutMs}>>}
  */
-async function matchSubscribers(orgId, eventType, gatewayType) {
-    const records = await whDao.matchSubscribers(orgId, eventType, gatewayType);
+async function matchSubscribers(orgId, eventType) {
+    const records = await whDao.matchSubscribers(orgId, eventType);
     return records.map(toRuntimeSubscriber);
 }
 
@@ -52,7 +50,7 @@ async function matchSubscribers(orgId, eventType, gatewayType) {
  */
 async function getSubscriber(id) {
     try {
-        const record = await whDao.get(id);
+        const record = await whDao.getById(id);
         return toRuntimeSubscriber(record);
     } catch (err) {
         return null;

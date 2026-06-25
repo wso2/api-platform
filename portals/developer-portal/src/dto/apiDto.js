@@ -55,7 +55,6 @@ class APIInfo {
         this.apiStatus = apiInfo.STATUS;
         this.visibility = apiInfo.VISIBILITY;
         this.agentVisibility = apiInfo.AGENT_VISIBILITY || 'VISIBLE';
-        this.gatewayType = apiInfo.GATEWAY_TYPE || null;
         if (apiInfo.addedLabels) {
             this.addedLabels = apiInfo.addedLabels;
         }

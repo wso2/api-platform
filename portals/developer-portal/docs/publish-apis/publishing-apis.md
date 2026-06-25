@@ -146,7 +146,6 @@ curl -X POST "http://localhost:3000/o/{orgId}/devportal/v1/apis" \
 | `spec.endpoints.productionUrl` | No | Production gateway URL |
 | `spec.endpoints.sandboxUrl` | No | Sandbox gateway URL |
 | `spec.businessInformation` | No | Business and technical owner contact details |
-| `spec.gatewayType` | No | Gateway type identifier — used to route webhook events to the matching gateway subscriber |
 
 The response includes the `apiId` needed for subsequent steps.
 
@@ -190,7 +189,6 @@ The consumer generates an API key from the portal and uses it directly to invoke
 
 ```yaml
 spec:
-  gatewayType: wso2/api-platform
   subscriptionPlans: []   # no subscription required
 ```
 
@@ -217,7 +215,6 @@ The consumer subscribes to a plan and then generates an API key bound to that AP
 
 ```yaml
 spec:
-  gatewayType: wso2/api-platform
   subscriptionPlans:
     - Gold
     - Bronze
@@ -246,7 +243,6 @@ The consumer subscribes to a plan and generates an API key. They also receive a 
 
 ```yaml
 spec:
-  gatewayType: wso2/api-platform
   subscriptionPlans:
     - Gold
     - Silver

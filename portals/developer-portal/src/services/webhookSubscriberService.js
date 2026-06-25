@@ -17,17 +17,35 @@
  */
 const { Sequelize } = require('sequelize');
 const whDao = require('../dao/webhookSubscriberDao');
+const eventDao = require('../dao/eventDao');
 const { WebhookSubscriberDTO } = require('../dto/webhookSubscriberDto');
 const constants = require('../utils/constants');
 const util = require('../utils/util');
 const logger = require('../config/logger');
 
 function _validateRequiredFields(payload) {
-    const missing = ['name', 'url', 'secret'].filter(f => !payload[f]);
+    const missing = ['name', 'url'].filter(f => !payload[f]);
     if (missing.length) {
         return `Missing required fields: ${missing.join(', ')}`;
     }
     return null;
+}
+
+/**
+ * Build a specific conflict message based on which unique constraint (name or
+ * target URL) was violated.
+ */
+function _uniqueConstraintMessage(error, payload) {
+    const fields = Array.isArray(error.fields)
+        ? error.fields
+        : error.fields ? Object.keys(error.fields) : (error.errors || []).map(e => e.path);
+    if (fields.includes('TARGET_URL')) {
+        return `A webhook subscriber with target URL "${payload?.url}" already exists in this organization.`;
+    }
+    if (fields.includes('NAME')) {
+        return `A webhook subscriber with name "${payload?.name}" already exists in this organization.`;
+    }
+    return 'A webhook subscriber with that name or target URL already exists in this organization.';
 }
 
 const createWebhookSubscriber = async (req, res) => {
@@ -46,7 +64,7 @@ const createWebhookSubscriber = async (req, res) => {
     } catch (error) {
         if (error instanceof Sequelize.UniqueConstraintError) {
             return res.status(409).json({
-                error: `A webhook subscriber with name "${req.body?.name}" already exists in this organization.`
+                error: _uniqueConstraintMessage(error, req.body)
             });
         }
         logger.error(constants.ERROR_MESSAGE.WEBHOOK_SUBSCRIBER_CREATE_ERROR, { error });
@@ -68,7 +86,7 @@ const updateWebhookSubscriber = async (req, res) => {
         }
         if (error instanceof Sequelize.UniqueConstraintError) {
             return res.status(409).json({
-                error: 'A webhook subscriber with that name already exists in this organization.'
+                error: _uniqueConstraintMessage(error, req.body)
             });
         }
         logger.error(constants.ERROR_MESSAGE.WEBHOOK_SUBSCRIBER_UPDATE_ERROR, { error });
@@ -103,6 +121,36 @@ const getWebhookSubscriber = async (req, res) => {
     }
 };
 
+function _formatDeliverySummary(delivery) {
+    const event = delivery.DP_EVENT;
+    return {
+        deliveryId: delivery.DELIVERY_ID,
+        eventType: event ? event.EVENT_TYPE : null,
+        occurredAt: event ? event.OCCURRED_AT : null,
+        status: delivery.STATUS,
+        attemptCount: delivery.ATTEMPT_COUNT,
+        lastHttpStatus: delivery.LAST_HTTP_STATUS || null,
+        lastError: delivery.LAST_ERROR || null,
+        lastAttemptAt: delivery.LAST_ATTEMPT_AT || null,
+        deliveredAt: delivery.DELIVERED_AT || null,
+    };
+}
+
+const getWebhookSubscriberDeliveries = async (req, res) => {
+    try {
+        const { orgId, subscriberId } = req.params;
+        await whDao.get(orgId, subscriberId);
+        const deliveries = await eventDao.listDeliveriesForSubscriber(orgId, subscriberId, 20);
+        return res.status(200).json({ list: deliveries.map(_formatDeliverySummary) });
+    } catch (error) {
+        if (error instanceof Sequelize.EmptyResultError) {
+            return res.status(404).json({ error: constants.ERROR_MESSAGE.WEBHOOK_SUBSCRIBER_NOT_FOUND });
+        }
+        logger.error('Error fetching webhook subscriber deliveries', { error });
+        return res.status(500).json({ error: 'Failed to fetch webhook subscriber deliveries' });
+    }
+};
+
 const deleteWebhookSubscriber = async (req, res) => {
     try {
         const { orgId, subscriberId } = req.params;
@@ -122,5 +170,6 @@ module.exports = {
     updateWebhookSubscriber,
     getWebhookSubscribers,
     getWebhookSubscriber,
+    getWebhookSubscriberDeliveries,
     deleteWebhookSubscriber,
 };

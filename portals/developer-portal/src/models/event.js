@@ -34,10 +34,6 @@ const DPEvent = sequelize.define('DP_EVENT', {
         type: DataTypes.UUID,
         allowNull: false
     },
-    GATEWAY_TYPE: {
-        type: DataTypes.STRING(128),
-        allowNull: true
-    },
     AGGREGATE_TYPE: {
         type: DataTypes.STRING(64),
         allowNull: false

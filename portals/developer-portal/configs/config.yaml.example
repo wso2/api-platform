@@ -123,19 +123,10 @@ identityProvider:
     email: "LOCAL"
 
 # ─── Platform API ─────────────────────────────────────────────────────────────
-# Used for two purposes:
-#
-# 1. Local auth — when identityProvider.clientId is empty, the built-in login
-#    form authenticates against Platform API and receives a signed JWT.
-#    Users and their scopes are defined in configs/config-platform-api.toml.
-#
-# 2. Direct gateway integration — when an API has GATEWAY_TYPE = "wso2/api-platform"
-#    and baseUrl is set, subscription and API key operations are forwarded to the
-#    Platform API instead of publishing webhook events. The Platform API is then
-#    responsible for propagating state to the gateway.
-#    If baseUrl is unset, the webhook path is used as a fallback for all gateway types.
-#
-# Leave baseUrl empty (or unset) to disable both features.
+# Used for local auth only — when identityProvider.clientId is empty, the
+# built-in login form authenticates against Platform API and receives a
+# signed JWT. Users and their scopes are defined in configs/config-platform-api.toml.
+# Leave baseUrl empty (or unset) to disable local auth.
 
 platformApi:
   baseUrl: ""           # e.g. https://platform-api:9243  — env: DP_PLATFORMAPI_BASEURL
@@ -217,29 +208,18 @@ features:
 # Outbound webhooks (gateway event delivery)
 # ─────────────────────────────────────────────────────────
 # When a user generates an API key, subscribes, etc., the devportal fires signed
-# HTTP POST events to every matching subscriber below.  Gateways implement their
-# own handler and never need a reverse connection into the devportal.
+# HTTP POST events to every matching subscriber. Gateways implement their own
+# handler and never need a reverse connection into the devportal.
 #
-# Per-subscriber secrets / public keys can also be supplied via env vars:
-#   DP_WEBHOOK_SECRET_<ID_UPPERCASED>   — HMAC signing secret
-#   DP_WEBHOOK_PUBKEY_<ID_UPPERCASED>   — RSA public key (PEM) for key encryption
-# where the ID is the subscriber `id` with non-alphanumeric chars replaced by _.
+# Subscribers are NOT configured here — they're per-organization and managed
+# through the Webhook Subscribers API (POST/GET/PUT/DELETE
+# /o/{orgId}/devportal/v1/webhook-subscribers). Secrets and public keys are
+# stored encrypted at rest in the devportal database. See
+# docs/administer/webhook-integration.md for the full API and payload reference.
 #
+# Only delivery (retry/backoff) tuning, which applies globally across all
+# organizations, lives in this file:
 webhooks:
-  subscribers: []
-  # Example subscriber:
-  #
-  # subscribers:
-  #   - id: my-gateway                         # stable identifier, used in DB + logs
-  #     gatewayType: "my-gateway-type"          # matches API.GATEWAY_TYPE; use "*" for all
-  #     url: "https://gateway.example.com/devportal/events"
-  #     secret: "change-me-32-chars-minimum"   # env: DP_WEBHOOK_SECRET_MY_GATEWAY
-  #     publicKeyPath: "/run/secrets/gateway-pubkey.pem"  # RSA-2048+ PEM file; env: DP_WEBHOOK_PUBLIC_KEY_PATH_MY_GATEWAY
-  #     events:                                 # allowlist — omit to receive all event types
-  #       - apikey.*
-  #       - subscription.*
-  #     timeoutMs: 5000
-
   delivery:
     maxAttempts: 8
     # Retry delays in seconds: 1 min, 5 min, 15 min, 30 min, 1 h, 2 h, 4 h, 8 h

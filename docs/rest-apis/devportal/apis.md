@@ -19,7 +19,7 @@ curl -X POST https://devportal.api-platform.io/o/{orgId}/devportal/v1/apis \
 
 ```
 
-Creates Developer Portal API metadata from either a full API artifact ZIP, an API metadata YAML file (`api.yaml` / `devportal.yaml` / `mcp.yaml`), or an `apiMetadata` JSON string. An API definition file is required unless supplied by the artifact ZIP. The YAML `spec` block accepts: `displayName`, `version`, `description`, `type`, `status`, `visibility`, `agentVisibility`, `visibleGroups`, `tags`, `labels`, `gatewayType`, `provider`, `referenceID`, `endpoints` (sandboxUrl, productionUrl), `businessInformation` (owners), and `subscriptionPlans`. The service also stores labels, subscription plan mappings, image metadata, and schema definitions for MCP or GraphQL APIs when provided.
+Creates Developer Portal API metadata from either a full API artifact ZIP, an API metadata YAML file (`api.yaml` / `devportal.yaml` / `mcp.yaml`), or an `apiMetadata` JSON string. An API definition file is required unless supplied by the artifact ZIP. The YAML `spec` block accepts: `displayName`, `version`, `description`, `type`, `status`, `visibility`, `agentVisibility`, `visibleGroups`, `tags`, `labels`, `provider`, `referenceID`, `endpoints` (sandboxUrl, productionUrl), `businessInformation` (owners), and `subscriptionPlans`. The service also stores labels, subscription plan mappings, image metadata, and schema definitions for MCP or GraphQL APIs when provided.
 `subscriptionPlans` links existing org-level plans to this API by name — it does not create plans. In YAML it is a string array (`["Gold", "Silver"]`). In the JSON `apiMetadata` field it is an object array where only `planName` is used (`[{"planName":"Gold"}]`); extra fields such as `planID`, `displayName`, or `requestCount` are ignored.
 
 > Payload
@@ -54,7 +54,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |» apiDefinition|body|string(binary)|false|API definition file.|
 |» artifact|body|string(binary)|false|Full API ZIP artifact containing metadata and definition files.|
 |» schemaDefinition|body|string(binary)|false|Schema definition file, used by MCP APIs.|
-|» apiMetadata|body|string|false|JSON string accepted by the service when the `api` YAML file is not supplied. Accepted top-level fields mirror the YAML spec: `apiInfo` (apiName, apiVersion, apiDescription, apiType, visibility, agentVisibility, apiStatus, provider, referenceID, apiHandle, tags, labels, visibleGroups, gatewayType, owners), `endPoints` (productionURL, sandboxURL), and `subscriptionPlans` (array of `{ planName }` objects — only `planName` is read; the plan must already exist in the organization).|
+|» apiMetadata|body|string|false|JSON string accepted by the service when the `api` YAML file is not supplied. Accepted top-level fields mirror the YAML spec: `apiInfo` (apiName, apiVersion, apiDescription, apiType, visibility, agentVisibility, apiStatus, provider, referenceID, apiHandle, tags, labels, visibleGroups, owners), `endPoints` (productionURL, sandboxURL), and `subscriptionPlans` (array of `{ planName }` objects — only `planName` is read; the plan must already exist in the organization).|
 |orgId|path|string|true|none|
 
 > Example responses
@@ -77,7 +77,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
     "apiType": "REST",
     "visibility": "PUBLIC",
     "agentVisibility": "VISIBLE",
-    "gatewayType": null,
     "tags": [
       "weather"
     ],
@@ -245,7 +244,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
         "apiType": "REST",
         "visibility": "PUBLIC",
         "agentVisibility": "VISIBLE",
-        "gatewayType": null,
         "labels": [
           "default"
         ]
@@ -337,7 +335,6 @@ Status Code **200**
 |»»» apiType|string|false|none|none|
 |»»» visibility|string|false|none|none|
 |»»» agentVisibility|string|false|none|none|
-|»»» gatewayType|string¦null|false|none|none|
 |»»» addedLabels|[string]|false|none|none|
 |»»» removedLabels|[string]|false|none|none|
 |»»» visibleGroups|[string]|false|none|none|
@@ -444,7 +441,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
     "apiType": "REST",
     "visibility": "PUBLIC",
     "agentVisibility": "VISIBLE",
-    "gatewayType": null,
     "labels": [
       "default"
     ]
@@ -580,7 +576,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |» apiDefinition|body|string(binary)|false|API definition file.|
 |» artifact|body|string(binary)|false|Full API ZIP artifact containing metadata and definition files.|
 |» schemaDefinition|body|string(binary)|false|Schema definition file, used by MCP APIs.|
-|» apiMetadata|body|string|false|JSON string accepted by the service when the `api` YAML file is not supplied. Accepted top-level fields mirror the YAML spec: `apiInfo` (apiName, apiVersion, apiDescription, apiType, visibility, agentVisibility, apiStatus, provider, referenceID, apiHandle, tags, labels, visibleGroups, gatewayType, owners), `endPoints` (productionURL, sandboxURL), and `subscriptionPlans` (array of `{ planName }` objects — only `planName` is read; the plan must already exist in the organization).|
+|» apiMetadata|body|string|false|JSON string accepted by the service when the `api` YAML file is not supplied. Accepted top-level fields mirror the YAML spec: `apiInfo` (apiName, apiVersion, apiDescription, apiType, visibility, agentVisibility, apiStatus, provider, referenceID, apiHandle, tags, labels, visibleGroups, owners), `endPoints` (productionURL, sandboxURL), and `subscriptionPlans` (array of `{ planName }` objects — only `planName` is read; the plan must already exist in the organization).|
 |orgId|path|string|true|none|
 |apiId|path|string|true|none|
 
@@ -605,7 +601,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
     "apiType": "REST",
     "visibility": "PUBLIC",
     "agentVisibility": "VISIBLE",
-    "gatewayType": null,
     "labels": [
       "default"
     ]

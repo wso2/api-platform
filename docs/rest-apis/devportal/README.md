@@ -145,6 +145,7 @@ Base URLs:
 - [Get a webhook subscriber](webhook-subscribers.md#get-a-webhook-subscriber)
 - [Update a webhook subscriber](webhook-subscribers.md#update-a-webhook-subscriber)
 - [Delete a webhook subscriber](webhook-subscribers.md#delete-a-webhook-subscriber)
+- [List recent deliveries for a webhook subscriber](webhook-subscribers.md#list-recent-deliveries-for-a-webhook-subscriber)
 
 ### [Schemas](schemas.md)
 

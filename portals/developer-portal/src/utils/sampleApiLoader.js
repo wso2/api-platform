@@ -98,7 +98,6 @@ function parseApiYaml(apiHandle, samplesDir) {
             visibleGroups: spec.visibleGroups || [],
             tags: spec.tags || [],
             labels: spec.labels || [],
-            gatewayType: spec.gatewayType || null,
             owners: spec.businessInformation ? {
                 businessOwner: spec.businessInformation.businessOwner,
                 businessOwnerEmail: spec.businessInformation.businessOwnerEmail,

@@ -395,7 +395,7 @@ paths:
         Creates Developer Portal API metadata from either a full API artifact ZIP, an API metadata YAML file (`api.yaml`
         / `devportal.yaml` / `mcp.yaml`), or an `apiMetadata` JSON string. An API definition file is required unless
         supplied by the artifact ZIP. The YAML `spec` block accepts: `displayName`, `version`, `description`, `type`,
-        `status`, `visibility`, `agentVisibility`, `visibleGroups`, `tags`, `labels`, `gatewayType`, `provider`,
+        `status`, `visibility`, `agentVisibility`, `visibleGroups`, `tags`, `labels`, `provider`,
         `referenceID`, `endpoints` (sandboxUrl, productionUrl), `businessInformation` (owners), and `subscriptionPlans`.
         The service also stores labels, subscription plan mappings, image metadata, and schema definitions for MCP or
         GraphQL APIs when provided.
@@ -998,7 +998,6 @@ paths:
                 apiId: api-7f4c2a6b
                 subscriptionToken: a3f1e8b2...
                 subscriptionPlanName: Gold
-                gatewayType: wso2/api-platform
                 status: ACTIVE
                 createdBy: alice@example.com
                 createdAt: "2026-05-07T08:30:00Z"
@@ -1106,9 +1105,10 @@ paths:
       summary: Generate an API key
       description: >-
         Generates an API key stored in the Developer Portal (devportal is source of truth). The plaintext secret is
-        returned once in the response and never persisted. A `apikey.generated` webhook event is published so gateways
-        can register the key. Key names must match `^[a-z0-9][a-z0-9_-]{0,127}$`, and `expiresAt` must include a
-        timezone when sent as an ISO-8601 string.
+        returned once in the response and never persisted. A `apikey.generated` webhook event is published to the
+        organization's configured webhook subscribers so they can register the key (e.g. with a gateway). Key names
+        must match `^[a-z0-9][a-z0-9_-]{0,127}$`, and `expiresAt` must include a timezone when sent as an ISO-8601
+        string.
       requestBody:
         $ref: "#/components/requestBodies/ApiKeyBody"
       responses:
@@ -1178,9 +1178,9 @@ paths:
       operationId: regenerateApiKey
       summary: Regenerate an API key
       description: >-
-        Regenerates the secret for an existing API key identified by `apiKeyId`. The old secret is invalidated at
-        connected gateways via an `apikey.regenerated` webhook event. The new plaintext secret is returned once and
-        never persisted.
+        Regenerates the secret for an existing API key identified by `apiKeyId`. An `apikey.regenerated` webhook
+        event is published to the organization's configured webhook subscribers so they can invalidate the old
+        secret (e.g. at a gateway). The new plaintext secret is returned once and never persisted.
       responses:
         "200":
           $ref: "#/components/responses/ApiKeyGenerateResponse"
@@ -1206,8 +1206,8 @@ paths:
       operationId: revokeApiKey
       summary: Revoke an API key
       description: >-
-        Revokes an existing API key. An `apikey.revoked` webhook event is published so connected gateways can
-        immediately reject requests carrying the key.
+        Revokes an existing API key. An `apikey.revoked` webhook event is published to the organization's
+        configured webhook subscribers so they can immediately reject requests carrying the key (e.g. at a gateway).
       responses:
         "204":
           description: API key revoked successfully.
@@ -1769,9 +1769,9 @@ paths:
         - Webhook Subscribers
       summary: Create a webhook subscriber
       description: >-
-        Registers a webhook subscriber for the organization. Gateway event deliveries (apikey.*, subscription.*, etc.)
-        matching the subscriber's gatewayType/events filters are fanned out to its target URL. The `secret` is encrypted
-        at rest using AES-256-GCM.
+        Registers a webhook subscriber for the organization. Event deliveries (apikey.*, subscription.*, etc.)
+        matching the subscriber's events filter are fanned out to its target URL. The `secret`, if provided, is
+        encrypted at rest using AES-256-GCM.
       operationId: createWebhookSubscriber
       requestBody:
         $ref: "#/components/requestBodies/WebhookSubscriberBody"
@@ -1878,6 +1878,36 @@ paths:
       security:
         - OAuth2Security:
             - dp:webhook_subscriber_delete
+            - dp:webhook_subscriber_manage
+  /o/{orgId}/devportal/v1/webhook-subscribers/{subscriberId}/deliveries:
+    parameters:
+      - $ref: "#/components/parameters/orgId"
+      - $ref: "#/components/parameters/subscriberId"
+    get:
+      tags:
+        - Webhook Subscribers
+      summary: List recent deliveries for a webhook subscriber
+      description: Returns the most recent webhook delivery attempts for a single subscriber, newest first.
+      operationId: getWebhookSubscriberDeliveries
+      responses:
+        "200":
+          description: Recent delivery attempts for this webhook subscriber.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  list:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/WebhookSubscriberDeliverySummary"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      security:
+        - OAuth2Security:
+            - dp:webhook_subscriber_read
             - dp:webhook_subscriber_manage
   /login:
     post:
@@ -2641,7 +2671,6 @@ components:
             name: Production Gateway
             url: https://gateway.example.com/devportal-webhook
             secret: <shared-secret>
-            gatewayType: "*"
             events:
               - apikey.*
               - subscription.*
@@ -2784,7 +2813,7 @@ components:
                   JSON string accepted by the service when the `api` YAML file is not supplied. Accepted top-level
                   fields mirror the YAML spec: `apiInfo` (apiName, apiVersion, apiDescription, apiType, visibility,
                   agentVisibility, apiStatus, provider, referenceID, apiHandle, tags, labels, visibleGroups,
-                  gatewayType, owners), `endPoints` (productionURL, sandboxURL), and `subscriptionPlans` (array of `{
+                  owners), `endPoints` (productionURL, sandboxURL), and `subscriptionPlans` (array of `{
                   planName }` objects — only `planName` is read; the plan must already exist in the organization).
                 example: >-
                   {"apiInfo":{"apiName":"Weather API","apiVersion":"v1","apiDescription":"Weather forecast
@@ -3123,7 +3152,6 @@ components:
               apiType: REST
               visibility: PUBLIC
               agentVisibility: VISIBLE
-              gatewayType: null
               tags:
                 - weather
               labels:
@@ -3155,7 +3183,6 @@ components:
               apiType: REST
               visibility: PUBLIC
               agentVisibility: VISIBLE
-              gatewayType: null
               labels:
                 - default
             endPoints:
@@ -3191,7 +3218,6 @@ components:
                   apiType: REST
                   visibility: PUBLIC
                   agentVisibility: VISIBLE
-                  gatewayType: null
                   labels:
                     - default
                 endPoints:
@@ -3305,7 +3331,6 @@ components:
             apiId: api-7f4c2a6b
             subscriptionToken: a3f1e8b2...
             subscriptionPlanName: Gold
-            gatewayType: wso2/api-platform
             status: ACTIVE
             createdBy: alice@example.com
             createdAt: "2026-05-07T08:30:00Z"
@@ -3837,9 +3862,6 @@ components:
           type: string
         agentVisibility:
           type: string
-        gatewayType:
-          type: string
-          nullable: true
         addedLabels:
           type: array
           items:
@@ -4154,9 +4176,6 @@ components:
         subscriptionPlanName:
           type: string
           example: Gold
-        gatewayType:
-          type: string
-          example: wso2/api-platform
         status:
           type: string
           enum:
@@ -4527,7 +4546,7 @@ components:
         url:
           type: string
           format: uri
-          description: Target URL events are POSTed to.
+          description: Target URL events are POSTed to. Must be unique within the organization.
           example: https://gateway.example.com/devportal-webhook
         secret:
           type: string
@@ -4538,11 +4557,6 @@ components:
           description: >-
             PEM-encoded public key. When set, secret event payloads (apikey.*, subscription.*) are additionally
             encrypted to this key so only the subscriber can read the plaintext key.
-        gatewayType:
-          type: string
-          description: Restricts delivery to events with a matching DP_EVENT.GATEWAY_TYPE. Use "*" (default) to match any.
-          default: "*"
-          example: "*"
         events:
           type: array
           items:
@@ -4583,9 +4597,6 @@ components:
         enabled:
           type: boolean
           example: true
-        gatewayType:
-          type: string
-          example: "*"
         events:
           type: array
           items:
@@ -4596,10 +4607,56 @@ components:
         timeoutMs:
           type: integer
           example: 5000
+        hasSecret:
+          type: boolean
+          description: Whether a secret is configured for HMAC-signing outgoing payloads.
+          example: true
         hasPublicKey:
           type: boolean
           description: Whether a public key is configured for envelope-encrypting secret event payloads.
           example: false
+    WebhookSubscriberDeliverySummary:
+      type: object
+      description: A single delivery attempt made to a webhook subscriber.
+      properties:
+        deliveryId:
+          type: string
+          example: del-abc123
+        eventType:
+          type: string
+          nullable: true
+          example: apikey.generated
+        occurredAt:
+          type: string
+          format: date-time
+          nullable: true
+        status:
+          type: string
+          enum:
+            - PENDING
+            - IN_FLIGHT
+            - DELIVERED
+            - FAILED
+            - DEAD_LETTERED
+          example: DELIVERED
+        attemptCount:
+          type: integer
+          example: 1
+        lastHttpStatus:
+          type: integer
+          nullable: true
+          example: 200
+        lastError:
+          type: string
+          nullable: true
+        lastAttemptAt:
+          type: string
+          format: date-time
+          nullable: true
+        deliveredAt:
+          type: string
+          format: date-time
+          nullable: true
     AppKeyMappingRequest:
       type: object
       required:
@@ -5045,10 +5102,6 @@ components:
         orgId:
           type: string
           example: org-default
-        gatewayType:
-          type: string
-          nullable: true
-          example: default
         aggregateType:
           type: string
           example: apikey
