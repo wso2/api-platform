@@ -94,7 +94,8 @@ document.addEventListener('DOMContentLoaded', function () {
 
     function handleCreateClick() {
         resetApiFlowForm();
-        document.getElementById('apiFlowFormTitle').textContent = 'Create API Flow';
+        const titleEl = document.getElementById('apiFlowFormTitle');
+        if (titleEl) titleEl.textContent = 'Create API Flow';
         document.getElementById('editingApiFlowId').value = '';
         updatePromptFromForm();
         showForm();
@@ -105,6 +106,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     document.getElementById('cancelApiFlowBtn')?.addEventListener('click', showList);
     document.getElementById('cancelApiFlowBtn2')?.addEventListener('click', showList);
+    document.getElementById('afBackToListBtn')?.addEventListener('click', (e) => { e.preventDefault(); showList(); });
 
     // Debounced prompt update on name/description change
     let promptDebounce;
@@ -1536,7 +1538,8 @@ function openEditApiFlow(apiFlowId) {
     const data = (window.apiFlowsData || apiFlowsData || []).find(f => String(f.apiFlowId) === String(apiFlowId));
     if (!data) return;
     resetApiFlowForm();
-    document.getElementById('apiFlowFormTitle').textContent = 'Edit API Flow';
+    const titleEl = document.getElementById('apiFlowFormTitle');
+    if (titleEl) titleEl.textContent = 'Edit API Flow';
     document.getElementById('editingApiFlowId').value = apiFlowId;
     const nameField = document.getElementById('apiFlowName');
     if (nameField) { nameField.value = data.name || ''; nameField.readOnly = true; nameField.classList.add('af-field-readonly'); }
@@ -1972,18 +1975,14 @@ function initWizard() {
     document.getElementById('afContinueBtn')?.addEventListener('click', () => {
         if (validateWizardStep(currentStep)) goToStep(currentStep + 1);
     });
-    // Clicking or keyboard-activating a complete stepper step navigates back
-    document.querySelectorAll('.af-stepper-step').forEach(el => {
+    document.getElementById('afBackBtn')?.addEventListener('click', () => {
+        if (currentStep > 1) goToStep(currentStep - 1);
+    });
+    // Clicking a complete stepper step navigates back
+    document.querySelectorAll('.af-wizard .cfg-step').forEach(el => {
         el.addEventListener('click', () => {
             const s = parseInt(el.dataset.step);
             if (s < currentStep) goToStep(s);
-        });
-        el.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                const s = parseInt(el.dataset.step);
-                if (s < currentStep) goToStep(s);
-            }
         });
     });
 
@@ -2047,29 +2046,26 @@ function updateWizardUI() {
         document.getElementById(`afStep${i}`)?.classList.toggle('d-none', i !== currentStep);
         document.getElementById(`afRight${i}`)?.classList.toggle('d-none', i !== currentStep);
     }
-    // Stepper dots + ARIA state
-    document.querySelectorAll('.af-stepper-step').forEach(el => {
+    // Stepper dots
+    document.querySelectorAll('.af-wizard .cfg-step').forEach(el => {
         const s = parseInt(el.dataset.step);
-        el.classList.toggle('is-active', s === currentStep);
-        el.classList.toggle('is-complete', s < currentStep);
-        if (s > currentStep) {
-            el.classList.remove('is-active', 'is-complete');
+        el.classList.remove('cfg-step--active', 'cfg-step--done');
+        const circ = el.querySelector('.cfg-step-circle');
+        if (s < currentStep) {
+            el.classList.add('cfg-step--done');
+            if (circ) circ.innerHTML = '<i class="bi bi-check" style="font-size:.75rem;line-height:1;"></i>';
+        } else {
+            if (s === currentStep) el.classList.add('cfg-step--active');
+            if (circ) circ.textContent = String(s);
         }
-        const isComplete = s < currentStep;
-        const isCurrent = s === currentStep;
-        el.setAttribute('aria-current', isCurrent ? 'step' : 'false');
-        el.setAttribute('aria-disabled', isComplete ? 'false' : 'true');
-        el.setAttribute('tabindex', isComplete ? '0' : '-1');
-        const dot = el.querySelector('.af-stepper-dot');
-        if (dot) dot.innerHTML = s < currentStep ? '<i class="bi bi-check2"></i>' : String(s);
     });
-    // Stepper lines
-    document.querySelectorAll('.af-stepper-line').forEach((line, idx) => {
-        line.classList.toggle('is-complete', idx + 1 < currentStep);
+    // Stepper connectors
+    document.querySelectorAll('.af-wizard .cfg-step-connector').forEach((line, idx) => {
+        line.classList.toggle('cfg-step-connector--done', idx + 1 < currentStep);
     });
     // Footer
-    const label = document.getElementById('afFooterStepLabel');
-    if (label) label.textContent = `Step ${currentStep} of 3`;
+    const backBtn = document.getElementById('afBackBtn');
+    if (backBtn) backBtn.classList.toggle('d-none', currentStep === 1);
     const continueBtn = document.getElementById('afContinueBtn');
     if (continueBtn) continueBtn.classList.toggle('d-none', currentStep === 3);
     const saveGroup = document.getElementById('saveApiFlowGroup');

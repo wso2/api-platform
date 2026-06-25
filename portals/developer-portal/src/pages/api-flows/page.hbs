@@ -220,10 +220,6 @@
             <div class="cfg-step" data-step="2">
               <span class="cfg-step-circle">3</span><span class="cfg-step-label">Documentation</span>
             </div>
-            <div class="cfg-step-connector"></div>
-            <div class="cfg-step" data-step="3">
-              <span class="cfg-step-circle">4</span><span class="cfg-step-label">Review</span>
-            </div>
           </div>
 
           <!-- Step 0: Details -->
@@ -394,55 +390,12 @@
             <div id="wz-docs-list" class="cfg-docs-list"></div>
           </div>
 
-          <!-- Step 3: Review -->
-          <div class="cfg-wizard-step" id="cfg-wstep-3" style="display:none; max-width:720px;">
-            <p class="cfg-wstep-desc">Confirm the details below, then save this API to your developer portal.</p>
-            <div class="cfg-review-section">
-              <div class="cfg-review-header">
-                <span class="cfg-review-header-title">API Details</span>
-                <button type="button" class="cfg-review-edit" data-goto="0">Edit</button>
-              </div>
-              <div class="cfg-review-body">
-                <div class="cfg-review-grid">
-                  <span class="cfg-review-label">Name</span>         <span class="cfg-review-value" id="rv-name">—</span>
-                  <span class="cfg-review-label">Handle</span>        <span class="cfg-review-value cfg-review-value--mono" id="rv-handle">—</span>
-                  <span class="cfg-review-label">Version</span>       <span class="cfg-review-value" id="rv-version">—</span>
-                  <span class="cfg-review-label">Type</span>          <span class="cfg-review-value" id="rv-type">—</span>
-                  <span class="cfg-review-label">Status</span>        <span class="cfg-review-value" id="rv-status">—</span>
-                  <span class="cfg-review-label">Agent visibility</span><span class="cfg-review-value" id="rv-agentvis">—</span>
-                  <span class="cfg-review-label">Production URL</span><span class="cfg-review-value cfg-review-value--mono" id="rv-prod">—</span>
-                  <span class="cfg-review-label">Sandbox URL</span>   <span class="cfg-review-value cfg-review-value--mono" id="rv-sandbox">—</span>
-                  <span class="cfg-review-label">Tech owner</span>    <span class="cfg-review-value" id="rv-tech-owner">—</span>
-                  <span class="cfg-review-label">Biz owner</span>     <span class="cfg-review-value" id="rv-biz-owner">—</span>
-                  <span class="cfg-review-label">Policies</span>      <span class="cfg-review-value" id="rv-policies">—</span>
-                  <span class="cfg-review-label">Description</span>   <span class="cfg-review-value" id="rv-desc">—</span>
-                </div>
-              </div>
-              <div class="cfg-review-header" style="border-top:1px solid #eef1f5;">
-                <span class="cfg-review-header-title">Spec</span>
-                <button type="button" class="cfg-review-edit" data-goto="1">Edit</button>
-              </div>
-              <div class="cfg-review-body" style="padding:14px 18px;">
-                <span style="font-size:.844rem;color:#1a2433;" id="rv-spec">No spec uploaded</span>
-              </div>
-              <div class="cfg-review-header" style="border-top:1px solid #eef1f5;">
-                <span class="cfg-review-header-title">Documentation</span>
-                <button type="button" class="cfg-review-edit" data-goto="2">Edit</button>
-              </div>
-              <div class="cfg-review-body" style="padding:14px 18px;">
-                <span style="font-size:.844rem;color:#1a2433;" id="rv-docs">No documents added</span>
-              </div>
-            </div>
-          </div>
-
           <!-- Wizard actions -->
           <div class="cfg-wizard-actions">
-            <button type="button" class="cfg-btn-ghost" id="cfg-wizard-cancel">Cancel</button>
             <div class="cfg-wizard-actions-right">
-              <button type="button" class="cfg-btn-secondary" id="cfg-wizard-back-step" style="display:none;">
-                <i class="bi bi-arrow-left"></i> Back
-              </button>
-              <button type="button" class="cfg-btn-primary" id="cfg-wizard-next">Continue</button>
+              <button type="button" class="cfg-btn-ghost" id="cfg-wizard-cancel">Cancel</button>
+              <button type="button" class="cfg-btn-ghost" id="cfg-wizard-back-step" style="display:none;">Back</button>
+              <button type="button" class="cfg-btn-primary" id="cfg-wizard-next">Next</button>
             </div>
           </div>
         </div>
@@ -1021,7 +974,7 @@
   /* ── step navigation ── */
   function updateWizardStep(step) {
     currentStep = step;
-    for (var i=0; i<4; i++) {
+    for (var i=0; i<3; i++) {
       var p = document.getElementById('cfg-wstep-'+i);
       if (p) p.style.display = i===step ? 'flex' : 'none';
     }
@@ -1037,36 +990,9 @@
     var backBtn = document.getElementById('cfg-wizard-back-step');
     var nextBtn = document.getElementById('cfg-wizard-next');
     backBtn.style.display = step > 0 ? 'inline-flex' : 'none';
-    if (step === 3) {
-      nextBtn.textContent = editingId ? 'Save changes' : 'Save API';
-      nextBtn.disabled = false;
-      nextBtn.title = '';
-      populateReview();
-    } else {
-      nextBtn.textContent = 'Continue';
-      nextBtn.disabled = false;
-      nextBtn.title = '';
-    }
-  }
-
-  function populateReview() {
-    function set(id,val) { var e=document.getElementById(id); if(e) e.textContent=val||'—'; }
-    set('rv-name',      v('wz-name'));
-    set('rv-handle',    v('wz-handle'));
-    set('rv-version',   v('wz-version'));
-    set('rv-type',      document.getElementById('wz-type') ? document.getElementById('wz-type').value : '—');
-    set('rv-status',    v('wz-status') === 'DEPRECATED' ? 'Deprecated' : 'Published');
-    set('rv-agentvis',  agentVis);
-    set('rv-prod',      v('wz-prod'));
-    set('rv-sandbox',   v('wz-sandbox'));
-    set('rv-tech-owner',v('wz-tech-owner'));
-    set('rv-biz-owner', v('wz-biz-owner'));
-    var pols = selectedPolicies();
-    set('rv-policies',  pols.length ? pols.join(', ') : '—');
-    set('rv-desc',      v('wz-desc'));
-    set('rv-spec',      specFile ? specFile.name : 'No spec uploaded');
-    var docsEl = document.getElementById('rv-docs');
-    if (docsEl) docsEl.textContent = docFiles.length ? docFiles.length+' file(s): '+docFiles.map(function(f){return f.name;}).join(', ') : 'No documents added';
+    nextBtn.textContent = step === 2 ? (editingId ? 'Save changes' : 'Save API') : 'Next';
+    nextBtn.disabled = false;
+    nextBtn.title = '';
   }
 
   /* ── save API (create / update) ── */
@@ -1416,8 +1342,6 @@
         return;
       }
       updateWizardStep(2);
-    } else if (currentStep < 3) {
-      updateWizardStep(currentStep+1);
     } else {
       await saveApi();
     }
@@ -1428,9 +1352,6 @@
       var s = parseInt(el.getAttribute('data-step'),10);
       if (s < currentStep) updateWizardStep(s);
     });
-  });
-  document.querySelectorAll('.cfg-review-edit').forEach(function(btn) {
-    btn.addEventListener('click', function() { updateWizardStep(parseInt(btn.getAttribute('data-goto'),10)); });
   });
 
   /* ── Spec ── */
