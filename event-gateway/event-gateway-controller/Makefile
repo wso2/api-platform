@@ -18,7 +18,7 @@
 
 SHELL := /bin/bash
 
-VERSION ?= 0.1.0-SNAPSHOT
+VERSION ?= $(shell cat ../VERSION 2>/dev/null || echo "0.0.1-SNAPSHOT")
 DOCKER_REGISTRY ?= ghcr.io/wso2/api-platform
 IMAGE := $(DOCKER_REGISTRY)/event-gateway-controller
 

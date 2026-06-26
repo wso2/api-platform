@@ -80,6 +80,7 @@ func (s *EventAPIServer) RegisterRoutes(router *gin.Engine, basePath string) {
 	mg.POST("/webbroker-apis", s.CreateWebBrokerAPI)
 	mg.GET("/webbroker-apis", s.ListWebBrokerAPIs)
 	mg.GET("/webbroker-apis/:id", s.GetWebBrokerAPIById)
+	mg.PUT("/webbroker-apis/:id", s.UpdateWebBrokerAPI)
 	mg.DELETE("/webbroker-apis/:id", s.DeleteWebBrokerAPI)
 	mg.POST("/webbroker-apis/:id/api-keys", s.CreateWebBrokerAPIKey)
 	mg.GET("/webbroker-apis/:id/api-keys", s.ListWebBrokerAPIKeys)
@@ -140,7 +141,7 @@ func buildResourceResponse(cfg any, stored *models.StoredConfig) any {
 	return cfg
 }
 
-func (s *EventAPIServer) publishEvent(eventType eventhub.EventType, action, entityID, correlationID string, log *slog.Logger) {
+func (s *EventAPIServer) publishEvent(eventType eventhub.EventType, action, entityID, correlationID string, log *slog.Logger) error {
 	event := eventhub.Event{
 		EventType: eventType,
 		Action:    action,
@@ -149,8 +150,10 @@ func (s *EventAPIServer) publishEvent(eventType eventhub.EventType, action, enti
 		EventData: eventhub.EmptyEventData,
 	}
 	if err := s.svc.EventHub.PublishEvent(s.svc.GatewayID, event); err != nil {
-		log.Warn("Failed to publish event",
+		log.Error("Failed to publish event",
 			slog.String("event_type", string(eventType)),
 			slog.Any("error", err))
+		return err
 	}
+	return nil
 }

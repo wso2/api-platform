@@ -121,15 +121,100 @@ func (s *EventAPIServer) GetWebBrokerAPIById(c *gin.Context) {
 			})
 			return
 		}
-		log.Warn("WebBrokerApi not found", slog.String("handle", handle))
-		c.JSON(http.StatusNotFound, gwapi.ErrorResponse{
+		if storage.IsNotFoundError(err) {
+			log.Warn("WebBrokerApi not found", slog.String("handle", handle))
+			c.JSON(http.StatusNotFound, gwapi.ErrorResponse{
+				Status:  "error",
+				Message: "WebBrokerApi not found",
+			})
+			return
+		}
+		log.Error("Failed to look up WebBrokerApi", slog.String("handle", handle), slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, gwapi.ErrorResponse{
 			Status:  "error",
-			Message: "WebBrokerApi not found",
+			Message: "Internal error looking up WebBrokerApi",
 		})
 		return
 	}
 
 	c.JSON(http.StatusOK, buildResourceResponse(cfg.SourceConfiguration, cfg))
+}
+
+// UpdateWebBrokerAPI handles PUT /webbroker-apis/:id
+func (s *EventAPIServer) UpdateWebBrokerAPI(c *gin.Context) {
+	log := middleware.GetLogger(c, s.svc.Logger)
+	handle := c.Param("id")
+
+	body, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		log.Error("Failed to read request body", slog.Any("error", err))
+		c.JSON(http.StatusBadRequest, gwapi.ErrorResponse{
+			Status:  "error",
+			Message: "Failed to read request body",
+		})
+		return
+	}
+
+	existing, err := s.svc.Storage.GetConfigByKindAndHandle(models.KindWebBrokerApi, handle)
+	if err != nil {
+		if storage.IsDatabaseUnavailableError(err) {
+			log.Error("Database unavailable", slog.Any("error", err))
+			c.JSON(http.StatusServiceUnavailable, gwapi.ErrorResponse{
+				Status:  "error",
+				Message: "Database is temporarily unavailable",
+			})
+			return
+		}
+		if storage.IsNotFoundError(err) {
+			log.Warn("WebBrokerApi configuration not found", slog.String("handle", handle))
+			c.JSON(http.StatusNotFound, gwapi.ErrorResponse{
+				Status:  "error",
+				Message: fmt.Sprintf("WebBrokerApi configuration with handle '%s' not found", handle),
+			})
+			return
+		}
+		log.Error("Failed to look up WebBrokerApi", slog.String("handle", handle), slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, gwapi.ErrorResponse{
+			Status:  "error",
+			Message: "Internal error looking up WebBrokerApi",
+		})
+		return
+	}
+
+	correlationID := middleware.GetCorrelationID(c)
+
+	result, err := s.svc.APIDeploymentService.DeployAPIConfiguration(utils.APIDeploymentParams{
+		Data:          body,
+		ContentType:   c.GetHeader("Content-Type"),
+		Kind:          "WebBrokerApi",
+		APIID:         existing.UUID,
+		Origin:        models.OriginGatewayAPI,
+		CorrelationID: correlationID,
+		Logger:        log,
+	})
+	if err != nil {
+		log.Error("Failed to update WebBrokerApi configuration", slog.Any("error", err))
+		if storage.IsConflictError(err) {
+			c.JSON(http.StatusConflict, gwapi.ErrorResponse{
+				Status:  "error",
+				Message: err.Error(),
+			})
+			return
+		}
+		c.JSON(http.StatusBadRequest, gwapi.ErrorResponse{
+			Status:  "error",
+			Message: err.Error(),
+		})
+		return
+	}
+
+	updated := result.StoredConfig
+
+	log.Info("WebBrokerApi configuration updated",
+		slog.String("id", updated.UUID),
+		slog.String("handle", handle))
+
+	c.JSON(http.StatusOK, buildResourceResponse(updated.SourceConfiguration, updated))
 }
 
 // DeleteWebBrokerAPI handles DELETE /webbroker-apis/:id
@@ -147,10 +232,18 @@ func (s *EventAPIServer) DeleteWebBrokerAPI(c *gin.Context) {
 			})
 			return
 		}
-		log.Warn("WebBrokerApi not found", slog.String("handle", handle))
-		c.JSON(http.StatusNotFound, gwapi.ErrorResponse{
+		if storage.IsNotFoundError(err) {
+			log.Warn("WebBrokerApi not found", slog.String("handle", handle))
+			c.JSON(http.StatusNotFound, gwapi.ErrorResponse{
+				Status:  "error",
+				Message: "WebBrokerApi not found",
+			})
+			return
+		}
+		log.Error("Failed to look up WebBrokerApi", slog.String("handle", handle), slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, gwapi.ErrorResponse{
 			Status:  "error",
-			Message: "WebBrokerApi not found",
+			Message: "Internal error looking up WebBrokerApi",
 		})
 		return
 	}
@@ -166,7 +259,24 @@ func (s *EventAPIServer) DeleteWebBrokerAPI(c *gin.Context) {
 		return
 	}
 
-	s.publishEvent(eventhub.EventTypeAPI, "DELETE", cfg.UUID, correlationID, log)
+	if err := s.svc.Storage.RemoveAPIKeysAPI(cfg.UUID); err != nil {
+		log.Error("Failed to remove API keys from database",
+			slog.String("handle", handle),
+			slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, gwapi.ErrorResponse{
+			Status:  "error",
+			Message: "Failed to remove API keys",
+		})
+		return
+	}
+
+	if err := s.publishEvent(eventhub.EventTypeAPI, "DELETE", cfg.UUID, correlationID, log); err != nil {
+		c.JSON(http.StatusInternalServerError, gwapi.ErrorResponse{
+			Status:  "error",
+			Message: "Failed to publish delete event",
+		})
+		return
+	}
 
 	log.Info("WebBrokerApi deleted successfully",
 		slog.String("id", handle),

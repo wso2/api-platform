@@ -650,6 +650,9 @@ func Run(configPath string, extensions []extension.Extension) {
 		Addr:              fmt.Sprintf(":%d", cfg.Controller.Server.APIPort),
 		Handler:           router,
 		ReadHeaderTimeout: 30 * time.Second,
+		ReadTimeout:       60 * time.Second,
+		WriteTimeout:      60 * time.Second,
+		IdleTimeout:       120 * time.Second,
 	}
 	go func() {
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {

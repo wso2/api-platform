@@ -15,6 +15,9 @@ policies:
     - name: azure-content-safety-content-moderation
       version: v1.0.2
       gomodule: github.com/wso2/gateway-controllers/policies/azure-content-safety-content-moderation@v1
+    - name: backend-jwt
+      version: v1.0.0
+      gomodule: github.com/wso2/gateway-controllers/policies/backend-jwt@v1
     - name: basic-auth
       version: v1.0.2
       gomodule: github.com/wso2/gateway-controllers/policies/basic-auth@v1

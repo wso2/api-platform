@@ -187,11 +187,18 @@ func (s *EventAPIServer) GetWebSubAPIById(c *gin.Context) {
 			})
 			return
 		}
-		log.Warn("WebSub API configuration not found",
-			slog.String("handle", handle))
-		c.JSON(http.StatusNotFound, gwapi.ErrorResponse{
+		if storage.IsNotFoundError(err) {
+			log.Warn("WebSub API configuration not found", slog.String("handle", handle))
+			c.JSON(http.StatusNotFound, gwapi.ErrorResponse{
+				Status:  "error",
+				Message: fmt.Sprintf("WebSub API configuration with handle '%s' not found", handle),
+			})
+			return
+		}
+		log.Error("Failed to look up WebSub API", slog.String("handle", handle), slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, gwapi.ErrorResponse{
 			Status:  "error",
-			Message: fmt.Sprintf("WebSub API configuration with handle '%s' not found", handle),
+			Message: "Internal error looking up WebSub API",
 		})
 		return
 	}
@@ -216,11 +223,26 @@ func (s *EventAPIServer) UpdateWebSubAPI(c *gin.Context) {
 
 	existing, err := s.svc.Storage.GetConfigByKindAndHandle(models.KindWebSubApi, handle)
 	if err != nil {
-		log.Warn("WebSub API configuration not found",
-			slog.String("handle", handle))
-		c.JSON(http.StatusNotFound, gwapi.ErrorResponse{
+		if storage.IsDatabaseUnavailableError(err) {
+			log.Error("Database unavailable", slog.Any("error", err))
+			c.JSON(http.StatusServiceUnavailable, gwapi.ErrorResponse{
+				Status:  "error",
+				Message: "Database is temporarily unavailable",
+			})
+			return
+		}
+		if storage.IsNotFoundError(err) {
+			log.Warn("WebSub API configuration not found", slog.String("handle", handle))
+			c.JSON(http.StatusNotFound, gwapi.ErrorResponse{
+				Status:  "error",
+				Message: fmt.Sprintf("WebSub API configuration with handle '%s' not found", handle),
+			})
+			return
+		}
+		log.Error("Failed to look up WebSub API", slog.String("handle", handle), slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, gwapi.ErrorResponse{
 			Status:  "error",
-			Message: fmt.Sprintf("WebSub API configuration with handle '%s' not found", handle),
+			Message: "Internal error looking up WebSub API",
 		})
 		return
 	}
@@ -269,11 +291,26 @@ func (s *EventAPIServer) DeleteWebSubAPI(c *gin.Context) {
 
 	cfg, err := s.svc.Storage.GetConfigByKindAndHandle(models.KindWebSubApi, handle)
 	if err != nil {
-		log.Warn("WebSub API configuration not found",
-			slog.String("handle", handle))
-		c.JSON(http.StatusNotFound, gwapi.ErrorResponse{
+		if storage.IsDatabaseUnavailableError(err) {
+			log.Error("Database unavailable", slog.Any("error", err))
+			c.JSON(http.StatusServiceUnavailable, gwapi.ErrorResponse{
+				Status:  "error",
+				Message: "Database is temporarily unavailable",
+			})
+			return
+		}
+		if storage.IsNotFoundError(err) {
+			log.Warn("WebSub API configuration not found", slog.String("handle", handle))
+			c.JSON(http.StatusNotFound, gwapi.ErrorResponse{
+				Status:  "error",
+				Message: fmt.Sprintf("WebSub API configuration with handle '%s' not found", handle),
+			})
+			return
+		}
+		log.Error("Failed to look up WebSub API", slog.String("handle", handle), slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, gwapi.ErrorResponse{
 			Status:  "error",
-			Message: fmt.Sprintf("WebSub API configuration with handle '%s' not found", handle),
+			Message: "Internal error looking up WebSub API",
 		})
 		return
 	}
@@ -288,9 +325,14 @@ func (s *EventAPIServer) DeleteWebSubAPI(c *gin.Context) {
 	}
 
 	if err := s.svc.Storage.RemoveAPIKeysAPI(cfg.UUID); err != nil {
-		log.Warn("Failed to remove API keys from database",
+		log.Error("Failed to remove API keys from database",
 			slog.String("handle", handle),
 			slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, gwapi.ErrorResponse{
+			Status:  "error",
+			Message: "Failed to remove API keys",
+		})
+		return
 	}
 
 	topicsToUnregister := s.svc.APIDeploymentService.GetTopicsForDelete(*cfg)
@@ -309,7 +351,13 @@ func (s *EventAPIServer) DeleteWebSubAPI(c *gin.Context) {
 		cancel()
 	}
 
-	s.publishEvent(eventhub.EventTypeAPI, "DELETE", cfg.UUID, correlationID, log)
+	if err := s.publishEvent(eventhub.EventTypeAPI, "DELETE", cfg.UUID, correlationID, log); err != nil {
+		c.JSON(http.StatusInternalServerError, gwapi.ErrorResponse{
+			Status:  "error",
+			Message: "Failed to publish delete event",
+		})
+		return
+	}
 
 	log.Info("WebSub API configuration deleted",
 		slog.String("id", cfg.UUID),
@@ -557,6 +605,11 @@ func (s *EventAPIServer) CreateWebSubAPISecret(c *gin.Context) {
 	var request gwapi.WebhookSecretCreationRequest
 	if err := s.bindRequestBody(c, &request); err != nil {
 		c.JSON(http.StatusBadRequest, gwapi.ErrorResponse{Status: "error", Message: fmt.Sprintf("Invalid request body: %s", err.Error())})
+		return
+	}
+
+	if strings.TrimSpace(request.DisplayName) == "" {
+		c.JSON(http.StatusBadRequest, gwapi.ErrorResponse{Status: "error", Message: "displayName is required"})
 		return
 	}
 

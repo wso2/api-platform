@@ -72,7 +72,8 @@ func (e *EventGatewayExtension) Initialize(svc *gwextension.Services) error {
 
 	if svc.EncryptionProviderManager != nil {
 		if err := loadWebhookSecretsFromDatabase(e.db, svc); err != nil {
-			svc.Logger.Warn("Failed to load webhook secrets from database", slog.Any("error", err))
+			svc.Logger.Error("Failed to load webhook secrets from database", slog.Any("error", err))
+			return fmt.Errorf("failed to load webhook secrets from database: %w", err)
 		}
 	}
 
@@ -109,6 +110,7 @@ func (e *EventGatewayExtension) AuthRoles() map[string][]string {
 		"POST /webbroker-apis":       {"admin", "developer"},
 		"GET /webbroker-apis":        {"admin", "developer"},
 		"GET /webbroker-apis/:id":    {"admin", "developer"},
+		"PUT /webbroker-apis/:id":    {"admin", "developer"},
 		"DELETE /webbroker-apis/:id": {"admin", "developer"},
 
 		"POST /websub-apis/:id/api-keys":                        {"admin", "consumer"},

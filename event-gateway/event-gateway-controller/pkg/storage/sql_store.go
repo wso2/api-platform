@@ -110,7 +110,7 @@ func (s *EventSQLStore) Initialize() error {
 IF OBJECT_ID('webhook_secrets', 'U') IS NULL
 BEGIN
     CREATE TABLE webhook_secrets (
-        uuid NVARCHAR(255) NOT NULL,
+        uuid NVARCHAR(255) NOT NULL PRIMARY KEY,
         gateway_id NVARCHAR(255) NOT NULL,
         artifact_uuid NVARCHAR(255) NOT NULL,
         name NVARCHAR(255) NOT NULL,
@@ -125,7 +125,7 @@ END`
 	} else {
 		ddl = `
 CREATE TABLE IF NOT EXISTS webhook_secrets (
-    uuid VARCHAR(255) NOT NULL,
+    uuid VARCHAR(255) NOT NULL PRIMARY KEY,
     gateway_id VARCHAR(255) NOT NULL,
     artifact_uuid VARCHAR(255) NOT NULL,
     name VARCHAR(255) NOT NULL,
@@ -176,8 +176,8 @@ func (s *EventSQLStore) SaveWebhookSecret(secret *models.WebhookSecret) error {
 // GetWebhookSecretsByArtifact returns all webhook secrets for the given artifact.
 func (s *EventSQLStore) GetWebhookSecretsByArtifact(artifactUUID string) ([]*models.WebhookSecret, error) {
 	q := s.rebind(`SELECT uuid, gateway_id, artifact_uuid, name, display_name, ciphertext, status, created_at, updated_at
-        FROM webhook_secrets WHERE artifact_uuid = ?`)
-	rows, err := s.db.Query(q, artifactUUID)
+        FROM webhook_secrets WHERE artifact_uuid = ? AND gateway_id = ?`)
+	rows, err := s.db.Query(q, artifactUUID, s.gatewayID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query webhook secrets by artifact: %w", err)
 	}
@@ -188,8 +188,8 @@ func (s *EventSQLStore) GetWebhookSecretsByArtifact(artifactUUID string) ([]*mod
 // GetWebhookSecretByArtifactAndName returns a single secret by artifact UUID and name.
 func (s *EventSQLStore) GetWebhookSecretByArtifactAndName(artifactUUID, name string) (*models.WebhookSecret, error) {
 	q := s.rebind(`SELECT uuid, gateway_id, artifact_uuid, name, display_name, ciphertext, status, created_at, updated_at
-        FROM webhook_secrets WHERE artifact_uuid = ? AND name = ?`)
-	row := s.db.QueryRow(q, artifactUUID, name)
+        FROM webhook_secrets WHERE artifact_uuid = ? AND name = ? AND gateway_id = ?`)
+	row := s.db.QueryRow(q, artifactUUID, name, s.gatewayID)
 	ws, err := scanWebhookSecretRow(row)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -203,8 +203,8 @@ func (s *EventSQLStore) GetWebhookSecretByArtifactAndName(artifactUUID, name str
 // GetWebhookSecretByUUID returns a single secret by its UUID.
 func (s *EventSQLStore) GetWebhookSecretByUUID(uuid string) (*models.WebhookSecret, error) {
 	q := s.rebind(`SELECT uuid, gateway_id, artifact_uuid, name, display_name, ciphertext, status, created_at, updated_at
-        FROM webhook_secrets WHERE uuid = ?`)
-	row := s.db.QueryRow(q, uuid)
+        FROM webhook_secrets WHERE uuid = ? AND gateway_id = ?`)
+	row := s.db.QueryRow(q, uuid, s.gatewayID)
 	ws, err := scanWebhookSecretRow(row)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -218,8 +218,8 @@ func (s *EventSQLStore) GetWebhookSecretByUUID(uuid string) (*models.WebhookSecr
 // UpdateWebhookSecret updates the ciphertext and updated_at of an existing secret.
 func (s *EventSQLStore) UpdateWebhookSecret(secret *models.WebhookSecret) error {
 	now := time.Now().UTC()
-	q := s.rebind(`UPDATE webhook_secrets SET ciphertext = ?, updated_at = ? WHERE uuid = ?`)
-	result, err := s.db.Exec(q, string(secret.Ciphertext), now, secret.UUID)
+	q := s.rebind(`UPDATE webhook_secrets SET ciphertext = ?, updated_at = ? WHERE uuid = ? AND gateway_id = ?`)
+	result, err := s.db.Exec(q, string(secret.Ciphertext), now, secret.UUID, s.gatewayID)
 	if err != nil {
 		return fmt.Errorf("failed to update webhook secret: %w", err)
 	}
@@ -236,8 +236,8 @@ func (s *EventSQLStore) UpdateWebhookSecret(secret *models.WebhookSecret) error 
 
 // DeleteWebhookSecret removes a webhook secret by artifact UUID and name.
 func (s *EventSQLStore) DeleteWebhookSecret(artifactUUID, name string) error {
-	q := s.rebind(`DELETE FROM webhook_secrets WHERE artifact_uuid = ? AND name = ?`)
-	result, err := s.db.Exec(q, artifactUUID, name)
+	q := s.rebind(`DELETE FROM webhook_secrets WHERE artifact_uuid = ? AND name = ? AND gateway_id = ?`)
+	result, err := s.db.Exec(q, artifactUUID, name, s.gatewayID)
 	if err != nil {
 		return fmt.Errorf("failed to delete webhook secret: %w", err)
 	}
@@ -251,11 +251,11 @@ func (s *EventSQLStore) DeleteWebhookSecret(artifactUUID, name string) error {
 	return nil
 }
 
-// GetAllWebhookSecrets returns every webhook secret in the store.
+// GetAllWebhookSecrets returns every webhook secret for this gateway.
 func (s *EventSQLStore) GetAllWebhookSecrets() ([]*models.WebhookSecret, error) {
-	q := `SELECT uuid, gateway_id, artifact_uuid, name, display_name, ciphertext, status, created_at, updated_at
-        FROM webhook_secrets`
-	rows, err := s.db.Query(q)
+	q := s.rebind(`SELECT uuid, gateway_id, artifact_uuid, name, display_name, ciphertext, status, created_at, updated_at
+        FROM webhook_secrets WHERE gateway_id = ?`)
+	rows, err := s.db.Query(q, s.gatewayID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query all webhook secrets: %w", err)
 	}

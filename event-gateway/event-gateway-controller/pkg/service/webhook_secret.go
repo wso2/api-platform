@@ -144,7 +144,9 @@ func (s *WebhookSecretService) Generate(artifactUUID, displayName, correlationID
 		}
 	}
 
-	s.publishWebhookSecretEvent("CREATE", artifactUUID, ws.UUID, ws.Name, correlationID)
+	if err := s.publishWebhookSecretEvent("CREATE", artifactUUID, ws.UUID, ws.Name, correlationID); err != nil {
+		return nil, "", fmt.Errorf("failed to publish webhook secret create event: %w", err)
+	}
 
 	return ws, plaintext, nil
 }
@@ -198,7 +200,9 @@ func (s *WebhookSecretService) Regenerate(artifactUUID, name, correlationID stri
 		}
 	}
 
-	s.publishWebhookSecretEvent("CREATE", artifactUUID, ws.UUID, ws.Name, correlationID)
+	if err := s.publishWebhookSecretEvent("UPDATE", artifactUUID, ws.UUID, ws.Name, correlationID); err != nil {
+		return nil, "", fmt.Errorf("failed to publish webhook secret update event: %w", err)
+	}
 
 	return ws, plaintext, nil
 }
@@ -234,7 +238,9 @@ func (s *WebhookSecretService) Delete(artifactUUID, name, correlationID string) 
 		}
 	}
 
-	s.publishWebhookSecretEvent("DELETE", artifactUUID, ws.UUID, ws.Name, correlationID)
+	if err := s.publishWebhookSecretEvent("DELETE", artifactUUID, ws.UUID, ws.Name, correlationID); err != nil {
+		return fmt.Errorf("failed to publish webhook secret delete event: %w", err)
+	}
 
 	return nil
 }
@@ -250,7 +256,7 @@ func (s *WebhookSecretService) encrypt(plaintext string) ([]byte, error) {
 	return []byte(encryption.MarshalPayload(payload)), nil
 }
 
-func (s *WebhookSecretService) publishWebhookSecretEvent(action, artifactUUID, secretUUID, secretName, correlationID string) {
+func (s *WebhookSecretService) publishWebhookSecretEvent(action, artifactUUID, secretUUID, secretName, correlationID string) error {
 	event := eventhub.Event{
 		EventType: eventhub.EventTypeWebhookSecret,
 		Action:    action,
@@ -264,7 +270,9 @@ func (s *WebhookSecretService) publishWebhookSecretEvent(action, artifactUUID, s
 			slog.String("artifact_uuid", artifactUUID),
 			slog.String("secret_uuid", secretUUID),
 			slog.Any("error", err))
+		return err
 	}
+	return nil
 }
 
 func generateWebhookSecretValue() (string, error) {

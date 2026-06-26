@@ -124,8 +124,12 @@ func loadRuntimeConfigsFromExistingAPIConfigurations(
 			continue
 		}
 
+		// Shallow copy so RenderSpec's field replacements (Configuration, SensitiveValues)
+		// do not mutate the pointer stored in ConfigStore.
+		cfgCopy := *apiConfig
+
 		if secretResolver != nil {
-			if err := templateengine.RenderSpec(apiConfig, secretResolver, log); err != nil {
+			if err := templateengine.RenderSpec(&cfgCopy, secretResolver, log); err != nil {
 				if log != nil {
 					if skipInvalidDeployments {
 						log.Warn("Template rendering failed during startup load, skipping",
@@ -146,7 +150,7 @@ func loadRuntimeConfigsFromExistingAPIConfigurations(
 			}
 		}
 
-		rdc, err := transformer.Transform(apiConfig)
+		rdc, err := transformer.Transform(&cfgCopy)
 		if err != nil {
 			if log != nil {
 				if skipInvalidDeployments {
