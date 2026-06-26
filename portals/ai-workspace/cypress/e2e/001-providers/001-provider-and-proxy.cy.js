@@ -145,17 +145,18 @@ describe('AI Workspace - OpenAI provider and proxy lifecycle', () => {
     cy.get('[data-cyid="add-provider-button"]')
       .should('not.be.disabled')
       .click();
-    cy.wait('@createProvider').its('response.statusCode').should('be.oneOf', [200, 201]);
-
-    cy.location('pathname', { timeout: 30000 })
-      .should(
-        'match',
-        new RegExp(`^/organizations/${orgHandle}/service-provider/[^/]+$`)
-      )
-      .then((pathname) => {
-        createdProviderId = pathname.split('/').pop() || '';
-        expect(createdProviderId).to.not.equal('');
-      });
+    // Take the id from the create response, not the URL: the create flow issues
+    // POST /secrets before POST /llm-providers, so the redirect lands a beat
+    // after the click and a URL scrape can race onto the transient "new" route.
+    cy.wait('@createProvider').then(({ response }) => {
+      expect(response?.statusCode).to.be.oneOf([200, 201]);
+      createdProviderId = response?.body?.id || providerId;
+      expect(createdProviderId).to.not.equal('');
+    });
+    cy.location('pathname', { timeout: 30000 }).should(
+      'match',
+      new RegExp(`^/organizations/${orgHandle}/service-provider/(?!new$)[^/]+$`)
+    );
     cy.contains(providerName, { timeout: 30000 }).should('be.visible');
 
     cy.contains('button', 'Create App LLM Proxy', { timeout: 30000 })

@@ -34,6 +34,7 @@ describe('AI Workspace - Custom LLM provider template lifecycle', () => {
 
   beforeEach(() => {
     cy.login();
+    cy.intercept('POST', /\/llm-providers(\?|$)/).as('createProvider');
     cy.request({
       method: 'POST',
       url: '/api-proxy/api/portal/v1/auth/login',
@@ -160,15 +161,21 @@ describe('AI Workspace - Custom LLM provider template lifecycle', () => {
       .should('not.be.disabled')
       .click();
 
-    cy.location('pathname', { timeout: 30000 })
-      .should(
-        'match',
-        new RegExp(`^/organizations/${orgHandle}/service-provider/[^/]+$`)
-      )
-      .then((pathname) => {
-        createdProviderId = pathname.split('/').pop() || '';
-        expect(createdProviderId).to.not.equal('');
-      });
+    // Capture the provider id from the create response, not the URL. The create
+    // flow issues POST /secrets before POST /llm-providers, so the redirect to
+    // /service-provider/<id> lands a beat after the click — scraping the URL
+    // races against it and can capture the transient "new" form route.
+    cy.wait('@createProvider').then(({ response }) => {
+      expect(response?.statusCode).to.be.oneOf([200, 201]);
+      createdProviderId = response?.body?.id || providerId;
+      expect(createdProviderId).to.not.equal('');
+      expect(createdProviderId).to.not.equal('new');
+    });
+    // The view must settle on the created provider, never the "new" form route.
+    cy.location('pathname', { timeout: 30000 }).should(
+      'match',
+      new RegExp(`^/organizations/${orgHandle}/service-provider/(?!new$)[^/]+$`)
+    );
     cy.contains(providerName, { timeout: 30000 }).should('be.visible');
 
     // --- Deleting the version while a provider uses it must be blocked -----
