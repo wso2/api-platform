@@ -701,15 +701,17 @@ func (s *Server) Start(port string, certDir string) error {
 		errCh <- httpServer.ListenAndServeTLS("", "")
 	}()
 
-	fmt.Print("\n\n" +
-		"========================================================================\n" +
-		"\n" +
-		"\n" +
-		"                      Platform API Started\n" +
-		"\n" +
-		"\n" +
-		"========================================================================\n" +
-		"\n\n")
+	mode := "Production"
+	if demoMode() {
+		mode = "Demo"
+	}
+	const termWidth = 80
+	msg := fmt.Sprintf("=== Platform API started [%s] ===", mode)
+	pad := (termWidth - len(msg)) / 2
+	if pad < 0 {
+		pad = 0
+	}
+	fmt.Printf("\n%*s%s\n\n", pad, "", msg)
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
