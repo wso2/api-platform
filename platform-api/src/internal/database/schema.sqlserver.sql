@@ -202,6 +202,7 @@ CREATE TABLE dbo.artifact_gateway_mappings (
     artifact_uuid VARCHAR(40) NOT NULL,
     organization_uuid VARCHAR(40) NOT NULL,
     gateway_uuid VARCHAR(40) NOT NULL,
+    metadata VARBINARY(MAX),
     created_by VARCHAR(200),
     created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     updated_by VARCHAR(200),

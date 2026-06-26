@@ -2472,6 +2472,13 @@ paths:
                       reset:
                         duration: 1
                         unit: month
+              associatedGateways:
+                - name: prod-eu
+                  configurations:
+                    host: prod-eu.platform-gw.local
+                - name: prod-us
+                  configurations:
+                    host: prod-us.platform-gw.local
       responses:
         '201':
           description: LLM provider created successfully
@@ -9343,6 +9350,21 @@ components:
             $ref: "#/components/schemas/LLMPolicy"
         security:
           $ref: '#/components/schemas/SecurityConfig'
+        associatedGateways:
+          type: array
+          description: >
+            Optional list of gateways this LLM provider can be deployed to, along with
+            per-gateway configuration overrides. This field is optional; omitting it does
+            not change existing behaviour.
+          items:
+            $ref: '#/components/schemas/AssociatedGateway'
+          example:
+            - name: prod-eu
+              configurations:
+                host: prod-eu.platform-gw.local
+            - name: prod-us
+              configurations:
+                host: prod-us.platform-gw.local
         createdAt:
           type: string
           format: date-time
@@ -9355,6 +9377,27 @@ components:
           description: Timestamp when the resource was last updated
           readOnly: true
           example: "2023-10-12T10:30:00Z"
+
+    AssociatedGateway:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          pattern: '^[a-z0-9-]+$'
+          minLength: 3
+          maxLength: 64
+          description: Name of the gateway this artifact can be deployed to
+          example: prod-eu
+        configurations:
+          type: object
+          description: >
+            Per-gateway configuration overrides for this artifact. This is a
+            free-form object; the supported keys depend on the deployed artifact type.
+          additionalProperties: true
+          example:
+            someKey: someValue
 
     LLMProviderListItem:
       type: object
@@ -9533,6 +9576,17 @@ components:
             $ref: "#/components/schemas/LLMPolicy"
         security:
           $ref: '#/components/schemas/SecurityConfig'
+        associatedGateways:
+          type: array
+          description: >
+            Optional list of gateways this LLM proxy can be deployed to, along with
+            per-gateway configuration overrides. This field is optional; omitting it
+            does not change existing behaviour.
+          items:
+            $ref: '#/components/schemas/AssociatedGateway'
+          example:
+            - name: prod-eu
+            - name: prod-us
         createdAt:
           type: string
           format: date-time
@@ -9811,6 +9865,17 @@ components:
             List of capabilities supported by this proxy. This will be stored as-is and can be used in the future if we need
             this for governance purposes
           $ref: '#/components/schemas/MCPProxyCapabilities'
+        associatedGateways:
+          type: array
+          description: >
+            Optional list of gateways this MCP proxy can be deployed to, along with
+            per-gateway configuration overrides. This field is optional; omitting it
+            does not change existing behaviour.
+          items:
+            $ref: '#/components/schemas/AssociatedGateway'
+          example:
+            - name: prod-eu
+            - name: prod-us
         createdAt:
           type: string
           format: date-time

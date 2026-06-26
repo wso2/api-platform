@@ -181,6 +181,7 @@ CREATE TABLE IF NOT EXISTS artifact_gateway_mappings (
     artifact_uuid VARCHAR(40) NOT NULL,
     organization_uuid VARCHAR(40) NOT NULL,
     gateway_uuid VARCHAR(40) NOT NULL,
+    metadata BYTEA,
     created_by VARCHAR(200),
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_by VARCHAR(200),
