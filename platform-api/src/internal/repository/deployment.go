@@ -89,9 +89,9 @@ func (r *DeploymentRepo) CreateWithLimitEnforcement(deployment *model.Deployment
 	if count >= hardLimit {
 		// Get oldest 5 ARCHIVED deployment IDs (LEFT JOIN WHERE status IS NULL)
 		getOldestQuery := `
-			SELECT d.deployment_uuid
+			SELECT d.uuid
 			FROM deployments d
-			LEFT JOIN deployment_status s ON d.deployment_uuid = s.deployment_uuid
+			LEFT JOIN deployment_status s ON d.uuid = s.deployment_uuid
 				AND d.artifact_uuid = s.artifact_uuid
 				AND d.organization_uuid = s.organization_uuid
 				AND d.gateway_uuid = s.gateway_uuid
@@ -123,7 +123,7 @@ func (r *DeploymentRepo) CreateWithLimitEnforcement(deployment *model.Deployment
 		}
 
 		// Delete one-by-one to use row-level locks (prevents over-deletion in concurrent scenarios)
-		deleteQuery := `DELETE FROM deployments WHERE deployment_uuid = ?`
+		deleteQuery := `DELETE FROM deployments WHERE uuid = ?`
 		for _, id := range idsToDelete {
 			_, err := tx.Exec(r.db.Rebind(deleteQuery), id)
 			if err != nil {
@@ -134,7 +134,7 @@ func (r *DeploymentRepo) CreateWithLimitEnforcement(deployment *model.Deployment
 
 	// 3. Insert new deployment artifact
 	deploymentQuery := `
-		INSERT INTO deployments (deployment_uuid, name, artifact_uuid, organization_uuid, gateway_uuid, base_deployment_uuid, content, metadata, created_by, created_at)
+		INSERT INTO deployments (uuid, name, artifact_uuid, organization_uuid, gateway_uuid, base_deployment_uuid, content, metadata, created_by, created_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
@@ -226,9 +226,9 @@ func (r *DeploymentRepo) GetWithContent(deploymentID, artifactUUID, orgUUID stri
 	deployment := &model.Deployment{}
 
 	query := `
-		SELECT deployment_uuid, name, artifact_uuid, organization_uuid, gateway_uuid, base_deployment_uuid, content, metadata, created_by, created_at
+		SELECT uuid, name, artifact_uuid, organization_uuid, gateway_uuid, base_deployment_uuid, content, metadata, created_by, created_at
 		FROM deployments
-		WHERE deployment_uuid = ? AND artifact_uuid = ? AND organization_uuid = ?
+		WHERE uuid = ? AND artifact_uuid = ? AND organization_uuid = ?
 	`
 
 	var baseDeploymentID sql.NullString
@@ -254,7 +254,7 @@ func (r *DeploymentRepo) GetWithContent(deploymentID, artifactUUID, orgUUID stri
 
 // Delete deletes a deployment record
 func (r *DeploymentRepo) Delete(deploymentID, artifactUUID, orgUUID string) error {
-	query := `DELETE FROM deployments WHERE deployment_uuid = ? AND artifact_uuid = ? AND organization_uuid = ?`
+	query := `DELETE FROM deployments WHERE uuid = ? AND artifact_uuid = ? AND organization_uuid = ?`
 
 	result, err := r.db.Exec(r.db.Rebind(query), deploymentID, artifactUUID, orgUUID)
 	if err != nil {
@@ -280,12 +280,12 @@ func (r *DeploymentRepo) GetCurrentByGateway(artifactUUID, gatewayID, orgUUID st
 
 	query := `
 		SELECT
-			d.deployment_uuid, d.name, d.artifact_uuid, d.organization_uuid, d.gateway_uuid,
+			d.uuid, d.name, d.artifact_uuid, d.organization_uuid, d.gateway_uuid,
 			d.base_deployment_uuid, d.content, d.metadata, d.created_by, d.created_at,
 			s.status, s.updated_at AS status_updated_at
 		FROM deployments d
 		INNER JOIN deployment_status s
-			ON d.deployment_uuid = s.deployment_uuid
+			ON d.uuid = s.deployment_uuid
 			AND d.artifact_uuid = s.artifact_uuid
 			AND d.organization_uuid = s.organization_uuid
 			AND d.gateway_uuid = s.gateway_uuid
@@ -510,7 +510,7 @@ func (r *DeploymentRepo) GetArtifactUUIDByDeploymentID(deploymentID, orgUUID str
 	var artifactUUID string
 	err := r.db.QueryRow(r.db.Rebind(`
 		SELECT artifact_uuid FROM deployments
-		WHERE deployment_uuid = ? AND organization_uuid = ?
+		WHERE uuid = ? AND organization_uuid = ?
 	`), deploymentID, orgUUID).Scan(&artifactUUID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -538,16 +538,16 @@ func (r *DeploymentRepo) GetWithState(deploymentID, artifactUUID, orgUUID string
 
 	query := `
 		SELECT
-			d.deployment_uuid, d.name, d.artifact_uuid, d.organization_uuid, d.gateway_uuid,
+			d.uuid, d.name, d.artifact_uuid, d.organization_uuid, d.gateway_uuid,
 			d.base_deployment_uuid, d.metadata, d.created_by, d.created_at,
 			s.status, s.updated_at AS status_updated_at, s.status_reason
 		FROM deployments d
 		LEFT JOIN deployment_status s
-			ON d.deployment_uuid = s.deployment_uuid
+			ON d.uuid = s.deployment_uuid
 			AND d.artifact_uuid = s.artifact_uuid
 			AND d.organization_uuid = s.organization_uuid
 			AND d.gateway_uuid = s.gateway_uuid
-		WHERE d.deployment_uuid = ? AND d.artifact_uuid = ? AND d.organization_uuid = ?
+		WHERE d.uuid = ? AND d.artifact_uuid = ? AND d.organization_uuid = ?
 	`
 
 	var baseDeploymentID sql.NullString
@@ -606,7 +606,7 @@ func (r *DeploymentRepo) GetDeploymentsWithState(artifactUUID, orgUUID string, g
 	query := `
         WITH AnnotatedDeployments AS (
             SELECT
-				d.deployment_uuid, d.name, d.artifact_uuid, d.organization_uuid, d.gateway_uuid,
+				d.uuid, d.name, d.artifact_uuid, d.organization_uuid, d.gateway_uuid,
                 d.base_deployment_uuid, d.metadata, d.created_by, d.created_at,
                 s.status as current_status,
                 s.updated_at as status_updated_at,
@@ -619,7 +619,7 @@ func (r *DeploymentRepo) GetDeploymentsWithState(artifactUUID, orgUUID string, g
                 ) as rank_idx
 			FROM deployments d
 			LEFT JOIN deployment_status s
-                ON d.deployment_uuid = s.deployment_uuid
+                ON d.uuid = s.deployment_uuid
                 AND d.gateway_uuid = s.gateway_uuid
 				AND d.artifact_uuid = s.artifact_uuid
 				AND d.organization_uuid = s.organization_uuid
@@ -636,7 +636,7 @@ func (r *DeploymentRepo) GetDeploymentsWithState(artifactUUID, orgUUID string, g
 	query += `
         )
         SELECT
-			deployment_uuid, name, artifact_uuid, organization_uuid, gateway_uuid,
+			uuid, name, artifact_uuid, organization_uuid, gateway_uuid,
             base_deployment_uuid, metadata, created_by, created_at,
             current_status, status_updated_at, status_reason
         FROM AnnotatedDeployments
@@ -824,10 +824,10 @@ func (r *DeploymentRepo) GetDeploymentContentByIDs(deploymentIDs []string, orgUU
 	args[len(deploymentIDs)+1] = gatewayUUID
 
 	query := fmt.Sprintf(`
-		SELECT d.deployment_uuid, d.artifact_uuid, a.type, d.content
+		SELECT d.uuid, d.artifact_uuid, a.type, d.content
 		FROM deployments d
 		INNER JOIN artifacts a ON d.artifact_uuid = a.uuid
-		WHERE d.deployment_uuid IN (%s) AND d.organization_uuid = ? AND d.gateway_uuid = ?
+		WHERE d.uuid IN (%s) AND d.organization_uuid = ? AND d.gateway_uuid = ?
 	`, strings.Join(placeholders, ","))
 
 	rows, err := r.db.Query(r.db.Rebind(query), args...)

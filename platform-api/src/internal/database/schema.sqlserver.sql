@@ -264,7 +264,7 @@ CREATE TABLE dbo.gateway_tokens (
 -- Artifact Deployments table (immutable deployment artifacts)
 IF OBJECT_ID(N'dbo.deployments', N'U') IS NULL
 CREATE TABLE dbo.deployments (
-    deployment_uuid VARCHAR(40) PRIMARY KEY,
+    uuid VARCHAR(40) PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
     artifact_uuid VARCHAR(40) NOT NULL,
     organization_uuid VARCHAR(40) NOT NULL,
@@ -286,7 +286,7 @@ CREATE TABLE dbo.deployments (
     -- artifact/gateway are deleted together in a single statement (or via the
     -- artifact/gateway CASCADE), so the referenced base row is removed in the
     -- same operation and no dangling reference remains.
-    FOREIGN KEY (base_deployment_uuid) REFERENCES deployments(deployment_uuid) ON DELETE NO ACTION
+    FOREIGN KEY (base_deployment_uuid) REFERENCES deployments(uuid) ON DELETE NO ACTION
 );
 
 -- Artifact Deployment Status table (current deployment state per artifact+Gateway)
@@ -312,7 +312,7 @@ CREATE TABLE dbo.deployment_status (
     FOREIGN KEY (artifact_uuid) REFERENCES artifacts(uuid) ON DELETE NO ACTION,
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE NO ACTION,
     FOREIGN KEY (gateway_uuid) REFERENCES gateways(uuid) ON DELETE NO ACTION,
-    FOREIGN KEY (deployment_uuid) REFERENCES deployments(deployment_uuid) ON DELETE CASCADE
+    FOREIGN KEY (deployment_uuid) REFERENCES deployments(uuid) ON DELETE CASCADE
 );
 
 -- LLM Provider Templates table

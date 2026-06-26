@@ -25,7 +25,7 @@ import (
 // Status and UpdatedAt are populated from deployment_status table via JOIN
 // If Status is nil, the deployment is ARCHIVED (not currently active or undeployed)
 type Deployment struct {
-	DeploymentID     string         `json:"deploymentId" db:"deployment_uuid"`
+	DeploymentID     string         `json:"deploymentId" db:"uuid"`
 	Name             string         `json:"name" db:"name"`
 	ArtifactID       string         `json:"artifactId" db:"artifact_uuid"`
 	OrganizationID   string         `json:"organizationId" db:"organization_uuid"`

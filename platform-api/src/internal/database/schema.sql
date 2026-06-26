@@ -69,7 +69,7 @@ CREATE TABLE IF NOT EXISTS artifacts (
     uuid VARCHAR(40) PRIMARY KEY,
     type VARCHAR(20) NOT NULL,
     organization_uuid VARCHAR(40) NOT NULL,
-    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE RESTRICT,
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
     -- Ensure (uuid, organization_uuid) pairs are unique so they can be safely
     -- referenced from subscriptions to enforce API–organization consistency.
     UNIQUE(organization_uuid, uuid)
@@ -116,7 +116,10 @@ CREATE TABLE IF NOT EXISTS subscription_plans (
     updated_by VARCHAR(200),
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
-    UNIQUE(organization_uuid, handle)
+    UNIQUE(organization_uuid, handle),
+    -- Ensure (uuid, organization_uuid) pairs are unique so they can be safely
+    -- referenced from subscriptions to enforce plan–organization consistency.
+    UNIQUE(uuid, organization_uuid)
 );
 
 -- Subscriptions table (application-level subscriptions for any artifact type)
@@ -139,7 +142,7 @@ CREATE TABLE IF NOT EXISTS subscriptions (
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
     FOREIGN KEY (subscription_plan_uuid, organization_uuid)
-      REFERENCES subscription_plans(uuid, organization_uuid) ON DELETE RESTRICT,
+      REFERENCES subscription_plans(uuid, organization_uuid),
     FOREIGN KEY (artifact_uuid, organization_uuid)
       REFERENCES artifacts(uuid, organization_uuid) ON DELETE CASCADE,
     UNIQUE(artifact_uuid, subscription_token_hash)
@@ -223,13 +226,12 @@ CREATE TABLE IF NOT EXISTS gateway_tokens (
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     revoked_by VARCHAR(200),
     revoked_at DATETIME,
-    FOREIGN KEY (gateway_uuid) REFERENCES gateways(uuid) ON DELETE CASCADE,
-    CHECK (revoked_at IS NULL OR status = 'revoked')
+    FOREIGN KEY (gateway_uuid) REFERENCES gateways(uuid) ON DELETE CASCADE
 );
 
 -- Artifact Deployments table (immutable deployment artifacts)
 CREATE TABLE IF NOT EXISTS deployments (
-    deployment_uuid VARCHAR(40) PRIMARY KEY,
+    uuid VARCHAR(40) PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
     artifact_uuid VARCHAR(40) NOT NULL,
     organization_uuid VARCHAR(40) NOT NULL,
@@ -243,7 +245,7 @@ CREATE TABLE IF NOT EXISTS deployments (
     FOREIGN KEY (artifact_uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
     FOREIGN KEY (gateway_uuid) REFERENCES gateways(uuid) ON DELETE CASCADE,
-    FOREIGN KEY (base_deployment_uuid) REFERENCES deployments(deployment_uuid) ON DELETE SET NULL
+    FOREIGN KEY (base_deployment_uuid) REFERENCES deployments(uuid) ON DELETE SET NULL
 );
 
 -- Artifact Deployment Status table (current deployment state per artifact+Gateway)
@@ -262,7 +264,7 @@ CREATE TABLE IF NOT EXISTS deployment_status (
     FOREIGN KEY (artifact_uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
     FOREIGN KEY (gateway_uuid) REFERENCES gateways(uuid) ON DELETE CASCADE,
-    FOREIGN KEY (deployment_uuid) REFERENCES deployments(deployment_uuid) ON DELETE CASCADE
+    FOREIGN KEY (deployment_uuid) REFERENCES deployments(uuid) ON DELETE CASCADE
 );
 
 -- LLM Provider Templates table
@@ -308,7 +310,7 @@ CREATE TABLE IF NOT EXISTS llm_providers (
     organization_uuid VARCHAR(40) NOT NULL,
     FOREIGN KEY (uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
-    FOREIGN KEY (template_uuid) REFERENCES llm_provider_templates(uuid) ON DELETE RESTRICT,
+    FOREIGN KEY (template_uuid) REFERENCES llm_provider_templates(uuid),
     UNIQUE(organization_uuid, handle)
 );
 
@@ -332,7 +334,7 @@ CREATE TABLE IF NOT EXISTS llm_proxies (
     FOREIGN KEY (uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
     FOREIGN KEY (project_uuid) REFERENCES projects(uuid) ON DELETE CASCADE,
-    FOREIGN KEY (provider_uuid) REFERENCES llm_providers(uuid) ON DELETE RESTRICT,
+    FOREIGN KEY (provider_uuid) REFERENCES llm_providers(uuid),
     UNIQUE(organization_uuid, handle)
 );
 

@@ -71,7 +71,7 @@ func seedOrgGraph(t *testing.T, it *itDB) graph {
 		g.gateway, g.org, "gw-"+g.gateway[:8], "gw", "localhost", []byte("{}"))
 	it.exec(t, `INSERT INTO artifacts (uuid, type, organization_uuid) VALUES (?, ?, ?)`,
 		g.depArtifact, "rest_api", g.org)
-	it.exec(t, `INSERT INTO deployments (deployment_uuid, name, artifact_uuid, organization_uuid, gateway_uuid, content) VALUES (?, ?, ?, ?, ?, ?)`,
+	it.exec(t, `INSERT INTO deployments (uuid, name, artifact_uuid, organization_uuid, gateway_uuid, content) VALUES (?, ?, ?, ?, ?, ?)`,
 		g.deploy, "d", g.depArtifact, g.org, g.gateway, []byte("x"))
 	it.exec(t, `INSERT INTO deployment_status (artifact_uuid, organization_uuid, gateway_uuid, deployment_uuid) VALUES (?, ?, ?, ?)`,
 		g.depArtifact, g.org, g.gateway, g.deploy)
@@ -119,7 +119,7 @@ func TestCascade_DeleteGatewayRemovesDeployments(t *testing.T) {
 	}
 	it.exec(t, `DELETE FROM gateways WHERE uuid = ? AND organization_uuid = ?`, g.gateway, g.org)
 
-	if got := it.count(t, "deployments", "deployment_uuid", g.deploy); got != 0 {
+	if got := it.count(t, "deployments", "uuid", g.deploy); got != 0 {
 		t.Fatalf("[%s] deployment not removed after gateway delete: %d remain", it.driver, got)
 	}
 	if got := it.count(t, "deployment_status", "deployment_uuid", g.deploy); got != 0 {

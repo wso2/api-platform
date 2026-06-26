@@ -151,7 +151,7 @@ func insertDeployment(t *testing.T, db *database.DB, deploymentID, name, apiUUID
 	t.Helper()
 
 	query := `
-		INSERT INTO deployments (deployment_uuid, name, artifact_uuid, organization_uuid, gateway_uuid, content, metadata, created_at)
+		INSERT INTO deployments (uuid, name, artifact_uuid, organization_uuid, gateway_uuid, content, metadata, created_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 	`
 	metadata := "{}"
