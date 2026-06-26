@@ -725,7 +725,7 @@ func (r *LLMProviderRepo) GetByID(providerID, orgUUID string) (*model.LLMProvide
 	query := `
 		SELECT
 			uuid, handle, name, version, organization_uuid, origin, created_at, updated_at,
-			description, created_by, template_uuid, openapi_spec, model_list, configuration,
+			description, created_by, template_uuid, openapi_spec, model_list, configuration
 		FROM llm_providers
 		WHERE handle = ? AND organization_uuid = ?`
 	row := r.db.QueryRow(r.db.Rebind(query), providerID, orgUUID)

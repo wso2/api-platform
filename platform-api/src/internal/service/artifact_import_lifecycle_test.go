@@ -233,7 +233,7 @@ func TestImport_RESTAPI_Lifecycle_LastInWins(t *testing.T) {
 		t.Errorf("response ID = %q, want a fresh CP UUID (not the DP UUID)", resp.ID)
 	}
 	cpID := resp.ID
-	if art := artifactByHandle(t, d, "weather"); art == nil || art.Origin != constants.OriginDP || art.UUID != cpID || art.Kind != constants.RestApi {
+	if art := artifactByHandle(t, d, "weather"); art == nil || art.Origin != constants.OriginDP || art.UUID != cpID || art.Type != constants.RestApi {
 		t.Fatalf("artifact = %+v, want origin DP, kind RestApi, uuid %s", art, cpID)
 	}
 	if depID, st := depStatus(t, d, cpID); depID == "" || st != model.DeploymentStatusDeployed {
@@ -383,7 +383,7 @@ func TestImport_LLMProvider_Lifecycle_LastInWins(t *testing.T) {
 		t.Fatalf("create resp = %+v, want DP origin + fresh CP UUID", resp)
 	}
 	cpID := resp.ID
-	if art := artifactByHandle(t, d, "openai"); art.Origin != constants.OriginDP || art.Kind != constants.LLMProvider || art.UUID != cpID {
+	if art := artifactByHandle(t, d, "openai"); art.Origin != constants.OriginDP || art.Type != constants.LLMProvider || art.UUID != cpID {
 		t.Fatalf("artifact = %+v, want origin DP, kind LlmProvider, uuid %s", art, cpID)
 	}
 	// The provider's template reference (a handle) must resolve to the template's CP UUID.
@@ -501,7 +501,7 @@ func TestImport_LLMProxy_Lifecycle_LastInWins(t *testing.T) {
 		t.Fatalf("create resp = %+v, want DP origin + fresh CP UUID", resp)
 	}
 	cpID := resp.ID
-	if art := artifactByHandle(t, d, "chat-proxy"); art.Origin != constants.OriginDP || art.Kind != constants.LLMProxy || art.UUID != cpID {
+	if art := artifactByHandle(t, d, "chat-proxy"); art.Origin != constants.OriginDP || art.Type != constants.LLMProxy || art.UUID != cpID {
 		t.Fatalf("artifact = %+v, want origin DP, kind LlmProxy, uuid %s", art, cpID)
 	}
 	// The proxy's provider reference (handle) must resolve to the provider's CP UUID.
@@ -607,7 +607,7 @@ func TestImport_MCPProxy_Lifecycle_LastInWins(t *testing.T) {
 		t.Fatalf("create resp = %+v, want DP origin + fresh CP UUID", resp)
 	}
 	cpID := resp.ID
-	if art := artifactByHandle(t, d, "weather-mcp"); art.Origin != constants.OriginDP || art.Kind != constants.MCPProxy || art.UUID != cpID {
+	if art := artifactByHandle(t, d, "weather-mcp"); art.Origin != constants.OriginDP || art.Type != constants.MCPProxy || art.UUID != cpID {
 		t.Fatalf("artifact = %+v, want origin DP, kind Mcp, uuid %s", art, cpID)
 	}
 	if depID, st := depStatus(t, d, cpID); depID == "" || st != model.DeploymentStatusDeployed {
@@ -764,7 +764,6 @@ func TestImport_MCPProxy_CPOriginProtected(t *testing.T) {
 		ProjectUUID:      &proj,
 		Name:             "Original CP Name",
 		Version:          "v1.0",
-		Status:           "CREATED",
 		Origin:           constants.OriginCP,
 		Configuration:    model.MCPProxyConfiguration{Name: "Original CP Name", Version: "v1.0"},
 	}); err != nil {
@@ -813,6 +812,7 @@ func TestImport_MCPProxy_ReadOnlyInGetAndList(t *testing.T) {
 		repository.NewGatewayRepo(d.db),
 		nil, // gatewayEventsService unused on create/get/list
 		newTestLogger(),
+		&noopAuditRepo{},
 	)
 
 	// DP-origin MCP proxy via the gateway import flow.
@@ -884,9 +884,9 @@ func TestCPSideGuard_UpdateBlockedForDPOrigin(t *testing.T) {
 
 	t.Run("LLMProviderTemplate", func(t *testing.T) {
 		d := setupImportTest(t)
-		svc := NewLLMProviderTemplateService(d.templateRepo)
+		svc := NewLLMProviderTemplateService(d.templateRepo, &noopAuditRepo{})
 		mustImport(t, d, dpTemplateReq("dp-t", "blk-tmpl", "T"))
-		if _, err := svc.Update(importTestOrgID, "blk-tmpl", &api.LLMProviderTemplate{Name: "Hacked"}); !errors.Is(err, constants.ErrArtifactReadOnly) {
+		if _, err := svc.Update(importTestOrgID, "blk-tmpl", "tester", &api.LLMProviderTemplate{Name: "Hacked"}); !errors.Is(err, constants.ErrArtifactReadOnly) {
 			t.Errorf("Template Update(DP) = %v, want ErrArtifactReadOnly", err)
 		}
 	})
@@ -894,10 +894,10 @@ func TestCPSideGuard_UpdateBlockedForDPOrigin(t *testing.T) {
 	t.Run("LLMProvider", func(t *testing.T) {
 		d := setupImportTest(t)
 		svc := NewLLMProviderService(repository.NewLLMProviderRepo(d.db), d.templateRepo,
-			repository.NewOrganizationRepo(d.db), nil, d.deployment, repository.NewGatewayRepo(d.db), nil, logger)
+			repository.NewOrganizationRepo(d.db), nil, d.deployment, repository.NewGatewayRepo(d.db), nil, logger, &noopAuditRepo{})
 		mustImport(t, d, dpTemplateReq("dp-t", "p-tmpl", "T"))
 		mustImport(t, d, dpProviderReq("dp-p", "blk-prov", "P", "p-tmpl"))
-		if _, err := svc.Update(importTestOrgID, "blk-prov", &api.LLMProvider{Name: "Hacked"}); !errors.Is(err, constants.ErrArtifactReadOnly) {
+		if _, err := svc.Update(importTestOrgID, "blk-prov", "tester", &api.LLMProvider{Name: "Hacked"}); !errors.Is(err, constants.ErrArtifactReadOnly) {
 			t.Errorf("Provider Update(DP) = %v, want ErrArtifactReadOnly", err)
 		}
 	})
@@ -905,11 +905,11 @@ func TestCPSideGuard_UpdateBlockedForDPOrigin(t *testing.T) {
 	t.Run("LLMProxy", func(t *testing.T) {
 		d := setupImportTest(t)
 		svc := NewLLMProxyService(repository.NewLLMProxyRepo(d.db), repository.NewLLMProviderRepo(d.db),
-			repository.NewProjectRepo(d.db), d.deployment, repository.NewGatewayRepo(d.db), nil, logger)
+			repository.NewProjectRepo(d.db), d.deployment, repository.NewGatewayRepo(d.db), nil, logger, &noopAuditRepo{})
 		mustImport(t, d, dpTemplateReq("dp-t", "px-tmpl", "T"))
 		mustImport(t, d, dpProviderReq("dp-p", "px-prov", "P", "px-tmpl"))
 		mustImport(t, d, dpProxyReq("dp-x", "blk-proxy", "X", "px-prov"))
-		if _, err := svc.Update(importTestOrgID, "blk-proxy", &api.LLMProxy{
+		if _, err := svc.Update(importTestOrgID, "blk-proxy", "tester", &api.LLMProxy{
 			Name: "Hacked", Version: "v2", Provider: api.LLMProxyProvider{Id: "px-prov"},
 		}); !errors.Is(err, constants.ErrArtifactReadOnly) {
 			t.Errorf("Proxy Update(DP) = %v, want ErrArtifactReadOnly", err)
@@ -919,9 +919,9 @@ func TestCPSideGuard_UpdateBlockedForDPOrigin(t *testing.T) {
 	t.Run("MCPProxy", func(t *testing.T) {
 		d := setupImportTest(t)
 		svc := NewMCPProxyService(repository.NewMCPProxyRepo(d.db), repository.NewProjectRepo(d.db),
-			d.deployment, repository.NewGatewayRepo(d.db), nil, logger)
+			d.deployment, repository.NewGatewayRepo(d.db), nil, logger, &noopAuditRepo{})
 		mustImport(t, d, dpMCPReq("dp-m", "blk-mcp", "M"))
-		if _, err := svc.Update(importTestOrgID, "blk-mcp", &api.MCPProxy{
+		if _, err := svc.Update(importTestOrgID, "blk-mcp", "tester", &api.MCPProxy{
 			Id: "blk-mcp", Name: "Hacked", Version: "v2",
 			Upstream: api.Upstream{Main: api.UpstreamDefinition{Url: strPointer("https://api.example.com")}},
 		}); !errors.Is(err, constants.ErrArtifactReadOnly) {
@@ -936,11 +936,11 @@ func TestCPSideGuard_UpdateBlockedForDPOrigin(t *testing.T) {
 // guard applies directly.
 func TestLLMProviderTemplate_DeleteOriginGuard(t *testing.T) {
 	d := setupImportTest(t)
-	svc := NewLLMProviderTemplateService(d.templateRepo)
+	svc := NewLLMProviderTemplateService(d.templateRepo, &noopAuditRepo{})
 
 	// DP-origin template (imported from a gateway) cannot be deleted from the CP.
 	mustImport(t, d, dpTemplateReq("dp-t", "dp-tmpl", "DP Template"))
-	if err := svc.Delete(importTestOrgID, "dp-tmpl"); !errors.Is(err, constants.ErrArtifactReadOnly) {
+	if err := svc.Delete(importTestOrgID, "dp-tmpl", "tester"); !errors.Is(err, constants.ErrArtifactReadOnly) {
 		t.Errorf("Delete(DP template) = %v, want ErrArtifactReadOnly", err)
 	}
 	// It must still exist after the rejected delete.
@@ -957,7 +957,7 @@ func TestLLMProviderTemplate_DeleteOriginGuard(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("seed CP template: %v", err)
 	}
-	if err := svc.Delete(importTestOrgID, "cp-tmpl"); err != nil {
+	if err := svc.Delete(importTestOrgID, "cp-tmpl", "tester"); err != nil {
 		t.Errorf("Delete(CP template) = %v, want nil", err)
 	}
 	if tmpl, _ := d.templateRepo.GetByID("cp-tmpl", importTestOrgID); tmpl != nil {
@@ -965,7 +965,7 @@ func TestLLMProviderTemplate_DeleteOriginGuard(t *testing.T) {
 	}
 
 	// Deleting a non-existent template returns not-found (guard does not mask it).
-	if err := svc.Delete(importTestOrgID, "no-such-tmpl"); !errors.Is(err, constants.ErrLLMProviderTemplateNotFound) {
+	if err := svc.Delete(importTestOrgID, "no-such-tmpl", "tester"); !errors.Is(err, constants.ErrLLMProviderTemplateNotFound) {
 		t.Errorf("Delete(missing) = %v, want ErrLLMProviderTemplateNotFound", err)
 	}
 }

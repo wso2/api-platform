@@ -51,12 +51,6 @@ const (
 	CreateAPIKeyResponseStatusSuccess CreateAPIKeyResponseStatus = "success"
 )
 
-// Defines values for CreateDevPortalRequestVisibility.
-const (
-	CreateDevPortalRequestVisibilityPrivate CreateDevPortalRequestVisibility = "private"
-	CreateDevPortalRequestVisibilityPublic  CreateDevPortalRequestVisibility = "public"
-)
-
 // Defines values for CreateGatewayRequestFunctionalityType.
 const (
 	CreateGatewayRequestFunctionalityTypeAi      CreateGatewayRequestFunctionalityType = "ai"
@@ -103,12 +97,6 @@ const (
 	DeploymentResponseStatusFAILED      DeploymentResponseStatus = "FAILED"
 	DeploymentResponseStatusUNDEPLOYED  DeploymentResponseStatus = "UNDEPLOYED"
 	DeploymentResponseStatusUNDEPLOYING DeploymentResponseStatus = "UNDEPLOYING"
-)
-
-// Defines values for DevPortalResponseVisibility.
-const (
-	DevPortalResponseVisibilityPrivate DevPortalResponseVisibility = "private"
-	DevPortalResponseVisibilityPublic  DevPortalResponseVisibility = "public"
 )
 
 // Defines values for ExtractionIdentifierLocation.
@@ -220,9 +208,9 @@ const (
 
 // Defines values for MCPProxyListItemStatus.
 const (
-	MCPProxyListItemStatusDeployed MCPProxyListItemStatus = "deployed"
-	MCPProxyListItemStatusFailed   MCPProxyListItemStatus = "failed"
-	MCPProxyListItemStatusPending  MCPProxyListItemStatus = "pending"
+	Deployed MCPProxyListItemStatus = "deployed"
+	Failed   MCPProxyListItemStatus = "failed"
+	Pending  MCPProxyListItemStatus = "pending"
 )
 
 // Defines values for OpenAPIValidationResponseApiLifeCycleStatus.
@@ -260,9 +248,9 @@ const (
 
 // Defines values for PublishRESTAPIInfoVisibility.
 const (
-	PublishRESTAPIInfoVisibilityPrivate    PublishRESTAPIInfoVisibility = "private"
-	PublishRESTAPIInfoVisibilityPublic     PublishRESTAPIInfoVisibility = "public"
-	PublishRESTAPIInfoVisibilityRestricted PublishRESTAPIInfoVisibility = "restricted"
+	Private    PublishRESTAPIInfoVisibility = "private"
+	Public     PublishRESTAPIInfoVisibility = "public"
+	Restricted PublishRESTAPIInfoVisibility = "restricted"
 )
 
 // Defines values for RESTAPILifeCycleStatus.
@@ -282,12 +270,6 @@ const (
 	RESTAPIDeploymentDetailsStatusREJECTED RESTAPIDeploymentDetailsStatus = "REJECTED"
 )
 
-// Defines values for RESTAPIDevPortalResponseVisibility.
-const (
-	RESTAPIDevPortalResponseVisibilityPrivate RESTAPIDevPortalResponseVisibility = "private"
-	RESTAPIDevPortalResponseVisibilityPublic  RESTAPIDevPortalResponseVisibility = "public"
-)
-
 // Defines values for RESTAPIGatewayResponseFunctionalityType.
 const (
 	Ai      RESTAPIGatewayResponseFunctionalityType = "ai"
@@ -303,13 +285,6 @@ const (
 	RESTAPIProjectValidationResponseApiLifeCycleStatusPUBLISHED  RESTAPIProjectValidationResponseApiLifeCycleStatus = "PUBLISHED"
 	RESTAPIProjectValidationResponseApiLifeCycleStatusRETIRED    RESTAPIProjectValidationResponseApiLifeCycleStatus = "RETIRED"
 	RESTAPIProjectValidationResponseApiLifeCycleStatusSTAGED     RESTAPIProjectValidationResponseApiLifeCycleStatus = "STAGED"
-)
-
-// Defines values for RESTAPIPublicationDetailsStatus.
-const (
-	RESTAPIPublicationDetailsStatusFailed     RESTAPIPublicationDetailsStatus = "failed"
-	RESTAPIPublicationDetailsStatusPublished  RESTAPIPublicationDetailsStatus = "published"
-	RESTAPIPublicationDetailsStatusPublishing RESTAPIPublicationDetailsStatus = "publishing"
 )
 
 // Defines values for RateLimitResetWindowUnit.
@@ -331,6 +306,29 @@ const (
 	RouteExceptionMethodsPATCH    RouteExceptionMethods = "PATCH"
 	RouteExceptionMethodsPOST     RouteExceptionMethods = "POST"
 	RouteExceptionMethodsPUT      RouteExceptionMethods = "PUT"
+)
+
+// Defines values for SecretCreateRequestType.
+const (
+	SecretCreateRequestTypeCERTIFICATE SecretCreateRequestType = "CERTIFICATE"
+	SecretCreateRequestTypeGENERIC     SecretCreateRequestType = "GENERIC"
+)
+
+// Defines values for SecretSummaryProvider.
+const (
+	INBUILT SecretSummaryProvider = "IN_BUILT"
+)
+
+// Defines values for SecretSummaryStatus.
+const (
+	SecretSummaryStatusACTIVE     SecretSummaryStatus = "ACTIVE"
+	SecretSummaryStatusDEPRECATED SecretSummaryStatus = "DEPRECATED"
+)
+
+// Defines values for SecretSummaryType.
+const (
+	SecretSummaryTypeCERTIFICATE SecretSummaryType = "CERTIFICATE"
+	SecretSummaryTypeGENERIC     SecretSummaryType = "GENERIC"
 )
 
 // Defines values for SubscriptionStatus.
@@ -366,12 +364,6 @@ const (
 const (
 	UpdateAPIKeyResponseStatusError   UpdateAPIKeyResponseStatus = "error"
 	UpdateAPIKeyResponseStatusSuccess UpdateAPIKeyResponseStatus = "success"
-)
-
-// Defines values for UpdateDevPortalRequestVisibility.
-const (
-	UpdateDevPortalRequestVisibilityPrivate UpdateDevPortalRequestVisibility = "private"
-	UpdateDevPortalRequestVisibilityPublic  UpdateDevPortalRequestVisibility = "public"
 )
 
 // Defines values for UpdateSubscriptionPlanRequestStatus.
@@ -447,25 +439,12 @@ const (
 	WebBrokerAPITransportHttps WebBrokerAPITransport = "https"
 )
 
-// Defines values for WebBrokerAPIDevPortalResponseVisibility.
-const (
-	WebBrokerAPIDevPortalResponseVisibilityPrivate WebBrokerAPIDevPortalResponseVisibility = "private"
-	WebBrokerAPIDevPortalResponseVisibilityPublic  WebBrokerAPIDevPortalResponseVisibility = "public"
-)
-
 // Defines values for WebBrokerAPIListItemLifeCycleStatus.
 const (
 	WebBrokerAPIListItemLifeCycleStatusCREATED    WebBrokerAPIListItemLifeCycleStatus = "CREATED"
 	WebBrokerAPIListItemLifeCycleStatusDEPRECATED WebBrokerAPIListItemLifeCycleStatus = "DEPRECATED"
 	WebBrokerAPIListItemLifeCycleStatusPUBLISHED  WebBrokerAPIListItemLifeCycleStatus = "PUBLISHED"
 	WebBrokerAPIListItemLifeCycleStatusRETIRED    WebBrokerAPIListItemLifeCycleStatus = "RETIRED"
-)
-
-// Defines values for WebBrokerAPIPublicationDetailsStatus.
-const (
-	WebBrokerAPIPublicationDetailsStatusFailed     WebBrokerAPIPublicationDetailsStatus = "failed"
-	WebBrokerAPIPublicationDetailsStatusPublished  WebBrokerAPIPublicationDetailsStatus = "published"
-	WebBrokerAPIPublicationDetailsStatusPublishing WebBrokerAPIPublicationDetailsStatus = "publishing"
 )
 
 // Defines values for WebSubAPILifeCycleStatus.
@@ -482,25 +461,12 @@ const (
 	WebSubAPITransportHttps WebSubAPITransport = "https"
 )
 
-// Defines values for WebSubAPIDevPortalResponseVisibility.
-const (
-	Private WebSubAPIDevPortalResponseVisibility = "private"
-	Public  WebSubAPIDevPortalResponseVisibility = "public"
-)
-
 // Defines values for WebSubAPIListItemLifeCycleStatus.
 const (
 	WebSubAPIListItemLifeCycleStatusCREATED    WebSubAPIListItemLifeCycleStatus = "CREATED"
 	WebSubAPIListItemLifeCycleStatusDEPRECATED WebSubAPIListItemLifeCycleStatus = "DEPRECATED"
 	WebSubAPIListItemLifeCycleStatusPUBLISHED  WebSubAPIListItemLifeCycleStatus = "PUBLISHED"
 	WebSubAPIListItemLifeCycleStatusRETIRED    WebSubAPIListItemLifeCycleStatus = "RETIRED"
-)
-
-// Defines values for WebSubAPIPublicationDetailsStatus.
-const (
-	WebSubAPIPublicationDetailsStatusFailed     WebSubAPIPublicationDetailsStatus = "failed"
-	WebSubAPIPublicationDetailsStatusPublished  WebSubAPIPublicationDetailsStatus = "published"
-	WebSubAPIPublicationDetailsStatusPublishing WebSubAPIPublicationDetailsStatus = "publishing"
 )
 
 // Defines values for ArtifactTypeQ.
@@ -582,9 +548,9 @@ const (
 
 // Defines values for ListSubscriptionsParamsStatus.
 const (
-	ACTIVE   ListSubscriptionsParamsStatus = "ACTIVE"
-	INACTIVE ListSubscriptionsParamsStatus = "INACTIVE"
-	REVOKED  ListSubscriptionsParamsStatus = "REVOKED"
+	ListSubscriptionsParamsStatusACTIVE   ListSubscriptionsParamsStatus = "ACTIVE"
+	ListSubscriptionsParamsStatusINACTIVE ListSubscriptionsParamsStatus = "INACTIVE"
+	ListSubscriptionsParamsStatusREVOKED  ListSubscriptionsParamsStatus = "REVOKED"
 )
 
 // APIKeyItem defines model for APIKeyItem.
@@ -861,36 +827,6 @@ type CreateApplicationRequest struct {
 	// Type Type of the application
 	Type ApplicationType `json:"type" yaml:"type"`
 }
-
-// CreateDevPortalRequest defines model for CreateDevPortalRequest.
-type CreateDevPortalRequest struct {
-	// ApiKey API key for authentication with the DevPortal
-	ApiKey string `binding:"required" json:"apiKey" yaml:"apiKey"`
-
-	// ApiUrl API URL of the DevPortal
-	ApiUrl string `binding:"required" json:"apiUrl" yaml:"apiUrl"`
-
-	// Description Description of the DevPortal
-	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
-
-	// HeaderKeyName Custom header name for API key (optional)
-	HeaderKeyName *string `json:"headerKeyName,omitempty" yaml:"headerKeyName,omitempty"`
-
-	// Hostname Hostname of the DevPortal
-	Hostname string `binding:"required" json:"hostname" yaml:"hostname"`
-
-	// Identifier Unique identifier for the DevPortal
-	Identifier string `binding:"required" json:"identifier" yaml:"identifier"`
-
-	// Name Display name of the DevPortal
-	Name string `binding:"required" json:"name" yaml:"name"`
-
-	// Visibility Visibility of the DevPortal
-	Visibility *CreateDevPortalRequestVisibility `json:"visibility,omitempty" yaml:"visibility,omitempty"`
-}
-
-// CreateDevPortalRequestVisibility Visibility of the DevPortal
-type CreateDevPortalRequestVisibility string
 
 // CreateGatewayRequest Request body for creating a gateway. Organization ID is automatically extracted
 // from the JWT token and does not need to be provided.
@@ -1230,65 +1166,6 @@ type DeploymentResponse struct {
 // - FAILED: Deployment or undeployment failed (see statusReason for error code)
 // - ARCHIVED: Historical deployment, can be rolled back
 type DeploymentResponseStatus string
-
-// DevPortalListResponse defines model for DevPortalListResponse.
-type DevPortalListResponse struct {
-	// Count Number of DevPortals in current response
-	Count      int                 `binding:"required" json:"count" yaml:"count"`
-	List       []DevPortalResponse `binding:"required" json:"list" yaml:"list"`
-	Pagination Pagination          `json:"pagination" yaml:"pagination"`
-}
-
-// DevPortalResponse defines model for DevPortalResponse.
-type DevPortalResponse struct {
-	// ApiUrl API URL of the DevPortal
-	ApiUrl string `binding:"required" json:"apiUrl" yaml:"apiUrl"`
-
-	// CreatedAt Timestamp when the DevPortal was created
-	CreatedAt time.Time `binding:"required" json:"createdAt" yaml:"createdAt"`
-
-	// Description Description of the DevPortal
-	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
-
-	// HeaderKeyName Custom header name for API key
-	HeaderKeyName *string `json:"headerKeyName,omitempty" yaml:"headerKeyName,omitempty"`
-
-	// Hostname Hostname of the DevPortal
-	Hostname string `binding:"required" json:"hostname" yaml:"hostname"`
-
-	// Identifier Unique identifier for the DevPortal
-	Identifier string `binding:"required" json:"identifier" yaml:"identifier"`
-
-	// IsActive Whether the DevPortal is currently active
-	IsActive bool `binding:"required" json:"isActive" yaml:"isActive"`
-
-	// IsDefault Whether this is the default DevPortal for the organization
-	IsDefault bool `binding:"required" json:"isDefault" yaml:"isDefault"`
-
-	// IsEnabled Whether the DevPortal is enabled
-	IsEnabled bool `binding:"required" json:"isEnabled" yaml:"isEnabled"`
-
-	// Name Display name of the DevPortal
-	Name string `binding:"required" json:"name" yaml:"name"`
-
-	// OrganizationUuid UUID of the organization this DevPortal belongs to
-	OrganizationUuid openapi_types.UUID `binding:"required" json:"organizationUuid" yaml:"organizationUuid"`
-
-	// UiUrl UI URL of the DevPortal
-	UiUrl string `binding:"required" json:"uiUrl" yaml:"uiUrl"`
-
-	// UpdatedAt Timestamp when the DevPortal was last updated
-	UpdatedAt time.Time `binding:"required" json:"updatedAt" yaml:"updatedAt"`
-
-	// Uuid Unique identifier for the DevPortal
-	Uuid openapi_types.UUID `binding:"required" json:"uuid" yaml:"uuid"`
-
-	// Visibility Visibility of the DevPortal
-	Visibility DevPortalResponseVisibility `binding:"required" json:"visibility" yaml:"visibility"`
-}
-
-// DevPortalResponseVisibility Visibility of the DevPortal
-type DevPortalResponseVisibility string
 
 // EndPoints Production and sandbox endpoints
 type EndPoints struct {
@@ -2502,21 +2379,6 @@ type PublishRESTAPIResponse struct {
 	PublishedAt time.Time `binding:"required" json:"publishedAt" yaml:"publishedAt"`
 }
 
-// PublishToDevPortalRequest defines model for PublishToDevPortalRequest.
-type PublishToDevPortalRequest struct {
-	// ApiInfo User-overridable API metadata for publishing
-	ApiInfo *PublishRESTAPIInfo `json:"apiInfo,omitempty" yaml:"apiInfo,omitempty"`
-
-	// DevPortalUuid UUID of the DevPortal to publish to
-	DevPortalUuid openapi_types.UUID `binding:"required" json:"devPortalUuid" yaml:"devPortalUuid"`
-
-	// EndPoints Production and sandbox endpoints
-	EndPoints EndPoints `json:"endPoints" yaml:"endPoints"`
-
-	// SubscriptionPolicies List of subscription policies for the API
-	SubscriptionPolicies *[]string `json:"subscriptionPolicies,omitempty" yaml:"subscriptionPolicies,omitempty"`
-}
-
 // RESTAPI defines model for RESTAPI.
 type RESTAPI struct {
 	// Channels List of channels exposed by this API
@@ -2583,74 +2445,6 @@ type RESTAPIDeploymentDetails struct {
 
 // RESTAPIDeploymentDetailsStatus Current deployment status
 type RESTAPIDeploymentDetailsStatus string
-
-// RESTAPIDevPortalListResponse defines model for RESTAPIDevPortalListResponse.
-type RESTAPIDevPortalListResponse struct {
-	// Count Number of DevPortals in current response
-	Count      int                        `binding:"required" json:"count" yaml:"count"`
-	List       []RESTAPIDevPortalResponse `binding:"required" json:"list" yaml:"list"`
-	Pagination Pagination                 `json:"pagination" yaml:"pagination"`
-}
-
-// RESTAPIDevPortalResponse defines model for RESTAPIDevPortalResponse.
-type RESTAPIDevPortalResponse struct {
-	// ApiUrl API URL of the DevPortal
-	ApiUrl string `binding:"required" json:"apiUrl" yaml:"apiUrl"`
-
-	// AssociatedAt Timestamp when the DevPortal was associated with the API
-	AssociatedAt time.Time `json:"associatedAt" yaml:"associatedAt"`
-
-	// CreatedAt Timestamp when the DevPortal was created
-	CreatedAt time.Time `binding:"required" json:"createdAt" yaml:"createdAt"`
-
-	// Description Description of the DevPortal
-	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
-
-	// HeaderKeyName Custom header name for API key
-	HeaderKeyName *string `json:"headerKeyName,omitempty" yaml:"headerKeyName,omitempty"`
-
-	// Hostname Hostname of the DevPortal
-	Hostname string `binding:"required" json:"hostname" yaml:"hostname"`
-
-	// Identifier Unique identifier for the DevPortal
-	Identifier string `binding:"required" json:"identifier" yaml:"identifier"`
-
-	// IsActive Whether the DevPortal is currently active
-	IsActive bool `binding:"required" json:"isActive" yaml:"isActive"`
-
-	// IsDefault Whether this is the default DevPortal for the organization
-	IsDefault bool `binding:"required" json:"isDefault" yaml:"isDefault"`
-
-	// IsEnabled Whether the DevPortal is enabled
-	IsEnabled bool `binding:"required" json:"isEnabled" yaml:"isEnabled"`
-
-	// IsPublished Whether the API is currently published to this DevPortal
-	IsPublished bool `json:"isPublished" yaml:"isPublished"`
-
-	// Name Display name of the DevPortal
-	Name string `binding:"required" json:"name" yaml:"name"`
-
-	// OrganizationUuid UUID of the organization this DevPortal belongs to
-	OrganizationUuid openapi_types.UUID `binding:"required" json:"organizationUuid" yaml:"organizationUuid"`
-
-	// Publication Details about API publication to a specific DevPortal
-	Publication *RESTAPIPublicationDetails `json:"publication,omitempty" yaml:"publication,omitempty"`
-
-	// UiUrl UI URL of the DevPortal
-	UiUrl string `binding:"required" json:"uiUrl" yaml:"uiUrl"`
-
-	// UpdatedAt Timestamp when the DevPortal was last updated
-	UpdatedAt time.Time `binding:"required" json:"updatedAt" yaml:"updatedAt"`
-
-	// Uuid Unique identifier for the DevPortal
-	Uuid openapi_types.UUID `binding:"required" json:"uuid" yaml:"uuid"`
-
-	// Visibility Visibility of the DevPortal
-	Visibility RESTAPIDevPortalResponseVisibility `binding:"required" json:"visibility" yaml:"visibility"`
-}
-
-// RESTAPIDevPortalResponseVisibility Visibility of the DevPortal
-type RESTAPIDevPortalResponseVisibility string
 
 // RESTAPIGatewayListResponse defines model for RESTAPIGatewayListResponse.
 type RESTAPIGatewayListResponse struct {
@@ -2793,33 +2587,6 @@ type RESTAPIProjectValidationResponse struct {
 // RESTAPIProjectValidationResponseApiLifeCycleStatus Current lifecycle status of the API
 type RESTAPIProjectValidationResponseApiLifeCycleStatus string
 
-// RESTAPIPublicationDetails Details about API publication to a specific DevPortal
-type RESTAPIPublicationDetails struct {
-	// ApiVersion Version of the API that was published
-	ApiVersion *string `json:"apiVersion,omitempty" yaml:"apiVersion,omitempty"`
-
-	// DevPortalRefId Reference ID in the DevPortal
-	DevPortalRefId *string `json:"devPortalRefId,omitempty" yaml:"devPortalRefId,omitempty"`
-
-	// ProductionEndpoint Production endpoint URL
-	ProductionEndpoint *string `json:"productionEndpoint,omitempty" yaml:"productionEndpoint,omitempty"`
-
-	// PublishedAt Timestamp when the API was published
-	PublishedAt time.Time `binding:"required" json:"publishedAt" yaml:"publishedAt"`
-
-	// SandboxEndpoint Sandbox endpoint URL
-	SandboxEndpoint *string `json:"sandboxEndpoint,omitempty" yaml:"sandboxEndpoint,omitempty"`
-
-	// Status Current publication status
-	Status RESTAPIPublicationDetailsStatus `binding:"required" json:"status" yaml:"status"`
-
-	// UpdatedAt Timestamp when the publication was last updated
-	UpdatedAt time.Time `binding:"required" json:"updatedAt" yaml:"updatedAt"`
-}
-
-// RESTAPIPublicationDetailsStatus Current publication status
-type RESTAPIPublicationDetailsStatus string
-
 // RESTAPIValidationResponse defines model for RESTAPIValidationResponse.
 type RESTAPIValidationResponse struct {
 	// Error Error details if validation fails
@@ -2909,6 +2676,87 @@ type RouteException struct {
 
 // RouteExceptionMethods defines model for RouteException.Methods.
 type RouteExceptionMethods string
+
+// SecretCreateRequest defines model for SecretCreateRequest.
+type SecretCreateRequest struct {
+	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
+
+	// Handle Unique identifier used in {{ secret "handle" }} placeholders. Immutable after creation.
+	Handle string `binding:"required" json:"handle" yaml:"handle"`
+
+	// Name Human-readable display name for list views
+	Name string                   `binding:"required" json:"name" yaml:"name"`
+	Type *SecretCreateRequestType `json:"type,omitempty" yaml:"type,omitempty"`
+
+	// Value Plaintext secret value — encrypted at rest, never returned in any response
+	Value string `binding:"required" json:"value" yaml:"value"`
+}
+
+// SecretCreateRequestType defines model for SecretCreateRequest.Type.
+type SecretCreateRequestType string
+
+// SecretDeleteConflict defines model for SecretDeleteConflict.
+type SecretDeleteConflict struct {
+	Error      *string `json:"error,omitempty" yaml:"error,omitempty"`
+	References *[]struct {
+		Handle *string `json:"handle,omitempty" yaml:"handle,omitempty"`
+		Name   *string `json:"name,omitempty" yaml:"name,omitempty"`
+		Type   *string `json:"type,omitempty" yaml:"type,omitempty"`
+	} `json:"references,omitempty" yaml:"references,omitempty"`
+}
+
+// SecretListResponse defines model for SecretListResponse.
+type SecretListResponse struct {
+	List       []SecretSummary `binding:"required" json:"list" yaml:"list"`
+	Pagination Pagination      `json:"pagination" yaml:"pagination"`
+}
+
+// SecretResponse Returned on create (201) and rotate (200). The plaintext value is never included.
+type SecretResponse struct {
+	CreatedAt *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+	Handle    *string    `json:"handle,omitempty" yaml:"handle,omitempty"`
+	Name      *string    `json:"name,omitempty" yaml:"name,omitempty"`
+	UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+
+	// Uuid UUID of the secret
+	Uuid *string `json:"uuid,omitempty" yaml:"uuid,omitempty"`
+}
+
+// SecretSummary Secret metadata — never includes the plaintext value.
+type SecretSummary struct {
+	CreatedAt   *time.Time             `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+	Description *string                `json:"description,omitempty" yaml:"description,omitempty"`
+	Handle      *string                `json:"handle,omitempty" yaml:"handle,omitempty"`
+	Hash        *string                `json:"hash,omitempty" yaml:"hash,omitempty"`
+	Name        *string                `json:"name,omitempty" yaml:"name,omitempty"`
+	Provider    *SecretSummaryProvider `json:"provider,omitempty" yaml:"provider,omitempty"`
+	Status      *SecretSummaryStatus   `json:"status,omitempty" yaml:"status,omitempty"`
+	Type        *SecretSummaryType     `json:"type,omitempty" yaml:"type,omitempty"`
+	UpdatedAt   *time.Time             `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+
+	// Uuid UUID of the secret
+	Uuid *string `json:"uuid,omitempty" yaml:"uuid,omitempty"`
+}
+
+// SecretSummaryProvider defines model for SecretSummary.Provider.
+type SecretSummaryProvider string
+
+// SecretSummaryStatus defines model for SecretSummary.Status.
+type SecretSummaryStatus string
+
+// SecretSummaryType defines model for SecretSummary.Type.
+type SecretSummaryType string
+
+// SecretUpdateRequest defines model for SecretUpdateRequest.
+type SecretUpdateRequest struct {
+	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
+
+	// Name Updated display name
+	Name *string `json:"name,omitempty" yaml:"name,omitempty"`
+
+	// Value New plaintext secret value — re-encrypted at rest
+	Value string `binding:"required" json:"value" yaml:"value"`
+}
 
 // SecurityConfig Defines security mechanisms (API key, OAuth2) applicable to the API
 type SecurityConfig struct {
@@ -3030,12 +2878,6 @@ type TokenRotationResponse struct {
 	Token *string `json:"token,omitempty" yaml:"token,omitempty"`
 }
 
-// UnpublishFromDevPortalRequest defines model for UnpublishFromDevPortalRequest.
-type UnpublishFromDevPortalRequest struct {
-	// DevPortalUuid UUID of the DevPortal to unpublish from
-	DevPortalUuid openapi_types.UUID `binding:"required" json:"devPortalUuid" yaml:"devPortalUuid"`
-}
-
 // UnpublishRESTAPIResponse defines model for UnpublishRESTAPIResponse.
 type UnpublishRESTAPIResponse struct {
 	// ApiId Platform-api API identifier
@@ -3096,33 +2938,6 @@ type UpdateApplicationRequest struct {
 	// Type Type of the application
 	Type *ApplicationType `json:"type,omitempty" yaml:"type,omitempty"`
 }
-
-// UpdateDevPortalRequest defines model for UpdateDevPortalRequest.
-type UpdateDevPortalRequest struct {
-	// ApiKey API key for authentication with the DevPortal
-	ApiKey *string `json:"apiKey,omitempty" yaml:"apiKey,omitempty"`
-
-	// ApiUrl API URL of the DevPortal
-	ApiUrl *string `json:"apiUrl,omitempty" yaml:"apiUrl,omitempty"`
-
-	// Description Description of the DevPortal
-	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
-
-	// HeaderKeyName Custom header name for API key (optional)
-	HeaderKeyName *string `json:"headerKeyName,omitempty" yaml:"headerKeyName,omitempty"`
-
-	// Hostname Hostname of the DevPortal
-	Hostname *string `json:"hostname,omitempty" yaml:"hostname,omitempty"`
-
-	// Name Display name of the DevPortal
-	Name *string `json:"name,omitempty" yaml:"name,omitempty"`
-
-	// Visibility Visibility of the DevPortal
-	Visibility *UpdateDevPortalRequestVisibility `json:"visibility,omitempty" yaml:"visibility,omitempty"`
-}
-
-// UpdateDevPortalRequestVisibility Visibility of the DevPortal
-type UpdateDevPortalRequestVisibility string
 
 // UpdateGatewayRequest defines model for UpdateGatewayRequest.
 type UpdateGatewayRequest struct {
@@ -3381,74 +3196,6 @@ type WebBrokerAPIReceiverType string
 // WebBrokerAPITransport defines model for WebBrokerAPI.Transport.
 type WebBrokerAPITransport string
 
-// WebBrokerAPIDevPortalListResponse defines model for WebBrokerAPIDevPortalListResponse.
-type WebBrokerAPIDevPortalListResponse struct {
-	// Count Number of DevPortals in current response
-	Count      int                             `binding:"required" json:"count" yaml:"count"`
-	List       []WebBrokerAPIDevPortalResponse `binding:"required" json:"list" yaml:"list"`
-	Pagination Pagination                      `json:"pagination" yaml:"pagination"`
-}
-
-// WebBrokerAPIDevPortalResponse defines model for WebBrokerAPIDevPortalResponse.
-type WebBrokerAPIDevPortalResponse struct {
-	// ApiUrl API URL of the DevPortal
-	ApiUrl string `binding:"required" json:"apiUrl" yaml:"apiUrl"`
-
-	// AssociatedAt Timestamp when the DevPortal was associated with the API
-	AssociatedAt time.Time `json:"associatedAt" yaml:"associatedAt"`
-
-	// CreatedAt Timestamp when the DevPortal was created
-	CreatedAt time.Time `binding:"required" json:"createdAt" yaml:"createdAt"`
-
-	// Description Description of the DevPortal
-	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
-
-	// HeaderKeyName Custom header name for API key
-	HeaderKeyName *string `json:"headerKeyName,omitempty" yaml:"headerKeyName,omitempty"`
-
-	// Hostname Hostname of the DevPortal
-	Hostname string `binding:"required" json:"hostname" yaml:"hostname"`
-
-	// Identifier Unique identifier for the DevPortal
-	Identifier string `binding:"required" json:"identifier" yaml:"identifier"`
-
-	// IsActive Whether the DevPortal is currently active
-	IsActive bool `binding:"required" json:"isActive" yaml:"isActive"`
-
-	// IsDefault Whether this is the default DevPortal for the organization
-	IsDefault bool `binding:"required" json:"isDefault" yaml:"isDefault"`
-
-	// IsEnabled Whether the DevPortal is enabled
-	IsEnabled bool `binding:"required" json:"isEnabled" yaml:"isEnabled"`
-
-	// IsPublished Whether the API is currently published to this DevPortal
-	IsPublished bool `json:"isPublished" yaml:"isPublished"`
-
-	// Name Display name of the DevPortal
-	Name string `binding:"required" json:"name" yaml:"name"`
-
-	// OrganizationUuid UUID of the organization this DevPortal belongs to
-	OrganizationUuid openapi_types.UUID `binding:"required" json:"organizationUuid" yaml:"organizationUuid"`
-
-	// Publication Details about WebBroker API publication to a specific DevPortal
-	Publication *WebBrokerAPIPublicationDetails `json:"publication,omitempty" yaml:"publication,omitempty"`
-
-	// UiUrl UI URL of the DevPortal
-	UiUrl string `binding:"required" json:"uiUrl" yaml:"uiUrl"`
-
-	// UpdatedAt Timestamp when the DevPortal was last updated
-	UpdatedAt time.Time `binding:"required" json:"updatedAt" yaml:"updatedAt"`
-
-	// Uuid Unique identifier for the DevPortal
-	Uuid openapi_types.UUID `binding:"required" json:"uuid" yaml:"uuid"`
-
-	// Visibility Visibility of the DevPortal
-	Visibility WebBrokerAPIDevPortalResponseVisibility `binding:"required" json:"visibility" yaml:"visibility"`
-}
-
-// WebBrokerAPIDevPortalResponseVisibility Visibility of the DevPortal
-type WebBrokerAPIDevPortalResponseVisibility string
-
 // WebBrokerAPIListItem defines model for WebBrokerAPIListItem.
 type WebBrokerAPIListItem struct {
 	Context         *string                              `json:"context,omitempty" yaml:"context,omitempty"`
@@ -3473,27 +3220,6 @@ type WebBrokerAPIListResponse struct {
 	List       []WebBrokerAPIListItem `binding:"required" json:"list" yaml:"list"`
 	Pagination Pagination             `json:"pagination" yaml:"pagination"`
 }
-
-// WebBrokerAPIPublicationDetails Details about WebBroker API publication to a specific DevPortal
-type WebBrokerAPIPublicationDetails struct {
-	// ApiVersion Version of the API that was published
-	ApiVersion *string `json:"apiVersion,omitempty" yaml:"apiVersion,omitempty"`
-
-	// DevPortalRefId Reference ID in the DevPortal
-	DevPortalRefId *string `json:"devPortalRefId,omitempty" yaml:"devPortalRefId,omitempty"`
-
-	// PublishedAt Timestamp when the API was published
-	PublishedAt time.Time `binding:"required" json:"publishedAt" yaml:"publishedAt"`
-
-	// Status Current publication status
-	Status WebBrokerAPIPublicationDetailsStatus `binding:"required" json:"status" yaml:"status"`
-
-	// UpdatedAt Timestamp when the publication was last updated
-	UpdatedAt time.Time `binding:"required" json:"updatedAt" yaml:"updatedAt"`
-}
-
-// WebBrokerAPIPublicationDetailsStatus Current publication status
-type WebBrokerAPIPublicationDetailsStatus string
 
 // WebBrokerAllChannelPolicies Policies applied to all channels, organized by event type.
 type WebBrokerAllChannelPolicies struct {
@@ -3589,74 +3315,6 @@ type WebSubAPILifeCycleStatus string
 // WebSubAPITransport defines model for WebSubAPI.Transport.
 type WebSubAPITransport string
 
-// WebSubAPIDevPortalListResponse defines model for WebSubAPIDevPortalListResponse.
-type WebSubAPIDevPortalListResponse struct {
-	// Count Number of DevPortals in current response
-	Count      int                          `binding:"required" json:"count" yaml:"count"`
-	List       []WebSubAPIDevPortalResponse `binding:"required" json:"list" yaml:"list"`
-	Pagination Pagination                   `json:"pagination" yaml:"pagination"`
-}
-
-// WebSubAPIDevPortalResponse defines model for WebSubAPIDevPortalResponse.
-type WebSubAPIDevPortalResponse struct {
-	// ApiUrl API URL of the DevPortal
-	ApiUrl string `binding:"required" json:"apiUrl" yaml:"apiUrl"`
-
-	// AssociatedAt Timestamp when the DevPortal was associated with the API
-	AssociatedAt time.Time `json:"associatedAt" yaml:"associatedAt"`
-
-	// CreatedAt Timestamp when the DevPortal was created
-	CreatedAt time.Time `binding:"required" json:"createdAt" yaml:"createdAt"`
-
-	// Description Description of the DevPortal
-	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
-
-	// HeaderKeyName Custom header name for API key
-	HeaderKeyName *string `json:"headerKeyName,omitempty" yaml:"headerKeyName,omitempty"`
-
-	// Hostname Hostname of the DevPortal
-	Hostname string `binding:"required" json:"hostname" yaml:"hostname"`
-
-	// Identifier Unique identifier for the DevPortal
-	Identifier string `binding:"required" json:"identifier" yaml:"identifier"`
-
-	// IsActive Whether the DevPortal is currently active
-	IsActive bool `binding:"required" json:"isActive" yaml:"isActive"`
-
-	// IsDefault Whether this is the default DevPortal for the organization
-	IsDefault bool `binding:"required" json:"isDefault" yaml:"isDefault"`
-
-	// IsEnabled Whether the DevPortal is enabled
-	IsEnabled bool `binding:"required" json:"isEnabled" yaml:"isEnabled"`
-
-	// IsPublished Whether the API is currently published to this DevPortal
-	IsPublished bool `json:"isPublished" yaml:"isPublished"`
-
-	// Name Display name of the DevPortal
-	Name string `binding:"required" json:"name" yaml:"name"`
-
-	// OrganizationUuid UUID of the organization this DevPortal belongs to
-	OrganizationUuid openapi_types.UUID `binding:"required" json:"organizationUuid" yaml:"organizationUuid"`
-
-	// Publication Details about WebSub API publication to a specific DevPortal
-	Publication *WebSubAPIPublicationDetails `json:"publication,omitempty" yaml:"publication,omitempty"`
-
-	// UiUrl UI URL of the DevPortal
-	UiUrl string `binding:"required" json:"uiUrl" yaml:"uiUrl"`
-
-	// UpdatedAt Timestamp when the DevPortal was last updated
-	UpdatedAt time.Time `binding:"required" json:"updatedAt" yaml:"updatedAt"`
-
-	// Uuid Unique identifier for the DevPortal
-	Uuid openapi_types.UUID `binding:"required" json:"uuid" yaml:"uuid"`
-
-	// Visibility Visibility of the DevPortal
-	Visibility WebSubAPIDevPortalResponseVisibility `binding:"required" json:"visibility" yaml:"visibility"`
-}
-
-// WebSubAPIDevPortalResponseVisibility Visibility of the DevPortal
-type WebSubAPIDevPortalResponseVisibility string
-
 // WebSubAPIHmacSecretCreationResponse defines model for WebSubAPIHmacSecretCreationResponse.
 type WebSubAPIHmacSecretCreationResponse struct {
 	// Message Human-readable confirmation message.
@@ -3733,27 +3391,6 @@ type WebSubAPIListResponse struct {
 	Pagination Pagination          `json:"pagination" yaml:"pagination"`
 }
 
-// WebSubAPIPublicationDetails Details about WebSub API publication to a specific DevPortal
-type WebSubAPIPublicationDetails struct {
-	// ApiVersion Version of the API that was published
-	ApiVersion *string `json:"apiVersion,omitempty" yaml:"apiVersion,omitempty"`
-
-	// DevPortalRefId Reference ID in the DevPortal
-	DevPortalRefId *string `json:"devPortalRefId,omitempty" yaml:"devPortalRefId,omitempty"`
-
-	// PublishedAt Timestamp when the API was published
-	PublishedAt time.Time `binding:"required" json:"publishedAt" yaml:"publishedAt"`
-
-	// Status Current publication status
-	Status WebSubAPIPublicationDetailsStatus `binding:"required" json:"status" yaml:"status"`
-
-	// UpdatedAt Timestamp when the publication was last updated
-	UpdatedAt time.Time `binding:"required" json:"updatedAt" yaml:"updatedAt"`
-}
-
-// WebSubAPIPublicationDetailsStatus Current publication status
-type WebSubAPIPublicationDetailsStatus string
-
 // WebSubAllChannelPolicies Policies applied to all channels, organized by event type.
 type WebSubAllChannelPolicies struct {
 	// OnMessageDelivery Policies for a single event type.
@@ -3792,9 +3429,6 @@ type WebSubEventPolicies struct {
 
 // ArtifactTypeQ defines model for ArtifactType-Q.
 type ArtifactTypeQ string
-
-// DevPortalID defines model for DevPortalID.
-type DevPortalID = openapi_types.UUID
 
 // GatewayID defines model for GatewayID.
 type GatewayID = openapi_types.UUID
@@ -3868,6 +3502,9 @@ type InternalServerError = Error
 // NotFound defines model for NotFound.
 type NotFound = Error
 
+// ServiceUnavailable defines model for ServiceUnavailable.
+type ServiceUnavailable = Error
+
 // Unauthorized defines model for Unauthorized.
 type Unauthorized = Error
 
@@ -3914,21 +3551,6 @@ type ListApplicationAssociationAPIKeysParams struct {
 
 	// Offset Number of mapped API keys to skip
 	Offset *int `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
-}
-
-// ListDevPortalsParams defines parameters for ListDevPortals.
-type ListDevPortalsParams struct {
-	// Limit Maximum number of DevPortals to return
-	Limit *int `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
-
-	// Offset Number of DevPortals to skip
-	Offset *int `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
-
-	// Default Filter by default DevPortal
-	Default *bool `form:"default,omitempty" json:"default,omitempty" yaml:"default,omitempty"`
-
-	// Active Filter by active DevPortals
-	Active *bool `form:"active,omitempty" json:"active,omitempty" yaml:"active,omitempty"`
 }
 
 // SyncCustomPolicyParams defines parameters for SyncCustomPolicy.
@@ -4158,6 +3780,15 @@ type UndeployDeploymentParams struct {
 // AddGatewaysToAPIJSONBody defines parameters for AddGatewaysToAPI.
 type AddGatewaysToAPIJSONBody = []AddGatewayToRESTAPIRequest
 
+// ListSecretsParams defines parameters for ListSecrets.
+type ListSecretsParams struct {
+	Limit  *int `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
+	Offset *int `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
+
+	// UpdatedAfter RFC3339 timestamp — return only secrets updated after this time. Used by GW controller for incremental polling.
+	UpdatedAfter *time.Time `form:"updatedAfter,omitempty" json:"updatedAfter,omitempty" yaml:"updatedAfter,omitempty"`
+}
+
 // ListSubscriptionsParams defines parameters for ListSubscriptions.
 type ListSubscriptionsParams struct {
 	// ApiId Filter by API ID (UUID or handle)
@@ -4264,12 +3895,6 @@ type AddApplicationAPIKeysJSONRequestBody = AddApplicationAPIKeysRequest
 // AddApplicationAssociationsJSONRequestBody defines body for AddApplicationAssociations for application/json ContentType.
 type AddApplicationAssociationsJSONRequestBody = AddApplicationAssociationsRequest
 
-// CreateDevPortalJSONRequestBody defines body for CreateDevPortal for application/json ContentType.
-type CreateDevPortalJSONRequestBody = CreateDevPortalRequest
-
-// UpdateDevPortalJSONRequestBody defines body for UpdateDevPortal for application/json ContentType.
-type UpdateDevPortalJSONRequestBody = UpdateDevPortalRequest
-
 // CreateGatewayJSONRequestBody defines body for CreateGateway for application/json ContentType.
 type CreateGatewayJSONRequestBody = CreateGatewayRequest
 
@@ -4363,8 +3988,11 @@ type DeployAPIJSONRequestBody = DeployRequest
 // AddGatewaysToAPIJSONRequestBody defines body for AddGatewaysToAPI for application/json ContentType.
 type AddGatewaysToAPIJSONRequestBody = AddGatewaysToAPIJSONBody
 
-// PublishRESTAPIToDevPortalJSONRequestBody defines body for PublishRESTAPIToDevPortal for application/json ContentType.
-type PublishRESTAPIToDevPortalJSONRequestBody = PublishToDevPortalRequest
+// CreateSecretMultipartRequestBody defines body for CreateSecret for multipart/form-data ContentType.
+type CreateSecretMultipartRequestBody = SecretCreateRequest
+
+// RotateSecretMultipartRequestBody defines body for RotateSecret for multipart/form-data ContentType.
+type RotateSecretMultipartRequestBody = SecretUpdateRequest
 
 // CreateSubscriptionPlanJSONRequestBody defines body for CreateSubscriptionPlan for application/json ContentType.
 type CreateSubscriptionPlanJSONRequestBody = CreateSubscriptionPlanRequest
@@ -4393,9 +4021,6 @@ type UpdateWebBrokerAPIKeyJSONRequestBody = UpdateAPIKeyRequest
 // DeployWebBrokerAPIJSONRequestBody defines body for DeployWebBrokerAPI for application/json ContentType.
 type DeployWebBrokerAPIJSONRequestBody = DeployRequest
 
-// PublishWebBrokerAPIToDevPortalJSONRequestBody defines body for PublishWebBrokerAPIToDevPortal for application/json ContentType.
-type PublishWebBrokerAPIToDevPortalJSONRequestBody = PublishToDevPortalRequest
-
 // CreateWebSubAPIJSONRequestBody defines body for CreateWebSubAPI for application/json ContentType.
 type CreateWebSubAPIJSONRequestBody = WebSubAPI
 
@@ -4410,9 +4035,6 @@ type UpdateWebSubAPIKeyJSONRequestBody = UpdateAPIKeyRequest
 
 // DeployWebSubAPIJSONRequestBody defines body for DeployWebSubAPI for application/json ContentType.
 type DeployWebSubAPIJSONRequestBody = DeployRequest
-
-// PublishWebSubAPIToDevPortalJSONRequestBody defines body for PublishWebSubAPIToDevPortal for application/json ContentType.
-type PublishWebSubAPIToDevPortalJSONRequestBody = PublishToDevPortalRequest
 
 // CreateWebSubAPISecretJSONRequestBody defines body for CreateWebSubAPISecret for application/json ContentType.
 type CreateWebSubAPISecretJSONRequestBody = WebSubAPIHmacSecretRequest

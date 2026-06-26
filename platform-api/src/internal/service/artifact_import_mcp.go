@@ -74,7 +74,6 @@ func (i *mcpProxyImporter) Import(ctx *ImportContext) (*ImportResult, error) {
 			ProjectUUID:      &projectID,
 			Name:             utils.ImportDisplayName(ctx.Configuration),
 			Version:          version,
-			Status:           mcpStatusDeployed,
 			Origin:           constants.OriginDP,
 			Configuration:    cfg,
 		}

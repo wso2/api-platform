@@ -107,8 +107,8 @@ func TestArtifactImport_GeneratesCPUUIDAcrossKinds(t *testing.T) {
 			t.Errorf("%s artifact not found by handle %s", tc.kind, tc.handle)
 			continue
 		}
-		if art.Kind != tc.kind {
-			t.Errorf("%s: got kind=%s, want %s", tc.handle, art.Kind, tc.kind)
+		if art.Type != tc.kind {
+			t.Errorf("%s: got kind=%s, want %s", tc.handle, art.Type, tc.kind)
 		}
 		if art.UUID == tc.dpID {
 			t.Errorf("%s: CP reused the DP UUID %s; it must mint its own", tc.handle, tc.dpID)
@@ -268,6 +268,7 @@ func TestCPProviderFromDPTemplate(t *testing.T) {
 		repository.NewGatewayRepo(d.db),
 		nil, // gatewayEventsService unused on create
 		newTestLogger(),
+		&noopAuditRepo{},
 	)
 
 	created, err := providerSvc.Create(importTestOrgID, "tester", &api.LLMProvider{
@@ -308,6 +309,7 @@ func TestCPProxyFromDPProvider(t *testing.T) {
 		repository.NewGatewayRepo(d.db),
 		nil, // gatewayEventsService unused on create
 		newTestLogger(),
+		&noopAuditRepo{},
 	)
 
 	created, err := proxySvc.Create(importTestOrgID, "tester", &api.LLMProxy{

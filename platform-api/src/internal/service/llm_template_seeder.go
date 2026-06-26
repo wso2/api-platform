@@ -19,7 +19,6 @@ package service
 
 import (
 	"fmt"
-	"platform-api/src/internal/constants"
 
 	"platform-api/src/internal/model"
 	"platform-api/src/internal/repository"

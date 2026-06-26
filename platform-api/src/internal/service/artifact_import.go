@@ -258,9 +258,10 @@ func (s *ArtifactImportService) Import(orgID, gatewayID string, req dto.ImportGa
 		return nil, fmt.Errorf("failed to look up existing artifact: %w", err)
 	}
 	if existing != nil {
-		// Guard against handle reuse across kinds.
-		if existing.Kind != kind {
-			return nil, fmt.Errorf("%w: artifact %q already exists with kind %s", constants.ErrArtifactExists, handle, existing.Kind)
+		// Guard against handle reuse across kinds. GetByHandle reports the artifact kind in
+		// the Type field (the artifacts.type column).
+		if existing.Type != kind {
+			return nil, fmt.Errorf("%w: artifact %q already exists with kind %s", constants.ErrArtifactExists, handle, existing.Type)
 		}
 		ictx.ID = existing.UUID
 		ictx.Existing = existing
@@ -355,7 +356,7 @@ func (s *ArtifactImportService) writeDeployment(ictx *ImportContext, artifactUUI
 	}
 	associated := false
 	for _, a := range assocs {
-		if a.ResourceID == ictx.GatewayID {
+		if a.GatewayID == ictx.GatewayID {
 			associated = true
 			break
 		}
@@ -363,12 +364,11 @@ func (s *ArtifactImportService) writeDeployment(ictx *ImportContext, artifactUUI
 	if !associated {
 		now := time.Now()
 		if err := s.apiRepo.CreateAPIAssociation(&model.APIAssociation{
-			ArtifactID:      artifactUUID,
-			OrganizationID:  ictx.OrgID,
-			ResourceID:      ictx.GatewayID,
-			AssociationType: constants.AssociationTypeGateway,
-			CreatedAt:       now,
-			UpdatedAt:       now,
+			ArtifactID:     artifactUUID,
+			OrganizationID: ictx.OrgID,
+			GatewayID:      ictx.GatewayID,
+			CreatedAt:      now,
+			UpdatedAt:      now,
 		}); err != nil {
 			return fmt.Errorf("failed to create artifact-gateway association: %w", err)
 		}

@@ -104,14 +104,14 @@ func setupImportTest(t *testing.T) *importTestDeps {
 		importTestOrgID, "h-"+importTestOrgID, "Import Org", "default"); err != nil {
 		t.Fatalf("seed org: %v", err)
 	}
-	if _, err := db.Exec(`INSERT INTO projects (uuid, name, organization_uuid, description, created_at, updated_at)
-		VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))`,
-		importTestProjectID, "default", importTestOrgID, ""); err != nil {
+	if _, err := db.Exec(`INSERT INTO projects (uuid, handle, name, organization_uuid, description, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
+		importTestProjectID, "default", "default", importTestOrgID, ""); err != nil {
 		t.Fatalf("seed project: %v", err)
 	}
-	if _, err := db.Exec(`INSERT INTO gateways (uuid, organization_uuid, name, display_name, description, vhost, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
-		importTestGatewayID, importTestOrgID, "gw1", "Gateway 1", "", "gw.example.com"); err != nil {
+	if _, err := db.Exec(`INSERT INTO gateways (uuid, organization_uuid, handle, name, description, vhost, properties, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
+		importTestGatewayID, importTestOrgID, "gw1", "Gateway 1", "", "gw.example.com", "{}"); err != nil {
 		t.Fatalf("seed gateway: %v", err)
 	}
 
@@ -190,8 +190,8 @@ func TestArtifactImport_CreateRestAPI(t *testing.T) {
 	if art.Origin != constants.OriginDP {
 		t.Errorf("artifact origin = %q, want DP", art.Origin)
 	}
-	if art.Kind != constants.RestApi {
-		t.Errorf("artifact kind = %q, want RestApi", art.Kind)
+	if art.Type != constants.RestApi {
+		t.Errorf("artifact kind = %q, want RestApi", art.Type)
 	}
 
 	// Deployment status should be DEPLOYED on the gateway.
@@ -261,8 +261,7 @@ func TestArtifactImport_CPArtifactMetadataNotOverwritten(t *testing.T) {
 		OrganizationID:  importTestOrgID,
 		Origin:          constants.OriginCP,
 		LifeCycleStatus: "CREATED",
-		Transport:       []string{"https"},
-		Configuration:   model.RestAPIConfig{Name: "Original CP Name", Version: "v1.0"},
+		Configuration:   model.RestAPIConfig{Name: "Original CP Name", Version: "v1.0", Transport: []string{"https"}},
 	}
 	if err := d.apiRepo.CreateAPI(cpAPI); err != nil {
 		t.Fatalf("seed CP api: %v", err)

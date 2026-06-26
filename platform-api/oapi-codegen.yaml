@@ -7,8 +7,5 @@ generate:
   strict-server: false
 output-options:
   yaml-tags: true
-  # Generate every schema under components.schemas, not only those reachable from an
-  # operation. Without this, oapi-codegen prunes "unused" types — standalone response
-  # models that are defined but never $ref-ed by a path (e.g. GatewayStatusListResponse)
-  # silently disappear from generated.go.
+  # Generate every schema under components.schemas, not only those reachable from an operation.
   skip-prune: true

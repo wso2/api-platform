@@ -40,6 +40,9 @@ func (g *guardStubArtifactRepo) CountByKindAndOrg(k, o string) (int, error)     
 func (g *guardStubArtifactRepo) ExistsByUUIDs(u []string, o string) ([]string, error) {
 	return nil, nil
 }
+func (g *guardStubArtifactRepo) GetAPIMetadataByHandle(h, o string) (*model.APIMetadata, error) {
+	return nil, nil
+}
 
 // TestUndeployDeployment_BlockedForDPOrigin verifies the control plane refuses to
 // undeploy a data-plane-originated (origin=DP) artifact: its deploy/undeploy lifecycle
@@ -51,7 +54,7 @@ func TestUndeployDeployment_BlockedForDPOrigin(t *testing.T) {
 		},
 	}
 
-	_, err := svc.UndeployDeployment("artifact-1", "deployment-1", "gateway-1", "org-1")
+	_, err := svc.UndeployDeployment("artifact-1", "deployment-1", "gateway-1", "org-1", "tester")
 	if !errors.Is(err, constants.ErrArtifactReadOnly) {
 		t.Fatalf("UndeployDeployment(DP origin) error = %v, want ErrArtifactReadOnly", err)
 	}
@@ -66,7 +69,7 @@ func TestRestoreDeployment_BlockedForDPOrigin(t *testing.T) {
 		},
 	}
 
-	_, err := svc.RestoreDeployment("artifact-1", "deployment-1", "gateway-1", "org-1")
+	_, err := svc.RestoreDeployment("artifact-1", "deployment-1", "gateway-1", "org-1", "tester")
 	if !errors.Is(err, constants.ErrArtifactReadOnly) {
 		t.Fatalf("RestoreDeployment(DP origin) error = %v, want ErrArtifactReadOnly", err)
 	}

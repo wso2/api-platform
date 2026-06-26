@@ -46,6 +46,10 @@ func (i *restAPIImporter) Import(ctx *ImportContext) (*ImportResult, error) {
 	if err := utils.DecodeSpec(ctx.Configuration.Spec, &cfg); err != nil {
 		return nil, err
 	}
+	// Transport now lives on the configuration; default it when the pushed spec omits it.
+	if len(cfg.Transport) == 0 {
+		cfg.Transport = []string{"http", "https"}
+	}
 
 	if ctx.Existing == nil {
 		// Create a new DP-originated REST API preserving the CP UUID.
@@ -59,7 +63,6 @@ func (i *restAPIImporter) Import(ctx *ImportContext) (*ImportResult, error) {
 			OrganizationID:  ctx.OrgID,
 			Origin:          constants.OriginDP,
 			LifeCycleStatus: "CREATED",
-			Transport:       []string{"http", "https"},
 			Configuration:   cfg,
 		}
 		if err := i.apiRepo.CreateAPI(api); err != nil {

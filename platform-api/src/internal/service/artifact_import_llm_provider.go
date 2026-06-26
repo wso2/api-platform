@@ -67,7 +67,6 @@ func (i *llmProviderImporter) Import(ctx *ImportContext) (*ImportResult, error) 
 			Name:             utils.ImportDisplayName(ctx.Configuration),
 			Version:          version,
 			TemplateUUID:     templateUUID,
-			Status:           llmStatusDeployed,
 			Origin:           constants.OriginDP,
 			Configuration:    cfg,
 		}

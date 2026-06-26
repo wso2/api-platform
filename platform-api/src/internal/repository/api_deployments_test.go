@@ -527,20 +527,18 @@ func createTestAPIWithOrigin(t *testing.T, db *database.DB, apiUUID, handle, org
 	t.Helper()
 
 	artifactQuery := `
-		INSERT INTO artifacts (uuid, handle, name, version, kind, organization_uuid, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+		INSERT INTO artifacts (uuid, type, organization_uuid)
+		VALUES (?, ?, ?)
 	`
-	_, err := db.Exec(artifactQuery, apiUUID, handle, handle, "1.0.0", "RestApi", orgUUID)
-	if err != nil {
+	if _, err := db.Exec(artifactQuery, apiUUID, "RestApi", orgUUID); err != nil {
 		t.Fatalf("Failed to create test artifact: %v", err)
 	}
 
 	apiQuery := `
-		INSERT INTO rest_apis (uuid, description, created_by, project_uuid, lifecycle_status, transport, configuration, origin)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO rest_apis (uuid, organization_uuid, handle, name, version, description, created_by, project_uuid, lifecycle_status, configuration, origin, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
 	`
-	_, err = db.Exec(apiQuery, apiUUID, "desc", "test-user", "project-001", "CREATED", `["https"]`, "{}", origin)
-	if err != nil {
+	if _, err := db.Exec(apiQuery, apiUUID, orgUUID, handle, handle, "1.0.0", "desc", "test-user", "project-001", "CREATED", "{}", origin); err != nil {
 		t.Fatalf("Failed to create test API: %v", err)
 	}
 }

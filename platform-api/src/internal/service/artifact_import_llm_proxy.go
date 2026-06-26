@@ -69,7 +69,6 @@ func (i *llmProxyImporter) Import(ctx *ImportContext) (*ImportResult, error) {
 			ProjectUUID:      ctx.ProjectID,
 			Version:          version,
 			ProviderUUID:     providerUUID,
-			Status:           llmStatusDeployed,
 			Origin:           constants.OriginDP,
 			Configuration:    cfg,
 		}
@@ -124,7 +123,7 @@ func (i *llmProxyImporter) resolveProviderUUID(providerHandle, orgID string) (st
 	if err != nil {
 		return "", fmt.Errorf("failed to validate referenced LLM provider %q: %w", providerHandle, err)
 	}
-	if art == nil || art.Kind != constants.LLMProvider {
+	if art == nil || art.Type != constants.LLMProvider {
 		return "", fmt.Errorf("%w: referenced LLM provider %q does not exist", constants.ErrInvalidInput, providerHandle)
 	}
 	return art.UUID, nil

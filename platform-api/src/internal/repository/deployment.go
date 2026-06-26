@@ -812,14 +812,15 @@ func (r *DeploymentRepo) GetControlPlaneDeploymentsByGateway(gatewayID, orgUUID 
 		FROM deployment_status s
 		INNER JOIN artifacts a ON s.artifact_uuid = a.uuid
 		INNER JOIN (
-			SELECT uuid, handle FROM rest_apis
-			UNION ALL SELECT uuid, handle FROM websub_apis
-			UNION ALL SELECT uuid, handle FROM webbroker_apis
-			UNION ALL SELECT uuid, handle FROM llm_providers
-			UNION ALL SELECT uuid, handle FROM llm_proxies
-			UNION ALL SELECT uuid, handle FROM mcp_proxies
+			SELECT uuid, handle, origin FROM rest_apis
+			UNION ALL SELECT uuid, handle, origin FROM websub_apis
+			UNION ALL SELECT uuid, handle, origin FROM webbroker_apis
+			UNION ALL SELECT uuid, handle, origin FROM llm_providers
+			UNION ALL SELECT uuid, handle, origin FROM llm_proxies
+			UNION ALL SELECT uuid, handle, origin FROM mcp_proxies
 		) src ON src.uuid = s.artifact_uuid
-		WHERE s.gateway_uuid = ? AND s.organization_uuid = ?`
+		WHERE s.gateway_uuid = ? AND s.organization_uuid = ?
+			AND src.origin <> 'gateway_api'`
 	args := []interface{}{gatewayID, orgUUID}
 
 	if since != nil {
