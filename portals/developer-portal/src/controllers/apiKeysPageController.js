@@ -16,7 +16,7 @@
  * under the License.
  */
 /* eslint-disable no-undef */
-const { renderTemplateFromAPI, renderTemplate } = require('../utils/util');
+const { renderTemplateFromAPI } = require('../utils/util');
 const { config } = require('../config/configLoader');
 const logger = require('../config/logger');
 const constants = require('../utils/constants');
@@ -29,7 +29,7 @@ const apiKeyService = require('../services/apiKeyService');
 const { apiUsesApiKeySecurity } = require('../utils/apiDefinitionUtil');
 const { getSessionCsrfToken } = require('../middlewares/csrfProtection');
 
-const loadAPIApiKeys = async (req, res) => {
+const loadAPIApiKeys = async (req, res, next) => {
     let html;
     const { orgName, viewName, apiHandle } = req.params;
 
@@ -44,14 +44,9 @@ const loadAPIApiKeys = async (req, res) => {
 
         const apiID = await apiDao.getId(orgID, apiHandle);
         if (!apiID) {
-            const templateContent = {
-                baseUrl: '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName,
-                devportalMode: devportalMode,
-                errorMessage: constants.ERROR_MESSAGE.API_NOT_FOUND,
-                profile: req.isAuthenticated() ? req.user : null,
-            };
-            html = renderTemplate('../pages/error-page/page.hbs', "./src/defaultContent/" + 'layout/main.hbs', templateContent, true);
-            return res.status(404).send(html);
+            const err = new Error('API not found');
+            err.status = 404;
+            return next(err);
         }
         let metaData = await apiMetadataService.getMetadataFromDB(orgID, apiID, viewName);
         if (metaData && typeof metaData === 'object') {
@@ -82,15 +77,9 @@ const loadAPIApiKeys = async (req, res) => {
 
         const showApiKeysNav = apiUsesApiKeySecurity(metaData, apiDefinitionForNav);
         if (!showApiKeysNav) {
-            const templateContent = {
-                baseUrl: '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName,
-                devportalMode: devportalMode,
-                errorMessage:
-                    'API Keys are not available for this API. They require an API with API Key security enabled.',
-                profile: req.isAuthenticated() ? req.user : null,
-            };
-            html = renderTemplate('../pages/error-page/page.hbs', "./src/defaultContent/" + 'layout/main.hbs', templateContent, true);
-            return res.status(404).send(html);
+            const err = new Error('API Keys not available for this API');
+            err.status = 404;
+            return next(err);
         }
 
         let apiKeys = [];
@@ -170,13 +159,7 @@ const loadAPIApiKeys = async (req, res) => {
             orgName,
             apiHandle
         });
-        const templateContent = {
-            baseUrl: '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName,
-            devportalMode: constants.DEVPORTAL_MODE.DEFAULT,
-            errorMessage: constants.ERROR_MESSAGE.COMMON_ERROR_MESSAGE,
-        };
-        html = renderTemplate('../pages/error-page/page.hbs', "./src/defaultContent/" + 'layout/main.hbs', templateContent, true);
-        res.status(500).send(html);
+        next(error);
     }
 };
 

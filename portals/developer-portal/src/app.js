@@ -179,41 +179,49 @@ if (config.designMode?.enabled) {
 }
 
 
-app.use((req, res) => {
-    res.redirect('/');
+// 404 catch-all — must come after all page routes
+app.use((req, res, next) => {
+    const err = new Error('Not Found');
+    err.status = 404;
+    next(err);
 });
 
-app.use( (err, req, res, next) => {
-    Handlebars.registerPartial('header', '');
-    Handlebars.registerPartial('sidebar', '');
-    logger.error('Application error', { 
-        error: err.message, 
-        stack: err.stack,
-        url: req.url,
-        method: req.method,
-        operation: 'expressErrorHandler'
-    });
-    let templateContent = {
-        devportalMode: 'DEFAULT',
-        baseUrl: '/' + req.originalUrl?.split('/')[1] + '/' + constants.ROUTE.VIEWS_PATH + "default",
-        errorMessage: "Oops! Something went wrong",
-        profile: typeof req.isAuthenticated === 'function' && req.isAuthenticated() ? req.user : null,
-    }
-    let html = "";
-    if (err.status === 401) {
-        req.session.destroy((err) => {
-            if (err) {
-                return res.status(500).send("Logout failed");
-            }
+// Central error handler
+app.use((err, req, res, next) => {
+    const status = err.status || 500;
+
+    if (status >= 500) {
+        logger.error('Application error', {
+            error: err.message,
+            stack: err.stack,
+            url: req.url,
+            method: req.method,
+            operation: 'expressErrorHandler'
         });
-        templateContent.errorMessage = constants.ERROR_MESSAGE.COMMON_AUTH_ERROR_MESSAGE;
-        html = util.renderTemplate('../pages/error-page/page.hbs', 'src/pages/error-layout/main.hbs', templateContent, true);
-    } else {
-        html = util.renderTemplate('../pages/error-page/page.hbs', 'src/pages/error-layout/main.hbs', templateContent, true);
     }
-    res.status(err.status || 500).send(`
-      ${html}
-    `);
+
+    // Destroy session on auth errors
+    if (status === 401 && req.session) {
+        req.session.destroy(() => {});
+    }
+
+    // Ensure chrome partials exist — registered by registerPartials for normal requests,
+    // but may be absent for early-pipeline errors (unmatched route, startup crash).
+    ['header', 'sidebar', 'footer', 'delete-confirmation'].forEach(name => {
+        if (!Handlebars.partials[name]) Handlebars.registerPartial(name, '');
+    });
+
+    const errorType = status === 404 ? '404' : status === 403 ? '403' : '500';
+    const baseUrl = '/' + (req.originalUrl?.split('/')[1] || '') + constants.ROUTE.VIEWS_PATH + 'default';
+    const templateContent = {
+        devportalMode: 'DEFAULT',
+        baseUrl,
+        errorType,
+        profile: typeof req.isAuthenticated === 'function' && req.isAuthenticated() ? req.user : null,
+    };
+
+    const html = util.renderTemplate('../pages/error-page/page.hbs', './src/defaultContent/layout/main.hbs', templateContent, true);
+    res.status(status).send(html);
 });
 
 

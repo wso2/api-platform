@@ -41,7 +41,7 @@ const { buildSchema, getIntrospectionQuery, graphql: executeGraphQL } = require(
 const yaml = require('js-yaml');
 const generateArray = (length) => Array.from({ length });
 
-const loadAPIs = async (req, res) => {
+const loadAPIs = async (req, res, next) => {
 
     const { orgName, viewName } = req.params;
     let html;
@@ -151,18 +151,18 @@ const loadAPIs = async (req, res) => {
                 logger.warn("User is not authorized to access the API or user session expired, hence redirecting to login page", {
                     orgName: orgName,
                 });
-                templateContent.errorMessage = constants.ERROR_MESSAGE.COMMON_AUTH_ERROR_MESSAGE;
-                html = renderTemplate('../pages/error-page/page.hbs', "./src/defaultContent/" + 'layout/main.hbs', templateContent, true);
+                const err = Object.assign(new Error(constants.ERROR_MESSAGE.COMMON_AUTH_ERROR_MESSAGE), { status: 401 });
+                return next(err);
             } else {
-                templateContent.errorMessage = constants.ERROR_MESSAGE.COMMON_ERROR_MESSAGE;
-                html = renderTemplate('../pages/error-page/page.hbs', "./src/defaultContent/" + 'layout/main.hbs', templateContent, true);
+                error.status = 500;
+                return next(error);
             }
         }
     }
     res.send(html);
 }
 
-const loadAPIContent = async (req, res) => {
+const loadAPIContent = async (req, res, next) => {
 
     let html;
     const hbs = exphbs.create({});
@@ -415,21 +415,16 @@ const loadAPIContent = async (req, res) => {
         } catch (error) {
             logger.error(`Failed to load api content`, {
                 orgName: orgName,
-                error: error.message, 
+                error: error.message,
                 stack: error.stack
             });
-            const templateContent = {
-                baseUrl: '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName,
-                devportalMode: devportalMode,
-            }
             if (Number(error?.statusCode) === 401) {
-                templateContent.errorMessage = constants.ERROR_MESSAGE.COMMON_AUTH_ERROR_MESSAGE;
-                html = renderTemplate('../pages/error-page/page.hbs', "./src/defaultContent/" + 'layout/main.hbs', templateContent, true);
+                const err = Object.assign(new Error(constants.ERROR_MESSAGE.COMMON_AUTH_ERROR_MESSAGE), { status: 401 });
+                return next(err);
             } else {
-                templateContent.errorMessage = constants.ERROR_MESSAGE.COMMON_ERROR_MESSAGE;
-                html = renderTemplate('../pages/error-page/page.hbs', "./src/defaultContent/" + 'layout/main.hbs', templateContent, true);
+                error.status = 500;
+                return next(error);
             }
-            res.send(html);
         }
         res.send(html);
     }
@@ -488,7 +483,7 @@ const getAPIDefinition = async (orgName, viewName, apiHandle) => {
     return templateContent;
 }
 
-const loadDocsPage = async (req, res) => {
+const loadDocsPage = async (req, res, next) => {
 
     const { orgName, apiHandle, viewName, docType } = req.params;
     let html = "";
@@ -563,24 +558,19 @@ const loadDocsPage = async (req, res) => {
             };
             html = await renderTemplateFromAPI(templateContent, orgID, orgName, "pages/docs", viewName);
         } catch (error) {
-            const templateContent = {
-                baseUrl: '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName,
-                baseDocUrl: '/' + orgName + '/views/' + viewName + "/api/" + apiHandle,
-                errorMessage: constants.ERROR_MESSAGE.COMMON_ERROR_MESSAGE,
-                devportalMode: devportalMode,
-            }
             logger.error(`Failed to load api docs`, {
                 orgName: orgName,
-                error: error.message, 
+                error: error.message,
                 stack: error.stack
             });
-            html = renderTemplate('../pages/error-page/page.hbs', "./src/defaultContent/" + 'layout/main.hbs', templateContent, true);
+            error.status = 500;
+            return next(error);
         }
     }
     res.send(html);
 }
 
-const loadDocument = async (req, res) => {
+const loadDocument = async (req, res, next) => {
     const { orgName, apiHandle, viewName, docType, docName } = req.params;
 
     if (config.designMode?.enabled) {
@@ -778,35 +768,22 @@ const loadDocument = async (req, res) => {
             templateContent.showApiKeysNav = apiUsesApiKeySecurity(metaForNav);
             html = await renderTemplateFromAPI(templateContent, orgID, orgName, "pages/docs", viewName);
         } catch (error) {
-            const templateContent = {
-                devportalMode: devportalMode,
-                baseUrl: '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName,
-                baseDocUrl: baseDocUrl,
-                errorMessage: constants.ERROR_MESSAGE.COMMON_ERROR_MESSAGE,
-                profile: req.isAuthenticated() ? req.user : null,
-            }
             logger.error('Failed to load api content', {
                 error: error.message,
                 stack: error.stack
             });
-            html = renderTemplate('../pages/error-page/page.hbs', "./src/defaultContent/" + 'layout/main.hbs', templateContent, true);
+            error.status = 500;
+            return next(error);
         }
         res.send(html);
     } catch (error) {
-        const templateContent = {
-            baseUrl: '/' + orgName + '/views/' + viewName,
-            baseDocUrl: baseDocUrl,
-            devportalMode: orgDetails.ORG_CONFIG?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT,
-            profile: req.isAuthenticated() ? req.user : null,
-        }
         if (Number(error?.statusCode) === 401) {
-            templateContent.errorMessage = constants.ERROR_MESSAGE.COMMON_AUTH_ERROR_MESSAGE;
-            html = renderTemplate('../pages/error-page/page.hbs', "./src/defaultContent/" + 'layout/main.hbs', templateContent, true);
+            const err = Object.assign(new Error(constants.ERROR_MESSAGE.COMMON_AUTH_ERROR_MESSAGE), { status: 401 });
+            return next(err);
         } else {
-            templateContent.errorMessage = constants.ERROR_MESSAGE.COMMON_ERROR_MESSAGE;
-            html = renderTemplate('../pages/error-page/page.hbs', "./src/defaultContent/" + 'layout/main.hbs', templateContent, true);
+            error.status = 500;
+            return next(error);
         }
-        res.send(html);
     }
 }
 

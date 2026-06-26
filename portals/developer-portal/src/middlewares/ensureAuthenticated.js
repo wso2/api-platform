@@ -154,7 +154,9 @@ const ensureAuthenticated = async (req, res, next) => {
                         if (ensurePermission(req.originalUrl, role, req)) {
                             return next();
                         } else {
-                            return res.status(403).send("User unauthorized");
+                            const err = new Error('Forbidden');
+                            err.status = 403;
+                            return next(err);
                         }
                     }
                 }
@@ -190,7 +192,9 @@ const ensureAuthenticated = async (req, res, next) => {
                     if (ensurePermission(req.originalUrl, role, req)) {
                         return next();
                     } else {
-                        return res.status(403).send("User unauthorized");
+                        const err = new Error('Forbidden');
+                        err.status = 403;
+                        return next(err);
                     }
                 }
             }

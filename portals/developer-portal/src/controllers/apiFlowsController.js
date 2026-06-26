@@ -21,7 +21,7 @@ const apiDao = require('../dao/apiDao');
 const viewDao = require('../dao/viewDao');
 const apiFlowService = require('../services/apiFlowService');
 const logger = require('../config/logger');
-const { renderTemplate, loadLayoutFromAPI, renderGivenTemplate, renderTemplateFromAPI, isAiDisabledForPortal } = require('../utils/util');
+const { loadLayoutFromAPI, renderGivenTemplate, renderTemplateFromAPI, isAiDisabledForPortal } = require('../utils/util');
 const constants = require('../utils/constants');
 const { config } = require('../config/configLoader');
 const fs = require('fs');
@@ -68,15 +68,14 @@ const resolveSourceUrls = async (sources, orgName, viewName, orgID) => {
 };
 
 
-const loadAPIFlows = async (req, res) => {
+const loadAPIFlows = async (req, res, next) => {
     const { orgName, viewName } = req.params;
 
     try {
         const orgDetails = await orgDao.get(orgName);
         if (!orgDetails) {
-            const templateContent = { errorMessage: 'Organization not found' };
-            const html = renderTemplate('src/pages/error-page/page.hbs', 'src/defaultContent/layout/main.hbs', templateContent, false);
-            return res.status(404).send(html);
+            const err = Object.assign(new Error('Organization not found'), { status: 404 });
+            return next(err);
         }
 
         const orgID = orgDetails.ORG_ID;
@@ -143,21 +142,19 @@ const loadAPIFlows = async (req, res) => {
             orgName,
             viewName
         });
-        const templateContent = { errorMessage: 'Error loading API flows' };
-        const html = renderTemplate('src/pages/error-page/page.hbs', 'src/defaultContent/layout/main.hbs', templateContent, false);
-        return res.status(500).send(html);
+        error.status = 500;
+        return next(error);
     }
 };
 
-const loadAPIFlowDetail = async (req, res) => {
+const loadAPIFlowDetail = async (req, res, next) => {
     const { orgName, viewName, handle } = req.params;
 
     try {
         const orgDetails = await orgDao.get(orgName);
         if (!orgDetails) {
-            const templateContent = { errorMessage: 'Organization not found' };
-            const html = renderTemplate('src/pages/error-page/page.hbs', 'src/defaultContent/layout/main.hbs', templateContent, false);
-            return res.status(404).send(html);
+            const err = Object.assign(new Error('Organization not found'), { status: 404 });
+            return next(err);
         }
 
         const orgID = orgDetails.ORG_ID;
@@ -166,15 +163,13 @@ const loadAPIFlowDetail = async (req, res) => {
         const apiFlow = await apiFlowDao.getPublishedByHandle(orgID, viewId, handle);
 
         if (!apiFlow) {
-            const templateContent = { errorMessage: 'API Workflow not found or not published' };
-            const html = renderTemplate('src/pages/error-page/page.hbs', 'src/defaultContent/layout/main.hbs', templateContent, false);
-            return res.status(404).send(html);
+            const err = Object.assign(new Error('API Workflow not found or not published'), { status: 404 });
+            return next(err);
         }
 
         if (apiFlow.VISIBILITY === 'PRIVATE' && !req.user) {
-            const templateContent = { errorMessage: 'You must be logged in to view this workflow' };
-            const html = renderTemplate('src/pages/error-page/page.hbs', 'src/defaultContent/layout/main.hbs', templateContent, false);
-            return res.status(401).send(html);
+            const err = Object.assign(new Error('You must be logged in to view this workflow'), { status: 401 });
+            return next(err);
         }
 
         const profile = req.user ? {
@@ -237,9 +232,8 @@ const loadAPIFlowDetail = async (req, res) => {
             viewName,
             handle
         });
-        const templateContent = { errorMessage: 'Error loading API flow' };
-        const html = renderTemplate('src/pages/error-page/page.hbs', 'src/defaultContent/layout/main.hbs', templateContent, false);
-        return res.status(500).send(html);
+        error.status = 500;
+        return next(error);
     }
 };
 

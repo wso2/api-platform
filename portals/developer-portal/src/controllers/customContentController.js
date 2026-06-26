@@ -26,7 +26,7 @@ const constants = require('../utils/constants');
 const logger = require('../config/logger');
 
 
-const loadCustomContent = async (req, res) => {
+const loadCustomContent = async (req, res, next) => {
 
     let html = "";
     const { orgName, viewName } = req.params;
@@ -108,19 +108,14 @@ const loadCustomContent = async (req, res) => {
             }
             html = await renderTemplateFromAPI(content, orgId, orgName, filePath, viewName);
         } catch (error) {
-            const templateContent = {
-                devportalMode: devportalMode,
-                baseUrl: '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName,
-                errorMessage: constants.ERROR_MESSAGE.COMMON_ERROR_MESSAGE,
-                profile: req.isAuthenticated() ? req.user : null,
-            }
-            logger.error('Error while loading custom content', { 
+            logger.error('Error while loading custom content', {
                 orgName,
-                error: error.message, 
+                error: error.message,
                 stack: error.stack,
                 filePath: req.params.filePath,
             });
-            html = renderTemplate('../pages/error-page/page.hbs', "./src/defaultContent/" + 'layout/main.hbs', templateContent, true);
+            error.status = 500;
+            return next(error);
         }
     }
     res.send(html);

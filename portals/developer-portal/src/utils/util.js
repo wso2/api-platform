@@ -903,13 +903,9 @@ const enforcePortalMode = async (req, res, next) => {
         (path.includes('mcps') || path.includes('mcp')) && (portalMode === constants.DEVPORTAL_MODE.DEFAULT || portalMode === constants.DEVPORTAL_MODE.MCP_ONLY)) {
         next();
     } else {
-        const templateContent = {
-            errorMessage: constants.ERROR_MESSAGE.COMMON_PAGE_NOT_FOUND_ERROR_MESSAGE,
-            devportalMode: portalMode,
-            baseUrl: '/' + req.params.orgName + constants.ROUTE.VIEWS_PATH + req.params.viewName,
-        }
-        const html = renderTemplate('../pages/error-page/page.hbs', "./src/defaultContent/" + 'layout/main.hbs', templateContent, true);
-        res.send(html);
+        const err = new Error('Page not found');
+        err.status = 404;
+        next(err);
     }
 }
 

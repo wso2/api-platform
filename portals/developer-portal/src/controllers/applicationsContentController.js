@@ -197,7 +197,7 @@ const loadApplicationData = async (req, orgName, applicationId, viewName) => {
 
 // ***** Load Applications *****
 
-const loadApplications = async (req, res) => {
+const loadApplications = async (req, res, next) => {
 
     const viewName = req.params.viewName;
 
@@ -247,24 +247,20 @@ const loadApplications = async (req, res) => {
             html = await renderGivenTemplate(templateResponse, layoutResponse, templateContent);
         }
     } catch (error) {
-        const templateContent = {
-            devportalMode: devportalMode,
-            baseUrl: '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName,
-            errorMessage: constants.ERROR_MESSAGE.COMMON_ERROR_MESSAGE,
-        }
         logger.error("Error occurred while loading Applications", {
             orgName: orgName,
             error: error.message,
             stack: error.stack
         });
-        html = renderTemplate('../pages/error-page/page.hbs', "./src/defaultContent/" + 'layout/main.hbs', templateContent, true);
+        error.status = 500;
+        return next(error);
     }
     res.send(html);
 }
 
 // ***** Load Application *****
 
-const loadApplication = async (req, res) => {
+const loadApplication = async (req, res, next) => {
     let html, templateContent, metaData, kMmetaData;
     const viewName = req.params.viewName;
     const orgName = req.params.orgName;
@@ -316,23 +312,18 @@ const loadApplication = async (req, res) => {
             error: error.message,
             stack: error.stack
         });
-        const templateContent = {
-            baseUrl: '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName,
-            devportalMode: devportalMode,
-            profile: req.isAuthenticated() ? req.user : null,
-        }
         if (Number(error?.statusCode) === 401) {
-            templateContent.errorMessage = constants.ERROR_MESSAGE.COMMON_AUTH_ERROR_MESSAGE;
-            html = renderTemplate('../pages/error-page/page.hbs', "./src/defaultContent/" + 'layout/main.hbs', templateContent, true);
+            const err = Object.assign(new Error(constants.ERROR_MESSAGE.COMMON_AUTH_ERROR_MESSAGE), { status: 401 });
+            return next(err);
         } else {
-            templateContent.errorMessage = constants.ERROR_MESSAGE.COMMON_ERROR_MESSAGE;
-            html = renderTemplate('../pages/error-page/page.hbs', "./src/defaultContent/" + 'layout/main.hbs', templateContent, true);
+            error.status = 500;
+            return next(error);
         }
     }
     res.send(html);
 }
 
-const loadApplicationKeys = async (req, res) => {
+const loadApplicationKeys = async (req, res, next) => {
     let html, templateContent, metaData, kMmetaData;
     const viewName = req.params.viewName;
     const orgName = req.params.orgName;
@@ -380,17 +371,12 @@ const loadApplicationKeys = async (req, res) => {
             error: error.message,
             stack: error.stack
         });
-        const templateContent = {
-            baseUrl: '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName,
-            devportalMode: devportalMode,
-            profile: req.isAuthenticated() ? req.user : null,
-        }
         if (Number(error?.statusCode) === 401) {
-            templateContent.errorMessage = constants.ERROR_MESSAGE.COMMON_AUTH_ERROR_MESSAGE;
-            html = renderTemplate('../pages/error-page/page.hbs', "./src/defaultContent/" + 'layout/main.hbs', templateContent, true);
+            const err = Object.assign(new Error(constants.ERROR_MESSAGE.COMMON_AUTH_ERROR_MESSAGE), { status: 401 });
+            return next(err);
         } else {
-            templateContent.errorMessage = constants.ERROR_MESSAGE.COMMON_ERROR_MESSAGE;
-            html = renderTemplate('../pages/error-page/page.hbs', "./src/defaultContent/" + 'layout/main.hbs', templateContent, true);
+            error.status = 500;
+            return next(error);
         }
     }
     res.send(html);

@@ -28,13 +28,13 @@ const constants = require('../utils/constants');
 const orgDao = require('../dao/organizationDao');
 
 
-const loadOrganizationContent = async (req, res) => {
+const loadOrganizationContent = async (req, res, next) => {
 
     let html = "";
     if (config.designMode?.enabled) {
         html = await loadOrgContentFromFile(req, res);
     } else {
-        html = await loadOrgContentFromAPI(req, res);
+        html = await loadOrgContentFromAPI(req, res, next);
     }
     res.send(html);
 }
@@ -69,7 +69,7 @@ const loadOrgContentFromFile = async (req, res) => {
     return renderTemplate(layoutPath + 'pages/home/page.hbs', layoutPath + 'layout/main.hbs', templateContent, false)
 }
 
-const loadOrgContentFromAPI = async (req, res) => {
+const loadOrgContentFromAPI = async (req, res, next) => {
     let html;
     const orgName = req.params.orgName;
     const orgDetails = await orgDao.get(orgName);
@@ -104,13 +104,8 @@ const loadOrgContentFromAPI = async (req, res) => {
             error: error.message,
             stack: error.stack
         });
-        const templateContent = {
-            devportalMode: devportalMode,
-            baseUrl: '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName,
-            errorMessage: constants.ERROR_MESSAGE.COMMON_ERROR_MESSAGE,
-        }
-        html = renderTemplate('../pages/error-page/page.hbs', "./src/defaultContent/" + 'layout/main.hbs', templateContent, true);
-        return res.send(html);
+        error.status = 500;
+        return next(error);
     }
     return html;
 }
