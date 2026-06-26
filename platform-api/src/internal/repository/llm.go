@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"platform-api/src/internal/constants"
@@ -362,9 +363,10 @@ func (r *LLMProviderRepo) Create(p *model.LLMProvider) error {
 		)
 		VALUES (?, ?, ?, ?, ?, ?)`
 	for _, assoc := range p.AssociatedGateways {
-		var metadata sql.NullString
+		// metadata is a BYTEA column; a nil slice is stored as NULL.
+		var metadata []byte
 		if assoc.Metadata != "" {
-			metadata = sql.NullString{String: assoc.Metadata, Valid: true}
+			metadata = []byte(assoc.Metadata)
 		}
 		if _, err := tx.Exec(r.db.Rebind(assocQuery),
 			p.UUID, p.OrganizationUUID, assoc.GatewayUUID, metadata, now, now,
@@ -447,16 +449,78 @@ func (r *LLMProviderRepo) getAssociatedGateways(artifactUUID, orgUUID string) ([
 	var associations []model.AssociatedGatewayMapping
 	for rows.Next() {
 		var assoc model.AssociatedGatewayMapping
-		var metadata sql.NullString
+		var metadata []byte
 		if err := rows.Scan(&assoc.GatewayUUID, &assoc.GatewayHandle, &metadata); err != nil {
 			return nil, err
 		}
-		if metadata.Valid {
-			assoc.Metadata = metadata.String
+		if len(metadata) > 0 {
+			assoc.Metadata = string(metadata)
 		}
 		associations = append(associations, assoc)
 	}
 	return associations, rows.Err()
+}
+
+// EnsureGatewayAssociation creates a gateway association for the provider if one does
+// not already exist and resolves the metadata to use for the deployment.
+//
+// metadataProvided distinguishes an omitted deploy metadata field from one explicitly
+// set to empty, so a caller can deploy with empty metadata even when the association
+// already carries a value. An association that already exists is never modified at
+// deploy time:
+//   - No association yet → create it, seeding its metadata from deployMetadata (the
+//     initial deployment's value, no update afterward).
+//   - Association exists, metadataProvided → use deployMetadata for the deployment
+//     (including an explicit empty value); the association is left untouched.
+//   - Association exists, metadata omitted → fall back to the association's stored
+//     metadata, if any.
+//
+// It returns the metadata to persist on the deployment record. An empty string means
+// "no metadata".
+func (r *LLMProviderRepo) EnsureGatewayAssociation(providerUUID, gatewayUUID, orgUUID, deployMetadata string, metadataProvided bool) (string, error) {
+	// metadata is a BYTEA column, so it is read and written as a byte slice.
+	var existingMetadata []byte
+	selectQuery := `
+		SELECT metadata
+		FROM gateway_association_mappings
+		WHERE artifact_uuid = ? AND gateway_uuid = ? AND organization_uuid = ?`
+	err := r.db.QueryRow(r.db.Rebind(selectQuery), providerUUID, gatewayUUID, orgUUID).Scan(&existingMetadata)
+	exists := true
+	if errors.Is(err, sql.ErrNoRows) {
+		exists = false
+	} else if err != nil {
+		return "", fmt.Errorf("failed to check gateway association: %w", err)
+	}
+
+	if !exists {
+		// First deployment to this gateway: create the association seeded with the
+		// initial deployment's metadata. A nil slice is stored as NULL.
+		now := time.Now()
+		var metaArg []byte
+		if strings.TrimSpace(deployMetadata) != "" {
+			metaArg = []byte(deployMetadata)
+		}
+		insertQuery := `
+			INSERT INTO gateway_association_mappings (
+				artifact_uuid, organization_uuid, gateway_uuid, metadata, created_at, updated_at
+			)
+			VALUES (?, ?, ?, ?, ?, ?)`
+		if _, err := r.db.Exec(r.db.Rebind(insertQuery), providerUUID, orgUUID, gatewayUUID, metaArg, now, now); err != nil {
+			return "", fmt.Errorf("failed to create gateway association: %w", err)
+		}
+		return deployMetadata, nil
+	}
+
+	// Existing association is never modified at deploy time. When the deploy request
+	// provides metadata (even an explicit empty value), it is used as-is; only an
+	// omitted field falls back to the association's stored metadata.
+	if metadataProvided {
+		return deployMetadata, nil
+	}
+	if len(existingMetadata) > 0 {
+		return string(existingMetadata), nil
+	}
+	return "", nil
 }
 
 func (r *LLMProviderRepo) List(orgUUID string, limit, offset int) ([]*model.LLMProvider, error) {

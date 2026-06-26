@@ -183,6 +183,7 @@ CREATE TABLE IF NOT EXISTS gateway_association_mappings (
     artifact_uuid VARCHAR(40) NOT NULL,
     organization_uuid VARCHAR(40) NOT NULL,
     gateway_uuid VARCHAR(40) NOT NULL,
+    metadata BLOB,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (organization_uuid, artifact_uuid, gateway_uuid),
@@ -270,21 +271,6 @@ CREATE TABLE IF NOT EXISTS deployment_status (
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
     FOREIGN KEY (gateway_uuid) REFERENCES gateways(uuid) ON DELETE CASCADE,
     FOREIGN KEY (deployment_id) REFERENCES deployments(deployment_id) ON DELETE CASCADE
-);
-
--- Artifact Associations table (for gateways)
-CREATE TABLE IF NOT EXISTS gateway_association_mappings (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    artifact_uuid VARCHAR(40) NOT NULL,
-    organization_uuid VARCHAR(40) NOT NULL,
-    gateway_uuid VARCHAR(40) NOT NULL,
-    metadata TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (artifact_uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
-    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
-    FOREIGN KEY (gateway_uuid) REFERENCES gateways(uuid) ON DELETE CASCADE,
-    UNIQUE(artifact_uuid, gateway_uuid, organization_uuid)
 );
 
 -- DevPortals table

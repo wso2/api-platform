@@ -204,6 +204,7 @@ CREATE TABLE dbo.gateway_association_mappings (
     artifact_uuid VARCHAR(40) NOT NULL,
     organization_uuid VARCHAR(40) NOT NULL,
     gateway_uuid VARCHAR(40) NOT NULL,
+    metadata VARBINARY(MAX),
     created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     updated_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     PRIMARY KEY (organization_uuid, artifact_uuid, gateway_uuid),
@@ -311,22 +312,6 @@ CREATE TABLE dbo.deployment_status (
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE NO ACTION,
     FOREIGN KEY (gateway_uuid) REFERENCES gateways(uuid) ON DELETE NO ACTION,
     FOREIGN KEY (deployment_id) REFERENCES deployments(deployment_id) ON DELETE CASCADE
-);
-
--- Artifact Associations table (for gateways)
-IF OBJECT_ID(N'dbo.gateway_association_mappings', N'U') IS NULL
-CREATE TABLE dbo.gateway_association_mappings (
-    id INT IDENTITY(1,1) PRIMARY KEY,
-    artifact_uuid VARCHAR(40) NOT NULL,
-    organization_uuid VARCHAR(40) NOT NULL,
-    gateway_uuid VARCHAR(40) NOT NULL,
-    metadata NVARCHAR(MAX),
-    created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
-    updated_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
-    FOREIGN KEY (artifact_uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
-    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
-    FOREIGN KEY (gateway_uuid) REFERENCES gateways(uuid) ON DELETE CASCADE,
-    UNIQUE(artifact_uuid, gateway_uuid, organization_uuid)
 );
 
 -- DevPortals table

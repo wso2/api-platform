@@ -219,6 +219,16 @@ type LLMProviderRepository interface {
 	Update(p *model.LLMProvider) error
 	Delete(providerID, orgUUID string) error
 	Exists(providerID, orgUUID string) (bool, error)
+	// EnsureGatewayAssociation creates a gateway association for the provider if one
+	// does not already exist and resolves the metadata to use for the deployment. The
+	// first deployment to a gateway creates the association, seeding its metadata from
+	// that initial deployment; an existing association is never modified at deploy
+	// time. deployMetadata is the (JSON) metadata supplied by the deploy request and
+	// metadataProvided reports whether the deploy request set the field at all (so an
+	// explicit empty value can override the association's stored value). It returns the
+	// metadata to persist on the deployment record: the deploy value when provided,
+	// otherwise the association's stored value. An empty string means "no metadata".
+	EnsureGatewayAssociation(providerUUID, gatewayUUID, orgUUID, deployMetadata string, metadataProvided bool) (string, error)
 }
 
 // APIKeyRepository defines the interface for API key persistence
