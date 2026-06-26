@@ -5,7 +5,7 @@ on:
     inputs:
       platform_api_version:
         description: 'Platform API version to bundle (e.g. 0.10.0). If empty, uses platform-api/VERSION. When set, db-scripts are fetched from tag platform-api/v<version> and docker-compose is pinned to it.'
-        required: false
+        required: true
         type: string
         default: ''
 
@@ -76,13 +76,8 @@ jobs:
 
       - name: Run tests
         run: |
-          if [ -n "${{ inputs.platform_api_version }}" ]; then
-            echo "Running E2E against released platform-api:${{ inputs.platform_api_version }} (no build)"
-            make test-ai-workspace PLATFORM_API_VERSION="${{ inputs.platform_api_version }}"
-          else
-            echo "Running E2E against platform-api built from VERSION file"
-            make test-ai-workspace
-          fi
+          echo "Running E2E against released platform-api:${{ inputs.platform_api_version }} (no build)"
+          make test-ai-workspace PLATFORM_API_VERSION="${{ inputs.platform_api_version }}"
 
       - name: Build and push multi arch Docker image
         run: make -C portals/ai-workspace build-and-push-multiarch
@@ -99,13 +94,8 @@ jobs:
 
       - name: Build distribution zip
         run: |
-          if [ -n "${{ inputs.platform_api_version }}" ]; then
-            echo "Bundling platform-api db-scripts from tag platform-api/v${{ inputs.platform_api_version }}"
-            make -C portals/ai-workspace dist PLATFORM_API_VERSION="${{ inputs.platform_api_version }}"
-          else
-            echo "Bundling platform-api db-scripts from working tree (platform-api/VERSION)"
-            make -C portals/ai-workspace dist
-          fi
+          echo "Bundling platform-api db-scripts from tag platform-api/v${{ inputs.platform_api_version }}"
+          make -C portals/ai-workspace dist PLATFORM_API_VERSION="${{ inputs.platform_api_version }}"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
