@@ -105,8 +105,9 @@ func (h *GatewayHandler) CreateGateway(c *gin.Context) {
 		return
 	}
 
+	createdBy, _ := middleware.GetUsernameFromContext(c)
 	gateway, err := h.gatewayService.RegisterGateway(orgId, req.Name, req.DisplayName, description, req.Vhost,
-		isCritical, functionalityType, version, properties)
+		isCritical, functionalityType, version, createdBy, properties)
 	if err != nil {
 		errMsg := err.Error()
 
@@ -260,7 +261,8 @@ func (h *GatewayHandler) UpdateGateway(c *gin.Context) {
 		return
 	}
 
-	response, err := h.gatewayService.UpdateGateway(gatewayId, orgId, req.Description, req.DisplayName, req.IsCritical, req.Properties)
+	updatedBy, _ := middleware.GetUsernameFromContext(c)
+	response, err := h.gatewayService.UpdateGateway(gatewayId, orgId, updatedBy, req.Description, req.DisplayName, req.IsCritical, req.Properties)
 	if err != nil {
 		if errors.Is(err, constants.ErrGatewayNotFound) {
 			h.slogger.Error("Gateway not found during update", "error", err)
@@ -294,7 +296,8 @@ func (h *GatewayHandler) DeleteGateway(c *gin.Context) {
 		return
 	}
 
-	err := h.gatewayService.DeleteGateway(gatewayId, orgId)
+	deletedBy, _ := middleware.GetUsernameFromContext(c)
+	err := h.gatewayService.DeleteGateway(gatewayId, orgId, deletedBy)
 	if err != nil {
 		// Check for specific error types
 		if errors.Is(err, constants.ErrGatewayNotFound) {
@@ -380,7 +383,8 @@ func (h *GatewayHandler) RotateToken(c *gin.Context) {
 		return
 	}
 
-	response, err := h.gatewayService.RotateToken(gatewayId, orgId)
+	createdBy, _ := middleware.GetUsernameFromContext(c)
+	response, err := h.gatewayService.RotateToken(gatewayId, orgId, createdBy)
 	if err != nil {
 		errMsg := err.Error()
 
@@ -431,7 +435,8 @@ func (h *GatewayHandler) RevokeToken(c *gin.Context) {
 		return
 	}
 
-	err := h.gatewayService.RevokeToken(gatewayId, tokenId, orgId)
+	revokedBy, _ := middleware.GetUsernameFromContext(c)
+	err := h.gatewayService.RevokeToken(gatewayId, tokenId, orgId, revokedBy)
 	if err != nil {
 		errMsg := err.Error()
 

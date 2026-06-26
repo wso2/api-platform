@@ -40,6 +40,7 @@ type ProjectRepository interface {
 	CreateProject(project *model.Project) error
 	GetProjectByUUID(projectId string) (*model.Project, error)
 	GetProjectByNameAndOrgID(name, orgID string) (*model.Project, error)
+	GetProjectByHandleAndOrgID(handle, orgID string) (*model.Project, error)
 	GetProjectsByOrganizationID(orgID string) ([]*model.Project, error)
 	UpdateProject(project *model.Project) error
 	DeleteProject(projectId string) error
@@ -52,6 +53,7 @@ type ArtifactRepository interface {
 	Update(tx *sql.Tx, artifact *model.Artifact) error
 	Exists(kind, handle, orgUUID string) (bool, error)
 	GetByHandle(handle, orgUUID string) (*model.Artifact, error)
+	GetAPIMetadataByHandle(handle, orgUUID string) (*model.APIMetadata, error)
 	CountByKindAndOrg(kind, orgUUID string) (int, error)
 	ExistsByUUIDs(uuids []string, orgUUID string) ([]string, error)
 }
@@ -143,7 +145,7 @@ type GatewayRepository interface {
 	Create(gateway *model.Gateway) error
 	GetByUUID(gatewayId string) (*model.Gateway, error)
 	GetByOrganizationID(orgID string) ([]*model.Gateway, error)
-	GetByNameAndOrgID(name, orgID string) (*model.Gateway, error)
+	GetByHandleAndOrgID(handle, orgID string) (*model.Gateway, error)
 	List() ([]*model.Gateway, error)
 	Delete(gatewayID, organizationID string) error
 	UpdateGateway(gateway *model.Gateway) error
@@ -159,7 +161,7 @@ type GatewayRepository interface {
 	GetActiveTokensByGatewayUUID(gatewayId string) ([]*model.GatewayToken, error)
 	GetActiveTokenByHash(tokenHash string) (*model.GatewayToken, error)
 	GetTokenByUUID(tokenId string) (*model.GatewayToken, error)
-	RevokeToken(tokenId string) error
+	RevokeToken(tokenId, revokedBy string) error
 	CountActiveTokens(gatewayId string) (int, error)
 
 	// Manifest operations
@@ -170,32 +172,16 @@ type GatewayRepository interface {
 	UpdateGatewayVersion(gatewayID, version string) error
 }
 
-// DevPortalRepository interface for DevPortal-related database operations
-type DevPortalRepository interface {
-	// Basic CRUD operations
-	Create(devPortal *model.DevPortal) error
-	GetByUUID(uuid, orgUUID string) (*model.DevPortal, error)
-	GetByOrganizationUUID(orgUUID string, isDefault, isActive *bool, limit, offset int) ([]*model.DevPortal, error)
-	Update(devPortal *model.DevPortal, orgUUID string) error
-	Delete(uuid, orgUUID string) error
-
-	// Special operations
-	GetDefaultByOrganizationUUID(orgUUID string) (*model.DevPortal, error)
-	CountByOrganizationUUID(orgUUID string, isDefault, isActive *bool) (int, error)
-	UpdateEnabledStatus(uuid, orgUUID string, isEnabled bool) error
-	SetAsDefault(uuid, orgUUID string) error
-}
-
 // SubscriptionPlanRepository defines the interface for subscription plan data operations
 type SubscriptionPlanRepository interface {
 	Create(plan *model.SubscriptionPlan) error
 	GetByID(planID, orgUUID string) (*model.SubscriptionPlan, error)
 	GetByIDs(planIDs []string, orgUUID string) (map[string]string, error)
-	GetByNameAndOrg(planName, orgUUID string) (*model.SubscriptionPlan, error)
+	GetByHandleAndOrg(handle, orgUUID string) (*model.SubscriptionPlan, error)
 	ListByOrganization(orgUUID string, limit, offset int) ([]*model.SubscriptionPlan, error)
 	Update(plan *model.SubscriptionPlan) error
 	Delete(planID, orgUUID string) error
-	ExistsByNameAndOrg(planName, orgUUID string) (bool, error)
+	ExistsByHandleAndOrg(handle, orgUUID string) (bool, error)
 }
 
 // SubscriptionRepository defines the interface for application-level subscription data operations
@@ -210,18 +196,6 @@ type SubscriptionRepository interface {
 	Update(sub *model.Subscription) error
 	Delete(subscriptionID, orgUUID string) error
 	ExistsByAPIAndSubscriber(apiUUID, subscriberID, orgUUID string) (bool, error)
-}
-
-// APIPublicationRepository interface defines operations for API publication tracking
-type APIPublicationRepository interface {
-	// Basic CRUD operations
-	Create(publication *model.APIPublication) error
-	GetByAPIAndDevPortal(apiUUID, devPortalUUID, orgUUID string) (*model.APIPublication, error)
-	GetByAPIUUID(apiUUID, orgUUID string) ([]*model.APIPublication, error)
-	Update(publication *model.APIPublication) error
-	Delete(apiUUID, devPortalUUID, orgUUID string) error
-	UpsertPublication(publication *model.APIPublication) error
-	GetAPIDevPortalsWithDetails(apiUUID, orgUUID string) ([]*model.APIDevPortalWithDetails, error)
 }
 
 // LLMProviderTemplateRepository defines the interface for LLM provider template persistence
@@ -339,4 +313,9 @@ type CustomPolicyRepository interface {
 	GetCustomPolicyUsagesByAPIUUID(apiUUID string) ([]string, error)
 	InsertCustomPolicyUsage(policyUUID, apiUUID string) error
 	DeleteCustomPolicyUsage(policyUUID, apiUUID string) error
+}
+
+// AuditRepository defines the interface for audit record writes.
+type AuditRepository interface {
+	Record(action, resourceUUID, resourceType, orgUUID, performedBy string) error
 }

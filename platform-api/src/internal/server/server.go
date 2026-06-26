@@ -78,14 +78,16 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 		return nil, err
 	}
 
-	// Initialize schema (skip when ExecuteSchemaDDL is false, e.g. deployed Postgres without DDL access)
+	// Schema DDL is only executed in demo mode. In non-demo (production) deployments
+	// the schema must be pre-provisioned by the operator; auto-running DDL against an
+	// external database at startup is a security risk.
 	if cfg.Database.ExecuteSchemaDDL {
 		if err := db.InitSchema(cfg.DBSchemaPath, slogger); err != nil {
 			slogger.Error("Failed to initialize database schema", "error", err)
 			return nil, err
 		}
 	} else {
-		slogger.Debug("Skipping schema DDL execution (DATABASE_EXECUTE_SCHEMA_DDL=false)")
+		slogger.Debug("Skipping schema DDL execution — set DATABASE_EXECUTE_SCHEMA_DDL=true to enable", "driver", cfg.Database.Driver)
 	}
 
 	// Initialize repositories
@@ -96,8 +98,6 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	gatewayRepo := repository.NewGatewayRepo(db)
 	customPolicyRepo := repository.NewCustomPolicyRepo(db)
 	artifactRepo := repository.NewArtifactRepo(db)
-	devPortalRepo := repository.NewDevPortalRepository(db)
-	publicationRepo := repository.NewAPIPublicationRepository(db)
 	deploymentRepo := repository.NewDeploymentRepo(db)
 	subscriptionRepo := repository.NewSubscriptionRepo(db)
 	subscriptionPlanRepo := repository.NewSubscriptionPlanRepo(db)
@@ -108,6 +108,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	websubAPIRepo := repository.NewWebSubAPIRepo(db)
 	webbrokerAPIRepo := repository.NewWebBrokerAPIRepo(db)
 	apiKeyRepo := repository.NewAPIKeyRepo(db)
+	auditRepo := repository.NewAuditRepo(db)
 
 	// Seed the file-based organization on startup if file-based auth mode is enabled.
 	if cfg.Auth.FileBased.Enabled {
@@ -193,9 +194,6 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	// Initialize utilities
 	apiUtil := &utils.APIUtil{}
 
-	// Initialize DevPortal service
-	devPortalService := service.NewDevPortalService(devPortalRepo, orgRepo, publicationRepo, apiRepo, apiUtil, cfg, slogger)
-
 	// Initialize services
 	orgService := service.NewOrganizationService(
 		orgRepo,
@@ -207,29 +205,29 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 		llmProxyRepo,
 		mcpProxyRepo,
 		websubAPIRepo,
-		devPortalService,
 		llmTemplateSeeder,
+		auditRepo,
 		cfg,
 		slogger,
 	)
-	projectService := service.NewProjectService(projectRepo, orgRepo, apiRepo, mcpProxyRepo, websubAPIRepo, slogger)
+	projectService := service.NewProjectService(projectRepo, orgRepo, apiRepo, mcpProxyRepo, websubAPIRepo, auditRepo, slogger)
 	gatewayEventsService := service.NewGatewayEventsService(eventHub, slogger)
-	appService := service.NewApplicationService(appRepo, projectRepo, orgRepo, apiRepo, gatewayEventsService, slogger)
-	apiService := service.NewAPIService(apiRepo, projectRepo, orgRepo, gatewayRepo, deploymentRepo, devPortalRepo, publicationRepo,
-		subscriptionPlanRepo, customPolicyRepo, gatewayEventsService, devPortalService, apiUtil, slogger)
-	gatewayService := service.NewGatewayService(gatewayRepo, orgRepo, apiRepo, customPolicyRepo, gatewayEventsService, slogger, cfg.Gateway.EnableVersionVerification, cfg.Gateway.EnableFunctionalityTypeVerification)
-	subscriptionService := service.NewSubscriptionService(apiRepo, subscriptionRepo, gatewayEventsService, slogger)
-	subscriptionPlanService := service.NewSubscriptionPlanService(subscriptionPlanRepo, gatewayRepo, gatewayEventsService, slogger)
+	appService := service.NewApplicationService(appRepo, projectRepo, orgRepo, apiRepo, gatewayEventsService, auditRepo, slogger)
+	apiService := service.NewAPIService(apiRepo, projectRepo, orgRepo, gatewayRepo, deploymentRepo,
+		subscriptionPlanRepo, customPolicyRepo, gatewayEventsService, apiUtil, slogger, auditRepo)
+	gatewayService := service.NewGatewayService(gatewayRepo, orgRepo, apiRepo, customPolicyRepo, gatewayEventsService, slogger, cfg.Gateway.EnableVersionVerification, cfg.Gateway.EnableFunctionalityTypeVerification, auditRepo)
+	subscriptionService := service.NewSubscriptionService(apiRepo, artifactRepo, subscriptionRepo, gatewayEventsService, auditRepo, slogger)
+	subscriptionPlanService := service.NewSubscriptionPlanService(subscriptionPlanRepo, gatewayRepo, gatewayEventsService, auditRepo, slogger)
 	internalGatewayService := service.NewGatewayInternalAPIService(apiRepo, subscriptionRepo, subscriptionPlanRepo, llmProviderRepo, llmProxyRepo, mcpProxyRepo, websubAPIRepo, webbrokerAPIRepo, deploymentRepo, gatewayRepo, orgRepo, projectRepo, apiKeyRepo, artifactRepo, cfg, slogger)
-	apiKeyService := service.NewAPIKeyService(apiRepo, apiKeyRepo, gatewayEventsService, cfg.APIKey.HashingAlgorithms, slogger)
+	apiKeyService := service.NewAPIKeyService(apiRepo, artifactRepo, apiKeyRepo, gatewayEventsService, auditRepo, cfg.APIKey.HashingAlgorithms, slogger)
 	gitService := service.NewGitService()
-	deploymentService := service.NewDeploymentService(apiRepo, artifactRepo, deploymentRepo, gatewayRepo, orgRepo, gatewayEventsService, apiUtil, cfg, slogger)
-	llmTemplateService := service.NewLLMProviderTemplateService(llmTemplateRepo)
-	llmProviderService := service.NewLLMProviderService(llmProviderRepo, llmTemplateRepo, orgRepo, llmTemplateSeeder, deploymentRepo, gatewayRepo, gatewayEventsService, slogger)
-	llmProxyService := service.NewLLMProxyService(llmProxyRepo, llmProviderRepo, projectRepo, deploymentRepo, gatewayRepo, gatewayEventsService, slogger)
-	mcpProxyService := service.NewMCPProxyService(mcpProxyRepo, projectRepo, deploymentRepo, gatewayRepo, gatewayEventsService, slogger)
-	websubAPIService := service.NewWebSubAPIService(websubAPIRepo, projectRepo, gatewayRepo, devPortalService, gatewayEventsService, apiUtil, slogger)
-	webbrokerAPIService := service.NewWebBrokerAPIService(webbrokerAPIRepo, projectRepo, gatewayRepo, devPortalService, gatewayEventsService, apiUtil, slogger)
+	deploymentService := service.NewDeploymentService(apiRepo, artifactRepo, deploymentRepo, gatewayRepo, orgRepo, gatewayEventsService, auditRepo, apiUtil, cfg, slogger)
+	llmTemplateService := service.NewLLMProviderTemplateService(llmTemplateRepo, auditRepo)
+	llmProviderService := service.NewLLMProviderService(llmProviderRepo, llmTemplateRepo, orgRepo, llmTemplateSeeder, deploymentRepo, gatewayRepo, gatewayEventsService, slogger, auditRepo)
+	llmProxyService := service.NewLLMProxyService(llmProxyRepo, llmProviderRepo, projectRepo, deploymentRepo, gatewayRepo, gatewayEventsService, slogger, auditRepo)
+	mcpProxyService := service.NewMCPProxyService(mcpProxyRepo, projectRepo, deploymentRepo, gatewayRepo, gatewayEventsService, slogger, auditRepo)
+	websubAPIService := service.NewWebSubAPIService(websubAPIRepo, projectRepo, gatewayRepo, gatewayEventsService, apiUtil, slogger, auditRepo)
+	webbrokerAPIService := service.NewWebBrokerAPIService(webbrokerAPIRepo, projectRepo, gatewayRepo, gatewayEventsService, apiUtil, slogger, auditRepo)
 
 	// Initialize the shared database encryption key used for all encrypted DB columns.
 	// DATABASE_SUBSCRIPTION_TOKEN_ENCRYPTION_KEY is accepted as a legacy alias.
@@ -307,7 +305,6 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	orgHandler := handler.NewOrganizationHandler(orgService, slogger)
 	projectHandler := handler.NewProjectHandler(projectService, slogger)
 	apiHandler := handler.NewAPIHandler(apiService, slogger)
-	devPortalHandler := handler.NewDevPortalHandler(devPortalService, slogger)
 	gatewayHandler := handler.NewGatewayHandler(gatewayService, slogger)
 	subscriptionHandler := handler.NewSubscriptionHandler(subscriptionService, subscriptionPlanService, slogger)
 	subscriptionPlanHandler := handler.NewSubscriptionPlanHandler(subscriptionPlanService, slogger)
@@ -415,7 +412,6 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	projectHandler.RegisterRoutes(router)
 	appHandler.RegisterRoutes(router)
 	apiHandler.RegisterRoutes(router)
-	devPortalHandler.RegisterRoutes(router)
 	gatewayHandler.RegisterRoutes(router)
 	subscriptionHandler.RegisterRoutes(router)
 	subscriptionPlanHandler.RegisterRoutes(router)
@@ -701,15 +697,17 @@ func (s *Server) Start(port string, certDir string) error {
 		errCh <- httpServer.ListenAndServeTLS("", "")
 	}()
 
-	fmt.Print("\n\n" +
-		"========================================================================\n" +
-		"\n" +
-		"\n" +
-		"                      Platform API Started\n" +
-		"\n" +
-		"\n" +
-		"========================================================================\n" +
-		"\n\n")
+	mode := "Production"
+	if demoMode() {
+		mode = "Demo"
+	}
+	const termWidth = 80
+	msg := fmt.Sprintf("=== Platform API started [%s] ===", mode)
+	pad := (termWidth - len(msg)) / 2
+	if pad < 0 {
+		pad = 0
+	}
+	fmt.Printf("\n%*s%s\n\n", pad, "", msg)
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)

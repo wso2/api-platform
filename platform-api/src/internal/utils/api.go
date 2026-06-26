@@ -18,7 +18,6 @@
 package utils
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -27,7 +26,6 @@ import (
 	"time"
 
 	"platform-api/src/api"
-	"platform-api/src/internal/client/devportal_client"
 	"platform-api/src/internal/constants"
 	"platform-api/src/internal/dto"
 	"platform-api/src/internal/model"
@@ -77,11 +75,6 @@ func (u *APIUtil) RESTAPIToModel(restAPI *api.RESTAPI, orgID string) *model.API 
 		lifeCycleStatus = string(*restAPI.LifeCycleStatus)
 	}
 
-	transport := []string{}
-	if restAPI.Transport != nil {
-		transport = *restAPI.Transport
-	}
-
 	projectID := OpenAPIUUIDToString(restAPI.ProjectId)
 
 	apiModel := &model.API{
@@ -94,12 +87,12 @@ func (u *APIUtil) RESTAPIToModel(restAPI *api.RESTAPI, orgID string) *model.API 
 		ProjectID:       projectID,
 		OrganizationID:  orgID,
 		LifeCycleStatus: lifeCycleStatus,
-		Transport:       transport,
 		Channels:        u.ChannelsAPIToModel(restAPI.Channels),
 		Configuration: model.RestAPIConfig{
 			Name:              restAPI.Name,
 			Version:           restAPI.Version,
 			Context:           &restAPI.Context,
+			Transport:         stringSliceValue(restAPI.Transport),
 			Upstream:          *u.UpstreamConfigAPIToModel(&restAPI.Upstream),
 			Policies:          u.PoliciesAPIToModel(restAPI.Policies),
 			Operations:        u.OperationsAPIToModel(restAPI.Operations),
@@ -149,7 +142,7 @@ func (u *APIUtil) ModelToRESTAPI(modelAPI *model.API) (*api.RESTAPI, error) {
 		Policies:          u.PoliciesModelToAPI(modelAPI.Configuration.Policies),
 		ProjectId:         *projectID,
 		SubscriptionPlans: stringSlicePtr(modelAPI.Configuration.SubscriptionPlans),
-		Transport:         stringSlicePtr(modelAPI.Transport),
+		Transport:         stringSlicePtr(modelAPI.Configuration.Transport),
 		UpdatedAt:         TimePtrIfNotZero(modelAPI.UpdatedAt),
 		Upstream:          u.UpstreamConfigModelToAPI(&modelAPI.Configuration.Upstream),
 		Version:           modelAPI.Version,
@@ -579,34 +572,6 @@ func (u *APIUtil) GenerateAPIDeploymentYAML(apiModel *model.API) (string, error)
 	return string(yamlBytes), nil
 }
 
-// TODO: Enhance GenerateOpenAPIDefinition to include request/response schemas, examples,
-// detailed parameters, and complete security configurations from original OpenAPI sources
-// to make the spec more useful for API consumers. Currently generates minimal spec
-// with only available DTO data to avoid inventing information.
-// GenerateOpenAPIDefinitionFromRESTAPI generates an OpenAPI 3.0 definition from a generated api.RESTAPI model.
-func (u *APIUtil) GenerateOpenAPIDefinitionFromRESTAPI(restAPI *api.RESTAPI, req *devportal_client.APIMetadataRequest) ([]byte, error) {
-	if restAPI == nil {
-		return nil, fmt.Errorf("api model is required")
-	}
-	if req == nil {
-		return nil, fmt.Errorf("metadata request is required")
-	}
-
-	openAPISpec := dto.OpenAPI{
-		OpenAPI: "3.0.3",
-		Info:    u.buildInfoSectionFromRESTAPI(restAPI),
-		Servers: u.buildServersSectionFromRESTAPI(restAPI, &req.EndPoints),
-		Paths:   u.buildPathsSectionFromRESTAPI(restAPI),
-	}
-
-	apiDefinition, err := json.Marshal(openAPISpec)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal OpenAPI definition: %w", err)
-	}
-
-	return apiDefinition, nil
-}
-
 func (u *APIUtil) buildInfoSectionFromRESTAPI(restAPI *api.RESTAPI) dto.Info {
 	info := dto.Info{}
 	info.Title = restAPI.Name
@@ -622,11 +587,8 @@ func (u *APIUtil) buildInfoSectionFromRESTAPI(restAPI *api.RESTAPI) dto.Info {
 	return info
 }
 
-func (u *APIUtil) buildServersSectionFromRESTAPI(restAPI *api.RESTAPI, endpoints *devportal_client.EndPoints) []dto.Server {
+func (u *APIUtil) buildServersSectionFromRESTAPI(restAPI *api.RESTAPI, productionURL, sandboxURL string) []dto.Server {
 	var servers []dto.Server
-	if endpoints == nil {
-		return servers
-	}
 
 	context := restAPI.Context
 	joinBaseAndContext := func(baseURL, ctx string) string {
@@ -647,14 +609,14 @@ func (u *APIUtil) buildServersSectionFromRESTAPI(restAPI *api.RESTAPI, endpoints
 		return normalizedBase + "/" + normalizedContext
 	}
 
-	if endpoints.ProductionURL != "" {
-		prodURL := joinBaseAndContext(endpoints.ProductionURL, context)
+	if productionURL != "" {
+		prodURL := joinBaseAndContext(productionURL, context)
 		servers = append(servers, dto.Server{URL: prodURL, Description: "Production server"})
 	}
 
-	if endpoints.SandboxURL != "" {
-		sandboxURL := joinBaseAndContext(endpoints.SandboxURL, context)
-		servers = append(servers, dto.Server{URL: sandboxURL, Description: "Sandbox server"})
+	if sandboxURL != "" {
+		sb := joinBaseAndContext(sandboxURL, context)
+		servers = append(servers, dto.Server{URL: sb, Description: "Sandbox server"})
 	}
 
 	return servers

@@ -93,8 +93,8 @@ func openITDB(t *testing.T) *itDB {
 	}
 
 	db := connectITDB(t, cfg, logger)
+	t.Cleanup(func() { db.Close() })
 	if err := db.InitSchema("../database/schema.sql", logger); err != nil {
-		db.Close()
 		t.Fatalf("InitSchema (%s) failed: %v", driver, err)
 	}
 	return &itDB{driver: driver, db: db}
@@ -121,7 +121,9 @@ func connectITDB(t *testing.T, cfg *config.Database, logger *slog.Logger) *datab
 // The name comes from IT_DB_NAME; restrict it to a safe identifier charset.
 var validDBName = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_]{0,62}$`)
 
-// ensureSQLServerDB creates the SQL Server test database (via master) if absent.
+// ensureSQLServerDB drops and recreates the SQL Server test database (via master).
+// A fresh database on every test run prevents stale schema from causing FK failures
+// when constraints are added to existing tables between runs.
 func ensureSQLServerDB(t *testing.T, logger *slog.Logger, name string) {
 	t.Helper()
 	if !validDBName.MatchString(name) {
@@ -133,8 +135,18 @@ func ensureSQLServerDB(t *testing.T, logger *slog.Logger, name string) {
 		SSLMode: "disable", MaxOpenConns: 2, MaxIdleConns: 1,
 	}, logger)
 	defer master.Close()
-	if _, err := master.Exec(fmt.Sprintf("IF DB_ID(N'%s') IS NULL CREATE DATABASE [%s]", name, name)); err != nil {
-		t.Fatalf("failed to ensure sqlserver database %q: %v", name, err)
+	// Terminate open connections before dropping so the DROP succeeds.
+	if _, err := master.Exec(fmt.Sprintf(
+		"IF DB_ID(N'%s') IS NOT NULL ALTER DATABASE [%s] SET SINGLE_USER WITH ROLLBACK IMMEDIATE",
+		name, name)); err != nil {
+		t.Fatalf("failed to set sqlserver database %q to single-user: %v", name, err)
+	}
+	if _, err := master.Exec(fmt.Sprintf(
+		"IF DB_ID(N'%s') IS NOT NULL DROP DATABASE [%s]", name, name)); err != nil {
+		t.Fatalf("failed to drop sqlserver database %q: %v", name, err)
+	}
+	if _, err := master.Exec(fmt.Sprintf("CREATE DATABASE [%s]", name)); err != nil {
+		t.Fatalf("failed to create sqlserver database %q: %v", name, err)
 	}
 }
 

@@ -96,10 +96,18 @@
             </button>
           </div>
 
+          <div class="cfg-bulk-bar" id="cfg-bulk-bar" style="display:none;" role="region" aria-label="Bulk actions">
+            <span class="cfg-bulk-bar-count" id="cfg-bulk-bar-count"></span>
+            <button type="button" class="cfg-btn-danger cfg-btn-sm" id="cfg-bulk-delete-btn">
+              <i class="bi bi-trash"></i> Delete selected
+            </button>
+          </div>
+
           <div class="cfg-table-wrap">
             <table class="cfg-table">
               <thead>
                 <tr>
+                  <th class="cfg-th-check"><input type="checkbox" id="cfg-select-all" aria-label="Select all APIs"></th>
                   <th>API</th>
                   <th>Type</th>
                   <th>Version</th>
@@ -110,6 +118,11 @@
               <tbody id="cfg-apis-tbody">
                 {{#orgAPIs}}
                 <tr id="cfg-api-row-{{apiId}}">
+                  <td class="cfg-td-check">
+                    <input type="checkbox" class="cfg-row-check"
+                      data-id="{{apiId}}" data-name="{{apiName}}"
+                      aria-label="Select {{apiName}}">
+                  </td>
                   <td>
                     <div class="cfg-api-cell">
                       <span class="cfg-api-avatar
@@ -147,9 +160,13 @@
                     <span class="cfg-status-badge cfg-status-published">
                       <span class="cfg-status-dot"></span>Published
                     </span>
+                    {{else if (eq apiStatus "DEPRECATED")}}
+                    <span class="cfg-status-badge cfg-status-deprecated">
+                      <span class="cfg-status-dot"></span>Deprecated
+                    </span>
                     {{else}}
-                    <span class="cfg-status-badge cfg-status-created">
-                      <span class="cfg-status-dot"></span>Created
+                    <span class="cfg-status-badge cfg-status-draft">
+                      <span class="cfg-status-dot"></span>Draft
                     </span>
                     {{/if}}
                   </td>
@@ -158,15 +175,12 @@
                       <i class="bi bi-three-dots-vertical"></i>
                     </button>
                     <div class="cfg-dropdown">
-                      <button class="cfg-dropdown-item cfg-view-trigger" type="button" data-id="{{apiId}}">
-                        <i class="bi bi-eye"></i> View details
-                      </button>
                       <button class="cfg-dropdown-item cfg-edit-trigger" type="button" data-id="{{apiId}}">
                         <i class="bi bi-pencil"></i> Edit
                       </button>
                       {{#if (eq apiStatus "PUBLISHED")}}
                       <button class="cfg-dropdown-item cfg-unpublish-trigger" type="button" data-id="{{apiId}}" data-name="{{apiName}}">
-                        <i class="bi bi-cloud-slash"></i> Unpublish
+                        <i class="bi bi-archive"></i> Deprecate
                       </button>
                       {{else}}
                       <button class="cfg-dropdown-item cfg-publish-trigger" type="button" data-id="{{apiId}}" data-name="{{apiName}}">
@@ -183,7 +197,7 @@
                 </tr>
                 {{/orgAPIs}}
                 {{#unless orgAPIs.length}}
-                <tr><td colspan="5" class="cfg-empty-row">No APIs found. Click <strong>Add API</strong> to get started.</td></tr>
+                <tr><td colspan="6" class="cfg-empty-row">No APIs found. Click <strong>Add API</strong> to get started.</td></tr>
                 {{/unless}}
               </tbody>
             </table>
@@ -210,10 +224,6 @@
             <div class="cfg-step" data-step="2">
               <span class="cfg-step-circle">3</span><span class="cfg-step-label">Documentation</span>
             </div>
-            <div class="cfg-step-connector"></div>
-            <div class="cfg-step" data-step="3">
-              <span class="cfg-step-circle">4</span><span class="cfg-step-label">Review</span>
-            </div>
           </div>
 
           <!-- Step 0: Details -->
@@ -225,15 +235,18 @@
                 <div class="cfg-form-group">
                   <label for="wz-name">API name <span class="required">*</span></label>
                   <input type="text" id="wz-name" class="cfg-form-input" placeholder="e.g. Booking API" />
+                  <p id="wz-name-error" style="display:none;color:#c62828;font-size:.75rem;margin:3px 0 0;"></p>
                 </div>
                 <div class="cfg-form-group">
                   <label for="wz-version">Version <span class="required">*</span></label>
                   <input type="text" id="wz-version" class="cfg-form-input" placeholder="e.g. v1.0" />
+                  <p id="wz-version-error" style="display:none;color:#c62828;font-size:.75rem;margin:3px 0 0;"></p>
                 </div>
                 <div class="cfg-form-group">
-                  <label for="wz-handle">Handle (URL slug)</label>
+                  <label for="wz-handle">Handle (URL slug) <span class="required">*</span></label>
                   <input type="text" id="wz-handle" class="cfg-form-input cfg-form-input--mono" placeholder="booking-api-v1.0" />
                   <p class="cfg-field-hint">Auto-generated from name &amp; version. Edit to override.</p>
+                  <p id="wz-handle-error" style="display:none;color:#c62828;font-size:.75rem;margin:3px 0 0;"></p>
                 </div>
                 <div class="cfg-form-group">
                   <label for="wz-type">API type</label>
@@ -265,12 +278,9 @@
                   </div>
                 </div>
                 <div class="cfg-form-group cfg-form-group-full">
-                  <label for="wz-desc">Description</label>
+                  <label for="wz-desc">Description <span class="required">*</span></label>
                   <textarea id="wz-desc" class="cfg-form-input" rows="3" placeholder="Describe what this API does in 1–2 sentences…"></textarea>
-                </div>
-                <div class="cfg-form-group cfg-form-group-full">
-                  <label for="wz-tags">Tags</label>
-                  <input type="text" id="wz-tags" class="cfg-form-input" placeholder="booking, travel  (comma separated)" />
+                  <p id="wz-desc-error" style="display:none;color:#c62828;font-size:.75rem;margin:3px 0 0;"></p>
                 </div>
               </div>
             </div>
@@ -290,25 +300,56 @@
               </div>
             </div>
 
+            <!-- LABELS & VISIBILITY -->
+            <div class="cfg-form-section">
+              <p class="cfg-form-section-title">Labels &amp; Visibility</p>
+              <div class="cfg-form-grid">
+                <div class="cfg-form-group cfg-form-group-full">
+                  <label for="wz-tags">Labels</label>
+                  <input type="text" id="wz-tags" class="cfg-form-input" placeholder="booking, travel  (comma separated)" />
+                </div>
+                <div class="cfg-form-group">
+                  <label for="wz-status">Status</label>
+                  <select id="wz-status" class="cfg-form-input">
+                    <option value="PUBLISHED">Published</option>
+                    <option value="DEPRECATED">Deprecated</option>
+                  </select>
+                </div>
+                <div class="cfg-form-group">
+                  <label>Agent visibility</label>
+                  <div class="cfg-vis-toggle">
+                    <button type="button" class="cfg-vis-btn active" id="wz-vis-visible" data-val="Visible">
+                      <i class="bi bi-eye"></i> Visible
+                    </button>
+                    <button type="button" class="cfg-vis-btn" id="wz-vis-hidden" data-val="Hidden">
+                      <i class="bi bi-eye-slash"></i> Hidden
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             <!-- OWNERSHIP -->
             <div class="cfg-form-section">
               <p class="cfg-form-section-title">Ownership</p>
               <div class="cfg-form-grid">
                 <div class="cfg-form-group">
                   <label for="wz-tech-owner">Technical owner</label>
-                  <input type="text" id="wz-tech-owner" class="cfg-form-input" placeholder="e.g. Dilini Perera" />
+                  <input type="text" id="wz-tech-owner" class="cfg-form-input" placeholder="e.g. John Doe" />
                 </div>
                 <div class="cfg-form-group">
                   <label for="wz-tech-email">Technical owner email</label>
-                  <input type="text" id="wz-tech-email" class="cfg-form-input cfg-form-input--mono" placeholder="dilini@example.com" />
+                  <input type="text" id="wz-tech-email" class="cfg-form-input cfg-form-input--mono" placeholder="john.doe@example.com" />
+                  <p id="wz-tech-email-error" style="display:none;color:#c62828;font-size:.75rem;margin:3px 0 0;"></p>
                 </div>
                 <div class="cfg-form-group">
                   <label for="wz-biz-owner">Business owner</label>
-                  <input type="text" id="wz-biz-owner" class="cfg-form-input" placeholder="e.g. Saman Silva" />
+                  <input type="text" id="wz-biz-owner" class="cfg-form-input" placeholder="e.g. Jane Doe" />
                 </div>
                 <div class="cfg-form-group">
                   <label for="wz-biz-email">Business owner email</label>
-                  <input type="text" id="wz-biz-email" class="cfg-form-input cfg-form-input--mono" placeholder="saman@example.com" />
+                  <input type="text" id="wz-biz-email" class="cfg-form-input cfg-form-input--mono" placeholder="jane.doe@example.com" />
+                  <p id="wz-biz-email-error" style="display:none;color:#c62828;font-size:.75rem;margin:3px 0 0;"></p>
                 </div>
               </div>
             </div>
@@ -316,18 +357,17 @@
             <!-- SUBSCRIPTION PLANS -->
             <div class="cfg-form-section">
               <p class="cfg-form-section-title">Applicable Subscription Plans</p>
-              <div class="cfg-plan-list" id="wz-plan-list">
-                {{#orgPlans}}
-                <label class="cfg-plan-card" data-name="{{planName}}">
-                  <input type="checkbox" class="wz-plan-check" value="{{planName}}" />
-                  <div>
-                    <div class="cfg-plan-card-name">{{displayName}}</div>
-                    <div class="cfg-plan-card-sub">{{planName}} · {{requestCount}} requests</div>
-                  </div>
-                </label>
-                {{/orgPlans}}
-                {{#unless orgPlans.length}}
-                <p style="font-size:.844rem;color:#9aa3af;margin:0;">No subscription plans yet. Create them under <strong>Subscription Plans</strong>.</p>
+              <div class="cfg-form-group cfg-form-group-full" style="position:relative;">
+                <label>Subscription plans</label>
+                <div class="cfg-chip-input-wrap" id="wz-policy-chip-wrap">
+                  <div id="wz-policy-chips" style="display:contents;"></div>
+                  <input type="text" class="cfg-chip-text-input" id="wz-policy-search"
+                    placeholder="{{#if orgPolicies.length}}Type to search plans…{{else}}No plans available{{/if}}"
+                    autocomplete="off" {{#unless orgPolicies.length}}disabled{{/unless}} />
+                </div>
+                <div class="cfg-chip-dropdown" id="wz-policy-dropdown"></div>
+                {{#unless orgPolicies.length}}
+                <p style="font-size:.844rem;color:#9aa3af;margin:6px 0 0;">No subscription policies yet. Create them under <strong>Subscription Policies</strong>.</p>
                 {{/unless}}
               </div>
             </div>
@@ -335,13 +375,18 @@
 
           <!-- Step 1: Spec -->
           <div class="cfg-wizard-step" id="cfg-wstep-1" style="display:none;">
-            <p class="cfg-wstep-desc">Upload the contract that defines this API. Accepted: OpenAPI (.json / .yaml), AsyncAPI, GraphQL SDL (.graphql), or WSDL (.wsdl / .xml).</p>
-            <label class="cfg-upload-zone">
+            <p class="cfg-wstep-desc">Upload the contract that defines this API. <span class="required">*</span> Required. Accepted: OpenAPI (.json / .yaml), AsyncAPI, GraphQL SDL (.graphql), or WSDL (.wsdl / .xml).</p>
+            <label class="cfg-upload-zone" id="wz-spec-zone">
               <span class="cfg-upload-icon"><i class="bi bi-file-earmark-arrow-up"></i></span>
               <span class="cfg-upload-label">Drag &amp; drop or <span>browse</span> to upload</span>
               <span class="cfg-upload-hint">Single spec file · up to 10 MB</span>
               <input type="file" id="wz-spec-input" accept=".json,.yaml,.yml,.graphql,.gql,.wsdl,.xml" />
             </label>
+            <p id="wz-spec-error" style="display:none;color:#c62828;font-size:.813rem;margin:8px 0 0;">A spec file is required to continue.</p>
+            <div id="wz-spec-onfile" style="display:none;" class="cfg-spec-onfile">
+              <i class="bi bi-check-circle-fill"></i>
+              <span>Existing spec on file — attach a new file above to replace it</span>
+            </div>
             <div class="cfg-spec-chip" id="wz-spec-chip">
               <span class="cfg-spec-icon"><i class="bi bi-file-check"></i></span>
               <div>
@@ -356,65 +401,23 @@
 
           <!-- Step 2: Documentation -->
           <div class="cfg-wizard-step" id="cfg-wstep-2" style="display:none;">
-            <p class="cfg-wstep-desc">Add guides, references, or PDFs to help developers use this API. You can upload multiple files (.md, .pdf).</p>
-            <label class="cfg-upload-compact">
+            <p class="cfg-wstep-desc">Add guides or references to help developers use this API. You can upload multiple Markdown files (.md).</p>
+            <label class="cfg-upload-compact" id="wz-docs-zone">
               <i class="bi bi-upload" style="color:#0277bd;font-size:1rem;flex:none;"></i>
-              <span style="font-size:.844rem;font-weight:600;color:#1a2433;">Upload documents <span style="color:#9aa3af;font-weight:400;">— .md, .pdf · multiple</span></span>
-              <input type="file" id="wz-docs-input" multiple accept=".md,.markdown,.pdf" />
+              <span style="font-size:.844rem;font-weight:600;color:#1a2433;">Drag &amp; drop or <span style="color:#1f6feb;">browse</span> to upload <span style="color:#9aa3af;font-weight:400;">— .md · multiple</span></span>
+              <input type="file" id="wz-docs-input" multiple accept=".md,.markdown" />
             </label>
+            <div id="wz-existing-docs-list" class="cfg-docs-list"></div>
             <div id="wz-docs-empty" class="cfg-docs-empty">No documents added yet.</div>
             <div id="wz-docs-list" class="cfg-docs-list"></div>
           </div>
 
-          <!-- Step 3: Review -->
-          <div class="cfg-wizard-step" id="cfg-wstep-3" style="display:none; max-width:720px;">
-            <p class="cfg-wstep-desc">Confirm the details below, then save this API to your developer portal.</p>
-            <div class="cfg-review-section">
-              <div class="cfg-review-header">
-                <span class="cfg-review-header-title">API Details</span>
-                <button type="button" class="cfg-review-edit" data-goto="0">Edit</button>
-              </div>
-              <div class="cfg-review-body">
-                <div class="cfg-review-grid">
-                  <span class="cfg-review-label">Name</span>         <span class="cfg-review-value" id="rv-name">—</span>
-                  <span class="cfg-review-label">Handle</span>        <span class="cfg-review-value cfg-review-value--mono" id="rv-handle">—</span>
-                  <span class="cfg-review-label">Version</span>       <span class="cfg-review-value" id="rv-version">—</span>
-                  <span class="cfg-review-label">Type</span>          <span class="cfg-review-value" id="rv-type">—</span>
-                  <span class="cfg-review-label">Status</span>        <span class="cfg-review-value" id="rv-status">—</span>
-                  <span class="cfg-review-label">Agent visibility</span><span class="cfg-review-value" id="rv-agentvis">—</span>
-                  <span class="cfg-review-label">Production URL</span><span class="cfg-review-value cfg-review-value--mono" id="rv-prod">—</span>
-                  <span class="cfg-review-label">Sandbox URL</span>   <span class="cfg-review-value cfg-review-value--mono" id="rv-sandbox">—</span>
-                  <span class="cfg-review-label">Tech owner</span>    <span class="cfg-review-value" id="rv-tech-owner">—</span>
-                  <span class="cfg-review-label">Biz owner</span>     <span class="cfg-review-value" id="rv-biz-owner">—</span>
-                  <span class="cfg-review-label">Plans</span>      <span class="cfg-review-value" id="rv-plans">—</span>
-                  <span class="cfg-review-label">Description</span>   <span class="cfg-review-value" id="rv-desc">—</span>
-                </div>
-              </div>
-              <div class="cfg-review-header" style="border-top:1px solid #eef1f5;">
-                <span class="cfg-review-header-title">Spec</span>
-                <button type="button" class="cfg-review-edit" data-goto="1">Edit</button>
-              </div>
-              <div class="cfg-review-body" style="padding:14px 18px;">
-                <span style="font-size:.844rem;color:#1a2433;" id="rv-spec">No spec uploaded</span>
-              </div>
-              <div class="cfg-review-header" style="border-top:1px solid #eef1f5;">
-                <span class="cfg-review-header-title">Documentation</span>
-                <button type="button" class="cfg-review-edit" data-goto="2">Edit</button>
-              </div>
-              <div class="cfg-review-body" style="padding:14px 18px;">
-                <span style="font-size:.844rem;color:#1a2433;" id="rv-docs">No documents added</span>
-              </div>
-            </div>
-          </div>
-
           <!-- Wizard actions -->
           <div class="cfg-wizard-actions">
-            <button type="button" class="cfg-btn-ghost" id="cfg-wizard-cancel">Cancel</button>
             <div class="cfg-wizard-actions-right">
-              <button type="button" class="cfg-btn-secondary" id="cfg-wizard-back-step" style="display:none;">
-                <i class="bi bi-arrow-left"></i> Back
-              </button>
-              <button type="button" class="cfg-btn-primary" id="cfg-wizard-next">Continue</button>
+              <button type="button" class="cfg-btn-ghost" id="cfg-wizard-cancel">Cancel</button>
+              <button type="button" class="cfg-btn-ghost" id="cfg-wizard-back-step" style="display:none;">Back</button>
+              <button type="button" class="cfg-btn-primary" id="cfg-wizard-next">Next</button>
             </div>
           </div>
         </div>
@@ -644,6 +647,21 @@
     <div class="cfg-modal-actions">
       <button type="button" class="cfg-btn-secondary" id="cfg-del-api-cancel">Cancel</button>
       <button type="button" class="cfg-btn-danger" id="cfg-del-api-confirm">Delete API</button>
+    </div>
+  </div>
+</div>
+
+<!-- Deprecate API modal -->
+<div class="cfg-modal-overlay" id="cfg-deprecate-api-modal" style="display:none;">
+  <div class="cfg-modal">
+    <div class="cfg-modal-header">
+      <span class="cfg-modal-icon"><i class="bi bi-archive"></i></span>
+      <h2 class="cfg-modal-title">Deprecate API</h2>
+    </div>
+    <p class="cfg-modal-body">Are you sure you want to deprecate <strong id="cfg-dep-api-name-txt"></strong>? It will remain visible but marked as deprecated. You can publish it again at any time.</p>
+    <div class="cfg-modal-actions">
+      <button type="button" class="cfg-btn-secondary" id="cfg-dep-api-cancel">Cancel</button>
+      <button type="button" class="cfg-btn-danger" id="cfg-dep-api-confirm">Deprecate</button>
     </div>
   </div>
 </div>
@@ -902,14 +920,19 @@
 <!-- ══ Manage APIs JS ══ -->
 <script>
 (function () {
-  var ORG_ID    = '{{orgID}}';
+  var ORG_ID      = '{{orgID}}';
   var currentStep = 0;
   var specFile    = null;
   var docFiles    = [];
   var editingId   = null;
+  var editMode    = false;
+  var existingDocs  = [];
+  var docsToRemove  = [];
   var agentVis    = 'Visible';
+  var allPolicies = [];
+  var policyChips = [];
 
-  /* build id→api lookup from server-rendered data blob */
+  /* build id→api lookup and load all policies from server-rendered data blobs */
   var apiMap = {};
   (function() {
     try {
@@ -918,6 +941,10 @@
         var list = JSON.parse(el.textContent);
         list.forEach(function(api) { apiMap[api.apiId] = api; });
       }
+    } catch(e) {}
+    try {
+      var pe = document.getElementById('cfg-policies-data');
+      if (pe) allPolicies = JSON.parse(pe.textContent) || [];
     } catch(e) {}
   }());
 
@@ -965,30 +992,104 @@
     document.getElementById('wz-vis-visible').classList.remove('active');
   });
 
-  /* ── plan card selection ── */
-  document.querySelectorAll('.cfg-plan-card').forEach(function(card) {
-    var cb = card.querySelector('input[type=checkbox]');
-    cb.addEventListener('change', function() {
-      card.classList.toggle('selected', cb.checked);
+  /* ── subscription policy chip input ── */
+  function renderPolicyChips() {
+    var container = document.getElementById('wz-policy-chips');
+    if (!container) return;
+    container.innerHTML = '';
+    policyChips.forEach(function(pol) {
+      var chip = document.createElement('span');
+      chip.className = 'cfg-chip';
+      chip.innerHTML = esc(pol.displayName || pol.policyName) +
+        '<button type="button" class="cfg-chip-remove" data-name="'+esc(pol.policyName)+'" title="Remove"><i class="bi bi-x"></i></button>';
+      chip.querySelector('.cfg-chip-remove').addEventListener('click', function(e) {
+        e.stopPropagation();
+        var name = e.currentTarget.dataset.name;
+        policyChips = policyChips.filter(function(p){ return p.policyName !== name; });
+        renderPolicyChips();
+      });
+      container.appendChild(chip);
     });
-  });
-  function selectedPlans() {
-    return Array.prototype.slice.call(document.querySelectorAll('.wz-plan-check:checked')).map(function(c){ return c.value; });
   }
-  function setSelectedPlans(names) {
-    document.querySelectorAll('.wz-plan-check').forEach(function(c) {
-      var checked = names && names.includes(c.value);
-      c.checked = checked;
-      var card = c.closest('.cfg-plan-card');
-      if (card) card.classList.toggle('selected', checked);
+
+  function showPolicyDropdown(query) {
+    var dd = document.getElementById('wz-policy-dropdown');
+    if (!dd) return;
+    var q = (query||'').toLowerCase().trim();
+    var matches = allPolicies.filter(function(p) {
+      if (policyChips.some(function(c){ return c.policyName === p.policyName; })) return false;
+      if (!q) return true;
+      return (p.displayName||'').toLowerCase().indexOf(q) >= 0 ||
+             (p.policyName||'').toLowerCase().indexOf(q) >= 0 ||
+             (p.description||'').toLowerCase().indexOf(q) >= 0;
     });
+    if (!matches.length) {
+      dd.innerHTML = '<div class="cfg-chip-dd-empty">No matching plans</div>';
+    } else {
+      dd.innerHTML = matches.map(function(p) {
+        return '<div class="cfg-chip-dd-item" data-name="'+esc(p.policyName)+'">' +
+          '<div class="cfg-chip-dd-name">'+esc(p.displayName||p.policyName)+'</div>' +
+          (p.description ? '<div class="cfg-chip-dd-desc">'+esc(p.description)+'</div>' : '') +
+          '</div>';
+      }).join('');
+      dd.querySelectorAll('.cfg-chip-dd-item').forEach(function(item) {
+        item.addEventListener('mousedown', function(e) {
+          e.preventDefault();
+          var name = item.dataset.name;
+          var pol = allPolicies.find(function(p){ return p.policyName === name; });
+          if (pol && !policyChips.some(function(c){ return c.policyName === name; })) {
+            policyChips.push(pol);
+            renderPolicyChips();
+          }
+          document.getElementById('wz-policy-search').value = '';
+          dd.style.display = 'none';
+        });
+      });
+    }
+    dd.style.display = 'block';
   }
+
+  function hidePolicyDropdown() {
+    var dd = document.getElementById('wz-policy-dropdown');
+    if (dd) dd.style.display = 'none';
+  }
+
+  function selectedPolicies() {
+    return policyChips.map(function(p){ return p.policyName; });
+  }
+
+  function setSelectedPolicies(namesOrObjs) {
+    policyChips = [];
+    if (namesOrObjs && namesOrObjs.length) {
+      namesOrObjs.forEach(function(item) {
+        var name = typeof item === 'string' ? item : (item.policyName || '');
+        if (!name) return;
+        var pol = allPolicies.find(function(p){ return p.policyName === name; });
+        policyChips.push(pol || { policyName: name, displayName: name, description: '' });
+      });
+    }
+    renderPolicyChips();
+  }
+
+  (function() {
+    var wrap = document.getElementById('wz-policy-chip-wrap');
+    var searchEl = document.getElementById('wz-policy-search');
+    if (!searchEl) return;
+    if (wrap) wrap.addEventListener('click', function() { searchEl.focus(); });
+    searchEl.addEventListener('focus', function() { showPolicyDropdown(this.value); });
+    searchEl.addEventListener('input', function() { showPolicyDropdown(this.value); });
+    searchEl.addEventListener('blur', function() { setTimeout(hidePolicyDropdown, 160); });
+    searchEl.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') { hidePolicyDropdown(); searchEl.blur(); }
+    });
+  }());
 
   /* ── wizard show/hide ── */
   function showWizard(api) {
     document.getElementById('cfg-apis-list').style.display = 'none';
     document.getElementById('cfg-apis-wizard').style.display = 'flex';
     currentStep = 0; specFile = null; docFiles = []; handleTouched = false;
+    editMode = !!api; existingDocs = []; docsToRemove = [];
 
     if (api) {
       /* edit mode */
@@ -998,29 +1099,54 @@
       sv('wz-handle',     api.apiHandle);   handleTouched = true;
       sv('wz-version',    api.apiVersion);
       sel('wz-type',      api.apiType);
-      sel('wz-status',    api.apiStatus);
+      sel('wz-status',    api.apiStatus === 'DEPRECATED' ? 'DEPRECATED' : 'PUBLISHED');
       sv('wz-desc',       api.apiDescription);
-      sv('wz-tags',       api.tags);
+      sv('wz-tags',       (api.tags && api.tags.length) ? (Array.isArray(api.tags) ? api.tags.join(', ') : api.tags) : '');
       sv('wz-prod',       api.productionUrl);
       sv('wz-sandbox',    api.sandboxUrl);
+      sv('wz-tech-owner', (api.owners && api.owners.technicalOwner)      || api.technicalOwner      || '');
+      sv('wz-tech-email', (api.owners && api.owners.technicalOwnerEmail) || api.technicalOwnerEmail || '');
+      sv('wz-biz-owner',  (api.owners && api.owners.businessOwner)       || api.businessOwner       || '');
+      sv('wz-biz-email',  (api.owners && api.owners.businessOwnerEmail)  || api.businessOwnerEmail  || '');
       agentVis = api.agentVisibility || 'Visible';
       document.getElementById('wz-vis-visible').classList.toggle('active', agentVis !== 'Hidden');
       document.getElementById('wz-vis-hidden').classList.toggle('active',  agentVis === 'Hidden');
-      setSelectedPlans((api.subscriptionPlans || []).map(function(p){ return typeof p === 'string' ? p : p.planName; }));
+      setSelectedPolicies(api.subscriptionPolicies || []);
+      /* load existing docs */
+      fetch(window.devportalApi.org(ORG_ID, '/apis/' + encodeURIComponent(api.apiId) + '/docs'), {
+        headers: { 'X-CSRF-Token': window.devportalApi.csrfToken() }
+      }).then(function(r) { return r.ok ? r.json() : []; })
+        .then(function(list) {
+          existingDocs = (list || []).map(function(d) { return d.fileName; });
+          renderExistingDocs();
+        }).catch(function() {});
     } else {
       /* add mode */
       editingId = null;
       document.getElementById('cfg-wizard-title').textContent = 'Add API';
       ['wz-name','wz-version','wz-handle','wz-desc','wz-tags','wz-prod','wz-sandbox','wz-tech-owner','wz-tech-email','wz-biz-owner','wz-biz-email'].forEach(function(id){ sv(id,''); });
-      sel('wz-type','REST'); sel('wz-status','CREATED');
+      sel('wz-type','REST'); sel('wz-status','PUBLISHED');
       agentVis = 'Visible';
       document.getElementById('wz-vis-visible').classList.add('active');
       document.getElementById('wz-vis-hidden').classList.remove('active');
       setSelectedPlans([]);
     }
 
+    /* clear any leftover validation errors */
+    ['wz-name-error','wz-version-error','wz-handle-error','wz-desc-error','wz-tech-email-error','wz-biz-email-error'].forEach(function(eid) {
+      var el = document.getElementById(eid); if (el) el.style.display = 'none';
+    });
+    ['wz-name','wz-version','wz-handle','wz-desc','wz-tech-email','wz-biz-email'].forEach(function(fid) {
+      var el = document.getElementById(fid); if (el) el.classList.remove('cfg-form-input--error');
+    });
+
     document.getElementById('wz-spec-chip').classList.remove('visible');
+    var specErrEl = document.getElementById('wz-spec-error');
+    if (specErrEl) specErrEl.style.display = 'none';
+    var specOnFile = document.getElementById('wz-spec-onfile');
+    if (specOnFile) specOnFile.style.display = editMode ? 'flex' : 'none';
     document.getElementById('wz-docs-list').innerHTML = '';
+    document.getElementById('wz-existing-docs-list').innerHTML = '';
     document.getElementById('wz-docs-empty').style.display = 'block';
     updateWizardStep(0);
   }
@@ -1034,7 +1160,7 @@
   /* ── step navigation ── */
   function updateWizardStep(step) {
     currentStep = step;
-    for (var i=0; i<4; i++) {
+    for (var i=0; i<3; i++) {
       var p = document.getElementById('cfg-wstep-'+i);
       if (p) p.style.display = i===step ? 'flex' : 'none';
     }
@@ -1050,52 +1176,30 @@
     var backBtn = document.getElementById('cfg-wizard-back-step');
     var nextBtn = document.getElementById('cfg-wizard-next');
     backBtn.style.display = step > 0 ? 'inline-flex' : 'none';
-    if (step === 3) {
-      nextBtn.textContent = editingId ? 'Save changes' : 'Save API';
-      nextBtn.disabled = false;
-      nextBtn.title = '';
-      populateReview();
-    } else {
-      nextBtn.textContent = 'Continue';
-      nextBtn.disabled = false;
-      nextBtn.title = '';
-    }
-  }
-
-  function populateReview() {
-    function set(id,val) { var e=document.getElementById(id); if(e) e.textContent=val||'—'; }
-    set('rv-name',      v('wz-name'));
-    set('rv-handle',    v('wz-handle'));
-    set('rv-version',   v('wz-version'));
-    set('rv-type',      document.getElementById('wz-type') ? document.getElementById('wz-type').value : '—');
-    set('rv-status',    v('wz-status') === 'PUBLISHED' ? 'Published' : 'Created');
-    set('rv-agentvis',  agentVis);
-    set('rv-prod',      v('wz-prod'));
-    set('rv-sandbox',   v('wz-sandbox'));
-    set('rv-tech-owner',v('wz-tech-owner'));
-    set('rv-biz-owner', v('wz-biz-owner'));
-    var pols = selectedPlans();
-    set('rv-plans',  pols.length ? pols.join(', ') : '—');
-    set('rv-desc',      v('wz-desc'));
-    set('rv-spec',      specFile ? specFile.name : 'No spec uploaded');
-    var docsEl = document.getElementById('rv-docs');
-    if (docsEl) docsEl.textContent = docFiles.length ? docFiles.length+' file(s): '+docFiles.map(function(f){return f.name;}).join(', ') : 'No documents added';
+    nextBtn.textContent = step === 2 ? (editingId ? 'Save changes' : 'Save API') : 'Next';
+    nextBtn.disabled = false;
+    nextBtn.title = '';
   }
 
   /* ── save API (create / update) ── */
   async function saveApi() {
     var name    = v('wz-name');
     var version = v('wz-version');
-    if (!name || !version) { await showAlert('API name and version are required.', 'error'); return; }
+    var handle  = v('wz-handle');
+    if (!name || !version || !handle) {
+      await showAlert('API name, version, and handle are required.', 'error');
+      return;
+    }
 
     var meta = {
       apiInfo: {
         apiName:        name,
         apiVersion:     version,
-        apiHandle:      v('wz-handle') || undefined,
+        apiHandle:      handle,
         apiType:        document.getElementById('wz-type').value,
         apiStatus:      document.getElementById('wz-status').value,
-        apiDescription: v('wz-desc') || undefined,
+        apiDescription: v('wz-desc'),
+        visibility:     'PUBLIC',
         tags:           v('wz-tags') ? v('wz-tags').split(',').map(function(t){return t.trim();}).filter(Boolean) : [],
         agentVisibility: agentVis,
         owners: {
@@ -1109,7 +1213,8 @@
         productionURL: v('wz-prod') || undefined,
         sandboxURL:    v('wz-sandbox') || undefined,
       },
-      subscriptionPlans: selectedPlans().map(function(n){ return { planName: n }; }),
+      subscriptionPolicies: selectedPolicies().map(function(n){ return { policyName: n }; }),
+      docsToRemove: docsToRemove.length ? docsToRemove : undefined,
     };
 
     var fd = new FormData();
@@ -1140,6 +1245,47 @@
     }
   }
 
+  /* ── bulk selection ── */
+  var pendingBulkIds = null;
+
+  function selectedChecks() {
+    return Array.prototype.slice.call(document.querySelectorAll('.cfg-row-check:checked'));
+  }
+
+  function syncBulkBar() {
+    var checks = selectedChecks();
+    var bar = document.getElementById('cfg-bulk-bar');
+    var countEl = document.getElementById('cfg-bulk-bar-count');
+    bar.style.display = checks.length > 0 ? 'flex' : 'none';
+    countEl.textContent = checks.length + (checks.length === 1 ? ' API selected' : ' APIs selected');
+    var allChecks = document.querySelectorAll('.cfg-row-check');
+    var selectAll = document.getElementById('cfg-select-all');
+    if (selectAll) {
+      selectAll.checked = allChecks.length > 0 && checks.length === allChecks.length;
+      selectAll.indeterminate = checks.length > 0 && checks.length < allChecks.length;
+    }
+  }
+
+  document.getElementById('cfg-select-all').addEventListener('change', function() {
+    var checked = this.checked;
+    document.querySelectorAll('.cfg-row-check').forEach(function(c) { c.checked = checked; });
+    syncBulkBar();
+  });
+
+  document.getElementById('cfg-apis-tbody').addEventListener('change', function(e) {
+    if (e.target.classList.contains('cfg-row-check')) syncBulkBar();
+  });
+
+  document.getElementById('cfg-bulk-delete-btn').addEventListener('click', function() {
+    var checks = selectedChecks();
+    if (!checks.length) return;
+    pendingBulkIds = checks.map(function(c) { return { id: c.dataset.id, name: c.dataset.name }; });
+    pendingDelId = null;
+    var label = checks.length + (checks.length === 1 ? ' selected API' : ' selected APIs');
+    document.getElementById('cfg-del-api-name-txt').textContent = label;
+    document.getElementById('cfg-delete-api-modal').style.display = 'flex';
+  });
+
   /* ── delete ── */
   var pendingDelId = null;
   document.getElementById('cfg-del-api-cancel').addEventListener('click', function() {
@@ -1149,8 +1295,36 @@
     if (e.target===this) this.style.display='none';
   });
   document.getElementById('cfg-del-api-confirm').addEventListener('click', async function() {
-    if (!pendingDelId) return;
     document.getElementById('cfg-delete-api-modal').style.display = 'none';
+
+    if (pendingBulkIds && pendingBulkIds.length) {
+      var ids = pendingBulkIds.slice();
+      pendingBulkIds = null;
+      var failCount = 0;
+      await Promise.all(ids.map(async function(item) {
+        try {
+          var r = await fetch(window.devportalApi.org(ORG_ID, '/apis/'+encodeURIComponent(item.id)), {
+            method: 'DELETE',
+            headers: { 'X-CSRF-Token': window.devportalApi.csrfToken() },
+          });
+          if (r.ok || r.status===204) {
+            var row = document.getElementById('cfg-api-row-'+item.id);
+            if (row) row.remove();
+          } else { failCount++; }
+        } catch(e) { failCount++; }
+      }));
+      document.querySelectorAll('.cfg-row-check').forEach(function(c){ c.checked = false; });
+      var sa = document.getElementById('cfg-select-all');
+      if (sa) { sa.checked = false; sa.indeterminate = false; }
+      document.getElementById('cfg-bulk-bar').style.display = 'none';
+      await showAlert(
+        failCount > 0 ? failCount + ' API(s) could not be deleted.' : 'APIs deleted.',
+        failCount > 0 ? 'error' : 'success'
+      );
+      return;
+    }
+
+    if (!pendingDelId) return;
     try {
       var res = await fetch(window.devportalApi.org(ORG_ID, '/apis/'+encodeURIComponent(pendingDelId)), {
         method: 'DELETE',
@@ -1166,6 +1340,23 @@
         await showAlert('Delete failed: ' + (err.description || err.message || res.statusText), 'error');
       }
     } catch(e) { await showAlert('Error: ' + e.message, 'error'); }
+  });
+
+  /* ── deprecate confirmation modal ── */
+  var pendingDeprecateId   = null;
+  var pendingDeprecateName = null;
+  document.getElementById('cfg-dep-api-cancel').addEventListener('click', function() {
+    document.getElementById('cfg-deprecate-api-modal').style.display = 'none';
+    pendingDeprecateId = pendingDeprecateName = null;
+  });
+  document.getElementById('cfg-deprecate-api-modal').addEventListener('click', function(e) {
+    if (e.target === this) { this.style.display = 'none'; pendingDeprecateId = pendingDeprecateName = null; }
+  });
+  document.getElementById('cfg-dep-api-confirm').addEventListener('click', async function() {
+    document.getElementById('cfg-deprecate-api-modal').style.display = 'none';
+    if (!pendingDeprecateId) return;
+    await setApiStatus(pendingDeprecateId, pendingDeprecateName, 'DEPRECATED');
+    pendingDeprecateId = pendingDeprecateName = null;
   });
 
   /* ── publish/unpublish ── */
@@ -1191,7 +1382,7 @@
         body: fd,
       });
       if (putRes.ok) {
-        await showAlert(newStatus === 'PUBLISHED' ? apiName+' published.' : apiName+' unpublished.', 'success');
+        await showAlert(newStatus === 'PUBLISHED' ? apiName+' published.' : apiName+' deprecated.', 'success');
         window.location.reload();
       } else {
         var e2 = await putRes.json().catch(function(){ return {}; });
@@ -1244,11 +1435,14 @@
       return;
     }
 
-    /* unpublish */
+    /* deprecate */
     if (e.target.closest('.cfg-unpublish-trigger')) {
       var btn = e.target.closest('.cfg-unpublish-trigger');
       document.querySelectorAll('.cfg-dropdown').forEach(function(d){ d.style.display='none'; });
-      setApiStatus(btn.dataset.id, btn.dataset.name, 'CREATED');
+      pendingDeprecateId   = btn.dataset.id;
+      pendingDeprecateName = btn.dataset.name;
+      document.getElementById('cfg-dep-api-name-txt').textContent = btn.dataset.name;
+      document.getElementById('cfg-deprecate-api-modal').style.display = 'flex';
       return;
     }
 
@@ -1265,13 +1459,78 @@
   });
 
   /* ── Add API btn ── */
+  /* ── step 0 validation ── */
+  function setFieldError(inputId, errorId, msg) {
+    var errEl   = document.getElementById(errorId);
+    var inputEl = document.getElementById(inputId);
+    if (errEl)   { errEl.textContent = msg; errEl.style.display = msg ? 'block' : 'none'; }
+    if (inputEl) { inputEl.classList.toggle('cfg-form-input--error', !!msg); }
+  }
+
+  function validateStep0() {
+    var ok = true;
+    var emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+    var name = v('wz-name');
+    setFieldError('wz-name', 'wz-name-error', name ? '' : 'API name is required.');
+    if (!name) ok = false;
+
+    var version = v('wz-version');
+    setFieldError('wz-version', 'wz-version-error', version ? '' : 'Version is required.');
+    if (!version) ok = false;
+
+    var desc = v('wz-desc');
+    setFieldError('wz-desc', 'wz-desc-error', desc ? '' : 'Description is required.');
+    if (!desc) ok = false;
+
+    var handle = v('wz-handle');
+    if (!handle) {
+      setFieldError('wz-handle', 'wz-handle-error', 'Handle is required.');
+      ok = false;
+    } else if (!/^[a-z0-9][a-z0-9\-.]*[a-z0-9]$|^[a-z0-9]$/.test(handle)) {
+      setFieldError('wz-handle', 'wz-handle-error', 'Must be lowercase letters, numbers, hyphens, and dots only.');
+      ok = false;
+    } else {
+      setFieldError('wz-handle', 'wz-handle-error', '');
+    }
+
+    var techEmail = v('wz-tech-email');
+    if (techEmail && !emailRe.test(techEmail)) {
+      setFieldError('wz-tech-email', 'wz-tech-email-error', 'Invalid email address.');
+      ok = false;
+    } else {
+      setFieldError('wz-tech-email', 'wz-tech-email-error', '');
+    }
+
+    var bizEmail = v('wz-biz-email');
+    if (bizEmail && !emailRe.test(bizEmail)) {
+      setFieldError('wz-biz-email', 'wz-biz-email-error', 'Invalid email address.');
+      ok = false;
+    } else {
+      setFieldError('wz-biz-email', 'wz-biz-email-error', '');
+    }
+
+    return ok;
+  }
+
   document.getElementById('cfg-add-api-btn').addEventListener('click', function() { showWizard(null); });
   document.getElementById('cfg-wizard-back-link').addEventListener('click', function(e) { e.preventDefault(); hideWizard(); });
   document.getElementById('cfg-wizard-cancel').addEventListener('click', function() { hideWizard(); });
   document.getElementById('cfg-wizard-back-step').addEventListener('click', function() { if(currentStep>0) updateWizardStep(currentStep-1); });
   document.getElementById('cfg-wizard-next').addEventListener('click', async function() {
-    if (currentStep < 3) { updateWizardStep(currentStep+1); }
-    else                 { await saveApi(); }
+    if (currentStep === 0) {
+      if (!validateStep0()) return;
+      updateWizardStep(1);
+    } else if (currentStep === 1) {
+      if (!specFile && !editMode) {
+        var errEl = document.getElementById('wz-spec-error');
+        if (errEl) errEl.style.display = 'block';
+        return;
+      }
+      updateWizardStep(2);
+    } else {
+      await saveApi();
+    }
   });
 
   document.querySelectorAll('#cfg-apis-wizard .cfg-step').forEach(function(el) {
@@ -1280,35 +1539,116 @@
       if (s < currentStep) updateWizardStep(s);
     });
   });
-  document.querySelectorAll('.cfg-review-edit').forEach(function(btn) {
-    btn.addEventListener('click', function() { updateWizardStep(parseInt(btn.getAttribute('data-goto'),10)); });
-  });
 
   /* ── Spec ── */
-  document.getElementById('wz-spec-input').addEventListener('change', function(e) {
-    var f = e.target.files && e.target.files[0];
+  function handleSpecFile(f) {
     if (!f) return;
+    if (!/\.(json|ya?ml|graphql|gql|wsdl|xml)$/i.test(f.name)) {
+      showAlert('Unsupported file type. Accepted: .json, .yaml, .yml, .graphql, .gql, .wsdl, .xml', 'error');
+      return;
+    }
     specFile = f;
     document.getElementById('wz-spec-name').textContent = f.name;
     document.getElementById('wz-spec-chip').classList.add('visible');
+    var errEl = document.getElementById('wz-spec-error');
+    if (errEl) errEl.style.display = 'none';
+    var onFile = document.getElementById('wz-spec-onfile');
+    if (onFile) onFile.style.display = 'none';
+  }
+
+  document.getElementById('wz-spec-input').addEventListener('change', function(e) {
+    handleSpecFile(e.target.files && e.target.files[0]);
   });
   document.getElementById('wz-spec-remove').addEventListener('click', function() {
     specFile = null;
     document.getElementById('wz-spec-input').value = '';
     document.getElementById('wz-spec-chip').classList.remove('visible');
+    var onFile = document.getElementById('wz-spec-onfile');
+    if (onFile) onFile.style.display = editMode ? 'flex' : 'none';
   });
 
+  /* drag & drop on the upload zone */
+  (function() {
+    var zone = document.getElementById('wz-spec-zone');
+    if (!zone) return;
+    zone.addEventListener('dragover', function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      zone.classList.add('cfg-upload-zone--active');
+    });
+    zone.addEventListener('dragleave', function(e) {
+      if (!zone.contains(e.relatedTarget)) {
+        zone.classList.remove('cfg-upload-zone--active');
+      }
+    });
+    zone.addEventListener('drop', function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      zone.classList.remove('cfg-upload-zone--active');
+      var files = e.dataTransfer && e.dataTransfer.files;
+      if (files && files.length) handleSpecFile(files[0]);
+    });
+  }());
+
+  /* ── Existing docs (edit mode) ── */
+  function renderExistingDocs() {
+    var list = document.getElementById('wz-existing-docs-list');
+    if (!list) return;
+    list.innerHTML = '';
+    existingDocs.forEach(function(name) {
+      var item = document.createElement('div');
+      item.className = 'cfg-docs-item';
+      item.innerHTML = '<span class="cfg-docs-icon"><i class="bi bi-file-text"></i></span>' +
+        '<span class="cfg-docs-name">' + esc(name) + '</span>' +
+        '<button type="button" class="cfg-docs-remove" title="Remove"><i class="bi bi-trash"></i></button>';
+      item.querySelector('.cfg-docs-remove').addEventListener('click', function() {
+        existingDocs = existingDocs.filter(function(n) { return n !== name; });
+        docsToRemove.push(name);
+        renderExistingDocs();
+      });
+      list.appendChild(item);
+    });
+  }
+
   /* ── Docs ── */
-  document.getElementById('wz-docs-input').addEventListener('change', function(e) {
-    Array.prototype.slice.call(e.target.files||[]).forEach(function(f) {
+  function handleDocsFiles(files) {
+    var rejected = [];
+    Array.prototype.slice.call(files||[]).forEach(function(f) {
+      if (!/\.md$|\.markdown$/i.test(f.name)) { rejected.push(f.name); return; }
       if (!docFiles.find(function(x){ return x.name===f.name; })) {
         docFiles.push(f);
         appendDocItem(f);
       }
     });
     document.getElementById('wz-docs-empty').style.display = docFiles.length ? 'none' : 'block';
+    if (rejected.length) showAlert('Only .md files are accepted. Skipped: ' + rejected.join(', '), 'error');
+  }
+
+  document.getElementById('wz-docs-input').addEventListener('change', function(e) {
+    handleDocsFiles(e.target.files);
     e.target.value = '';
   });
+
+  (function() {
+    var zone = document.getElementById('wz-docs-zone');
+    if (!zone) return;
+    zone.addEventListener('dragover', function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      zone.classList.add('cfg-upload-compact--active');
+    });
+    zone.addEventListener('dragleave', function(e) {
+      if (!zone.contains(e.relatedTarget)) {
+        zone.classList.remove('cfg-upload-compact--active');
+      }
+    });
+    zone.addEventListener('drop', function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      zone.classList.remove('cfg-upload-compact--active');
+      handleDocsFiles(e.dataTransfer && e.dataTransfer.files);
+    });
+  }());
   function appendDocItem(f) {
     var list = document.getElementById('wz-docs-list');
     var item = document.createElement('div');
@@ -1334,8 +1674,12 @@
     document.getElementById('drw-name').textContent   = api.apiName;
     document.getElementById('drw-handle').textContent = '/' + api.apiHandle;
     var metaRow = document.getElementById('drw-meta-row');
-    var statusClass = api.apiStatus === 'PUBLISHED' ? 'cfg-status-badge cfg-status-published' : 'cfg-status-badge cfg-status-created';
-    var statusLabel = api.apiStatus === 'PUBLISHED' ? '<span class="cfg-status-dot"></span>Published' : '<span class="cfg-status-dot"></span>Created';
+    var statusClass = api.apiStatus === 'PUBLISHED'   ? 'cfg-status-badge cfg-status-published'   :
+                      api.apiStatus === 'DEPRECATED'  ? 'cfg-status-badge cfg-status-deprecated'  :
+                                                        'cfg-status-badge cfg-status-draft';
+    var statusLabel = api.apiStatus === 'PUBLISHED'   ? '<span class="cfg-status-dot"></span>Published'  :
+                      api.apiStatus === 'DEPRECATED'  ? '<span class="cfg-status-dot"></span>Deprecated' :
+                                                        '<span class="cfg-status-dot"></span>Draft';
     metaRow.innerHTML =
       '<span class="cfg-type-badge '+ti.tb+'">'+esc(ti.label)+'</span>' +
       '<span class="'+statusClass+'">'+statusLabel+'</span>';
@@ -1344,13 +1688,14 @@
     function row(lbl, val, mono) {
       return '<span class="cfg-drawer-lbl">'+esc(lbl)+'</span><span class="cfg-drawer-val'+(mono?' cfg-drawer-val--mono':'')+'">'+esc(val||'—')+'</span>';
     }
+    var polNames = (api.subscriptionPolicies||[]).map(function(p){ return typeof p === 'string' ? p : (p.policyName||''); }).filter(Boolean);
     grid.innerHTML = [
       row('Version', api.apiVersion),
       row('Agent visibility', api.agentVisibility),
       row('Production URL', api.productionUrl, true),
       row('Sandbox URL', api.sandboxUrl, true),
-      row('Tags', api.tags),
-      row('Plans', (api.subscriptionPlans||[]).map(function(p){ return typeof p === 'string' ? p : p.planName; }).join(', ')),
+      row('Tags', Array.isArray(api.tags) ? api.tags.join(', ') : api.tags),
+      row('Policies', polNames.join(', ')),
     ].join('');
     document.getElementById('cfg-drawer-edit-btn').onclick = function() {
       document.getElementById('cfg-detail-drawer').classList.remove('open');

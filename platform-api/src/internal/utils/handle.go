@@ -28,7 +28,7 @@ import (
 
 const (
 	handleMinLength = 3
-	handleMaxLength = 63
+	handleMaxLength = 40
 	maxRetries      = 5
 	suffixLength    = 4
 )

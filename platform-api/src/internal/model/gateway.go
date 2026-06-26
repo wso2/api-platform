@@ -19,6 +19,8 @@ package model
 
 import (
 	"time"
+
+	"platform-api/src/internal/constants"
 )
 
 // Gateway represents a registered gateway instance within an organization
@@ -26,7 +28,7 @@ type Gateway struct {
 	ID                string                 `json:"id" db:"uuid"`
 	OrganizationID    string                 `json:"organizationId" db:"organization_uuid"`
 	Name              string                 `json:"name" db:"name"`
-	DisplayName       string                 `json:"displayName" db:"display_name"`
+	Handle            string                 `json:"handle" db:"handle"`
 	Description       string                 `json:"description" db:"description"`
 	Properties        map[string]interface{} `json:"properties,omitempty" db:"properties"`
 	Vhost             string                 `json:"vhost" db:"vhost"`
@@ -34,6 +36,8 @@ type Gateway struct {
 	FunctionalityType string    `json:"functionalityType" db:"gateway_functionality_type"`
 	Version           string    `json:"version" db:"version"`
 	IsActive          bool      `json:"isActive" db:"is_active"`
+	CreatedBy         string    `json:"createdBy,omitempty" db:"created_by"`
+	UpdatedBy         string    `json:"updatedBy,omitempty" db:"updated_by"`
 	CreatedAt         time.Time `json:"createdAt" db:"created_at"`
 	UpdatedAt         time.Time `json:"updatedAt" db:"updated_at"`
 }
@@ -50,8 +54,10 @@ type GatewayToken struct {
 	TokenHash string     `json:"-" db:"token_hash"`  // Never expose in JSON responses
 	Salt      string     `json:"-" db:"salt"`        // Never expose in JSON responses
 	Status    string     `json:"status" db:"status"` // "active" or "revoked"
+	CreatedBy string     `json:"createdBy,omitempty" db:"created_by"`
 	CreatedAt time.Time  `json:"createdAt" db:"created_at"`
-	RevokedAt *time.Time `json:"revokedAt,omitempty" db:"revoked_at"` // Pointer for NULL support
+	RevokedBy *string    `json:"revokedBy,omitempty" db:"revoked_by"`
+	RevokedAt *time.Time `json:"revokedAt,omitempty" db:"revoked_at"`
 }
 
 // TableName returns the table name for the GatewayToken model
@@ -61,14 +67,17 @@ func (GatewayToken) TableName() string {
 
 // IsActive returns true if token status is active
 func (t *GatewayToken) IsActive() bool {
-	return t.Status == "active"
+	return t.Status == constants.GatewayTokenStatusActive
 }
 
-// Revoke marks the token as revoked with current timestamp
-func (t *GatewayToken) Revoke() {
+// Revoke marks the token as revoked with current timestamp and actor
+func (t *GatewayToken) Revoke(revokedBy string) {
 	now := time.Now()
-	t.Status = "revoked"
+	t.Status = constants.GatewayTokenStatusRevoked
 	t.RevokedAt = &now
+	if revokedBy != "" {
+		t.RevokedBy = &revokedBy
+	}
 }
 
 // APIGatewayWithDetails represents a gateway with its association and deployment details for an API
@@ -77,7 +86,7 @@ type APIGatewayWithDetails struct {
 	ID                string    `json:"id" db:"id"`
 	OrganizationID    string    `json:"organizationId" db:"organization_id"`
 	Name              string    `json:"name" db:"name"`
-	DisplayName       string    `json:"displayName" db:"display_name"`
+	Handle            string    `json:"handle" db:"handle"`
 	Description       string    `json:"description" db:"description"`
 	Properties        map[string]interface{} `json:"properties,omitempty" db:"properties"`
 	Vhost             string    `json:"vhost" db:"vhost"`
@@ -93,6 +102,6 @@ type APIGatewayWithDetails struct {
 
 	IsDeployed bool `json:"isDeployed" db:"is_deployed"`
 	// Deployment information (nullable if not deployed)
-	DeploymentID *string    `json:"deploymentId,omitempty" db:"deployment_id"`
+	DeploymentID *string    `json:"deploymentId,omitempty" db:"deployment_uuid"`
 	DeployedAt   *time.Time `json:"deployedAt,omitempty" db:"deployed_at"`
 }

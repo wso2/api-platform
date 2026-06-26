@@ -49,12 +49,13 @@ type MCPProxyService struct {
 	gatewayRepo          repository.GatewayRepository
 	gatewayEventsService *GatewayEventsService
 	slogger              *slog.Logger
+	auditRepo            repository.AuditRepository
 }
 
 // NewMCPProxyService creates a new MCPProxyService instance
 func NewMCPProxyService(repo repository.MCPProxyRepository, projectRepo repository.ProjectRepository,
 	deploymentRepo repository.DeploymentRepository, gatewayRepo repository.GatewayRepository,
-	gatewayEventsService *GatewayEventsService, slogger *slog.Logger) *MCPProxyService {
+	gatewayEventsService *GatewayEventsService, slogger *slog.Logger, auditRepo repository.AuditRepository) *MCPProxyService {
 	return &MCPProxyService{
 		repo:                 repo,
 		projectRepo:          projectRepo,
@@ -62,6 +63,7 @@ func NewMCPProxyService(repo repository.MCPProxyRepository, projectRepo reposito
 		gatewayRepo:          gatewayRepo,
 		gatewayEventsService: gatewayEventsService,
 		slogger:              slogger,
+		auditRepo:            auditRepo,
 	}
 }
 
@@ -119,7 +121,6 @@ func (s *MCPProxyService) Create(orgUUID, createdBy string, req *api.MCPProxy) (
 		Description:      utils.ValueOrEmpty(req.Description),
 		CreatedBy:        createdBy,
 		Version:          req.Version,
-		Status:           mcpStatusPending,
 		Configuration: model.MCPProxyConfiguration{
 			Name:         req.Name,
 			Version:      req.Version,
@@ -139,6 +140,7 @@ func (s *MCPProxyService) Create(orgUUID, createdBy string, req *api.MCPProxy) (
 		return nil, fmt.Errorf("failed to create MCP proxy: %w", err)
 	}
 
+	_ = s.auditRepo.Record("CREATE", m.UUID, "mcp_proxy", orgUUID, createdBy)
 	return s.Get(orgUUID, req.Id)
 }
 
@@ -219,7 +221,7 @@ func (s *MCPProxyService) Get(orgUUID, handle string) (*api.MCPProxy, error) {
 }
 
 // Update updates an existing MCP proxy
-func (s *MCPProxyService) Update(orgUUID, handle string, req *api.MCPProxy) (*api.MCPProxy, error) {
+func (s *MCPProxyService) Update(orgUUID, handle, updatedBy string, req *api.MCPProxy) (*api.MCPProxy, error) {
 	if handle == "" || req == nil {
 		return nil, constants.ErrInvalidInput
 	}
@@ -249,6 +251,7 @@ func (s *MCPProxyService) Update(orgUUID, handle string, req *api.MCPProxy) (*ap
 	// Update fields
 	existing.Name = req.Name
 	existing.Version = req.Version
+	existing.UpdatedBy = updatedBy
 	existing.Description = utils.ValueOrEmpty(req.Description)
 	existing.Configuration = model.MCPProxyConfiguration{
 		Name:         req.Name,
@@ -272,11 +275,12 @@ func (s *MCPProxyService) Update(orgUUID, handle string, req *api.MCPProxy) (*ap
 		return nil, fmt.Errorf("failed to update MCP proxy: %w", err)
 	}
 
+	_ = s.auditRepo.Record("UPDATE", existing.UUID, "mcp_proxy", orgUUID, updatedBy)
 	return s.Get(orgUUID, handle)
 }
 
 // Delete deletes an MCP proxy by its handle
-func (s *MCPProxyService) Delete(orgUUID, handle string) error {
+func (s *MCPProxyService) Delete(orgUUID, handle, deletedBy string) error {
 	if handle == "" {
 		return constants.ErrInvalidInput
 	}
@@ -311,6 +315,7 @@ func (s *MCPProxyService) Delete(orgUUID, handle string) error {
 		return fmt.Errorf("failed to delete MCP proxy: %w", err)
 	}
 
+	_ = s.auditRepo.Record("DELETE", mcpProxy.UUID, "mcp_proxy", orgUUID, deletedBy)
 	// Send deletion events to all gateways in the organization
 	if s.gatewayEventsService != nil && len(gateways) > 0 {
 		for _, gateway := range gateways {
@@ -462,8 +467,6 @@ func mapMCPProxyModelToListItem(m *model.MCPProxy) *api.MCPProxyListItem {
 		return nil
 	}
 
-	status := api.MCPProxyListItemStatus(m.Status)
-
 	return &api.MCPProxyListItem{
 		Id:             utils.StringPtrIfNotEmpty(m.Handle),
 		Name:           utils.StringPtrIfNotEmpty(m.Name),
@@ -473,7 +476,6 @@ func mapMCPProxyModelToListItem(m *model.MCPProxy) *api.MCPProxyListItem {
 		ProjectId:      m.ProjectUUID,
 		Context:        m.Configuration.Context,
 		McpSpecVersion: utils.StringPtrIfNotEmpty(m.Configuration.SpecVersion),
-		Status:         &status,
 		CreatedAt:      utils.TimePtr(m.CreatedAt),
 		UpdatedAt:      utils.TimePtr(m.UpdatedAt),
 	}

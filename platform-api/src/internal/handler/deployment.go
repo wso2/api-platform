@@ -84,7 +84,8 @@ func (h *DeploymentHandler) DeployAPI(c *gin.Context) {
 		return
 	}
 
-	deployment, err := h.deploymentService.DeployAPIByHandle(apiId, &req, orgId)
+	createdBy, _ := middleware.GetUsernameFromContext(c)
+	deployment, err := h.deploymentService.DeployAPIByHandle(apiId, &req, orgId, createdBy)
 	if err != nil {
 		if errors.Is(err, constants.ErrAPINotFound) {
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
@@ -163,7 +164,8 @@ func (h *DeploymentHandler) UndeployDeployment(c *gin.Context) {
 			"API ID is required"))
 		return
 	}
-	deployment, err := h.deploymentService.UndeployDeploymentByHandle(apiId, deploymentId, gatewayId, orgId)
+	actor, _ := middleware.GetUsernameFromContext(c)
+	deployment, err := h.deploymentService.UndeployDeploymentByHandle(apiId, deploymentId, gatewayId, orgId, actor)
 	if err != nil {
 		if errors.Is(err, constants.ErrAPINotFound) {
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
@@ -221,7 +223,8 @@ func (h *DeploymentHandler) RestoreDeployment(c *gin.Context) {
 			"API ID is required"))
 		return
 	}
-	deployment, err := h.deploymentService.RestoreDeploymentByHandle(apiId, deploymentId, gatewayId, orgId)
+	actor, _ := middleware.GetUsernameFromContext(c)
+	deployment, err := h.deploymentService.RestoreDeploymentByHandle(apiId, deploymentId, gatewayId, orgId, actor)
 	if err != nil {
 		if errors.Is(err, constants.ErrAPINotFound) {
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
@@ -280,7 +283,8 @@ func (h *DeploymentHandler) DeleteDeployment(c *gin.Context) {
 		return
 	}
 
-	err := h.deploymentService.DeleteDeploymentByHandle(apiId, deploymentId, orgId)
+	actor, _ := middleware.GetUsernameFromContext(c)
+	err := h.deploymentService.DeleteDeploymentByHandle(apiId, deploymentId, orgId, actor)
 	if err != nil {
 		if errors.Is(err, constants.ErrAPINotFound) {
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",

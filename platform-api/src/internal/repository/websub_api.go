@@ -59,11 +59,6 @@ func (r *WebSubAPIRepo) Create(a *model.WebSubAPI) error {
 		return fmt.Errorf("failed to serialize configuration: %w", err)
 	}
 
-	transportJSON, err := json.Marshal(a.Transport)
-	if err != nil {
-		return fmt.Errorf("failed to marshal transport: %w", err)
-	}
-
 	tx, err := r.db.Begin()
 	if err != nil {
 		return err
@@ -73,10 +68,7 @@ func (r *WebSubAPIRepo) Create(a *model.WebSubAPI) error {
 	// Insert into artifacts table first
 	if err := r.artifactRepo.Create(tx, &model.Artifact{
 		UUID:             a.UUID,
-		Handle:           a.Handle,
-		Name:             a.Name,
-		Version:          a.Version,
-		Kind:             constants.WebSubApi,
+		Type:             constants.WebSubApi,
 		OrganizationUUID: a.OrganizationUUID,
 	}); err != nil {
 		return fmt.Errorf("failed to create artifact: %w", err)
@@ -85,12 +77,12 @@ func (r *WebSubAPIRepo) Create(a *model.WebSubAPI) error {
 	// Insert into websub_apis table
 	query := `
 		INSERT INTO websub_apis (
-			uuid, project_uuid, description, created_by, lifecycle_status, transport, configuration
+			uuid, organization_uuid, handle, name, version, project_uuid, description, created_by, lifecycle_status, configuration, created_at, updated_at
 		)
-		VALUES (?, ?, ?, ?, ?, ?, ?)`
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 	_, err = tx.Exec(r.db.Rebind(query),
-		a.UUID, a.ProjectUUID, a.Description, a.CreatedBy, a.LifeCycleStatus,
-		string(transportJSON), configurationJSON,
+		a.UUID, a.OrganizationUUID, a.Handle, a.Name, a.Version, a.ProjectUUID, a.Description, a.CreatedBy, a.LifeCycleStatus,
+		configurationJSON, a.CreatedAt, a.UpdatedAt,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to create WebSub API: %w", err)
@@ -106,12 +98,11 @@ func (r *WebSubAPIRepo) Create(a *model.WebSubAPI) error {
 func (r *WebSubAPIRepo) GetByHandle(handle, orgUUID string) (*model.WebSubAPI, error) {
 	query := `
 		SELECT
-			a.uuid, a.handle, a.name, a.version, a.organization_uuid, a.created_at, a.updated_at,
-			p.project_uuid, p.description, p.created_by, p.lifecycle_status, p.transport, p.configuration
-		FROM artifacts a
-		JOIN websub_apis p ON a.uuid = p.uuid
-		WHERE a.handle = ? AND a.organization_uuid = ? AND a.kind = ?`
-	row := r.db.QueryRow(r.db.Rebind(query), handle, orgUUID, constants.WebSubApi)
+			uuid, handle, name, version, organization_uuid, created_at, updated_at,
+			project_uuid, description, created_by, updated_by, lifecycle_status, configuration
+		FROM websub_apis
+		WHERE handle = ? AND organization_uuid = ?`
+	row := r.db.QueryRow(r.db.Rebind(query), handle, orgUUID)
 	return r.scanWebSubAPI(row)
 }
 
@@ -119,12 +110,11 @@ func (r *WebSubAPIRepo) GetByHandle(handle, orgUUID string) (*model.WebSubAPI, e
 func (r *WebSubAPIRepo) GetByUUID(uuid, orgUUID string) (*model.WebSubAPI, error) {
 	query := `
 		SELECT
-			a.uuid, a.handle, a.name, a.version, a.organization_uuid, a.created_at, a.updated_at,
-			p.project_uuid, p.description, p.created_by, p.lifecycle_status, p.transport, p.configuration
-		FROM artifacts a
-		JOIN websub_apis p ON a.uuid = p.uuid
-		WHERE a.uuid = ? AND a.organization_uuid = ? AND a.kind = ?`
-	row := r.db.QueryRow(r.db.Rebind(query), uuid, orgUUID, constants.WebSubApi)
+			uuid, handle, name, version, organization_uuid, created_at, updated_at,
+			project_uuid, description, created_by, updated_by, lifecycle_status, configuration
+		FROM websub_apis
+		WHERE uuid = ? AND organization_uuid = ?`
+	row := r.db.QueryRow(r.db.Rebind(query), uuid, orgUUID)
 	return r.scanWebSubAPI(row)
 }
 
@@ -137,25 +127,23 @@ func (r *WebSubAPIRepo) List(orgUUID, projectUUID string, limit, offset int) ([]
 	if projectUUID != "" {
 		query = `
 			SELECT
-				a.uuid, a.handle, a.name, a.version, a.organization_uuid, a.created_at, a.updated_at,
-				p.project_uuid, p.description, p.created_by, p.lifecycle_status, p.transport, p.configuration
-			FROM artifacts a
-			JOIN websub_apis p ON a.uuid = p.uuid
-			WHERE a.organization_uuid = ? AND a.kind = ? AND p.project_uuid = ?
-			ORDER BY a.created_at DESC
+				uuid, handle, name, version, organization_uuid, created_at, updated_at,
+				project_uuid, description, created_by, updated_by, lifecycle_status, configuration
+			FROM websub_apis
+			WHERE organization_uuid = ? AND project_uuid = ?
+			ORDER BY created_at DESC
 			` + pageClause
-		args = append([]interface{}{orgUUID, constants.WebSubApi, projectUUID}, pageArgs...)
+		args = append([]interface{}{orgUUID, projectUUID}, pageArgs...)
 	} else {
 		query = `
 			SELECT
-				a.uuid, a.handle, a.name, a.version, a.organization_uuid, a.created_at, a.updated_at,
-				p.project_uuid, p.description, p.created_by, p.lifecycle_status, p.transport, p.configuration
-			FROM artifacts a
-			JOIN websub_apis p ON a.uuid = p.uuid
-			WHERE a.organization_uuid = ? AND a.kind = ?
-			ORDER BY a.created_at DESC
+				uuid, handle, name, version, organization_uuid, created_at, updated_at,
+				project_uuid, description, created_by, updated_by, lifecycle_status, configuration
+			FROM websub_apis
+			WHERE organization_uuid = ?
+			ORDER BY created_at DESC
 			` + pageClause
-		args = append([]interface{}{orgUUID, constants.WebSubApi}, pageArgs...)
+		args = append([]interface{}{orgUUID}, pageArgs...)
 	}
 
 	rows, err := r.db.Query(r.db.Rebind(query), args...)
@@ -184,10 +172,9 @@ func (r *WebSubAPIRepo) Count(orgUUID string) (int, error) {
 func (r *WebSubAPIRepo) CountByProject(orgUUID, projectUUID string) (int, error) {
 	var count int
 	query := `
-		SELECT COUNT(*) FROM artifacts a
-		JOIN websub_apis p ON a.uuid = p.uuid
-		WHERE a.organization_uuid = ? AND a.kind = ? AND p.project_uuid = ?`
-	if err := r.db.QueryRow(r.db.Rebind(query), orgUUID, constants.WebSubApi, projectUUID).Scan(&count); err != nil {
+		SELECT COUNT(*) FROM websub_apis
+		WHERE organization_uuid = ? AND project_uuid = ?`
+	if err := r.db.QueryRow(r.db.Rebind(query), orgUUID, projectUUID).Scan(&count); err != nil {
 		return 0, err
 	}
 	return count, nil
@@ -203,11 +190,6 @@ func (r *WebSubAPIRepo) Update(a *model.WebSubAPI) error {
 		return fmt.Errorf("failed to serialize configuration: %w", err)
 	}
 
-	transportJSON, err := json.Marshal(a.Transport)
-	if err != nil {
-		return fmt.Errorf("failed to marshal transport: %w", err)
-	}
-
 	tx, err := r.db.Begin()
 	if err != nil {
 		return err
@@ -217,9 +199,9 @@ func (r *WebSubAPIRepo) Update(a *model.WebSubAPI) error {
 	// Get the UUID from handle
 	var apiUUID string
 	query := `
-		SELECT uuid FROM artifacts
-		WHERE handle = ? AND organization_uuid = ? AND kind = ?`
-	err = tx.QueryRow(r.db.Rebind(query), a.Handle, a.OrganizationUUID, constants.WebSubApi).Scan(&apiUUID)
+		SELECT uuid FROM websub_apis
+		WHERE handle = ? AND organization_uuid = ?`
+	err = tx.QueryRow(r.db.Rebind(query), a.Handle, a.OrganizationUUID).Scan(&apiUUID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return sql.ErrNoRows
@@ -227,24 +209,13 @@ func (r *WebSubAPIRepo) Update(a *model.WebSubAPI) error {
 		return err
 	}
 
-	// Update artifacts table
-	if err := r.artifactRepo.Update(tx, &model.Artifact{
-		UUID:             apiUUID,
-		Name:             a.Name,
-		Version:          a.Version,
-		OrganizationUUID: a.OrganizationUUID,
-		UpdatedAt:        now,
-	}); err != nil {
-		return fmt.Errorf("failed to update artifact: %w", err)
-	}
-
-	// Update websub_apis table
+	// Update websub_apis table (name/version/updated_at now live here)
 	query = `
 		UPDATE websub_apis
-		SET description = ?, lifecycle_status = ?, transport = ?, configuration = ?
+		SET name = ?, version = ?, description = ?, lifecycle_status = ?, configuration = ?, updated_by = ?, updated_at = ?
 		WHERE uuid = ?`
 	result, err := tx.Exec(r.db.Rebind(query),
-		a.Description, a.LifeCycleStatus, string(transportJSON), configurationJSON,
+		a.Name, a.Version, a.Description, a.LifeCycleStatus, configurationJSON, a.UpdatedBy, now,
 		apiUUID,
 	)
 	if err != nil {
@@ -274,9 +245,9 @@ func (r *WebSubAPIRepo) Delete(handle, orgUUID string) error {
 	// Get the UUID from handle
 	var apiUUID string
 	query := `
-		SELECT uuid FROM artifacts
-		WHERE handle = ? AND organization_uuid = ? AND kind = ?`
-	err = tx.QueryRow(r.db.Rebind(query), handle, orgUUID, constants.WebSubApi).Scan(&apiUUID)
+		SELECT uuid FROM websub_apis
+		WHERE handle = ? AND organization_uuid = ?`
+	err = tx.QueryRow(r.db.Rebind(query), handle, orgUUID).Scan(&apiUUID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return sql.ErrNoRows
@@ -308,21 +279,20 @@ func (r *WebSubAPIRepo) Exists(handle, orgUUID string) (bool, error) {
 // scanWebSubAPI scans a single Row into a WebSubAPI
 func (r *WebSubAPIRepo) scanWebSubAPI(row *sql.Row) (*model.WebSubAPI, error) {
 	var a model.WebSubAPI
-	var configurationJSON sql.NullString
-	var transportJSON sql.NullString
+	var createdBy, updatedBy sql.NullString
+	var configurationJSON []byte
 	if err := row.Scan(
 		&a.UUID, &a.Handle, &a.Name, &a.Version, &a.OrganizationUUID, &a.CreatedAt, &a.UpdatedAt,
-		&a.ProjectUUID, &a.Description, &a.CreatedBy, &a.LifeCycleStatus, &transportJSON, &configurationJSON,
+		&a.ProjectUUID, &a.Description, &createdBy, &updatedBy, &a.LifeCycleStatus, &configurationJSON,
 	); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
 		}
 		return nil, err
 	}
-	if transportJSON.Valid && transportJSON.String != "" {
-		json.Unmarshal([]byte(transportJSON.String), &a.Transport)
-	}
-	if configurationJSON.Valid && configurationJSON.String != "" {
+	a.CreatedBy = createdBy.String
+	a.UpdatedBy = updatedBy.String
+	if len(configurationJSON) > 0 {
 		if config, err := deserializeWebSubAPIConfiguration(configurationJSON); err != nil {
 			return nil, fmt.Errorf("unmarshal configuration for WebSub API %s: %w", a.Handle, err)
 		} else if config != nil {
@@ -335,18 +305,17 @@ func (r *WebSubAPIRepo) scanWebSubAPI(row *sql.Row) (*model.WebSubAPI, error) {
 // scanWebSubAPIFromRows scans a Rows row into a WebSubAPI
 func (r *WebSubAPIRepo) scanWebSubAPIFromRows(rows *sql.Rows) (*model.WebSubAPI, error) {
 	var a model.WebSubAPI
-	var configurationJSON sql.NullString
-	var transportJSON sql.NullString
+	var createdBy, updatedBy sql.NullString
+	var configurationJSON []byte
 	if err := rows.Scan(
 		&a.UUID, &a.Handle, &a.Name, &a.Version, &a.OrganizationUUID, &a.CreatedAt, &a.UpdatedAt,
-		&a.ProjectUUID, &a.Description, &a.CreatedBy, &a.LifeCycleStatus, &transportJSON, &configurationJSON,
+		&a.ProjectUUID, &a.Description, &createdBy, &updatedBy, &a.LifeCycleStatus, &configurationJSON,
 	); err != nil {
 		return nil, err
 	}
-	if transportJSON.Valid && transportJSON.String != "" {
-		json.Unmarshal([]byte(transportJSON.String), &a.Transport)
-	}
-	if configurationJSON.Valid && configurationJSON.String != "" {
+	a.CreatedBy = createdBy.String
+	a.UpdatedBy = updatedBy.String
+	if len(configurationJSON) > 0 {
 		if config, err := deserializeWebSubAPIConfiguration(configurationJSON); err != nil {
 			return nil, fmt.Errorf("unmarshal configuration for WebSub API %s: %w", a.Handle, err)
 		} else if config != nil {
@@ -356,20 +325,20 @@ func (r *WebSubAPIRepo) scanWebSubAPIFromRows(rows *sql.Rows) (*model.WebSubAPI,
 	return &a, nil
 }
 
-func serializeWebSubAPIConfiguration(config model.WebSubAPIConfiguration) (string, error) {
+func serializeWebSubAPIConfiguration(config model.WebSubAPIConfiguration) ([]byte, error) {
 	configJSON, err := json.Marshal(config)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	return string(configJSON), nil
+	return configJSON, nil
 }
 
-func deserializeWebSubAPIConfiguration(configJSON sql.NullString) (*model.WebSubAPIConfiguration, error) {
-	if !configJSON.Valid || configJSON.String == "" {
+func deserializeWebSubAPIConfiguration(configJSON []byte) (*model.WebSubAPIConfiguration, error) {
+	if len(configJSON) == 0 {
 		return nil, fmt.Errorf("null configuration")
 	}
 	var config model.WebSubAPIConfiguration
-	if err := json.Unmarshal([]byte(configJSON.String), &config); err != nil {
+	if err := json.Unmarshal(configJSON, &config); err != nil {
 		return nil, err
 	}
 	return &config, nil

@@ -77,13 +77,15 @@ type GatewayService struct {
 	slogger                             *slog.Logger
 	enableVersionVerification           bool
 	enableFunctionalityTypeVerification bool
+	auditRepo                           repository.AuditRepository
 }
 
 // NewGatewayService creates a new gateway service
 func NewGatewayService(gatewayRepo repository.GatewayRepository, orgRepo repository.OrganizationRepository,
 	apiRepo repository.APIRepository, customPolicyRepo repository.CustomPolicyRepository,
 	gatewayEventsService *GatewayEventsService, slogger *slog.Logger,
-	enableVersionVerification bool, enableFunctionalityTypeVerification bool) *GatewayService {
+	enableVersionVerification bool, enableFunctionalityTypeVerification bool,
+	auditRepo repository.AuditRepository) *GatewayService {
 	return &GatewayService{
 		gatewayRepo:                         gatewayRepo,
 		orgRepo:                             orgRepo,
@@ -93,6 +95,7 @@ func NewGatewayService(gatewayRepo repository.GatewayRepository, orgRepo reposit
 		slogger:                             slogger,
 		enableVersionVerification:           enableVersionVerification,
 		enableFunctionalityTypeVerification: enableFunctionalityTypeVerification,
+		auditRepo:                           auditRepo,
 	}
 }
 
@@ -229,6 +232,14 @@ func (s *GatewayService) ReceiveGatewayManifest(orgID, gatewayID, gatewayVersion
 
 	entries := make([]GatewayPolicyDefinition, 0, len(policies))
 	for _, p := range policies {
+		if !constants.ValidPolicyManagedBy[p.ManagedBy] {
+			s.slogger.Warn("Skipping policy with unknown managed_by value",
+				slog.String("gateway_id", gatewayID),
+				slog.String("policy_name", p.Name),
+				slog.String("managed_by", p.ManagedBy),
+			)
+			continue
+		}
 		entry := GatewayPolicyDefinition{
 			Name:        strings.ToLower(p.Name),
 			Version:     p.Version,
@@ -394,6 +405,8 @@ func (s *GatewayService) SyncCustomPolicy(gatewayID, orgID, policyName, version 
 		Version:          version,
 		Description:      found.Description,
 		PolicyDefinition: policyDefJSON,
+		CreatedBy:        gatewayID,
+		UpdatedBy:        gatewayID,
 	}
 
 	if sameMajorVersionedPolicy != nil {
@@ -447,7 +460,13 @@ func (s *GatewayService) SyncCustomPolicy(gatewayID, orgID, policyName, version 
 
 	persisted, err := s.customPolicyRepo.GetCustomPolicyByNameAndVersion(orgID, policyName, version)
 	if err != nil || persisted == nil {
+		if s.auditRepo != nil {
+			_ = s.auditRepo.Record("CREATE", policy.UUID, "custom_policy", orgID, "")
+		}
 		return policy, nil
+	}
+	if s.auditRepo != nil {
+		_ = s.auditRepo.Record("CREATE", persisted.UUID, "custom_policy", orgID, "")
 	}
 	return persisted, nil
 }
@@ -485,7 +504,13 @@ func (s *GatewayService) DeleteCustomPolicyByUUID(orgID, policyUUID, version str
 		return constants.ErrCustomPolicyVersionMismatch
 	}
 
-	return s.customPolicyRepo.DeleteCustomPolicyIfUnused(orgID, policyUUID)
+	if err := s.customPolicyRepo.DeleteCustomPolicyIfUnused(orgID, policyUUID); err != nil {
+		return err
+	}
+	if s.auditRepo != nil {
+		_ = s.auditRepo.Record("DELETE", policyUUID, "custom_policy", orgID, "")
+	}
+	return nil
 }
 
 // defaultGatewayVersion is the value stored when a client registers a gateway without a version.
@@ -493,7 +518,7 @@ const defaultGatewayVersion = "1.0"
 
 // RegisterGateway registers a new gateway with organization validation
 func (s *GatewayService) RegisterGateway(orgID, name, displayName, description, vhost string, isCritical bool,
-	functionalityType, version string, properties map[string]interface{}) (*api.GatewayResponse, error) {
+	functionalityType, version, createdBy string, properties map[string]interface{}) (*api.GatewayResponse, error) {
 	// 1. Validate inputs
 	if err := s.validateGatewayInput(orgID, name, displayName, vhost, functionalityType); err != nil {
 		return nil, err
@@ -523,13 +548,13 @@ func (s *GatewayService) RegisterGateway(orgID, name, displayName, description, 
 		return nil, errors.New("organization not found")
 	}
 
-	// 3. Check gateway name uniqueness within organization
-	existing, err := s.gatewayRepo.GetByNameAndOrgID(name, orgID)
+	// 3. Check gateway handle uniqueness within organization
+	existing, err := s.gatewayRepo.GetByHandleAndOrgID(name, orgID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to check gateway name uniqueness: %w", err)
+		return nil, fmt.Errorf("failed to check gateway handle uniqueness: %w", err)
 	}
 	if existing != nil {
-		return nil, fmt.Errorf("gateway with name '%s' already exists in this organization", name)
+		return nil, fmt.Errorf("gateway with handle '%s' already exists in this organization", name)
 	}
 
 	// 4. Generate UUID for gateway
@@ -542,14 +567,16 @@ func (s *GatewayService) RegisterGateway(orgID, name, displayName, description, 
 	gateway := &model.Gateway{
 		ID:                gatewayId,
 		OrganizationID:    orgID,
-		Name:              name,
-		DisplayName:       displayName,
+		Handle:            name,
+		Name:              displayName,
 		Description:       description,
 		Properties:        properties,
 		Vhost:             vhost,
 		IsCritical:        isCritical,
 		FunctionalityType: functionalityType,
 		Version:           version,
+		CreatedBy:         createdBy,
+		UpdatedBy:         createdBy,
 		CreatedAt:         time.Now(),
 		UpdatedAt:         time.Now(),
 	}
@@ -557,6 +584,10 @@ func (s *GatewayService) RegisterGateway(orgID, name, displayName, description, 
 	// 6. Insert gateway
 	if err := s.gatewayRepo.Create(gateway); err != nil {
 		return nil, fmt.Errorf("failed to create gateway: %w", err)
+	}
+
+	if s.auditRepo != nil {
+		_ = s.auditRepo.Record("CREATE", gateway.ID, "gateway", orgID, createdBy)
 	}
 
 	// 7. Return GatewayResponse
@@ -623,7 +654,7 @@ func (s *GatewayService) GetGateway(gatewayId, orgId string) (*api.GatewayRespon
 }
 
 // UpdateGateway updates gateway details
-func (s *GatewayService) UpdateGateway(gatewayId, orgId string, description, displayName *string,
+func (s *GatewayService) UpdateGateway(gatewayId, orgId, updatedBy string, description, displayName *string,
 	isCritical *bool, properties *map[string]interface{}) (*api.GatewayResponse, error) {
 	// Get existing gateway
 	gateway, err := s.gatewayRepo.GetByUUID(gatewayId)
@@ -641,7 +672,7 @@ func (s *GatewayService) UpdateGateway(gatewayId, orgId string, description, dis
 		gateway.Description = *description
 	}
 	if displayName != nil {
-		gateway.DisplayName = *displayName
+		gateway.Name = *displayName
 	}
 	if isCritical != nil {
 		gateway.IsCritical = *isCritical
@@ -649,6 +680,7 @@ func (s *GatewayService) UpdateGateway(gatewayId, orgId string, description, dis
 	if properties != nil {
 		gateway.Properties = *properties
 	}
+	gateway.UpdatedBy = updatedBy
 	gateway.UpdatedAt = time.Now()
 
 	err = s.gatewayRepo.UpdateGateway(gateway)
@@ -656,11 +688,15 @@ func (s *GatewayService) UpdateGateway(gatewayId, orgId string, description, dis
 		return nil, err
 	}
 
+	if s.auditRepo != nil {
+		_ = s.auditRepo.Record("UPDATE", gateway.ID, "gateway", orgId, updatedBy)
+	}
+
 	return gatewayModelToAPI(gateway), nil
 }
 
 // DeleteGateway deletes a gateway and all associated tokens (CASCADE)
-func (s *GatewayService) DeleteGateway(gatewayID, orgID string) error {
+func (s *GatewayService) DeleteGateway(gatewayID, orgID, deletedBy string) error {
 	// Validate UUID format
 	if _, err := uuid.Parse(gatewayID); err != nil {
 		return errors.New("invalid UUID format")
@@ -683,6 +719,10 @@ func (s *GatewayService) DeleteGateway(gatewayID, orgID string) error {
 	err = s.gatewayRepo.Delete(gatewayID, orgID)
 	if err != nil {
 		return err
+	}
+
+	if s.auditRepo != nil {
+		_ = s.auditRepo.Record("DELETE", gatewayID, "gateway", orgID, deletedBy)
 	}
 
 	return nil
@@ -755,7 +795,7 @@ func (s *GatewayService) ListTokens(gatewayId, orgId string) ([]api.TokenInfoRes
 }
 
 // RotateToken generates a new token for a gateway (max 2 active tokens)
-func (s *GatewayService) RotateToken(gatewayId, orgId string) (*api.TokenRotationResponse, error) {
+func (s *GatewayService) RotateToken(gatewayId, orgId, createdBy string) (*api.TokenRotationResponse, error) {
 	// 1. Validate gateway exists
 	gateway, err := s.gatewayRepo.GetByUUID(gatewayId)
 	if err != nil {
@@ -798,7 +838,8 @@ func (s *GatewayService) RotateToken(gatewayId, orgId string) (*api.TokenRotatio
 		GatewayID: gatewayId,
 		TokenHash: tokenHash,
 		Salt:      "",
-		Status:    "active",
+		Status:    constants.GatewayTokenStatusActive,
+		CreatedBy: createdBy,
 		CreatedAt: time.Now(),
 		RevokedAt: nil,
 	}
@@ -813,7 +854,7 @@ func (s *GatewayService) RotateToken(gatewayId, orgId string) (*api.TokenRotatio
 }
 
 // RevokeToken revokes a specific token for a gateway
-func (s *GatewayService) RevokeToken(gatewayId, tokenId, orgId string) error {
+func (s *GatewayService) RevokeToken(gatewayId, tokenId, orgId, revokedBy string) error {
 	gateway, err := s.gatewayRepo.GetByUUID(gatewayId)
 	if err != nil {
 		return fmt.Errorf("failed to query gateway: %w", err)
@@ -836,7 +877,7 @@ func (s *GatewayService) RevokeToken(gatewayId, tokenId, orgId string) error {
 		return errors.New("token not found")
 	}
 
-	if err := s.gatewayRepo.RevokeToken(tokenId); err != nil {
+	if err := s.gatewayRepo.RevokeToken(tokenId, revokedBy); err != nil {
 		return fmt.Errorf("failed to revoke token: %w", err)
 	}
 
@@ -1062,7 +1103,7 @@ func gatewayModelToAPI(gateway *model.Gateway) *api.GatewayResponse {
 		Id:                &gatewayID,
 		OrganizationId:    &orgID,
 		Name:              &gateway.Name,
-		DisplayName:       &gateway.DisplayName,
+		DisplayName:       &gateway.Handle,
 		Description:       utils.StringPtrIfNotEmpty(gateway.Description),
 		Properties:        utils.MapPtrIfNotEmpty(gateway.Properties),
 		Vhost:             &gateway.Vhost,

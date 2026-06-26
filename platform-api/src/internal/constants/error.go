@@ -101,43 +101,12 @@ var (
 )
 
 var (
-	ErrApiPortalSync       = errors.New("failed to synchronize with dev portal")
 	ErrArtifactNotFound    = errors.New("artifact not found")
 	ErrArtifactExists      = errors.New("artifact already exists")
 	ErrArtifactInvalidKind = errors.New("invalid artifact kind")
 )
 
 var (
-	ErrDevPortalNotFound                = errors.New("devportal not found")
-	ErrDevPortalAlreadyExist            = errors.New("devportal already exists in organization")
-	ErrDevPortalNameRequired            = errors.New("devportal name is required")
-	ErrDevPortalIdentifierRequired      = errors.New("devportal identifier is required")
-	ErrDevPortalAPIUrlRequired          = errors.New("devportal API URL is required")
-	ErrDevPortalHostnameRequired        = errors.New("devportal hostname is required")
-	ErrDevPortalAPIKeyRequired          = errors.New("devportal API key is required")
-	ErrDevPortalHeaderKeyNameRequired   = errors.New("header key name is required for header transmission mode")
-	ErrDevPortalIdentifierExists        = errors.New("devportal identifier already exists in organization")
-	ErrDevPortalHostnameExists          = errors.New("devportal hostname already exists in organization")
-	ErrDevPortalAPIUrlExists            = errors.New("devportal API URL already exists in organization")
-	ErrDevPortalDefaultAlreadyExists    = errors.New("default devportal already exists for organization")
-	ErrDevPortalCannotDeleteDefault     = errors.New("cannot delete default devportal")
-	ErrDevPortalCannotDeactivateDefault = errors.New("cannot deactivate default devportal")
-	ErrDevPortalBackendUnreachable      = errors.New("devportal backend is unreachable")
-	ErrDevPortalSyncFailed              = errors.New("failed to sync organization to devportal")
-	ErrDevPortalAuthenticationFailed    = errors.New("devportal authentication failed")
-	ErrDevPortalForbidden               = errors.New("devportal access forbidden")
-	ErrDevPortalConnectivityFailed      = errors.New("devportal connectivity check failed")
-	ErrDevPortalInvalidVisibility       = errors.New("devportal visibility must be 'public' or 'private'")
-	ErrDevPortalOrganizationConflict    = errors.New("organization conflict in devportal: an organization with the same organization ID exists but differs from the one being synced")
-
-	// API Publication errors
-	ErrAPIPublicationNotFound = errors.New("api publication not found")
-	ErrAPIAlreadyPublished    = errors.New("api is already published to devportal")
-
-	// API Publication Compensation errors
-	ErrAPIPublicationSaveFailed = errors.New("api publication database save failed after devportal success")
-	ErrAPIPublicationSplitBrain = errors.New("critical split-brain: api published to devportal but local operations failed and compensation failed")
-
 	// API Project Import errors
 	ErrAPIProjectNotFound   = errors.New("api project not found")
 	ErrMalformedAPIProject  = errors.New("malformed api project")
@@ -214,6 +183,7 @@ var (
 	ErrSubscriptionPlanNotFound           = errors.New("subscription plan not found")
 	ErrSubscriptionPlanNotFoundOrInactive = errors.New("subscription plan not found or not active")
 	ErrSubscriptionPlanAlreadyExists      = errors.New("subscription plan with this name already exists for the organization")
+	ErrInvalidThrottleLimitUnit           = errors.New("invalid throttle limit unit: must be one of SECOND, MINUTE, HOUR, DAY, MONTH, YEAR")
 )
 
 var (
@@ -221,3 +191,4 @@ var (
 	ErrMissingAPIKey   = errors.New("API key is required")
 	ErrInvalidAPIToken = errors.New("invalid API token")
 )
+

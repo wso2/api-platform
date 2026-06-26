@@ -1,14 +1,31 @@
+{{!--
+ * Copyright (c) 2026, WSO2 LLC. (http://www.wso2.com) All Rights Reserved.
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied. See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+--}}
 {{#if subscriptionPlans.length}}
-<section id="subscriptionPlans" class="aov-plans-wrap">
-
-  <h2 class="aov-plans-title">Subscription plans</h2>
+<section id="subscriptionPlans" class="aov-plans-wrap mcp-plans-wrap">
+  <h2 class="aov-plans-title" style="margin-bottom:0.875rem;">Subscription plans</h2>
 
   {{#each subscriptionPlans}}
   <div class="aov-plan-card subscription-card{{#if (isCurrentPlan planName @root.subscriptions)}} aov-plan-card--subscribed{{/if}}"
     id="subscriptionCard-{{planID}}"
     data-policy-name="{{planName}}">
     <div class="aov-plan-ribbon" aria-hidden="true">
-      <div class="aov-plan-ribbon-label api-ribbon-label">SUBSCRIBED</div>
+      <div class="aov-plan-ribbon-label mcp-ribbon-label">SUBSCRIBED</div>
     </div>
     <div class="aov-plan-card-head">
       <div class="aov-plan-name-row">
@@ -18,7 +35,7 @@
         <span class="aov-plan-name">{{#if displayName}}{{displayName}}{{else}}{{planName}}{{/if}}</span>
       </div>
       {{#unless (isCurrentPlan planName @root.subscriptions)}}
-      <span class="aov-recommended-badge" style="display:none;">RECOMMENDED</span>
+      <span class="aov-recommended-badge mcp-recommended-badge" style="display:none;">RECOMMENDED</span>
       {{/unless}}
     </div>
     <div class="aov-plan-limit">
@@ -29,11 +46,8 @@
       {{#if ../isAuthenticated}}
         {{#if (isCurrentPlan planName @root.subscriptions)}}
         <button type="button"
-          class="dp-btn dp-btn--outline dp-btn--block mcp-view-sub-btn api-view-sub-btn"
-          data-org-id="{{@root.orgID}}"
-          data-api-id="{{../apiMetadata.apiID}}"
-          data-policy-name="{{planName}}"
-          data-display-name="{{displayName}}">
+          class="dp-btn dp-btn--outline dp-btn--block mcp-view-sub-btn"
+          data-policy-name="{{planName}}">
           <i class="bi bi-eye"></i> View subscription
         </button>
         {{else}}
@@ -43,6 +57,8 @@
           data-api-id="{{../apiMetadata.apiID}}"
           data-plan-id="{{planID}}"
           data-plan-name="{{planName}}"
+          data-policy-id="{{planID}}"
+          data-policy-name="{{planName}}"
           data-display-name="{{displayName}}"
           onclick="handlePlanSubscription(this)"
           {{#if @root.isReadOnlyMode}}disabled{{/if}}><span class="aov-plan-spinner"></span>Subscribe</button>
@@ -61,28 +77,27 @@
   </div>
   {{/each}}
 
-  <script id="existing-subs-data" type="application/json">{{{json subscriptions}}}</script>
+  <script id="mcp-existing-subs-data" type="application/json">{{{json subscriptions}}}</script>
   <script>
     (function () {
       window.__subscriptionOrgID = window.__subscriptionOrgID || "{{@root.orgID}}";
 
-      var raw = document.getElementById('existing-subs-data').textContent || '[]';
+      var raw = document.getElementById('mcp-existing-subs-data').textContent || '[]';
       try {
         var parsed = JSON.parse(raw);
         window.existingSubscriptions = parsed.map(function (s) {
-          return { subscriptionId: s.subscriptionId, subscriptionPlanName: s.subscriptionPlanName, policyName: s.policyName, status: s.status };
+          return { subscriptionId: s.subscriptionId, subscriptionPlanName: s.subscriptionPlanName, status: s.status };
         });
         window.__tokenMeta = window.__tokenMeta || {};
         parsed.forEach(function (s) {
-          window.__tokenMeta[s.subscriptionId] = { maskedToken: s.maskedToken, subscriptionPlanName: s.subscriptionPlanName, policyName: s.policyName, status: s.status };
+          window.__tokenMeta[s.subscriptionId] = { maskedToken: s.maskedToken, subscriptionPlanName: s.subscriptionPlanName, status: s.status };
         });
       } catch (e) {
         window.existingSubscriptions = [];
       }
 
-      /* ── Token modal close ── */
       function closeTokenModal() {
-        var modal = document.getElementById('apiTokenModal');
+        var modal = document.getElementById('mcpTokenModal');
         if (!modal) return;
         modal.style.display = 'none';
         var resolve = modal._resolvePromise;
@@ -91,22 +106,6 @@
           window.__subscriptionChanged = false;
           window.location.reload();
         }
-      }
-
-      /* ── Fetch full token on demand ── */
-      async function fetchTokenIfNeeded(subscriptionId) {
-        var meta = (window.__tokenMeta || {})[subscriptionId];
-        if (meta && meta._fullToken) return meta._fullToken;
-        try {
-          var resp = await fetch(devportalApi.org(window.__subscriptionOrgID, '/subscriptions/' + encodeURIComponent(subscriptionId)), {
-            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() },
-          });
-          if (!resp.ok) return null;
-          var data = await resp.json();
-          var token = data.subscriptionToken || null;
-          if (token && meta) meta._fullToken = token;
-          return token;
-        } catch (e) { return null; }
       }
 
       /* ── Manage modal state ── */
@@ -118,42 +117,43 @@
         var subs = window.existingSubscriptions || [];
         var sub = null;
         for (var i = 0; i < subs.length; i++) {
-          if ((subs[i].policyName || subs[i].subscriptionPlanName) === policyName) { sub = subs[i]; break; }
+          if (subs[i].subscriptionPlanName === policyName) { sub = subs[i]; break; }
         }
         if (!sub) return;
         _sub = sub;
         _revealed = false;
 
-        document.getElementById('apiManagePlanName').textContent = policyName;
+        document.getElementById('mcpManagePlanName').textContent = policyName;
         updateManageStatus(sub.status);
-        var meta = (window.__tokenMeta || {})[sub.subscriptionId];
-        document.getElementById('apiManageTokenVal').textContent = meta && meta.maskedToken ? meta.maskedToken : '•'.repeat(28);
-        var revealIcon = document.getElementById('apiManageRevealIcon');
+        document.getElementById('mcpManageTokenVal').textContent = '•'.repeat(28);
+        var revealIcon = document.getElementById('mcpManageRevealIcon');
         if (revealIcon) revealIcon.className = 'bi bi-eye';
         resetManageCopyBtn();
-        document.getElementById('apiManageModal').style.display = 'flex';
+        document.getElementById('mcpManageModal').style.display = 'flex';
       }
 
       function closeManage() {
-        document.getElementById('apiManageModal').style.display = 'none';
+        document.getElementById('mcpManageModal').style.display = 'none';
         _sub = null;
         _revealed = false;
       }
 
       function updateManageStatus(status) {
         var isSusp = status === 'INACTIVE';
-        var badge = document.getElementById('apiManageStatusBadge');
+        var badge = document.getElementById('mcpManageStatusBadge');
         badge.textContent = isSusp ? 'Suspended' : 'Active';
         badge.className = 'mc-manage-status-badge ' + (isSusp ? 'mc-manage-status-badge--suspended' : 'mc-manage-status-badge--active');
 
-        var suspendBtn = document.getElementById('apiManageSuspendBtn');
-        suspendBtn.querySelector('i').className = 'bi bi-' + (isSusp ? 'play-circle' : 'pause-circle');
-        suspendBtn.querySelector('.api-suspend-label').textContent = isSusp ? 'Resume' : 'Suspend';
+        var suspendBtn = document.getElementById('mcpManageSuspendBtn');
+        var suspendIcon = suspendBtn.querySelector('i');
+        var suspendLabel = suspendBtn.querySelector('.mc-suspend-label');
+        suspendIcon.className = 'bi bi-' + (isSusp ? 'play-circle' : 'pause-circle');
+        suspendLabel.textContent = isSusp ? 'Resume' : 'Suspend';
         suspendBtn.className = 'dp-btn mc-manage-action-btn ' + (isSusp ? 'mc-manage-action-btn--resume' : 'mc-manage-action-btn--suspend');
       }
 
       function resetManageCopyBtn() {
-        var btn = document.getElementById('apiManageCopyBtn');
+        var btn = document.getElementById('mcpManageCopyBtn');
         if (btn) { btn.innerHTML = '<i class="bi bi-copy"></i>'; btn.className = 'mc-token-copy-btn'; }
       }
 
@@ -161,17 +161,16 @@
         if (!_sub) return;
         if (_revealed) {
           _revealed = false;
-          var meta = (window.__tokenMeta || {})[_sub.subscriptionId];
-          document.getElementById('apiManageTokenVal').textContent = meta && meta.maskedToken ? meta.maskedToken : '•'.repeat(28);
-          var ri = document.getElementById('apiManageRevealIcon');
+          document.getElementById('mcpManageTokenVal').textContent = '•'.repeat(28);
+          var ri = document.getElementById('mcpManageRevealIcon');
           if (ri) ri.className = 'bi bi-eye';
           return;
         }
         var token = await fetchTokenIfNeeded(_sub.subscriptionId);
         if (!token) return;
         _revealed = true;
-        document.getElementById('apiManageTokenVal').textContent = token;
-        var ri2 = document.getElementById('apiManageRevealIcon');
+        document.getElementById('mcpManageTokenVal').textContent = token;
+        var ri2 = document.getElementById('mcpManageRevealIcon');
         if (ri2) ri2.className = 'bi bi-eye-slash';
       }
 
@@ -184,7 +183,7 @@
           ta.value = token; ta.style.cssText = 'position:fixed;opacity:0';
           document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
         }
-        var btn = document.getElementById('apiManageCopyBtn');
+        var btn = document.getElementById('mcpManageCopyBtn');
         if (btn) { btn.innerHTML = '<i class="bi bi-check2"></i><span>Copied</span>'; btn.className = 'mc-token-copy-btn mc-token-copy-btn--copied'; }
         if (_mCopyTimer) clearTimeout(_mCopyTimer);
         _mCopyTimer = setTimeout(resetManageCopyBtn, 1600);
@@ -206,7 +205,7 @@
               if (s.subscriptionId === _sub.subscriptionId) s.status = newStatus;
             });
             updateManageStatus(newStatus);
-            updateCardSuspendedState(_sub.policyName || _sub.subscriptionPlanName, newStatus === 'INACTIVE');
+            updateCardSuspendedState(_sub.subscriptionPlanName, newStatus === 'INACTIVE');
           } else {
             var data = await resp.json().catch(function () { return {}; });
             showAlert('Failed to update subscription: ' + (data.description || 'Unknown error'), 'error');
@@ -219,7 +218,7 @@
       function updateCardSuspendedState(planName, isSuspended) {
         var card = document.querySelector('#subscriptionPlans .aov-plan-card[data-policy-name="' + planName + '"]');
         if (!card) return;
-        var label = card.querySelector('.api-ribbon-label');
+        var label = card.querySelector('.mcp-ribbon-label');
         if (isSuspended) {
           card.classList.add('aov-plan-card--suspended');
           if (label) label.textContent = 'SUSPENDED';
@@ -230,14 +229,20 @@
       }
 
       /* ── Unsubscribe / plan-switch dialog ── */
-      var _unsubAction = 'unsub';
+      var _unsubAction = 'unsub'; // 'unsub' | 'switch'
       var _switchArgs = null;
 
+      var UNSUB_DEFAULTS = {
+        title: function (planName) { return 'Unsubscribe from <span id="mcpUnsubPlanName">' + planName + '</span> plan?'; },
+        desc: 'Your applications will lose access to this MCP server, and any tokens using this subscription will stop working. You can re-subscribe at any time.',
+        confirm: 'Unsubscribe',
+      };
+
       function showUnsubDialog(titleHtml, desc, confirmLabel) {
-        document.getElementById('apiUnsubTitle').innerHTML = titleHtml;
-        document.getElementById('apiUnsubDesc').textContent = desc;
-        document.getElementById('apiUnsubConfirmBtn').textContent = confirmLabel;
-        document.getElementById('apiUnsubDialog').style.display = 'flex';
+        document.getElementById('mcpUnsubTitle').innerHTML = titleHtml;
+        document.getElementById('mcpUnsubDesc').textContent = desc;
+        document.getElementById('mcpUnsubConfirmBtn').textContent = confirmLabel;
+        document.getElementById('mcpUnsubDialog').style.display = 'flex';
       }
 
       function askUnsub() {
@@ -245,14 +250,14 @@
         _unsubAction = 'unsub';
         _switchArgs = null;
         showUnsubDialog(
-          'Unsubscribe from <span id="apiUnsubPlanName">' + _sub.subscriptionPlanName + '</span> plan?',
-          'Your applications will lose access to this API and any tokens will stop working. You can re-subscribe at any time.',
-          'Unsubscribe'
+          UNSUB_DEFAULTS.title(_sub.subscriptionPlanName),
+          UNSUB_DEFAULTS.desc,
+          UNSUB_DEFAULTS.confirm
         );
       }
 
       function closeUnsub() {
-        document.getElementById('apiUnsubDialog').style.display = 'none';
+        document.getElementById('mcpUnsubDialog').style.display = 'none';
         if (_unsubAction === 'switch') {
           var pendingBtn = (_switchArgs && _switchArgs.btn) || window.__pendingPlanSwitchBtn;
           if (pendingBtn) pendingBtn.classList.remove('aov-btn-loading');
@@ -303,27 +308,12 @@
         }
       }
 
-      /* ── Active card tracking (for error display) ── */
-      var _activeSubCard = null;
-
-      /* ── Wiring (runs after deferred scripts) ── */
+      /* ── Wiring ── */
       function init() {
+        /* Override deferred-script functions — must run after DOMContentLoaded
+           (i.e. after all <script defer> have executed) so our version wins. */
         window.refreshLandingPageSubscriptions = function () {
           window.location.reload();
-        };
-
-        window.showSubscriptionTokenModal = function (token, planName) {
-          return new Promise(function (resolve) {
-            var modal = document.getElementById('apiTokenModal');
-            if (!modal) { resolve(); return; }
-            modal._resolvePromise = resolve;
-            modal._token = token;
-            document.getElementById('apiTokenPlanName').textContent = planName || '';
-            document.getElementById('apiTokenValue').textContent = token || '';
-            var copyBtn = document.getElementById('apiTokenCopyBtn');
-            if (copyBtn) { copyBtn.innerHTML = '<i class="bi bi-copy"></i>'; copyBtn.className = 'mc-token-copy-btn'; }
-            modal.style.display = 'flex';
-          });
         };
 
         window.openWarningModal = function (action, orgID, apiId, planName, displayName, subscriptionId, currentPlan) {
@@ -334,7 +324,7 @@
               orgID: orgID, apiId: apiId,
               planName: planName, displayName: displayName,
               subscriptionId: subscriptionId,
-              policyId: pendingBtn ? pendingBtn.dataset.planId : undefined,
+              policyId: pendingBtn ? pendingBtn.dataset.policyId : undefined,
               btn: pendingBtn,
             };
             var label = displayName || planName;
@@ -346,36 +336,24 @@
           }
         };
 
-        /* Intercept showAlert to show per-card error and suppress toast */
-        var _origShowAlert = window.showAlert;
-        window.showAlert = function (message, type) {
-          if (type === 'error' && _activeSubCard) {
-            var card = _activeSubCard;
-            _activeSubCard = null;
-            var btn = card.querySelector('.subscribe-btn');
-            if (btn) {
-              btn.classList.remove('aov-btn-loading');
-              if (typeof window.resetSubscribeButtonState === 'function') window.resetSubscribeButtonState(btn);
-            }
-            var errBlock = card.querySelector('.aov-plan-error');
-            if (errBlock) {
-              errBlock.classList.add('aov-plan-error--visible');
-              setTimeout(function () { errBlock.classList.remove('aov-plan-error--visible'); }, 5000);
-            }
-            return Promise.resolve();
-          }
-          return _origShowAlert ? _origShowAlert(message, type) : Promise.resolve();
-        };
-
-        var _origReset = window.resetSubscribeButtonState;
-        window.resetSubscribeButtonState = function (btn) {
-          if (btn) btn.classList.remove('aov-btn-loading');
-          if (_origReset) _origReset(btn);
+        window.showSubscriptionTokenModal = function (token, planName) {
+          return new Promise(function (resolve) {
+            var modal = document.getElementById('mcpTokenModal');
+            if (!modal) { resolve(); return; }
+            modal._resolvePromise = resolve;
+            modal._token = token;
+            document.getElementById('mcpTokenPlanName').textContent = planName || '';
+            document.getElementById('mcpTokenValue').textContent = token || '';
+            var copyBtn = document.getElementById('mcpTokenCopyBtn');
+            if (copyBtn) { copyBtn.innerHTML = '<i class="bi bi-copy"></i>'; copyBtn.className = 'mc-token-copy-btn'; }
+            modal.style.display = 'flex';
+          });
         };
 
         /* Relabel subscribe buttons to "Switch plan" when a subscription already exists */
         if ((window.existingSubscriptions || []).length > 0) {
           document.querySelectorAll('#subscriptionPlans .subscribe-btn').forEach(function (btn) {
+            var span = btn.querySelector('span.aov-plan-spinner');
             btn.childNodes.forEach(function (n) { if (n.nodeType === 3) n.textContent = 'Switch plan'; });
           });
         }
@@ -383,42 +361,42 @@
         /* Mark initially suspended cards */
         (window.existingSubscriptions || []).forEach(function (sub) {
           if (sub.status === 'INACTIVE') {
-            updateCardSuspendedState(sub.policyName || sub.subscriptionPlanName, true);
+            updateCardSuspendedState(sub.subscriptionPlanName, true);
           }
         });
 
         /* View subscription buttons */
-        document.querySelectorAll('#subscriptionPlans .api-view-sub-btn').forEach(function (btn) {
+        document.querySelectorAll('#subscriptionPlans .mcp-view-sub-btn').forEach(function (btn) {
           btn.addEventListener('click', function () { openManage(btn.dataset.policyName); });
         });
 
         /* Manage modal */
-        var manageModal = document.getElementById('apiManageModal');
+        var manageModal = document.getElementById('mcpManageModal');
         if (manageModal) {
-          document.getElementById('apiManageClose').addEventListener('click', closeManage);
-          document.getElementById('apiManageRevealBtn').addEventListener('click', revealToken);
-          document.getElementById('apiManageCopyBtn').addEventListener('click', copyManageToken);
-          document.getElementById('apiManageSuspendBtn').addEventListener('click', toggleSuspend);
-          document.getElementById('apiManageUnsubBtn').addEventListener('click', askUnsub);
+          document.getElementById('mcpManageClose').addEventListener('click', closeManage);
+          document.getElementById('mcpManageRevealBtn').addEventListener('click', revealToken);
+          document.getElementById('mcpManageCopyBtn').addEventListener('click', copyManageToken);
+          document.getElementById('mcpManageSuspendBtn').addEventListener('click', toggleSuspend);
+          document.getElementById('mcpManageUnsubBtn').addEventListener('click', askUnsub);
           manageModal.addEventListener('click', function (e) { if (e.target === manageModal) closeManage(); });
         }
 
         /* Unsub dialog */
-        var unsubDialog = document.getElementById('apiUnsubDialog');
+        var unsubDialog = document.getElementById('mcpUnsubDialog');
         if (unsubDialog) {
-          document.getElementById('apiUnsubKeepBtn').addEventListener('click', closeUnsub);
-          document.getElementById('apiUnsubConfirmBtn').addEventListener('click', confirmUnsub);
+          document.getElementById('mcpUnsubKeepBtn').addEventListener('click', closeUnsub);
+          document.getElementById('mcpUnsubConfirmBtn').addEventListener('click', confirmUnsub);
           unsubDialog.addEventListener('click', function (e) { if (e.target === unsubDialog) closeUnsub(); });
         }
 
         /* Token modal */
-        var tokenModal = document.getElementById('apiTokenModal');
+        var tokenModal = document.getElementById('mcpTokenModal');
         if (tokenModal) {
-          document.getElementById('apiTokenModalClose').addEventListener('click', closeTokenModal);
-          document.getElementById('apiTokenModalDone').addEventListener('click', closeTokenModal);
-          document.getElementById('apiTokenCopyBtn').addEventListener('click', function () {
+          document.getElementById('mcpTokenModalClose').addEventListener('click', closeTokenModal);
+          document.getElementById('mcpTokenModalDone').addEventListener('click', closeTokenModal);
+          document.getElementById('mcpTokenCopyBtn').addEventListener('click', function () {
             if (!tokenModal._token) return;
-            var btn = document.getElementById('apiTokenCopyBtn');
+            var btn = document.getElementById('mcpTokenCopyBtn');
             try { navigator.clipboard.writeText(tokenModal._token).catch(function () {}); } catch (e) {}
             btn.innerHTML = '<i class="bi bi-check2"></i><span>Copied</span>';
             btn.className = 'mc-token-copy-btn mc-token-copy-btn--copied';
@@ -427,7 +405,8 @@
           tokenModal.addEventListener('click', function (e) { if (e.target === tokenModal) closeTokenModal(); });
         }
 
-        /* Subscribe button wiring */
+        /* Per-card error wiring (mirror api-subscription-plans logic) */
+        var _activeSubCard = null;
         document.querySelectorAll('#subscriptionPlans .subscribe-btn:not([disabled])').forEach(function (btn) {
           if (btn.dataset.aovWired) return;
           btn.dataset.aovWired = '1';
@@ -444,18 +423,18 @@
           });
         });
 
-        /* Update subscribed card states from existingSubscriptions */
-        var existing = window.existingSubscriptions || [];
-        var subscribedNames = existing.map(function (s) { return s.policyName || s.subscriptionPlanName; });
-        document.querySelectorAll('#subscriptionPlans .aov-plan-card').forEach(function (card) {
-          var planName = card.dataset.policyName;
-          if (!planName) return;
-          if (subscribedNames.indexOf(planName) !== -1) {
-            card.classList.add('aov-plan-card--subscribed');
-          } else {
-            card.classList.remove('aov-plan-card--subscribed');
+        var origShowAlert = window.showAlert;
+        window.showAlert = function (message, type) {
+          if (type === 'error' && _activeSubCard) {
+            var card = _activeSubCard;
+            _activeSubCard = null;
+            var btn = card.querySelector('.subscribe-btn');
+            if (btn) btn.classList.remove('aov-btn-loading');
+            var errBlock = card.querySelector('.aov-plan-error');
+            if (errBlock) errBlock.classList.add('aov-plan-error--visible');
           }
-        });
+          return origShowAlert ? origShowAlert(message, type) : Promise.resolve();
+        };
       }
 
       if (document.readyState === 'loading') {
@@ -468,15 +447,15 @@
 </section>
 
 <!-- Subscription created token modal -->
-<div id="apiTokenModal" class="mc-overlay" style="display:none;" role="dialog" aria-modal="true">
+<div id="mcpTokenModal" class="mc-overlay" style="display:none;" role="dialog" aria-modal="true">
   <div class="mc-token-modal">
-    <button id="apiTokenModalClose" class="mc-modal-close" aria-label="Close">&times;</button>
+    <button id="mcpTokenModalClose" class="mc-modal-close" aria-label="Close">&times;</button>
     <div class="mc-token-modal-header">
       <div class="mc-token-success-icon">
         <i class="bi bi-check-lg"></i>
       </div>
       <h2 class="mc-token-modal-title">Subscription created</h2>
-      <p class="mc-token-modal-sub">Your subscription to the <strong id="apiTokenPlanName"></strong> plan is now active.</p>
+      <p class="mc-token-modal-sub">Your subscription to the <strong id="mcpTokenPlanName"></strong> plan is now active.</p>
     </div>
     <div class="mc-token-modal-body">
       <div class="mc-token-label">
@@ -484,63 +463,63 @@
         <span>Subscription token</span>
       </div>
       <div class="mc-token-field mc-token-field--pink">
-        <div id="apiTokenValue" class="mc-token-val mc-token-val--pink"></div>
-        <button id="apiTokenCopyBtn" class="mc-token-copy-btn" title="Copy token">
+        <div id="mcpTokenValue" class="mc-token-val mc-token-val--pink"></div>
+        <button id="mcpTokenCopyBtn" class="mc-token-copy-btn" title="Copy token">
           <i class="bi bi-copy"></i>
         </button>
       </div>
       <div class="mc-token-warning">
         <i class="bi bi-exclamation-triangle-fill" style="color:#b8860b;flex:none;margin-top:1px;"></i>
-        <span>Use this token as the <code class="mc-inline-code">Subscription-Key</code> header when invoking the API.</span>
+        <span>Use this token as the <code class="mc-inline-code">Subscription-Key</code> header when invoking the MCP server.</span>
       </div>
       <div class="mc-token-modal-footer">
-        <button id="apiTokenModalDone" class="dp-btn dp-btn--primary">Done</button>
+        <button id="mcpTokenModalDone" class="dp-btn dp-btn--primary">Done</button>
       </div>
     </div>
   </div>
 </div>
 
 <!-- Manage subscription modal -->
-<div id="apiManageModal" class="mc-overlay" style="display:none;" role="dialog" aria-modal="true">
+<div id="mcpManageModal" class="mc-overlay" style="display:none;" role="dialog" aria-modal="true">
   <div class="mc-manage-modal">
     <div class="mc-manage-header">
       <div class="mc-manage-header-info">
         <span class="mc-manage-plan-icon"><i class="bi bi-lightning-charge-fill"></i></span>
         <div>
-          <h2 id="apiManagePlanName" class="mc-manage-plan-name"></h2>
-          <div class="mc-manage-subtitle">API subscription</div>
+          <h2 id="mcpManagePlanName" class="mc-manage-plan-name"></h2>
+          <div id="mcpManageSubtitle" class="mc-manage-subtitle">MCP subscription</div>
         </div>
       </div>
-      <button id="apiManageClose" class="mc-modal-close" aria-label="Close">&times;</button>
+      <button id="mcpManageClose" class="mc-modal-close" aria-label="Close">&times;</button>
     </div>
     <div class="mc-manage-body">
       <div class="mc-manage-status-row">
         <span class="mc-manage-status-label">Status</span>
-        <span id="apiManageStatusBadge" class="mc-manage-status-badge mc-manage-status-badge--active">Active</span>
+        <span id="mcpManageStatusBadge" class="mc-manage-status-badge mc-manage-status-badge--active">Active</span>
       </div>
       <div class="mc-token-label" style="margin-top:1.25rem;">
         <i class="bi bi-key" style="color:#637282;"></i>
         <span>Subscription token</span>
       </div>
       <div class="mc-token-field mc-token-field--manage">
-        <div id="apiManageTokenVal" class="mc-token-val mc-token-val--manage"></div>
+        <div id="mcpManageTokenVal" class="mc-token-val mc-token-val--manage"></div>
         <div class="mc-token-field-actions">
-          <button id="apiManageRevealBtn" class="mc-token-action-btn" title="Reveal token">
-            <i id="apiManageRevealIcon" class="bi bi-eye"></i>
+          <button id="mcpManageRevealBtn" class="mc-token-action-btn" title="Reveal token">
+            <i id="mcpManageRevealIcon" class="bi bi-eye"></i>
           </button>
-          <button id="apiManageCopyBtn" class="mc-token-copy-btn" title="Copy token">
+          <button id="mcpManageCopyBtn" class="mc-token-copy-btn" title="Copy token">
             <i class="bi bi-copy"></i>
           </button>
         </div>
       </div>
-      <p class="mc-config-note" style="margin:0.625rem 0 0;">Use this token as the <code class="mc-inline-code">Subscription-Key</code> header when calling this API.</p>
+      <p class="mc-config-note" style="margin:0.625rem 0 0;">Use this token as the <code class="mc-inline-code">Subscription-Key</code> header when invoking the MCP server.</p>
       <hr class="mc-manage-divider">
       <div class="mc-manage-actions">
-        <button id="apiManageSuspendBtn" class="dp-btn mc-manage-action-btn mc-manage-action-btn--suspend">
+        <button id="mcpManageSuspendBtn" class="dp-btn mc-manage-action-btn mc-manage-action-btn--suspend">
           <i class="bi bi-pause-circle"></i>
-          <span class="api-suspend-label">Suspend</span>
+          <span class="mc-suspend-label">Suspend</span>
         </button>
-        <button id="apiManageUnsubBtn" class="dp-btn mc-manage-action-btn mc-manage-action-btn--unsub">
+        <button id="mcpManageUnsubBtn" class="dp-btn mc-manage-action-btn mc-manage-action-btn--unsub">
           <i class="bi bi-trash"></i> Unsubscribe
         </button>
       </div>
@@ -548,17 +527,17 @@
   </div>
 </div>
 
-<!-- Unsubscribe / plan-switch dialog -->
-<div id="apiUnsubDialog" class="mc-overlay" style="display:none;" role="dialog" aria-modal="true">
+<!-- Unsubscribe warning dialog -->
+<div id="mcpUnsubDialog" class="mc-overlay" style="display:none;" role="dialog" aria-modal="true">
   <div class="mc-unsub-dialog">
     <div class="mc-unsub-header">
       <span class="mc-unsub-icon"><i class="bi bi-exclamation-triangle-fill"></i></span>
-      <h2 id="apiUnsubTitle" class="mc-unsub-title">Unsubscribe from plan?</h2>
+      <h2 id="mcpUnsubTitle" class="mc-unsub-title">Unsubscribe from <span id="mcpUnsubPlanName"></span> plan?</h2>
     </div>
-    <p id="apiUnsubDesc" class="mc-unsub-desc">Your applications will lose access to this API and any tokens will stop working. You can re-subscribe at any time.</p>
+    <p id="mcpUnsubDesc" class="mc-unsub-desc">Your applications will lose access to this MCP server, and any tokens using this subscription will stop working. You can re-subscribe at any time.</p>
     <div class="mc-unsub-actions">
-      <button id="apiUnsubKeepBtn" class="dp-btn dp-btn--outline">Cancel</button>
-      <button id="apiUnsubConfirmBtn" class="dp-btn mc-unsub-confirm-btn">Unsubscribe</button>
+      <button id="mcpUnsubKeepBtn" class="dp-btn dp-btn--outline">Cancel</button>
+      <button id="mcpUnsubConfirmBtn" class="dp-btn mc-unsub-confirm-btn">Unsubscribe</button>
     </div>
   </div>
 </div>

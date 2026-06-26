@@ -78,7 +78,8 @@ func (h *OrganizationHandler) RegisterOrganization(c *gin.Context) {
 		id = generated
 	}
 
-	org, err := h.orgService.RegisterOrganization(id, req.Handle, req.Name, req.Region)
+	performedBy, _ := middleware.GetUsernameFromContext(c)
+	org, err := h.orgService.RegisterOrganization(id, req.Handle, req.Name, req.Region, performedBy)
 	if err != nil {
 		if errors.Is(err, constants.ErrHandleExists) {
 			c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict",

@@ -175,6 +175,10 @@ type Database struct {
 	MaxIdleConns    int    `koanf:"max_idle_conns"`
 	ConnMaxLifetime int    `koanf:"conn_max_lifetime"`
 
+	// ExecuteSchemaDDL controls whether the server runs schema DDL at startup.
+	// Defaults to true for SQLite and false for all other drivers. Set to true
+	// only if you want the server to manage schema provisioning; for production
+	// databases, prefer provisioning the schema externally before startup.
 	ExecuteSchemaDDL               bool   `koanf:"execute_schema_ddl"`
 	EncryptionKey                  string `koanf:"encryption_key"`
 	SubscriptionTokenEncryptionKey string `koanf:"subscription_token_encryption_key"`
@@ -276,6 +280,14 @@ func LoadConfig(configPath string) (*Server, error) {
 		},
 	}); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
+	}
+
+	// For server databases (non-SQLite), default execute_schema_ddl to false.
+	// Setting the key explicitly in config preserves that value here, so
+	// operators must consciously opt in to server-managed DDL for non-SQLite
+	// drivers.
+	if !k.Exists("database.execute_schema_ddl") && strings.ToLower(cfg.Database.Driver) != "sqlite3" {
+		cfg.Database.ExecuteSchemaDDL = false
 	}
 
 	if err := validateDefaultDevPortalConfig(&cfg.DefaultDevPortal); err != nil {

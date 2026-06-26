@@ -141,7 +141,7 @@ func CreateBatchDeploymentTarGz(deploymentContentMap map[string]*model.Deploymen
 
 	for deploymentID, dc := range deploymentContentMap {
 		var prefix string
-		switch dc.Kind {
+		switch dc.Type {
 		case "LlmProvider":
 			prefix = "llm-provider"
 		case "LlmProxy":

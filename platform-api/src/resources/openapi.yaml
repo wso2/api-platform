@@ -921,177 +921,6 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /rest-apis/{apiId}/publications:
-    parameters:
-      - $ref: '#/components/parameters/apiId'
-    get:
-      summary: Get REST API publications
-      description: |
-        Retrieves all DevPortals associated with an API including publication details.
-      operationId: GetRESTAPIPublications
-      security:
-        - OAuth2Security:
-            - ap:rest_api:publication:read
-            - ap:rest_api:manage
-      tags:
-        - REST APIs
-        - DevPortal
-      responses:
-        '200':
-          description: API publications retrieved successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/RESTAPIDevPortalListResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          description: API not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-    post:
-      summary: Publish REST API to DevPortal
-      description: |
-        Publishes an existing API from platform-api to the configured DevPortal.
-      operationId: PublishRESTAPIToDevPortal
-      security:
-        - OAuth2Security:
-            - ap:rest_api:publication:create
-            - ap:rest_api:manage
-      tags:
-        - REST APIs
-        - DevPortal
-      requestBody:
-        description: DevPortal to publish to
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/PublishToDevPortalRequest'
-      responses:
-        '200':
-          description: API successfully published to DevPortal
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/CommonResponse'
-              example:
-                success: true
-                message: "API published successfully to DevPortal"
-                timestamp: "2025-10-29T21:25:09.418859918+05:30"
-        '400':
-          description: Bad request - Invalid input or DevPortal not configured
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-              examples:
-                invalidApiId:
-                  summary: Invalid API ID format
-                  value:
-                    code: 400
-                    message: Bad Request
-                    description: API ID must be a valid UUID
-                devPortalDisabled:
-                  summary: DevPortal not configured
-                  value:
-                    code: 400
-                    message: Bad Request
-                    description: DevPortal integration is not enabled. Set 
-                      DEVPORTAL_ENABLED=true
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          description: API not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-              example:
-                code: 404
-                message: Not Found
-                description: API with ID 1f01c9b2-440b-4cfe-bf48-f8f168062df4 
-                  does not exist
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-        '503':
-          description: DevPortal unavailable after retries
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-              example:
-                code: 503
-                message: Service Unavailable
-                description: Failed to reach DevPortal after 3 retry attempts 
-                  (total 60 seconds)
-
-  /rest-apis/{apiId}/publications/{devportalId}:
-    parameters:
-      - $ref: '#/components/parameters/apiId'
-      - name: devportalId
-        in: path
-        required: true
-        description: UUID of the DevPortal to unpublish from
-        schema:
-          type: string
-          format: uuid
-    delete:
-      summary: Unpublish REST API from DevPortal
-      description: |
-        Removes an API from the configured DevPortal.
-      operationId: UnpublishRESTAPIFromDevPortal
-      security:
-        - OAuth2Security:
-            - ap:rest_api:publication:delete
-            - ap:rest_api:manage
-      tags:
-        - REST APIs
-        - DevPortal
-      responses:
-        '200':
-          description: API successfully unpublished from DevPortal
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/CommonResponse'
-              example:
-                success: true
-                message: "API unpublished successfully from DevPortal"
-                timestamp: "2025-10-29T21:08:59.834784232+05:30"
-        '400':
-          description: Bad request - Invalid input or DevPortal not configured
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          description: API not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-        '503':
-          description: DevPortal unavailable after retries
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-
   /rest-apis/{apiId}/deployments:
     parameters:
       - $ref: '#/components/parameters/apiId'
@@ -1678,128 +1507,6 @@ paths:
           $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalServerError'
-  /websub-apis/{apiId}/publications:
-    parameters:
-      - $ref: '#/components/parameters/apiId'
-    get:
-      summary: Get WebSub API publications
-      description: |
-        Retrieves all DevPortals associated with a WebSub API including publication details.
-      operationId: GetWebSubAPIPublications
-      security:
-        - OAuth2Security:
-            - ap:websub_api:publication:read
-            - ap:websub_api:manage
-      tags:
-        - WebSubAPIs
-        - DevPortal
-      responses:
-        '200':
-          description: API publications retrieved successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/WebSubAPIDevPortalListResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          description: API not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-    post:
-      summary: Publish WebSub API to DevPortal
-      description: |
-        Publishes an existing WebSub API to the configured DevPortal.
-      operationId: PublishWebSubAPIToDevPortal
-      security:
-        - OAuth2Security:
-            - ap:websub_api:publication:create
-            - ap:websub_api:manage
-      tags:
-        - WebSubAPIs
-        - DevPortal
-      requestBody:
-        description: DevPortal to publish to
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/PublishToDevPortalRequest'
-      responses:
-        '200':
-          description: API successfully published to DevPortal
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/CommonResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-        '503':
-          description: DevPortal unavailable after retries
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-
-  /websub-apis/{apiId}/publications/{devportalId}:
-    parameters:
-      - $ref: '#/components/parameters/apiId'
-      - name: devportalId
-        in: path
-        required: true
-        description: UUID of the DevPortal to unpublish from
-        schema:
-          type: string
-          format: uuid
-    delete:
-      summary: Unpublish WebSub API from DevPortal
-      description: |
-        Removes a WebSub API from the configured DevPortal.
-      operationId: UnpublishWebSubAPIFromDevPortal
-      security:
-        - OAuth2Security:
-            - ap:websub_api:publication:delete
-            - ap:websub_api:manage
-      tags:
-        - WebSubAPIs
-        - DevPortal
-      responses:
-        '200':
-          description: API successfully unpublished from DevPortal
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/CommonResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-        '503':
-          description: DevPortal unavailable after retries
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
 
   /websub-apis/{apiId}/deployments:
     parameters:
@@ -2384,140 +2091,10 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /webbroker-apis/{apiId}/publications:
-    parameters:
-      - $ref: '#/components/parameters/apiId'
-    get:
-      summary: Get WebBroker API publications
-      description: |
-        Retrieves all DevPortals associated with a WebBroker API including publication details.
-      operationId: GetWebBrokerAPIPublications
-      security:
-        - OAuth2Security:
-            - ap:webbroker_api:publication:read
-            - ap:webbroker_api:manage
-      tags:
-        - WebBrokerAPIs
-        - DevPortal
-      responses:
-        '200':
-          description: API publications retrieved successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/WebBrokerAPIDevPortalListResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          description: API not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-    post:
-      summary: Publish WebBroker API to DevPortal
-      description: |
-        Publishes an existing WebBroker API to the configured DevPortal.
-      operationId: PublishWebBrokerAPIToDevPortal
-      security:
-        - OAuth2Security:
-            - ap:webbroker_api:publication:create
-            - ap:webbroker_api:manage
-      tags:
-        - WebBrokerAPIs
-        - DevPortal
-      requestBody:
-        description: DevPortal to publish to
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/PublishToDevPortalRequest'
-      responses:
-        '200':
-          description: API successfully published to DevPortal
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/CommonResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-        '503':
-          description: DevPortal unavailable after retries
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-
-  /webbroker-apis/{apiId}/publications/{devportalId}:
-    parameters:
-      - $ref: '#/components/parameters/apiId'
-      - name: devportalId
-        in: path
-        required: true
-        description: UUID of the DevPortal to unpublish from
-        schema:
-          type: string
-          format: uuid
-    delete:
-      summary: Unpublish WebBroker API from DevPortal
-      description: |
-        Removes a WebBroker API from the configured DevPortal.
-      operationId: UnpublishWebBrokerAPIFromDevPortal
-      security:
-        - OAuth2Security:
-            - ap:webbroker_api:publication:delete
-            - ap:webbroker_api:manage
-      tags:
-        - WebBrokerAPIs
-        - DevPortal
-      responses:
-        '200':
-          description: API successfully unpublished from DevPortal
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/CommonResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-        '503':
-          description: DevPortal unavailable after retries
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-
   /webbroker-apis/{apiId}/deployments:
-    parameters:
-      - name: apiId
-        in: path
-        required: true
-        schema:
-          type: string
-        description: Unique handle (identifier) of the API.
     post:
       summary: Deploy WebBroker API to a gateway
-      operationId: DeployWebBrokerAPI
+      operationId: deployWebBrokerAPI
       security:
         - OAuth2Security:
             - ap:webbroker_api:deployment:create
@@ -2525,6 +2102,12 @@ paths:
             - ap:webbroker_api:manage
       tags:
         - WebBrokerAPI Deployments
+      parameters:
+        - name: apiId
+          in: path
+          required: true
+          schema:
+            type: string
       requestBody:
         required: true
         content:
@@ -2546,15 +2129,9 @@ paths:
           $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalServerError'
-      description: |
-        Step 2 of 3 in the WebBroker API lifecycle: Deploys the specified WebBroker API to a target
-        gateway. First call CreateWebBrokerAPI (step 1) to obtain an apiId, then call this. The
-        result is NOT immediately active — the deployment status begins as DEPLOYING; poll
-        GetWebBrokerAPIDeployment until status is DEPLOYED or FAILED. Requires scope
-        ap:webbroker_api:deployment:create or ap:webbroker_api:manage.
     get:
       summary: Get WebBroker API deployments
-      operationId: GetWebBrokerAPIDeployments
+      operationId: getWebBrokerAPIDeployments
       security:
         - OAuth2Security:
             - ap:webbroker_api:deployment:read
@@ -6307,315 +5884,6 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /devportals:
-    post:
-      summary: Create a new DevPortal
-      description: |
-        Creates a new DevPortal within the organization specified in the JWT token.
-        Organization ID is automatically extracted from the token and does not need to be provided.
-      operationId: CreateDevPortal
-      security:
-        - OAuth2Security:
-            - ap:devportal:create
-            - ap:devportal:manage
-      tags:
-        - DevPortals
-      requestBody:
-        description: DevPortal registration details
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/CreateDevPortalRequest'
-      responses:
-        '201':
-          description: DevPortal created successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/DevPortalResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '409':
-          description: DevPortal name already exists within organization
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
-    get:
-      summary: List all DevPortals
-      description: |
-        Retrieves a list of all registered DevPortals for the organization specified in the JWT token.
-        Organization ID is automatically extracted from the token.
-      operationId: ListDevPortals
-      security:
-        - OAuth2Security:
-            - ap:devportal:read
-            - ap:devportal:manage
-      tags:
-        - DevPortals
-      parameters:
-        - name: limit
-          in: query
-          description: Maximum number of DevPortals to return
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 100
-            default: 20
-        - name: offset
-          in: query
-          description: Number of DevPortals to skip
-          schema:
-            type: integer
-            minimum: 0
-            default: 0
-        - name: default
-          in: query
-          description: Filter by default DevPortal
-          schema:
-            type: boolean
-        - name: active
-          in: query
-          description: Filter by active DevPortals
-          schema:
-            type: boolean
-      responses:
-        '200':
-          description: DevPortals retrieved successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/DevPortalListResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
-  /devportals/{devportalId}:
-    parameters:
-      - $ref: '#/components/parameters/devPortalId'
-    get:
-      summary: Get DevPortal by UUID
-      description: |
-        Retrieves a specific DevPortal by its UUID. Access is validated against the organization 
-        in the JWT token.
-      operationId: GetDevPortal
-      security:
-        - OAuth2Security:
-            - ap:devportal:read
-            - ap:devportal:manage
-      tags:
-        - DevPortals
-      responses:
-        '200':
-          description: DevPortal retrieved successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/DevPortalResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
-    put:
-      summary: Update DevPortal
-      description: |
-        Updates an existing DevPortal's mutable fields.
-        Access is validated against the organization in the JWT token.
-      operationId: UpdateDevPortal
-      security:
-        - OAuth2Security:
-            - ap:devportal:update
-            - ap:devportal:manage
-      tags:
-        - DevPortals
-      requestBody:
-        description: DevPortal object that needs to be updated
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/UpdateDevPortalRequest'
-      responses:
-        '200':
-          description: DevPortal updated successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/DevPortalResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '409':
-          description: DevPortal name already exists within organization
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
-    delete:
-      summary: Delete DevPortal
-      description: |
-        Permanently deletes a DevPortal.
-        Deletion is blocked if the DevPortal has active API publications.
-        Access is validated against the organization in the JWT token.
-        This operation is irreversible. The resource cannot be recovered after deletion.
-      operationId: DeleteDevPortal
-      security:
-        - OAuth2Security:
-            - ap:devportal:delete
-            - ap:devportal:manage
-      tags:
-        - DevPortals
-      responses:
-        '204':
-          description: DevPortal deleted successfully
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '409':
-          description: Conflict. DevPortal has active publications
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
-  /devportals/{devportalId}/activate:
-    parameters:
-      - $ref: '#/components/parameters/devPortalId'
-    post:
-      summary: Activate DevPortal
-      description: |
-        Activates a DevPortal, making it available for API publishing.
-        Access is validated against the organization in the JWT token.
-      operationId: ActivateDevPortal
-      security:
-        - OAuth2Security:
-            - ap:devportal:update
-            - ap:devportal:manage
-      tags:
-        - DevPortals
-      responses:
-        '200':
-          description: DevPortal activated successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/CommonResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
-  /devportals/{devportalId}/deactivate:
-    parameters:
-      - $ref: '#/components/parameters/devPortalId'
-    post:
-      summary: Deactivate DevPortal
-      description: |
-        Deactivates a DevPortal, preventing new API publications.
-        Access is validated against the organization in the JWT token.
-      operationId: DeactivateDevPortal
-      security:
-        - OAuth2Security:
-            - ap:devportal:update
-            - ap:devportal:manage
-      tags:
-        - DevPortals
-      responses:
-        '200':
-          description: DevPortal deactivated successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/CommonResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
-  /devportals/{devportalId}/set-default:
-    parameters:
-      - $ref: '#/components/parameters/devPortalId'
-    post:
-      summary: Set DevPortal as default
-      description: |
-        Sets a DevPortal as the default for the organization.
-        Access is validated against the organization in the JWT token.
-      operationId: SetDevPortalAsDefault
-      security:
-        - OAuth2Security:
-            - ap:devportal:update
-            - ap:devportal:manage
-      tags:
-        - DevPortals
-      responses:
-        '200':
-          description: DevPortal set as default successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  message:
-                    type: string
-                    example: "DevPortal set as default successfully"
-                  devPortalUuid:
-                    type: string
-                    format: uuid
-                    example: "123e4567-e89b-12d3-a456-426614174000"
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
   /git/repo/fetch-branches:
     post:
       summary: Fetch Git repository branches
@@ -6683,16 +5951,16 @@ paths:
         Fetches and returns the directory and file structure of a specified public Git repository with depth-based pagination.
         This endpoint supports multiple Git providers including GitHub, GitLab, and Bitbucket.
         The provider can be specified explicitly or will be auto-detected from the repository URL.
-
+        
         **Depth-Based Pagination:**
         Use the optional `depth` query parameter to limit repository traversal depth. For example:
         - `depth=1`: Returns only root-level files and directories
         - `depth=2`: Returns files and directories within two levels from the root
         - `depth=0` or omitted: Returns all content (default behavior)
-
+        
         This approach helps balance data completeness and performance by allowing incremental loading of deeper structures.
         The response includes directories (both empty and non-empty) and files at the specified depth levels.
-
+        
         This endpoint is used to verify repository accessibility and display its structure in the API Platform UI
         for API import functionality. Only public repositories are supported.
       operationId: FetchGitRepoContent
@@ -6755,7 +6023,7 @@ paths:
         Returns API keys created by the caller within the organization.
         Optionally filter by one or more artifact types using a comma-separated `type` query parameter.
         The plain key value is never returned.
-      operationId: ListUserAPIKeys
+      operationId: listUserAPIKeys
       security:
         - OAuth2Security:
             - ap:api_key:read
@@ -6815,11 +6083,6 @@ components:
             ap:application:manage: Full access to applications
             ap:application:read: Read applications
             ap:application:update: Update an application
-            ap:devportal:create: Create a DevPortal
-            ap:devportal:delete: Delete a DevPortal
-            ap:devportal:manage: Full access to DevPortals
-            ap:devportal:read: Read DevPortals
-            ap:devportal:update: Update a DevPortal
             ap:gateway:artifact:read: Read gateway live proxy artifacts
             ap:gateway:create: Create a gateway
             ap:gateway:delete: Delete a gateway
@@ -6913,11 +6176,6 @@ components:
             ap:rest_api:gateway:read: Read a REST API's gateways
             ap:rest_api:import: Import a REST API
             ap:rest_api:manage: Full access to REST APIs
-            ap:rest_api:publication:create: Publish a REST API to a DevPortal
-            ap:rest_api:publication:delete: Unpublish a REST API from a 
-              DevPortal
-            ap:rest_api:publication:read: Read a REST API's DevPortal 
-              publications
             ap:rest_api:read: Read REST APIs
             ap:rest_api:update: Update a REST API
             ap:subscription:create: Create a subscription
@@ -6951,12 +6209,6 @@ components:
             ap:webbroker_api:deployment:undeploy: Undeploy a WebBroker API 
               deployment
             ap:webbroker_api:manage: Full access to WebBroker APIs
-            ap:webbroker_api:publication:create: Publish a WebBroker API to a 
-              DevPortal
-            ap:webbroker_api:publication:delete: Unpublish a WebBroker API from 
-              a DevPortal
-            ap:webbroker_api:publication:read: Read a WebBroker API's DevPortal 
-              publications
             ap:webbroker_api:read: Read WebBroker APIs
             ap:webbroker_api:update: Update a WebBroker API
             ap:websub_api:api_key:create: Create an API key for a WebSub API
@@ -6973,12 +6225,6 @@ components:
             ap:websub_api:deployment:restore: Restore a WebSub API deployment
             ap:websub_api:deployment:undeploy: Undeploy a WebSub API deployment
             ap:websub_api:manage: Full access to WebSub APIs
-            ap:websub_api:publication:create: Publish a WebSub API to a 
-              DevPortal
-            ap:websub_api:publication:delete: Unpublish a WebSub API from a 
-              DevPortal
-            ap:websub_api:publication:read: Read a WebSub API's DevPortal 
-              publications
             ap:websub_api:read: Read WebSub APIs
             ap:websub_api:update: Update a WebSub API
       description: "OAuth2 client credentials flow using JWT bearer tokens. This implementation
@@ -8773,18 +8019,15 @@ components:
         subscriberId:
           type: string
           minLength: 1
-          description: Unique subscriber identifier for the subscription 
-            (required)
+          description: Unique subscriber identifier for the subscription (required)
           example: "user-123"
         applicationId:
           type: string
-          description: Application ID (from DevPortal/STS). Optional in 
-            token-based subscriptions.
+          description: Application ID (from DevPortal/STS). Optional in token-based subscriptions.
           example: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
         subscriptionPlanId:
           type: string
-          description: Subscription plan UUID. Links the subscription to rate 
-            limit and billing configuration.
+          description: Subscription plan UUID. Links the subscription to rate limit and billing configuration.
           example: "plan-uuid-1"
         status:
           type: string
@@ -8820,8 +8063,7 @@ components:
           description: Application ID (optional for token-based subscriptions)
         subscriptionToken:
           type: string
-          description: Opaque subscription token for API invocation via 
-            Subscription-Key header
+          description: Opaque subscription token for API invocation via Subscription-Key header
         subscriptionPlanId:
           type: string
           description: Subscription plan UUID
@@ -8859,45 +8101,27 @@ components:
         pagination:
           $ref: '#/components/schemas/Pagination'
 
-    FieldError:
-      type: object
-      required:
-        - field
-        - message
-      properties:
-        field:
-          type: string
-          description: The name of the field that failed validation
-          example: "name"
-        message:
-          type: string
-          description: A human-readable description of the validation failure
-          example: "must not be blank"
-
     Error:
       title: Error object returned
       required:
         - code
-        - message
+        - title
       type: object
       properties:
         code:
+          type: integer
+          format: int64
+        title:
           type: string
-          description: "Machine-readable error catalog code, e.g. REST_API_NOT_FOUND"
-          example: "REST_API_NOT_FOUND"
-        message:
+          description: Error message
+        details:
           type: string
-          description: Human-readable error message summarising what went wrong
-          example: "The requested REST API was not found"
-        description:
-          type: string
-          description: A detailed description providing additional context about the error
-          example: "No REST API with handle 'my-api' exists in project '123e4567-e89b-12d3-a456-426614174000'"
+          description: A detailed description about the error message
         errors:
           type: array
-          description: List of field-level validation errors (present on 400 responses)
+          description: List of specific errors (useful for validation errors)
           items:
-            $ref: '#/components/schemas/FieldError'
+            type: object
 
     GatewayArtifact:
       type: object
@@ -8956,197 +8180,6 @@ components:
         pagination:
           $ref: '#/components/schemas/Pagination'
 
-    CreateDevPortalRequest:
-      type: object
-      required:
-        - name
-        - apiUrl
-        - hostname
-        - apiKey
-        - identifier
-      properties:
-        name:
-          type: string
-          minLength: 1
-          maxLength: 100
-          description: Display name of the DevPortal
-          example: "My DevPortal"
-        apiUrl:
-          type: string
-          format: uri
-          description: API URL of the DevPortal
-          example: "https://api.devportal.com"
-        hostname:
-          type: string
-          description: Hostname of the DevPortal
-          example: "devportal.example.com"
-        apiKey:
-          type: string
-          description: API key for authentication with the DevPortal
-          example: "secret-api-key"
-        headerKeyName:
-          type: string
-          description: Custom header name for API key (optional)
-          example: "X-API-Key"
-        visibility:
-          type: string
-          enum: ["public", "private"]
-          description: Visibility of the DevPortal
-          default: "private"
-          example: "private"
-        description:
-          type: string
-          maxLength: 500
-          description: Description of the DevPortal
-          example: "Development portal for testing APIs"
-        identifier:
-          type: string
-          minLength: 1
-          maxLength: 100
-          description: Unique identifier for the DevPortal
-          example: "dev-portal-01"
-
-    UpdateDevPortalRequest:
-      type: object
-      properties:
-        name:
-          type: string
-          minLength: 1
-          maxLength: 100
-          description: Display name of the DevPortal
-          example: "Updated DevPortal"
-        apiUrl:
-          type: string
-          format: uri
-          description: API URL of the DevPortal
-          example: "https://api.devportal.com"
-        hostname:
-          type: string
-          description: Hostname of the DevPortal
-          example: "devportal.example.com"
-        apiKey:
-          type: string
-          description: API key for authentication with the DevPortal
-          example: "new-secret-api-key"
-        headerKeyName:
-          type: string
-          description: Custom header name for API key (optional)
-          example: "X-API-Key"
-        visibility:
-          type: string
-          enum: ["public", "private"]
-          description: Visibility of the DevPortal
-          example: "public"
-        description:
-          type: string
-          maxLength: 500
-          description: Description of the DevPortal
-          example: "Updated description"
-
-    DevPortalResponse:
-      type: object
-      required:
-        - uuid
-        - organizationUuid
-        - name
-        - identifier
-        - uiUrl
-        - apiUrl
-        - hostname
-        - isActive
-        - isEnabled
-        - isDefault
-        - visibility
-        - createdAt
-        - updatedAt
-      properties:
-        uuid:
-          type: string
-          format: uuid
-          description: Unique identifier for the DevPortal
-          example: "123e4567-e89b-12d3-a456-426614174000"
-        organizationUuid:
-          type: string
-          format: uuid
-          description: UUID of the organization this DevPortal belongs to
-          example: "123e4567-e89b-12d3-a456-426614174000"
-        name:
-          type: string
-          description: Display name of the DevPortal
-          example: "My DevPortal"
-        identifier:
-          type: string
-          description: Unique identifier for the DevPortal
-          example: "dev-portal-01"
-        uiUrl:
-          type: string
-          format: uri
-          description: UI URL of the DevPortal
-          example: "https://devportal.example.com"
-        apiUrl:
-          type: string
-          format: uri
-          description: API URL of the DevPortal
-          example: "https://api.devportal.com"
-        hostname:
-          type: string
-          description: Hostname of the DevPortal
-          example: "devportal.example.com"
-        isActive:
-          type: boolean
-          description: Whether the DevPortal is currently active
-          example: true
-        isEnabled:
-          type: boolean
-          description: Whether the DevPortal is enabled
-          example: true
-        headerKeyName:
-          type: string
-          description: Custom header name for API key
-          example: "X-API-Key"
-        isDefault:
-          type: boolean
-          description: Whether this is the default DevPortal for the 
-            organization
-          example: false
-        visibility:
-          type: string
-          enum: ["public", "private"]
-          description: Visibility of the DevPortal
-          example: "private"
-        description:
-          type: string
-          description: Description of the DevPortal
-          example: "Development portal for testing APIs"
-        createdAt:
-          type: string
-          format: date-time
-          description: Timestamp when the DevPortal was created
-          example: "2025-10-15T10:30:00Z"
-        updatedAt:
-          type: string
-          format: date-time
-          description: Timestamp when the DevPortal was last updated
-          example: "2025-10-15T10:30:00Z"
-
-    DevPortalListResponse:
-      type: object
-      required:
-        - count
-        - list
-        - pagination
-      properties:
-        count:
-          type: integer
-          description: Number of DevPortals in current response
-          example: 2
-        list:
-          type: array
-          items:
-            $ref: '#/components/schemas/DevPortalResponse'
-        pagination:
-          $ref: '#/components/schemas/Pagination'
-
     CommonResponse:
       type: object
       required:
@@ -9167,273 +8200,6 @@ components:
           format: date-time
           description: Timestamp of the response
           example: "2025-10-15T10:30:00Z"
-
-    RESTAPIDevPortalResponse:
-      type: object
-      allOf:
-        - $ref: '#/components/schemas/DevPortalResponse'
-        - type: object
-          required:
-            - associatedAt
-            - isPublished
-          properties:
-            associatedAt:
-              type: string
-              format: date-time
-              description: Timestamp when the DevPortal was associated with the 
-                API
-              example: "2025-10-15T10:30:00Z"
-            isPublished:
-              type: boolean
-              description: Whether the API is currently published to this 
-                DevPortal
-              example: true
-            publication:
-              $ref: '#/components/schemas/RESTAPIPublicationDetails'
-              description: Publication details (only present when isPublished is
-                true)
-
-    RESTAPIDevPortalListResponse:
-      type: object
-      required:
-        - count
-        - list
-        - pagination
-      properties:
-        count:
-          type: integer
-          description: Number of DevPortals in current response
-          example: 2
-        list:
-          type: array
-          items:
-            $ref: '#/components/schemas/RESTAPIDevPortalResponse'
-        pagination:
-          $ref: '#/components/schemas/Pagination'
-
-    RESTAPIPublicationDetails:
-      type: object
-      description: Details about API publication to a specific DevPortal
-      required:
-        - status
-        - publishedAt
-        - updatedAt
-      properties:
-        status:
-          type: string
-          description: Current publication status
-          enum: ["published", "failed", "publishing"]
-          example: "published"
-        apiVersion:
-          type: string
-          description: Version of the API that was published
-          example: "1.0.0"
-        devPortalRefId:
-          type: string
-          description: Reference ID in the DevPortal
-          example: "api-12345"
-        sandboxEndpoint:
-          type: string
-          description: Sandbox endpoint URL
-          example: "https://sandbox.api.example.com"
-        productionEndpoint:
-          type: string
-          description: Production endpoint URL
-          example: "https://api.example.com"
-        publishedAt:
-          type: string
-          format: date-time
-          description: Timestamp when the API was published
-          example: "2025-10-15T11:00:00Z"
-        updatedAt:
-          type: string
-          format: date-time
-          description: Timestamp when the publication was last updated
-          example: "2025-10-15T11:00:00Z"
-
-    WebSubAPIPublicationDetails:
-      type: object
-      description: Details about WebSub API publication to a specific DevPortal
-      required:
-        - status
-        - publishedAt
-        - updatedAt
-      properties:
-        status:
-          type: string
-          description: Current publication status
-          enum: ["published", "failed", "publishing"]
-          example: "published"
-        apiVersion:
-          type: string
-          description: Version of the API that was published
-          example: "1.0.0"
-        devPortalRefId:
-          type: string
-          description: Reference ID in the DevPortal
-          example: "api-12345"
-        publishedAt:
-          type: string
-          format: date-time
-          description: Timestamp when the API was published
-          example: "2025-10-15T11:00:00Z"
-        updatedAt:
-          type: string
-          format: date-time
-          description: Timestamp when the publication was last updated
-          example: "2025-10-15T11:00:00Z"
-
-    WebSubAPIDevPortalResponse:
-      type: object
-      allOf:
-        - $ref: '#/components/schemas/DevPortalResponse'
-        - type: object
-          required:
-            - associatedAt
-            - isPublished
-          properties:
-            associatedAt:
-              type: string
-              format: date-time
-              description: Timestamp when the DevPortal was associated with the 
-                API
-              example: "2025-10-15T10:30:00Z"
-            isPublished:
-              type: boolean
-              description: Whether the API is currently published to this 
-                DevPortal
-              example: true
-            publication:
-              $ref: '#/components/schemas/WebSubAPIPublicationDetails'
-              description: Publication details (only present when isPublished is
-                true)
-
-    WebSubAPIDevPortalListResponse:
-      type: object
-      required:
-        - count
-        - list
-        - pagination
-      properties:
-        count:
-          type: integer
-          description: Number of DevPortals in current response
-          example: 2
-        list:
-          type: array
-          items:
-            $ref: '#/components/schemas/WebSubAPIDevPortalResponse'
-        pagination:
-          $ref: '#/components/schemas/Pagination'
-
-    WebBrokerAPIPublicationDetails:
-      type: object
-      description: Details about WebBroker API publication to a specific 
-        DevPortal
-      required:
-        - status
-        - publishedAt
-        - updatedAt
-      properties:
-        status:
-          type: string
-          description: Current publication status
-          enum: ["published", "failed", "publishing"]
-          example: "published"
-        apiVersion:
-          type: string
-          description: Version of the API that was published
-          example: "1.0.0"
-        devPortalRefId:
-          type: string
-          description: Reference ID in the DevPortal
-          example: "api-12345"
-        publishedAt:
-          type: string
-          format: date-time
-          description: Timestamp when the API was published
-          example: "2025-10-15T11:00:00Z"
-        updatedAt:
-          type: string
-          format: date-time
-          description: Timestamp when the publication was last updated
-          example: "2025-10-15T11:00:00Z"
-
-    WebBrokerAPIDevPortalResponse:
-      type: object
-      allOf:
-        - $ref: '#/components/schemas/DevPortalResponse'
-        - type: object
-          required:
-            - associatedAt
-            - isPublished
-          properties:
-            associatedAt:
-              type: string
-              format: date-time
-              description: Timestamp when the DevPortal was associated with the 
-                API
-              example: "2025-10-15T10:30:00Z"
-            isPublished:
-              type: boolean
-              description: Whether the API is currently published to this 
-                DevPortal
-              example: true
-            publication:
-              $ref: '#/components/schemas/WebBrokerAPIPublicationDetails'
-              description: Publication details (only present when isPublished is
-                true)
-
-    WebBrokerAPIDevPortalListResponse:
-      type: object
-      required:
-        - count
-        - list
-        - pagination
-      properties:
-        count:
-          type: integer
-          description: Number of DevPortals in current response
-          example: 2
-        list:
-          type: array
-          items:
-            $ref: '#/components/schemas/WebBrokerAPIDevPortalResponse'
-        pagination:
-          $ref: '#/components/schemas/Pagination'
-
-    PublishToDevPortalRequest:
-      type: object
-      required:
-        - devPortalUuid
-        - endPoints
-      properties:
-        devPortalUuid:
-          type: string
-          format: uuid
-          description: UUID of the DevPortal to publish to
-          example: "123e4567-e89b-12d3-a456-426614174000"
-        apiInfo:
-          $ref: '#/components/schemas/PublishRESTAPIInfo'
-        endPoints:
-          $ref: '#/components/schemas/EndPoints'
-        subscriptionPolicies:
-          type: array
-          description: List of subscription policies for the API
-          items:
-            type: string
-          example: ["Unlimited", "Gold", "Silver"]
-
-    UnpublishFromDevPortalRequest:
-      type: object
-      required:
-        - devPortalUuid
-      properties:
-        devPortalUuid:
-          type: string
-          format: uuid
-          description: UUID of the DevPortal to unpublish from
-          example: "123e4567-e89b-12d3-a456-426614174000"
 
     PublishRESTAPIInfo:
       type: object
@@ -11899,17 +10665,6 @@ components:
         maximum: 10
         default: 0
       example: 2
-
-    devPortalId:
-      name: devportalId
-      in: path
-      required: true
-      description: |
-        **DevPortal ID** consisting of the **UUID** of the DevPortal.
-      schema:
-        type: string
-        format: uuid
-        example: "123e4567-e89b-12d3-a456-426614174000"
 
     deploymentId:
       name: deploymentId

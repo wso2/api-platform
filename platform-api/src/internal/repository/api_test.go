@@ -42,10 +42,10 @@ func createTestOrganizationAndProject(t *testing.T, db *database.DB, orgUUID, pr
 	}
 
 	projectQuery := `
-		INSERT INTO projects (uuid, name, organization_uuid, created_at, updated_at)
-		VALUES (?, ?, ?, datetime('now'), datetime('now'))
+		INSERT INTO projects (uuid, handle, name, organization_uuid, created_at, updated_at)
+		VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))
 	`
-	_, err = db.Exec(projectQuery, projectUUID, "Test Project", orgUUID)
+	_, err = db.Exec(projectQuery, projectUUID, "test-project-"+projectUUID, "Test Project", orgUUID)
 	if err != nil {
 		t.Fatalf("Failed to create test project: %v", err)
 	}
@@ -74,10 +74,10 @@ func TestAPIRepo_CreateAndRead(t *testing.T) {
 		ProjectID:       projectUUID,
 		OrganizationID:  orgUUID,
 		LifeCycleStatus: "CREATED",
-		Transport:       []string{"https"},
 		Configuration: model.RestAPIConfig{
-			Name:    "Test API",
-			Version: "1.0.0",
+			Name:      "Test API",
+			Version:   "1.0.0",
+			Transport: []string{"https"},
 		},
 	}
 
@@ -111,8 +111,8 @@ func TestAPIRepo_CreateAndRead(t *testing.T) {
 	if created.OrganizationID != api.OrganizationID || created.LifeCycleStatus != api.LifeCycleStatus {
 		t.Fatalf("GetAPIByUUID returned unexpected lifecycle details: %+v", created)
 	}
-	if !reflect.DeepEqual(created.Transport, api.Transport) {
-		t.Fatalf("GetAPIByUUID returned unexpected transport: %+v", created.Transport)
+	if !reflect.DeepEqual(created.Configuration.Transport, api.Configuration.Transport) {
+		t.Fatalf("GetAPIByUUID returned unexpected transport: %+v", created.Configuration.Transport)
 	}
 	if created.Configuration.Name != api.Configuration.Name || created.Configuration.Version != api.Configuration.Version {
 		t.Fatalf("GetAPIByUUID returned unexpected configuration: %+v", created.Configuration)
@@ -138,10 +138,10 @@ func TestAPIRepo_Update(t *testing.T) {
 		ProjectID:       projectUUID,
 		OrganizationID:  orgUUID,
 		LifeCycleStatus: "CREATED",
-		Transport:       []string{"https"},
 		Configuration: model.RestAPIConfig{
-			Name:    "Update API",
-			Version: "1.0.0",
+			Name:      "Update API",
+			Version:   "1.0.0",
+			Transport: []string{"https"},
 		},
 	}
 
@@ -158,10 +158,10 @@ func TestAPIRepo_Update(t *testing.T) {
 	api.Version = "1.1.0"
 	api.Description = "Updated Description"
 	api.LifeCycleStatus = "PUBLISHED"
-	api.Transport = []string{"http", "https"}
 	api.Configuration = model.RestAPIConfig{
-		Name:    "Updated API",
-		Version: "1.1.0",
+		Name:      "Updated API",
+		Version:   "1.1.0",
+		Transport: []string{"http", "https"},
 	}
 
 	if err := repo.UpdateAPI(api); err != nil {
@@ -182,8 +182,8 @@ func TestAPIRepo_Update(t *testing.T) {
 	if updated.LifeCycleStatus != api.LifeCycleStatus {
 		t.Fatalf("UpdateAPI did not update lifecycle status: %s", updated.LifeCycleStatus)
 	}
-	if !reflect.DeepEqual(updated.Transport, api.Transport) {
-		t.Fatalf("UpdateAPI did not update transport: %+v", updated.Transport)
+	if !reflect.DeepEqual(updated.Configuration.Transport, api.Configuration.Transport) {
+		t.Fatalf("UpdateAPI did not update transport: %+v", updated.Configuration.Transport)
 	}
 	if updated.Configuration.Name != api.Configuration.Name || updated.Configuration.Version != api.Configuration.Version {
 		t.Fatalf("UpdateAPI did not update configuration: %+v", updated.Configuration)
@@ -209,10 +209,10 @@ func TestAPIRepo_Delete(t *testing.T) {
 		ProjectID:       projectUUID,
 		OrganizationID:  orgUUID,
 		LifeCycleStatus: "CREATED",
-		Transport:       []string{"https"},
 		Configuration: model.RestAPIConfig{
-			Name:    "Delete API",
-			Version: "1.0.0",
+			Name:      "Delete API",
+			Version:   "1.0.0",
+			Transport: []string{"https"},
 		},
 	}
 
@@ -269,10 +269,10 @@ func TestAPIRepo_CheckAPIExistsByNameAndVersionInOrganization(t *testing.T) {
 		ProjectID:       projectUUID,
 		OrganizationID:  orgUUID,
 		LifeCycleStatus: "CREATED",
-		Transport:       []string{"https"},
 		Configuration: model.RestAPIConfig{
-			Name:    "Exists API",
-			Version: "1.0.0",
+			Name:      "Exists API",
+			Version:   "1.0.0",
+			Transport: []string{"https"},
 		},
 	}
 
@@ -329,10 +329,10 @@ func TestAPIRepo_CheckAPIExistsByHandleInOrganization(t *testing.T) {
 		ProjectID:       projectUUID,
 		OrganizationID:  orgUUID,
 		LifeCycleStatus: "CREATED",
-		Transport:       []string{"https"},
 		Configuration: model.RestAPIConfig{
-			Name:    "Handle API",
-			Version: "1.0.0",
+			Name:      "Handle API",
+			Version:   "1.0.0",
+			Transport: []string{"https"},
 		},
 	}
 
@@ -389,10 +389,10 @@ func TestAPIRepo_CreateSetsArtifactKind(t *testing.T) {
 		ProjectID:       projectUUID,
 		OrganizationID:  orgUUID,
 		LifeCycleStatus: "CREATED",
-		Transport:       []string{"https"},
 		Configuration: model.RestAPIConfig{
-			Name:    "Kind API",
-			Version: "1.0.0",
+			Name:      "Kind API",
+			Version:   "1.0.0",
+			Transport: []string{"https"},
 		},
 	}
 
@@ -443,11 +443,11 @@ func TestAPIRepo_CreateAndRead_FullConfiguration(t *testing.T) {
 		ProjectID:       projectUUID,
 		OrganizationID:  orgUUID,
 		LifeCycleStatus: "PUBLISHED",
-		Transport:       []string{"http", "https"},
 		Configuration: model.RestAPIConfig{
-			Name:    "Full Config API",
-			Version: "2.0.0",
-			Context: strPtr("/full-config"),
+			Name:      "Full Config API",
+			Version:   "2.0.0",
+			Context:   strPtr("/full-config"),
+			Transport: []string{"http", "https"},
 			Upstream: model.UpstreamConfig{
 				Main: &model.UpstreamEndpoint{
 					URL: "https://backend.example.com",

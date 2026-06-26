@@ -166,7 +166,8 @@ func (h *MCPProxyHandler) UpdateMCPProxy(c *gin.Context) {
 		return
 	}
 
-	resp, err := h.service.Update(orgID, id, &req)
+	updatedBy, _ := middleware.GetUsernameFromContext(c)
+	resp, err := h.service.Update(orgID, id, updatedBy, &req)
 	if err != nil {
 		h.handleServiceError(c, err)
 		return
@@ -184,8 +185,9 @@ func (h *MCPProxyHandler) DeleteMCPProxy(c *gin.Context) {
 		return
 	}
 	id := c.Param("id")
+	deletedBy, _ := middleware.GetUsernameFromContext(c)
 
-	if err := h.service.Delete(orgID, id); err != nil {
+	if err := h.service.Delete(orgID, id, deletedBy); err != nil {
 		h.handleServiceError(c, err)
 		return
 	}
