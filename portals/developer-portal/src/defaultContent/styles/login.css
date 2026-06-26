@@ -47,26 +47,6 @@
   margin-top: 2.125rem;
 }
 
-/* Password label row (label + forgot link) */
-.ln-pw-label-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  margin-bottom: 0.5rem;
-}
-
-.ln-pw-label-row .os-field-label { margin-bottom: 0; }
-
-.ln-forgot-link {
-  font-size: 0.78125rem;
-  font-weight: 500;
-  line-height: 1;
-  color: #1f6feb;
-  text-decoration: none;
-}
-
-.ln-forgot-link:hover { text-decoration: underline; }
-
 /* Password toggle button */
 .ln-pw-input { padding-right: 2.75rem; }
 
@@ -88,25 +68,6 @@
 
 .ln-pw-toggle:hover { color: #44505f; }
 
-/* Remember me checkbox */
-.ln-remember {
-  display: flex;
-  align-items: center;
-  gap: 0.5625rem;
-  font-size: 0.84375rem;
-  line-height: 1;
-  color: #4a5868;
-  cursor: pointer;
-  user-select: none;
-}
-
-.ln-remember-check {
-  width: 1rem;
-  height: 1rem;
-  accent-color: #1f6feb;
-  cursor: pointer;
-  flex: none;
-}
 
 /* Sign in button — reuses os-continue-btn, just change the tag */
 .ln-signin-btn {

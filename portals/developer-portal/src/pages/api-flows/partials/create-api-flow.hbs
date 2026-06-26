@@ -19,27 +19,20 @@
 
     {{!-- ── Wizard Header ── --}}
     <div class="af-wizard-header">
-        <div class="af-wizard-crumb">
-            API Workflows /&nbsp;
-            <strong>
-                <span id="apiFlowFormTitle">Create API Workflow</span>
-                <span id="editingFlowStatusBadge" class="api-flow-status-badge d-none ms-1"></span>
-            </strong>
-        </div>
-        <div class="af-stepper">
-            <div class="af-stepper-step is-active" data-step="1" role="button" tabindex="0" aria-current="step">
-                <span class="af-stepper-dot">1</span>
-                <span>Basic info</span>
+        <a href="#" class="cfg-wizard-back" id="afBackToListBtn">
+            <i class="bi bi-arrow-left"></i> Back to API Workflows
+        </a>
+        <div class="cfg-stepper">
+            <div class="cfg-step cfg-step--active" data-step="1">
+                <span class="cfg-step-circle">1</span><span class="cfg-step-label">Basic info</span>
             </div>
-            <div class="af-stepper-line"></div>
-            <div class="af-stepper-step" data-step="2" role="button" tabindex="-1" aria-disabled="true">
-                <span class="af-stepper-dot">2</span>
-                <span>API workflow</span>
+            <div class="cfg-step-connector"></div>
+            <div class="cfg-step" data-step="2">
+                <span class="cfg-step-circle">2</span><span class="cfg-step-label">API workflow</span>
             </div>
-            <div class="af-stepper-line"></div>
-            <div class="af-stepper-step" data-step="3" role="button" tabindex="-1" aria-disabled="true">
-                <span class="af-stepper-dot">3</span>
-                <span>Agent prompt</span>
+            <div class="cfg-step-connector"></div>
+            <div class="cfg-step" data-step="3">
+                <span class="cfg-step-circle">3</span><span class="cfg-step-label">Agent prompt</span>
             </div>
         </div>
     </div>
@@ -555,22 +548,17 @@
     </div>{{!-- end af-wizard-body --}}
 
     {{!-- ── Wizard Footer ── --}}
-    <div class="af-wizard-footer">
-        <div class="af-wizard-footer-left">
-            <span class="af-step-dot"></span>
-            <span id="afFooterStatus">Draft</span>
-            <span class="af-footer-sep">·</span>
-            <span id="afFooterStepLabel">Step 1 of 3</span>
-        </div>
-        <div class="af-wizard-footer-right">
-            <button type="button" class="common-btn-outlined" id="cancelApiFlowBtn2">Cancel</button>
-            <button type="button" class="common-btn-primary" id="afContinueBtn">Next</button>
+    <div class="cfg-wizard-actions">
+        <div class="cfg-wizard-actions-right">
+            <button type="button" class="cfg-btn-ghost" id="cancelApiFlowBtn2">Cancel</button>
+            <button type="button" class="cfg-btn-ghost d-none" id="afBackBtn">Back</button>
+            <button type="button" class="cfg-btn-primary" id="afContinueBtn">Next</button>
             <div class="btn-group d-none" id="saveApiFlowGroup">
-                <button type="button" class="common-btn-primary af-save-main" id="saveApiFlowBtn"
+                <button type="button" class="cfg-btn-primary af-save-main" id="saveApiFlowBtn"
                     data-status="PUBLISHED">
                     <i class="bi bi-send me-1"></i> Publish Flow
                 </button>
-                <button type="button" class="common-btn-primary af-save-toggle dropdown-toggle dropdown-toggle-split"
+                <button type="button" class="cfg-btn-primary af-save-toggle dropdown-toggle dropdown-toggle-split"
                     data-bs-toggle="dropdown" aria-expanded="false">
                     <span class="visually-hidden">More save options</span>
                 </button>

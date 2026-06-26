@@ -27,4 +27,5 @@ module.exports = {
     replaceApiContent: apiMetadataService.updateAPIContent,
     getApiContentFile: apiMetadataService.getAPIFile,
     deleteApiContentFile: apiMetadataService.deleteAPIFile,
+    listApiDocs: apiMetadataService.listApiDocs,
 };

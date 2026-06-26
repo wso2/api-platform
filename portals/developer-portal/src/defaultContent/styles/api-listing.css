@@ -168,6 +168,7 @@
 .api-icon--graphql { background: #fce4ef; color: #d6336c; }
 .api-icon--soap    { background: #ece9fb; color: #6741d9; }
 .api-icon--ws      { background: #fff1e6; color: #e65100; }
+.api-icon--mcp     { background: #e0f5f2; color: #0d9488; }
 
 .api-card-meta {
   flex: 1;
@@ -276,18 +277,69 @@
 }
 
 
-/* Subscribed ribbon */
-.subscription-flag {
+/* Subscribed card state */
+.api-card--subscribed {
+  overflow: hidden;
+  border-color: #c6e3cb;
+}
+.api-card--subscribed:hover {
+  border-color: #a8d5b0;
+}
+
+/* Corner ribbon */
+.api-card-ribbon-wrap {
   position: absolute;
-  top: 1.563rem;
-  right: -2.5rem;
-  background-color: var(--subscribed-color);
-  font-size: 0.75rem;
-  color: var(--light-text-color);
-  text-align: center;
-  width: 10rem;
-  padding: 0.125rem 0;
+  top: 0;
+  right: 0;
+  width: 108px;
+  height: 108px;
+  overflow: hidden;
+  border-top-right-radius: 14px;
+  pointer-events: none;
+  z-index: 1;
+}
+.api-card-ribbon-label {
+  position: absolute;
+  top: 19px;
+  right: -34px;
+  width: 148px;
   transform: rotate(45deg);
+  background: #2e7d32;
+  color: #fff;
+  font: 700 10px/1 sans-serif;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  text-align: center;
+  padding: 6px 0;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+}
+
+/* View subscription button on listing cards */
+.api-card-view-sub-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  background: #fff;
+  border: 1px solid #cdd8e6;
+  color: #1f3d5c;
+  border-radius: 1.25rem;
+  padding: 0.6875rem 0.875rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1;
+  font-family: inherit;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.api-card-view-sub-btn:hover {
+  border-color: #a8c0d8;
+  color: #1f3d5c;
+  text-decoration: none;
+}
+.api-card-view-sub-btn .bi {
+  font-size: 0.9375rem;
+  color: #2e7d32;
 }
 
 /* ── Message overlay (inside cards) ─────────────────────── */

@@ -19,12 +19,6 @@
         <i class="bi bi-file-text submenu-icon"></i>
         <span class="nav-text">Documentation</span>
       </a>
-      {{#if showSubscriptionsNav}}
-      <a href="#" class="nav-link submenu-link fw-light" id="api-subscriptions">
-        <i class="bi bi-receipt submenu-icon"></i>
-        <span class="nav-text">Subscriptions</span>
-      </a>
-      {{/if}}
       {{#if showApiKeysNav}}
       <a href="#" class="nav-link submenu-link fw-light" id="api-keys-nav">
         <i class="bi bi-key submenu-icon"></i>
@@ -35,7 +29,7 @@
     {{/in}}
     {{#in devportalMode values="DEFAULT,MCPSERVERSONLY"}}
     <a href="{{baseUrl}}/mcps" class="nav-link" id="mcps">
-      <i class="bi bi-robot sidebar-icon"></i>
+      <img src="/images/mcp-icon.svg" class="sidebar-icon" alt="" />
       <span class="nav-text">MCP Servers</span>
       <i class="bi bi-chevron-right sidebar-chevron nav-text"></i>
     </a>
@@ -57,7 +51,7 @@
     </a>
     {{/if}}
     <a href="{{baseUrl}}/applications" class="nav-link" id="applications">
-      <i class="bi bi-window-stack sidebar-icon"></i>
+      <img src="/images/applications-icon.svg" class="sidebar-icon" alt="" />
       <span class="nav-text">Applications</span>
     </a>
     <a href="{{baseUrl}}/subscriptions" class="nav-link" id="subscriptions">

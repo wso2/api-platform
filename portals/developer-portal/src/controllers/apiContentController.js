@@ -34,7 +34,8 @@ const subDao = require('../dao/subscriptionDao');
 const apiMetadataService = require('../services/apiMetadataService');
 const { apiUsesApiKeySecurity, findSubscriptionTokenHeader } = require('../utils/apiDefinitionUtil');
 const sampleApiLoader = require('../utils/sampleApiLoader');
-const { seedSampleAPIs } = require('../services/sampleSeederService');
+const adminService = require('../services/adminService');
+const { seedSampleAPIs, seedSampleMCPs } = require('../services/sampleSeederService');
 const apiFlowService = require('../services/apiFlowService');
 const { buildSchema, getIntrospectionQuery, graphql: executeGraphQL } = require('graphql');
 const yaml = require('js-yaml');
@@ -112,9 +113,16 @@ const loadAPIs = async (req, res) => {
                     isAdmin: req.user.isAdmin,
                 }
             }
+            const isMcpPage = req.originalUrl.includes("/mcps");
+            const filteredList = metaDataList.filter(api =>
+                isMcpPage
+                    ? api.apiInfo?.apiType === constants.API_TYPE.MCP
+                    : api.apiInfo?.apiType !== constants.API_TYPE.MCP
+            );
+
             const templateContent = {
                 isAuthenticated: req.isAuthenticated(),
-                apiMetadata: metaDataList,
+                apiMetadata: filteredList,
                 tags: apiTags,
                 baseUrl: '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName,
                 orgID: orgID,
@@ -124,7 +132,7 @@ const loadAPIs = async (req, res) => {
                 applications: []
             };
 
-            if (req.originalUrl.includes("/mcps")) {
+            if (isMcpPage) {
                 html = await renderTemplateFromAPI(templateContent, orgID, orgName, "pages/mcp", viewName);
             } else {
                 html = await renderTemplateFromAPI(templateContent, orgID, orgName, "pages/apis", viewName);
@@ -337,9 +345,13 @@ const loadAPIContent = async (req, res) => {
                     const localSubs = await subDao.list(orgID, { apiId: apiID, createdBy });
                     subscriptions = (localSubs || []).map(sub => ({
                         subscriptionId: sub.SUB_ID,
+                        // policyName (raw POLICY_NAME) is what isCurrentPlan compares against in the template.
+                        // subscriptionPlanName keeps the human-readable label (DISPLAY_NAME when set).
+                        policyName: sub.DP_SUBSCRIPTION_PLAN?.PLAN_NAME || '',
                         subscriptionPlanName: sub.DP_SUBSCRIPTION_PLAN?.DISPLAY_NAME || sub.DP_SUBSCRIPTION_PLAN?.PLAN_NAME || '',
                         status: sub.STATUS,
                         subscriptionToken: sub.SUB_TOKEN,
+                        maskedToken: sub.SUB_TOKEN ? sub.SUB_TOKEN.slice(0, 4) + '****' + sub.SUB_TOKEN.slice(-4) : '',
                         customerName: null
                     }));
                 } catch (err) {
@@ -1495,7 +1507,9 @@ const seedSamples = async (req, res) => {
     }
     try {
         const orgDetails = await orgDao.get(orgName);
-        const results = await seedSampleAPIs(orgDetails.ORG_ID);
+        const apiResults = await seedSampleAPIs(orgDetails.ORG_ID);
+        const mcpResults = await seedSampleMCPs(orgDetails.ORG_ID);
+        const results  = [...apiResults, ...mcpResults];
         const deployed = results.filter(r => r.status === 'ok').length;
         const skipped  = results.filter(r => r.status === 'exists').length;
         const failed   = results.filter(r => r.status === 'failed').length;

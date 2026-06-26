@@ -32,7 +32,12 @@ function encryptToken(token) {
 
 function decryptToken(value) {
     if (!value) return value;
-    return subCrypto.decrypt(value);
+    try {
+        return subCrypto.decrypt(value);
+    } catch (e) {
+        logger.warn('Failed to decrypt subscription token — key mismatch or stale record', { error: e.message });
+        return null;
+    }
 }
 
 function decryptSubRecord(sub) {
