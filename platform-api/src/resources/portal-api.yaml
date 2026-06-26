@@ -1,0 +1,132 @@
+openapi: 3.1.1
+info:
+  title: Portal API
+  description: |
+    A **RESTful API** exposed by the WSO2 **API Platform - Platform API** exclusively for the
+    platform's portals (Developer Portal, AI Workspace, Management Portal, etc.) to connect to
+    the control plane.
+
+    These endpoints are not intended for general client use — they back portal-specific flows
+    such as local (file-based) credential login.
+
+    ## Authentication
+
+    Endpoints under this API are public (unauthenticated): they are used to *obtain* a token
+    rather than to access protected resources. Once a token is issued, portals use it as a
+    Bearer JWT against the main Platform API.
+
+  version: "0.9"
+  contact:
+    name: WSO2 API Platform Team
+  license:
+    name: Apache 2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0.html
+
+servers:
+  - url: https://localhost:9243/api/portal/v0.9
+    description: Development server (HTTPS)
+  - url: https://api.platform.com/api/portal/v0.9
+    description: Production server
+
+paths:
+  /auth/login:
+    post:
+      summary: Authenticate a portal user (file-based auth)
+      description: |
+        Validates a username and password against the locally-configured users (file-based auth
+        mode) and, on success, issues a signed JWT for use against the Platform API.
+
+        Credentials are submitted as `application/x-www-form-urlencoded`. This endpoint is
+        unauthenticated.
+      operationId: portalLogin
+      tags:
+        - Portal Authentication
+      security: []
+      requestBody:
+        description: User credentials.
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Authentication succeeded; a JWT is returned.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '400':
+          description: The request was malformed (e.g. username or password missing).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: username and password are required
+        '401':
+          description: Invalid credentials.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: invalid credentials
+        '500':
+          description: The server failed to issue a token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: failed to issue token
+
+components:
+  schemas:
+    LoginRequest:
+      type: object
+      required:
+        - username
+        - password
+      properties:
+        username:
+          type: string
+          description: The username of a locally-configured user.
+          example: admin
+        password:
+          type: string
+          format: password
+          description: The user's password.
+          example: "admin"
+
+    LoginResponse:
+      type: object
+      required:
+        - token
+        - expires_at
+      properties:
+        token:
+          type: string
+          description: A signed JWT to be used as a Bearer token against the Platform API.
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhZG1pbiJ9.signature
+        expires_at:
+          type: integer
+          format: int64
+          description: Token expiry as a Unix timestamp (seconds since epoch).
+          example: 1735689600
+
+    ErrorResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+          description: Human-readable error message.
+          example: invalid credentials
+
+tags:
+  - name: Portal Authentication
+    description: |
+      Authentication endpoints used by the platform's portals to obtain a token via
+      file-based (local) credential login.

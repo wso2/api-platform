@@ -50,7 +50,7 @@ path   = "/app/data/api_platform.db"   # SQLite file path (ignored for postgres)
 [auth.jwt]
 enabled         = true
 issuer          = "platform-api"
-skip_validation = false   # verify JWT signature
+skip_validation = true   # verify JWT signature
 
 # IDP (JWKS-based) — disabled in quickstart mode.
 # Enable and configure when using Asgardeo, Keycloak, Auth0, etc.

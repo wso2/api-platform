@@ -48,7 +48,7 @@ func NewAuthLoginHandler(cfg *config.Server) *AuthLoginHandler {
 }
 
 func (h *AuthLoginHandler) RegisterPublicRoutes(r *gin.Engine) {
-	r.POST("/api/portal/v1/auth/login", h.Login)
+	r.POST("/api/portal/v0.9/auth/login", h.Login)
 }
 
 func (h *AuthLoginHandler) Login(c *gin.Context) {
