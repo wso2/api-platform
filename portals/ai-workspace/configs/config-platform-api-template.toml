@@ -63,12 +63,6 @@ path = "/app/data/api_platform.db"
 # max_idle_conns    = 10    # maximum idle connections in the pool
 # conn_max_lifetime = 300   # seconds before a connection is recycled
 
-# Schema DDL execution — when true the server runs DDL at startup to create or
-# migrate the schema. Defaults to true for SQLite and false for all other
-# drivers. Set to true for non-SQLite only if you want the server to manage
-# schema provisioning; otherwise provision the schema externally before startup.
-# execute_schema_ddl = false
-
 # Encryption key for subscription tokens stored in the database (32-byte hex string).
 # Required when subscription tokens are used; auto-generated if left empty.
 # subscription_token_encryption_key = ""

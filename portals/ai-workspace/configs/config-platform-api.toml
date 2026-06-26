@@ -45,12 +45,6 @@ path   = "/app/data/api_platform.db"   # SQLite file path (ignored for postgres)
 # password = "change-me"
 # ssl_mode = "disable"
 
-# Schema DDL execution — when true the server runs DDL at startup to create or
-# migrate the schema. Defaults to true for SQLite and false for all other
-# drivers. Set to true for non-SQLite only if you want the server to manage
-# schema provisioning; otherwise provision the schema externally before startup.
-# execute_schema_ddl = false
-
 # ---------------------------------------------------------------------------
 # Authentication
 # ---------------------------------------------------------------------------
