@@ -1510,11 +1510,12 @@ func (s *sqlStore) SaveLLMProviderTemplate(template *models.StoredLLMProviderTem
 	groupVersionID := template.GetGroupID()
 	handle := template.GetHandle()
 	version := template.GetVersion()
+	managedBy := template.GetManagedBy()
 
 	query := `
 		INSERT INTO llm_provider_templates (
-			uuid, gateway_id, group_id, handle, version, configuration, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+			uuid, gateway_id, group_id, handle, managed_by, version, configuration, created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	now := time.Now()
@@ -1523,6 +1524,7 @@ func (s *sqlStore) SaveLLMProviderTemplate(template *models.StoredLLMProviderTem
 		s.gatewayId,
 		groupVersionID,
 		handle,
+		managedBy,
 		version,
 		string(configJSON),
 		now,
@@ -1563,17 +1565,19 @@ func (s *sqlStore) UpdateLLMProviderTemplate(template *models.StoredLLMProviderT
 
 	groupVersionID := template.GetGroupID()
 	handle := template.GetHandle()
+	managedBy := template.GetManagedBy()
 
 	version := template.GetVersion()
 	query := `
 		UPDATE llm_provider_templates
-		SET group_id = ?, handle = ?, version = ?, configuration = ?, updated_at = ?
+		SET group_id = ?, handle = ?, managed_by = ?, version = ?, configuration = ?, updated_at = ?
 		WHERE uuid = ? AND gateway_id = ?
 	`
 
 	result, err := s.exec(query,
 		groupVersionID,
 		handle,
+		managedBy,
 		version,
 		string(configJSON),
 		time.Now(),

@@ -654,8 +654,11 @@ func TestLLMDeploymentService_CreateLLMProviderTemplate_HandleConflict(t *testin
 }
 
 // templateYAMLWithManagedByVersion builds a template manifest carrying explicit
-// managedBy and version fields (as produced by the AI workspace download).
-func templateYAMLWithManagedByVersion(handle, displayName, managedBy, version string) []byte {
+// groupId, managedBy and version fields (as produced by the AI workspace
+// download). Each version is pushed with a distinct handle (metadata.name) but
+// shares the same groupId, so the (gateway_id, handle) uniqueness holds while
+// versions of one family coexist.
+func templateYAMLWithManagedByVersion(handle, groupID, displayName, managedBy, version string) []byte {
 	return []byte(fmt.Sprintf(`
 apiVersion: gateway.api-platform.wso2.com/v1
 kind: LlmProviderTemplate
@@ -663,9 +666,10 @@ metadata:
   name: %s
 spec:
   displayName: %s
+  groupId: %s
   managedBy: %s
   version: %s
-`, handle, displayName, managedBy, version))
+`, handle, displayName, groupID, managedBy, version))
 }
 
 func TestLLMDeploymentService_CreateLLMProviderTemplate_VersionWise(t *testing.T) {
@@ -678,7 +682,7 @@ func TestLLMDeploymentService_CreateLLMProviderTemplate_VersionWise(t *testing.T
 
 	// Deploy v1.0 of a custom template and confirm managedBy/version round-trip.
 	v1, err := service.CreateLLMProviderTemplate(LLMTemplateParams{
-		Spec:        templateYAMLWithManagedByVersion("deep-seek", "deep seek", "other", "v1.0"),
+		Spec:        templateYAMLWithManagedByVersion("deep-seek", "deep-seek", "deep seek", "other", "v1.0"),
 		ContentType: "application/yaml",
 		Logger:      logger,
 	})
@@ -688,16 +692,17 @@ func TestLLMDeploymentService_CreateLLMProviderTemplate_VersionWise(t *testing.T
 	require.NotNil(t, v1.Configuration.Spec.Version)
 	assert.Equal(t, "v1.0", *v1.Configuration.Spec.Version)
 
-	// Deploy v2.0 of the SAME handle — versions coexist, no conflict.
+	// Deploy v2.0 of the same family (same groupId) with its own distinct handle
+	// (deep-seek-v2-0) — versions coexist, no conflict.
 	v2, err := service.CreateLLMProviderTemplate(LLMTemplateParams{
-		Spec:        templateYAMLWithManagedByVersion("deep-seek", "deep seek", "deepseek", "v2.0"),
+		Spec:        templateYAMLWithManagedByVersion("deep-seek-v2-0", "deep-seek", "deep seek", "deepseek", "v2.0"),
 		ContentType: "application/yaml",
 		Logger:      logger,
 	})
 	require.NoError(t, err)
 	assert.NotEqual(t, v1.UUID, v2.UUID)
 
-	// Handle-based lookup resolves to the latest (most recently created) version,
+	// Group-based lookup resolves to the latest (most recently created) version,
 	// and managedBy/version are persisted (read back from the DB, not in-memory).
 	latest, err := db.GetLLMProviderTemplateByHandle("deep-seek")
 	require.NoError(t, err)
@@ -708,7 +713,7 @@ func TestLLMDeploymentService_CreateLLMProviderTemplate_VersionWise(t *testing.T
 
 	// Re-deploying an existing (handle, version) is rejected.
 	_, err = service.CreateLLMProviderTemplate(LLMTemplateParams{
-		Spec:        templateYAMLWithManagedByVersion("deep-seek", "deep seek", "deepseek", "v2.0"),
+		Spec:        templateYAMLWithManagedByVersion("deep-seek-v2-0", "deep-seek", "deep seek", "deepseek", "v2.0"),
 		ContentType: "application/yaml",
 		Logger:      logger,
 	})

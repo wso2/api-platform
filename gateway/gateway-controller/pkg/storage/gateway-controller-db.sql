@@ -133,6 +133,11 @@ CREATE TABLE IF NOT EXISTS llm_provider_templates (
     -- Template content version (e.g. v1.0); defaults to v1.0 when omitted
     version TEXT NOT NULL DEFAULT 'v1.0',
 
+    -- Origin of the template. Built-in templates use 'wso2'; custom templates
+    -- default to 'customer' and may carry any value. Persisted from the
+    -- template YAML's managedBy so it survives a round-trip through the DB.
+    managed_by TEXT NOT NULL DEFAULT 'customer',
+
     -- Full template configuration as JSON
     configuration TEXT NOT NULL,
 
@@ -141,9 +146,12 @@ CREATE TABLE IF NOT EXISTS llm_provider_templates (
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     -- Each (group_id, version) pair is unique per gateway; versions coexist.
-    -- The handle (metadata.name) is unique per gateway.
+    -- The handle (metadata.name) is unique per gateway: each version carries a
+    -- distinct handle (e.g. openai, then openai-v2-0) and is the identifier a
+    -- user feeds to deploy the template.
     PRIMARY KEY (gateway_id, uuid),
-    UNIQUE(gateway_id, group_id, version)
+    UNIQUE(gateway_id, group_id, version),
+    UNIQUE(gateway_id, handle)
 );
 
 -- Table for API keys
