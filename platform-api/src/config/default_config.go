@@ -35,7 +35,6 @@ func defaultConfig() *Server {
 			MaxOpenConns:     25,
 			MaxIdleConns:     10,
 			ConnMaxLifetime:  300,
-			ExecuteSchemaDDL: true,
 		},
 		Auth: Auth{
 			// SkipPaths bypasses JWT/IDP auth middleware. Paths below the health/metrics
