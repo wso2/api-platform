@@ -37,6 +37,10 @@ const APIContent = sequelize.define('DP_API_CONTENT', {
         type: DataTypes.STRING,
         allowNull: false,
         primaryKey: true,
+    },
+    LOOKUP_KEY: {
+        type: DataTypes.STRING,
+        allowNull: true,
     }
 }, {
     timestamps: false,
@@ -44,5 +48,4 @@ const APIContent = sequelize.define('DP_API_CONTENT', {
     returning: false,
 });
 
-// Export both models
 module.exports = APIContent;

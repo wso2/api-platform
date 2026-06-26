@@ -28,9 +28,10 @@
 SELECT
     metadata.*,
     COALESCE(
-        JSON_AGG("DP_API_IMAGEDATA") FILTER (WHERE "DP_API_IMAGEDATA"."API_ID" IS NOT NULL),
+        JSON_AGG(JSON_BUILD_OBJECT('API_ID', images."API_ID", 'LOOKUP_KEY', images."LOOKUP_KEY", 'FILE_NAME', images."FILE_NAME", 'TYPE', images."TYPE"))
+            FILTER (WHERE images."API_ID" IS NOT NULL),
         '[]'
-    ) AS "DP_API_IMAGEDATA",
+    ) AS "DP_API_CONTENTs",
     COALESCE(
         JSON_AGG("DP_API_SUBSCRIPTION_PLAN") FILTER (WHERE "DP_API_SUBSCRIPTION_PLAN"."API_ID" IS NOT NULL),
         '[]'
@@ -64,8 +65,8 @@ LEFT JOIN
         OR content."FILE_NAME" LIKE '%.graphql%'
     )
 LEFT OUTER JOIN
-    "DP_API_IMAGEDATA"
-    ON metadata."ID" = "DP_API_IMAGEDATA"."API_ID"
+    "DP_API_CONTENT" images
+    ON metadata."ID" = images."API_ID" AND images."TYPE" = 'IMAGE'
 LEFT OUTER JOIN
     "DP_API_SUBSCRIPTION_PLAN"
     ON metadata."ID" = "DP_API_SUBSCRIPTION_PLAN"."API_ID"

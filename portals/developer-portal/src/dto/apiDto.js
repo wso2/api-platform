@@ -16,6 +16,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+const constants = require('../utils/constants');
 
 class APIDTO {
     constructor(api) {
@@ -66,17 +67,15 @@ class APIInfo {
         if (apiInfo.BUSINESS_OWNER || apiInfo.TECHNICAL_OWNER) {
             this.owners = new Owner(apiInfo);
         }
-        if (apiInfo.DP_API_IMAGEDATA) {
-            this.apiImageMetadata = getAPIImages(apiInfo.DP_API_IMAGEDATA);
-            if (apiInfo.DP_API_IMAGEDATA) {
-                this.apiImageMetadata = getAPIImages(apiInfo.DP_API_IMAGEDATA);
-            }
-            if (apiInfo.TAGS) {
-                this.tags = apiInfo.TAGS.split(" ");
-            }
-            if (apiInfo.DP_LABELs) {
-                this.labels = apiInfo.DP_LABELs.map(label => label.dataValues ? label.dataValues.NAME : label);
-            }
+        if (apiInfo.DP_API_CONTENTs) {
+            const images = apiInfo.DP_API_CONTENTs.filter(content => content.TYPE === constants.DOC_TYPES.IMAGES);
+            this.apiImageMetadata = getAPIImages(images);
+        }
+        if (apiInfo.TAGS) {
+            this.tags = apiInfo.TAGS.split(" ");
+        }
+        if (apiInfo.DP_LABELs) {
+            this.labels = apiInfo.DP_LABELs.map(label => label.dataValues ? label.dataValues.NAME : label);
         }
     }
 }
@@ -120,7 +119,7 @@ class APIImages {
 const getAPIImages = (apiImages) => {
     let images = {}
     apiImages.forEach(element => {
-        images[element.KEY] = element.NAME;
+        images[element.LOOKUP_KEY] = element.FILE_NAME;
     });
     return new APIImages(images);
 }

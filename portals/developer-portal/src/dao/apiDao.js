@@ -17,7 +17,7 @@
  */
 const { APIMetadata, APILabels } = require('../models/apiMetadata');
 const SubscriptionPlan = require('../models/subscriptionPlan');
-const APIImageMetadata = require('../models/apiImage');
+const APIContent = require('../models/apiContent');
 const Labels = require('../models/label');
 const { Sequelize } = require('sequelize');
 const { Op } = require('sequelize');
@@ -146,9 +146,10 @@ const get = async (orgID, apiID, t) => {
     try {
         const apiMetadataResponse = await APIMetadata.findAll({
             include: [{
-                model: APIImageMetadata,
+                model: APIContent,
                 where: {
-                    API_ID: apiID
+                    API_ID: apiID,
+                    TYPE: constants.DOC_TYPES.IMAGES
                 },
                 required: false
             }, {
@@ -205,7 +206,8 @@ const getByCondition = async (condition, t) => {
         }
         const apiMetadataResponse = await APIMetadata.findAll({
             include: [{
-                model: APIImageMetadata,
+                model: APIContent,
+                where: { TYPE: constants.DOC_TYPES.IMAGES },
                 required: false
             }, {
                 model: SubscriptionPlan,
@@ -241,7 +243,8 @@ const list = async (orgID, groups, viewName, t) => {
                     STATUS: { [Op.in]: [constants.API_STATUS.PUBLISHED, constants.API_STATUS.DEPRECATED] }
                 },
                 include: [{
-                    model: APIImageMetadata,
+                    model: APIContent,
+                    where: { TYPE: constants.DOC_TYPES.IMAGES },
                     required: false
                 }, {
                     model: SubscriptionPlan,
@@ -282,7 +285,8 @@ const list = async (orgID, groups, viewName, t) => {
                 STATUS: { [Op.in]: [constants.API_STATUS.PUBLISHED, constants.API_STATUS.DEPRECATED] }
             },
             include: [{
-                model: APIImageMetadata,
+                model: APIContent,
+                where: { TYPE: constants.DOC_TYPES.IMAGES },
                 required: false
             }, {
                 model: SubscriptionPlan,
@@ -329,7 +333,8 @@ const listFromAllViews = async (orgID, groups, t) => {
                     STATUS: { [Op.in]: [constants.API_STATUS.PUBLISHED, constants.API_STATUS.DEPRECATED] }
                 },
                 include: [{
-                    model: APIImageMetadata,
+                    model: APIContent,
+                    where: { TYPE: constants.DOC_TYPES.IMAGES },
                     required: false
                 }, {
                     model: SubscriptionPlan,
@@ -365,7 +370,8 @@ const listFromAllViews = async (orgID, groups, t) => {
                 STATUS: { [Op.in]: [constants.API_STATUS.PUBLISHED, constants.API_STATUS.DEPRECATED] }
             },
             include: [{
-                model: APIImageMetadata,
+                model: APIContent,
+                where: { TYPE: constants.DOC_TYPES.IMAGES },
                 required: false
             }, {
                 model: SubscriptionPlan,
@@ -413,7 +419,7 @@ const searchFallback = async (orgID, searchTerm, viewName, t) => {
             ],
         },
         include: [
-            { model: APIImageMetadata, required: false },
+            { model: APIContent, where: { TYPE: constants.DOC_TYPES.IMAGES }, required: false },
             { model: SubscriptionPlan, through: { attributes: [] }, required: false },
             {
                 model: Labels,
@@ -506,7 +512,6 @@ const getIdByRef = async (orgID, referenceId, t) => {
 };
 
 const getSpecs = async (orgID, apiIDs) => {
-    const APIContent = require('../models/apiContent');
     try {
         const apiSpecsResponse = await APIContent.findAll({
             attributes: [

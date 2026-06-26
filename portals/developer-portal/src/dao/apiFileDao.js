@@ -21,14 +21,15 @@ const { Sequelize, Op } = require('sequelize');
 const constants = require('../utils/constants');
 const logger = require('../config/logger');
 
-const store = async (apiFile, fileName, apiID, type, t) => {
+const store = async (apiFile, fileName, apiID, type, t, key) => {
 
     try {
         const apiFileResponse = await APIContent.create({
             FILE_CONTENT: apiFile,
             FILE_NAME: fileName,
             API_ID: apiID,
-            TYPE: type
+            TYPE: type,
+            LOOKUP_KEY: key ?? null
         }, { transaction: t }
         );
         return apiFileResponse;
@@ -49,7 +50,8 @@ const storeMany = async (files, apiID, t) => {
                 FILE_CONTENT: file.content,
                 FILE_NAME: file.fileName,
                 TYPE: file.type,
-                API_ID: apiID
+                API_ID: apiID,
+                LOOKUP_KEY: file.key ?? null
             })
         });
         const apiContentResponse = await APIContent.bulkCreate(apiContent, { transaction: t });
@@ -67,24 +69,32 @@ const upsertMany = async (files, apiID, orgID, t) => {
     let filesToCreate = []
     try {
         for (const file of files) {
-            const apiFileResponse = await get(file.fileName, file.type, orgID, apiID, t);
+            // A keyed file (e.g. a named image slot) is identified by its LOOKUP_KEY, since its
+            // FILE_NAME can change between uploads. Unkeyed files (docs, specs) are
+            // identified by FILE_NAME as before.
+            const apiFileResponse = file.key
+                ? await getByKey(file.key, apiID, t)
+                : await get(file.fileName, file.type, orgID, apiID, t);
             if (apiFileResponse == null || apiFileResponse == undefined) {
                 filesToCreate.push({
                     FILE_CONTENT: file.content,
                     FILE_NAME: file.fileName,
                     API_ID: apiID,
                     TYPE: file.type,
+                    LOOKUP_KEY: file.key ?? null
                 })
             } else {
                 const updateResponse = await APIContent.update(
                     {
                         FILE_CONTENT: file.content,
+                        FILE_NAME: file.fileName,
+                        LOOKUP_KEY: file.key ?? apiFileResponse.LOOKUP_KEY
                     },
                     {
                         where: {
                             API_ID: apiID,
                             FILE_NAME: apiFileResponse.FILE_NAME,
-                            TYPE: file.type,
+                            TYPE: apiFileResponse.TYPE,
                         },
                         include: [
                             {
@@ -93,7 +103,8 @@ const upsertMany = async (files, apiID, orgID, t) => {
                                     ORG_ID: orgID
                                 }
                             }
-                        ]
+                        ],
+                        transaction: t
                     }
                 );
                 if (!updateResponse) {
@@ -166,7 +177,49 @@ const getByType = async (type, orgID, apiID, t) => {
     }
 }
 
-const upsert = async (apiFile, fileName, apiID, orgID, type, t) => {
+/**
+ * Find a single content row by its LOOKUP_KEY (e.g. a named image slot like 'api-icon').
+ */
+const getByKey = async (key, apiID, t) => {
+    try {
+        return await APIContent.findOne({
+            where: {
+                API_ID: apiID,
+                TYPE: constants.DOC_TYPES.IMAGES,
+                LOOKUP_KEY: key
+            },
+            transaction: t
+        });
+    } catch (error) {
+        if (error instanceof Sequelize.UniqueConstraintError) {
+            throw error;
+        }
+        throw new Sequelize.DatabaseError(error);
+    }
+}
+
+/**
+ * Delete a single content row by its LOOKUP_KEY (e.g. a named image slot like 'api-icon').
+ */
+const deleteByKey = async (key, apiID, t) => {
+    try {
+        return await APIContent.destroy({
+            where: {
+                API_ID: apiID,
+                TYPE: constants.DOC_TYPES.IMAGES,
+                LOOKUP_KEY: key
+            },
+            transaction: t
+        });
+    } catch (error) {
+        if (error instanceof Sequelize.UniqueConstraintError) {
+            throw error;
+        }
+        throw new Sequelize.DatabaseError(error);
+    }
+}
+
+const upsert = async (apiFile, fileName, apiID, orgID, type, t, key) => {
     try {
         const apiFileResponse = await getByType(type, orgID, apiID, t);
         let fileUpdateResponse;
@@ -175,12 +228,14 @@ const upsert = async (apiFile, fileName, apiID, orgID, type, t) => {
                 FILE_CONTENT: apiFile,
                 FILE_NAME: fileName,
                 API_ID: apiID,
-                TYPE: type
+                TYPE: type,
+                LOOKUP_KEY: key ?? null
             }, { transaction: t });
         } else {
             fileUpdateResponse = await APIContent.update({
                 FILE_CONTENT: apiFile,
-                FILE_NAME: fileName
+                FILE_NAME: fileName,
+                LOOKUP_KEY: key ?? apiFileResponse.LOOKUP_KEY
             },
                 {
                     where: {
@@ -208,7 +263,7 @@ const upsert = async (apiFile, fileName, apiID, orgID, type, t) => {
     }
 }
 
-const update = async (apiFile, fileName, apiID, orgID, type, t) => {
+const update = async (apiFile, fileName, apiID, orgID, type, t, key) => {
 
     try {
         const apiFileResponse = await get(fileName, type, orgID, apiID, t);
@@ -218,12 +273,14 @@ const update = async (apiFile, fileName, apiID, orgID, type, t) => {
                 FILE_CONTENT: apiFile,
                 FILE_NAME: fileName,
                 API_ID: apiID,
-                TYPE: type
+                TYPE: type,
+                LOOKUP_KEY: key ?? null
             }, { transaction: t });
         } else {
             fileUpdateResponse = await APIContent.update({
                 FILE_CONTENT: apiFile,
-                FILE_NAME: fileName
+                FILE_NAME: fileName,
+                LOOKUP_KEY: key ?? apiFileResponse.LOOKUP_KEY
             },
                 {
                     where: {
@@ -238,9 +295,9 @@ const update = async (apiFile, fileName, apiID, orgID, type, t) => {
                                 ORG_ID: orgID
                             }
                         }
-                    ]
-                },
-                { transaction: t }
+                    ],
+                    transaction: t
+                }
             );
         }
         return fileUpdateResponse;
@@ -325,6 +382,28 @@ const deleteAll = async (type, orgID, apiID, t) => {
         throw new Sequelize.DatabaseError(error);
     }
 
+}
+
+/**
+ * Delete every content row of an exact TYPE for an API (e.g. clear all images
+ * before re-storing a freshly uploaded set). Exact match on TYPE, scoped to
+ * API_ID, and participates in the caller's transaction.
+ */
+const deleteAllByType = async (type, apiID, t) => {
+    try {
+        return await APIContent.destroy({
+            where: {
+                API_ID: apiID,
+                TYPE: type
+            },
+            transaction: t
+        });
+    } catch (error) {
+        if (error instanceof Sequelize.UniqueConstraintError) {
+            throw error;
+        }
+        throw new Sequelize.DatabaseError(error);
+    }
 }
 
 const getDoc = async (type, orgID, apiID, t) => {
@@ -563,10 +642,13 @@ module.exports = {
     upsertMany,
     get,
     getByType,
+    getByKey,
+    deleteByKey,
     upsert,
     update,
     delete: deleteFile,
     deleteAll,
+    deleteAllByType,
     getDoc,
     getDocByName,
     getDocTypes,

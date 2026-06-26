@@ -24,7 +24,6 @@ const labelDao = require('../dao/labelDao');
 const viewDao = require('../dao/viewDao');
 const subscriptionPlanDao = require('../dao/subscriptionPlanDao');
 const apiFileDao = require('../dao/apiFileDao');
-const apiImageDao = require('../dao/apiImageDao');
 const apiKeyDao = require("../dao/apiKeyDao");
 const util = require("../utils/util");
 const logger = require("../config/logger");
@@ -65,6 +64,12 @@ const createAPIMetadata = async (req, res) => {
             apiFileName = preparedDefinition.apiDefinitionFileName;
             artifactApiContent = await extractApiContentFromUploadedZip(apiArtifactFile, orgId, 'new-api', 'artifact');
             resolvedImageMetadata = buildImageMetadataFromContent(artifactApiContent);
+            const filenameToKey = Object.fromEntries(Object.entries(resolvedImageMetadata).map(([key, fileName]) => [fileName, key]));
+            artifactApiContent.forEach(file => {
+                if (file.type === constants.DOC_TYPES.IMAGES) {
+                    file.key = filenameToKey[file.fileName];
+                }
+            });
         } else if (req.files?.api?.[0]) {
             apiMetadata = parseApiMetadataFromYamlRequest(req);
             if (req.files?.apiDefinition?.[0]) {
@@ -145,9 +150,6 @@ const createAPIMetadata = async (req, res) => {
                 for (const doc of req.files.docs) {
                     await apiFileDao.store(doc.buffer, doc.originalname, apiID, constants.DOC_TYPES.DOC_ID + constants.DOC_TYPES.DOCS.OTHER, t);
                 }
-            }
-            if (Object.keys(resolvedImageMetadata).length > 0) {
-                await apiImageDao.store(resolvedImageMetadata, apiID, t);
             }
             // Save MCP tools as schema definition if the API type is MCP
             if (constants.API_TYPE.MCP === apiMetadata.apiInfo.apiType) {
@@ -375,6 +377,12 @@ const updateAPIMetadata = async (req, res) => {
             apiFileName = preparedDefinition.apiDefinitionFileName;
             artifactApiContent = await extractApiContentFromUploadedZip(apiArtifactFile, orgId, apiId, 'artifact');
             resolvedImageMetadata = buildImageMetadataFromContent(artifactApiContent);
+            const filenameToKey = Object.fromEntries(Object.entries(resolvedImageMetadata).map(([key, fileName]) => [fileName, key]));
+            artifactApiContent.forEach(file => {
+                if (file.type === constants.DOC_TYPES.IMAGES) {
+                    file.key = filenameToKey[file.fileName];
+                }
+            });
         } else if (req.files?.api?.[0]) {
             apiMetadata = parseApiMetadataFromYamlRequest(req);
             if (req.files?.apiDefinition?.[0]) {
@@ -494,9 +502,6 @@ const updateAPIMetadata = async (req, res) => {
                 for (const doc of req.files.docs) {
                     await apiFileDao.store(doc.buffer, doc.originalname, apiId, constants.DOC_TYPES.DOC_ID + constants.DOC_TYPES.DOCS.OTHER, t);
                 }
-            }
-            if (Object.keys(resolvedImageMetadata).length > 0) {
-                await apiImageDao.update(resolvedImageMetadata, orgId, apiId, t);
             }
             // Update MCP tools schema definition if the API type is MCP
             const hasSchemaDefinitionFile = !!req.files?.schemaDefinition?.[0] || !!fullApiBundle?.schemaDefinitionFile;
@@ -668,20 +673,21 @@ const createAPITemplate = async (req, res) => {
         if (req.body.imageMetadata) {
             imageMetadata = JSON.parse(req.body.imageMetadata);
         }
+        const filenameToKey = Object.fromEntries(Object.entries(imageMetadata).map(([key, fileName]) => [fileName, key]));
+        apiContent.forEach(file => {
+            if (file.type === constants.DOC_TYPES.IMAGES) {
+                file.key = filenameToKey[file.fileName];
+            }
+        });
         await sequelize.transaction({
             timeout: 60000,
         }, async (t) => {
             //check whether api belongs to given org
             let apiMetadata = await apiDao.get(orgId, apiId, t);
-            let existingAPIImage = await apiImageDao.get(constants.API_ICON, apiId, t);
-
-            if (imageMetadata[constants.API_ICON] && existingAPIImage) {
-                await apiImageDao.delete(constants.API_ICON, apiId, t);
-            }
 
             if (apiMetadata) {
-                // Store image metadata
-                await apiImageDao.store(imageMetadata, apiId, t);
+                // Replace any previously stored images with this upload's set
+                await apiFileDao.deleteAllByType(constants.DOC_TYPES.IMAGES, apiId, t);
                 await apiFileDao.storeMany(apiContent, apiId, t);
             } else {
                 throw new Sequelize.ValidationError(constants.ERROR_MESSAGE.API_NOT_IN_ORG);
@@ -722,22 +728,21 @@ const createAPIContent = async (req, res) => {
             imageMetadata = JSON.parse(req.body.imageMetadata);
         }
         const resolvedImageMetadata = buildImageMetadataFromContent(apiContent, imageMetadata);
+        const filenameToKey = Object.fromEntries(Object.entries(resolvedImageMetadata).map(([key, fileName]) => [fileName, key]));
+        apiContent.forEach(file => {
+            if (file.type === constants.DOC_TYPES.IMAGES) {
+                file.key = filenameToKey[file.fileName];
+            }
+        });
         await sequelize.transaction({
             timeout: 60000,
         }, async (t) => {
             //check whether api belongs to given org
             let apiMetadata = await apiDao.get(orgId, apiId, t);
-            let existingAPIImage = await apiImageDao.get(constants.API_ICON, apiId, t);
-
-            if (resolvedImageMetadata[constants.API_ICON] && existingAPIImage) {
-                await apiImageDao.delete(constants.API_ICON, apiId, t);
-            }
 
             if (apiMetadata) {
-                // Store image metadata
-                if (Object.keys(resolvedImageMetadata).length > 0) {
-                    await apiImageDao.store(resolvedImageMetadata, apiId, t);
-                }
+                // Replace any previously stored images with this upload's set
+                await apiFileDao.deleteAllByType(constants.DOC_TYPES.IMAGES, apiId, t);
                 await apiFileDao.storeMany(apiContent, apiId, t);
             } else {
                 throw new Sequelize.ValidationError(constants.ERROR_MESSAGE.API_NOT_IN_ORG);
@@ -826,15 +831,19 @@ const updateAPITemplate = async (req, res) => {
             const links = util.getAPIDocLinks(docMetadata);
             apiContent.push(...links);
         }
+        const filenameToKey = Object.fromEntries(Object.entries(imageMetadata || {}).map(([key, fileName]) => [fileName, key]));
+        apiContent.forEach(file => {
+            if (file.type === constants.DOC_TYPES.IMAGES) {
+                file.key = filenameToKey[file.fileName];
+            }
+        });
         await sequelize.transaction({
             timeout: 60000,
         }, async (t) => {
             //check whether api belongs to given org
             const apiMetadata = await apiDao.get(orgId, apiId, t);
             if (apiMetadata) {
-                // Update image metadata
-                await apiImageDao.update(imageMetadata, orgId, apiId, t);
-                // Update API files
+                // Update API files (including images, keyed by their named slot)
                 await apiFileDao.upsertMany(apiContent, apiId, orgId, t);
             } else {
                 throw new Sequelize.ValidationError(constants.ERROR_MESSAGE.API_NOT_IN_ORG);
@@ -875,17 +884,19 @@ const updateAPIContent = async (req, res) => {
             apiContent.push(...links);
         }
         const resolvedImageMetadata = buildImageMetadataFromContent(apiContent, imageMetadata || {});
+        const filenameToKey = Object.fromEntries(Object.entries(resolvedImageMetadata).map(([key, fileName]) => [fileName, key]));
+        apiContent.forEach(file => {
+            if (file.type === constants.DOC_TYPES.IMAGES) {
+                file.key = filenameToKey[file.fileName];
+            }
+        });
         await sequelize.transaction({
             timeout: 60000,
         }, async (t) => {
             //check whether api belongs to given org
             const apiMetadata = await apiDao.get(orgId, apiId, t);
             if (apiMetadata) {
-                // Update image metadata
-                if (Object.keys(resolvedImageMetadata).length > 0) {
-                    await apiImageDao.update(resolvedImageMetadata, orgId, apiId, t);
-                }
-                // Update API files
+                // Update API files (including images, keyed by their named slot)
                 await apiFileDao.upsertMany(apiContent, apiId, orgId, t);
             } else {
                 throw new Sequelize.ValidationError(constants.ERROR_MESSAGE.API_NOT_IN_ORG);

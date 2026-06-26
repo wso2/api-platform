@@ -18,7 +18,6 @@
 const { Sequelize, DataTypes } = require('sequelize');
 const sequelize = require('../db/sequelizeConfig')
 const APIContent = require('../models/apiContent')
-const APIImages = require('./apiImage')
 const { Organization } = require('./organization')
 const Labels = require('./label');
 
@@ -181,16 +180,8 @@ APIContent.belongsTo(APIMetadata, {
   foreignKey: 'API_ID',
   onDelete: 'CASCADE'
 });
-APIImages.belongsTo(APIMetadata, {
-  foreignKey: 'API_ID',
-  onDelete: 'CASCADE'
-});
 APIMetadata.belongsTo(Organization, {
   foreignKey: 'ORG_ID'
-});
-APIMetadata.hasMany(APIImages, {
-  foreignKey: 'API_ID',
-  onDelete: 'CASCADE'
 });
 APIMetadata.hasMany(APIContent, {
   foreignKey: 'API_ID',
