@@ -20,7 +20,6 @@ package service
 import (
 	"database/sql"
 	"encoding/json"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -2131,8 +2130,8 @@ func mapProviderModelToAPI(m *model.LLMProvider, templateHandle string) *api.LLM
 		OperationPolicies: operationPolicies,
 		Policies:          nil,
 		Security:          mapSecurityModelToAPI(m.Configuration.Security),
-		CreatedAt:      utils.TimePtr(m.CreatedAt),
-		UpdatedAt:      utils.TimePtr(m.UpdatedAt),
+		CreatedAt:         utils.TimePtr(m.CreatedAt),
+		UpdatedAt:         utils.TimePtr(m.UpdatedAt),
 	}
 	if associated := mapAssociatedGatewaysModelToAPI(m.AssociatedGateways); associated != nil {
 		out.AssociatedGateways = associated

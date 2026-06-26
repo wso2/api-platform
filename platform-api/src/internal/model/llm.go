@@ -213,6 +213,12 @@ type LLMProvider struct {
 	// AssociatedGateways carries resolved gateway associations to be persisted in
 	// the gateway_association_mappings table within the same create transaction.
 	AssociatedGateways []AssociatedGatewayMapping `json:"-" db:"-"`
+	// ReplaceAssociatedGateways, when true on update, replaces the provider's full set
+	// of gateway associations with AssociatedGateways (within the update transaction).
+	// When false the associations are left untouched. It distinguishes an update that
+	// manages associations (including clearing them with an empty set) from one that
+	// omits the field entirely.
+	ReplaceAssociatedGateways bool `json:"-" db:"-"`
 }
 
 type LLMProviderConfig struct {

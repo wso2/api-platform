@@ -22,7 +22,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"strings"
 	"time"
 
 	"platform-api/src/internal/constants"
@@ -91,19 +90,12 @@ func (r *LLMProviderTemplateRepo) Create(t *model.LLMProviderTemplate) error {
 		INSERT INTO llm_provider_templates (
 			uuid, organization_uuid, handle, group_id, name, managed_by, description, created_by, updated_by,
 			configuration, openapi_spec, version, is_latest, enabled, created_at, updated_at
-			uuid, organization_uuid, handle, group_id, name, description, managed_by, created_by,
-			uuid, organization_uuid, handle, group_id, name, description, managed_by, created_by,
-			configuration, created_at, updated_at
 		)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 	_, err = r.db.Exec(r.db.Rebind(query),
 		t.UUID, t.OrganizationUUID, t.ID, t.GroupID, t.Name, t.ManagedBy, t.Description, t.CreatedBy, t.UpdatedBy,
 		configJSON, []byte(t.OpenAPISpec), t.Version, boolToInt(t.IsLatest), boolToInt(t.Enabled),
-		t.UUID, t.OrganizationUUID, t.ID, t.ID, t.Name, t.Description, t.ManagedBy, t.CreatedBy,
-		string(configJSON),
 		t.CreatedAt, t.UpdatedAt,
 	)
 	return err
@@ -669,7 +661,6 @@ func (r *LLMProviderRepo) Create(p *model.LLMProvider) error {
 	if err := r.artifactRepo.Create(tx, &model.Artifact{
 		UUID:             p.UUID,
 		Type:             constants.LLMProvider,
-		Type:             constants.LLMProvider,
 		OrganizationUUID: p.OrganizationUUID,
 	}); err != nil {
 		return fmt.Errorf("failed to create artifact: %w", err)
@@ -681,13 +672,10 @@ func (r *LLMProviderRepo) Create(p *model.LLMProvider) error {
 	}
 
 	// Insert into llm_providers table (handle/name/version/timestamps now live here)
-	// Insert into llm_providers table (handle/name/version/timestamps now live here)
 	query := `
 		INSERT INTO llm_providers (
 			uuid, handle, name, version, description, created_by, template_uuid, openapi_spec, model_list, configuration, created_at, updated_at, organization_uuid
-			uuid, handle, name, version, description, created_by, template_uuid, openapi_spec, model_list, configuration, created_at, updated_at, organization_uuid
 		)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 	_, err = tx.Exec(r.db.Rebind(query),
 		p.UUID, p.ID, p.Name, p.Version, p.Description, p.CreatedBy, p.TemplateUUID,
@@ -735,22 +723,13 @@ func (r *LLMProviderRepo) GetByID(providerID, orgUUID string) (*model.LLMProvide
 		FROM llm_providers
 		WHERE handle = ? AND organization_uuid = ?`
 	row := r.db.QueryRow(r.db.Rebind(query), providerID, orgUUID)
-			uuid, handle, name, version, organization_uuid, created_at, updated_at,
-			description, created_by, template_uuid, openapi_spec, model_list, configuration
-		FROM llm_providers
-		WHERE handle = ? AND organization_uuid = ?`
-	row := r.db.QueryRow(r.db.Rebind(query), providerID, orgUUID)
 
 	var p model.LLMProvider
 	var createdBy sql.NullString
 	var openAPISpec, modelProvidersRaw []byte
 	var configurationJSON []byte
-	var createdBy sql.NullString
-	var openAPISpec, modelProvidersRaw []byte
-	var configurationJSON []byte
 	if err := row.Scan(
 		&p.UUID, &p.ID, &p.Name, &p.Version, &p.OrganizationUUID, &p.CreatedAt, &p.UpdatedAt,
-		&p.Description, &createdBy, &p.TemplateUUID, &openAPISpec, &modelProvidersRaw, &configurationJSON,
 		&p.Description, &createdBy, &p.TemplateUUID, &openAPISpec, &modelProvidersRaw, &configurationJSON,
 	); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -759,9 +738,7 @@ func (r *LLMProviderRepo) GetByID(providerID, orgUUID string) (*model.LLMProvide
 		return nil, err
 	}
 	p.CreatedBy = createdBy.String
-	p.CreatedBy = createdBy.String
 
-	if len(configurationJSON) > 0 {
 	if len(configurationJSON) > 0 {
 		if config, err := deserializeLLMProviderConfiguration(configurationJSON); err != nil {
 			return nil, fmt.Errorf("unmarshal configuration for provider %s: %w", p.ID, err)
@@ -772,11 +749,7 @@ func (r *LLMProviderRepo) GetByID(providerID, orgUUID string) (*model.LLMProvide
 
 	if len(openAPISpec) > 0 {
 		p.OpenAPISpec = string(openAPISpec)
-	if len(openAPISpec) > 0 {
-		p.OpenAPISpec = string(openAPISpec)
 	}
-	if len(modelProvidersRaw) > 0 {
-		if err := json.Unmarshal(modelProvidersRaw, &p.ModelProviders); err != nil {
 	if len(modelProvidersRaw) > 0 {
 		if err := json.Unmarshal(modelProvidersRaw, &p.ModelProviders); err != nil {
 			return nil, fmt.Errorf("unmarshal modelProviders for provider %s: %w", p.ID, err)
@@ -887,14 +860,8 @@ func (r *LLMProviderRepo) EnsureGatewayAssociation(providerUUID, gatewayUUID, or
 func (r *LLMProviderRepo) List(orgUUID string, limit, offset int) ([]*model.LLMProvider, error) {
 	pageClause, pageArgs := r.db.PaginationClause(limit, offset)
 	args := append([]any{orgUUID}, pageArgs...)
-	args := append([]any{orgUUID}, pageArgs...)
 	query := `
 		SELECT
-			uuid, handle, name, version, organization_uuid, created_at, updated_at,
-			description, created_by, template_uuid, openapi_spec, model_list, configuration
-		FROM llm_providers
-		WHERE organization_uuid = ?
-		ORDER BY created_at DESC
 			uuid, handle, name, version, organization_uuid, created_at, updated_at,
 			description, created_by, template_uuid, openapi_spec, model_list, configuration
 		FROM llm_providers
@@ -913,12 +880,8 @@ func (r *LLMProviderRepo) List(orgUUID string, limit, offset int) ([]*model.LLMP
 		var createdBy sql.NullString
 		var openAPISpec, modelProvidersRaw []byte
 		var configurationJSON []byte
-		var createdBy sql.NullString
-		var openAPISpec, modelProvidersRaw []byte
-		var configurationJSON []byte
 		err := rows.Scan(
 			&p.UUID, &p.ID, &p.Name, &p.Version, &p.OrganizationUUID, &p.CreatedAt, &p.UpdatedAt,
-			&p.Description, &createdBy, &p.TemplateUUID, &openAPISpec, &modelProvidersRaw, &configurationJSON,
 			&p.Description, &createdBy, &p.TemplateUUID, &openAPISpec, &modelProvidersRaw, &configurationJSON,
 		)
 		if err != nil {
@@ -927,18 +890,12 @@ func (r *LLMProviderRepo) List(orgUUID string, limit, offset int) ([]*model.LLMP
 		p.CreatedBy = createdBy.String
 		if len(openAPISpec) > 0 {
 			p.OpenAPISpec = string(openAPISpec)
-		p.CreatedBy = createdBy.String
-		if len(openAPISpec) > 0 {
-			p.OpenAPISpec = string(openAPISpec)
 		}
-		if len(modelProvidersRaw) > 0 {
-			if err := json.Unmarshal(modelProvidersRaw, &p.ModelProviders); err != nil {
 		if len(modelProvidersRaw) > 0 {
 			if err := json.Unmarshal(modelProvidersRaw, &p.ModelProviders); err != nil {
 				return nil, fmt.Errorf("unmarshal modelProviders for provider %s: %w", p.ID, err)
 			}
 		}
-		if len(configurationJSON) > 0 {
 		if len(configurationJSON) > 0 {
 			if config, err := deserializeLLMProviderConfiguration(configurationJSON); err != nil {
 				return nil, fmt.Errorf("unmarshal configuration for provider %s: %w", p.ID, err)
@@ -980,9 +937,6 @@ func (r *LLMProviderRepo) Update(p *model.LLMProvider) error {
 		SELECT uuid FROM llm_providers
 		WHERE handle = ? AND organization_uuid = ?`
 	err = tx.QueryRow(r.db.Rebind(query), p.ID, p.OrganizationUUID).Scan(&providerUUID)
-		SELECT uuid FROM llm_providers
-		WHERE handle = ? AND organization_uuid = ?`
-	err = tx.QueryRow(r.db.Rebind(query), p.ID, p.OrganizationUUID).Scan(&providerUUID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return sql.ErrNoRows
@@ -991,10 +945,8 @@ func (r *LLMProviderRepo) Update(p *model.LLMProvider) error {
 	}
 
 	// Update llm_providers table (name/version/updated_at now live here)
-	// Update llm_providers table (name/version/updated_at now live here)
 	query = `
 		UPDATE llm_providers
-		SET name = ?, version = ?, description = ?, template_uuid = ?, openapi_spec = ?, model_list = ?, configuration = ?, updated_by = ?, updated_at = ?
 		SET name = ?, version = ?, description = ?, template_uuid = ?, openapi_spec = ?, model_list = ?, configuration = ?, updated_by = ?, updated_at = ?
 		WHERE uuid = ?`
 	result, err := tx.Exec(r.db.Rebind(query),
@@ -1015,7 +967,6 @@ func (r *LLMProviderRepo) Update(p *model.LLMProvider) error {
 	if err := upsertArtifactSecretRefs(tx, r.db, p.OrganizationUUID, providerUUID, []byte(configurationJSON)); err != nil {
 		return fmt.Errorf("failed to upsert artifact secret refs: %w", err)
 	}
-
 
 	// Replace the full set of gateway associations within the same transaction when the
 	// caller manages associations. Deployments are intentionally left untouched.
@@ -1061,9 +1012,6 @@ func (r *LLMProviderRepo) Delete(providerID, orgUUID string) error {
 	// Get the provider UUID from handle
 	var providerUUID string
 	query := `
-		SELECT uuid FROM llm_providers
-		WHERE handle = ? AND organization_uuid = ?`
-	err = tx.QueryRow(r.db.Rebind(query), providerID, orgUUID).Scan(&providerUUID)
 		SELECT uuid FROM llm_providers
 		WHERE handle = ? AND organization_uuid = ?`
 	err = tx.QueryRow(r.db.Rebind(query), providerID, orgUUID).Scan(&providerUUID)
@@ -1136,13 +1084,10 @@ func (r *LLMProxyRepo) Create(p *model.LLMProxy) error {
 	}
 
 	// Insert into llm_proxies table (handle/name/version/timestamps now live here)
-	// Insert into llm_proxies table (handle/name/version/timestamps now live here)
 	query := `
 		INSERT INTO llm_proxies (
 			uuid, handle, name, version, project_uuid, description, created_by, provider_uuid, openapi_spec, configuration, created_at, updated_at, organization_uuid
-			uuid, handle, name, version, project_uuid, description, created_by, provider_uuid, openapi_spec, configuration, created_at, updated_at, organization_uuid
 		)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 	_, err = tx.Exec(r.db.Rebind(query),
 		p.UUID, p.ID, p.Name, p.Version, p.ProjectUUID, p.Description, p.CreatedBy, p.ProviderUUID,
@@ -1171,21 +1116,12 @@ func (r *LLMProxyRepo) GetByID(proxyID, orgUUID string) (*model.LLMProxy, error)
 		FROM llm_proxies
 		WHERE handle = ? AND organization_uuid = ?`
 	row := r.db.QueryRow(r.db.Rebind(query), proxyID, orgUUID)
-			uuid, handle, name, version, organization_uuid, created_at, updated_at,
-			project_uuid, description, created_by, provider_uuid, openapi_spec, configuration
-		FROM llm_proxies
-		WHERE handle = ? AND organization_uuid = ?`
-	row := r.db.QueryRow(r.db.Rebind(query), proxyID, orgUUID)
 
 	var p model.LLMProxy
 	var createdBy sql.NullString
 	var openAPISpec, configurationJSON []byte
-	var createdBy sql.NullString
-	var openAPISpec, configurationJSON []byte
 	if err := row.Scan(
 		&p.UUID, &p.ID, &p.Name, &p.Version, &p.OrganizationUUID, &p.CreatedAt, &p.UpdatedAt,
-		&p.ProjectUUID, &p.Description, &createdBy, &p.ProviderUUID,
-		&openAPISpec, &configurationJSON,
 		&p.ProjectUUID, &p.Description, &createdBy, &p.ProviderUUID,
 		&openAPISpec, &configurationJSON,
 	); err != nil {
@@ -1195,14 +1131,10 @@ func (r *LLMProxyRepo) GetByID(proxyID, orgUUID string) (*model.LLMProxy, error)
 		return nil, err
 	}
 	p.CreatedBy = createdBy.String
-	p.CreatedBy = createdBy.String
 
 	if len(openAPISpec) > 0 {
 		p.OpenAPISpec = string(openAPISpec)
-	if len(openAPISpec) > 0 {
-		p.OpenAPISpec = string(openAPISpec)
 	}
-	if len(configurationJSON) > 0 {
 	if len(configurationJSON) > 0 {
 		if config, err := deserializeLLMProxyConfiguration(configurationJSON); err != nil {
 			return nil, fmt.Errorf("unmarshal configuration for proxy %s: %w", p.ID, err)
@@ -1217,15 +1149,8 @@ func (r *LLMProxyRepo) GetByID(proxyID, orgUUID string) (*model.LLMProxy, error)
 func (r *LLMProxyRepo) List(orgUUID string, limit, offset int) ([]*model.LLMProxy, error) {
 	pageClause, pageArgs := r.db.PaginationClause(limit, offset)
 	args := append([]any{orgUUID}, pageArgs...)
-	args := append([]any{orgUUID}, pageArgs...)
 	query := `
 		SELECT
-			uuid, handle, name, version, organization_uuid, created_at, updated_at,
-			project_uuid, description, created_by, provider_uuid,
-			openapi_spec, configuration
-		FROM llm_proxies
-		WHERE organization_uuid = ?
-		ORDER BY created_at DESC
 			uuid, handle, name, version, organization_uuid, created_at, updated_at,
 			project_uuid, description, created_by, provider_uuid,
 			openapi_spec, configuration
@@ -1244,12 +1169,8 @@ func (r *LLMProxyRepo) List(orgUUID string, limit, offset int) ([]*model.LLMProx
 		var p model.LLMProxy
 		var createdBy sql.NullString
 		var openAPISpec, configurationJSON []byte
-		var createdBy sql.NullString
-		var openAPISpec, configurationJSON []byte
 		err := rows.Scan(
 			&p.UUID, &p.ID, &p.Name, &p.Version, &p.OrganizationUUID, &p.CreatedAt, &p.UpdatedAt,
-			&p.ProjectUUID, &p.Description, &createdBy, &p.ProviderUUID,
-			&openAPISpec, &configurationJSON,
 			&p.ProjectUUID, &p.Description, &createdBy, &p.ProviderUUID,
 			&openAPISpec, &configurationJSON,
 		)
@@ -1259,11 +1180,7 @@ func (r *LLMProxyRepo) List(orgUUID string, limit, offset int) ([]*model.LLMProx
 		p.CreatedBy = createdBy.String
 		if len(openAPISpec) > 0 {
 			p.OpenAPISpec = string(openAPISpec)
-		p.CreatedBy = createdBy.String
-		if len(openAPISpec) > 0 {
-			p.OpenAPISpec = string(openAPISpec)
 		}
-		if len(configurationJSON) > 0 {
 		if len(configurationJSON) > 0 {
 			if config, err := deserializeLLMProxyConfiguration(configurationJSON); err != nil {
 				return nil, fmt.Errorf("unmarshal configuration for proxy %s: %w", p.ID, err)
@@ -1279,15 +1196,8 @@ func (r *LLMProxyRepo) List(orgUUID string, limit, offset int) ([]*model.LLMProx
 func (r *LLMProxyRepo) ListByProject(orgUUID, projectUUID string, limit, offset int) ([]*model.LLMProxy, error) {
 	pageClause, pageArgs := r.db.PaginationClause(limit, offset)
 	args := append([]any{orgUUID, projectUUID}, pageArgs...)
-	args := append([]any{orgUUID, projectUUID}, pageArgs...)
 	query := `
 		SELECT
-			uuid, handle, name, version, organization_uuid, created_at, updated_at,
-			project_uuid, description, created_by, provider_uuid,
-			openapi_spec, configuration
-		FROM llm_proxies
-		WHERE organization_uuid = ? AND project_uuid = ?
-		ORDER BY created_at DESC
 			uuid, handle, name, version, organization_uuid, created_at, updated_at,
 			project_uuid, description, created_by, provider_uuid,
 			openapi_spec, configuration
@@ -1306,12 +1216,8 @@ func (r *LLMProxyRepo) ListByProject(orgUUID, projectUUID string, limit, offset 
 		var p model.LLMProxy
 		var createdBy sql.NullString
 		var openAPISpec, configurationJSON []byte
-		var createdBy sql.NullString
-		var openAPISpec, configurationJSON []byte
 		err := rows.Scan(
 			&p.UUID, &p.ID, &p.Name, &p.Version, &p.OrganizationUUID, &p.CreatedAt, &p.UpdatedAt,
-			&p.ProjectUUID, &p.Description, &createdBy, &p.ProviderUUID,
-			&openAPISpec, &configurationJSON,
 			&p.ProjectUUID, &p.Description, &createdBy, &p.ProviderUUID,
 			&openAPISpec, &configurationJSON,
 		)
@@ -1321,11 +1227,7 @@ func (r *LLMProxyRepo) ListByProject(orgUUID, projectUUID string, limit, offset 
 		p.CreatedBy = createdBy.String
 		if len(openAPISpec) > 0 {
 			p.OpenAPISpec = string(openAPISpec)
-		p.CreatedBy = createdBy.String
-		if len(openAPISpec) > 0 {
-			p.OpenAPISpec = string(openAPISpec)
 		}
-		if len(configurationJSON) > 0 {
 		if len(configurationJSON) > 0 {
 			if config, err := deserializeLLMProxyConfiguration(configurationJSON); err != nil {
 				return nil, fmt.Errorf("unmarshal configuration for proxy %s: %w", p.ID, err)
@@ -1341,15 +1243,8 @@ func (r *LLMProxyRepo) ListByProject(orgUUID, projectUUID string, limit, offset 
 func (r *LLMProxyRepo) ListByProvider(orgUUID, providerUUID string, limit, offset int) ([]*model.LLMProxy, error) {
 	pageClause, pageArgs := r.db.PaginationClause(limit, offset)
 	args := append([]any{orgUUID, providerUUID}, pageArgs...)
-	args := append([]any{orgUUID, providerUUID}, pageArgs...)
 	query := `
 		SELECT
-			uuid, handle, name, version, organization_uuid, created_at, updated_at,
-			project_uuid, description, created_by, provider_uuid,
-			openapi_spec, configuration
-		FROM llm_proxies
-		WHERE organization_uuid = ? AND provider_uuid = ?
-		ORDER BY created_at DESC
 			uuid, handle, name, version, organization_uuid, created_at, updated_at,
 			project_uuid, description, created_by, provider_uuid,
 			openapi_spec, configuration
@@ -1368,12 +1263,8 @@ func (r *LLMProxyRepo) ListByProvider(orgUUID, providerUUID string, limit, offse
 		var p model.LLMProxy
 		var createdBy sql.NullString
 		var openAPISpec, configurationJSON []byte
-		var createdBy sql.NullString
-		var openAPISpec, configurationJSON []byte
 		err := rows.Scan(
 			&p.UUID, &p.ID, &p.Name, &p.Version, &p.OrganizationUUID, &p.CreatedAt, &p.UpdatedAt,
-			&p.ProjectUUID, &p.Description, &createdBy, &p.ProviderUUID,
-			&openAPISpec, &configurationJSON,
 			&p.ProjectUUID, &p.Description, &createdBy, &p.ProviderUUID,
 			&openAPISpec, &configurationJSON,
 		)
@@ -1383,11 +1274,7 @@ func (r *LLMProxyRepo) ListByProvider(orgUUID, providerUUID string, limit, offse
 		p.CreatedBy = createdBy.String
 		if len(openAPISpec) > 0 {
 			p.OpenAPISpec = string(openAPISpec)
-		p.CreatedBy = createdBy.String
-		if len(openAPISpec) > 0 {
-			p.OpenAPISpec = string(openAPISpec)
 		}
-		if len(configurationJSON) > 0 {
 		if len(configurationJSON) > 0 {
 			if config, err := deserializeLLMProxyConfiguration(configurationJSON); err != nil {
 				return nil, fmt.Errorf("unmarshal configuration for proxy %s: %w", p.ID, err)
@@ -1404,8 +1291,6 @@ func (r *LLMProxyRepo) Count(orgUUID string) (int, error) {
 	var count int
 	query := `SELECT COUNT(*) FROM llm_proxies WHERE organization_uuid = ?`
 	if err := r.db.QueryRow(r.db.Rebind(query), orgUUID).Scan(&count); err != nil {
-	query := `SELECT COUNT(*) FROM llm_proxies WHERE organization_uuid = ?`
-	if err := r.db.QueryRow(r.db.Rebind(query), orgUUID).Scan(&count); err != nil {
 		return 0, err
 	}
 	return count, nil
@@ -1415,8 +1300,6 @@ func (r *LLMProxyRepo) CountByProject(orgUUID, projectUUID string) (int, error) 
 	var count int
 	query := `SELECT COUNT(*) FROM llm_proxies WHERE organization_uuid = ? AND project_uuid = ?`
 	if err := r.db.QueryRow(r.db.Rebind(query), orgUUID, projectUUID).Scan(&count); err != nil {
-	query := `SELECT COUNT(*) FROM llm_proxies WHERE organization_uuid = ? AND project_uuid = ?`
-	if err := r.db.QueryRow(r.db.Rebind(query), orgUUID, projectUUID).Scan(&count); err != nil {
 		return 0, err
 	}
 	return count, nil
@@ -1424,8 +1307,6 @@ func (r *LLMProxyRepo) CountByProject(orgUUID, projectUUID string) (int, error) 
 
 func (r *LLMProxyRepo) CountByProvider(orgUUID, providerUUID string) (int, error) {
 	var count int
-	query := `SELECT COUNT(*) FROM llm_proxies WHERE organization_uuid = ? AND provider_uuid = ?`
-	if err := r.db.QueryRow(r.db.Rebind(query), orgUUID, providerUUID).Scan(&count); err != nil {
 	query := `SELECT COUNT(*) FROM llm_proxies WHERE organization_uuid = ? AND provider_uuid = ?`
 	if err := r.db.QueryRow(r.db.Rebind(query), orgUUID, providerUUID).Scan(&count); err != nil {
 		return 0, err
@@ -1454,9 +1335,6 @@ func (r *LLMProxyRepo) Update(p *model.LLMProxy) error {
 		SELECT uuid FROM llm_proxies
 		WHERE handle = ? AND organization_uuid = ?`
 	err = tx.QueryRow(r.db.Rebind(query), p.ID, p.OrganizationUUID).Scan(&proxyUUID)
-		SELECT uuid FROM llm_proxies
-		WHERE handle = ? AND organization_uuid = ?`
-	err = tx.QueryRow(r.db.Rebind(query), p.ID, p.OrganizationUUID).Scan(&proxyUUID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return sql.ErrNoRows
@@ -1465,11 +1343,8 @@ func (r *LLMProxyRepo) Update(p *model.LLMProxy) error {
 	}
 
 	// Update llm_proxies table (name/version/updated_at now live here)
-	// Update llm_proxies table (name/version/updated_at now live here)
 	query = `
 		UPDATE llm_proxies
-		SET name = ?, version = ?, description = ?, provider_uuid = ?,
-			openapi_spec = ?, configuration = ?, updated_by = ?, updated_at = ?
 		SET name = ?, version = ?, description = ?, provider_uuid = ?,
 			openapi_spec = ?, configuration = ?, updated_by = ?, updated_at = ?
 		WHERE uuid = ?`
@@ -1509,9 +1384,6 @@ func (r *LLMProxyRepo) Delete(proxyID, orgUUID string) error {
 	// Get the proxy UUID from handle
 	var proxyUUID string
 	query := `
-		SELECT uuid FROM llm_proxies
-		WHERE handle = ? AND organization_uuid = ?`
-	err = tx.QueryRow(r.db.Rebind(query), proxyID, orgUUID).Scan(&proxyUUID)
 		SELECT uuid FROM llm_proxies
 		WHERE handle = ? AND organization_uuid = ?`
 	err = tx.QueryRow(r.db.Rebind(query), proxyID, orgUUID).Scan(&proxyUUID)
@@ -1566,18 +1438,13 @@ func unmarshalPolicies(policiesJSON sql.NullString) ([]model.LLMPolicy, error) {
 
 func serializeLLMProviderConfiguration(config model.LLMProviderConfig) ([]byte, error) {
 	return json.Marshal(config)
-func serializeLLMProviderConfiguration(config model.LLMProviderConfig) ([]byte, error) {
-	return json.Marshal(config)
 }
 
-func deserializeLLMProviderConfiguration(configJSON []byte) (*model.LLMProviderConfig, error) {
-	if len(configJSON) == 0 {
 func deserializeLLMProviderConfiguration(configJSON []byte) (*model.LLMProviderConfig, error) {
 	if len(configJSON) == 0 {
 		return nil, fmt.Errorf("null configuration")
 	}
 	var config model.LLMProviderConfig
-	if err := json.Unmarshal(configJSON, &config); err != nil {
 	if err := json.Unmarshal(configJSON, &config); err != nil {
 		return nil, err
 	}

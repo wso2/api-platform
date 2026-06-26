@@ -20,7 +20,6 @@ package service
 import (
 	"fmt"
 
-	"platform-api/src/internal/constants"
 	"platform-api/src/internal/model"
 	"platform-api/src/internal/repository"
 )
@@ -98,7 +97,7 @@ func (s *LLMTemplateSeeder) SeedForOrg(orgUUID string) error {
 		toCreate := &model.LLMProviderTemplate{
 			OrganizationUUID: orgUUID,
 			ID:               tpl.ID,
-			GroupID:   tpl.GroupID,
+			GroupID:          tpl.GroupID,
 			Version:          tpl.Version,
 			Name:             tpl.Name,
 			Description:      tpl.Description,
