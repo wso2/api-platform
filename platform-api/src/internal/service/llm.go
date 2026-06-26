@@ -1064,6 +1064,10 @@ func mapGlobalPoliciesAPIToModel(in *[]api.Policy) []model.GlobalPolicy {
 	return out
 }
 
+var validOperationPolicyMethods = map[string]struct{}{
+	"*": {}, "GET": {}, "POST": {}, "PUT": {}, "DELETE": {}, "PATCH": {}, "HEAD": {}, "OPTIONS": {},
+}
+
 func mapOperationPoliciesAPIToModel(in *[]api.OperationPolicy) []model.OperationPolicy {
 	if in == nil || len(*in) == 0 {
 		return nil
@@ -1076,9 +1080,11 @@ func mapOperationPoliciesAPIToModel(in *[]api.OperationPolicy) []model.Operation
 		}
 		paths := make([]model.OperationPolicyPath, 0, len(p.Paths))
 		for _, pp := range p.Paths {
-			methods := make([]string, len(pp.Methods))
-			for i, m := range pp.Methods {
-				methods[i] = string(m)
+			methods := make([]string, 0, len(pp.Methods))
+			for _, m := range pp.Methods {
+				if _, ok := validOperationPolicyMethods[string(m)]; ok {
+					methods = append(methods, string(m))
+				}
 			}
 			paths = append(paths, model.OperationPolicyPath{Path: pp.Path, Methods: methods, Params: pp.Params})
 		}
@@ -1114,9 +1120,11 @@ func mapOperationPoliciesModelToAPI(in []model.OperationPolicy) *[]api.Operation
 	for _, p := range in {
 		paths := make([]api.OperationPolicyPath, 0, len(p.Paths))
 		for _, pp := range p.Paths {
-			methods := make([]api.OperationPolicyPathMethods, len(pp.Methods))
-			for i, m := range pp.Methods {
-				methods[i] = api.OperationPolicyPathMethods(m)
+			methods := make([]api.OperationPolicyPathMethods, 0, len(pp.Methods))
+			for _, m := range pp.Methods {
+				if _, ok := validOperationPolicyMethods[m]; ok {
+					methods = append(methods, api.OperationPolicyPathMethods(m))
+				}
 			}
 			paths = append(paths, api.OperationPolicyPath{Path: pp.Path, Methods: methods, Params: pp.Params})
 		}

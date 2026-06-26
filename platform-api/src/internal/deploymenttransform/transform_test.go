@@ -83,7 +83,7 @@ func sampleOperation() []api.OperationPolicy {
 	return []api.OperationPolicy{{
 		Name:    "basic-ratelimit",
 		Version: "v1",
-		Paths:   []api.OperationPolicyPath{{Path: "/chat/completions", Methods: []string{"GET"}}},
+		Paths:   []api.OperationPolicyPath{{Path: "/chat/completions", Methods: []api.OperationPolicyPathMethods{api.OperationPolicyPathMethodsGET}}},
 	}}
 }
 

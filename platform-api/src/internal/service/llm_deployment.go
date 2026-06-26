@@ -1010,9 +1010,11 @@ func generateLLMProviderDeploymentYAML(provider *model.LLMProvider, templateHand
 	for _, p := range provider.Configuration.OperationPolicies {
 		paths := make([]api.OperationPolicyPath, 0, len(p.Paths))
 		for _, pp := range p.Paths {
-			methods := make([]api.OperationPolicyPathMethods, len(pp.Methods))
-			for i, m := range pp.Methods {
-				methods[i] = api.OperationPolicyPathMethods(m)
+			methods := make([]api.OperationPolicyPathMethods, 0, len(pp.Methods))
+			for _, m := range pp.Methods {
+				if _, ok := validOperationPolicyMethods[m]; ok {
+					methods = append(methods, api.OperationPolicyPathMethods(m))
+				}
 			}
 			paths = append(paths, api.OperationPolicyPath{Path: pp.Path, Methods: methods, Params: pp.Params})
 		}
@@ -1076,9 +1078,11 @@ func generateLLMProviderDeploymentYAML(provider *model.LLMProvider, templateHand
 	for _, p := range providerDeployment.Spec.Policies {
 		paths := make([]api.OperationPolicyPath, 0, len(p.Paths))
 		for _, pp := range p.Paths {
-			methods := make([]api.OperationPolicyPathMethods, len(pp.Methods))
-			for i, m := range pp.Methods {
-				methods[i] = api.OperationPolicyPathMethods(m)
+			methods := make([]api.OperationPolicyPathMethods, 0, len(pp.Methods))
+			for _, m := range pp.Methods {
+				if _, ok := validOperationPolicyMethods[string(m)]; ok {
+					methods = append(methods, api.OperationPolicyPathMethods(m))
+				}
 			}
 			paths = append(paths, api.OperationPolicyPath{Path: pp.Path, Methods: methods, Params: pp.Params})
 		}
@@ -1667,9 +1671,11 @@ func generateLLMProxyDeploymentYAML(proxy *model.LLMProxy) (dto.LLMProxyDeployme
 	for _, p := range proxy.Configuration.OperationPolicies {
 		paths := make([]api.OperationPolicyPath, 0, len(p.Paths))
 		for _, pp := range p.Paths {
-			methods := make([]api.OperationPolicyPathMethods, len(pp.Methods))
-			for i, m := range pp.Methods {
-				methods[i] = api.OperationPolicyPathMethods(m)
+			methods := make([]api.OperationPolicyPathMethods, 0, len(pp.Methods))
+			for _, m := range pp.Methods {
+				if _, ok := validOperationPolicyMethods[m]; ok {
+					methods = append(methods, api.OperationPolicyPathMethods(m))
+				}
 			}
 			paths = append(paths, api.OperationPolicyPath{Path: pp.Path, Methods: methods, Params: pp.Params})
 		}
@@ -1723,9 +1729,11 @@ func generateLLMProxyDeploymentYAML(proxy *model.LLMProxy) (dto.LLMProxyDeployme
 	for _, p := range proxyDeployment.Spec.Policies {
 		paths := make([]api.OperationPolicyPath, 0, len(p.Paths))
 		for _, pp := range p.Paths {
-			methods := make([]api.OperationPolicyPathMethods, len(pp.Methods))
-			for i, m := range pp.Methods {
-				methods[i] = api.OperationPolicyPathMethods(m)
+			methods := make([]api.OperationPolicyPathMethods, 0, len(pp.Methods))
+			for _, m := range pp.Methods {
+				if _, ok := validOperationPolicyMethods[string(m)]; ok {
+					methods = append(methods, api.OperationPolicyPathMethods(m))
+				}
 			}
 			paths = append(paths, api.OperationPolicyPath{Path: pp.Path, Methods: methods, Params: pp.Params})
 		}
