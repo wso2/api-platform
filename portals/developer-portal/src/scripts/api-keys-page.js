@@ -86,16 +86,14 @@
     var _secretReloadOnClose = false;
     var _copyTimer = null;
 
-    function showSecretModal(value, reloadOnClose) {
+    function showSecretModal(value, reloadOnClose, keyName) {
         _secretReloadOnClose = !!reloadOnClose;
         const codeEl = document.getElementById('api-key-secret-value');
         if (codeEl) codeEl.textContent = value || '';
-        // Reset copy button to default state
+        const nameEl = document.getElementById('ak-secret-key-name');
+        if (nameEl) nameEl.textContent = keyName || '';
         const copyBtn = document.getElementById('btn-copy-api-key-secret');
-        if (copyBtn) {
-            copyBtn.className = 'ak-copy-btn';
-            copyBtn.innerHTML = '<i class="bi bi-copy"></i> Copy';
-        }
+        if (copyBtn) copyBtn.classList.remove('copy-btn--copied');
         akShowModal('showApiKeySecretModal');
     }
 
@@ -317,7 +315,7 @@
                 delete submitGenBtn.dataset.loading;
             }
             if (data && data.key) {
-                showSecretModal(data.key, true);
+                showSecretModal(data.key, true, name);
             } else if (data) {
                 window.location.reload();
             }
@@ -371,7 +369,7 @@
                 delete submitRegenBtn.dataset.loading;
             }
             if (data && data.key) {
-                showSecretModal(data.key, true);
+                showSecretModal(data.key, true, name);
             } else if (data) {
                 window.location.reload();
             }

@@ -29,7 +29,7 @@
             <span class="sub-type-pill">{{#if this.type}}{{this.type}}{{else}}Token-based{{/if}}</span>
           </td>
           <td>{{this.planName}}</td>
-          <td style="color:#8a98a6;">{{#if this.applicationName}}{{this.applicationName}}{{else}}—{{/if}}</td>
+          <td style="color:#8a98a6;">{{#if this.applicationName}}{{this.applicationName}}{{else}}-{{/if}}</td>
           <td>
             <span class="sub-status-pill {{#if (eq this.status 'ACTIVE')}}sub-status-pill--active{{else}}sub-status-pill--inactive{{/if}}">
               <span class="sub-status-dot"></span>
@@ -43,7 +43,7 @@
             <div class="sub-actions">
               <button class="sub-action-btn sub-action-btn--delete {{#if @root.isReadOnlyMode}}disabled{{/if}}"
                 title="Delete"
-                {{#unless @root.isReadOnlyMode}}onclick="prepareDeleteSubscription('{{../orgID}}', '{{this.id}}')"{{/unless}}
+                {{#unless @root.isReadOnlyMode}}onclick="prepareDeleteSubscription('{{../orgID}}', '{{this.id}}', '{{this.apiName}}')"{{/unless}}
                 {{#if @root.isReadOnlyMode}}disabled{{/if}}>
                 <i class="bi bi-trash"></i>
               </button>
@@ -55,16 +55,6 @@
     </table>
   </div>
 </div>
-{{!-- <div class="dp-empty" id="no-subscriptions" style="display:none;">
-  <span class="dp-empty-icon">
-    <i class="bi bi-inbox"></i>
-  </span>
-  <h2 class="dp-empty-title">No subscriptions yet</h2>
-  <p class="dp-empty-desc">Subscribe an application to an API or MCP server to start making calls. Your active subscriptions will show up here.</p>
-  <button class="dp-btn dp-btn--primary dp-btn--lg" disabled title="Backend not wired yet — UI preview only">
-    <i class="bi bi-plus"></i> Create subscription
-  </button>
-</div> --}}
 {{else}}
 <div class="dp-empty" id="no-subscriptions">
   <span class="dp-empty-icon">
@@ -72,8 +62,22 @@
   </span>
   <h2 class="dp-empty-title">No subscriptions yet</h2>
   <p class="dp-empty-desc">Subscribe an application to an API or MCP server to start making calls. Your active subscriptions will show up here.</p>
-  <button class="dp-btn dp-btn--primary dp-btn--lg" disabled title="Backend not wired yet — UI preview only">
-    <i class="bi bi-plus"></i> Create subscription
-  </button>
 </div>
 {{/if}}
+
+{{#unless @root.isReadOnlyMode}}
+<!-- Delete subscription confirmation modal -->
+<div class="sub-delete-overlay" id="sub-delete-modal">
+  <div class="sub-delete-card">
+    <div class="sub-delete-head">
+      <span class="sub-delete-icon"><i class="bi bi-trash"></i></span>
+      <h2 class="sub-delete-title">Delete subscription</h2>
+    </div>
+    <p class="sub-delete-body">Are you sure you want to delete the subscription to <strong id="sub-delete-api-name"></strong>? This action can't be undone.</p>
+    <div class="sub-delete-footer">
+      <button type="button" class="dp-btn dp-btn--outline" id="sub-delete-cancel">Cancel</button>
+      <button type="button" class="dp-btn dp-btn--primary" id="sub-delete-confirm" style="background:#c62828;">Delete</button>
+    </div>
+  </div>
+</div>
+{{/unless}}

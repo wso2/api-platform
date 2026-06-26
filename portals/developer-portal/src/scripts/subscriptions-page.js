@@ -19,18 +19,42 @@
 let pendingDeleteOrgID = null;
 let pendingDeleteSubID = null;
 
-function prepareDeleteSubscription(orgID, subID) {
+function prepareDeleteSubscription(orgID, subID, apiName) {
     pendingDeleteOrgID = orgID;
     pendingDeleteSubID = subID;
 
-    if (typeof openWarningModal === 'function') {
-        openWarningModal('DeleteSubscription', orgID, subID, '', '', '', '');
-        return;
-    }
+    const nameEl = document.getElementById('sub-delete-api-name');
+    if (nameEl) nameEl.textContent = apiName || 'this subscription';
+    const confirmBtn = document.getElementById('sub-delete-confirm');
+    if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = 'Delete'; }
+    const modal = document.getElementById('sub-delete-modal');
+    if (modal) { modal.style.display = 'flex'; return; }
 
-    // openWarningModal unavailable — execute directly (should not happen in normal usage)
+    // Modal not in DOM — execute directly
     executeDeleteSubscription(orgID, subID);
 }
+
+(function wireSubDeleteModal() {
+    const modal = document.getElementById('sub-delete-modal');
+    if (!modal) return;
+
+    document.getElementById('sub-delete-cancel')?.addEventListener('click', function () {
+        modal.style.display = 'none';
+    });
+
+    modal.addEventListener('click', function (e) {
+        if (e.target === modal) modal.style.display = 'none';
+    });
+
+    document.getElementById('sub-delete-confirm')?.addEventListener('click', async function () {
+        const btn = this;
+        if (btn.disabled || btn.dataset.loading === 'true') return;
+        modal.style.display = 'none';
+        btn.dataset.loading = 'true';
+        await executeDeleteSubscription(pendingDeleteOrgID, pendingDeleteSubID);
+        delete btn.dataset.loading;
+    });
+})();
 
 async function executeDeleteSubscription(orgID, subscriptionId) {
     // Fall back to pending vars when called with no args (e.g. from warning.js no-param path)
