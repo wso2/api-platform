@@ -77,16 +77,22 @@ const clearSiteCache = async (): Promise<void> => {
  * tied to the dead session.
  */
 export const forceLogoutAndRedirect = async (): Promise<void> => {
-  try {
-    clearAuthData();
-    // Wipe any remaining client-side state so nothing carries over the session.
-    sessionStorage.clear();
-    localStorage.clear();
-    await clearSiteCache();
-  } catch (error) {
-    logger.error('Force logout error:', error);
-  } finally {
-    // Replace (not assign) so the broken page isn't left in history.
-    window.location.replace('/login');
-  }
+  // Each cleanup step is isolated so a failure in one doesn't skip the rest;
+  // the redirect below must happen regardless of what was wiped successfully.
+  const runStep = (label: string, step: () => void): void => {
+    try {
+      step();
+    } catch (error) {
+      logger.warn(`Force logout: failed to ${label}:`, error);
+    }
+  };
+
+  runStep('clear auth data', clearAuthData);
+  // Wipe any remaining client-side state so nothing carries over the session.
+  runStep('clear sessionStorage', () => sessionStorage.clear());
+  runStep('clear localStorage', () => localStorage.clear());
+  await clearSiteCache();
+
+  // Replace (not assign) so the broken page isn't left in history.
+  window.location.replace('/login');
 };
