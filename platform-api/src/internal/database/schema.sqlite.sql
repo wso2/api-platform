@@ -449,7 +449,7 @@ CREATE TABLE IF NOT EXISTS api_keys (
 );
 
 -- Application API Key mappings table
-CREATE TABLE IF NOT EXISTS application_api_keys (
+CREATE TABLE IF NOT EXISTS application_api_key_mappings (
     application_uuid VARCHAR(40) NOT NULL,
     api_key_id VARCHAR(40) NOT NULL,
     created_by VARCHAR(200),
@@ -460,7 +460,7 @@ CREATE TABLE IF NOT EXISTS application_api_keys (
 );
 
 -- Application to artifacts mapping table
-CREATE TABLE IF NOT EXISTS application_artifacts (
+CREATE TABLE IF NOT EXISTS application_artifact_mappings (
     application_uuid VARCHAR(40) NOT NULL,
     artifact_uuid VARCHAR(40) NOT NULL,
     created_by VARCHAR(200),
@@ -503,10 +503,10 @@ CREATE INDEX IF NOT EXISTS idx_api_keys_artifact ON api_keys(artifact_uuid);
 CREATE INDEX IF NOT EXISTS idx_rest_apis_org ON rest_apis(organization_uuid);
 CREATE INDEX IF NOT EXISTS idx_applications_org ON applications(organization_uuid);
 CREATE INDEX IF NOT EXISTS idx_applications_project_id ON applications(organization_uuid, project_uuid);
-CREATE INDEX IF NOT EXISTS idx_application_api_keys_app_id ON application_api_keys(application_uuid);
-CREATE INDEX IF NOT EXISTS idx_application_api_keys_key_id ON application_api_keys(api_key_id);
-CREATE INDEX IF NOT EXISTS idx_application_artifacts_app_id ON application_artifacts(application_uuid);
-CREATE INDEX IF NOT EXISTS idx_application_artifacts_artifact_id ON application_artifacts(artifact_uuid);
+CREATE INDEX IF NOT EXISTS idx_application_api_key_mappings_app_id ON application_api_key_mappings(application_uuid);
+CREATE INDEX IF NOT EXISTS idx_application_api_key_mappings_key_id ON application_api_key_mappings(api_key_id);
+CREATE INDEX IF NOT EXISTS idx_application_artifact_mappings_app_id ON application_artifact_mappings(application_uuid);
+CREATE INDEX IF NOT EXISTS idx_application_artifact_mappings_artifact_id ON application_artifact_mappings(artifact_uuid);
 CREATE INDEX IF NOT EXISTS idx_api_keys_status ON api_keys(status);
 CREATE INDEX IF NOT EXISTS idx_api_keys_expires_at ON api_keys(expires_at) WHERE expires_at IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_rest_apis_lifecycle_status ON rest_apis(lifecycle_status);

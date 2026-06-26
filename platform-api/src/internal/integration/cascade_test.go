@@ -79,8 +79,8 @@ func seedOrgGraph(t *testing.T, it *itDB) graph {
 	// An API key on the deployment artifact + its application mapping.
 	it.exec(t, `INSERT INTO api_keys (uuid, artifact_uuid, name, masked_api_key, api_key_hashes) VALUES (?, ?, ?, ?, ?)`,
 		g.apiKey, g.depArtifact, "key", "ab12", []byte("{}"))
-	it.exec(t, `INSERT INTO application_api_keys (application_uuid, api_key_id) VALUES (?, ?)`, g.app, g.apiKey)
-	it.exec(t, `INSERT INTO application_artifacts (application_uuid, artifact_uuid) VALUES (?, ?)`, g.app, g.depArtifact)
+	it.exec(t, `INSERT INTO application_api_key_mappings (application_uuid, api_key_id) VALUES (?, ?)`, g.app, g.apiKey)
+	it.exec(t, `INSERT INTO application_artifact_mappings (application_uuid, artifact_uuid) VALUES (?, ?)`, g.app, g.depArtifact)
 	return g
 }
 
@@ -136,11 +136,11 @@ func TestCascade_DeleteApplicationRemovesMappings(t *testing.T) {
 	g := seedOrgGraph(t, it)
 
 	it.exec(t, `DELETE FROM applications WHERE uuid = ? AND organization_uuid = ?`, g.app, g.org)
-	if got := it.count(t, "application_api_keys", "api_key_id", g.apiKey); got != 0 {
-		t.Fatalf("[%s] application_api_keys not removed after application delete: %d remain", it.driver, got)
+	if got := it.count(t, "application_api_key_mappings", "api_key_id", g.apiKey); got != 0 {
+		t.Fatalf("[%s] application_api_key_mappings not removed after application delete: %d remain", it.driver, got)
 	}
-	if got := it.count(t, "application_artifacts", "application_uuid", g.app); got != 0 {
-		t.Fatalf("[%s] application_artifacts not removed after application delete: %d remain", it.driver, got)
+	if got := it.count(t, "application_artifact_mappings", "application_uuid", g.app); got != 0 {
+		t.Fatalf("[%s] application_artifact_mappings not removed after application delete: %d remain", it.driver, got)
 	}
 }
 

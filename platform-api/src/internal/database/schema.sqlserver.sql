@@ -508,8 +508,8 @@ CREATE TABLE dbo.api_keys (
 );
 
 -- Application API Key mappings table
-IF OBJECT_ID(N'dbo.application_api_keys', N'U') IS NULL
-CREATE TABLE dbo.application_api_keys (
+IF OBJECT_ID(N'dbo.application_api_key_mappings', N'U') IS NULL
+CREATE TABLE dbo.application_api_key_mappings (
     application_uuid VARCHAR(40) NOT NULL,
     api_key_id VARCHAR(40) NOT NULL,
     created_by VARCHAR(200),
@@ -520,8 +520,8 @@ CREATE TABLE dbo.application_api_keys (
 );
 
 -- Application to artifacts mapping table
-IF OBJECT_ID(N'dbo.application_artifacts', N'U') IS NULL
-CREATE TABLE dbo.application_artifacts (
+IF OBJECT_ID(N'dbo.application_artifact_mappings', N'U') IS NULL
+CREATE TABLE dbo.application_artifact_mappings (
     application_uuid VARCHAR(40) NOT NULL,
     artifact_uuid VARCHAR(40) NOT NULL,
     created_by VARCHAR(200),
@@ -600,14 +600,14 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_applications_org' AN
 CREATE INDEX idx_applications_org ON dbo.applications(organization_uuid);
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_applications_project_id' AND object_id = OBJECT_ID(N'dbo.applications'))
 CREATE INDEX idx_applications_project_id ON dbo.applications(organization_uuid, project_uuid);
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_application_api_keys_app_id' AND object_id = OBJECT_ID(N'dbo.application_api_keys'))
-CREATE INDEX idx_application_api_keys_app_id ON dbo.application_api_keys(application_uuid);
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_application_api_keys_key_id' AND object_id = OBJECT_ID(N'dbo.application_api_keys'))
-CREATE INDEX idx_application_api_keys_key_id ON dbo.application_api_keys(api_key_id);
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_application_artifacts_app_id' AND object_id = OBJECT_ID(N'dbo.application_artifacts'))
-CREATE INDEX idx_application_artifacts_app_id ON dbo.application_artifacts(application_uuid);
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_application_artifacts_artifact_id' AND object_id = OBJECT_ID(N'dbo.application_artifacts'))
-CREATE INDEX idx_application_artifacts_artifact_id ON dbo.application_artifacts(artifact_uuid);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_application_api_key_mappings_app_id' AND object_id = OBJECT_ID(N'dbo.application_api_key_mappings'))
+CREATE INDEX idx_application_api_key_mappings_app_id ON dbo.application_api_key_mappings(application_uuid);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_application_api_key_mappings_key_id' AND object_id = OBJECT_ID(N'dbo.application_api_key_mappings'))
+CREATE INDEX idx_application_api_key_mappings_key_id ON dbo.application_api_key_mappings(api_key_id);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_application_artifact_mappings_app_id' AND object_id = OBJECT_ID(N'dbo.application_artifact_mappings'))
+CREATE INDEX idx_application_artifact_mappings_app_id ON dbo.application_artifact_mappings(application_uuid);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_application_artifact_mappings_artifact_id' AND object_id = OBJECT_ID(N'dbo.application_artifact_mappings'))
+CREATE INDEX idx_application_artifact_mappings_artifact_id ON dbo.application_artifact_mappings(artifact_uuid);
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_rest_apis_lifecycle_status' AND object_id = OBJECT_ID(N'dbo.rest_apis'))
 CREATE INDEX idx_rest_apis_lifecycle_status ON dbo.rest_apis(lifecycle_status);
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_websub_apis_lifecycle_status' AND object_id = OBJECT_ID(N'dbo.websub_apis'))
