@@ -75,9 +75,11 @@ jobs:
         run: make -C portals/ai-workspace build
 
       - name: Run tests
+        env:
+          PLATFORM_API_VERSION: ${{ inputs.platform_api_version }}
         run: |
-          echo "Running E2E against released platform-api:${{ inputs.platform_api_version }} (no build)"
-          make test-ai-workspace PLATFORM_API_VERSION="${{ inputs.platform_api_version }}"
+          echo "Running E2E against released platform-api:${PLATFORM_API_VERSION} (no build)"
+          make test-ai-workspace PLATFORM_API_VERSION="${PLATFORM_API_VERSION}"
 
       - name: Build and push multi arch Docker image
         run: make -C portals/ai-workspace build-and-push-multiarch
