@@ -73,4 +73,3 @@ You can extend the gateway with your own policies or include specific policies f
 | [Policy Languages and Runtimes](policy-languages-and-runtimes.md) | Dual-language policy development guide (Go and Python)                  |
 | [Writing Custom Python Policies](policies/writing-custom-python-policies.md) | Step-by-step guide to creating custom Python policies                   |
 | [Immutable Gateway](immutable-gateway.md) | File-based, GitOps-native gateway configuration                         |
-| [Data Plane → Control Plane Sync](bottom-up-ai-artifact-deployment-guide.md) | Syncing gateway-created AI artifacts up to the AI Workspace (read-only) |

@@ -370,7 +370,7 @@ The practical effect: you can create artifacts on a gateway while it is disconne
 
 ## Immutable Gateways
 
-Some gateways run in **immutable** mode, where artifacts are not created via the management API at runtime but are loaded from on-disk configuration at startup (see [Immutable Gateway](immutable-gateway.md)).
+Some gateways run in **immutable** mode, where artifacts are not created via the management API at runtime but are loaded from on-disk configuration at startup (see [Immutable Gateway](../gateway/immutable-gateway.md)).
 
 The DP→CP flow behaves identically for these gateways: artifacts loaded from files at startup are pushed up to the control plane exactly as artifacts created via the management API are. You get the same read-only copies in the AI Workspace, the same last-in-wins conflict resolution, and the same connect/reconnect reconciliation — with no extra configuration. An immutable, file-driven gateway is therefore still fully visible in the AI Workspace.
 

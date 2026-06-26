@@ -24,6 +24,7 @@ Documentation for self-hosted deployments of the AI Workspace control plane.
 - [GenAI Applications](features/genai-applications.md) — Group consumers under named applications
 - [Policies](features/policies.md) — Guardrails, rate limits, and traffic controls
 - [Insights](features/insights.md) — Usage analytics and monitoring
+- [Data Plane → Control Plane Sync](bottom-up-ai-artifact-deployment-guide.md) - Syncing gateway-created AI artifacts up to the AI Workspace
 
 ## Production Setup
 
