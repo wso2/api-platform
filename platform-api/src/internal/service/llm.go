@@ -542,6 +542,23 @@ func (s *LLMProviderService) Update(orgUUID, handle, updatedBy string, req *api.
 	// If auth object is omitted, treat it as explicit removal and clear stored auth.
 	m.Configuration.Upstream = preserveUpstreamAuthValue(existing.Configuration.Upstream, m.Configuration.Upstream)
 
+	// Gateway associations are managed only when the field is present in the request. An
+	// omitted field leaves associations untouched; an explicit (possibly empty) list
+	// replaces the full set. A gateway the provider is actively deployed on must remain
+	// associated, so the update is rejected if it would drop such a gateway. Deployments
+	// themselves are never modified here.
+	if req.AssociatedGateways != nil {
+		requested, err := s.resolveAssociatedGateways(orgUUID, req.AssociatedGateways)
+		if err != nil {
+			return nil, err
+		}
+		if err := s.guardLiveGatewaysRetained(orgUUID, existing, requested); err != nil {
+			return nil, err
+		}
+		m.AssociatedGateways = requested
+		m.ReplaceAssociatedGateways = true
+	}
+
 	if err := s.repo.Update(m); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, constants.ErrLLMProviderNotFound
@@ -2173,6 +2190,49 @@ func isAssociatedGatewaysAvailable(associatedGateways *[]api.AssociatedGateway) 
 		return false
 	}
 	return true
+}
+
+// guardLiveGatewaysRetained rejects an association update that would drop a gateway the
+// provider is actively deployed on. The set of requested gateways must be a superset of
+// the gateways currently live (DEPLOYED/DEPLOYING/UNDEPLOYING) for the provider; any live
+// gateway missing from the request is reported as a violation. Deployments are not touched.
+func (s *LLMProviderService) guardLiveGatewaysRetained(orgUUID string, existing *model.LLMProvider, requested []model.AssociatedGatewayMapping) error {
+	if s.deploymentRepo == nil {
+		return fmt.Errorf("could not initialize deployment repository")
+	}
+	liveGatewayIDs, err := s.deploymentRepo.GetLiveGatewayIDs(existing.UUID, orgUUID)
+	if err != nil {
+		return fmt.Errorf("failed to check active deployments: %w", err)
+	}
+	if len(liveGatewayIDs) == 0 {
+		return nil
+	}
+
+	requestedSet := make(map[string]struct{}, len(requested))
+	for _, ag := range requested {
+		requestedSet[ag.GatewayUUID] = struct{}{}
+	}
+	// Resolve gateway handles for friendlier error messages, falling back to the UUID.
+	handleByUUID := make(map[string]string, len(existing.AssociatedGateways))
+	for _, ag := range existing.AssociatedGateways {
+		handleByUUID[ag.GatewayUUID] = ag.GatewayHandle
+	}
+
+	var violations []string
+	for _, gwID := range liveGatewayIDs {
+		if _, ok := requestedSet[gwID]; ok {
+			continue
+		}
+		label := handleByUUID[gwID]
+		if label == "" {
+			label = gwID
+		}
+		violations = append(violations, label)
+	}
+	if len(violations) > 0 {
+		return fmt.Errorf("%w: %s", constants.ErrAssociationGatewayDeployed, strings.Join(violations, ", "))
+	}
+	return nil
 }
 
 // resolveAssociatedGateways validates each requested gateway association, resolving

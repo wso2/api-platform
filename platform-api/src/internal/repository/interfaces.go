@@ -133,6 +133,9 @@ type DeploymentRepository interface {
 	GetStaleTransitionalStatuses(timeout time.Duration) ([]StaleDeploymentStatus, error)
 	DeleteStatus(artifactUUID, orgUUID, gatewayID string) error
 	GetDeployedGatewayIDs(artifactUUID, orgUUID string) ([]string, error)
+	// GetLiveGatewayIDs returns the gateways on which the artifact is currently live
+	// (status DEPLOYED, DEPLOYING, or UNDEPLOYING) — i.e. still present on the gateway.
+	GetLiveGatewayIDs(artifactUUID, orgUUID string) ([]string, error)
 
 	// Gateway deployment methods
 	GetAllDeploymentsByGateway(gatewayID, orgUUID string, since *time.Time) ([]*model.DeploymentInfo, error)

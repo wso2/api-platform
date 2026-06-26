@@ -629,6 +629,35 @@ func (r *LLMProviderRepo) Update(p *model.LLMProvider) error {
 	if affected == 0 {
 		return sql.ErrNoRows
 	}
+
+	// Replace the full set of gateway associations within the same transaction when the
+	// caller manages associations. Deployments are intentionally left untouched.
+	if p.ReplaceAssociatedGateways {
+		if _, err := tx.Exec(r.db.Rebind(
+			`DELETE FROM gateway_association_mappings WHERE artifact_uuid = ? AND organization_uuid = ?`),
+			providerUUID, p.OrganizationUUID); err != nil {
+			return fmt.Errorf("failed to clear gateway associations: %w", err)
+		}
+
+		assocQuery := `
+			INSERT INTO gateway_association_mappings (
+				artifact_uuid, organization_uuid, gateway_uuid, metadata, created_at, updated_at
+			)
+			VALUES (?, ?, ?, ?, ?, ?)`
+		for _, assoc := range p.AssociatedGateways {
+			// metadata is a BYTEA column; a nil slice is stored as NULL.
+			var metadata []byte
+			if assoc.Metadata != "" {
+				metadata = []byte(assoc.Metadata)
+			}
+			if _, err := tx.Exec(r.db.Rebind(assocQuery),
+				providerUUID, p.OrganizationUUID, assoc.GatewayUUID, metadata, now, now,
+			); err != nil {
+				return fmt.Errorf("failed to create gateway association: %w", err)
+			}
+		}
+	}
+
 	if err := tx.Commit(); err != nil {
 		return err
 	}
