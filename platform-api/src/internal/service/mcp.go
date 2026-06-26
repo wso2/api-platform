@@ -48,6 +48,7 @@ type MCPProxyService struct {
 	deploymentRepo       repository.DeploymentRepository
 	gatewayRepo          repository.GatewayRepository
 	gatewayEventsService *GatewayEventsService
+	secretService        *SecretService
 	slogger              *slog.Logger
 	auditRepo            repository.AuditRepository
 }
@@ -65,6 +66,11 @@ func NewMCPProxyService(repo repository.MCPProxyRepository, projectRepo reposito
 		slogger:              slogger,
 		auditRepo:            auditRepo,
 	}
+}
+
+// WithSecretService injects the SecretService for secret-ref validation.
+func (s *MCPProxyService) WithSecretService(ss *SecretService) {
+	s.secretService = ss
 }
 
 // Create creates a new MCP proxy
@@ -110,6 +116,17 @@ func (s *MCPProxyService) Create(orgUUID, createdBy string, req *api.MCPProxy) (
 	}
 	if proxyCount >= constants.MaxMCPProxiesPerOrganization {
 		return nil, constants.ErrMCPProxyLimitReached
+	}
+
+	// Validate {{ secret "..." }} placeholders in the upstream config
+	if s.secretService != nil {
+		configJSON, err := marshalUpstreamForValidation(req.Upstream)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal upstream config for secret validation: %w", err)
+		}
+		if err := s.secretService.ValidateSecretRefs(orgUUID, configJSON); err != nil {
+			return nil, err
+		}
 	}
 
 	// Create MCP proxy model
@@ -243,6 +260,17 @@ func (s *MCPProxyService) Update(orgUUID, handle, updatedBy string, req *api.MCP
 	}
 	if existing == nil {
 		return nil, constants.ErrMCPProxyNotFound
+	}
+
+	// Validate {{ secret "..." }} placeholders in the upstream config
+	if s.secretService != nil {
+		configJSON, err := marshalUpstreamForValidation(req.Upstream)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal upstream config for secret validation: %w", err)
+		}
+		if err := s.secretService.ValidateSecretRefs(orgUUID, configJSON); err != nil {
+			return nil, err
+		}
 	}
 
 	// Store existing upstream config for auth preservation

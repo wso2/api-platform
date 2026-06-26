@@ -553,3 +553,58 @@ CREATE TABLE IF NOT EXISTS audit (
    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_audit_org ON audit(organization_uuid);
+
+-- Secrets table for encrypted secret management
+CREATE TABLE IF NOT EXISTS secrets (
+    uuid              VARCHAR(40)   PRIMARY KEY,
+    organization_uuid VARCHAR(40)   NOT NULL,
+    handle            VARCHAR(40)   NOT NULL,
+    name              VARCHAR(255)  NOT NULL,
+    description       VARCHAR(1023),
+    ciphertext        BYTEA         NOT NULL,
+    hash              VARCHAR(255)  NOT NULL,
+    data_version      VARCHAR(20)   NOT NULL DEFAULT '1.0',
+    type              VARCHAR(20)   NOT NULL DEFAULT 'GENERIC',
+    provider          VARCHAR(20)   NOT NULL DEFAULT 'IN_BUILT',
+    status            VARCHAR(20)   NOT NULL DEFAULT 'ACTIVE',
+    created_at        TIMESTAMP     NOT NULL,
+    created_by        VARCHAR(255),
+    updated_at        TIMESTAMP     NOT NULL,
+    updated_by        VARCHAR(255),
+    UNIQUE (organization_uuid, handle),
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_secrets_updated_at ON secrets(updated_at);
+
+CREATE TABLE IF NOT EXISTS secret_scopes (
+    secret_uuid VARCHAR(40)  NOT NULL,
+    scope       VARCHAR(30)  NOT NULL, -- 'org' | 'project' | 'artifact'
+    scope_value VARCHAR(40)  NOT NULL, -- org_id / project_uuid / artifact_uuid
+    PRIMARY KEY (secret_uuid, scope, scope_value),
+    FOREIGN KEY (secret_uuid) REFERENCES secrets(uuid) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_secret_scopes_scope ON secret_scopes(scope, scope_value);
+
+-- Pre-computed secret handle references per deployed artifact per gateway.
+-- Populated at deploy time (status→DEPLOYED) and cleared at undeploy time.
+-- Eliminates the 6-table JOIN + application-level regex on every GW secret sync.
+CREATE TABLE IF NOT EXISTS artifact_secret_refs (
+    organization_uuid VARCHAR(40)  NOT NULL,
+    artifact_uuid     VARCHAR(40)  NOT NULL,
+    secret_handle     VARCHAR(40)  NOT NULL,
+    gateway_id        VARCHAR(40)  NOT NULL DEFAULT '',
+    created_at        TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (organization_uuid, artifact_uuid, secret_handle, gateway_id),
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (artifact_uuid)     REFERENCES artifacts(uuid)     ON DELETE CASCADE
+);
+
+-- Fast delete-protection lookups: does any row reference this secret?
+CREATE INDEX IF NOT EXISTS idx_asr_org_handle
+    ON artifact_secret_refs(organization_uuid, secret_handle);
+
+-- Fast gateway sync lookups: which handles does this gateway need?
+CREATE INDEX IF NOT EXISTS idx_asr_org_gateway
+    ON artifact_secret_refs(organization_uuid, gateway_id);

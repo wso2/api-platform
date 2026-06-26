@@ -196,3 +196,10 @@ var (
 	ErrInvalidAPIToken = errors.New("invalid API token")
 )
 
+var (
+	ErrSecretAlreadyExists = errors.New("secret already exists for this organization and handle")
+	ErrSecretNotFound      = errors.New("secret not found")
+	ErrSecretInUse         = errors.New("secret is referenced by one or more resources")
+	ErrSecretRefMissing    = errors.New("one or more referenced secrets do not exist")
+	ErrInvalidSecretType   = errors.New("invalid secret type: must be GENERIC or CERTIFICATE")
+)

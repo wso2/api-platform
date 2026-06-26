@@ -19,6 +19,7 @@ package service
 
 import (
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -51,6 +52,7 @@ type LLMProviderService struct {
 	deploymentRepo       repository.DeploymentRepository
 	gatewayRepo          repository.GatewayRepository
 	gatewayEventsService *GatewayEventsService
+	secretService        *SecretService
 	slogger              *slog.Logger
 	auditRepo            repository.AuditRepository
 }
@@ -92,6 +94,12 @@ func NewLLMProviderService(
 		slogger:              slogger,
 		auditRepo:            auditRepo,
 	}
+}
+
+// SetSecretService injects the SecretService for placeholder validation.
+// Called after both services are constructed to avoid circular dependency.
+func (s *LLMProviderService) SetSecretService(ss *SecretService) {
+	s.secretService = ss
 }
 
 func NewLLMProxyService(
@@ -602,6 +610,17 @@ func (s *LLMProviderService) Create(orgUUID, createdBy string, req *api.LLMProvi
 		return nil, constants.ErrLLMProviderExists
 	}
 
+	// Validate {{ secret "..." }} placeholders in the upstream config
+	if s.secretService != nil {
+		configJSON, err := marshalUpstreamForValidation(req.Upstream)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal upstream config for secret validation: %w", err)
+		}
+		if err := s.secretService.ValidateSecretRefs(orgUUID, configJSON); err != nil {
+			return nil, err
+		}
+	}
+
 	providerCount, err := s.repo.Count(orgUUID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to count providers: %w", err)
@@ -773,6 +792,17 @@ func (s *LLMProviderService) Update(orgUUID, handle, updatedBy string, req *api.
 	}
 	if tpl == nil {
 		return nil, constants.ErrLLMProviderTemplateNotFound
+	}
+
+	// Validate {{ secret "..." }} placeholders in the upstream config
+	if s.secretService != nil {
+		configJSON, err := marshalUpstreamForValidation(req.Upstream)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal upstream config for secret validation: %w", err)
+		}
+		if err := s.secretService.ValidateSecretRefs(orgUUID, configJSON); err != nil {
+			return nil, err
+		}
 	}
 
 	contextValue := utils.DefaultStringPtr(req.Context, "/")
@@ -2449,4 +2479,14 @@ func mapSecurityModelToAPI(in *model.SecurityConfig) *api.SecurityConfig {
 		out.ApiKey = &api.APIKeySecurity{Enabled: in.APIKey.Enabled, Key: utils.StringPtrIfNotEmpty(in.APIKey.Key), In: inLoc}
 	}
 	return out
+}
+
+// marshalUpstreamForValidation serialises the upstream config to JSON so
+// ValidateSecretRefs can scan it for {{ secret "..." }} placeholders.
+func marshalUpstreamForValidation(upstream interface{}) (string, error) {
+	b, err := json.Marshal(upstream)
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
 }
