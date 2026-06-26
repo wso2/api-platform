@@ -201,13 +201,25 @@ type SubscriptionRepository interface {
 // LLMProviderTemplateRepository defines the interface for LLM provider template persistence
 type LLMProviderTemplateRepository interface {
 	Create(t *model.LLMProviderTemplate) error
+	CreateNewVersion(t *model.LLMProviderTemplate) error
 	GetByID(templateID, orgUUID string) (*model.LLMProviderTemplate, error)
 	GetByUUID(uuid, orgUUID string) (*model.LLMProviderTemplate, error)
+	GetByVersion(templateID, orgUUID, version string) (*model.LLMProviderTemplate, error)
+	ListVersions(templateID, orgUUID string, limit, offset int) ([]*model.LLMProviderTemplate, error)
+	CountVersions(templateID, orgUUID string) (int, error)
 	List(orgUUID string, limit, offset int) ([]*model.LLMProviderTemplate, error)
 	Count(orgUUID string) (int, error)
+	ListAllVersions(orgUUID string, limit, offset int) ([]*model.LLMProviderTemplate, error)
+	CountAllVersions(orgUUID string) (int, error)
 	Update(t *model.LLMProviderTemplate) error
+	RenameFamily(baseHandle, orgUUID, name string) error
+	SetEnabled(templateID, orgUUID, version string, enabled bool) error
+	DeleteVersion(templateID, orgUUID, version string) error
 	Delete(templateID, orgUUID string) error
 	Exists(templateID, orgUUID string) (bool, error)
+	GetGroupID(handle, orgUUID string) (string, error)
+	ManagedByForHandle(handle, orgUUID string) (string, error)
+	CountProvidersUsingTemplate(templateID, orgUUID, version string) (int, error)
 }
 
 // LLMProviderRepository defines the interface for LLM provider persistence

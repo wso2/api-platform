@@ -54,6 +54,8 @@ type llmProviderTemplateYAML struct {
 	} `yaml:"metadata"`
 	Spec struct {
 		DisplayName      string                                   `yaml:"displayName"`
+		ManagedBy        string                                   `yaml:"managedBy"`
+		Version          string                                   `yaml:"version"`
 		Metadata         *llmProviderTemplateMetadataYAML         `yaml:"metadata"`
 		PromptTokens     *extractionIdentifierYAML                `yaml:"promptTokens"`
 		CompletionTokens *extractionIdentifierYAML                `yaml:"completionTokens"`
@@ -118,9 +120,24 @@ func LoadLLMProviderTemplatesFromDirectory(dirPath string) ([]*model.LLMProvider
 			return nil, fmt.Errorf("template file %s is missing spec.displayName", filePath)
 		}
 
+		managedBy := strings.TrimSpace(doc.Spec.ManagedBy)
+		if managedBy == "" {
+			managedBy = "wso2"
+		}
+
+		seedVersion := strings.TrimSpace(doc.Spec.Version)
+		if seedVersion == "" {
+			seedVersion = "v1.0"
+		}
+		baseHandle := strings.TrimSpace(doc.Metadata.Name)
+		handle := baseHandle + "-" + strings.ReplaceAll(strings.ToLower(seedVersion), ".", "-")
+
 		res = append(res, &model.LLMProviderTemplate{
-			ID:               doc.Metadata.Name,
-			Name:             doc.Spec.DisplayName,
+			ID:             handle,
+			GroupID: baseHandle,
+			Version:        seedVersion,
+			Name:           doc.Spec.DisplayName,
+			ManagedBy:      managedBy,
 			Metadata:         mapTemplateMetadata(doc.Spec.Metadata),
 			PromptTokens:     mapExtractionIdentifier(doc.Spec.PromptTokens),
 			CompletionTokens: mapExtractionIdentifier(doc.Spec.CompletionTokens),

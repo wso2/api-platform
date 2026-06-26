@@ -20,7 +20,6 @@ package service
 import (
 	"fmt"
 
-	"platform-api/src/internal/constants"
 	"platform-api/src/internal/model"
 	"platform-api/src/internal/repository"
 )
@@ -78,6 +77,7 @@ func (s *LLMTemplateSeeder) SeedForOrg(orgUUID string) error {
 			if current != nil {
 				current.Name = tpl.Name
 				current.Description = tpl.Description
+				current.ManagedBy = tpl.ManagedBy
 				current.Metadata = tpl.Metadata
 				current.PromptTokens = tpl.PromptTokens
 				current.CompletionTokens = tpl.CompletionTokens
@@ -97,9 +97,11 @@ func (s *LLMTemplateSeeder) SeedForOrg(orgUUID string) error {
 		toCreate := &model.LLMProviderTemplate{
 			OrganizationUUID: orgUUID,
 			ID:               tpl.ID,
+			GroupID:   tpl.GroupID,
+			Version:          tpl.Version,
 			Name:             tpl.Name,
 			Description:      tpl.Description,
-			ManagedBy:        constants.PolicyManagedByWSO2,
+			ManagedBy:        tpl.ManagedBy,
 			CreatedBy:        tpl.CreatedBy,
 			Metadata:         tpl.Metadata,
 			PromptTokens:     tpl.PromptTokens,
