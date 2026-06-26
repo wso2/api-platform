@@ -159,8 +159,8 @@ CREATE TABLE dbo.subscription_plan_limits (
     -- (error 1785).
     FOREIGN KEY (subscription_plan_uuid) REFERENCES subscription_plans(uuid) ON DELETE CASCADE,
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE NO ACTION,
-    FOREIGN KEY (subscription_plan_uuid, organization_uuid)
-        REFERENCES subscription_plans(uuid, organization_uuid) ON DELETE NO ACTION,
+    FOREIGN KEY (organization_uuid, subscription_plan_uuid)
+        REFERENCES subscription_plans(organization_uuid, uuid) ON DELETE NO ACTION,
     UNIQUE(subscription_plan_uuid, limit_type, time_unit)
 );
 
