@@ -45,19 +45,19 @@ Feature: Secret Management Operations
       """
     Then the response status should be 201
     And the response should be valid JSON
-    And the JSON response field "handle" should be "test-secret-1"
+    And the JSON response field "status.id" should be "test-secret-1"
     # Cleanup
     When I delete the secret "test-secret-1"
-    Then the response status should be 204
+    Then the response status should be 200
 
   Scenario: Create a secret with simple name and value
     When I create a secret named "simple-secret" with value "simple-value-123"
     Then the response status should be 201
     And the response should be valid JSON
-    And the JSON response field "handle" should be "simple-secret"
+    And the JSON response field "status.id" should be "simple-secret"
     # Cleanup
     When I delete the secret "simple-secret"
-    Then the response status should be 204
+    Then the response status should be 200
 
   Scenario: Create secret with special characters in value
     When I create a secret with the following configuration:
@@ -77,10 +77,10 @@ Feature: Secret Management Operations
       """
     Then the response status should be 201
     And the response should be valid JSON
-    And the JSON response field "handle" should be "special-secret"
+    And the JSON response field "status.id" should be "special-secret"
     # Cleanup
     When I delete the secret "special-secret"
-    Then the response status should be 204
+    Then the response status should be 200
 
   Scenario: Create secret with long value
     When I create a secret with the following configuration:
@@ -100,10 +100,10 @@ Feature: Secret Management Operations
       """
     Then the response status should be 201
     And the response should be valid JSON
-    And the JSON response field "handle" should be "long-secret"
+    And the JSON response field "status.id" should be "long-secret"
     # Cleanup
     When I delete the secret "long-secret"
-    Then the response status should be 204
+    Then the response status should be 200
 
   # ==================== CREATE SECRET - ERROR CASES ====================
 
@@ -180,7 +180,7 @@ Feature: Secret Management Operations
     And the JSON response field "status" should be "error"
     # Cleanup
     When I delete the secret "duplicate-secret"
-    Then the response status should be 204
+    Then the response status should be 200
 
   # ==================== GET SECRET - SUCCESS CASES ====================
 
@@ -208,7 +208,7 @@ Feature: Secret Management Operations
     And the JSON response field "metadata.name" should be "get-test-secret"
     # Cleanup
     When I delete the secret "get-test-secret"
-    Then the response status should be 204
+    Then the response status should be 200
 
   Scenario: Get secret list contains created secret
     Given I create a secret with the following configuration:
@@ -233,7 +233,7 @@ Feature: Secret Management Operations
     And the response body should contain "list-test-secret"
     # Cleanup
     When I delete the secret "list-test-secret"
-    Then the response status should be 204
+    Then the response status should be 200
 
   # ==================== GET SECRET - ERROR CASES ====================
 
@@ -279,10 +279,10 @@ Feature: Secret Management Operations
       """
     Then the response status should be 200
     And the response should be valid JSON
-    And the JSON response field "handle" should be "update-test-secret"
+    And the JSON response field "status.id" should be "update-test-secret"
     # Cleanup
     When I delete the secret "update-test-secret"
-    Then the response status should be 204
+    Then the response status should be 200
 
   Scenario: Update secret with simple value
     Given I create a secret named "simple-update-secret" with value "original-simple-value"
@@ -290,10 +290,10 @@ Feature: Secret Management Operations
     When I update the secret "simple-update-secret" with value "updated-simple-value"
     Then the response status should be 200
     And the response should be valid JSON
-    And the JSON response field "handle" should be "simple-update-secret"
+    And the JSON response field "status.id" should be "simple-update-secret"
     # Cleanup
     When I delete the secret "simple-update-secret"
-    Then the response status should be 204
+    Then the response status should be 200
 
   # ==================== UPDATE SECRET - ERROR CASES ====================
 
@@ -337,7 +337,7 @@ Feature: Secret Management Operations
       """
     Then the response status should be 201
     When I delete the secret "delete-test-secret"
-    Then the response status should be 204
+    Then the response status should be 200
     # Verify deletion
     When I get the secret "delete-test-secret"
     Then the response status should be 404
@@ -350,7 +350,7 @@ Feature: Secret Management Operations
     When I create a secret named "upstream-secret" with value "ssk-test-auth-key-12345"
     Then the response status should be 201
     And the response should be valid JSON
-    And the JSON response field "handle" should be "upstream-secret"
+    And the JSON response field "status.id" should be "upstream-secret"
 
     When I create this LLM provider:
         """
@@ -394,7 +394,7 @@ Feature: Secret Management Operations
     Then the response status code should be 200
 
     When I delete the secret "upstream-secret"
-    Then the response status should be 204
+    Then the response status should be 200
 
   Scenario: Invoke an LLM Provider where the secret value contains JSON special characters (backslash and quote)
     # Secret value contains \ and " which must be JSON-escaped as \\ and \" when submitted
@@ -415,7 +415,7 @@ Feature: Secret Management Operations
       """
     Then the response status should be 201
     And the response should be valid JSON
-    And the JSON response field "handle" should be "upstream-secret-special"
+    And the JSON response field "status.id" should be "upstream-secret-special"
 
     When I create this LLM provider:
         """
@@ -463,7 +463,7 @@ Feature: Secret Management Operations
     Then the response status code should be 200
 
     When I delete the secret "upstream-secret-special"
-    Then the response status should be 204
+    Then the response status should be 200
 
   Scenario: Create LLM Provider with a secret that does not exist
     When I create this LLM provider:
