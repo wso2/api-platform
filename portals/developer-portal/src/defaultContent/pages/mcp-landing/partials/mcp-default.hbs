@@ -12,8 +12,9 @@
   <div class="aov-endpoint-url-row" style="margin-top:0;">
     <i class="bi bi-link-45deg" style="color:#8a93a0;flex:none;"></i>
     <pre id="token_mcp_prod_url" class="aov-endpoint-url token-text">{{resources.serverDetails.productionURL}}</pre>
-    <button class="dp-btn-icon" aria-label="Copy URL" type="button" onclick="copyToken('mcp_prod_url')">
-      <i class="bi bi-copy"></i>
+    <button type="button" class="copy-btn" title="Copy URL" onclick="copyToken(this, 'mcp_prod_url')">
+      <span class="copy-btn-icon"><i class="bi bi-copy"></i></span>
+      <span class="copy-btn-check"><i class="bi bi-check"></i> Copied</span>
     </button>
   </div>
   {{/unless}}

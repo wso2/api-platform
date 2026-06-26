@@ -58,9 +58,10 @@
                             <input type="text" id="consumer-key-{{kmId}}-{{keyType}}-view"
                                 class="mk-input" name="consumerKey-{{keyType}}"
                                 value="{{keys.consumerKey}}" readonly disabled />
-                            <button class="mk-icon-btn"
+                            <button class="mk-icon-btn copy-btn"
                                 onclick="copyConsumerKey('consumer-key-{{kmId}}-{{keyType}}-view')" title="Copy">
-                                <i class="bi bi-clipboard"></i>
+                                <span class="copy-btn-icon"><i class="bi bi-copy"></i></span>
+                                <span class="copy-btn-check"><i class="bi bi-check"></i> Copied</span>
                             </button>
                         </div>
                         <input type="hidden" id="app-ref-{{kmId}}-{{keyType}}" name="appRefId" value="{{keys.appRefId}}" />
@@ -320,11 +321,12 @@
                     </div>
                 </div>
                 <div class="mk-code-block">
-                    <button class="mk-curl-copy-btn"
+                    <button class="mk-curl-copy-btn copy-btn"
                         data-endpoint="{{tokenEndpoint}}"
                         aria-label="Copy cURL command"
                         onclick="copyRealCurl(this)">
-                        <i class="bi bi-copy"></i>
+                        <span class="copy-btn-icon"><i class="bi bi-copy"></i></span>
+                        <span class="copy-btn-check"><i class="bi bi-check"></i> Copied</span>
                     </button>
                     <code id="curl_{{kmName}}_{{keyType}}">curl -k -X POST &lt;TOKEN_ENDPOINT_URL&gt; -d "grant_type=client_credentials" -H "Authorization: Basic Base64(&lt;CONSUMER_KEY&gt;:&lt;CONSUMER_SECRET&gt;)"</code>
                 </div>

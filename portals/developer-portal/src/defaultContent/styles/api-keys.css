@@ -303,24 +303,8 @@
 
 .ak-copy-btn {
   flex: none;
-  align-self: stretch;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4375rem;
-  border-radius: 0.5625rem;
-  padding: 0 1rem;
-  font-size: 0.8125rem;
-  font-weight: 600;
-  font-family: inherit;
-  cursor: pointer;
-  transition: all 0.15s;
-  border: 1px solid #cdd8e6;
-  background: #fff;
-  color: #1f3d5c;
-  white-space: nowrap;
+  align-self: center;
 }
-.ak-copy-btn:hover { background: #f3f7fc; }
-.ak-copy-btn--copied { background: #e6f4ea; border-color: #bfe3c6; color: #2e7d32; }
 
 /* ── Revoke compact modal ─────────────────────────────────────── */
 .ak-revoke-modal {

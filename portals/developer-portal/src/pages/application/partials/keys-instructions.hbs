@@ -45,9 +45,10 @@
                                     actual credentials inserted.
                                 </p>
                                 <div class="code-block">
-                                    <button class="copy-button" id="curl-copy-{{../id}}-{{keyType}}"
+                                    <button class="copy-button copy-btn" id="curl-copy-{{../id}}-{{keyType}}"
                                         data-endpoint="{{../tokenEndpoint}}" aria-label="Copy to clipboard with real values" onclick="copyRealCurl(this)">
-                                        <i class="bi bi-copy"></i>
+                                        <span class="copy-btn-icon"><i class="bi bi-copy"></i></span>
+                                        <span class="copy-btn-check"><i class="bi bi-check"></i> Copied</span>
                                     </button>
                                     <code
                                         id="curl_{{../name}}_{{keyType}}">curl -k -X POST &lt;TOKEN_ENDPOINT_URL&gt; -d "grant_type=client_credentials" -H "Authorization: Basic Base64(&lt;CONSUMER_KEY&gt;:&lt;CONSUMER_SECRET&gt;)"</code>

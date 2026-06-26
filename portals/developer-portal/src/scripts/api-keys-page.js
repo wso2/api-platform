@@ -128,12 +128,10 @@
                     document.body.removeChild(ta);
                 }
             } catch (e) {}
-            copyBtn.className = 'ak-copy-btn ak-copy-btn--copied';
-            copyBtn.innerHTML = '<i class="bi bi-check-lg"></i> Copied';
+            copyBtn.classList.add('copy-btn--copied');
             if (_copyTimer) clearTimeout(_copyTimer);
             _copyTimer = setTimeout(function () {
-                copyBtn.className = 'ak-copy-btn';
-                copyBtn.innerHTML = '<i class="bi bi-copy"></i> Copy';
+                copyBtn.classList.remove('copy-btn--copied');
             }, 1600);
         });
     }
