@@ -636,7 +636,13 @@ export default function ProviderTemplateOverview() {
         navigate(listPath);
         return;
       }
-      const nextVersion = remaining.find((v) => v.isLatest) ?? remaining[0];
+      const parseVerNum = (s: string) => {
+        const [maj = 0, min = 0] = (s || 'v0').replace(/^v/i, '').split('.').map(Number);
+        return maj * 1000 + min;
+      };
+      const nextVersion =
+        remaining.find((v) => v.isLatest) ??
+        [...remaining].sort((a, b) => parseVerNum(b.version || 'v0') - parseVerNum(a.version || 'v0'))[0];
       navigate(nextVersion?.id ? `${listPath}/${nextVersion.id}` : listPath, { replace: true });
     } catch {
       showSnackbar('Failed to delete the version.', 'error');

@@ -130,7 +130,10 @@ func LoadLLMProviderTemplatesFromDirectory(dirPath string) ([]*model.LLMProvider
 			seedVersion = "v1.0"
 		}
 		baseHandle := strings.TrimSpace(doc.Metadata.Name)
-		handle := baseHandle + "-" + strings.ReplaceAll(strings.ToLower(seedVersion), ".", "-")
+		handle := baseHandle
+		if managedBy != "wso2" || strings.ToLower(seedVersion) != "v1.0" {
+			handle = baseHandle + "-" + strings.ReplaceAll(strings.ToLower(seedVersion), ".", "-")
+		}
 
 		res = append(res, &model.LLMProviderTemplate{
 			ID:             handle,

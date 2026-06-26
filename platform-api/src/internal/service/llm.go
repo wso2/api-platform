@@ -131,10 +131,9 @@ func (s *LLMProviderTemplateService) Create(orgUUID, createdBy string, req *api.
 	version := "v1.0"
 	if v := req.Version; v != "" {
 		normalized, ok := normalizeTemplateVersion(v)
-		if !ok {
+		if !ok || normalized != version {
 			return nil, constants.ErrInvalidInput
 		}
-		version = normalized
 	}
 	handle := makeTemplateHandle(baseHandle, version)
 
@@ -293,7 +292,11 @@ func (s *LLMProviderTemplateService) Update(orgUUID, handle, updatedBy string, r
 		return nil, fmt.Errorf("failed to update template: %w", err)
 	}
 
-	if base, baseErr := s.repo.GetGroupID(handle, orgUUID); baseErr == nil && base != "" {
+	base, baseErr := s.repo.GetGroupID(handle, orgUUID)
+	if baseErr != nil {
+		return nil, fmt.Errorf("failed to resolve template family: %w", baseErr)
+	}
+	if base != "" {
 		if err := s.repo.RenameFamily(base, orgUUID, req.Name); err != nil {
 			return nil, fmt.Errorf("failed to propagate template name: %w", err)
 		}
@@ -418,9 +421,11 @@ func (s *LLMProviderTemplateService) GetVersion(orgUUID, handle, version string)
 	if handle == "" || v == "" {
 		return nil, constants.ErrInvalidInput
 	}
-	if normalized, ok := normalizeTemplateVersion(v); ok {
-		v = normalized
+	normalized, ok := normalizeTemplateVersion(v)
+	if !ok {
+		return nil, constants.ErrInvalidInput
 	}
+	v = normalized
 	m, err := s.repo.GetByVersion(handle, orgUUID, v)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get template version: %w", err)
@@ -438,9 +443,11 @@ func (s *LLMProviderTemplateService) SetVersionEnabled(orgUUID, handle, version 
 	if handle == "" || v == "" {
 		return nil, constants.ErrInvalidInput
 	}
-	if normalized, ok := normalizeTemplateVersion(v); ok {
-		v = normalized
+	normalized, ok := normalizeTemplateVersion(v)
+	if !ok {
+		return nil, constants.ErrInvalidInput
 	}
+	v = normalized
 	if !enabled {
 		inUse, err := s.repo.CountProvidersUsingTemplate(handle, orgUUID, v)
 		if err != nil {
@@ -504,9 +511,11 @@ func (s *LLMProviderTemplateService) DeleteVersion(orgUUID, handle, version stri
 	if handle == "" || v == "" {
 		return constants.ErrInvalidInput
 	}
-	if normalized, ok := normalizeTemplateVersion(v); ok {
-		v = normalized
+	normalized, ok := normalizeTemplateVersion(v)
+	if !ok {
+		return constants.ErrInvalidInput
 	}
+	v = normalized
 	target, err := s.repo.GetByVersion(handle, orgUUID, v)
 	if err != nil {
 		return fmt.Errorf("failed to resolve template version: %w", err)

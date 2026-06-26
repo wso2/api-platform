@@ -133,15 +133,15 @@ func (r *LLMProviderTemplateRepo) CreateNewVersion(t *model.LLMProviderTemplate)
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	lockSQL := `SELECT created_by FROM llm_provider_templates WHERE group_id = ? AND organization_uuid = ? AND is_latest = ?`
+	lockSQL := `SELECT uuid FROM llm_provider_templates WHERE group_id = ? AND organization_uuid = ? AND is_latest = ?`
 	switch r.db.Driver() {
 	case database.DriverPostgres, database.DriverPostgreSQL, database.DriverPGX:
 		lockSQL += " FOR UPDATE"
 	case database.DriverSQLServer, database.DriverMSSQL:
-		lockSQL = `SELECT created_by FROM llm_provider_templates WITH (UPDLOCK, HOLDLOCK) WHERE group_id = ? AND organization_uuid = ? AND is_latest = ?`
+		lockSQL = `SELECT uuid FROM llm_provider_templates WITH (UPDLOCK, HOLDLOCK) WHERE group_id = ? AND organization_uuid = ? AND is_latest = ?`
 	}
-	var createdBy sql.NullString
-	err = tx.QueryRow(r.db.Rebind(lockSQL), t.GroupID, t.OrganizationUUID, 1).Scan(&createdBy)
+	var lockedUUID string
+	err = tx.QueryRow(r.db.Rebind(lockSQL), t.GroupID, t.OrganizationUUID, 1).Scan(&lockedUUID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return sql.ErrNoRows
 	}
@@ -173,7 +173,6 @@ func (r *LLMProviderTemplateRepo) CreateNewVersion(t *model.LLMProviderTemplate)
 	t.UUID = uuidStr
 	t.IsLatest = true
 	t.Enabled = true
-	t.CreatedBy = createdBy.String
 	t.UpdatedBy = t.CreatedBy
 	t.CreatedAt = time.Now()
 	t.UpdatedAt = time.Now()
@@ -434,10 +433,10 @@ func (r *LLMProviderTemplateRepo) Update(t *model.LLMProviderTemplate) error {
 
 	result, err := r.db.Exec(r.db.Rebind(`
 		UPDATE llm_provider_templates
-		SET name = ?, description = ?, configuration = ?, openapi_spec = ?, updated_by = ?, updated_at = ?
+		SET name = ?, managed_by = ?, description = ?, configuration = ?, openapi_spec = ?, updated_by = ?, updated_at = ?
 		WHERE handle = ? AND organization_uuid = ?
 	`),
-		t.Name, t.Description, configJSON, []byte(t.OpenAPISpec), t.UpdatedBy, t.UpdatedAt,
+		t.Name, t.ManagedBy, t.Description, configJSON, []byte(t.OpenAPISpec), t.UpdatedBy, t.UpdatedAt,
 		t.ID, t.OrganizationUUID,
 	)
 	if err != nil {

@@ -522,13 +522,10 @@ export interface ResourceMappings {
 }
 
 /**
- * Create Provider Template request.
- * The backend expects an explicit `id` for the template (e.g. "kimi-full"),
- * so it is required here (unlike the read model where it is optional).
+ * Create Provider Template request. Mirrors `ProviderTemplate`; `id` is
+ * required (the backend expects an explicit handle, e.g. "kimi-full").
  */
-export type CreateProviderTemplateRequest = Omit<ProviderTemplate, 'id'> & {
-  id: string;
-};
+export type CreateProviderTemplateRequest = ProviderTemplate;
 
 /**
  * Update Provider Template request - all fields optional
