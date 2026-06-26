@@ -129,7 +129,11 @@ export const request = async <T>(config: ApiRequestConfig): Promise<T> => {
       message = body?.description ?? body?.message ?? body?.error ?? message;
     } catch { /* body not JSON */ }
     logger.error(`[platformApiClient] ${method} ${url} → ${res.status}: ${message}`);
-    throw new Error(message);
+    // Attach the HTTP status so callers (e.g. ErrorAlert) can react to it —
+    // notably surfacing a logout action on 401 instead of a futile retry.
+    const err = new Error(message) as Error & { status?: number };
+    err.status = res.status;
+    throw err;
   }
 
   // 204 No Content
