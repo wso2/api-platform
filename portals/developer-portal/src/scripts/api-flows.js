@@ -1243,7 +1243,7 @@ async function updatePromptFromForm() {
     const handle = editingFlow?.handle || generateHandle(name);
 
     try {
-        const response = await fetch(`/${orgName}/views/${viewName}/api-flows/generate-prompt`, {
+        const response = await fetch(`/${orgName}/views/${viewName}/api-workflows/generate-prompt`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
             body: JSON.stringify({ name, description, apis, orgName, viewName, handle }),

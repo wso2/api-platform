@@ -124,7 +124,7 @@ const loadAPIFlows = async (req, res, next) => {
         const dbLayout = await loadLayoutFromAPI(orgID, viewName);
         let html;
         if (dbLayout) {
-            const templatePath = path.join(process.cwd(), 'src/defaultContent/pages/api-flows/page.hbs');
+            const templatePath = path.join(process.cwd(), 'src/defaultContent/pages/api-workflows/page.hbs');
             const templateResponse = fs.readFileSync(templatePath, 'utf8');
             const styleContent = await orgDao.getContent({ orgId: orgID, fileType: 'style', viewName: viewName, fileName: 'main.css' });
             const themedLayout = styleContent
@@ -132,7 +132,7 @@ const loadAPIFlows = async (req, res, next) => {
                 : dbLayout;
             html = await renderGivenTemplate(templateResponse, themedLayout, templateContent);
         } else {
-            html = await renderTemplateFromAPI(templateContent, orgID, orgName, 'pages/api-flows', viewName);
+            html = await renderTemplateFromAPI(templateContent, orgID, orgName, 'pages/api-workflows', viewName);
         }
         res.send(html);
     } catch (error) {
@@ -213,7 +213,7 @@ const loadAPIFlowDetail = async (req, res, next) => {
         const dbLayout = await loadLayoutFromAPI(orgID, viewName);
         let html;
         if (dbLayout) {
-            const templatePath = path.join(process.cwd(), 'src/defaultContent/pages/api-flows/detail/page.hbs');
+            const templatePath = path.join(process.cwd(), 'src/defaultContent/pages/api-workflows/detail/page.hbs');
             const templateResponse = fs.readFileSync(templatePath, 'utf8');
             const styleContent = await orgDao.getContent({ orgId: orgID, fileType: 'style', viewName: viewName, fileName: 'main.css' });
             const themedLayout = styleContent
@@ -221,7 +221,7 @@ const loadAPIFlowDetail = async (req, res, next) => {
                 : dbLayout;
             html = await renderGivenTemplate(templateResponse, themedLayout, templateContent);
         } else {
-            html = await renderTemplateFromAPI(templateContent, orgID, orgName, 'pages/api-flows/detail', viewName);
+            html = await renderTemplateFromAPI(templateContent, orgID, orgName, 'pages/api-workflows/detail', viewName);
         }
         res.send(html);
     } catch (error) {
@@ -347,7 +347,7 @@ const getWorkflowDetailMd = async (req, res) => {
 };
 
 const generateWorkflowMarkdown = (arazoJson, apiFlow, orgName, viewName, sources = []) => {
-    const templatePath = path.join(process.cwd(), 'src/defaultContent/pages/api-flows/workflow-markdown.hbs');
+    const templatePath = path.join(process.cwd(), 'src/defaultContent/pages/api-workflows/workflow-markdown.hbs');
     const templateContent = fs.readFileSync(templatePath, 'utf8');
     const template = Handlebars.compile(templateContent);
 
@@ -375,7 +375,7 @@ const generateWorkflowMarkdown = (arazoJson, apiFlow, orgName, viewName, sources
 };
 
 const generateWorkflowsListMarkdown = (apiFlows, orgName, viewName, hiddenWorkflowCount = 0) => {
-    const templatePath = path.join(process.cwd(), 'src/defaultContent/pages/api-flows/workflows-list-markdown.hbs');
+    const templatePath = path.join(process.cwd(), 'src/defaultContent/pages/api-workflows/workflows-list-markdown.hbs');
     const templateContent = fs.readFileSync(templatePath, 'utf8');
     const template = Handlebars.compile(templateContent);
 

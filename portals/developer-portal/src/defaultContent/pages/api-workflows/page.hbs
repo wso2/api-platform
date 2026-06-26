@@ -12,7 +12,7 @@
     </div>
     {{#if apiFlows.length}}
       {{#if profile.isAdmin}}
-      <a href="{{baseUrl}}/configure#cfg-workflows" class="dp-btn dp-btn--primary">
+      <a href="{{baseUrl}}/settings#cfg-workflows" class="dp-btn dp-btn--primary">
         <i class="bi bi-pencil"></i> Manage workflows
       </a>
       {{/if}}
@@ -67,7 +67,7 @@
     <h2 class="dp-empty-title">No workflows yet</h2>
     <p class="dp-empty-desc">Create a workflow to encode a multi-step API sequence your AI agents can follow. Published workflows will appear here for every consumer.</p>
     {{#if profile.isAdmin}}
-    <a href="{{baseUrl}}/configure#cfg-workflows" class="dp-btn dp-btn--primary dp-btn--lg" style="margin-top:1.5rem;">
+    <a href="{{baseUrl}}/settings#cfg-workflows" class="dp-btn dp-btn--primary dp-btn--lg" style="margin-top:1.5rem;">
       <i class="bi bi-plus"></i> Create workflow
     </a>
     {{/if}}

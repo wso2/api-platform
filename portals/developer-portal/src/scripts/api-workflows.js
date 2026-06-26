@@ -18,11 +18,11 @@
 
 /**
  * Extract org and view names from the current URL
- * URL format: /orgName/views/viewName/api-flows
+ * URL format: /orgName/views/viewName/api-workflows
  */
 function getOrgAndViewFromURL() {
     const pathParts = window.location.pathname.split('/').filter(p => p);
-    // Format: [orgName, views, viewName, api-flows]
+    // Format: [orgName, views, viewName, api-workflows]
     const orgName = pathParts[0];
     const viewName = pathParts[2];
     return { orgName, viewName };

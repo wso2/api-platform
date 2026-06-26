@@ -711,7 +711,7 @@ function validateScripts(strContent) {
             "<script>\n                    (function() {\n                        var data = JSON.parse(document.getElementById('token-map-data').textContent || '[]');\n                        window.__tokenMeta = window.__tokenMeta || {};\n                        data.forEach(function(sub) {\n                            // store only non-sensitive metadata and masked token\n                            window.__tokenMeta[sub.subscriptionId] = {\n                                maskedToken: sub.maskedToken,\n                                customerName: sub.customerName,\n                                subscriptionPlanName: sub.subscriptionPlanName,\n                                status: sub.status\n                            };\n                        });\n                        // expose orgID for on-demand fetches\n                        window.__subscriptionOrgID = \"{{@root.orgID}}\";\n                    })();\n                </script>",
             // Existing-subs JSON data island (api-landing/partials/api-subscription-plans.hbs)
             "<script id=\"existing-subs-data\" type=\"application/json\">{{{json subscriptions}}}</script>",
-            // API flows JSON data island (pages/api-flows/page.hbs)
+            // API flows JSON data island (pages/api-workflows/page.hbs)
             "<script type=\"application/json\" id=\"apiFlowsDataContainer\">{{{json apiFlows}}}</script>",
             // AI agent data island (pages/api-landing/page.hbs)
             "<script type=\"application/json\" id=\"apiAgentData\">{\"baseUrl\":\"{{baseUrl}}\",\"apiHandle\":\"{{apiMetadata.apiHandle}}\"}</script>",

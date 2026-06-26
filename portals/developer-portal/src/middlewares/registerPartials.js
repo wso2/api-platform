@@ -64,9 +64,9 @@ const registerPartials = async (req, res, next) => {
       devportalMode = orgDetails.ORG_CONFIG?.devportalMode;
       
       const isViewConfigure = req.params.orgName && req.params.orgName !== "portal"
-        && req.params.viewName && /views\/.+\/configure/i.test(matchURL);
+        && req.params.viewName && /views\/.+\/settings/i.test(matchURL);
       const isNonConfigure = req.params.orgName && req.params.orgName !== "portal"
-        && req.params.viewName && (!(/views\/.+\/configure/i.test(matchURL)));
+        && req.params.viewName && (!(/views\/.+\/settings/i.test(matchURL)));
 
       if (isNonConfigure || isViewConfigure) {
         const baseUrl = config.baseUrl + "/" + req.params.orgName + constants.ROUTE.VIEWS_PATH + req.params.viewName;

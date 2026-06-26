@@ -24,11 +24,11 @@ const requireAdmin = (req, res, next) => {
 };
 
 // Org-level settings: Organizations, Views, Labels, IDP
-router.get('/:orgName/configure', noFavicon,
+router.get('/:orgName/settings', noFavicon,
     authController.handleSilentSSO, registerPartials, ensureAuthenticated, requireAdmin, settingsController.loadOrgSettingsPage);
 
 // View-level settings: LLM Instructions + API Workflows
-router.get('/:orgName/views/:viewName/configure', noFavicon,
+router.get('/:orgName/views/:viewName/settings', noFavicon,
     authController.handleSilentSSO, registerPartials, ensureAuthenticated, requireAdmin, viewConfigureController.loadViewSettingsPage);
 
 // LLM config CRUD
