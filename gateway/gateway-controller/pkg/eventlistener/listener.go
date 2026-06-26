@@ -25,17 +25,24 @@ import (
 	"strings"
 
 	"github.com/wso2/api-platform/common/eventhub"
-	"github.com/wso2/api-platform/common/webhooksecret"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/encryption"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/lazyresourcexds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/templateengine/funcs"
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/webhooksecretxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
 )
+
+// EventProcessor is implemented by build-time extensions that handle event types
+// not processed by the core EventListener (e.g. webhook secrets in event-gateway-controller).
+// RegisterProcessor must be called before Start().
+type EventProcessor interface {
+	// CanHandle reports whether this processor handles the given event type.
+	CanHandle(eventType eventhub.EventType) bool
+	// Process handles the event. Errors are logged; the listener continues.
+	Process(event eventhub.Event)
+}
 
 // APIKeyXDSManager defines API key xDS operations used by the listener.
 type APIKeyXDSManager interface {
@@ -64,10 +71,11 @@ type EventListener struct {
 	logger              *slog.Logger
 	systemConfig        *config.Config
 	policyDefinitions   map[string]models.PolicyDefinition
-	secretResolver              funcs.SecretResolver
-	webhookSecretStore          *webhooksecret.WebhookSecretStore
-	webhookSecretSnapshotManager *webhooksecretxds.SnapshotManager
-	providerManager             *encryption.ProviderManager
+	secretResolver      funcs.SecretResolver
+
+	// extensionProcessors handles event types not processed by the core switch.
+	// Populated via RegisterProcessor before Start().
+	extensionProcessors []EventProcessor
 
 	eventCh <-chan eventhub.Event
 	ctx     context.Context
@@ -89,9 +97,6 @@ func NewEventListener(
 	systemConfig *config.Config,
 	policyDefinitions map[string]models.PolicyDefinition,
 	secretResolver funcs.SecretResolver,
-	webhookSecretStore *webhooksecret.WebhookSecretStore,
-	webhookSecretSnapshotManager *webhooksecretxds.SnapshotManager,
-	providerManager *encryption.ProviderManager,
 ) *EventListener {
 	if eventHub == nil {
 		panic("event listener requires non-nil EventHub")
@@ -124,13 +129,15 @@ func NewEventListener(
 		logger:              logger,
 		systemConfig:        systemConfig,
 		policyDefinitions:   policyDefinitions,
-		secretResolver:               secretResolver,
-		webhookSecretStore:           webhookSecretStore,
-		webhookSecretSnapshotManager: webhookSecretSnapshotManager,
-		providerManager:              providerManager,
+		secretResolver:      secretResolver,
 		ctx:                 ctx,
 		cancel:              cancel,
 	}
+}
+
+// RegisterProcessor adds an extension event processor. Must be called before Start().
+func (l *EventListener) RegisterProcessor(p EventProcessor) {
+	l.extensionProcessors = append(l.extensionProcessors, p)
 }
 
 // Start begins listening for events
@@ -230,9 +237,14 @@ func (l *EventListener) handleEvent(event eventhub.Event) {
 		l.processLLMTemplateEvent(event)
 	case eventhub.EventTypeMCPProxy:
 		l.processMCPProxyEvent(event)
-	case eventhub.EventTypeWebhookSecret:
-		l.processWebhookSecretEvent(event)
 	default:
+		// Try extension processors registered at build time.
+		for _, p := range l.extensionProcessors {
+			if p.CanHandle(event.EventType) {
+				p.Process(event)
+				return
+			}
+		}
 		l.logger.Warn("Unknown event type received",
 			slog.String("event_type", string(event.EventType)),
 			slog.String("entity_id", event.EntityID))

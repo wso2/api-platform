@@ -383,45 +383,6 @@ type Storage interface {
 	// Returns true if the secret exists, false otherwise.
 	SecretExists(handle string) (bool, error)
 
-	// ========================================
-	// Webhook Secret Methods
-	// ========================================
-
-	// SaveWebhookSecret persists a new encrypted HMAC secret for a WebSub API.
-	//
-	// Returns ErrConflict if a secret with the same name already exists for the artifact.
-	SaveWebhookSecret(secret *models.WebhookSecret) error
-
-	// GetWebhookSecretsByArtifact returns all active webhook secrets for an artifact.
-	//
-	// Returns an empty slice if no secrets exist.
-	GetWebhookSecretsByArtifact(artifactUUID string) ([]*models.WebhookSecret, error)
-
-	// GetWebhookSecretByArtifactAndName retrieves a specific secret by artifact + name.
-	//
-	// Returns ErrNotFound if absent.
-	GetWebhookSecretByArtifactAndName(artifactUUID, name string) (*models.WebhookSecret, error)
-
-	// GetWebhookSecretByUUID retrieves a specific secret by its UUID.
-	//
-	// Returns ErrNotFound if absent. Used by the event processor on upsert events.
-	GetWebhookSecretByUUID(uuid string) (*models.WebhookSecret, error)
-
-	// UpdateWebhookSecret replaces the ciphertext and updates updated_at for a secret.
-	//
-	// Returns ErrNotFound if absent.
-	UpdateWebhookSecret(secret *models.WebhookSecret) error
-
-	// DeleteWebhookSecret permanently removes a secret identified by (artifactUUID, name).
-	//
-	// Returns ErrNotFound if absent.
-	DeleteWebhookSecret(artifactUUID, name string) error
-
-	// GetAllWebhookSecrets returns every active webhook secret across all artifacts.
-	//
-	// Used during startup to bulk-load the in-memory store.
-	GetAllWebhookSecrets() ([]*models.WebhookSecret, error)
-
 	// GetDB returns the underlying *sql.DB for direct access.
 	// Used by EventHub for event synchronization.
 	// Returns nil for non-SQL backends.

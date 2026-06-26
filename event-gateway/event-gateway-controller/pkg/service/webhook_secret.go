@@ -16,7 +16,8 @@
  * under the License.
  */
 
-package utils
+// Package service holds event-gateway-specific business logic services.
+package service
 
 import (
 	"crypto/rand"
@@ -31,23 +32,22 @@ import (
 	"github.com/wso2/api-platform/common/webhooksecret"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/encryption"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
+	gwstorage "github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/webhooksecretxds"
+	evstorage "github.com/wso2/api-platform/event-gateway/event-gateway-controller/pkg/storage"
 )
 
 const (
-	// webhookSecretPrefix is prepended to every generated HMAC secret value.
-	// Total length: 6 + 64 = 70 characters.
 	webhookSecretPrefix = "whsec_"
-
-	// webhookSecretLen is the number of random bytes to generate (64 hex chars).
-	webhookSecretLen = 32
+	webhookSecretLen    = 32
 )
 
 // WebhookSecretService manages per-API HMAC secrets for the websub-hmac-auth policy.
 type WebhookSecretService struct {
-	db              storage.Storage
+	db              evstorage.EventStorage
 	providerManager *encryption.ProviderManager
 	store           *webhooksecret.WebhookSecretStore
+	snapshotManager *webhooksecretxds.SnapshotManager
 	eventHub        eventhub.EventHub
 	gatewayID       string
 	logger          *slog.Logger
@@ -55,9 +55,10 @@ type WebhookSecretService struct {
 
 // NewWebhookSecretService creates a new WebhookSecretService.
 func NewWebhookSecretService(
-	db storage.Storage,
-	providerManager *encryption.ProviderManager,
+	db evstorage.EventStorage,
 	store *webhooksecret.WebhookSecretStore,
+	snapshotManager *webhooksecretxds.SnapshotManager,
+	providerManager *encryption.ProviderManager,
 	eventHub eventhub.EventHub,
 	gatewayID string,
 	logger *slog.Logger,
@@ -65,13 +66,23 @@ func NewWebhookSecretService(
 	if db == nil {
 		panic("WebhookSecretService requires non-nil storage")
 	}
-	trimmedGatewayID := requireReplicaSyncWiring("WebhookSecretService", eventHub, gatewayID)
+	if eventHub == nil {
+		panic("WebhookSecretService requires non-nil EventHub")
+	}
+	trimmedID := strings.TrimSpace(gatewayID)
+	if trimmedID == "" {
+		panic("WebhookSecretService requires non-empty gateway ID")
+	}
+	if providerManager == nil {
+		logger.Warn("WebhookSecretService: no encryption provider configured; webhook secret operations will fail")
+	}
 	return &WebhookSecretService{
 		db:              db,
 		providerManager: providerManager,
 		store:           store,
+		snapshotManager: snapshotManager,
 		eventHub:        eventHub,
-		gatewayID:       trimmedGatewayID,
+		gatewayID:       trimmedID,
 		logger:          logger,
 	}
 }
@@ -110,17 +121,27 @@ func (s *WebhookSecretService) Generate(artifactUUID, displayName, correlationID
 	}
 
 	if err := s.db.SaveWebhookSecret(ws); err != nil {
-		if storage.IsConflictError(err) {
-			return nil, "", fmt.Errorf("%w: a secret named %q already exists for this API", storage.ErrConflict, name)
+		if gwstorage.IsConflictError(err) {
+			return nil, "", fmt.Errorf("%w: a secret named %q already exists for this API", gwstorage.ErrConflict, name)
 		}
 		return nil, "", fmt.Errorf("failed to persist webhook secret: %w", err)
 	}
 
-	if err := s.store.Store(artifactUUID, ws.Name, plaintext); err != nil {
-		s.logger.Warn("Webhook secret persisted but in-memory store update failed",
-			slog.String("artifact_uuid", artifactUUID),
-			slog.String("secret_name", ws.Name),
-			slog.Any("error", err))
+	if s.store != nil {
+		if err := s.store.Store(artifactUUID, ws.Name, plaintext); err != nil {
+			s.logger.Warn("Webhook secret persisted but in-memory store update failed",
+				slog.String("artifact_uuid", artifactUUID),
+				slog.String("secret_name", ws.Name),
+				slog.Any("error", err))
+		}
+	}
+
+	if s.snapshotManager != nil {
+		if err := s.snapshotManager.RefreshSnapshot(); err != nil {
+			s.logger.Warn("Failed to refresh webhook secret xDS snapshot after generate",
+				slog.String("artifact_uuid", artifactUUID),
+				slog.Any("error", err))
+		}
 	}
 
 	s.publishWebhookSecretEvent("CREATE", artifactUUID, ws.UUID, ws.Name, correlationID)
@@ -137,8 +158,8 @@ func (s *WebhookSecretService) List(artifactUUID string) ([]*models.WebhookSecre
 func (s *WebhookSecretService) Regenerate(artifactUUID, name, correlationID string) (*models.WebhookSecret, string, error) {
 	ws, err := s.db.GetWebhookSecretByArtifactAndName(artifactUUID, name)
 	if err != nil {
-		if storage.IsNotFoundError(err) {
-			return nil, "", storage.ErrNotFound
+		if gwstorage.IsNotFoundError(err) {
+			return nil, "", gwstorage.ErrNotFound
 		}
 		return nil, "", fmt.Errorf("failed to fetch webhook secret: %w", err)
 	}
@@ -160,11 +181,21 @@ func (s *WebhookSecretService) Regenerate(artifactUUID, name, correlationID stri
 		return nil, "", fmt.Errorf("failed to update webhook secret: %w", err)
 	}
 
-	if err := s.store.Store(artifactUUID, ws.Name, plaintext); err != nil {
-		s.logger.Warn("Webhook secret regenerated but in-memory store update failed",
-			slog.String("artifact_uuid", artifactUUID),
-			slog.String("secret_name", ws.Name),
-			slog.Any("error", err))
+	if s.store != nil {
+		if err := s.store.Store(artifactUUID, ws.Name, plaintext); err != nil {
+			s.logger.Warn("Webhook secret regenerated but in-memory store update failed",
+				slog.String("artifact_uuid", artifactUUID),
+				slog.String("secret_name", ws.Name),
+				slog.Any("error", err))
+		}
+	}
+
+	if s.snapshotManager != nil {
+		if err := s.snapshotManager.RefreshSnapshot(); err != nil {
+			s.logger.Warn("Failed to refresh webhook secret xDS snapshot after regenerate",
+				slog.String("artifact_uuid", artifactUUID),
+				slog.Any("error", err))
+		}
 	}
 
 	s.publishWebhookSecretEvent("CREATE", artifactUUID, ws.UUID, ws.Name, correlationID)
@@ -176,8 +207,8 @@ func (s *WebhookSecretService) Regenerate(artifactUUID, name, correlationID stri
 func (s *WebhookSecretService) Delete(artifactUUID, name, correlationID string) error {
 	ws, err := s.db.GetWebhookSecretByArtifactAndName(artifactUUID, name)
 	if err != nil {
-		if storage.IsNotFoundError(err) {
-			return storage.ErrNotFound
+		if gwstorage.IsNotFoundError(err) {
+			return gwstorage.ErrNotFound
 		}
 		return fmt.Errorf("failed to fetch webhook secret before delete: %w", err)
 	}
@@ -186,11 +217,21 @@ func (s *WebhookSecretService) Delete(artifactUUID, name, correlationID string) 
 		return fmt.Errorf("failed to delete webhook secret: %w", err)
 	}
 
-	if err := s.store.Remove(artifactUUID, name); err != nil && err != webhooksecret.ErrNotFound {
-		s.logger.Warn("Webhook secret deleted from DB but in-memory store removal failed",
-			slog.String("artifact_uuid", artifactUUID),
-			slog.String("secret_name", name),
-			slog.Any("error", err))
+	if s.store != nil {
+		if err := s.store.Remove(artifactUUID, name); err != nil && err != webhooksecret.ErrNotFound {
+			s.logger.Warn("Webhook secret deleted from DB but in-memory store removal failed",
+				slog.String("artifact_uuid", artifactUUID),
+				slog.String("secret_name", name),
+				slog.Any("error", err))
+		}
+	}
+
+	if s.snapshotManager != nil {
+		if err := s.snapshotManager.RefreshSnapshot(); err != nil {
+			s.logger.Warn("Failed to refresh webhook secret xDS snapshot after delete",
+				slog.String("artifact_uuid", artifactUUID),
+				slog.Any("error", err))
+		}
 	}
 
 	s.publishWebhookSecretEvent("DELETE", artifactUUID, ws.UUID, ws.Name, correlationID)
@@ -198,9 +239,10 @@ func (s *WebhookSecretService) Delete(artifactUUID, name, correlationID string) 
 	return nil
 }
 
-// encrypt AES-256-GCM encrypts plaintext using the provider manager and returns
-// the serialised ciphertext envelope.
 func (s *WebhookSecretService) encrypt(plaintext string) ([]byte, error) {
+	if s.providerManager == nil {
+		return nil, fmt.Errorf("no encryption provider configured")
+	}
 	payload, err := s.providerManager.Encrypt([]byte(plaintext))
 	if err != nil {
 		return nil, fmt.Errorf("failed to encrypt webhook secret: %w", err)
@@ -208,8 +250,6 @@ func (s *WebhookSecretService) encrypt(plaintext string) ([]byte, error) {
 	return []byte(encryption.MarshalPayload(payload)), nil
 }
 
-// publishWebhookSecretEvent publishes a lifecycle event for a webhook secret
-// to the EventHub so all replicas (and the event-gateway) can sync their stores.
 func (s *WebhookSecretService) publishWebhookSecretEvent(action, artifactUUID, secretUUID, secretName, correlationID string) {
 	event := eventhub.Event{
 		EventType: eventhub.EventTypeWebhookSecret,
@@ -227,8 +267,6 @@ func (s *WebhookSecretService) publishWebhookSecretEvent(action, artifactUUID, s
 	}
 }
 
-// generateWebhookSecretValue generates a cryptographically secure secret value.
-// Format: whsec_ + hex(32 random bytes) = 70 characters total.
 func generateWebhookSecretValue() (string, error) {
 	b := make([]byte, webhookSecretLen)
 	if _, err := rand.Read(b); err != nil {
@@ -237,8 +275,6 @@ func generateWebhookSecretValue() (string, error) {
 	return webhookSecretPrefix + hex.EncodeToString(b), nil
 }
 
-// slugify converts a display name to a URL-safe lowercase slug, e.g.
-// "My GitHub Secret" → "my-github-secret". Used as the secret's immutable Name.
 func slugify(displayName string) string {
 	s := strings.ToLower(strings.TrimSpace(displayName))
 	var b strings.Builder

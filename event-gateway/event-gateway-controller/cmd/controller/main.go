@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -16,6 +16,8 @@
  * under the License.
  */
 
+// Command event-gateway-controller starts the gateway controller with event-gateway
+// extensions (WebSub APIs, WebBroker APIs, and HMAC webhook secrets) enabled.
 package main
 
 import (
@@ -23,35 +25,18 @@ import (
 	"fmt"
 	"os"
 
-	commonmodels "github.com/wso2/api-platform/common/models"
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/server"
-)
-
-// API base paths for the gateway-controller HTTP surfaces.
-// These must stay in sync with the `servers.url` values in the OpenAPI specs
-// (api/management-openapi.yaml and api/admin-openapi.yaml).
-const (
-	managementAPIBasePath = "/api/management/v1"
-	adminAPIBasePath      = "/api/admin/v1"
+	gwextension "github.com/wso2/api-platform/gateway/gateway-controller/pkg/extension"
+	evextension "github.com/wso2/api-platform/event-gateway/event-gateway-controller/pkg/extension"
 )
 
 func main() {
 	configPath := flag.String("config", "", "Path to the configuration file (required)")
 	flag.Parse()
-
 	if *configPath == "" {
 		fmt.Fprintf(os.Stderr, "Error: -config flag is required\n")
 		fmt.Fprintf(os.Stderr, "Usage: %s -config <path-to-config.toml>\n", os.Args[0])
 		os.Exit(1)
 	}
-
-	server.Run(*configPath, nil)
-}
-
-// generateAuthConfig is a shim kept for backwards compatibility with
-// TestGenerateAuthConfig in main_test.go.  New callers should use
-// server.BuildAuthConfig directly.
-func generateAuthConfig(cfg *config.Config) commonmodels.AuthConfig {
-	return server.BuildAuthConfig(cfg, nil)
+	server.Run(*configPath, []gwextension.Extension{evextension.NewEventGatewayExtension()})
 }

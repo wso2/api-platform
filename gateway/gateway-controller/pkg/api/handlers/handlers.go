@@ -79,7 +79,6 @@ type APIServer struct {
 	gatewayID                   string
 	subscriptionSnapshotUpdater utils.SubscriptionSnapshotUpdater
 	subscriptionResourceService *utils.SubscriptionResourceService
-	webhookSecretService        *utils.WebhookSecretService
 }
 
 // NewAPIServer creates a new API server with dependencies
@@ -100,7 +99,6 @@ func NewAPIServer(
 	subscriptionSnapshotUpdater utils.SubscriptionSnapshotUpdater,
 	secretService *secrets.SecretService,
 	restAPIService *restapi.RestAPIService,
-	webhookSecretService *utils.WebhookSecretService,
 ) *APIServer {
 	if db == nil {
 		panic("APIServer requires non-nil storage")
@@ -151,7 +149,6 @@ func NewAPIServer(
 		gatewayID:                   gatewayID,
 		subscriptionSnapshotUpdater: subscriptionSnapshotUpdater,
 		subscriptionResourceService: subscriptionResourceService,
-		webhookSecretService:        webhookSecretService,
 	}
 	server.restAPIService = restAPIService
 	server.RestAPIHandler = NewRestAPIHandler(restAPIService, logger)
@@ -295,7 +292,7 @@ func (s *APIServer) SearchDeployments(c *gin.Context, kind string) {
 	switch kind {
 	case string(api.MCPProxyConfigurationKindMcp):
 		envelopeKey = "mcpProxies"
-	case string(api.WebSubAPIKindWebSubApi):
+	case "WebSubApi":
 		envelopeKey = "websubApis"
 	}
 
@@ -375,28 +372,6 @@ func (s *APIServer) waitForDeploymentAndPush(configID string, correlationID stri
 				return
 			}
 		}
-	}
-}
-
-// publishWebSubEvent publishes an event for WebSub API lifecycle changes.
-func (s *APIServer) publishWebSubEvent(eventType eventhub.EventType, action, entityID, correlationID string, logger *slog.Logger) {
-	event := eventhub.Event{
-		GatewayID:           s.gatewayID,
-		OriginatedTimestamp: time.Now(),
-		EventType:           eventType,
-		Action:              action,
-		EntityID:            entityID,
-		EventID:             correlationID,
-		EventData:           eventhub.EmptyEventData,
-	}
-
-	if err := s.eventHub.PublishEvent(s.gatewayID, event); err != nil {
-		logger.Warn("Failed to publish event to event hub",
-			slog.String("gateway_id", s.gatewayID),
-			slog.String("event_type", string(eventType)),
-			slog.String("action", action),
-			slog.String("entity_id", entityID),
-			slog.Any("error", err))
 	}
 }
 
