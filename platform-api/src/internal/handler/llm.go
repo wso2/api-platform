@@ -183,7 +183,8 @@ func (h *LLMHandler) UpdateLLMProviderTemplate(c *gin.Context) {
 		return
 	}
 
-	resp, err := h.templateService.Update(orgID, id, &req)
+	updatedBy, _ := middleware.GetUsernameFromContext(c)
+	resp, err := h.templateService.Update(orgID, id, updatedBy, &req)
 	if err != nil {
 		switch {
 		case errors.Is(err, constants.ErrLLMProviderTemplateNotFound):
@@ -208,8 +209,9 @@ func (h *LLMHandler) DeleteLLMProviderTemplate(c *gin.Context) {
 		return
 	}
 	id := c.Param("id")
+	deletedBy, _ := middleware.GetUsernameFromContext(c)
 
-	if err := h.templateService.Delete(orgID, id); err != nil {
+	if err := h.templateService.Delete(orgID, id, deletedBy); err != nil {
 		switch {
 		case errors.Is(err, constants.ErrLLMProviderTemplateNotFound):
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "LLM provider template not found"))
@@ -339,7 +341,8 @@ func (h *LLMHandler) UpdateLLMProvider(c *gin.Context) {
 		return
 	}
 
-	resp, err := h.providerService.Update(orgID, id, &req)
+	updatedBy, _ := middleware.GetUsernameFromContext(c)
+	resp, err := h.providerService.Update(orgID, id, updatedBy, &req)
 	if err != nil {
 		switch {
 		case errors.Is(err, constants.ErrLLMProviderNotFound):
@@ -367,8 +370,9 @@ func (h *LLMHandler) DeleteLLMProvider(c *gin.Context) {
 		return
 	}
 	id := c.Param("id")
+	deletedBy, _ := middleware.GetUsernameFromContext(c)
 
-	if err := h.providerService.Delete(orgID, id); err != nil {
+	if err := h.providerService.Delete(orgID, id, deletedBy); err != nil {
 		switch {
 		case errors.Is(err, constants.ErrLLMProviderNotFound):
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "LLM provider not found"))
@@ -555,7 +559,8 @@ func (h *LLMHandler) UpdateLLMProxy(c *gin.Context) {
 		return
 	}
 
-	resp, err := h.proxyService.Update(orgID, id, &req)
+	updatedBy, _ := middleware.GetUsernameFromContext(c)
+	resp, err := h.proxyService.Update(orgID, id, updatedBy, &req)
 	if err != nil {
 		switch {
 		case errors.Is(err, constants.ErrLLMProxyNotFound):
@@ -583,8 +588,9 @@ func (h *LLMHandler) DeleteLLMProxy(c *gin.Context) {
 		return
 	}
 	id := c.Param("id")
+	deletedBy, _ := middleware.GetUsernameFromContext(c)
 
-	if err := h.proxyService.Delete(orgID, id); err != nil {
+	if err := h.proxyService.Delete(orgID, id, deletedBy); err != nil {
 		switch {
 		case errors.Is(err, constants.ErrLLMProxyNotFound):
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "LLM proxy not found"))

@@ -25,14 +25,15 @@ import (
 // Status and UpdatedAt are populated from deployment_status table via JOIN
 // If Status is nil, the deployment is ARCHIVED (not currently active or undeployed)
 type Deployment struct {
-	DeploymentID     string         `json:"deploymentId" db:"deployment_id"`
+	DeploymentID     string         `json:"deploymentId" db:"uuid"`
 	Name             string         `json:"name" db:"name"`
 	ArtifactID       string         `json:"artifactId" db:"artifact_uuid"`
 	OrganizationID   string         `json:"organizationId" db:"organization_uuid"`
 	GatewayID        string         `json:"gatewayId" db:"gateway_uuid"`
-	BaseDeploymentID *string        `json:"baseDeploymentId,omitempty" db:"base_deployment_id"`
+	BaseDeploymentID *string        `json:"baseDeploymentId,omitempty" db:"base_deployment_uuid"`
 	Content          []byte         `json:"-" db:"content"`
 	Metadata         map[string]any `json:"metadata,omitempty" db:"metadata"`
+	CreatedBy        string         `json:"createdBy,omitempty" db:"created_by"`
 	CreatedAt        time.Time      `json:"createdAt" db:"created_at"`
 
 	// Lifecycle state fields (from deployment_status table via JOIN)
@@ -52,7 +53,7 @@ func (Deployment) TableName() string {
 type DeploymentContent struct {
 	DeploymentID string
 	ArtifactID   string
-	Kind         string
+	Type         string
 	Content      []byte
 }
 
@@ -72,10 +73,10 @@ const (
 // DeploymentInfo is a lightweight representation of a deployment
 // Contains only the essential fields needed for listing deployments
 type DeploymentInfo struct {
-	DeploymentID string           `json:"deploymentId" db:"deployment_id"`
+	DeploymentID string           `json:"deploymentId" db:"deployment_uuid"`
 	ArtifactID   string           `json:"artifactId" db:"artifact_uuid"`
 	Handle       string           `json:"handle" db:"handle"` // Artifact handle (apiId)
-	Kind         string           `json:"kind" db:"kind"`     // Artifact kind: RestAPI, LLMProvider, LLMProxy, MCPProxy
+	Type         string           `json:"type" db:"type"`     // Artifact type: RestAPI, LLMProvider, LLMProxy, MCPProxy
 	Status       DeploymentStatus `json:"status" db:"status"`
 	PerformedAt  time.Time        `json:"performedAt" db:"performed_at"` // When the deploy/undeploy action was initiated
 }

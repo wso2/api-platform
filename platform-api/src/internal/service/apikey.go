@@ -52,8 +52,10 @@ var (
 // APIKeyService handles API key management operations for external API key injection
 type APIKeyService struct {
 	apiRepo              repository.APIRepository
+	artifactRepo         repository.ArtifactRepository
 	apiKeyRepo           repository.APIKeyRepository
 	gatewayEventsService *GatewayEventsService
+	auditRepo            repository.AuditRepository
 	hashingAlgorithms    []string
 	slogger              *slog.Logger
 }
@@ -61,14 +63,16 @@ type APIKeyService struct {
 // NewAPIKeyService creates a new API key service instance.
 // hashingAlgorithms specifies the algorithms used to hash API keys before storage and broadcast.
 // If empty, defaults to [sha256].
-func NewAPIKeyService(apiRepo repository.APIRepository, apiKeyRepo repository.APIKeyRepository, gatewayEventsService *GatewayEventsService, hashingAlgorithms []string, slogger *slog.Logger) *APIKeyService {
+func NewAPIKeyService(apiRepo repository.APIRepository, artifactRepo repository.ArtifactRepository, apiKeyRepo repository.APIKeyRepository, gatewayEventsService *GatewayEventsService, auditRepo repository.AuditRepository, hashingAlgorithms []string, slogger *slog.Logger) *APIKeyService {
 	if len(hashingAlgorithms) == 0 {
 		hashingAlgorithms = []string{defaultHashingAlgorithm}
 	}
 	return &APIKeyService{
 		apiRepo:              apiRepo,
+		artifactRepo:         artifactRepo,
 		apiKeyRepo:           apiKeyRepo,
 		gatewayEventsService: gatewayEventsService,
+		auditRepo:            auditRepo,
 		hashingAlgorithms:    hashingAlgorithms,
 		slogger:              slogger,
 	}
@@ -273,7 +277,7 @@ func (s *APIKeyService) resolveUniqueKeyName(artifactUUID string, req *api.Creat
 // This method is used when external platforms inject API keys to hybrid gateways.
 func (s *APIKeyService) CreateAPIKey(ctx context.Context, apiHandle, orgId, userId string, req *api.CreateAPIKeyRequest) error {
 	// Resolve API handle to UUID
-	apiMetadata, err := s.apiRepo.GetAPIMetadataByHandle(apiHandle, orgId)
+	apiMetadata, err := s.artifactRepo.GetAPIMetadataByHandle(apiHandle, orgId)
 	if err != nil {
 		s.slogger.Error("Failed to get API metadata for API key creation", "apiHandle", apiHandle, "error", err)
 		return fmt.Errorf("failed to get API by handle: %w", err)
@@ -289,11 +293,10 @@ func (s *APIKeyService) CreateAPIKey(ctx context.Context, apiHandle, orgId, user
 	if err != nil {
 		return fmt.Errorf("failed to get API deployments for API handle: %s: %w", apiHandle, err)
 	}
-
 	if len(gateways) == 0 {
 		return constants.ErrGatewayUnavailable
 	}
-	
+
 	// Resolve key name (required for DB uniqueness; derive from request or generate)
 	keyName, err := s.resolveUniqueKeyName(apiId, req, apiHandle)
 	if err != nil {
@@ -335,7 +338,7 @@ func (s *APIKeyService) CreateAPIKey(ctx context.Context, apiHandle, orgId, user
 		Name:           keyName,
 		MaskedAPIKey:   maskedAPIKey,
 		APIKeyHashes:   apiKeyHashesJSON,
-		Status:         "active",
+		Status:         constants.APIKeyStatusActive,
 		CreatedBy:      userId,
 		ExpiresAt:      expiresAt,
 		Issuer:         issuer,
@@ -345,6 +348,7 @@ func (s *APIKeyService) CreateAPIKey(ctx context.Context, apiHandle, orgId, user
 		s.slogger.Error("Failed to persist API key to database", "apiHandle", apiHandle, "keyName", keyName, "error", err)
 		return fmt.Errorf("failed to persist API key: %w", err)
 	}
+	_ = s.auditRepo.Record("CREATE", apiKeyUUID, "api_key", orgId, userId)
 
 	// Build the API key created event — send the hash JSON and masked key, not the plain key
 	event := &model.APIKeyCreatedEvent{
@@ -363,31 +367,22 @@ func (s *APIKeyService) CreateAPIKey(ctx context.Context, apiHandle, orgId, user
 		event.ExpiresAt = &expiresAtStr
 	}
 
-	// Track delivery statistics
 	successCount := 0
 	failureCount := 0
 	var lastError error
-
-	// Broadcast event to all gateways where API is deployed
 	for _, gateway := range gateways {
-		gatewayID := gateway.ID
-
-		s.slogger.Info("Broadcasting API key created event", "apiHandle", apiHandle, "gatewayId", gatewayID, "keyName", keyName)
-
-		// Broadcast with retries
-		err := s.gatewayEventsService.BroadcastAPIKeyCreatedEvent(gatewayID, userId, event)
+		s.slogger.Info("Broadcasting API key created event", "apiHandle", apiHandle, "gatewayId", gateway.ID, "keyName", keyName)
+		err := s.gatewayEventsService.BroadcastAPIKeyCreatedEvent(gateway.ID, userId, event)
 		if err != nil {
 			failureCount++
 			lastError = err
-			s.slogger.Error("Failed to broadcast API key created event", "apiHandle", apiHandle, "gatewayId", gatewayID, "keyName", keyName, "error", err)
+			s.slogger.Error("Failed to broadcast API key created event", "apiHandle", apiHandle, "gatewayId", gateway.ID, "keyName", keyName, "error", err)
 		} else {
 			successCount++
-			s.slogger.Info("Successfully broadcast API key created event", "apiHandle", apiHandle, "gatewayId", gatewayID, "keyName", keyName)
+			s.slogger.Info("Successfully broadcast API key created event", "apiHandle", apiHandle, "gatewayId", gateway.ID, "keyName", keyName)
 		}
 	}
-
-	// Log summary — API key is persisted to DB regardless of broadcast outcome
-	s.slogger.Info("API key creation broadcast summary", "apiHandle", apiHandle, "keyName", keyName, "total", len(gateways), "success", successCount, "failed", failureCount)
+	s.slogger.Info("API key creation broadcast summary", "total", len(gateways), "success", successCount, "failed", failureCount)
 	if successCount == 0 {
 		s.slogger.Error("API key created event was not broadcast to any gateway", "apiHandle", apiHandle, "keyName", keyName, "lastError", lastError)
 	} else if failureCount > 0 {
@@ -401,7 +396,7 @@ func (s *APIKeyService) CreateAPIKey(ctx context.Context, apiHandle, orgId, user
 // This method is used when external platforms rotates/regenerates API keys on hybrid gateways.
 func (s *APIKeyService) UpdateAPIKey(ctx context.Context, apiHandle, orgId, keyName, userId string, req *api.UpdateAPIKeyRequest) error {
 	// Resolve API handle to UUID
-	apiMetadata, err := s.apiRepo.GetAPIMetadataByHandle(apiHandle, orgId)
+	apiMetadata, err := s.artifactRepo.GetAPIMetadataByHandle(apiHandle, orgId)
 	if err != nil {
 		s.slogger.Error("Failed to get API metadata for API key update", "apiHandle", apiHandle, "error", err)
 		return fmt.Errorf("failed to get API by handle: %w", err)
@@ -418,7 +413,6 @@ func (s *APIKeyService) UpdateAPIKey(ctx context.Context, apiHandle, orgId, keyN
 		s.slogger.Error("Failed to get deployments for API key update", "apiHandle", apiHandle, "error", err)
 		return fmt.Errorf("failed to get API deployments: %w", err)
 	}
-
 	if len(gateways) == 0 {
 		s.slogger.Warn("No gateway deployments found for API", "apiHandle", apiHandle)
 		return constants.ErrGatewayUnavailable
@@ -438,18 +432,28 @@ func (s *APIKeyService) UpdateAPIKey(ctx context.Context, apiHandle, orgId, keyN
 		s.slogger.Error("Invalid expiration for API key update", "apiHandle", apiHandle, "keyName", keyName, "error", err)
 		return fmt.Errorf("invalid expiration: %w", err)
 	}
+	// Fetch UUID before update for consistent audit record (CREATE uses UUID, not name)
+	existingKey, existingKeyErr := s.apiKeyRepo.GetByArtifactAndName(apiId, keyName)
+
 	dbKey := &model.APIKey{
 		ArtifactUUID: apiId,
 		Name:         keyName,
 		MaskedAPIKey: maskedAPIKey,
 		APIKeyHashes: apiKeyHashesJSON,
-		Status:       "active",
+		Status:       constants.APIKeyStatusActive,
 		ExpiresAt:    expiresAt,
 		Issuer:       req.Issuer,
 	}
 	if err := s.apiKeyRepo.Update(dbKey); err != nil {
 		s.slogger.Error("Failed to update API key in database", "apiHandle", apiHandle, "keyName", keyName, "error", err)
 		return fmt.Errorf("failed to update API key in database: %w", err)
+	}
+	if s.auditRepo != nil {
+		auditUUID := keyName
+		if existingKeyErr == nil && existingKey != nil {
+			auditUUID = existingKey.UUID
+		}
+		_ = s.auditRepo.Record("UPDATE", auditUUID, "api_key", orgId, userId)
 	}
 
 	// Build the API key updated event — send the hash JSON and masked key, not the plain key
@@ -469,12 +473,9 @@ func (s *APIKeyService) UpdateAPIKey(ctx context.Context, apiHandle, orgId, keyN
 		event.ExpiresAt = &expiresAtStr
 	}
 
-	// Track delivery statistics
 	successCount := 0
 	failureCount := 0
 	var lastError error
-
-	// Broadcast event to all gateways where API is deployed
 	for _, gateway := range gateways {
 		gatewayID := gateway.ID
 
@@ -505,7 +506,7 @@ func (s *APIKeyService) UpdateAPIKey(ctx context.Context, apiHandle, orgId, keyN
 // RevokeAPIKey broadcasts API key revocation to all gateways where the API is deployed
 func (s *APIKeyService) RevokeAPIKey(ctx context.Context, apiHandle, orgId, keyName, userId string) error {
 	// Resolve API handle to UUID
-	apiMetadata, err := s.apiRepo.GetAPIMetadataByHandle(apiHandle, orgId)
+	apiMetadata, err := s.artifactRepo.GetAPIMetadataByHandle(apiHandle, orgId)
 	if err != nil {
 		s.slogger.Error("Failed to get API metadata for API key revocation", "apiHandle", apiHandle, "error", err)
 		return fmt.Errorf("failed to get API by handle: %w", err)
@@ -521,15 +522,24 @@ func (s *APIKeyService) RevokeAPIKey(ctx context.Context, apiHandle, orgId, keyN
 	if err != nil {
 		return fmt.Errorf("failed to get API deployments: %w", err)
 	}
-
 	if len(gateways) == 0 {
 		return constants.ErrGatewayUnavailable
 	}
+
+	// Fetch UUID before revoke for consistent audit record (CREATE uses UUID, not name)
+	revokeKey, revokeKeyErr := s.apiKeyRepo.GetByArtifactAndName(apiId, keyName)
 
 	// Revoke the API key in the database before broadcasting
 	if err := s.apiKeyRepo.Revoke(apiId, keyName); err != nil {
 		s.slogger.Error("Failed to revoke API key in database", "apiHandle", apiHandle, "keyName", keyName, "error", err)
 		return fmt.Errorf("failed to revoke API key in database: %w", err)
+	}
+	if s.auditRepo != nil {
+		auditUUID := keyName
+		if revokeKeyErr == nil && revokeKey != nil {
+			auditUUID = revokeKey.UUID
+		}
+		_ = s.auditRepo.Record("REVOKE", auditUUID, "api_key", orgId, userId)
 	}
 
 	// Build the API key revoked event
@@ -542,8 +552,6 @@ func (s *APIKeyService) RevokeAPIKey(ctx context.Context, apiHandle, orgId, keyN
 	successCount := 0
 	failureCount := 0
 	var lastError error
-
-	// Broadcast event to all gateways where API is deployed
 	for _, gateway := range gateways {
 		gatewayID := gateway.ID
 

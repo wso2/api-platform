@@ -29,8 +29,6 @@ import (
 	"platform-api/src/internal/service"
 	"platform-api/src/internal/utils"
 	"strings"
-	"time"
-
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	openapi_types "github.com/oapi-codegen/runtime/types"
@@ -91,7 +89,8 @@ func (h *APIHandler) CreateAPI(c *gin.Context) {
 		return
 	}
 
-	apiResponse, err := h.apiService.CreateAPI(&req, orgId)
+	createdBy, _ := middleware.GetUsernameFromContext(c)
+	apiResponse, err := h.apiService.CreateAPI(&req, orgId, createdBy)
 	if err != nil {
 		if errors.Is(err, constants.ErrHandleExists) {
 			h.slogger.Error("API handle already exists", "organizationId", orgId)
@@ -278,7 +277,8 @@ func (h *APIHandler) UpdateAPI(c *gin.Context) {
 		return
 	}
 
-	apiResponse, err := h.apiService.UpdateAPIByHandle(apiId, &req, orgId)
+	updatedBy, _ := middleware.GetUsernameFromContext(c)
+	apiResponse, err := h.apiService.UpdateAPIByHandle(apiId, &req, orgId, updatedBy)
 	if err != nil {
 		if errors.Is(err, constants.ErrAPINotFound) {
 			h.slogger.Error("API not found", "apiId", apiId, "organizationId", orgId)
@@ -335,7 +335,8 @@ func (h *APIHandler) DeleteAPI(c *gin.Context) {
 		return
 	}
 
-	err := h.apiService.DeleteAPIByHandle(apiId, orgId)
+	deletedBy, _ := middleware.GetUsernameFromContext(c)
+	err := h.apiService.DeleteAPIByHandle(apiId, orgId, deletedBy)
 	if err != nil {
 		if errors.Is(err, constants.ErrAPINotFound) {
 			h.slogger.Error("API not found", "apiId", apiId, "organizationId", orgId)
@@ -442,132 +443,7 @@ func (h *APIHandler) GetAPIGateways(c *gin.Context) {
 	c.JSON(http.StatusOK, gatewaysResponse)
 }
 
-// PublishToDevPortal handles POST /api/v0.9/rest-apis/:apiId/publications
-func (h *APIHandler) PublishToDevPortal(c *gin.Context) {
-	// Extract organization ID from context
-	orgID, exists := middleware.GetOrganizationFromContext(c)
-	if !exists {
-		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
-			"Organization claim not found in token"))
-		return
-	}
-
-	// Extract and validate apiId path parameter
-	apiID := c.Param("apiId")
-	if apiID == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"API ID is required"))
-		return
-	}
-
-	// Parse request body
-	var req api.PublishToDevPortalRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		status, errorResp := utils.GetErrorResponse(err)
-		c.JSON(status, errorResp)
-		return
-	}
-
-	// Publish API to DevPortal through service layer
-	err := h.apiService.PublishAPIToDevPortalByHandle(apiID, &req, orgID)
-	if err != nil {
-		status, errorResp := utils.GetErrorResponse(err)
-		c.JSON(status, errorResp)
-		return
-	}
-
-	// Log successful publish
-	h.slogger.Info("API published successfully to DevPortal", "apiID", apiID, "devPortalUUID", utils.OpenAPIUUIDToString(req.DevPortalUuid))
-
-	// Return success response
-	c.JSON(http.StatusOK, api.CommonResponse{
-		Success:   true,
-		Message:   "API published successfully to DevPortal",
-		Timestamp: time.Now(),
-	})
-}
-
-// UnpublishFromDevPortal handles DELETE /api/v0.9/rest-apis/:apiId/publications/:devportalId
-func (h *APIHandler) UnpublishFromDevPortal(c *gin.Context) {
-	orgID, exists := middleware.GetOrganizationFromContext(c)
-	if !exists {
-		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
-			"Organization claim not found in token"))
-		return
-	}
-
-	apiID := c.Param("apiId")
-	if apiID == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"API ID is required"))
-		return
-	}
-
-	devPortalID := c.Param("devportalId")
-	if devPortalID == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"DevPortal ID is required"))
-		return
-	}
-
-	err := h.apiService.UnpublishAPIFromDevPortalByHandle(apiID, devPortalID, orgID)
-	if err != nil {
-		status, errorResp := utils.GetErrorResponse(err)
-		c.JSON(status, errorResp)
-		return
-	}
-
-	h.slogger.Info("API unpublished successfully from DevPortal", "apiID", apiID, "devPortalID", devPortalID)
-
-	c.JSON(http.StatusOK, api.CommonResponse{
-		Success:   true,
-		Message:   "API unpublished successfully from DevPortal",
-		Timestamp: time.Now(),
-	})
-}
-
-// GetAPIPublications handles GET /api/v0.9/rest-apis/:apiId/publications
-//
-// This endpoint retrieves all DevPortals associated with an API including publication details.
-func (h *APIHandler) GetAPIPublications(c *gin.Context) {
-	// Extract organization ID from context
-	orgID, exists := middleware.GetOrganizationFromContext(c)
-	if !exists {
-		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
-			"Organization claim not found in token"))
-		return
-	}
-
-	// Extract and validate apiId path parameter
-	apiID := c.Param("apiId")
-	if apiID == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"API ID is required"))
-		return
-	}
-	// Get publications through service layer
-	response, err := h.apiService.GetAPIPublicationsByHandle(apiID, orgID)
-	if err != nil {
-		// Handle specific errors
-		if errors.Is(err, constants.ErrAPINotFound) {
-			h.slogger.Error("API not found", "apiID", apiID, "organizationId", orgID)
-			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"API not found"))
-			return
-		}
-
-		// Internal server error
-		h.slogger.Error("Failed to get publications for API", "apiID", apiID, "organizationId", orgID, "error", err)
-		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
-			"Failed to retrieve API publications"))
-		return
-	}
-
-	// Return success response
-	c.JSON(http.StatusOK, response)
-}
-
-// ImportAPIProject handles POST /api/v0.9/api-projects/import
+// ImportAPIProject handles POST /api/v1/import/api-project
 func (h *APIHandler) ImportAPIProject(c *gin.Context) {
 	orgId, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {
@@ -622,8 +498,9 @@ func (h *APIHandler) ImportAPIProject(c *gin.Context) {
 	// Create Git service
 	gitService := service.NewGitService()
 
+	createdBy, _ := middleware.GetUsernameFromContext(c)
 	// Import API project
-	apiResponse, err := h.apiService.ImportAPIProject(&req, orgId, gitService)
+	apiResponse, err := h.apiService.ImportAPIProject(&req, orgId, createdBy, gitService)
 	if err != nil {
 		if errors.Is(err, constants.ErrAPIProjectNotFound) {
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "API Project Not Found",
@@ -850,8 +727,9 @@ func (h *APIHandler) ImportOpenAPI(c *gin.Context) {
 		return
 	}
 
+	createdBy, _ := middleware.GetUsernameFromContext(c)
 	// Import API from OpenAPI definition
-	apiResponse, err := h.apiService.ImportFromOpenAPI(&apiDetails, req.Url, definitionHeader, orgId)
+	apiResponse, err := h.apiService.ImportFromOpenAPI(&apiDetails, req.Url, definitionHeader, orgId, createdBy)
 	if err != nil {
 		if errors.Is(err, constants.ErrAPIAlreadyExists) {
 			c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict",
@@ -986,10 +864,6 @@ func (h *APIHandler) RegisterRoutes(r *gin.Engine) {
 		apiGroup.POST("/validate-openapi", h.ValidateOpenAPI)
 		apiGroup.GET("/:apiId/gateways", h.GetAPIGateways)
 		apiGroup.POST("/:apiId/gateways", h.AddGatewaysToAPI)
-		apiGroup.POST("/:apiId/publications", h.PublishToDevPortal)
-		apiGroup.DELETE("/:apiId/publications/:devportalId", h.UnpublishFromDevPortal)
-		apiGroup.GET("/:apiId/publications", h.GetAPIPublications)
-
 	}
 	apiProjectsGroup := r.Group(constants.APIBasePath + "/api-projects")
 	{

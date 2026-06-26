@@ -303,9 +303,9 @@ func (b *SQLBackend) RegisterGateway(gatewayID string) error {
 func (b *SQLBackend) Publish(gatewayID string, event Event) error {
 	// TODO: (VirajSalaka) Make this UUID v7
 	newVersion := uuid.New().String()
-	eventData := strings.TrimSpace(event.EventData)
-	if eventData == "" {
-		eventData = EmptyEventData
+	eventDataStr := strings.TrimSpace(event.EventData)
+	if eventDataStr == "" {
+		eventDataStr = EmptyEventData
 	}
 	eventID := strings.TrimSpace(event.EventID)
 	if eventID == "" {
@@ -340,7 +340,7 @@ func (b *SQLBackend) Publish(gatewayID string, event Event) error {
 		event.Action,
 		event.EntityID,
 		eventID,
-		eventData,
+		eventDataStr,
 	)
 	if err != nil {
 		insertErr := err
@@ -583,6 +583,7 @@ func (b *SQLBackend) pollGatewayWithState(gw *gateway, state GatewayState) error
 		var evt Event
 		var eventType string
 		var eventID string
+		var eventDataBytes []byte
 		if err := rows.Scan(
 			&evt.GatewayID,
 			&evt.ProcessedTimestamp,
@@ -591,12 +592,13 @@ func (b *SQLBackend) pollGatewayWithState(gw *gateway, state GatewayState) error
 			&evt.Action,
 			&evt.EntityID,
 			&eventID,
-			&evt.EventData,
+			&eventDataBytes,
 		); err != nil {
 			return fmt.Errorf("failed to scan event row: %w", err)
 		}
 		evt.EventType = EventType(eventType)
 		evt.EventID = eventID
+		evt.EventData = string(eventDataBytes)
 		events = append(events, evt)
 	}
 	if err := rows.Err(); err != nil {

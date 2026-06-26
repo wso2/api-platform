@@ -113,8 +113,7 @@ var ValidArtifactTypes = map[string]bool{
 
 // Constants for association types
 const (
-	AssociationTypeGateway   = "gateway"
-	AssociationTypeDevPortal = "dev_portal"
+	AssociationTypeGateway = "gateway"
 )
 
 // API Key allowed targets constants
@@ -163,6 +162,66 @@ const (
 	PolicyManagedByCustomer = "customer"
 	PolicyManagedByWSO2     = "wso2"
 )
+
+// ValidPolicyManagedBy holds accepted values for the managed_by field on gateway custom policies
+var ValidPolicyManagedBy = map[string]bool{
+	PolicyManagedByCustomer: true,
+	PolicyManagedByWSO2:     true,
+}
+
+// API key status constants
+const (
+	APIKeyStatusActive  = "active"
+	APIKeyStatusRevoked = "revoked"
+)
+
+// ValidAPIKeyStatuses holds accepted values for api_keys.status
+var ValidAPIKeyStatuses = map[string]bool{
+	APIKeyStatusActive:  true,
+	APIKeyStatusRevoked: true,
+}
+
+// Gateway token status constants
+const (
+	GatewayTokenStatusActive  = "active"
+	GatewayTokenStatusRevoked = "revoked"
+)
+
+// ValidGatewayTokenStatuses holds accepted values for gateway_tokens.status
+var ValidGatewayTokenStatuses = map[string]bool{
+	GatewayTokenStatusActive:  true,
+	GatewayTokenStatusRevoked: true,
+}
+
+// ValidArtifactKinds holds accepted values for artifacts.type
+var ValidArtifactKinds = map[string]bool{
+	RestApi:      true,
+	WebSubApi:    true,
+	WebBrokerApi: true,
+	LLMProvider:  true,
+	LLMProxy:     true,
+	MCPProxy:     true,
+}
+
+// Throttle limit unit constants
+const (
+	ThrottleLimitUnitSecond = "SECOND"
+	ThrottleLimitUnitMinute = "MINUTE"
+	ThrottleLimitUnitHour   = "HOUR"
+	ThrottleLimitUnitDay    = "DAY"
+	ThrottleLimitUnitMonth  = "MONTH"
+	ThrottleLimitUnitYear   = "YEAR"
+)
+
+// ValidThrottleLimitUnits holds accepted values for subscription_plans.throttle_limit_unit
+var ValidThrottleLimitUnits = map[string]bool{
+	ThrottleLimitUnitSecond: true,
+	ThrottleLimitUnitMinute: true,
+	ThrottleLimitUnitHour:   true,
+	ThrottleLimitUnitDay:    true,
+	ThrottleLimitUnitMonth:  true,
+	ThrottleLimitUnitYear:   true,
+}
 
 // Metadata key constants for deployment metadata
 const (

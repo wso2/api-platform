@@ -113,13 +113,14 @@ func (r *SubscriptionRepo) Create(sub *model.Subscription) error {
 	sub.UpdatedAt = now
 
 	query := `
-		INSERT INTO subscriptions (uuid, api_uuid, subscriber_id, application_id, subscription_token, subscription_token_hash, subscription_plan_uuid,
-			organization_uuid, status, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO subscriptions (uuid, artifact_uuid, subscriber_id, application_id, subscription_token, subscription_token_hash, subscription_plan_uuid,
+			organization_uuid, status, created_by, updated_by, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 	_, err = r.db.Exec(r.db.Rebind(query),
-		sub.UUID, sub.APIUUID, sub.SubscriberID, sub.ApplicationID, encryptedToken, hashedToken,
+		sub.UUID, sub.ArtifactUUID, sub.SubscriberID, sub.ApplicationID, encryptedToken, hashedToken,
 		sub.SubscriptionPlanID, sub.OrganizationUUID, string(sub.Status),
+		sub.CreatedBy, sub.UpdatedBy,
 		sub.CreatedAt, sub.UpdatedAt,
 	)
 	if err != nil {
@@ -137,8 +138,8 @@ func isSubscriptionUniqueViolation(err error) bool {
 		return false
 	}
 	s := err.Error()
-	// SQLite: UNIQUE constraint failed on subscriptions (e.g. duplicate (api_uuid, subscriber_id, organization_uuid)
-	// or (api_uuid, subscription_token_hash); see schema.sqlite.sql / schema.postgres.sql).
+	// SQLite: UNIQUE constraint failed on subscriptions (e.g. duplicate (artifact_uuid, subscriber_id, organization_uuid)
+	// or (artifact_uuid, subscription_token_hash); see schema.sqlite.sql / schema.postgres.sql).
 	if strings.Contains(s, "UNIQUE constraint failed") && strings.Contains(s, "subscriptions") {
 		return true
 	}
@@ -158,16 +159,18 @@ func isSubscriptionUniqueViolation(err error) bool {
 // Decrypts subscription_token for API response.
 func (r *SubscriptionRepo) GetByID(subscriptionID, orgUUID string) (*model.Subscription, error) {
 	query := `
-		SELECT uuid, api_uuid, subscriber_id, application_id, subscription_token, subscription_plan_uuid,
-			organization_uuid, status, created_at, updated_at
+		SELECT uuid, artifact_uuid, subscriber_id, application_id, subscription_token, subscription_plan_uuid,
+			organization_uuid, status, created_by, updated_by, created_at, updated_at
 		FROM subscriptions
 		WHERE uuid = ? AND organization_uuid = ?
 	`
 	sub := &model.Subscription{}
 	var storedToken string
+	var createdBy, updatedBy sql.NullString
 	err := r.db.QueryRow(r.db.Rebind(query), subscriptionID, orgUUID).Scan(
-		&sub.UUID, &sub.APIUUID, &sub.SubscriberID, &sub.ApplicationID, &storedToken,
+		&sub.UUID, &sub.ArtifactUUID, &sub.SubscriberID, &sub.ApplicationID, &storedToken,
 		&sub.SubscriptionPlanID, &sub.OrganizationUUID, &sub.Status,
+		&createdBy, &updatedBy,
 		&sub.CreatedAt, &sub.UpdatedAt,
 	)
 	if err != nil {
@@ -176,6 +179,8 @@ func (r *SubscriptionRepo) GetByID(subscriptionID, orgUUID string) (*model.Subsc
 		}
 		return nil, err
 	}
+	sub.CreatedBy = createdBy.String
+	sub.UpdatedBy = updatedBy.String
 	sub.SubscriptionToken = r.decryptSubscriptionToken(storedToken)
 	return sub, nil
 }
@@ -184,14 +189,14 @@ func (r *SubscriptionRepo) GetByID(subscriptionID, orgUUID string) (*model.Subsc
 // Decrypts subscription_token for each row.
 func (r *SubscriptionRepo) ListByFilters(orgUUID string, apiUUID *string, subscriberID *string, applicationID *string, status *string, limit, offset int) ([]*model.Subscription, error) {
 	query := `
-		SELECT uuid, api_uuid, subscriber_id, application_id, subscription_token, subscription_plan_uuid,
-			organization_uuid, status, created_at, updated_at
+		SELECT uuid, artifact_uuid, subscriber_id, application_id, subscription_token, subscription_plan_uuid,
+			organization_uuid, status, created_by, updated_by, created_at, updated_at
 		FROM subscriptions
 		WHERE organization_uuid = ?
 	`
 	args := []interface{}{orgUUID}
 	if apiUUID != nil && *apiUUID != "" {
-		query += ` AND api_uuid = ?`
+		query += ` AND artifact_uuid = ?`
 		args = append(args, *apiUUID)
 	}
 	if subscriberID != nil && *subscriberID != "" {
@@ -220,13 +225,16 @@ func (r *SubscriptionRepo) ListByFilters(orgUUID string, apiUUID *string, subscr
 	for rows.Next() {
 		sub := &model.Subscription{}
 		var storedToken string
+		var createdBy, updatedBy sql.NullString
 		if err := rows.Scan(
-			&sub.UUID, &sub.APIUUID, &sub.SubscriberID, &sub.ApplicationID, &storedToken,
+			&sub.UUID, &sub.ArtifactUUID, &sub.SubscriberID, &sub.ApplicationID, &storedToken,
 			&sub.SubscriptionPlanID, &sub.OrganizationUUID, &sub.Status,
-			&sub.CreatedAt, &sub.UpdatedAt,
+			&createdBy, &updatedBy, &sub.CreatedAt, &sub.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
+		sub.CreatedBy = createdBy.String
+		sub.UpdatedBy = updatedBy.String
 		sub.SubscriptionToken = r.decryptSubscriptionToken(storedToken)
 		list = append(list, sub)
 	}
@@ -276,7 +284,7 @@ func (r *SubscriptionRepo) CountByFilters(orgUUID string, apiUUID *string, subsc
 	query := `SELECT COUNT(*) FROM subscriptions WHERE organization_uuid = ?`
 	args := []interface{}{orgUUID}
 	if apiUUID != nil && *apiUUID != "" {
-		query += ` AND api_uuid = ?`
+		query += ` AND artifact_uuid = ?`
 		args = append(args, *apiUUID)
 	}
 	if subscriberID != nil && *subscriberID != "" {
@@ -304,11 +312,11 @@ func (r *SubscriptionRepo) Update(sub *model.Subscription) error {
 	sub.UpdatedAt = time.Now()
 	query := `
 		UPDATE subscriptions
-		SET subscription_plan_uuid = ?, application_id = ?, status = ?, updated_at = ?
+		SET subscription_plan_uuid = ?, application_id = ?, status = ?, updated_by = ?, updated_at = ?
 		WHERE uuid = ? AND organization_uuid = ?
 	`
 	result, err := r.db.Exec(r.db.Rebind(query),
-		sub.SubscriptionPlanID, sub.ApplicationID, string(sub.Status), sub.UpdatedAt,
+		sub.SubscriptionPlanID, sub.ApplicationID, string(sub.Status), sub.UpdatedBy, sub.UpdatedAt,
 		sub.UUID, sub.OrganizationUUID,
 	)
 	if err != nil {
@@ -339,7 +347,7 @@ func (r *SubscriptionRepo) Delete(subscriptionID, orgUUID string) error {
 func (r *SubscriptionRepo) ExistsByAPIAndSubscriber(apiUUID, subscriberID, orgUUID string) (bool, error) {
 	query := `
 		SELECT 1 FROM subscriptions
-		WHERE api_uuid = ? AND organization_uuid = ?
+		WHERE artifact_uuid = ? AND organization_uuid = ?
 		  AND subscriber_id = ?
 		ORDER BY (SELECT NULL)
 		` + r.db.FetchFirstClause(1)

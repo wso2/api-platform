@@ -106,9 +106,10 @@ type ArtifactsExistResponse struct {
 // GatewaySubscriptionPlanInfo represents a subscription plan in internal gateway responses.
 type GatewaySubscriptionPlanInfo struct {
 	ID                 string                 `json:"id"`
-	PlanName           string                 `json:"planName"`
+	Handle             string                 `json:"handle"`
+	Name               string                 `json:"name"`
 	BillingPlan        string                 `json:"billingPlan,omitempty"`
-	StopOnQuotaReach   bool                   `json:"stopOnQuotaReach"`
+	StopOnQuotaReach   int                    `json:"stopOnQuotaReach"`
 	ThrottleLimitCount *int                   `json:"throttleLimitCount,omitempty"`
 	ThrottleLimitUnit  string                 `json:"throttleLimitUnit,omitempty"`
 	ExpiryTime         *time.Time             `json:"expiryTime,omitempty"`

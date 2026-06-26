@@ -100,31 +100,30 @@ func createTestAPI(t *testing.T, db *database.DB, apiUUID, orgUUID string) {
 
 	// Create project directly
 	projectQuery := `
-		INSERT INTO projects (uuid, name, organization_uuid, created_at, updated_at)
-		VALUES (?, ?, ?, datetime('now'), datetime('now'))
+		INSERT INTO projects (uuid, handle, name, organization_uuid, created_at, updated_at)
+		VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))
 	`
-	_, err = db.Exec(projectQuery, "project-001", "Test Project", orgUUID)
+	_, err = db.Exec(projectQuery, "project-001", "test-project-001", "Test Project", orgUUID)
 	if err != nil {
 		t.Fatalf("Failed to create test project: %v", err)
 	}
 
 	// Create artifact directly
 	artifactQuery := `
-		INSERT INTO artifacts (uuid, handle, name, version, kind, organization_uuid, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+		INSERT INTO artifacts (uuid, type, organization_uuid)
+		VALUES (?, ?, ?)
 	`
-	_, err = db.Exec(artifactQuery, apiUUID, "test-api", "Test API", "1.0.0", "RestApi", orgUUID)
+	_, err = db.Exec(artifactQuery, apiUUID, "RestApi", orgUUID)
 	if err != nil {
 		t.Fatalf("Failed to create test artifact: %v", err)
 	}
 
 	// Create API directly
 	apiQuery := `
-		INSERT INTO rest_apis (uuid, description, created_by, project_uuid, lifecycle_status, transport, configuration)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO rest_apis (uuid, organization_uuid, handle, name, version, description, created_by, project_uuid, lifecycle_status, configuration, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
 	`
-	transportJSON := `["https"]`
-	_, err = db.Exec(apiQuery, apiUUID, "Test API Description", "test-user", "project-001", "CREATED", transportJSON, "{}")
+	_, err = db.Exec(apiQuery, apiUUID, orgUUID, "test-api", "Test API", "1.0.0", "Test API Description", "test-user", "project-001", "CREATED", "{}")
 	if err != nil {
 		t.Fatalf("Failed to create test API: %v", err)
 	}
@@ -136,7 +135,7 @@ func createTestGateway(t *testing.T, db *database.DB, gatewayUUID, orgUUID strin
 
 	// Create gateway directly (organization should already exist from createTestAPI)
 	query := `
-		INSERT INTO gateways (uuid, organization_uuid, name, display_name, description, properties, vhost,
+		INSERT INTO gateways (uuid, organization_uuid, handle, name, description, properties, vhost,
 			is_critical, gateway_functionality_type, is_active, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
 	`
@@ -152,7 +151,7 @@ func insertDeployment(t *testing.T, db *database.DB, deploymentID, name, apiUUID
 	t.Helper()
 
 	query := `
-		INSERT INTO deployments (deployment_id, name, artifact_uuid, organization_uuid, gateway_uuid, content, metadata, created_at)
+		INSERT INTO deployments (uuid, name, artifact_uuid, organization_uuid, gateway_uuid, content, metadata, created_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 	`
 	metadata := "{}"
@@ -167,7 +166,7 @@ func setDeploymentStatus(t *testing.T, db *database.DB, apiUUID, orgUUID, gatewa
 	t.Helper()
 
 	query := `
-		REPLACE INTO deployment_status (artifact_uuid, organization_uuid, gateway_uuid, deployment_id, status, updated_at)
+		REPLACE INTO deployment_status (artifact_uuid, organization_uuid, gateway_uuid, deployment_uuid, status, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?)
 	`
 	_, err := db.Exec(query, apiUUID, orgUUID, gatewayUUID, deploymentID, status, time.Now())

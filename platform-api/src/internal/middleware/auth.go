@@ -151,9 +151,13 @@ func validateLocalJWT(c *gin.Context, tokenString string, config AuthConfig) err
 	}
 
 	sub, _ := mapClaims["sub"].(string)
+	username := getStringClaim(mapClaims, "username")
+	if username == "" {
+		username = sub
+	}
 	claimsObj := &CustomClaims{
 		Organization: org,
-		Username:     getStringClaim(mapClaims, "username"),
+		Username:     username,
 		Email:        getStringClaim(mapClaims, "email"),
 		Scope:        getStringClaim(mapClaims, "scope"),
 		Audience:     audienceToString(mapClaims),
@@ -217,13 +221,15 @@ func PlatformClaimsMiddleware(claimNames PlatformClaimNames) gin.HandlerFunc {
 			}
 		}
 
+		sub, _ := mapClaims["sub"].(string)
 		username := getStringClaim(mapClaims, claimNames.UsernameClaim)
+		if username == "" {
+			username = sub
+		}
 		email := getStringClaim(mapClaims, claimNames.EmailClaim)
 		scope := getStringClaim(mapClaims, claimNames.ScopeClaim)
 		aud := audienceToString(mapClaims)
 		jti, _ := mapClaims["jti"].(string)
-
-		sub, _ := mapClaims["sub"].(string)
 		claimsObj := &CustomClaims{
 			Organization: org,
 			Username:     username,

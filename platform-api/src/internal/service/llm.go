@@ -38,7 +38,8 @@ const (
 )
 
 type LLMProviderTemplateService struct {
-	repo repository.LLMProviderTemplateRepository
+	repo      repository.LLMProviderTemplateRepository
+	auditRepo repository.AuditRepository
 }
 
 type LLMProviderService struct {
@@ -50,6 +51,7 @@ type LLMProviderService struct {
 	gatewayRepo          repository.GatewayRepository
 	gatewayEventsService *GatewayEventsService
 	slogger              *slog.Logger
+	auditRepo            repository.AuditRepository
 }
 
 type LLMProxyService struct {
@@ -60,10 +62,11 @@ type LLMProxyService struct {
 	gatewayRepo          repository.GatewayRepository
 	gatewayEventsService *GatewayEventsService
 	slogger              *slog.Logger
+	auditRepo            repository.AuditRepository
 }
 
-func NewLLMProviderTemplateService(repo repository.LLMProviderTemplateRepository) *LLMProviderTemplateService {
-	return &LLMProviderTemplateService{repo: repo}
+func NewLLMProviderTemplateService(repo repository.LLMProviderTemplateRepository, auditRepo repository.AuditRepository) *LLMProviderTemplateService {
+	return &LLMProviderTemplateService{repo: repo, auditRepo: auditRepo}
 }
 
 func NewLLMProviderService(
@@ -75,6 +78,7 @@ func NewLLMProviderService(
 	gatewayRepo repository.GatewayRepository,
 	gatewayEventsService *GatewayEventsService,
 	slogger *slog.Logger,
+	auditRepo repository.AuditRepository,
 ) *LLMProviderService {
 	return &LLMProviderService{
 		repo:                 repo,
@@ -85,6 +89,7 @@ func NewLLMProviderService(
 		gatewayRepo:          gatewayRepo,
 		gatewayEventsService: gatewayEventsService,
 		slogger:              slogger,
+		auditRepo:            auditRepo,
 	}
 }
 
@@ -96,6 +101,7 @@ func NewLLMProxyService(
 	gatewayRepo repository.GatewayRepository,
 	gatewayEventsService *GatewayEventsService,
 	slogger *slog.Logger,
+	auditRepo repository.AuditRepository,
 ) *LLMProxyService {
 	return &LLMProxyService{
 		repo:                 repo,
@@ -105,6 +111,7 @@ func NewLLMProxyService(
 		gatewayRepo:          gatewayRepo,
 		gatewayEventsService: gatewayEventsService,
 		slogger:              slogger,
+		auditRepo:            auditRepo,
 	}
 }
 
@@ -129,6 +136,7 @@ func (s *LLMProviderTemplateService) Create(orgUUID, createdBy string, req *api.
 		ID:               req.Id,
 		Name:             req.Name,
 		Description:      utils.ValueOrEmpty(req.Description),
+		ManagedBy:        constants.PolicyManagedByCustomer,
 		CreatedBy:        createdBy,
 		Metadata:         mapTemplateMetadataAPI(req.Metadata),
 		PromptTokens:     mapExtractionIdentifierAPI(req.PromptTokens),
@@ -150,6 +158,8 @@ func (s *LLMProviderTemplateService) Create(orgUUID, createdBy string, req *api.
 		}
 		return nil, fmt.Errorf("failed to create template: %w", err)
 	}
+
+	_ = s.auditRepo.Record("CREATE", m.UUID, "llm_provider_template", orgUUID, createdBy)
 
 	return mapTemplateModelToAPI(m), nil
 }
@@ -203,7 +213,7 @@ func (s *LLMProviderTemplateService) Get(orgUUID, handle string) (*api.LLMProvid
 	return mapTemplateModelToAPI(m), nil
 }
 
-func (s *LLMProviderTemplateService) Update(orgUUID, handle string, req *api.LLMProviderTemplate) (*api.LLMProviderTemplate, error) {
+func (s *LLMProviderTemplateService) Update(orgUUID, handle, updatedBy string, req *api.LLMProviderTemplate) (*api.LLMProviderTemplate, error) {
 	if handle == "" || req == nil {
 		return nil, constants.ErrInvalidInput
 	}
@@ -219,6 +229,7 @@ func (s *LLMProviderTemplateService) Update(orgUUID, handle string, req *api.LLM
 		ID:               handle,
 		Name:             req.Name,
 		Description:      utils.ValueOrEmpty(req.Description),
+		UpdatedBy:        updatedBy,
 		Metadata:         mapTemplateMetadataAPI(req.Metadata),
 		PromptTokens:     mapExtractionIdentifierAPI(req.PromptTokens),
 		CompletionTokens: mapExtractionIdentifierAPI(req.CompletionTokens),
@@ -247,12 +258,22 @@ func (s *LLMProviderTemplateService) Update(orgUUID, handle string, req *api.LLM
 	if updated == nil {
 		return nil, constants.ErrLLMProviderTemplateNotFound
 	}
+
+	_ = s.auditRepo.Record("UPDATE", updated.UUID, "llm_provider_template", orgUUID, updatedBy)
+
 	return mapTemplateModelToAPI(updated), nil
 }
 
-func (s *LLMProviderTemplateService) Delete(orgUUID, handle string) error {
+func (s *LLMProviderTemplateService) Delete(orgUUID, handle, deletedBy string) error {
 	if handle == "" {
 		return constants.ErrInvalidInput
+	}
+	tpl, err := s.repo.GetByID(handle, orgUUID)
+	if err != nil {
+		return fmt.Errorf("failed to get template: %w", err)
+	}
+	if tpl == nil {
+		return constants.ErrLLMProviderTemplateNotFound
 	}
 	if err := s.repo.Delete(handle, orgUUID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -260,6 +281,7 @@ func (s *LLMProviderTemplateService) Delete(orgUUID, handle string) error {
 		}
 		return fmt.Errorf("failed to delete template: %w", err)
 	}
+	_ = s.auditRepo.Record("DELETE", tpl.UUID, "llm_provider_template", orgUUID, deletedBy)
 	return nil
 }
 
@@ -336,7 +358,6 @@ func (s *LLMProviderService) Create(orgUUID, createdBy string, req *api.LLMProvi
 		TemplateUUID:     tpl.UUID,
 		OpenAPISpec:      utils.ValueOrEmpty(req.Openapi),
 		ModelProviders:   mapModelProvidersAPI(req.ModelProviders),
-		Status:           llmStatusPending,
 		Configuration: model.LLMProviderConfig{
 			Context:           &contextValue,
 			VHost:             req.Vhost,
@@ -365,6 +386,9 @@ func (s *LLMProviderService) Create(orgUUID, createdBy string, req *api.LLMProvi
 	if created == nil {
 		return nil, constants.ErrLLMProviderNotFound
 	}
+
+	_ = s.auditRepo.Record("CREATE", created.UUID, "llm_provider", orgUUID, createdBy)
+
 	return mapProviderModelToAPI(created, tpl.ID), nil
 }
 
@@ -404,7 +428,6 @@ func (s *LLMProviderService) List(orgUUID string, limit, offset int) (*api.LLMPr
 		createdBy := utils.StringPtrIfNotEmpty(p.CreatedBy)
 		version := p.Version
 		template := utils.StringPtrIfNotEmpty(tplHandle)
-		status := api.LLMProviderListItemStatus(p.Status)
 		resp.List = append(resp.List, api.LLMProviderListItem{
 			Id:          &id,
 			Name:        &name,
@@ -412,7 +435,6 @@ func (s *LLMProviderService) List(orgUUID string, limit, offset int) (*api.LLMPr
 			CreatedBy:   createdBy,
 			Version:     &version,
 			Template:    template,
-			Status:      &status,
 			CreatedAt:   utils.TimePtr(p.CreatedAt),
 			UpdatedAt:   utils.TimePtr(p.UpdatedAt),
 		})
@@ -445,7 +467,7 @@ func (s *LLMProviderService) Get(orgUUID, handle string) (*api.LLMProvider, erro
 	return mapProviderModelToAPI(m, tplHandle), nil
 }
 
-func (s *LLMProviderService) Update(orgUUID, handle string, req *api.LLMProvider) (*api.LLMProvider, error) {
+func (s *LLMProviderService) Update(orgUUID, handle, updatedBy string, req *api.LLMProvider) (*api.LLMProvider, error) {
 	if handle == "" || req == nil {
 		return nil, constants.ErrInvalidInput
 	}
@@ -488,11 +510,11 @@ func (s *LLMProviderService) Update(orgUUID, handle string, req *api.LLMProvider
 		ID:               handle,
 		Name:             req.Name,
 		Description:      utils.ValueOrEmpty(req.Description),
+		UpdatedBy:        updatedBy,
 		Version:          req.Version,
 		TemplateUUID:     tpl.UUID,
 		OpenAPISpec:      utils.ValueOrEmpty(req.Openapi),
 		ModelProviders:   mapModelProvidersAPI(req.ModelProviders),
-		Status:           llmStatusPending,
 		Configuration: model.LLMProviderConfig{
 			Context:           &contextValue,
 			VHost:             req.Vhost,
@@ -525,10 +547,13 @@ func (s *LLMProviderService) Update(orgUUID, handle string, req *api.LLMProvider
 	if updated == nil {
 		return nil, constants.ErrLLMProviderNotFound
 	}
+
+	_ = s.auditRepo.Record("UPDATE", updated.UUID, "llm_provider", orgUUID, updatedBy)
+
 	return mapProviderModelToAPI(updated, tpl.ID), nil
 }
 
-func (s *LLMProviderService) Delete(orgUUID, handle string) error {
+func (s *LLMProviderService) Delete(orgUUID, handle, deletedBy string) error {
 	if handle == "" {
 		return constants.ErrInvalidInput
 	}
@@ -562,6 +587,8 @@ func (s *LLMProviderService) Delete(orgUUID, handle string) error {
 		}
 		return fmt.Errorf("failed to delete provider: %w", err)
 	}
+
+	_ = s.auditRepo.Record("DELETE", provider.UUID, "llm_provider", orgUUID, deletedBy)
 
 	// Send deletion events to all gateways in the organization
 	if s.gatewayEventsService != nil && len(gateways) > 0 {
@@ -634,7 +661,6 @@ func (s *LLMProxyService) Create(orgUUID, createdBy string, req *api.LLMProxy) (
 		Version:          req.Version,
 		ProviderUUID:     prov.UUID,
 		OpenAPISpec:      utils.ValueOrEmpty(req.Openapi),
-		Status:           llmStatusPending,
 		Configuration: model.LLMProxyConfig{
 			Context:           &contextValue,
 			Vhost:             req.Vhost,
@@ -655,6 +681,7 @@ func (s *LLMProxyService) Create(orgUUID, createdBy string, req *api.LLMProxy) (
 		return nil, fmt.Errorf("failed to create proxy: %w", err)
 	}
 
+	_ = s.auditRepo.Record("CREATE", m.UUID, "llm_proxy", orgUUID, createdBy)
 	created, err := s.repo.GetByID(req.Id, orgUUID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch created proxy: %w", err)
@@ -717,7 +744,6 @@ func (s *LLMProxyService) List(orgUUID string, projectUUID *string, limit, offse
 		version := p.Version
 		projectID := p.ProjectUUID
 		provider := p.Configuration.Provider
-		status := api.LLMProxyListItemStatus(p.Status)
 		resp.List = append(resp.List, api.LLMProxyListItem{
 			Id:          &id,
 			Name:        &name,
@@ -727,7 +753,6 @@ func (s *LLMProxyService) List(orgUUID string, projectUUID *string, limit, offse
 			Version:     &version,
 			ProjectId:   &projectID,
 			Provider:    &provider,
-			Status:      &status,
 			CreatedAt:   utils.TimePtr(p.CreatedAt),
 			UpdatedAt:   utils.TimePtr(p.UpdatedAt),
 		})
@@ -780,7 +805,6 @@ func (s *LLMProxyService) ListByProvider(orgUUID, providerID string, limit, offs
 		version := p.Version
 		projectID := p.ProjectUUID
 		provider := p.Configuration.Provider
-		status := api.LLMProxyListItemStatus(p.Status)
 		resp.List = append(resp.List, api.LLMProxyListItem{
 			Id:          &id,
 			Name:        &name,
@@ -790,7 +814,6 @@ func (s *LLMProxyService) ListByProvider(orgUUID, providerID string, limit, offs
 			Version:     &version,
 			ProjectId:   &projectID,
 			Provider:    &provider,
-			Status:      &status,
 			CreatedAt:   utils.TimePtr(p.CreatedAt),
 			UpdatedAt:   utils.TimePtr(p.UpdatedAt),
 		})
@@ -812,7 +835,7 @@ func (s *LLMProxyService) Get(orgUUID, handle string) (*api.LLMProxy, error) {
 	return mapProxyModelToAPI(m), nil
 }
 
-func (s *LLMProxyService) Update(orgUUID, handle string, req *api.LLMProxy) (*api.LLMProxy, error) {
+func (s *LLMProxyService) Update(orgUUID, handle, updatedBy string, req *api.LLMProxy) (*api.LLMProxy, error) {
 	if handle == "" || req == nil {
 		return nil, constants.ErrInvalidInput
 	}
@@ -846,10 +869,10 @@ func (s *LLMProxyService) Update(orgUUID, handle string, req *api.LLMProxy) (*ap
 		ID:               handle,
 		Name:             req.Name,
 		Description:      utils.ValueOrEmpty(req.Description),
+		UpdatedBy:        updatedBy,
 		Version:          req.Version,
 		ProviderUUID:     prov.UUID,
 		OpenAPISpec:      utils.ValueOrEmpty(req.Openapi),
-		Status:           llmStatusPending,
 		Configuration: model.LLMProxyConfig{
 			Context:           &contextValue,
 			Vhost:             req.Vhost,
@@ -879,10 +902,11 @@ func (s *LLMProxyService) Update(orgUUID, handle string, req *api.LLMProxy) (*ap
 	if updated == nil {
 		return nil, constants.ErrLLMProxyNotFound
 	}
+	_ = s.auditRepo.Record("UPDATE", existing.UUID, "llm_proxy", orgUUID, updatedBy)
 	return mapProxyModelToAPI(updated), nil
 }
 
-func (s *LLMProxyService) Delete(orgUUID, handle string) error {
+func (s *LLMProxyService) Delete(orgUUID, handle, deletedBy string) error {
 	if handle == "" {
 		return constants.ErrInvalidInput
 	}
@@ -917,6 +941,7 @@ func (s *LLMProxyService) Delete(orgUUID, handle string) error {
 		return fmt.Errorf("failed to delete proxy: %w", err)
 	}
 
+	_ = s.auditRepo.Record("DELETE", proxy.UUID, "llm_proxy", orgUUID, deletedBy)
 	// Send deletion events to all gateways in the organization
 	if s.gatewayEventsService != nil && len(gateways) > 0 {
 		for _, gateway := range gateways {

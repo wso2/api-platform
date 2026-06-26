@@ -52,12 +52,12 @@ func (r *SubscriptionPlanRepo) Create(plan *model.SubscriptionPlan) error {
 	plan.UpdatedAt = now
 
 	query := `
-		INSERT INTO subscription_plans (uuid, plan_name, billing_plan, stop_on_quota_reach, throttle_limit_count,
+		INSERT INTO subscription_plans (uuid, handle, name, billing_plan, stop_on_quota_reach, throttle_limit_count,
 			throttle_limit_unit, expiry_time, organization_uuid, status, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 	_, err := r.db.Exec(r.db.Rebind(query),
-		plan.UUID, plan.PlanName, plan.BillingPlan, plan.StopOnQuotaReach,
+		plan.UUID, plan.Handle, plan.Name, plan.BillingPlan, plan.StopOnQuotaReach,
 		plan.ThrottleLimitCount, plan.ThrottleLimitUnit, plan.ExpiryTime,
 		plan.OrganizationUUID, string(plan.Status), plan.CreatedAt, plan.UpdatedAt,
 	)
@@ -67,17 +67,17 @@ func (r *SubscriptionPlanRepo) Create(plan *model.SubscriptionPlan) error {
 	return nil
 }
 
-// GetByNameAndOrg retrieves a subscription plan by name and organization
-func (r *SubscriptionPlanRepo) GetByNameAndOrg(planName, orgUUID string) (*model.SubscriptionPlan, error) {
+// GetByHandleAndOrg retrieves a subscription plan by handle and organization
+func (r *SubscriptionPlanRepo) GetByHandleAndOrg(handle, orgUUID string) (*model.SubscriptionPlan, error) {
 	query := `
-		SELECT uuid, plan_name, billing_plan, stop_on_quota_reach, throttle_limit_count,
+		SELECT uuid, handle, name, billing_plan, stop_on_quota_reach, throttle_limit_count,
 			throttle_limit_unit, expiry_time, organization_uuid, status, created_at, updated_at
 		FROM subscription_plans
-		WHERE plan_name = ? AND organization_uuid = ?
+		WHERE handle = ? AND organization_uuid = ?
 	`
 	plan := &model.SubscriptionPlan{}
-	err := r.db.QueryRow(r.db.Rebind(query), planName, orgUUID).Scan(
-		&plan.UUID, &plan.PlanName, &plan.BillingPlan, &plan.StopOnQuotaReach,
+	err := r.db.QueryRow(r.db.Rebind(query), handle, orgUUID).Scan(
+		&plan.UUID, &plan.Handle, &plan.Name, &plan.BillingPlan, &plan.StopOnQuotaReach,
 		&plan.ThrottleLimitCount, &plan.ThrottleLimitUnit, &plan.ExpiryTime,
 		&plan.OrganizationUUID, &plan.Status, &plan.CreatedAt, &plan.UpdatedAt,
 	)
@@ -90,14 +90,14 @@ func (r *SubscriptionPlanRepo) GetByNameAndOrg(planName, orgUUID string) (*model
 // GetByID retrieves a subscription plan by ID and organization
 func (r *SubscriptionPlanRepo) GetByID(planID, orgUUID string) (*model.SubscriptionPlan, error) {
 	query := `
-		SELECT uuid, plan_name, billing_plan, stop_on_quota_reach, throttle_limit_count,
+		SELECT uuid, handle, name, billing_plan, stop_on_quota_reach, throttle_limit_count,
 			throttle_limit_unit, expiry_time, organization_uuid, status, created_at, updated_at
 		FROM subscription_plans
 		WHERE uuid = ? AND organization_uuid = ?
 	`
 	plan := &model.SubscriptionPlan{}
 	err := r.db.QueryRow(r.db.Rebind(query), planID, orgUUID).Scan(
-		&plan.UUID, &plan.PlanName, &plan.BillingPlan, &plan.StopOnQuotaReach,
+		&plan.UUID, &plan.Handle, &plan.Name, &plan.BillingPlan, &plan.StopOnQuotaReach,
 		&plan.ThrottleLimitCount, &plan.ThrottleLimitUnit, &plan.ExpiryTime,
 		&plan.OrganizationUUID, &plan.Status, &plan.CreatedAt, &plan.UpdatedAt,
 	)
@@ -121,7 +121,7 @@ func (r *SubscriptionPlanRepo) GetByIDs(planIDs []string, orgUUID string) (map[s
 	}
 	args = append(args, orgUUID)
 	query := fmt.Sprintf(`
-		SELECT uuid, plan_name
+		SELECT uuid, name
 		FROM subscription_plans
 		WHERE uuid IN (%s) AND organization_uuid = ?
 	`, strings.Join(placeholders, ","))
@@ -132,11 +132,11 @@ func (r *SubscriptionPlanRepo) GetByIDs(planIDs []string, orgUUID string) (map[s
 	defer rows.Close()
 	m := make(map[string]string)
 	for rows.Next() {
-		var id, planName string
-		if err := rows.Scan(&id, &planName); err != nil {
+		var id, name string
+		if err := rows.Scan(&id, &name); err != nil {
 			return nil, err
 		}
-		m[id] = planName
+		m[id] = name
 	}
 	return m, rows.Err()
 }
@@ -145,7 +145,7 @@ func (r *SubscriptionPlanRepo) GetByIDs(planIDs []string, orgUUID string) (map[s
 func (r *SubscriptionPlanRepo) ListByOrganization(orgUUID string, limit, offset int) ([]*model.SubscriptionPlan, error) {
 	pageClause, pageArgs := r.db.PaginationClause(limit, offset)
 	query := `
-		SELECT uuid, plan_name, billing_plan, stop_on_quota_reach, throttle_limit_count,
+		SELECT uuid, handle, name, billing_plan, stop_on_quota_reach, throttle_limit_count,
 			throttle_limit_unit, expiry_time, organization_uuid, status, created_at, updated_at
 		FROM subscription_plans
 		WHERE organization_uuid = ?
@@ -161,7 +161,7 @@ func (r *SubscriptionPlanRepo) ListByOrganization(orgUUID string, limit, offset 
 	for rows.Next() {
 		plan := &model.SubscriptionPlan{}
 		if err := rows.Scan(
-			&plan.UUID, &plan.PlanName, &plan.BillingPlan, &plan.StopOnQuotaReach,
+			&plan.UUID, &plan.Handle, &plan.Name, &plan.BillingPlan, &plan.StopOnQuotaReach,
 			&plan.ThrottleLimitCount, &plan.ThrottleLimitUnit, &plan.ExpiryTime,
 			&plan.OrganizationUUID, &plan.Status, &plan.CreatedAt, &plan.UpdatedAt,
 		); err != nil {
@@ -180,12 +180,12 @@ func (r *SubscriptionPlanRepo) Update(plan *model.SubscriptionPlan) error {
 	plan.UpdatedAt = time.Now()
 	query := `
 		UPDATE subscription_plans
-		SET plan_name = ?, billing_plan = ?, stop_on_quota_reach = ?, throttle_limit_count = ?,
+		SET handle = ?, name = ?, billing_plan = ?, stop_on_quota_reach = ?, throttle_limit_count = ?,
 			throttle_limit_unit = ?, expiry_time = ?, status = ?, updated_at = ?
 		WHERE uuid = ? AND organization_uuid = ?
 	`
 	result, err := r.db.Exec(r.db.Rebind(query),
-		plan.PlanName, plan.BillingPlan, plan.StopOnQuotaReach,
+		plan.Handle, plan.Name, plan.BillingPlan, plan.StopOnQuotaReach,
 		plan.ThrottleLimitCount, plan.ThrottleLimitUnit, plan.ExpiryTime,
 		string(plan.Status), plan.UpdatedAt,
 		plan.UUID, plan.OrganizationUUID,
@@ -214,15 +214,15 @@ func (r *SubscriptionPlanRepo) Delete(planID, orgUUID string) error {
 	return nil
 }
 
-// ExistsByNameAndOrg returns true if a plan with the given name exists in the organization
-func (r *SubscriptionPlanRepo) ExistsByNameAndOrg(planName, orgUUID string) (bool, error) {
+// ExistsByHandleAndOrg returns true if a plan with the given handle exists in the organization
+func (r *SubscriptionPlanRepo) ExistsByHandleAndOrg(handle, orgUUID string) (bool, error) {
 	query := `
 		SELECT 1 FROM subscription_plans
-		WHERE plan_name = ? AND organization_uuid = ?
+		WHERE handle = ? AND organization_uuid = ?
 		ORDER BY (SELECT NULL)
 		` + r.db.FetchFirstClause(1)
 	var exists int
-	err := r.db.QueryRow(r.db.Rebind(query), planName, orgUUID).Scan(&exists)
+	err := r.db.QueryRow(r.db.Rebind(query), handle, orgUUID).Scan(&exists)
 	if err == sql.ErrNoRows {
 		return false, nil
 	}

@@ -39,7 +39,7 @@ type APIKey struct {
 type UserAPIKey struct {
 	APIKey
 	ArtifactHandle string // Handle (ID) of the LLM provider or proxy
-	ArtifactKind   string // Kind of the artifact: LlmProvider or LlmProxy
+	ArtifactType   string // Type of the artifact: LlmProvider or LlmProxy
 }
 
 // InternalAPIKeyItem is the response shape for the internal API key listing endpoints.

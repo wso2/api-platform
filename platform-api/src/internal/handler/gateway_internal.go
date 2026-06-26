@@ -840,11 +840,11 @@ func (h *GatewayInternalAPIHandler) GetWebSubAPIHmacSecrets(c *gin.Context) {
 	for _, s := range secrets {
 		plaintext, err := h.hmacSecretService.DecryptSecret(s)
 		if err != nil {
-			h.slogger.Error("Failed to decrypt HMAC secret", "apiID", apiID, "secretName", s.Name, "error", err)
+			h.slogger.Error("Failed to decrypt HMAC secret", "apiID", apiID, "secretName", s.Handle, "error", err)
 			c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to decrypt HMAC secret"))
 			return
 		}
-		items = append(items, dto.GatewayHmacSecretInfo{Name: s.Name, Secret: plaintext})
+		items = append(items, dto.GatewayHmacSecretInfo{Name: s.Handle, Secret: plaintext})
 	}
 
 	c.JSON(http.StatusOK, dto.GatewayHmacSecretsResponse{ArtifactID: apiID, Secrets: items})

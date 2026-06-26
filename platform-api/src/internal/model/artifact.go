@@ -21,11 +21,12 @@ import "time"
 
 type Artifact struct {
 	UUID             string    `db:"uuid"`
-	Handle           string    `db:"handle"`
-	Name             string    `db:"name"`
-	Version          string    `db:"version"`
-	Kind             string    `db:"kind"`
+	Type             string    `db:"type"`
 	OrganizationUUID string    `db:"organization_uuid"`
-	CreatedAt        time.Time `db:"created_at"`
-	UpdatedAt        time.Time `db:"updated_at"`
+	// Supplemental fields: populated by UNION queries across kind-specific tables, not stored in artifacts table.
+	Handle    string    `db:"handle"`
+	Name      string    `db:"name"`
+	Version   string    `db:"version"`
+	CreatedAt time.Time `db:"created_at"`
+	UpdatedAt time.Time `db:"updated_at"`
 }
