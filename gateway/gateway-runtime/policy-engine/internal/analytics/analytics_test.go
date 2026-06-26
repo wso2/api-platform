@@ -63,8 +63,8 @@ func validAnalyticsConfigForValidation(analytics config.AnalyticsConfig) *config
 		},
 		Analytics: analytics,
 	}
-	cfg.Analytics.Enabled = true
-	cfg.Analytics.AccessLogsServiceCfg = config.AccessLogsServiceConfig{
+	cfg.Analytics.Enabled = true // a consumer being on makes the collector implicit
+	cfg.Collector.Server = config.AccessLogsServiceConfig{
 		Mode:                  "uds",
 		ShutdownTimeout:       600 * time.Second,
 		ExtProcMaxMessageSize: 1000000,
@@ -136,6 +136,18 @@ func TestNewAnalytics_EnabledWithUnknownPublisherType(t *testing.T) {
 
 	require.NotNil(t, analytics)
 	assert.Empty(t, analytics.publishers) // Unknown type should not be added
+}
+
+func TestNewAnalytics_TrafficLoggingEnabled(t *testing.T) {
+	// Traffic logging is a standalone consumer, independent of analytics.
+	cfg := &config.Config{
+		TrafficLogging: config.TrafficLoggingConfig{Enabled: true},
+	}
+
+	analytics := NewAnalytics(cfg)
+
+	require.NotNil(t, analytics)
+	assert.Len(t, analytics.publishers, 1) // traffic-logging publisher should be registered
 }
 
 // =============================================================================
@@ -251,6 +263,24 @@ func TestProcess_WithMockPublisher(t *testing.T) {
 	assert.True(t, mockPub.called)
 	require.NotNil(t, mockPub.event)
 	assert.Equal(t, "TestAPI", mockPub.event.API.APIName)
+}
+
+// Path-based suppression moved to the traffic-logging publisher, so
+// Analytics.Process no longer filters by path — every valid event reaches the
+// publishers (each decides what to do with it). Ignored-path coverage lives in
+// publishers/log_test.go.
+func TestProcess_PublishesEvent(t *testing.T) {
+	analytics := NewAnalytics(&config.Config{})
+	mockPub := &mockPublisher{}
+	analytics.publishers = append(analytics.publishers, mockPub)
+
+	logEntry := &v3.HTTPAccessLogEntry{
+		Response: &v3.HTTPResponseProperties{ResponseCode: wrapperspb.UInt32(200)},
+		Request:  &v3.HTTPRequestProperties{OriginalPath: "/api/v1/orders", RequestMethod: corev3.RequestMethod_GET},
+	}
+	analytics.Process(logEntry)
+
+	assert.True(t, mockPub.called, "publisher must be called")
 }
 
 func TestProcess_PanicRecovery(t *testing.T) {
@@ -373,6 +403,59 @@ func TestPrepareAnalyticEvent_WithFilterMetadata(t *testing.T) {
 	assert.Equal(t, "TestApp", event.Application.ApplicationName)
 }
 
+func TestPrepareAnalyticEvent_TrafficLogMarker(t *testing.T) {
+	cfg := &config.Config{}
+	analytics := NewAnalytics(cfg)
+
+	logEntry := createLogEntryWithMetadata(map[string]string{
+		APINameKey:            "TestAPI",
+		TrafficLogMetadataKey: `{"request":{"payload":false,"headers":true}}`,
+	})
+
+	event := analytics.prepareAnalyticEvent(logEntry)
+
+	require.NotNil(t, event)
+	require.NotNil(t, event.TrafficLog, "traffic_log marker should populate event.TrafficLog")
+	require.NotNil(t, event.TrafficLog.Request)
+	assert.True(t, event.TrafficLog.Request.Headers)
+	assert.False(t, event.TrafficLog.Request.Payload)
+	assert.Nil(t, event.TrafficLog.Response, "unset flow stays nil")
+
+	// The marker must never leak into serialized properties (or other publishers).
+	_, inProps := event.Properties[TrafficLogMetadataKey]
+	assert.False(t, inProps, "traffic_log must not appear in event.Properties")
+}
+
+func TestPrepareAnalyticEvent_NoTrafficLogMarker(t *testing.T) {
+	cfg := &config.Config{}
+	analytics := NewAnalytics(cfg)
+
+	logEntry := createLogEntryWithMetadata(map[string]string{APINameKey: "TestAPI"})
+
+	event := analytics.prepareAnalyticEvent(logEntry)
+
+	require.NotNil(t, event)
+	assert.Nil(t, event.TrafficLog, "no marker -> event.TrafficLog stays nil (publisher skips)")
+}
+
+func TestPrepareAnalyticEvent_MalformedTrafficLogMarker(t *testing.T) {
+	cfg := &config.Config{}
+	analytics := NewAnalytics(cfg)
+
+	logEntry := createLogEntryWithMetadata(map[string]string{
+		TrafficLogMetadataKey: "not-json",
+	})
+
+	event := analytics.prepareAnalyticEvent(logEntry)
+
+	require.NotNil(t, event)
+	// Presence alone is the opt-in signal; a malformed marker still opts in with
+	// default (empty) presentation.
+	require.NotNil(t, event.TrafficLog)
+	assert.Nil(t, event.TrafficLog.Request)
+	assert.Nil(t, event.TrafficLog.Response)
+}
+
 func TestPrepareAnalyticEvent_WithAnonymousApp(t *testing.T) {
 	cfg := &config.Config{}
 	analytics := NewAnalytics(cfg)
@@ -446,6 +529,11 @@ func TestPrepareAnalyticEvent_WithLatencies(t *testing.T) {
 	require.NotNil(t, event)
 	require.NotNil(t, event.Latencies)
 	assert.True(t, event.Latencies.BackendLatency >= 0)
+
+	// Traffic-log latencies are computed in microseconds from the same timepoints.
+	require.NotNil(t, event.TrafficLogLatencies)
+	assert.Equal(t, int64(250000), event.TrafficLogLatencies.DurationUs)               // DS_RX_BEG → DS_TX_END = 250ms
+	assert.Equal(t, int64(50000), event.TrafficLogLatencies.RequestMediationLatencyUs) // 100ms - 50ms
 }
 
 func TestPrepareAnalyticEvent_WithUserID(t *testing.T) {
@@ -469,8 +557,8 @@ func TestPrepareAnalyticEvent_WithLLMCost(t *testing.T) {
 	analytics := NewAnalytics(cfg)
 
 	logEntry := createLogEntryWithMetadata(map[string]string{
-		AIProviderNameMetadataKey: "openai",
-		ModelIDMetadataKey:        "gpt-4",
+		AIProviderNameMetadataKey:    "openai",
+		ModelIDMetadataKey:           "gpt-4",
 		constants.LLMCostMetadataKey: "0.0000423100",
 	})
 
@@ -525,9 +613,9 @@ func TestPrepareAnalyticEvent_WithRequestResponseHeaders(t *testing.T) {
 
 func TestPrepareAnalyticEvent_WithPayloadsEnabled(t *testing.T) {
 	cfg := &config.Config{
-		Analytics: config.AnalyticsConfig{
-			SendRequestBody:  true,
-			SendResponseBody: true,
+		Collector: config.CollectorConfig{
+			RequestBody:  true,
+			ResponseBody: true,
 		},
 	}
 	analytics := NewAnalytics(cfg)
@@ -551,9 +639,9 @@ func TestPrepareAnalyticEvent_WithPayloadsEnabled(t *testing.T) {
 
 func TestPrepareAnalyticEvent_WithPayloadsDisabled(t *testing.T) {
 	cfg := &config.Config{
-		Analytics: config.AnalyticsConfig{
-			SendRequestBody:  false,
-			SendResponseBody: false,
+		Collector: config.CollectorConfig{
+			RequestBody:  false,
+			ResponseBody: false,
 		},
 	}
 	analytics := NewAnalytics(cfg)
@@ -574,9 +662,9 @@ func TestPrepareAnalyticEvent_WithPayloadsDisabled(t *testing.T) {
 
 func TestPrepareAnalyticEvent_RequestPayloadOnly(t *testing.T) {
 	cfg := &config.Config{
-		Analytics: config.AnalyticsConfig{
-			SendRequestBody:  true,
-			SendResponseBody: false,
+		Collector: config.CollectorConfig{
+			RequestBody:  true,
+			ResponseBody: false,
 		},
 	}
 	analytics := NewAnalytics(cfg)
@@ -598,9 +686,9 @@ func TestPrepareAnalyticEvent_RequestPayloadOnly(t *testing.T) {
 
 func TestPrepareAnalyticEvent_ResponsePayloadOnly(t *testing.T) {
 	cfg := &config.Config{
-		Analytics: config.AnalyticsConfig{
-			SendRequestBody:  false,
-			SendResponseBody: true,
+		Collector: config.CollectorConfig{
+			RequestBody:  false,
+			ResponseBody: true,
 		},
 	}
 	analytics := NewAnalytics(cfg)

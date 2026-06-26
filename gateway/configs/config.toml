@@ -1,16 +1,20 @@
+[collector]
+request_body = false
+response_body = false
+request_headers = false
+response_headers = false
 
 [analytics]
 enabled = true
-# Deprecated: allow_payloads is preserved for backward compatibility. When true
-# and when send_request_body/send_response_body are not explicitly set, both
-# request and response bodies will be included in analytics events.
-# allow_payloads = true
-send_request_body = false
-send_response_body = false
 enabled_publishers = ["moesif"]
 
 [analytics.publishers.moesif]
 application_id = "<MOESIF_APPLICATION_ID>"
+
+[traffic_logging]
+enabled = false
+masked_headers = ["authorization", "x-api-key", "x-jwt-assertion"]
+max_payload_size = 2048
 
 [router]
 gateway_host = "*"

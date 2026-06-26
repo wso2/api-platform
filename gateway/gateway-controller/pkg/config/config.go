@@ -31,6 +31,7 @@ import (
 	"github.com/knadh/koanf/providers/env"
 	"github.com/knadh/koanf/providers/file"
 	"github.com/knadh/koanf/v2"
+	"github.com/wso2/api-platform/common/collector"
 	commonconstants "github.com/wso2/api-platform/common/constants"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 )
@@ -48,7 +49,9 @@ type Config struct {
 	Router               RouterConfig           `koanf:"router"`
 	PolicyEngine         map[string]interface{} `koanf:"policy_engine"`
 	PolicyConfigurations map[string]interface{} `koanf:"policy_configurations"`
+	Collector            CollectorConfig        `koanf:"collector"`
 	Analytics            AnalyticsConfig        `koanf:"analytics"`
+	TrafficLogging       TrafficLoggingConfig   `koanf:"traffic_logging"`
 	TracingConfig        TracingConfig          `koanf:"tracing"`
 	APIKey               APIKeyConfig           `koanf:"api_key"`
 	// Subscriptions controls application-level subscription behaviour for APIs.
@@ -70,22 +73,66 @@ type MCPConfig struct {
 	AppendResourcePathToBackend bool `koanf:"append_resource_path_to_backend"`
 }
 
+// CollectorConfig holds the data-collection ("collector") configuration. The
+// collector is the shared capture pipeline (the analytics system policy plus the
+// Envoy→policy-engine ALS transport) that gathers request/response headers and
+// bodies. It underpins every consumer of that data (analytics and traffic logging)
+// and is implicitly active whenever a consumer is enabled — see
+// Config.IsCollectorEnabled. This section tunes capture and transport; it has no
+// on/off flag of its own.
+type CollectorConfig struct {
+	// RequestBody / ResponseBody capture request/response bodies into the
+	// collected event.
+	RequestBody  bool `koanf:"request_body"`
+	ResponseBody bool `koanf:"response_body"`
+	// RequestHeaders / ResponseHeaders, when true, make the collector
+	// capture ALL request / response headers, so every API's headers flow into
+	// the collected event without attaching a per-API header policy.
+	RequestHeaders  bool `koanf:"request_headers"`
+	ResponseHeaders bool `koanf:"response_headers"`
+	// IgnorePathPrefixes lists request path prefixes for which the collector
+	// produces no analytics event and no traffic-log line at all, as if the
+	// collector were disabled for that one request (e.g. health-check or
+	// metrics-scrape endpoints). Enforced by attaching an Envoy AccessLogFilter
+	// to the ALS access log (see xds.buildIgnorePathsAccessLogFilter) — Envoy
+	// itself never emits the log entry for a matching path, so the policy-engine
+	// never receives the request at all. Matched case-sensitively by prefix.
+	IgnorePathPrefixes []string `koanf:"ignore_path_prefixes"`
+	// Server tunes the Envoy→policy-engine gRPC access-log (ALS)
+	// transport that ships collected data. It is part of the collector and is
+	// configured under the shared [collector.server] section (the policy-engine reads
+	// the same section to configure its receiving ALS server).
+	Server GRPCEventServerConfig `koanf:"server"`
+}
+
 // AnalyticsConfig holds analytics configuration
 type AnalyticsConfig struct {
-	Enabled            bool                      `koanf:"enabled"`
-	EnabledPublishers  []string                  `koanf:"enabled_publishers"`
-	Publishers         AnalyticsPublishersConfig `koanf:"publishers"`
-	GRPCEventServerCfg GRPCEventServerConfig     `koanf:"grpc_event_server"`
-	// AllowPayloads controls whether request and response bodies are captured
-	// into analytics metadata and forwarded to analytics publishers.
-	// Deprecated: use SendRequestBody and SendResponseBody instead.
-	// When true, validateAnalyticsConfig maps both SendRequestBody and SendResponseBody
-	// to true if both are false. Because bools cannot represent "unset", this also
-	// applies when both new flags are explicitly false; remove allow_payloads when
-	// migrating and set the directional flags directly.
+	Enabled           bool                      `koanf:"enabled"`
+	EnabledPublishers []string                  `koanf:"enabled_publishers"`
+	Publishers        AnalyticsPublishersConfig `koanf:"publishers"`
+	// GRPCEventServerCfg is a deprecated alias. ALS transport tuning moved to
+	// [collector.server]; when set here it is migrated onto the collector during
+	// validation (with a warning). Prefer [collector.server].
+	GRPCEventServerCfg GRPCEventServerConfig `koanf:"grpc_event_server"`
+	// AllowPayloads, SendRequestBody and SendResponseBody are deprecated aliases.
+	// Body/header capture now lives under [collector]. When set, these are mapped
+	// onto collector.request_body / collector.response_body during
+	// validation (with a warning) for backward compatibility. Prefer the
+	// [collector] fields directly.
 	AllowPayloads    bool `koanf:"allow_payloads"`
 	SendRequestBody  bool `koanf:"send_request_body"`
 	SendResponseBody bool `koanf:"send_response_body"`
+}
+
+// TrafficLoggingConfig mirrors the policy-engine's stdout traffic-logging consumer.
+// The controller only needs to know whether it is enabled, so that the collector
+// (system policy + ALS sink) is activated when traffic logging is on even if
+// analytics is off. Presentation keys (masked_headers, max_payload_size) are
+// policy-engine-only and intentionally not bound here.
+type TrafficLoggingConfig struct {
+	// Enabled turns stdout JSON traffic logging on. Enabling it implicitly activates
+	// the collector (see Config.IsCollectorEnabled).
+	Enabled bool `koanf:"enabled"`
 }
 
 // SubscriptionsConfig holds configuration for application-level subscriptions.
@@ -120,9 +167,14 @@ type MoesifPublisherConfig struct {
 
 // GRPCEventServerConfig holds configuration for gRPC event server (combines access log service and ALS server config)
 type GRPCEventServerConfig struct {
-	Mode                string        `koanf:"mode"`                  // Connection mode: "uds" (default) or "tcp"
-	Port                int           `koanf:"port"`                  // ALS port for Envoy connection (TCP mode only)
-	ServerPort          int           `koanf:"server_port"`           // gRPC server port for ALS server
+	Mode string `koanf:"mode"` // Connection mode: "uds" (default) or "tcp"
+	// Port overrides the fixed Envoy→policy-engine ALS dial port (collector.ServerPort,
+	// 18090), used only in "tcp" mode. Deprecated: no longer defaulted here or documented
+	// in config-template.toml/Helm charts, so new deployments have no way to discover or
+	// set it. Kept solely so a config that already sets it explicitly keeps working;
+	// leave unset (0) to use the fixed port. Must match the policy-engine's
+	// collector.server.server_port override, or the two sides will fail to connect.
+	Port                int           `koanf:"port"`
 	BufferFlushInterval int           `koanf:"buffer_flush_interval"` // Envoy buffer flush interval (nanoseconds)
 	BufferSizeBytes     int           `koanf:"buffer_size_bytes"`     // Envoy buffer size
 	GRPCRequestTimeout  int           `koanf:"grpc_request_timeout"`  // Envoy gRPC timeout (nanoseconds)
@@ -703,6 +755,24 @@ func LoadConfig(configPath string) (*Config, error) {
 	return cfg, nil
 }
 
+// defaultGRPCEventServerConfig returns the default Envoy→policy-engine ALS
+// transport tuning. Shared by the collector (canonical) and the deprecated
+// [analytics].grpc_event_server alias so a partial alias override migrates cleanly.
+func defaultGRPCEventServerConfig() GRPCEventServerConfig {
+	return GRPCEventServerConfig{
+		Mode:                "uds",       // UDS mode by default
+		BufferFlushInterval: 1000000000,  // 1 second
+		BufferSizeBytes:     16384,       // 16 KiB
+		GRPCRequestTimeout:  20000000000, // 20 seconds
+		ShutdownTimeout:     600 * time.Second,
+		PublicKeyPath:       "",
+		PrivateKeyPath:      "",
+		ALSPlainText:        true,
+		MaxMessageSize:      1000000000,
+		MaxHeaderLimit:      8192,
+	}
+}
+
 // defaultConfig returns a Config struct with default configuration values
 func defaultConfig() *Config {
 	return &Config{
@@ -921,23 +991,19 @@ func defaultConfig() *Config {
 					TimerWakeupSeconds: 3,
 				},
 			},
-			GRPCEventServerCfg: GRPCEventServerConfig{
-				Mode:                "uds",       // UDS mode by default
-				Port:                18090,       // Only used in TCP mode
-				ServerPort:          18090,       // ALS server port
-				BufferFlushInterval: 1000000000,  // 1 second
-				BufferSizeBytes:     16384,       // 16 KiB
-				GRPCRequestTimeout:  20000000000, // 20 seconds
-				ShutdownTimeout:     600 * time.Second,
-				PublicKeyPath:       "",
-				PrivateKeyPath:      "",
-				ALSPlainText:        true,
-				MaxMessageSize:      1000000000,
-				MaxHeaderLimit:      8192,
-			},
-			AllowPayloads:    false,
-			SendRequestBody:  false,
-			SendResponseBody: false,
+			// Deprecated alias: default mirrors the collector so a partial
+			// [analytics.grpc_event_server] override migrates cleanly.
+			GRPCEventServerCfg: defaultGRPCEventServerConfig(),
+			AllowPayloads:      false,
+			SendRequestBody:    false,
+			SendResponseBody:   false,
+		},
+		Collector: CollectorConfig{
+			RequestBody:     false,
+			ResponseBody:    false,
+			RequestHeaders:  false,
+			ResponseHeaders: false,
+			Server:          defaultGRPCEventServerConfig(),
 		},
 		TracingConfig: TracingConfig{
 			Enabled:        false,
@@ -1309,7 +1375,7 @@ func (c *Config) Validate() error {
 		return err
 	}
 
-	if err := c.validateAnalyticsConfig(); err != nil {
+	if err := c.validateCollectorConfig(); err != nil {
 		return err
 	}
 
@@ -1715,52 +1781,117 @@ func validateDomains(field string, domains []string) error {
 	return nil
 }
 
-// validateAnalyticsConfig validates the analytics configuration
-func (c *Config) validateAnalyticsConfig() error {
-	// Validate analytics configuration
-	if c.Analytics.Enabled {
-		// Migration path for deprecated analytics.allow_payloads.
-		// Runs when both directional flags are false, which is indistinguishable
-		// from "not set" because bool fields cannot represent unset vs explicit false.
-		if c.Analytics.AllowPayloads {
-			slog.Warn("analytics.allow_payloads is deprecated; use analytics.send_request_body and analytics.send_response_body instead")
-			if !c.Analytics.SendRequestBody && !c.Analytics.SendResponseBody {
-				c.Analytics.SendRequestBody = true
-				c.Analytics.SendResponseBody = true
-			}
-		}
+// validateCollectorConfig migrates deprecated analytics aliases onto the collector
+// and validates the ALS transport tuning when the collector is active. The collector
+// has no on/off flag of its own: it is implicitly active whenever a consumer is
+// enabled (analytics or traffic logging) — see IsCollectorEnabled.
+func (c *Config) validateCollectorConfig() error {
+	c.migrateDeprecatedAnalyticsCapture()
+	c.migrateDeprecatedAnalyticsTransport()
+	c.Collector.IgnorePathPrefixes = normalizeIgnorePathPrefixes(c.Collector.IgnorePathPrefixes)
 
-		// Validate gRPC event server configuration
-		grpcEventServerCfg := c.Analytics.GRPCEventServerCfg
-
-		// Validate connection mode
-		switch grpcEventServerCfg.Mode {
-		case "uds", "":
-			// UDS mode (default) - port is unused for Envoy connection
-		case "tcp":
-			// TCP mode - validate port (host is derived from policy_engine.host)
-			if grpcEventServerCfg.Port <= 0 || grpcEventServerCfg.Port > 65535 {
-				return fmt.Errorf("analytics.grpc_event_server.port must be between 1 and 65535 when mode is tcp, got %d", grpcEventServerCfg.Port)
-			}
-		default:
-			return fmt.Errorf("analytics.grpc_event_server.mode must be 'uds' or 'tcp', got: %s", grpcEventServerCfg.Mode)
-		}
-
-		// Validate buffer and timeout settings
-		if grpcEventServerCfg.BufferFlushInterval <= 0 || grpcEventServerCfg.BufferSizeBytes <= 0 || grpcEventServerCfg.GRPCRequestTimeout <= 0 {
-			return fmt.Errorf(
-				"invalid gRPC event server configuration: bufferFlushInterval=%d, bufferSizeBytes=%d, grpcRequestTimeout=%d (all must be > 0)",
-				grpcEventServerCfg.BufferFlushInterval,
-				grpcEventServerCfg.BufferSizeBytes,
-				grpcEventServerCfg.GRPCRequestTimeout,
-			)
-		}
-
-		// Validate server port
-		if grpcEventServerCfg.ServerPort <= 0 || grpcEventServerCfg.ServerPort > 65535 {
-			return fmt.Errorf("analytics.grpc_event_server.server_port must be between 1 and 65535, got %d", grpcEventServerCfg.ServerPort)
+	if c.IsCollectorEnabled() {
+		if err := validateGRPCEventServerConfig(c.Collector.Server); err != nil {
+			return err
 		}
 	}
+	return nil
+}
+
+// normalizeIgnorePathPrefixes trims whitespace and drops empty entries from the
+// configured ignore-path prefixes. An unfiltered empty string would match every
+// path via strings.HasPrefix, silently blackholing all collector output, so
+// empty entries (including ones that are empty only after trimming) are
+// dropped rather than passed through. Returns nil if nothing survives.
+func normalizeIgnorePathPrefixes(prefixes []string) []string {
+	if len(prefixes) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(prefixes))
+	for _, p := range prefixes {
+		if trimmed := strings.TrimSpace(p); trimmed != "" {
+			out = append(out, trimmed)
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+// IsCollectorEnabled reports whether the collector should run. The collector is
+// implicit: it is active whenever any consumer of the collected data is enabled
+// (analytics or stdout traffic logging), and off otherwise. When active, the
+// controller injects the analytics system policy and configures Envoy's ALS sink.
+func (c *Config) IsCollectorEnabled() bool {
+	return collector.IsEnabled(c.Analytics.Enabled, c.TrafficLogging.Enabled)
+}
+
+// migrateDeprecatedAnalyticsTransport maps a deprecated [analytics].grpc_event_server
+// override onto the collector when the collector's transport tuning is still at its
+// default, so existing configs keep working after the transport moved to [collector].
+// See collector.MigrateDeprecatedTransport for the shared (with the policy-engine)
+// migration logic and its guarding-while-analytics-enabled rationale.
+func (c *Config) migrateDeprecatedAnalyticsTransport() {
+	collector.MigrateDeprecatedTransport(
+		c.Analytics.Enabled,
+		c.Analytics.GRPCEventServerCfg,
+		&c.Collector.Server,
+		defaultGRPCEventServerConfig(),
+		"analytics.grpc_event_server",
+	)
+}
+
+// migrateDeprecatedAnalyticsCapture maps the deprecated analytics.allow_payloads /
+// analytics.send_request_body / analytics.send_response_body onto the collector's
+// body-capture flags, so existing configs keep working after capture settings
+// moved under [collector]. See collector.MigrateDeprecatedCapture for the shared
+// (with the policy-engine) migration logic and its guarding-while-analytics-
+// enabled rationale.
+func (c *Config) migrateDeprecatedAnalyticsCapture() {
+	collector.MigrateDeprecatedCapture(
+		c.Analytics.Enabled,
+		collector.CaptureFlags{
+			SendRequestBody:  c.Analytics.SendRequestBody,
+			SendResponseBody: c.Analytics.SendResponseBody,
+			AllowPayloads:    c.Analytics.AllowPayloads,
+		},
+		&c.Collector.RequestBody,
+		&c.Collector.ResponseBody,
+	)
+}
+
+// validateGRPCEventServerConfig validates the Envoy→policy-engine ALS transport tuning.
+// The transport port is normally the fixed, non-configurable collector.ServerPort
+// constant (see collector.ServerPort); cfg.Port is a deprecated override honored only
+// for backward compatibility with configs that already set it (see its doc comment).
+func validateGRPCEventServerConfig(cfg GRPCEventServerConfig) error {
+	// Validate connection mode
+	switch cfg.Mode {
+	case "uds", "tcp", "":
+	default:
+		return fmt.Errorf("collector.server.mode must be 'uds' or 'tcp', got: %s", cfg.Mode)
+	}
+
+	if cfg.Port != 0 {
+		slog.Warn("collector.server.port is deprecated and no longer documented; the ALS port is fixed at " +
+			strconv.Itoa(collector.ServerPort) + " by default. Honoring the configured override for backward " +
+			"compatibility — ensure the policy-engine's collector.server.server_port matches, or the two sides will fail to connect.")
+		if cfg.Port < 0 || cfg.Port > 65535 {
+			return fmt.Errorf("collector.server.port must be between 1 and 65535, got %d", cfg.Port)
+		}
+	}
+
+	// Validate buffer and timeout settings
+	if cfg.BufferFlushInterval <= 0 || cfg.BufferSizeBytes <= 0 || cfg.GRPCRequestTimeout <= 0 {
+		return fmt.Errorf(
+			"invalid gRPC event server configuration: bufferFlushInterval=%d, bufferSizeBytes=%d, grpcRequestTimeout=%d (all must be > 0)",
+			cfg.BufferFlushInterval,
+			cfg.BufferSizeBytes,
+			cfg.GRPCRequestTimeout,
+		)
+	}
+
 	return nil
 }
 

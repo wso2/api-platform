@@ -27,6 +27,7 @@ import (
 	"testing"
 	"time"
 
+	accesslog "github.com/envoyproxy/go-control-plane/envoy/config/accesslog/v3"
 	cluster "github.com/envoyproxy/go-control-plane/envoy/config/cluster/v3"
 	core "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	listener "github.com/envoyproxy/go-control-plane/envoy/config/listener/v3"
@@ -1488,7 +1489,7 @@ func TestTranslator_CreateALSCluster(t *testing.T) {
 		routerCfg := testRouterConfig()
 		cfg := testConfig()
 		cfg.Analytics.Enabled = true
-		cfg.Analytics.GRPCEventServerCfg = config.GRPCEventServerConfig{
+		cfg.Collector.Server = config.GRPCEventServerConfig{
 			Mode:                "uds",
 			BufferFlushInterval: 1000000000,
 			BufferSizeBytes:     16384,
@@ -1515,7 +1516,7 @@ func TestTranslator_CreateALSCluster(t *testing.T) {
 		routerCfg := testRouterConfig()
 		cfg := testConfig()
 		cfg.Analytics.Enabled = true
-		cfg.Analytics.GRPCEventServerCfg = config.GRPCEventServerConfig{
+		cfg.Collector.Server = config.GRPCEventServerConfig{
 			Mode:                "",
 			BufferFlushInterval: 1000000000,
 			BufferSizeBytes:     16384,
@@ -1541,9 +1542,8 @@ func TestTranslator_CreateALSCluster(t *testing.T) {
 		routerCfg := testRouterConfig()
 		cfg := testConfig()
 		cfg.Analytics.Enabled = true
-		cfg.Analytics.GRPCEventServerCfg = config.GRPCEventServerConfig{
+		cfg.Collector.Server = config.GRPCEventServerConfig{
 			Mode:                "tcp",
-			Port:                18090,
 			BufferFlushInterval: 1000000000,
 			BufferSizeBytes:     16384,
 			GRPCRequestTimeout:  20000000000,
@@ -1567,15 +1567,37 @@ func TestTranslator_CreateALSCluster(t *testing.T) {
 		assert.Equal(t, "policy-engine", socketAddr.Address)
 		assert.Equal(t, uint32(18090), socketAddr.GetPortValue())
 	})
+
+	t.Run("TCP mode honors deprecated port override (backward compat)", func(t *testing.T) {
+		routerCfg := testRouterConfig()
+		cfg := testConfig()
+		cfg.Analytics.Enabled = true
+		cfg.Collector.Server = config.GRPCEventServerConfig{
+			Mode:                "tcp",
+			Port:                9099,
+			BufferFlushInterval: 1000000000,
+			BufferSizeBytes:     16384,
+			GRPCRequestTimeout:  20000000000,
+		}
+		cfg.Router.PolicyEngine.Host = "policy-engine"
+		translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+		c := translator.createALSCluster()
+		assert.NotNil(t, c)
+
+		lbEndpoint := c.LoadAssignment.Endpoints[0].LbEndpoints[0]
+		socketAddr := lbEndpoint.GetEndpoint().Address.GetSocketAddress()
+		assert.NotNil(t, socketAddr)
+		assert.Equal(t, uint32(9099), socketAddr.GetPortValue())
+	})
 }
 
 func TestTranslator_CreateGRPCAccessLog(t *testing.T) {
 	logger := createTestLogger()
 	routerCfg := testRouterConfig()
 	cfg := testConfig()
-	cfg.Analytics.GRPCEventServerCfg = config.GRPCEventServerConfig{
+	cfg.Collector.Server = config.GRPCEventServerConfig{
 		Mode:                "tcp",
-		Port:                18090,
 		BufferFlushInterval: 1000,
 		BufferSizeBytes:     16384,
 		GRPCRequestTimeout:  5000,
@@ -1585,19 +1607,37 @@ func TestTranslator_CreateGRPCAccessLog(t *testing.T) {
 	accessLog, err := translator.createGRPCAccessLog()
 	assert.NoError(t, err)
 	assert.NotNil(t, accessLog)
+	assert.Nil(t, accessLog.Filter, "no ignore_path_prefixes configured -> no filter")
+}
+
+func TestTranslator_CreateGRPCAccessLog_WithIgnorePathPrefixes(t *testing.T) {
+	logger := createTestLogger()
+	routerCfg := testRouterConfig()
+	cfg := testConfig()
+	cfg.Collector.Server = config.GRPCEventServerConfig{
+		Mode:                "tcp",
+		BufferFlushInterval: 1000,
+		BufferSizeBytes:     16384,
+		GRPCRequestTimeout:  5000,
+	}
+	cfg.Collector.IgnorePathPrefixes = []string{"/health"}
+	translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+	accessLog, err := translator.createGRPCAccessLog()
+	assert.NoError(t, err)
+	assert.NotNil(t, accessLog)
+	assert.NotNil(t, accessLog.Filter, "ignore_path_prefixes configured -> filter attached")
 }
 
 func TestTranslator_CreateGRPCAccessLog_BufferSizeOverflow(t *testing.T) {
 	logger := createTestLogger()
 	routerCfg := testRouterConfig()
 	cfg := testConfig()
-	cfg.Analytics.GRPCEventServerCfg = config.GRPCEventServerConfig{
+	cfg.Collector.Server = config.GRPCEventServerConfig{
 		Mode:                "tcp",
-		Port:                18090,
 		BufferFlushInterval: 1000,
 		BufferSizeBytes:     math.MaxInt,
 		GRPCRequestTimeout:  5000,
-		ServerPort:          18090,
 	}
 	translator := NewTranslator(logger, routerCfg, nil, cfg)
 
@@ -1605,6 +1645,142 @@ func TestTranslator_CreateGRPCAccessLog_BufferSizeOverflow(t *testing.T) {
 	assert.Error(t, err)
 	assert.Nil(t, accessLog)
 	assert.Contains(t, err.Error(), "buffer_size_bytes")
+}
+
+// evalAccessLogFilter walks a constructed AccessLogFilter tree and evaluates it
+// against a synthetic header set, mirroring how Envoy itself would evaluate the
+// filter. This proves actual matching behavior, not just proto shape.
+func evalAccessLogFilter(t *testing.T, filter *accesslog.AccessLogFilter, headers map[string]string) bool {
+	t.Helper()
+	switch fs := filter.FilterSpecifier.(type) {
+	case *accesslog.AccessLogFilter_HeaderFilter:
+		return evalHeaderMatcher(t, fs.HeaderFilter.Header, headers)
+	case *accesslog.AccessLogFilter_AndFilter:
+		for _, f := range fs.AndFilter.Filters {
+			if !evalAccessLogFilter(t, f, headers) {
+				return false
+			}
+		}
+		return true
+	case *accesslog.AccessLogFilter_OrFilter:
+		for _, f := range fs.OrFilter.Filters {
+			if evalAccessLogFilter(t, f, headers) {
+				return true
+			}
+		}
+		return false
+	default:
+		t.Fatalf("evalAccessLogFilter: unsupported filter specifier %T", fs)
+		return false
+	}
+}
+
+func evalHeaderMatcher(t *testing.T, m *route.HeaderMatcher, headers map[string]string) bool {
+	t.Helper()
+	val, present := headers[m.Name]
+	var result bool
+	switch spec := m.HeaderMatchSpecifier.(type) {
+	case *route.HeaderMatcher_PresentMatch:
+		result = present == spec.PresentMatch
+	case *route.HeaderMatcher_PrefixMatch:
+		result = present && strings.HasPrefix(val, spec.PrefixMatch)
+	default:
+		t.Fatalf("evalHeaderMatcher: unsupported header match specifier %T", spec)
+	}
+	if m.InvertMatch {
+		result = !result
+	}
+	return result
+}
+
+func TestBuildIgnorePathsAccessLogFilter(t *testing.T) {
+	t.Run("nil prefixes -> nil filter", func(t *testing.T) {
+		assert.Nil(t, buildIgnorePathsAccessLogFilter(nil))
+	})
+
+	t.Run("empty prefixes -> nil filter", func(t *testing.T) {
+		assert.Nil(t, buildIgnorePathsAccessLogFilter([]string{}))
+	})
+
+	t.Run("whitespace-only entries -> nil filter", func(t *testing.T) {
+		assert.Nil(t, buildIgnorePathsAccessLogFilter([]string{"", "   "}))
+	})
+
+	t.Run("single prefix -> unwrapped per-prefix filter", func(t *testing.T) {
+		filter := buildIgnorePathsAccessLogFilter([]string{"/health"})
+		require.NotNil(t, filter)
+		_, isAnd := filter.FilterSpecifier.(*accesslog.AccessLogFilter_AndFilter)
+		assert.False(t, isAnd, "single prefix should not be wrapped in an outer AndFilter")
+
+		assert.False(t, evalAccessLogFilter(t, filter, map[string]string{
+			"x-envoy-original-path": "/health/live",
+		}), "matching original path -> suppressed")
+		assert.True(t, evalAccessLogFilter(t, filter, map[string]string{
+			"x-envoy-original-path": "/orders",
+		}), "non-matching original path -> logged")
+		assert.True(t, evalAccessLogFilter(t, filter, map[string]string{
+			":path": "/health/live",
+		}), "no original-path header -> logged regardless of :path")
+	})
+
+	t.Run("multiple prefixes -> outer AndFilter", func(t *testing.T) {
+		filter := buildIgnorePathsAccessLogFilter([]string{"/health", "/metrics", ""})
+		require.NotNil(t, filter)
+		andFilter, isAnd := filter.FilterSpecifier.(*accesslog.AccessLogFilter_AndFilter)
+		require.True(t, isAnd, "multiple prefixes should be wrapped in an outer AndFilter")
+		assert.Len(t, andFilter.AndFilter.Filters, 2, "blank entry must be dropped")
+
+		assert.False(t, evalAccessLogFilter(t, filter, map[string]string{
+			"x-envoy-original-path": "/health/live",
+		}), "matches first prefix -> suppressed")
+		assert.False(t, evalAccessLogFilter(t, filter, map[string]string{
+			"x-envoy-original-path": "/metrics/scrape",
+		}), "matches second prefix -> suppressed")
+		assert.True(t, evalAccessLogFilter(t, filter, map[string]string{
+			"x-envoy-original-path": "/orders",
+		}), "matches neither prefix -> logged")
+	})
+}
+
+func TestNotEffectivelyMatchesPrefix(t *testing.T) {
+	tests := []struct {
+		name    string
+		headers map[string]string
+		wantLog bool
+	}{
+		{
+			name:    "original present and has prefix -> suppress even if :path (rewritten backend path) differs",
+			headers: map[string]string{envoyOriginalPathHeader: "/health/live", ":path": "/some/rewritten/backend/path"},
+			wantLog: false,
+		},
+		{
+			name:    "original present and does not have prefix -> log, original is authoritative",
+			headers: map[string]string{envoyOriginalPathHeader: "/orders", ":path": "/health"},
+			wantLog: true,
+		},
+		{
+			name:    "original absent, :path happens to have prefix -> log anyway, no :path fallback",
+			headers: map[string]string{":path": "/health/live"},
+			wantLog: true,
+		},
+		{
+			name:    "original absent, :path does not have prefix -> log",
+			headers: map[string]string{":path": "/orders"},
+			wantLog: true,
+		},
+		{
+			name:    "no headers at all -> log",
+			headers: map[string]string{},
+			wantLog: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			filter := notEffectivelyMatchesPrefix("/health")
+			assert.Equal(t, tt.wantLog, evalAccessLogFilter(t, filter, tt.headers))
+		})
+	}
 }
 
 func TestTranslator_CreateDynamicForwardProxyCluster(t *testing.T) {

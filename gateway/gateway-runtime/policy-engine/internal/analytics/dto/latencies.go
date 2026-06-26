@@ -14,16 +14,40 @@
  *  limitations under the License.
  *
  */
- 
+
 package dto
 
-// Latencies represents latency attributes in an analytics event.
+// Latencies represents latency attributes in an analytics event. All values are
+// in milliseconds: this shape feeds Moesif, which treats them as milliseconds.
+// Finer-grained gateway/backend timings for the traffic log live in the separate
+// TrafficLogLatencies (microseconds) so the units Moesif depends on never change.
 type Latencies struct {
 	ResponseLatency          int64 `json:"responseLatency"`
 	BackendLatency           int64 `json:"backendLatency"`
 	RequestMediationLatency  int64 `json:"requestMediationLatency"`
 	ResponseMediationLatency int64 `json:"responseMediationLatency"`
 	Duration                 int64 `json:"duration"`
+}
+
+// TrafficLogLatencies holds gateway/backend timings for a traffic-log event, in
+// microseconds. It is intentionally separate from Latencies (which is shaped for
+// Moesif and expressed in milliseconds) so the traffic log can carry
+// finer-grained timings without changing the units Moesif depends on. The
+// timepoint labels (DS_RX_BEG, US_TX_BEG, …) refer to Envoy's request/response
+// timeline as reported through the ALS CommonProperties.
+type TrafficLogLatencies struct {
+	// DurationUs is the total request duration: downstream request received →
+	// downstream response sent (DS_RX_BEG → DS_TX_END).
+	DurationUs int64 `json:"durationUs"`
+	// RequestMediationLatencyUs is the gateway request overhead: downstream request
+	// fully received → first byte sent upstream (DS_RX_END → US_TX_BEG).
+	RequestMediationLatencyUs int64 `json:"requestMediationLatencyUs"`
+	// ResponseMediationLatencyUs is the gateway response overhead: first upstream
+	// response byte → first downstream response byte (US_RX_BEG → DS_TX_BEG).
+	ResponseMediationLatencyUs int64 `json:"responseMediationLatencyUs"`
+	// BackendLatencyUs is the backend TTFB: upstream request fully sent →
+	// first upstream response byte (US_TX_END → US_RX_BEG).
+	BackendLatencyUs int64 `json:"backendLatencyUs"`
 }
 
 // GetResponseLatency returns the response latency.

@@ -152,6 +152,14 @@ func (a *AnalyticsPolicy) OnRequestHeaders(_ context.Context, reqCtx *policy.Req
 		}
 	}
 
+	// Capture all request headers when enabled, so they flow into analytics events
+	// (and the stdout/log publisher) without attaching a per-API header policy.
+	if sendReqHeaders, _ := getHeaderFlags(params); sendReqHeaders && reqCtx.Headers != nil {
+		if headers := serializeHeaders(reqCtx.Headers); headers != "" {
+			analyticsMetadata["request_headers"] = headers
+		}
+	}
+
 	if len(analyticsMetadata) > 0 {
 		return policy.UpstreamRequestHeaderModifications{AnalyticsMetadata: analyticsMetadata}
 	}
@@ -204,6 +212,13 @@ func (a *AnalyticsPolicy) OnResponseHeaders(_ context.Context, respCtx *policy.R
 	if respCtx.SharedContext.APIKind == policy.APIKindMCP && respCtx.ResponseHeaders != nil {
 		if sessionIDs := respCtx.ResponseHeaders.Get("mcp-session-id"); len(sessionIDs) > 0 {
 			analyticsMetadata["mcp_session_id"] = sessionIDs[0]
+		}
+	}
+
+	// Capture all response headers when enabled.
+	if _, sendRespHeaders := getHeaderFlags(params); sendRespHeaders && respCtx.ResponseHeaders != nil {
+		if headers := serializeHeaders(respCtx.ResponseHeaders); headers != "" {
+			analyticsMetadata["response_headers"] = headers
 		}
 	}
 
@@ -890,7 +905,7 @@ func convertToInt64(value interface{}) (int64, error) {
 }
 
 // getPayloadFlags derives per-direction payload capture flags from policy parameters.
-// New parameters send_request_body and send_response_body take precedence. When neither
+// New parameters request_body and response_body take precedence. When neither
 // is provided, the deprecated allow_payloads flag is used as a fallback, mapping to
 // both directions for backward compatibility.
 func getPayloadFlags(params map[string]interface{}) (sendRequestBody, sendResponseBody bool) {
@@ -898,25 +913,13 @@ func getPayloadFlags(params map[string]interface{}) (sendRequestBody, sendRespon
 		return false, false
 	}
 
-	parseBoolLike := func(v interface{}) bool {
-		switch val := v.(type) {
-		case bool:
-			return val
-		case string:
-			lower := strings.ToLower(strings.TrimSpace(val))
-			return lower == "true" || lower == "1" || lower == "yes"
-		default:
-			return false
-		}
-	}
-
 	hasReq, hasResp := false, false
 
-	if raw, ok := params["send_request_body"]; ok {
+	if raw, ok := params["request_body"]; ok {
 		sendRequestBody = parseBoolLike(raw)
 		hasReq = true
 	}
-	if raw, ok := params["send_response_body"]; ok {
+	if raw, ok := params["response_body"]; ok {
 		sendResponseBody = parseBoolLike(raw)
 		hasResp = true
 	}
@@ -935,6 +938,55 @@ func getPayloadFlags(params map[string]interface{}) (sendRequestBody, sendRespon
 	}
 
 	return false, false
+}
+
+// parseBoolLike interprets bool and common string ("true"/"1"/"yes") representations
+// of a boolean policy parameter.
+func parseBoolLike(v interface{}) bool {
+	switch val := v.(type) {
+	case bool:
+		return val
+	case string:
+		lower := strings.ToLower(strings.TrimSpace(val))
+		return lower == "true" || lower == "1" || lower == "yes"
+	default:
+		return false
+	}
+}
+
+// getHeaderFlags derives per-direction header capture flags from policy parameters.
+func getHeaderFlags(params map[string]interface{}) (sendRequestHeaders, sendResponseHeaders bool) {
+	if params == nil {
+		return false, false
+	}
+	if raw, ok := params["request_headers"]; ok {
+		sendRequestHeaders = parseBoolLike(raw)
+	}
+	if raw, ok := params["response_headers"]; ok {
+		sendResponseHeaders = parseBoolLike(raw)
+	}
+	return sendRequestHeaders, sendResponseHeaders
+}
+
+// serializeHeaders renders all headers as a JSON object string ({"name":"v1, v2"}),
+// matching the request_headers/response_headers format the analytics engine reads.
+// Returns "" when there are no headers. Sensitive values are not masked here; the
+// stdout/log publisher applies masked_headers on output.
+func serializeHeaders(headers *policy.Headers) string {
+	all := headers.GetAll()
+	if len(all) == 0 {
+		return ""
+	}
+	flat := make(map[string]string, len(all))
+	for name, values := range all {
+		flat[name] = strings.Join(values, ", ")
+	}
+	data, err := json.Marshal(flat)
+	if err != nil {
+		slog.Error("Failed to marshal headers for analytics", "error", err)
+		return ""
+	}
+	return string(data)
 }
 
 // Helper to extract string values via JSONPath
