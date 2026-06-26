@@ -47,7 +47,7 @@ Feature: Timeouts
             timeout:
               connect: 6000ms
             upstreams:
-              - url: 10.255.255.1:8080
+              - url: http://10.255.255.1:8080
         upstream:
           main:
             ref: my-timeout-upstream
@@ -58,6 +58,7 @@ Feature: Timeouts
     Then the response should be successful
     And the response should be valid JSON
     And the JSON response field "status" should be "success"
+    And I wait for policy snapshot sync
     And I record the current time as "request_start"
     When I send a GET request to "http://localhost:8080/timeout-api/v1.0/"
     Then the response status code should be 503
@@ -93,6 +94,7 @@ Feature: Timeouts
     Then the response should be successful
     And the response should be valid JSON
     And the JSON response field "status" should be "success"
+    And I wait for policy snapshot sync
     And I record the current time as "request_start"
     When I send a GET request to "http://localhost:8080/timeout-global/v1.0/"
     Then the response status code should be 503

@@ -78,12 +78,15 @@ Feature: Backend route timeouts for LLM providers and proxies via the resilience
         accessControl:
           mode: deny_all
           exceptions:
+            - path: /get
+              methods: [GET]
             - path: /delay/5
               methods: [GET]
         resilience:
           timeout: 2s
       """
     Then the response status code should be 201
+    And I wait for the endpoint "http://localhost:8080/llm-timeout-deny/get" to be ready
     And I record the current time as "request_start"
     When I send a GET request to "http://localhost:8080/llm-timeout-deny/delay/5"
     Then the response status code should be 504
