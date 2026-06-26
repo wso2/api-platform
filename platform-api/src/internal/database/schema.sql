@@ -123,8 +123,8 @@ CREATE TABLE IF NOT EXISTS subscription_plans (
 -- Subscription plan limits table (throttling limits for a plan).
 -- Designed for MULTIPLE limits per plan (e.g. burst + sustained request counts,
 -- bandwidth quotas, AI token quotas). limit_type selects the dimension
--- (REQUEST_COUNT, BANDWIDTH, TOTAL_TOKEN_COUNT, ...); the quota window is
--- (time_amount x time_unit); data_unit (KB/MB/GB) is only set for BANDWIDTH.
+-- (REQUEST_COUNT, BANDWIDTH, TOTAL_TOKEN_COUNT, ...). The quota window is
+-- (time_amount x time_unit). data_unit (KB/MB/GB) is only set for BANDWIDTH.
 -- NOTE: the platform-api, REST APIs, gateway events and gateway-controller
 -- currently read/write only a SINGLE REQUEST_COUNT limit per plan. This needs
 -- to be improved to surface and propagate all limit rows.
