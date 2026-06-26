@@ -304,10 +304,15 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 		slogger,
 	)
 
-	// Initialize secret vault and service
-	secretKey, keyErr := utils.DeriveEncryptionKey(cfg.Database.SecretEncryptionKey)
+	// Initialize secret vault and service.
+	// Key precedence: PLATFORM_SECRET_ENCRYPTION_KEY → DATABASE_ENCRYPTION_KEY → JWT secret hash.
+	secretKeyStr := cfg.Database.SecretEncryptionKey
+	if secretKeyStr == "" {
+		secretKeyStr = dbEncryptionKey
+	}
+	secretKey, keyErr := utils.DeriveEncryptionKey(secretKeyStr)
 	if keyErr != nil {
-		return nil, fmt.Errorf("invalid PLATFORM_SECRET_ENCRYPTION_KEY: %w", keyErr)
+		return nil, fmt.Errorf("invalid secret encryption key: %w", keyErr)
 	}
 	secretVault, vaultErr := internalvault.NewInHouseVault(secretKey)
 	if vaultErr != nil {
