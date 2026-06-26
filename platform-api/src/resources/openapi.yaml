@@ -336,7 +336,7 @@ paths:
       description: |
         Deletes a specific project by its UUID. Access is validated against the organization 
         in the JWT token.
-        ⚠️ This operation is irreversible. The resource cannot be recovered after deletion.
+        This operation is irreversible. The resource cannot be recovered after deletion.
       operationId: DeleteProject
       security:
         - OAuth2Security:
@@ -677,7 +677,7 @@ paths:
       description: |
         Deletes a specific API by its UUID. Access is validated against the organization 
         in the JWT token.
-        ⚠️ This operation is irreversible. The resource cannot be recovered after deletion.
+        This operation is irreversible. The resource cannot be recovered after deletion.
       operationId: DeleteRESTAPI
       security:
         - OAuth2Security:
@@ -891,7 +891,7 @@ paths:
         Revokes an API key for the specified API. The revocation will be broadcasted
         to all gateways where the API is deployed. This endpoint allows external platforms
         to revoke API keys on hybrid gateways.
-        ⚠️ This operation is irreversible. The resource cannot be recovered after deletion.
+        This operation is irreversible. The resource cannot be recovered after deletion.
       operationId: RevokeAPIKey
       security:
         - OAuth2Security:
@@ -1220,7 +1220,7 @@ paths:
       description: |
         Deletes a deployment artifact. Deletion is only allowed when the deployment is in UNDEPLOYED status.
         Access is validated against the organization in the JWT token.
-        ⚠️ This operation is irreversible. The resource cannot be recovered after deletion.
+        This operation is irreversible. The resource cannot be recovered after deletion.
       operationId: DeleteDeployment
       security:
         - OAuth2Security:
@@ -1551,7 +1551,7 @@ paths:
         Deletes a WebSub API and all its associated resources, including subscriptions and secrets.
         All active gateway deployments must be undeployed first (call UndeployWebSubAPI for each).
         Requires scope ap:websub_api:delete or ap:websub_api:manage.
-        ⚠️ This operation is irreversible. The resource cannot be recovered after deletion.
+        This operation is irreversible. The resource cannot be recovered after deletion.
   /websub-apis/{apiId}/api-keys:
     parameters:
       - name: apiId
@@ -1658,7 +1658,7 @@ paths:
       description: |
         Deletes an API key by name from the specified WebSub API, revoking it immediately on all
         active gateways. Requires scope ap:websub_api:api_key:delete or ap:websub_api:manage.
-        ⚠️ This operation is irreversible. The resource cannot be recovered after deletion.
+        This operation is irreversible. The resource cannot be recovered after deletion.
       operationId: DeleteWebSubAPIKey
       security:
         - OAuth2Security:
@@ -1959,7 +1959,7 @@ paths:
         Deletes a WebSub API deployment record. The API must first be undeployed from the target
         gateway (call UndeployWebSubAPI) before the record can be removed. Requires scope
         ap:websub_api:deployment:delete or ap:websub_api:manage.
-        ⚠️ This operation is irreversible. The resource cannot be recovered after deletion.
+        This operation is irreversible. The resource cannot be recovered after deletion.
   /websub-apis/{apiId}/deployments/{deploymentId}/undeploy:
     parameters:
       - name: apiId
@@ -2256,7 +2256,7 @@ paths:
         Deletes a WebBroker API and all its associated resources. All active gateway deployments
         must be undeployed first (call UndeployWebBrokerAPI for each). Requires scope
         ap:webbroker_api:delete or ap:webbroker_api:manage.
-        ⚠️ This operation is irreversible. The resource cannot be recovered after deletion.
+        This operation is irreversible. The resource cannot be recovered after deletion.
   /webbroker-apis/{apiId}/api-keys:
     parameters:
       - name: apiId
@@ -2363,7 +2363,7 @@ paths:
       description: |
         Deletes an API key by name from the specified WebBroker API, revoking it immediately on all
         active gateways. Requires scope ap:webbroker_api:api_key:delete or ap:webbroker_api:manage.
-        ⚠️ This operation is irreversible. The resource cannot be recovered after deletion.
+        This operation is irreversible. The resource cannot be recovered after deletion.
       operationId: DeleteWebBrokerAPIKey
       security:
         - OAuth2Security:
@@ -2666,7 +2666,7 @@ paths:
         Deletes a WebBroker API deployment record. The API must first be undeployed from the target
         gateway (call UndeployWebBrokerAPI) before the record can be removed. Requires scope
         ap:webbroker_api:deployment:delete or ap:webbroker_api:manage.
-        ⚠️ This operation is irreversible. The resource cannot be recovered after deletion.
+        This operation is irreversible. The resource cannot be recovered after deletion.
   /webbroker-apis/{apiId}/deployments/{deploymentId}/undeploy:
     parameters:
       - name: apiId
@@ -2927,7 +2927,7 @@ paths:
       summary: Delete an LLM provider template
       description: |
         Remove an LLM provider template.
-        ⚠️ This operation is irreversible. The resource cannot be recovered after deletion.
+        This operation is irreversible. The resource cannot be recovered after deletion.
       operationId: DeleteLLMProviderTemplate
       security:
         - OAuth2Security:
@@ -3299,7 +3299,7 @@ paths:
       description: |
         Deletes a deployment artifact. Deletion is only allowed when the deployment is in UNDEPLOYED status.
         Access is validated against the organization in the JWT token.
-        ⚠️ This operation is irreversible. The resource cannot be recovered after deletion.
+        This operation is irreversible. The resource cannot be recovered after deletion.
       operationId: DeleteLLMProviderDeployment
       security:
         - OAuth2Security:
@@ -3614,7 +3614,7 @@ paths:
       summary: Delete an API key for an LLM provider
       description: |
         Deletes the key from the database and broadcasts a revoke event to the allowed gateways.
-        ⚠️ This operation is irreversible. The resource cannot be recovered after deletion.
+        This operation is irreversible. The resource cannot be recovered after deletion.
       operationId: DeleteLLMProviderAPIKey
       security:
         - OAuth2Security:
@@ -3953,7 +3953,7 @@ paths:
       description: |
         Deletes a deployment artifact. Deletion is only allowed when the deployment is in UNDEPLOYED status.
         Access is validated against the organization in the JWT token.
-        ⚠️ This operation is irreversible. The resource cannot be recovered after deletion.
+        This operation is irreversible. The resource cannot be recovered after deletion.
       operationId: DeleteLLMProxyDeployment
       security:
         - OAuth2Security:
@@ -4215,7 +4215,7 @@ paths:
       summary: Delete an API key for an LLM proxy
       description: |
         Deletes the key from the database and broadcasts a revoke event to the allowed gateways.
-        ⚠️ This operation is irreversible. The resource cannot be recovered after deletion.
+        This operation is irreversible. The resource cannot be recovered after deletion.
       operationId: DeleteLLMProxyAPIKey
       security:
         - OAuth2Security:
@@ -4551,7 +4551,7 @@ paths:
       description: |
         Deletes a deployment artifact. Deletion is only allowed when the deployment is in UNDEPLOYED status.
         Access is validated against the organization in the JWT token.
-        ⚠️ This operation is irreversible. The resource cannot be recovered after deletion.
+        This operation is irreversible. The resource cannot be recovered after deletion.
       operationId: DeleteMCPProxyDeployment
       security:
         - OAuth2Security:
@@ -4884,7 +4884,7 @@ paths:
         Permanently deletes a gateway and all associated tokens (CASCADE).
         Deletion is blocked if the gateway has active API deployments or WebSocket connections.
         Access is validated against the organization in the JWT token.
-        ⚠️ This operation is irreversible. The resource cannot be recovered after deletion.
+        This operation is irreversible. The resource cannot be recovered after deletion.
         Blocked if the gateway has active API deployments.
       operationId: DeleteGateway
       security:
@@ -5252,7 +5252,7 @@ paths:
       summary: Delete a specific custom policy version
       description: |
         Deletes a custom policy by its UUID and version. The policy must not be in use by any APIs.
-        ⚠️ This operation is irreversible. The resource cannot be recovered after deletion.
+        This operation is irreversible. The resource cannot be recovered after deletion.
       operationId: DeleteGatewayCustomPolicy
       security:
         - OAuth2Security:
@@ -5435,7 +5435,7 @@ paths:
       summary: Delete application
       description: |
         Deletes an existing application by handle.
-        ⚠️ This operation is irreversible. The resource cannot be recovered after deletion.
+        This operation is irreversible. The resource cannot be recovered after deletion.
       operationId: DeleteApplication
       security:
         - OAuth2Security:
@@ -5552,7 +5552,7 @@ paths:
       summary: Remove application API key mapping
       description: |
         Removes a mapped API key from the specified application.
-        ⚠️ This operation is irreversible. The resource cannot be recovered after deletion.
+        This operation is irreversible. The resource cannot be recovered after deletion.
       operationId: RemoveApplicationAPIKey
       security:
         - OAuth2Security:
@@ -5669,7 +5669,7 @@ paths:
       summary: Remove application association
       description: |
         Removes an association target from the specified application.
-        ⚠️ This operation is irreversible. The resource cannot be recovered after deletion.
+        This operation is irreversible. The resource cannot be recovered after deletion.
       operationId: RemoveApplicationAssociation
       security:
         - OAuth2Security:
@@ -5842,7 +5842,7 @@ paths:
       description: |
         Permanently removes the named HMAC secret. The secret will no longer be accepted for
         signature verification. Requires scope ap:websub_api:secret:delete or ap:websub_api:manage.
-        ⚠️ This operation is irreversible. The resource cannot be recovered after deletion.
+        This operation is irreversible. The resource cannot be recovered after deletion.
       operationId: DeleteWebSubAPISecret
       security:
         - OAuth2Security:
@@ -6072,7 +6072,7 @@ paths:
         Deletes a subscription plan by its UUID. Only plans with no active subscriptions can be
         deleted; attempts to delete a plan with active subscribers return 409 Conflict. Requires
         scope ap:subscription_plan:delete or ap:subscription_plan:manage.
-        ⚠️ This operation is irreversible. The resource cannot be recovered after deletion.
+        This operation is irreversible. The resource cannot be recovered after deletion.
   /subscriptions:
     post:
       summary: Create subscription
@@ -6276,7 +6276,7 @@ paths:
       description: |
         Removes the subscription for the API.
         Query parameter `subscriberId` is required and must match the subscription's subscriber for access control.
-        ⚠️ This operation is irreversible. The resource cannot be recovered after deletion.
+        This operation is irreversible. The resource cannot be recovered after deletion.
       operationId: DeleteSubscription
       security:
         - OAuth2Security:
@@ -6481,7 +6481,7 @@ paths:
         Permanently deletes a DevPortal.
         Deletion is blocked if the DevPortal has active API publications.
         Access is validated against the organization in the JWT token.
-        ⚠️ This operation is irreversible. The resource cannot be recovered after deletion.
+        This operation is irreversible. The resource cannot be recovered after deletion.
       operationId: DeleteDevPortal
       security:
         - OAuth2Security:
