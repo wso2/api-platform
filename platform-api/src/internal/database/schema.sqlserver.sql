@@ -108,15 +108,13 @@ CREATE TABLE dbo.rest_apis (
 );
 
 -- Subscription plans table (organization-scoped rate/billing plans)
+-- Throttling limits now live in subscription_plan_limits (one row per limit).
 IF OBJECT_ID(N'dbo.subscription_plans', N'U') IS NULL
 CREATE TABLE dbo.subscription_plans (
     uuid VARCHAR(40) PRIMARY KEY,
     handle VARCHAR(40) NOT NULL,
     name VARCHAR(255) NOT NULL,
     billing_plan VARCHAR(255),
-    stop_on_quota_reach SMALLINT DEFAULT 1,
-    throttle_limit_count INT,
-    throttle_limit_unit VARCHAR(20),
     expiry_time DATETIME2(7),
     organization_uuid VARCHAR(40) NOT NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
@@ -126,7 +124,44 @@ CREATE TABLE dbo.subscription_plans (
     updated_by VARCHAR(200),
     updated_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
-    UNIQUE(organization_uuid, handle)
+    UNIQUE(organization_uuid, handle),
+    -- Composite unique so child tables (subscription_plan_limits) can reference
+    -- (uuid, organization_uuid) to enforce plan–organization consistency.
+    UNIQUE(organization_uuid, uuid)
+);
+
+-- Subscription plan limits table (throttling limits for a plan).
+-- Designed for MULTIPLE limits per plan (e.g. burst + sustained request counts,
+-- bandwidth quotas, AI token quotas). limit_type selects the dimension
+-- (REQUEST_COUNT, BANDWIDTH, TOTAL_TOKEN_COUNT, ...); the quota window is
+-- (time_amount x time_unit); data_unit (KB/MB/GB) is only set for BANDWIDTH.
+-- NOTE: the platform-api, REST APIs, gateway events and gateway-controller
+-- currently read/write only a SINGLE REQUEST_COUNT limit per plan. This needs
+-- to be improved to surface and propagate all limit rows.
+IF OBJECT_ID(N'dbo.subscription_plan_limits', N'U') IS NULL
+CREATE TABLE dbo.subscription_plan_limits (
+    uuid VARCHAR(40) PRIMARY KEY,
+    subscription_plan_uuid VARCHAR(40) NOT NULL,
+    organization_uuid VARCHAR(40) NOT NULL,
+    limit_type VARCHAR(20) NOT NULL DEFAULT 'REQUEST_COUNT',
+    -- Nullable: a single row is always written per plan to carry stop_on_quota_reach,
+    -- even when the plan defines no quota count. A NULL limit_count means "no quota".
+    limit_count BIGINT,
+    time_amount INT NOT NULL DEFAULT 1,
+    time_unit VARCHAR(20) NOT NULL,
+    data_unit VARCHAR(10),
+    stop_on_quota_reach SMALLINT NOT NULL DEFAULT 1,
+    created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
+    updated_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
+    -- Cleanup happens via the subscription_plan_uuid -> subscription_plans CASCADE edge
+    -- (plans themselves cascade from organizations). The organization and composite
+    -- edges use NO ACTION to avoid the SQL Server multiple-cascade-paths restriction
+    -- (error 1785).
+    FOREIGN KEY (subscription_plan_uuid) REFERENCES subscription_plans(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE NO ACTION,
+    FOREIGN KEY (subscription_plan_uuid, organization_uuid)
+        REFERENCES subscription_plans(uuid, organization_uuid) ON DELETE NO ACTION,
+    UNIQUE(subscription_plan_uuid, limit_type, time_unit)
 );
 
 -- Subscriptions table (application-level subscriptions for any artifact type)
@@ -618,6 +653,10 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_subscription_plans_o
 CREATE INDEX idx_subscription_plans_org    ON dbo.subscription_plans(organization_uuid);
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_subscription_plans_status' AND object_id = OBJECT_ID(N'dbo.subscription_plans'))
 CREATE INDEX idx_subscription_plans_status ON dbo.subscription_plans(status);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_subscription_plan_limits_plan' AND object_id = OBJECT_ID(N'dbo.subscription_plan_limits'))
+CREATE INDEX idx_subscription_plan_limits_plan ON dbo.subscription_plan_limits(subscription_plan_uuid);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_subscription_plan_limits_org' AND object_id = OBJECT_ID(N'dbo.subscription_plan_limits'))
+CREATE INDEX idx_subscription_plan_limits_org  ON dbo.subscription_plan_limits(organization_uuid);
 
 -- EventHub tables for multi-replica HA sync and gateway event propagation.
 -- Keyed columns are bounded NVARCHAR to stay within SQL Server index-key limits.

@@ -220,7 +220,17 @@ const (
 	ThrottleLimitUnitYear   = "YEAR"
 )
 
-// ValidThrottleLimitUnits holds accepted values for subscription_plans.throttle_limit_unit
+// Subscription plan limit type constants (subscription_plan_limits.limit_type).
+// NOTE: only LimitTypeRequestCount is currently produced/consumed; BANDWIDTH and
+// token-based types exist in the schema but are not yet wired through the
+// platform-api, gateway events or gateway-controller.
+const (
+	LimitTypeRequestCount = "REQUEST_COUNT"
+	LimitTypeBandwidth    = "BANDWIDTH"
+	LimitTypeTotalToken   = "TOTAL_TOKEN_COUNT"
+)
+
+// ValidThrottleLimitUnits holds accepted values for subscription_plan_limits.time_unit
 var ValidThrottleLimitUnits = map[string]bool{
 	ThrottleLimitUnitSecond: true,
 	ThrottleLimitUnitMinute: true,
