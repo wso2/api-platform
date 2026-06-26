@@ -25,13 +25,13 @@ const create = async (orgData, t) => {
         devPortalID = orgData.orgHandle.toLowerCase();
     }
     const createOrgData = {
-        ORG_NAME: orgData.orgName,
+        NAME: orgData.orgName,
         BUSINESS_OWNER: orgData.businessOwner,
         BUSINESS_OWNER_CONTACT: orgData.businessOwnerContact,
         BUSINESS_OWNER_EMAIL: orgData.businessOwnerEmail,
-        ORG_HANDLE: devPortalID,
-        ORGANIZATION_IDENTIFIER: orgData.organizationIdentifier,
-        ORG_CONFIG: orgData.orgConfig
+        HANDLE: devPortalID,
+        IDP_IDENTIFIER: orgData.organizationIdentifier,
+        CONFIGURATION: orgData.orgConfig
     };
     try {
         const organization = await Organization.create(createOrgData, { transaction: t });
@@ -49,9 +49,9 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 const get = async (param) => {
     try {
         const conditions = [
-            { ORG_NAME: param },
-            { ORG_HANDLE: typeof param === 'string' ? param.toLowerCase() : param },
-            { ORGANIZATION_IDENTIFIER: param },
+            { NAME: param },
+            { HANDLE: typeof param === 'string' ? param.toLowerCase() : param },
+            { IDP_IDENTIFIER: param },
         ];
         if (typeof param === 'string' && UUID_RE.test(param)) {
             conditions.push({ ID: param });
@@ -76,9 +76,9 @@ const getId = async (orgName) => {
         const organization = await Organization.findOne({
             where: {
                 [Sequelize.Op.or]: [
-                    { ORG_NAME: orgName },
-                    { ORG_HANDLE: typeof orgName === 'string' ? orgName.toLowerCase() : orgName },
-                    { ORGANIZATION_IDENTIFIER: orgName }
+                    { NAME: orgName },
+                    { HANDLE: typeof orgName === 'string' ? orgName.toLowerCase() : orgName },
+                    { IDP_IDENTIFIER: orgName }
                 ]
             }
         });
@@ -117,13 +117,13 @@ const update = async (orgData, t) => {
     try {
         const [updatedRowsCount, updatedOrg] = await Organization.update(
             {
-                ORG_NAME: orgData.orgName,
+                NAME: orgData.orgName,
                 BUSINESS_OWNER: orgData.businessOwner,
                 BUSINESS_OWNER_CONTACT: orgData.businessOwnerContact,
                 BUSINESS_OWNER_EMAIL: orgData.businessOwnerEmail,
-                ORG_HANDLE: devPortalID,
-                ORGANIZATION_IDENTIFIER: orgData.organizationIdentifier,
-                ORG_CONFIG: orgData.orgConfiguration
+                HANDLE: devPortalID,
+                IDP_IDENTIFIER: orgData.organizationIdentifier,
+                CONFIGURATION: orgData.orgConfiguration
             },
             {
                 where: { ID: orgData.orgId },

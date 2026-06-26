@@ -26,7 +26,7 @@ const DPEvent = sequelize.define('DP_EVENT', {
         defaultValue: Sequelize.UUIDV4,
         primaryKey: true
     },
-    EVENT_TYPE: {
+    TYPE: {
         type: DataTypes.STRING(128),
         allowNull: false
     },

@@ -118,7 +118,7 @@ const createOrganization = async (req, res) => {
             const orgId = organization.ID;
             logger.info('Organization created successfully', {
                 orgId,
-                orgName: organization.ORG_NAME
+                orgName: organization.NAME
             });
 
             // Labels: use YAML-defined if provided, else fall back to default
@@ -162,13 +162,13 @@ const createOrganization = async (req, res) => {
 
         const orgCreationResponse = {
             orgId: organization.ID,
-            orgName: organization.ORG_NAME,
+            orgName: organization.NAME,
             businessOwner: organization.BUSINESS_OWNER,
             businessOwnerContact: organization.BUSINESS_OWNER_CONTACT,
             businessOwnerEmail: organization.BUSINESS_OWNER_EMAIL,
-            orgHandle: organization.ORG_HANDLE,
-            organizationIdentifier: organization.ORGANIZATION_IDENTIFIER,
-            orgConfiguration: organization.dataValues.ORG_CONFIG
+            orgHandle: organization.HANDLE,
+            organizationIdentifier: organization.IDP_IDENTIFIER,
+            orgConfiguration: organization.dataValues.CONFIGURATION
         };
         logger.info('Organization creation flow completed successfully', {
             orgId: orgCreationResponse.orgId,
@@ -200,14 +200,14 @@ const getAllOrganizations = async () => {
     if (organizations.length > 0) {
         for (const organization of organizations) {
             orgList.push({
-                orgName: organization.dataValues.ORG_NAME,
+                orgName: organization.dataValues.NAME,
                 orgID: organization.dataValues.ID,
                 businessOwner: organization.dataValues.BUSINESS_OWNER,
                 businessOwnerContact: organization.dataValues.BUSINESS_OWNER_CONTACT,
                 businessOwnerEmail: organization.dataValues.BUSINESS_OWNER_EMAIL,
-                orgHandle: organization.ORG_HANDLE,
-                organizationIdentifier: organization.ORGANIZATION_IDENTIFIER,
-                orgConfiguration: organization.dataValues.ORG_CONFIG
+                orgHandle: organization.HANDLE,
+                organizationIdentifier: organization.IDP_IDENTIFIER,
+                orgConfiguration: organization.dataValues.CONFIGURATION
             });
         }
     }
@@ -258,13 +258,13 @@ const updateOrganization = async (req, res) => {
 
         res.status(200).json({
             orgId: updatedOrg[0].dataValues.ID,
-            orgName: updatedOrg[0].dataValues.ORG_NAME,
+            orgName: updatedOrg[0].dataValues.NAME,
             businessOwner: updatedOrg[0].dataValues.BUSINESS_OWNER,
             businessOwnerContact: updatedOrg[0].dataValues.BUSINESS_OWNER_CONTACT,
             businessOwnerEmail: updatedOrg[0].dataValues.BUSINESS_OWNER_EMAIL,
-            orgHandle: updatedOrg[0].dataValues.ORG_HANDLE,
-            organizationIdentifier: updatedOrg[0].dataValues.ORGANIZATION_IDENTIFIER,
-            orgConfiguration: updatedOrg[0].dataValues.ORG_CONFIG
+            orgHandle: updatedOrg[0].dataValues.HANDLE,
+            organizationIdentifier: updatedOrg[0].dataValues.IDP_IDENTIFIER,
+            orgConfiguration: updatedOrg[0].dataValues.CONFIGURATION
         });
     } catch (error) {
         logger.error('Organization update failed', {

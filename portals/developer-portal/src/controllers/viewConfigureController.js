@@ -52,7 +52,7 @@ const loadViewSettingsPage = async (req, res) => {
         templateContent.loggedOrg = orgName;
         orgID = await orgDao.getId(orgName);
         const orgDetails = await orgDao.get(orgName);
-        templateContent.devportalMode = orgDetails.ORG_CONFIG?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
+        templateContent.devportalMode = orgDetails.CONFIGURATION?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
         templateContent.orgID = orgID;
 
         const viewId = await viewDao.getId(orgID, viewName);

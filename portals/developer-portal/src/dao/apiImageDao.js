@@ -25,8 +25,8 @@ const store = async (apiImages, apiID, t) => {
     try {
         for (var propertyKey in apiImages) {
             apiImagesList.push({
-                IMAGE_TAG: propertyKey,
-                IMAGE_NAME: apiImages[propertyKey],
+                KEY: propertyKey,
+                NAME: apiImages[propertyKey],
                 API_ID: apiID
             })
         }
@@ -48,16 +48,16 @@ const update = async (apiImages, orgID, apiID, t) => {
             let apiImageResponse = await getMetadata(propertyKey, apiImages[propertyKey], orgID, apiID, t);
             if (apiImageResponse == null || apiImageResponse == undefined) {
                 imageCreateList.push({
-                    IMAGE_NAME: apiImages[propertyKey],
+                    NAME: apiImages[propertyKey],
                     API_ID: apiID,
-                    IMAGE_TAG: propertyKey
+                    KEY: propertyKey
                 })
             } else {
                 const apiImageDataUpdate = await APIImageMetadata.update({
-                    IMAGE_NAME: apiImages[propertyKey]
+                    NAME: apiImages[propertyKey]
                 }, {
                     where: {
-                        IMAGE_TAG: propertyKey,
+                        KEY: propertyKey,
                         API_ID: apiID
                     },
                     include: [
@@ -91,7 +91,7 @@ const getMetadata = async (imageTag, imageName, orgID, apiID, t) => {
     try {
         const apiImageData = await APIImageMetadata.findOne({
             where: {
-                IMAGE_TAG: imageTag,
+                KEY: imageTag,
                 API_ID: apiID
             },
             include: [
@@ -117,7 +117,7 @@ const get = async (imageTag, apiID, t) => {
     try {
         const apiImageData = await APIImageMetadata.findOne({
             where: {
-                IMAGE_TAG: imageTag,
+                KEY: imageTag,
                 API_ID: apiID
             },
             transaction: t
@@ -135,7 +135,7 @@ const deleteImage = async (imageTag, apiID, t) => {
     try {
         const apiImageData = await APIImageMetadata.destroy({
             where: {
-                IMAGE_TAG: imageTag,
+                KEY: imageTag,
                 API_ID: apiID
             },
             transaction: t

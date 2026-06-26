@@ -31,13 +31,13 @@ const createOrganization = async (orgData, t) => {
         devPortalID = orgData.orgHandle.toLowerCase();
     }
     const createOrgData = {
-        ORG_NAME: orgData.orgName,
+        NAME: orgData.orgName,
         BUSINESS_OWNER: orgData.businessOwner,
         BUSINESS_OWNER_CONTACT: orgData.businessOwnerContact,
         BUSINESS_OWNER_EMAIL: orgData.businessOwnerEmail,
-        ORG_HANDLE: devPortalID,
-        ORGANIZATION_IDENTIFIER: orgData.organizationIdentifier,
-        ORG_CONFIG: orgData.orgConfig
+        HANDLE: devPortalID,
+        IDP_IDENTIFIER: orgData.organizationIdentifier,
+        CONFIGURATION: orgData.orgConfig
     };
     try {
         const organization = await Organization.create(createOrgData, { transaction: t });
@@ -55,9 +55,9 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 const getOrganization = async (param) => {
     try {
         const conditions = [
-            { ORG_NAME: param },
-            { ORG_HANDLE: typeof param === 'string' ? param.toLowerCase() : param },
-            { ORGANIZATION_IDENTIFIER: param },
+            { NAME: param },
+            { HANDLE: typeof param === 'string' ? param.toLowerCase() : param },
+            { IDP_IDENTIFIER: param },
         ];
         if (typeof param === 'string' && UUID_RE.test(param)) {
             conditions.push({ ID: param });
@@ -82,9 +82,9 @@ const getOrgId = async (orgName) => {
         const organization = await Organization.findOne({
             where: {
                 [Sequelize.Op.or]: [
-                    { ORG_NAME: orgName },
-                    { ORG_HANDLE: typeof orgName === 'string' ? orgName.toLowerCase() : orgName },
-                    { ORGANIZATION_IDENTIFIER: orgName }
+                    { NAME: orgName },
+                    { HANDLE: typeof orgName === 'string' ? orgName.toLowerCase() : orgName },
+                    { IDP_IDENTIFIER: orgName }
                 ]
             }
         });
@@ -123,13 +123,13 @@ const updateOrganization = async (orgData, t) => {
     try {
         const [updatedRowsCount, updatedOrg] = await Organization.update(
             {
-                ORG_NAME: orgData.orgName,
+                NAME: orgData.orgName,
                 BUSINESS_OWNER: orgData.businessOwner,
                 BUSINESS_OWNER_CONTACT: orgData.businessOwnerContact,
                 BUSINESS_OWNER_EMAIL: orgData.businessOwnerEmail,
-                ORG_HANDLE: devPortalID,
-                ORGANIZATION_IDENTIFIER: orgData.organizationIdentifier,
-                ORG_CONFIG: orgData.orgConfiguration
+                HANDLE: devPortalID,
+                IDP_IDENTIFIER: orgData.organizationIdentifier,
+                CONFIGURATION: orgData.orgConfiguration
             },
             {
                 where: { ID: orgData.orgId },
@@ -594,7 +594,7 @@ const createApplicationKeyMapping = async (mappingData, t) => {
             APP_ID: mappingData.appID,
             ...(mappingData.kmID && { KM_ID: mappingData.kmID }),
             ...(mappingData.asClientID && { AS_CLIENT_ID: mappingData.asClientID }),
-            ...(mappingData.keyType && { KEY_TYPE: mappingData.keyType }),
+            ...(mappingData.keyType && { TYPE: mappingData.keyType }),
             ...(mappingData.additionalProperties && { ADDITIONAL_PROPERTIES: mappingData.additionalProperties }),
         }, { transaction: t });
         return appKeyMapping;
@@ -613,7 +613,7 @@ const upsertApplicationKeyMapping = async (mappingData, t) => {
                 ORG_ID: mappingData.orgID,
                 APP_ID: mappingData.appID,
                 ...(mappingData.kmID && { KM_ID: mappingData.kmID }),
-                KEY_TYPE: mappingData.keyType,
+                TYPE: mappingData.keyType,
             },
             ...(t && { transaction: t }),
         });
@@ -629,7 +629,7 @@ const upsertApplicationKeyMapping = async (mappingData, t) => {
             APP_ID: mappingData.appID,
             ...(mappingData.kmID && { KM_ID: mappingData.kmID }),
             AS_CLIENT_ID: mappingData.asClientID,
-            KEY_TYPE: mappingData.keyType,
+            TYPE: mappingData.keyType,
             ADDITIONAL_PROPERTIES: mappingData.additionalProperties,
         }, { transaction: t });
     } catch (error) {

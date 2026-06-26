@@ -26,7 +26,7 @@ const DPEventDelivery = require('../models/eventDelivery');
  */
 async function create({ eventType, orgId, aggregateType, aggregateId, payload }, transaction) {
     return DPEvent.create(
-        { EVENT_TYPE: eventType, ORG_ID: orgId,
+        { TYPE: eventType, ORG_ID: orgId,
           AGGREGATE_TYPE: aggregateType, AGGREGATE_ID: aggregateId, PAYLOAD: payload || {} },
         { transaction }
     );
@@ -180,7 +180,7 @@ async function get(eventId) {
 async function listDeliveriesForSubscriber(orgId, subscriberId, limit = 20) {
     return DPEventDelivery.findAll({
         where: { SUBSCRIBER_ID: subscriberId },
-        include: [{ model: DPEvent, where: { ORG_ID: orgId }, attributes: ['EVENT_TYPE', 'OCCURRED_AT'] }],
+        include: [{ model: DPEvent, where: { ORG_ID: orgId }, attributes: ['TYPE', 'OCCURRED_AT'] }],
         order: [[DPEvent, 'OCCURRED_AT', 'DESC']],
         limit
     });

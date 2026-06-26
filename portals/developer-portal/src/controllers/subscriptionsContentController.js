@@ -36,7 +36,7 @@ const loadSubscriptions = async (req, res, next) => {
         if (!req.user) {
             return res.redirect(`/${orgName}${constants.ROUTE.VIEWS_PATH}${viewName}/login`);
         }
-        const devportalMode = orgDetails.ORG_CONFIG?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
+        const devportalMode = orgDetails.CONFIGURATION?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
 
         let allSubscriptions = [];
         try {
@@ -50,7 +50,7 @@ const loadSubscriptions = async (req, res, next) => {
                 apiHandle: sub.DP_API_METADATA?.HANDLE || '#',
                 planName: sub.DP_SUBSCRIPTION_PLAN?.NAME || '',
                 status: sub.STATUS,
-                subscriptionToken: sub.SUB_TOKEN,
+                subscriptionToken: sub.TOKEN,
                 createdAt: sub.CREATED_AT || null,
             }));
         } catch (err) {

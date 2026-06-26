@@ -62,7 +62,7 @@ const loadAPIs = async (req, res, next) => {
         html = renderTemplate(layoutPath + listingPage + '/page.hbs', layoutPath + 'layout/main.hbs', templateContent, false);
     } else {
         const orgDetails = await orgDao.get(orgName);
-        const devportalMode = orgDetails.ORG_CONFIG?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
+        const devportalMode = orgDetails.CONFIGURATION?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
         try {
             const orgID = orgDetails.ID;
             const searchTerm = req.query.query;
@@ -225,7 +225,7 @@ const loadAPIContent = async (req, res, next) => {
         res.send(html);
     } else {
         const orgDetails = await orgDao.get(orgName);
-        const devportalMode = orgDetails.ORG_CONFIG?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
+        const devportalMode = orgDetails.CONFIGURATION?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
         try {
             const orgDetails = await orgDao.get(orgName);
             const orgID = orgDetails.ID;
@@ -350,8 +350,8 @@ const loadAPIContent = async (req, res, next) => {
                         policyName: sub.DP_SUBSCRIPTION_PLAN?.NAME || '',
                         subscriptionPlanName: sub.DP_SUBSCRIPTION_PLAN?.DISPLAY_NAME || sub.DP_SUBSCRIPTION_PLAN?.NAME || '',
                         status: sub.STATUS,
-                        subscriptionToken: sub.SUB_TOKEN,
-                        maskedToken: sub.SUB_TOKEN ? sub.SUB_TOKEN.slice(0, 4) + '****' + sub.SUB_TOKEN.slice(-4) : '',
+                        subscriptionToken: sub.TOKEN,
+                        maskedToken: sub.TOKEN ? sub.TOKEN.slice(0, 4) + '****' + sub.TOKEN.slice(-4) : '',
                         customerName: null
                     }));
                 } catch (err) {
@@ -507,7 +507,7 @@ const loadDocsPage = async (req, res, next) => {
         html = renderTemplate(layoutPath + 'pages/docs/page.hbs', layoutPath + 'layout/main.hbs', templateContent, false);
     } else {
         const orgDetails = await orgDao.get(orgName);
-        const devportalMode = orgDetails.ORG_CONFIG?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
+        const devportalMode = orgDetails.CONFIGURATION?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
 
         try {
             const orgID = await orgDao.getId(orgName);
@@ -625,7 +625,7 @@ const loadDocument = async (req, res, next) => {
     }
 
     const orgDetails = await orgDao.get(orgName);
-    const devportalMode = orgDetails.ORG_CONFIG?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
+    const devportalMode = orgDetails.CONFIGURATION?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
     let baseDocUrl = '/' + orgName + '/views/' + viewName + "/api/" + apiHandle
     if (req.originalUrl.includes('/mcp')) {
         baseDocUrl = '/' + orgName + '/views/' + viewName + "/mcp/" + apiHandle
@@ -1231,7 +1231,7 @@ const loadLlmsTxt = async (req, res) => {
         }
 
         const templateContent = await buildLlmsTxtTemplateContent(req, orgID, orgName, viewName, {
-            orgName: orgDetails.ORG_NAME,
+            orgName: orgDetails.NAME,
             portalName: llmsConfig.portalName || null,
             portalDescription: llmsConfig.portalDescription || null,
         });
@@ -1256,7 +1256,7 @@ const previewLlmsTxt = async (req, res) => {
         const { portalName, portalDescription } = req.body;
 
         const templateContent = await buildLlmsTxtTemplateContent(req, orgID, orgName, viewName, {
-            orgName: orgDetails.ORG_NAME,
+            orgName: orgDetails.NAME,
             portalName: portalName || null,
             portalDescription: portalDescription || null,
         });

@@ -36,13 +36,13 @@ const getOrganizationDetails = async (orgId) => {
     const organization = await orgDao.get(orgId);
     return {
         orgId: organization.ID,
-        orgName: organization.ORG_NAME,
+        orgName: organization.NAME,
         businessOwner: organization.BUSINESS_OWNER,
         businessOwnerContact: organization.BUSINESS_OWNER_CONTACT,
         businessOwnerEmail: organization.BUSINESS_OWNER_EMAIL,
-        orgHandle: organization.ORG_HANDLE,
-        organizationIdentifier: organization.ORGANIZATION_IDENTIFIER,
-        orgConfiguration: organization.ORG_CONFIG,
+        orgHandle: organization.HANDLE,
+        organizationIdentifier: organization.IDP_IDENTIFIER,
+        orgConfiguration: organization.CONFIGURATION,
     };
 }
 

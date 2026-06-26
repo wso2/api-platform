@@ -179,7 +179,7 @@ const upsertKeyMapping = async (mappingData, t) => {
                 ORG_ID: mappingData.orgID,
                 APP_ID: mappingData.appID,
                 ...(mappingData.kmID && { KM_ID: mappingData.kmID }),
-                KEY_TYPE: mappingData.keyType,
+                TYPE: mappingData.keyType,
             },
             ...(t && { transaction: t }),
         });
@@ -195,7 +195,7 @@ const upsertKeyMapping = async (mappingData, t) => {
             APP_ID: mappingData.appID,
             ...(mappingData.kmID && { KM_ID: mappingData.kmID }),
             AS_CLIENT_ID: mappingData.asClientID,
-            KEY_TYPE: mappingData.keyType,
+            TYPE: mappingData.keyType,
             ADDITIONAL_PROPERTIES: mappingData.additionalProperties,
         }, { transaction: t });
     } catch (error) {
@@ -264,7 +264,7 @@ const createKeyMapping = async (mappingData, t) => {
             APP_ID: mappingData.appID,
             ...(mappingData.kmID && { KM_ID: mappingData.kmID }),
             ...(mappingData.asClientID && { AS_CLIENT_ID: mappingData.asClientID }),
-            ...(mappingData.keyType && { KEY_TYPE: mappingData.keyType }),
+            ...(mappingData.keyType && { TYPE: mappingData.keyType }),
             ...(mappingData.additionalProperties && { ADDITIONAL_PROPERTIES: mappingData.additionalProperties }),
         }, { transaction: t });
         return appKeyMapping;

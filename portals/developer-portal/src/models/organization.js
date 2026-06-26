@@ -25,7 +25,7 @@ const Organization = sequelize.define('DP_ORGANIZATION', {
         defaultValue: Sequelize.UUIDV4,
         primaryKey: true
     },
-    ORG_NAME: {
+    NAME: {
         type: DataTypes.STRING,
         allowNull: false,
         unique: true
@@ -42,16 +42,16 @@ const Organization = sequelize.define('DP_ORGANIZATION', {
         type: DataTypes.STRING,
         allowNull: true
     },
-    ORG_HANDLE: {
+    HANDLE: {
         type: DataTypes.STRING,
         allowNull: false,
         unique: true
     },
-    ORGANIZATION_IDENTIFIER: {
+    IDP_IDENTIFIER: {
         type: DataTypes.STRING,
         allowNull: false
     },
-    ORG_CONFIG: {
+    CONFIGURATION: {
         type: DataTypes.JSON,
         allowNull: false
     },

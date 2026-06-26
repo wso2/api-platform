@@ -57,7 +57,7 @@ class AppMappingDTO {
     constructor(map) {
         this.appRefID = map.AS_CLIENT_ID;
         this.kmID = map.KM_ID;
-        this.keyType = map.KEY_TYPE;
+        this.keyType = map.TYPE;
         this.additionalProperties = map.ADDITIONAL_PROPERTIES;
     }
 

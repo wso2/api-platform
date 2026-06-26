@@ -93,7 +93,7 @@ const loadAPIFlows = async (req, res, next) => {
             imageURL: req.user.imageURL,
             isAdmin: req.user.isAdmin,
         } : null;
-        const devportalMode = orgDetails.ORG_CONFIG?.devportalMode || 'DEFAULT';
+        const devportalMode = orgDetails.CONFIGURATION?.devportalMode || 'DEFAULT';
 
         const resolvedFlows = apiFlows.map(flow => {
             const sources = extractSourceDescriptions(flow);
@@ -181,7 +181,7 @@ const loadAPIFlowDetail = async (req, res, next) => {
             imageURL: req.user.imageURL,
             isAdmin: req.user.isAdmin,
         } : null;
-        const devportalMode = orgDetails.ORG_CONFIG?.devportalMode || 'DEFAULT';
+        const devportalMode = orgDetails.CONFIGURATION?.devportalMode || 'DEFAULT';
 
         const rawContent = apiFlow.FILE_CONTENT;
         let fileContentStr = '';

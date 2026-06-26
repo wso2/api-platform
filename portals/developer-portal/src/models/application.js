@@ -84,7 +84,7 @@ const ApplicationKeyMapping = sequelize.define('DP_APP_KEY_MAPPING', {
         type: DataTypes.STRING,
         allowNull: true
     },
-    KEY_TYPE: {
+    TYPE: {
         type: DataTypes.STRING,
         allowNull: false,
         defaultValue: 'PRODUCTION'
@@ -130,7 +130,7 @@ const SubscriptionMapping = sequelize.define('DP_API_SUBSCRIPTION', {
         type: DataTypes.UUID,
         allowNull: false
     },
-    SUB_TOKEN:   { type: DataTypes.STRING(512), allowNull: true, unique: true },
+    TOKEN:   { type: DataTypes.STRING(512), allowNull: true, unique: true },
     STATUS:      { type: DataTypes.ENUM('ACTIVE', 'INACTIVE'), allowNull: false, defaultValue: 'ACTIVE' },
     CREATED_AT:  { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW },
 }, {

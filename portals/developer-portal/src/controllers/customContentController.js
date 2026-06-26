@@ -83,7 +83,7 @@ const loadCustomContent = async (req, res, next) => {
             }
             const orgDetails = await orgDao.get(orgName);
             const orgId = orgDetails.ID;
-            devportalMode = orgDetails.ORG_CONFIG?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
+            devportalMode = orgDetails.CONFIGURATION?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
             let markDownFiles = await orgDao.getContent({
                 orgId: orgId,
                 fileType: 'markDown',

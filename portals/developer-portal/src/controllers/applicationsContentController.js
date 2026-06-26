@@ -83,7 +83,7 @@ const loadApplicationData = async (req, orgName, applicationId, viewName) => {
                             consumerKey: mapping.AS_CLIENT_ID,
                             consumerSecret: '',
                             keyMappingId: mapping.ID,
-                            keyType: mapping.KEY_TYPE || constants.KEY_TYPE.PRODUCTION,
+                            keyType: mapping.TYPE || constants.KEY_TYPE.PRODUCTION,
                             supportedGrantTypes: storedProps.grant_types || km.SUPPORTED_GRANT_TYPES || ['client_credentials'],
                             additionalProperties: storedProps,
                             callbackUrl: storedProps.redirect_uris?.[0] || '',
@@ -213,7 +213,7 @@ const loadApplications = async (req, res, next) => {
 
     const orgName = req.params.orgName;
     const orgDetails = await orgDao.get(orgName);
-    const devportalMode = orgDetails.ORG_CONFIG?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
+    const devportalMode = orgDetails.CONFIGURATION?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
     let html, metaData, templateContent;
     try {
         const orgName = req.params.orgName;
@@ -265,7 +265,7 @@ const loadApplication = async (req, res, next) => {
     const viewName = req.params.viewName;
     const orgName = req.params.orgName;
     const orgDetails = await orgDao.get(orgName);
-    const devportalMode = orgDetails.ORG_CONFIG?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
+    const devportalMode = orgDetails.CONFIGURATION?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
     try {
         const applicationId = req.params.applicationId;
         const data = await loadApplicationData(req, orgName, applicationId, viewName);
@@ -328,7 +328,7 @@ const loadApplicationKeys = async (req, res, next) => {
     const viewName = req.params.viewName;
     const orgName = req.params.orgName;
     const orgDetails = await orgDao.get(orgName);
-    const devportalMode = orgDetails.ORG_CONFIG?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
+    const devportalMode = orgDetails.CONFIGURATION?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
     try {
         const applicationId = req.params.applicationId;
         const data = await loadApplicationData(req, orgName, applicationId, viewName);

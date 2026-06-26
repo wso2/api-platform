@@ -120,7 +120,7 @@ class APIImages {
 const getAPIImages = (apiImages) => {
     let images = {}
     apiImages.forEach(element => {
-        images[element.IMAGE_TAG] = element.IMAGE_NAME;
+        images[element.KEY] = element.NAME;
     });
     return new APIImages(images);
 }

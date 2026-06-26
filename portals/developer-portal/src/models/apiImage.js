@@ -23,12 +23,12 @@ const APIImageMetadata = sequelize.define('DP_API_IMAGEDATA', {
         type: DataTypes.UUID,
         primaryKey: true
     },
-    IMAGE_TAG: {
+    KEY: {
         type: DataTypes.STRING,
         allowNull: false,
         primaryKey: true
     },
-    IMAGE_NAME: {
+    NAME: {
         type: DataTypes.STRING,
         allowNull: false
     }

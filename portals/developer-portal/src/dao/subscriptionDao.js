@@ -43,7 +43,7 @@ function decryptToken(value) {
 function decryptSubRecord(sub) {
     if (!sub) return sub;
     const dv = sub.dataValues || sub;
-    if (dv.SUB_TOKEN) dv.SUB_TOKEN = decryptToken(dv.SUB_TOKEN);
+    if (dv.TOKEN) dv.TOKEN = decryptToken(dv.TOKEN);
     return sub;
 }
 
@@ -75,12 +75,12 @@ async function create(orgId, apiId, planId, createdBy, transaction, opts = {}) {
                 ORG_ID: orgId,
                 API_ID: apiId,
                 PLAN_ID: planId || null,
-                SUB_TOKEN: encryptToken(opts.subToken),
+                TOKEN: encryptToken(opts.subToken),
                 STATUS: 'ACTIVE',
             },
             { transaction }
         );
-        record.dataValues.SUB_TOKEN = opts.subToken;
+        record.dataValues.TOKEN = opts.subToken;
         return record;
     }
 
@@ -93,19 +93,19 @@ async function create(orgId, apiId, planId, createdBy, transaction, opts = {}) {
                     ORG_ID: orgId,
                     API_ID: apiId,
                     PLAN_ID: planId || null,
-                    SUB_TOKEN: encryptToken(subToken),
+                    TOKEN: encryptToken(subToken),
                     STATUS: 'ACTIVE',
                 },
                 { transaction }
             );
             // Expose the plaintext token to callers (never the encrypted form).
-            record.dataValues.SUB_TOKEN = subToken;
+            record.dataValues.TOKEN = subToken;
             return record;
         } catch (err) {
             const isTokenCollision =
                 err.name === 'SequelizeUniqueConstraintError' &&
                 err.fields && Object.keys(err.fields).some(
-                    f => f.includes('SUB_TOKEN') || f.includes('sub_token')
+                    f => f.includes('TOKEN') || f.includes('sub_token')
                 );
             if (isTokenCollision && attempt < 2) continue;
             throw err;

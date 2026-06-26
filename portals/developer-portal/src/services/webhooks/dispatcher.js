@@ -38,7 +38,7 @@ async function runBatch() {
 
     for (const event of events) {
         try {
-            const subscribers = await matchSubscribers(event.ORG_ID, event.EVENT_TYPE);
+            const subscribers = await matchSubscribers(event.ORG_ID, event.TYPE);
             if (subscribers.length === 0) {
                 // No matching subscribers — mark as delivered immediately.
                 await DPEvent.update({ STATUS: 'ALL_DELIVERED' }, { where: { ID: event.ID } });

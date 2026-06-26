@@ -55,7 +55,7 @@ function formatSubscriptionResponse(sub) {
     const plan = sub.DP_SUBSCRIPTION_PLAN || {};
     return {
         subscriptionId: sub.ID,
-        subscriptionToken: sub.SUB_TOKEN,
+        subscriptionToken: sub.TOKEN,
         status: sub.STATUS,
         apiId: sub.API_ID,
         subscriptionPlanName: plan.NAME || null,
@@ -111,7 +111,7 @@ const createSubscription = async (req, res) => {
                 orgId: orgID,
                 aggregateType: 'subscription',
                 aggregateId: newSub.ID,
-                plaintextKey: newSub.SUB_TOKEN,
+                plaintextKey: newSub.TOKEN,
             });
         });
 

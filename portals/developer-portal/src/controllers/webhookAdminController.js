@@ -36,7 +36,7 @@ function formatEvent(row) {
     const deliveries = (row.DP_EVENT_DELIVERIES || []).map(formatDelivery);
     return {
         eventId: row.ID,
-        eventType: row.EVENT_TYPE,
+        eventType: row.TYPE,
         orgId: row.ORG_ID,
         aggregateType: row.AGGREGATE_TYPE,
         aggregateId: row.AGGREGATE_ID,

@@ -125,7 +125,7 @@ function _formatDeliverySummary(delivery) {
     const event = delivery.DP_EVENT;
     return {
         deliveryId: delivery.ID,
-        eventType: event ? event.EVENT_TYPE : null,
+        eventType: event ? event.TYPE : null,
         occurredAt: event ? event.OCCURRED_AT : null,
         status: delivery.STATUS,
         attemptCount: delivery.ATTEMPT_COUNT,
