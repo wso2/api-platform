@@ -31,6 +31,10 @@ describe('AI Workspace - OpenAI provider and proxy lifecycle', () => {
   let authToken = '';
   let organizationId = '';
 
+  before(() => {
+    cy.sweepE2EProviders();
+  });
+
   beforeEach(() => {
     cy.login();
     cy.request({
@@ -62,13 +66,13 @@ describe('AI Workspace - OpenAI provider and proxy lifecycle', () => {
   });
 
   afterEach(() => {
-    if (!authToken || !organizationId) {
-      return;
-    }
+    const targeted = (authToken && organizationId)
+      ? deleteLinkedProxies(authToken, organizationId, createdProviderId)
+          .then(() => deleteProjectByName(authToken, projectName, cleanupProjectName))
+          .then(() => deleteProvider(authToken, organizationId, createdProviderId))
+      : cy.wrap(null);
 
-    return deleteLinkedProxies(authToken, organizationId, createdProviderId)
-      .then(() => deleteProjectByName(authToken, projectName, cleanupProjectName))
-      .then(() => deleteProvider(authToken, organizationId, createdProviderId));
+    return targeted.then(() => cy.sweepE2EProviders(authToken, organizationId));
   });
 
   it('creates and deletes an OpenAI provider and app llm proxy using only the UI', () => {
@@ -102,9 +106,21 @@ describe('AI Workspace - OpenAI provider and proxy lifecycle', () => {
       .should('be.visible')
       .click();
 
-    cy.get('[data-cyid="provider-template-openai-card"]', {
+    cy.get('[data-cyid^="provider-template-openai"]', {
       timeout: 30000,
     }).should('be.visible').click();
+
+    cy.get('body', { timeout: 30000 }).should(($body) => {
+      expect(
+        $body.find('[data-cyid="provider-name-input"] input:visible').length > 0 ||
+          $body.find('[data-cyid="template-version-continue-button"]').length > 0
+      ).to.eq(true);
+    });
+    cy.get('body').then(($body) => {
+      if ($body.find('[data-cyid="template-version-continue-button"]').length) {
+        selectTemplateVersionAndContinue();
+      }
+    });
 
     cy.get('[data-cyid="provider-name-input"] input:visible')
       .should('be.visible')
@@ -184,6 +200,9 @@ describe('AI Workspace - OpenAI provider and proxy lifecycle', () => {
 });
 
 function deleteLinkedProxies(authToken, organizationId, providerId) {
+  if (!providerId) {
+    return cy.wrap(null);
+  }
   return requestWithAuth(authToken, {
     url: `/api-proxy/api/v0.9/llm-providers/${encodeURIComponent(providerId)}/llm-proxies?organizationId=${encodeURIComponent(organizationId)}`,
     failOnStatusCode: false,
@@ -261,6 +280,9 @@ function deleteProject(authToken, projectId) {
 }
 
 function deleteProvider(authToken, organizationId, providerId) {
+  if (!providerId) {
+    return cy.wrap(null);
+  }
   return requestWithAuth(authToken, {
     method: 'DELETE',
     url: `/api-proxy/api/v0.9/llm-providers/${encodeURIComponent(providerId)}?organizationId=${encodeURIComponent(organizationId)}`,
@@ -288,4 +310,15 @@ function toSlug(value) {
     .trim()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
+}
+
+function selectTemplateVersionAndContinue() {
+  // Wait for the dialog's own version fetch to resolve and explicitly pick a
+  // version rather than relying on its auto-selected default.
+  cy.get('[data-cyid^="template-version-option-"]', { timeout: 30000 })
+    .first()
+    .click();
+  cy.get('[data-cyid="template-version-continue-button"]', { timeout: 30000 })
+    .should('not.be.disabled')
+    .click();
 }

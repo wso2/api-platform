@@ -94,8 +94,18 @@ export function ProviderTemplatesProvider({ children }: ProviderTemplatesProvide
       setIsLoading(true);
       setError(null);
       const response = await providerTemplateApis.getProviderTemplates(organizationId, PLATFORM_API_BASE_URL);
-      // Store the full API response as-is
-      setTemplatesResponse(response as ProviderTemplatesResponse);
+      // Load latest-first by creation time. (Not updatedAt: the backend seeder
+      // re-touches built-in templates on every restart, which would otherwise
+      // float them to the top. createdAt also bumps when a new version is added.)
+      const ts = (t: ProviderTemplate) =>
+        new Date(t.createdAt ?? t.updatedAt ?? 0).getTime();
+      const sorted: ProviderTemplatesResponse = {
+        ...(response as ProviderTemplatesResponse),
+        list: [...((response as ProviderTemplatesResponse).list ?? [])].sort(
+          (a, b) => ts(b) - ts(a)
+        ),
+      };
+      setTemplatesResponse(sorted);
     } catch (err) {
       logger.error('Failed to fetch provider templates:', err);
       setError(err instanceof Error ? err : new Error('Failed to fetch templates'));
@@ -118,7 +128,7 @@ export function ProviderTemplatesProvider({ children }: ProviderTemplatesProvide
       setTemplatesResponse((prev) => ({
         ...prev,
         count: prev.count + 1,
-        list: [newTemplate, ...prev.list],
+        list: [newTemplate, ...prev.list], //appear last created as first one
         pagination: { ...prev.pagination, total: prev.pagination.total + 1 },
       }));
       return newTemplate;

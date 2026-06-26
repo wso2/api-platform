@@ -58,6 +58,10 @@ import EditLLMProxy from './pages/appShell/appShellPages/proxies/EditLLMProxy';
 import ServiceProviderLayout from './pages/appShell/appShellPages/serviceProvider/ServiceProviderLayout';
 import ServiceProviders from './pages/appShell/appShellPages/serviceProvider/ProvidersList';
 import ServiceProviderNew from './pages/appShell/appShellPages/serviceProvider/ServiceProviderNew';
+import CreateProviderTemplate from './pages/appShell/appShellPages/providerTemplate/CreateProviderTemplate';
+import ProviderTemplateOverview from './pages/appShell/appShellPages/providerTemplate/ProviderTemplateOverview';
+import EditProviderTemplate from './pages/appShell/appShellPages/providerTemplate/EditProviderTemplate';
+import CreateProviderTemplateVersion from './pages/appShell/appShellPages/providerTemplate/CreateProviderTemplateVersion';
 import ServiceProviderOverview from './pages/appShell/appShellPages/serviceProvider/ServiceProviderOverview';
 import ServiceProviderDeploy from './pages/appShell/appShellPages/serviceProvider/ServiceProviderDeploy';
 import EditServiceProvider from './pages/appShell/appShellPages/serviceProvider/EditServiceProvider';
@@ -67,6 +71,7 @@ import OrgRegisterPage from './pages/register/OrgRegisterPage';
 import Insights from './pages/appShell/appShellPages/insights/Main';
 import QuickStart from './pages/appShell/appShellPages/quickStart/Main';
 import Settings from './pages/appShell/appShellPages/settings/Main';
+import ProviderTemplatesList from './pages/appShell/appShellPages/providerTemplate/ProviderTemplatesList';
 import ExternalServersList from './pages/appShell/appShellPages/externalServers/ExternalServersList';
 import ExternalServersNew from './pages/appShell/appShellPages/externalServers/ExternalServersNew';
 import ExternalServersOverview from './pages/appShell/appShellPages/externalServers/ExternalServersOverview';
@@ -525,14 +530,54 @@ export default function App() {
                 </WithPageBoundary>
               }
             />
-            <Route
-              path="settings"
-              element={
-                <WithPageBoundary>
-                  <Settings />
-                </WithPageBoundary>
-              }
-            />
+            <Route path="settings" element={<ServiceProviderLayout />}>
+              <Route element={<Settings />}>
+                <Route
+                  index
+                  element={<Navigate to="llm-provider-templates" replace />}
+                />
+                <Route
+                  path="llm-provider-templates"
+                  element={
+                    <WithPageBoundary>
+                      <ProviderTemplatesList />
+                    </WithPageBoundary>
+                  }
+                />
+                <Route
+                  path="llm-provider-templates/new"
+                  element={
+                    <WithPageBoundary>
+                      <CreateProviderTemplate />
+                    </WithPageBoundary>
+                  }
+                />
+                <Route
+                  path="llm-provider-templates/:templateId"
+                  element={
+                    <WithPageBoundary>
+                      <ProviderTemplateOverview />
+                    </WithPageBoundary>
+                  }
+                />
+                <Route
+                  path="llm-provider-templates/:templateId/edit"
+                  element={
+                    <WithPageBoundary>
+                      <EditProviderTemplate />
+                    </WithPageBoundary>
+                  }
+                />
+                <Route
+                  path="llm-provider-templates/:templateId/new-version"
+                  element={
+                    <WithPageBoundary>
+                      <CreateProviderTemplateVersion />
+                    </WithPageBoundary>
+                  }
+                />
+              </Route>
+            </Route>
             <Route path="projects/:projectSlug" element={<ProjectShell />}>
               <Route index element={<Navigate to="home" replace />} />
               <Route
@@ -732,14 +777,18 @@ export default function App() {
                   </WithPageBoundary>
                 }
               />
-              <Route
-                path="settings"
-                element={
-                  <WithPageBoundary>
-                    <Settings />
-                  </WithPageBoundary>
-                }
-              />
+              <Route path="settings" element={<ServiceProviderLayout />}>
+                <Route element={<Settings />}>
+                  <Route
+                    index
+                    element={
+                      <WithPageBoundary>
+                        <ProviderTemplatesList />
+                      </WithPageBoundary>
+                    }
+                  />
+                </Route>
+              </Route>
             </Route>
           </Route>
         </Route>
