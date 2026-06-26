@@ -153,10 +153,10 @@ var (
 )
 
 var (
-	ErrHmacSecretNotFound              = errors.New("hmac secret not found")
-	ErrHmacSecretAlreadyExists         = errors.New("hmac secret with this name already exists")
-	ErrHmacSecretEncryptionKeyMissing  = errors.New("hmac secret encryption key is not configured")
-	ErrHmacSecretInvalidValue          = errors.New("secret value must be at least 32 characters")
+	ErrHmacSecretNotFound             = errors.New("hmac secret not found")
+	ErrHmacSecretAlreadyExists        = errors.New("hmac secret with this name already exists")
+	ErrHmacSecretEncryptionKeyMissing = errors.New("hmac secret encryption key is not configured")
+	ErrHmacSecretInvalidValue         = errors.New("secret value must be at least 32 characters")
 )
 
 var (
@@ -164,6 +164,7 @@ var (
 	ErrWebBrokerAPINotFound              = errors.New("webbroker api not found")
 	ErrWebBrokerAPILimitReached          = errors.New("webbroker api limit reached for organization")
 	ErrProjectHasAssociatedWebBrokerAPIs = errors.New("project has associated WebBroker APIs")
+	ErrDevPortalNotFound                 = errors.New("dev portal not found")
 )
 
 var (

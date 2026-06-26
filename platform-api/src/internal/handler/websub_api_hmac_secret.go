@@ -20,6 +20,7 @@
 package handler
 
 import (
+	"encoding/json"
 	"errors"
 	"io"
 	"log/slog"
@@ -32,7 +33,7 @@ import (
 	"platform-api/src/internal/service"
 	"platform-api/src/internal/utils"
 
-	"github.com/gin-gonic/gin"
+	"github.com/wso2/go-httpkit/httputil"
 )
 
 // WebSubAPIHmacSecretHandler handles HMAC secret CRUD for WebSub APIs.
@@ -50,19 +51,16 @@ func NewWebSubAPIHmacSecretHandler(secretService *service.WebSubAPIHmacSecretSer
 }
 
 // RegisterRoutes registers the HMAC secret routes.
-func (h *WebSubAPIHmacSecretHandler) RegisterRoutes(r *gin.Engine) {
-	v1 := r.Group("/api/v1/websub-apis/:apiId/secrets")
-	{
-		v1.POST("", h.CreateHmacSecret)
-		v1.GET("", h.ListHmacSecrets)
-		v1.DELETE("/:secretName", h.DeleteHmacSecret)
-		v1.POST("/:secretName/regenerate", h.RegenerateHmacSecret)
-	}
+func (h *WebSubAPIHmacSecretHandler) RegisterRoutes(mux *http.ServeMux) {
+	mux.HandleFunc("POST /api/v1/websub-apis/{apiId}/secrets", h.CreateHmacSecret)
+	mux.HandleFunc("GET /api/v1/websub-apis/{apiId}/secrets", h.ListHmacSecrets)
+	mux.HandleFunc("DELETE /api/v1/websub-apis/{apiId}/secrets/{secretName}", h.DeleteHmacSecret)
+	mux.HandleFunc("POST /api/v1/websub-apis/{apiId}/secrets/{secretName}/regenerate", h.RegenerateHmacSecret)
 }
 
-func (h *WebSubAPIHmacSecretHandler) featureUnavailable(c *gin.Context) bool {
+func (h *WebSubAPIHmacSecretHandler) featureUnavailable(w http.ResponseWriter) bool {
 	if h.secretService == nil {
-		c.JSON(http.StatusServiceUnavailable, utils.NewErrorResponse(503, "Service Unavailable",
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, utils.NewErrorResponse(503, "Service Unavailable",
 			"HMAC secret management is not configured on this server"))
 		return true
 	}
@@ -70,30 +68,30 @@ func (h *WebSubAPIHmacSecretHandler) featureUnavailable(c *gin.Context) bool {
 }
 
 // CreateHmacSecret handles POST /api/v1/websub-apis/:apiId/secrets
-func (h *WebSubAPIHmacSecretHandler) CreateHmacSecret(c *gin.Context) {
-	if h.featureUnavailable(c) {
+func (h *WebSubAPIHmacSecretHandler) CreateHmacSecret(w http.ResponseWriter, r *http.Request) {
+	if h.featureUnavailable(w) {
 		return
 	}
-	orgID, ok := middleware.GetOrganizationFromContext(c)
+	orgID, ok := middleware.GetOrganizationFromRequest(r)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
 		return
 	}
 
-	apiHandle := c.Param("apiId")
+	apiHandle := r.PathValue("apiId")
 	if apiHandle == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "API handle is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "API handle is required"))
 		return
 	}
 
 	var req api.WebSubAPIHmacSecretRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid request body"))
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid request body"))
 		return
 	}
 
 	if req.Secret != nil && *req.Secret == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "secret must not be empty; omit the field to auto-generate"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "secret must not be empty; omit the field to auto-generate"))
 		return
 	}
 
@@ -102,10 +100,10 @@ func (h *WebSubAPIHmacSecretHandler) CreateHmacSecret(c *gin.Context) {
 		externalSecret = *req.Secret
 	}
 
-	userID, _ := middleware.GetUserIDFromContext(c)
+	userID, _ := middleware.GetUserIDFromRequest(r)
 	secret, plaintext, err := h.secretService.Generate(orgID, apiHandle, req.DisplayName, externalSecret, userID)
 	if err != nil {
-		h.handleServiceError(c, err)
+		h.handleServiceError(w, err)
 		return
 	}
 
@@ -113,7 +111,7 @@ func (h *WebSubAPIHmacSecretHandler) CreateHmacSecret(c *gin.Context) {
 	if externalSecret != "" {
 		msg = "HMAC secret stored successfully."
 	}
-	c.JSON(http.StatusCreated, api.WebSubAPIHmacSecretCreationResponse{
+	httputil.WriteJSON(w, http.StatusCreated, api.WebSubAPIHmacSecretCreationResponse{
 		Secret:        plaintext,
 		WebhookSecret: secretToInfo(secret),
 		Message:       msg,
@@ -121,25 +119,25 @@ func (h *WebSubAPIHmacSecretHandler) CreateHmacSecret(c *gin.Context) {
 }
 
 // ListHmacSecrets handles GET /api/v1/websub-apis/:apiId/secrets
-func (h *WebSubAPIHmacSecretHandler) ListHmacSecrets(c *gin.Context) {
-	if h.featureUnavailable(c) {
+func (h *WebSubAPIHmacSecretHandler) ListHmacSecrets(w http.ResponseWriter, r *http.Request) {
+	if h.featureUnavailable(w) {
 		return
 	}
-	orgID, ok := middleware.GetOrganizationFromContext(c)
+	orgID, ok := middleware.GetOrganizationFromRequest(r)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
 		return
 	}
 
-	apiHandle := c.Param("apiId")
+	apiHandle := r.PathValue("apiId")
 	if apiHandle == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "API handle is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "API handle is required"))
 		return
 	}
 
 	secrets, err := h.secretService.List(orgID, apiHandle)
 	if err != nil {
-		h.handleServiceError(c, err)
+		h.handleServiceError(w, err)
 		return
 	}
 
@@ -147,61 +145,61 @@ func (h *WebSubAPIHmacSecretHandler) ListHmacSecrets(c *gin.Context) {
 	for _, s := range secrets {
 		items = append(items, *secretToInfo(s))
 	}
-	c.JSON(http.StatusOK, api.WebSubAPIHmacSecretListResponse{Secrets: items})
+	httputil.WriteJSON(w, http.StatusOK, api.WebSubAPIHmacSecretListResponse{Secrets: items})
 }
 
 // DeleteHmacSecret handles DELETE /api/v1/websub-apis/:apiId/secrets/:secretName
-func (h *WebSubAPIHmacSecretHandler) DeleteHmacSecret(c *gin.Context) {
-	if h.featureUnavailable(c) {
+func (h *WebSubAPIHmacSecretHandler) DeleteHmacSecret(w http.ResponseWriter, r *http.Request) {
+	if h.featureUnavailable(w) {
 		return
 	}
-	orgID, ok := middleware.GetOrganizationFromContext(c)
+	orgID, ok := middleware.GetOrganizationFromRequest(r)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
 		return
 	}
 
-	apiHandle := c.Param("apiId")
-	secretName := c.Param("secretName")
+	apiHandle := r.PathValue("apiId")
+	secretName := r.PathValue("secretName")
 	if apiHandle == "" || secretName == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "API handle and secret name are required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "API handle and secret name are required"))
 		return
 	}
 
 	if err := h.secretService.Delete(orgID, apiHandle, secretName); err != nil {
-		h.handleServiceError(c, err)
+		h.handleServiceError(w, err)
 		return
 	}
 
-	c.Status(http.StatusNoContent)
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // RegenerateHmacSecret handles POST /api/v1/websub-apis/:apiId/secrets/:secretName/regenerate
-func (h *WebSubAPIHmacSecretHandler) RegenerateHmacSecret(c *gin.Context) {
-	if h.featureUnavailable(c) {
+func (h *WebSubAPIHmacSecretHandler) RegenerateHmacSecret(w http.ResponseWriter, r *http.Request) {
+	if h.featureUnavailable(w) {
 		return
 	}
-	orgID, ok := middleware.GetOrganizationFromContext(c)
+	orgID, ok := middleware.GetOrganizationFromRequest(r)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
 		return
 	}
 
-	apiHandle := c.Param("apiId")
-	secretName := c.Param("secretName")
+	apiHandle := r.PathValue("apiId")
+	secretName := r.PathValue("secretName")
 	if apiHandle == "" || secretName == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "API handle and secret name are required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "API handle and secret name are required"))
 		return
 	}
 
 	var req api.WebSubAPIHmacSecretRegenerateRequest
-	if err := c.ShouldBindJSON(&req); err != nil && !errors.Is(err, io.EOF) {
-		c.AbortWithStatusJSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid request body"))
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil && !errors.Is(err, io.EOF) {
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid request body"))
 		return
 	}
 
 	if req.Secret != nil && *req.Secret == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "secret must not be empty; omit the field to auto-generate"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "secret must not be empty; omit the field to auto-generate"))
 		return
 	}
 
@@ -210,10 +208,10 @@ func (h *WebSubAPIHmacSecretHandler) RegenerateHmacSecret(c *gin.Context) {
 		externalSecret = *req.Secret
 	}
 
-	userID, _ := middleware.GetUserIDFromContext(c)
+	userID, _ := middleware.GetUserIDFromRequest(r)
 	secret, plaintext, err := h.secretService.Regenerate(orgID, apiHandle, secretName, externalSecret, userID)
 	if err != nil {
-		h.handleServiceError(c, err)
+		h.handleServiceError(w, err)
 		return
 	}
 
@@ -221,29 +219,29 @@ func (h *WebSubAPIHmacSecretHandler) RegenerateHmacSecret(c *gin.Context) {
 	if externalSecret != "" {
 		msg = "HMAC secret rotated to the provided value successfully."
 	}
-	c.JSON(http.StatusOK, api.WebSubAPIHmacSecretCreationResponse{
+	httputil.WriteJSON(w, http.StatusOK, api.WebSubAPIHmacSecretCreationResponse{
 		Secret:        plaintext,
 		WebhookSecret: secretToInfo(secret),
 		Message:       msg,
 	})
 }
 
-func (h *WebSubAPIHmacSecretHandler) handleServiceError(c *gin.Context, err error) {
+func (h *WebSubAPIHmacSecretHandler) handleServiceError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, constants.ErrWebSubAPINotFound):
-		c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "WebSub API not found"))
+		httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "WebSub API not found"))
 	case errors.Is(err, constants.ErrHmacSecretNotFound):
-		c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "HMAC secret not found"))
+		httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "HMAC secret not found"))
 	case errors.Is(err, constants.ErrHmacSecretAlreadyExists):
-		c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict", "An HMAC secret with this name already exists"))
+		httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponse(409, "Conflict", "An HMAC secret with this name already exists"))
 	case errors.Is(err, constants.ErrHmacSecretInvalidValue):
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Secret value must be at least 32 characters"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Secret value must be at least 32 characters"))
 	case errors.Is(err, constants.ErrHmacSecretEncryptionKeyMissing):
 		h.slogger.Error("HMAC secret encryption key is not configured")
-		c.JSON(http.StatusServiceUnavailable, utils.NewErrorResponse(503, "Service Unavailable", "HMAC secret management is not configured on this server"))
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, utils.NewErrorResponse(503, "Service Unavailable", "HMAC secret management is not configured on this server"))
 	default:
 		h.slogger.Error("HMAC secret service error", "error", err)
-		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "An unexpected error occurred"))
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "An unexpected error occurred"))
 	}
 }
 

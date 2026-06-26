@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -30,8 +31,8 @@ import (
 	"platform-api/src/internal/utils"
 	ws "platform-api/src/internal/websocket"
 
-	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
+	"github.com/wso2/go-httpkit/httputil"
 )
 
 // WebSocketHandler handles WebSocket connection upgrades and lifecycle
@@ -69,25 +70,28 @@ func NewWebSocketHandler(manager *ws.Manager, gatewayService *service.GatewaySer
 
 // Connect handles WebSocket upgrade requests at /api/internal/v1/ws/gateways/connect
 // This is the entry point for gateway connections.
-func (h *WebSocketHandler) Connect(c *gin.Context) {
+func (h *WebSocketHandler) Connect(w http.ResponseWriter, r *http.Request) {
 	// Extract client IP for rate limiting
-	clientIP := c.ClientIP()
+	clientIP := r.RemoteAddr
+	if i := strings.LastIndex(clientIP, ":"); i != -1 {
+		clientIP = clientIP[:i]
+	}
 
 	// Check rate limit
 	if !h.checkRateLimit(clientIP) {
 		h.slogger.Warn("Rate limit exceeded for IP", "ip", clientIP)
 		h.manager.IncrementFailedConnections()
-		c.JSON(http.StatusTooManyRequests, utils.NewErrorResponse(429, "Too Many Requests",
+		httputil.WriteJSON(w, http.StatusTooManyRequests, utils.NewErrorResponse(429, "Too Many Requests",
 			"Connection rate limit exceeded. Please try again later."))
 		return
 	}
 
 	// Extract and validate API key from header
-	apiKey := c.GetHeader("api-key")
+	apiKey := r.Header.Get("api-key")
 	if apiKey == "" {
 		h.slogger.Warn("WebSocket connection attempt without API key", "ip", clientIP)
 		h.manager.IncrementFailedConnections()
-		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
 			"API key is required. Provide 'api-key' header."))
 		return
 	}
@@ -97,7 +101,7 @@ func (h *WebSocketHandler) Connect(c *gin.Context) {
 	if err != nil {
 		h.slogger.Warn("WebSocket authentication failed", "ip", clientIP, "error", err)
 		h.manager.IncrementFailedConnections()
-		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
 			"Invalid or expired API key"))
 		return
 	}
@@ -108,14 +112,14 @@ func (h *WebSocketHandler) Connect(c *gin.Context) {
 		h.slogger.Warn("Organization connection limit exceeded", "orgID", gateway.OrganizationID,
 			"count", stats.CurrentCount, "max", stats.MaxAllowed)
 		h.manager.IncrementFailedConnections()
-		c.JSON(http.StatusTooManyRequests, utils.NewErrorResponse(429, "Too Many Requests",
+		httputil.WriteJSON(w, http.StatusTooManyRequests, utils.NewErrorResponse(429, "Too Many Requests",
 			"Organization connection limit reached. Maximum allowed connections: "+
 				fmt.Sprintf("%d", stats.MaxAllowed)))
 		return
 	}
 
 	// Upgrade HTTP connection to WebSocket
-	conn, err := h.upgrader.Upgrade(c.Writer, c.Request, nil)
+	conn, err := h.upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		h.slogger.Error("WebSocket upgrade failed", "gatewayID", gateway.ID, "error", err)
 		// Upgrade error is already sent by upgrader
@@ -310,10 +314,7 @@ func (h *WebSocketHandler) checkRateLimit(clientIP string) bool {
 	return true // Connection allowed
 }
 
-// RegisterRoutes registers WebSocket routes with the router
-func (h *WebSocketHandler) RegisterRoutes(r *gin.Engine) {
-	wsGroup := r.Group("/api/internal/v1/ws/gateways")
-	{
-		wsGroup.GET("/connect", h.Connect)
-	}
+// RegisterRoutes registers WebSocket routes with the mux.
+func (h *WebSocketHandler) RegisterRoutes(mux *http.ServeMux) {
+	mux.HandleFunc("GET /api/internal/v1/ws/gateways/connect", h.Connect)
 }

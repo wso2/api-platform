@@ -28,7 +28,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/gin-gonic/gin"
+	"encoding/json"
+
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
@@ -209,22 +210,25 @@ func (g *ImmutableGW) applyArtifact(path, kind, contentType string, data []byte,
 	return nil
 }
 
-// Middleware returns a Gin handler that rejects POST, PUT, and DELETE with 405
+// Middleware returns a handler that rejects POST, PUT, and DELETE with 405
 // when immutable mode is enabled. When disabled, it returns a passthrough handler.
-func (g *ImmutableGW) Middleware() gin.HandlerFunc {
-	if !g.cfg.Enabled {
-		return func(c *gin.Context) { c.Next() }
-	}
-	return func(c *gin.Context) {
-		switch c.Request.Method {
-		case http.MethodPost, http.MethodPut, http.MethodDelete:
-			c.JSON(http.StatusMethodNotAllowed, api.ErrorResponse{
-				Status:  "error",
-				Message: "Gateway is in immutable mode. Mutating operations are not allowed.",
-			})
-			c.Abort()
-		default:
-			c.Next()
+func (g *ImmutableGW) Middleware() func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		if !g.cfg.Enabled {
+			return next
 		}
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.Method {
+			case http.MethodPost, http.MethodPut, http.MethodDelete:
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusMethodNotAllowed)
+				_ = json.NewEncoder(w).Encode(api.ErrorResponse{
+					Status:  "error",
+					Message: "Gateway is in immutable mode. Mutating operations are not allowed.",
+				})
+			default:
+				next.ServeHTTP(w, r)
+			}
+		})
 	}
 }

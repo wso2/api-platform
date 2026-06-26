@@ -21,72 +21,65 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/gin-gonic/gin"
-	"github.com/wso2/api-platform/common/constants"
 	commonerrors "github.com/wso2/api-platform/common/errors"
 	"github.com/wso2/api-platform/common/models"
+	"github.com/wso2/go-httpkit/httputil"
 )
 
-// AuthorizationMiddleware enforces resource->roles mapping stored in this package.
-func AuthorizationMiddleware(config models.AuthConfig, logger *slog.Logger) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		// Skip authorization if authentication was skipped
-		if v, ok := c.Get(constants.AuthzSkipKey); ok {
-			if skipped, ok2 := v.(bool); ok2 && skipped {
-				c.Next()
+// AuthorizationMiddleware enforces resource->roles mapping stored in config.ResourceRoles.
+// Route keys use the net/http ServeMux pattern format: "METHOD /path/{param}".
+func AuthorizationMiddleware(config models.AuthConfig, logger *slog.Logger) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Skip authorization if authentication was skipped
+			if GetAuthzSkip(r) {
+				next.ServeHTTP(w, r)
 				return
 			}
-		}
 
-		// Use config.ResourceRoles if provided, else fallback to DefaultResourceRoles
-		resourceRoles := config.ResourceRoles
-		logger.Debug("Resource roles", slog.Any("resourceRoles", resourceRoles))
-		if len(resourceRoles) == 0 {
-			c.Next()
-			return
-		}
-		// Retrieve user roles from context (set by auth middleware)
-		var userRoles []string
-		if v, ok := c.Get(constants.AuthContextKey); ok {
-			if ac, ok2 := v.(models.AuthContext); ok2 {
+			resourceRoles := config.ResourceRoles
+			logger.Debug("Resource roles", slog.Any("resourceRoles", resourceRoles))
+			if len(resourceRoles) == 0 {
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			// Retrieve user roles stored by AuthMiddleware
+			var userRoles []string
+			if ac, ok := GetAuthContext(r); ok {
 				userRoles = ac.Roles
 			}
-		}
-		logger.Debug("User roles", slog.Any("userRoles", userRoles))
+			logger.Debug("User roles", slog.Any("userRoles", userRoles))
 
-		// Determine resource key.
-		// c.FullPath() returns "" when no registered route matches the request path.
-		// In that case, skip authorization and let Gin return 404.
-		resourcePath := c.FullPath()
-		if resourcePath == "" {
-			c.Next()
-			return
-		}
-
-		// Try METHOD + path first
-		methodKey := c.Request.Method + " " + resourcePath
-		logger.Debug("method key", slog.String("methodKey", methodKey))
-		allowed, found := resourceRoles[methodKey]
-		if !found {
-			// Resource not defined -> reject
-			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": commonerrors.ErrForbidden.Error()})
-			return
-		}
-
-		// Check for role intersection
-		allowedSet := make(map[string]struct{}, len(allowed))
-		for _, r := range allowed {
-			allowedSet[r] = struct{}{}
-		}
-
-		for _, ur := range userRoles {
-			if _, ok := allowedSet[ur]; ok {
-				c.Next()
+			// r.Pattern is set by net/http ServeMux (Go 1.22+) to the matched
+			// route pattern including method, e.g. "GET /management/v1/apis/{id}".
+			// An empty pattern means no route matched — skip authz and let the
+			// mux return 404.
+			resourcePattern := r.Pattern
+			if resourcePattern == "" {
+				next.ServeHTTP(w, r)
 				return
 			}
-		}
 
-		// No matching role -> forbidden
-		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": commonerrors.ErrForbidden.Error()})
+			logger.Debug("resource pattern", slog.String("pattern", resourcePattern))
+			allowed, found := resourceRoles[resourcePattern]
+			if !found {
+				httputil.WriteError(w, http.StatusForbidden, "forbidden", commonerrors.ErrForbidden.Error())
+				return
+			}
+
+			allowedSet := make(map[string]struct{}, len(allowed))
+			for _, role := range allowed {
+				allowedSet[role] = struct{}{}
+			}
+			for _, ur := range userRoles {
+				if _, ok := allowedSet[ur]; ok {
+					next.ServeHTTP(w, r)
+					return
+				}
+			}
+
+			httputil.WriteError(w, http.StatusForbidden, "forbidden", commonerrors.ErrForbidden.Error())
+		})
 	}
 }

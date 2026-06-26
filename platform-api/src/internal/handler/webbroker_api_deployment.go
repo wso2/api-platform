@@ -20,6 +20,7 @@
 package handler
 
 import (
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -30,7 +31,7 @@ import (
 	"platform-api/src/internal/service"
 	"platform-api/src/internal/utils"
 
-	"github.com/gin-gonic/gin"
+	"github.com/wso2/go-httpkit/httputil"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
@@ -49,149 +50,147 @@ func NewWebBrokerAPIDeploymentHandler(webbrokerAPIDeploymentService *service.Web
 }
 
 // RegisterRoutes registers WebBroker API deployment routes
-func (h *WebBrokerAPIDeploymentHandler) RegisterRoutes(r *gin.Engine) {
-	g := r.Group(constants.APIBasePath + "/webbroker-apis/:apiId")
-	{
-		g.POST("/deployments", h.DeployWebBrokerAPI)
-		g.POST("/deployments/:deploymentId/undeploy", h.UndeployDeployment)
-		g.POST("/deployments/:deploymentId/restore", h.RestoreDeployment)
-		g.GET("/deployments", h.GetDeployments)
-		g.GET("/deployments/:deploymentId", h.GetDeployment)
-		g.DELETE("/deployments/:deploymentId", h.DeleteDeployment)
-	}
+func (h *WebBrokerAPIDeploymentHandler) RegisterRoutes(mux *http.ServeMux) {
+	mux.HandleFunc("POST "+constants.APIBasePath+"/webbroker-apis/{apiId}/deployments", h.DeployWebBrokerAPI)
+	mux.HandleFunc("POST "+constants.APIBasePath+"/webbroker-apis/{apiId}/deployments/{deploymentId}/undeploy", h.UndeployDeployment)
+	mux.HandleFunc("POST "+constants.APIBasePath+"/webbroker-apis/{apiId}/deployments/{deploymentId}/restore", h.RestoreDeployment)
+	mux.HandleFunc("GET "+constants.APIBasePath+"/webbroker-apis/{apiId}/deployments", h.GetDeployments)
+	mux.HandleFunc("GET "+constants.APIBasePath+"/webbroker-apis/{apiId}/deployments/{deploymentId}", h.GetDeployment)
+	mux.HandleFunc("DELETE "+constants.APIBasePath+"/webbroker-apis/{apiId}/deployments/{deploymentId}", h.DeleteDeployment)
 }
 
 // DeployWebBrokerAPI handles POST /api/v0.9/webbroker-apis/:apiId/deployments
-func (h *WebBrokerAPIDeploymentHandler) DeployWebBrokerAPI(c *gin.Context) {
-	orgId, exists := middleware.GetOrganizationFromContext(c)
+func (h *WebBrokerAPIDeploymentHandler) DeployWebBrokerAPI(w http.ResponseWriter, r *http.Request) {
+	orgId, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
 		return
 	}
 
-	apiId := c.Param("apiId")
+	apiId := r.PathValue("apiId")
 	if apiId == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "API ID is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "API ID is required"))
 		return
 	}
 
 	var req api.DeployRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))
 		return
 	}
 
 	if req.Name == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "name is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "name is required"))
 		return
 	}
 	if req.Base == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "base is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "base is required"))
 		return
 	}
 	if req.GatewayId == (openapi_types.UUID{}) {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "gatewayId is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "gatewayId is required"))
 		return
 	}
 
-	createdBy, _ := middleware.GetUsernameFromContext(c)
+	createdBy, _ := middleware.GetUsernameFromRequest(r)
 	deployment, err := h.webbrokerAPIDeploymentService.DeployWebBrokerAPIByHandle(apiId, &req, orgId, createdBy)
 	if err != nil {
-		// DP-originated artifacts are read-only: deployment cannot be initiated from the CP.
-		if respondArtifactGuardError(c, err) {
+		if respondArtifactGuardError(w, err) {
 			return
 		}
-		h.handleDeploymentError(c, err, apiId)
+		h.handleDeploymentError(w, err, apiId)
 		return
 	}
 
-	c.JSON(http.StatusCreated, deployment)
+	httputil.WriteJSON(w, http.StatusCreated, deployment)
 }
 
 // UndeployDeployment handles POST /api/v0.9/webbroker-apis/:apiId/deployments/:deploymentId/undeploy
-func (h *WebBrokerAPIDeploymentHandler) UndeployDeployment(c *gin.Context) {
-	orgId, exists := middleware.GetOrganizationFromContext(c)
+func (h *WebBrokerAPIDeploymentHandler) UndeployDeployment(w http.ResponseWriter, r *http.Request) {
+	orgId, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
 		return
 	}
 
-	apiId := c.Param("apiId")
-	deploymentId := c.Param("deploymentId")
-	gatewayId := c.Query("gatewayId")
+	apiId := r.PathValue("apiId")
+	deploymentId := r.PathValue("deploymentId")
+	gatewayId := r.URL.Query().Get("gatewayId")
 	if deploymentId == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "deploymentId is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "deploymentId is required"))
 		return
 	}
 	if gatewayId == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "gatewayId is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "gatewayId is required"))
 		return
 	}
 
 	deployment, err := h.webbrokerAPIDeploymentService.UndeployWebBrokerAPIDeploymentByHandle(apiId, deploymentId, gatewayId, orgId)
 	if err != nil {
-		// DP-originated artifacts are read-only: undeployment cannot be initiated from the CP.
-		if respondArtifactGuardError(c, err) {
+		if respondArtifactGuardError(w, err) {
 			return
 		}
-		h.handleDeploymentError(c, err, apiId)
+		h.handleDeploymentError(w, err, apiId)
 		return
 	}
 
-	c.JSON(http.StatusOK, deployment)
+	httputil.WriteJSON(w, http.StatusOK, deployment)
 }
 
 // RestoreDeployment handles POST /api/v0.9/webbroker-apis/:apiId/deployments/:deploymentId/restore
-func (h *WebBrokerAPIDeploymentHandler) RestoreDeployment(c *gin.Context) {
-	orgId, exists := middleware.GetOrganizationFromContext(c)
+func (h *WebBrokerAPIDeploymentHandler) RestoreDeployment(w http.ResponseWriter, r *http.Request) {
+	orgId, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
 		return
 	}
 
-	apiId := c.Param("apiId")
-	deploymentId := c.Param("deploymentId")
-	gatewayId := c.Query("gatewayId")
+	apiId := r.PathValue("apiId")
+	deploymentId := r.PathValue("deploymentId")
+	gatewayId := r.URL.Query().Get("gatewayId")
 	if deploymentId == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "deploymentId is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "deploymentId is required"))
 		return
 	}
 	if gatewayId == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "gatewayId is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "gatewayId is required"))
 		return
 	}
 
 	deployment, err := h.webbrokerAPIDeploymentService.RestoreWebBrokerAPIDeploymentByHandle(apiId, deploymentId, gatewayId, orgId)
 	if err != nil {
-		// DP-originated artifacts are read-only: restore cannot be initiated from the CP.
-		if respondArtifactGuardError(c, err) {
+		if respondArtifactGuardError(w, err) {
 			return
 		}
-		h.handleDeploymentError(c, err, apiId)
+		h.handleDeploymentError(w, err, apiId)
 		return
 	}
 
-	c.JSON(http.StatusOK, deployment)
+	httputil.WriteJSON(w, http.StatusOK, deployment)
 }
 
 // GetDeployments handles GET /api/v0.9/webbroker-apis/:apiId/deployments
-func (h *WebBrokerAPIDeploymentHandler) GetDeployments(c *gin.Context) {
-	orgId, exists := middleware.GetOrganizationFromContext(c)
+func (h *WebBrokerAPIDeploymentHandler) GetDeployments(w http.ResponseWriter, r *http.Request) {
+	orgId, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
 		return
 	}
 
-	apiId := c.Param("apiId")
+	apiId := r.PathValue("apiId")
 	if apiId == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "API ID is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "API ID is required"))
 		return
 	}
 
 	var params api.GetDeploymentsParams
-	if err := c.ShouldBindQuery(&params); err != nil {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))
-		return
+	if v := r.URL.Query().Get("gatewayId"); v != "" {
+		gid := api.GatewayIdQ(v)
+		params.GatewayId = &gid
+	}
+	if v := r.URL.Query().Get("status"); v != "" {
+		st := api.GetDeploymentsParamsStatus(v)
+		params.Status = &st
 	}
 
 	var gatewayId, status string
@@ -204,76 +203,76 @@ func (h *WebBrokerAPIDeploymentHandler) GetDeployments(c *gin.Context) {
 
 	deployments, err := h.webbrokerAPIDeploymentService.GetWebBrokerAPIDeploymentsByHandle(apiId, gatewayId, status, orgId)
 	if err != nil {
-		h.handleDeploymentError(c, err, apiId)
+		h.handleDeploymentError(w, err, apiId)
 		return
 	}
 
-	c.JSON(http.StatusOK, deployments)
+	httputil.WriteJSON(w, http.StatusOK, deployments)
 }
 
 // GetDeployment handles GET /api/v0.9/webbroker-apis/:apiId/deployments/:deploymentId
-func (h *WebBrokerAPIDeploymentHandler) GetDeployment(c *gin.Context) {
-	orgId, exists := middleware.GetOrganizationFromContext(c)
+func (h *WebBrokerAPIDeploymentHandler) GetDeployment(w http.ResponseWriter, r *http.Request) {
+	orgId, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
 		return
 	}
 
-	apiId := c.Param("apiId")
-	deploymentId := c.Param("deploymentId")
+	apiId := r.PathValue("apiId")
+	deploymentId := r.PathValue("deploymentId")
 
 	deployment, err := h.webbrokerAPIDeploymentService.GetWebBrokerAPIDeploymentByHandle(apiId, deploymentId, orgId)
 	if err != nil {
-		h.handleDeploymentError(c, err, apiId)
+		h.handleDeploymentError(w, err, apiId)
 		return
 	}
 
-	c.JSON(http.StatusOK, deployment)
+	httputil.WriteJSON(w, http.StatusOK, deployment)
 }
 
 // DeleteDeployment handles DELETE /api/v0.9/webbroker-apis/:apiId/deployments/:deploymentId
-func (h *WebBrokerAPIDeploymentHandler) DeleteDeployment(c *gin.Context) {
-	orgId, exists := middleware.GetOrganizationFromContext(c)
+func (h *WebBrokerAPIDeploymentHandler) DeleteDeployment(w http.ResponseWriter, r *http.Request) {
+	orgId, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
 		return
 	}
 
-	apiId := c.Param("apiId")
-	deploymentId := c.Param("deploymentId")
+	apiId := r.PathValue("apiId")
+	deploymentId := r.PathValue("deploymentId")
 
 	if err := h.webbrokerAPIDeploymentService.DeleteWebBrokerAPIDeploymentByHandle(apiId, deploymentId, orgId); err != nil {
-		h.handleDeploymentError(c, err, apiId)
+		h.handleDeploymentError(w, err, apiId)
 		return
 	}
 
-	c.JSON(http.StatusNoContent, nil)
+	httputil.WriteJSON(w, http.StatusNoContent, nil)
 }
 
-func (h *WebBrokerAPIDeploymentHandler) handleDeploymentError(c *gin.Context, err error, apiId string) {
+func (h *WebBrokerAPIDeploymentHandler) handleDeploymentError(w http.ResponseWriter, err error, apiId string) {
 	switch {
 	case errors.Is(err, constants.ErrWebBrokerAPINotFound):
-		c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "WebBroker API not found"))
+		httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "WebBroker API not found"))
 	case errors.Is(err, constants.ErrGatewayNotFound):
-		c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "Gateway not found"))
+		httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "Gateway not found"))
 	case errors.Is(err, constants.ErrDeploymentNotFound):
-		c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "Deployment not found"))
+		httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "Deployment not found"))
 	case errors.Is(err, constants.ErrBaseDeploymentNotFound):
-		c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "Base deployment not found"))
+		httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "Base deployment not found"))
 	case errors.Is(err, constants.ErrDeploymentNotActive):
-		c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict", "No active deployment found for this API on the gateway"))
+		httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponse(409, "Conflict", "No active deployment found for this API on the gateway"))
 	case errors.Is(err, constants.ErrDeploymentIsDeployed):
-		c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict", "Cannot delete an active deployment - undeploy it first"))
+		httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponse(409, "Conflict", "Cannot delete an active deployment - undeploy it first"))
 	case errors.Is(err, constants.ErrDeploymentAlreadyDeployed):
-		c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict", "Cannot restore currently deployed deployment"))
+		httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponse(409, "Conflict", "Cannot restore currently deployed deployment"))
 	case errors.Is(err, constants.ErrInvalidDeploymentRestoreState):
-		c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict", "Deployment cannot be restored: only ARCHIVED or UNDEPLOYED deployments are eligible"))
+		httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponse(409, "Conflict", "Deployment cannot be restored: only ARCHIVED or UNDEPLOYED deployments are eligible"))
 	case errors.Is(err, constants.ErrGatewayIDMismatch):
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Deployment is bound to a different gateway"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Deployment is bound to a different gateway"))
 	case errors.Is(err, constants.ErrAPINoBackendServices):
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "API must have at least one backend service configured"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "API must have at least one backend service configured"))
 	default:
 		h.slogger.Error("WebBroker API deployment error", "apiId", apiId, "error", err)
-		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "An unexpected error occurred"))
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "An unexpected error occurred"))
 	}
 }

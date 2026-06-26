@@ -24,12 +24,12 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/secrets"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/subscriptionxds"
 
-	"github.com/gin-gonic/gin"
 	"github.com/wso2/api-platform/common/authenticators"
 	commonmodels "github.com/wso2/api-platform/common/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/handlers"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/middleware"
+	gohttpkit "github.com/wso2/go-httpkit/middleware"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/controlplane"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/immutable"
@@ -550,31 +550,20 @@ func main() {
 	)
 	igw := immutable.NewImmutableGW(cfg.ImmutableGateway, restAPIService, llmSvc, mcpSvc)
 
-	// Initialize Gin router
-	if os.Getenv("GIN_MODE") == "" {
-		gin.SetMode(gin.ReleaseMode)
-	}
-	router := gin.New()
-
-	// Add middleware
-	// IMPORTANT: CorrelationIDMiddleware must be registered first to ensure
-	// correlation ID is available in context for subsequent middleware and handlers
-	router.Use(middleware.CorrelationIDMiddleware(log))
-	router.Use(middleware.ErrorHandlingMiddleware(log))
-	router.Use(middleware.LoggingMiddleware(log))
-	// Add metrics middleware if metrics are enabled
-	if cfg.Controller.Metrics.Enabled {
-		router.Use(middleware.MetricsMiddleware())
-	}
 	authConfig := generateAuthConfig(cfg)
 	authMiddleWare, err := authenticators.AuthMiddleware(authConfig, log)
 	if err != nil {
 		log.Error("Failed to create auth middleware", slog.Any("error", err))
 		os.Exit(1)
 	}
-	router.Use(authMiddleWare)
-	router.Use(authenticators.AuthorizationMiddleware(authConfig, log))
-	router.Use(gin.Recovery())
+	// Per-route middlewares: auth runs first, then authz (needs r.Pattern set by mux).
+	// The generated wrapper applies middlewares via `handler = mw(handler)`, so the
+	// last entry in the slice is outermost and executes first. authMiddleWare must be
+	// last so it runs before authz can inspect the auth context it populates.
+	perRouteMiddlewares := []api.MiddlewareFunc{
+		authenticators.AuthorizationMiddleware(authConfig, log),
+		authMiddleWare,
+	}
 
 	// Initialize EventListener for multi-replica sync (consumes EventHub events)
 	var evtListener *eventlistener.EventListener
@@ -643,25 +632,39 @@ func main() {
 		cancel()
 	}
 
-	// Register immutable gateway middleware (passthrough when immutable mode is disabled).
-	router.Use(igw.Middleware())
+	// Register API routes into a shared mux. Both registrations target the
+	// same mux — HandlerWithOptions registers routes on the BaseRouter in-place.
+	mux := http.NewServeMux()
 
-	// Register API routes under the versioned base path (includes certificate
-	// management endpoints from OpenAPI spec).
-	api.RegisterHandlersWithOptions(router, apiServer, api.GinServerOptions{
-		BaseURL: managementAPIBasePath,
+	// Versioned routes under managementAPIBasePath.
+	api.HandlerWithOptions(apiServer, api.StdHTTPServerOptions{
+		BaseURL:     managementAPIBasePath,
+		BaseRouter:  mux,
+		Middlewares: append(perRouteMiddlewares, igw.Middleware()),
 	})
 
-	// Also register the same routes on the legacy unprefixed paths for
-	// backwards compatibility. These are deprecated; responses include
-	// RFC 8594 `Deprecation: true` and a `Link` header pointing to the new
-	// versioned path so clients can migrate. Remove once all known clients
-	// have switched to the versioned base path.
-	api.RegisterHandlersWithOptions(router, apiServer, api.GinServerOptions{
-		Middlewares: []api.MiddlewareFunc{
+	// Legacy unprefixed routes — deprecated; responses include RFC 8594 headers.
+	// Remove once all known clients have switched to the versioned base path.
+	api.HandlerWithOptions(apiServer, api.StdHTTPServerOptions{
+		BaseURL:    "",
+		BaseRouter: mux,
+		Middlewares: append(perRouteMiddlewares,
+			igw.Middleware(),
 			deprecatedManagementPathMiddleware(managementAPIBasePath),
-		},
+		),
 	})
+
+	// Outer middleware wraps the entire mux. CorrelationID must be outermost
+	// so every downstream middleware gets a correlation-aware logger.
+	outerMiddlewares := []func(http.Handler) http.Handler{
+		middleware.CorrelationIDMiddleware(log),
+		middleware.ErrorHandlingMiddleware(log),
+		middleware.LoggingMiddleware(log),
+	}
+	if cfg.Controller.Metrics.Enabled {
+		outerMiddlewares = append(outerMiddlewares, middleware.MetricsMiddleware())
+	}
+	handler := gohttpkit.Chain(outerMiddlewares...)(mux)
 
 	// Start controller admin server for debug endpoints if enabled.
 	var controllerAdminServer *adminserver.Server
@@ -702,7 +705,7 @@ func main() {
 	// Setup graceful shutdown
 	srv := &http.Server{
 		Addr:              fmt.Sprintf(":%d", cfg.Controller.Server.APIPort),
-		Handler:           router,
+		Handler:           handler,
 		ReadHeaderTimeout: 30 * time.Second,
 	}
 
@@ -804,108 +807,108 @@ func generateAuthConfig(config *config.Config) commonmodels.AuthConfig {
 	}
 
 	relativeRoles := map[string][]string{
-		"POST /rest-apis":       {"admin", "developer"},
-		"GET /rest-apis":        {"admin", "developer"},
-		"GET /rest-apis/:id":    {"admin", "developer"},
-		"PUT /rest-apis/:id":    {"admin", "developer"},
-		"DELETE /rest-apis/:id": {"admin", "developer"},
+		"POST /rest-apis":         {"admin", "developer"},
+		"GET /rest-apis":          {"admin", "developer"},
+		"GET /rest-apis/{id}":     {"admin", "developer"},
+		"PUT /rest-apis/{id}":     {"admin", "developer"},
+		"DELETE /rest-apis/{id}":  {"admin", "developer"},
 
-		"POST /websub-apis":       {"admin", "developer"},
-		"GET /websub-apis":        {"admin", "developer"},
-		"GET /websub-apis/:id":    {"admin", "developer"},
-		"PUT /websub-apis/:id":    {"admin", "developer"},
-		"DELETE /websub-apis/:id": {"admin", "developer"},
+		"POST /websub-apis":         {"admin", "developer"},
+		"GET /websub-apis":          {"admin", "developer"},
+		"GET /websub-apis/{id}":     {"admin", "developer"},
+		"PUT /websub-apis/{id}":     {"admin", "developer"},
+		"DELETE /websub-apis/{id}":  {"admin", "developer"},
 
-		"POST /webbroker-apis":       {"admin", "developer"},
-		"GET /webbroker-apis":        {"admin", "developer"},
-		"GET /webbroker-apis/:id":    {"admin", "developer"},
-		"DELETE /webbroker-apis/:id": {"admin", "developer"},
+		"POST /webbroker-apis":         {"admin", "developer"},
+		"GET /webbroker-apis":          {"admin", "developer"},
+		"GET /webbroker-apis/{id}":     {"admin", "developer"},
+		"DELETE /webbroker-apis/{id}":  {"admin", "developer"},
 
-		"GET /certificates":         {"admin", "developer"},
-		"POST /certificates":        {"admin", "developer"},
-		"DELETE /certificates/:id":  {"admin"},
-		"POST /certificates/reload": {"admin"},
+		"GET /certificates":          {"admin", "developer"},
+		"POST /certificates":         {"admin", "developer"},
+		"DELETE /certificates/{id}":  {"admin"},
+		"POST /certificates/reload":  {"admin"},
 
 		"GET /policies": {"admin", "developer"},
 
-		"POST /mcp-proxies":       {"admin", "developer"},
-		"GET /mcp-proxies":        {"admin", "developer"},
-		"GET /mcp-proxies/:id":    {"admin", "developer"},
-		"PUT /mcp-proxies/:id":    {"admin", "developer"},
-		"DELETE /mcp-proxies/:id": {"admin", "developer"},
+		"POST /mcp-proxies":         {"admin", "developer"},
+		"GET /mcp-proxies":          {"admin", "developer"},
+		"GET /mcp-proxies/{id}":     {"admin", "developer"},
+		"PUT /mcp-proxies/{id}":     {"admin", "developer"},
+		"DELETE /mcp-proxies/{id}":  {"admin", "developer"},
 
-		"POST /llm-provider-templates":       {"admin"},
-		"GET /llm-provider-templates":        {"admin"},
-		"GET /llm-provider-templates/:id":    {"admin"},
-		"PUT /llm-provider-templates/:id":    {"admin"},
-		"DELETE /llm-provider-templates/:id": {"admin"},
+		"POST /llm-provider-templates":         {"admin"},
+		"GET /llm-provider-templates":          {"admin"},
+		"GET /llm-provider-templates/{id}":     {"admin"},
+		"PUT /llm-provider-templates/{id}":     {"admin"},
+		"DELETE /llm-provider-templates/{id}":  {"admin"},
 
-		"POST /llm-providers":       {"admin"},
-		"GET /llm-providers":        {"admin", "developer"},
-		"GET /llm-providers/:id":    {"admin", "developer"},
-		"PUT /llm-providers/:id":    {"admin"},
-		"DELETE /llm-providers/:id": {"admin"},
+		"POST /llm-providers":         {"admin"},
+		"GET /llm-providers":          {"admin", "developer"},
+		"GET /llm-providers/{id}":     {"admin", "developer"},
+		"PUT /llm-providers/{id}":     {"admin"},
+		"DELETE /llm-providers/{id}":  {"admin"},
 
-		"POST /llm-proxies":       {"admin", "developer"},
-		"GET /llm-proxies":        {"admin", "developer"},
-		"GET /llm-proxies/:id":    {"admin", "developer"},
-		"PUT /llm-proxies/:id":    {"admin", "developer"},
-		"DELETE /llm-proxies/:id": {"admin", "developer"},
+		"POST /llm-proxies":         {"admin", "developer"},
+		"GET /llm-proxies":          {"admin", "developer"},
+		"GET /llm-proxies/{id}":     {"admin", "developer"},
+		"PUT /llm-proxies/{id}":     {"admin", "developer"},
+		"DELETE /llm-proxies/{id}":  {"admin", "developer"},
 
-		"POST /rest-apis/:id/api-keys":                        {"admin", "consumer"},
-		"GET /rest-apis/:id/api-keys":                         {"admin", "consumer"},
-		"PUT /rest-apis/:id/api-keys/:apiKeyName":             {"admin", "consumer"},
-		"POST /rest-apis/:id/api-keys/:apiKeyName/regenerate": {"admin", "consumer"},
-		"DELETE /rest-apis/:id/api-keys/:apiKeyName":          {"admin", "consumer"},
+		"POST /rest-apis/{id}/api-keys":                          {"admin", "consumer"},
+		"GET /rest-apis/{id}/api-keys":                           {"admin", "consumer"},
+		"PUT /rest-apis/{id}/api-keys/{apiKeyName}":              {"admin", "consumer"},
+		"POST /rest-apis/{id}/api-keys/{apiKeyName}/regenerate":  {"admin", "consumer"},
+		"DELETE /rest-apis/{id}/api-keys/{apiKeyName}":           {"admin", "consumer"},
 
-		"POST /llm-providers/:id/api-keys":                        {"admin", "consumer"},
-		"GET /llm-providers/:id/api-keys":                         {"admin", "consumer"},
-		"PUT /llm-providers/:id/api-keys/:apiKeyName":             {"admin", "consumer"},
-		"POST /llm-providers/:id/api-keys/:apiKeyName/regenerate": {"admin", "consumer"},
-		"DELETE /llm-providers/:id/api-keys/:apiKeyName":          {"admin", "consumer"},
+		"POST /llm-providers/{id}/api-keys":                          {"admin", "consumer"},
+		"GET /llm-providers/{id}/api-keys":                           {"admin", "consumer"},
+		"PUT /llm-providers/{id}/api-keys/{apiKeyName}":              {"admin", "consumer"},
+		"POST /llm-providers/{id}/api-keys/{apiKeyName}/regenerate":  {"admin", "consumer"},
+		"DELETE /llm-providers/{id}/api-keys/{apiKeyName}":           {"admin", "consumer"},
 
-		"POST /llm-proxies/:id/api-keys":                        {"admin", "consumer"},
-		"GET /llm-proxies/:id/api-keys":                         {"admin", "consumer"},
-		"PUT /llm-proxies/:id/api-keys/:apiKeyName":             {"admin", "consumer"},
-		"POST /llm-proxies/:id/api-keys/:apiKeyName/regenerate": {"admin", "consumer"},
-		"DELETE /llm-proxies/:id/api-keys/:apiKeyName":          {"admin", "consumer"},
+		"POST /llm-proxies/{id}/api-keys":                          {"admin", "consumer"},
+		"GET /llm-proxies/{id}/api-keys":                           {"admin", "consumer"},
+		"PUT /llm-proxies/{id}/api-keys/{apiKeyName}":              {"admin", "consumer"},
+		"POST /llm-proxies/{id}/api-keys/{apiKeyName}/regenerate":  {"admin", "consumer"},
+		"DELETE /llm-proxies/{id}/api-keys/{apiKeyName}":           {"admin", "consumer"},
 
-		"POST /websub-apis/:id/api-keys":                        {"admin", "consumer"},
-		"GET /websub-apis/:id/api-keys":                         {"admin", "consumer"},
-		"PUT /websub-apis/:id/api-keys/:apiKeyName":             {"admin", "consumer"},
-		"POST /websub-apis/:id/api-keys/:apiKeyName/regenerate": {"admin", "consumer"},
-		"DELETE /websub-apis/:id/api-keys/:apiKeyName":          {"admin", "consumer"},
+		"POST /websub-apis/{id}/api-keys":                          {"admin", "consumer"},
+		"GET /websub-apis/{id}/api-keys":                           {"admin", "consumer"},
+		"PUT /websub-apis/{id}/api-keys/{apiKeyName}":              {"admin", "consumer"},
+		"POST /websub-apis/{id}/api-keys/{apiKeyName}/regenerate":  {"admin", "consumer"},
+		"DELETE /websub-apis/{id}/api-keys/{apiKeyName}":           {"admin", "consumer"},
 
-		"POST /websub-apis/:id/secrets":                        {"admin", "consumer"},
-		"GET /websub-apis/:id/secrets":                         {"admin", "consumer"},
-		"DELETE /websub-apis/:id/secrets/:secretName":          {"admin", "consumer"},
-		"POST /websub-apis/:id/secrets/:secretName/regenerate": {"admin", "consumer"},
+		"POST /websub-apis/{id}/secrets":                                {"admin", "consumer"},
+		"GET /websub-apis/{id}/secrets":                                 {"admin", "consumer"},
+		"DELETE /websub-apis/{id}/secrets/{secretName}":                 {"admin", "consumer"},
+		"POST /websub-apis/{id}/secrets/{secretName}/regenerate":        {"admin", "consumer"},
 
-		"POST /webbroker-apis/:id/api-keys":                        {"admin", "consumer"},
-		"GET /webbroker-apis/:id/api-keys":                         {"admin", "consumer"},
-		"PUT /webbroker-apis/:id/api-keys/:apiKeyName":             {"admin", "consumer"},
-		"POST /webbroker-apis/:id/api-keys/:apiKeyName/regenerate": {"admin", "consumer"},
-		"DELETE /webbroker-apis/:id/api-keys/:apiKeyName":          {"admin", "consumer"},
+		"POST /webbroker-apis/{id}/api-keys":                          {"admin", "consumer"},
+		"GET /webbroker-apis/{id}/api-keys":                           {"admin", "consumer"},
+		"PUT /webbroker-apis/{id}/api-keys/{apiKeyName}":              {"admin", "consumer"},
+		"POST /webbroker-apis/{id}/api-keys/{apiKeyName}/regenerate":  {"admin", "consumer"},
+		"DELETE /webbroker-apis/{id}/api-keys/{apiKeyName}":           {"admin", "consumer"},
 
 		// Root-level subscription endpoints
-		"POST /subscriptions":                   {"admin", "developer"},
-		"GET /subscriptions":                    {"admin", "developer"},
-		"GET /subscriptions/:subscriptionId":    {"admin", "developer"},
-		"PUT /subscriptions/:subscriptionId":    {"admin", "developer"},
-		"DELETE /subscriptions/:subscriptionId": {"admin", "developer"},
+		"POST /subscriptions":                        {"admin", "developer"},
+		"GET /subscriptions":                         {"admin", "developer"},
+		"GET /subscriptions/{subscriptionId}":        {"admin", "developer"},
+		"PUT /subscriptions/{subscriptionId}":        {"admin", "developer"},
+		"DELETE /subscriptions/{subscriptionId}":     {"admin", "developer"},
 
 		// Subscription plan endpoints
-		"POST /subscription-plans":           {"admin", "developer"},
-		"GET /subscription-plans":            {"admin", "developer"},
-		"GET /subscription-plans/:planId":    {"admin", "developer"},
-		"PUT /subscription-plans/:planId":    {"admin", "developer"},
-		"DELETE /subscription-plans/:planId": {"admin", "developer"},
+		"POST /subscription-plans":             {"admin", "developer"},
+		"GET /subscription-plans":              {"admin", "developer"},
+		"GET /subscription-plans/{planId}":     {"admin", "developer"},
+		"PUT /subscription-plans/{planId}":     {"admin", "developer"},
+		"DELETE /subscription-plans/{planId}":  {"admin", "developer"},
 
-		"POST /secrets":       {"admin"},
-		"GET /secrets":        {"admin"},
-		"GET /secrets/:id":    {"admin"},
-		"PUT /secrets/:id":    {"admin"},
-		"DELETE /secrets/:id": {"admin"},
+		"POST /secrets":          {"admin"},
+		"GET /secrets":           {"admin"},
+		"GET /secrets/{id}":      {"admin"},
+		"PUT /secrets/{id}":      {"admin"},
+		"DELETE /secrets/{id}":   {"admin"},
 	}
 
 	// Populate both the versioned and legacy (unprefixed) keys so the auth
@@ -944,22 +947,23 @@ func generateAuthConfig(config *config.Config) commonmodels.AuthConfig {
 	return authConfig
 }
 
-// deprecatedManagementPathMiddleware returns a Gin middleware that marks
-// responses served on the legacy unprefixed management API paths as
-// deprecated, following RFC 8594. It adds:
+// deprecatedManagementPathMiddleware marks responses served on the legacy
+// unprefixed management API paths as deprecated, following RFC 8594. Adds:
 //   - `Deprecation: true`
 //   - `Link: <newBasePath+path>; rel="successor-version"`
 //   - `Warning: 299 - "Deprecated API: use <newBasePath> prefix"`
 //
-// The middleware is attached only to the second (legacy) registration of the
-// management API routes; requests to the versioned base path bypass it.
+// Attached only to the second (legacy) registration; versioned-path requests
+// bypass it.
 func deprecatedManagementPathMiddleware(newBasePath string) api.MiddlewareFunc {
-	return func(c *gin.Context) {
-		successor := newBasePath + c.Request.URL.Path
-		c.Writer.Header().Set("Deprecation", "true")
-		c.Writer.Header().Set("Link", fmt.Sprintf("<%s>; rel=\"successor-version\"", successor))
-		c.Writer.Header().Set("Warning",
-			fmt.Sprintf("299 - \"Deprecated API: migrate to %s prefix\"", newBasePath))
-		c.Next()
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			successor := newBasePath + r.URL.Path
+			w.Header().Set("Deprecation", "true")
+			w.Header().Set("Link", fmt.Sprintf("<%s>; rel=\"successor-version\"", successor))
+			w.Header().Set("Warning",
+				fmt.Sprintf("299 - \"Deprecated API: migrate to %s prefix\"", newBasePath))
+			next.ServeHTTP(w, r)
+		})
 	}
 }

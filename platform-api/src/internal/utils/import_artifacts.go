@@ -29,7 +29,8 @@ import (
 	"platform-api/src/internal/dto"
 	"platform-api/src/internal/model"
 
-	"github.com/gin-gonic/gin"
+	"net/http"
+
 	commonconstants "github.com/wso2/api-platform/common/constants"
 )
 
@@ -54,19 +55,15 @@ const (
 // it extracts the "artifacts" zip part, decodes its artifacts.json entry into the list of
 // import requests, and validates that the list is non-empty. It returns a descriptive error
 // (suitable for a 400 response) when the part is missing, unreadable, not a valid zip, or empty.
-func ParseGatewayArtifactsRequest(c *gin.Context) ([]dto.ImportGatewayArtifactRequest, error) {
-	fileHeader, err := c.FormFile(gatewayArtifactsFormField)
+func ParseGatewayArtifactsRequest(r *http.Request) ([]dto.ImportGatewayArtifactRequest, error) {
+	f, fileHeader, err := r.FormFile(gatewayArtifactsFormField)
 	if err != nil {
 		return nil, fmt.Errorf("missing '%s' zip file in multipart form: %w", gatewayArtifactsFormField, err)
 	}
+	defer f.Close()
 	if fileHeader.Size > maxArtifactsZipBytes {
 		return nil, fmt.Errorf("'%s' file exceeds the maximum allowed size of %d bytes", gatewayArtifactsFormField, maxArtifactsZipBytes)
 	}
-	f, err := fileHeader.Open()
-	if err != nil {
-		return nil, fmt.Errorf("failed to read '%s' file: %w", gatewayArtifactsFormField, err)
-	}
-	defer f.Close()
 	// Bound the read in case the reported size is unreliable.
 	zipBytes, err := io.ReadAll(io.LimitReader(f, maxArtifactsZipBytes+1))
 	if err != nil {

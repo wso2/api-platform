@@ -40,14 +40,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
        fi \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy go mod files for dependencies (needed for go.mod replace directive)
+# Copy go mod files for dependencies (needed for go.mod replace directives)
 COPY --from=common go.mod go.sum /common/
+COPY --from=httpkit go.mod go.sum /httpkit/
 
 # Fetch dependencies before copying full source for better layer caching.
 COPY src/go.mod src/go.sum ./
 RUN go mod download
 
 COPY --from=common . /common
+COPY --from=httpkit . /httpkit
 COPY src/ ./
 
 RUN if [ "$TARGETARCH" = "amd64" ]; then \

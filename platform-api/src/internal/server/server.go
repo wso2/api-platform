@@ -35,7 +35,6 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"platform-api/src/internal/middleware"
 	"strings"
 	"syscall"
 	"time"
@@ -43,6 +42,7 @@ import (
 	"platform-api/src/config"
 	"platform-api/src/internal/database"
 	"platform-api/src/internal/handler"
+	"platform-api/src/internal/middleware"
 	"platform-api/src/internal/model"
 	"platform-api/src/internal/repository"
 	"platform-api/src/internal/service"
@@ -50,15 +50,16 @@ import (
 	internalvault "platform-api/src/internal/vault"
 	"platform-api/src/internal/websocket"
 
-	"github.com/gin-contrib/cors"
-	"github.com/gin-gonic/gin"
 	"github.com/wso2/api-platform/common/authenticators"
 	"github.com/wso2/api-platform/common/eventhub"
 	commonmodels "github.com/wso2/api-platform/common/models"
+	"github.com/wso2/go-httpkit/httputil"
+	gohttpkit "github.com/wso2/go-httpkit/middleware"
 )
 
 type Server struct {
-	router         *gin.Engine
+	mux            *http.ServeMux
+	handler        http.Handler // mux wrapped with the full middleware chain
 	orgRepo        repository.OrganizationRepository
 	projRepo       repository.ProjectRepository
 	apiRepo        repository.APIRepository
@@ -377,22 +378,8 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	slogger.Info("Initialized all services and handlers successfully")
 	slogger.Info("Platform API configuration", slog.Bool("demoMode", demoMode()))
 
-	if strings.ToLower(cfg.LogLevel) == "debug" {
-		gin.SetMode(gin.DebugMode)
-	} else {
-		gin.SetMode(gin.ReleaseMode)
-	}
-
-	// Setup router
-	router := gin.Default()
-
-	// Configure and apply CORS middleware first (before auth middleware)
-	corsConfig := cors.DefaultConfig()
-	corsConfig.AllowAllOrigins = true
-	corsConfig.AllowMethods = []string{"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"}
-	corsConfig.AllowHeaders = []string{"Origin", "Content-Length", "Content-Type", "Authorization"}
-	corsConfig.AllowCredentials = true
-	router.Use(cors.New(corsConfig))
+	// Setup mux and register all routes.
+	mux := http.NewServeMux()
 
 	// Load the OpenAPI scope registry — source of truth for required scopes per route.
 	scopeRegistry, err := middleware.LoadScopeRegistry(cfg.OpenAPISpecPath)
@@ -412,19 +399,56 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 		slogger.Warn("scope validation is disabled — all authenticated requests will be allowed regardless of scope")
 	}
 
-	// Register public routes before auth middleware so they bypass authentication.
-	// The login endpoint is only available when file-based auth is enabled.
-	if cfg.Auth.FileBased.Enabled {
-		handler.NewAuthLoginHandler(cfg).RegisterPublicRoutes(router)
-	}
+	// Register all routes on the mux. Public routes (login) are accessible
+	// because the auth middleware uses cfg.Auth.SkipPaths to bypass them.
+	handler.NewAuthLoginHandler(cfg).RegisterPublicRoutes(mux)
+	orgHandler.RegisterRoutes(mux)
+	projectHandler.RegisterRoutes(mux)
+	appHandler.RegisterRoutes(mux)
+	apiHandler.RegisterRoutes(mux)
+	gatewayHandler.RegisterRoutes(mux)
+	subscriptionHandler.RegisterRoutes(mux)
+	subscriptionPlanHandler.RegisterRoutes(mux)
+	wsHandler.RegisterRoutes(mux)
+	internalGatewayHandler.RegisterRoutes(mux)
+	apiKeyHandler.RegisterRoutes(mux)
+	gitHandler.RegisterRoutes(mux)
+	deploymentHandler.RegisterRoutes(mux)
+	llmHandler.RegisterRoutes(mux)
+	llmDeploymentHandler.RegisterRoutes(mux)
+	llmProviderAPIKeyHandler.RegisterRoutes(mux)
+	llmProxyAPIKeyHandler.RegisterRoutes(mux)
+	apiKeyUserHandler.RegisterRoutes(mux)
+	llmProxyDeploymentHandler.RegisterRoutes(mux)
+	mcpProxyHandler.RegisterRoutes(mux)
+	mcpProxyDeploymentHandler.RegisterRoutes(mux)
+	websubAPIHandler.RegisterRoutes(mux)
+	websubAPIKeyHandler.RegisterRoutes(mux)
+	websubAPIDeploymentHandler.RegisterRoutes(mux)
+	hmacSecretHandler.RegisterRoutes(mux)
+	webbrokerAPIHandler.RegisterRoutes(mux)
+	webbrokerAPIKeyHandler.RegisterRoutes(mux)
+	webbrokerAPIDeploymentHandler.RegisterRoutes(mux)
+	secretHandler.RegisterRoutes(mux)
+	slogger.Info("Registered API routes successfully")
 
-	// Build and apply the authenticator middleware.
+	// Build the middleware chain that wraps the mux.
+	// Order: CORS → auth → scope enforcer → mux
+	var chain []func(http.Handler) http.Handler
+
+	chain = append(chain, gohttpkit.CORSMiddleware(gohttpkit.CORSOptions{
+		AllowedOrigins:   []string{"*"},
+		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"},
+		AllowedHeaders:   []string{"Origin", "Content-Length", "Content-Type", "Authorization"},
+		AllowCredentials: true,
+	}))
+
 	if cfg.Auth.FileBased.Enabled {
 		slogger.Info("Auth mode: file-based (HMAC-signed JWT)")
 		if !demoMode() {
 			slogger.Warn("file-based authentication is enabled — this is not recommended for production; please configure an IDP of your choice")
 		}
-		router.Use(middleware.LocalJWTAuthMiddleware(middleware.AuthConfig{
+		chain = append(chain, middleware.LocalJWTAuthMiddleware(middleware.AuthConfig{
 			SecretKey:      cfg.Auth.JWT.SecretKey,
 			TokenIssuer:    cfg.Auth.JWT.Issuer,
 			SkipPaths:      cfg.Auth.SkipPaths,
@@ -435,48 +459,15 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 		if err != nil {
 			return nil, err
 		}
-		for _, mw := range authenticator.Middleware() {
-			router.Use(mw)
-		}
+		chain = append(chain, authenticator.Middleware()...)
 	}
 
 	// Apply the OpenAPI-driven scope enforcer after authentication so identity
 	// values are already in the context when scope checks run.
-	router.Use(middleware.ScopeEnforcer(scopeRegistry, middleware.ScopeEnforcerConfig{
+	chain = append(chain, middleware.ScopeEnforcer(scopeRegistry, middleware.ScopeEnforcerConfig{
 		ValidationMode: cfg.Auth.IDP.ValidationMode,
 		Enabled:        cfg.EnableScopeValidation,
 	}))
-
-	// Register routes
-	orgHandler.RegisterRoutes(router)
-	projectHandler.RegisterRoutes(router)
-	appHandler.RegisterRoutes(router)
-	apiHandler.RegisterRoutes(router)
-	gatewayHandler.RegisterRoutes(router)
-	subscriptionHandler.RegisterRoutes(router)
-	subscriptionPlanHandler.RegisterRoutes(router)
-	wsHandler.RegisterRoutes(router)
-	internalGatewayHandler.RegisterRoutes(router)
-	apiKeyHandler.RegisterRoutes(router)
-	gitHandler.RegisterRoutes(router)
-	deploymentHandler.RegisterRoutes(router)
-	llmHandler.RegisterRoutes(router)
-	llmDeploymentHandler.RegisterRoutes(router)
-	llmProviderAPIKeyHandler.RegisterRoutes(router)
-	llmProxyAPIKeyHandler.RegisterRoutes(router)
-	apiKeyUserHandler.RegisterRoutes(router)
-	llmProxyDeploymentHandler.RegisterRoutes(router)
-	mcpProxyHandler.RegisterRoutes(router)
-	mcpProxyDeploymentHandler.RegisterRoutes(router)
-	websubAPIHandler.RegisterRoutes(router)
-	websubAPIKeyHandler.RegisterRoutes(router)
-	websubAPIDeploymentHandler.RegisterRoutes(router)
-	hmacSecretHandler.RegisterRoutes(router)
-	webbrokerAPIHandler.RegisterRoutes(router)
-	webbrokerAPIKeyHandler.RegisterRoutes(router)
-	webbrokerAPIDeploymentHandler.RegisterRoutes(router)
-	secretHandler.RegisterRoutes(router)
-	slogger.Info("Registered API routes successfully")
 
 	slogger.Info("WebSocket manager initialized",
 		slog.Int("maxConnections", cfg.WebSocket.MaxConnections),
@@ -486,7 +477,8 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	)
 
 	return &Server{
-		router:         router,
+		mux:            mux,
+		handler:        gohttpkit.Chain(chain...)(mux),
 		orgRepo:        orgRepo,
 		projRepo:       projectRepo,
 		apiRepo:        apiRepo,
@@ -704,10 +696,10 @@ func (s *Server) Start(port string, certDir string) error {
 		certGenerated = true
 	}
 
-	// Add a health endpoint that works with self-signed certs
-	s.router.GET("/health", func(c *gin.Context) {
-		c.Status(200)
-		c.JSON(200, gin.H{"status": "ok"})
+	// Add a health endpoint. Routes added to s.mux after startup are reachable
+	// because s.handler wraps s.mux by reference.
+	s.mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
+		httputil.WriteJSON(w, http.StatusOK, map[string]any{"status": "ok"})
 	})
 
 	// CreateOrganization TLS configuration
@@ -719,7 +711,7 @@ func (s *Server) Start(port string, certDir string) error {
 	address := fmt.Sprintf(":%s", port)
 	httpServer := &http.Server{
 		Addr:      address,
-		Handler:   s.router,
+		Handler:   s.handler,
 		TLSConfig: tlsConfig,
 	}
 
@@ -780,9 +772,9 @@ func (s *Server) Start(port string, certDir string) error {
 	}
 }
 
-// GetRouter returns the gin router for testing purposes
-func (s *Server) GetRouter() *gin.Engine {
-	return s.router
+// GetMux returns the raw ServeMux for testing purposes.
+func (s *Server) GetMux() *http.ServeMux {
+	return s.mux
 }
 
 // seedFileBasedOrg ensures the file-based auth organization exists in the DB.

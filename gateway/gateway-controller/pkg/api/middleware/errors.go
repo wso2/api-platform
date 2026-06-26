@@ -19,36 +19,37 @@
 package middleware
 
 import (
+	"encoding/json"
 	"log/slog"
 	"net/http"
+	"runtime/debug"
 
-	"github.com/gin-gonic/gin"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 )
 
-// ErrorHandlingMiddleware creates a Gin middleware for error recovery
-func ErrorHandlingMiddleware(logger *slog.Logger) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		defer func() {
-			if err := recover(); err != nil {
-				// Get correlation-aware logger from context
-				log := GetLogger(c, logger)
-
-				log.Error("Panic recovered",
-					slog.Any("error", err),
-					slog.String("path", c.Request.URL.Path),
-					slog.String("method", c.Request.Method),
-				)
-
-				c.JSON(http.StatusInternalServerError, api.ErrorResponse{
-					Status:  "error",
-					Message: "Internal server error",
-				})
-
-				c.Abort()
-			}
-		}()
-
-		c.Next()
+// ErrorHandlingMiddleware recovers from panics, logs them, and writes a 500
+// response using the project's ErrorResponse type.
+func ErrorHandlingMiddleware(logger *slog.Logger) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			defer func() {
+				if err := recover(); err != nil {
+					log := GetLogger(r, logger)
+					log.Error("Panic recovered",
+						slog.Any("error", err),
+						slog.String("path", r.URL.Path),
+						slog.String("method", r.Method),
+						slog.String("stack", string(debug.Stack())),
+					)
+					w.Header().Set("Content-Type", "application/json")
+					w.WriteHeader(http.StatusInternalServerError)
+					_ = json.NewEncoder(w).Encode(api.ErrorResponse{
+						Status:  "error",
+						Message: "Internal server error",
+					})
+				}
+			}()
+			next.ServeHTTP(w, r)
+		})
 	}
 }
