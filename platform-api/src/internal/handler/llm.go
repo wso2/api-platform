@@ -257,6 +257,9 @@ func (h *LLMHandler) CreateLLMProvider(c *gin.Context) {
 		case errors.Is(err, constants.ErrLLMProviderTemplateNotFound):
 			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Referenced template not found"))
 			return
+		case errors.Is(err, constants.ErrSecretRefMissing):
+			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))
+			return
 		case errors.Is(err, constants.ErrInvalidInput):
 			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid input"))
 			return
@@ -350,6 +353,9 @@ func (h *LLMHandler) UpdateLLMProvider(c *gin.Context) {
 			return
 		case errors.Is(err, constants.ErrLLMProviderTemplateNotFound):
 			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Referenced template not found"))
+			return
+		case errors.Is(err, constants.ErrSecretRefMissing):
+			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))
 			return
 		case errors.Is(err, constants.ErrInvalidInput):
 			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid input"))

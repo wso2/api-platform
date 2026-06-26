@@ -91,6 +91,7 @@ export const OIDC_SCOPE = getEnvOrDefault(
   ' ap:webbroker_api:api_key:read ap:webbroker_api:api_key:create ap:webbroker_api:api_key:delete ap:webbroker_api:api_key:manage ap:webbroker_api:api_key:update' +
   ' ap:webbroker_api:deployment:read ap:webbroker_api:deployment:create ap:webbroker_api:deployment:delete ap:webbroker_api:deployment:manage ap:webbroker_api:deployment:undeploy ap:webbroker_api:deployment:restore' +
   ' ap:webbroker_api:publication:read ap:webbroker_api:publication:create ap:webbroker_api:publication:delete' +
+  ' ap:secret:read ap:secret:create ap:secret:update ap:secret:delete ap:secret:manage' +
   ' ap:git:read'
 );
 

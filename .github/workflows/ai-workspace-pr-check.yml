@@ -33,5 +33,64 @@ jobs:
         run: make build
         working-directory: portals/ai-workspace
 
-      - name: Run AI Workspace E2E suite
-        run: make test-ai-workspace
+      # AI Workspace E2E depends on platform-api changes that ship in this PR but
+      # are not yet published to the registry. Build the platform-api image from
+      # source and pin the compose file to that freshly built snapshot so the
+      # stack runs the PR's code instead of the last published image.
+      - name: Build Platform API image (PR changes)
+        run: |
+          PLATFORM_API_VERSION="$(tr -d '[:space:]' < platform-api/VERSION)"
+          echo "Building platform-api:${PLATFORM_API_VERSION} from source"
+          make -C platform-api build VERSION="${PLATFORM_API_VERSION}"
+          echo "Pinning ai-workspace compose to platform-api:${PLATFORM_API_VERSION}"
+          sed -i.bak -E "s#image: .*/platform-api:.*#image: ghcr.io/wso2/api-platform/platform-api:${PLATFORM_API_VERSION}#" \
+            portals/ai-workspace/docker-compose.yaml
+          rm -f portals/ai-workspace/docker-compose.yaml.bak
+
+      # On Linux CI, Docker containers reach the host via the bridge gateway IP,
+      # not via "localhost". The test:e2e script runs Cypress inside a Docker
+      # container with --add-host=host.docker.internal:host-gateway, so all
+      # cy.request() calls (relative URLs resolved against baseUrl) use
+      # https://host.docker.internal:5380. Adding the same alias on the CI host
+      # itself lets the readiness probe below test the exact same network path
+      # that Cypress will use — not a different one via localhost.
+      - name: Map host.docker.internal on CI host
+        run: echo "127.0.0.1 host.docker.internal" | sudo tee -a /etc/hosts
+
+      - name: Start quickstart stack
+        # --wait blocks until all healthchecks pass. The ai-workspace healthcheck
+        # now verifies the nginx→platform-api proxy route (not just the static
+        # frontend), so this returns only when the API is ready to serve requests.
+        run: docker compose up -d --wait --wait-timeout 300
+        working-directory: portals/ai-workspace
+
+      - name: Verify API proxy is reachable via host.docker.internal
+        # Probe via the same host:port that Cypress uses (host.docker.internal:5380),
+        # not localhost. A 200/401/403 means the full proxy pipeline is accepting
+        # requests; 502/000 means it is still warming up.
+        run: |
+          for i in $(seq 1 30); do
+            STATUS=$(curl -sk -o /dev/null -w "%{http_code}" https://host.docker.internal:5380/api-proxy/api/v1/organizations)
+            if [ "$STATUS" = "200" ] || [ "$STATUS" = "401" ] || [ "$STATUS" = "403" ]; then
+              echo "API proxy ready (HTTP $STATUS)"
+              exit 0
+            fi
+            echo "Attempt $i: API proxy returned HTTP $STATUS, retrying in 5s..."
+            sleep 5
+          done
+          echo "API proxy did not become ready within 150s"
+          exit 1
+
+      - name: Run Cypress E2E suite
+        run: npm run test:e2e
+        working-directory: portals/ai-workspace
+
+      - name: Print quickstart logs on failure
+        if: failure()
+        run: docker compose logs --no-color
+        working-directory: portals/ai-workspace
+
+      - name: Stop quickstart stack
+        if: always()
+        run: docker compose down -v
+        working-directory: portals/ai-workspace
