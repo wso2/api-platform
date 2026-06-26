@@ -173,7 +173,7 @@ CREATE TABLE IF NOT EXISTS gateways (
 );
 
 -- Artifact Gateway Mapping table (links artifacts to gateways)
-CREATE TABLE IF NOT EXISTS artifact_gateway_mapping (
+CREATE TABLE IF NOT EXISTS artifact_gateway_mappings (
     artifact_uuid VARCHAR(40) NOT NULL,
     organization_uuid VARCHAR(40) NOT NULL,
     gateway_uuid VARCHAR(40) NOT NULL,
@@ -535,8 +535,8 @@ CREATE TABLE IF NOT EXISTS events (
 
 CREATE INDEX IF NOT EXISTS idx_events_gateway_id_processed_timestamp ON events(gateway_id, processed_timestamp);
 CREATE INDEX IF NOT EXISTS idx_events_entity ON events(entity_type, entity_id);
-CREATE INDEX IF NOT EXISTS idx_artifact_gateway_mapping_artifact_uuid ON artifact_gateway_mapping(artifact_uuid);
-CREATE INDEX IF NOT EXISTS idx_artifact_gateway_mapping_gateway_uuid ON artifact_gateway_mapping(gateway_uuid);
+CREATE INDEX IF NOT EXISTS idx_artifact_gateway_mappings_artifact_uuid ON artifact_gateway_mappings(artifact_uuid);
+CREATE INDEX IF NOT EXISTS idx_artifact_gateway_mappings_gateway_uuid ON artifact_gateway_mappings(gateway_uuid);
 
 CREATE TABLE IF NOT EXISTS audit (
    uuid VARCHAR(40) PRIMARY KEY,

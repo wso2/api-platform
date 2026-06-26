@@ -199,8 +199,8 @@ CREATE TABLE dbo.gateways (
 );
 
 -- Artifact Gateway Mapping table (links artifacts to gateways)
-IF OBJECT_ID(N'dbo.artifact_gateway_mapping', N'U') IS NULL
-CREATE TABLE dbo.artifact_gateway_mapping (
+IF OBJECT_ID(N'dbo.artifact_gateway_mappings', N'U') IS NULL
+CREATE TABLE dbo.artifact_gateway_mappings (
     artifact_uuid VARCHAR(40) NOT NULL,
     organization_uuid VARCHAR(40) NOT NULL,
     gateway_uuid VARCHAR(40) NOT NULL,
@@ -663,9 +663,9 @@ CREATE TABLE dbo.audit (
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE
 );
 
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_artifact_gateway_mapping_artifact' AND object_id = OBJECT_ID(N'dbo.artifact_gateway_mapping'))
-CREATE INDEX idx_artifact_gateway_mapping_artifact ON dbo.artifact_gateway_mapping(artifact_uuid);
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_artifact_gateway_mapping_gateway' AND object_id = OBJECT_ID(N'dbo.artifact_gateway_mapping'))
-CREATE INDEX idx_artifact_gateway_mapping_gateway ON dbo.artifact_gateway_mapping(gateway_uuid);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_artifact_gateway_mappings_artifact' AND object_id = OBJECT_ID(N'dbo.artifact_gateway_mappings'))
+CREATE INDEX idx_artifact_gateway_mappings_artifact ON dbo.artifact_gateway_mappings(artifact_uuid);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_artifact_gateway_mappings_gateway' AND object_id = OBJECT_ID(N'dbo.artifact_gateway_mappings'))
+CREATE INDEX idx_artifact_gateway_mappings_gateway ON dbo.artifact_gateway_mappings(gateway_uuid);
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_audit_org' AND object_id = OBJECT_ID(N'dbo.audit'))
 CREATE INDEX idx_audit_org ON dbo.audit(organization_uuid);

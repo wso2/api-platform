@@ -313,7 +313,7 @@ func (r *APIRepo) GetAPIsByGatewayUUID(gatewayUUID, orgUUID string) ([]*model.AP
 		SELECT a.uuid, a.name, a.description, a.version, a.created_by,
 			a.project_uuid, a.organization_uuid, a.created_at, a.updated_at
 		FROM rest_apis a
-		INNER JOIN artifact_gateway_mapping aa ON a.uuid = aa.artifact_uuid
+		INNER JOIN artifact_gateway_mappings aa ON a.uuid = aa.artifact_uuid
 		WHERE aa.gateway_uuid = ? AND a.organization_uuid = ?
 		ORDER BY a.created_at DESC
 	`
@@ -383,7 +383,7 @@ func (r *APIRepo) DeleteAPI(apiUUID, orgUUID string) error {
 	defer tx.Rollback()
 
 	// Delete gateway associations
-	if _, err := tx.Exec(r.db.Rebind(`DELETE FROM artifact_gateway_mapping WHERE artifact_uuid = ? AND organization_uuid = ?`), apiUUID, orgUUID); err != nil {
+	if _, err := tx.Exec(r.db.Rebind(`DELETE FROM artifact_gateway_mappings WHERE artifact_uuid = ? AND organization_uuid = ?`), apiUUID, orgUUID); err != nil {
 		return err
 	}
 
@@ -499,10 +499,10 @@ func (r *APIRepo) CheckAPIExistsByNameAndVersionInOrganization(name, version, or
 	return count > 0, nil
 }
 
-// CreateAPIAssociation creates a gateway-API association in artifact_gateway_mapping.
+// CreateAPIAssociation creates a gateway-API association in artifact_gateway_mappings.
 func (r *APIRepo) CreateAPIAssociation(association *model.APIAssociation) error {
 	query := `
-		INSERT INTO artifact_gateway_mapping (artifact_uuid, organization_uuid, gateway_uuid, created_at, updated_at)
+		INSERT INTO artifact_gateway_mappings (artifact_uuid, organization_uuid, gateway_uuid, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?)
 	`
 	_, err := r.db.Exec(r.db.Rebind(query),
@@ -514,7 +514,7 @@ func (r *APIRepo) CreateAPIAssociation(association *model.APIAssociation) error 
 // UpdateAPIAssociation updates the updated_at timestamp for a gateway-API association.
 func (r *APIRepo) UpdateAPIAssociation(apiUUID, resourceId, associationType, orgUUID string) error {
 	query := `
-		UPDATE artifact_gateway_mapping
+		UPDATE artifact_gateway_mappings
 		SET updated_at = ?
 		WHERE artifact_uuid = ? AND gateway_uuid = ? AND organization_uuid = ?
 	`
@@ -527,7 +527,7 @@ func (r *APIRepo) UpdateAPIAssociation(apiUUID, resourceId, associationType, org
 func (r *APIRepo) GetAPIAssociations(apiUUID, associationType, orgUUID string) ([]*model.APIAssociation, error) {
 	query := `
 		SELECT artifact_uuid, organization_uuid, gateway_uuid, created_at, updated_at
-		FROM artifact_gateway_mapping
+		FROM artifact_gateway_mappings
 		WHERE artifact_uuid = ? AND organization_uuid = ?
 	`
 	rows, err := r.db.Query(r.db.Rebind(query), apiUUID, orgUUID)
@@ -571,7 +571,7 @@ func (r *APIRepo) GetAPIGatewaysWithDetails(apiUUID, orgUUID string) ([]*model.A
 			ad.deployment_uuid,
 			ad.updated_at as deployed_at
 		FROM gateways g
-		INNER JOIN artifact_gateway_mapping aa ON g.uuid = aa.gateway_uuid
+		INNER JOIN artifact_gateway_mappings aa ON g.uuid = aa.gateway_uuid
 		LEFT JOIN deployment_status ad ON g.uuid = ad.gateway_uuid AND ad.artifact_uuid = ? AND ad.status = ?
 		WHERE aa.artifact_uuid = ? AND g.organization_uuid = ?
 		ORDER BY aa.created_at DESC

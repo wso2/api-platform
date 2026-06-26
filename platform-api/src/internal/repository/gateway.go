@@ -200,7 +200,7 @@ func (r *GatewayRepo) Delete(gatewayID, organizationID string) error {
 	}
 	defer tx.Rollback()
 
-	deleteAssocQuery := `DELETE FROM artifact_gateway_mapping WHERE gateway_uuid = ? AND organization_uuid = ?`
+	deleteAssocQuery := `DELETE FROM artifact_gateway_mappings WHERE gateway_uuid = ? AND organization_uuid = ?`
 	_, err = tx.Exec(r.db.Rebind(deleteAssocQuery), gatewayID, organizationID)
 	if err != nil {
 		return err
@@ -422,7 +422,7 @@ func (r *GatewayRepo) HasGatewayDeployments(gatewayID, organizationID string) (b
 // HasGatewayAssociations checks if a gateway has any associations
 func (r *GatewayRepo) HasGatewayAssociations(gatewayID, organizationID string) (bool, error) {
 	var count int
-	query := `SELECT COUNT(*) FROM artifact_gateway_mapping WHERE gateway_uuid = ? AND organization_uuid = ?`
+	query := `SELECT COUNT(*) FROM artifact_gateway_mappings WHERE gateway_uuid = ? AND organization_uuid = ?`
 	err := r.db.QueryRow(r.db.Rebind(query), gatewayID, organizationID).Scan(&count)
 	if err != nil {
 		return false, err
@@ -438,7 +438,7 @@ func (r *GatewayRepo) HasGatewayAssociationsOrDeployments(gatewayID, organizatio
 			SELECT 1 FROM deployment_status
 			WHERE gateway_uuid = ? AND organization_uuid = ? AND status = ?
 			UNION ALL
-			SELECT 1 FROM artifact_gateway_mapping
+			SELECT 1 FROM artifact_gateway_mappings
 			WHERE gateway_uuid = ? AND organization_uuid = ?
 		) combined`
 	err := r.db.QueryRow(r.db.Rebind(query), gatewayID, organizationID, string(model.DeploymentStatusDeployed), gatewayID, organizationID).Scan(&count)
