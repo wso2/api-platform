@@ -2,6 +2,12 @@ name: AI Workspace Release
 
 on:
   workflow_dispatch:
+    inputs:
+      platform_api_version:
+        description: 'Platform API version to bundle (e.g. 0.10.0). If empty, uses platform-api/VERSION. When set, db-scripts are fetched from tag platform-api/v<version> and docker-compose is pinned to it.'
+        required: false
+        type: string
+        default: ''
 
 env:
   DOCKER_REGISTRY: ghcr.io/${{ github.repository_owner }}/api-platform
@@ -58,18 +64,25 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Build Docker image for testing
-        run: make -C portals/ai-workspace build
-
-      - name: Run tests
-        run: make test-ai-workspace
-
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.API_PLATFORM_BOT_TOKEN }}
+
+      - name: Build Docker image for testing
+        run: make -C portals/ai-workspace build
+
+      - name: Run tests
+        run: |
+          if [ -n "${{ inputs.platform_api_version }}" ]; then
+            echo "Running E2E against released platform-api:${{ inputs.platform_api_version }} (no build)"
+            make test-ai-workspace PLATFORM_API_VERSION="${{ inputs.platform_api_version }}"
+          else
+            echo "Running E2E against platform-api built from VERSION file"
+            make test-ai-workspace
+          fi
 
       - name: Build and push multi arch Docker image
         run: make -C portals/ai-workspace build-and-push-multiarch
@@ -85,7 +98,14 @@ jobs:
           git push origin ai-workspace/v${{ steps.version.outputs.version }}
 
       - name: Build distribution zip
-        run: make -C portals/ai-workspace dist
+        run: |
+          if [ -n "${{ inputs.platform_api_version }}" ]; then
+            echo "Bundling platform-api db-scripts from tag platform-api/v${{ inputs.platform_api_version }}"
+            make -C portals/ai-workspace dist PLATFORM_API_VERSION="${{ inputs.platform_api_version }}"
+          else
+            echo "Bundling platform-api db-scripts from working tree (platform-api/VERSION)"
+            make -C portals/ai-workspace dist
+          fi
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
