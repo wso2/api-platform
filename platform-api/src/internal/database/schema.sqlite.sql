@@ -115,8 +115,7 @@ CREATE TABLE IF NOT EXISTS subscription_plans (
     updated_by VARCHAR(200),
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
-    UNIQUE(organization_uuid, handle),
-    UNIQUE(organization_uuid, uuid)
+    UNIQUE(organization_uuid, handle)
 );
 
 -- Subscriptions table (application-level subscriptions for any artifact type)
@@ -128,7 +127,7 @@ CREATE TABLE IF NOT EXISTS subscriptions (
     subscriber_id VARCHAR(255) NOT NULL,
     application_id VARCHAR(255),
     subscription_token VARCHAR(512) NOT NULL,
-    subscription_token_hash VARCHAR(64) NOT NULL,
+    subscription_token_hash VARCHAR(255) NOT NULL,
     subscription_plan_uuid VARCHAR(40),
     organization_uuid VARCHAR(40) NOT NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
@@ -162,7 +161,7 @@ CREATE TABLE IF NOT EXISTS gateways (
     handle VARCHAR(40) NOT NULL,
     name VARCHAR(255) NOT NULL,
     description VARCHAR(1023),
-    version VARCHAR(30) NOT NULL DEFAULT 'v1.0',
+    version VARCHAR(30) NOT NULL DEFAULT '1.0',
     vhost VARCHAR(255) NOT NULL,
     gateway_functionality_type VARCHAR(20) DEFAULT 'regular' NOT NULL,
     properties BLOB NOT NULL,
@@ -178,12 +177,14 @@ CREATE TABLE IF NOT EXISTS gateways (
     UNIQUE(organization_uuid, handle)
 );
 
--- Gateway Association Mappings table (links artifacts to gateways)
-CREATE TABLE IF NOT EXISTS gateway_association_mappings (
+-- Artifact Gateway Mapping table (links artifacts to gateways)
+CREATE TABLE IF NOT EXISTS artifact_gateway_mapping (
     artifact_uuid VARCHAR(40) NOT NULL,
     organization_uuid VARCHAR(40) NOT NULL,
     gateway_uuid VARCHAR(40) NOT NULL,
+    created_by VARCHAR(200),
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_by VARCHAR(200),
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (organization_uuid, artifact_uuid, gateway_uuid),
     FOREIGN KEY (artifact_uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
@@ -197,7 +198,7 @@ CREATE TABLE IF NOT EXISTS gateway_custom_policies (
     organization_uuid VARCHAR(40) NOT NULL,
     name VARCHAR(255) NOT NULL,
     display_name VARCHAR(255),
-    version VARCHAR(30) NOT NULL DEFAULT 'v1.0',
+    version VARCHAR(30) NOT NULL,
     description VARCHAR(1023),
     policy_definition BLOB,
     data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
@@ -236,12 +237,12 @@ CREATE TABLE IF NOT EXISTS gateway_tokens (
 
 -- Artifact Deployments table (immutable deployment artifacts)
 CREATE TABLE IF NOT EXISTS deployments (
-    deployment_id VARCHAR(40) PRIMARY KEY,
+    deployment_uuid VARCHAR(40) PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
     artifact_uuid VARCHAR(40) NOT NULL,
     organization_uuid VARCHAR(40) NOT NULL,
     gateway_uuid VARCHAR(40) NOT NULL,
-    base_deployment_id VARCHAR(40),
+    base_deployment_uuid VARCHAR(40),
     content BLOB NOT NULL,
     metadata BLOB,
     data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
@@ -250,7 +251,7 @@ CREATE TABLE IF NOT EXISTS deployments (
     FOREIGN KEY (artifact_uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
     FOREIGN KEY (gateway_uuid) REFERENCES gateways(uuid) ON DELETE CASCADE,
-    FOREIGN KEY (base_deployment_id) REFERENCES deployments(deployment_id) ON DELETE SET NULL
+    FOREIGN KEY (base_deployment_uuid) REFERENCES deployments(deployment_uuid) ON DELETE SET NULL
 );
 
 -- Artifact Deployment Status table (current deployment state per artifact+Gateway)
@@ -258,7 +259,7 @@ CREATE TABLE IF NOT EXISTS deployment_status (
     artifact_uuid VARCHAR(40) NOT NULL,
     organization_uuid VARCHAR(40) NOT NULL,
     gateway_uuid VARCHAR(40) NOT NULL,
-    deployment_id VARCHAR(40) NOT NULL,
+    deployment_uuid VARCHAR(40) NOT NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'DEPLOYED',
     status_desired VARCHAR(20),
     performed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -269,7 +270,7 @@ CREATE TABLE IF NOT EXISTS deployment_status (
     FOREIGN KEY (artifact_uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
     FOREIGN KEY (gateway_uuid) REFERENCES gateways(uuid) ON DELETE CASCADE,
-    FOREIGN KEY (deployment_id) REFERENCES deployments(deployment_id) ON DELETE CASCADE
+    FOREIGN KEY (deployment_uuid) REFERENCES deployments(deployment_uuid) ON DELETE CASCADE
 );
 
 -- LLM Provider Templates table
@@ -277,7 +278,7 @@ CREATE TABLE IF NOT EXISTS llm_provider_templates (
     uuid VARCHAR(40) PRIMARY KEY,
     organization_uuid VARCHAR(40) NOT NULL,
     handle VARCHAR(40) NOT NULL,
-    group_id VARCHAR(255) NOT NULL,
+    group_id VARCHAR(40) NOT NULL,
     name VARCHAR(255) NOT NULL,
     managed_by VARCHAR(255) NOT NULL DEFAULT 'customer',
     version VARCHAR(30) NOT NULL DEFAULT 'v1.0',
@@ -483,8 +484,8 @@ CREATE INDEX IF NOT EXISTS idx_gateways_org ON gateways(organization_uuid);
 CREATE INDEX IF NOT EXISTS idx_gateway_tokens_status ON gateway_tokens(gateway_uuid, status);
 CREATE INDEX IF NOT EXISTS idx_artifact_deployments_created_at ON deployments(artifact_uuid, gateway_uuid, created_at);
 CREATE INDEX IF NOT EXISTS idx_artifact_gw_created ON deployments(organization_uuid, artifact_uuid, gateway_uuid, created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_deployments_base_id ON deployments(base_deployment_id) WHERE base_deployment_id IS NOT NULL;
-CREATE INDEX IF NOT EXISTS idx_deployment_status_deployment ON deployment_status(deployment_id);
+CREATE INDEX IF NOT EXISTS idx_deployments_base_id ON deployments(base_deployment_uuid) WHERE base_deployment_uuid IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_deployment_status_deployment ON deployment_status(deployment_uuid);
 CREATE INDEX IF NOT EXISTS idx_deployment_status_status ON deployment_status(status);
 CREATE INDEX IF NOT EXISTS idx_artifacts_org ON artifacts(organization_uuid);
 CREATE INDEX IF NOT EXISTS idx_artifacts_org_uuid ON artifacts(organization_uuid, uuid);
@@ -539,8 +540,8 @@ CREATE TABLE IF NOT EXISTS events (
 
 CREATE INDEX IF NOT EXISTS idx_events_gateway_id_processed_timestamp ON events(gateway_id, processed_timestamp);
 CREATE INDEX IF NOT EXISTS idx_events_entity ON events(entity_type, entity_id);
-CREATE INDEX IF NOT EXISTS idx_gateway_association_mappings_artifact_uuid ON gateway_association_mappings(artifact_uuid);
-CREATE INDEX IF NOT EXISTS idx_gateway_association_mappings_gateway_uuid ON gateway_association_mappings(gateway_uuid);
+CREATE INDEX IF NOT EXISTS idx_artifact_gateway_mapping_artifact_uuid ON artifact_gateway_mapping(artifact_uuid);
+CREATE INDEX IF NOT EXISTS idx_artifact_gateway_mapping_gateway_uuid ON artifact_gateway_mapping(gateway_uuid);
 
 CREATE TABLE IF NOT EXISTS audit (
    uuid VARCHAR(40) PRIMARY KEY,

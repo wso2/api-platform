@@ -151,7 +151,7 @@ func insertDeployment(t *testing.T, db *database.DB, deploymentID, name, apiUUID
 	t.Helper()
 
 	query := `
-		INSERT INTO deployments (deployment_id, name, artifact_uuid, organization_uuid, gateway_uuid, content, metadata, created_at)
+		INSERT INTO deployments (deployment_uuid, name, artifact_uuid, organization_uuid, gateway_uuid, content, metadata, created_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 	`
 	metadata := "{}"
@@ -166,7 +166,7 @@ func setDeploymentStatus(t *testing.T, db *database.DB, apiUUID, orgUUID, gatewa
 	t.Helper()
 
 	query := `
-		REPLACE INTO deployment_status (artifact_uuid, organization_uuid, gateway_uuid, deployment_id, status, updated_at)
+		REPLACE INTO deployment_status (artifact_uuid, organization_uuid, gateway_uuid, deployment_uuid, status, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?)
 	`
 	_, err := db.Exec(query, apiUUID, orgUUID, gatewayUUID, deploymentID, status, time.Now())

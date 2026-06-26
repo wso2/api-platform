@@ -140,7 +140,7 @@ CREATE TABLE dbo.subscriptions (
     subscriber_id VARCHAR(255) NOT NULL,
     application_id VARCHAR(255),
     subscription_token VARCHAR(512) NOT NULL,
-    subscription_token_hash VARCHAR(64) NOT NULL,
+    subscription_token_hash VARCHAR(255) NOT NULL,
     subscription_plan_uuid VARCHAR(40),
     organization_uuid VARCHAR(40) NOT NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
@@ -182,7 +182,7 @@ CREATE TABLE dbo.gateways (
     handle VARCHAR(40) NOT NULL,
     name VARCHAR(255) NOT NULL,
     description VARCHAR(1023),
-    version VARCHAR(30) NOT NULL DEFAULT 'v1.0',
+    version VARCHAR(30) NOT NULL DEFAULT '1.0',
     vhost VARCHAR(255) NOT NULL,
     gateway_functionality_type VARCHAR(20) DEFAULT 'regular' NOT NULL,
     properties VARBINARY(MAX) NOT NULL,
@@ -198,13 +198,15 @@ CREATE TABLE dbo.gateways (
     UNIQUE(organization_uuid, handle)
 );
 
--- Gateway Association Mappings table (links artifacts to gateways)
-IF OBJECT_ID(N'dbo.gateway_association_mappings', N'U') IS NULL
-CREATE TABLE dbo.gateway_association_mappings (
+-- Artifact Gateway Mapping table (links artifacts to gateways)
+IF OBJECT_ID(N'dbo.artifact_gateway_mapping', N'U') IS NULL
+CREATE TABLE dbo.artifact_gateway_mapping (
     artifact_uuid VARCHAR(40) NOT NULL,
     organization_uuid VARCHAR(40) NOT NULL,
     gateway_uuid VARCHAR(40) NOT NULL,
+    created_by VARCHAR(200),
     created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
+    updated_by VARCHAR(200),
     updated_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     PRIMARY KEY (organization_uuid, artifact_uuid, gateway_uuid),
     FOREIGN KEY (artifact_uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
@@ -221,7 +223,7 @@ CREATE TABLE dbo.gateway_custom_policies (
     organization_uuid VARCHAR(40) NOT NULL,
     name VARCHAR(255) NOT NULL,
     display_name VARCHAR(255),
-    version VARCHAR(30) NOT NULL DEFAULT 'v1.0',
+    version VARCHAR(30) NOT NULL,
     description VARCHAR(1023),
     policy_definition VARBINARY(MAX),
     data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
@@ -262,12 +264,12 @@ CREATE TABLE dbo.gateway_tokens (
 -- Artifact Deployments table (immutable deployment artifacts)
 IF OBJECT_ID(N'dbo.deployments', N'U') IS NULL
 CREATE TABLE dbo.deployments (
-    deployment_id VARCHAR(40) PRIMARY KEY,
+    deployment_uuid VARCHAR(40) PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
     artifact_uuid VARCHAR(40) NOT NULL,
     organization_uuid VARCHAR(40) NOT NULL,
     gateway_uuid VARCHAR(40) NOT NULL,
-    base_deployment_id VARCHAR(40),
+    base_deployment_uuid VARCHAR(40),
     content VARBINARY(MAX) NOT NULL,
     metadata VARBINARY(MAX),
     data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
@@ -284,7 +286,7 @@ CREATE TABLE dbo.deployments (
     -- artifact/gateway are deleted together in a single statement (or via the
     -- artifact/gateway CASCADE), so the referenced base row is removed in the
     -- same operation and no dangling reference remains.
-    FOREIGN KEY (base_deployment_id) REFERENCES deployments(deployment_id) ON DELETE NO ACTION
+    FOREIGN KEY (base_deployment_uuid) REFERENCES deployments(deployment_uuid) ON DELETE NO ACTION
 );
 
 -- Artifact Deployment Status table (current deployment state per artifact+Gateway)
@@ -293,7 +295,7 @@ CREATE TABLE dbo.deployment_status (
     artifact_uuid VARCHAR(40) NOT NULL,
     organization_uuid VARCHAR(40) NOT NULL,
     gateway_uuid VARCHAR(40) NOT NULL,
-    deployment_id VARCHAR(40) NOT NULL,
+    deployment_uuid VARCHAR(40) NOT NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'DEPLOYED',
     status_desired VARCHAR(20),
     performed_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
@@ -301,7 +303,7 @@ CREATE TABLE dbo.deployment_status (
     status_reason VARCHAR(50),
     updated_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     PRIMARY KEY (organization_uuid, artifact_uuid, gateway_uuid),
-    -- Only the deployment_id edge cascades. The artifact/organization/gateway
+    -- Only the deployment_uuid edge cascades. The artifact/organization/gateway
     -- edges are NO ACTION to avoid the SQL Server multiple-cascade-paths
     -- restriction (error 1785). A status row is always removed when its
     -- referenced deployment is deleted, and deletes of an artifact, gateway or
@@ -310,7 +312,7 @@ CREATE TABLE dbo.deployment_status (
     FOREIGN KEY (artifact_uuid) REFERENCES artifacts(uuid) ON DELETE NO ACTION,
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE NO ACTION,
     FOREIGN KEY (gateway_uuid) REFERENCES gateways(uuid) ON DELETE NO ACTION,
-    FOREIGN KEY (deployment_id) REFERENCES deployments(deployment_id) ON DELETE CASCADE
+    FOREIGN KEY (deployment_uuid) REFERENCES deployments(deployment_uuid) ON DELETE CASCADE
 );
 
 -- LLM Provider Templates table
@@ -319,7 +321,7 @@ CREATE TABLE dbo.llm_provider_templates (
     uuid VARCHAR(40) PRIMARY KEY,
     organization_uuid VARCHAR(40) NOT NULL,
     handle VARCHAR(40) NOT NULL,
-    group_id VARCHAR(255) NOT NULL,
+    group_id VARCHAR(40) NOT NULL,
     name VARCHAR(255) NOT NULL,
     managed_by VARCHAR(255) NOT NULL DEFAULT 'customer',
     version VARCHAR(30) NOT NULL DEFAULT 'v1.0',
@@ -557,9 +559,9 @@ CREATE INDEX idx_artifact_deployments_created_at ON dbo.deployments(artifact_uui
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_artifact_gw_created' AND object_id = OBJECT_ID(N'dbo.deployments'))
 CREATE INDEX idx_artifact_gw_created ON dbo.deployments(organization_uuid, artifact_uuid, gateway_uuid, created_at DESC);
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_deployments_base_id' AND object_id = OBJECT_ID(N'dbo.deployments'))
-CREATE INDEX idx_deployments_base_id ON dbo.deployments(base_deployment_id) WHERE base_deployment_id IS NOT NULL;
+CREATE INDEX idx_deployments_base_id ON dbo.deployments(base_deployment_uuid) WHERE base_deployment_uuid IS NOT NULL;
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_deployment_status_deployment' AND object_id = OBJECT_ID(N'dbo.deployment_status'))
-CREATE INDEX idx_deployment_status_deployment ON dbo.deployment_status(deployment_id);
+CREATE INDEX idx_deployment_status_deployment ON dbo.deployment_status(deployment_uuid);
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_deployment_status_status' AND object_id = OBJECT_ID(N'dbo.deployment_status'))
 CREATE INDEX idx_deployment_status_status ON dbo.deployment_status(status);
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_artifacts_org' AND object_id = OBJECT_ID(N'dbo.artifacts'))
@@ -661,9 +663,9 @@ CREATE TABLE dbo.audit (
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE
 );
 
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_gateway_association_mappings_artifact' AND object_id = OBJECT_ID(N'dbo.gateway_association_mappings'))
-CREATE INDEX idx_gateway_association_mappings_artifact ON dbo.gateway_association_mappings(artifact_uuid);
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_gateway_association_mappings_gateway' AND object_id = OBJECT_ID(N'dbo.gateway_association_mappings'))
-CREATE INDEX idx_gateway_association_mappings_gateway ON dbo.gateway_association_mappings(gateway_uuid);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_artifact_gateway_mapping_artifact' AND object_id = OBJECT_ID(N'dbo.artifact_gateway_mapping'))
+CREATE INDEX idx_artifact_gateway_mapping_artifact ON dbo.artifact_gateway_mapping(artifact_uuid);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_artifact_gateway_mapping_gateway' AND object_id = OBJECT_ID(N'dbo.artifact_gateway_mapping'))
+CREATE INDEX idx_artifact_gateway_mapping_gateway ON dbo.artifact_gateway_mapping(gateway_uuid);
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_audit_org' AND object_id = OBJECT_ID(N'dbo.audit'))
 CREATE INDEX idx_audit_org ON dbo.audit(organization_uuid);
