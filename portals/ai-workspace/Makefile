@@ -17,13 +17,15 @@
 
 # Makefile for AI Workspace
 
+SHELL := /bin/bash
+
 VERSION ?= $(shell cat VERSION 2>/dev/null || echo "0.0.0-SNAPSHOT")
 GIT_COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 
 DOCKER_REGISTRY ?= ghcr.io/wso2/api-platform
 IMAGE_NAME := $(DOCKER_REGISTRY)/ai-workspace
 
-.PHONY: help run build push build-and-push-multiarch version-set version-bump-patch version-bump-minor version-bump-major version-bump-next-dev version-get-release e2e-deps e2e-test e2e-open
+.PHONY: help run build push build-and-push-multiarch version-set version-bump-patch version-bump-minor version-bump-major version-bump-next-dev version-get-release e2e-deps e2e-test e2e-open e2e-ci
 
 help: ## Show this help message
 	@echo 'AI Workspace Build System (Version: $(VERSION))'
@@ -46,6 +48,32 @@ e2e-test: ## Run Cypress headlessly against a locally running docker compose sta
 
 e2e-open: ## Open Cypress UI against a locally running docker compose stack
 	CYPRESS_BASE_URL=https://localhost:5380 npx cypress open --e2e --config-file cypress.config.js
+
+e2e-ci: ## Run AI Workspace E2E against a local quickstart stack
+	@set -euo pipefail; \
+	backup_file="$$(mktemp)"; \
+	cp docker-compose.yaml "$$backup_file"; \
+	cleanup() { \
+		status=$$?; \
+		if [ $$status -ne 0 ]; then \
+			docker compose logs --no-color || true; \
+		fi; \
+		docker compose down -v >/dev/null 2>&1 || true; \
+		mv "$$backup_file" docker-compose.yaml; \
+		exit $$status; \
+	}; \
+	trap cleanup EXIT; \
+	trap 'exit 130' INT; \
+	trap 'exit 143' TERM; \
+	npm ci; \
+	platform_api_version="$$(tr -d '[:space:]' < ../../platform-api/VERSION)"; \
+	echo "Building platform-api:$${platform_api_version} from source"; \
+	$(MAKE) -C ../../platform-api build VERSION="$${platform_api_version}"; \
+	echo "Pinning ai-workspace compose to platform-api:$${platform_api_version}"; \
+	sed -i.bak -E "s#image: .*/platform-api:.*#image: $(DOCKER_REGISTRY)/platform-api:$${platform_api_version}#" docker-compose.yaml; \
+	rm -f docker-compose.yaml.bak; \
+	docker compose up -d --wait; \
+	$(MAKE) e2e-test
 
 build: ## Build Docker image
 	@echo "Building Docker image ($(IMAGE_NAME):$(VERSION))..."
