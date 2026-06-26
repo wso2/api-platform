@@ -27,6 +27,7 @@ const util = require('../utils/util');
 const fs = require('fs');
 const path = require('path');
 const logger = require('../config/logger');
+const { logUserAction } = require('../middlewares/auditLogger');
 const constants = require('../utils/constants');
 const sequelize = require('../db/sequelizeConfig');
 const { ApplicationDTO, SubscriptionDTO } = require('../dto/applicationDto');
@@ -173,6 +174,7 @@ const createOrganization = async (req, res) => {
             orgId: orgCreationResponse.orgId,
             orgName: orgCreationResponse.orgName,
         });
+        logUserAction('ORG_CREATED', req, { orgId: orgCreationResponse.orgId, orgName: orgCreationResponse.orgName });
         res.status(201).send(orgCreationResponse);
     } catch (error) {
         logger.error('Organization creation failed', {
@@ -285,6 +287,7 @@ const deleteOrganization = async (req, res) => {
             logger.info('Organization deletion successful', {
                 orgId
             });
+            logUserAction('ORG_DELETED', req, { orgId });
             res.status(204).send();
         } else {
             throw new CustomError(404, "Records Not Found", 'Organization not found');

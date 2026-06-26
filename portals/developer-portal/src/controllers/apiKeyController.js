@@ -18,6 +18,7 @@
 const apiKeyService = require('../services/apiKeyService');
 const applicationDao = require('../dao/applicationDao');
 const logger = require('../config/logger');
+const { logUserAction } = require('../middlewares/auditLogger');
 const util = require('../utils/util');
 
 function errorStatus(err) {
@@ -70,6 +71,7 @@ async function generateApiKey(req, res) {
             orgId, apiId: apiId.trim(), subscriptionId, appId: appIdResult.value, name, expiresAt,
             actor: req.user.sub, userToken: req.user.accessToken,
         });
+        logUserAction('API_KEY_GENERATED', req, { orgId, apiId, keyId: result.keyId });
         return res.status(201).json(result);
     } catch (err) {
         logger.error('Failed to generate API key', { error: err.message, orgId, apiId });
@@ -128,6 +130,7 @@ async function regenerateApiKey(req, res) {
         const result = await apiKeyService.regenerate({
             orgId, keyId: apiKeyId, actor: req.user.sub, userToken: req.user.accessToken,
         });
+        logUserAction('API_KEY_REGENERATED', req, { orgId, apiKeyId });
         return res.status(200).json(result);
     } catch (err) {
         logger.error('Failed to regenerate API key', { error: err.message, orgId, apiKeyId });
@@ -143,6 +146,7 @@ async function revokeApiKey(req, res) {
 
     try {
         await apiKeyService.revoke({ orgId, keyId: apiKeyId, actor: req.user.sub, userToken: req.user.accessToken });
+        logUserAction('API_KEY_REVOKED', req, { orgId, apiKeyId });
         return res.status(204).send();
     } catch (err) {
         logger.error('Failed to revoke API key', { error: err.message, orgId, apiKeyId });
@@ -166,6 +170,7 @@ async function associateApiKeyApplication(req, res) {
         const result = await apiKeyService.associateApplication({
             orgId, keyId: apiKeyId, appId: appId.trim(), actor: req.user.sub,
         });
+        logUserAction('API_KEY_APP_ASSOCIATED', req, { orgId, apiKeyId, appId });
         return res.status(200).json(result);
     } catch (err) {
         logger.error('Failed to associate application with API key', { error: err.message, orgId, apiKeyId });
@@ -181,6 +186,7 @@ async function removeApiKeyApplication(req, res) {
 
     try {
         await apiKeyService.removeApplicationAssociation({ orgId, keyId: apiKeyId, actor: req.user.sub });
+        logUserAction('API_KEY_APP_DISASSOCIATED', req, { orgId, apiKeyId });
         return res.status(204).send();
     } catch (err) {
         logger.error('Failed to remove application association from API key', { error: err.message, orgId, apiKeyId });
