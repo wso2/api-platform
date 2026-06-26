@@ -76,6 +76,16 @@ func TestValidateLLMProvider_Resilience(t *testing.T) {
 		assertHasFieldError(t, errs, "spec.resilience.timeout")
 	})
 
+	t.Run("compound timeout is rejected (must match CRD pattern)", func(t *testing.T) {
+		errs := validator.Validate(validProviderWithResilience(&api.Resilience{Timeout: stringPtr("1h30m")}))
+		assertHasFieldError(t, errs, "spec.resilience.timeout")
+	})
+
+	t.Run("0s is accepted (disables)", func(t *testing.T) {
+		errs := validator.Validate(validProviderWithResilience(&api.Resilience{Timeout: stringPtr("0s")}))
+		assert.Empty(t, errs)
+	})
+
 	t.Run("negative timeout is rejected", func(t *testing.T) {
 		errs := validator.Validate(validProviderWithResilience(&api.Resilience{Timeout: stringPtr("-5s")}))
 		assertHasFieldError(t, errs, "spec.resilience.timeout")

@@ -495,7 +495,13 @@ func TestAPIValidator_ValidateResilience(t *testing.T) {
 		{name: "Invalid API-level timeout format", apiRes: &api.Resilience{Timeout: stringPtr("15seconds")}, wantError: true, errField: "spec.resilience.timeout"},
 		{name: "Invalid API-level idleTimeout format", apiRes: &api.Resilience{IdleTimeout: stringPtr("abc")}, wantError: true, errField: "spec.resilience.idleTimeout"},
 		{name: "Negative API-level timeout rejected", apiRes: &api.Resilience{Timeout: stringPtr("-5s")}, wantError: true, errField: "spec.resilience.timeout"},
+		{name: "Compound API-level timeout rejected (must match CRD pattern)", apiRes: &api.Resilience{Timeout: stringPtr("1h30m")}, wantError: true, errField: "spec.resilience.timeout"},
+		{name: "Compound API-level idleTimeout rejected", apiRes: &api.Resilience{IdleTimeout: stringPtr("1m30s")}, wantError: true, errField: "spec.resilience.idleTimeout"},
+		{name: "Unitless API-level timeout rejected", apiRes: &api.Resilience{Timeout: stringPtr("30")}, wantError: true, errField: "spec.resilience.timeout"},
+		{name: "Bare 0 rejected (unit required)", apiRes: &api.Resilience{Timeout: stringPtr("0")}, wantError: true, errField: "spec.resilience.timeout"},
+		{name: "Fractional single-unit timeout allowed", apiRes: &api.Resilience{Timeout: stringPtr("1.5s")}, wantError: false},
 		{name: "Invalid operation-level timeout format", opRes: &api.Resilience{Timeout: stringPtr("nope")}, wantError: true, errField: "spec.operations[0].resilience.timeout"},
+		{name: "Compound operation-level timeout rejected", opRes: &api.Resilience{Timeout: stringPtr("1h30m")}, wantError: true, errField: "spec.operations[0].resilience.timeout"},
 	}
 
 	for _, tt := range tests {

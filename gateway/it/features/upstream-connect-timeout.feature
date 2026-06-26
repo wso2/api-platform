@@ -47,7 +47,7 @@ Feature: Timeouts
             timeout:
               connect: 6000ms
             upstreams:
-              - url: http://10.255.255.1:8080
+              - url: http://192.0.2.1:8080
         upstream:
           main:
             ref: my-timeout-upstream
@@ -83,7 +83,7 @@ Feature: Timeouts
         upstreamDefinitions:
           - name: my-timeout-upstream-global
             upstreams:
-              - url: http://10.255.255.1:8080
+              - url: http://192.0.2.1:8080
         upstream:
           main:
             ref: my-timeout-upstream-global

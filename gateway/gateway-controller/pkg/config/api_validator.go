@@ -26,6 +26,7 @@ import (
 	"time"
 
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 )
 
 // APIValidator validates API configurations using rule-based validation
@@ -468,18 +469,22 @@ func validateResilienceTimeouts(fieldPrefix string, r *api.Resilience) []Validat
 		if s == "" {
 			return
 		}
-		d, err := time.ParseDuration(s)
-		if err != nil {
+		// Enforce the same single-unit format as the CRD admission controller (see
+		// constants.ResilienceDurationPattern). This rejects compound durations ("1h30m"),
+		// negatives ("-30s"), and unitless values ("0", "30"), while accepting "0s" to disable.
+		if !constants.ResilienceDurationRegex.MatchString(s) {
 			errors = append(errors, ValidationError{
 				Field:   field,
-				Message: fmt.Sprintf("Invalid timeout format: %v (expected format: '30s', '1m', '500ms', or '0s' to disable)", err),
+				Message: "Invalid timeout format (expected a single-unit duration like '30s', '1m', '500ms', or '0s' to disable; compound, negative, and unitless values are not allowed)",
 			})
 			return
 		}
-		if d < 0 {
+		// The pattern guarantees a parseable, non-negative, single-unit value; ParseDuration is a
+		// final guard against pathological overflow.
+		if _, err := time.ParseDuration(s); err != nil {
 			errors = append(errors, ValidationError{
 				Field:   field,
-				Message: "Timeout must not be negative",
+				Message: fmt.Sprintf("Invalid timeout format: %v", err),
 			})
 		}
 	}

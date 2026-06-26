@@ -213,7 +213,7 @@ server_header_transformation = "OVERWRITE"
 server_header_value = "WSO2 API Platform"
 
 # HTTP Connection Manager (downstream) timeouts
-# Except for idle_timeout, a value of 0 disables all other timeout settings.
+# A value of zero disables any of these timeout settings.
 [router.http_listener.timeouts]
 # Max duration for the entire downstream request
 request_timeout = "0s"

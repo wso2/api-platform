@@ -3246,20 +3246,23 @@ func parseTimeout(timeoutStr *string) (*time.Duration, error) {
 }
 
 // parseDurationAllowZero parses a duration string (e.g. "15s", "0s") into a *time.Duration.
-// Unlike parseTimeout it accepts zero ("0s" means the timeout is explicitly disabled),
-// rejecting only malformed and negative values. Returns nil for nil/empty input.
+// Unlike parseTimeout it accepts zero ("0s" means the timeout is explicitly disabled). The format
+// is enforced against constants.ResilienceDurationPattern so this downstream parser stays
+// consistent with the CRD admission controller and the management-API validator: compound
+// ("1h30m"), negative ("-30s"), and unitless ("0") values are rejected. Returns nil for nil/empty.
 func parseDurationAllowZero(timeoutStr *string) (*time.Duration, error) {
 	if timeoutStr == nil || strings.TrimSpace(*timeoutStr) == "" {
 		return nil, nil
 	}
 
-	duration, err := time.ParseDuration(strings.TrimSpace(*timeoutStr))
-	if err != nil {
-		return nil, fmt.Errorf("invalid timeout format: %w", err)
+	s := strings.TrimSpace(*timeoutStr)
+	if !constants.ResilienceDurationRegex.MatchString(s) {
+		return nil, fmt.Errorf("invalid timeout format %q: expected a single-unit duration like \"30s\", \"500ms\", or \"0s\" to disable", s)
 	}
 
-	if duration < 0 {
-		return nil, fmt.Errorf("timeout must not be negative, got: %v", duration)
+	duration, err := time.ParseDuration(s)
+	if err != nil {
+		return nil, fmt.Errorf("invalid timeout format: %w", err)
 	}
 
 	return &duration, nil

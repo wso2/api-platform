@@ -179,6 +179,12 @@ const (
 	// System policy constants
 	ANALYTICS_SYSTEM_POLICY_NAME    = "wso2_apip_sys_analytics"
 	ANALYTICS_SYSTEM_POLICY_VERSION = "v1"
+
+	// ResilienceDurationPattern is the single source of truth for the format of resilience
+	// timeout strings.
+	//   - accepted:  "30s", "500ms", "1m", "2h", "1.5s", and "0s" (zero disables the timeout)
+	//   - rejected:  compound durations ("1h30m"), negatives ("-30s"), and unitless values ("0", "30")
+	ResilienceDurationPattern = `^\d+(\.\d+)?(ms|s|m|h)$`
 )
 
 // DP->CP artifact push timing. The bottom-up (DP->CP) push waits for the local deployment
@@ -199,3 +205,8 @@ var WILDCARD_HTTP_METHODS = []string{
 	"DELETE",
 	"OPTIONS",
 }
+
+// ResilienceDurationRegex is the compiled ResilienceDurationPattern, shared by the management-API
+// validator and the xDS downstream parser so both enforce exactly what the
+// CRD admission controller enforces.
+var ResilienceDurationRegex = regexp.MustCompile(ResilienceDurationPattern)
