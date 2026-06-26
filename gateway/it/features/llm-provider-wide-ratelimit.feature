@@ -666,17 +666,20 @@ Feature: Provider-wide rate limiting for LLM providers
   # ---------------------------------------------------------------------------
   # Scenarios 9–10: mixed advanced-ratelimit (global) + basic-ratelimit (operation)
   # This is the realistic production case: a provider-wide cap enforced by
-  # advanced-ratelimit (apiname key) combined with a tighter per-path cap
-  # enforced by basic-ratelimit. The operation policy fires first; but because
-  # global policies run before operation policies in the chain, the shared global
-  # counter is still incremented even for requests that the operation policy
-  # ultimately rejects — so /embeddings eventually hits the global cap even
-  # though it has no operation policy of its own.
+  # advanced-ratelimit (apiname key) combined with a per-path cap enforced by
+  # basic-ratelimit. Here the operation cap is set ABOVE the request burst so it
+  # never short-circuits; the provider-wide apiname bucket is the binding limit.
+  # The point under test is that the apiname bucket is SHARED across operations,
+  # so exhausting it via /chat/completions also blocks /embeddings even though
+  # /embeddings has no operation policy of its own.
+  # NOTE: an earlier version exhausted the global bucket via operation-REJECTED
+  # traffic, which depended on timing-sensitive cross-policy counting and was
+  # flaky; this version fills the bucket with operation-allowed traffic instead.
   # ---------------------------------------------------------------------------
 
-  # Scenario 9 — Provider: advanced-ratelimit global (5/hr, apiname) +
-  # basic-ratelimit operation (3/hr for /chat/completions).
-  Scenario: mixed advanced-ratelimit global and basic-ratelimit operation on provider — global bucket exhausted by rejected operation traffic
+  # Scenario 9 — Provider: advanced-ratelimit global (10/hr, apiname) +
+  # basic-ratelimit operation (100/hr for /chat/completions, non-binding).
+  Scenario: mixed advanced-ratelimit global and basic-ratelimit operation on provider — shared global apiname bucket blocks a sibling operation
     Given I authenticate using basic auth as "admin"
     When I create this LLM provider template:
       """
@@ -730,7 +733,7 @@ Feature: Provider-wide rate limiting for LLM providers
               quotas:
                 - name: request-limit
                   limits:
-                    - limit: 5
+                    - limit: 10
                       duration: "1h"
               keyExtraction:
                 - type: apiname
@@ -742,15 +745,18 @@ Feature: Provider-wide rate limiting for LLM providers
                 methods: [GET]
                 params:
                   limits:
-                    - requests: 3
+                    - requests: 100
                       duration: "1h"
       """
     Then the response status code should be 201
     And I wait for the endpoint "http://localhost:8080/mix-prov/chat/completions" to be ready
 
-    # Operation policy (3/hr) fires before global (5/hr) for /chat/completions.
-    # Global still increments on every attempt — including those the operation policy rejects.
-    When I send 10 GET requests to "http://localhost:8080/mix-prov/chat/completions"
+    # The operation policy (100/hr) is intentionally non-binding; the global apiname
+    # bucket (10/hr) is the binding constraint. The burst is 2x the limit (matching the
+    # advanced-ratelimit-only scenarios above) so the global counter reliably crosses
+    # the threshold and rejects, instead of depending on the timing-sensitive margin
+    # that made the earlier 5/hr + 10-request version flaky.
+    When I send 20 GET requests to "http://localhost:8080/mix-prov/chat/completions"
     Then the response status code should be 429
 
     # KEY ASSERTION: /embeddings has no operation policy but shares the global
@@ -760,9 +766,9 @@ Feature: Provider-wide rate limiting for LLM providers
     Then the response status code should be 429
     And the response body should contain "Rate limit exceeded"
 
-  # Scenario 10 — Proxy: advanced-ratelimit global (5/hr, apiname) +
-  # basic-ratelimit operation (3/hr for /chat/completions).
-  Scenario: mixed advanced-ratelimit global and basic-ratelimit operation on proxy — global bucket exhausted by rejected operation traffic
+  # Scenario 10 — Proxy: advanced-ratelimit global (10/hr, apiname) +
+  # basic-ratelimit operation (100/hr for /chat/completions, non-binding).
+  Scenario: mixed advanced-ratelimit global and basic-ratelimit operation on proxy — shared global apiname bucket blocks a sibling operation
     Given I authenticate using basic auth as "admin"
     When I create this LLM provider template:
       """
@@ -825,7 +831,7 @@ Feature: Provider-wide rate limiting for LLM providers
               quotas:
                 - name: request-limit
                   limits:
-                    - limit: 5
+                    - limit: 10
                       duration: "1h"
               keyExtraction:
                 - type: apiname
@@ -837,15 +843,18 @@ Feature: Provider-wide rate limiting for LLM providers
                 methods: [GET]
                 params:
                   limits:
-                    - requests: 3
+                    - requests: 100
                       duration: "1h"
       """
     Then the response status code should be 201
     And I wait for the endpoint "http://localhost:8080/mix-px/chat/completions" to be ready
 
-    # Operation policy (3/hr) fires before global (5/hr) for /chat/completions.
-    # Global still increments on every attempt — including those the operation policy rejects.
-    When I send 10 GET requests to "http://localhost:8080/mix-px/chat/completions"
+    # The operation policy (100/hr) is intentionally non-binding; the global apiname
+    # bucket (10/hr) is the binding constraint. The burst is 2x the limit (matching the
+    # advanced-ratelimit-only scenarios above) so the global counter reliably crosses
+    # the threshold and rejects, instead of depending on the timing-sensitive margin
+    # that made the earlier 5/hr + 10-request version flaky.
+    When I send 20 GET requests to "http://localhost:8080/mix-px/chat/completions"
     Then the response status code should be 429
 
     # KEY ASSERTION: /embeddings has no operation policy but shares the global
