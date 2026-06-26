@@ -360,7 +360,7 @@ func (r *LLMProviderTemplateRepo) List(orgUUID string, limit, offset int) ([]*mo
 		SELECT uuid, organization_uuid, handle, group_id, name, managed_by, description, created_by, updated_by, configuration, openapi_spec, version, is_latest, enabled, created_at, updated_at
 		FROM llm_provider_templates
 		WHERE organization_uuid = ?
-		  AND (managed_by = 'wso2' OR (managed_by != 'wso2' AND is_latest = ?))
+		  AND is_latest = ?
 		ORDER BY created_at DESC
 		` + pageClause
 	rows, err := r.db.Query(r.db.Rebind(query), append([]any{orgUUID, 1}, pageArgs...)...)
@@ -604,7 +604,7 @@ func (r *LLMProviderTemplateRepo) Count(orgUUID string) (int, error) {
 	if err := r.db.QueryRow(r.db.Rebind(`
 		SELECT COUNT(*) FROM llm_provider_templates
 		WHERE organization_uuid = ?
-		  AND (managed_by = 'wso2' OR (managed_by != 'wso2' AND is_latest = ?))
+		  AND is_latest = ?
 	`), orgUUID, 1).Scan(&count); err != nil {
 		return 0, err
 	}

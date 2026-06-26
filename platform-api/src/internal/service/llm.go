@@ -340,6 +340,11 @@ func (s *LLMProviderTemplateService) CreateVersion(orgUUID, handle, createdBy st
 		return nil, constants.ErrInvalidInput
 	}
 
+	managedBy := defaultTemplateManagedBy(req.ManagedBy)
+	if managedBy == constants.PolicyManagedByWSO2 {
+		managedBy = constants.PolicyManagedByCustomer
+	}
+
 	baseHandle, err := s.repo.GetGroupID(handle, orgUUID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve template family: %w", err)
@@ -354,7 +359,7 @@ func (s *LLMProviderTemplateService) CreateVersion(orgUUID, handle, createdBy st
 		GroupID:          baseHandle,
 		Name:             req.Name,
 		Description:      utils.ValueOrEmpty(req.Description),
-		ManagedBy:        constants.PolicyManagedByCustomer,
+		ManagedBy:        managedBy,
 		CreatedBy:        createdBy,
 		Version:          version,
 		OpenAPISpec:      utils.ValueOrEmpty(req.Openapi),

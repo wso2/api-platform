@@ -333,7 +333,6 @@ CREATE TABLE dbo.llm_provider_templates (
     created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     updated_by VARCHAR(200),
     updated_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
-    organization_uuid VARCHAR(40) NOT NULL,
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
     UNIQUE(organization_uuid, group_id, version),
     UNIQUE(organization_uuid, handle)
