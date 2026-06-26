@@ -564,7 +564,7 @@ CREATE TABLE IF NOT EXISTS secrets (
     hash              VARCHAR(255)  NOT NULL,
     data_version      VARCHAR(20)   NOT NULL DEFAULT '1.0',
     type              VARCHAR(20)   NOT NULL DEFAULT 'GENERIC',
-    provider          VARCHAR(20)   NOT NULL DEFAULT 'IN_HOUSE',
+    provider          VARCHAR(20)   NOT NULL DEFAULT 'IN_BUILT',
     status            VARCHAR(20)   NOT NULL DEFAULT 'ACTIVE',
     created_at        TIMESTAMP     NOT NULL,
     created_by        VARCHAR(255),

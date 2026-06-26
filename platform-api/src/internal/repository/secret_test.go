@@ -418,11 +418,15 @@ func TestSecretRepo_FindRefs_WithArtifactLevelRef(t *testing.T) {
 	orgID := "org-ref-002"
 	createTestOrganizationAndProject(t, db, orgID, "proj-ref-002")
 
-	// Insert an artifact directly
-	_, err := db.Exec(`INSERT INTO artifacts (uuid, handle, name, version, kind, organization_uuid, created_at, updated_at)
-		VALUES ('art-uuid-001', 'my-api', 'My API', '1.0', 'RestApi', 'org-ref-002', datetime('now'), datetime('now'))`)
+	// Insert an artifact and its rest_apis row so FindRefs can resolve handle/name
+	_, err := db.Exec(`INSERT INTO artifacts (uuid, type, organization_uuid) VALUES ('art-uuid-001', 'RestApi', 'org-ref-002')`)
 	if err != nil {
 		t.Fatalf("insert artifact: %v", err)
+	}
+	_, err = db.Exec(`INSERT INTO rest_apis (uuid, organization_uuid, handle, name, version, project_uuid, lifecycle_status, configuration, created_at, updated_at)
+		VALUES ('art-uuid-001', 'org-ref-002', 'my-api', 'My API', 'v1.0', 'proj-ref-002', 'CREATED', '{}', datetime('now'), datetime('now'))`)
+	if err != nil {
+		t.Fatalf("insert rest_api: %v", err)
 	}
 
 	// Insert artifact-level ref (gateway_id='')
@@ -452,8 +456,7 @@ func TestSecretRepo_FindRefs_WithDeploymentLevelRef(t *testing.T) {
 	orgID := "org-ref-003"
 	createTestOrganizationAndProject(t, db, orgID, "proj-ref-003")
 
-	_, err := db.Exec(`INSERT INTO artifacts (uuid, handle, name, version, kind, organization_uuid, created_at, updated_at)
-		VALUES ('art-uuid-002', 'llm-proxy', 'LLM Proxy', '1.0', 'AiProxy', 'org-ref-003', datetime('now'), datetime('now'))`)
+	_, err := db.Exec(`INSERT INTO artifacts (uuid, type, organization_uuid) VALUES ('art-uuid-002', 'AiProxy', 'org-ref-003')`)
 	if err != nil {
 		t.Fatalf("insert artifact: %v", err)
 	}
@@ -484,8 +487,7 @@ func TestSecretRepo_FindRefs_DeduplicatesAcrossGateways(t *testing.T) {
 	orgID := "org-ref-004"
 	createTestOrganizationAndProject(t, db, orgID, "proj-ref-004")
 
-	_, err := db.Exec(`INSERT INTO artifacts (uuid, handle, name, version, kind, organization_uuid, created_at, updated_at)
-		VALUES ('art-uuid-003', 'my-mcp', 'My MCP', '1.0', 'McpServer', 'org-ref-004', datetime('now'), datetime('now'))`)
+	_, err := db.Exec(`INSERT INTO artifacts (uuid, type, organization_uuid) VALUES ('art-uuid-003', 'McpServer', 'org-ref-004')`)
 	if err != nil {
 		t.Fatalf("insert artifact: %v", err)
 	}
@@ -584,8 +586,7 @@ func TestUpsertArtifactSecretRefs_InsertsOnCreate(t *testing.T) {
 	orgID := "org-upsert-001"
 	createTestOrganizationAndProject(t, db, orgID, "proj-upsert-001")
 
-	_, err := db.Exec(`INSERT INTO artifacts (uuid, handle, name, version, kind, organization_uuid, created_at, updated_at)
-		VALUES ('art-upsert-001', 'my-api', 'My API', '1.0', 'RestApi', 'org-upsert-001', datetime('now'), datetime('now'))`)
+	_, err := db.Exec(`INSERT INTO artifacts (uuid, type, organization_uuid) VALUES ('art-upsert-001', 'RestApi', 'org-upsert-001')`)
 	if err != nil {
 		t.Fatalf("insert artifact: %v", err)
 	}
@@ -619,8 +620,7 @@ func TestUpsertArtifactSecretRefs_ReplacesOnUpdate(t *testing.T) {
 	orgID := "org-upsert-002"
 	createTestOrganizationAndProject(t, db, orgID, "proj-upsert-002")
 
-	_, err := db.Exec(`INSERT INTO artifacts (uuid, handle, name, version, kind, organization_uuid, created_at, updated_at)
-		VALUES ('art-upsert-002', 'my-api2', 'My API 2', '1.0', 'RestApi', 'org-upsert-002', datetime('now'), datetime('now'))`)
+	_, err := db.Exec(`INSERT INTO artifacts (uuid, type, organization_uuid) VALUES ('art-upsert-002', 'RestApi', 'org-upsert-002')`)
 	if err != nil {
 		t.Fatalf("insert artifact: %v", err)
 	}
@@ -680,8 +680,7 @@ func TestUpsertArtifactSecretRefs_ClearsWhenNoSecrets(t *testing.T) {
 	orgID := "org-upsert-003"
 	createTestOrganizationAndProject(t, db, orgID, "proj-upsert-003")
 
-	_, err := db.Exec(`INSERT INTO artifacts (uuid, handle, name, version, kind, organization_uuid, created_at, updated_at)
-		VALUES ('art-upsert-003', 'my-api3', 'My API 3', '1.0', 'RestApi', 'org-upsert-003', datetime('now'), datetime('now'))`)
+	_, err := db.Exec(`INSERT INTO artifacts (uuid, type, organization_uuid) VALUES ('art-upsert-003', 'RestApi', 'org-upsert-003')`)
 	if err != nil {
 		t.Fatalf("insert artifact: %v", err)
 	}
@@ -730,8 +729,7 @@ func TestUpsertDeploymentSecretRefs_OnDeploy(t *testing.T) {
 	orgID := "org-dep-001"
 	createTestOrganizationAndProject(t, db, orgID, "proj-dep-001")
 
-	_, err := db.Exec(`INSERT INTO artifacts (uuid, handle, name, version, kind, organization_uuid, created_at, updated_at)
-		VALUES ('art-dep-001', 'gw-api', 'GW API', '1.0', 'RestApi', 'org-dep-001', datetime('now'), datetime('now'))`)
+	_, err := db.Exec(`INSERT INTO artifacts (uuid, type, organization_uuid) VALUES ('art-dep-001', 'RestApi', 'org-dep-001')`)
 	if err != nil {
 		t.Fatalf("insert artifact: %v", err)
 	}
@@ -768,8 +766,7 @@ func TestUpsertDeploymentSecretRefs_OnUndeploy_ClearsRows(t *testing.T) {
 	orgID := "org-dep-002"
 	createTestOrganizationAndProject(t, db, orgID, "proj-dep-002")
 
-	_, err := db.Exec(`INSERT INTO artifacts (uuid, handle, name, version, kind, organization_uuid, created_at, updated_at)
-		VALUES ('art-dep-002', 'gw-api2', 'GW API 2', '1.0', 'RestApi', 'org-dep-002', datetime('now'), datetime('now'))`)
+	_, err := db.Exec(`INSERT INTO artifacts (uuid, type, organization_uuid) VALUES ('art-dep-002', 'RestApi', 'org-dep-002')`)
 	if err != nil {
 		t.Fatalf("insert artifact: %v", err)
 	}
@@ -888,8 +885,7 @@ func TestSecretRepo_FindRefsAndSoftDelete_Transactional(t *testing.T) {
 	}
 
 	// Insert an artifact and an artifact-level secret ref.
-	_, err := db.Exec(`INSERT INTO artifacts (uuid, handle, name, version, kind, organization_uuid, created_at, updated_at)
-		VALUES ('art-txn-001', 'txn-api', 'Txn API', '1.0', 'RestApi', ?, datetime('now'), datetime('now'))`, orgID)
+	_, err := db.Exec(`INSERT INTO artifacts (uuid, type, organization_uuid) VALUES ('art-txn-001', 'RestApi', ?)`, orgID)
 	if err != nil {
 		t.Fatalf("insert artifact: %v", err)
 	}
@@ -948,8 +944,7 @@ func TestUpsertDeploymentSecretRefs_DoesNotAffectArtifactLevelRows(t *testing.T)
 	orgID := "org-dep-003"
 	createTestOrganizationAndProject(t, db, orgID, "proj-dep-003")
 
-	_, err := db.Exec(`INSERT INTO artifacts (uuid, handle, name, version, kind, organization_uuid, created_at, updated_at)
-		VALUES ('art-dep-003', 'dual-api', 'Dual API', '1.0', 'RestApi', 'org-dep-003', datetime('now'), datetime('now'))`)
+	_, err := db.Exec(`INSERT INTO artifacts (uuid, type, organization_uuid) VALUES ('art-dep-003', 'RestApi', 'org-dep-003')`)
 	if err != nil {
 		t.Fatalf("insert artifact: %v", err)
 	}

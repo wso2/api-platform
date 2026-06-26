@@ -509,7 +509,10 @@ func TestSecretHandler_Delete_409_ReferencedByArtifact(t *testing.T) {
 		t.Fatalf("create failed: %d %s", w.Code, w.Body.String())
 	}
 
-	// Insert the artifact_secret_ref row
+	// Insert the artifact and artifact_secret_ref row
+	if _, err = db.Exec(`INSERT OR IGNORE INTO artifacts (uuid, type, organization_uuid) VALUES ('art-001', 'RestApi', 'org-it-001')`); err != nil {
+		t.Fatalf("failed to insert artifact: %v", err)
+	}
 	_, err = db.Exec(`INSERT INTO artifact_secret_refs (organization_uuid, artifact_uuid, secret_handle, gateway_id)
 		VALUES ('org-it-001', 'art-001', 'ref-key', '')`)
 	if err != nil {

@@ -254,9 +254,16 @@ func (r *SecretRepo) FindRefsAndSoftDelete(orgID, handle, updatedBy string) ([]m
 	}
 
 	refsQuery := r.db.Rebind(`
-		SELECT DISTINCT art.handle, art.name, art.kind
+		SELECT DISTINCT
+			COALESCE(ra.handle, lp.handle, lpr.handle, mcp.handle, asr.artifact_uuid) AS handle,
+			COALESCE(ra.name,   lp.name,   lpr.name,   mcp.name,   '')               AS name,
+			art.type
 		FROM artifact_secret_refs asr
 		JOIN artifacts art ON art.uuid = asr.artifact_uuid
+		LEFT JOIN rest_apis     ra  ON ra.uuid  = asr.artifact_uuid
+		LEFT JOIN llm_providers lp  ON lp.uuid  = asr.artifact_uuid
+		LEFT JOIN llm_proxies   lpr ON lpr.uuid = asr.artifact_uuid
+		LEFT JOIN mcp_proxies   mcp ON mcp.uuid = asr.artifact_uuid
 		WHERE asr.organization_uuid = ? AND asr.secret_handle = ?
 	`)
 	rows, err := tx.Query(refsQuery, orgID, handle)
@@ -306,9 +313,16 @@ func (r *SecretRepo) FindRefsAndSoftDelete(orgID, handle, updatedBy string) ([]m
 
 func (r *SecretRepo) FindRefs(orgID, handle string) ([]model.SecretReference, error) {
 	query := r.db.Rebind(`
-		SELECT DISTINCT art.handle, art.name, art.kind
+		SELECT DISTINCT
+			COALESCE(ra.handle, lp.handle, lpr.handle, mcp.handle, asr.artifact_uuid) AS handle,
+			COALESCE(ra.name,   lp.name,   lpr.name,   mcp.name,   '')               AS name,
+			art.type
 		FROM artifact_secret_refs asr
 		JOIN artifacts art ON art.uuid = asr.artifact_uuid
+		LEFT JOIN rest_apis     ra  ON ra.uuid  = asr.artifact_uuid
+		LEFT JOIN llm_providers lp  ON lp.uuid  = asr.artifact_uuid
+		LEFT JOIN llm_proxies   lpr ON lpr.uuid = asr.artifact_uuid
+		LEFT JOIN mcp_proxies   mcp ON mcp.uuid = asr.artifact_uuid
 		WHERE asr.organization_uuid = ? AND asr.secret_handle = ?
 	`)
 

@@ -82,7 +82,7 @@ func (r *APIRepo) CreateAPI(api *model.API) error {
 
 	_, err = tx.Exec(r.db.Rebind(apiQuery), api.ID, api.OrganizationID, api.Handle, api.Name, api.Version,
 		api.Description, api.CreatedBy, api.ProjectID, api.LifeCycleStatus,
-		configurationJSON, api.CreatedAt, api.UpdatedAt)
+		[]byte(configurationJSON), api.CreatedAt, api.UpdatedAt)
 	if err != nil {
 		return err
 	}
@@ -368,7 +368,7 @@ func (r *APIRepo) UpdateAPI(api *model.API) error {
 	`
 	_, err = tx.Exec(r.db.Rebind(query), api.Name, api.Version, api.Description,
 		api.UpdatedBy, api.LifeCycleStatus,
-		configurationJSON, api.UpdatedAt,
+		[]byte(configurationJSON), api.UpdatedAt,
 		api.ID)
 	if err != nil {
 		return err
@@ -468,7 +468,7 @@ func serializeAPIConfigurations(config model.RestAPIConfig) (string, error) {
 		return "", err
 	}
 
-	return configJSON, nil
+	return string(configJSON), nil
 }
 
 func deserializeAPIConfigurations(configJSON sql.NullString) (*model.RestAPIConfig, error) {
