@@ -78,7 +78,7 @@ func TestSQLiteStorage_SchemaInitialization(t *testing.T) {
 	var version int
 	err = storage.db.QueryRow("PRAGMA user_version").Scan(&version)
 	assert.NilError(t, err)
-	assert.Equal(t, version, 3) // Current schema version
+	assert.Equal(t, version, 4) // Current schema version
 
 	// Verify tables exist
 	tables := []string{
@@ -128,7 +128,7 @@ func TestSQLiteStorage_RejectsUnsupportedSchemaVersion(t *testing.T) {
 	// Reopen — should fail with unsupported version error
 	_, err = NewStorage(BackendConfig{Type: "sqlite", SQLitePath: dbPath}, logger)
 	assert.Assert(t, err != nil)
-	assert.ErrorContains(t, err, "failed to initialize schema: unsupported schema version 5, expected 3; delete the database to recreate")
+	assert.ErrorContains(t, err, "failed to initialize schema: unsupported schema version 5, expected 4; delete the database to recreate")
 }
 
 func TestSQLiteStorage_DeleteConfig_NotFound(t *testing.T) {
@@ -247,6 +247,58 @@ func TestSQLiteStorage_GetConfig_Success(t *testing.T) {
 	assert.Equal(t, retrievedConfig.UUID, originalConfig.UUID)
 	assert.Equal(t, retrievedConfig.Kind, originalConfig.Kind)
 	assert.Equal(t, retrievedConfig.DesiredState, originalConfig.DesiredState)
+}
+
+func TestSQLiteStorage_DataVersion_RoundTrip(t *testing.T) {
+	storage := setupTestStorage(t)
+	defer storage.db.Close()
+
+	// A v1 RestAPI with no DataVersion set should be computed to "1.0" on write.
+	cfg := createTestStoredConfig()
+	cfg.DataVersion = ""
+	err := storage.SaveConfig(cfg)
+	assert.NilError(t, err)
+	assert.Equal(t, cfg.DataVersion, "1.0") // ensureDataVersion populated it in place
+
+	retrieved, err := storage.GetConfig(cfg.UUID)
+	assert.NilError(t, err)
+	assert.Equal(t, retrieved.DataVersion, "1.0")
+}
+
+func TestSQLiteStorage_DataVersion_PreservesExplicitValue(t *testing.T) {
+	storage := setupTestStorage(t)
+	defer storage.db.Close()
+
+	// An explicitly-set DataVersion (e.g. a future minor bump) must not be overwritten.
+	cfg := createTestStoredConfig()
+	cfg.DataVersion = "1.3"
+	err := storage.SaveConfig(cfg)
+	assert.NilError(t, err)
+
+	retrieved, err := storage.GetConfig(cfg.UUID)
+	assert.NilError(t, err)
+	assert.Equal(t, retrieved.DataVersion, "1.3")
+}
+
+func TestSQLiteStorage_DataVersion_FallsBackWhenApiVersionMissing(t *testing.T) {
+	storage := setupTestStorage(t)
+	defer storage.db.Close()
+
+	// A config whose configuration carries no recognisable apiVersion falls back to "1.0".
+	cfg := createTestStoredConfig()
+	cfg.DataVersion = ""
+	cfg.Configuration = api.RestAPI{
+		Kind:     api.RestAPIKindRestApi,
+		Metadata: api.Metadata{Name: cfg.Handle},
+		Spec:     api.APIConfigData{DisplayName: cfg.DisplayName, Version: "v1.0.0", Context: "/fallback"},
+	}
+	cfg.SourceConfiguration = cfg.Configuration
+	err := storage.SaveConfig(cfg)
+	assert.NilError(t, err)
+
+	retrieved, err := storage.GetConfig(cfg.UUID)
+	assert.NilError(t, err)
+	assert.Equal(t, retrieved.DataVersion, "1.0")
 }
 
 func TestSQLiteStorage_GetConfig_JSONUnmarshalError(t *testing.T) {

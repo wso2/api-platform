@@ -357,17 +357,27 @@ func unmarshalSourceConfig(cfg *models.StoredConfig, jsonData string) error {
 	return nil
 }
 
+// ensureDataVersion derives and sets cfg.DataVersion when it has not already
+// been populated, so every artifact write path records a data_version without
+// each caller having to compute it. See models.ComputeDataVersion.
+func ensureDataVersion(cfg *models.StoredConfig) {
+	if cfg.DataVersion == "" {
+		cfg.DataVersion = models.ComputeDataVersion(cfg.Kind, cfg.GetApiVersion())
+	}
+}
+
 func (s *sqlStore) SaveConfig(cfg *models.StoredConfig) error {
 	if cfg.Handle == "" {
 		return fmt.Errorf("handle (metadata.name) is required and cannot be empty")
 	}
+	ensureDataVersion(cfg)
 
 	query := `
 		INSERT INTO artifacts (
-			uuid, gateway_id, display_name, version, kind, handle,
+			uuid, gateway_id, display_name, version, data_version, kind, handle,
 			desired_state, deployment_id, origin, created_at, updated_at, deployed_at,
 			cp_sync_status, cp_sync_info, cp_artifact_id
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	tx, err := s.begin()
@@ -414,6 +424,7 @@ func (s *sqlStore) SaveConfig(cfg *models.StoredConfig) error {
 		s.gatewayId,
 		cfg.DisplayName,
 		cfg.Version,
+		cfg.DataVersion,
 		cfg.Kind,
 		cfg.Handle,
 		cfg.DesiredState,
@@ -476,10 +487,11 @@ func (s *sqlStore) UpdateConfig(cfg *models.StoredConfig) error {
 		metrics.StorageErrorsTotal.WithLabelValues("update", "validation_error").Inc()
 		return fmt.Errorf("handle (metadata.name) is required and cannot be empty")
 	}
+	ensureDataVersion(cfg)
 
 	query := `
 		UPDATE artifacts
-		SET display_name = ?, version = ?, kind = ?, handle = ?,
+		SET display_name = ?, version = ?, data_version = ?, kind = ?, handle = ?,
 			desired_state = ?, deployment_id = ?, origin = ?, updated_at = ?, deployed_at = ?,
 			cp_sync_status = ?, cp_sync_info = ?, cp_artifact_id = ?
 		WHERE uuid = ? AND gateway_id = ?
@@ -530,6 +542,7 @@ func (s *sqlStore) UpdateConfig(cfg *models.StoredConfig) error {
 		s.ctx,
 		cfg.DisplayName,
 		cfg.Version,
+		cfg.DataVersion,
 		cfg.Kind,
 		cfg.Handle,
 		cfg.DesiredState,
@@ -600,6 +613,7 @@ func (s *sqlStore) UpsertConfig(cfg *models.StoredConfig) (bool, error) {
 	if cfg.Handle == "" {
 		return false, fmt.Errorf("handle (metadata.name) is required and cannot be empty")
 	}
+	ensureDataVersion(cfg)
 
 	tx, err := s.begin()
 	if err != nil {
@@ -638,24 +652,24 @@ func (s *sqlStore) UpsertConfig(cfg *models.StoredConfig) (bool, error) {
 	didWrite, err := s.upsert(tx, upsertSpec{
 		table: "artifacts",
 		columns: []string{
-			"uuid", "gateway_id", "display_name", "version", "kind", "handle",
+			"uuid", "gateway_id", "display_name", "version", "data_version", "kind", "handle",
 			"desired_state", "deployment_id", "origin", "created_at", "updated_at", "deployed_at",
 			"cp_sync_status", "cp_sync_info", "cp_artifact_id",
 		},
 		insertValues: []interface{}{
-			cfg.UUID, s.gatewayId, cfg.DisplayName, cfg.Version, cfg.Kind, cfg.Handle,
+			cfg.UUID, s.gatewayId, cfg.DisplayName, cfg.Version, cfg.DataVersion, cfg.Kind, cfg.Handle,
 			cfg.DesiredState, deploymentID, cfg.Origin, now, now, cfg.DeployedAt,
 			upsertCPSyncStatus, upsertCPSyncInfo, upsertCPArtifactID,
 		},
 		keyColumns: []string{"gateway_id", "uuid"},
 		keyValues:  []interface{}{s.gatewayId, cfg.UUID},
 		setClauses: []string{
-			"display_name = ?", "version = ?", "kind = ?", "handle = ?",
+			"display_name = ?", "version = ?", "data_version = ?", "kind = ?", "handle = ?",
 			"desired_state = ?", "deployment_id = ?", "origin = ?",
 			"updated_at = ?", "deployed_at = ?",
 		},
 		setValues: []interface{}{
-			cfg.DisplayName, cfg.Version, cfg.Kind, cfg.Handle,
+			cfg.DisplayName, cfg.Version, cfg.DataVersion, cfg.Kind, cfg.Handle,
 			cfg.DesiredState, deploymentID, cfg.Origin, now, cfg.DeployedAt,
 		},
 		guard:       "(deployed_at IS NULL OR deployed_at < ?)",
@@ -774,7 +788,7 @@ func (s *sqlStore) GetConfig(id string) (*models.StoredConfig, error) {
 
 	// Step 1: Get artifact base record
 	artifactQuery := `
-		SELECT uuid, kind, handle, display_name, version, desired_state, deployment_id, origin, created_at, updated_at, deployed_at,
+		SELECT uuid, kind, handle, display_name, version, data_version, desired_state, deployment_id, origin, created_at, updated_at, deployed_at,
 			cp_sync_status, cp_sync_info, cp_artifact_id
 		FROM artifacts
 		WHERE uuid = ? AND gateway_id = ?
@@ -793,6 +807,7 @@ func (s *sqlStore) GetConfig(id string) (*models.StoredConfig, error) {
 		&cfg.Handle,
 		&cfg.DisplayName,
 		&cfg.Version,
+		&cfg.DataVersion,
 		&cfg.DesiredState,
 		&deploymentID,
 		&cfg.Origin,
@@ -848,7 +863,7 @@ func (s *sqlStore) GetConfig(id string) (*models.StoredConfig, error) {
 // GetConfigByKindAndHandle retrieves a deployment configuration by kind and handle (metadata.name)
 func (s *sqlStore) GetConfigByKindAndHandle(kind string, handle string) (*models.StoredConfig, error) {
 	artifactQuery := `
-		SELECT uuid, kind, handle, display_name, version, desired_state, deployment_id, origin, created_at, updated_at, deployed_at,
+		SELECT uuid, kind, handle, display_name, version, data_version, desired_state, deployment_id, origin, created_at, updated_at, deployed_at,
 			cp_sync_status, cp_sync_info, cp_artifact_id
 		FROM artifacts
 		WHERE kind = ? AND handle = ? AND gateway_id = ?
@@ -867,6 +882,7 @@ func (s *sqlStore) GetConfigByKindAndHandle(kind string, handle string) (*models
 		&cfg.Handle,
 		&cfg.DisplayName,
 		&cfg.Version,
+		&cfg.DataVersion,
 		&cfg.DesiredState,
 		&deploymentID,
 		&cfg.Origin,
@@ -911,7 +927,7 @@ func (s *sqlStore) GetConfigByKindAndHandle(kind string, handle string) (*models
 // GetConfigByKindNameAndVersion retrieves a deployment configuration by kind, display name, and version.
 func (s *sqlStore) GetConfigByKindNameAndVersion(kind, displayName, version string) (*models.StoredConfig, error) {
 	artifactQuery := `
-		SELECT uuid, kind, handle, display_name, version, desired_state, deployment_id, origin, created_at, updated_at, deployed_at,
+		SELECT uuid, kind, handle, display_name, version, data_version, desired_state, deployment_id, origin, created_at, updated_at, deployed_at,
 			cp_sync_status, cp_sync_info, cp_artifact_id
 		FROM artifacts
 		WHERE kind = ? AND display_name = ? AND version = ? AND gateway_id = ?
@@ -930,6 +946,7 @@ func (s *sqlStore) GetConfigByKindNameAndVersion(kind, displayName, version stri
 		&cfg.Handle,
 		&cfg.DisplayName,
 		&cfg.Version,
+		&cfg.DataVersion,
 		&cfg.DesiredState,
 		&deploymentID,
 		&cfg.Origin,
@@ -976,7 +993,7 @@ func (s *sqlStore) GetConfigByKindNameAndVersion(kind, displayName, version stri
 func (s *sqlStore) GetAllConfigs() ([]*models.StoredConfig, error) {
 	// Use UNION ALL across all type tables joined with artifacts
 	query := `
-			SELECT a.uuid, a.kind, a.handle, a.display_name, a.version, r.configuration, a.desired_state,
+			SELECT a.uuid, a.kind, a.handle, a.display_name, a.version, a.data_version, r.configuration, a.desired_state,
 				a.deployment_id, a.origin, a.created_at, a.updated_at, a.deployed_at,
 				a.cp_sync_status, a.cp_sync_info, a.cp_artifact_id
 			FROM artifacts a
@@ -985,7 +1002,7 @@ func (s *sqlStore) GetAllConfigs() ([]*models.StoredConfig, error) {
 
 		UNION ALL
 
-			SELECT a.uuid, a.kind, a.handle, a.display_name, a.version, w.configuration, a.desired_state,
+			SELECT a.uuid, a.kind, a.handle, a.display_name, a.version, a.data_version, w.configuration, a.desired_state,
 				a.deployment_id, a.origin, a.created_at, a.updated_at, a.deployed_at,
 				a.cp_sync_status, a.cp_sync_info, a.cp_artifact_id
 			FROM artifacts a
@@ -994,7 +1011,7 @@ func (s *sqlStore) GetAllConfigs() ([]*models.StoredConfig, error) {
 
 		UNION ALL
 
-			SELECT a.uuid, a.kind, a.handle, a.display_name, a.version, lp.configuration, a.desired_state,
+			SELECT a.uuid, a.kind, a.handle, a.display_name, a.version, a.data_version, lp.configuration, a.desired_state,
 				a.deployment_id, a.origin, a.created_at, a.updated_at, a.deployed_at,
 				a.cp_sync_status, a.cp_sync_info, a.cp_artifact_id
 			FROM artifacts a
@@ -1003,7 +1020,7 @@ func (s *sqlStore) GetAllConfigs() ([]*models.StoredConfig, error) {
 
 		UNION ALL
 
-			SELECT a.uuid, a.kind, a.handle, a.display_name, a.version, lx.configuration, a.desired_state,
+			SELECT a.uuid, a.kind, a.handle, a.display_name, a.version, a.data_version, lx.configuration, a.desired_state,
 				a.deployment_id, a.origin, a.created_at, a.updated_at, a.deployed_at,
 				a.cp_sync_status, a.cp_sync_info, a.cp_artifact_id
 			FROM artifacts a
@@ -1012,7 +1029,7 @@ func (s *sqlStore) GetAllConfigs() ([]*models.StoredConfig, error) {
 
 		UNION ALL
 
-		SELECT a.uuid, a.kind, a.handle, a.display_name, a.version, m.configuration, a.desired_state,
+		SELECT a.uuid, a.kind, a.handle, a.display_name, a.version, a.data_version, m.configuration, a.desired_state,
 			a.deployment_id, a.origin, a.created_at, a.updated_at, a.deployed_at,
 			a.cp_sync_status, a.cp_sync_info, a.cp_artifact_id
 		FROM artifacts a
@@ -1038,7 +1055,7 @@ func (s *sqlStore) GetAllConfigsByKind(kind string) ([]*models.StoredConfig, err
 	}
 
 	query := fmt.Sprintf(`
-			SELECT a.uuid, a.kind, a.handle, a.display_name, a.version, r.configuration, a.desired_state,
+			SELECT a.uuid, a.kind, a.handle, a.display_name, a.version, a.data_version, r.configuration, a.desired_state,
 				a.deployment_id, a.origin, a.created_at, a.updated_at, a.deployed_at,
 				a.cp_sync_status, a.cp_sync_info, a.cp_artifact_id
 			FROM artifacts a
@@ -1056,7 +1073,7 @@ func (s *sqlStore) GetAllConfigsByKind(kind string) ([]*models.StoredConfig, err
 	return s.scanConfigRows(rows)
 }
 
-// scanConfigRows scans rows from a query that returns (uuid, kind, handle, display_name, version, configuration, desired_state, deployment_id, origin, created_at, updated_at, deployed_at, enable_cp_sync, cp_sync_status, cp_sync_info)
+// scanConfigRows scans rows from a query that returns (uuid, kind, handle, display_name, version, data_version, configuration, desired_state, deployment_id, origin, created_at, updated_at, deployed_at, enable_cp_sync, cp_sync_status, cp_sync_info)
 func (s *sqlStore) scanConfigRows(rows *sql.Rows) ([]*models.StoredConfig, error) {
 	var configs []*models.StoredConfig
 
@@ -1075,6 +1092,7 @@ func (s *sqlStore) scanConfigRows(rows *sql.Rows) ([]*models.StoredConfig, error
 			&cfg.Handle,
 			&cfg.DisplayName,
 			&cfg.Version,
+			&cfg.DataVersion,
 			&configJSON,
 			&cfg.DesiredState,
 			&deploymentID,
@@ -1128,7 +1146,7 @@ func (s *sqlStore) scanConfigRows(rows *sql.Rows) ([]*models.StoredConfig, error
 // so Configuration/SourceConfiguration will be nil.
 func (s *sqlStore) GetAllConfigsByOrigin(origin models.Origin) ([]*models.StoredConfig, error) {
 	query := `
-		SELECT uuid, kind, handle, display_name, version, desired_state,
+		SELECT uuid, kind, handle, display_name, version, data_version, desired_state,
 			deployment_id, origin, created_at, updated_at, deployed_at,
 			cp_sync_status, cp_sync_info, cp_artifact_id
 		FROM artifacts
@@ -1187,6 +1205,7 @@ func scanArtifactMetadataRows(rows *sql.Rows) ([]*models.StoredConfig, error) {
 			&cfg.Handle,
 			&cfg.DisplayName,
 			&cfg.Version,
+			&cfg.DataVersion,
 			&cfg.DesiredState,
 			&deploymentID,
 			&cfg.Origin,
@@ -1263,7 +1282,7 @@ func (s *sqlStore) UpdateCPSyncStatus(uuid, cpArtifactID string, status models.C
 // bottom-up sync. Returns ErrNotFound if no match.
 func (s *sqlStore) GetConfigByCPArtifactID(cpArtifactID string) (*models.StoredConfig, error) {
 	artifactQuery := `
-		SELECT uuid, kind, handle, display_name, version, desired_state, deployment_id, origin, created_at, updated_at, deployed_at,
+		SELECT uuid, kind, handle, display_name, version, data_version, desired_state, deployment_id, origin, created_at, updated_at, deployed_at,
 			cp_sync_status, cp_sync_info, cp_artifact_id
 		FROM artifacts
 		WHERE gateway_id = ? AND cp_artifact_id = ?
@@ -1282,6 +1301,7 @@ func (s *sqlStore) GetConfigByCPArtifactID(cpArtifactID string) (*models.StoredC
 		&cfg.Handle,
 		&cfg.DisplayName,
 		&cfg.Version,
+		&cfg.DataVersion,
 		&cfg.DesiredState,
 		&deploymentID,
 		&cfg.Origin,
@@ -1327,7 +1347,7 @@ func (s *sqlStore) GetConfigByCPArtifactID(cpArtifactID string) (*models.StoredC
 // Used by the bottom-up sync to determine which APIs need to be pushed to the control plane.
 func (s *sqlStore) GetPendingBottomUpAPIs() ([]*models.StoredConfig, error) {
 	query := `
-		SELECT a.uuid, a.kind, a.handle, a.display_name, a.version, r.configuration, a.desired_state,
+		SELECT a.uuid, a.kind, a.handle, a.display_name, a.version, a.data_version, r.configuration, a.desired_state,
 			a.deployment_id, a.origin, a.created_at, a.updated_at, a.deployed_at,
 			a.cp_sync_status, a.cp_sync_info, a.cp_artifact_id
 		FROM artifacts a

@@ -1,5 +1,5 @@
 -- SQLite Schema for Gateway-Controller API Configurations
--- Version: 2
+-- Version: 4
 
 -- Base table for all artifact types (REST APIs, WebSub APIs, LLM Providers, LLM Proxies, MCP Proxies)
 CREATE TABLE IF NOT EXISTS artifacts (
@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS artifacts (
     gateway_id TEXT NOT NULL,
     display_name TEXT NOT NULL,
     version TEXT NOT NULL,
+    data_version TEXT NOT NULL DEFAULT '1.0',
     kind TEXT NOT NULL,
     handle TEXT NOT NULL,
     desired_state TEXT NOT NULL CHECK(desired_state IN ('deployed', 'undeployed')),
@@ -307,4 +308,4 @@ CREATE TABLE IF NOT EXISTS webhook_secrets (
 
 CREATE INDEX IF NOT EXISTS idx_webhook_secrets_artifact ON webhook_secrets(gateway_id, artifact_uuid);
 
-PRAGMA user_version = 3;
+PRAGMA user_version = 4;
