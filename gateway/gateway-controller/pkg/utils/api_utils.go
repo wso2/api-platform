@@ -1237,11 +1237,6 @@ func (s *APIUtilsService) FetchPlatformSecrets(updatedAfter *time.Time, includeV
 		return nil, fmt.Errorf("failed to decode platform secrets response: %w", err)
 	}
 
-	s.logger.Info("Successfully fetched platform secrets",
-		slog.Int("count", len(listResp.List)),
-		slog.Bool("includeValues", includeValues),
-	)
-
 	return listResp.List, nil
 }
 
