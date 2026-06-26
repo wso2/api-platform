@@ -151,7 +151,7 @@ func insertDeployment(t *testing.T, db *database.DB, deploymentID, name, apiUUID
 	t.Helper()
 
 	query := `
-		INSERT INTO deployments (deployment_id, name, artifact_uuid, organization_uuid, gateway_uuid, content, metadata, created_at)
+		INSERT INTO deployments (uuid, name, artifact_uuid, organization_uuid, gateway_uuid, content, metadata, created_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 	`
 	metadata := "{}"
@@ -166,7 +166,7 @@ func setDeploymentStatus(t *testing.T, db *database.DB, apiUUID, orgUUID, gatewa
 	t.Helper()
 
 	query := `
-		REPLACE INTO deployment_status (artifact_uuid, organization_uuid, gateway_uuid, deployment_id, status, updated_at)
+		REPLACE INTO deployment_status (artifact_uuid, organization_uuid, gateway_uuid, deployment_uuid, status, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?)
 	`
 	_, err := db.Exec(query, apiUUID, orgUUID, gatewayUUID, deploymentID, status, time.Now())
@@ -522,12 +522,10 @@ func TestGetDeploymentsWithState_MultipleGateways(t *testing.T) {
 }
 
 func TestMain(m *testing.M) {
-	// Setup
+	// Allow GetConfig() to generate an ephemeral secret_encryption_key without failing.
+	os.Setenv("APIP_DEMO_MODE", "true")
+
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
-
-	// Run tests
 	code := m.Run()
-
-	// Teardown
 	os.Exit(code)
 }

@@ -43,6 +43,13 @@ import (
 	"platform-api/src/internal/database"
 )
 
+func TestMain(m *testing.M) {
+	// Allow GetConfig() to generate an ephemeral secret_encryption_key so tests
+	// that exercise subscription_repository.go don't panic at startup.
+	os.Setenv("APIP_DEMO_MODE", "true")
+	os.Exit(m.Run())
+}
+
 // itDB describes the database engine under test.
 type itDB struct {
 	driver string

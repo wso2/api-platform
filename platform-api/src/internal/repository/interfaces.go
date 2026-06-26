@@ -140,6 +140,9 @@ type DeploymentRepository interface {
 	// Gateway deployment methods
 	GetAllDeploymentsByGateway(gatewayID, orgUUID string, since *time.Time) ([]*model.DeploymentInfo, error)
 	GetDeploymentContentByIDs(deploymentIDs []string, orgUUID string, gatewayUUID string) (map[string]*model.DeploymentContent, error)
+	// GetSecretHandlesByGateway returns the distinct secret handles referenced by all
+	// artifacts currently deployed on a gateway, sourced from artifact_secret_refs (gateway_id rows).
+	GetSecretHandlesByGateway(gatewayID, orgUUID string) ([]string, error)
 }
 
 // GatewayRepository defines the interface for gateway data access
@@ -204,13 +207,25 @@ type SubscriptionRepository interface {
 // LLMProviderTemplateRepository defines the interface for LLM provider template persistence
 type LLMProviderTemplateRepository interface {
 	Create(t *model.LLMProviderTemplate) error
+	CreateNewVersion(t *model.LLMProviderTemplate) error
 	GetByID(templateID, orgUUID string) (*model.LLMProviderTemplate, error)
 	GetByUUID(uuid, orgUUID string) (*model.LLMProviderTemplate, error)
+	GetByVersion(templateID, orgUUID, version string) (*model.LLMProviderTemplate, error)
+	ListVersions(templateID, orgUUID string, limit, offset int) ([]*model.LLMProviderTemplate, error)
+	CountVersions(templateID, orgUUID string) (int, error)
 	List(orgUUID string, limit, offset int) ([]*model.LLMProviderTemplate, error)
 	Count(orgUUID string) (int, error)
+	ListAllVersions(orgUUID string, limit, offset int) ([]*model.LLMProviderTemplate, error)
+	CountAllVersions(orgUUID string) (int, error)
 	Update(t *model.LLMProviderTemplate) error
+	RenameFamily(baseHandle, orgUUID, name string) error
+	SetEnabled(templateID, orgUUID, version string, enabled bool) error
+	DeleteVersion(templateID, orgUUID, version string) error
 	Delete(templateID, orgUUID string) error
 	Exists(templateID, orgUUID string) (bool, error)
+	GetGroupID(handle, orgUUID string) (string, error)
+	ManagedByForHandle(handle, orgUUID string) (string, error)
+	CountProvidersUsingTemplate(templateID, orgUUID, version string) (int, error)
 }
 
 // LLMProviderRepository defines the interface for LLM provider persistence
@@ -308,6 +323,19 @@ type WebBrokerAPIRepository interface {
 	Update(api *model.WebBrokerAPI) error
 	Delete(handle, orgUUID string) error
 	Exists(handle, orgUUID string) (bool, error)
+}
+
+// SecretRepository defines the interface for secret persistence.
+type SecretRepository interface {
+	Create(s *model.Secret) error
+	GetByHandle(orgID, handle string) (*model.Secret, error)
+	List(orgID string, limit, offset int, updatedAfter *time.Time) ([]*model.Secret, error)
+	ListByHandles(orgID string, handles []string, updatedAfter *time.Time) ([]*model.Secret, error)
+	Count(orgID string) (int, error)
+	Update(s *model.Secret) error
+	FindRefsAndSoftDelete(orgID, handle, updatedBy string) ([]model.SecretReference, error)
+	FindRefs(orgID, handle string) ([]model.SecretReference, error)
+	Exists(orgID, handle string) (bool, error)
 }
 
 // CustomPolicyRepository defines the interface for custom policy persistence

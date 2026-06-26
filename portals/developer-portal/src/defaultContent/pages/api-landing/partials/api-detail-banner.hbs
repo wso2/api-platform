@@ -1,5 +1,12 @@
 <div class="aov-hero">
-  <div class="aov-hero-left">
+  <div class="aov-hero-top">
+    <div class="aov-hero-thumb">
+      {{#if apiMetadata.apiInfo.apiImageMetadata.api-icon}}
+      <img class="aov-api-img" src="{{apiMetadata.apiInfo.apiImageMetadata.api-icon}}" alt="{{apiMetadata.apiInfo.apiName}}" />
+      {{else}}
+      <div class="aov-api-avatar">{{firstTwoLetters apiMetadata.apiInfo.apiName}}</div>
+      {{/if}}
+    </div>
     <div class="aov-hero-title-row">
       <h1 class="aov-hero-name">{{apiMetadata.apiInfo.apiName}}</h1>
       <div class="aov-hero-badges">
@@ -25,8 +32,13 @@
         </span>
         {{/unless}}
         {{/if}}
+        {{#if (eq apiMetadata.apiInfo.apiStatus "DEPRECATED")}}
+        <span class="dp-badge dp-badge--deprecated"><i class="bi bi-exclamation-circle"></i> Deprecated</span>
+        {{/if}}
       </div>
     </div>
+  </div>
+  <div class="aov-hero-body">
     {{#if apiMetadata.apiInfo.apiDescription}}
     <p class="aov-hero-desc">{{apiMetadata.apiInfo.apiDescription}}</p>
     {{/if}}
@@ -54,10 +66,12 @@
         <i class="bi bi-download"></i> Download
       </a>
       {{/in}}
-      {{#if subscriptionPlans.length}}
-      <a class="dp-btn dp-btn--outline" href="{{baseUrl}}/api/{{apiMetadata.apiHandle}}/subscriptions">
-        <i class="bi bi-layers"></i> Subscriptions
-      </a>
+      {{#if showApiWorkflowsNav}}
+      {{#unless (eq apiMetadata.apiInfo.agentVisibility "HIDDEN")}}
+      <button type="button" class="dp-btn dp-btn--ai" data-bs-toggle="modal" data-bs-target="#apiAgentPromptModal">
+        <i class="bi bi-robot"></i> Try with AI
+      </button>
+      {{/unless}}
       {{/if}}
       {{#if showApiKeysNav}}
       <a class="dp-btn dp-btn--outline" href="{{baseUrl}}/api/{{apiMetadata.apiHandle}}/api-keys">
@@ -65,20 +79,5 @@
       </a>
       {{/if}}
     </div>
-  </div>
-  <div class="aov-hero-right">
-    {{#if apiMetadata.apiInfo.apiImageMetadata.api-icon}}
-    <img class="aov-api-img" src="{{apiMetadata.apiInfo.apiImageMetadata.api-icon}}" alt="{{apiMetadata.apiInfo.apiName}}" />
-    {{else}}
-    <div class="aov-api-avatar">{{firstTwoLetters apiMetadata.apiInfo.apiName}}</div>
-    {{/if}}
-    {{#if showApiWorkflowsNav}}
-    {{#unless (eq apiMetadata.apiInfo.agentVisibility "HIDDEN")}}
-    <button type="button" class="btn-icon-ai api-banner-ai-btn" data-bs-toggle="modal" data-bs-target="#apiAgentPromptModal">
-      <img src="https://raw.githubusercontent.com/wso2/docs-bijira/refs/heads/main/en/devportal-theming/ai-stars-icon.svg" width="18" height="18" aria-hidden="true" alt="">
-      <span class="btn-icon-tooltip">Try with AI</span>
-    </button>
-    {{/unless}}
-    {{/if}}
   </div>
 </div>

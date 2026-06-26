@@ -113,5 +113,5 @@ type APIAssociation struct {
 
 // TableName returns the table name for the APIAssociation model
 func (APIAssociation) TableName() string {
-	return "gateway_association_mappings"
+	return "artifact_gateway_mappings"
 }

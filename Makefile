@@ -56,6 +56,7 @@ help: ## Show this help message
 	@echo '  make test-platform-api                - Run platform-api tests'
 	@echo '  make test-cli                         - Run CLI tests'
 	@echo '  make test-devportal                   - Run developer portal integration tests'
+	@echo '  make test-ai-workspace                - Run AI Workspace E2E tests'
 	@echo ''
 	@echo 'Push Targets:'
 	@echo '  make push-gateway                     - Push gateway images to registry'
@@ -155,6 +156,11 @@ test-platform-api: ## Run platform-api tests
 test-devportal: ## Run developer portal integration tests
 	@echo "Running developer portal integration tests..."
 	$(MAKE) -C portals/developer-portal it
+
+.PHONY: test-ai-workspace
+test-ai-workspace: ## Run AI Workspace E2E tests
+	@echo "Running AI Workspace E2E tests..."
+	$(MAKE) -C portals/ai-workspace e2e-ci
 
 .PHONY: build-cli
 build-cli: ## Build CLI binaries for all platforms

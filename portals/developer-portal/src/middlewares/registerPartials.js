@@ -90,6 +90,9 @@ const registerPartials = async (req, res, next) => {
         orgName: req.params.orgName,
         operation: 'registerPartials'
       });
+      if (error.message === "Organization not found") {
+        return res.redirect('/?error=org_not_found&org=' + encodeURIComponent(req.params.orgName));
+      }
       if (error.message === "API not found") {
         let templateContent = {
           errorMessage: constants.ERROR_MESSAGE.API_NOT_FOUND,
@@ -149,9 +152,6 @@ const registerAllPartialsFromFile = async (baseURL, req, filePrefix) => {
   await registerPartialsFromFile(baseURL, base("pages", "mcp", "partials"), req);
   await registerPartialsFromFile(baseURL, base("pages", "mcp-landing", "partials"), req);
   await registerPartialsFromFile(baseURL, base("pages", "subscriptions", "partials"), req);
-  if (fs.existsSync(base("pages", "api-subscriptions", "partials"))) {
-    await registerPartialsFromFile(baseURL, base("pages", "api-subscriptions", "partials"), req);
-  }
   if (fs.existsSync(base("pages", "api-keys", "partials"))) {
     await registerPartialsFromFile(baseURL, base("pages", "api-keys", "partials"), req);
   }

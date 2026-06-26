@@ -43,10 +43,9 @@
   #dp-ob-deploying .dp-ob-sub { margin:8px 0 0; font-size:0.84rem; line-height:1.5; color:#637282; }
   .dp-ob-progress-track { margin-top:18px; height:7px; border-radius:4px; background:#eef1f5; overflow:hidden; }
   .dp-ob-progress-fill { height:100%; width:0%; border-radius:4px; background:var(--wso2-gradient); transition:width .5s ease; }
-  .dp-ob-samples { margin-top:20px; display:flex; flex-direction:column; gap:10px; max-height:340px; overflow-y:auto; }
-  .dp-ob-sample-row { display:flex; align-items:center; gap:14px; padding:10px 14px;
-                      border:1px solid #eef1f5; border-radius:11px; opacity:.55; transition:opacity .3s; }
-  .dp-ob-sample-row.done { opacity:1; }
+  .dp-ob-cur-card { margin-top:20px; display:flex; align-items:center; gap:14px; padding:14px 16px;
+                    border:1px solid #eef1f5; border-radius:11px;
+                    transition:opacity .26s ease, transform .26s ease; }
   .dp-ob-spinner { width:20px; height:20px; flex:none; border:2.5px solid #f0d9c2;
                    border-top-color:#e65f00; border-radius:50%; animation:dp-ob-spin .7s linear infinite; }
   .dp-ob-check { display:none; flex:none; width:20px; height:20px; border-radius:50%;
@@ -88,7 +87,18 @@
     <div class="dp-ob-progress-track">
       <div class="dp-ob-progress-fill" id="dp-ob-progress-fill"></div>
     </div>
-    <div class="dp-ob-samples" id="dp-ob-samples"></div>
+    <div class="dp-ob-cur-card" id="dp-ob-cur-card">
+      <div class="dp-ob-spinner" id="dp-ob-cur-spinner"></div>
+      <div class="dp-ob-check" id="dp-ob-cur-check">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
+          <path d="M5 12.5l4.5 4.5L19 7" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+      <div>
+        <div class="dp-ob-sample-name" id="dp-ob-cur-name"></div>
+        <div class="dp-ob-sample-meta" id="dp-ob-cur-meta"></div>
+      </div>
+    </div>
   </div>
 
   <!-- Done -->
@@ -119,7 +129,11 @@
   var skipBtn       = document.getElementById('dp-ob-skip-btn');
   var progressFill  = document.getElementById('dp-ob-progress-fill');
   var progressLabel = document.getElementById('dp-ob-progress-label');
-  var samplesEl     = document.getElementById('dp-ob-samples');
+  var curCard       = document.getElementById('dp-ob-cur-card');
+  var curSpinner    = document.getElementById('dp-ob-cur-spinner');
+  var curCheck      = document.getElementById('dp-ob-cur-check');
+  var curNameEl     = document.getElementById('dp-ob-cur-name');
+  var curMetaEl     = document.getElementById('dp-ob-cur-meta');
   var doneMsgEl     = document.getElementById('dp-ob-done-msg');
   var doneDetailEl  = document.getElementById('dp-ob-done-detail');
 
@@ -132,25 +146,9 @@
     { name: 'Countries GraphQL API',  meta: 'GraphQL · v1.0'},
     { name: 'Leisure Activities API', meta: 'SOAP · v1.0'   },
     { name: 'Navigation API',         meta: 'WS · v1.0'     },
+    { name: 'TravelAssistantMCP',     meta: 'MCP · v1.0.0'  },
   ];
   var TOTAL = SAMPLES.length;
-
-  // Build sample rows
-  SAMPLES.forEach(function (s, i) {
-    var row = document.createElement('div');
-    row.className = 'dp-ob-sample-row';
-    row.id = 'dp-ob-row-' + i;
-    row.innerHTML =
-      '<div class="dp-ob-spinner" id="dp-ob-spin-' + i + '"></div>' +
-      '<div class="dp-ob-check" id="dp-ob-check-' + i + '">' +
-        '<svg width="13" height="13" viewBox="0 0 24 24" fill="none">' +
-          '<path d="M5 12.5l4.5 4.5L19 7" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>' +
-        '</svg>' +
-      '</div>' +
-      '<div><div class="dp-ob-sample-name">' + s.name + '</div>' +
-      '<div class="dp-ob-sample-meta">' + s.meta + '</div></div>';
-    samplesEl.appendChild(row);
-  });
 
   function dismiss() {
     try { sessionStorage.setItem(STORAGE_KEY, '1'); } catch (_) {}
@@ -162,27 +160,49 @@
     panelEl.classList.add('active');
   }
 
-  function markRow(i) {
-    var row   = document.getElementById('dp-ob-row-' + i);
-    var spin  = document.getElementById('dp-ob-spin-' + i);
-    var check = document.getElementById('dp-ob-check-' + i);
-    if (spin)  spin.style.display  = 'none';
-    if (check) check.style.display = 'inline-flex';
-    if (row)   row.classList.add('done');
-  }
-
   function runAnimation(onComplete) {
     var done = 0;
+
+    function loadCard(s, checked) {
+      curNameEl.textContent = s.name;
+      curMetaEl.textContent = s.meta;
+      curSpinner.style.display = checked ? 'none' : 'block';
+      curCheck.style.display   = checked ? 'inline-flex' : 'none';
+    }
+
+    function fadeIn() {
+      curCard.style.transition = 'none';
+      curCard.style.opacity    = '0';
+      curCard.style.transform  = 'translateY(6px)';
+      curCard.offsetHeight; // flush layout so transition:none takes effect
+      curCard.style.transition = '';
+      curCard.style.opacity    = '1';
+      curCard.style.transform  = 'none';
+    }
+
+    function fadeOut(cb) {
+      curCard.style.opacity   = '0';
+      curCard.style.transform = 'translateY(-6px)';
+      setTimeout(cb, 280);
+    }
+
     function tick(i) {
       if (i >= TOTAL) { onComplete && onComplete(); return; }
+      var s = SAMPLES[i];
+      loadCard(s, false);
+      fadeIn();
       setTimeout(function () {
         done++;
-        markRow(i);
-        progressFill.style.width = Math.round(done / TOTAL * 100) + '%';
-        progressLabel.textContent = done + ' of ' + TOTAL + ' deploying…';
-        tick(i + 1);
-      }, 700);
+        loadCard(s, true);
+        progressFill.style.width  = Math.round(done / TOTAL * 100) + '%';
+        progressLabel.textContent = done + ' of ' + TOTAL + ' deployed. This only takes a moment.';
+        setTimeout(function () {
+          if (i + 1 >= TOTAL) { onComplete && onComplete(); return; }
+          fadeOut(function () { tick(i + 1); });
+        }, 480);
+      }, 760);
     }
+
     tick(0);
   }
 

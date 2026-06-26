@@ -148,6 +148,7 @@ cli/src/tests/target/
 # Platform API
 platform-api/src/data
 platform-api/src/resources/openapi_with_binding.yaml
+platform-api/src/cmd/cmd
 
 # Gateway
 gateway/gateway-runtime/target

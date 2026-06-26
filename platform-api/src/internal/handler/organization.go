@@ -33,16 +33,14 @@ import (
 )
 
 type OrganizationHandler struct {
-	orgService              *service.OrganizationService
-	orgCreationRequiresAuth bool
-	slogger                 *slog.Logger
+	orgService *service.OrganizationService
+	slogger    *slog.Logger
 }
 
-func NewOrganizationHandler(orgService *service.OrganizationService, orgCreationRequiresAuth bool, slogger *slog.Logger) *OrganizationHandler {
+func NewOrganizationHandler(orgService *service.OrganizationService, slogger *slog.Logger) *OrganizationHandler {
 	return &OrganizationHandler{
-		orgService:              orgService,
-		orgCreationRequiresAuth: orgCreationRequiresAuth,
-		slogger:                 slogger,
+		orgService: orgService,
+		slogger:    slogger,
 	}
 }
 
@@ -220,22 +218,10 @@ func (h *OrganizationHandler) GetOrganizationSubscription(c *gin.Context) {
 	c.JSON(http.StatusOK, subscription)
 }
 
-// RegisterPublicRoutes registers routes that do not require authentication.
-// Must be called before auth middleware is applied to the engine.
-// The org creation POST is only registered here when OrgCreationRequiresAuth is false.
-func (h *OrganizationHandler) RegisterPublicRoutes(r *gin.Engine) {
-	if !h.orgCreationRequiresAuth {
-		r.POST(constants.APIBasePath + "/organizations", h.RegisterOrganization)
-	}
-}
-
 func (h *OrganizationHandler) RegisterRoutes(r *gin.Engine) {
 	orgGroup := r.Group(constants.APIBasePath + "/organizations")
 	{
-		// When auth is required, POST is registered here — behind the auth middleware.
-		if h.orgCreationRequiresAuth {
-			orgGroup.POST("", h.RegisterOrganization)
-		}
+		orgGroup.POST("", h.RegisterOrganization)
 		orgGroup.GET("", h.GetOrganization)
 		orgGroup.HEAD("/:organizationId", h.HeadOrganizationByUuid)
 		orgGroup.GET("/:organizationId", h.GetOrganizationByUUID)

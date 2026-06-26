@@ -54,9 +54,10 @@ const ProviderTemplateContext = createContext<ProviderTemplateContextValue>({
 interface ProviderTemplateProviderProps {
   children: React.ReactNode;
   templateId: string;
+  version?: string;
 }
 
-export function ProviderTemplateProvider({ children, templateId }: ProviderTemplateProviderProps) {
+export function ProviderTemplateProvider({ children, templateId, version }: ProviderTemplateProviderProps) {
   const { currentOrganization } = useAppShell();
   const [template, setTemplate] = useState<ProviderTemplate | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -64,7 +65,7 @@ export function ProviderTemplateProvider({ children, templateId }: ProviderTempl
 
   const organizationId = currentOrganization?.uuid ?? '';
 
-  // Fetch single template
+  // Fetch single template (a specific version if requested, else latest)
   const fetchTemplate = useCallback(async () => {
     if (!templateId || !organizationId) {
       setTemplate(null);
@@ -75,7 +76,9 @@ export function ProviderTemplateProvider({ children, templateId }: ProviderTempl
     try {
       setIsLoading(true);
       setError(null);
-      const fetchedTemplate = await providerTemplateApis.getProviderTemplate(templateId, organizationId, PLATFORM_API_BASE_URL);
+      const fetchedTemplate = version
+        ? await providerTemplateApis.getProviderTemplateVersion(templateId, version, organizationId, PLATFORM_API_BASE_URL)
+        : await providerTemplateApis.getProviderTemplate(templateId, organizationId, PLATFORM_API_BASE_URL);
       setTemplate(fetchedTemplate);
     } catch (err) {
       logger.error(`Failed to fetch provider template ${templateId}:`, err);
@@ -84,7 +87,7 @@ export function ProviderTemplateProvider({ children, templateId }: ProviderTempl
     } finally {
       setIsLoading(false);
     }
-  }, [templateId, organizationId, PLATFORM_API_BASE_URL]);
+  }, [templateId, version, organizationId, PLATFORM_API_BASE_URL]);
 
   useEffect(() => {
     fetchTemplate();

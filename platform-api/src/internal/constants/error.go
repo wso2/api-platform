@@ -120,6 +120,10 @@ var (
 var (
 	ErrLLMProviderTemplateExists   = errors.New("llm provider template already exists")
 	ErrLLMProviderTemplateNotFound = errors.New("llm provider template not found")
+	ErrLLMProviderTemplateVersionExists = errors.New("llm provider template version already exists")
+	ErrLLMProviderTemplateInUse    = errors.New("llm provider template is in use by one or more providers")
+	ErrLLMProviderTemplateReadOnly          = errors.New("built-in llm provider template is read-only")
+	ErrLLMProviderTemplateManagedByReserved = errors.New("'wso2' is reserved and cannot be used as managedBy on custom templates")
 	ErrLLMProviderExists           = errors.New("llm provider already exists")
 	ErrLLMProviderNotFound         = errors.New("llm provider not found")
 	ErrLLMProviderLimitReached     = errors.New("llm provider limit reached for organization")
@@ -193,3 +197,10 @@ var (
 	ErrInvalidAPIToken = errors.New("invalid API token")
 )
 
+var (
+	ErrSecretAlreadyExists = errors.New("secret already exists for this organization and handle")
+	ErrSecretNotFound      = errors.New("secret not found")
+	ErrSecretInUse         = errors.New("secret is referenced by one or more resources")
+	ErrSecretRefMissing    = errors.New("one or more referenced secrets do not exist")
+	ErrInvalidSecretType   = errors.New("invalid secret type: must be GENERIC or CERTIFICATE")
+)

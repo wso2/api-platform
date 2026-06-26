@@ -8,11 +8,16 @@
   border-radius: 1rem;
   padding: 2rem 2.125rem;
   display: flex;
-  justify-content: space-between;
-  gap: 1.75rem;
+  flex-direction: column;
+  gap: 1.25rem;
 }
-.aov-hero-left { flex: 1; min-width: 0; }
-.aov-hero-title-row { display: flex; flex-direction: column; gap: 0.625rem; }
+.aov-hero-top {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+}
+.aov-hero-thumb { flex: none; }
+.aov-hero-title-row { display: flex; flex-direction: column; gap: 0.5rem; min-width: 0; }
 .aov-hero-badges { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
 .aov-hero-name {
   margin: 0;
@@ -22,98 +27,37 @@
   letter-spacing: -0.01em;
   line-height: 1.1;
 }
-.aov-hero-tags { margin-top: 0.75rem; display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.aov-hero-body { display: flex; flex-direction: column; gap: 0.75rem; }
+.aov-hero-tags { display: flex; flex-wrap: wrap; gap: 0.5rem; }
 .aov-hero-desc {
-  margin: 1rem 0 0;
-  max-width: 38.75rem;
+  margin: 0;
+  max-width: 48rem;
   font-size: 0.90625rem;
   line-height: 1.6;
   color: #4a5a6a;
 }
 
-.aov-hero-actions { margin-top: 1.5rem; display: flex; flex-wrap: wrap; gap: 0.6875rem; }
-.aov-hero-right {
-  flex: none;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
+.aov-hero-actions { display: flex; flex-wrap: wrap; gap: 0.6875rem; }
 .aov-api-avatar {
-  width: 8rem;
-  height: 8rem;
-  border-radius: 1.75rem;
+  width: 5rem;
+  height: 5rem;
+  border-radius: 1rem;
   background: linear-gradient(135deg, #1f6feb 0%, #0b4ea8 100%);
   display: flex;
   align-items: center;
   justify-content: center;
   color: #fff;
-  font-size: 2.75rem;
+  font-size: 1.625rem;
   font-weight: 700;
   letter-spacing: 0.02em;
-  box-shadow: 0 10px 28px rgba(31,111,235,.32);
+  box-shadow: 0 6px 18px rgba(31,111,235,.28);
 }
 .aov-api-img {
-  width: 8rem;
-  height: 8rem;
-  border-radius: 1.75rem;
+  width: 5rem;
+  height: 5rem;
+  border-radius: 1rem;
   object-fit: cover;
-  box-shadow: 0 10px 28px rgba(31,111,235,.18);
-}
-
-/* ── Two-column body ──────────────────────────────────────────── */
-.aov-body {
-  display: flex;
-  gap: 1.875rem;
-  align-items: flex-start;
-  padding: 1.875rem 1rem 2.5rem;
-}
-.aov-body-main { flex: 1; min-width: 0; }
-.aov-body-sidebar { width: 22.5rem; flex: none; }
-
-/* ── Content sections ─────────────────────────────────────────── */
-.aov-section { margin-bottom: 1.875rem; }
-.aov-section-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 0.875rem;
-}
-.aov-section-title { margin: 0; font-size: 1.0625rem; font-weight: 700; color: #1a2433; }
-.aov-section-count { font-size: 0.78125rem; font-weight: 500; color: #8a93a0; }
-
-/* ── Endpoints ────────────────────────────────────────────────── */
-.aov-endpoint-card {
-  border: 1px solid #e6eaf0;
-  border-radius: 0.75rem;
-  padding: 1rem 1.125rem;
-  margin-bottom: 0.75rem;
-}
-.aov-endpoint-label-row { display: flex; align-items: center; gap: 0.5625rem; }
-.aov-endpoint-dot { width: 0.4375rem; height: 0.4375rem; border-radius: 50%; flex: none; }
-.aov-endpoint-dot--prod    { background: #2e7d32; }
-.aov-endpoint-dot--sandbox { background: #e65100; }
-.aov-endpoint-label { font-size: 0.78125rem; font-weight: 600; color: #1a2433; }
-.aov-endpoint-url-row {
-  margin-top: 0.6875rem;
-  display: flex;
-  align-items: center;
-  gap: 0.625rem;
-  background: #f6f8fb;
-  border: 1px solid #e6eaf0;
-  border-radius: 0.5625rem;
-  padding: 0.6875rem 0.875rem;
-}
-.aov-endpoint-url {
-  flex: 1;
-  min-width: 0;
-  font-family: monospace;
-  font-size: 0.8125rem;
-  font-weight: 500;
-  color: #1a2433;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  margin: 0;
+  box-shadow: 0 6px 18px rgba(31,111,235,.15);
 }
 
 /* ── Resources ────────────────────────────────────────────────── */
@@ -212,116 +156,9 @@
 .aov-channel-badge--pub { background: #e6f4ea; color: #2e7d32; }
 .aov-channel-badge--sub { background: #e6f2fb; color: #0277bd; }
 
-/* ── Subscription plans sidebar ──────────────────────────────── */
-.aov-plans-wrap { padding: 0; }
-.aov-plans-title { margin: 0 0 0.875rem; font-size: 1.0625rem; font-weight: 700; color: #1a2433; }
-.aov-plan-card {
-  position: relative;
-  overflow: hidden;
-  border: 1.5px solid #e6eaf0;
-  border-radius: 0.875rem;
-  padding: 1.125rem 1.25rem;
-  margin-bottom: 0.75rem;
-  background: #fff;
-}
-.aov-plan-card--featured    { border-color: #f3c98a; background: #fffbf4; }
-.aov-plan-card--subscribed  { border-color: #bfe3c6; background: #f5fbf6; }
-
-/* Subscribed ribbon */
-.aov-plan-ribbon {
-  display: none;
-  position: absolute;
-  top: 0; right: 0;
-  width: 7.25rem; height: 7.25rem;
-  pointer-events: none;
-}
-.aov-plan-card--subscribed .aov-plan-ribbon { display: block; }
-.aov-plan-ribbon-label {
-  position: absolute;
-  top: 1.25rem; right: -2.25rem;
-  width: 9.375rem;
-  text-align: center;
-  transform: rotate(45deg);
-  background: #2e7d32;
-  color: #fff;
-  font-size: 0.625rem;
-  font-weight: 700;
-  letter-spacing: .06em;
-  padding: 0.3125rem 0;
-  box-shadow: 0 2px 6px rgba(0,0,0,.18);
-}
-.aov-plan-card-head { display: flex; align-items: center; justify-content: space-between; }
-.aov-plan-name-row { display: flex; align-items: center; gap: 0.5625rem; }
-.aov-plan-icon {
-  width: 1.875rem;
-  height: 1.875rem;
-  border-radius: 0.5rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 0.875rem;
-}
-.aov-plan-name { font-size: 0.9375rem; font-weight: 700; color: #1a2433; }
-.aov-recommended-badge {
-  background: var(--wso2-gradient);
-  color: #fff;
-  border-radius: 1.25rem;
-  padding: 0.25rem 0.625rem;
-  font-size: 0.65625rem;
-  font-weight: 600;
-  letter-spacing: 0.03em;
-}
-.aov-plan-limit { margin-top: 0.875rem; display: flex; align-items: baseline; gap: 0.4375rem; }
-.aov-plan-count { font-size: 1.625rem; font-weight: 700; color: #1c3d5a; }
-.aov-plan-unit  { font-size: 0.78125rem; color: #8a93a0; }
-/* Subscribe button spinner */
-.aov-plan-spinner {
-  display: none;
-  width: 0.875rem; height: 0.875rem;
-  border: 2px solid #c9d9ef;
-  border-top-color: #1f6feb;
-  border-radius: 50%;
-  animation: aov-spin .7s linear infinite;
-  flex: none;
-}
-@keyframes aov-spin { to { transform: rotate(360deg); } }
-.aov-btn-loading .aov-plan-spinner { display: inline-block; }
-.aov-btn-loading {
-  display: flex !important;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  opacity: 0.85;
-  pointer-events: none;
-}
-
-/* Per-card error block */
-.aov-plan-error {
-  display: none;
-  margin-top: 0.625rem;
-  align-items: flex-start;
-  gap: 0.5rem;
-  background: #fdf3f3;
-  border: 1px solid #f3c9c9;
-  border-radius: 0.5625rem;
-  padding: 0.5625rem 0.6875rem;
-}
-.aov-plan-error--visible { display: flex; }
-.aov-plan-error-title { font-size: 0.75rem; font-weight: 600; line-height: 1.3; color: #c62828; }
-.aov-plan-error-desc  { margin-top: 0.125rem; font-size: 0.71875rem; line-height: 1.4; color: #9a4a4a; }
-
-/* Existing subscriptions table in sidebar */
-.aov-existing-subs { margin-bottom: 1.25rem; }
-.aov-existing-subs-title { font-size: 0.875rem; font-weight: 600; color: #1a2433; margin-bottom: 0.625rem; }
-
 /* ── Responsive ───────────────────────────────────────────────── */
-@media (max-width: 1024px) {
-  .aov-body { flex-direction: column; }
-  .aov-body-sidebar { width: 100%; }
-}
 @media (max-width: 768px) {
-  .aov-hero { flex-direction: column-reverse; }
-  .aov-hero-right { align-items: flex-start; }
   .aov-hero-name { font-size: 1.375rem; }
-  .aov-api-avatar { width: 5.25rem; height: 5.25rem; font-size: 1.75rem; }
+  .aov-api-avatar { width: 3.75rem; height: 3.75rem; font-size: 1.25rem; }
+  .aov-api-img { width: 3.75rem; height: 3.75rem; }
 }

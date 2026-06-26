@@ -29,6 +29,13 @@
   <script type="application/json" id="apiAgentData">{"baseUrl":"{{baseUrl}}","apiHandle":"{{apiMetadata.apiHandle}}"}</script>
 {{/pageScripts}}
 
+<div style="padding: 1rem 1.5rem 0;">
+  <nav class="dp-breadcrumb">
+    <a class="dp-breadcrumb-item" href="{{baseUrl}}/apis">APIs</a>
+    <i class="bi bi-chevron-right dp-breadcrumb-sep"></i>
+    <span class="dp-breadcrumb-current">{{or apiMetadata.apiInfo.apiTitle apiMetadata.apiInfo.apiName}}</span>
+  </nav>
+</div>
 <div class="container-fluid">
     {{> api-detail-banner }}
 </div>

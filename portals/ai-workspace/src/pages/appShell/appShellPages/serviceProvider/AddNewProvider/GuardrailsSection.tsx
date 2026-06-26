@@ -46,6 +46,7 @@ import { parsePolicyYaml } from '../../../PolicyParameterEditor/yamlParser';
 import type { GuardrailSelection } from './serviceProviderTypes';
 import { FormattedMessage } from 'react-intl';
 import ErrorAlert from '../../../../../Components/common/ErrorAlert';
+import { familyHandle } from '../../../../../utils/providerTemplateDisplay';
 
 type GuardrailsSectionProps = {
   guardrails: GuardrailSelection[];
@@ -73,8 +74,8 @@ export default function GuardrailsSection({
   onRemoveGuardrail,
 }: GuardrailsSectionProps) {
   const showCostPolicy =
-    selectedTemplateId !== 'azure-openai' &&
-    selectedTemplateId !== 'azureai-foundry';
+    familyHandle(selectedTemplateId) !== 'azure-openai' &&
+    familyHandle(selectedTemplateId) !== 'azureai-foundry';
   const {
     guardrails: availableGuardrails = [],
     isLoading: isLoadingGuardrails,

@@ -23,6 +23,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"os"
 	"reflect"
 	"strings"
 	"sync"
@@ -88,8 +89,7 @@ type Server struct {
 	Gateway          Gateway          `koanf:"gateway"`
 	EventHub         EventHub         `koanf:"event_hub"`
 
-	EnableScopeValidation   bool `koanf:"enable_scope_validation"`
-	OrgCreationRequiresAuth bool `koanf:"org_creation_requires_auth"`
+	EnableScopeValidation bool `koanf:"enable_scope_validation"`
 }
 
 // Auth groups all authentication-related configuration.
@@ -176,9 +176,9 @@ type Database struct {
 	MaxIdleConns    int    `koanf:"max_idle_conns"`
 	ConnMaxLifetime int    `koanf:"conn_max_lifetime"`
 
-	ExecuteSchemaDDL               bool   `koanf:"execute_schema_ddl"`
 	EncryptionKey                  string `koanf:"encryption_key"`
 	SubscriptionTokenEncryptionKey string `koanf:"subscription_token_encryption_key"`
+	SecretEncryptionKey string `koanf:"secret_encryption_key"`
 }
 
 // DefaultDevPortal holds default DevPortal configuration for new organizations.
@@ -304,6 +304,27 @@ func LoadConfig(configPath string) (*Server, error) {
 		slog.Warn("auth.jwt.secret_key is not set — generated an ephemeral random key; all sessions will be invalidated on restart")
 	}
 
+	// SecretEncryptionKey is optional when the shared DATABASE_ENCRYPTION_KEY is configured;
+	// server.go resolves the final key via: SecretEncryptionKey → EncryptionKey → JWT secret.
+	// Only fail (or warn in demo mode) when no key source is available at all.
+	if cfg.Database.SecretEncryptionKey == "" && cfg.Database.EncryptionKey == "" {
+		demoMode := strings.ToLower(strings.TrimSpace(os.Getenv("APIP_DEMO_MODE")))
+		if demoMode != "true" && demoMode != "1" {
+			return nil, fmt.Errorf("no encryption key configured for secrets management. " +
+				"Set PLATFORM_SECRET_ENCRYPTION_KEY (secret-specific) or DATABASE_ENCRYPTION_KEY (shared). " +
+				"Generate one with: openssl rand -hex 32. " +
+				"To allow an ephemeral key in a single-node dev environment, set APIP_DEMO_MODE=true")
+		}
+		key, err := generateRandomSecret()
+		if err != nil {
+			return nil, fmt.Errorf("failed to generate secret encryption key: %w", err)
+		}
+		cfg.Database.SecretEncryptionKey = key
+		slog.Warn("APIP_DEMO_MODE: no encryption key configured for secrets — using an ephemeral random key. " +
+			"Encrypted secrets will be unreadable after restart and WILL NOT be shared across replicas. " +
+			"Set PLATFORM_SECRET_ENCRYPTION_KEY or DATABASE_ENCRYPTION_KEY for any persistent or multi-replica deployment.")
+	}
+
 	return cfg, nil
 }
 
@@ -336,8 +357,6 @@ func envToKoanfKey(s string) string {
 		return "llm_template_definitions_path"
 	case "enable_scope_validation":
 		return "enable_scope_validation"
-	case "org_creation_requires_auth":
-		return "org_creation_requires_auth"
 
 	// Database
 	case "database_driver":
@@ -362,12 +381,12 @@ func envToKoanfKey(s string) string {
 		return "database.max_idle_conns"
 	case "database_conn_max_lifetime":
 		return "database.conn_max_lifetime"
-	case "database_execute_schema_ddl":
-		return "database.execute_schema_ddl"
 	case "database_encryption_key":
 		return "database.encryption_key"
 	case "database_subscription_token_encryption_key":
 		return "database.subscription_token_encryption_key"
+	case "platform_secret_encryption_key":
+		return "database.secret_encryption_key"
 
 	// Auth
 	case "auth_skip_paths":
