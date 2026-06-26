@@ -181,6 +181,7 @@ CREATE TABLE IF NOT EXISTS artifact_gateway_mappings (
     artifact_uuid VARCHAR(40) NOT NULL,
     organization_uuid VARCHAR(40) NOT NULL,
     gateway_uuid VARCHAR(40) NOT NULL,
+    metadata BLOB,
     created_by VARCHAR(200),
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_by VARCHAR(200),
@@ -269,20 +270,6 @@ CREATE TABLE IF NOT EXISTS deployment_status (
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
     FOREIGN KEY (gateway_uuid) REFERENCES gateways(uuid) ON DELETE CASCADE,
     FOREIGN KEY (deployment_uuid) REFERENCES deployments(uuid) ON DELETE CASCADE
-);
-
--- Artifact Associations table (for gateways)
-CREATE TABLE IF NOT EXISTS gateway_association_mappings (
-    artifact_uuid VARCHAR(40) NOT NULL,
-    organization_uuid VARCHAR(40) NOT NULL,
-    gateway_uuid VARCHAR(40) NOT NULL,
-    metadata BLOB,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (artifact_uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
-    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
-    FOREIGN KEY (gateway_uuid) REFERENCES gateways(uuid) ON DELETE CASCADE,
-    PRIMARY KEY (artifact_uuid, gateway_uuid, organization_uuid)
 );
 
 -- LLM Provider Templates table
