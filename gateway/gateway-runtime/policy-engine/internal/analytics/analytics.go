@@ -59,10 +59,18 @@ const (
 	DefaultAnalyticsPublisher = "default"
 	// MoesifAnalyticsPublisher represents the Moesif analytics publisher.
 	MoesifAnalyticsPublisher = "moesif"
+	// LogAnalyticsPublisher represents the stdout/log analytics publisher.
+	LogAnalyticsPublisher = "log"
 
 	// HeaderKeys represents the header keys.
 	RequestHeadersKey  = "request_headers"
 	ResponseHeadersKey = "response_headers"
+
+	// TrafficLogMetadataKey is the analytics-metadata key under which the
+	// log-message policy (in access-log mode) stamps its per-API opt-in marker.
+	// Its presence gates the stdout traffic-logging publisher; its value (a JSON
+	// directive) shapes the emitted line. Must match the key used by that policy.
+	TrafficLogMetadataKey = "traffic_log"
 
 	// PromptTokenCountMetadataKey represents the prompt token count metadata key.
 	PromptTokenCountMetadataKey string = "aitoken:prompttokencount"
@@ -90,27 +98,39 @@ type Analytics struct {
 	publishers []analytics_publisher.Publisher
 }
 
-// NewAnalytics creates a new instance of Analytics.
+// NewAnalytics creates a new instance of Analytics. Publishers are assembled from
+// each independently-configured consumer of the collected data: the analytics
+// consumer ([analytics], e.g. Moesif) and the traffic-logging consumer
+// ([traffic_logging], stdout JSON). Both rely on the collector being enabled to
+// receive any events.
 func NewAnalytics(cfg *config.Config) *Analytics {
 	analyticsCfg := cfg.Analytics
 	publishers := make([]analytics_publisher.Publisher, 0)
 	if analyticsCfg.Enabled {
 		for _, publisherName := range analyticsCfg.EnabledPublishers {
 			switch publisherName {
-			case "moesif":
+			case MoesifAnalyticsPublisher:
 				publisher := analytics_publisher.NewMoesif(&analyticsCfg.Publishers.Moesif)
 				if publisher != nil {
 					publishers = append(publishers, publisher)
 					slog.Info("Moesif publisher added")
 				}
+			case LogAnalyticsPublisher:
+				slog.Warn("\"log\" in analytics.enabled_publishers is no longer supported; enable stdout traffic logging via [traffic_logging] instead")
 			default:
 				slog.Warn("Unknown publisher type", "type", publisherName)
 			}
 		}
 	}
 
+	// Traffic logging is a standalone consumer, independent of analytics.
+	if cfg.TrafficLogging.Enabled {
+		publishers = append(publishers, analytics_publisher.NewLog(&cfg.TrafficLogging))
+		slog.Info("Traffic logging (stdout) publisher added")
+	}
+
 	if len(publishers) == 0 {
-		slog.Debug("No analytics publishers found. Analytics will not be published.")
+		slog.Debug("No analytics publishers found. Collected events will not be published.")
 	}
 	return &Analytics{
 		cfg:        cfg,
@@ -133,7 +153,9 @@ func (c *Analytics) Process(event *v3.HTTPAccessLogEntry) {
 		return
 	}
 
-	// Add logic to publish the event
+	// Path-based suppression is a per-consumer presentation concern: it is applied
+	// by the stdout traffic-logging publisher (traffic_logging.ignored_path_prefixes),
+	// not here, so other consumers still receive every event.
 	analyticEvent := c.prepareAnalyticEvent(event)
 	for _, publisher := range c.publishers {
 		publisher.Publish(analyticEvent)
@@ -197,6 +219,23 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 	for key, value := range keyValuePairsFromMetadata {
 		slog.Debug(fmt.Sprintf("Metadata key: %v -> value: %+v", key, value))
 	}
+
+	// Extract the per-API traffic-log opt-in marker stamped by the log-message
+	// policy (access-log mode). Its presence marks the API as opted in to stdout
+	// traffic logging;
+	// its value shapes the emitted line. It is intentionally kept off
+	// event.Properties so it never reaches the serialized output or other
+	// publishers (e.g. Moesif). A malformed marker still opts the API in with
+	// default (empty) presentation, since attachment alone signals intent.
+	if raw, exists := keyValuePairsFromMetadata[TrafficLogMetadataKey]; exists {
+		dir := &dto.TrafficLogDirective{}
+		if raw != "" {
+			if err := json.Unmarshal([]byte(raw), dir); err != nil {
+				slog.Warn("Failed to parse traffic_log directive; opting in with defaults", "error", err)
+			}
+		}
+		event.TrafficLog = dir
+	}
 	// Prepare extended API
 	extendedAPI := dto.ExtendedAPI{}
 	extendedAPI.APIType = keyValuePairsFromMetadata[APITypeKey]
@@ -247,31 +286,34 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 		properties.TimeToFirstUpstreamTxByte != nil && properties.TimeToFirstUpstreamRxByte != nil &&
 		properties.TimeToLastUpstreamRxByte != nil && properties.TimeToLastDownstreamTxByte != nil {
 
-		lastRx :=
-			(properties.TimeToLastRxByte.Seconds * 1000) +
-				(int64(properties.TimeToLastRxByte.Nanos) / 1_000_000)
+		toMs := func(secs int64, nanos int32) int64 {
+			return (secs * 1000) + int64(nanos)/1_000_000
+		}
 
-		firstUpTx :=
-			(properties.TimeToFirstUpstreamTxByte.Seconds * 1000) +
-				(int64(properties.TimeToFirstUpstreamTxByte.Nanos) / 1_000_000)
-
-		firstUpRx :=
-			(properties.TimeToFirstUpstreamRxByte.Seconds * 1000) +
-				(int64(properties.TimeToFirstUpstreamRxByte.Nanos) / 1_000_000)
-
-		lastUpRx :=
-			(properties.TimeToLastUpstreamRxByte.Seconds * 1000) +
-				(int64(properties.TimeToLastUpstreamRxByte.Nanos) / 1_000_000)
-
-		lastDownTx :=
-			(properties.TimeToLastDownstreamTxByte.Seconds * 1000) +
-				(int64(properties.TimeToLastDownstreamTxByte.Nanos) / 1_000_000)
+		lastRx := toMs(properties.TimeToLastRxByte.Seconds, properties.TimeToLastRxByte.Nanos)
+		firstUpTx := toMs(properties.TimeToFirstUpstreamTxByte.Seconds, properties.TimeToFirstUpstreamTxByte.Nanos)
+		firstUpRx := toMs(properties.TimeToFirstUpstreamRxByte.Seconds, properties.TimeToFirstUpstreamRxByte.Nanos)
+		lastUpRx := toMs(properties.TimeToLastUpstreamRxByte.Seconds, properties.TimeToLastUpstreamRxByte.Nanos)
+		lastDownTx := toMs(properties.TimeToLastDownstreamTxByte.Seconds, properties.TimeToLastDownstreamTxByte.Nanos)
 
 		latencies := dto.Latencies{
+			Duration:                 lastDownTx,
 			BackendLatency:           lastUpRx - firstUpTx,
 			RequestMediationLatency:  firstUpTx - lastRx,
 			ResponseLatency:          lastDownTx - firstUpRx,
 			ResponseMediationLatency: lastDownTx - lastUpRx,
+		}
+
+		// US_TX_END → US_RX_BEG: time the backend spent before sending the first response byte (TTFB).
+		if properties.TimeToLastUpstreamTxByte != nil {
+			lastUpTx := toMs(properties.TimeToLastUpstreamTxByte.Seconds, properties.TimeToLastUpstreamTxByte.Nanos)
+			latencies.BackendProcDuration = firstUpRx - lastUpTx
+		}
+
+		// US_RX_BEG → DS_TX_BEG: gateway overhead processing the first response byte before writing downstream.
+		if properties.TimeToFirstDownstreamTxByte != nil {
+			firstDownTx := toMs(properties.TimeToFirstDownstreamTxByte.Seconds, properties.TimeToFirstDownstreamTxByte.Nanos)
+			latencies.ResponseProcDuration = firstDownTx - firstUpRx
 		}
 
 		event.Latencies = &latencies
@@ -445,14 +487,14 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 		event.Properties["responseHeaders"] = responseHeaders
 	}
 
-	// Optionally attach request and response payloads when enabled via configuration.
-	if c.cfg.Analytics.SendRequestBody {
+	// Optionally attach request and response payloads when enabled via the collector.
+	if c.cfg.Collector.SendRequestBody {
 		if requestPayload, ok := keyValuePairsFromMetadata["request_payload"]; ok && requestPayload != "" {
 			event.Properties["request_payload"] = requestPayload
 			slog.Debug("Analytics request payload captured", "size_bytes", len(requestPayload))
 		}
 	}
-	if c.cfg.Analytics.SendResponseBody {
+	if c.cfg.Collector.SendResponseBody {
 		if responsePayload, ok := keyValuePairsFromMetadata["response_payload"]; ok && responsePayload != "" {
 			event.Properties["response_payload"] = responsePayload
 			slog.Debug("Analytics response payload captured", "size_bytes", len(responsePayload))

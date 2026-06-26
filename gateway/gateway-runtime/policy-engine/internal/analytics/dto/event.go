@@ -36,4 +36,38 @@ type Event struct {
 	UserIP            string                 `json:"userIp,omitempty" bson:"user_ip"`
 	ErrorType         string                 `json:"errorType,omitempty" bson:"error_type"`
 	Properties        map[string]interface{} `json:"properties,omitempty" bson:"properties"`
+
+	// TrafficLog carries the per-API stdout traffic-logging opt-in marker stamped
+	// by the log-message policy (access-log mode). When nil, the API has not opted
+	// in and the stdout traffic-logging publisher skips the event. It is
+	// gating/presentation state only and is never serialized (json:"-") nor sent
+	// to other publishers.
+	TrafficLog *TrafficLogDirective `json:"-" bson:"-"`
+}
+
+// TrafficLogDirective is the presentation config carried in the traffic-log
+// marker. Field names mirror the policy's marker JSON so it round-trips. A nil
+// flow means that flow was not configured.
+type TrafficLogDirective struct {
+	Request  *TrafficLogFlow   `json:"request,omitempty"`
+	Response *TrafficLogFlow   `json:"response,omitempty"`
+	Fields   *TrafficLogFields `json:"fields,omitempty"`
+}
+
+// TrafficLogFlow is the per-flow (request or response) presentation config.
+type TrafficLogFlow struct {
+	Payload        bool     `json:"payload"`
+	Headers        bool     `json:"headers"`
+	ExcludeHeaders []string `json:"excludeHeaders,omitempty"`
+}
+
+// TrafficLogFields selects which fields appear in the emitted line. When set it is
+// authoritative over field presence: the per-flow Payload/Headers booleans are
+// ignored (per-flow ExcludeHeaders and global masking still apply). Names are
+// top-level keys (e.g. "latencies", "target") or dotted property paths
+// (e.g. "properties.requestHeaders"). Mode "exclude" drops the named keys; any
+// other value (default "include") keeps only the named keys.
+type TrafficLogFields struct {
+	Mode  string   `json:"mode,omitempty"`
+	Names []string `json:"names,omitempty"`
 }

@@ -69,8 +69,17 @@ func validConfig() *Config {
 				Timeout: 30 * time.Second,
 			},
 		},
+		// Collector enabled by default so tests that turn on a consumer
+		// (analytics / traffic logging) satisfy the collector prerequisite.
+		// ALS receiver defaults mirror production so transport validation passes
+		// and the deprecated alias stays neutral (no spurious migration).
+		Collector: CollectorConfig{
+			Enabled:              true,
+			AccessLogsServiceCfg: defaultAccessLogsServiceConfig(),
+		},
 		Analytics: AnalyticsConfig{
-			Enabled: false,
+			Enabled:              false,
+			AccessLogsServiceCfg: defaultAccessLogsServiceConfig(),
 		},
 		TracingConfig: TracingConfig{
 			Enabled: false,
@@ -948,7 +957,7 @@ func TestValidate_AnalyticsConfig(t *testing.T) {
 			name: "analytics enabled - valid UDS config (default)",
 			setup: func(cfg *Config) {
 				cfg.Analytics.Enabled = true
-				cfg.Analytics.AccessLogsServiceCfg = AccessLogsServiceConfig{
+				cfg.Collector.AccessLogsServiceCfg = AccessLogsServiceConfig{
 					Mode:                  "uds",
 					ShutdownTimeout:       600 * time.Second,
 					ExtProcMaxMessageSize: 1000000,
@@ -961,7 +970,7 @@ func TestValidate_AnalyticsConfig(t *testing.T) {
 			name: "analytics enabled - valid UDS config (empty mode defaults to uds)",
 			setup: func(cfg *Config) {
 				cfg.Analytics.Enabled = true
-				cfg.Analytics.AccessLogsServiceCfg = AccessLogsServiceConfig{
+				cfg.Collector.AccessLogsServiceCfg = AccessLogsServiceConfig{
 					Mode:                  "",
 					ShutdownTimeout:       600 * time.Second,
 					ExtProcMaxMessageSize: 1000000,
@@ -974,7 +983,7 @@ func TestValidate_AnalyticsConfig(t *testing.T) {
 			name: "analytics enabled - valid TCP config",
 			setup: func(cfg *Config) {
 				cfg.Analytics.Enabled = true
-				cfg.Analytics.AccessLogsServiceCfg = AccessLogsServiceConfig{
+				cfg.Collector.AccessLogsServiceCfg = AccessLogsServiceConfig{
 					Mode:                  "tcp",
 					ServerPort:            18090,
 					ShutdownTimeout:       600 * time.Second,
@@ -988,7 +997,7 @@ func TestValidate_AnalyticsConfig(t *testing.T) {
 			name: "analytics enabled - invalid mode",
 			setup: func(cfg *Config) {
 				cfg.Analytics.Enabled = true
-				cfg.Analytics.AccessLogsServiceCfg = AccessLogsServiceConfig{
+				cfg.Collector.AccessLogsServiceCfg = AccessLogsServiceConfig{
 					Mode:                  "invalid",
 					ShutdownTimeout:       600 * time.Second,
 					ExtProcMaxMessageSize: 1000000,
@@ -1002,7 +1011,7 @@ func TestValidate_AnalyticsConfig(t *testing.T) {
 			name: "analytics enabled - TCP mode invalid ALS port",
 			setup: func(cfg *Config) {
 				cfg.Analytics.Enabled = true
-				cfg.Analytics.AccessLogsServiceCfg = AccessLogsServiceConfig{
+				cfg.Collector.AccessLogsServiceCfg = AccessLogsServiceConfig{
 					Mode:                  "tcp",
 					ServerPort:            0,
 					ShutdownTimeout:       600 * time.Second,
@@ -1017,7 +1026,7 @@ func TestValidate_AnalyticsConfig(t *testing.T) {
 			name: "analytics enabled - UDS mode skips port validation",
 			setup: func(cfg *Config) {
 				cfg.Analytics.Enabled = true
-				cfg.Analytics.AccessLogsServiceCfg = AccessLogsServiceConfig{
+				cfg.Collector.AccessLogsServiceCfg = AccessLogsServiceConfig{
 					Mode:                  "uds",
 					ServerPort:            0, // Invalid port, but irrelevant in UDS mode
 					ShutdownTimeout:       600 * time.Second,
@@ -1031,7 +1040,7 @@ func TestValidate_AnalyticsConfig(t *testing.T) {
 			name: "analytics enabled - invalid shutdown timeout",
 			setup: func(cfg *Config) {
 				cfg.Analytics.Enabled = true
-				cfg.Analytics.AccessLogsServiceCfg = AccessLogsServiceConfig{
+				cfg.Collector.AccessLogsServiceCfg = AccessLogsServiceConfig{
 					ShutdownTimeout:       0,
 					ExtProcMaxMessageSize: 1000000,
 					ExtProcMaxHeaderLimit: 8192,
@@ -1044,7 +1053,7 @@ func TestValidate_AnalyticsConfig(t *testing.T) {
 			name: "analytics enabled - invalid max message size",
 			setup: func(cfg *Config) {
 				cfg.Analytics.Enabled = true
-				cfg.Analytics.AccessLogsServiceCfg = AccessLogsServiceConfig{
+				cfg.Collector.AccessLogsServiceCfg = AccessLogsServiceConfig{
 					ShutdownTimeout:       600 * time.Second,
 					ExtProcMaxMessageSize: 0,
 					ExtProcMaxHeaderLimit: 8192,
@@ -1057,7 +1066,7 @@ func TestValidate_AnalyticsConfig(t *testing.T) {
 			name: "analytics enabled - invalid max header limit",
 			setup: func(cfg *Config) {
 				cfg.Analytics.Enabled = true
-				cfg.Analytics.AccessLogsServiceCfg = AccessLogsServiceConfig{
+				cfg.Collector.AccessLogsServiceCfg = AccessLogsServiceConfig{
 					ShutdownTimeout:       600 * time.Second,
 					ExtProcMaxMessageSize: 1000000,
 					ExtProcMaxHeaderLimit: 0,
@@ -1070,7 +1079,7 @@ func TestValidate_AnalyticsConfig(t *testing.T) {
 			name: "analytics enabled - max header limit exceeds uint32",
 			setup: func(cfg *Config) {
 				cfg.Analytics.Enabled = true
-				cfg.Analytics.AccessLogsServiceCfg = AccessLogsServiceConfig{
+				cfg.Collector.AccessLogsServiceCfg = AccessLogsServiceConfig{
 					ShutdownTimeout:       600 * time.Second,
 					ExtProcMaxMessageSize: 1000000,
 					ExtProcMaxHeaderLimit: math.MaxInt,
@@ -1100,7 +1109,8 @@ func TestValidate_AnalyticsConfig(t *testing.T) {
 func TestValidate_AnalyticsPayloadMigration(t *testing.T) {
 	setValidAnalyticsALS := func(cfg *Config) {
 		cfg.Analytics.Enabled = true
-		cfg.Analytics.AccessLogsServiceCfg = AccessLogsServiceConfig{
+		cfg.Collector.Enabled = true // analytics is a consumer; the collector must be on
+		cfg.Collector.AccessLogsServiceCfg = AccessLogsServiceConfig{
 			Mode:                  "uds",
 			ShutdownTimeout:       600 * time.Second,
 			ExtProcMaxMessageSize: 1000000,
@@ -1160,10 +1170,64 @@ func TestValidate_AnalyticsPayloadMigration(t *testing.T) {
 
 			err := cfg.Validate()
 			require.NoError(t, err)
-			assert.Equal(t, tt.wantSendReq, cfg.Analytics.SendRequestBody)
-			assert.Equal(t, tt.wantSendResp, cfg.Analytics.SendResponseBody)
+			// Deprecated analytics body aliases now migrate onto the collector.
+			assert.Equal(t, tt.wantSendReq, cfg.Collector.SendRequestBody)
+			assert.Equal(t, tt.wantSendResp, cfg.Collector.SendResponseBody)
 		})
 	}
+}
+
+// TestValidate_CollectorPrerequisite verifies that enabling a consumer (analytics,
+// traffic logging) without the collector auto-enables the collector (a
+// backward-compat soft prerequisite) rather than failing.
+func TestValidate_CollectorPrerequisite(t *testing.T) {
+	validALS := AccessLogsServiceConfig{
+		Mode:                  "uds",
+		ShutdownTimeout:       600 * time.Second,
+		ExtProcMaxMessageSize: 1000000,
+		ExtProcMaxHeaderLimit: 8192,
+	}
+
+	t.Run("analytics enabled without collector auto-enables the collector", func(t *testing.T) {
+		cfg := validConfig()
+		cfg.Collector.Enabled = false
+		cfg.Analytics.Enabled = true
+		cfg.Collector.AccessLogsServiceCfg = validALS
+		cfg.Analytics.EnabledPublishers = []string{}
+		require.NoError(t, cfg.Validate())
+		assert.True(t, cfg.Collector.Enabled, "collector should be auto-enabled for backward compatibility")
+	})
+
+	t.Run("traffic logging enabled without collector auto-enables the collector", func(t *testing.T) {
+		cfg := validConfig()
+		cfg.Collector.Enabled = false
+		cfg.TrafficLogging.Enabled = true
+		require.NoError(t, cfg.Validate())
+		assert.True(t, cfg.Collector.Enabled, "collector should be auto-enabled for backward compatibility")
+	})
+
+	t.Run("traffic logging enabled with collector is valid", func(t *testing.T) {
+		cfg := validConfig()
+		cfg.Collector.Enabled = true
+		cfg.TrafficLogging.Enabled = true
+		require.NoError(t, cfg.Validate())
+	})
+
+	t.Run("collector enabled with no consumers is valid", func(t *testing.T) {
+		cfg := validConfig()
+		cfg.Collector.Enabled = true
+		require.NoError(t, cfg.Validate())
+	})
+}
+
+func TestValidate_TrafficLoggingMaxPayloadSize(t *testing.T) {
+	cfg := validConfig()
+	cfg.Collector.Enabled = true
+	cfg.TrafficLogging.Enabled = true
+	cfg.TrafficLogging.MaxPayloadSize = -1
+	err := cfg.Validate()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "traffic_logging.max_payload_size")
 }
 
 // TestValidate_AnalyticsPublishers tests analytics publisher validation
@@ -1178,7 +1242,7 @@ func TestValidate_AnalyticsPublishers(t *testing.T) {
 			name: "no publishers enabled",
 			setup: func(cfg *Config) {
 				cfg.Analytics.Enabled = true
-				cfg.Analytics.AccessLogsServiceCfg = AccessLogsServiceConfig{
+				cfg.Collector.AccessLogsServiceCfg = AccessLogsServiceConfig{
 					ServerPort:            18090,
 					ShutdownTimeout:       600 * time.Second,
 					ExtProcMaxMessageSize: 1000000,
@@ -1192,7 +1256,7 @@ func TestValidate_AnalyticsPublishers(t *testing.T) {
 			name: "unknown publisher type",
 			setup: func(cfg *Config) {
 				cfg.Analytics.Enabled = true
-				cfg.Analytics.AccessLogsServiceCfg = AccessLogsServiceConfig{
+				cfg.Collector.AccessLogsServiceCfg = AccessLogsServiceConfig{
 					ServerPort:            18090,
 					ShutdownTimeout:       600 * time.Second,
 					ExtProcMaxMessageSize: 1000000,
@@ -1207,7 +1271,7 @@ func TestValidate_AnalyticsPublishers(t *testing.T) {
 			name: "moesif publisher - missing application_id",
 			setup: func(cfg *Config) {
 				cfg.Analytics.Enabled = true
-				cfg.Analytics.AccessLogsServiceCfg = AccessLogsServiceConfig{
+				cfg.Collector.AccessLogsServiceCfg = AccessLogsServiceConfig{
 					ServerPort:            18090,
 					ShutdownTimeout:       600 * time.Second,
 					ExtProcMaxMessageSize: 1000000,
@@ -1223,7 +1287,7 @@ func TestValidate_AnalyticsPublishers(t *testing.T) {
 			name: "moesif publisher - invalid publish_interval",
 			setup: func(cfg *Config) {
 				cfg.Analytics.Enabled = true
-				cfg.Analytics.AccessLogsServiceCfg = AccessLogsServiceConfig{
+				cfg.Collector.AccessLogsServiceCfg = AccessLogsServiceConfig{
 					ServerPort:            18090,
 					ShutdownTimeout:       600 * time.Second,
 					ExtProcMaxMessageSize: 1000000,
@@ -1240,7 +1304,7 @@ func TestValidate_AnalyticsPublishers(t *testing.T) {
 			name: "moesif publisher - invalid base_url",
 			setup: func(cfg *Config) {
 				cfg.Analytics.Enabled = true
-				cfg.Analytics.AccessLogsServiceCfg = AccessLogsServiceConfig{
+				cfg.Collector.AccessLogsServiceCfg = AccessLogsServiceConfig{
 					ServerPort:            18090,
 					ShutdownTimeout:       600 * time.Second,
 					ExtProcMaxMessageSize: 1000000,
@@ -1258,7 +1322,7 @@ func TestValidate_AnalyticsPublishers(t *testing.T) {
 			name: "moesif publisher - valid config",
 			setup: func(cfg *Config) {
 				cfg.Analytics.Enabled = true
-				cfg.Analytics.AccessLogsServiceCfg = AccessLogsServiceConfig{
+				cfg.Collector.AccessLogsServiceCfg = AccessLogsServiceConfig{
 					ServerPort:            18090,
 					ShutdownTimeout:       600 * time.Second,
 					ExtProcMaxMessageSize: 1000000,

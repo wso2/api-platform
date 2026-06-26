@@ -23,7 +23,12 @@ type Latencies struct {
 	BackendLatency           int64 `json:"backendLatency"`
 	RequestMediationLatency  int64 `json:"requestMediationLatency"`
 	ResponseMediationLatency int64 `json:"responseMediationLatency"`
-	Duration                 int64 `json:"duration"`
+	// Duration is the total request duration: downstream request received → downstream response sent (ms).
+	Duration int64 `json:"duration"`
+	// BackendProcDuration is the backend TTFB: upstream request fully sent → first upstream response byte (ms).
+	BackendProcDuration int64 `json:"backendProcDuration"`
+	// ResponseProcDuration is the gateway response overhead: first upstream response byte → first downstream response byte (ms).
+	ResponseProcDuration int64 `json:"responseProcDuration"`
 }
 
 // GetResponseLatency returns the response latency.

@@ -561,10 +561,10 @@ func (t *Translator) TranslateConfigs(
 	policyEngineCluster := t.createPolicyEngineCluster()
 	clusters = append(clusters, policyEngineCluster)
 
-	// Add ALS cluster if gRPC access log is enabled
-	log.Debug("gRPC event server config", slog.Any("config", t.config.Analytics.GRPCEventServerCfg))
-	if t.config.Analytics.Enabled {
-		log.Info("gRPC access log is enabled, creating ALS cluster")
+	// Add ALS cluster if the collector is enabled (it ships access logs over gRPC)
+	log.Debug("gRPC event server config", slog.Any("config", t.config.Collector.GRPCEventServerCfg))
+	if t.config.Collector.Enabled {
+		log.Info("collector is enabled, creating ALS cluster")
 		alsCluster := t.createALSCluster()
 		clusters = append(clusters, alsCluster)
 	}
@@ -2156,7 +2156,7 @@ func (t *Translator) createPolicyEngineCluster() *cluster.Cluster {
 
 // createALSCluster creates an Envoy cluster for the gRPC access log service
 func (t *Translator) createALSCluster() *cluster.Cluster {
-	grpcConfig := t.config.Analytics.GRPCEventServerCfg
+	grpcConfig := t.config.Collector.GRPCEventServerCfg
 
 	// Build the endpoint address (UDS or TCP)
 	var address *core.Address
@@ -2785,8 +2785,8 @@ func (t *Translator) createAccessLogConfig() ([]*accesslog.AccessLog, error) {
 		},
 	})
 
-	// If gRPC access log is enabled, create the configuration and append to existing access logs
-	if t.config.Analytics.Enabled {
+	// If the collector is enabled, create the gRPC access log config and append to existing access logs
+	if t.config.Collector.Enabled {
 		t.logger.Info("Creating gRPC access log configuration")
 		grpcAccessLog, err := t.createGRPCAccessLog()
 		if err != nil {
@@ -2802,8 +2802,8 @@ func (t *Translator) createAccessLogConfig() ([]*accesslog.AccessLog, error) {
 
 // createGRPCAccessLog creates a gRPC access log configuration for the gateway controller
 func (t *Translator) createGRPCAccessLog() (*accesslog.AccessLog, error) {
-	grpcConfig := t.config.Analytics.GRPCEventServerCfg
-	bufferSizeBytes, err := checkedUInt32FromPositiveInt("analytics.grpc_event_server.buffer_size_bytes", grpcConfig.BufferSizeBytes)
+	grpcConfig := t.config.Collector.GRPCEventServerCfg
+	bufferSizeBytes, err := checkedUInt32FromPositiveInt("collector.als.buffer_size_bytes", grpcConfig.BufferSizeBytes)
 	if err != nil {
 		return nil, err
 	}

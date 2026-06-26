@@ -268,10 +268,12 @@ func main() {
 		metrics.StartMemoryMetricsUpdater(ctx, 15*time.Second)
 	}
 
-	// Start access log service server if enabled
+	// Start the access log service server when the collector is enabled. The
+	// collector is the shared transport that carries collected data to its
+	// consumers (analytics, traffic logging).
 	var alsServer *grpc.Server
-	slog.DebugContext(ctx, "Policy engine ALS server config", "config", cfg.Analytics.AccessLogsServiceCfg)
-	if cfg.Analytics.Enabled {
+	slog.DebugContext(ctx, "Policy engine ALS server config", "config", cfg.Collector.AccessLogsServiceCfg)
+	if cfg.Collector.Enabled {
 		// Start the access log service server
 		slog.Info("Starting the ALS gRPC server...")
 		alsServer = utils.StartAccessLogServiceServer(cfg)

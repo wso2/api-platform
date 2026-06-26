@@ -1,16 +1,34 @@
 
-[analytics]
+# The collector is the shared data-capture pipeline. It must be enabled before any
+# consumer (analytics, traffic_logging) can receive data.
+[collector]
 enabled = true
-# Deprecated: allow_payloads is preserved for backward compatibility. When true
-# and when send_request_body/send_response_body are not explicitly set, both
-# request and response bodies will be included in analytics events.
-# allow_payloads = true
-send_request_body = false
-send_response_body = false
+# Capture request/response payloads (bodies) into the collected event (full bodies;
+# per-consumer size caps are applied on output).
+send_request_body = true
+send_response_body = true
+# Capture ALL request/response headers (redacted on output by per-consumer masking).
+send_request_headers = true
+send_response_headers = true
+
+# Analytics consumer (e.g. Moesif). Requires [collector].enabled = true.
+[analytics]
+enabled = false
 enabled_publishers = ["moesif"]
 
-[analytics.publishers.moesif]
-application_id = "<MOESIF_APPLICATION_ID>"
+# [analytics.publishers.moesif]
+# application_id = "<MOESIF_APPLICATION_ID>"
+
+# Traffic-logging consumer: writes each collected event to stdout as a JSON line
+# (no external service needed). Requires [collector].enabled = true.
+[traffic_logging]
+enabled = true
+# Header names (case-insensitive) whose values are redacted as "****".
+masked_headers = ["authorization"]
+# Max bytes of request/response payload written to each log line (0 = no limit).
+max_payload_size = 2048
+# Skip traffic-log lines for these path prefixes (e.g. health probes).
+ignored_path_prefixes = ["/health", "/ready"]
 
 [router]
 gateway_host = "*"
