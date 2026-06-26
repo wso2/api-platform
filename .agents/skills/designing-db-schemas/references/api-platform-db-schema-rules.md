@@ -361,10 +361,10 @@ CREATE INDEX IF NOT EXISTS idx_<table>_status     ON <table>(status);
 VARCHAR(20)   — status, lifecycle_status, kind, short enums
 VARCHAR(30)   — version strings (v1.0, v2.3)
 VARCHAR(40)   — uuid, all FK columns referencing UUIDs
-VARCHAR(64)   — hashes (SHA-256 hex)
 VARCHAR(200)  — created_by, updated_by, revoked_by (user email/subject)
 VARCHAR(40)   — handle (url-safe slug, NOT NULL; unique via UNIQUE(organization_uuid, handle))
 VARCHAR(255)  — name, display strings
+              — hashes (SHA-256 hex)
               — SAFE upper bound for indexed/unique columns across all engines
 VARCHAR(512)  — tokens (encrypted values)
 VARCHAR(1023) — description, reason
