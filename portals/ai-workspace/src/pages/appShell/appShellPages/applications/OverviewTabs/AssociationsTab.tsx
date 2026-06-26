@@ -58,6 +58,7 @@ import { useAppShell } from '../../../../../contexts/AppShellContext';
 import useAIWorkspaceSnackbar from '../../../../../hooks/aiWorkspaceSnackbar';
 import { getProviderTemplateDisplayName } from '../../../../../utils/providerTemplateDisplay';
 import type {
+  Application,
   ApplicationAssociation,
   LLMProvider,
   MappedAPIKey,
@@ -527,15 +528,32 @@ export default function AssociationsTab() {
         setIsReservedKeysLoading(true);
         setReservedKeysLoadError(null);
 
-        const applicationsResponse = await applicationApis.getApplications(
-          currentOrganization.uuid,
-          apimBaseUrl,
-          {
-            projectId: currentProject?.id || undefined,
-            limit: 1000,
-          }
-        );
-        const otherApplications = (applicationsResponse.list ?? []).filter(
+        const allApplications: Application[] = [];
+        const pageSize = 1000;
+        let offset = 0;
+        let hasMoreApplications = true;
+
+        while (hasMoreApplications) {
+          const applicationsResponse = await applicationApis.getApplications(
+            currentOrganization.uuid,
+            apimBaseUrl,
+            {
+              projectId: currentProject?.id || undefined,
+              limit: pageSize,
+              offset,
+            }
+          );
+
+          allApplications.push(...(applicationsResponse.list ?? []));
+
+          const loadedCount =
+            applicationsResponse.pagination.offset +
+            applicationsResponse.list.length;
+          hasMoreApplications = loadedCount < applicationsResponse.pagination.total;
+          offset = loadedCount;
+        }
+
+        const otherApplications = allApplications.filter(
           (application) => application.id && application.id !== applicationId
         );
         const keyResponses = await Promise.allSettled(

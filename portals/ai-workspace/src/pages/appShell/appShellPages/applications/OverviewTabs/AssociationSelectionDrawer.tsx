@@ -154,6 +154,17 @@ export function SelectableKeyList({
               if (isLocked || isDisabled) return;
               onToggleKey(keyName);
             }}
+            onKeyDown={(event) => {
+              if (isLocked || isDisabled) return;
+              if (event.key !== "Enter" && event.key !== " ") return;
+              event.preventDefault();
+              event.stopPropagation();
+              onToggleKey(keyName);
+            }}
+            role="checkbox"
+            aria-checked={isSelected || isUsedElsewhere}
+            aria-disabled={isLocked || isDisabled}
+            tabIndex={isLocked || isDisabled ? -1 : 0}
           >
             <Checkbox
               checked={isSelected || isUsedElsewhere}
@@ -382,6 +393,15 @@ export default function AssociationSelectionDrawer<T extends DrawerEntity>({
                       "&:hover": { bgcolor: "action.hover" },
                     }}
                     onClick={() => void onItemClick(item)}
+                    onKeyDown={(event) => {
+                      if (event.key !== "Enter" && event.key !== " ") return;
+                      event.preventDefault();
+                      event.stopPropagation();
+                      void onItemClick(item);
+                    }}
+                    role="button"
+                    tabIndex={0}
+                    aria-expanded={isExpanded}
                   >
                     <Checkbox
                       checked={isSelected || isAlreadyLinked}
