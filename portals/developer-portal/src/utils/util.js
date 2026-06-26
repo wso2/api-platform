@@ -778,7 +778,7 @@ async function appendSubscriptionPlanDetails(orgID, subscriptionPlans) {
         for (const plan of subscriptionPlans) {
             const subscriptionPlan = await loadSubscriptionPlan(orgID, plan.planName);
             if (!subscriptionPlan) {
-                logger.warn('[appendSubscriptionPlanDetails] Plan not found, skipping', {
+                logger.warn('Subscription plan not found, skipping', {
                     orgID,
                     planName: plan.planName
                 });
@@ -831,7 +831,6 @@ async function listFiles(path) {
         logger.debug('Files in directory', {
             path: path,
             fileCount: files.length,
-            files: files
         });
     });
     return files;

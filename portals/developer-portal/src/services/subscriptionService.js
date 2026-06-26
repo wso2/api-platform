@@ -28,7 +28,7 @@ async function safePublish(eventType, payload, opts) {
     try {
         await publishWebhookEvent(eventType, payload, opts);
     } catch (err) {
-        logger.error('[subscriptionService] webhook publish failed', {
+        logger.error('Failed to publish webhook event', {
             eventType, error: err.message,
         });
         throw err;

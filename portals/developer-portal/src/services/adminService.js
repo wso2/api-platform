@@ -101,7 +101,7 @@ const createOrganization = async (req, res) => {
             return util.handleError(res, error);
         }
     }
-    logger.info('Initiate organization creation...', req.body);
+    logger.info('Initiate organization creation...');
 
     const payload = req.body;
     payload.orgConfig = {

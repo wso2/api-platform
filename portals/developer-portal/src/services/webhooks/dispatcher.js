@@ -46,16 +46,16 @@ async function runBatch() {
             }
             await eventDao.createDeliveries(event.EVENT_ID, subscribers, null, null);
         } catch (err) {
-            logger.error('[dispatcher] failed to create deliveries for event', {
+            logger.error('Failed to create deliveries for event', {
                 eventId: event.EVENT_ID, error: err.message
             });
             try {
                 await DPEvent.update({ STATUS: 'PENDING' }, { where: { EVENT_ID: event.EVENT_ID } });
-                logger.info('[dispatcher] restored event eligibility after delivery creation failure', {
+                logger.info('Restored event eligibility after delivery creation failure', {
                     eventId: event.EVENT_ID
                 });
             } catch (restoreErr) {
-                logger.error('[dispatcher] failed to restore event eligibility', {
+                logger.error('Failed to restore event eligibility', {
                     eventId: event.EVENT_ID, error: restoreErr.message
                 });
             }
@@ -74,7 +74,7 @@ function start() {
         try {
             await runBatch();
         } catch (err) {
-            logger.error('[dispatcher] batch error', { error: err.message || String(err) });
+            logger.error('Batch error', { error: err.message || String(err) });
         }
     }
 
@@ -82,7 +82,7 @@ function start() {
     // Also run immediately on event_published signals (no-op if nothing pending).
     onPublished(tick);
 
-    logger.info('[dispatcher] started', { pollIntervalMs: pollMs });
+    logger.info('Dispatcher started', { pollIntervalMs: pollMs });
 }
 
 function stop() {
