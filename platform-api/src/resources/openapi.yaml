@@ -6064,9 +6064,9 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /secrets/{id}:
+  /secrets/{handle}:
     get:
-      summary: Get a secret by name
+      summary: Get a secret by handle
       description: Returns metadata for a single secret. The plaintext value is never returned.
       operationId: getSecret
       security:
@@ -6076,10 +6076,10 @@ paths:
       tags:
         - Secrets
       parameters:
-        - name: id
+        - name: handle
           in: path
           required: true
-          description: The secret handle (name)
+          description: The secret handle
           schema:
             type: string
       responses:
@@ -6112,10 +6112,10 @@ paths:
       tags:
         - Secrets
       parameters:
-        - name: id
+        - name: handle
           in: path
           required: true
-          description: The secret handle (name)
+          description: The secret handle
           schema:
             type: string
       requestBody:
@@ -6160,10 +6160,10 @@ paths:
       tags:
         - Secrets
       parameters:
-        - name: id
+        - name: handle
           in: path
           required: true
-          description: The secret handle (name)
+          description: The secret handle
           schema:
             type: string
       responses:

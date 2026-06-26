@@ -127,10 +127,9 @@ func (c *Client) syncSecretsIncremental() {
 			continue
 		}
 
-		plaintext, err := c.apiUtilsService.FetchPlatformSecretValue(meta.ID)
+		plaintext, err := c.apiUtilsService.FetchPlatformSecretValue(meta.Handle)
 		if err != nil {
 			c.logger.Error("Failed to fetch platform secret value",
-				slog.String("secret_id", meta.ID),
 				slog.String("handle", meta.Handle),
 				slog.Any("error", err),
 			)

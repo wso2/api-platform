@@ -45,10 +45,12 @@ func TestLoadConfig_MissingSecretEncryptionKey_NonDemoMode_ReturnsError(t *testi
 	t.Setenv("APIP_DEMO_MODE", "false")
 	t.Setenv("PLATFORM_SECRET_ENCRYPTION_KEY", "")
 	t.Setenv("APIP_DATABASE_SECRET_ENCRYPTION_KEY", "")
+	t.Setenv("DATABASE_ENCRYPTION_KEY", "")
+	t.Setenv("AUTH_JWT_SECRET_KEY", "")
 
 	_, err := LoadConfig("")
-	assert.Error(t, err, "LoadConfig must return an error when secret encryption key is absent and DEMO_MODE is off")
-	assert.Contains(t, err.Error(), "database.secret_encryption_key")
+	assert.Error(t, err, "LoadConfig must return an error when no encryption key is configured and DEMO_MODE is off")
+	assert.Contains(t, err.Error(), "no encryption key configured for secrets management")
 }
 
 // TC-35: Ephemeral key must be unique each LoadConfig call (i.e. truly random, not a constant).

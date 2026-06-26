@@ -913,7 +913,7 @@ func (h *GatewayInternalAPIHandler) GetGatewaySecrets(c *gin.Context) {
 	c.JSON(http.StatusOK, dto.SecretSyncListResponse{List: items, Count: len(items)})
 }
 
-// GetGatewaySecretValue handles GET /api/internal/v1/secrets/:id/value
+// GetGatewaySecretValue handles GET /api/internal/v1/secrets/:handle/value
 // Returns the decrypted plaintext value of a secret. Called by the GW controller
 // only when the secret's hash has changed, minimising decryption calls.
 // Authenticated via gateway api-key — no JWT required.
@@ -923,9 +923,9 @@ func (h *GatewayInternalAPIHandler) GetGatewaySecretValue(c *gin.Context) {
 		return
 	}
 
-	handle := c.Param("id")
+	handle := c.Param("handle")
 	if handle == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Secret id is required"))
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Secret handle is required"))
 		return
 	}
 
@@ -973,7 +973,7 @@ func (h *GatewayInternalAPIHandler) RegisterRoutes(r *gin.Engine) {
 	secretsGroup := r.Group("/api/internal/v1/secrets")
 	{
 		secretsGroup.GET("", h.GetGatewaySecrets)
-		secretsGroup.GET("/:id/value", h.GetGatewaySecretValue)
+		secretsGroup.GET("/:handle/value", h.GetGatewaySecretValue)
 	}
 
 	llmGroup := r.Group("/api/internal/v1/llm-providers")

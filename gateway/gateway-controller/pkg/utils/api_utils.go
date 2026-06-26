@@ -1174,9 +1174,9 @@ func (s *APIUtilsService) CheckArtifactsExist(artifactIDs []string) ([]string, e
 // PlatformSecretMeta holds the metadata returned by GET /api/internal/v1/secrets.
 // Value is non-nil only when the request included ?includeValues=true (startup bulk fetch).
 type PlatformSecretMeta struct {
-	ID          string  `json:"id"`
-	Handle      string  `json:"name"`
-	DisplayName string  `json:"displayName"`
+	ID          string  `json:"uuid"`
+	Handle      string  `json:"handle"`
+	DisplayName string  `json:"name"`
 	Hash        string  `json:"hash"`
 	Status      string  `json:"status"`
 	Value       *string `json:"value,omitempty"`
@@ -1241,13 +1241,13 @@ func (s *APIUtilsService) FetchPlatformSecrets(updatedAfter *time.Time, includeV
 }
 
 // FetchPlatformSecretValue fetches the decrypted plaintext value of a secret from the
-// Platform API internal endpoint GET /internal/v1/secrets/:id/value.
+// Platform API internal endpoint GET /internal/v1/secrets/:handle/value.
 // The Gateway authenticates using the same api-key header used for all Platform API calls.
-func (s *APIUtilsService) FetchPlatformSecretValue(secretID string) (string, error) {
-	valueURL := s.getBaseURL() + "/secrets/" + secretID + "/value"
+func (s *APIUtilsService) FetchPlatformSecretValue(secretHandle string) (string, error) {
+	valueURL := s.getBaseURL() + "/secrets/" + secretHandle + "/value"
 
 	s.logger.Debug("Fetching platform secret value",
-		slog.String("secret_id", secretID),
+		slog.String("secret_handle", secretHandle),
 		slog.String("url", valueURL),
 	)
 
