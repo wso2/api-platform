@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // generate-schema-report.js
 //
-// Belongs to the `api-platform-db-schema-design-rules` skill.
+// Belongs to the `designing-db-schemas` skill.
 // Writes a structured JSON findings report from schema review findings.
 //
 // Usage:
@@ -56,29 +56,32 @@ if (!Array.isArray(findings)) {
   process.exit(1);
 }
 
-// Assign sequential IDs per rule and normalise
+// Severity ordering and the set of supported, normalised severity values
+const ORDER = { HIGH: 0, MEDIUM: 1, LOW: 2 };
+
+// Assign sequential IDs per rule group and normalise
 const counters = {};
 const normalised = findings.map(f => {
-  const ruleKey = (f.rule || 'UNKNOWN').toLowerCase().replace(/[^a-z0-9]/g, '-');
-  counters[ruleKey] = (counters[ruleKey] || 0) + 1;
-  const seq = String(counters[ruleKey]).padStart(3, '0');
+  const rule = f.rule || 'UNKNOWN';
+  // Rule-group identifier per the report contract: R3-NO-TEXT -> r3
+  const group = rule.split('-')[0].toLowerCase().replace(/[^a-z0-9]/g, '') || 'unknown';
+  counters[group] = (counters[group] || 0) + 1;
+  const seq = String(counters[group]).padStart(3, '0');
+  // Normalise severity to a supported uppercase value before sort/summary
+  const sev = String(f.severity || 'MEDIUM').toUpperCase();
   return {
-    id:       `${ruleKey}-${seq}`,
-    severity: f.severity || 'MEDIUM',
-    rule:     f.rule     || 'UNKNOWN',
-    table:    f.table    || null,
-    column:   f.column   || null,
-    finding:  f.finding  || '',
-    fix:      f.fix      || '',
+    id:       `${group}-${seq}`,
+    severity: ORDER[sev] !== undefined ? sev : 'MEDIUM',
+    rule,
+    table:    f.table  || null,
+    column:   f.column || null,
+    finding:  f.finding || '',
+    fix:      f.fix     || '',
   };
 });
 
 // Sort: HIGH → MEDIUM → LOW
-const ORDER = { HIGH: 0, MEDIUM: 1, LOW: 2 };
 normalised.sort((a, b) => (ORDER[a.severity] ?? 3) - (ORDER[b.severity] ?? 3));
-
-// Collect unique rule groups checked
-const ruleGroups = [...new Set(normalised.map(f => f.rule.split('-')[0]))].sort();
 
 // Summary counts
 const summary = { HIGH: 0, MEDIUM: 0, LOW: 0 };
@@ -89,7 +92,7 @@ const report = {
   meta: {
     schema:     schemaPath,
     reviewedAt: new Date().toISOString(),
-    rules:      ruleGroups.length ? ruleGroups : ['R1','R2','R3','R4','R5','R6','R7','R8','R9'],
+    rules:      ['R1','R2','R3','R4','R5','R6','R7','R8','R9','R10'],
   },
   summary,
   findings: normalised,

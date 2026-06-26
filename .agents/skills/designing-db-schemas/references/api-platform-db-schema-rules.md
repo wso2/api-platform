@@ -1,8 +1,8 @@
-# API Platform DB Schema Rules (R1–R9)
+# API Platform DB Schema Rules (R1–R10)
 
-Reference for the `api-platform-db-schema-design-rules` skill. These are the WSO2 API Platform conventions for relational database schemas. Step A2 and Step B2 of the skill read this file and evaluate each rule against the schema.
+Reference for the `designing-db-schemas` skill. These are the WSO2 API Platform conventions for relational database schemas. Step A2 and Step B2 of the skill read this file and evaluate each rule against the schema.
 
-**Scope:** applies to every `schema*.sql` file in the repository. For `gateway/gateway-controller/` schemas, **skip R3** (type rules) — the gateway controller team owns their type choices. All other rules (R1–R2, R4–R9) apply to every schema file including gateway controller.
+**Scope:** applies to every `schema*.sql` file in the repository. For `gateway/gateway-controller/` schemas, **skip R3** (type rules) — the gateway controller team owns their type choices. All other rules (R1–R2, R4–R10) apply to every schema file including gateway controller.
 
 > **Recording blanket-missing findings.** When a rule is violated uniformly across many tables (e.g. a convention that no tables follow), record **one representative finding** that names the pattern and gives a couple of examples, rather than one finding per table.
 
@@ -50,9 +50,13 @@ CREATE INDEX IF NOT EXISTS idx_<junction_table>_entity_b_uuid ON <junction_table
 **R1-IDENTITY** — Tables representing named resources (APIs, gateways, providers, applications, subscriptions, or any domain entity with a stable slug and a display name) must carry the full identity triple directly:
 
 ```sql
-handle  VARCHAR(40)  UNIQUE NOT NULL,          -- url-safe slug, immutable once set
-name    VARCHAR(255) NOT NULL,                -- human-readable display name
-version VARCHAR(30)  NOT NULL DEFAULT '1.0', -- semver or opaque version string
+handle  VARCHAR(40)  NOT NULL,                 -- url-safe slug, immutable once set
+name    VARCHAR(255) NOT NULL,                 -- human-readable display name
+version VARCHAR(30)  NOT NULL DEFAULT 'v1.0',   -- semver or opaque version string
+
+-- handle is unique per organisation, never globally: the same handle may
+-- exist in different organisations. Enforce org-scoped, not UNIQUE(handle).
+UNIQUE(organization_uuid, handle),
 ```
 
 Identity must be denormalised onto the table itself so queries against a single table are self-contained. Do not rely on a parent record for identity fields.
@@ -85,9 +89,11 @@ A `UNIQUE(handle)` without the org scope is a critical data-isolation bug. `name
 
 ## R3 · Column Types
 
-**R3-NO-TEXT** — Do not use the bare `TEXT` type for any column. Use either a bounded `VARCHAR(N)`, a binary type, or (Postgres only) `JSONB` when content is queried. A `TEXT` column is always a finding at MEDIUM severity.
+**R3-NO-TEXT** — This rule is **engine-scoped to PostgreSQL**. In a Postgres schema, do not use the bare `TEXT` type for any column — use a bounded `VARCHAR(N)`, a binary type (`BYTEA`), or `JSONB` when content is queried. A bare `TEXT` column in a Postgres schema is a finding at MEDIUM severity.
 
-**R3-LARGE-PAYLOAD** — Any payload that can grow large or is variable-length must use `BYTEA` (Postgres) / `BLOB` (SQLite) / `VARBINARY(MAX)` (SQL Server). Do **not** use wide VARCHAR for: `openapi_spec`, `model_list`, `content`, `configuration`, `properties`, `manifest`, `policy_definition`, `metadata`, `api_key_hashes`, or any future column whose value can exceed a few hundred bytes.
+Do **not** raise R3-NO-TEXT against SQLite or SQL Server schema files: per R8, `TEXT` is the intended type in SQLite (for JSON, large text, and opaque payloads) and `NVARCHAR(MAX)` / `TEXT` is the intended type in SQL Server. These are intentional type-level divergences, not findings.
+
+**R3-LARGE-PAYLOAD** — Any payload that can grow large or is variable-length must use the engine-appropriate large type, never a wide VARCHAR. Apply: binary payloads → `BYTEA` (Postgres) / `BLOB` (SQLite) / `VARBINARY(MAX)` (SQL Server); large text payloads → `BYTEA` (Postgres) / `TEXT` (SQLite) / `NVARCHAR(MAX)` (SQL Server), per the R8 divergence table. Columns that always need this: `openapi_spec`, `model_list`, `content`, `configuration`, `properties`, `manifest`, `policy_definition`, `metadata`, `api_key_hashes`, or any future column whose value can exceed a few hundred bytes. (The SQLite/SQL Server forms above are the intended divergences — do not flag them as R3-NO-TEXT.)
 
 **R3-JSONB** — In PostgreSQL, use `JSONB` only when the application queries inside the JSON using Postgres JSON operators. Evidence that a column is actively queried inside:
 1. The `DEFAULT` is a JSON literal like `'{}'`
@@ -96,7 +102,7 @@ A `UNIQUE(handle)` without the org scope is a critical data-isolation bug. `name
 
 SQLite and SQL Server equivalents (`TEXT` / `NVARCHAR(MAX)`) are intentional type-level divergences — not findings.
 
-**R3-JSONB-SCAN-COMPAT** — Do not use `JSONB` if the application layer scans it into a plain `string` variable and calls `json.Unmarshal` manually. Postgres drivers return JSONB as binary, which breaks `string` scan targets at runtime. Only use `JSONB` when the scan target implements `sql.Scanner` (e.g. `pgtype.JSONB`, `json.RawMessage`, or a custom struct).
+**R3-JSONB-SCAN-COMPAT** — **PostgreSQL only** (`JSONB` does not exist in SQLite or SQL Server, so this rule never applies to those files). Do not use `JSONB` if the application layer scans it into a plain `string` variable and calls `json.Unmarshal` manually. Postgres drivers return JSONB as binary, which breaks `string` scan targets at runtime. Only use `JSONB` when the scan target implements `sql.Scanner` (e.g. `pgtype.JSONB`, `json.RawMessage`, or a custom struct).
 
 **R3-BOOLEAN-AS-INT** — Do not use the `BOOLEAN` type. Represent boolean flags as:
 - `SMALLINT DEFAULT 0` / `SMALLINT NOT NULL DEFAULT 1` — Postgres
@@ -310,3 +316,73 @@ CREATE INDEX idx_... ON dbo.<table>(...);
 ```
 
 A `CREATE TABLE` or `CREATE INDEX` without an existence guard is always a finding at MEDIUM severity.
+
+---
+
+## R10 · Naming Conventions
+
+**R10-LOWERCASE** — Every SQL identifier — table names, column names, index names, and constraint names — must be lowercase `snake_case`. PostgreSQL folds unquoted identifiers to lowercase, so a mixed-case identifier only resolves if **every** reference quotes it (`"MyTable"`), which is brittle and breaks silently across engines and ORMs. Use `organization_uuid`, not `organizationUuid` or `OrganizationUUID`; `idx_apis_org`, not `idx_APIs_Org`. An upper-case or camelCase identifier is a finding at MEDIUM severity.
+
+**R10-MAPPING-SUFFIX** — Pure junction/mapping tables (those defined under R1-COMPOSITE-PK) must be named with a `_mappings` suffix, e.g. `application_api_mappings`, `gateway_association_mappings`. The suffix distinguishes link tables from entity tables at a glance and keeps the schema self-documenting. A pure mapping table named without the `_mappings` suffix is a finding at LOW severity. (Tables that link two entities but also carry their own identity/lifecycle are entity tables, not mapping tables — they keep a UUID PK and an entity-style name.)
+
+---
+
+## Quick-Reference Templates
+
+Copy-paste starting points for new DDL. The junction/mapping table template is shown above under **R1-COMPOSITE-PK**.
+
+### New entity table (Postgres)
+
+```sql
+CREATE TABLE IF NOT EXISTS <table> (
+    uuid                VARCHAR(40)  PRIMARY KEY,
+    organization_uuid   VARCHAR(40)  NOT NULL,
+    handle              VARCHAR(40)  NOT NULL,
+    name                VARCHAR(255) NOT NULL,
+    version             VARCHAR(30)  NOT NULL DEFAULT '1.0',
+    status              VARCHAR(20)  NOT NULL DEFAULT 'CREATED',
+    description         VARCHAR(1023),
+    data_version        VARCHAR(20)  NOT NULL DEFAULT '1.0',
+    created_by          VARCHAR(200),
+    created_at          TIMESTAMPTZ  DEFAULT CURRENT_TIMESTAMP,
+    updated_by          VARCHAR(200),
+    updated_at          TIMESTAMPTZ  DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(organization_uuid, handle),
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_<table>_org        ON <table>(organization_uuid);
+CREATE INDEX IF NOT EXISTS idx_<table>_status     ON <table>(status);
+```
+
+### Standard column types & widths
+
+```
+VARCHAR(20)   — status, lifecycle_status, kind, short enums
+VARCHAR(30)   — version strings (v1.0, v2.3)
+VARCHAR(40)   — uuid, all FK columns referencing UUIDs
+VARCHAR(64)   — hashes (SHA-256 hex)
+VARCHAR(200)  — created_by, updated_by, revoked_by (user email/subject)
+VARCHAR(40)   — handle (url-safe slug, NOT NULL; unique via UNIQUE(organization_uuid, handle))
+VARCHAR(255)  — name, display strings
+              — SAFE upper bound for indexed/unique columns across all engines
+VARCHAR(512)  — tokens (encrypted values)
+VARCHAR(1023) — description, reason
+              — UPPER BOUND for plain-storage VARCHAR (above this → BYTEA/BLOB)
+
+BYTEA (Postgres) / BLOB (SQLite) / VARBINARY(MAX) (SQL Server)
+              — openapi_spec, model_list, content, configuration, properties,
+                manifest, policy_definition, metadata, api_key_hashes,
+                and any payload that can exceed a few hundred bytes
+
+JSONB         — Postgres only; only when queried with JSON operators
+              — SQLite equivalent: TEXT (intentional, not a finding)
+              — SQL Server equivalent: NVARCHAR(MAX) (intentional, not a finding)
+
+TIMESTAMPTZ   — all timestamps in Postgres (created_at, updated_at, expires_at, …)
+DATETIME      — all timestamps in SQLite
+DATETIME2(7) DEFAULT SYSUTCDATETIME() — all timestamps in SQL Server
+
+SMALLINT      — boolean flags in Postgres (is_active, is_default …) — use 0/1
+INTEGER       — boolean flags in SQLite / SQL Server
+```
