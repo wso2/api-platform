@@ -82,3 +82,18 @@ type ValidateRESTAPIParams struct {
 	// Version **API Version** to check for existence within the organization.
 	Version *ApiVersionQ `form:"version,omitempty" json:"version,omitempty" yaml:"version,omitempty"`
 }
+
+// UnpublishFromDevPortalRequest defines model for UnpublishFromDevPortalRequest.
+type UnpublishFromDevPortalRequest struct {
+	// DevPortalUuid UUID of the DevPortal to unpublish from
+	DevPortalUuid openapi_types.UUID `binding:"required" json:"devPortalUuid" yaml:"devPortalUuid"`
+}
+
+// UnpublishRESTAPIFromDevPortalJSONRequestBody defines body for UnpublishRESTAPIFromDevPortal.
+type UnpublishRESTAPIFromDevPortalJSONRequestBody = UnpublishFromDevPortalRequest
+
+// UnpublishWebBrokerAPIFromDevPortalJSONRequestBody defines body for UnpublishWebBrokerAPIFromDevPortal.
+type UnpublishWebBrokerAPIFromDevPortalJSONRequestBody = UnpublishFromDevPortalRequest
+
+// UnpublishWebSubAPIFromDevPortalJSONRequestBody defines body for UnpublishWebSubAPIFromDevPortal.
+type UnpublishWebSubAPIFromDevPortalJSONRequestBody = UnpublishFromDevPortalRequest

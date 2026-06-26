@@ -575,6 +575,8 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_llm_provider_templat
 CREATE INDEX idx_llm_provider_templates_org ON dbo.llm_provider_templates(organization_uuid);
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_llm_provider_templates_group' AND object_id = OBJECT_ID(N'dbo.llm_provider_templates'))
 CREATE INDEX idx_llm_provider_templates_group ON dbo.llm_provider_templates(organization_uuid, group_id);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_llm_provider_templates_latest' AND object_id = OBJECT_ID(N'dbo.llm_provider_templates'))
+CREATE UNIQUE INDEX idx_llm_provider_templates_latest ON dbo.llm_provider_templates(organization_uuid, group_id) WHERE is_latest = 1;
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_llm_providers_template' AND object_id = OBJECT_ID(N'dbo.llm_providers'))
 CREATE INDEX idx_llm_providers_template ON dbo.llm_providers(template_uuid);
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_llm_providers_org' AND object_id = OBJECT_ID(N'dbo.llm_providers'))

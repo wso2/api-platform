@@ -92,7 +92,7 @@ export default function ServiceProvidersSummaryCard({
   onCreateProvider,
   onProviderClick,
   maxItems = 5,
-  title = 'LLM Service Providers',
+  title = 'LLM Providers',
   isLoading = false,
   error,
   onRetry,

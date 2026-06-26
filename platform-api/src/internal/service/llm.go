@@ -23,6 +23,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"regexp"
 	"strings"
 
 	"platform-api/src/api"
@@ -127,11 +128,28 @@ func (s *LLMProviderTemplateService) Create(orgUUID, createdBy string, req *api.
 	if req == nil {
 		return nil, constants.ErrInvalidInput
 	}
-	if req.Id == "" || req.Name == "" {
+	if req.Name == "" {
 		return nil, constants.ErrInvalidInput
 	}
 
-	exists, err := s.repo.Exists(req.Id, orgUUID)
+	baseHandle, err := utils.GenerateHandle(req.Name, nil)
+	if err != nil || baseHandle == "" {
+		return nil, constants.ErrInvalidInput
+	}
+	version := "v1.0"
+	if v := req.Version; v != "" {
+		normalized, ok := normalizeTemplateVersion(v)
+		if !ok || normalized != version {
+			return nil, constants.ErrInvalidInput
+		}
+	}
+	handle := makeTemplateHandle(baseHandle, version)
+
+	if req.ManagedBy != nil && strings.TrimSpace(*req.ManagedBy) == constants.PolicyManagedByWSO2 {
+		return nil, constants.ErrLLMProviderTemplateManagedByReserved
+	}
+
+	exists, err := s.repo.Exists(handle, orgUUID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to check template exists: %w", err)
 	}
@@ -141,11 +159,14 @@ func (s *LLMProviderTemplateService) Create(orgUUID, createdBy string, req *api.
 
 	m := &model.LLMProviderTemplate{
 		OrganizationUUID: orgUUID,
-		ID:               req.Id,
+		ID:               handle,
+		GroupID:          baseHandle,
+		Version:          version,
 		Name:             req.Name,
 		Description:      utils.ValueOrEmpty(req.Description),
-		ManagedBy:        constants.PolicyManagedByCustomer,
+		ManagedBy:        defaultTemplateManagedBy(req.ManagedBy),
 		CreatedBy:        createdBy,
+		OpenAPISpec:      utils.ValueOrEmpty(req.Openapi),
 		Metadata:         mapTemplateMetadataAPI(req.Metadata),
 		PromptTokens:     mapExtractionIdentifierAPI(req.PromptTokens),
 		CompletionTokens: mapExtractionIdentifierAPI(req.CompletionTokens),
@@ -172,12 +193,18 @@ func (s *LLMProviderTemplateService) Create(orgUUID, createdBy string, req *api.
 	return mapTemplateModelToAPI(m), nil
 }
 
-func (s *LLMProviderTemplateService) List(orgUUID string, limit, offset int) (*api.LLMProviderTemplateListResponse, error) {
-	items, err := s.repo.List(orgUUID, limit, offset)
+func (s *LLMProviderTemplateService) List(orgUUID string, limit, offset int, allVersions bool) (*api.LLMProviderTemplateListResponse, error) {
+	listFn := s.repo.List
+	countFn := s.repo.Count
+	if allVersions {
+		listFn = s.repo.ListAllVersions
+		countFn = s.repo.CountAllVersions
+	}
+	items, err := listFn(orgUUID, limit, offset)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list templates: %w", err)
 	}
-	totalCount, err := s.repo.Count(orgUUID)
+	totalCount, err := countFn(orgUUID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to count templates: %w", err)
 	}
@@ -191,18 +218,7 @@ func (s *LLMProviderTemplateService) List(orgUUID string, limit, offset int) (*a
 	}
 	resp.List = make([]api.LLMProviderTemplateListItem, 0, len(items))
 	for _, t := range items {
-		id := t.ID
-		name := t.Name
-		desc := utils.StringPtrIfNotEmpty(t.Description)
-		createdBy := utils.StringPtrIfNotEmpty(t.CreatedBy)
-		resp.List = append(resp.List, api.LLMProviderTemplateListItem{
-			Id:          &id,
-			Name:        &name,
-			Description: desc,
-			CreatedBy:   createdBy,
-			CreatedAt:   utils.TimePtr(t.CreatedAt),
-			UpdatedAt:   utils.TimePtr(t.UpdatedAt),
-		})
+		resp.List = append(resp.List, templateListItem(t))
 	}
 	return resp, nil
 }
@@ -231,6 +247,29 @@ func (s *LLMProviderTemplateService) Update(orgUUID, handle, updatedBy string, r
 	if req.Name == "" {
 		return nil, constants.ErrInvalidInput
 	}
+	if req.ManagedBy != nil && strings.TrimSpace(*req.ManagedBy) == constants.PolicyManagedByWSO2 {
+		return nil, constants.ErrLLMProviderTemplateManagedByReserved
+	}
+
+	existing, err := s.repo.GetByID(handle, orgUUID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve template: %w", err)
+	}
+	if existing == nil {
+		return nil, constants.ErrLLMProviderTemplateNotFound
+	}
+	if existing.ManagedBy == "wso2" {
+		return nil, constants.ErrLLMProviderTemplateReadOnly
+	}
+
+	managedBy := existing.ManagedBy
+	if req.ManagedBy != nil {
+		managedBy = defaultTemplateManagedBy(req.ManagedBy)
+	}
+	openapiSpec := existing.OpenAPISpec
+	if req.Openapi != nil {
+		openapiSpec = utils.ValueOrEmpty(req.Openapi)
+	}
 
 	m := &model.LLMProviderTemplate{
 		OrganizationUUID: orgUUID,
@@ -238,6 +277,8 @@ func (s *LLMProviderTemplateService) Update(orgUUID, handle, updatedBy string, r
 		Name:             req.Name,
 		Description:      utils.ValueOrEmpty(req.Description),
 		UpdatedBy:        updatedBy,
+		ManagedBy:        managedBy,
+		OpenAPISpec:      openapiSpec,
 		Metadata:         mapTemplateMetadataAPI(req.Metadata),
 		PromptTokens:     mapExtractionIdentifierAPI(req.PromptTokens),
 		CompletionTokens: mapExtractionIdentifierAPI(req.CompletionTokens),
@@ -259,6 +300,16 @@ func (s *LLMProviderTemplateService) Update(orgUUID, handle, updatedBy string, r
 		return nil, fmt.Errorf("failed to update template: %w", err)
 	}
 
+	base, baseErr := s.repo.GetGroupID(handle, orgUUID)
+	if baseErr != nil {
+		return nil, fmt.Errorf("failed to resolve template family: %w", baseErr)
+	}
+	if base != "" {
+		if err := s.repo.RenameFamily(base, orgUUID, req.Name); err != nil {
+			return nil, fmt.Errorf("failed to propagate template name: %w", err)
+		}
+	}
+
 	updated, err := s.repo.GetByID(handle, orgUUID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch updated template: %w", err)
@@ -272,16 +323,190 @@ func (s *LLMProviderTemplateService) Update(orgUUID, handle, updatedBy string, r
 	return mapTemplateModelToAPI(updated), nil
 }
 
+var templateVersionPattern = regexp.MustCompile(`^[vV]\d+\.\d+$`)
+
+func normalizeTemplateVersion(v string) (string, bool) {
+	v = strings.TrimSpace(v)
+	if !templateVersionPattern.MatchString(v) {
+		return "", false
+	}
+	return "v" + strings.TrimPrefix(strings.TrimPrefix(v, "v"), "V"), true
+}
+func makeTemplateHandle(baseHandle, version string) string {
+	return baseHandle + "-" + strings.ReplaceAll(strings.ToLower(strings.TrimSpace(version)), ".", "-")
+}
+
+func (s *LLMProviderTemplateService) CreateVersion(orgUUID, handle, createdBy string, req *api.CreateLLMProviderTemplateVersionRequest) (*api.LLMProviderTemplate, error) {
+	if handle == "" || req == nil {
+		return nil, constants.ErrInvalidInput
+	}
+	if req.Name == "" {
+		return nil, constants.ErrInvalidInput
+	}
+	version, ok := normalizeTemplateVersion(req.Version)
+	if !ok {
+		return nil, constants.ErrInvalidInput
+	}
+
+	managedBy := defaultTemplateManagedBy(req.ManagedBy)
+	if managedBy == constants.PolicyManagedByWSO2 {
+		managedBy = constants.PolicyManagedByCustomer
+	}
+
+	baseHandle, err := s.repo.GetGroupID(handle, orgUUID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve template family: %w", err)
+	}
+	if baseHandle == "" {
+		return nil, constants.ErrLLMProviderTemplateNotFound
+	}
+
+	m := &model.LLMProviderTemplate{
+		OrganizationUUID: orgUUID,
+		ID:               makeTemplateHandle(baseHandle, version),
+		GroupID:          baseHandle,
+		Name:             req.Name,
+		Description:      utils.ValueOrEmpty(req.Description),
+		ManagedBy:        managedBy,
+		CreatedBy:        createdBy,
+		Version:          version,
+		OpenAPISpec:      utils.ValueOrEmpty(req.Openapi),
+		Metadata:         mapTemplateMetadataAPI(req.Metadata),
+		PromptTokens:     mapExtractionIdentifierAPI(req.PromptTokens),
+		CompletionTokens: mapExtractionIdentifierAPI(req.CompletionTokens),
+		TotalTokens:      mapExtractionIdentifierAPI(req.TotalTokens),
+		RemainingTokens:  mapExtractionIdentifierAPI(req.RemainingTokens),
+		RequestModel:     mapExtractionIdentifierAPI(req.RequestModel),
+		ResponseModel:    mapExtractionIdentifierAPI(req.ResponseModel),
+	}
+	resourceMappings, err := mapTemplateResourceMappingsAPI(req.ResourceMappings)
+	if err != nil {
+		return nil, err
+	}
+	m.ResourceMappings = resourceMappings
+
+	if err := s.repo.CreateNewVersion(m); err != nil {
+		switch {
+		case errors.Is(err, sql.ErrNoRows):
+			return nil, constants.ErrLLMProviderTemplateNotFound
+		case errors.Is(err, constants.ErrLLMProviderTemplateVersionExists):
+			return nil, constants.ErrLLMProviderTemplateVersionExists
+		default:
+			return nil, fmt.Errorf("failed to create new template version: %w", err)
+		}
+	}
+
+	return mapTemplateModelToAPI(m), nil
+}
+
+func (s *LLMProviderTemplateService) ListVersions(orgUUID, handle string, limit, offset int) (*api.LLMProviderTemplateListResponse, error) {
+	if handle == "" {
+		return nil, constants.ErrInvalidInput
+	}
+	total, err := s.repo.CountVersions(handle, orgUUID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to count template versions: %w", err)
+	}
+	if total == 0 {
+		return nil, constants.ErrLLMProviderTemplateNotFound
+	}
+	items, err := s.repo.ListVersions(handle, orgUUID, limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list template versions: %w", err)
+	}
+	resp := &api.LLMProviderTemplateListResponse{
+		Count: len(items),
+		Pagination: api.Pagination{
+			Limit:  limit,
+			Offset: offset,
+			Total:  total,
+		},
+	}
+	resp.List = make([]api.LLMProviderTemplateListItem, 0, len(items))
+	for _, t := range items {
+		resp.List = append(resp.List, templateListItem(t))
+	}
+	return resp, nil
+}
+
+func (s *LLMProviderTemplateService) GetVersion(orgUUID, handle, version string) (*api.LLMProviderTemplate, error) {
+	v := strings.TrimSpace(version)
+	if handle == "" || v == "" {
+		return nil, constants.ErrInvalidInput
+	}
+	normalized, ok := normalizeTemplateVersion(v)
+	if !ok {
+		return nil, constants.ErrInvalidInput
+	}
+	v = normalized
+	m, err := s.repo.GetByVersion(handle, orgUUID, v)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get template version: %w", err)
+	}
+	if m == nil {
+		return nil, constants.ErrLLMProviderTemplateNotFound
+	}
+	return mapTemplateModelToAPI(m), nil
+}
+
+// SetVersionEnabled enables or disables a specific version of a template.
+// Disabling is blocked when any provider was created from this specific version.
+func (s *LLMProviderTemplateService) SetVersionEnabled(orgUUID, handle, version string, enabled bool) (*api.LLMProviderTemplate, error) {
+	v := strings.TrimSpace(version)
+	if handle == "" || v == "" {
+		return nil, constants.ErrInvalidInput
+	}
+	normalized, ok := normalizeTemplateVersion(v)
+	if !ok {
+		return nil, constants.ErrInvalidInput
+	}
+	v = normalized
+	if !enabled {
+		inUse, err := s.repo.CountProvidersUsingTemplate(handle, orgUUID, v)
+		if err != nil {
+			return nil, fmt.Errorf("failed to check template version usage: %w", err)
+		}
+		if inUse > 0 {
+			return nil, constants.ErrLLMProviderTemplateInUse
+		}
+	}
+	if err := s.repo.SetEnabled(handle, orgUUID, v, enabled); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, constants.ErrLLMProviderTemplateNotFound
+		}
+		return nil, fmt.Errorf("failed to set template version enabled: %w", err)
+	}
+	m, err := s.repo.GetByVersion(handle, orgUUID, v)
+	if err != nil {
+		return nil, fmt.Errorf("failed to reload template version: %w", err)
+	}
+	if m == nil {
+		return nil, constants.ErrLLMProviderTemplateNotFound
+	}
+	return mapTemplateModelToAPI(m), nil
+}
+
 func (s *LLMProviderTemplateService) Delete(orgUUID, handle, deletedBy string) error {
 	if handle == "" {
 		return constants.ErrInvalidInput
 	}
-	tpl, err := s.repo.GetByID(handle, orgUUID)
+	managedBy, err := s.repo.ManagedByForHandle(handle, orgUUID)
 	if err != nil {
-		return fmt.Errorf("failed to get template: %w", err)
+		return fmt.Errorf("failed to resolve template: %w", err)
 	}
-	if tpl == nil {
+	if managedBy == "" {
 		return constants.ErrLLMProviderTemplateNotFound
+	}
+	if managedBy == "wso2" {
+		return constants.ErrLLMProviderTemplateReadOnly
+	}
+	// Block deletion while any provider (built from any version) still depends on it.
+	inUse, err := s.repo.CountProvidersUsingTemplate(handle, orgUUID, "")
+	if err != nil {
+		return fmt.Errorf("failed to check template usage: %w", err)
+	}
+	if inUse > 0 {
+		return constants.ErrLLMProviderTemplateInUse
 	}
 	if err := s.repo.Delete(handle, orgUUID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -289,7 +514,45 @@ func (s *LLMProviderTemplateService) Delete(orgUUID, handle, deletedBy string) e
 		}
 		return fmt.Errorf("failed to delete template: %w", err)
 	}
-	_ = s.auditRepo.Record("DELETE", tpl.UUID, "llm_provider_template", orgUUID, deletedBy)
+	// Family-level delete: log the stable handle rather than a single version's UUID.
+	_ = s.auditRepo.Record("DELETE", handle, "llm_provider_template", orgUUID, deletedBy)
+	return nil
+}
+
+func (s *LLMProviderTemplateService) DeleteVersion(orgUUID, handle, version string) error {
+	v := strings.TrimSpace(version)
+	if handle == "" || v == "" {
+		return constants.ErrInvalidInput
+	}
+	normalized, ok := normalizeTemplateVersion(v)
+	if !ok {
+		return constants.ErrInvalidInput
+	}
+	v = normalized
+	target, err := s.repo.GetByVersion(handle, orgUUID, v)
+	if err != nil {
+		return fmt.Errorf("failed to resolve template version: %w", err)
+	}
+	if target == nil {
+		return constants.ErrLLMProviderTemplateNotFound
+	}
+	if target.ManagedBy == "wso2" {
+		return constants.ErrLLMProviderTemplateReadOnly
+	}
+	// Block deletion while any provider built from this specific version still depends on it.
+	inUse, err := s.repo.CountProvidersUsingTemplate(handle, orgUUID, v)
+	if err != nil {
+		return fmt.Errorf("failed to check template version usage: %w", err)
+	}
+	if inUse > 0 {
+		return constants.ErrLLMProviderTemplateInUse
+	}
+	if err := s.repo.DeleteVersion(handle, orgUUID, v); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return constants.ErrLLMProviderTemplateNotFound
+		}
+		return fmt.Errorf("failed to delete template version: %w", err)
+	}
 	return nil
 }
 
@@ -365,6 +628,14 @@ func (s *LLMProviderService) Create(orgUUID, createdBy string, req *api.LLMProvi
 	if err := validateLLMResourceLimit(providerCount, constants.MaxLLMProvidersPerOrganization, constants.ErrLLMProviderLimitReached); err != nil {
 		return nil, err
 	}
+	if !tpl.Enabled {
+		return nil, constants.ErrInvalidInput
+	}
+
+	openapiSpec := utils.ValueOrEmpty(req.Openapi)
+	if openapiSpec == "" {
+		openapiSpec = tpl.OpenAPISpec
+	}
 
 	contextValue := utils.DefaultStringPtr(req.Context, "/")
 	m := &model.LLMProvider{
@@ -375,7 +646,7 @@ func (s *LLMProviderService) Create(orgUUID, createdBy string, req *api.LLMProvi
 		CreatedBy:        createdBy,
 		Version:          req.Version,
 		TemplateUUID:     tpl.UUID,
-		OpenAPISpec:      utils.ValueOrEmpty(req.Openapi),
+		OpenAPISpec:      openapiSpec,
 		ModelProviders:   mapModelProvidersAPI(req.ModelProviders),
 		Configuration: model.LLMProviderConfig{
 			Context:           &contextValue,
@@ -1563,15 +1834,49 @@ func mapResourceWiseRateLimitingAPIToModel(in *api.ResourceWiseRateLimitingConfi
 	}
 }
 
+func templateListItem(t *model.LLMProviderTemplate) api.LLMProviderTemplateListItem {
+	id := t.ID
+	name := t.Name
+	version := t.Version
+	isLatest := t.IsLatest
+	enabled := t.Enabled
+	var logoURL string
+	if t.Metadata != nil {
+		logoURL = t.Metadata.LogoURL
+	}
+	return api.LLMProviderTemplateListItem{
+		Id:          &id,
+		Name:        &name,
+		Description: utils.StringPtrIfNotEmpty(t.Description),
+		ManagedBy:   utils.StringPtrIfNotEmpty(t.ManagedBy),
+		CreatedBy:   utils.StringPtrIfNotEmpty(t.CreatedBy),
+		Version:     &version,
+		IsLatest:    &isLatest,
+		Enabled:     &enabled,
+		LogoUrl:     utils.StringPtrIfNotEmpty(logoURL),
+		CreatedAt:   utils.TimePtr(t.CreatedAt),
+		UpdatedAt:   utils.TimePtr(t.UpdatedAt),
+	}
+}
+
 func mapTemplateModelToAPI(m *model.LLMProviderTemplate) *api.LLMProviderTemplate {
 	if m == nil {
 		return nil
 	}
+	isLatest := m.IsLatest
+	enabled := m.Enabled
 	return &api.LLMProviderTemplate{
 		Id:               m.ID,
+		GroupId:          utils.StringPtrIfNotEmpty(m.GroupID),
 		Name:             m.Name,
 		Description:      utils.StringPtrIfNotEmpty(m.Description),
+		ManagedBy:        utils.StringPtrIfNotEmpty(m.ManagedBy),
 		CreatedBy:        utils.StringPtrIfNotEmpty(m.CreatedBy),
+		UpdatedBy:        utils.StringPtrIfNotEmpty(m.UpdatedBy),
+		Version:          m.Version,
+		IsLatest:         &isLatest,
+		Enabled:          &enabled,
+		Openapi:          utils.StringPtrIfNotEmpty(m.OpenAPISpec),
 		Metadata:         mapTemplateMetadataModelToAPI(m.Metadata),
 		PromptTokens:     mapExtractionIdentifierModelToAPI(m.PromptTokens),
 		CompletionTokens: mapExtractionIdentifierModelToAPI(m.CompletionTokens),
@@ -1664,6 +1969,17 @@ func mapTemplateResourceMappingModelToAPI(in *model.LLMProviderTemplateResourceM
 		RequestModel:     mapExtractionIdentifierModelToAPI(in.RequestModel),
 		ResponseModel:    mapExtractionIdentifierModelToAPI(in.ResponseModel),
 	}
+}
+
+// defaultTemplateManagedBy normalizes the managedBy label supplied on a custom
+// template. An empty value defaults to "customer"; built-in templates are seeded
+// with "wso2" by the template seeder/loader.
+func defaultTemplateManagedBy(in *string) string {
+	v := strings.TrimSpace(utils.ValueOrEmpty(in))
+	if v == "" {
+		return "customer"
+	}
+	return v
 }
 
 func mapTemplateMetadataAPI(in *api.LLMProviderTemplateMetadata) *model.LLMProviderTemplateMetadata {
@@ -1772,16 +2088,16 @@ func mapProviderModelToAPI(m *model.LLMProvider, templateHandle string) *api.LLM
 	}
 
 	out := &api.LLMProvider{
-		Id:             m.ID,
-		Name:           m.Name,
-		Description:    utils.StringPtrIfNotEmpty(m.Description),
-		CreatedBy:      utils.StringPtrIfNotEmpty(m.CreatedBy),
-		Version:        m.Version,
-		Context:        ctx,
-		Vhost:          m.Configuration.VHost,
-		Template:       templateHandle,
-		Openapi:        utils.StringPtrIfNotEmpty(m.OpenAPISpec),
-		ModelProviders: modelProviders,
+		Id:                m.ID,
+		Name:              m.Name,
+		Description:       utils.StringPtrIfNotEmpty(m.Description),
+		CreatedBy:         utils.StringPtrIfNotEmpty(m.CreatedBy),
+		Version:           m.Version,
+		Context:           ctx,
+		Vhost:             m.Configuration.VHost,
+		Template:          templateHandle,
+		Openapi:           utils.StringPtrIfNotEmpty(m.OpenAPISpec),
+		ModelProviders:    modelProviders,
 		RateLimiting:      mapRateLimitingModelToAPI(m.Configuration.RateLimiting),
 		Upstream:          upstream,
 		AccessControl:     ac,
@@ -1789,8 +2105,8 @@ func mapProviderModelToAPI(m *model.LLMProvider, templateHandle string) *api.LLM
 		OperationPolicies: operationPolicies,
 		Policies:          nil,
 		Security:          mapSecurityModelToAPI(m.Configuration.Security),
-		CreatedAt:      utils.TimePtr(m.CreatedAt),
-		UpdatedAt:      utils.TimePtr(m.UpdatedAt),
+		CreatedAt:         utils.TimePtr(m.CreatedAt),
+		UpdatedAt:         utils.TimePtr(m.UpdatedAt),
 	}
 	return out
 }
