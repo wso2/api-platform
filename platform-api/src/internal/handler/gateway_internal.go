@@ -37,17 +37,20 @@ type GatewayInternalAPIHandler struct {
 	gatewayService         *service.GatewayService
 	gatewayInternalService *service.GatewayInternalAPIService
 	hmacSecretService      *service.WebSubAPIHmacSecretService
+	secretService          *service.SecretService
 	slogger                *slog.Logger
 }
 
 func NewGatewayInternalAPIHandler(gatewayService *service.GatewayService,
 	gatewayInternalService *service.GatewayInternalAPIService,
 	hmacSecretService *service.WebSubAPIHmacSecretService,
+	secretService *service.SecretService,
 	slogger *slog.Logger) *GatewayInternalAPIHandler {
 	return &GatewayInternalAPIHandler{
 		gatewayService:         gatewayService,
 		gatewayInternalService: gatewayInternalService,
 		hmacSecretService:      hmacSecretService,
+		secretService:          secretService,
 		slogger:                slogger,
 	}
 }
@@ -850,6 +853,109 @@ func (h *GatewayInternalAPIHandler) GetWebSubAPIHmacSecrets(c *gin.Context) {
 	c.JSON(http.StatusOK, dto.GatewayHmacSecretsResponse{ArtifactID: apiID, Secrets: items})
 }
 
+// GetGatewaySecrets handles GET /api/internal/v1/secrets
+// Returns secret metadata for secrets referenced by this gateway's deployed artifacts.
+// Supports ?updatedAfter=<RFC3339> for incremental sync.
+// Supports ?includeValues=true for startup bulk fetch — decrypts all secrets server-side
+// and returns plaintext values in a single response, avoiding N per-secret round trips.
+func (h *GatewayInternalAPIHandler) GetGatewaySecrets(c *gin.Context) {
+	orgID, gatewayID, ok := h.authenticateRequest(c)
+	if !ok {
+		return
+	}
+
+	var updatedAfter *time.Time
+	if s := c.Query("updatedAfter"); s != "" {
+		t, err := time.Parse(time.RFC3339, s)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+				"Invalid 'updatedAfter' parameter. Expected RFC3339 format."))
+			return
+		}
+		updatedAfter = &t
+	}
+
+	includeValues := c.Query("includeValues") == "true"
+
+	secrets, err := h.gatewayInternalService.GetSecretsByGateway(orgID, gatewayID, updatedAfter)
+	if err != nil {
+		h.slogger.Error("Failed to list gateway secrets", "orgID", orgID, "gatewayID", gatewayID, "error", err)
+		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+			"Failed to retrieve secrets"))
+		return
+	}
+
+	items := make([]dto.SecretSyncItem, 0, len(secrets))
+	for _, s := range secrets {
+		item := dto.SecretSyncItem{
+			ID:          s.UUID,
+			Handle:      s.Handle,
+			DisplayName: s.DisplayName,
+			Type:        s.Type,
+			Provider:    s.Provider,
+			Status:      s.Status,
+			Hash:        s.Hash,
+			CreatedAt:   s.CreatedAt,
+			UpdatedAt:   s.UpdatedAt,
+		}
+		if includeValues && s.Status == model.SecretStatusActive {
+			plaintext, err := h.secretService.DecryptCiphertext(s.Ciphertext)
+			if err != nil {
+				h.slogger.Error("Failed to decrypt secret for bulk fetch", "orgID", orgID, "handle", s.Handle, "error", err)
+				c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+					"Failed to decrypt secret"))
+				return
+			}
+			item.Value = &plaintext
+		}
+		items = append(items, item)
+	}
+	c.JSON(http.StatusOK, dto.SecretSyncListResponse{List: items, Count: len(items)})
+}
+
+// GetGatewaySecretValue handles GET /api/internal/v1/secrets/:handle/value
+// Returns the decrypted plaintext value of a secret. Called by the GW controller
+// only when the secret's hash has changed, minimising decryption calls.
+// Authenticated via gateway api-key — no JWT required.
+func (h *GatewayInternalAPIHandler) GetGatewaySecretValue(c *gin.Context) {
+	orgID, gatewayID, ok := h.authenticateRequest(c)
+	if !ok {
+		return
+	}
+
+	handle := c.Param("handle")
+	if handle == "" {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Secret handle is required"))
+		return
+	}
+
+	// Only serve secrets that are referenced by artifacts deployed on this gateway.
+	deployed, err := h.gatewayInternalService.IsSecretDeployedOnGateway(orgID, gatewayID, handle)
+	if err != nil {
+		h.slogger.Error("Failed to check secret deployment scope", "orgID", orgID, "gatewayID", gatewayID, "handle", handle, "error", err)
+		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to verify secret access"))
+		return
+	}
+	if !deployed {
+		c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "Secret not found"))
+		return
+	}
+
+	plaintext, err := h.secretService.Decrypt(orgID, handle)
+	if err != nil {
+		if errors.Is(err, constants.ErrSecretNotFound) {
+			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "Secret not found"))
+			return
+		}
+		h.slogger.Error("Failed to decrypt secret for gateway", "orgID", orgID, "handle", handle, "error", err)
+		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+			"Failed to decrypt secret"))
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"value": plaintext})
+}
+
 func (h *GatewayInternalAPIHandler) RegisterRoutes(r *gin.Engine) {
 	orgGroup := r.Group("/api/internal/v1/apis")
 	{
@@ -862,6 +968,12 @@ func (h *GatewayInternalAPIHandler) RegisterRoutes(r *gin.Engine) {
 	subPlanGroup := r.Group("/api/internal/v1")
 	{
 		subPlanGroup.GET("/subscription-plans", h.GetSubscriptionPlans)
+	}
+
+	secretsGroup := r.Group("/api/internal/v1/secrets")
+	{
+		secretsGroup.GET("", h.GetGatewaySecrets)
+		secretsGroup.GET("/:handle/value", h.GetGatewaySecretValue)
 	}
 
 	llmGroup := r.Group("/api/internal/v1/llm-providers")

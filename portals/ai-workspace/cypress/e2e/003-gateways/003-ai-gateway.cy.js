@@ -17,8 +17,8 @@
  */
 
 describe('AI Workspace - AI gateway lifecycle', () => {
-  const suffix = Date.now().toString().slice(-8);
-  const gatewayName = `E2E AI Gateway ${suffix}`;
+  const suffix = Date.now().toString().slice(-4);
+  const gatewayName = `gw-${suffix}`;
 
   beforeEach(() => {
     cy.login();
@@ -49,7 +49,7 @@ describe('AI Workspace - AI gateway lifecycle', () => {
 
     cy.location('pathname', { timeout: 30000 }).should(
       'include',
-      `/gateways/view/${toSlug(gatewayName)}`
+      `/gateways/view/${gatewayName}`
     );
     cy.contains(gatewayName, { timeout: 30000 }).should('be.visible');
 
@@ -72,15 +72,3 @@ describe('AI Workspace - AI gateway lifecycle', () => {
     cy.contains(gatewayName, { timeout: 30000 }).should('not.exist');
   });
 });
-
-function toSlug(value) {
-  return value
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, '-')
-    .replace(/[^a-z0-9-]/g, '')
-    .replace(/^-+|-+$/g, '')
-    .replace(/-+/g, '-')
-    .substring(0, 64)
-    .replace(/-+$/g, '');
-}

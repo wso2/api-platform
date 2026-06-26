@@ -137,6 +137,9 @@ type DeploymentRepository interface {
 	// Gateway deployment methods
 	GetAllDeploymentsByGateway(gatewayID, orgUUID string, since *time.Time) ([]*model.DeploymentInfo, error)
 	GetDeploymentContentByIDs(deploymentIDs []string, orgUUID string, gatewayUUID string) (map[string]*model.DeploymentContent, error)
+	// GetSecretHandlesByGateway returns the distinct secret handles referenced by all
+	// artifacts currently deployed on a gateway, sourced from artifact_secret_refs (gateway_id rows).
+	GetSecretHandlesByGateway(gatewayID, orgUUID string) ([]string, error)
 }
 
 // GatewayRepository defines the interface for gateway data access
@@ -295,6 +298,19 @@ type WebBrokerAPIRepository interface {
 	Update(api *model.WebBrokerAPI) error
 	Delete(handle, orgUUID string) error
 	Exists(handle, orgUUID string) (bool, error)
+}
+
+// SecretRepository defines the interface for secret persistence.
+type SecretRepository interface {
+	Create(s *model.Secret) error
+	GetByHandle(orgID, handle string) (*model.Secret, error)
+	List(orgID string, limit, offset int, updatedAfter *time.Time) ([]*model.Secret, error)
+	ListByHandles(orgID string, handles []string, updatedAfter *time.Time) ([]*model.Secret, error)
+	Count(orgID string) (int, error)
+	Update(s *model.Secret) error
+	FindRefsAndSoftDelete(orgID, handle, updatedBy string) ([]model.SecretReference, error)
+	FindRefs(orgID, handle string) ([]model.SecretReference, error)
+	Exists(orgID, handle string) (bool, error)
 }
 
 // CustomPolicyRepository defines the interface for custom policy persistence
