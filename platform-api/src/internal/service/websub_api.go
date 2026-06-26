@@ -137,7 +137,7 @@ func (s *WebSubAPIService) Create(orgUUID, createdBy string, req *api.WebSubAPI)
 		CreatedBy:        createdBy,
 		Version:          req.Version,
 		LifeCycleStatus:  lifeCycleStatus,
-		Origin:           constants.OriginCP,
+		Origin: constants.OriginCP,
 		Configuration: model.WebSubAPIConfiguration{
 			Name:              req.Name,
 			Version:           req.Version,

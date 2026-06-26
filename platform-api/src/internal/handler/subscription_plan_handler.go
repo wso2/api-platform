@@ -18,6 +18,7 @@
 package handler
 
 import (
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -30,7 +31,7 @@ import (
 	"platform-api/src/internal/service"
 	"platform-api/src/internal/utils"
 
-	"github.com/gin-gonic/gin"
+	"github.com/wso2/go-httpkit/httputil"
 )
 
 // SubscriptionPlanHandler handles subscription plan CRUD
@@ -95,22 +96,22 @@ type UpdateSubscriptionPlanRequest struct {
 }
 
 // CreateSubscriptionPlan handles POST /api/v0.9/subscription-plans
-func (h *SubscriptionPlanHandler) CreateSubscriptionPlan(c *gin.Context) {
-	orgId, exists := middleware.GetOrganizationFromContext(c)
+func (h *SubscriptionPlanHandler) CreateSubscriptionPlan(w http.ResponseWriter, r *http.Request) {
+	orgId, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
 		return
 	}
 
 	var req CreateSubscriptionPlanRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		h.slogger.Error("Invalid create subscription plan request body", "organizationId", orgId, "error", err)
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid request body"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid request body"))
 		return
 	}
 
 	if req.StopOnQuotaReach != nil && *req.StopOnQuotaReach != 0 && *req.StopOnQuotaReach != 1 {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "stopOnQuotaReach must be 0 or 1"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "stopOnQuotaReach must be 0 or 1"))
 		return
 	}
 
@@ -118,13 +119,13 @@ func (h *SubscriptionPlanHandler) CreateSubscriptionPlan(c *gin.Context) {
 		switch req.Status {
 		case "ACTIVE", "INACTIVE":
 		default:
-			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid status value; must be ACTIVE or INACTIVE"))
+			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid status value; must be ACTIVE or INACTIVE"))
 			return
 		}
 	}
 
 	if errMsg := validateThrottleLimitPair(req.ThrottleLimitCount, req.ThrottleLimitUnit); errMsg != "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", errMsg))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", errMsg))
 		return
 	}
 
@@ -147,40 +148,50 @@ func (h *SubscriptionPlanHandler) CreateSubscriptionPlan(c *gin.Context) {
 	if req.ExpiryTime != nil {
 		t, err := time.Parse(time.RFC3339, *req.ExpiryTime)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid expiryTime format; use RFC3339"))
+			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid expiryTime format; use RFC3339"))
 			return
 		}
 		plan.ExpiryTime = &t
 	}
 
-	actor, ok := middleware.GetUsernameFromContext(c)
+	actor, ok := middleware.GetUsernameFromRequest(r)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Username claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Username claim not found in token"))
 		return
 	}
 	created, err := h.planService.CreatePlan(orgId, actor, plan)
 	if err != nil {
 		if errors.Is(err, constants.ErrSubscriptionPlanAlreadyExists) {
-			c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict", err.Error()))
+			httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponse(409, "Conflict", err.Error()))
 			return
 		}
 		h.slogger.Error("Failed to create subscription plan", "organizationId", orgId, "error", err)
-		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to create subscription plan"))
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to create subscription plan"))
 		return
 	}
-	c.JSON(http.StatusCreated, toSubscriptionPlanResponse(created))
+	httputil.WriteJSON(w, http.StatusCreated, toSubscriptionPlanResponse(created))
 }
 
 // ListSubscriptionPlans handles GET /api/v0.9/subscription-plans
-func (h *SubscriptionPlanHandler) ListSubscriptionPlans(c *gin.Context) {
-	orgId, exists := middleware.GetOrganizationFromContext(c)
+func (h *SubscriptionPlanHandler) ListSubscriptionPlans(w http.ResponseWriter, r *http.Request) {
+	orgId, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
 		return
 	}
 
-	limitStr := c.DefaultQuery("limit", "20")
-	offsetStr := c.DefaultQuery("offset", "0")
+	var limitStr string
+	if v := r.URL.Query().Get("limit"); v != "" {
+		limitStr = v
+	} else {
+		limitStr = "20"
+	}
+	var offsetStr string
+	if v := r.URL.Query().Get("offset"); v != "" {
+		offsetStr = v
+	} else {
+		offsetStr = "0"
+	}
 	limit, err := strconv.Atoi(limitStr)
 	if err != nil || limit <= 0 {
 		limit = 20
@@ -196,71 +207,71 @@ func (h *SubscriptionPlanHandler) ListSubscriptionPlans(c *gin.Context) {
 	list, err := h.planService.ListPlans(orgId, limit, offset)
 	if err != nil {
 		h.slogger.Error("Failed to list subscription plans", "organizationId", orgId, "error", err)
-		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to list subscription plans"))
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to list subscription plans"))
 		return
 	}
-	items := make([]gin.H, 0, len(list))
+	items := make([]map[string]any, 0, len(list))
 	for _, p := range list {
 		items = append(items, toSubscriptionPlanResponse(p))
 	}
-	c.JSON(http.StatusOK, gin.H{"subscriptionPlans": items, "count": len(items)})
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"subscriptionPlans": items, "count": len(items)})
 }
 
 // GetSubscriptionPlan handles GET /api/v0.9/subscription-plans/:planId
-func (h *SubscriptionPlanHandler) GetSubscriptionPlan(c *gin.Context) {
-	orgId, exists := middleware.GetOrganizationFromContext(c)
+func (h *SubscriptionPlanHandler) GetSubscriptionPlan(w http.ResponseWriter, r *http.Request) {
+	orgId, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
 		return
 	}
 
-	planId := c.Param("planId")
+	planId := r.PathValue("planId")
 	if planId == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Plan ID is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Plan ID is required"))
 		return
 	}
 
 	plan, err := h.planService.GetPlan(planId, orgId)
 	if err != nil {
 		if errors.Is(err, constants.ErrSubscriptionPlanNotFound) {
-			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "Subscription plan not found"))
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "Subscription plan not found"))
 			return
 		}
 		h.slogger.Error("Failed to get subscription plan", "planId", planId, "organizationId", orgId, "error", err)
-		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to get subscription plan"))
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to get subscription plan"))
 		return
 	}
-	c.JSON(http.StatusOK, toSubscriptionPlanResponse(plan))
+	httputil.WriteJSON(w, http.StatusOK, toSubscriptionPlanResponse(plan))
 }
 
 // UpdateSubscriptionPlan handles PUT /api/v0.9/subscription-plans/:planId
-func (h *SubscriptionPlanHandler) UpdateSubscriptionPlan(c *gin.Context) {
-	orgId, exists := middleware.GetOrganizationFromContext(c)
+func (h *SubscriptionPlanHandler) UpdateSubscriptionPlan(w http.ResponseWriter, r *http.Request) {
+	orgId, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
 		return
 	}
 
-	planId := c.Param("planId")
+	planId := r.PathValue("planId")
 	if planId == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Plan ID is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Plan ID is required"))
 		return
 	}
 
 	var req UpdateSubscriptionPlanRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		h.slogger.Error("Invalid update subscription plan request body", "planId", planId, "organizationId", orgId, "error", err)
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid request body"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid request body"))
 		return
 	}
 
 	if req.StopOnQuotaReach != nil && *req.StopOnQuotaReach != 0 && *req.StopOnQuotaReach != 1 {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "stopOnQuotaReach must be 0 or 1"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "stopOnQuotaReach must be 0 or 1"))
 		return
 	}
 
 	if errMsg := validateThrottleLimitPair(req.ThrottleLimitCount, req.ThrottleLimitUnit); errMsg != "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", errMsg))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", errMsg))
 		return
 	}
 
@@ -286,87 +297,84 @@ func (h *SubscriptionPlanHandler) UpdateSubscriptionPlan(c *gin.Context) {
 			st := model.SubscriptionPlanStatus(*req.Status)
 			update.Status = &st
 		default:
-			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid status value; must be ACTIVE or INACTIVE"))
+			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid status value; must be ACTIVE or INACTIVE"))
 			return
 		}
 	}
 	if req.ExpiryTime != nil {
 		t, err := time.Parse(time.RFC3339, *req.ExpiryTime)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid expiryTime format; use RFC3339"))
+			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid expiryTime format; use RFC3339"))
 			return
 		}
 		update.ExpiryTime = &t
 	}
 
-	actor, ok := middleware.GetUsernameFromContext(c)
+	actor, ok := middleware.GetUsernameFromRequest(r)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Username claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Username claim not found in token"))
 		return
 	}
 	updated, err := h.planService.UpdatePlan(planId, orgId, actor, update)
 	if err != nil {
 		if errors.Is(err, constants.ErrSubscriptionPlanNotFound) {
-			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "Subscription plan not found"))
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "Subscription plan not found"))
 			return
 		}
 		if errors.Is(err, constants.ErrSubscriptionPlanAlreadyExists) {
-			c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict", err.Error()))
+			httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponse(409, "Conflict", err.Error()))
 			return
 		}
 		h.slogger.Error("Failed to update subscription plan", "planId", planId, "organizationId", orgId, "error", err)
-		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to update subscription plan"))
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to update subscription plan"))
 		return
 	}
-	c.JSON(http.StatusOK, toSubscriptionPlanResponse(updated))
+	httputil.WriteJSON(w, http.StatusOK, toSubscriptionPlanResponse(updated))
 }
 
 // DeleteSubscriptionPlan handles DELETE /api/v0.9/subscription-plans/:planId
-func (h *SubscriptionPlanHandler) DeleteSubscriptionPlan(c *gin.Context) {
-	orgId, exists := middleware.GetOrganizationFromContext(c)
+func (h *SubscriptionPlanHandler) DeleteSubscriptionPlan(w http.ResponseWriter, r *http.Request) {
+	orgId, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
 		return
 	}
 
-	planId := c.Param("planId")
+	planId := r.PathValue("planId")
 	if planId == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Plan ID is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Plan ID is required"))
 		return
 	}
 
-	actor, ok := middleware.GetUsernameFromContext(c)
+	actor, ok := middleware.GetUsernameFromRequest(r)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Username claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Username claim not found in token"))
 		return
 	}
 	err := h.planService.DeletePlan(planId, orgId, actor)
 	if err != nil {
 		if errors.Is(err, constants.ErrSubscriptionPlanNotFound) {
-			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "Subscription plan not found"))
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "Subscription plan not found"))
 			return
 		}
 		h.slogger.Error("Failed to delete subscription plan", "planId", planId, "organizationId", orgId, "error", err)
-		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to delete subscription plan"))
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to delete subscription plan"))
 		return
 	}
-	c.Status(http.StatusNoContent)
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // RegisterRoutes registers subscription plan routes
-func (h *SubscriptionPlanHandler) RegisterRoutes(r *gin.Engine) {
-	group := r.Group(constants.APIBasePath + "/subscription-plans")
-	{
-		group.POST("", h.CreateSubscriptionPlan)
-		group.GET("", h.ListSubscriptionPlans)
-		group.GET("/:planId", h.GetSubscriptionPlan)
-		group.PUT("/:planId", h.UpdateSubscriptionPlan)
-		group.DELETE("/:planId", h.DeleteSubscriptionPlan)
-	}
+func (h *SubscriptionPlanHandler) RegisterRoutes(mux *http.ServeMux) {
+	mux.HandleFunc("POST "+constants.APIBasePath+"/subscription-plans", h.CreateSubscriptionPlan)
+	mux.HandleFunc("GET "+constants.APIBasePath+"/subscription-plans", h.ListSubscriptionPlans)
+	mux.HandleFunc("GET "+constants.APIBasePath+"/subscription-plans/{planId}", h.GetSubscriptionPlan)
+	mux.HandleFunc("PUT "+constants.APIBasePath+"/subscription-plans/{planId}", h.UpdateSubscriptionPlan)
+	mux.HandleFunc("DELETE "+constants.APIBasePath+"/subscription-plans/{planId}", h.DeleteSubscriptionPlan)
 }
 
-func toSubscriptionPlanResponse(plan *model.SubscriptionPlan) gin.H {
-	resp := gin.H{
+func toSubscriptionPlanResponse(plan *model.SubscriptionPlan) map[string]any {
+	resp := map[string]any{
 		"id":               plan.UUID,
 		"handle":           plan.Handle,
 		"name":             plan.Name,

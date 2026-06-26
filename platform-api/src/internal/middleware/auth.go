@@ -18,15 +18,33 @@
 package middleware
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
 
-	commonconstants "github.com/wso2/api-platform/common/constants"
-	commonmodels "github.com/wso2/api-platform/common/models"
+	"github.com/wso2/api-platform/common/authenticators"
 
-	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
+)
+
+// contextKey is an unexported type for context keys in this package.
+type contextKey string
+
+const (
+	keyUserID        contextKey = "user_id"
+	keyUsername      contextKey = "username"
+	keyEmail         contextKey = "email"
+	keyFirstName     contextKey = "first_name"
+	keyLastName      contextKey = "last_name"
+	keyOrganization  contextKey = "organization"
+	keyOrgName       contextKey = "org_name"
+	keyOrgHandle     contextKey = "org_handle"
+	keyScope         contextKey = "scope"
+	keyAudience      contextKey = "audience"
+	keyClaims        contextKey = "claims"
+	keyPlatformRoles contextKey = "platform_roles"
 )
 
 // CustomClaims represents the JWT claims structure used in local JWT (non-IDP) mode.
@@ -47,76 +65,80 @@ type AuthConfig struct {
 	SecretKey             string
 	TokenIssuer           string
 	SkipPaths             []string
-	SkipValidation        bool   // Skip signature validation — dev/local mode only
-	OrganizationClaimName string // JWT claim holding the org ID (default: "organization")
+	SkipValidation        bool
+	OrganizationClaimName string
 }
 
 // PlatformClaimNames holds the JWT claim names used to extract platform-specific values.
 type PlatformClaimNames struct {
-	OrganizationClaim string // active org UUID for this token (e.g. "organization")
-	OrgNameClaim      string // org display name (e.g. "org_name")
-	OrgHandleClaim    string // org URL-safe handle (e.g. "org_handle")
+	OrganizationClaim string
+	OrgNameClaim      string
+	OrgHandleClaim    string
 	UserIDClaim       string
 	UsernameClaim     string
 	EmailClaim        string
 	ScopeClaim        string
 	RolesClaimPath    string
-	// RoleScopeMap maps each IDP role name to the platform scopes it grants.
-	// When a token carries multiple roles the effective scopes are the union.
-	// Nil means passthrough: IDP role names are used directly as scope values.
-	RoleScopeMap map[string][]string
+	RoleScopeMap      map[string][]string
 }
 
-// LocalJWTAuthMiddleware returns a Gin middleware for locally-issued JWT validation.
+// writeJSONError is a helper to write a JSON error body without depending on httputil.
+func writeJSONError(w http.ResponseWriter, status int, msg string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(map[string]string{"error": msg})
+}
+
+// LocalJWTAuthMiddleware returns a middleware for locally-issued JWT validation.
 // Used only when IDP mode is disabled.
-func LocalJWTAuthMiddleware(config AuthConfig) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		for _, path := range config.SkipPaths {
-			if strings.HasPrefix(c.Request.URL.Path, path) {
-				c.Next()
+func LocalJWTAuthMiddleware(config AuthConfig) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			for _, path := range config.SkipPaths {
+				if strings.HasPrefix(r.URL.Path, path) {
+					next.ServeHTTP(w, r)
+					return
+				}
+			}
+
+			authHeader := r.Header.Get("Authorization")
+			if authHeader == "" {
+				writeJSONError(w, http.StatusUnauthorized, "Authorization header is required")
 				return
 			}
-		}
 
-		authHeader := c.GetHeader("Authorization")
-		if authHeader == "" {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Authorization header is required"})
-			c.Abort()
-			return
-		}
+			tokenString := strings.TrimPrefix(authHeader, "Bearer ")
+			if tokenString == authHeader {
+				writeJSONError(w, http.StatusUnauthorized, "Invalid authorization header format. Expected: Bearer <token>")
+				return
+			}
 
-		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
-		if tokenString == authHeader {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid authorization header format. Expected: Bearer <token>"})
-			c.Abort()
-			return
-		}
+			enriched, err := validateLocalJWT(r, tokenString, config)
+			if err != nil {
+				writeJSONError(w, http.StatusUnauthorized, err.Error())
+				return
+			}
 
-		if err := validateLocalJWT(c, tokenString, config); err != nil {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
-			c.Abort()
-			return
-		}
-
-		c.Next()
+			next.ServeHTTP(w, enriched)
+		})
 	}
 }
 
 // validateLocalJWT handles locally-issued JWT validation (non-IDP mode).
-// When SkipValidation is true the signature is not verified — intended for local development only.
-func validateLocalJWT(c *gin.Context, tokenString string, config AuthConfig) error {
+// Returns the request enriched with identity context values on success.
+func validateLocalJWT(r *http.Request, tokenString string, config AuthConfig) (*http.Request, error) {
 	mapClaims := jwt.MapClaims{}
 
 	if config.SkipValidation {
 		parser := jwt.NewParser(jwt.WithoutClaimsValidation())
 		token, _, parseErr := parser.ParseUnverified(tokenString, mapClaims)
 		if parseErr != nil {
-			return fmt.Errorf("invalid JWT format: %v", parseErr)
+			return nil, fmt.Errorf("invalid JWT format: %v", parseErr)
 		}
 		var ok bool
 		mapClaims, ok = token.Claims.(jwt.MapClaims)
 		if !ok {
-			return fmt.Errorf("invalid token claims")
+			return nil, fmt.Errorf("invalid token claims")
 		}
 	} else {
 		token, err := jwt.ParseWithClaims(tokenString, mapClaims, func(token *jwt.Token) (interface{}, error) {
@@ -126,17 +148,17 @@ func validateLocalJWT(c *gin.Context, tokenString string, config AuthConfig) err
 			return []byte(config.SecretKey), nil
 		})
 		if err != nil {
-			return fmt.Errorf("invalid token: %w", err)
+			return nil, fmt.Errorf("invalid token: %w", err)
 		}
 		var ok bool
 		mapClaims, ok = token.Claims.(jwt.MapClaims)
 		if !ok || !token.Valid {
-			return fmt.Errorf("invalid token claims")
+			return nil, fmt.Errorf("invalid token claims")
 		}
 		if config.TokenIssuer != "" {
 			iss, _ := mapClaims["iss"].(string)
 			if iss != config.TokenIssuer {
-				return fmt.Errorf("invalid token issuer")
+				return nil, fmt.Errorf("invalid token issuer")
 			}
 		}
 	}
@@ -147,7 +169,7 @@ func validateLocalJWT(c *gin.Context, tokenString string, config AuthConfig) err
 	}
 	org := getStringClaim(mapClaims, orgClaimName)
 	if org == "" {
-		return fmt.Errorf("token missing required '%s' claim", orgClaimName)
+		return nil, fmt.Errorf("token missing required '%s' claim", orgClaimName)
 	}
 
 	sub, _ := mapClaims["sub"].(string)
@@ -167,113 +189,101 @@ func validateLocalJWT(c *gin.Context, tokenString string, config AuthConfig) err
 		},
 	}
 
-	c.Set("user_id", sub)
-	c.Set("username", claimsObj.Username)
-	c.Set("email", claimsObj.Email)
-	c.Set("first_name", getStringClaim(mapClaims, "firstName"))
-	c.Set("last_name", getStringClaim(mapClaims, "lastName"))
-	c.Set("organization", org)
-	c.Set("scope", claimsObj.Scope)
-	c.Set("audience", claimsObj.Audience)
-	c.Set("claims", claimsObj)
-	// Local JWT tokens carry fine-grained scopes, not role names — platform_roles is empty
-	// here because scope-based validation takes precedence in resolveEffectiveScopes.
-	c.Set("platform_roles", []string{})
-
-	return nil
+	ctx := r.Context()
+	ctx = context.WithValue(ctx, keyUserID, sub)
+	ctx = context.WithValue(ctx, keyUsername, claimsObj.Username)
+	ctx = context.WithValue(ctx, keyEmail, claimsObj.Email)
+	ctx = context.WithValue(ctx, keyFirstName, getStringClaim(mapClaims, "firstName"))
+	ctx = context.WithValue(ctx, keyLastName, getStringClaim(mapClaims, "lastName"))
+	ctx = context.WithValue(ctx, keyOrganization, org)
+	ctx = context.WithValue(ctx, keyScope, claimsObj.Scope)
+	ctx = context.WithValue(ctx, keyAudience, claimsObj.Audience)
+	ctx = context.WithValue(ctx, keyClaims, claimsObj)
+	ctx = context.WithValue(ctx, keyPlatformRoles, []string{})
+	return r.WithContext(ctx), nil
 }
 
 // PlatformClaimsMiddleware extracts platform-specific values from the AuthContext set by
-// common/authenticators.AuthMiddleware (IDP mode) and populates the per-key context entries
-// that handlers rely on.
-func PlatformClaimsMiddleware(claimNames PlatformClaimNames) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		authCtxVal, exists := c.Get(commonconstants.AuthContextKey)
-		if !exists {
-			c.Next()
-			return
-		}
-		authCtx, ok := authCtxVal.(commonmodels.AuthContext)
-		if !ok {
-			c.Next()
-			return
-		}
-
-		var mapClaims jwt.MapClaims
-		switch v := authCtx.Claims.(type) {
-		case jwt.MapClaims:
-			mapClaims = v
-		case map[string]interface{}:
-			mapClaims = jwt.MapClaims(v)
-		default:
-			c.Next()
-			return
-		}
-
-		org       := getStringClaim(mapClaims, claimNames.OrganizationClaim)
-		orgName   := getStringClaim(mapClaims, claimNames.OrgNameClaim)
-		orgHandle := getStringClaim(mapClaims, claimNames.OrgHandleClaim)
-
-		userID := authCtx.UserID
-		if claimNames.UserIDClaim != "" {
-			if v := getStringClaim(mapClaims, claimNames.UserIDClaim); v != "" {
-				userID = v
+// common/authenticators.AuthMiddleware (IDP mode) and populates per-key context entries.
+func PlatformClaimsMiddleware(claimNames PlatformClaimNames) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			authCtx, ok := authenticators.GetAuthContext(r)
+			if !ok {
+				next.ServeHTTP(w, r)
+				return
 			}
-		}
 
-		sub, _ := mapClaims["sub"].(string)
-		username := getStringClaim(mapClaims, claimNames.UsernameClaim)
-		if username == "" {
-			username = sub
-		}
-		email := getStringClaim(mapClaims, claimNames.EmailClaim)
-		scope := getStringClaim(mapClaims, claimNames.ScopeClaim)
-		aud := audienceToString(mapClaims)
-		jti, _ := mapClaims["jti"].(string)
-		claimsObj := &CustomClaims{
-			Organization: org,
-			Username:     username,
-			Email:        email,
-			Scope:        scope,
-			Audience:     aud,
-			JTI:          jti,
-			RegisteredClaims: jwt.RegisteredClaims{
-				Subject: sub,
-			},
-		}
+			var mapClaims jwt.MapClaims
+			switch v := authCtx.Claims.(type) {
+			case jwt.MapClaims:
+				mapClaims = v
+			case map[string]interface{}:
+				mapClaims = jwt.MapClaims(v)
+			default:
+				next.ServeHTTP(w, r)
+				return
+			}
 
-		platformRoles := resolvePlatformRoles(mapClaims, claimNames.RolesClaimPath, claimNames.RoleScopeMap)
+			org := getStringClaim(mapClaims, claimNames.OrganizationClaim)
+			orgName := getStringClaim(mapClaims, claimNames.OrgNameClaim)
+			orgHandle := getStringClaim(mapClaims, claimNames.OrgHandleClaim)
 
-		c.Set("user_id", userID)
-		c.Set("username", username)
-		c.Set("email", email)
-		// Try OIDC-standard names first, fall back to WSO2/Asgardeo attribute names.
-		firstName := getStringClaim(mapClaims, "given_name")
-		if firstName == "" {
-			firstName = getStringClaim(mapClaims, "firstName")
-		}
-		lastName := getStringClaim(mapClaims, "family_name")
-		if lastName == "" {
-			lastName = getStringClaim(mapClaims, "lastName")
-		}
-		c.Set("first_name", firstName)
-		c.Set("last_name", lastName)
-		c.Set("organization", org)
-		c.Set("org_name", orgName)
-		c.Set("org_handle", orgHandle)
-		c.Set("scope", scope)
-		c.Set("audience", aud)
-		c.Set("claims", claimsObj)
-		c.Set("platform_roles", platformRoles)
+			userID := authCtx.UserID
+			if claimNames.UserIDClaim != "" {
+				if v := getStringClaim(mapClaims, claimNames.UserIDClaim); v != "" {
+					userID = v
+				}
+			}
 
-		c.Next()
+			username := getStringClaim(mapClaims, claimNames.UsernameClaim)
+			email := getStringClaim(mapClaims, claimNames.EmailClaim)
+			scope := getStringClaim(mapClaims, claimNames.ScopeClaim)
+			aud := audienceToString(mapClaims)
+			jti, _ := mapClaims["jti"].(string)
+
+			sub, _ := mapClaims["sub"].(string)
+			claimsObj := &CustomClaims{
+				Organization: org,
+				Username:     username,
+				Email:        email,
+				Scope:        scope,
+				Audience:     aud,
+				JTI:          jti,
+				RegisteredClaims: jwt.RegisteredClaims{Subject: sub},
+			}
+
+			firstName := getStringClaim(mapClaims, "given_name")
+			if firstName == "" {
+				firstName = getStringClaim(mapClaims, "firstName")
+			}
+			lastName := getStringClaim(mapClaims, "family_name")
+			if lastName == "" {
+				lastName = getStringClaim(mapClaims, "lastName")
+			}
+
+			platformRoles := resolvePlatformRoles(mapClaims, claimNames.RolesClaimPath, claimNames.RoleScopeMap)
+
+			ctx := r.Context()
+			ctx = context.WithValue(ctx, keyUserID, userID)
+			ctx = context.WithValue(ctx, keyUsername, username)
+			ctx = context.WithValue(ctx, keyEmail, email)
+			ctx = context.WithValue(ctx, keyFirstName, firstName)
+			ctx = context.WithValue(ctx, keyLastName, lastName)
+			ctx = context.WithValue(ctx, keyOrganization, org)
+			ctx = context.WithValue(ctx, keyOrgName, orgName)
+			ctx = context.WithValue(ctx, keyOrgHandle, orgHandle)
+			ctx = context.WithValue(ctx, keyScope, scope)
+			ctx = context.WithValue(ctx, keyAudience, aud)
+			ctx = context.WithValue(ctx, keyClaims, claimsObj)
+			ctx = context.WithValue(ctx, keyPlatformRoles, platformRoles)
+
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
 	}
 }
 
-// resolvePlatformRoles extracts IDP role names from the token at claimPath and
-// expands them to platform scopes using roleScopeMap. When a token carries multiple
-// IDP roles the result is the union of their scope lists (deduped, order preserved).
-// When roleScopeMap is nil the raw IDP role names are returned unchanged (passthrough).
+// resolvePlatformRoles extracts IDP role names from the token and expands them.
 func resolvePlatformRoles(claims jwt.MapClaims, claimPath string, roleScopeMap map[string][]string) []string {
 	if claimPath == "" {
 		return nil
@@ -295,9 +305,6 @@ func resolvePlatformRoles(claims jwt.MapClaims, claimPath string, roleScopeMap m
 	return effectiveScopes
 }
 
-// extractClaimByPath navigates a dot-notation path through jwt.MapClaims and returns the
-// leaf value as a string slice. Supports flat claims ("roles") and arbitrarily nested
-// paths ("realm_access.roles", "a.b.c").
 func extractClaimByPath(claims jwt.MapClaims, path string) []string {
 	return extractByPath(map[string]interface{}(claims), path)
 }
@@ -334,7 +341,6 @@ func toStringSlice(val interface{}) []string {
 	return nil
 }
 
-// getStringClaim safely extracts a string value from jwt.MapClaims.
 func getStringClaim(claims jwt.MapClaims, name string) string {
 	if name == "" {
 		return ""
@@ -343,7 +349,6 @@ func getStringClaim(claims jwt.MapClaims, name string) string {
 	return v
 }
 
-// audienceToString converts the aud claim (string or array) to a space-separated string.
 func audienceToString(claims jwt.MapClaims) string {
 	switch v := claims["aud"].(type) {
 	case string:
@@ -360,110 +365,67 @@ func audienceToString(claims jwt.MapClaims) string {
 	return ""
 }
 
-// GetOrganizationFromContext extracts the organization claim from the Gin context.
-func GetOrganizationFromContext(c *gin.Context) (string, bool) {
-	organization, exists := c.Get("organization")
-	if !exists {
-		return "", false
-	}
-	orgStr, ok := organization.(string)
-	return orgStr, ok
+// --- Context accessor helpers ---
+
+func getStringFromCtx(r *http.Request, key contextKey) (string, bool) {
+	v, _ := r.Context().Value(key).(string)
+	return v, v != ""
 }
 
-// GetOrgNameFromContext extracts the organization display name from the Gin context.
-func GetOrgNameFromContext(c *gin.Context) (string, bool) {
-	v, exists := c.Get("org_name")
-	if !exists {
-		return "", false
-	}
-	s, ok := v.(string)
-	return s, ok
+// GetOrganizationFromRequest extracts the organization claim from the request context.
+func GetOrganizationFromRequest(r *http.Request) (string, bool) {
+	return getStringFromCtx(r, keyOrganization)
 }
 
-// GetOrgHandleFromContext extracts the organization handle from the Gin context.
-func GetOrgHandleFromContext(c *gin.Context) (string, bool) {
-	v, exists := c.Get("org_handle")
-	if !exists {
-		return "", false
-	}
-	s, ok := v.(string)
-	return s, ok
+// GetOrgNameFromRequest extracts the organization display name from the request context.
+func GetOrgNameFromRequest(r *http.Request) (string, bool) {
+	return getStringFromCtx(r, keyOrgName)
 }
 
-// GetUserIDFromContext extracts the user ID from the Gin context.
-func GetUserIDFromContext(c *gin.Context) (string, bool) {
-	userID, exists := c.Get("user_id")
-	if !exists {
-		return "", false
-	}
-	userIDStr, ok := userID.(string)
-	return userIDStr, ok
+// GetOrgHandleFromRequest extracts the organization handle from the request context.
+func GetOrgHandleFromRequest(r *http.Request) (string, bool) {
+	return getStringFromCtx(r, keyOrgHandle)
 }
 
-// GetUsernameFromContext extracts the username from the Gin context.
-func GetUsernameFromContext(c *gin.Context) (string, bool) {
-	username, exists := c.Get("username")
-	if !exists {
-		return "", false
-	}
-	usernameStr, ok := username.(string)
-	return usernameStr, ok
+// GetUserIDFromRequest extracts the user ID from the request context.
+func GetUserIDFromRequest(r *http.Request) (string, bool) {
+	return getStringFromCtx(r, keyUserID)
 }
 
-// GetEmailFromContext extracts the email from the Gin context.
-func GetEmailFromContext(c *gin.Context) (string, bool) {
-	email, exists := c.Get("email")
-	if !exists {
-		return "", false
-	}
-	emailStr, ok := email.(string)
-	return emailStr, ok
+// GetUsernameFromRequest extracts the username from the request context.
+func GetUsernameFromRequest(r *http.Request) (string, bool) {
+	return getStringFromCtx(r, keyUsername)
 }
 
-// GetFirstNameFromContext extracts the first name from the Gin context.
-func GetFirstNameFromContext(c *gin.Context) (string, bool) {
-	firstName, exists := c.Get("first_name")
-	if !exists {
-		return "", false
-	}
-	firstNameStr, ok := firstName.(string)
-	return firstNameStr, ok
+// GetEmailFromRequest extracts the email from the request context.
+func GetEmailFromRequest(r *http.Request) (string, bool) {
+	return getStringFromCtx(r, keyEmail)
 }
 
-// GetLastNameFromContext extracts the last name from the Gin context.
-func GetLastNameFromContext(c *gin.Context) (string, bool) {
-	lastName, exists := c.Get("last_name")
-	if !exists {
-		return "", false
-	}
-	lastNameStr, ok := lastName.(string)
-	return lastNameStr, ok
+// GetFirstNameFromRequest extracts the first name from the request context.
+func GetFirstNameFromRequest(r *http.Request) (string, bool) {
+	return getStringFromCtx(r, keyFirstName)
 }
 
-// GetScopeFromContext extracts the scope from the Gin context.
-func GetScopeFromContext(c *gin.Context) (string, bool) {
-	scope, exists := c.Get("scope")
-	if !exists {
-		return "", false
-	}
-	scopeStr, ok := scope.(string)
-	return scopeStr, ok
+// GetLastNameFromRequest extracts the last name from the request context.
+func GetLastNameFromRequest(r *http.Request) (string, bool) {
+	return getStringFromCtx(r, keyLastName)
 }
 
-// GetAudienceFromContext extracts the audience from the Gin context.
-func GetAudienceFromContext(c *gin.Context) (string, bool) {
-	audience, exists := c.Get("audience")
-	if !exists {
-		return "", false
-	}
-	audienceStr, ok := audience.(string)
-	return audienceStr, ok
+// GetScopeFromRequest extracts the scope from the request context.
+func GetScopeFromRequest(r *http.Request) (string, bool) {
+	return getStringFromCtx(r, keyScope)
 }
 
-// GetRolesFromContext parses the space-separated scope string into individual roles.
-func GetRolesFromContext(c *gin.Context) ([]string, bool) {
-	scope, exists := GetScopeFromContext(c)
-	if !exists {
+// GetAudienceFromRequest extracts the audience from the request context.
+func GetAudienceFromRequest(r *http.Request) (string, bool) {
+	return getStringFromCtx(r, keyAudience)
+}
+
+// GetRolesFromRequest parses the space-separated scope string into individual roles.
+func GetRolesFromRequest(r *http.Request) ([]string, bool) {
+	scope, ok := GetScopeFromRequest(r)
+	if !ok {
 		return nil, false
 	}
 	if scope == "" {
@@ -472,40 +434,71 @@ func GetRolesFromContext(c *gin.Context) ([]string, bool) {
 	return strings.Fields(scope), true
 }
 
-// GetClaimsFromContext extracts the full CustomClaims object from the Gin context.
-func GetClaimsFromContext(c *gin.Context) (*CustomClaims, bool) {
-	claims, exists := c.Get("claims")
-	if !exists {
-		return nil, false
-	}
-	claimsObj, ok := claims.(*CustomClaims)
-	return claimsObj, ok
+// GetClaimsFromRequest extracts the full CustomClaims object from the request context.
+func GetClaimsFromRequest(r *http.Request) (*CustomClaims, bool) {
+	claims, ok := r.Context().Value(keyClaims).(*CustomClaims)
+	return claims, ok
 }
 
-// RequireOrganization returns a middleware that aborts with 403 if the token's organization
-// does not match the organization ID in the URL parameter named by organizationParam.
-func RequireOrganization(organizationParam string) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		tokenOrg, exists := GetOrganizationFromContext(c)
-		if !exists {
-			c.JSON(http.StatusForbidden, gin.H{"error": "No organization found in token"})
-			c.Abort()
-			return
-		}
+// GetPlatformRolesFromRequest extracts platform roles from the request context.
+func GetPlatformRolesFromRequest(r *http.Request) ([]string, bool) {
+	roles, ok := r.Context().Value(keyPlatformRoles).([]string)
+	return roles, ok
+}
 
-		requestedOrg := c.Param(organizationParam)
-		if requestedOrg == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Organization parameter is required"})
-			c.Abort()
-			return
-		}
+// RequireOrganization returns a middleware that aborts with 403 if the token's
+// organization does not match the organization ID in the URL path value.
+func RequireOrganization(organizationParam string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			tokenOrg, exists := GetOrganizationFromRequest(r)
+			if !exists {
+				writeJSONError(w, http.StatusForbidden, "No organization found in token")
+				return
+			}
 
-		if tokenOrg != requestedOrg {
-			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied for the requested organization"})
-			c.Abort()
-			return
-		}
+			requestedOrg := r.PathValue(organizationParam)
+			if requestedOrg == "" {
+				writeJSONError(w, http.StatusBadRequest, "Organization parameter is required")
+				return
+			}
 
-		c.Next()
+			if tokenOrg != requestedOrg {
+				writeJSONError(w, http.StatusForbidden, "Access denied for the requested organization")
+				return
+			}
+
+			next.ServeHTTP(w, r)
+		})
 	}
 }
+
+// NewTestContextMiddleware creates an http.Handler middleware for integration tests.
+// It reads X-Test-Org and X-Test-User request headers and injects the values into
+// the request context so that GetOrganizationFromRequest / GetUsernameFromRequest work
+// without a real JWT. Never use this in production code.
+func NewTestContextMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+		if org := r.Header.Get("X-Test-Org"); org != "" {
+			ctx = context.WithValue(ctx, keyOrganization, org)
+		}
+		if user := r.Header.Get("X-Test-User"); user != "" {
+			ctx = context.WithValue(ctx, keyUsername, user)
+		}
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+// WithOrganization is a helper for tests to inject an organization into the request context.
+func WithOrganization(r *http.Request, org string) *http.Request {
+	return r.WithContext(context.WithValue(r.Context(), keyOrganization, org))
+}
+
+// WithUserID is a helper for tests to inject a user ID into the request context.
+func WithUserID(r *http.Request, id string) *http.Request {
+	return r.WithContext(context.WithValue(r.Context(), keyUserID, id))
+}
+
+// --- Compatibility shims for common/authenticators ---
+

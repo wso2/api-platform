@@ -23,9 +23,9 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"strings"
 
-	"github.com/gin-gonic/gin"
 	"github.com/wso2/api-platform/common/constants"
 	"github.com/wso2/api-platform/common/models"
 	"golang.org/x/crypto/argon2"
@@ -47,8 +47,8 @@ func NewBasicAuthenticator(authConfig models.AuthConfig, logger *slog.Logger) *B
 }
 
 // Authenticate verifies basic authentication credentials from context
-func (b *BasicAuthenticator) Authenticate(c *gin.Context) (*AuthResult, error) {
-	authHeader := c.GetHeader(constants.AuthorizationHeader)
+func (b *BasicAuthenticator) Authenticate(r *http.Request) (*AuthResult, error) {
+	authHeader := r.Header.Get(constants.AuthorizationHeader)
 	if authHeader == "" {
 		return nil, ErrAuthenticationFailed
 	}
@@ -112,13 +112,11 @@ func (b *BasicAuthenticator) Name() string {
 }
 
 // CanHandle checks if credentials in context are BasicCredentials
-func (b *BasicAuthenticator) CanHandle(c *gin.Context) bool {
-
-	authHeader := c.GetHeader(constants.AuthorizationHeader)
+func (b *BasicAuthenticator) CanHandle(r *http.Request) bool {
+	authHeader := r.Header.Get(constants.AuthorizationHeader)
 	if authHeader == "" {
 		return false
 	}
-	// Determine auth type from header
 	return strings.HasPrefix(authHeader, constants.BasicPrefix)
 }
 

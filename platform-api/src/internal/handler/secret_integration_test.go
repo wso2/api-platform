@@ -34,16 +34,16 @@ import (
 	"platform-api/src/internal/constants"
 	"platform-api/src/internal/database"
 	"platform-api/src/internal/dto"
+	"platform-api/src/internal/middleware"
 	"platform-api/src/internal/repository"
 	"platform-api/src/internal/service"
 	"platform-api/src/internal/vault"
 
-	"github.com/gin-gonic/gin"
 	_ "github.com/mattn/go-sqlite3"
 )
 
 // setupSecretTestEnv creates a full handler stack backed by an in-memory SQLite DB.
-func setupSecretTestEnv(t *testing.T) (*gin.Engine, func()) {
+func setupSecretTestEnv(t *testing.T) (http.Handler, func()) {
 	t.Helper()
 
 	tmpDir := t.TempDir()
@@ -86,26 +86,11 @@ func setupSecretTestEnv(t *testing.T) (*gin.Engine, func()) {
 	svc := service.NewSecretService(repo, v)
 	h := NewSecretHandler(svc, slog.Default())
 
-	gin.SetMode(gin.TestMode)
-	r := gin.New()
-
-	// Auth middleware for tests: reads X-Test-Org and X-Test-User headers
-	r.Use(func(c *gin.Context) {
-		org := c.GetHeader("X-Test-Org")
-		user := c.GetHeader("X-Test-User")
-		if org != "" {
-			c.Set("organization", org)
-		}
-		if user != "" {
-			c.Set("username", user)
-		}
-		c.Next()
-	})
-
-	h.RegisterRoutes(r)
+	mux := http.NewServeMux()
+	h.RegisterRoutes(mux)
 
 	cleanup := func() { sqlDB.Close() }
-	return r, cleanup
+	return middleware.NewTestContextMiddleware(mux), cleanup
 }
 
 // multipartForm encodes fields as multipart/form-data and returns the body buffer
@@ -122,7 +107,7 @@ func multipartForm(fields map[string]string) (*bytes.Buffer, string) {
 
 // doRequest is a helper that creates a request, sets common test headers, and returns the response.
 // Pass a non-nil fields map to send a multipart/form-data body; pass nil for requests with no body.
-func doRequest(r *gin.Engine, method, path string, fields map[string]string, withAuth bool) *httptest.ResponseRecorder {
+func doRequest(r http.Handler, method, path string, fields map[string]string, withAuth bool) *httptest.ResponseRecorder {
 	var body *bytes.Buffer
 	contentType := ""
 	if fields != nil {
@@ -146,7 +131,7 @@ func doRequest(r *gin.Engine, method, path string, fields map[string]string, wit
 }
 
 // createSecret is a helper that POSTs a secret via multipart/form-data.
-func createSecret(r *gin.Engine, handle, displayName, value string) *httptest.ResponseRecorder {
+func createSecret(r http.Handler, handle, displayName, value string) *httptest.ResponseRecorder {
 	return doRequest(r, http.MethodPost, "/api/v1/secrets", map[string]string{
 		"handle":      handle,
 		"name":        displayName,
@@ -387,19 +372,16 @@ func TestSecretHandler_Update_ReactivatesDeprecatedSecret(t *testing.T) {
 	repo := repository.NewSecretRepo(db)
 	svc := service.NewSecretService(repo, v)
 
-	gin.SetMode(gin.TestMode)
-	r := gin.New()
-	r.Use(func(c *gin.Context) {
-		c.Set("organization", "org-react-it")
-		c.Set("username", "alice")
-		c.Next()
-	})
-	NewSecretHandler(svc, slog.Default()).RegisterRoutes(r)
+	mux := http.NewServeMux()
+	NewSecretHandler(svc, slog.Default()).RegisterRoutes(mux)
+	r := middleware.NewTestContextMiddleware(mux)
 
 	// Create then soft-delete (deprecate) the secret.
 	body, ct := multipartForm(map[string]string{"handle": "react-key", "name": "React Key", "value": "old-val"})
 	req, _ := http.NewRequest(http.MethodPost, "/api/v1/secrets", body)
 	req.Header.Set("Content-Type", ct)
+	req.Header.Set("X-Test-Org", "org-react-it")
+	req.Header.Set("X-Test-User", "alice")
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 	if w.Code != http.StatusCreated {
@@ -407,6 +389,8 @@ func TestSecretHandler_Update_ReactivatesDeprecatedSecret(t *testing.T) {
 	}
 
 	delReq, _ := http.NewRequest(http.MethodDelete, "/api/v1/secrets/react-key", nil)
+	delReq.Header.Set("X-Test-Org", "org-react-it")
+	delReq.Header.Set("X-Test-User", "alice")
 	wDel := httptest.NewRecorder()
 	r.ServeHTTP(wDel, delReq)
 	if wDel.Code != http.StatusNoContent {
@@ -424,6 +408,8 @@ func TestSecretHandler_Update_ReactivatesDeprecatedSecret(t *testing.T) {
 	putBody, putCT := multipartForm(map[string]string{"value": "new-val"})
 	putReq, _ := http.NewRequest(http.MethodPut, "/api/v1/secrets/react-key", putBody)
 	putReq.Header.Set("Content-Type", putCT)
+	putReq.Header.Set("X-Test-Org", "org-react-it")
+	putReq.Header.Set("X-Test-User", "alice")
 	wPut := httptest.NewRecorder()
 	r.ServeHTTP(wPut, putReq)
 	if wPut.Code != http.StatusOK {
@@ -494,14 +480,9 @@ func TestSecretHandler_Delete_409_ReferencedByArtifact(t *testing.T) {
 	svc := service.NewSecretService(repo, v)
 	h := NewSecretHandler(svc, slog.Default())
 
-	gin.SetMode(gin.TestMode)
-	r2 := gin.New()
-	r2.Use(func(c *gin.Context) {
-		c.Set("organization", "org-it-001")
-		c.Set("username", "alice")
-		c.Next()
-	})
-	h.RegisterRoutes(r2)
+	mux2 := http.NewServeMux()
+	h.RegisterRoutes(mux2)
+	r2 := middleware.NewTestContextMiddleware(mux2)
 
 	// Create the secret via the handler
 	w := createSecretOnRouter(r2, "ref-key", "Ref Key", "val")
@@ -533,7 +514,7 @@ func TestSecretHandler_Delete_409_ReferencedByArtifact(t *testing.T) {
 }
 
 // doRequestAs is like doRequest but targets a specific org with no body.
-func doRequestAs(r *gin.Engine, method, path, orgID string) *httptest.ResponseRecorder {
+func doRequestAs(r http.Handler, method, path, orgID string) *httptest.ResponseRecorder {
 	req, _ := http.NewRequest(method, path, &bytes.Buffer{})
 	req.Header.Set("X-Test-Org", orgID)
 	req.Header.Set("X-Test-User", "alice")
@@ -543,7 +524,7 @@ func doRequestAs(r *gin.Engine, method, path, orgID string) *httptest.ResponseRe
 }
 
 // createSecretOnRouter is like createSecret but uses a provided router.
-func createSecretOnRouter(r *gin.Engine, handle, displayName, value string) *httptest.ResponseRecorder {
+func createSecretOnRouter(r http.Handler, handle, displayName, value string) *httptest.ResponseRecorder {
 	body, ct := multipartForm(map[string]string{
 		"handle":      handle,
 		"name":        displayName,
@@ -676,14 +657,9 @@ func TestSecretHandler_Delete_SoftDeletesRow(t *testing.T) {
 	repo := repository.NewSecretRepo(db)
 	svc := service.NewSecretService(repo, v)
 
-	gin.SetMode(gin.TestMode)
-	r := gin.New()
-	r.Use(func(c *gin.Context) {
-		c.Set("organization", "org-sd-it")
-		c.Set("username", "alice")
-		c.Next()
-	})
-	NewSecretHandler(svc, slog.Default()).RegisterRoutes(r)
+	mux3 := http.NewServeMux()
+	NewSecretHandler(svc, slog.Default()).RegisterRoutes(mux3)
+	r := middleware.NewTestContextMiddleware(mux3)
 
 	// (a) Create and DELETE → 204
 	createBody, createCT := multipartForm(map[string]string{
@@ -691,6 +667,8 @@ func TestSecretHandler_Delete_SoftDeletesRow(t *testing.T) {
 	})
 	createReq, _ := http.NewRequest(http.MethodPost, "/api/v1/secrets", createBody)
 	createReq.Header.Set("Content-Type", createCT)
+	createReq.Header.Set("X-Test-Org", "org-sd-it")
+	createReq.Header.Set("X-Test-User", "alice")
 	wCreate := httptest.NewRecorder()
 	r.ServeHTTP(wCreate, createReq)
 	if wCreate.Code != http.StatusCreated {
@@ -698,6 +676,8 @@ func TestSecretHandler_Delete_SoftDeletesRow(t *testing.T) {
 	}
 
 	delReq, _ := http.NewRequest(http.MethodDelete, "/api/v1/secrets/soft-del-key", nil)
+	delReq.Header.Set("X-Test-Org", "org-sd-it")
+	delReq.Header.Set("X-Test-User", "alice")
 	wDel := httptest.NewRecorder()
 	r.ServeHTTP(wDel, delReq)
 	if wDel.Code != http.StatusNoContent {

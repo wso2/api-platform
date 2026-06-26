@@ -32,6 +32,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 # is only invalidated when dependencies change, not when source code changes.
 COPY --from=sdk-core go.mod /sdk/core/
 COPY --from=common go.mod go.sum /common/
+COPY --from=httpkit go.mod go.sum /httpkit/
 
 COPY go.mod go.sum ./
 RUN --mount=type=cache,target=/go/pkg/mod \
@@ -39,6 +40,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 
 COPY --from=sdk-core . /sdk/core
 COPY --from=common . /common
+COPY --from=httpkit . /httpkit
 COPY . ./
 
 # Build with CGO (required for SQLite), set CC for cross-compilation, add -cover/-gcflags if enabled

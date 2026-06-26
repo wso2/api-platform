@@ -24,7 +24,7 @@ import (
 	"platform-api/src/internal/constants"
 	"platform-api/src/internal/utils"
 
-	"github.com/gin-gonic/gin"
+	"github.com/wso2/go-httpkit/httputil"
 )
 
 // respondArtifactGuardError writes the appropriate HTTP response for read-only /
@@ -34,13 +34,13 @@ import (
 //
 //   - ErrArtifactReadOnly  -> 403 Forbidden (update/deploy of a DP artifact)
 //   - ErrArtifactDeployed  -> 409 Conflict  (delete of a still-deployed DP artifact)
-func respondArtifactGuardError(c *gin.Context, err error) bool {
+func respondArtifactGuardError(w http.ResponseWriter, err error) bool {
 	switch {
 	case errors.Is(err, constants.ErrArtifactReadOnly):
-		c.JSON(http.StatusForbidden, utils.NewErrorResponse(403, "Forbidden", err.Error()))
+		httputil.WriteJSON(w, http.StatusForbidden, utils.NewErrorResponse(403, "Forbidden", err.Error()))
 		return true
 	case errors.Is(err, constants.ErrArtifactDeployed):
-		c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict", err.Error()))
+		httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponse(409, "Conflict", err.Error()))
 		return true
 	default:
 		return false

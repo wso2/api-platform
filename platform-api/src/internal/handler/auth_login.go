@@ -18,14 +18,13 @@
 package handler
 
 import (
-	"log/slog"
 	"net/http"
 	"time"
 
 	"platform-api/src/config"
 
-	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/wso2/go-httpkit/httputil"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -48,23 +47,20 @@ func NewAuthLoginHandler(cfg *config.Server) *AuthLoginHandler {
 	return &AuthLoginHandler{cfg: cfg}
 }
 
-func (h *AuthLoginHandler) RegisterPublicRoutes(r *gin.Engine) {
-	r.POST("/api/portal/v0.9/auth/login", h.Login)
+func (h *AuthLoginHandler) RegisterPublicRoutes(mux *http.ServeMux) {
+	mux.HandleFunc("POST /api/portal/v1/auth/login", h.Login)
 }
 
-func (h *AuthLoginHandler) Login(c *gin.Context) {
-	// Defense in depth: even if the route is registered, refuse to issue tokens
-	// unless file-based auth is explicitly enabled.
-	if !h.cfg.Auth.FileBased.Enabled {
-		slog.Warn("login attempt rejected: file-based authentication is not enabled",
-			"path", c.FullPath(), "remoteAddr", c.ClientIP())
-		c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
+func (h *AuthLoginHandler) Login(w http.ResponseWriter, r *http.Request) {
+	var req loginRequest
+	if err := r.ParseForm(); err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "username and password are required"})
 		return
 	}
-
-	var req loginRequest
-	if err := c.ShouldBind(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "username and password are required"})
+	req.Username = r.PostForm.Get("username")
+	req.Password = r.PostForm.Get("password")
+	if req.Username == "" || req.Password == "" {
+		httputil.WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "username and password are required"})
 		return
 	}
 
@@ -81,12 +77,12 @@ func (h *AuthLoginHandler) Login(c *gin.Context) {
 	// timing-based username enumeration.
 	if matched == nil {
 		_ = bcrypt.CompareHashAndPassword([]byte("$2a$10$notarealhashjustpadding000000000000000000000000000"), []byte(req.Password))
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid credentials"})
+		httputil.WriteJSON(w, http.StatusUnauthorized, map[string]any{"error": "invalid credentials"})
 		return
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(matched.PasswordHash), []byte(req.Password)); err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid credentials"})
+		httputil.WriteJSON(w, http.StatusUnauthorized, map[string]any{"error": "invalid credentials"})
 		return
 	}
 
@@ -106,11 +102,11 @@ func (h *AuthLoginHandler) Login(c *gin.Context) {
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	signed, err := token.SignedString([]byte(h.cfg.Auth.JWT.SecretKey))
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to issue token"})
+		httputil.WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "failed to issue token"})
 		return
 	}
 
-	c.JSON(http.StatusOK, loginResponse{
+	httputil.WriteJSON(w, http.StatusOK, loginResponse{
 		Token:     signed,
 		ExpiresAt: expiry.Unix(),
 	})

@@ -31,7 +31,7 @@ import (
 	"platform-api/src/internal/service"
 	"platform-api/src/internal/utils"
 
-	"github.com/gin-gonic/gin"
+	"github.com/wso2/go-httpkit/httputil"
 )
 
 // gatewayVersionPattern accepts two shapes for the registration version field:
@@ -61,17 +61,17 @@ type manifestSyncResponse struct {
 }
 
 // CreateGateway handles POST /api/v0.9/gateways
-func (h *GatewayHandler) CreateGateway(c *gin.Context) {
-	orgId, exists := middleware.GetOrganizationFromContext(c)
+func (h *GatewayHandler) CreateGateway(w http.ResponseWriter, r *http.Request) {
+	orgId, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
 			"Organization claim not found in token"))
 		return
 	}
 
 	var req api.CreateGatewayRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))
 		return
 	}
 
@@ -100,12 +100,12 @@ func (h *GatewayHandler) CreateGateway(c *gin.Context) {
 		version = strings.TrimSpace(*req.Version)
 	}
 	if version != "" && !gatewayVersionPattern.MatchString(version) {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"version must be in 'major.minor' format (e.g. '1.0') or CalVer 'YYYY.MM.DD' format (e.g. '2026.05.13')"))
 		return
 	}
 
-	createdBy, _ := middleware.GetUsernameFromContext(c)
+	createdBy, _ := middleware.GetUsernameFromRequest(r)
 	gateway, err := h.gatewayService.RegisterGateway(orgId, req.Name, req.DisplayName, description, req.Vhost,
 		isCritical, functionalityType, version, createdBy, properties)
 	if err != nil {
@@ -114,39 +114,39 @@ func (h *GatewayHandler) CreateGateway(c *gin.Context) {
 		// Check for specific error types
 		if strings.Contains(errMsg, "organization not found") {
 			h.slogger.Error("Organization not found during gateway creation", "error", err)
-			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", errMsg))
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", errMsg))
 			return
 		}
 
 		if strings.Contains(errMsg, "already exists") {
 			h.slogger.Error("Gateway already exists", "error", err)
-			c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict", errMsg))
+			httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponse(409, "Conflict", errMsg))
 			return
 		}
 
 		if strings.Contains(errMsg, "required") || strings.Contains(errMsg, "invalid") ||
 			strings.Contains(errMsg, "must") || strings.Contains(errMsg, "cannot") {
 			h.slogger.Error("Invalid gateway creation request", "error", err)
-			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", errMsg))
+			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", errMsg))
 			return
 		}
 
 		// Internal server error
 		h.slogger.Error("Failed to register gateway", "error", err)
-		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
 			"Failed to register gateway"))
 		return
 	}
 
 	// Return 201 Created with response
-	c.JSON(http.StatusCreated, gateway)
+	httputil.WriteJSON(w, http.StatusCreated, gateway)
 }
 
 // ListGateways handles GET /api/v0.9/gateways with constitution-compliant response
-func (h *GatewayHandler) ListGateways(c *gin.Context) {
-	organizationID, exists := middleware.GetOrganizationFromContext(c)
+func (h *GatewayHandler) ListGateways(w http.ResponseWriter, r *http.Request) {
+	organizationID, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
 			"Organization claim not found in token"))
 		return
 	}
@@ -154,28 +154,28 @@ func (h *GatewayHandler) ListGateways(c *gin.Context) {
 	gateways, err := h.gatewayService.ListGateways(&organizationID)
 	if err != nil {
 		h.slogger.Error("Failed to list gateways", "error", err)
-		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
 			"Failed to list gateways"))
 		return
 	}
 
 	// Return 200 OK with constitution-compliant envelope structure
-	c.JSON(http.StatusOK, gateways)
+	httputil.WriteJSON(w, http.StatusOK, gateways)
 }
 
 // GetGateway handles GET /api/v0.9/gateways/:gatewayId
-func (h *GatewayHandler) GetGateway(c *gin.Context) {
-	orgId, exists := middleware.GetOrganizationFromContext(c)
+func (h *GatewayHandler) GetGateway(w http.ResponseWriter, r *http.Request) {
+	orgId, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
 			"Organization claim not found in token"))
 		return
 	}
 
 	// Extract UUID path parameter
-	gatewayId := c.Param("gatewayId")
+	gatewayId := r.PathValue("gatewayId")
 	if gatewayId == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"Gateway ID is required"))
 		return
 	}
@@ -187,37 +187,37 @@ func (h *GatewayHandler) GetGateway(c *gin.Context) {
 		// Check for specific error types
 		if strings.Contains(errMsg, "not found") {
 			h.slogger.Error("Gateway not found", "error", err)
-			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", errMsg))
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", errMsg))
 			return
 		}
 
 		if strings.Contains(errMsg, "invalid UUID") {
 			h.slogger.Error("Invalid gateway UUID", "error", err)
-			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", errMsg))
+			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", errMsg))
 			return
 		}
 
 		// Internal server error
 		h.slogger.Error("Failed to retrieve gateway", "error", err)
-		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
 			"Failed to retrieve gateway"))
 		return
 	}
 
 	// Return 200 OK with gateway details
-	c.JSON(http.StatusOK, gateway)
+	httputil.WriteJSON(w, http.StatusOK, gateway)
 }
 
 // GetGatewayStatus retrieves gateway status, optionally filtered by gatewayId query param.
-func (h *GatewayHandler) GetGatewayStatus(c *gin.Context) {
-	orgId, exists := middleware.GetOrganizationFromContext(c)
+func (h *GatewayHandler) GetGatewayStatus(w http.ResponseWriter, r *http.Request) {
+	orgId, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
 			"Organization claim not found in token"))
 		return
 	}
 
-	gatewayId := c.Query("gatewayId")
+	gatewayId := r.URL.Query().Get("gatewayId")
 	var gatewayIdPtr *string
 	if gatewayId != "" {
 		gatewayIdPtr = &gatewayId
@@ -226,123 +226,123 @@ func (h *GatewayHandler) GetGatewayStatus(c *gin.Context) {
 	status, err := h.gatewayService.GetGatewayStatus(orgId, gatewayIdPtr)
 	if err != nil {
 		if strings.Contains(err.Error(), "gateway not found") {
-			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
 				"Gateway not found"))
 			return
 		}
-		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
 			"Failed to get gateway status"))
 		return
 	}
 
-	c.JSON(http.StatusOK, status)
+	httputil.WriteJSON(w, http.StatusOK, status)
 }
 
 // UpdateGateway handles PUT /api/v0.9/gateways/:gatewayId
-func (h *GatewayHandler) UpdateGateway(c *gin.Context) {
-	orgId, exists := middleware.GetOrganizationFromContext(c)
+func (h *GatewayHandler) UpdateGateway(w http.ResponseWriter, r *http.Request) {
+	orgId, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
 			"Organization claim not found in token"))
 		return
 	}
 
 	// Extract UUID path parameter
-	gatewayId := c.Param("gatewayId")
+	gatewayId := r.PathValue("gatewayId")
 	if gatewayId == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"Gateway ID is required"))
 		return
 	}
 
 	var req api.UpdateGatewayRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))
 		return
 	}
 
-	updatedBy, _ := middleware.GetUsernameFromContext(c)
+	updatedBy, _ := middleware.GetUsernameFromRequest(r)
 	response, err := h.gatewayService.UpdateGateway(gatewayId, orgId, updatedBy, req.Description, req.DisplayName, req.IsCritical, req.Properties)
 	if err != nil {
 		if errors.Is(err, constants.ErrGatewayNotFound) {
 			h.slogger.Error("Gateway not found during update", "error", err)
-			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
 				"Gateway not found"))
 			return
 		}
 		h.slogger.Error("Failed to update gateway", "error", err)
-		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
 			"Failed to update gateway"))
 		return
 	}
 
-	c.JSON(http.StatusOK, response)
+	httputil.WriteJSON(w, http.StatusOK, response)
 }
 
 // DeleteGateway handles DELETE /api/v0.9/gateways/:gatewayId
-func (h *GatewayHandler) DeleteGateway(c *gin.Context) {
-	orgId, exists := middleware.GetOrganizationFromContext(c)
+func (h *GatewayHandler) DeleteGateway(w http.ResponseWriter, r *http.Request) {
+	orgId, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
 			"Organization claim not found in token"))
 		return
 	}
 
 	// Extract UUID path parameter
-	gatewayId := c.Param("gatewayId")
+	gatewayId := r.PathValue("gatewayId")
 	if gatewayId == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"Gateway ID is required"))
 		return
 	}
 
-	deletedBy, _ := middleware.GetUsernameFromContext(c)
+	deletedBy, _ := middleware.GetUsernameFromRequest(r)
 	err := h.gatewayService.DeleteGateway(gatewayId, orgId, deletedBy)
 	if err != nil {
 		// Check for specific error types
 		if errors.Is(err, constants.ErrGatewayNotFound) {
 			h.slogger.Error("Gateway not found during deletion", "error", err)
-			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
 				"The specified resource does not exist"))
 			return
 		}
 		if errors.Is(err, constants.ErrGatewayHasAssociatedAPIs) {
 			h.slogger.Error("Gateway has associated APIs during deletion", "error", err)
-			c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict",
+			httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponse(409, "Conflict",
 				"The gateway has associated APIs. Please remove all API associations before deleting the gateway"))
 			return
 		}
 
 		if strings.Contains(err.Error(), "invalid UUID") {
 			h.slogger.Error("Invalid UUID during gateway deletion", "error", err)
-			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 				"Invalid gateway ID format"))
 			return
 		}
 
 		// Internal server error
 		h.slogger.Error("Failed to delete gateway", "error", err)
-		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
 			"The server encountered an internal error. Please contact administrator."))
 		return
 	}
 
 	// Return 204 No Content on successful deletion
-	c.Status(http.StatusNoContent)
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // ListTokens handles GET /api/v0.9/gateways/:gatewayId/tokens
-func (h *GatewayHandler) ListTokens(c *gin.Context) {
-	orgId, exists := middleware.GetOrganizationFromContext(c)
+func (h *GatewayHandler) ListTokens(w http.ResponseWriter, r *http.Request) {
+	orgId, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
 			"Organization claim not found in token"))
 		return
 	}
 
-	gatewayId := c.Param("gatewayId")
+	gatewayId := r.PathValue("gatewayId")
 	if gatewayId == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"Gateway ID is required"))
 		return
 	}
@@ -353,37 +353,37 @@ func (h *GatewayHandler) ListTokens(c *gin.Context) {
 
 		if strings.Contains(errMsg, "gateway not found") {
 			h.slogger.Error("Gateway not found during token listing", "error", err)
-			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", errMsg))
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", errMsg))
 			return
 		}
 
 		h.slogger.Error("Failed to list tokens", "error", err)
-		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
 			"Failed to list tokens"))
 		return
 	}
 
-	c.JSON(http.StatusOK, tokens)
+	httputil.WriteJSON(w, http.StatusOK, tokens)
 }
 
 // RotateToken handles POST /api/v0.9/gateways/:gatewayId/tokens
-func (h *GatewayHandler) RotateToken(c *gin.Context) {
-	orgId, exists := middleware.GetOrganizationFromContext(c)
+func (h *GatewayHandler) RotateToken(w http.ResponseWriter, r *http.Request) {
+	orgId, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
 			"Organization claim not found in token"))
 		return
 	}
 
 	// Extract ID path parameter
-	gatewayId := c.Param("gatewayId")
+	gatewayId := r.PathValue("gatewayId")
 	if gatewayId == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"Gateway ID is required"))
 		return
 	}
 
-	createdBy, _ := middleware.GetUsernameFromContext(c)
+	createdBy, _ := middleware.GetUsernameFromRequest(r)
 	response, err := h.gatewayService.RotateToken(gatewayId, orgId, createdBy)
 	if err != nil {
 		errMsg := err.Error()
@@ -391,92 +391,92 @@ func (h *GatewayHandler) RotateToken(c *gin.Context) {
 		// Check for specific error types
 		if strings.Contains(errMsg, "gateway not found") {
 			h.slogger.Error("Gateway not found during token rotation", "error", err)
-			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", errMsg))
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", errMsg))
 			return
 		}
 
 		if strings.Contains(errMsg, "maximum") || strings.Contains(errMsg, "Revoke") {
 			h.slogger.Error("Token rotation request validation failed", "error", err)
-			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", errMsg))
+			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", errMsg))
 			return
 		}
 
 		// Internal server error
 		h.slogger.Error("Failed to rotate token", "error", err)
-		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
 			"Failed to rotate token"))
 		return
 	}
 
 	// Return 201 Created with response
-	c.JSON(http.StatusCreated, response)
+	httputil.WriteJSON(w, http.StatusCreated, response)
 }
 
 // RevokeToken handles DELETE /api/v0.9/gateways/:gatewayId/tokens/:tokenId
-func (h *GatewayHandler) RevokeToken(c *gin.Context) {
-	orgId, exists := middleware.GetOrganizationFromContext(c)
+func (h *GatewayHandler) RevokeToken(w http.ResponseWriter, r *http.Request) {
+	orgId, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
 			"Organization claim not found in token"))
 		return
 	}
 
-	gatewayId := c.Param("gatewayId")
+	gatewayId := r.PathValue("gatewayId")
 	if gatewayId == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"Gateway ID is required"))
 		return
 	}
 
-	tokenId := c.Param("tokenId")
+	tokenId := r.PathValue("tokenId")
 	if tokenId == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"Token ID is required"))
 		return
 	}
 
-	revokedBy, _ := middleware.GetUsernameFromContext(c)
+	revokedBy, _ := middleware.GetUsernameFromRequest(r)
 	err := h.gatewayService.RevokeToken(gatewayId, tokenId, orgId, revokedBy)
 	if err != nil {
 		errMsg := err.Error()
 
 		if strings.Contains(errMsg, "not found") {
 			h.slogger.Error("Resource not found during token revocation", "error", err)
-			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", errMsg))
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", errMsg))
 			return
 		}
 
 		h.slogger.Error("Failed to revoke token", "error", err)
-		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
 			"Failed to revoke token"))
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "Token revoked successfully"})
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"message": "Token revoked successfully"})
 }
 
 // GetGatewayArtifacts handles GET /api/v0.9/gateways/{gatewayId}/live-proxy-artifacts
-func (h *GatewayHandler) GetGatewayArtifacts(c *gin.Context) {
-	orgId, exists := middleware.GetOrganizationFromContext(c)
+func (h *GatewayHandler) GetGatewayArtifacts(w http.ResponseWriter, r *http.Request) {
+	orgId, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
 			"Organization claim not found in token"))
 		return
 	}
 
-	gatewayId := c.Param("gatewayId")
+	gatewayId := r.PathValue("gatewayId")
 	if gatewayId == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"Gateway ID is required"))
 		return
 	}
 
 	// Parse artifact type filter parameter
-	artifactType := c.Query("artifactType")
+	artifactType := r.URL.Query().Get("artifactType")
 	// Validate artifactType if provided
 	if artifactType != "" {
 		if !constants.ValidArtifactTypes[artifactType] {
-			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 				"Invalid artifact type. Valid values are: "+constants.ArtifactTypeAPI+", "+constants.ArtifactTypeMCP+
 					", "+constants.ArtifactTypeAPIProduct))
 			return
@@ -487,32 +487,32 @@ func (h *GatewayHandler) GetGatewayArtifacts(c *gin.Context) {
 	artifactListResponse, err := h.gatewayService.GetGatewayArtifacts(gatewayId, orgId, artifactType)
 	if err != nil {
 		if errors.Is(err, constants.ErrGatewayNotFound) {
-			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
 				"Gateway not found"))
 			return
 		}
-		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
 			"Failed to get gateway artifacts"))
 		return
 	}
 
 	// Return paginated artifact list
-	c.JSON(http.StatusOK, artifactListResponse)
+	httputil.WriteJSON(w, http.StatusOK, artifactListResponse)
 }
 
 // GetGatewayManifest handles GET /api/v0.9/gateways/{gatewayId}/manifest
 // Called by APIM to retrieve the manifest pushed by the gateway controller on connect.
-func (h *GatewayHandler) GetGatewayManifest(c *gin.Context) {
-	orgId, exists := middleware.GetOrganizationFromContext(c)
+func (h *GatewayHandler) GetGatewayManifest(w http.ResponseWriter, r *http.Request) {
+	orgId, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
 			"Organization claim not found in token"))
 		return
 	}
 
-	gatewayId := c.Param("gatewayId")
+	gatewayId := r.PathValue("gatewayId")
 	if gatewayId == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"Gateway ID is required"))
 		return
 	}
@@ -520,41 +520,41 @@ func (h *GatewayHandler) GetGatewayManifest(c *gin.Context) {
 	dataFromDb, err := h.gatewayService.GetStoredManifest(gatewayId, orgId)
 	if err != nil {
 		if strings.Contains(err.Error(), "invalid UUID") {
-			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 				"Invalid gateway ID format"))
 			return
 		}
 		if strings.Contains(err.Error(), "gateway not found") {
-			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
 				"Gateway not found"))
 			return
 		}
-		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
 			"Failed to retrieve gateway manifest"))
 		return
 	}
 
-	c.JSON(http.StatusOK, manifestSyncResponse{
+	httputil.WriteJSON(w, http.StatusOK, manifestSyncResponse{
 		Policies: dataFromDb.Policies,
 	})
 }
 
 // SyncCustomPolicy handles POST /api/v0.9/gateway-custom-policies/sync
 // It upserts a custom policy from the gateway's stored manifest into the gateway_custom_policies table.
-func (h *GatewayHandler) SyncCustomPolicy(c *gin.Context) {
-	orgId, exists := middleware.GetOrganizationFromContext(c)
+func (h *GatewayHandler) SyncCustomPolicy(w http.ResponseWriter, r *http.Request) {
+	orgId, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
 			"Organization claim not found in token"))
 		return
 	}
 
-	gatewayId := c.Query("gatewayId")
-	policyName := c.Query("policyName")
-	version := c.Query("policyVersion")
+	gatewayId := r.URL.Query().Get("gatewayId")
+	policyName := r.URL.Query().Get("policyName")
+	version := r.URL.Query().Get("policyVersion")
 
 	if gatewayId == "" || policyName == "" || version == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"gatewayId, policyName and policyVersion are required"))
 		return
 	}
@@ -563,43 +563,43 @@ func (h *GatewayHandler) SyncCustomPolicy(c *gin.Context) {
 	if err != nil {
 		msg := err.Error()
 		if strings.Contains(msg, "gateway not found") {
-			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", msg))
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", msg))
 			return
 		}
 		if strings.Contains(msg, "not found in gateway manifest") {
-			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", msg))
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", msg))
 			return
 		}
 		if strings.Contains(msg, "not a custom policy") || strings.Contains(msg, "manifest is not available") {
-			c.JSON(http.StatusUnprocessableEntity, utils.NewErrorResponse(422, "Unprocessable Entity", msg))
+			httputil.WriteJSON(w, http.StatusUnprocessableEntity, utils.NewErrorResponse(422, "Unprocessable Entity", msg))
 			return
 		}
 		if strings.Contains(msg, "already exists") || strings.Contains(msg, "patch version updates are not allowed") || strings.Contains(msg, "cannot downgrade") {
-			c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict", msg))
+			httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponse(409, "Conflict", msg))
 			return
 		}
 		h.slogger.Error("Failed to sync custom policy", "error", err)
-		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
 			"Failed to sync custom policy"))
 		return
 	}
 
-	c.JSON(http.StatusOK, policy)
+	httputil.WriteJSON(w, http.StatusOK, policy)
 }
 
 // GetCustomPolicy handles GET /api/v0.9/gateway-custom-policies/:customPolicyUuid/versions/:version
-func (h *GatewayHandler) GetCustomPolicy(c *gin.Context) {
-	orgId, exists := middleware.GetOrganizationFromContext(c)
+func (h *GatewayHandler) GetCustomPolicy(w http.ResponseWriter, r *http.Request) {
+	orgId, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
 			"Organization claim not found in token"))
 		return
 	}
 
-	policyUUID := c.Param("customPolicyUuid")
-	version := c.Param("version")
+	policyUUID := r.PathValue("customPolicyUuid")
+	version := r.PathValue("version")
 	if policyUUID == "" || version == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"customPolicyUuid and version are required"))
 		return
 	}
@@ -607,35 +607,35 @@ func (h *GatewayHandler) GetCustomPolicy(c *gin.Context) {
 	policy, err := h.gatewayService.GetCustomPolicyByUUID(orgId, policyUUID, version)
 	if err != nil {
 		if errors.Is(err, constants.ErrCustomPolicyNotFound) {
-			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "Custom policy not found"))
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "Custom policy not found"))
 			return
 		}
 		if errors.Is(err, constants.ErrCustomPolicyVersionMismatch) {
-			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "Custom policy not found with the specified version"))
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "Custom policy not found with the specified version"))
 			return
 		}
 		h.slogger.Error("Failed to get custom policy", "error", err)
-		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
 			"Failed to get custom policy"))
 		return
 	}
 
-	c.JSON(http.StatusOK, policy)
+	httputil.WriteJSON(w, http.StatusOK, policy)
 }
 
 // DeleteCustomPolicy handles DELETE /api/v0.9/gateway-custom-policies/:customPolicyUuid/versions/:version
-func (h *GatewayHandler) DeleteCustomPolicy(c *gin.Context) {
-	orgId, exists := middleware.GetOrganizationFromContext(c)
+func (h *GatewayHandler) DeleteCustomPolicy(w http.ResponseWriter, r *http.Request) {
+	orgId, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
 			"Organization claim not found in token"))
 		return
 	}
 
-	policyUUID := c.Param("customPolicyUuid")
-	version := c.Param("version")
+	policyUUID := r.PathValue("customPolicyUuid")
+	version := r.PathValue("version")
 	if policyUUID == "" || version == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"customPolicyUuid and version are required"))
 		return
 	}
@@ -643,32 +643,32 @@ func (h *GatewayHandler) DeleteCustomPolicy(c *gin.Context) {
 	err := h.gatewayService.DeleteCustomPolicyByUUID(orgId, policyUUID, version)
 	if err != nil {
 		if errors.Is(err, constants.ErrCustomPolicyNotFound) {
-			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "Custom policy not found"))
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "Custom policy not found"))
 			return
 		}
 		if errors.Is(err, constants.ErrCustomPolicyVersionMismatch) {
-			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "Custom policy not found with the specified version"))
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "Custom policy not found with the specified version"))
 			return
 		}
 		if errors.Is(err, constants.ErrCustomPolicyInUse) {
-			c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict",
+			httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponse(409, "Conflict",
 				"Custom policy is in use by one or more APIs and cannot be deleted"))
 			return
 		}
 		h.slogger.Error("Failed to delete custom policy", "org_id", orgId, "policy_uuid", policyUUID, "error", err)
-		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
 			"Failed to delete custom policy"))
 		return
 	}
 
-	c.Status(http.StatusNoContent)
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // ListCustomPolicies handles GET /api/v0.9/gateway-custom-policies
-func (h *GatewayHandler) ListCustomPolicies(c *gin.Context) {
-	orgId, exists := middleware.GetOrganizationFromContext(c)
+func (h *GatewayHandler) ListCustomPolicies(w http.ResponseWriter, r *http.Request) {
+	orgId, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
 			"Organization claim not found in token"))
 		return
 	}
@@ -676,37 +676,30 @@ func (h *GatewayHandler) ListCustomPolicies(c *gin.Context) {
 	policies, err := h.gatewayService.ListCustomPolicies(orgId)
 	if err != nil {
 		h.slogger.Error("Failed to list custom policies", "org_id", orgId, "error", err)
-		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
 			"Failed to list custom policies"))
 		return
 	}
 
-	c.JSON(http.StatusOK, policies)
+	httputil.WriteJSON(w, http.StatusOK, policies)
 }
 
 // RegisterRoutes registers gateway routes with the router
-func (h *GatewayHandler) RegisterRoutes(r *gin.Engine) {
+func (h *GatewayHandler) RegisterRoutes(mux *http.ServeMux) {
 	h.slogger.Debug("Registering gateway routes")
-	gatewayGroup := r.Group(constants.APIBasePath + "/gateways")
-	{
-		gatewayGroup.POST("", h.CreateGateway)
-		gatewayGroup.GET("", h.ListGateways)
-		gatewayGroup.GET("/:gatewayId", h.GetGateway)
-		gatewayGroup.PUT("/:gatewayId", h.UpdateGateway)
-		gatewayGroup.DELETE("/:gatewayId", h.DeleteGateway)
-		gatewayGroup.GET("/:gatewayId/tokens", h.ListTokens)
-		gatewayGroup.POST("/:gatewayId/tokens", h.RotateToken)
-		gatewayGroup.DELETE("/:gatewayId/tokens/:tokenId", h.RevokeToken)
-		gatewayGroup.GET("/:gatewayId/live-proxy-artifacts", h.GetGatewayArtifacts)
-		gatewayGroup.GET("/:gatewayId/manifest", h.GetGatewayManifest)
-	}
+	mux.HandleFunc("POST "+constants.APIBasePath+"/gateways", h.CreateGateway)
+	mux.HandleFunc("GET "+constants.APIBasePath+"/gateways", h.ListGateways)
+	mux.HandleFunc("GET "+constants.APIBasePath+"/gateways/{gatewayId}", h.GetGateway)
+	mux.HandleFunc("PUT "+constants.APIBasePath+"/gateways/{gatewayId}", h.UpdateGateway)
+	mux.HandleFunc("DELETE "+constants.APIBasePath+"/gateways/{gatewayId}", h.DeleteGateway)
+	mux.HandleFunc("GET "+constants.APIBasePath+"/gateways/{gatewayId}/tokens", h.ListTokens)
+	mux.HandleFunc("POST "+constants.APIBasePath+"/gateways/{gatewayId}/tokens", h.RotateToken)
+	mux.HandleFunc("DELETE "+constants.APIBasePath+"/gateways/{gatewayId}/tokens/{tokenId}", h.RevokeToken)
+	mux.HandleFunc("GET "+constants.APIBasePath+"/gateways/{gatewayId}/live-proxy-artifacts", h.GetGatewayArtifacts)
+	mux.HandleFunc("GET "+constants.APIBasePath+"/gateways/{gatewayId}/manifest", h.GetGatewayManifest)
 
-	customPoliciesGroup := r.Group(constants.APIBasePath + "/gateway-custom-policies")
-	{
-		customPoliciesGroup.GET("", h.ListCustomPolicies)
-		customPoliciesGroup.POST("/sync", h.SyncCustomPolicy)
-		customPoliciesGroup.GET("/:customPolicyUuid/versions/:version", h.GetCustomPolicy)
-		customPoliciesGroup.DELETE("/:customPolicyUuid/versions/:version", h.DeleteCustomPolicy)
-	}
-
+	mux.HandleFunc("GET "+constants.APIBasePath+"/gateway-custom-policies", h.ListCustomPolicies)
+	mux.HandleFunc("POST "+constants.APIBasePath+"/gateway-custom-policies/sync", h.SyncCustomPolicy)
+	mux.HandleFunc("GET "+constants.APIBasePath+"/gateway-custom-policies/{customPolicyUuid}/versions/{version}", h.GetCustomPolicy)
+	mux.HandleFunc("DELETE "+constants.APIBasePath+"/gateway-custom-policies/{customPolicyUuid}/versions/{version}", h.DeleteCustomPolicy)
 }
