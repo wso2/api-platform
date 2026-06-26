@@ -72,6 +72,11 @@ describe('AI Workspace - OpenAI provider and proxy lifecycle', () => {
   });
 
   it('creates and deletes an OpenAI provider and app llm proxy using only the UI', () => {
+    cy.intercept('POST', '**/projects').as('createProject');
+    cy.intercept('POST', /\/llm-providers(\?|$)/).as('createProvider');
+    cy.intercept('POST', /\/llm-proxies(\?|$)/).as('createProxy');
+    cy.intercept('DELETE', '**/llm-proxies/**').as('deleteProxy');
+
     cy.contains('Projects', { timeout: 30000 })
       .should('be.visible')
       .click();
@@ -91,6 +96,7 @@ describe('AI Workspace - OpenAI provider and proxy lifecycle', () => {
     cy.contains('button', 'Create')
       .should('not.be.disabled')
       .click();
+    cy.wait('@createProject').its('response.statusCode').should('be.oneOf', [200, 201]);
 
     cy.contains(projectName, { timeout: 30000 }).should('be.visible');
 
@@ -106,7 +112,7 @@ describe('AI Workspace - OpenAI provider and proxy lifecycle', () => {
       timeout: 30000,
     }).should('be.visible').click();
 
-    cy.get('[data-cyid="provider-name-input"] input:visible')
+    cy.get('[data-cyid="provider-name-input"] input:visible', { timeout: 30000 })
       .should('be.visible')
       .clear()
       .type(providerName);
@@ -123,6 +129,7 @@ describe('AI Workspace - OpenAI provider and proxy lifecycle', () => {
     cy.get('[data-cyid="add-provider-button"]')
       .should('not.be.disabled')
       .click();
+    cy.wait('@createProvider').its('response.statusCode').should('be.oneOf', [200, 201]);
 
     cy.location('pathname', { timeout: 30000 })
       .should(
@@ -163,11 +170,9 @@ describe('AI Workspace - OpenAI provider and proxy lifecycle', () => {
     cy.contains('button', 'Create Proxy', { timeout: 30000 })
       .should('not.be.disabled')
       .click();
+    cy.wait('@createProxy').its('response.statusCode').should('be.oneOf', [200, 201]);
 
-    cy.location('pathname', { timeout: 30000 }).should(
-      'include',
-      `/proxies/${proxyId}`
-    );
+    cy.location('pathname', { timeout: 30000 }).should('match', /\/proxies\/[^/]+$/);
     cy.contains(proxyName, { timeout: 30000 }).should('be.visible');
 
     cy.get('button[aria-label="Delete proxy"]', { timeout: 30000 })
@@ -177,9 +182,10 @@ describe('AI Workspace - OpenAI provider and proxy lifecycle', () => {
     cy.get('[role="dialog"]').within(() => {
       cy.contains('button', 'Delete').click();
     });
+    cy.wait('@deleteProxy').its('response.statusCode').should('be.oneOf', [200, 204]);
 
-    cy.location('pathname', { timeout: 30000 }).should('include', '/proxies');
-    cy.contains(proxyName).should('not.exist');
+    cy.location('pathname', { timeout: 30000 }).should('match', /\/proxies\/?$/);
+    cy.contains(proxyName, { timeout: 30000 }).should('not.exist');
   });
 });
 

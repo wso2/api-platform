@@ -332,6 +332,7 @@ func (r *DeploymentRepo) SetCurrent(artifactUUID, orgUUID, gatewayID, deployment
 // statusDesired is the user's intended final state (DEPLOYED/UNDEPLOYED).
 // performedAt, if non-nil, is used as the concurrency token; otherwise defaults to now.
 // statusReason is an optional error code (cleared on new deployments).
+// Also maintains artifact_secret_refs (gateway_id rows): inserts refs on DEPLOYED, deletes them otherwise.
 func (r *DeploymentRepo) SetCurrentWithDetails(artifactUUID, orgUUID, gatewayID, deploymentID string, status model.DeploymentStatus, statusDesired string, performedAt *time.Time, statusReason string) (time.Time, error) {
 	updatedAt := time.Now()
 	var pat time.Time
@@ -341,16 +342,20 @@ func (r *DeploymentRepo) SetCurrentWithDetails(artifactUUID, orgUUID, gatewayID,
 		pat = updatedAt
 	}
 
-	// Convert empty statusDesired to the current status value
 	if statusDesired == "" {
 		statusDesired = string(status)
 	}
 
-	// Convert empty statusReason to nil for SQL
 	var reasonVal interface{}
 	if statusReason != "" {
 		reasonVal = statusReason
 	}
+
+	tx, err := r.db.Begin()
+	if err != nil {
+		return time.Time{}, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
 
 	query := r.db.BuildUpsertQuery(
 		"deployment_status",
@@ -358,9 +363,26 @@ func (r *DeploymentRepo) SetCurrentWithDetails(artifactUUID, orgUUID, gatewayID,
 		[]string{"artifact_uuid", "organization_uuid", "gateway_uuid"},
 		[]string{"deployment_uuid", "status", "status_desired", "performed_at", "status_reason", "updated_at"},
 	)
-	_, err := r.db.Exec(r.db.Rebind(query),
+	_, err = tx.Exec(r.db.Rebind(query),
 		artifactUUID, orgUUID, gatewayID, deploymentID, status, statusDesired, pat, reasonVal, updatedAt)
-	return updatedAt, err
+	if err != nil {
+		return time.Time{}, fmt.Errorf("failed to upsert deployment status: %w", err)
+	}
+
+	// Maintain gateway-specific secret refs from the deployment snapshot.
+	// On DEPLOYED: derive handles from snapshot and insert; on UNDEPLOYED/ARCHIVED: clear only.
+	var content []byte
+	if status == model.DeploymentStatusDeployed {
+		err = tx.QueryRow(r.db.Rebind(`SELECT content FROM deployments WHERE deployment_id = ?`), deploymentID).Scan(&content)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return time.Time{}, fmt.Errorf("failed to fetch deployment content for secret refs: %w", err)
+		}
+	}
+	if err := upsertDeploymentSecretRefs(tx, r.db, orgUUID, artifactUUID, gatewayID, content); err != nil {
+		return time.Time{}, fmt.Errorf("failed to upsert deployment secret refs: %w", err)
+	}
+
+	return updatedAt, tx.Commit()
 }
 
 // GetStatus retrieves the current deployment status for an artifact on a gateway (lightweight - no content)
@@ -852,3 +874,41 @@ func (r *DeploymentRepo) GetDeploymentContentByIDs(deploymentIDs []string, orgUU
 	return result, nil
 }
 
+// GetSecretHandlesByGateway returns the distinct secret handles referenced by all
+// artifacts currently deployed on the gateway. Sourced from artifact_secret_refs
+// where gateway_id matches — maintained at deploy/undeploy time.
+func (r *DeploymentRepo) GetSecretHandlesByGateway(gatewayID, orgUUID string) ([]string, error) {
+	query := r.db.Rebind(`
+		SELECT DISTINCT secret_handle
+		FROM artifact_secret_refs
+		WHERE organization_uuid = ? AND gateway_id = ?
+	`)
+
+	rows, err := r.db.Query(query, orgUUID, gatewayID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query secret handles for gateway %s: %w", gatewayID, err)
+	}
+	defer rows.Close()
+
+	var handles []string
+	for rows.Next() {
+		var h string
+		if err := rows.Scan(&h); err != nil {
+			return nil, fmt.Errorf("failed to scan secret handle row: %w", err)
+		}
+		handles = append(handles, h)
+	}
+	return handles, rows.Err()
+}
+
+// joinStrings joins strings with a separator (helper for building IN clauses)
+func joinStrings(strs []string, sep string) string {
+	if len(strs) == 0 {
+		return ""
+	}
+	result := strs[0]
+	for i := 1; i < len(strs); i++ {
+		result += sep + strs[i]
+	}
+	return result
+}

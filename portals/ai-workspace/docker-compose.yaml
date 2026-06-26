@@ -16,6 +16,7 @@
 #   in your shell, or create a .env file next to this file:
 #
 #     AUTH_JWT_SECRET_KEY=<long-random-string>
+#     PLATFORM_SECRET_ENCRYPTION_KEY=$(openssl rand -hex 32)   # stable key for persistent secrets
 #
 # Usage:
 #   docker compose up -d
@@ -52,6 +53,11 @@ services:
       - DATABASE_PASSWORD=${DATABASE_PASSWORD:-}
       - DATABASE_SUBSCRIPTION_TOKEN_ENCRYPTION_KEY=${DATABASE_SUBSCRIPTION_TOKEN_ENCRYPTION_KEY:-}
       - APIP_DEMO_MODE=${APIP_DEMO_MODE:-true}
+      # Encryption key for secrets stored in the database (64 hex chars = 32 bytes).
+      # If unset, a random key is generated on startup — encrypted secrets will be
+      # unreadable after a container restart. Set a stable value for persistent deployments:
+      #   export PLATFORM_SECRET_ENCRYPTION_KEY=$(openssl rand -hex 32)
+      - PLATFORM_SECRET_ENCRYPTION_KEY=${PLATFORM_SECRET_ENCRYPTION_KEY:-}
     volumes:
       - ./configs/config-platform-api.toml:/etc/platform-api/config-platform-api.toml:ro
       - platform-api-data:/app/data
