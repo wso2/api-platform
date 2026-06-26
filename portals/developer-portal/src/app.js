@@ -48,8 +48,6 @@ const sessionSecret = 'my-secret';
 
 const SERVER_ID = uuidv4();
 
-logger.info(`Starting server with ID: ${SERVER_ID}`);
-
 app.engine('.hbs', engine({
     extname: '.hbs'
 }));
