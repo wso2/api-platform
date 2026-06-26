@@ -27,7 +27,7 @@ Set the output as `encryptionKey`. You can also provide it via the environment v
 
 > **Authentication:** The examples below use a `$TOKEN` variable. Obtain a Bearer token first:
 > ```bash
-> TOKEN=$(curl -sk -X POST "https://localhost:9243/api/portal/v1/auth/login" \
+> TOKEN=$(curl -sk -X POST "https://localhost:9243/api/portal/v0.9/auth/login" \
 >   -d "username=admin&password=admin" | jq -r .token)
 > ```
 

@@ -231,7 +231,7 @@ func apiCall(method, path, token string, body any) (int, []byte, error) {
 }
 
 func login() (string, error) {
-	st, body, err := apiCall(http.MethodPost, "/api/portal/v1/auth/login", "",
+	st, body, err := apiCall(http.MethodPost, "/api/portal/v0.9/auth/login", "",
 		map[string]string{"username": "admin", "password": "admin"})
 	if err != nil {
 		return "", err
