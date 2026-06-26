@@ -115,10 +115,7 @@ CREATE TABLE IF NOT EXISTS subscription_plans (
     updated_by VARCHAR(200),
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
-    UNIQUE(organization_uuid, handle),
-    -- Ensure (uuid, organization_uuid) pairs are unique so they can be safely
-    -- referenced from subscriptions to enforce plan–organization consistency.
-    UNIQUE(uuid, organization_uuid)
+    UNIQUE(organization_uuid, handle)
 );
 
 -- Subscriptions table (application-level subscriptions for any artifact type)
@@ -141,8 +138,7 @@ CREATE TABLE IF NOT EXISTS subscriptions (
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (artifact_uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
-    FOREIGN KEY (subscription_plan_uuid, organization_uuid)
-      REFERENCES subscription_plans(uuid, organization_uuid),
+    FOREIGN KEY (subscription_plan_uuid) REFERENCES subscription_plans(uuid),
     FOREIGN KEY (artifact_uuid, organization_uuid)
       REFERENCES artifacts(uuid, organization_uuid) ON DELETE CASCADE,
     UNIQUE(artifact_uuid, subscription_token_hash)

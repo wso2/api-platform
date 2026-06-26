@@ -126,8 +126,7 @@ CREATE TABLE dbo.subscription_plans (
     updated_by VARCHAR(200),
     updated_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
-    UNIQUE(organization_uuid, handle),
-    UNIQUE(uuid, organization_uuid)
+    UNIQUE(organization_uuid, handle)
 );
 
 -- Subscriptions table (application-level subscriptions for any artifact type)
@@ -155,8 +154,7 @@ CREATE TABLE dbo.subscriptions (
     -- removed via the artifact_uuid -> artifacts CASCADE edge (which itself cascades
     -- from projects/organizations), so cleanup behavior is preserved.
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE NO ACTION,
-    FOREIGN KEY (subscription_plan_uuid, organization_uuid)
-        REFERENCES subscription_plans(uuid, organization_uuid) ON DELETE NO ACTION,
+    FOREIGN KEY (subscription_plan_uuid) REFERENCES subscription_plans(uuid) ON DELETE NO ACTION,
     FOREIGN KEY (artifact_uuid, organization_uuid)
         REFERENCES artifacts(uuid, organization_uuid) ON DELETE NO ACTION,
     UNIQUE(artifact_uuid, subscription_token_hash)
