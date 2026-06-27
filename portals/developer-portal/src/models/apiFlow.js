@@ -19,7 +19,7 @@ const { Sequelize, DataTypes } = require('sequelize');
 const sequelize = require('../db/sequelizeConfig');
 const { Organization } = require('./organization');
 
-const APIFlow = sequelize.define('DP_API_FLOW', {
+const APIFlow = sequelize.define('DP_API_WORKFLOW', {
     ID: {
         type: DataTypes.UUID,
         defaultValue: Sequelize.UUIDV4,
@@ -82,10 +82,10 @@ const APIFlow = sequelize.define('DP_API_FLOW', {
     }
 }, {
     timestamps: false,
-    tableName: 'DP_API_FLOW',
+    tableName: 'DP_API_WORKFLOW',
     returning: true,
     indexes: [
-        { name: 'UQ_API_FLOW_ORG_VIEW_HANDLE', unique: true, fields: ['ORG_ID', 'VIEW_ID', 'HANDLE'] }
+        { name: 'UQ_API_WORKFLOW_ORG_VIEW_HANDLE', unique: true, fields: ['ORG_ID', 'VIEW_ID', 'HANDLE'] }
     ]
 });
 
