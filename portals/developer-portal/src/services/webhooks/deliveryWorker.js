@@ -21,6 +21,7 @@ const { URL } = require('url');
 const { config } = require('../../config/configLoader');
 const eventDao = require('../../dao/eventDao');
 const DPEvent = require('../../models/event');
+const { Organization } = require('../../models/organization');
 const { getSubscriber } = require('./subscriberRegistry');
 const { sign } = require('./signer');
 const { nextAttemptAt, getMaxAttempts } = require('./backoff');
@@ -38,7 +39,7 @@ function isNotRetryable(status) {
 /**
  * POST a single delivery. Returns { ok, status, error }.
  */
-async function post(delivery, event) {
+async function post(delivery, event, orgCpRefId) {
     const sub = await getSubscriber(delivery.SUBSCRIBER_ID);
     if (!sub) {
         return { ok: false, error: `Subscriber '${delivery.SUBSCRIBER_ID}' not found` };
@@ -48,11 +49,13 @@ async function post(delivery, event) {
     const timeoutMs = (sub && sub.timeoutMs) || 5000;
 
     // Build the outgoing payload: base event payload + per-subscriber encrypted fields.
+    // org_id is the control-plane reference for the org, falling back to the internal
+    // ID when the org hasn't been linked to a control-plane org yet.
     const outgoing = {
         event_id: event.ID,
         event_type: event.TYPE,
         occurred_at: event.OCCURRED_AT,
-        org_id: event.ORG_ID,
+        org_id: orgCpRefId || event.ORG_ID,
         data: { ...(event.PAYLOAD || {}) }
     };
     if (delivery.ENCRYPTED_FIELDS) {
@@ -107,6 +110,10 @@ async function runBatch() {
     const events = await DPEvent.findAll({ where: { ID: eventIds } });
     const eventMap = Object.fromEntries(events.map(e => [e.ID, e]));
 
+    const orgIds = [...new Set(events.map(e => e.ORG_ID))];
+    const orgs = await Organization.findAll({ where: { ID: orgIds }, attributes: ['ID', 'CP_REF_ID'] });
+    const orgCpRefIdMap = Object.fromEntries(orgs.map(o => [o.ID, o.CP_REF_ID]));
+
     for (const delivery of deliveries) {
         const event = eventMap[delivery.EVENT_ID];
         if (!event) {
@@ -116,7 +123,7 @@ async function runBatch() {
 
         let result;
         try {
-            result = await post(delivery, event);
+            result = await post(delivery, event, orgCpRefIdMap[event.ORG_ID]);
         } catch (postErr) {
             const newAttemptCount = delivery.ATTEMPT_COUNT + 1;
             const deadLetter = newAttemptCount >= getMaxAttempts();

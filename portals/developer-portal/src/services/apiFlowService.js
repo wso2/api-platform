@@ -191,7 +191,7 @@ const createAPIFlow = async (req, res) => {
         const viewId = await resolveViewId(orgID, viewName);
         const resolvedPrompt = agentPrompt && agentPrompt.trim()
             ? agentPrompt.trim()
-            : generateAgentPrompt(name, description, [], orgDetails.IDP_IDENTIFIER || '', viewName, '', resolvedHandle);
+            : generateAgentPrompt(name, description, [], orgDetails.IDP_REF_ID || '', viewName, '', resolvedHandle);
 
         const apiFlow = await apiFlowDao.create(orgID, viewId, {
             name,

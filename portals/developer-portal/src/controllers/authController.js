@@ -40,7 +40,7 @@ const login = async (req, res, next) => {
         if (config.identityProvider?.clientId) {
             // IDP mode: redirect directly to the IDP, no intermediate login page
             const orgDetails = await orgDao.get(orgName);
-            const orgIdentifier = orgDetails?.IDP_IDENTIFIER;
+            const orgIdentifier = orgDetails?.IDP_REF_ID;
             if (fidp && fidpMap[fidp]) {
                 if (fidp === 'enterprise' && req.query.username) {
                     req.session.username = req.query.username;

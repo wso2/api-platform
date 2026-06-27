@@ -146,7 +146,7 @@ const ensureAuthenticated = async (req, res, next) => {
                         req.user[constants.ROLES.SUBSCRIBER] = subscriberRole;
                         if (orgDetails) {
                             req.user[constants.ORG_ID] = orgDetails.ID;
-                            req.user[constants.ORG_IDENTIFIER] = orgDetails.IDP_IDENTIFIER;
+                            req.user[constants.ORG_IDENTIFIER] = orgDetails.IDP_REF_ID;
                         }
                     }
                     if (!config.advanced.disabledRoleValidation) {
@@ -175,12 +175,12 @@ const ensureAuthenticated = async (req, res, next) => {
                     req.user[constants.ROLES.SUBSCRIBER] = subscriberRole;
                     if (orgDetails) {
                         req.user[constants.ORG_ID] = orgDetails.ID;
-                        req.user[constants.ORG_IDENTIFIER] = orgDetails.IDP_IDENTIFIER;
+                        req.user[constants.ORG_IDENTIFIER] = orgDetails.IDP_REF_ID;
                     }
                 }
                 const isMatch = constants.ROUTE.DEVPORTAL_ROOT.some(pattern => minimatch.minimatch(req.originalUrl, pattern));
                 if (!isMatch) {
-                    const orgIdentifier = orgDetails?.IDP_IDENTIFIER;
+                    const orgIdentifier = orgDetails?.IDP_REF_ID;
                     const tokenOrgClaim = req.user[constants.ROLES.ORGANIZATION_CLAIM];
                     if (orgIdentifier && tokenOrgClaim && tokenOrgClaim !== orgIdentifier) {
                         const err = new Error('Forbidden');

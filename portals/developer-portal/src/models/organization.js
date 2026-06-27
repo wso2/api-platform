@@ -47,9 +47,13 @@ const Organization = sequelize.define('DP_ORGANIZATION', {
         allowNull: false,
         unique: true
     },
-    IDP_IDENTIFIER: {
+    IDP_REF_ID: {
         type: DataTypes.STRING,
         allowNull: false
+    },
+    CP_REF_ID: {
+        type: DataTypes.STRING,
+        allowNull: true
     },
     CONFIGURATION: {
         type: DataTypes.JSON,

@@ -30,7 +30,8 @@ const create = async (orgData, t) => {
         BUSINESS_OWNER_CONTACT: orgData.businessOwnerContact,
         BUSINESS_OWNER_EMAIL: orgData.businessOwnerEmail,
         HANDLE: devPortalID,
-        IDP_IDENTIFIER: orgData.organizationIdentifier,
+        IDP_REF_ID: orgData.organizationIdentifier,
+        CP_REF_ID: orgData.cpRefId,
         CONFIGURATION: orgData.orgConfig
     };
     try {
@@ -51,7 +52,7 @@ const get = async (param) => {
         const conditions = [
             { NAME: param },
             { HANDLE: typeof param === 'string' ? param.toLowerCase() : param },
-            { IDP_IDENTIFIER: param },
+            { IDP_REF_ID: param },
         ];
         if (typeof param === 'string' && UUID_RE.test(param)) {
             conditions.push({ ID: param });
@@ -78,7 +79,7 @@ const getId = async (orgName) => {
                 [Sequelize.Op.or]: [
                     { NAME: orgName },
                     { HANDLE: typeof orgName === 'string' ? orgName.toLowerCase() : orgName },
-                    { IDP_IDENTIFIER: orgName }
+                    { IDP_REF_ID: orgName }
                 ]
             }
         });
@@ -122,7 +123,8 @@ const update = async (orgData, t) => {
                 BUSINESS_OWNER_CONTACT: orgData.businessOwnerContact,
                 BUSINESS_OWNER_EMAIL: orgData.businessOwnerEmail,
                 HANDLE: devPortalID,
-                IDP_IDENTIFIER: orgData.organizationIdentifier,
+                IDP_REF_ID: orgData.organizationIdentifier,
+                ...(orgData.cpRefId !== undefined && { CP_REF_ID: orgData.cpRefId }),
                 CONFIGURATION: orgData.orgConfiguration
             },
             {

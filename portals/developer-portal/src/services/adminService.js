@@ -45,6 +45,7 @@ function mapYamlToOrganization(parsed) {
         orgHandle: metadata.name,
         orgName: spec.displayName,
         organizationIdentifier: spec.organizationIdentifier,
+        cpRefId: spec.cpRefId,
         businessOwner: spec.businessOwner,
         businessOwnerContact: spec.businessOwnerContact,
         businessOwnerEmail: spec.businessOwnerEmail,
@@ -167,7 +168,8 @@ const createOrganization = async (req, res) => {
             businessOwnerContact: organization.BUSINESS_OWNER_CONTACT,
             businessOwnerEmail: organization.BUSINESS_OWNER_EMAIL,
             orgHandle: organization.HANDLE,
-            organizationIdentifier: organization.IDP_IDENTIFIER,
+            organizationIdentifier: organization.IDP_REF_ID,
+            cpRefId: organization.CP_REF_ID,
             orgConfiguration: organization.dataValues.CONFIGURATION
         };
         logger.info('Organization creation flow completed successfully', {
@@ -206,7 +208,8 @@ const getAllOrganizations = async () => {
                 businessOwnerContact: organization.dataValues.BUSINESS_OWNER_CONTACT,
                 businessOwnerEmail: organization.dataValues.BUSINESS_OWNER_EMAIL,
                 orgHandle: organization.HANDLE,
-                organizationIdentifier: organization.IDP_IDENTIFIER,
+                organizationIdentifier: organization.IDP_REF_ID,
+                cpRefId: organization.CP_REF_ID,
                 orgConfiguration: organization.dataValues.CONFIGURATION
             });
         }
@@ -263,7 +266,8 @@ const updateOrganization = async (req, res) => {
             businessOwnerContact: updatedOrg[0].dataValues.BUSINESS_OWNER_CONTACT,
             businessOwnerEmail: updatedOrg[0].dataValues.BUSINESS_OWNER_EMAIL,
             orgHandle: updatedOrg[0].dataValues.HANDLE,
-            organizationIdentifier: updatedOrg[0].dataValues.IDP_IDENTIFIER,
+            organizationIdentifier: updatedOrg[0].dataValues.IDP_REF_ID,
+            cpRefId: updatedOrg[0].dataValues.CP_REF_ID,
             orgConfiguration: updatedOrg[0].dataValues.CONFIGURATION
         });
     } catch (error) {
