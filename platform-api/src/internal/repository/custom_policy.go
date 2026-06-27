@@ -42,9 +42,9 @@ func (r *CustomPolicyRepo) InsertCustomPolicy(policy *model.CustomPolicy) error 
 	now := time.Now()
 	query := r.db.BuildUpsertQuery(
 		"gateway_custom_policies",
-		[]string{"uuid", "organization_uuid", "name", "display_name", "version", "description", "policy_definition", "created_at", "updated_at"},
+		[]string{"uuid", "organization_uuid", "name", "display_name", "version", "description", "policy_definition", "created_by", "updated_by", "created_at", "updated_at"},
 		[]string{"organization_uuid", "name", "version"},
-		[]string{"display_name", "description", "policy_definition", "updated_at"},
+		[]string{"display_name", "description", "policy_definition", "updated_by", "updated_at"},
 	)
 	_, err := r.db.Exec(r.db.Rebind(query),
 		policy.UUID, policy.OrganizationUUID, policy.Name, policy.DisplayName, policy.Version,

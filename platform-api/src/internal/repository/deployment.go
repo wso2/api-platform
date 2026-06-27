@@ -377,7 +377,7 @@ func (r *DeploymentRepo) SetCurrentWithDetails(artifactUUID, orgUUID, gatewayID,
 	// On DEPLOYED: derive handles from snapshot and insert; on UNDEPLOYED/ARCHIVED: clear only.
 	var content []byte
 	if status == model.DeploymentStatusDeployed {
-		err = tx.QueryRow(r.db.Rebind(`SELECT content FROM deployments WHERE deployment_id = ?`), deploymentID).Scan(&content)
+		err = tx.QueryRow(r.db.Rebind(`SELECT content FROM deployments WHERE uuid = ?`), deploymentID).Scan(&content)
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return time.Time{}, fmt.Errorf("failed to fetch deployment content for secret refs: %w", err)
 		}

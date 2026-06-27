@@ -289,7 +289,7 @@ func (r *APIRepo) GetDeployedAPIsByGatewayUUID(gatewayUUID, orgUUID string) ([]*
 		SELECT a.uuid, a.name, a.description, a.version, a.created_by,
 		       a.project_uuid, a.organization_uuid, a.origin, a.created_at, a.updated_at
 		FROM rest_apis a
-		INNER JOIN deployment_status ad ON a.uuid = ad.artifact_uuid
+		INNER JOIN deployment_status ad ON a.uuid = ad.artifact_uuid AND ad.organization_uuid = a.organization_uuid
 		WHERE ad.gateway_uuid = ? AND a.organization_uuid = ? AND ad.status = ?
 		ORDER BY a.created_at DESC
 	`
