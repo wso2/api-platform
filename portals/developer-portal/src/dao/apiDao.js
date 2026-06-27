@@ -105,7 +105,7 @@ const update = async (orgID, apiID, apiMetadata, t) => {
             return [0, null];
         }
         const updatedInstance = await APIMetadata.findOne({
-            where: { API_ID: apiID, ORG_ID: orgID },
+            where: { ID: apiID, ORG_ID: orgID },
             transaction: t,
         });
         return [updateCount, [updatedInstance]];
@@ -491,8 +491,8 @@ const getSpecs = async (orgID, apiIDs) => {
 
 const existsByNameVersion = async (orgId, apiName, apiVersion) => {
     const row = await APIMetadata.findOne({
-        attributes: ['API_ID'],
-        where: { ORG_ID: orgId, API_NAME: apiName, API_VERSION: apiVersion },
+        attributes: ['ID'],
+        where: { ORG_ID: orgId, NAME: apiName, VERSION: apiVersion },
     });
     return !!row;
 };
