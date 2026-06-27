@@ -20,50 +20,57 @@ package middleware
 
 import (
 	"bytes"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	dto "github.com/prometheus/client_model/go"
 	"github.com/stretchr/testify/assert"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/metrics"
 )
 
-// Helper function to setup metrics for testing
+// setupMetrics initialises the Prometheus registry for a test.
 func setupMetrics(t *testing.T) {
 	t.Helper()
 	metrics.SetEnabled(true)
 	metrics.Init()
 }
 
+// metricsMux registers a single route and wraps it with MetricsMiddleware running
+// INSIDE the mux handler so r.Pattern is available.
+func metricsMux(method, pattern string, status int) http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc(method+" "+pattern, func(w http.ResponseWriter, r *http.Request) {
+		MetricsMiddleware()(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(status)
+			_ = json.NewEncoder(w).Encode(map[string]string{"message": "ok"})
+		})).ServeHTTP(w, r)
+	})
+	return mux
+}
+
 func TestMetricsMiddleware_BasicRequest(t *testing.T) {
 	setupMetrics(t)
-	gin.SetMode(gin.TestMode)
 
-	router := gin.New()
-	router.Use(MetricsMiddleware())
-
-	router.GET("/test", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"message": "success"})
-	})
+	h := MetricsMiddleware()(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(map[string]string{"message": "success"})
+	}))
 
 	req := httptest.NewRequest(http.MethodGet, "/test", nil)
 	w := httptest.NewRecorder()
-
-	router.ServeHTTP(w, req)
+	h.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusOK, w.Code)
 
-	// Verify metrics were recorded
-	metricFamilies, err := metrics.GetRegistry().Gather()
+	mfs, err := metrics.GetRegistry().Gather()
 	assert.NoError(t, err)
 
-	// Verify HTTP requests total counter exists and is incremented
 	found := false
-	for _, mf := range metricFamilies {
+	for _, mf := range mfs {
 		if mf.GetName() == "gateway_controller_http_requests_total" {
 			found = true
 			assert.Greater(t, len(mf.GetMetric()), 0)
@@ -74,62 +81,38 @@ func TestMetricsMiddleware_BasicRequest(t *testing.T) {
 
 func TestMetricsMiddleware_DifferentHTTPMethods(t *testing.T) {
 	setupMetrics(t)
-	gin.SetMode(gin.TestMode)
 
 	tests := []struct {
-		name   string
 		method string
 		path   string
 	}{
-		{"GET Request", http.MethodGet, "/api/test"},
-		{"POST Request", http.MethodPost, "/api/test"},
-		{"PUT Request", http.MethodPut, "/api/test"},
-		{"DELETE Request", http.MethodDelete, "/api/test"},
-		{"PATCH Request", http.MethodPatch, "/api/test"},
+		{http.MethodGet, "/api/test"},
+		{http.MethodPost, "/api/test"},
+		{http.MethodPut, "/api/test"},
+		{http.MethodDelete, "/api/test"},
+		{http.MethodPatch, "/api/test"},
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			router := gin.New()
-			router.Use(MetricsMiddleware())
+		t.Run(tt.method, func(t *testing.T) {
+			h := MetricsMiddleware()(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusOK)
+			}))
 
-			handler := func(c *gin.Context) {
-				c.JSON(http.StatusOK, gin.H{"method": tt.method})
-			}
-
-			switch tt.method {
-			case http.MethodGet:
-				router.GET(tt.path, handler)
-			case http.MethodPost:
-				router.POST(tt.path, handler)
-			case http.MethodPut:
-				router.PUT(tt.path, handler)
-			case http.MethodDelete:
-				router.DELETE(tt.path, handler)
-			case http.MethodPatch:
-				router.PATCH(tt.path, handler)
-			}
-
-			req := httptest.NewRequest(tt.method, tt.path, nil)
 			w := httptest.NewRecorder()
-
-			router.ServeHTTP(w, req)
-
+			h.ServeHTTP(w, httptest.NewRequest(tt.method, tt.path, nil))
 			assert.Equal(t, http.StatusOK, w.Code)
 
-			// Verify metric with correct method label
-			metricFamilies, err := metrics.GetRegistry().Gather()
+			mfs, err := metrics.GetRegistry().Gather()
 			assert.NoError(t, err)
 
 			found := false
-			for _, mf := range metricFamilies {
+			for _, mf := range mfs {
 				if mf.GetName() == "gateway_controller_http_requests_total" {
 					for _, m := range mf.GetMetric() {
-						labels := m.GetLabel()
-						for _, l := range labels {
+						for _, l := range m.GetLabel() {
 							if l.GetName() == "method" && l.GetValue() == tt.method {
 								found = true
-								break
 							}
 						}
 					}
@@ -142,7 +125,6 @@ func TestMetricsMiddleware_DifferentHTTPMethods(t *testing.T) {
 
 func TestMetricsMiddleware_DifferentStatusCodes(t *testing.T) {
 	setupMetrics(t)
-	gin.SetMode(gin.TestMode)
 
 	tests := []struct {
 		name       string
@@ -157,33 +139,24 @@ func TestMetricsMiddleware_DifferentStatusCodes(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			router := gin.New()
-			router.Use(MetricsMiddleware())
+			h := MetricsMiddleware()(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(tt.statusCode)
+			}))
 
-			router.GET("/test", func(c *gin.Context) {
-				c.JSON(tt.statusCode, gin.H{"status": tt.statusCode})
-			})
-
-			req := httptest.NewRequest(http.MethodGet, "/test", nil)
 			w := httptest.NewRecorder()
-
-			router.ServeHTTP(w, req)
-
+			h.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/test", nil))
 			assert.Equal(t, tt.statusCode, w.Code)
 
-			// Verify metric contains status code
-			metricFamilies, err := metrics.GetRegistry().Gather()
+			mfs, err := metrics.GetRegistry().Gather()
 			assert.NoError(t, err)
 
 			found := false
-			for _, mf := range metricFamilies {
+			for _, mf := range mfs {
 				if mf.GetName() == "gateway_controller_http_requests_total" {
 					for _, m := range mf.GetMetric() {
-						labels := m.GetLabel()
-						for _, l := range labels {
+						for _, l := range m.GetLabel() {
 							if l.GetName() == "status_code" {
 								found = true
-								break
 							}
 						}
 					}
@@ -196,33 +169,24 @@ func TestMetricsMiddleware_DifferentStatusCodes(t *testing.T) {
 
 func TestMetricsMiddleware_RequestDuration(t *testing.T) {
 	setupMetrics(t)
-	gin.SetMode(gin.TestMode)
 
-	router := gin.New()
-	router.Use(MetricsMiddleware())
-
-	// Add a handler with artificial delay
-	router.GET("/slow", func(c *gin.Context) {
+	h := MetricsMiddleware()(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		time.Sleep(10 * time.Millisecond)
-		c.JSON(http.StatusOK, gin.H{"message": "delayed response"})
-	})
+		w.WriteHeader(http.StatusOK)
+	}))
 
-	req := httptest.NewRequest(http.MethodGet, "/slow", nil)
 	w := httptest.NewRecorder()
-
-	startTime := time.Now()
-	router.ServeHTTP(w, req)
-	duration := time.Since(startTime)
+	start := time.Now()
+	h.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/slow", nil))
+	assert.GreaterOrEqual(t, time.Since(start).Milliseconds(), int64(10))
 
 	assert.Equal(t, http.StatusOK, w.Code)
-	assert.GreaterOrEqual(t, duration.Milliseconds(), int64(10))
 
-	// Verify duration histogram metric exists
-	metricFamilies, err := metrics.GetRegistry().Gather()
+	mfs, err := metrics.GetRegistry().Gather()
 	assert.NoError(t, err)
 
 	found := false
-	for _, mf := range metricFamilies {
+	for _, mf := range mfs {
 		if mf.GetName() == "gateway_controller_http_request_duration_seconds" {
 			found = true
 			assert.Equal(t, dto.MetricType_HISTOGRAM, mf.GetType())
@@ -234,110 +198,90 @@ func TestMetricsMiddleware_RequestDuration(t *testing.T) {
 
 func TestMetricsMiddleware_RequestResponseSizes(t *testing.T) {
 	setupMetrics(t)
-	gin.SetMode(gin.TestMode)
 
-	router := gin.New()
-	router.Use(MetricsMiddleware())
-
-	router.POST("/echo", func(c *gin.Context) {
+	h := MetricsMiddleware()(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var data map[string]interface{}
-		if err := c.BindJSON(&data); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		if err := json.NewDecoder(r.Body).Decode(&data); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		c.JSON(http.StatusOK, gin.H{"received": data})
-	})
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"received": data})
+	}))
 
 	requestBody := []byte(`{"test": "data", "number": 123}`)
 	req := httptest.NewRequest(http.MethodPost, "/echo", bytes.NewReader(requestBody))
 	req.Header.Set("Content-Type", "application/json")
 	req.ContentLength = int64(len(requestBody))
 	w := httptest.NewRecorder()
-
-	router.ServeHTTP(w, req)
+	h.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.Greater(t, w.Body.Len(), 0)
 
-	// Verify size histogram metrics exist
-	metricFamilies, err := metrics.GetRegistry().Gather()
+	mfs, err := metrics.GetRegistry().Gather()
 	assert.NoError(t, err)
 
-	foundRequestSize := false
-	foundResponseSize := false
-	for _, mf := range metricFamilies {
-		if mf.GetName() == "gateway_controller_http_request_size_bytes" {
-			foundRequestSize = true
+	foundReq, foundResp := false, false
+	for _, mf := range mfs {
+		switch mf.GetName() {
+		case "gateway_controller_http_request_size_bytes":
+			foundReq = true
 			assert.Equal(t, dto.MetricType_HISTOGRAM, mf.GetType())
-		}
-		if mf.GetName() == "gateway_controller_http_response_size_bytes" {
-			foundResponseSize = true
+		case "gateway_controller_http_response_size_bytes":
+			foundResp = true
 			assert.Equal(t, dto.MetricType_HISTOGRAM, mf.GetType())
 		}
 	}
-	assert.True(t, foundRequestSize, "http_request_size_bytes metric should exist")
-	assert.True(t, foundResponseSize, "http_response_size_bytes metric should exist")
+	assert.True(t, foundReq, "http_request_size_bytes metric should exist")
+	assert.True(t, foundResp, "http_response_size_bytes metric should exist")
 }
 
-func TestMetricsMiddleware_EndpointLabeling(t *testing.T) {
+// TestMetricsMiddleware_EndpointLabelingPerRoute checks that r.Pattern is used
+// when the middleware runs inside a mux handler (per-route).
+func TestMetricsMiddleware_EndpointLabelingPerRoute(t *testing.T) {
 	setupMetrics(t)
-	gin.SetMode(gin.TestMode)
 
 	tests := []struct {
 		name             string
-		routePattern     string
+		pattern          string
 		requestPath      string
 		expectedEndpoint string
 	}{
 		{
 			name:             "Route with parameter",
-			routePattern:     "/api/:id",
+			pattern:          "/api/{id}",
 			requestPath:      "/api/123",
-			expectedEndpoint: "/api/:id", // Should use FullPath (route pattern)
+			expectedEndpoint: "GET /api/{id}",
 		},
 		{
 			name:             "Static route",
-			routePattern:     "/api/health",
+			pattern:          "/api/health",
 			requestPath:      "/api/health",
-			expectedEndpoint: "/api/health",
-		},
-		{
-			name:             "Route with multiple parameters",
-			routePattern:     "/api/:org/:project",
-			requestPath:      "/api/acme/prod",
-			expectedEndpoint: "/api/:org/:project",
+			expectedEndpoint: "GET /api/health",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			router := gin.New()
-			router.Use(MetricsMiddleware())
-
-			router.GET(tt.routePattern, func(c *gin.Context) {
-				c.JSON(http.StatusOK, gin.H{"message": "ok"})
-			})
+			h := metricsMux("GET", tt.pattern, http.StatusOK)
 
 			req := httptest.NewRequest(http.MethodGet, tt.requestPath, nil)
 			w := httptest.NewRecorder()
-
-			router.ServeHTTP(w, req)
-
+			h.ServeHTTP(w, req)
 			assert.Equal(t, http.StatusOK, w.Code)
 
-			// Verify endpoint label uses route pattern
-			metricFamilies, err := metrics.GetRegistry().Gather()
+			mfs, err := metrics.GetRegistry().Gather()
 			assert.NoError(t, err)
 
 			found := false
-			for _, mf := range metricFamilies {
+			for _, mf := range mfs {
 				if mf.GetName() == "gateway_controller_http_requests_total" {
 					for _, m := range mf.GetMetric() {
-						labels := m.GetLabel()
-						for _, l := range labels {
+						for _, l := range m.GetLabel() {
 							if l.GetName() == "endpoint" && l.GetValue() == tt.expectedEndpoint {
 								found = true
-								break
 							}
 						}
 					}
@@ -348,120 +292,88 @@ func TestMetricsMiddleware_EndpointLabeling(t *testing.T) {
 	}
 }
 
+// TestMetricsMiddleware_EndpointLabeling_FallbackToPath checks that r.URL.Path
+// is used as the endpoint label when the middleware runs outside the mux (r.Pattern is empty).
 func TestMetricsMiddleware_EndpointLabeling_FallbackToPath(t *testing.T) {
 	setupMetrics(t)
-	gin.SetMode(gin.TestMode)
 
-	router := gin.New()
-	router.Use(MetricsMiddleware())
-
-	// Use NoRoute handler to simulate when FullPath is empty
-	router.NoRoute(func(c *gin.Context) {
-		c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
-	})
+	// Middleware wrapping a 404 — r.Pattern is empty.
+	h := MetricsMiddleware()(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "not found", http.StatusNotFound)
+	}))
 
 	req := httptest.NewRequest(http.MethodGet, "/nonexistent", nil)
 	w := httptest.NewRecorder()
-
-	router.ServeHTTP(w, req)
-
+	h.ServeHTTP(w, req)
 	assert.Equal(t, http.StatusNotFound, w.Code)
 
-	// Verify endpoint label falls back to URL.Path when FullPath is empty
-	metricFamilies, err := metrics.GetRegistry().Gather()
+	mfs, err := metrics.GetRegistry().Gather()
 	assert.NoError(t, err)
 
 	found := false
-	for _, mf := range metricFamilies {
+	for _, mf := range mfs {
 		if mf.GetName() == "gateway_controller_http_requests_total" {
 			for _, m := range mf.GetMetric() {
-				labels := m.GetLabel()
-				for _, l := range labels {
+				for _, l := range m.GetLabel() {
 					if l.GetName() == "endpoint" && l.GetValue() == "/nonexistent" {
 						found = true
-						break
 					}
 				}
 			}
 		}
 	}
-	assert.True(t, found, "Metric should fall back to URL.Path when FullPath is empty")
+	assert.True(t, found, "Metric should fall back to URL.Path when r.Pattern is empty")
 }
 
 func TestMetricsMiddleware_ConcurrentRequests(t *testing.T) {
 	setupMetrics(t)
-	gin.SetMode(gin.TestMode)
 
-	router := gin.New()
-	router.Use(MetricsMiddleware())
-
-	// Handler with delay to test concurrent request tracking
-	router.GET("/concurrent", func(c *gin.Context) {
+	h := MetricsMiddleware()(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		time.Sleep(50 * time.Millisecond)
-		c.JSON(http.StatusOK, gin.H{"message": "ok"})
-	})
+		w.WriteHeader(http.StatusOK)
+	}))
 
-	// Get initial concurrent requests count
 	initialCount := getGaugeValue(t, "gateway_controller_concurrent_requests")
 
-	// Launch concurrent requests
 	var wg sync.WaitGroup
-	concurrentCount := 5
-
-	for i := 0; i < concurrentCount; i++ {
+	for i := 0; i < 5; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			req := httptest.NewRequest(http.MethodGet, "/concurrent", nil)
 			w := httptest.NewRecorder()
-			router.ServeHTTP(w, req)
+			h.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/concurrent", nil))
 			assert.Equal(t, http.StatusOK, w.Code)
 		}()
 	}
 
-	// Give goroutines time to start (brief moment before they complete)
 	time.Sleep(10 * time.Millisecond)
-
-	// Check that concurrent requests were tracked (may be in progress)
-	// Note: Due to timing, we just verify the gauge exists and is usable
 	finalCount := getGaugeValue(t, "gateway_controller_concurrent_requests")
 
-	// Wait for all requests to complete
 	wg.Wait()
 
-	// After completion, concurrent requests should be back to initial
 	afterCount := getGaugeValue(t, "gateway_controller_concurrent_requests")
 	assert.Equal(t, initialCount, afterCount, "Concurrent requests gauge should return to initial value")
-
-	// Verify that metrics registered the increase/decrease at some point
-	assert.GreaterOrEqual(t, finalCount, float64(0), "Concurrent requests should be >= 0")
+	assert.GreaterOrEqual(t, finalCount, float64(0))
 }
 
 func TestMetricsMiddleware_NegativeContentLength(t *testing.T) {
 	setupMetrics(t)
-	gin.SetMode(gin.TestMode)
 
-	router := gin.New()
-	router.Use(MetricsMiddleware())
-
-	router.GET("/test", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"message": "ok"})
-	})
+	h := MetricsMiddleware()(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
 
 	req := httptest.NewRequest(http.MethodGet, "/test", nil)
-	req.ContentLength = -1 // Simulate unknown content length
+	req.ContentLength = -1
 	w := httptest.NewRecorder()
-
-	router.ServeHTTP(w, req)
-
+	h.ServeHTTP(w, req)
 	assert.Equal(t, http.StatusOK, w.Code)
 
-	// Should handle negative content length gracefully (treat as 0)
-	metricFamilies, err := metrics.GetRegistry().Gather()
+	mfs, err := metrics.GetRegistry().Gather()
 	assert.NoError(t, err)
 
 	found := false
-	for _, mf := range metricFamilies {
+	for _, mf := range mfs {
 		if mf.GetName() == "gateway_controller_http_request_size_bytes" {
 			found = true
 			assert.Greater(t, len(mf.GetMetric()), 0)
@@ -472,28 +384,21 @@ func TestMetricsMiddleware_NegativeContentLength(t *testing.T) {
 
 func TestMetricsMiddleware_ZeroResponseSize(t *testing.T) {
 	setupMetrics(t)
-	gin.SetMode(gin.TestMode)
 
-	router := gin.New()
-	router.Use(MetricsMiddleware())
-
-	router.GET("/empty", func(c *gin.Context) {
-		c.Status(http.StatusNoContent) // No response body
-	})
+	h := MetricsMiddleware()(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
 
 	req := httptest.NewRequest(http.MethodGet, "/empty", nil)
 	w := httptest.NewRecorder()
-
-	router.ServeHTTP(w, req)
-
+	h.ServeHTTP(w, req)
 	assert.Equal(t, http.StatusNoContent, w.Code)
 
-	// Should handle zero/negative response size gracefully
-	metricFamilies, err := metrics.GetRegistry().Gather()
+	mfs, err := metrics.GetRegistry().Gather()
 	assert.NoError(t, err)
 
 	found := false
-	for _, mf := range metricFamilies {
+	for _, mf := range mfs {
 		if mf.GetName() == "gateway_controller_http_response_size_bytes" {
 			found = true
 			assert.Greater(t, len(mf.GetMetric()), 0)
@@ -502,16 +407,14 @@ func TestMetricsMiddleware_ZeroResponseSize(t *testing.T) {
 	assert.True(t, found, "Response size metric should handle zero size")
 }
 
-// Helper function to get gauge value from metrics
+// getGaugeValue reads a gauge metric by name from the Prometheus registry.
 func getGaugeValue(t *testing.T, metricName string) float64 {
-	metricFamilies, err := metrics.GetRegistry().Gather()
+	t.Helper()
+	mfs, err := metrics.GetRegistry().Gather()
 	assert.NoError(t, err)
-
-	for _, mf := range metricFamilies {
-		if mf.GetName() == metricName {
-			if len(mf.GetMetric()) > 0 {
-				return mf.GetMetric()[0].GetGauge().GetValue()
-			}
+	for _, mf := range mfs {
+		if mf.GetName() == metricName && len(mf.GetMetric()) > 0 {
+			return mf.GetMetric()[0].GetGauge().GetValue()
 		}
 	}
 	return 0

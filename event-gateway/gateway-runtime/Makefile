@@ -88,6 +88,7 @@ build-docker: ## Build Docker image
 		--platform linux/$(shell uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/') \
 		--build-context sdk-core=../../sdk/core \
 		--build-context common=../../common \
+		--build-context httpkit=../../httpkit \
 		--build-context policy-engine=../../gateway/gateway-runtime/policy-engine \
 		--build-context analytics=../../gateway/system-policies/analytics \
 		--build-context gateway-builder=../gateway-builder \
@@ -112,6 +113,7 @@ build-debug: ## Build Docker image with Delve remote debugger (port 2345)
 		--platform linux/$(shell uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/') \
 		--build-context sdk-core=../../sdk/core \
 		--build-context common=../../common \
+		--build-context httpkit=../../httpkit \
 		--build-context policy-engine=../../gateway/gateway-runtime/policy-engine \
 		--build-context analytics=../../gateway/system-policies/analytics \
 		--build-context gateway-builder=../gateway-builder \
@@ -136,6 +138,7 @@ build-and-push-multiarch: ## Build and push Docker image for multiple architectu
 		--platform linux/amd64,linux/arm64 \
 		--build-context sdk-core=../../sdk/core \
 		--build-context common=../../common \
+		--build-context httpkit=../../httpkit \
 		--build-context policy-engine=../../gateway/gateway-runtime/policy-engine \
 		--build-context analytics=../../gateway/system-policies/analytics \
 		--build-context gateway-builder=../gateway-builder \

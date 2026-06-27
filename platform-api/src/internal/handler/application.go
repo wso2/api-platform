@@ -18,6 +18,7 @@
 package handler
 
 import (
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -30,7 +31,7 @@ import (
 	"platform-api/src/internal/service"
 	"platform-api/src/internal/utils"
 
-	"github.com/gin-gonic/gin"
+	"github.com/wso2/go-httpkit/httputil"
 )
 
 type ApplicationHandler struct {
@@ -42,78 +43,89 @@ func NewApplicationHandler(applicationService *service.ApplicationService, slogg
 	return &ApplicationHandler{applicationService: applicationService, slogger: slogger}
 }
 
-func (h *ApplicationHandler) CreateApplication(c *gin.Context) {
-	orgID, exists := middleware.GetOrganizationFromContext(c)
+func (h *ApplicationHandler) CreateApplication(w http.ResponseWriter, r *http.Request) {
+	orgID, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
 		return
 	}
 
 	var req api.CreateApplicationRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		utils.NewValidationErrorResponse(c, err)
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		utils.NewValidationErrorResponse(w, err)
 		return
 	}
 
 	if strings.TrimSpace(req.Name) == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Application name is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Application name is required"))
 		return
 	}
 	if utils.OpenAPIUUIDToString(req.ProjectId) == "00000000-0000-0000-0000-000000000000" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Project ID is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Project ID is required"))
 		return
 	}
 	if strings.TrimSpace(string(req.Type)) == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Application type is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Application type is required"))
 		return
 	}
 
-	createdBy := h.resolveRequesterUserID(c)
+	createdBy := h.resolveRequesterUserID(r)
 	app, err := h.applicationService.CreateApplication(&req, orgID, createdBy)
 	if err != nil {
-		h.writeApplicationError(c, err, "Failed to create application")
+		h.writeApplicationError(w, r, err, "Failed to create application")
 		return
 	}
 
-	c.JSON(http.StatusCreated, app)
+	httputil.WriteJSON(w, http.StatusCreated, app)
 }
 
-func (h *ApplicationHandler) GetApplication(c *gin.Context) {
-	orgID, exists := middleware.GetOrganizationFromContext(c)
+func (h *ApplicationHandler) GetApplication(w http.ResponseWriter, r *http.Request) {
+	orgID, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
 		return
 	}
 
-	appID := c.Param("appHandle")
+	appID := r.PathValue("appHandle")
 	if strings.TrimSpace(appID) == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Application ID is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Application ID is required"))
 		return
 	}
 
 	app, err := h.applicationService.GetApplicationByID(appID, orgID)
 	if err != nil {
-		h.writeApplicationError(c, err, "Failed to get application")
+		h.writeApplicationError(w, r, err, "Failed to get application")
 		return
 	}
 
-	c.JSON(http.StatusOK, app)
+	httputil.WriteJSON(w, http.StatusOK, app)
 }
 
-func (h *ApplicationHandler) ListApplications(c *gin.Context) {
-	orgID, exists := middleware.GetOrganizationFromContext(c)
+func (h *ApplicationHandler) ListApplications(w http.ResponseWriter, r *http.Request) {
+	orgID, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
 		return
 	}
 
-	projectID := strings.TrimSpace(c.Query("projectId"))
+	projectID := strings.TrimSpace(r.URL.Query().Get("projectId"))
 	if projectID == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Project ID is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Project ID is required"))
 		return
 	}
-	limitStr := c.DefaultQuery("limit", "20")
-	offsetStr := c.DefaultQuery("offset", "0")
+
+	var limitStr string
+	if v := r.URL.Query().Get("limit"); v != "" {
+		limitStr = v
+	} else {
+		limitStr = "20"
+	}
+	var offsetStr string
+	if v := r.URL.Query().Get("offset"); v != "" {
+		offsetStr = v
+	} else {
+		offsetStr = "0"
+	}
 
 	limit, err := strconv.Atoi(limitStr)
 	if err != nil || limit <= 0 {
@@ -130,79 +142,79 @@ func (h *ApplicationHandler) ListApplications(c *gin.Context) {
 
 	apps, err := h.applicationService.GetApplicationsByOrganization(orgID, projectID, limit, offset)
 	if err != nil {
-		h.writeApplicationError(c, err, "Failed to list applications")
+		h.writeApplicationError(w, r, err, "Failed to list applications")
 		return
 	}
 
-	c.JSON(http.StatusOK, apps)
+	httputil.WriteJSON(w, http.StatusOK, apps)
 }
 
-func (h *ApplicationHandler) UpdateApplication(c *gin.Context) {
-	orgID, exists := middleware.GetOrganizationFromContext(c)
+func (h *ApplicationHandler) UpdateApplication(w http.ResponseWriter, r *http.Request) {
+	orgID, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
 		return
 	}
 
-	appID := c.Param("appHandle")
+	appID := r.PathValue("appHandle")
 	if strings.TrimSpace(appID) == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Application ID is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Application ID is required"))
 		return
 	}
-	userID := h.resolveRequesterUserID(c)
+	userID := h.resolveRequesterUserID(r)
 
 	var req api.UpdateApplicationRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		utils.NewValidationErrorResponse(c, err)
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		utils.NewValidationErrorResponse(w, err)
 		return
 	}
 
 	app, err := h.applicationService.UpdateApplication(appID, &req, orgID, userID)
 	if err != nil {
-		h.writeApplicationError(c, err, "Failed to update application")
+		h.writeApplicationError(w, r, err, "Failed to update application")
 		return
 	}
 
-	c.JSON(http.StatusOK, app)
+	httputil.WriteJSON(w, http.StatusOK, app)
 }
 
-func (h *ApplicationHandler) DeleteApplication(c *gin.Context) {
-	orgID, exists := middleware.GetOrganizationFromContext(c)
+func (h *ApplicationHandler) DeleteApplication(w http.ResponseWriter, r *http.Request) {
+	orgID, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
 		return
 	}
 
-	appID := c.Param("appHandle")
+	appID := r.PathValue("appHandle")
 	if strings.TrimSpace(appID) == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Application ID is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Application ID is required"))
 		return
 	}
-	userID := h.resolveRequesterUserID(c)
+	userID := h.resolveRequesterUserID(r)
 
 	if err := h.applicationService.DeleteApplication(appID, orgID, userID); err != nil {
-		h.writeApplicationError(c, err, "Failed to delete application")
+		h.writeApplicationError(w, r, err, "Failed to delete application")
 		return
 	}
 
-	c.JSON(http.StatusNoContent, nil)
+	httputil.WriteJSON(w, http.StatusNoContent, nil)
 }
 
-func (h *ApplicationHandler) ListApplicationAssociations(c *gin.Context) {
-	orgID, exists := middleware.GetOrganizationFromContext(c)
+func (h *ApplicationHandler) ListApplicationAssociations(w http.ResponseWriter, r *http.Request) {
+	orgID, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
 		return
 	}
 
-	appID := c.Param("appHandle")
+	appID := r.PathValue("appHandle")
 	if strings.TrimSpace(appID) == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Application ID is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Application ID is required"))
 		return
 	}
 
 	limit := 20
-	if limitStr := strings.TrimSpace(c.Query("limit")); limitStr != "" {
+	if limitStr := strings.TrimSpace(r.URL.Query().Get("limit")); limitStr != "" {
 		parsedLimit, err := strconv.Atoi(limitStr)
 		if err == nil && parsedLimit > 0 {
 			if parsedLimit > 100 {
@@ -213,7 +225,7 @@ func (h *ApplicationHandler) ListApplicationAssociations(c *gin.Context) {
 	}
 
 	offset := 0
-	if offsetStr := strings.TrimSpace(c.Query("offset")); offsetStr != "" {
+	if offsetStr := strings.TrimSpace(r.URL.Query().Get("offset")); offsetStr != "" {
 		parsedOffset, err := strconv.Atoi(offsetStr)
 		if err == nil && parsedOffset >= 0 {
 			offset = parsedOffset
@@ -222,85 +234,86 @@ func (h *ApplicationHandler) ListApplicationAssociations(c *gin.Context) {
 
 	associations, err := h.applicationService.ListApplicationAssociations(appID, orgID, limit, offset)
 	if err != nil {
-		h.writeApplicationError(c, err, "Failed to list application associations")
+		h.writeApplicationError(w, r, err, "Failed to list application associations")
 		return
 	}
 
-	c.JSON(http.StatusOK, associations)
+	httputil.WriteJSON(w, http.StatusOK, associations)
 }
 
-func (h *ApplicationHandler) AddApplicationAssociations(c *gin.Context) {
-	orgID, exists := middleware.GetOrganizationFromContext(c)
+func (h *ApplicationHandler) AddApplicationAssociations(w http.ResponseWriter, r *http.Request) {
+	orgID, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
 		return
 	}
 
-	appID := c.Param("appHandle")
+	appID := r.PathValue("appHandle")
 	if strings.TrimSpace(appID) == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Application ID is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Application ID is required"))
 		return
 	}
 
 	var req service.AddApplicationAssociationsRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		utils.NewValidationErrorResponse(c, err)
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		utils.NewValidationErrorResponse(w, err)
 		return
 	}
 	if len(req.Associations) == 0 {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "At least one association is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "At least one association is required"))
 		return
 	}
 
 	associations, err := h.applicationService.AddApplicationAssociations(appID, &req, orgID)
 	if err != nil {
-		h.writeApplicationError(c, err, "Failed to add application associations")
+		h.writeApplicationError(w, r, err, "Failed to add application associations")
 		return
 	}
 
-	c.JSON(http.StatusOK, associations)
+	httputil.WriteJSON(w, http.StatusOK, associations)
 }
 
-func (h *ApplicationHandler) RemoveApplicationAssociation(c *gin.Context) {
-	orgID, exists := middleware.GetOrganizationFromContext(c)
+func (h *ApplicationHandler) RemoveApplicationAssociation(w http.ResponseWriter, r *http.Request) {
+	orgID, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
 		return
 	}
 
-	appID := c.Param("appHandle")
-	associationID := c.Param("associationId")
+	appID := r.PathValue("appHandle")
+	associationID := r.PathValue("associationId")
 	if strings.TrimSpace(appID) == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Application ID is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Application ID is required"))
 		return
 	}
 	if strings.TrimSpace(associationID) == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Association ID is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Association ID is required"))
 		return
 	}
 
 	if err := h.applicationService.RemoveApplicationAssociation(appID, associationID, orgID); err != nil {
-		h.writeApplicationError(c, err, "Failed to remove application association")
+		h.writeApplicationError(w, r, err, "Failed to remove application association")
 		return
 	}
 
-	c.JSON(http.StatusNoContent, nil)
+	httputil.WriteJSON(w, http.StatusNoContent, nil)
 }
-func (h *ApplicationHandler) ListApplicationAPIKeys(c *gin.Context) {
-	orgID, exists := middleware.GetOrganizationFromContext(c)
+
+func (h *ApplicationHandler) ListApplicationAPIKeys(w http.ResponseWriter, r *http.Request) {
+	orgID, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
 		return
 	}
 
-	appID := c.Param("appHandle")
+	appID := r.PathValue("appHandle")
 	if strings.TrimSpace(appID) == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Application ID is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Application ID is required"))
 		return
 	}
 
 	limit := 20
-	if limitStr := strings.TrimSpace(c.Query("limit")); limitStr != "" {
+	if limitStr := strings.TrimSpace(r.URL.Query().Get("limit")); limitStr != "" {
 		parsedLimit, err := strconv.Atoi(limitStr)
 		if err == nil && parsedLimit > 0 {
 			if parsedLimit > 100 {
@@ -311,7 +324,7 @@ func (h *ApplicationHandler) ListApplicationAPIKeys(c *gin.Context) {
 	}
 
 	offset := 0
-	if offsetStr := strings.TrimSpace(c.Query("offset")); offsetStr != "" {
+	if offsetStr := strings.TrimSpace(r.URL.Query().Get("offset")); offsetStr != "" {
 		parsedOffset, err := strconv.Atoi(offsetStr)
 		if err == nil && parsedOffset >= 0 {
 			offset = parsedOffset
@@ -320,33 +333,33 @@ func (h *ApplicationHandler) ListApplicationAPIKeys(c *gin.Context) {
 
 	keys, err := h.applicationService.ListMappedAPIKeys(appID, orgID, limit, offset)
 	if err != nil {
-		h.writeApplicationError(c, err, "Failed to list mapped API keys")
+		h.writeApplicationError(w, r, err, "Failed to list mapped API keys")
 		return
 	}
 
-	c.JSON(http.StatusOK, keys)
+	httputil.WriteJSON(w, http.StatusOK, keys)
 }
 
-func (h *ApplicationHandler) ListApplicationAssociationAPIKeys(c *gin.Context) {
-	orgID, exists := middleware.GetOrganizationFromContext(c)
+func (h *ApplicationHandler) ListApplicationAssociationAPIKeys(w http.ResponseWriter, r *http.Request) {
+	orgID, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
 		return
 	}
 
-	appID := c.Param("appHandle")
-	associationID := c.Param("associationId")
+	appID := r.PathValue("appHandle")
+	associationID := r.PathValue("associationId")
 	if strings.TrimSpace(appID) == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Application ID is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Application ID is required"))
 		return
 	}
 	if strings.TrimSpace(associationID) == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Association ID is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Association ID is required"))
 		return
 	}
 
 	limit := 20
-	if limitStr := strings.TrimSpace(c.Query("limit")); limitStr != "" {
+	if limitStr := strings.TrimSpace(r.URL.Query().Get("limit")); limitStr != "" {
 		parsedLimit, err := strconv.Atoi(limitStr)
 		if err == nil && parsedLimit > 0 {
 			if parsedLimit > 100 {
@@ -357,7 +370,7 @@ func (h *ApplicationHandler) ListApplicationAssociationAPIKeys(c *gin.Context) {
 	}
 
 	offset := 0
-	if offsetStr := strings.TrimSpace(c.Query("offset")); offsetStr != "" {
+	if offsetStr := strings.TrimSpace(r.URL.Query().Get("offset")); offsetStr != "" {
 		parsedOffset, err := strconv.Atoi(offsetStr)
 		if err == nil && parsedOffset >= 0 {
 			offset = parsedOffset
@@ -366,154 +379,152 @@ func (h *ApplicationHandler) ListApplicationAssociationAPIKeys(c *gin.Context) {
 
 	keys, err := h.applicationService.ListMappedAPIKeysForAssociation(appID, associationID, orgID, limit, offset)
 	if err != nil {
-		h.writeApplicationError(c, err, "Failed to list mapped API keys for association")
+		h.writeApplicationError(w, r, err, "Failed to list mapped API keys for association")
 		return
 	}
 
-	c.JSON(http.StatusOK, keys)
+	httputil.WriteJSON(w, http.StatusOK, keys)
 }
 
-func (h *ApplicationHandler) AddApplicationAPIKeys(c *gin.Context) {
-	orgID, exists := middleware.GetOrganizationFromContext(c)
+func (h *ApplicationHandler) AddApplicationAPIKeys(w http.ResponseWriter, r *http.Request) {
+	orgID, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
 		return
 	}
 
-	appID := c.Param("appHandle")
-	userID := h.resolveRequesterUserID(c)
+	appID := r.PathValue("appHandle")
+	userID := h.resolveRequesterUserID(r)
 	if strings.TrimSpace(appID) == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Application ID is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Application ID is required"))
 		return
 	}
 
 	var req api.AddApplicationAPIKeysRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		utils.NewValidationErrorResponse(c, err)
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		utils.NewValidationErrorResponse(w, err)
 		return
 	}
 	if len(req.ApiKeys) == 0 {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "At least one API key mapping is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "At least one API key mapping is required"))
 		return
 	}
 
 	keys, err := h.applicationService.AddMappedAPIKeys(appID, &req, orgID, userID)
 	if err != nil {
-		h.writeApplicationError(c, err, "Failed to add mapped API keys")
+		h.writeApplicationError(w, r, err, "Failed to add mapped API keys")
 		return
 	}
 
-	c.JSON(http.StatusOK, keys)
+	httputil.WriteJSON(w, http.StatusOK, keys)
 }
 
-func (h *ApplicationHandler) RemoveApplicationAPIKey(c *gin.Context) {
-	orgID, exists := middleware.GetOrganizationFromContext(c)
+func (h *ApplicationHandler) RemoveApplicationAPIKey(w http.ResponseWriter, r *http.Request) {
+	orgID, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
 		return
 	}
 
-	appID := c.Param("appHandle")
-	keyID := c.Param("keyId")
-	entityID := strings.TrimSpace(c.Query("entityID"))
-	userID := h.resolveRequesterUserID(c)
+	appID := r.PathValue("appHandle")
+	keyID := r.PathValue("keyId")
+	entityID := strings.TrimSpace(r.URL.Query().Get("entityID"))
+	userID := h.resolveRequesterUserID(r)
 	if strings.TrimSpace(appID) == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Application ID is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Application ID is required"))
 		return
 	}
 	if strings.TrimSpace(keyID) == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "API key id is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "API key id is required"))
 		return
 	}
 	if entityID == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Entity ID is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Entity ID is required"))
 		return
 	}
 
 	if err := h.applicationService.RemoveMappedAPIKey(appID, keyID, entityID, orgID, userID); err != nil {
-		h.writeApplicationError(c, err, "Failed to remove mapped API key")
+		h.writeApplicationError(w, r, err, "Failed to remove mapped API key")
 		return
 	}
 
-	c.JSON(http.StatusNoContent, nil)
+	httputil.WriteJSON(w, http.StatusNoContent, nil)
 }
 
-func (h *ApplicationHandler) RegisterRoutes(r *gin.Engine) {
-	applicationGroup := r.Group(constants.APIBasePath + "/applications")
-	{
-		applicationGroup.GET("", h.ListApplications)
-		applicationGroup.POST("", h.CreateApplication)
-		applicationGroup.GET("/:appHandle", h.GetApplication)
-		applicationGroup.PUT("/:appHandle", h.UpdateApplication)
-		applicationGroup.DELETE("/:appHandle", h.DeleteApplication)
+func (h *ApplicationHandler) RegisterRoutes(mux *http.ServeMux) {
+	base := constants.APIBasePath + "/applications"
+	mux.HandleFunc("GET "+base, h.ListApplications)
+	mux.HandleFunc("POST "+base, h.CreateApplication)
+	mux.HandleFunc("GET "+base+"/{appHandle}", h.GetApplication)
+	mux.HandleFunc("PUT "+base+"/{appHandle}", h.UpdateApplication)
+	mux.HandleFunc("DELETE "+base+"/{appHandle}", h.DeleteApplication)
 
-		applicationGroup.GET("/:appHandle/api-keys", h.ListApplicationAPIKeys)
-		applicationGroup.POST("/:appHandle/api-keys", h.AddApplicationAPIKeys)
-		applicationGroup.DELETE("/:appHandle/api-keys/:keyId", h.RemoveApplicationAPIKey)
-		applicationGroup.GET("/:appHandle/associations", h.ListApplicationAssociations)
-		applicationGroup.POST("/:appHandle/associations", h.AddApplicationAssociations)
-		applicationGroup.GET("/:appHandle/associations/:associationId/api-keys", h.ListApplicationAssociationAPIKeys)
-		applicationGroup.DELETE("/:appHandle/associations/:associationId", h.RemoveApplicationAssociation)
-	}
+	mux.HandleFunc("GET "+base+"/{appHandle}/api-keys", h.ListApplicationAPIKeys)
+	mux.HandleFunc("POST "+base+"/{appHandle}/api-keys", h.AddApplicationAPIKeys)
+	mux.HandleFunc("DELETE "+base+"/{appHandle}/api-keys/{keyId}", h.RemoveApplicationAPIKey)
+	mux.HandleFunc("GET "+base+"/{appHandle}/associations", h.ListApplicationAssociations)
+	mux.HandleFunc("POST "+base+"/{appHandle}/associations", h.AddApplicationAssociations)
+	mux.HandleFunc("GET "+base+"/{appHandle}/associations/{associationId}/api-keys", h.ListApplicationAssociationAPIKeys)
+	mux.HandleFunc("DELETE "+base+"/{appHandle}/associations/{associationId}", h.RemoveApplicationAssociation)
 }
 
-func (h *ApplicationHandler) resolveRequesterUserID(c *gin.Context) string {
-	userID := strings.TrimSpace(c.GetHeader("x-user-id"))
+func (h *ApplicationHandler) resolveRequesterUserID(r *http.Request) string {
+	userID := strings.TrimSpace(r.Header.Get("x-user-id"))
 	if userID != "" {
 		return userID
 	}
 
-	if ctxUserID, ok := middleware.GetUserIDFromContext(c); ok {
+	if ctxUserID, ok := middleware.GetUserIDFromRequest(r); ok {
 		return strings.TrimSpace(ctxUserID)
 	}
 
 	return ""
 }
 
-func (h *ApplicationHandler) writeApplicationError(c *gin.Context, err error, fallback string) {
+func (h *ApplicationHandler) writeApplicationError(w http.ResponseWriter, r *http.Request, err error, fallback string) {
 	if h.slogger != nil {
 		h.slogger.Error(fallback,
 			"error", err,
-			"path", c.FullPath(),
-			"method", c.Request.Method,
-			"appHandle", c.Param("appHandle"),
+			"path", r.URL.Path,
+			"method", r.Method,
+			"appId", r.PathValue("appHandle"),
 		)
 	}
 
 	switch {
 	case errors.Is(err, constants.ErrApplicationNotFound):
-		c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "Application not found"))
+		httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "Application not found"))
 	case errors.Is(err, constants.ErrProjectNotFound):
-		c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "Project not found"))
+		httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "Project not found"))
 	case errors.Is(err, constants.ErrOrganizationNotFound):
-		c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "Organization not found"))
+		httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "Organization not found"))
 	case errors.Is(err, constants.ErrApplicationExists):
-		c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict", "Application already exists in project"))
+		httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponse(409, "Conflict", "Application already exists in project"))
 	case errors.Is(err, constants.ErrHandleExists):
-		c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict", "Application handle already exists in organization"))
+		httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponse(409, "Conflict", "Application handle already exists in organization"))
 	case errors.Is(err, constants.ErrAPIKeyNotFound):
-		c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "API key not found"))
+		httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "API key not found"))
 	case errors.Is(err, constants.ErrAPIKeyForbidden):
-		c.JSON(http.StatusForbidden, utils.NewErrorResponse(403, "Forbidden", "Only the key creator can perform this action"))
+		httputil.WriteJSON(w, http.StatusForbidden, utils.NewErrorResponse(403, "Forbidden", "Only the key creator can perform this action"))
 	case errors.Is(err, constants.ErrInvalidApplicationName):
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Application name is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Application name is required"))
 	case errors.Is(err, constants.ErrInvalidApplicationType):
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Application type is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Application type is required"))
 	case errors.Is(err, constants.ErrUnsupportedApplicationType):
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid application type. Only 'genai' is supported"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid application type. Only 'genai' is supported"))
 	case errors.Is(err, constants.ErrInvalidHandle):
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid application handle format"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid application handle format"))
 	case errors.Is(err, constants.ErrInvalidApplicationID):
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid application id"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid application id"))
 	case errors.Is(err, constants.ErrInvalidAPIKey):
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid API key id"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid API key id"))
 	case errors.Is(err, constants.ErrArtifactNotFound):
-		c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "Association target not found"))
+		httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "Association target not found"))
 	case errors.Is(err, constants.ErrArtifactInvalidKind):
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid association kind. Only LlmProvider and LlmProxy are supported"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid association kind. Only LlmProvider and LlmProxy are supported"))
 	case errors.Is(err, constants.ErrInvalidInput):
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid application association input"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid application association input"))
 	default:
-		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", fallback))
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", fallback))
 	}
 }

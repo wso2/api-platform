@@ -18,286 +18,208 @@
 package authenticators
 
 import (
+	"context"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
-	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
-	"github.com/wso2/api-platform/common/constants"
 	"github.com/wso2/api-platform/common/models"
 )
 
-func setupTestRouter() *gin.Engine {
-	gin.SetMode(gin.TestMode)
-	return gin.New()
+// injectAuthContext injects an AuthContext into a request's context for testing.
+func injectAuthContext(r *http.Request, ac models.AuthContext) *http.Request {
+	ctx := context.WithValue(r.Context(), authContextKeyType{}, ac)
+	return r.WithContext(ctx)
+}
+
+// injectAuthzSkip sets the authz-skip flag for testing.
+func injectAuthzSkip(r *http.Request) *http.Request {
+	ctx := context.WithValue(r.Context(), authzSkipKeyType{}, true)
+	return r.WithContext(ctx)
+}
+
+// buildMux constructs a ServeMux where the authz middleware runs INSIDE the
+// route handler (after the ServeMux has matched the pattern and set r.Pattern).
+// preHandler injects context values (auth context, skip flags) before authz runs.
+func buildMux(
+	pattern string,
+	config models.AuthConfig,
+	logger *slog.Logger,
+	preHandler func(*http.Request) *http.Request,
+) http.Handler {
+	mux := http.NewServeMux()
+	authzMW := AuthorizationMiddleware(config, logger)
+	ok := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
+	mux.HandleFunc(pattern, func(w http.ResponseWriter, r *http.Request) {
+		// r.Pattern is set at this point — authz can read it
+		if preHandler != nil {
+			r = preHandler(r)
+		}
+		authzMW(ok).ServeHTTP(w, r)
+	})
+	return mux
 }
 
 func TestAuthorizationMiddleware_NoResourceRoles_AllowsAllRequests(t *testing.T) {
-	// Scenario: When idp.enabled=true but roles_claim and role_mapping are not provided
-	// Authorization should be bypassed - all authenticated calls are allowed
-	router := setupTestRouter()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	config := models.AuthConfig{ResourceRoles: map[string][]string{}}
 
-	// Config with no ResourceRoles defined (empty map)
-	config := models.AuthConfig{
-		ResourceRoles: map[string][]string{},
-	}
-
-	router.Use(func(c *gin.Context) {
-		// Simulate that user is authenticated with some roles
-		c.Set(constants.AuthContextKey, models.AuthContext{Roles: []string{"developer", "consumer"}})
-		c.Next()
-	})
-	router.Use(AuthorizationMiddleware(config, logger))
-	router.GET("/api/users", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"message": "success"})
+	h := buildMux("GET /api/users", config, logger, func(r *http.Request) *http.Request {
+		return injectAuthContext(r, models.AuthContext{Roles: []string{"developer", "consumer"}})
 	})
 
-	w := httptest.NewRecorder()
+	rr := httptest.NewRecorder()
 	req, _ := http.NewRequest("GET", "/api/users", nil)
-	router.ServeHTTP(w, req)
-
-	assert.Equal(t, http.StatusOK, w.Code)
-	assert.Contains(t, w.Body.String(), "success")
+	h.ServeHTTP(rr, req)
+	assert.Equal(t, http.StatusOK, rr.Code)
 }
 
 func TestAuthorizationMiddleware_NoResourceRoles_NilMap_AllowsAllRequests(t *testing.T) {
-	// Scenario: When ResourceRoles is nil (not initialized)
-	// Authorization should be bypassed
-	router := setupTestRouter()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	config := models.AuthConfig{ResourceRoles: nil}
 
-	// Config with nil ResourceRoles
-	config := models.AuthConfig{
-		ResourceRoles: nil,
-	}
-
-	router.Use(func(c *gin.Context) {
-		// Simulate authenticated user
-		c.Set(constants.AuthContextKey, models.AuthContext{Roles: []string{"admin"}})
-		c.Next()
-	})
-	router.Use(AuthorizationMiddleware(config, logger))
-	router.POST("/api/resources", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"message": "created"})
+	h := buildMux("POST /api/resources", config, logger, func(r *http.Request) *http.Request {
+		return injectAuthContext(r, models.AuthContext{Roles: []string{"admin"}})
 	})
 
-	w := httptest.NewRecorder()
+	rr := httptest.NewRecorder()
 	req, _ := http.NewRequest("POST", "/api/resources", nil)
-	router.ServeHTTP(w, req)
-
-	assert.Equal(t, http.StatusOK, w.Code)
-	assert.Contains(t, w.Body.String(), "created")
+	h.ServeHTTP(rr, req)
+	assert.Equal(t, http.StatusOK, rr.Code)
 }
 
 func TestAuthorizationMiddleware_WithResourceRoles_MatchingRole_Allowed(t *testing.T) {
-	// Scenario: When roles_claim and role_mapping are provided
-	// Authorization happens - user with matching role is allowed
-	router := setupTestRouter()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-
-	// Config with specific ResourceRoles mapping
 	config := models.AuthConfig{
 		ResourceRoles: map[string][]string{
 			"GET /api/users": {"developer", "admin"},
 		},
 	}
 
-	router.Use(func(c *gin.Context) {
-		// User has developer role which is allowed
-		c.Set(constants.AuthContextKey, models.AuthContext{Roles: []string{"developer"}})
-		c.Next()
-	})
-	router.Use(AuthorizationMiddleware(config, logger))
-	router.GET("/api/users", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"message": "success"})
+	h := buildMux("GET /api/users", config, logger, func(r *http.Request) *http.Request {
+		return injectAuthContext(r, models.AuthContext{Roles: []string{"developer"}})
 	})
 
-	w := httptest.NewRecorder()
+	rr := httptest.NewRecorder()
 	req, _ := http.NewRequest("GET", "/api/users", nil)
-	router.ServeHTTP(w, req)
-
-	assert.Equal(t, http.StatusOK, w.Code)
-	assert.Contains(t, w.Body.String(), "success")
+	h.ServeHTTP(rr, req)
+	assert.Equal(t, http.StatusOK, rr.Code)
 }
 
 func TestAuthorizationMiddleware_WithResourceRoles_NoMatchingRole_Forbidden(t *testing.T) {
-	// Scenario: Authorization is enabled and user doesn't have required role
-	router := setupTestRouter()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-
-	// Config with specific ResourceRoles mapping
 	config := models.AuthConfig{
 		ResourceRoles: map[string][]string{
 			"GET /api/users": {"admin"},
 		},
 	}
 
-	router.Use(func(c *gin.Context) {
-		// User has developer role but endpoint requires admin
-		c.Set(constants.AuthContextKey, models.AuthContext{Roles: []string{"developer"}})
-		c.Next()
-	})
-	router.Use(AuthorizationMiddleware(config, logger))
-	router.GET("/api/users", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"message": "success"})
+	h := buildMux("GET /api/users", config, logger, func(r *http.Request) *http.Request {
+		return injectAuthContext(r, models.AuthContext{Roles: []string{"developer"}})
 	})
 
-	w := httptest.NewRecorder()
+	rr := httptest.NewRecorder()
 	req, _ := http.NewRequest("GET", "/api/users", nil)
-	router.ServeHTTP(w, req)
-
-	assert.Equal(t, http.StatusForbidden, w.Code)
-	assert.Contains(t, w.Body.String(), "forbidden")
+	h.ServeHTTP(rr, req)
+	assert.Equal(t, http.StatusForbidden, rr.Code)
+	assert.Contains(t, rr.Body.String(), "forbidden")
 }
 
 func TestAuthorizationMiddleware_WithResourceRoles_MultipleRoles_OneMatches_Allowed(t *testing.T) {
-	// Scenario: User has multiple roles, one of them matches the required role
-	router := setupTestRouter()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-
 	config := models.AuthConfig{
 		ResourceRoles: map[string][]string{
 			"POST /api/resources": {"admin", "developer"},
 		},
 	}
 
-	router.Use(func(c *gin.Context) {
-		// User has developer, consumer, and admin roles
-		c.Set(constants.AuthContextKey, models.AuthContext{Roles: []string{"developer", "consumer", "admin"}})
-		c.Next()
-	})
-	router.Use(AuthorizationMiddleware(config, logger))
-	router.POST("/api/resources", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"message": "created"})
+	h := buildMux("POST /api/resources", config, logger, func(r *http.Request) *http.Request {
+		return injectAuthContext(r, models.AuthContext{Roles: []string{"developer", "consumer", "admin"}})
 	})
 
-	w := httptest.NewRecorder()
+	rr := httptest.NewRecorder()
 	req, _ := http.NewRequest("POST", "/api/resources", nil)
-	router.ServeHTTP(w, req)
-
-	assert.Equal(t, http.StatusOK, w.Code)
-	assert.Contains(t, w.Body.String(), "created")
+	h.ServeHTTP(rr, req)
+	assert.Equal(t, http.StatusOK, rr.Code)
 }
 
 func TestAuthorizationMiddleware_ResourceNotDefined_Forbidden(t *testing.T) {
-	// Scenario: Resource is not in the ResourceRoles map
-	// Should be forbidden (secure by default)
-	router := setupTestRouter()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-
-	// Config with specific resources defined
 	config := models.AuthConfig{
 		ResourceRoles: map[string][]string{
 			"GET /api/users": {"admin"},
 		},
 	}
 
-	router.Use(func(c *gin.Context) {
-		c.Set(constants.AuthContextKey, models.AuthContext{Roles: []string{"admin"}})
-		c.Next()
-	})
-	router.Use(AuthorizationMiddleware(config, logger))
-	router.GET("/api/products", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"message": "success"})
+	// register /api/products but config only defines /api/users
+	h := buildMux("GET /api/products", config, logger, func(r *http.Request) *http.Request {
+		return injectAuthContext(r, models.AuthContext{Roles: []string{"admin"}})
 	})
 
-	w := httptest.NewRecorder()
+	rr := httptest.NewRecorder()
 	req, _ := http.NewRequest("GET", "/api/products", nil)
-	router.ServeHTTP(w, req)
-
-	assert.Equal(t, http.StatusForbidden, w.Code)
+	h.ServeHTTP(rr, req)
+	assert.Equal(t, http.StatusForbidden, rr.Code)
 }
 
 func TestAuthorizationMiddleware_NoUserRoles_Forbidden(t *testing.T) {
-	// Scenario: User is authenticated but has no roles
-	router := setupTestRouter()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-
 	config := models.AuthConfig{
 		ResourceRoles: map[string][]string{
 			"GET /api/users": {"developer"},
 		},
 	}
 
-	router.Use(func(c *gin.Context) {
-		// User has no roles
-		c.Set(constants.AuthContextKey, models.AuthContext{Roles: []string{}})
-		c.Next()
-	})
-	router.Use(AuthorizationMiddleware(config, logger))
-	router.GET("/api/users", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"message": "success"})
+	h := buildMux("GET /api/users", config, logger, func(r *http.Request) *http.Request {
+		return injectAuthContext(r, models.AuthContext{Roles: []string{}})
 	})
 
-	w := httptest.NewRecorder()
+	rr := httptest.NewRecorder()
 	req, _ := http.NewRequest("GET", "/api/users", nil)
-	router.ServeHTTP(w, req)
-
-	assert.Equal(t, http.StatusForbidden, w.Code)
+	h.ServeHTTP(rr, req)
+	assert.Equal(t, http.StatusForbidden, rr.Code)
 }
 
 func TestAuthorizationMiddleware_RolesNotSetInContext_Forbidden(t *testing.T) {
-	// Scenario: Roles were not set in context (authentication may have failed)
-	router := setupTestRouter()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-
 	config := models.AuthConfig{
 		ResourceRoles: map[string][]string{
 			"GET /api/users": {"developer"},
 		},
 	}
 
-	// No middleware to set roles
-	router.Use(AuthorizationMiddleware(config, logger))
-	router.GET("/api/users", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"message": "success"})
-	})
+	// no pre-handler: auth context is never set
+	h := buildMux("GET /api/users", config, logger, nil)
 
-	w := httptest.NewRecorder()
+	rr := httptest.NewRecorder()
 	req, _ := http.NewRequest("GET", "/api/users", nil)
-	router.ServeHTTP(w, req)
-
-	assert.Equal(t, http.StatusForbidden, w.Code)
+	h.ServeHTTP(rr, req)
+	assert.Equal(t, http.StatusForbidden, rr.Code)
 }
 
 func TestAuthorizationMiddleware_AuthSkipped_BypassesAuthorization(t *testing.T) {
-	// Scenario: Authentication was skipped (e.g., public endpoint)
-	// Authorization should also be skipped
-	router := setupTestRouter()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-
 	config := models.AuthConfig{
 		ResourceRoles: map[string][]string{
-			"GET /api/public": {"admin"}, // Requires admin but will be skipped
+			"GET /api/public": {"admin"},
 		},
 	}
 
-	router.Use(func(c *gin.Context) {
-		// Simulate that authentication was skipped
-		c.Set(constants.AuthzSkipKey, true)
-		c.Next()
-	})
-	router.Use(AuthorizationMiddleware(config, logger))
-	router.GET("/api/public", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"message": "public access"})
+	h := buildMux("GET /api/public", config, logger, func(r *http.Request) *http.Request {
+		return injectAuthzSkip(r)
 	})
 
-	w := httptest.NewRecorder()
+	rr := httptest.NewRecorder()
 	req, _ := http.NewRequest("GET", "/api/public", nil)
-	router.ServeHTTP(w, req)
-
-	assert.Equal(t, http.StatusOK, w.Code)
-	assert.Contains(t, w.Body.String(), "public access")
+	h.ServeHTTP(rr, req)
+	assert.Equal(t, http.StatusOK, rr.Code)
 }
 
 func TestAuthorizationMiddleware_DifferentMethodsSamePathDifferentRoles(t *testing.T) {
-	// Scenario: Same path but different methods require different roles
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-
 	config := models.AuthConfig{
 		ResourceRoles: map[string][]string{
 			"GET /api/users":    {"consumer", "developer", "admin"},
@@ -306,174 +228,93 @@ func TestAuthorizationMiddleware_DifferentMethodsSamePathDifferentRoles(t *testi
 		},
 	}
 
-	// Test GET with developer role - should succeed
-	router1 := setupTestRouter()
-	router1.Use(func(c *gin.Context) {
-		c.Set(constants.AuthContextKey, models.AuthContext{Roles: []string{"developer"}})
-		c.Next()
-	})
-	router1.Use(AuthorizationMiddleware(config, logger))
-	router1.GET("/api/users", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"message": "list users"})
-	})
-
-	w1 := httptest.NewRecorder()
-	req1, _ := http.NewRequest("GET", "/api/users", nil)
-	router1.ServeHTTP(w1, req1)
-	assert.Equal(t, http.StatusOK, w1.Code)
-
-	// Test POST with developer role - should fail
-	router2 := setupTestRouter()
-	router2.Use(func(c *gin.Context) {
-		c.Set(constants.AuthContextKey, models.AuthContext{Roles: []string{"developer"}})
-		c.Next()
-	})
-	router2.Use(AuthorizationMiddleware(config, logger))
-	router2.POST("/api/users", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"message": "created"})
-	})
-
-	w2 := httptest.NewRecorder()
-	req2, _ := http.NewRequest("POST", "/api/users", nil)
-	router2.ServeHTTP(w2, req2)
-	assert.Equal(t, http.StatusForbidden, w2.Code)
-
-	// Test DELETE with admin role - should succeed
-	router3 := setupTestRouter()
-	router3.Use(func(c *gin.Context) {
-		c.Set(constants.AuthContextKey, models.AuthContext{Roles: []string{"admin"}})
-		c.Next()
-	})
-	router3.Use(AuthorizationMiddleware(config, logger))
-	router3.DELETE("/api/users", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"message": "deleted"})
-	})
-
-	w3 := httptest.NewRecorder()
-	req3, _ := http.NewRequest("DELETE", "/api/users", nil)
-	router3.ServeHTTP(w3, req3)
-	assert.Equal(t, http.StatusOK, w3.Code)
-}
-
-func TestAuthorizationMiddleware_WildcardRoleMapping(t *testing.T) {
-	// Scenario: Role mapping with wildcard - all values from claim should be accepted
-	// This simulates: developer: ["*"]
-	// In practice, this means any user with "developer" role can access resources
-	// that list "developer" as allowed, regardless of other claim values
-	router := setupTestRouter()
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-
-	config := models.AuthConfig{
-		ResourceRoles: map[string][]string{
-			"GET /api/data": {"developer"}, // developer role is allowed
-		},
+	// buildMux places authz inside the mux handler so r.Pattern is set when authz runs.
+	run := func(method, role string) int {
+		h := buildMux(method+" /api/users", config, logger, func(r *http.Request) *http.Request {
+			return injectAuthContext(r, models.AuthContext{Roles: []string{role}})
+		})
+		rr := httptest.NewRecorder()
+		req, _ := http.NewRequest(method, "/api/users", nil)
+		h.ServeHTTP(rr, req)
+		return rr.Code
 	}
 
-	// User has developer role (could have any value from IDP claim)
-	router.Use(func(c *gin.Context) {
-		c.Set(constants.AuthContextKey, models.AuthContext{Roles: []string{"developer"}})
-		c.Next()
-	})
-	router.Use(AuthorizationMiddleware(config, logger))
-	router.GET("/api/data", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"message": "data"})
-	})
-
-	w := httptest.NewRecorder()
-	req, _ := http.NewRequest("GET", "/api/data", nil)
-	router.ServeHTTP(w, req)
-
-	assert.Equal(t, http.StatusOK, w.Code)
-	assert.Contains(t, w.Body.String(), "data")
-}
-
-func TestAuthorizationMiddleware_CaseSensitiveRoles(t *testing.T) {
-	// Scenario: Roles should be case-sensitive
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-
-	config := models.AuthConfig{
-		ResourceRoles: map[string][]string{
-			"GET /api/users": {"Admin"}, // Uppercase Admin
-		},
-	}
-
-	router := setupTestRouter()
-	router.Use(func(c *gin.Context) {
-		// User has lowercase admin
-		c.Set(constants.AuthContextKey, models.AuthContext{Roles: []string{"admin"}})
-		c.Next()
-	})
-	router.Use(AuthorizationMiddleware(config, logger))
-	router.GET("/api/users", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"message": "success"})
-	})
-
-	w := httptest.NewRecorder()
-	req, _ := http.NewRequest("GET", "/api/users", nil)
-	router.ServeHTTP(w, req)
-
-	// Should be forbidden due to case mismatch
-	assert.Equal(t, http.StatusForbidden, w.Code)
+	assert.Equal(t, http.StatusOK, run("GET", "developer"))
+	assert.Equal(t, http.StatusForbidden, run("POST", "developer"))
+	assert.Equal(t, http.StatusOK, run("DELETE", "admin"))
 }
 
 func TestAuthorizationMiddleware_UnregisteredPath_Returns404(t *testing.T) {
-	// Scenario: Request to a path with no registered route should return 404, not 403.
-	// c.FullPath() is "" for unregistered paths; the middleware must not intercept these.
-	router := setupTestRouter()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-
 	config := models.AuthConfig{
 		ResourceRoles: map[string][]string{
 			"GET /api/users": {"admin"},
 		},
 	}
 
-	router.Use(func(c *gin.Context) {
-		c.Set(constants.AuthContextKey, models.AuthContext{Roles: []string{"admin"}})
-		c.Next()
-	})
-	router.Use(AuthorizationMiddleware(config, logger))
-	router.GET("/api/users", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"message": "success"})
-	})
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /api/users", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
+	authzMW := AuthorizationMiddleware(config, logger)
+	h := authzMW(mux)
 
-	w := httptest.NewRecorder()
+	rr := httptest.NewRecorder()
 	req, _ := http.NewRequest("GET", "/foo", nil)
-	router.ServeHTTP(w, req)
-
-	assert.Equal(t, http.StatusNotFound, w.Code)
+	req = injectAuthContext(req, models.AuthContext{Roles: []string{"admin"}})
+	h.ServeHTTP(rr, req)
+	assert.Equal(t, http.StatusNotFound, rr.Code)
 }
 
-func TestAuthorizationMiddleware_SkipAuthzFlag_BypassesAuthorization(t *testing.T) {
-	// Scenario: When JWT authenticator sets skip_authz flag (no role claim configured)
-	// Authorization should be bypassed even if ResourceRoles are defined
-	router := setupTestRouter()
+func TestAuthorizationMiddleware_CaseSensitiveRoles(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-
-	// Config with ResourceRoles defined (normally would enforce authorization)
 	config := models.AuthConfig{
 		ResourceRoles: map[string][]string{
-			"GET /api/users": {"admin", "developer"}, // Strict requirements
+			"GET /api/users": {"Admin"},
 		},
 	}
 
-	router.Use(func(c *gin.Context) {
-		// Simulate JWT authenticator setting skip_authz flag when no role claim configured
-		c.Set(constants.AuthzSkipKey, true)
-		// User might not even have roles
-		c.Set(constants.AuthContextKey, models.AuthContext{Roles: []string{}})
-		c.Next()
-	})
-	router.Use(AuthorizationMiddleware(config, logger))
-	router.GET("/api/users", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"message": "success"})
+	h := buildMux("GET /api/users", config, logger, func(r *http.Request) *http.Request {
+		return injectAuthContext(r, models.AuthContext{Roles: []string{"admin"}})
 	})
 
-	w := httptest.NewRecorder()
+	rr := httptest.NewRecorder()
 	req, _ := http.NewRequest("GET", "/api/users", nil)
-	router.ServeHTTP(w, req)
+	h.ServeHTTP(rr, req)
+	assert.Equal(t, http.StatusForbidden, rr.Code)
+}
 
-	// Should succeed because skip_authz flag bypasses authorization
-	assert.Equal(t, http.StatusOK, w.Code)
-	assert.Contains(t, w.Body.String(), "success")
+func TestAuthorizationMiddleware_SkipAuthzFlag_BypassesAuthorization(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	config := models.AuthConfig{
+		ResourceRoles: map[string][]string{
+			"GET /api/users": {"admin", "developer"},
+		},
+	}
+
+	h := buildMux("GET /api/users", config, logger, func(r *http.Request) *http.Request {
+		r = injectAuthzSkip(r)
+		return injectAuthContext(r, models.AuthContext{Roles: []string{}})
+	})
+
+	rr := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/api/users", nil)
+	h.ServeHTTP(rr, req)
+	assert.Equal(t, http.StatusOK, rr.Code)
+}
+
+func TestAuthorizationMiddleware_WildcardRoleMapping(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	config := models.AuthConfig{
+		ResourceRoles: map[string][]string{
+			"GET /api/data": {"developer"},
+		},
+	}
+
+	h := buildMux("GET /api/data", config, logger, func(r *http.Request) *http.Request {
+		return injectAuthContext(r, models.AuthContext{Roles: []string{"developer"}})
+	})
+
+	rr := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/api/data", nil)
+	h.ServeHTTP(rr, req)
+	assert.Equal(t, http.StatusOK, rr.Code)
 }

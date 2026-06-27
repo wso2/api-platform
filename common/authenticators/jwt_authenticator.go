@@ -30,7 +30,6 @@ import (
 
 	"github.com/MicahParks/jwkset"
 	"github.com/MicahParks/keyfunc/v3"
-	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/wso2/api-platform/common/constants"
 	"github.com/wso2/api-platform/common/models"
@@ -108,9 +107,9 @@ func newJWTAuthenticatorWithJWKS(config *models.AuthConfig, logger *slog.Logger,
 }
 
 // Authenticate verifies JWT token from context
-func (j *JWTAuthenticator) Authenticate(ctx *gin.Context) (*AuthResult, error) {
+func (j *JWTAuthenticator) Authenticate(r *http.Request) (*AuthResult, error) {
 	// Extract bearer token from Authorization header
-	authHeader := ctx.GetHeader(constants.AuthorizationHeader)
+	authHeader := r.Header.Get(constants.AuthorizationHeader)
 	if authHeader == "" {
 		return nil, errors.New("authorization header missing")
 	}
@@ -175,9 +174,10 @@ func (j *JWTAuthenticator) Authenticate(ctx *gin.Context) (*AuthResult, error) {
 	// If no role claim is configured, set flag to skip authorization
 	// This allows authentication-only mode where all authenticated users can access resources
 	var permissions []string
+	skipAuthz := false
 	if j.config.JWTConfig.ScopeClaim == "" {
 		j.logger.Debug("No role claim configured, setting skip_authz flag")
-		ctx.Set(constants.AuthzSkipKey, true)
+		skipAuthz = true
 		permissions = []string{}
 	} else {
 		permissions = j.resolvePermissions(claims)
@@ -187,10 +187,11 @@ func (j *JWTAuthenticator) Authenticate(ctx *gin.Context) (*AuthResult, error) {
 		return nil, fmt.Errorf("failed to get subject: %w", err)
 	}
 	return &AuthResult{
-		Success: true,
-		UserID:  subject,
-		Roles:   permissions,
-		Claims:  claims,
+		Success:           true,
+		UserID:            subject,
+		Roles:             permissions,
+		Claims:            claims,
+		SkipAuthorization: skipAuthz,
 	}, nil
 }
 
@@ -266,12 +267,11 @@ func (j *JWTAuthenticator) Name() string {
 }
 
 // CanHandle checks if credentials in context are JWTCredentials
-func (j *JWTAuthenticator) CanHandle(ctx *gin.Context) bool {
-	authHeader := ctx.GetHeader(constants.AuthorizationHeader)
+func (j *JWTAuthenticator) CanHandle(r *http.Request) bool {
+	authHeader := r.Header.Get(constants.AuthorizationHeader)
 	if authHeader == "" {
 		return false
 	}
-	// Determine auth type from header
 	canHandle := strings.HasPrefix(authHeader, constants.BearerPrefix)
 	j.logger.Debug("can handle token", slog.Bool("canHandle", canHandle))
 	return canHandle

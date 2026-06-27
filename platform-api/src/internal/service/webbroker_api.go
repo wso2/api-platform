@@ -129,14 +129,14 @@ func (s *WebBrokerAPIService) Create(orgUUID, createdBy string, req *api.WebBrok
 	}
 
 	m := &model.WebBrokerAPI{
-		Handle:          handle,
+		Handle:           handle,
 		OrganizationUUID: orgUUID,
-		ProjectUUID:     req.ProjectId,
-		Name:            req.Name,
-		Description:     utils.ValueOrEmpty(req.Description),
-		CreatedBy:       createdBy,
-		Version:         req.Version,
-		LifeCycleStatus: lifeCycleStatus,
+		ProjectUUID:      req.ProjectId,
+		Name:             req.Name,
+		Description:      utils.ValueOrEmpty(req.Description),
+		CreatedBy:        createdBy,
+		Version:          req.Version,
+		LifeCycleStatus:  lifeCycleStatus,
 		Configuration: model.WebBrokerAPIConfiguration{
 			Name:              req.Name,
 			Version:           req.Version,
