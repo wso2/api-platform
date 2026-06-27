@@ -70,7 +70,7 @@ const loadApplicationData = async (req, orgName, applicationId, viewName) => {
         try {
             const { ApplicationKeyMapping } = require('../models/application');
             const localMappings = await ApplicationKeyMapping.findAll({
-                where: { APP_ID: applicationId, ORG_ID: orgID }
+                where: { APP_ID: applicationId }
             });
             const keyList = [];
             for (const mapping of localMappings) {
@@ -409,7 +409,7 @@ async function loadApplicationApiKeysData(orgID, applicationId) {
         const allKeys = await apiKeyService.list(orgID, { status: 'ACTIVE', limit: 200 });
         const byApi = new Map();
         allKeys.forEach((k) => {
-            if (k.APP_ID === applicationId) return;
+            if (k.DP_API_KEY_APP_MAPPING?.APP_ID === applicationId) return;
             const apiId = k.API_ID;
             const apiName = formatApiDisplayName(k.DP_API_METADATA, apiId);
             if (!byApi.has(apiId)) byApi.set(apiId, { apiId, apiName, keys: [] });

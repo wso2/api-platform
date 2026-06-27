@@ -116,7 +116,7 @@ async function resolveApp(orgId, appId, actor) {
 }
 
 function applicationOf(key) {
-    const app = key.DP_APPLICATION;
+    const app = key.DP_API_KEY_APP_MAPPING?.DP_APPLICATION;
     return app ? { id: app.ID, name: app.NAME } : null;
 }
 
@@ -313,7 +313,7 @@ async function removeApplicationAssociation({ orgId, keyId, actor }) {
     const existing = await apiKeyDao.get(orgId, keyId);
     if (!existing) throw Object.assign(new Error('API key not found'), { status: 404 });
 
-    if (!existing.APP_ID) return { keyId, application: null };
+    if (!existing.DP_API_KEY_APP_MAPPING) return { keyId, application: null };
 
     await sequelize.transaction(async (t) => {
         await apiKeyDao.setApplication(orgId, keyId, null, t);

@@ -36,7 +36,7 @@ function normalizeOptionalId(value) {
 }
 
 function mapKey(k) {
-    const app = k.DP_APPLICATION;
+    const app = k.DP_API_KEY_APP_MAPPING?.DP_APPLICATION;
     return {
         keyId: k.ID,
         name: k.NAME,
@@ -45,8 +45,8 @@ function mapKey(k) {
         createdAt: k.CREATED_AT,
         revokedAt: k.REVOKED_AT || undefined,
         apiId: k.API_ID,
-        appId: app ? app.ID : undefined,
-        appName: app ? app.NAME : undefined
+        appId: app ? app.ID : null,
+        appName: app ? app.NAME : null
     };
 }
 
@@ -108,16 +108,7 @@ async function listApiKeys(req, res) {
             appId: appIdResult.value,
             status: status || undefined
         });
-        const mapped = keys.map(k => ({
-            keyId: k.ID,
-            name: k.NAME,
-            status: k.STATUS,
-            appId: k.APP_ID,
-            expiresAt: k.EXPIRES_AT,
-            createdAt: k.CREATED_AT,
-            revokedAt: k.REVOKED_AT || undefined,
-            apiId: k.API_ID
-        }));
+        const mapped = keys.map(k => mapKey(k));
         return res.status(200).json(util.toPaginatedList(mapped, req));
     } catch (err) {
         logger.error('Failed to list API keys', { error: err.message, orgId });

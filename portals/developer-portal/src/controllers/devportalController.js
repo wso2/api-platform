@@ -139,7 +139,7 @@ const updateApplication = async (req, res) => {
 const revokeAppKeyMappings = async (orgID, appID) => {
     const { ApplicationKeyMapping } = require('../models/application');
     const mappings = await ApplicationKeyMapping.findAll({
-        where: { APP_ID: appID, ORG_ID: orgID },
+        where: { APP_ID: appID },
     });
     const succeededMappingIds = [];
     const failedMappingIds = [];
@@ -218,6 +218,10 @@ const deleteApplication = async (req, res) => {
     const applicationId = req.params.applicationId;
     const orgID = String(req.params.orgId || '').replace(/[\r\n]/g, '');
     try {
+        const ownedApp = await appDao.get(orgID, applicationId, userID);
+        if (!ownedApp) {
+            return res.status(404).json({ status: 'error', code: '404', message: 'Application not found' });
+        }
         try {
             await revokeAppKeyMappings(orgID, applicationId);
             const { appToDelete, affectedKeyIds } = await deleteApplicationAndSnapshotKeys(orgID, applicationId, userID);
