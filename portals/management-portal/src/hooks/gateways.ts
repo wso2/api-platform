@@ -5,6 +5,7 @@ export type GatewayType = "hybrid" | "cloud";
 
 type GatewayApiShape = {
   id: string;
+  handle: string;
   organizationId: string;
   name: string;
   displayName: string;
@@ -68,6 +69,7 @@ const normalizeGateway = (gateway: GatewayApiShape): Gateway => {
   const resolvedVhost = gateway.vhost ?? gateway.host ?? undefined;
   return {
     ...gateway,
+    handle: gateway.handle ?? gateway.name,
     host: resolvedVhost,
     vhost: resolvedVhost,
   };

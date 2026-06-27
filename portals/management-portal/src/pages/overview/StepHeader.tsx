@@ -486,7 +486,7 @@ function GatewayWizardContent({ onFinish }: { onFinish?: () => void }) {
       await refreshGateways();
 
       try {
-        await rotateGatewayToken(gw.id);
+        await rotateGatewayToken(gw.handle ?? gw.name ?? gw.id);
       } catch {
         /* non-fatal */
       }
@@ -503,7 +503,7 @@ function GatewayWizardContent({ onFinish }: { onFinish?: () => void }) {
   const handleRotateCreated = async () => {
     if (!createdGateway) return;
     try {
-      await rotateGatewayToken(createdGateway.id);
+      await rotateGatewayToken(createdGateway.handle ?? createdGateway.name ?? createdGateway.id);
       notify("Gateway token rotated");
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Failed to rotate token";

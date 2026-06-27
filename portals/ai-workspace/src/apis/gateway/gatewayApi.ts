@@ -86,7 +86,7 @@ export async function getGatewayConfigs(
   organizationId: string
 ): Promise<{ data: GatewayConfigs }> {
   const data = await getRequest<GatewayConfigs>(
-    `${GATEWAY_API_PATH}/${encodeURIComponent(gatewayId)}/configs?organizationId=${encodeURIComponent(organizationId)}`,
+    `${GATEWAY_API_PATH}/${encodeURIComponent(gatewayId)}/manifest?organizationId=${encodeURIComponent(organizationId)}`,
     undefined,
     PLATFORM_API_BASE_URL
   );

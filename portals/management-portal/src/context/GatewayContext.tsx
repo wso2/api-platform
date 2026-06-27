@@ -216,10 +216,11 @@ export const GatewayProvider = ({ children }: GatewayProviderProps) => {
         });
 
         // rotate token in background
-        rotateGatewayTokenRequest(gateway.id)
+        const gatewayKey = gateway.handle ?? gateway.name ?? gateway.id;
+        rotateGatewayTokenRequest(gatewayKey)
           .then((tokenResponse) => {
             setGatewayTokens((prev) => {
-              const next = { ...prev, [gateway.id]: tokenResponse };
+              const next = { ...prev, [gatewayKey]: tokenResponse };
               persistTokens(next);
               return next;
             });
@@ -281,7 +282,7 @@ export const GatewayProvider = ({ children }: GatewayProviderProps) => {
       try {
         await deleteGatewayRequest(gatewayId);
         setGateways((prev) =>
-          prev.filter((gateway) => gateway.id !== gatewayId)
+          prev.filter((gw) => gw.id !== gatewayId && gw.handle !== gatewayId && gw.name !== gatewayId)
         );
         setGatewayTokens((prev) => {
           const next = { ...prev };
@@ -312,7 +313,7 @@ export const GatewayProvider = ({ children }: GatewayProviderProps) => {
         await deleteGatewayWithPayload(payload);
         const id = payload.gatewayId;
 
-        setGateways((prev) => prev.filter((gateway) => gateway.id !== id));
+        setGateways((prev) => prev.filter((gw) => gw.id !== id && gw.handle !== id && gw.name !== id));
 
         setGatewayTokens((prev) => {
           const next = { ...prev };

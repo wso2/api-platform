@@ -27,6 +27,7 @@ export type ApiOperation = {
 
 export type ApiSummary = {
   id: string;
+  handle: string;
   name: string;
   displayName?: string;
   context: string;
@@ -144,6 +145,7 @@ const normalizeApiSummary = (api: any): ApiSummary => {
 
   const normalized: ApiSummary = {
     ...api,
+    handle: api.handle ?? api.name,
     backendServices: backend,
     operations,
     transport,
@@ -177,7 +179,7 @@ export const useApisApi = () => {
         body.contract = contract;
       }
 
-      const response = await fetch(`${baseUrl}/api/v0.9/apis`, {
+      const response = await fetch(`${baseUrl}/api/v0.9/rest-apis`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -200,9 +202,9 @@ export const useApisApi = () => {
   );
 
   /**
-   * Fetch from /api/v0.9/apis with optional projectId filter:
-   * - /api/v0.9/apis                 => all APIs in org
-   * - /api/v0.9/apis?projectId=....  => APIs for a specific project
+   * Fetch from /api/v0.9/rest-apis with optional projectId filter:
+   * - /api/v0.9/rest-apis                 => all REST APIs in org
+   * - /api/v0.9/rest-apis?projectId=....  => REST APIs for a specific project
    */
   const fetchProjectApis = useCallback(
     async (projectId: string): Promise<ApiSummary[]> => {
@@ -210,8 +212,8 @@ export const useApisApi = () => {
 
       const url =
         projectId && projectId.length > 0
-          ? `${baseUrl}/api/v0.9/apis?projectId=${encodeURIComponent(projectId)}`
-          : `${baseUrl}/api/v0.9/apis`;
+          ? `${baseUrl}/api/v0.9/rest-apis?projectId=${encodeURIComponent(projectId)}`
+          : `${baseUrl}/api/v0.9/rest-apis`;
 
       const response = await fetch(url, {
         method: "GET",
@@ -251,7 +253,7 @@ export const useApisApi = () => {
   const fetchApi = useCallback(async (apiId: string): Promise<ApiSummary> => {
     const { token, baseUrl } = getApiConfig();
 
-    const response = await fetch(`${baseUrl}/api/v0.9/apis/${apiId}`, {
+    const response = await fetch(`${baseUrl}/api/v0.9/rest-apis/${apiId}`, {
       method: "GET",
       headers: {
         Authorization: `Bearer ${token}`,
@@ -272,7 +274,7 @@ export const useApisApi = () => {
   const deleteApi = useCallback(async (apiId: string): Promise<void> => {
     const { token, baseUrl } = getApiConfig();
 
-    const response = await fetch(`${baseUrl}/api/v0.9/apis/${apiId}`, {
+    const response = await fetch(`${baseUrl}/api/v0.9/rest-apis/${apiId}`, {
       method: "DELETE",
       headers: {
         Authorization: `Bearer ${token}`,
@@ -293,7 +295,7 @@ export const useApisApi = () => {
       const { token, baseUrl } = getApiConfig();
 
       const response = await fetch(
-        `${baseUrl}/api/v0.9/apis/${encodeURIComponent(apiId)}/gateways`,
+        `${baseUrl}/api/v0.9/rest-apis/${encodeURIComponent(apiId)}/gateways`,
         {
           method: "GET",
           headers: { Authorization: `Bearer ${token}` },
@@ -339,7 +341,7 @@ export const useApisApi = () => {
         formData.append("definition", payload.definition);
       }
 
-      const res = await fetch(`${baseUrl}/api/v0.9/import/open-api`, {
+      const res = await fetch(`${baseUrl}/api/v0.9/rest-apis/import-openapi`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -380,7 +382,7 @@ export const useApisApi = () => {
       const payload = gatewayIds.map((gatewayId) => ({ gatewayId }));
 
       const response = await fetch(
-        `${baseUrl}/api/v0.9/apis/${encodeURIComponent(apiId)}/gateways`,
+        `${baseUrl}/api/v0.9/rest-apis/${encodeURIComponent(apiId)}/gateways`,
         {
           method: "POST",
           headers: {

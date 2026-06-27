@@ -166,3 +166,5 @@ gateway/target/
 
 # Devportal
 portals/developer-portal/target/
+
+api-reports/

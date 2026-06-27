@@ -169,17 +169,13 @@ export async function undeployMCPServerDeployment(
   gatewayId?: string
 ): Promise<DeploymentResponse> {
   try {
-    const params = new URLSearchParams({
-      organizationId: organizationId,
-      deploymentId: deploymentId,
-    });
-
+    const params = new URLSearchParams({ organizationId });
     if (gatewayId) {
       params.append('gatewayId', gatewayId);
     }
 
     const response = await post<DeploymentResponse>(
-      `/mcp-proxies/${encodeURIComponent(mcpServerId)}/deployments/undeploy?${params.toString()}`,
+      `/mcp-proxies/${encodeURIComponent(mcpServerId)}/deployments/${encodeURIComponent(deploymentId)}/undeploy?${params.toString()}`,
       {},
       baseUrl
     );
@@ -210,17 +206,13 @@ export async function restoreMCPServerDeployment(
   gatewayId?: string
 ): Promise<DeploymentResponse> {
   try {
-    const params = new URLSearchParams({
-      organizationId: organizationId,
-      deploymentId: deploymentId,
-    });
-
+    const params = new URLSearchParams({ organizationId });
     if (gatewayId) {
       params.append('gatewayId', gatewayId);
     }
 
     const response = await post<DeploymentResponse>(
-      `/mcp-proxies/${encodeURIComponent(mcpServerId)}/deployments/restore?${params.toString()}`,
+      `/mcp-proxies/${encodeURIComponent(mcpServerId)}/deployments/${encodeURIComponent(deploymentId)}/restore?${params.toString()}`,
       {},
       baseUrl
     );

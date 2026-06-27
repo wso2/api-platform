@@ -202,7 +202,7 @@ const GatewayContent: React.FC = () => {
     setMode("form");
 
     if (!g.description || !(g.vhost ?? g.host)) {
-      fetchGatewayById(g.id)
+      fetchGatewayById(g.handle ?? g.name ?? g.id)
         .then((full) => {
           if (editingIdRef.current !== full.id) return;
           setDisplayName(full.displayName);

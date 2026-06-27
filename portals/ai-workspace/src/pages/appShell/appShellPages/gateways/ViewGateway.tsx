@@ -381,7 +381,7 @@ ENVFILE`;
       clearInterval(pollingRef.current);
     }
 
-    const gatewayId = gateway.id;
+    const gatewayId = gateway.handle ?? gateway.name ?? gateway.id;
     pollingIntervalRef.current = desiredInterval;
     pollingRef.current = setInterval(async () => {
       try {
@@ -472,7 +472,7 @@ GATEWAY_REGISTRATION_TOKEN=${registrationToken || ""}`;
 
     try {
       const response = await getGatewayConfigs(
-        gateway.id,
+        gateway.handle ?? gateway.name ?? gateway.id,
         currentOrganization.uuid,
       );
       setGatewayConfigs(response.data || {});
@@ -497,7 +497,7 @@ GATEWAY_REGISTRATION_TOKEN=${registrationToken || ""}`;
       throw new Error("Gateway ID or Organization ID is not available");
     }
 
-    const gatewayId = gateway.id;
+    const gatewayId = gateway.handle ?? gateway.name ?? gateway.id;
     const organizationId = currentOrganization.uuid;
 
     // 1) List existing tokens

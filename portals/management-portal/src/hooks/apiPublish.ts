@@ -78,7 +78,7 @@ const normalizePublication = (item: any): ApiPublicationWithPortal => ({
 export const useApiPublishApi = () => {
   const fetchPublications = useCallback(async (apiId: string): Promise<ApiPublicationWithPortal[]> => {
     const { token, baseUrl } = getApiConfig();
-    const response = await fetch(`${baseUrl}/api/v0.9/apis/${apiId}/publications`, {
+    const response = await fetch(`${baseUrl}/api/v0.9/rest-apis/${apiId}/publications`, {
       method: "GET",
       headers: { Authorization: `Bearer ${token}` },
     });
@@ -138,4 +138,3 @@ export const useApiPublishApi = () => {
     unpublishApiFromDevPortal,
   };
 };
-

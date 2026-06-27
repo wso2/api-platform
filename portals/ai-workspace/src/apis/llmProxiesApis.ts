@@ -173,17 +173,13 @@ export async function undeployLLMProxyDeployment(
   gatewayId?: string
 ): Promise<DeploymentResponse> {
   try {
-    const params = new URLSearchParams({
-      organizationId: organizationId,
-      deploymentId: deploymentId,
-    });
-
+    const params = new URLSearchParams({ organizationId });
     if (gatewayId) {
       params.append('gatewayId', gatewayId);
     }
 
     const response = await post<DeploymentResponse>(
-      `/llm-proxies/${encodeURIComponent(proxyId)}/deployments/undeploy?${params.toString()}`,
+      `/llm-proxies/${encodeURIComponent(proxyId)}/deployments/${encodeURIComponent(deploymentId)}/undeploy?${params.toString()}`,
       {},
       baseUrl
     );
@@ -214,17 +210,13 @@ export async function restoreLLMProxyDeployment(
   gatewayId?: string
 ): Promise<DeploymentResponse> {
   try {
-    const params = new URLSearchParams({
-      organizationId: organizationId,
-      deploymentId: deploymentId,
-    });
-
+    const params = new URLSearchParams({ organizationId });
     if (gatewayId) {
       params.append('gatewayId', gatewayId);
     }
 
     const response = await post<DeploymentResponse>(
-      `/llm-proxies/${encodeURIComponent(proxyId)}/deployments/restore?${params.toString()}`,
+      `/llm-proxies/${encodeURIComponent(proxyId)}/deployments/${encodeURIComponent(deploymentId)}/restore?${params.toString()}`,
       {},
       baseUrl
     );

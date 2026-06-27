@@ -135,7 +135,7 @@ export const useOpenApiValidation = () => {
       const formData = new FormData();
       formData.append("url", url);
 
-      const res = await fetch(`${baseUrl}/api/v0.9/validate/open-api`, {
+      const res = await fetch(`${baseUrl}/api/v0.9/rest-apis/validate-openapi`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
         body: formData,
@@ -163,7 +163,7 @@ export const useOpenApiValidation = () => {
       const formData = new FormData();
       formData.append("definition", file);
 
-      const res = await fetch(`${baseUrl}/api/v0.9/validate/open-api`, {
+      const res = await fetch(`${baseUrl}/api/v0.9/rest-apis/validate-openapi`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
         body: formData,
@@ -186,7 +186,7 @@ export const useOpenApiValidation = () => {
 
 /** NEW: API uniqueness validation hook */
 export const useApiUniquenessValidation = () => {
-  /** GET: /api/v0.9/apis/validate?name=...&version=... */
+  /** GET: /api/v0.9/rest-apis/validate?name=...&version=... */
   const validateApiNameVersion = useCallback(
     async (
       payload: ApiNameVersionValidationRequest,
@@ -197,7 +197,7 @@ export const useApiUniquenessValidation = () => {
         version: payload.version,
       }).toString();
 
-      const res = await authedFetch(`/api/v0.9/apis/validate?${qs}`, {
+      const res = await authedFetch(`/api/v0.9/rest-apis/validate?${qs}`, {
         method: "GET",
         signal: opts?.signal,
       });
@@ -213,7 +213,7 @@ export const useApiUniquenessValidation = () => {
     []
   );
 
-  /** GET: /api/v0.9/apis/validate?identifier=... */
+  /** GET: /api/v0.9/rest-apis/validate?identifier=... */
   const validateApiIdentifier = useCallback(
     async (
       identifier: string,
@@ -221,7 +221,7 @@ export const useApiUniquenessValidation = () => {
     ): Promise<ApiUniquenessValidationResponse> => {
       const qs = new URLSearchParams({ identifier }).toString();
 
-      const res = await authedFetch(`/api/v0.9/apis/validate?${qs}`, {
+      const res = await authedFetch(`/api/v0.9/rest-apis/validate?${qs}`, {
         method: "GET",
         signal: opts?.signal,
       });

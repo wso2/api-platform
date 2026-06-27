@@ -220,7 +220,7 @@ export const ApiProvider = ({ children }: ApiProviderProps) => {
           const next: Record<string, ApiSummary[]> = {};
 
           for (const [projectId, items] of entries) {
-            const filtered = items.filter((item) => item.id !== apiId);
+            const filtered = items.filter((item) => item.id !== apiId && item.handle !== apiId);
             next[projectId] = filtered;
             if (filtered.length !== items.length) changed = true;
           }

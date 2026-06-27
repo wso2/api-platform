@@ -488,7 +488,7 @@ export async function undeployLLMProviderDeployment(
 ): Promise<DeploymentResponse> {
   try {
     const response = await post<DeploymentResponse>(
-      `/llm-providers/${encodeURIComponent(providerId)}/deployments/undeploy?organizationId=${encodeURIComponent(organizationId)}&deploymentId=${encodeURIComponent(deploymentId)}&gatewayId=${encodeURIComponent(gatewayId)}`,
+      `/llm-providers/${encodeURIComponent(providerId)}/deployments/${encodeURIComponent(deploymentId)}/undeploy?organizationId=${encodeURIComponent(organizationId)}&gatewayId=${encodeURIComponent(gatewayId)}`,
       {},
       baseUrl
     );
@@ -518,7 +518,7 @@ export async function restoreLLMProviderDeployment(
 ): Promise<DeploymentResponse> {
   try {
     const response = await post<DeploymentResponse>(
-      `/llm-providers/${encodeURIComponent(providerId)}/deployments/restore?organizationId=${encodeURIComponent(organizationId)}&deploymentId=${encodeURIComponent(deploymentId)}&gatewayId=${encodeURIComponent(gatewayId)}`,
+      `/llm-providers/${encodeURIComponent(providerId)}/deployments/${encodeURIComponent(deploymentId)}/restore?organizationId=${encodeURIComponent(organizationId)}&gatewayId=${encodeURIComponent(gatewayId)}`,
       {},
       baseUrl
     );

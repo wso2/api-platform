@@ -21,6 +21,7 @@
  */
 export interface Gateway {
   id: string;
+  handle?: string;
   organizationId: string;
   name: string;
   displayName: string;

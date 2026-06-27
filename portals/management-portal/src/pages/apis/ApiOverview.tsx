@@ -505,10 +505,10 @@ const ApiOverviewContent: React.FC = () => {
     );
     if (match) {
       setApi(match);
-      setApiId(match.id);
+      setApiId(match.handle ?? match.id);
       selectApi(match, { slug: slugify(match.name) });
       const params = new URLSearchParams(searchString);
-      params.set("apiId", match.id);
+      params.set("apiId", match.handle ?? match.id);
       if (!orgHandle) {
         navigate(`/apis/${match.id}/overview`, { replace: true });
         return;
@@ -766,7 +766,7 @@ const ApiOverviewContent: React.FC = () => {
                   : orgHandle
                   ? `/${orgHandle}/apis/${api.id}/publish`
                   : `/apis/${api.id}/publish`;
-              navigate(`${base}?apiId=${api.id}`);
+              navigate(`${base}?apiId=${api.handle ?? api.id}`);
             }}
             sx={{
               textTransform: "none",
@@ -841,7 +841,7 @@ const ApiOverviewContent: React.FC = () => {
                   : `/apis/develop`;
 
               const params = new URLSearchParams();
-              params.set("apiId", api.id);
+              params.set("apiId", api.handle ?? api.id);
               params.set("apiSlug", slugify(api.name));
 
               navigate(`${base}?${params.toString()}`);

@@ -164,12 +164,13 @@ const GatewayList: React.FC<Props> = ({
       {/* Actual list (hidden while loading) */}
       {!loading &&
         gateways.map((g) => {
-          const latestToken = gatewayTokens[g.id]?.token;
+          const gwKey = g.handle ?? g.name ?? g.id;
+          const latestToken = gatewayTokens[gwKey]?.token;
           const hasToken = Boolean(latestToken);
           const status =
             typeof getGatewayStatus === "function"
-              ? getGatewayStatus(g.id)
-              : gatewayStatuses?.[g.id];
+              ? getGatewayStatus(gwKey)
+              : gatewayStatuses?.[gwKey];
 
           const isActive = status?.isActive === true;
           const cmdTextCopy =
@@ -278,7 +279,7 @@ const GatewayList: React.FC<Props> = ({
                     </IconButton>
                   </Tooltip>
                   <Tooltip title="Delete">
-                    <IconButton color="error" onClick={() => onDelete(g.id)}>
+                    <IconButton color="error" onClick={() => onDelete(gwKey)}>
                       <Delete />
                     </IconButton>
                   </Tooltip>
@@ -356,8 +357,8 @@ const GatewayList: React.FC<Props> = ({
                     <Tooltip title="Rotate token">
                       <IconButton
                         variant="outlined"
-                        onClick={() => onRotateToken(g.id)}
-                        disabled={manualRotatingId === g.id}
+                        onClick={() => onRotateToken(gwKey)}
+                        disabled={manualRotatingId === gwKey}
                         size="small"
                       >
                         <CachedRoundedIcon

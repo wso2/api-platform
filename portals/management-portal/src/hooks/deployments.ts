@@ -58,9 +58,7 @@ export const useDeploymentsApi = () => {
       targets: DeployTargetRequest[]
     ): Promise<DeployRevisionResponse> => {
       const { token, baseUrl } = getApiConfig();
-      const url = `${baseUrl}/api/v0.9/apis/${encodeURIComponent(
-        apiId
-      )}/deploy-revision?revisionId=${encodeURIComponent(String(revisionId))}`;
+      const url = `${baseUrl}/api/v0.9/rest-apis/${encodeURIComponent(apiId)}/deployments`;
 
       const res = await fetch(url, {
         method: "POST",
@@ -91,7 +89,7 @@ export const useDeploymentsApi = () => {
   const fetchApiDeployments = useCallback(
     async (apiId: string): Promise<ApiDeploymentRecord[]> => {
       const { token, baseUrl } = getApiConfig();
-      const url = `${baseUrl}/api/v0.9/apis/${encodeURIComponent(apiId)}/deployments`;
+      const url = `${baseUrl}/api/v0.9/rest-apis/${encodeURIComponent(apiId)}/deployments`;
 
       const res = await fetch(url, {
         method: "GET",
