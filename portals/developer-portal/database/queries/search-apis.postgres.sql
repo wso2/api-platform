@@ -28,12 +28,12 @@
 SELECT
     metadata.*,
     COALESCE(
-        JSON_AGG(JSON_BUILD_OBJECT('API_ID', images."API_ID", 'LOOKUP_KEY', images."LOOKUP_KEY", 'FILE_NAME', images."FILE_NAME", 'TYPE', images."TYPE"))
-            FILTER (WHERE images."API_ID" IS NOT NULL),
+        JSON_AGG(JSON_BUILD_OBJECT('API_UUID', images."API_UUID", 'LOOKUP_KEY', images."LOOKUP_KEY", 'FILE_NAME', images."FILE_NAME", 'TYPE', images."TYPE"))
+            FILTER (WHERE images."API_UUID" IS NOT NULL),
         '[]'
     ) AS "DP_API_CONTENTs",
     COALESCE(
-        JSON_AGG("DP_API_SUBSCRIPTION_PLAN_MAPPING") FILTER (WHERE "DP_API_SUBSCRIPTION_PLAN_MAPPING"."API_ID" IS NOT NULL),
+        JSON_AGG("DP_API_SUBSCRIPTION_PLAN_MAPPING") FILTER (WHERE "DP_API_SUBSCRIPTION_PLAN_MAPPING"."API_UUID" IS NOT NULL),
         '[]'
     ) AS "DP_API_SUBSCRIPTION_PLAN_MAPPING",
     COALESCE(
@@ -50,8 +50,8 @@ SELECT
     ) AS "rank_metadata",
     STRING_AGG(
         DISTINCT CASE
-            WHEN content."API_FILE" IS NOT NULL
-            AND to_tsvector('english', convert_from(content."API_FILE", 'UTF8')) @@ plainto_tsquery('english', :searchTerm)
+            WHEN content."FILE_CONTENT" IS NOT NULL
+            AND to_tsvector('english', convert_from(content."FILE_CONTENT", 'UTF8')) @@ plainto_tsquery('english', :searchTerm)
             THEN content."TYPE"
             ELSE 'METADATA'
         END, ', '
@@ -60,7 +60,7 @@ FROM
     "DP_API_METADATA" metadata
 LEFT JOIN
     "DP_API_CONTENT" content
-    ON metadata."ID" = content."API_ID"
+    ON metadata."UUID" = content."API_UUID"
     AND (
         content."FILE_NAME" LIKE '%.hbs'
         OR content."FILE_NAME" LIKE '%.md%'
@@ -70,32 +70,32 @@ LEFT JOIN
     )
 LEFT OUTER JOIN
     "DP_API_CONTENT" images
-    ON metadata."ID" = images."API_ID" AND images."TYPE" = 'IMAGE'
+    ON metadata."UUID" = images."API_UUID" AND images."TYPE" = 'IMAGE'
 LEFT OUTER JOIN
     "DP_API_SUBSCRIPTION_PLAN_MAPPING"
-    ON metadata."ID" = "DP_API_SUBSCRIPTION_PLAN_MAPPING"."API_ID"
+    ON metadata."UUID" = "DP_API_SUBSCRIPTION_PLAN_MAPPING"."API_UUID"
 LEFT OUTER JOIN
     "DP_API_LABEL_MAPPING"
-    ON metadata."ID" = "DP_API_LABEL_MAPPING"."API_ID"
+    ON metadata."UUID" = "DP_API_LABEL_MAPPING"."API_UUID"
 LEFT OUTER JOIN
     "DP_LABEL"
-    ON "DP_API_LABEL_MAPPING"."LABEL_ID" = "DP_LABEL"."ID"
+    ON "DP_API_LABEL_MAPPING"."LABEL_UUID" = "DP_LABEL"."UUID"
 LEFT OUTER JOIN
     "DP_API_TAG_MAPPING"
-    ON metadata."ID" = "DP_API_TAG_MAPPING"."API_ID"
+    ON metadata."UUID" = "DP_API_TAG_MAPPING"."API_UUID"
 LEFT OUTER JOIN
     "DP_TAG"
-    ON "DP_API_TAG_MAPPING"."TAG_ID" = "DP_TAG"."ID"
+    ON "DP_API_TAG_MAPPING"."TAG_UUID" = "DP_TAG"."UUID"
 WHERE
     (
         to_tsvector('english', metadata."METADATA_SEARCH"::text) @@ plainto_tsquery('english', COALESCE(:searchTerm, ''))
         OR (
-            content."API_FILE" IS NOT NULL AND
-            to_tsvector('english', convert_from(content."API_FILE", 'UTF8')) @@ plainto_tsquery('english', :searchTerm)
+            content."FILE_CONTENT" IS NOT NULL AND
+            to_tsvector('english', convert_from(content."FILE_CONTENT", 'UTF8')) @@ plainto_tsquery('english', :searchTerm)
         )
     )
-    AND metadata."ORG_ID" = :orgID
+    AND metadata."ORG_UUID" = :orgID
 GROUP BY
-    metadata."ID"
+    metadata."UUID"
 ORDER BY
     rank_metadata DESC;

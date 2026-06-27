@@ -15,26 +15,36 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-const { DataTypes } = require('sequelize');
+const { Sequelize, DataTypes } = require('sequelize');
 const sequelize = require('../db/sequelizeConfig');
 const SubscriptionPlan = require('./subscriptionPlan');
 const { APIMetadata } = require('./apiMetadata');
 
 const APISubscriptionPlan = sequelize.define('DP_API_SUBSCRIPTION_PLAN_MAPPING', {
+    UUID: {
+        type: DataTypes.STRING(40),
+        defaultValue: Sequelize.UUIDV4,
+        primaryKey: true
+    },
     API_UUID: {
         type: DataTypes.STRING(40),
-        allowNull: false,
-        primaryKey: true
+        allowNull: false
     },
     PLAN_UUID: {
         type: DataTypes.STRING(40),
-        allowNull: false,
-        primaryKey: true
+        allowNull: false
     },
 }, {
     timestamps: false,
     tableName: 'DP_API_SUBSCRIPTION_PLAN_MAPPING',
-    returning: true
+    returning: true,
+    indexes: [
+        {
+            name: 'UQ_API_SUBSCRIPTION_PLAN_MAPPING_PLAN_API',
+            unique: true,
+            fields: ['PLAN_UUID', 'API_UUID']
+        }
+    ]
 });
 
 APIMetadata.belongsToMany(SubscriptionPlan, {

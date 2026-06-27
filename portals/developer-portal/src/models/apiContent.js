@@ -19,10 +19,14 @@ const { Sequelize, DataTypes } = require('sequelize');
 const sequelize = require('../db/sequelizeConfig')
 
 const APIContent = sequelize.define('DP_API_CONTENT', {
+    UUID: {
+        type: DataTypes.STRING(40),
+        defaultValue: Sequelize.UUIDV4,
+        primaryKey: true
+    },
     API_UUID: {
         type: DataTypes.STRING(40),
         allowNull: false,
-        primaryKey: true
     },
     FILE_CONTENT: {
         type: DataTypes.BLOB,
@@ -31,12 +35,10 @@ const APIContent = sequelize.define('DP_API_CONTENT', {
     TYPE: {
         type: DataTypes.STRING,
         allowNull: false,
-        primaryKey: true,
     },
     FILE_NAME: {
         type: DataTypes.STRING,
         allowNull: false,
-        primaryKey: true,
     },
     LOOKUP_KEY: {
         type: DataTypes.STRING,
@@ -45,7 +47,14 @@ const APIContent = sequelize.define('DP_API_CONTENT', {
 }, {
     timestamps: false,
     tableName: 'DP_API_CONTENT',
-    returning: false,
+    returning: true,
+    indexes: [
+        {
+            name: 'UQ_API_CONTENT_API_TYPE_FILE_NAME',
+            unique: true,
+            fields: ['API_UUID', 'TYPE', 'FILE_NAME']
+        }
+    ]
 });
 
 module.exports = APIContent;
