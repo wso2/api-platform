@@ -325,7 +325,7 @@ const searchFallback = async (orgID, searchTerm, viewName, t) => {
     const matchingTagAPIs = matchingTagIDs.length
         ? await APITags.findAll({
             attributes: ['API_ID'],
-            where: { ORG_ID: orgID, TAG_ID: { [Op.in]: matchingTagIDs } },
+            where: { TAG_ID: { [Op.in]: matchingTagIDs } },
             transaction: t,
         })
         : [];

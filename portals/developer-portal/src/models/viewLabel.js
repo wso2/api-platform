@@ -17,7 +17,6 @@
  */
 const { Sequelize, DataTypes } = require('sequelize');
 const sequelize = require('../db/sequelizeConfig');
-const { Organization } = require('./organization');
 const View = require('./view');
 const Labels = require('./label');
 
@@ -27,10 +26,6 @@ const ViewLabels = sequelize.define('DP_VIEW_LABEL_MAPPING', {
         type: DataTypes.UUID,
         defaultValue: Sequelize.UUIDV4,
         primaryKey: true
-    },
-    ORG_ID: {
-        type: DataTypes.UUID,
-        allowNull: false
     },
     VIEW_ID: {
         type: DataTypes.UUID,
@@ -54,15 +49,11 @@ const ViewLabels = sequelize.define('DP_VIEW_LABEL_MAPPING', {
     returning: true,
     indexes: [
         {
-            name: 'UQ_VIEW_LABEL_MAPPING_LABEL_VIEW_ORG',
+            name: 'UQ_VIEW_LABEL_MAPPING_LABEL_VIEW',
             unique: true,
-            fields: ['LABEL_ID', 'VIEW_ID', 'ORG_ID']
+            fields: ['LABEL_ID', 'VIEW_ID']
         }
     ]
-});
-
-ViewLabels.belongsTo(Organization, {
-    foreignKey: 'ORG_ID'
 });
 
 View.belongsToMany(Labels, {

@@ -52,7 +52,6 @@ const createApiMapping = async (orgID, apiID, labels, t) => {
             labelList.push({
                 LABEL_ID: label,
                 API_ID: apiID,
-                ORG_ID: orgID
             });
         });
         const labelResponse = await APILabels.bulkCreate(labelList, { transaction: t, ignoreDuplicates: true });
@@ -168,7 +167,6 @@ const deleteApiMapping = async (orgID, apiID, labels, t) => {
                 where: {
                     LABEL_ID: label,
                     API_ID: apiID,
-                    ORG_ID: orgID
                 }
             }, { transaction: t });
         });
@@ -184,7 +182,7 @@ const deleteApiMapping = async (orgID, apiID, labels, t) => {
 const addToView = async (orgID, labelID, viewID, t) => {
     try {
         const [record] = await ViewLabels.findOrCreate({
-            where: { LABEL_ID: labelID, VIEW_ID: viewID, ORG_ID: orgID },
+            where: { LABEL_ID: labelID, VIEW_ID: viewID },
             transaction: t,
         });
         return record;

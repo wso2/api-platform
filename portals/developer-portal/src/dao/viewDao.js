@@ -168,7 +168,6 @@ const addLabels = async (orgID, viewID, labels, t) => {
             labelList.push({
                 LABEL_ID: label,
                 VIEW_ID: viewID,
-                ORG_ID: orgID
             });
         });
         const labelResponse = await ViewLabels.bulkCreate(labelList, { transaction: t });
@@ -183,7 +182,7 @@ const addLabels = async (orgID, viewID, labels, t) => {
 
 const replaceLabels = async (orgID, viewID, labelNames, t) => {
     try {
-        await ViewLabels.destroy({ where: { VIEW_ID: viewID, ORG_ID: orgID }, transaction: t });
+        await ViewLabels.destroy({ where: { VIEW_ID: viewID }, transaction: t });
         if (labelNames?.length) {
             await addLabels(orgID, viewID, labelNames, t);
         }
@@ -205,7 +204,6 @@ const deleteLabels = async (orgID, viewID, labels, t) => {
                 where: {
                     LABEL_ID: label,
                     VIEW_ID: viewID,
-                    ORG_ID: orgID
                 }
             }, { transaction: t });
         });

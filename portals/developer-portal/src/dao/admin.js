@@ -509,7 +509,7 @@ const deleteAppMappingsByIds = async (orgID, mappingIds, t) => {
     if (!mappingIds || mappingIds.length === 0) return 0;
     try {
         return await ApplicationKeyMapping.destroy({
-            where: { ID: mappingIds, ORG_ID: orgID },
+            where: { ID: mappingIds },
             transaction: t,
         });
     } catch (error) {
@@ -522,7 +522,6 @@ const deleteAppMappings = async (orgID, appID, t) => {
     try {
         const deletedRowsCount = await ApplicationKeyMapping.destroy({
             where: {
-                ORG_ID: orgID,
                 APP_ID: appID
             }, transaction: t
         }, { transaction: t });
@@ -576,7 +575,7 @@ const getKeyMapping = async (orgID, appID, t) => {
 const getApplicationKeyMapping = async (orgID, appID) => {
     try {
         return await ApplicationKeyMapping.findAll({
-            where: { ORG_ID: orgID, APP_ID: appID }
+            where: { APP_ID: appID }
         });
     } catch (error) {
         if (error instanceof Sequelize.EmptyResultError) {
@@ -590,7 +589,6 @@ const getApplicationKeyMapping = async (orgID, appID) => {
 const createApplicationKeyMapping = async (mappingData, t) => {
     try {
         const appKeyMapping = await ApplicationKeyMapping.create({
-            ORG_ID: mappingData.orgID,
             APP_ID: mappingData.appID,
             ...(mappingData.kmID && { KM_ID: mappingData.kmID }),
             ...(mappingData.asClientID && { AS_CLIENT_ID: mappingData.asClientID }),
@@ -610,7 +608,6 @@ const upsertApplicationKeyMapping = async (mappingData, t) => {
     try {
         const existing = await ApplicationKeyMapping.findOne({
             where: {
-                ORG_ID: mappingData.orgID,
                 APP_ID: mappingData.appID,
                 ...(mappingData.kmID && { KM_ID: mappingData.kmID }),
                 TYPE: mappingData.keyType,
@@ -625,7 +622,6 @@ const upsertApplicationKeyMapping = async (mappingData, t) => {
             return existing;
         }
         return await ApplicationKeyMapping.create({
-            ORG_ID: mappingData.orgID,
             APP_ID: mappingData.appID,
             ...(mappingData.kmID && { KM_ID: mappingData.kmID }),
             AS_CLIENT_ID: mappingData.asClientID,

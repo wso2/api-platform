@@ -72,10 +72,6 @@ const ApplicationKeyMapping = sequelize.define('DP_APP_KEY_MAPPING', {
         type: DataTypes.UUID,
         allowNull: false
     },
-    ORG_ID: {
-        type: DataTypes.UUID,
-        allowNull: false
-    },
     KM_ID: {
         type: DataTypes.UUID,
         allowNull: true
@@ -168,12 +164,6 @@ Application.belongsTo(Organization, {
     foreignKey: 'ORG_ID'
 })
 Organization.hasMany(Application, {
-    foreignKey: 'ORG_ID'
-})
-ApplicationKeyMapping.belongsTo(Organization, {
-    foreignKey: 'ORG_ID'
-})
-Organization.hasMany(ApplicationKeyMapping, {
     foreignKey: 'ORG_ID'
 })
 ApplicationKeyMapping.belongsTo(Application, {

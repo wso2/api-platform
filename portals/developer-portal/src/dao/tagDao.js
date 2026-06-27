@@ -59,7 +59,6 @@ const createApiMapping = async (orgID, apiID, tagNames, t) => {
         const tagList = IDList.map(tagID => ({
             TAG_ID: tagID,
             API_ID: apiID,
-            ORG_ID: orgID
         }));
         return await APITags.bulkCreate(tagList, { transaction: t, ignoreDuplicates: true });
     } catch (error) {
@@ -80,7 +79,6 @@ const replaceApiMapping = async (orgID, apiID, tagNames, t) => {
         await APITags.destroy({
             where: {
                 API_ID: apiID,
-                ORG_ID: orgID
             },
             transaction: t
         });

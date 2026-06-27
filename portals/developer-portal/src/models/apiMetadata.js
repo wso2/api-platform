@@ -122,10 +122,6 @@ const APILabels = sequelize.define('DP_API_LABEL_MAPPING', {
       defaultValue: Sequelize.UUIDV4,
       primaryKey: true
   },
-  ORG_ID: {
-      type: DataTypes.UUID,
-      allowNull: false
-  },
   API_ID: {
       type: DataTypes.UUID,
       allowNull: false,
@@ -148,9 +144,9 @@ const APILabels = sequelize.define('DP_API_LABEL_MAPPING', {
   returning: true,
   indexes: [
       {
-          name: 'UQ_API_LABEL_MAPPING_LABEL_API_ORG',
+          name: 'UQ_API_LABEL_MAPPING_LABEL_API',
           unique: true,
-          fields: ['LABEL_ID', 'API_ID', 'ORG_ID']
+          fields: ['LABEL_ID', 'API_ID']
       }
   ]
 });
@@ -161,10 +157,6 @@ const APITags = sequelize.define('DP_API_TAG_MAPPING', {
       type: DataTypes.UUID,
       defaultValue: Sequelize.UUIDV4,
       primaryKey: true
-  },
-  ORG_ID: {
-      type: DataTypes.UUID,
-      allowNull: false
   },
   API_ID: {
       type: DataTypes.UUID,
@@ -188,24 +180,16 @@ const APITags = sequelize.define('DP_API_TAG_MAPPING', {
   returning: true,
   indexes: [
       {
-          name: 'UQ_API_TAG_MAPPING_TAG_API_ORG',
+          name: 'UQ_API_TAG_MAPPING_TAG_API',
           unique: true,
-          fields: ['TAG_ID', 'API_ID', 'ORG_ID']
+          fields: ['TAG_ID', 'API_ID']
       }
   ]
-});
-
-APILabels.belongsTo(Organization, {
-  foreignKey: 'ORG_ID'
 });
 
 APILabels.belongsTo(APIMetadata, {
   foreignKey: 'API_ID',
   onDelete: 'CASCADE'
-});
-
-APITags.belongsTo(Organization, {
-  foreignKey: 'ORG_ID'
 });
 
 APITags.belongsTo(APIMetadata, {
