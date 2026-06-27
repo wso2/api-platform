@@ -66,9 +66,14 @@ e2e-ci: ## Run AI Workspace E2E against a local quickstart stack
 	trap 'exit 130' INT; \
 	trap 'exit 143' TERM; \
 	npm ci; \
-	platform_api_version="$$(tr -d '[:space:]' < ../../platform-api/VERSION)"; \
-	echo "Building platform-api:$${platform_api_version} from source"; \
-	$(MAKE) -C ../../platform-api build VERSION="$${platform_api_version}"; \
+	if [ "$(PLATFORM_API_FROM_TAG)" = "true" ]; then \
+		platform_api_version="$(PLATFORM_API_VERSION)"; \
+		echo "Using released platform-api image $(DOCKER_REGISTRY)/platform-api:$${platform_api_version} (skipping build)"; \
+	else \
+		platform_api_version="$$(tr -d '[:space:]' < ../../platform-api/VERSION)"; \
+		echo "Building platform-api:$${platform_api_version} from source"; \
+		$(MAKE) -C ../../platform-api build VERSION="$${platform_api_version}"; \
+	fi; \
 	echo "Pinning ai-workspace compose to platform-api:$${platform_api_version}"; \
 	sed -i.bak -E "s#image: .*/platform-api:.*#image: $(DOCKER_REGISTRY)/platform-api:$${platform_api_version}#" docker-compose.yaml; \
 	rm -f docker-compose.yaml.bak; \
@@ -129,13 +134,40 @@ DIST_NAME     := wso2apip-ai-workspace-$(DIST_VERSION)
 DIST_DIR      := target/$(DIST_NAME)
 DIST_ZIP      := target/$(DIST_NAME).zip
 PLATFORM_API_VERSION ?= $(shell cat ../../platform-api/VERSION 2>/dev/null | sed 's/-SNAPSHOT//' || echo "0.0.0")
+PLATFORM_API_TAG := platform-api/v$(PLATFORM_API_VERSION)
+
+# When PLATFORM_API_VERSION is supplied explicitly (e.g. `make dist PLATFORM_API_VERSION=0.10.0`),
+# the platform-api db-scripts are fetched from the released git tag $(PLATFORM_API_TAG) so the
+# distribution is reproducible for that exact release. Otherwise they are taken from the working tree.
+ifeq ($(origin PLATFORM_API_VERSION),command line)
+PLATFORM_API_FROM_TAG := true
+endif
+ifeq ($(origin PLATFORM_API_VERSION),environment)
+PLATFORM_API_FROM_TAG := true
+endif
 
 .PHONY: dist clean-dist
 dist: clean-dist ## Build standalone AI Workspace + Platform API distribution zip
 	@echo "Building distribution $(DIST_NAME)..."
-	@mkdir -p $(DIST_DIR)/configs $(DIST_DIR)/resources/certificates
+	@mkdir -p $(DIST_DIR)/configs $(DIST_DIR)/resources/certificates $(DIST_DIR)/resources/platform-api/db-scripts
 	@cp -R configs/. $(DIST_DIR)/configs/
 	@cp ../../platform-api/src/resources/roles.yaml $(DIST_DIR)/resources/roles.yaml
+ifeq ($(PLATFORM_API_FROM_TAG),true)
+	@echo "Fetching platform-api db-scripts from tag $(PLATFORM_API_TAG)..."
+	@tag="$(PLATFORM_API_TAG)"; dest="$(DIST_DIR)/resources/platform-api/db-scripts"; \
+	if ! git -C ../.. rev-parse -q --verify "refs/tags/$$tag" >/dev/null 2>&1; then \
+		git -C ../.. fetch --tags --quiet || true; \
+	fi; \
+	if ! git -C ../.. rev-parse -q --verify "refs/tags/$$tag" >/dev/null 2>&1; then \
+		echo "Error: tag $$tag not found (check PLATFORM_API_VERSION)" >&2; exit 1; \
+	fi; \
+	files=$$(git -C ../.. ls-tree -r --name-only "$$tag" -- platform-api/src/internal/database | grep '\.sql$$'); \
+	if [ -z "$$files" ]; then echo "Error: no .sql files found under platform-api/src/internal/database at $$tag" >&2; exit 1; fi; \
+	for f in $$files; do git -C ../.. show "$$tag:$$f" > "$$dest/$$(basename $$f)"; done; \
+	echo "✓ Fetched $$(echo "$$files" | wc -l | tr -d ' ') db-script(s) from $$tag"
+else
+	@cp ../../platform-api/src/internal/database/*.sql $(DIST_DIR)/resources/platform-api/db-scripts/
+endif
 	@cp docker-compose.yaml $(DIST_DIR)/docker-compose.yaml
 	@sed -i.bak \
 	    -e 's|/ai-workspace:[^[:space:]]*|/ai-workspace:$(DIST_VERSION)|g' \

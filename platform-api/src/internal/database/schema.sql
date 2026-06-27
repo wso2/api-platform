@@ -173,6 +173,7 @@ CREATE TABLE IF NOT EXISTS artifact_gateway_mappings (
     artifact_uuid VARCHAR(40) NOT NULL,
     organization_uuid VARCHAR(40) NOT NULL,
     gateway_uuid VARCHAR(40) NOT NULL,
+    metadata BLOB,
     created_by VARCHAR(200),
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_by VARCHAR(200),
@@ -485,6 +486,7 @@ CREATE INDEX IF NOT EXISTS idx_gateway_custom_policies_org ON gateway_custom_pol
 CREATE INDEX IF NOT EXISTS idx_gateway_custom_policy_usages_artifact ON gateway_custom_policy_usages(artifact_uuid);
 CREATE INDEX IF NOT EXISTS idx_llm_provider_templates_org ON llm_provider_templates(organization_uuid);
 CREATE INDEX IF NOT EXISTS idx_llm_provider_templates_group ON llm_provider_templates(organization_uuid, group_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_llm_provider_templates_latest ON llm_provider_templates(organization_uuid, group_id) WHERE is_latest = 1;
 CREATE INDEX IF NOT EXISTS idx_llm_providers_template ON llm_providers(template_uuid);
 CREATE INDEX IF NOT EXISTS idx_llm_providers_org ON llm_providers(organization_uuid);
 CREATE INDEX IF NOT EXISTS idx_llm_proxies_project ON llm_proxies(project_uuid);

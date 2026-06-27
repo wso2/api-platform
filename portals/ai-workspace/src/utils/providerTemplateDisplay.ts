@@ -28,6 +28,36 @@ const PROVIDER_TEMPLATE_NAME_MAP: Record<string, string> = {
   'google-vertex': 'Google Vertex AI',
 };
 
+/**
+ * IDs of the built-in (predefined) provider templates that the backend seeds.
+ * These appear in the "Add Provider" catalog but are NOT user-created custom
+ * templates, so screens that manage custom templates should exclude them.
+ */
+const BUILTIN_PROVIDER_TEMPLATE_IDS = new Set(
+  Object.keys(PROVIDER_TEMPLATE_NAME_MAP)
+);
+
+/**
+ * Strip a trailing version suffix (`-v<major>-<minor>`) from a template handle to
+ * get the family handle, e.g. `mistralai-v2-0` -> `mistralai`. Handles without a
+ * suffix are returned unchanged (covers any legacy built-in handles). Use this
+ * for family-level checks (built-in detection, provider-specific behavior) that
+ * must not depend on the specific version.
+ */
+export function familyHandle(id?: string | null): string {
+  return (id ?? '').trim().replace(/-v\d+-\d+$/i, '');
+}
+
+/**
+ * Returns true if the given template id (any version) belongs to one of the
+ * predefined built-in families.
+ */
+export function isBuiltInProviderTemplate(id?: string | null): boolean {
+  const normalized = familyHandle(id).toLowerCase();
+  if (!normalized) return false;
+  return BUILTIN_PROVIDER_TEMPLATE_IDS.has(normalized);
+}
+
 export function getProviderTemplateDisplayName(template?: string | null): string {
   const normalizedTemplate = template?.trim().toLowerCase();
   if (!normalizedTemplate) {

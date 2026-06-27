@@ -593,7 +593,7 @@ function LLMProxyNewContent({
                   <FormLabel sx={{ mb: 0.5 }}>
                     <FormattedMessage
                       id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyNew.llm.service.provider"
-                      defaultMessage="LLM Service Provider"
+                      defaultMessage="LLM Provider"
                     />
                   </FormLabel>
                   <Select
