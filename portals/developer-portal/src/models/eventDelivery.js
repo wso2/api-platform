@@ -46,7 +46,7 @@ const DPEventDelivery = sequelize.define('DP_EVENT_DELIVERY', {
         defaultValue: null
     },
     STATUS: {
-        type: DataTypes.ENUM('PENDING', 'IN_FLIGHT', 'DELIVERED', 'FAILED', 'DEAD_LETTERED'),
+        type: DataTypes.STRING,
         allowNull: false,
         defaultValue: 'PENDING'
     },

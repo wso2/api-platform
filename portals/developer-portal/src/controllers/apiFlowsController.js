@@ -35,7 +35,7 @@ const resolveViewId = async (orgID, viewName) => {
 
 
 const extractSourceDescriptions = (flow) => {
-    if ((flow.CONTENT_TYPE || 'ARAZZO') !== 'ARAZZO' || !flow.FILE_CONTENT) return [];
+    if ((flow.CONTENT_TYPE || constants.API_FLOW_CONTENT_TYPE.ARAZZO) !== constants.API_FLOW_CONTENT_TYPE.ARAZZO || !flow.FILE_CONTENT) return [];
     try {
         const raw = Buffer.isBuffer(flow.FILE_CONTENT) ? flow.FILE_CONTENT.toString('utf8') : String(flow.FILE_CONTENT);
         const spec = yaml.load(raw);
@@ -103,7 +103,7 @@ const loadAPIFlows = async (req, res, next) => {
                 description: flow.DESCRIPTION,
                 agentPrompt: flow.AGENT_PROMPT,
                 status: flow.STATUS,
-                agentVisibility: flow.AGENT_VISIBILITY || 'VISIBLE',
+                agentVisibility: flow.AGENT_VISIBILITY || constants.AGENT_VISIBILITY.VISIBLE,
                 sources,
                 sourcesPreview: sources.slice(0, 4),
                 sourcesMoreCount: Math.max(0, sources.length - 4)
@@ -189,7 +189,7 @@ const loadAPIFlowDetail = async (req, res, next) => {
                 description: apiFlow.DESCRIPTION,
                 agentPrompt: apiFlow.AGENT_PROMPT,
                 status: apiFlow.STATUS,
-                agentVisibility: apiFlow.AGENT_VISIBILITY || 'VISIBLE',
+                agentVisibility: apiFlow.AGENT_VISIBILITY || constants.AGENT_VISIBILITY.VISIBLE,
                 contentType: apiFlow.CONTENT_TYPE,
                 content: fileContentStr,
                 createdAt: apiFlow.CREATED_AT ? new Date(apiFlow.CREATED_AT).toLocaleDateString() : '',
@@ -406,7 +406,7 @@ const getAllPublishedFlowsMD = async (req, res) => {
         const viewId = await resolveViewId(orgID, viewName);
 
         const allPublishedFlows = await apiFlowDao.listPublished(orgID, viewId);
-        const apiFlows = allPublishedFlows.filter(f => (f.AGENT_VISIBILITY || 'VISIBLE') !== 'HIDDEN');
+        const apiFlows = allPublishedFlows.filter(f => (f.AGENT_VISIBILITY || constants.AGENT_VISIBILITY.VISIBLE) !== constants.AGENT_VISIBILITY.HIDDEN);
         const hiddenWorkflowCount = allPublishedFlows.length - apiFlows.length;
 
         const md = generateWorkflowsListMarkdown(apiFlows, orgName, viewName, hiddenWorkflowCount);
@@ -458,7 +458,7 @@ const getWorkflowArazzoSpec = async (req, res) => {
             return res.status(404).json({ error: 'API Workflow not found or not published' });
         }
 
-        if ((apiFlow.AGENT_VISIBILITY || 'VISIBLE') === 'HIDDEN') {
+        if ((apiFlow.AGENT_VISIBILITY || constants.AGENT_VISIBILITY.VISIBLE) === constants.AGENT_VISIBILITY.HIDDEN) {
             return res.status(404).json({ error: 'API Workflow not found or not published' });
         }
 

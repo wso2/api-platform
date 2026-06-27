@@ -37,8 +37,7 @@ const APIMetadata = sequelize.define('DP_API_METADATA', {
     allowNull: false
   },
   STATUS: {
-    type: DataTypes.ENUM,
-    values: ['CREATED', 'PUBLISHED'],
+    type: DataTypes.STRING,
     allowNull: false
   },
   DESCRIPTION: {
@@ -50,13 +49,11 @@ const APIMetadata = sequelize.define('DP_API_METADATA', {
     allowNull: false,
   },
   TYPE: {
-    type: DataTypes.ENUM,
-    values: ['REST', 'WS', 'GRAPHQL', 'SOAP', 'WEBSUB', 'MCP'],
+    type: DataTypes.STRING,
     allowNull: false
   },
   AGENT_VISIBILITY: {
-    type: DataTypes.ENUM,
-    values: ['VISIBLE', 'HIDDEN'],
+    type: DataTypes.STRING,
     allowNull: false,
     defaultValue: 'VISIBLE'
   },

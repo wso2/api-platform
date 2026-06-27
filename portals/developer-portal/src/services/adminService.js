@@ -234,6 +234,11 @@ const updateOrganization = async (req, res) => {
         const payload = req.body;
         payload.orgId = orgId;
 
+        const devportalMode = payload.orgConfiguration?.devportalMode;
+        if (devportalMode !== undefined && !Object.values(constants.DEVPORTAL_MODE).includes(devportalMode)) {
+            return res.status(400).json({ error: `Invalid devportalMode '${devportalMode}'. Must be one of: ${Object.values(constants.DEVPORTAL_MODE).join(', ')}.` });
+        }
+
         let updatedOrg;
         await sequelize.transaction({ timeout: 60000 }, async (t) => {
             [, updatedOrg] = await orgDao.update(payload, t);

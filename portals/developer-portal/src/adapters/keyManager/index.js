@@ -40,4 +40,6 @@ function getKeyManagerAdapter(kmRecord) {
     return new AdapterClass(kmRecord, credentials);
 }
 
-module.exports = { getKeyManagerAdapter };
+const SUPPORTED_KM_TYPES = Object.keys(ADAPTER_MAP);
+
+module.exports = { getKeyManagerAdapter, SUPPORTED_KM_TYPES };

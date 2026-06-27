@@ -351,7 +351,7 @@ xor
     "apiStatus": "PUBLISHED",
     "apiDescription": "string",
     "apiType": "string",
-    "agentVisibility": "string",
+    "agentVisibility": "VISIBLE",
     "addedLabels": [
       "string"
     ],
@@ -430,7 +430,7 @@ xor
     "apiStatus": "PUBLISHED",
     "apiDescription": "string",
     "apiType": "string",
-    "agentVisibility": "string",
+    "agentVisibility": "VISIBLE",
     "addedLabels": [
       "string"
     ],
@@ -504,7 +504,7 @@ xor
   "apiStatus": "PUBLISHED",
   "apiDescription": "string",
   "apiType": "string",
-  "agentVisibility": "string",
+  "agentVisibility": "VISIBLE",
   "addedLabels": [
     "string"
   ],
@@ -539,7 +539,7 @@ xor
 |apiTitle|string¦null|false|none|none|
 |remotes|[object]|false|none|none|
 |apiVersion|string|false|none|none|
-|apiStatus|string|false|none|API lifecycle status (e.g. PUBLISHED, UNPUBLISHED).|
+|apiStatus|string|false|none|API lifecycle status.|
 |apiDescription|string|false|none|none|
 |apiType|string|false|none|none|
 |agentVisibility|string|false|none|none|
@@ -549,6 +549,15 @@ xor
 |apiImageMetadata|[ApiImageMetadataResponse](#schemaapiimagemetadataresponse)|false|none|none|
 |tags|[string]|false|none|none|
 |labels|[string]|false|none|none|
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|apiStatus|PUBLISHED|
+|apiStatus|DEPRECATED|
+|agentVisibility|VISIBLE|
+|agentVisibility|HIDDEN|
 
 <h2 id="tocS_ApiOwnersResponse">ApiOwnersResponse</h2>
 
@@ -842,7 +851,9 @@ OAuth key mapping entry attached to an application.
   "businessOwnerEmail": "user@example.com",
   "orgHandle": "string",
   "organizationIdentifier": "string",
-  "orgConfiguration": {}
+  "orgConfiguration": {
+    "devportalMode": "DEFAULT"
+  }
 }
 
 ```
@@ -857,7 +868,16 @@ OAuth key mapping entry attached to an application.
 |businessOwnerEmail|string(email)|false|none|none|
 |orgHandle|string|true|none|none|
 |organizationIdentifier|string|true|none|none|
-|orgConfiguration|[GenericObject](#schemagenericobject)|false|none|none|
+|orgConfiguration|object|false|none|none|
+|» devportalMode|string|false|none|none|
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|devportalMode|DEFAULT|
+|devportalMode|MCP_SERVERS_ONLY|
+|devportalMode|APIS_ONLY|
 
 <h2 id="tocS_SubscriptionPlanRequest">SubscriptionPlanRequest</h2>
 
@@ -1851,6 +1871,13 @@ OAuth key payload.
 |name|string|false|none|none|
 |status|string|false|none|none|
 
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|status|DRAFT|
+|status|PUBLISHED|
+
 <h2 id="tocS_APIFlowResponse">APIFlowResponse</h2>
 
 <a id="schemaapiflowresponse"></a>
@@ -1897,6 +1924,10 @@ OAuth key payload.
 
 |Property|Value|
 |---|---|
+|status|DRAFT|
+|status|PUBLISHED|
+|agentVisibility|VISIBLE|
+|agentVisibility|HIDDEN|
 |contentType|ARAZZO|
 |contentType|MD|
 
@@ -1997,6 +2028,10 @@ continued
 
 |Property|Value|
 |---|---|
+|status|DRAFT|
+|status|PUBLISHED|
+|agentVisibility|VISIBLE|
+|agentVisibility|HIDDEN|
 |contentType|ARAZZO|
 |contentType|MD|
 
@@ -2057,6 +2092,10 @@ continued
 
 |Property|Value|
 |---|---|
+|status|DRAFT|
+|status|PUBLISHED|
+|agentVisibility|VISIBLE|
+|agentVisibility|HIDDEN|
 |contentType|ARAZZO|
 |contentType|MD|
 

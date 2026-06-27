@@ -324,7 +324,7 @@ Status Code **200**
 |»»» apiTitle|string¦null|false|none|none|
 |»»» remotes|[object]|false|none|none|
 |»»» apiVersion|string|false|none|none|
-|»»» apiStatus|string|false|none|API lifecycle status (e.g. PUBLISHED, UNPUBLISHED).|
+|»»» apiStatus|string|false|none|API lifecycle status.|
 |»»» apiDescription|string|false|none|none|
 |»»» apiType|string|false|none|none|
 |»»» agentVisibility|string|false|none|none|
@@ -371,6 +371,15 @@ Status Code **200**
 |»» total|integer|true|none|Total number of records matching the query.|
 |»» limit|integer|true|none|Maximum number of records returned in this response.|
 |»» offset|integer|true|none|Number of records skipped before this page.|
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|apiStatus|PUBLISHED|
+|apiStatus|DEPRECATED|
+|agentVisibility|VISIBLE|
+|agentVisibility|HIDDEN|
 
 #### Enumerated Values
 

@@ -123,7 +123,7 @@ const SubscriptionMapping = sequelize.define('DP_SUBSCRIPTION', {
         allowNull: false
     },
     TOKEN:   { type: DataTypes.STRING(512), allowNull: true, unique: true },
-    STATUS:      { type: DataTypes.ENUM('ACTIVE', 'INACTIVE'), allowNull: false, defaultValue: 'ACTIVE' },
+    STATUS:      { type: DataTypes.STRING, allowNull: false, defaultValue: 'ACTIVE' },
     CREATED_AT:  { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW },
 }, {
     timestamps: false,

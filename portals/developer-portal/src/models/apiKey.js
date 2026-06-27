@@ -46,7 +46,7 @@ const APIKey = sequelize.define('DP_API_KEY', {
         allowNull: false
     },
     STATUS: {
-        type: DataTypes.ENUM('ACTIVE', 'REVOKED'),
+        type: DataTypes.STRING,
         allowNull: false,
         defaultValue: 'ACTIVE'
     },

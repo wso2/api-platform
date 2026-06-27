@@ -97,6 +97,14 @@ const createAPIMetadata = async (req, res) => {
                 "Missing or Invalid fields in the request payload"
             );
         }
+        const { apiStatus, agentVisibility: infoAgentVisibility } = apiMetadata.apiInfo;
+        const agentVisibility = apiMetadata.agentVisibility || infoAgentVisibility;
+        if (apiStatus && !Object.values(constants.API_STATUS).includes(apiStatus)) {
+            throw new Sequelize.ValidationError(`Invalid apiStatus '${apiStatus}'. Must be one of: ${Object.values(constants.API_STATUS).join(', ')}.`);
+        }
+        if (agentVisibility && !Object.values(constants.AGENT_VISIBILITY).includes(agentVisibility.toUpperCase())) {
+            throw new Sequelize.ValidationError(`Invalid agentVisibility '${agentVisibility}'. Must be one of: ${Object.values(constants.AGENT_VISIBILITY).join(', ')}.`);
+        }
         apiMetadata.endPoints.productionURL = changeEndpoint(apiMetadata.endPoints.productionURL);
         apiMetadata.endPoints.sandboxURL = changeEndpoint(apiMetadata.endPoints.sandboxURL);
         normalizeGraphQLEndpoints(apiMetadata);
@@ -407,6 +415,14 @@ const updateAPIMetadata = async (req, res) => {
             throw new Sequelize.ValidationError(
                 "Missing or Invalid fields in the request payload"
             );
+        }
+        const { apiStatus: updateApiStatus, agentVisibility: updateInfoAgentVisibility } = apiMetadata.apiInfo;
+        const updateAgentVisibility = apiMetadata.agentVisibility || updateInfoAgentVisibility;
+        if (updateApiStatus && !Object.values(constants.API_STATUS).includes(updateApiStatus)) {
+            throw new Sequelize.ValidationError(`Invalid apiStatus '${updateApiStatus}'. Must be one of: ${Object.values(constants.API_STATUS).join(', ')}.`);
+        }
+        if (updateAgentVisibility && !Object.values(constants.AGENT_VISIBILITY).includes(updateAgentVisibility.toUpperCase())) {
+            throw new Sequelize.ValidationError(`Invalid agentVisibility '${updateAgentVisibility}'. Must be one of: ${Object.values(constants.AGENT_VISIBILITY).join(', ')}.`);
         }
 
         // Compute added/removed labels diff for YAML and artifact paths
@@ -1730,6 +1746,12 @@ function mapDevportalYamlToApiMetadata(parsedYaml) {
     const spec = parsedYaml.spec || {};
     const apiType = util.resolveApiType(spec.type);
     const apiStatus = spec.status || constants.API_STATUS.PUBLISHED;
+    if (!Object.values(constants.API_STATUS).includes(apiStatus)) {
+        throw new Sequelize.ValidationError(`Invalid API status '${apiStatus}'. Must be one of: ${Object.values(constants.API_STATUS).join(', ')}.`);
+    }
+    if (spec.agentVisibility && !Object.values(constants.AGENT_VISIBILITY).includes(spec.agentVisibility.toUpperCase())) {
+        throw new Sequelize.ValidationError(`Invalid agentVisibility '${spec.agentVisibility}'. Must be one of: ${Object.values(constants.AGENT_VISIBILITY).join(', ')}.`);
+    }
     const endpoints = spec.endpoints || {};
     const businessInformation = spec.businessInformation || {};
 
@@ -1745,7 +1767,7 @@ function mapDevportalYamlToApiMetadata(parsedYaml) {
             apiHandle: metadata.name,
             apiType,
             apiStatus,
-            agentVisibility: spec.agentVisibility || 'VISIBLE',
+            agentVisibility: spec.agentVisibility || constants.AGENT_VISIBILITY.VISIBLE,
             tags: util.normalizeStringArray(spec.tags),
             labels: util.normalizeStringArray(spec.labels),
             owners: {

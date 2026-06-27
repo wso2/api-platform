@@ -50,8 +50,7 @@ const APIFlow = sequelize.define('DP_API_WORKFLOW', {
         allowNull: false
     },
     STATUS: {
-        type: DataTypes.ENUM,
-        values: ['DRAFT', 'PUBLISHED'],
+        type: DataTypes.STRING,
         allowNull: false,
         defaultValue: 'PUBLISHED'
     },
@@ -60,13 +59,11 @@ const APIFlow = sequelize.define('DP_API_WORKFLOW', {
         allowNull: true
     },
     CONTENT_TYPE: {
-        type: DataTypes.ENUM,
-        values: ['ARAZZO', 'MD'],
+        type: DataTypes.STRING,
         allowNull: true
     },
     AGENT_VISIBILITY: {
-        type: DataTypes.ENUM,
-        values: ['VISIBLE', 'HIDDEN'],
+        type: DataTypes.STRING,
         allowNull: false,
         defaultValue: 'VISIBLE'
     },

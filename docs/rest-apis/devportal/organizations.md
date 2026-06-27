@@ -292,7 +292,9 @@ Updates organization metadata, claim mappings, role mappings, and portal configu
   "businessOwnerEmail": "user@example.com",
   "orgHandle": "string",
   "organizationIdentifier": "string",
-  "orgConfiguration": {}
+  "orgConfiguration": {
+    "devportalMode": "DEFAULT"
+  }
 }
 ```
 
@@ -303,7 +305,8 @@ businessOwnerContact: string
 businessOwnerEmail: user@example.com
 orgHandle: string
 organizationIdentifier: string
-orgConfiguration: {}
+orgConfiguration:
+  devportalMode: DEFAULT
 
 ```
 

@@ -53,10 +53,7 @@ const DPEvent = sequelize.define('DP_EVENT', {
         defaultValue: DataTypes.NOW
     },
     STATUS: {
-        // REJECTED: a secret event type (apikey.*, subscription.created) was published
-        // without a plaintextKey — see eventPublisher.js. Must stay in this enum or that
-        // guard path throws instead of recording the rejection.
-        type: DataTypes.ENUM('PENDING', 'DISPATCHED', 'ALL_DELIVERED', 'FAILED', 'REJECTED'),
+        type: DataTypes.STRING,
         allowNull: false,
         defaultValue: 'PENDING'
     }

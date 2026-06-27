@@ -3808,7 +3808,10 @@ components:
           type: string
         apiStatus:
           type: string
-          description: API lifecycle status (e.g. PUBLISHED, UNPUBLISHED).
+          enum:
+            - PUBLISHED
+            - DEPRECATED
+          description: API lifecycle status.
           example: PUBLISHED
         apiDescription:
           type: string
@@ -3816,6 +3819,9 @@ components:
           type: string
         agentVisibility:
           type: string
+          enum:
+            - VISIBLE
+            - HIDDEN
         addedLabels:
           type: array
           items:
@@ -4005,7 +4011,15 @@ components:
         organizationIdentifier:
           type: string
         orgConfiguration:
-          $ref: "#/components/schemas/GenericObject"
+          type: object
+          properties:
+            devportalMode:
+              type: string
+              enum:
+                - DEFAULT
+                - MCP_SERVERS_ONLY
+                - APIS_ONLY
+          additionalProperties: true
     SubscriptionPlanRequest:
       type: object
       required:
@@ -4822,6 +4836,9 @@ components:
           example: Weather onboarding
         status:
           type: string
+          enum:
+            - DRAFT
+            - PUBLISHED
           example: PUBLISHED
       additionalProperties: false
     APIFlowResponse:
@@ -4842,9 +4859,15 @@ components:
           type: string
         status:
           type: string
+          enum:
+            - DRAFT
+            - PUBLISHED
           example: PUBLISHED
         agentVisibility:
           type: string
+          enum:
+            - VISIBLE
+            - HIDDEN
           example: VISIBLE
         contentType:
           type: string
@@ -4897,10 +4920,16 @@ components:
           example: Follow this workflow to onboard a Weather API user.
         status:
           type: string
+          enum:
+            - DRAFT
+            - PUBLISHED
           default: PUBLISHED
           example: PUBLISHED
         agentVisibility:
           type: string
+          enum:
+            - VISIBLE
+            - HIDDEN
           default: VISIBLE
           example: VISIBLE
         contentType:
@@ -4934,9 +4963,15 @@ components:
           type: string
         status:
           type: string
+          enum:
+            - DRAFT
+            - PUBLISHED
           example: PUBLISHED
         agentVisibility:
           type: string
+          enum:
+            - VISIBLE
+            - HIDDEN
           example: VISIBLE
         contentType:
           type: string

@@ -54,6 +54,22 @@ module.exports = {
         PUBLISHED: "PUBLISHED",
         DEPRECATED: "DEPRECATED"
     },
+    API_FLOW_STATUS: {
+        DRAFT: "DRAFT",
+        PUBLISHED: "PUBLISHED",
+    },
+    API_FLOW_CONTENT_TYPE: {
+        ARAZZO: "ARAZZO",
+        MD: "MD",
+    },
+    AGENT_VISIBILITY: {
+        VISIBLE: "VISIBLE",
+        HIDDEN: "HIDDEN",
+    },
+    SUBSCRIPTION_STATUS: {
+        ACTIVE: "ACTIVE",
+        INACTIVE: "INACTIVE",
+    },
     API_TYPE: {
         REST: "REST",
         SOAP: "SOAP",
@@ -64,8 +80,8 @@ module.exports = {
     },
     DEVPORTAL_MODE: {
         DEFAULT: "DEFAULT",
-        MCP_ONLY: "MCPSERVERSONLY",
-        API_PROXIES: "APISONLY",
+        MCP_SERVERS_ONLY: "MCP_SERVERS_ONLY",
+        APIS_ONLY: "APIS_ONLY",
     },
     DOC_TYPES: {
         DOC_ID: 'DOC_',

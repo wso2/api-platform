@@ -20,6 +20,7 @@ const subDao = require('../dao/subscriptionDao');
 const sequelize = require('../db/sequelizeConfig');
 const { publish: publishWebhookEvent } = require('./webhooks/eventPublisher');
 const util = require('../utils/util');
+const constants = require('../utils/constants');
 const logger = require('../config/logger');
 const { logUserAction } = require('../middlewares/auditLogger');
 
@@ -180,6 +181,9 @@ const updateSubscription = async (req, res) => {
     const orgID = req.params.orgId;
     const subscriptionId = req.params.subId;
     const { status } = req.body;
+    if (!Object.values(constants.SUBSCRIPTION_STATUS).includes(status)) {
+        return res.status(400).json({ code: '400', message: 'Bad Request', description: `Invalid status. Must be one of: ${Object.values(constants.SUBSCRIPTION_STATUS).join(', ')}.` });
+    }
 
     try {
         const existing = await subDao.get(orgID, subscriptionId, req.user.sub);

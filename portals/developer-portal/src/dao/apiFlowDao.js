@@ -17,6 +17,7 @@
  */
 const { APIFlow } = require('../models/apiFlow');
 const { Sequelize } = require('sequelize');
+const constants = require('../utils/constants');
 const logger = require('../config/logger');
 
 const create = async (orgID, viewId, apiFlowData, t) => {
@@ -28,10 +29,10 @@ const create = async (orgID, viewId, apiFlowData, t) => {
             HANDLE: apiFlowData.handle,
             DESCRIPTION: apiFlowData.description,
             AGENT_PROMPT: apiFlowData.agentPrompt,
-            STATUS: apiFlowData.status || 'PUBLISHED',
-            AGENT_VISIBILITY: apiFlowData.agentVisibility || 'VISIBLE',
+            STATUS: apiFlowData.status || constants.API_FLOW_STATUS.PUBLISHED,
+            AGENT_VISIBILITY: apiFlowData.agentVisibility || constants.AGENT_VISIBILITY.VISIBLE,
             FILE_CONTENT: apiFlowData.apiFlowDefinition != null ? Buffer.from(apiFlowData.apiFlowDefinition) : null,
-            CONTENT_TYPE: apiFlowData.contentType || 'ARAZZO',
+            CONTENT_TYPE: apiFlowData.contentType || constants.API_FLOW_CONTENT_TYPE.ARAZZO,
             CREATED_AT: new Date(),
             UPDATED_AT: new Date()
         }, { transaction: t });

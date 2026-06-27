@@ -177,7 +177,16 @@ const createAPIFlow = async (req, res) => {
         const suffix = Math.random().toString(36).slice(2, 10);
         resolvedHandle = `flow-${suffix}`;
     }
-    const resolvedContentType = contentType || 'ARAZZO';
+    const resolvedContentType = contentType || constants.API_FLOW_CONTENT_TYPE.ARAZZO;
+    if (!Object.values(constants.API_FLOW_CONTENT_TYPE).includes(resolvedContentType)) {
+        return res.status(400).json({ message: `Invalid contentType. Must be one of: ${Object.values(constants.API_FLOW_CONTENT_TYPE).join(', ')}.` });
+    }
+    if (status && !Object.values(constants.API_FLOW_STATUS).includes(status)) {
+        return res.status(400).json({ message: `Invalid status. Must be one of: ${Object.values(constants.API_FLOW_STATUS).join(', ')}.` });
+    }
+    if (agentVisibility && !Object.values(constants.AGENT_VISIBILITY).includes(agentVisibility)) {
+        return res.status(400).json({ message: `Invalid agentVisibility. Must be one of: ${Object.values(constants.AGENT_VISIBILITY).join(', ')}.` });
+    }
     const resolvedContent = resolvedContentType === 'MD'
         ? (markdownContent || null)
         : normalizeToJSON(apiFlowDefinition);
@@ -198,8 +207,8 @@ const createAPIFlow = async (req, res) => {
             handle: resolvedHandle,
             description,
             agentPrompt: resolvedPrompt,
-            status: status || 'PUBLISHED',
-            agentVisibility: agentVisibility || 'VISIBLE',
+            status: status || constants.API_FLOW_STATUS.PUBLISHED,
+            agentVisibility: agentVisibility || constants.AGENT_VISIBILITY.VISIBLE,
             apiFlowDefinition: resolvedContent,
             contentType: resolvedContentType
         }, t);
@@ -224,6 +233,15 @@ const createAPIFlow = async (req, res) => {
 const updateAPIFlow = async (req, res) => {
     const { orgId, apiFlowId, viewName } = req.params;
     const { name, handle, description, agentPrompt, status, agentVisibility, apiFlowDefinition, markdownContent, contentType } = req.body;
+    if (status !== undefined && !Object.values(constants.API_FLOW_STATUS).includes(status)) {
+        return res.status(400).json({ message: `Invalid status. Must be one of: ${Object.values(constants.API_FLOW_STATUS).join(', ')}.` });
+    }
+    if (agentVisibility !== undefined && !Object.values(constants.AGENT_VISIBILITY).includes(agentVisibility)) {
+        return res.status(400).json({ message: `Invalid agentVisibility. Must be one of: ${Object.values(constants.AGENT_VISIBILITY).join(', ')}.` });
+    }
+    if (contentType !== undefined && !Object.values(constants.API_FLOW_CONTENT_TYPE).includes(contentType)) {
+        return res.status(400).json({ message: `Invalid contentType. Must be one of: ${Object.values(constants.API_FLOW_CONTENT_TYPE).join(', ')}.` });
+    }
     const resolvedContentType = contentType;
     const resolvedContent = resolvedContentType === 'MD'
         ? (markdownContent !== undefined ? markdownContent : undefined)
@@ -343,9 +361,9 @@ const toAPIFlowDTO = (apiFlow) => {
     description: apiFlow.DESCRIPTION,
     agentPrompt: apiFlow.AGENT_PROMPT,
     status: apiFlow.STATUS,
-    agentVisibility: apiFlow.AGENT_VISIBILITY || 'VISIBLE',
-    contentType: apiFlow.CONTENT_TYPE || 'ARAZZO',
-    apiFlowDefinition: (apiFlow.CONTENT_TYPE || 'ARAZZO') === 'ARAZZO' ? fileContent : null,
+    agentVisibility: apiFlow.AGENT_VISIBILITY || constants.AGENT_VISIBILITY.VISIBLE,
+    contentType: apiFlow.CONTENT_TYPE || constants.API_FLOW_CONTENT_TYPE.ARAZZO,
+    apiFlowDefinition: (apiFlow.CONTENT_TYPE || constants.API_FLOW_CONTENT_TYPE.ARAZZO) === constants.API_FLOW_CONTENT_TYPE.ARAZZO ? fileContent : null,
     markdownContent: apiFlow.CONTENT_TYPE === 'MD' ? fileContent : null,
     createdAt: apiFlow.CREATED_AT ? new Date(apiFlow.CREATED_AT).toLocaleDateString('en-US', {
         year: 'numeric', month: 'short', day: 'numeric'

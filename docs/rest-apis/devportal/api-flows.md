@@ -184,6 +184,10 @@ Status Code **200**
 
 |Property|Value|
 |---|---|
+|status|DRAFT|
+|status|PUBLISHED|
+|agentVisibility|VISIBLE|
+|agentVisibility|HIDDEN|
 |contentType|ARAZZO|
 |contentType|MD|
 

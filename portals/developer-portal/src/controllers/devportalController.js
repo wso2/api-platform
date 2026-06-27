@@ -270,7 +270,10 @@ const generateKeys = async (req, res) => {
         const resolvedProps = additionalProps || {};
 
         const sanitize = (s) => String(s).replace(/[^a-zA-Z0-9]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '');
-        const keyType = (rawKeyType || 'PRODUCTION').toUpperCase();
+        const keyType = (rawKeyType || constants.KEY_TYPE.PRODUCTION).toUpperCase();
+        if (!Object.values(constants.KEY_TYPE).includes(keyType)) {
+            return res.status(400).json({ message: `Invalid keyType. Must be one of: ${Object.values(constants.KEY_TYPE).join(', ')}.` });
+        }
         const clientName = `${sanitize(userID)}_${sanitize(appID)}_${keyType}`;
 
         const oauthClient = await adapter.createOAuthClient(clientName, grantTypes, redirectUris, resolvedScopes, resolvedProps);
@@ -290,7 +293,7 @@ const generateKeys = async (req, res) => {
             appID,
             kmID: kmRecord.ID,
             asClientID: responseData.consumerKey,
-            keyType: rawKeyType || 'PRODUCTION',
+            keyType,
             additionalProperties: responseData.additionalProperties || {},
         };
         let keyMappingRecord;
