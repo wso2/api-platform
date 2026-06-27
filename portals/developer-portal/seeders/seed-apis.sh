@@ -20,7 +20,7 @@ done
 PLATFORM_USER="${CREDENTIALS%%:*}"
 PLATFORM_PASS="${CREDENTIALS#*:}"
 
-TOKEN=$(curl -sk -X POST "$PLATFORM_API_URL/api/portal/v1/auth/login" \
+TOKEN=$(curl -sk -X POST "$PLATFORM_API_URL/api/portal/v0.9/auth/login" \
     -d "username=$PLATFORM_USER&password=$PLATFORM_PASS" | jq -r '.token // empty')
 if [ -z "$TOKEN" ]; then
     echo "Error: failed to obtain token from $PLATFORM_API_URL — check credentials and that Platform API is running"

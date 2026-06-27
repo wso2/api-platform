@@ -169,7 +169,7 @@ export const CONTROLPLANE_HOST = getEnvOrDefault(
 
 export const PORTAL_API_BASE_URL = getEnvOrDefault(
   'VITE_PORTAL_API_BASE_URL',
-  '/api-proxy/api/portal/v1'
+  '/api-proxy/api/portal/v0.9'
 );
 
 // JWT claim names for user display — configure to match your IDP's token structure.
@@ -177,5 +177,5 @@ export const PORTAL_API_BASE_URL = getEnvOrDefault(
 export const OIDC_USERNAME_CLAIM = getEnvOrDefault('VITE_OIDC_USERNAME_CLAIM', 'given_name');
 export const OIDC_EMAIL_CLAIM = getEnvOrDefault('VITE_OIDC_EMAIL_CLAIM', 'email');
 
-// Auth mode: 'oidc' (default) uses react-oidc-context; 'basic' posts credentials to /api/portal/v1/auth/login.
+// Auth mode: 'oidc' (default) uses react-oidc-context; 'basic' posts credentials to /api/portal/v0.9/auth/login.
 export const AUTH_MODE = getEnvOrDefault('VITE_AUTH_MODE', 'basic') as 'oidc' | 'basic';

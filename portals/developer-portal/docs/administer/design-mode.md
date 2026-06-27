@@ -136,7 +136,7 @@ zip -r my-theme.zip layout/ partials/ styles/ images/
 
 **Option 2 — curl:** Replace `{orgId}` with your organization ID and `{viewName}` with the view name (e.g. `default`). The examples use a `$TOKEN` variable — get one first:
 ```bash
-TOKEN=$(curl -sk -X POST "https://localhost:9243/api/portal/v1/auth/login" \
+TOKEN=$(curl -sk -X POST "https://localhost:9243/api/portal/v0.9/auth/login" \
   -d "username=admin&password=admin" | jq -r .token)
 ```
 

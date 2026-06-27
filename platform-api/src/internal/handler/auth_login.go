@@ -18,6 +18,7 @@
 package handler
 
 import (
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -48,10 +49,19 @@ func NewAuthLoginHandler(cfg *config.Server) *AuthLoginHandler {
 }
 
 func (h *AuthLoginHandler) RegisterPublicRoutes(r *gin.Engine) {
-	r.POST("/api/portal/v1/auth/login", h.Login)
+	r.POST("/api/portal/v0.9/auth/login", h.Login)
 }
 
 func (h *AuthLoginHandler) Login(c *gin.Context) {
+	// Defense in depth: even if the route is registered, refuse to issue tokens
+	// unless file-based auth is explicitly enabled.
+	if !h.cfg.Auth.FileBased.Enabled {
+		slog.Warn("login attempt rejected: file-based authentication is not enabled",
+			"path", c.FullPath(), "remoteAddr", c.ClientIP())
+		c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
+		return
+	}
+
 	var req loginRequest
 	if err := c.ShouldBind(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "username and password are required"})

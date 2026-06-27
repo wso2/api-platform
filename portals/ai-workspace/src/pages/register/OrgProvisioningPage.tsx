@@ -25,7 +25,7 @@ import {
   Stack,
   Typography,
 } from '@wso2/oxygen-ui';
-import { Building2 } from 'lucide-react';
+import { Building2, LogOut } from 'lucide-react';
 import Logo from '../../Components/Logo';
 
 interface Props {
@@ -34,6 +34,9 @@ interface Props {
   isProvisioning?: boolean;
   error?: string | null;
   onRetry?: () => void;
+  /** When true, render a "session expired" message with a logout action. */
+  isSessionExpired?: boolean;
+  onLogout?: () => void;
 }
 
 export default function OrgProvisioningPage({
@@ -41,20 +44,28 @@ export default function OrgProvisioningPage({
   isProvisioning = false,
   error,
   onRetry,
+  isSessionExpired = false,
+  onLogout,
 }: Props) {
-  const title = error
-    ? 'Workspace setup failed'
-    : isProvisioning
-      ? 'Setting up your workspace'
-      : 'Getting things ready';
+  const hasError = isSessionExpired || !!error;
 
-  const subtitle = error
-    ? (error)
-    : isProvisioning
-      ? orgName
-        ? `Registering ${orgName} on the platform…`
-        : 'Registering your organization on the platform…'
-      : 'Verifying your organization…';
+  const title = isSessionExpired
+    ? 'Your session has expired'
+    : error
+      ? 'Workspace setup failed'
+      : isProvisioning
+        ? 'Setting up your workspace'
+        : 'Getting things ready';
+
+  const subtitle = isSessionExpired
+    ? 'Your session is no longer valid. Please log in again to continue.'
+    : error
+      ? (error)
+      : isProvisioning
+        ? orgName
+          ? `Registering ${orgName} on the platform…`
+          : 'Registering your organization on the platform…'
+        : 'Verifying your organization…';
 
   return (
     <Box
@@ -76,13 +87,15 @@ export default function OrgProvisioningPage({
           width: 72,
           height: 72,
           borderRadius: '50%',
-          bgcolor: error ? 'error.light' : 'primary.light',
+          bgcolor: hasError ? 'error.light' : 'primary.light',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
         }}
       >
-        {error ? (
+        {isSessionExpired ? (
+          <LogOut size={32} color="var(--oxygen-palette-error-contrastText)" />
+        ) : error ? (
           <Building2 size={32} color="var(--oxygen-palette-error-contrastText)" />
         ) : (
           <CircularProgress size={36} sx={{ color: 'primary.contrastText' }} />
@@ -98,7 +111,16 @@ export default function OrgProvisioningPage({
         </Typography>
       </Stack>
 
-      {error ? (
+      {isSessionExpired ? (
+        <Button
+          variant="contained"
+          color="error"
+          startIcon={<LogOut size={16} />}
+          onClick={onLogout}
+        >
+          Logout
+        </Button>
+      ) : error ? (
         <Stack spacing={2} alignItems="center">
           <Alert severity="error" sx={{ maxWidth: 400 }}>
             {error}

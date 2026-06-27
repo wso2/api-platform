@@ -82,7 +82,7 @@ func (w *world) aRestAPI() error {
 	// Name/displayName must be URL-friendly (no slash); the context is the path.
 	suffix := randHex()
 	w.apiContext = "/e2e-" + suffix
-	st, body, err := apiCall(http.MethodPost, "/api/v1/rest-apis", suite.token, map[string]any{
+	st, body, err := apiCall(http.MethodPost, "/api/v0.9/rest-apis", suite.token, map[string]any{
 		"name":      "e2e-api-" + suffix,
 		"context":   w.apiContext,
 		"version":   "v1",
@@ -117,13 +117,13 @@ func (w *world) deployedAndServed() error {
 // re-runs that one-time sync, which is the data-plane equivalent of "the
 // controller noticed the new deployment". Returns the deployment id.
 func deploy(apiID, gatewayID, controllerService string) (string, error) {
-	if st, body, err := apiCall(http.MethodPost, "/api/v1/rest-apis/"+apiID+"/gateways", suite.token,
+	if st, body, err := apiCall(http.MethodPost, "/api/v0.9/rest-apis/"+apiID+"/gateways", suite.token,
 		[]map[string]string{{"gatewayId": gatewayID}}); err != nil {
 		return "", err
 	} else if st >= 300 {
 		return "", fmt.Errorf("attach gateway failed (%d): %s", st, body)
 	}
-	st, body, err := apiCall(http.MethodPost, "/api/v1/rest-apis/"+apiID+"/deployments", suite.token,
+	st, body, err := apiCall(http.MethodPost, "/api/v0.9/rest-apis/"+apiID+"/deployments", suite.token,
 		map[string]any{"base": "current", "gatewayId": gatewayID, "name": "dep-" + randHex()})
 	if err != nil {
 		return "", err
@@ -140,7 +140,7 @@ func deploy(apiID, gatewayID, controllerService string) (string, error) {
 
 func undeploy(apiID, deploymentID, gatewayID string) error {
 	st, body, err := apiCall(http.MethodPost,
-		"/api/v1/rest-apis/"+apiID+"/deployments/"+deploymentID+"/undeploy?gatewayId="+gatewayID, suite.token, nil)
+		"/api/v0.9/rest-apis/"+apiID+"/deployments/"+deploymentID+"/undeploy?gatewayId="+gatewayID, suite.token, nil)
 	if err != nil {
 		return err
 	}

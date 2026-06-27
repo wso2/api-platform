@@ -132,16 +132,17 @@ func (r *SecretRepo) GetByHandle(orgID, handle string) (*model.Secret, error) {
 }
 
 func (r *SecretRepo) List(orgID string, limit, offset int, updatedAfter *time.Time) ([]*model.Secret, error) {
+	pageClause, pageArgs := r.db.PaginationClause(limit, offset)
 	var (
 		query string
 		args  []interface{}
 	)
 	if updatedAfter != nil {
-		query = r.db.Rebind(secretCols + ` WHERE organization_uuid = ? AND updated_at > ? ORDER BY updated_at DESC LIMIT ? OFFSET ?`)
-		args = []interface{}{orgID, *updatedAfter, limit, offset}
+		query = r.db.Rebind(secretCols + ` WHERE organization_uuid = ? AND updated_at > ? ORDER BY updated_at DESC ` + pageClause)
+		args = append([]interface{}{orgID, *updatedAfter}, pageArgs...)
 	} else {
-		query = r.db.Rebind(secretCols + ` WHERE organization_uuid = ? ORDER BY created_at DESC LIMIT ? OFFSET ?`)
-		args = []interface{}{orgID, limit, offset}
+		query = r.db.Rebind(secretCols + ` WHERE organization_uuid = ? ORDER BY created_at DESC ` + pageClause)
+		args = append([]interface{}{orgID}, pageArgs...)
 	}
 	return r.querySecrets(query, args...)
 }
