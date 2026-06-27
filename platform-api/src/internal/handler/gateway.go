@@ -163,7 +163,7 @@ func (h *GatewayHandler) ListGateways(c *gin.Context) {
 	c.JSON(http.StatusOK, gateways)
 }
 
-// GetGateway handles GET /api/v0.9/gateways/:gatewayId
+// GetGateway handles GET /api/v0.9/gateways/:gatewayHandle
 func (h *GatewayHandler) GetGateway(c *gin.Context) {
 	orgId, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {
@@ -173,7 +173,7 @@ func (h *GatewayHandler) GetGateway(c *gin.Context) {
 	}
 
 	// Extract UUID path parameter
-	gatewayId := c.Param("gatewayId")
+	gatewayId := c.Param("gatewayHandle")
 	if gatewayId == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"Gateway ID is required"))
@@ -217,7 +217,7 @@ func (h *GatewayHandler) GetGatewayStatus(c *gin.Context) {
 		return
 	}
 
-	gatewayId := c.Query("gatewayId")
+	gatewayId := c.Query("gatewayHandle")
 	var gatewayIdPtr *string
 	if gatewayId != "" {
 		gatewayIdPtr = &gatewayId
@@ -238,7 +238,7 @@ func (h *GatewayHandler) GetGatewayStatus(c *gin.Context) {
 	c.JSON(http.StatusOK, status)
 }
 
-// UpdateGateway handles PUT /api/v0.9/gateways/:gatewayId
+// UpdateGateway handles PUT /api/v0.9/gateways/:gatewayHandle
 func (h *GatewayHandler) UpdateGateway(c *gin.Context) {
 	orgId, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {
@@ -248,7 +248,7 @@ func (h *GatewayHandler) UpdateGateway(c *gin.Context) {
 	}
 
 	// Extract UUID path parameter
-	gatewayId := c.Param("gatewayId")
+	gatewayId := c.Param("gatewayHandle")
 	if gatewayId == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"Gateway ID is required"))
@@ -279,7 +279,7 @@ func (h *GatewayHandler) UpdateGateway(c *gin.Context) {
 	c.JSON(http.StatusOK, response)
 }
 
-// DeleteGateway handles DELETE /api/v0.9/gateways/:gatewayId
+// DeleteGateway handles DELETE /api/v0.9/gateways/:gatewayHandle
 func (h *GatewayHandler) DeleteGateway(c *gin.Context) {
 	orgId, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {
@@ -289,7 +289,7 @@ func (h *GatewayHandler) DeleteGateway(c *gin.Context) {
 	}
 
 	// Extract UUID path parameter
-	gatewayId := c.Param("gatewayId")
+	gatewayId := c.Param("gatewayHandle")
 	if gatewayId == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"Gateway ID is required"))
@@ -331,7 +331,7 @@ func (h *GatewayHandler) DeleteGateway(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
-// ListTokens handles GET /api/v0.9/gateways/:gatewayId/tokens
+// ListTokens handles GET /api/v0.9/gateways/:gatewayHandle/tokens
 func (h *GatewayHandler) ListTokens(c *gin.Context) {
 	orgId, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {
@@ -340,7 +340,7 @@ func (h *GatewayHandler) ListTokens(c *gin.Context) {
 		return
 	}
 
-	gatewayId := c.Param("gatewayId")
+	gatewayId := c.Param("gatewayHandle")
 	if gatewayId == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"Gateway ID is required"))
@@ -366,7 +366,7 @@ func (h *GatewayHandler) ListTokens(c *gin.Context) {
 	c.JSON(http.StatusOK, tokens)
 }
 
-// RotateToken handles POST /api/v0.9/gateways/:gatewayId/tokens
+// RotateToken handles POST /api/v0.9/gateways/:gatewayHandle/tokens
 func (h *GatewayHandler) RotateToken(c *gin.Context) {
 	orgId, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {
@@ -376,7 +376,7 @@ func (h *GatewayHandler) RotateToken(c *gin.Context) {
 	}
 
 	// Extract ID path parameter
-	gatewayId := c.Param("gatewayId")
+	gatewayId := c.Param("gatewayHandle")
 	if gatewayId == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"Gateway ID is required"))
@@ -412,7 +412,7 @@ func (h *GatewayHandler) RotateToken(c *gin.Context) {
 	c.JSON(http.StatusCreated, response)
 }
 
-// RevokeToken handles DELETE /api/v0.9/gateways/:gatewayId/tokens/:tokenId
+// RevokeToken handles DELETE /api/v0.9/gateways/:gatewayHandle/tokens/:tokenId
 func (h *GatewayHandler) RevokeToken(c *gin.Context) {
 	orgId, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {
@@ -421,7 +421,7 @@ func (h *GatewayHandler) RevokeToken(c *gin.Context) {
 		return
 	}
 
-	gatewayId := c.Param("gatewayId")
+	gatewayId := c.Param("gatewayHandle")
 	if gatewayId == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"Gateway ID is required"))
@@ -464,7 +464,7 @@ func (h *GatewayHandler) GetGatewayArtifacts(c *gin.Context) {
 		return
 	}
 
-	gatewayId := c.Param("gatewayId")
+	gatewayId := c.Param("gatewayHandle")
 	if gatewayId == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"Gateway ID is required"))
@@ -510,7 +510,7 @@ func (h *GatewayHandler) GetGatewayManifest(c *gin.Context) {
 		return
 	}
 
-	gatewayId := c.Param("gatewayId")
+	gatewayId := c.Param("gatewayHandle")
 	if gatewayId == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"Gateway ID is required"))
@@ -549,7 +549,7 @@ func (h *GatewayHandler) SyncCustomPolicy(c *gin.Context) {
 		return
 	}
 
-	gatewayId := c.Query("gatewayId")
+	gatewayId := c.Query("gatewayHandle")
 	policyName := c.Query("policyName")
 	version := c.Query("policyVersion")
 
@@ -691,14 +691,14 @@ func (h *GatewayHandler) RegisterRoutes(r *gin.Engine) {
 	{
 		gatewayGroup.POST("", h.CreateGateway)
 		gatewayGroup.GET("", h.ListGateways)
-		gatewayGroup.GET("/:gatewayId", h.GetGateway)
-		gatewayGroup.PUT("/:gatewayId", h.UpdateGateway)
-		gatewayGroup.DELETE("/:gatewayId", h.DeleteGateway)
-		gatewayGroup.GET("/:gatewayId/tokens", h.ListTokens)
-		gatewayGroup.POST("/:gatewayId/tokens", h.RotateToken)
-		gatewayGroup.DELETE("/:gatewayId/tokens/:tokenId", h.RevokeToken)
-		gatewayGroup.GET("/:gatewayId/live-proxy-artifacts", h.GetGatewayArtifacts)
-		gatewayGroup.GET("/:gatewayId/manifest", h.GetGatewayManifest)
+		gatewayGroup.GET("/:gatewayHandle", h.GetGateway)
+		gatewayGroup.PUT("/:gatewayHandle", h.UpdateGateway)
+		gatewayGroup.DELETE("/:gatewayHandle", h.DeleteGateway)
+		gatewayGroup.GET("/:gatewayHandle/tokens", h.ListTokens)
+		gatewayGroup.POST("/:gatewayHandle/tokens", h.RotateToken)
+		gatewayGroup.DELETE("/:gatewayHandle/tokens/:tokenId", h.RevokeToken)
+		gatewayGroup.GET("/:gatewayHandle/live-proxy-artifacts", h.GetGatewayArtifacts)
+		gatewayGroup.GET("/:gatewayHandle/manifest", h.GetGatewayManifest)
 	}
 
 	customPoliciesGroup := r.Group(constants.APIBasePath + "/gateway-custom-policies")

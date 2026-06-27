@@ -54,7 +54,7 @@ func (h *LLMProxyAPIKeyHandler) ListAPIKeys(c *gin.Context) {
 		return
 	}
 
-	proxyID := c.Param("id")
+	proxyID := c.Param("proxyHandle")
 	if proxyID == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"LLM proxy ID is required"))
@@ -88,7 +88,7 @@ func (h *LLMProxyAPIKeyHandler) DeleteAPIKey(c *gin.Context) {
 		return
 	}
 
-	proxyID := c.Param("id")
+	proxyID := c.Param("proxyHandle")
 	if proxyID == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"LLM proxy ID is required"))
@@ -140,7 +140,7 @@ func (h *LLMProxyAPIKeyHandler) CreateAPIKey(c *gin.Context) {
 		return
 	}
 
-	proxyID := c.Param("id")
+	proxyID := c.Param("proxyHandle")
 	if proxyID == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"LLM proxy ID is required"))
@@ -192,7 +192,7 @@ func (h *LLMProxyAPIKeyHandler) CreateAPIKey(c *gin.Context) {
 
 // RegisterRoutes registers LLM proxy API key routes with the router
 func (h *LLMProxyAPIKeyHandler) RegisterRoutes(r *gin.Engine) {
-	apiKeyGroup := r.Group(constants.APIBasePath + "/llm-proxies/:id/api-keys")
+	apiKeyGroup := r.Group(constants.APIBasePath + "/llm-proxies/:proxyHandle/api-keys")
 	{
 		apiKeyGroup.POST("", h.CreateAPIKey)
 		apiKeyGroup.GET("", h.ListAPIKeys)

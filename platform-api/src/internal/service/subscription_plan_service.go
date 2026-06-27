@@ -26,6 +26,7 @@ import (
 	"platform-api/src/internal/constants"
 	"platform-api/src/internal/model"
 	"platform-api/src/internal/repository"
+	"platform-api/src/internal/utils"
 )
 
 // SubscriptionPlanService handles subscription plan business logic
@@ -59,11 +60,18 @@ func NewSubscriptionPlanService(
 
 // CreatePlan creates a new subscription plan
 func (s *SubscriptionPlanService) CreatePlan(orgUUID, actor string, plan *model.SubscriptionPlan) (*model.SubscriptionPlan, error) {
-	if plan.Handle == "" {
-		return nil, fmt.Errorf("handle is required")
-	}
 	if plan.Name == "" {
 		return nil, fmt.Errorf("name is required")
+	}
+	if plan.Handle == "" {
+		generated, err := utils.GenerateHandle(plan.Name, func(h string) bool {
+			exists, _ := s.planRepo.ExistsByHandleAndOrg(h, orgUUID)
+			return exists
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to generate handle: %w", err)
+		}
+		plan.Handle = generated
 	}
 
 	exists, err := s.planRepo.ExistsByHandleAndOrg(plan.Handle, orgUUID)
@@ -104,9 +112,24 @@ func (s *SubscriptionPlanService) CreatePlan(orgUUID, actor string, plan *model.
 	return plan, nil
 }
 
-// GetPlan returns a subscription plan by ID
+// GetPlan returns a subscription plan by UUID (for internal use, e.g. resolving a plan linked to a subscription).
 func (s *SubscriptionPlanService) GetPlan(planID, orgUUID string) (*model.SubscriptionPlan, error) {
 	plan, err := s.planRepo.GetByID(planID, orgUUID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, constants.ErrSubscriptionPlanNotFound
+		}
+		return nil, err
+	}
+	if plan == nil {
+		return nil, constants.ErrSubscriptionPlanNotFound
+	}
+	return plan, nil
+}
+
+// GetPlanByHandle returns a subscription plan by handle.
+func (s *SubscriptionPlanService) GetPlanByHandle(handle, orgUUID string) (*model.SubscriptionPlan, error) {
+	plan, err := s.planRepo.GetByHandleAndOrg(handle, orgUUID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, constants.ErrSubscriptionPlanNotFound
@@ -129,9 +152,9 @@ func (s *SubscriptionPlanService) ListPlans(orgUUID string, limit, offset int) (
 	return s.planRepo.ListByOrganization(orgUUID, limit, offset)
 }
 
-// UpdatePlan updates a subscription plan
-func (s *SubscriptionPlanService) UpdatePlan(planID, orgUUID, actor string, update *model.SubscriptionPlanUpdate) (*model.SubscriptionPlan, error) {
-	existing, err := s.planRepo.GetByID(planID, orgUUID)
+// UpdatePlan updates a subscription plan identified by handle.
+func (s *SubscriptionPlanService) UpdatePlan(planHandle, orgUUID, actor string, update *model.SubscriptionPlanUpdate) (*model.SubscriptionPlan, error) {
+	existing, err := s.planRepo.GetByHandleAndOrg(planHandle, orgUUID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, constants.ErrSubscriptionPlanNotFound
@@ -194,7 +217,7 @@ func (s *SubscriptionPlanService) UpdatePlan(planID, orgUUID, actor string, upda
 		return nil, err
 	}
 	if s.auditRepo != nil {
-		_ = s.auditRepo.Record("UPDATE", planID, "subscription_plan", orgUUID, actor)
+		_ = s.auditRepo.Record("UPDATE", existing.UUID, "subscription_plan", orgUUID, actor)
 	}
 
 	s.broadcastPlanEvent(orgUUID, "updated", &model.SubscriptionPlanUpdatedEvent{
@@ -212,9 +235,9 @@ func (s *SubscriptionPlanService) UpdatePlan(planID, orgUUID, actor string, upda
 	return existing, nil
 }
 
-// DeletePlan removes a subscription plan
-func (s *SubscriptionPlanService) DeletePlan(planID, orgUUID, actor string) error {
-	existing, err := s.planRepo.GetByID(planID, orgUUID)
+// DeletePlan removes a subscription plan identified by handle.
+func (s *SubscriptionPlanService) DeletePlan(planHandle, orgUUID, actor string) error {
+	existing, err := s.planRepo.GetByHandleAndOrg(planHandle, orgUUID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return constants.ErrSubscriptionPlanNotFound
@@ -225,11 +248,11 @@ func (s *SubscriptionPlanService) DeletePlan(planID, orgUUID, actor string) erro
 		return constants.ErrSubscriptionPlanNotFound
 	}
 
-	if err := s.planRepo.Delete(planID, orgUUID); err != nil {
+	if err := s.planRepo.Delete(existing.UUID, orgUUID); err != nil {
 		return err
 	}
 	if s.auditRepo != nil {
-		_ = s.auditRepo.Record("DELETE", planID, "subscription_plan", orgUUID, actor)
+		_ = s.auditRepo.Record("DELETE", existing.UUID, "subscription_plan", orgUUID, actor)
 	}
 
 	s.broadcastPlanEvent(orgUUID, "deleted", &model.SubscriptionPlanDeletedEvent{

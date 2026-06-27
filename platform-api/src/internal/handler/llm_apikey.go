@@ -54,7 +54,7 @@ func (h *LLMProviderAPIKeyHandler) ListAPIKeys(c *gin.Context) {
 		return
 	}
 
-	providerID := c.Param("id")
+	providerID := c.Param("providerHandle")
 	if providerID == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"LLM provider ID is required"))
@@ -88,7 +88,7 @@ func (h *LLMProviderAPIKeyHandler) DeleteAPIKey(c *gin.Context) {
 		return
 	}
 
-	providerID := c.Param("id")
+	providerID := c.Param("providerHandle")
 	if providerID == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"LLM provider ID is required"))
@@ -140,7 +140,7 @@ func (h *LLMProviderAPIKeyHandler) CreateAPIKey(c *gin.Context) {
 		return
 	}
 
-	providerID := c.Param("id")
+	providerID := c.Param("providerHandle")
 	if providerID == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"LLM provider ID is required"))
@@ -192,7 +192,7 @@ func (h *LLMProviderAPIKeyHandler) CreateAPIKey(c *gin.Context) {
 
 // RegisterRoutes registers LLM provider API key routes with the router
 func (h *LLMProviderAPIKeyHandler) RegisterRoutes(r *gin.Engine) {
-	apiKeyGroup := r.Group(constants.APIBasePath + "/llm-providers/:id/api-keys")
+	apiKeyGroup := r.Group(constants.APIBasePath + "/llm-providers/:providerHandle/api-keys")
 	{
 		apiKeyGroup.POST("", h.CreateAPIKey)
 		apiKeyGroup.GET("", h.ListAPIKeys)

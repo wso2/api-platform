@@ -55,9 +55,9 @@ func (h *WebSubAPIHandler) RegisterRoutes(r *gin.Engine) {
 	{
 		v1.POST("/websub-apis", h.CreateWebSubAPI)
 		v1.GET("/websub-apis", h.ListWebSubAPIs)
-		v1.GET("/websub-apis/:apiId", h.GetWebSubAPI)
-		v1.PUT("/websub-apis/:apiId", h.UpdateWebSubAPI)
-		v1.DELETE("/websub-apis/:apiId", h.DeleteWebSubAPI)
+		v1.GET("/websub-apis/:apiHandle", h.GetWebSubAPI)
+		v1.PUT("/websub-apis/:apiHandle", h.UpdateWebSubAPI)
+		v1.DELETE("/websub-apis/:apiHandle", h.DeleteWebSubAPI)
 	}
 }
 
@@ -122,7 +122,7 @@ func (h *WebSubAPIHandler) ListWebSubAPIs(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
-// GetWebSubAPI handles GET /api/v0.9/websub-apis/:apiId
+// GetWebSubAPI handles GET /api/v0.9/websub-apis/:apiHandle
 func (h *WebSubAPIHandler) GetWebSubAPI(c *gin.Context) {
 	orgID, ok := middleware.GetOrganizationFromContext(c)
 	if !ok {
@@ -130,7 +130,7 @@ func (h *WebSubAPIHandler) GetWebSubAPI(c *gin.Context) {
 		return
 	}
 
-	id := c.Param("apiId")
+	id := c.Param("apiHandle")
 	resp, err := h.websubAPIService.Get(orgID, id)
 	if err != nil {
 		h.handleServiceError(c, err)
@@ -140,7 +140,7 @@ func (h *WebSubAPIHandler) GetWebSubAPI(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
-// UpdateWebSubAPI handles PUT /api/v0.9/websub-apis/:apiId
+// UpdateWebSubAPI handles PUT /api/v0.9/websub-apis/:apiHandle
 func (h *WebSubAPIHandler) UpdateWebSubAPI(c *gin.Context) {
 	orgID, ok := middleware.GetOrganizationFromContext(c)
 	if !ok {
@@ -148,7 +148,7 @@ func (h *WebSubAPIHandler) UpdateWebSubAPI(c *gin.Context) {
 		return
 	}
 
-	id := c.Param("apiId")
+	id := c.Param("apiHandle")
 
 	var req api.WebSubAPI
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -167,7 +167,7 @@ func (h *WebSubAPIHandler) UpdateWebSubAPI(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
-// DeleteWebSubAPI handles DELETE /api/v0.9/websub-apis/:apiId
+// DeleteWebSubAPI handles DELETE /api/v0.9/websub-apis/:apiHandle
 func (h *WebSubAPIHandler) DeleteWebSubAPI(c *gin.Context) {
 	orgID, ok := middleware.GetOrganizationFromContext(c)
 	if !ok {
@@ -175,7 +175,7 @@ func (h *WebSubAPIHandler) DeleteWebSubAPI(c *gin.Context) {
 		return
 	}
 
-	id := c.Param("apiId")
+	id := c.Param("apiHandle")
 	deletedBy, _ := middleware.GetUsernameFromContext(c)
 
 	if err := h.websubAPIService.Delete(orgID, id, deletedBy); err != nil {

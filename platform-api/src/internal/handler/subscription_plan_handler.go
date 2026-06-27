@@ -71,23 +71,23 @@ func validateThrottleLimitPair(count *int, unit *string) string {
 
 // CreateSubscriptionPlanRequest is the body for POST /api/v0.9/subscription-plans
 type CreateSubscriptionPlanRequest struct {
-	Handle             string  `json:"handle" binding:"required"`
+	Handle             string  `json:"handle,omitempty"`
 	Name               string  `json:"name" binding:"required"`
 	BillingPlan        string  `json:"billingPlan,omitempty"`
-	StopOnQuotaReach   *int    `json:"stopOnQuotaReach,omitempty"`
+	StopOnQuotaReach   *bool   `json:"stopOnQuotaReach,omitempty"`
 	ThrottleLimitCount *int    `json:"throttleLimitCount,omitempty"`
 	ThrottleLimitUnit  *string `json:"throttleLimitUnit,omitempty"`
 	ExpiryTime         *string `json:"expiryTime,omitempty"`
 	Status             string  `json:"status,omitempty"`
 }
 
-// UpdateSubscriptionPlanRequest is the body for PUT /api/v0.9/subscription-plans/:planId
+// UpdateSubscriptionPlanRequest is the body for PUT /api/v0.9/subscription-plans/:planHandle
 // All fields use pointers for patch semantics: nil = omitted, non-nil = set (including clear-to-empty).
 type UpdateSubscriptionPlanRequest struct {
 	Handle             *string `json:"handle,omitempty"`
 	Name               *string `json:"name,omitempty"`
 	BillingPlan        *string `json:"billingPlan,omitempty"`
-	StopOnQuotaReach   *int    `json:"stopOnQuotaReach,omitempty"`
+	StopOnQuotaReach   *bool   `json:"stopOnQuotaReach,omitempty"`
 	ThrottleLimitCount *int    `json:"throttleLimitCount,omitempty"`
 	ThrottleLimitUnit  *string `json:"throttleLimitUnit,omitempty"`
 	ExpiryTime         *string `json:"expiryTime,omitempty"`
@@ -106,11 +106,6 @@ func (h *SubscriptionPlanHandler) CreateSubscriptionPlan(c *gin.Context) {
 	if err := c.ShouldBindJSON(&req); err != nil {
 		h.slogger.Error("Invalid create subscription plan request body", "organizationId", orgId, "error", err)
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid request body"))
-		return
-	}
-
-	if req.StopOnQuotaReach != nil && *req.StopOnQuotaReach != 0 && *req.StopOnQuotaReach != 1 {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "stopOnQuotaReach must be 0 or 1"))
 		return
 	}
 
@@ -142,7 +137,11 @@ func (h *SubscriptionPlanHandler) CreateSubscriptionPlan(c *gin.Context) {
 		Status:             model.SubscriptionPlanStatus(req.Status),
 	}
 	if req.StopOnQuotaReach != nil {
-		plan.StopOnQuotaReach = *req.StopOnQuotaReach
+		if *req.StopOnQuotaReach {
+			plan.StopOnQuotaReach = 1
+		} else {
+			plan.StopOnQuotaReach = 0
+		}
 	}
 	if req.ExpiryTime != nil {
 		t, err := time.Parse(time.RFC3339, *req.ExpiryTime)
@@ -206,7 +205,7 @@ func (h *SubscriptionPlanHandler) ListSubscriptionPlans(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"subscriptionPlans": items, "count": len(items)})
 }
 
-// GetSubscriptionPlan handles GET /api/v0.9/subscription-plans/:planId
+// GetSubscriptionPlan handles GET /api/v0.9/subscription-plans/:planHandle
 func (h *SubscriptionPlanHandler) GetSubscriptionPlan(c *gin.Context) {
 	orgId, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {
@@ -214,26 +213,26 @@ func (h *SubscriptionPlanHandler) GetSubscriptionPlan(c *gin.Context) {
 		return
 	}
 
-	planId := c.Param("planId")
-	if planId == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Plan ID is required"))
+	planHandle := c.Param("planHandle")
+	if planHandle == "" {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Plan handle is required"))
 		return
 	}
 
-	plan, err := h.planService.GetPlan(planId, orgId)
+	plan, err := h.planService.GetPlanByHandle(planHandle, orgId)
 	if err != nil {
 		if errors.Is(err, constants.ErrSubscriptionPlanNotFound) {
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "Subscription plan not found"))
 			return
 		}
-		h.slogger.Error("Failed to get subscription plan", "planId", planId, "organizationId", orgId, "error", err)
+		h.slogger.Error("Failed to get subscription plan", "planHandle", planHandle, "organizationId", orgId, "error", err)
 		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to get subscription plan"))
 		return
 	}
 	c.JSON(http.StatusOK, toSubscriptionPlanResponse(plan))
 }
 
-// UpdateSubscriptionPlan handles PUT /api/v0.9/subscription-plans/:planId
+// UpdateSubscriptionPlan handles PUT /api/v0.9/subscription-plans/:planHandle
 func (h *SubscriptionPlanHandler) UpdateSubscriptionPlan(c *gin.Context) {
 	orgId, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {
@@ -241,21 +240,16 @@ func (h *SubscriptionPlanHandler) UpdateSubscriptionPlan(c *gin.Context) {
 		return
 	}
 
-	planId := c.Param("planId")
-	if planId == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Plan ID is required"))
+	planHandle := c.Param("planHandle")
+	if planHandle == "" {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Plan handle is required"))
 		return
 	}
 
 	var req UpdateSubscriptionPlanRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		h.slogger.Error("Invalid update subscription plan request body", "planId", planId, "organizationId", orgId, "error", err)
+		h.slogger.Error("Invalid update subscription plan request body", "planHandle", planHandle, "organizationId", orgId, "error", err)
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid request body"))
-		return
-	}
-
-	if req.StopOnQuotaReach != nil && *req.StopOnQuotaReach != 0 && *req.StopOnQuotaReach != 1 {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "stopOnQuotaReach must be 0 or 1"))
 		return
 	}
 
@@ -265,8 +259,14 @@ func (h *SubscriptionPlanHandler) UpdateSubscriptionPlan(c *gin.Context) {
 	}
 
 	update := &model.SubscriptionPlanUpdate{
-		StopOnQuotaReach:   req.StopOnQuotaReach,
 		ThrottleLimitCount: req.ThrottleLimitCount,
+	}
+	if req.StopOnQuotaReach != nil {
+		var val int
+		if *req.StopOnQuotaReach {
+			val = 1
+		}
+		update.StopOnQuotaReach = &val
 	}
 	if req.Handle != nil {
 		update.Handle = req.Handle
@@ -304,7 +304,7 @@ func (h *SubscriptionPlanHandler) UpdateSubscriptionPlan(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Username claim not found in token"))
 		return
 	}
-	updated, err := h.planService.UpdatePlan(planId, orgId, actor, update)
+	updated, err := h.planService.UpdatePlan(planHandle, orgId, actor, update)
 	if err != nil {
 		if errors.Is(err, constants.ErrSubscriptionPlanNotFound) {
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "Subscription plan not found"))
@@ -314,14 +314,14 @@ func (h *SubscriptionPlanHandler) UpdateSubscriptionPlan(c *gin.Context) {
 			c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict", err.Error()))
 			return
 		}
-		h.slogger.Error("Failed to update subscription plan", "planId", planId, "organizationId", orgId, "error", err)
+		h.slogger.Error("Failed to update subscription plan", "planHandle", planHandle, "organizationId", orgId, "error", err)
 		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to update subscription plan"))
 		return
 	}
 	c.JSON(http.StatusOK, toSubscriptionPlanResponse(updated))
 }
 
-// DeleteSubscriptionPlan handles DELETE /api/v0.9/subscription-plans/:planId
+// DeleteSubscriptionPlan handles DELETE /api/v0.9/subscription-plans/:planHandle
 func (h *SubscriptionPlanHandler) DeleteSubscriptionPlan(c *gin.Context) {
 	orgId, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {
@@ -329,9 +329,9 @@ func (h *SubscriptionPlanHandler) DeleteSubscriptionPlan(c *gin.Context) {
 		return
 	}
 
-	planId := c.Param("planId")
-	if planId == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Plan ID is required"))
+	planHandle := c.Param("planHandle")
+	if planHandle == "" {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Plan handle is required"))
 		return
 	}
 
@@ -340,13 +340,13 @@ func (h *SubscriptionPlanHandler) DeleteSubscriptionPlan(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Username claim not found in token"))
 		return
 	}
-	err := h.planService.DeletePlan(planId, orgId, actor)
+	err := h.planService.DeletePlan(planHandle, orgId, actor)
 	if err != nil {
 		if errors.Is(err, constants.ErrSubscriptionPlanNotFound) {
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "Subscription plan not found"))
 			return
 		}
-		h.slogger.Error("Failed to delete subscription plan", "planId", planId, "organizationId", orgId, "error", err)
+		h.slogger.Error("Failed to delete subscription plan", "planHandle", planHandle, "organizationId", orgId, "error", err)
 		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to delete subscription plan"))
 		return
 	}
@@ -359,9 +359,9 @@ func (h *SubscriptionPlanHandler) RegisterRoutes(r *gin.Engine) {
 	{
 		group.POST("", h.CreateSubscriptionPlan)
 		group.GET("", h.ListSubscriptionPlans)
-		group.GET("/:planId", h.GetSubscriptionPlan)
-		group.PUT("/:planId", h.UpdateSubscriptionPlan)
-		group.DELETE("/:planId", h.DeleteSubscriptionPlan)
+		group.GET("/:planHandle", h.GetSubscriptionPlan)
+		group.PUT("/:planHandle", h.UpdateSubscriptionPlan)
+		group.DELETE("/:planHandle", h.DeleteSubscriptionPlan)
 	}
 }
 
@@ -371,7 +371,7 @@ func toSubscriptionPlanResponse(plan *model.SubscriptionPlan) gin.H {
 		"handle":           plan.Handle,
 		"name":             plan.Name,
 		"billingPlan":      plan.BillingPlan,
-		"stopOnQuotaReach": plan.StopOnQuotaReach,
+		"stopOnQuotaReach": plan.StopOnQuotaReach != 0,
 		"organizationId":   plan.OrganizationUUID,
 		"status":           string(plan.Status),
 		"createdAt":        plan.CreatedAt,

@@ -71,7 +71,7 @@ Get the REST URL right *before* you name the scope (Rule 4):
   - `POST /…/deployments/undeploy` → `POST /…/deployments/{deploymentId}/undeploy`
   - `POST /…/deployments/restore` → `POST /…/deployments/{deploymentId}/restore`
 - **Create-variant actions hang off the collection namespace.** When an action *creates* the resource, name it on the collection: `POST /rest-apis/import-openapi`, `POST /rest-apis/validate-openapi`, `POST /api-projects/import`.
-- **Prefer existing domain nouns + standard verbs over custom-verb paths.** Model publish/unpublish as a `publications` sub-resource: `POST /rest-apis/{apiId}/publications` to publish, `DELETE /rest-apis/{apiId}/publications/{devportalId}` to unpublish — instead of `POST …/devportals/publish` and `…/unpublish`.
+- **Prefer existing domain nouns + standard verbs over custom-verb paths.**
 
 ## The `:manage` superset
 
@@ -151,8 +151,6 @@ Example for REST APIs:
 /rest-apis/{apiId}/gateways
 /rest-apis/{apiId}/api-keys
 /rest-apis/{apiId}/api-keys/{keyName}
-/rest-apis/{apiId}/publications
-/rest-apis/{apiId}/publications/{devportalId}
 /rest-apis/{apiId}/deployments
 /rest-apis/{apiId}/deployments/{deploymentId}
 /rest-apis/{apiId}/deployments/{deploymentId}/undeploy
@@ -170,7 +168,7 @@ Example for REST APIs:
 ### Anti-patterns for path placement
 
 - A sub-resource path appearing before its parent (e.g. `/llm-proxies/{id}/deployments` before `/llm-proxies`).
-- Sub-resources of one group scattered inside another group (e.g. `/rest-apis/{apiId}/publications` appearing after `/subscription-plans`).
+- Sub-resources of one group scattered inside another group (e.g. a sub-resource path appearing after an unrelated group).
 - A new group inserted at an arbitrary position rather than following the canonical order.
 - A tag referenced in an operation's `tags:` list that has no entry in the top-level `tags:` section.
 

@@ -85,7 +85,7 @@ func (h *ApplicationHandler) GetApplication(c *gin.Context) {
 		return
 	}
 
-	appID := c.Param("appId")
+	appID := c.Param("appHandle")
 	if strings.TrimSpace(appID) == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Application ID is required"))
 		return
@@ -144,7 +144,7 @@ func (h *ApplicationHandler) UpdateApplication(c *gin.Context) {
 		return
 	}
 
-	appID := c.Param("appId")
+	appID := c.Param("appHandle")
 	if strings.TrimSpace(appID) == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Application ID is required"))
 		return
@@ -173,7 +173,7 @@ func (h *ApplicationHandler) DeleteApplication(c *gin.Context) {
 		return
 	}
 
-	appID := c.Param("appId")
+	appID := c.Param("appHandle")
 	if strings.TrimSpace(appID) == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Application ID is required"))
 		return
@@ -195,7 +195,7 @@ func (h *ApplicationHandler) ListApplicationAssociations(c *gin.Context) {
 		return
 	}
 
-	appID := c.Param("appId")
+	appID := c.Param("appHandle")
 	if strings.TrimSpace(appID) == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Application ID is required"))
 		return
@@ -236,7 +236,7 @@ func (h *ApplicationHandler) AddApplicationAssociations(c *gin.Context) {
 		return
 	}
 
-	appID := c.Param("appId")
+	appID := c.Param("appHandle")
 	if strings.TrimSpace(appID) == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Application ID is required"))
 		return
@@ -268,7 +268,7 @@ func (h *ApplicationHandler) RemoveApplicationAssociation(c *gin.Context) {
 		return
 	}
 
-	appID := c.Param("appId")
+	appID := c.Param("appHandle")
 	associationID := c.Param("associationId")
 	if strings.TrimSpace(appID) == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Application ID is required"))
@@ -293,7 +293,7 @@ func (h *ApplicationHandler) ListApplicationAPIKeys(c *gin.Context) {
 		return
 	}
 
-	appID := c.Param("appId")
+	appID := c.Param("appHandle")
 	if strings.TrimSpace(appID) == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Application ID is required"))
 		return
@@ -334,7 +334,7 @@ func (h *ApplicationHandler) ListApplicationAssociationAPIKeys(c *gin.Context) {
 		return
 	}
 
-	appID := c.Param("appId")
+	appID := c.Param("appHandle")
 	associationID := c.Param("associationId")
 	if strings.TrimSpace(appID) == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Application ID is required"))
@@ -380,7 +380,7 @@ func (h *ApplicationHandler) AddApplicationAPIKeys(c *gin.Context) {
 		return
 	}
 
-	appID := c.Param("appId")
+	appID := c.Param("appHandle")
 	userID := h.resolveRequesterUserID(c)
 	if strings.TrimSpace(appID) == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Application ID is required"))
@@ -413,7 +413,7 @@ func (h *ApplicationHandler) RemoveApplicationAPIKey(c *gin.Context) {
 		return
 	}
 
-	appID := c.Param("appId")
+	appID := c.Param("appHandle")
 	keyID := c.Param("keyId")
 	entityID := strings.TrimSpace(c.Query("entityID"))
 	userID := h.resolveRequesterUserID(c)
@@ -443,17 +443,17 @@ func (h *ApplicationHandler) RegisterRoutes(r *gin.Engine) {
 	{
 		applicationGroup.GET("", h.ListApplications)
 		applicationGroup.POST("", h.CreateApplication)
-		applicationGroup.GET("/:appId", h.GetApplication)
-		applicationGroup.PUT("/:appId", h.UpdateApplication)
-		applicationGroup.DELETE("/:appId", h.DeleteApplication)
+		applicationGroup.GET("/:appHandle", h.GetApplication)
+		applicationGroup.PUT("/:appHandle", h.UpdateApplication)
+		applicationGroup.DELETE("/:appHandle", h.DeleteApplication)
 
-		applicationGroup.GET("/:appId/api-keys", h.ListApplicationAPIKeys)
-		applicationGroup.POST("/:appId/api-keys", h.AddApplicationAPIKeys)
-		applicationGroup.DELETE("/:appId/api-keys/:keyId", h.RemoveApplicationAPIKey)
-		applicationGroup.GET("/:appId/associations", h.ListApplicationAssociations)
-		applicationGroup.POST("/:appId/associations", h.AddApplicationAssociations)
-		applicationGroup.GET("/:appId/associations/:associationId/api-keys", h.ListApplicationAssociationAPIKeys)
-		applicationGroup.DELETE("/:appId/associations/:associationId", h.RemoveApplicationAssociation)
+		applicationGroup.GET("/:appHandle/api-keys", h.ListApplicationAPIKeys)
+		applicationGroup.POST("/:appHandle/api-keys", h.AddApplicationAPIKeys)
+		applicationGroup.DELETE("/:appHandle/api-keys/:keyId", h.RemoveApplicationAPIKey)
+		applicationGroup.GET("/:appHandle/associations", h.ListApplicationAssociations)
+		applicationGroup.POST("/:appHandle/associations", h.AddApplicationAssociations)
+		applicationGroup.GET("/:appHandle/associations/:associationId/api-keys", h.ListApplicationAssociationAPIKeys)
+		applicationGroup.DELETE("/:appHandle/associations/:associationId", h.RemoveApplicationAssociation)
 	}
 }
 
@@ -476,7 +476,7 @@ func (h *ApplicationHandler) writeApplicationError(c *gin.Context, err error, fa
 			"error", err,
 			"path", c.FullPath(),
 			"method", c.Request.Method,
-			"appId", c.Param("appId"),
+			"appHandle", c.Param("appHandle"),
 		)
 	}
 

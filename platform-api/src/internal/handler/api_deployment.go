@@ -44,7 +44,7 @@ func NewDeploymentHandler(deploymentService *service.DeploymentService, slogger 
 	}
 }
 
-// DeployAPI handles POST /api/v0.9/rest-apis/:apiId/deployments
+// DeployAPI handles POST /api/v0.9/rest-apis/:apiHandle/deployments
 // Creates a new immutable deployment artifact and deploys it to a gateway
 func (h *DeploymentHandler) DeployAPI(c *gin.Context) {
 	orgId, exists := middleware.GetOrganizationFromContext(c)
@@ -54,7 +54,7 @@ func (h *DeploymentHandler) DeployAPI(c *gin.Context) {
 		return
 	}
 
-	apiId := c.Param("apiId")
+	apiId := c.Param("apiHandle")
 	if apiId == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"API ID is required"))
@@ -134,7 +134,7 @@ func (h *DeploymentHandler) DeployAPI(c *gin.Context) {
 	c.JSON(http.StatusCreated, deployment)
 }
 
-// UndeployDeployment handles POST /api/v0.9/rest-apis/:apiId/deployments/:deploymentId/undeploy
+// UndeployDeployment handles POST /api/v0.9/rest-apis/:apiHandle/deployments/:deploymentId/undeploy
 func (h *DeploymentHandler) UndeployDeployment(c *gin.Context) {
 	orgId, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {
@@ -143,7 +143,7 @@ func (h *DeploymentHandler) UndeployDeployment(c *gin.Context) {
 		return
 	}
 
-	apiId := c.Param("apiId")
+	apiId := c.Param("apiHandle")
 	deploymentId := c.Param("deploymentId")
 	gatewayId := c.Query("gatewayId")
 	if deploymentId == "" {
@@ -207,7 +207,7 @@ func (h *DeploymentHandler) UndeployDeployment(c *gin.Context) {
 	c.JSON(http.StatusOK, deployment)
 }
 
-// RestoreDeployment handles POST /api/v0.9/rest-apis/:apiId/deployments/:deploymentId/restore
+// RestoreDeployment handles POST /api/v0.9/rest-apis/:apiHandle/deployments/:deploymentId/restore
 func (h *DeploymentHandler) RestoreDeployment(c *gin.Context) {
 	orgId, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {
@@ -216,7 +216,7 @@ func (h *DeploymentHandler) RestoreDeployment(c *gin.Context) {
 		return
 	}
 
-	apiId := c.Param("apiId")
+	apiId := c.Param("apiHandle")
 	deploymentId := c.Param("deploymentId")
 	gatewayId := c.Query("gatewayId")
 	if deploymentId == "00000000-0000-0000-0000-000000000000" || gatewayId == "00000000-0000-0000-0000-000000000000" {
@@ -270,7 +270,7 @@ func (h *DeploymentHandler) RestoreDeployment(c *gin.Context) {
 	c.JSON(http.StatusOK, deployment)
 }
 
-// DeleteDeployment handles DELETE /api/v0.9/rest-apis/:apiId/deployments/:deploymentId
+// DeleteDeployment handles DELETE /api/v0.9/rest-apis/:apiHandle/deployments/:deploymentId
 // Permanently deletes an undeployed deployment artifact
 func (h *DeploymentHandler) DeleteDeployment(c *gin.Context) {
 	orgId, exists := middleware.GetOrganizationFromContext(c)
@@ -280,7 +280,7 @@ func (h *DeploymentHandler) DeleteDeployment(c *gin.Context) {
 		return
 	}
 
-	apiId := c.Param("apiId")
+	apiId := c.Param("apiHandle")
 	deploymentId := c.Param("deploymentId")
 
 	if apiId == "" {
@@ -320,7 +320,7 @@ func (h *DeploymentHandler) DeleteDeployment(c *gin.Context) {
 	c.JSON(http.StatusNoContent, nil)
 }
 
-// GetDeployment handles GET /api/v0.9/rest-apis/:apiId/deployments/:deploymentId
+// GetDeployment handles GET /api/v0.9/rest-apis/:apiHandle/deployments/:deploymentId
 // Retrieves metadata for a specific deployment artifact
 func (h *DeploymentHandler) GetDeployment(c *gin.Context) {
 	orgId, exists := middleware.GetOrganizationFromContext(c)
@@ -330,7 +330,7 @@ func (h *DeploymentHandler) GetDeployment(c *gin.Context) {
 		return
 	}
 
-	apiId := c.Param("apiId")
+	apiId := c.Param("apiHandle")
 	deploymentId := c.Param("deploymentId")
 
 	if apiId == "" {
@@ -365,7 +365,7 @@ func (h *DeploymentHandler) GetDeployment(c *gin.Context) {
 	c.JSON(http.StatusOK, deployment)
 }
 
-// GetDeployments handles GET /api/v0.9/rest-apis/:apiId/deployments
+// GetDeployments handles GET /api/v0.9/rest-apis/:apiHandle/deployments
 // Retrieves all deployment records for an API with optional filters
 func (h *DeploymentHandler) GetDeployments(c *gin.Context) {
 	orgId, exists := middleware.GetOrganizationFromContext(c)
@@ -375,7 +375,7 @@ func (h *DeploymentHandler) GetDeployments(c *gin.Context) {
 		return
 	}
 
-	apiId := c.Param("apiId")
+	apiId := c.Param("apiHandle")
 	if apiId == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"API ID is required"))
@@ -420,7 +420,7 @@ func (h *DeploymentHandler) GetDeployments(c *gin.Context) {
 // RegisterRoutes registers all deployment-related routes
 func (h *DeploymentHandler) RegisterRoutes(r *gin.Engine) {
 	h.slogger.Debug("Registering deployment routes")
-	apiGroup := r.Group(constants.APIBasePath + "/rest-apis/:apiId")
+	apiGroup := r.Group(constants.APIBasePath + "/rest-apis/:apiHandle")
 	{
 		apiGroup.POST("/deployments", h.DeployAPI)
 		apiGroup.POST("/deployments/:deploymentId/undeploy", h.UndeployDeployment)

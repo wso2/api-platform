@@ -52,7 +52,7 @@ func NewWebSubAPIKeyHandler(websubAPIService *service.WebSubAPIService, apiKeySe
 
 // RegisterRoutes registers WebSub API key routes
 func (h *WebSubAPIKeyHandler) RegisterRoutes(r *gin.Engine) {
-	v1 := r.Group(constants.APIBasePath + "/websub-apis/:apiId/api-keys")
+	v1 := r.Group(constants.APIBasePath + "/websub-apis/:apiHandle/api-keys")
 	{
 		v1.POST("", h.CreateAPIKey)
 		v1.PUT("/:keyName", h.UpdateAPIKey)
@@ -60,7 +60,7 @@ func (h *WebSubAPIKeyHandler) RegisterRoutes(r *gin.Engine) {
 	}
 }
 
-// CreateAPIKey handles POST /api/v0.9/websub-apis/:apiId/api-keys
+// CreateAPIKey handles POST /api/v0.9/websub-apis/:apiHandle/api-keys
 func (h *WebSubAPIKeyHandler) CreateAPIKey(c *gin.Context) {
 	orgID, ok := middleware.GetOrganizationFromContext(c)
 	if !ok {
@@ -68,7 +68,7 @@ func (h *WebSubAPIKeyHandler) CreateAPIKey(c *gin.Context) {
 		return
 	}
 
-	apiHandle := c.Param("apiId")
+	apiHandle := c.Param("apiHandle")
 	if apiHandle == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "API handle is required"))
 		return
@@ -134,7 +134,7 @@ func (h *WebSubAPIKeyHandler) CreateAPIKey(c *gin.Context) {
 	})
 }
 
-// UpdateAPIKey handles PUT /api/v0.9/websub-apis/:apiId/api-keys/:keyName
+// UpdateAPIKey handles PUT /api/v0.9/websub-apis/:apiHandle/api-keys/:keyName
 func (h *WebSubAPIKeyHandler) UpdateAPIKey(c *gin.Context) {
 	orgID, ok := middleware.GetOrganizationFromContext(c)
 	if !ok {
@@ -142,7 +142,7 @@ func (h *WebSubAPIKeyHandler) UpdateAPIKey(c *gin.Context) {
 		return
 	}
 
-	apiHandle := c.Param("apiId")
+	apiHandle := c.Param("apiHandle")
 	if apiHandle == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "API handle is required"))
 		return
@@ -205,7 +205,7 @@ func (h *WebSubAPIKeyHandler) UpdateAPIKey(c *gin.Context) {
 	})
 }
 
-// DeleteAPIKey handles DELETE /api/v0.9/websub-apis/:apiId/api-keys/:keyName
+// DeleteAPIKey handles DELETE /api/v0.9/websub-apis/:apiHandle/api-keys/:keyName
 func (h *WebSubAPIKeyHandler) DeleteAPIKey(c *gin.Context) {
 	orgID, ok := middleware.GetOrganizationFromContext(c)
 	if !ok {
@@ -213,7 +213,7 @@ func (h *WebSubAPIKeyHandler) DeleteAPIKey(c *gin.Context) {
 		return
 	}
 
-	apiHandle := c.Param("apiId")
+	apiHandle := c.Param("apiHandle")
 	keyName := c.Param("keyName")
 
 	if apiHandle == "" {

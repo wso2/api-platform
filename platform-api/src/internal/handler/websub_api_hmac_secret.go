@@ -51,7 +51,7 @@ func NewWebSubAPIHmacSecretHandler(secretService *service.WebSubAPIHmacSecretSer
 
 // RegisterRoutes registers the HMAC secret routes.
 func (h *WebSubAPIHmacSecretHandler) RegisterRoutes(r *gin.Engine) {
-	v1 := r.Group("/api/v1/websub-apis/:apiId/secrets")
+	v1 := r.Group("/api/v1/websub-apis/:apiHandle/secrets")
 	{
 		v1.POST("", h.CreateHmacSecret)
 		v1.GET("", h.ListHmacSecrets)
@@ -69,7 +69,7 @@ func (h *WebSubAPIHmacSecretHandler) featureUnavailable(c *gin.Context) bool {
 	return false
 }
 
-// CreateHmacSecret handles POST /api/v1/websub-apis/:apiId/secrets
+// CreateHmacSecret handles POST /api/v1/websub-apis/:apiHandle/secrets
 func (h *WebSubAPIHmacSecretHandler) CreateHmacSecret(c *gin.Context) {
 	if h.featureUnavailable(c) {
 		return
@@ -80,7 +80,7 @@ func (h *WebSubAPIHmacSecretHandler) CreateHmacSecret(c *gin.Context) {
 		return
 	}
 
-	apiHandle := c.Param("apiId")
+	apiHandle := c.Param("apiHandle")
 	if apiHandle == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "API handle is required"))
 		return
@@ -120,7 +120,7 @@ func (h *WebSubAPIHmacSecretHandler) CreateHmacSecret(c *gin.Context) {
 	})
 }
 
-// ListHmacSecrets handles GET /api/v1/websub-apis/:apiId/secrets
+// ListHmacSecrets handles GET /api/v1/websub-apis/:apiHandle/secrets
 func (h *WebSubAPIHmacSecretHandler) ListHmacSecrets(c *gin.Context) {
 	if h.featureUnavailable(c) {
 		return
@@ -131,7 +131,7 @@ func (h *WebSubAPIHmacSecretHandler) ListHmacSecrets(c *gin.Context) {
 		return
 	}
 
-	apiHandle := c.Param("apiId")
+	apiHandle := c.Param("apiHandle")
 	if apiHandle == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "API handle is required"))
 		return
@@ -150,7 +150,7 @@ func (h *WebSubAPIHmacSecretHandler) ListHmacSecrets(c *gin.Context) {
 	c.JSON(http.StatusOK, api.WebSubAPIHmacSecretListResponse{Secrets: items})
 }
 
-// DeleteHmacSecret handles DELETE /api/v1/websub-apis/:apiId/secrets/:secretName
+// DeleteHmacSecret handles DELETE /api/v1/websub-apis/:apiHandle/secrets/:secretName
 func (h *WebSubAPIHmacSecretHandler) DeleteHmacSecret(c *gin.Context) {
 	if h.featureUnavailable(c) {
 		return
@@ -161,7 +161,7 @@ func (h *WebSubAPIHmacSecretHandler) DeleteHmacSecret(c *gin.Context) {
 		return
 	}
 
-	apiHandle := c.Param("apiId")
+	apiHandle := c.Param("apiHandle")
 	secretName := c.Param("secretName")
 	if apiHandle == "" || secretName == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "API handle and secret name are required"))
@@ -176,7 +176,7 @@ func (h *WebSubAPIHmacSecretHandler) DeleteHmacSecret(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
-// RegenerateHmacSecret handles POST /api/v1/websub-apis/:apiId/secrets/:secretName/regenerate
+// RegenerateHmacSecret handles POST /api/v1/websub-apis/:apiHandle/secrets/:secretName/regenerate
 func (h *WebSubAPIHmacSecretHandler) RegenerateHmacSecret(c *gin.Context) {
 	if h.featureUnavailable(c) {
 		return
@@ -187,7 +187,7 @@ func (h *WebSubAPIHmacSecretHandler) RegenerateHmacSecret(c *gin.Context) {
 		return
 	}
 
-	apiHandle := c.Param("apiId")
+	apiHandle := c.Param("apiHandle")
 	secretName := c.Param("secretName")
 	if apiHandle == "" || secretName == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "API handle and secret name are required"))

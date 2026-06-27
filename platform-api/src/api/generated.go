@@ -1293,11 +1293,14 @@ type GatewayResponse struct {
 	// Description Description of the gateway
 	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
 
-	// DisplayName Human-readable gateway name
+	// DisplayName Human-readable gateway name (alias for Name)
 	DisplayName *string `json:"displayName,omitempty" yaml:"displayName,omitempty"`
 
 	// FunctionalityType Type of gateway functionality
 	FunctionalityType *GatewayResponseFunctionalityType `json:"functionalityType,omitempty" yaml:"functionalityType,omitempty"`
+
+	// Handle URL-friendly gateway identifier (lowercase alphanumeric with hyphens, unique per organization)
+	Handle *string `json:"handle,omitempty" yaml:"handle,omitempty"`
 
 	// Id Unique identifier for the gateway
 	Id *openapi_types.UUID `json:"id,omitempty" yaml:"id,omitempty"`
@@ -1308,7 +1311,7 @@ type GatewayResponse struct {
 	// IsCritical Whether the gateway is critical for production
 	IsCritical *bool `json:"isCritical,omitempty" yaml:"isCritical,omitempty"`
 
-	// Name URL-friendly gateway identifier
+	// Name Human-readable gateway name
 	Name *string `json:"name,omitempty" yaml:"name,omitempty"`
 
 	// OrganizationId UUID of the organization this gateway belongs to
@@ -1340,6 +1343,9 @@ type GatewayStatusListResponse struct {
 
 // GatewayStatusResponse Lightweight gateway status information optimized for frequent polling
 type GatewayStatusResponse struct {
+	// Handle URL-friendly gateway identifier
+	Handle *string `json:"handle,omitempty" yaml:"handle,omitempty"`
+
 	// Id Unique identifier for the gateway
 	Id *openapi_types.UUID `json:"id,omitempty" yaml:"id,omitempty"`
 
@@ -1349,7 +1355,7 @@ type GatewayStatusResponse struct {
 	// IsCritical Whether the gateway is critical for production
 	IsCritical *bool `json:"isCritical,omitempty" yaml:"isCritical,omitempty"`
 
-	// Name URL-friendly gateway identifier
+	// Name Human-readable gateway name
 	Name *string `json:"name,omitempty" yaml:"name,omitempty"`
 }
 
@@ -2837,7 +2843,9 @@ type SubscriptionPlan struct {
 	BillingPlan        *string                 `json:"billingPlan,omitempty" yaml:"billingPlan,omitempty"`
 	CreatedAt          *time.Time              `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
 	ExpiryTime         *time.Time              `json:"expiryTime,omitempty" yaml:"expiryTime,omitempty"`
+	Handle             *string                 `json:"handle,omitempty" yaml:"handle,omitempty"`
 	Id                 *openapi_types.UUID     `json:"id,omitempty" yaml:"id,omitempty"`
+	Name               *string                 `json:"name,omitempty" yaml:"name,omitempty"`
 	OrganizationId     *openapi_types.UUID     `json:"organizationId,omitempty" yaml:"organizationId,omitempty"`
 	PlanName           *string                 `json:"planName,omitempty" yaml:"planName,omitempty"`
 	Status             *SubscriptionPlanStatus `json:"status,omitempty" yaml:"status,omitempty"`
@@ -3475,8 +3483,8 @@ type ApiVersionQ = string
 // ApiId defines model for apiId.
 type ApiId = string
 
-// AppId defines model for appId.
-type AppId = string
+// AppHandle defines model for appHandle.
+type AppHandle = string
 
 // AssociationId defines model for associationId.
 type AssociationId = string

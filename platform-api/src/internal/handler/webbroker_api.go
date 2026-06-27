@@ -55,12 +55,9 @@ func (h *WebBrokerAPIHandler) RegisterRoutes(r *gin.Engine) {
 	{
 		v1.POST("/webbroker-apis", h.CreateWebBrokerAPI)
 		v1.GET("/webbroker-apis", h.ListWebBrokerAPIs)
-		v1.GET("/webbroker-apis/:apiId", h.GetWebBrokerAPI)
-		v1.PUT("/webbroker-apis/:apiId", h.UpdateWebBrokerAPI)
-		v1.DELETE("/webbroker-apis/:apiId", h.DeleteWebBrokerAPI)
-		// publication_mappings / devportals tables removed — routes disabled
-		// v1.POST("/webbroker-apis/:apiId/publications", h.PublishToDevPortal)
-		// v1.DELETE("/webbroker-apis/:apiId/publications/:devportalId", h.UnpublishFromDevPortal)
+		v1.GET("/webbroker-apis/:apiHandle", h.GetWebBrokerAPI)
+		v1.PUT("/webbroker-apis/:apiHandle", h.UpdateWebBrokerAPI)
+		v1.DELETE("/webbroker-apis/:apiHandle", h.DeleteWebBrokerAPI)
 	}
 }
 
@@ -125,7 +122,7 @@ func (h *WebBrokerAPIHandler) ListWebBrokerAPIs(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
-// GetWebBrokerAPI handles GET /api/v0.9/webbroker-apis/:apiId
+// GetWebBrokerAPI handles GET /api/v0.9/webbroker-apis/:apiHandle
 func (h *WebBrokerAPIHandler) GetWebBrokerAPI(c *gin.Context) {
 	orgID, ok := middleware.GetOrganizationFromContext(c)
 	if !ok {
@@ -133,7 +130,7 @@ func (h *WebBrokerAPIHandler) GetWebBrokerAPI(c *gin.Context) {
 		return
 	}
 
-	id := c.Param("apiId")
+	id := c.Param("apiHandle")
 	resp, err := h.webbrokerAPIService.Get(orgID, id)
 	if err != nil {
 		h.handleServiceError(c, err)
@@ -143,7 +140,7 @@ func (h *WebBrokerAPIHandler) GetWebBrokerAPI(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
-// UpdateWebBrokerAPI handles PUT /api/v0.9/webbroker-apis/:apiId
+// UpdateWebBrokerAPI handles PUT /api/v0.9/webbroker-apis/:apiHandle
 func (h *WebBrokerAPIHandler) UpdateWebBrokerAPI(c *gin.Context) {
 	orgID, ok := middleware.GetOrganizationFromContext(c)
 	if !ok {
@@ -151,7 +148,7 @@ func (h *WebBrokerAPIHandler) UpdateWebBrokerAPI(c *gin.Context) {
 		return
 	}
 
-	id := c.Param("apiId")
+	id := c.Param("apiHandle")
 
 	var req api.WebBrokerAPI
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -170,7 +167,7 @@ func (h *WebBrokerAPIHandler) UpdateWebBrokerAPI(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
-// DeleteWebBrokerAPI handles DELETE /api/v0.9/webbroker-apis/:apiId
+// DeleteWebBrokerAPI handles DELETE /api/v0.9/webbroker-apis/:apiHandle
 func (h *WebBrokerAPIHandler) DeleteWebBrokerAPI(c *gin.Context) {
 	orgID, ok := middleware.GetOrganizationFromContext(c)
 	if !ok {
@@ -178,7 +175,7 @@ func (h *WebBrokerAPIHandler) DeleteWebBrokerAPI(c *gin.Context) {
 		return
 	}
 
-	id := c.Param("apiId")
+	id := c.Param("apiHandle")
 	deletedBy, _ := middleware.GetUsernameFromContext(c)
 
 	if err := h.webbrokerAPIService.Delete(orgID, id, deletedBy); err != nil {
@@ -187,44 +184,6 @@ func (h *WebBrokerAPIHandler) DeleteWebBrokerAPI(c *gin.Context) {
 	}
 
 	c.Status(http.StatusNoContent)
-}
-
-// PublishToDevPortal publishes a WebBroker API to a DevPortal.
-func (h *WebBrokerAPIHandler) PublishToDevPortal(c *gin.Context) {
-	// publication_mappings / devportals tables removed — handler disabled
-	// orgID, ok := middleware.GetOrganizationFromContext(c)
-	// if !ok {
-	// 	c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
-	// 	return
-	// }
-	// apiHandle := c.Param("apiId")
-	// var req api.PublishToDevPortalRequest
-	// if err := c.ShouldBindJSON(&req); err != nil {
-	// 	c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid request body"))
-	// 	return
-	// }
-	// if err := h.webbrokerAPIService.PublishToDevPortal(orgID, apiHandle, &req); err != nil {
-	// 	h.handleServiceError(c, err)
-	// 	return
-	// }
-	// c.JSON(http.StatusOK, gin.H{"message": "WebBroker API published successfully to DevPortal"})
-}
-
-// UnpublishFromDevPortal unpublishes a WebBroker API from a DevPortal.
-func (h *WebBrokerAPIHandler) UnpublishFromDevPortal(c *gin.Context) {
-	// publication_mappings / devportals tables removed — handler disabled
-	// orgID, ok := middleware.GetOrganizationFromContext(c)
-	// if !ok {
-	// 	c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
-	// 	return
-	// }
-	// apiHandle := c.Param("apiId")
-	// devPortalID := c.Param("devportalId")
-	// if err := h.webbrokerAPIService.UnpublishFromDevPortal(orgID, apiHandle, devPortalID); err != nil {
-	// 	h.handleServiceError(c, err)
-	// 	return
-	// }
-	// c.JSON(http.StatusOK, gin.H{"message": "WebBroker API unpublished successfully from DevPortal"})
 }
 
 // handleServiceError maps service errors to HTTP responses

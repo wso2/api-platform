@@ -61,7 +61,7 @@ func (h *APIKeyHandler) CreateAPIKey(c *gin.Context) {
 	userId := c.GetHeader("x-user-id")
 
 	// Extract API handle from path parameter (parameter named apiId for backward compatibility, but contains handle)
-	apiHandle := c.Param("apiId")
+	apiHandle := c.Param("apiHandle")
 	if apiHandle == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"API handle is required"))
@@ -160,7 +160,7 @@ func (h *APIKeyHandler) UpdateAPIKey(c *gin.Context) {
 	userId := c.GetHeader("x-user-id")
 
 	// Extract API ID and key name from path parameters
-	apiHandle := c.Param("apiId")
+	apiHandle := c.Param("apiHandle")
 	if apiHandle == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"API handle is required"))
@@ -241,7 +241,7 @@ func (h *APIKeyHandler) RevokeAPIKey(c *gin.Context) {
 	}
 
 	// Extract API ID and key name from path parameters
-	apiHandle := c.Param("apiId")
+	apiHandle := c.Param("apiHandle")
 	if apiHandle == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"API handle is required"))
@@ -288,7 +288,7 @@ func (h *APIKeyHandler) RevokeAPIKey(c *gin.Context) {
 // RegisterRoutes registers API key routes with the router
 func (h *APIKeyHandler) RegisterRoutes(r *gin.Engine) {
 	h.slogger.Debug("Registering API key routes")
-	apiKeyGroup := r.Group(constants.APIBasePath + "/rest-apis/:apiId/api-keys")
+	apiKeyGroup := r.Group(constants.APIBasePath + "/rest-apis/:apiHandle/api-keys")
 	{
 		apiKeyGroup.POST("", h.CreateAPIKey)
 		apiKeyGroup.PUT("/:keyName", h.UpdateAPIKey)

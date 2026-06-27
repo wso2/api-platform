@@ -52,7 +52,7 @@ func NewWebBrokerAPIKeyHandler(webbrokerAPIService *service.WebBrokerAPIService,
 
 // RegisterRoutes registers WebBroker API key routes
 func (h *WebBrokerAPIKeyHandler) RegisterRoutes(r *gin.Engine) {
-	v1 := r.Group(constants.APIBasePath + "/webbroker-apis/:apiId/api-keys")
+	v1 := r.Group(constants.APIBasePath + "/webbroker-apis/:apiHandle/api-keys")
 	{
 		v1.POST("", h.CreateAPIKey)
 		v1.PUT("/:keyName", h.UpdateAPIKey)
@@ -60,7 +60,7 @@ func (h *WebBrokerAPIKeyHandler) RegisterRoutes(r *gin.Engine) {
 	}
 }
 
-// CreateAPIKey handles POST /api/v0.9/webbroker-apis/:apiId/api-keys
+// CreateAPIKey handles POST /api/v0.9/webbroker-apis/:apiHandle/api-keys
 func (h *WebBrokerAPIKeyHandler) CreateAPIKey(c *gin.Context) {
 	orgID, ok := middleware.GetOrganizationFromContext(c)
 	if !ok {
@@ -68,7 +68,7 @@ func (h *WebBrokerAPIKeyHandler) CreateAPIKey(c *gin.Context) {
 		return
 	}
 
-	apiHandle := c.Param("apiId")
+	apiHandle := c.Param("apiHandle")
 	if apiHandle == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "API handle is required"))
 		return
@@ -134,7 +134,7 @@ func (h *WebBrokerAPIKeyHandler) CreateAPIKey(c *gin.Context) {
 	})
 }
 
-// UpdateAPIKey handles PUT /api/v0.9/webbroker-apis/:apiId/api-keys/:keyName
+// UpdateAPIKey handles PUT /api/v0.9/webbroker-apis/:apiHandle/api-keys/:keyName
 func (h *WebBrokerAPIKeyHandler) UpdateAPIKey(c *gin.Context) {
 	orgID, ok := middleware.GetOrganizationFromContext(c)
 	if !ok {
@@ -142,7 +142,7 @@ func (h *WebBrokerAPIKeyHandler) UpdateAPIKey(c *gin.Context) {
 		return
 	}
 
-	apiHandle := c.Param("apiId")
+	apiHandle := c.Param("apiHandle")
 	if apiHandle == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "API handle is required"))
 		return
@@ -204,7 +204,7 @@ func (h *WebBrokerAPIKeyHandler) UpdateAPIKey(c *gin.Context) {
 	})
 }
 
-// DeleteAPIKey handles DELETE /api/v0.9/webbroker-apis/:apiId/api-keys/:keyName
+// DeleteAPIKey handles DELETE /api/v0.9/webbroker-apis/:apiHandle/api-keys/:keyName
 func (h *WebBrokerAPIKeyHandler) DeleteAPIKey(c *gin.Context) {
 	orgID, ok := middleware.GetOrganizationFromContext(c)
 	if !ok {
@@ -212,7 +212,7 @@ func (h *WebBrokerAPIKeyHandler) DeleteAPIKey(c *gin.Context) {
 		return
 	}
 
-	apiHandle := c.Param("apiId")
+	apiHandle := c.Param("apiHandle")
 	keyName := c.Param("keyName")
 
 	if apiHandle == "" {

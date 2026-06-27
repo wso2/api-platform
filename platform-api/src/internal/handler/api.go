@@ -168,7 +168,7 @@ func (h *APIHandler) CreateAPI(c *gin.Context) {
 	c.JSON(http.StatusCreated, apiResponse)
 }
 
-// GetAPI handles GET /api/v0.9/rest-apis/:apiId and retrieves an API by its handle
+// GetAPI handles GET /api/v0.9/rest-apis/:apiHandle and retrieves an API by its handle
 func (h *APIHandler) GetAPI(c *gin.Context) {
 	orgId, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {
@@ -177,7 +177,7 @@ func (h *APIHandler) GetAPI(c *gin.Context) {
 		return
 	}
 
-	apiId := c.Param("apiId")
+	apiId := c.Param("apiHandle")
 	if apiId == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"API ID is required"))
@@ -257,7 +257,7 @@ func (h *APIHandler) UpdateAPI(c *gin.Context) {
 		return
 	}
 
-	apiId := c.Param("apiId")
+	apiId := c.Param("apiHandle")
 	if apiId == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"API ID is required"))
@@ -323,7 +323,7 @@ func (h *APIHandler) UpdateAPI(c *gin.Context) {
 	c.JSON(http.StatusOK, apiResponse)
 }
 
-// DeleteAPI handles DELETE /api/v0.9/rest-apis/:apiId and deletes an API by its handle
+// DeleteAPI handles DELETE /api/v0.9/rest-apis/:apiHandle and deletes an API by its handle
 func (h *APIHandler) DeleteAPI(c *gin.Context) {
 	orgId, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {
@@ -332,7 +332,7 @@ func (h *APIHandler) DeleteAPI(c *gin.Context) {
 		return
 	}
 
-	apiId := c.Param("apiId")
+	apiId := c.Param("apiHandle")
 	if apiId == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"API ID is required"))
@@ -360,7 +360,7 @@ func (h *APIHandler) DeleteAPI(c *gin.Context) {
 	c.JSON(http.StatusNoContent, nil)
 }
 
-// AddGatewaysToAPI handles POST /api/v0.9/rest-apis/:apiId/gateways to associate gateways with an API
+// AddGatewaysToAPI handles POST /api/v0.9/rest-apis/:apiHandle/gateways to associate gateways with an API
 func (h *APIHandler) AddGatewaysToAPI(c *gin.Context) {
 	orgId, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {
@@ -369,7 +369,7 @@ func (h *APIHandler) AddGatewaysToAPI(c *gin.Context) {
 		return
 	}
 
-	apiId := c.Param("apiId")
+	apiId := c.Param("apiHandle")
 	if apiId == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"API ID is required"))
@@ -417,7 +417,7 @@ func (h *APIHandler) AddGatewaysToAPI(c *gin.Context) {
 	c.JSON(http.StatusOK, gatewaysResponse)
 }
 
-// GetAPIGateways handles GET /api/v0.9/rest-apis/:apiId/gateways to get gateways associated with an API including deployment details
+// GetAPIGateways handles GET /api/v0.9/rest-apis/:apiHandle/gateways to get gateways associated with an API including deployment details
 func (h *APIHandler) GetAPIGateways(c *gin.Context) {
 	orgId, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {
@@ -426,7 +426,7 @@ func (h *APIHandler) GetAPIGateways(c *gin.Context) {
 		return
 	}
 
-	apiId := c.Param("apiId")
+	apiId := c.Param("apiHandle")
 	if apiId == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"API ID is required"))
@@ -864,13 +864,13 @@ func (h *APIHandler) RegisterRoutes(r *gin.Engine) {
 	{
 		apiGroup.POST("", h.CreateAPI)
 		apiGroup.GET("", h.ListAPIs)
-		apiGroup.GET("/:apiId", h.GetAPI)
-		apiGroup.PUT("/:apiId", h.UpdateAPI)
-		apiGroup.DELETE("/:apiId", h.DeleteAPI)
+		apiGroup.GET("/:apiHandle", h.GetAPI)
+		apiGroup.PUT("/:apiHandle", h.UpdateAPI)
+		apiGroup.DELETE("/:apiHandle", h.DeleteAPI)
 		apiGroup.POST("/import-openapi", h.ImportOpenAPI)
 		apiGroup.POST("/validate-openapi", h.ValidateOpenAPI)
-		apiGroup.GET("/:apiId/gateways", h.GetAPIGateways)
-		apiGroup.POST("/:apiId/gateways", h.AddGatewaysToAPI)
+		apiGroup.GET("/:apiHandle/gateways", h.GetAPIGateways)
+		apiGroup.POST("/:apiHandle/gateways", h.AddGatewaysToAPI)
 	}
 	apiProjectsGroup := r.Group(constants.APIBasePath + "/api-projects")
 	{

@@ -56,29 +56,29 @@ func (h *LLMHandler) RegisterRoutes(r *gin.Engine) {
 		// LLM Provider Templates
 		v1.POST("/llm-provider-templates", h.CreateLLMProviderTemplate)
 		v1.GET("/llm-provider-templates", h.ListLLMProviderTemplates)
-		v1.GET("/llm-provider-templates/:id", h.GetLLMProviderTemplate)
-		v1.GET("/llm-provider-templates/:id/versions", h.ListLLMProviderTemplateVersions)
-		v1.GET("/llm-provider-templates/:id/versions/:version", h.GetLLMProviderTemplateVersion)
-		v1.POST("/llm-provider-templates/:id/versions", h.CreateLLMProviderTemplateVersion)
-		v1.PATCH("/llm-provider-templates/:id/versions/:version", h.SetLLMProviderTemplateVersionEnabled)
-		v1.DELETE("/llm-provider-templates/:id/versions/:version", h.DeleteLLMProviderTemplateVersion)
-		v1.PUT("/llm-provider-templates/:id", h.UpdateLLMProviderTemplate)
-		v1.DELETE("/llm-provider-templates/:id", h.DeleteLLMProviderTemplate)
+		v1.GET("/llm-provider-templates/:templateHandle", h.GetLLMProviderTemplate)
+		v1.GET("/llm-provider-templates/:templateHandle/versions", h.ListLLMProviderTemplateVersions)
+		v1.GET("/llm-provider-templates/:templateHandle/versions/:version", h.GetLLMProviderTemplateVersion)
+		v1.POST("/llm-provider-templates/:templateHandle/versions", h.CreateLLMProviderTemplateVersion)
+		v1.PATCH("/llm-provider-templates/:templateHandle/versions/:version", h.SetLLMProviderTemplateVersionEnabled)
+		v1.DELETE("/llm-provider-templates/:templateHandle/versions/:version", h.DeleteLLMProviderTemplateVersion)
+		v1.PUT("/llm-provider-templates/:templateHandle", h.UpdateLLMProviderTemplate)
+		v1.DELETE("/llm-provider-templates/:templateHandle", h.DeleteLLMProviderTemplate)
 
 		// LLM Providers
 		v1.POST("/llm-providers", h.CreateLLMProvider)
 		v1.GET("/llm-providers", h.ListLLMProviders)
-		v1.GET("/llm-providers/:id", h.GetLLMProvider)
-		v1.GET("/llm-providers/:id/llm-proxies", h.ListLLMProxiesByProvider)
-		v1.PUT("/llm-providers/:id", h.UpdateLLMProvider)
-		v1.DELETE("/llm-providers/:id", h.DeleteLLMProvider)
+		v1.GET("/llm-providers/:providerHandle", h.GetLLMProvider)
+		v1.GET("/llm-providers/:providerHandle/llm-proxies", h.ListLLMProxiesByProvider)
+		v1.PUT("/llm-providers/:providerHandle", h.UpdateLLMProvider)
+		v1.DELETE("/llm-providers/:providerHandle", h.DeleteLLMProvider)
 
 		// LLM Proxies
 		v1.POST("/llm-proxies", h.CreateLLMProxy)
 		v1.GET("/llm-proxies", h.ListLLMProxies)
-		v1.GET("/llm-proxies/:id", h.GetLLMProxy)
-		v1.PUT("/llm-proxies/:id", h.UpdateLLMProxy)
-		v1.DELETE("/llm-proxies/:id", h.DeleteLLMProxy)
+		v1.GET("/llm-proxies/:proxyHandle", h.GetLLMProxy)
+		v1.PUT("/llm-proxies/:proxyHandle", h.UpdateLLMProxy)
+		v1.DELETE("/llm-proxies/:proxyHandle", h.DeleteLLMProxy)
 	}
 }
 
@@ -160,7 +160,7 @@ func (h *LLMHandler) GetLLMProviderTemplate(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
 		return
 	}
-	id := c.Param("id")
+	id := c.Param("templateHandle")
 
 	resp, err := h.templateService.Get(orgID, id)
 	if err != nil {
@@ -186,7 +186,7 @@ func (h *LLMHandler) ListLLMProviderTemplateVersions(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
 		return
 	}
-	id := c.Param("id")
+	id := c.Param("templateHandle")
 
 	limit, err := strconv.Atoi(c.DefaultQuery("limit", "20"))
 	if err != nil || limit <= 0 {
@@ -224,7 +224,7 @@ func (h *LLMHandler) CreateLLMProviderTemplateVersion(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
 		return
 	}
-	id := c.Param("id")
+	id := c.Param("templateHandle")
 
 	createdBy, _ := middleware.GetUsernameFromContext(c)
 
@@ -264,7 +264,7 @@ func (h *LLMHandler) GetLLMProviderTemplateVersion(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
 		return
 	}
-	id := c.Param("id")
+	id := c.Param("templateHandle")
 	version := c.Param("version")
 
 	resp, err := h.templateService.GetVersion(orgID, id, version)
@@ -292,7 +292,7 @@ func (h *LLMHandler) SetLLMProviderTemplateVersionEnabled(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
 		return
 	}
-	id := c.Param("id")
+	id := c.Param("templateHandle")
 	version := c.Param("version")
 
 	var body struct {
@@ -330,7 +330,7 @@ func (h *LLMHandler) UpdateLLMProviderTemplate(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
 		return
 	}
-	id := c.Param("id")
+	id := c.Param("templateHandle")
 
 	var req api.LLMProviderTemplate
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -372,7 +372,7 @@ func (h *LLMHandler) DeleteLLMProviderTemplate(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
 		return
 	}
-	id := c.Param("id")
+	id := c.Param("templateHandle")
 	deletedBy, _ := middleware.GetUsernameFromContext(c)
 
 	if err := h.templateService.Delete(orgID, id, deletedBy); err != nil {
@@ -409,7 +409,7 @@ func (h *LLMHandler) DeleteLLMProviderTemplateVersion(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
 		return
 	}
-	id := c.Param("id")
+	id := c.Param("templateHandle")
 	version := c.Param("version")
 
 	if err := h.templateService.DeleteVersion(orgID, id, version); err != nil {
@@ -517,7 +517,7 @@ func (h *LLMHandler) GetLLMProvider(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
 		return
 	}
-	id := c.Param("id")
+	id := c.Param("providerHandle")
 
 	resp, err := h.providerService.Get(orgID, id)
 	if err != nil {
@@ -543,7 +543,7 @@ func (h *LLMHandler) UpdateLLMProvider(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
 		return
 	}
-	id := c.Param("id")
+	id := c.Param("providerHandle")
 
 	var req api.LLMProvider
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -585,7 +585,7 @@ func (h *LLMHandler) DeleteLLMProvider(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
 		return
 	}
-	id := c.Param("id")
+	id := c.Param("providerHandle")
 	deletedBy, _ := middleware.GetUsernameFromContext(c)
 
 	if err := h.providerService.Delete(orgID, id, deletedBy); err != nil {
@@ -702,7 +702,7 @@ func (h *LLMHandler) ListLLMProxiesByProvider(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
 		return
 	}
-	providerID := c.Param("id")
+	providerID := c.Param("providerHandle")
 
 	limitStr := c.DefaultQuery("limit", "20")
 	offsetStr := c.DefaultQuery("offset", "0")
@@ -744,7 +744,7 @@ func (h *LLMHandler) GetLLMProxy(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
 		return
 	}
-	id := c.Param("id")
+	id := c.Param("proxyHandle")
 
 	resp, err := h.proxyService.Get(orgID, id)
 	if err != nil {
@@ -770,7 +770,7 @@ func (h *LLMHandler) UpdateLLMProxy(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
 		return
 	}
-	id := c.Param("id")
+	id := c.Param("proxyHandle")
 
 	var req api.LLMProxy
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -809,7 +809,7 @@ func (h *LLMHandler) DeleteLLMProxy(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
 		return
 	}
-	id := c.Param("id")
+	id := c.Param("proxyHandle")
 	deletedBy, _ := middleware.GetUsernameFromContext(c)
 
 	if err := h.proxyService.Delete(orgID, id, deletedBy); err != nil {
