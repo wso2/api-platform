@@ -277,7 +277,7 @@ export default function LLMProxyDefinitionTab() {
               <FormLabel>Import Specification</FormLabel>
               <Stack
                 direction="row"
-                spacing={1}
+                spacing={1.5}
                 alignItems="center"
                 sx={{ mt: 1 }}
               >
@@ -290,24 +290,28 @@ export default function LLMProxyDefinitionTab() {
                   }}
                   placeholder="Paste OpenAPI URL or upload a file"
                 />
-                <Box minWidth={152}>
-                  <Button
-                    variant="outlined"
-                    size="small"
-                    disabled={isFetchingSpec}
-                    onClick={() => {
-                      void handleFetchAndClose(specUrl);
-                    }}
-                  >
-                    {isFetchingSpec ? 'Fetching....' : 'Fetch specification'}
-                  </Button>
-                </Box>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  disabled={isFetchingSpec}
+                  onClick={() => {
+                    void handleFetchAndClose(specUrl);
+                  }}
+                  sx={{ whiteSpace: 'nowrap', flexShrink: 0 }}
+                >
+                  {isFetchingSpec ? 'Fetching…' : 'Fetch specification'}
+                </Button>
+                <Divider orientation="vertical" flexItem>Or</Divider>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  onClick={handleUploadClick}
+                  sx={{ whiteSpace: 'nowrap', flexShrink: 0 }}
+                >
+                  Upload Specification
+                </Button>
               </Stack>
             </FormControl>
-            <Divider sx={{ my: 2 }}>Or</Divider>
-            <Button variant="outlined" fullWidth onClick={handleUploadClick}>
-              Upload Your Specification
-            </Button>
             <input
               ref={fileInputRef}
               type="file"

@@ -327,14 +327,14 @@ export default function ServiceProviders() {
           <PageTitle.Header>
             <FormattedMessage
               id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ProvidersList.llm.service.providers"
-              defaultMessage={'LLM Service Providers'}
+              defaultMessage={'LLM Providers'}
             />
           </PageTitle.Header>
           <PageTitle.SubHeader>
             <FormattedMessage
               id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ProvidersList.manage.and.monitor.your.connected.llm.service.providers"
               defaultMessage={
-                'Manage and monitor your connected LLM service providers.'
+                'Manage and monitor your connected LLM Providers.'
               }
             />
           </PageTitle.SubHeader>

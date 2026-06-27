@@ -273,16 +273,24 @@ func splitSQLStatements(sql string) []string {
 	var statements []string
 	current := strings.Builder{}
 	inString := false
+	inLineComment := false
 	escapeNext := false
 	inLineComment := false
 	var prevRune rune
 
-	// Process character by character to properly handle strings and comments.
-	// A "--" line comment runs to end of line; semicolons inside it (or inside a
-	// string literal) must not be treated as statement terminators.
-	for _, r := range sql {
-		switch {
-		case escapeNext:
+	runes := []rune(sql)
+	for i := 0; i < len(runes); i++ {
+		r := runes[i]
+
+		if inLineComment {
+			current.WriteRune(r)
+			if r == '\n' {
+				inLineComment = false
+			}
+			continue
+		}
+
+		if escapeNext {
 			current.WriteRune(r)
 			escapeNext = false
 
@@ -297,6 +305,13 @@ func splitSQLStatements(sql string) []string {
 		case r == '\\':
 			escapeNext = true
 			current.WriteRune(r)
+
+		// Start of a -- line comment (only when not inside a string literal)
+		if !inString && r == '-' && i+1 < len(runes) && runes[i+1] == '-' {
+			inLineComment = true
+			current.WriteRune(r)
+			continue
+		}
 
 		// Track string literals - everything inside single quotes is literal
 		case r == '\'':

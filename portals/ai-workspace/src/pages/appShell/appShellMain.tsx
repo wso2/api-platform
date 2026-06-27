@@ -173,6 +173,10 @@ export default function AppLayout(): JSX.Element {
         shellActions.setActiveMenuItem('service-provider');
         return;
       }
+      if (tertiarySegment === 'provider-template') {
+        shellActions.setActiveMenuItem('provider-template');
+        return;
+      }
       if (tertiarySegment === 'external-servers') {
         shellActions.setActiveMenuItem('external-servers');
         return;
@@ -208,6 +212,10 @@ export default function AppLayout(): JSX.Element {
     }
     if (primarySegment === 'service-provider') {
       shellActions.setActiveMenuItem('service-provider');
+      return;
+    }
+    if (primarySegment === 'provider-template') {
+      shellActions.setActiveMenuItem('provider-template');
       return;
     }
     if (primarySegment === 'external-servers') {
