@@ -99,7 +99,7 @@ const ApplicationKeyMapping = sequelize.define('DP_APP_KEY_MAPPING', {
     returning: true
 });
 
-const SubscriptionMapping = sequelize.define('DP_API_SUBSCRIPTION', {
+const SubscriptionMapping = sequelize.define('DP_SUBSCRIPTION', {
 
     ID: {
         type: DataTypes.UUID,
@@ -135,7 +135,7 @@ const SubscriptionMapping = sequelize.define('DP_API_SUBSCRIPTION', {
     CREATED_AT:  { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW },
 }, {
     timestamps: false,
-    tableName: 'DP_API_SUBSCRIPTION',
+    tableName: 'DP_SUBSCRIPTION',
     returning: true,
     indexes: [
         { name: 'IDX_SUBSCRIPTION_ORG_CREATED_BY', fields: ['ORG_ID', 'CREATED_BY'] },

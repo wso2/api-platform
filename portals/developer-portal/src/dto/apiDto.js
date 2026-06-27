@@ -31,7 +31,7 @@ class APIDTO {
             this.subscriptionPlans = api.DP_SUBSCRIPTION_PLANs.map(plan => new APISubscriptionPlan(plan));
         }
         if (api.DP_APPLICATIONs && api.DP_APPLICATIONs.length > 0) {
-            this.planID = api.DP_APPLICATIONs[0]?.DP_API_SUBSCRIPTION?.dataValues?.PLAN_ID;
+            this.planID = api.DP_APPLICATIONs[0]?.DP_SUBSCRIPTION?.dataValues?.PLAN_ID;
         }
     }
 

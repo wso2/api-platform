@@ -245,7 +245,7 @@ const list = async (orgID, viewName, t) => {
                 through: { attributes: [] },
                 where: {
                     ID: {
-                        [Op.in]: Sequelize.literal(`(SELECT "LABEL_ID" FROM "DP_VIEW_LABEL" WHERE "VIEW_ID" = '${viewID}')`)
+                        [Op.in]: Sequelize.literal(`(SELECT "LABEL_ID" FROM "DP_VIEW_LABEL_MAPPING" WHERE "VIEW_ID" = '${viewID}')`)
                     }
                 }
             },
@@ -353,7 +353,7 @@ const searchFallback = async (orgID, searchTerm, viewName, t) => {
                 through: { attributes: [] },
                 where: {
                     ID: {
-                        [Op.in]: Sequelize.literal(`(SELECT "LABEL_ID" FROM "DP_VIEW_LABEL" WHERE "VIEW_ID" = '${viewID}')`)
+                        [Op.in]: Sequelize.literal(`(SELECT "LABEL_ID" FROM "DP_VIEW_LABEL_MAPPING" WHERE "VIEW_ID" = '${viewID}')`)
                     }
                 }
             },

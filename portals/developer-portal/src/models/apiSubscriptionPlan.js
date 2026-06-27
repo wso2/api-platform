@@ -20,7 +20,7 @@ const sequelize = require('../db/sequelizeConfig');
 const SubscriptionPlan = require('./subscriptionPlan');
 const { APIMetadata } = require('./apiMetadata');
 
-const APISubscriptionPlan = sequelize.define('DP_API_SUBSCRIPTION_PLAN', {
+const APISubscriptionPlan = sequelize.define('DP_API_SUBSCRIPTION_PLAN_MAPPING', {
     API_ID: {
         type: DataTypes.UUID,
         allowNull: false,
@@ -33,7 +33,7 @@ const APISubscriptionPlan = sequelize.define('DP_API_SUBSCRIPTION_PLAN', {
     },
 }, {
     timestamps: false,
-    tableName: 'DP_API_SUBSCRIPTION_PLAN',
+    tableName: 'DP_API_SUBSCRIPTION_PLAN_MAPPING',
     returning: true
 });
 

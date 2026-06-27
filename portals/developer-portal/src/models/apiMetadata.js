@@ -115,7 +115,7 @@ const APIMetadata = sequelize.define('DP_API_METADATA', {
   ]
 });
 
-const APILabels = sequelize.define('DP_API_LABEL', {
+const APILabels = sequelize.define('DP_API_LABEL_MAPPING', {
 
   ID: {
       type: DataTypes.UUID,
@@ -144,18 +144,18 @@ const APILabels = sequelize.define('DP_API_LABEL', {
   }
 }, {
   timestamps: false,
-  tableName: 'DP_API_LABEL',
+  tableName: 'DP_API_LABEL_MAPPING',
   returning: true,
   indexes: [
       {
-          name: 'UQ_API_LABEL_LABEL_API_ORG',
+          name: 'UQ_API_LABEL_MAPPING_LABEL_API_ORG',
           unique: true,
           fields: ['LABEL_ID', 'API_ID', 'ORG_ID']
       }
   ]
 });
 
-const APITags = sequelize.define('DP_API_TAG', {
+const APITags = sequelize.define('DP_API_TAG_MAPPING', {
 
   ID: {
       type: DataTypes.UUID,
@@ -184,11 +184,11 @@ const APITags = sequelize.define('DP_API_TAG', {
   }
 }, {
   timestamps: false,
-  tableName: 'DP_API_TAG',
+  tableName: 'DP_API_TAG_MAPPING',
   returning: true,
   indexes: [
       {
-          name: 'UQ_API_TAG_TAG_API_ORG',
+          name: 'UQ_API_TAG_MAPPING_TAG_API_ORG',
           unique: true,
           fields: ['TAG_ID', 'API_ID', 'ORG_ID']
       }
