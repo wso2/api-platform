@@ -112,11 +112,11 @@ func (r *SubscriptionPlanRepo) replaceSingleLimitTx(tx *sql.Tx, plan *model.Subs
 	now := time.Now()
 	// ThrottleLimitCount is passed as a *int so a nil count is persisted as NULL.
 	if _, err := tx.Exec(r.db.Rebind(`
-		INSERT INTO subscription_plan_limits (uuid, subscription_plan_uuid, organization_uuid,
+		INSERT INTO subscription_plan_limits (uuid, subscription_plan_uuid,
 			limit_type, limit_count, time_amount, time_unit, stop_on_quota_reach, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`),
-		uuid.New().String(), plan.UUID, plan.OrganizationUUID, constants.LimitTypeRequestCount,
+		uuid.New().String(), plan.UUID, constants.LimitTypeRequestCount,
 		plan.ThrottleLimitCount, 1, plan.ThrottleLimitUnit, plan.StopOnQuotaReach, now, now,
 	); err != nil {
 		return fmt.Errorf("failed to insert subscription plan limit: %w", err)

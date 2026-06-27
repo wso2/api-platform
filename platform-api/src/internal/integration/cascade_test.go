@@ -64,8 +64,8 @@ func seedOrgGraph(t *testing.T, it *itDB) graph {
 
 	it.exec(t, `INSERT INTO subscription_plans (uuid, handle, name, organization_uuid) VALUES (?, ?, ?, ?)`,
 		g.plan, "plan-"+g.plan[:8], "Plan "+g.plan[:8], g.org)
-	it.exec(t, `INSERT INTO subscription_plan_limits (uuid, subscription_plan_uuid, organization_uuid, limit_type, limit_count, time_unit) VALUES (?, ?, ?, ?, ?, ?)`,
-		g.planLimit, g.plan, g.org, "REQUEST_COUNT", 100, "MINUTE")
+	it.exec(t, `INSERT INTO subscription_plan_limits (uuid, subscription_plan_uuid, limit_type, limit_count, time_unit) VALUES (?, ?, ?, ?, ?)`,
+		g.planLimit, g.plan, "REQUEST_COUNT", 100, "MINUTE")
 	it.exec(t, `INSERT INTO subscriptions (uuid, artifact_uuid, subscriber_id, subscription_token, subscription_token_hash, subscription_plan_uuid, organization_uuid)
 		VALUES (?, ?, ?, ?, ?, ?, ?)`,
 		g.sub, g.apiArtifact, "subscriber", "tok-"+g.sub[:8], "hash-"+g.sub[:8], g.plan, g.org)
