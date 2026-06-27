@@ -1260,12 +1260,14 @@ paths:
         the matching importer. Project is required for project-scoped kinds (RestApi, LlmProxy,
         Mcp) — supplied via the "gateway.api-platform.wso2.com/project-id" metadata annotation —
         and ignored for organization-level kinds (LlmProvider, LlmProviderTemplate). The
-        project is never defaulted: a project-scoped push with no project is rejected (400).
-        If a project is provided but does not exist in the organization, the import is
-        rejected with 404 (the failure is logged and the artifact is not created) in the CP
-        but the gateway is not blocked and the artifact is created.
-        Artifacts are imported in request order; the first failure aborts the batch and returns
-        the corresponding error status (artifacts imported before the failure are kept).
+        project is never defaulted.
+        Processing is continue-on-error: each artifact's outcome is recorded against its dpid
+        and a failure on one artifact does not abort the rest. Artifact-level failures — an
+        unsupported kind, a project-scoped push with no project, a project that does not exist
+        in the organization, or a handle already used by a different kind — are reported per
+        dpid (with an `error` message) inside a 200 response, not as a non-2xx status. Only a
+        malformed request (invalid multipart form or zip, empty or oversized upload) or an
+        unauthenticated caller returns a non-2xx status.
       operationId: importGatewayArtifacts
       tags:
         - Gateway Internal APIs
@@ -1302,25 +1304,15 @@ paths:
               schema:
                 $ref: '#/components/schemas/ImportGatewayArtifactsResponse'
         '400':
-          description: Bad request - invalid body or unsupported kind
+          description: >-
+            Bad request - malformed request (invalid multipart form or zip, or an empty/oversized
+            upload). Per-artifact failures are not reported here; they appear in the 200 response.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '401':
           description: Unauthorized - Invalid or missing API key
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '404':
-          description: Gateway or project not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '409':
-          description: Conflict - artifact UUID already exists with a different kind
           content:
             application/json:
               schema:

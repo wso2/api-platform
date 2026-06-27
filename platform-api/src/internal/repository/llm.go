@@ -84,6 +84,10 @@ func (r *LLMProviderTemplateRepo) Create(t *model.LLMProviderTemplate) error {
 	if t.GroupID == "" {
 		t.GroupID = t.ID
 	}
+	origin := t.Origin
+	if origin == "" {
+		origin = constants.OriginCP
+	}
 
 	configJSON, err := json.Marshal(&llmProviderTemplateConfig{
 		ManagedBy:        t.ManagedBy,
@@ -111,7 +115,7 @@ func (r *LLMProviderTemplateRepo) Create(t *model.LLMProviderTemplate) error {
 	`
 	_, err = r.db.Exec(r.db.Rebind(query),
 		t.UUID, t.OrganizationUUID, t.ID, t.GroupID, t.Name, t.ManagedBy, t.Description, t.CreatedBy, t.UpdatedBy,
-		t.Origin, configJSON, []byte(t.OpenAPISpec), t.Version, boolToInt(t.IsLatest), boolToInt(t.Enabled),
+		origin, configJSON, []byte(t.OpenAPISpec), t.Version, boolToInt(t.IsLatest), boolToInt(t.Enabled),
 		t.CreatedAt, t.UpdatedAt,
 	)
 	return err
@@ -179,8 +183,17 @@ func (r *LLMProviderTemplateRepo) CreateNewVersion(t *model.LLMProviderTemplate)
 	t.IsLatest = true
 	t.Enabled = true
 	t.UpdatedBy = t.CreatedBy
-	t.CreatedAt = time.Now()
-	t.UpdatedAt = time.Now()
+	now := time.Now()
+	if t.CreatedAt.IsZero() {
+		t.CreatedAt = now
+	}
+	if t.UpdatedAt.IsZero() {
+		t.UpdatedAt = now
+	}
+	origin := t.Origin
+	if origin == "" {
+		origin = constants.OriginCP
+	}
 
 	if _, err = tx.Exec(r.db.Rebind(`
 		INSERT INTO llm_provider_templates (
@@ -190,7 +203,7 @@ func (r *LLMProviderTemplateRepo) CreateNewVersion(t *model.LLMProviderTemplate)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`),
 		t.UUID, t.OrganizationUUID, t.ID, t.GroupID, t.Name, t.ManagedBy, t.Description, t.CreatedBy, t.UpdatedBy,
-		t.Origin, configJSON, []byte(t.OpenAPISpec), t.Version, boolToInt(t.IsLatest), boolToInt(t.Enabled),
+		origin, configJSON, []byte(t.OpenAPISpec), t.Version, boolToInt(t.IsLatest), boolToInt(t.Enabled),
 		t.CreatedAt, t.UpdatedAt,
 	); err != nil {
 		return err

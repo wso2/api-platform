@@ -847,9 +847,10 @@ func (m *MockStorage) GetPendingCPSyncArtifacts() ([]*models.StoredConfig, error
 
 // MockControlPlaneClient implements controlplane.ControlPlaneClient for testing
 type MockControlPlaneClient struct {
-	connected bool
-	mu        sync.Mutex
-	pushedIDs []string
+	connected     bool
+	mu            sync.Mutex
+	pushedIDs     []string
+	pushedConfigs []models.StoredConfig
 }
 
 func (m *MockControlPlaneClient) Connect() error {
@@ -865,6 +866,9 @@ func (m *MockControlPlaneClient) PushArtifact(apiID string, cfg *models.StoredCo
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.pushedIDs = append(m.pushedIDs, apiID)
+	if cfg != nil {
+		m.pushedConfigs = append(m.pushedConfigs, *cfg)
+	}
 	return nil
 }
 
@@ -872,6 +876,16 @@ func (m *MockControlPlaneClient) PushCount() int {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return len(m.pushedIDs)
+}
+
+// LastPushedConfig returns a copy of the most recently pushed config, or false if none.
+func (m *MockControlPlaneClient) LastPushedConfig() (models.StoredConfig, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if len(m.pushedConfigs) == 0 {
+		return models.StoredConfig{}, false
+	}
+	return m.pushedConfigs[len(m.pushedConfigs)-1], true
 }
 
 // Secret management methods
@@ -3142,6 +3156,10 @@ func TestDeleteLLMProviderWithDBAndEventHub(t *testing.T) {
 	mockDB := server.db.(*MockStorage)
 	mockHub := &mockEventHub{}
 	attachTestEventHub(server, mockHub, "test-gateway")
+	// Wire a control-plane client and enable sync so the DP->CP undeploy push runs.
+	mockCP := &MockControlPlaneClient{connected: true}
+	server.controlPlaneClient = mockCP
+	server.systemConfig.Controller.ControlPlane.DeploymentSyncEnabled = true
 
 	cfg := &models.StoredConfig{
 		UUID:        "0000-llm-provider-id-0000-000000000000",
@@ -3165,6 +3183,7 @@ func TestDeleteLLMProviderWithDBAndEventHub(t *testing.T) {
 				AccessControl: api.LLMAccessControl{Mode: api.AllowAll},
 			},
 		},
+		Origin:       models.OriginGatewayAPI,
 		DesiredState: models.StateDeployed,
 		CreatedAt:    time.Now(),
 		UpdatedAt:    time.Now(),
@@ -3198,6 +3217,14 @@ func TestDeleteLLMProviderWithDBAndEventHub(t *testing.T) {
 	assert.Equal(t, cfg.UUID, mockHub.publishedEvents[0].event.EntityID)
 	assert.Equal(t, "corr-id-delete-llm-provider", mockHub.publishedEvents[0].event.EventID)
 
+	// The gateway-originated artifact is pushed to the CP as an undeploy (async).
+	require.Eventually(t, func() bool { return mockCP.PushCount() == 1 }, 2*time.Second, 10*time.Millisecond,
+		"expected the deleted DP-origin provider to be pushed to the control plane as an undeploy")
+	pushed, ok := mockCP.LastPushedConfig()
+	require.True(t, ok)
+	assert.Equal(t, cfg.UUID, pushed.UUID)
+	assert.Equal(t, models.StateUndeployed, pushed.DesiredState)
+
 	_, err := mockDB.GetConfig(cfg.UUID)
 	require.Error(t, err)
 
@@ -3213,6 +3240,10 @@ func TestDeleteLLMProxyWithDBAndEventHub(t *testing.T) {
 	mockDB := server.db.(*MockStorage)
 	mockHub := &mockEventHub{}
 	attachTestEventHub(server, mockHub, "test-gateway")
+	// Wire a control-plane client and enable sync so the DP->CP undeploy push runs.
+	mockCP := &MockControlPlaneClient{connected: true}
+	server.controlPlaneClient = mockCP
+	server.systemConfig.Controller.ControlPlane.DeploymentSyncEnabled = true
 
 	cfg := &models.StoredConfig{
 		UUID:        "0000-llm-proxy-id-0000-000000000000",
@@ -3234,6 +3265,7 @@ func TestDeleteLLMProxyWithDBAndEventHub(t *testing.T) {
 				},
 			},
 		},
+		Origin:       models.OriginGatewayAPI,
 		DesiredState: models.StateDeployed,
 		CreatedAt:    time.Now(),
 		UpdatedAt:    time.Now(),
@@ -3253,6 +3285,14 @@ func TestDeleteLLMProxyWithDBAndEventHub(t *testing.T) {
 	assert.Equal(t, "DELETE", mockHub.publishedEvents[0].event.Action)
 	assert.Equal(t, cfg.UUID, mockHub.publishedEvents[0].event.EntityID)
 	assert.Equal(t, "corr-id-delete-llm-proxy", mockHub.publishedEvents[0].event.EventID)
+
+	// The gateway-originated artifact is pushed to the CP as an undeploy (async).
+	require.Eventually(t, func() bool { return mockCP.PushCount() == 1 }, 2*time.Second, 10*time.Millisecond,
+		"expected the deleted DP-origin proxy to be pushed to the control plane as an undeploy")
+	pushed, ok := mockCP.LastPushedConfig()
+	require.True(t, ok)
+	assert.Equal(t, cfg.UUID, pushed.UUID)
+	assert.Equal(t, models.StateUndeployed, pushed.DesiredState)
 
 	_, err := mockDB.GetConfig(cfg.UUID)
 	require.Error(t, err)

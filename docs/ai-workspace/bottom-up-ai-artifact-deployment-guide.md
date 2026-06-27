@@ -239,7 +239,7 @@ An LLM Provider references a template by handle, so create the template first.
 ```bash
 curl -X POST http://localhost:9090/llm-provider-templates \
   -H "Content-Type: application/json" \
-  -H "Authorization: Basic YWRtaW46YWRtaW4=" \
+  -u <user>:<password> \
   -d @my-llm-provider-template.json
 ```
 
@@ -268,7 +268,7 @@ curl -X POST http://localhost:9090/llm-provider-templates \
 ```bash
 curl -X POST http://localhost:9090/llm-providers \
   -H "Content-Type: application/json" \
-  -H "Authorization: Basic YWRtaW46YWRtaW4=" \
+  -u <user>:<password> \
   -d @openai-provider.json
 ```
 
@@ -288,7 +288,7 @@ curl -X POST http://localhost:9090/llm-providers \
 
 ```bash
 curl -X GET http://localhost:9090/llm-providers/openai-dp \
-  -H "Authorization: Basic YWRtaW46YWRtaW4=" | jq '{origin, cpSyncStatus}'
+  -u <user>:<password> | jq '{origin, cpSyncStatus}'
 ```
 
 **Before sync completes:**
@@ -389,7 +389,7 @@ The gateway tracks the push status of each gateway-originated artifact in its `c
 ```bash
 # Check sync status for any gateway-originated artifact
 curl -X GET http://localhost:9090/llm-providers/openai-dp \
-  -H "Authorization: Basic YWRtaW46YWRtaW4=" | jq '{origin, cpSyncStatus}'
+  -u <user>:<password> | jq '{origin, cpSyncStatus}'
 ```
 
 A push that cannot be satisfied for non-transient reasons fails for that **one** artifact and is logged, without blocking others pushed alongside it. The most common cause is a **missing project** for a project-scoped artifact (see Troubleshooting).

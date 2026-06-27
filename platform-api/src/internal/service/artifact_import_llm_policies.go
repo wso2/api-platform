@@ -244,15 +244,20 @@ func parseImportResetWindow(s string) model.RateLimitResetWindow {
 	if s == "" {
 		return model.RateLimitResetWindow{}
 	}
-	unit := "minute"
-	num := s
+	var unit, num string
 	switch {
 	case strings.HasSuffix(s, "m"):
 		unit, num = "minute", strings.TrimSuffix(s, "m")
 	case strings.HasSuffix(s, "h"):
 		unit, num = "hour", strings.TrimSuffix(s, "h")
+	default:
+		// Unsupported unit suffix: do not import a misleading zero-duration window.
+		return model.RateLimitResetWindow{}
 	}
-	n, _ := strconv.Atoi(strings.TrimSpace(num))
+	n, err := strconv.Atoi(strings.TrimSpace(num))
+	if err != nil {
+		return model.RateLimitResetWindow{}
+	}
 	return model.RateLimitResetWindow{Duration: n, Unit: unit}
 }
 

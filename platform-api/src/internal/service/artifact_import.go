@@ -155,9 +155,15 @@ func (s *ArtifactImportService) ImportArtifacts(orgID, gatewayID string, reqs []
 		Total:     len(reqs),
 		Artifacts: make(map[string]dto.ImportGatewayArtifactResponse, len(reqs)),
 	}
+	// Resolve and validate the gateway once for the whole batch; each artifact reuses it
+	_, gwErr := s.getGatewayForOrg(orgID, gatewayID)
 	for i := range ordered {
 		req := ordered[i]
-		result, err := s.Import(orgID, gatewayID, req)
+		var result *dto.ImportGatewayArtifactResponse
+		err := gwErr
+		if err == nil {
+			result, err = s.importValidated(orgID, gatewayID, req)
+		}
 		if err != nil {
 			s.slogger.Warn("Failed to import gateway artifact in bulk push",
 				"dpid", req.DPID, "kind", req.Configuration.Kind, "gatewayId", gatewayID, "error", err)
@@ -182,21 +188,38 @@ func (s *ArtifactImportService) Import(orgID, gatewayID string, req dto.ImportGa
 	if orgID == "" || gatewayID == "" || req.DPID == "" {
 		return nil, constants.ErrInvalidInput
 	}
-
-	kind := req.Configuration.Kind
-	importer, ok := s.importers[kind]
-	if !ok {
-		s.slogger.Warn("Unsupported artifact kind for gateway import", "kind", kind, "artifactId", req.DPID)
-		return nil, fmt.Errorf("%w: %s", constants.ErrArtifactInvalidKind, kind)
+	// Verify the gateway exists and belongs to the org before importing.
+	if _, err := s.getGatewayForOrg(orgID, gatewayID); err != nil {
+		return nil, err
 	}
+	return s.importValidated(orgID, gatewayID, req)
+}
 
-	// Verify the gateway exists and belongs to the org.
+// getGatewayForOrg resolves the gateway and verifies it belongs to the org. ImportArtifacts
+// calls this once for the whole batch (and Import once per call) so the per-artifact path
+// does not re-fetch the same gateway on every item.
+func (s *ArtifactImportService) getGatewayForOrg(orgID, gatewayID string) (*model.Gateway, error) {
 	gateway, err := s.gatewayRepo.GetByUUID(gatewayID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get gateway: %w", err)
 	}
 	if gateway == nil || gateway.OrganizationID != orgID {
 		return nil, constants.ErrGatewayNotFound
+	}
+	return gateway, nil
+}
+
+// importValidated imports a single artifact, assuming the gateway has already been resolved
+// and validated for the org (so a batch validates the gateway once instead of per artifact).
+func (s *ArtifactImportService) importValidated(orgID, gatewayID string, req dto.ImportGatewayArtifactRequest) (*dto.ImportGatewayArtifactResponse, error) {
+	if req.DPID == "" {
+		return nil, constants.ErrInvalidInput
+	}
+	kind := req.Configuration.Kind
+	importer, ok := s.importers[kind]
+	if !ok {
+		s.slogger.Warn("Unsupported artifact kind for gateway import", "kind", kind, "artifactId", req.DPID)
+		return nil, fmt.Errorf("%w: %s", constants.ErrArtifactInvalidKind, kind)
 	}
 
 	// An "undeployed" push means the artifact was deleted from the gateway. The control
@@ -381,8 +404,9 @@ func (s *ArtifactImportService) writeDeployment(ictx *ImportContext, artifactUUI
 // deletes the artifact, never creates a new deployment record, and never alters the
 // metadata. If the artifact (or its deployment status row) is unknown it is a no-op.
 func (s *ArtifactImportService) handleUndeploy(orgID, gatewayID string, req dto.ImportGatewayArtifactRequest) (*dto.ImportGatewayArtifactResponse, error) {
+	// ID is left empty here and only set to the control-plane UUID once GetByHandle resolves
+	// a real existing artifact below.
 	resp := &dto.ImportGatewayArtifactResponse{
-		ID:         req.DPID,
 		Status:     req.Status,
 		Origin:     constants.OriginDP,
 		CreatedAt:  req.CreatedAt,

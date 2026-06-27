@@ -41,6 +41,15 @@ const GatewayArtifactsZipEntry = "artifacts.json"
 // gatewayArtifactsFormField is the multipart/form-data field that carries the artifacts zip.
 const gatewayArtifactsFormField = "artifacts"
 
+const (
+	// maxArtifactsZipBytes caps the uploaded artifacts zip so a large upload cannot exhaust
+	// memory during the read.
+	maxArtifactsZipBytes = 32 << 20 // 32 MiB
+	// maxArtifactsJSONBytes caps the decompressed artifacts.json entry, bounding memory use
+	// against a zip bomb (a small zip that decompresses to a huge payload).
+	maxArtifactsJSONBytes = 64 << 20 // 64 MiB
+)
+
 // ParseGatewayArtifactsRequest reads the multipart/form-data import-gateway-artifacts request:
 // it extracts the "artifacts" zip part, decodes its artifacts.json entry into the list of
 // import requests, and validates that the list is non-empty. It returns a descriptive error
@@ -50,14 +59,21 @@ func ParseGatewayArtifactsRequest(c *gin.Context) ([]dto.ImportGatewayArtifactRe
 	if err != nil {
 		return nil, fmt.Errorf("missing '%s' zip file in multipart form: %w", gatewayArtifactsFormField, err)
 	}
+	if fileHeader.Size > maxArtifactsZipBytes {
+		return nil, fmt.Errorf("'%s' file exceeds the maximum allowed size of %d bytes", gatewayArtifactsFormField, maxArtifactsZipBytes)
+	}
 	f, err := fileHeader.Open()
 	if err != nil {
 		return nil, fmt.Errorf("failed to read '%s' file: %w", gatewayArtifactsFormField, err)
 	}
 	defer f.Close()
-	zipBytes, err := io.ReadAll(f)
+	// Bound the read in case the reported size is unreliable.
+	zipBytes, err := io.ReadAll(io.LimitReader(f, maxArtifactsZipBytes+1))
 	if err != nil {
 		return nil, fmt.Errorf("failed to read '%s' file: %w", gatewayArtifactsFormField, err)
+	}
+	if int64(len(zipBytes)) > maxArtifactsZipBytes {
+		return nil, fmt.Errorf("'%s' file exceeds the maximum allowed size of %d bytes", gatewayArtifactsFormField, maxArtifactsZipBytes)
 	}
 
 	reqs, err := UnzipGatewayArtifacts(zipBytes)
@@ -81,14 +97,21 @@ func UnzipGatewayArtifacts(zipBytes []byte) ([]dto.ImportGatewayArtifactRequest,
 		if file.Name != GatewayArtifactsZipEntry {
 			continue
 		}
+		if file.UncompressedSize64 > maxArtifactsJSONBytes {
+			return nil, fmt.Errorf("%s exceeds the maximum allowed size of %d bytes", file.Name, maxArtifactsJSONBytes)
+		}
 		rc, err := file.Open()
 		if err != nil {
 			return nil, fmt.Errorf("failed to open %s: %w", file.Name, err)
 		}
 		defer rc.Close()
-		data, err := io.ReadAll(rc)
+		// Bound the decompressed read to guard against a zip bomb / unreliable header.
+		data, err := io.ReadAll(io.LimitReader(rc, maxArtifactsJSONBytes+1))
 		if err != nil {
 			return nil, fmt.Errorf("failed to read %s: %w", file.Name, err)
+		}
+		if int64(len(data)) > maxArtifactsJSONBytes {
+			return nil, fmt.Errorf("%s exceeds the maximum allowed size of %d bytes", file.Name, maxArtifactsJSONBytes)
 		}
 		var reqs []dto.ImportGatewayArtifactRequest
 		if err := json.Unmarshal(data, &reqs); err != nil {

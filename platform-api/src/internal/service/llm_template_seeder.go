@@ -87,6 +87,7 @@ func (s *LLMTemplateSeeder) SeedForOrg(orgUUID string) error {
 				current.RequestModel = tpl.RequestModel
 				current.ResponseModel = tpl.ResponseModel
 				current.ResourceMappings = tpl.ResourceMappings
+				current.Origin = constants.OriginCP
 
 				if err := s.repo.Update(current); err != nil {
 					return fmt.Errorf("failed to sync template %s from defaults: %w", tpl.ID, err)

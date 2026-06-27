@@ -104,8 +104,7 @@ func (i *mcpProxyImporter) Import(ctx *ImportContext) (*ImportResult, error) {
 		cfg.Capabilities = i.fetchCapabilities(ctx.OrgID, cfg)
 		existing.Configuration = cfg
 	case utils.WriteGatewaySpecificOnly:
-		// CP-owned: only update gateway-specific upstream.
-		existing.Configuration.Upstream = cfg.Upstream
+		// CP-owned: No gateway specific metadata is written to the working copy
 	}
 	if err := i.mcpProxyRepo.Update(existing); err != nil {
 		return nil, fmt.Errorf("failed to update MCP proxy from gateway import: %w", err)

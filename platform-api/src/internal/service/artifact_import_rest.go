@@ -79,7 +79,9 @@ func (i *restAPIImporter) Import(ctx *ImportContext) (*ImportResult, error) {
 		return nil, fmt.Errorf("failed to load existing REST API: %w", err)
 	}
 	if existing == nil {
-		return &ImportResult{ID: ctx.ID, DeployedVersion: version, Deployable: true}, nil
+		// The artifact was matched by handle but its REST API row is gone (e.g. a concurrent
+		// delete).
+		return nil, fmt.Errorf("REST API %q not found for update", ctx.ID)
 	}
 
 	switch ctx.MetadataMode {

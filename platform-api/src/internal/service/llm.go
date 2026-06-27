@@ -265,6 +265,12 @@ func (s *LLMProviderTemplateService) Update(orgUUID, handle, updatedBy string, r
 	if err := ensureOriginMutable(existing.Origin); err != nil {
 		return nil, err
 	}
+	// In-place update never changes the version; a new version is created via
+	// POST /llm-provider-templates/{id}/versions. Reject a request that tries to change it
+	// rather than silently ignoring the supplied value.
+	if req.Version != "" && req.Version != existing.Version {
+		return nil, fmt.Errorf("%w: template version cannot be changed via update; use the versions endpoint", constants.ErrInvalidInput)
+	}
 
 	managedBy := existing.ManagedBy
 	if req.ManagedBy != nil {
@@ -474,6 +480,21 @@ func (s *LLMProviderTemplateService) SetVersionEnabled(orgUUID, handle, version 
 		if inUse > 0 {
 			return nil, constants.ErrLLMProviderTemplateInUse
 		}
+	}
+	// Read-only versions (built-in 'wso2'-managed or DP-imported) cannot be toggled, matching
+	// the guard applied by Update/Delete/DeleteVersion.
+	target, err := s.repo.GetByVersion(handle, orgUUID, v)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve template version: %w", err)
+	}
+	if target == nil {
+		return nil, constants.ErrLLMProviderTemplateNotFound
+	}
+	if target.ManagedBy == "wso2" {
+		return nil, constants.ErrLLMProviderTemplateReadOnly
+	}
+	if err := ensureOriginMutable(target.Origin); err != nil {
+		return nil, err
 	}
 	if err := s.repo.SetEnabled(handle, orgUUID, v, enabled); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -1936,6 +1957,7 @@ func templateListItem(t *model.LLMProviderTemplate) api.LLMProviderTemplateListI
 	}
 	return api.LLMProviderTemplateListItem{
 		Id:          &id,
+		GroupId:     utils.StringPtrIfNotEmpty(t.GroupID),
 		Name:        &name,
 		Description: utils.StringPtrIfNotEmpty(t.Description),
 		ManagedBy:   utils.StringPtrIfNotEmpty(t.ManagedBy),
