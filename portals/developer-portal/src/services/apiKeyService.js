@@ -77,7 +77,7 @@ async function resolveApi(orgId, apiId) {
         apiId: dv.ID,
         apiName: dv.NAME || null,
         apiVersion: dv.VERSION || null,
-        apiRefId: dv.REFERENCE_ID || ''
+        apiRefId: dv.REF_ID || ''
     };
 }
 
@@ -88,7 +88,7 @@ async function resolveApiDirect(orgId, apiId) {
     return {
         apiName: dv.NAME || null,
         apiVersion: dv.VERSION || null,
-        apiRefId: dv.REFERENCE_ID || ''
+        apiRefId: dv.REF_ID || ''
     };
 }
 

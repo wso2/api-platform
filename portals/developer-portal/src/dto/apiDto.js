@@ -21,7 +21,7 @@ const constants = require('../utils/constants');
 class APIDTO {
     constructor(api) {
         this.apiID = api.ID;
-        this.apiReferenceID = api.REFERENCE_ID;
+        this.apiReferenceID = api.REF_ID;
         this.apiHandle = api.HANDLE;
         this.dataSource = api.DATA_SOURCE;
         this.apiInfo = new APIInfo(api);

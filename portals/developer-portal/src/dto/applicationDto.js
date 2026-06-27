@@ -36,23 +36,6 @@ class ApplicationDTO {
     }
 }
 
-class SubscriptionDTO {
-    constructor(sub) {
-        this.id = sub.ID;
-        this.appId = sub.APP_ID;
-        this.apiId = sub.REFERENCE_ID;
-        this.planId = sub.PLAN_ID;
-    }
-
-    setResponseData(data) {
-        this.data = data;
-    }
-
-    getResponseData() {
-        return this.data;
-    }
-}
-
 class AppMappingDTO {
     constructor(map) {
         this.appRefID = map.AS_CLIENT_ID;
@@ -71,6 +54,5 @@ class AppMappingDTO {
 }
 
 module.exports = {
-    ApplicationDTO,
-    SubscriptionDTO
+    ApplicationDTO
 };

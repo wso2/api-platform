@@ -530,7 +530,7 @@ const loadDocsPage = async (req, res, next) => {
             let apiType = apiMetadata[0].dataValues.TYPE;
             const metaForNav = {
                 apiInfo: {},
-                apiReferenceID: apiMetadata[0].dataValues.REFERENCE_ID,
+                apiReferenceID: apiMetadata[0].dataValues.REF_ID,
             };
 
             let apiDefinitionForNav = null;
@@ -737,7 +737,7 @@ const loadDocument = async (req, res, next) => {
             let docNames = await apiMetadataService.getAPIDocTypes(orgID, apiID);
             const apiMetadata = await apiDao.get(orgID, apiID);
             let apiType = apiMetadata[0].dataValues.TYPE;
-            const referenceID = apiMetadata[0].dataValues.REFERENCE_ID;
+            const referenceID = apiMetadata[0].dataValues.REF_ID;
             // All MCPs (registry and CP) need a Specification entry in the sidebar
             if (apiType === constants.API_TYPE.MCP && !docNames.some(d => d.type === constants.DOC_TYPES.DOCS.API_DEFINITION)) {
                 docNames = [{ type: constants.DOC_TYPES.DOCS.API_DEFINITION }, ...docNames];
@@ -763,7 +763,7 @@ const loadDocument = async (req, res, next) => {
             const row = apiMetadata[0].dataValues;
             const metaForNav = {
                 apiInfo: {},
-                apiReferenceID: row.REFERENCE_ID,
+                apiReferenceID: row.REF_ID,
             };
             templateContent.showApiKeysNav = apiUsesApiKeySecurity(metaForNav);
             html = await renderTemplateFromAPI(templateContent, orgID, orgName, "pages/docs", viewName);

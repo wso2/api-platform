@@ -55,7 +55,7 @@ function unescapeParam(str) {
 
 
 async function findRowByServerIdentifier(orgId, serverIdentifier, version, transaction) {
-    const baseWhere = { ORG_ID: orgId, TYPE: constants.API_TYPE.MCP, REFERENCE_ID: null };
+    const baseWhere = { ORG_ID: orgId, TYPE: constants.API_TYPE.MCP, REF_ID: null };
     if (version) baseWhere.VERSION = version;
 
     const byProxyId = await APIMetadata.findOne({
@@ -592,13 +592,13 @@ const updateAllVersionsStatus = async (req, res) => {
 
         await sequelize.transaction(async (t) => {
             let existing = await APIMetadata.findAll({
-                where: { ORG_ID: orgId, TYPE: constants.API_TYPE.MCP, REFERENCE_ID: null, [Op.and]: proxyIdCondition },
+                where: { ORG_ID: orgId, TYPE: constants.API_TYPE.MCP, REF_ID: null, [Op.and]: proxyIdCondition },
                 lock: t.LOCK.UPDATE,
                 transaction: t
             });
             if (existing.length === 0) {
                 existing = await APIMetadata.findAll({
-                    where: { ORG_ID: orgId, TYPE: constants.API_TYPE.MCP, REFERENCE_ID: null, NAME: serverIdentifier },
+                    where: { ORG_ID: orgId, TYPE: constants.API_TYPE.MCP, REF_ID: null, NAME: serverIdentifier },
                     lock: t.LOCK.UPDATE,
                     transaction: t
                 });

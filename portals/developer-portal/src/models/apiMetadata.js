@@ -27,7 +27,7 @@ const APIMetadata = sequelize.define('DP_API_METADATA', {
     defaultValue: Sequelize.UUIDV4,
     primaryKey: true
   },
-  REFERENCE_ID: {
+  REF_ID: {
     type: DataTypes.STRING,
     allowNull: true
   },
@@ -115,9 +115,9 @@ const APIMetadata = sequelize.define('DP_API_METADATA', {
           fields: ['NAME', 'VERSION', 'ORG_ID']
       },
       {
-          name: 'UQ_API_METADATA_ORG_REFERENCE_ID',
+          name: 'UQ_API_METADATA_ORG_REF_ID',
           unique: true,
-          fields: ['ORG_ID', 'REFERENCE_ID']
+          fields: ['ORG_ID', 'REF_ID']
       },
       {
           name: 'UQ_API_METADATA_HANDLE_ORG',

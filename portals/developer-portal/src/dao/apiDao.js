@@ -40,7 +40,7 @@ const create = async (orgID, apiMetadata, t) => {
     }
     try {
         const apiMetadataResponse = await APIMetadata.create({
-            REFERENCE_ID: apiInfo.referenceID,
+            REF_ID: apiInfo.referenceID,
             STATUS: apiInfo.apiStatus,
             NAME: apiInfo.apiName,
             HANDLE: apiInfo.apiHandle ? apiInfo.apiHandle : `${apiInfo.apiName.toLowerCase().replace(/\s+/g, '')}-v${apiInfo.apiVersion}`,
@@ -80,7 +80,7 @@ const update = async (orgID, apiID, apiMetadata, t) => {
     }
     try {
         const [updateCount] = await APIMetadata.update({
-            REFERENCE_ID: apiInfo.referenceID,
+            REF_ID: apiInfo.referenceID,
             STATUS: apiInfo.apiStatus,
             NAME: apiInfo.apiName,
             HANDLE: apiInfo.apiHandle ? apiInfo.apiHandle : `${apiInfo.apiName.toLowerCase().replace(/\s+/g, '')}-v${apiInfo.apiVersion}`,
@@ -479,7 +479,7 @@ const getHandle = async (orgID, apiRefID) => {
         const api = await APIMetadata.findOne({
             attributes: ['HANDLE'],
             where: {
-                REFERENCE_ID: apiRefID,
+                REF_ID: apiRefID,
                 ORG_ID: orgID
             }
         })
@@ -497,7 +497,7 @@ const getIdByRef = async (orgID, referenceId, t) => {
         const api = await APIMetadata.findOne({
             attributes: ['ID'],
             where: {
-                REFERENCE_ID: referenceId,
+                REF_ID: referenceId,
                 ORG_ID: orgID
             },
             transaction: t

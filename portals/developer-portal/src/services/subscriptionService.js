@@ -46,7 +46,7 @@ function buildWebhookPayload(sub, apiMetadata, plan) {
         api: {
             name: apiMetadata ? apiMetadata.NAME : null,
             version: apiMetadata ? apiMetadata.VERSION : null,
-            ref_id: apiMetadata ? (apiMetadata.REFERENCE_ID || '') : '',
+            ref_id: apiMetadata ? (apiMetadata.REF_ID || '') : '',
         },
     };
 }
