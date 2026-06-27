@@ -86,7 +86,7 @@ func (s *APIServer) CreateWebBrokerApi(c *gin.Context) {
 		return
 	}
 
-	if s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected() && s.systemConfig.Controller.ControlPlane.DeploymentPushEnabled {
+	if s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected() && s.systemConfig.Controller.ControlPlane.DeploymentSyncEnabled {
 		go s.waitForDeploymentAndPush(cfg.UUID, correlationID, log)
 	}
 }

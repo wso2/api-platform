@@ -97,6 +97,10 @@ func (h *WebBrokerAPIDeploymentHandler) DeployWebBrokerAPI(c *gin.Context) {
 	createdBy, _ := middleware.GetUsernameFromContext(c)
 	deployment, err := h.webbrokerAPIDeploymentService.DeployWebBrokerAPIByHandle(apiId, &req, orgId, createdBy)
 	if err != nil {
+		// DP-originated artifacts are read-only: deployment cannot be initiated from the CP.
+		if respondArtifactGuardError(c, err) {
+			return
+		}
 		h.handleDeploymentError(c, err, apiId)
 		return
 	}
@@ -126,6 +130,10 @@ func (h *WebBrokerAPIDeploymentHandler) UndeployDeployment(c *gin.Context) {
 
 	deployment, err := h.webbrokerAPIDeploymentService.UndeployWebBrokerAPIDeploymentByHandle(apiId, deploymentId, gatewayId, orgId)
 	if err != nil {
+		// DP-originated artifacts are read-only: undeployment cannot be initiated from the CP.
+		if respondArtifactGuardError(c, err) {
+			return
+		}
 		h.handleDeploymentError(c, err, apiId)
 		return
 	}
@@ -155,6 +163,10 @@ func (h *WebBrokerAPIDeploymentHandler) RestoreDeployment(c *gin.Context) {
 
 	deployment, err := h.webbrokerAPIDeploymentService.RestoreWebBrokerAPIDeploymentByHandle(apiId, deploymentId, gatewayId, orgId)
 	if err != nil {
+		// DP-originated artifacts are read-only: restore cannot be initiated from the CP.
+		if respondArtifactGuardError(c, err) {
+			return
+		}
 		h.handleDeploymentError(c, err, apiId)
 		return
 	}

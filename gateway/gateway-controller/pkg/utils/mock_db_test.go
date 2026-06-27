@@ -270,6 +270,17 @@ func (m *testMockDB) GetPendingBottomUpAPIs() ([]*models.StoredConfig, error) {
 	return pending, nil
 }
 
+func (m *testMockDB) GetPendingCPSyncArtifacts() ([]*models.StoredConfig, error) {
+	var pending []*models.StoredConfig
+	for _, config := range m.configs {
+		if config.Origin == models.OriginGatewayAPI &&
+			(config.CPSyncStatus == models.CPSyncStatusPending || config.CPSyncStatus == models.CPSyncStatusFailed) {
+			pending = append(pending, config)
+		}
+	}
+	return pending, nil
+}
+
 func (m *testMockDB) SaveWebhookSecret(secret *models.WebhookSecret) error { return nil }
 func (m *testMockDB) GetWebhookSecretsByArtifact(artifactUUID string) ([]*models.WebhookSecret, error) {
 	return nil, nil

@@ -53,6 +53,7 @@ type ArtifactRepository interface {
 	Update(tx *sql.Tx, artifact *model.Artifact) error
 	Exists(kind, handle, orgUUID string) (bool, error)
 	GetByHandle(handle, orgUUID string) (*model.Artifact, error)
+	GetByUUID(uuid, orgUUID string) (*model.Artifact, error)
 	GetAPIMetadataByHandle(handle, orgUUID string) (*model.APIMetadata, error)
 	CountByKindAndOrg(kind, orgUUID string) (int, error)
 	ExistsByUUIDs(uuids []string, orgUUID string) ([]string, error)
@@ -133,9 +134,11 @@ type DeploymentRepository interface {
 	GetStaleTransitionalStatuses(timeout time.Duration) ([]StaleDeploymentStatus, error)
 	DeleteStatus(artifactUUID, orgUUID, gatewayID string) error
 	GetDeployedGatewayIDs(artifactUUID, orgUUID string) ([]string, error)
+	HasActiveDeployment(artifactUUID, orgUUID string) (bool, error)
+	GetLatestDeploymentTime(artifactUUID, orgUUID string) (*time.Time, error)
 
 	// Gateway deployment methods
-	GetAllDeploymentsByGateway(gatewayID, orgUUID string, since *time.Time) ([]*model.DeploymentInfo, error)
+	GetControlPlaneDeploymentsByGateway(gatewayID, orgUUID string, since *time.Time) ([]*model.DeploymentInfo, error)
 	GetDeploymentContentByIDs(deploymentIDs []string, orgUUID string, gatewayUUID string) (map[string]*model.DeploymentContent, error)
 	// GetSecretHandlesByGateway returns the distinct secret handles referenced by all
 	// artifacts currently deployed on a gateway, sourced from artifact_secret_refs (gateway_id rows).

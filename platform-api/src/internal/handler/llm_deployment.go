@@ -94,6 +94,9 @@ func (h *LLMProviderDeploymentHandler) DeployLLMProvider(c *gin.Context) {
 
 	deployment, err := h.deploymentService.DeployLLMProvider(providerId, &req, orgId)
 	if err != nil {
+		if respondArtifactGuardError(c, err) {
+			return
+		}
 		switch {
 		case errors.Is(err, constants.ErrLLMProviderNotFound):
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
@@ -158,6 +161,10 @@ func (h *LLMProviderDeploymentHandler) UndeployLLMProviderDeployment(c *gin.Cont
 	}
 	deployment, err := h.deploymentService.UndeployLLMProviderDeployment(providerId, deploymentId, gatewayId, orgId)
 	if err != nil {
+		// DP-originated artifacts are read-only: undeployment cannot be initiated from the CP.
+		if respondArtifactGuardError(c, err) {
+			return
+		}
 		switch {
 		case errors.Is(err, constants.ErrLLMProviderNotFound):
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
@@ -209,6 +216,10 @@ func (h *LLMProviderDeploymentHandler) RestoreLLMProviderDeployment(c *gin.Conte
 	}
 	deployment, err := h.deploymentService.RestoreLLMProviderDeployment(providerId, deploymentId, gatewayId, orgId)
 	if err != nil {
+		// DP-originated artifacts are read-only: restore cannot be initiated from the CP.
+		if respondArtifactGuardError(c, err) {
+			return
+		}
 		switch {
 		case errors.Is(err, constants.ErrLLMProviderNotFound):
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
@@ -440,6 +451,9 @@ func (h *LLMProxyDeploymentHandler) DeployLLMProxy(c *gin.Context) {
 
 	deployment, err := h.deploymentService.DeployLLMProxy(proxyId, &req, orgId)
 	if err != nil {
+		if respondArtifactGuardError(c, err) {
+			return
+		}
 		switch {
 		case errors.Is(err, constants.ErrLLMProxyNotFound):
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
@@ -500,6 +514,10 @@ func (h *LLMProxyDeploymentHandler) UndeployLLMProxyDeployment(c *gin.Context) {
 	}
 	deployment, err := h.deploymentService.UndeployLLMProxyDeployment(proxyId, deploymentId, gatewayId, orgId)
 	if err != nil {
+		// DP-originated artifacts are read-only: undeployment cannot be initiated from the CP.
+		if respondArtifactGuardError(c, err) {
+			return
+		}
 		switch {
 		case errors.Is(err, constants.ErrLLMProxyNotFound):
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
@@ -551,6 +569,10 @@ func (h *LLMProxyDeploymentHandler) RestoreLLMProxyDeployment(c *gin.Context) {
 	}
 	deployment, err := h.deploymentService.RestoreLLMProxyDeployment(proxyId, deploymentId, gatewayId, orgId)
 	if err != nil {
+		// DP-originated artifacts are read-only: restore cannot be initiated from the CP.
+		if respondArtifactGuardError(c, err) {
+			return
+		}
 		switch {
 		case errors.Is(err, constants.ErrLLMProxyNotFound):
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",

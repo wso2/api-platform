@@ -185,7 +185,7 @@ gateway:
             polling_interval: 15m
 
             # Push API deployment events to the control plane
-            deployment_push_enabled: false
+            deployment_sync_enabled: true
 
             # Number of deployments to fetch per batch during startup sync
             sync_batch_size: 50

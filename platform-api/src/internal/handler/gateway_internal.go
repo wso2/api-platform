@@ -26,6 +26,7 @@ import (
 	"platform-api/src/internal/dto"
 	"platform-api/src/internal/model"
 	"platform-api/src/internal/utils"
+	"strconv"
 	"time"
 
 	"platform-api/src/internal/service"
@@ -36,6 +37,7 @@ import (
 type GatewayInternalAPIHandler struct {
 	gatewayService         *service.GatewayService
 	gatewayInternalService *service.GatewayInternalAPIService
+	artifactImportService  *service.ArtifactImportService
 	hmacSecretService      *service.WebSubAPIHmacSecretService
 	secretService          *service.SecretService
 	slogger                *slog.Logger
@@ -43,7 +45,7 @@ type GatewayInternalAPIHandler struct {
 
 func NewGatewayInternalAPIHandler(gatewayService *service.GatewayService,
 	gatewayInternalService *service.GatewayInternalAPIService,
-	hmacSecretService *service.WebSubAPIHmacSecretService,
+	hmacSecretService *service.WebSubAPIHmacSecretService, artifactImportService *service.ArtifactImportService,
 	secretService *service.SecretService,
 	slogger *slog.Logger) *GatewayInternalAPIHandler {
 	return &GatewayInternalAPIHandler{
@@ -51,6 +53,7 @@ func NewGatewayInternalAPIHandler(gatewayService *service.GatewayService,
 		gatewayInternalService: gatewayInternalService,
 		hmacSecretService:      hmacSecretService,
 		secretService:          secretService,
+		artifactImportService:  artifactImportService,
 		slogger:                slogger,
 	}
 }
@@ -137,68 +140,38 @@ func (h *GatewayInternalAPIHandler) GetAPI(c *gin.Context) {
 	c.Data(http.StatusOK, "application/zip", zipData)
 }
 
-// CreateGatewayDeployment handles POST /api/internal/v1/apis/{apiId}/gateway-deployments
-func (h *GatewayInternalAPIHandler) CreateGatewayDeployment(c *gin.Context) {
+// ImportGatewayArtifacts handles POST /api/internal/v1/artifacts/import-gateway-artifacts.
+// It is the generic bulk DP->CP push endpoint. The request is multipart/form-data with an
+// "artifacts" zip part (containing the artifacts.json file — a JSON array of
+// ImportGatewayArtifactRequest) and an advisory "total" field. The control plane creates or
+// updates each artifact (read-only, origin "gateway_api") in dependency order and is
+// continue-on-error: a failure on one artifact is recorded against its dpid and does not
+// abort the rest. The response maps each artifact's dpid to its result, with total/success/
+// failed counts. Only a malformed request (bad multipart/zip) returns a non-200.
+func (h *GatewayInternalAPIHandler) ImportGatewayArtifacts(c *gin.Context) {
 	orgID, gatewayID, ok := h.authenticateRequest(c)
 	if !ok {
 		return
 	}
 
-	// Extract API ID from path parameter
-	apiID := c.Param("apiId")
-	if apiID == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"API ID is required"))
-		return
-	}
-
-	// Extract optional deployment ID from query parameter
-	deploymentID := c.Query("deploymentId")
-	var deploymentIDPtr *string
-	if deploymentID != "" {
-		deploymentIDPtr = &deploymentID
-	}
-
-	// Parse and validate request body
-	var notification dto.DeploymentNotification
-	if err := c.ShouldBindJSON(&notification); err != nil {
-		clientIP := c.ClientIP()
-		h.slogger.Warn("Invalid request body", "clientIP", clientIP, "error", err)
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"Invalid request body: "+err.Error()))
-		return
-	}
-
-	response, err := h.gatewayInternalService.CreateGatewayDeployment(
-		apiID, orgID, gatewayID, notification, deploymentIDPtr)
+	reqs, err := utils.ParseGatewayArtifactsRequest(c)
 	if err != nil {
-		if errors.Is(err, constants.ErrInvalidInput) {
-			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-				"Invalid input data"))
-			return
-		}
-		if errors.Is(err, constants.ErrGatewayNotFound) {
-			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"Gateway not found"))
-			return
-		}
-		if errors.Is(err, constants.ErrAPINotFound) {
-			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"API not found"))
-			return
-		}
-		h.slogger.Error("Failed to create gateway API deployment", "apiID", apiID, "gatewayID", gatewayID, "error", err)
-		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
-			"Failed to create API deployment"))
+		h.slogger.Warn("Invalid import-gateway-artifacts request", "clientIP", c.ClientIP(), "error", err)
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))
 		return
 	}
+	// 'total' is advisory: log a mismatch but proceed with what the zip actually contained.
+	if totalStr := c.PostForm("total"); totalStr != "" {
+		if total, convErr := strconv.Atoi(totalStr); convErr == nil && total != len(reqs) {
+			h.slogger.Warn("import-gateway-artifacts total mismatch",
+				"declaredTotal", total, "zipCount", len(reqs), "gatewayID", gatewayID)
+		}
+	}
 
-	h.slogger.Info("Successfully created gateway API deployment", "apiID", apiID, "gatewayID", gatewayID, "created", response.Created)
-
-	// Return success response
-	c.JSON(http.StatusCreated, map[string]interface{}{
-		"message": response.Message,
-	})
+	resp := h.artifactImportService.ImportArtifacts(orgID, gatewayID, reqs)
+	h.slogger.Info("Imported gateway artifacts batch",
+		"gatewayID", gatewayID, "total", resp.Total, "success", resp.Success, "failed", resp.Failed)
+	c.JSON(http.StatusOK, resp)
 }
 
 // GetLLMProvider handles GET /api/internal/v1/llm-providers/:providerId
@@ -961,7 +934,6 @@ func (h *GatewayInternalAPIHandler) RegisterRoutes(r *gin.Engine) {
 	{
 		orgGroup.GET("/api-keys", h.GetRestAPIAPIKeys)
 		orgGroup.GET("/:apiId", h.GetAPI)
-		orgGroup.POST("/:apiId/gateway-deployments", h.CreateGatewayDeployment)
 		orgGroup.GET("/:apiId/subscriptions", h.GetSubscriptions)
 	}
 
@@ -1020,5 +992,8 @@ func (h *GatewayInternalAPIHandler) RegisterRoutes(r *gin.Engine) {
 	artifactGroup := r.Group("/api/internal/v1/artifacts")
 	{
 		artifactGroup.POST("/exists", h.CheckArtifactsExist)
+		// Generic DP->CP push endpoint replacing the legacy
+		// POST /apis/:apiId/gateway-deployments route.
+		artifactGroup.POST("/import-gateway-artifacts", h.ImportGatewayArtifacts)
 	}
 }

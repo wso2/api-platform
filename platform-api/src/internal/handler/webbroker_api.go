@@ -229,6 +229,10 @@ func (h *WebBrokerAPIHandler) UnpublishFromDevPortal(c *gin.Context) {
 
 // handleServiceError maps service errors to HTTP responses
 func (h *WebBrokerAPIHandler) handleServiceError(c *gin.Context, err error) {
+	// DP-originated artifacts are read-only in the control plane (update/delete blocked).
+	if respondArtifactGuardError(c, err) {
+		return
+	}
 	switch {
 	case errors.Is(err, constants.ErrInvalidInput):
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))

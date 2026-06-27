@@ -98,6 +98,7 @@ func (u *APIUtil) RESTAPIToModel(restAPI *api.RESTAPI, orgID string) *model.API 
 			Operations:        u.OperationsAPIToModel(restAPI.Operations),
 			SubscriptionPlans: stringSliceValue(restAPI.SubscriptionPlans),
 		},
+		Origin: constants.OriginCP,
 	}
 
 	if restAPI.CreatedAt != nil {
@@ -141,6 +142,7 @@ func (u *APIUtil) ModelToRESTAPI(modelAPI *model.API) (*api.RESTAPI, error) {
 		Operations:        u.OperationsModelToAPI(modelAPI.Configuration.Operations),
 		Policies:          u.PoliciesModelToAPI(modelAPI.Configuration.Policies),
 		ProjectId:         *projectID,
+		ReadOnly:          BoolPtr(modelAPI.Origin == constants.OriginDP),
 		SubscriptionPlans: stringSlicePtr(modelAPI.Configuration.SubscriptionPlans),
 		Transport:         stringSlicePtr(modelAPI.Configuration.Transport),
 		UpdatedAt:         TimePtrIfNotZero(modelAPI.UpdatedAt),

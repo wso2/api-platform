@@ -121,15 +121,6 @@ func (s *APIServer) CreateMCPProxy(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusCreated, buildResourceResponseFromStored(mcp, cfg))
-
-	if result.IsStale {
-		return
-	}
-
-	if s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected() && s.systemConfig.Controller.ControlPlane.DeploymentPushEnabled {
-		go s.waitForDeploymentAndPush(cfg.UUID, correlationID, log)
-	}
-
 }
 
 // ListMCPProxies implements ServerInterface.ListMCPProxies
@@ -328,6 +319,9 @@ func (s *APIServer) DeleteMCPProxy(c *gin.Context, id string) {
 	log.Info("MCP proxy configuration deleted",
 		slog.String("id", cfg.UUID),
 		slog.String("handle", handle))
+
+	// Notify the control plane so the artifact is marked undeployed (not deleted).
+	s.pushArtifactUndeploy(cfg, log)
 
 	c.JSON(http.StatusOK, gin.H{
 		"status":  "success",

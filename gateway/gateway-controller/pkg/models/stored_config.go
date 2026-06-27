@@ -32,12 +32,13 @@ import (
 type ArtifactKind = string
 
 const (
-	KindRestApi      ArtifactKind = "RestApi"
-	KindWebSubApi    ArtifactKind = "WebSubApi"
-	KindWebBrokerApi ArtifactKind = "WebBrokerApi"
-	KindMcp          ArtifactKind = "Mcp"
-	KindLlmProxy     ArtifactKind = "LlmProxy"
-	KindLlmProvider  ArtifactKind = "LlmProvider"
+	KindRestApi             ArtifactKind = "RestApi"
+	KindWebSubApi           ArtifactKind = "WebSubApi"
+	KindWebBrokerApi        ArtifactKind = "WebBrokerApi"
+	KindMcp                 ArtifactKind = "Mcp"
+	KindLlmProxy            ArtifactKind = "LlmProxy"
+	KindLlmProvider         ArtifactKind = "LlmProvider"
+	KindLlmProviderTemplate ArtifactKind = "LlmProviderTemplate"
 )
 
 // DesiredState represents the intended deployment state of an API configuration.

@@ -24,51 +24,6 @@ package api
 
 import openapi_types "github.com/oapi-codegen/runtime/types"
 
-// ApiIdentifierQ defines the type for the api-identifier query parameter.
-// Removed from the spec; preserved here because ValidateRESTAPIParams still uses it.
-type ApiIdentifierQ = string
-
-// GatewayStatusResponse is defined in the OpenAPI spec but not referenced by any path.
-// Kept here because service/gateway.go uses it for polling responses.
-type GatewayStatusResponse struct {
-	// Id Unique identifier for the gateway
-	Id *openapi_types.UUID `json:"id,omitempty" yaml:"id,omitempty"`
-
-	// IsActive Indicates if the gateway is currently connected to the platform via WebSocket
-	IsActive *bool `json:"isActive,omitempty" yaml:"isActive,omitempty"`
-
-	// IsCritical Whether the gateway is critical for production
-	IsCritical *bool `json:"isCritical,omitempty" yaml:"isCritical,omitempty"`
-
-	// Name URL-friendly gateway identifier
-	Name *string `json:"name,omitempty" yaml:"name,omitempty"`
-}
-
-// GatewayStatusListResponse is defined in the OpenAPI spec but not referenced by any path.
-// Kept here because service/gateway.go uses it for polling responses.
-type GatewayStatusListResponse struct {
-	// Count Number of items in current response
-	Count      int                     `binding:"required" json:"count" yaml:"count"`
-	List       []GatewayStatusResponse `binding:"required" json:"list" yaml:"list"`
-	Pagination Pagination              `json:"pagination" yaml:"pagination"`
-}
-
-// RESTAPIValidationResponse is defined in the OpenAPI spec but not referenced by any path.
-// Kept here because service/api.go uses it for identifier/name-version uniqueness checks.
-type RESTAPIValidationResponse struct {
-	// Error Error details if validation fails
-	Error *struct {
-		// Code Error code indicating the type of validation failure
-		Code string `json:"code" yaml:"code"`
-
-		// Message Human-readable error message
-		Message string `json:"message" yaml:"message"`
-	} `binding:"required" json:"error" yaml:"error"`
-
-	// Valid Whether the API identifier or name-version combination is valid (not already in use) in the organization
-	Valid bool `binding:"required" json:"valid" yaml:"valid"`
-}
-
 // ValidateRESTAPIParams defines query parameters used internally by the ValidateAPI service method.
 // The corresponding /rest-apis/validate path was removed from the spec; this type is preserved
 // because service/api.go still uses it for identifier/name/version validation.

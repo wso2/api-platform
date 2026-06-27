@@ -121,12 +121,6 @@ func (s *APIServer) CreateLLMProxy(c *gin.Context) {
 
 	stored := result.StoredConfig
 
-	if !result.IsStale {
-		if s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected() && s.systemConfig.Controller.ControlPlane.DeploymentPushEnabled {
-			go s.waitForDeploymentAndPush(stored.UUID, correlationID, log)
-		}
-	}
-
 	log.Info("LLM proxy created successfully",
 		slog.String("uuid", stored.UUID),
 		slog.String("handle", stored.Handle))
@@ -265,6 +259,9 @@ func (s *APIServer) DeleteLLMProxy(c *gin.Context, id string) {
 		})
 		return
 	}
+
+	// Notify the control plane so the artifact is marked undeployed (not deleted).
+	s.pushArtifactUndeploy(cfg, log)
 
 	c.JSON(http.StatusOK, gin.H{
 		"status":  "success",

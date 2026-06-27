@@ -303,6 +303,20 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 		cfg,
 		slogger,
 	)
+	artifactImportService := service.NewArtifactImportService(
+		apiRepo,
+		llmProviderRepo,
+		llmTemplateRepo,
+		llmProxyRepo,
+		mcpProxyRepo,
+		artifactRepo,
+		deploymentRepo,
+		gatewayRepo,
+		projectRepo,
+		cfg,
+		slogger,
+		mcpProxyService,
+	)
 
 	// Initialize secret vault and service.
 	// Key precedence: PLATFORM_SECRET_ENCRYPTION_KEY → DATABASE_ENCRYPTION_KEY → JWT secret hash.
@@ -329,7 +343,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	subscriptionPlanHandler := handler.NewSubscriptionPlanHandler(subscriptionPlanService, slogger)
 	appHandler := handler.NewApplicationHandler(appService, slogger)
 	wsHandler := handler.NewWebSocketHandler(wsManager, gatewayService, deploymentService, cfg.WebSocket.RateLimitPerMin, slogger)
-	internalGatewayHandler := handler.NewGatewayInternalAPIHandler(gatewayService, internalGatewayService, hmacSecretService, secretService, slogger)
+	internalGatewayHandler := handler.NewGatewayInternalAPIHandler(gatewayService, internalGatewayService, hmacSecretService, artifactImportService, secretService, slogger)
 	hmacSecretHandler := handler.NewWebSubAPIHmacSecretHandler(hmacSecretService, slogger)
 	apiKeyHandler := handler.NewAPIKeyHandler(apiKeyService, slogger)
 	gitHandler := handler.NewGitHandler(gitService, slogger)

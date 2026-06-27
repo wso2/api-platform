@@ -237,6 +237,9 @@ func (h *MCPProxyHandler) FetchMCPProxyServerInfo(c *gin.Context) {
 
 // handleServiceError maps service errors to HTTP responses
 func (h *MCPProxyHandler) handleServiceError(c *gin.Context, err error) {
+	if respondArtifactGuardError(c, err) {
+		return
+	}
 	switch {
 	case errors.Is(err, constants.ErrInvalidInput):
 		h.slogger.Error("MCP request validation failed", "reason", err.Error())

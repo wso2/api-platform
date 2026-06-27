@@ -38,6 +38,7 @@ type API struct {
 	LifeCycleStatus string          `json:"lifeCycleStatus,omitempty" db:"lifecycle_status"`
 	Channels        []Channel       `json:"channels,omitempty"`
 	Configuration   RestAPIConfig    `json:"configuration" db:"-"`
+	Origin          string        `json:"origin,omitempty" db:"origin"`
 }
 
 type RestAPIConfig struct {

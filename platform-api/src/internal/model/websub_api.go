@@ -36,6 +36,7 @@ type WebSubAPI struct {
 	CreatedAt        time.Time              `json:"createdAt" db:"-"`
 	UpdatedAt        time.Time              `json:"updatedAt" db:"-"`
 	Configuration    WebSubAPIConfiguration `json:"configuration" db:"-"`
+	Origin           string                 `json:"origin,omitempty" db:"origin"`
 }
 
 // WebSubAPIConfiguration holds the WebSub API configuration stored as JSON in the DB

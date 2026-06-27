@@ -114,6 +114,12 @@ func (s *DeploymentService) DeployAPI(apiUUID string, req *api.DeployRequest, or
 		return nil, constants.ErrAPINotFound
 	}
 
+	// DP-originated artifacts are read-only in the control plane and cannot be
+	// (re)deployed from the CP.
+	if err := ensureOriginMutable(apiModel.Origin); err != nil {
+		return nil, err
+	}
+
 	// Validate deployment name is provided
 	if req.Name == "" {
 		return nil, constants.ErrDeploymentNameRequired
@@ -351,6 +357,12 @@ func (s *DeploymentService) DeployAPI(apiUUID string, req *api.DeployRequest, or
 
 // RestoreDeployment restores a previous deployment (can be ARCHIVED or UNDEPLOYED)
 func (s *DeploymentService) RestoreDeployment(apiUUID, deploymentID, gatewayID, orgUUID, actor string) (*api.DeploymentResponse, error) {
+	// DP-originated artifacts are read-only in the control plane; their deployment
+	// lifecycle is owned by the data-plane gateway, so restore cannot be CP-initiated.
+	if err := ensureArtifactMutableByUUID(s.artifactRepo, apiUUID, orgUUID); err != nil {
+		return nil, err
+	}
+
 	// Verify target deployment exists and belongs to the API
 	targetDeployment, err := s.deploymentRepo.GetWithContent(deploymentID, apiUUID, orgUUID)
 	if err != nil {
@@ -430,6 +442,13 @@ func (s *DeploymentService) RestoreDeployment(apiUUID, deploymentID, gatewayID, 
 
 // UndeployDeployment undeploys an active deployment
 func (s *DeploymentService) UndeployDeployment(apiUUID, deploymentID, gatewayID, orgUUID, actor string) (*api.DeploymentResponse, error) {
+	// DP-originated artifacts are read-only in the control plane: their deploy/undeploy
+	// lifecycle is owned by the data-plane gateway (driven by the DP->CP push), so the
+	// control plane must not initiate an undeployment for them.
+	if err := ensureArtifactMutableByUUID(s.artifactRepo, apiUUID, orgUUID); err != nil {
+		return nil, err
+	}
+
 	// Verify deployment exists and belongs to API
 	deployment, err := s.deploymentRepo.GetWithState(deploymentID, apiUUID, orgUUID)
 	if err != nil {
