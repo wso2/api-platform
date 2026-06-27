@@ -145,6 +145,7 @@ func (r *ArtifactRepo) GetByHandle(handle, orgUUID string) (*model.Artifact, err
 			UNION ALL
 			SELECT uuid, 'Mcp'          AS type, organization_uuid FROM mcp_proxies    WHERE handle = ? AND organization_uuid = ?
 		) combined
+		ORDER BY (SELECT NULL)
 		` + r.db.FetchFirstClause(1)
 	artifact := &model.Artifact{}
 	err := r.db.QueryRow(r.db.Rebind(query),
