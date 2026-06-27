@@ -76,8 +76,8 @@ function parseOrganizationFromYamlFile(fileBuffer) {
         }
     }
     if (spec.views !== undefined && spec.views !== null) {
-        if (!Array.isArray(spec.views) || spec.views.some(v => typeof v !== 'object' || !v.name)) {
-            throw new Sequelize.ValidationError("Invalid organization YAML: 'spec.views' must be an array of objects with a 'name' field");
+        if (!Array.isArray(spec.views) || spec.views.some(v => typeof v !== 'object' || !v.handle)) {
+            throw new Sequelize.ValidationError("Invalid organization YAML: 'spec.views' must be an array of objects with a 'handle' field");
         }
     }
     const organization = mapYamlToOrganization(parsed);
@@ -137,7 +137,7 @@ const createOrganization = async (req, res) => {
             // Views: use YAML-defined if provided, else fall back to default
             const viewDefs = payload.views?.length
                 ? payload.views
-                : [{ name: 'default', displayName: 'default', labels: [labelDefs[0].name] }];
+                : [{ handle: 'default', name: 'default', labels: [labelDefs[0].name] }];
 
             for (const viewDef of viewDefs) {
                 const viewResponse = await viewDao.create(orgId, viewDef, t);
@@ -250,7 +250,7 @@ const updateOrganization = async (req, res) => {
             // Views upsert — only if present in payload
             if (payload.views?.length) {
                 for (const viewDef of payload.views) {
-                    const view = await viewDao.update(orgId, viewDef.name, viewDef.displayName, t);
+                    const view = await viewDao.update(orgId, viewDef.handle, viewDef.name, t);
                     if (viewDef.labels?.length) {
                         await viewDao.replaceLabels(orgId, view.dataValues.ID, viewDef.labels, t);
                     }

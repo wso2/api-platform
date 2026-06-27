@@ -779,8 +779,8 @@ OAuth key mapping entry attached to an application.
 
 ```json
 {
-  "name": "partner-apis",
-  "displayName": "Partner APIs",
+  "handle": "partner-apis",
+  "name": "Partner APIs",
   "labels": [
     "partner",
     "public"
@@ -793,8 +793,8 @@ OAuth key mapping entry attached to an application.
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
+|handle|string|true|none|none|
 |name|string|true|none|none|
-|displayName|string|true|none|none|
 |labels|[string]|true|none|none|
 
 <h2 id="tocS_OrganizationCreateRequest">OrganizationCreateRequest</h2>
@@ -1630,8 +1630,8 @@ A single delivery attempt made to a webhook subscriber.
 
 ```json
 {
-  "name": "partner-apis",
-  "displayName": "Partner APIs",
+  "handle": "partner-apis",
+  "name": "Partner APIs",
   "labels": [
     "partner",
     "public"
@@ -1644,8 +1644,8 @@ A single delivery attempt made to a webhook subscriber.
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|name|string|true|none|none|
-|displayName|string|false|none|Optional display name. Defaults to `name` when omitted.|
+|handle|string|true|none|none|
+|name|string|false|none|Optional display name. Defaults to `handle` when omitted.|
 |labels|[string]|true|none|Label names to attach to the view.|
 
 <h2 id="tocS_ViewUpdateRequest">ViewUpdateRequest</h2>
@@ -1657,7 +1657,7 @@ A single delivery attempt made to a webhook subscriber.
 
 ```json
 {
-  "displayName": "Partner and Public APIs",
+  "name": "Partner and Public APIs",
   "addedLabels": [
     "premium"
   ],
@@ -1672,7 +1672,7 @@ A single delivery attempt made to a webhook subscriber.
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|displayName|string|false|none|none|
+|name|string|false|none|none|
 |addedLabels|[string]|false|none|Label names to attach to the view.|
 |removedLabels|[string]|false|none|Label names to detach from the view.|
 

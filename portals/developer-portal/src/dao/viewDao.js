@@ -24,11 +24,11 @@ const { CustomError } = require('../utils/errors/customErrors');
 
 const create = async (orgID, payload, t) => {
 
-    let displayName = payload.displayName ? payload.displayName : payload.name;
+    let name = payload.name ? payload.name : payload.handle;
     try {
         const viewResponse = await View.create({
-            DISPLAY_NAME: displayName,
-            NAME: payload.name,
+            NAME: name,
+            HANDLE: payload.handle,
             ORG_ID: orgID
         }, { transaction: t });
         return viewResponse;
@@ -40,25 +40,25 @@ const create = async (orgID, payload, t) => {
     }
 }
 
-const update = async (orgID, name, displayName, t) => {
+const update = async (orgID, handle, name, t) => {
 
     try {
         let [record, created] = await View.findOrCreate({
             where: {
-                NAME: name,
+                HANDLE: handle,
                 ORG_ID: orgID
             },
             defaults: {
+                HANDLE: handle,
                 NAME: name,
-                DISPLAY_NAME: displayName,
             },
             transaction: t,
             returning: true
         });
         if (!created) {
             record = await record.update({
+                HANDLE: handle,
                 NAME: name,
-                DISPLAY_NAME: displayName,
             }, { transaction: t }); // Update if found
         }
         return record;
@@ -70,12 +70,12 @@ const update = async (orgID, name, displayName, t) => {
     }
 }
 
-const deleteView = async (orgID, viewName) => {
+const deleteView = async (orgID, handle) => {
 
     try {
         const viewResponse = await View.destroy({
             where: {
-                NAME: viewName,
+                HANDLE: handle,
                 ORG_ID: orgID
             }
         });
@@ -88,12 +88,12 @@ const deleteView = async (orgID, viewName) => {
     }
 }
 
-const get = async (orgID, viewName) => {
+const get = async (orgID, handle) => {
 
     try {
         const viewResponse = await View.findOne({
             where: {
-                NAME: viewName,
+                HANDLE: handle,
                 ORG_ID: orgID
             },
             include: {
@@ -117,8 +117,8 @@ const getId = async (orgID, viewName) => {
         const viewResponse = await View.findOne({
             where: {
                 [Op.or]: [
-                    { DISPLAY_NAME: viewName },
-                    { NAME: viewName }
+                    { NAME: viewName },
+                    { HANDLE: viewName }
                 ],
                 ORG_ID: orgID
             }
@@ -221,7 +221,7 @@ const deleteLabels = async (orgID, viewID, labels, t) => {
 // Internal helper used by addLabels, replaceLabels, deleteLabels
 async function getLabelID(orgID, labels, t) {
     const labelDao = require('./labelDao');
-    return labelDao.getIdList(orgID, labels, t);
+    return labelDao.getId(orgID, labels, t);
 }
 
 module.exports = {

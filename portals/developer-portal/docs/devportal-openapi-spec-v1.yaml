@@ -1260,7 +1260,7 @@ paths:
       summary: Create a view
       description: >-
         Creates a Developer Portal view for an organization and associates it with the supplied label names. If
-        `displayName` is omitted, the service stores the view name as the display name.
+        `name` is omitted, the service stores the view's handle as its name.
       requestBody:
         $ref: "#/components/requestBodies/ViewCreateBody"
       responses:
@@ -2567,20 +2567,20 @@ components:
             partnerView:
               summary: Create a partner APIs view
               value:
-                name: partner-apis
-                displayName: Partner APIs
+                handle: partner-apis
+                name: Partner APIs
                 labels:
                   - partner
                   - public
             internalView:
-              summary: Create a view using the name as display name
+              summary: Create a view using the handle as name
               value:
-                name: internal-apis
+                handle: internal-apis
                 labels:
                   - internal
     ViewUpdateBody:
       required: true
-      description: View update payload. Include only the display-name or label changes that should be applied.
+      description: View update payload. Include only the name or label changes that should be applied.
       content:
         application/json:
           schema:
@@ -2589,7 +2589,7 @@ components:
             renameAndRelabel:
               summary: Rename a view and adjust labels
               value:
-                displayName: Partner and Public APIs
+                name: Partner and Public APIs
                 addedLabels:
                   - premium
                 removedLabels:
@@ -3513,8 +3513,8 @@ components:
           schema:
             $ref: "#/components/schemas/ViewResponse"
           example:
-            name: partner-apis
-            displayName: Partner APIs
+            handle: partner-apis
+            name: Partner APIs
             labels:
               - partner
               - public
@@ -3538,7 +3538,7 @@ components:
           schema:
             $ref: "#/components/schemas/ViewUpdateRequest"
           example:
-            displayName: Partner and Public APIs
+            name: Partner and Public APIs
             addedLabels:
               - premium
             removedLabels:
@@ -3944,14 +3944,14 @@ components:
     ViewResponse:
       type: object
       required:
+        - handle
         - name
-        - displayName
         - labels
       properties:
-        name:
+        handle:
           type: string
           example: partner-apis
-        displayName:
+        name:
           type: string
           example: Partner APIs
         labels:
@@ -4668,15 +4668,15 @@ components:
     ViewCreateRequest:
       type: object
       required:
-        - name
+        - handle
         - labels
       properties:
-        name:
+        handle:
           type: string
           example: partner-apis
-        displayName:
+        name:
           type: string
-          description: Optional display name. Defaults to `name` when omitted.
+          description: Optional display name. Defaults to `handle` when omitted.
           example: Partner APIs
         labels:
           type: array
@@ -4691,7 +4691,7 @@ components:
     ViewUpdateRequest:
       type: object
       properties:
-        displayName:
+        name:
           type: string
           example: Partner and Public APIs
         addedLabels:

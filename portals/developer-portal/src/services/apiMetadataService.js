@@ -1438,8 +1438,8 @@ const updateView = async (req, res) => {
         }, async (t) => {
 
             let viewID = "";
-            if (req.body.displayName) {
-                let viewResponse = await viewDao.update(orgId, viewName, req.body.displayName, t);
+            if (req.body.name) {
+                let viewResponse = await viewDao.update(orgId, viewName, req.body.name, t);
                 viewID = viewResponse.dataValues.ID;
             }
             if (removedLabels.length !== 0) {

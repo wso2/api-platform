@@ -28,11 +28,11 @@ const View = sequelize.define('DP_VIEW', {
         type: DataTypes.UUID,
         allowNull: false,
     },
-    NAME: {
+    HANDLE: {
         type: DataTypes.STRING,
         allowNull: false
     },
-    DISPLAY_NAME: {
+    NAME: {
         type: DataTypes.STRING,
         allowNull: false
     }
@@ -42,9 +42,9 @@ const View = sequelize.define('DP_VIEW', {
     returning: true,
     indexes: [
         {
-            name: 'UQ_VIEW_NAME_ORG_ID',
+            name: 'UQ_VIEW_HANDLE_ORG_ID',
             unique: true,
-            fields: ['NAME', 'ORG_ID'],
+            fields: ['HANDLE', 'ORG_ID'],
         }
     ],
 });
