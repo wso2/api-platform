@@ -73,7 +73,7 @@ function claimsToUser(claims: JWTClaims): AppUser {
   };
 }
 
-/** POST /api/portal/v1/auth/login — validates credentials and stores the returned JWT. */
+/** POST /api/portal/v0.9/auth/login — validates credentials and stores the returned JWT. */
 export async function basicAuthLogin(username: string, password: string): Promise<void> {
   const body = new URLSearchParams({ username, password });
   const res = await fetch(`${PORTAL_API_BASE_URL}/auth/login`, {

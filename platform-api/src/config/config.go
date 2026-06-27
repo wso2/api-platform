@@ -308,8 +308,10 @@ func LoadConfig(configPath string) (*Server, error) {
 	// server.go resolves the final key via: SecretEncryptionKey → EncryptionKey → JWT secret.
 	// Only fail (or warn in demo mode) when no key source is available at all.
 	if cfg.Database.SecretEncryptionKey == "" && cfg.Database.EncryptionKey == "" {
+		// APIP_DEMO_MODE defaults to enabled when unset; only an explicit
+		// "false"/"0" opts out and requires a configured encryption key.
 		demoMode := strings.ToLower(strings.TrimSpace(os.Getenv("APIP_DEMO_MODE")))
-		if demoMode != "true" && demoMode != "1" {
+		if demoMode == "false" || demoMode == "0" {
 			return nil, fmt.Errorf("no encryption key configured for secrets management. " +
 				"Set PLATFORM_SECRET_ENCRYPTION_KEY (secret-specific) or DATABASE_ENCRYPTION_KEY (shared). " +
 				"Generate one with: openssl rand -hex 32. " +

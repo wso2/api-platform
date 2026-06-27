@@ -108,7 +108,7 @@ For local development and first-time setup, the portal ships with a built-in use
 ### How it works
 
 1. The user submits the login form.
-2. The Developer Portal forwards the credentials to the Platform API (`POST /api/portal/v1/auth/login`).
+2. The Developer Portal forwards the credentials to the Platform API (`POST /api/portal/v0.9/auth/login`).
 3. The Platform API verifies the bcrypt-hashed password and returns a signed JWT containing `dp:*` scopes.
 4. The Developer Portal stores the JWT in the server-side session and uses the scopes for all subsequent authorization checks.
 
@@ -164,7 +164,7 @@ AUTH_JWT_SECRET_KEY=<random-64-char-string>
 For scripts and CLI tools, get a Bearer token directly from the Platform API and pass it on each request — no session cookie required:
 
 ```bash
-TOKEN=$(curl -sk -X POST "https://localhost:9243/api/portal/v1/auth/login" \
+TOKEN=$(curl -sk -X POST "https://localhost:9243/api/portal/v0.9/auth/login" \
   -d "username=admin&password=admin" | jq -r .token)
 
 curl -s -H "Authorization: Bearer $TOKEN" http://localhost:3000/organizations

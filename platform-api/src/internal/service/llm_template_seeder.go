@@ -55,9 +55,15 @@ func (s *LLMTemplateSeeder) SeedForOrg(orgUUID string) error {
 	if err != nil {
 		return fmt.Errorf("failed to count existing templates: %w", err)
 	}
-	existing, err := s.repo.List(orgUUID, totalCount, 0)
-	if err != nil {
-		return fmt.Errorf("failed to list existing templates: %w", err)
+	// Only list when rows exist: a zero limit produces an empty page on
+	// Postgres/SQLite (LIMIT 0) but is rejected by SQL Server's OFFSET/FETCH
+	// ("the number of rows provided for a FETCH clause must be greater than zero").
+	var existing []*model.LLMProviderTemplate
+	if totalCount > 0 {
+		existing, err = s.repo.List(orgUUID, totalCount, 0)
+		if err != nil {
+			return fmt.Errorf("failed to list existing templates: %w", err)
+		}
 	}
 	existingByID := make(map[string]struct{}, len(existing))
 	existingByHandle := make(map[string]*model.LLMProviderTemplate, len(existing))

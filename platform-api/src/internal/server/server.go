@@ -413,7 +413,10 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	}
 
 	// Register public routes before auth middleware so they bypass authentication.
-	handler.NewAuthLoginHandler(cfg).RegisterPublicRoutes(router)
+	// The login endpoint is only available when file-based auth is enabled.
+	if cfg.Auth.FileBased.Enabled {
+		handler.NewAuthLoginHandler(cfg).RegisterPublicRoutes(router)
+	}
 
 	// Build and apply the authenticator middleware.
 	if cfg.Auth.FileBased.Enabled {
