@@ -48,10 +48,6 @@ const Application = sequelize.define('DP_APPLICATION', {
         type: DataTypes.STRING,
         allowNull: true
     },
-    TYPE: {
-        type: DataTypes.STRING,
-        allowNull: false
-    }
 }, {
     timestamps: false,
     tableName: 'DP_APPLICATION',

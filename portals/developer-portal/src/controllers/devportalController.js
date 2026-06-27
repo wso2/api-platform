@@ -60,7 +60,6 @@ function parseApplicationDataFromRequest(req) {
         return {
             name,
             description: spec.description,
-            type: "WEB"
         };
     }
     return req.body;
@@ -91,7 +90,7 @@ const saveApplication = async (req, res) => {
         const createdApp = application.dataValues;
         try {
             await sequelize.transaction((t) => publish('application.created',
-                { application_id: createdApp.ID, name: createdApp.NAME, description: createdApp.DESCRIPTION, type: createdApp.TYPE },
+                { application_id: createdApp.ID, name: createdApp.NAME, description: createdApp.DESCRIPTION },
                 { transaction: t, orgId: orgID, aggregateType: 'application', aggregateId: createdApp.ID }
             ));
         } catch (pubErr) {
@@ -120,7 +119,7 @@ const updateApplication = async (req, res) => {
             const renamedApp = updatedApp[0].dataValues;
             await sequelize.transaction(async (t) => {
                 await publish('application.updated',
-                    { application_id: appID, name: renamedApp.NAME, description: renamedApp.DESCRIPTION, type: renamedApp.TYPE },
+                    { application_id: appID, name: renamedApp.NAME, description: renamedApp.DESCRIPTION },
                     { transaction: t, orgId: orgID, aggregateType: 'application', aggregateId: appID }
                 );
                 await apiKeyService.notifyApplicationKeysChanged(orgID, appID, { id: appID, name: renamedApp.NAME }, t);

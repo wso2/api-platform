@@ -24,7 +24,6 @@ const create = async (orgID, userID, appData) => {
         NAME: appData.name,
         ORG_ID: orgID,
         DESCRIPTION: appData.description,
-        TYPE: appData.type,
         CREATED_BY: userID
     };
     try {
@@ -44,7 +43,6 @@ const update = async (orgID, appID, userID, appData) => {
             {
                 NAME: appData.name,
                 DESCRIPTION: appData.description,
-                TYPE: appData.type
             },
             {
                 where: {
