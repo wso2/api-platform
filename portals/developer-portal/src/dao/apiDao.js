@@ -15,10 +15,11 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-const { APIMetadata, APILabels } = require('../models/apiMetadata');
+const { APIMetadata, APILabels, APITags } = require('../models/apiMetadata');
 const SubscriptionPlan = require('../models/subscriptionPlan');
 const APIContent = require('../models/apiContent');
 const Labels = require('../models/label');
+const Tags = require('../models/tag');
 const { Sequelize } = require('sequelize');
 const { Op } = require('sequelize');
 const constants = require('../utils/constants');
@@ -48,7 +49,6 @@ const create = async (orgID, apiMetadata, t) => {
             VERSION: apiInfo.apiVersion,
             TYPE: apiInfo.apiType,
             AGENT_VISIBILITY: (apiMetadata.agentVisibility || apiInfo.agentVisibility || 'VISIBLE').toUpperCase(),
-            TAGS: apiInfo.tags ? apiInfo.tags.join(' ') : null,
             TECHNICAL_OWNER: owners.technicalOwner,
             TECHNICAL_OWNER_EMAIL: owners.technicalOwnerEmail,
             BUSINESS_OWNER_EMAIL: owners.businessOwnerEmail,
@@ -85,7 +85,6 @@ const update = async (orgID, apiID, apiMetadata, t) => {
             DESCRIPTION: apiInfo.apiDescription,
             VERSION: apiInfo.apiVersion,
             TYPE: apiInfo.apiType,
-            TAGS: apiInfo.tags ? apiInfo.tags.join(' ') : null,
             AGENT_VISIBILITY: (apiMetadata.agentVisibility || apiInfo.agentVisibility || 'VISIBLE').toUpperCase(),
             TECHNICAL_OWNER: owners.technicalOwner,
             TECHNICAL_OWNER_EMAIL: owners.technicalOwnerEmail,
@@ -157,6 +156,12 @@ const get = async (orgID, apiID, t) => {
                 model: Labels,
                 attributes: ["NAME"],
                 through: { attributes: [] }
+            },
+            {
+                model: Tags,
+                attributes: ["NAME"],
+                through: { attributes: [] },
+                required: false
             }
             ],
             where: {
@@ -177,28 +182,17 @@ const get = async (orgID, apiID, t) => {
 
 const getByCondition = async (condition, t) => {
     try {
+        const tagsInclude = {
+            model: Tags,
+            attributes: ["NAME"],
+            through: { attributes: [] },
+            required: false
+        };
         if (condition.TAGS) {
-            const tagsArray = condition.TAGS.split(",").map(tag => tag.trim());
-            condition.TAGS = {
-                [Op.or]: tagsArray.map(tag => ({
-                    [Op.and]: {
-                        [Sequelize.Op.or]: [
-                            {
-                                [Sequelize.Op.like]: `% ${tag} %`
-                            },
-                            {
-                                [Sequelize.Op.like]: `% ${tag}`
-                            },
-                            {
-                                [Sequelize.Op.like]: `${tag} %`
-                            },
-                            {
-                                [Sequelize.Op.eq]: `${tag}`
-                            }
-                        ]
-                    }
-                }))
-            };
+            const tagsArray = condition.TAGS.split(",").map(tag => tag.trim()).filter(Boolean);
+            delete condition.TAGS;
+            tagsInclude.required = true;
+            tagsInclude.where = { NAME: { [Op.in]: tagsArray } };
         }
         const apiMetadataResponse = await APIMetadata.findAll({
             include: [{
@@ -209,7 +203,8 @@ const getByCondition = async (condition, t) => {
                 model: SubscriptionPlan,
                 through: { attributes: [] },
                 required: false
-            }
+            },
+            tagsInclude
             ],
             where: condition,
             transaction: t
@@ -253,6 +248,12 @@ const list = async (orgID, viewName, t) => {
                         [Op.in]: Sequelize.literal(`(SELECT "LABEL_ID" FROM "DP_VIEW_LABEL" WHERE "VIEW_ID" = '${viewID}')`)
                     }
                 }
+            },
+            {
+                model: Tags,
+                attributes: ["NAME"],
+                required: false,
+                through: { attributes: [] }
             }
             ],
             transaction: t
@@ -290,6 +291,12 @@ const listFromAllViews = async (orgID, t) => {
                 attributes: ["NAME"],
                 required: true,
                 through: { attributes: [] }
+            },
+            {
+                model: Tags,
+                attributes: ["NAME"],
+                required: false,
+                through: { attributes: [] }
             }
             ],
             transaction: t
@@ -308,6 +315,22 @@ const searchFallback = async (orgID, searchTerm, viewName, t) => {
     const viewDao = require('./viewDao');
     const pattern = `%${searchTerm}%`;
     const viewID = await viewDao.getId(orgID, viewName);
+
+    const matchingTags = await Tags.findAll({
+        attributes: ['ID'],
+        where: { ORG_ID: orgID, NAME: { [Op.like]: pattern } },
+        transaction: t,
+    });
+    const matchingTagIDs = matchingTags.map(tag => tag.ID);
+    const matchingTagAPIs = matchingTagIDs.length
+        ? await APITags.findAll({
+            attributes: ['API_ID'],
+            where: { ORG_ID: orgID, TAG_ID: { [Op.in]: matchingTagIDs } },
+            transaction: t,
+        })
+        : [];
+    const taggedAPIIDs = [...new Set(matchingTagAPIs.map(row => row.API_ID))];
+
     return APIMetadata.findAll({
         where: {
             ORG_ID: orgID,
@@ -317,10 +340,7 @@ const searchFallback = async (orgID, searchTerm, viewName, t) => {
                     Sequelize.cast(Sequelize.col('DP_API_METADATA.METADATA_SEARCH'), 'TEXT'),
                     { [Op.like]: pattern }
                 ),
-                Sequelize.where(
-                    Sequelize.col('DP_API_METADATA.TAGS'),
-                    { [Op.like]: pattern }
-                ),
+                { ID: { [Op.in]: taggedAPIIDs } },
             ],
         },
         include: [
@@ -336,6 +356,12 @@ const searchFallback = async (orgID, searchTerm, viewName, t) => {
                         [Op.in]: Sequelize.literal(`(SELECT "LABEL_ID" FROM "DP_VIEW_LABEL" WHERE "VIEW_ID" = '${viewID}')`)
                     }
                 }
+            },
+            {
+                model: Tags,
+                attributes: ['NAME'],
+                required: false,
+                through: { attributes: [] }
             },
         ],
         transaction: t,

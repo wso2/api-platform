@@ -21,6 +21,7 @@ const sequelize = require('../db/sequelizeConfig');
 const apiDao = require("../dao/apiDao");
 const subDao = require('../dao/subscriptionDao');
 const labelDao = require('../dao/labelDao');
+const tagDao = require('../dao/tagDao');
 const viewDao = require('../dao/viewDao');
 const subscriptionPlanDao = require('../dao/subscriptionPlanDao');
 const apiFileDao = require('../dao/apiFileDao');
@@ -135,6 +136,16 @@ const createAPIMetadata = async (req, res) => {
                 await labelDao.createApiMapping(orgId, apiID, labels, t);
             } else {
                 await labelDao.createApiMapping(orgId, apiID, ['default'], t);
+            }
+            //store api tags
+            if (apiMetadata.apiInfo.tags) {
+                const tags = apiMetadata.apiInfo.tags;
+                if (!Array.isArray(tags)) {
+                    throw new Sequelize.ValidationError(
+                        "Missing or Invalid fields in the request payload"
+                    );
+                }
+                await tagDao.createApiMapping(orgId, apiID, tags, t);
             }
             // store api definition file (skipped for GraphQL — schema stored below via schemaDefinition)
             if (apiDefinitionFile) {
@@ -452,6 +463,8 @@ const updateAPIMetadata = async (req, res) => {
                 }
                 updatedAPI[0].dataValues.removedLabels = apiMetadata.apiInfo.removedLabels;
             }
+            // Tags are fully replaced on every update, matching the previous TAGS column's overwrite semantics
+            await tagDao.replaceApiMapping(orgId, apiId, apiMetadata.apiInfo.tags || [], t);
             if (apiMetadata.subscriptionPlans) {
                 const subscriptionPlans = [];
                 const apiSubscriptionPlans = apiMetadata.subscriptionPlans;

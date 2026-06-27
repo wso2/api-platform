@@ -214,7 +214,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |query|query|string|false|Free-text API metadata search term.|
 |apiName|query|string|false|Exact API name filter.|
 |version|query|string|false|Exact API version filter.|
-|tags|query|string|false|Exact API tags filter used by the metadata DAO.|
+|tags|query|string|false|Comma-separated tag names. Matches APIs tagged with any of the given names.|
 |view|query|string|false|Developer Portal view name used to filter visible APIs.|
 |limit|query|integer|false|Maximum number of records to return.|
 |offset|query|integer|false|Number of records to skip before returning results.|

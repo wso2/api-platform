@@ -67,8 +67,8 @@ class APIInfo {
             const images = apiInfo.DP_API_CONTENTs.filter(content => content.TYPE === constants.DOC_TYPES.IMAGES);
             this.apiImageMetadata = getAPIImages(images);
         }
-        if (apiInfo.TAGS) {
-            this.tags = apiInfo.TAGS.split(" ");
+        if (apiInfo.DP_TAGs) {
+            this.tags = apiInfo.DP_TAGs.map(tag => tag.dataValues ? tag.dataValues.NAME : tag);
         }
         if (apiInfo.DP_LABELs) {
             this.labels = apiInfo.DP_LABELs.map(label => label.dataValues ? label.dataValues.NAME : label);

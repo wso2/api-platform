@@ -70,7 +70,7 @@ const loadViewSettingsPage = async (req, res) => {
             apiStatus: api.STATUS,
             productionUrl: api.PRODUCTION_URL,
             sandboxUrl: api.SANDBOX_URL,
-            tags: api.TAGS || '',
+            tags: (api.DP_TAGs || []).map(tag => tag.NAME),
             agentVisibility: api.AGENT_VISIBILITY,
             subscriptionPlans: (api.SubscriptionPlans || []).map(p => p.NAME),
         }));

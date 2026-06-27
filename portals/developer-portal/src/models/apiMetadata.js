@@ -20,6 +20,7 @@ const sequelize = require('../db/sequelizeConfig')
 const APIContent = require('../models/apiContent')
 const { Organization } = require('./organization')
 const Labels = require('./label');
+const Tags = require('./tag');
 
 const APIMetadata = sequelize.define('DP_API_METADATA', {
   ID: {
@@ -85,10 +86,6 @@ const APIMetadata = sequelize.define('DP_API_METADATA', {
   },
   METADATA_SEARCH: {
     type: DataTypes.JSON,
-    allowNull: true
-  },
-  TAGS: {
-    type: DataTypes.STRING,
     allowNull: true
   },
   HANDLE: {
@@ -158,11 +155,60 @@ const APILabels = sequelize.define('DP_API_LABEL', {
   ]
 });
 
+const APITags = sequelize.define('DP_API_TAG', {
+
+  ID: {
+      type: DataTypes.UUID,
+      defaultValue: Sequelize.UUIDV4,
+      primaryKey: true
+  },
+  ORG_ID: {
+      type: DataTypes.UUID,
+      allowNull: false
+  },
+  API_ID: {
+      type: DataTypes.UUID,
+      allowNull: false,
+      references: {
+          model: APIMetadata,
+          key: 'ID',
+      }
+  },
+  TAG_ID: {
+      type: DataTypes.UUID,
+      allowNull: false,
+      references: {
+          model: Tags,
+          key: 'ID',
+      }
+  }
+}, {
+  timestamps: false,
+  tableName: 'DP_API_TAG',
+  returning: true,
+  indexes: [
+      {
+          name: 'UQ_API_TAG_TAG_API_ORG',
+          unique: true,
+          fields: ['TAG_ID', 'API_ID', 'ORG_ID']
+      }
+  ]
+});
+
 APILabels.belongsTo(Organization, {
   foreignKey: 'ORG_ID'
 });
 
 APILabels.belongsTo(APIMetadata, {
+  foreignKey: 'API_ID',
+  onDelete: 'CASCADE'
+});
+
+APITags.belongsTo(Organization, {
+  foreignKey: 'ORG_ID'
+});
+
+APITags.belongsTo(APIMetadata, {
   foreignKey: 'API_ID',
   onDelete: 'CASCADE'
 });
@@ -179,18 +225,30 @@ APIMetadata.hasMany(APIContent, {
   onDelete: 'CASCADE'
 });
 
-APIMetadata.belongsToMany(Labels, { 
-  through: APILabels, 
+APIMetadata.belongsToMany(Labels, {
+  through: APILabels,
   foreignKey: "API_ID",
   otherKey: "LABEL_ID"
 });
-Labels.belongsToMany(APIMetadata, { 
+Labels.belongsToMany(APIMetadata, {
   through: APILabels,
   foreignKey: "LABEL_ID",
   otherKey: "API_ID"
  });
 
+APIMetadata.belongsToMany(Tags, {
+  through: APITags,
+  foreignKey: "API_ID",
+  otherKey: "TAG_ID"
+});
+Tags.belongsToMany(APIMetadata, {
+  through: APITags,
+  foreignKey: "TAG_ID",
+  otherKey: "API_ID"
+});
+
 module.exports = {
   APIMetadata,
-  APILabels
+  APILabels,
+  APITags
 };

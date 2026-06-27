@@ -40,6 +40,10 @@ SELECT
         ARRAY_AGG(DISTINCT "DP_LABEL"."NAME") FILTER (WHERE "DP_LABEL"."NAME" IS NOT NULL),
         '{}'
     ) AS "DP_LABELs",
+    COALESCE(
+        ARRAY_AGG(DISTINCT "DP_TAG"."NAME") FILTER (WHERE "DP_TAG"."NAME" IS NOT NULL),
+        '{}'
+    ) AS "DP_TAGs",
     ts_rank(
         to_tsvector('english', metadata."METADATA_SEARCH"::text),
         plainto_tsquery('english', COALESCE(:searchTerm, ''))
@@ -75,7 +79,13 @@ LEFT OUTER JOIN
     ON metadata."ID" = "DP_API_LABEL"."API_ID"
 LEFT OUTER JOIN
     "DP_LABEL"
-    ON "DP_API_LABEL"."LABEL_ID" = "DP_LABEL"."LABEL_ID"
+    ON "DP_API_LABEL"."LABEL_ID" = "DP_LABEL"."ID"
+LEFT OUTER JOIN
+    "DP_API_TAG"
+    ON metadata."ID" = "DP_API_TAG"."API_ID"
+LEFT OUTER JOIN
+    "DP_TAG"
+    ON "DP_API_TAG"."TAG_ID" = "DP_TAG"."ID"
 WHERE
     (
         to_tsvector('english', metadata."METADATA_SEARCH"::text) @@ plainto_tsquery('english', COALESCE(:searchTerm, ''))

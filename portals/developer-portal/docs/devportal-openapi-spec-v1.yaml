@@ -2303,8 +2303,8 @@ components:
       required: false
       schema:
         type: string
-        example: weather public
-      description: Exact API tags filter used by the metadata DAO.
+        example: weather,public
+      description: Comma-separated tag names. Matches APIs tagged with any of the given names.
     apiViewQuery:
       name: view
       in: query
