@@ -31,7 +31,6 @@ import (
 	"platform-api/src/internal/utils"
 
 	"github.com/gin-gonic/gin"
-	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
 // MCPProxyDeploymentHandler handles MCP proxy deployment endpoints
@@ -93,9 +92,9 @@ func (h *MCPProxyDeploymentHandler) DeployMCPProxy(c *gin.Context) {
 			"base is required (use 'current' or a deploymentId)"))
 		return
 	}
-	if req.GatewayId == (openapi_types.UUID{}) {
+	if req.GatewayHandle == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"gatewayId is required"))
+			"gatewayHandle is required"))
 		return
 	}
 
@@ -156,15 +155,15 @@ func (h *MCPProxyDeploymentHandler) UndeployMCPProxyDeployment(c *gin.Context) {
 
 	proxyId := c.Param("mcpProxyHandle")
 	deploymentId := c.Param("deploymentId")
-	gatewayId := c.Query("gatewayId")
+	gatewayHandle := c.Query("gatewayHandle")
 	if deploymentId == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"deploymentId is required"))
 		return
 	}
-	if gatewayId == "" {
+	if gatewayHandle == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"gatewayId is required"))
+			"gatewayHandle is required"))
 		return
 	}
 
@@ -174,7 +173,7 @@ func (h *MCPProxyDeploymentHandler) UndeployMCPProxyDeployment(c *gin.Context) {
 		return
 	}
 
-	deployment, err := h.deploymentService.UndeployDeploymentByHandle(proxyId, deploymentId, gatewayId, orgId)
+	deployment, err := h.deploymentService.UndeployDeploymentByHandle(proxyId, deploymentId, gatewayHandle, orgId)
 	if err != nil {
 		// DP-originated artifacts are read-only: undeployment cannot be initiated from the CP.
 		if respondArtifactGuardError(c, err) {
@@ -202,7 +201,7 @@ func (h *MCPProxyDeploymentHandler) UndeployMCPProxyDeployment(c *gin.Context) {
 				"Deployment is bound to a different gateway"))
 			return
 		default:
-			h.slogger.Error("Failed to undeploy MCP proxy", "proxyId", proxyId, "deploymentId", deploymentId, "gatewayId", gatewayId, "error", err)
+			h.slogger.Error("Failed to undeploy MCP proxy", "proxyId", proxyId, "deploymentId", deploymentId, "gatewayHandle", gatewayHandle, "error", err)
 			c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to undeploy deployment"))
 			return
 		}
@@ -222,16 +221,16 @@ func (h *MCPProxyDeploymentHandler) RestoreMCPProxyDeployment(c *gin.Context) {
 
 	proxyId := c.Param("mcpProxyHandle")
 	deploymentId := c.Param("deploymentId")
-	gatewayId := c.Query("gatewayId")
+	gatewayHandle := c.Query("gatewayHandle")
 
 	if deploymentId == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"deploymentId is required"))
 		return
 	}
-	if gatewayId == "" {
+	if gatewayHandle == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"gatewayId is required"))
+			"gatewayHandle is required"))
 		return
 	}
 	if proxyId == "" {
@@ -240,7 +239,7 @@ func (h *MCPProxyDeploymentHandler) RestoreMCPProxyDeployment(c *gin.Context) {
 		return
 	}
 
-	deployment, err := h.deploymentService.RestoreMCPDeploymentByHandle(proxyId, deploymentId, gatewayId, orgId)
+	deployment, err := h.deploymentService.RestoreMCPDeploymentByHandle(proxyId, deploymentId, gatewayHandle, orgId)
 	if err != nil {
 		// DP-originated artifacts are read-only: restore cannot be initiated from the CP.
 		if respondArtifactGuardError(c, err) {
@@ -268,7 +267,7 @@ func (h *MCPProxyDeploymentHandler) RestoreMCPProxyDeployment(c *gin.Context) {
 				"Deployment is bound to a different gateway"))
 			return
 		default:
-			h.slogger.Error("Failed to restore MCP proxy deployment", "proxyId", proxyId, "deploymentId", deploymentId, "gatewayId", gatewayId, "error", err)
+			h.slogger.Error("Failed to restore MCP proxy deployment", "proxyId", proxyId, "deploymentId", deploymentId, "gatewayHandle", gatewayHandle, "error", err)
 			c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to restore deployment"))
 			return
 		}
@@ -393,8 +392,8 @@ func (h *MCPProxyDeploymentHandler) GetMCPProxyDeployments(c *gin.Context) {
 	}
 
 	gatewayVal := ""
-	if params.GatewayId != nil {
-		gatewayVal = string(*params.GatewayId)
+	if params.GatewayHandle != nil {
+		gatewayVal = string(*params.GatewayHandle)
 	}
 
 	statusVal := ""

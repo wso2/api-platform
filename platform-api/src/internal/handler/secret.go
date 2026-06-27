@@ -47,9 +47,9 @@ func (h *SecretHandler) RegisterRoutes(r *gin.Engine) {
 		g := r.Group(version)
 		g.POST("/secrets", h.CreateSecret)
 		g.GET("/secrets", h.ListSecrets)
-		g.GET("/secrets/:id", h.GetSecret)
-		g.PUT("/secrets/:id", h.UpdateSecret)
-		g.DELETE("/secrets/:id", h.DeleteSecret)
+		g.GET("/secrets/:handle", h.GetSecret)
+		g.PUT("/secrets/:handle", h.UpdateSecret)
+		g.DELETE("/secrets/:handle", h.DeleteSecret)
 	}
 }
 
@@ -136,7 +136,7 @@ func (h *SecretHandler) GetSecret(c *gin.Context) {
 		return
 	}
 
-	handle := c.Param("id")
+	handle := c.Param("handle")
 	if handle == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Secret name is required"))
 		return
@@ -163,7 +163,7 @@ func (h *SecretHandler) UpdateSecret(c *gin.Context) {
 		return
 	}
 
-	handle := c.Param("id")
+	handle := c.Param("handle")
 	if handle == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Secret name is required"))
 		return
@@ -198,7 +198,7 @@ func (h *SecretHandler) DeleteSecret(c *gin.Context) {
 		return
 	}
 
-	handle := c.Param("id")
+	handle := c.Param("handle")
 	if handle == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Secret name is required"))
 		return
@@ -217,7 +217,7 @@ func (h *SecretHandler) DeleteSecret(c *gin.Context) {
 		if errors.As(err, &inUseErr) {
 			refs := make([]dto.SecretReferenceDTO, 0, len(inUseErr.References))
 			for _, r := range inUseErr.References {
-				refs = append(refs, dto.SecretReferenceDTO{Type: r.Type, Handle: r.Handle, Name: r.Name})
+				refs = append(refs, dto.SecretReferenceDTO{Type: r.Type, Handle: r.Handle, DisplayName: r.Name})
 			}
 			c.JSON(http.StatusConflict, dto.SecretDeleteConflictResponse{
 				Error:      "secret is referenced by active resources",

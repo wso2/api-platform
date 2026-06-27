@@ -47,14 +47,14 @@ export default function GatewayDeployCard({
 
   const hasDeployments = useMemo(() => {
     if (!deployments?.list) return false;
-    return deployments.list.some((d) => d.gatewayId === gateway.id);
-  }, [deployments, gateway.id]);
+    return deployments.list.some((d) => d.gatewayHandle === gateway.handle);
+  }, [deployments, gateway.handle]);
 
   const currentDeploymentDisplay = useMemo(() => {
     if (!deployments?.list) return null;
 
     const gatewayDeployments = deployments.list
-      .filter((d) => d.gatewayId === gateway.id)
+      .filter((d) => d.gatewayHandle === gateway.handle)
       .sort((a, b) => {
         const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
         const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
@@ -66,7 +66,7 @@ export default function GatewayDeployCard({
     const deployed = gatewayDeployments.find((d) => d.status === 'DEPLOYED');
     const target = deployed || gatewayDeployments[0];
     return target.name ?? `Deployment ${gatewayDeployments.length}`;
-  }, [deployments, gateway.id]);
+  }, [deployments, gateway.handle]);
 
   return (
     <Accordion

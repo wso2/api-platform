@@ -192,20 +192,20 @@ const GatewayContent: React.FC = () => {
   };
 
   const openFormForEdit = (g: Gateway) => {
-    setEditingId(g.id);
+    setEditingId(g.handle);
     const nextType = g.type ?? "hybrid";
     setType(nextType);
-    setDisplayName(g.displayName);
+    setDisplayName(g.name);
     setDescription(g.description ?? "");
     setHost(g.vhost ?? g.host ?? "");
-    setName(g.name);
+    setName(g.handle);
     setMode("form");
 
     if (!g.description || !(g.vhost ?? g.host)) {
-      fetchGatewayById(g.handle ?? g.name ?? g.id)
+      fetchGatewayById(g.handle)
         .then((full) => {
-          if (editingIdRef.current !== full.id) return;
-          setDisplayName(full.displayName);
+          if (editingIdRef.current !== full.handle) return;
+          setDisplayName(full.name);
           setDescription(full.description ?? "");
           setHost(full.vhost ?? full.host ?? "");
           setName(full.name);
@@ -230,9 +230,8 @@ const GatewayContent: React.FC = () => {
 
     if (editingId) {
       updateGateway(editingId, {
-        displayName,
+        name: displayName,
         description,
-        name,
         host,
         vhost: host,
         type,
@@ -250,8 +249,8 @@ const GatewayContent: React.FC = () => {
     setIsSubmitting(true);
     try {
       await createGateway({
-        displayName,
-        name,
+        handle: name,
+        name: displayName,
         description: description || undefined,
         vhost: host || undefined,
         type,
@@ -278,7 +277,7 @@ const GatewayContent: React.FC = () => {
   const handleDelete = async (id: string) => {
     const nextLen = gateways.length - 1;
     try {
-      await deleteGatewayByPayload({ gatewayId: id });
+      await deleteGatewayByPayload({ gatewayHandle: id });
       await refreshGateways();
       setSnack({ open: true, msg: "Gateway deleted", severity: "success" });
       if (nextLen <= 0) setMode("choose");

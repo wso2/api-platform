@@ -49,7 +49,7 @@ export default function GatewayDeployCardContent({
             pl: { md: 3, xs: 0 },
           }}
         >
-          <GatewayDeploymentHistory gatewayId={gateway.id} />
+          <GatewayDeploymentHistory gatewayHandle={gateway.handle} />
         </Grid>
       )}
     </Grid>

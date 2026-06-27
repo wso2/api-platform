@@ -274,7 +274,7 @@ function ServiceProviderOverviewContent() {
   const showSnackbar = useAIWorkspaceSnackbar();
   const hasUnsavedChanges = hasDraftChanges || isRateLimitingDirty;
   const selectedGateway = useMemo(
-    () => gateways.find((gateway) => gateway.id === selectedGatewayId) ?? null,
+    () => gateways.find((gateway) => gateway.handle === selectedGatewayId) ?? null,
     [gateways, selectedGatewayId]
   );
   const generatedInvokeUrl = useMemo(() => {
@@ -619,18 +619,18 @@ function ServiceProviderOverviewContent() {
         deployedEntries.forEach((deployment) => {
           const nextTime = new Date(deployment.createdAt || 0).getTime();
           const currentTime = latestDeploymentTimeByGateway.get(
-            deployment.gatewayId
+            deployment.gatewayHandle
           );
           if (currentTime === undefined || nextTime > currentTime) {
-            latestDeploymentTimeByGateway.set(deployment.gatewayId, nextTime);
+            latestDeploymentTimeByGateway.set(deployment.gatewayHandle, nextTime);
           }
         });
 
         const deployedGateways = availableGateways
-          .filter((gateway) => latestDeploymentTimeByGateway.has(gateway.id))
+          .filter((gateway) => latestDeploymentTimeByGateway.has(gateway.handle))
           .sort((a, b) => {
-            const timeA = latestDeploymentTimeByGateway.get(a.id) || 0;
-            const timeB = latestDeploymentTimeByGateway.get(b.id) || 0;
+            const timeA = latestDeploymentTimeByGateway.get(a.handle) || 0;
+            const timeB = latestDeploymentTimeByGateway.get(b.handle) || 0;
             return timeB - timeA;
           });
 
@@ -638,11 +638,11 @@ function ServiceProviderOverviewContent() {
         setSelectedGatewayId((currentSelectedId) => {
           if (
             currentSelectedId &&
-            deployedGateways.some((gateway) => gateway.id === currentSelectedId)
+            deployedGateways.some((gateway) => gateway.handle === currentSelectedId)
           ) {
             return currentSelectedId;
           }
-          return deployedGateways[0]?.id || '';
+          return deployedGateways[0]?.handle || '';
         });
       } catch (gatewayError) {
         if (!isMounted) return;

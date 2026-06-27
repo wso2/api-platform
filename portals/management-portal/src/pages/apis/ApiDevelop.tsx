@@ -131,8 +131,8 @@ const DevelopContent: React.FC = () => {
         const nowIso = new Date().toISOString();
         const seeded: Record<string, DeployRevisionResponseItem> = {};
         onlyDeployed.forEach((gw) => {
-          seeded[gw.id] = {
-            gatewayId: gw.id,
+          seeded[gw.handle] = {
+            gatewayHandle: gw.handle,
             revisionId: String(revisionIdFromQuery),
             vhost: gw.vhost ?? undefined,
             status: "ACTIVE",
@@ -145,7 +145,7 @@ const DevelopContent: React.FC = () => {
         // Initial mode based on whether API has any associated gateways
         if (apiAssociatedGws.length > 0) {
           // Show Cards view with all associated gateways (both deployed and not)
-          setStagedIds(apiAssociatedGws.map((g) => g.id));
+          setStagedIds(apiAssociatedGws.map((g) => g.handle));
           setMode("cards");
         } else {
           // No associations yet → show the Add Gateways tile
@@ -168,7 +168,7 @@ const DevelopContent: React.FC = () => {
 
   const deployedMap = React.useMemo(() => {
     const m = new Map<string, ApiGatewaySummary>();
-    deployedForApi.forEach((g) => m.set(g.id, g));
+    deployedForApi.forEach((g) => m.set(g.handle, g));
     return m;
   }, [deployedForApi]);
 
@@ -178,48 +178,47 @@ const DevelopContent: React.FC = () => {
   );
 
   const visibleGateways = React.useMemo(
-    () => gateways.filter((g) => !associatedIds.has(g.id)),
+    () => gateways.filter((g) => !associatedIds.has(g.handle)),
     [gateways, associatedIds]
   );
 
-  const gatewaysById = React.useMemo(() => {
+  const gatewaysByHandle = React.useMemo(() => {
     const m = new Map<string, Gateway>();
-    gateways.forEach((g) => m.set(g.id, g));
+    gateways.forEach((g) => m.set(g.handle, g));
     return m;
   }, [gateways]);
 
   const noMoreGateways = visibleGateways.length === 0;
 
-  const handleDeploySingle = async (gatewayId: string) => {
+  const handleDeploySingle = async (gatewayHandle: string) => {
     if (!effectiveApiId) return;
-    const gw = gatewaysById.get(gatewayId);
+    const gw = gatewaysByHandle.get(gatewayHandle);
     const targets = [
       {
-        gatewayId,
+        gatewayHandle: gatewayHandle,
         vhost: gw?.vhost ?? undefined,
         displayOnDevportal: true,
       },
     ];
 
     try {
-      setDeployingIds((prev) => new Set(prev).add(gatewayId));
+      setDeployingIds((prev) => new Set(prev).add(gatewayHandle));
       const resp = await deployApiRevision(
         effectiveApiId,
         revisionIdFromQuery,
         targets
       );
-      const item = resp.find((x) => x.gatewayId === gatewayId) ?? resp[0];
+      const item = resp.find((x) => x.gatewayHandle === gatewayHandle) ?? resp[0];
 
       if (item) {
-        setDeployByGateway((prev) => ({ ...prev, [gatewayId]: item }));
+        setDeployByGateway((prev) => ({ ...prev, [gatewayHandle]: item }));
 
         // if it wasn't deployed before, mark it as deployed for this API now
-        if (!deployedMap.has(gatewayId) && gw) {
+        if (!deployedMap.has(gatewayHandle) && gw) {
           const newly: ApiGatewaySummary = {
-            id: gw.id,
+            handle: gw.handle,
             organizationId: (gw as any).organizationId ?? "",
             name: gw.name,
-            displayName: gw.displayName ?? undefined,
             description: gw.description ?? undefined,
             vhost: gw.vhost ?? undefined,
             isCritical: (gw as any).isCritical ?? (gw as any).critical ?? false,
@@ -232,7 +231,7 @@ const DevelopContent: React.FC = () => {
           // optional: if this gateway was selected in pick mode, remove from selected
           setSelectedIds((prev) => {
             const next = new Set(prev);
-            next.delete(gatewayId);
+            next.delete(gatewayHandle);
             return next;
           });
         }
@@ -240,7 +239,7 @@ const DevelopContent: React.FC = () => {
     } finally {
       setDeployingIds((prev) => {
         const next = new Set(prev);
-        next.delete(gatewayId);
+        next.delete(gatewayHandle);
         return next;
       });
     }
@@ -260,26 +259,26 @@ const DevelopContent: React.FC = () => {
 
   const areAllSelected =
     visibleGateways.length > 0 &&
-    visibleGateways.every((g) => selectedIds.has(g.id));
+    visibleGateways.every((g) => selectedIds.has(g.handle));
 
   const isSomeSelected =
     selectedIds.size > 0 &&
     !areAllSelected &&
-    visibleGateways.some((g) => selectedIds.has(g.id));
+    visibleGateways.some((g) => selectedIds.has(g.handle));
 
   const toggleAll = () => {
     if (areAllSelected) {
       // unselect only the visible ones
       setSelectedIds((prev) => {
         const next = new Set(prev);
-        visibleGateways.forEach((g) => next.delete(g.id));
+        visibleGateways.forEach((g) => next.delete(g.handle));
         return next;
       });
     } else {
       // select all visible
       setSelectedIds((prev) => {
         const next = new Set(prev);
-        visibleGateways.forEach((g) => next.add(g.id));
+        visibleGateways.forEach((g) => next.add(g.handle));
         return next;
       });
     }
@@ -299,8 +298,8 @@ const DevelopContent: React.FC = () => {
         setDeployedForApi(onlyDeployed);
         
         setStagedIds((prev) => {
-          const allGatewayIds = updatedGateways.map((gw) => gw.id);
-          const combined = new Set([...prev, ...allGatewayIds]);
+          const allGatewayHandles = updatedGateways.map((gw) => gw.handle);
+          const combined = new Set([...prev, ...allGatewayHandles]);
           return Array.from(combined);
         });
         
@@ -357,7 +356,7 @@ const renderEmptyTile = () => (
 
   const renderCards = () => {
     const selectedGateways = stagedIds
-      .map((id) => gatewaysById.get(id))
+      .map((handle) => gatewaysByHandle.get(handle))
       .filter((g): g is Gateway => Boolean(g));
 
     // filter by SearchBar query
@@ -365,7 +364,7 @@ const renderEmptyTile = () => (
     const filteredGateways = q
       ? selectedGateways.filter((gw) => {
           const text =
-            `${gw.displayName || gw.name || ""} ` +
+            `${gw.name || ""} ` +
             `${gw.description || ""} ` +
             `${gw.vhost || ""}`;
           return text.toLowerCase().includes(q);
@@ -420,7 +419,7 @@ const renderEmptyTile = () => (
       >
         {filteredGateways.map((gw) => (
           <GatewayDeployCard
-            key={gw.id}
+            key={gw.handle}
             gw={gw}
             apiId={effectiveApiId}
             api={api}

@@ -367,9 +367,8 @@ func (h *SubscriptionPlanHandler) RegisterRoutes(r *gin.Engine) {
 
 func toSubscriptionPlanResponse(plan *model.SubscriptionPlan) gin.H {
 	resp := gin.H{
-		"id":               plan.UUID,
-		"handle":           plan.Handle,
-		"name":             plan.Name,
+		"handle": plan.Handle,
+		"name":   plan.Name,
 		"billingPlan":      plan.BillingPlan,
 		"stopOnQuotaReach": plan.StopOnQuotaReach != 0,
 		"organizationId":   plan.OrganizationUUID,

@@ -29,7 +29,6 @@ import (
 	"platform-api/src/internal/utils"
 
 	"github.com/gin-gonic/gin"
-	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
 type DeploymentHandler struct {
@@ -78,9 +77,9 @@ func (h *DeploymentHandler) DeployAPI(c *gin.Context) {
 			"base is required (use 'current' or a deploymentId)"))
 		return
 	}
-	if req.GatewayId == (openapi_types.UUID{}) {
+	if req.GatewayHandle == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"gatewayId is required"))
+			"gatewayHandle is required"))
 		return
 	}
 
@@ -145,20 +144,15 @@ func (h *DeploymentHandler) UndeployDeployment(c *gin.Context) {
 
 	apiId := c.Param("apiHandle")
 	deploymentId := c.Param("deploymentId")
-	gatewayId := c.Query("gatewayId")
+	gatewayHandle := c.Query("gatewayHandle")
 	if deploymentId == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"deploymentId is required"))
 		return
 	}
-	if gatewayId == "" {
+	if gatewayHandle == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"gatewayId is required"))
-		return
-	}
-	if deploymentId == "00000000-0000-0000-0000-000000000000" || gatewayId == "00000000-0000-0000-0000-000000000000" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"deploymentId/gatewayId cannot be zero-value UUID"))
+			"gatewayHandle is required"))
 		return
 	}
 
@@ -168,7 +162,7 @@ func (h *DeploymentHandler) UndeployDeployment(c *gin.Context) {
 		return
 	}
 	actor, _ := middleware.GetUsernameFromContext(c)
-	deployment, err := h.deploymentService.UndeployDeploymentByHandle(apiId, deploymentId, gatewayId, orgId, actor)
+	deployment, err := h.deploymentService.UndeployDeploymentByHandle(apiId, deploymentId, gatewayHandle, orgId, actor)
 	if err != nil {
 		// DP-originated artifacts are read-only: undeployment cannot be initiated from the CP.
 		if respondArtifactGuardError(c, err) {
@@ -199,7 +193,7 @@ func (h *DeploymentHandler) UndeployDeployment(c *gin.Context) {
 				"Deployment is bound to a different gateway"))
 			return
 		}
-		h.slogger.Error("Failed to undeploy", "apiId", apiId, "deploymentId", deploymentId, "gatewayId", gatewayId, "error", err)
+		h.slogger.Error("Failed to undeploy", "apiId", apiId, "deploymentId", deploymentId, "gatewayHandle", gatewayHandle, "error", err)
 		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to undeploy deployment"))
 		return
 	}
@@ -218,12 +212,7 @@ func (h *DeploymentHandler) RestoreDeployment(c *gin.Context) {
 
 	apiId := c.Param("apiHandle")
 	deploymentId := c.Param("deploymentId")
-	gatewayId := c.Query("gatewayId")
-	if deploymentId == "00000000-0000-0000-0000-000000000000" || gatewayId == "00000000-0000-0000-0000-000000000000" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"deploymentId/gatewayId cannot be zero-value UUID"))
-		return
-	}
+	gatewayHandle := c.Query("gatewayHandle")
 
 	if apiId == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
@@ -231,7 +220,7 @@ func (h *DeploymentHandler) RestoreDeployment(c *gin.Context) {
 		return
 	}
 	actor, _ := middleware.GetUsernameFromContext(c)
-	deployment, err := h.deploymentService.RestoreDeploymentByHandle(apiId, deploymentId, gatewayId, orgId, actor)
+	deployment, err := h.deploymentService.RestoreDeploymentByHandle(apiId, deploymentId, gatewayHandle, orgId, actor)
 	if err != nil {
 		// DP-originated artifacts are read-only: restore cannot be initiated from the CP.
 		if respondArtifactGuardError(c, err) {
@@ -262,7 +251,7 @@ func (h *DeploymentHandler) RestoreDeployment(c *gin.Context) {
 				"Deployment is bound to a different gateway"))
 			return
 		}
-		h.slogger.Error("Failed to restore deployment", "apiId", apiId, "deploymentId", deploymentId, "gatewayId", gatewayId, "error", err)
+		h.slogger.Error("Failed to restore deployment", "apiId", apiId, "deploymentId", deploymentId, "gatewayHandle", gatewayHandle, "error", err)
 		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to restore deployment"))
 		return
 	}
@@ -388,15 +377,15 @@ func (h *DeploymentHandler) GetDeployments(c *gin.Context) {
 		return
 	}
 
-	var gatewayId, status string
-	if params.GatewayId != nil {
-		gatewayId = string(*params.GatewayId)
+	var gatewayHandle, status string
+	if params.GatewayHandle != nil {
+		gatewayHandle = string(*params.GatewayHandle)
 	}
 	if params.Status != nil {
 		status = string(*params.Status)
 	}
 
-	deployments, err := h.deploymentService.GetDeploymentsByHandle(apiId, gatewayId, status, orgId)
+	deployments, err := h.deploymentService.GetDeploymentsByHandle(apiId, gatewayHandle, status, orgId)
 	if err != nil {
 		if errors.Is(err, constants.ErrAPINotFound) {
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",

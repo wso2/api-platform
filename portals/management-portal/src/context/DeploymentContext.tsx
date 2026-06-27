@@ -75,7 +75,7 @@ export const DeploymentProvider = ({ children }: { children: ReactNode }) => {
             const rec: ApiDeploymentRecord = {
               apiId,
               revisionId: String(item.revisionId ?? revisionId),
-              gatewayId: item.gatewayId,
+              gatewayHandle: item.gatewayHandle,
               status: item.status,
               vhost: item.vhost,
               displayOnDevportal: item.displayOnDevportal,
@@ -86,7 +86,7 @@ export const DeploymentProvider = ({ children }: { children: ReactNode }) => {
             // replace any existing record with same revision+gateway
             const idx = merged.findIndex(
               (r) =>
-                r.gatewayId === rec.gatewayId &&
+                r.gatewayHandle === rec.gatewayHandle &&
                 r.revisionId === rec.revisionId
             );
             if (idx >= 0) merged[idx] = rec;

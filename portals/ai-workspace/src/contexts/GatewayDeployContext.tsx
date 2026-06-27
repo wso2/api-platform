@@ -87,7 +87,7 @@ const isDeploymentNameForDate = (
 
 const getNextDeploymentName = (
   namePrefix: string,
-  gatewayId: string,
+  gatewayHandle: string,
   deployments: DeploymentListResponse | null
 ): string => {
   const prefix = normalizeGatewayNameForDeployment(namePrefix);
@@ -96,7 +96,7 @@ const getNextDeploymentName = (
     return `${prefix}_${dateStr}_1`;
   }
   const gatewayDeployments = deployments.list.filter(
-    (d) => d.gatewayId === gatewayId
+    (d) => d.gatewayHandle === gatewayHandle
   );
   const deploymentsOnDate = gatewayDeployments.filter((d) =>
     isDeploymentNameForDate(d.name, dateStr)
@@ -125,23 +125,23 @@ interface GatewayDeployContextValue {
   refetchDeployments: () => Promise<void>;
 
   /** Deploy to a gateway */
-  deployToGateway: (gatewayId: string, host: string) => Promise<boolean>;
+  deployToGateway: (gatewayHandle: string, host: string) => Promise<boolean>;
   /** Undeploy from a gateway */
   undeployDeployment: (
     deploymentId: string,
-    gatewayId: string
+    gatewayHandle: string
   ) => Promise<boolean>;
   /** Redeploy a deployment */
   redeployDeployment: (
     deploymentId: string,
-    gatewayId: string
+    gatewayHandle: string
   ) => Promise<boolean>;
   /** Delete a deployment record */
   deleteDeployment: (deploymentId: string) => Promise<boolean>;
 
   deployingGatewayId: string | null;
   isDeployingToGateway: boolean;
-  isPollingGateway: (gatewayId: string) => boolean;
+  isPollingGateway: (gatewayHandle: string) => boolean;
 }
 
 const GatewayDeployContext = createContext<GatewayDeployContextValue | null>(
@@ -178,7 +178,7 @@ export function GatewayDeployProvider({
   const isDeployingToGateway = deployingGatewayId !== null;
 
   const [pollingDeployments, setPollingDeployments] = useState<
-    Map<string, { deploymentId: string; gatewayId: string }>
+    Map<string, { deploymentId: string; gatewayHandle: string }>
   >(new Map());
 
   const pollingDeploymentsRef = useRef(pollingDeployments);
@@ -197,10 +197,10 @@ export function GatewayDeployProvider({
   );
 
   const startPolling = useCallback(
-    (deploymentId: string, gatewayId: string) => {
+    (deploymentId: string, gatewayHandle: string) => {
       setPollingDeployments((prev) => {
         const next = new Map(prev);
-        next.set(deploymentId, { deploymentId, gatewayId });
+        next.set(deploymentId, { deploymentId, gatewayHandle });
         return next;
       });
     },
@@ -208,9 +208,9 @@ export function GatewayDeployProvider({
   );
 
   const isPollingGateway = useCallback(
-    (gatewayId: string): boolean => {
+    (gatewayHandle: string): boolean => {
       for (const entry of pollingDeployments.values()) {
-        if (entry.gatewayId === gatewayId) return true;
+        if (entry.gatewayHandle === gatewayHandle) return true;
       }
       return false;
     },
@@ -325,7 +325,7 @@ export function GatewayDeployProvider({
         (d.status === 'DEPLOYING' || d.status === 'UNDEPLOYING') &&
         !pollingDeploymentsRef.current.has(d.deploymentId)
       ) {
-        startPolling(d.deploymentId, d.gatewayId);
+        startPolling(d.deploymentId, d.gatewayHandle ?? '');
       }
     }
   }, [deployments, startPolling]);
@@ -373,14 +373,14 @@ export function GatewayDeployProvider({
   }, [pollingDeployments, fetchSingleDeploymentStatus, refetchDeployments]);
 
   const deployToGateway = useCallback(
-    async (gatewayId: string, host: string): Promise<boolean> => {
+    async (gatewayHandle: string, host: string): Promise<boolean> => {
       if (!apiId || !organizationId) return false;
 
-      setDeployingGatewayId(gatewayId);
+      setDeployingGatewayId(gatewayHandle);
       try {
         const deploymentName = getNextDeploymentName(
-          gatewayId,
-          gatewayId,
+          gatewayHandle,
+          gatewayHandle,
           deployments
         );
         const result =
@@ -391,7 +391,7 @@ export function GatewayDeployProvider({
                 {
                   name: deploymentName,
                   base: 'current',
-                  gatewayId,
+                  gatewayHandle,
                   metadata: {
                     host,
                   },
@@ -405,7 +405,7 @@ export function GatewayDeployProvider({
                   {
                     name: deploymentName,
                     base: 'current',
-                    gatewayId,
+                    gatewayHandle,
                     metadata: {
                       host,
                     },
@@ -418,7 +418,7 @@ export function GatewayDeployProvider({
                   {
                     name: deploymentName,
                     base: 'current',
-                    gatewayId,
+                    gatewayHandle,
                     metadata: {
                       host,
                     },
@@ -432,7 +432,7 @@ export function GatewayDeployProvider({
         // Track deployment create
         trackHybridGatewayDeploymentCreate({
           orgUuid: organizationId,
-          gatewayId,
+          gatewayId: gatewayHandle,
           apiId,
           deploymentId: result.deploymentId,
           base: 'current',
@@ -445,7 +445,7 @@ export function GatewayDeployProvider({
 
         // If the response status is transitional, start polling
         if (result.status === 'DEPLOYING' || result.status === 'UNDEPLOYING') {
-          startPolling(result.deploymentId, gatewayId);
+          startPolling(result.deploymentId, gatewayHandle);
         }
 
         return true;
@@ -468,10 +468,10 @@ export function GatewayDeployProvider({
   );
 
   const undeployDeployment = useCallback(
-    async (deploymentId: string, gatewayId: string): Promise<boolean> => {
+    async (deploymentId: string, gatewayHandle: string): Promise<boolean> => {
       if (!apiId || !organizationId || !deploymentId) return false;
 
-      setDeployingGatewayId(gatewayId);
+      setDeployingGatewayId(gatewayHandle);
       try {
         if (resourceType === 'proxy') {
           await undeployLLMProxyDeployment(
@@ -479,7 +479,7 @@ export function GatewayDeployProvider({
             deploymentId,
             organizationId,
             PLATFORM_API_BASE_URL,
-            gatewayId
+            gatewayHandle
           );
         } else if (resourceType === 'mcp-server') {
           await undeployMCPServerDeployment(
@@ -487,13 +487,13 @@ export function GatewayDeployProvider({
             deploymentId,
             organizationId,
             PLATFORM_API_BASE_URL,
-            gatewayId
+            gatewayHandle
           );
         } else {
           await undeployLLMProviderDeployment(
             apiId,
             deploymentId,
-            gatewayId,
+            gatewayHandle,
             organizationId,
             PLATFORM_API_BASE_URL
           );
@@ -502,7 +502,7 @@ export function GatewayDeployProvider({
         // Track undeploy
         trackHybridGatewayDeploymentUndeploy({
           orgUuid: organizationId,
-          gatewayId,
+          gatewayId: gatewayHandle,
           apiId,
           deploymentId,
           resourceType,
@@ -514,7 +514,7 @@ export function GatewayDeployProvider({
         try {
           const updated = await fetchSingleDeploymentStatus(deploymentId);
           if (updated.status === 'DEPLOYING' || updated.status === 'UNDEPLOYING') {
-            startPolling(deploymentId, gatewayId);
+            startPolling(deploymentId, gatewayHandle);
           }
         } catch {
           // Ignore — refetch already happened
@@ -532,10 +532,10 @@ export function GatewayDeployProvider({
   );
 
   const redeployDeployment = useCallback(
-    async (deploymentId: string, gatewayId: string): Promise<boolean> => {
+    async (deploymentId: string, gatewayHandle: string): Promise<boolean> => {
       if (!apiId || !organizationId || !deploymentId) return false;
 
-      setDeployingGatewayId(gatewayId);
+      setDeployingGatewayId(gatewayHandle);
       try {
         const result =
           resourceType === 'proxy'
@@ -544,7 +544,7 @@ export function GatewayDeployProvider({
                 deploymentId,
                 organizationId,
                 PLATFORM_API_BASE_URL,
-                gatewayId
+                gatewayHandle
               )
             : resourceType === 'mcp-server'
               ? await restoreMCPServerDeployment(
@@ -552,12 +552,12 @@ export function GatewayDeployProvider({
                   deploymentId,
                   organizationId,
                   PLATFORM_API_BASE_URL,
-                  gatewayId
+                  gatewayHandle
                 )
               : await restoreLLMProviderDeployment(
                   apiId,
                   deploymentId,
-                  gatewayId,
+                  gatewayHandle,
                   organizationId,
                   PLATFORM_API_BASE_URL
                 );
@@ -568,7 +568,7 @@ export function GatewayDeployProvider({
         // Track redeploy
         trackHybridGatewayDeploymentRedeploy({
           orgUuid: organizationId,
-          gatewayId,
+          gatewayId: gatewayHandle,
           apiId,
           deploymentId,
           hasBuildId: false,
@@ -579,7 +579,7 @@ export function GatewayDeployProvider({
 
         // If the restored deployment is transitional, start polling
         if (result.status === 'DEPLOYING' || result.status === 'UNDEPLOYING') {
-          startPolling(result.deploymentId, gatewayId);
+          startPolling(result.deploymentId, gatewayHandle);
         }
 
         return true;
@@ -633,7 +633,7 @@ export function GatewayDeployProvider({
         // Track delete
         trackHybridGatewayDeploymentDelete({
           orgUuid: organizationId,
-          gatewayId: deployment?.gatewayId ?? '',
+          gatewayId: deployment?.gatewayHandle ?? '',
           apiId,
           deploymentId,
           resourceType,

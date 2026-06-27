@@ -66,7 +66,7 @@ const isDeploymentNameForDate = (
 
 const getNextDeploymentName = (
   namePrefix: string,
-  gatewayId: string,
+  gatewayHandle: string,
   deployments: DeploymentListResponse | null
 ): string => {
   const prefix = normalizeGatewayNameForDeployment(namePrefix);
@@ -75,7 +75,7 @@ const getNextDeploymentName = (
     return `${prefix}_${dateStr}_1`;
   }
   const gatewayDeployments = deployments.list.filter(
-    (d) => d.gatewayId === gatewayId
+    (d) => d.gatewayHandle === gatewayHandle
   );
   const deploymentsOnDate = gatewayDeployments.filter((d) =>
     isDeploymentNameForDate(d.name, dateStr)
@@ -104,16 +104,16 @@ interface MCPServerDeployContextValue {
   refetchDeployments: () => Promise<void>;
 
   /** Deploy to a gateway */
-  deployToGateway: (gatewayId: string, host: string) => Promise<boolean>;
+  deployToGateway: (gatewayHandle: string, host: string) => Promise<boolean>;
   /** Undeploy from a gateway */
   undeployDeployment: (
     deploymentId: string,
-    gatewayId: string
+    gatewayHandle: string
   ) => Promise<boolean>;
   /** Redeploy a deployment */
   redeployDeployment: (
     deploymentId: string,
-    gatewayId: string
+    gatewayHandle: string
   ) => Promise<boolean>;
   /** Delete a deployment record */
   deleteDeployment: (deploymentId: string) => Promise<boolean>;
@@ -194,16 +194,15 @@ export function MCPServerDeployProvider({
     setIsLoadingDeployments(true);
     setDeploymentsError(null);
     try {
-      // Fetch deployments for each gateway since gatewayId is required
       const deploymentPromises = gateways.map((gateway) =>
         getMCPServerDeployments(
           mcpServerId,
           organizationId,
           PLATFORM_API_BASE_URL,
-          gateway.id
+          gateway.handle
         ).catch((err) => {
           logger.error(
-            `Failed to fetch deployments for gateway ${gateway.id}:`,
+            `Failed to fetch deployments for gateway ${gateway.handle}:`,
             err
           );
           return { list: [], count: 0 };
@@ -235,14 +234,14 @@ export function MCPServerDeployProvider({
   }, [mcpServerId, refetchDeployments]);
 
   const deployToGateway = useCallback(
-    async (gatewayId: string, host: string): Promise<boolean> => {
+    async (gatewayHandle: string, host: string): Promise<boolean> => {
       if (!mcpServerId || !organizationId) return false;
 
-      setDeployingGatewayId(gatewayId);
+      setDeployingGatewayId(gatewayHandle);
       try {
         const deploymentName = getNextDeploymentName(
-          gatewayId,
-          gatewayId,
+          gatewayHandle,
+          gatewayHandle,
           deployments
         );
         const result = await deployMCPServer(
@@ -251,7 +250,7 @@ export function MCPServerDeployProvider({
           {
             name: deploymentName,
             base: 'current',
-            gatewayId,
+            gatewayHandle,
             metadata: {
               host,
             },
@@ -275,17 +274,17 @@ export function MCPServerDeployProvider({
   );
 
   const undeployDeployment = useCallback(
-    async (deploymentId: string, gatewayId: string): Promise<boolean> => {
+    async (deploymentId: string, gatewayHandle: string): Promise<boolean> => {
       if (!mcpServerId || !organizationId || !deploymentId) return false;
 
-      setDeployingGatewayId(gatewayId);
+      setDeployingGatewayId(gatewayHandle);
       try {
         await undeployMCPServerDeployment(
           mcpServerId,
           deploymentId,
           organizationId,
           PLATFORM_API_BASE_URL,
-          gatewayId
+          gatewayHandle
         );
 
         await refetchDeployments();
@@ -301,17 +300,17 @@ export function MCPServerDeployProvider({
   );
 
   const redeployDeployment = useCallback(
-    async (deploymentId: string, gatewayId: string): Promise<boolean> => {
+    async (deploymentId: string, gatewayHandle: string): Promise<boolean> => {
       if (!mcpServerId || !organizationId || !deploymentId) return false;
 
-      setDeployingGatewayId(gatewayId);
+      setDeployingGatewayId(gatewayHandle);
       try {
         const result = await restoreMCPServerDeployment(
           mcpServerId,
           deploymentId,
           organizationId,
           PLATFORM_API_BASE_URL,
-          gatewayId
+          gatewayHandle
         );
         if (!result?.deploymentId) {
           throw new Error('Failed to restore MCP server deployment');

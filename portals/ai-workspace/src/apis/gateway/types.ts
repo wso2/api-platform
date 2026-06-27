@@ -20,11 +20,9 @@
  * Gateway interface representing a hybrid gateway
  */
 export interface Gateway {
-  id: string;
-  handle?: string;
+  handle: string;
   organizationId: string;
   name: string;
-  displayName: string;
   description?: string;
   vhost: string;
   isCritical: boolean;
@@ -61,7 +59,7 @@ export type GatewayConfigs = GatewayConfig | GatewayConfig[];
  * Request interface for registering a new gateway
  */
 export interface RegisterGatewayRequest {
-  displayName: string;
+  handle: string;
   name: string;
   vhost: string;
   functionalityType: string;
@@ -82,7 +80,6 @@ export interface RegisterGatewayResponse extends Gateway {
  * Request interface for updating a gateway
  */
 export interface UpdateGatewayRequest {
-  displayName: string;
   name: string;
   vhost: string;
   functionalityType: string;

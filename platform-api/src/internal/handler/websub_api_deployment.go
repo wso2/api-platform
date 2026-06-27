@@ -31,7 +31,6 @@ import (
 	"platform-api/src/internal/utils"
 
 	"github.com/gin-gonic/gin"
-	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
 // WebSubAPIDeploymentHandler handles deployment routes for WebSub APIs
@@ -89,8 +88,8 @@ func (h *WebSubAPIDeploymentHandler) DeployWebSubAPI(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "base is required"))
 		return
 	}
-	if req.GatewayId == (openapi_types.UUID{}) {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "gatewayId is required"))
+	if req.GatewayHandle == "" {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "gatewayHandle is required"))
 		return
 	}
 
@@ -118,17 +117,17 @@ func (h *WebSubAPIDeploymentHandler) UndeployDeployment(c *gin.Context) {
 
 	apiId := c.Param("apiHandle")
 	deploymentId := c.Param("deploymentId")
-	gatewayId := c.Query("gatewayId")
+	gatewayHandle := c.Query("gatewayHandle")
 	if deploymentId == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "deploymentId is required"))
 		return
 	}
-	if gatewayId == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "gatewayId is required"))
+	if gatewayHandle == "" {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "gatewayHandle is required"))
 		return
 	}
 
-	deployment, err := h.websubAPIDeploymentService.UndeployWebSubAPIDeploymentByHandle(apiId, deploymentId, gatewayId, orgId)
+	deployment, err := h.websubAPIDeploymentService.UndeployWebSubAPIDeploymentByHandle(apiId, deploymentId, gatewayHandle, orgId)
 	if err != nil {
 		// DP-originated artifacts are read-only: undeployment cannot be initiated from the CP.
 		if respondArtifactGuardError(c, err) {
@@ -151,17 +150,17 @@ func (h *WebSubAPIDeploymentHandler) RestoreDeployment(c *gin.Context) {
 
 	apiId := c.Param("apiHandle")
 	deploymentId := c.Param("deploymentId")
-	gatewayId := c.Query("gatewayId")
+	gatewayHandle := c.Query("gatewayHandle")
 	if deploymentId == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "deploymentId is required"))
 		return
 	}
-	if gatewayId == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "gatewayId is required"))
+	if gatewayHandle == "" {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "gatewayHandle is required"))
 		return
 	}
 
-	deployment, err := h.websubAPIDeploymentService.RestoreWebSubAPIDeploymentByHandle(apiId, deploymentId, gatewayId, orgId)
+	deployment, err := h.websubAPIDeploymentService.RestoreWebSubAPIDeploymentByHandle(apiId, deploymentId, gatewayHandle, orgId)
 	if err != nil {
 		// DP-originated artifacts are read-only: restore cannot be initiated from the CP.
 		if respondArtifactGuardError(c, err) {
@@ -194,15 +193,15 @@ func (h *WebSubAPIDeploymentHandler) GetDeployments(c *gin.Context) {
 		return
 	}
 
-	var gatewayId, status string
-	if params.GatewayId != nil {
-		gatewayId = string(*params.GatewayId)
+	var gatewayHandle, status string
+	if params.GatewayHandle != nil {
+		gatewayHandle = string(*params.GatewayHandle)
 	}
 	if params.Status != nil {
 		status = string(*params.Status)
 	}
 
-	deployments, err := h.websubAPIDeploymentService.GetWebSubAPIDeploymentsByHandle(apiId, gatewayId, status, orgId)
+	deployments, err := h.websubAPIDeploymentService.GetWebSubAPIDeploymentsByHandle(apiId, gatewayHandle, status, orgId)
 	if err != nil {
 		h.handleDeploymentError(c, err, apiId)
 		return

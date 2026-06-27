@@ -169,7 +169,7 @@ export default function ServiceProviderOverviewTab({
     [parsedOpenApiSpec, provider?.accessControl]
   );
   const selectedGateway = useMemo(
-    () => gateways.find((gateway) => gateway.id === selectedGatewayId) ?? null,
+    () => gateways.find((gateway) => gateway.handle === selectedGatewayId) ?? null,
     [gateways, selectedGatewayId]
   );
   const generatedGatewayUrl = useMemo(() => {
@@ -277,19 +277,19 @@ export default function ServiceProviderOverviewTab({
         deployedEntries.forEach((deployment) => {
           const nextTime = new Date(deployment.createdAt || 0).getTime();
           const currentTime = latestDeploymentTimeByGateway.get(
-            deployment.gatewayId
+            deployment.gatewayHandle
           );
           if (currentTime === undefined || nextTime > currentTime) {
-            latestDeploymentTimeByGateway.set(deployment.gatewayId, nextTime);
-            deploymentByGateway[deployment.gatewayId] = deployment;
+            latestDeploymentTimeByGateway.set(deployment.gatewayHandle, nextTime);
+            deploymentByGateway[deployment.gatewayHandle] = deployment;
           }
         });
 
         const deployedGateways = availableGateways
-          .filter((gateway) => latestDeploymentTimeByGateway.has(gateway.id))
+          .filter((gateway) => latestDeploymentTimeByGateway.has(gateway.handle))
           .sort((a, b) => {
-            const timeA = latestDeploymentTimeByGateway.get(a.id) || 0;
-            const timeB = latestDeploymentTimeByGateway.get(b.id) || 0;
+            const timeA = latestDeploymentTimeByGateway.get(a.handle) || 0;
+            const timeB = latestDeploymentTimeByGateway.get(b.handle) || 0;
             return timeB - timeA;
           });
 
@@ -298,11 +298,11 @@ export default function ServiceProviderOverviewTab({
         setSelectedGatewayId((currentSelectedId) => {
           if (
             currentSelectedId &&
-            deployedGateways.some((gateway) => gateway.id === currentSelectedId)
+            deployedGateways.some((gateway) => gateway.handle === currentSelectedId)
           ) {
             return currentSelectedId;
           }
-          return deployedGateways[0]?.id || '';
+          return deployedGateways[0]?.handle || '';
         });
       } catch (gatewayError) {
         if (!isMounted) return;
@@ -368,10 +368,10 @@ export default function ServiceProviderOverviewTab({
                   proxyId,
                   organizationId,
                   PLATFORM_API_BASE_URL,
-                  gateway.id
+                  gateway.handle
                 ).catch((err) => {
                   logger.error(
-                    `Failed to load deployments for proxy ${proxyId} on gateway ${gateway.id}:`,
+                    `Failed to load deployments for proxy ${proxyId} on gateway ${gateway.handle}:`,
                     err
                   );
                   return { list: [] as DeploymentResponse[], count: 0 };
@@ -733,8 +733,8 @@ export default function ServiceProviderOverviewTab({
                           disabled={gateways.length === 0}
                         >
                           {gateways.map((gateway) => (
-                            <MenuItem key={gateway.id} value={gateway.id}>
-                              {gateway.displayName || gateway.name}
+                            <MenuItem key={gateway.handle} value={gateway.handle}>
+                              {gateway.name}
                             </MenuItem>
                           ))}
                         </Select>

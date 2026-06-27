@@ -338,7 +338,7 @@ export function GatewayCard({ gateway, deployment }: GatewayCardProps) {
                 variant="subtitle2"
                 fontWeight={600}
                 noWrap
-                title={gateway.displayName}
+                title={gateway.name}
                 sx={{
                   flex: 1,
                   minWidth: 0,
@@ -346,7 +346,7 @@ export function GatewayCard({ gateway, deployment }: GatewayCardProps) {
                   textOverflow: 'ellipsis',
                 }}
               >
-                {gateway.displayName}
+                {gateway.name}
               </Typography>
               {gateway.isActive && (
                 <Chip
@@ -583,10 +583,10 @@ export default function ProviderMapTab() {
                     proxyId,
                     organizationId,
                     PLATFORM_API_BASE_URL,
-                    gateway.id
+                    gateway.handle
                   ).catch((err) => {
                     logger.error(
-                      `Failed to load deployments for proxy ${proxyId} on gateway ${gateway.id}:`,
+                      `Failed to load deployments for proxy ${proxyId} on gateway ${gateway.handle}:`,
                       err
                     );
                     return { list: [] as DeploymentResponse[], count: 0 };
@@ -672,10 +672,10 @@ export default function ProviderMapTab() {
   const deploymentsByGateway = deployments.reduce<
     Record<string, DeploymentResponse>
   >((acc, dep) => {
-    if (dep.gatewayId && dep.status === 'DEPLOYED') {
-      acc[dep.gatewayId] = dep;
-    } else if (dep.gatewayId && !acc[dep.gatewayId]) {
-      acc[dep.gatewayId] = dep;
+    if (dep.gatewayHandle && dep.status === 'DEPLOYED') {
+      acc[dep.gatewayHandle] = dep;
+    } else if (dep.gatewayHandle && !acc[dep.gatewayHandle]) {
+      acc[dep.gatewayHandle] = dep;
     }
     return acc;
   }, {});

@@ -13,14 +13,14 @@ export type DeploymentStatus =
   | "UNKNOWN";
 
 export type DeployTargetRequest = {
-  gatewayId: string;
+  gatewayHandle: string;
   vhost?: string;
   displayOnDevportal?: boolean;
 };
 
 export type DeployRevisionResponseItem = {
   revisionId: string;              // stringified (e.g., "7")
-  gatewayId: string;
+  gatewayHandle: string;
   status: DeploymentStatus | string;
   vhost?: string;
   displayOnDevportal?: boolean;
@@ -34,7 +34,7 @@ export type DeployRevisionResponse = DeployRevisionResponseItem[];
 export type ApiDeploymentRecord = {
   apiId: string;
   revisionId: string;
-  gatewayId: string;
+  gatewayHandle: string;
   status: DeploymentStatus | string;
   vhost?: string;
   displayOnDevportal?: boolean;

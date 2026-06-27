@@ -63,7 +63,7 @@ export async function deployLLMProxy(
  * Get deployments for an LLM proxy
  * @param proxyId - The ID of the LLM proxy
  * @param organizationId - The organization ID
- * @param gatewayId - Optional gateway ID to filter deployments
+ * @param gatewayHandle - Optional gateway handle to filter deployments
  * @param status - Optional status to filter deployments (DEPLOYED, UNDEPLOYED, ARCHIVED)
  * @param baseUrl - The base URL for the API
  * @returns Promise with the deployment list response
@@ -72,7 +72,7 @@ export async function getLLMProxyDeployments(
   proxyId: string,
   organizationId: string,
   baseUrl: string,
-  gatewayId?: string,
+  gatewayHandle?: string,
   status?: string
 ): Promise<DeploymentListResponse> {
   try {
@@ -80,8 +80,8 @@ export async function getLLMProxyDeployments(
       organizationId: organizationId,
     });
 
-    if (gatewayId) {
-      params.append('gatewayId', gatewayId);
+    if (gatewayHandle) {
+      params.append('gatewayHandle', gatewayHandle);
     }
 
     if (status) {
@@ -161,7 +161,7 @@ export async function deleteLLMProxyDeployment(
  * @param proxyId - The ID of the LLM proxy
  * @param deploymentId - The ID of the deployment to undeploy
  * @param organizationId - The organization ID
- * @param gatewayId - Optional gateway ID for validation
+ * @param gatewayHandle - Optional gateway handle for validation
  * @param baseUrl - The base URL for the API
  * @returns Promise with the updated deployment response
  */
@@ -170,12 +170,12 @@ export async function undeployLLMProxyDeployment(
   deploymentId: string,
   organizationId: string,
   baseUrl: string,
-  gatewayId?: string
+  gatewayHandle?: string
 ): Promise<DeploymentResponse> {
   try {
     const params = new URLSearchParams({ organizationId });
-    if (gatewayId) {
-      params.append('gatewayId', gatewayId);
+    if (gatewayHandle) {
+      params.append('gatewayHandle', gatewayHandle);
     }
 
     const response = await post<DeploymentResponse>(
@@ -198,7 +198,7 @@ export async function undeployLLMProxyDeployment(
  * @param proxyId - The ID of the LLM proxy
  * @param deploymentId - The ID of the deployment to restore
  * @param organizationId - The organization ID
- * @param gatewayId - Optional gateway ID for validation
+ * @param gatewayHandle - Optional gateway handle for validation
  * @param baseUrl - The base URL for the API
  * @returns Promise with the restored deployment response
  */
@@ -207,12 +207,12 @@ export async function restoreLLMProxyDeployment(
   deploymentId: string,
   organizationId: string,
   baseUrl: string,
-  gatewayId?: string
+  gatewayHandle?: string
 ): Promise<DeploymentResponse> {
   try {
     const params = new URLSearchParams({ organizationId });
-    if (gatewayId) {
-      params.append('gatewayId', gatewayId);
+    if (gatewayHandle) {
+      params.append('gatewayHandle', gatewayHandle);
     }
 
     const response = await post<DeploymentResponse>(

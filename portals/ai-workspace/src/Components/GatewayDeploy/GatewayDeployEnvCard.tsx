@@ -46,8 +46,8 @@ export default function GatewayDeployEnvCard({
     isPollingGateway,
   } = useGatewayDeploy();
 
-  const isThisGatewayDeploying = deployingGatewayId === gateway.id;
-  const isPolling = isPollingGateway(gateway.id);
+  const isThisGatewayDeploying = deployingGatewayId === gateway.handle;
+  const isPolling = isPollingGateway(gateway.handle);
   const [selectorOpen, setSelectorOpen] = useState(false);
 
   // Compute current deployment for this gateway
@@ -60,7 +60,7 @@ export default function GatewayDeployEnvCard({
     }
 
     const gatewayDeployments = deployments.list
-      .filter((d) => d.gatewayId === gateway.id)
+      .filter((d) => d.gatewayHandle === gateway.handle)
       .sort((a, b) => {
         const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
         const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
@@ -81,7 +81,7 @@ export default function GatewayDeployEnvCard({
       currentDeployment: current,
       deploymentStatus: current.status as string,
     };
-  }, [deployments, gateway.id]);
+  }, [deployments, gateway.handle]);
 
   // When gateway is not active, override status to "Not Active"
   const effectiveStatus = (!isGatewayActive && currentDeployment) ? 'NOT_ACTIVE' : deploymentStatus;
@@ -96,12 +96,12 @@ export default function GatewayDeployEnvCard({
 
   const handleUndeploy = async () => {
     if (!currentDeployment?.deploymentId) return;
-    await undeployDeployment(currentDeployment.deploymentId, gateway.id);
+    await undeployDeployment(currentDeployment.deploymentId, gateway.handle);
   };
 
   const handleRedeploy = async () => {
     if (!currentDeployment?.deploymentId) return;
-    await redeployDeployment(currentDeployment.deploymentId, gateway.id);
+    await redeployDeployment(currentDeployment.deploymentId, gateway.handle);
   };
 
   const formattedDate = currentDeployment?.createdAt
@@ -324,7 +324,7 @@ export default function GatewayDeployEnvCard({
 
       {/* Deployment selector / restore drawer */}
       <GatewayDeploymentSelector
-        gatewayId={gateway.id}
+        gatewayHandle={gateway.handle}
         open={selectorOpen}
         onClose={() => setSelectorOpen(false)}
       />

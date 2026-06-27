@@ -125,11 +125,11 @@ export default function ServiceProviderDeploymentsCard({
 
   const deployedGateways = useMemo(() => {
     if (!deployments?.list || deployments.list.length === 0) return [];
-    const gatewayIdsWithDeployments = new Set(
-      deployments.list.map((deployment) => deployment.gatewayId)
+    const gatewayHandlesWithDeployments = new Set(
+      deployments.list.map((deployment) => deployment.gatewayHandle)
     );
     return deploymentGateways.filter((gateway) =>
-      gatewayIdsWithDeployments.has(gateway.id)
+      gatewayHandlesWithDeployments.has(gateway.handle)
     );
   }, [deploymentGateways, deployments]);
 

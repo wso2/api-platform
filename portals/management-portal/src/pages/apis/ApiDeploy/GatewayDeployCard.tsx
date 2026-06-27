@@ -50,7 +50,7 @@ type Props = {
   deploying: boolean;
   deployingIds: Set<string>;
   relativeTime: (d?: string | Date | null) => string;
-  onDeploy: (gatewayId: string) => void;
+  onDeploy: (gatewayHandle: string) => void;
 };
 
 const GatewayDeployCard: React.FC<Props> = ({
@@ -64,8 +64,8 @@ const GatewayDeployCard: React.FC<Props> = ({
   relativeTime,
   onDeploy,
 }) => {
-  const isDeployed = deployedMap.has(gw.id);
-  const seededItem = deployByGateway[gw.id];
+  const isDeployed = deployedMap.has(gw.handle);
+  const seededItem = deployByGateway[gw.handle];
   const item = isDeployed ? seededItem : undefined;
 
   const deployedTime =
@@ -89,8 +89,8 @@ const GatewayDeployCard: React.FC<Props> = ({
   const success =
     status === "ACTIVE" || status === "CREATED" || status === "IN_PROGRESS";
 
-  const title = gw.displayName || gw.name || "Gateway";
-  const isDeployingThis = deploying || deployingIds.has(gw.id);
+  const title = gw.name || "Gateway";
+  const isDeployingThis = deploying || deployingIds.has(gw.handle);
 
   // Construct Gateway URLs
   const httpUrl = api && vhost 
@@ -110,7 +110,7 @@ const GatewayDeployCard: React.FC<Props> = ({
   };
 
   return (
-    <Grid key={gw.id}>
+    <Grid key={gw.handle}>
       <Card>
         <Box>
           {/* Header */}
@@ -291,7 +291,7 @@ const GatewayDeployCard: React.FC<Props> = ({
           variant="contained"
           fullWidth
           disabled={!apiId || isDeployingThis}
-          onClick={() => onDeploy(gw.id)}
+          onClick={() => onDeploy(gw.handle)}
         >
           {isDeployed
             ? isDeployingThis

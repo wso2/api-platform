@@ -106,7 +106,7 @@ func (h *GatewayHandler) CreateGateway(c *gin.Context) {
 	}
 
 	createdBy, _ := middleware.GetUsernameFromContext(c)
-	gateway, err := h.gatewayService.RegisterGateway(orgId, req.Name, req.DisplayName, description, req.Vhost,
+	gateway, err := h.gatewayService.RegisterGateway(orgId, req.Handle, req.Name, description, req.Vhost,
 		isCritical, functionalityType, version, createdBy, properties)
 	if err != nil {
 		errMsg := err.Error()
@@ -262,7 +262,7 @@ func (h *GatewayHandler) UpdateGateway(c *gin.Context) {
 	}
 
 	updatedBy, _ := middleware.GetUsernameFromContext(c)
-	response, err := h.gatewayService.UpdateGateway(gatewayId, orgId, updatedBy, req.Description, req.DisplayName, req.IsCritical, req.Properties)
+	response, err := h.gatewayService.UpdateGateway(gatewayId, orgId, updatedBy, req.Description, req.Name, req.IsCritical, req.Properties)
 	if err != nil {
 		if errors.Is(err, constants.ErrGatewayNotFound) {
 			h.slogger.Error("Gateway not found during update", "error", err)

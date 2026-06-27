@@ -146,18 +146,18 @@ func (s *MCPDeploymentService) deployMCPProxy(proxyUUID string, req *api.DeployR
 	if req.Base == "" {
 		return nil, constants.ErrDeploymentBaseRequired
 	}
-	gatewayID := utils.OpenAPIUUIDToString(req.GatewayId)
-	if gatewayID == "" {
+	gatewayHandle := req.GatewayHandle
+	if gatewayHandle == "" {
 		return nil, constants.ErrDeploymentGatewayIDRequired
 	}
 	metadata := utils.MapValueOrEmpty(req.Metadata)
 
 	// Validate gateway exists and belongs to organization
-	gateway, err := s.gatewayRepo.GetByUUID(gatewayID)
+	gateway, err := s.gatewayRepo.GetByHandleAndOrgID(gatewayHandle, orgId)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get gateway: %w", err)
 	}
-	if gateway == nil || gateway.OrganizationID != orgId {
+	if gateway == nil {
 		return nil, constants.ErrGatewayNotFound
 	}
 
@@ -249,7 +249,7 @@ func (s *MCPDeploymentService) deployMCPProxy(proxyUUID string, req *api.DeployR
 		Name:             req.Name,
 		ArtifactID:       proxyUUID,
 		OrganizationID:   orgId,
-		GatewayID:        gatewayID,
+		GatewayID:        gateway.ID,
 		BaseDeploymentID: baseDeploymentID,
 		Content:          contentBytes,
 		Metadata:         metadata,
@@ -272,7 +272,7 @@ func (s *MCPDeploymentService) deployMCPProxy(proxyUUID string, req *api.DeployR
 	}
 	performedAt := time.Now().Truncate(time.Millisecond)
 	if _, err := s.deploymentRepo.SetCurrentWithDetails(
-		proxyUUID, orgId, gatewayID, deploymentID,
+		proxyUUID, orgId, gateway.ID, deploymentID,
 		initialStatus, string(model.DeploymentStatusDeployed),
 		&performedAt, "",
 	); err != nil {
@@ -287,7 +287,7 @@ func (s *MCPDeploymentService) deployMCPProxy(proxyUUID string, req *api.DeployR
 			PerformedAt:  performedAt,
 		}
 
-		if err := s.gatewayEventsService.BroadcastMCPProxyDeploymentEvent(gatewayID, deploymentEvent); err != nil {
+		if err := s.gatewayEventsService.BroadcastMCPProxyDeploymentEvent(gateway.ID, deploymentEvent); err != nil {
 			s.slogger.Warn("Failed to broadcast MCP proxy deployment event", "error", err)
 		}
 	}
@@ -296,7 +296,7 @@ func (s *MCPDeploymentService) deployMCPProxy(proxyUUID string, req *api.DeployR
 	return toAPIDeploymentResponse(
 		deployment.DeploymentID,
 		deployment.Name,
-		deployment.GatewayID,
+		gateway.Handle,
 		initialStatus,
 		deployment.BaseDeploymentID,
 		deployment.Metadata,
@@ -323,7 +323,20 @@ func (s *MCPDeploymentService) undeployMCPProxyDeployment(proxyUUID string, depl
 		return nil, constants.ErrMCPProxyNotFound
 	}
 
-	// Resolve deployment using provided deploymentId or gatewayId
+	// Resolve gatewayHandle to internal gateway (gatewayId is a handle from client)
+	var gateway *model.Gateway
+	if gatewayId != nil {
+		gw, gwErr := s.gatewayRepo.GetByHandleAndOrgID(*gatewayId, orgId)
+		if gwErr != nil {
+			return nil, fmt.Errorf("failed to get gateway: %w", gwErr)
+		}
+		if gw == nil {
+			return nil, constants.ErrGatewayNotFound
+		}
+		gateway = gw
+	}
+
+	// Resolve deployment using provided deploymentId or gateway
 	var deployment *model.Deployment
 	if deploymentId != nil {
 		// Get specific deployment
@@ -334,9 +347,9 @@ func (s *MCPDeploymentService) undeployMCPProxyDeployment(proxyUUID string, depl
 		if deployment == nil {
 			return nil, constants.ErrDeploymentNotFound
 		}
-	} else if gatewayId != nil {
+	} else if gateway != nil {
 		// Find current deployment for this gateway
-		deployment, err = s.deploymentRepo.GetCurrentByGateway(proxyUUID, *gatewayId, orgId)
+		deployment, err = s.deploymentRepo.GetCurrentByGateway(proxyUUID, gateway.ID, orgId)
 		if err != nil {
 			return nil, err
 		}
@@ -347,8 +360,8 @@ func (s *MCPDeploymentService) undeployMCPProxyDeployment(proxyUUID string, depl
 		return nil, constants.ErrInvalidInput
 	}
 
-	// Validate that the provided gatewayId matches the deployment's bound gateway
-	if gatewayId != nil && deployment.GatewayID != *gatewayId {
+	// Validate that the provided gateway matches the deployment's bound gateway
+	if gateway != nil && deployment.GatewayID != gateway.ID {
 		return nil, constants.ErrGatewayIDMismatch
 	}
 
@@ -357,13 +370,16 @@ func (s *MCPDeploymentService) undeployMCPProxyDeployment(proxyUUID string, depl
 		return nil, constants.ErrDeploymentNotActive
 	}
 
-	// Validate gateway exists and belongs to organization
-	gateway, err := s.gatewayRepo.GetByUUID(deployment.GatewayID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get gateway: %w", err)
-	}
+	// If gateway not yet resolved (undeploy by deploymentId only), look it up now
 	if gateway == nil {
-		return nil, constants.ErrGatewayNotFound
+		gw, gwErr := s.gatewayRepo.GetByUUID(deployment.GatewayID)
+		if gwErr != nil {
+			return nil, fmt.Errorf("failed to get gateway: %w", gwErr)
+		}
+		if gw == nil {
+			return nil, constants.ErrGatewayNotFound
+		}
+		gateway = gw
 	}
 
 	// Set initial status based on config; transitional (UNDEPLOYING) only when enabled
@@ -397,7 +413,7 @@ func (s *MCPDeploymentService) undeployMCPProxyDeployment(proxyUUID string, depl
 	return toAPIDeploymentResponse(
 		deployment.DeploymentID,
 		deployment.Name,
-		deployment.GatewayID,
+		gateway.Handle,
 		initialStatus,
 		deployment.BaseDeploymentID,
 		deployment.Metadata,
@@ -424,8 +440,21 @@ func (s *MCPDeploymentService) restoreMCPProxyDeployment(proxyUUID string, deplo
 		return nil, constants.ErrDeploymentNotFound
 	}
 
-	// Validate that the provided gatewayID matches the deployment's bound gateway
-	if targetDeployment.GatewayID != *gatewayId {
+	// Resolve gatewayHandle to internal gateway (gatewayId is a handle from client)
+	var gateway *model.Gateway
+	if gatewayId != nil {
+		gw, gwErr := s.gatewayRepo.GetByHandleAndOrgID(*gatewayId, orgId)
+		if gwErr != nil {
+			return nil, fmt.Errorf("failed to get gateway: %w", gwErr)
+		}
+		if gw == nil {
+			return nil, constants.ErrGatewayNotFound
+		}
+		gateway = gw
+	}
+
+	// Validate that the provided gateway matches the deployment's bound gateway
+	if gateway != nil && targetDeployment.GatewayID != gateway.ID {
 		return nil, constants.ErrGatewayIDMismatch
 	}
 
@@ -438,13 +467,16 @@ func (s *MCPDeploymentService) restoreMCPProxyDeployment(proxyUUID string, deplo
 		return nil, constants.ErrDeploymentAlreadyDeployed
 	}
 
-	// Validate gateway exists and belongs to organization
-	gateway, err := s.gatewayRepo.GetByUUID(targetDeployment.GatewayID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get gateway: %w", err)
-	}
-	if gateway == nil || gateway.OrganizationID != orgId {
-		return nil, constants.ErrGatewayNotFound
+	// If gateway not yet resolved, look it up from deployment
+	if gateway == nil {
+		gw, gwErr := s.gatewayRepo.GetByUUID(targetDeployment.GatewayID)
+		if gwErr != nil {
+			return nil, fmt.Errorf("failed to get gateway: %w", gwErr)
+		}
+		if gw == nil {
+			return nil, constants.ErrGatewayNotFound
+		}
+		gateway = gw
 	}
 
 	// Set initial status based on config; transitional (DEPLOYING) only when enabled
@@ -478,7 +510,7 @@ func (s *MCPDeploymentService) restoreMCPProxyDeployment(proxyUUID string, deplo
 	return toAPIDeploymentResponse(
 		targetDeployment.DeploymentID,
 		targetDeployment.Name,
-		targetDeployment.GatewayID,
+		gateway.Handle,
 		initialStatus,
 		targetDeployment.BaseDeploymentID,
 		targetDeployment.Metadata,
@@ -508,10 +540,15 @@ func (s *MCPDeploymentService) getMCPProxyDeployment(proxyUUID string, deploymen
 		return nil, constants.ErrDeploymentNotFound
 	}
 
+	gw, _ := s.gatewayRepo.GetByUUID(deployment.GatewayID)
+	gwHandle := deployment.GatewayID
+	if gw != nil {
+		gwHandle = gw.Handle
+	}
 	return toAPIDeploymentResponse(
 		deployment.DeploymentID,
 		deployment.Name,
-		deployment.GatewayID,
+		gwHandle,
 		*deployment.Status,
 		deployment.BaseDeploymentID,
 		deployment.Metadata,
@@ -559,10 +596,15 @@ func (s *MCPDeploymentService) getMCPProxyDeployments(proxyUUID string, orgId st
 
 	items := make([]api.DeploymentResponse, 0, len(deployments))
 	for _, d := range deployments {
+		gw, _ := s.gatewayRepo.GetByUUID(d.GatewayID)
+		gwHandle := d.GatewayID
+		if gw != nil {
+			gwHandle = gw.Handle
+		}
 		mapped, err := toAPIDeploymentResponse(
 			d.DeploymentID,
 			d.Name,
-			d.GatewayID,
+			gwHandle,
 			*d.Status,
 			d.BaseDeploymentID,
 			d.Metadata,

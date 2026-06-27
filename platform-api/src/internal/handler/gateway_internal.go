@@ -861,7 +861,6 @@ func (h *GatewayInternalAPIHandler) GetGatewaySecrets(c *gin.Context) {
 	items := make([]dto.SecretSyncItem, 0, len(secrets))
 	for _, s := range secrets {
 		item := dto.SecretSyncItem{
-			ID:          s.UUID,
 			Handle:      s.Handle,
 			DisplayName: s.DisplayName,
 			Type:        s.Type,

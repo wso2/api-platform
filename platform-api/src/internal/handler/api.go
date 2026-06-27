@@ -384,17 +384,17 @@ func (h *APIHandler) AddGatewaysToAPI(c *gin.Context) {
 
 	if len(req) == 0 {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"At least one gateway ID is required"))
+			"At least one gateway handle is required"))
 		return
 	}
 
-	// Extract gateway IDs from request
-	gatewayIds := make([]string, len(req))
+	// Extract gateway handles from request
+	gatewayHandles := make([]string, len(req))
 	for i, gw := range req {
-		gatewayIds[i] = utils.OpenAPIUUIDToString(gw.GatewayId)
+		gatewayHandles[i] = gw.GatewayHandle
 	}
 
-	gatewaysResponse, err := h.apiService.AddGatewaysToAPIByHandle(apiId, gatewayIds, orgId)
+	gatewaysResponse, err := h.apiService.AddGatewaysToAPIByHandle(apiId, gatewayHandles, orgId)
 	if err != nil {
 		if errors.Is(err, constants.ErrAPINotFound) {
 			h.slogger.Error("API not found", "apiId", apiId, "organizationId", orgId)

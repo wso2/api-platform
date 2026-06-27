@@ -628,7 +628,7 @@ export type DeploymentStatus = 'DEPLOYED' | 'UNDEPLOYED' | 'ARCHIVED' | 'DEPLOYI
 export interface DeploymentResponse {
   deploymentId: string;
   name: string;
-  gatewayId: string;
+  gatewayHandle: string;
   status: DeploymentStatus;
   baseDeploymentId?: string;
   metadata?: Record<string, unknown>;
@@ -679,7 +679,7 @@ export interface DeploymentListResponse {
  */
 export interface DeployRequest {
   name: string;
-  gatewayId: string;
+  gatewayHandle: string;
   base?: string;
   metadata?: Record<string, unknown>;
 }

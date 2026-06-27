@@ -39,7 +39,6 @@ type UpdateSecretRequest struct {
 
 // SecretResponse is returned on POST and PUT.
 type SecretResponse struct {
-	UUID        string    `json:"uuid"`
 	Handle      string    `json:"handle"`
 	DisplayName string    `json:"name"`
 	CreatedAt   time.Time `json:"createdAt"`
@@ -48,7 +47,6 @@ type SecretResponse struct {
 
 // SecretSummary is returned on GET list and GET by ID — no value field.
 type SecretSummary struct {
-	ID          string    `json:"uuid"`
 	Handle      string    `json:"handle"`
 	DisplayName string    `json:"name"`
 	Description string    `json:"description,omitempty"`
@@ -69,7 +67,6 @@ type SecretListResponse struct {
 // SecretSyncItem is returned by the internal GW sync endpoint.
 // Value is only populated when the caller requests includeValues=true (startup bulk fetch).
 type SecretSyncItem struct {
-	ID          string    `json:"uuid"`
 	Handle      string    `json:"handle"`
 	DisplayName string    `json:"name"`
 	Type        string    `json:"type"`
@@ -95,7 +92,7 @@ type SecretDeleteConflictResponse struct {
 
 // SecretReferenceDTO identifies a resource that references a secret.
 type SecretReferenceDTO struct {
-	Type   string `json:"type"`
-	Handle string `json:"handle"`
-	Name   string `json:"name"`
+	Type        string `json:"type"`
+	Handle      string `json:"handle"`
+	DisplayName string `json:"name"`
 }

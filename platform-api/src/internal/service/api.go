@@ -373,13 +373,25 @@ func (s *APIService) DeleteAPIByHandle(handle, orgId, deletedBy string) error {
 	return s.DeleteAPI(apiUUID, orgId, deletedBy)
 }
 
-// AddGatewaysToAPIByHandle associates multiple gateways with an API identified by handle
-func (s *APIService) AddGatewaysToAPIByHandle(handle string, gatewayIds []string, orgId string) (*api.RESTAPIGatewayListResponse, error) {
+// AddGatewaysToAPIByHandle associates multiple gateways (by handle) with an API identified by handle
+func (s *APIService) AddGatewaysToAPIByHandle(handle string, gatewayHandles []string, orgId string) (*api.RESTAPIGatewayListResponse, error) {
 	apiUUID, err := s.getAPIUUIDByHandle(handle, orgId)
 	if err != nil {
 		return nil, err
 	}
-	return s.AddGatewaysToAPI(apiUUID, gatewayIds, orgId)
+	// Resolve gateway handles to UUIDs
+	gatewayIDs := make([]string, 0, len(gatewayHandles))
+	for _, gwHandle := range gatewayHandles {
+		gw, gwErr := s.gatewayRepo.GetByHandleAndOrgID(gwHandle, orgId)
+		if gwErr != nil {
+			return nil, gwErr
+		}
+		if gw == nil {
+			return nil, constants.ErrGatewayNotFound
+		}
+		gatewayIDs = append(gatewayIDs, gw.ID)
+	}
+	return s.AddGatewaysToAPI(apiUUID, gatewayIDs, orgId)
 }
 
 // GetAPIGatewaysByHandle retrieves all gateways associated with an API identified by handle
@@ -1536,10 +1548,6 @@ func apiGatewayDetailsToAPI(gwd *model.APIGatewayWithDetails) (*api.RESTAPIGatew
 		return nil, nil
 	}
 
-	gatewayID, err := utils.ParseOpenAPIUUID(gwd.ID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse gateway ID as UUID: %w", err)
-	}
 	orgID, err := utils.ParseOpenAPIUUID(gwd.OrganizationID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse gateway OrganizationID as UUID: %w", err)
@@ -1549,9 +1557,8 @@ func apiGatewayDetailsToAPI(gwd *model.APIGatewayWithDetails) (*api.RESTAPIGatew
 		AssociatedAt:      gwd.AssociatedAt,
 		CreatedAt:         utils.TimePtrIfNotZero(gwd.CreatedAt),
 		Description:       utils.StringPtrIfNotEmpty(gwd.Description),
-		DisplayName:       utils.StringPtrIfNotEmpty(gwd.Handle),
 		FunctionalityType: restAPIGatewayFunctionalityTypePtr(gwd.FunctionalityType),
-		Id:                gatewayID,
+		Handle:            utils.StringPtrIfNotEmpty(gwd.Handle),
 		IsActive:          utils.BoolPtr(gwd.IsActive),
 		IsCritical:        utils.BoolPtr(gwd.IsCritical),
 		IsDeployed:        gwd.IsDeployed,

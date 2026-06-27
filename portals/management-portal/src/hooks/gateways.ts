@@ -4,18 +4,15 @@ import { getApiConfig } from "./apiConfig";
 export type GatewayType = "hybrid" | "cloud";
 
 type GatewayApiShape = {
-  id: string;
   handle: string;
   organizationId: string;
   name: string;
-  displayName: string;
   description?: string | null;
   host?: string | null;
   vhost?: string | null;
   createdAt: string;
   updatedAt: string;
   type?: GatewayType;
-  // backend may also return these in future; keep payload-side as optional
   isCritical?: boolean;
   functionalityType?: string;
 };
@@ -23,8 +20,8 @@ type GatewayApiShape = {
 export type Gateway = GatewayApiShape;
 
 export type CreateGatewayPayload = {
+  handle: string;
   name: string;
-  displayName: string;
   description?: string;
   vhost?: string;
   type?: GatewayType;
@@ -32,7 +29,7 @@ export type CreateGatewayPayload = {
   functionalityType?: string; // "regular"
 };
 
-export type DeleteGatewayPayload = { gatewayId: string };
+export type DeleteGatewayPayload = { gatewayHandle: string };
 
 type GatewayListResponse = {
   count: number;
@@ -53,7 +50,7 @@ export type RotateTokenResponse = {
 
 // ---- NEW: Status types ----
 export type GatewayStatus = {
-  id: string;
+  handle: string;
   name: string;
   isActive: boolean;
   isCritical: boolean;
@@ -69,7 +66,6 @@ const normalizeGateway = (gateway: GatewayApiShape): Gateway => {
   const resolvedVhost = gateway.vhost ?? gateway.host ?? undefined;
   return {
     ...gateway,
-    handle: gateway.handle ?? gateway.name,
     host: resolvedVhost,
     vhost: resolvedVhost,
   };
@@ -180,21 +176,21 @@ export const useGatewaysApi = () => {
       const { token, baseUrl } = getApiConfig();
 
       const response = await fetch(
-        `${baseUrl}/api/v0.9/gateways/${payload.gatewayId}`,
+        `${baseUrl}/api/v0.9/gateways/${payload.gatewayHandle}`,
         {
           method: "DELETE",
           headers: {
             Authorization: `Bearer ${token}`,
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({ gatewayId: payload.gatewayId }),
+          body: JSON.stringify({ gatewayId: payload.gatewayHandle }),
         }
       );
 
       if (!response.ok) {
         const errorBody = await response.text();
         throw new Error(
-          `Failed to delete gateway ${payload.gatewayId}: ${response.status} ${response.statusText} ${errorBody}`
+          `Failed to delete gateway ${payload.gatewayHandle}: ${response.status} ${response.statusText} ${errorBody}`
         );
       }
     },

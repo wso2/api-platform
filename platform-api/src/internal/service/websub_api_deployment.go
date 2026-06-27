@@ -149,18 +149,18 @@ func (s *WebSubAPIDeploymentService) deployWebSubAPI(apiUUID string, req *api.De
 	if req.Base == "" {
 		return nil, constants.ErrDeploymentBaseRequired
 	}
-	gatewayID := utils.OpenAPIUUIDToString(req.GatewayId)
-	if gatewayID == "" {
+	gatewayHandle := req.GatewayHandle
+	if gatewayHandle == "" {
 		return nil, constants.ErrDeploymentGatewayIDRequired
 	}
 	metadata := utils.MapValueOrEmpty(req.Metadata)
 
 	// Validate gateway exists and belongs to organization
-	gateway, err := s.gatewayRepo.GetByUUID(gatewayID)
+	gateway, err := s.gatewayRepo.GetByHandleAndOrgID(gatewayHandle, orgID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get gateway: %w", err)
 	}
-	if gateway == nil || gateway.OrganizationID != orgID {
+	if gateway == nil {
 		return nil, constants.ErrGatewayNotFound
 	}
 
@@ -204,7 +204,7 @@ func (s *WebSubAPIDeploymentService) deployWebSubAPI(apiUUID string, req *api.De
 		Name:             req.Name,
 		ArtifactID:       apiUUID,
 		OrganizationID:   orgID,
-		GatewayID:        gatewayID,
+		GatewayID:        gateway.ID,
 		BaseDeploymentID: baseDeploymentID,
 		Content:          contentBytes,
 		Metadata:         metadata,
@@ -220,7 +220,7 @@ func (s *WebSubAPIDeploymentService) deployWebSubAPI(apiUUID string, req *api.De
 	}
 
 	// Ensure API-Gateway association exists
-	if err := s.ensureAPIGatewayAssociation(apiUUID, gatewayID, orgID); err != nil {
+	if err := s.ensureAPIGatewayAssociation(apiUUID, gateway.ID, orgID); err != nil {
 		s.slogger.Warn("Failed to ensure API-gateway association", "error", err)
 	}
 
@@ -230,7 +230,7 @@ func (s *WebSubAPIDeploymentService) deployWebSubAPI(apiUUID string, req *api.De
 	}
 	performedAt := time.Now().Truncate(time.Millisecond)
 	if _, err := s.deploymentRepo.SetCurrentWithDetails(
-		apiUUID, orgID, gatewayID, deploymentID,
+		apiUUID, orgID, gateway.ID, deploymentID,
 		initialStatus, string(model.DeploymentStatusDeployed),
 		&performedAt, "",
 	); err != nil {
@@ -244,7 +244,7 @@ func (s *WebSubAPIDeploymentService) deployWebSubAPI(apiUUID string, req *api.De
 			DeploymentID: deploymentID,
 			PerformedAt:  performedAt,
 		}
-		if err := s.gatewayEventsService.BroadcastWebSubAPIDeploymentEvent(gatewayID, deploymentEvent); err != nil {
+		if err := s.gatewayEventsService.BroadcastWebSubAPIDeploymentEvent(gateway.ID, deploymentEvent); err != nil {
 			s.slogger.Warn("Failed to broadcast WebSub API deployment event", "error", err)
 		}
 	}
@@ -252,7 +252,7 @@ func (s *WebSubAPIDeploymentService) deployWebSubAPI(apiUUID string, req *api.De
 	return toAPIDeploymentResponse(
 		deployment.DeploymentID,
 		deployment.Name,
-		deployment.GatewayID,
+		gateway.Handle,
 		initialStatus,
 		deployment.BaseDeploymentID,
 		deployment.Metadata,
@@ -352,7 +352,7 @@ func (s *WebSubAPIDeploymentService) undeployWebSubAPIDeployment(apiUUID string,
 	return toAPIDeploymentResponse(
 		deployment.DeploymentID,
 		deployment.Name,
-		deployment.GatewayID,
+		gateway.Handle,
 		initialStatus,
 		deployment.BaseDeploymentID,
 		deployment.Metadata,
@@ -383,7 +383,15 @@ func (s *WebSubAPIDeploymentService) restoreWebSubAPIDeployment(apiUUID string, 
 		return nil, constants.ErrInvalidDeploymentRestoreState
 	}
 
-	if targetDeployment.GatewayID != *gatewayId {
+	gateway, err := s.gatewayRepo.GetByHandleAndOrgID(*gatewayId, orgID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get gateway: %w", err)
+	}
+	if gateway == nil {
+		return nil, constants.ErrGatewayNotFound
+	}
+
+	if targetDeployment.GatewayID != gateway.ID {
 		return nil, constants.ErrGatewayIDMismatch
 	}
 
@@ -393,14 +401,6 @@ func (s *WebSubAPIDeploymentService) restoreWebSubAPIDeployment(apiUUID string, 
 	}
 	if currentDeploymentID == *deploymentId && status == model.DeploymentStatusDeployed {
 		return nil, constants.ErrDeploymentAlreadyDeployed
-	}
-
-	gateway, err := s.gatewayRepo.GetByUUID(targetDeployment.GatewayID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get gateway: %w", err)
-	}
-	if gateway == nil || gateway.OrganizationID != orgID {
-		return nil, constants.ErrGatewayNotFound
 	}
 
 	initialStatus := model.DeploymentStatusDeployed
@@ -431,7 +431,7 @@ func (s *WebSubAPIDeploymentService) restoreWebSubAPIDeployment(apiUUID string, 
 	return toAPIDeploymentResponse(
 		targetDeployment.DeploymentID,
 		targetDeployment.Name,
-		targetDeployment.GatewayID,
+		gateway.Handle,
 		initialStatus,
 		targetDeployment.BaseDeploymentID,
 		targetDeployment.Metadata,
@@ -459,10 +459,15 @@ func (s *WebSubAPIDeploymentService) getWebSubAPIDeployment(apiUUID, deploymentI
 		return nil, constants.ErrDeploymentNotFound
 	}
 
+	gw, _ := s.gatewayRepo.GetByUUID(deployment.GatewayID)
+	gwHandle := deployment.GatewayID
+	if gw != nil {
+		gwHandle = gw.Handle
+	}
 	return toAPIDeploymentResponse(
 		deployment.DeploymentID,
 		deployment.Name,
-		deployment.GatewayID,
+		gwHandle,
 		*deployment.Status,
 		deployment.BaseDeploymentID,
 		deployment.Metadata,
@@ -507,10 +512,15 @@ func (s *WebSubAPIDeploymentService) getWebSubAPIDeployments(apiUUID, orgID stri
 
 	items := make([]api.DeploymentResponse, 0, len(deployments))
 	for _, d := range deployments {
+		gw, _ := s.gatewayRepo.GetByUUID(d.GatewayID)
+		gwHandle := d.GatewayID
+		if gw != nil {
+			gwHandle = gw.Handle
+		}
 		mapped, err := toAPIDeploymentResponse(
 			d.DeploymentID,
 			d.Name,
-			d.GatewayID,
+			gwHandle,
 			*d.Status,
 			d.BaseDeploymentID,
 			d.Metadata,

@@ -42,15 +42,15 @@ export async function getGateways(
 }
 
 /**
- * Get gateway configurations by gateway ID.
+ * Get gateway configurations by gateway handle.
  */
 export async function getGatewayConfigs(
-  gatewayId: string,
+  gatewayHandle: string,
   organizationId: string
 ): Promise<GatewayConfigs> {
   try {
     const response = await get<GatewayConfigs>(
-      `/gateways/${encodeURIComponent(gatewayId)}/configs?organizationId=${encodeURIComponent(organizationId)}`,
+      `/gateways/${encodeURIComponent(gatewayHandle)}/configs?organizationId=${encodeURIComponent(organizationId)}`,
       undefined,
       PLATFORM_API_BASE_URL
     );
@@ -124,11 +124,11 @@ export async function restorePlatformGatewayDeployment(
   apiId: string,
   organizationId: string,
   deploymentId: string,
-  gatewayId: string
+  gatewayHandle: string
 ): Promise<DeploymentResponseToPlatformGateway> {
   try {
     const response = await post<DeploymentResponseToPlatformGateway>(
-      `/apis/${apiId}/platform-gateway-deployments/restore?organizationId=${encodeURIComponent(organizationId)}&deploymentId=${encodeURIComponent(deploymentId)}&gatewayId=${encodeURIComponent(gatewayId)}`,
+      `/apis/${apiId}/platform-gateway-deployments/restore?organizationId=${encodeURIComponent(organizationId)}&deploymentId=${encodeURIComponent(deploymentId)}&gatewayHandle=${encodeURIComponent(gatewayHandle)}`,
       null,
       PLATFORM_API_BASE_URL
     );
@@ -146,11 +146,11 @@ export async function undeployFromPlatformGateway(
   apiId: string,
   organizationId: string,
   deploymentId: string,
-  gatewayId: string
+  gatewayHandle: string
 ): Promise<DeploymentResponseToPlatformGateway> {
   try {
     const response = await post<DeploymentResponseToPlatformGateway>(
-      `/apis/${apiId}/platform-gateway-deployments/undeploy?organizationId=${encodeURIComponent(organizationId)}&deploymentId=${encodeURIComponent(deploymentId)}&gatewayId=${encodeURIComponent(gatewayId)}`,
+      `/apis/${apiId}/platform-gateway-deployments/undeploy?organizationId=${encodeURIComponent(organizationId)}&deploymentId=${encodeURIComponent(deploymentId)}&gatewayHandle=${encodeURIComponent(gatewayHandle)}`,
       null,
       PLATFORM_API_BASE_URL
     );

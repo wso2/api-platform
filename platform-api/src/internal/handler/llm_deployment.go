@@ -29,7 +29,6 @@ import (
 	"platform-api/src/internal/utils"
 
 	"github.com/gin-gonic/gin"
-	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
 // LLMProviderDeploymentHandler handles LLM provider deployment endpoints
@@ -86,9 +85,9 @@ func (h *LLMProviderDeploymentHandler) DeployLLMProvider(c *gin.Context) {
 			"base is required (use 'current' or a deploymentId)"))
 		return
 	}
-	if req.GatewayId == (openapi_types.UUID{}) {
+	if req.GatewayHandle == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"gatewayId is required"))
+			"gatewayHandle is required"))
 		return
 	}
 
@@ -152,14 +151,14 @@ func (h *LLMProviderDeploymentHandler) UndeployLLMProviderDeployment(c *gin.Cont
 
 	providerId := c.Param("providerHandle")
 	deploymentId := c.Param("deploymentId")
-	gatewayId := c.Query("gatewayId")
+	gatewayHandle := c.Query("gatewayHandle")
 
 	if providerId == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"LLM provider ID is required"))
 		return
 	}
-	deployment, err := h.deploymentService.UndeployLLMProviderDeployment(providerId, deploymentId, gatewayId, orgId)
+	deployment, err := h.deploymentService.UndeployLLMProviderDeployment(providerId, deploymentId, gatewayHandle, orgId)
 	if err != nil {
 		// DP-originated artifacts are read-only: undeployment cannot be initiated from the CP.
 		if respondArtifactGuardError(c, err) {
@@ -187,7 +186,7 @@ func (h *LLMProviderDeploymentHandler) UndeployLLMProviderDeployment(c *gin.Cont
 				"Deployment is bound to a different gateway"))
 			return
 		default:
-			h.slogger.Error("Failed to undeploy LLM provider", "providerId", providerId, "deploymentId", deploymentId, "gatewayId", gatewayId, "error", err)
+			h.slogger.Error("Failed to undeploy LLM provider", "providerId", providerId, "deploymentId", deploymentId, "gatewayHandle", gatewayHandle, "error", err)
 			c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to undeploy deployment"))
 			return
 		}
@@ -207,14 +206,14 @@ func (h *LLMProviderDeploymentHandler) RestoreLLMProviderDeployment(c *gin.Conte
 
 	providerId := c.Param("providerHandle")
 	deploymentId := c.Param("deploymentId")
-	gatewayId := c.Query("gatewayId")
+	gatewayHandle := c.Query("gatewayHandle")
 
 	if providerId == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"LLM provider ID is required"))
 		return
 	}
-	deployment, err := h.deploymentService.RestoreLLMProviderDeployment(providerId, deploymentId, gatewayId, orgId)
+	deployment, err := h.deploymentService.RestoreLLMProviderDeployment(providerId, deploymentId, gatewayHandle, orgId)
 	if err != nil {
 		// DP-originated artifacts are read-only: restore cannot be initiated from the CP.
 		if respondArtifactGuardError(c, err) {
@@ -242,7 +241,7 @@ func (h *LLMProviderDeploymentHandler) RestoreLLMProviderDeployment(c *gin.Conte
 				"Deployment is bound to a different gateway"))
 			return
 		default:
-			h.slogger.Error("Failed to restore LLM provider deployment", "providerId", providerId, "deploymentId", deploymentId, "gatewayId", gatewayId, "error", err)
+			h.slogger.Error("Failed to restore LLM provider deployment", "providerId", providerId, "deploymentId", deploymentId, "gatewayHandle", gatewayHandle, "error", err)
 			c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to restore deployment"))
 			return
 		}
@@ -366,17 +365,17 @@ func (h *LLMProviderDeploymentHandler) GetLLMProviderDeployments(c *gin.Context)
 		return
 	}
 
-	var gatewayId, status *string
-	if params.GatewayId != nil {
-		value := string(*params.GatewayId)
-		gatewayId = &value
+	var gatewayHandle, status *string
+	if params.GatewayHandle != nil {
+		value := string(*params.GatewayHandle)
+		gatewayHandle = &value
 	}
 	if params.Status != nil {
 		value := string(*params.Status)
 		status = &value
 	}
 
-	deployments, err := h.deploymentService.GetLLMProviderDeployments(providerId, orgId, gatewayId, status)
+	deployments, err := h.deploymentService.GetLLMProviderDeployments(providerId, orgId, gatewayHandle, status)
 	if err != nil {
 		switch {
 		case errors.Is(err, constants.ErrLLMProviderNotFound):
@@ -443,9 +442,9 @@ func (h *LLMProxyDeploymentHandler) DeployLLMProxy(c *gin.Context) {
 			"base is required (use 'current' or a deploymentId)"))
 		return
 	}
-	if req.GatewayId == (openapi_types.UUID{}) {
+	if req.GatewayHandle == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"gatewayId is required"))
+			"gatewayHandle is required"))
 		return
 	}
 
@@ -505,14 +504,14 @@ func (h *LLMProxyDeploymentHandler) UndeployLLMProxyDeployment(c *gin.Context) {
 
 	proxyId := c.Param("proxyHandle")
 	deploymentId := c.Param("deploymentId")
-	gatewayId := c.Query("gatewayId")
+	gatewayHandle := c.Query("gatewayHandle")
 
 	if proxyId == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"LLM proxy ID is required"))
 		return
 	}
-	deployment, err := h.deploymentService.UndeployLLMProxyDeployment(proxyId, deploymentId, gatewayId, orgId)
+	deployment, err := h.deploymentService.UndeployLLMProxyDeployment(proxyId, deploymentId, gatewayHandle, orgId)
 	if err != nil {
 		// DP-originated artifacts are read-only: undeployment cannot be initiated from the CP.
 		if respondArtifactGuardError(c, err) {
@@ -540,7 +539,7 @@ func (h *LLMProxyDeploymentHandler) UndeployLLMProxyDeployment(c *gin.Context) {
 				"Deployment is bound to a different gateway"))
 			return
 		default:
-			h.slogger.Error("Failed to undeploy LLM proxy", "proxyId", proxyId, "deploymentId", deploymentId, "gatewayId", gatewayId, "error", err)
+			h.slogger.Error("Failed to undeploy LLM proxy", "proxyId", proxyId, "deploymentId", deploymentId, "gatewayHandle", gatewayHandle, "error", err)
 			c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to undeploy deployment"))
 			return
 		}
@@ -560,14 +559,14 @@ func (h *LLMProxyDeploymentHandler) RestoreLLMProxyDeployment(c *gin.Context) {
 
 	proxyId := c.Param("proxyHandle")
 	deploymentId := c.Param("deploymentId")
-	gatewayId := c.Query("gatewayId")
+	gatewayHandle := c.Query("gatewayHandle")
 
 	if proxyId == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"LLM proxy ID is required"))
 		return
 	}
-	deployment, err := h.deploymentService.RestoreLLMProxyDeployment(proxyId, deploymentId, gatewayId, orgId)
+	deployment, err := h.deploymentService.RestoreLLMProxyDeployment(proxyId, deploymentId, gatewayHandle, orgId)
 	if err != nil {
 		// DP-originated artifacts are read-only: restore cannot be initiated from the CP.
 		if respondArtifactGuardError(c, err) {
@@ -595,7 +594,7 @@ func (h *LLMProxyDeploymentHandler) RestoreLLMProxyDeployment(c *gin.Context) {
 				"Deployment is bound to a different gateway"))
 			return
 		default:
-			h.slogger.Error("Failed to restore LLM proxy deployment", "proxyId", proxyId, "deploymentId", deploymentId, "gatewayId", gatewayId, "error", err)
+			h.slogger.Error("Failed to restore LLM proxy deployment", "proxyId", proxyId, "deploymentId", deploymentId, "gatewayHandle", gatewayHandle, "error", err)
 			c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to restore deployment"))
 			return
 		}
@@ -719,17 +718,17 @@ func (h *LLMProxyDeploymentHandler) GetLLMProxyDeployments(c *gin.Context) {
 		return
 	}
 
-	var gatewayId, status *string
-	if params.GatewayId != nil {
-		value := string(*params.GatewayId)
-		gatewayId = &value
+	var gatewayHandle, status *string
+	if params.GatewayHandle != nil {
+		value := string(*params.GatewayHandle)
+		gatewayHandle = &value
 	}
 	if params.Status != nil {
 		value := string(*params.Status)
 		status = &value
 	}
 
-	deployments, err := h.deploymentService.GetLLMProxyDeployments(proxyId, orgId, gatewayId, status)
+	deployments, err := h.deploymentService.GetLLMProxyDeployments(proxyId, orgId, gatewayHandle, status)
 	if err != nil {
 		switch {
 		case errors.Is(err, constants.ErrLLMProxyNotFound):

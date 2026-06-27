@@ -15,10 +15,9 @@
  * Gateway interface representing a hybrid gateway
  */
 export interface Gateway {
-  id: string;
+  handle: string;
   organizationId: string;
   name: string;
-  displayName: string;
   description?: string;
   vhost: string;
   isCritical: boolean;
@@ -54,7 +53,7 @@ export type GatewayConfigs = GatewayConfig | GatewayConfig[];
  * Request interface for registering a new gateway
  */
 export interface RegisterGatewayRequest {
-  displayName: string;
+  handle: string;
   name: string;
   vhost: string;
   functionalityType: string;
@@ -74,7 +73,6 @@ export interface RegisterGatewayResponse extends Gateway {
  * Request interface for updating a gateway
  */
 export interface UpdateGatewayRequest {
-  displayName: string;
   name: string;
   vhost: string;
   functionalityType: string;
@@ -125,7 +123,7 @@ export interface DeploymentResponseToPlatformGateway {
   deploymentId: string;
   name?: string;
   apiId?: string;
-  gatewayId?: string;
+  gatewayHandle?: string;
   status: string;
   statusReason?: string | null;
   createdAt?: string;
@@ -140,7 +138,7 @@ export interface DeploymentListResponseToPlatformGateway {
 export interface DeployAPIToPlatformGatewayRequest {
   name: string;
   base: string;
-  gatewayId: string;
+  gatewayHandle: string;
   metadata?: object;
 }
 
@@ -156,7 +154,7 @@ export interface HybridGateway extends Gateway {
  * Gateway deployment status interface
  */
 export interface GatewayDeployment {
-  gatewayId: string;
+  gatewayHandle: string;
   status: 'DEPLOYED' | 'UNDEPLOYED' | 'ARCHIVED' | 'DEPLOYING' | 'UNDEPLOYING' | 'FAILED';
   statusReason?: string | null;
   buildId?: string;

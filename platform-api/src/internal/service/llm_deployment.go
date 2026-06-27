@@ -34,7 +34,6 @@ import (
 	"platform-api/src/internal/repository"
 	"platform-api/src/internal/utils"
 
-	openapi_types "github.com/oapi-codegen/runtime/types"
 	"gopkg.in/yaml.v3"
 )
 
@@ -126,21 +125,18 @@ func (s *LLMProviderDeploymentService) DeployLLMProvider(providerID string, req 
 	if req.Base == "" {
 		return nil, constants.ErrDeploymentBaseRequired
 	}
-	if req.GatewayId == (openapi_types.UUID{}) {
-		return nil, constants.ErrDeploymentGatewayIDRequired
-	}
-	gatewayID := utils.OpenAPIUUIDToString(req.GatewayId)
-	if gatewayID == "" {
+	gatewayHandle := req.GatewayHandle
+	if gatewayHandle == "" {
 		return nil, constants.ErrDeploymentGatewayIDRequired
 	}
 	metadata := utils.MapValueOrEmpty(req.Metadata)
 
 	// Validate gateway exists and belongs to organization
-	gateway, err := s.gatewayRepo.GetByUUID(gatewayID)
+	gateway, err := s.gatewayRepo.GetByHandleAndOrgID(gatewayHandle, orgUUID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get gateway: %w", err)
 	}
-	if gateway == nil || gateway.OrganizationID != orgUUID {
+	if gateway == nil {
 		return nil, constants.ErrGatewayNotFound
 	}
 
@@ -215,7 +211,7 @@ func (s *LLMProviderDeploymentService) DeployLLMProvider(providerID string, req 
 		Name:             req.Name,
 		ArtifactID:       provider.UUID,
 		OrganizationID:   orgUUID,
-		GatewayID:        gatewayID,
+		GatewayID:        gateway.ID,
 		BaseDeploymentID: baseDeploymentID,
 		Content:          contentBytes,
 		Metadata:         metadata,
@@ -237,7 +233,7 @@ func (s *LLMProviderDeploymentService) DeployLLMProvider(providerID string, req 
 	}
 	performedAt := time.Now().Truncate(time.Millisecond)
 	if _, err := s.deploymentRepo.SetCurrentWithDetails(
-		provider.UUID, orgUUID, gatewayID, deploymentID,
+		provider.UUID, orgUUID, gateway.ID, deploymentID,
 		initialStatus, string(model.DeploymentStatusDeployed),
 		&performedAt, "",
 	); err != nil {
@@ -252,7 +248,7 @@ func (s *LLMProviderDeploymentService) DeployLLMProvider(providerID string, req 
 			PerformedAt:  performedAt,
 		}
 
-		if err := s.gatewayEventsService.BroadcastLLMProviderDeploymentEvent(gatewayID, deploymentEvent); err != nil {
+		if err := s.gatewayEventsService.BroadcastLLMProviderDeploymentEvent(gateway.ID, deploymentEvent); err != nil {
 			s.slogger.Warn("Failed to broadcast LLM provider deployment event", "error", err)
 		}
 	}
@@ -260,7 +256,7 @@ func (s *LLMProviderDeploymentService) DeployLLMProvider(providerID string, req 
 	return toAPIDeploymentResponse(
 		deployment.DeploymentID,
 		deployment.Name,
-		deployment.GatewayID,
+		gateway.Handle,
 		initialStatus,
 		deployment.BaseDeploymentID,
 		deployment.Metadata,
@@ -291,7 +287,15 @@ func (s *LLMProviderDeploymentService) RestoreLLMProviderDeployment(providerID, 
 	if targetDeployment == nil {
 		return nil, constants.ErrDeploymentNotFound
 	}
-	if targetDeployment.GatewayID != gatewayID {
+	gateway, err := s.gatewayRepo.GetByHandleAndOrgID(gatewayID, orgUUID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get gateway: %w", err)
+	}
+	if gateway == nil {
+		return nil, constants.ErrGatewayNotFound
+	}
+
+	if targetDeployment.GatewayID != gateway.ID {
 		return nil, constants.ErrGatewayIDMismatch
 	}
 
@@ -301,14 +305,6 @@ func (s *LLMProviderDeploymentService) RestoreLLMProviderDeployment(providerID, 
 	}
 	if currentDeploymentID == deploymentID && status == model.DeploymentStatusDeployed {
 		return nil, constants.ErrDeploymentAlreadyDeployed
-	}
-
-	gateway, err := s.gatewayRepo.GetByUUID(targetDeployment.GatewayID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get gateway: %w", err)
-	}
-	if gateway == nil || gateway.OrganizationID != orgUUID {
-		return nil, constants.ErrGatewayNotFound
 	}
 
 	// Set initial status based on config; transitional (DEPLOYING) only when enabled
@@ -342,7 +338,7 @@ func (s *LLMProviderDeploymentService) RestoreLLMProviderDeployment(providerID, 
 	return toAPIDeploymentResponse(
 		targetDeployment.DeploymentID,
 		targetDeployment.Name,
-		targetDeployment.GatewayID,
+		gateway.Handle,
 		initialStatus,
 		targetDeployment.BaseDeploymentID,
 		targetDeployment.Metadata,
@@ -375,19 +371,20 @@ func (s *LLMProviderDeploymentService) UndeployLLMProviderDeployment(providerID,
 	if deployment == nil {
 		return nil, constants.ErrDeploymentNotFound
 	}
-	if deployment.GatewayID != gatewayID {
-		return nil, constants.ErrGatewayIDMismatch
-	}
 	if deployment.Status == nil || *deployment.Status != model.DeploymentStatusDeployed {
 		return nil, constants.ErrDeploymentNotActive
 	}
 
-	gateway, err := s.gatewayRepo.GetByUUID(deployment.GatewayID)
+	gateway, err := s.gatewayRepo.GetByHandleAndOrgID(gatewayID, orgUUID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get gateway: %w", err)
 	}
-	if gateway == nil || gateway.OrganizationID != orgUUID {
+	if gateway == nil {
 		return nil, constants.ErrGatewayNotFound
+	}
+
+	if deployment.GatewayID != gateway.ID {
+		return nil, constants.ErrGatewayIDMismatch
 	}
 
 	// Set initial status based on config; transitional (UNDEPLOYING) only when enabled
@@ -421,7 +418,7 @@ func (s *LLMProviderDeploymentService) UndeployLLMProviderDeployment(providerID,
 	return toAPIDeploymentResponse(
 		deployment.DeploymentID,
 		deployment.Name,
-		deployment.GatewayID,
+		gateway.Handle,
 		initialStatus,
 		deployment.BaseDeploymentID,
 		deployment.Metadata,
@@ -493,10 +490,15 @@ func (s *LLMProviderDeploymentService) GetLLMProviderDeployments(providerID, org
 
 	items := make([]api.DeploymentResponse, 0, len(deployments))
 	for _, d := range deployments {
+		gw, _ := s.gatewayRepo.GetByUUID(d.GatewayID)
+		gwHandle := d.GatewayID
+		if gw != nil {
+			gwHandle = gw.Handle
+		}
 		mapped, err := toAPIDeploymentResponse(
 			d.DeploymentID,
 			d.Name,
-			d.GatewayID,
+			gwHandle,
 			*d.Status,
 			d.BaseDeploymentID,
 			d.Metadata,
@@ -534,10 +536,15 @@ func (s *LLMProviderDeploymentService) GetLLMProviderDeployment(providerID, depl
 		return nil, constants.ErrDeploymentNotFound
 	}
 
+	gw, _ := s.gatewayRepo.GetByUUID(deployment.GatewayID)
+	gwHandle := deployment.GatewayID
+	if gw != nil {
+		gwHandle = gw.Handle
+	}
 	return toAPIDeploymentResponse(
 		deployment.DeploymentID,
 		deployment.Name,
-		deployment.GatewayID,
+		gwHandle,
 		*deployment.Status,
 		deployment.BaseDeploymentID,
 		deployment.Metadata,
@@ -1216,21 +1223,18 @@ func (s *LLMProxyDeploymentService) DeployLLMProxy(proxyID string, req *api.Depl
 	if req.Base == "" {
 		return nil, constants.ErrDeploymentBaseRequired
 	}
-	if req.GatewayId == (openapi_types.UUID{}) {
-		return nil, constants.ErrDeploymentGatewayIDRequired
-	}
-	gatewayID := utils.OpenAPIUUIDToString(req.GatewayId)
-	if gatewayID == "" {
+	gatewayHandle := req.GatewayHandle
+	if gatewayHandle == "" {
 		return nil, constants.ErrDeploymentGatewayIDRequired
 	}
 	metadata := utils.MapValueOrEmpty(req.Metadata)
 
 	// Validate gateway exists and belongs to organization
-	gateway, err := s.gatewayRepo.GetByUUID(gatewayID)
+	gateway, err := s.gatewayRepo.GetByHandleAndOrgID(gatewayHandle, orgUUID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get gateway: %w", err)
 	}
-	if gateway == nil || gateway.OrganizationID != orgUUID {
+	if gateway == nil {
 		return nil, constants.ErrGatewayNotFound
 	}
 
@@ -1301,7 +1305,7 @@ func (s *LLMProxyDeploymentService) DeployLLMProxy(proxyID string, req *api.Depl
 		Name:             req.Name,
 		ArtifactID:       proxy.UUID,
 		OrganizationID:   orgUUID,
-		GatewayID:        gatewayID,
+		GatewayID:        gateway.ID,
 		BaseDeploymentID: baseDeploymentID,
 		Content:          contentBytes,
 		Metadata:         metadata,
@@ -1323,7 +1327,7 @@ func (s *LLMProxyDeploymentService) DeployLLMProxy(proxyID string, req *api.Depl
 	}
 	performedAt := time.Now().Truncate(time.Millisecond)
 	if _, err := s.deploymentRepo.SetCurrentWithDetails(
-		proxy.UUID, orgUUID, gatewayID, deploymentID,
+		proxy.UUID, orgUUID, gateway.ID, deploymentID,
 		initialStatus, string(model.DeploymentStatusDeployed),
 		&performedAt, "",
 	); err != nil {
@@ -1338,7 +1342,7 @@ func (s *LLMProxyDeploymentService) DeployLLMProxy(proxyID string, req *api.Depl
 			PerformedAt:  performedAt,
 		}
 
-		if err := s.gatewayEventsService.BroadcastLLMProxyDeploymentEvent(gatewayID, deploymentEvent); err != nil {
+		if err := s.gatewayEventsService.BroadcastLLMProxyDeploymentEvent(gateway.ID, deploymentEvent); err != nil {
 			s.slogger.Warn("Failed to broadcast LLM proxy deployment event", "error", err)
 		}
 	}
@@ -1346,7 +1350,7 @@ func (s *LLMProxyDeploymentService) DeployLLMProxy(proxyID string, req *api.Depl
 	return toAPIDeploymentResponse(
 		deployment.DeploymentID,
 		deployment.Name,
-		deployment.GatewayID,
+		gateway.Handle,
 		initialStatus,
 		deployment.BaseDeploymentID,
 		deployment.Metadata,
@@ -1377,7 +1381,15 @@ func (s *LLMProxyDeploymentService) RestoreLLMProxyDeployment(proxyID, deploymen
 	if targetDeployment == nil {
 		return nil, constants.ErrDeploymentNotFound
 	}
-	if targetDeployment.GatewayID != gatewayID {
+	gateway, err := s.gatewayRepo.GetByHandleAndOrgID(gatewayID, orgUUID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get gateway: %w", err)
+	}
+	if gateway == nil {
+		return nil, constants.ErrGatewayNotFound
+	}
+
+	if targetDeployment.GatewayID != gateway.ID {
 		return nil, constants.ErrGatewayIDMismatch
 	}
 
@@ -1387,14 +1399,6 @@ func (s *LLMProxyDeploymentService) RestoreLLMProxyDeployment(proxyID, deploymen
 	}
 	if currentDeploymentID == deploymentID && status == model.DeploymentStatusDeployed {
 		return nil, constants.ErrDeploymentAlreadyDeployed
-	}
-
-	gateway, err := s.gatewayRepo.GetByUUID(targetDeployment.GatewayID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get gateway: %w", err)
-	}
-	if gateway == nil || gateway.OrganizationID != orgUUID {
-		return nil, constants.ErrGatewayNotFound
 	}
 
 	// Set initial status based on config; transitional (DEPLOYING) only when enabled
@@ -1428,7 +1432,7 @@ func (s *LLMProxyDeploymentService) RestoreLLMProxyDeployment(proxyID, deploymen
 	return toAPIDeploymentResponse(
 		targetDeployment.DeploymentID,
 		targetDeployment.Name,
-		targetDeployment.GatewayID,
+		gateway.Handle,
 		initialStatus,
 		targetDeployment.BaseDeploymentID,
 		targetDeployment.Metadata,
@@ -1461,19 +1465,20 @@ func (s *LLMProxyDeploymentService) UndeployLLMProxyDeployment(proxyID, deployme
 	if deployment == nil {
 		return nil, constants.ErrDeploymentNotFound
 	}
-	if deployment.GatewayID != gatewayID {
-		return nil, constants.ErrGatewayIDMismatch
-	}
 	if deployment.Status == nil || *deployment.Status != model.DeploymentStatusDeployed {
 		return nil, constants.ErrDeploymentNotActive
 	}
 
-	gateway, err := s.gatewayRepo.GetByUUID(deployment.GatewayID)
+	gateway, err := s.gatewayRepo.GetByHandleAndOrgID(gatewayID, orgUUID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get gateway: %w", err)
 	}
-	if gateway == nil || gateway.OrganizationID != orgUUID {
+	if gateway == nil {
 		return nil, constants.ErrGatewayNotFound
+	}
+
+	if deployment.GatewayID != gateway.ID {
+		return nil, constants.ErrGatewayIDMismatch
 	}
 
 	// Set initial status based on config; transitional (UNDEPLOYING) only when enabled
@@ -1507,7 +1512,7 @@ func (s *LLMProxyDeploymentService) UndeployLLMProxyDeployment(proxyID, deployme
 	return toAPIDeploymentResponse(
 		deployment.DeploymentID,
 		deployment.Name,
-		deployment.GatewayID,
+		gateway.Handle,
 		initialStatus,
 		deployment.BaseDeploymentID,
 		deployment.Metadata,
@@ -1579,10 +1584,15 @@ func (s *LLMProxyDeploymentService) GetLLMProxyDeployments(proxyID, orgUUID stri
 
 	items := make([]api.DeploymentResponse, 0, len(deployments))
 	for _, d := range deployments {
+		gw, _ := s.gatewayRepo.GetByUUID(d.GatewayID)
+		gwHandle := d.GatewayID
+		if gw != nil {
+			gwHandle = gw.Handle
+		}
 		mapped, err := toAPIDeploymentResponse(
 			d.DeploymentID,
 			d.Name,
-			d.GatewayID,
+			gwHandle,
 			*d.Status,
 			d.BaseDeploymentID,
 			d.Metadata,
@@ -1620,10 +1630,15 @@ func (s *LLMProxyDeploymentService) GetLLMProxyDeployment(proxyID, deploymentID,
 		return nil, constants.ErrDeploymentNotFound
 	}
 
+	gw, _ := s.gatewayRepo.GetByUUID(deployment.GatewayID)
+	gwHandle := deployment.GatewayID
+	if gw != nil {
+		gwHandle = gw.Handle
+	}
 	return toAPIDeploymentResponse(
 		deployment.DeploymentID,
 		deployment.Name,
-		deployment.GatewayID,
+		gwHandle,
 		*deployment.Status,
 		deployment.BaseDeploymentID,
 		deployment.Metadata,

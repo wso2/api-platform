@@ -87,10 +87,9 @@ export type ImportOpenApiRequest = {
 
 /** ---------- Gateways bound to an API ---------- */
 export type ApiGatewaySummary = {
-  id: string;
+  handle: string;
   organizationId: string;
   name: string;
-  displayName?: string;
   description?: string;
   vhost?: string;
   isCritical?: boolean;
@@ -379,7 +378,7 @@ export const useApisApi = () => {
     async (apiId: string, gatewayIds: string[]): Promise<ApiGatewaySummary[]> => {
       const { token, baseUrl } = getApiConfig();
 
-      const payload = gatewayIds.map((gatewayId) => ({ gatewayId }));
+      const payload = gatewayIds.map((gatewayHandle) => ({ gatewayHandle }));
 
       const response = await fetch(
         `${baseUrl}/api/v0.9/rest-apis/${encodeURIComponent(apiId)}/gateways`,

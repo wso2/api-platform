@@ -28,7 +28,6 @@ export const DUMMY_DOCUMENTS = [
 
 interface Gateway {
   name: string;
-  displayName?: string;
   vhost?: string;
 }
 
@@ -82,7 +81,7 @@ const ApiPublishForm: React.FC<Props> = ({
   handleCheckboxChange,
   handleUrlChange,
 }) => {
-  const gatewayOptions = gateways.map((gateway: any) => ({ label: `${gateway.displayName || gateway.name} (${getGatewayUrl(gateway)})`, value: getGatewayUrl(gateway) }));
+  const gatewayOptions = gateways.map((gateway: any) => ({ label: `${gateway.name} (${getGatewayUrl(gateway)})`, value: getGatewayUrl(gateway) }));
 
   return (
     <Stack spacing={2}>

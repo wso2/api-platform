@@ -629,7 +629,7 @@ type AddApplicationAssociationsRequest struct {
 
 // AddGatewayToRESTAPIRequest defines model for AddGatewayToRESTAPIRequest.
 type AddGatewayToRESTAPIRequest struct {
-	GatewayId openapi_types.UUID `binding:"required" json:"gatewayId" yaml:"gatewayId"`
+	GatewayHandle string `binding:"required" json:"gatewayHandle" yaml:"gatewayHandle"`
 }
 
 // Application defines model for Application.
@@ -843,16 +843,16 @@ type CreateGatewayRequest struct {
 	// Description Description of the gateway
 	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
 
-	// DisplayName Human-readable gateway name
-	DisplayName string `binding:"required" json:"displayName" yaml:"displayName"`
-
 	// FunctionalityType Type of gateway functionality
 	FunctionalityType CreateGatewayRequestFunctionalityType `binding:"required" json:"functionalityType" yaml:"functionalityType"`
+
+	// Handle URL-friendly gateway identifier (lowercase alphanumeric with hyphens, unique per organization)
+	Handle string `binding:"required" json:"handle" yaml:"handle"`
 
 	// IsCritical Whether the gateway is critical for production
 	IsCritical *bool `json:"isCritical,omitempty" yaml:"isCritical,omitempty"`
 
-	// Name URL-friendly gateway identifier (lowercase alphanumeric with hyphens, unique per organization)
+	// Name Human-readable gateway name
 	Name string `binding:"required" json:"name" yaml:"name"`
 
 	// Properties Custom key-value properties for the gateway
@@ -1112,8 +1112,8 @@ type DeployRequest struct {
 	// Base The source for the API definition. Can be "current" (latest working copy) or a deploymentId (existing deployment)
 	Base string `binding:"required" json:"base" yaml:"base"`
 
-	// GatewayId The target gateway UUID for this deployment
-	GatewayId openapi_types.UUID `binding:"required" json:"gatewayId" yaml:"gatewayId"`
+	// GatewayHandle The target gateway handle for this deployment
+	GatewayHandle string `binding:"required" json:"gatewayHandle" yaml:"gatewayHandle"`
 
 	// Metadata Optional metadata for the deployment. Supported keys include `endpointUrl`, `vhostMain`, and `vhostSandbox`.
 	Metadata *map[string]interface{} `json:"metadata,omitempty" yaml:"metadata,omitempty"`
@@ -1142,8 +1142,8 @@ type DeploymentResponse struct {
 	// DeploymentId Unique identifier for the deployment
 	DeploymentId openapi_types.UUID `binding:"required" json:"deploymentId" yaml:"deploymentId"`
 
-	// GatewayId UUID of the gateway
-	GatewayId openapi_types.UUID `binding:"required" json:"gatewayId" yaml:"gatewayId"`
+	// GatewayHandle Handle of the gateway
+	GatewayHandle string `binding:"required" json:"gatewayHandle" yaml:"gatewayHandle"`
 
 	// Metadata Metadata associated with the deployment
 	Metadata *map[string]interface{} `json:"metadata,omitempty" yaml:"metadata,omitempty"`
@@ -1293,17 +1293,11 @@ type GatewayResponse struct {
 	// Description Description of the gateway
 	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
 
-	// DisplayName Human-readable gateway name (alias for Name)
-	DisplayName *string `json:"displayName,omitempty" yaml:"displayName,omitempty"`
-
 	// FunctionalityType Type of gateway functionality
 	FunctionalityType *GatewayResponseFunctionalityType `json:"functionalityType,omitempty" yaml:"functionalityType,omitempty"`
 
 	// Handle URL-friendly gateway identifier (lowercase alphanumeric with hyphens, unique per organization)
 	Handle *string `json:"handle,omitempty" yaml:"handle,omitempty"`
-
-	// Id Unique identifier for the gateway
-	Id *openapi_types.UUID `json:"id,omitempty" yaml:"id,omitempty"`
 
 	// IsActive Indicates if the gateway is currently connected to the platform via WebSocket
 	IsActive *bool `json:"isActive,omitempty" yaml:"isActive,omitempty"`
@@ -1345,9 +1339,6 @@ type GatewayStatusListResponse struct {
 type GatewayStatusResponse struct {
 	// Handle URL-friendly gateway identifier
 	Handle *string `json:"handle,omitempty" yaml:"handle,omitempty"`
-
-	// Id Unique identifier for the gateway
-	Id *openapi_types.UUID `json:"id,omitempty" yaml:"id,omitempty"`
 
 	// IsActive Indicates if the gateway is currently connected to the platform via WebSocket
 	IsActive *bool `json:"isActive,omitempty" yaml:"isActive,omitempty"`
@@ -2247,7 +2238,7 @@ type Organization struct {
 	// CreatedAt Timestamp when the organization was created
 	CreatedAt *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
 
-	// Handle URL-friendly unique handle for the organization
+	// Handle URL-friendly unique identifier for the organization
 	Handle string `binding:"required" json:"handle" yaml:"handle"`
 
 	// Id Unique identifier for the organization
@@ -2396,8 +2387,8 @@ type PublishRESTAPIInfoVisibility string
 
 // PublishRESTAPIResponse defines model for PublishRESTAPIResponse.
 type PublishRESTAPIResponse struct {
-	// ApiId Platform-api API identifier
-	ApiId openapi_types.UUID `binding:"required" json:"apiId" yaml:"apiId"`
+	// ApiId Platform-api API handle
+	ApiId string `binding:"required" json:"apiId" yaml:"apiId"`
 
 	// DevPortalRefId DevPortal reference ID for the published API
 	DevPortalRefId string `binding:"required" json:"devPortalRefId" yaml:"devPortalRefId"`
@@ -2500,14 +2491,11 @@ type RESTAPIGatewayResponse struct {
 	// Description Description of the gateway
 	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
 
-	// DisplayName Human-readable gateway name
-	DisplayName *string `json:"displayName,omitempty" yaml:"displayName,omitempty"`
-
 	// FunctionalityType Type of gateway functionality
 	FunctionalityType *RESTAPIGatewayResponseFunctionalityType `json:"functionalityType,omitempty" yaml:"functionalityType,omitempty"`
 
-	// Id Unique identifier for the gateway
-	Id *openapi_types.UUID `json:"id,omitempty" yaml:"id,omitempty"`
+	// Handle URL-friendly gateway identifier
+	Handle *string `json:"handle,omitempty" yaml:"handle,omitempty"`
 
 	// IsActive Indicates if the gateway is currently connected to the platform via WebSocket
 	IsActive *bool `json:"isActive,omitempty" yaml:"isActive,omitempty"`
@@ -2518,7 +2506,7 @@ type RESTAPIGatewayResponse struct {
 	// IsDeployed Whether the API is currently deployed to this gateway
 	IsDeployed bool `json:"isDeployed" yaml:"isDeployed"`
 
-	// Name URL-friendly gateway identifier
+	// Name Human-readable gateway name
 	Name *string `json:"name,omitempty" yaml:"name,omitempty"`
 
 	// OrganizationId UUID of the organization this gateway belongs to
@@ -2747,9 +2735,6 @@ type SecretResponse struct {
 	Handle    *string    `json:"handle,omitempty" yaml:"handle,omitempty"`
 	Name      *string    `json:"name,omitempty" yaml:"name,omitempty"`
 	UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
-
-	// Uuid UUID of the secret
-	Uuid *string `json:"uuid,omitempty" yaml:"uuid,omitempty"`
 }
 
 // SecretSummary Secret metadata — never includes the plaintext value.
@@ -2763,9 +2748,6 @@ type SecretSummary struct {
 	Status      *SecretSummaryStatus   `json:"status,omitempty" yaml:"status,omitempty"`
 	Type        *SecretSummaryType     `json:"type,omitempty" yaml:"type,omitempty"`
 	UpdatedAt   *time.Time             `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
-
-	// Uuid UUID of the secret
-	Uuid *string `json:"uuid,omitempty" yaml:"uuid,omitempty"`
 }
 
 // SecretSummaryProvider defines model for SecretSummary.Provider.
@@ -2799,8 +2781,8 @@ type SecurityConfig struct {
 
 // Subscription defines model for Subscription.
 type Subscription struct {
-	// ApiId REST API UUID
-	ApiId *openapi_types.UUID `json:"apiId,omitempty" yaml:"apiId,omitempty"`
+	// ApiId REST API handle
+	ApiId *string `json:"apiId,omitempty" yaml:"apiId,omitempty"`
 
 	// ApplicationId Application ID (optional for token-based subscriptions)
 	ApplicationId *string    `json:"applicationId,omitempty" yaml:"applicationId,omitempty"`
@@ -2844,7 +2826,6 @@ type SubscriptionPlan struct {
 	CreatedAt          *time.Time              `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
 	ExpiryTime         *time.Time              `json:"expiryTime,omitempty" yaml:"expiryTime,omitempty"`
 	Handle             *string                 `json:"handle,omitempty" yaml:"handle,omitempty"`
-	Id                 *openapi_types.UUID     `json:"id,omitempty" yaml:"id,omitempty"`
 	Name               *string                 `json:"name,omitempty" yaml:"name,omitempty"`
 	OrganizationId     *openapi_types.UUID     `json:"organizationId,omitempty" yaml:"organizationId,omitempty"`
 	PlanName           *string                 `json:"planName,omitempty" yaml:"planName,omitempty"`
@@ -2912,8 +2893,8 @@ type TokenRotationResponse struct {
 
 // UnpublishRESTAPIResponse defines model for UnpublishRESTAPIResponse.
 type UnpublishRESTAPIResponse struct {
-	// ApiId Platform-api API identifier
-	ApiId openapi_types.UUID `binding:"required" json:"apiId" yaml:"apiId"`
+	// ApiId Platform-api API handle
+	ApiId string `binding:"required" json:"apiId" yaml:"apiId"`
 
 	// Message Human-readable success message
 	Message string `binding:"required" json:"message" yaml:"message"`
@@ -2976,11 +2957,11 @@ type UpdateGatewayRequest struct {
 	// Description Description of the gateway
 	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
 
-	// DisplayName Human-readable gateway name
-	DisplayName *string `json:"displayName,omitempty" yaml:"displayName,omitempty"`
-
 	// IsCritical Whether the gateway is critical for production
 	IsCritical *bool `json:"isCritical,omitempty" yaml:"isCritical,omitempty"`
+
+	// Name Human-readable gateway name
+	Name *string `json:"name,omitempty" yaml:"name,omitempty"`
 
 	// Properties Custom key-value properties for the gateway
 	Properties *map[string]interface{} `json:"properties,omitempty" yaml:"properties,omitempty"`
@@ -3587,8 +3568,8 @@ type ListApplicationAssociationAPIKeysParams struct {
 
 // SyncCustomPolicyParams defines parameters for SyncCustomPolicy.
 type SyncCustomPolicyParams struct {
-	// GatewayId UUID of the gateway whose manifest contains the policy
-	GatewayId openapi_types.UUID `form:"gatewayId" json:"gatewayId" yaml:"gatewayId"`
+	// GatewayHandle Handle of the gateway whose manifest contains the policy
+	GatewayHandle string `form:"gatewayHandle" json:"gatewayHandle" yaml:"gatewayHandle"`
 
 	// PolicyName Name of the custom policy (case-insensitive)
 	PolicyName string `form:"policyName" json:"policyName" yaml:"policyName"`
@@ -3658,8 +3639,8 @@ type ListLLMProvidersParams struct {
 
 // GetLLMProviderDeploymentsParams defines parameters for GetLLMProviderDeployments.
 type GetLLMProviderDeploymentsParams struct {
-	// GatewayId **Gateway ID** consisting of the **UUID** of the Gateway to filter status by.
-	GatewayId *GatewayIdQ `form:"gatewayId,omitempty" json:"gatewayId,omitempty" yaml:"gatewayId,omitempty"`
+	// GatewayHandle Gateway handle to filter deployments by.
+	GatewayHandle *GatewayIdQ `form:"gatewayHandle,omitempty" json:"gatewayHandle,omitempty" yaml:"gatewayHandle,omitempty"`
 
 	// Status Filter deployments by status (DEPLOYED, UNDEPLOYED, DEPLOYING, UNDEPLOYING, FAILED, or ARCHIVED)
 	Status *GetLLMProviderDeploymentsParamsStatus `form:"status,omitempty" json:"status,omitempty" yaml:"status,omitempty"`
@@ -3670,14 +3651,14 @@ type GetLLMProviderDeploymentsParamsStatus string
 
 // RestoreLLMProviderDeploymentParams defines parameters for RestoreLLMProviderDeployment.
 type RestoreLLMProviderDeploymentParams struct {
-	// GatewayId UUID of the gateway (validated against deployment's bound gateway)
-	GatewayId string `form:"gatewayId" json:"gatewayId" yaml:"gatewayId"`
+	// GatewayHandle Handle of the gateway (validated against deployment's bound gateway)
+	GatewayHandle string `form:"gatewayHandle" json:"gatewayHandle" yaml:"gatewayHandle"`
 }
 
 // UndeployLLMProviderDeploymentParams defines parameters for UndeployLLMProviderDeployment.
 type UndeployLLMProviderDeploymentParams struct {
-	// GatewayId UUID of the gateway (validated against deployment's bound gateway)
-	GatewayId string `form:"gatewayId" json:"gatewayId" yaml:"gatewayId"`
+	// GatewayHandle Handle of the gateway (validated against deployment's bound gateway)
+	GatewayHandle string `form:"gatewayHandle" json:"gatewayHandle" yaml:"gatewayHandle"`
 }
 
 // ListLLMProxiesByProviderParams defines parameters for ListLLMProxiesByProvider.
@@ -3703,8 +3684,8 @@ type ListLLMProxiesParams struct {
 
 // GetLLMProxyDeploymentsParams defines parameters for GetLLMProxyDeployments.
 type GetLLMProxyDeploymentsParams struct {
-	// GatewayId **Gateway ID** consisting of the **UUID** of the Gateway to filter status by.
-	GatewayId *GatewayIdQ `form:"gatewayId,omitempty" json:"gatewayId,omitempty" yaml:"gatewayId,omitempty"`
+	// GatewayHandle Gateway handle to filter deployments by.
+	GatewayHandle *GatewayIdQ `form:"gatewayHandle,omitempty" json:"gatewayHandle,omitempty" yaml:"gatewayHandle,omitempty"`
 
 	// Status Filter deployments by status (DEPLOYED, UNDEPLOYED, DEPLOYING, UNDEPLOYING, FAILED, or ARCHIVED)
 	Status *GetLLMProxyDeploymentsParamsStatus `form:"status,omitempty" json:"status,omitempty" yaml:"status,omitempty"`
@@ -3715,14 +3696,14 @@ type GetLLMProxyDeploymentsParamsStatus string
 
 // RestoreLLMProxyDeploymentParams defines parameters for RestoreLLMProxyDeployment.
 type RestoreLLMProxyDeploymentParams struct {
-	// GatewayId UUID of the gateway (validated against deployment's bound gateway)
-	GatewayId string `form:"gatewayId" json:"gatewayId" yaml:"gatewayId"`
+	// GatewayHandle Handle of the gateway (validated against deployment's bound gateway)
+	GatewayHandle string `form:"gatewayHandle" json:"gatewayHandle" yaml:"gatewayHandle"`
 }
 
 // UndeployLLMProxyDeploymentParams defines parameters for UndeployLLMProxyDeployment.
 type UndeployLLMProxyDeploymentParams struct {
-	// GatewayId UUID of the gateway (validated against deployment's bound gateway)
-	GatewayId string `form:"gatewayId" json:"gatewayId" yaml:"gatewayId"`
+	// GatewayHandle Handle of the gateway (validated against deployment's bound gateway)
+	GatewayHandle string `form:"gatewayHandle" json:"gatewayHandle" yaml:"gatewayHandle"`
 }
 
 // ListMCPProxiesParams defines parameters for ListMCPProxies.
@@ -3739,8 +3720,8 @@ type ListMCPProxiesParams struct {
 
 // GetMCPProxyDeploymentsParams defines parameters for GetMCPProxyDeployments.
 type GetMCPProxyDeploymentsParams struct {
-	// GatewayId **Gateway ID** consisting of the **UUID** of the Gateway to filter status by.
-	GatewayId *GatewayIdQ `form:"gatewayId,omitempty" json:"gatewayId,omitempty" yaml:"gatewayId,omitempty"`
+	// GatewayHandle Gateway handle to filter deployments by.
+	GatewayHandle *GatewayIdQ `form:"gatewayHandle,omitempty" json:"gatewayHandle,omitempty" yaml:"gatewayHandle,omitempty"`
 
 	// Status Filter deployments by status (DEPLOYED, UNDEPLOYED, DEPLOYING, UNDEPLOYING, FAILED, or ARCHIVED)
 	Status *GetMCPProxyDeploymentsParamsStatus `form:"status,omitempty" json:"status,omitempty" yaml:"status,omitempty"`
@@ -3751,14 +3732,14 @@ type GetMCPProxyDeploymentsParamsStatus string
 
 // RestoreMCPProxyDeploymentParams defines parameters for RestoreMCPProxyDeployment.
 type RestoreMCPProxyDeploymentParams struct {
-	// GatewayId UUID of the gateway (validated against deployment's bound gateway)
-	GatewayId string `form:"gatewayId" json:"gatewayId" yaml:"gatewayId"`
+	// GatewayHandle Handle of the gateway (validated against deployment's bound gateway)
+	GatewayHandle string `form:"gatewayHandle" json:"gatewayHandle" yaml:"gatewayHandle"`
 }
 
 // UndeployMCPProxyDeploymentParams defines parameters for UndeployMCPProxyDeployment.
 type UndeployMCPProxyDeploymentParams struct {
-	// GatewayId UUID of the gateway (validated against deployment's bound gateway)
-	GatewayId string `form:"gatewayId" json:"gatewayId" yaml:"gatewayId"`
+	// GatewayHandle Handle of the gateway (validated against deployment's bound gateway)
+	GatewayHandle string `form:"gatewayHandle" json:"gatewayHandle" yaml:"gatewayHandle"`
 }
 
 // ListUserAPIKeysParams defines parameters for ListUserAPIKeys.
@@ -3787,8 +3768,8 @@ type ListRESTAPIsParams struct {
 
 // GetDeploymentsParams defines parameters for GetDeployments.
 type GetDeploymentsParams struct {
-	// GatewayId **Gateway ID** consisting of the **UUID** of the Gateway to filter status by.
-	GatewayId *GatewayIdQ `form:"gatewayId,omitempty" json:"gatewayId,omitempty" yaml:"gatewayId,omitempty"`
+	// GatewayHandle Gateway handle to filter deployments by.
+	GatewayHandle *GatewayIdQ `form:"gatewayHandle,omitempty" json:"gatewayHandle,omitempty" yaml:"gatewayHandle,omitempty"`
 
 	// Status Filter deployments by status (DEPLOYED, UNDEPLOYED, DEPLOYING, UNDEPLOYING, FAILED, or ARCHIVED)
 	Status *GetDeploymentsParamsStatus `form:"status,omitempty" json:"status,omitempty" yaml:"status,omitempty"`
@@ -3799,14 +3780,14 @@ type GetDeploymentsParamsStatus string
 
 // RestoreDeploymentParams defines parameters for RestoreDeployment.
 type RestoreDeploymentParams struct {
-	// GatewayId UUID of the gateway (validated against deployment's bound gateway)
-	GatewayId string `form:"gatewayId" json:"gatewayId" yaml:"gatewayId"`
+	// GatewayHandle Handle of the gateway (validated against deployment's bound gateway)
+	GatewayHandle string `form:"gatewayHandle" json:"gatewayHandle" yaml:"gatewayHandle"`
 }
 
 // UndeployDeploymentParams defines parameters for UndeployDeployment.
 type UndeployDeploymentParams struct {
-	// GatewayId UUID of the gateway (validated against deployment's bound gateway)
-	GatewayId string `form:"gatewayId" json:"gatewayId" yaml:"gatewayId"`
+	// GatewayHandle Handle of the gateway (validated against deployment's bound gateway)
+	GatewayHandle string `form:"gatewayHandle" json:"gatewayHandle" yaml:"gatewayHandle"`
 }
 
 // AddGatewaysToAPIJSONBody defines parameters for AddGatewaysToAPI.
@@ -3872,18 +3853,18 @@ type ListWebBrokerAPIsParams struct {
 
 // GetWebBrokerAPIDeploymentsParams defines parameters for GetWebBrokerAPIDeployments.
 type GetWebBrokerAPIDeploymentsParams struct {
-	GatewayId *openapi_types.UUID `form:"gatewayId,omitempty" json:"gatewayId,omitempty" yaml:"gatewayId,omitempty"`
+	GatewayHandle *string `form:"gatewayHandle,omitempty" json:"gatewayHandle,omitempty" yaml:"gatewayHandle,omitempty"`
 	Status    *string             `form:"status,omitempty" json:"status,omitempty" yaml:"status,omitempty"`
 }
 
 // RestoreWebBrokerAPIDeploymentParams defines parameters for RestoreWebBrokerAPIDeployment.
 type RestoreWebBrokerAPIDeploymentParams struct {
-	GatewayId string `form:"gatewayId" json:"gatewayId" yaml:"gatewayId"`
+	GatewayHandle string `form:"gatewayHandle" json:"gatewayHandle" yaml:"gatewayHandle"`
 }
 
 // UndeployWebBrokerAPIParams defines parameters for UndeployWebBrokerAPI.
 type UndeployWebBrokerAPIParams struct {
-	GatewayId string `form:"gatewayId" json:"gatewayId" yaml:"gatewayId"`
+	GatewayHandle string `form:"gatewayHandle" json:"gatewayHandle" yaml:"gatewayHandle"`
 }
 
 // ListWebSubAPIsParams defines parameters for ListWebSubAPIs.
@@ -3895,18 +3876,18 @@ type ListWebSubAPIsParams struct {
 
 // GetWebSubAPIDeploymentsParams defines parameters for GetWebSubAPIDeployments.
 type GetWebSubAPIDeploymentsParams struct {
-	GatewayId *openapi_types.UUID `form:"gatewayId,omitempty" json:"gatewayId,omitempty" yaml:"gatewayId,omitempty"`
+	GatewayHandle *string `form:"gatewayHandle,omitempty" json:"gatewayHandle,omitempty" yaml:"gatewayHandle,omitempty"`
 	Status    *string             `form:"status,omitempty" json:"status,omitempty" yaml:"status,omitempty"`
 }
 
 // RestoreWebSubAPIDeploymentParams defines parameters for RestoreWebSubAPIDeployment.
 type RestoreWebSubAPIDeploymentParams struct {
-	GatewayId string `form:"gatewayId" json:"gatewayId" yaml:"gatewayId"`
+	GatewayHandle string `form:"gatewayHandle" json:"gatewayHandle" yaml:"gatewayHandle"`
 }
 
 // UndeployWebSubAPIParams defines parameters for UndeployWebSubAPI.
 type UndeployWebSubAPIParams struct {
-	GatewayId string `form:"gatewayId" json:"gatewayId" yaml:"gatewayId"`
+	GatewayHandle string `form:"gatewayHandle" json:"gatewayHandle" yaml:"gatewayHandle"`
 }
 
 // ImportAPIProjectJSONRequestBody defines body for ImportAPIProject for application/json ContentType.

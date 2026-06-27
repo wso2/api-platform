@@ -266,10 +266,10 @@ export default function ExternalServersOverview(): JSX.Element {
             serverId,
             organizationId,
             apimBaseUrl,
-            gateway.id
+            gateway.handle
           ).catch((error) => {
             logger.error(
-              `Failed to fetch deployments for gateway ${gateway.id}:`,
+              `Failed to fetch deployments for gateway ${gateway.handle}:`,
               error
             );
             return { list: [] as DeploymentResponse[], count: 0 };
@@ -296,18 +296,18 @@ export default function ExternalServersOverview(): JSX.Element {
         deployedEntries.forEach((deployment) => {
           const nextTime = new Date(deployment.createdAt || 0).getTime();
           const currentTime = latestDeploymentTimeByGateway.get(
-            deployment.gatewayId
+            deployment.gatewayHandle
           );
           if (currentTime === undefined || nextTime > currentTime) {
-            latestDeploymentTimeByGateway.set(deployment.gatewayId, nextTime);
+            latestDeploymentTimeByGateway.set(deployment.gatewayHandle, nextTime);
           }
         });
 
         const sortedDeployedGateways = availableGateways
-          .filter((gateway) => latestDeploymentTimeByGateway.has(gateway.id))
+          .filter((gateway) => latestDeploymentTimeByGateway.has(gateway.handle))
           .sort((a, b) => {
-            const timeA = latestDeploymentTimeByGateway.get(a.id) || 0;
-            const timeB = latestDeploymentTimeByGateway.get(b.id) || 0;
+            const timeA = latestDeploymentTimeByGateway.get(a.handle) || 0;
+            const timeB = latestDeploymentTimeByGateway.get(b.handle) || 0;
             return timeB - timeA;
           });
 
@@ -316,12 +316,12 @@ export default function ExternalServersOverview(): JSX.Element {
           if (
             currentSelectedId &&
             sortedDeployedGateways.some(
-              (gateway) => gateway.id === currentSelectedId
+              (gateway) => gateway.handle === currentSelectedId
             )
           ) {
             return currentSelectedId;
           }
-          return sortedDeployedGateways[0]?.id || '';
+          return sortedDeployedGateways[0]?.handle || '';
         });
       } catch (gatewayError) {
         if (!isMounted) return;
@@ -345,7 +345,7 @@ export default function ExternalServersOverview(): JSX.Element {
 
   const selectedGateway = useMemo(
     () =>
-      deployedGateways.find((gateway) => gateway.id === selectedGatewayId) ??
+      deployedGateways.find((gateway) => gateway.handle === selectedGatewayId) ??
       null,
     [deployedGateways, selectedGatewayId]
   );
@@ -765,8 +765,8 @@ export default function ExternalServersOverview(): JSX.Element {
                           disabled={deployedGateways.length === 0}
                         >
                           {deployedGateways.map((gateway) => (
-                            <MenuItem key={gateway.id} value={gateway.id}>
-                              {gateway.displayName || gateway.name}
+                            <MenuItem key={gateway.handle} value={gateway.handle}>
+                              {gateway.name}
                             </MenuItem>
                           ))}
                         </Select>

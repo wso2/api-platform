@@ -79,14 +79,14 @@ export async function getGateways(
 }
 
 /**
- * Get gateway configurations by gateway ID
+ * Get gateway configurations by gateway handle
  */
 export async function getGatewayConfigs(
-  gatewayId: string,
+  gatewayHandle: string,
   organizationId: string
 ): Promise<{ data: GatewayConfigs }> {
   const data = await getRequest<GatewayConfigs>(
-    `${GATEWAY_API_PATH}/${encodeURIComponent(gatewayId)}/manifest?organizationId=${encodeURIComponent(organizationId)}`,
+    `${GATEWAY_API_PATH}/${encodeURIComponent(gatewayHandle)}/manifest?organizationId=${encodeURIComponent(organizationId)}`,
     undefined,
     PLATFORM_API_BASE_URL
   );
@@ -95,14 +95,14 @@ export async function getGatewayConfigs(
 }
 
 /**
- * Get a specific gateway by ID
+ * Get a specific gateway by handle
  */
 export async function getGatewayById(
-  gatewayId: string,
+  gatewayHandle: string,
   organizationId: string
 ): Promise<{ data: Gateway }> {
   const data = await getRequest<Gateway>(
-    `${GATEWAY_API_PATH}/${gatewayId}?organizationId=${organizationId}`,
+    `${GATEWAY_API_PATH}/${gatewayHandle}?organizationId=${organizationId}`,
     undefined,
     PLATFORM_API_BASE_URL
   );
@@ -132,14 +132,14 @@ export async function registerGateway(
  * Update an existing gateway
  */
 export async function updateGateway(
-  gatewayId: string,
+  gatewayHandle: string,
   gatewayData: UpdateGatewayRequest,
   organizationId: string
 ): Promise<{ data: Gateway }> {
   const apiPayload = transformRequestToApiFormat(gatewayData);
 
   const data = await put<Gateway>(
-    `${GATEWAY_API_PATH}/${gatewayId}?organizationId=${organizationId}`,
+    `${GATEWAY_API_PATH}/${gatewayHandle}?organizationId=${organizationId}`,
     apiPayload,
     PLATFORM_API_BASE_URL
   );
@@ -151,11 +151,11 @@ export async function updateGateway(
  * Delete a gateway
  */
 export async function deleteGateway(
-  gatewayId: string,
+  gatewayHandle: string,
   organizationId: string
 ): Promise<{ data: void }> {
   await del<void>(
-    `${GATEWAY_API_PATH}/${gatewayId}?organizationId=${organizationId}`,
+    `${GATEWAY_API_PATH}/${gatewayHandle}?organizationId=${organizationId}`,
     undefined,
     PLATFORM_API_BASE_URL
   );
@@ -177,11 +177,11 @@ type GatewayTokenListResponse = GatewayToken[];
  * List all tokens for a gateway
  */
 export async function listGatewayTokens(
-  gatewayId: string,
+  gatewayHandle: string,
   organizationId: string
 ): Promise<GatewayTokenListResponse> {
   const data = await getRequest<GatewayTokenListResponse>(
-    `${GATEWAY_API_PATH}/${gatewayId}/tokens?organizationId=${organizationId}`,
+    `${GATEWAY_API_PATH}/${gatewayHandle}/tokens?organizationId=${organizationId}`,
     undefined,
     PLATFORM_API_BASE_URL
   );
@@ -193,12 +193,12 @@ export async function listGatewayTokens(
  * Revoke a specific gateway token
  */
 export async function revokeGatewayToken(
-  gatewayId: string,
+  gatewayHandle: string,
   tokenId: string,
   organizationId: string
 ): Promise<void> {
   await del<void>(
-    `${GATEWAY_API_PATH}/${gatewayId}/tokens/${tokenId}?organizationId=${organizationId}`,
+    `${GATEWAY_API_PATH}/${gatewayHandle}/tokens/${tokenId}?organizationId=${organizationId}`,
     undefined,
     PLATFORM_API_BASE_URL
   );
@@ -212,11 +212,11 @@ interface RotateGatewayTokenResponse {
  * Rotate (regenerate) gateway token - creates a new token
  */
 export async function rotateGatewayToken(
-  gatewayId: string,
+  gatewayHandle: string,
   organizationId: string
 ): Promise<string> {
   const data = await post<RotateGatewayTokenResponse>(
-    `${GATEWAY_API_PATH}/${gatewayId}/tokens?organizationId=${organizationId}`,
+    `${GATEWAY_API_PATH}/${gatewayHandle}/tokens?organizationId=${organizationId}`,
     {},
     PLATFORM_API_BASE_URL
   );

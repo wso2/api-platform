@@ -68,7 +68,7 @@ export async function getMCPServerDeployments(
   mcpServerId: string,
   organizationId: string,
   baseUrl: string,
-  gatewayId?: string,
+  gatewayHandle?: string,
   status?: string
 ): Promise<DeploymentListResponse> {
   try {
@@ -76,8 +76,8 @@ export async function getMCPServerDeployments(
       organizationId: organizationId,
     });
 
-    if (gatewayId) {
-      params.append('gatewayId', gatewayId);
+    if (gatewayHandle) {
+      params.append('gatewayHandle', gatewayHandle);
     }
 
     if (status) {
@@ -166,12 +166,12 @@ export async function undeployMCPServerDeployment(
   deploymentId: string,
   organizationId: string,
   baseUrl: string,
-  gatewayId?: string
+  gatewayHandle?: string
 ): Promise<DeploymentResponse> {
   try {
     const params = new URLSearchParams({ organizationId });
-    if (gatewayId) {
-      params.append('gatewayId', gatewayId);
+    if (gatewayHandle) {
+      params.append('gatewayHandle', gatewayHandle);
     }
 
     const response = await post<DeploymentResponse>(
@@ -203,12 +203,12 @@ export async function restoreMCPServerDeployment(
   deploymentId: string,
   organizationId: string,
   baseUrl: string,
-  gatewayId?: string
+  gatewayHandle?: string
 ): Promise<DeploymentResponse> {
   try {
     const params = new URLSearchParams({ organizationId });
-    if (gatewayId) {
-      params.append('gatewayId', gatewayId);
+    if (gatewayHandle) {
+      params.append('gatewayHandle', gatewayHandle);
     }
 
     const response = await post<DeploymentResponse>(

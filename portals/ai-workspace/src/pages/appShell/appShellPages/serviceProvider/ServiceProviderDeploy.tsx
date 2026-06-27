@@ -80,7 +80,7 @@ function ServiceProviderDeployLayout({ providerId }: ServiceProviderDeployLayout
     const deploymentSignature = (deployments?.list ?? [])
       .map(
         (deployment) =>
-          `${deployment.deploymentId}:${deployment.status}:${deployment.gatewayId}:${deployment.updatedAt ?? deployment.createdAt}`
+          `${deployment.deploymentId}:${deployment.status}:${deployment.gatewayHandle}:${deployment.updatedAt ?? deployment.createdAt}`
       )
       .sort()
       .join('|');

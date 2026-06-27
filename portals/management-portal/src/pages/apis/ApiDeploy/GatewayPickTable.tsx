@@ -202,22 +202,22 @@ const GatewayPickTable: React.FC<Props> = ({
               />
             ) : (
               visibleGateways.map((gw, idx) => {
-                const isChecked = selectedIds.has(gw.id);
-                const title = gw.displayName || gw.name || "Gateway";
+                const isChecked = selectedIds.has(gw.handle);
+                const title = gw.name || "Gateway";
                 const initial = (title || "?").trim().charAt(0).toUpperCase();
                 const last = gw.updatedAt || gw.createdAt || null;
                 const vhost = gw.vhost || "—";
                 const apisCount = 2; // hard-coded as requested
 
                 return (
-                  <React.Fragment key={gw.id}>
+                  <React.Fragment key={gw.handle}>
                     <TableRow>
                       <TableCell
                         colSpan={6}
                         sx={{ p: 0, border: 0, background: "transparent" }}
                       >
                         <Box
-                          onClick={() => onToggleRow(gw.id)}
+                          onClick={() => onToggleRow(gw.handle)}
                           role="button"
                           sx={{
                             display: "grid",

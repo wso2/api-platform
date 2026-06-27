@@ -29,7 +29,7 @@ import type { DeploymentResponse } from '../../../../../utils/types';
 import { useGatewayDeploy } from '../../contexts/GatewayDeployContext';
 
 interface GatewayDeploymentSelectorProps {
-  gatewayId: string;
+  gatewayHandle: string;
   open: boolean;
   onClose: () => void;
 }
@@ -38,7 +38,7 @@ interface GatewayDeploymentSelectorProps {
  * Drawer that lists all deployments for a gateway.
  */
 export default function GatewayDeploymentSelector({
-  gatewayId,
+  gatewayHandle,
   open,
   onClose,
 }: GatewayDeploymentSelectorProps) {
@@ -55,7 +55,7 @@ export default function GatewayDeploymentSelector({
       if (!deployments?.list) return [];
 
       const filtered = deployments.list.filter(
-        (d) => d.gatewayId === gatewayId
+        (d) => d.gatewayHandle === gatewayHandle
       );
 
       return [...filtered].sort((a, b) => {
@@ -63,7 +63,7 @@ export default function GatewayDeploymentSelector({
         const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
         return timeB - timeA;
       });
-    }, [deployments, gatewayId]);
+    }, [deployments, gatewayHandle]);
 
   // The currently deployed one
   const currentDeployedId = useMemo(() => {
@@ -75,7 +75,7 @@ export default function GatewayDeploymentSelector({
     if (!selectedDeploymentId) return;
     setIsRestoring(true);
     try {
-      const success = await redeployDeployment(selectedDeploymentId, gatewayId);
+      const success = await redeployDeployment(selectedDeploymentId, gatewayHandle);
       if (success) {
         setSelectedDeploymentId(null);
         onClose();

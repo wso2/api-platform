@@ -355,7 +355,7 @@ export async function deleteLLMProvider(
  *
  * @param providerId - The LLM provider ID
  * @param organizationId - The organization ID
- * @param gatewayId - Optional gateway ID to filter by
+ * @param gatewayHandle - Optional gateway handle to filter by
  * @param status - Optional status to filter by
  * @param baseUrl - The base URL for the API
  * @returns Promise with the list of deployments
@@ -364,13 +364,13 @@ export async function getLLMProviderDeployments(
   providerId: string,
   organizationId: string,
   baseUrl: string,
-  gatewayId?: string,
+  gatewayHandle?: string,
   status?: string
 ): Promise<DeploymentListResponse> {
   try {
     let url = `/llm-providers/${encodeURIComponent(providerId)}/deployments?organizationId=${encodeURIComponent(organizationId)}`;
-    if (gatewayId) {
-      url += `&gatewayId=${encodeURIComponent(gatewayId)}`;
+    if (gatewayHandle) {
+      url += `&gatewayHandle=${encodeURIComponent(gatewayHandle)}`;
     }
     if (status) {
       url += `&status=${encodeURIComponent(status)}`;
@@ -474,7 +474,7 @@ export async function deleteLLMProviderDeployment(
  *
  * @param providerId - The LLM provider ID
  * @param deploymentId - The deployment ID
- * @param gatewayId - The gateway ID
+ * @param gatewayHandle - The gateway handle
  * @param organizationId - The organization ID
  * @param baseUrl - The base URL for the API
  * @returns Promise with the updated deployment response
@@ -482,13 +482,13 @@ export async function deleteLLMProviderDeployment(
 export async function undeployLLMProviderDeployment(
   providerId: string,
   deploymentId: string,
-  gatewayId: string,
+  gatewayHandle: string,
   organizationId: string,
   baseUrl: string
 ): Promise<DeploymentResponse> {
   try {
     const response = await post<DeploymentResponse>(
-      `/llm-providers/${encodeURIComponent(providerId)}/deployments/${encodeURIComponent(deploymentId)}/undeploy?organizationId=${encodeURIComponent(organizationId)}&gatewayId=${encodeURIComponent(gatewayId)}`,
+      `/llm-providers/${encodeURIComponent(providerId)}/deployments/${encodeURIComponent(deploymentId)}/undeploy?organizationId=${encodeURIComponent(organizationId)}&gatewayHandle=${encodeURIComponent(gatewayHandle)}`,
       {},
       baseUrl
     );
@@ -504,7 +504,7 @@ export async function undeployLLMProviderDeployment(
  *
  * @param providerId - The LLM provider ID
  * @param deploymentId - The deployment ID
- * @param gatewayId - The gateway ID
+ * @param gatewayHandle - The gateway handle
  * @param organizationId - The organization ID
  * @param baseUrl - The base URL for the API
  * @returns Promise with the restored deployment response
@@ -512,13 +512,13 @@ export async function undeployLLMProviderDeployment(
 export async function restoreLLMProviderDeployment(
   providerId: string,
   deploymentId: string,
-  gatewayId: string,
+  gatewayHandle: string,
   organizationId: string,
   baseUrl: string
 ): Promise<DeploymentResponse> {
   try {
     const response = await post<DeploymentResponse>(
-      `/llm-providers/${encodeURIComponent(providerId)}/deployments/${encodeURIComponent(deploymentId)}/restore?organizationId=${encodeURIComponent(organizationId)}&gatewayId=${encodeURIComponent(gatewayId)}`,
+      `/llm-providers/${encodeURIComponent(providerId)}/deployments/${encodeURIComponent(deploymentId)}/restore?organizationId=${encodeURIComponent(organizationId)}&gatewayHandle=${encodeURIComponent(gatewayHandle)}`,
       {},
       baseUrl
     );

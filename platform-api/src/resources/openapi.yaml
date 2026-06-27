@@ -950,7 +950,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DeploymentResponse'
         '400':
-          description: Bad Request. Validation errors (missing name, base, gatewayId, or API has no backend services)
+          description: Bad Request. Validation errors (missing name, base, gatewayHandle, or API has no backend services)
           content:
             application/json:
               schema:
@@ -1075,7 +1075,7 @@ paths:
         The deployment artifact remains in the system and can be restored later.
         Returns the updated deployment object with initial status UNDEPLOYING. Final status (UNDEPLOYED or FAILED) will be reported asynchronously via the deployment's status and statusReason once the gateway acknowledges.
 
-        The gatewayId query parameter is validated against deployment's bound gateway to prevent unintended operations.
+        The gatewayHandle query parameter is validated against deployment's bound gateway to prevent unintended operations.
         Access is validated against the organization in the JWT token.
       operationId: UndeployDeployment
       security:
@@ -1094,12 +1094,12 @@ paths:
           schema:
             type: string
           description: UUID of the deployment to undeploy
-        - name: gatewayId
+        - name: gatewayHandle
           in: query
           required: true
           schema:
             type: string
-          description: UUID of the gateway (validated against deployment's bound gateway)
+          description: Handle of the gateway (validated against deployment's bound gateway)
       responses:
         '200':
           description: Undeploy initiated successfully. Returns the deployment with initial status UNDEPLOYING. Poll status for final result.
@@ -1128,7 +1128,7 @@ paths:
         Returns the deployment with initial status DEPLOYING. Final success or failure will be reported asynchronously via the deployment's status and statusReason once the gateway acknowledges.
         The target deployment must not already be in DEPLOYED status.
 
-        The gatewayId query parameter is validated against the deployment's bound gateway to prevent unintended operations.
+        The gatewayHandle query parameter is validated against the deployment's bound gateway to prevent unintended operations.
         Access is validated against the organization in the JWT token.
       operationId: RestoreDeployment
       security:
@@ -1147,12 +1147,12 @@ paths:
           schema:
             type: string
           description: UUID of the deployment to restore (must be ARCHIVED or UNDEPLOYED)
-        - name: gatewayId
+        - name: gatewayHandle
           in: query
           required: true
           schema:
             type: string
-          description: UUID of the gateway (validated against deployment's bound gateway)
+          description: Handle of the gateway (validated against deployment's bound gateway)
       responses:
         '200':
           description: Restore initiated successfully. Returns the deployment with initial status DEPLOYING. Poll status for final result.
@@ -1513,11 +1513,10 @@ paths:
           required: true
           schema:
             type: string
-        - name: gatewayId
+        - name: gatewayHandle
           in: query
           schema:
             type: string
-            format: uuid
         - name: status
           in: query
           schema:
@@ -1626,7 +1625,7 @@ paths:
           required: true
           schema:
             type: string
-        - name: gatewayId
+        - name: gatewayHandle
           in: query
           required: true
           schema:
@@ -1671,7 +1670,7 @@ paths:
           required: true
           schema:
             type: string
-        - name: gatewayId
+        - name: gatewayHandle
           in: query
           required: true
           schema:
@@ -2030,11 +2029,10 @@ paths:
           required: true
           schema:
             type: string
-        - name: gatewayId
+        - name: gatewayHandle
           in: query
           schema:
             type: string
-            format: uuid
         - name: status
           in: query
           schema:
@@ -2143,7 +2141,7 @@ paths:
           required: true
           schema:
             type: string
-        - name: gatewayId
+        - name: gatewayHandle
           in: query
           required: true
           schema:
@@ -2188,7 +2186,7 @@ paths:
           required: true
           schema:
             type: string
-        - name: gatewayId
+        - name: gatewayHandle
           in: query
           required: true
           schema:
@@ -2869,7 +2867,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DeploymentResponse'
         '400':
-          description: Bad Request. Validation errors (missing name, base, gatewayId, or invalid input)
+          description: Bad Request. Validation errors (missing name, base, gatewayHandle, or invalid input)
           content:
             application/json:
               schema:
@@ -3009,7 +3007,7 @@ paths:
         The deployment artifact remains in the system and can be restored later.
         Returns the updated deployment object with initial status UNDEPLOYING. Final status (UNDEPLOYED or FAILED) will be reported asynchronously via the deployment's status and statusReason once the gateway acknowledges.
 
-        The gatewayId query parameter is validated against the deployment's bound gateway to prevent unintended operations.
+        The gatewayHandle query parameter is validated against the deployment's bound gateway to prevent unintended operations.
         Access is validated against the organization in the JWT token.
       operationId: undeployLLMProviderDeployment
       security:
@@ -3033,12 +3031,12 @@ paths:
           schema:
             type: string
           description: UUID of the deployment to undeploy
-        - name: gatewayId
+        - name: gatewayHandle
           in: query
           required: true
           schema:
             type: string
-          description: UUID of the gateway (validated against deployment's bound gateway)
+          description: Handle of the gateway (validated against deployment's bound gateway)
       responses:
         '200':
           description: Undeploy initiated successfully. Returns the deployment with initial status UNDEPLOYING. Poll status for final result.
@@ -3067,7 +3065,7 @@ paths:
         Returns the deployment with initial status DEPLOYING. Final success or failure will be reported asynchronously via the deployment's status and statusReason once the gateway acknowledges.
         The target deployment must not already be in DEPLOYED status.
 
-        The gatewayId query parameter is validated against the deployment's bound gateway to prevent unintended operations.
+        The gatewayHandle query parameter is validated against the deployment's bound gateway to prevent unintended operations.
         Access is validated against the organization in the JWT token.
       operationId: restoreLLMProviderDeployment
       security:
@@ -3091,12 +3089,12 @@ paths:
           schema:
             type: string
           description: UUID of the deployment to restore (must be ARCHIVED or UNDEPLOYED)
-        - name: gatewayId
+        - name: gatewayHandle
           in: query
           required: true
           schema:
             type: string
-          description: UUID of the gateway (validated against deployment's bound gateway)
+          description: Handle of the gateway (validated against deployment's bound gateway)
       responses:
         '200':
           description: Restore initiated successfully. Returns the deployment with initial status DEPLOYING. Poll status for final result.
@@ -3506,7 +3504,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DeploymentResponse'
         '400':
-          description: Bad Request. Validation errors (missing name, base, gatewayId, or invalid input)
+          description: Bad Request. Validation errors (missing name, base, gatewayHandle, or invalid input)
           content:
             application/json:
               schema:
@@ -3646,7 +3644,7 @@ paths:
         The deployment artifact remains in the system and can be restored later.
         Returns the updated deployment object with initial status UNDEPLOYING. Final status (UNDEPLOYED or FAILED) will be reported asynchronously via the deployment's status and statusReason once the gateway acknowledges.
 
-        The gatewayId query parameter is validated against the deployment's bound gateway to prevent unintended operations.
+        The gatewayHandle query parameter is validated against the deployment's bound gateway to prevent unintended operations.
         Access is validated against the organization in the JWT token.
       operationId: undeployLLMProxyDeployment
       security:
@@ -3670,12 +3668,12 @@ paths:
           schema:
             type: string
           description: UUID of the deployment to undeploy
-        - name: gatewayId
+        - name: gatewayHandle
           in: query
           required: true
           schema:
             type: string
-          description: UUID of the gateway (validated against deployment's bound gateway)
+          description: Handle of the gateway (validated against deployment's bound gateway)
       responses:
         '200':
           description: Undeploy initiated successfully. Returns the deployment with initial status UNDEPLOYING. Poll status for final result.
@@ -3704,7 +3702,7 @@ paths:
         Returns the deployment with initial status DEPLOYING. Final success or failure will be reported asynchronously via the deployment's status and statusReason once the gateway acknowledges.
         The target deployment must not already be in DEPLOYED status.
 
-        The gatewayId query parameter is validated against the deployment's bound gateway to prevent unintended operations.
+        The gatewayHandle query parameter is validated against the deployment's bound gateway to prevent unintended operations.
         Access is validated against the organization in the JWT token.
       operationId: restoreLLMProxyDeployment
       security:
@@ -3728,12 +3726,12 @@ paths:
           schema:
             type: string
           description: UUID of the deployment to restore (must be ARCHIVED or UNDEPLOYED)
-        - name: gatewayId
+        - name: gatewayHandle
           in: query
           required: true
           schema:
             type: string
-          description: UUID of the gateway (validated against deployment's bound gateway)
+          description: Handle of the gateway (validated against deployment's bound gateway)
       responses:
         '200':
           description: Restore initiated successfully. Returns the deployment with initial status DEPLOYING. Poll status for final result.
@@ -4105,7 +4103,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DeploymentResponse'
         '400':
-          description: Bad Request. Validation errors (missing name, base, gatewayId, or MCP proxy has no backend services)
+          description: Bad Request. Validation errors (missing name, base, gatewayHandle, or MCP proxy has no backend services)
           content:
             application/json:
               schema:
@@ -4241,7 +4239,7 @@ paths:
         The deployment artifact remains in the system and can be restored later.
         Returns the updated deployment object with initial status UNDEPLOYING. Final status (UNDEPLOYED or FAILED) will be reported asynchronously via the deployment's status and statusReason once the gateway acknowledges.
 
-        The gatewayId query parameter is validated against the deployment's bound gateway to prevent unintended operations.
+        The gatewayHandle query parameter is validated against the deployment's bound gateway to prevent unintended operations.
         Access is validated against the organization in the JWT token.
       operationId: UndeployMCPProxyDeployment
       security:
@@ -4265,12 +4263,12 @@ paths:
           schema:
             type: string
           description: UUID of the deployment to undeploy
-        - name: gatewayId
+        - name: gatewayHandle
           in: query
           required: true
           schema:
             type: string
-          description: UUID of the gateway (validated against deployment's bound gateway)
+          description: Handle of the gateway (validated against deployment's bound gateway)
       responses:
         '200':
           description: Undeploy initiated successfully. Returns the deployment with initial status UNDEPLOYING. Poll status for final result.
@@ -4297,7 +4295,7 @@ paths:
         Returns the deployment with initial status DEPLOYING. Final success or failure will be reported asynchronously via the deployment's status and statusReason once the gateway acknowledges.
         The target deployment must not already be in DEPLOYED status.
 
-        The gatewayId query parameter is validated against the deployment's bound gateway to prevent unintended operations.
+        The gatewayHandle query parameter is validated against the deployment's bound gateway to prevent unintended operations.
         Access is validated against the organization in the JWT token.
       operationId: RestoreMCPProxyDeployment
       security:
@@ -4321,12 +4319,12 @@ paths:
           schema:
             type: string
           description: UUID of the deployment to restore (must be ARCHIVED or UNDEPLOYED)
-        - name: gatewayId
+        - name: gatewayHandle
           in: query
           required: true
           schema:
             type: string
-          description: UUID of the gateway (validated against deployment's bound gateway)
+          description: Handle of the gateway (validated against deployment's bound gateway)
       responses:
         '200':
           description: Restore initiated successfully. Returns the deployment with initial status DEPLOYING. Poll status for final result.
@@ -6557,7 +6555,7 @@ components:
           example: "123e4567-e89b-12d3-a456-426614174000"
         handle:
           type: string
-          description: URL-friendly unique handle for the organization
+          description: URL-friendly unique identifier for the organization
           pattern: '^[a-z0-9-]+$'
           minLength: 1
           example: "acme"
@@ -7295,12 +7293,12 @@ components:
       title: AddGatewayToAPIRequest object with basic gateway details
       type: object
       required:
-        - gatewayId
+        - gatewayHandle
       properties:
-        gatewayId:
+        gatewayHandle:
           type: string
-          format: uuid
-          example: "987e6543-e21b-45d3-a789-426614174999"
+          description: Handle of the gateway to associate with the API
+          example: "prod-gateway-01"
 
     RESTAPIGatewayListResponse:
       type: object
@@ -7371,19 +7369,19 @@ components:
         from the JWT token and does not need to be provided.
       type: object
       required:
+        - handle
         - name
-        - displayName
         - vhost
         - functionalityType
       properties:
-        name:
+        handle:
           type: string
           pattern: '^[a-z0-9-]+$'
           minLength: 3
           maxLength: 64
           description: URL-friendly gateway identifier (lowercase alphanumeric with hyphens, unique per organization)
           example: "prod-gateway-01"
-        displayName:
+        name:
           type: string
           minLength: 1
           maxLength: 128
@@ -7525,11 +7523,6 @@ components:
     GatewayResponse:
       type: object
       properties:
-        id:
-          type: string
-          format: uuid
-          description: Unique identifier for the gateway
-          example: "987e6543-e21b-45d3-a789-426614174999"
         organizationId:
           type: string
           format: uuid
@@ -7542,10 +7535,6 @@ components:
         name:
           type: string
           description: Human-readable gateway name
-          example: "Production Gateway 01"
-        displayName:
-          type: string
-          description: Human-readable gateway name (alias for `name`)
           example: "Production Gateway 01"
         description:
           type: string
@@ -7591,7 +7580,7 @@ components:
     UpdateGatewayRequest:
       type: object
       properties:
-        displayName:
+        name:
           type: string
           minLength: 1
           maxLength: 128
@@ -7654,11 +7643,6 @@ components:
       type: object
       description: Lightweight gateway status information optimized for frequent polling
       properties:
-        id:
-          type: string
-          format: uuid
-          description: Unique identifier for the gateway
-          example: "987e6543-e21b-45d3-a789-426614174999"
         handle:
           type: string
           description: URL-friendly gateway identifier
@@ -8171,10 +8155,6 @@ components:
     SubscriptionPlan:
       type: object
       properties:
-        id:
-          type: string
-          format: uuid
-          description: Unique identifier (UUID) for the subscription plan
         handle:
           type: string
           description: URL-friendly subscription plan identifier (unique per organization)
@@ -8264,8 +8244,7 @@ components:
           description: Subscription UUID
         apiId:
           type: string
-          format: uuid
-          description: REST API UUID
+          description: REST API handle
         subscriberId:
           type: string
           minLength: 1
@@ -8505,9 +8484,8 @@ components:
           example: "API published successfully to DevPortal"
         apiId:
           type: string
-          format: uuid
-          description: Platform-api API identifier
-          example: "1f01c9b2-440b-4cfe-bf48-f8f168062df4"
+          description: Platform-api API handle
+          example: "my-rest-api"
         devPortalRefId:
           type: string
           description: DevPortal reference ID for the published API
@@ -8531,9 +8509,8 @@ components:
           example: "API unpublished successfully from DevPortal"
         apiId:
           type: string
-          format: uuid
-          description: Platform-api API identifier
-          example: "1f01c9b2-440b-4cfe-bf48-f8f168062df4"
+          description: Platform-api API handle
+          example: "my-rest-api"
         unpublishedAt:
           type: string
           format: date-time
@@ -8761,7 +8738,7 @@ components:
       required:
         - name
         - base
-        - gatewayId
+        - gatewayHandle
       properties:
         name:
           type: string
@@ -8771,10 +8748,9 @@ components:
           type: string
           description: The source for the API definition. Can be "current" (latest working copy) or a deploymentId (existing deployment)
           example: "current"
-        gatewayId:
+        gatewayHandle:
           type: string
-          format: uuid
-          description: The target gateway UUID for this deployment
+          description: The target gateway handle for this deployment
         metadata:
           type: object
           additionalProperties: true
@@ -8785,7 +8761,7 @@ components:
       required:
         - deploymentId
         - name
-        - gatewayId
+        - gatewayHandle
         - status
         - createdAt
       properties:
@@ -8797,10 +8773,9 @@ components:
           type: string
           description: Name/label for this deployment
           example: "v1.0-production"
-        gatewayId:
+        gatewayHandle:
           type: string
-          format: uuid
-          description: UUID of the gateway
+          description: Handle of the gateway
         status:
           type: string
           enum:
@@ -10873,10 +10848,6 @@ components:
       type: object
       description: Returned on create (201) and rotate (200). The plaintext value is never included.
       properties:
-        uuid:
-          type: string
-          description: UUID of the secret
-          example: a1b2c3d4-e5f6-7890-abcd-ef1234567890
         handle:
           type: string
           example: wso2-openai-key
@@ -10894,10 +10865,6 @@ components:
       type: object
       description: Secret metadata — never includes the plaintext value.
       properties:
-        uuid:
-          type: string
-          description: UUID of the secret
-          example: a1b2c3d4-e5f6-7890-abcd-ef1234567890
         handle:
           type: string
           example: wso2-openai-key
@@ -11150,10 +11117,10 @@ components:
       in: query
       required: false
       description: |
-        **Gateway ID** consisting of the **UUID** of the Gateway to filter status by.
+        **Gateway handle** to filter deployments by.
       schema:
         type: string
-        example: "987e6543-e21b-45d3-a789-426614174999"
+        example: "my-gateway"
 
     apiIdentifier-Q:
       name: identifier

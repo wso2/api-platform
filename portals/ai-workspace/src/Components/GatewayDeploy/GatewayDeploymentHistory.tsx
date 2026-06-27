@@ -19,14 +19,14 @@ import { useGatewayDeploy } from '../../contexts/GatewayDeployContext';
 import GatewayDeploymentRow from './GatewayDeploymentRow';
 
 interface GatewayDeploymentHistoryProps {
-  gatewayId: string;
+  gatewayHandle: string;
 }
 
 /**
  * Deployment history list for a specific gateway.
  */
 export default function GatewayDeploymentHistory({
-  gatewayId,
+  gatewayHandle,
 }: GatewayDeploymentHistoryProps) {
   const [isDrawerOpen, setDrawerOpen] = useState(false);
   const {
@@ -42,7 +42,7 @@ export default function GatewayDeploymentHistory({
       if (!deployments?.list) return [];
 
       const filtered = deployments.list.filter(
-        (d) => d.gatewayId === gatewayId
+        (d) => d.gatewayHandle === gatewayHandle
       );
 
       return [...filtered].sort((a, b) => {
@@ -50,7 +50,7 @@ export default function GatewayDeploymentHistory({
         const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
         return timeB - timeA;
       });
-    }, [deployments, gatewayId]);
+    }, [deployments, gatewayHandle]);
 
   const currentDeploymentId = useMemo(() => {
     if (gatewayDeployments.length === 0) return null;

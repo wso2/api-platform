@@ -147,7 +147,7 @@ export const GatewayProvider = ({ children }: GatewayProviderProps) => {
       let normalized: Gateway[] = [];
       setGateways((prev) => {
         normalized = result.map((gateway) => {
-          const existing = prev.find((item) => item.id === gateway.id);
+          const existing = prev.find((item) => item.handle === gateway.handle);
           return mergeGateway(gateway, existing);
         });
         return normalized;
@@ -155,9 +155,9 @@ export const GatewayProvider = ({ children }: GatewayProviderProps) => {
       setGatewayTokens((prev) => {
         const next: Record<string, RotateTokenResponse> = {};
         normalized.forEach((gateway) => {
-          const token = prev[gateway.id];
+          const token = prev[gateway.handle];
           if (token) {
-            next[gateway.id] = token;
+            next[gateway.handle] = token;
           }
         });
         persistTokens(next);
@@ -181,11 +181,11 @@ export const GatewayProvider = ({ children }: GatewayProviderProps) => {
         const list = await fetchGatewayStatuses(gatewayId);
         setGatewayStatuses((prev) => {
           const next = { ...prev };
-          for (const s of list) next[s.id] = s;
+          for (const s of list) next[s.handle] = s;
           return next;
         });
         return list.reduce<Record<string, GatewayStatus>>((acc, s) => {
-          acc[s.id] = s;
+          acc[s.handle] = s;
           return acc;
         }, {});
       } catch (err) {
@@ -211,12 +211,12 @@ export const GatewayProvider = ({ children }: GatewayProviderProps) => {
         });
 
         setGateways((prev) => {
-          const next = prev.filter((item) => item.id !== normalized.id);
+          const next = prev.filter((item) => item.handle !== normalized.handle);
           return [normalized, ...next];
         });
 
         // rotate token in background
-        const gatewayKey = gateway.handle ?? gateway.name ?? gateway.id;
+        const gatewayKey = gateway.handle;
         rotateGatewayTokenRequest(gatewayKey)
           .then((tokenResponse) => {
             setGatewayTokens((prev) => {
@@ -250,7 +250,7 @@ export const GatewayProvider = ({ children }: GatewayProviderProps) => {
       let updatedGateway: Gateway | undefined;
       setGateways((prev) =>
         prev.map((gateway) => {
-          if (gateway.id === gatewayId) {
+          if (gateway.handle === gatewayId) {
             const resolvedVhost =
               updates.vhost ??
               updates.host ??
@@ -282,7 +282,7 @@ export const GatewayProvider = ({ children }: GatewayProviderProps) => {
       try {
         await deleteGatewayRequest(gatewayId);
         setGateways((prev) =>
-          prev.filter((gw) => gw.id !== gatewayId && gw.handle !== gatewayId && gw.name !== gatewayId)
+          prev.filter((gw) => gw.handle !== gatewayId)
         );
         setGatewayTokens((prev) => {
           const next = { ...prev };
@@ -311,9 +311,9 @@ export const GatewayProvider = ({ children }: GatewayProviderProps) => {
 
       try {
         await deleteGatewayWithPayload(payload);
-        const id = payload.gatewayId;
+        const id = payload.gatewayHandle;
 
-        setGateways((prev) => prev.filter((gw) => gw.id !== id && gw.handle !== id && gw.name !== id));
+        setGateways((prev) => prev.filter((gw) => gw.handle !== id));
 
         setGatewayTokens((prev) => {
           const next = { ...prev };
@@ -344,9 +344,9 @@ export const GatewayProvider = ({ children }: GatewayProviderProps) => {
         const gateway = await fetchGateway(gatewayId);
         let normalized: Gateway | undefined;
         setGateways((prev) => {
-          const existing = prev.find((item) => item.id === gateway.id);
+          const existing = prev.find((item) => item.handle === gateway.handle);
           normalized = mergeGateway(gateway, existing);
-          const others = prev.filter((item) => item.id !== gateway.id);
+          const others = prev.filter((item) => item.handle !== gateway.handle);
           return normalized ? [normalized, ...others] : prev;
         });
 

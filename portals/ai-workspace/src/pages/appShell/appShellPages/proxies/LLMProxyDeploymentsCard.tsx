@@ -108,7 +108,7 @@ export default function LLMProxyDeploymentsCard() {
         const gatewaysWithDeployments: GatewayWithDeployment[] =
           gatewaysResponse.list.map((gateway) => {
             const deployment = allDeployments.find(
-              (d) => d.gatewayId === gateway.id && d.status === 'DEPLOYED'
+              (d) => d.gatewayHandle === gateway.handle && d.status === 'DEPLOYED'
             );
             return {
               ...gateway,
