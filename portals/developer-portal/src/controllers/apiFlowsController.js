@@ -81,8 +81,7 @@ const loadAPIFlows = async (req, res, next) => {
         const orgID = orgDetails.ID;
         const viewId = await resolveViewId(orgID, viewName);
 
-        const visibilityFilter = req.user ? undefined : 'PUBLIC';
-        const apiFlows = await apiFlowDao.listPublished(orgID, viewId, { visibility: visibilityFilter });
+        const apiFlows = await apiFlowDao.listPublished(orgID, viewId);
 
         const profile = req.user ? {
             username: req.user.sub,
@@ -104,7 +103,6 @@ const loadAPIFlows = async (req, res, next) => {
                 description: flow.DESCRIPTION,
                 agentPrompt: flow.AGENT_PROMPT,
                 status: flow.STATUS,
-                visibility: flow.VISIBILITY || 'PUBLIC',
                 agentVisibility: flow.AGENT_VISIBILITY || 'VISIBLE',
                 sources,
                 sourcesPreview: sources.slice(0, 4),
@@ -167,11 +165,6 @@ const loadAPIFlowDetail = async (req, res, next) => {
             return next(err);
         }
 
-        if (apiFlow.VISIBILITY === 'PRIVATE' && !req.user) {
-            const err = Object.assign(new Error('You must be logged in to view this workflow'), { status: 401 });
-            return next(err);
-        }
-
         const profile = req.user ? {
             username: req.user.sub,
             authenticated: true,
@@ -196,7 +189,6 @@ const loadAPIFlowDetail = async (req, res, next) => {
                 description: apiFlow.DESCRIPTION,
                 agentPrompt: apiFlow.AGENT_PROMPT,
                 status: apiFlow.STATUS,
-                visibility: apiFlow.VISIBILITY || 'PUBLIC',
                 agentVisibility: apiFlow.AGENT_VISIBILITY || 'VISIBLE',
                 contentType: apiFlow.CONTENT_TYPE,
                 content: fileContentStr,

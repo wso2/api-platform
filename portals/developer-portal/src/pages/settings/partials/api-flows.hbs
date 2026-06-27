@@ -69,17 +69,6 @@
                 </div>
                 <div class="api-flow-card-footer">
                     <div class="api-flow-card-visibility-badges">
-                        {{#if (eq this.visibility "PRIVATE")}}
-                        <span class="api-flow-visibility-badge api-flow-visibility-private"
-                            title="Only logged-in users can view this workflow">
-                            <i class="bi bi-lock-fill"></i> Private
-                        </span>
-                        {{else}}
-                        <span class="api-flow-visibility-badge api-flow-visibility-public"
-                            title="Visible to all visitors">
-                            <i class="bi bi-globe"></i> Public
-                        </span>
-                        {{/if}}
                         {{#unless (eq this.agentVisibility "HIDDEN")}}
                         <span class="api-flow-visibility-badge api-flow-agent-visible"
                             title="AI agents can discover and use this workflow">

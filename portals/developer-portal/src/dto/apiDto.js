@@ -53,16 +53,12 @@ class APIInfo {
         this.apiDescription = apiInfo.DESCRIPTION;
         this.apiType = apiInfo.TYPE;
         this.apiStatus = apiInfo.STATUS;
-        this.visibility = apiInfo.VISIBILITY;
         this.agentVisibility = apiInfo.AGENT_VISIBILITY || 'VISIBLE';
         if (apiInfo.addedLabels) {
             this.addedLabels = apiInfo.addedLabels;
         }
         if (apiInfo.removedLabels) {
             this.removedLabels = apiInfo.removedLabels;
-        }
-        if (apiInfo.VISIBLE_GROUPS) {
-            this.visibleGroups = apiInfo.VISIBLE_GROUPS.split(" ");
         }
         if (apiInfo.BUSINESS_OWNER || apiInfo.TECHNICAL_OWNER) {
             this.owners = new Owner(apiInfo);

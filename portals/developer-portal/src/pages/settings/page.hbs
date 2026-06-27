@@ -1126,7 +1126,6 @@
         apiType:        document.getElementById('wz-type').value,
         apiStatus:      document.getElementById('wz-status').value,
         apiDescription: v('wz-desc'),
-        visibility:     'PUBLIC',
         tags:           v('wz-tags') ? v('wz-tags').split(',').map(function(t){return t.trim();}).filter(Boolean) : [],
         agentVisibility: agentVis,
         owners: {

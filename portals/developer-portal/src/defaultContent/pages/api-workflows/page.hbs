@@ -41,15 +41,6 @@
         {{/if}}
       </div>
       <div class="wf-card-footer">
-        {{#if (eq this.visibility "PRIVATE")}}
-        <span class="dp-badge wf-badge--visibility">
-          <i class="bi bi-lock-fill"></i> Private
-        </span>
-        {{else}}
-        <span class="dp-badge wf-badge--visibility">
-          <i class="bi bi-globe"></i> Public
-        </span>
-        {{/if}}
         {{#unless (eq this.agentVisibility "HIDDEN")}}
         <span class="dp-badge dp-badge--ai" title="AI agents can discover and use this workflow">
           <i class="bi bi-robot"></i> AI Ready

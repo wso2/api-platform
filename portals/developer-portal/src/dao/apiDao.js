@@ -47,8 +47,6 @@ const create = async (orgID, apiMetadata, t) => {
             DESCRIPTION: apiInfo.apiDescription,
             VERSION: apiInfo.apiVersion,
             TYPE: apiInfo.apiType,
-            VISIBILITY: apiInfo.visibility,
-            VISIBLE_GROUPS: apiInfo.visibleGroups ? apiInfo.visibleGroups.join(' ') : null,
             AGENT_VISIBILITY: (apiMetadata.agentVisibility || apiInfo.agentVisibility || 'VISIBLE').toUpperCase(),
             TAGS: apiInfo.tags ? apiInfo.tags.join(' ') : null,
             TECHNICAL_OWNER: owners.technicalOwner,
@@ -88,8 +86,6 @@ const update = async (orgID, apiID, apiMetadata, t) => {
             VERSION: apiInfo.apiVersion,
             TYPE: apiInfo.apiType,
             TAGS: apiInfo.tags ? apiInfo.tags.join(' ') : null,
-            VISIBILITY: apiInfo.visibility,
-            VISIBLE_GROUPS: apiInfo.visibleGroups ? apiInfo.visibleGroups.join(' ') : null,
             AGENT_VISIBILITY: (apiMetadata.agentVisibility || apiInfo.agentVisibility || 'VISIBLE').toUpperCase(),
             TECHNICAL_OWNER: owners.technicalOwner,
             TECHNICAL_OWNER_EMAIL: owners.technicalOwnerEmail,
@@ -227,59 +223,13 @@ const getByCondition = async (condition, t) => {
     }
 }
 
-const list = async (orgID, groups, viewName, t) => {
+const list = async (orgID, viewName, t) => {
 
     const viewDao = require('./viewDao');
     const viewID = await viewDao.getId(orgID, viewName);
     let apiList = [];
-    for (const group of groups) {
-        try {
-            const apiMetadataResponse = await APIMetadata.findAll({
-                where: {
-                    ORG_ID: orgID,
-                    VISIBLE_GROUPS: {
-                        [Op.like]: `%${group}%`
-                    },
-                    STATUS: { [Op.in]: [constants.API_STATUS.PUBLISHED, constants.API_STATUS.DEPRECATED] }
-                },
-                include: [{
-                    model: APIContent,
-                    where: { TYPE: constants.DOC_TYPES.IMAGES },
-                    required: false
-                }, {
-                    model: SubscriptionPlan,
-                    through: { attributes: [] },
-                    required: false
-                },
-                {
-                    model: Labels,
-                    attributes: ["NAME"],
-                    required: true,
-                    through: { attributes: [] },
-                    where: {
-                        ID: {
-                            [Op.in]: Sequelize.literal(`(SELECT "LABEL_ID" FROM "DP_VIEW_LABEL" WHERE "VIEW_ID" = '${viewID}')`)
-                        }
-                    }
-                }
-                ],
-                transaction: t
-            });
-            if (apiMetadataResponse) {
-                apiList.push(...apiMetadataResponse);
-            }
-        } catch (error) {
-            {
-                if (error instanceof Sequelize.UniqueConstraintError) {
-                    throw error;
-                }
-                throw new Sequelize.DatabaseError(error);
-            }
-        }
-    }
-    // add all public apis
     try {
-        const publicAPIS = await APIMetadata.findAll({
+        const apiMetadataResponse = await APIMetadata.findAll({
             where: {
                 ORG_ID: orgID,
                 STATUS: { [Op.in]: [constants.API_STATUS.PUBLISHED, constants.API_STATUS.DEPRECATED] }
@@ -307,62 +257,19 @@ const list = async (orgID, groups, viewName, t) => {
             ],
             transaction: t
         });
-        apiList.push(...publicAPIS);
+        apiList = apiMetadataResponse;
     } catch (error) {
-        {
-            if (error instanceof Sequelize.UniqueConstraintError) {
-                throw error;
-            }
-            throw new Sequelize.DatabaseError(error);
+        if (error instanceof Sequelize.UniqueConstraintError) {
+            throw error;
         }
+        throw new Sequelize.DatabaseError(error);
     }
     return apiList;
 };
 
-const listFromAllViews = async (orgID, groups, t) => {
+const listFromAllViews = async (orgID, t) => {
 
     let apiList = [];
-    for (const group of groups) {
-        try {
-            const apiMetadataResponse = await APIMetadata.findAll({
-                where: {
-                    ORG_ID: orgID,
-                    VISIBLE_GROUPS: {
-                        [Op.like]: `%${group}%`
-                    },
-                    STATUS: { [Op.in]: [constants.API_STATUS.PUBLISHED, constants.API_STATUS.DEPRECATED] }
-                },
-                include: [{
-                    model: APIContent,
-                    where: { TYPE: constants.DOC_TYPES.IMAGES },
-                    required: false
-                }, {
-                    model: SubscriptionPlan,
-                    through: { attributes: [] },
-                    required: false
-                },
-                {
-                    model: Labels,
-                    attributes: ["NAME"],
-                    required: false,
-                    through: { attributes: [] }
-                }
-                ],
-                transaction: t
-            });
-            if (apiMetadataResponse) {
-                apiList.push(...apiMetadataResponse);
-            }
-        } catch (error) {
-            {
-                if (error instanceof Sequelize.UniqueConstraintError) {
-                    throw error;
-                }
-                throw new Sequelize.DatabaseError(error);
-            }
-        }
-    }
-    // add all public apis
     try {
         const publicAPIS = await APIMetadata.findAll({
             where: {
@@ -387,14 +294,12 @@ const listFromAllViews = async (orgID, groups, t) => {
             ],
             transaction: t
         });
-        apiList.push(...publicAPIS);
+        apiList = publicAPIS;
     } catch (error) {
-        {
-            if (error instanceof Sequelize.UniqueConstraintError) {
-                throw error;
-            }
-            throw new Sequelize.DatabaseError(error);
+        if (error instanceof Sequelize.UniqueConstraintError) {
+            throw error;
         }
+        throw new Sequelize.DatabaseError(error);
     }
     return apiList;
 };
@@ -437,7 +342,7 @@ const searchFallback = async (orgID, searchTerm, viewName, t) => {
     });
 };
 
-const search = async (orgID, groups, searchTerm, viewName, t) => {
+const search = async (orgID, searchTerm, viewName, t) => {
     if (APIMetadata.sequelize.getDialect() !== 'postgres') {
         return searchFallback(orgID, searchTerm, viewName, t);
     }

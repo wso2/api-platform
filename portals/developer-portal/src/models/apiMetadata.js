@@ -53,15 +53,6 @@ const APIMetadata = sequelize.define('DP_API_METADATA', {
     values: ['REST', 'WS', 'GRAPHQL', 'SOAP', 'WEBSUB', 'MCP'],
     allowNull: false
   },
-  VISIBILITY: {
-    type: DataTypes.ENUM,
-    values: ['PUBLIC', 'PRIVATE'],
-    allowNull: false
-  },
-  VISIBLE_GROUPS: {
-    type: DataTypes.STRING,
-    allowNull: true
-  },
   AGENT_VISIBILITY: {
     type: DataTypes.ENUM,
     values: ['VISIBLE', 'HIDDEN'],

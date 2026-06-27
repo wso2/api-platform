@@ -96,11 +96,6 @@ const createAPIMetadata = async (req, res) => {
                 "Missing or Invalid fields in the request payload"
             );
         }
-        if (apiMetadata.apiInfo.visibility === constants.API_VISIBILITY.PUBLIC && apiMetadata.apiInfo.visibleGroups) {
-            throw new Sequelize.ValidationError(
-                "Visible groups cannot be specified for a public API"
-            );
-        }
         apiMetadata.endPoints.productionURL = changeEndpoint(apiMetadata.endPoints.productionURL);
         apiMetadata.endPoints.sandboxURL = changeEndpoint(apiMetadata.endPoints.sandboxURL);
         normalizeGraphQLEndpoints(apiMetadata);
@@ -301,12 +296,7 @@ const getAllAPIMetadata = async (req, res) => {
         const apiVersion = req.query.version;
         const tags = req.query.tags;
         const view = req.query.view;
-        let groupList = [];
-
-        if (req.query.groups) {
-            groupList.push(req.query.groups.split(" "));
-        }
-        const retrievedAPIs = await getMetadataListFromDB(orgID, groupList, searchTerm, tags, apiName, apiVersion, view);
+        const retrievedAPIs = await getMetadataListFromDB(orgID, searchTerm, tags, apiName, apiVersion, view);
         res.status(200).json(util.toPaginatedList(retrievedAPIs, req));
     } catch (error) {
         logger.error('API metadata list retrieval failed', {
@@ -323,7 +313,7 @@ const getAllAPIMetadata = async (req, res) => {
     }
 };
 
-const getMetadataListFromDB = async (orgID, groups, searchTerm, tags, apiName, apiVersion, viewName) => {
+const getMetadataListFromDB = async (orgID, searchTerm, tags, apiName, apiVersion, viewName) => {
     return await sequelize.transaction({
         timeout: 60000,
     }, async (t) => {
@@ -336,9 +326,9 @@ const getMetadataListFromDB = async (orgID, groups, searchTerm, tags, apiName, a
             condition.ORG_ID = orgID;
             retrievedAPIs = await apiDao.getByCondition(condition);
         } else if (searchTerm) {
-            retrievedAPIs = await apiDao.search(orgID, groups, searchTerm, viewName, t);
+            retrievedAPIs = await apiDao.search(orgID, searchTerm, viewName, t);
         } else if (viewName) {
-            retrievedAPIs = await apiDao.list(orgID, groups, viewName, t);
+            retrievedAPIs = await apiDao.list(orgID, viewName, t);
         }
         // Create response object
         const apiCreationResponse = retrievedAPIs ? retrievedAPIs.map((api) => new APIDTO(api)) : [];
@@ -1732,7 +1722,6 @@ function mapDevportalYamlToApiMetadata(parsedYaml) {
 
     const subscriptionPlans = util.normalizeStringArray(spec.subscriptionPlans)
         .map(planName => ({ planName }));
-    const visibleGroups = util.normalizeStringArray(spec.visibleGroups);
 
     return {
         apiInfo: {
@@ -1743,8 +1732,6 @@ function mapDevportalYamlToApiMetadata(parsedYaml) {
             apiHandle: metadata.name,
             apiType,
             apiStatus,
-            visibility: spec.visibility || constants.API_VISIBILITY.PUBLIC,
-            visibleGroups: visibleGroups.length > 0 ? visibleGroups : null,
             agentVisibility: spec.agentVisibility || 'VISIBLE',
             tags: util.normalizeStringArray(spec.tags),
             labels: util.normalizeStringArray(spec.labels),

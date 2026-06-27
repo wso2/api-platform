@@ -351,15 +351,11 @@ xor
     "apiStatus": "PUBLISHED",
     "apiDescription": "string",
     "apiType": "string",
-    "visibility": "string",
     "agentVisibility": "string",
     "addedLabels": [
       "string"
     ],
     "removedLabels": [
-      "string"
-    ],
-    "visibleGroups": [
       "string"
     ],
     "owners": {
@@ -434,15 +430,11 @@ xor
     "apiStatus": "PUBLISHED",
     "apiDescription": "string",
     "apiType": "string",
-    "visibility": "string",
     "agentVisibility": "string",
     "addedLabels": [
       "string"
     ],
     "removedLabels": [
-      "string"
-    ],
-    "visibleGroups": [
       "string"
     ],
     "owners": {
@@ -512,15 +504,11 @@ xor
   "apiStatus": "PUBLISHED",
   "apiDescription": "string",
   "apiType": "string",
-  "visibility": "string",
   "agentVisibility": "string",
   "addedLabels": [
     "string"
   ],
   "removedLabels": [
-    "string"
-  ],
-  "visibleGroups": [
     "string"
   ],
   "owners": {
@@ -554,11 +542,9 @@ xor
 |apiStatus|string|false|none|API lifecycle status (e.g. PUBLISHED, UNPUBLISHED).|
 |apiDescription|string|false|none|none|
 |apiType|string|false|none|none|
-|visibility|string|false|none|none|
 |agentVisibility|string|false|none|none|
 |addedLabels|[string]|false|none|none|
 |removedLabels|[string]|false|none|none|
-|visibleGroups|[string]|false|none|none|
 |owners|[ApiOwnersResponse](#schemaapiownersresponse)|false|none|none|
 |apiImageMetadata|[ApiImageMetadataResponse](#schemaapiimagemetadataresponse)|false|none|none|
 |tags|[string]|false|none|none|
@@ -1880,7 +1866,6 @@ OAuth key payload.
   "description": "string",
   "agentPrompt": "string",
   "status": "PUBLISHED",
-  "visibility": "PUBLIC",
   "agentVisibility": "VISIBLE",
   "contentType": "ARAZZO",
   "apiFlowDefinition": "string",
@@ -1901,7 +1886,6 @@ OAuth key payload.
 |description|string|false|none|none|
 |agentPrompt|string|false|none|none|
 |status|string|false|none|none|
-|visibility|string|false|none|none|
 |agentVisibility|string|false|none|none|
 |contentType|string|false|none|none|
 |apiFlowDefinition|string¦null|false|none|none|
@@ -1970,7 +1954,6 @@ OAuth key payload.
   "description": "Guides users through the Weather API onboarding workflow.",
   "agentPrompt": "Follow this workflow to onboard a Weather API user.",
   "status": "PUBLISHED",
-  "visibility": "PUBLIC",
   "agentVisibility": "VISIBLE",
   "contentType": "ARAZZO",
   "apiFlowDefinition": {},
@@ -1988,7 +1971,6 @@ OAuth key payload.
 |description|string|true|none|none|
 |agentPrompt|string|false|none|none|
 |status|string|false|none|none|
-|visibility|string|false|none|none|
 |agentVisibility|string|false|none|none|
 |contentType|string|false|none|none|
 |apiFlowDefinition|any|false|none|JSON/YAML Arazzo content when `contentType` is `ARAZZO`.|
@@ -2032,7 +2014,6 @@ continued
   "description": "Updated Weather API onboarding workflow.",
   "agentPrompt": "string",
   "status": "PUBLISHED",
-  "visibility": "PUBLIC",
   "agentVisibility": "VISIBLE",
   "contentType": "ARAZZO",
   "apiFlowDefinition": {},
@@ -2050,7 +2031,6 @@ continued
 |description|string|false|none|none|
 |agentPrompt|string|false|none|none|
 |status|string|false|none|none|
-|visibility|string|false|none|none|
 |agentVisibility|string|false|none|none|
 |contentType|string|false|none|none|
 |apiFlowDefinition|any|false|none|none|

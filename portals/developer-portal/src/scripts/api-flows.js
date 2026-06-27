@@ -193,7 +193,6 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // Section summaries
     document.getElementById('apiFlowName')?.addEventListener('input', updateSectionSummaries);
-    document.querySelectorAll('input[name="apiFlowVisibility"]').forEach(r => r.addEventListener('change', updateSectionSummaries));
     document.querySelectorAll('input[name="apiFlowAgentVisibility"]').forEach(r => r.addEventListener('change', updateSectionSummaries));
 
     initApiCardPicker();
@@ -208,7 +207,6 @@ document.addEventListener('DOMContentLoaded', function () {
     initAccessMatrix();
 
     // Keep access matrix in sync when radios change by other means
-    document.querySelectorAll('input[name="apiFlowVisibility"]').forEach(r => r.addEventListener('change', syncAccessMatrixFromRadios));
     document.querySelectorAll('input[name="apiFlowAgentVisibility"]').forEach(r => r.addEventListener('change', syncAccessMatrixFromRadios));
 });
 
@@ -989,8 +987,6 @@ function resetApiFlowForm() {
 
     if (arazoEditor) arazoEditor.setValue('');
 
-    const visibilityPublicBtn = document.getElementById('visibilityPublic');
-    if (visibilityPublicBtn) visibilityPublicBtn.checked = true;
     const agentVisibilityVisibleBtn = document.getElementById('agentVisibilityVisible');
     if (agentVisibilityVisibleBtn) agentVisibilityVisibleBtn.checked = true;
     syncAgentPromptTab(false);
@@ -1395,9 +1391,8 @@ async function saveApiFlow(orgID, viewName, status) {
     });
     if (!valid) return;
 
-    const visibility = document.querySelector('input[name="apiFlowVisibility"]:checked')?.value || 'PUBLIC';
     const handle = generateHandle(name);
-    const payload = { name, handle, description, agentPrompt, status, visibility, agentVisibility, contentType, apiFlowDefinition, markdownContent };
+    const payload = { name, handle, description, agentPrompt, status, agentVisibility, contentType, apiFlowDefinition, markdownContent };
     const isEdit = !!apiFlowId;
     const url = isEdit
         ? devportalApi.org(orgID, `/views/${viewName}/api-flows/${apiFlowId}`)
@@ -1561,8 +1556,6 @@ function openEditApiFlow(apiFlowId) {
     document.getElementById('agentPromptField').value = data.agentPrompt || '';
     setSaveButtonMode('edit', data.status);
 
-    const visibilityRadio = document.querySelector(`input[name="apiFlowVisibility"][value="${data.visibility || 'PUBLIC'}"]`);
-    if (visibilityRadio) visibilityRadio.checked = true;
     const agentVisibilityRadio = document.querySelector(`input[name="apiFlowAgentVisibility"][value="${data.agentVisibility || 'VISIBLE'}"]`);
     if (agentVisibilityRadio) agentVisibilityRadio.checked = true;
     syncAccessMatrixFromRadios();
@@ -1899,12 +1892,11 @@ function expandAllSections() {
 
 function updateSectionSummaries() {
     const name = document.getElementById('apiFlowName')?.value?.trim() || '';
-    const vis = document.querySelector('input[name="apiFlowVisibility"]:checked')?.value || 'PUBLIC';
     const agentVis = document.querySelector('input[name="apiFlowAgentVisibility"]:checked')?.value || 'VISIBLE';
     const s1 = document.getElementById('af-summary-1');
     if (s1) {
         s1.textContent = name
-            ? `${name} · ${vis.charAt(0) + vis.slice(1).toLowerCase()} · Agent ${agentVis.charAt(0) + agentVis.slice(1).toLowerCase()}`
+            ? `${name} · Agent ${agentVis.charAt(0) + agentVis.slice(1).toLowerCase()}`
             : 'Not configured';
     }
 
@@ -2079,7 +2071,6 @@ function updateWizardUI() {
 function updateStep1Preview() {
     const name = document.getElementById('apiFlowName')?.value?.trim() || '';
     const desc = document.getElementById('apiFlowDescription')?.value?.trim() || '';
-    const vis = document.querySelector('input[name="apiFlowVisibility"]:checked')?.value || 'PUBLIC';
 
     // Preview card
     const nameEl = document.getElementById('afPreviewName');
@@ -2089,11 +2080,6 @@ function updateStep1Preview() {
 
     const descEl = document.getElementById('afPreviewDesc');
     if (descEl) descEl.textContent = desc;
-    const badge = document.getElementById('afPreviewBadge');
-    if (badge) {
-        badge.textContent = vis.toLowerCase();
-        badge.className = `af-preview-badge${vis === 'PUBLIC' ? ' af-preview-badge--public' : ''}`;
-    }
 
     // Inline field status icons
     if (name.length === 0) {
@@ -2190,42 +2176,24 @@ function initAccessMatrix() {
             }
         });
     };
-    bind('portalPublicCard', 'visibility', 'PUBLIC');
-    bind('portalPrivateCard', 'visibility', 'PRIVATE');
     bind('agentVisibleCard', 'agent', 'VISIBLE');
     bind('agentHiddenCard', 'agent', 'HIDDEN');
     syncAccessMatrixFromRadios();
 }
 
 function setAccessValue(type, value) {
-    if (type === 'visibility') {
-        const radio = document.querySelector(`input[name="apiFlowVisibility"][value="${value}"]`);
-        if (radio) { radio.checked = true; radio.dispatchEvent(new Event('change', { bubbles: true })); }
-    } else {
-        const radio = document.querySelector(`input[name="apiFlowAgentVisibility"][value="${value}"]`);
-        if (radio) { radio.checked = true; radio.dispatchEvent(new Event('change', { bubbles: true })); }
-    }
+    const radio = document.querySelector(`input[name="apiFlowAgentVisibility"][value="${value}"]`);
+    if (radio) { radio.checked = true; radio.dispatchEvent(new Event('change', { bubbles: true })); }
     syncAccessMatrixFromRadios();
     updateStep1Preview();
 }
 
 function syncAccessMatrixFromRadios() {
-    const vis = document.querySelector('input[name="apiFlowVisibility"]:checked')?.value || 'PUBLIC';
     const agentVis = document.querySelector('input[name="apiFlowAgentVisibility"]:checked')?.value || 'VISIBLE';
 
-    const portalPublic = document.getElementById('portalPublicCard');
-    const portalPrivate = document.getElementById('portalPrivateCard');
     const agentVisible = document.getElementById('agentVisibleCard');
     const agentHidden = document.getElementById('agentHiddenCard');
 
-    if (portalPublic) {
-        portalPublic.classList.toggle('af-visibility-card--active', vis === 'PUBLIC');
-        portalPublic.setAttribute('aria-pressed', String(vis === 'PUBLIC'));
-    }
-    if (portalPrivate) {
-        portalPrivate.classList.toggle('af-visibility-card--active', vis === 'PRIVATE');
-        portalPrivate.setAttribute('aria-pressed', String(vis === 'PRIVATE'));
-    }
     if (agentVisible) {
         agentVisible.classList.toggle('af-visibility-card--active', agentVis === 'VISIBLE');
         agentVisible.setAttribute('aria-pressed', String(agentVis === 'VISIBLE'));

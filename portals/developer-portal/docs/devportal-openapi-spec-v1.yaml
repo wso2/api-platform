@@ -302,7 +302,7 @@ paths:
         Creates Developer Portal API metadata from either a full API artifact ZIP, an API metadata YAML file (`api.yaml`
         / `devportal.yaml` / `mcp.yaml`), or an `apiMetadata` JSON string. An API definition file is required unless
         supplied by the artifact ZIP. The YAML `spec` block accepts: `displayName`, `version`, `description`, `type`,
-        `status`, `visibility`, `agentVisibility`, `visibleGroups`, `tags`, `labels`,
+        `status`, `agentVisibility`, `tags`, `labels`,
         `referenceID`, `endpoints` (sandboxUrl, productionUrl), `businessInformation` (owners), and `subscriptionPlans`.
         The service also stores labels, subscription plan mappings, image metadata, and schema definitions for MCP or
         GraphQL APIs when provided.
@@ -335,14 +335,13 @@ paths:
       summary: List API metadata
       description: >-
         Lists API metadata for an organization. The service supports exact filters by API name, version, and tags,
-        free-text search with `query`, group filtering, and view filtering. Unknown query parameters are rejected.
+        free-text search with `query`, and view filtering. Unknown query parameters are rejected.
       operationId: getAllApiMetadataForOrganization
       parameters:
         - $ref: "#/components/parameters/apiSearchQuery"
         - $ref: "#/components/parameters/apiNameQuery"
         - $ref: "#/components/parameters/apiVersionQuery"
         - $ref: "#/components/parameters/apiTagsQuery"
-        - $ref: "#/components/parameters/apiGroupsQuery"
         - $ref: "#/components/parameters/apiViewQuery"
         - $ref: "#/components/parameters/limit"
         - $ref: "#/components/parameters/offset"
@@ -2306,14 +2305,6 @@ components:
         type: string
         example: weather public
       description: Exact API tags filter used by the metadata DAO.
-    apiGroupsQuery:
-      name: groups
-      in: query
-      required: false
-      schema:
-        type: string
-        example: subscriber admin
-      description: Space-separated visible groups used for API visibility filtering.
     apiViewQuery:
       name: view
       in: query
@@ -2763,7 +2754,6 @@ components:
           example:
             name: Weather onboarding v2
             status: PUBLISHED
-            visibility: PUBLIC
             agentVisibility: VISIBLE
     APIFlowPromptBody:
       required: true
@@ -2831,13 +2821,13 @@ components:
                 type: string
                 description: >-
                   JSON string accepted by the service when the `api` YAML file is not supplied. Accepted top-level
-                  fields mirror the YAML spec: `apiInfo` (apiName, apiVersion, apiDescription, apiType, visibility,
-                  agentVisibility, apiStatus, referenceID, apiHandle, tags, labels, visibleGroups,
+                  fields mirror the YAML spec: `apiInfo` (apiName, apiVersion, apiDescription, apiType,
+                  agentVisibility, apiStatus, referenceID, apiHandle, tags, labels,
                   owners), `endPoints` (productionURL, sandboxURL), and `subscriptionPlans` (array of `{
                   planName }` objects — only `planName` is read; the plan must already exist in the organization).
                 example: >-
                   {"apiInfo":{"apiName":"Weather API","apiVersion":"v1","apiDescription":"Weather forecast
-                  API","apiType":"REST","visibility":"PUBLIC","agentVisibility":"VISIBLE",
+                  API","apiType":"REST","agentVisibility":"VISIBLE",
                   "apiStatus":"PUBLISHED","tags":["weather"],"labels":["default"]},"endPoints":{
                   "productionURL":"https://api.example.com/weather",
                   "sandboxURL":"https://sandbox.example.com/weather"},"subscriptionPlans":[{"planName":"Gold"}]}
@@ -3153,7 +3143,6 @@ components:
               apiStatus: PUBLISHED
               apiDescription: Weather forecast API.
               apiType: REST
-              visibility: PUBLIC
               agentVisibility: VISIBLE
               tags:
                 - weather
@@ -3183,7 +3172,6 @@ components:
               apiStatus: PUBLISHED
               apiDescription: Weather forecast API.
               apiType: REST
-              visibility: PUBLIC
               agentVisibility: VISIBLE
               labels:
                 - default
@@ -3217,7 +3205,6 @@ components:
                   apiStatus: PUBLISHED
                   apiDescription: Weather forecast API.
                   apiType: REST
-                  visibility: PUBLIC
                   agentVisibility: VISIBLE
                   labels:
                     - default
@@ -3484,7 +3471,6 @@ components:
             description: Guides users through the Weather API onboarding workflow.
             agentPrompt: Follow this workflow to onboard a Weather API user.
             status: PUBLISHED
-            visibility: PUBLIC
             agentVisibility: VISIBLE
             contentType: ARAZZO
             apiFlowDefinition: "{\"arazzo\":\"1.0.1\",\"info\":{\"title\":\"Weather onboarding\",\"version\":\"1.0.0\"},\"workflows\":[]}"
@@ -3828,8 +3814,6 @@ components:
           type: string
         apiType:
           type: string
-        visibility:
-          type: string
         agentVisibility:
           type: string
         addedLabels:
@@ -3837,10 +3821,6 @@ components:
           items:
             type: string
         removedLabels:
-          type: array
-          items:
-            type: string
-        visibleGroups:
           type: array
           items:
             type: string
@@ -4863,9 +4843,6 @@ components:
         status:
           type: string
           example: PUBLISHED
-        visibility:
-          type: string
-          example: PUBLIC
         agentVisibility:
           type: string
           example: VISIBLE
@@ -4922,10 +4899,6 @@ components:
           type: string
           default: PUBLISHED
           example: PUBLISHED
-        visibility:
-          type: string
-          default: PUBLIC
-          example: PUBLIC
         agentVisibility:
           type: string
           default: VISIBLE
@@ -4962,9 +4935,6 @@ components:
         status:
           type: string
           example: PUBLISHED
-        visibility:
-          type: string
-          example: PUBLIC
         agentVisibility:
           type: string
           example: VISIBLE

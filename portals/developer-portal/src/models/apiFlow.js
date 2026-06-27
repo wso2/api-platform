@@ -64,12 +64,6 @@ const APIFlow = sequelize.define('DP_API_FLOW', {
         values: ['ARAZZO', 'MD'],
         allowNull: true
     },
-    VISIBILITY: {
-        type: DataTypes.ENUM,
-        values: ['PUBLIC', 'PRIVATE'],
-        allowNull: false,
-        defaultValue: 'PUBLIC'
-    },
     AGENT_VISIBILITY: {
         type: DataTypes.ENUM,
         values: ['VISIBLE', 'HIDDEN'],

@@ -50,10 +50,6 @@ module.exports = {
     REFRESH_TOKEN: 'refreshToken',
     USER_ID: 'sub',
     BASIC_HEADER: 'basicAuthHeader',
-    API_VISIBILITY: {
-        PUBLIC: 'PUBLIC',
-        PRIVATE: 'PRIVATE'
-    },
     API_STATUS: {
         PUBLISHED: "PUBLISHED",
         DEPRECATED: "DEPRECATED"

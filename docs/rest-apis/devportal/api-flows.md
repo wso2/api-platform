@@ -133,7 +133,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
       "description": "string",
       "agentPrompt": "string",
       "status": "PUBLISHED",
-      "visibility": "PUBLIC",
       "agentVisibility": "VISIBLE",
       "contentType": "ARAZZO",
       "apiFlowDefinition": "string",
@@ -170,7 +169,6 @@ Status Code **200**
 |»» description|string|false|none|none|
 |»» agentPrompt|string|false|none|none|
 |»» status|string|false|none|none|
-|»» visibility|string|false|none|none|
 |»» agentVisibility|string|false|none|none|
 |»» contentType|string|false|none|none|
 |»» apiFlowDefinition|string¦null|false|none|none|
@@ -235,7 +233,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "description": "Guides users through the Weather API onboarding workflow.",
   "agentPrompt": "Follow this workflow to onboard a Weather API user.",
   "status": "PUBLISHED",
-  "visibility": "PUBLIC",
   "agentVisibility": "VISIBLE",
   "contentType": "ARAZZO",
   "apiFlowDefinition": "{\"arazzo\":\"1.0.1\",\"info\":{\"title\":\"Weather onboarding\",\"version\":\"1.0.0\"},\"workflows\":[]}",
@@ -291,7 +288,6 @@ Updates API flow metadata and content for the selected view. Duplicate handles r
   "description": "Updated Weather API onboarding workflow.",
   "agentPrompt": "string",
   "status": "PUBLISHED",
-  "visibility": "PUBLIC",
   "agentVisibility": "VISIBLE",
   "contentType": "ARAZZO",
   "apiFlowDefinition": {},

@@ -171,7 +171,7 @@ const generateHandle = (name) =>
 const createAPIFlow = async (req, res) => {
     const orgID = req.params.orgId;
     const viewName = req.params.viewName;
-    const { name, handle, description, agentPrompt, status, visibility, agentVisibility, apiFlowDefinition, markdownContent, contentType } = req.body;
+    const { name, handle, description, agentPrompt, status, agentVisibility, apiFlowDefinition, markdownContent, contentType } = req.body;
     let resolvedHandle = (handle && handle.trim()) ? handle.trim() : generateHandle(name);
     if (!resolvedHandle) {
         const suffix = Math.random().toString(36).slice(2, 10);
@@ -199,7 +199,6 @@ const createAPIFlow = async (req, res) => {
             description,
             agentPrompt: resolvedPrompt,
             status: status || 'PUBLISHED',
-            visibility: visibility || 'PUBLIC',
             agentVisibility: agentVisibility || 'VISIBLE',
             apiFlowDefinition: resolvedContent,
             contentType: resolvedContentType
@@ -224,7 +223,7 @@ const createAPIFlow = async (req, res) => {
 
 const updateAPIFlow = async (req, res) => {
     const { orgId, apiFlowId, viewName } = req.params;
-    const { name, handle, description, agentPrompt, status, visibility, agentVisibility, apiFlowDefinition, markdownContent, contentType } = req.body;
+    const { name, handle, description, agentPrompt, status, agentVisibility, apiFlowDefinition, markdownContent, contentType } = req.body;
     const resolvedContentType = contentType;
     const resolvedContent = resolvedContentType === 'MD'
         ? (markdownContent !== undefined ? markdownContent : undefined)
@@ -241,7 +240,6 @@ const updateAPIFlow = async (req, res) => {
             description,
             agentPrompt,
             status,
-            visibility,
             agentVisibility,
             apiFlowDefinition: resolvedContent,
             contentType: resolvedContentType
@@ -345,7 +343,6 @@ const toAPIFlowDTO = (apiFlow) => {
     description: apiFlow.DESCRIPTION,
     agentPrompt: apiFlow.AGENT_PROMPT,
     status: apiFlow.STATUS,
-    visibility: apiFlow.VISIBILITY || 'PUBLIC',
     agentVisibility: apiFlow.AGENT_VISIBILITY || 'VISIBLE',
     contentType: apiFlow.CONTENT_TYPE || 'ARAZZO',
     apiFlowDefinition: (apiFlow.CONTENT_TYPE || 'ARAZZO') === 'ARAZZO' ? fileContent : null,
