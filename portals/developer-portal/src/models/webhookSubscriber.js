@@ -20,13 +20,13 @@ const sequelize = require('../db/sequelizeConfig');
 const { Organization } = require('./organization');
 
 const WebhookSubscriber = sequelize.define('DP_WEBHOOK_SUBSCRIBER', {
-    ID: {
-        type: DataTypes.UUID,
+    UUID: {
+        type: DataTypes.STRING(40),
         defaultValue: Sequelize.UUIDV4,
         primaryKey: true
     },
-    ORG_ID: {
-        type: DataTypes.UUID,
+    ORG_UUID: {
+        type: DataTypes.STRING(40),
         allowNull: false
     },
     NAME: {
@@ -68,21 +68,21 @@ const WebhookSubscriber = sequelize.define('DP_WEBHOOK_SUBSCRIBER', {
         {
             name: 'UQ_WEBHOOK_SUBSCRIBER_ORG_NAME',
             unique: true,
-            fields: ['ORG_ID', 'NAME']
+            fields: ['ORG_UUID', 'NAME']
         },
         {
             name: 'UQ_WEBHOOK_SUBSCRIBER_ORG_URL',
             unique: true,
-            fields: ['ORG_ID', 'TARGET_URL']
+            fields: ['ORG_UUID', 'TARGET_URL']
         }
     ]
 });
 
 WebhookSubscriber.belongsTo(Organization, {
-    foreignKey: 'ORG_ID'
+    foreignKey: 'ORG_UUID'
 });
 Organization.hasMany(WebhookSubscriber, {
-    foreignKey: 'ORG_ID',
+    foreignKey: 'ORG_UUID',
     onDelete: 'CASCADE'
 });
 

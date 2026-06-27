@@ -113,7 +113,7 @@ const createAPIMetadata = async (req, res) => {
         }, async (t) => {
             // Create apimetadata record
             const createdAPI = await apiDao.create(orgId, apiMetadata, t);
-            const apiID = createdAPI.dataValues.ID;
+            const apiID = createdAPI.dataValues.UUID;
             if (apiMetadata.subscriptionPlans) {
                 const subscriptionPlans = [];
                 const apiSubscriptionPlans = apiMetadata.subscriptionPlans;
@@ -127,7 +127,7 @@ const createAPIMetadata = async (req, res) => {
                         if (!subscriptionPlan) {
                             throw new Sequelize.EmptyResultError("Subscription plan not found");
                         } else {
-                            subscriptionPlans.push({ apiID: apiID, planID: subscriptionPlan.ID });
+                            subscriptionPlans.push({ apiID: apiID, planID: subscriptionPlan.UUID });
                         }
                     };
                 }
@@ -298,7 +298,7 @@ const getMetadataFromDB = async (orgID, apiID) => {
     return await sequelize.transaction({
         timeout: 60000,
     }, async (t) => {
-        const retrievedAPI = await apiDao.getByCondition({ ORG_ID: orgID, API_ID: apiID }, t);
+        const retrievedAPI = await apiDao.getByCondition({ ORG_UUID: orgID, API_UUID: apiID }, t);
         if (retrievedAPI.length > 0) {
             return new APIDTO(retrievedAPI[0]);
         } else {
@@ -342,7 +342,7 @@ const getMetadataListFromDB = async (orgID, searchTerm, tags, apiName, apiVersio
             if (apiName) condition.NAME = apiName;
             if (apiVersion) condition.VERSION = apiVersion;
             if (tags) condition.TAGS = tags;
-            condition.ORG_ID = orgID;
+            condition.ORG_UUID = orgID;
             retrievedAPIs = await apiDao.getByCondition(condition);
         } else if (searchTerm) {
             retrievedAPIs = await apiDao.search(orgID, searchTerm, viewName, t);
@@ -494,7 +494,7 @@ const updateAPIMetadata = async (req, res) => {
                         if (!subscriptionPlan) {
                             throw new Sequelize.EmptyResultError("Subscription plan not found");
                         } else {
-                            subscriptionPlans.push({ apiID: apiId, planID: subscriptionPlan.ID });
+                            subscriptionPlans.push({ apiID: apiId, planID: subscriptionPlan.UUID });
                         }
                     };
                 }
@@ -1428,7 +1428,7 @@ const addView = async (req, res) => {
     }, async (t) => {
         try {
             const viewResponse = await viewDao.create(orgId, req.body, t);
-            const viewID = viewResponse.dataValues.ID;
+            const viewID = viewResponse.dataValues.UUID;
             await viewDao.addLabels(orgId, viewID, labels, t);
             res.status(201).send({ message: "View added successfully" });
         } catch (error) {
@@ -1456,7 +1456,7 @@ const updateView = async (req, res) => {
             let viewID = "";
             if (req.body.name) {
                 let viewResponse = await viewDao.update(orgId, viewName, req.body.name, t);
-                viewID = viewResponse.dataValues.ID;
+                viewID = viewResponse.dataValues.UUID;
             }
             if (removedLabels.length !== 0) {
                 await viewDao.deleteLabels(orgId, viewID, removedLabels, t);

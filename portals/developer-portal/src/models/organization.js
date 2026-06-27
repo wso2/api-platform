@@ -20,8 +20,8 @@ const sequelize = require('../db/sequelizeConfig');
 const View = require('./view');
 
 const Organization = sequelize.define('DP_ORGANIZATION', {
-    ID: {
-        type: DataTypes.UUID,
+    UUID: {
+        type: DataTypes.STRING(40),
         defaultValue: Sequelize.UUIDV4,
         primaryKey: true
     },
@@ -66,8 +66,8 @@ const Organization = sequelize.define('DP_ORGANIZATION', {
 });
 
 const OrgContent = sequelize.define('DP_ORGANIZATION_ASSET', {
-    ID: {
-        type: DataTypes.UUID,
+    UUID: {
+        type: DataTypes.STRING(40),
         defaultValue: Sequelize.UUIDV4,
         primaryKey: true
     },
@@ -87,13 +87,13 @@ const OrgContent = sequelize.define('DP_ORGANIZATION_ASSET', {
         type: DataTypes.STRING,
         allowNull: false,
     },
-    ORG_ID: {
-        type: DataTypes.UUID,
+    ORG_UUID: {
+        type: DataTypes.STRING(40),
         allowNull: false,
         foreignKey: true,
     },
-    VIEW_ID: {
-        type: DataTypes.UUID,
+    VIEW_UUID: {
+        type: DataTypes.STRING(40),
         allowNull: true,
     }
 }, {
@@ -103,35 +103,35 @@ const OrgContent = sequelize.define('DP_ORGANIZATION_ASSET', {
         {
             name: 'UQ_ORGANIZATION_ASSET_TYPE_NAME_PATH_ORG_VIEW',
             unique: true,
-            fields: ['FILE_TYPE', 'FILE_NAME', 'FILE_PATH', 'ORG_ID', 'VIEW_ID']
+            fields: ['FILE_TYPE', 'FILE_NAME', 'FILE_PATH', 'ORG_UUID', 'VIEW_UUID']
         }
     ]
 });
 
 OrgContent.belongsTo(Organization, {
-    foreignKey: 'ORG_ID',
+    foreignKey: 'ORG_UUID',
 });
 
 Organization.hasMany(OrgContent, {
-    foreignKey: 'ORG_ID',
+    foreignKey: 'ORG_UUID',
     onDelete: 'CASCADE',
 });
 
 View.belongsTo(Organization, {
-    foreignKey: 'ORG_ID',
+    foreignKey: 'ORG_UUID',
 });
 
 Organization.hasMany(View, {
-    foreignKey: 'ORG_ID',
+    foreignKey: 'ORG_UUID',
     onDelete: 'CASCADE',
 });
 
 View.hasOne(OrgContent, {
-    foreignKey: 'VIEW_ID',
+    foreignKey: 'VIEW_UUID',
 });
 
 OrgContent.belongsTo(View, {
-    foreignKey: 'VIEW_ID',
+    foreignKey: 'VIEW_UUID',
     onDelete: 'CASCADE'
 });
 

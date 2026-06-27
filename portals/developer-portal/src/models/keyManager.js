@@ -20,13 +20,13 @@ const sequelize = require('../db/sequelizeConfig');
 const { Organization } = require('./organization');
 
 const KeyManager = sequelize.define('DP_KEY_MANAGER', {
-    ID: {
-        type: DataTypes.UUID,
+    UUID: {
+        type: DataTypes.STRING(40),
         defaultValue: Sequelize.UUIDV4,
         primaryKey: true
     },
-    ORG_ID: {
-        type: DataTypes.UUID,
+    ORG_UUID: {
+        type: DataTypes.STRING(40),
         allowNull: false
     },
     NAME: {
@@ -89,16 +89,16 @@ const KeyManager = sequelize.define('DP_KEY_MANAGER', {
         {
             name: 'UQ_KEY_MANAGER_ORG_NAME',
             unique: true,
-            fields: ['ORG_ID', 'NAME']
+            fields: ['ORG_UUID', 'NAME']
         }
     ]
 });
 
 KeyManager.belongsTo(Organization, {
-    foreignKey: 'ORG_ID'
+    foreignKey: 'ORG_UUID'
 });
 Organization.hasMany(KeyManager, {
-    foreignKey: 'ORG_ID',
+    foreignKey: 'ORG_UUID',
     onDelete: 'CASCADE'
 });
 

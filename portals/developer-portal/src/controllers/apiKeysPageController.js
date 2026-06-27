@@ -35,7 +35,7 @@ const loadAPIApiKeys = async (req, res, next) => {
 
     try {
         const orgDetails = await orgDao.get(orgName);
-        const orgID = orgDetails.ID;
+        const orgID = orgDetails.UUID;
 
         if (!req.user) {
             return res.redirect(`/${orgName}${constants.ROUTE.VIEWS_PATH}${viewName}/login`);
@@ -91,14 +91,14 @@ const loadAPIApiKeys = async (req, res, next) => {
         try {
             const keys = await apiKeyService.list(orgID, { apiId: apiID, appId: selectedAppId || undefined });
             apiKeys = (keys || []).map((k) => ({
-                keyId: k.ID,
+                keyId: k.UUID,
                 name: k.NAME,
                 status: String(k.STATUS || 'ACTIVE').toLowerCase(),
                 expiresAt: k.EXPIRES_AT,
                 createdAt: k.CREATED_AT,
                 revokedAt: k.REVOKED_AT || undefined,
-                apiId: k.API_ID,
-                appId: k.DP_API_KEY_APP_MAPPING?.APP_ID || null,
+                apiId: k.API_UUID,
+                appId: k.DP_API_KEY_APP_MAPPING?.APP_UUID || null,
                 appName: k.DP_API_KEY_APP_MAPPING?.DP_APPLICATION?.NAME || null,
                 maskedApiKey: '••••••••'
             }));
@@ -114,7 +114,7 @@ const loadAPIApiKeys = async (req, res, next) => {
 
         try {
             const apps = await applicationDao.list(orgID, req.user.sub);
-            applications = (apps || []).map((a) => ({ appId: a.ID, name: a.NAME }));
+            applications = (apps || []).map((a) => ({ appId: a.UUID, name: a.NAME }));
         } catch (dbError) {
             logger.warn('Failed to load applications for API key association', {
                 error: dbError.message,

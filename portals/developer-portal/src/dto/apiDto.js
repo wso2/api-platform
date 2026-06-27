@@ -20,7 +20,7 @@ const constants = require('../utils/constants');
 
 class APIDTO {
     constructor(api) {
-        this.apiID = api.ID;
+        this.apiID = api.UUID;
         this.apiReferenceID = api.REF_ID;
         this.apiHandle = api.HANDLE;
         this.dataSource = api.DATA_SOURCE;
@@ -31,7 +31,7 @@ class APIDTO {
             this.subscriptionPlans = api.DP_SUBSCRIPTION_PLANs.map(plan => new APISubscriptionPlan(plan));
         }
         if (api.DP_APPLICATIONs && api.DP_APPLICATIONs.length > 0) {
-            this.planID = api.DP_APPLICATIONs[0]?.DP_SUBSCRIPTION?.dataValues?.PLAN_ID;
+            this.planID = api.DP_APPLICATIONs[0]?.DP_SUBSCRIPTION?.dataValues?.PLAN_UUID;
         }
     }
 
@@ -81,7 +81,7 @@ class APISubscriptionPlan {
         this.planName = apiSubscriptionPlan.NAME;
         this.displayName = apiSubscriptionPlan.DISPLAY_NAME;
         this.requestCount = apiSubscriptionPlan.REQUEST_COUNT;
-        this.planID = apiSubscriptionPlan.ID;
+        this.planID = apiSubscriptionPlan.UUID;
         this.description = apiSubscriptionPlan.DESCRIPTION;
     }
 }

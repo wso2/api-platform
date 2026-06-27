@@ -34,7 +34,7 @@ const create = async (orgId, kmData) => {
                 'Set config.advanced.encryptionKey to a 64-char hex string.');
         }
         const record = await KeyManager.create({
-            ORG_ID: orgId,
+            ORG_UUID: orgId,
             NAME: kmData.name,
             TYPE: kmData.type,
             ...(kmData.enabled !== undefined && { ENABLED: kmData.enabled }),
@@ -92,7 +92,7 @@ const update = async (kmId, kmData) => {
         }
 
         const [updatedRowsCount] = await KeyManager.update(updatePayload, {
-            where: { ID: kmId }
+            where: { UUID: kmId }
         });
         if (updatedRowsCount < 1) {
             throw new Sequelize.EmptyResultError('Key manager not found');
@@ -117,7 +117,7 @@ const update = async (kmId, kmData) => {
 const list = async (orgId) => {
     try {
         return await KeyManager.findAll({
-            where: { ORG_ID: orgId }
+            where: { ORG_UUID: orgId }
         });
     } catch (error) {
         logger.error('Error fetching key managers', { error });
@@ -131,7 +131,7 @@ const list = async (orgId) => {
 const listEnabled = async (orgId) => {
     try {
         return await KeyManager.findAll({
-            where: { ORG_ID: orgId, ENABLED: true }
+            where: { ORG_UUID: orgId, ENABLED: true }
         });
     } catch (error) {
         logger.error('Error fetching enabled key managers', { error });
@@ -140,7 +140,7 @@ const listEnabled = async (orgId) => {
 };
 
 /**
- * Get a single key manager by ID.
+ * Get a single key manager by UUID.
  */
 const get = async (kmId) => {
     try {
@@ -164,7 +164,7 @@ const get = async (kmId) => {
 const getByName = async (orgId, name) => {
     try {
         const km = await KeyManager.findOne({
-            where: { ORG_ID: orgId, NAME: name }
+            where: { ORG_UUID: orgId, NAME: name }
         });
         if (!km) {
             throw new Sequelize.EmptyResultError('Key manager not found');
@@ -185,7 +185,7 @@ const getByName = async (orgId, name) => {
 const deleteKm = async (kmId) => {
     try {
         const deleted = await KeyManager.destroy({
-            where: { ID: kmId }
+            where: { UUID: kmId }
         });
         if (deleted < 1) {
             throw new Sequelize.EmptyResultError('Key manager not found');

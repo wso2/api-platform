@@ -59,9 +59,9 @@ const loadViewSettingsPage = async (req, res) => {
         const apiFlows = await apiFlowService.getAllAPIFlowsFromDB(orgID, viewId);
         templateContent.apiFlows = apiFlows;
 
-        const allAPIs = await apiDao.getByCondition({ ORG_ID: orgID });
+        const allAPIs = await apiDao.getByCondition({ ORG_UUID: orgID });
         templateContent.orgAPIs = allAPIs.map(api => ({
-            apiId: api.ID,
+            apiId: api.UUID,
             apiName: api.NAME,
             apiHandle: api.HANDLE,
             apiDescription: api.DESCRIPTION,
@@ -78,7 +78,7 @@ const loadViewSettingsPage = async (req, res) => {
         let orgLabels = [];
         try {
             const labelsRaw = await labelDao.list(orgID);
-            orgLabels = labelsRaw.map(l => ({ labelId: l.ID, name: l.NAME, displayName: l.DISPLAY_NAME }));
+            orgLabels = labelsRaw.map(l => ({ labelId: l.UUID, name: l.NAME, displayName: l.DISPLAY_NAME }));
         } catch (err) {
             logger.warn('Failed to load labels for settings page', { error: err.message });
         }
@@ -88,7 +88,7 @@ const loadViewSettingsPage = async (req, res) => {
         try {
             const plansRaw = await subscriptionPlanDao.list(orgID);
             orgPlans = plansRaw.map(p => ({
-                planId: p.ID,
+                planId: p.UUID,
                 planName: p.NAME,
                 displayName: p.DISPLAY_NAME,
                 description: p.DESCRIPTION || '',

@@ -29,7 +29,7 @@ const create = async (orgID, payload, t) => {
         const viewResponse = await View.create({
             NAME: name,
             HANDLE: payload.handle,
-            ORG_ID: orgID
+            ORG_UUID: orgID
         }, { transaction: t });
         return viewResponse;
     } catch (error) {
@@ -46,7 +46,7 @@ const update = async (orgID, handle, name, t) => {
         let [record, created] = await View.findOrCreate({
             where: {
                 HANDLE: handle,
-                ORG_ID: orgID
+                ORG_UUID: orgID
             },
             defaults: {
                 HANDLE: handle,
@@ -76,7 +76,7 @@ const deleteView = async (orgID, handle) => {
         const viewResponse = await View.destroy({
             where: {
                 HANDLE: handle,
-                ORG_ID: orgID
+                ORG_UUID: orgID
             }
         });
         return viewResponse;
@@ -94,7 +94,7 @@ const get = async (orgID, handle) => {
         const viewResponse = await View.findOne({
             where: {
                 HANDLE: handle,
-                ORG_ID: orgID
+                ORG_UUID: orgID
             },
             include: {
                 model: Labels,
@@ -120,13 +120,13 @@ const getId = async (orgID, viewName) => {
                     { NAME: viewName },
                     { HANDLE: viewName }
                 ],
-                ORG_ID: orgID
+                ORG_UUID: orgID
             }
         });
         if (!viewResponse) {
             throw new CustomError(404, constants.ERROR_CODE[404], "View not found")
         }
-        return viewResponse.dataValues.ID;
+        return viewResponse.dataValues.UUID;
     } catch (error) {
         if (error instanceof Sequelize.UniqueConstraintError) {
             throw error;
@@ -140,7 +140,7 @@ const list = async (orgID) => {
     try {
         const viewResponse = await View.findAll({
             where: {
-                ORG_ID: orgID
+                ORG_UUID: orgID
             },
             include: {
                 model: Labels,
@@ -166,8 +166,8 @@ const addLabels = async (orgID, viewID, labels, t) => {
     try {
         IDList.forEach(label => {
             labelList.push({
-                LABEL_ID: label,
-                VIEW_ID: viewID,
+                LABEL_UUID: label,
+                VIEW_UUID: viewID,
             });
         });
         const labelResponse = await ViewLabels.bulkCreate(labelList, { transaction: t });
@@ -182,7 +182,7 @@ const addLabels = async (orgID, viewID, labels, t) => {
 
 const replaceLabels = async (orgID, viewID, labelNames, t) => {
     try {
-        await ViewLabels.destroy({ where: { VIEW_ID: viewID }, transaction: t });
+        await ViewLabels.destroy({ where: { VIEW_UUID: viewID }, transaction: t });
         if (labelNames?.length) {
             await addLabels(orgID, viewID, labelNames, t);
         }
@@ -202,8 +202,8 @@ const deleteLabels = async (orgID, viewID, labels, t) => {
         IDList.forEach(async label => {
             deleteResponse = await ViewLabels.destroy({
                 where: {
-                    LABEL_ID: label,
-                    VIEW_ID: viewID,
+                    LABEL_UUID: label,
+                    VIEW_UUID: viewID,
                 }
             }, { transaction: t });
         });

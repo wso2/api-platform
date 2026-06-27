@@ -21,30 +21,30 @@ const APIKey = require('./apiKey');
 const { Application } = require('./application');
 
 const APIKeyAppMapping = sequelize.define('DP_API_KEY_APP_MAPPING', {
-    KEY_ID: {
-        type: DataTypes.UUID,
+    KEY_UUID: {
+        type: DataTypes.STRING(40),
         allowNull: false,
         primaryKey: true,
-        references: { model: APIKey, key: 'ID' },
+        references: { model: APIKey, key: 'UUID' },
     },
-    APP_ID: {
-        type: DataTypes.UUID,
+    APP_UUID: {
+        type: DataTypes.STRING(40),
         allowNull: false,
-        references: { model: Application, key: 'ID' },
+        references: { model: Application, key: 'UUID' },
     },
 }, {
     timestamps: false,
     tableName: 'DP_API_KEY_APP_MAPPING',
     returning: true,
     indexes: [
-        { name: 'IDX_API_KEY_APP_MAPPING_APP_ID', fields: ['APP_ID'] },
+        { name: 'IDX_API_KEY_APP_MAPPING_APP_UUID', fields: ['APP_UUID'] },
     ],
 });
 
-APIKeyAppMapping.belongsTo(APIKey, { foreignKey: 'KEY_ID', onDelete: 'CASCADE' });
-APIKey.hasOne(APIKeyAppMapping, { foreignKey: 'KEY_ID', onDelete: 'CASCADE' });
+APIKeyAppMapping.belongsTo(APIKey, { foreignKey: 'KEY_UUID', onDelete: 'CASCADE' });
+APIKey.hasOne(APIKeyAppMapping, { foreignKey: 'KEY_UUID', onDelete: 'CASCADE' });
 
-APIKeyAppMapping.belongsTo(Application, { foreignKey: 'APP_ID', onDelete: 'CASCADE' });
-Application.hasMany(APIKeyAppMapping, { foreignKey: 'APP_ID', onDelete: 'CASCADE' });
+APIKeyAppMapping.belongsTo(Application, { foreignKey: 'APP_UUID', onDelete: 'CASCADE' });
+Application.hasMany(APIKeyAppMapping, { foreignKey: 'APP_UUID', onDelete: 'CASCADE' });
 
 module.exports = APIKeyAppMapping;

@@ -124,7 +124,7 @@ const getWebhookSubscriber = async (req, res) => {
 function _formatDeliverySummary(delivery) {
     const event = delivery.DP_EVENT;
     return {
-        deliveryId: delivery.ID,
+        deliveryId: delivery.UUID,
         eventType: event ? event.TYPE : null,
         occurredAt: event ? event.OCCURRED_AT : null,
         status: delivery.STATUS,

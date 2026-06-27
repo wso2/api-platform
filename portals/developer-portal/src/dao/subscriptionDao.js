@@ -51,13 +51,13 @@ const INCLUDE_API_AND_PLAN = [
     {
         model: APIMetadata,
         as: 'DP_API_METADATA',
-        attributes: ['ID', 'NAME', 'VERSION', 'HANDLE', 'REF_ID'],
+        attributes: ['UUID', 'NAME', 'VERSION', 'HANDLE', 'REF_ID'],
         required: false,
     },
     {
         model: SubscriptionPlan,
         as: 'DP_SUBSCRIPTION_PLAN',
-        attributes: ['ID', 'NAME', 'DISPLAY_NAME', 'REF_ID'],
+        attributes: ['UUID', 'NAME', 'DISPLAY_NAME', 'REF_ID'],
         required: false,
     },
 ];
@@ -72,9 +72,9 @@ async function create(orgId, apiId, planId, createdBy, transaction, opts = {}) {
         const record = await SubscriptionMapping.create(
             {
                 CREATED_BY: createdBy,
-                ORG_ID: orgId,
-                API_ID: apiId,
-                PLAN_ID: planId || null,
+                ORG_UUID: orgId,
+                API_UUID: apiId,
+                PLAN_UUID: planId || null,
                 TOKEN: encryptToken(opts.subToken),
                 STATUS: 'ACTIVE',
             },
@@ -90,9 +90,9 @@ async function create(orgId, apiId, planId, createdBy, transaction, opts = {}) {
             const record = await SubscriptionMapping.create(
                 {
                     CREATED_BY: createdBy,
-                    ORG_ID: orgId,
-                    API_ID: apiId,
-                    PLAN_ID: planId || null,
+                    ORG_UUID: orgId,
+                    API_UUID: apiId,
+                    PLAN_UUID: planId || null,
                     TOKEN: encryptToken(subToken),
                     STATUS: 'ACTIVE',
                 },
@@ -114,19 +114,19 @@ async function create(orgId, apiId, planId, createdBy, transaction, opts = {}) {
 }
 
 async function list(orgId, { apiId, createdBy } = {}) {
-    const where = { ORG_ID: orgId };
-    if (apiId) where.API_ID = apiId;
+    const where = { ORG_UUID: orgId };
+    if (apiId) where.API_UUID = apiId;
     if (createdBy) where.CREATED_BY = createdBy;
     const rows = await SubscriptionMapping.findAll({
         where,
         include: INCLUDE_API_AND_PLAN,
-        order: [['ID', 'ASC']],
+        order: [['UUID', 'ASC']],
     });
     return rows.map(decryptSubRecord);
 }
 
 async function get(orgId, subId, createdBy) {
-    const where = { ID: subId, ORG_ID: orgId };
+    const where = { UUID: subId, ORG_UUID: orgId };
     if (createdBy) where.CREATED_BY = createdBy;
     return decryptSubRecord(await SubscriptionMapping.findOne({
         where,
@@ -135,7 +135,7 @@ async function get(orgId, subId, createdBy) {
 }
 
 async function updateStatus(orgId, subId, status, createdBy, transaction) {
-    const where = { ID: subId, ORG_ID: orgId };
+    const where = { UUID: subId, ORG_UUID: orgId };
     if (createdBy) where.CREATED_BY = createdBy;
     const [count] = await SubscriptionMapping.update(
         { STATUS: status },
@@ -145,7 +145,7 @@ async function updateStatus(orgId, subId, status, createdBy, transaction) {
 }
 
 async function deleteSubscription(orgId, subId, createdBy, transaction) {
-    const where = { ID: subId, ORG_ID: orgId };
+    const where = { UUID: subId, ORG_UUID: orgId };
     if (createdBy) where.CREATED_BY = createdBy;
     const count = await SubscriptionMapping.destroy({ where, transaction });
     return count > 0;
@@ -153,7 +153,7 @@ async function deleteSubscription(orgId, subId, createdBy, transaction) {
 
 async function getById(orgId, subId) {
     return decryptSubRecord(await SubscriptionMapping.findOne({
-        where: { ID: subId, ORG_ID: orgId },
+        where: { UUID: subId, ORG_UUID: orgId },
         include: INCLUDE_API_AND_PLAN,
     }));
 }
@@ -163,8 +163,8 @@ const listByApi = async (orgID, apiID) => {
         return await SubscriptionMapping.findAll(
             {
                 where: {
-                    ORG_ID: orgID,
-                    API_ID: apiID,
+                    ORG_UUID: orgID,
+                    API_UUID: apiID,
                 }
             });
     } catch (error) {
@@ -178,7 +178,7 @@ const listByApi = async (orgID, apiID) => {
 const listByOrg = async (orgID) => {
     try {
         return await SubscriptionMapping.findAll({
-            where: { ORG_ID: orgID },
+            where: { ORG_UUID: orgID },
         });
     } catch (error) {
         throw new Sequelize.DatabaseError(error);
@@ -188,7 +188,7 @@ const listByOrg = async (orgID) => {
 const listByUser = async (orgID, userID) => {
     try {
         return await SubscriptionMapping.findAll({
-            where: { ORG_ID: orgID, CREATED_BY: userID },
+            where: { ORG_UUID: orgID, CREATED_BY: userID },
         });
     } catch (error) {
         logger.error('listByUser failed', { error, orgID, userID });
@@ -199,7 +199,7 @@ const listByUser = async (orgID, userID) => {
 const findByKey = async (orgID, apiID, planID, t) => {
     try {
         return await SubscriptionMapping.findOne({
-            where: { ORG_ID: orgID, API_ID: apiID, PLAN_ID: planID },
+            where: { ORG_UUID: orgID, API_UUID: apiID, PLAN_UUID: planID },
             transaction: t,
         });
     } catch (error) {

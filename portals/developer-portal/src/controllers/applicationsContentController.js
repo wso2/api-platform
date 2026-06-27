@@ -32,7 +32,7 @@ const apiKeyService = require('../services/apiKeyService');
 
 const orgIDValue = async (orgName) => {
     const organization = await orgDao.get(orgName);
-    return organization.ID;
+    return organization.UUID;
 }
 
 const templateResponseValue = async (pageName) => {
@@ -70,19 +70,19 @@ const loadApplicationData = async (req, orgName, applicationId, viewName) => {
         try {
             const { ApplicationKeyMapping } = require('../models/application');
             const localMappings = await ApplicationKeyMapping.findAll({
-                where: { APP_ID: applicationId }
+                where: { APP_UUID: applicationId }
             });
             const keyList = [];
             for (const mapping of localMappings) {
-                if (mapping.AS_CLIENT_ID && mapping.KM_ID) {
+                if (mapping.AS_CLIENT_ID && mapping.KM_UUID) {
                     try {
-                        const km = await kmDao.get(mapping.KM_ID);
+                        const km = await kmDao.get(mapping.KM_UUID);
                         const storedProps = mapping.ADDITIONAL_PROPERTIES || {};
                         keyList.push({
                             keyManager: km.NAME,
                             consumerKey: mapping.AS_CLIENT_ID,
                             consumerSecret: '',
-                            keyMappingId: mapping.ID,
+                            keyMappingId: mapping.UUID,
                             keyType: mapping.TYPE || constants.KEY_TYPE.PRODUCTION,
                             supportedGrantTypes: storedProps.grant_types || km.SUPPORTED_GRANT_TYPES || ['client_credentials'],
                             additionalProperties: storedProps,
@@ -90,7 +90,7 @@ const loadApplicationData = async (req, orgName, applicationId, viewName) => {
                         });
                     } catch (mappingErr) {
                         logger.warn('Skipping key mapping due to error', {
-                            mappingId: mapping.ID, error: mappingErr.message
+                            mappingId: mapping.UUID, error: mappingErr.message
                         });
                     }
                 }
@@ -111,7 +111,7 @@ const loadApplicationData = async (req, orgName, applicationId, viewName) => {
         for (const km of dbKeyManagers) {
             const grantTypes = km.SUPPORTED_GRANT_TYPES || ['client_credentials'];
             kMmetaData.push({
-                id: km.ID,
+                id: km.UUID,
                 name: km.NAME,
                 type: km.TYPE,
                 enabled: true,
@@ -398,22 +398,22 @@ async function loadApplicationApiKeysData(orgID, applicationId) {
     try {
         const associated = await apiKeyService.list(orgID, { appId: applicationId });
         associatedApiKeys = associated.map((k) => ({
-            keyId: k.ID,
+            keyId: k.UUID,
             name: k.NAME,
             status: String(k.STATUS || 'ACTIVE').toLowerCase(),
-            apiId: k.API_ID,
-            apiName: formatApiDisplayName(k.DP_API_METADATA, k.API_ID)
+            apiId: k.API_UUID,
+            apiName: formatApiDisplayName(k.DP_API_METADATA, k.API_UUID)
         }));
 
         // Capped — this just populates a UI picker, not a full export of the org's keys.
         const allKeys = await apiKeyService.list(orgID, { status: 'ACTIVE', limit: 200 });
         const byApi = new Map();
         allKeys.forEach((k) => {
-            if (k.DP_API_KEY_APP_MAPPING?.APP_ID === applicationId) return;
-            const apiId = k.API_ID;
+            if (k.DP_API_KEY_APP_MAPPING?.APP_UUID === applicationId) return;
+            const apiId = k.API_UUID;
             const apiName = formatApiDisplayName(k.DP_API_METADATA, apiId);
             if (!byApi.has(apiId)) byApi.set(apiId, { apiId, apiName, keys: [] });
-            byApi.get(apiId).keys.push({ keyId: k.ID, name: k.NAME });
+            byApi.get(apiId).keys.push({ keyId: k.UUID, name: k.NAME });
         });
         availableKeysByApi = Array.from(byApi.values());
     } catch (error) {

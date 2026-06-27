@@ -23,8 +23,8 @@ const Labels = require('./label');
 const Tags = require('./tag');
 
 const APIMetadata = sequelize.define('DP_API_METADATA', {
-  ID: {
-    type: DataTypes.UUID,
+  UUID: {
+    type: DataTypes.STRING(40),
     defaultValue: Sequelize.UUIDV4,
     primaryKey: true
   },
@@ -97,42 +97,42 @@ const APIMetadata = sequelize.define('DP_API_METADATA', {
       {
           name: 'UQ_API_METADATA_NAME_VERSION_ORG',
           unique: true,
-          fields: ['NAME', 'VERSION', 'ORG_ID']
+          fields: ['NAME', 'VERSION', 'ORG_UUID']
       },
       {
           name: 'UQ_API_METADATA_ORG_REF_ID',
           unique: true,
-          fields: ['ORG_ID', 'REF_ID']
+          fields: ['ORG_UUID', 'REF_ID']
       },
       {
           name: 'UQ_API_METADATA_HANDLE_ORG',
           unique: true,
-          fields: ['HANDLE', 'ORG_ID']
+          fields: ['HANDLE', 'ORG_UUID']
       }
   ]
 });
 
 const APILabels = sequelize.define('DP_API_LABEL_MAPPING', {
 
-  ID: {
-      type: DataTypes.UUID,
+  UUID: {
+      type: DataTypes.STRING(40),
       defaultValue: Sequelize.UUIDV4,
       primaryKey: true
   },
-  API_ID: {
-      type: DataTypes.UUID,
+  API_UUID: {
+      type: DataTypes.STRING(40),
       allowNull: false,
       references: {
           model: APIMetadata,
-          key: 'ID',
+          key: 'UUID',
       }
   },
-  LABEL_ID: {
-      type: DataTypes.UUID,
+  LABEL_UUID: {
+      type: DataTypes.STRING(40),
       allowNull: false,
       references: {
           model: Labels,
-          key: 'ID',
+          key: 'UUID',
       }
   }
 }, {
@@ -143,32 +143,32 @@ const APILabels = sequelize.define('DP_API_LABEL_MAPPING', {
       {
           name: 'UQ_API_LABEL_MAPPING_LABEL_API',
           unique: true,
-          fields: ['LABEL_ID', 'API_ID']
+          fields: ['LABEL_UUID', 'API_UUID']
       }
   ]
 });
 
 const APITags = sequelize.define('DP_API_TAG_MAPPING', {
 
-  ID: {
-      type: DataTypes.UUID,
+  UUID: {
+      type: DataTypes.STRING(40),
       defaultValue: Sequelize.UUIDV4,
       primaryKey: true
   },
-  API_ID: {
-      type: DataTypes.UUID,
+  API_UUID: {
+      type: DataTypes.STRING(40),
       allowNull: false,
       references: {
           model: APIMetadata,
-          key: 'ID',
+          key: 'UUID',
       }
   },
-  TAG_ID: {
-      type: DataTypes.UUID,
+  TAG_UUID: {
+      type: DataTypes.STRING(40),
       allowNull: false,
       references: {
           model: Tags,
-          key: 'ID',
+          key: 'UUID',
       }
   }
 }, {
@@ -179,53 +179,53 @@ const APITags = sequelize.define('DP_API_TAG_MAPPING', {
       {
           name: 'UQ_API_TAG_MAPPING_TAG_API',
           unique: true,
-          fields: ['TAG_ID', 'API_ID']
+          fields: ['TAG_UUID', 'API_UUID']
       }
   ]
 });
 
 APILabels.belongsTo(APIMetadata, {
-  foreignKey: 'API_ID',
+  foreignKey: 'API_UUID',
   onDelete: 'CASCADE'
 });
 
 APITags.belongsTo(APIMetadata, {
-  foreignKey: 'API_ID',
+  foreignKey: 'API_UUID',
   onDelete: 'CASCADE'
 });
 
 APIContent.belongsTo(APIMetadata, {
-  foreignKey: 'API_ID',
+  foreignKey: 'API_UUID',
   onDelete: 'CASCADE'
 });
 APIMetadata.belongsTo(Organization, {
-  foreignKey: 'ORG_ID'
+  foreignKey: 'ORG_UUID'
 });
 APIMetadata.hasMany(APIContent, {
-  foreignKey: 'API_ID',
+  foreignKey: 'API_UUID',
   onDelete: 'CASCADE'
 });
 
 APIMetadata.belongsToMany(Labels, {
   through: APILabels,
-  foreignKey: "API_ID",
-  otherKey: "LABEL_ID"
+  foreignKey: "API_UUID",
+  otherKey: "LABEL_UUID"
 });
 Labels.belongsToMany(APIMetadata, {
   through: APILabels,
-  foreignKey: "LABEL_ID",
-  otherKey: "API_ID"
+  foreignKey: "LABEL_UUID",
+  otherKey: "API_UUID"
  });
 
 APIMetadata.belongsToMany(Tags, {
   through: APITags,
-  foreignKey: "API_ID",
-  otherKey: "TAG_ID"
+  foreignKey: "API_UUID",
+  otherKey: "TAG_UUID"
 });
 Tags.belongsToMany(APIMetadata, {
   through: APITags,
-  foreignKey: "TAG_ID",
-  otherKey: "API_ID"
+  foreignKey: "TAG_UUID",
+  otherKey: "API_UUID"
 });
 
 module.exports = {

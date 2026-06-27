@@ -22,8 +22,8 @@
  */
 class KeyManagerDTO {
     constructor(km) {
-        this.id = km.ID;
-        this.orgId = km.ORG_ID;
+        this.id = km.UUID;
+        this.orgId = km.ORG_UUID;
         this.name = km.NAME;
         this.type = km.TYPE;
         this.enabled = km.ENABLED;
@@ -47,7 +47,7 @@ class KeyManagerDTO {
  */
 class KeyManagerPublicDTO {
     constructor(km) {
-        this.id = km.ID;
+        this.id = km.UUID;
         this.name = km.NAME;
         this.type = km.TYPE;
         this.tokenEndpoint = km.TOKEN_ENDPOINT;

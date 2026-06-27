@@ -83,7 +83,7 @@ async function publish(eventType, payload, opts) {
         });
         event.STATUS = 'REJECTED';
         await event.save({ transaction });
-        return event.ID;
+        return event.UUID;
     }
 
     // For key events, encrypt the plaintext per subscriber and write delivery rows now
@@ -109,7 +109,7 @@ async function publish(eventType, payload, opts) {
         }
 
         if (subscribers.length > 0) {
-            await eventDao.createDeliveries(event.ID, subscribers, perSubscriberEncrypted, transaction);
+            await eventDao.createDeliveries(event.UUID, subscribers, perSubscriberEncrypted, transaction);
             // Mark as dispatched immediately — deliveries already created.
             event.STATUS = 'DISPATCHED';
             await event.save({ transaction });
@@ -121,11 +121,11 @@ async function publish(eventType, payload, opts) {
         bus.emit('event_published');
     }
     logger.info('Publishing event', {
-        eventId: event.ID, eventType, orgId, aggregateType, aggregateId,
+        eventId: event.UUID, eventType, orgId, aggregateType, aggregateId,
         hasPlaintextKey: !!plaintextKey
     });
 
-    return event.ID;
+    return event.UUID;
 }
 
 /** Subscribe to wake signals from publish(). */

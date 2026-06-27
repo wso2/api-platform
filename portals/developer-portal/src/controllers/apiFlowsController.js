@@ -78,7 +78,7 @@ const loadAPIFlows = async (req, res, next) => {
             return next(err);
         }
 
-        const orgID = orgDetails.ID;
+        const orgID = orgDetails.UUID;
         const viewId = await resolveViewId(orgID, viewName);
 
         const apiFlows = await apiFlowDao.listPublished(orgID, viewId);
@@ -97,7 +97,7 @@ const loadAPIFlows = async (req, res, next) => {
         const resolvedFlows = apiFlows.map(flow => {
             const sources = extractSourceDescriptions(flow);
             return {
-                apiFlowId: flow.ID,
+                apiFlowId: flow.UUID,
                 handle: flow.HANDLE,
                 name: flow.NAME,
                 description: flow.DESCRIPTION,
@@ -155,7 +155,7 @@ const loadAPIFlowDetail = async (req, res, next) => {
             return next(err);
         }
 
-        const orgID = orgDetails.ID;
+        const orgID = orgDetails.UUID;
         const viewId = await resolveViewId(orgID, viewName);
 
         const apiFlow = await apiFlowDao.getPublishedByHandle(orgID, viewId, handle);
@@ -184,7 +184,7 @@ const loadAPIFlowDetail = async (req, res, next) => {
 
         const templateContent = {
             flow: {
-                flowId: apiFlow.ID,
+                flowId: apiFlow.UUID,
                 name: apiFlow.NAME,
                 description: apiFlow.DESCRIPTION,
                 agentPrompt: apiFlow.AGENT_PROMPT,
@@ -238,7 +238,7 @@ const getFlowPromptJSON = async (req, res) => {
             return res.status(404).json({ error: 'Organization not found' });
         }
 
-        const orgID = orgDetails.ID;
+        const orgID = orgDetails.UUID;
 
         if (await isAiDisabledForPortal(orgID, viewName)) {
             return res.status(404).json({ error: 'Not Found' });
@@ -259,7 +259,7 @@ const getFlowPromptJSON = async (req, res) => {
         }
 
         res.status(200).json({
-            flowId: apiFlow.ID,
+            flowId: apiFlow.UUID,
             handle: apiFlow.HANDLE,
             name: apiFlow.NAME,
             description: apiFlow.DESCRIPTION,
@@ -289,7 +289,7 @@ const getWorkflowDetailMd = async (req, res) => {
             return res.status(404).send('# Error\n\nOrganization not found.');
         }
 
-        const orgID = orgDetails.ID;
+        const orgID = orgDetails.UUID;
 
         if (await isAiDisabledForPortal(orgID, viewName)) {
             return res.status(404).send('# Not Found\n\nThis resource is not available for agents.');
@@ -397,7 +397,7 @@ const getAllPublishedFlowsMD = async (req, res) => {
             return res.status(404).send('# Error\n\nOrganization not found.');
         }
 
-        const orgID = orgDetails.ID;
+        const orgID = orgDetails.UUID;
 
         if (await isAiDisabledForPortal(orgID, viewName)) {
             return res.status(404).send('# Not Found\n\nThis resource is not available for agents.');
@@ -445,7 +445,7 @@ const getWorkflowArazzoSpec = async (req, res) => {
             return res.status(404).json({ error: 'Organization not found' });
         }
 
-        const orgID = orgDetails.ID;
+        const orgID = orgDetails.UUID;
 
         if (await isAiDisabledForPortal(orgID, viewName)) {
             return res.status(404).json({ error: 'Not Found' });

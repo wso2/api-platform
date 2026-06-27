@@ -33,15 +33,15 @@ const getOrCreateIds = async (orgID, tagNames, t) => {
             const [tag] = await Tags.findOrCreate({
                 where: {
                     NAME: trimmed,
-                    ORG_ID: orgID
+                    ORG_UUID: orgID
                 },
                 defaults: {
                     NAME: trimmed,
-                    ORG_ID: orgID
+                    ORG_UUID: orgID
                 },
                 transaction: t
             });
-            IDList.push(tag.ID);
+            IDList.push(tag.UUID);
         }
         return IDList;
     } catch (error) {
@@ -57,8 +57,8 @@ const createApiMapping = async (orgID, apiID, tagNames, t) => {
     const IDList = await getOrCreateIds(orgID, tagNames || [], t);
     try {
         const tagList = IDList.map(tagID => ({
-            TAG_ID: tagID,
-            API_ID: apiID,
+            TAG_UUID: tagID,
+            API_UUID: apiID,
         }));
         return await APITags.bulkCreate(tagList, { transaction: t, ignoreDuplicates: true });
     } catch (error) {
@@ -78,7 +78,7 @@ const replaceApiMapping = async (orgID, apiID, tagNames, t) => {
     try {
         await APITags.destroy({
             where: {
-                API_ID: apiID,
+                API_UUID: apiID,
             },
             transaction: t
         });

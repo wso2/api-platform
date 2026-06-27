@@ -22,23 +22,23 @@ const { APIMetadata } = require('./apiMetadata');
 const { SubscriptionMapping } = require('./application');
 
 const APIKey = sequelize.define('DP_API_KEY', {
-    ID: {
-        type: DataTypes.UUID,
+    UUID: {
+        type: DataTypes.STRING(40),
         defaultValue: Sequelize.UUIDV4,
         primaryKey: true
     },
-    API_ID: {
-        type: DataTypes.UUID,
+    API_UUID: {
+        type: DataTypes.STRING(40),
         allowNull: false,
-        references: { model: APIMetadata, key: 'ID' }
+        references: { model: APIMetadata, key: 'UUID' }
     },
-    SUBSCRIPTION_ID: {
-        type: DataTypes.UUID,
+    SUBSCRIPTION_UUID: {
+        type: DataTypes.STRING(40),
         allowNull: true,
-        references: { model: SubscriptionMapping, key: 'ID' }
+        references: { model: SubscriptionMapping, key: 'UUID' }
     },
-    ORG_ID: {
-        type: DataTypes.UUID,
+    ORG_UUID: {
+        type: DataTypes.STRING(40),
         allowNull: false
     },
     NAME: {
@@ -69,14 +69,14 @@ const APIKey = sequelize.define('DP_API_KEY', {
     tableName: 'DP_API_KEY',
     returning: true,
     indexes: [
-        { name: 'IDX_API_KEY_ORG_API_ID', fields: ['ORG_ID', 'API_ID'] },
+        { name: 'IDX_API_KEY_ORG_API_UUID', fields: ['ORG_UUID', 'API_UUID'] },
     ],
 });
 
-APIKey.belongsTo(Organization, { foreignKey: 'ORG_ID' });
-Organization.hasMany(APIKey, { foreignKey: 'ORG_ID' });
-APIKey.belongsTo(APIMetadata, { foreignKey: 'API_ID', as: 'DP_API_METADATA' });
-APIKey.belongsTo(SubscriptionMapping, { foreignKey: 'SUBSCRIPTION_ID', onDelete: 'SET NULL' });
-SubscriptionMapping.hasMany(APIKey, { foreignKey: 'SUBSCRIPTION_ID', onDelete: 'SET NULL' });
+APIKey.belongsTo(Organization, { foreignKey: 'ORG_UUID' });
+Organization.hasMany(APIKey, { foreignKey: 'ORG_UUID' });
+APIKey.belongsTo(APIMetadata, { foreignKey: 'API_UUID', as: 'DP_API_METADATA' });
+APIKey.belongsTo(SubscriptionMapping, { foreignKey: 'SUBSCRIPTION_UUID', onDelete: 'SET NULL' });
+SubscriptionMapping.hasMany(APIKey, { foreignKey: 'SUBSCRIPTION_UUID', onDelete: 'SET NULL' });
 
 module.exports = APIKey;

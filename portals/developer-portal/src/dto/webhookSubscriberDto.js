@@ -22,8 +22,8 @@
  */
 class WebhookSubscriberDTO {
     constructor(sub) {
-        this.id = sub.ID;
-        this.orgId = sub.ORG_ID;
+        this.id = sub.UUID;
+        this.orgId = sub.ORG_UUID;
         this.name = sub.NAME;
         this.url = sub.TARGET_URL;
         this.enabled = sub.ENABLED;

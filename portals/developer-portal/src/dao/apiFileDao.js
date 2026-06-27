@@ -27,7 +27,7 @@ const store = async (apiFile, fileName, apiID, type, t, key) => {
         const apiFileResponse = await APIContent.create({
             FILE_CONTENT: apiFile,
             FILE_NAME: fileName,
-            API_ID: apiID,
+            API_UUID: apiID,
             TYPE: type,
             LOOKUP_KEY: key ?? null
         }, { transaction: t }
@@ -50,7 +50,7 @@ const storeMany = async (files, apiID, t) => {
                 FILE_CONTENT: file.content,
                 FILE_NAME: file.fileName,
                 TYPE: file.type,
-                API_ID: apiID,
+                API_UUID: apiID,
                 LOOKUP_KEY: file.key ?? null
             })
         });
@@ -79,7 +79,7 @@ const upsertMany = async (files, apiID, orgID, t) => {
                 filesToCreate.push({
                     FILE_CONTENT: file.content,
                     FILE_NAME: file.fileName,
-                    API_ID: apiID,
+                    API_UUID: apiID,
                     TYPE: file.type,
                     LOOKUP_KEY: file.key ?? null
                 })
@@ -92,7 +92,7 @@ const upsertMany = async (files, apiID, orgID, t) => {
                     },
                     {
                         where: {
-                            API_ID: apiID,
+                            API_UUID: apiID,
                             FILE_NAME: apiFileResponse.FILE_NAME,
                             TYPE: apiFileResponse.TYPE,
                         },
@@ -100,7 +100,7 @@ const upsertMany = async (files, apiID, orgID, t) => {
                             {
                                 model: APIMetadata,
                                 where: {
-                                    ORG_ID: orgID
+                                    ORG_UUID: orgID
                                 }
                             }
                         ],
@@ -129,14 +129,14 @@ const get = async (fileName, type, orgID, apiID, t) => {
         const apiFileResponse = await APIContent.findOne({
             where: {
                 FILE_NAME: fileName,
-                API_ID: apiID,
+                API_UUID: apiID,
                 TYPE: type
             },
             include: [
                 {
                     model: APIMetadata,
                     where: {
-                        ORG_ID: orgID
+                        ORG_UUID: orgID
                     }
                 }
             ],
@@ -155,14 +155,14 @@ const getByType = async (type, orgID, apiID, t) => {
     try {
         const apiFileResponse = await APIContent.findOne({
             where: {
-                API_ID: apiID,
+                API_UUID: apiID,
                 TYPE: type
             },
             include: [
                 {
                     model: APIMetadata,
                     where: {
-                        ORG_ID: orgID
+                        ORG_UUID: orgID
                     }
                 }
             ],
@@ -184,7 +184,7 @@ const getByKey = async (key, apiID, t) => {
     try {
         return await APIContent.findOne({
             where: {
-                API_ID: apiID,
+                API_UUID: apiID,
                 TYPE: constants.DOC_TYPES.IMAGES,
                 LOOKUP_KEY: key
             },
@@ -205,7 +205,7 @@ const deleteByKey = async (key, apiID, t) => {
     try {
         return await APIContent.destroy({
             where: {
-                API_ID: apiID,
+                API_UUID: apiID,
                 TYPE: constants.DOC_TYPES.IMAGES,
                 LOOKUP_KEY: key
             },
@@ -227,7 +227,7 @@ const upsert = async (apiFile, fileName, apiID, orgID, type, t, key) => {
             fileUpdateResponse = await APIContent.create({
                 FILE_CONTENT: apiFile,
                 FILE_NAME: fileName,
-                API_ID: apiID,
+                API_UUID: apiID,
                 TYPE: type,
                 LOOKUP_KEY: key ?? null
             }, { transaction: t });
@@ -239,14 +239,14 @@ const upsert = async (apiFile, fileName, apiID, orgID, type, t, key) => {
             },
                 {
                     where: {
-                        API_ID: apiID,
+                        API_UUID: apiID,
                         TYPE: type
                     },
                     include: [
                         {
                             model: APIMetadata,
                             where: {
-                                ORG_ID: orgID
+                                ORG_UUID: orgID
                             }
                         }
                     ],
@@ -272,7 +272,7 @@ const update = async (apiFile, fileName, apiID, orgID, type, t, key) => {
             fileUpdateResponse = await APIContent.create({
                 FILE_CONTENT: apiFile,
                 FILE_NAME: fileName,
-                API_ID: apiID,
+                API_UUID: apiID,
                 TYPE: type,
                 LOOKUP_KEY: key ?? null
             }, { transaction: t });
@@ -284,7 +284,7 @@ const update = async (apiFile, fileName, apiID, orgID, type, t, key) => {
             },
                 {
                     where: {
-                        API_ID: apiID,
+                        API_UUID: apiID,
                         FILE_NAME: fileName,
                         TYPE: type
                     },
@@ -292,7 +292,7 @@ const update = async (apiFile, fileName, apiID, orgID, type, t, key) => {
                         {
                             model: APIMetadata,
                             where: {
-                                ORG_ID: orgID
+                                ORG_UUID: orgID
                             }
                         }
                     ],
@@ -315,14 +315,14 @@ const deleteFile = async (fileName, type, orgID, apiID, t) => {
         const contentsToDelete = await APIContent.findAll({
             where: {
                 FILE_NAME: fileName,
-                API_ID: apiID,
+                API_UUID: apiID,
                 TYPE: { [Op.like]: `%${type}%` }
             },
             include: [
                 {
                     model: APIMetadata,
                     where: {
-                        ORG_ID: orgID
+                        ORG_UUID: orgID
                     }
                 }
             ],
@@ -351,7 +351,7 @@ const deleteAll = async (type, orgID, apiID, t) => {
     try {
         const contentsToDelete = await APIContent.findAll({
             where: {
-                API_ID: apiID,
+                API_UUID: apiID,
                 TYPE: {
                     [Op.like]: `%${type}%`
                 }
@@ -360,7 +360,7 @@ const deleteAll = async (type, orgID, apiID, t) => {
                 {
                     model: APIMetadata,
                     where: {
-                        ORG_ID: orgID
+                        ORG_UUID: orgID
                     }
                 }
             ],
@@ -387,13 +387,13 @@ const deleteAll = async (type, orgID, apiID, t) => {
 /**
  * Delete every content row of an exact TYPE for an API (e.g. clear all images
  * before re-storing a freshly uploaded set). Exact match on TYPE, scoped to
- * API_ID, and participates in the caller's transaction.
+ * API_UUID, and participates in the caller's transaction.
  */
 const deleteAllByType = async (type, apiID, t) => {
     try {
         return await APIContent.destroy({
             where: {
-                API_ID: apiID,
+                API_UUID: apiID,
                 TYPE: type
             },
             transaction: t
@@ -411,14 +411,14 @@ const getDoc = async (type, orgID, apiID, t) => {
     try {
         const apiFileResponse = await APIContent.findOne({
             where: {
-                API_ID: apiID,
+                API_UUID: apiID,
                 TYPE: type
             },
             include: [
                 {
                     model: APIMetadata,
                     where: {
-                        ORG_ID: orgID
+                        ORG_UUID: orgID
                     }
                 }
             ],
@@ -438,7 +438,7 @@ const getDocByName = async (type, name, orgID, apiID, t) => {
     try {
         const apiFileResponse = await APIContent.findOne({
             where: {
-                API_ID: apiID,
+                API_UUID: apiID,
                 TYPE: type,
                 FILE_NAME: name
             },
@@ -446,7 +446,7 @@ const getDocByName = async (type, name, orgID, apiID, t) => {
                 {
                     model: APIMetadata,
                     where: {
-                        ORG_ID: orgID
+                        ORG_UUID: orgID
                     }
                 }
             ], transaction: t
@@ -470,7 +470,7 @@ const getDocTypes = async (orgID, apiID) => {
         const rows = await APIContent.findAll({
             attributes: ["TYPE", fileNamesExpr],
             where: {
-                API_ID: apiID,
+                API_UUID: apiID,
                 TYPE: {
                     [Op.or]: [
                         { [Op.like]: "DOC_%" },
@@ -485,7 +485,7 @@ const getDocTypes = async (orgID, apiID) => {
                     required: true,
                     attributes: [],
                     where: {
-                        ORG_ID: orgID
+                        ORG_UUID: orgID
                     }
                 }
             ]
@@ -513,10 +513,10 @@ const getDocs = async (orgID, apiID) => {
         model: APIMetadata,
         required: true,
         attributes: [],
-        where: { ORG_ID: orgID }
+        where: { ORG_UUID: orgID }
     }];
     const where = {
-        API_ID: apiID,
+        API_UUID: apiID,
         [Op.or]: [
             { TYPE: { [Op.like]: "DOC_%" } },
             { FILE_NAME: { [Op.like]: "LINK_%" } }
@@ -560,10 +560,10 @@ const getDocLinks = async (orgID, apiID) => {
         model: APIMetadata,
         required: true,
         attributes: [],
-        where: { ORG_ID: orgID }
+        where: { ORG_UUID: orgID }
     }];
     const where = {
-        API_ID: apiID,
+        API_UUID: apiID,
         FILE_NAME: { [Op.like]: "LINK_%" }
     };
 
@@ -603,14 +603,14 @@ const listDocNames = async (orgID, apiID) => {
         const rows = await APIContent.findAll({
             attributes: ['FILE_NAME'],
             where: {
-                API_ID: apiID,
+                API_UUID: apiID,
                 TYPE: { [Op.like]: `${constants.DOC_TYPES.DOC_ID}%` },
             },
             include: [{
                 model: APIMetadata,
                 required: true,
                 attributes: [],
-                where: { ORG_ID: orgID }
+                where: { ORG_UUID: orgID }
             }]
         });
         return rows.map(r => r.dataValues.FILE_NAME);
@@ -623,12 +623,12 @@ const listDocNames = async (orgID, apiID) => {
 const deleteByFileName = async (fileName, orgID, apiID, t) => {
     try {
         const contentsToDelete = await APIContent.findAll({
-            where: { FILE_NAME: fileName, API_ID: apiID },
-            include: [{ model: APIMetadata, required: true, attributes: [], where: { ORG_ID: orgID } }],
+            where: { FILE_NAME: fileName, API_UUID: apiID },
+            include: [{ model: APIMetadata, required: true, attributes: [], where: { ORG_UUID: orgID } }],
             transaction: t
         });
         for (const content of contentsToDelete) {
-            await APIContent.destroy({ where: { FILE_NAME: content.dataValues.FILE_NAME, API_ID: apiID }, transaction: t });
+            await APIContent.destroy({ where: { FILE_NAME: content.dataValues.FILE_NAME, API_UUID: apiID }, transaction: t });
         }
     } catch (error) {
         if (error instanceof Sequelize.UniqueConstraintError) throw error;

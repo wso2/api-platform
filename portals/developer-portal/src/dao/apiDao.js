@@ -56,7 +56,7 @@ const create = async (orgID, apiMetadata, t) => {
             SANDBOX_URL: apiMetadata.endPoints.sandboxURL,
             PRODUCTION_URL: apiMetadata.endPoints.productionURL,
             METADATA_SEARCH: apiMetadata,
-            ORG_ID: orgID
+            ORG_UUID: orgID
         },
             { transaction: t }
         );
@@ -95,8 +95,8 @@ const update = async (orgID, apiID, apiMetadata, t) => {
             METADATA_SEARCH: apiMetadata,
         }, {
             where: {
-                ID: apiID,
-                ORG_ID: orgID,
+                UUID: apiID,
+                ORG_UUID: orgID,
             },
             returning: false,
             transaction: t
@@ -105,7 +105,7 @@ const update = async (orgID, apiID, apiMetadata, t) => {
             return [0, null];
         }
         const updatedInstance = await APIMetadata.findOne({
-            where: { ID: apiID, ORG_ID: orgID },
+            where: { UUID: apiID, ORG_UUID: orgID },
             transaction: t,
         });
         return [updateCount, [updatedInstance]];
@@ -122,8 +122,8 @@ const deleteApi = async (orgID, apiID, t) => {
     try {
         const apiMetadataResponse = await APIMetadata.destroy({
             where: {
-                ID: apiID,
-                ORG_ID: orgID
+                UUID: apiID,
+                ORG_UUID: orgID
             },
             transaction: t
         });
@@ -143,7 +143,7 @@ const get = async (orgID, apiID, t) => {
             include: [{
                 model: APIContent,
                 where: {
-                    API_ID: apiID,
+                    API_UUID: apiID,
                     TYPE: constants.DOC_TYPES.IMAGES
                 },
                 required: false
@@ -165,8 +165,8 @@ const get = async (orgID, apiID, t) => {
             }
             ],
             where: {
-                ORG_ID: orgID,
-                ID: apiID,
+                ORG_UUID: orgID,
+                UUID: apiID,
                 STATUS: { [Op.in]: [constants.API_STATUS.PUBLISHED, constants.API_STATUS.DEPRECATED] }
             },
             transaction: t
@@ -226,7 +226,7 @@ const list = async (orgID, viewName, t) => {
     try {
         const apiMetadataResponse = await APIMetadata.findAll({
             where: {
-                ORG_ID: orgID,
+                ORG_UUID: orgID,
                 STATUS: { [Op.in]: [constants.API_STATUS.PUBLISHED, constants.API_STATUS.DEPRECATED] }
             },
             include: [{
@@ -244,8 +244,8 @@ const list = async (orgID, viewName, t) => {
                 required: true,
                 through: { attributes: [] },
                 where: {
-                    ID: {
-                        [Op.in]: Sequelize.literal(`(SELECT "LABEL_ID" FROM "DP_VIEW_LABEL_MAPPING" WHERE "VIEW_ID" = '${viewID}')`)
+                    UUID: {
+                        [Op.in]: Sequelize.literal(`(SELECT "LABEL_UUID" FROM "DP_VIEW_LABEL_MAPPING" WHERE "VIEW_UUID" = '${viewID}')`)
                     }
                 }
             },
@@ -274,7 +274,7 @@ const listFromAllViews = async (orgID, t) => {
     try {
         const publicAPIS = await APIMetadata.findAll({
             where: {
-                ORG_ID: orgID,
+                ORG_UUID: orgID,
                 STATUS: { [Op.in]: [constants.API_STATUS.PUBLISHED, constants.API_STATUS.DEPRECATED] }
             },
             include: [{
@@ -317,30 +317,30 @@ const searchFallback = async (orgID, searchTerm, viewName, t) => {
     const viewID = await viewDao.getId(orgID, viewName);
 
     const matchingTags = await Tags.findAll({
-        attributes: ['ID'],
-        where: { ORG_ID: orgID, NAME: { [Op.like]: pattern } },
+        attributes: ['UUID'],
+        where: { ORG_UUID: orgID, NAME: { [Op.like]: pattern } },
         transaction: t,
     });
-    const matchingTagIDs = matchingTags.map(tag => tag.ID);
+    const matchingTagIDs = matchingTags.map(tag => tag.UUID);
     const matchingTagAPIs = matchingTagIDs.length
         ? await APITags.findAll({
-            attributes: ['API_ID'],
-            where: { TAG_ID: { [Op.in]: matchingTagIDs } },
+            attributes: ['API_UUID'],
+            where: { TAG_UUID: { [Op.in]: matchingTagIDs } },
             transaction: t,
         })
         : [];
-    const taggedAPIIDs = [...new Set(matchingTagAPIs.map(row => row.API_ID))];
+    const taggedAPIIDs = [...new Set(matchingTagAPIs.map(row => row.API_UUID))];
 
     return APIMetadata.findAll({
         where: {
-            ORG_ID: orgID,
+            ORG_UUID: orgID,
             STATUS: { [Op.in]: [constants.API_STATUS.PUBLISHED, constants.API_STATUS.DEPRECATED] },
             [Op.or]: [
                 Sequelize.where(
                     Sequelize.cast(Sequelize.col('DP_API_METADATA.METADATA_SEARCH'), 'TEXT'),
                     { [Op.like]: pattern }
                 ),
-                { ID: { [Op.in]: taggedAPIIDs } },
+                { UUID: { [Op.in]: taggedAPIIDs } },
             ],
         },
         include: [
@@ -352,8 +352,8 @@ const searchFallback = async (orgID, searchTerm, viewName, t) => {
                 required: true,
                 through: { attributes: [] },
                 where: {
-                    ID: {
-                        [Op.in]: Sequelize.literal(`(SELECT "LABEL_ID" FROM "DP_VIEW_LABEL_MAPPING" WHERE "VIEW_ID" = '${viewID}')`)
+                    UUID: {
+                        [Op.in]: Sequelize.literal(`(SELECT "LABEL_UUID" FROM "DP_VIEW_LABEL_MAPPING" WHERE "VIEW_UUID" = '${viewID}')`)
                     }
                 }
             },
@@ -390,13 +390,13 @@ const getId = async (orgID, apiHandle) => {
 
     try {
         const api = await APIMetadata.findOne({
-            attributes: ['ID'],
+            attributes: ['UUID'],
             where: {
                 HANDLE: apiHandle,
-                ORG_ID: orgID
+                ORG_UUID: orgID
             }
         })
-        return api?.ID;
+        return api?.UUID;
     } catch (error) {
         if (error instanceof Sequelize.EmptyResultError) {
             throw error;
@@ -411,7 +411,7 @@ const getHandle = async (orgID, apiRefID) => {
             attributes: ['HANDLE'],
             where: {
                 REF_ID: apiRefID,
-                ORG_ID: orgID
+                ORG_UUID: orgID
             }
         })
         return api.HANDLE;
@@ -426,14 +426,14 @@ const getHandle = async (orgID, apiRefID) => {
 const getIdByRef = async (orgID, referenceId, t) => {
     try {
         const api = await APIMetadata.findOne({
-            attributes: ['ID'],
+            attributes: ['UUID'],
             where: {
                 REF_ID: referenceId,
-                ORG_ID: orgID
+                ORG_UUID: orgID
             },
             transaction: t
         });
-        return api?.ID;
+        return api?.UUID;
     } catch (error) {
         if (error instanceof Sequelize.EmptyResultError) {
             throw error;
@@ -446,12 +446,12 @@ const getSpecs = async (orgID, apiIDs) => {
     try {
         const apiSpecsResponse = await APIContent.findAll({
             attributes: [
-                'API_ID',
+                'API_UUID',
                 'FILE_NAME',
                 'FILE_CONTENT'
             ],
             where: {
-                API_ID: {
+                API_UUID: {
                     [Op.in]: apiIDs
                 },
                 TYPE: constants.DOC_TYPES.API_DEFINITION
@@ -462,7 +462,7 @@ const getSpecs = async (orgID, apiIDs) => {
                     required: true,
                     attributes: ['NAME', 'VERSION', 'HANDLE'],
                     where: {
-                        ORG_ID: orgID
+                        ORG_UUID: orgID
                     }
                 }
             ]
@@ -471,7 +471,7 @@ const getSpecs = async (orgID, apiIDs) => {
         return apiSpecsResponse.map(spec => {
 
             return {
-                apiID: spec.API_ID,
+                apiID: spec.API_UUID,
                 fileName: spec.FILE_NAME,
                 apiSpec: spec.FILE_CONTENT ? spec.FILE_CONTENT.toString('utf8') : null
             };
@@ -491,8 +491,8 @@ const getSpecs = async (orgID, apiIDs) => {
 
 const existsByNameVersion = async (orgId, apiName, apiVersion) => {
     const row = await APIMetadata.findOne({
-        attributes: ['ID'],
-        where: { ORG_ID: orgId, NAME: apiName, VERSION: apiVersion },
+        attributes: ['UUID'],
+        where: { ORG_UUID: orgId, NAME: apiName, VERSION: apiVersion },
     });
     return !!row;
 };

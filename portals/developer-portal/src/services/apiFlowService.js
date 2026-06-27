@@ -110,7 +110,7 @@ For each step in the workflow:
 5. Execute the API call with proper authentication
 6. Validate response (expect 2xx status)
 7. Extract outputs and pass to next step
-8. On error: log step ID, status code, and response body
+8. On error: log step UUID, status code, and response body
 
 ## Retry Policy
 - On network errors or 5xx responses: retry up to 3 times with backoff (0s, 1s, 2s)
@@ -214,9 +214,9 @@ const createAPIFlow = async (req, res) => {
         }, t);
 
         await t.commit();
-        logger.info('APIFlow created', { apiFlowId: apiFlow.ID, orgID, viewId });
+        logger.info('APIFlow created', { apiFlowId: apiFlow.UUID, orgID, viewId });
         res.status(201).json({
-            apiFlowId: apiFlow.ID,
+            apiFlowId: apiFlow.UUID,
             name: apiFlow.NAME,
             status: apiFlow.STATUS
         });
@@ -355,7 +355,7 @@ const parseFileContent = (raw) => {
 const toAPIFlowDTO = (apiFlow) => {
     const fileContent = parseFileContent(apiFlow.FILE_CONTENT);
     return {
-    apiFlowId: apiFlow.ID,
+    apiFlowId: apiFlow.UUID,
     name: apiFlow.NAME,
     handle: apiFlow.HANDLE,
     description: apiFlow.DESCRIPTION,

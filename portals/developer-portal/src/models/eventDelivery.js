@@ -22,15 +22,15 @@ const DPEvent = require('./event');
 // One delivery row per (event × subscriber). ENCRYPTED_FIELDS holds per-subscriber
 // ciphertext (e.g. encrypted_key for apikey.* events) so plaintext is never in DP_EVENT.
 const DPEventDelivery = sequelize.define('DP_EVENT_DELIVERY', {
-    ID: {
-        type: DataTypes.UUID,
+    UUID: {
+        type: DataTypes.STRING(40),
         defaultValue: Sequelize.UUIDV4,
         primaryKey: true
     },
-    EVENT_ID: {
-        type: DataTypes.UUID,
+    EVENT_UUID: {
+        type: DataTypes.STRING(40),
         allowNull: false,
-        references: { model: DPEvent, key: 'ID' }
+        references: { model: DPEvent, key: 'UUID' }
     },
     SUBSCRIBER_ID: {
         type: DataTypes.STRING(128),
@@ -82,12 +82,12 @@ const DPEventDelivery = sequelize.define('DP_EVENT_DELIVERY', {
     returning: true,
     indexes: [
         { name: 'IDX_EVENT_DELIVERY_STATUS_NEXT_ATTEMPT', fields: ['STATUS', 'NEXT_ATTEMPT_AT'] },
-        { name: 'IDX_EVENT_DELIVERY_EVENT_ID', fields: ['EVENT_ID'] },
-        { name: 'UQ_EVENT_DELIVERY_EVENT_SUBSCRIBER', unique: true, fields: ['EVENT_ID', 'SUBSCRIBER_ID'] }
+        { name: 'IDX_EVENT_DELIVERY_EVENT_UUID', fields: ['EVENT_UUID'] },
+        { name: 'UQ_EVENT_DELIVERY_EVENT_SUBSCRIBER', unique: true, fields: ['EVENT_UUID', 'SUBSCRIBER_ID'] }
     ]
 });
 
-DPEventDelivery.belongsTo(DPEvent, { foreignKey: 'EVENT_ID' });
-DPEvent.hasMany(DPEventDelivery, { foreignKey: 'EVENT_ID' });
+DPEventDelivery.belongsTo(DPEvent, { foreignKey: 'EVENT_UUID' });
+DPEvent.hasMany(DPEventDelivery, { foreignKey: 'EVENT_UUID' });
 
 module.exports = DPEventDelivery;

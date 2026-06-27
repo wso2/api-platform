@@ -31,7 +31,7 @@ const loadSubscriptions = async (req, res, next) => {
 
     try {
         const orgDetails = await orgDao.get(orgName);
-        const orgID = orgDetails.ID;
+        const orgID = orgDetails.UUID;
 
         if (!req.user) {
             return res.redirect(`/${orgName}${constants.ROUTE.VIEWS_PATH}${viewName}/login`);
@@ -43,7 +43,7 @@ const loadSubscriptions = async (req, res, next) => {
             const createdBy = req.user && req.user.sub;
             const localSubs = await subDao.list(orgID, { createdBy });
             allSubscriptions = localSubs.map(sub => ({
-                id: sub.ID,
+                id: sub.UUID,
                 type: 'TOKEN_BASED',
                 apiName: sub.DP_API_METADATA?.NAME || '',
                 apiVersion: sub.DP_API_METADATA?.VERSION || '',

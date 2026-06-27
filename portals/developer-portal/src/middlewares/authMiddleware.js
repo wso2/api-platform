@@ -102,7 +102,7 @@ const ORG_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{1
 
 async function checkOrgIsolation(pathOrgId, orgClaim) {
     if (!ORG_UUID_RE.test(pathOrgId)) {
-        const err = new Error('Invalid organization ID: must be a UUID');
+        const err = new Error('Invalid organization UUID: must be a UUID');
         err.status = 400;
         return err;
     }

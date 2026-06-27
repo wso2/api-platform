@@ -18,7 +18,7 @@
  */
 class ApplicationDTO {
     constructor(app) {
-        this.id = app.ID;
+        this.id = app.UUID;
         this.name = app.NAME;
         this.description = app.DESCRIPTION;
         if (app.DP_APP_KEY_MAPPINGs) {
@@ -38,7 +38,7 @@ class ApplicationDTO {
 class AppMappingDTO {
     constructor(map) {
         this.appRefID = map.AS_CLIENT_ID;
-        this.kmID = map.KM_ID;
+        this.kmID = map.KM_UUID;
         this.keyType = map.TYPE;
         this.additionalProperties = map.ADDITIONAL_PROPERTIES;
     }

@@ -22,25 +22,25 @@ const Labels = require('./label');
 
 
 const ViewLabels = sequelize.define('DP_VIEW_LABEL_MAPPING', {
-    ID: {
-        type: DataTypes.UUID,
+    UUID: {
+        type: DataTypes.STRING(40),
         defaultValue: Sequelize.UUIDV4,
         primaryKey: true
     },
-    VIEW_ID: {
-        type: DataTypes.UUID,
+    VIEW_UUID: {
+        type: DataTypes.STRING(40),
         allowNull: false,
         references: {
             model: View,
-            key: 'ID',
+            key: 'UUID',
         },
     },
-    LABEL_ID: {
-        type: DataTypes.UUID,
+    LABEL_UUID: {
+        type: DataTypes.STRING(40),
         allowNull: false,
         references: {
             model: Labels,
-            key: 'ID',
+            key: 'UUID',
         }
     }
 }, {
@@ -51,20 +51,20 @@ const ViewLabels = sequelize.define('DP_VIEW_LABEL_MAPPING', {
         {
             name: 'UQ_VIEW_LABEL_MAPPING_LABEL_VIEW',
             unique: true,
-            fields: ['LABEL_ID', 'VIEW_ID']
+            fields: ['LABEL_UUID', 'VIEW_UUID']
         }
     ]
 });
 
 View.belongsToMany(Labels, {
     through: ViewLabels,
-    foreignKey: "VIEW_ID",
-    otherKey: "LABEL_ID",
+    foreignKey: "VIEW_UUID",
+    otherKey: "LABEL_UUID",
 });
 Labels.belongsToMany(View, {
     through: ViewLabels,
-    foreignKey: "LABEL_ID",
-    otherKey: "VIEW_ID",
+    foreignKey: "LABEL_UUID",
+    otherKey: "VIEW_UUID",
 });
 
 module.exports = ViewLabels;

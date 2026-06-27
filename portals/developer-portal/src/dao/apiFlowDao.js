@@ -23,8 +23,8 @@ const logger = require('../config/logger');
 const create = async (orgID, viewId, apiFlowData, t) => {
     try {
         const apiFlow = await APIFlow.create({
-            ORG_ID: orgID,
-            VIEW_ID: viewId,
+            ORG_UUID: orgID,
+            VIEW_UUID: viewId,
             NAME: apiFlowData.name,
             HANDLE: apiFlowData.handle,
             DESCRIPTION: apiFlowData.description,
@@ -58,7 +58,7 @@ const update = async (orgID, viewId, apiFlowId, apiFlowData, t) => {
     if (apiFlowData.contentType !== undefined) updateFields.CONTENT_TYPE = apiFlowData.contentType;
 
     const [count, rows] = await APIFlow.update(updateFields, {
-        where: { ID: apiFlowId, ORG_ID: orgID, VIEW_ID: viewId },
+        where: { UUID: apiFlowId, ORG_UUID: orgID, VIEW_UUID: viewId },
         returning: true,
         transaction: t
     });
@@ -67,32 +67,32 @@ const update = async (orgID, viewId, apiFlowId, apiFlowData, t) => {
 
 const deleteFlow = async (orgID, viewId, apiFlowId, t) => {
     return await APIFlow.destroy({
-        where: { ID: apiFlowId, ORG_ID: orgID, VIEW_ID: viewId },
+        where: { UUID: apiFlowId, ORG_UUID: orgID, VIEW_UUID: viewId },
         transaction: t
     });
 };
 
 const get = async (orgID, viewId, apiFlowId) => {
     return await APIFlow.findOne({
-        where: { ID: apiFlowId, ORG_ID: orgID, VIEW_ID: viewId }
+        where: { UUID: apiFlowId, ORG_UUID: orgID, VIEW_UUID: viewId }
     });
 };
 
 const getByHandle = async (orgID, viewId, handle) => {
     return await APIFlow.findOne({
-        where: { HANDLE: handle, ORG_ID: orgID, VIEW_ID: viewId }
+        where: { HANDLE: handle, ORG_UUID: orgID, VIEW_UUID: viewId }
     });
 };
 
 const list = async (orgID, viewId) => {
     return await APIFlow.findAll({
-        where: { ORG_ID: orgID, VIEW_ID: viewId },
+        where: { ORG_UUID: orgID, VIEW_UUID: viewId },
         order: [['CREATED_AT', 'DESC']]
     });
 };
 
 const listPublished = async (orgID, viewId, { agentVisibility } = {}) => {
-    const where = { ORG_ID: orgID, VIEW_ID: viewId, STATUS: 'PUBLISHED' };
+    const where = { ORG_UUID: orgID, VIEW_UUID: viewId, STATUS: 'PUBLISHED' };
     if (agentVisibility) where.AGENT_VISIBILITY = agentVisibility;
     return await APIFlow.findAll({
         where,
@@ -101,7 +101,7 @@ const listPublished = async (orgID, viewId, { agentVisibility } = {}) => {
 };
 
 const getPublishedByHandle = async (orgID, viewId, handle, { agentVisibility } = {}) => {
-    const where = { HANDLE: handle, ORG_ID: orgID, VIEW_ID: viewId, STATUS: 'PUBLISHED' };
+    const where = { HANDLE: handle, ORG_UUID: orgID, VIEW_UUID: viewId, STATUS: 'PUBLISHED' };
     if (agentVisibility) where.AGENT_VISIBILITY = agentVisibility;
     return await APIFlow.findOne({ where });
 };

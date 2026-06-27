@@ -40,10 +40,10 @@ const buildSubscriptionPlanRow = (orgID, plan) => {
   const requestCount = computeRequestCount(plan);
 
   return {
-    ORG_ID: orgID,
+    ORG_UUID: orgID,
 
     // Store the APIM plan UUID if provided
-    ID: plan.planId ?? plan.planID ?? undefined,
+    UUID: plan.planId ?? plan.planID ?? undefined,
 
     NAME: plan.planName,
     DISPLAY_NAME: plan.displayName,
@@ -82,7 +82,7 @@ const createMany = async (orgID, plans, t) => {
 const put = async (orgID, plan, t) => {
   const current = await getByName(orgID, plan.planName, t);
   if (current) {
-    const updated = await update(orgID, current.ID, plan, t);
+    const updated = await update(orgID, current.UUID, plan, t);
     return { subscriptionPlanResponse: updated, statusCode: 200 };
   }
   const created = await create(orgID, plan, t);
@@ -94,21 +94,21 @@ const update = async (orgID, planID, plan, t) => {
     const row = buildSubscriptionPlanRow(orgID, plan);
 
     // Don't update primary keys
-    delete row.ORG_ID;
-    delete row.ID;
+    delete row.ORG_UUID;
+    delete row.UUID;
     if (!Object.prototype.hasOwnProperty.call(plan, 'refId')) {
       delete row.REF_ID;
     }
 
     await SubscriptionPlan.update(row, {
-      where: { ID: planID, ORG_ID: orgID },
+      where: { UUID: planID, ORG_UUID: orgID },
       transaction: t
     });
 
     // `returning: true` only yields row instances on Postgres; re-fetch
     // explicitly so the result is reliable on SQLite too.
     return await SubscriptionPlan.findOne({
-      where: { ID: planID, ORG_ID: orgID },
+      where: { UUID: planID, ORG_UUID: orgID },
       transaction: t
     });
   } catch (error) {
@@ -125,7 +125,7 @@ const deletePlan = async (orgID, planName, t) => {
         const subscriptionPlanResponse = await SubscriptionPlan.destroy({
             where: {
                 NAME: planName,
-                ORG_ID: orgID
+                ORG_UUID: orgID
             },
             transaction: t
         });
@@ -143,8 +143,8 @@ const deleteById = async (orgID, planID, t) => {
     try {
         const subscriptionPlanResponse = await SubscriptionPlan.destroy({
             where: {
-                ID: planID,
-                ORG_ID: orgID
+                UUID: planID,
+                ORG_UUID: orgID
             },
             transaction: t
         });
@@ -163,7 +163,7 @@ const getByName = async (orgID, planName, t) => {
         const subscriptionPlanResponse = await SubscriptionPlan.findOne({
             where: {
                 NAME: planName,
-                ORG_ID: orgID
+                ORG_UUID: orgID
             },
             transaction: t
         });
@@ -180,8 +180,8 @@ const get = async (planID, orgID, t) => {
     try {
         const subscriptionPlanResponse = await SubscriptionPlan.findOne({
             where: {
-                ORG_ID: orgID,
-                ID: planID
+                ORG_UUID: orgID,
+                UUID: planID
             },
             transaction: t
         });
@@ -201,7 +201,7 @@ const listByApi = async (apiID, t) => {
             include: [
                 {
                     model: APIMetadata,
-                    where: { ID: apiID },
+                    where: { UUID: apiID },
                     through: { attributes: [] }
                 }
             ],
@@ -221,7 +221,7 @@ const list = async (orgID, t) => {
 
         const subscriptionPlansResponse = await SubscriptionPlan.findAll({
             where: {
-                ORG_ID: orgID
+                ORG_UUID: orgID
             },
             transaction: t
         });
@@ -237,8 +237,8 @@ const list = async (orgID, t) => {
 const createApiMapping = async (apiSubscriptionPlans, apiID, t) => {
   try {
     const rows = apiSubscriptionPlans.map((plan) => ({
-      PLAN_ID: plan.planId ?? plan.planID,
-      API_ID: apiID,
+      PLAN_UUID: plan.planId ?? plan.planID,
+      API_UUID: apiID,
     }));
 
     return await APISubscriptionPlan.bulkCreate(rows, { transaction: t });
@@ -254,13 +254,13 @@ const updateApiMapping = async (subscriptionPlans, apiID, t) => {
     try {
         for (const plan of subscriptionPlans) {
             plansToCreate.push({
-                PLAN_ID: plan.planId ?? plan.planID,
-                API_ID: apiID,
+                PLAN_UUID: plan.planId ?? plan.planID,
+                API_UUID: apiID,
             })
         }
         await APISubscriptionPlan.destroy({
             where: {
-                API_ID: apiID
+                API_UUID: apiID
             },
             transaction: t
         });

@@ -34,7 +34,7 @@ const create = async (orgId, subData) => {
                 'Set config.advanced.encryptionKey to a 64-char hex string.');
         }
         const record = await WebhookSubscriber.create({
-            ORG_ID: orgId,
+            ORG_UUID: orgId,
             NAME: subData.name,
             TARGET_URL: subData.url,
             ...(subData.secret && { SECRET_ENC: whCrypto.encrypt(subData.secret) }),
@@ -76,7 +76,7 @@ const update = async (orgId, subscriberId, subData) => {
         }
 
         const [updatedRowsCount] = await WebhookSubscriber.update(updatePayload, {
-            where: { ID: subscriberId, ORG_ID: orgId }
+            where: { UUID: subscriberId, ORG_UUID: orgId }
         });
         if (updatedRowsCount < 1) {
             throw new Sequelize.EmptyResultError('Webhook subscriber not found');
@@ -100,7 +100,7 @@ const update = async (orgId, subscriberId, subData) => {
 const list = async (orgId) => {
     try {
         return await WebhookSubscriber.findAll({
-            where: { ORG_ID: orgId }
+            where: { ORG_UUID: orgId }
         });
     } catch (error) {
         logger.error('Error fetching webhook subscribers', { error });
@@ -115,7 +115,7 @@ const list = async (orgId) => {
 const matchSubscribers = async (orgId, eventType) => {
     try {
         const subscribers = await WebhookSubscriber.findAll({
-            where: { ORG_ID: orgId, ENABLED: true }
+            where: { ORG_UUID: orgId, ENABLED: true }
         });
         return subscribers.filter(sub => {
             const patterns = sub.EVENT_PATTERNS;
@@ -137,11 +137,11 @@ const matchSubscribers = async (orgId, eventType) => {
 };
 
 /**
- * Get a single webhook subscriber by ID.
+ * Get a single webhook subscriber by UUID.
  */
 const get = async (orgId, subscriberId) => {
     try {
-        const sub = await WebhookSubscriber.findOne({ where: { ID: subscriberId, ORG_ID: orgId } });
+        const sub = await WebhookSubscriber.findOne({ where: { UUID: subscriberId, ORG_UUID: orgId } });
         if (!sub) {
             throw new Sequelize.EmptyResultError('Webhook subscriber not found');
         }
@@ -156,14 +156,14 @@ const get = async (orgId, subscriberId) => {
 };
 
 /**
- * Get a single webhook subscriber by ID only, without scoping to an org.
- * ID is a globally unique UUID primary key, so this is safe.
- * Used by the delivery worker, which only has the subscriber ID (from the
- * delivery row) and not the org ID in scope.
+ * Get a single webhook subscriber by UUID only, without scoping to an org.
+ * UUID is a globally unique UUID primary key, so this is safe.
+ * Used by the delivery worker, which only has the subscriber UUID (from the
+ * delivery row) and not the org UUID in scope.
  */
 const getById = async (subscriberId) => {
     try {
-        const sub = await WebhookSubscriber.findOne({ where: { ID: subscriberId } });
+        const sub = await WebhookSubscriber.findOne({ where: { UUID: subscriberId } });
         if (!sub) {
             throw new Sequelize.EmptyResultError('Webhook subscriber not found');
         }
@@ -183,7 +183,7 @@ const getById = async (subscriberId) => {
 const deleteSubscriber = async (orgId, subscriberId) => {
     try {
         const deleted = await WebhookSubscriber.destroy({
-            where: { ID: subscriberId, ORG_ID: orgId }
+            where: { UUID: subscriberId, ORG_UUID: orgId }
         });
         if (deleted < 1) {
             throw new Sequelize.EmptyResultError('Webhook subscriber not found');

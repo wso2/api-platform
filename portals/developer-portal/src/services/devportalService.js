@@ -35,7 +35,7 @@ const getOrganization = async (req, res) => {
 const getOrganizationDetails = async (orgId) => {
     const organization = await orgDao.get(orgId);
     return {
-        orgId: organization.ID,
+        orgId: organization.UUID,
         orgName: organization.NAME,
         businessOwner: organization.BUSINESS_OWNER,
         businessOwnerContact: organization.BUSINESS_OWNER_CONTACT,
@@ -62,7 +62,7 @@ const getOrgContent = async (req, res) => {
             const results = [];
             for (const asset of assets) {
                 const resp = {
-                    orgId: asset.ORG_ID,
+                    orgId: asset.ORG_UUID,
                     fileName: asset.FILE_NAME,
                     fileContent: asset.FILE_CONTENT ? asset.FILE_CONTENT.toString(constants.CHARSET_UTF8) : null
                 };

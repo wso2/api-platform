@@ -55,7 +55,7 @@ const get = async (param) => {
             { IDP_REF_ID: param },
         ];
         if (typeof param === 'string' && UUID_RE.test(param)) {
-            conditions.push({ ID: param });
+            conditions.push({ UUID: param });
         }
         const organization = await Organization.findOne({
             where: { [Sequelize.Op.or]: conditions }
@@ -86,7 +86,7 @@ const getId = async (orgName) => {
         if (!organization) {
             throw new Sequelize.EmptyResultError('Organization not found');
         }
-        return organization.ID;
+        return organization.UUID;
     } catch (error) {
         if (error instanceof Sequelize.EmptyResultError) {
             throw error;
@@ -128,7 +128,7 @@ const update = async (orgData, t) => {
                 CONFIGURATION: orgData.orgConfiguration
             },
             {
-                where: { ID: orgData.orgId },
+                where: { UUID: orgData.orgId },
                 returning: true,
                 transaction: t,
             }
@@ -148,7 +148,7 @@ const update = async (orgData, t) => {
 const deleteOrg = async (orgId) => {
     try {
         const deletedRowsCount = await Organization.destroy({
-            where: { ID: orgId }
+            where: { UUID: orgId }
         });
         if (deletedRowsCount < 1) {
             throw Object.assign(new Sequelize.EmptyResultError('Organization not found'));
@@ -170,8 +170,8 @@ const createContent = async (orgData) => {
             FILE_NAME: orgData.fileName,
             FILE_CONTENT: orgData.fileContent,
             FILE_PATH: orgData.filePath,
-            ORG_ID: orgData.orgId,
-            VIEW_ID: viewID
+            ORG_UUID: orgData.orgId,
+            VIEW_UUID: viewID
         });
         return orgContent;
     } catch (error) {
@@ -196,8 +196,8 @@ const updateContent = async (orgData) => {
                     FILE_TYPE: orgData.fileType,
                     FILE_NAME: orgData.fileName,
                     FILE_PATH: orgData.filePath,
-                    ORG_ID: orgData.orgId,
-                    VIEW_ID: viewID
+                    ORG_UUID: orgData.orgId,
+                    VIEW_UUID: viewID
                 },
                 returning: true
             });
@@ -220,8 +220,8 @@ const getContent = async (orgData) => {
             return await OrgContent.findOne(
                 {
                     where: {
-                        ORG_ID: orgData.orgId,
-                        VIEW_ID: viewID,
+                        ORG_UUID: orgData.orgId,
+                        VIEW_UUID: viewID,
                         FILE_TYPE: orgData.fileType,
                         ...(orgData.fileName && { FILE_NAME: orgData.fileName }),
                         ...(orgData.filePath && { FILE_PATH: orgData.filePath })
@@ -231,8 +231,8 @@ const getContent = async (orgData) => {
             return await OrgContent.findAll(
                 {
                     where: {
-                        ORG_ID: orgData.orgId,
-                        VIEW_ID: viewID,
+                        ORG_UUID: orgData.orgId,
+                        VIEW_UUID: viewID,
                         FILE_TYPE: orgData.fileType,
                     }
                 });
@@ -250,8 +250,8 @@ const deleteContent = async (orgId, viewName, fileName) => {
     try {
         const deletedRowsCount = await OrgContent.destroy({
             where: {
-                ORG_ID: orgId,
-                VIEW_ID: viewId,
+                ORG_UUID: orgId,
+                VIEW_UUID: viewId,
                 FILE_NAME: fileName
             }
         });
@@ -273,8 +273,8 @@ const deleteAllContent = async (orgId, viewName) => {
     try {
         const deletedRowsCount = await OrgContent.destroy({
             where: {
-                ORG_ID: orgId,
-                VIEW_ID: viewId
+                ORG_UUID: orgId,
+                VIEW_UUID: viewId
             }
         });
 

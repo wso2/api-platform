@@ -21,13 +21,13 @@ const SubscriptionPlan = require('./subscriptionPlan');
 const { APIMetadata } = require('./apiMetadata');
 
 const APISubscriptionPlan = sequelize.define('DP_API_SUBSCRIPTION_PLAN_MAPPING', {
-    API_ID: {
-        type: DataTypes.UUID,
+    API_UUID: {
+        type: DataTypes.STRING(40),
         allowNull: false,
         primaryKey: true
     },
-    PLAN_ID: {
-        type: DataTypes.UUID,
+    PLAN_UUID: {
+        type: DataTypes.STRING(40),
         allowNull: false,
         primaryKey: true
     },
@@ -38,14 +38,14 @@ const APISubscriptionPlan = sequelize.define('DP_API_SUBSCRIPTION_PLAN_MAPPING',
 });
 
 APIMetadata.belongsToMany(SubscriptionPlan, {
-    foreignKey: 'API_ID',
-    otherKey: 'PLAN_ID',
+    foreignKey: 'API_UUID',
+    otherKey: 'PLAN_UUID',
     through: APISubscriptionPlan
 });
 
 SubscriptionPlan.belongsToMany(APIMetadata, {
-    foreignKey: 'PLAN_ID',
-    otherKey: 'API_ID',
+    foreignKey: 'PLAN_UUID',
+    otherKey: 'API_UUID',
     through: APISubscriptionPlan
 });
 

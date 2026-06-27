@@ -20,7 +20,7 @@ const logger = require('../config/logger');
 
 function formatDelivery(d) {
     return {
-        deliveryId: d.ID,
+        deliveryId: d.UUID,
         subscriberId: d.SUBSCRIBER_ID,
         targetUrl: d.TARGET_URL || null,
         status: d.STATUS,
@@ -35,11 +35,11 @@ function formatDelivery(d) {
 function formatEvent(row) {
     const deliveries = (row.DP_EVENT_DELIVERIES || []).map(formatDelivery);
     return {
-        eventId: row.ID,
+        eventId: row.UUID,
         eventType: row.TYPE,
-        orgId: row.ORG_ID,
+        orgId: row.ORG_UUID,
         aggregateType: row.AGGREGATE_TYPE,
-        aggregateId: row.AGGREGATE_ID,
+        aggregateId: row.AGGREGATE_UUID,
         status: row.STATUS,
         occurredAt: row.OCCURRED_AT,
         deliveries,
@@ -78,7 +78,7 @@ async function listEvents(req, res) {
 async function getEvent(req, res) {
     try {
         const event = await eventDao.get(req.params.eventId);
-        if (!event || event.ORG_ID !== req.params.orgId) {
+        if (!event || event.ORG_UUID !== req.params.orgId) {
             return res.status(404).json({ message: 'Event not found' });
         }
         res.json(formatEvent(event));

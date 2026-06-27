@@ -19,8 +19,8 @@ const { Sequelize, DataTypes } = require('sequelize');
 const sequelize = require('../db/sequelizeConfig')
 
 const APIContent = sequelize.define('DP_API_CONTENT', {
-    API_ID: {
-        type: DataTypes.UUID,
+    API_UUID: {
+        type: DataTypes.STRING(40),
         allowNull: false,
         primaryKey: true
     },

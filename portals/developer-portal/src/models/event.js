@@ -21,8 +21,8 @@ const { Organization } = require('./organization');
 
 // Outbox table — one row per domain event. Payload never contains plaintext key secrets.
 const DPEvent = sequelize.define('DP_EVENT', {
-    ID: {
-        type: DataTypes.UUID,
+    UUID: {
+        type: DataTypes.STRING(40),
         defaultValue: Sequelize.UUIDV4,
         primaryKey: true
     },
@@ -30,16 +30,16 @@ const DPEvent = sequelize.define('DP_EVENT', {
         type: DataTypes.STRING(128),
         allowNull: false
     },
-    ORG_ID: {
-        type: DataTypes.UUID,
+    ORG_UUID: {
+        type: DataTypes.STRING(40),
         allowNull: false
     },
     AGGREGATE_TYPE: {
         type: DataTypes.STRING(64),
         allowNull: false
     },
-    AGGREGATE_ID: {
-        type: DataTypes.UUID,
+    AGGREGATE_UUID: {
+        type: DataTypes.STRING(40),
         allowNull: false
     },
     PAYLOAD: {
@@ -66,7 +66,7 @@ const DPEvent = sequelize.define('DP_EVENT', {
     ]
 });
 
-DPEvent.belongsTo(Organization, { foreignKey: 'ORG_ID' });
-Organization.hasMany(DPEvent, { foreignKey: 'ORG_ID', onDelete: 'CASCADE' });
+DPEvent.belongsTo(Organization, { foreignKey: 'ORG_UUID' });
+Organization.hasMany(DPEvent, { foreignKey: 'ORG_UUID', onDelete: 'CASCADE' });
 
 module.exports = DPEvent;

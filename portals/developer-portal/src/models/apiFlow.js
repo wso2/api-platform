@@ -20,17 +20,17 @@ const sequelize = require('../db/sequelizeConfig');
 const { Organization } = require('./organization');
 
 const APIFlow = sequelize.define('DP_API_WORKFLOW', {
-    ID: {
-        type: DataTypes.UUID,
+    UUID: {
+        type: DataTypes.STRING(40),
         defaultValue: Sequelize.UUIDV4,
         primaryKey: true
     },
-    ORG_ID: {
-        type: DataTypes.UUID,
+    ORG_UUID: {
+        type: DataTypes.STRING(40),
         allowNull: false
     },
-    VIEW_ID: {
-        type: DataTypes.UUID,
+    VIEW_UUID: {
+        type: DataTypes.STRING(40),
         allowNull: false
     },
     NAME: {
@@ -82,15 +82,15 @@ const APIFlow = sequelize.define('DP_API_WORKFLOW', {
     tableName: 'DP_API_WORKFLOW',
     returning: true,
     indexes: [
-        { name: 'UQ_API_WORKFLOW_ORG_VIEW_HANDLE', unique: true, fields: ['ORG_ID', 'VIEW_ID', 'HANDLE'] }
+        { name: 'UQ_API_WORKFLOW_ORG_VIEW_HANDLE', unique: true, fields: ['ORG_UUID', 'VIEW_UUID', 'HANDLE'] }
     ]
 });
 
-APIFlow.belongsTo(Organization, { foreignKey: 'ORG_ID' });
-Organization.hasMany(APIFlow, { foreignKey: 'ORG_ID', onDelete: 'CASCADE' });
+APIFlow.belongsTo(Organization, { foreignKey: 'ORG_UUID' });
+Organization.hasMany(APIFlow, { foreignKey: 'ORG_UUID', onDelete: 'CASCADE' });
 
 const View = require('./view');
-APIFlow.belongsTo(View, { foreignKey: 'VIEW_ID' });
-View.hasMany(APIFlow, { foreignKey: 'VIEW_ID', onDelete: 'CASCADE' });
+APIFlow.belongsTo(View, { foreignKey: 'VIEW_UUID' });
+View.hasMany(APIFlow, { foreignKey: 'VIEW_UUID', onDelete: 'CASCADE' });
 
 module.exports = { APIFlow };

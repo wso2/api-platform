@@ -22,13 +22,13 @@ const { Organization } = require('./organization');
 
 const Labels = sequelize.define('DP_LABEL', {
 
-    ID: {
-        type: DataTypes.UUID,
+    UUID: {
+        type: DataTypes.STRING(40),
         defaultValue: Sequelize.UUIDV4,
         primaryKey: true
     },
-    ORG_ID: {
-        type: DataTypes.UUID,
+    ORG_UUID: {
+        type: DataTypes.STRING(40),
         allowNull: false,
     },
     NAME: {
@@ -45,15 +45,15 @@ const Labels = sequelize.define('DP_LABEL', {
     returning: true,
     indexes: [
         {
-            name: 'UQ_LABEL_NAME_ORG_ID',
+            name: 'UQ_LABEL_NAME_ORG_UUID',
             unique: true,
-            fields: ['NAME', 'ORG_ID'],
+            fields: ['NAME', 'ORG_UUID'],
         }
     ],
 });
 
 Labels.belongsTo(Organization, {
-    foreignKey: 'ORG_ID'
+    foreignKey: 'ORG_UUID'
 })
 
 module.exports = Labels;

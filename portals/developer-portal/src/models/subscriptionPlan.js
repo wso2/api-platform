@@ -20,8 +20,8 @@ const sequelize = require('../db/sequelizeConfig');
 const { Organization } = require('./organization');
 
 const SubscriptionPlan = sequelize.define('DP_SUBSCRIPTION_PLAN', {
-    ID: {
-        type: DataTypes.UUID,
+    UUID: {
+        type: DataTypes.STRING(40),
         defaultValue: Sequelize.UUIDV4,
         allowNull: false,
         primaryKey: true
@@ -52,13 +52,13 @@ const SubscriptionPlan = sequelize.define('DP_SUBSCRIPTION_PLAN', {
     tableName: 'DP_SUBSCRIPTION_PLAN',
     returning: true,
     indexes: [
-        { name: 'IDX_SUB_PLAN_ORG_NAME', unique: true, fields: ['ORG_ID', 'NAME'] }
+        { name: 'IDX_SUB_PLAN_ORG_NAME', unique: true, fields: ['ORG_UUID', 'NAME'] }
     ]
 });
 
 SubscriptionPlan.belongsTo(Organization, {
     foreignKey: {
-        name: 'ORG_ID',
+        name: 'ORG_UUID',
         unique: 'unique_org_plan_name'
     }
 });
