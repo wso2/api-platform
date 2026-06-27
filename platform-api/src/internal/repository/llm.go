@@ -233,7 +233,8 @@ func (r *LLMProviderTemplateRepo) ManagedByForHandle(handle, orgUUID string) (st
 
 func (r *LLMProviderTemplateRepo) GetByID(templateID, orgUUID string) (*model.LLMProviderTemplate, error) {
 	row := r.db.QueryRow(r.db.Rebind(`
-		SELECT uuid, organization_uuid, handle, group_id, name, managed_by, description, created_by, updated_by, origin, configuration, openapi_spec, version, is_latest, enabled, created_at, updated_at
+		SELECT uuid, organization_uuid, handle, group_id, name, managed_by, description, created_by, updated_by,
+		       origin, configuration, openapi_spec, version, is_latest, enabled, created_at, updated_at
 		FROM llm_provider_templates
 		WHERE handle = ? AND organization_uuid = ?
 	`), templateID, orgUUID)
@@ -242,7 +243,8 @@ func (r *LLMProviderTemplateRepo) GetByID(templateID, orgUUID string) (*model.LL
 
 func (r *LLMProviderTemplateRepo) GetByUUID(uuid, orgUUID string) (*model.LLMProviderTemplate, error) {
 	row := r.db.QueryRow(r.db.Rebind(`
-		SELECT uuid, organization_uuid, handle, group_id, name, managed_by, description, created_by, updated_by, origin, configuration, openapi_spec, version, is_latest, enabled, created_at, updated_at
+		SELECT uuid, organization_uuid, handle, group_id, name, managed_by, description, created_by, updated_by,
+		       origin, configuration, openapi_spec, version, is_latest, enabled, created_at, updated_at
 		FROM llm_provider_templates
 		WHERE uuid = ? AND organization_uuid = ?
 	`), uuid, orgUUID)
@@ -258,7 +260,8 @@ func (r *LLMProviderTemplateRepo) GetByVersion(templateID, orgUUID, version stri
 		return nil, nil
 	}
 	row := r.db.QueryRow(r.db.Rebind(`
-		SELECT uuid, organization_uuid, handle, group_id, name, managed_by, description, created_by, updated_by, configuration, openapi_spec, version, is_latest, enabled, created_at, updated_at
+		SELECT uuid, organization_uuid, handle, group_id, name, managed_by, description, created_by, updated_by,
+		       origin, configuration, openapi_spec, version, is_latest, enabled, created_at, updated_at
 		FROM llm_provider_templates
 		WHERE group_id = ? AND organization_uuid = ? AND version = ?
 	`), base, orgUUID, version)
@@ -275,7 +278,8 @@ func (r *LLMProviderTemplateRepo) ListVersions(templateID, orgUUID string, limit
 	}
 	pageClause, pageArgs := r.db.PaginationClause(limit, offset)
 	query := `
-		SELECT uuid, organization_uuid, handle, group_id, name, managed_by, description, created_by, updated_by, configuration, openapi_spec, version, is_latest, enabled, created_at, updated_at
+		SELECT uuid, organization_uuid, handle, group_id, name, managed_by, description, created_by, updated_by,
+		       origin, configuration, openapi_spec, version, is_latest, enabled, created_at, updated_at
 		FROM llm_provider_templates
 		WHERE group_id = ? AND organization_uuid = ?
 		ORDER BY created_at DESC
@@ -362,7 +366,8 @@ func scanTemplateRow(row *sql.Row) (*model.LLMProviderTemplate, error) {
 func (r *LLMProviderTemplateRepo) List(orgUUID string, limit, offset int) ([]*model.LLMProviderTemplate, error) {
 	pageClause, pageArgs := r.db.PaginationClause(limit, offset)
 	query := `
-		SELECT uuid, organization_uuid, handle, group_id, name, managed_by, description, created_by, updated_by, origin, configuration, openapi_spec, version, is_latest, enabled, created_at, updated_at
+		SELECT uuid, organization_uuid, handle, group_id, name, managed_by, description, created_by, updated_by,
+		       origin, configuration, openapi_spec, version, is_latest, enabled, created_at, updated_at
 		FROM llm_provider_templates
 		WHERE organization_uuid = ?
 		  AND is_latest = ?
@@ -388,7 +393,8 @@ func (r *LLMProviderTemplateRepo) List(orgUUID string, limit, offset int) ([]*mo
 func (r *LLMProviderTemplateRepo) ListAllVersions(orgUUID string, limit, offset int) ([]*model.LLMProviderTemplate, error) {
 	pageClause, pageArgs := r.db.PaginationClause(limit, offset)
 	query := `
-		SELECT uuid, organization_uuid, handle, group_id, name, managed_by, description, created_by, updated_by, configuration, openapi_spec, version, is_latest, enabled, created_at, updated_at
+		SELECT uuid, organization_uuid, handle, group_id, name, managed_by, description, created_by, updated_by,
+		       origin, configuration, openapi_spec, version, is_latest, enabled, created_at, updated_at
 		FROM llm_provider_templates
 		WHERE organization_uuid = ?
 		ORDER BY name ASC, created_at DESC
@@ -699,7 +705,8 @@ func (r *LLMProviderRepo) Create(p *model.LLMProvider) error {
 	// Insert into llm_providers table (handle/name/version/timestamps now live here)
 	query := `
 		INSERT INTO llm_providers (
-			uuid, handle, name, version, description, created_by, template_uuid, openapi_spec, model_list, configuration, origin, created_at, updated_at, organization_uuid
+			uuid, handle, name, version, description, created_by, template_uuid, openapi_spec, model_list,
+		                           configuration, origin, created_at, updated_at, organization_uuid
 		)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 	_, err = tx.Exec(r.db.Rebind(query),
@@ -971,7 +978,8 @@ func (r *LLMProxyRepo) Create(p *model.LLMProxy) error {
 	// Insert into llm_proxies table (handle/name/version/timestamps now live here)
 	query := `
 		INSERT INTO llm_proxies (
-			uuid, handle, name, version, project_uuid, description, created_by, provider_uuid, openapi_spec, configuration, origin, created_at, updated_at, organization_uuid
+			uuid, handle, name, version, project_uuid, description, created_by, provider_uuid, openapi_spec,
+		                         configuration, origin, created_at, updated_at, organization_uuid
 		)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 	_, err = tx.Exec(r.db.Rebind(query),

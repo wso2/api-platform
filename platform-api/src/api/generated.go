@@ -720,6 +720,15 @@ type AssociatedEntity struct {
 	Kind string `binding:"required" json:"kind" yaml:"kind"`
 }
 
+// AssociatedGateway defines model for AssociatedGateway.
+type AssociatedGateway struct {
+	// Configurations Per-gateway configuration overrides for this artifact. This is a free-form object; the supported keys depend on the deployed artifact type.
+	Configurations *map[string]interface{} `json:"configurations,omitempty" yaml:"configurations,omitempty"`
+
+	// Name Name of the gateway this artifact can be deployed to
+	Name string `binding:"required" json:"name" yaml:"name"`
+}
+
 // Channel Defines a single channel within the Async API
 type Channel struct {
 	// Description Description of the channel
@@ -1594,6 +1603,9 @@ type LLMPolicyPathMethods string
 type LLMProvider struct {
 	AccessControl LLMAccessControl `json:"accessControl" yaml:"accessControl"`
 
+	// AssociatedGateways Optional list of gateways this LLM provider can be deployed to, along with per-gateway configuration overrides. This field is optional; omitting it does not change existing behaviour.
+	AssociatedGateways *[]AssociatedGateway `json:"associatedGateways,omitempty" yaml:"associatedGateways,omitempty"`
+
 	// Context Base path for all REST API routes (must start with /, no trailing slash)
 	Context *string `json:"context,omitempty" yaml:"context,omitempty"`
 
@@ -1725,14 +1737,16 @@ type LLMProviderTemplate struct {
 	Metadata  *LLMProviderTemplateMetadata `json:"metadata,omitempty" yaml:"metadata,omitempty"`
 
 	// Name Human-readable LLM Template name
-	Name         string                `binding:"required" json:"name" yaml:"name"`
-	// ReadOnly True if the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane; false for control-plane created artifacts.
-	ReadOnly         *bool                                `json:"readOnly,omitempty" yaml:"readOnly,omitempty"`
+	Name string `binding:"required" json:"name" yaml:"name"`
+
 	// Openapi OpenAPI specification content (JSON or YAML) for the provider, when
 	// uploaded/pasted. Use metadata.openapiSpecUrl instead to reference the
 	// spec by URL.
-	Openapi          *string                              `json:"openapi,omitempty" yaml:"openapi,omitempty"`
-	PromptTokens     *ExtractionIdentifier                `json:"promptTokens,omitempty" yaml:"promptTokens,omitempty"`
+	Openapi      *string               `json:"openapi,omitempty" yaml:"openapi,omitempty"`
+	PromptTokens *ExtractionIdentifier `json:"promptTokens,omitempty" yaml:"promptTokens,omitempty"`
+
+	// ReadOnly True if the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane; false for control-plane created artifacts.
+	ReadOnly         *bool                                `json:"readOnly,omitempty" yaml:"readOnly,omitempty"`
 	RemainingTokens  *ExtractionIdentifier                `json:"remainingTokens,omitempty" yaml:"remainingTokens,omitempty"`
 	RequestModel     *ExtractionIdentifier                `json:"requestModel,omitempty" yaml:"requestModel,omitempty"`
 	ResourceMappings *LLMProviderTemplateResourceMappings `json:"resourceMappings,omitempty" yaml:"resourceMappings,omitempty"`
@@ -1771,7 +1785,11 @@ type LLMProviderTemplateListItem struct {
 	Description *string    `json:"description,omitempty" yaml:"description,omitempty"`
 
 	// Enabled Whether this version is offered when creating providers.
-	Enabled *bool   `json:"enabled,omitempty" yaml:"enabled,omitempty"`
+	Enabled *bool `json:"enabled,omitempty" yaml:"enabled,omitempty"`
+
+	// GroupId Stable identifier shared by every version of a template family
+	// (defaults to the first version's handle). Read-only.
+	GroupId *string `json:"groupId,omitempty" yaml:"groupId,omitempty"`
 	Id      *string `json:"id,omitempty" yaml:"id,omitempty"`
 
 	// IsLatest Whether this is the latest version of the template.
@@ -1781,8 +1799,9 @@ type LLMProviderTemplateListItem struct {
 	LogoUrl *string `json:"logoUrl,omitempty" yaml:"logoUrl,omitempty"`
 
 	// ManagedBy Who manages the template ('wso2' for built-in, otherwise custom-defined).
-	ManagedBy *string    `json:"managedBy,omitempty" yaml:"managedBy,omitempty"`
-	Name      *string    `json:"name,omitempty" yaml:"name,omitempty"`
+	ManagedBy *string `json:"managedBy,omitempty" yaml:"managedBy,omitempty"`
+	Name      *string `json:"name,omitempty" yaml:"name,omitempty"`
+
 	// ReadOnly True when the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane.
 	ReadOnly  *bool      `json:"readOnly,omitempty" yaml:"readOnly,omitempty"`
 	UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
@@ -1832,6 +1851,9 @@ type LLMProviderTemplateResourceMappings struct {
 
 // LLMProxy defines model for LLMProxy.
 type LLMProxy struct {
+	// AssociatedGateways Optional list of gateways this LLM proxy can be deployed to, along with per-gateway configuration overrides. This field is optional; omitting it does not change existing behaviour.
+	AssociatedGateways *[]AssociatedGateway `json:"associatedGateways,omitempty" yaml:"associatedGateways,omitempty"`
+
 	// Context Base path for all REST API routes (must start with /, no trailing slash)
 	Context *string `json:"context,omitempty" yaml:"context,omitempty"`
 
@@ -1945,7 +1967,9 @@ type LLMRateLimitingConfig struct {
 
 // MCPProxy defines model for MCPProxy.
 type MCPProxy struct {
-	Capabilities *MCPProxyCapabilities `json:"capabilities,omitempty" yaml:"capabilities,omitempty"`
+	// AssociatedGateways Optional list of gateways this MCP proxy can be deployed to, along with per-gateway configuration overrides. This field is optional; omitting it does not change existing behaviour.
+	AssociatedGateways *[]AssociatedGateway  `json:"associatedGateways,omitempty" yaml:"associatedGateways,omitempty"`
+	Capabilities       *MCPProxyCapabilities `json:"capabilities,omitempty" yaml:"capabilities,omitempty"`
 
 	// Context Base path for all REST API routes (must start with /, no trailing slash)
 	Context *string `json:"context,omitempty" yaml:"context,omitempty"`

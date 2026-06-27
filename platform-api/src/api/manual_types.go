@@ -22,6 +22,8 @@
 // These types must be kept here to avoid breaking service code that references them.
 package api
 
+import openapi_types "github.com/oapi-codegen/runtime/types"
+
 // ValidateRESTAPIParams defines query parameters used internally by the ValidateAPI service method.
 // The corresponding /rest-apis/validate path was removed from the spec; this type is preserved
 // because service/api.go still uses it for identifier/name/version validation.

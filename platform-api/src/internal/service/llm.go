@@ -382,6 +382,7 @@ func (s *LLMProviderTemplateService) CreateVersion(orgUUID, handle, createdBy st
 		RemainingTokens:  mapExtractionIdentifierAPI(req.RemainingTokens),
 		RequestModel:     mapExtractionIdentifierAPI(req.RequestModel),
 		ResponseModel:    mapExtractionIdentifierAPI(req.ResponseModel),
+		Origin:           constants.OriginCP,
 	}
 	resourceMappings, err := mapTemplateResourceMappingsAPI(req.ResourceMappings)
 	if err != nil {
@@ -501,11 +502,11 @@ func (s *LLMProviderTemplateService) Delete(orgUUID, handle, deletedBy string) e
 	if tpl == nil {
 		return constants.ErrLLMProviderTemplateNotFound
 	}
-	if err := ensureOriginMutable(tpl.Origin); err != nil {
-		return err
-	}
 	if tpl.ManagedBy == "wso2" {
 		return constants.ErrLLMProviderTemplateReadOnly
+	}
+	if err := ensureOriginMutable(tpl.Origin); err != nil {
+		return err
 	}
 	// Block deletion while any provider (built from any version) still depends on it.
 	inUse, err := s.repo.CountProvidersUsingTemplate(handle, orgUUID, "")
@@ -545,6 +546,9 @@ func (s *LLMProviderTemplateService) DeleteVersion(orgUUID, handle, version stri
 	}
 	if target.ManagedBy == "wso2" {
 		return constants.ErrLLMProviderTemplateReadOnly
+	}
+	if err := ensureOriginMutable(target.Origin); err != nil {
+		return err
 	}
 	// Block deletion while any provider built from this specific version still depends on it.
 	inUse, err := s.repo.CountProvidersUsingTemplate(handle, orgUUID, v)
