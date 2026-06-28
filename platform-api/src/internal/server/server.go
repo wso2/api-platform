@@ -44,6 +44,7 @@ import (
 	"platform-api/src/internal/handler"
 	"platform-api/src/internal/middleware"
 	"platform-api/src/internal/model"
+	"platform-api/src/internal/plugin"
 	"platform-api/src/internal/repository"
 	"platform-api/src/internal/service"
 	"platform-api/src/internal/utils"
@@ -108,8 +109,6 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	llmProviderRepo := repository.NewLLMProviderRepo(db)
 	llmProxyRepo := repository.NewLLMProxyRepo(db)
 	mcpProxyRepo := repository.NewMCPProxyRepo(db)
-	websubAPIRepo := repository.NewWebSubAPIRepo(db)
-	webbrokerAPIRepo := repository.NewWebBrokerAPIRepo(db)
 	apiKeyRepo := repository.NewAPIKeyRepo(db)
 	auditRepo := repository.NewAuditRepo(db)
 	secretRepo := repository.NewSecretRepo(db)
@@ -208,13 +207,12 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 		llmProviderRepo,
 		llmProxyRepo,
 		mcpProxyRepo,
-		websubAPIRepo,
 		llmTemplateSeeder,
 		auditRepo,
 		cfg,
 		slogger,
 	)
-	projectService := service.NewProjectService(projectRepo, orgRepo, apiRepo, mcpProxyRepo, websubAPIRepo, auditRepo, slogger)
+	projectService := service.NewProjectService(projectRepo, orgRepo, apiRepo, mcpProxyRepo, auditRepo, slogger)
 	gatewayEventsService := service.NewGatewayEventsService(eventHub, slogger)
 	appService := service.NewApplicationService(appRepo, projectRepo, orgRepo, apiRepo, gatewayEventsService, auditRepo, slogger)
 	apiService := service.NewAPIService(apiRepo, projectRepo, orgRepo, gatewayRepo, deploymentRepo,
@@ -222,15 +220,13 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	gatewayService := service.NewGatewayService(gatewayRepo, orgRepo, apiRepo, customPolicyRepo, gatewayEventsService, slogger, cfg.Gateway.EnableVersionVerification, cfg.Gateway.EnableFunctionalityTypeVerification, auditRepo)
 	subscriptionService := service.NewSubscriptionService(apiRepo, artifactRepo, subscriptionRepo, gatewayEventsService, auditRepo, slogger)
 	subscriptionPlanService := service.NewSubscriptionPlanService(subscriptionPlanRepo, gatewayRepo, gatewayEventsService, auditRepo, slogger)
-	internalGatewayService := service.NewGatewayInternalAPIService(apiRepo, subscriptionRepo, subscriptionPlanRepo, llmProviderRepo, llmProxyRepo, mcpProxyRepo, websubAPIRepo, webbrokerAPIRepo, deploymentRepo, gatewayRepo, orgRepo, projectRepo, apiKeyRepo, artifactRepo, secretRepo, cfg, slogger)
+	internalGatewayService := service.NewGatewayInternalAPIService(apiRepo, subscriptionRepo, subscriptionPlanRepo, llmProviderRepo, llmProxyRepo, mcpProxyRepo, deploymentRepo, gatewayRepo, orgRepo, projectRepo, apiKeyRepo, artifactRepo, secretRepo, cfg, slogger)
 	apiKeyService := service.NewAPIKeyService(apiRepo, artifactRepo, apiKeyRepo, gatewayEventsService, auditRepo, cfg.APIKey.HashingAlgorithms, slogger)
 	deploymentService := service.NewDeploymentService(apiRepo, artifactRepo, deploymentRepo, gatewayRepo, orgRepo, gatewayEventsService, auditRepo, apiUtil, cfg, slogger)
 	llmTemplateService := service.NewLLMProviderTemplateService(llmTemplateRepo, auditRepo)
 	llmProviderService := service.NewLLMProviderService(llmProviderRepo, llmTemplateRepo, orgRepo, llmTemplateSeeder, deploymentRepo, gatewayRepo, gatewayEventsService, slogger, auditRepo)
 	llmProxyService := service.NewLLMProxyService(llmProxyRepo, llmProviderRepo, projectRepo, deploymentRepo, gatewayRepo, gatewayEventsService, slogger, auditRepo)
 	mcpProxyService := service.NewMCPProxyService(mcpProxyRepo, projectRepo, deploymentRepo, gatewayRepo, gatewayEventsService, slogger, auditRepo)
-	websubAPIService := service.NewWebSubAPIService(websubAPIRepo, projectRepo, gatewayRepo, gatewayEventsService, apiUtil, slogger, auditRepo)
-	webbrokerAPIService := service.NewWebBrokerAPIService(webbrokerAPIRepo, projectRepo, gatewayRepo, gatewayEventsService, apiUtil, slogger, auditRepo)
 
 	// Initialize the shared database encryption key used for all encrypted DB columns.
 	// DATABASE_SUBSCRIPTION_TOKEN_ENCRYPTION_KEY is accepted as a legacy alias.
@@ -240,14 +236,6 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	if dbEncryptionKey == "" && cfg.Auth.JWT.SecretKey != "" {
 		h := sha256.Sum256([]byte(cfg.Auth.JWT.SecretKey))
 		dbEncryptionKey = hex.EncodeToString(h[:])
-	}
-	hmacSecretRepo := repository.NewWebSubAPIHmacSecretRepo(db)
-	hmacSecretService, hmacErr := service.NewWebSubAPIHmacSecretService(
-		hmacSecretRepo, websubAPIRepo, gatewayEventsService, gatewayRepo,
-		dbEncryptionKey, slogger,
-	)
-	if hmacErr != nil {
-		slogger.Warn("WebSub HMAC secret service disabled — no valid encryption key configured", "error", hmacErr)
 	}
 	llmProviderDeploymentService := service.NewLLMProviderDeploymentService(
 		llmProviderRepo,
@@ -277,28 +265,6 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 		gatewayRepo,
 		orgRepo,
 		artifactRepo,
-		gatewayEventsService,
-		cfg,
-		slogger,
-	)
-	websubAPIDeploymentService := service.NewWebSubAPIDeploymentService(
-		websubAPIRepo,
-		deploymentRepo,
-		gatewayRepo,
-		orgRepo,
-		artifactRepo,
-		apiRepo,
-		gatewayEventsService,
-		cfg,
-		slogger,
-	)
-	webbrokerAPIDeploymentService := service.NewWebBrokerAPIDeploymentService(
-		webbrokerAPIRepo,
-		deploymentRepo,
-		gatewayRepo,
-		orgRepo,
-		artifactRepo,
-		apiRepo,
 		gatewayEventsService,
 		cfg,
 		slogger,
@@ -343,8 +309,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	subscriptionPlanHandler := handler.NewSubscriptionPlanHandler(subscriptionPlanService, slogger)
 	appHandler := handler.NewApplicationHandler(appService, slogger)
 	wsHandler := handler.NewWebSocketHandler(wsManager, gatewayService, deploymentService, cfg.WebSocket.RateLimitPerMin, slogger)
-	internalGatewayHandler := handler.NewGatewayInternalAPIHandler(gatewayService, internalGatewayService, hmacSecretService, artifactImportService, secretService, slogger)
-	hmacSecretHandler := handler.NewWebSubAPIHmacSecretHandler(hmacSecretService, slogger)
+	internalGatewayHandler := handler.NewGatewayInternalAPIHandler(gatewayService, internalGatewayService, artifactImportService, secretService, slogger)
 	apiKeyHandler := handler.NewAPIKeyHandler(apiKeyService, slogger)
 	deploymentHandler := handler.NewDeploymentHandler(deploymentService, slogger)
 	llmHandler := handler.NewLLMHandler(llmTemplateService, llmProviderService, llmProxyService, slogger)
@@ -355,12 +320,6 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	llmProxyDeploymentHandler := handler.NewLLMProxyDeploymentHandler(llmProxyDeploymentService, slogger)
 	mcpProxyHandler := handler.NewMCPProxyHandler(mcpProxyService, slogger)
 	mcpProxyDeploymentHandler := handler.NewMCPProxyDeploymentHandler(mcpDeploymentService, slogger)
-	websubAPIHandler := handler.NewWebSubAPIHandler(websubAPIService, slogger)
-	websubAPIKeyHandler := handler.NewWebSubAPIKeyHandler(websubAPIService, apiKeyService, slogger)
-	websubAPIDeploymentHandler := handler.NewWebSubAPIDeploymentHandler(websubAPIDeploymentService, slogger)
-	webbrokerAPIHandler := handler.NewWebBrokerAPIHandler(webbrokerAPIService, slogger)
-	webbrokerAPIKeyHandler := handler.NewWebBrokerAPIKeyHandler(webbrokerAPIService, apiKeyService, slogger)
-	webbrokerAPIDeploymentHandler := handler.NewWebBrokerAPIDeploymentHandler(webbrokerAPIDeploymentService, slogger)
 	// Wire secret placeholder validation into dependent services
 	llmProviderService.SetSecretService(secretService)
 	mcpProxyService.WithSecretService(secretService)
@@ -419,14 +378,51 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	llmProxyDeploymentHandler.RegisterRoutes(mux)
 	mcpProxyHandler.RegisterRoutes(mux)
 	mcpProxyDeploymentHandler.RegisterRoutes(mux)
-	websubAPIHandler.RegisterRoutes(mux)
-	websubAPIKeyHandler.RegisterRoutes(mux)
-	websubAPIDeploymentHandler.RegisterRoutes(mux)
-	hmacSecretHandler.RegisterRoutes(mux)
-	webbrokerAPIHandler.RegisterRoutes(mux)
-	webbrokerAPIKeyHandler.RegisterRoutes(mux)
-	webbrokerAPIDeploymentHandler.RegisterRoutes(mux)
 	secretHandler.RegisterRoutes(mux)
+
+	// Initialize plugins and register their routes.
+	// Plugins contribute routes, DB schema, and OpenAPI scopes at startup.
+	pluginDeps := &plugin.Deps{
+		DB:                   db,
+		Config:               cfg,
+		Logger:               slogger,
+		EventHub:             eventHub,
+		GatewayRepo:          gatewayRepo,
+		OrgRepo:              orgRepo,
+		ProjectRepo:          projectRepo,
+		ArtifactRepo:         artifactRepo,
+		DeploymentRepo:       deploymentRepo,
+		APIKeyRepo:           apiKeyRepo,
+		AuditRepo:            auditRepo,
+		SecretRepo:           secretRepo,
+		APIRepo:              apiRepo,
+		GatewayEventsService: gatewayEventsService,
+		APIKeyService:        apiKeyService,
+		DBEncryptionKey:      dbEncryptionKey,
+	}
+	for _, p := range plugin.All() {
+		if err := p.Init(pluginDeps); err != nil {
+			return nil, fmt.Errorf("plugin %q failed to initialize: %w", p.Name(), err)
+		}
+		// Merge plugin-contributed scopes into the main registry.
+		if spec := p.OpenAPISpec(); len(spec) > 0 {
+			pluginRegistry, regErr := middleware.LoadScopeRegistryFromBytes(spec)
+			if regErr != nil {
+				slogger.Warn("plugin scope registry load failed", "plugin", p.Name(), "error", regErr)
+			} else {
+				scopeRegistry.Merge(pluginRegistry)
+			}
+		}
+		p.RegisterRoutes(mux)
+		slogger.Info("Plugin initialized", "name", p.Name())
+		// Wire plugin-owned repos into core services that have optional setters.
+		if ep, ok := p.(plugin.EventArtifactPlugin); ok {
+			orgService.SetWebSubAPIRepo(ep.GetWebSubAPIRepo())
+			projectService.SetWebSubAPIRepo(ep.GetWebSubAPIRepo())
+			internalGatewayService.SetEventArtifactRepos(ep.GetWebSubAPIRepo(), ep.GetWebBrokerAPIRepo())
+			internalGatewayHandler.SetHmacSecretService(ep.GetHmacSecretService())
+		}
+	}
 	slogger.Info("Registered API routes successfully")
 
 	// Build the middleware chain that wraps the mux.
@@ -748,6 +744,11 @@ func (s *Server) Start(port string, certDir string) error {
 		defer shutdownCancel()
 		if err := httpServer.Shutdown(shutdownCtx); err != nil {
 			s.logger.Error("HTTP server shutdown error", "error", err)
+		}
+		for _, p := range plugin.All() {
+			if err := p.Shutdown(shutdownCtx); err != nil {
+				s.logger.Error("Plugin shutdown error", "plugin", p.Name(), "error", err)
+			}
 		}
 		s.wsManager.Shutdown()
 		s.dispatcher.Shutdown()

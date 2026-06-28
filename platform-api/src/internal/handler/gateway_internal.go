@@ -36,28 +36,41 @@ import (
 	"github.com/wso2/go-httpkit/httputil"
 )
 
+// hmacSecretDecrypter is the minimal surface needed from a WebSub HMAC secret
+// service. Defined as a local interface so the handler does not import the
+// concrete implementation (which lives in the event-gateway plugin).
+type hmacSecretDecrypter interface {
+	ListByArtifactUUID(artifactUUID string) ([]*model.WebSubAPIHmacSecret, error)
+	DecryptSecret(s *model.WebSubAPIHmacSecret) (string, error)
+}
+
 type GatewayInternalAPIHandler struct {
 	gatewayService         *service.GatewayService
 	gatewayInternalService *service.GatewayInternalAPIService
 	artifactImportService  *service.ArtifactImportService
-	hmacSecretService      *service.WebSubAPIHmacSecretService
+	hmacSecretService      hmacSecretDecrypter // nil in OSS builds
 	secretService          *service.SecretService
 	slogger                *slog.Logger
 }
 
 func NewGatewayInternalAPIHandler(gatewayService *service.GatewayService,
 	gatewayInternalService *service.GatewayInternalAPIService,
-	hmacSecretService *service.WebSubAPIHmacSecretService, artifactImportService *service.ArtifactImportService,
+	artifactImportService *service.ArtifactImportService,
 	secretService *service.SecretService,
 	slogger *slog.Logger) *GatewayInternalAPIHandler {
 	return &GatewayInternalAPIHandler{
 		gatewayService:         gatewayService,
 		gatewayInternalService: gatewayInternalService,
-		hmacSecretService:      hmacSecretService,
 		secretService:          secretService,
 		artifactImportService:  artifactImportService,
 		slogger:                slogger,
 	}
+}
+
+// SetHmacSecretService wires in the HMAC secret service. Called by the server
+// after the event-gateway plugin is initialized (experimental builds only).
+func (h *GatewayInternalAPIHandler) SetHmacSecretService(svc hmacSecretDecrypter) {
+	h.hmacSecretService = svc
 }
 
 // authenticateGateway validates the API key and returns the authenticated gateway.

@@ -40,16 +40,21 @@ type ProjectService struct {
 
 func NewProjectService(projectRepo repository.ProjectRepository, orgRepo repository.OrganizationRepository,
 	apiRepo repository.APIRepository, mcpProxyRepo repository.MCPProxyRepository,
-	websubAPIRepo repository.WebSubAPIRepository, auditRepo repository.AuditRepository, slogger *slog.Logger) *ProjectService {
+	auditRepo repository.AuditRepository, slogger *slog.Logger) *ProjectService {
 	return &ProjectService{
-		projectRepo:   projectRepo,
-		orgRepo:       orgRepo,
-		apiRepo:       apiRepo,
-		mcpProxyRepo:  mcpProxyRepo,
-		websubAPIRepo: websubAPIRepo,
-		auditRepo:     auditRepo,
-		slogger:       slogger,
+		projectRepo:  projectRepo,
+		orgRepo:      orgRepo,
+		apiRepo:      apiRepo,
+		mcpProxyRepo: mcpProxyRepo,
+		auditRepo:    auditRepo,
+		slogger:      slogger,
 	}
+}
+
+// SetWebSubAPIRepo wires in the WebSub API repository. Called by the server
+// after an EventArtifactPlugin has been initialized (experimental builds only).
+func (s *ProjectService) SetWebSubAPIRepo(repo repository.WebSubAPIRepository) {
+	s.websubAPIRepo = repo
 }
 
 func (s *ProjectService) CreateProject(req *api.CreateProjectRequest, organizationID, actor string) (*api.Project, error) {
@@ -259,12 +264,14 @@ func (s *ProjectService) DeleteProject(projectId, orgId, actor string) error {
 	}
 
 	// check if there are any WebSub APIs associated with the project
-	websubAPICount, err := s.websubAPIRepo.CountByProject(orgId, projectId)
-	if err != nil {
-		return err
-	}
-	if websubAPICount > 0 {
-		return constants.ErrProjectHasAssociatedWebSubAPIs
+	if s.websubAPIRepo != nil {
+		websubAPICount, err := s.websubAPIRepo.CountByProject(orgId, projectId)
+		if err != nil {
+			return err
+		}
+		if websubAPICount > 0 {
+			return constants.ErrProjectHasAssociatedWebSubAPIs
+		}
 	}
 
 	if err := s.projectRepo.DeleteProject(projectId); err != nil {

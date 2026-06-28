@@ -29,18 +29,19 @@ import (
 	"platform-api/src/internal/constants"
 	"platform-api/src/internal/database"
 	"platform-api/src/internal/model"
+	corerepo "platform-api/src/internal/repository"
 	"platform-api/src/internal/utils"
 )
 
 // WebBrokerAPIRepo handles database operations for WebBroker APIs
 type WebBrokerAPIRepo struct {
 	db           *database.DB
-	artifactRepo *ArtifactRepo
+	artifactRepo *corerepo.ArtifactRepo
 }
 
 // NewWebBrokerAPIRepo creates a new WebBrokerAPIRepo instance
 func NewWebBrokerAPIRepo(db *database.DB) *WebBrokerAPIRepo {
-	return &WebBrokerAPIRepo{db: db, artifactRepo: NewArtifactRepo(db)}
+	return &WebBrokerAPIRepo{db: db, artifactRepo: corerepo.NewArtifactRepo(db)}
 }
 
 // Create creates a new WebBroker API in the database

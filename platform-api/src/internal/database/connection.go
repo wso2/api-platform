@@ -214,6 +214,21 @@ func (db *DB) InitSchema(dbSchemaPath string, slogger *slog.Logger) error {
 	return nil
 }
 
+// InitSchemaSQL applies the given SQL DDL string against the database using the
+// same strategy as InitSchema. It is used by compile-time plugins to apply their
+// own schema fragments without requiring an external schema file.
+func (db *DB) InitSchemaSQL(ddl string, slogger *slog.Logger) error {
+	slogger.Info("Applying plugin schema DDL", "driver", db.driver)
+	if isPostgresDriver(db.driver) || isSQLServerDriver(db.driver) {
+		return db.initSchemaTransactional(ddl)
+	}
+	_, err := db.Exec(ddl)
+	if err != nil {
+		return fmt.Errorf("failed to apply plugin schema: %w", err)
+	}
+	return nil
+}
+
 // initSchemaTransactional splits SQL statements and executes them individually within a transaction
 // This ensures all tables are created before foreign key constraints are validated
 func (db *DB) initSchemaTransactional(schemaSQL string) error {
