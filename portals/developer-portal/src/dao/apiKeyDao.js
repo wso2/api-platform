@@ -20,6 +20,7 @@ const APIKey = require('../models/apiKey');
 const APIKeyAppMapping = require('../models/apiKeyAppMapping');
 const { APIMetadata } = require('../models/apiMetadata');
 const { Application } = require('../models/application');
+const constants = require('../utils/constants');
 
 const API_METADATA_INCLUDE = {
     model: APIMetadata, as: 'DP_API_METADATA',
@@ -39,7 +40,7 @@ function appMappingInclude(required = false, appId = null) {
 async function create({ apiId, subscriptionId, appId, orgId, name, expiresAt, createdBy }, transaction) {
     const key = await APIKey.create(
         { API_UUID: apiId, SUBSCRIPTION_UUID: subscriptionId || null, ORG_UUID: orgId,
-          NAME: name, EXPIRES_AT: expiresAt || null, CREATED_BY: createdBy, UPDATED_BY: createdBy, STATUS: 'ACTIVE' },
+          NAME: name, EXPIRES_AT: expiresAt || null, CREATED_BY: createdBy, UPDATED_BY: createdBy, STATUS: constants.API_KEY_STATUS.ACTIVE },
         { transaction }
     );
     if (appId) {
@@ -72,15 +73,15 @@ async function list(orgId, { apiId, subscriptionId, appId, status, limit } = {},
 
 async function revoke(orgId, keyId, updatedBy, transaction) {
     const [count] = await APIKey.update(
-        { STATUS: 'REVOKED', REVOKED_AT: new Date(), REVOKED_BY: updatedBy, UPDATED_BY: updatedBy },
-        { where: { UUID: keyId, ORG_UUID: orgId, STATUS: 'ACTIVE' }, transaction }
+        { STATUS: constants.API_KEY_STATUS.REVOKED, REVOKED_AT: new Date(), REVOKED_BY: updatedBy, UPDATED_BY: updatedBy },
+        { where: { UUID: keyId, ORG_UUID: orgId, STATUS: constants.API_KEY_STATUS.ACTIVE }, transaction }
     );
     return count > 0;
 }
 
 async function setApplication(orgId, keyId, appId, updatedBy, transaction, { activeOnly = false } = {}) {
     const where = { UUID: keyId, ORG_UUID: orgId };
-    if (activeOnly) where.STATUS = 'ACTIVE';
+    if (activeOnly) where.STATUS = constants.API_KEY_STATUS.ACTIVE;
     const key = await APIKey.findOne({ where, transaction, lock: transaction ? true : false });
     if (!key) return false;
     if (appId) {

@@ -77,7 +77,10 @@ const APIKey = sequelize.define('DP_API_KEY', {
     tableName: 'DP_API_KEY',
     returning: true,
     checks: [
-        { name: 'chk_api_key_revoked', sql: `("REVOKED_AT" IS NULL OR "STATUS" = 'REVOKED')` }
+        {
+            name: 'chk_api_key_revoked',
+            sql: `(("REVOKED_AT" IS NULL AND "STATUS" != 'REVOKED') OR ("REVOKED_AT" IS NOT NULL AND "STATUS" = 'REVOKED'))`
+        }
     ],
     indexes: [
         { name: 'IDX_API_KEY_ORG_API_UUID', fields: ['ORG_UUID', 'API_UUID'] },

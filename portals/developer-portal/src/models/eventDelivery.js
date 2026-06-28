@@ -37,7 +37,7 @@ const DPEventDelivery = sequelize.define('DP_EVENT_DELIVERY', {
         allowNull: false
     },
     TARGET_URL: {
-        type: DataTypes.STRING,
+        type: DataTypes.STRING(1023),
         allowNull: false
     },
     ENCRYPTED_FIELDS: {

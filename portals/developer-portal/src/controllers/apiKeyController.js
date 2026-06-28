@@ -20,6 +20,7 @@ const applicationDao = require('../dao/applicationDao');
 const logger = require('../config/logger');
 const { logUserAction } = require('../middlewares/auditLogger');
 const util = require('../utils/util');
+const constants = require('../utils/constants');
 
 function errorStatus(err) {
     return err.status || 500;
@@ -98,6 +99,12 @@ async function listApiKeys(req, res) {
         return res.status(400).json({
             status: 'error', code: 'COMMON_VALIDATION_ERROR', message: 'Bad Request',
             errors: [{ field: 'appId', message: 'appId must be a non-empty string' }],
+        });
+    }
+    if (status && !Object.values(constants.API_KEY_STATUS).includes(status)) {
+        return res.status(400).json({
+            status: 'error', code: 'COMMON_VALIDATION_ERROR', message: 'Bad Request',
+            errors: [{ field: 'status', message: `status must be one of: ${Object.values(constants.API_KEY_STATUS).join(', ')}` }],
         });
     }
 

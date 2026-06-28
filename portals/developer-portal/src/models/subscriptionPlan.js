@@ -36,7 +36,7 @@ const SubscriptionPlan = sequelize.define('DP_SUBSCRIPTION_PLAN', {
         allowNull: false
     },
     DESCRIPTION: {
-        type: DataTypes.STRING,
+        type: DataTypes.STRING(1023),
         allowNull: true
     },
     REQUEST_COUNT: {

@@ -39,7 +39,7 @@ const APIFlow = sequelize.define('DP_API_WORKFLOW', {
         allowNull: false
     },
     DESCRIPTION: {
-        type: DataTypes.STRING,
+        type: DataTypes.STRING(1023),
         allowNull: false
     },
     HANDLE: {

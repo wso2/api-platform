@@ -35,7 +35,7 @@ const WebhookSubscriber = sequelize.define('DP_WEBHOOK_SUBSCRIBER', {
         allowNull: false
     },
     TARGET_URL: {
-        type: DataTypes.STRING,
+        type: DataTypes.STRING(1023),
         allowNull: false
     },
     SECRET_ENC: {
@@ -94,11 +94,6 @@ const WebhookSubscriber = sequelize.define('DP_WEBHOOK_SUBSCRIBER', {
             name: 'UQ_WEBHOOK_SUBSCRIBER_ORG_NAME',
             unique: true,
             fields: ['ORG_UUID', 'NAME']
-        },
-        {
-            name: 'UQ_WEBHOOK_SUBSCRIBER_ORG_URL',
-            unique: true,
-            fields: ['ORG_UUID', 'TARGET_URL']
         }
     ]
 });

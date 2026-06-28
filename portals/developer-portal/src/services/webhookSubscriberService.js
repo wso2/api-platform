@@ -32,20 +32,16 @@ function _validateRequiredFields(payload) {
 }
 
 /**
- * Build a specific conflict message based on which unique constraint (name or
- * target URL) was violated.
+ * Build a specific conflict message for the name unique constraint.
  */
 function _uniqueConstraintMessage(error, payload) {
     const fields = Array.isArray(error.fields)
         ? error.fields
         : error.fields ? Object.keys(error.fields) : (error.errors || []).map(e => e.path);
-    if (fields.includes('TARGET_URL')) {
-        return `A webhook subscriber with target URL "${payload?.url}" already exists in this organization.`;
-    }
     if (fields.includes('NAME')) {
         return `A webhook subscriber with name "${payload?.name}" already exists in this organization.`;
     }
-    return 'A webhook subscriber with that name or target URL already exists in this organization.';
+    return 'A webhook subscriber with that name already exists in this organization.';
 }
 
 const createWebhookSubscriber = async (req, res) => {

@@ -71,6 +71,10 @@ module.exports = {
         ACTIVE: "ACTIVE",
         INACTIVE: "INACTIVE",
     },
+    API_KEY_STATUS: {
+        ACTIVE: "ACTIVE",
+        REVOKED: "REVOKED",
+    },
     API_TYPE: {
         REST: "REST",
         SOAP: "SOAP",

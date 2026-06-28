@@ -24,6 +24,7 @@ const { publish } = require('./webhooks/eventPublisher');
 const subDao = require('../dao/subscriptionDao');
 const logger = require('../config/logger');
 const { config } = require('../config/configLoader');
+const constants = require('../utils/constants');
 
 const KEY_NAME_PATTERN = /^[a-z0-9][a-z0-9_-]{0,127}$/;
 const EXPIRES_AT_HAS_TZ = /(?:Z|[+-]\d{2}:\d{2})$/;
@@ -198,7 +199,7 @@ async function generate({ orgId, apiId, subscriptionId, appId, name, expiresAt, 
     }
 
     logger.info('API key generated', { keyId, orgId, apiId, appId: application ? application.id : null, actor });
-    return { keyId, name: normalizedName, key: plaintext, expiresAt: expiry.date, status: 'ACTIVE' };
+    return { keyId, name: normalizedName, key: plaintext, expiresAt: expiry.date, status: constants.API_KEY_STATUS.ACTIVE };
 }
 
 /**
@@ -210,7 +211,7 @@ async function regenerate({ orgId, keyId, actor }) {
 
     const existing = await apiKeyDao.get(orgId, keyId);
     if (!existing) throw Object.assign(new Error('API key not found'), { status: 404 });
-    if (existing.STATUS === 'REVOKED') throw Object.assign(new Error('Cannot regenerate a revoked key'), { status: 409 });
+    if (existing.STATUS === constants.API_KEY_STATUS.REVOKED) throw Object.assign(new Error('Cannot regenerate a revoked key'), { status: 409 });
 
     const apiInfo = await resolveApiDirect(orgId, existing.API_UUID);
     let plaintext = generateSecret();
@@ -238,7 +239,7 @@ async function regenerate({ orgId, keyId, actor }) {
     }
 
     logger.info('API key regenerated', { keyId, orgId, actor });
-    return { keyId, name: existing.NAME, key: plaintext, expiresAt: existing.EXPIRES_AT, status: 'ACTIVE' };
+    return { keyId, name: existing.NAME, key: plaintext, expiresAt: existing.EXPIRES_AT, status: constants.API_KEY_STATUS.ACTIVE };
 }
 
 /**
@@ -287,7 +288,7 @@ async function associateApplication({ orgId, keyId, appId, actor }) {
 
     const existing = await apiKeyDao.get(orgId, keyId);
     if (!existing) throw Object.assign(new Error('API key not found'), { status: 404 });
-    if (existing.STATUS === 'REVOKED') throw Object.assign(new Error('Cannot associate a revoked key'), { status: 409 });
+    if (existing.STATUS === constants.API_KEY_STATUS.REVOKED) throw Object.assign(new Error('Cannot associate a revoked key'), { status: 409 });
 
     const application = await resolveApp(orgId, appId, actor);
     if (!application) throw Object.assign(new Error('appId is required'), { status: 400 });
