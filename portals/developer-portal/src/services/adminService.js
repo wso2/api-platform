@@ -146,9 +146,12 @@ const createOrganization = async (req, res) => {
                 const viewID = viewResponse.dataValues.UUID;
                 for (const lName of (viewDef.labels || [])) {
                     const labelId = labelMap[lName];
-                    if (labelId) {
-                        await labelDao.addToView(orgId, labelId, viewID, userId, t);
+                    if (!labelId) {
+                        throw new Sequelize.ValidationError(
+                            `Invalid organization YAML: view '${viewDef.handle}' references unknown label '${lName}'`
+                        );
                     }
+                    await labelDao.addToView(orgId, labelId, viewID, userId, t);
                 }
             }
             logger.info('Views created successfully', { orgId });
@@ -259,6 +262,11 @@ const updateOrganization = async (req, res) => {
             // Views upsert — only if present in payload
             if (payload.views?.length) {
                 for (const viewDef of payload.views) {
+                    if (!viewDef.handle || typeof viewDef.handle !== 'string') {
+                        throw new Sequelize.ValidationError(
+                            "Invalid organization payload: each entry in 'views' must have a non-empty 'handle'"
+                        );
+                    }
                     const view = await viewDao.update(orgId, viewDef.handle, viewDef.name, userId, t);
                     if (Array.isArray(viewDef.labels)) {
                         await viewDao.replaceLabels(orgId, view.dataValues.UUID, viewDef.labels, userId, t);

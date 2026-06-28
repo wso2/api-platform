@@ -117,15 +117,17 @@ const get = async (orgID, handle) => {
     }
 }
 
-const getId = async (orgID, viewName) => {
+const getId = async (orgID, viewName, t) => {
 
     try {
         let viewResponse = await View.findOne({
-            where: { HANDLE: viewName, ORG_UUID: orgID }
+            where: { HANDLE: viewName, ORG_UUID: orgID },
+            transaction: t
         });
         if (!viewResponse) {
             viewResponse = await View.findOne({
-                where: { NAME: viewName, ORG_UUID: orgID }
+                where: { NAME: viewName, ORG_UUID: orgID },
+                transaction: t
             });
         }
         if (!viewResponse) {

@@ -225,7 +225,7 @@ const getByCondition = async (condition, t) => {
 const list = async (orgID, viewName, t) => {
 
     const viewDao = require('./viewDao');
-    const viewID = await viewDao.getId(orgID, viewName);
+    const viewID = await viewDao.getId(orgID, viewName, t);
     let apiList = [];
     try {
         const apiMetadataResponse = await APIMetadata.findAll({
@@ -318,7 +318,7 @@ const listFromAllViews = async (orgID, t) => {
 const searchFallback = async (orgID, searchTerm, viewName, t) => {
     const viewDao = require('./viewDao');
     const pattern = `%${searchTerm}%`;
-    const viewID = await viewDao.getId(orgID, viewName);
+    const viewID = await viewDao.getId(orgID, viewName, t);
 
     const matchingTags = await Tags.findAll({
         attributes: ['UUID'],
@@ -378,7 +378,7 @@ const search = async (orgID, searchTerm, viewName, t) => {
     }
     try {
         const viewDao = require('./viewDao');
-        const viewID = await viewDao.getId(orgID, viewName);
+        const viewID = await viewDao.getId(orgID, viewName, t);
         const results = await APIMetadata.sequelize.query(SEARCH_APIS_POSTGRES_SQL, {
             replacements: { searchTerm, orgID, viewID },
             type: Sequelize.QueryTypes.SELECT,

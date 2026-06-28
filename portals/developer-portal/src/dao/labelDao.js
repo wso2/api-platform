@@ -86,7 +86,7 @@ const update = async (orgID, label, updatedBy, t) => {
             returning: true
         });
         if (!created) {
-            record = await record.update({ ...label, UPDATED_BY: updatedBy, UPDATED_AT: new Date() }, { transaction: t }); // Update if found
+            record = await record.update({ DISPLAY_NAME: label.displayName, UPDATED_BY: updatedBy, UPDATED_AT: new Date() }, { transaction: t }); // Update if found
         }
         return record;
     } catch (error) {

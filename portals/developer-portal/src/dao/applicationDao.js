@@ -178,7 +178,7 @@ const upsertKeyMapping = async (mappingData, t) => {
         const existing = await ApplicationKeyMapping.findOne({
             where: {
                 APP_UUID: mappingData.appID,
-                ...(mappingData.kmID && { KM_UUID: mappingData.kmID }),
+                KM_UUID: mappingData.kmID ?? null,
                 TYPE: mappingData.keyType,
             },
             ...(t && { transaction: t }),

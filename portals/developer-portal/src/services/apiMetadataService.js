@@ -1473,11 +1473,13 @@ const updateView = async (req, res) => {
                 let viewResponse = await viewDao.update(orgId, viewName, req.body.name, userId, t);
                 viewID = viewResponse.dataValues.UUID;
             }
+            if (removedLabels.length !== 0 || addedLabels.length !== 0) {
+                viewID = viewID ? viewID : await viewDao.getId(orgId, viewName, t);
+            }
             if (removedLabels.length !== 0) {
                 await viewDao.deleteLabels(orgId, viewID, removedLabels, t);
             }
             if (addedLabels.length !== 0) {
-                viewID = viewID ? viewID : await viewDao.getId(orgId, viewName, t);
                 await viewDao.addLabels(orgId, viewID, addedLabels, userId, t);
             }
             res.status(200).send(req.body);
