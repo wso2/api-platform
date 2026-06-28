@@ -109,7 +109,7 @@ const createOrganization = async (req, res) => {
     payload.orgConfig = {
         devportalMode: constants.DEVPORTAL_MODE.DEFAULT,
     };
-    const userId = req.auth?.userId || req.user?.sub;
+    const userId = util.resolveActor(req);
     payload.createdBy = userId;
 
     let organization = "";
@@ -235,7 +235,7 @@ const updateOrganization = async (req, res) => {
     try {
         const payload = req.body;
         payload.orgId = orgId;
-        const userId = req.auth?.userId || req.user?.sub;
+        const userId = util.resolveActor(req);
         payload.updatedBy = userId;
 
         const devportalMode = payload.orgConfiguration?.devportalMode;
@@ -260,7 +260,7 @@ const updateOrganization = async (req, res) => {
             if (payload.views?.length) {
                 for (const viewDef of payload.views) {
                     const view = await viewDao.update(orgId, viewDef.handle, viewDef.name, userId, t);
-                    if (viewDef.labels?.length) {
+                    if (Array.isArray(viewDef.labels)) {
                         await viewDao.replaceLabels(orgId, view.dataValues.UUID, viewDef.labels, userId, t);
                     }
                 }
@@ -319,7 +319,7 @@ const createOrgContent = async (req, res) => {
     const orgId = req.params.orgId;
     const viewName = req.params.viewName;
     const zipFile = req.files?.file?.[0] ?? req.file;
-    const userId = req.auth?.userId || req.user?.sub;
+    const userId = util.resolveActor(req);
     logger.info('Initiate create organization content...', {
         orgId,
         viewName
@@ -393,7 +393,7 @@ const updateOrgContent = async (req, res) => {
     const orgId = req.params.orgId;
     const viewName = req.params.viewName;
     const zipFile = req.files?.file?.[0] ?? req.file;
-    const userId = req.auth?.userId || req.user?.sub;
+    const userId = util.resolveActor(req);
     logger.info('Initiate update organization content...', {
         orgId,
         viewName

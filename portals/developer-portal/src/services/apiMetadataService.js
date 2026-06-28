@@ -43,7 +43,7 @@ const LabelDTO = require("../dto/labelDto");
 
 const createAPIMetadata = async (req, res) => {
     const orgId = req.params.orgId;
-    const userId = req.auth?.userId || req.user?.sub;
+    const userId = util.resolveActor(req);
     logger.info('Creating API metadata...', {
         orgId
     });
@@ -358,7 +358,7 @@ const getMetadataListFromDB = async (orgID, searchTerm, tags, apiName, apiVersio
 
 const updateAPIMetadata = async (req, res) => {
     const { orgId, apiId } = req.params;
-    const userId = req.auth?.userId || req.user?.sub;
+    const userId = util.resolveActor(req);
     logger.info('Updating API metadata', {
         orgId,
         apiId
@@ -630,7 +630,7 @@ const createAPITemplate = async (req, res) => {
     });
     try {
         const { orgId, apiId } = req.params;
-        const userId = req.auth?.userId || req.user?.sub;
+        const userId = util.resolveActor(req);
         const zipFilePath = req.file.path;
         const extractPath = path.join("/tmp", orgId + "/" + apiId);
         await fs.mkdir(extractPath, { recursive: true });
@@ -695,7 +695,8 @@ const createAPITemplate = async (req, res) => {
         if (req.body.imageMetadata) {
             imageMetadata = JSON.parse(req.body.imageMetadata);
         }
-        const filenameToKey = Object.fromEntries(Object.entries(imageMetadata).map(([key, fileName]) => [fileName, key]));
+        const resolvedImageMetadata = buildImageMetadataFromContent(apiContent, imageMetadata);
+        const filenameToKey = Object.fromEntries(Object.entries(resolvedImageMetadata).map(([key, fileName]) => [fileName, key]));
         apiContent.forEach(file => {
             if (file.type === constants.DOC_TYPES.IMAGES) {
                 file.key = filenameToKey[file.fileName];
@@ -738,7 +739,7 @@ const createAPIContent = async (req, res) => {
     });
     try {
         const { orgId, apiId } = req.params;
-        const userId = req.auth?.userId || req.user?.sub;
+        const userId = util.resolveActor(req);
         let apiContent = await extractApiContentFromUploadedZip(uploadedFile, orgId, apiId, 'classic');
         let docMetadata = "";
         if (req.body.docMetadata) {
@@ -792,7 +793,7 @@ const updateAPITemplate = async (req, res) => {
     });
     try {
         const { orgId, apiId } = req.params;
-        const userId = req.auth?.userId || req.user?.sub;
+        const userId = util.resolveActor(req);
         let imageMetadata;
         if (req.body.imageMetadata) {
             imageMetadata = JSON.parse(req.body.imageMetadata);
@@ -896,7 +897,7 @@ const updateAPIContent = async (req, res) => {
     });
     try {
         const { orgId, apiId } = req.params;
-        const userId = req.auth?.userId || req.user?.sub;
+        const userId = util.resolveActor(req);
         let imageMetadata;
         if (req.body.imageMetadata) {
             imageMetadata = JSON.parse(req.body.imageMetadata);
@@ -1081,7 +1082,7 @@ const putSubscriptionPlans = async (req, res) => {
 const createSubscriptionPlan = async (req, res) => {
     const { orgId } = req.params;
     const subscriptionPlan = req.body;
-    const userId = req.auth?.userId || req.user?.sub;
+    const userId = util.resolveActor(req);
     logger.info('Creating subscription plan...', {
         orgId
     });
@@ -1130,7 +1131,7 @@ const createSubscriptionPlans = async (req, res) => {
         } else {
             const { orgId } = req.params;
             const subscriptionPlans = req.body;
-            const userId = req.auth?.userId || req.user?.sub;
+            const userId = util.resolveActor(req);
 
             if (!Array.isArray(subscriptionPlans) || subscriptionPlans.length === 0) {
                 return res.status(400).json({ message: "Missing or invalid fields in the request payload" });
@@ -1182,7 +1183,7 @@ const updateSubscriptionPlan = async (req, res) => {
         orgId
     });
     const subscriptionPlan = req.body;
-    const userId = req.auth?.userId || req.user?.sub;
+    const userId = util.resolveActor(req);
 
     if (!subscriptionPlan || typeof subscriptionPlan !== "object") {
         return res.status(400).json({ message: "Request body is missing or invalid" });
@@ -1225,7 +1226,7 @@ const updateSubscriptionPlans = async (req, res) => {
         } else {
             const { orgId } = req.params;
             const subscriptionPlans = req.body;
-            const userId = req.auth?.userId || req.user?.sub;
+            const userId = util.resolveActor(req);
 
             if (!Array.isArray(subscriptionPlans) || subscriptionPlans.length === 0) {
                 return res.status(400).json({ message: "Missing or invalid fields in the request payload" });
@@ -1348,7 +1349,7 @@ const createLabels = async (req, res) => {
 
     const orgId = req.params.orgId;
     const labels = req.body;
-    const userId = req.auth?.userId || req.user?.sub;
+    const userId = util.resolveActor(req);
     try {
         await labelDao.createMany(orgId, labels, userId);
         res.status(201).send(labels);
@@ -1366,7 +1367,7 @@ const updateLabel = async (req, res) => {
 
     const orgId = req.params.orgId;
     const labels = req.body;
-    const userId = req.auth?.userId || req.user?.sub;
+    const userId = util.resolveActor(req);
     try {
         for (const label of labels) {
             await labelDao.update(orgId, label, userId);
@@ -1435,7 +1436,7 @@ const addView = async (req, res) => {
 
     const orgId = req.params.orgId;
     const labels = req.body.labels;
-    const userId = req.auth?.userId || req.user?.sub;
+    const userId = util.resolveActor(req);
     await sequelize.transaction({
         timeout: 60000,
     }, async (t) => {
@@ -1461,7 +1462,7 @@ const updateView = async (req, res) => {
     const removedLabels = req.body.removedLabels ? req.body.removedLabels : [];
     const addedLabels = req.body.addedLabels ? req.body.addedLabels : [];
     const viewName = req.params.viewName;
-    const userId = req.auth?.userId || req.user?.sub;
+    const userId = util.resolveActor(req);
     try {
         await sequelize.transaction({
             timeout: 60000,

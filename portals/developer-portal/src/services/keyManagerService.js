@@ -117,12 +117,12 @@ const createKeyManager = async (req, res) => {
         if (validationError) {
             return res.status(400).json({ error: validationError });
         }
-        const resolvedType = payload.type?.toUpperCase();
+        const resolvedType = typeof payload.type === 'string' ? payload.type.toUpperCase() : undefined;
         if (!SUPPORTED_KM_TYPES.includes(resolvedType)) {
             return res.status(400).json({ error: `Unsupported key manager type '${payload.type}'. Must be one of: ${SUPPORTED_KM_TYPES.join(', ')}.` });
         }
 
-        const userId = req.auth?.userId || req.user?.sub;
+        const userId = util.resolveActor(req);
         const record = await kmDao.create(orgId, { ...payload, type: resolvedType }, userId);
         const dto = new KeyManagerDTO(record);
         return res.status(201).json(dto);
@@ -146,14 +146,14 @@ const updateKeyManager = async (req, res) => {
         const payload = _resolvePayload(req);
 
         if (payload.type !== undefined) {
-            const resolvedType = payload.type?.toUpperCase();
+            const resolvedType = typeof payload.type === 'string' ? payload.type.toUpperCase() : undefined;
             if (!SUPPORTED_KM_TYPES.includes(resolvedType)) {
                 return res.status(400).json({ error: `Unsupported key manager type '${payload.type}'. Must be one of: ${SUPPORTED_KM_TYPES.join(', ')}.` });
             }
             payload.type = resolvedType;
         }
 
-        const userId = req.auth?.userId || req.user?.sub;
+        const userId = util.resolveActor(req);
         const [, updatedRows] = await kmDao.update(kmId, payload, userId);
         const dto = new KeyManagerDTO(updatedRows[0]);
         return res.status(200).json(dto);

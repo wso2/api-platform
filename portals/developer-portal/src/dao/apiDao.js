@@ -377,8 +377,10 @@ const search = async (orgID, searchTerm, viewName, t) => {
         return searchFallback(orgID, searchTerm, viewName, t);
     }
     try {
+        const viewDao = require('./viewDao');
+        const viewID = await viewDao.getId(orgID, viewName);
         const results = await APIMetadata.sequelize.query(SEARCH_APIS_POSTGRES_SQL, {
-            replacements: { searchTerm, orgID },
+            replacements: { searchTerm, orgID, viewID },
             type: Sequelize.QueryTypes.SELECT,
         });
         return results;

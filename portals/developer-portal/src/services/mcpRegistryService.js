@@ -26,6 +26,7 @@ const orgDao = require('../dao/organizationDao');
 const ServerResponseDTO = require('../dto/mcpServerDto');
 const logger = require('../config/logger');
 const constants = require('../utils/constants');
+const util = require('../utils/util');
 
 const MCP_STATUSES = ['active', 'deprecated', 'deleted'];
 const SERVER_NAME_PATTERN = /^[a-zA-Z0-9._-]+\/[a-zA-Z0-9._-]+$/;
@@ -360,7 +361,7 @@ const publishServer = async (req, res) => {
     try {
         const orgHandle = req.params.orgHandle;
         const detail = req.body;
-        const userId = req.auth?.userId || req.user?.sub;
+        const userId = util.resolveActor(req);
 
         const validationError = validateServerDetail(detail);
         if (validationError) {
@@ -456,7 +457,7 @@ const updateVersion = async (req, res) => {
         const serverIdentifier = unescapeParam(decodeURIComponent(req.params.serverName));
         const version = unescapeParam(decodeURIComponent(req.params.version));
         const detail = req.body;
-        const userId = req.auth?.userId || req.user?.sub;
+        const userId = util.resolveActor(req);
 
         const validationError = validateServerDetail(detail);
         if (validationError) {
@@ -527,7 +528,7 @@ const deleteVersion = async (req, res) => {
         }
 
         await APIMetadata.update(
-            { STATUS: 'DELETED' },
+            { STATUS: 'DELETED', UPDATED_BY: util.resolveActor(req), UPDATED_AT: new Date() },
             { where: { UUID: existing.UUID, ORG_UUID: orgId } }
         );
         const deleted = await APIMetadata.findOne({ where: { UUID: existing.UUID } });
@@ -561,7 +562,7 @@ const updateVersionStatus = async (req, res) => {
         }
 
         await APIMetadata.update(
-            { STATUS: dbStatus },
+            { STATUS: dbStatus, UPDATED_BY: util.resolveActor(req), UPDATED_AT: new Date() },
             { where: { UUID: existing.UUID, ORG_UUID: orgId } }
         );
         const updated = await APIMetadata.findOne({ where: { UUID: existing.UUID } });
@@ -587,7 +588,7 @@ const updateAllVersionsStatus = async (req, res) => {
 
         // Build proxyId condition, fall back to NAME match
         const proxyIdCondition = sequelize.where(
-            sequelize.literal("\"METADATA_SEARCH\"->>'apiInfo'->>'proxyId'"),
+            sequelize.literal("\"METADATA_SEARCH\"->'apiInfo'->>'proxyId'"),
             serverIdentifier
         );
 
@@ -608,7 +609,7 @@ const updateAllVersionsStatus = async (req, res) => {
 
             const ids = existing.map(r => r.UUID);
             await APIMetadata.update(
-                { STATUS: dbStatus },
+                { STATUS: dbStatus, UPDATED_BY: util.resolveActor(req), UPDATED_AT: new Date() },
                 { where: { UUID: { [Op.in]: ids }, ORG_UUID: orgId }, transaction: t }
             );
             updated = await APIMetadata.findAll({

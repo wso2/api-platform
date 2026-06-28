@@ -169,7 +169,7 @@ const saveLlmsConfig = async (req, res) => {
 
     try {
         const orgID = await orgDao.getId(orgName);
-        const userId = req.auth?.userId || req.user?.sub;
+        const userId = util.resolveActor(req);
         const content = Buffer.from(JSON.stringify({ aiEnabled, portalName, portalDescription }));
         const orgData = {
             orgId: orgID, fileType: constants.FILE_TYPE.LLMS_CONFIG, viewName,

@@ -171,6 +171,7 @@ const generateHandle = (name) =>
 const createAPIFlow = async (req, res) => {
     const orgID = req.params.orgId;
     const viewName = req.params.viewName;
+    const userId = util.resolveActor(req);
     const { name, handle, description, agentPrompt, status, agentVisibility, apiFlowDefinition, markdownContent, contentType } = req.body;
     let resolvedHandle = (handle && handle.trim()) ? handle.trim() : generateHandle(name);
     if (!resolvedHandle) {
@@ -211,7 +212,7 @@ const createAPIFlow = async (req, res) => {
             agentVisibility: agentVisibility || constants.AGENT_VISIBILITY.VISIBLE,
             apiFlowDefinition: resolvedContent,
             contentType: resolvedContentType
-        }, t);
+        }, userId, t);
 
         await t.commit();
         logger.info('APIFlow created', { apiFlowId: apiFlow.UUID, orgID, viewId });
@@ -232,6 +233,7 @@ const createAPIFlow = async (req, res) => {
 
 const updateAPIFlow = async (req, res) => {
     const { orgId, apiFlowId, viewName } = req.params;
+    const userId = util.resolveActor(req);
     const { name, handle, description, agentPrompt, status, agentVisibility, apiFlowDefinition, markdownContent, contentType } = req.body;
     if (status !== undefined && !Object.values(constants.API_FLOW_STATUS).includes(status)) {
         return res.status(400).json({ message: `Invalid status. Must be one of: ${Object.values(constants.API_FLOW_STATUS).join(', ')}.` });
@@ -261,7 +263,7 @@ const updateAPIFlow = async (req, res) => {
             agentVisibility,
             apiFlowDefinition: resolvedContent,
             contentType: resolvedContentType
-        }, t);
+        }, userId, t);
 
         if (count === 0) {
             await t.rollback();

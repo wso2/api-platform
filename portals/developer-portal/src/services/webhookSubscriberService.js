@@ -58,7 +58,7 @@ const createWebhookSubscriber = async (req, res) => {
             return res.status(400).json({ error: validationError });
         }
 
-        const userId = req.auth?.userId || req.user?.sub;
+        const userId = util.resolveActor(req);
         const record = await whDao.create(orgId, payload, userId);
         const dto = new WebhookSubscriberDTO(record);
         return res.status(201).json(dto);
@@ -78,7 +78,7 @@ const updateWebhookSubscriber = async (req, res) => {
         const { orgId, subscriberId } = req.params;
         const payload = req.body;
 
-        const userId = req.auth?.userId || req.user?.sub;
+        const userId = util.resolveActor(req);
         const [, updatedRows] = await whDao.update(orgId, subscriberId, payload, userId);
         const dto = new WebhookSubscriberDTO(updatedRows[0]);
         return res.status(200).json(dto);

@@ -208,14 +208,14 @@ async function seedSampleMCPs(orgId) {
 
             await sequelize.transaction(async (t) => {
                 const created = await apiDao.create(orgId, apiMetadata, constants.SYSTEM_ACTOR, t);
-                apiId = created.dataValues.API_UUID;
+                apiId = created.dataValues.UUID;
 
                 // Subscription plan mappings (skip unknown plans — don't fail the whole deployment)
                 if (Array.isArray(apiMetadata.subscriptionPlans) && apiMetadata.subscriptionPlans.length) {
                     const mappings = [];
                     for (const p of apiMetadata.subscriptionPlans) {
                         const plan = await subscriptionPlanDao.getByName(orgId, p.planName);
-                        if (plan) mappings.push({ apiID: apiId, planID: plan.PLAN_UUID });
+                        if (plan) mappings.push({ apiID: apiId, planID: plan.UUID });
                     }
                     if (mappings.length) await subscriptionPlanDao.createApiMapping(mappings, apiId, constants.SYSTEM_ACTOR, t);
                 }

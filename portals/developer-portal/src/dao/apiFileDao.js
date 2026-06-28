@@ -348,9 +348,11 @@ const deleteFile = async (fileName, type, orgID, apiID, t) => {
         for (const content of contentsToDelete) {
             apiFileResponse = await APIContent.destroy({
                 where: {
-                    FILE_NAME: content.dataValues.FILE_NAME
-
-                }
+                    API_UUID: content.dataValues.API_UUID,
+                    FILE_NAME: content.dataValues.FILE_NAME,
+                    TYPE: content.dataValues.TYPE
+                },
+                transaction: t
             });
         }
         return apiFileResponse;
@@ -386,8 +388,11 @@ const deleteAll = async (type, orgID, apiID, t) => {
         for (const content of contentsToDelete) {
             apiFileResponse = await APIContent.destroy({
                 where: {
-                    FILE_NAME: content.dataValues.FILE_NAME
-                }
+                    API_UUID: content.dataValues.API_UUID,
+                    FILE_NAME: content.dataValues.FILE_NAME,
+                    TYPE: content.dataValues.TYPE
+                },
+                transaction: t
             });
         }
         return apiFileResponse;

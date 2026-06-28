@@ -290,6 +290,23 @@ function toPaginatedList(list, req) {
     };
 }
 
+/**
+ * Resolve the acting user identity from a request for audit columns
+ * (CREATED_BY / UPDATED_BY). Covers every auth mode wired in the portal:
+ *   - OpenAPI router (authResolver): oauth2 / platform-jwt set req.auth.userId
+ *   - enforceSecurity router (e.g. MCP registry): sets req[constants.USER_ID]
+ *   - session/passport users: req.user.sub
+ * Machine credentials (API key, mTLS) carry no user identity, so fall back to
+ * the SYSTEM actor to keep the NOT NULL audit columns satisfiable instead of
+ * throwing a constraint violation.
+ */
+function resolveActor(req) {
+    return req?.auth?.userId
+        || req?.[constants.USER_ID]
+        || req?.user?.[constants.USER_ID]
+        || constants.SYSTEM_ACTOR;
+}
+
 const unzipDirectory = async (zipPath, extractPath) => {
     if (typeof zipPath !== 'string' || typeof extractPath !== 'string' || !zipPath || !extractPath) {
         throw new CustomError(400, 'Error unzipping directory', 'Invalid zip path or extract path.');
@@ -956,4 +973,5 @@ module.exports = {
     normalizeStringArray,
     resolveApiType,
     toPaginatedList,
+    resolveActor,
 }

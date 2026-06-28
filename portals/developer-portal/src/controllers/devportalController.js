@@ -344,6 +344,9 @@ const generateOAuthKeys = async (req, res) => {
             return util.handleError(res, { statusCode: 404, message: 'Key mapping not found or missing key manager reference' });
         }
         const kmRecord = await kmDao.get(keyMapping.KM_UUID);
+        if (!kmRecord) {
+            return util.handleError(res, { statusCode: 404, message: 'Key manager not found' });
+        }
         const adapter = getKeyManagerAdapter(kmRecord);
         const { consumerSecret, scopes, validityPeriod } = req.body;
         const tokenResult = await adapter.generateToken(
@@ -387,6 +390,9 @@ const revokeOAuthKeys = async (req, res) => {
             return util.handleError(res, { statusCode: 404, message: 'Key mapping not found or missing key manager reference' });
         }
         const kmRecord = await kmDao.get(keyMapping.KM_UUID);
+        if (!kmRecord) {
+            return util.handleError(res, { statusCode: 404, message: 'Key manager not found' });
+        }
         const adapter = getKeyManagerAdapter(kmRecord);
         await adapter.deleteOAuthClient(keyMapping.AS_CLIENT_ID);
         await ApplicationKeyMapping.update(
@@ -415,8 +421,10 @@ const cleanUp = async (req, res) => {
         });
         if (keyMapping && keyMapping.KM_UUID && keyMapping.AS_CLIENT_ID) {
             const kmRecord = await kmDao.get(keyMapping.KM_UUID);
-            const adapter = getKeyManagerAdapter(kmRecord);
-            await adapter.deleteOAuthClient(keyMapping.AS_CLIENT_ID);
+            if (kmRecord) {
+                const adapter = getKeyManagerAdapter(kmRecord);
+                await adapter.deleteOAuthClient(keyMapping.AS_CLIENT_ID);
+            }
         }
         await ApplicationKeyMapping.destroy({ where: { UUID: keyMappingId, APP_UUID: applicationId } });
         res.status(200).json({ message: 'OAuth client cleaned up successfully' });
@@ -444,6 +452,9 @@ const updateOAuthKeys = async (req, res) => {
             return util.handleError(res, { statusCode: 404, message: 'Key mapping not found or missing key manager reference' });
         }
         const kmRecord = await kmDao.get(keyMapping.KM_UUID);
+        if (!kmRecord) {
+            return util.handleError(res, { statusCode: 404, message: 'Key manager not found' });
+        }
         const adapter = getKeyManagerAdapter(kmRecord);
         const updatedGrantTypes = tokenDetails.supportedGrantTypes || tokenDetails.grantTypesToBeSupported;
         const result = await adapter.updateOAuthClient(

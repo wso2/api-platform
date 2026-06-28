@@ -52,7 +52,7 @@ const update = async (orgID, handle, name, updatedBy, t) => {
             },
             defaults: {
                 HANDLE: handle,
-                NAME: name,
+                NAME: name ? name : handle,
                 CREATED_BY: updatedBy,
                 UPDATED_BY: updatedBy
             },
@@ -62,7 +62,7 @@ const update = async (orgID, handle, name, updatedBy, t) => {
         if (!created) {
             record = await record.update({
                 HANDLE: handle,
-                NAME: name,
+                ...(name && { NAME: name }),
                 UPDATED_BY: updatedBy,
                 UPDATED_AT: new Date()
             }, { transaction: t }); // Update if found
@@ -120,15 +120,14 @@ const get = async (orgID, handle) => {
 const getId = async (orgID, viewName) => {
 
     try {
-        const viewResponse = await View.findOne({
-            where: {
-                [Op.or]: [
-                    { NAME: viewName },
-                    { HANDLE: viewName }
-                ],
-                ORG_UUID: orgID
-            }
+        let viewResponse = await View.findOne({
+            where: { HANDLE: viewName, ORG_UUID: orgID }
         });
+        if (!viewResponse) {
+            viewResponse = await View.findOne({
+                where: { NAME: viewName, ORG_UUID: orgID }
+            });
+        }
         if (!viewResponse) {
             throw new CustomError(404, constants.ERROR_CODE[404], "View not found")
         }
@@ -203,18 +202,15 @@ const replaceLabels = async (orgID, viewID, labelNames, createdBy, t) => {
 
 const deleteLabels = async (orgID, viewID, labels, t) => {
 
-    const IDList = await getLabelID(orgID, labels);
-    let deleteResponse;
+    const IDList = await getLabelID(orgID, labels, t);
     try {
-        IDList.forEach(async label => {
-            deleteResponse = await ViewLabels.destroy({
-                where: {
-                    LABEL_UUID: label,
-                    VIEW_UUID: viewID,
-                }
-            }, { transaction: t });
+        return await ViewLabels.destroy({
+            where: {
+                LABEL_UUID: { [Op.in]: IDList },
+                VIEW_UUID: viewID,
+            },
+            transaction: t
         });
-        return deleteResponse;
     } catch (error) {
         if (error instanceof Sequelize.UniqueConstraintError) {
             throw error;

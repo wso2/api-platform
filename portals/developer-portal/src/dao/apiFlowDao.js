@@ -20,7 +20,7 @@ const { Sequelize } = require('sequelize');
 const constants = require('../utils/constants');
 const logger = require('../config/logger');
 
-const create = async (orgID, viewId, apiFlowData, t) => {
+const create = async (orgID, viewId, apiFlowData, createdBy, t) => {
     try {
         const apiFlow = await APIFlow.create({
             ORG_UUID: orgID,
@@ -33,6 +33,8 @@ const create = async (orgID, viewId, apiFlowData, t) => {
             AGENT_VISIBILITY: apiFlowData.agentVisibility || constants.AGENT_VISIBILITY.VISIBLE,
             FILE_CONTENT: apiFlowData.apiFlowDefinition != null ? Buffer.from(apiFlowData.apiFlowDefinition) : null,
             CONTENT_TYPE: apiFlowData.contentType || constants.API_FLOW_CONTENT_TYPE.ARAZZO,
+            CREATED_BY: createdBy,
+            UPDATED_BY: createdBy,
             CREATED_AT: new Date(),
             UPDATED_AT: new Date()
         }, { transaction: t });
@@ -46,8 +48,8 @@ const create = async (orgID, viewId, apiFlowData, t) => {
     }
 };
 
-const update = async (orgID, viewId, apiFlowId, apiFlowData, t) => {
-    const updateFields = { UPDATED_AT: new Date() };
+const update = async (orgID, viewId, apiFlowId, apiFlowData, updatedBy, t) => {
+    const updateFields = { UPDATED_AT: new Date(), UPDATED_BY: updatedBy };
     if (apiFlowData.name !== undefined) updateFields.NAME = apiFlowData.name;
     if (apiFlowData.handle !== undefined) updateFields.HANDLE = apiFlowData.handle;
     if (apiFlowData.description !== undefined) updateFields.DESCRIPTION = apiFlowData.description;

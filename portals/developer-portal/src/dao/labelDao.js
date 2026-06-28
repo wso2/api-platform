@@ -18,7 +18,7 @@
 const Labels = require('../models/label');
 const { APILabels } = require('../models/apiMetadata');
 const ViewLabels = require('../models/viewLabel');
-const { Sequelize } = require('sequelize');
+const { Sequelize, Op } = require('sequelize');
 const constants = require('../utils/constants');
 const { CustomError } = require('../utils/errors/customErrors');
 
@@ -119,8 +119,9 @@ const getIdList = async (orgID, label, t) => {
         where: {
             NAME: label,
             ORG_UUID: orgID
-        }
-    }, { transaction: t });
+        },
+        transaction: t
+    });
     if (!labelResponse) {
         throw new CustomError(404, constants.ERROR_CODE[404], "Label not found")
     }
@@ -164,18 +165,15 @@ const list = async (orgID) => {
 
 const deleteApiMapping = async (orgID, apiID, labels, t) => {
 
-    const IDList = await getId(orgID, labels);
-    let deleteResponse;
+    const IDList = await getId(orgID, labels, t);
     try {
-        IDList.forEach(async label => {
-            deleteResponse = await APILabels.destroy({
-                where: {
-                    LABEL_UUID: label,
-                    API_UUID: apiID,
-                }
-            }, { transaction: t });
+        return await APILabels.destroy({
+            where: {
+                LABEL_UUID: { [Op.in]: IDList },
+                API_UUID: apiID,
+            },
+            transaction: t
         });
-        return deleteResponse;
     } catch (error) {
         if (error instanceof Sequelize.UniqueConstraintError) {
             throw error;

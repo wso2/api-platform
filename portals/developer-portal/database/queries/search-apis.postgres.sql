@@ -22,18 +22,19 @@
 -- Named parameters (passed as Sequelize replacements):
 --   :searchTerm  — the user-supplied search string
 --   :orgID       — the organisation UUID to scope results to
+--   :viewID      — the view UUID to scope results to (API must have a label mapped to this view)
 --
 -- Other dialects use a LIKE-based fallback in searchAPIMetadataFallback().
 
 SELECT
     metadata.*,
     COALESCE(
-        JSON_AGG(JSON_BUILD_OBJECT('API_UUID', images."API_UUID", 'LOOKUP_KEY', images."LOOKUP_KEY", 'FILE_NAME', images."FILE_NAME", 'TYPE', images."TYPE"))
+        JSONB_AGG(DISTINCT JSONB_BUILD_OBJECT('API_UUID', images."API_UUID", 'LOOKUP_KEY', images."LOOKUP_KEY", 'FILE_NAME', images."FILE_NAME", 'TYPE', images."TYPE"))
             FILTER (WHERE images."API_UUID" IS NOT NULL),
         '[]'
     ) AS "DP_API_CONTENTs",
     COALESCE(
-        JSON_AGG("DP_API_SUBSCRIPTION_PLAN_MAPPING") FILTER (WHERE "DP_API_SUBSCRIPTION_PLAN_MAPPING"."API_UUID" IS NOT NULL),
+        JSONB_AGG(DISTINCT TO_JSONB("DP_API_SUBSCRIPTION_PLAN_MAPPING".*)) FILTER (WHERE "DP_API_SUBSCRIPTION_PLAN_MAPPING"."API_UUID" IS NOT NULL),
         '[]'
     ) AS "DP_API_SUBSCRIPTION_PLAN_MAPPING",
     COALESCE(
@@ -95,6 +96,12 @@ WHERE
         )
     )
     AND metadata."ORG_UUID" = :orgID
+    AND EXISTS (
+        SELECT 1
+        FROM "DP_API_LABEL_MAPPING" alm
+        JOIN "DP_VIEW_LABEL_MAPPING" vlm ON alm."LABEL_UUID" = vlm."LABEL_UUID"
+        WHERE alm."API_UUID" = metadata."UUID" AND vlm."VIEW_UUID" = :viewID
+    )
 GROUP BY
     metadata."UUID"
 ORDER BY

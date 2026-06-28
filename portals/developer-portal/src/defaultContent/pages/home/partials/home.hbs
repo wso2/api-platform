@@ -21,6 +21,8 @@
     <p class="hero-desc">
       {{#if (eq devportalMode "MCP_SERVERS_ONLY")}}
       Discover MCP tools and servers, configure them for your AI agents, and get up and running in minutes.
+      {{else if (eq devportalMode "APIS_ONLY")}}
+      Discover, connect, and orchestrate APIs and workflows. Browse the catalog, subscribe, and get going in minutes.
       {{else}}
       Discover, connect, and orchestrate APIs, MCP tools, and workflows. Browse the catalogs, subscribe, and get going in minutes.
       {{/if}}

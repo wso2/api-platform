@@ -71,6 +71,11 @@ const APIContent = sequelize.define('DP_API_CONTENT', {
             name: 'UQ_API_CONTENT_API_TYPE_FILE_NAME',
             unique: true,
             fields: ['API_UUID', 'TYPE', 'FILE_NAME']
+        },
+        {
+            name: 'UQ_API_CONTENT_API_TYPE_LOOKUP_KEY',
+            unique: true,
+            fields: ['API_UUID', 'TYPE', 'LOOKUP_KEY']
         }
     ]
 });

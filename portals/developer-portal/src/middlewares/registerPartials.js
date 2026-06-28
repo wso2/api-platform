@@ -61,7 +61,7 @@ const registerPartials = async (req, res, next) => {
 
     try {
       const orgDetails = await orgDao.get(req.params.orgName);
-      devportalMode = orgDetails.CONFIGURATION?.devportalMode;
+      devportalMode = orgDetails.CONFIGURATION?.devportalMode || devportalMode;
       
       const isViewConfigure = req.params.orgName && req.params.orgName !== "portal"
         && req.params.viewName && /views\/.+\/settings/i.test(matchURL);

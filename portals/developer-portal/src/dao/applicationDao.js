@@ -236,8 +236,16 @@ const deleteMappings = async (orgID, appID, t) => {
 const deleteMappingsByIds = async (orgID, mappingIds, t) => {
     if (!mappingIds || mappingIds.length === 0) return 0;
     try {
-        return await ApplicationKeyMapping.destroy({
+        const ownedMappings = await ApplicationKeyMapping.findAll({
+            attributes: ['UUID'],
             where: { UUID: mappingIds },
+            include: [{ model: Application, where: { ORG_UUID: orgID }, attributes: [], required: true }],
+            transaction: t,
+        });
+        const ownedIds = ownedMappings.map((m) => m.UUID);
+        if (ownedIds.length === 0) return 0;
+        return await ApplicationKeyMapping.destroy({
+            where: { UUID: ownedIds },
             transaction: t,
         });
     } catch (error) {
