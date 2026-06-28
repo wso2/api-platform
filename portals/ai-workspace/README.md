@@ -137,6 +137,169 @@ Ensure all three services are running before accessing the application.
 
 > **Browser trust warning?** Both services use a self-signed TLS certificate by default. Click **Advanced → Proceed** to continue, then return to the workspace. See [Custom TLS certificates](#custom-tls-certificates) to remove the warning permanently.
 
+---
+
+## Testing with an IDP locally
+
+The stack works with **any OIDC-compliant IDP** (Asgardeo, Keycloak, Auth0, Okta, …). This
+guide uses **Asgardeo as the worked example**; the compose wiring itself is provider-agnostic —
+you supply your IDP's issuer, JWKS URL and confidential-client credentials.
+
+By default the stack runs in `basic` (file-based) auth mode. In OIDC mode the **BFF is a
+confidential client**: it runs the authorization-code + PKCE flow back-channel, holds the
+client secret and tokens in a server-side session, and injects the access token on every
+`/api/proxy/*` call. The browser never sees a token or the secret.
+
+The flow touches **two** components and both must agree on the IDP:
+
+- **BFF** — runs the login/code exchange and stores the tokens (needs the client *secret*).
+- **Platform API** — validates the injected access token via the IDP's JWKS and authorizes
+  by its `ap:*` scopes. If this half is misconfigured, login succeeds but every proxied call
+  returns `403`.
+
+### 1. Register a confidential application in your IDP
+
+> Register the AI Workspace as a **confidential client** — in Asgardeo this is a
+> **Standard-Based Application → OpenID Connect** (a.k.a. *Traditional Web Application*); in
+> Keycloak a client with *Client authentication* ON; etc. Do **not** register a public /
+> Single-Page Application. The BFF performs a back-channel exchange with a client secret; a
+> public-client registration is rejected by the token endpoint with *"The authenticated client
+> is not authorized to use the requested grant type."*
+
+For Asgardeo, on the application's **Protocol** tab:
+
+| Setting | Value |
+|---|---|
+| Allowed grant types | ☑ **Code** and ☑ **Refresh Token** |
+| Authorized redirect URL | `https://localhost:5380/api/auth/callback` |
+| Client authentication | a confidential method (default `client_secret_basic` works; the BFF also sends the secret in the body) |
+| PKCE | enabled (the BFF always sends `S256`) |
+| Access Token Type | `JWT` |
+
+Copy the **Client ID** and **Client Secret** — you'll need both below.
+
+> The redirect URL is the **BFF callback** (`/api/auth/callback`), not the SPA `/signin`
+> route. It is the same `https://localhost:5380` origin for both run modes below, because the
+> Vite dev server and the compose stack both serve the app on port `5380`.
+
+### 2. Register the `ap:*` scopes and grant them to your user
+
+The Platform API authorizes by `ap:*` scopes. With file-based auth the `admin` user gets them
+all hard-coded; with an IDP the **access token must carry them**, or proxied calls 403.
+
+1. Register the Platform API resource and all `ap:*` scopes in Asgardeo using the helper
+   script (its defaults target local `https://localhost:9243`):
+
+   ```bash
+   ASGARDEO_TENANT=<your-tenant> \
+   ASGARDEO_CLIENT_ID=<system-app-client-id> \
+   ASGARDEO_CLIENT_SECRET=<system-app-client-secret> \
+   ./production/scripts/register_asgardeo_scopes.sh
+   ```
+
+2. On your application, add that API resource, create a role (e.g. `ap_admin`) with the
+   `ap:*` scopes, and assign the role to your test user.
+
+See [production/README.md §1](production/README.md) for the full Asgardeo org/attribute/scope
+walkthrough.
+
+### 3. Enable OIDC
+
+#### Option 1 (docker compose) — recommended
+
+`docker-compose.yaml` ships the OIDC env blocks pre-written but commented out. To enable OIDC,
+**uncomment the `OIDC` block on both services** (`platform-api` and `ai-workspace`) and put your
+IDP's values in a `.env` file next to `docker-compose.yaml`:
+
+```bash
+# portals/ai-workspace/.env — generic OIDC (replace with your IDP's URLs/credentials)
+OIDC_ISSUER=https://idp.example.com/oauth2/token
+OIDC_JWKS_URL=https://idp.example.com/oauth2/jwks
+OIDC_CLIENT_ID=<your-client-id>
+OIDC_CLIENT_SECRET=<your-client-secret>
+OIDC_AUDIENCE=<your-client-id>          # optional; omit to skip the aud check
+# OIDC_ORG_ID_CLAIM=org_id              # set only if your IDP names the org claim differently
+
+# Asgardeo example (tenant "acme"):
+#   OIDC_ISSUER=https://api.asgardeo.io/t/acme/oauth2/token
+#   OIDC_JWKS_URL=https://api.asgardeo.io/t/acme/oauth2/jwks
+#   OIDC_ORG_ID_CLAIM=org_id            # Asgardeo names the org UUID claim org_id
+```
+
+```bash
+docker compose up -d
+```
+
+The redirect URLs and `ap:*` scopes are pre-filled in the compose blocks, so `.env` only needs
+your IDP endpoints and client credentials. Leave the OIDC blocks commented (the default) to keep
+the zero-config file-based quickstart (`admin` / `admin`).
+
+> The Platform API and BFF auth modes are mutually exclusive: enabling the IDP while local JWT
+> or file-based auth is also on is rejected at startup. The commented `platform-api` block already
+> sets `AUTH_JWT_ENABLED=false` and `AUTH_FILE_BASED_ENABLED=false` — keep those uncommented too.
+
+#### Option 2 (local `make bff-run`)
+
+Running the BFF and Platform API directly (no compose) means no pre-wiring, so configure both
+sides by hand.
+
+Edit `platform-api/src/config/config.toml` so the Platform API validates the Asgardeo token —
+remember the three auth modes are mutually exclusive, so turn the local ones off:
+
+```toml
+[auth.jwt]
+enabled = false            # required: mutually exclusive with the IDP
+
+[auth.idp]
+enabled  = true
+jwks_url = "https://api.asgardeo.io/t/<your-tenant>/oauth2/jwks"
+issuer   = ["https://api.asgardeo.io/t/<your-tenant>/oauth2/token"]
+audience = ["<your-client-id>"]   # match Asgardeo's aud, or [] to skip the check
+
+# Asgardeo emits org_id (not the default "organization") — these overrides are required.
+[auth.idp.claim_mappings]
+organization_claim_name = "org_id"
+org_name_claim_name     = "org_name"
+org_handle_claim_name   = "org_handle"
+
+[auth.file_based]
+enabled = false            # required: mutually exclusive with the IDP
+```
+
+Then export the BFF settings and start it. Point it at the locally published Platform API port
+— the `platform-api` compose hostname does **not** resolve outside the compose network:
+
+> `OIDC_ISSUER` is Asgardeo's **token base** — the BFF appends
+> `/.well-known/openid-configuration` itself, so do **not** include the discovery suffix.
+
+```bash
+cd portals/ai-workspace
+export PLATFORM_API_URL=https://localhost:9243        # NOT https://platform-api:9243 when run locally
+export PLATFORM_API_TLS_SKIP_VERIFY=true
+export AUTH_MODE=oidc
+export OIDC_ISSUER=https://api.asgardeo.io/t/<your-tenant>/oauth2/token
+export OIDC_CLIENT_ID=<your-client-id>
+export OIDC_CLIENT_SECRET=<your-client-secret>
+export OIDC_REDIRECT_URL=https://localhost:5380/api/auth/callback
+export OIDC_POST_LOGOUT_REDIRECT_URL=https://localhost:5380/login
+export OIDC_SCOPES="openid profile email ap:organization:manage ap:gateway:manage ap:rest_api:manage ..."
+make bff-run
+```
+
+### Verify and troubleshoot
+
+`GET /api/session` returning `200` after the Asgardeo redirect means login worked. Common
+failures, by symptom:
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| `unauthorized_client` / *"not authorized to use the requested grant type"* | App registered as SPA, or Code/Refresh grant not enabled | Recreate as Standard-Based OIDC app; enable **Code** + **Refresh Token** (step 1) |
+| Platform API exits at startup with *"auth.idp.enabled=true and auth.jwt.enabled=true are mutually exclusive"* | Local auth left on alongside the IDP | Compose: uncomment the full `platform-api` OIDC block (it sets `AUTH_JWT_ENABLED=false` + `AUTH_FILE_BASED_ENABLED=false`). Local: set `auth.jwt.enabled=false` and `auth.file_based.enabled=false` (step 3, Option 2) |
+| `502` + `dial tcp: lookup platform-api: no such host` | BFF run locally but `PLATFORM_API_URL` points at the compose hostname | Set `PLATFORM_API_URL=https://localhost:9243` (step 3, Option 2) |
+| Proxied calls return `authentication_failed` | Platform API still on local JWT/file-based, validating the IDP token with the wrong validator | Switch it to the IDP — compose: uncomment the `platform-api` OIDC block; local: enable `[auth.idp]` (step 3, Option 2) |
+| Login works, then proxied calls return `403` | Access token lacks `ap:*` scopes, or Platform API IDP/claim mapping wrong | Grant `ap:*` scopes to the user (step 2); check `[auth.idp]` issuer/JWKS/claim mappings |
+| Refresh fails minutes after login | **Refresh Token** grant not enabled on the app | Enable it on the Protocol tab (step 1) |
+
 ## Cypress E2E tests
 
 The repository includes Cypress E2E coverage for the local quickstart stack, including the basic login flow and AI Workspace UI CRUD flows.

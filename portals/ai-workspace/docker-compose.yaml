@@ -18,6 +18,13 @@
 #     AUTH_JWT_SECRET_KEY=<long-random-string>
 #     PLATFORM_SECRET_ENCRYPTION_KEY=$(openssl rand -hex 32)   # stable key for persistent secrets
 #
+# Authentication:
+#   Out of the box the stack uses file-based auth (login admin / admin) — no
+#   configuration needed. To delegate to any OIDC provider, uncomment the OIDC
+#   blocks on both services below and set the OIDC_* values in your shell or a
+#   .env file. See README.md → "Testing with an IDP locally" (worked example:
+#   Asgardeo).
+#
 # Usage:
 #   docker compose up -d
 #
@@ -58,6 +65,18 @@ services:
       # unreadable after a container restart. Set a stable value for persistent deployments:
       #   export PLATFORM_SECRET_ENCRYPTION_KEY=$(openssl rand -hex 32)
       - PLATFORM_SECRET_ENCRYPTION_KEY=${PLATFORM_SECRET_ENCRYPTION_KEY:-}
+      # ── OIDC IDP — uncomment to validate tokens against any OIDC provider's
+      # JWKS instead of file-based auth. Set the OIDC_* values in .env. Claim
+      # overrides are optional (default: organization / org_name / org_handle).
+      # - AUTH_IDP_ENABLED=true
+      # - AUTH_JWT_ENABLED=false
+      # - AUTH_FILE_BASED_ENABLED=false
+      # - AUTH_IDP_JWKS_URL=${OIDC_JWKS_URL:-}
+      # - AUTH_IDP_ISSUER=${OIDC_ISSUER:-}
+      # - AUTH_IDP_AUDIENCE=${OIDC_AUDIENCE:-}
+      # - AUTH_IDP_CLAIM_MAPPINGS_ORGANIZATION_CLAIM_NAME=${OIDC_ORG_ID_CLAIM:-}
+      # - AUTH_IDP_CLAIM_MAPPINGS_ORG_NAME_CLAIM_NAME=${OIDC_ORG_NAME_CLAIM:-}
+      # - AUTH_IDP_CLAIM_MAPPINGS_ORG_HANDLE_CLAIM_NAME=${OIDC_ORG_HANDLE_CLAIM:-}
     volumes:
       - ./configs/config-platform-api.toml:/etc/platform-api/config-platform-api.toml:ro
       - platform-api-data:/app/data
@@ -96,15 +115,16 @@ services:
       - COOKIE_SECURE=true
       - COOKIE_SAMESITE=lax
       - BFF_TLS_SELF_SIGNED=true
-      # ── OIDC (confidential client) — set AUTH_MODE=oidc in config.toml and the
-      # following on the BFF. The client secret stays here, never in the browser.
-      # Put OIDC_CLIENT_SECRET in a .env file next to this compose file.
+      # ── OIDC — uncomment to delegate login to any OIDC provider. The BFF is a
+      # confidential client (holds the secret, never sent to the browser). Set
+      # the OIDC_* values in .env; keep the IDP block above in sync.
+      # - VITE_AUTH_MODE=oidc
       # - OIDC_ISSUER=${OIDC_ISSUER:-}
       # - OIDC_CLIENT_ID=${OIDC_CLIENT_ID:-}
       # - OIDC_CLIENT_SECRET=${OIDC_CLIENT_SECRET:-}
-      # - OIDC_REDIRECT_URL=https://localhost:5380/api/auth/callback
-      # - OIDC_POST_LOGOUT_REDIRECT_URL=https://localhost:5380/login
-      # - OIDC_SCOPES=openid profile email
+      # - OIDC_REDIRECT_URL=${OIDC_REDIRECT_URL:-https://localhost:5380/api/auth/callback}
+      # - OIDC_POST_LOGOUT_REDIRECT_URL=${OIDC_POST_LOGOUT_REDIRECT_URL:-https://localhost:5380/login}
+      # - OIDC_SCOPES=${OIDC_SCOPES:-openid profile email ap:organization:manage ap:gateway:manage ap:gateway_custom_policy:manage ap:rest_api:manage ap:llm_provider:manage ap:llm_proxy:manage ap:mcp_proxy:manage ap:webbroker_api:manage ap:websub_api:manage ap:application:manage ap:subscription:manage ap:subscription_plan:manage ap:project:manage ap:llm_template:manage ap:devportal:manage ap:git:read ap:api_key:read ap:secret:manage}
     volumes:
       - ./configs/config.toml:/etc/ai-workspace/config.toml:ro
       # Optional: mount your own TLS certificate to remove the browser trust warning.

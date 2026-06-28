@@ -11,13 +11,24 @@ This guide covers setting up Asgardeo as the identity provider and configuring b
 3. If multi-tenancy is needed, create sub-organizations at:
    `https://console.asgardeo.io/t/<root-org>/app/organizations`
 
-### 1.2 AI Workspace Application (Single-Page Application)
+### 1.2 AI Workspace Application (Confidential Web Application)
 
-1. Create a **Single-Page Application** named `AI Workspace` in root organization.
-2. Add authorized redirect URLs (e.g. `https://<your-domain>/signin`).
-3. Enable **Share with all organizations**.
-4. In the **Protocol** tab, set **Access Token Type** to `JWT`.
-5. In the **Login Flow** tab, remove Username/Password and set **SSO Authentication**.
+The AI Workspace is served by a **BFF that acts as a confidential OIDC client** — it holds the
+client secret and runs the authorization-code + PKCE exchange on the back channel. Register it
+as a confidential web app, **not** a Single-Page Application (an SPA is a public client and the
+token endpoint will reject the BFF's exchange).
+
+1. Create a **Standard-Based Application → OpenID Connect** (Traditional Web Application) named
+   `AI Workspace` in the root organization.
+2. Add the authorized redirect URL — the **BFF callback**, not `/signin`:
+   `https://<your-domain>/api/auth/callback`
+3. In the **Protocol** tab:
+   - **Allowed grant types**: Authorization Code + Refresh Token.
+   - **PKCE**: enabled.
+   - **Access Token Type**: `JWT`.
+   - Note the **Client ID** and **Client Secret** (the BFF needs both).
+4. Enable **Share with all organizations**.
+5. In the **Login Flow** tab, configure authentication as desired (e.g. SSO).
 6. In the **User Attributes** tab, add the following attributes to the token:
    - `username`
    - `given_name`
@@ -127,16 +138,17 @@ the file (see the key-to-variable mapping below).
 Open `configs/config.toml` and fill in the values for your deployment:
 
 ```toml
-# Host shown in the browser address bar — used to derive OIDC redirect URIs automatically.
+# Host shown in the browser address bar.
 domain = "<your-domain>"                                           # e.g. app.example.com
 
 # Set to "oidc" for production (Asgardeo or any OIDC-compliant IDP).
 auth_mode = "oidc"
 
-# Issuer URL — OIDC endpoints are auto-discovered from {oidc_authority}/.well-known/openid-configuration.
+# Issuer URL — the BFF auto-discovers OIDC endpoints from
+# {oidc_authority}/.well-known/openid-configuration.
 oidc_authority = "https://api.asgardeo.io/t/<your-tenant>/oauth2/token"
 
-# Client ID of the AI Workspace SPA (from Asgardeo Protocol tab).
+# Client ID of the AI Workspace confidential application (from the IDP Protocol tab).
 oidc_client_id = "<ai-workspace-client-id>"
 
 # JWT claim name mappings — must match AUTH_IDP_*_CLAIM_NAME values in Platform API (section 2).
@@ -157,9 +169,20 @@ default_org_region = "us"
 platform_gateway_versions = '[{"version":"1.1","latestVersion":"v1.1.0","channel":"LTS"},{"version":"1.0","latestVersion":"v1.0.0","channel":"LTS"}]'
 ```
 
-> **Redirect URIs** are derived automatically from `domain`:
-> `https://<domain>/signin` (sign-in) and `https://<domain>/login` (post-logout).
-> These must be listed as authorized redirect URLs in the Asgardeo application (section 1.2).
+> **The client secret and redirect URLs are BFF settings, not `config.toml` keys** — the
+> secret must never be exposed to the browser. Provide them as environment variables on the
+> AI Workspace container (e.g. in `docker-compose.yaml` / your orchestrator), alongside
+> `oidc_authority`/`oidc_client_id` from the file above:
+>
+> ```bash
+> OIDC_CLIENT_SECRET=<ai-workspace-client-secret>
+> OIDC_REDIRECT_URL=https://<your-domain>/api/auth/callback        # the BFF callback
+> OIDC_POST_LOGOUT_REDIRECT_URL=https://<your-domain>/login
+> ```
+>
+> `OIDC_REDIRECT_URL` must exactly match the authorized redirect URL registered in the IDP
+> application (section 1.2). The redirect is the **BFF callback** `/api/auth/callback` — not the
+> SPA `/signin` route; the BFF, not the browser, completes the code exchange.
 
 ### config.toml → environment variable mapping
 
