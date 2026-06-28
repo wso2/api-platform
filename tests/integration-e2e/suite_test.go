@@ -28,6 +28,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"testing"
@@ -231,17 +232,25 @@ func apiCall(method, path, token string, body any) (int, []byte, error) {
 }
 
 func login() (string, error) {
-	st, body, err := apiCall(http.MethodPost, "/api/portal/v0.9/auth/login", "",
-		map[string]string{"username": "admin", "password": "admin"})
+	form := url.Values{"username": {"admin"}, "password": {"admin"}}
+	req, err := http.NewRequest(http.MethodPost, platformAPI+"/api/portal/v0.9/auth/login",
+		bytes.NewBufferString(form.Encode()))
 	if err != nil {
 		return "", err
 	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
 	var r struct {
 		Token string `json:"token"`
 	}
 	_ = json.Unmarshal(body, &r)
-	if st != 200 || r.Token == "" {
-		return "", fmt.Errorf("login failed (%d): %s", st, body)
+	if resp.StatusCode != 200 || r.Token == "" {
+		return "", fmt.Errorf("login failed (%d): %s", resp.StatusCode, body)
 	}
 	return r.Token, nil
 }

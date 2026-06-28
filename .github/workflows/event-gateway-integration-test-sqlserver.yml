@@ -66,7 +66,7 @@ jobs:
         run: make -C event-gateway build-gateway-runtime VERSION=${{ steps.version.outputs.version }}
 
       - name: Build webhook-listener image
-        run: docker build -t event-gateway/webhook-listener:local event-gateway/webhook-listener
+        run: make -C event-gateway/webhook-listener build IMAGE_NAME=event-gateway/webhook-listener VERSION=local
 
       - name: Verify event-gateway-controller uses SQL Server
         run: |
