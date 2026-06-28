@@ -140,6 +140,10 @@ func main() {
 		log.Warn("No authentication configured: both basic auth and IDP are disabled. Gateway Controller API will allow all requests without authentication")
 	}
 
+	if strings.EqualFold(strings.TrimSpace(cfg.Router.VHosts.Main.Default), strings.TrimSpace(cfg.Router.VHosts.Sandbox.Default)) {
+		log.Warn("router.vhosts.main.default and router.vhosts.sandbox.default are identical: sandbox routes would collide with main routes, so any REST API deployed without explicit distinct vhosts will be rejected until the defaults differ")
+	}
+
 	// In immutable mode, delete any stale SQLite files before opening the DB to
 	// guarantee a fresh, reproducible state on every boot.
 	if cfg.ImmutableGateway.Enabled {

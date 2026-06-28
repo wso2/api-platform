@@ -387,3 +387,38 @@ func TestRestAPITransformer_SandboxRouteClusterHeader(t *testing.T) {
 			"sandbox route must default to the sandbox cluster, not main")
 	})
 }
+
+// TestRestAPITransformer_SameVhostRejected verifies the transform path rejects an API whose
+// main and sandbox vhosts resolve to the same host (case-insensitively), matching the
+// validator and translator guards so the two xDS builders stay in lockstep.
+func TestRestAPITransformer_SameVhostRejected(t *testing.T) {
+	defs := map[string]models.PolicyDefinition{}
+
+	transform := func(mainVhost, sandboxVhost string) error {
+		transformer := NewRestAPITransformer(testRouterCfg(), &config.Config{}, defs)
+		cfg := makeRestAPIStoredConfig(nil, nil)
+		restAPI := cfg.Configuration.(api.RestAPI)
+		restAPI.Spec.Upstream.Sandbox = &api.Upstream{Url: ptrStr("http://sandbox-backend:9080/sandbox")}
+		restAPI.Spec.Vhosts = &struct {
+			Main    string  `json:"main" yaml:"main"`
+			Sandbox *string `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+		}{Main: mainVhost, Sandbox: ptrStr(sandboxVhost)}
+		cfg.Configuration = restAPI
+		_, err := transformer.Transform(cfg)
+		return err
+	}
+
+	t.Run("identical vhosts rejected", func(t *testing.T) {
+		err := transform("api.local", "api.local")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "same vhost")
+	})
+
+	t.Run("case-insensitively identical vhosts rejected", func(t *testing.T) {
+		require.Error(t, transform("API.local", "api.local"))
+	})
+
+	t.Run("distinct vhosts allowed", func(t *testing.T) {
+		require.NoError(t, transform("api.local", "sandbox.local"))
+	})
+}

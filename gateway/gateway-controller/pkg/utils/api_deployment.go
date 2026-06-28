@@ -297,6 +297,13 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 		return nil, err
 	}
 
+	// Re-resolve vhosts after rendering: a templated vhost may render blank, which would
+	// otherwise slip past validation. Fill blanks on Configuration only (SourceConfiguration
+	// keeps the template) so the validator compares effective vhosts.
+	if err := resolveVhostSentinels(&storedCfg.Configuration, s.routerConfig); err != nil {
+		return nil, fmt.Errorf("failed to resolve vhost sentinels after render: %w", err)
+	}
+
 	// Validate against the rendered Configuration and extract spec-level identifiers.
 	var apiName, apiVersion string
 	switch c := storedCfg.Configuration.(type) {
@@ -688,7 +695,20 @@ func resolveVhostSentinels(cfg *any, routerCfg *config.RouterConfig) error {
 				c.Spec.Vhosts.Sandbox = nil
 			}
 		}
+		// Blank or omitted fields fall back to router defaults at translation time;
+		// freeze them here too so validation sees the effective values.
+		if strings.TrimSpace(c.Spec.Vhosts.Main) == "" {
+			c.Spec.Vhosts.Main = routerCfg.VHosts.Main.Default
+		}
+		if c.Spec.Vhosts.Sandbox == nil || strings.TrimSpace(*c.Spec.Vhosts.Sandbox) == "" {
+			if sandboxDefault := routerCfg.VHosts.Sandbox.Default; sandboxDefault != "" {
+				c.Spec.Vhosts.Sandbox = &sandboxDefault
+			} else {
+				c.Spec.Vhosts.Sandbox = nil
+			}
+		}
 		*cfg = c
+	// Async kinds below keep sentinel/whole-nil resolution only; they have no sandbox vhost routing.
 	case api.WebSubAPI:
 		if c.Spec.Vhosts == nil {
 			main := routerCfg.VHosts.Main.Default
@@ -745,6 +765,11 @@ func resolveVhostSentinels(cfg *any, routerCfg *config.RouterConfig) error {
 		*cfg = c
 	}
 	return nil
+}
+
+// ResolveVhostSentinels exposes vhost resolution to write paths outside this package.
+func ResolveVhostSentinels(cfg *any, routerCfg *config.RouterConfig) error {
+	return resolveVhostSentinels(cfg, routerCfg)
 }
 
 // annotationValue safely reads a single annotation key from a pointer-to-map.

@@ -420,6 +420,61 @@ spec:
 	assert.Nil(t, result)
 }
 
+// A vhost written as a template can render to blank. Because vhost resolution also runs
+// after rendering, both blanks are filled with the (equal) router default, so the
+// same-vhost collision is rejected cleanly at deploy instead of failing later in xDS.
+func TestDeployAPIConfiguration_TemplatedVhostRendersBlankRejected(t *testing.T) {
+	store := storage.NewConfigStore()
+	validator := config.NewAPIValidator()
+	routerCfg := &config.RouterConfig{
+		VHosts: config.VHostsConfig{
+			Main:    config.VHostEntry{Default: "shared.example.com"},
+			Sandbox: config.VHostEntry{Default: "shared.example.com"},
+		},
+	}
+	service := newTestAPIDeploymentService(store, nil, nil, validator, routerCfg)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	yamlData := `
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: RestApi
+metadata:
+  name: templated-vhost-api
+spec:
+  displayName: Templated Vhost API
+  version: v1.0
+  context: /tpl
+  vhosts:
+    main: '{{ env "TPL_MAIN_HOST_UNSET" }}'
+    sandbox: '{{ env "TPL_SANDBOX_HOST_UNSET" }}'
+  upstream:
+    main:
+      url: http://backend:9090
+  operations:
+    - method: GET
+      path: /data
+`
+	params := APIDeploymentParams{
+		Data:          []byte(yamlData),
+		ContentType:   "application/yaml",
+		CorrelationID: "test-corr",
+		Origin:        models.OriginGatewayAPI,
+		Logger:        logger,
+	}
+
+	_, err := service.DeployAPIConfiguration(params)
+	require.Error(t, err)
+	var verr *ValidationErrorListError
+	require.ErrorAs(t, err, &verr)
+	found := false
+	for _, e := range verr.Errors {
+		if e.Field == "spec.vhosts" {
+			found = true
+		}
+	}
+	assert.True(t, found, "expected a spec.vhosts validation error, got %v", verr.Errors)
+}
+
 func TestDeployAPIConfiguration_DBConflictValidation(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	validator := config.NewAPIValidator()
@@ -1036,6 +1091,53 @@ func TestResolveVhostSentinels_NilVhostsNoSandboxDefault(t *testing.T) {
 	require.NotNil(t, resolved.Vhosts, "nil vhosts should be populated with main default")
 	assert.Equal(t, "*.wso2.com", resolved.Vhosts.Main)
 	assert.Nil(t, resolved.Vhosts.Sandbox, "sandbox should remain nil when no sandbox default configured")
+}
+
+func TestResolveVhostSentinels_PartialVhostsFilled(t *testing.T) {
+	routerCfg := &config.RouterConfig{
+		VHosts: config.VHostsConfig{
+			Main:    config.VHostEntry{Default: "*.wso2.com"},
+			Sandbox: config.VHostEntry{Default: "*-sandbox.wso2.com"},
+		},
+	}
+
+	blank := "   "
+	tests := []struct {
+		name        string
+		main        string
+		sandbox     *string
+		wantMain    string
+		wantSandbox string
+	}{
+		{name: "omitted sandbox filled", main: "custom.example.com", sandbox: nil, wantMain: "custom.example.com", wantSandbox: "*-sandbox.wso2.com"},
+		{name: "blank sandbox filled", main: "custom.example.com", sandbox: &blank, wantMain: "custom.example.com", wantSandbox: "*-sandbox.wso2.com"},
+		{name: "blank main filled", main: "", sandbox: stringPtr("custom-sb.example.com"), wantMain: "*.wso2.com", wantSandbox: "custom-sb.example.com"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var cfg any = api.RestAPI{
+				Kind: api.RestAPIKindRestApi,
+				Spec: api.APIConfigData{
+					Vhosts: &struct {
+						Main    string  `json:"main" yaml:"main"`
+						Sandbox *string `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+					}{
+						Main:    tt.main,
+						Sandbox: tt.sandbox,
+					},
+				},
+			}
+
+			require.NoError(t, resolveVhostSentinels(&cfg, routerCfg))
+
+			resolved := cfg.(api.RestAPI).Spec
+			require.NotNil(t, resolved.Vhosts)
+			assert.Equal(t, tt.wantMain, resolved.Vhosts.Main)
+			require.NotNil(t, resolved.Vhosts.Sandbox)
+			assert.Equal(t, tt.wantSandbox, *resolved.Vhosts.Sandbox)
+		})
+	}
 }
 
 func TestResolveVhostSentinels_WebSubApi_NilVhostsPopulatesDefaults(t *testing.T) {
