@@ -7,17 +7,31 @@ supported store instead of only on the SQLite path used by the unit tests.
 
 ## Layout
 
+The suite is written in Gherkin and run by [godog](https://github.com/cucumber/godog)
+(Cucumber for Go), consistent with `gateway/it` and `tests/integration-e2e`.
+
 | Path | Purpose |
 |------|---------|
-| `src/internal/integration/` | The tests (Go, build tag `integration`). |
-| `src/internal/integration/harness_test.go` | DB selection + schema bootstrap, driven by `IT_DB`. |
-| `src/internal/integration/cascade_test.go` | Delete-cascade behavior across the real foreign keys. |
-| `src/internal/integration/lifecycle_test.go` | Create + paginated list through the real repository layer. |
+| `src/internal/integration/` | The suite (Go, build tag `integration`). |
+| `src/internal/integration/features/*.feature` | The scenarios (Gherkin). |
+| `src/internal/integration/suite_test.go` | godog runner (`TestFeatures`) + per-scenario setup. |
+| `src/internal/integration/harness.go` | DB selection + schema bootstrap, driven by `IT_DB`. |
+| `src/internal/integration/world.go` | Per-scenario state + object-graph seeding. |
+| `src/internal/integration/steps_crud.go` | Steps for the repository CRUD lifecycle scenarios. |
+| `src/internal/integration/steps_cascade.go` | Steps for the delete-cascade scenarios. |
+| `src/internal/integration/steps_pagination.go` | Steps for the pagination / filtered-listing scenarios. |
+| `src/internal/integration/steps_llm.go` | Steps for the LLM control-plane (template / provider / proxy) scenarios. |
+| `src/internal/integration/steps_mcp.go` | Steps for the MCP control-plane (proxy) scenario. |
+| `src/internal/integration/steps_webbroker.go` | Steps for the WebBroker API repository scenario. |
+| `src/internal/integration/steps_secret.go` | Steps for the secret repository scenario. |
 | `it/docker-compose.postgres.yaml` | Throwaway PostgreSQL for the tests. |
 | `it/docker-compose.sqlserver.yaml` | Throwaway SQL Server for the tests. |
 
 The tests run on the host and connect to the database over a published port, so
-the same test binary covers all three engines.
+the same test binary covers all three engines. A fresh database and a fresh
+scenario state are created per scenario, so scenarios are independent. Each
+scenario also surfaces as an individual `go test` subtest via godog's `TestingT`
+integration, so `-run TestFeatures/<scenario>` works.
 
 ## Running
 
@@ -64,6 +78,25 @@ IT_DB=sqlserver IT_DB_HOST=localhost IT_DB_PORT=1433 \
   deployments and deployment status, deleting a devportal removes its
   publications, deleting an application removes its mappings, and deleting a
   project removes its applications.
+- **LLM control plane** — the provider-template, provider and proxy repositories
+  round-trip through create / read / update / list / delete, version resolution
+  (`is_latest` flip across a family), and the `provider → template` /
+  `proxy → provider` foreign keys. These run entirely at the store layer: **no
+  real LLM is contacted and the upstream API key is a dummy string**, so no
+  provider credentials are needed on any engine.
+- **MCP control plane** — the MCP proxy repository round-trips through
+  create / read / update / list (by org and project) / delete, again with a
+  **dummy upstream API key** and no real MCP server.
+- **WebBroker API store** — the WebBroker (event-broker) API repository
+  round-trips through create / read / update / paginated list / project-scoped
+  list / delete on every engine.
+- **Secret store** — the secret repository round-trips encrypted ciphertext and
+  hash, reports type/provider/status defaults, checks existence and count, lists
+  with pagination, rotates the ciphertext, and soft-deletes (deprecates) a secret
+  that has no active references. This scenario surfaced — and the fix is verified
+  by — two latent SQL Server bugs in `SecretRepo` where `List` and the
+  soft-delete row-lock used the `LIMIT` keyword (rejected by SQL Server); both now
+  use the dialect-aware `PaginationClause` / `FetchFirstClause` helpers.
 
 ## Relationship to the gateway integration tests
 

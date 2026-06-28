@@ -132,6 +132,8 @@ func (r *SecretRepo) GetByHandle(orgID, handle string) (*model.Secret, error) {
 }
 
 func (r *SecretRepo) List(orgID string, limit, offset int, updatedAfter *time.Time) ([]*model.Secret, error) {
+	// SQL Server has no LIMIT keyword; PaginationClause yields the dialect's
+	// row-limiting clause (and its args in the order it expects them).
 	pageClause, pageArgs := r.db.PaginationClause(limit, offset)
 	var (
 		query string
@@ -244,7 +246,9 @@ func (r *SecretRepo) FindRefsAndSoftDelete(orgID, handle, updatedBy string) ([]m
 	if r.db.Driver() == "postgres" || r.db.Driver() == "postgresql" {
 		lockQuery = `SELECT uuid FROM secrets WHERE organization_uuid = $1 AND handle = $2 LIMIT 1 FOR UPDATE`
 	} else {
-		lockQuery = r.db.Rebind(`SELECT uuid FROM secrets WHERE organization_uuid = ? AND handle = ? LIMIT 1`)
+		// SQL Server rejects LIMIT; FetchFirstClause yields the dialect's
+		// fixed-row clause (it needs an ORDER BY, hence ORDER BY (SELECT NULL)).
+		lockQuery = r.db.Rebind(`SELECT uuid FROM secrets WHERE organization_uuid = ? AND handle = ? ORDER BY (SELECT NULL) ` + r.db.FetchFirstClause(1))
 	}
 	var lockedID string
 	if err := tx.QueryRow(lockQuery, orgID, handle).Scan(&lockedID); err != nil {
