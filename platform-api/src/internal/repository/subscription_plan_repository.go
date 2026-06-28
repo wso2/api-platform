@@ -96,8 +96,9 @@ func (r *SubscriptionPlanRepo) Create(plan *model.SubscriptionPlan) error {
 // replaceSingleLimitTx clears the plan's single REQUEST_COUNT limit row and re-inserts
 // it from the plan's ThrottleLimitCount / ThrottleLimitUnit / StopOnQuotaReach fields.
 //
-// A row is ALWAYS written (even when ThrottleLimitCount is nil, stored as a NULL
-// limit_count) so that StopOnQuotaReach round-trips faithfully for plans with no quota.
+// limit_count is NOT NULL, so a row is written ONLY when ThrottleLimitCount is set.
+// When it is nil the plan has no quota: the row is left deleted and reads default
+// StopOnQuotaReach to 1 (see scanPlan).
 //
 // NOTE: SINGLE-LIMIT ASSUMPTION. subscription_plan_limits supports multiple limits per
 // plan, but only one REQUEST_COUNT limit is persisted here. This must be improved to
@@ -109,14 +110,17 @@ func (r *SubscriptionPlanRepo) replaceSingleLimitTx(tx *sql.Tx, plan *model.Subs
 	`), plan.UUID, constants.LimitTypeRequestCount); err != nil {
 		return fmt.Errorf("failed to clear subscription plan limit: %w", err)
 	}
-	// ThrottleLimitCount is passed as a *int so a nil count is persisted as NULL.
+	// No quota configured: leave the row deleted (limit_count is NOT NULL).
+	if plan.ThrottleLimitCount == nil {
+		return nil
+	}
 	if _, err := tx.Exec(r.db.Rebind(`
 		INSERT INTO subscription_plan_limits (uuid, subscription_plan_uuid,
 			limit_type, time_unit, time_amount, limit_count, stop_on_quota_reach)
 		VALUES (?, ?, ?, ?, ?, ?, ?)
 	`),
 		uuid.New().String(), plan.UUID, constants.LimitTypeRequestCount,
-		plan.ThrottleLimitUnit, 1, plan.ThrottleLimitCount, plan.StopOnQuotaReach,
+		plan.ThrottleLimitUnit, 1, *plan.ThrottleLimitCount, plan.StopOnQuotaReach,
 	); err != nil {
 		return fmt.Errorf("failed to insert subscription plan limit: %w", err)
 	}

@@ -137,7 +137,7 @@ CREATE TABLE dbo.subscription_plan_limits (
     time_unit VARCHAR(20) NOT NULL,
     time_amount INT NOT NULL DEFAULT 1,
     limit_count BIGINT NOT NULL,
-    -- limit_count_unit (KB/MB/GB) for the quota; only set when limit_type is BANDWIDTH.
+
     limit_count_unit VARCHAR(10),
     stop_on_quota_reach SMALLINT NOT NULL DEFAULT 1,
     -- Cleanup happens via the subscription_plan_uuid -> subscription_plans CASCADE edge
