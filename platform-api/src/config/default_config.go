@@ -42,6 +42,7 @@ func defaultConfig() *Server {
 			SkipPaths: []string{
 				"/health",
 				"/metrics",
+				"/api/portal/v0.9/auth/login",
 				"/api/internal/v1/ws/gateways/connect",
 				"/api/internal/v1/apis",
 				"/api/internal/v1/llm-providers",
