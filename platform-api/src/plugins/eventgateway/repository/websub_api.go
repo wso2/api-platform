@@ -29,18 +29,19 @@ import (
 	"platform-api/src/internal/constants"
 	"platform-api/src/internal/database"
 	"platform-api/src/internal/model"
+	corerepo "platform-api/src/internal/repository"
 	"platform-api/src/internal/utils"
 )
 
 // WebSubAPIRepo handles database operations for WebSub APIs
 type WebSubAPIRepo struct {
 	db           *database.DB
-	artifactRepo *ArtifactRepo
+	artifactRepo *corerepo.ArtifactRepo
 }
 
 // NewWebSubAPIRepo creates a new WebSubAPIRepo instance
 func NewWebSubAPIRepo(db *database.DB) *WebSubAPIRepo {
-	return &WebSubAPIRepo{db: db, artifactRepo: NewArtifactRepo(db)}
+	return &WebSubAPIRepo{db: db, artifactRepo: corerepo.NewArtifactRepo(db)}
 }
 
 // Create creates a new WebSub API in the database

@@ -31,6 +31,7 @@ import (
 	"platform-api/src/internal/constants"
 	"platform-api/src/internal/model"
 	"platform-api/src/internal/repository"
+	coreservice "platform-api/src/internal/service"
 	"platform-api/src/internal/utils"
 )
 
@@ -44,7 +45,7 @@ type WebSubAPIHmacSecretService struct {
 	repo                 repository.WebSubAPIHmacSecretRepository
 	websubRepo           repository.WebSubAPIRepository
 	encryptionKey        []byte
-	gatewayEventsService *GatewayEventsService
+	gatewayEventsService *coreservice.GatewayEventsService
 	gatewayRepo          repository.GatewayRepository
 	slogger              *slog.Logger
 }
@@ -55,7 +56,7 @@ type WebSubAPIHmacSecretService struct {
 func NewWebSubAPIHmacSecretService(
 	repo repository.WebSubAPIHmacSecretRepository,
 	websubRepo repository.WebSubAPIRepository,
-	gatewayEventsService *GatewayEventsService,
+	gatewayEventsService *coreservice.GatewayEventsService,
 	gatewayRepo repository.GatewayRepository,
 	encryptionKeyStr string,
 	slogger *slog.Logger,

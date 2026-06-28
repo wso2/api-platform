@@ -1,0 +1,8 @@
+openapi: "3.0.3"
+info:
+  title: Event Gateway Plugin API
+  version: "0.9"
+  description: >
+    WebSub and WebBroker API management endpoints provided by the
+    eventgateway compile-time plugin.
+paths: {}

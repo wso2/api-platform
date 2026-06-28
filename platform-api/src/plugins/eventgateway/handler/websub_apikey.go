@@ -31,35 +31,36 @@ import (
 	"platform-api/src/internal/middleware"
 	"platform-api/src/internal/service"
 	"platform-api/src/internal/utils"
+	egservice "platform-api/src/plugins/eventgateway/service"
 
 	"github.com/wso2/go-httpkit/httputil"
 )
 
-// WebBrokerAPIKeyHandler handles API key operations for WebBroker APIs
-type WebBrokerAPIKeyHandler struct {
-	webbrokerAPIService *service.WebBrokerAPIService
-	apiKeyService       *service.APIKeyService
-	slogger             *slog.Logger
+// WebSubAPIKeyHandler handles API key operations for WebSub APIs
+type WebSubAPIKeyHandler struct {
+	websubAPIService *egservice.WebSubAPIService
+	apiKeyService    *service.APIKeyService
+	slogger          *slog.Logger
 }
 
-// NewWebBrokerAPIKeyHandler creates a new WebBrokerAPIKeyHandler instance
-func NewWebBrokerAPIKeyHandler(webbrokerAPIService *service.WebBrokerAPIService, apiKeyService *service.APIKeyService, slogger *slog.Logger) *WebBrokerAPIKeyHandler {
-	return &WebBrokerAPIKeyHandler{
-		webbrokerAPIService: webbrokerAPIService,
-		apiKeyService:       apiKeyService,
-		slogger:             slogger,
+// NewWebSubAPIKeyHandler creates a new WebSubAPIKeyHandler instance
+func NewWebSubAPIKeyHandler(websubAPIService *egservice.WebSubAPIService, apiKeyService *service.APIKeyService, slogger *slog.Logger) *WebSubAPIKeyHandler {
+	return &WebSubAPIKeyHandler{
+		websubAPIService: websubAPIService,
+		apiKeyService:    apiKeyService,
+		slogger:          slogger,
 	}
 }
 
-// RegisterRoutes registers WebBroker API key routes
-func (h *WebBrokerAPIKeyHandler) RegisterRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("POST "+constants.APIBasePath+"/webbroker-apis/{apiId}/api-keys", h.CreateAPIKey)
-	mux.HandleFunc("PUT "+constants.APIBasePath+"/webbroker-apis/{apiId}/api-keys/{keyName}", h.UpdateAPIKey)
-	mux.HandleFunc("DELETE "+constants.APIBasePath+"/webbroker-apis/{apiId}/api-keys/{keyName}", h.DeleteAPIKey)
+// RegisterRoutes registers WebSub API key routes
+func (h *WebSubAPIKeyHandler) RegisterRoutes(mux *http.ServeMux) {
+	mux.HandleFunc("POST "+constants.APIBasePath+"/websub-apis/{apiId}/api-keys", h.CreateAPIKey)
+	mux.HandleFunc("PUT "+constants.APIBasePath+"/websub-apis/{apiId}/api-keys/{keyName}", h.UpdateAPIKey)
+	mux.HandleFunc("DELETE "+constants.APIBasePath+"/websub-apis/{apiId}/api-keys/{keyName}", h.DeleteAPIKey)
 }
 
-// CreateAPIKey handles POST /api/v0.9/webbroker-apis/:apiId/api-keys
-func (h *WebBrokerAPIKeyHandler) CreateAPIKey(w http.ResponseWriter, r *http.Request) {
+// CreateAPIKey handles POST /api/v0.9/websub-apis/:apiId/api-keys
+func (h *WebSubAPIKeyHandler) CreateAPIKey(w http.ResponseWriter, r *http.Request) {
 	orgID, ok := middleware.GetOrganizationFromRequest(r)
 	if !ok {
 		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
@@ -72,8 +73,8 @@ func (h *WebBrokerAPIKeyHandler) CreateAPIKey(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	// Verify it's a WebBroker API
-	if _, err := h.webbrokerAPIService.Get(orgID, apiHandle); err != nil {
+	// Verify it's a WebSub API
+	if _, err := h.websubAPIService.Get(orgID, apiHandle); err != nil {
 		h.handleServiceError(w, err)
 		return
 	}
@@ -113,14 +114,14 @@ func (h *WebBrokerAPIKeyHandler) CreateAPIKey(w http.ResponseWriter, r *http.Req
 
 	if err := h.apiKeyService.CreateAPIKey(r.Context(), apiHandle, orgID, userId, &req); err != nil {
 		if errors.Is(err, constants.ErrAPINotFound) {
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "WebBroker API not found"))
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "WebSub API not found"))
 			return
 		}
 		if errors.Is(err, constants.ErrGatewayUnavailable) {
 			httputil.WriteJSON(w, http.StatusServiceUnavailable, utils.NewErrorResponse(503, "Service Unavailable", "No gateway connections available"))
 			return
 		}
-		h.slogger.Error("Failed to create API key for WebBroker API", "apiHandle", apiHandle, "error", err)
+		h.slogger.Error("Failed to create API key for WebSub API", "apiHandle", apiHandle, "error", err)
 		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to create API key"))
 		return
 	}
@@ -132,8 +133,8 @@ func (h *WebBrokerAPIKeyHandler) CreateAPIKey(w http.ResponseWriter, r *http.Req
 	})
 }
 
-// UpdateAPIKey handles PUT /api/v0.9/webbroker-apis/:apiId/api-keys/:keyName
-func (h *WebBrokerAPIKeyHandler) UpdateAPIKey(w http.ResponseWriter, r *http.Request) {
+// UpdateAPIKey handles PUT /api/v0.9/websub-apis/:apiId/api-keys/:keyName
+func (h *WebSubAPIKeyHandler) UpdateAPIKey(w http.ResponseWriter, r *http.Request) {
 	orgID, ok := middleware.GetOrganizationFromRequest(r)
 	if !ok {
 		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
@@ -152,8 +153,8 @@ func (h *WebBrokerAPIKeyHandler) UpdateAPIKey(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	// Verify it's a WebBroker API
-	if _, err := h.webbrokerAPIService.Get(orgID, apiHandle); err != nil {
+	// Verify it's a WebSub API
+	if _, err := h.websubAPIService.Get(orgID, apiHandle); err != nil {
 		h.handleServiceError(w, err)
 		return
 	}
@@ -182,19 +183,20 @@ func (h *WebBrokerAPIKeyHandler) UpdateAPIKey(w http.ResponseWriter, r *http.Req
 
 	if err := h.apiKeyService.UpdateAPIKey(r.Context(), apiHandle, orgID, keyName, userId, &req); err != nil {
 		if errors.Is(err, constants.ErrAPINotFound) {
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "WebBroker API not found"))
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "WebSub API not found"))
 			return
 		}
 		if errors.Is(err, constants.ErrGatewayUnavailable) {
 			httputil.WriteJSON(w, http.StatusServiceUnavailable, utils.NewErrorResponse(503, "Service Unavailable", "No gateway connections available"))
 			return
 		}
-		h.slogger.Error("Failed to update API key for WebBroker API", "apiHandle", apiHandle, "keyName", keyName, "error", err)
+		h.slogger.Error("Failed to update API key for WebSub API", "apiHandle", apiHandle, "keyName", keyName, "error", err)
 		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to update API key"))
 		return
 	}
 
-	h.slogger.Info("Successfully updated API key for WebBroker API", "apiHandle", apiHandle, "orgId", orgID, "keyName", keyName)
+	h.slogger.Info("Successfully updated API key for WebSub API", "apiHandle", apiHandle, "orgId", orgID, "keyName", keyName)
+
 	httputil.WriteJSON(w, http.StatusOK, api.UpdateAPIKeyResponse{
 		Status:  api.UpdateAPIKeyResponseStatusSuccess,
 		Message: "API key updated and broadcasted to gateways successfully",
@@ -202,8 +204,8 @@ func (h *WebBrokerAPIKeyHandler) UpdateAPIKey(w http.ResponseWriter, r *http.Req
 	})
 }
 
-// DeleteAPIKey handles DELETE /api/v0.9/webbroker-apis/:apiId/api-keys/:keyName
-func (h *WebBrokerAPIKeyHandler) DeleteAPIKey(w http.ResponseWriter, r *http.Request) {
+// DeleteAPIKey handles DELETE /api/v0.9/websub-apis/:apiId/api-keys/:keyName
+func (h *WebSubAPIKeyHandler) DeleteAPIKey(w http.ResponseWriter, r *http.Request) {
 	orgID, ok := middleware.GetOrganizationFromRequest(r)
 	if !ok {
 		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
@@ -226,7 +228,7 @@ func (h *WebBrokerAPIKeyHandler) DeleteAPIKey(w http.ResponseWriter, r *http.Req
 
 	if err := h.apiKeyService.RevokeAPIKey(r.Context(), apiHandle, orgID, keyName, userId); err != nil {
 		if errors.Is(err, constants.ErrAPINotFound) {
-			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "WebBroker API not found"))
+			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "WebSub API not found"))
 			return
 		}
 		if errors.Is(err, constants.ErrAPIKeyNotFound) {
@@ -237,7 +239,7 @@ func (h *WebBrokerAPIKeyHandler) DeleteAPIKey(w http.ResponseWriter, r *http.Req
 			httputil.WriteJSON(w, http.StatusServiceUnavailable, utils.NewErrorResponse(503, "Service Unavailable", "No gateway connections available"))
 			return
 		}
-		h.slogger.Error("Failed to delete API key for WebBroker API", "apiHandle", apiHandle, "keyName", keyName, "error", err)
+		h.slogger.Error("Failed to delete API key for WebSub API", "apiHandle", apiHandle, "keyName", keyName, "error", err)
 		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to delete API key"))
 		return
 	}
@@ -246,14 +248,14 @@ func (h *WebBrokerAPIKeyHandler) DeleteAPIKey(w http.ResponseWriter, r *http.Req
 }
 
 // handleServiceError maps service errors to HTTP responses
-func (h *WebBrokerAPIKeyHandler) handleServiceError(w http.ResponseWriter, err error) {
+func (h *WebSubAPIKeyHandler) handleServiceError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, constants.ErrInvalidInput):
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))
-	case errors.Is(err, constants.ErrWebBrokerAPINotFound):
-		httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "WebBroker API not found"))
+	case errors.Is(err, constants.ErrWebSubAPINotFound):
+		httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "WebSub API not found"))
 	default:
-		h.slogger.Error("WebBroker API key service error", "error", err)
+		h.slogger.Error("WebSub API key service error", "error", err)
 		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "An unexpected error occurred"))
 	}
 }

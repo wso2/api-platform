@@ -29,6 +29,7 @@ import (
 	"platform-api/src/internal/constants"
 	"platform-api/src/internal/model"
 	"platform-api/src/internal/repository"
+	coreservice "platform-api/src/internal/service"
 	"platform-api/src/internal/utils"
 )
 
@@ -37,7 +38,7 @@ type WebBrokerAPIService struct {
 	repo                 repository.WebBrokerAPIRepository
 	projectRepo          repository.ProjectRepository
 	gatewayRepo          repository.GatewayRepository
-	gatewayEventsService *GatewayEventsService
+	gatewayEventsService *coreservice.GatewayEventsService
 	apiUtil              *utils.APIUtil
 	slogger              *slog.Logger
 	auditRepo            repository.AuditRepository
@@ -48,7 +49,7 @@ func NewWebBrokerAPIService(
 	repo repository.WebBrokerAPIRepository,
 	projectRepo repository.ProjectRepository,
 	gatewayRepo repository.GatewayRepository,
-	gatewayEventsService *GatewayEventsService,
+	gatewayEventsService *coreservice.GatewayEventsService,
 	apiUtil *utils.APIUtil,
 	slogger *slog.Logger,
 	auditRepo repository.AuditRepository,
