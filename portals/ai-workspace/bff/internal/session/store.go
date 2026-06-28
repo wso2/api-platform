@@ -62,7 +62,7 @@ type Session struct {
 
 // Expired reports whether the session has passed its absolute lifetime.
 func (s *Session) Expired(now time.Time) bool {
-	return !s.AbsoluteExpiry.IsZero() && now.After(s.AbsoluteExpiry)
+	return !s.AbsoluteExpiry.IsZero() && !now.Before(s.AbsoluteExpiry)
 }
 
 // Store is the swappable session backend. The default is in-memory; a Redis

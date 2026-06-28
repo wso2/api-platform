@@ -44,22 +44,27 @@ func NewMemoryStore() *MemoryStore {
 func (m *MemoryStore) Put(_ context.Context, s *Session) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.sessions[s.ID] = s
+	// Store a copy so the store never shares the caller-owned pointer.
+	cp := *s
+	m.sessions[cp.ID] = &cp
 	return nil
 }
 
 func (m *MemoryStore) Get(_ context.Context, id string) (*Session, bool, error) {
-	m.mu.RLock()
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	s, ok := m.sessions[id]
-	m.mu.RUnlock()
 	if !ok {
 		return nil, false, nil
 	}
+	// Evaluate expiry on the locked entry; evict and report a miss if expired.
 	if s.Expired(time.Now()) {
-		_ = m.Delete(context.Background(), id)
+		delete(m.sessions, id)
 		return nil, false, nil
 	}
-	return s, true, nil
+	// Return a copy so callers never hold the internal pointer.
+	cp := *s
+	return &cp, true, nil
 }
 
 func (m *MemoryStore) Delete(_ context.Context, id string) error {
