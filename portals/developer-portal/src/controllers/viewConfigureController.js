@@ -174,15 +174,14 @@ const saveLlmsConfig = async (req, res) => {
         const orgData = {
             orgId: orgID, fileType: constants.FILE_TYPE.LLMS_CONFIG, viewName,
             fileName: constants.FILE_NAME.LLMS_CONFIG, fileContent: content, filePath: constants.FILE_TYPE.LLMS_CONFIG,
-            createdBy: userId
         };
         const existing = await orgDao.getContent({
             orgId: orgID, fileType: constants.FILE_TYPE.LLMS_CONFIG, viewName, fileName: constants.FILE_NAME.LLMS_CONFIG
         });
         if (existing) {
-            await orgDao.updateContent(orgData);
+            await orgDao.updateContent({ ...orgData, updatedBy: userId });
         } else {
-            await orgDao.createContent(orgData);
+            await orgDao.createContent({ ...orgData, createdBy: userId });
         }
         res.json({ message: 'Saved successfully' });
     } catch (err) {

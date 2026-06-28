@@ -196,7 +196,7 @@ const updateContent = async (orgData) => {
             FILE_NAME: orgData.fileName,
             FILE_CONTENT: orgData.fileContent,
             FILE_PATH: orgData.filePath,
-            UPDATED_BY: orgData.createdBy,
+            UPDATED_BY: orgData.updatedBy,
             UPDATED_AT: new Date()
         },
             {

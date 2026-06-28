@@ -434,7 +434,7 @@ const updateOrgContent = async (req, res) => {
                         filePath: filePath,
                         orgId: orgId,
                         viewName: viewName,
-                        createdBy: userId
+                        updatedBy: userId
                     });
                 } else {
                     logger.info('Content not found during update, creating new content', {
