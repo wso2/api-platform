@@ -165,6 +165,8 @@ export default function ServiceProviderNew() {
   const [selectedVersionTemplateId, setSelectedVersionTemplateId] = useState<
     string | null
   >(null);
+  // Family group id of the selected template — version routes are keyed by it.
+  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   // Template just clicked, pending version selection in the dialog.
   const [pendingTemplate, setPendingTemplate] = useState<ProviderTemplate | null>(
     null
@@ -397,9 +399,11 @@ export default function ServiceProviderNew() {
   const applyTemplateSelection = (
     baseTemplate: ProviderTemplate,
     version: string,
-    versionTemplateId: string | null
+    versionTemplateId: string | null,
+    groupId: string | null
   ) => {
     setSelectedTemplateId(baseTemplate.id ?? null);
+    setSelectedGroupId(groupId ?? baseTemplate.groupId ?? baseTemplate.id ?? null);
     setSelectedVersionTemplateId(versionTemplateId);
     setSelectedTemplateVersion(version);
     setFormState((prev) => ({ ...prev, providerType: baseTemplate.displayName }));
@@ -411,10 +415,25 @@ export default function ServiceProviderNew() {
   const handleSelectTemplate = async (template: ProviderTemplate) => {
     const organizationId = currentOrganization?.uuid;
     if (!template.id || !organizationId) return;
+    let groupId = template.groupId;
+    if (!groupId) {
+      try {
+        groupId = (
+          await providerTemplateApis.getProviderTemplate(
+            template.id,
+            organizationId,
+            PLATFORM_API_BASE_URL
+          )
+        ).groupId;
+      } catch {
+        // fall back to the handle below
+      }
+    }
+    const resolvedGroupId = groupId ?? template.id;
     try {
       const enabledVersions = (
         await providerTemplateApis.getProviderTemplateVersions(
-          template.id,
+          resolvedGroupId,
           organizationId,
           PLATFORM_API_BASE_URL
         )
@@ -431,14 +450,15 @@ export default function ServiceProviderNew() {
         applyTemplateSelection(
           template,
           only?.version ?? template.version ?? 'v1.0',
-          only?.id ?? null
+          only?.id ?? null,
+          resolvedGroupId
         );
         return;
       }
     } catch {
       // Couldn't load versions — fall back to the picker.
     }
-    setPendingTemplate(template);
+    setPendingTemplate({ ...template, groupId: resolvedGroupId });
     setVersionDialogOpen(true);
   };
 
@@ -483,21 +503,27 @@ export default function ServiceProviderNew() {
           {pendingTemplate && (
             <TemplateVersionDialog
               open={versionDialogOpen}
-              templateId={pendingTemplate.id ?? ''}
+              groupId={pendingTemplate.groupId ?? pendingTemplate.id ?? ''}
               templateName={pendingTemplate.displayName}
               onClose={() => {
                 setVersionDialogOpen(false);
                 setPendingTemplate(null);
               }}
               onConfirm={(vt) =>
-                applyTemplateSelection(pendingTemplate, vt.version ?? '', vt.id ?? null)
+                applyTemplateSelection(
+                  pendingTemplate,
+                  vt.version ?? '',
+                  vt.id ?? null,
+                  pendingTemplate.groupId ?? pendingTemplate.id ?? null
+                )
               }
             />
           )}
 
           {selectedTemplateId && (
             <ProviderTemplateProvider
-              templateId={selectedTemplateId}
+              handle={selectedTemplateId}
+              groupId={selectedGroupId ?? undefined}
               version={selectedTemplateVersion ?? undefined}
             >
               <TemplateBasedFormFieldsContainer

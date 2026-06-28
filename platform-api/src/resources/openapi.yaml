@@ -1099,7 +1099,9 @@ paths:
   /llm-provider-templates/{llmProviderTemplateId}:
     get:
       summary: Get LLM provider template by id
-      description: Retrieve the complete configuration for a specific LLM provider template.
+      description: |
+        Retrieve the complete configuration for a single LLM provider template
+        identified by its handle.
       operationId: getLLMProviderTemplate
       security:
         - OAuth2Security:
@@ -1111,7 +1113,7 @@ paths:
         - name: llmProviderTemplateId
           in: path
           required: true
-          description: Unique identifier for the LLM provider template
+          description: Unique handle of the template (identifies one specific version)
           schema:
             type: string
           example: openai
@@ -1132,9 +1134,10 @@ paths:
     put:
       summary: Update an existing LLM provider template
       description: |
-        Update the latest version of a template in place (name, description, and
-        other configuration). This does NOT create a new version — use
-        POST /llm-provider-templates/{llmProviderTemplateId}/versions to create a new version.
+        Update a single LLM provider template identified by its handle. Updates
+        exactly that template — it does NOT resolve to or force the latest
+        version of the family. This does NOT create a new version — use
+        POST /llm-provider-templates/{groupId}/versions to create a new version.
       operationId: updateLLMProviderTemplate
       security:
         - OAuth2Security:
@@ -1146,7 +1149,7 @@ paths:
         - name: llmProviderTemplateId
           in: path
           required: true
-          description: Unique identifier of the template to update
+          description: Unique handle of the template to update (identifies one specific version)
           schema:
             type: string
           example: openai
@@ -1176,7 +1179,7 @@ paths:
 
     delete:
       summary: Delete an LLM provider template
-      description: Remove an LLM provider template.
+      description: Remove a template family and all of its versions.
       operationId: deleteLLMProviderTemplate
       security:
         - OAuth2Security:
@@ -1188,7 +1191,7 @@ paths:
         - name: llmProviderTemplateId
           in: path
           required: true
-          description: Unique identifier of the template to delete
+          description: Stable handle of the template family to delete (same for all versions)
           schema:
             type: string
           example: openai
@@ -1208,10 +1211,10 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /llm-provider-templates/{llmProviderTemplateId}/versions:
+  /llm-provider-templates/{groupId}/versions:
     get:
       summary: List versions of an LLM provider template
-      description: List all immutable versions of a template, newest first.
+      description: List all versions belonging to the given group, newest first.
       operationId: listLLMProviderTemplateVersions
       security:
         - OAuth2Security:
@@ -1220,10 +1223,10 @@ paths:
       tags:
         - LLM Provider Templates
       parameters:
-        - name: llmProviderTemplateId
+        - name: groupId
           in: path
           required: true
-          description: Unique identifier for the LLM provider template
+          description: Group identifier shared by all versions of the template family
           schema:
             type: string
           example: openai
@@ -1259,12 +1262,12 @@ paths:
     post:
       summary: Create a new version of an LLM provider template
       description: |
-        Create a new version of an existing template. The version (e.g. v2.0)
+        Create a new version within the given group. The version (e.g. v2.0)
         must be supplied in the body, match the v<major>.<minor> pattern, and be
-        unique for the template. The new version becomes the latest.
+        unique within the group. The new version becomes the latest.
 
-        The template family is identified by the path parameter; the new version's
-        handle is computed server-side from the family handle and the supplied version.
+        The family is identified by the groupId path parameter; the new version's
+        handle is computed server-side from the groupId and the supplied version.
       operationId: createLLMProviderTemplateVersion
       security:
         - OAuth2Security:
@@ -1273,10 +1276,10 @@ paths:
       tags:
         - LLM Provider Templates
       parameters:
-        - name: llmProviderTemplateId
+        - name: groupId
           in: path
           required: true
-          description: Unique identifier for the LLM provider template
+          description: Group identifier shared by all versions of the template family
           schema:
             type: string
           example: openai
@@ -1304,10 +1307,10 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /llm-provider-templates/{llmProviderTemplateId}/versions/{version}:
+  /llm-provider-templates/{groupId}/versions/{version}:
     get:
       summary: Get a specific version of an LLM provider template
-      description: Retrieve the complete configuration for a specific immutable version.
+      description: Retrieve the configuration for a specific version within the given group.
       operationId: getLLMProviderTemplateVersion
       security:
         - OAuth2Security:
@@ -1316,10 +1319,10 @@ paths:
       tags:
         - LLM Provider Templates
       parameters:
-        - name: llmProviderTemplateId
+        - name: groupId
           in: path
           required: true
-          description: Unique identifier for the LLM provider template
+          description: Group identifier shared by all versions of the template family
           schema:
             type: string
           example: openai
@@ -1356,10 +1359,10 @@ paths:
       tags:
         - LLM Provider Templates
       parameters:
-        - name: llmProviderTemplateId
+        - name: groupId
           in: path
           required: true
-          description: Unique identifier for the LLM provider template
+          description: Group identifier shared by all versions of the template family
           schema:
             type: string
           example: openai
@@ -1413,10 +1416,10 @@ paths:
       tags:
         - LLM Provider Templates
       parameters:
-        - name: llmProviderTemplateId
+        - name: groupId
           in: path
           required: true
-          description: Unique identifier for the LLM provider template
+          description: Group identifier shared by all versions of the template family
           schema:
             type: string
           example: openai
@@ -6925,7 +6928,8 @@ components:
           type: string
           description: |
             Stable identifier shared by every version of a template family
-            (defaults to the first version's handle). Read-only.
+            (defaults to the first version's handle). Read-only. Used as the
+            {groupId} path parameter on the /versions routes.
           readOnly: true
           maxLength: 40
           example: openai
@@ -7035,12 +7039,14 @@ components:
     CreateLLMProviderTemplateVersionRequest:
       type: object
       required:
-        - displayName
         - version
       properties:
         displayName:
           type: string
-          description: Human-readable LLM Template name
+          description: |
+            Human-readable LLM Template name. Optional — when omitted, the new
+            version inherits the family's existing name. Supplying a different
+            value renames the template family.
           minLength: 1
           maxLength: 128
           example: OpenAI
@@ -7092,6 +7098,7 @@ components:
       properties:
         id:
           type: string
+          description: Unique handle for this specific template version.
           minLength: 3
           maxLength: 40
           example: openai

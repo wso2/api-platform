@@ -371,7 +371,7 @@ func TestLLMProviderTemplateServiceUpdate_RejectsMismatchedID(t *testing.T) {
 // ---- CreateVersion ----
 
 func TestLLMProviderTemplateServiceCreateVersion_Success(t *testing.T) {
-	repo := &mockLLMProviderTemplateCRUDRepo{getGroupIDResult: "mistralai"}
+	repo := &mockLLMProviderTemplateCRUDRepo{countVersionsResult: 1}
 	svc := NewLLMProviderTemplateService(repo, &noopAuditRepo{})
 
 	req := &api.CreateLLMProviderTemplateVersionRequest{DisplayName: "Mistral", Version: "v2.0"}
@@ -391,7 +391,7 @@ func TestLLMProviderTemplateServiceCreateVersion_Success(t *testing.T) {
 }
 
 func TestLLMProviderTemplateServiceCreateVersion_ForkFromBuiltinSetsCustomerManagedBy(t *testing.T) {
-	repo := &mockLLMProviderTemplateCRUDRepo{getGroupIDResult: "mistralai"}
+	repo := &mockLLMProviderTemplateCRUDRepo{countVersionsResult: 1}
 	svc := NewLLMProviderTemplateService(repo, &noopAuditRepo{})
 
 	wso2 := "wso2"
@@ -412,7 +412,7 @@ func TestLLMProviderTemplateServiceCreateVersion_ForkFromBuiltinSetsCustomerMana
 }
 
 func TestLLMProviderTemplateServiceCreateVersion_NotFoundWhenFamilyMissing(t *testing.T) {
-	repo := &mockLLMProviderTemplateCRUDRepo{getGroupIDResult: ""}
+	repo := &mockLLMProviderTemplateCRUDRepo{countVersionsResult: 0}
 	svc := NewLLMProviderTemplateService(repo, &noopAuditRepo{})
 
 	req := &api.CreateLLMProviderTemplateVersionRequest{DisplayName: "Mistral", Version: "v2.0"}
@@ -424,7 +424,7 @@ func TestLLMProviderTemplateServiceCreateVersion_NotFoundWhenFamilyMissing(t *te
 
 func TestLLMProviderTemplateServiceCreateVersion_ConflictWhenVersionExists(t *testing.T) {
 	repo := &mockLLMProviderTemplateCRUDRepo{
-		getGroupIDResult:    "mistralai",
+		countVersionsResult: 1,
 		createNewVersionErr: constants.ErrLLMProviderTemplateVersionExists,
 	}
 	svc := NewLLMProviderTemplateService(repo, &noopAuditRepo{})
@@ -437,7 +437,7 @@ func TestLLMProviderTemplateServiceCreateVersion_ConflictWhenVersionExists(t *te
 }
 
 func TestLLMProviderTemplateServiceCreateVersion_RejectsInvalidVersionFormat(t *testing.T) {
-	repo := &mockLLMProviderTemplateCRUDRepo{getGroupIDResult: "mistralai"}
+	repo := &mockLLMProviderTemplateCRUDRepo{countVersionsResult: 1}
 	svc := NewLLMProviderTemplateService(repo, &noopAuditRepo{})
 
 	req := &api.CreateLLMProviderTemplateVersionRequest{DisplayName: "Mistral", Version: "2.0"}

@@ -131,7 +131,7 @@ export async function getProviderTemplate(
  * Templates are immutable per version — each edit creates a new version. This
  * powers the version switcher on the overview page.
  *
- * @param templateId - The provider template ID (handle)
+ * @param templateId - The template family group id (version routes are keyed by group id, not the per-version handle)
  * @param organizationId - The organization ID
  * @returns Promise with the list of versions (most recent first)
  */
@@ -156,7 +156,7 @@ export async function getProviderTemplateVersions(
 /**
  * Fetch a specific immutable version of a Provider Template.
  *
- * @param templateId - The provider template ID (handle)
+ * @param templateId - The template family group id (version routes are keyed by group id, not the per-version handle)
  * @param version - The version to fetch (e.g. "v2")
  * @param organizationId - The organization ID
  * @returns Promise with that version's full template
@@ -186,7 +186,7 @@ export async function getProviderTemplateVersion(
  * The supplied template must include a `version` (e.g. "v2.0") that is unique
  * for the template; the new version becomes the latest.
  *
- * @param templateId - The provider template ID (handle)
+ * @param templateId - The template family group id (version routes are keyed by group id, not the per-version handle)
  * @param template - The new version's configuration (must include `version`)
  * @param organizationId - The organization ID
  * @returns Promise with the newly created version
@@ -231,7 +231,7 @@ export async function createProviderTemplateVersion(
  * Enable or disable a specific version of a Provider Template. Disabled
  * versions stay in the catalog but are hidden from the provider picker.
  *
- * @param templateId - The provider template ID (handle)
+ * @param templateId - The template family group id (version routes are keyed by group id, not the per-version handle)
  * @param version - The version to toggle (e.g. "v1.0")
  * @param enabled - Whether the version should be enabled
  * @returns Promise with the updated version
@@ -261,7 +261,7 @@ export async function setProviderTemplateVersionEnabled(
  * the template is removed; otherwise the newest remaining version becomes the
  * latest.
  *
- * @param templateId - The provider template ID (handle)
+ * @param templateId - The template family group id (version routes are keyed by group id, not the per-version handle)
  * @param version - The version to delete (e.g. "v2.0")
  */
 export async function deleteProviderTemplateVersion(

@@ -53,11 +53,12 @@ const ProviderTemplateContext = createContext<ProviderTemplateContextValue>({
 
 interface ProviderTemplateProviderProps {
   children: React.ReactNode;
-  templateId: string;
+  handle: string;
+  groupId?: string;
   version?: string;
 }
 
-export function ProviderTemplateProvider({ children, templateId, version }: ProviderTemplateProviderProps) {
+export function ProviderTemplateProvider({ children, handle, groupId, version }: ProviderTemplateProviderProps) {
   const { currentOrganization } = useAppShell();
   const [template, setTemplate] = useState<ProviderTemplate | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -67,7 +68,7 @@ export function ProviderTemplateProvider({ children, templateId, version }: Prov
 
   // Fetch single template (a specific version if requested, else latest)
   const fetchTemplate = useCallback(async () => {
-    if (!templateId || !organizationId) {
+    if (!handle || !organizationId) {
       setTemplate(null);
       setIsLoading(false);
       return;
@@ -77,48 +78,48 @@ export function ProviderTemplateProvider({ children, templateId, version }: Prov
       setIsLoading(true);
       setError(null);
       const fetchedTemplate = version
-        ? await providerTemplateApis.getProviderTemplateVersion(templateId, version, organizationId, PLATFORM_API_BASE_URL)
-        : await providerTemplateApis.getProviderTemplate(templateId, organizationId, PLATFORM_API_BASE_URL);
+        ? await providerTemplateApis.getProviderTemplateVersion(groupId ?? handle, version, organizationId, PLATFORM_API_BASE_URL)
+        : await providerTemplateApis.getProviderTemplate(handle, organizationId, PLATFORM_API_BASE_URL);
       setTemplate(fetchedTemplate);
     } catch (err) {
-      logger.error(`Failed to fetch provider template ${templateId}:`, err);
+      logger.error(`Failed to fetch provider template ${handle}:`, err);
       setError(err instanceof Error ? err : new Error('Failed to fetch template'));
       setTemplate(null);
     } finally {
       setIsLoading(false);
     }
-  }, [templateId, version, organizationId, PLATFORM_API_BASE_URL]);
+  }, [handle, groupId, version, organizationId, PLATFORM_API_BASE_URL]);
 
   useEffect(() => {
     fetchTemplate();
   }, [fetchTemplate]);
 
   const updateTemplate = useCallback(async (updates: UpdateProviderTemplateRequest): Promise<ProviderTemplate> => {
-    if (!templateId || !organizationId) {
+    if (!handle || !organizationId) {
       throw new Error('Template ID or Organization ID is missing');
     }
     try {
-      const updatedTemplate = await providerTemplateApis.updateProviderTemplate(templateId, updates, organizationId, PLATFORM_API_BASE_URL);
+      const updatedTemplate = await providerTemplateApis.updateProviderTemplate(handle, updates, organizationId, PLATFORM_API_BASE_URL);
       setTemplate(updatedTemplate);
       return updatedTemplate;
     } catch (err) {
       logger.error('Failed to update provider template:', err);
       throw err;
     }
-  }, [templateId, organizationId, PLATFORM_API_BASE_URL]);
+  }, [handle, organizationId, PLATFORM_API_BASE_URL]);
 
   const deleteTemplate = useCallback(async (): Promise<void> => {
-    if (!templateId || !organizationId) {
+    if (!handle || !organizationId) {
       throw new Error('Template ID or Organization ID is missing');
     }
     try {
-      await providerTemplateApis.deleteProviderTemplate(templateId, organizationId, PLATFORM_API_BASE_URL);
+      await providerTemplateApis.deleteProviderTemplate(handle, organizationId, PLATFORM_API_BASE_URL);
       setTemplate(null);
     } catch (err) {
       logger.error('Failed to delete provider template:', err);
       throw err;
     }
-  }, [templateId, organizationId, PLATFORM_API_BASE_URL]);
+  }, [handle, organizationId, PLATFORM_API_BASE_URL]);
 
   const refetch = useCallback(async (): Promise<void> => {
     await fetchTemplate();

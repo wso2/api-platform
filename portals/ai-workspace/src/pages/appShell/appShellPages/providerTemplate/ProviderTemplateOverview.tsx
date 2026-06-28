@@ -206,12 +206,14 @@ export default function ProviderTemplateOverview() {
 
   useEffect(() => {
     const organizationId = currentOrganization?.uuid;
-    if (!templateId || !organizationId) return;
+
+    const groupId = template?.groupId;
+    if (!groupId || !organizationId) return;
     setVersions([]);
 
     let isMounted = true;
     providerTemplateApis
-      .getProviderTemplateVersions(templateId, organizationId, PLATFORM_API_BASE_URL)
+      .getProviderTemplateVersions(groupId, organizationId, PLATFORM_API_BASE_URL)
       .then((list) => {
         if (isMounted) {
           setVersions(list);
@@ -224,7 +226,7 @@ export default function ProviderTemplateOverview() {
     return () => {
       isMounted = false;
     };
-  }, [templateId, currentOrganization?.uuid]);
+  }, [template?.groupId, currentOrganization?.uuid]);
 
   useEffect(() => {
     if (template?.version) setSelectedVersion(template.version);
@@ -236,7 +238,7 @@ export default function ProviderTemplateOverview() {
     setIsLoading(true);
     try {
       const full = await providerTemplateApis.getProviderTemplateVersion(
-        templateId,
+        template?.groupId ?? templateId,
         version,
         organizationId,
         PLATFORM_API_BASE_URL
@@ -553,7 +555,7 @@ export default function ProviderTemplateOverview() {
       }
       const updated =
         await providerTemplateApis.setProviderTemplateVersionEnabled(
-          template.id,
+          template.groupId ?? template.id,
           currentVersion,
           next,
           organizationId,
@@ -609,7 +611,7 @@ export default function ProviderTemplateOverview() {
       if (allVersions.length === 0) {
         try {
           allVersions = await providerTemplateApis.getProviderTemplateVersions(
-            template.id,
+            template.groupId ?? template.id,
             organizationId,
             PLATFORM_API_BASE_URL
           );
@@ -619,7 +621,7 @@ export default function ProviderTemplateOverview() {
       }
 
       await providerTemplateApis.deleteProviderTemplateVersion(
-        template.id,
+        template.groupId ?? template.id,
         currentVersion,
         organizationId,
         PLATFORM_API_BASE_URL

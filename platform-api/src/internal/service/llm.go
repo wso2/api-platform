@@ -399,8 +399,8 @@ func makeTemplateHandle(baseHandle, version string) string {
 	return baseHandle + "-" + strings.ReplaceAll(strings.ToLower(strings.TrimSpace(version)), ".", "-")
 }
 
-func (s *LLMProviderTemplateService) CreateVersion(orgUUID, handle, createdBy string, req *api.CreateLLMProviderTemplateVersionRequest) (*api.LLMProviderTemplate, error) {
-	if handle == "" || req == nil {
+func (s *LLMProviderTemplateService) CreateVersion(orgUUID, groupID, createdBy string, req *api.CreateLLMProviderTemplateVersionRequest) (*api.LLMProviderTemplate, error) {
+	if groupID == "" || req == nil {
 		return nil, constants.ErrInvalidInput
 	}
 	if req.DisplayName == "" {
@@ -416,13 +416,14 @@ func (s *LLMProviderTemplateService) CreateVersion(orgUUID, handle, createdBy st
 		managedBy = constants.PolicyManagedByCustomer
 	}
 
-	baseHandle, err := s.repo.GetGroupID(handle, orgUUID)
+	count, err := s.repo.CountVersions(groupID, orgUUID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to resolve template family: %w", err)
+		return nil, fmt.Errorf("failed to check template family: %w", err)
 	}
-	if baseHandle == "" {
+	if count == 0 {
 		return nil, constants.ErrLLMProviderTemplateNotFound
 	}
+	baseHandle := groupID
 
 	m := &model.LLMProviderTemplate{
 		OrganizationUUID: orgUUID,
@@ -463,18 +464,18 @@ func (s *LLMProviderTemplateService) CreateVersion(orgUUID, handle, createdBy st
 	return mapTemplateModelToAPI(m), nil
 }
 
-func (s *LLMProviderTemplateService) ListVersions(orgUUID, handle string, limit, offset int) (*api.LLMProviderTemplateListResponse, error) {
-	if handle == "" {
+func (s *LLMProviderTemplateService) ListVersions(orgUUID, groupID string, limit, offset int) (*api.LLMProviderTemplateListResponse, error) {
+	if groupID == "" {
 		return nil, constants.ErrInvalidInput
 	}
-	total, err := s.repo.CountVersions(handle, orgUUID)
+	total, err := s.repo.CountVersions(groupID, orgUUID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to count template versions: %w", err)
 	}
 	if total == 0 {
 		return nil, constants.ErrLLMProviderTemplateNotFound
 	}
-	items, err := s.repo.ListVersions(handle, orgUUID, limit, offset)
+	items, err := s.repo.ListVersions(groupID, orgUUID, limit, offset)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list template versions: %w", err)
 	}
@@ -493,9 +494,9 @@ func (s *LLMProviderTemplateService) ListVersions(orgUUID, handle string, limit,
 	return resp, nil
 }
 
-func (s *LLMProviderTemplateService) GetVersion(orgUUID, handle, version string) (*api.LLMProviderTemplate, error) {
+func (s *LLMProviderTemplateService) GetVersion(orgUUID, groupID, version string) (*api.LLMProviderTemplate, error) {
 	v := strings.TrimSpace(version)
-	if handle == "" || v == "" {
+	if groupID == "" || v == "" {
 		return nil, constants.ErrInvalidInput
 	}
 	normalized, ok := normalizeTemplateVersion(v)
@@ -503,7 +504,7 @@ func (s *LLMProviderTemplateService) GetVersion(orgUUID, handle, version string)
 		return nil, constants.ErrInvalidInput
 	}
 	v = normalized
-	m, err := s.repo.GetByVersion(handle, orgUUID, v)
+	m, err := s.repo.GetByVersion(groupID, orgUUID, v)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get template version: %w", err)
 	}
@@ -513,11 +514,9 @@ func (s *LLMProviderTemplateService) GetVersion(orgUUID, handle, version string)
 	return mapTemplateModelToAPI(m), nil
 }
 
-// SetVersionEnabled enables or disables a specific version of a template.
-// Disabling is blocked when any provider was created from this specific version.
-func (s *LLMProviderTemplateService) SetVersionEnabled(orgUUID, handle, version string, enabled bool) (*api.LLMProviderTemplate, error) {
+func (s *LLMProviderTemplateService) SetVersionEnabled(orgUUID, groupID, version string, enabled bool) (*api.LLMProviderTemplate, error) {
 	v := strings.TrimSpace(version)
-	if handle == "" || v == "" {
+	if groupID == "" || v == "" {
 		return nil, constants.ErrInvalidInput
 	}
 	normalized, ok := normalizeTemplateVersion(v)
@@ -526,7 +525,7 @@ func (s *LLMProviderTemplateService) SetVersionEnabled(orgUUID, handle, version 
 	}
 	v = normalized
 	if !enabled {
-		inUse, err := s.repo.CountProvidersUsingTemplate(handle, orgUUID, v)
+		inUse, err := s.repo.CountProvidersUsingTemplate(groupID, orgUUID, v)
 		if err != nil {
 			return nil, fmt.Errorf("failed to check template version usage: %w", err)
 		}
@@ -536,7 +535,7 @@ func (s *LLMProviderTemplateService) SetVersionEnabled(orgUUID, handle, version 
 	}
 	// Read-only versions (built-in 'wso2'-managed or DP-imported) cannot be toggled, matching
 	// the guard applied by Update/Delete/DeleteVersion.
-	target, err := s.repo.GetByVersion(handle, orgUUID, v)
+	target, err := s.repo.GetByVersion(groupID, orgUUID, v)
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve template version: %w", err)
 	}
@@ -549,13 +548,13 @@ func (s *LLMProviderTemplateService) SetVersionEnabled(orgUUID, handle, version 
 	if err := ensureOriginMutable(target.Origin); err != nil {
 		return nil, err
 	}
-	if err := s.repo.SetEnabled(handle, orgUUID, v, enabled); err != nil {
+	if err := s.repo.SetEnabled(groupID, orgUUID, v, enabled); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, constants.ErrLLMProviderTemplateNotFound
 		}
 		return nil, fmt.Errorf("failed to set template version enabled: %w", err)
 	}
-	m, err := s.repo.GetByVersion(handle, orgUUID, v)
+	m, err := s.repo.GetByVersion(groupID, orgUUID, v)
 	if err != nil {
 		return nil, fmt.Errorf("failed to reload template version: %w", err)
 	}
@@ -601,9 +600,9 @@ func (s *LLMProviderTemplateService) Delete(orgUUID, handle, deletedBy string) e
 	return nil
 }
 
-func (s *LLMProviderTemplateService) DeleteVersion(orgUUID, handle, version string) error {
+func (s *LLMProviderTemplateService) DeleteVersion(orgUUID, groupID, version string) error {
 	v := strings.TrimSpace(version)
-	if handle == "" || v == "" {
+	if groupID == "" || v == "" {
 		return constants.ErrInvalidInput
 	}
 	normalized, ok := normalizeTemplateVersion(v)
@@ -611,7 +610,7 @@ func (s *LLMProviderTemplateService) DeleteVersion(orgUUID, handle, version stri
 		return constants.ErrInvalidInput
 	}
 	v = normalized
-	target, err := s.repo.GetByVersion(handle, orgUUID, v)
+	target, err := s.repo.GetByVersion(groupID, orgUUID, v)
 	if err != nil {
 		return fmt.Errorf("failed to resolve template version: %w", err)
 	}
@@ -625,14 +624,14 @@ func (s *LLMProviderTemplateService) DeleteVersion(orgUUID, handle, version stri
 		return err
 	}
 	// Block deletion while any provider built from this specific version still depends on it.
-	inUse, err := s.repo.CountProvidersUsingTemplate(handle, orgUUID, v)
+	inUse, err := s.repo.CountProvidersUsingTemplate(groupID, orgUUID, v)
 	if err != nil {
 		return fmt.Errorf("failed to check template version usage: %w", err)
 	}
 	if inUse > 0 {
 		return constants.ErrLLMProviderTemplateInUse
 	}
-	if err := s.repo.DeleteVersion(handle, orgUUID, v); err != nil {
+	if err := s.repo.DeleteVersion(groupID, orgUUID, v); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return constants.ErrLLMProviderTemplateNotFound
 		}

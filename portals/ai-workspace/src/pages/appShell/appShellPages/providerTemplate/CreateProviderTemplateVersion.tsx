@@ -264,7 +264,7 @@ function CreateProviderTemplateVersionForm({
     setIsSubmitting(true);
     try {
       const created = await providerTemplateApis.createProviderTemplateVersion(
-        templateId,
+        template.groupId ?? templateId,
         payload,
         organizationId,
         PLATFORM_API_BASE_URL

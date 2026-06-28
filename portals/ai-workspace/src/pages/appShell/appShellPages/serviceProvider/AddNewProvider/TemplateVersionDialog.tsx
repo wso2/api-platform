@@ -41,7 +41,7 @@ import type { ProviderTemplate } from '../../../../../utils/types';
 
 interface TemplateVersionDialogProps {
   open: boolean;
-  templateId: string;
+  groupId: string;
   templateName: string;
   onClose: () => void;
   onConfirm: (versionTemplate: ProviderTemplate) => void;
@@ -49,7 +49,7 @@ interface TemplateVersionDialogProps {
 
 export default function TemplateVersionDialog({
   open,
-  templateId,
+  groupId,
   templateName,
   onClose,
   onConfirm,
@@ -62,7 +62,7 @@ export default function TemplateVersionDialog({
 
   useEffect(() => {
     const organizationId = currentOrganization?.uuid;
-    if (!open || !templateId || !organizationId) return;
+    if (!open || !groupId || !organizationId) return;
 
     let isMounted = true;
     setIsLoading(true);
@@ -70,7 +70,7 @@ export default function TemplateVersionDialog({
     setVersions([]);
     setSelected('');
     providerTemplateApis
-      .getProviderTemplateVersions(templateId, organizationId, PLATFORM_API_BASE_URL)
+      .getProviderTemplateVersions(groupId, organizationId, PLATFORM_API_BASE_URL)
       .then((list) => {
         if (!isMounted) return;
         const parseVerNum = (s: string) => {
@@ -98,7 +98,7 @@ export default function TemplateVersionDialog({
     return () => {
       isMounted = false;
     };
-  }, [open, templateId, currentOrganization?.uuid]);
+  }, [open, groupId, currentOrganization?.uuid]);
 
   return (
     <Dialog
