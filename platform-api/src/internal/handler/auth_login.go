@@ -48,7 +48,7 @@ func NewAuthLoginHandler(cfg *config.Server) *AuthLoginHandler {
 }
 
 func (h *AuthLoginHandler) RegisterPublicRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("POST /api/portal/v1/auth/login", h.Login)
+	mux.HandleFunc("POST /api/portal/v0.9/auth/login", h.Login)
 }
 
 func (h *AuthLoginHandler) Login(w http.ResponseWriter, r *http.Request) {

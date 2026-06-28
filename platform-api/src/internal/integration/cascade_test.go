@@ -32,6 +32,7 @@ type graph struct {
 	apiArtifact, depArtifact   string
 	plan, sub, gateway, deploy string
 	apiKey                     string
+	planLimit                  string
 }
 
 // seedOrgGraph inserts a representative object graph for one organization that
@@ -44,7 +45,8 @@ func seedOrgGraph(t *testing.T, it *itDB) graph {
 		org: id(), project: id(), app: id(),
 		apiArtifact: id(), depArtifact: id(),
 		plan: id(), sub: id(), gateway: id(), deploy: id(),
-		apiKey: id(),
+		apiKey:    id(),
+		planLimit: id(),
 	}
 
 	it.exec(t, `INSERT INTO organizations (uuid, handle, name, region) VALUES (?, ?, ?, ?)`,
@@ -62,6 +64,8 @@ func seedOrgGraph(t *testing.T, it *itDB) graph {
 
 	it.exec(t, `INSERT INTO subscription_plans (uuid, handle, name, organization_uuid) VALUES (?, ?, ?, ?)`,
 		g.plan, "plan-"+g.plan[:8], "Plan "+g.plan[:8], g.org)
+	it.exec(t, `INSERT INTO subscription_plan_limits (uuid, subscription_plan_uuid, limit_type, limit_count, time_unit) VALUES (?, ?, ?, ?, ?)`,
+		g.planLimit, g.plan, "REQUEST_COUNT", 100, "MINUTE")
 	it.exec(t, `INSERT INTO subscriptions (uuid, artifact_uuid, subscriber_id, subscription_token, subscription_token_hash, subscription_plan_uuid, organization_uuid)
 		VALUES (?, ?, ?, ?, ?, ?, ?)`,
 		g.sub, g.apiArtifact, "subscriber", "tok-"+g.sub[:8], "hash-"+g.sub[:8], g.plan, g.org)
@@ -79,8 +83,8 @@ func seedOrgGraph(t *testing.T, it *itDB) graph {
 	// An API key on the deployment artifact + its application mapping.
 	it.exec(t, `INSERT INTO api_keys (uuid, artifact_uuid, name, masked_api_key, api_key_hashes) VALUES (?, ?, ?, ?, ?)`,
 		g.apiKey, g.depArtifact, "key", "ab12", []byte("{}"))
-	it.exec(t, `INSERT INTO application_api_keys (application_uuid, api_key_id) VALUES (?, ?)`, g.app, g.apiKey)
-	it.exec(t, `INSERT INTO application_artifacts (application_uuid, artifact_uuid) VALUES (?, ?)`, g.app, g.depArtifact)
+	it.exec(t, `INSERT INTO application_api_key_mappings (application_uuid, api_key_id) VALUES (?, ?)`, g.app, g.apiKey)
+	it.exec(t, `INSERT INTO application_artifact_mappings (application_uuid, artifact_uuid) VALUES (?, ?)`, g.app, g.depArtifact)
 	return g
 }
 
@@ -136,11 +140,11 @@ func TestCascade_DeleteApplicationRemovesMappings(t *testing.T) {
 	g := seedOrgGraph(t, it)
 
 	it.exec(t, `DELETE FROM applications WHERE uuid = ? AND organization_uuid = ?`, g.app, g.org)
-	if got := it.count(t, "application_api_keys", "api_key_id", g.apiKey); got != 0 {
-		t.Fatalf("[%s] application_api_keys not removed after application delete: %d remain", it.driver, got)
+	if got := it.count(t, "application_api_key_mappings", "api_key_id", g.apiKey); got != 0 {
+		t.Fatalf("[%s] application_api_key_mappings not removed after application delete: %d remain", it.driver, got)
 	}
-	if got := it.count(t, "application_artifacts", "application_uuid", g.app); got != 0 {
-		t.Fatalf("[%s] application_artifacts not removed after application delete: %d remain", it.driver, got)
+	if got := it.count(t, "application_artifact_mappings", "application_uuid", g.app); got != 0 {
+		t.Fatalf("[%s] application_artifact_mappings not removed after application delete: %d remain", it.driver, got)
 	}
 }
 
@@ -205,6 +209,28 @@ func TestCascade_DeleteWebSubAPIRemovesHmacSecrets(t *testing.T) {
 	}
 	if got := it.count(t, "websub_apis", "uuid", artifactUUID); got != 0 {
 		t.Fatalf("[%s] websub_api not cascade-deleted after artifact delete: %d remain", it.driver, got)
+	}
+}
+
+// TestCascade_DeleteSubscriptionPlanRemovesLimits verifies that deleting a
+// subscription plan cascade-removes its subscription_plan_limits rows. On SQL
+// Server the limit's organization/composite edges are NO ACTION (to avoid the
+// multiple-cascade-paths restriction), so cleanup must flow through the
+// subscription_plan_uuid -> subscription_plans CASCADE edge. The subscription is
+// removed first because subscriptions.subscription_plan_uuid blocks plan deletion.
+func TestCascade_DeleteSubscriptionPlanRemovesLimits(t *testing.T) {
+	it := openITDB(t)
+	defer it.db.Close()
+	g := seedOrgGraph(t, it)
+
+	if got := it.count(t, "subscription_plan_limits", "uuid", g.planLimit); got != 1 {
+		t.Fatalf("precondition: want 1 subscription_plan_limit, got %d", got)
+	}
+	it.exec(t, `DELETE FROM subscriptions WHERE uuid = ?`, g.sub)
+	it.exec(t, `DELETE FROM subscription_plans WHERE uuid = ? AND organization_uuid = ?`, g.plan, g.org)
+
+	if got := it.count(t, "subscription_plan_limits", "uuid", g.planLimit); got != 0 {
+		t.Fatalf("[%s] subscription_plan_limit not removed after plan delete: %d remain", it.driver, got)
 	}
 }
 

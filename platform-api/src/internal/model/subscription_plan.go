@@ -41,14 +41,20 @@ type SubscriptionPlanUpdate struct {
 }
 
 // SubscriptionPlan represents an organization-scoped subscription plan
+//
+// NOTE: throttling limits are stored in the subscription_plan_limits table, which
+// is modelled to hold MULTIPLE limits per plan. For now the platform-api only
+// surfaces a SINGLE REQUEST_COUNT limit, mapped onto the StopOnQuotaReach /
+// ThrottleLimitCount / ThrottleLimitUnit fields below (these no longer have
+// columns on subscription_plans). This must be improved to expose all limits.
 type SubscriptionPlan struct {
 	UUID               string                 `json:"id" db:"uuid"`
 	Handle             string                 `json:"handle" db:"handle"`
 	Name               string                 `json:"name" db:"name"`
 	BillingPlan        string                 `json:"billingPlan,omitempty" db:"billing_plan"`
-	StopOnQuotaReach   int                    `json:"stopOnQuotaReach" db:"stop_on_quota_reach"`
-	ThrottleLimitCount *int                   `json:"throttleLimitCount,omitempty" db:"throttle_limit_count"`
-	ThrottleLimitUnit  string                 `json:"throttleLimitUnit,omitempty" db:"throttle_limit_unit"`
+	StopOnQuotaReach   int                    `json:"stopOnQuotaReach"`
+	ThrottleLimitCount *int                   `json:"throttleLimitCount,omitempty"`
+	ThrottleLimitUnit  string                 `json:"throttleLimitUnit,omitempty"`
 	ExpiryTime         *time.Time             `json:"expiryTime,omitempty" db:"expiry_time"`
 	OrganizationUUID   string                 `json:"organizationId" db:"organization_uuid"`
 	Status             SubscriptionPlanStatus `json:"status" db:"status"`
