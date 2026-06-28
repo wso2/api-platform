@@ -36,7 +36,7 @@ help: ## Show this help message
 
 .PHONY: build
 build: ## Build Docker images for mock servers
-	@for mock in $(MOCKS); do \
+	@set -e; for mock in $(MOCKS); do \
 		echo "Building $$mock..."; \
 		docker build -t $(DOCKER_REGISTRY)/$$mock:$(VERSION) $$mock; \
 	done
