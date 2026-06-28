@@ -174,11 +174,11 @@ describe('AI Workspace — MCP server secret management', () => {
       url: '/api/proxy/api/v0.9/secrets',
       headers: {
         Authorization: `Bearer ${authToken}`,
-        'Content-Type': 'application/json',
       },
+      form: true,
       body: {
         handle: existingHandle,
-        displayName: `${serverName} upstream auth`,
+        name: `${serverName} upstream auth`,
         value: 'Bearer tok-tc82-original',
         type: 'GENERIC',
       },

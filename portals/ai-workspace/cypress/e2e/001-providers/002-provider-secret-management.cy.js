@@ -121,11 +121,11 @@ describe('AI Workspace — LLM provider secret management', () => {
       url: '/api/proxy/api/v0.9/secrets',
       headers: {
         Authorization: `Bearer ${authToken}`,
-        'Content-Type': 'application/json',
       },
+      form: true,
       body: {
         handle: existingHandle,
-        displayName: `${providerName} API Key`,
+        name: `${providerName} API Key`,
         value: 'sk-tc58-pre-existing-value',
         type: 'GENERIC',
       },
