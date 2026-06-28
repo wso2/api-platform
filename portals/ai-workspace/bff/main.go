@@ -24,6 +24,7 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -106,6 +107,11 @@ func main() {
 // mounted cert/key files (when both exist), then in-memory self-signed, then
 // disabled. A missing mounted cert is not fatal — it falls back to self-signed.
 func buildTLS(c config.TLSConfig) (*tls.Config, error) {
+	// A partial mount (exactly one of cert/key present) is a misconfiguration, not
+	// a request for plain HTTP — fail loudly instead of silently downgrading.
+	if fileExists(c.CertFile) != fileExists(c.KeyFile) {
+		return nil, fmt.Errorf("incomplete TLS mount: exactly one of cert (%q) and key (%q) is present", c.CertFile, c.KeyFile)
+	}
 	if fileExists(c.CertFile) && fileExists(c.KeyFile) {
 		cert, err := tlsutil.CertFromFiles(c.CertFile, c.KeyFile)
 		if err != nil {

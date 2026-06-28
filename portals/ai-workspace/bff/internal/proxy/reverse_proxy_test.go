@@ -64,8 +64,11 @@ func TestReverseProxy_InjectsBearerStripsCookieAndPrefix(t *testing.T) {
 
 func TestReverseProxy_NoTokenNoAuthHeader(t *testing.T) {
 	var gotAuth string
+	var hit bool
 	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hit = true
 		gotAuth = r.Header.Get("Authorization")
+		w.WriteHeader(http.StatusOK)
 	}))
 	defer backend.Close()
 
@@ -77,6 +80,14 @@ func TestReverseProxy_NoTokenNoAuthHeader(t *testing.T) {
 	rec := httptest.NewRecorder()
 	rp.ServeHTTP(rec, req)
 
+	// Assert the request actually reached the backend; otherwise the empty-Auth
+	// check below would pass even if forwarding silently failed.
+	if !hit {
+		t.Fatal("backend handler was not invoked; request did not reach upstream")
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
 	if gotAuth != "" {
 		t.Errorf("upstream Authorization = %q, want empty when no session token", gotAuth)
 	}

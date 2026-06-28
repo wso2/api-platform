@@ -102,39 +102,70 @@ func Load() (*Config, error) {
 
 	authMode := strings.ToLower(getenv("VITE_AUTH_MODE", getenv("AUTH_MODE", "basic")))
 
+	// Parse typed env values up front so malformed values fail startup instead of
+	// being silently replaced with defaults.
+	selfSigned, err := getbool("BFF_TLS_SELF_SIGNED", true)
+	if err != nil {
+		return nil, err
+	}
+	platformTLSSkipVerify, err := getbool("PLATFORM_API_TLS_SKIP_VERIFY", false)
+	if err != nil {
+		return nil, err
+	}
+	idleTimeout, err := getdur("SESSION_IDLE_TIMEOUT", 30*time.Minute)
+	if err != nil {
+		return nil, err
+	}
+	absoluteTTL, err := getdur("SESSION_ABSOLUTE_TTL", 8*time.Hour)
+	if err != nil {
+		return nil, err
+	}
+	cookieSecure, err := getbool("COOKIE_SECURE", true)
+	if err != nil {
+		return nil, err
+	}
+	oidcEnabled, err := getbool("OIDC_ENABLED", false)
+	if err != nil {
+		return nil, err
+	}
+
 	cfg := &Config{
 		Addr:      getenv("BFF_ADDR", ":5380"),
 		StaticDir: getenv("STATIC_DIR", "/app"),
 		TLS: TLSConfig{
-			SelfSigned: getbool("BFF_TLS_SELF_SIGNED", true),
+			SelfSigned: selfSigned,
 			// Convention matches the legacy entrypoint.sh mount path. buildTLS
 			// falls back to a self-signed cert when these files are absent.
 			CertFile: getenv("BFF_TLS_CERT_FILE", "/etc/ai-workspace/tls/tls.crt"),
 			KeyFile:  getenv("BFF_TLS_KEY_FILE", "/etc/ai-workspace/tls/tls.key"),
 		},
 		PlatformAPIURL:        strings.TrimRight(getenv("PLATFORM_API_URL", ""), "/"),
-		PlatformTLSSkipVerify: getbool("PLATFORM_API_TLS_SKIP_VERIFY", false),
+		PlatformTLSSkipVerify: platformTLSSkipVerify,
 		PlatformLoginPath:     getenv("PLATFORM_LOGIN_PATH", "/api/portal/v0.9/auth/login"),
 		ProxyPrefix:           strings.TrimRight(getenv("PROXY_PREFIX", "/api/proxy"), "/"),
 		Session: SessionConfig{
 			Store:       getenv("SESSION_STORE", "memory"),
-			IdleTimeout: getdur("SESSION_IDLE_TIMEOUT", 30*time.Minute),
-			AbsoluteTTL: getdur("SESSION_ABSOLUTE_TTL", 8*time.Hour),
+			IdleTimeout: idleTimeout,
+			AbsoluteTTL: absoluteTTL,
 		},
 		Cookie: CookieConfig{
 			Name:     getenv("COOKIE_NAME", "_bff_session"),
-			Secure:   getbool("COOKIE_SECURE", true),
+			Secure:   cookieSecure,
 			SameSite: strings.ToLower(getenv("COOKIE_SAMESITE", "lax")),
 		},
 		CSRFHeader: getenv("CSRF_HEADER", "X-Requested-By"),
 		AuthMode:   authMode,
 		OIDC: OIDCConfig{
-			Enabled:               authMode == "oidc" || getbool("OIDC_ENABLED", false),
-			Issuer:                strings.TrimRight(getenv("OIDC_ISSUER", getenv("VITE_OIDC_AUTHORITY", "")), "/"),
-			ClientID:              getenv("OIDC_CLIENT_ID", getenv("VITE_OIDC_CLIENT_ID", "")),
-			ClientSecret:          getenv("OIDC_CLIENT_SECRET", ""),
-			RedirectURL:           getenv("OIDC_REDIRECT_URL", ""),
-			PostLogoutRedirectURL: getenv("OIDC_POST_LOGOUT_REDIRECT_URL", "/login"),
+			Enabled:      authMode == "oidc" || oidcEnabled,
+			Issuer:       strings.TrimRight(getenv("OIDC_ISSUER", getenv("VITE_OIDC_AUTHORITY", "")), "/"),
+			ClientID:     getenv("OIDC_CLIENT_ID", getenv("VITE_OIDC_CLIENT_ID", "")),
+			ClientSecret: getenv("OIDC_CLIENT_SECRET", ""),
+			RedirectURL:  getenv("OIDC_REDIRECT_URL", ""),
+			// Empty by default: LogoutURL() forwards this as post_logout_redirect_uri,
+			// which IDPs require to be an absolute, pre-registered URL. A relative
+			// default would produce an invalid logout request, so leave it unset
+			// unless an absolute URL is explicitly configured.
+			PostLogoutRedirectURL: getenv("OIDC_POST_LOGOUT_REDIRECT_URL", ""),
 			Scopes:                getenv("OIDC_SCOPES", getenv("VITE_OIDC_SCOPE", "openid profile email")),
 		},
 	}
@@ -159,26 +190,26 @@ func getenv(key, def string) string {
 	return def
 }
 
-func getbool(key string, def bool) bool {
+func getbool(key string, def bool) (bool, error) {
 	v, ok := os.LookupEnv(key)
 	if !ok || v == "" {
-		return def
+		return def, nil
 	}
 	b, err := strconv.ParseBool(strings.TrimSpace(v))
 	if err != nil {
-		return def
+		return false, fmt.Errorf("invalid boolean for %s=%q: %w", key, v, err)
 	}
-	return b
+	return b, nil
 }
 
-func getdur(key string, def time.Duration) time.Duration {
+func getdur(key string, def time.Duration) (time.Duration, error) {
 	v, ok := os.LookupEnv(key)
 	if !ok || v == "" {
-		return def
+		return def, nil
 	}
 	d, err := time.ParseDuration(strings.TrimSpace(v))
 	if err != nil {
-		return def
+		return 0, fmt.Errorf("invalid duration for %s=%q: %w", key, v, err)
 	}
-	return d
+	return d, nil
 }

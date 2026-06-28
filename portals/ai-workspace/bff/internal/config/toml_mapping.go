@@ -70,7 +70,9 @@ func applyTOMLToEnv(path string) {
 		if !ok {
 			continue
 		}
-		if _, exists := os.LookupEnv(viteKey); !exists {
+		// Treat VITE_*="" as unset so a present-but-empty env var doesn't shadow the
+		// TOML value — matching getenv()'s "empty == unset" precedence.
+		if v, exists := os.LookupEnv(viteKey); !exists || v == "" {
 			_ = os.Setenv(viteKey, val)
 		}
 	}

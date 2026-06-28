@@ -67,8 +67,14 @@ function AppGate() {
 
   if (!isAuthenticated) {
     if (AUTH_MODE === 'basic') {
-      // On success the BFF has set the session cookie; reload to re-hydrate.
-      return <BasicAuthLoginPage onSuccess={() => window.location.replace('/')} />;
+      // On success the BFF has set the session cookie; reload to re-hydrate while
+      // preserving the path the user originally requested (matching OIDC return
+      // behaviour). Only avoid pinning to the login route itself.
+      return <BasicAuthLoginPage onSuccess={() => {
+        const { pathname, search } = window.location;
+        const target = pathname === '/login' || pathname === '/signin' ? '/' : pathname + search;
+        window.location.replace(target);
+      }} />;
     }
     return <OIDCRedirect />;
   }

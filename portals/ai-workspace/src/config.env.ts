@@ -154,7 +154,10 @@ export const POLICY_HUB_WEB_URL = getEnvOrDefault(
 // Platform API base URL. Defaults to a relative path routed same-origin through the
 // BFF reverse proxy (/api/proxy/* → Platform API) so the browser only ever talks to
 // the app origin, never holds a token, and never sees the platform-api self-signed cert.
-// Override with an absolute URL only if calling the platform API directly.
+// Overrides should normally point at another BFF proxy base. Pointing this at the
+// Platform API directly bypasses the BFF session: the browser holds no token in this
+// BFF-only auth flow, so a direct override also requires a separate authentication
+// path to attach credentials to those calls.
 export const PLATFORM_API_BASE_URL = getEnvOrDefault(
   'VITE_PLATFORM_API_BASE_URL',
   '/api/proxy/api/v0.9'

@@ -100,7 +100,7 @@ The stack exposes:
 
 ### Option 2
 
-Open two separate terminals and run the following commands.
+Open three separate terminals and run the following commands.
 
 Terminal 1:
 ```bash

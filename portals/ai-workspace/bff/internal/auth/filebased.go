@@ -92,6 +92,9 @@ func (f *FileBased) Login(ctx context.Context, username, password string) (*sess
 	}
 
 	claims := session.DecodeJWTClaims(body.Token)
+	if claims == nil {
+		return nil, fmt.Errorf("platform api login returned a token that is not a decodable JWT")
+	}
 	accessExpiry := time.Unix(body.ExpiresAt, 0)
 	if accessExpiry.IsZero() || body.ExpiresAt == 0 {
 		accessExpiry = session.ExpiryFromClaims(claims)

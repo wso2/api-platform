@@ -101,6 +101,8 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 
 // handleSession (GET /api/session) — hydrate the SPA (no token in the body).
 func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
+	// Per-user authentication state must never be cached by browsers or proxies.
+	w.Header().Set("Cache-Control", "no-store")
 	sess, ok := s.currentSession(r)
 	if !ok {
 		writeJSON(w, http.StatusUnauthorized, map[string]any{"authenticated": false})
@@ -261,17 +263,23 @@ func (s *Server) refreshSession(ctx context.Context, sess *session.Session) (*se
 	mu.Lock()
 	defer mu.Unlock()
 
-	// Re-read: another goroutine may have refreshed while we waited.
-	if cur, ok, _ := s.store.Get(ctx, sess.ID); ok && !s.needsRefresh(cur) {
+	// Re-read under the lock: the session may have been refreshed or deleted while
+	// we waited. Using the freshly-read session (not the stale caller copy) avoids
+	// resurrecting a deleted session or refreshing with a rotated-out token.
+	cur, ok, _ := s.store.Get(ctx, sess.ID)
+	if !ok {
+		return nil, errors.New("session no longer exists")
+	}
+	if !s.needsRefresh(cur) {
 		return cur, nil
 	}
 
-	tok, err := s.oidc.Refresh(ctx, sess.RefreshToken)
+	tok, err := s.oidc.Refresh(ctx, cur.RefreshToken)
 	if err != nil {
 		return nil, err
 	}
-	updated := s.oidc.SessionFromToken(tok, sess)
-	updated.ID = sess.ID
+	updated := s.oidc.SessionFromToken(tok, cur)
+	updated.ID = cur.ID
 	if err := s.store.Put(ctx, updated); err != nil {
 		return nil, err
 	}

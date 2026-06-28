@@ -76,9 +76,16 @@ type OIDC struct {
 	mapping               session.ClaimMapping
 	absTTL                time.Duration
 
-	mu  sync.Mutex
-	txs map[string]*txn
+	mu        sync.Mutex
+	txs       map[string]*txn
+	done      chan struct{}
+	closeOnce sync.Once
 }
+
+// discoveryTimeout bounds the startup discovery call so an unreachable issuer
+// fails fast rather than blocking initialization for the upstream client's full
+// (longer) request timeout.
+const discoveryTimeout = 15 * time.Second
 
 // NewOIDC fetches the discovery document and returns a ready authenticator.
 func NewOIDC(
@@ -88,7 +95,9 @@ func NewOIDC(
 	mapping session.ClaimMapping,
 	absTTL time.Duration,
 ) (*OIDC, error) {
-	disco, err := fetchDiscovery(ctx, client, issuer)
+	discCtx, cancel := context.WithTimeout(ctx, discoveryTimeout)
+	defer cancel()
+	disco, err := fetchDiscovery(discCtx, client, issuer)
 	if err != nil {
 		return nil, err
 	}
@@ -103,9 +112,15 @@ func NewOIDC(
 		mapping:               mapping,
 		absTTL:                absTTL,
 		txs:                   make(map[string]*txn),
+		done:                  make(chan struct{}),
 	}
 	go o.sweepTxns()
 	return o, nil
+}
+
+// Close stops the background transaction sweeper. Safe to call multiple times.
+func (o *OIDC) Close() {
+	o.closeOnce.Do(func() { close(o.done) })
 }
 
 func fetchDiscovery(ctx context.Context, client *http.Client, issuer string) (discoveryDoc, error) {
@@ -181,6 +196,11 @@ type ErrStateMismatch struct{}
 
 func (ErrStateMismatch) Error() string { return "oidc state mismatch" }
 
+// ErrNonceMismatch indicates the id_token's nonce didn't match the tx record.
+type ErrNonceMismatch struct{}
+
+func (ErrNonceMismatch) Error() string { return "oidc nonce mismatch" }
+
 // Callback validates the tx/state, exchanges the code for tokens, and returns a
 // populated session plus the sanitized return URL. txID comes from the tx cookie.
 func (o *OIDC) Callback(ctx context.Context, txID, state, code string) (*session.Session, string, error) {
@@ -198,6 +218,14 @@ func (o *OIDC) Callback(ctx context.Context, txID, state, code string) (*session
 	tok, err := o.exchange(ctx, code, tx.CodeVerifier)
 	if err != nil {
 		return nil, "", err
+	}
+
+	// Bind the id_token to this login by verifying its nonce before trusting any
+	// of its claims. The id_token comes from the BFF's own back-channel exchange
+	// (not the browser); the nonce check still rejects replayed/injected tokens.
+	idClaims := session.DecodeJWTClaims(tok.IDToken)
+	if n, _ := idClaims["nonce"].(string); n != tx.Nonce {
+		return nil, "", ErrNonceMismatch{}
 	}
 
 	sess := o.sessionFromToken(tok)
@@ -308,14 +336,19 @@ func (o *OIDC) LogoutURL(idToken string) string {
 func (o *OIDC) sweepTxns() {
 	t := time.NewTicker(2 * time.Minute)
 	defer t.Stop()
-	for now := range t.C {
-		o.mu.Lock()
-		for id, tx := range o.txs {
-			if tx.Expiry.Before(now) {
-				delete(o.txs, id)
+	for {
+		select {
+		case <-o.done:
+			return
+		case now := <-t.C:
+			o.mu.Lock()
+			for id, tx := range o.txs {
+				if tx.Expiry.Before(now) {
+					delete(o.txs, id)
+				}
 			}
+			o.mu.Unlock()
 		}
-		o.mu.Unlock()
 	}
 }
 

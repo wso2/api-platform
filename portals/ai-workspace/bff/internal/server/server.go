@@ -87,8 +87,14 @@ func New(ctx context.Context, cfg *config.Config) (*Server, error) {
 // Handler returns the fully-wired HTTP handler (for the listener and for tests).
 func (s *Server) Handler() http.Handler { return s.handler }
 
-// Close releases background resources (session sweeper).
-func (s *Server) Close() error { return s.store.Close() }
+// Close releases background resources (session sweeper and, when enabled, the
+// OIDC transaction sweeper).
+func (s *Server) Close() error {
+	if s.oidc != nil {
+		s.oidc.Close()
+	}
+	return s.store.Close()
+}
 
 // oidcClaimMapping returns the claim mapping for OIDC tokens. Defaults align with
 // the SPA's previous OIDC defaults; org/user keys can be overridden via the same

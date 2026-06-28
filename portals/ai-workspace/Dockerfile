@@ -60,8 +60,10 @@ ENV STATIC_DIR=/app \
 
 EXPOSE 5380
 
+# Probe HTTPS first (the default), then fall back to HTTP so the check also works
+# when TLS is disabled (BFF_TLS_SELF_SIGNED=false and no cert mounted).
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD curl -fk https://localhost:5380/healthz || exit 1
+  CMD curl -fk https://localhost:5380/healthz || curl -f http://localhost:5380/healthz || exit 1
 
 STOPSIGNAL SIGTERM
 ENTRYPOINT ["/usr/local/bin/bff"]
