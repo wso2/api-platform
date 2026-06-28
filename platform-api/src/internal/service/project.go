@@ -28,14 +28,20 @@ import (
 	"time"
 )
 
+// ProjectDeletionGuard is implemented by plugins that need to block project
+// deletion when plugin-managed resources still exist under the project.
+type ProjectDeletionGuard interface {
+	CheckProjectDeletion(orgID, projectID string) error
+}
+
 type ProjectService struct {
-	projectRepo   repository.ProjectRepository
-	orgRepo       repository.OrganizationRepository
-	apiRepo       repository.APIRepository
-	mcpProxyRepo  repository.MCPProxyRepository
-	websubAPIRepo repository.WebSubAPIRepository
-	auditRepo     repository.AuditRepository
-	slogger       *slog.Logger
+	projectRepo    repository.ProjectRepository
+	orgRepo        repository.OrganizationRepository
+	apiRepo        repository.APIRepository
+	mcpProxyRepo   repository.MCPProxyRepository
+	deletionGuards []ProjectDeletionGuard
+	auditRepo      repository.AuditRepository
+	slogger        *slog.Logger
 }
 
 func NewProjectService(projectRepo repository.ProjectRepository, orgRepo repository.OrganizationRepository,
@@ -51,10 +57,10 @@ func NewProjectService(projectRepo repository.ProjectRepository, orgRepo reposit
 	}
 }
 
-// SetWebSubAPIRepo wires in the WebSub API repository. Called by the server
-// after an EventArtifactPlugin has been initialized (experimental builds only).
-func (s *ProjectService) SetWebSubAPIRepo(repo repository.WebSubAPIRepository) {
-	s.websubAPIRepo = repo
+// RegisterDeletionGuard adds a guard that is consulted during DeleteProject.
+// Plugins call this to block deletion when they own resources under the project.
+func (s *ProjectService) RegisterDeletionGuard(guard ProjectDeletionGuard) {
+	s.deletionGuards = append(s.deletionGuards, guard)
 }
 
 func (s *ProjectService) CreateProject(req *api.CreateProjectRequest, organizationID, actor string) (*api.Project, error) {
@@ -263,14 +269,9 @@ func (s *ProjectService) DeleteProject(projectId, orgId, actor string) error {
 		return constants.ErrProjectHasAssociatedMCPProxies
 	}
 
-	// check if there are any WebSub APIs associated with the project
-	if s.websubAPIRepo != nil {
-		websubAPICount, err := s.websubAPIRepo.CountByProject(orgId, projectId)
-		if err != nil {
+	for _, guard := range s.deletionGuards {
+		if err := guard.CheckProjectDeletion(orgId, projectId); err != nil {
 			return err
-		}
-		if websubAPICount > 0 {
-			return constants.ErrProjectHasAssociatedWebSubAPIs
 		}
 	}
 

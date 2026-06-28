@@ -28,11 +28,12 @@ import (
 )
 
 type ApplicationRepo struct {
-	db *database.DB
+	db  *database.DB
+	reg *ArtifactTableRegistry
 }
 
-func NewApplicationRepo(db *database.DB) ApplicationRepository {
-	return &ApplicationRepo{db: db}
+func NewApplicationRepo(db *database.DB, reg *ArtifactTableRegistry) ApplicationRepository {
+	return &ApplicationRepo{db: db, reg: reg}
 }
 
 func (r *ApplicationRepo) CreateApplication(app *model.Application) error {
@@ -91,12 +92,7 @@ func (r *ApplicationRepo) GetAssociationTargetByUUID(targetUUID, orgID string) (
 		SELECT a.uuid, src.handle, src.display_name, src.version, a.type, a.organization_uuid, src.created_at, src.updated_at
 		FROM artifacts a
 		INNER JOIN (
-			SELECT uuid, handle, display_name, version, created_at, updated_at FROM rest_apis
-			UNION ALL SELECT uuid, handle, display_name, version, created_at, updated_at FROM websub_apis
-			UNION ALL SELECT uuid, handle, display_name, version, created_at, updated_at FROM webbroker_apis
-			UNION ALL SELECT uuid, handle, display_name, version, created_at, updated_at FROM llm_providers
-			UNION ALL SELECT uuid, handle, display_name, version, created_at, updated_at FROM llm_proxies
-			UNION ALL SELECT uuid, handle, display_name, version, created_at, updated_at FROM mcp_proxies
+			`+r.reg.UnionAllSelect("uuid", "handle", "display_name", "version", "created_at", "updated_at")+`
 		) src ON src.uuid = a.uuid
 		WHERE a.uuid = ? AND a.organization_uuid = ?
 	`), targetUUID, orgID)
@@ -127,12 +123,7 @@ func (r *ApplicationRepo) GetAssociationTargetByIDOrHandle(targetIDOrHandle, org
 		SELECT a.uuid, src.handle, src.display_name, src.version, a.type, a.organization_uuid, src.created_at, src.updated_at
 		FROM artifacts a
 		INNER JOIN (
-			SELECT uuid, handle, display_name, version, created_at, updated_at FROM rest_apis
-			UNION ALL SELECT uuid, handle, display_name, version, created_at, updated_at FROM websub_apis
-			UNION ALL SELECT uuid, handle, display_name, version, created_at, updated_at FROM webbroker_apis
-			UNION ALL SELECT uuid, handle, display_name, version, created_at, updated_at FROM llm_providers
-			UNION ALL SELECT uuid, handle, display_name, version, created_at, updated_at FROM llm_proxies
-			UNION ALL SELECT uuid, handle, display_name, version, created_at, updated_at FROM mcp_proxies
+			`+r.reg.UnionAllSelect("uuid", "handle", "display_name", "version", "created_at", "updated_at")+`
 		) src ON src.uuid = a.uuid
 		WHERE a.organization_uuid = ? AND (a.uuid = ? OR src.handle = ?)
 		ORDER BY CASE WHEN a.uuid = ? THEN 0 ELSE 1 END
@@ -165,12 +156,7 @@ func (r *ApplicationRepo) GetAssociationTargetByIDOrHandleAndKind(targetIDOrHand
 		SELECT a.uuid, src.handle, src.display_name, src.version, a.type, a.organization_uuid, src.created_at, src.updated_at
 		FROM artifacts a
 		INNER JOIN (
-			SELECT uuid, handle, display_name, version, created_at, updated_at FROM rest_apis
-			UNION ALL SELECT uuid, handle, display_name, version, created_at, updated_at FROM websub_apis
-			UNION ALL SELECT uuid, handle, display_name, version, created_at, updated_at FROM webbroker_apis
-			UNION ALL SELECT uuid, handle, display_name, version, created_at, updated_at FROM llm_providers
-			UNION ALL SELECT uuid, handle, display_name, version, created_at, updated_at FROM llm_proxies
-			UNION ALL SELECT uuid, handle, display_name, version, created_at, updated_at FROM mcp_proxies
+			`+r.reg.UnionAllSelect("uuid", "handle", "display_name", "version", "created_at", "updated_at")+`
 		) src ON src.uuid = a.uuid
 		WHERE a.organization_uuid = ? AND a.type = ? AND (a.uuid = ? OR src.handle = ?)
 		ORDER BY CASE WHEN a.uuid = ? THEN 0 ELSE 1 END
@@ -359,12 +345,7 @@ func (r *ApplicationRepo) GetAPIKeyByNameAndArtifactHandle(keyName, artifactHand
 		FROM api_keys ak
 		INNER JOIN artifacts art ON art.uuid = ak.artifact_uuid
 		INNER JOIN (
-			SELECT uuid, handle FROM rest_apis
-			UNION ALL SELECT uuid, handle FROM websub_apis
-			UNION ALL SELECT uuid, handle FROM webbroker_apis
-			UNION ALL SELECT uuid, handle FROM llm_providers
-			UNION ALL SELECT uuid, handle FROM llm_proxies
-			UNION ALL SELECT uuid, handle FROM mcp_proxies
+			`+r.reg.UnionAllSelect("uuid", "handle")+`
 		) src ON src.uuid = ak.artifact_uuid
 		WHERE art.organization_uuid = ? AND ak.display_name = ? AND src.handle = ?
 	`), orgID, keyName, artifactHandle)
@@ -406,12 +387,7 @@ func (r *ApplicationRepo) ListMappedAPIKeys(applicationUUID string) ([]*model.Ap
 		INNER JOIN api_keys ak ON ak.uuid = aak.api_key_id
 		INNER JOIN artifacts art ON art.uuid = ak.artifact_uuid
 		INNER JOIN (
-			SELECT uuid, handle FROM rest_apis
-			UNION ALL SELECT uuid, handle FROM websub_apis
-			UNION ALL SELECT uuid, handle FROM webbroker_apis
-			UNION ALL SELECT uuid, handle FROM llm_providers
-			UNION ALL SELECT uuid, handle FROM llm_proxies
-			UNION ALL SELECT uuid, handle FROM mcp_proxies
+			`+r.reg.UnionAllSelect("uuid", "handle")+`
 		) src ON src.uuid = ak.artifact_uuid
 		WHERE aak.application_uuid = ?
 		ORDER BY aak.created_at DESC, ak.display_name ASC, ak.uuid ASC
@@ -439,12 +415,7 @@ func (r *ApplicationRepo) ListApplicationAssociations(applicationUUID string) ([
 		FROM application_artifact_mappings aa
 		INNER JOIN artifacts art ON art.uuid = aa.artifact_uuid
 		INNER JOIN (
-			SELECT uuid, handle, display_name, version FROM rest_apis
-			UNION ALL SELECT uuid, handle, display_name, version FROM websub_apis
-			UNION ALL SELECT uuid, handle, display_name, version FROM webbroker_apis
-			UNION ALL SELECT uuid, handle, display_name, version FROM llm_providers
-			UNION ALL SELECT uuid, handle, display_name, version FROM llm_proxies
-			UNION ALL SELECT uuid, handle, display_name, version FROM mcp_proxies
+			`+r.reg.UnionAllSelect("uuid", "handle", "display_name", "version")+`
 		) src ON src.uuid = aa.artifact_uuid
 		WHERE aa.application_uuid = ?
 		ORDER BY aa.created_at DESC, src.display_name ASC, art.uuid ASC
@@ -537,7 +508,6 @@ func (r *ApplicationRepo) AddApplicationAssociations(applicationUUID string, tar
 
 	return tx.Commit()
 }
-
 
 func (r *ApplicationRepo) RemoveApplicationAPIKey(applicationUUID, apiKeyID string) error {
 	_, err := r.db.Exec(r.db.Rebind(`

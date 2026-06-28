@@ -40,8 +40,8 @@ type WebSubAPIRepo struct {
 }
 
 // NewWebSubAPIRepo creates a new WebSubAPIRepo instance
-func NewWebSubAPIRepo(db *database.DB) *WebSubAPIRepo {
-	return &WebSubAPIRepo{db: db, artifactRepo: corerepo.NewArtifactRepo(db)}
+func NewWebSubAPIRepo(db *database.DB, reg *corerepo.ArtifactTableRegistry) *WebSubAPIRepo {
+	return &WebSubAPIRepo{db: db, artifactRepo: corerepo.NewArtifactRepo(db, reg)}
 }
 
 // Create creates a new WebSub API in the database

@@ -5,4 +5,579 @@ info:
   description: >
     WebSub and WebBroker API management endpoints provided by the
     eventgateway compile-time plugin.
-paths: {}
+paths:
+  /api/v0.9/websub-apis:
+    post:
+      security:
+        - OAuth2Security:
+            - ap:websub_api:create
+            - ap:websub_api:manage
+      responses:
+        '201':
+          description: WebSub API created successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    get:
+      security:
+        - OAuth2Security:
+            - ap:websub_api:read
+            - ap:websub_api:manage
+      responses:
+        '200':
+          description: WebSub APIs retrieved successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/v0.9/websub-apis/{apiId}:
+    get:
+      security:
+        - OAuth2Security:
+            - ap:websub_api:read
+            - ap:websub_api:manage
+      responses:
+        '200':
+          description: WebSub API retrieved successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    put:
+      security:
+        - OAuth2Security:
+            - ap:websub_api:update
+            - ap:websub_api:manage
+      responses:
+        '200':
+          description: WebSub API updated successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    delete:
+      security:
+        - OAuth2Security:
+            - ap:websub_api:delete
+            - ap:websub_api:manage
+      responses:
+        '204':
+          description: WebSub API deleted successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/v0.9/websub-apis/{apiId}/publications:
+    post:
+      security:
+        - OAuth2Security:
+            - ap:websub_api:publication:create
+            - ap:websub_api:manage
+      responses:
+        '501':
+          $ref: '#/components/responses/NotImplemented'
+
+  /api/v0.9/websub-apis/{apiId}/publications/{devportalId}:
+    delete:
+      security:
+        - OAuth2Security:
+            - ap:websub_api:publication:delete
+            - ap:websub_api:manage
+      responses:
+        '501':
+          $ref: '#/components/responses/NotImplemented'
+
+  /api/v0.9/websub-apis/{apiId}/deployments:
+    post:
+      security:
+        - OAuth2Security:
+            - ap:websub_api:deployment:create
+            - ap:websub_api:deployment:manage
+      responses:
+        '201':
+          description: WebSub API deployment created successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    get:
+      security:
+        - OAuth2Security:
+            - ap:websub_api:deployment:read
+            - ap:websub_api:deployment:manage
+      responses:
+        '200':
+          description: WebSub API deployments retrieved successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/v0.9/websub-apis/{apiId}/deployments/{deploymentId}:
+    get:
+      security:
+        - OAuth2Security:
+            - ap:websub_api:deployment:read
+            - ap:websub_api:deployment:manage
+      responses:
+        '200':
+          description: WebSub API deployment retrieved successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    delete:
+      security:
+        - OAuth2Security:
+            - ap:websub_api:deployment:delete
+            - ap:websub_api:deployment:manage
+      responses:
+        '204':
+          description: WebSub API deployment deleted successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/v0.9/websub-apis/{apiId}/deployments/{deploymentId}/undeploy:
+    post:
+      security:
+        - OAuth2Security:
+            - ap:websub_api:deployment:undeploy
+            - ap:websub_api:deployment:manage
+      responses:
+        '200':
+          description: WebSub API deployment undeployed successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/v0.9/websub-apis/{apiId}/deployments/{deploymentId}/restore:
+    post:
+      security:
+        - OAuth2Security:
+            - ap:websub_api:deployment:restore
+            - ap:websub_api:deployment:manage
+      responses:
+        '200':
+          description: WebSub API deployment restored successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/v0.9/websub-apis/{apiId}/api-keys:
+    post:
+      security:
+        - OAuth2Security:
+            - ap:websub_api:api_key:create
+            - ap:websub_api:api_key:manage
+      responses:
+        '201':
+          description: WebSub API key created successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /api/v0.9/websub-apis/{apiId}/api-keys/{keyName}:
+    put:
+      security:
+        - OAuth2Security:
+            - ap:websub_api:api_key:update
+            - ap:websub_api:api_key:manage
+      responses:
+        '200':
+          description: WebSub API key updated successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+    delete:
+      security:
+        - OAuth2Security:
+            - ap:websub_api:api_key:delete
+            - ap:websub_api:api_key:manage
+      responses:
+        '204':
+          description: WebSub API key deleted successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /api/v1/websub-apis/{apiId}/secrets:
+    post:
+      security:
+        - OAuth2Security:
+            - ap:websub_api:hmac_secret:create
+            - ap:websub_api:manage
+      responses:
+        '201':
+          description: HMAC secret created successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+    get:
+      security:
+        - OAuth2Security:
+            - ap:websub_api:hmac_secret:read
+            - ap:websub_api:manage
+      responses:
+        '200':
+          description: HMAC secrets retrieved successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/v1/websub-apis/{apiId}/secrets/{secretName}:
+    delete:
+      security:
+        - OAuth2Security:
+            - ap:websub_api:hmac_secret:delete
+            - ap:websub_api:manage
+      responses:
+        '204':
+          description: HMAC secret deleted successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/v1/websub-apis/{apiId}/secrets/{secretName}/regenerate:
+    post:
+      security:
+        - OAuth2Security:
+            - ap:websub_api:hmac_secret:regenerate
+            - ap:websub_api:manage
+      responses:
+        '200':
+          description: HMAC secret regenerated successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/v0.9/webbroker-apis:
+    post:
+      security:
+        - OAuth2Security:
+            - ap:webbroker_api:create
+            - ap:webbroker_api:manage
+      responses:
+        '201':
+          description: WebBroker API created successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    get:
+      security:
+        - OAuth2Security:
+            - ap:webbroker_api:read
+            - ap:webbroker_api:manage
+      responses:
+        '200':
+          description: WebBroker APIs retrieved successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/v0.9/webbroker-apis/{apiId}:
+    get:
+      security:
+        - OAuth2Security:
+            - ap:webbroker_api:read
+            - ap:webbroker_api:manage
+      responses:
+        '200':
+          description: WebBroker API retrieved successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    put:
+      security:
+        - OAuth2Security:
+            - ap:webbroker_api:update
+            - ap:webbroker_api:manage
+      responses:
+        '200':
+          description: WebBroker API updated successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    delete:
+      security:
+        - OAuth2Security:
+            - ap:webbroker_api:delete
+            - ap:webbroker_api:manage
+      responses:
+        '204':
+          description: WebBroker API deleted successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/v0.9/webbroker-apis/{apiId}/deployments:
+    post:
+      security:
+        - OAuth2Security:
+            - ap:webbroker_api:deployment:create
+            - ap:webbroker_api:deployment:manage
+      responses:
+        '201':
+          description: WebBroker API deployment created successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    get:
+      security:
+        - OAuth2Security:
+            - ap:webbroker_api:deployment:read
+            - ap:webbroker_api:deployment:manage
+      responses:
+        '200':
+          description: WebBroker API deployments retrieved successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/v0.9/webbroker-apis/{apiId}/deployments/{deploymentId}:
+    get:
+      security:
+        - OAuth2Security:
+            - ap:webbroker_api:deployment:read
+            - ap:webbroker_api:deployment:manage
+      responses:
+        '200':
+          description: WebBroker API deployment retrieved successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    delete:
+      security:
+        - OAuth2Security:
+            - ap:webbroker_api:deployment:delete
+            - ap:webbroker_api:deployment:manage
+      responses:
+        '204':
+          description: WebBroker API deployment deleted successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/v0.9/webbroker-apis/{apiId}/deployments/{deploymentId}/undeploy:
+    post:
+      security:
+        - OAuth2Security:
+            - ap:webbroker_api:deployment:undeploy
+            - ap:webbroker_api:deployment:manage
+      responses:
+        '200':
+          description: WebBroker API deployment undeployed successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/v0.9/webbroker-apis/{apiId}/deployments/{deploymentId}/restore:
+    post:
+      security:
+        - OAuth2Security:
+            - ap:webbroker_api:deployment:restore
+            - ap:webbroker_api:deployment:manage
+      responses:
+        '200':
+          description: WebBroker API deployment restored successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/v0.9/webbroker-apis/{apiId}/api-keys:
+    post:
+      security:
+        - OAuth2Security:
+            - ap:webbroker_api:api_key:create
+            - ap:webbroker_api:api_key:manage
+      responses:
+        '201':
+          description: WebBroker API key created successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /api/v0.9/webbroker-apis/{apiId}/api-keys/{keyName}:
+    put:
+      security:
+        - OAuth2Security:
+            - ap:webbroker_api:api_key:update
+            - ap:webbroker_api:api_key:manage
+      responses:
+        '200':
+          description: WebBroker API key updated successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+    delete:
+      security:
+        - OAuth2Security:
+            - ap:webbroker_api:api_key:delete
+            - ap:webbroker_api:api_key:manage
+      responses:
+        '204':
+          description: WebBroker API key deleted successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+components:
+  responses:
+    BadRequest:
+      description: Bad request
+    Unauthorized:
+      description: Unauthorized
+    NotFound:
+      description: Not found
+    Conflict:
+      description: Conflict
+    NotImplemented:
+      description: Not implemented
+    InternalServerError:
+      description: Internal server error
+    ServiceUnavailable:
+      description: Service unavailable
+  securitySchemes:
+    OAuth2Security:
+      type: oauth2
+      flows:
+        clientCredentials:
+          tokenUrl: /oauth2/token
+          scopes: {}

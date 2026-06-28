@@ -293,7 +293,7 @@ func TestLifecycle_APIKeyCreateListRevoke(t *testing.T) {
 	}
 	artifactUUID := api.ID
 
-	keyRepo := repository.NewAPIKeyRepo(it.db)
+	keyRepo := repository.NewAPIKeyRepo(it.db, repository.NewArtifactTableRegistry())
 
 	// --- Create two API keys on the same artifact ---
 	const n = 2

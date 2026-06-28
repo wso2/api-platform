@@ -120,8 +120,9 @@ func setupImportTest(t *testing.T) *importTestDeps {
 	templateRepo := repository.NewLLMProviderTemplateRepo(db)
 	proxyRepo := repository.NewLLMProxyRepo(db)
 	mcpProxyRepo := repository.NewMCPProxyRepo(db)
-	artifactRepo := repository.NewArtifactRepo(db)
-	deploymentRepo := repository.NewDeploymentRepo(db)
+	reg := repository.NewArtifactTableRegistry()
+	artifactRepo := repository.NewArtifactRepo(db, reg)
+	deploymentRepo := repository.NewDeploymentRepo(db, reg)
 	gatewayRepo := repository.NewGatewayRepo(db)
 	projectRepo := repository.NewProjectRepo(db)
 

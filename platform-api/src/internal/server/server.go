@@ -94,22 +94,26 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 		slogger.Debug("Skipping schema DDL execution — schema must be pre-provisioned", "driver", cfg.Database.Driver)
 	}
 
+	// Initialize the artifact table registry. Core tables are seeded here; plugins
+	// extend it during Init before any request is served.
+	artifactTableRegistry := repository.NewArtifactTableRegistry()
+
 	// Initialize repositories
 	orgRepo := repository.NewOrganizationRepo(db)
 	projectRepo := repository.NewProjectRepo(db)
 	apiRepo := repository.NewAPIRepo(db)
-	appRepo := repository.NewApplicationRepo(db)
+	appRepo := repository.NewApplicationRepo(db, artifactTableRegistry)
 	gatewayRepo := repository.NewGatewayRepo(db)
 	customPolicyRepo := repository.NewCustomPolicyRepo(db)
-	artifactRepo := repository.NewArtifactRepo(db)
-	deploymentRepo := repository.NewDeploymentRepo(db)
+	artifactRepo := repository.NewArtifactRepo(db, artifactTableRegistry)
+	deploymentRepo := repository.NewDeploymentRepo(db, artifactTableRegistry)
 	subscriptionRepo := repository.NewSubscriptionRepo(db)
 	subscriptionPlanRepo := repository.NewSubscriptionPlanRepo(db)
 	llmTemplateRepo := repository.NewLLMProviderTemplateRepo(db)
 	llmProviderRepo := repository.NewLLMProviderRepo(db)
 	llmProxyRepo := repository.NewLLMProxyRepo(db)
 	mcpProxyRepo := repository.NewMCPProxyRepo(db)
-	apiKeyRepo := repository.NewAPIKeyRepo(db)
+	apiKeyRepo := repository.NewAPIKeyRepo(db, artifactTableRegistry)
 	auditRepo := repository.NewAuditRepo(db)
 	secretRepo := repository.NewSecretRepo(db)
 
@@ -383,22 +387,23 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	// Initialize plugins and register their routes.
 	// Plugins contribute routes, DB schema, and OpenAPI scopes at startup.
 	pluginDeps := &plugin.Deps{
-		DB:                   db,
-		Config:               cfg,
-		Logger:               slogger,
-		EventHub:             eventHub,
-		GatewayRepo:          gatewayRepo,
-		OrgRepo:              orgRepo,
-		ProjectRepo:          projectRepo,
-		ArtifactRepo:         artifactRepo,
-		DeploymentRepo:       deploymentRepo,
-		APIKeyRepo:           apiKeyRepo,
-		AuditRepo:            auditRepo,
-		SecretRepo:           secretRepo,
-		APIRepo:              apiRepo,
-		GatewayEventsService: gatewayEventsService,
-		APIKeyService:        apiKeyService,
-		DBEncryptionKey:      dbEncryptionKey,
+		DB:                    db,
+		Config:                cfg,
+		Logger:                slogger,
+		EventHub:              eventHub,
+		ArtifactTableRegistry: artifactTableRegistry,
+		GatewayRepo:           gatewayRepo,
+		OrgRepo:               orgRepo,
+		ProjectRepo:           projectRepo,
+		ArtifactRepo:          artifactRepo,
+		DeploymentRepo:        deploymentRepo,
+		APIKeyRepo:            apiKeyRepo,
+		AuditRepo:             auditRepo,
+		SecretRepo:            secretRepo,
+		APIRepo:               apiRepo,
+		GatewayEventsService:  gatewayEventsService,
+		APIKeyService:         apiKeyService,
+		DBEncryptionKey:       dbEncryptionKey,
 	}
 	for _, p := range plugin.All() {
 		if err := p.Init(pluginDeps); err != nil {
@@ -415,12 +420,13 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 		}
 		p.RegisterRoutes(mux)
 		slogger.Info("Plugin initialized", "name", p.Name())
-		// Wire plugin-owned repos into core services that have optional setters.
+		// Wire plugin-owned repos/services into core services.
 		if ep, ok := p.(plugin.EventArtifactPlugin); ok {
-			orgService.SetWebSubAPIRepo(ep.GetWebSubAPIRepo())
-			projectService.SetWebSubAPIRepo(ep.GetWebSubAPIRepo())
 			internalGatewayService.SetEventArtifactRepos(ep.GetWebSubAPIRepo(), ep.GetWebBrokerAPIRepo())
 			internalGatewayHandler.SetHmacSecretService(ep.GetHmacSecretService())
+		}
+		if guard, ok := p.(service.ProjectDeletionGuard); ok {
+			projectService.RegisterDeletionGuard(guard)
 		}
 	}
 	slogger.Info("Registered API routes successfully")

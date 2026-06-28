@@ -33,13 +33,15 @@ import (
 
 // DeploymentRepo implements DeploymentRepository
 type DeploymentRepo struct {
-	db *database.DB
+	db  *database.DB
+	reg *ArtifactTableRegistry
 }
 
 // NewDeploymentRepo creates a new deployment repository
-func NewDeploymentRepo(db *database.DB) DeploymentRepository {
+func NewDeploymentRepo(db *database.DB, reg *ArtifactTableRegistry) DeploymentRepository {
 	return &DeploymentRepo{
-		db: db,
+		db:  db,
+		reg: reg,
 	}
 }
 
@@ -812,12 +814,7 @@ func (r *DeploymentRepo) GetControlPlaneDeploymentsByGateway(gatewayID, orgUUID 
 		FROM deployment_status s
 		INNER JOIN artifacts a ON s.artifact_uuid = a.uuid
 		INNER JOIN (
-			SELECT uuid, handle, origin FROM rest_apis
-			UNION ALL SELECT uuid, handle, origin FROM websub_apis
-			UNION ALL SELECT uuid, handle, origin FROM webbroker_apis
-			UNION ALL SELECT uuid, handle, origin FROM llm_providers
-			UNION ALL SELECT uuid, handle, origin FROM llm_proxies
-			UNION ALL SELECT uuid, handle, origin FROM mcp_proxies
+			`+r.reg.UnionAllSelect("uuid", "handle", "origin")+`
 		) src ON src.uuid = s.artifact_uuid
 		WHERE s.gateway_uuid = ? AND s.organization_uuid = ?
 			AND src.origin <> 'gateway_api'`

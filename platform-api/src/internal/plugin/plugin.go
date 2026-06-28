@@ -72,6 +72,10 @@ type Deps struct {
 	Logger   *slog.Logger
 	EventHub eventhub.EventHub
 
+	// ArtifactTableRegistry allows plugins to register their own artifact-backed
+	// tables so that cross-table UNION queries in the core repos include them.
+	ArtifactTableRegistry *repository.ArtifactTableRegistry
+
 	// Core repositories shared with plugins (interfaces).
 	GatewayRepo    repository.GatewayRepository
 	OrgRepo        repository.OrganizationRepository

@@ -40,7 +40,6 @@ type OrganizationService struct {
 	llmProviderRepo   repository.LLMProviderRepository
 	llmProxyRepo      repository.LLMProxyRepository
 	mcpProxyRepo      repository.MCPProxyRepository
-	websubAPIRepo     repository.WebSubAPIRepository
 	llmTemplateSeeder *LLMTemplateSeeder
 	auditRepo         repository.AuditRepository
 	config            *config.Server
