@@ -445,7 +445,7 @@ CREATE TABLE dbo.mcp_proxies (
     UNIQUE(organization_uuid, handle)
 );
 
-
+IF OBJECT_ID(N'dbo.api_keys', N'U') IS NULL
 CREATE TABLE dbo.api_keys (
     uuid VARCHAR(40) PRIMARY KEY,
     artifact_uuid VARCHAR(40) NOT NULL,
@@ -502,7 +502,7 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_subscriptions_organi
 CREATE INDEX idx_subscriptions_organization_uuid ON dbo.subscriptions(organization_uuid);
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_subscriptions_status' AND object_id = OBJECT_ID(N'dbo.subscriptions'))
 CREATE INDEX idx_subscriptions_status ON dbo.subscriptions(status);
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_subscriptions_plan' AND object_id = OBJECT_ID(N'dbo.subscription_plans'))
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_subscriptions_plan' AND object_id = OBJECT_ID(N'dbo.subscriptions'))
 CREATE INDEX idx_subscriptions_plan ON dbo.subscriptions(subscription_plan_uuid);
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_gateways_org' AND object_id = OBJECT_ID(N'dbo.gateways'))
 CREATE INDEX idx_gateways_org ON dbo.gateways(organization_uuid);

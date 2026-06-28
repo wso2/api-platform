@@ -184,7 +184,7 @@ func TestGetDeploymentsWithState_SoftLimit(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
 
-	repo := NewDeploymentRepo(db)
+	repo := NewDeploymentRepo(db, NewArtifactTableRegistry())
 
 	// Setup test data
 	apiUUID := "api-001"
@@ -307,7 +307,7 @@ func TestGetDeploymentsWithState_PrioritizationLogic(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
 
-	repo := NewDeploymentRepo(db)
+	repo := NewDeploymentRepo(db, NewArtifactTableRegistry())
 
 	apiUUID := "api-002"
 	orgUUID := "org-002"
@@ -394,7 +394,7 @@ func TestGetDeploymentsWithState_MultipleGateways(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
 
-	repo := NewDeploymentRepo(db)
+	repo := NewDeploymentRepo(db, NewArtifactTableRegistry())
 
 	apiUUID := "api-003"
 	orgUUID := "org-003"
@@ -551,7 +551,7 @@ func TestGetControlPlaneDeploymentsByGateway_ExcludesGatewayOrigin(t *testing.T)
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
 
-	repo := NewDeploymentRepo(db)
+	repo := NewDeploymentRepo(db, NewArtifactTableRegistry())
 
 	orgUUID := "org-001"
 	gatewayUUID := "gateway-001"

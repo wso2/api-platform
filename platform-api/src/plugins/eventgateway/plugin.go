@@ -31,6 +31,8 @@ import (
 	"net/http"
 	"strings"
 
+	"platform-api/src/api"
+	"platform-api/src/internal/constants"
 	"platform-api/src/internal/database"
 	"platform-api/src/internal/plugin"
 	"platform-api/src/internal/repository"
@@ -39,6 +41,22 @@ import (
 	egrepo "platform-api/src/plugins/eventgateway/repository"
 	egservice "platform-api/src/plugins/eventgateway/service"
 )
+
+// eventgatewayArtifactTables lists the artifact-backed tables owned by this plugin.
+// They are registered into the shared ArtifactTableRegistry during Init so that
+// the core repository UNION queries include them.
+var eventgatewayArtifactTables = []repository.ArtifactTableEntry{
+	{
+		Table:     "websub_apis",
+		KindAlias: constants.WebSubApi,
+		KindKeys:  []string{"websub-api", constants.WebSubApi},
+	},
+	{
+		Table:     "webbroker_apis",
+		KindAlias: constants.WebBrokerApi,
+		KindKeys:  []string{"webbroker-api", constants.WebBrokerApi},
+	},
+}
 
 //go:embed openapi.yaml
 var openapiSpec []byte
@@ -85,17 +103,26 @@ func (p *EventGatewayPlugin) Init(deps *plugin.Deps) error {
 	logger := deps.Logger
 	apiUtil := &utils.APIUtil{}
 
-	// Apply schema DDL for this plugin.
-	schemaDDL := p.selectSchema(db)
-	if schemaDDL != "" {
-		if err := db.InitSchemaSQL(schemaDDL, logger); err != nil {
-			return fmt.Errorf("eventgateway: failed to apply schema: %w", err)
+	// Register this plugin's artifact-backed tables so core UNION queries include them.
+	for _, entry := range eventgatewayArtifactTables {
+		deps.ArtifactTableRegistry.Register(entry)
+	}
+
+	// Schema DDL is applied only for SQLite (local/demo deployments). For
+	// other drivers the operator must pre-provision the schema; auto-running
+	// DDL at startup against an external database is a security risk.
+	if db.Driver() == database.DriverSQLite {
+		schemaDDL := p.selectSchema(db)
+		if schemaDDL != "" {
+			if err := db.InitSchemaSQL(schemaDDL, logger); err != nil {
+				return fmt.Errorf("eventgateway: failed to apply schema: %w", err)
+			}
 		}
 	}
 
 	// Repositories.
-	websubRepo := egrepo.NewWebSubAPIRepo(db)
-	webbrokerRepo := egrepo.NewWebBrokerAPIRepo(db)
+	websubRepo := egrepo.NewWebSubAPIRepo(db, deps.ArtifactTableRegistry)
+	webbrokerRepo := egrepo.NewWebBrokerAPIRepo(db, deps.ArtifactTableRegistry)
 	hmacSecretRepo := egrepo.NewWebSubAPIHmacSecretRepo(db)
 
 	p.websubAPIRepo = websubRepo
@@ -212,6 +239,45 @@ func (p *EventGatewayPlugin) GetHmacSecretService() plugin.HmacSecretServicer {
 	}
 	return p.hmacSecretSvc
 }
+
+// CheckProjectDeletion implements service.ProjectDeletionGuard.
+// It blocks deletion when WebSub or WebBroker APIs are still associated with the project.
+func (p *EventGatewayPlugin) CheckProjectDeletion(orgID, projectID string) error {
+	websubCount, err := p.websubAPIRepo.CountByProject(orgID, projectID)
+	if err != nil {
+		return err
+	}
+	if websubCount > 0 {
+		return constants.ErrProjectHasAssociatedWebSubAPIs
+	}
+	webbrokerCount, err := p.webbrokerAPIRepo.CountByProject(orgID, projectID)
+	if err != nil {
+		return err
+	}
+	if webbrokerCount > 0 {
+		return constants.ErrProjectHasAssociatedWebBrokerAPIs
+	}
+	return nil
+}
+
+// EnrichSubscription implements service.OrgSubscriptionEnricher.
+// It adds the WebSub API quota to the organization subscription response.
+func (p *EventGatewayPlugin) EnrichSubscription(orgID string, sub *api.OrganizationSubscription) error {
+	count, err := p.websubAPIRepo.Count(orgID)
+	if err != nil {
+		return err
+	}
+	limit := constants.MaxWebSubAPIsPerOrganization
+	remaining := max(limit-count, 0)
+	sub.Quotas.WebsubApis = &api.OrganizationQuota{
+		Used:      count,
+		Limit:     intPtr(limit),
+		Remaining: intPtr(remaining),
+	}
+	return nil
+}
+
+func intPtr(v int) *int { return &v }
 
 // selectSchema returns the DDL appropriate for the current database driver.
 func (p *EventGatewayPlugin) selectSchema(db *database.DB) string {

@@ -250,7 +250,7 @@ func TestLifecycle_ApplicationByIDOrHandle(t *testing.T) {
 	defer it.db.Close()
 	orgRepo := repository.NewOrganizationRepo(it.db)
 	projectRepo := repository.NewProjectRepo(it.db)
-	appRepo := repository.NewApplicationRepo(it.db)
+	appRepo := repository.NewApplicationRepo(it.db, repository.NewArtifactTableRegistry())
 
 	org := &model.Organization{ID: id(), Handle: "ap-" + id()[:8], Name: "app org", Region: "us"}
 	if err := orgRepo.CreateOrganization(org); err != nil {

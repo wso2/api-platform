@@ -31,12 +31,13 @@ import (
 
 // APIKeyRepo implements APIKeyRepository
 type APIKeyRepo struct {
-	db *database.DB
+	db  *database.DB
+	reg *ArtifactTableRegistry
 }
 
 // NewAPIKeyRepo creates a new API key repository
-func NewAPIKeyRepo(db *database.DB) APIKeyRepository {
-	return &APIKeyRepo{db: db}
+func NewAPIKeyRepo(db *database.DB, reg *ArtifactTableRegistry) APIKeyRepository {
+	return &APIKeyRepo{db: db, reg: reg}
 }
 
 // Create inserts a new API key record
@@ -229,12 +230,7 @@ func (r *APIKeyRepo) ListAPIKeysByUser(orgUUID, username string, kinds []string)
 		FROM api_keys ak
 		JOIN artifacts a ON a.uuid = ak.artifact_uuid
 		JOIN (
-			SELECT uuid, handle FROM rest_apis
-			UNION ALL SELECT uuid, handle FROM websub_apis
-			UNION ALL SELECT uuid, handle FROM webbroker_apis
-			UNION ALL SELECT uuid, handle FROM llm_providers
-			UNION ALL SELECT uuid, handle FROM llm_proxies
-			UNION ALL SELECT uuid, handle FROM mcp_proxies
+			`+r.reg.UnionAllSelect("uuid", "handle")+`
 		) src ON src.uuid = ak.artifact_uuid
 		WHERE ak.created_by = ?
 		  AND a.organization_uuid = ?

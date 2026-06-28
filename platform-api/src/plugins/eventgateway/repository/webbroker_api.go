@@ -40,8 +40,8 @@ type WebBrokerAPIRepo struct {
 }
 
 // NewWebBrokerAPIRepo creates a new WebBrokerAPIRepo instance
-func NewWebBrokerAPIRepo(db *database.DB) *WebBrokerAPIRepo {
-	return &WebBrokerAPIRepo{db: db, artifactRepo: corerepo.NewArtifactRepo(db)}
+func NewWebBrokerAPIRepo(db *database.DB, reg *corerepo.ArtifactTableRegistry) *WebBrokerAPIRepo {
+	return &WebBrokerAPIRepo{db: db, artifactRepo: corerepo.NewArtifactRepo(db, reg)}
 }
 
 // Create creates a new WebBroker API in the database
