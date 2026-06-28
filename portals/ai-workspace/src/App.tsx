@@ -32,6 +32,7 @@ import PageErrorBoundary from './Components/common/PageErrorBoundary';
 import { AIWorkspaceSnackbarProvider } from './contexts/AIWorkspaceSnackbarContext';
 import OrgProvisioningPage from './pages/register/OrgProvisioningPage';
 import { checkOrganizationExists, registerOrganization } from './apis/platformApis';
+import { forceLogoutAndRedirect } from './auth/logout';
 import { DEFAULT_ORG_REGION } from './config.env';
 
 // App Shell Pages
@@ -179,6 +180,7 @@ function PostSignInInit({ children }: { children: React.ReactNode }) {
   const initiated = useRef(false);
   const [orgState, setOrgState] = useState<OrgInitState>('checking');
   const [orgError, setOrgError] = useState<string | null>(null);
+  const [sessionExpired, setSessionExpired] = useState(false);
 
   React.useEffect(() => {
     if (initiated.current) return;
@@ -207,6 +209,13 @@ function PostSignInInit({ children }: { children: React.ReactNode }) {
         setOrgState('done');
       })
       .catch((err: unknown) => {
+        // A 401 means the session is invalid/expired — retrying won't help.
+        // Surface a "session expired" screen with a logout action instead.
+        if ((err as { status?: number })?.status === 401) {
+          setSessionExpired(true);
+          setOrgState('error');
+          return;
+        }
         setOrgError(err instanceof Error ? err.message : 'Failed to set up workspace');
         setOrgState('error');
       });
@@ -225,7 +234,9 @@ function PostSignInInit({ children }: { children: React.ReactNode }) {
     return (
       <OrgProvisioningPage
         orgName={user?.org?.name ?? undefined}
-        error={orgError}
+        error={sessionExpired ? null : orgError}
+        isSessionExpired={sessionExpired}
+        onLogout={() => { void forceLogoutAndRedirect(); }}
         onRetry={() => { initiated.current = false; setOrgState('checking'); }}
       />
     );

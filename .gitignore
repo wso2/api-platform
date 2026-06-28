@@ -149,6 +149,8 @@ cli/src/tests/target/
 platform-api/src/data
 platform-api/src/resources/openapi_with_binding.yaml
 platform-api/src/cmd/cmd
+# Compiled platform-api binary (produced by `go build` in src/)
+platform-api/src/main
 
 # Gateway
 gateway/gateway-runtime/target

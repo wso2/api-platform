@@ -20,26 +20,23 @@ package middleware
 import (
 	"fmt"
 	"os"
-	"regexp"
 	"strings"
 
 	"gopkg.in/yaml.v3"
 )
 
-var oaParamPattern = regexp.MustCompile(`\{([^}]+)\}`)
-
-// ScopeRegistry maps (HTTP method, Gin path pattern) to the acceptable scopes for
+// ScopeRegistry maps (HTTP method, net/http path pattern) to the acceptable scopes for
 // that operation. Scopes are OR-evaluated: the caller needs at least one.
 type ScopeRegistry struct {
-	// scopes is keyed by "METHOD:/api/v1/gin-style/path".
+	// scopes is keyed by "METHOD:/api/v1/path/{param}".
 	scopes map[string][]string
 }
 
-// Lookup returns the required scopes for the given HTTP method and Gin path pattern
-// (e.g. c.Request.Method and c.FullPath()). found is false when the route is not in
-// the OpenAPI spec, meaning no scope requirement was declared.
-func (r *ScopeRegistry) Lookup(method, ginPath string) ([]string, bool) {
-	key := strings.ToUpper(method) + ":" + ginPath
+// Lookup returns the required scopes for the given HTTP method and path pattern
+// (e.g. r.Method and the path portion of r.Pattern). found is false when the route
+// is not in the OpenAPI spec, meaning no scope requirement was declared.
+func (r *ScopeRegistry) Lookup(method, path string) ([]string, bool) {
+	key := strings.ToUpper(method) + ":" + path
 	scopes, ok := r.scopes[key]
 	return scopes, ok
 }
@@ -73,7 +70,7 @@ type openAPIOperation struct {
 
 // LoadScopeRegistry parses the OpenAPI spec at specPath and returns a ScopeRegistry
 // populated from the standard security field on each operation. The first servers[].url
-// is used to derive the base path prefix that maps spec paths to actual Gin route
+// is used to derive the base path prefix that maps spec paths to actual net/http route
 // patterns (e.g. /api/v1 + /projects → /api/v1/projects).
 func LoadScopeRegistry(specPath string) (*ScopeRegistry, error) {
 	data, err := os.ReadFile(specPath)
@@ -94,13 +91,14 @@ func LoadScopeRegistry(specPath string) (*ScopeRegistry, error) {
 	registry := &ScopeRegistry{scopes: make(map[string][]string)}
 
 	for oaPath, methods := range doc.Paths {
-		ginPath := basePath + oaParamPattern.ReplaceAllString(oaPath, ":$1")
+		// Keep OpenAPI {param} syntax — it matches net/http ServeMux path values directly.
+		httpPath := basePath + oaPath
 		for method, op := range methods {
 			scopes := collectScopes(op.Security)
 			if len(scopes) == 0 {
 				continue
 			}
-			key := strings.ToUpper(method) + ":" + ginPath
+			key := strings.ToUpper(method) + ":" + httpPath
 			registry.scopes[key] = scopes
 		}
 	}

@@ -82,7 +82,7 @@ eventGateway:
         reconnect_initial: 1s
         reconnect_max: 5m
         polling_interval: 15m
-        deployment_push_enabled: false
+        deployment_sync_enabled: true
         sync_batch_size: 50
 
       # Event gateway specific settings propagated via env vars

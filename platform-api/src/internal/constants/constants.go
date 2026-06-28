@@ -74,12 +74,22 @@ const DefaultGatewayFunctionalityType = GatewayFunctionalityTypeRegular
 
 // Kinds of artifacts
 const (
-	RestApi      = "RestApi"
-	WebSubApi    = "WebSubApi"
-	WebBrokerApi = "WebBrokerApi"
-	LLMProvider  = "LlmProvider"
-	LLMProxy     = "LlmProxy"
-	MCPProxy     = "Mcp"
+	RestApi             = "RestApi"
+	WebSubApi           = "WebSubApi"
+	WebBrokerApi        = "WebBrokerApi"
+	LLMProvider         = "LlmProvider"
+	LLMProviderTemplate = "LlmProviderTemplate"
+	LLMProxy            = "LlmProxy"
+	MCPProxy            = "Mcp"
+)
+
+// Artifact origin values. Origin distinguishes control-plane created artifacts
+// (control_plane) from artifacts pushed up by a data-plane gateway (gateway_api).
+// gateway_api artifacts are read-only in the control plane. The values match the
+// gateway's origin naming (see gateway-controller models.Origin).
+const (
+	OriginCP = "control_plane"
+	OriginDP = "gateway_api"
 )
 
 // API Type Constants

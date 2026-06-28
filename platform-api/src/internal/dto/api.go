@@ -131,13 +131,13 @@ type Vhosts struct {
 
 // APIYAMLData represents a basic spec section of the API deployment YAML
 type APIYAMLData struct {
-	DisplayName       string               `yaml:"displayName"`
-	Version           string               `yaml:"version"`
-	Context           string               `yaml:"context"`
-	SubscriptionPlans []string             `yaml:"subscriptionPlans,omitempty"`
-    Vhosts            *Vhosts              `yaml:"vhosts,omitempty"`
-	Upstream          *UpstreamYAML        `yaml:"upstream,omitempty"`
-	Policies          []Policy             `yaml:"policies,omitempty"`
+	DisplayName       string                 `yaml:"displayName"`
+	Version           string                 `yaml:"version"`
+	Context           string                 `yaml:"context"`
+	SubscriptionPlans []string               `yaml:"subscriptionPlans,omitempty"`
+	Vhosts            *Vhosts                `yaml:"vhosts,omitempty"`
+	Upstream          *UpstreamYAML          `yaml:"upstream,omitempty"`
+	Policies          []Policy               `yaml:"policies,omitempty"`
 	Operations        []api.OperationRequest `yaml:"operations,omitempty"`
 	Channels          []api.ChannelRequest   `yaml:"channels,omitempty"`
 }
@@ -178,4 +178,17 @@ type APIValidationResponse struct {
 type APIValidationError struct {
 	Code    string `json:"code"`
 	Message string `json:"message"`
+}
+
+// ValidateRESTAPIParams defines parameters for ValidateRESTAPI.
+// Kept for use in the ValidateAPI service method.
+type ValidateRESTAPIParams struct {
+	// Identifier **API Identifier** to check for existence within the organization.
+	Identifier *api.ApiIdentifierQ `form:"identifier,omitempty" json:"identifier,omitempty" yaml:"identifier,omitempty"`
+
+	// Name **API Name** to check for existence within the organization.
+	Name *api.ApiNameQ `form:"name,omitempty" json:"name,omitempty" yaml:"name,omitempty"`
+
+	// Version **API Version** to check for existence within the organization.
+	Version *api.ApiVersionQ `form:"version,omitempty" json:"version,omitempty" yaml:"version,omitempty"`
 }

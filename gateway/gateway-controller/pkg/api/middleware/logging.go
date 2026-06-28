@@ -20,40 +20,16 @@ package middleware
 
 import (
 	"log/slog"
-	"time"
+	"net/http"
 
-	"github.com/gin-gonic/gin"
+	gohttpkit "github.com/wso2/go-httpkit/middleware"
 )
 
-// LoggingMiddleware creates a Gin middleware for request/response logging
-// Note: This middleware should be registered AFTER CorrelationIDMiddleware
-// to ensure the correlation-aware logger is available in the context
-func LoggingMiddleware(logger *slog.Logger) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		start := time.Now()
-		path := c.Request.URL.Path
-		query := c.Request.URL.RawQuery
-
-		// Process request
-		c.Next()
-
-		// Log request details
-		latency := time.Since(start)
-		statusCode := c.Writer.Status()
-		method := c.Request.Method
-		clientIP := c.ClientIP()
-
-		// Use correlation-aware logger from context (falls back to base logger)
-		log := GetLogger(c, logger)
-
-		log.Info("HTTP request",
-			slog.String("method", method),
-			slog.String("path", path),
-			slog.String("query", query),
-			slog.Int("status", statusCode),
-			slog.Duration("latency", latency),
-			slog.String("client_ip", clientIP),
-			slog.String("user_agent", c.Request.UserAgent()),
-		)
-	}
+// LoggingMiddleware logs each request (method, path, status, latency) after
+// the downstream handler completes. Uses the correlation-aware logger stored
+// by CorrelationIDMiddleware when available.
+//
+// Must be registered after CorrelationIDMiddleware.
+func LoggingMiddleware(logger *slog.Logger) func(http.Handler) http.Handler {
+	return gohttpkit.LoggingMiddleware(logger)
 }

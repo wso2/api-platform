@@ -20,6 +20,7 @@
 package handler
 
 import (
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -32,7 +33,7 @@ import (
 	"platform-api/src/internal/service"
 	"platform-api/src/internal/utils"
 
-	"github.com/gin-gonic/gin"
+	"github.com/wso2/go-httpkit/httputil"
 )
 
 // WebSubAPIHandler handles CRUD and auxiliary routes for WebSub APIs
@@ -50,157 +51,171 @@ func NewWebSubAPIHandler(websubAPIService *service.WebSubAPIService, slogger *sl
 }
 
 // RegisterRoutes registers WebSub API routes
-func (h *WebSubAPIHandler) RegisterRoutes(r *gin.Engine) {
-	v1 := r.Group(constants.APIBasePath)
-	{
-		v1.POST("/websub-apis", h.CreateWebSubAPI)
-		v1.GET("/websub-apis", h.ListWebSubAPIs)
-		v1.GET("/websub-apis/:apiId", h.GetWebSubAPI)
-		v1.PUT("/websub-apis/:apiId", h.UpdateWebSubAPI)
-		v1.DELETE("/websub-apis/:apiId", h.DeleteWebSubAPI)
-	}
+func (h *WebSubAPIHandler) RegisterRoutes(mux *http.ServeMux) {
+	mux.HandleFunc("POST "+constants.APIBasePath+"/websub-apis", h.CreateWebSubAPI)
+	mux.HandleFunc("GET "+constants.APIBasePath+"/websub-apis", h.ListWebSubAPIs)
+	mux.HandleFunc("GET "+constants.APIBasePath+"/websub-apis/{apiId}", h.GetWebSubAPI)
+	mux.HandleFunc("PUT "+constants.APIBasePath+"/websub-apis/{apiId}", h.UpdateWebSubAPI)
+	mux.HandleFunc("DELETE "+constants.APIBasePath+"/websub-apis/{apiId}", h.DeleteWebSubAPI)
+	mux.HandleFunc("POST "+constants.APIBasePath+"/websub-apis/{apiId}/publications", h.PublishToDevPortal)
+	mux.HandleFunc("DELETE "+constants.APIBasePath+"/websub-apis/{apiId}/publications/{devportalId}", h.UnpublishFromDevPortal)
 }
 
 // CreateWebSubAPI handles POST /api/v0.9/websub-apis
-func (h *WebSubAPIHandler) CreateWebSubAPI(c *gin.Context) {
-	orgID, ok := middleware.GetOrganizationFromContext(c)
+func (h *WebSubAPIHandler) CreateWebSubAPI(w http.ResponseWriter, r *http.Request) {
+	orgID, ok := middleware.GetOrganizationFromRequest(r)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
 		return
 	}
 
 	var req api.WebSubAPI
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		h.slogger.Error("WebSub API request validation failed", "org_id", orgID, "error", err)
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid request body"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid request body"))
 		return
 	}
 
-	createdBy, _ := middleware.GetUsernameFromContext(c)
+	createdBy, _ := middleware.GetUsernameFromRequest(r)
 
 	resp, err := h.websubAPIService.Create(orgID, createdBy, &req)
 	if err != nil {
-		h.handleServiceError(c, err)
+		h.handleServiceError(w, err)
 		return
 	}
 
-	c.JSON(http.StatusCreated, resp)
+	httputil.WriteJSON(w, http.StatusCreated, resp)
 }
 
 // ListWebSubAPIs handles GET /api/v0.9/websub-apis
-func (h *WebSubAPIHandler) ListWebSubAPIs(c *gin.Context) {
-	orgID, ok := middleware.GetOrganizationFromContext(c)
+func (h *WebSubAPIHandler) ListWebSubAPIs(w http.ResponseWriter, r *http.Request) {
+	orgID, ok := middleware.GetOrganizationFromRequest(r)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
 		return
 	}
 
-	projectID := strings.TrimSpace(c.Query("projectId"))
+	projectID := strings.TrimSpace(r.URL.Query().Get("projectId"))
 	if projectID == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "projectId query parameter is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "projectId query parameter is required"))
 		return
 	}
 
-	limit, err := strconv.Atoi(c.DefaultQuery("limit", "20"))
+	limit, err := strconv.Atoi(r.URL.Query().Get("limit"))
 	if err != nil || limit <= 0 {
 		limit = 20
 	}
 	if limit > 100 {
 		limit = 100
 	}
-	offset, err := strconv.Atoi(c.DefaultQuery("offset", "0"))
+	offset, err := strconv.Atoi(r.URL.Query().Get("offset"))
 	if err != nil || offset < 0 {
 		offset = 0
 	}
 
 	resp, err := h.websubAPIService.List(orgID, projectID, limit, offset)
 	if err != nil {
-		h.handleServiceError(c, err)
+		h.handleServiceError(w, err)
 		return
 	}
 
-	c.JSON(http.StatusOK, resp)
+	httputil.WriteJSON(w, http.StatusOK, resp)
 }
 
 // GetWebSubAPI handles GET /api/v0.9/websub-apis/:apiId
-func (h *WebSubAPIHandler) GetWebSubAPI(c *gin.Context) {
-	orgID, ok := middleware.GetOrganizationFromContext(c)
+func (h *WebSubAPIHandler) GetWebSubAPI(w http.ResponseWriter, r *http.Request) {
+	orgID, ok := middleware.GetOrganizationFromRequest(r)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
 		return
 	}
 
-	id := c.Param("apiId")
+	id := r.PathValue("apiId")
 	resp, err := h.websubAPIService.Get(orgID, id)
 	if err != nil {
-		h.handleServiceError(c, err)
+		h.handleServiceError(w, err)
 		return
 	}
 
-	c.JSON(http.StatusOK, resp)
+	httputil.WriteJSON(w, http.StatusOK, resp)
 }
 
 // UpdateWebSubAPI handles PUT /api/v0.9/websub-apis/:apiId
-func (h *WebSubAPIHandler) UpdateWebSubAPI(c *gin.Context) {
-	orgID, ok := middleware.GetOrganizationFromContext(c)
+func (h *WebSubAPIHandler) UpdateWebSubAPI(w http.ResponseWriter, r *http.Request) {
+	orgID, ok := middleware.GetOrganizationFromRequest(r)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
 		return
 	}
 
-	id := c.Param("apiId")
+	id := r.PathValue("apiId")
 
 	var req api.WebSubAPI
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		h.slogger.Error("WebSub API update validation failed", "org_id", orgID, "api_id", id, "error", err)
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid request body"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid request body"))
 		return
 	}
 
-	updatedBy, _ := middleware.GetUsernameFromContext(c)
+	updatedBy, _ := middleware.GetUsernameFromRequest(r)
 	resp, err := h.websubAPIService.Update(orgID, id, updatedBy, &req)
 	if err != nil {
-		h.handleServiceError(c, err)
+		h.handleServiceError(w, err)
 		return
 	}
 
-	c.JSON(http.StatusOK, resp)
+	httputil.WriteJSON(w, http.StatusOK, resp)
 }
 
 // DeleteWebSubAPI handles DELETE /api/v0.9/websub-apis/:apiId
-func (h *WebSubAPIHandler) DeleteWebSubAPI(c *gin.Context) {
-	orgID, ok := middleware.GetOrganizationFromContext(c)
+func (h *WebSubAPIHandler) DeleteWebSubAPI(w http.ResponseWriter, r *http.Request) {
+	orgID, ok := middleware.GetOrganizationFromRequest(r)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
 		return
 	}
 
-	id := c.Param("apiId")
-	deletedBy, _ := middleware.GetUsernameFromContext(c)
+	id := r.PathValue("apiId")
+	deletedBy, _ := middleware.GetUsernameFromRequest(r)
 
 	if err := h.websubAPIService.Delete(orgID, id, deletedBy); err != nil {
-		h.handleServiceError(c, err)
+		h.handleServiceError(w, err)
 		return
 	}
 
-	c.Status(http.StatusNoContent)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// PublishToDevPortal handles POST /api/v0.9/websub-apis/{apiId}/publications
+func (h *WebSubAPIHandler) PublishToDevPortal(w http.ResponseWriter, r *http.Request) {
+	httputil.WriteJSON(w, http.StatusNotImplemented, utils.NewErrorResponse(501, "Not Implemented", "DevPortal publication is not yet supported"))
+}
+
+// UnpublishFromDevPortal handles DELETE /api/v0.9/websub-apis/{apiId}/publications/{devportalId}
+func (h *WebSubAPIHandler) UnpublishFromDevPortal(w http.ResponseWriter, r *http.Request) {
+	httputil.WriteJSON(w, http.StatusNotImplemented, utils.NewErrorResponse(501, "Not Implemented", "DevPortal publication is not yet supported"))
 }
 
 // handleServiceError maps service errors to HTTP responses
-func (h *WebSubAPIHandler) handleServiceError(c *gin.Context, err error) {
+func (h *WebSubAPIHandler) handleServiceError(w http.ResponseWriter, err error) {
+	if respondArtifactGuardError(w, err) {
+		return
+	}
 	switch {
 	case errors.Is(err, constants.ErrInvalidInput):
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))
 	case errors.Is(err, constants.ErrWebSubAPINotFound):
-		c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "WebSub API not found"))
+		httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "WebSub API not found"))
 	case errors.Is(err, constants.ErrWebSubAPIExists):
-		c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict", "WebSub API with this ID already exists"))
+		httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponse(409, "Conflict", "WebSub API with this ID already exists"))
 	case errors.Is(err, constants.ErrWebSubAPILimitReached):
-		c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict", "WebSub API limit reached for the organization"))
+		httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponse(409, "Conflict", "WebSub API limit reached for the organization"))
 	case errors.Is(err, constants.ErrProjectNotFound):
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Project not found"))
+		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Project not found"))
+	case errors.Is(err, constants.ErrDevPortalNotFound):
+		httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "DevPortal not found"))
 	default:
 		h.slogger.Error("WebSub API service error", "error", err)
-		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "An unexpected error occurred"))
+		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "An unexpected error occurred"))
 	}
 }

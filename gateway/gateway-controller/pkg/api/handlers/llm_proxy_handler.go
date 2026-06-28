@@ -27,18 +27,18 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/gin-gonic/gin"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/middleware"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
+	"github.com/wso2/go-httpkit/httputil"
 )
 
 // ListLLMProxies implements ServerInterface.ListLLMProxies
 // (GET /llm-proxies)
-func (s *APIServer) ListLLMProxies(c *gin.Context, params api.ListLLMProxiesParams) {
-	log := middleware.GetLogger(c, s.logger)
+func (s *APIServer) ListLLMProxies(w http.ResponseWriter, r *http.Request, params api.ListLLMProxiesParams) {
+	log := middleware.GetLogger(r, s.logger)
 	configs := s.llmDeploymentService.ListLLMProxies(params)
 
 	items := make([]any, 0, len(configs))
@@ -47,7 +47,7 @@ func (s *APIServer) ListLLMProxies(c *gin.Context, params api.ListLLMProxiesPara
 		// so each list item has a strongly-typed k8s-shaped body with status.
 		proxy, err := rematerializeLLMProxyConfig(log, cfg.UUID, cfg.DisplayName, cfg.SourceConfiguration)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+			httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{
 				Status: "error", Message: "Failed to get stored LLM proxy configuration"})
 			return
 		}
@@ -55,19 +55,19 @@ func (s *APIServer) ListLLMProxies(c *gin.Context, params api.ListLLMProxiesPara
 		items = append(items, buildResourceResponseFromStored(proxy, cfg))
 	}
 
-	c.JSON(http.StatusOK, gin.H{"status": "success", "count": len(items), "proxies": items})
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"status": "success", "count": len(items), "proxies": items})
 }
 
 // CreateLLMProxy implements ServerInterface.CreateLLMProxy
 // (POST /llm-proxies)
-func (s *APIServer) CreateLLMProxy(c *gin.Context) {
-	log := middleware.GetLogger(c, s.logger)
+func (s *APIServer) CreateLLMProxy(w http.ResponseWriter, r *http.Request) {
+	log := middleware.GetLogger(r, s.logger)
 
 	// Read request body
-	body, err := io.ReadAll(c.Request.Body)
+	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		log.Error("Failed to read request body", slog.Any("error", err))
-		c.JSON(http.StatusBadRequest, api.ErrorResponse{
+		httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{
 			Status:  "error",
 			Message: "Failed to read request body",
 		})
@@ -75,24 +75,24 @@ func (s *APIServer) CreateLLMProxy(c *gin.Context) {
 	}
 
 	// Get correlation ID from context
-	correlationID := middleware.GetCorrelationID(c)
+	correlationID := middleware.GetCorrelationID(r)
 
 	// Delegate to service which parses/validates/transforms and persists
 	// Important: The result stored configuration contains resolved secrets. Do not expose them in responses.
 	result, err := s.llmDeploymentService.CreateLLMProxy(utils.LLMDeploymentParams{
 		Data:          body,
-		ContentType:   c.GetHeader("Content-Type"),
+		ContentType:   r.Header.Get("Content-Type"),
 		CorrelationID: correlationID,
 		Logger:        log,
 		Origin:        models.OriginGatewayAPI,
 	})
 	if err != nil {
-		if mapRenderError(c, "create", err) {
+		if mapRenderError(w, "create", err) {
 			return
 		}
 		if utils.IsPolicyDefinitionMissingError(err) {
 			log.Error("Failed to create LLM proxy - policy definition missing", slog.Any("error", err))
-			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+			httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{
 				Status:  "error",
 				Message: utils.PolicyDefinitionMissingUserMessage,
 			})
@@ -100,32 +100,26 @@ func (s *APIServer) CreateLLMProxy(c *gin.Context) {
 		}
 		if errors.Is(err, utils.ErrLLMProxyValidation) {
 			log.Warn("LLM proxy configuration invalid", slog.Any("error", err))
-			c.JSON(http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: err.Error()})
+			httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: err.Error()})
 			return
 		}
 		if storage.IsNotFoundError(err) {
-			c.JSON(http.StatusNotFound, api.ErrorResponse{
+			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{
 				Status:  "error",
 				Message: "LLM proxy configuration not found",
 			})
 			return
 		}
 		if storage.IsConflictError(err) {
-			c.JSON(http.StatusConflict, api.ErrorResponse{Status: "error", Message: err.Error()})
+			httputil.WriteJSON(w, http.StatusConflict, api.ErrorResponse{Status: "error", Message: err.Error()})
 			return
 		}
 		log.Error("Failed to create LLM proxy", slog.Any("error", err))
-		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to create LLM proxy"})
+		httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to create LLM proxy"})
 		return
 	}
 
 	stored := result.StoredConfig
-
-	if !result.IsStale {
-		if s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected() && s.systemConfig.Controller.ControlPlane.DeploymentPushEnabled {
-			go s.waitForDeploymentAndPush(stored.UUID, correlationID, log)
-		}
-	}
 
 	log.Info("LLM proxy created successfully",
 		slog.String("uuid", stored.UUID),
@@ -133,31 +127,31 @@ func (s *APIServer) CreateLLMProxy(c *gin.Context) {
 
 	proxy, err := rematerializeLLMProxyConfig(log, stored.UUID, stored.DisplayName, stored.SourceConfiguration)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+		httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{
 			Status: "error", Message: "Failed to get stored LLM proxy configuration"})
 		return
 	}
 
-	c.JSON(http.StatusCreated, buildResourceResponseFromStored(proxy, stored))
+	httputil.WriteJSON(w, http.StatusCreated, buildResourceResponseFromStored(proxy, stored))
 }
 
 // GetLLMProxyById implements ServerInterface.GetLLMProxyById
 // (GET /llm-proxies/{id})
-func (s *APIServer) GetLLMProxyById(c *gin.Context, id string) {
-	log := middleware.GetLogger(c, s.logger)
+func (s *APIServer) GetLLMProxyById(w http.ResponseWriter, r *http.Request, id string) {
+	log := middleware.GetLogger(r, s.logger)
 
 	cfg, err := s.llmDeploymentService.GetLLMProxyByHandle(id)
 	if err != nil {
 		if storage.IsNotFoundError(err) {
 			log.Warn("LLM proxy configuration not found", slog.String("handle", id))
-			c.JSON(http.StatusNotFound, api.ErrorResponse{
+			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{
 				Status:  "error",
 				Message: fmt.Sprintf("LLM proxy configuration with handle '%s' not found", id),
 			})
 			return
 		}
 		log.Error("Failed to look up LLM proxy", slog.String("handle", id), slog.Any("error", err))
-		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+		httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{
 			Status:  "error",
 			Message: "Failed to look up LLM proxy",
 		})
@@ -166,24 +160,24 @@ func (s *APIServer) GetLLMProxyById(c *gin.Context, id string) {
 
 	proxy, err := rematerializeLLMProxyConfig(log, cfg.UUID, cfg.DisplayName, cfg.SourceConfiguration)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+		httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{
 			Status: "error", Message: "Failed to get stored LLM proxy configuration"})
 		return
 	}
 
-	c.JSON(http.StatusOK, buildResourceResponseFromStored(proxy, cfg))
+	httputil.WriteJSON(w, http.StatusOK, buildResourceResponseFromStored(proxy, cfg))
 }
 
 // UpdateLLMProxy implements ServerInterface.UpdateLLMProxy
 // (PUT /llm-proxies/{id})
-func (s *APIServer) UpdateLLMProxy(c *gin.Context, id string) {
-	log := middleware.GetLogger(c, s.logger)
+func (s *APIServer) UpdateLLMProxy(w http.ResponseWriter, r *http.Request, id string) {
+	log := middleware.GetLogger(r, s.logger)
 
 	// Read request body
-	body, err := io.ReadAll(c.Request.Body)
+	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		log.Error("Failed to read request body", slog.Any("error", err))
-		c.JSON(http.StatusBadRequest, api.ErrorResponse{
+		httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{
 			Status:  "error",
 			Message: "Failed to read request body",
 		})
@@ -191,22 +185,22 @@ func (s *APIServer) UpdateLLMProxy(c *gin.Context, id string) {
 	}
 
 	// Get correlation ID
-	correlationID := middleware.GetCorrelationID(c)
+	correlationID := middleware.GetCorrelationID(r)
 
 	// Delegate to service update wrapper
 	result, err := s.llmDeploymentService.UpdateLLMProxy(id, utils.LLMDeploymentParams{
 		Data:          body,
-		ContentType:   c.GetHeader("Content-Type"),
+		ContentType:   r.Header.Get("Content-Type"),
 		Origin:        models.OriginGatewayAPI,
 		CorrelationID: correlationID,
 		Logger:        log,
 	})
 	if err != nil {
-		if mapRenderError(c, "update", err) {
+		if mapRenderError(w, "update", err) {
 			return
 		}
 		if storage.IsNotFoundError(err) {
-			c.JSON(http.StatusNotFound, api.ErrorResponse{
+			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{
 				Status:  "error",
 				Message: fmt.Sprintf("LLM proxy configuration with handle '%s' not found", id),
 			})
@@ -214,7 +208,7 @@ func (s *APIServer) UpdateLLMProxy(c *gin.Context, id string) {
 		}
 		if utils.IsPolicyDefinitionMissingError(err) {
 			log.Error("Failed to update LLM proxy - policy definition missing", slog.Any("error", err))
-			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+			httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{
 				Status:  "error",
 				Message: utils.PolicyDefinitionMissingUserMessage,
 			})
@@ -222,11 +216,11 @@ func (s *APIServer) UpdateLLMProxy(c *gin.Context, id string) {
 		}
 		if errors.Is(err, utils.ErrLLMProxyValidation) {
 			log.Warn("LLM proxy configuration invalid", slog.Any("error", err))
-			c.JSON(http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: err.Error()})
+			httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: err.Error()})
 			return
 		}
 		log.Error("Failed to update LLM proxy configuration", slog.String("id", id), slog.Any("error", err))
-		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to update LLM proxy configuration"})
+		httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to update LLM proxy configuration"})
 		return
 	}
 
@@ -234,65 +228,67 @@ func (s *APIServer) UpdateLLMProxy(c *gin.Context, id string) {
 
 	proxy, err := rematerializeLLMProxyConfig(log, updated.UUID, updated.DisplayName, updated.SourceConfiguration)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+		httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{
 			Status: "error", Message: "Failed to get stored LLM proxy configuration"})
 		return
 	}
 
-	c.JSON(http.StatusOK, buildResourceResponseFromStored(proxy, updated))
+	httputil.WriteJSON(w, http.StatusOK, buildResourceResponseFromStored(proxy, updated))
 }
 
 // DeleteLLMProxy implements ServerInterface.DeleteLLMProxy
 // (DELETE /llm-proxies/{id})
-func (s *APIServer) DeleteLLMProxy(c *gin.Context, id string) {
-	log := middleware.GetLogger(c, s.logger)
-	correlationID := middleware.GetCorrelationID(c)
+func (s *APIServer) DeleteLLMProxy(w http.ResponseWriter, r *http.Request, id string) {
+	log := middleware.GetLogger(r, s.logger)
+	correlationID := middleware.GetCorrelationID(r)
 
 	cfg, err := s.llmDeploymentService.DeleteLLMProxy(id, correlationID, log)
 	if err != nil {
 		if storage.IsNotFoundError(err) {
 			log.Warn("LLM proxy configuration not found for deletion", slog.String("handle", id))
-			c.JSON(http.StatusNotFound, api.ErrorResponse{
+			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{
 				Status:  "error",
 				Message: fmt.Sprintf("LLM proxy configuration with handle '%s' not found", id),
 			})
 			return
 		}
 		log.Error("Failed to delete LLM proxy configuration", slog.String("handle", id), slog.Any("error", err))
-		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+		httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{
 			Status:  "error",
 			Message: "Failed to delete LLM proxy configuration",
 		})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	// Notify the control plane so the artifact is marked undeployed (not deleted).
+	s.pushArtifactUndeploy(cfg, log)
+
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"status":  "success",
 		"message": "LLM proxy deleted successfully",
 		"id":      cfg.Handle,
 	})
-
 }
 
 // CreateLLMProxyAPIKey implements ServerInterface.CreateLLMProxyAPIKey
 // (POST /llm-proxies/{id}/api-keys)
-func (s *APIServer) CreateLLMProxyAPIKey(c *gin.Context, id string) {
-	log := middleware.GetLogger(c, s.logger)
+func (s *APIServer) CreateLLMProxyAPIKey(w http.ResponseWriter, r *http.Request, id string) {
+	log := middleware.GetLogger(r, s.logger)
 	handle := id
-	correlationID := middleware.GetCorrelationID(c)
+	correlationID := middleware.GetCorrelationID(r)
 
-	user, ok := s.extractAuthenticatedUser(c, "CreateLLMProxyAPIKey", correlationID)
+	user, ok := s.extractAuthenticatedUser(w, r, "CreateLLMProxyAPIKey", correlationID)
 	if !ok {
 		return
 	}
 
 	var request api.APIKeyCreationRequest
-	if err := s.bindRequestBody(c, &request); err != nil {
+	if err := s.bindRequestBody(r, &request); err != nil {
 		log.Error("Failed to parse request body for LLM proxy API key creation",
 			slog.Any("error", err),
 			slog.String("handle", handle),
 			slog.String("correlation_id", correlationID))
-		c.JSON(http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: fmt.Sprintf("Invalid request body: %v", err)})
+		httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: fmt.Sprintf("Invalid request body: %v", err)})
 		return
 	}
 
@@ -308,27 +304,27 @@ func (s *APIServer) CreateLLMProxyAPIKey(c *gin.Context, id string) {
 	result, err := s.apiKeyService.CreateAPIKey(params)
 	if err != nil {
 		if storage.IsNotFoundError(err) {
-			c.JSON(http.StatusNotFound, api.ErrorResponse{Status: "error", Message: fmt.Sprintf("LLM proxy '%s' not found", handle)})
+			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{Status: "error", Message: fmt.Sprintf("LLM proxy '%s' not found", handle)})
 		} else if storage.IsConflictError(err) {
-			c.JSON(http.StatusConflict, api.ErrorResponse{Status: "error", Message: err.Error()})
+			httputil.WriteJSON(w, http.StatusConflict, api.ErrorResponse{Status: "error", Message: err.Error()})
 		} else {
 			log.Error("Failed to create LLM proxy API key", slog.String("handle", handle), slog.Any("error", err))
-			c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to create API key"})
+			httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to create API key"})
 		}
 		return
 	}
 
-	c.JSON(http.StatusCreated, result.Response)
+	httputil.WriteJSON(w, http.StatusCreated, result.Response)
 }
 
 // RevokeLLMProxyAPIKey implements ServerInterface.RevokeLLMProxyAPIKey
 // (DELETE /llm-proxies/{id}/api-keys/{apiKeyName})
-func (s *APIServer) RevokeLLMProxyAPIKey(c *gin.Context, id string, apiKeyName string) {
-	log := middleware.GetLogger(c, s.logger)
+func (s *APIServer) RevokeLLMProxyAPIKey(w http.ResponseWriter, r *http.Request, id string, apiKeyName string) {
+	log := middleware.GetLogger(r, s.logger)
 	handle := id
-	correlationID := middleware.GetCorrelationID(c)
+	correlationID := middleware.GetCorrelationID(r)
 
-	user, ok := s.extractAuthenticatedUser(c, "RevokeLLMProxyAPIKey", correlationID)
+	user, ok := s.extractAuthenticatedUser(w, r, "RevokeLLMProxyAPIKey", correlationID)
 	if !ok {
 		return
 	}
@@ -345,37 +341,37 @@ func (s *APIServer) RevokeLLMProxyAPIKey(c *gin.Context, id string, apiKeyName s
 	result, err := s.apiKeyService.RevokeAPIKey(params)
 	if err != nil {
 		if storage.IsNotFoundError(err) {
-			c.JSON(http.StatusNotFound, api.ErrorResponse{Status: "error", Message: fmt.Sprintf("LLM proxy '%s' not found", handle)})
+			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{Status: "error", Message: fmt.Sprintf("LLM proxy '%s' not found", handle)})
 		} else {
 			log.Error("Failed to revoke LLM proxy API key", slog.String("handle", handle), slog.String("key", apiKeyName), slog.Any("error", err))
-			c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to revoke API key"})
+			httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to revoke API key"})
 		}
 		return
 	}
 
-	c.JSON(http.StatusOK, result.Response)
+	httputil.WriteJSON(w, http.StatusOK, result.Response)
 }
 
 // UpdateLLMProxyAPIKey implements ServerInterface.UpdateLLMProxyAPIKey
 // (PUT /llm-proxies/{id}/api-keys/{apiKeyName})
-func (s *APIServer) UpdateLLMProxyAPIKey(c *gin.Context, id string, apiKeyName string) {
-	log := middleware.GetLogger(c, s.logger)
+func (s *APIServer) UpdateLLMProxyAPIKey(w http.ResponseWriter, r *http.Request, id string, apiKeyName string) {
+	log := middleware.GetLogger(r, s.logger)
 	handle := id
-	correlationID := middleware.GetCorrelationID(c)
+	correlationID := middleware.GetCorrelationID(r)
 
-	user, ok := s.extractAuthenticatedUser(c, "UpdateLLMProxyAPIKey", correlationID)
+	user, ok := s.extractAuthenticatedUser(w, r, "UpdateLLMProxyAPIKey", correlationID)
 	if !ok {
 		return
 	}
 
 	var request api.APIKeyCreationRequest
-	if err := s.bindRequestBody(c, &request); err != nil {
-		c.JSON(http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: fmt.Sprintf("Invalid request body: %v", err)})
+	if err := s.bindRequestBody(r, &request); err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: fmt.Sprintf("Invalid request body: %v", err)})
 		return
 	}
 
 	if request.ApiKey == nil || strings.TrimSpace(*request.ApiKey) == "" {
-		c.JSON(http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: "apiKey is required"})
+		httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: "apiKey is required"})
 		return
 	}
 
@@ -392,36 +388,36 @@ func (s *APIServer) UpdateLLMProxyAPIKey(c *gin.Context, id string, apiKeyName s
 	result, err := s.apiKeyService.UpdateAPIKey(params)
 	if err != nil {
 		if storage.IsOperationNotAllowedError(err) {
-			c.JSON(http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: err.Error()})
+			httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: err.Error()})
 		} else if storage.IsNotFoundError(err) {
-			c.JSON(http.StatusNotFound, api.ErrorResponse{Status: "error", Message: fmt.Sprintf("LLM proxy or API key '%s' not found", apiKeyName)})
+			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{Status: "error", Message: fmt.Sprintf("LLM proxy or API key '%s' not found", apiKeyName)})
 		} else if storage.IsConflictError(err) {
-			c.JSON(http.StatusConflict, api.ErrorResponse{Status: "error", Message: err.Error()})
+			httputil.WriteJSON(w, http.StatusConflict, api.ErrorResponse{Status: "error", Message: err.Error()})
 		} else {
 			log.Error("Failed to update LLM proxy API key", slog.String("handle", handle), slog.String("key", apiKeyName), slog.Any("error", err))
-			c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to update API key"})
+			httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to update API key"})
 		}
 		return
 	}
 
-	c.JSON(http.StatusOK, result.Response)
+	httputil.WriteJSON(w, http.StatusOK, result.Response)
 }
 
 // RegenerateLLMProxyAPIKey implements ServerInterface.RegenerateLLMProxyAPIKey
 // (POST /llm-proxies/{id}/api-keys/{apiKeyName}/regenerate)
-func (s *APIServer) RegenerateLLMProxyAPIKey(c *gin.Context, id string, apiKeyName string) {
-	log := middleware.GetLogger(c, s.logger)
+func (s *APIServer) RegenerateLLMProxyAPIKey(w http.ResponseWriter, r *http.Request, id string, apiKeyName string) {
+	log := middleware.GetLogger(r, s.logger)
 	handle := id
-	correlationID := middleware.GetCorrelationID(c)
+	correlationID := middleware.GetCorrelationID(r)
 
-	user, ok := s.extractAuthenticatedUser(c, "RegenerateLLMProxyAPIKey", correlationID)
+	user, ok := s.extractAuthenticatedUser(w, r, "RegenerateLLMProxyAPIKey", correlationID)
 	if !ok {
 		return
 	}
 
 	var request api.APIKeyRegenerationRequest
-	if err := s.bindRequestBody(c, &request); err != nil {
-		c.JSON(http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: fmt.Sprintf("Invalid request body: %v", err)})
+	if err := s.bindRequestBody(r, &request); err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: fmt.Sprintf("Invalid request body: %v", err)})
 		return
 	}
 
@@ -438,25 +434,25 @@ func (s *APIServer) RegenerateLLMProxyAPIKey(c *gin.Context, id string, apiKeyNa
 	result, err := s.apiKeyService.RegenerateAPIKey(params)
 	if err != nil {
 		if storage.IsNotFoundError(err) {
-			c.JSON(http.StatusNotFound, api.ErrorResponse{Status: "error", Message: fmt.Sprintf("LLM proxy or API key '%s' not found", apiKeyName)})
+			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{Status: "error", Message: fmt.Sprintf("LLM proxy or API key '%s' not found", apiKeyName)})
 		} else {
 			log.Error("Failed to regenerate LLM proxy API key", slog.String("handle", handle), slog.String("key", apiKeyName), slog.Any("error", err))
-			c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to regenerate API key"})
+			httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to regenerate API key"})
 		}
 		return
 	}
 
-	c.JSON(http.StatusOK, result.Response)
+	httputil.WriteJSON(w, http.StatusOK, result.Response)
 }
 
 // ListLLMProxyAPIKeys implements ServerInterface.ListLLMProxyAPIKeys
 // (GET /llm-proxies/{id}/api-keys)
-func (s *APIServer) ListLLMProxyAPIKeys(c *gin.Context, id string) {
-	log := middleware.GetLogger(c, s.logger)
+func (s *APIServer) ListLLMProxyAPIKeys(w http.ResponseWriter, r *http.Request, id string) {
+	log := middleware.GetLogger(r, s.logger)
 	handle := id
-	correlationID := middleware.GetCorrelationID(c)
+	correlationID := middleware.GetCorrelationID(r)
 
-	user, ok := s.extractAuthenticatedUser(c, "ListLLMProxyAPIKeys", correlationID)
+	user, ok := s.extractAuthenticatedUser(w, r, "ListLLMProxyAPIKeys", correlationID)
 	if !ok {
 		return
 	}
@@ -472,15 +468,15 @@ func (s *APIServer) ListLLMProxyAPIKeys(c *gin.Context, id string) {
 	result, err := s.apiKeyService.ListAPIKeys(params)
 	if err != nil {
 		if storage.IsNotFoundError(err) {
-			c.JSON(http.StatusNotFound, api.ErrorResponse{Status: "error", Message: fmt.Sprintf("LLM proxy '%s' not found", handle)})
+			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{Status: "error", Message: fmt.Sprintf("LLM proxy '%s' not found", handle)})
 		} else {
 			log.Error("Failed to list LLM proxy API keys", slog.String("handle", handle), slog.Any("error", err))
-			c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to list API keys"})
+			httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to list API keys"})
 		}
 		return
 	}
 
-	c.JSON(http.StatusOK, result.Response)
+	httputil.WriteJSON(w, http.StatusOK, result.Response)
 }
 
 // rematerializeLLMProxyConfig re-encodes persisted SourceConfiguration into the

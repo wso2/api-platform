@@ -24,8 +24,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/wso2/go-httpkit/httputil"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/middleware"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
@@ -55,22 +55,22 @@ func validateThrottleLimits(count *int, unit *string) error {
 }
 
 // CreateSubscriptionPlan implements ServerInterface.CreateSubscriptionPlan (POST /subscription-plans)
-func (s *APIServer) CreateSubscriptionPlan(c *gin.Context) {
-	log := middleware.GetLogger(c, s.logger)
-	correlationID := middleware.GetCorrelationID(c)
+func (s *APIServer) CreateSubscriptionPlan(w http.ResponseWriter, r *http.Request) {
+	log := middleware.GetLogger(r, s.logger)
+	correlationID := middleware.GetCorrelationID(r)
 	if correlationID != "" {
 		log = log.With(slog.String("correlation_id", correlationID))
 	}
 
 	var req api.SubscriptionPlanCreateRequest
-	if err := s.bindRequestBody(c, &req); err != nil {
+	if err := s.bindRequestBody(r, &req); err != nil {
 		log.Warn("Invalid subscription plan create body", slog.Any("error", err))
-		c.JSON(http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: "Invalid request body"})
+		httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: "Invalid request body"})
 		return
 	}
 	planName := strings.TrimSpace(req.PlanName)
 	if planName == "" {
-		c.JSON(http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: "planName is required"})
+		httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: "planName is required"})
 		return
 	}
 
@@ -80,7 +80,7 @@ func (s *APIServer) CreateSubscriptionPlan(c *gin.Context) {
 		unitStr = &s
 	}
 	if err := validateThrottleLimits(req.ThrottleLimitCount, unitStr); err != nil {
-		c.JSON(http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: err.Error()})
+		httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: err.Error()})
 		return
 	}
 
@@ -91,7 +91,7 @@ func (s *APIServer) CreateSubscriptionPlan(c *gin.Context) {
 		case models.SubscriptionPlanStatusActive, models.SubscriptionPlanStatusInactive:
 			status = st
 		default:
-			c.JSON(http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: fmt.Sprintf("invalid status: %s", *req.Status)})
+			httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: fmt.Sprintf("invalid status: %s", *req.Status)})
 			return
 		}
 	}
@@ -119,24 +119,24 @@ func (s *APIServer) CreateSubscriptionPlan(c *gin.Context) {
 
 	if err := s.getSubscriptionResourceService().SaveSubscriptionPlan(plan, correlationID, log); err != nil {
 		if storage.IsConflictError(err) {
-			c.JSON(http.StatusConflict, api.ErrorResponse{Status: "error", Message: "Subscription plan already exists"})
+			httputil.WriteJSON(w, http.StatusConflict, api.ErrorResponse{Status: "error", Message: "Subscription plan already exists"})
 			return
 		}
 		log.Error("Failed to save subscription plan", slog.Any("error", err))
-		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to create subscription plan"})
+		httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to create subscription plan"})
 		return
 	}
-	c.JSON(http.StatusCreated, subscriptionPlanToResponse(plan))
+	httputil.WriteJSON(w, http.StatusCreated, subscriptionPlanToResponse(plan))
 }
 
 // ListSubscriptionPlans implements ServerInterface.ListSubscriptionPlans (GET /subscription-plans)
-func (s *APIServer) ListSubscriptionPlans(c *gin.Context) {
-	log := middleware.GetLogger(c, s.logger)
+func (s *APIServer) ListSubscriptionPlans(w http.ResponseWriter, r *http.Request) {
+	log := middleware.GetLogger(r, s.logger)
 
 	list, err := s.db.ListSubscriptionPlans("")
 	if err != nil {
 		log.Error("Failed to list subscription plans", slog.Any("error", err))
-		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to list subscription plans"})
+		httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to list subscription plans"})
 		return
 	}
 	items := make([]api.SubscriptionPlanResponse, 0, len(list))
@@ -144,34 +144,34 @@ func (s *APIServer) ListSubscriptionPlans(c *gin.Context) {
 		items = append(items, subscriptionPlanToResponse(p))
 	}
 	count := len(items)
-	c.JSON(http.StatusOK, api.SubscriptionPlanListResponse{SubscriptionPlans: &items, Count: &count})
+	httputil.WriteJSON(w, http.StatusOK, api.SubscriptionPlanListResponse{SubscriptionPlans: &items, Count: &count})
 }
 
 // GetSubscriptionPlan implements ServerInterface.GetSubscriptionPlan (GET /subscription-plans/{planId})
-func (s *APIServer) GetSubscriptionPlan(c *gin.Context, planId string) {
-	log := middleware.GetLogger(c, s.logger)
+func (s *APIServer) GetSubscriptionPlan(w http.ResponseWriter, r *http.Request, planId string) {
+	log := middleware.GetLogger(r, s.logger)
 
 	plan, err := s.db.GetSubscriptionPlanByID(planId, "")
 	if err != nil {
 		if storage.IsNotFoundError(err) {
-			c.JSON(http.StatusNotFound, api.ErrorResponse{Status: "error", Message: "Subscription plan not found"})
+			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{Status: "error", Message: "Subscription plan not found"})
 			return
 		}
 		log.Error("Failed to get subscription plan", slog.Any("error", err))
-		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to get subscription plan"})
+		httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to get subscription plan"})
 		return
 	}
 	if plan == nil {
-		c.JSON(http.StatusNotFound, api.ErrorResponse{Status: "error", Message: "Subscription plan not found"})
+		httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{Status: "error", Message: "Subscription plan not found"})
 		return
 	}
-	c.JSON(http.StatusOK, subscriptionPlanToResponse(plan))
+	httputil.WriteJSON(w, http.StatusOK, subscriptionPlanToResponse(plan))
 }
 
 // UpdateSubscriptionPlan implements ServerInterface.UpdateSubscriptionPlan (PUT /subscription-plans/{planId})
-func (s *APIServer) UpdateSubscriptionPlan(c *gin.Context, planId string) {
-	log := middleware.GetLogger(c, s.logger)
-	correlationID := middleware.GetCorrelationID(c)
+func (s *APIServer) UpdateSubscriptionPlan(w http.ResponseWriter, r *http.Request, planId string) {
+	log := middleware.GetLogger(r, s.logger)
+	correlationID := middleware.GetCorrelationID(r)
 	if correlationID != "" {
 		log = log.With(slog.String("correlation_id", correlationID))
 	}
@@ -179,22 +179,22 @@ func (s *APIServer) UpdateSubscriptionPlan(c *gin.Context, planId string) {
 	existing, err := s.db.GetSubscriptionPlanByID(planId, "")
 	if err != nil {
 		if storage.IsNotFoundError(err) {
-			c.JSON(http.StatusNotFound, api.ErrorResponse{Status: "error", Message: "Subscription plan not found"})
+			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{Status: "error", Message: "Subscription plan not found"})
 			return
 		}
 		log.Error("Failed to get subscription plan for update", slog.Any("error", err))
-		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to get subscription plan"})
+		httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to get subscription plan"})
 		return
 	}
 	if existing == nil {
-		c.JSON(http.StatusNotFound, api.ErrorResponse{Status: "error", Message: "Subscription plan not found"})
+		httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{Status: "error", Message: "Subscription plan not found"})
 		return
 	}
 
 	var req api.SubscriptionPlanUpdateRequest
-	if err := s.bindRequestBody(c, &req); err != nil {
+	if err := s.bindRequestBody(r, &req); err != nil {
 		log.Warn("Invalid subscription plan update body", slog.Any("error", err))
-		c.JSON(http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: "Invalid request body"})
+		httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: "Invalid request body"})
 		return
 	}
 
@@ -204,14 +204,14 @@ func (s *APIServer) UpdateSubscriptionPlan(c *gin.Context, planId string) {
 		unitStr = &s
 	}
 	if err := validateThrottleLimits(req.ThrottleLimitCount, unitStr); err != nil {
-		c.JSON(http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: err.Error()})
+		httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: err.Error()})
 		return
 	}
 
 	if req.PlanName != nil {
 		trimmed := strings.TrimSpace(*req.PlanName)
 		if trimmed == "" {
-			c.JSON(http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: "planName cannot be empty"})
+			httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: "planName cannot be empty"})
 			return
 		}
 		existing.PlanName = trimmed
@@ -236,37 +236,37 @@ func (s *APIServer) UpdateSubscriptionPlan(c *gin.Context, planId string) {
 		case models.SubscriptionPlanStatusActive, models.SubscriptionPlanStatusInactive:
 			existing.Status = st
 		default:
-			c.JSON(http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: fmt.Sprintf("invalid status: %s", *req.Status)})
+			httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: fmt.Sprintf("invalid status: %s", *req.Status)})
 			return
 		}
 	}
 
 	if err := s.getSubscriptionResourceService().UpdateSubscriptionPlan(existing, correlationID, log); err != nil {
 		log.Error("Failed to update subscription plan", slog.Any("error", err))
-		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to update subscription plan"})
+		httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to update subscription plan"})
 		return
 	}
-	c.JSON(http.StatusOK, subscriptionPlanToResponse(existing))
+	httputil.WriteJSON(w, http.StatusOK, subscriptionPlanToResponse(existing))
 }
 
 // DeleteSubscriptionPlan implements ServerInterface.DeleteSubscriptionPlan (DELETE /subscription-plans/{planId})
-func (s *APIServer) DeleteSubscriptionPlan(c *gin.Context, planId string) {
-	log := middleware.GetLogger(c, s.logger)
-	correlationID := middleware.GetCorrelationID(c)
+func (s *APIServer) DeleteSubscriptionPlan(w http.ResponseWriter, r *http.Request, planId string) {
+	log := middleware.GetLogger(r, s.logger)
+	correlationID := middleware.GetCorrelationID(r)
 	if correlationID != "" {
 		log = log.With(slog.String("correlation_id", correlationID))
 	}
 
 	if err := s.getSubscriptionResourceService().DeleteSubscriptionPlan(planId, correlationID, log); err != nil {
 		if storage.IsNotFoundError(err) {
-			c.JSON(http.StatusNotFound, api.ErrorResponse{Status: "error", Message: "Subscription plan not found"})
+			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{Status: "error", Message: "Subscription plan not found"})
 			return
 		}
 		log.Error("Failed to delete subscription plan", slog.Any("error", err))
-		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to delete subscription plan"})
+		httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to delete subscription plan"})
 		return
 	}
-	c.Status(http.StatusNoContent)
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func subscriptionPlanToResponse(plan *models.SubscriptionPlan) api.SubscriptionPlanResponse {

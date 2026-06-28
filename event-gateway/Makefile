@@ -80,6 +80,7 @@ build-event-gateway-controller: ## Build event-gateway-controller Docker image
 			--build-context sdk=../../sdk \
 			--build-context sdk-core=../../sdk/core \
 			--build-context common=../../common \
+			--build-context httpkit=../../httpkit \
 			--build-context build-manifest=.. \
 			--build-context policies=../../event-gateway/default-policies \
 			--build-context target=target \
@@ -119,6 +120,7 @@ build-and-push-multiarch-event-gateway-controller: ## Build and push event-gatew
 			--build-context sdk=../../sdk \
 			--build-context sdk-core=../../sdk/core \
 			--build-context common=../../common \
+			--build-context httpkit=../../httpkit \
 			--build-context build-manifest=.. \
 			--build-context policies=../../event-gateway/default-policies \
 			--build-context target=target \

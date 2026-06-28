@@ -53,6 +53,20 @@ func TestLoadConfig_MissingSecretEncryptionKey_NonDemoMode_ReturnsError(t *testi
 	assert.Contains(t, err.Error(), "no encryption key configured for secrets management")
 }
 
+// Missing key with APIP_DEMO_MODE unset → demo mode is the default, so an
+// ephemeral key is generated and LoadConfig succeeds.
+func TestLoadConfig_MissingSecretEncryptionKey_UnsetDemoMode_DefaultsToDemo(t *testing.T) {
+	os.Unsetenv("APIP_DEMO_MODE")
+	t.Setenv("PLATFORM_SECRET_ENCRYPTION_KEY", "")
+	t.Setenv("APIP_DATABASE_SECRET_ENCRYPTION_KEY", "")
+	t.Setenv("DATABASE_ENCRYPTION_KEY", "")
+
+	cfg, err := LoadConfig("")
+	require.NoError(t, err, "LoadConfig must succeed when APIP_DEMO_MODE is unset (demo is the default)")
+	assert.NotEmpty(t, cfg.Database.SecretEncryptionKey,
+		"an ephemeral key must be generated when no key is configured and APIP_DEMO_MODE is unset")
+}
+
 // TC-35: Ephemeral key must be unique each LoadConfig call (i.e. truly random, not a constant).
 func TestLoadConfig_EphemeralKey_IsRandomPerCall(t *testing.T) {
 	t.Setenv("APIP_DEMO_MODE", "true")

@@ -37,7 +37,7 @@ describe('AI Workspace - Custom LLM provider template lifecycle', () => {
     cy.intercept('POST', /\/llm-providers(\?|$)/).as('createProvider');
     cy.request({
       method: 'POST',
-      url: '/api-proxy/api/portal/v1/auth/login',
+      url: '/api-proxy/api/portal/v0.9/auth/login',
       form: true,
       body: {
         username: Cypress.env('ADMIN_USER'),

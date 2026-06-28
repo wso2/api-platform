@@ -16,8 +16,10 @@ services:
       - "14333:1433"
     networks: [e2e]
 
-  # Creates both databases via sqlcmd (the server images do not auto-create them,
-  # and platform-api / gateway-controller only create their schema, not the DB).
+  # Creates both databases via sqlcmd (the server images do not auto-create them)
+  # and pre-provisions the platform_api schema: platform-api only auto-runs DDL
+  # for SQLite, so against SQL Server the operator must provision it. The
+  # gateway-controller still auto-migrates its own gateway_test schema.
   mssql-init:
     image: mcr.microsoft.com/mssql-tools:latest
     depends_on:
@@ -30,10 +32,13 @@ services:
           /opt/mssql-tools/bin/sqlcmd -S sqlserver -U sa -P "$${MSSQL_SA_PASSWORD}" -Q "SELECT 1" && break;
           sleep 2;
         done;
-        /opt/mssql-tools/bin/sqlcmd -S sqlserver -U sa -P "$${MSSQL_SA_PASSWORD}" -Q
-        "IF DB_ID('platform_api') IS NULL CREATE DATABASE [platform_api]; IF DB_ID('gateway_test') IS NULL CREATE DATABASE [gateway_test];"
+        /opt/mssql-tools/bin/sqlcmd -S sqlserver -U sa -P "$${MSSQL_SA_PASSWORD}" -b -Q
+        "IF DB_ID('platform_api') IS NULL CREATE DATABASE [platform_api]; IF DB_ID('gateway_test') IS NULL CREATE DATABASE [gateway_test];" &&
+        /opt/mssql-tools/bin/sqlcmd -S sqlserver -U sa -P "$${MSSQL_SA_PASSWORD}" -b -I -d platform_api -i /schema/schema.sqlserver.sql
     environment:
       - MSSQL_SA_PASSWORD=${MSSQL_PASSWORD:-Strong!Passw0rd}
+    volumes:
+      - ../../platform-api/src/internal/database/schema.sqlserver.sql:/schema/schema.sqlserver.sql:ro
     networks: [e2e]
 
   platform-api:
@@ -47,8 +52,6 @@ services:
       - DATABASE_USER=sa
       - DATABASE_PASSWORD=${MSSQL_PASSWORD:-Strong!Passw0rd}
       - DATABASE_SSL_MODE=disable
-      - DB_SCHEMA_PATH=./schema.sqlserver.sql
-      - DATABASE_EXECUTE_SCHEMA_DDL=true
       - DATABASE_SUBSCRIPTION_TOKEN_ENCRYPTION_KEY=0123456789abcdef0123456789abcdef
       - AUTH_FILE_BASED_ENABLED=true
       - AUTH_FILE_BASED_ORGANIZATION_ID=99089a17-72e0-4dd8-a2f4-c8dfbb085295

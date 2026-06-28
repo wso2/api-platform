@@ -27,19 +27,26 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/middleware"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/metrics"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/restapi"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
+	"github.com/wso2/go-httpkit/httputil"
 )
 
 // RestAPIHandler handles HTTP requests for REST API CRUD operations.
 type RestAPIHandler struct {
 	service *restapi.RestAPIService
 	logger  *slog.Logger
+
+	// pushArtifactUndeploy is the shared control-plane (DP->CP)
+	// push hook, wired from APIServer so REST APIs use the same push path as every other
+	// artifact kind. Internally gated (origin/connection/enabled) and run asynchronously;
+	// they are nil when no control plane is configured (e.g. in unit tests).
+	pushArtifactUndeploy func(cfg *models.StoredConfig, log *slog.Logger)
 }
 
 // NewRestAPIHandler creates a new RestAPIHandler.
@@ -52,36 +59,36 @@ func NewRestAPIHandler(service *restapi.RestAPIService, logger *slog.Logger) *Re
 
 // CreateRestAPI implements ServerInterface.CreateRestAPI
 // (POST /rest-apis)
-func (h *RestAPIHandler) CreateRestAPI(c *gin.Context) {
+func (h *RestAPIHandler) CreateRestAPI(w http.ResponseWriter, r *http.Request) {
 	startTime := time.Now()
 	operation := "create"
 
-	log := middleware.GetLogger(c, h.logger)
+	log := middleware.GetLogger(r, h.logger)
 
-	body, err := io.ReadAll(c.Request.Body)
+	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		log.Error("Failed to read request body", slog.Any("error", err))
 		metrics.APIOperationsTotal.WithLabelValues(operation, "error", "rest_api").Inc()
 		metrics.ValidationErrorsTotal.WithLabelValues(operation, "read_body_failed").Inc()
-		c.JSON(http.StatusBadRequest, api.ErrorResponse{
+		httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{
 			Status:  "error",
 			Message: "Failed to read request body",
 		})
 		return
 	}
 
-	correlationID := middleware.GetCorrelationID(c)
+	correlationID := middleware.GetCorrelationID(r)
 
 	result, err := h.service.Create(restapi.CreateParams{
 		Body:          body,
-		ContentType:   c.GetHeader("Content-Type"),
+		ContentType:   r.Header.Get("Content-Type"),
 		CorrelationID: correlationID,
 		Logger:        log,
 	})
 	if err != nil {
 		log.Error("Failed to deploy API configuration", slog.Any("error", err))
 		metrics.APIOperationsTotal.WithLabelValues(operation, "error", "rest_api").Inc()
-		h.mapCreateError(c, err)
+		h.mapCreateError(w, err)
 		return
 	}
 
@@ -89,15 +96,15 @@ func (h *RestAPIHandler) CreateRestAPI(c *gin.Context) {
 	metrics.APIOperationDurationSeconds.WithLabelValues(operation, "rest_api").Observe(time.Since(startTime).Seconds())
 	metrics.APIsTotal.WithLabelValues("rest_api", "active").Inc()
 
-	c.JSON(http.StatusCreated, buildResourceResponseFromStored(result.StoredConfig.SourceConfiguration, result.StoredConfig))
+	httputil.WriteJSON(w, http.StatusCreated, buildResourceResponseFromStored(result.StoredConfig.SourceConfiguration, result.StoredConfig))
 }
 
 // ListRestAPIs implements ServerInterface.ListRestAPIs
 // (GET /rest-apis)
-func (h *RestAPIHandler) ListRestAPIs(c *gin.Context, params api.ListRestAPIsParams) {
+func (h *RestAPIHandler) ListRestAPIs(w http.ResponseWriter, r *http.Request, params api.ListRestAPIsParams) {
 	result, err := h.service.List(params)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+		httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{
 			Status:  "error",
 			Message: "Failed to retrieve API configurations",
 		})
@@ -126,7 +133,7 @@ func (h *RestAPIHandler) ListRestAPIs(c *gin.Context, params api.ListRestAPIsPar
 		items = append(items, buildResourceResponseFromStored(conf, cfg))
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"status": "success",
 		"count":  len(items),
 		"apis":   items,
@@ -135,79 +142,79 @@ func (h *RestAPIHandler) ListRestAPIs(c *gin.Context, params api.ListRestAPIsPar
 
 // GetRestAPIById implements ServerInterface.GetRestAPIById
 // (GET /rest-apis/{id})
-func (h *RestAPIHandler) GetRestAPIById(c *gin.Context, id string) {
-	log := middleware.GetLogger(c, h.logger)
+func (h *RestAPIHandler) GetRestAPIById(w http.ResponseWriter, r *http.Request, id string) {
+	log := middleware.GetLogger(r, h.logger)
 
 	result, err := h.service.GetByHandle(id)
 	if err != nil {
-		h.mapGetError(c, log, id, err)
+		h.mapGetError(w, log, id, err)
 		return
 	}
 
 	cfg := result.Config
-	c.JSON(http.StatusOK, buildResourceResponseFromStored(cfg.SourceConfiguration, cfg))
+	httputil.WriteJSON(w, http.StatusOK, buildResourceResponseFromStored(cfg.SourceConfiguration, cfg))
 }
 
 // UpdateRestAPI implements ServerInterface.UpdateRestAPI
 // (PUT /rest-apis/{id})
-func (h *RestAPIHandler) UpdateRestAPI(c *gin.Context, id string) {
+func (h *RestAPIHandler) UpdateRestAPI(w http.ResponseWriter, r *http.Request, id string) {
 	startTime := time.Now()
 	operation := "update"
 
-	log := middleware.GetLogger(c, h.logger)
+	log := middleware.GetLogger(r, h.logger)
 
-	body, err := io.ReadAll(c.Request.Body)
+	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		log.Error("Failed to read request body", slog.Any("error", err))
 		metrics.APIOperationsTotal.WithLabelValues(operation, "error", "rest_api").Inc()
 		metrics.ValidationErrorsTotal.WithLabelValues(operation, "read_body_failed").Inc()
-		c.JSON(http.StatusBadRequest, api.ErrorResponse{
+		httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{
 			Status:  "error",
 			Message: "Failed to read request body",
 		})
 		return
 	}
 
-	correlationID := middleware.GetCorrelationID(c)
+	correlationID := middleware.GetCorrelationID(r)
 
 	result, err := h.service.Update(restapi.UpdateParams{
 		Handle:        id,
 		Body:          body,
-		ContentType:   c.GetHeader("Content-Type"),
+		ContentType:   r.Header.Get("Content-Type"),
 		CorrelationID: correlationID,
 		Logger:        log,
 	})
 	if err != nil {
 		log.Error("Failed to update API configuration", slog.Any("error", err))
 		metrics.APIOperationsTotal.WithLabelValues(operation, "error", "rest_api").Inc()
-		h.mapUpdateError(c, id, err)
+		h.mapUpdateError(w, id, err)
 		return
 	}
 
 	metrics.APIOperationsTotal.WithLabelValues(operation, "success", "rest_api").Inc()
 	metrics.APIOperationDurationSeconds.WithLabelValues(operation, "rest_api").Observe(time.Since(startTime).Seconds())
 
-	c.JSON(http.StatusOK, buildResourceResponseFromStored(result.Config.SourceConfiguration, result.Config))
+	httputil.WriteJSON(w, http.StatusOK, buildResourceResponseFromStored(result.Config.SourceConfiguration, result.Config))
 }
 
 // DeleteRestAPI implements ServerInterface.DeleteRestAPI
 // (DELETE /rest-apis/{id})
-func (h *RestAPIHandler) DeleteRestAPI(c *gin.Context, id string) {
+func (h *RestAPIHandler) DeleteRestAPI(w http.ResponseWriter, r *http.Request, id string) {
 	startTime := time.Now()
 	operation := "delete"
 
-	log := middleware.GetLogger(c, h.logger)
+	log := middleware.GetLogger(r, h.logger)
 
-	correlationID := middleware.GetCorrelationID(c)
+	correlationID := middleware.GetCorrelationID(r)
 
-	_, err := h.service.Delete(restapi.DeleteParams{
+	result, err := h.service.Delete(restapi.DeleteParams{
 		Handle:        id,
 		CorrelationID: correlationID,
 		Logger:        log,
 	})
 	if err != nil {
 		metrics.APIOperationsTotal.WithLabelValues(operation, "error", "rest_api").Inc()
-		h.mapDeleteError(c, log, id, err)
+		h.mapDeleteError(w, log, id, err)
 		return
 	}
 
@@ -215,7 +222,13 @@ func (h *RestAPIHandler) DeleteRestAPI(c *gin.Context, id string) {
 	metrics.APIOperationDurationSeconds.WithLabelValues(operation, "rest_api").Observe(time.Since(startTime).Seconds())
 	metrics.APIsTotal.WithLabelValues("rest_api", "active").Dec()
 
-	c.JSON(http.StatusOK, gin.H{
+	// Notify the control plane (DP->CP) that this artifact was deleted via the shared
+	// handler path; it keeps the artifact and marks it undeployed.
+	if h.pushArtifactUndeploy != nil {
+		h.pushArtifactUndeploy(result.Config, log)
+	}
+
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"status":  "success",
 		"message": "RestAPI deleted successfully",
 		"id":      id,
@@ -223,13 +236,13 @@ func (h *RestAPIHandler) DeleteRestAPI(c *gin.Context, id string) {
 }
 
 // mapCreateError maps service errors to HTTP responses for Create.
-func (h *RestAPIHandler) mapCreateError(c *gin.Context, err error) {
-	if mapRenderError(c, "create", err) {
+func (h *RestAPIHandler) mapCreateError(w http.ResponseWriter, err error) {
+	if mapRenderError(w, "create", err) {
 		return
 	}
 
 	if storage.IsConflictError(err) {
-		c.JSON(http.StatusConflict, api.ErrorResponse{
+		httputil.WriteJSON(w, http.StatusConflict, api.ErrorResponse{
 			Status:  "error",
 			Message: err.Error(),
 		})
@@ -245,7 +258,7 @@ func (h *RestAPIHandler) mapCreateError(c *gin.Context, err error) {
 				Message: stringPtr(e.Message),
 			}
 		}
-		c.JSON(http.StatusBadRequest, api.ErrorResponse{
+		httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{
 			Status:  "error",
 			Message: "Configuration validation failed",
 			Errors:  &apiErrors,
@@ -254,38 +267,38 @@ func (h *RestAPIHandler) mapCreateError(c *gin.Context, err error) {
 	}
 
 	if isRestAPICreateBadRequest(err) {
-		c.JSON(http.StatusBadRequest, api.ErrorResponse{
+		httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{
 			Status:  "error",
 			Message: err.Error(),
 		})
 		return
 	}
 
-	c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+	httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{
 		Status:  "error",
 		Message: "Failed to create configuration",
 	})
 }
 
 // mapGetError maps service errors to HTTP responses for GetByHandle.
-func (h *RestAPIHandler) mapGetError(c *gin.Context, log *slog.Logger, handle string, err error) {
+func (h *RestAPIHandler) mapGetError(w http.ResponseWriter, log *slog.Logger, handle string, err error) {
 	log.Warn("API configuration not found", slog.String("handle", handle))
-	c.JSON(http.StatusNotFound, api.ErrorResponse{
+	httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{
 		Status:  "error",
 		Message: fmt.Sprintf("RestAPI with handle '%s' not found", handle),
 	})
 }
 
 // mapUpdateError maps service errors to HTTP responses for Update.
-func (h *RestAPIHandler) mapUpdateError(c *gin.Context, handle string, err error) {
-	if mapRenderError(c, "update", err) {
+func (h *RestAPIHandler) mapUpdateError(w http.ResponseWriter, handle string, err error) {
+	if mapRenderError(w, "update", err) {
 		return
 	}
 
 	var parseErr *restapi.ParseError
 	if errors.As(err, &parseErr) {
 		metrics.ValidationErrorsTotal.WithLabelValues("update", "parse_failed").Inc()
-		c.JSON(http.StatusBadRequest, api.ErrorResponse{
+		httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{
 			Status:  "error",
 			Message: fmt.Sprintf("Failed to parse configuration: %v", parseErr.Cause),
 		})
@@ -295,7 +308,7 @@ func (h *RestAPIHandler) mapUpdateError(c *gin.Context, handle string, err error
 	var handleErr *restapi.HandleMismatchError
 	if errors.As(err, &handleErr) {
 		metrics.ValidationErrorsTotal.WithLabelValues("update", "handle_mismatch").Inc()
-		c.JSON(http.StatusBadRequest, api.ErrorResponse{
+		httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{
 			Status:  "error",
 			Message: handleErr.Error(),
 		})
@@ -312,7 +325,7 @@ func (h *RestAPIHandler) mapUpdateError(c *gin.Context, handle string, err error
 				Message: stringPtr(e.Message),
 			}
 		}
-		c.JSON(http.StatusBadRequest, api.ErrorResponse{
+		httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{
 			Status:  "error",
 			Message: "Configuration validation failed",
 			Errors:  &apiErrors,
@@ -321,7 +334,7 @@ func (h *RestAPIHandler) mapUpdateError(c *gin.Context, handle string, err error
 	}
 
 	if errors.Is(err, restapi.ErrNotFound) {
-		c.JSON(http.StatusNotFound, api.ErrorResponse{
+		httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{
 			Status:  "error",
 			Message: fmt.Sprintf("RestAPI with handle '%s' not found", handle),
 		})
@@ -329,24 +342,24 @@ func (h *RestAPIHandler) mapUpdateError(c *gin.Context, handle string, err error
 	}
 
 	if storage.IsConflictError(err) {
-		c.JSON(http.StatusConflict, api.ErrorResponse{
+		httputil.WriteJSON(w, http.StatusConflict, api.ErrorResponse{
 			Status:  "error",
 			Message: err.Error(),
 		})
 		return
 	}
 
-	c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+	httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{
 		Status:  "error",
 		Message: "Failed to update configuration",
 	})
 }
 
 // mapDeleteError maps service errors to HTTP responses for Delete.
-func (h *RestAPIHandler) mapDeleteError(c *gin.Context, log *slog.Logger, handle string, err error) {
+func (h *RestAPIHandler) mapDeleteError(w http.ResponseWriter, log *slog.Logger, handle string, err error) {
 	if errors.Is(err, restapi.ErrNotFound) {
 		log.Warn("API configuration not found", slog.String("handle", handle))
-		c.JSON(http.StatusNotFound, api.ErrorResponse{
+		httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{
 			Status:  "error",
 			Message: fmt.Sprintf("RestAPI with handle '%s' not found", handle),
 		})
@@ -354,7 +367,7 @@ func (h *RestAPIHandler) mapDeleteError(c *gin.Context, log *slog.Logger, handle
 	}
 
 	// Topic lifecycle or internal errors
-	c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+	httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{
 		Status:  "error",
 		Message: "Failed to delete configuration",
 	})

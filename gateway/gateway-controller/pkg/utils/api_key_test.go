@@ -1050,3 +1050,107 @@ func newTestStoredAPIKey(apiID, name, createdBy, source string) *models.APIKey {
 		Source:       source,
 	}
 }
+
+// TestCreateExternalAPIKeyFromEvent_ResolvesByCPArtifactID verifies that an API key
+// generated on the control plane — keyed by the CP artifact UUID — is correctly applied
+// to the gateway's local copy of a DP-origin artifact, even though the gateway's local
+// UUID differs from the CP UUID. The gateway resolves the artifact via its recorded
+// cp_artifact_id and stores the key against its LOCAL UUID, so runtime auth works.
+func TestCreateExternalAPIKeyFromEvent_ResolvesByCPArtifactID(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	store := storage.NewConfigStore()
+	db := newTestSQLiteStorage(t, logger)
+
+	const dpUUID = "dp-local-uuid-0000-000000000001"
+	const cpUUID = "cp-artifact-uuid-0000-000000002"
+
+	// A gateway-created (DP-origin) artifact whose CP UUID was recorded on the DP->CP push.
+	cfg := newTestStoredRESTConfig(dpUUID, "weather-api")
+	cfg.Origin = models.OriginGatewayAPI
+	cfg.CPSyncStatus = models.CPSyncStatusSuccess
+	cfg.CPArtifactID = cpUUID
+	if err := db.SaveConfig(cfg); err != nil {
+		t.Fatalf("seed config: %v", err)
+	}
+
+	service := newTestAPIKeyService(store, db, nil, newTestAPIKeyConfig())
+
+	// The CP broadcasts an apikey.created event keyed by the CP artifact UUID.
+	result, err := service.CreateExternalAPIKeyFromEvent(
+		cpUUID, "creator-user", &api.APIKeyCreationRequest{}, nil, nil, "corr-ext-create", logger, nil, nil)
+	if err != nil {
+		t.Fatalf("CreateExternalAPIKeyFromEvent(cpUUID) error: %v", err)
+	}
+	if result == nil || result.Response.ApiKey == nil {
+		t.Fatal("expected an API key creation result")
+	}
+
+	// The key must be stored against the LOCAL (DP) UUID, not the CP UUID.
+	localKeys, err := db.GetAPIKeysByAPI(dpUUID)
+	if err != nil {
+		t.Fatalf("GetAPIKeysByAPI(local): %v", err)
+	}
+	if len(localKeys) != 1 {
+		t.Fatalf("expected 1 key under local UUID %s, got %d", dpUUID, len(localKeys))
+	}
+	cpKeys, err := db.GetAPIKeysByAPI(cpUUID)
+	if err != nil {
+		t.Fatalf("GetAPIKeysByAPI(cp): %v", err)
+	}
+	if len(cpKeys) != 0 {
+		t.Fatalf("expected 0 keys under CP UUID %s, got %d", cpUUID, len(cpKeys))
+	}
+}
+
+// TestCreateExternalAPIKeyFromEvent_UnknownArtifactFails verifies that when no local
+// artifact maps to the incoming (CP) UUID — e.g. cp_artifact_id was never recorded — the
+// external key creation fails rather than silently dropping or misattributing the key.
+func TestCreateExternalAPIKeyFromEvent_UnknownArtifactFails(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	store := storage.NewConfigStore()
+	db := newTestSQLiteStorage(t, logger)
+	service := newTestAPIKeyService(store, db, nil, newTestAPIKeyConfig())
+
+	_, err := service.CreateExternalAPIKeyFromEvent(
+		"cp-uuid-with-no-local-mapping", "creator-user", &api.APIKeyCreationRequest{}, nil, nil, "corr-ext-missing", logger, nil, nil)
+	if err == nil {
+		t.Fatal("expected an error when no local artifact maps to the CP UUID")
+	}
+	assert.Contains(t, err.Error(), "artifact not found")
+}
+
+// TestGetArtifactConfigByID_CPArtifactIDFallback unit-tests the resolver used by the
+// external API-key event handlers: it resolves by the local UUID first, then falls back
+// to cp_artifact_id, and returns not-found when neither matches.
+func TestGetArtifactConfigByID_CPArtifactIDFallback(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	store := storage.NewConfigStore()
+	db := newTestSQLiteStorage(t, logger)
+
+	const dpUUID = "dp-local-uuid-aaaa"
+	const cpUUID = "cp-artifact-uuid-bbbb"
+	cfg := newTestStoredRESTConfig(dpUUID, "orders-api")
+	cfg.Origin = models.OriginGatewayAPI
+	cfg.CPArtifactID = cpUUID
+	if err := db.SaveConfig(cfg); err != nil {
+		t.Fatalf("seed config: %v", err)
+	}
+	service := newTestAPIKeyService(store, db, nil, newTestAPIKeyConfig())
+
+	// Resolves by local UUID.
+	if got, err := service.getArtifactConfigByID(dpUUID); err != nil || got == nil || got.UUID != dpUUID {
+		t.Fatalf("getArtifactConfigByID(local) = (%v, %v), want the local config", got, err)
+	}
+	// Resolves by CP artifact UUID (fallback) to the same local config.
+	got, err := service.getArtifactConfigByID(cpUUID)
+	if err != nil || got == nil {
+		t.Fatalf("getArtifactConfigByID(cp) = (%v, %v), want the local config", got, err)
+	}
+	if got.UUID != dpUUID {
+		t.Errorf("resolved UUID = %q, want local %q", got.UUID, dpUUID)
+	}
+	// Unknown id matches neither local UUID nor cp_artifact_id.
+	if got, err := service.getArtifactConfigByID("totally-unknown"); err == nil || got != nil {
+		t.Errorf("getArtifactConfigByID(unknown) = (%v, %v), want (nil, error)", got, err)
+	}
+}

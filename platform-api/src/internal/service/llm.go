@@ -174,6 +174,7 @@ func (s *LLMProviderTemplateService) Create(orgUUID, createdBy string, req *api.
 		RemainingTokens:  mapExtractionIdentifierAPI(req.RemainingTokens),
 		RequestModel:     mapExtractionIdentifierAPI(req.RequestModel),
 		ResponseModel:    mapExtractionIdentifierAPI(req.ResponseModel),
+		Origin:           constants.OriginCP,
 	}
 	resourceMappings, err := mapTemplateResourceMappingsAPI(req.ResourceMappings)
 	if err != nil {
@@ -260,6 +261,15 @@ func (s *LLMProviderTemplateService) Update(orgUUID, handle, updatedBy string, r
 	}
 	if existing.ManagedBy == "wso2" {
 		return nil, constants.ErrLLMProviderTemplateReadOnly
+	}
+	if err := ensureOriginMutable(existing.Origin); err != nil {
+		return nil, err
+	}
+	// In-place update never changes the version; a new version is created via
+	// POST /llm-provider-templates/{id}/versions. Reject a request that tries to change it
+	// rather than silently ignoring the supplied value.
+	if req.Version != "" && req.Version != existing.Version {
+		return nil, fmt.Errorf("%w: template version cannot be changed via update; use the versions endpoint", constants.ErrInvalidInput)
 	}
 
 	managedBy := existing.ManagedBy
@@ -378,6 +388,7 @@ func (s *LLMProviderTemplateService) CreateVersion(orgUUID, handle, createdBy st
 		RemainingTokens:  mapExtractionIdentifierAPI(req.RemainingTokens),
 		RequestModel:     mapExtractionIdentifierAPI(req.RequestModel),
 		ResponseModel:    mapExtractionIdentifierAPI(req.ResponseModel),
+		Origin:           constants.OriginCP,
 	}
 	resourceMappings, err := mapTemplateResourceMappingsAPI(req.ResourceMappings)
 	if err != nil {
@@ -470,6 +481,21 @@ func (s *LLMProviderTemplateService) SetVersionEnabled(orgUUID, handle, version 
 			return nil, constants.ErrLLMProviderTemplateInUse
 		}
 	}
+	// Read-only versions (built-in 'wso2'-managed or DP-imported) cannot be toggled, matching
+	// the guard applied by Update/Delete/DeleteVersion.
+	target, err := s.repo.GetByVersion(handle, orgUUID, v)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve template version: %w", err)
+	}
+	if target == nil {
+		return nil, constants.ErrLLMProviderTemplateNotFound
+	}
+	if target.ManagedBy == "wso2" {
+		return nil, constants.ErrLLMProviderTemplateReadOnly
+	}
+	if err := ensureOriginMutable(target.Origin); err != nil {
+		return nil, err
+	}
 	if err := s.repo.SetEnabled(handle, orgUUID, v, enabled); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, constants.ErrLLMProviderTemplateNotFound
@@ -490,15 +516,18 @@ func (s *LLMProviderTemplateService) Delete(orgUUID, handle, deletedBy string) e
 	if handle == "" {
 		return constants.ErrInvalidInput
 	}
-	managedBy, err := s.repo.ManagedByForHandle(handle, orgUUID)
+	tpl, err := s.repo.GetByID(handle, orgUUID)
 	if err != nil {
 		return fmt.Errorf("failed to resolve template: %w", err)
 	}
-	if managedBy == "" {
+	if tpl == nil {
 		return constants.ErrLLMProviderTemplateNotFound
 	}
-	if managedBy == "wso2" {
+	if tpl.ManagedBy == "wso2" {
 		return constants.ErrLLMProviderTemplateReadOnly
+	}
+	if err := ensureOriginMutable(tpl.Origin); err != nil {
+		return err
 	}
 	// Block deletion while any provider (built from any version) still depends on it.
 	inUse, err := s.repo.CountProvidersUsingTemplate(handle, orgUUID, "")
@@ -538,6 +567,9 @@ func (s *LLMProviderTemplateService) DeleteVersion(orgUUID, handle, version stri
 	}
 	if target.ManagedBy == "wso2" {
 		return constants.ErrLLMProviderTemplateReadOnly
+	}
+	if err := ensureOriginMutable(target.Origin); err != nil {
+		return err
 	}
 	// Block deletion while any provider built from this specific version still depends on it.
 	inUse, err := s.repo.CountProvidersUsingTemplate(handle, orgUUID, v)
@@ -659,6 +691,7 @@ func (s *LLMProviderService) Create(orgUUID, createdBy string, req *api.LLMProvi
 			Policies:          mapPoliciesAPIToModel(req.Policies),
 			Security:          mapSecurityAPIToModel(req.Security),
 		},
+		Origin: constants.OriginCP,
 	}
 	migrateLegacyProviderPoliciesInPlace(&m.Configuration)
 
@@ -725,6 +758,7 @@ func (s *LLMProviderService) List(orgUUID string, limit, offset int) (*api.LLMPr
 			CreatedBy:   createdBy,
 			Version:     &version,
 			Template:    template,
+			ReadOnly:    utils.BoolPtr(p.Origin == constants.OriginDP),
 			CreatedAt:   utils.TimePtr(p.CreatedAt),
 			UpdatedAt:   utils.TimePtr(p.UpdatedAt),
 		})
@@ -771,6 +805,10 @@ func (s *LLMProviderService) Update(orgUUID, handle, updatedBy string, req *api.
 	}
 	if existing == nil {
 		return nil, constants.ErrLLMProviderNotFound
+	}
+	// DP-originated artifacts are read-only in the control plane.
+	if err := ensureOriginMutable(existing.Origin); err != nil {
+		return nil, err
 	}
 	if req.Name == "" || req.Version == "" || req.Template == "" {
 		return nil, constants.ErrInvalidInput
@@ -866,6 +904,11 @@ func (s *LLMProviderService) Delete(orgUUID, handle, deletedBy string) error {
 	}
 	if provider == nil {
 		return constants.ErrLLMProviderNotFound
+	}
+
+	// DP-originated artifacts may only be deleted once undeployed on all gateways.
+	if err := ensureOriginDeletable(s.deploymentRepo, provider.Origin, provider.UUID, orgUUID); err != nil {
+		return err
 	}
 
 	// Get all gateways in the organization to broadcast deletion event.
@@ -972,6 +1015,7 @@ func (s *LLMProxyService) Create(orgUUID, createdBy string, req *api.LLMProxy) (
 			Policies:          mapPoliciesAPIToModel(req.Policies),
 			Security:          mapSecurityAPIToModel(req.Security),
 		},
+		Origin: constants.OriginCP,
 	}
 	migrateLegacyProxyPoliciesInPlace(&m.Configuration)
 
@@ -1054,6 +1098,7 @@ func (s *LLMProxyService) List(orgUUID string, projectUUID *string, limit, offse
 			Version:     &version,
 			ProjectId:   &projectID,
 			Provider:    &provider,
+			ReadOnly:    utils.BoolPtr(p.Origin == constants.OriginDP),
 			CreatedAt:   utils.TimePtr(p.CreatedAt),
 			UpdatedAt:   utils.TimePtr(p.UpdatedAt),
 		})
@@ -1115,6 +1160,7 @@ func (s *LLMProxyService) ListByProvider(orgUUID, providerID string, limit, offs
 			Version:     &version,
 			ProjectId:   &projectID,
 			Provider:    &provider,
+			ReadOnly:    utils.BoolPtr(p.Origin == constants.OriginDP),
 			CreatedAt:   utils.TimePtr(p.CreatedAt),
 			UpdatedAt:   utils.TimePtr(p.UpdatedAt),
 		})
@@ -1153,6 +1199,10 @@ func (s *LLMProxyService) Update(orgUUID, handle, updatedBy string, req *api.LLM
 	}
 	if existing == nil {
 		return nil, constants.ErrLLMProxyNotFound
+	}
+	// DP-originated artifacts are read-only in the control plane.
+	if err := ensureOriginMutable(existing.Origin); err != nil {
+		return nil, err
 	}
 
 	// Validate provider exists
@@ -1219,6 +1269,11 @@ func (s *LLMProxyService) Delete(orgUUID, handle, deletedBy string) error {
 	}
 	if proxy == nil {
 		return constants.ErrLLMProxyNotFound
+	}
+
+	// DP-originated artifacts may only be deleted once undeployed on all gateways.
+	if err := ensureOriginDeletable(s.deploymentRepo, proxy.Origin, proxy.UUID, orgUUID); err != nil {
+		return err
 	}
 
 	// Get all gateways in the organization to broadcast deletion event.
@@ -1371,6 +1426,54 @@ func mapPoliciesAPIToModel(in *[]api.LLMPolicy) []model.LLMPolicy {
 	return out
 }
 
+// mapGlobalPoliciesAPIToLLMPolicies flattens global (api-level) policies into the legacy
+// model.LLMPolicy shape used by liftLLMPolicies. Global policies carry their params at the
+// policy level (no path); the CP->DP forward conversion emits api-key-auth security and
+// api-level (global) rate limits here. They are wrapped into a synthetic "/*" path so the
+// shared lift logic — which reads params off paths and treats "/*" as the global scope —
+// reconstructs them uniformly.
+func mapGlobalPoliciesAPIToLLMPolicies(in *[]api.Policy) []model.LLMPolicy {
+	if in == nil || len(*in) == 0 {
+		return nil
+	}
+	out := make([]model.LLMPolicy, 0, len(*in))
+	for _, p := range *in {
+		var params map[string]interface{}
+		if p.Params != nil {
+			params = *p.Params
+		}
+		out = append(out, model.LLMPolicy{
+			Name:    p.Name,
+			Version: p.Version,
+			Paths:   []model.LLMPolicyPath{{Path: "/*", Methods: []string{"*"}, Params: params}},
+		})
+	}
+	return out
+}
+
+// mapOperationPoliciesAPIToLLMPolicies flattens operation policies into the legacy
+// model.LLMPolicy shape used by liftLLMPolicies. The CP->DP forward conversion promotes
+// the resource-scoped rate-limit policies it assembles into operationPolicies (see
+// generateLLMProviderDeploymentYAML), so on DP->CP import they are read back from there.
+func mapOperationPoliciesAPIToLLMPolicies(in *[]api.OperationPolicy) []model.LLMPolicy {
+	if in == nil || len(*in) == 0 {
+		return nil
+	}
+	out := make([]model.LLMPolicy, 0, len(*in))
+	for _, p := range *in {
+		paths := make([]model.LLMPolicyPath, 0, len(p.Paths))
+		for _, pp := range p.Paths {
+			methods := make([]string, 0, len(pp.Methods))
+			for _, m := range pp.Methods {
+				methods = append(methods, string(m))
+			}
+			paths = append(paths, model.LLMPolicyPath{Path: pp.Path, Methods: methods, Params: pp.Params})
+		}
+		out = append(out, model.LLMPolicy{Name: p.Name, Version: p.Version, Paths: paths})
+	}
+	return out
+}
+
 func mapGlobalPoliciesAPIToModel(in *[]api.Policy) []model.GlobalPolicy {
 	if in == nil || len(*in) == 0 {
 		return nil
@@ -1402,7 +1505,11 @@ func mapOperationPoliciesAPIToModel(in *[]api.OperationPolicy) []model.Operation
 		}
 		paths := make([]model.OperationPolicyPath, 0, len(p.Paths))
 		for _, pp := range p.Paths {
-			paths = append(paths, model.OperationPolicyPath{Path: pp.Path, Methods: pp.Methods, Params: pp.Params})
+			methods := make([]string, 0, len(pp.Methods))
+			for _, mm := range pp.Methods {
+				methods = append(methods, string(mm))
+			}
+			paths = append(paths, model.OperationPolicyPath{Path: pp.Path, Methods: methods, Params: pp.Params})
 		}
 		out = append(out, model.OperationPolicy{Name: p.Name, Version: p.Version, ExecutionCondition: ec, Paths: paths})
 	}
@@ -1436,7 +1543,11 @@ func mapOperationPoliciesModelToAPI(in []model.OperationPolicy) *[]api.Operation
 	for _, p := range in {
 		paths := make([]api.OperationPolicyPath, 0, len(p.Paths))
 		for _, pp := range p.Paths {
-			paths = append(paths, api.OperationPolicyPath{Path: pp.Path, Methods: pp.Methods, Params: pp.Params})
+			methods := make([]api.OperationPolicyPathMethods, 0, len(pp.Methods))
+			for _, mm := range pp.Methods {
+				methods = append(methods, api.OperationPolicyPathMethods(mm))
+			}
+			paths = append(paths, api.OperationPolicyPath{Path: pp.Path, Methods: methods, Params: pp.Params})
 		}
 		entry := api.OperationPolicy{Name: p.Name, Version: p.Version, Paths: paths}
 		if p.ExecutionCondition != "" {
@@ -1846,6 +1957,7 @@ func templateListItem(t *model.LLMProviderTemplate) api.LLMProviderTemplateListI
 	}
 	return api.LLMProviderTemplateListItem{
 		Id:          &id,
+		GroupId:     utils.StringPtrIfNotEmpty(t.GroupID),
 		Name:        &name,
 		Description: utils.StringPtrIfNotEmpty(t.Description),
 		ManagedBy:   utils.StringPtrIfNotEmpty(t.ManagedBy),
@@ -1854,6 +1966,7 @@ func templateListItem(t *model.LLMProviderTemplate) api.LLMProviderTemplateListI
 		IsLatest:    &isLatest,
 		Enabled:     &enabled,
 		LogoUrl:     utils.StringPtrIfNotEmpty(logoURL),
+		ReadOnly:    utils.BoolPtr(t.Origin == constants.OriginDP),
 		CreatedAt:   utils.TimePtr(t.CreatedAt),
 		UpdatedAt:   utils.TimePtr(t.UpdatedAt),
 	}
@@ -1885,6 +1998,7 @@ func mapTemplateModelToAPI(m *model.LLMProviderTemplate) *api.LLMProviderTemplat
 		RequestModel:     mapExtractionIdentifierModelToAPI(m.RequestModel),
 		ResponseModel:    mapExtractionIdentifierModelToAPI(m.ResponseModel),
 		ResourceMappings: mapTemplateResourceMappingsModelToAPI(m.ResourceMappings),
+		ReadOnly:         utils.BoolPtr(m.Origin == constants.OriginDP),
 		CreatedAt:        utils.TimePtr(m.CreatedAt),
 		UpdatedAt:        utils.TimePtr(m.UpdatedAt),
 	}
@@ -2105,6 +2219,7 @@ func mapProviderModelToAPI(m *model.LLMProvider, templateHandle string) *api.LLM
 		OperationPolicies: operationPolicies,
 		Policies:          nil,
 		Security:          mapSecurityModelToAPI(m.Configuration.Security),
+		ReadOnly:          utils.BoolPtr(m.Origin == constants.OriginDP),
 		CreatedAt:         utils.TimePtr(m.CreatedAt),
 		UpdatedAt:         utils.TimePtr(m.UpdatedAt),
 	}
@@ -2428,6 +2543,7 @@ func mapProxyModelToAPI(m *model.LLMProxy) *api.LLMProxy {
 		},
 		Openapi:   utils.StringPtrIfNotEmpty(m.OpenAPISpec),
 		Security:  mapSecurityModelToAPI(m.Configuration.Security),
+		ReadOnly:  utils.BoolPtr(m.Origin == constants.OriginDP),
 		CreatedAt: createdAt,
 		UpdatedAt: updatedAt,
 	}

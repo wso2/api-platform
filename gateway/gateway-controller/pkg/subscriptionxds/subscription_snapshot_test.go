@@ -44,6 +44,9 @@ type MockStorage struct {
 func (m *MockStorage) GetPendingBottomUpAPIs() ([]*models.StoredConfig, error) {
 	return nil, nil
 }
+func (m *MockStorage) GetPendingCPSyncArtifacts() ([]*models.StoredConfig, error) {
+	return nil, nil
+}
 
 // UpdateCPSyncStatus implements [storage.Storage].
 func (m *MockStorage) UpdateCPSyncStatus(uuid, cpArtifactID string, status models.CPSyncStatus, reason string) error {

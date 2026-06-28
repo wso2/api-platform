@@ -35,8 +35,6 @@ import (
 	"platform-api/src/internal/repository"
 	"platform-api/src/internal/service"
 	"platform-api/src/internal/vault"
-
-	"github.com/gin-gonic/gin"
 )
 
 // testHashToken replicates the private hashToken function in the service package.
@@ -48,7 +46,7 @@ func testHashToken(token string) string {
 
 // gatewaySecretTestEnv holds everything needed to exercise the gateway secret endpoints.
 type gatewaySecretTestEnv struct {
-	router     *gin.Engine
+	router     http.Handler
 	sqlDB      *sql.DB
 	db         *database.DB
 	svc        *service.SecretService
@@ -126,14 +124,13 @@ func setupGatewaySecretTestEnv(t *testing.T) (*gatewaySecretTestEnv, func()) {
 		cfg, slog.Default(),
 	)
 
-	h := NewGatewayInternalAPIHandler(gatewaySvc, gwInternalSvc, nil, secretSvc, slog.Default())
+	h := NewGatewayInternalAPIHandler(gatewaySvc, gwInternalSvc, nil, nil, secretSvc, slog.Default())
 
-	gin.SetMode(gin.TestMode)
-	r := gin.New()
-	h.RegisterRoutes(r)
+	mux := http.NewServeMux()
+	h.RegisterRoutes(mux)
 
 	env := &gatewaySecretTestEnv{
-		router:     r,
+		router:     mux,
 		sqlDB:      sqlDB,
 		db:         db,
 		svc:        secretSvc,
@@ -146,7 +143,7 @@ func setupGatewaySecretTestEnv(t *testing.T) (*gatewaySecretTestEnv, func()) {
 }
 
 // doGWRequest sends a request with the given api-key header value.
-func doGWRequest(r *gin.Engine, method, path, apiKey string) *httptest.ResponseRecorder {
+func doGWRequest(r http.Handler, method, path, apiKey string) *httptest.ResponseRecorder {
 	req, _ := http.NewRequest(method, path, nil)
 	if apiKey != "" {
 		req.Header.Set("api-key", apiKey)
