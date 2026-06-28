@@ -16,6 +16,28 @@
  * under the License.
  */
 
+// The BFF rejects state-mutating requests that lack a custom CSRF header
+// (CORS is closed, so cross-site attackers cannot set it). The SPA sends this
+// header on every request; mirror that here so `cy.request` calls that hit the
+// BFF proxy (POST/PUT/PATCH/DELETE) are not rejected with "missing CSRF header".
+const CSRF_HEADER = Cypress.env('CSRF_HEADER') || 'X-Requested-By';
+const CSRF_VALUE = Cypress.env('CSRF_VALUE') || 'ai-workspace';
+const CSRF_SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
+
+Cypress.Commands.overwrite('request', (originalFn, ...args) => {
+  // Every mutating request in this suite uses the options-object form, which is
+  // the only signature that carries an explicit method and headers.
+  if (args.length === 1 && args[0] !== null && typeof args[0] === 'object') {
+    const options = { ...args[0] };
+    const method = (options.method || 'GET').toUpperCase();
+    if (!CSRF_SAFE_METHODS.has(method)) {
+      options.headers = { ...(options.headers || {}), [CSRF_HEADER]: CSRF_VALUE };
+    }
+    return originalFn(options);
+  }
+  return originalFn(...args);
+});
+
 Cypress.Commands.add('visitWorkspace', (path = '/') => {
   const introStorageKey = Cypress.env('QS_INTRO_STORAGE_KEY');
 
