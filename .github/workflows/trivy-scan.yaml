@@ -92,8 +92,8 @@ jobs:
 
       - name: Build & push event-gateway-controller
         run: |
-          make -C gateway/gateway-controller build-and-push-multiarch \
-          IMAGE_NAME=localhost:5000/event-gateway-controller \
+          make -C event-gateway build-and-push-multiarch-event-gateway-controller \
+          EVENT_GATEWAY_CONTROLLER_IMAGE=localhost:5000/event-gateway-controller \
           VERSION=trivy
 
       - name: Trivy scan event-gateway-controller
