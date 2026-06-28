@@ -596,7 +596,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
       "eventType": "apikey.generated",
       "occurredAt": "2019-08-24T14:15:22Z",
       "status": "DELIVERED",
-      "attemptCount": 1,
       "lastHttpStatus": 200,
       "lastError": "string",
       "lastAttemptAt": "2019-08-24T14:15:22Z",
@@ -645,7 +644,6 @@ Status Code **200**
 |»» eventType|string¦null|false|none|none|
 |»» occurredAt|string(date-time)¦null|false|none|none|
 |»» status|string|false|none|none|
-|»» attemptCount|integer|false|none|none|
 |»» lastHttpStatus|integer¦null|false|none|none|
 |»» lastError|string¦null|false|none|none|
 |»» lastAttemptAt|string(date-time)¦null|false|none|none|
@@ -659,4 +657,3 @@ Status Code **200**
 |status|IN_FLIGHT|
 |status|DELIVERED|
 |status|FAILED|
-|status|DEAD_LETTERED|

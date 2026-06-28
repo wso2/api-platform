@@ -40,13 +40,11 @@ For events that carry a sensitive field (`apikey.generated`, `apikey.regenerated
 
 Webhook subscribers are **per-organization** and managed through the Webhook Subscribers API — not through `config.yaml`. Each organization registers its own endpoint(s); secrets and public keys are stored encrypted at rest (AES-256-GCM) in the devportal database, keyed to the organization.
 
-Only delivery (retry/backoff) tuning, which applies globally across all organizations, remains in `config.yaml`:
+Only delivery tuning, which applies globally across all organizations, remains in `config.yaml`. Each delivery is attempted exactly once — there is no retry:
 
 ```yaml
 webhooks:
   delivery:
-    maxAttempts: 8
-    backoff: [60, 300, 900, 1800, 3600, 7200, 14400, 28800]  # seconds: 1m 5m 15m 30m 1h 2h 4h 8h
     pollIntervalMs: 2000
     batchSize: 50
     signatureToleranceSec: 300
@@ -470,22 +468,9 @@ function decryptSecret(privateKeyPem, encryptedKey) {
 
 If no public key is configured for the subscriber, `encrypted_key` is omitted and the sensitive value is not delivered at all — configure a public key before going to production.
 
-## Delivery Retry
+## Delivery Attempts
 
-If your subscriber endpoint is unavailable or returns a non-2xx response, the portal retries delivery according to this schedule:
-
-| Attempt | Delay |
-|---|---|
-| 1 | 1 minute |
-| 2 | 5 minutes |
-| 3 | 15 minutes |
-| 4 | 30 minutes |
-| 5 | 1 hour |
-| 6 | 2 hours |
-| 7 | 4 hours |
-| 8 | 8 hours |
-
-After all attempts are exhausted, the delivery is marked as failed. You can trigger a manual retry via the admin API.
+Each delivery is attempted exactly once. If your subscriber endpoint is unavailable or returns a non-2xx response, the delivery is marked `FAILED` immediately — there is no retry or dead-letter queue. Make sure your endpoint is reliable and fast (see `timeoutMs`), since a missed event is not redelivered automatically.
 
 ## Monitoring Event Deliveries
 
@@ -501,12 +486,4 @@ curl http://localhost:3000/o/{orgId}/devportal/v1/webhook-events -H "Authorizati
 
 ```bash
 curl http://localhost:3000/o/{orgId}/devportal/v1/webhook-events/{eventId} -H "Authorization: Bearer $TOKEN"
-```
-
-### Retry a failed delivery
-
-```bash
-curl -X POST \
-  http://localhost:3000/o/{orgId}/devportal/v1/webhook-deliveries/{deliveryId}/retry \
-  -H "Authorization: Bearer $TOKEN"
 ```

@@ -217,13 +217,11 @@ features:
 # stored encrypted at rest in the devportal database. See
 # docs/administer/webhook-integration.md for the full API and payload reference.
 #
-# Only delivery (retry/backoff) tuning, which applies globally across all
-# organizations, lives in this file:
+# Only delivery tuning, which applies globally across all organizations,
+# lives in this file. Each delivery is attempted exactly once — there is no
+# retry/backoff.
 webhooks:
   delivery:
-    maxAttempts: 8
-    # Retry delays in seconds: 1 min, 5 min, 15 min, 30 min, 1 h, 2 h, 4 h, 8 h
-    backoff: [60, 300, 900, 1800, 3600, 7200, 14400, 28800]
     pollIntervalMs: 2000
     batchSize: 50
     signatureToleranceSec: 300

@@ -50,16 +50,6 @@ const DPEventDelivery = sequelize.define('DP_EVENT_DELIVERY', {
         allowNull: false,
         defaultValue: 'PENDING'
     },
-    ATTEMPT_COUNT: {
-        type: DataTypes.INTEGER,
-        allowNull: false,
-        defaultValue: 0
-    },
-    NEXT_ATTEMPT_AT: {
-        type: DataTypes.DATE,
-        allowNull: false,
-        defaultValue: DataTypes.NOW
-    },
     LAST_HTTP_STATUS: {
         type: DataTypes.INTEGER,
         allowNull: true
@@ -81,7 +71,6 @@ const DPEventDelivery = sequelize.define('DP_EVENT_DELIVERY', {
     tableName: 'DP_EVENT_DELIVERY',
     returning: true,
     indexes: [
-        { name: 'IDX_EVENT_DELIVERY_STATUS_NEXT_ATTEMPT', fields: ['STATUS', 'NEXT_ATTEMPT_AT'] },
         { name: 'IDX_EVENT_DELIVERY_EVENT_UUID', fields: ['EVENT_UUID'] },
         { name: 'UQ_EVENT_DELIVERY_EVENT_SUBSCRIBER', unique: true, fields: ['EVENT_UUID', 'SUBSCRIBER_ID'] }
     ]

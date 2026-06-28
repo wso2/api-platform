@@ -24,17 +24,10 @@ const DPEvent = require('../../models/event');
 const { Organization } = require('../../models/organization');
 const { getSubscriber } = require('./subscriberRegistry');
 const { sign } = require('./signer');
-const { nextAttemptAt, getMaxAttempts } = require('./backoff');
 const logger = require('../../config/logger');
 
 let running = false;
 let intervalHandle = null;
-
-/** Determine if an HTTP status warrants immediate dead-lettering (not retryable). */
-function isNotRetryable(status) {
-    // 4xx except 408 (Request Timeout) and 429 (Too Many Requests)
-    return status >= 400 && status < 500 && status !== 408 && status !== 429;
-}
 
 /**
  * POST a single delivery. Returns { ok, status, error }.
@@ -125,23 +118,12 @@ async function runBatch() {
         try {
             result = await post(delivery, event, orgCpRefIdMap[event.ORG_UUID]);
         } catch (postErr) {
-            const newAttemptCount = delivery.ATTEMPT_COUNT + 1;
-            const deadLetter = newAttemptCount >= getMaxAttempts();
-            const nextAt = deadLetter ? new Date() : nextAttemptAt(newAttemptCount - 1);
-            await eventDao.markFailed(delivery.UUID, {
-                httpStatus: 0,
-                error: postErr.message,
-                attemptCount: newAttemptCount,
-                nextAttemptAt: nextAt,
-                deadLetter
-            });
+            await eventDao.markFailed(delivery.UUID, { httpStatus: 0, error: postErr.message });
             logger.error('Post threw unexpectedly', {
                 deliveryId: delivery.UUID, error: postErr.message
             });
             continue;
         }
-
-        const newAttemptCount = delivery.ATTEMPT_COUNT + 1;
 
         if (result.ok) {
             await eventDao.markDelivered(delivery.UUID, result.status);
@@ -150,30 +132,11 @@ async function runBatch() {
                 eventType: event.TYPE, status: result.status
             });
         } else {
-            const deadLetter = isNotRetryable(result.status) || newAttemptCount >= getMaxAttempts();
-            const nextAt = deadLetter ? new Date() : nextAttemptAt(newAttemptCount - 1);
-
-            await eventDao.markFailed(delivery.UUID, {
-                httpStatus: result.status,
-                error: result.error,
-                attemptCount: newAttemptCount,
-                nextAttemptAt: nextAt,
-                deadLetter
+            await eventDao.markFailed(delivery.UUID, { httpStatus: result.status, error: result.error });
+            logger.warn('[deliveryWorker] failed', {
+                deliveryId: delivery.UUID, subscriberId: delivery.SUBSCRIBER_ID,
+                eventType: event.TYPE, status: result.status, error: result.error
             });
-
-            if (deadLetter) {
-                logger.error('Dead-lettered', {
-                    deliveryId: delivery.UUID, subscriberId: delivery.SUBSCRIBER_ID,
-                    eventType: event.TYPE, attempts: newAttemptCount,
-                    status: result.status, error: result.error
-                });
-            } else {
-                logger.warn('Will retry', {
-                    deliveryId: delivery.UUID, subscriberId: delivery.SUBSCRIBER_ID,
-                    eventType: event.TYPE, attempts: newAttemptCount,
-                    nextAttemptAt: nextAt, error: result.error || result.status
-                });
-            }
         }
     }
 }
