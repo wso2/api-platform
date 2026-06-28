@@ -75,7 +75,11 @@ services:
       retries: 3
 
   # ---------------------------------------------------------------------------
-  # AI Workspace  (React SPA served by nginx)
+  # AI Workspace  (React SPA served by the Go BFF)
+  #
+  # The BFF serves the SPA, proxies all browser→backend traffic same-origin, and
+  # owns authentication. Tokens live in the BFF session (HttpOnly cookie); the
+  # browser never holds a token.
   # ---------------------------------------------------------------------------
   ai-workspace:
     image: ghcr.io/wso2/api-platform/ai-workspace:0.2.0-SNAPSHOT
@@ -84,6 +88,23 @@ services:
     depends_on:
       platform-api:
         condition: service_healthy
+    environment:
+      # The BFF talks to the Platform API over the internal compose network.
+      - PLATFORM_API_URL=https://platform-api:9243
+      - PLATFORM_API_TLS_SKIP_VERIFY=true
+      - SESSION_STORE=memory
+      - COOKIE_SECURE=true
+      - COOKIE_SAMESITE=lax
+      - BFF_TLS_SELF_SIGNED=true
+      # ── OIDC (confidential client) — set AUTH_MODE=oidc in config.toml and the
+      # following on the BFF. The client secret stays here, never in the browser.
+      # Put OIDC_CLIENT_SECRET in a .env file next to this compose file.
+      # - OIDC_ISSUER=${OIDC_ISSUER:-}
+      # - OIDC_CLIENT_ID=${OIDC_CLIENT_ID:-}
+      # - OIDC_CLIENT_SECRET=${OIDC_CLIENT_SECRET:-}
+      # - OIDC_REDIRECT_URL=https://localhost:5380/api/auth/callback
+      # - OIDC_POST_LOGOUT_REDIRECT_URL=https://localhost:5380/login
+      # - OIDC_SCOPES=openid profile email
     volumes:
       - ./configs/config.toml:/etc/ai-workspace/config.toml:ro
       # Optional: mount your own TLS certificate to remove the browser trust warning.
@@ -93,7 +114,7 @@ services:
     ports:
       - "5380:5380"
     healthcheck:
-      test: ["CMD", "curl", "-fk", "https://localhost:5380/"]
+      test: ["CMD", "curl", "-fk", "https://localhost:5380/healthz"]
       interval: 30s
       timeout: 5s
       start_period: 10s

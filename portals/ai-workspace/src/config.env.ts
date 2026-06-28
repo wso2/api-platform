@@ -151,13 +151,13 @@ export const POLICY_HUB_WEB_URL = getEnvOrDefault(
   'https://wso2.com/api-platform/policy-hub/'
 );
 
-// Platform API base URL. Defaults to a relative path routed through the dev-server / nginx
-// proxy (/api-proxy → https://localhost:9243, secure:false) so the browser only ever talks to
-// the app origin and never sees the platform-api self-signed cert. Override with an absolute URL
-// only if calling the platform API directly.
+// Platform API base URL. Defaults to a relative path routed same-origin through the
+// BFF reverse proxy (/api/proxy/* → Platform API) so the browser only ever talks to
+// the app origin, never holds a token, and never sees the platform-api self-signed cert.
+// Override with an absolute URL only if calling the platform API directly.
 export const PLATFORM_API_BASE_URL = getEnvOrDefault(
   'VITE_PLATFORM_API_BASE_URL',
-  '/api-proxy/api/v0.9'
+  '/api/proxy/api/v0.9'
 );
 
 // Control-plane host shown in gateway setup instructions (host:port).
@@ -169,8 +169,14 @@ export const CONTROLPLANE_HOST = getEnvOrDefault(
 
 export const PORTAL_API_BASE_URL = getEnvOrDefault(
   'VITE_PORTAL_API_BASE_URL',
-  '/api-proxy/api/portal/v0.9'
+  '/api/proxy/api/portal/v0.9'
 );
+
+// CSRF header sent on all BFF requests. Cross-site attackers cannot set a custom
+// header (CORS is closed), so its presence proves the request is same-origin.
+// Must match the BFF's CSRF_HEADER config (default: X-Requested-By).
+export const CSRF_HEADER = getEnvOrDefault('VITE_CSRF_HEADER', 'X-Requested-By');
+export const CSRF_VALUE = 'ai-workspace';
 
 // JWT claim names for user display — configure to match your IDP's token structure.
 // Common alternatives: 'name', 'preferred_username' (Keycloak), 'upn' (Azure AD)

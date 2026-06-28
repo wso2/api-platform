@@ -1,11 +1,11 @@
 ###########################
-# Build Stage             #
+# Stage 1 — SPA build      #
 ###########################
-FROM node:20-alpine AS build
+FROM node:20-alpine AS web
 
 RUN apk --no-cache add python3 build-base git
 
-WORKDIR /app
+WORKDIR /web
 
 # Separate dependency install for better layer caching
 COPY package.json package-lock.json ./
@@ -15,9 +15,23 @@ COPY . .
 RUN npm run build
 
 ###########################
-# Runtime Stage           #
+# Stage 2 — BFF build      #
 ###########################
-FROM nginx:1.27-alpine
+FROM golang:1.26-alpine AS bff
+
+WORKDIR /src
+
+# The BFF is a standalone, dependency-free module (stdlib only); build it without
+# the workspace so the image is self-contained.
+COPY bff/go.mod ./
+COPY bff/ ./
+ENV CGO_ENABLED=0 GOFLAGS=-mod=mod GOWORK=off
+RUN go build -trimpath -ldflags "-s -w" -o /bff .
+
+###########################
+# Stage 3 — Runtime        #
+###########################
+FROM alpine:3.20
 
 ARG USERNAME=aiworkspace
 ARG USER_UID=10001
@@ -26,30 +40,28 @@ ARG USER_GID=$USER_UID
 RUN addgroup -g $USER_GID $USERNAME && \
     adduser -D -u $USER_UID -G $USERNAME $USERNAME && \
     apk upgrade --no-cache && \
-    apk add --no-cache curl openssl && \
-    mkdir -p /tmp/nginx/cache /tmp/nginx/logs /tmp/nginx/run && \
-    ln -sf /tmp/nginx/cache /var/cache/nginx && \
-    ln -sf /tmp/nginx/logs /var/log/nginx && \
-    ln -sf /tmp/nginx/run /var/run/nginx && \
-    touch /tmp/nginx/nginx.pid && \
-    chown -R $USER_UID:$USER_GID /tmp/nginx && \
-    chmod 666 /tmp/nginx/nginx.pid
+    apk add --no-cache curl ca-certificates
 
 WORKDIR /app
 
-COPY --chown=$USERNAME:$USERNAME --from=build /app/dist /app/
-COPY --chown=$USERNAME:$USERNAME nginx.docker.conf /etc/nginx/nginx.conf
-COPY --chown=$USERNAME:$USERNAME entrypoint.sh /usr/local/bin/entrypoint.sh
-
-RUN chown -R $USER_UID:$USER_GID /app && \
-    chmod +x /usr/local/bin/entrypoint.sh
+# Built SPA (served by the BFF as static files) and the BFF binary.
+COPY --chown=$USER_UID:$USER_GID --from=web /web/dist /app
+COPY --chown=$USER_UID:$USER_GID --from=bff /bff /usr/local/bin/bff
 
 USER $USER_UID
+
+# BFF defaults: serve /app, self-signed TLS, listen on 5380.
+ENV STATIC_DIR=/app \
+    BFF_ADDR=:5380 \
+    BFF_TLS_SELF_SIGNED=true \
+    SESSION_STORE=memory \
+    COOKIE_SECURE=true \
+    COOKIE_SAMESITE=lax
 
 EXPOSE 5380
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD curl -fk https://localhost:5380/ || exit 1
+  CMD curl -fk https://localhost:5380/healthz || exit 1
 
-STOPSIGNAL SIGQUIT
-ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+STOPSIGNAL SIGTERM
+ENTRYPOINT ["/usr/local/bin/bff"]

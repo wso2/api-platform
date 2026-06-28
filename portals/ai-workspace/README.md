@@ -1,6 +1,6 @@
 # AI Workspace
 
-The AI Workspace is a React/Vite SPA served by nginx inside a Docker container. It communicates with the **Platform API** Go backend and supports two authentication modes: OIDC (production) and file-based/basic (quickstart).
+The AI Workspace is a React/Vite SPA served by a **Go BFF (Backend-for-Frontend)** inside a Docker container. The BFF serves the SPA, proxies all browser→backend traffic same-origin, and owns authentication: tokens live in a server-side session (HttpOnly cookie) and never reach the browser. It communicates with the **Platform API** Go backend and supports two authentication modes: OIDC (production) and file-based/basic (quickstart). In OIDC mode the BFF is a confidential client and performs the code↔token exchange with the IDP — the UI never holds the client secret or a token.
 
 ---
 
@@ -18,7 +18,7 @@ The AI Workspace is a React/Vite SPA served by nginx inside a Docker container. 
 ## Technology stack
 
 - **React** + **TypeScript** + **Vite**
-- **nginx** — serves the SPA and reverse-proxies `/api-proxy/` to the Platform API
+- **Go BFF** (stdlib-only) — serves the SPA, reverse-proxies `/api/proxy/*` to the Platform API (injecting the session bearer token), and handles login/logout/session + the OIDC code flow
 - **Docker Compose** — orchestrates AI Workspace + Platform API
 
 ---
@@ -38,11 +38,11 @@ See [production/README.md](production/README.md) for the full OIDC setup walkthr
 
 ## Configuration
 
-Runtime config is injected at container startup via `entrypoint.sh`:
+Runtime config is injected by the BFF at startup:
 
 1. Values are read from the `config.toml` mounted at `/etc/ai-workspace/config.toml`.
 2. Each key is mapped to a `VITE_*` env var (env vars already set take priority).
-3. All `VITE_*` vars are written to `/tmp/runtime-config.js` so the SPA can read them without a rebuild.
+3. The BFF serves the browser-safe `VITE_*` values at `GET /runtime-config.js` (as `window.__RUNTIME_CONFIG__`) so the SPA can read them without a rebuild. Secrets (e.g. the OIDC client secret) are never emitted here.
 
 The full key → `VITE_*` mapping and all available options are documented in
 [configs/config-template.toml](configs/config-template.toml).
@@ -60,12 +60,15 @@ portals/ai-workspace/
 │   └── config-platform-api.toml         # Active Platform API config
 ├── production/
 │   └── README.md                        # Production setup guide (Asgardeo)
+├── bff/                                # Go BFF — serves SPA, proxy, auth (stdlib-only)
+│   ├── main.go
+│   └── internal/{config,session,auth,proxy,server,tlsutil}
 ├── src/
 │   ├── config.env.ts                    # Centralised env/runtime config reads
+│   ├── contexts/BFFAuthProvider.tsx     # Single auth provider (hydrates from /api/session)
 │   ├── App.tsx
 │   └── ...
-├── entrypoint.sh                        # Container startup — config injection + TLS
-├── nginx.docker.conf                    # nginx config
+├── Dockerfile                          # 3-stage: SPA build → BFF build → runtime
 ├── QUICKSTART.md                        # Local setup guide
 └── docker-compose.yaml
 ```
@@ -91,7 +94,7 @@ The stack exposes:
 
 | Service | Port | Protocol |
 |---|---|---|
-| AI Workspace (nginx) | `5380` | HTTPS |
+| AI Workspace (Go BFF) | `5380` | HTTPS |
 | Platform API | `9243` | HTTPS |
 
 
@@ -121,7 +124,16 @@ go run ./cmd/main.go -config ./config/config.toml
 ```
 This starts the Platform API using the local configuration file.
 
-Ensure both services are running before accessing the application.
+Terminal 3:
+```bash
+cd portals/ai-workspace
+make bff-run            # serves /api/* on https://localhost:8081, proxies to the Platform API
+```
+The Vite dev server proxies `/api` and `/runtime-config.js` to the BFF, so the browser
+talks only to the app origin (same topology as production). Set `PLATFORM_API_URL` if the
+Platform API is not on `https://localhost:9243`.
+
+Ensure all three services are running before accessing the application.
 
 > **Browser trust warning?** Both services use a self-signed TLS certificate by default. Click **Advanced → Proceed** to continue, then return to the workspace. See [Custom TLS certificates](#custom-tls-certificates) to remove the warning permanently.
 

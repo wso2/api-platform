@@ -23,7 +23,6 @@ import {
   useLocation,
   useNavigate,
 } from 'react-router-dom';
-import { useAuth } from 'react-oidc-context';
 import AutoLoginPage from './pages/login/AutoLoginPage';
 import AppShellMain from './pages/appShell/appShellMain';
 import { AppShellProvider } from './contexts/AppShellContext';
@@ -83,7 +82,7 @@ import { LLMProvidersProvider } from './contexts/llmProvider';
 import React, { useRef, useState } from 'react';
 import { ChoreoUserProvider } from './contexts/ChoreoUserContext';
 import { useAppAuth } from './contexts/AppAuthContext';
-import { Box, CircularProgress } from '@wso2/oxygen-ui';
+import { Box } from '@wso2/oxygen-ui';
 
 /**
  * Only allow same-origin relative paths as return URLs to prevent open redirects.
@@ -124,50 +123,12 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-// Processes the OIDC ?code= callback. Shows a spinner while react-oidc-context
-// exchanges the code; on success onSigninCallback in main.tsx navigates to the app.
-// On error, shows the reason and lets the user retry.
+// The OIDC ?code= callback is now handled server-side by the BFF at
+// /api/auth/callback (which sets the session cookie and 302s back into the app).
+// This SPA route only catches stray hits to the legacy /signin path and bounces
+// them home; the gate in main.tsx re-evaluates the session there.
 function SigninCallbackRoute() {
-  const auth = useAuth();
-  const navigate = useNavigate();
-
-  const handleRetry = React.useCallback(() => {
-    navigate('/login', { replace: true });
-  }, [navigate]);
-
-  if (auth.error) {
-    return (
-      <Box sx={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', p: 3 }}>
-        <Box sx={{ maxWidth: 440, width: '100%', textAlign: 'center' }}>
-          <CircularProgress size={28} sx={{ mb: 3, color: 'error.main' }} />
-          <Box sx={{ mb: 1, fontSize: '1.125rem', fontWeight: 700 }}>
-            Sign-in failed
-          </Box>
-          <Box sx={{ mb: 3, color: 'text.secondary', fontSize: '0.875rem' }}>
-            {auth.error.message || 'An unexpected error occurred during authentication.'}
-          </Box>
-          <Box
-            component="button"
-            onClick={handleRetry}
-            sx={{
-              px: 3, py: 1, borderRadius: 1, border: 'none',
-              bgcolor: 'primary.main', color: 'primary.contrastText',
-              fontSize: '0.875rem', fontWeight: 600, cursor: 'pointer',
-              '&:hover': { bgcolor: 'primary.dark' },
-            }}
-          >
-            Back to Sign In
-          </Box>
-        </Box>
-      </Box>
-    );
-  }
-
-  return (
-    <Box sx={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <CircularProgress />
-    </Box>
-  );
+  return <Navigate to="/" replace />;
 }
 
 type OrgInitState = 'checking' | 'provisioning' | 'done' | 'error';
