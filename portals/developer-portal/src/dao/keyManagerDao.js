@@ -27,7 +27,7 @@ const kmCrypto = createCryptoUtil(config.advanced.encryptionKey);
  * Create a new key manager for an organization.
  * Admin credentials are encrypted before storage.
  */
-const create = async (orgId, kmData) => {
+const create = async (orgId, kmData, createdBy) => {
     try {
         if (!kmCrypto.enabled) {
             throw new Error('Key manager encryption key is not configured. ' +
@@ -47,6 +47,8 @@ const create = async (orgId, kmData) => {
             ...(kmData.supportedGrantTypes && { SUPPORTED_GRANT_TYPES: kmData.supportedGrantTypes }),
             ...(kmData.supportedScopes && { SUPPORTED_SCOPES: kmData.supportedScopes }),
             ...(kmData.additionalProperties && { ADDITIONAL_PROPERTIES: kmData.additionalProperties }),
+            CREATED_BY: createdBy,
+            UPDATED_BY: createdBy,
         });
         return record;
     } catch (error) {
@@ -62,7 +64,7 @@ const create = async (orgId, kmData) => {
  * Update an existing key manager.
  * Re-encrypts admin credentials if they are provided.
  */
-const update = async (kmId, kmData) => {
+const update = async (kmId, kmData, updatedBy) => {
     try {
         const updatePayload = {
             ...(kmData.name && { NAME: kmData.name }),
@@ -75,6 +77,8 @@ const update = async (kmId, kmData) => {
             ...(kmData.supportedGrantTypes && { SUPPORTED_GRANT_TYPES: kmData.supportedGrantTypes }),
             ...(kmData.supportedScopes && { SUPPORTED_SCOPES: kmData.supportedScopes }),
             ...(kmData.additionalProperties && { ADDITIONAL_PROPERTIES: kmData.additionalProperties }),
+            UPDATED_BY: updatedBy,
+            UPDATED_AT: new Date(),
         };
 
         // Re-encrypt admin credentials if provided

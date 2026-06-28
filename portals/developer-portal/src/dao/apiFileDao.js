@@ -21,7 +21,7 @@ const { Sequelize, Op } = require('sequelize');
 const constants = require('../utils/constants');
 const logger = require('../config/logger');
 
-const store = async (apiFile, fileName, apiID, type, t, key) => {
+const store = async (apiFile, fileName, apiID, type, createdBy, t, key) => {
 
     try {
         const apiFileResponse = await APIContent.create({
@@ -29,7 +29,9 @@ const store = async (apiFile, fileName, apiID, type, t, key) => {
             FILE_NAME: fileName,
             API_UUID: apiID,
             TYPE: type,
-            LOOKUP_KEY: key ?? null
+            LOOKUP_KEY: key ?? null,
+            CREATED_BY: createdBy,
+            UPDATED_BY: createdBy
         }, { transaction: t }
         );
         return apiFileResponse;
@@ -41,7 +43,7 @@ const store = async (apiFile, fileName, apiID, type, t, key) => {
     }
 }
 
-const storeMany = async (files, apiID, t) => {
+const storeMany = async (files, apiID, createdBy, t) => {
 
     let apiContent = []
     try {
@@ -51,7 +53,9 @@ const storeMany = async (files, apiID, t) => {
                 FILE_NAME: file.fileName,
                 TYPE: file.type,
                 API_UUID: apiID,
-                LOOKUP_KEY: file.key ?? null
+                LOOKUP_KEY: file.key ?? null,
+                CREATED_BY: createdBy,
+                UPDATED_BY: createdBy
             })
         });
         const apiContentResponse = await APIContent.bulkCreate(apiContent, { transaction: t });
@@ -64,7 +68,7 @@ const storeMany = async (files, apiID, t) => {
     }
 }
 
-const upsertMany = async (files, apiID, orgID, t) => {
+const upsertMany = async (files, apiID, orgID, updatedBy, t) => {
 
     let filesToCreate = []
     try {
@@ -81,14 +85,18 @@ const upsertMany = async (files, apiID, orgID, t) => {
                     FILE_NAME: file.fileName,
                     API_UUID: apiID,
                     TYPE: file.type,
-                    LOOKUP_KEY: file.key ?? null
+                    LOOKUP_KEY: file.key ?? null,
+                    CREATED_BY: updatedBy,
+                    UPDATED_BY: updatedBy
                 })
             } else {
                 const updateResponse = await APIContent.update(
                     {
                         FILE_CONTENT: file.content,
                         FILE_NAME: file.fileName,
-                        LOOKUP_KEY: file.key ?? apiFileResponse.LOOKUP_KEY
+                        LOOKUP_KEY: file.key ?? apiFileResponse.LOOKUP_KEY,
+                        UPDATED_BY: updatedBy,
+                        UPDATED_AT: new Date()
                     },
                     {
                         where: {
@@ -219,7 +227,7 @@ const deleteByKey = async (key, apiID, t) => {
     }
 }
 
-const upsert = async (apiFile, fileName, apiID, orgID, type, t, key) => {
+const upsert = async (apiFile, fileName, apiID, orgID, type, updatedBy, t, key) => {
     try {
         const apiFileResponse = await getByType(type, orgID, apiID, t);
         let fileUpdateResponse;
@@ -229,13 +237,17 @@ const upsert = async (apiFile, fileName, apiID, orgID, type, t, key) => {
                 FILE_NAME: fileName,
                 API_UUID: apiID,
                 TYPE: type,
-                LOOKUP_KEY: key ?? null
+                LOOKUP_KEY: key ?? null,
+                CREATED_BY: updatedBy,
+                UPDATED_BY: updatedBy
             }, { transaction: t });
         } else {
             fileUpdateResponse = await APIContent.update({
                 FILE_CONTENT: apiFile,
                 FILE_NAME: fileName,
-                LOOKUP_KEY: key ?? apiFileResponse.LOOKUP_KEY
+                LOOKUP_KEY: key ?? apiFileResponse.LOOKUP_KEY,
+                UPDATED_BY: updatedBy,
+                UPDATED_AT: new Date()
             },
                 {
                     where: {
@@ -263,7 +275,7 @@ const upsert = async (apiFile, fileName, apiID, orgID, type, t, key) => {
     }
 }
 
-const update = async (apiFile, fileName, apiID, orgID, type, t, key) => {
+const update = async (apiFile, fileName, apiID, orgID, type, updatedBy, t, key) => {
 
     try {
         const apiFileResponse = await get(fileName, type, orgID, apiID, t);
@@ -274,13 +286,17 @@ const update = async (apiFile, fileName, apiID, orgID, type, t, key) => {
                 FILE_NAME: fileName,
                 API_UUID: apiID,
                 TYPE: type,
-                LOOKUP_KEY: key ?? null
+                LOOKUP_KEY: key ?? null,
+                CREATED_BY: updatedBy,
+                UPDATED_BY: updatedBy
             }, { transaction: t });
         } else {
             fileUpdateResponse = await APIContent.update({
                 FILE_CONTENT: apiFile,
                 FILE_NAME: fileName,
-                LOOKUP_KEY: key ?? apiFileResponse.LOOKUP_KEY
+                LOOKUP_KEY: key ?? apiFileResponse.LOOKUP_KEY,
+                UPDATED_BY: updatedBy,
+                UPDATED_AT: new Date()
             },
                 {
                     where: {

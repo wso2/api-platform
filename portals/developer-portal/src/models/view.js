@@ -35,7 +35,25 @@ const View = sequelize.define('DP_VIEW', {
     NAME: {
         type: DataTypes.STRING,
         allowNull: false
-    }
+    },
+    CREATED_BY: {
+        type: DataTypes.STRING,
+        allowNull: false
+    },
+    CREATED_AT: {
+        type: DataTypes.DATE,
+        allowNull: false,
+        defaultValue: Sequelize.NOW
+    },
+    UPDATED_BY: {
+        type: DataTypes.STRING,
+        allowNull: false
+    },
+    UPDATED_AT: {
+        type: DataTypes.DATE,
+        allowNull: false,
+        defaultValue: Sequelize.NOW
+    },
 }, {
     timestamps: false,
     tableName: 'DP_VIEW',

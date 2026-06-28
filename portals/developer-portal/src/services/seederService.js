@@ -41,6 +41,7 @@ async function seedDefaultOrg() {
         orgHandle: orgName,
         organizationIdentifier: orgName,
         orgConfig: { devportalMode: constants.DEVPORTAL_MODE.DEFAULT },
+        createdBy: constants.SYSTEM_ACTOR,
     };
 
     let orgId;
@@ -70,7 +71,7 @@ async function seedDefaultOrg() {
 
     let labelId;
     try {
-        const label = await labelDao.update(orgId, { name: 'default', displayName: 'default' });
+        const label = await labelDao.update(orgId, { name: 'default', displayName: 'default' }, constants.SYSTEM_ACTOR);
         labelId = label.dataValues.UUID;
     } catch (error) {
         logger.error('Failed to seed default label', {
@@ -82,7 +83,7 @@ async function seedDefaultOrg() {
 
     let viewId;
     try {
-        const view = await viewDao.update(orgId, 'default', 'default');
+        const view = await viewDao.update(orgId, 'default', 'default', constants.SYSTEM_ACTOR);
         viewId = view.dataValues.UUID;
     } catch (error) {
         logger.error('Failed to seed default view', {
@@ -93,7 +94,7 @@ async function seedDefaultOrg() {
     }
 
     try {
-        await labelDao.addToView(orgId, labelId, viewId);
+        await labelDao.addToView(orgId, labelId, viewId, constants.SYSTEM_ACTOR);
     } catch (error) {
         if (!(error instanceof Sequelize.UniqueConstraintError)) {
             logger.error('Failed to seed label-view link', {
@@ -107,7 +108,7 @@ async function seedDefaultOrg() {
     if (config.generateDefaultSubPlans) {
         for (const plan of constants.DEFAULT_SUBSCRIPTION_PLANS) {
             try {
-                await subscriptionPlanDao.createMany(orgId, [plan]);
+                await subscriptionPlanDao.createMany(orgId, [plan], constants.SYSTEM_ACTOR);
             } catch (error) {
                 if (!(error instanceof Sequelize.UniqueConstraintError)) {
                     logger.error('Failed to seed subscription plan', {

@@ -49,6 +49,7 @@ module.exports = {
     ACCESS_TOKEN: 'accessToken',
     REFRESH_TOKEN: 'refreshToken',
     USER_ID: 'sub',
+    SYSTEM_ACTOR: 'system',
     BASIC_HEADER: 'basicAuthHeader',
     API_STATUS: {
         PUBLISHED: "PUBLISHED",

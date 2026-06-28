@@ -254,7 +254,7 @@ async function revoke({ orgId, keyId, actor }) {
     const subscription = await resolveSubscription(orgId, existing.SUBSCRIPTION_UUID);
 
     await sequelize.transaction(async (t) => {
-        const revoked = await apiKeyDao.revoke(orgId, keyId, t);
+        const revoked = await apiKeyDao.revoke(orgId, keyId, actor, t);
         if (!revoked) throw Object.assign(new Error('Key already revoked or not found'), { status: 409 });
 
         await publish('apikey.revoked',
@@ -293,7 +293,7 @@ async function associateApplication({ orgId, keyId, appId, actor }) {
     if (!application) throw Object.assign(new Error('appId is required'), { status: 400 });
 
     await sequelize.transaction(async (t) => {
-        const updated = await apiKeyDao.setApplication(orgId, keyId, application.id, t, { activeOnly: true });
+        const updated = await apiKeyDao.setApplication(orgId, keyId, application.id, actor, t, { activeOnly: true });
         if (!updated) throw Object.assign(new Error('API key not found'), { status: 404 });
 
         await publishKeyApplicationUpdated(orgId, keyId, application, t);
@@ -316,7 +316,7 @@ async function removeApplicationAssociation({ orgId, keyId, actor }) {
     if (!existing.DP_API_KEY_APP_MAPPING) return { keyId, application: null };
 
     await sequelize.transaction(async (t) => {
-        await apiKeyDao.setApplication(orgId, keyId, null, t);
+        await apiKeyDao.setApplication(orgId, keyId, null, actor, t);
         await publishKeyApplicationUpdated(orgId, keyId, null, t);
     });
 

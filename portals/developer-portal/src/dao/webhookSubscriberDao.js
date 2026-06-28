@@ -27,7 +27,7 @@ const whCrypto = createCryptoUtil(config.advanced.encryptionKey);
  * Create a new webhook subscriber for an organization.
  * The secret is encrypted before storage.
  */
-const create = async (orgId, subData) => {
+const create = async (orgId, subData, createdBy) => {
     try {
         if (subData.secret && !whCrypto.enabled) {
             throw new Error('Webhook subscriber encryption key is not configured. ' +
@@ -42,6 +42,8 @@ const create = async (orgId, subData) => {
             ...(subData.events && { EVENT_PATTERNS: subData.events }),
             ...(subData.enabled !== undefined && { ENABLED: subData.enabled }),
             ...(subData.timeoutMs && { TIMEOUT_MS: subData.timeoutMs }),
+            CREATED_BY: createdBy,
+            UPDATED_BY: createdBy,
         });
         return record;
     } catch (error) {
@@ -57,7 +59,7 @@ const create = async (orgId, subData) => {
  * Update an existing webhook subscriber.
  * Re-encrypts the secret if it is provided.
  */
-const update = async (orgId, subscriberId, subData) => {
+const update = async (orgId, subscriberId, subData, updatedBy) => {
     try {
         const updatePayload = {
             ...(subData.name && { NAME: subData.name }),
@@ -66,6 +68,8 @@ const update = async (orgId, subscriberId, subData) => {
             ...(subData.events && { EVENT_PATTERNS: subData.events }),
             ...(subData.enabled !== undefined && { ENABLED: subData.enabled }),
             ...(subData.timeoutMs && { TIMEOUT_MS: subData.timeoutMs }),
+            UPDATED_BY: updatedBy,
+            UPDATED_AT: new Date(),
         };
 
         if (subData.secret) {

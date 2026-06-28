@@ -122,7 +122,8 @@ const createKeyManager = async (req, res) => {
             return res.status(400).json({ error: `Unsupported key manager type '${payload.type}'. Must be one of: ${SUPPORTED_KM_TYPES.join(', ')}.` });
         }
 
-        const record = await kmDao.create(orgId, { ...payload, type: resolvedType });
+        const userId = req.auth?.userId || req.user?.sub;
+        const record = await kmDao.create(orgId, { ...payload, type: resolvedType }, userId);
         const dto = new KeyManagerDTO(record);
         return res.status(201).json(dto);
     } catch (error) {
@@ -152,7 +153,8 @@ const updateKeyManager = async (req, res) => {
             payload.type = resolvedType;
         }
 
-        const [, updatedRows] = await kmDao.update(kmId, payload);
+        const userId = req.auth?.userId || req.user?.sub;
+        const [, updatedRows] = await kmDao.update(kmId, payload, userId);
         const dto = new KeyManagerDTO(updatedRows[0]);
         return res.status(200).json(dto);
     } catch (error) {

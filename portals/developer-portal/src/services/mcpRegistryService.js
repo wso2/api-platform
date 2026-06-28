@@ -360,6 +360,7 @@ const publishServer = async (req, res) => {
     try {
         const orgHandle = req.params.orgHandle;
         const detail = req.body;
+        const userId = req.auth?.userId || req.user?.sub;
 
         const validationError = validateServerDetail(detail);
         if (validationError) {
@@ -411,22 +412,22 @@ const publishServer = async (req, res) => {
                 existingApiId = existing.UUID;
                 const existingPublishedAt = existing.METADATA_SEARCH?.apiInfo?.publishedAt || now;
                 const apiMetadataPayload = buildApiMetadataPayload(name, version, description, remotes, title, existingPublishedAt, now, proxyId, orgHandle);
-                await apiDao.update(orgId, existing.UUID, apiMetadataPayload, t);
-                await labelDao.createApiMapping(orgId, existing.UUID, ['default'], t);
+                await apiDao.update(orgId, existing.UUID, apiMetadataPayload, userId, t);
+                await labelDao.createApiMapping(orgId, existing.UUID, ['default'], userId, t);
                 if (schemaBuffer) {
                     await apiFileDao.upsertMany(
                         [{ content: schemaBuffer, fileName: SCHEMA_FILE_NAME, type: constants.DOC_TYPES.SCHEMA_DEFINITION }],
-                        existing.UUID, orgId, t
+                        existing.UUID, orgId, userId, t
                     );
                 }
                 row = await APIMetadata.findOne({ where: { UUID: existing.UUID }, transaction: t });
             } else {
                 const apiMetadataPayload = buildApiMetadataPayload(name, version, description, remotes, title, now, now, proxyId, orgHandle);
-                const created_row = await apiDao.create(orgId, apiMetadataPayload, t);
+                const created_row = await apiDao.create(orgId, apiMetadataPayload, userId, t);
                 const apiId = created_row.dataValues.UUID;
-                await labelDao.createApiMapping(orgId, apiId, ['default'], t);
+                await labelDao.createApiMapping(orgId, apiId, ['default'], userId, t);
                 const newSchemaBuffer = schemaBuffer || Buffer.from(JSON.stringify({ tools: [], resources: [], prompts: [] }), 'utf-8');
-                await apiFileDao.store(newSchemaBuffer, SCHEMA_FILE_NAME, apiId, constants.DOC_TYPES.SCHEMA_DEFINITION, t);
+                await apiFileDao.store(newSchemaBuffer, SCHEMA_FILE_NAME, apiId, constants.DOC_TYPES.SCHEMA_DEFINITION, userId, t);
                 row = await APIMetadata.findOne({ where: { UUID: apiId }, transaction: t });
                 created = true;
             }
@@ -455,6 +456,7 @@ const updateVersion = async (req, res) => {
         const serverIdentifier = unescapeParam(decodeURIComponent(req.params.serverName));
         const version = unescapeParam(decodeURIComponent(req.params.version));
         const detail = req.body;
+        const userId = req.auth?.userId || req.user?.sub;
 
         const validationError = validateServerDetail(detail);
         if (validationError) {
@@ -485,12 +487,12 @@ const updateVersion = async (req, res) => {
             const existingPublishedAt = existing.METADATA_SEARCH?.apiInfo?.publishedAt || new Date().toISOString();
             const existingProxyId = proxyId || existing.METADATA_SEARCH?.apiInfo?.proxyId || null;
             const apiMetadataPayload = buildApiMetadataPayload(existing.NAME, version, description, remotes, title, existingPublishedAt, new Date().toISOString(), existingProxyId, orgHandle);
-            await apiDao.update(orgId, existing.UUID, apiMetadataPayload, t);
-            await labelDao.createApiMapping(orgId, existing.UUID, ['default'], t);
+            await apiDao.update(orgId, existing.UUID, apiMetadataPayload, userId, t);
+            await labelDao.createApiMapping(orgId, existing.UUID, ['default'], userId, t);
             if (schemaBuffer) {
                 await apiFileDao.upsertMany(
                     [{ content: schemaBuffer, fileName: SCHEMA_FILE_NAME, type: constants.DOC_TYPES.SCHEMA_DEFINITION }],
-                    existing.UUID, orgId, t
+                    existing.UUID, orgId, userId, t
                 );
             }
             row = await APIMetadata.findOne({ where: { UUID: existing.UUID }, transaction: t });

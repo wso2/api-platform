@@ -32,7 +32,9 @@ const create = async (orgData, t) => {
         HANDLE: devPortalID,
         IDP_REF_ID: orgData.organizationIdentifier,
         CP_REF_ID: orgData.cpRefId,
-        CONFIGURATION: orgData.orgConfig
+        CONFIGURATION: orgData.orgConfig,
+        CREATED_BY: orgData.createdBy,
+        UPDATED_BY: orgData.createdBy
     };
     try {
         const organization = await Organization.create(createOrgData, { transaction: t });
@@ -125,7 +127,9 @@ const update = async (orgData, t) => {
                 HANDLE: devPortalID,
                 IDP_REF_ID: orgData.organizationIdentifier,
                 ...(orgData.cpRefId !== undefined && { CP_REF_ID: orgData.cpRefId }),
-                CONFIGURATION: orgData.orgConfiguration
+                CONFIGURATION: orgData.orgConfiguration,
+                UPDATED_BY: orgData.updatedBy,
+                UPDATED_AT: new Date()
             },
             {
                 where: { UUID: orgData.orgId },
@@ -171,7 +175,9 @@ const createContent = async (orgData) => {
             FILE_CONTENT: orgData.fileContent,
             FILE_PATH: orgData.filePath,
             ORG_UUID: orgData.orgId,
-            VIEW_UUID: viewID
+            VIEW_UUID: viewID,
+            CREATED_BY: orgData.createdBy,
+            UPDATED_BY: orgData.createdBy
         });
         return orgContent;
     } catch (error) {
@@ -190,6 +196,8 @@ const updateContent = async (orgData) => {
             FILE_NAME: orgData.fileName,
             FILE_CONTENT: orgData.fileContent,
             FILE_PATH: orgData.filePath,
+            UPDATED_BY: orgData.createdBy,
+            UPDATED_AT: new Date()
         },
             {
                 where: {

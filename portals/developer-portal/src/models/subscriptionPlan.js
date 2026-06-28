@@ -46,7 +46,25 @@ const SubscriptionPlan = sequelize.define('DP_SUBSCRIPTION_PLAN', {
     REF_ID: {
         type: DataTypes.STRING,
         allowNull: true
-    }
+    },
+    CREATED_BY: {
+        type: DataTypes.STRING,
+        allowNull: false
+    },
+    CREATED_AT: {
+        type: DataTypes.DATE,
+        allowNull: false,
+        defaultValue: Sequelize.NOW
+    },
+    UPDATED_BY: {
+        type: DataTypes.STRING,
+        allowNull: false
+    },
+    UPDATED_AT: {
+        type: DataTypes.DATE,
+        allowNull: false,
+        defaultValue: Sequelize.NOW
+    },
 }, {
     timestamps: false,
     tableName: 'DP_SUBSCRIPTION_PLAN',

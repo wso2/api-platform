@@ -295,6 +295,7 @@ const generateKeys = async (req, res) => {
             asClientID: responseData.consumerKey,
             keyType,
             additionalProperties: responseData.additionalProperties || {},
+            createdBy: userID,
         };
         let keyMappingRecord;
         try {

@@ -48,6 +48,20 @@ const Application = sequelize.define('DP_APPLICATION', {
         type: DataTypes.STRING,
         allowNull: true
     },
+    CREATED_AT: {
+        type: DataTypes.DATE,
+        allowNull: false,
+        defaultValue: Sequelize.NOW
+    },
+    UPDATED_BY: {
+        type: DataTypes.STRING,
+        allowNull: false
+    },
+    UPDATED_AT: {
+        type: DataTypes.DATE,
+        allowNull: false,
+        defaultValue: Sequelize.NOW
+    },
 }, {
     timestamps: false,
     tableName: 'DP_APPLICATION',
@@ -84,7 +98,25 @@ const ApplicationKeyMapping = sequelize.define('DP_APP_KEY_MAPPING', {
     ADDITIONAL_PROPERTIES: {
         type: DataTypes.JSON,
         allowNull: true
-    }
+    },
+    CREATED_BY: {
+        type: DataTypes.STRING,
+        allowNull: false
+    },
+    CREATED_AT: {
+        type: DataTypes.DATE,
+        allowNull: false,
+        defaultValue: Sequelize.NOW
+    },
+    UPDATED_BY: {
+        type: DataTypes.STRING,
+        allowNull: false
+    },
+    UPDATED_AT: {
+        type: DataTypes.DATE,
+        allowNull: false,
+        defaultValue: Sequelize.NOW
+    },
 }, {
     timestamps: false,
     tableName: 'DP_APP_KEY_MAPPING',
@@ -125,6 +157,8 @@ const SubscriptionMapping = sequelize.define('DP_SUBSCRIPTION', {
     TOKEN:   { type: DataTypes.STRING(512), allowNull: true, unique: true },
     STATUS:      { type: DataTypes.STRING, allowNull: false, defaultValue: 'ACTIVE' },
     CREATED_AT:  { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW },
+    UPDATED_BY:  { type: DataTypes.STRING, allowNull: false },
+    UPDATED_AT:  { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW },
 }, {
     timestamps: false,
     tableName: 'DP_SUBSCRIPTION',

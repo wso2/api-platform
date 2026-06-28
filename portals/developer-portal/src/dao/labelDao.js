@@ -22,7 +22,7 @@ const { Sequelize } = require('sequelize');
 const constants = require('../utils/constants');
 const { CustomError } = require('../utils/errors/customErrors');
 
-const createMany = async (orgID, labels, t) => {
+const createMany = async (orgID, labels, createdBy, t) => {
 
     const labelList = [];
     try {
@@ -30,7 +30,9 @@ const createMany = async (orgID, labels, t) => {
             labelList.push({
                 NAME: label.name,
                 DISPLAY_NAME: label.displayName,
-                ORG_UUID: orgID
+                ORG_UUID: orgID,
+                CREATED_BY: createdBy,
+                UPDATED_BY: createdBy
             });
         })
         const labelResponse = await Labels.bulkCreate(labelList, { transaction: t });
@@ -43,7 +45,7 @@ const createMany = async (orgID, labels, t) => {
     }
 }
 
-const createApiMapping = async (orgID, apiID, labels, t) => {
+const createApiMapping = async (orgID, apiID, labels, createdBy, t) => {
 
     const labelList = [];
     const IDList = await getId(orgID, labels, t);
@@ -52,6 +54,7 @@ const createApiMapping = async (orgID, apiID, labels, t) => {
             labelList.push({
                 LABEL_UUID: label,
                 API_UUID: apiID,
+                CREATED_BY: createdBy,
             });
         });
         const labelResponse = await APILabels.bulkCreate(labelList, { transaction: t, ignoreDuplicates: true });
@@ -65,7 +68,7 @@ const createApiMapping = async (orgID, apiID, labels, t) => {
 
 }
 
-const update = async (orgID, label, t) => {
+const update = async (orgID, label, updatedBy, t) => {
 
     try {
         let [record, created] = await Labels.findOrCreate({
@@ -76,12 +79,14 @@ const update = async (orgID, label, t) => {
             defaults: {
                 NAME: label.name,
                 DISPLAY_NAME: label.displayName,
+                CREATED_BY: updatedBy,
+                UPDATED_BY: updatedBy
             },
             transaction: t,
             returning: true
         });
         if (!created) {
-            record = await record.update(label, { transaction: t }); // Update if found
+            record = await record.update({ ...label, UPDATED_BY: updatedBy, UPDATED_AT: new Date() }, { transaction: t }); // Update if found
         }
         return record;
     } catch (error) {
@@ -179,10 +184,11 @@ const deleteApiMapping = async (orgID, apiID, labels, t) => {
     }
 }
 
-const addToView = async (orgID, labelID, viewID, t) => {
+const addToView = async (orgID, labelID, viewID, createdBy, t) => {
     try {
         const [record] = await ViewLabels.findOrCreate({
             where: { LABEL_UUID: labelID, VIEW_UUID: viewID },
+            defaults: { CREATED_BY: createdBy },
             transaction: t,
         });
         return record;

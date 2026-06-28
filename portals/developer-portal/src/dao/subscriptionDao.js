@@ -72,6 +72,7 @@ async function create(orgId, apiId, planId, createdBy, transaction, opts = {}) {
         const record = await SubscriptionMapping.create(
             {
                 CREATED_BY: createdBy,
+                UPDATED_BY: createdBy,
                 ORG_UUID: orgId,
                 API_UUID: apiId,
                 PLAN_UUID: planId || null,
@@ -90,6 +91,7 @@ async function create(orgId, apiId, planId, createdBy, transaction, opts = {}) {
             const record = await SubscriptionMapping.create(
                 {
                     CREATED_BY: createdBy,
+                    UPDATED_BY: createdBy,
                     ORG_UUID: orgId,
                     API_UUID: apiId,
                     PLAN_UUID: planId || null,
@@ -138,7 +140,7 @@ async function updateStatus(orgId, subId, status, createdBy, transaction) {
     const where = { UUID: subId, ORG_UUID: orgId };
     if (createdBy) where.CREATED_BY = createdBy;
     const [count] = await SubscriptionMapping.update(
-        { STATUS: status },
+        { STATUS: status, UPDATED_BY: createdBy, UPDATED_AT: new Date() },
         { where, transaction }
     );
     return count > 0;

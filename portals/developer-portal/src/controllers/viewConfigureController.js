@@ -169,10 +169,12 @@ const saveLlmsConfig = async (req, res) => {
 
     try {
         const orgID = await orgDao.getId(orgName);
+        const userId = req.auth?.userId || req.user?.sub;
         const content = Buffer.from(JSON.stringify({ aiEnabled, portalName, portalDescription }));
         const orgData = {
             orgId: orgID, fileType: constants.FILE_TYPE.LLMS_CONFIG, viewName,
-            fileName: constants.FILE_NAME.LLMS_CONFIG, fileContent: content, filePath: constants.FILE_TYPE.LLMS_CONFIG
+            fileName: constants.FILE_NAME.LLMS_CONFIG, fileContent: content, filePath: constants.FILE_TYPE.LLMS_CONFIG,
+            createdBy: userId
         };
         const existing = await orgDao.getContent({
             orgId: orgID, fileType: constants.FILE_TYPE.LLMS_CONFIG, viewName, fileName: constants.FILE_NAME.LLMS_CONFIG

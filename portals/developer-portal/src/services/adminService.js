@@ -109,6 +109,8 @@ const createOrganization = async (req, res) => {
     payload.orgConfig = {
         devportalMode: constants.DEVPORTAL_MODE.DEFAULT,
     };
+    const userId = req.auth?.userId || req.user?.sub;
+    payload.createdBy = userId;
 
     let organization = "";
     try {
@@ -127,7 +129,7 @@ const createOrganization = async (req, res) => {
                 ? payload.labels
                 : [{ name: 'default', displayName: 'default' }];
 
-            const createdLabels = await labelDao.createMany(orgId, labelDefs, t);
+            const createdLabels = await labelDao.createMany(orgId, labelDefs, userId, t);
             logger.info('Labels created successfully', { orgId });
 
             // Build name→UUID map for view→label linking
@@ -140,12 +142,12 @@ const createOrganization = async (req, res) => {
                 : [{ handle: 'default', name: 'default', labels: [labelDefs[0].name] }];
 
             for (const viewDef of viewDefs) {
-                const viewResponse = await viewDao.create(orgId, viewDef, t);
+                const viewResponse = await viewDao.create(orgId, viewDef, userId, t);
                 const viewID = viewResponse.dataValues.UUID;
                 for (const lName of (viewDef.labels || [])) {
                     const labelId = labelMap[lName];
                     if (labelId) {
-                        await labelDao.addToView(orgId, labelId, viewID, t);
+                        await labelDao.addToView(orgId, labelId, viewID, userId, t);
                     }
                 }
             }
@@ -153,7 +155,7 @@ const createOrganization = async (req, res) => {
 
             //store default subscription plans
             if (config.generateDefaultSubPlans) {
-                await subscriptionPlanDao.createMany(orgId, constants.DEFAULT_SUBSCRIPTION_PLANS, t);
+                await subscriptionPlanDao.createMany(orgId, constants.DEFAULT_SUBSCRIPTION_PLANS, userId, t);
             }
             logger.info('Default subscription plans created successfully', {
                 orgId
@@ -233,6 +235,8 @@ const updateOrganization = async (req, res) => {
     try {
         const payload = req.body;
         payload.orgId = orgId;
+        const userId = req.auth?.userId || req.user?.sub;
+        payload.updatedBy = userId;
 
         const devportalMode = payload.orgConfiguration?.devportalMode;
         if (devportalMode !== undefined && !Object.values(constants.DEVPORTAL_MODE).includes(devportalMode)) {
@@ -247,7 +251,7 @@ const updateOrganization = async (req, res) => {
             // Labels upsert — only if present in payload
             if (payload.labels?.length) {
                 for (const label of payload.labels) {
-                    await labelDao.update(orgId, label, t);
+                    await labelDao.update(orgId, label, userId, t);
                 }
                 logger.info('Labels upserted successfully', { orgId });
             }
@@ -255,9 +259,9 @@ const updateOrganization = async (req, res) => {
             // Views upsert — only if present in payload
             if (payload.views?.length) {
                 for (const viewDef of payload.views) {
-                    const view = await viewDao.update(orgId, viewDef.handle, viewDef.name, t);
+                    const view = await viewDao.update(orgId, viewDef.handle, viewDef.name, userId, t);
                     if (viewDef.labels?.length) {
-                        await viewDao.replaceLabels(orgId, view.dataValues.UUID, viewDef.labels, t);
+                        await viewDao.replaceLabels(orgId, view.dataValues.UUID, viewDef.labels, userId, t);
                     }
                 }
                 logger.info('Views upserted successfully', { orgId });
@@ -315,6 +319,7 @@ const createOrgContent = async (req, res) => {
     const orgId = req.params.orgId;
     const viewName = req.params.viewName;
     const zipFile = req.files?.file?.[0] ?? req.file;
+    const userId = req.auth?.userId || req.user?.sub;
     logger.info('Initiate create organization content...', {
         orgId,
         viewName
@@ -339,7 +344,7 @@ const createOrgContent = async (req, res) => {
         await util.unzipDirectory(zipPath, extractPath);
         const files = await util.readFilesInDirectory(extractPath, orgId, req.protocol, req.get('host'), viewName);
         for (const { filePath, fileName, fileContent, fileType } of files) {
-            await createContent(filePath, fileName, fileContent, fileType, orgId, viewName);
+            await createContent(filePath, fileName, fileContent, fileType, orgId, viewName, userId);
         }
         logger.info('Organization content created successfully', {
             orgId,
@@ -363,7 +368,7 @@ const createOrgContent = async (req, res) => {
     }
 };
 
-const createContent = async (filePath, fileName, fileContent, fileType, orgId, viewName) => {
+const createContent = async (filePath, fileName, fileContent, fileType, orgId, viewName, userId) => {
     let content;
     // eslint-disable-next-line no-useless-catch
     try {
@@ -374,7 +379,8 @@ const createContent = async (filePath, fileName, fileContent, fileType, orgId, v
                 fileContent: fileContent,
                 filePath: filePath,
                 orgId: orgId,
-                viewName: viewName
+                viewName: viewName,
+                createdBy: userId
             });
         }
     } catch (error) {
@@ -387,6 +393,7 @@ const updateOrgContent = async (req, res) => {
     const orgId = req.params.orgId;
     const viewName = req.params.viewName;
     const zipFile = req.files?.file?.[0] ?? req.file;
+    const userId = req.auth?.userId || req.user?.sub;
     logger.info('Initiate update organization content...', {
         orgId,
         viewName
@@ -418,7 +425,8 @@ const updateOrgContent = async (req, res) => {
                         fileContent: fileContent,
                         filePath: filePath,
                         orgId: orgId,
-                        viewName: viewName
+                        viewName: viewName,
+                        createdBy: userId
                     });
                 } else {
                     logger.info('Content not found during update, creating new content', {
@@ -428,7 +436,7 @@ const updateOrgContent = async (req, res) => {
                         fileName,
                         filePath
                     });
-                    await createContent(filePath, fileName, fileContent, fileType, orgId, viewName);
+                    await createContent(filePath, fileName, fileContent, fileType, orgId, viewName, userId);
                 }
             }
         }

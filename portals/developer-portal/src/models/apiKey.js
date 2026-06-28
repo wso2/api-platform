@@ -58,6 +58,10 @@ const APIKey = sequelize.define('DP_API_KEY', {
         type: DataTypes.STRING,
         allowNull: false
     },
+    UPDATED_BY: {
+        type: DataTypes.STRING,
+        allowNull: false
+    },
     REVOKED_AT: {
         type: DataTypes.DATE,
         allowNull: true
@@ -65,7 +69,7 @@ const APIKey = sequelize.define('DP_API_KEY', {
 }, {
     timestamps: true,
     createdAt: 'CREATED_AT',
-    updatedAt: false,
+    updatedAt: 'UPDATED_AT',
     tableName: 'DP_API_KEY',
     returning: true,
     indexes: [

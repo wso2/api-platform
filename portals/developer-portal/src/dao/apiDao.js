@@ -32,7 +32,7 @@ const SEARCH_APIS_POSTGRES_SQL = fs.readFileSync(
     'utf8'
 );
 
-const create = async (orgID, apiMetadata, t) => {
+const create = async (orgID, apiMetadata, createdBy, t) => {
 
     const apiInfo = apiMetadata.apiInfo;
     let owners = {};
@@ -56,7 +56,9 @@ const create = async (orgID, apiMetadata, t) => {
             SANDBOX_URL: apiMetadata.endPoints.sandboxURL,
             PRODUCTION_URL: apiMetadata.endPoints.productionURL,
             METADATA_SEARCH: apiMetadata,
-            ORG_UUID: orgID
+            ORG_UUID: orgID,
+            CREATED_BY: createdBy,
+            UPDATED_BY: createdBy
         },
             { transaction: t }
         );
@@ -69,7 +71,7 @@ const create = async (orgID, apiMetadata, t) => {
     }
 };
 
-const update = async (orgID, apiID, apiMetadata, t) => {
+const update = async (orgID, apiID, apiMetadata, updatedBy, t) => {
 
     const apiInfo = apiMetadata.apiInfo;
     let owners = {};
@@ -93,6 +95,8 @@ const update = async (orgID, apiID, apiMetadata, t) => {
             SANDBOX_URL: apiMetadata.endPoints.sandboxURL,
             PRODUCTION_URL: apiMetadata.endPoints.productionURL,
             METADATA_SEARCH: apiMetadata,
+            UPDATED_BY: updatedBy,
+            UPDATED_AT: new Date()
         }, {
             where: {
                 UUID: apiID,

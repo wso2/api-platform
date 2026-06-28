@@ -122,7 +122,7 @@ async function seedSampleAPIs(orgId) {
             }
 
             await sequelize.transaction(async (t) => {
-                const created = await apiDao.create(orgId, apiMetadata, t);
+                const created = await apiDao.create(orgId, apiMetadata, constants.SYSTEM_ACTOR, t);
                 apiId = created.dataValues.UUID;
 
                 // Subscription plan mappings (skip unknown plans — don't fail the whole deployment)
@@ -132,26 +132,26 @@ async function seedSampleAPIs(orgId) {
                         const plan = await subscriptionPlanDao.getByName(orgId, p.planName);
                         if (plan) mappings.push({ apiID: apiId, planID: plan.UUID });
                     }
-                    if (mappings.length) await subscriptionPlanDao.createApiMapping(mappings, apiId, t);
+                    if (mappings.length) await subscriptionPlanDao.createApiMapping(mappings, apiId, constants.SYSTEM_ACTOR, t);
                 }
 
                 // Label mappings
                 const labels = Array.isArray(apiMetadata.apiInfo.labels) && apiMetadata.apiInfo.labels.length
                     ? apiMetadata.apiInfo.labels
                     : ['default'];
-                await labelDao.createApiMapping(orgId, apiId, labels, t);
+                await labelDao.createApiMapping(orgId, apiId, labels, constants.SYSTEM_ACTOR, t);
 
                 // Definition file
                 if (apiDefinitionFile) {
                     const isGraphQL = apiMetadata.apiInfo.apiType === constants.API_TYPE.GRAPHQL;
                     const storedName = isGraphQL ? constants.FILE_NAME.API_DEFINITION_GRAPHQL : apiFileName;
-                    await apiFileDao.store(apiDefinitionFile, storedName, apiId, constants.DOC_TYPES.API_DEFINITION, t);
+                    await apiFileDao.store(apiDefinitionFile, storedName, apiId, constants.DOC_TYPES.API_DEFINITION, constants.SYSTEM_ACTOR, t);
                 }
 
                 // Documentation files from docs/
                 const docs = readDocFiles(path.join(apiDir, 'docs'), '');
                 if (docs.length) {
-                    await apiFileDao.storeMany(docs, apiId, t);
+                    await apiFileDao.storeMany(docs, apiId, constants.SYSTEM_ACTOR, t);
                 }
             });
 
@@ -207,7 +207,7 @@ async function seedSampleMCPs(orgId) {
                 : null;
 
             await sequelize.transaction(async (t) => {
-                const created = await apiDao.create(orgId, apiMetadata, t);
+                const created = await apiDao.create(orgId, apiMetadata, constants.SYSTEM_ACTOR, t);
                 apiId = created.dataValues.API_UUID;
 
                 // Subscription plan mappings (skip unknown plans — don't fail the whole deployment)
@@ -217,14 +217,14 @@ async function seedSampleMCPs(orgId) {
                         const plan = await subscriptionPlanDao.getByName(orgId, p.planName);
                         if (plan) mappings.push({ apiID: apiId, planID: plan.PLAN_UUID });
                     }
-                    if (mappings.length) await subscriptionPlanDao.createApiMapping(mappings, apiId, t);
+                    if (mappings.length) await subscriptionPlanDao.createApiMapping(mappings, apiId, constants.SYSTEM_ACTOR, t);
                 }
 
                 // Label mappings
                 const labels = Array.isArray(apiMetadata.apiInfo.labels) && apiMetadata.apiInfo.labels.length
                     ? apiMetadata.apiInfo.labels
                     : ['default'];
-                await labelDao.createApiMapping(orgId, apiId, labels, t);
+                await labelDao.createApiMapping(orgId, apiId, labels, constants.SYSTEM_ACTOR, t);
 
                 // Schema definition (tools/resources/prompts)
                 if (schemaBuffer) {
@@ -233,6 +233,7 @@ async function seedSampleMCPs(orgId) {
                         constants.FILE_NAME.SCHEMA_DEFINITION_YAML_FILE_NAME,
                         apiId,
                         constants.DOC_TYPES.SCHEMA_DEFINITION,
+                        constants.SYSTEM_ACTOR,
                         t
                     );
                 }
@@ -240,7 +241,7 @@ async function seedSampleMCPs(orgId) {
                 // Documentation files from docs/
                 const docs = readDocFiles(path.join(mcpDir, 'docs'), '');
                 if (docs.length) {
-                    await apiFileDao.storeMany(docs, apiId, t);
+                    await apiFileDao.storeMany(docs, apiId, constants.SYSTEM_ACTOR, t);
                 }
             });
 

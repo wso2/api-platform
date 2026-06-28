@@ -42,7 +42,16 @@ const ViewLabels = sequelize.define('DP_VIEW_LABEL_MAPPING', {
             model: Labels,
             key: 'UUID',
         }
-    }
+    },
+    CREATED_BY: {
+        type: DataTypes.STRING,
+        allowNull: false
+    },
+    CREATED_AT: {
+        type: DataTypes.DATE,
+        allowNull: false,
+        defaultValue: Sequelize.NOW
+    },
 }, {
     timestamps: false,
     tableName: 'DP_VIEW_LABEL_MAPPING',

@@ -24,7 +24,8 @@ const create = async (orgID, userID, appData) => {
         NAME: appData.name,
         ORG_UUID: orgID,
         DESCRIPTION: appData.description,
-        CREATED_BY: userID
+        CREATED_BY: userID,
+        UPDATED_BY: userID
     };
     try {
         const application = await Application.create(createAppData);
@@ -43,6 +44,8 @@ const update = async (orgID, appID, userID, appData) => {
             {
                 NAME: appData.name,
                 DESCRIPTION: appData.description,
+                UPDATED_BY: userID,
+                UPDATED_AT: new Date()
             },
             {
                 where: {
@@ -184,6 +187,8 @@ const upsertKeyMapping = async (mappingData, t) => {
             await existing.update({
                 AS_CLIENT_ID: mappingData.asClientID,
                 ADDITIONAL_PROPERTIES: mappingData.additionalProperties,
+                UPDATED_BY: mappingData.createdBy,
+                UPDATED_AT: new Date()
             }, { transaction: t });
             return existing;
         }
@@ -193,6 +198,8 @@ const upsertKeyMapping = async (mappingData, t) => {
             AS_CLIENT_ID: mappingData.asClientID,
             TYPE: mappingData.keyType,
             ADDITIONAL_PROPERTIES: mappingData.additionalProperties,
+            CREATED_BY: mappingData.createdBy,
+            UPDATED_BY: mappingData.createdBy,
         }, { transaction: t });
     } catch (error) {
         if (error instanceof Sequelize.UniqueConstraintError) {
@@ -260,6 +267,8 @@ const createKeyMapping = async (mappingData, t) => {
             ...(mappingData.asClientID && { AS_CLIENT_ID: mappingData.asClientID }),
             ...(mappingData.keyType && { TYPE: mappingData.keyType }),
             ...(mappingData.additionalProperties && { ADDITIONAL_PROPERTIES: mappingData.additionalProperties }),
+            CREATED_BY: mappingData.createdBy,
+            UPDATED_BY: mappingData.createdBy,
         }, { transaction: t });
         return appKeyMapping;
     } catch (error) {

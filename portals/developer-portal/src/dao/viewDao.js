@@ -22,14 +22,16 @@ const { Sequelize, Op } = require('sequelize');
 const constants = require('../utils/constants');
 const { CustomError } = require('../utils/errors/customErrors');
 
-const create = async (orgID, payload, t) => {
+const create = async (orgID, payload, createdBy, t) => {
 
     let name = payload.name ? payload.name : payload.handle;
     try {
         const viewResponse = await View.create({
             NAME: name,
             HANDLE: payload.handle,
-            ORG_UUID: orgID
+            ORG_UUID: orgID,
+            CREATED_BY: createdBy,
+            UPDATED_BY: createdBy
         }, { transaction: t });
         return viewResponse;
     } catch (error) {
@@ -40,7 +42,7 @@ const create = async (orgID, payload, t) => {
     }
 }
 
-const update = async (orgID, handle, name, t) => {
+const update = async (orgID, handle, name, updatedBy, t) => {
 
     try {
         let [record, created] = await View.findOrCreate({
@@ -51,6 +53,8 @@ const update = async (orgID, handle, name, t) => {
             defaults: {
                 HANDLE: handle,
                 NAME: name,
+                CREATED_BY: updatedBy,
+                UPDATED_BY: updatedBy
             },
             transaction: t,
             returning: true
@@ -59,6 +63,8 @@ const update = async (orgID, handle, name, t) => {
             record = await record.update({
                 HANDLE: handle,
                 NAME: name,
+                UPDATED_BY: updatedBy,
+                UPDATED_AT: new Date()
             }, { transaction: t }); // Update if found
         }
         return record;
@@ -159,7 +165,7 @@ const list = async (orgID) => {
     }
 }
 
-const addLabels = async (orgID, viewID, labels, t) => {
+const addLabels = async (orgID, viewID, labels, createdBy, t) => {
 
     const labelList = [];
     const IDList = await getLabelID(orgID, labels, t);
@@ -168,6 +174,7 @@ const addLabels = async (orgID, viewID, labels, t) => {
             labelList.push({
                 LABEL_UUID: label,
                 VIEW_UUID: viewID,
+                CREATED_BY: createdBy,
             });
         });
         const labelResponse = await ViewLabels.bulkCreate(labelList, { transaction: t });
@@ -180,11 +187,11 @@ const addLabels = async (orgID, viewID, labels, t) => {
     }
 }
 
-const replaceLabels = async (orgID, viewID, labelNames, t) => {
+const replaceLabels = async (orgID, viewID, labelNames, createdBy, t) => {
     try {
         await ViewLabels.destroy({ where: { VIEW_UUID: viewID }, transaction: t });
         if (labelNames?.length) {
-            await addLabels(orgID, viewID, labelNames, t);
+            await addLabels(orgID, viewID, labelNames, createdBy, t);
         }
     } catch (error) {
         if (error instanceof Sequelize.UniqueConstraintError || error instanceof CustomError) {

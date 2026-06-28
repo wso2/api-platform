@@ -67,10 +67,18 @@ const APIFlow = sequelize.define('DP_API_WORKFLOW', {
         allowNull: false,
         defaultValue: 'VISIBLE'
     },
+    CREATED_BY: {
+        type: DataTypes.STRING,
+        allowNull: false
+    },
     CREATED_AT: {
         type: DataTypes.DATE,
         allowNull: false,
         defaultValue: Sequelize.NOW
+    },
+    UPDATED_BY: {
+        type: DataTypes.STRING,
+        allowNull: false
     },
     UPDATED_AT: {
         type: DataTypes.DATE,

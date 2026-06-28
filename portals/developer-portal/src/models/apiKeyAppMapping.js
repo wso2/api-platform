@@ -15,7 +15,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-const { DataTypes } = require('sequelize');
+const { Sequelize, DataTypes } = require('sequelize');
 const sequelize = require('../db/sequelizeConfig');
 const APIKey = require('./apiKey');
 const { Application } = require('./application');
@@ -31,6 +31,15 @@ const APIKeyAppMapping = sequelize.define('DP_API_KEY_APP_MAPPING', {
         type: DataTypes.STRING(40),
         allowNull: false,
         references: { model: Application, key: 'UUID' },
+    },
+    CREATED_BY: {
+        type: DataTypes.STRING,
+        allowNull: false
+    },
+    CREATED_AT: {
+        type: DataTypes.DATE,
+        allowNull: false,
+        defaultValue: Sequelize.NOW
     },
 }, {
     timestamps: false,
