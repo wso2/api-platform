@@ -101,8 +101,9 @@ func TestLifecycle_SubscriptionPlanExistsAndList(t *testing.T) {
 
 	count := 5
 	for i := range 3 {
-		// Fully populated: the list repository scans billing_plan / throttle
-		// columns into plain (non-nullable) fields (a pre-existing detail).
+		// Fully populated: the throttle fields are persisted as a single
+		// REQUEST_COUNT row in subscription_plan_limits and hydrated back via
+		// the LEFT JOIN in the list/get queries.
 		slug := fmt.Sprintf("plan-%d-%s", i, id()[:6])
 		plan := &model.SubscriptionPlan{
 			UUID: id(), Handle: slug, Name: fmt.Sprintf("Plan %d", i),
@@ -121,8 +122,8 @@ func TestLifecycle_SubscriptionPlanExistsAndList(t *testing.T) {
 	if len(plans) != 2 {
 		t.Fatalf("[%s] ListByOrganization(2,0): want 2, got %d", it.driver, len(plans))
 	}
-	// The throttle triple (count/unit + stop_on_quota_reach) is stored as inline
-	// columns on subscription_plans; confirm it round-trips through both the list
+	// The throttle triple (count/unit + stop_on_quota_reach) is stored as a single
+	// row in subscription_plan_limits; confirm it round-trips through both the list
 	// and single-get paths.
 	for _, p := range plans {
 		if p.ThrottleLimitCount == nil || *p.ThrottleLimitCount != count {
@@ -140,7 +141,7 @@ func TestLifecycle_SubscriptionPlanExistsAndList(t *testing.T) {
 		t.Fatalf("[%s] GetByID hydrate: count=%v unit=%q, want %d/min", it.driver, got.ThrottleLimitCount, got.ThrottleLimitUnit, count)
 	}
 
-	// Update clearing the throttle should null out the inline columns; reads then
+	// Update clearing the throttle should delete the limit row; reads then
 	// report no throttle with the default stop_on_quota_reach.
 	got.ThrottleLimitCount = nil
 	got.ThrottleLimitUnit = ""
