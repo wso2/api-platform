@@ -114,7 +114,7 @@ func Load() (*Config, error) {
 		},
 		PlatformAPIURL:        strings.TrimRight(getenv("PLATFORM_API_URL", ""), "/"),
 		PlatformTLSSkipVerify: getbool("PLATFORM_API_TLS_SKIP_VERIFY", false),
-		PlatformLoginPath:     getenv("PLATFORM_LOGIN_PATH", "/api/portal/v1/auth/login"),
+		PlatformLoginPath:     getenv("PLATFORM_LOGIN_PATH", "/api/portal/v0.9/auth/login"),
 		ProxyPrefix:           strings.TrimRight(getenv("PROXY_PREFIX", "/api/proxy"), "/"),
 		Session: SessionConfig{
 			Store:       getenv("SESSION_STORE", "memory"),
