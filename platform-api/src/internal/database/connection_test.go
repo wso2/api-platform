@@ -29,7 +29,7 @@ import (
 func TestSplitSQLStatements_SemicolonInLineComment(t *testing.T) {
 	sql := `
 -- limit_type values (REQUEST_COUNT, BANDWIDTH, ...); the quota window is
--- (time_amount x time_unit); data_unit (KB/MB/GB) is only set for BANDWIDTH.
+-- (time_amount x time_unit); limit_count_unit (KB/MB/GB) is only set for BANDWIDTH.
 CREATE TABLE foo (id INT);
 CREATE TABLE bar (id INT);
 `
