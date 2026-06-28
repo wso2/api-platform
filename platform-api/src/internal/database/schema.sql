@@ -126,7 +126,6 @@ CREATE TABLE IF NOT EXISTS subscription_plan_limits (
     time_unit VARCHAR(20) NOT NULL,
     time_amount INTEGER NOT NULL DEFAULT 1,
     limit_count BIGINT NOT NULL,
-
     limit_count_unit VARCHAR(10),
     stop_on_quota_reach SMALLINT NOT NULL DEFAULT 1,
     FOREIGN KEY (subscription_plan_uuid) REFERENCES subscription_plans(uuid) ON DELETE CASCADE,
