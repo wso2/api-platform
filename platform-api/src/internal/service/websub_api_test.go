@@ -492,3 +492,61 @@ func TestWebSubAPI_NilPoliciesHandled(t *testing.T) {
 		t.Errorf("expected nil for nil input, got %v", got)
 	}
 }
+
+// TestWebSubAPI_MapModelToAPI_EmptyChannelsDoesNotPanic guards the nil-pointer
+// dereference reported in #1995. Previously mapWebSubChannelsModelToAPI
+// returned nil for empty/nil channel maps and the caller dereferenced that nil
+// pointer when assigning to api.WebSubAPI.Channels (a value-type map). The Get,
+// List, and Update return paths panicked for any WebSub API stored with an
+// empty channels map.
+func TestWebSubAPI_MapModelToAPI_EmptyChannelsDoesNotPanic(t *testing.T) {
+	tests := []struct {
+		name string
+		in   map[string]model.WebSubChannel
+	}{
+		{name: "nil channel map", in: nil},
+		{name: "empty channel map", in: map[string]model.WebSubChannel{}},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			defer func() {
+				if r := recover(); r != nil {
+					t.Fatalf("mapWebSubAPIModelToAPI panicked: %v", r)
+				}
+			}()
+
+			m := &model.WebSubAPI{
+				Handle:  "test",
+				Name:    "test",
+				Version: "v1",
+				Configuration: model.WebSubAPIConfiguration{
+					Channels: tc.in,
+				},
+			}
+
+			got := mapWebSubAPIModelToAPI(m, &utils.APIUtil{})
+			if got == nil {
+				t.Fatal("expected non-nil WebSubAPI result")
+			}
+			if got.Channels == nil {
+				t.Errorf("expected non-nil Channels map, got nil")
+			}
+			if len(got.Channels) != 0 {
+				t.Errorf("expected empty Channels map, got %d entries", len(got.Channels))
+			}
+		})
+	}
+}
+
+// TestWebSubAPI_MapChannelsModelToAPI_NeverReturnsNil ensures the helper itself
+// always returns a usable (non-nil) map so callers do not need a nil guard
+// before assigning the result to a value-type map field.
+func TestWebSubAPI_MapChannelsModelToAPI_NeverReturnsNil(t *testing.T) {
+	if got := mapWebSubChannelsModelToAPI(nil); got == nil {
+		t.Errorf("expected non-nil map for nil input, got nil")
+	}
+	if got := mapWebSubChannelsModelToAPI(map[string]model.WebSubChannel{}); got == nil {
+		t.Errorf("expected non-nil map for empty input, got nil")
+	}
+}
