@@ -17,8 +17,6 @@
  */
 const { Sequelize, DataTypes } = require('sequelize');
 const sequelize = require('../db/sequelizeConfig');
-const SubscriptionPlan = require('./subscriptionPlan');
-const { APIMetadata } = require('./apiMetadata');
 
 const APISubscriptionPlan = sequelize.define('DP_API_SUBSCRIPTION_PLAN_MAPPING', {
     UUID: {
@@ -52,20 +50,16 @@ const APISubscriptionPlan = sequelize.define('DP_API_SUBSCRIPTION_PLAN_MAPPING',
             name: 'UQ_API_SUBSCRIPTION_PLAN_MAPPING_PLAN_API',
             unique: true,
             fields: ['PLAN_UUID', 'API_UUID']
+        },
+        {
+            name: 'IDX_API_SUBSCRIPTION_PLAN_MAPPING_API_UUID',
+            fields: ['API_UUID']
         }
     ]
 });
 
-APIMetadata.belongsToMany(SubscriptionPlan, {
-    foreignKey: 'API_UUID',
-    otherKey: 'PLAN_UUID',
-    through: APISubscriptionPlan
-});
-
-SubscriptionPlan.belongsToMany(APIMetadata, {
-    foreignKey: 'PLAN_UUID',
-    otherKey: 'API_UUID',
-    through: APISubscriptionPlan
-});
+// APIMetadata<->SubscriptionPlan belongsToMany (through this model) is
+// registered once in application.js, where both ends of the association
+// already live alongside the rest of the subscription wiring.
 
 module.exports = APISubscriptionPlan;

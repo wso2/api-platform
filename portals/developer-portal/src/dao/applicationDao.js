@@ -19,9 +19,22 @@ const { Application, ApplicationKeyMapping, SubscriptionMapping } = require('../
 const { Sequelize } = require('sequelize');
 const logger = require('../config/logger');
 
+// HANDLE is an immutable, org-scoped slug; application names aren't unique,
+// so a short random suffix keeps collisions practically impossible.
+const generateHandle = (name) => {
+    const slug = String(name || '').toLowerCase().trim()
+        .replace(/[^\w\s-]/g, '')
+        .replace(/\s+/g, '-')
+        .replace(/-+/g, '-')
+        .substring(0, 100);
+    const suffix = Math.random().toString(36).slice(2, 8);
+    return slug ? `${slug}-${suffix}` : `app-${suffix}`;
+};
+
 const create = async (orgID, userID, appData) => {
     const createAppData = {
         NAME: appData.name,
+        HANDLE: generateHandle(appData.name),
         ORG_UUID: orgID,
         DESCRIPTION: appData.description,
         CREATED_BY: userID,

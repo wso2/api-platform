@@ -18,6 +18,7 @@
 const { Sequelize, DataTypes } = require('sequelize');
 const sequelize = require('../db/sequelizeConfig');
 const { Organization } = require('./organization');
+const { bufferToUtf8 } = require('../utils/cryptoUtil');
 
 const APIFlow = sequelize.define('DP_API_WORKFLOW', {
     UUID: {
@@ -38,7 +39,7 @@ const APIFlow = sequelize.define('DP_API_WORKFLOW', {
         allowNull: false
     },
     DESCRIPTION: {
-        type: DataTypes.TEXT,
+        type: DataTypes.STRING,
         allowNull: false
     },
     HANDLE: {
@@ -46,11 +47,14 @@ const APIFlow = sequelize.define('DP_API_WORKFLOW', {
         allowNull: false
     },
     AGENT_PROMPT: {
-        type: DataTypes.TEXT,
-        allowNull: false
+        type: DataTypes.BLOB,
+        allowNull: false,
+        get() {
+            return bufferToUtf8(this.getDataValue('AGENT_PROMPT'));
+        }
     },
     STATUS: {
-        type: DataTypes.STRING,
+        type: DataTypes.STRING(20),
         allowNull: false,
         defaultValue: 'PUBLISHED'
     },
@@ -90,7 +94,9 @@ const APIFlow = sequelize.define('DP_API_WORKFLOW', {
     tableName: 'DP_API_WORKFLOW',
     returning: true,
     indexes: [
-        { name: 'UQ_API_WORKFLOW_ORG_VIEW_HANDLE', unique: true, fields: ['ORG_UUID', 'VIEW_UUID', 'HANDLE'] }
+        { name: 'UQ_API_WORKFLOW_ORG_VIEW_HANDLE', unique: true, fields: ['ORG_UUID', 'VIEW_UUID', 'HANDLE'] },
+        { name: 'IDX_API_WORKFLOW_VIEW_UUID', fields: ['VIEW_UUID'] },
+        { name: 'IDX_API_WORKFLOW_STATUS', fields: ['STATUS'] }
     ]
 });
 

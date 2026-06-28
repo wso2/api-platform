@@ -18,6 +18,7 @@
 const { Sequelize, DataTypes } = require('sequelize');
 const sequelize = require('../db/sequelizeConfig');
 const { Organization } = require('./organization');
+const { bufferToUtf8 } = require('../utils/cryptoUtil');
 
 const KeyManager = sequelize.define('DP_KEY_MANAGER', {
     UUID: {
@@ -34,13 +35,13 @@ const KeyManager = sequelize.define('DP_KEY_MANAGER', {
         allowNull: false
     },
     TYPE: {
-        type: DataTypes.STRING,
+        type: DataTypes.STRING(64),
         allowNull: false
     },
     ENABLED: {
-        type: DataTypes.BOOLEAN,
+        type: DataTypes.SMALLINT,
         allowNull: false,
-        defaultValue: true
+        defaultValue: 1
     },
     TOKEN_ENDPOINT: {
         type: DataTypes.STRING,
@@ -59,25 +60,31 @@ const KeyManager = sequelize.define('DP_KEY_MANAGER', {
         allowNull: true
     },
     ADMIN_CLIENT_ID_ENC: {
-        type: DataTypes.TEXT,
-        allowNull: false
+        type: DataTypes.BLOB,
+        allowNull: false,
+        get() {
+            return bufferToUtf8(this.getDataValue('ADMIN_CLIENT_ID_ENC'));
+        }
     },
     ADMIN_CLIENT_SECRET_ENC: {
-        type: DataTypes.TEXT,
-        allowNull: false
+        type: DataTypes.BLOB,
+        allowNull: false,
+        get() {
+            return bufferToUtf8(this.getDataValue('ADMIN_CLIENT_SECRET_ENC'));
+        }
     },
     SUPPORTED_GRANT_TYPES: {
-        type: DataTypes.JSON,
+        type: DataTypes.JSONB,
         allowNull: true,
         defaultValue: ['client_credentials']
     },
     SUPPORTED_SCOPES: {
-        type: DataTypes.JSON,
+        type: DataTypes.JSONB,
         allowNull: true,
         defaultValue: ['openid']
     },
     ADDITIONAL_PROPERTIES: {
-        type: DataTypes.JSON,
+        type: DataTypes.JSONB,
         allowNull: true,
         defaultValue: {}
     },

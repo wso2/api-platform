@@ -56,7 +56,7 @@ const Organization = sequelize.define('DP_ORGANIZATION', {
         allowNull: true
     },
     CONFIGURATION: {
-        type: DataTypes.JSON,
+        type: DataTypes.JSONB,
         allowNull: false
     },
     CREATED_BY: {
@@ -98,7 +98,7 @@ const OrgContent = sequelize.define('DP_ORGANIZATION_ASSET', {
         allowNull: false,
     },
     FILE_TYPE: {
-        type: DataTypes.STRING,
+        type: DataTypes.STRING(20),
         allowNull: false,
     },
     FILE_PATH: {
@@ -112,7 +112,7 @@ const OrgContent = sequelize.define('DP_ORGANIZATION_ASSET', {
     },
     VIEW_UUID: {
         type: DataTypes.STRING(40),
-        allowNull: true,
+        allowNull: false,
     },
     CREATED_BY: {
         type: DataTypes.STRING,
@@ -140,6 +140,14 @@ const OrgContent = sequelize.define('DP_ORGANIZATION_ASSET', {
             name: 'UQ_ORGANIZATION_ASSET_TYPE_NAME_PATH_ORG_VIEW',
             unique: true,
             fields: ['FILE_TYPE', 'FILE_NAME', 'FILE_PATH', 'ORG_UUID', 'VIEW_UUID']
+        },
+        {
+            name: 'IDX_ORGANIZATION_ASSET_ORG_UUID',
+            fields: ['ORG_UUID']
+        },
+        {
+            name: 'IDX_ORGANIZATION_ASSET_VIEW_UUID',
+            fields: ['VIEW_UUID']
         }
     ]
 });
@@ -164,6 +172,7 @@ Organization.hasMany(View, {
 
 View.hasOne(OrgContent, {
     foreignKey: 'VIEW_UUID',
+    onDelete: 'CASCADE',
 });
 
 OrgContent.belongsTo(View, {

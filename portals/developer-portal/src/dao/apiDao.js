@@ -184,7 +184,7 @@ const get = async (orgID, apiID, t) => {
     }
 };
 
-const getByCondition = async (condition, t) => {
+const getByCondition = async (condition, t, tags) => {
     try {
         const tagsInclude = {
             model: Tags,
@@ -192,11 +192,12 @@ const getByCondition = async (condition, t) => {
             through: { attributes: [] },
             required: false
         };
-        if (condition.TAGS) {
-            const tagsArray = condition.TAGS.split(",").map(tag => tag.trim()).filter(Boolean);
-            delete condition.TAGS;
-            tagsInclude.required = true;
-            tagsInclude.where = { NAME: { [Op.in]: tagsArray } };
+        if (tags) {
+            const tagsArray = tags.split(",").map(tag => tag.trim()).filter(Boolean);
+            if (tagsArray.length > 0) {
+                tagsInclude.required = true;
+                tagsInclude.where = { NAME: { [Op.in]: tagsArray } };
+            }
         }
         const apiMetadataResponse = await APIMetadata.findAll({
             include: [{

@@ -78,8 +78,8 @@ class APIInfo {
 
 class APISubscriptionPlan {
     constructor(apiSubscriptionPlan) {
-        this.planName = apiSubscriptionPlan.NAME;
-        this.displayName = apiSubscriptionPlan.DISPLAY_NAME;
+        this.planName = apiSubscriptionPlan.HANDLE;
+        this.displayName = apiSubscriptionPlan.NAME;
         this.requestCount = apiSubscriptionPlan.REQUEST_COUNT;
         this.planID = apiSubscriptionPlan.UUID;
         this.description = apiSubscriptionPlan.DESCRIPTION;

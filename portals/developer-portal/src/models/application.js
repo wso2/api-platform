@@ -44,6 +44,10 @@ const Application = sequelize.define('DP_APPLICATION', {
         type: DataTypes.STRING,
         allowNull: false
     },
+    HANDLE: {
+        type: DataTypes.STRING,
+        allowNull: false
+    },
     DESCRIPTION: {
         type: DataTypes.STRING,
         allowNull: true
@@ -68,6 +72,7 @@ const Application = sequelize.define('DP_APPLICATION', {
     returning: true,
     indexes: [
         { name: 'IDX_APPLICATION_ORG_CREATED_BY', fields: ['ORG_UUID', 'CREATED_BY'] },
+        { name: 'UQ_APPLICATION_ORG_HANDLE', unique: true, fields: ['ORG_UUID', 'HANDLE'] },
     ],
 });
 
@@ -91,12 +96,12 @@ const ApplicationKeyMapping = sequelize.define('DP_APP_KEY_MAPPING', {
         allowNull: true
     },
     TYPE: {
-        type: DataTypes.STRING,
+        type: DataTypes.STRING(20),
         allowNull: false,
         defaultValue: 'PRODUCTION'
     },
     ADDITIONAL_PROPERTIES: {
-        type: DataTypes.JSON,
+        type: DataTypes.JSONB,
         allowNull: true
     },
     CREATED_BY: {
@@ -120,7 +125,11 @@ const ApplicationKeyMapping = sequelize.define('DP_APP_KEY_MAPPING', {
 }, {
     timestamps: false,
     tableName: 'DP_APP_KEY_MAPPING',
-    returning: true
+    returning: true,
+    indexes: [
+        { name: 'IDX_APP_KEY_MAPPING_APP_UUID', fields: ['APP_UUID'] },
+        { name: 'IDX_APP_KEY_MAPPING_KM_UUID', fields: ['KM_UUID'] },
+    ],
 });
 
 const SubscriptionMapping = sequelize.define('DP_SUBSCRIPTION', {
@@ -155,7 +164,7 @@ const SubscriptionMapping = sequelize.define('DP_SUBSCRIPTION', {
         allowNull: false
     },
     TOKEN:   { type: DataTypes.STRING(512), allowNull: true, unique: true },
-    STATUS:      { type: DataTypes.STRING, allowNull: false, defaultValue: 'ACTIVE' },
+    STATUS:      { type: DataTypes.STRING(20), allowNull: false, defaultValue: 'ACTIVE' },
     CREATED_AT:  { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW },
     UPDATED_BY:  { type: DataTypes.STRING, allowNull: false },
     UPDATED_AT:  { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW },
@@ -166,6 +175,8 @@ const SubscriptionMapping = sequelize.define('DP_SUBSCRIPTION', {
     indexes: [
         { name: 'IDX_SUBSCRIPTION_ORG_CREATED_BY', fields: ['ORG_UUID', 'CREATED_BY'] },
         { name: 'IDX_SUBSCRIPTION_ORG_API_UUID', fields: ['ORG_UUID', 'API_UUID'] },
+        { name: 'IDX_SUBSCRIPTION_PLAN_UUID', fields: ['PLAN_UUID'] },
+        { name: 'IDX_SUBSCRIPTION_STATUS', fields: ['STATUS'] },
     ],
 });
 

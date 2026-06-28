@@ -43,7 +43,7 @@ const DPEvent = sequelize.define('DP_EVENT', {
         allowNull: false
     },
     PAYLOAD: {
-        type: DataTypes.JSON,
+        type: DataTypes.JSONB,
         allowNull: false,
         defaultValue: {}
     },
@@ -53,7 +53,7 @@ const DPEvent = sequelize.define('DP_EVENT', {
         defaultValue: DataTypes.NOW
     },
     STATUS: {
-        type: DataTypes.STRING,
+        type: DataTypes.STRING(20),
         allowNull: false,
         defaultValue: 'PENDING'
     }
@@ -62,7 +62,8 @@ const DPEvent = sequelize.define('DP_EVENT', {
     tableName: 'DP_EVENT',
     returning: true,
     indexes: [
-        { name: 'IDX_EVENT_STATUS_OCCURRED_AT', fields: ['STATUS', 'OCCURRED_AT'] }
+        { name: 'IDX_EVENT_STATUS_OCCURRED_AT', fields: ['STATUS', 'OCCURRED_AT'] },
+        { name: 'IDX_EVENT_ORG_UUID', fields: ['ORG_UUID'] }
     ]
 });
 

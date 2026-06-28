@@ -26,12 +26,12 @@ const SubscriptionPlan = sequelize.define('DP_SUBSCRIPTION_PLAN', {
         allowNull: false,
         primaryKey: true
     },
-    NAME: {
+    HANDLE: {
         type: DataTypes.STRING,
         allowNull: false,
-        unique: 'unique_org_plan_name'
+        unique: 'unique_org_plan_handle'
     },
-    DISPLAY_NAME: {
+    NAME: {
         type: DataTypes.STRING,
         allowNull: false
     },
@@ -70,14 +70,14 @@ const SubscriptionPlan = sequelize.define('DP_SUBSCRIPTION_PLAN', {
     tableName: 'DP_SUBSCRIPTION_PLAN',
     returning: true,
     indexes: [
-        { name: 'IDX_SUB_PLAN_ORG_NAME', unique: true, fields: ['ORG_UUID', 'NAME'] }
+        { name: 'UQ_SUBSCRIPTION_PLAN_ORG_HANDLE', unique: true, fields: ['ORG_UUID', 'HANDLE'] }
     ]
 });
 
 SubscriptionPlan.belongsTo(Organization, {
     foreignKey: {
         name: 'ORG_UUID',
-        unique: 'unique_org_plan_name'
+        unique: 'unique_org_plan_handle'
     }
 });
 

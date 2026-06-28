@@ -37,7 +37,7 @@ const APIMetadata = sequelize.define('DP_API_METADATA', {
     allowNull: false
   },
   STATUS: {
-    type: DataTypes.STRING,
+    type: DataTypes.STRING(20),
     allowNull: false
   },
   DESCRIPTION: {
@@ -45,11 +45,11 @@ const APIMetadata = sequelize.define('DP_API_METADATA', {
     allowNull: true,
   },
   VERSION: {
-    type: DataTypes.STRING,
+    type: DataTypes.STRING(30),
     allowNull: false,
   },
   TYPE: {
-    type: DataTypes.STRING,
+    type: DataTypes.STRING(20),
     allowNull: false
   },
   AGENT_VISIBILITY: {
@@ -82,12 +82,12 @@ const APIMetadata = sequelize.define('DP_API_METADATA', {
     allowNull: true
   },
   METADATA_SEARCH: {
-    type: DataTypes.JSON,
+    type: DataTypes.JSONB,
     allowNull: true
   },
   HANDLE: {
     type: DataTypes.STRING,
-    allowNull: true
+    allowNull: false
   },
   CREATED_BY: {
     type: DataTypes.STRING,
@@ -126,6 +126,10 @@ const APIMetadata = sequelize.define('DP_API_METADATA', {
           name: 'UQ_API_METADATA_HANDLE_ORG',
           unique: true,
           fields: ['HANDLE', 'ORG_UUID']
+      },
+      {
+          name: 'IDX_API_METADATA_STATUS',
+          fields: ['STATUS']
       }
   ]
 });
@@ -171,6 +175,10 @@ const APILabels = sequelize.define('DP_API_LABEL_MAPPING', {
           name: 'UQ_API_LABEL_MAPPING_LABEL_API',
           unique: true,
           fields: ['LABEL_UUID', 'API_UUID']
+      },
+      {
+          name: 'IDX_API_LABEL_MAPPING_API_UUID',
+          fields: ['API_UUID']
       }
   ]
 });
@@ -216,6 +224,10 @@ const APITags = sequelize.define('DP_API_TAG_MAPPING', {
           name: 'UQ_API_TAG_MAPPING_TAG_API',
           unique: true,
           fields: ['TAG_UUID', 'API_UUID']
+      },
+      {
+          name: 'IDX_API_TAG_MAPPING_API_UUID',
+          fields: ['API_UUID']
       }
   ]
 });

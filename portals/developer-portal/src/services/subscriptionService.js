@@ -42,7 +42,7 @@ function buildWebhookPayload(sub, apiMetadata, plan) {
         subscription_id: sub.UUID,
         subscription_plan: {
             ref_id: plan ? (plan.REF_ID || null) : null,
-            name: plan ? (plan.NAME || plan.DISPLAY_NAME || null) : null,
+            name: plan ? (plan.NAME || null) : null,
         },
         api: {
             name: apiMetadata ? apiMetadata.NAME : null,

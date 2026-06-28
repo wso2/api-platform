@@ -40,7 +40,7 @@ const create = async (orgId, subData, createdBy) => {
             ...(subData.secret && { SECRET_ENC: whCrypto.encrypt(subData.secret) }),
             ...(subData.publicKey && { PUBLIC_KEY: subData.publicKey }),
             ...(subData.events && { EVENT_PATTERNS: subData.events }),
-            ...(subData.enabled !== undefined && { ENABLED: subData.enabled }),
+            ...(subData.enabled !== undefined && { ENABLED: subData.enabled ? 1 : 0 }),
             ...(subData.timeoutMs && { TIMEOUT_MS: subData.timeoutMs }),
             CREATED_BY: createdBy,
             UPDATED_BY: createdBy,
@@ -66,7 +66,7 @@ const update = async (orgId, subscriberId, subData, updatedBy) => {
             ...(subData.url && { TARGET_URL: subData.url }),
             ...(subData.publicKey !== undefined && { PUBLIC_KEY: subData.publicKey }),
             ...(subData.events && { EVENT_PATTERNS: subData.events }),
-            ...(subData.enabled !== undefined && { ENABLED: subData.enabled }),
+            ...(subData.enabled !== undefined && { ENABLED: subData.enabled ? 1 : 0 }),
             ...(subData.timeoutMs && { TIMEOUT_MS: subData.timeoutMs }),
             UPDATED_BY: updatedBy,
             UPDATED_AT: new Date(),
@@ -119,7 +119,7 @@ const list = async (orgId) => {
 const matchSubscribers = async (orgId, eventType) => {
     try {
         const subscribers = await WebhookSubscriber.findAll({
-            where: { ORG_UUID: orgId, ENABLED: true }
+            where: { ORG_UUID: orgId, ENABLED: 1 }
         });
         return subscribers.filter(sub => {
             const patterns = sub.EVENT_PATTERNS;

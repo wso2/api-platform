@@ -33,7 +33,7 @@ const APIContent = sequelize.define('DP_API_CONTENT', {
         allowNull: false,
     },
     TYPE: {
-        type: DataTypes.STRING,
+        type: DataTypes.STRING(64),
         allowNull: false,
     },
     FILE_NAME: {

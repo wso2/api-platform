@@ -66,6 +66,10 @@ const Labels = sequelize.define('DP_LABEL', {
             name: 'UQ_LABEL_NAME_ORG_UUID',
             unique: true,
             fields: ['NAME', 'ORG_UUID'],
+        },
+        {
+            name: 'IDX_LABEL_ORG_UUID',
+            fields: ['ORG_UUID'],
         }
     ],
 });

@@ -103,8 +103,13 @@ const createAPIMetadata = async (req, res) => {
         if (apiStatus && !Object.values(constants.API_STATUS).includes(apiStatus)) {
             throw new Sequelize.ValidationError(`Invalid apiStatus '${apiStatus}'. Must be one of: ${Object.values(constants.API_STATUS).join(', ')}.`);
         }
-        if (agentVisibility && !Object.values(constants.AGENT_VISIBILITY).includes(agentVisibility.toUpperCase())) {
-            throw new Sequelize.ValidationError(`Invalid agentVisibility '${agentVisibility}'. Must be one of: ${Object.values(constants.AGENT_VISIBILITY).join(', ')}.`);
+        if (agentVisibility) {
+            const normalizedAgentVisibility = agentVisibility.toUpperCase();
+            if (!Object.values(constants.AGENT_VISIBILITY).includes(normalizedAgentVisibility)) {
+                throw new Sequelize.ValidationError(`Invalid agentVisibility '${agentVisibility}'. Must be one of: ${Object.values(constants.AGENT_VISIBILITY).join(', ')}.`);
+            }
+            apiMetadata.agentVisibility = normalizedAgentVisibility;
+            apiMetadata.apiInfo.agentVisibility = normalizedAgentVisibility;
         }
         apiMetadata.endPoints.productionURL = changeEndpoint(apiMetadata.endPoints.productionURL);
         apiMetadata.endPoints.sandboxURL = changeEndpoint(apiMetadata.endPoints.sandboxURL);
@@ -342,9 +347,8 @@ const getMetadataListFromDB = async (orgID, searchTerm, tags, apiName, apiVersio
             const condition = {};
             if (apiName) condition.NAME = apiName;
             if (apiVersion) condition.VERSION = apiVersion;
-            if (tags) condition.TAGS = tags;
             condition.ORG_UUID = orgID;
-            retrievedAPIs = await apiDao.getByCondition(condition);
+            retrievedAPIs = await apiDao.getByCondition(condition, t, tags);
         } else if (searchTerm) {
             retrievedAPIs = await apiDao.search(orgID, searchTerm, viewName, t);
         } else if (viewName) {
@@ -423,8 +427,13 @@ const updateAPIMetadata = async (req, res) => {
         if (updateApiStatus && !Object.values(constants.API_STATUS).includes(updateApiStatus)) {
             throw new Sequelize.ValidationError(`Invalid apiStatus '${updateApiStatus}'. Must be one of: ${Object.values(constants.API_STATUS).join(', ')}.`);
         }
-        if (updateAgentVisibility && !Object.values(constants.AGENT_VISIBILITY).includes(updateAgentVisibility.toUpperCase())) {
-            throw new Sequelize.ValidationError(`Invalid agentVisibility '${updateAgentVisibility}'. Must be one of: ${Object.values(constants.AGENT_VISIBILITY).join(', ')}.`);
+        if (updateAgentVisibility) {
+            const normalizedUpdateAgentVisibility = updateAgentVisibility.toUpperCase();
+            if (!Object.values(constants.AGENT_VISIBILITY).includes(normalizedUpdateAgentVisibility)) {
+                throw new Sequelize.ValidationError(`Invalid agentVisibility '${updateAgentVisibility}'. Must be one of: ${Object.values(constants.AGENT_VISIBILITY).join(', ')}.`);
+            }
+            apiMetadata.agentVisibility = normalizedUpdateAgentVisibility;
+            apiMetadata.apiInfo.agentVisibility = normalizedUpdateAgentVisibility;
         }
 
         // Compute added/removed labels diff for YAML and artifact paths
@@ -1766,7 +1775,8 @@ function mapDevportalYamlToApiMetadata(parsedYaml) {
     if (!Object.values(constants.API_STATUS).includes(apiStatus)) {
         throw new Sequelize.ValidationError(`Invalid API status '${apiStatus}'. Must be one of: ${Object.values(constants.API_STATUS).join(', ')}.`);
     }
-    if (spec.agentVisibility && !Object.values(constants.AGENT_VISIBILITY).includes(spec.agentVisibility.toUpperCase())) {
+    const agentVisibility = (spec.agentVisibility || constants.AGENT_VISIBILITY.VISIBLE).toUpperCase();
+    if (!Object.values(constants.AGENT_VISIBILITY).includes(agentVisibility)) {
         throw new Sequelize.ValidationError(`Invalid agentVisibility '${spec.agentVisibility}'. Must be one of: ${Object.values(constants.AGENT_VISIBILITY).join(', ')}.`);
     }
     const endpoints = spec.endpoints || {};
@@ -1784,7 +1794,7 @@ function mapDevportalYamlToApiMetadata(parsedYaml) {
             apiHandle: metadata.name,
             apiType,
             apiStatus,
-            agentVisibility: spec.agentVisibility || constants.AGENT_VISIBILITY.VISIBLE,
+            agentVisibility,
             tags: util.normalizeStringArray(spec.tags),
             labels: util.normalizeStringArray(spec.labels),
             owners: {

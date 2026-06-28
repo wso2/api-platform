@@ -61,6 +61,10 @@ const ViewLabels = sequelize.define('DP_VIEW_LABEL_MAPPING', {
             name: 'UQ_VIEW_LABEL_MAPPING_LABEL_VIEW',
             unique: true,
             fields: ['LABEL_UUID', 'VIEW_UUID']
+        },
+        {
+            name: 'IDX_VIEW_LABEL_MAPPING_VIEW_UUID',
+            fields: ['VIEW_UUID']
         }
     ]
 });

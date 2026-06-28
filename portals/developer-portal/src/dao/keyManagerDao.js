@@ -37,7 +37,7 @@ const create = async (orgId, kmData, createdBy) => {
             ORG_UUID: orgId,
             NAME: kmData.name,
             TYPE: kmData.type,
-            ...(kmData.enabled !== undefined && { ENABLED: kmData.enabled }),
+            ...(kmData.enabled !== undefined && { ENABLED: kmData.enabled ? 1 : 0 }),
             TOKEN_ENDPOINT: kmData.tokenEndpoint,
             CLIENT_REG_ENDPOINT: kmData.clientRegistrationEndpoint,
             ...(kmData.issuer && { ISSUER: kmData.issuer }),
@@ -69,7 +69,7 @@ const update = async (kmId, kmData, updatedBy) => {
         const updatePayload = {
             ...(kmData.name && { NAME: kmData.name }),
             ...(kmData.type && { TYPE: kmData.type }),
-            ...(kmData.enabled !== undefined && { ENABLED: kmData.enabled }),
+            ...(kmData.enabled !== undefined && { ENABLED: kmData.enabled ? 1 : 0 }),
             ...(kmData.tokenEndpoint && { TOKEN_ENDPOINT: kmData.tokenEndpoint }),
             ...(kmData.clientRegistrationEndpoint && { CLIENT_REG_ENDPOINT: kmData.clientRegistrationEndpoint }),
             ...(kmData.issuer !== undefined && { ISSUER: kmData.issuer }),
@@ -135,7 +135,7 @@ const list = async (orgId) => {
 const listEnabled = async (orgId) => {
     try {
         return await KeyManager.findAll({
-            where: { ORG_UUID: orgId, ENABLED: true }
+            where: { ORG_UUID: orgId, ENABLED: 1 }
         });
     } catch (error) {
         logger.error('Error fetching enabled key managers', { error });

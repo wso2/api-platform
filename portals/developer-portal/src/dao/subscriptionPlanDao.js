@@ -45,8 +45,8 @@ const buildSubscriptionPlanRow = (orgID, plan) => {
     // Store the APIM plan UUID if provided
     UUID: plan.planId ?? plan.planID ?? undefined,
 
-    NAME: plan.planName,
-    DISPLAY_NAME: plan.displayName,
+    HANDLE: plan.planName,
+    NAME: plan.displayName,
     DESCRIPTION: plan.description,
     REQUEST_COUNT: requestCount,
     REF_ID: plan.refId ?? null,
@@ -132,7 +132,7 @@ const deletePlan = async (orgID, planName, t) => {
     try {
         const subscriptionPlanResponse = await SubscriptionPlan.destroy({
             where: {
-                NAME: planName,
+                HANDLE: planName,
                 ORG_UUID: orgID
             },
             transaction: t
@@ -170,7 +170,7 @@ const getByName = async (orgID, planName, t) => {
     try {
         const subscriptionPlanResponse = await SubscriptionPlan.findOne({
             where: {
-                NAME: planName,
+                HANDLE: planName,
                 ORG_UUID: orgID
             },
             transaction: t

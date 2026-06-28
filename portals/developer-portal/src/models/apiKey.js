@@ -46,7 +46,7 @@ const APIKey = sequelize.define('DP_API_KEY', {
         allowNull: false
     },
     STATUS: {
-        type: DataTypes.STRING,
+        type: DataTypes.STRING(20),
         allowNull: false,
         defaultValue: 'ACTIVE'
     },
@@ -65,6 +65,10 @@ const APIKey = sequelize.define('DP_API_KEY', {
     REVOKED_AT: {
         type: DataTypes.DATE,
         allowNull: true
+    },
+    REVOKED_BY: {
+        type: DataTypes.STRING(200),
+        allowNull: true
     }
 }, {
     timestamps: true,
@@ -72,8 +76,13 @@ const APIKey = sequelize.define('DP_API_KEY', {
     updatedAt: 'UPDATED_AT',
     tableName: 'DP_API_KEY',
     returning: true,
+    checks: [
+        { name: 'chk_api_key_revoked', sql: `("REVOKED_AT" IS NULL OR "STATUS" = 'REVOKED')` }
+    ],
     indexes: [
         { name: 'IDX_API_KEY_ORG_API_UUID', fields: ['ORG_UUID', 'API_UUID'] },
+        { name: 'IDX_API_KEY_SUBSCRIPTION_UUID', fields: ['SUBSCRIPTION_UUID'] },
+        { name: 'IDX_API_KEY_STATUS', fields: ['STATUS'] },
     ],
 });
 

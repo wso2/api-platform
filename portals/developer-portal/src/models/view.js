@@ -63,6 +63,10 @@ const View = sequelize.define('DP_VIEW', {
             name: 'UQ_VIEW_HANDLE_ORG_UUID',
             unique: true,
             fields: ['HANDLE', 'ORG_UUID'],
+        },
+        {
+            name: 'IDX_VIEW_ORG_UUID',
+            fields: ['ORG_UUID'],
         }
     ],
 });

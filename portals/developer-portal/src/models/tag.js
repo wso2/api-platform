@@ -62,6 +62,10 @@ const Tags = sequelize.define('DP_TAG', {
             name: 'UQ_TAG_NAME_ORG_UUID',
             unique: true,
             fields: ['NAME', 'ORG_UUID'],
+        },
+        {
+            name: 'IDX_TAG_ORG_UUID',
+            fields: ['ORG_UUID'],
         }
     ],
 });

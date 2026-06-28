@@ -26,7 +26,7 @@ class KeyManagerDTO {
         this.orgId = km.ORG_UUID;
         this.name = km.NAME;
         this.type = km.TYPE;
-        this.enabled = km.ENABLED;
+        this.enabled = !!km.ENABLED;
         this.tokenEndpoint = km.TOKEN_ENDPOINT;
         this.clientRegistrationEndpoint = km.CLIENT_REG_ENDPOINT;
         if (km.ISSUER) {

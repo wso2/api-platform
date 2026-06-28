@@ -72,7 +72,7 @@ async function list(orgId, { apiId, subscriptionId, appId, status, limit } = {},
 
 async function revoke(orgId, keyId, updatedBy, transaction) {
     const [count] = await APIKey.update(
-        { STATUS: 'REVOKED', REVOKED_AT: new Date(), UPDATED_BY: updatedBy },
+        { STATUS: 'REVOKED', REVOKED_AT: new Date(), REVOKED_BY: updatedBy, UPDATED_BY: updatedBy },
         { where: { UUID: keyId, ORG_UUID: orgId, STATUS: 'ACTIVE' }, transaction }
     );
     return count > 0;

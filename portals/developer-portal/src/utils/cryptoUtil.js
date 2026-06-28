@@ -68,4 +68,14 @@ function createCryptoUtil(hexKey) {
   };
 }
 
-module.exports = { createCryptoUtil };
+/**
+ * Normalize a BYTEA-backed column value back to a string.
+ * Use as a Sequelize attribute `get()` for BLOB columns that actually hold
+ * text (encrypted payloads, PEM keys, prompts) so callers reading the
+ * instance property never have to deal with the raw Buffer.
+ */
+function bufferToUtf8(value) {
+  return Buffer.isBuffer(value) ? value.toString("utf8") : value;
+}
+
+module.exports = { createCryptoUtil, bufferToUtf8 };

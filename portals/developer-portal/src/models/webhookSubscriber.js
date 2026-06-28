@@ -18,6 +18,7 @@
 const { Sequelize, DataTypes } = require('sequelize');
 const sequelize = require('../db/sequelizeConfig');
 const { Organization } = require('./organization');
+const { bufferToUtf8 } = require('../utils/cryptoUtil');
 
 const WebhookSubscriber = sequelize.define('DP_WEBHOOK_SUBSCRIBER', {
     UUID: {
@@ -34,26 +35,32 @@ const WebhookSubscriber = sequelize.define('DP_WEBHOOK_SUBSCRIBER', {
         allowNull: false
     },
     TARGET_URL: {
-        type: DataTypes.TEXT,
+        type: DataTypes.STRING,
         allowNull: false
     },
     SECRET_ENC: {
-        type: DataTypes.TEXT,
-        allowNull: true
+        type: DataTypes.BLOB,
+        allowNull: true,
+        get() {
+            return bufferToUtf8(this.getDataValue('SECRET_ENC'));
+        }
     },
     PUBLIC_KEY: {
-        type: DataTypes.TEXT,
-        allowNull: true
+        type: DataTypes.BLOB,
+        allowNull: true,
+        get() {
+            return bufferToUtf8(this.getDataValue('PUBLIC_KEY'));
+        }
     },
     EVENT_PATTERNS: {
-        type: DataTypes.JSON,
+        type: DataTypes.JSONB,
         allowNull: true,
         defaultValue: []
     },
     ENABLED: {
-        type: DataTypes.BOOLEAN,
+        type: DataTypes.SMALLINT,
         allowNull: false,
-        defaultValue: true
+        defaultValue: 1
     },
     TIMEOUT_MS: {
         type: DataTypes.INTEGER,

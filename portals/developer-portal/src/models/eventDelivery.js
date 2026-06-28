@@ -37,16 +37,16 @@ const DPEventDelivery = sequelize.define('DP_EVENT_DELIVERY', {
         allowNull: false
     },
     TARGET_URL: {
-        type: DataTypes.TEXT,
+        type: DataTypes.STRING,
         allowNull: false
     },
     ENCRYPTED_FIELDS: {
-        type: DataTypes.JSON,
+        type: DataTypes.JSONB,
         allowNull: true,
         defaultValue: null
     },
     STATUS: {
-        type: DataTypes.STRING,
+        type: DataTypes.STRING(20),
         allowNull: false,
         defaultValue: 'PENDING'
     },
@@ -65,7 +65,7 @@ const DPEventDelivery = sequelize.define('DP_EVENT_DELIVERY', {
         allowNull: true
     },
     LAST_ERROR: {
-        type: DataTypes.TEXT,
+        type: DataTypes.STRING,
         allowNull: true
     },
     LAST_ATTEMPT_AT: {
