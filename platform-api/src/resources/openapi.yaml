@@ -2675,10 +2675,10 @@ paths:
                         duration: 1
                         unit: month
               associatedGateways:
-                - name: prod-eu
+                - id: prod-eu
                   configurations:
                     host: prod-eu.platform-gw.local
-                - name: prod-us
+                - id: prod-us
                   configurations:
                     host: prod-us.platform-gw.local
       responses:
@@ -6690,6 +6690,11 @@ components:
           description: Unique identifier for the project
           readOnly: true
           example: "yr434567-de34-76uj6-w376-234324532"
+        handle:
+          type: string
+          description: URL-friendly unique identifier for the project
+          readOnly: true
+          example: "default-project"
         name:
           type: string
           description: Name of the project
@@ -6877,20 +6882,14 @@ components:
       type: object
       required:
         - id
-        - uuid
         - name
         - version
         - kind
       properties:
         id:
           type: string
-          description: Handle/ID of the associated target
+          description: Handle of the associated target
           example: provider-handle
-        uuid:
-          type: string
-          format: uuid
-          description: UUID of the associated target
-          example: "7d7a51fd-daa1-4095-b7ff-98a1aa05cc0f"
         name:
           type: string
           description: Display name of the associated target
@@ -7369,17 +7368,17 @@ components:
         from the JWT token and does not need to be provided.
       type: object
       required:
-        - handle
+        - id
         - name
         - vhost
         - functionalityType
       properties:
-        handle:
+        id:
           type: string
           pattern: '^[a-z0-9-]+$'
           minLength: 3
           maxLength: 64
-          description: URL-friendly gateway identifier (lowercase alphanumeric with hyphens, unique per organization)
+          description: URL-friendly gateway handle (lowercase alphanumeric with hyphens, unique per organization)
           example: "prod-gateway-01"
         name:
           type: string
@@ -7427,7 +7426,7 @@ components:
       required:
         - uuid
         - organizationUuid
-        - name
+        - id
         - version
         - policyDefinition
       properties:
@@ -7440,11 +7439,11 @@ components:
           type: string
           format: uuid
           description: Organization this policy belongs to
-        name:
+        id:
           type: string
-          description: Policy name
+          description: Policy handle
           example: "rate-limit-custom"
-        displayName:
+        name:
           type: string
           description: Human-readable display name of the policy
           example: "Rate Limit Custom"
@@ -7528,9 +7527,9 @@ components:
           format: uuid
           description: UUID of the organization this gateway belongs to
           example: "123e4567-e89b-12d3-a456-426614174000"
-        handle:
+        id:
           type: string
-          description: URL-friendly gateway identifier (lowercase alphanumeric with hyphens, unique per organization)
+          description: URL-friendly gateway handle (lowercase alphanumeric with hyphens, unique per organization)
           example: "prod-gateway-01"
         name:
           type: string
@@ -7643,9 +7642,9 @@ components:
       type: object
       description: Lightweight gateway status information optimized for frequent polling
       properties:
-        handle:
+        id:
           type: string
-          description: URL-friendly gateway identifier
+          description: URL-friendly gateway handle
           example: "prod-gateway-01"
         name:
           type: string
@@ -7958,13 +7957,13 @@ components:
       required:
         - apiKey
       properties:
-        name:
+        id:
           type: string
           description: |
-            Unique identifier for this API key within the API (optional; if omitted,
-            generated from displayName)
+            Unique handle for this API key within the API (optional; if omitted,
+            generated from name)
           example: "production-key-01"
-        displayName:
+        name:
           type: string
           description: Display name of the API key
           example: "Production API Key"
@@ -8017,12 +8016,12 @@ components:
       required:
         - apiKey
       properties:
-        name:
+        id:
           type: string
-          description: Unique identifier for this API key within the API (optional; if omitted,
-            generated from displayName)
+          description: Unique handle for this API key within the API (optional; if omitted,
+            generated from name)
           example: "production-key-01"
-        displayName:
+        name:
           type: string
           description: Display name of the API key
           example: "Production API Key (Updated)"
@@ -8074,9 +8073,9 @@ components:
       required:
         - name
       properties:
-        handle:
+        id:
           type: string
-          description: "URL-friendly unique identifier for the subscription plan. Auto-generated from name if omitted."
+          description: "URL-friendly handle for the subscription plan. Auto-generated from name if omitted."
           example: "gold"
         name:
           type: string
@@ -8118,9 +8117,9 @@ components:
     UpdateSubscriptionPlanRequest:
       type: object
       properties:
-        handle:
+        id:
           type: string
-          description: URL-friendly unique identifier for the subscription plan
+          description: URL-friendly handle for the subscription plan
           example: "gold"
         name:
           type: string
@@ -8155,9 +8154,9 @@ components:
     SubscriptionPlan:
       type: object
       properties:
-        handle:
+        id:
           type: string
-          description: URL-friendly subscription plan identifier (unique per organization)
+          description: URL-friendly subscription plan handle (unique per organization)
           example: gold
         name:
           type: string
@@ -8206,8 +8205,8 @@ components:
       properties:
         apiId:
           type: string
-          description: API handle or UUID (REST API identifier)
-          example: "c9f2b6ae-1234-5678-9abc-def012345678"
+          description: REST API handle
+          example: "my-rest-api"
         subscriberId:
           type: string
           minLength: 1
@@ -8215,12 +8214,12 @@ components:
           example: "user-123"
         applicationId:
           type: string
-          description: Application ID (from DevPortal/STS). Optional in token-based subscriptions.
-          example: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+          description: Application handle. Optional in token-based subscriptions.
+          example: "my-app-handle"
         subscriptionPlanId:
           type: string
-          description: Subscription plan UUID. Links the subscription to rate limit and billing configuration.
-          example: "plan-uuid-1"
+          description: Subscription plan handle. Links the subscription to rate limit and billing configuration.
+          example: "gold"
         status:
           type: string
           description: Subscription status (default ACTIVE)
@@ -8251,13 +8250,13 @@ components:
           description: Unique subscriber identifier for this API (required)
         applicationId:
           type: string
-          description: Application ID (optional for token-based subscriptions)
+          description: Application handle (optional for token-based subscriptions)
         subscriptionToken:
           type: string
           description: Opaque subscription token for API invocation via Subscription-Key header
         subscriptionPlanId:
           type: string
-          description: Subscription plan UUID
+          description: Subscription plan handle
         subscriptionPlanName:
           type: string
           description: Subscription plan display name (e.g. Bronze, Gold)
@@ -9625,10 +9624,10 @@ components:
           items:
             $ref: '#/components/schemas/AssociatedGateway'
           example:
-            - name: prod-eu
+            - id: prod-eu
               configurations:
                 host: prod-eu.platform-gw.local
-            - name: prod-us
+            - id: prod-us
               configurations:
                 host: prod-us.platform-gw.local
         createdAt:
@@ -9647,14 +9646,14 @@ components:
     AssociatedGateway:
       type: object
       required:
-        - name
+        - id
       properties:
-        name:
+        id:
           type: string
           pattern: '^[a-z0-9-]+$'
           minLength: 3
           maxLength: 64
-          description: Name of the gateway this artifact can be deployed to
+          description: Handle of the gateway this artifact can be deployed to
           example: prod-eu
         configurations:
           type: object
@@ -9860,8 +9859,8 @@ components:
           items:
             $ref: '#/components/schemas/AssociatedGateway'
           example:
-            - name: prod-eu
-            - name: prod-us
+            - id: prod-eu
+            - id: prod-us
         createdAt:
           type: string
           format: date-time
@@ -9957,14 +9956,14 @@ components:
     CreateLLMProviderAPIKeyRequest:
       type: object
       properties:
-        name:
+        id:
           type: string
-          description: Unique identifier for the API key within the LLM provider. If not provided, generated from displayName.
+          description: Unique handle for the API key within the LLM provider. If not provided, generated from name.
           minLength: 3
           maxLength: 63
           pattern: '^[a-z0-9]+(-[a-z0-9]+)*$'
           example: "production-key"
-        displayName:
+        name:
           type: string
           description: User-friendly name for the API key
           example: "Production Key"
@@ -10012,14 +10011,14 @@ components:
     CreateLLMProxyAPIKeyRequest:
       type: object
       properties:
-        name:
+        id:
           type: string
-          description: Unique identifier for the API key within the LLM proxy. If not provided, generated from displayName.
+          description: Unique handle for the API key within the LLM proxy. If not provided, generated from name.
           minLength: 3
           maxLength: 63
           pattern: '^[a-z0-9]+(-[a-z0-9]+)*$'
           example: "production-key"
-        displayName:
+        name:
           type: string
           description: User-friendly name for the API key
           example: "Production Key"
@@ -10158,8 +10157,8 @@ components:
           items:
             $ref: '#/components/schemas/AssociatedGateway'
           example:
-            - name: prod-eu
-            - name: prod-us
+            - id: prod-eu
+            - id: prod-us
         createdAt:
           type: string
           format: date-time
@@ -10487,11 +10486,11 @@ components:
     WebSubAPIHmacSecretRequest:
       type: object
       required:
-        - displayName
+        - name
       properties:
-        displayName:
+        name:
           type: string
-          description: Human-readable label for the HMAC secret (used to derive the URL-safe name/slug).
+          description: Human-readable label for the HMAC secret (used to derive the URL-safe handle/slug).
           example: GitHub Webhook
         secret:
           type: string
@@ -10515,21 +10514,17 @@ components:
     WebSubAPIHmacSecretInfo:
       type: object
       required:
-        - uuid
+        - id
         - name
-        - displayName
         - status
         - createdAt
         - updatedAt
       properties:
-        uuid:
+        id:
           type: string
-          description: Unique identifier for the HMAC secret.
-        name:
-          type: string
-          description: URL-safe slug derived from the display name.
+          description: URL-safe handle (slug) derived from the display name.
           example: github-webhook
-        displayName:
+        name:
           type: string
           description: Human-readable label.
           example: GitHub Webhook
@@ -10806,13 +10801,13 @@ components:
     SecretCreateRequest:
       type: object
       required:
-        - handle
+        - id
         - name
         - value
       properties:
-        handle:
+        id:
           type: string
-          description: Unique identifier used in {{ secret "handle" }} placeholders. Immutable after creation.
+          description: Unique handle used in {{ secret "id" }} placeholders. Immutable after creation.
           example: wso2-openai-key
         name:
           type: string
@@ -10848,7 +10843,7 @@ components:
       type: object
       description: Returned on create (201) and rotate (200). The plaintext value is never included.
       properties:
-        handle:
+        id:
           type: string
           example: wso2-openai-key
         name:
@@ -10865,7 +10860,7 @@ components:
       type: object
       description: Secret metadata — never includes the plaintext value.
       properties:
-        handle:
+        id:
           type: string
           example: wso2-openai-key
         name:
@@ -10919,7 +10914,7 @@ components:
               type:
                 type: string
                 example: llm_provider
-              handle:
+              id:
                 type: string
                 example: wso2-openai-provider
               name:
