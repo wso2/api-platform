@@ -128,13 +128,6 @@ CREATE TABLE dbo.subscription_plans (
 );
 
 -- Subscription plan limits table (throttling limits for a plan).
--- Designed for MULTIPLE limits per plan (e.g. burst + sustained request counts,
--- bandwidth quotas, AI token quotas). limit_type selects the dimension
--- (REQUEST_COUNT, BANDWIDTH, TOTAL_TOKEN_COUNT, ...). The quota window is
--- (time_amount x time_unit). limit_count_unit (KB/MB/GB) is only set for BANDWIDTH.
--- NOTE: the platform-api, REST APIs, gateway events and gateway-controller
--- currently read/write only a SINGLE REQUEST_COUNT limit per plan. This needs
--- to be improved to surface and propagate all limit rows.
 IF OBJECT_ID(N'dbo.subscription_plan_limits', N'U') IS NULL
 CREATE TABLE dbo.subscription_plan_limits (
     uuid VARCHAR(40) PRIMARY KEY,
@@ -142,10 +135,8 @@ CREATE TABLE dbo.subscription_plan_limits (
     limit_type VARCHAR(20) NOT NULL DEFAULT 'REQUEST_COUNT',
     time_unit VARCHAR(20) NOT NULL,
     time_amount INT NOT NULL DEFAULT 1,
-    -- Nullable: a single row is always written per plan to carry stop_on_quota_reach,
-    -- even when the plan defines no quota count. A NULL limit_count means "no quota".
-    limit_count BIGINT,
-    -- Data unit (KB/MB/GB) for the quota; only set when limit_type is BANDWIDTH.
+    limit_count BIGINT NOT NULL,
+    -- limit_count_unit (KB/MB/GB) for the quota; only set when limit_type is BANDWIDTH.
     limit_count_unit VARCHAR(10),
     stop_on_quota_reach SMALLINT NOT NULL DEFAULT 1,
     -- Cleanup happens via the subscription_plan_uuid -> subscription_plans CASCADE edge
