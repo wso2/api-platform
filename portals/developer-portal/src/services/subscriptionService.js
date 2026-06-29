@@ -40,6 +40,7 @@ async function safePublish(eventType, payload, opts) {
 function buildWebhookPayload(sub, apiMetadata, plan) {
     return {
         subscription_id: sub.UUID,
+        subscriber_id: sub.CREATED_BY,
         subscription_plan: {
             ref_id: plan ? (plan.REF_ID || null) : null,
             name: plan ? (plan.NAME || null) : null,

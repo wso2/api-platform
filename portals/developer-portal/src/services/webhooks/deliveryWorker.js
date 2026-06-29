@@ -32,7 +32,7 @@ let intervalHandle = null;
 /**
  * POST a single delivery. Returns { ok, status, error }.
  */
-async function post(delivery, event, orgCpRefId) {
+async function post(delivery, event) {
     const sub = await getSubscriber(delivery.SUBSCRIBER_ID);
     if (!sub) {
         return { ok: false, error: `Subscriber '${delivery.SUBSCRIBER_ID}' not found` };
@@ -41,14 +41,11 @@ async function post(delivery, event, orgCpRefId) {
     const deliveryId = delivery.UUID;
     const timeoutMs = (sub && sub.timeoutMs) || 5000;
 
-    // Build the outgoing payload: base event payload + per-subscriber encrypted fields.
-    // org_id is the control-plane reference for the org, falling back to the internal
-    // UUID when the org hasn't been linked to a control-plane org yet.
     const outgoing = {
         event_id: event.UUID,
         event_type: event.TYPE,
         occurred_at: event.OCCURRED_AT,
-        org_id: orgCpRefId || event.ORG_UUID,
+        org: { ref_id: event.CP_REF_ID || event.ORG_UUID },
         data: { ...(event.PAYLOAD || {}) }
     };
     if (delivery.ENCRYPTED_FIELDS) {
@@ -113,10 +110,11 @@ async function runBatch() {
             logger.warn('Event not found for delivery', { deliveryId: delivery.UUID });
             continue;
         }
+        event.CP_REF_ID = orgCpRefIdMap[event.ORG_UUID];
 
         let result;
         try {
-            result = await post(delivery, event, orgCpRefIdMap[event.ORG_UUID]);
+            result = await post(delivery, event);
         } catch (postErr) {
             await eventDao.markFailed(delivery.UUID, { httpStatus: 0, error: postErr.message });
             logger.error('Post threw unexpectedly', {
