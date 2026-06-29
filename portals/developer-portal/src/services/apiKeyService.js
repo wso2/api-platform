@@ -197,7 +197,7 @@ async function generate({ orgId, apiId, subscriptionId, appId, name, expiresAt, 
         throw err;
     }
 
-    logger.info('[apiKeyService] key generated', { keyId, orgId, apiId, appId: application ? application.id : null, actor });
+    logger.info('API key generated', { keyId, orgId, apiId, appId: application ? application.id : null, actor });
     return { keyId, name: normalizedName, key: plaintext, expiresAt: expiry.date, status: 'ACTIVE' };
 }
 
@@ -237,7 +237,7 @@ async function regenerate({ orgId, keyId, actor }) {
         throw err;
     }
 
-    logger.info('[apiKeyService] key regenerated', { keyId, orgId, actor });
+    logger.info('API key regenerated', { keyId, orgId, actor });
     return { keyId, name: existing.NAME, key: plaintext, expiresAt: existing.EXPIRES_AT, status: 'ACTIVE' };
 }
 
@@ -269,7 +269,7 @@ async function revoke({ orgId, keyId, actor }) {
         );
     });
 
-    logger.info('[apiKeyService] key revoked', { keyId, orgId, actor });
+    logger.info('API key revoked', { keyId, orgId, actor });
 }
 
 async function list(orgId, filters, transaction) {
@@ -299,7 +299,7 @@ async function associateApplication({ orgId, keyId, appId, actor }) {
         await publishKeyApplicationUpdated(orgId, keyId, application, t);
     });
 
-    logger.info('[apiKeyService] key associated to app', { keyId, orgId, appId: application.id, actor });
+    logger.info('API key associated to application', { keyId, orgId, appId: application.id, actor });
     return { keyId, application };
 }
 
@@ -320,7 +320,7 @@ async function removeApplicationAssociation({ orgId, keyId, actor }) {
         await publishKeyApplicationUpdated(orgId, keyId, null, t);
     });
 
-    logger.info('[apiKeyService] key application association removed', { keyId, orgId, actor });
+    logger.info('API key application association removed', { keyId, orgId, actor });
     return { keyId, application: null };
 }
 

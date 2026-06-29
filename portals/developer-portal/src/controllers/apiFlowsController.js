@@ -21,7 +21,7 @@ const apiDao = require('../dao/apiDao');
 const viewDao = require('../dao/viewDao');
 const apiFlowService = require('../services/apiFlowService');
 const logger = require('../config/logger');
-const { renderTemplate, loadLayoutFromAPI, renderGivenTemplate, renderTemplateFromAPI, isAiDisabledForPortal } = require('../utils/util');
+const { loadLayoutFromAPI, renderGivenTemplate, renderTemplateFromAPI, isAiDisabledForPortal } = require('../utils/util');
 const constants = require('../utils/constants');
 const { config } = require('../config/configLoader');
 const fs = require('fs');
@@ -68,15 +68,14 @@ const resolveSourceUrls = async (sources, orgName, viewName, orgID) => {
 };
 
 
-const loadAPIFlows = async (req, res) => {
+const loadAPIFlows = async (req, res, next) => {
     const { orgName, viewName } = req.params;
 
     try {
         const orgDetails = await orgDao.get(orgName);
         if (!orgDetails) {
-            const templateContent = { errorMessage: 'Organization not found' };
-            const html = renderTemplate('src/pages/error-page/page.hbs', 'src/defaultContent/layout/main.hbs', templateContent, false);
-            return res.status(404).send(html);
+            const err = Object.assign(new Error('Organization not found'), { status: 404 });
+            return next(err);
         }
 
         const orgID = orgDetails.ORG_ID;
@@ -125,7 +124,7 @@ const loadAPIFlows = async (req, res) => {
         const dbLayout = await loadLayoutFromAPI(orgID, viewName);
         let html;
         if (dbLayout) {
-            const templatePath = path.join(process.cwd(), 'src/defaultContent/pages/api-flows/page.hbs');
+            const templatePath = path.join(process.cwd(), 'src/defaultContent/pages/api-workflows/page.hbs');
             const templateResponse = fs.readFileSync(templatePath, 'utf8');
             const styleContent = await orgDao.getContent({ orgId: orgID, fileType: 'style', viewName: viewName, fileName: 'main.css' });
             const themedLayout = styleContent
@@ -133,7 +132,7 @@ const loadAPIFlows = async (req, res) => {
                 : dbLayout;
             html = await renderGivenTemplate(templateResponse, themedLayout, templateContent);
         } else {
-            html = await renderTemplateFromAPI(templateContent, orgID, orgName, 'pages/api-flows', viewName);
+            html = await renderTemplateFromAPI(templateContent, orgID, orgName, 'pages/api-workflows', viewName);
         }
         res.send(html);
     } catch (error) {
@@ -143,21 +142,19 @@ const loadAPIFlows = async (req, res) => {
             orgName,
             viewName
         });
-        const templateContent = { errorMessage: 'Error loading API flows' };
-        const html = renderTemplate('src/pages/error-page/page.hbs', 'src/defaultContent/layout/main.hbs', templateContent, false);
-        return res.status(500).send(html);
+        error.status = 500;
+        return next(error);
     }
 };
 
-const loadAPIFlowDetail = async (req, res) => {
+const loadAPIFlowDetail = async (req, res, next) => {
     const { orgName, viewName, handle } = req.params;
 
     try {
         const orgDetails = await orgDao.get(orgName);
         if (!orgDetails) {
-            const templateContent = { errorMessage: 'Organization not found' };
-            const html = renderTemplate('src/pages/error-page/page.hbs', 'src/defaultContent/layout/main.hbs', templateContent, false);
-            return res.status(404).send(html);
+            const err = Object.assign(new Error('Organization not found'), { status: 404 });
+            return next(err);
         }
 
         const orgID = orgDetails.ORG_ID;
@@ -166,15 +163,13 @@ const loadAPIFlowDetail = async (req, res) => {
         const apiFlow = await apiFlowDao.getPublishedByHandle(orgID, viewId, handle);
 
         if (!apiFlow) {
-            const templateContent = { errorMessage: 'API Workflow not found or not published' };
-            const html = renderTemplate('src/pages/error-page/page.hbs', 'src/defaultContent/layout/main.hbs', templateContent, false);
-            return res.status(404).send(html);
+            const err = Object.assign(new Error('API Workflow not found or not published'), { status: 404 });
+            return next(err);
         }
 
         if (apiFlow.VISIBILITY === 'PRIVATE' && !req.user) {
-            const templateContent = { errorMessage: 'You must be logged in to view this workflow' };
-            const html = renderTemplate('src/pages/error-page/page.hbs', 'src/defaultContent/layout/main.hbs', templateContent, false);
-            return res.status(401).send(html);
+            const err = Object.assign(new Error('You must be logged in to view this workflow'), { status: 401 });
+            return next(err);
         }
 
         const profile = req.user ? {
@@ -218,7 +213,7 @@ const loadAPIFlowDetail = async (req, res) => {
         const dbLayout = await loadLayoutFromAPI(orgID, viewName);
         let html;
         if (dbLayout) {
-            const templatePath = path.join(process.cwd(), 'src/defaultContent/pages/api-flows/detail/page.hbs');
+            const templatePath = path.join(process.cwd(), 'src/defaultContent/pages/api-workflows/detail/page.hbs');
             const templateResponse = fs.readFileSync(templatePath, 'utf8');
             const styleContent = await orgDao.getContent({ orgId: orgID, fileType: 'style', viewName: viewName, fileName: 'main.css' });
             const themedLayout = styleContent
@@ -226,7 +221,7 @@ const loadAPIFlowDetail = async (req, res) => {
                 : dbLayout;
             html = await renderGivenTemplate(templateResponse, themedLayout, templateContent);
         } else {
-            html = await renderTemplateFromAPI(templateContent, orgID, orgName, 'pages/api-flows/detail', viewName);
+            html = await renderTemplateFromAPI(templateContent, orgID, orgName, 'pages/api-workflows/detail', viewName);
         }
         res.send(html);
     } catch (error) {
@@ -237,9 +232,8 @@ const loadAPIFlowDetail = async (req, res) => {
             viewName,
             handle
         });
-        const templateContent = { errorMessage: 'Error loading API flow' };
-        const html = renderTemplate('src/pages/error-page/page.hbs', 'src/defaultContent/layout/main.hbs', templateContent, false);
-        return res.status(500).send(html);
+        error.status = 500;
+        return next(error);
     }
 };
 
@@ -353,7 +347,7 @@ const getWorkflowDetailMd = async (req, res) => {
 };
 
 const generateWorkflowMarkdown = (arazoJson, apiFlow, orgName, viewName, sources = []) => {
-    const templatePath = path.join(process.cwd(), 'src/defaultContent/pages/api-flows/workflow-markdown.hbs');
+    const templatePath = path.join(process.cwd(), 'src/defaultContent/pages/api-workflows/workflow-markdown.hbs');
     const templateContent = fs.readFileSync(templatePath, 'utf8');
     const template = Handlebars.compile(templateContent);
 
@@ -381,7 +375,7 @@ const generateWorkflowMarkdown = (arazoJson, apiFlow, orgName, viewName, sources
 };
 
 const generateWorkflowsListMarkdown = (apiFlows, orgName, viewName, hiddenWorkflowCount = 0) => {
-    const templatePath = path.join(process.cwd(), 'src/defaultContent/pages/api-flows/workflows-list-markdown.hbs');
+    const templatePath = path.join(process.cwd(), 'src/defaultContent/pages/api-workflows/workflows-list-markdown.hbs');
     const templateContent = fs.readFileSync(templatePath, 'utf8');
     const template = Handlebars.compile(templateContent);
 

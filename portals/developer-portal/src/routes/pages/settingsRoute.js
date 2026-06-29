@@ -7,7 +7,6 @@ const registerPartials = require('../../middlewares/registerPartials');
 const { ensureAuthenticated } = require('../../middlewares/ensureAuthenticated');
 const authController = require('../../controllers/authController');
 const { requireCsrfForMutatingApi } = require('../../middlewares/csrfProtection');
-const util = require('../../utils/util');
 const constants = require('../../utils/constants');
 
 const noFavicon = (req, res, next) => {
@@ -17,29 +16,19 @@ const noFavicon = (req, res, next) => {
 
 const requireAdmin = (req, res, next) => {
     if (!req.user || !req.user.isAdmin) {
-        const viewName = req.params.viewName || 'default';
-        const baseUrl = req.params.viewName
-            ? '/' + req.params.orgName + '/views/' + viewName
-            : '/' + req.params.orgName;
-        const templateContent = {
-            errorMessage: "Access Denied",
-            baseUrl,
-            devportalMode: constants.API_TYPE.DEFAULT,
-            profile: req.user || null,
-            showApiWorkflowsNav: false,
-        };
-        const html = util.renderTemplate('../pages/error-page/page.hbs', './src/defaultContent/layout/main.hbs', templateContent, true);
-        return res.status(403).send(html);
+        const err = new Error('Access Denied');
+        err.status = 403;
+        return next(err);
     }
     next();
 };
 
 // Org-level settings: Organizations, Views, Labels, IDP
-router.get('/:orgName/configure', noFavicon,
+router.get('/:orgName/settings', noFavicon,
     authController.handleSilentSSO, registerPartials, ensureAuthenticated, requireAdmin, settingsController.loadOrgSettingsPage);
 
 // View-level settings: LLM Instructions + API Workflows
-router.get('/:orgName/views/:viewName/configure', noFavicon,
+router.get('/:orgName/views/:viewName/settings', noFavicon,
     authController.handleSilentSSO, registerPartials, ensureAuthenticated, requireAdmin, viewConfigureController.loadViewSettingsPage);
 
 // LLM config CRUD

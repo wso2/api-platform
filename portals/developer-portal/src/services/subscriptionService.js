@@ -21,6 +21,7 @@ const sequelize = require('../db/sequelizeConfig');
 const { publish: publishWebhookEvent } = require('./webhooks/eventPublisher');
 const util = require('../utils/util');
 const logger = require('../config/logger');
+const { logUserAction } = require('../middlewares/auditLogger');
 
 // Logs context before rethrowing so the caller's transaction rolls back instead of
 // silently committing the subscription change without its webhook event.
@@ -28,7 +29,7 @@ async function safePublish(eventType, payload, opts) {
     try {
         await publishWebhookEvent(eventType, payload, opts);
     } catch (err) {
-        logger.error('[subscriptionService] webhook publish failed', {
+        logger.error('Failed to publish webhook event', {
             eventType, error: err.message,
         });
         throw err;
@@ -115,6 +116,7 @@ const createSubscription = async (req, res) => {
         });
 
         const created = await subDao.get(orgID, newSub.SUB_ID, createdBy);
+        logUserAction('SUBSCRIPTION_CREATED', req, { orgId: orgID, apiId, subscriptionId: newSub.SUB_ID });
         return res.status(201).json(formatSubscriptionResponse(created));
     } catch (error) {
         if (error.name === 'SequelizeUniqueConstraintError') {
@@ -231,6 +233,7 @@ const deleteSubscription = async (req, res) => {
             });
         });
 
+        logUserAction('SUBSCRIPTION_DELETED', req, { orgId: orgID, subscriptionId });
         return res.status(200).json({ message: 'Subscription deleted successfully' });
     } catch (error) {
         if (error.statusCode === 404) {

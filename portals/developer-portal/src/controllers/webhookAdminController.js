@@ -67,7 +67,7 @@ async function listEvents(req, res) {
             pagination: { total: result.count, limit: parsedLimit, offset: parsedOffset },
         });
     } catch (err) {
-        logger.error('[webhookAdmin] listEvents error', { error: err.message });
+        logger.error('Failed to list events', { error: err.message });
         res.status(500).json({ message: err.message });
     }
 }
@@ -83,7 +83,7 @@ async function getEvent(req, res) {
         }
         res.json(formatEvent(event));
     } catch (err) {
-        logger.error('[webhookAdmin] getEvent error', { error: err.message });
+        logger.error('Failed to get event', { error: err.message });
         res.status(500).json({ message: err.message });
     }
 }
@@ -100,7 +100,7 @@ async function retryDelivery(req, res) {
         if (!ok) return res.status(404).json({ message: 'Delivery not found or not in a retryable state' });
         res.json({ message: 'Delivery queued for retry' });
     } catch (err) {
-        logger.error('[webhookAdmin] retryDelivery error', { error: err.message });
+        logger.error('Failed to retry delivery', { error: err.message });
         res.status(500).json({ message: err.message });
     }
 }

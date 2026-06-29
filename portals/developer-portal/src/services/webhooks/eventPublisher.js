@@ -78,7 +78,7 @@ async function publish(eventType, payload, opts) {
     }, transaction);
 
     if (SECRET_EVENT_TYPES.has(eventType) && !plaintextKey) {
-        logger.error('[eventPublisher] key event missing plaintextKey — rejecting', {
+        logger.error('Key event missing plaintextKey — rejecting', {
             eventType, orgId, aggregateId
         });
         event.STATUS = 'REJECTED';
@@ -94,7 +94,7 @@ async function publish(eventType, payload, opts) {
 
         for (const sub of subscribers) {
             if (!sub.publicKey) {
-                logger.warn('[eventPublisher] subscriber has no publicKey — key event will be delivered WITHOUT encrypted_key', {
+                logger.warn('Subscriber has no publicKey — key event will be delivered WITHOUT encrypted_key', {
                     subscriberId: sub.id, eventType
                 });
                 continue;
@@ -102,7 +102,7 @@ async function publish(eventType, payload, opts) {
             try {
                 perSubscriberEncrypted[sub.id] = encryptToSubscriber(sub.publicKey, plaintextKey);
             } catch (err) {
-                logger.error('[eventPublisher] failed to encrypt key for subscriber', {
+                logger.error('Failed to encrypt key for subscriber', {
                     subscriberId: sub.id, error: err.message
                 });
             }
@@ -120,7 +120,7 @@ async function publish(eventType, payload, opts) {
         // Non-sensitive events: dispatcher will fan-out and create delivery rows.
         bus.emit('event_published');
     }
-    logger.info('[eventPublisher] publishing event', {
+    logger.info('Publishing event', {
         eventId: event.EVENT_ID, eventType, orgId, aggregateType, aggregateId,
         hasPlaintextKey: !!plaintextKey
     });

@@ -215,7 +215,7 @@ const deleteMappings = async (orgID, appID, t) => {
             }, transaction: t
         }, { transaction: t });
         if (deletedRowsCount < 1) {
-            logger.info("No Application Key Mapping found", {
+            logger.debug("No Application Key Mapping found", {
                 orgID,
                 appID,
                 deletedRowsCount,

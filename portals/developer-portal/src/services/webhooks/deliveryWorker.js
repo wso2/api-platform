@@ -110,7 +110,7 @@ async function runBatch() {
     for (const delivery of deliveries) {
         const event = eventMap[delivery.EVENT_ID];
         if (!event) {
-            logger.warn('[deliveryWorker] event not found for delivery', { deliveryId: delivery.DELIVERY_ID });
+            logger.warn('Event not found for delivery', { deliveryId: delivery.DELIVERY_ID });
             continue;
         }
 
@@ -128,7 +128,7 @@ async function runBatch() {
                 nextAttemptAt: nextAt,
                 deadLetter
             });
-            logger.error('[deliveryWorker] post threw unexpectedly', {
+            logger.error('Post threw unexpectedly', {
                 deliveryId: delivery.DELIVERY_ID, error: postErr.message
             });
             continue;
@@ -138,7 +138,7 @@ async function runBatch() {
 
         if (result.ok) {
             await eventDao.markDelivered(delivery.DELIVERY_ID, result.status);
-            logger.info('[deliveryWorker] delivered', {
+            logger.info('Delivered', {
                 deliveryId: delivery.DELIVERY_ID, subscriberId: delivery.SUBSCRIBER_ID,
                 eventType: event.EVENT_TYPE, status: result.status
             });
@@ -155,13 +155,13 @@ async function runBatch() {
             });
 
             if (deadLetter) {
-                logger.error('[deliveryWorker] dead-lettered', {
+                logger.error('Dead-lettered', {
                     deliveryId: delivery.DELIVERY_ID, subscriberId: delivery.SUBSCRIBER_ID,
                     eventType: event.EVENT_TYPE, attempts: newAttemptCount,
                     status: result.status, error: result.error
                 });
             } else {
-                logger.warn('[deliveryWorker] will retry', {
+                logger.warn('Will retry', {
                     deliveryId: delivery.DELIVERY_ID, subscriberId: delivery.SUBSCRIBER_ID,
                     eventType: event.EVENT_TYPE, attempts: newAttemptCount,
                     nextAttemptAt: nextAt, error: result.error || result.status
@@ -182,12 +182,12 @@ function start() {
         try {
             await runBatch();
         } catch (err) {
-            logger.error('[deliveryWorker] batch error', { error: err.message || String(err) });
+            logger.error('Batch error', { error: err.message || String(err) });
         }
     }
 
     intervalHandle = setInterval(tick, pollMs);
-    logger.info('[deliveryWorker] started', { pollIntervalMs: pollMs });
+    logger.info('Delivery worker started', { pollIntervalMs: pollMs });
 }
 
 function stop() {

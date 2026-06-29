@@ -81,8 +81,9 @@
                             <button type="button" class="prompt-tool-btn" id="btnDownloadPrompt" title="Download as .txt">
                                 <i class="bi bi-download"></i>
                             </button>
-                            <button type="button" class="prompt-tool-btn" id="btnCopyPrompt" title="Copy prompt">
-                                <i class="bi bi-copy"></i>
+                            <button type="button" class="prompt-tool-btn copy-btn" id="btnCopyPrompt" title="Copy prompt">
+                                <span class="copy-btn-icon"><i class="bi bi-copy"></i></span>
+                                <span class="copy-btn-check"><i class="bi bi-check"></i> Copied</span>
                             </button>
                         </div>
                         <pre id="modalAgentPromptText" class="api-flow-prompt-pre">{{flow.agentPrompt}}</pre>

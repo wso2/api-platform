@@ -1,6 +1,60 @@
-<section class="d-flex flex-column justify-content-center align-items-center vh-100 text-center">
-    <div>
-        <img src="/images/oops.svg" alt="Oops" class="img-fluid mb-3" />
-        <h4>{{errorMessage}}</h4>
+<style>
+  @keyframes ep-in { from { opacity:0; transform:translateY(12px) scale(.97); } to { opacity:1; transform:none; } }
+  .ep-full { min-height:calc(100vh - 12rem); display:flex; align-items:center; justify-content:center; padding:48px 0; text-align:center; }
+  .ep-inner { animation:ep-in .42s cubic-bezier(.4,0,.2,1); }
+  .ep-circle { width:96px; height:96px; border-radius:50%; border:1px solid; display:flex; align-items:center; justify-content:center; margin:0 auto; }
+  .ep-circle i { font-size:2.75rem; }
+  .ep-code { margin-top:14px; font-size:.75rem; font-weight:600; letter-spacing:.13em; text-transform:uppercase; }
+  .ep-title { margin:12px 0 0; font-size:1.75rem; font-weight:400; color:#1a2433; line-height:1.2; font-family:inherit; }
+  .ep-desc { margin:14px 0 0; max-width:460px; font-size:.90625rem; line-height:1.65; color:#5e6b7a; }
+  .ep-actions { margin-top:30px; display:flex; align-items:center; justify-content:center; gap:13px; flex-wrap:wrap; }
+  .ep-btn { display:inline-flex; align-items:center; gap:9px; border-radius:1.25rem; padding:.75rem 1.5rem; font-size:.875rem; font-weight:600; cursor:pointer; border:none; text-decoration:none; line-height:1; transition:opacity .15s, background .15s; font-family:inherit; }
+  .ep-btn--primary { background:linear-gradient(135deg,#1f6feb,#0d47a1); color:#fff; }
+  .ep-btn--primary:hover { opacity:.9; color:#fff; text-decoration:none; }
+  .ep-btn--outline { background:#fff; border:1px solid #cdd8e6 !important; color:#1f3d5c; }
+  .ep-btn--outline:hover { background:#f3f7fc; color:#1f3d5c; text-decoration:none; }
+  .ep-note { margin-top:26px; font-size:.8125rem; color:#8a93a0; line-height:1.5; }
+</style>
+
+<div class="ep-full">
+  <div class="ep-inner">
+
+    {{#if (eq errorType '404')}}
+    <div class="ep-circle" style="background:#eef2f8;border-color:#dde5f0;color:#3a5a8a;">
+      <i class="bi bi-compass"></i>
     </div>
-</section>
+    <div class="ep-code" style="color:#3a5a8a;">Error 404</div>
+    <h1 class="ep-title">Page not found</h1>
+    <p class="ep-desc">The page you're looking for doesn't exist or may have been moved. Check the address, or jump back to a place you know.</p>
+    <div class="ep-actions">
+      <a href="{{baseUrl}}" class="ep-btn ep-btn--primary"><i class="bi bi-house"></i> Go to home</a>
+      <button onclick="history.back()" class="ep-btn ep-btn--outline"><i class="bi bi-arrow-left"></i> Go back</button>
+    </div>
+
+    {{else if (eq errorType '403')}}
+    <div class="ep-circle" style="background:#fdeaea;border-color:#f3d2d2;color:#c62828;">
+      <i class="bi bi-shield-x"></i>
+    </div>
+    <div class="ep-code" style="color:#c62828;">Error 403</div>
+    <h1 class="ep-title">Access denied</h1>
+    <p class="ep-desc">You don't have permission to view this page.</p>
+    <div class="ep-actions">
+      <button onclick="history.back()" class="ep-btn ep-btn--primary"><i class="bi bi-arrow-left"></i> Go back</button>
+    </div>
+    <p class="ep-note">Need access? Contact your organization admin.</p>
+
+    {{else}}
+    <div class="ep-circle" style="background:#fff3e6;border-color:#f6dcc0;color:#e65100;">
+      <i class="bi bi-exclamation-triangle"></i>
+    </div>
+    <div class="ep-code" style="color:#e65100;">Error 500</div>
+    <h1 class="ep-title">Oops! Something went wrong</h1>
+    <p class="ep-desc">Something went wrong on our end. Try again in a moment.</p>
+    <div class="ep-actions">
+      <button onclick="location.reload()" class="ep-btn ep-btn--primary"><i class="bi bi-arrow-clockwise"></i> Try again</button>
+      <a href="{{baseUrl}}" class="ep-btn ep-btn--outline"><i class="bi bi-house"></i> Go to home</a>
+    </div>
+    {{/if}}
+
+  </div>
+</div>

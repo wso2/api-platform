@@ -36,7 +36,7 @@ const loadViewSettingsPage = async (req, res) => {
 
     let orgID;
     const viewName = req.params.viewName || 'default';
-    const completeTemplatePath = path.join(require.main.filename, '..', 'pages', 'api-flows', 'page.hbs');
+    const completeTemplatePath = path.join(require.main.filename, '..', 'pages', 'settings', 'page.hbs');
     const layoutPath = path.join(process.cwd(), 'src', 'defaultContent', 'layout', 'main.hbs');
 
     const baseUrl = '/' + req.params.orgName + '/views/' + viewName;

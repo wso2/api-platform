@@ -275,11 +275,11 @@ async function refreshLandingPageSubscriptions() {
                     revealBtn.dataset.subscriptionId = sub.subscriptionId;
                     revealBtn.addEventListener('click', function() { toggleTokenVisibility(this.dataset.subscriptionId); });
                     var copyBtn = document.createElement('button');
-                    copyBtn.className = 'btn btn-sm btn-outline-secondary';
+                    copyBtn.className = 'copy-btn';
                     copyBtn.title = 'Copy token';
-                    copyBtn.innerHTML = '<i class="bi bi-clipboard"></i>';
+                    copyBtn.innerHTML = '<span class="copy-btn-icon"><i class="bi bi-copy"></i></span><span class="copy-btn-check"><i class="bi bi-check"></i> Copied</span>';
                     copyBtn.dataset.subscriptionId = sub.subscriptionId;
-                    copyBtn.addEventListener('click', function() { copySubscriptionToken(this.dataset.subscriptionId); });
+                    copyBtn.addEventListener('click', function() { copySubscriptionToken(this, this.dataset.subscriptionId); });
                     tokenDisplay.appendChild(code);
                     tokenDisplay.appendChild(revealBtn);
                     tokenDisplay.appendChild(copyBtn);
@@ -345,27 +345,17 @@ async function refreshLandingPageSubscriptions() {
     }
 }
 
-function copySubscriptionToken(subscriptionId) {
+function copySubscriptionToken(btn, subscriptionId) {
     (async function() {
         try {
             const token = await fetchTokenIfNeeded(subscriptionId);
             if (!token) return;
-            navigator.clipboard.writeText(token).then(() => {
-                showAlert('Subscription token copied to clipboard!', 'success');
-            }).catch(() => {
-                const textArea = document.createElement('textarea');
-                textArea.value = token;
-                textArea.style.position = 'fixed';
-                textArea.style.opacity = '0';
-                document.body.appendChild(textArea);
-                textArea.select();
-                document.execCommand('copy');
-                document.body.removeChild(textArea);
-                showAlert('Subscription token copied to clipboard!', 'success');
-            });
-        } catch (e) {
-            // noop
-        }
+            try { navigator.clipboard.writeText(token).catch(function(){}); } catch(e) {}
+            if (!btn) return;
+            btn.classList.add('copy-btn--copied');
+            if (btn._copyTimer) clearTimeout(btn._copyTimer);
+            btn._copyTimer = setTimeout(function() { btn.classList.remove('copy-btn--copied'); }, 1600);
+        } catch (e) {}
     })();
 }
 
@@ -460,23 +450,14 @@ function showSubscriptionTokenModal(token, planName) {
         tokenContainer.appendChild(safeToken);
 
         const copyBtn = document.createElement('button');
-        copyBtn.className = 'btn btn-sm btn-outline-secondary';
-        copyBtn.innerHTML = '<i class="bi bi-clipboard"></i> Copy';
-        copyBtn.addEventListener('click', () => {
-            // copy raw token string directly (token is available in this scope)
-            navigator.clipboard.writeText(token).then(() => {
-                showAlert('Subscription token copied to clipboard!', 'success');
-            }).catch(() => {
-                const textArea = document.createElement('textarea');
-                textArea.value = token;
-                textArea.style.position = 'fixed';
-                textArea.style.opacity = '0';
-                document.body.appendChild(textArea);
-                textArea.select();
-                document.execCommand('copy');
-                document.body.removeChild(textArea);
-                showAlert('Subscription token copied to clipboard!', 'success');
-            });
+        copyBtn.className = 'copy-btn';
+        copyBtn.title = 'Copy token';
+        copyBtn.innerHTML = '<span class="copy-btn-icon"><i class="bi bi-copy"></i></span><span class="copy-btn-check"><i class="bi bi-check"></i> Copied</span>';
+        copyBtn.addEventListener('click', function() {
+            try { navigator.clipboard.writeText(token).catch(function(){}); } catch(e) {}
+            this.classList.add('copy-btn--copied');
+            if (this._copyTimer) clearTimeout(this._copyTimer);
+            this._copyTimer = setTimeout(() => { this.classList.remove('copy-btn--copied'); }, 1600);
         });
         tokenContainer.appendChild(copyBtn);
 
@@ -516,11 +497,14 @@ function showSubscriptionTokenInModal(apiId, token, planName) {
     code.className = 'p-2 bg-white border rounded flex-grow-1';
 
     const copyBtn = document.createElement('button');
-    copyBtn.className = 'btn btn-sm btn-outline-secondary';
-    copyBtn.innerHTML = '<i class="bi bi-clipboard"></i> Copy';
+    copyBtn.className = 'copy-btn';
+    copyBtn.title = 'Copy token';
+    copyBtn.innerHTML = '<span class="copy-btn-icon"><i class="bi bi-copy"></i></span><span class="copy-btn-check"><i class="bi bi-check"></i> Copied</span>';
     copyBtn.addEventListener('click', function() {
-        navigator.clipboard.writeText(token).then(() => showAlert('Subscription token copied to clipboard!', 'success'))
-            .catch(() => showAlert('Could not copy token', 'error'));
+        try { navigator.clipboard.writeText(token).catch(function(){}); } catch(e) {}
+        this.classList.add('copy-btn--copied');
+        if (this._copyTimer) clearTimeout(this._copyTimer);
+        this._copyTimer = setTimeout(() => { this.classList.remove('copy-btn--copied'); }, 1600);
     });
 
     tokenBlock.appendChild(code);

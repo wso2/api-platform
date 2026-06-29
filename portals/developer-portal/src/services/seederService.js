@@ -120,7 +120,7 @@ async function seedDefaultOrg() {
         }
     }
 
-    logger.info(`Default organization '${orgName}' seeded successfully`);
+    logger.info('Org: default organization seeded ✓');
 }
 
 module.exports = { seedDefaultOrg };

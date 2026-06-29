@@ -440,6 +440,43 @@
 }
 .dp-btn-icon--bordered:hover { background: #f1f4f8; border-color: #cdd5df; color: #56657a; }
 
+/* ── Inline copy button (shared across all copy buttons) ─────── */
+.copy-btn {
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 0.375rem;
+  border: none;
+  background: transparent;
+  padding: 0;
+  transition: background 0.15s;
+  flex: none;
+}
+.copy-btn:hover { background: #e6eaf0; }
+.copy-btn-icon {
+  display: inline-flex;
+  color: #8a93a0;
+  padding: 0.3125rem;
+  font-size: 0.9375rem;
+  line-height: 1;
+}
+.copy-btn-check {
+  display: none;
+  align-items: center;
+  gap: 0.3125rem;
+  background: #e6f4ea;
+  color: #2e7d32;
+  border-radius: 0.375rem;
+  padding: 0.25rem 0.5625rem 0.25rem 0.4375rem;
+  font-size: 0.71875rem;
+  font-weight: 600;
+  line-height: 1;
+  font-family: inherit;
+  white-space: nowrap;
+}
+.copy-btn--copied .copy-btn-icon { display: none; }
+.copy-btn--copied .copy-btn-check { display: inline-flex; }
+
 /* ── Empty state (centred, full-section) ─────────────────────── */
 .dp-empty {
   display: flex;

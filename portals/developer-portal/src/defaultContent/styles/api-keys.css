@@ -130,7 +130,7 @@
   display: inline-flex;
   align-items: center;
   gap: 0.4375rem;
-  border-radius: 0.5625rem;
+  border-radius: 1.25rem;
   padding: 0.5rem 0.875rem;
   font-size: 0.8125rem;
   font-weight: 600;
@@ -234,6 +234,11 @@
   border-top: 1px solid #eef1f5;
 }
 
+.ak-modal-footer .dp-btn,
+.ak-revoke-footer .dp-btn {
+  border-radius: 1.25rem;
+}
+
 /* ── Form elements ────────────────────────────────────────────── */
 .ak-form-group label {
   display: block;
@@ -268,24 +273,126 @@
 .ak-form-input:focus { border-color: #1f6feb; box-shadow: 0 0 0 3px rgba(31,111,235,.14); }
 .ak-form-input--date { font-family: inherit; }
 
-/* ── Warning banner (secret modal) ───────────────────────────── */
-.ak-warning {
+/* ── Secret modal hero header ─────────────────────────────────── */
+.ak-modal--secret {
+  position: relative;
+}
+
+.ak-secret-close-abs {
+  position: absolute;
+  top: 0.875rem;
+  right: 0.875rem;
+  z-index: 2;
+}
+
+.ak-secret-hero {
+  background: linear-gradient(135deg, #f1f6fc 0%, #e9f1fa 100%);
+  border-bottom: 1px solid #e0eaf4;
+  padding: 2.125rem 2rem 1.75rem;
+  text-align: center;
+}
+
+.ak-secret-success-icon {
+  margin: 0 auto;
+  width: 3.75rem;
+  height: 3.75rem;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #34a853 0%, #2e7d32 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 1.5rem;
+  box-shadow: 0 8px 22px rgba(46, 125, 50, 0.34), 0 0 0 7px rgba(46, 125, 50, 0.10);
+}
+
+.ak-secret-hero-title {
+  margin: 1.125rem 0 0;
+  font-size: 1.3125rem;
+  font-weight: 700;
+  color: #1a2433;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+}
+
+.ak-secret-hero-subtitle {
+  margin: 0.5rem 0 0;
+  font-size: 0.90625rem;
+  line-height: 1.55;
+  color: #52607a;
+}
+
+/* ── Secret key label ─────────────────────────────────────────── */
+.ak-secret-key-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4375rem;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: #1a2433;
+}
+
+.ak-secret-key-label i { color: #637282; }
+
+/* ── Key field (pink container with absolute copy btn) ────────── */
+.ak-key-field {
+  position: relative;
+  background: #faf7fb;
+  border: 1px solid #ead6e2;
+  border-radius: 0.6875rem;
+  padding: 0.9375rem 3.5rem 0.9375rem 1rem;
+}
+
+.ak-key-field .ak-key-code {
+  background: none;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+  font-size: 0.84375rem;
+  font-weight: 600;
+  color: #c2185b;
+  line-height: 1.6;
+  word-break: break-all;
+}
+
+.ak-copy-btn--abs {
+  position: absolute;
+  top: 0.6875rem;
+  right: 0.6875rem;
+}
+
+.ak-key-field .copy-btn:hover { background: #efe1ea; }
+
+/* ── Amber warning note ───────────────────────────────────────── */
+.ak-warning-amber {
   display: flex;
   align-items: flex-start;
-  gap: 0.5625rem;
-  color: #e65100;
-  font-size: 0.8125rem;
-  font-weight: 600;
-  line-height: 1.5;
+  gap: 0.6875rem;
+  background: #fdf6e3;
+  border: 1px solid #f3e2b3;
+  border-radius: 0.6875rem;
+  padding: 0.8125rem 0.9375rem;
 }
 
-/* ── Key code + copy row ──────────────────────────────────────── */
-.ak-key-display {
-  display: flex;
-  align-items: stretch;
-  gap: 0.625rem;
+.ak-warning-amber i {
+  flex: none;
+  color: #b8860b;
+  margin-top: 0.0625rem;
+  font-size: 1.0625rem;
 }
 
+.ak-warning-amber span {
+  font-size: 0.84375rem;
+  line-height: 1.55;
+  color: #7a5a12;
+}
+
+/* ── Secret modal body padding ────────────────────────────────── */
+.ak-modal--secret .ak-modal-body {
+  padding: 1.5rem 2rem 1.875rem;
+}
+
+/* ── Key code (legacy display outside key field) ──────────────── */
 .ak-key-code {
   flex: 1;
   min-width: 0;
@@ -300,27 +407,6 @@
   word-break: break-all;
   line-height: 1.4;
 }
-
-.ak-copy-btn {
-  flex: none;
-  align-self: stretch;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4375rem;
-  border-radius: 0.5625rem;
-  padding: 0 1rem;
-  font-size: 0.8125rem;
-  font-weight: 600;
-  font-family: inherit;
-  cursor: pointer;
-  transition: all 0.15s;
-  border: 1px solid #cdd8e6;
-  background: #fff;
-  color: #1f3d5c;
-  white-space: nowrap;
-}
-.ak-copy-btn:hover { background: #f3f7fc; }
-.ak-copy-btn--copied { background: #e6f4ea; border-color: #bfe3c6; color: #2e7d32; }
 
 /* ── Revoke compact modal ─────────────────────────────────────── */
 .ak-revoke-modal {

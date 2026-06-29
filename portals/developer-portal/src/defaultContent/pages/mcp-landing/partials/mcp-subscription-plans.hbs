@@ -154,7 +154,7 @@
 
       function resetManageCopyBtn() {
         var btn = document.getElementById('mcpManageCopyBtn');
-        if (btn) { btn.innerHTML = '<i class="bi bi-copy"></i>'; btn.className = 'mc-token-copy-btn'; }
+        if (btn) btn.classList.remove('copy-btn--copied');
       }
 
       async function revealToken() {
@@ -184,7 +184,7 @@
           document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
         }
         var btn = document.getElementById('mcpManageCopyBtn');
-        if (btn) { btn.innerHTML = '<i class="bi bi-check2"></i><span>Copied</span>'; btn.className = 'mc-token-copy-btn mc-token-copy-btn--copied'; }
+        if (btn) btn.classList.add('copy-btn--copied');
         if (_mCopyTimer) clearTimeout(_mCopyTimer);
         _mCopyTimer = setTimeout(resetManageCopyBtn, 1600);
       }
@@ -345,7 +345,7 @@
             document.getElementById('mcpTokenPlanName').textContent = planName || '';
             document.getElementById('mcpTokenValue').textContent = token || '';
             var copyBtn = document.getElementById('mcpTokenCopyBtn');
-            if (copyBtn) { copyBtn.innerHTML = '<i class="bi bi-copy"></i>'; copyBtn.className = 'mc-token-copy-btn'; }
+            if (copyBtn) copyBtn.classList.remove('copy-btn--copied');
             modal.style.display = 'flex';
           });
         };
@@ -398,9 +398,9 @@
             if (!tokenModal._token) return;
             var btn = document.getElementById('mcpTokenCopyBtn');
             try { navigator.clipboard.writeText(tokenModal._token).catch(function () {}); } catch (e) {}
-            btn.innerHTML = '<i class="bi bi-check2"></i><span>Copied</span>';
-            btn.className = 'mc-token-copy-btn mc-token-copy-btn--copied';
-            setTimeout(function () { btn.innerHTML = '<i class="bi bi-copy"></i>'; btn.className = 'mc-token-copy-btn'; }, 1600);
+            btn.classList.add('copy-btn--copied');
+            if (btn._copyTimer) clearTimeout(btn._copyTimer);
+            btn._copyTimer = setTimeout(function () { btn.classList.remove('copy-btn--copied'); }, 1600);
           });
           tokenModal.addEventListener('click', function (e) { if (e.target === tokenModal) closeTokenModal(); });
         }
@@ -464,8 +464,9 @@
       </div>
       <div class="mc-token-field mc-token-field--pink">
         <div id="mcpTokenValue" class="mc-token-val mc-token-val--pink"></div>
-        <button id="mcpTokenCopyBtn" class="mc-token-copy-btn" title="Copy token">
-          <i class="bi bi-copy"></i>
+        <button id="mcpTokenCopyBtn" class="copy-btn mc-token-copy-btn" title="Copy token">
+          <span class="copy-btn-icon"><i class="bi bi-copy"></i></span>
+          <span class="copy-btn-check"><i class="bi bi-check"></i> Copied</span>
         </button>
       </div>
       <div class="mc-token-warning">
@@ -507,8 +508,9 @@
           <button id="mcpManageRevealBtn" class="mc-token-action-btn" title="Reveal token">
             <i id="mcpManageRevealIcon" class="bi bi-eye"></i>
           </button>
-          <button id="mcpManageCopyBtn" class="mc-token-copy-btn" title="Copy token">
-            <i class="bi bi-copy"></i>
+          <button id="mcpManageCopyBtn" class="copy-btn mc-token-copy-btn" title="Copy token">
+            <span class="copy-btn-icon"><i class="bi bi-copy"></i></span>
+            <span class="copy-btn-check"><i class="bi bi-check"></i> Copied</span>
           </button>
         </div>
       </div>

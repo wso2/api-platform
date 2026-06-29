@@ -1,8 +1,9 @@
 <div class="mc-config-panel">
   <h2 class="aov-section-title" style="margin-bottom:0.875rem;">MCP Server Configuration</h2>
   <div class="mc-config-block">
-    <button type="button" class="dp-btn-icon mc-config-copy" onclick="copyMcpConfig(this, '{{apiID}}')" title="Copy configuration">
-      <i class="bi bi-copy"></i>
+    <button type="button" class="copy-btn mc-config-copy" onclick="copyMcpConfig(this, '{{apiID}}')" title="Copy configuration">
+      <span class="copy-btn-icon"><i class="bi bi-copy"></i></span>
+      <span class="copy-btn-check"><i class="bi bi-check"></i> Copied</span>
     </button>
     <pre id="mcp-cfg-{{apiID}}" class="mc-config-pre"><code class="language-json">{
   "servers": {
@@ -31,14 +32,10 @@
     var el = document.getElementById('mcp-cfg-' + id);
     if (!el) return;
     var text = el.textContent || el.innerText || '';
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(text).catch(function() {});
-    }
-    var icon = btn.querySelector('i');
-    if (icon) {
-      icon.className = 'bi bi-check2';
-      setTimeout(function() { icon.className = 'bi bi-copy'; }, 1500);
-    }
+    try { navigator.clipboard.writeText(text).catch(function(){}); } catch(e) {}
+    btn.classList.add('copy-btn--copied');
+    if (btn._copyTimer) clearTimeout(btn._copyTimer);
+    btn._copyTimer = setTimeout(function() { btn.classList.remove('copy-btn--copied'); }, 1600);
   }
   window.copyMcpConfig = copyMcpConfig;
 }());

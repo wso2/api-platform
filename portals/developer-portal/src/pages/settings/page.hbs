@@ -48,17 +48,11 @@
         <a href="#cfg-apis" class="cfg-nav-item" data-panel="cfg-apis">
           <i class="bi bi-boxes"></i><span>APIs</span>
         </a>
-        <a href="#cfg-labels" class="cfg-nav-item" data-panel="cfg-labels">
-          <i class="bi bi-tags"></i><span>Labels</span>
-        </a>
         <a href="#cfg-plans" class="cfg-nav-item" data-panel="cfg-plans">
           <i class="bi bi-speedometer2"></i><span>Subscription Plans</span>
         </a>
         <a href="#cfg-webhooks" class="cfg-nav-item" data-panel="cfg-webhooks">
           <i class="bi bi-broadcast"></i><span>Webhooks</span>
-        </a>
-        <a href="#cfg-orgs" class="cfg-nav-item" data-panel="cfg-orgs">
-          <i class="bi bi-building"></i><span>Organizations</span>
         </a>
       </div>
 
@@ -425,55 +419,6 @@
       </div><!-- /#cfg-apis -->
 
       <!-- ══ Manage Labels ══ -->
-      <div class="cfg-panel" id="cfg-labels">
-        <div class="cfg-panel-header">
-          <div>
-            <h2 class="cfg-panel-title">Manage Labels</h2>
-            <p class="cfg-panel-desc">Labels help categorize and group APIs across the developer portal.</p>
-          </div>
-          <button class="cfg-btn-primary" id="cfg-add-label-btn" type="button">
-            <i class="bi bi-plus"></i> Add label
-          </button>
-        </div>
-
-        <div class="cfg-table-wrap">
-          <table class="cfg-table">
-            <thead>
-              <tr>
-                <th>Display name</th>
-                <th>Name</th>
-                <th style="width:90px;"></th>
-              </tr>
-            </thead>
-            <tbody id="cfg-labels-tbody">
-              {{#orgLabels}}
-              <tr id="cfg-label-row-{{labelId}}" data-id="{{labelId}}" data-name="{{name}}" data-display="{{displayName}}">
-                <td>
-                  <div style="display:flex;align-items:center;gap:10px;">
-                    <span class="cfg-label-icon"><i class="bi bi-tag"></i></span>
-                    <span style="font-size:.875rem;font-weight:600;color:#1a2433;">{{displayName}}</span>
-                  </div>
-                </td>
-                <td><span class="cfg-name-chip">{{name}}</span></td>
-                <td>
-                  <div class="cfg-row-actions">
-                    <button class="cfg-icon-btn cfg-label-edit-btn" type="button" data-id="{{labelId}}" data-name="{{name}}" data-display="{{displayName}}" title="Edit">
-                      <i class="bi bi-pencil"></i>
-                    </button>
-                    <button class="cfg-icon-btn cfg-icon-btn--danger cfg-label-delete-btn" type="button" data-id="{{labelId}}" data-name="{{name}}" data-display="{{displayName}}" title="Delete">
-                      <i class="bi bi-trash"></i>
-                    </button>
-                  </div>
-                </td>
-              </tr>
-              {{/orgLabels}}
-              {{#unless orgLabels.length}}
-              <tr><td colspan="3" class="cfg-tbl-empty">No labels yet. Add one to get started.</td></tr>
-              {{/unless}}
-            </tbody>
-          </table>
-        </div>
-      </div><!-- /#cfg-labels -->
 
       <!-- ══ Subscription Plans ══ -->
       <div class="cfg-panel" id="cfg-plans">
@@ -611,24 +556,6 @@
       </div><!-- /#cfg-webhooks -->
 
       <!-- ══ Manage Organizations ══ -->
-      <div class="cfg-panel" id="cfg-orgs">
-        <div class="cfg-panel-header">
-          <div>
-            <h2 class="cfg-panel-title">Manage Organizations</h2>
-            <p class="cfg-panel-desc">Organizations group members and their access to this developer portal.</p>
-          </div>
-        </div>
-        <div class="cfg-orgs-link-panel">
-          <div class="cfg-orgs-link-icon"><i class="bi bi-building"></i></div>
-          <div class="cfg-orgs-link-body">
-            <div class="cfg-orgs-link-title">Organization settings</div>
-            <p class="cfg-orgs-link-desc">Manage organizations, views, and labels from the organization settings page.</p>
-            <a href="/{{loggedOrg}}/configure" class="cfg-btn-primary cfg-orgs-link-btn">
-              <i class="bi bi-box-arrow-up-right"></i> Open Organization Settings
-            </a>
-          </div>
-        </div>
-      </div>
 
     </div><!-- /.cfg-content -->
   </div><!-- /.cfg-layout -->
@@ -892,7 +819,7 @@
 <!-- ══ Panel navigation ══ -->
 <script>
 (function () {
-  var PANELS   = ['cfg-llm', 'cfg-workflows', 'cfg-apis', 'cfg-labels', 'cfg-plans', 'cfg-webhooks', 'cfg-orgs'];
+  var PANELS   = ['cfg-llm', 'cfg-workflows', 'cfg-apis', 'cfg-plans', 'cfg-webhooks'];
   var navItems = document.querySelectorAll('.cfg-nav-item');
   var panels   = document.querySelectorAll('.cfg-panel');
 

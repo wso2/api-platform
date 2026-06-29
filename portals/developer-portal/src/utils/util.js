@@ -711,7 +711,7 @@ function validateScripts(strContent) {
             "<script>\n                    (function() {\n                        var data = JSON.parse(document.getElementById('token-map-data').textContent || '[]');\n                        window.__tokenMeta = window.__tokenMeta || {};\n                        data.forEach(function(sub) {\n                            // store only non-sensitive metadata and masked token\n                            window.__tokenMeta[sub.subscriptionId] = {\n                                maskedToken: sub.maskedToken,\n                                customerName: sub.customerName,\n                                subscriptionPlanName: sub.subscriptionPlanName,\n                                status: sub.status\n                            };\n                        });\n                        // expose orgID for on-demand fetches\n                        window.__subscriptionOrgID = \"{{@root.orgID}}\";\n                    })();\n                </script>",
             // Existing-subs JSON data island (api-landing/partials/api-subscription-plans.hbs)
             "<script id=\"existing-subs-data\" type=\"application/json\">{{{json subscriptions}}}</script>",
-            // API flows JSON data island (pages/api-flows/page.hbs)
+            // API flows JSON data island (pages/api-workflows/page.hbs)
             "<script type=\"application/json\" id=\"apiFlowsDataContainer\">{{{json apiFlows}}}</script>",
             // AI agent data island (pages/api-landing/page.hbs)
             "<script type=\"application/json\" id=\"apiAgentData\">{\"baseUrl\":\"{{baseUrl}}\",\"apiHandle\":\"{{apiMetadata.apiHandle}}\"}</script>",
@@ -778,7 +778,7 @@ async function appendSubscriptionPlanDetails(orgID, subscriptionPlans) {
         for (const plan of subscriptionPlans) {
             const subscriptionPlan = await loadSubscriptionPlan(orgID, plan.planName);
             if (!subscriptionPlan) {
-                logger.warn('[appendSubscriptionPlanDetails] Plan not found, skipping', {
+                logger.warn('Subscription plan not found, skipping', {
                     orgID,
                     planName: plan.planName
                 });
@@ -831,7 +831,6 @@ async function listFiles(path) {
         logger.debug('Files in directory', {
             path: path,
             fileCount: files.length,
-            files: files
         });
     });
     return files;
@@ -904,13 +903,9 @@ const enforcePortalMode = async (req, res, next) => {
         (path.includes('mcps') || path.includes('mcp')) && (portalMode === constants.DEVPORTAL_MODE.DEFAULT || portalMode === constants.DEVPORTAL_MODE.MCP_ONLY)) {
         next();
     } else {
-        const templateContent = {
-            errorMessage: constants.ERROR_MESSAGE.COMMON_PAGE_NOT_FOUND_ERROR_MESSAGE,
-            devportalMode: portalMode,
-            baseUrl: '/' + req.params.orgName + constants.ROUTE.VIEWS_PATH + req.params.viewName,
-        }
-        const html = renderTemplate('../pages/error-page/page.hbs', "./src/defaultContent/" + 'layout/main.hbs', templateContent, true);
-        res.send(html);
+        const err = new Error('Page not found');
+        err.status = 404;
+        next(err);
     }
 }
 

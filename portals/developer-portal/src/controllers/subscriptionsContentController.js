@@ -16,7 +16,7 @@
  * under the License.
  */
 /* eslint-disable no-undef */
-const { renderTemplateFromAPI, renderTemplate } = require('../utils/util');
+const { renderTemplateFromAPI } = require('../utils/util');
 const { config } = require('../config/configLoader');
 const logger = require('../config/logger');
 const constants = require('../utils/constants');
@@ -24,7 +24,7 @@ const orgDao = require('../dao/organizationDao');
 const subDao = require('../dao/subscriptionDao');
 
 
-const loadSubscriptions = async (req, res) => {
+const loadSubscriptions = async (req, res, next) => {
 
     let html;
     const { orgName, viewName } = req.params;
@@ -84,14 +84,8 @@ const loadSubscriptions = async (req, res) => {
             stack: error.stack,
             orgName
         });
-        const devportalMode = constants.DEVPORTAL_MODE.DEFAULT;
-        const templateContent = {
-            baseUrl: '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName,
-            devportalMode: devportalMode,
-            errorMessage: constants.ERROR_MESSAGE.COMMON_ERROR_MESSAGE,
-        };
-        html = renderTemplate('../pages/error-page/page.hbs', "./src/defaultContent/" + 'layout/main.hbs', templateContent, true);
-        res.status(500).send(html);
+        error.status = 500;
+        return next(error);
     }
 };
 
