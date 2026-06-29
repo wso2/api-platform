@@ -160,13 +160,13 @@ async function getById(orgId, subId) {
     }));
 }
 
-const listByApi = async (orgID, apiID) => {
+const listByApi = async (orgId, apiId) => {
     try {
         return await SubscriptionMapping.findAll(
             {
                 where: {
-                    ORG_UUID: orgID,
-                    API_UUID: apiID,
+                    ORG_UUID: orgId,
+                    API_UUID: apiId,
                 }
             });
     } catch (error) {
@@ -177,31 +177,31 @@ const listByApi = async (orgID, apiID) => {
     }
 }
 
-const listByOrg = async (orgID) => {
+const listByOrg = async (orgId) => {
     try {
         return await SubscriptionMapping.findAll({
-            where: { ORG_UUID: orgID },
+            where: { ORG_UUID: orgId },
         });
     } catch (error) {
         throw new Sequelize.DatabaseError(error);
     }
 };
 
-const listByUser = async (orgID, userID) => {
+const listByUser = async (orgId, userId) => {
     try {
         return await SubscriptionMapping.findAll({
-            where: { ORG_UUID: orgID, CREATED_BY: userID },
+            where: { ORG_UUID: orgId, CREATED_BY: userId },
         });
     } catch (error) {
-        logger.error('listByUser failed', { error, orgID, userID });
+        logger.error('listByUser failed', { error, orgId, userId });
         throw new Sequelize.DatabaseError(error);
     }
 };
 
-const findByKey = async (orgID, apiID, planID, t) => {
+const findByKey = async (orgId, apiId, planId, t) => {
     try {
         return await SubscriptionMapping.findOne({
-            where: { ORG_UUID: orgID, API_UUID: apiID, PLAN_UUID: planID },
+            where: { ORG_UUID: orgId, API_UUID: apiId, PLAN_UUID: planId },
             transaction: t,
         });
     } catch (error) {

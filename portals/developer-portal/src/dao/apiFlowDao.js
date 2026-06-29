@@ -20,10 +20,10 @@ const { Sequelize } = require('sequelize');
 const constants = require('../utils/constants');
 const logger = require('../config/logger');
 
-const create = async (orgID, viewId, apiFlowData, createdBy, t) => {
+const create = async (orgId, viewId, apiFlowData, createdBy, t) => {
     try {
         const apiFlow = await APIFlow.create({
-            ORG_UUID: orgID,
+            ORG_UUID: orgId,
             VIEW_UUID: viewId,
             NAME: apiFlowData.name,
             HANDLE: apiFlowData.handle,
@@ -48,7 +48,7 @@ const create = async (orgID, viewId, apiFlowData, createdBy, t) => {
     }
 };
 
-const update = async (orgID, viewId, apiFlowId, apiFlowData, updatedBy, t) => {
+const update = async (orgId, viewId, apiFlowId, apiFlowData, updatedBy, t) => {
     const updateFields = { UPDATED_AT: new Date(), UPDATED_BY: updatedBy };
     if (apiFlowData.name !== undefined) updateFields.NAME = apiFlowData.name;
     if (apiFlowData.handle !== undefined) updateFields.HANDLE = apiFlowData.handle;
@@ -60,41 +60,41 @@ const update = async (orgID, viewId, apiFlowId, apiFlowData, updatedBy, t) => {
     if (apiFlowData.contentType !== undefined) updateFields.CONTENT_TYPE = apiFlowData.contentType;
 
     const [count, rows] = await APIFlow.update(updateFields, {
-        where: { UUID: apiFlowId, ORG_UUID: orgID, VIEW_UUID: viewId },
+        where: { UUID: apiFlowId, ORG_UUID: orgId, VIEW_UUID: viewId },
         returning: true,
         transaction: t
     });
     return [count, rows];
 };
 
-const deleteFlow = async (orgID, viewId, apiFlowId, t) => {
+const deleteFlow = async (orgId, viewId, apiFlowId, t) => {
     return await APIFlow.destroy({
-        where: { UUID: apiFlowId, ORG_UUID: orgID, VIEW_UUID: viewId },
+        where: { UUID: apiFlowId, ORG_UUID: orgId, VIEW_UUID: viewId },
         transaction: t
     });
 };
 
-const get = async (orgID, viewId, apiFlowId) => {
+const get = async (orgId, viewId, apiFlowId) => {
     return await APIFlow.findOne({
-        where: { UUID: apiFlowId, ORG_UUID: orgID, VIEW_UUID: viewId }
+        where: { UUID: apiFlowId, ORG_UUID: orgId, VIEW_UUID: viewId }
     });
 };
 
-const getByHandle = async (orgID, viewId, handle) => {
+const getByHandle = async (orgId, viewId, handle) => {
     return await APIFlow.findOne({
-        where: { HANDLE: handle, ORG_UUID: orgID, VIEW_UUID: viewId }
+        where: { HANDLE: handle, ORG_UUID: orgId, VIEW_UUID: viewId }
     });
 };
 
-const list = async (orgID, viewId) => {
+const list = async (orgId, viewId) => {
     return await APIFlow.findAll({
-        where: { ORG_UUID: orgID, VIEW_UUID: viewId },
+        where: { ORG_UUID: orgId, VIEW_UUID: viewId },
         order: [['CREATED_AT', 'DESC']]
     });
 };
 
-const listPublished = async (orgID, viewId, { agentVisibility } = {}) => {
-    const where = { ORG_UUID: orgID, VIEW_UUID: viewId, STATUS: 'PUBLISHED' };
+const listPublished = async (orgId, viewId, { agentVisibility } = {}) => {
+    const where = { ORG_UUID: orgId, VIEW_UUID: viewId, STATUS: 'PUBLISHED' };
     if (agentVisibility) where.AGENT_VISIBILITY = agentVisibility;
     return await APIFlow.findAll({
         where,
@@ -102,8 +102,8 @@ const listPublished = async (orgID, viewId, { agentVisibility } = {}) => {
     });
 };
 
-const getPublishedByHandle = async (orgID, viewId, handle, { agentVisibility } = {}) => {
-    const where = { HANDLE: handle, ORG_UUID: orgID, VIEW_UUID: viewId, STATUS: 'PUBLISHED' };
+const getPublishedByHandle = async (orgId, viewId, handle, { agentVisibility } = {}) => {
+    const where = { HANDLE: handle, ORG_UUID: orgId, VIEW_UUID: viewId, STATUS: 'PUBLISHED' };
     if (agentVisibility) where.AGENT_VISIBILITY = agentVisibility;
     return await APIFlow.findOne({ where });
 };

@@ -31,7 +31,7 @@ const loadSubscriptions = async (req, res, next) => {
 
     try {
         const orgDetails = await orgDao.get(orgName);
-        const orgID = orgDetails.UUID;
+        const orgId = orgDetails.UUID;
 
         if (!req.user) {
             return res.redirect(`/${orgName}${constants.ROUTE.VIEWS_PATH}${viewName}/login`);
@@ -41,7 +41,7 @@ const loadSubscriptions = async (req, res, next) => {
         let allSubscriptions = [];
         try {
             const createdBy = req.user && req.user.sub;
-            const localSubs = await subDao.list(orgID, { createdBy });
+            const localSubs = await subDao.list(orgId, { createdBy });
             allSubscriptions = localSubs.map(sub => ({
                 id: sub.UUID,
                 type: 'TOKEN_BASED',
@@ -55,7 +55,7 @@ const loadSubscriptions = async (req, res, next) => {
             }));
         } catch (err) {
             logger.warn('Failed to load subscriptions', {
-                error: err.message, orgID
+                error: err.message, orgId
             });
         }
 
@@ -71,12 +71,12 @@ const loadSubscriptions = async (req, res, next) => {
             baseUrl: '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName,
             profile: profile,
             devportalMode: devportalMode,
-            orgID: orgID,
+            orgId: orgId,
             subscriptions: allSubscriptions,
             isReadOnlyMode: config.readOnlyMode,
         };
 
-        html = await renderTemplateFromAPI(templateContent, orgID, orgName, 'pages/subscriptions', viewName);
+        html = await renderTemplateFromAPI(templateContent, orgId, orgName, 'pages/subscriptions', viewName);
         res.send(html);
     } catch (error) {
         logger.error('Error loading subscriptions page', {

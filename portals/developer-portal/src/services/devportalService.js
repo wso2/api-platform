@@ -41,7 +41,8 @@ const getOrganizationDetails = async (orgId) => {
         businessOwnerContact: organization.BUSINESS_OWNER_CONTACT,
         businessOwnerEmail: organization.BUSINESS_OWNER_EMAIL,
         orgHandle: organization.HANDLE,
-        organizationIdentifier: organization.IDP_REF_ID,
+        idpRefId: organization.IDP_REF_ID,
+        cpRefId: organization.CP_REF_ID,
         orgConfiguration: organization.CONFIGURATION,
     };
 }

@@ -847,7 +847,7 @@
 <!-- ══ Manage APIs JS ══ -->
 <script>
 (function () {
-  var ORG_ID      = '{{orgID}}';
+  var ORG_ID      = '{{orgId}}';
   var currentStep = 0;
   var specFile    = null;
   var docFiles    = [];
@@ -1644,7 +1644,7 @@
 <!-- ══ Manage Labels JS ══ -->
 <script>
 (function () {
-  var ORG_ID = '{{orgID}}';
+  var ORG_ID = '{{orgId}}';
   var editLabelName = null;
 
   function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
@@ -1749,7 +1749,7 @@
 <!-- ══ Subscription Plans JS ══ -->
 <script>
 (function () {
-  var ORG_ID = '{{orgID}}';
+  var ORG_ID = '{{orgId}}';
   var editPlanId = null;
 
   function v(id) { var e=document.getElementById(id); return e?e.value.trim():''; }
@@ -1868,7 +1868,7 @@
 <!-- ══ Webhooks JS ══ -->
 <script>
 (function () {
-  var ORG_ID = '{{orgID}}';
+  var ORG_ID = '{{orgId}}';
   var editWebhookId = null;
 
   function v(id) { var e=document.getElementById(id); return e?e.value.trim():''; }

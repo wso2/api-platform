@@ -51,7 +51,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 {
   "subscriptionId": "sub-12345",
   "apiId": "api-7f4c2a6b",
-  "subscriptionToken": "a3f1e8b2...",
+  "subscriptionToken": "a3f1e8b2c4d6e8f0a1b3c5d7e9f10b2c4d6e8f0a1b3c5d7e9f10b2c4d6e8f0a1",
   "subscriptionPlanName": "Gold",
   "status": "ACTIVE",
   "createdBy": "alice@example.com",
@@ -59,35 +59,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 }
 ```
 
-> Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.
-
-```json
-[
-  {
-    "status": "error",
-    "code": "COMMON_VALIDATION_ERROR",
-    "message": "Input validation failed.",
-    "errors": [
-      {
-        "field": "orgName",
-        "message": "orgName is required."
-      }
-    ]
-  }
-]
-```
+> 400 Response
 
 ```json
 {
-  "status": "error",
-  "code": "MISSING_REQUIRED_PARAMETER",
-  "message": "Missing required parameter."
-}
-```
-
-```json
-{
-  "message": "Missing or invalid fields in the request payload"
+  "code": "400",
+  "message": "Bad Request",
+  "description": "apiId is required"
 }
 ```
 
@@ -95,9 +73,19 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "status": "error",
-  "code": "ORG_NOT_FOUND",
-  "message": "Organization not found."
+  "code": "404",
+  "message": "Not Found",
+  "description": "Subscription not found"
+}
+```
+
+> 409 Response
+
+```json
+{
+  "code": "409",
+  "message": "Conflict",
+  "description": "A subscription for this API already exists"
 }
 ```
 
@@ -116,18 +104,10 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
 |201|[Created](https://tools.ietf.org/html/rfc7231#section-6.3.2)|Subscription DTO.|[SubscriptionResponse](schemas.md#schemasubscriptionresponse)|
-|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.|Inline|
-|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request.|[SimpleErrorResponse](schemas.md#schemasimpleerrorresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[SimpleErrorResponse](schemas.md#schemasimpleerrorresponse)|
+|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|The request conflicts with an existing resource.|[SimpleErrorResponse](schemas.md#schemasimpleerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
-
-<h3 id="create-a-subscription-responseschema">Response Schema</h3>
-
-#### Enumerated Values
-
-|Property|Value|
-|---|---|
-|status|error|
-|status|error|
 
 ### Response Headers
 
@@ -180,7 +160,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
     {
       "subscriptionId": "sub-12345",
       "apiId": "api-7f4c2a6b",
-      "subscriptionToken": "a3f1...",
+      "subscriptionToken": "a3f1e8b2c4d6e8f0a1b3c5d7e9f10b2c4d6e8f0a1b3c5d7e9f10b2c4d6e8f0a1",
       "subscriptionPlanName": "Gold",
       "status": "ACTIVE",
       "createdBy": "alice@example.com",
@@ -195,45 +175,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 }
 ```
 
-> Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.
-
-```json
-[
-  {
-    "status": "error",
-    "code": "COMMON_VALIDATION_ERROR",
-    "message": "Input validation failed.",
-    "errors": [
-      {
-        "field": "orgName",
-        "message": "orgName is required."
-      }
-    ]
-  }
-]
-```
-
-```json
-{
-  "status": "error",
-  "code": "MISSING_REQUIRED_PARAMETER",
-  "message": "Missing required parameter."
-}
-```
-
-```json
-{
-  "message": "Missing or invalid fields in the request payload"
-}
-```
-
 > 404 Response
 
 ```json
 {
-  "status": "error",
-  "code": "ORG_NOT_FOUND",
-  "message": "Organization not found."
+  "code": "404",
+  "message": "Not Found",
+  "description": "API not found"
 }
 ```
 
@@ -252,8 +200,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
 |200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|List of subscription DTOs.|Inline|
-|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.|Inline|
-|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Returned when `apiId` is provided but does not match an existing API.|[SimpleErrorResponse](schemas.md#schemasimpleerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
 <h3 id="list-subscriptions-responseschema">Response Schema</h3>
@@ -265,7 +212,7 @@ Status Code **200**
 |» list|[[SubscriptionResponse](schemas.md#schemasubscriptionresponse)]|false|none|[Subscription payload.]|
 |»» subscriptionId|string|false|none|none|
 |»» apiId|string|false|none|Developer Portal API ID.|
-|»» subscriptionToken|string|false|none|Plaintext subscription token. Present on create and when the token has not been encrypted at rest.|
+|»» subscriptionToken|string¦null|false|none|Plaintext subscription token, decrypted on every read (not just on create). Null if decryption fails (e.g. the encryption key changed since the token was stored).|
 |»» subscriptionPlanName|string|false|none|none|
 |»» status|string|false|none|none|
 |»» createdBy|string|false|none|Identity (sub claim) of the user who created the subscription.|
@@ -281,13 +228,6 @@ Status Code **200**
 |---|---|
 |status|ACTIVE|
 |status|INACTIVE|
-
-#### Enumerated Values
-
-|Property|Value|
-|---|---|
-|status|error|
-|status|error|
 
 ## Get a subscription
 
@@ -330,7 +270,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 {
   "subscriptionId": "sub-12345",
   "apiId": "api-7f4c2a6b",
-  "subscriptionToken": "a3f1e8b2...",
+  "subscriptionToken": "a3f1e8b2c4d6e8f0a1b3c5d7e9f10b2c4d6e8f0a1b3c5d7e9f10b2c4d6e8f0a1",
   "subscriptionPlanName": "Gold",
   "status": "ACTIVE",
   "createdBy": "alice@example.com",
@@ -342,9 +282,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "status": "error",
-  "code": "ORG_NOT_FOUND",
-  "message": "Organization not found."
+  "code": "404",
+  "message": "Not Found",
+  "description": "Subscription not found"
 }
 ```
 
@@ -363,7 +303,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
 |200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Subscription DTO.|[SubscriptionResponse](schemas.md#schemasubscriptionresponse)|
-|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[SimpleErrorResponse](schemas.md#schemasimpleerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
 ## Update a subscription
@@ -418,7 +358,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 {
   "subscriptionId": "sub-12345",
   "apiId": "api-7f4c2a6b",
-  "subscriptionToken": "a3f1e8b2...",
+  "subscriptionToken": "a3f1e8b2c4d6e8f0a1b3c5d7e9f10b2c4d6e8f0a1b3c5d7e9f10b2c4d6e8f0a1",
   "subscriptionPlanName": "Gold",
   "status": "ACTIVE",
   "createdBy": "alice@example.com",
@@ -426,35 +366,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 }
 ```
 
-> Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.
-
-```json
-[
-  {
-    "status": "error",
-    "code": "COMMON_VALIDATION_ERROR",
-    "message": "Input validation failed.",
-    "errors": [
-      {
-        "field": "orgName",
-        "message": "orgName is required."
-      }
-    ]
-  }
-]
-```
+> 400 Response
 
 ```json
 {
-  "status": "error",
-  "code": "MISSING_REQUIRED_PARAMETER",
-  "message": "Missing required parameter."
-}
-```
-
-```json
-{
-  "message": "Missing or invalid fields in the request payload"
+  "code": "400",
+  "message": "Bad Request",
+  "description": "apiId is required"
 }
 ```
 
@@ -462,9 +380,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "status": "error",
-  "code": "ORG_NOT_FOUND",
-  "message": "Organization not found."
+  "code": "404",
+  "message": "Not Found",
+  "description": "Subscription not found"
 }
 ```
 
@@ -483,18 +401,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
 |200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Subscription DTO.|[SubscriptionResponse](schemas.md#schemasubscriptionresponse)|
-|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.|Inline|
-|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request.|[SimpleErrorResponse](schemas.md#schemasimpleerrorresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[SimpleErrorResponse](schemas.md#schemasimpleerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
-
-<h3 id="update-a-subscription-responseschema">Response Schema</h3>
-
-#### Enumerated Values
-
-|Property|Value|
-|---|---|
-|status|error|
-|status|error|
 
 ## Delete a subscription
 
@@ -543,9 +452,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "status": "error",
-  "code": "ORG_NOT_FOUND",
-  "message": "Organization not found."
+  "code": "404",
+  "message": "Not Found",
+  "description": "Subscription not found"
 }
 ```
 
@@ -564,5 +473,5 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
 |200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|JSON message response.|[MessageResponse](schemas.md#schemamessageresponse)|
-|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[SimpleErrorResponse](schemas.md#schemasimpleerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|

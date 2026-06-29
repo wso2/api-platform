@@ -123,15 +123,15 @@ const ensureAuthenticated = async (req, res, next) => {
     }
     if (req.originalUrl !== '/favicon.ico' && req.originalUrl !== '/images' &&
         config.authenticatedPages.some(pattern => minimatch.minimatch(req.originalUrl, pattern))) {
-        let orgID;
+        let orgId;
         if (req.params.orgName) {
-            orgID = req.params.orgName;
+            orgId = req.params.orgName;
         } else {
-            orgID = req.params.orgId;
+            orgId = req.params.orgId;
         }
         let orgDetails;
-        if (orgID !== undefined) {
-            orgDetails = await orgDao.get(orgID);
+        if (orgId !== undefined) {
+            orgDetails = await orgDao.get(orgId);
         }
         let role;
         logger.debug("Request authentication status", { isAuthenticated: req.isAuthenticated() });

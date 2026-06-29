@@ -74,11 +74,11 @@ function resetSubManageCopyBtn() {
 /* ── Token fetch / reveal / copy ───────────────────────────────── */
 async function fetchSubToken(subId) {
     if (tokenCache[subId]) return tokenCache[subId];
-    const orgID = window.__subscriptionOrgID;
-    if (!orgID) return null;
+    const orgId = window.__subscriptionOrgId;
+    if (!orgId) return null;
     try {
         const resp = await fetch(
-            devportalApi.org(orgID, `/subscriptions/${encodeURIComponent(subId)}`),
+            devportalApi.org(orgId, `/subscriptions/${encodeURIComponent(subId)}`),
             { headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() } }
         );
         if (!resp.ok) return null;
@@ -133,7 +133,7 @@ async function toggleSubSuspend() {
     const newStatus = _manageSub.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
     try {
         const resp = await fetch(
-            devportalApi.org(window.__subscriptionOrgID, `/subscriptions/${encodeURIComponent(_manageSub.id)}`),
+            devportalApi.org(window.__subscriptionOrgId, `/subscriptions/${encodeURIComponent(_manageSub.id)}`),
             {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() },
@@ -186,7 +186,7 @@ async function confirmSubUnsub() {
 async function executeDeleteSubscription(subscriptionId) {
     try {
         const response = await fetch(
-            devportalApi.org(window.__subscriptionOrgID, `/subscriptions/${encodeURIComponent(subscriptionId)}`),
+            devportalApi.org(window.__subscriptionOrgId, `/subscriptions/${encodeURIComponent(subscriptionId)}`),
             { method: 'DELETE', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() } }
         );
 

@@ -43,7 +43,7 @@ function mapYamlToOrganization(parsed) {
     return {
         orgHandle: metadata.name,
         orgName: spec.displayName,
-        organizationIdentifier: spec.organizationIdentifier,
+        idpRefId: spec.idpRefId,
         cpRefId: spec.cpRefId,
         businessOwner: spec.businessOwner,
         businessOwnerContact: spec.businessOwnerContact,
@@ -84,7 +84,7 @@ function parseOrganizationFromYamlFile(fileBuffer) {
     // checks that the multipart file field is present; it cannot inspect the file's
     // contents, so the required fields from OrganizationCreate/UpdateRequest are
     // enforced here. Keep this list in sync with those spec schemas.
-    const requiredFields = ['orgName', 'orgHandle', 'organizationIdentifier'];
+    const requiredFields = ['orgName', 'orgHandle', 'idpRefId'];
     const missingFields = requiredFields.filter((field) => !organization[field]);
     if (missingFields.length > 0) {
         throw new Sequelize.ValidationError(
@@ -142,7 +142,7 @@ const createOrganization = async (req, res) => {
 
             for (const viewDef of viewDefs) {
                 const viewResponse = await viewDao.create(orgId, viewDef, userId, t);
-                const viewID = viewResponse.dataValues.UUID;
+                const viewId = viewResponse.dataValues.UUID;
                 for (const lName of (viewDef.labels || [])) {
                     const labelId = labelMap[lName];
                     if (!labelId) {
@@ -150,7 +150,7 @@ const createOrganization = async (req, res) => {
                             `Invalid organization YAML: view '${viewDef.handle}' references unknown label '${lName}'`
                         );
                     }
-                    await labelDao.addToView(orgId, labelId, viewID, userId, t);
+                    await labelDao.addToView(orgId, labelId, viewId, userId, t);
                 }
             }
             logger.info('Views created successfully', { orgId });
@@ -172,7 +172,7 @@ const createOrganization = async (req, res) => {
             businessOwnerContact: organization.BUSINESS_OWNER_CONTACT,
             businessOwnerEmail: organization.BUSINESS_OWNER_EMAIL,
             orgHandle: organization.HANDLE,
-            organizationIdentifier: organization.IDP_REF_ID,
+            idpRefId: organization.IDP_REF_ID,
             cpRefId: organization.CP_REF_ID,
             orgConfiguration: organization.dataValues.CONFIGURATION
         };
@@ -207,12 +207,12 @@ const getAllOrganizations = async () => {
         for (const organization of organizations) {
             orgList.push({
                 orgName: organization.dataValues.NAME,
-                orgID: organization.dataValues.UUID,
+                orgId: organization.dataValues.UUID,
                 businessOwner: organization.dataValues.BUSINESS_OWNER,
                 businessOwnerContact: organization.dataValues.BUSINESS_OWNER_CONTACT,
                 businessOwnerEmail: organization.dataValues.BUSINESS_OWNER_EMAIL,
                 orgHandle: organization.HANDLE,
-                organizationIdentifier: organization.IDP_REF_ID,
+                idpRefId: organization.IDP_REF_ID,
                 cpRefId: organization.CP_REF_ID,
                 orgConfiguration: organization.dataValues.CONFIGURATION
             });
@@ -282,7 +282,7 @@ const updateOrganization = async (req, res) => {
             businessOwnerContact: updatedOrg[0].dataValues.BUSINESS_OWNER_CONTACT,
             businessOwnerEmail: updatedOrg[0].dataValues.BUSINESS_OWNER_EMAIL,
             orgHandle: updatedOrg[0].dataValues.HANDLE,
-            organizationIdentifier: updatedOrg[0].dataValues.IDP_REF_ID,
+            idpRefId: updatedOrg[0].dataValues.IDP_REF_ID,
             cpRefId: updatedOrg[0].dataValues.CP_REF_ID,
             orgConfiguration: updatedOrg[0].dataValues.CONFIGURATION
         });

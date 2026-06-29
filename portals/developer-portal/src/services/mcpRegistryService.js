@@ -192,7 +192,7 @@ function buildApiMetadataPayload(name, version, description, remotes, title, pub
     const apiHandle = deriveApiHandle(name, orgHandle);
     return {
         apiInfo: {
-            referenceID: null,
+            referenceId: null,
             apiName: name,
             apiHandle,
             apiTitle: title || null,

@@ -6,7 +6,7 @@
 // ─────────────────────────────────────────────
 
 let apiFlowsData = [];
-let currentOrgID = '';
+let currentOrgId = '';
 let currentViewName = '';
 let csrfToken = '';
 let arazoEditor = null;
@@ -47,7 +47,7 @@ function initializeApiFlowsData() {
         const contextContainer = document.getElementById('apiFlowsContextData');
         if (contextContainer) {
             const context = JSON.parse(contextContainer.textContent);
-            currentOrgID = context.orgID || '';
+            currentOrgId = context.orgId || '';
             currentViewName = context.viewName || '';
             csrfToken = context.csrfToken || '';
         }
@@ -154,10 +154,10 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // Save buttons
     document.getElementById('saveApiFlowBtn')?.addEventListener('click', function() {
-        saveApiFlow(currentOrgID, currentViewName, this.dataset.status);
+        saveApiFlow(currentOrgId, currentViewName, this.dataset.status);
     });
     document.getElementById('saveDraftBtn')?.addEventListener('click', function() {
-        saveApiFlow(currentOrgID, currentViewName, this.dataset.status);
+        saveApiFlow(currentOrgId, currentViewName, this.dataset.status);
     });
 
     // List view action buttons
@@ -178,7 +178,7 @@ document.addEventListener('DOMContentLoaded', function () {
     document.querySelectorAll('.api-flow-delete-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
             e.preventDefault();
-            openDeleteApiFlowModal(currentOrgID, currentViewName, btn.dataset.apiFlowId);
+            openDeleteApiFlowModal(currentOrgId, currentViewName, btn.dataset.apiFlowId);
         });
     });
 
@@ -1345,7 +1345,7 @@ function setSaveButtonMode(mode, currentStatus) {
 // Save (Create or Update)
 // ─────────────────────────────────────────────
 
-async function saveApiFlow(orgID, viewName, status) {
+async function saveApiFlow(orgId, viewName, status) {
     if (arazoEditor) {
         document.getElementById('apiFlowDefinition').value = arazoEditor.getValue();
     }
@@ -1395,8 +1395,8 @@ async function saveApiFlow(orgID, viewName, status) {
     const payload = { name, handle, description, agentPrompt, status, agentVisibility, contentType, apiFlowDefinition, markdownContent };
     const isEdit = !!apiFlowId;
     const url = isEdit
-        ? devportalApi.org(orgID, `/views/${viewName}/api-flows/${apiFlowId}`)
-        : devportalApi.org(orgID, `/views/${viewName}/api-flows`);
+        ? devportalApi.org(orgId, `/views/${viewName}/api-flows/${apiFlowId}`)
+        : devportalApi.org(orgId, `/views/${viewName}/api-flows`);
     const method = isEdit ? 'PUT' : 'POST';
 
     const groupBtns = document.querySelectorAll('#saveApiFlowGroup button');
@@ -1431,7 +1431,7 @@ async function saveApiFlow(orgID, viewName, status) {
 // Delete
 // ─────────────────────────────────────────────
 
-function openDeleteApiFlowModal(orgID, viewName, apiFlowId) {
+function openDeleteApiFlowModal(orgId, viewName, apiFlowId) {
     const flow = (apiFlowsData || []).find(f => String(f.apiFlowId) === String(apiFlowId));
     const flowName = flow?.name || 'API Flow';
 
@@ -1442,12 +1442,12 @@ function openDeleteApiFlowModal(orgID, viewName, apiFlowId) {
     const confirmBtn = document.getElementById('deleteApiFlowConfirmBtn');
     confirmBtn.disabled = false;
     confirmBtn.innerHTML = 'Confirm';
-    confirmBtn.onclick = () => deleteApiFlow(orgID, viewName, apiFlowId);
+    confirmBtn.onclick = () => deleteApiFlow(orgId, viewName, apiFlowId);
     const modal = new bootstrap.Modal(document.getElementById('deleteApiFlowModal'));
     modal.show();
 }
 
-async function deleteApiFlow(orgID, viewName, apiFlowId) {
+async function deleteApiFlow(orgId, viewName, apiFlowId) {
     const confirmBtn = document.getElementById('deleteApiFlowConfirmBtn');
     confirmBtn.disabled = true;
     confirmBtn.style.backgroundColor = 'var(--danger-color)';
@@ -1460,7 +1460,7 @@ async function deleteApiFlow(orgID, viewName, apiFlowId) {
     };
 
     try {
-        const response = await fetch(devportalApi.org(orgID, `/views/${viewName}/api-flows/${apiFlowId}`), {
+        const response = await fetch(devportalApi.org(orgId, `/views/${viewName}/api-flows/${apiFlowId}`), {
             method: 'DELETE',
             headers: { 'X-CSRF-Token': csrfToken },
             credentials: 'same-origin'
@@ -2206,7 +2206,7 @@ function syncAccessMatrixFromRadios() {
 // LLM Instructions Tab
 // ─────────────────────────────────────────────
 
-let llmsOrgID = '';
+let llmsOrgId = '';
 let llmsViewName = '';
 let llmsBaseUrl = '';
 let llmsPreviewDebounce = null;
@@ -2221,7 +2221,7 @@ function initLlmsConfig() {
     try { config = JSON.parse(dataEl.textContent) || {}; } catch (e) { /* ignore */ }
     try { ctx = JSON.parse(ctxEl.textContent) || {}; } catch (e) { /* ignore */ }
 
-    llmsOrgID = ctx.orgID || '';
+    llmsOrgId = ctx.orgId || '';
     llmsViewName = ctx.viewName || '';
     llmsBaseUrl = ctx.baseUrl || '';
     csrfToken = ctx.csrfToken || csrfToken;

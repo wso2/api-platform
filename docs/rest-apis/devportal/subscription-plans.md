@@ -41,13 +41,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 {
   "list": [
     {
-      "planID": "string",
+      "planId": "string",
       "planName": "string",
       "displayName": "string",
       "description": "string",
-      "requestCount": 0,
+      "requestCount": "string",
       "refId": "string",
-      "orgID": "string"
+      "orgId": "string"
     }
   ],
   "pagination": {
@@ -115,30 +115,13 @@ Status Code **200**
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |» list|[[SubscriptionPlanResponse](schemas.md#schemasubscriptionplanresponse)]|false|none|none|
-|»» planID|string|false|none|none|
+|»» planId|string|false|none|none|
 |»» planName|string|false|none|none|
 |»» displayName|string|false|none|none|
 |»» description|string|false|none|none|
-|»» requestCount|any|false|none|none|
-
-*oneOf*
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|»»» *anonymous*|integer|false|none|none|
-
-*xor*
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|»»» *anonymous*|string|false|none|none|
-
-*continued*
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
+|»» requestCount|string¦null|false|none|Always stored and returned as a string ("Unlimited" or a numeric string), regardless of the type (request-count or event-count) used to create the plan. Null if not set.|
 |»» refId|string¦null|false|none|Platform API subscription plan UUID associated with this plan.|
-|»» orgID|string|false|none|none|
+|»» orgId|string|false|none|none|
 |» pagination|[Pagination](schemas.md#schemapagination)|false|none|Standard pagination metadata returned with collection responses.|
 |»» total|integer|true|none|Total number of records matching the query.|
 |»» limit|integer|true|none|Maximum number of records returned in this response.|
@@ -176,7 +159,7 @@ Creates one subscription plan when the request body is an object, or multiple su
 
 ```json
 {
-  "planID": "string",
+  "planId": "string",
   "refId": "string",
   "planName": "string",
   "displayName": "string",
@@ -188,7 +171,7 @@ Creates one subscription plan when the request body is an object, or multiple su
 ```
 
 ```yaml
-planID: string
+planId: string
 refId: string
 planName: string
 displayName: string
@@ -319,7 +302,7 @@ Upserts one subscription plan when the request body is an object, or multiple pl
 
 ```json
 {
-  "planID": "string",
+  "planId": "string",
   "refId": "string",
   "planName": "string",
   "displayName": "string",
@@ -331,7 +314,7 @@ Upserts one subscription plan when the request body is an object, or multiple pl
 ```
 
 ```yaml
-planID: string
+planId: string
 refId: string
 planName: string
 displayName: string
@@ -362,13 +345,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "planID": "string",
+  "planId": "string",
   "planName": "string",
   "displayName": "string",
   "description": "string",
-  "requestCount": 0,
+  "requestCount": "string",
   "refId": "string",
-  "orgID": "string"
+  "orgId": "string"
 }
 ```
 
@@ -493,13 +476,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "planID": "string",
+  "planId": "string",
   "planName": "string",
   "displayName": "string",
   "description": "string",
-  "requestCount": 0,
+  "requestCount": "string",
   "refId": "string",
-  "orgID": "string"
+  "orgId": "string"
 }
 ```
 

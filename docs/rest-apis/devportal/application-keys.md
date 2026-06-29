@@ -196,10 +196,11 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "access_token": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.example",
-  "token_type": "Bearer",
-  "expires_in": 3600,
-  "scope": "weather.read"
+  "accessToken": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.example",
+  "validityTime": 3600,
+  "tokenScopes": [
+    "weather.read"
+  ]
 }
 ```
 

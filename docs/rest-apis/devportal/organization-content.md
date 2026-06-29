@@ -453,20 +453,13 @@ Returns all stored organization layout content records for the selected file typ
 > 200 Response
 
 ```json
-{
-  "list": [
-    {
-      "orgId": "string",
-      "fileName": "string",
-      "fileContent": "string"
-    }
-  ],
-  "pagination": {
-    "total": 42,
-    "limit": 20,
-    "offset": 0
+[
+  {
+    "orgId": "string",
+    "fileName": "string",
+    "fileContent": "string"
   }
-}
+]
 ```
 
 > Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.
@@ -521,14 +514,10 @@ Status Code **200**
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|» list|[[OrganizationContentListItemResponse](schemas.md#schemaorganizationcontentlistitemresponse)]|false|none|none|
-|»» orgId|string|false|none|none|
-|»» fileName|string|false|none|none|
-|»» fileContent|string¦null|false|none|UTF-8 content string returned for stored organization content records.|
-|» pagination|[Pagination](schemas.md#schemapagination)|false|none|Standard pagination metadata returned with collection responses.|
-|»» total|integer|true|none|Total number of records matching the query.|
-|»» limit|integer|true|none|Maximum number of records returned in this response.|
-|»» offset|integer|true|none|Number of records skipped before this page.|
+|*anonymous*|[[OrganizationContentListItemResponse](schemas.md#schemaorganizationcontentlistitemresponse)]|false|none|none|
+|» orgId|string|false|none|none|
+|» fileName|string|false|none|none|
+|» fileContent|string¦null|false|none|UTF-8 content string returned for stored organization content records.|
 
 #### Enumerated Values
 

@@ -5,7 +5,7 @@
  *
  * Usage:
  *   1. Set up a handler: setDeleteConfirmationHandler('deleteOrg', deleteOrgFunction)
- *   2. When opening modal: setDeleteConfirmationAction('deleteOrg', { orgID: '123' })
+ *   2. When opening modal: setDeleteConfirmationAction('deleteOrg', { orgId: '123' })
  *   3. The confirm button will call the registered handler with the data
  */
 

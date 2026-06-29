@@ -317,8 +317,8 @@ document.addEventListener("DOMContentLoaded", function () {
                 let appFromParams = false;
                 
                 // Get application ID from URL parameters if available
-                if (params.has('appID')) {
-                    appId = params.get('appID');
+                if (params.has('appId')) {
+                    appId = params.get('appId');
                     appFromParams = true;
                 }
                 
@@ -934,8 +934,8 @@ document.addEventListener("DOMContentLoaded", function () {
     });
 
     // Copy MCP Server Config JSON to clipboard
-    window.copyServerConfig = async function(apiID) {
-        const preBlock = document.getElementById(`server-config-${apiID}`);
+    window.copyServerConfig = async function(apiId) {
+        const preBlock = document.getElementById(`server-config-${apiId}`);
         const buttonElement = preBlock.nextElementSibling;
         const iconElement = buttonElement.querySelector('i');
 

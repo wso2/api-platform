@@ -1,4 +1,4 @@
-async function addClientId(kmId, keyType, appId, orgID, keyManager) {
+async function addClientId(kmId, keyType, appId, orgId, keyManager) {
     const input = document.getElementById('addClientIdInput-' + kmId + '-' + keyType);
     const btn = document.getElementById('addClientIdBtn-' + kmId + '-' + keyType);
     const errorContainer = document.getElementById('addClientIdError-' + kmId + '-' + keyType);
@@ -25,7 +25,7 @@ async function addClientId(kmId, keyType, appId, orgID, keyManager) {
     }
 
     try {
-        const response = await fetch(devportalApi.org(orgID, `/applications/${appId}/generate-keys`), {
+        const response = await fetch(devportalApi.org(orgId, `/applications/${appId}/generate-keys`), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ keyManager, keyType, consumerKey }),
@@ -264,8 +264,8 @@ async function generateOauthKey(formId, appId, keyMappingId, keyManager, clientN
         keyMappingId = tokenbtn?.getAttribute("data-keymappingid") || tokenbtn?.getAttribute("data-keyMappingId");
         if (!appId) appId = tokenbtn?.getAttribute("data-app-id");
         if (!clientSecret) {
-            const clientSecretID = tokenbtn?.getAttribute("data-consumerSecretID");
-            if (clientSecretID) clientSecret = document.getElementById(clientSecretID)?.value;
+            const clientSecretId = tokenbtn?.getAttribute("data-consumerSecretId");
+            if (clientSecretId) clientSecret = document.getElementById(clientSecretId)?.value;
         }
     }
 

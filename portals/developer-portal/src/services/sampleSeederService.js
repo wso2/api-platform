@@ -130,7 +130,7 @@ async function seedSampleAPIs(orgId) {
                     const mappings = [];
                     for (const p of apiMetadata.subscriptionPlans) {
                         const plan = await subscriptionPlanDao.getByName(orgId, p.planName);
-                        if (plan) mappings.push({ apiID: apiId, planID: plan.UUID });
+                        if (plan) mappings.push({ apiId: apiId, planId: plan.UUID });
                     }
                     if (mappings.length) await subscriptionPlanDao.createApiMapping(mappings, apiId, constants.SYSTEM_ACTOR, t);
                 }
@@ -215,7 +215,7 @@ async function seedSampleMCPs(orgId) {
                     const mappings = [];
                     for (const p of apiMetadata.subscriptionPlans) {
                         const plan = await subscriptionPlanDao.getByName(orgId, p.planName);
-                        if (plan) mappings.push({ apiID: apiId, planID: plan.UUID });
+                        if (plan) mappings.push({ apiId: apiId, planId: plan.UUID });
                     }
                     if (mappings.length) await subscriptionPlanDao.createApiMapping(mappings, apiId, constants.SYSTEM_ACTOR, t);
                 }

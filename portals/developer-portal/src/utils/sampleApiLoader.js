@@ -85,7 +85,7 @@ function parseApiYaml(apiHandle, samplesDir) {
     }
 
     return {
-        apiID: name,
+        apiId: name,
         apiHandle: name,
         apiInfo: {
             apiName: spec.displayName || name,

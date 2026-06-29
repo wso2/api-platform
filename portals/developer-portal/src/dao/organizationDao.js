@@ -20,17 +20,17 @@ const { Sequelize } = require('sequelize');
 const viewDao = require('./viewDao');
 
 const create = async (orgData, t) => {
-    let devPortalID = "";
+    let devPortalId = "";
     if (orgData.orgHandle) {
-        devPortalID = orgData.orgHandle.toLowerCase();
+        devPortalId = orgData.orgHandle.toLowerCase();
     }
     const createOrgData = {
         NAME: orgData.orgName,
         BUSINESS_OWNER: orgData.businessOwner,
         BUSINESS_OWNER_CONTACT: orgData.businessOwnerContact,
         BUSINESS_OWNER_EMAIL: orgData.businessOwnerEmail,
-        HANDLE: devPortalID,
-        IDP_REF_ID: orgData.organizationIdentifier,
+        HANDLE: devPortalId,
+        IDP_REF_ID: orgData.idpRefId,
         CP_REF_ID: orgData.cpRefId,
         CONFIGURATION: orgData.orgConfig,
         CREATED_BY: orgData.createdBy,
@@ -113,9 +113,9 @@ const list = async () => {
 };
 
 const update = async (orgData, t) => {
-    let devPortalID = "";
+    let devPortalId = "";
     if (orgData.orgHandle) {
-        devPortalID = orgData.orgHandle.toLowerCase();
+        devPortalId = orgData.orgHandle.toLowerCase();
     }
     try {
         const [updatedRowsCount, updatedOrg] = await Organization.update(
@@ -124,8 +124,8 @@ const update = async (orgData, t) => {
                 BUSINESS_OWNER: orgData.businessOwner,
                 BUSINESS_OWNER_CONTACT: orgData.businessOwnerContact,
                 BUSINESS_OWNER_EMAIL: orgData.businessOwnerEmail,
-                HANDLE: devPortalID,
-                IDP_REF_ID: orgData.organizationIdentifier,
+                HANDLE: devPortalId,
+                IDP_REF_ID: orgData.idpRefId,
                 ...(orgData.cpRefId !== undefined && { CP_REF_ID: orgData.cpRefId }),
                 CONFIGURATION: orgData.orgConfiguration,
                 UPDATED_BY: orgData.updatedBy,
@@ -167,7 +167,7 @@ const deleteOrg = async (orgId) => {
 }
 
 const createContent = async (orgData) => {
-    const viewID = await viewDao.getId(orgData.orgId, orgData.viewName);
+    const viewId = await viewDao.getId(orgData.orgId, orgData.viewName);
     try {
         const orgContent = await OrgContent.create({
             FILE_TYPE: orgData.fileType,
@@ -175,7 +175,7 @@ const createContent = async (orgData) => {
             FILE_CONTENT: orgData.fileContent,
             FILE_PATH: orgData.filePath,
             ORG_UUID: orgData.orgId,
-            VIEW_UUID: viewID,
+            VIEW_UUID: viewId,
             CREATED_BY: orgData.createdBy,
             UPDATED_BY: orgData.createdBy
         });
@@ -189,7 +189,7 @@ const createContent = async (orgData) => {
 }
 
 const updateContent = async (orgData) => {
-    const viewID = await viewDao.getId(orgData.orgId, orgData.viewName);
+    const viewId = await viewDao.getId(orgData.orgId, orgData.viewName);
     try {
         const [updatedRowsCount, updatedOrgContent] = await OrgContent.update({
             FILE_TYPE: orgData.fileType,
@@ -205,7 +205,7 @@ const updateContent = async (orgData) => {
                     FILE_NAME: orgData.fileName,
                     FILE_PATH: orgData.filePath,
                     ORG_UUID: orgData.orgId,
-                    VIEW_UUID: viewID
+                    VIEW_UUID: viewId
                 },
                 returning: true
             });
@@ -223,13 +223,13 @@ const updateContent = async (orgData) => {
 
 const getContent = async (orgData) => {
     try {
-        const viewID = await viewDao.getId(orgData.orgId, orgData.viewName);
+        const viewId = await viewDao.getId(orgData.orgId, orgData.viewName);
         if (orgData.fileName || orgData.filePath) {
             return await OrgContent.findOne(
                 {
                     where: {
                         ORG_UUID: orgData.orgId,
-                        VIEW_UUID: viewID,
+                        VIEW_UUID: viewId,
                         FILE_TYPE: orgData.fileType,
                         ...(orgData.fileName && { FILE_NAME: orgData.fileName }),
                         ...(orgData.filePath && { FILE_PATH: orgData.filePath })
@@ -240,7 +240,7 @@ const getContent = async (orgData) => {
                 {
                     where: {
                         ORG_UUID: orgData.orgId,
-                        VIEW_UUID: viewID,
+                        VIEW_UUID: viewId,
                         FILE_TYPE: orgData.fileType,
                     }
                 });

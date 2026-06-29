@@ -32,7 +32,7 @@ const SEARCH_APIS_POSTGRES_SQL = fs.readFileSync(
     'utf8'
 );
 
-const create = async (orgID, apiMetadata, createdBy, t) => {
+const create = async (orgId, apiMetadata, createdBy, t) => {
 
     const apiInfo = apiMetadata.apiInfo;
     let owners = {};
@@ -41,7 +41,7 @@ const create = async (orgID, apiMetadata, createdBy, t) => {
     }
     try {
         const apiMetadataResponse = await APIMetadata.create({
-            REF_ID: apiInfo.referenceID,
+            REF_ID: apiInfo.referenceId,
             STATUS: apiInfo.apiStatus,
             NAME: apiInfo.apiName,
             HANDLE: apiInfo.apiHandle ? apiInfo.apiHandle : `${apiInfo.apiName.toLowerCase().replace(/\s+/g, '')}-v${apiInfo.apiVersion}`,
@@ -56,7 +56,7 @@ const create = async (orgID, apiMetadata, createdBy, t) => {
             SANDBOX_URL: apiMetadata.endPoints.sandboxURL,
             PRODUCTION_URL: apiMetadata.endPoints.productionURL,
             METADATA_SEARCH: apiMetadata,
-            ORG_UUID: orgID,
+            ORG_UUID: orgId,
             CREATED_BY: createdBy,
             UPDATED_BY: createdBy
         },
@@ -71,7 +71,7 @@ const create = async (orgID, apiMetadata, createdBy, t) => {
     }
 };
 
-const update = async (orgID, apiID, apiMetadata, updatedBy, t) => {
+const update = async (orgId, apiId, apiMetadata, updatedBy, t) => {
 
     const apiInfo = apiMetadata.apiInfo;
     let owners = {};
@@ -80,7 +80,7 @@ const update = async (orgID, apiID, apiMetadata, updatedBy, t) => {
     }
     try {
         const [updateCount] = await APIMetadata.update({
-            REF_ID: apiInfo.referenceID,
+            REF_ID: apiInfo.referenceId,
             STATUS: apiInfo.apiStatus,
             NAME: apiInfo.apiName,
             HANDLE: apiInfo.apiHandle ? apiInfo.apiHandle : `${apiInfo.apiName.toLowerCase().replace(/\s+/g, '')}-v${apiInfo.apiVersion}`,
@@ -99,8 +99,8 @@ const update = async (orgID, apiID, apiMetadata, updatedBy, t) => {
             UPDATED_AT: new Date()
         }, {
             where: {
-                UUID: apiID,
-                ORG_UUID: orgID,
+                UUID: apiId,
+                ORG_UUID: orgId,
             },
             returning: false,
             transaction: t
@@ -109,7 +109,7 @@ const update = async (orgID, apiID, apiMetadata, updatedBy, t) => {
             return [0, null];
         }
         const updatedInstance = await APIMetadata.findOne({
-            where: { UUID: apiID, ORG_UUID: orgID },
+            where: { UUID: apiId, ORG_UUID: orgId },
             transaction: t,
         });
         return [updateCount, [updatedInstance]];
@@ -121,13 +121,13 @@ const update = async (orgID, apiID, apiMetadata, updatedBy, t) => {
     }
 }
 
-const deleteApi = async (orgID, apiID, t) => {
+const deleteApi = async (orgId, apiId, t) => {
 
     try {
         const apiMetadataResponse = await APIMetadata.destroy({
             where: {
-                UUID: apiID,
-                ORG_UUID: orgID
+                UUID: apiId,
+                ORG_UUID: orgId
             },
             transaction: t
         });
@@ -140,14 +140,14 @@ const deleteApi = async (orgID, apiID, t) => {
     }
 }
 
-const get = async (orgID, apiID, t) => {
+const get = async (orgId, apiId, t) => {
 
     try {
         const apiMetadataResponse = await APIMetadata.findAll({
             include: [{
                 model: APIContent,
                 where: {
-                    API_UUID: apiID,
+                    API_UUID: apiId,
                     TYPE: constants.DOC_TYPES.IMAGES
                 },
                 required: false
@@ -169,8 +169,8 @@ const get = async (orgID, apiID, t) => {
             }
             ],
             where: {
-                ORG_UUID: orgID,
-                UUID: apiID,
+                ORG_UUID: orgId,
+                UUID: apiId,
                 STATUS: { [Op.in]: [constants.API_STATUS.PUBLISHED, constants.API_STATUS.DEPRECATED] }
             },
             transaction: t
@@ -223,15 +223,15 @@ const getByCondition = async (condition, t, tags) => {
     }
 }
 
-const list = async (orgID, viewName, t) => {
+const list = async (orgId, viewName, t) => {
 
     const viewDao = require('./viewDao');
-    const viewID = await viewDao.getId(orgID, viewName, t);
+    const viewId = await viewDao.getId(orgId, viewName, t);
     let apiList = [];
     try {
         const apiMetadataResponse = await APIMetadata.findAll({
             where: {
-                ORG_UUID: orgID,
+                ORG_UUID: orgId,
                 STATUS: { [Op.in]: [constants.API_STATUS.PUBLISHED, constants.API_STATUS.DEPRECATED] }
             },
             include: [{
@@ -250,7 +250,7 @@ const list = async (orgID, viewName, t) => {
                 through: { attributes: [] },
                 where: {
                     UUID: {
-                        [Op.in]: Sequelize.literal(`(SELECT "LABEL_UUID" FROM "DP_VIEW_LABEL_MAPPING" WHERE "VIEW_UUID" = '${viewID}')`)
+                        [Op.in]: Sequelize.literal(`(SELECT "LABEL_UUID" FROM "DP_VIEW_LABEL_MAPPING" WHERE "VIEW_UUID" = '${viewId}')`)
                     }
                 }
             },
@@ -273,13 +273,13 @@ const list = async (orgID, viewName, t) => {
     return apiList;
 };
 
-const listFromAllViews = async (orgID, t) => {
+const listFromAllViews = async (orgId, t) => {
 
     let apiList = [];
     try {
         const publicAPIS = await APIMetadata.findAll({
             where: {
-                ORG_UUID: orgID,
+                ORG_UUID: orgId,
                 STATUS: { [Op.in]: [constants.API_STATUS.PUBLISHED, constants.API_STATUS.DEPRECATED] }
             },
             include: [{
@@ -316,14 +316,14 @@ const listFromAllViews = async (orgID, t) => {
     return apiList;
 };
 
-const searchFallback = async (orgID, searchTerm, viewName, t) => {
+const searchFallback = async (orgId, searchTerm, viewName, t) => {
     const viewDao = require('./viewDao');
     const pattern = `%${searchTerm}%`;
-    const viewID = await viewDao.getId(orgID, viewName, t);
+    const viewId = await viewDao.getId(orgId, viewName, t);
 
     const matchingTags = await Tags.findAll({
         attributes: ['UUID'],
-        where: { ORG_UUID: orgID, NAME: { [Op.like]: pattern } },
+        where: { ORG_UUID: orgId, NAME: { [Op.like]: pattern } },
         transaction: t,
     });
     const matchingTagIDs = matchingTags.map(tag => tag.UUID);
@@ -338,7 +338,7 @@ const searchFallback = async (orgID, searchTerm, viewName, t) => {
 
     return APIMetadata.findAll({
         where: {
-            ORG_UUID: orgID,
+            ORG_UUID: orgId,
             STATUS: { [Op.in]: [constants.API_STATUS.PUBLISHED, constants.API_STATUS.DEPRECATED] },
             [Op.or]: [
                 Sequelize.where(
@@ -358,7 +358,7 @@ const searchFallback = async (orgID, searchTerm, viewName, t) => {
                 through: { attributes: [] },
                 where: {
                     UUID: {
-                        [Op.in]: Sequelize.literal(`(SELECT "LABEL_UUID" FROM "DP_VIEW_LABEL_MAPPING" WHERE "VIEW_UUID" = '${viewID}')`)
+                        [Op.in]: Sequelize.literal(`(SELECT "LABEL_UUID" FROM "DP_VIEW_LABEL_MAPPING" WHERE "VIEW_UUID" = '${viewId}')`)
                     }
                 }
             },
@@ -373,15 +373,15 @@ const searchFallback = async (orgID, searchTerm, viewName, t) => {
     });
 };
 
-const search = async (orgID, searchTerm, viewName, t) => {
+const search = async (orgId, searchTerm, viewName, t) => {
     if (APIMetadata.sequelize.getDialect() !== 'postgres') {
-        return searchFallback(orgID, searchTerm, viewName, t);
+        return searchFallback(orgId, searchTerm, viewName, t);
     }
     try {
         const viewDao = require('./viewDao');
-        const viewID = await viewDao.getId(orgID, viewName, t);
+        const viewId = await viewDao.getId(orgId, viewName, t);
         const results = await APIMetadata.sequelize.query(SEARCH_APIS_POSTGRES_SQL, {
-            replacements: { searchTerm, orgID, viewID },
+            replacements: { searchTerm, orgId, viewId },
             type: Sequelize.QueryTypes.SELECT,
         });
         return results;
@@ -393,14 +393,14 @@ const search = async (orgID, searchTerm, viewName, t) => {
     }
 };
 
-const getId = async (orgID, apiHandle) => {
+const getId = async (orgId, apiHandle) => {
 
     try {
         const api = await APIMetadata.findOne({
             attributes: ['UUID'],
             where: {
                 HANDLE: apiHandle,
-                ORG_UUID: orgID
+                ORG_UUID: orgId
             }
         })
         return api?.UUID;
@@ -412,13 +412,13 @@ const getId = async (orgID, apiHandle) => {
     }
 }
 
-const getHandle = async (orgID, apiRefID) => {
+const getHandle = async (orgId, apiRefId) => {
     try {
         const api = await APIMetadata.findOne({
             attributes: ['HANDLE'],
             where: {
-                REF_ID: apiRefID,
-                ORG_UUID: orgID
+                REF_ID: apiRefId,
+                ORG_UUID: orgId
             }
         })
         return api.HANDLE;
@@ -430,13 +430,13 @@ const getHandle = async (orgID, apiRefID) => {
     }
 }
 
-const getIdByRef = async (orgID, referenceId, t) => {
+const getIdByRef = async (orgId, referenceId, t) => {
     try {
         const api = await APIMetadata.findOne({
             attributes: ['UUID'],
             where: {
                 REF_ID: referenceId,
-                ORG_UUID: orgID
+                ORG_UUID: orgId
             },
             transaction: t
         });
@@ -449,7 +449,7 @@ const getIdByRef = async (orgID, referenceId, t) => {
     }
 };
 
-const getSpecs = async (orgID, apiIDs) => {
+const getSpecs = async (orgId, apiIds) => {
     try {
         const apiSpecsResponse = await APIContent.findAll({
             attributes: [
@@ -459,7 +459,7 @@ const getSpecs = async (orgID, apiIDs) => {
             ],
             where: {
                 API_UUID: {
-                    [Op.in]: apiIDs
+                    [Op.in]: apiIds
                 },
                 TYPE: constants.DOC_TYPES.API_DEFINITION
             },
@@ -469,7 +469,7 @@ const getSpecs = async (orgID, apiIDs) => {
                     required: true,
                     attributes: ['NAME', 'VERSION', 'HANDLE'],
                     where: {
-                        ORG_UUID: orgID
+                        ORG_UUID: orgId
                     }
                 }
             ]
@@ -478,7 +478,7 @@ const getSpecs = async (orgID, apiIDs) => {
         return apiSpecsResponse.map(spec => {
 
             return {
-                apiID: spec.API_UUID,
+                apiId: spec.API_UUID,
                 fileName: spec.FILE_NAME,
                 apiSpec: spec.FILE_CONTENT ? spec.FILE_CONTENT.toString('utf8') : null
             };

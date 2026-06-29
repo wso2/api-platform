@@ -45,11 +45,10 @@ This operation requires <strong>Basic Auth</strong> authentication.
       "id": "app-12345",
       "name": "Weather App",
       "description": "Application used to call Weather APIs.",
-      "type": "WEB",
       "appMap": [
         {
-          "appRefID": "asgardeo-client-abc123",
-          "kmID": "km-uuid-12345",
+          "appRefId": "asgardeo-client-abc123",
+          "kmId": "km-uuid-12345",
           "keyType": "PRODUCTION"
         }
       ]
@@ -90,10 +89,9 @@ Status Code **200**
 |»» id|string|false|none|none|
 |»» name|string|false|none|none|
 |»» description|string|false|none|none|
-|»» type|string|false|none|none|
 |»» appMap|[[ApplicationKeyMappingSummary](schemas.md#schemaapplicationkeymappingsummary)]|false|none|[OAuth client ID mapping entry attached to an application.]|
-|»»» appRefID|string|false|none|OAuth client ID, created directly in the key manager and linked to this application.|
-|»»» kmID|string|false|none|UUID of the key manager this client ID is linked to.|
+|»»» appRefId|string|false|none|OAuth client ID, created directly in the key manager and linked to this application.|
+|»»» kmId|string|false|none|UUID of the key manager this client ID is linked to.|
 |»»» keyType|string|false|none|Key type for this mapping.|
 |» pagination|[Pagination](schemas.md#schemapagination)|false|none|Standard pagination metadata returned with collection responses.|
 |»» total|integer|true|none|Total number of records matching the query.|
@@ -133,15 +131,13 @@ Creates a Developer Portal application in the specified organization. The reques
 ```json
 {
   "name": "Weather App",
-  "description": "Application used to call Weather APIs.",
-  "type": "WEB"
+  "description": "Application used to call Weather APIs."
 }
 ```
 
 ```yaml
 name: Weather App
 description: Application used to call Weather APIs.
-type: WEB
 
 ```
 
@@ -168,7 +164,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "id": "app-12345",
   "name": "Weather App",
   "description": "Application used to call Weather APIs.",
-  "type": "WEB",
   "appMap": []
 }
 ```
@@ -275,15 +270,13 @@ Updates an application owned by the authenticated user in the specified organiza
 ```json
 {
   "name": "Weather App",
-  "description": "Application used to call Weather APIs.",
-  "type": "WEB"
+  "description": "Application used to call Weather APIs."
 }
 ```
 
 ```yaml
 name: Weather App
 description: Application used to call Weather APIs.
-type: WEB
 
 ```
 
@@ -311,7 +304,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "id": "app-12345",
   "name": "Weather App",
   "description": "Application used to call Weather APIs.",
-  "type": "WEB",
   "appMap": []
 }
 ```

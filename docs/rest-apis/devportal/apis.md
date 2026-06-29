@@ -19,8 +19,8 @@ curl -X POST https://devportal.api-platform.io/o/{orgId}/devportal/v1/apis \
 
 ```
 
-Creates Developer Portal API metadata from either a full API artifact ZIP, an API metadata YAML file (`api.yaml` / `devportal.yaml` / `mcp.yaml`), or an `apiMetadata` JSON string. An API definition file is required unless supplied by the artifact ZIP. The YAML `spec` block accepts: `displayName`, `version`, `description`, `type`, `status`, `agentVisibility`, `tags`, `labels`, `referenceID`, `endpoints` (sandboxUrl, productionUrl), `businessInformation` (owners), and `subscriptionPlans`. The service also stores labels, subscription plan mappings, image metadata, and schema definitions for MCP or GraphQL APIs when provided.
-`subscriptionPlans` links existing org-level plans to this API by name — it does not create plans. In YAML it is a string array (`["Gold", "Silver"]`). In the JSON `apiMetadata` field it is an object array where only `planName` is used (`[{"planName":"Gold"}]`); extra fields such as `planID`, `displayName`, or `requestCount` are ignored.
+Creates Developer Portal API metadata from either a full API artifact ZIP, an API metadata YAML file (`api.yaml` / `devportal.yaml` / `mcp.yaml`), or an `apiMetadata` JSON string. An API definition file is required unless supplied by the artifact ZIP. The YAML `spec` block accepts: `displayName`, `version`, `description`, `type`, `status`, `agentVisibility`, `tags`, `labels`, `referenceId`, `endpoints` (sandboxUrl, productionUrl), `businessInformation` (owners), and `subscriptionPlans`. The service also stores labels, subscription plan mappings, image metadata, and schema definitions for MCP or GraphQL APIs when provided.
+`subscriptionPlans` links existing org-level plans to this API by name — it does not create plans. In YAML it is a string array (`["Gold", "Silver"]`). In the JSON `apiMetadata` field it is an object array where only `planName` is used (`[{"planName":"Gold"}]`); extra fields such as `planId`, `displayName`, or `requestCount` are ignored.
 
 > Payload
 
@@ -54,7 +54,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |» apiDefinition|body|string(binary)|false|API definition file.|
 |» artifact|body|string(binary)|false|Full API ZIP artifact containing metadata and definition files.|
 |» schemaDefinition|body|string(binary)|false|Schema definition file, used by MCP APIs.|
-|» apiMetadata|body|string|false|JSON string accepted by the service when the `api` YAML file is not supplied. Accepted top-level fields mirror the YAML spec: `apiInfo` (apiName, apiVersion, apiDescription, apiType, agentVisibility, apiStatus, referenceID, apiHandle, tags, labels, owners), `endPoints` (productionURL, sandboxURL), and `subscriptionPlans` (array of `{ planName }` objects — only `planName` is read; the plan must already exist in the organization).|
+|» apiMetadata|body|string|false|JSON string accepted by the service when the `api` YAML file is not supplied. Accepted top-level fields mirror the YAML spec: `apiInfo` (apiName, apiVersion, apiDescription, apiType, agentVisibility, apiStatus, referenceId, apiHandle, tags, labels, owners), `endPoints` (productionURL, sandboxURL), and `subscriptionPlans` (array of `{ planName }` objects — only `planName` is read; the plan must already exist in the organization).|
 |orgId|path|string|true|none|
 
 > Example responses
@@ -63,10 +63,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "apiID": "api-7f4c2a6b",
-  "apiReferenceID": "cp-api-12345",
+  "apiId": "api-7f4c2a6b",
+  "apiReferenceId": "cp-api-12345",
   "apiHandle": "weather-api-v1",
-  "dataSource": "DEVPORTAL",
   "apiInfo": {
     "apiName": "Weather API",
     "apiTitle": "Weather Forecast API",
@@ -228,10 +227,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 {
   "list": [
     {
-      "apiID": "api-7f4c2a6b",
-      "apiReferenceID": "cp-api-12345",
+      "apiId": "api-7f4c2a6b",
+      "apiReferenceId": "cp-api-12345",
       "apiHandle": "weather-api-v1",
-      "dataSource": "DEVPORTAL",
       "apiInfo": {
         "apiName": "Weather API",
         "apiVersion": "v1",
@@ -314,11 +312,11 @@ Status Code **200**
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |» list|[[ApiMetadataResponse](schemas.md#schemaapimetadataresponse)]|false|none|none|
-|»» apiID|string|false|none|none|
-|»» apiReferenceID|string|false|none|none|
+|»» apiId|string|false|none|none|
+|»» apiReferenceId|string¦null|false|none|Platform API (Control Plane) reference ID for this API. Used for MCP registry visibility filtering and included in outbound webhook event payloads. Null/absent for APIs that exist only in the Developer Portal and are not registered with the Platform API — e.g. MCP servers published via the registry.|
 |»» apiHandle|string|false|none|none|
-|»» dataSource|string|false|none|none|
-|»» planID|string|false|none|none|
+|»» dataSource|string¦null|false|none|Indicates which content matched the search term: `METADATA` if the match was in the API's own metadata, or a content type (e.g. a value from the API Content `type` field) if the match was inside an uploaded content file. Only computed by getAllApiMetadataForOrganization when both the `query` search parameter is supplied and the database is PostgreSQL — absent on SQLite (the dev default) and absent from every other operation (get/create/update single API).|
+|»» planId|string|false|none|none|
 |»» apiInfo|[ApiInfoResponse](schemas.md#schemaapiinforesponse)|false|none|none|
 |»»» apiName|string|false|none|none|
 |»»» apiTitle|string¦null|false|none|none|
@@ -327,6 +325,8 @@ Status Code **200**
 |»»» apiStatus|string|false|none|API lifecycle status.|
 |»»» apiDescription|string|false|none|none|
 |»»» apiType|string|false|none|none|
+|»»» referenceId|string¦null|false|none|External reference ID. Present when the API was created from a `devportal.yaml` artifact whose `spec` block sets `referenceId` — the create response echoes the parsed YAML back, nested under `apiInfo`.|
+|»»» apiHandle|string¦null|false|none|Present (nested under `apiInfo`) when the API was created from a `devportal.yaml` artifact — the parser sets it from `metadata.name`. Distinct from the top-level `apiHandle` on ApiMetadataResponse.|
 |»»» agentVisibility|string|false|none|none|
 |»»» addedLabels|[string]|false|none|none|
 |»»» removedLabels|[string]|false|none|none|
@@ -343,30 +343,13 @@ Status Code **200**
 |»»» sandboxURL|string|false|none|none|
 |»»» productionURL|string|false|none|none|
 |»» subscriptionPlans|[[SubscriptionPlanResponse](schemas.md#schemasubscriptionplanresponse)]|false|none|none|
-|»»» planID|string|false|none|none|
+|»»» planId|string|false|none|none|
 |»»» planName|string|false|none|none|
 |»»» displayName|string|false|none|none|
 |»»» description|string|false|none|none|
-|»»» requestCount|any|false|none|none|
-
-*oneOf*
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|»»»» *anonymous*|integer|false|none|none|
-
-*xor*
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|»»»» *anonymous*|string|false|none|none|
-
-*continued*
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
+|»»» requestCount|string¦null|false|none|Always stored and returned as a string ("Unlimited" or a numeric string), regardless of the type (request-count or event-count) used to create the plan. Null if not set.|
 |»»» refId|string¦null|false|none|Platform API subscription plan UUID associated with this plan.|
-|»»» orgID|string|false|none|none|
+|»»» orgId|string|false|none|none|
 |» pagination|[Pagination](schemas.md#schemapagination)|false|none|Standard pagination metadata returned with collection responses.|
 |»» total|integer|true|none|Total number of records matching the query.|
 |»» limit|integer|true|none|Maximum number of records returned in this response.|
@@ -378,6 +361,12 @@ Status Code **200**
 |---|---|
 |apiStatus|PUBLISHED|
 |apiStatus|DEPRECATED|
+|apiType|REST|
+|apiType|SOAP|
+|apiType|MCP|
+|apiType|WS|
+|apiType|WEBSUB|
+|apiType|GRAPHQL|
 |agentVisibility|VISIBLE|
 |agentVisibility|HIDDEN|
 
@@ -427,10 +416,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "apiID": "api-7f4c2a6b",
-  "apiReferenceID": "cp-api-12345",
+  "apiId": "api-7f4c2a6b",
+  "apiReferenceId": "cp-api-12345",
   "apiHandle": "weather-api-v1",
-  "dataSource": "DEVPORTAL",
   "apiInfo": {
     "apiName": "Weather API",
     "apiTitle": "Weather Forecast API",
@@ -575,7 +563,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |» apiDefinition|body|string(binary)|false|API definition file.|
 |» artifact|body|string(binary)|false|Full API ZIP artifact containing metadata and definition files.|
 |» schemaDefinition|body|string(binary)|false|Schema definition file, used by MCP APIs.|
-|» apiMetadata|body|string|false|JSON string accepted by the service when the `api` YAML file is not supplied. Accepted top-level fields mirror the YAML spec: `apiInfo` (apiName, apiVersion, apiDescription, apiType, agentVisibility, apiStatus, referenceID, apiHandle, tags, labels, owners), `endPoints` (productionURL, sandboxURL), and `subscriptionPlans` (array of `{ planName }` objects — only `planName` is read; the plan must already exist in the organization).|
+|» apiMetadata|body|string|false|JSON string accepted by the service when the `api` YAML file is not supplied. Accepted top-level fields mirror the YAML spec: `apiInfo` (apiName, apiVersion, apiDescription, apiType, agentVisibility, apiStatus, referenceId, apiHandle, tags, labels, owners), `endPoints` (productionURL, sandboxURL), and `subscriptionPlans` (array of `{ planName }` objects — only `planName` is read; the plan must already exist in the organization).|
 |orgId|path|string|true|none|
 |apiId|path|string|true|none|
 
@@ -585,10 +573,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "apiID": "api-7f4c2a6b",
-  "apiReferenceID": "cp-api-12345",
+  "apiId": "api-7f4c2a6b",
+  "apiReferenceId": "cp-api-12345",
   "apiHandle": "weather-api-v1",
-  "dataSource": "DEVPORTAL",
   "apiInfo": {
     "apiName": "Weather API",
     "apiTitle": "Weather Forecast API",

@@ -100,10 +100,10 @@ function renderTemplate(templatePath, layoutPath, templateContent, isTechnical) 
     });
 }
 
-async function loadLayoutFromAPI(orgID, viewName) {
+async function loadLayoutFromAPI(orgId, viewName) {
 
     var layoutContent = await orgDao.getContent({
-        orgId: orgID,
+        orgId: orgId,
         fileType: constants.FILE_TYPE.LAYOUT,
         fileName: constants.FILE_NAME.MAIN,
         viewName: viewName
@@ -115,10 +115,10 @@ async function loadLayoutFromAPI(orgID, viewName) {
     }
 }
 
-async function loadTemplateFromAPI(orgID, filePath, viewName) {
+async function loadTemplateFromAPI(orgId, filePath, viewName) {
 
     var templateContent = await orgDao.getContent({
-        orgId: orgID,
+        orgId: orgId,
         filePath: filePath,
         fileType: constants.FILE_TYPE.TEMPLATE,
         fileName: constants.FILE_NAME.PAGE,
@@ -127,15 +127,15 @@ async function loadTemplateFromAPI(orgID, filePath, viewName) {
     return templateContent ? templateContent.FILE_CONTENT.toString(constants.CHARSET_UTF8) : "";
 }
 
-async function renderTemplateFromAPI(templateContent, orgID, orgName, filePath, viewName) {
+async function renderTemplateFromAPI(templateContent, orgId, orgName, filePath, viewName) {
 
     const templateResponse = fs.readFileSync(path.join(process.cwd(), filePrefix + filePath + '/page.hbs'), constants.CHARSET_UTF8);
     const completeLayoutPath = path.join(process.cwd(), filePrefix + 'layout/main.hbs');
 
     layoutResponse = fs.readFileSync(completeLayoutPath, constants.CHARSET_UTF8);
-    const styleContent = await orgDao.getContent({ orgId: orgID, fileType: 'style', viewName: viewName, fileName: 'main.css' });
+    const styleContent = await orgDao.getContent({ orgId: orgId, fileType: 'style', viewName: viewName, fileName: 'main.css' });
     if (styleContent) {
-        layoutResponse = layoutResponse.replace(/\/styles\//g, `${constants.DEVPORTAL_API.orgPath(orgID)}/views/${viewName}/layout?fileType=style&fileName=`);
+        layoutResponse = layoutResponse.replace(/\/styles\//g, `${constants.DEVPORTAL_API.orgPath(orgId)}/views/${viewName}/layout?fileType=style&fileName=`);
     }
 
     const template = Handlebars.compile(templateResponse.toString());
@@ -157,10 +157,10 @@ async function renderTemplateFromAPI(templateContent, orgID, orgName, filePath, 
 
 }
 
-async function renderLlmsTxt(templateContent, orgID, viewName) {
+async function renderLlmsTxt(templateContent, orgId, viewName) {
 
     const dbPartial = await orgDao.getContent({
-        orgId: orgID,
+        orgId: orgId,
         fileType: 'partial',
         viewName: viewName,
         fileName: 'llms-txt.hbs'
@@ -180,11 +180,11 @@ async function renderLlmsTxt(templateContent, orgID, viewName) {
     return Handlebars.compile(pageSource)(templateContent);
 }
 
-async function renderMarkdownTemplateFromAPI(templateContent, orgID, filePath, viewName) {
+async function renderMarkdownTemplateFromAPI(templateContent, orgId, filePath, viewName) {
 
     const partialName = path.basename(filePath) + '-md';
     const dbPartial = await orgDao.getContent({
-        orgId: orgID,
+        orgId: orgId,
         fileType: 'partial',
         viewName: viewName,
         fileName: partialName + '.hbs'
@@ -710,7 +710,6 @@ function validateScripts(strContent) {
             "<script src='/technical-scripts/subscriptions-page.js' defer></script>",
             "<script src='/technical-scripts/api-keys-page.js' defer></script>",
             '<script src="/technical-scripts/oauth2-key-generation.js" defer></script>',
-            '<script src="/technical-scripts/api-key-generation.js" defer></script>',
             "<script src='/technical-scripts/delete-confirmation-modal.js' defer></script>",
             "<script src='/technical-scripts/api-flow-detail.js' defer></script>",
             "<script src='/technical-scripts/api-workflows.js' defer></script>",
@@ -725,7 +724,7 @@ function validateScripts(strContent) {
             // Token-map JSON data island (api-landing/partials/api-subscription-plans.hbs)
             "<script id=\"token-map-data\" type=\"application/json\">{{{jsonSafeSubscriptions ../subscriptions}}}</script>",
             // Token-meta bootstrap (api-landing/partials/api-subscription-plans.hbs)
-            "<script>\n                    (function() {\n                        var data = JSON.parse(document.getElementById('token-map-data').textContent || '[]');\n                        window.__tokenMeta = window.__tokenMeta || {};\n                        data.forEach(function(sub) {\n                            // store only non-sensitive metadata and masked token\n                            window.__tokenMeta[sub.subscriptionId] = {\n                                maskedToken: sub.maskedToken,\n                                customerName: sub.customerName,\n                                subscriptionPlanName: sub.subscriptionPlanName,\n                                status: sub.status\n                            };\n                        });\n                        // expose orgID for on-demand fetches\n                        window.__subscriptionOrgID = \"{{@root.orgID}}\";\n                    })();\n                </script>",
+            "<script>\n                    (function() {\n                        var data = JSON.parse(document.getElementById('token-map-data').textContent || '[]');\n                        window.__tokenMeta = window.__tokenMeta || {};\n                        data.forEach(function(sub) {\n                            // store only non-sensitive metadata and masked token\n                            window.__tokenMeta[sub.subscriptionId] = {\n                                maskedToken: sub.maskedToken,\n                                customerName: sub.customerName,\n                                subscriptionPlanName: sub.subscriptionPlanName,\n                                status: sub.status\n                            };\n                        });\n                        // expose orgId for on-demand fetches\n                        window.__subscriptionOrgId = \"{{@root.orgId}}\";\n                    })();\n                </script>",
             // Existing-subs JSON data island (api-landing/partials/api-subscription-plans.hbs)
             "<script id=\"existing-subs-data\" type=\"application/json\">{{{json subscriptions}}}</script>",
             // API flows JSON data island (pages/api-workflows/page.hbs)
@@ -735,10 +734,10 @@ function validateScripts(strContent) {
             // Home discover data island (pages/home/page.hbs)
             "<script type=\"application/json\" id=\"homeDiscoverData\">{\"baseUrl\":\"{{baseUrl}}\"}</script>",
             // Existing-subs bootstrap (api-landing/partials/api-subscription-plans.hbs)
-            "<script>\n                (function() {\n                    window.__subscriptionOrgID = window.__subscriptionOrgID || \"{{@root.orgID}}\";\n                    var raw = document.getElementById('existing-subs-data').textContent || '[]';\n                    try {\n                        var parsed = JSON.parse(raw);\n                        window.existingSubscriptions = parsed.map(function(sub) {\n                            return { subscriptionId: sub.subscriptionId, subscriptionPlanName: sub.subscriptionPlanName, status: sub.status };\n                        });\n                    } catch (e) {\n                        window.existingSubscriptions = [];\n                    }\n                })();\n            </script>",
-            // tokenMap + orgID bootstrap (api-subscriptions/partials/api-subscription-list.hbs
+            "<script>\n                (function() {\n                    window.__subscriptionOrgId = window.__subscriptionOrgId || \"{{@root.orgId}}\";\n                    var raw = document.getElementById('existing-subs-data').textContent || '[]';\n                    try {\n                        var parsed = JSON.parse(raw);\n                        window.existingSubscriptions = parsed.map(function(sub) {\n                            return { subscriptionId: sub.subscriptionId, subscriptionPlanName: sub.subscriptionPlanName, status: sub.status };\n                        });\n                    } catch (e) {\n                        window.existingSubscriptions = [];\n                    }\n                })();\n            </script>",
+            // tokenMap + orgId bootstrap (api-subscriptions/partials/api-subscription-list.hbs
             // and subscriptions/partials/subscription-list.hbs)
-            "<script>\n                window.__tokenMap = window.__tokenMap || {};\n                window.__subscriptionOrgID = \"{{@root.orgID}}\";\n            </script>",
+            "<script>\n                window.__tokenMap = window.__tokenMap || {};\n                window.__subscriptionOrgId = \"{{@root.orgId}}\";\n            </script>",
             // Modal click handler (apis/partials/api-listing.hbs)
             "<script>\n    (function(){\n      function findClosest(el, selector){\n        while(el && el !== document){\n          if(el.matches && el.matches(selector)) return el;\n          el = el.parentNode;\n        }\n        return null;\n      }\n\n      document.addEventListener('click', function(e){\n        var modalTrigger = findClosest(e.target, '[data-modal]');\n        if(modalTrigger){\n          e.preventDefault();\n          if(modalTrigger.classList.contains('is-readonly') || modalTrigger.getAttribute('aria-disabled') === 'true'){\n            return;\n          }\n          if(typeof loadModal === 'function'){\n            loadModal(modalTrigger.getAttribute('data-modal'));\n          } else {\n            var id = modalTrigger.getAttribute('data-modal');\n            var el = document.getElementById(id);\n            if(el) {\n              el.style.display = 'flex';\n              document.body.classList.add('modal-open');\n              if(typeof prepareSubscriptionModal === 'function') {\n                try { prepareSubscriptionModal(id); } catch(err) { /* noop */ }\n              }\n            }\n          }\n          return;\n        }\n\n        var nav = findClosest(e.target, '[data-href]');\n        if(nav){\n          var href = nav.getAttribute('data-href');\n          if(href){ window.location.href = href; }\n        }\n      }, false);\n    })();\n  </script>",
         ]);
@@ -776,33 +775,33 @@ function validateScripts(strContent) {
     }
 }
 
-function appendAPIImageURL(subList, req, orgID) {
+function appendAPIImageURL(subList, req, orgId) {
 
     subList.forEach(element => {
         const images = element.apiInfo.apiImageMetadata;
         let apiImageUrl = '';
         for (const key in images) {
-            apiImageUrl = `${constants.DEVPORTAL_API.orgPath(orgID)}${constants.ROUTE.API_FILE_PATH}${element.apiID}${constants.API_TEMPLATE_FILE_NAME}`;
+            apiImageUrl = `${constants.DEVPORTAL_API.orgPath(orgId)}${constants.ROUTE.API_FILE_PATH}${element.apiId}${constants.API_TEMPLATE_FILE_NAME}`;
             const modifiedApiImageURL = apiImageUrl + images[key];
             element.apiInfo.apiImageMetadata[key] = modifiedApiImageURL;
         }
     });
 }
 
-async function appendSubscriptionPlanDetails(orgID, subscriptionPlans) {
+async function appendSubscriptionPlanDetails(orgId, subscriptionPlans) {
     const enrichedPlans = [];
     if (subscriptionPlans) {
         for (const plan of subscriptionPlans) {
-            const subscriptionPlan = await loadSubscriptionPlan(orgID, plan.planName);
+            const subscriptionPlan = await loadSubscriptionPlan(orgId, plan.planName);
             if (!subscriptionPlan) {
                 logger.warn('Subscription plan not found, skipping', {
-                    orgID,
+                    orgId,
                     planName: plan.planName
                 });
                 continue;
             }
             enrichedPlans.push({
-                planID: subscriptionPlan.planID,
+                planId: subscriptionPlan.planId,
                 displayName: subscriptionPlan.displayName,
                 planName: subscriptionPlan.planName,
                 description: subscriptionPlan.description,
@@ -813,10 +812,10 @@ async function appendSubscriptionPlanDetails(orgID, subscriptionPlans) {
     return enrichedPlans;
 }
 
-const loadSubscriptionPlan = async (orgID, planName) => {
+const loadSubscriptionPlan = async (orgId, planName) => {
 
     try {
-        const planData = await subscriptionPlanDao.getByName(orgID, planName);
+        const planData = await subscriptionPlanDao.getByName(orgId, planName);
         if (planData) {
             return new subscriptionPlanDTO(planData);
         } else {
@@ -824,7 +823,7 @@ const loadSubscriptionPlan = async (orgID, planName) => {
         }
     } catch (error) {
         logger.error("Error occurred while loading subscription plans", {
-            orgID: orgID,
+            orgId: orgId,
             planName: planName,
             error: error.message,
             stack: error.stack
@@ -902,11 +901,11 @@ function resolveApiType(apiType) {
 
 function filterAllowedAPIs(searchResults, allowedAPIs) {
     searchResults = searchResults.filter(api => {
-        // MCP servers published via the registry have no referenceID
-        if (api?.apiInfo?.apiType === constants.API_TYPE.MCP && !api.apiReferenceID) {
+        // MCP servers published via the registry have no referenceId
+        if (api?.apiInfo?.apiType === constants.API_TYPE.MCP && !api.apiReferenceId) {
             return true;
         }
-        return allowedAPIs.some(allowedAPI => api.apiReferenceID === allowedAPI.id);
+        return allowedAPIs.some(allowedAPI => api.apiReferenceId === allowedAPI.id);
     });
     return searchResults;
 }
@@ -926,9 +925,9 @@ const enforcePortalMode = async (req, res, next) => {
     }
 }
 
-async function isAiDisabledForPortal(orgID, viewName) {
+async function isAiDisabledForPortal(orgId, viewName) {
     const configAsset = await orgDao.getContent({
-        orgId: orgID, fileType: constants.FILE_TYPE.LLMS_CONFIG, viewName, fileName: constants.FILE_NAME.LLMS_CONFIG
+        orgId: orgId, fileType: constants.FILE_TYPE.LLMS_CONFIG, viewName, fileName: constants.FILE_NAME.LLMS_CONFIG
     });
     if (!configAsset) return false;
     try {

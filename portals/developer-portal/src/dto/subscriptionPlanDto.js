@@ -18,13 +18,13 @@
  */
 class SubscriptionPlan {
     constructor(subscriptionPlan) {
-        this.planID = subscriptionPlan.UUID;
+        this.planId = subscriptionPlan.UUID;
         this.planName = subscriptionPlan.HANDLE;
         this.displayName = subscriptionPlan.NAME;
         this.description = subscriptionPlan.DESCRIPTION;
         this.requestCount = subscriptionPlan.REQUEST_COUNT;
         this.refId = subscriptionPlan.REF_ID;
-        this.orgID = subscriptionPlan.ORG_UUID;
+        this.orgId = subscriptionPlan.ORG_UUID;
     }
 }
 

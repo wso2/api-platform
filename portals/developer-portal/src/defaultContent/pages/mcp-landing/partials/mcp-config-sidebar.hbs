@@ -1,11 +1,11 @@
 <div class="mc-config-panel">
   <h2 class="aov-section-title" style="margin-bottom:0.875rem;">MCP Server Configuration</h2>
   <div class="mc-config-block">
-    <button type="button" class="copy-btn mc-config-copy" onclick="copyMcpConfig(this, '{{apiID}}')" title="Copy configuration">
+    <button type="button" class="copy-btn mc-config-copy" onclick="copyMcpConfig(this, '{{apiId}}')" title="Copy configuration">
       <span class="copy-btn-icon"><i class="bi bi-copy"></i></span>
       <span class="copy-btn-check"><i class="bi bi-check"></i> Copied</span>
     </button>
-    <pre id="mcp-cfg-{{apiID}}" class="mc-config-pre"><code class="language-json">{
+    <pre id="mcp-cfg-{{apiId}}" class="mc-config-pre"><code class="language-json">{
   "servers": {
     "{{apiMetadata.apiInfo.apiName}}": {
       "url": "{{resources.serverDetails.productionURL}}",

@@ -51,19 +51,12 @@ This operation requires <strong>Basic Auth</strong> authentication.
 > 201 Response
 
 ```json
-{
-  "list": [
-    {
-      "name": "premium",
-      "displayName": "Premium APIs"
-    }
-  ],
-  "pagination": {
-    "total": 42,
-    "limit": 20,
-    "offset": 0
+[
+  {
+    "name": "premium",
+    "displayName": "Premium APIs"
   }
-}
+]
 ```
 
 > Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.
@@ -122,7 +115,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|201|[Created](https://tools.ietf.org/html/rfc7231#section-6.3.2)|List of label DTOs.|Inline|
+|201|[Created](https://tools.ietf.org/html/rfc7231#section-6.3.2)|The accepted label array, echoed back as-is.|Inline|
 |400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.|Inline|
 |409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|The request conflicts with an existing resource.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
@@ -133,13 +126,9 @@ Status Code **201**
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|» list|[[LabelResponse](schemas.md#schemalabelresponse)]|false|none|none|
-|»» name|string|false|none|none|
-|»» displayName|string|false|none|none|
-|» pagination|[Pagination](schemas.md#schemapagination)|false|none|Standard pagination metadata returned with collection responses.|
-|»» total|integer|true|none|Total number of records matching the query.|
-|»» limit|integer|true|none|Maximum number of records returned in this response.|
-|»» offset|integer|true|none|Number of records skipped before this page.|
+|*anonymous*|[[LabelResponse](schemas.md#schemalabelresponse)]|false|none|none|
+|» name|string|false|none|none|
+|» displayName|string|false|none|none|
 
 #### Enumerated Values
 
@@ -205,19 +194,12 @@ This operation requires <strong>Basic Auth</strong> authentication.
 > 201 Response
 
 ```json
-{
-  "list": [
-    {
-      "name": "premium",
-      "displayName": "Premium APIs"
-    }
-  ],
-  "pagination": {
-    "total": 42,
-    "limit": 20,
-    "offset": 0
+[
+  {
+    "name": "premium",
+    "displayName": "Premium APIs"
   }
-}
+]
 ```
 
 > Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.
@@ -276,7 +258,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|201|[Created](https://tools.ietf.org/html/rfc7231#section-6.3.2)|List of label DTOs.|Inline|
+|201|[Created](https://tools.ietf.org/html/rfc7231#section-6.3.2)|The accepted label array, echoed back as-is.|Inline|
 |400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.|Inline|
 |409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|The request conflicts with an existing resource.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
@@ -287,13 +269,9 @@ Status Code **201**
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|» list|[[LabelResponse](schemas.md#schemalabelresponse)]|false|none|none|
-|»» name|string|false|none|none|
-|»» displayName|string|false|none|none|
-|» pagination|[Pagination](schemas.md#schemapagination)|false|none|Standard pagination metadata returned with collection responses.|
-|»» total|integer|true|none|Total number of records matching the query.|
-|»» limit|integer|true|none|Maximum number of records returned in this response.|
-|»» offset|integer|true|none|Number of records skipped before this page.|
+|*anonymous*|[[LabelResponse](schemas.md#schemalabelresponse)]|false|none|none|
+|» name|string|false|none|none|
+|» displayName|string|false|none|none|
 
 #### Enumerated Values
 
@@ -400,7 +378,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|List of label DTOs.|Inline|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Paginated list of label DTOs.|Inline|
 |400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.|Inline|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 

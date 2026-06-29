@@ -26,8 +26,8 @@ const constants = require('../utils/constants');
 const util = require('../utils/util');
 const yaml = require('js-yaml');
 
-const resolveViewId = async (orgID, viewName) => {
-    return await viewDao.getId(orgID, viewName);
+const resolveViewId = async (orgId, viewName) => {
+    return await viewDao.getId(orgId, viewName);
 };
 
 /**
@@ -169,7 +169,7 @@ const generateHandle = (name) =>
         .substring(0, 100);
 
 const createAPIFlow = async (req, res) => {
-    const orgID = req.params.orgId;
+    const orgId = req.params.orgId;
     const viewName = req.params.viewName;
     const userId = util.resolveActor(req);
     const { name, handle, description, agentPrompt, status, agentVisibility, apiFlowDefinition, markdownContent, contentType } = req.body;
@@ -196,14 +196,14 @@ const createAPIFlow = async (req, res) => {
     }
     let t;
     try {
-        const orgDetails = await orgDao.get(orgID);
+        const orgDetails = await orgDao.get(orgId);
         t = await sequelize.transaction();
-        const viewId = await resolveViewId(orgID, viewName);
+        const viewId = await resolveViewId(orgId, viewName);
         const resolvedPrompt = agentPrompt && agentPrompt.trim()
             ? agentPrompt.trim()
             : generateAgentPrompt(name, description, [], orgDetails.IDP_REF_ID || '', viewName, '', resolvedHandle);
 
-        const apiFlow = await apiFlowDao.create(orgID, viewId, {
+        const apiFlow = await apiFlowDao.create(orgId, viewId, {
             name,
             handle: resolvedHandle,
             description,
@@ -215,7 +215,7 @@ const createAPIFlow = async (req, res) => {
         }, userId, t);
 
         await t.commit();
-        logger.info('APIFlow created', { apiFlowId: apiFlow.UUID, orgID, viewId });
+        logger.info('APIFlow created', { apiFlowId: apiFlow.UUID, orgId, viewId });
         res.status(201).json({
             apiFlowId: apiFlow.UUID,
             name: apiFlow.NAME,
@@ -343,8 +343,8 @@ const generatePrompt = async (req, res) => {
 };
 
 // Internal utility used by settingsController
-const getAllAPIFlowsFromDB = async (orgID, viewId) => {
-    const apiFlows = await apiFlowDao.list(orgID, viewId);
+const getAllAPIFlowsFromDB = async (orgId, viewId) => {
+    const apiFlows = await apiFlowDao.list(orgId, viewId);
     return apiFlows.map(toAPIFlowDTO);
 };
 

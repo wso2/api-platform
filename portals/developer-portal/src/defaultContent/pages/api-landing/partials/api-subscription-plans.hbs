@@ -5,7 +5,7 @@
 
   {{#each subscriptionPlans}}
   <div class="aov-plan-card subscription-card{{#if (isCurrentPlan planName @root.subscriptions)}} aov-plan-card--subscribed{{/if}}"
-    id="subscriptionCard-{{planID}}"
+    id="subscriptionCard-{{planId}}"
     data-policy-name="{{planName}}">
     <div class="aov-plan-ribbon" aria-hidden="true">
       <div class="aov-plan-ribbon-label api-ribbon-label">SUBSCRIBED</div>
@@ -30,18 +30,18 @@
         {{#if (isCurrentPlan planName @root.subscriptions)}}
         <button type="button"
           class="dp-btn dp-btn--outline dp-btn--block mcp-view-sub-btn api-view-sub-btn"
-          data-org-id="{{@root.orgID}}"
-          data-api-id="{{../apiMetadata.apiID}}"
+          data-org-id="{{@root.orgId}}"
+          data-api-id="{{../apiMetadata.apiId}}"
           data-policy-name="{{planName}}"
           data-display-name="{{displayName}}">
           <i class="bi bi-eye"></i> View subscription
         </button>
         {{else}}
-        <button id="subscribe-btn-{{planID}}" type="button"
+        <button id="subscribe-btn-{{planId}}" type="button"
           class="dp-btn dp-btn--outline dp-btn--block subscribe-btn {{#if @root.isReadOnlyMode}}disabled{{/if}}"
-          data-org-id="{{@root.orgID}}"
-          data-api-id="{{../apiMetadata.apiID}}"
-          data-plan-id="{{planID}}"
+          data-org-id="{{@root.orgId}}"
+          data-api-id="{{../apiMetadata.apiId}}"
+          data-plan-id="{{planId}}"
           data-plan-name="{{planName}}"
           data-display-name="{{displayName}}"
           onclick="handlePlanSubscription(this)"
@@ -64,7 +64,7 @@
   <script id="existing-subs-data" type="application/json">{{{json subscriptions}}}</script>
   <script>
     (function () {
-      window.__subscriptionOrgID = window.__subscriptionOrgID || "{{@root.orgID}}";
+      window.__subscriptionOrgId = window.__subscriptionOrgId || "{{@root.orgId}}";
 
       var raw = document.getElementById('existing-subs-data').textContent || '[]';
       try {
@@ -98,7 +98,7 @@
         var meta = (window.__tokenMeta || {})[subscriptionId];
         if (meta && meta._fullToken) return meta._fullToken;
         try {
-          var resp = await fetch(devportalApi.org(window.__subscriptionOrgID, '/subscriptions/' + encodeURIComponent(subscriptionId)), {
+          var resp = await fetch(devportalApi.org(window.__subscriptionOrgId, '/subscriptions/' + encodeURIComponent(subscriptionId)), {
             headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() },
           });
           if (!resp.ok) return null;
@@ -192,10 +192,10 @@
 
       async function toggleSuspend() {
         if (!_sub) return;
-        var orgID = window.__subscriptionOrgID;
+        var orgId = window.__subscriptionOrgId;
         var newStatus = _sub.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
         try {
-          var resp = await fetch(devportalApi.org(orgID, '/subscriptions/' + encodeURIComponent(_sub.subscriptionId)), {
+          var resp = await fetch(devportalApi.org(orgId, '/subscriptions/' + encodeURIComponent(_sub.subscriptionId)), {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() },
             body: JSON.stringify({ status: newStatus }),
@@ -268,7 +268,7 @@
           var args = _switchArgs;
           closeUnsub();
           try {
-            var delResp = await fetch(devportalApi.org(args.orgID, '/subscriptions/' + encodeURIComponent(args.subscriptionId)), {
+            var delResp = await fetch(devportalApi.org(args.orgId, '/subscriptions/' + encodeURIComponent(args.subscriptionId)), {
               method: 'DELETE',
               headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() },
             });
@@ -277,16 +277,16 @@
               showAlert('Failed to remove existing subscription: ' + (errData.description || 'Unknown error'), 'error');
               return;
             }
-            await subscribe(args.orgID, args.apiId, args.planName, args.policyId);
+            await subscribe(args.orgId, args.apiId, args.planName, args.policyId);
           } catch (e) {
             showAlert('Error during plan change: ' + e.message, 'error');
           }
           return;
         }
         if (!_sub) return;
-        var orgID = window.__subscriptionOrgID;
+        var orgId = window.__subscriptionOrgId;
         try {
-          var resp = await fetch(devportalApi.org(orgID, '/subscriptions/' + encodeURIComponent(_sub.subscriptionId)), {
+          var resp = await fetch(devportalApi.org(orgId, '/subscriptions/' + encodeURIComponent(_sub.subscriptionId)), {
             method: 'DELETE',
             headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() },
           });
@@ -326,12 +326,12 @@
           });
         };
 
-        window.openWarningModal = function (action, orgID, apiId, planName, displayName, subscriptionId, currentPlan) {
+        window.openWarningModal = function (action, orgId, apiId, planName, displayName, subscriptionId, currentPlan) {
           if (action === 'SwitchSubscriptionPlan') {
             _unsubAction = 'switch';
             var pendingBtn = window.__pendingPlanSwitchBtn;
             _switchArgs = {
-              orgID: orgID, apiId: apiId,
+              orgId: orgId, apiId: apiId,
               planName: planName, displayName: displayName,
               subscriptionId: subscriptionId,
               policyId: pendingBtn ? pendingBtn.dataset.planId : undefined,

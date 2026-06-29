@@ -22,14 +22,14 @@ const { Sequelize, Op } = require('sequelize');
 const constants = require('../utils/constants');
 const { CustomError } = require('../utils/errors/customErrors');
 
-const create = async (orgID, payload, createdBy, t) => {
+const create = async (orgId, payload, createdBy, t) => {
 
     let name = payload.name ? payload.name : payload.handle;
     try {
         const viewResponse = await View.create({
             NAME: name,
             HANDLE: payload.handle,
-            ORG_UUID: orgID,
+            ORG_UUID: orgId,
             CREATED_BY: createdBy,
             UPDATED_BY: createdBy
         }, { transaction: t });
@@ -42,13 +42,13 @@ const create = async (orgID, payload, createdBy, t) => {
     }
 }
 
-const update = async (orgID, handle, name, updatedBy, t) => {
+const update = async (orgId, handle, name, updatedBy, t) => {
 
     try {
         let [record, created] = await View.findOrCreate({
             where: {
                 HANDLE: handle,
-                ORG_UUID: orgID
+                ORG_UUID: orgId
             },
             defaults: {
                 HANDLE: handle,
@@ -76,13 +76,13 @@ const update = async (orgID, handle, name, updatedBy, t) => {
     }
 }
 
-const deleteView = async (orgID, handle) => {
+const deleteView = async (orgId, handle) => {
 
     try {
         const viewResponse = await View.destroy({
             where: {
                 HANDLE: handle,
-                ORG_UUID: orgID
+                ORG_UUID: orgId
             }
         });
         return viewResponse;
@@ -94,13 +94,13 @@ const deleteView = async (orgID, handle) => {
     }
 }
 
-const get = async (orgID, handle) => {
+const get = async (orgId, handle) => {
 
     try {
         const viewResponse = await View.findOne({
             where: {
                 HANDLE: handle,
-                ORG_UUID: orgID
+                ORG_UUID: orgId
             },
             include: {
                 model: Labels,
@@ -117,16 +117,16 @@ const get = async (orgID, handle) => {
     }
 }
 
-const getId = async (orgID, viewName, t) => {
+const getId = async (orgId, viewName, t) => {
 
     try {
         let viewResponse = await View.findOne({
-            where: { HANDLE: viewName, ORG_UUID: orgID },
+            where: { HANDLE: viewName, ORG_UUID: orgId },
             transaction: t
         });
         if (!viewResponse) {
             viewResponse = await View.findOne({
-                where: { NAME: viewName, ORG_UUID: orgID },
+                where: { NAME: viewName, ORG_UUID: orgId },
                 transaction: t
             });
         }
@@ -142,12 +142,12 @@ const getId = async (orgID, viewName, t) => {
     }
 }
 
-const list = async (orgID) => {
+const list = async (orgId) => {
 
     try {
         const viewResponse = await View.findAll({
             where: {
-                ORG_UUID: orgID
+                ORG_UUID: orgId
             },
             include: {
                 model: Labels,
@@ -166,15 +166,15 @@ const list = async (orgID) => {
     }
 }
 
-const addLabels = async (orgID, viewID, labels, createdBy, t) => {
+const addLabels = async (orgId, viewId, labels, createdBy, t) => {
 
     const labelList = [];
-    const IDList = await getLabelID(orgID, labels, t);
+    const IDList = await getLabelId(orgId, labels, t);
     try {
         IDList.forEach(label => {
             labelList.push({
                 LABEL_UUID: label,
-                VIEW_UUID: viewID,
+                VIEW_UUID: viewId,
                 CREATED_BY: createdBy,
             });
         });
@@ -188,11 +188,11 @@ const addLabels = async (orgID, viewID, labels, createdBy, t) => {
     }
 }
 
-const replaceLabels = async (orgID, viewID, labelNames, createdBy, t) => {
+const replaceLabels = async (orgId, viewId, labelNames, createdBy, t) => {
     try {
-        await ViewLabels.destroy({ where: { VIEW_UUID: viewID }, transaction: t });
+        await ViewLabels.destroy({ where: { VIEW_UUID: viewId }, transaction: t });
         if (labelNames?.length) {
-            await addLabels(orgID, viewID, labelNames, createdBy, t);
+            await addLabels(orgId, viewId, labelNames, createdBy, t);
         }
     } catch (error) {
         if (error instanceof Sequelize.UniqueConstraintError || error instanceof CustomError) {
@@ -202,14 +202,14 @@ const replaceLabels = async (orgID, viewID, labelNames, createdBy, t) => {
     }
 }
 
-const deleteLabels = async (orgID, viewID, labels, t) => {
+const deleteLabels = async (orgId, viewId, labels, t) => {
 
-    const IDList = await getLabelID(orgID, labels, t);
+    const IDList = await getLabelId(orgId, labels, t);
     try {
         return await ViewLabels.destroy({
             where: {
                 LABEL_UUID: { [Op.in]: IDList },
-                VIEW_UUID: viewID,
+                VIEW_UUID: viewId,
             },
             transaction: t
         });
@@ -222,9 +222,9 @@ const deleteLabels = async (orgID, viewID, labels, t) => {
 }
 
 // Internal helper used by addLabels, replaceLabels, deleteLabels
-async function getLabelID(orgID, labels, t) {
+async function getLabelId(orgId, labels, t) {
     const labelDao = require('./labelDao');
-    return labelDao.getId(orgID, labels, t);
+    return labelDao.getId(orgId, labels, t);
 }
 
 module.exports = {

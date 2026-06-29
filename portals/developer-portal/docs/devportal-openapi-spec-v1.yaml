@@ -303,13 +303,13 @@ paths:
         / `devportal.yaml` / `mcp.yaml`), or an `apiMetadata` JSON string. An API definition file is required unless
         supplied by the artifact ZIP. The YAML `spec` block accepts: `displayName`, `version`, `description`, `type`,
         `status`, `agentVisibility`, `tags`, `labels`,
-        `referenceID`, `endpoints` (sandboxUrl, productionUrl), `businessInformation` (owners), and `subscriptionPlans`.
+        `referenceId`, `endpoints` (sandboxUrl, productionUrl), `businessInformation` (owners), and `subscriptionPlans`.
         The service also stores labels, subscription plan mappings, image metadata, and schema definitions for MCP or
         GraphQL APIs when provided.
 
         `subscriptionPlans` links existing org-level plans to this API by name — it does not create plans. In YAML it is
         a string array (`["Gold", "Silver"]`). In the JSON `apiMetadata` field it is an object array where only
-        `planName` is used (`[{"planName":"Gold"}]`); extra fields such as `planID`, `displayName`, or `requestCount`
+        `planName` is used (`[{"planName":"Gold"}]`); extra fields such as `planId`, `displayName`, or `requestCount`
         are ignored.
       operationId: createApiMetadata
       requestBody:
@@ -705,7 +705,7 @@ paths:
         $ref: "#/components/requestBodies/LabelsBody"
       responses:
         "201":
-          description: List of label DTOs.
+          description: The accepted label array, echoed back as-is.
           headers:
             Location:
               description: URL of the label collection for this organization.
@@ -715,14 +715,9 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  list:
-                    type: array
-                    items:
-                      $ref: "#/components/schemas/LabelResponse"
-                  pagination:
-                    $ref: "#/components/schemas/Pagination"
+                type: array
+                items:
+                  $ref: "#/components/schemas/LabelResponse"
         "400":
           $ref: "#/components/responses/BadRequest"
         "409":
@@ -745,7 +740,7 @@ paths:
         $ref: "#/components/requestBodies/LabelsBody"
       responses:
         "201":
-          $ref: "#/components/responses/LabelsResponse"
+          $ref: "#/components/responses/LabelArrayResponse"
         "400":
           $ref: "#/components/responses/BadRequest"
         "409":
@@ -841,7 +836,6 @@ paths:
                 id: app-12345
                 name: Weather App
                 description: Application used to call Weather APIs.
-                type: WEB
                 appMap: []
         "400":
           $ref: "#/components/responses/BadRequest"
@@ -935,15 +929,17 @@ paths:
               example:
                 subscriptionId: sub-12345
                 apiId: api-7f4c2a6b
-                subscriptionToken: a3f1e8b2...
+                subscriptionToken: a3f1e8b2c4d6e8f0a1b3c5d7e9f10b2c4d6e8f0a1b3c5d7e9f10b2c4d6e8f0a1
                 subscriptionPlanName: Gold
                 status: ACTIVE
                 createdBy: alice@example.com
                 createdAt: "2026-05-07T08:30:00Z"
         "400":
-          $ref: "#/components/responses/BadRequest"
+          $ref: "#/components/responses/SimpleBadRequest"
         "404":
-          $ref: "#/components/responses/NotFound"
+          $ref: "#/components/responses/SimpleNotFound"
+        "409":
+          $ref: "#/components/responses/SimpleConflict"
         "500":
           $ref: "#/components/responses/InternalServerError"
       security:
@@ -965,10 +961,16 @@ paths:
       responses:
         "200":
           $ref: "#/components/responses/SubscriptionListResponse"
-        "400":
-          $ref: "#/components/responses/BadRequest"
         "404":
-          $ref: "#/components/responses/NotFound"
+          description: Returned when `apiId` is provided but does not match an existing API.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SimpleErrorResponse"
+              example:
+                code: "404"
+                message: Not Found
+                description: API not found
         "500":
           $ref: "#/components/responses/InternalServerError"
       security:
@@ -989,7 +991,7 @@ paths:
         "200":
           $ref: "#/components/responses/SubscriptionResponse"
         "404":
-          $ref: "#/components/responses/NotFound"
+          $ref: "#/components/responses/SimpleNotFound"
         "500":
           $ref: "#/components/responses/InternalServerError"
       security:
@@ -1008,9 +1010,9 @@ paths:
         "200":
           $ref: "#/components/responses/SubscriptionResponse"
         "400":
-          $ref: "#/components/responses/BadRequest"
+          $ref: "#/components/responses/SimpleBadRequest"
         "404":
-          $ref: "#/components/responses/NotFound"
+          $ref: "#/components/responses/SimpleNotFound"
         "500":
           $ref: "#/components/responses/InternalServerError"
       security:
@@ -1027,7 +1029,7 @@ paths:
         "200":
           $ref: "#/components/responses/MessageResponse"
         "404":
-          $ref: "#/components/responses/NotFound"
+          $ref: "#/components/responses/SimpleNotFound"
         "500":
           $ref: "#/components/responses/InternalServerError"
       security:
@@ -1070,11 +1072,11 @@ paths:
                 expiresAt: "2026-12-31T23:59:59Z"
                 status: ACTIVE
         "400":
-          $ref: "#/components/responses/BadRequest"
+          $ref: "#/components/responses/SimpleBadRequest"
         "403":
-          $ref: "#/components/responses/Forbidden"
+          $ref: "#/components/responses/SimpleForbidden"
         "404":
-          $ref: "#/components/responses/NotFound"
+          $ref: "#/components/responses/SimpleNotFound"
         "500":
           $ref: "#/components/responses/InternalServerError"
       security:
@@ -1100,8 +1102,6 @@ paths:
           $ref: "#/components/responses/ApiKeyListResponse"
         "400":
           $ref: "#/components/responses/BadRequest"
-        "404":
-          $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/InternalServerError"
       security:
@@ -1124,14 +1124,19 @@ paths:
       responses:
         "200":
           $ref: "#/components/responses/ApiKeyGenerateResponse"
-        "400":
-          $ref: "#/components/responses/BadRequest"
         "403":
-          $ref: "#/components/responses/Forbidden"
+          $ref: "#/components/responses/SimpleForbidden"
         "404":
-          $ref: "#/components/responses/NotFound"
+          $ref: "#/components/responses/SimpleNotFound"
         "409":
-          $ref: "#/components/responses/Conflict"
+          description: The key has already been revoked and cannot be regenerated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SimpleErrorResponse"
+              example:
+                code: "409"
+                message: Cannot regenerate a revoked key
         "500":
           $ref: "#/components/responses/InternalServerError"
       security:
@@ -1153,14 +1158,19 @@ paths:
       responses:
         "204":
           description: API key revoked successfully.
-        "400":
-          $ref: "#/components/responses/BadRequest"
         "403":
-          $ref: "#/components/responses/Forbidden"
+          $ref: "#/components/responses/SimpleForbidden"
         "404":
-          $ref: "#/components/responses/NotFound"
+          $ref: "#/components/responses/SimpleNotFound"
         "409":
-          $ref: "#/components/responses/Conflict"
+          description: The key has already been revoked.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SimpleErrorResponse"
+              example:
+                code: "409"
+                message: Key already revoked or not found
         "500":
           $ref: "#/components/responses/InternalServerError"
       security:
@@ -1190,13 +1200,20 @@ paths:
               schema:
                 $ref: "#/components/schemas/ApiKeyApplicationResponse"
         "400":
-          $ref: "#/components/responses/BadRequest"
+          $ref: "#/components/responses/SimpleBadRequest"
         "403":
-          $ref: "#/components/responses/Forbidden"
+          $ref: "#/components/responses/SimpleForbidden"
         "404":
-          $ref: "#/components/responses/NotFound"
+          $ref: "#/components/responses/SimpleNotFound"
         "409":
-          $ref: "#/components/responses/Conflict"
+          description: The key has already been revoked and cannot be associated with an application.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SimpleErrorResponse"
+              example:
+                code: "409"
+                message: Cannot associate a revoked key
         "500":
           $ref: "#/components/responses/InternalServerError"
       security:
@@ -1215,9 +1232,9 @@ paths:
         "204":
           description: Association removed (or none existed).
         "403":
-          $ref: "#/components/responses/Forbidden"
+          $ref: "#/components/responses/SimpleForbidden"
         "404":
-          $ref: "#/components/responses/NotFound"
+          $ref: "#/components/responses/SimpleNotFound"
         "500":
           $ref: "#/components/responses/InternalServerError"
       security:
@@ -1243,7 +1260,7 @@ paths:
         "200":
           $ref: "#/components/responses/ApiKeyListResponse"
         "404":
-          $ref: "#/components/responses/NotFound"
+          $ref: "#/components/responses/SimpleNotFound"
         "500":
           $ref: "#/components/responses/InternalServerError"
       security:
@@ -1894,12 +1911,39 @@ paths:
       tags:
         - Authentication
       operationId: login
+      summary: Log in
+      description: >-
+        Authenticates against the Platform API and establishes a session cookie. The Platform API base URL must be
+        configured; otherwise the service is unavailable.
       security: []
       requestBody:
         $ref: "#/components/requestBodies/LoginBody"
       responses:
-        default:
-          $ref: "#/components/responses/DefaultResponse"
+        "200":
+          description: Login successful. A session cookie is set.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+              example:
+                message: Login successful
+        "401":
+          description: Invalid credentials.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+              example:
+                message: Invalid credentials
+        "503":
+          description: >-
+            The Platform API is not configured, unreachable, or returned a token missing required claims.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+              example:
+                message: Authentication service unavailable
   /o/{orgId}/devportal/v1/webhook-events:
     parameters:
       - $ref: "#/components/parameters/orgId"
@@ -2283,7 +2327,9 @@ components:
       description: >-
         Organization creation payload. Send JSON or an organization YAML file in the `organization` multipart field.
         When YAML is used, the service reads `metadata.name` as `orgHandle` and `spec.displayName` as `orgName`; all
-        other fields are read from `spec`.
+        other fields (including `cpRefId`) are read from `spec`. The YAML `spec` block additionally accepts
+        `labels` (array of `{name, displayName}`) and `views` (array of `{handle, name, labels}`) to bootstrap
+        labels and views at creation time — these are not available via the `application/json` content type.
       content:
         application/json:
           schema:
@@ -2294,7 +2340,7 @@ components:
             businessOwnerContact: +1-202-555-0147
             businessOwnerEmail: jane.doe@acme.example
             orgHandle: acme
-            organizationIdentifier: ACME
+            idpRefId: ACME
         multipart/form-data:
           schema:
             type: object
@@ -2315,7 +2361,9 @@ components:
       description: >-
         Organization update payload. Send JSON or an organization YAML file in the `organization` multipart field. When
         YAML is used, the service reads `metadata.name` as `orgHandle` and `spec.displayName` as `orgName`; all other
-        fields are read from `spec`.
+        fields (including `cpRefId`) are read from `spec`. The YAML `spec` block additionally accepts `labels`
+        (upserted by name) and `views` (upserted by handle, with `labels` replacing the view's label set) — these
+        are not available via the `application/json` content type.
       content:
         application/json:
           schema:
@@ -2691,7 +2739,7 @@ components:
                 description: >-
                   JSON string accepted by the service when the `api` YAML file is not supplied. Accepted top-level
                   fields mirror the YAML spec: `apiInfo` (apiName, apiVersion, apiDescription, apiType,
-                  agentVisibility, apiStatus, referenceID, apiHandle, tags, labels,
+                  agentVisibility, apiStatus, referenceId, apiHandle, tags, labels,
                   owners), `endPoints` (productionURL, sandboxURL), and `subscriptionPlans` (array of `{
                   planName }` objects — only `planName` is read; the plan must already exist in the organization).
                 example: >-
@@ -2743,7 +2791,6 @@ components:
           example:
             name: Weather App
             description: Application used to call Weather APIs.
-            type: WEB
         multipart/form-data:
           schema:
             type: object
@@ -2757,16 +2804,12 @@ components:
                 description: Application name when sending form fields instead of YAML.
               description:
                 type: string
-              type:
-                type: string
-                default: WEB
           examples:
             formFields:
               summary: Multipart form fields
               value:
                 name: Weather App
                 description: Application used to call Weather APIs.
-                type: WEB
             yamlFile:
               summary: Application YAML upload
               value:
@@ -2794,7 +2837,7 @@ components:
               list:
                 type: array
                 items:
-                  $ref: "#/components/schemas/OrganizationListItemResponse"
+                  $ref: "#/components/schemas/OrganizationResponse"
               pagination:
                 $ref: "#/components/schemas/Pagination"
     OrganizationContentUploadResponse:
@@ -2887,14 +2930,9 @@ components:
       content:
         application/json:
           schema:
-            type: object
-            properties:
-              list:
-                type: array
-                items:
-                  $ref: "#/components/schemas/OrganizationContentListItemResponse"
-              pagination:
-                $ref: "#/components/schemas/Pagination"
+            type: array
+            items:
+              $ref: "#/components/schemas/OrganizationContentListItemResponse"
     BadRequest:
       description: >-
         Bad request. Input validation failures are returned as an array; other bad request errors are returned as a
@@ -2946,6 +2984,45 @@ components:
             status: error
             code: CONFLICT
             message: Conflict
+    SimpleBadRequest:
+      description: Bad request.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/SimpleErrorResponse"
+          example:
+            code: "400"
+            message: Bad Request
+            description: apiId is required
+    SimpleNotFound:
+      description: Resource not found.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/SimpleErrorResponse"
+          example:
+            code: "404"
+            message: Not Found
+            description: Subscription not found
+    SimpleConflict:
+      description: The request conflicts with an existing resource.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/SimpleErrorResponse"
+          example:
+            code: "409"
+            message: Conflict
+            description: A subscription for this API already exists
+    SimpleForbidden:
+      description: Request is forbidden for the current runtime mode (e.g. read-only mode).
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/SimpleErrorResponse"
+          example:
+            code: "403"
+            message: Read-only mode
     UnsupportedMediaType:
       description: Unsupported request media type.
       content:
@@ -3001,10 +3078,9 @@ components:
           schema:
             $ref: "#/components/schemas/ApiMetadataCreateResponse"
           example:
-            apiID: api-7f4c2a6b
-            apiReferenceID: cp-api-12345
+            apiId: api-7f4c2a6b
+            apiReferenceId: cp-api-12345
             apiHandle: weather-api-v1
-            dataSource: DEVPORTAL
             apiInfo:
               apiName: Weather API
               apiTitle: Weather Forecast API
@@ -3029,10 +3105,9 @@ components:
           schema:
             $ref: "#/components/schemas/ApiMetadataResponse"
           example:
-            apiID: api-7f4c2a6b
-            apiReferenceID: cp-api-12345
+            apiId: api-7f4c2a6b
+            apiReferenceId: cp-api-12345
             apiHandle: weather-api-v1
-            dataSource: DEVPORTAL
             apiInfo:
               apiName: Weather API
               apiTitle: Weather Forecast API
@@ -3064,10 +3139,9 @@ components:
                 $ref: "#/components/schemas/Pagination"
           example:
             list:
-              - apiID: api-7f4c2a6b
-                apiReferenceID: cp-api-12345
+              - apiId: api-7f4c2a6b
+                apiReferenceId: cp-api-12345
                 apiHandle: weather-api-v1
-                dataSource: DEVPORTAL
                 apiInfo:
                   apiName: Weather API
                   apiVersion: v1
@@ -3125,7 +3199,7 @@ components:
                   $ref: "#/components/schemas/SubscriptionPlanResponse"
               - $ref: "#/components/schemas/MessageResponse"
     LabelsResponse:
-      description: List of label DTOs.
+      description: Paginated list of label DTOs.
       content:
         application/json:
           schema:
@@ -3137,6 +3211,14 @@ components:
                   $ref: "#/components/schemas/LabelResponse"
               pagination:
                 $ref: "#/components/schemas/Pagination"
+    LabelArrayResponse:
+      description: The accepted label array, echoed back as-is.
+      content:
+        application/json:
+          schema:
+            type: array
+            items:
+              $ref: "#/components/schemas/LabelResponse"
     ApplicationResponse:
       description: Application DTO.
       content:
@@ -3147,7 +3229,6 @@ components:
             id: app-12345
             name: Weather App
             description: Application used to call Weather APIs.
-            type: WEB
             appMap: []
     ApplicationListResponse:
       description: List of application DTOs.
@@ -3167,10 +3248,9 @@ components:
               - id: app-12345
                 name: Weather App
                 description: Application used to call Weather APIs.
-                type: WEB
                 appMap:
-                  - appRefID: asgardeo-client-abc123
-                    kmID: km-uuid-12345
+                  - appRefId: asgardeo-client-abc123
+                    kmId: km-uuid-12345
                     keyType: PRODUCTION
             pagination:
               total: 1
@@ -3185,7 +3265,7 @@ components:
           example:
             subscriptionId: sub-12345
             apiId: api-7f4c2a6b
-            subscriptionToken: a3f1e8b2...
+            subscriptionToken: a3f1e8b2c4d6e8f0a1b3c5d7e9f10b2c4d6e8f0a1b3c5d7e9f10b2c4d6e8f0a1
             subscriptionPlanName: Gold
             status: ACTIVE
             createdBy: alice@example.com
@@ -3298,10 +3378,10 @@ components:
           schema:
             $ref: "#/components/schemas/OAuthTokenResponse"
           example:
-            access_token: eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.example
-            token_type: Bearer
-            expires_in: 3600
-            scope: weather.read
+            accessToken: eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.example
+            validityTime: 3600
+            tokenScopes:
+              - weather.read
     MessageOrGenericResponse:
       description: Message or generic response payload.
       content:
@@ -3503,6 +3583,26 @@ components:
                 type: string
             additionalProperties: false
       additionalProperties: false
+    SimpleErrorResponse:
+      type: object
+      description: >-
+        Ad hoc error shape used by the Subscriptions and API Keys handlers, which build error bodies inline instead of
+        going through the shared error formatter. `code` is the HTTP status code as a string, not a catalog code.
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+          example: "404"
+        message:
+          type: string
+          example: Not Found
+        description:
+          type: string
+          nullable: true
+          example: Subscription not found
+      additionalProperties: false
     ValidationErrorList:
       type: array
       items:
@@ -3560,32 +3660,20 @@ components:
           nullable: true
         orgHandle:
           type: string
-        organizationIdentifier:
+        idpRefId:
           type: string
-        orgConfiguration:
-          $ref: "#/components/schemas/GenericObject"
-      additionalProperties: false
-    OrganizationListItemResponse:
-      type: object
-      properties:
-        orgID:
-          type: string
-        orgName:
-          type: string
-        businessOwner:
+          description: >-
+            The organization claim value asserted by the configured Identity Provider at SSO login. On every login,
+            the portal matches the authenticated user's org claim against this value to resolve which organization
+            they belong to — it must exactly match the IDP's claim, or login fails for that org's users. Distinct
+            from `cpRefId`, which is unrelated to authentication.
+        cpRefId:
           type: string
           nullable: true
-        businessOwnerContact:
-          type: string
-          nullable: true
-        businessOwnerEmail:
-          type: string
-          format: email
-          nullable: true
-        orgHandle:
-          type: string
-        organizationIdentifier:
-          type: string
+          description: >-
+            Control Plane reference ID. Included in outbound webhook event payloads so subscribers can correlate
+            this organization with its Control Plane (Platform API) counterpart. Not used for authentication or
+            org resolution.
         orgConfiguration:
           $ref: "#/components/schemas/GenericObject"
       additionalProperties: false
@@ -3616,13 +3704,16 @@ components:
     ApiMetadataCreateResponse:
       type: object
       properties:
-        apiID:
+        apiId:
           type: string
-        apiReferenceID:
+        apiReferenceId:
           type: string
+          nullable: true
+          description: >-
+            Platform API (Control Plane) reference ID for this API. Used for MCP registry visibility filtering and
+            included in outbound webhook event payloads. Null/absent for APIs that exist only in the Developer
+            Portal and are not registered with the Platform API — e.g. MCP servers published via the registry.
         apiHandle:
-          type: string
-        dataSource:
           type: string
         apiInfo:
           $ref: "#/components/schemas/ApiInfoResponse"
@@ -3636,15 +3727,27 @@ components:
     ApiMetadataResponse:
       type: object
       properties:
-        apiID:
+        apiId:
           type: string
-        apiReferenceID:
+        apiReferenceId:
           type: string
+          nullable: true
+          description: >-
+            Platform API (Control Plane) reference ID for this API. Used for MCP registry visibility filtering and
+            included in outbound webhook event payloads. Null/absent for APIs that exist only in the Developer
+            Portal and are not registered with the Platform API — e.g. MCP servers published via the registry.
         apiHandle:
           type: string
         dataSource:
           type: string
-        planID:
+          nullable: true
+          description: >-
+            Indicates which content matched the search term: `METADATA` if the match was in the API's own metadata,
+            or a content type (e.g. a value from the API Content `type` field) if the match was inside an uploaded
+            content file. Only computed by getAllApiMetadataForOrganization when both the `query` search parameter
+            is supplied and the database is PostgreSQL — absent on SQLite (the dev default) and absent from every
+            other operation (get/create/update single API).
+        planId:
           type: string
         apiInfo:
           $ref: "#/components/schemas/ApiInfoResponse"
@@ -3681,6 +3784,25 @@ components:
           type: string
         apiType:
           type: string
+          enum:
+            - REST
+            - SOAP
+            - MCP
+            - WS
+            - WEBSUB
+            - GRAPHQL
+        referenceId:
+          type: string
+          nullable: true
+          description: >-
+            External reference ID. Present when the API was created from a `devportal.yaml` artifact whose `spec`
+            block sets `referenceId` — the create response echoes the parsed YAML back, nested under `apiInfo`.
+        apiHandle:
+          type: string
+          nullable: true
+          description: >-
+            Present (nested under `apiInfo`) when the API was created from a `devportal.yaml` artifact — the parser
+            sets it from `metadata.name`. Distinct from the top-level `apiHandle` on ApiMetadataResponse.
         agentVisibility:
           type: string
           enum:
@@ -3734,7 +3856,7 @@ components:
     SubscriptionPlanResponse:
       type: object
       properties:
-        planID:
+        planId:
           type: string
         planName:
           type: string
@@ -3743,14 +3865,16 @@ components:
         description:
           type: string
         requestCount:
-          oneOf:
-            - type: integer
-            - type: string
+          type: string
+          nullable: true
+          description: >-
+            Always stored and returned as a string ("Unlimited" or a numeric string), regardless of the type
+            (request-count or event-count) used to create the plan. Null if not set.
         refId:
           type: string
           nullable: true
           description: Platform API subscription plan UUID associated with this plan.
-        orgID:
+        orgId:
           type: string
       additionalProperties: false
     LabelResponse:
@@ -3775,9 +3899,6 @@ components:
         description:
           type: string
           example: Application used to call Weather APIs.
-        type:
-          type: string
-          example: WEB
         appMap:
           type: array
           items:
@@ -3787,11 +3908,11 @@ components:
       type: object
       description: OAuth client ID mapping entry attached to an application.
       properties:
-        appRefID:
+        appRefId:
           type: string
           description: OAuth client ID, created directly in the key manager and linked to this application.
           example: asgardeo-client-abc123
-        kmID:
+        kmId:
           type: string
           description: UUID of the key manager this client ID is linked to.
           example: km-uuid-12345
@@ -3829,7 +3950,7 @@ components:
       required:
         - orgName
         - orgHandle
-        - organizationIdentifier
+        - idpRefId
       properties:
         orgName:
           type: string
@@ -3843,15 +3964,23 @@ components:
         orgHandle:
           type: string
           description: Public organization handle used in portal URLs.
-        organizationIdentifier:
+        idpRefId:
           type: string
+          description: >-
+            The organization claim value asserted by the configured Identity Provider at SSO login. Must exactly
+            match the IDP's org claim for that org's users, or login will fail. Distinct from `cpRefId`.
+        cpRefId:
+          type: string
+          nullable: true
+          description: >-
+            Control Plane reference ID, included in outbound webhook event payloads. Not used for authentication.
       additionalProperties: false
     OrganizationUpdateRequest:
       type: object
       required:
         - orgName
         - orgHandle
-        - organizationIdentifier
+        - idpRefId
       properties:
         orgName:
           type: string
@@ -3864,8 +3993,16 @@ components:
           format: email
         orgHandle:
           type: string
-        organizationIdentifier:
+        idpRefId:
           type: string
+          description: >-
+            The organization claim value asserted by the configured Identity Provider at SSO login. Must exactly
+            match the IDP's org claim for that org's users, or login will fail. Distinct from `cpRefId`.
+        cpRefId:
+          type: string
+          nullable: true
+          description: >-
+            Control Plane reference ID, included in outbound webhook event payloads. Not used for authentication.
         orgConfiguration:
           type: object
           properties:
@@ -3883,7 +4020,7 @@ components:
         - displayName
         - type
       properties:
-        planID:
+        planId:
           type: string
           description: Optional external/APIM-assigned plan UUID.
         refId:
@@ -3936,10 +4073,6 @@ components:
         description:
           type: string
           example: Application used to call Weather APIs.
-        type:
-          type: string
-          default: WEB
-          example: WEB
     SubscriptionCreateRequest:
       type: object
       required:
@@ -3979,8 +4112,11 @@ components:
           example: api-7f4c2a6b
         subscriptionToken:
           type: string
-          description: Plaintext subscription token. Present on create and when the token has not been encrypted at rest.
-          example: a3f1...
+          nullable: true
+          description: >-
+            Plaintext subscription token, decrypted on every read (not just on create). Null if decryption fails
+            (e.g. the encryption key changed since the token was stored).
+          example: a3f1e8b2c4d6e8f0a1b3c5d7e9f10b2c4d6e8f0a1b3c5d7e9f10b2c4d6e8f0a1
         subscriptionPlanName:
           type: string
           example: Gold
@@ -4075,17 +4211,34 @@ components:
           nullable: true
       additionalProperties: true
     ApiKeyResponse:
-      allOf:
-        - $ref: "#/components/schemas/ApiKeyMetadataResponse"
-        - type: object
-          description: >-
-            API key response returned by generate/regenerate. The plaintext secret is returned exactly once and never
-            persisted — store it securely.
-          properties:
-            key:
-              type: string
-              description: One-time plaintext API key secret.
-              example: ak_dGhpcyBpcyBub3QgYSByZWFsIGtleQ
+      type: object
+      description: >-
+        API key response returned by generate/regenerate only. Unlike ApiKeyMetadataResponse, this does not include
+        apiId, appId, appName, createdAt, or revokedAt — generate/regenerate return only these five fields.
+      properties:
+        keyId:
+          type: string
+          description: Developer Portal key identifier.
+          example: key-12345
+        name:
+          type: string
+          example: weather_prod_key
+        key:
+          type: string
+          description: One-time plaintext API key secret.
+          example: ak_dGhpcyBpcyBub3QgYSByZWFsIGtleQ
+        expiresAt:
+          type: string
+          format: date-time
+          nullable: true
+          example: "2026-12-31T23:59:59Z"
+        status:
+          type: string
+          enum:
+            - ACTIVE
+            - REVOKED
+          example: ACTIVE
+      additionalProperties: false
     ApiKeyApplicationResponse:
       type: object
       properties:
@@ -4346,6 +4499,7 @@ components:
           enum:
             - PRODUCTION
             - SANDBOX
+          default: PRODUCTION
           example: PRODUCTION
         consumerKey:
           type: string
@@ -4403,6 +4557,8 @@ components:
       description: >-
         OAuth access token generation payload. `consumerSecret` is required — the portal uses it to call the
         Authorization Server token endpoint directly.
+      required:
+        - consumerSecret
       properties:
         consumerSecret:
           type: string
@@ -4443,19 +4599,24 @@ components:
       additionalProperties: true
     OAuthTokenResponse:
       type: object
+      description: >-
+        Access token response proxied from the key manager's token endpoint. Field names are the portal's own
+        camelCase, not the underlying OAuth2 token response's snake_case.
       properties:
-        access_token:
+        accessToken:
           type: string
           example: eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.example
-        token_type:
-          type: string
-          example: Bearer
-        expires_in:
+        validityTime:
           type: integer
+          nullable: true
+          description: Token lifetime in seconds, as reported by the key manager (`expires_in`).
           example: 3600
-        scope:
-          type: string
-          example: weather.read
+        tokenScopes:
+          type: array
+          items:
+            type: string
+          example:
+            - weather.read
       additionalProperties: true
     APIFlowCreateResponse:
       type: object
