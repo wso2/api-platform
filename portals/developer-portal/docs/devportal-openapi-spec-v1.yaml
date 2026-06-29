@@ -1444,7 +1444,6 @@ paths:
       security:
         - OAuth2Security:
             - dp:app_key_revoke
-            - dp:app_key_manage
   /o/{orgId}/devportal/v1/views/{viewName}/api-flows:
     parameters:
       - $ref: "#/components/parameters/orgId"
@@ -3173,7 +3172,6 @@ components:
                   - appRefID: asgardeo-client-abc123
                     kmID: km-uuid-12345
                     keyType: PRODUCTION
-                    additionalProperties: {}
             pagination:
               total: 1
               limit: 20
@@ -4352,8 +4350,8 @@ components:
         consumerKey:
           type: string
           description: >-
-            The OAuth client_id, created directly in the key manager. The portal never sees or stores a client
-            secret — it is supplied per-request when generating a token.
+            The OAuth client_id, created directly in the key manager. The portal does not store or persist the client
+            secret — it is supplied per-request when generating a token and is only seen transiently during that request.
           example: consumer-key-123
       additionalProperties: false
     ViewCreateRequest:

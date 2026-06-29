@@ -89,7 +89,7 @@ const ApplicationKeyMapping = sequelize.define('DP_APP_KEY_MAPPING', {
     },
     KM_UUID: {
         type: DataTypes.STRING(40),
-        allowNull: true
+        allowNull: false
     },
     AS_CLIENT_ID: {
         type: DataTypes.STRING,

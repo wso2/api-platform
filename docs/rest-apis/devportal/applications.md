@@ -50,8 +50,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
         {
           "appRefID": "asgardeo-client-abc123",
           "kmID": "km-uuid-12345",
-          "keyType": "PRODUCTION",
-          "additionalProperties": {}
+          "keyType": "PRODUCTION"
         }
       ]
     }

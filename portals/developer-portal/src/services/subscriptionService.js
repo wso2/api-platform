@@ -204,7 +204,7 @@ const updateSubscription = async (req, res) => {
                 throw err;
             }
             await publishWebhookEvent('subscription.updated',
-                buildWebhookPayload({ ...existing, STATUS: status }, existing.DP_API_METADATA, existing.DP_SUBSCRIPTION_PLAN),
+                buildWebhookPayload({ ...existing.get({ plain: true }), STATUS: status }, existing.DP_API_METADATA, existing.DP_SUBSCRIPTION_PLAN),
                 { transaction: t, orgId: orgID, aggregateType: 'subscription', aggregateId: subscriptionId });
         });
         sub = await subDao.get(orgID, subscriptionId, req.user.sub);
