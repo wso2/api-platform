@@ -62,7 +62,7 @@ const loadAPIApiKeys = async (req, res, next) => {
         }
 
         let apiDefinitionForNav = null;
-        if (metaData?.apiInfo?.apiType !== constants.API_TYPE.GRAPHQL && metaData?.apiInfo?.apiType !== constants.API_TYPE.MCP) {
+        if (metaData?.apiInfo?.type !== constants.API_TYPE.GRAPHQL && metaData?.apiInfo?.type !== constants.API_TYPE.MCP) {
             try {
                 const apiFile = await apiFileDao.getDoc(constants.DOC_TYPES.API_DEFINITION, orgId, apiId);
                 apiDefinitionForNav = apiFile?.FILE_CONTENT?.toString(constants.CHARSET_UTF8) || null;

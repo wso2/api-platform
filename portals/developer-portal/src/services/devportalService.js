@@ -35,15 +35,15 @@ const getOrganization = async (req, res) => {
 const getOrganizationDetails = async (orgId) => {
     const organization = await orgDao.get(orgId);
     return {
-        orgId: organization.UUID,
-        orgName: organization.NAME,
+        id: organization.UUID,
+        name: organization.NAME,
         businessOwner: organization.BUSINESS_OWNER,
         businessOwnerContact: organization.BUSINESS_OWNER_CONTACT,
         businessOwnerEmail: organization.BUSINESS_OWNER_EMAIL,
-        orgHandle: organization.HANDLE,
+        handle: organization.HANDLE,
         idpRefId: organization.IDP_REF_ID,
         cpRefId: organization.CP_REF_ID,
-        orgConfiguration: organization.CONFIGURATION,
+        configuration: organization.CONFIGURATION,
     };
 }
 
@@ -63,7 +63,7 @@ const getOrgContent = async (req, res) => {
             const results = [];
             for (const asset of assets) {
                 const resp = {
-                    orgId: asset.ORG_UUID,
+                    id: asset.ORG_UUID,
                     fileName: asset.FILE_NAME,
                     fileContent: asset.FILE_CONTENT ? asset.FILE_CONTENT.toString(constants.CHARSET_UTF8) : null
                 };

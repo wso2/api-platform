@@ -18,7 +18,7 @@ These pre-defined workflows orchestrate multiple APIs to implement common use ca
 ## APIs
 
 {{#restAPIs}}
-- [{{apiInfo.apiName}} {{apiInfo.apiVersion}}]({{../baseUrl}}/api/{{apiHandle}}.md){{#if apiInfo.apiDescription}} — {{apiInfo.apiDescription}}{{/if}}
+- [{{apiInfo.name}} {{apiInfo.version}}]({{../baseUrl}}/api/{{handle}}.md){{#if apiInfo.description}} — {{apiInfo.description}}{{/if}}
 {{/restAPIs}}
 {{/if}}
 {{#if mcpAPIs}}
@@ -26,7 +26,7 @@ These pre-defined workflows orchestrate multiple APIs to implement common use ca
 ## MCPs
 
 {{#mcpAPIs}}
-- [{{apiInfo.apiName}} {{apiInfo.apiVersion}}]({{../baseUrl}}/mcp/{{apiHandle}}.md){{#if apiInfo.apiDescription}} — {{apiInfo.apiDescription}}{{/if}}
+- [{{apiInfo.name}} {{apiInfo.version}}]({{../baseUrl}}/mcp/{{handle}}.md){{#if apiInfo.description}} — {{apiInfo.description}}{{/if}}
 {{/mcpAPIs}}
 {{/if}}
 {{#if graphqlAPIs}}
@@ -34,7 +34,7 @@ These pre-defined workflows orchestrate multiple APIs to implement common use ca
 ## GraphQL APIs
 
 {{#graphqlAPIs}}
-- [{{apiInfo.apiName}} {{apiInfo.apiVersion}}]({{../baseUrl}}/api/{{apiHandle}}.md){{#if apiInfo.apiDescription}} — {{apiInfo.apiDescription}}{{/if}}
+- [{{apiInfo.name}} {{apiInfo.version}}]({{../baseUrl}}/api/{{handle}}.md){{#if apiInfo.description}} — {{apiInfo.description}}{{/if}}
 {{/graphqlAPIs}}
 {{/if}}
 {{#if wsAPIs}}
@@ -42,7 +42,7 @@ These pre-defined workflows orchestrate multiple APIs to implement common use ca
 ## Async / WebSocket APIs
 
 {{#wsAPIs}}
-- [{{apiInfo.apiName}} {{apiInfo.apiVersion}}]({{../baseUrl}}/api/{{apiHandle}}.md){{#if apiInfo.apiDescription}} — {{apiInfo.apiDescription}}{{/if}}
+- [{{apiInfo.name}} {{apiInfo.version}}]({{../baseUrl}}/api/{{handle}}.md){{#if apiInfo.description}} — {{apiInfo.description}}{{/if}}
 {{/wsAPIs}}
 {{/if}}
 {{#if websubAPIs}}
@@ -50,6 +50,6 @@ These pre-defined workflows orchestrate multiple APIs to implement common use ca
 ## WebSub APIs
 
 {{#websubAPIs}}
-- [{{apiInfo.apiName}} {{apiInfo.apiVersion}}]({{../baseUrl}}/api/{{apiHandle}}.md){{#if apiInfo.apiDescription}} — {{apiInfo.apiDescription}}{{/if}}
+- [{{apiInfo.name}} {{apiInfo.version}}]({{../baseUrl}}/api/{{handle}}.md){{#if apiInfo.description}} — {{apiInfo.description}}{{/if}}
 {{/websubAPIs}}
 {{/if}}

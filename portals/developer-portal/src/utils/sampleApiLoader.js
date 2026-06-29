@@ -42,7 +42,7 @@ function loadSubscriptionPlans() {
     try {
         const plans = yaml.load(fs.readFileSync(plansPath, 'utf-8'));
         if (!Array.isArray(plans)) return {};
-        return Object.fromEntries(plans.map(p => [p.planName, p]));
+        return Object.fromEntries(plans.map(p => [p.handle, p]));
     } catch (_) {
         return {};
     }
@@ -65,8 +65,8 @@ function parseApiYaml(apiHandle, samplesDir) {
     const plans = (spec.subscriptionPlans || []).map(p => {
         const plan = plansMap[p];
         return {
-            planName: p,
-            displayName: plan?.displayName ?? p,
+            handle: p,
+            name: plan?.name ?? p,
             description: plan?.description ?? '',
             requestCount: plan?.requestCount ?? 1000,
         };
@@ -85,14 +85,14 @@ function parseApiYaml(apiHandle, samplesDir) {
     }
 
     return {
-        apiId: name,
-        apiHandle: name,
+        id: name,
+        handle: name,
         apiInfo: {
-            apiName: spec.displayName || name,
-            apiVersion: spec.version || '',
-            apiDescription: spec.description || '',
-            apiType: spec.type || 'REST',
-            apiStatus: spec.status || 'PUBLISHED',
+            name: spec.displayName || name,
+            version: spec.version || '',
+            description: spec.description || '',
+            type: spec.type || 'REST',
+            status: spec.status || 'PUBLISHED',
             tags: spec.tags || [],
             labels: spec.labels || [],
             owners: spec.businessInformation ? {

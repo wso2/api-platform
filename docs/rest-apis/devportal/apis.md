@@ -29,12 +29,12 @@ api: string
 apiDefinition: string
 artifact: string
 schemaDefinition: string
-apiMetadata: '{"apiInfo":{"apiName":"Weather
-  API","apiVersion":"v1","apiDescription":"Weather forecast
-  API","apiType":"REST","agentVisibility":"VISIBLE",
-  "apiStatus":"PUBLISHED","tags":["weather"],"labels":["default"]},"endPoints":{
+apiMetadata: '{"apiInfo":{"name":"Weather
+  API","version":"v1","description":"Weather forecast
+  API","type":"REST","agentVisibility":"VISIBLE",
+  "status":"PUBLISHED","tags":["weather"],"labels":["default"]},"endPoints":{
   "productionURL":"https://api.example.com/weather",
-  "sandboxURL":"https://sandbox.example.com/weather"},"subscriptionPlans":[{"planName":"Gold"}]}'
+  "sandboxURL":"https://sandbox.example.com/weather"},"subscriptionPlans":[{"handle":"Gold"}]}'
 
 ```
 
@@ -54,7 +54,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |» apiDefinition|body|string(binary)|false|API definition file.|
 |» artifact|body|string(binary)|false|Full API ZIP artifact containing metadata and definition files.|
 |» schemaDefinition|body|string(binary)|false|Schema definition file, used by MCP APIs.|
-|» apiMetadata|body|string|false|JSON string accepted by the service when the `api` YAML file is not supplied. Accepted top-level fields mirror the YAML spec: `apiInfo` (apiName, apiVersion, apiDescription, apiType, agentVisibility, apiStatus, referenceId, apiHandle, tags, labels, owners), `endPoints` (productionURL, sandboxURL), and `subscriptionPlans` (array of `{ planName }` objects — only `planName` is read; the plan must already exist in the organization).|
+|» apiMetadata|body|string|false|JSON string accepted by the service when the `api` YAML file is not supplied. Accepted top-level fields mirror the YAML spec: `apiInfo` (name, version, description, type, agentVisibility, status, referenceId, handle, tags, labels, owners), `endPoints` (productionURL, sandboxURL), and `subscriptionPlans` (array of `{ handle }` objects — only `handle` is read; the plan must already exist in the organization).|
 
 > Example responses
 
@@ -62,16 +62,16 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "apiId": "api-7f4c2a6b",
-  "apiReferenceId": "cp-api-12345",
-  "apiHandle": "weather-api-v1",
+  "id": "api-7f4c2a6b",
+  "refId": "cp-api-12345",
+  "handle": "weather-api-v1",
   "apiInfo": {
-    "apiName": "Weather API",
+    "name": "Weather API",
     "apiTitle": "Weather Forecast API",
-    "apiVersion": "v1",
-    "apiStatus": "PUBLISHED",
-    "apiDescription": "Weather forecast API.",
-    "apiType": "REST",
+    "version": "v1",
+    "status": "PUBLISHED",
+    "description": "Weather forecast API.",
+    "type": "REST",
     "agentVisibility": "VISIBLE",
     "tags": [
       "weather"
@@ -86,7 +86,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
   },
   "subscriptionPlans": [
     {
-      "planName": "Gold"
+      "handle": "Gold"
     }
   ]
 }
@@ -102,8 +102,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
     "message": "Input validation failed.",
     "errors": [
       {
-        "field": "orgName",
-        "message": "orgName is required."
+        "field": "name",
+        "message": "name is required."
       }
     ]
   }
@@ -225,15 +225,15 @@ This operation requires <strong>Basic Auth</strong> authentication.
 {
   "list": [
     {
-      "apiId": "api-7f4c2a6b",
-      "apiReferenceId": "cp-api-12345",
-      "apiHandle": "weather-api-v1",
+      "id": "api-7f4c2a6b",
+      "refId": "cp-api-12345",
+      "handle": "weather-api-v1",
       "apiInfo": {
-        "apiName": "Weather API",
-        "apiVersion": "v1",
-        "apiStatus": "PUBLISHED",
-        "apiDescription": "Weather forecast API.",
-        "apiType": "REST",
+        "name": "Weather API",
+        "version": "v1",
+        "status": "PUBLISHED",
+        "description": "Weather forecast API.",
+        "type": "REST",
         "agentVisibility": "VISIBLE",
         "labels": [
           "default"
@@ -263,8 +263,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
     "message": "Input validation failed.",
     "errors": [
       {
-        "field": "orgName",
-        "message": "orgName is required."
+        "field": "name",
+        "message": "name is required."
       }
     ]
   }
@@ -310,21 +310,21 @@ Status Code **200**
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |» list|[[ApiMetadataResponse](schemas.md#schemaapimetadataresponse)]|false|none|none|
-|»» apiId|string|false|none|none|
-|»» apiReferenceId|string¦null|false|none|Platform API (Control Plane) reference ID for this API. Used for MCP registry visibility filtering and included in outbound webhook event payloads. Null/absent for APIs that exist only in the Developer Portal and are not registered with the Platform API — e.g. MCP servers published via the registry.|
-|»» apiHandle|string|false|none|none|
+|»» id|string|false|none|none|
+|»» refId|string¦null|false|none|Platform API (Control Plane) reference ID for this API. Used for MCP registry visibility filtering and included in outbound webhook event payloads. Null/absent for APIs that exist only in the Developer Portal and are not registered with the Platform API — e.g. MCP servers published via the registry.|
+|»» handle|string|false|none|none|
 |»» dataSource|string¦null|false|none|Indicates which content matched the search term: `METADATA` if the match was in the API's own metadata, or a content type (e.g. a value from the API Content `type` field) if the match was inside an uploaded content file. Only computed by getAllApiMetadataForOrganization when both the `query` search parameter is supplied and the database is PostgreSQL — absent on SQLite (the dev default) and absent from every other operation (get/create/update single API).|
 |»» planId|string|false|none|none|
 |»» apiInfo|[ApiInfoResponse](schemas.md#schemaapiinforesponse)|false|none|none|
-|»»» apiName|string|false|none|none|
+|»»» name|string|false|none|none|
 |»»» apiTitle|string¦null|false|none|none|
 |»»» remotes|[object]|false|none|none|
-|»»» apiVersion|string|false|none|none|
-|»»» apiStatus|string|false|none|API lifecycle status.|
-|»»» apiDescription|string|false|none|none|
-|»»» apiType|string|false|none|none|
+|»»» version|string|false|none|none|
+|»»» status|string|false|none|API lifecycle status.|
+|»»» description|string|false|none|none|
+|»»» type|string|false|none|none|
 |»»» referenceId|string¦null|false|none|External reference ID. Present when the API was created from a `devportal.yaml` artifact whose `spec` block sets `referenceId` — the create response echoes the parsed YAML back, nested under `apiInfo`.|
-|»»» apiHandle|string¦null|false|none|Present (nested under `apiInfo`) when the API was created from a `devportal.yaml` artifact — the parser sets it from `metadata.name`. Distinct from the top-level `apiHandle` on ApiMetadataResponse.|
+|»»» handle|string¦null|false|none|Present (nested under `apiInfo`) when the API was created from a `devportal.yaml` artifact — the parser sets it from `metadata.name`. Distinct from the top-level `apiHandle` on ApiMetadataResponse.|
 |»»» agentVisibility|string|false|none|none|
 |»»» addedLabels|[string]|false|none|none|
 |»»» removedLabels|[string]|false|none|none|
@@ -341,9 +341,9 @@ Status Code **200**
 |»»» sandboxURL|string|false|none|none|
 |»»» productionURL|string|false|none|none|
 |»» subscriptionPlans|[[SubscriptionPlanResponse](schemas.md#schemasubscriptionplanresponse)]|false|none|none|
-|»»» planId|string|false|none|none|
-|»»» planName|string|false|none|none|
-|»»» displayName|string|false|none|none|
+|»»» id|string|false|none|none|
+|»»» handle|string|false|none|none|
+|»»» name|string|false|none|none|
 |»»» description|string|false|none|none|
 |»»» requestCount|string¦null|false|none|Always stored and returned as a string ("Unlimited" or a numeric string), regardless of the type (request-count or event-count) used to create the plan. Null if not set.|
 |»»» refId|string¦null|false|none|Platform API subscription plan UUID associated with this plan.|
@@ -357,14 +357,14 @@ Status Code **200**
 
 |Property|Value|
 |---|---|
-|apiStatus|PUBLISHED|
-|apiStatus|DEPRECATED|
-|apiType|REST|
-|apiType|SOAP|
-|apiType|MCP|
-|apiType|WS|
-|apiType|WEBSUB|
-|apiType|GRAPHQL|
+|status|PUBLISHED|
+|status|DEPRECATED|
+|type|REST|
+|type|SOAP|
+|type|MCP|
+|type|WS|
+|type|WEBSUB|
+|type|GRAPHQL|
 |agentVisibility|VISIBLE|
 |agentVisibility|HIDDEN|
 
@@ -413,17 +413,17 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "apiId": "api-7f4c2a6b",
-  "apiReferenceId": "cp-api-12345",
-  "apiHandle": "weather-api-v1",
+  "id": "api-7f4c2a6b",
+  "refId": "cp-api-12345",
+  "handle": "weather-api-v1",
   "apiInfo": {
-    "apiName": "Weather API",
+    "name": "Weather API",
     "apiTitle": "Weather Forecast API",
     "remotes": [],
-    "apiVersion": "v1",
-    "apiStatus": "PUBLISHED",
-    "apiDescription": "Weather forecast API.",
-    "apiType": "REST",
+    "version": "v1",
+    "status": "PUBLISHED",
+    "description": "Weather forecast API.",
+    "type": "REST",
     "agentVisibility": "VISIBLE",
     "labels": [
       "default"
@@ -435,7 +435,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
   },
   "subscriptionPlans": [
     {
-      "planName": "Gold"
+      "handle": "Gold"
     }
   ]
 }
@@ -451,8 +451,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
     "message": "Input validation failed.",
     "errors": [
       {
-        "field": "orgName",
-        "message": "orgName is required."
+        "field": "name",
+        "message": "name is required."
       }
     ]
   }
@@ -535,12 +535,12 @@ api: string
 apiDefinition: string
 artifact: string
 schemaDefinition: string
-apiMetadata: '{"apiInfo":{"apiName":"Weather
-  API","apiVersion":"v1","apiDescription":"Weather forecast
-  API","apiType":"REST","agentVisibility":"VISIBLE",
-  "apiStatus":"PUBLISHED","tags":["weather"],"labels":["default"]},"endPoints":{
+apiMetadata: '{"apiInfo":{"name":"Weather
+  API","version":"v1","description":"Weather forecast
+  API","type":"REST","agentVisibility":"VISIBLE",
+  "status":"PUBLISHED","tags":["weather"],"labels":["default"]},"endPoints":{
   "productionURL":"https://api.example.com/weather",
-  "sandboxURL":"https://sandbox.example.com/weather"},"subscriptionPlans":[{"planName":"Gold"}]}'
+  "sandboxURL":"https://sandbox.example.com/weather"},"subscriptionPlans":[{"handle":"Gold"}]}'
 
 ```
 
@@ -560,7 +560,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |» apiDefinition|body|string(binary)|false|API definition file.|
 |» artifact|body|string(binary)|false|Full API ZIP artifact containing metadata and definition files.|
 |» schemaDefinition|body|string(binary)|false|Schema definition file, used by MCP APIs.|
-|» apiMetadata|body|string|false|JSON string accepted by the service when the `api` YAML file is not supplied. Accepted top-level fields mirror the YAML spec: `apiInfo` (apiName, apiVersion, apiDescription, apiType, agentVisibility, apiStatus, referenceId, apiHandle, tags, labels, owners), `endPoints` (productionURL, sandboxURL), and `subscriptionPlans` (array of `{ planName }` objects — only `planName` is read; the plan must already exist in the organization).|
+|» apiMetadata|body|string|false|JSON string accepted by the service when the `api` YAML file is not supplied. Accepted top-level fields mirror the YAML spec: `apiInfo` (name, version, description, type, agentVisibility, status, referenceId, handle, tags, labels, owners), `endPoints` (productionURL, sandboxURL), and `subscriptionPlans` (array of `{ handle }` objects — only `handle` is read; the plan must already exist in the organization).|
 |apiId|path|string|true|none|
 
 > Example responses
@@ -569,17 +569,17 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "apiId": "api-7f4c2a6b",
-  "apiReferenceId": "cp-api-12345",
-  "apiHandle": "weather-api-v1",
+  "id": "api-7f4c2a6b",
+  "refId": "cp-api-12345",
+  "handle": "weather-api-v1",
   "apiInfo": {
-    "apiName": "Weather API",
+    "name": "Weather API",
     "apiTitle": "Weather Forecast API",
     "remotes": [],
-    "apiVersion": "v1",
-    "apiStatus": "PUBLISHED",
-    "apiDescription": "Weather forecast API.",
-    "apiType": "REST",
+    "version": "v1",
+    "status": "PUBLISHED",
+    "description": "Weather forecast API.",
+    "type": "REST",
     "agentVisibility": "VISIBLE",
     "labels": [
       "default"
@@ -591,7 +591,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
   },
   "subscriptionPlans": [
     {
-      "planName": "Gold"
+      "handle": "Gold"
     }
   ]
 }
@@ -607,8 +607,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
     "message": "Input validation failed.",
     "errors": [
       {
-        "field": "orgName",
-        "message": "orgName is required."
+        "field": "name",
+        "message": "name is required."
       }
     ]
   }
@@ -728,8 +728,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
     "message": "Input validation failed.",
     "errors": [
       {
-        "field": "orgName",
-        "message": "orgName is required."
+        "field": "name",
+        "message": "name is required."
       }
     ]
   }

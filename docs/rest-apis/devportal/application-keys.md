@@ -26,7 +26,7 @@ Maps an OAuth client_id — created directly in the selected key manager — to 
 ```json
 {
   "keyManager": "Resident Key Manager",
-  "keyType": "PRODUCTION",
+  "type": "PRODUCTION",
   "consumerKey": "consumer-key-123"
 }
 ```
@@ -53,7 +53,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 {
   "keyMappingId": "km-12345",
   "keyManager": "Resident Key Manager",
-  "keyType": "PRODUCTION",
+  "type": "PRODUCTION",
   "consumerKey": "consumer-key-123",
   "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token"
 }
@@ -69,8 +69,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
     "message": "Input validation failed.",
     "errors": [
       {
-        "field": "orgName",
-        "message": "orgName is required."
+        "field": "name",
+        "message": "name is required."
       }
     ]
   }
@@ -212,8 +212,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
     "message": "Input validation failed.",
     "errors": [
       {
-        "field": "orgName",
-        "message": "orgName is required."
+        "field": "name",
+        "message": "name is required."
       }
     ]
   }

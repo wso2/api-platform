@@ -65,25 +65,25 @@
     <!-- Grid -->
     <div class="row row-gap-4">
       {{#apiMetadata}}
-      <div class="col-lg-4 col-md-6 col-sm-12" id="apiCard-{{apiId}}">
+      <div class="col-lg-4 col-md-6 col-sm-12" id="apiCard-{{id}}">
         <div class="api-card d-flex flex-column{{#if hasSubscription}} api-card--subscribed{{/if}}">
 
           {{#if hasSubscription}}<div class="api-card-ribbon-wrap"><div class="api-card-ribbon-label">Subscribed</div></div>{{/if}}
 
           <!-- Top: icon + name + version + type badge -->
-          <div class="api-card-top" data-href="{{../baseUrl}}/mcp/{{apiHandle}}" style="cursor:pointer;">
+          <div class="api-card-top" data-href="{{../baseUrl}}/mcp/{{handle}}" style="cursor:pointer;">
             {{#if apiInfo.apiImageMetadata.api-icon}}
-            <img src="{{apiInfo.apiImageMetadata.api-icon}}" class="api-card-img" alt="{{or apiInfo.apiTitle apiInfo.apiName}}" />
+            <img src="{{apiInfo.apiImageMetadata.api-icon}}" class="api-card-img" alt="{{or apiInfo.apiTitle apiInfo.name}}" />
             {{else}}
-            <span class="api-icon api-icon--mcp">{{firstTwoLetters (or apiInfo.apiTitle apiInfo.apiName)}}</span>
+            <span class="api-icon api-icon--mcp">{{firstTwoLetters (or apiInfo.apiTitle apiInfo.name)}}</span>
             {{/if}}
             <div class="api-card-meta">
-              <h5 class="api-card-title">{{or apiInfo.apiTitle apiInfo.apiName}}</h5>
+              <h5 class="api-card-title">{{or apiInfo.apiTitle apiInfo.name}}</h5>
               <div class="api-card-meta-row">
-                <span class="api-version">{{apiInfo.apiVersion}}</span>
+                <span class="api-version">{{apiInfo.version}}</span>
                 <span class="dp-badge dp-badge--mcp"><i class="bi bi-cpu"></i> MCP</span>
                 <span class="dp-badge dp-badge--ai"><i class="bi bi-robot"></i> AI Ready</span>
-                {{#if (eq apiInfo.apiStatus "DEPRECATED")}}
+                {{#if (eq apiInfo.status "DEPRECATED")}}
                 <span class="dp-badge dp-badge--deprecated"><i class="bi bi-exclamation-circle"></i> Deprecated</span>
                 {{/if}}
               </div>
@@ -91,7 +91,7 @@
           </div>
 
           <!-- Description -->
-          <p class="api-card-desc clamp2" data-href="{{../baseUrl}}/mcp/{{apiHandle}}" style="cursor:pointer;">{{apiInfo.apiDescription}}</p>
+          <p class="api-card-desc clamp2" data-href="{{../baseUrl}}/mcp/{{handle}}" style="cursor:pointer;">{{apiInfo.description}}</p>
 
           <!-- Tags -->
           <div class="api-card-tags">
@@ -104,16 +104,16 @@
           {{#if subscriptionPlans.length}}
           <div class="api-card-footer">
             <div class="api-card-footer-left">
-              <a href="{{../baseUrl}}/mcp/{{apiHandle}}#subscriptionPlans" class="api-plans-link">
+              <a href="{{../baseUrl}}/mcp/{{handle}}#subscriptionPlans" class="api-plans-link">
                 <i class="bi bi-tag"></i> {{subscriptionPlans.length}} plans
               </a>
             </div>
             {{#if hasSubscription}}
-            <a href="{{../baseUrl}}/mcp/{{apiHandle}}#subscriptionPlans" class="api-card-view-sub-btn">
+            <a href="{{../baseUrl}}/mcp/{{handle}}#subscriptionPlans" class="api-card-view-sub-btn">
               <i class="bi bi-check-circle"></i> View subscription
             </a>
             {{else}}
-            <a href="{{../baseUrl}}/mcp/{{apiHandle}}#subscriptionPlans"
+            <a href="{{../baseUrl}}/mcp/{{handle}}#subscriptionPlans"
                class="dp-btn dp-btn--primary {{#if @root.isReadOnlyMode}}disabled{{/if}}"
                {{#if @root.isReadOnlyMode}}aria-disabled="true" tabindex="-1"{{/if}}>Subscribe</a>
             {{/if}}

@@ -40,9 +40,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 {
   "list": [
     {
-      "planId": "string",
-      "planName": "string",
-      "displayName": "string",
+      "id": "string",
+      "handle": "string",
+      "name": "string",
       "description": "string",
       "requestCount": "string",
       "refId": "string",
@@ -67,8 +67,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
     "message": "Input validation failed.",
     "errors": [
       {
-        "field": "orgName",
-        "message": "orgName is required."
+        "field": "name",
+        "message": "name is required."
       }
     ]
   }
@@ -114,9 +114,9 @@ Status Code **200**
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |» list|[[SubscriptionPlanResponse](schemas.md#schemasubscriptionplanresponse)]|false|none|none|
-|»» planId|string|false|none|none|
-|»» planName|string|false|none|none|
-|»» displayName|string|false|none|none|
+|»» id|string|false|none|none|
+|»» handle|string|false|none|none|
+|»» name|string|false|none|none|
 |»» description|string|false|none|none|
 |»» requestCount|string¦null|false|none|Always stored and returned as a string ("Unlimited" or a numeric string), regardless of the type (request-count or event-count) used to create the plan. Null if not set.|
 |»» refId|string¦null|false|none|Platform API subscription plan UUID associated with this plan.|
@@ -158,10 +158,10 @@ Creates one subscription plan when the request body is an object, or multiple su
 
 ```json
 {
-  "planId": "string",
+  "id": "string",
   "refId": "string",
-  "planName": "string",
-  "displayName": "string",
+  "handle": "string",
+  "name": "string",
   "description": "string",
   "type": "requestcount",
   "requestCount": 0,
@@ -170,10 +170,10 @@ Creates one subscription plan when the request body is an object, or multiple su
 ```
 
 ```yaml
-planId: string
+id: string
 refId: string
-planName: string
-displayName: string
+handle: string
+name: string
 description: string
 type: requestcount
 requestCount: 0
@@ -214,8 +214,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
     "message": "Input validation failed.",
     "errors": [
       {
-        "field": "orgName",
-        "message": "orgName is required."
+        "field": "name",
+        "message": "name is required."
       }
     ]
   }
@@ -300,10 +300,10 @@ Upserts one subscription plan when the request body is an object, or multiple pl
 
 ```json
 {
-  "planId": "string",
+  "id": "string",
   "refId": "string",
-  "planName": "string",
-  "displayName": "string",
+  "handle": "string",
+  "name": "string",
   "description": "string",
   "type": "requestcount",
   "requestCount": 0,
@@ -312,10 +312,10 @@ Upserts one subscription plan when the request body is an object, or multiple pl
 ```
 
 ```yaml
-planId: string
+id: string
 refId: string
-planName: string
-displayName: string
+handle: string
+name: string
 description: string
 type: requestcount
 requestCount: 0
@@ -342,9 +342,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "planId": "string",
-  "planName": "string",
-  "displayName": "string",
+  "id": "string",
+  "handle": "string",
+  "name": "string",
   "description": "string",
   "requestCount": "string",
   "refId": "string",
@@ -362,8 +362,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
     "message": "Input validation failed.",
     "errors": [
       {
-        "field": "orgName",
-        "message": "orgName is required."
+        "field": "name",
+        "message": "name is required."
       }
     ]
   }
@@ -472,9 +472,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "planId": "string",
-  "planName": "string",
-  "displayName": "string",
+  "id": "string",
+  "handle": "string",
+  "name": "string",
   "description": "string",
   "requestCount": "string",
   "refId": "string",
@@ -492,8 +492,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
     "message": "Input validation failed.",
     "errors": [
       {
-        "field": "orgName",
-        "message": "orgName is required."
+        "field": "name",
+        "message": "name is required."
       }
     ]
   }
@@ -596,8 +596,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
     "message": "Input validation failed.",
     "errors": [
       {
-        "field": "orgName",
-        "message": "orgName is required."
+        "field": "name",
+        "message": "name is required."
       }
     ]
   }

@@ -25,24 +25,29 @@ Creates a Developer Portal organization and initializes its default portal confi
 
 ```json
 {
-  "orgName": "string",
+  "name": "string",
   "businessOwner": "string",
   "businessOwnerContact": "string",
   "businessOwnerEmail": "user@example.com",
-  "orgHandle": "string",
+  "handle": "string",
   "idpRefId": "string",
-  "cpRefId": "string"
+  "cpRefId": "string",
+  "configuration": {
+    "devportalMode": "DEFAULT"
+  }
 }
 ```
 
 ```yaml
-orgName: string
+name: string
 businessOwner: string
 businessOwnerContact: string
 businessOwnerEmail: user@example.com
-orgHandle: string
+handle: string
 idpRefId: string
 cpRefId: string
+configuration:
+  devportalMode: DEFAULT
 
 ```
 
@@ -57,7 +62,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|body|body|[OrganizationCreateRequest](schemas.md#schemaorganizationcreaterequest)|true|Organization creation payload. Send JSON or an organization YAML file in the `organization` multipart field. When YAML is used, the service reads `metadata.name` as `orgHandle` and `spec.displayName` as `orgName`; all other fields (including `cpRefId`) are read from `spec`. The YAML `spec` block additionally accepts `labels` (array of `{name, displayName}`) and `views` (array of `{handle, name, labels}`) to bootstrap labels and views at creation time — these are not available via the `application/json` content type.|
+|body|body|[OrganizationCreateRequest](schemas.md#schemaorganizationcreaterequest)|true|Organization creation payload. Send JSON or an organization YAML file in the `organization` multipart field. When YAML is used, the service reads `metadata.name` as `handle` and `spec.displayName` as `name`; all other fields (including `cpRefId`) are read from `spec`. The YAML `spec` block additionally accepts `labels` (array of `{name, displayName}`) and `views` (array of `{handle, name, labels}`) to bootstrap labels and views at creation time — these are not available via the `application/json` content type.|
 
 > Example responses
 
@@ -65,15 +70,15 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "orgId": "string",
-  "orgName": "string",
+  "id": "string",
+  "name": "string",
   "businessOwner": "string",
   "businessOwnerContact": "string",
   "businessOwnerEmail": "user@example.com",
-  "orgHandle": "string",
+  "handle": "string",
   "idpRefId": "string",
   "cpRefId": "string",
-  "orgConfiguration": {}
+  "configuration": {}
 }
 ```
 
@@ -87,8 +92,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
     "message": "Input validation failed.",
     "errors": [
       {
-        "field": "orgName",
-        "message": "orgName is required."
+        "field": "name",
+        "message": "name is required."
       }
     ]
   }
@@ -209,15 +214,15 @@ This operation requires <strong>Basic Auth</strong> authentication.
 {
   "list": [
     {
-      "orgId": "string",
-      "orgName": "string",
+      "id": "string",
+      "name": "string",
       "businessOwner": "string",
       "businessOwnerContact": "string",
       "businessOwnerEmail": "user@example.com",
-      "orgHandle": "string",
+      "handle": "string",
       "idpRefId": "string",
       "cpRefId": "string",
-      "orgConfiguration": {}
+      "configuration": {}
     }
   ],
   "pagination": {
@@ -252,15 +257,15 @@ Status Code **200**
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |» list|[[OrganizationResponse](schemas.md#schemaorganizationresponse)]|false|none|none|
-|»» orgId|string|false|none|none|
-|»» orgName|string|false|none|none|
+|»» id|string|false|none|none|
+|»» name|string|false|none|none|
 |»» businessOwner|string¦null|false|none|none|
 |»» businessOwnerContact|string¦null|false|none|none|
 |»» businessOwnerEmail|string(email)¦null|false|none|none|
-|»» orgHandle|string|false|none|none|
+|»» handle|string|false|none|none|
 |»» idpRefId|string|false|none|The organization claim value asserted by the configured Identity Provider at SSO login. On every login, the portal matches the authenticated user's org claim against this value to resolve which organization they belong to — it must exactly match the IDP's claim, or login fails for that org's users. Distinct from `cpRefId`, which is unrelated to authentication.|
 |»» cpRefId|string¦null|false|none|Control Plane reference ID. Included in outbound webhook event payloads so subscribers can correlate this organization with its Control Plane (Platform API) counterpart. Not used for authentication or org resolution.|
-|»» orgConfiguration|[GenericObject](schemas.md#schemagenericobject)|false|none|none|
+|»» configuration|[GenericObject](schemas.md#schemagenericobject)|false|none|none|
 |» pagination|[Pagination](schemas.md#schemapagination)|false|none|Standard pagination metadata returned with collection responses.|
 |»» total|integer|true|none|Total number of records matching the query.|
 |»» limit|integer|true|none|Maximum number of records returned in this response.|
@@ -291,28 +296,28 @@ Updates organization metadata, claim mappings, role mappings, and portal configu
 
 ```json
 {
-  "orgName": "string",
+  "name": "string",
   "businessOwner": "string",
   "businessOwnerContact": "string",
   "businessOwnerEmail": "user@example.com",
-  "orgHandle": "string",
+  "handle": "string",
   "idpRefId": "string",
   "cpRefId": "string",
-  "orgConfiguration": {
+  "configuration": {
     "devportalMode": "DEFAULT"
   }
 }
 ```
 
 ```yaml
-orgName: string
+name: string
 businessOwner: string
 businessOwnerContact: string
 businessOwnerEmail: user@example.com
-orgHandle: string
+handle: string
 idpRefId: string
 cpRefId: string
-orgConfiguration:
+configuration:
   devportalMode: DEFAULT
 
 ```
@@ -328,7 +333,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|body|body|[OrganizationUpdateRequest](schemas.md#schemaorganizationupdaterequest)|true|Organization update payload. Send JSON or an organization YAML file in the `organization` multipart field. When YAML is used, the service reads `metadata.name` as `orgHandle` and `spec.displayName` as `orgName`; all other fields (including `cpRefId`) are read from `spec`. The YAML `spec` block additionally accepts `labels` (upserted by name) and `views` (upserted by handle, with `labels` replacing the view's label set) — these are not available via the `application/json` content type.|
+|body|body|[OrganizationUpdateRequest](schemas.md#schemaorganizationupdaterequest)|true|Organization update payload. Send JSON or an organization YAML file in the `organization` multipart field. When YAML is used, the service reads `metadata.name` as `handle` and `spec.displayName` as `name`; all other fields (including `cpRefId`) are read from `spec`. The YAML `spec` block additionally accepts `labels` (upserted by name) and `views` (upserted by handle, with `labels` replacing the view's label set) — these are not available via the `application/json` content type.|
 |orgId|path|string|true|none|
 
 > Example responses
@@ -337,15 +342,15 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "orgId": "string",
-  "orgName": "string",
+  "id": "string",
+  "name": "string",
   "businessOwner": "string",
   "businessOwnerContact": "string",
   "businessOwnerEmail": "user@example.com",
-  "orgHandle": "string",
+  "handle": "string",
   "idpRefId": "string",
   "cpRefId": "string",
-  "orgConfiguration": {}
+  "configuration": {}
 }
 ```
 
@@ -359,8 +364,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
     "message": "Input validation failed.",
     "errors": [
       {
-        "field": "orgName",
-        "message": "orgName is required."
+        "field": "name",
+        "message": "name is required."
       }
     ]
   }
@@ -468,15 +473,15 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "orgId": "string",
-  "orgName": "string",
+  "id": "string",
+  "name": "string",
   "businessOwner": "string",
   "businessOwnerContact": "string",
   "businessOwnerEmail": "user@example.com",
-  "orgHandle": "string",
+  "handle": "string",
   "idpRefId": "string",
   "cpRefId": "string",
-  "orgConfiguration": {}
+  "configuration": {}
 }
 ```
 
@@ -552,8 +557,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
     "message": "Input validation failed.",
     "errors": [
       {
-        "field": "orgName",
-        "message": "orgName is required."
+        "field": "name",
+        "message": "name is required."
       }
     ]
   }

@@ -2279,7 +2279,7 @@ components:
       required: true
       description: >-
         Organization creation payload. Send JSON or an organization YAML file in the `organization` multipart field.
-        When YAML is used, the service reads `metadata.name` as `orgHandle` and `spec.displayName` as `orgName`; all
+        When YAML is used, the service reads `metadata.name` as `handle` and `spec.displayName` as `name`; all
         other fields (including `cpRefId`) are read from `spec`. The YAML `spec` block additionally accepts
         `labels` (array of `{name, displayName}`) and `views` (array of `{handle, name, labels}`) to bootstrap
         labels and views at creation time — these are not available via the `application/json` content type.
@@ -2288,11 +2288,11 @@ components:
           schema:
             $ref: "#/components/schemas/OrganizationCreateRequest"
           example:
-            orgName: Acme Corporation
+            name: Acme Corporation
             businessOwner: Jane Doe
             businessOwnerContact: +1-202-555-0147
             businessOwnerEmail: jane.doe@acme.example
-            orgHandle: acme
+            handle: acme
             idpRefId: ACME
         multipart/form-data:
           schema:
@@ -2313,7 +2313,7 @@ components:
       required: true
       description: >-
         Organization update payload. Send JSON or an organization YAML file in the `organization` multipart field. When
-        YAML is used, the service reads `metadata.name` as `orgHandle` and `spec.displayName` as `orgName`; all other
+        YAML is used, the service reads `metadata.name` as `handle` and `spec.displayName` as `name`; all other
         fields (including `cpRefId`) are read from `spec`. The YAML `spec` block additionally accepts `labels`
         (upserted by name) and `views` (upserted by handle, with `labels` replacing the view's label set) — these
         are not available via the `application/json` content type.
@@ -2464,7 +2464,7 @@ components:
               summary: Map an existing OAuth client_id using the resident key manager
               value:
                 keyManager: Resident Key Manager
-                keyType: PRODUCTION
+                type: PRODUCTION
                 consumerKey: consumer-key-123
     ViewCreateBody:
       required: true
@@ -2691,16 +2691,16 @@ components:
                 type: string
                 description: >-
                   JSON string accepted by the service when the `api` YAML file is not supplied. Accepted top-level
-                  fields mirror the YAML spec: `apiInfo` (apiName, apiVersion, apiDescription, apiType,
-                  agentVisibility, apiStatus, referenceId, apiHandle, tags, labels,
+                  fields mirror the YAML spec: `apiInfo` (name, version, description, type,
+                  agentVisibility, status, referenceId, handle, tags, labels,
                   owners), `endPoints` (productionURL, sandboxURL), and `subscriptionPlans` (array of `{
-                  planName }` objects — only `planName` is read; the plan must already exist in the organization).
+                  handle }` objects — only `handle` is read; the plan must already exist in the organization).
                 example: >-
-                  {"apiInfo":{"apiName":"Weather API","apiVersion":"v1","apiDescription":"Weather forecast
-                  API","apiType":"REST","agentVisibility":"VISIBLE",
-                  "apiStatus":"PUBLISHED","tags":["weather"],"labels":["default"]},"endPoints":{
+                  {"apiInfo":{"name":"Weather API","version":"v1","description":"Weather forecast
+                  API","type":"REST","agentVisibility":"VISIBLE",
+                  "status":"PUBLISHED","tags":["weather"],"labels":["default"]},"endPoints":{
                   "productionURL":"https://api.example.com/weather",
-                  "sandboxURL":"https://sandbox.example.com/weather"},"subscriptionPlans":[{"planName":"Gold"}]}
+                  "sandboxURL":"https://sandbox.example.com/weather"},"subscriptionPlans":[{"handle":"Gold"}]}
     ApiContentZipMultipartBody:
       required: true
       description: |
@@ -2905,8 +2905,8 @@ components:
                   code: COMMON_VALIDATION_ERROR
                   message: Input validation failed.
                   errors:
-                    - field: orgName
-                      message: orgName is required.
+                    - field: name
+                      message: name is required.
             badRequest:
               summary: Bad request error
               value:
@@ -3031,16 +3031,16 @@ components:
           schema:
             $ref: "#/components/schemas/ApiMetadataCreateResponse"
           example:
-            apiId: api-7f4c2a6b
-            apiReferenceId: cp-api-12345
-            apiHandle: weather-api-v1
+            id: api-7f4c2a6b
+            refId: cp-api-12345
+            handle: weather-api-v1
             apiInfo:
-              apiName: Weather API
+              name: Weather API
               apiTitle: Weather Forecast API
-              apiVersion: v1
-              apiStatus: PUBLISHED
-              apiDescription: Weather forecast API.
-              apiType: REST
+              version: v1
+              status: PUBLISHED
+              description: Weather forecast API.
+              type: REST
               agentVisibility: VISIBLE
               tags:
                 - weather
@@ -3050,7 +3050,7 @@ components:
               productionURL: https://api.example.com/weather
               sandboxURL: https://sandbox.example.com/weather
             subscriptionPlans:
-              - planName: Gold
+              - handle: Gold
     ApiMetadataResponse:
       description: API metadata DTO returned by the service.
       content:
@@ -3058,17 +3058,17 @@ components:
           schema:
             $ref: "#/components/schemas/ApiMetadataResponse"
           example:
-            apiId: api-7f4c2a6b
-            apiReferenceId: cp-api-12345
-            apiHandle: weather-api-v1
+            id: api-7f4c2a6b
+            refId: cp-api-12345
+            handle: weather-api-v1
             apiInfo:
-              apiName: Weather API
+              name: Weather API
               apiTitle: Weather Forecast API
               remotes: []
-              apiVersion: v1
-              apiStatus: PUBLISHED
-              apiDescription: Weather forecast API.
-              apiType: REST
+              version: v1
+              status: PUBLISHED
+              description: Weather forecast API.
+              type: REST
               agentVisibility: VISIBLE
               labels:
                 - default
@@ -3076,7 +3076,7 @@ components:
               sandboxURL: https://sandbox.example.com/weather
               productionURL: https://api.example.com/weather
             subscriptionPlans:
-              - planName: Gold
+              - handle: Gold
     ApiMetadataListResponse:
       description: List of API metadata DTOs.
       content:
@@ -3092,15 +3092,15 @@ components:
                 $ref: "#/components/schemas/Pagination"
           example:
             list:
-              - apiId: api-7f4c2a6b
-                apiReferenceId: cp-api-12345
-                apiHandle: weather-api-v1
+              - id: api-7f4c2a6b
+                refId: cp-api-12345
+                handle: weather-api-v1
                 apiInfo:
-                  apiName: Weather API
-                  apiVersion: v1
-                  apiStatus: PUBLISHED
-                  apiDescription: Weather forecast API.
-                  apiType: REST
+                  name: Weather API
+                  version: v1
+                  status: PUBLISHED
+                  description: Weather forecast API.
+                  type: REST
                   agentVisibility: VISIBLE
                   labels:
                     - default
@@ -3202,9 +3202,9 @@ components:
                 name: Weather App
                 description: Application used to call Weather APIs.
                 appMap:
-                  - appRefId: asgardeo-client-abc123
+                  - asClientId: asgardeo-client-abc123
                     kmId: km-uuid-12345
-                    keyType: PRODUCTION
+                    type: PRODUCTION
             pagination:
               total: 1
               limit: 20
@@ -3321,7 +3321,7 @@ components:
           example:
             keyMappingId: km-12345
             keyManager: Resident Key Manager
-            keyType: PRODUCTION
+            type: PRODUCTION
             consumerKey: consumer-key-123
             tokenEndpoint: https://api.asgardeo.io/t/myorg/oauth2/token
     OAuthTokenResponse:
@@ -3597,9 +3597,9 @@ components:
     OrganizationResponse:
       type: object
       properties:
-        orgId:
+        id:
           type: string
-        orgName:
+        name:
           type: string
         businessOwner:
           type: string
@@ -3611,7 +3611,7 @@ components:
           type: string
           format: email
           nullable: true
-        orgHandle:
+        handle:
           type: string
         idpRefId:
           type: string
@@ -3627,16 +3627,16 @@ components:
             Control Plane reference ID. Included in outbound webhook event payloads so subscribers can correlate
             this organization with its Control Plane (Platform API) counterpart. Not used for authentication or
             org resolution.
-        orgConfiguration:
+        configuration:
           $ref: "#/components/schemas/GenericObject"
       additionalProperties: false
     OrganizationContentUploadResponse:
       type: object
       required:
-        - orgId
+        - id
         - fileName
       properties:
-        orgId:
+        id:
           type: string
         fileName:
           type: string
@@ -3645,7 +3645,7 @@ components:
     OrganizationContentListItemResponse:
       type: object
       properties:
-        orgId:
+        id:
           type: string
         fileName:
           type: string
@@ -3657,16 +3657,16 @@ components:
     ApiMetadataCreateResponse:
       type: object
       properties:
-        apiId:
+        id:
           type: string
-        apiReferenceId:
+        refId:
           type: string
           nullable: true
           description: >-
             Platform API (Control Plane) reference ID for this API. Used for MCP registry visibility filtering and
             included in outbound webhook event payloads. Null/absent for APIs that exist only in the Developer
             Portal and are not registered with the Platform API — e.g. MCP servers published via the registry.
-        apiHandle:
+        handle:
           type: string
         apiInfo:
           $ref: "#/components/schemas/ApiInfoResponse"
@@ -3680,16 +3680,16 @@ components:
     ApiMetadataResponse:
       type: object
       properties:
-        apiId:
+        id:
           type: string
-        apiReferenceId:
+        refId:
           type: string
           nullable: true
           description: >-
             Platform API (Control Plane) reference ID for this API. Used for MCP registry visibility filtering and
             included in outbound webhook event payloads. Null/absent for APIs that exist only in the Developer
             Portal and are not registered with the Platform API — e.g. MCP servers published via the registry.
-        apiHandle:
+        handle:
           type: string
         dataSource:
           type: string
@@ -3714,7 +3714,7 @@ components:
     ApiInfoResponse:
       type: object
       properties:
-        apiName:
+        name:
           type: string
         apiTitle:
           type: string
@@ -3724,18 +3724,18 @@ components:
           items:
             type: object
             additionalProperties: true
-        apiVersion:
+        version:
           type: string
-        apiStatus:
+        status:
           type: string
           enum:
             - PUBLISHED
             - DEPRECATED
           description: API lifecycle status.
           example: PUBLISHED
-        apiDescription:
+        description:
           type: string
-        apiType:
+        type:
           type: string
           enum:
             - REST
@@ -3750,7 +3750,7 @@ components:
           description: >-
             External reference ID. Present when the API was created from a `devportal.yaml` artifact whose `spec`
             block sets `referenceId` — the create response echoes the parsed YAML back, nested under `apiInfo`.
-        apiHandle:
+        handle:
           type: string
           nullable: true
           description: >-
@@ -3809,11 +3809,11 @@ components:
     SubscriptionPlanResponse:
       type: object
       properties:
-        planId:
+        id:
           type: string
-        planName:
+        handle:
           type: string
-        displayName:
+        name:
           type: string
         description:
           type: string
@@ -3861,7 +3861,7 @@ components:
       type: object
       description: OAuth client ID mapping entry attached to an application.
       properties:
-        appRefId:
+        asClientId:
           type: string
           description: OAuth client ID, created directly in the key manager and linked to this application.
           example: asgardeo-client-abc123
@@ -3869,7 +3869,7 @@ components:
           type: string
           description: UUID of the key manager this client ID is linked to.
           example: km-uuid-12345
-        keyType:
+        type:
           type: string
           enum:
             - PRODUCTION
@@ -3901,11 +3901,11 @@ components:
     OrganizationCreateRequest:
       type: object
       required:
-        - orgName
-        - orgHandle
+        - name
+        - handle
         - idpRefId
       properties:
-        orgName:
+        name:
           type: string
         businessOwner:
           type: string
@@ -3914,7 +3914,7 @@ components:
         businessOwnerEmail:
           type: string
           format: email
-        orgHandle:
+        handle:
           type: string
           description: Public organization handle used in portal URLs.
         idpRefId:
@@ -3927,15 +3927,25 @@ components:
           nullable: true
           description: >-
             Control Plane reference ID, included in outbound webhook event payloads. Not used for authentication.
+        configuration:
+          type: object
+          properties:
+            devportalMode:
+              type: string
+              enum:
+                - DEFAULT
+                - MCP_SERVERS_ONLY
+                - APIS_ONLY
+          additionalProperties: false
       additionalProperties: false
     OrganizationUpdateRequest:
       type: object
       required:
-        - orgName
-        - orgHandle
+        - name
+        - handle
         - idpRefId
       properties:
-        orgName:
+        name:
           type: string
         businessOwner:
           type: string
@@ -3944,7 +3954,7 @@ components:
         businessOwnerEmail:
           type: string
           format: email
-        orgHandle:
+        handle:
           type: string
         idpRefId:
           type: string
@@ -3956,7 +3966,7 @@ components:
           nullable: true
           description: >-
             Control Plane reference ID, included in outbound webhook event payloads. Not used for authentication.
-        orgConfiguration:
+        configuration:
           type: object
           properties:
             devportalMode:
@@ -3965,23 +3975,23 @@ components:
                 - DEFAULT
                 - MCP_SERVERS_ONLY
                 - APIS_ONLY
-          additionalProperties: true
+          additionalProperties: false
     SubscriptionPlanRequest:
       type: object
       required:
-        - planName
-        - displayName
+        - handle
+        - name
         - type
       properties:
-        planId:
+        id:
           type: string
           description: Optional external/APIM-assigned plan UUID.
         refId:
           type: string
           description: Platform API subscription plan UUID to associate with this plan.
-        planName:
+        handle:
           type: string
-        displayName:
+        name:
           type: string
         description:
           type: string
@@ -4322,13 +4332,13 @@ components:
       type: object
       required:
         - name
-        - url
+        - targetUrl
       properties:
         name:
           type: string
           description: Unique name within the organization.
           example: Production Gateway
-        url:
+        targetUrl:
           type: string
           format: uri
           description: Target URL events are POSTed to. Must be unique within the organization.
@@ -4375,7 +4385,7 @@ components:
         name:
           type: string
           example: Production Gateway
-        url:
+        targetUrl:
           type: string
           format: uri
           example: https://gateway.example.com/devportal-webhook
@@ -4447,7 +4457,7 @@ components:
         keyManager:
           type: string
           example: Resident Key Manager
-        keyType:
+        type:
           type: string
           enum:
             - PRODUCTION
@@ -4539,7 +4549,7 @@ components:
         keyManager:
           type: string
           example: Resident Key Manager
-        keyType:
+        type:
           type: string
           example: PRODUCTION
         consumerKey:

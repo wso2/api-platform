@@ -25,7 +25,7 @@ class WebhookSubscriberDTO {
         this.id = sub.UUID;
         this.orgId = sub.ORG_UUID;
         this.name = sub.NAME;
-        this.url = sub.TARGET_URL;
+        this.targetUrl = sub.TARGET_URL;
         this.enabled = !!sub.ENABLED;
         this.events = sub.EVENT_PATTERNS || [];
         this.timeoutMs = sub.TIMEOUT_MS;

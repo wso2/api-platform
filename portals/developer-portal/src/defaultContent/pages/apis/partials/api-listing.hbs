@@ -75,36 +75,36 @@
     <div class="row row-gap-4">
 
       {{#apiMetadata}}
-      <div class="col-lg-4 col-md-6 col-sm-12" id="apiCard-{{apiId}}">
+      <div class="col-lg-4 col-md-6 col-sm-12" id="apiCard-{{id}}">
         <div class="api-card d-flex flex-column{{#if hasSubscription}} api-card--subscribed{{/if}}">
 
           {{#if hasSubscription}}<div class="api-card-ribbon-wrap"><div class="api-card-ribbon-label">Subscribed</div></div>{{/if}}
 
           <!-- Top: icon + name + version + type badge -->
-          <div class="api-card-top" data-href="{{../baseUrl}}/api/{{apiHandle}}" style="cursor:pointer;">
+          <div class="api-card-top" data-href="{{../baseUrl}}/api/{{handle}}" style="cursor:pointer;">
             {{#if apiInfo.apiImageMetadata.api-icon}}
-            <img src="{{apiInfo.apiImageMetadata.api-icon}}" class="api-card-img" alt="{{apiInfo.apiName}}" />
+            <img src="{{apiInfo.apiImageMetadata.api-icon}}" class="api-card-img" alt="{{apiInfo.name}}" />
             {{else}}
             <span class="api-icon
-              {{#if (eq apiInfo.apiType "GRAPHQL")}}api-icon--graphql
-              {{else if (eq apiInfo.apiType "WS")}}api-icon--ws
-              {{else if (eq apiInfo.apiType "SOAP")}}api-icon--soap
-              {{else}}api-icon--rest{{/if}}">{{firstTwoLetters apiInfo.apiName}}</span>
+              {{#if (eq apiInfo.type "GRAPHQL")}}api-icon--graphql
+              {{else if (eq apiInfo.type "WS")}}api-icon--ws
+              {{else if (eq apiInfo.type "SOAP")}}api-icon--soap
+              {{else}}api-icon--rest{{/if}}">{{firstTwoLetters apiInfo.name}}</span>
             {{/if}}
             <div class="api-card-meta">
-              <h5 class="api-card-title">{{apiInfo.apiName}}</h5>
+              <h5 class="api-card-title">{{apiInfo.name}}</h5>
               <div class="api-card-meta-row">
-                <span class="api-version">{{apiInfo.apiVersion}}</span>
+                <span class="api-version">{{apiInfo.version}}</span>
                 <span class="dp-badge
-                  {{#if (eq apiInfo.apiType "GRAPHQL")}}dp-badge--graphql
-                  {{else if (eq apiInfo.apiType "WS")}}dp-badge--ws
-                  {{else if (eq apiInfo.apiType "SOAP")}}dp-badge--soap
-                  {{else if (eq apiInfo.apiType "WEBSUB")}}dp-badge--ws
+                  {{#if (eq apiInfo.type "GRAPHQL")}}dp-badge--graphql
+                  {{else if (eq apiInfo.type "WS")}}dp-badge--ws
+                  {{else if (eq apiInfo.type "SOAP")}}dp-badge--soap
+                  {{else if (eq apiInfo.type "WEBSUB")}}dp-badge--ws
                   {{else}}dp-badge--rest{{/if}}">
-                  {{#if (eq apiInfo.apiType "GRAPHQL")}}<i class="bi bi-share"></i> GraphQL
-                  {{else if (eq apiInfo.apiType "WS")}}<i class="bi bi-broadcast"></i> WebSocket
-                  {{else if (eq apiInfo.apiType "WEBSUB")}}<i class="bi bi-broadcast-pin"></i> WebSub
-                  {{else if (eq apiInfo.apiType "SOAP")}}<i class="bi bi-file-code"></i> SOAP
+                  {{#if (eq apiInfo.type "GRAPHQL")}}<i class="bi bi-share"></i> GraphQL
+                  {{else if (eq apiInfo.type "WS")}}<i class="bi bi-broadcast"></i> WebSocket
+                  {{else if (eq apiInfo.type "WEBSUB")}}<i class="bi bi-broadcast-pin"></i> WebSub
+                  {{else if (eq apiInfo.type "SOAP")}}<i class="bi bi-file-code"></i> SOAP
                   {{else}}<i class="bi bi-braces"></i> REST{{/if}}
                 </span>
                 {{#if ../showApiWorkflowsNav}}
@@ -114,7 +114,7 @@
                 </span>
                 {{/unless}}
                 {{/if}}
-                {{#if (eq apiInfo.apiStatus "DEPRECATED")}}
+                {{#if (eq apiInfo.status "DEPRECATED")}}
                 <span class="dp-badge dp-badge--deprecated"><i class="bi bi-exclamation-circle"></i> Deprecated</span>
                 {{/if}}
               </div>
@@ -122,7 +122,7 @@
           </div>
 
           <!-- Description -->
-          <p class="api-card-desc clamp2" data-href="{{../baseUrl}}/api/{{apiHandle}}" style="cursor:pointer;">{{apiInfo.apiDescription}}</p>
+          <p class="api-card-desc clamp2" data-href="{{../baseUrl}}/api/{{handle}}" style="cursor:pointer;">{{apiInfo.description}}</p>
 
           <!-- Tags -->
           <div class="api-card-tags">
@@ -135,16 +135,16 @@
           {{#if subscriptionPlans.length}}
           <div class="api-card-footer">
             <div class="api-card-footer-left">
-              <a href="{{../baseUrl}}/api/{{apiHandle}}#subscriptionPlans" class="api-plans-link">
+              <a href="{{../baseUrl}}/api/{{handle}}#subscriptionPlans" class="api-plans-link">
                 <i class="bi bi-tag"></i> {{subscriptionPlans.length}} plans
               </a>
             </div>
             {{#if hasSubscription}}
-            <a href="{{../baseUrl}}/api/{{apiHandle}}#subscriptionPlans" class="api-card-view-sub-btn">
+            <a href="{{../baseUrl}}/api/{{handle}}#subscriptionPlans" class="api-card-view-sub-btn">
               <i class="bi bi-check-circle"></i> View subscription
             </a>
             {{else}}
-            <a href="{{../baseUrl}}/api/{{apiHandle}}#subscriptionPlans"
+            <a href="{{../baseUrl}}/api/{{handle}}#subscriptionPlans"
                class="dp-btn dp-btn--primary {{#if @root.isReadOnlyMode}}disabled{{/if}}"
                {{#if @root.isReadOnlyMode}}aria-disabled="true" tabindex="-1"{{/if}}>Subscribe</a>
             {{/if}}

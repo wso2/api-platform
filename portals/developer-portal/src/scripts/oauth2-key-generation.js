@@ -28,7 +28,7 @@ async function addClientId(kmId, keyType, appId, orgId, keyManager) {
         const response = await fetch(devportalApi.org(orgId, `/applications/${appId}/generate-keys`), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ keyManager, keyType, consumerKey }),
+            body: JSON.stringify({ keyManager, type: keyType, consumerKey }),
         });
         const data = await response.json();
         if (response.ok) {

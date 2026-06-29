@@ -21,18 +21,18 @@ const viewDao = require('./viewDao');
 
 const create = async (orgData, t) => {
     let devPortalId = "";
-    if (orgData.orgHandle) {
-        devPortalId = orgData.orgHandle.toLowerCase();
+    if (orgData.handle) {
+        devPortalId = orgData.handle.toLowerCase();
     }
     const createOrgData = {
-        NAME: orgData.orgName,
+        NAME: orgData.name,
         BUSINESS_OWNER: orgData.businessOwner,
         BUSINESS_OWNER_CONTACT: orgData.businessOwnerContact,
         BUSINESS_OWNER_EMAIL: orgData.businessOwnerEmail,
         HANDLE: devPortalId,
         IDP_REF_ID: orgData.idpRefId,
         CP_REF_ID: orgData.cpRefId,
-        CONFIGURATION: orgData.orgConfig,
+        CONFIGURATION: orgData.configuration,
         CREATED_BY: orgData.createdBy,
         UPDATED_BY: orgData.createdBy
     };
@@ -114,20 +114,20 @@ const list = async () => {
 
 const update = async (orgData, t) => {
     let devPortalId = "";
-    if (orgData.orgHandle) {
-        devPortalId = orgData.orgHandle.toLowerCase();
+    if (orgData.handle) {
+        devPortalId = orgData.handle.toLowerCase();
     }
     try {
         const [updatedRowsCount, updatedOrg] = await Organization.update(
             {
-                NAME: orgData.orgName,
+                NAME: orgData.name,
                 BUSINESS_OWNER: orgData.businessOwner,
                 BUSINESS_OWNER_CONTACT: orgData.businessOwnerContact,
                 BUSINESS_OWNER_EMAIL: orgData.businessOwnerEmail,
                 HANDLE: devPortalId,
                 IDP_REF_ID: orgData.idpRefId,
                 ...(orgData.cpRefId !== undefined && { CP_REF_ID: orgData.cpRefId }),
-                CONFIGURATION: orgData.orgConfiguration,
+                CONFIGURATION: orgData.configuration,
                 UPDATED_BY: orgData.updatedBy,
                 UPDATED_AT: new Date()
             },

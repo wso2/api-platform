@@ -46,9 +46,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
       "description": "Application used to call Weather APIs.",
       "appMap": [
         {
-          "appRefId": "asgardeo-client-abc123",
+          "asClientId": "asgardeo-client-abc123",
           "kmId": "km-uuid-12345",
-          "keyType": "PRODUCTION"
+          "type": "PRODUCTION"
         }
       ]
     }
@@ -89,9 +89,9 @@ Status Code **200**
 |»» name|string|false|none|none|
 |»» description|string|false|none|none|
 |»» appMap|[[ApplicationKeyMappingSummary](schemas.md#schemaapplicationkeymappingsummary)]|false|none|[OAuth client ID mapping entry attached to an application.]|
-|»»» appRefId|string|false|none|OAuth client ID, created directly in the key manager and linked to this application.|
+|»»» asClientId|string|false|none|OAuth client ID, created directly in the key manager and linked to this application.|
 |»»» kmId|string|false|none|UUID of the key manager this client ID is linked to.|
-|»»» keyType|string|false|none|Key type for this mapping.|
+|»»» type|string|false|none|Key type for this mapping.|
 |» pagination|[Pagination](schemas.md#schemapagination)|false|none|Standard pagination metadata returned with collection responses.|
 |»» total|integer|true|none|Total number of records matching the query.|
 |»» limit|integer|true|none|Maximum number of records returned in this response.|
@@ -101,8 +101,8 @@ Status Code **200**
 
 |Property|Value|
 |---|---|
-|keyType|PRODUCTION|
-|keyType|SANDBOX|
+|type|PRODUCTION|
+|type|SANDBOX|
 
 ## Create an application
 
@@ -176,8 +176,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
     "message": "Input validation failed.",
     "errors": [
       {
-        "field": "orgName",
-        "message": "orgName is required."
+        "field": "name",
+        "message": "name is required."
       }
     ]
   }
@@ -315,8 +315,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
     "message": "Input validation failed.",
     "errors": [
       {
-        "field": "orgName",
-        "message": "orgName is required."
+        "field": "name",
+        "message": "name is required."
       }
     ]
   }

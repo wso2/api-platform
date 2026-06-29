@@ -49,7 +49,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "orgId": "string",
+  "id": "string",
   "fileName": "string"
 }
 ```
@@ -64,8 +64,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
     "message": "Input validation failed.",
     "errors": [
       {
-        "field": "orgName",
-        "message": "orgName is required."
+        "field": "name",
+        "message": "name is required."
       }
     ]
   }
@@ -184,7 +184,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "orgId": "string",
+  "id": "string",
   "fileName": "string"
 }
 ```
@@ -199,8 +199,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
     "message": "Input validation failed.",
     "errors": [
       {
-        "field": "orgName",
-        "message": "orgName is required."
+        "field": "name",
+        "message": "name is required."
       }
     ]
   }
@@ -358,8 +358,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
     "message": "Input validation failed.",
     "errors": [
       {
-        "field": "orgName",
-        "message": "orgName is required."
+        "field": "name",
+        "message": "name is required."
       }
     ]
   }
@@ -450,7 +450,7 @@ Returns all stored organization layout content records for the selected file typ
 ```json
 [
   {
-    "orgId": "string",
+    "id": "string",
     "fileName": "string",
     "fileContent": "string"
   }
@@ -467,8 +467,8 @@ Returns all stored organization layout content records for the selected file typ
     "message": "Input validation failed.",
     "errors": [
       {
-        "field": "orgName",
-        "message": "orgName is required."
+        "field": "name",
+        "message": "name is required."
       }
     ]
   }
@@ -510,7 +510,7 @@ Status Code **200**
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |*anonymous*|[[OrganizationContentListItemResponse](schemas.md#schemaorganizationcontentlistitemresponse)]|false|none|none|
-|» orgId|string|false|none|none|
+|» id|string|false|none|none|
 |» fileName|string|false|none|none|
 |» fileContent|string¦null|false|none|UTF-8 content string returned for stored organization content records.|
 

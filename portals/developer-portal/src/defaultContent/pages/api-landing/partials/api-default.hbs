@@ -24,7 +24,7 @@
     </div>
   </div>
   {{/unless}}
-  {{#unless (eq apiMetadata.apiInfo.apiType "MCP")}}
+  {{#unless (eq apiMetadata.apiInfo.type "MCP")}}
   {{#unless (eq resources.serverDetails.sandboxURL "")}}
   <div class="aov-endpoint-card">
     <div class="aov-endpoint-label-row">
@@ -46,10 +46,10 @@
 </div>
 
 {{!-- Resources (REST / MCP) --}}
-{{#unless (eq apiMetadata.apiInfo.apiType "WS")}}
-{{#unless (eq apiMetadata.apiInfo.apiType "WEBSUB")}}
-{{#unless (eq apiMetadata.apiInfo.apiType "GRAPHQL")}}
-{{#unless (eq apiMetadata.apiInfo.apiType "MCP")}}
+{{#unless (eq apiMetadata.apiInfo.type "WS")}}
+{{#unless (eq apiMetadata.apiInfo.type "WEBSUB")}}
+{{#unless (eq apiMetadata.apiInfo.type "GRAPHQL")}}
+{{#unless (eq apiMetadata.apiInfo.type "MCP")}}
 <div class="aov-section">
   <div class="aov-section-header">
     <h2 class="aov-section-title">Resources</h2>
@@ -70,7 +70,7 @@
 {{/unless}}
 
 {{!-- Channels (WS) --}}
-{{#if (eq apiMetadata.apiInfo.apiType "WS")}}
+{{#if (eq apiMetadata.apiInfo.type "WS")}}
 <div class="aov-section">
   <div class="aov-section-header">
     <h2 class="aov-section-title">Channels</h2>
@@ -86,7 +86,7 @@
 {{/if}}
 
 {{!-- Channels (WEBSUB) --}}
-{{#if (eq apiMetadata.apiInfo.apiType "WEBSUB")}}
+{{#if (eq apiMetadata.apiInfo.type "WEBSUB")}}
 <div class="aov-section">
   <div class="aov-section-header">
     <h2 class="aov-section-title">Channels</h2>
@@ -101,9 +101,9 @@
 {{/if}}
 
 {{!-- Scopes --}}
-{{#unless (eq apiMetadata.apiInfo.apiType "WS")}}
-{{#unless (eq apiMetadata.apiInfo.apiType "WEBSUB")}}
-{{#unless (eq apiMetadata.apiInfo.apiType "GRAPHQL")}}
+{{#unless (eq apiMetadata.apiInfo.type "WS")}}
+{{#unless (eq apiMetadata.apiInfo.type "WEBSUB")}}
+{{#unless (eq apiMetadata.apiInfo.type "GRAPHQL")}}
 <div class="aov-section">
   <div class="aov-section-header">
     <h2 class="aov-section-title">Scopes</h2>

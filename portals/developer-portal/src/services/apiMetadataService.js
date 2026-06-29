@@ -91,17 +91,17 @@ const createAPIMetadata = async (req, res) => {
         }
 
         // Validate input
-        const hasGraphQLSchema = apiMetadata.apiInfo?.apiType === constants.API_TYPE.GRAPHQL &&
+        const hasGraphQLSchema = apiMetadata.apiInfo?.type === constants.API_TYPE.GRAPHQL &&
             req.files?.schemaDefinition?.[0];
         if (!apiMetadata.apiInfo || (!apiDefinitionFile && !hasGraphQLSchema) || !apiMetadata.endPoints) {
             throw new Sequelize.ValidationError(
                 "Missing or Invalid fields in the request payload"
             );
         }
-        const { apiStatus, agentVisibility: infoAgentVisibility } = apiMetadata.apiInfo;
+        const { status: apiStatus, agentVisibility: infoAgentVisibility } = apiMetadata.apiInfo;
         const agentVisibility = apiMetadata.agentVisibility || infoAgentVisibility;
         if (apiStatus && !Object.values(constants.API_STATUS).includes(apiStatus)) {
-            throw new Sequelize.ValidationError(`Invalid apiStatus '${apiStatus}'. Must be one of: ${Object.values(constants.API_STATUS).join(', ')}.`);
+            throw new Sequelize.ValidationError(`Invalid status '${apiStatus}'. Must be one of: ${Object.values(constants.API_STATUS).join(', ')}.`);
         }
         if (agentVisibility) {
             const normalizedAgentVisibility = agentVisibility.toUpperCase();
@@ -129,7 +129,7 @@ const createAPIMetadata = async (req, res) => {
                     );
                 } else {
                     for (const plan of apiSubscriptionPlans) {
-                        const subscriptionPlan = await subscriptionPlanDao.getByName(orgId, plan.planName);
+                        const subscriptionPlan = await subscriptionPlanDao.getByName(orgId, plan.handle);
                         if (!subscriptionPlan) {
                             throw new Sequelize.EmptyResultError("Subscription plan not found");
                         } else {
@@ -172,7 +172,7 @@ const createAPIMetadata = async (req, res) => {
                 }
             }
             // Save MCP tools as schema definition if the API type is MCP
-            if (constants.API_TYPE.MCP === apiMetadata.apiInfo.apiType) {
+            if (constants.API_TYPE.MCP === apiMetadata.apiInfo.type) {
                 let schemaFile;
                 if (req.files?.schemaDefinition?.[0]) {
                     schemaFile = req.files.schemaDefinition[0];
@@ -198,7 +198,7 @@ const createAPIMetadata = async (req, res) => {
                 }
             }
 
-            if (constants.API_TYPE.GRAPHQL === apiMetadata.apiInfo.apiType && req.files?.schemaDefinition?.[0]) {
+            if (constants.API_TYPE.GRAPHQL === apiMetadata.apiInfo.type && req.files?.schemaDefinition?.[0]) {
                 const file = req.files.schemaDefinition[0];
                 const schemaDefinitionFile = file.buffer;
                 logger.debug('GraphQL schema definition file received', {
@@ -218,7 +218,7 @@ const createAPIMetadata = async (req, res) => {
             if (apiArtifactFile?.buffer && artifactApiContent.length > 0) {
                 await apiFileDao.storeMany(artifactApiContent, apiId, userId, t);
             }
-            apiMetadata.apiId = apiId;
+            apiMetadata.id = apiId;
         });
 
 
@@ -258,7 +258,7 @@ function normalizeGraphQLEndpoints(apiMetadata) {
     if (!apiMetadata?.apiInfo || !apiMetadata?.endPoints) {
         return;
     }
-    if (constants.API_TYPE.GRAPHQL !== apiMetadata.apiInfo.apiType) {
+    if (constants.API_TYPE.GRAPHQL !== apiMetadata.apiInfo.type) {
         return;
     }
     apiMetadata.endPoints.productionURL = normalizeGraphQLEndpoint(apiMetadata.endPoints.productionURL);
@@ -424,10 +424,10 @@ const updateAPIMetadata = async (req, res) => {
                 "Missing or Invalid fields in the request payload"
             );
         }
-        const { apiStatus: updateApiStatus, agentVisibility: updateInfoAgentVisibility } = apiMetadata.apiInfo;
+        const { status: updateApiStatus, agentVisibility: updateInfoAgentVisibility } = apiMetadata.apiInfo;
         const updateAgentVisibility = apiMetadata.agentVisibility || updateInfoAgentVisibility;
         if (updateApiStatus && !Object.values(constants.API_STATUS).includes(updateApiStatus)) {
-            throw new Sequelize.ValidationError(`Invalid apiStatus '${updateApiStatus}'. Must be one of: ${Object.values(constants.API_STATUS).join(', ')}.`);
+            throw new Sequelize.ValidationError(`Invalid status '${updateApiStatus}'. Must be one of: ${Object.values(constants.API_STATUS).join(', ')}.`);
         }
         if (updateAgentVisibility) {
             const normalizedUpdateAgentVisibility = updateAgentVisibility.toUpperCase();
@@ -453,7 +453,7 @@ const updateAPIMetadata = async (req, res) => {
         apiMetadata.endPoints.productionURL = changeEndpoint(apiMetadata.endPoints.productionURL);
         apiMetadata.endPoints.sandboxURL = changeEndpoint(apiMetadata.endPoints.sandboxURL);
         normalizeGraphQLEndpoints(apiMetadata);
-        let allowStatusChange = await allowAPIStatusChange(apiMetadata.apiInfo.apiStatus, orgId, apiId);
+        let allowStatusChange = await allowAPIStatusChange(apiMetadata.apiInfo.status, orgId, apiId);
         if (!allowStatusChange) {
             throw new CustomError(409, constants.ERROR_MESSAGE.ERR_SUB_EXIST, "API has subscriptions.");
         }
@@ -503,7 +503,7 @@ const updateAPIMetadata = async (req, res) => {
                     );
                 } else {
                     for (const plan of apiSubscriptionPlans) {
-                        const subscriptionPlan = await subscriptionPlanDao.getByName(orgId, plan.planName);
+                        const subscriptionPlan = await subscriptionPlanDao.getByName(orgId, plan.handle);
                         if (!subscriptionPlan) {
                             throw new Sequelize.EmptyResultError("Subscription plan not found");
                         } else {
@@ -539,10 +539,10 @@ const updateAPIMetadata = async (req, res) => {
             const hasSchemaDefinitionFile = !!req.files?.schemaDefinition?.[0] || !!fullApiBundle?.schemaDefinitionFile;
             logger.debug('Processing MCP API schema definition', {
                 hasSchemaDefinition: hasSchemaDefinitionFile,
-                apiType: apiMetadata.apiInfo.apiType,
+                apiType: apiMetadata.apiInfo.type,
                 apiId
             });
-            if (constants.API_TYPE.MCP === apiMetadata.apiInfo.apiType && hasSchemaDefinitionFile) {
+            if (constants.API_TYPE.MCP === apiMetadata.apiInfo.type && hasSchemaDefinitionFile) {
                 let schemaFile;
                 if (req.files?.schemaDefinition?.[0]) {
                     schemaFile = req.files.schemaDefinition[0];
@@ -568,7 +568,7 @@ const updateAPIMetadata = async (req, res) => {
                 }
             }
 
-            if (constants.API_TYPE.GRAPHQL === apiMetadata.apiInfo.apiType && req.files?.schemaDefinition?.[0]) {
+            if (constants.API_TYPE.GRAPHQL === apiMetadata.apiInfo.type && req.files?.schemaDefinition?.[0]) {
                 const file = req.files.schemaDefinition[0];
                 const schemaDefinitionFile = file.buffer;
                 const schemaFileName = constants.FILE_NAME.API_DEFINITION_GRAPHQL;
@@ -1172,7 +1172,7 @@ const createSubscriptionPlans = async (req, res) => {
                             throw new CustomError(
                                 500,
                                 constants.ERROR_CODE[500],
-                                `Failed to create plan: ${plan.planName || "unknown"}`
+                                `Failed to create plan: ${plan.handle || "unknown"}`
                             );
                         }
                         createdPlans.push(new subscriptionPlanDTO(created));
@@ -1266,7 +1266,7 @@ const updateSubscriptionPlans = async (req, res) => {
                             throw new CustomError(
                                 500,
                                 constants.ERROR_CODE[500],
-                                `Failed to create plan: ${plan.planName || "unknown"}`
+                                `Failed to create plan: ${plan.handle || "unknown"}`
                             );
                         }
                         updatedPlans.push(new subscriptionPlanDTO(created.subscriptionPlanResponse));
@@ -1796,17 +1796,17 @@ function mapDevportalYamlToApiMetadata(parsedYaml) {
     const businessInformation = spec.businessInformation || {};
 
     const subscriptionPlans = util.normalizeStringArray(spec.subscriptionPlans)
-        .map(planName => ({ planName }));
+        .map(planName => ({ handle: planName }));
 
     return {
         apiInfo: {
-            apiName: spec.displayName,
-            apiVersion: spec.version,
-            apiDescription: spec.description,
+            name: spec.displayName,
+            version: spec.version,
+            description: spec.description,
             referenceId: spec.referenceId,
-            apiHandle: metadata.name,
-            apiType,
-            apiStatus,
+            handle: metadata.name,
+            type: apiType,
+            status: apiStatus,
             agentVisibility,
             tags: util.normalizeStringArray(spec.tags),
             labels: util.normalizeStringArray(spec.labels),
@@ -1855,8 +1855,8 @@ function parseApiMetadataFromYamlRequest(req) {
 function mapYamlToSubscriptionPlan(item) {
     const { metadata = {}, spec = {} } = item;
     return {
-        planName: metadata.name,
-        displayName: spec.displayName,
+        handle: metadata.name,
+        name: spec.displayName,
         description: spec.description,
         refId: spec.refId,
         type: spec.type,

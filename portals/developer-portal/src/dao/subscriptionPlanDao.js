@@ -43,10 +43,10 @@ const buildSubscriptionPlanRow = (orgId, plan) => {
     ORG_UUID: orgId,
 
     // Store the APIM plan UUID if provided
-    UUID: plan.planId ?? undefined,
+    UUID: plan.id ?? undefined,
 
-    HANDLE: plan.planName,
-    NAME: plan.displayName,
+    HANDLE: plan.handle,
+    NAME: plan.name,
     DESCRIPTION: plan.description,
     REQUEST_COUNT: requestCount,
     REF_ID: plan.refId ?? null,
@@ -86,7 +86,7 @@ const createMany = async (orgId, plans, createdBy, t) => {
 };
 
 const put = async (orgId, plan, updatedBy, t) => {
-  const current = await getByName(orgId, plan.planName, t);
+  const current = await getByName(orgId, plan.handle, t);
   if (current) {
     const updated = await update(orgId, current.UUID, plan, updatedBy, t);
     return { subscriptionPlanResponse: updated, statusCode: 200 };

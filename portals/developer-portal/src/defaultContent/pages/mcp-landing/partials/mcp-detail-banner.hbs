@@ -2,27 +2,27 @@
   <div class="aov-hero-top">
     <div class="aov-hero-thumb">
       {{#if apiMetadata.apiInfo.apiImageMetadata.api-icon}}
-      <img class="aov-api-img" src="{{apiMetadata.apiInfo.apiImageMetadata.api-icon}}" alt="{{apiMetadata.apiInfo.apiName}}" />
+      <img class="aov-api-img" src="{{apiMetadata.apiInfo.apiImageMetadata.api-icon}}" alt="{{apiMetadata.apiInfo.name}}" />
       {{else}}
-      <div class="aov-api-avatar">{{firstTwoLetters (or apiMetadata.apiInfo.apiTitle apiMetadata.apiInfo.apiName)}}</div>
+      <div class="aov-api-avatar">{{firstTwoLetters (or apiMetadata.apiInfo.apiTitle apiMetadata.apiInfo.name)}}</div>
       {{/if}}
     </div>
     <div class="aov-hero-title-row">
-      <h1 class="aov-hero-name">{{or apiMetadata.apiInfo.apiTitle apiMetadata.apiInfo.apiName}}</h1>
+      <h1 class="aov-hero-name">{{or apiMetadata.apiInfo.apiTitle apiMetadata.apiInfo.name}}</h1>
       <div class="aov-hero-badges">
-        {{#if apiMetadata.apiInfo.apiVersion}}
-        <span class="dp-badge dp-badge--version">{{apiMetadata.apiInfo.apiVersion}}</span>
+        {{#if apiMetadata.apiInfo.version}}
+        <span class="dp-badge dp-badge--version">{{apiMetadata.apiInfo.version}}</span>
         {{/if}}
         <span class="dp-badge dp-badge--mcp"><i class="bi bi-cpu"></i> MCP</span>
-        {{#if (eq apiMetadata.apiInfo.apiStatus "DEPRECATED")}}
+        {{#if (eq apiMetadata.apiInfo.status "DEPRECATED")}}
         <span class="dp-badge dp-badge--deprecated"><i class="bi bi-exclamation-circle"></i> Deprecated</span>
         {{/if}}
       </div>
     </div>
   </div>
   <div class="aov-hero-body">
-    {{#if apiMetadata.apiInfo.apiDescription}}
-    <p class="aov-hero-desc">{{apiMetadata.apiInfo.apiDescription}}</p>
+    {{#if apiMetadata.apiInfo.description}}
+    <p class="aov-hero-desc">{{apiMetadata.apiInfo.description}}</p>
     {{/if}}
     {{#if apiMetadata.apiInfo.tags}}
     <div class="dp-tags">
@@ -39,11 +39,11 @@
       </a>
         {{/unless}}
       {{/if}}
-      <a class="dp-btn dp-btn--outline" href="{{baseUrl}}/mcp/{{apiMetadata.apiHandle}}/docs/specification">
+      <a class="dp-btn dp-btn--outline" href="{{baseUrl}}/mcp/{{apiMetadata.handle}}/docs/specification">
         <i class="bi bi-book"></i> Documentation
       </a>
       {{#if showApiKeysNav}}
-      <a class="dp-btn dp-btn--outline" href="{{baseUrl}}/mcp/{{apiMetadata.apiHandle}}/api-keys">
+      <a class="dp-btn dp-btn--outline" href="{{baseUrl}}/mcp/{{apiMetadata.handle}}/api-keys">
         <i class="bi bi-key"></i> API Keys
       </a>
       {{/if}}

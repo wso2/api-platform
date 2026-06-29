@@ -1,8 +1,8 @@
-# {{apiMetadata.apiInfo.apiName}} {{apiMetadata.apiInfo.apiVersion}}
+# {{apiMetadata.apiInfo.name}} {{apiMetadata.apiInfo.version}}
 
-> {{apiMetadata.apiInfo.apiDescription}}
+> {{apiMetadata.apiInfo.description}}
 
-- **Version:** {{apiMetadata.apiInfo.apiVersion}}
+- **Version:** {{apiMetadata.apiInfo.version}}
 - **Type:** MCP Server
 {{#if apiMetadata.endPoints.productionURL}}- **Production Endpoint:** {{apiMetadata.endPoints.productionURL}}
 {{/if}}{{#if apiMetadata.endPoints.sandboxURL}}- **Sandbox Endpoint:** {{apiMetadata.endPoints.sandboxURL}}
@@ -14,7 +14,7 @@
 
 | Plan | Request Quota | Description |
 |------|--------------|-------------|
-{{#each subscriptionPlans}}| {{displayName}} | {{requestCount}} | {{description}} |
+{{#each subscriptionPlans}}| {{name}} | {{requestCount}} | {{description}} |
 {{/each}}
 {{/if}}
 {{#unless isMCPFromRegistry}}

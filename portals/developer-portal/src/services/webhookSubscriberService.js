@@ -24,7 +24,7 @@ const util = require('../utils/util');
 const logger = require('../config/logger');
 
 function _validateRequiredFields(payload) {
-    const missing = ['name', 'url'].filter(f => !payload[f]);
+    const missing = ['name', 'targetUrl'].filter(f => !payload[f]);
     if (missing.length) {
         return `Missing required fields: ${missing.join(', ')}`;
     }

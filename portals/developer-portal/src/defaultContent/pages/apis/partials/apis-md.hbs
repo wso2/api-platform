@@ -6,7 +6,7 @@ Explore our extensive API catalog and discover how to integrate them seamlessly 
 # APIs
 
 {{#restAPIs}}
-- [{{apiInfo.apiName}} v{{apiInfo.apiVersion}}]({{../baseUrl}}/api/{{apiHandle}}.md){{#if apiInfo.apiDescription}} - {{apiInfo.apiDescription}}{{/if}}
+- [{{apiInfo.name}} v{{apiInfo.version}}]({{../baseUrl}}/api/{{handle}}.md){{#if apiInfo.description}} - {{apiInfo.description}}{{/if}}
 {{/restAPIs}}
 {{/if}}
 {{#if graphqlAPIs}}
@@ -14,7 +14,7 @@ Explore our extensive API catalog and discover how to integrate them seamlessly 
 # GraphQL APIs
 
 {{#graphqlAPIs}}
-- [{{apiInfo.apiName}} v{{apiInfo.apiVersion}}]({{../baseUrl}}/api/{{apiHandle}}.md){{#if apiInfo.apiDescription}} - {{apiInfo.apiDescription}}{{/if}}
+- [{{apiInfo.name}} v{{apiInfo.version}}]({{../baseUrl}}/api/{{handle}}.md){{#if apiInfo.description}} - {{apiInfo.description}}{{/if}}
 {{/graphqlAPIs}}
 {{/if}}
 {{#if wsAPIs}}
@@ -22,7 +22,7 @@ Explore our extensive API catalog and discover how to integrate them seamlessly 
 # Async / WebSocket APIs
 
 {{#wsAPIs}}
-- [{{apiInfo.apiName}} v{{apiInfo.apiVersion}}]({{../baseUrl}}/api/{{apiHandle}}.md){{#if apiInfo.apiDescription}} - {{apiInfo.apiDescription}}{{/if}}
+- [{{apiInfo.name}} v{{apiInfo.version}}]({{../baseUrl}}/api/{{handle}}.md){{#if apiInfo.description}} - {{apiInfo.description}}{{/if}}
 {{/wsAPIs}}
 {{/if}}
 {{#if websubAPIs}}
@@ -30,6 +30,6 @@ Explore our extensive API catalog and discover how to integrate them seamlessly 
 # WebSub APIs
 
 {{#websubAPIs}}
-- [{{apiInfo.apiName}} v{{apiInfo.apiVersion}}]({{../baseUrl}}/api/{{apiHandle}}.md){{#if apiInfo.apiDescription}} - {{apiInfo.apiDescription}}{{/if}}
+- [{{apiInfo.name}} v{{apiInfo.version}}]({{../baseUrl}}/api/{{handle}}.md){{#if apiInfo.description}} - {{apiInfo.description}}{{/if}}
 {{/websubAPIs}}
 {{/if}}

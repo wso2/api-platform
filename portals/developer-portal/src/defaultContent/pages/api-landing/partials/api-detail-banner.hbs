@@ -2,27 +2,27 @@
   <div class="aov-hero-top">
     <div class="aov-hero-thumb">
       {{#if apiMetadata.apiInfo.apiImageMetadata.api-icon}}
-      <img class="aov-api-img" src="{{apiMetadata.apiInfo.apiImageMetadata.api-icon}}" alt="{{apiMetadata.apiInfo.apiName}}" />
+      <img class="aov-api-img" src="{{apiMetadata.apiInfo.apiImageMetadata.api-icon}}" alt="{{apiMetadata.apiInfo.name}}" />
       {{else}}
-      <div class="aov-api-avatar">{{firstTwoLetters apiMetadata.apiInfo.apiName}}</div>
+      <div class="aov-api-avatar">{{firstTwoLetters apiMetadata.apiInfo.name}}</div>
       {{/if}}
     </div>
     <div class="aov-hero-title-row">
-      <h1 class="aov-hero-name">{{apiMetadata.apiInfo.apiName}}</h1>
+      <h1 class="aov-hero-name">{{apiMetadata.apiInfo.name}}</h1>
       <div class="aov-hero-badges">
-        {{#if apiMetadata.apiInfo.apiVersion}}
-        <span class="dp-badge dp-badge--version">{{apiMetadata.apiInfo.apiVersion}}</span>
+        {{#if apiMetadata.apiInfo.version}}
+        <span class="dp-badge dp-badge--version">{{apiMetadata.apiInfo.version}}</span>
         {{/if}}
-        {{#if apiMetadata.apiInfo.apiType}}
+        {{#if apiMetadata.apiInfo.type}}
         <span class="dp-badge
-          {{#if (eq apiMetadata.apiInfo.apiType "GRAPHQL")}}dp-badge--graphql
-          {{else if (eq apiMetadata.apiInfo.apiType "WS")}}dp-badge--ws
-          {{else if (eq apiMetadata.apiInfo.apiType "SOAP")}}dp-badge--soap
+          {{#if (eq apiMetadata.apiInfo.type "GRAPHQL")}}dp-badge--graphql
+          {{else if (eq apiMetadata.apiInfo.type "WS")}}dp-badge--ws
+          {{else if (eq apiMetadata.apiInfo.type "SOAP")}}dp-badge--soap
           {{else}}dp-badge--rest{{/if}}">
-          {{#if (eq apiMetadata.apiInfo.apiType "GRAPHQL")}}<i class="bi bi-share"></i> GraphQL
-          {{else if (eq apiMetadata.apiInfo.apiType "WS")}}<i class="bi bi-broadcast"></i> WebSocket
-          {{else if (eq apiMetadata.apiInfo.apiType "SOAP")}}<i class="bi bi-file-code"></i> SOAP
-          {{else}}<i class="bi bi-braces"></i> {{apiMetadata.apiInfo.apiType}}{{/if}}
+          {{#if (eq apiMetadata.apiInfo.type "GRAPHQL")}}<i class="bi bi-share"></i> GraphQL
+          {{else if (eq apiMetadata.apiInfo.type "WS")}}<i class="bi bi-broadcast"></i> WebSocket
+          {{else if (eq apiMetadata.apiInfo.type "SOAP")}}<i class="bi bi-file-code"></i> SOAP
+          {{else}}<i class="bi bi-braces"></i> {{apiMetadata.apiInfo.type}}{{/if}}
         </span>
         {{/if}}
         {{#if showApiWorkflowsNav}}
@@ -32,15 +32,15 @@
         </span>
         {{/unless}}
         {{/if}}
-        {{#if (eq apiMetadata.apiInfo.apiStatus "DEPRECATED")}}
+        {{#if (eq apiMetadata.apiInfo.status "DEPRECATED")}}
         <span class="dp-badge dp-badge--deprecated"><i class="bi bi-exclamation-circle"></i> Deprecated</span>
         {{/if}}
       </div>
     </div>
   </div>
   <div class="aov-hero-body">
-    {{#if apiMetadata.apiInfo.apiDescription}}
-    <p class="aov-hero-desc">{{apiMetadata.apiInfo.apiDescription}}</p>
+    {{#if apiMetadata.apiInfo.description}}
+    <p class="aov-hero-desc">{{apiMetadata.apiInfo.description}}</p>
     {{/if}}
     {{#if apiMetadata.apiInfo.tags}}
     <div class="dp-tags">
@@ -57,8 +57,8 @@
       </a>
         {{/unless}}
       {{/if}}
-      {{#in apiMetadata.apiInfo.apiType values="REST,WS,WEBSUB,GRAPHQL,MCP"}}
-      <a class="dp-btn dp-btn--outline" href="{{baseUrl}}/api/{{apiMetadata.apiHandle}}/docs/specification">
+      {{#in apiMetadata.apiInfo.type values="REST,WS,WEBSUB,GRAPHQL,MCP"}}
+      <a class="dp-btn dp-btn--outline" href="{{baseUrl}}/api/{{apiMetadata.handle}}/docs/specification">
         <i class="bi bi-book"></i> Documentation
       </a>
       {{else}}
@@ -74,7 +74,7 @@
       {{/unless}}
       {{/if}}
       {{#if showApiKeysNav}}
-      <a class="dp-btn dp-btn--outline" href="{{baseUrl}}/api/{{apiMetadata.apiHandle}}/api-keys">
+      <a class="dp-btn dp-btn--outline" href="{{baseUrl}}/api/{{apiMetadata.handle}}/api-keys">
         <i class="bi bi-key"></i> API Keys
       </a>
       {{/if}}

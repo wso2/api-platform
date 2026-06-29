@@ -165,7 +165,7 @@ identityProvider:
   userInfoURL: "https://<your-idp>/oauth2/userinfo"
   jwksURL: "https://<your-idp>/oauth2/jwks"
   clientId: "<your-client-id>"
-  callbackURL: "http://localhost:3000/<orgHandle>/callback"
+  callbackURL: "http://localhost:3000/<handle>/callback"
 ```
 
 For local exploration you can skip IdP setup by using the Platform API sidecar instead (see [Local auth](#local-auth)).
@@ -428,7 +428,7 @@ TOKEN=$(curl -sk -X POST "https://localhost:9243/api/portal/v0.9/auth/login" \
 
 # Get the default org UUID
 ORG_ID=$(curl -sk -H "Authorization: Bearer $TOKEN" \
-  https://localhost:3000/organizations | jq -r '.[0].orgId')
+  https://localhost:3000/organizations | jq -r '.[0].id')
 
 # Create the API
 curl -sk -X POST "https://localhost:3000/devportal/v1/apis" \

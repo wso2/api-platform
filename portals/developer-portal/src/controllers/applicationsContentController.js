@@ -66,7 +66,7 @@ const loadApplicationData = async (req, orgName, applicationId, viewName) => {
     let applicationReference = "";
     let applicationKeyList;
     if (Array.isArray(applicationList.appMap) && applicationList.appMap.length > 0) {
-        applicationReference = applicationList.appMap[0].appRefId;
+        applicationReference = applicationList.appMap[0].asClientId;
         try {
             const { ApplicationKeyMapping } = require('../models/application');
             const localMappings = await ApplicationKeyMapping.findAll({

@@ -730,7 +730,7 @@ function validateScripts(strContent) {
             // API flows JSON data island (pages/api-workflows/page.hbs)
             "<script type=\"application/json\" id=\"apiFlowsDataContainer\">{{{json apiFlows}}}</script>",
             // AI agent data island (pages/api-landing/page.hbs)
-            "<script type=\"application/json\" id=\"apiAgentData\">{\"baseUrl\":\"{{baseUrl}}\",\"apiHandle\":\"{{apiMetadata.apiHandle}}\"}</script>",
+            "<script type=\"application/json\" id=\"apiAgentData\">{\"baseUrl\":\"{{baseUrl}}\",\"handle\":\"{{apiMetadata.handle}}\"}</script>",
             // Home discover data island (pages/home/page.hbs)
             "<script type=\"application/json\" id=\"homeDiscoverData\">{\"baseUrl\":\"{{baseUrl}}\"}</script>",
             // Existing-subs bootstrap (api-landing/partials/api-subscription-plans.hbs)
@@ -781,7 +781,7 @@ function appendAPIImageURL(subList, req, orgId) {
         const images = element.apiInfo.apiImageMetadata;
         let apiImageUrl = '';
         for (const key in images) {
-            apiImageUrl = `${constants.DEVPORTAL_API.orgPath(orgId)}${constants.ROUTE.API_FILE_PATH}${element.apiId}${constants.API_TEMPLATE_FILE_NAME}`;
+            apiImageUrl = `${constants.DEVPORTAL_API.orgPath(orgId)}${constants.ROUTE.API_FILE_PATH}${element.id}${constants.API_TEMPLATE_FILE_NAME}`;
             const modifiedApiImageURL = apiImageUrl + images[key];
             element.apiInfo.apiImageMetadata[key] = modifiedApiImageURL;
         }
@@ -792,18 +792,18 @@ async function appendSubscriptionPlanDetails(orgId, subscriptionPlans) {
     const enrichedPlans = [];
     if (subscriptionPlans) {
         for (const plan of subscriptionPlans) {
-            const subscriptionPlan = await loadSubscriptionPlan(orgId, plan.planName);
+            const subscriptionPlan = await loadSubscriptionPlan(orgId, plan.handle);
             if (!subscriptionPlan) {
                 logger.warn('Subscription plan not found, skipping', {
                     orgId,
-                    planName: plan.planName
+                    handle: plan.handle
                 });
                 continue;
             }
             enrichedPlans.push({
-                planId: subscriptionPlan.planId,
-                displayName: subscriptionPlan.displayName,
-                planName: subscriptionPlan.planName,
+                id: subscriptionPlan.id,
+                name: subscriptionPlan.name,
+                handle: subscriptionPlan.handle,
                 description: subscriptionPlan.description,
                 requestCount: subscriptionPlan.requestCount,
             });
@@ -902,10 +902,10 @@ function resolveApiType(apiType) {
 function filterAllowedAPIs(searchResults, allowedAPIs) {
     searchResults = searchResults.filter(api => {
         // MCP servers published via the registry have no referenceId
-        if (api?.apiInfo?.apiType === constants.API_TYPE.MCP && !api.apiReferenceId) {
+        if (api?.apiInfo?.type === constants.API_TYPE.MCP && !api.refId) {
             return true;
         }
-        return allowedAPIs.some(allowedAPI => api.apiReferenceId === allowedAPI.id);
+        return allowedAPIs.some(allowedAPI => api.refId === allowedAPI.id);
     });
     return searchResults;
 }

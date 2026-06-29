@@ -95,9 +95,9 @@ async function seedSampleAPIs(orgId) {
         try {
             const yamlBuffer = Buffer.from(fs.readFileSync(path.join(apiDir, 'api.yaml')));
             const apiMetadata = parseApiMetadataFromYamlFile('api.yaml', yamlBuffer);
-            apiName = apiMetadata.apiInfo.apiName || entry;
+            apiName = apiMetadata.apiInfo.name || entry;
 
-            if (await apiDao.existsByNameVersion(orgId, apiName, apiMetadata.apiInfo.apiVersion)) {
+            if (await apiDao.existsByNameVersion(orgId, apiName, apiMetadata.apiInfo.version)) {
                 results.push({ name: apiName, status: 'exists' });
                 continue;
             }
@@ -129,7 +129,7 @@ async function seedSampleAPIs(orgId) {
                 if (Array.isArray(apiMetadata.subscriptionPlans) && apiMetadata.subscriptionPlans.length) {
                     const mappings = [];
                     for (const p of apiMetadata.subscriptionPlans) {
-                        const plan = await subscriptionPlanDao.getByName(orgId, p.planName);
+                        const plan = await subscriptionPlanDao.getByName(orgId, p.handle);
                         if (plan) mappings.push({ apiId: apiId, planId: plan.UUID });
                     }
                     if (mappings.length) await subscriptionPlanDao.createApiMapping(mappings, apiId, constants.SYSTEM_ACTOR, t);
@@ -143,7 +143,7 @@ async function seedSampleAPIs(orgId) {
 
                 // Definition file
                 if (apiDefinitionFile) {
-                    const isGraphQL = apiMetadata.apiInfo.apiType === constants.API_TYPE.GRAPHQL;
+                    const isGraphQL = apiMetadata.apiInfo.type === constants.API_TYPE.GRAPHQL;
                     const storedName = isGraphQL ? constants.FILE_NAME.API_DEFINITION_GRAPHQL : apiFileName;
                     await apiFileDao.store(apiDefinitionFile, storedName, apiId, constants.DOC_TYPES.API_DEFINITION, constants.SYSTEM_ACTOR, t);
                 }
@@ -155,7 +155,7 @@ async function seedSampleAPIs(orgId) {
                 }
             });
 
-            results.push({ name: apiName, handle: apiMetadata.apiInfo.apiHandle, status: 'ok', apiId });
+            results.push({ name: apiName, handle: apiMetadata.apiInfo.handle, status: 'ok', apiId });
             logger.info('Seeded sample API', { orgId, apiName, apiId });
 
         } catch (err) {
@@ -194,9 +194,9 @@ async function seedSampleMCPs(orgId) {
         try {
             const yamlBuffer = Buffer.from(fs.readFileSync(path.join(mcpDir, 'api.yaml')));
             const apiMetadata = parseApiMetadataFromYamlFile('api.yaml', yamlBuffer);
-            apiName = apiMetadata.apiInfo.apiName || entry;
+            apiName = apiMetadata.apiInfo.name || entry;
 
-            if (await apiDao.existsByNameVersion(orgId, apiName, apiMetadata.apiInfo.apiVersion)) {
+            if (await apiDao.existsByNameVersion(orgId, apiName, apiMetadata.apiInfo.version)) {
                 results.push({ name: apiName, status: 'exists' });
                 continue;
             }
@@ -214,7 +214,7 @@ async function seedSampleMCPs(orgId) {
                 if (Array.isArray(apiMetadata.subscriptionPlans) && apiMetadata.subscriptionPlans.length) {
                     const mappings = [];
                     for (const p of apiMetadata.subscriptionPlans) {
-                        const plan = await subscriptionPlanDao.getByName(orgId, p.planName);
+                        const plan = await subscriptionPlanDao.getByName(orgId, p.handle);
                         if (plan) mappings.push({ apiId: apiId, planId: plan.UUID });
                     }
                     if (mappings.length) await subscriptionPlanDao.createApiMapping(mappings, apiId, constants.SYSTEM_ACTOR, t);
@@ -245,7 +245,7 @@ async function seedSampleMCPs(orgId) {
                 }
             });
 
-            results.push({ name: apiName, handle: apiMetadata.apiInfo.apiHandle, status: 'ok', apiId });
+            results.push({ name: apiName, handle: apiMetadata.apiInfo.handle, status: 'ok', apiId });
             logger.info('Seeded sample MCP', { orgId, apiName, apiId });
 
         } catch (err) {

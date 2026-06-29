@@ -75,10 +75,10 @@ async function resolveApi(orgId, apiId) {
     const row = rows[0];
     const dv = row.dataValues || row;
     return {
-        apiId: dv.UUID,
-        apiName: dv.NAME || null,
-        apiVersion: dv.VERSION || null,
-        apiRefId: dv.REF_ID || ''
+        id: dv.UUID,
+        name: dv.NAME || null,
+        version: dv.VERSION || null,
+        refId: dv.REF_ID || ''
     };
 }
 
@@ -87,9 +87,9 @@ async function resolveApiDirect(orgId, apiId) {
     if (!rows || rows.length === 0) return null;
     const dv = rows[0].dataValues || rows[0];
     return {
-        apiName: dv.NAME || null,
-        apiVersion: dv.VERSION || null,
-        apiRefId: dv.REF_ID || ''
+        name: dv.NAME || null,
+        version: dv.VERSION || null,
+        refId: dv.REF_ID || ''
     };
 }
 
@@ -170,7 +170,7 @@ async function generate({ orgId, apiId, subscriptionId, appId, name, expiresAt, 
     try {
         await sequelize.transaction(async (t) => {
             const key = await apiKeyDao.create(
-                { apiId: api.apiId, subscriptionId, appId: application ? application.id : null, orgId,
+                { apiId: api.id, subscriptionId, appId: application ? application.id : null, orgId,
                   name: normalizedName, expiresAt: expiry.date, createdBy: actor },
                 t
             );
@@ -181,7 +181,7 @@ async function generate({ orgId, apiId, subscriptionId, appId, name, expiresAt, 
                     key_id: keyId,
                     name: normalizedName,
                     expires_at: expiry.date ? expiry.date.toISOString() : null,
-                    api: { name: api.apiName, version: api.apiVersion, ref_id: api.apiRefId },
+                    api: { name: api.name, version: api.version, ref_id: api.refId },
                     ...(subscription && { subscription }),
                     ...(application && { application })
                 },
@@ -225,7 +225,7 @@ async function regenerate({ orgId, keyId, actor }) {
                     key_id: keyId,
                     name: existing.NAME,
                     expires_at: existing.EXPIRES_AT ? new Date(existing.EXPIRES_AT).toISOString() : null,
-                    api: { name: apiInfo ? apiInfo.apiName : null, version: apiInfo ? apiInfo.apiVersion : null, ref_id: apiInfo ? apiInfo.apiRefId : '' },
+                    api: { name: apiInfo ? apiInfo.name : null, version: apiInfo ? apiInfo.version : null, ref_id: apiInfo ? apiInfo.refId : '' },
                     ...(subscription && { subscription }),
                     ...(application && { application })
                 },
@@ -262,7 +262,7 @@ async function revoke({ orgId, keyId, actor }) {
             {
                 key_id: keyId,
                 name: existing.NAME,
-                api: { name: revokeApiInfo ? revokeApiInfo.apiName : null, version: revokeApiInfo ? revokeApiInfo.apiVersion : null, ref_id: revokeApiInfo ? revokeApiInfo.apiRefId : '' },
+                api: { name: revokeApiInfo ? revokeApiInfo.name : null, version: revokeApiInfo ? revokeApiInfo.version : null, ref_id: revokeApiInfo ? revokeApiInfo.refId : '' },
                 ...(subscription && { subscription })
             },
             { transaction: t, orgId,

@@ -192,7 +192,7 @@ const upsertKeyMapping = async (mappingData, t) => {
             where: {
                 APP_UUID: mappingData.appId,
                 KM_UUID: mappingData.kmId ?? null,
-                TYPE: mappingData.keyType,
+                TYPE: mappingData.type,
             },
             ...(t && { transaction: t }),
         });
@@ -208,7 +208,7 @@ const upsertKeyMapping = async (mappingData, t) => {
             APP_UUID: mappingData.appId,
             ...(mappingData.kmId && { KM_UUID: mappingData.kmId }),
             AS_CLIENT_ID: mappingData.asClientId,
-            TYPE: mappingData.keyType,
+            TYPE: mappingData.type,
             CREATED_BY: mappingData.createdBy,
             UPDATED_BY: mappingData.createdBy,
         }, { transaction: t });
@@ -284,7 +284,7 @@ const createKeyMapping = async (mappingData, t) => {
             APP_UUID: mappingData.appId,
             ...(mappingData.kmId && { KM_UUID: mappingData.kmId }),
             ...(mappingData.asClientId && { AS_CLIENT_ID: mappingData.asClientId }),
-            ...(mappingData.keyType && { TYPE: mappingData.keyType }),
+            ...(mappingData.type && { TYPE: mappingData.type }),
             CREATED_BY: mappingData.createdBy,
             UPDATED_BY: mappingData.createdBy,
         }, { transaction: t });

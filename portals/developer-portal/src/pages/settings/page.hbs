@@ -521,8 +521,8 @@
                     style="border:none;background:none;padding:0;cursor:pointer;font-size:.875rem;font-weight:600;color:#1a2433;text-decoration:none;">{{name}}</button>
                 </td>
                 <td>
-                  <span class="cfg-name-chip" title="{{url}}"
-                    style="display:inline-block;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{url}}</span>
+                  <span class="cfg-name-chip" title="{{targetUrl}}"
+                    style="display:inline-block;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{targetUrl}}</span>
                 </td>
                 <td>
                   {{#if events.length}}
@@ -1120,12 +1120,12 @@
 
     var meta = {
       apiInfo: {
-        apiName:        name,
-        apiVersion:     version,
-        apiHandle:      handle,
-        apiType:        document.getElementById('wz-type').value,
-        apiStatus:      document.getElementById('wz-status').value,
-        apiDescription: v('wz-desc'),
+        name:        name,
+        version:     version,
+        handle:      handle,
+        type:        document.getElementById('wz-type').value,
+        status:      document.getElementById('wz-status').value,
+        description: v('wz-desc'),
         tags:           v('wz-tags') ? v('wz-tags').split(',').map(function(t){return t.trim();}).filter(Boolean) : [],
         agentVisibility: agentVis,
         owners: {
@@ -1296,7 +1296,7 @@
       var apiData = await res.json();
       /* rebuild minimal meta with new status */
       var meta = {
-        apiInfo: Object.assign({}, apiData.apiInfo || {}, { apiStatus: newStatus }),
+        apiInfo: Object.assign({}, apiData.apiInfo || {}, { status: newStatus }),
         endPoints: apiData.endPoints || {},
         subscriptionPlans: apiData.subscriptionPlans || [],
       };
@@ -1784,14 +1784,14 @@
     if (!displayName || !planName) { await showAlert('Display name and name are required.', 'error'); return; }
 
     var body = {
-      displayName:  displayName,
-      planName:   planName,
+      name:         displayName,
+      handle:       planName,
       description:  v('pol-desc') || undefined,
       type:         document.getElementById('pol-type').value,
       requestCount: parseInt(v('pol-count'),10) || undefined,
       refId:        v('pol-refid') || undefined,
     };
-    if (editPlanId) body.planId = editPlanId;
+    if (editPlanId) body.id = editPlanId;
 
     try {
       var method = editPlanId ? 'PUT' : 'POST';
@@ -1919,7 +1919,7 @@
     document.getElementById('cfg-webhook-modal-title').textContent = mode === 'edit' ? 'Edit webhook' : 'Add webhook';
     document.getElementById('cfg-webhook-modal-save').textContent  = mode === 'edit' ? 'Save changes' : 'Add webhook';
     document.getElementById('wh-name').value      = mode === 'edit' ? (data.name || '')      : '';
-    document.getElementById('wh-url').value       = mode === 'edit' ? (data.url || '')       : '';
+    document.getElementById('wh-url').value       = mode === 'edit' ? (data.targetUrl || '')       : '';
     document.getElementById('wh-secret').value    = '';
     document.getElementById('wh-publickey').value = '';
     document.getElementById('wh-timeout').value   = mode === 'edit' ? (data.timeoutMs || 5000) : 5000;
@@ -1960,7 +1960,7 @@
 
     var body = {
       name: name,
-      url: url,
+      targetUrl: url,
       events: events,
       enabled: document.getElementById('wh-enabled').checked,
       timeoutMs: timeoutMs,

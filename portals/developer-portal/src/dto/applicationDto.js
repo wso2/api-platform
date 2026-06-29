@@ -37,9 +37,9 @@ class ApplicationDTO {
 
 class AppMappingDTO {
     constructor(map) {
-        this.appRefId = map.AS_CLIENT_ID;
+        this.asClientId = map.AS_CLIENT_ID;
         this.kmId = map.KM_UUID;
-        this.keyType = map.TYPE;
+        this.type = map.TYPE;
     }
 
     setResponseData(data) {

@@ -249,15 +249,15 @@ Ad hoc error shape used by the Subscriptions and API Keys handlers, which build 
 
 ```json
 {
-  "orgId": "string",
-  "orgName": "string",
+  "id": "string",
+  "name": "string",
   "businessOwner": "string",
   "businessOwnerContact": "string",
   "businessOwnerEmail": "user@example.com",
-  "orgHandle": "string",
+  "handle": "string",
   "idpRefId": "string",
   "cpRefId": "string",
-  "orgConfiguration": {}
+  "configuration": {}
 }
 
 ```
@@ -266,15 +266,15 @@ Ad hoc error shape used by the Subscriptions and API Keys handlers, which build 
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|orgId|string|false|none|none|
-|orgName|string|false|none|none|
+|id|string|false|none|none|
+|name|string|false|none|none|
 |businessOwner|string¦null|false|none|none|
 |businessOwnerContact|string¦null|false|none|none|
 |businessOwnerEmail|string(email)¦null|false|none|none|
-|orgHandle|string|false|none|none|
+|handle|string|false|none|none|
 |idpRefId|string|false|none|The organization claim value asserted by the configured Identity Provider at SSO login. On every login, the portal matches the authenticated user's org claim against this value to resolve which organization they belong to — it must exactly match the IDP's claim, or login fails for that org's users. Distinct from `cpRefId`, which is unrelated to authentication.|
 |cpRefId|string¦null|false|none|Control Plane reference ID. Included in outbound webhook event payloads so subscribers can correlate this organization with its Control Plane (Platform API) counterpart. Not used for authentication or org resolution.|
-|orgConfiguration|[GenericObject](#schemagenericobject)|false|none|none|
+|configuration|[GenericObject](#schemagenericobject)|false|none|none|
 
 <h2 id="tocS_OrganizationContentUploadResponse">OrganizationContentUploadResponse</h2>
 
@@ -285,7 +285,7 @@ Ad hoc error shape used by the Subscriptions and API Keys handlers, which build 
 
 ```json
 {
-  "orgId": "string",
+  "id": "string",
   "fileName": "string"
 }
 
@@ -295,7 +295,7 @@ Ad hoc error shape used by the Subscriptions and API Keys handlers, which build 
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|orgId|string|true|none|none|
+|id|string|true|none|none|
 |fileName|string|true|none|Original ZIP file name uploaded in the `file` multipart field.|
 
 <h2 id="tocS_OrganizationContentListItemResponse">OrganizationContentListItemResponse</h2>
@@ -307,7 +307,7 @@ Ad hoc error shape used by the Subscriptions and API Keys handlers, which build 
 
 ```json
 {
-  "orgId": "string",
+  "id": "string",
   "fileName": "string",
   "fileContent": "string"
 }
@@ -318,7 +318,7 @@ Ad hoc error shape used by the Subscriptions and API Keys handlers, which build 
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|orgId|string|false|none|none|
+|id|string|false|none|none|
 |fileName|string|false|none|none|
 |fileContent|string¦null|false|none|UTF-8 content string returned for stored organization content records.|
 
@@ -331,21 +331,21 @@ Ad hoc error shape used by the Subscriptions and API Keys handlers, which build 
 
 ```json
 {
-  "apiId": "string",
-  "apiReferenceId": "string",
-  "apiHandle": "string",
+  "id": "string",
+  "refId": "string",
+  "handle": "string",
   "apiInfo": {
-    "apiName": "string",
+    "name": "string",
     "apiTitle": "string",
     "remotes": [
       {}
     ],
-    "apiVersion": "string",
-    "apiStatus": "PUBLISHED",
-    "apiDescription": "string",
-    "apiType": "REST",
+    "version": "string",
+    "status": "PUBLISHED",
+    "description": "string",
+    "type": "REST",
     "referenceId": "string",
-    "apiHandle": "string",
+    "handle": "string",
     "agentVisibility": "VISIBLE",
     "addedLabels": [
       "string"
@@ -376,9 +376,9 @@ Ad hoc error shape used by the Subscriptions and API Keys handlers, which build 
   },
   "subscriptionPlans": [
     {
-      "planId": "string",
-      "planName": "string",
-      "displayName": "string",
+      "id": "string",
+      "handle": "string",
+      "name": "string",
       "description": "string",
       "requestCount": "string",
       "refId": "string",
@@ -393,9 +393,9 @@ Ad hoc error shape used by the Subscriptions and API Keys handlers, which build 
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|apiId|string|false|none|none|
-|apiReferenceId|string¦null|false|none|Platform API (Control Plane) reference ID for this API. Used for MCP registry visibility filtering and included in outbound webhook event payloads. Null/absent for APIs that exist only in the Developer Portal and are not registered with the Platform API — e.g. MCP servers published via the registry.|
-|apiHandle|string|false|none|none|
+|id|string|false|none|none|
+|refId|string¦null|false|none|Platform API (Control Plane) reference ID for this API. Used for MCP registry visibility filtering and included in outbound webhook event payloads. Null/absent for APIs that exist only in the Developer Portal and are not registered with the Platform API — e.g. MCP servers published via the registry.|
+|handle|string|false|none|none|
 |apiInfo|[ApiInfoResponse](#schemaapiinforesponse)|false|none|none|
 |endPoints|[ApiEndpointsResponse](#schemaapiendpointsresponse)|false|none|none|
 |subscriptionPlans|[[SubscriptionPlanResponse](#schemasubscriptionplanresponse)]|false|none|none|
@@ -409,23 +409,23 @@ Ad hoc error shape used by the Subscriptions and API Keys handlers, which build 
 
 ```json
 {
-  "apiId": "string",
-  "apiReferenceId": "string",
-  "apiHandle": "string",
+  "id": "string",
+  "refId": "string",
+  "handle": "string",
   "dataSource": "string",
   "planId": "string",
   "apiInfo": {
-    "apiName": "string",
+    "name": "string",
     "apiTitle": "string",
     "remotes": [
       {}
     ],
-    "apiVersion": "string",
-    "apiStatus": "PUBLISHED",
-    "apiDescription": "string",
-    "apiType": "REST",
+    "version": "string",
+    "status": "PUBLISHED",
+    "description": "string",
+    "type": "REST",
     "referenceId": "string",
-    "apiHandle": "string",
+    "handle": "string",
     "agentVisibility": "VISIBLE",
     "addedLabels": [
       "string"
@@ -456,9 +456,9 @@ Ad hoc error shape used by the Subscriptions and API Keys handlers, which build 
   },
   "subscriptionPlans": [
     {
-      "planId": "string",
-      "planName": "string",
-      "displayName": "string",
+      "id": "string",
+      "handle": "string",
+      "name": "string",
       "description": "string",
       "requestCount": "string",
       "refId": "string",
@@ -473,9 +473,9 @@ Ad hoc error shape used by the Subscriptions and API Keys handlers, which build 
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|apiId|string|false|none|none|
-|apiReferenceId|string¦null|false|none|Platform API (Control Plane) reference ID for this API. Used for MCP registry visibility filtering and included in outbound webhook event payloads. Null/absent for APIs that exist only in the Developer Portal and are not registered with the Platform API — e.g. MCP servers published via the registry.|
-|apiHandle|string|false|none|none|
+|id|string|false|none|none|
+|refId|string¦null|false|none|Platform API (Control Plane) reference ID for this API. Used for MCP registry visibility filtering and included in outbound webhook event payloads. Null/absent for APIs that exist only in the Developer Portal and are not registered with the Platform API — e.g. MCP servers published via the registry.|
+|handle|string|false|none|none|
 |dataSource|string¦null|false|none|Indicates which content matched the search term: `METADATA` if the match was in the API's own metadata, or a content type (e.g. a value from the API Content `type` field) if the match was inside an uploaded content file. Only computed by getAllApiMetadataForOrganization when both the `query` search parameter is supplied and the database is PostgreSQL — absent on SQLite (the dev default) and absent from every other operation (get/create/update single API).|
 |planId|string|false|none|none|
 |apiInfo|[ApiInfoResponse](#schemaapiinforesponse)|false|none|none|
@@ -491,17 +491,17 @@ Ad hoc error shape used by the Subscriptions and API Keys handlers, which build 
 
 ```json
 {
-  "apiName": "string",
+  "name": "string",
   "apiTitle": "string",
   "remotes": [
     {}
   ],
-  "apiVersion": "string",
-  "apiStatus": "PUBLISHED",
-  "apiDescription": "string",
-  "apiType": "REST",
+  "version": "string",
+  "status": "PUBLISHED",
+  "description": "string",
+  "type": "REST",
   "referenceId": "string",
-  "apiHandle": "string",
+  "handle": "string",
   "agentVisibility": "VISIBLE",
   "addedLabels": [
     "string"
@@ -533,15 +533,15 @@ Ad hoc error shape used by the Subscriptions and API Keys handlers, which build 
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|apiName|string|false|none|none|
+|name|string|false|none|none|
 |apiTitle|string¦null|false|none|none|
 |remotes|[object]|false|none|none|
-|apiVersion|string|false|none|none|
-|apiStatus|string|false|none|API lifecycle status.|
-|apiDescription|string|false|none|none|
-|apiType|string|false|none|none|
+|version|string|false|none|none|
+|status|string|false|none|API lifecycle status.|
+|description|string|false|none|none|
+|type|string|false|none|none|
 |referenceId|string¦null|false|none|External reference ID. Present when the API was created from a `devportal.yaml` artifact whose `spec` block sets `referenceId` — the create response echoes the parsed YAML back, nested under `apiInfo`.|
-|apiHandle|string¦null|false|none|Present (nested under `apiInfo`) when the API was created from a `devportal.yaml` artifact — the parser sets it from `metadata.name`. Distinct from the top-level `apiHandle` on ApiMetadataResponse.|
+|handle|string¦null|false|none|Present (nested under `apiInfo`) when the API was created from a `devportal.yaml` artifact — the parser sets it from `metadata.name`. Distinct from the top-level `apiHandle` on ApiMetadataResponse.|
 |agentVisibility|string|false|none|none|
 |addedLabels|[string]|false|none|none|
 |removedLabels|[string]|false|none|none|
@@ -554,14 +554,14 @@ Ad hoc error shape used by the Subscriptions and API Keys handlers, which build 
 
 |Property|Value|
 |---|---|
-|apiStatus|PUBLISHED|
-|apiStatus|DEPRECATED|
-|apiType|REST|
-|apiType|SOAP|
-|apiType|MCP|
-|apiType|WS|
-|apiType|WEBSUB|
-|apiType|GRAPHQL|
+|status|PUBLISHED|
+|status|DEPRECATED|
+|type|REST|
+|type|SOAP|
+|type|MCP|
+|type|WS|
+|type|WEBSUB|
+|type|GRAPHQL|
 |agentVisibility|VISIBLE|
 |agentVisibility|HIDDEN|
 
@@ -643,9 +643,9 @@ Ad hoc error shape used by the Subscriptions and API Keys handlers, which build 
 
 ```json
 {
-  "planId": "string",
-  "planName": "string",
-  "displayName": "string",
+  "id": "string",
+  "handle": "string",
+  "name": "string",
   "description": "string",
   "requestCount": "string",
   "refId": "string",
@@ -658,9 +658,9 @@ Ad hoc error shape used by the Subscriptions and API Keys handlers, which build 
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|planId|string|false|none|none|
-|planName|string|false|none|none|
-|displayName|string|false|none|none|
+|id|string|false|none|none|
+|handle|string|false|none|none|
+|name|string|false|none|none|
 |description|string|false|none|none|
 |requestCount|string¦null|false|none|Always stored and returned as a string ("Unlimited" or a numeric string), regardless of the type (request-count or event-count) used to create the plan. Null if not set.|
 |refId|string¦null|false|none|Platform API subscription plan UUID associated with this plan.|
@@ -702,9 +702,9 @@ Ad hoc error shape used by the Subscriptions and API Keys handlers, which build 
   "description": "Application used to call Weather APIs.",
   "appMap": [
     {
-      "appRefId": "asgardeo-client-abc123",
+      "asClientId": "asgardeo-client-abc123",
       "kmId": "km-uuid-12345",
-      "keyType": "PRODUCTION"
+      "type": "PRODUCTION"
     }
   ]
 }
@@ -729,9 +729,9 @@ Ad hoc error shape used by the Subscriptions and API Keys handlers, which build 
 
 ```json
 {
-  "appRefId": "asgardeo-client-abc123",
+  "asClientId": "asgardeo-client-abc123",
   "kmId": "km-uuid-12345",
-  "keyType": "PRODUCTION"
+  "type": "PRODUCTION"
 }
 
 ```
@@ -742,16 +742,16 @@ OAuth client ID mapping entry attached to an application.
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|appRefId|string|false|none|OAuth client ID, created directly in the key manager and linked to this application.|
+|asClientId|string|false|none|OAuth client ID, created directly in the key manager and linked to this application.|
 |kmId|string|false|none|UUID of the key manager this client ID is linked to.|
-|keyType|string|false|none|Key type for this mapping.|
+|type|string|false|none|Key type for this mapping.|
 
 #### Enumerated Values
 
 |Property|Value|
 |---|---|
-|keyType|PRODUCTION|
-|keyType|SANDBOX|
+|type|PRODUCTION|
+|type|SANDBOX|
 
 <h2 id="tocS_ViewResponse">ViewResponse</h2>
 
@@ -789,46 +789,14 @@ OAuth client ID mapping entry attached to an application.
 
 ```json
 {
-  "orgName": "string",
+  "name": "string",
   "businessOwner": "string",
   "businessOwnerContact": "string",
   "businessOwnerEmail": "user@example.com",
-  "orgHandle": "string",
-  "idpRefId": "string",
-  "cpRefId": "string"
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|orgName|string|true|none|none|
-|businessOwner|string|false|none|none|
-|businessOwnerContact|string|false|none|none|
-|businessOwnerEmail|string(email)|false|none|none|
-|orgHandle|string|true|none|Public organization handle used in portal URLs.|
-|idpRefId|string|true|none|The organization claim value asserted by the configured Identity Provider at SSO login. Must exactly match the IDP's org claim for that org's users, or login will fail. Distinct from `cpRefId`.|
-|cpRefId|string¦null|false|none|Control Plane reference ID, included in outbound webhook event payloads. Not used for authentication.|
-
-<h2 id="tocS_OrganizationUpdateRequest">OrganizationUpdateRequest</h2>
-
-<a id="schemaorganizationupdaterequest"></a>
-<a id="schema_OrganizationUpdateRequest"></a>
-<a id="tocSorganizationupdaterequest"></a>
-<a id="tocsorganizationupdaterequest"></a>
-
-```json
-{
-  "orgName": "string",
-  "businessOwner": "string",
-  "businessOwnerContact": "string",
-  "businessOwnerEmail": "user@example.com",
-  "orgHandle": "string",
+  "handle": "string",
   "idpRefId": "string",
   "cpRefId": "string",
-  "orgConfiguration": {
+  "configuration": {
     "devportalMode": "DEFAULT"
   }
 }
@@ -839,14 +807,59 @@ OAuth client ID mapping entry attached to an application.
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|orgName|string|true|none|none|
+|name|string|true|none|none|
 |businessOwner|string|false|none|none|
 |businessOwnerContact|string|false|none|none|
 |businessOwnerEmail|string(email)|false|none|none|
-|orgHandle|string|true|none|none|
+|handle|string|true|none|Public organization handle used in portal URLs.|
 |idpRefId|string|true|none|The organization claim value asserted by the configured Identity Provider at SSO login. Must exactly match the IDP's org claim for that org's users, or login will fail. Distinct from `cpRefId`.|
 |cpRefId|string¦null|false|none|Control Plane reference ID, included in outbound webhook event payloads. Not used for authentication.|
-|orgConfiguration|object|false|none|none|
+|configuration|object|false|none|none|
+|» devportalMode|string|false|none|none|
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|devportalMode|DEFAULT|
+|devportalMode|MCP_SERVERS_ONLY|
+|devportalMode|APIS_ONLY|
+
+<h2 id="tocS_OrganizationUpdateRequest">OrganizationUpdateRequest</h2>
+
+<a id="schemaorganizationupdaterequest"></a>
+<a id="schema_OrganizationUpdateRequest"></a>
+<a id="tocSorganizationupdaterequest"></a>
+<a id="tocsorganizationupdaterequest"></a>
+
+```json
+{
+  "name": "string",
+  "businessOwner": "string",
+  "businessOwnerContact": "string",
+  "businessOwnerEmail": "user@example.com",
+  "handle": "string",
+  "idpRefId": "string",
+  "cpRefId": "string",
+  "configuration": {
+    "devportalMode": "DEFAULT"
+  }
+}
+
+```
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|name|string|true|none|none|
+|businessOwner|string|false|none|none|
+|businessOwnerContact|string|false|none|none|
+|businessOwnerEmail|string(email)|false|none|none|
+|handle|string|true|none|none|
+|idpRefId|string|true|none|The organization claim value asserted by the configured Identity Provider at SSO login. Must exactly match the IDP's org claim for that org's users, or login will fail. Distinct from `cpRefId`.|
+|cpRefId|string¦null|false|none|Control Plane reference ID, included in outbound webhook event payloads. Not used for authentication.|
+|configuration|object|false|none|none|
 |» devportalMode|string|false|none|none|
 
 #### Enumerated Values
@@ -866,10 +879,10 @@ OAuth client ID mapping entry attached to an application.
 
 ```json
 {
-  "planId": "string",
+  "id": "string",
   "refId": "string",
-  "planName": "string",
-  "displayName": "string",
+  "handle": "string",
+  "name": "string",
   "description": "string",
   "type": "requestcount",
   "requestCount": 0,
@@ -882,10 +895,10 @@ OAuth client ID mapping entry attached to an application.
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|planId|string|false|none|Optional external/APIM-assigned plan UUID.|
+|id|string|false|none|Optional external/APIM-assigned plan UUID.|
 |refId|string|false|none|Platform API subscription plan UUID to associate with this plan.|
-|planName|string|true|none|none|
-|displayName|string|true|none|none|
+|handle|string|true|none|none|
+|name|string|true|none|none|
 |description|string|false|none|none|
 |type|string|true|none|Service accepts case-insensitive `requestcount` or `eventcount`.|
 |requestCount|any|false|none|Required for request-count plans. Use -1 for unlimited.|
@@ -1370,7 +1383,7 @@ Minimal developer-facing key manager view.
 ```json
 {
   "name": "Production Gateway",
-  "url": "https://gateway.example.com/devportal-webhook",
+  "targetUrl": "https://gateway.example.com/devportal-webhook",
   "secret": "<shared-secret>",
   "publicKey": "string",
   "events": [
@@ -1388,7 +1401,7 @@ Minimal developer-facing key manager view.
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |name|string|true|none|Unique name within the organization.|
-|url|string(uri)|true|none|Target URL events are POSTed to. Must be unique within the organization.|
+|targetUrl|string(uri)|true|none|Target URL events are POSTed to. Must be unique within the organization.|
 |secret|string|false|none|Shared secret used to sign outgoing payloads (HMAC). Stored encrypted; never returned in responses.|
 |publicKey|string|false|none|PEM-encoded public key. When set, secret event payloads (apikey.*, subscription.*) are additionally encrypted to this key so only the subscriber can read the plaintext key.|
 |events|[string]|false|none|Glob-style event type allowlist (only a trailing `*` wildcard is supported, e.g. `apikey.*`). Omit or leave empty to receive all event types.|
@@ -1407,7 +1420,7 @@ Minimal developer-facing key manager view.
   "id": "sub-uuid-12345",
   "orgId": "org-12345",
   "name": "Production Gateway",
-  "url": "https://gateway.example.com/devportal-webhook",
+  "targetUrl": "https://gateway.example.com/devportal-webhook",
   "enabled": true,
   "events": [
     "apikey.*",
@@ -1429,7 +1442,7 @@ Webhook subscriber configuration. The secret is never included.
 |id|string|false|none|Webhook subscriber UUID.|
 |orgId|string|false|none|none|
 |name|string|false|none|none|
-|url|string(uri)|false|none|none|
+|targetUrl|string(uri)|false|none|none|
 |enabled|boolean|false|none|none|
 |events|[string]|false|none|none|
 |timeoutMs|integer|false|none|none|
@@ -1491,7 +1504,7 @@ A single delivery attempt made to a webhook subscriber.
 ```json
 {
   "keyManager": "Resident Key Manager",
-  "keyType": "PRODUCTION",
+  "type": "PRODUCTION",
   "consumerKey": "consumer-key-123"
 }
 
@@ -1502,15 +1515,15 @@ A single delivery attempt made to a webhook subscriber.
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |keyManager|string|true|none|none|
-|keyType|string|false|none|none|
+|type|string|false|none|none|
 |consumerKey|string|true|none|The OAuth client_id, created directly in the key manager. The portal never sees or stores a client secret — it is supplied per-request when generating a token.|
 
 #### Enumerated Values
 
 |Property|Value|
 |---|---|
-|keyType|PRODUCTION|
-|keyType|SANDBOX|
+|type|PRODUCTION|
+|type|SANDBOX|
 
 <h2 id="tocS_ViewCreateRequest">ViewCreateRequest</h2>
 
@@ -1606,7 +1619,7 @@ OAuth access token generation payload. `consumerSecret` is required — the port
 {
   "keyMappingId": "km-12345",
   "keyManager": "Resident Key Manager",
-  "keyType": "PRODUCTION",
+  "type": "PRODUCTION",
   "consumerKey": "consumer-key-123",
   "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token"
 }
@@ -1621,7 +1634,7 @@ OAuth key mapping payload.
 |---|---|---|---|---|
 |keyMappingId|string|false|none|none|
 |keyManager|string|false|none|none|
-|keyType|string|false|none|none|
+|type|string|false|none|none|
 |consumerKey|string|false|none|none|
 |tokenEndpoint|string(uri)|false|none|none|
 

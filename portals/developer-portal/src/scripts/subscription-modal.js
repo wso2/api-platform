@@ -197,7 +197,7 @@ async function prepareSubscriptionModal(modalId) {
                 col.innerHTML = `
                     <div class="card dev-card subscription-card">
                         <div class="card-body align-items-center text-center p-0">
-                            <span class="subscription-plans-card-title">${escapeHtml(plan.displayName || plan.subscriptionPlanName || '')}</span>
+                            <span class="subscription-plans-card-title">${escapeHtml(plan.name || plan.subscriptionPlanName || '')}</span>
                             <h1 class="subscription-plans-request-count">${escapeHtml(String(plan.requestCount || plan.rate || ''))}</h1>
                             <p class="subscription-plans-card-subtitle pt-0">requests per minute</p>
                         </div>
@@ -212,9 +212,9 @@ async function prepareSubscriptionModal(modalId) {
                 btn.textContent = 'Subscribe';
                 btn.dataset.orgId = orgId;
                 btn.dataset.apiId = apiId;
-                btn.dataset.planId = plan.planId || '';
-                btn.dataset.planName = plan.planName || plan.subscriptionPlanName || '';
-                btn.dataset.displayName = plan.displayName || plan.subscriptionPlanName || '';
+                btn.dataset.planId = plan.id || '';
+                btn.dataset.planName = plan.handle || plan.subscriptionPlanName || '';
+                btn.dataset.displayName = plan.name || plan.subscriptionPlanName || '';
                 if (window.isReadOnly) {
                     btn.disabled = true;
                     btn.setAttribute('aria-disabled', 'true');

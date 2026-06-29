@@ -26,7 +26,7 @@ Registers a webhook subscriber for the organization. Event deliveries (apikey.*,
 ```json
 {
   "name": "Production Gateway",
-  "url": "https://gateway.example.com/devportal-webhook",
+  "targetUrl": "https://gateway.example.com/devportal-webhook",
   "secret": "<shared-secret>",
   "publicKey": "string",
   "events": [
@@ -60,7 +60,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "id": "sub-uuid-12345",
   "orgId": "org-12345",
   "name": "Production Gateway",
-  "url": "https://gateway.example.com/devportal-webhook",
+  "targetUrl": "https://gateway.example.com/devportal-webhook",
   "enabled": true,
   "events": [
     "apikey.*",
@@ -82,8 +82,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
     "message": "Input validation failed.",
     "errors": [
       {
-        "field": "orgName",
-        "message": "orgName is required."
+        "field": "name",
+        "message": "name is required."
       }
     ]
   }
@@ -192,7 +192,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
       "id": "sub-uuid-12345",
       "orgId": "org-12345",
       "name": "Production Gateway",
-      "url": "https://gateway.example.com/devportal-webhook",
+      "targetUrl": "https://gateway.example.com/devportal-webhook",
       "enabled": true,
       "events": [
         "apikey.*",
@@ -238,7 +238,7 @@ Status Code **200**
 |»» id|string|false|none|Webhook subscriber UUID.|
 |»» orgId|string|false|none|none|
 |»» name|string|false|none|none|
-|»» url|string(uri)|false|none|none|
+|»» targetUrl|string(uri)|false|none|none|
 |»» enabled|boolean|false|none|none|
 |»» events|[string]|false|none|none|
 |»» timeoutMs|integer|false|none|none|
@@ -290,7 +290,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "id": "sub-uuid-12345",
   "orgId": "org-12345",
   "name": "Production Gateway",
-  "url": "https://gateway.example.com/devportal-webhook",
+  "targetUrl": "https://gateway.example.com/devportal-webhook",
   "enabled": true,
   "events": [
     "apikey.*",
@@ -356,7 +356,7 @@ Updates an existing webhook subscriber configuration. Only supplied fields are u
 ```json
 {
   "name": "Production Gateway",
-  "url": "https://gateway.example.com/devportal-webhook",
+  "targetUrl": "https://gateway.example.com/devportal-webhook",
   "secret": "<shared-secret>",
   "publicKey": "string",
   "events": [
@@ -391,7 +391,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "id": "sub-uuid-12345",
   "orgId": "org-12345",
   "name": "Production Gateway",
-  "url": "https://gateway.example.com/devportal-webhook",
+  "targetUrl": "https://gateway.example.com/devportal-webhook",
   "enabled": true,
   "events": [
     "apikey.*",
@@ -413,8 +413,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
     "message": "Input validation failed.",
     "errors": [
       {
-        "field": "orgName",
-        "message": "orgName is required."
+        "field": "name",
+        "message": "name is required."
       }
     ]
   }

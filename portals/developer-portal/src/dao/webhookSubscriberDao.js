@@ -36,7 +36,7 @@ const create = async (orgId, subData, createdBy) => {
         const record = await WebhookSubscriber.create({
             ORG_UUID: orgId,
             NAME: subData.name,
-            TARGET_URL: subData.url,
+            TARGET_URL: subData.targetUrl,
             ...(subData.secret && { SECRET_ENC: whCrypto.encrypt(subData.secret) }),
             ...(subData.publicKey && { PUBLIC_KEY: subData.publicKey }),
             ...(subData.events && { EVENT_PATTERNS: subData.events }),
@@ -63,7 +63,7 @@ const update = async (orgId, subscriberId, subData, updatedBy) => {
     try {
         const updatePayload = {
             ...(subData.name && { NAME: subData.name }),
-            ...(subData.url && { TARGET_URL: subData.url }),
+            ...(subData.targetUrl && { TARGET_URL: subData.targetUrl }),
             ...(subData.publicKey !== undefined && { PUBLIC_KEY: subData.publicKey }),
             ...(subData.events && { EVENT_PATTERNS: subData.events }),
             ...(subData.enabled !== undefined && { ENABLED: subData.enabled ? 1 : 0 }),

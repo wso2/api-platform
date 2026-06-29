@@ -20,9 +20,9 @@ const constants = require('../utils/constants');
 
 class APIDTO {
     constructor(api) {
-        this.apiId = api.UUID;
-        this.apiReferenceId = api.REF_ID;
-        this.apiHandle = api.HANDLE;
+        this.id = api.UUID;
+        this.refId = api.REF_ID;
+        this.handle = api.HANDLE;
         this.dataSource = api.DATA_SOURCE;
         this.apiInfo = new APIInfo(api);
         this.endPoints = new Endpoints(api);
@@ -46,13 +46,13 @@ class APIDTO {
 
 class APIInfo {
     constructor(apiInfo) {
-        this.apiName = apiInfo.NAME;
+        this.name = apiInfo.NAME;
         this.apiTitle = apiInfo.METADATA_SEARCH?.apiInfo?.apiTitle || null;
         this.remotes = apiInfo.METADATA_SEARCH?.apiInfo?.remotes || [];
-        this.apiVersion = apiInfo.VERSION;
-        this.apiDescription = apiInfo.DESCRIPTION;
-        this.apiType = apiInfo.TYPE;
-        this.apiStatus = apiInfo.STATUS;
+        this.version = apiInfo.VERSION;
+        this.description = apiInfo.DESCRIPTION;
+        this.type = apiInfo.TYPE;
+        this.status = apiInfo.STATUS;
         this.agentVisibility = apiInfo.AGENT_VISIBILITY || 'VISIBLE';
         if (apiInfo.addedLabels) {
             this.addedLabels = apiInfo.addedLabels;
@@ -78,10 +78,10 @@ class APIInfo {
 
 class APISubscriptionPlan {
     constructor(apiSubscriptionPlan) {
-        this.planName = apiSubscriptionPlan.HANDLE;
-        this.displayName = apiSubscriptionPlan.NAME;
+        this.handle = apiSubscriptionPlan.HANDLE;
+        this.name = apiSubscriptionPlan.NAME;
         this.requestCount = apiSubscriptionPlan.REQUEST_COUNT;
-        this.planId = apiSubscriptionPlan.UUID;
+        this.id = apiSubscriptionPlan.UUID;
         this.description = apiSubscriptionPlan.DESCRIPTION;
     }
 }

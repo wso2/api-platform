@@ -92,9 +92,9 @@ document.addEventListener('DOMContentLoaded', () => {
     if (dataEl) {
         try {
             const data = JSON.parse(dataEl.textContent);
-            const mdUrl = window.location.origin + data.baseUrl + '/api/' + data.apiHandle + '.md';
+            const mdUrl = window.location.origin + data.baseUrl + '/api/' + data.handle + '.md';
             _agentMdUrl = mdUrl;
-            apiName = data.apiHandle;
+            apiName = data.handle;
 
             const modalEl = document.getElementById('apiAgentPromptModal');
             if (modalEl) {

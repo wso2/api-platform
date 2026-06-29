@@ -226,7 +226,7 @@ const generateKeys = async (req, res) => {
         logger.info('Initiate create application key mapping...', { orgId: orgId, appId: appId });
         const {
             keyManager: kmName,
-            keyType: rawKeyType,
+            type: rawKeyType,
             consumerKey,
         } = req.body;
 
@@ -241,7 +241,7 @@ const generateKeys = async (req, res) => {
 
         const keyType = (rawKeyType || constants.KEY_TYPE.PRODUCTION).toUpperCase();
         if (!Object.values(constants.KEY_TYPE).includes(keyType)) {
-            return res.status(400).json({ message: `Invalid keyType. Must be one of: ${Object.values(constants.KEY_TYPE).join(', ')}.` });
+            return res.status(400).json({ message: `Invalid type. Must be one of: ${Object.values(constants.KEY_TYPE).join(', ')}.` });
         }
 
         const appKeyMapping = {
@@ -249,7 +249,7 @@ const generateKeys = async (req, res) => {
             appId,
             kmId: kmRecord.UUID,
             asClientId: consumerKey,
-            keyType,
+            type: keyType,
             createdBy: userId,
         };
         const keyMappingRecord = await appDao.upsertKeyMapping(appKeyMapping);
@@ -257,7 +257,7 @@ const generateKeys = async (req, res) => {
         const responseData = {
             consumerKey,
             keyManager: kmName,
-            keyType,
+            type: keyType,
             tokenEndpoint: kmRecord.TOKEN_ENDPOINT,
             keyMappingId: keyMappingRecord?.dataValues?.UUID,
         };
