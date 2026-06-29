@@ -22,7 +22,7 @@ info:
   version: 1.0.0
   description: |
     Fine-grained Developer Portal API for managing organizations,
-    API metadata and content, applications, subscriptions, application credentials, and API flows.
+    API metadata and content, applications, subscriptions, application appKeyMappings, and API flows.
 
     Organization-scoped resources are served under `/devportal/v1`. Operations declare
     the least-privilege OAuth2 scopes required for each resource action.
@@ -842,7 +842,7 @@ paths:
                 id: app-12345
                 name: Weather App
                 description: Application used to call Weather APIs.
-                appMap: []
+                appKeyMappings: []
         "400":
           $ref: "#/components/responses/BadRequest"
         "409":
@@ -1411,7 +1411,7 @@ paths:
       summary: Generate an OAuth access token
       description: >-
         Generates an access token for an existing application OAuth key mapping. The portal calls the Authorization
-        Server token endpoint directly using the client credentials supplied in `consumerSecret`.
+        Server token endpoint directly using the client appKeyMappings supplied in `consumerSecret`.
       requestBody:
         $ref: "#/components/requestBodies/OAuthGenerateTokenBody"
       responses:
@@ -1609,7 +1609,7 @@ paths:
         Creates a key manager configuration for the organization. Accepts either a `application/json` body or a
         `multipart/form-data` upload with a `keymanager` field containing the KeyManager YAML file. OAuth applications
         are created directly in the key manager itself, outside the portal — the portal only needs the token endpoint
-        to proxy `client_credentials` token requests.
+        to proxy `client_appKeyMappings` token requests.
       operationId: createKeyManager
       requestBody:
         $ref: "#/components/requestBodies/KeyManagerBody"
@@ -1642,7 +1642,7 @@ paths:
       summary: List key managers
       operationId: getKeyManagers
       description: >-
-        Returns all key manager configurations for the organization. Admin credentials are never included in the response. Admin use
+        Returns all key manager configurations for the organization. Admin appKeyMappings are never included in the response. Admin use
         only.
       parameters:
         - $ref: "#/components/parameters/limit"
@@ -1904,13 +1904,13 @@ paths:
               example:
                 message: Login successful
         "401":
-          description: Invalid credentials.
+          description: Invalid appKeyMappings.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/MessageResponse"
               example:
-                message: Invalid credentials
+                message: Invalid appKeyMappings
         "503":
           description: >-
             The Platform API is not configured, unreachable, or returned a token missing required claims.
@@ -3188,7 +3188,7 @@ components:
             id: app-12345
             name: Weather App
             description: Application used to call Weather APIs.
-            appMap: []
+            appKeyMappings: []
     ApplicationListResponse:
       description: List of application DTOs.
       content:
@@ -3207,7 +3207,7 @@ components:
               - id: app-12345
                 name: Weather App
                 description: Application used to call Weather APIs.
-                appMap:
+                appKeyMappings:
                   - asClientId: asgardeo-client-abc123
                     kmId: km-uuid-12345
                     type: PRODUCTION
@@ -3861,7 +3861,7 @@ components:
         description:
           type: string
           example: Application used to call Weather APIs.
-        appMap:
+        appKeyMappings:
           type: array
           items:
             $ref: "#/components/schemas/ApplicationKeyMappingSummary"
@@ -4255,7 +4255,7 @@ components:
           format: uri
           description: >-
             OAuth2 token endpoint. The OAuth application itself must be created directly in this key manager; the
-            portal only proxies `client_credentials` token requests to this endpoint.
+            portal only proxies `client_appKeyMappings` token requests to this endpoint.
           example: https://api.asgardeo.io/t/myorg/oauth2/token
       additionalProperties: false
     KeyManagerUpdateRequest:

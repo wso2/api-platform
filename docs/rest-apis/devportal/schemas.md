@@ -702,7 +702,7 @@ Ad hoc error shape used by the Subscriptions and API Keys handlers, which build 
   "id": "app-12345",
   "name": "Weather App",
   "description": "Application used to call Weather APIs.",
-  "appMap": [
+  "appKeyMappings": [
     {
       "asClientId": "asgardeo-client-abc123",
       "kmId": "km-uuid-12345",
@@ -720,7 +720,7 @@ Ad hoc error shape used by the Subscriptions and API Keys handlers, which build 
 |id|string|false|none|none|
 |name|string|false|none|none|
 |description|string|false|none|none|
-|appMap|[[ApplicationKeyMappingSummary](#schemaapplicationkeymappingsummary)]|false|none|[OAuth client ID mapping entry attached to an application.]|
+|appKeyMappings|[[ApplicationKeyMappingSummary](#schemaapplicationkeymappingsummary)]|false|none|[OAuth client ID mapping entry attached to an application.]|
 
 <h2 id="tocS_ApplicationKeyMappingSummary">ApplicationKeyMappingSummary</h2>
 
@@ -1249,7 +1249,7 @@ API key response returned by generate/regenerate only. Unlike ApiKeyMetadataResp
 |name|string|true|none|Unique name within the organization.|
 |type|string|true|none|none|
 |enabled|boolean|false|none|none|
-|tokenEndpoint|string(uri)|true|none|OAuth2 token endpoint. The OAuth application itself must be created directly in this key manager; the portal only proxies `client_credentials` token requests to this endpoint.|
+|tokenEndpoint|string(uri)|true|none|OAuth2 token endpoint. The OAuth application itself must be created directly in this key manager; the portal only proxies `client_appKeyMappings` token requests to this endpoint.|
 
 #### Enumerated Values
 

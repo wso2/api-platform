@@ -22,7 +22,7 @@ class ApplicationDTO {
         this.name = app.NAME;
         this.description = app.DESCRIPTION;
         if (app.DP_APP_KEY_MAPPINGs) {
-            this.appMap = app.DP_APP_KEY_MAPPINGs.map(map => new AppMappingDTO(map));
+            this.appKeyMappings = app.DP_APP_KEY_MAPPINGs.map(map => new AppMappingDTO(map));
         }
     }
 

@@ -159,7 +159,7 @@ curl -X POST https://devportal.api-platform.io/devportal/v1/applications/{applic
 
 ```
 
-Generates an access token for an existing application OAuth key mapping. The portal calls the Authorization Server token endpoint directly using the client credentials supplied in `consumerSecret`.
+Generates an access token for an existing application OAuth key mapping. The portal calls the Authorization Server token endpoint directly using the client appKeyMappings supplied in `consumerSecret`.
 
 > Payload
 

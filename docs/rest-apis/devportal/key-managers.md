@@ -19,7 +19,7 @@ curl -X POST https://devportal.api-platform.io/devportal/v1/key-managers \
 
 ```
 
-Creates a key manager configuration for the organization. Accepts either a `application/json` body or a `multipart/form-data` upload with a `keymanager` field containing the KeyManager YAML file. OAuth applications are created directly in the key manager itself, outside the portal — the portal only needs the token endpoint to proxy `client_credentials` token requests.
+Creates a key manager configuration for the organization. Accepts either a `application/json` body or a `multipart/form-data` upload with a `keymanager` field containing the KeyManager YAML file. OAuth applications are created directly in the key manager itself, outside the portal — the portal only needs the token endpoint to proxy `client_appKeyMappings` token requests.
 
 > Payload
 
@@ -161,7 +161,7 @@ curl -X GET https://devportal.api-platform.io/devportal/v1/key-managers \
 
 ```
 
-Returns all key manager configurations for the organization. Admin credentials are never included in the response. Admin use only.
+Returns all key manager configurations for the organization. Admin appKeyMappings are never included in the response. Admin use only.
 
 ### Authentication
 

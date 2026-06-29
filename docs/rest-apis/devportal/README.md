@@ -2,7 +2,7 @@
 <h1 id="wso2-api-developer-portal-core-devportal-routes">WSO2 API Developer Portal Core - Devportal Routes v1.0.0</h1>
 
 Fine-grained Developer Portal API for managing organizations,
-API metadata and content, applications, subscriptions, application credentials, and API flows.
+API metadata and content, applications, subscriptions, application appKeyMappings, and API flows.
 
 Organization-scoped resources are served under `/devportal/v1`. Operations declare
 the least-privilege OAuth2 scopes required for each resource action.
