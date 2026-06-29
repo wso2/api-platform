@@ -59,7 +59,7 @@ func (h *SecretHandler) CreateSecret(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	username, _ := middleware.GetUsernameFromRequest(r)
+	userID, _ := middleware.GetUserIDFromRequest(r)
 
 	if err := r.ParseMultipartForm(32 << 20); err != nil {
 		_ = r.ParseForm()
@@ -76,7 +76,7 @@ func (h *SecretHandler) CreateSecret(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp, err := h.secretService.Create(orgID, username, &req)
+	resp, err := h.secretService.Create(orgID, userID, &req)
 	if err != nil {
 		if errors.Is(err, constants.ErrSecretAlreadyExists) {
 			httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponse(409, "Conflict", "A secret with this name already exists in this scope"))
@@ -177,7 +177,7 @@ func (h *SecretHandler) UpdateSecret(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	username, _ := middleware.GetUsernameFromRequest(r)
+	userID, _ := middleware.GetUserIDFromRequest(r)
 
 	if err := r.ParseMultipartForm(32 << 20); err != nil {
 		_ = r.ParseForm()
@@ -192,7 +192,7 @@ func (h *SecretHandler) UpdateSecret(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp, err := h.secretService.Update(orgID, handle, username, &req)
+	resp, err := h.secretService.Update(orgID, handle, userID, &req)
 	if err != nil {
 		if errors.Is(err, constants.ErrSecretNotFound) {
 			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "Secret not found"))
@@ -219,9 +219,9 @@ func (h *SecretHandler) DeleteSecret(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	username, _ := middleware.GetUsernameFromRequest(r)
+	userID, _ := middleware.GetUserIDFromRequest(r)
 
-	err := h.secretService.Delete(orgID, handle, username)
+	err := h.secretService.Delete(orgID, handle, userID)
 	if err != nil {
 		if errors.Is(err, constants.ErrSecretNotFound) {
 			httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "Secret not found"))

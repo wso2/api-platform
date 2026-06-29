@@ -74,7 +74,7 @@ func (h *WebBrokerAPIHandler) CreateWebBrokerAPI(w http.ResponseWriter, r *http.
 		return
 	}
 
-	createdBy, _ := middleware.GetUsernameFromRequest(r)
+	createdBy, _ := middleware.GetUserIDFromRequest(r)
 
 	resp, err := h.webbrokerAPIService.Create(orgID, createdBy, &req)
 	if err != nil {
@@ -164,7 +164,7 @@ func (h *WebBrokerAPIHandler) UpdateWebBrokerAPI(w http.ResponseWriter, r *http.
 		return
 	}
 
-	updatedBy, _ := middleware.GetUsernameFromRequest(r)
+	updatedBy, _ := middleware.GetUserIDFromRequest(r)
 	resp, err := h.webbrokerAPIService.Update(orgID, id, updatedBy, &req)
 	if err != nil {
 		h.handleServiceError(w, err)
@@ -183,7 +183,7 @@ func (h *WebBrokerAPIHandler) DeleteWebBrokerAPI(w http.ResponseWriter, r *http.
 	}
 
 	id := r.PathValue("apiId")
-	deletedBy, _ := middleware.GetUsernameFromRequest(r)
+	deletedBy, _ := middleware.GetUserIDFromRequest(r)
 
 	if err := h.webbrokerAPIService.Delete(orgID, id, deletedBy); err != nil {
 		h.handleServiceError(w, err)

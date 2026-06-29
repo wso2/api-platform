@@ -97,7 +97,7 @@ func (h *MCPProxyDeploymentHandler) DeployMCPProxy(w http.ResponseWriter, r *htt
 		return
 	}
 
-	createdBy, _ := middleware.GetUsernameFromRequest(r)
+	createdBy, _ := middleware.GetUserIDFromRequest(r)
 	deployment, err := h.deploymentService.DeployMCPProxyByHandle(proxyId, &req, orgId, createdBy)
 	if err != nil {
 		if respondArtifactGuardError(w, err) {

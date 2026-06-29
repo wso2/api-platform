@@ -105,7 +105,7 @@ func (h *GatewayHandler) CreateGateway(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	createdBy, _ := middleware.GetUsernameFromRequest(r)
+	createdBy, _ := middleware.GetUserIDFromRequest(r)
 	gateway, err := h.gatewayService.RegisterGateway(orgId, req.Name, req.DisplayName, description, req.Vhost,
 		isCritical, functionalityType, version, createdBy, properties)
 	if err != nil {
@@ -261,7 +261,7 @@ func (h *GatewayHandler) UpdateGateway(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	updatedBy, _ := middleware.GetUsernameFromRequest(r)
+	updatedBy, _ := middleware.GetUserIDFromRequest(r)
 	response, err := h.gatewayService.UpdateGateway(gatewayId, orgId, updatedBy, req.Description, req.DisplayName, req.IsCritical, req.Properties)
 	if err != nil {
 		if errors.Is(err, constants.ErrGatewayNotFound) {
@@ -296,7 +296,7 @@ func (h *GatewayHandler) DeleteGateway(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	deletedBy, _ := middleware.GetUsernameFromRequest(r)
+	deletedBy, _ := middleware.GetUserIDFromRequest(r)
 	err := h.gatewayService.DeleteGateway(gatewayId, orgId, deletedBy)
 	if err != nil {
 		// Check for specific error types
@@ -383,7 +383,7 @@ func (h *GatewayHandler) RotateToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	createdBy, _ := middleware.GetUsernameFromRequest(r)
+	createdBy, _ := middleware.GetUserIDFromRequest(r)
 	response, err := h.gatewayService.RotateToken(gatewayId, orgId, createdBy)
 	if err != nil {
 		errMsg := err.Error()
@@ -435,7 +435,7 @@ func (h *GatewayHandler) RevokeToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	revokedBy, _ := middleware.GetUsernameFromRequest(r)
+	revokedBy, _ := middleware.GetUserIDFromRequest(r)
 	err := h.gatewayService.RevokeToken(gatewayId, tokenId, orgId, revokedBy)
 	if err != nil {
 		errMsg := err.Error()

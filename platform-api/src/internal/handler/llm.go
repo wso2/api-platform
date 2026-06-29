@@ -93,7 +93,7 @@ func (h *LLMHandler) CreateLLMProviderTemplate(w http.ResponseWriter, r *http.Re
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid request body"))
 		return
 	}
-	createdBy, _ := middleware.GetUsernameFromRequest(r)
+	createdBy, _ := middleware.GetUserIDFromRequest(r)
 
 	created, err := h.templateService.Create(orgID, createdBy, &req)
 	if err != nil {
@@ -228,7 +228,7 @@ func (h *LLMHandler) CreateLLMProviderTemplateVersion(w http.ResponseWriter, r *
 		return
 	}
 	id := r.PathValue("id")
-	createdBy, _ := middleware.GetUsernameFromRequest(r)
+	createdBy, _ := middleware.GetUserIDFromRequest(r)
 
 	var req api.CreateLLMProviderTemplateVersionRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -339,7 +339,7 @@ func (h *LLMHandler) UpdateLLMProviderTemplate(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	updatedBy, _ := middleware.GetUsernameFromRequest(r)
+	updatedBy, _ := middleware.GetUserIDFromRequest(r)
 	resp, err := h.templateService.Update(orgID, id, updatedBy, &req)
 	if err != nil {
 		if respondArtifactGuardError(w, err) {
@@ -374,7 +374,7 @@ func (h *LLMHandler) DeleteLLMProviderTemplate(w http.ResponseWriter, r *http.Re
 		return
 	}
 	id := r.PathValue("id")
-	deletedBy, _ := middleware.GetUsernameFromRequest(r)
+	deletedBy, _ := middleware.GetUserIDFromRequest(r)
 
 	if err := h.templateService.Delete(orgID, id, deletedBy); err != nil {
 		if respondArtifactGuardError(w, err) {
@@ -451,7 +451,7 @@ func (h *LLMHandler) CreateLLMProvider(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid request body"))
 		return
 	}
-	createdBy, _ := middleware.GetUsernameFromRequest(r)
+	createdBy, _ := middleware.GetUserIDFromRequest(r)
 
 	created, err := h.providerService.Create(orgID, createdBy, &req)
 	if err != nil {
@@ -558,7 +558,7 @@ func (h *LLMHandler) UpdateLLMProvider(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	updatedBy, _ := middleware.GetUsernameFromRequest(r)
+	updatedBy, _ := middleware.GetUserIDFromRequest(r)
 	resp, err := h.providerService.Update(orgID, id, updatedBy, &req)
 	if err != nil {
 		if respondArtifactGuardError(w, err) {
@@ -593,7 +593,7 @@ func (h *LLMHandler) DeleteLLMProvider(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := r.PathValue("id")
-	deletedBy, _ := middleware.GetUsernameFromRequest(r)
+	deletedBy, _ := middleware.GetUserIDFromRequest(r)
 
 	if err := h.providerService.Delete(orgID, id, deletedBy); err != nil {
 		if respondArtifactGuardError(w, err) {
@@ -633,7 +633,7 @@ func (h *LLMHandler) CreateLLMProxy(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Project ID is required"))
 		return
 	}
-	createdBy, _ := middleware.GetUsernameFromRequest(r)
+	createdBy, _ := middleware.GetUserIDFromRequest(r)
 
 	created, err := h.proxyService.Create(orgID, createdBy, &req)
 	if err != nil {
@@ -797,7 +797,7 @@ func (h *LLMHandler) UpdateLLMProxy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	updatedBy, _ := middleware.GetUsernameFromRequest(r)
+	updatedBy, _ := middleware.GetUserIDFromRequest(r)
 	resp, err := h.proxyService.Update(orgID, id, updatedBy, &req)
 	if err != nil {
 		if respondArtifactGuardError(w, err) {
@@ -829,7 +829,7 @@ func (h *LLMHandler) DeleteLLMProxy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := r.PathValue("id")
-	deletedBy, _ := middleware.GetUsernameFromRequest(r)
+	deletedBy, _ := middleware.GetUserIDFromRequest(r)
 
 	if err := h.proxyService.Delete(orgID, id, deletedBy); err != nil {
 		if respondArtifactGuardError(w, err) {

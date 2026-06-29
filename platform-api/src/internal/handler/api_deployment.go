@@ -85,7 +85,7 @@ func (h *DeploymentHandler) DeployAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	createdBy, _ := middleware.GetUsernameFromRequest(r)
+	createdBy, _ := middleware.GetUserIDFromRequest(r)
 	deployment, err := h.deploymentService.DeployAPIByHandle(apiId, &req, orgId, createdBy)
 	if err != nil {
 		if respondArtifactGuardError(w, err) {
@@ -168,7 +168,7 @@ func (h *DeploymentHandler) UndeployDeployment(w http.ResponseWriter, r *http.Re
 			"API ID is required"))
 		return
 	}
-	actor, _ := middleware.GetUsernameFromRequest(r)
+	actor, _ := middleware.GetUserIDFromRequest(r)
 	deployment, err := h.deploymentService.UndeployDeploymentByHandle(apiId, deploymentId, gatewayId, orgId, actor)
 	if err != nil {
 		// DP-originated artifacts are read-only: undeployment cannot be initiated from the CP.
@@ -241,7 +241,7 @@ func (h *DeploymentHandler) RestoreDeployment(w http.ResponseWriter, r *http.Req
 			"API ID is required"))
 		return
 	}
-	actor, _ := middleware.GetUsernameFromRequest(r)
+	actor, _ := middleware.GetUserIDFromRequest(r)
 	deployment, err := h.deploymentService.RestoreDeploymentByHandle(apiId, deploymentId, gatewayId, orgId, actor)
 	if err != nil {
 		// DP-originated artifacts are read-only: restore cannot be initiated from the CP.
@@ -305,7 +305,7 @@ func (h *DeploymentHandler) DeleteDeployment(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	actor, _ := middleware.GetUsernameFromRequest(r)
+	actor, _ := middleware.GetUserIDFromRequest(r)
 	err := h.deploymentService.DeleteDeploymentByHandle(apiId, deploymentId, orgId, actor)
 	if err != nil {
 		if errors.Is(err, constants.ErrAPINotFound) {
