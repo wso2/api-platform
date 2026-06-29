@@ -206,10 +206,10 @@ export default function ProviderTemplateOverview() {
 
   useEffect(() => {
     const organizationId = currentOrganization?.uuid;
-
-    const groupId = template?.groupId;
-    if (!groupId || !organizationId) return;
     setVersions([]);
+
+    const groupId = template?.groupId ?? template?.id;
+    if (!groupId || !organizationId) return;
 
     let isMounted = true;
     providerTemplateApis
@@ -226,7 +226,7 @@ export default function ProviderTemplateOverview() {
     return () => {
       isMounted = false;
     };
-  }, [template?.groupId, currentOrganization?.uuid]);
+  }, [template?.groupId, template?.id, currentOrganization?.uuid]);
 
   useEffect(() => {
     if (template?.version) setSelectedVersion(template.version);

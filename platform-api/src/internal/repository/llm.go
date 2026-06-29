@@ -356,7 +356,7 @@ func (r *LLMProviderTemplateRepo) List(orgUUID string, limit, offset int) ([]*mo
 	query := `
 		SELECT uuid, organization_uuid, handle, group_id, display_name, managed_by, description, created_by, updated_by,
 		       origin, configuration, openapi_spec, version, is_latest, enabled, created_at, updated_at
-		FROM llm_provider_templates
+		FROM llm_provider_templates t
 		WHERE organization_uuid = ?
 		  AND NOT EXISTS (
 		    SELECT 1 FROM llm_provider_templates t2
@@ -608,12 +608,8 @@ func (r *LLMProviderTemplateRepo) Count(orgUUID string) (int, error) {
 	}
 	return count, nil
 }
-func (r *LLMProviderTemplateRepo) CountProvidersUsingTemplate(templateID, orgUUID, version string) (int, error) {
-	base, err := r.familyGroupID(templateID, orgUUID)
-	if err != nil {
-		return 0, err
-	}
-	if base == "" {
+func (r *LLMProviderTemplateRepo) CountProvidersUsingTemplate(groupID, orgUUID, version string) (int, error) {
+	if groupID == "" {
 		return 0, nil
 	}
 	query := `
@@ -621,7 +617,7 @@ func (r *LLMProviderTemplateRepo) CountProvidersUsingTemplate(templateID, orgUUI
 		FROM llm_providers p
 		JOIN llm_provider_templates t ON p.template_uuid = t.uuid
 		WHERE t.group_id = ? AND t.organization_uuid = ?`
-	args := []interface{}{base, orgUUID}
+	args := []interface{}{groupID, orgUUID}
 	if strings.TrimSpace(version) != "" {
 		query += ` AND t.version = ?`
 		args = append(args, version)

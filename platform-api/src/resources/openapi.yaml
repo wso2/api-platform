@@ -1100,8 +1100,7 @@ paths:
     get:
       summary: Get LLM provider template by id
       description: |
-        Retrieve the complete configuration for a single LLM provider template
-        identified by its handle.
+        Retrieve the complete configuration for a specific LLM provider template.
       operationId: getLLMProviderTemplate
       security:
         - OAuth2Security:
@@ -1113,7 +1112,7 @@ paths:
         - name: llmProviderTemplateId
           in: path
           required: true
-          description: Unique handle of the template (identifies one specific version)
+          description: Unique handle of the template.
           schema:
             type: string
           example: openai
@@ -1134,10 +1133,9 @@ paths:
     put:
       summary: Update an existing LLM provider template
       description: |
-        Update a single LLM provider template identified by its handle. Updates
-        exactly that template — it does NOT resolve to or force the latest
-        version of the family. This does NOT create a new version — use
-        POST /llm-provider-templates/{groupId}/versions to create a new version.
+        Update the configuration of an existing LLM provider template. The template
+        is identified by its unique handle (id). This operation updates the latest
+        version of the template.
       operationId: updateLLMProviderTemplate
       security:
         - OAuth2Security:
@@ -1149,7 +1147,7 @@ paths:
         - name: llmProviderTemplateId
           in: path
           required: true
-          description: Unique handle of the template to update (identifies one specific version)
+          description: Unique identifier of the template to update
           schema:
             type: string
           example: openai
@@ -6927,9 +6925,7 @@ components:
         groupId:
           type: string
           description: |
-            Stable identifier shared by every version of a template family
-            (defaults to the first version's handle). Read-only. Used as the
-            {groupId} path parameter on the /versions routes.
+            Stable identifier shared by every version of a template family.
           readOnly: true
           maxLength: 40
           example: openai
@@ -6944,8 +6940,6 @@ components:
           description: |
             Identifies who manages the template. Built-in templates use 'wso2';
             custom templates default to 'customer' and may be set to any value.
-            Optional on create/update — the server defaults it to 'customer' when
-            omitted, so a request/YAML without a managedBy is accepted.
           default: customer
           maxLength: 255
           example: wso2
@@ -6974,10 +6968,8 @@ components:
         version:
           type: string
           description: |
-            Content version, e.g. v1.0. Required. A new template starts at v1.0;
-            editing updates that version in place. Supply a new unique version
-            only when creating a new version via
-            POST /llm-provider-templates/{llmProviderTemplateId}/versions.
+            Content version, matching the v<major>.<minor> pattern (e.g. v1.0, v2.0).
+            Must be unique for this template.
           pattern: '^[vV]\d+\.\d+$'
           maxLength: 30
           example: v1.0
@@ -6989,10 +6981,8 @@ components:
         enabled:
           type: boolean
           description: |
-            Whether this version is offered when creating providers. Disabled
-            versions stay in the catalog but are hidden from the provider picker.
-            Response-only: create/update default new versions to enabled; toggle
-            via PATCH /llm-provider-templates/{llmProviderTemplateId}/versions/{version}.
+            Whether this version is offered when creating providers. If false, the
+            template version is hidden from the provider creation UI and API.
           readOnly: true
           example: true
         openapi:

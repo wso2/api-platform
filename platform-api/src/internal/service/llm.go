@@ -582,7 +582,7 @@ func (s *LLMProviderTemplateService) Delete(orgUUID, handle, deletedBy string) e
 		return err
 	}
 	// Block deletion while any provider (built from any version) still depends on it.
-	inUse, err := s.repo.CountProvidersUsingTemplate(handle, orgUUID, "")
+	inUse, err := s.repo.CountProvidersUsingTemplate(tpl.GroupID, orgUUID, "")
 	if err != nil {
 		return fmt.Errorf("failed to check template usage: %w", err)
 	}
